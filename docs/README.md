@@ -27,6 +27,7 @@ also self-contained enough to be read on its own.
 | 07 | **Workflows** | [Workflow & Approval Engine](07-workflows/workflow-engine.md) | Engineers, Analysts |
 | 08 | **Operations** | [Deployment Strategy](08-operations/deployment-strategy.md) | DevOps, Engineers |
 | 09 | **Guides** | [Development Guide](09-guides/development-guide.md) · [Development Workflow](09-guides/development-workflow.md) | Engineers |
+| 10 | **Reviews** | [Architecture Review 01 (pre-Milestone 2)](10-reviews/2026-07-architecture-review-01.md) | Everyone |
 
 ---
 
@@ -42,4 +43,5 @@ also self-contained enough to be read on its own.
 
 | Document set | Version | Status | Approved by | Date |
 |---|---|---|---|---|
-| Milestone 1 (all documents) | 1.0.0-draft | ⏳ Awaiting review | — | — |
+| Milestone 1 (all documents) | 1.0.0 | ✅ Approved | EGYCASH | 2026-07-08 |
+| Architecture Review 01 (pre-Milestone 2) | draft | ⏳ Awaiting review | — | — |

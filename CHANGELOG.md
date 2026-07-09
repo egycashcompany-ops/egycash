@@ -15,6 +15,11 @@ its entry here in the same PR.
   `CODEOWNERS`, pull-request and issue templates, this changelog.
 - **Phase 2.5 — Domain Model** (documentation only): `docs/01-domain/` — domain model,
   bounded contexts, entity relationships, and ubiquitous language for the whole platform.
+- **Business Decisions log** (`docs/01-domain/business-decisions.md`): BD-001 requisition-driven
+  recruitment (OQ-2), BD-002 organization-wide applicant numbering (OQ-3), BD-003 shared
+  Client Registry (OQ-4), BD-004 multi-currency-ready EGP-first Money (OQ-5), BD-005
+  separate cash/gold custody entities over a shared pattern (OQ-6), BD-006 one capability
+  per implementation sprint — with the domain documents updated accordingly.
 
 ## [2.1.0] - 2026-07-09
 

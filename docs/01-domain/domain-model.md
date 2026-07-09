@@ -137,11 +137,15 @@ transitions, notes, and document events — not an entity of its own.
 
 The only business context designed to full detail in Milestone 1; entity names below are
 canonical and already bound to permissions, routes, and events
-([Module Hierarchy §5](../01-business/module-hierarchy.md)).
+([Module Hierarchy §5](../01-business/module-hierarchy.md)). Per **[BD-001](business-decisions.md#bd-001--recruitment-is-requisition-driven)**
+the pipeline is **requisition-driven**:
+
+> Job Requisition → Applicant → Screening → Interview → Offer → Hiring → Employee
 
 | Entity | Type | Responsibility | Key invariants |
 | --- | --- | --- | --- |
-| **Applicant** | Aggregate root | A person seeking employment: identity data (OCR-prefilled or manual), position sought, source, attachments | National ID unique among live applicants; identity fields confirmed by a human when OCR-prefilled; lifecycle owned by the recruitment workflow |
+| **Job Requisition** | Aggregate root (pipeline anchor) | An approved vacancy: position (job title), branch, headcount, budget | Requires approval before applicants attach; **no applicant can be hired without one** (BD-001) |
+| **Applicant** | Aggregate root | A person seeking employment against a requisition: identity data (OCR-prefilled or manual), source, attachments | Applies against exactly one approved Job Requisition, inheriting its position and branch context; National ID unique among live applicants; identity fields confirmed by a human when OCR-prefilled; lifecycle owned by the recruitment workflow; numbered organization-wide (BD-002) |
 | Applicant Note | Entity | Free-form remark on an applicant | Attributed and timestamped, never edited silently |
 | Scheduled Activity | Entity | A planned action (call, reminder) with an assignee and due time | Belongs to one applicant |
 | Recruitment Source | Reference entity | Where applicants come from (referral, job board, walk-in) | Localized catalog |
@@ -152,7 +156,6 @@ canonical and already bound to permissions, routes, and events
 | Hiring Document | Entity | One checklist item: document type × requirement × collected file | References a Document (Files context), never stores content |
 | Document Type | Reference entity | Catalog of documents a hire must provide | Requirement rules per checklist |
 | **Employee File** | Aggregate root | The consolidated digital file handed to the future Employment context | Assembled only from a completed hiring case; the handoff artifact across the context boundary |
-| Job Requisition | — **undecided** | Approved vacancy (position, headcount, budget) that applicants would apply against | **Open question OQ-2** — business decision required before phase 2.3 detail design; if adopted, it becomes the anchor aggregate of the pipeline |
 
 ---
 
@@ -203,6 +206,12 @@ root — fault or discrepancy with SLA clock).
 **Precious Item** (aggregate root — an identified item/lot: weight, fineness, certificates)
 · Item Movement (immutable custody fact) · Weighing Record (dual-attested).
 
+Per [BD-005](business-decisions.md#bd-005--cash-and-gold-custody-shared-pattern-separate-entities):
+gold custody mirrors the cash custody *pattern* (custody account, immutable movements,
+gapless custodian chain, reconciliation) as **separate entities** (`GoldCustody` vs
+`CashCustody`) with independent domain rules where the business differs; both reuse the
+platform workflow engine.
+
 ### 4.6 Fleet
 
 **Vehicle** (aggregate root — armored vehicle: registration, armor class, equipment) ·
@@ -241,21 +250,27 @@ to Identity & Access via provisioning events, never by direct writes).
 | --- | --- | --- |
 | **User** | Identity & Access | By ID, as actor / assignee / manager / approver everywhere; display name denormalized where lists demand it |
 | **Branch** (and org units) | Organization | By ID, as the scoping dimension on every business aggregate |
-| **Client** *(future)* | Client Agreements | By ID + query contract; operational contexts never edit clients |
+| **Client** — one shared registry (BD-003) | Client Agreements | By ID + query contract from Cash Transportation, ATM, Vault, Gold, Contracts, and future Accounting; consumers never create or edit clients |
 | **Document** | Documents | By ID via the standard entity reference; content never crosses contexts |
 | **Entity Reference** (`module · entityType · entityId`) | Published language (kernel) | The universal way Documents, Accountability, Process, and Communication point at any business entity |
-| **Value objects**: LocalizedString, NationalId, PhoneNumber, Address, PersonName, Assignee, Money *(future)* | Shared kernel (`contracts/common`, Review R8) | Same validation and meaning in every context; NationalId doubles as the person-correlation key (R9) |
+| **Value objects**: LocalizedString, NationalId, PhoneNumber, Address, PersonName, Assignee, Money *(joins the kernel with its first consumer)* | Shared kernel (`contracts/common`, Review R8) | Same validation and meaning in every context; NationalId doubles as the person-correlation key (R9); Money is an amount bound to an explicit currency — multi-currency ready, EGP-first, configuration-driven (BD-004) |
 | **Domain events** | Published language (`contracts/events`) | The only broadcast medium between contexts (ADR-008) |
 
 Deliberately **not** shared: a Party/person master (R9 — rejected), workflow state enums in
 code (ADR-011), any direct read of another context's data store (ADR-005).
 
-## 6. Open questions raised or restated by this model
+## 6. Business questions — all resolved
 
-| ID | Question | Blocks | Owner |
-| --- | --- | --- | --- |
-| OQ-2 | Requisition-driven recruitment (Job Requisition as pipeline anchor) or applicant-first? | Phase 2.3 recruitment detail design | Business |
-| OQ-3 | Applicant numbering scope: branch or organization? | Phase 2.2 sequence seeds | Business |
-| OQ-4 *(new)* | Is **Client** a single organization-wide register (owned by Client Agreements) that CIT/ATM/Vault reference, or do operational contexts onboard clients independently? This model assumes a single register. | Client Agreements + CIT design | Business |
-| OQ-5 *(new)* | Currency policy for the Money value object: EGP-only with denomination breakdowns, or multi-currency custody from day one? | Vault/CIT design | Business |
-| OQ-6 *(new)* | Do Gold Custody and Vault Custody share one custody model (custody account + movements) or diverge (weight-based vs count-based)? This model keeps them separate contexts with a shared *pattern*, not shared entities. | Gold Custody design | Business + Architecture |
+Every question this model raised or restated has been **decided and recorded** in the
+[Business Decisions log](business-decisions.md):
+
+| ID | Question | Resolution |
+| --- | --- | --- |
+| OQ-2 | Requisition-driven or applicant-first recruitment? | **Requisition-driven** — [BD-001](business-decisions.md#bd-001--recruitment-is-requisition-driven) |
+| OQ-3 | Applicant numbering scope? | **Organization-wide** — [BD-002](business-decisions.md#bd-002--applicant-numbering-is-organization-wide) |
+| OQ-4 | Single Client register or per-context customers? | **One shared Client Registry** — [BD-003](business-decisions.md#bd-003--one-shared-client-registry) |
+| OQ-5 | Currency policy for Money? | **Multi-currency ready, EGP first, configuration-driven** — [BD-004](business-decisions.md#bd-004--multi-currency-ready-egp-first) |
+| OQ-6 | One custody model for cash and gold? | **Shared pattern, separate entities** — [BD-005](business-decisions.md#bd-005--cash-and-gold-custody-shared-pattern-separate-entities) |
+
+*(OQ-1 — departments belong to branches — was resolved earlier in
+[ADR-015](../03-decisions/ADR-015-single-organization-model.md).)*

@@ -73,13 +73,17 @@ collections, events, folders). This glossary is the vocabulary contract; the
 | Document Type | نوع المستند | Recruitment catalog of documents a hire must provide | Document Category (platform files catalog) |
 | Employee File | الملف الوظيفي | The consolidated digital file handed to Employment on completion | Personnel file cabinet metaphors |
 | National ID | الرقم القومي | 14-digit Egyptian identity number; validated structurally; the person-correlation key across contexts (R9) | Passport/other IDs (future document types) |
-| Job Requisition *(pending OQ-2)* | طلب شغل وظيفة | Approved vacancy applicants would apply against — **not yet adopted** | Job Title (catalog entry) |
+| Job Requisition | طلب شغل وظيفة | Approved vacancy (position, branch, headcount, budget) every applicant applies against — the pipeline anchor ([BD-001](business-decisions.md#bd-001--recruitment-is-requisition-driven)) | Job Title (catalog entry); ~~Vacancy~~ (informal synonym — not used in artifacts) |
 
 ## 4. Core-operations terms (future modules — vocabulary fixed now)
 
 | Term | Arabic | Meaning | Not to be confused with |
 | --- | --- | --- | --- |
-| Client | العميل | The counterparty EGYCASH serves (bank, retailer); owned by Client Agreements | *Customer* (retired synonym); Vendor |
+| Client | العميل | The counterparty EGYCASH serves (bank, retailer) — **one shared registry** owned by Client Agreements and referenced by all operational contexts ([BD-003](business-decisions.md#bd-003--one-shared-client-registry)) | *Customer* (retired synonym); Vendor |
+| Money | المبلغ المالي | An amount bound to an explicit currency — multi-currency ready, EGP first, configuration-driven ([BD-004](business-decisions.md#bd-004--multi-currency-ready-egp-first)) | Bare numeric amounts (banned in domain artifacts) |
+| Currency | العملة | An enabled monetary unit; the enabled set and default (EGP) are configuration | Denomination (a unit *within* a currency) |
+| Cash Custody | العهدة النقدية | Accountable possession of cash value — separate entity from gold custody, same custody pattern ([BD-005](business-decisions.md#bd-005--cash-and-gold-custody-shared-pattern-separate-entities)) | Gold Custody |
+| Gold Custody | العهدة الذهبية | Accountable possession of precious items — separate entity from cash custody, same custody pattern (BD-005) | Cash Custody |
 | Contract | العقد | Signed agreement: services, sites, validity, tariffs | Offer (Recruitment) |
 | SLA | اتفاقية مستوى الخدمة | A time/frequency commitment operational contexts must honor | Internal workflow SLA timers (Process context) |
 | Service Order | أمر الخدمة | A client's authorized request to move/handle value | Trip (the execution) |

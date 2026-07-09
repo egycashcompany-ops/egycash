@@ -30,6 +30,7 @@ also self-contained enough to be read on its own.
 | 09 | **Guides** | [Development Guide](09-guides/development-guide.md) · [Development Workflow](09-guides/development-workflow.md) | Engineers |
 | 10 | **Reviews** | [Architecture Review 01 (pre-Milestone 2)](10-reviews/2026-07-architecture-review-01.md) | Everyone |
 | 11 | **Retrospectives** | [Sprint 3.1 (Release v0.3.0)](11-retrospectives/2026-07-sprint-3.1.md) | Everyone |
+| 12 | **Planning** | [Sprint 3.2 — Audit & Activity Service](12-planning/sprint-3.2-plan.md) | Everyone |
 
 ---
 
@@ -48,3 +49,6 @@ also self-contained enough to be read on its own.
 | Milestone 1 (all documents) | 1.0.0 | ✅ Approved | EGYCASH | 2026-07-08 |
 | Architecture Review 01 (pre-Milestone 2) | 1.0.0 | ✅ Approved (implementation of phases 2.1–2.4 authorized) | EGYCASH | 2026-07-08 |
 | Sprint 2.1 implementation ([PR #2](https://github.com/egycashcompany-ops/egycash/pull/2)) | 2.1.0 | ✅ Reviewed & merged | EGYCASH | 2026-07-09 |
+| Sprint 3.1 — File Management Service ([PR #6](https://github.com/egycashcompany-ops/egycash/pull/6)) | 0.3.0 | ✅ Reviewed & merged (architecture review: Implementation Approved) | EGYCASH | 2026-07-09 |
+| Sprint 3.1 retrospective ([PR #7](https://github.com/egycashcompany-ops/egycash/pull/7)) | — | ✅ Completed & merged | EGYCASH | 2026-07-09 |
+| Sprint 3.2 plan — Audit & Activity Service | draft | ⏳ Awaiting approval | — | — |

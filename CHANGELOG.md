@@ -13,6 +13,8 @@ its entry here in the same PR.
 
 - Project governance: `ECMS-BOOK.md`, `CONTRIBUTING.md`, `SECURITY.md`, `LICENSE`,
   `CODEOWNERS`, pull-request and issue templates, this changelog.
+- **Phase 2.5 — Domain Model** (documentation only): `docs/01-domain/` — domain model,
+  bounded contexts, entity relationships, and ubiquitous language for the whole platform.
 
 ## [2.1.0] - 2026-07-09
 

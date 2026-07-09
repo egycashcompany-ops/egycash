@@ -21,6 +21,16 @@ its entry here in the same PR.
   multi-branch fan-out considerations, and an explicit provider-agnostic commitment for
   every channel. Two amendments **supersede** the original draft: preferences now key on
   category instead of template, and delivery-status transitions are now audited.
+  **Amended again 2026-07-09** with ten more decisions — idempotency (event-level,
+  caller-supplied key, delivery-job status guard), the template rendering engine spec
+  (placeholder syntax, escaping, missing-variable handling, HTML+plain-text multipart
+  email), scheduled delivery (`sendAt`, recurring explicitly future), expiration
+  (`expiresAt`, never delivered past it), a four-tier `low | normal | high | critical`
+  priority (supersedes the two-tier `normal | urgent` — `critical` now bypasses quiet
+  hours), an attachment-reference strategy (file IDs, never embedded binaries), explicit
+  first-read semantics, a documented future administration console, an observability
+  approach, and a security section (sender validation, channel authorization). **Release
+  v0.5.0 Planning is now frozen** — implementation still awaits an explicit GO.
 
 ## [0.4.0] - 2026-07-09
 

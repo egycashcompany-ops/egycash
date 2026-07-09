@@ -56,6 +56,7 @@ everything user-facing is bilingual (ar/en, RTL-first).
 - Day-to-day workflow, scripts, cheat sheets: [Development Guide](docs/09-guides/development-guide.md)
 - Branching, commits, reviews, releases: [Development Workflow](docs/09-guides/development-workflow.md)
   — summarized for newcomers in [CONTRIBUTING.md](CONTRIBUTING.md)
+- Sprint retrospectives: [docs/11-retrospectives](docs/11-retrospectives/2026-07-sprint-3.1.md)
 - Governance: [CODEOWNERS](.github/CODEOWNERS) · [SECURITY.md](SECURITY.md) ·
   [CHANGELOG.md](CHANGELOG.md) · [LICENSE](LICENSE)
 

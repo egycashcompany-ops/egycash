@@ -9,7 +9,14 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
-_(Sprint 3.1 — File Management Service — ships as **Release 0.3**.)_
+- _nothing yet — next sprint pending approval._
+
+## [0.3.0] - 2026-07-09
+
+Release v0.3.0 — Sprint 3.1: **File Management Service**
+([PR #6](https://github.com/egycashcompany-ops/egycash/pull/6), architecture review:
+Implementation Approved; retrospective:
+[2026-07-sprint-3.1](docs/11-retrospectives/2026-07-sprint-3.1.md)).
 
 ### Added
 

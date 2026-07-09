@@ -24,6 +24,13 @@ class RoleRepository extends BaseRepository<RoleDoc> {
   async setPermissionKeysByKey(key: string, permissionKeys: string[]): Promise<void> {
     await this.model.updateOne({ key, isDeleted: false }, { $set: { permissionKeys } }).exec();
   }
+
+  async findGrantingPermission(permissionKey: string): Promise<RoleDoc[]> {
+    return this.model
+      .find({ permissionKeys: permissionKey, isDeleted: false })
+      .lean<RoleDoc[]>()
+      .exec();
+  }
 }
 
 class RoleAssignmentRepository extends BaseRepository<RoleAssignmentDoc> {
@@ -54,6 +61,40 @@ class RoleAssignmentRepository extends BaseRepository<RoleAssignmentDoc> {
       .distinct('userId', {
         roleId: new Types.ObjectId(roleId),
         isDeleted: false,
+      } as FilterQuery<RoleAssignmentDoc>)
+      .exec();
+    return ids.map(String);
+  }
+
+  /**
+   * Users with a currently-active assignment to one of `roleIds`, at `scope` or wider
+   * (an `organization`-scope assignment always qualifies; a `branch`-scope assignment
+   * qualifies only for a matching `branchId` — Sprint 3.3 plan §8/§11).
+   */
+  async distinctUserIdsForRolesAtScope(
+    roleIds: Types.ObjectId[],
+    scope: 'organization' | 'branch',
+    branchId?: string,
+  ): Promise<string[]> {
+    const now = new Date();
+    const scopeMatch: FilterQuery<RoleAssignmentDoc> =
+      scope === 'organization'
+        ? { scope: 'organization' }
+        : {
+            $or: [
+              { scope: 'organization' },
+              { scope: 'branch', branchId: new Types.ObjectId(branchId) },
+            ],
+          };
+    const ids = await this.model
+      .distinct('userId', {
+        roleId: { $in: roleIds },
+        isDeleted: false,
+        $and: [
+          { $or: [{ validFrom: null }, { validFrom: { $lte: now } }] },
+          { $or: [{ validTo: null }, { validTo: { $gt: now } }] },
+        ],
+        ...scopeMatch,
       } as FilterQuery<RoleAssignmentDoc>)
       .exec();
     return ids.map(String);

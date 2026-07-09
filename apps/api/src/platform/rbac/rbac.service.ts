@@ -326,6 +326,26 @@ class RbacService {
     return result;
   }
 
+  /**
+   * Every user currently holding `permissionKey` at `scope` or wider (Sprint 3.3 plan
+   * §8/§11 — permission-based notification fan-out; `branchId` is required for
+   * `scope: 'branch'`). A read-only query over the existing registry/assignment
+   * collections — no new schema.
+   */
+  async listUserIdsWithPermission(
+    permissionKey: string,
+    scope: 'organization' | 'branch',
+    branchId?: string,
+  ): Promise<string[]> {
+    const roles = await roleRepository.findGrantingPermission(permissionKey);
+    if (roles.length === 0) return [];
+    return roleAssignmentRepository.distinctUserIdsForRolesAtScope(
+      roles.map((role) => role._id),
+      scope,
+      branchId,
+    );
+  }
+
   /** Expiring-soon inventory for the scheduler report (Review R14). */
   async listExpiringAssignments(
     days: number,

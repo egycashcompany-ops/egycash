@@ -133,6 +133,19 @@ export const scheduledTaskPermissions = declarePermissions(
   ],
 );
 
+export const notificationTemplatePermissions = declarePermissions(
+  P,
+  'notificationTemplate',
+  { en: 'notification templates', ar: 'قوالب الإشعارات' },
+  ['view', 'create', 'edit', 'delete'],
+  [
+    {
+      action: 'test',
+      name: { en: 'Send a test notification', ar: 'إرسال إشعار تجريبي' },
+    },
+  ],
+);
+
 export const platformPermissions: PermissionDef[] = [
   ...userPermissions,
   ...rolePermissions,
@@ -148,6 +161,7 @@ export const platformPermissions: PermissionDef[] = [
   ...scheduledTaskPermissions,
   ...filePermissions,
   ...fileCategoryPermissions,
+  ...notificationTemplatePermissions,
 ];
 
 /** Break-glass keys drive mandatory-2FA enforcement (Review R13) and quarterly review. */

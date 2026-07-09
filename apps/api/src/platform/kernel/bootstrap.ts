@@ -9,6 +9,13 @@ import { logger } from '../../infrastructure/logging/logger';
 import { registerAuthEventHandlers, registerAuthSettings } from '../auth';
 import { registerAuditJobHandlers, registerAuditSettings } from '../audit';
 import { registerFileJobHandlers } from '../files';
+import {
+  ensureBuiltinNotificationTemplates,
+  registerBuiltinChannelAdapters,
+  registerNotificationEventHandlers,
+  registerNotificationJobHandlers,
+  registerNotificationSettings,
+} from '../notifications';
 import { declareFeatureFlagSettings } from '../settings';
 import { rbacService } from '../rbac';
 import { organizationService } from '../organization';
@@ -32,10 +39,13 @@ export const bootPlatform = async (options: BootOptions = {}): Promise<void> => 
   // Tier 0 — foundations: setting declarations, job handlers.
   registerAuthSettings();
   registerAuditSettings();
+  registerNotificationSettings();
   declareFeatureFlagSettings(z.boolean());
   registerAuditJobHandlers();
   registerOutboxJobHandlers();
   registerFileJobHandlers(); // files extension-point pipeline (worker executes)
+  registerNotificationJobHandlers();
+  registerBuiltinChannelAdapters();
 
   // Layer 2 — validate + register module manifests (permissions flow into the registry).
   for (const manifest of options.modules ?? []) {
@@ -55,9 +65,13 @@ export const bootPlatform = async (options: BootOptions = {}): Promise<void> => 
   const modulePermissions: PermissionDef[] = getRegisteredModules().flatMap((m) => m.permissions);
   await rbacService.syncPermissionRegistry([...platformPermissions, ...modulePermissions]);
   registerAuthEventHandlers();
+  registerNotificationEventHandlers();
 
   // Organization singleton must exist before anything scopes to it (ADR-015).
   await organizationService.ensure({ name: { ar: 'إيجي كاش', en: 'EGYCASH' } });
+
+  // Built-in templates for the two wired-up event subscriptions above (Sprint 3.3 §4).
+  await ensureBuiltinNotificationTemplates();
 
   // Scheduler registry (Review R3).
   registerPlatformScheduledTasks();

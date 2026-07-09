@@ -31,6 +31,23 @@ its entry here in the same PR.
   first-read semantics, a documented future administration console, an observability
   approach, and a security section (sender validation, channel authorization). **Release
   v0.5.0 Planning is now frozen** — implementation still awaits an explicit GO.
+- **Sprint 3.3 implementation** (Notifications Service, reference:
+  `docs/02-architecture/notifications-service.md`): `notificationsService.notify()` —
+  the one platform-wide, in-process entry point; synchronous in-app inbox creation
+  (list, unread count, mark one/all read with first-read-wins, archive — self-scoped, no
+  permission required) plus asynchronous, queued email delivery through a channel-
+  adapter registry (`inApp`/`email`, self-managed 5-attempt exponential-backoff retry,
+  every delivery-status transition audited). Versioned notification templates
+  (`notificationTemplate` CRUD, preview, test-send — permission-gated and audited).
+  Category-level preferences with a settings-driven default, quiet hours (server/UTC,
+  `critical` priority bypass), idempotency keys, `sendAt` scheduling, `expiresAt`
+  expiration, and file-reference attachments. Socket.IO live push (`notification:new`/
+  `notification:read`) authenticated the same way as the HTTP API, relayed across the
+  api/worker process split over Redis pub/sub. Both initially-wired event subscriptions
+  (`platform.audit.alertRaised`, `platform.roleAssignment.changed`) produce real
+  notifications end-to-end against idempotently-seeded built-in templates. Additive-only
+  elsewhere: a new RBAC read query (`listUserIdsWithPermission`) and two new settings
+  (`notifications.email.enabled`, `notifications.quietHours.enabledByDefault`).
 
 ## [0.4.0] - 2026-07-09
 

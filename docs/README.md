@@ -20,7 +20,7 @@ also self-contained enough to be read on its own.
 |---|------|-----------|----------|
 | 01 | **Business** | [Business Architecture](01-business/business-architecture.md) · [Module Hierarchy](01-business/module-hierarchy.md) | Everyone |
 | 01 | **Domain** | [Domain Model](01-domain/domain-model.md) · [Bounded Contexts](01-domain/bounded-contexts.md) · [Entity Relationships](01-domain/entity-relationships.md) · [Ubiquitous Language](01-domain/ubiquitous-language.md) · [Business Decisions](01-domain/business-decisions.md) | Everyone |
-| 02 | **Architecture** | [Software Architecture](02-architecture/software-architecture.md) · [Platform Core](02-architecture/platform-core.md) · [Folder Structure](02-architecture/folder-structure.md) · [Module Structure](02-architecture/module-structure.md) · [File Management Service](02-architecture/files-service.md) | Engineers, Architects |
+| 02 | **Architecture** | [Software Architecture](02-architecture/software-architecture.md) · [Platform Core](02-architecture/platform-core.md) · [Folder Structure](02-architecture/folder-structure.md) · [Module Structure](02-architecture/module-structure.md) · [File Management Service](02-architecture/files-service.md) · [Audit & Activity Service](02-architecture/audit-service.md) | Engineers, Architects |
 | 03 | **Decisions** | [Architecture Decision Records (ADRs)](03-decisions/README.md) | Engineers, Architects |
 | 04 | **Standards** | [Coding Standards](04-standards/coding-standards.md) · [Naming Conventions](04-standards/naming-conventions.md) · [API Standards](04-standards/api-standards.md) | Engineers |
 | 05 | **Database** | [Database Design](05-database/database-design.md) · [ER Diagrams](05-database/er-diagrams.md) | Engineers |
@@ -52,3 +52,4 @@ also self-contained enough to be read on its own.
 | Sprint 3.1 — File Management Service ([PR #6](https://github.com/egycashcompany-ops/egycash/pull/6)) | 0.3.0 | ✅ Reviewed & merged (architecture review: Implementation Approved) | EGYCASH | 2026-07-09 |
 | Sprint 3.1 retrospective ([PR #7](https://github.com/egycashcompany-ops/egycash/pull/7)) | — | ✅ Completed & merged | EGYCASH | 2026-07-09 |
 | Sprint 3.2 plan — Audit & Activity Service ([PR #8](https://github.com/egycashcompany-ops/egycash/pull/8)) | 1.0.0 | ✅ Approved (§7 resolved by [BD-007](01-domain/business-decisions.md#bd-007--timeline-authorization-degrades-gracefully); implementation awaiting GO) | EGYCASH | 2026-07-09 |
+| Sprint 3.2 implementation — Audit & Activity Service | — | 🔍 In review | — | — |

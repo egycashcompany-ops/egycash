@@ -43,6 +43,8 @@ export const PlatformEvents = {
   ThumbnailCreated: 'platform.file.thumbnailCreated',
   OcrCompleted: 'platform.file.ocrCompleted',
   VirusScanCompleted: 'platform.file.virusScanCompleted',
+
+  AuditAlertRaised: 'platform.audit.alertRaised',
 } as const;
 export type PlatformEventName = (typeof PlatformEvents)[keyof typeof PlatformEvents];
 
@@ -103,6 +105,15 @@ export const SettingsChangedPayloadV1 = z.object({
   scopeRef: z.string().nullable(),
 });
 
+export const AuditAlertRaisedPayloadV1 = z.object({
+  /** Detector id, e.g. `repeatedDenied`, `lockoutCluster`, `exportSpike`, `refreshReuse`. */
+  signal: z.string(),
+  userId: objectId().optional(),
+  count: z.number().int().min(1),
+  windowMinutes: z.number().int().min(1),
+  details: z.record(z.string(), z.unknown()).optional(),
+});
+
 /** Current schema version per event name — bumped only via a new versioned constant. */
 export const EVENT_SCHEMA_VERSIONS: Record<PlatformEventName, number> = {
   [PlatformEvents.UserCreated]: 1,
@@ -124,4 +135,5 @@ export const EVENT_SCHEMA_VERSIONS: Record<PlatformEventName, number> = {
   [PlatformEvents.ThumbnailCreated]: 1,
   [PlatformEvents.OcrCompleted]: 1,
   [PlatformEvents.VirusScanCompleted]: 1,
+  [PlatformEvents.AuditAlertRaised]: 1,
 };

@@ -25,7 +25,11 @@ import {
   buildSectionsRouter,
 } from './platform/organization';
 import { buildFeatureFlagsRouter, buildSettingsRouter } from './platform/settings';
-import { buildActivityLogsRouter, buildAuditLogsRouter } from './platform/audit';
+import {
+  buildActivityLogsRouter,
+  buildAuditLogsRouter,
+  buildTimelineRouter,
+} from './platform/audit';
 import { buildScheduledTasksRouter } from './platform/scheduler';
 import { buildFileCategoriesRouter, buildFilesRouter } from './platform/files';
 import { getRegisteredModules } from './platform/kernel/module-registry';
@@ -98,6 +102,7 @@ export const buildApp = (): Express => {
   api.use('/platform/feature-flags', buildFeatureFlagsRouter());
   api.use('/platform/audit-logs', buildAuditLogsRouter());
   api.use('/platform/activity-logs', buildActivityLogsRouter());
+  api.use('/platform/timeline', buildTimelineRouter());
   api.use('/platform/scheduled-tasks', buildScheduledTasksRouter());
   api.use('/platform/files', buildFilesRouter());
   api.use('/platform/file-categories', buildFileCategoriesRouter());

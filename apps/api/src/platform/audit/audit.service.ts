@@ -7,6 +7,7 @@ import {
   type AuditLogDto,
   type ActivityLogDto,
   type EntityRef,
+  type ExportAuditLogsQuery,
   type ListAuditLogsQuery,
   type ListActivityLogsQuery,
   type Paginated,
@@ -47,6 +48,26 @@ interface AuditWritePayload extends AuditEntry {
 
 const toObjectIdOrNull = (id: string | null | undefined): Types.ObjectId | null =>
   id !== null && id !== undefined && Types.ObjectId.isValid(id) ? new Types.ObjectId(id) : null;
+
+/** Shared by the list endpoint and the CSV export (F1/F5) — same filter vocabulary. */
+export const buildAuditFilter = (
+  query: ListAuditLogsQuery | ExportAuditLogsQuery,
+): Record<string, unknown> => {
+  const filter: Record<string, unknown> = {};
+  if (query.entityType !== undefined) filter['entityRef.entityType'] = query.entityType;
+  if (query.entityId !== undefined) filter['entityRef.entityId'] = query.entityId;
+  if (query.moduleId !== undefined) filter['entityRef.moduleId'] = query.moduleId;
+  if (query.actorUserId !== undefined)
+    filter['actor.userId'] = new Types.ObjectId(query.actorUserId);
+  if (query.action !== undefined) filter.action = query.action;
+  if (query.from !== undefined || query.to !== undefined) {
+    filter.at = {
+      ...(query.from === undefined ? {} : { $gte: query.from }),
+      ...(query.to === undefined ? {} : { $lte: query.to }),
+    };
+  }
+  return filter;
+};
 
 const writeAuditRow = async (payload: AuditWritePayload): Promise<void> => {
   await AuditLogModel.create([
@@ -110,18 +131,7 @@ class AuditService {
   }
 
   async listAuditLogs(query: ListAuditLogsQuery): Promise<Paginated<AuditLogDoc>> {
-    const filter: Record<string, unknown> = {};
-    if (query.entityType !== undefined) filter['entityRef.entityType'] = query.entityType;
-    if (query.entityId !== undefined) filter['entityRef.entityId'] = query.entityId;
-    if (query.actorUserId !== undefined)
-      filter['actor.userId'] = new Types.ObjectId(query.actorUserId);
-    if (query.action !== undefined) filter.action = query.action;
-    if (query.from !== undefined || query.to !== undefined) {
-      filter.at = {
-        ...(query.from === undefined ? {} : { $gte: query.from }),
-        ...(query.to === undefined ? {} : { $lte: query.to }),
-      };
-    }
+    const filter = buildAuditFilter(query);
     const [items, totalItems] = await Promise.all([
       AuditLogModel.find(filter)
         .sort({ at: -1 })

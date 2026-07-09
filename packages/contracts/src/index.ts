@@ -10,3 +10,4 @@ export * from './platform/organization.js';
 export * from './platform/settings.js';
 export * from './platform/audit.js';
 export * from './platform/scheduler.js';
+export * from './platform/files.js';

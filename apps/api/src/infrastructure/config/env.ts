@@ -34,6 +34,25 @@ const EnvSchema = z.object({
   SENTRY_DSN: z.string().default(''),
   SLOW_QUERY_MS: z.coerce.number().int().min(1).default(200),
 
+  // ── File storage (ADR-010) ────────────────────────────────────────────────
+  STORAGE_DRIVER: z.enum(['local', 'railway', 's3', 'minio', 'azure']).default('local'),
+  STORAGE_LOCAL_ROOT: z.string().default('./storage'),
+  /** Injected by Railway when a volume is attached; falls back to STORAGE_LOCAL_ROOT. */
+  RAILWAY_VOLUME_MOUNT_PATH: z.string().default(''),
+  STORAGE_SIGNING_SECRET: z.string().min(16).default('dev-only-file-signing-secret'),
+  SIGNED_URL_TTL_SECONDS: z.coerce.number().int().min(30).max(3600).default(300),
+  /** Absolute base URL of the api — used to build app-signed download URLs. */
+  API_PUBLIC_URL: z.string().url().default('http://localhost:3000'),
+  MAX_UPLOAD_MB: z.coerce.number().int().min(1).max(500).default(25),
+  S3_BUCKET: z.string().default(''),
+  S3_REGION: z.string().default('us-east-1'),
+  S3_ACCESS_KEY_ID: z.string().default(''),
+  S3_SECRET_ACCESS_KEY: z.string().default(''),
+  /** Custom S3 endpoint — required for MinIO, optional for S3-compatible stores. */
+  S3_ENDPOINT: z.string().default(''),
+  AZURE_STORAGE_CONNECTION_STRING: z.string().default(''),
+  AZURE_STORAGE_CONTAINER: z.string().default('ecms-files'),
+
   SEED_ADMIN_EMAIL: z.string().email().default('admin@ecms.local'),
   SEED_ADMIN_PASSWORD: z.string().min(8).default('Admin#2026!ecms'),
   SEED_HR_EMAIL: z.string().email().default('hr@ecms.local'),
@@ -55,4 +74,7 @@ export const isTest = env.NODE_ENV === 'test';
 
 if (isProduction && env.JWT_ACCESS_SECRET === 'dev-only-access-secret-change-me') {
   throw new Error('JWT_ACCESS_SECRET must be set to a real secret in production');
+}
+if (isProduction && env.STORAGE_SIGNING_SECRET === 'dev-only-file-signing-secret') {
+  throw new Error('STORAGE_SIGNING_SECRET must be set to a real secret in production');
 }

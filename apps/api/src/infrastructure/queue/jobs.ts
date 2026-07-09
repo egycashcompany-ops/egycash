@@ -7,7 +7,7 @@ import { env, isTest } from '../config/env';
 import { logger } from '../logging/logger';
 import { getRequestId, newRequestId, runWithContext } from '../http/request-context';
 
-export const QUEUES = ['audit', 'outbox', 'scheduled'] as const;
+export const QUEUES = ['audit', 'outbox', 'scheduled', 'files'] as const;
 export type QueueName = (typeof QUEUES)[number];
 
 export const JobEnvelopeSchema = z.object({

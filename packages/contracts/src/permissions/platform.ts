@@ -94,6 +94,32 @@ export const activityLogPermissions = declarePermissions(
   ['view'],
 );
 
+export const filePermissions = declarePermissions(
+  P,
+  'file',
+  { en: 'files', ar: 'الملفات' },
+  ['view', 'create', 'edit', 'delete'],
+  [
+    {
+      action: 'download',
+      name: { en: 'Download files (audited)', ar: 'تنزيل الملفات (مُدقق)' },
+    },
+    {
+      action: 'purge',
+      name: { en: 'Permanently delete files', ar: 'الحذف النهائي للملفات' },
+      breakGlass: true,
+    },
+  ],
+);
+
+export const fileCategoryPermissions = declarePermissions(
+  P,
+  'fileCategory',
+  { en: 'file categories', ar: 'فئات الملفات' },
+  [],
+  [{ action: 'manage', name: { en: 'Manage file categories', ar: 'إدارة فئات الملفات' } }],
+);
+
 export const scheduledTaskPermissions = declarePermissions(
   P,
   'scheduledTask',
@@ -120,6 +146,8 @@ export const platformPermissions: PermissionDef[] = [
   ...auditLogPermissions,
   ...activityLogPermissions,
   ...scheduledTaskPermissions,
+  ...filePermissions,
+  ...fileCategoryPermissions,
 ];
 
 /** Break-glass keys drive mandatory-2FA enforcement (Review R13) and quarterly review. */

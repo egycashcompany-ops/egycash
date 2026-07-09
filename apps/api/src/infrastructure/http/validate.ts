@@ -1,7 +1,7 @@
 // Zod validation at the route edge (ADR-007): controllers and services receive
 // already-parsed, typed input and never re-validate.
 import { type NextFunction, type Request, type RequestHandler, type Response } from 'express';
-import { type ZodType, type ZodError } from 'zod';
+import { type ZodError, type ZodType, type ZodTypeDef } from 'zod';
 import { type ApiErrorDetail } from '@ecms/contracts';
 import { ValidationError } from '../../shared/errors';
 
@@ -20,10 +20,12 @@ const toDetails = (error: ZodError, source: 'body' | 'query' | 'params'): ApiErr
     message: issue.message,
   }));
 
+// Schemas with defaults/transforms have a wider INPUT type than their output —
+// the third type parameter keeps them assignable.
 export const validate = <TBody = unknown, TQuery = unknown, TParams = unknown>(schemas: {
-  body?: ZodType<TBody>;
-  query?: ZodType<TQuery>;
-  params?: ZodType<TParams>;
+  body?: ZodType<TBody, ZodTypeDef, unknown>;
+  query?: ZodType<TQuery, ZodTypeDef, unknown>;
+  params?: ZodType<TParams, ZodTypeDef, unknown>;
 }): RequestHandler => {
   return (req: Request, _res: Response, next: NextFunction): void => {
     const details: ApiErrorDetail[] = [];

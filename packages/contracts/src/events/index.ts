@@ -35,6 +35,14 @@ export const PlatformEvents = {
   OrgUnitChanged: 'platform.orgUnit.changed',
 
   SettingsChanged: 'platform.settings.changed',
+
+  FileUploaded: 'platform.file.uploaded',
+  FileDeleted: 'platform.file.deleted',
+  FileArchived: 'platform.file.archived',
+  FileRestored: 'platform.file.restored',
+  ThumbnailCreated: 'platform.file.thumbnailCreated',
+  OcrCompleted: 'platform.file.ocrCompleted',
+  VirusScanCompleted: 'platform.file.virusScanCompleted',
 } as const;
 export type PlatformEventName = (typeof PlatformEvents)[keyof typeof PlatformEvents];
 
@@ -66,6 +74,29 @@ export const OrgUnitChangedPayloadV1 = z.object({
   change: z.enum(['created', 'updated', 'deleted']),
 });
 
+export const FileEventPayloadV1 = z.object({
+  fileId: objectId(),
+  groupId: objectId(),
+  fileVersion: z.number().int().min(1),
+  entityRef: z.object({
+    moduleId: z.string(),
+    entityType: z.string(),
+    entityId: z.string(),
+  }),
+  categoryId: objectId().optional(),
+  mime: z.string().optional(),
+  size: z.number().int().optional(),
+});
+
+export const FileProcessorEventPayloadV1 = z.object({
+  fileId: objectId(),
+  groupId: objectId(),
+  processor: z.string(),
+  result: z.enum(['ok', 'failed', 'blocked']),
+  /** Processor-specific summary (thumbnail file id, extraction job id, scan verdict). */
+  detail: z.record(z.string(), z.unknown()).optional(),
+});
+
 export const SettingsChangedPayloadV1 = z.object({
   key: z.string(),
   scope: z.enum(['organization', 'branch', 'user']),
@@ -86,4 +117,11 @@ export const EVENT_SCHEMA_VERSIONS: Record<PlatformEventName, number> = {
   [PlatformEvents.OrganizationUpdated]: 1,
   [PlatformEvents.OrgUnitChanged]: 1,
   [PlatformEvents.SettingsChanged]: 1,
+  [PlatformEvents.FileUploaded]: 1,
+  [PlatformEvents.FileDeleted]: 1,
+  [PlatformEvents.FileArchived]: 1,
+  [PlatformEvents.FileRestored]: 1,
+  [PlatformEvents.ThumbnailCreated]: 1,
+  [PlatformEvents.OcrCompleted]: 1,
+  [PlatformEvents.VirusScanCompleted]: 1,
 };

@@ -9,6 +9,29 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+_(Sprint 3.1 — File Management Service — ships as **Release 0.3**.)_
+
+### Added
+
+- **File Management Service** (platform `files`, ADR-010): storage providers behind one
+  interface — Local, Railway volume, Amazon S3, MinIO (S3-compatible), Azure Blob — selected
+  by `STORAGE_DRIVER`; upload/download/replace(versioning)/archive/restore/soft-delete/
+  permanent-delete lifecycle; full metadata set (names, mime, extension, sha256 checksum,
+  size, uploader, entity reference, category, tags); category catalog with per-category
+  mime/size/retention rules; visibility-aware, per-download-audited authorization with a
+  signed-URL abstraction (native presigning or app-level HMAC streaming); extension points
+  for virus scanning, OCR and thumbnails with completion events; `platform.file.*` events
+  on the reliable tier; unit + integration suites; API doc with sequence diagrams
+  (`docs/02-architecture/files-service.md`).
+
+## [0.2.0] - 2026-07-09
+
+Documentation & governance wave (PRs
+[#3](https://github.com/egycashcompany-ops/egycash/pull/3),
+[#4](https://github.com/egycashcompany-ops/egycash/pull/4),
+[#5](https://github.com/egycashcompany-ops/egycash/pull/5)). Release numbering follows the
+sprint plan from here (0.x pre-GA); the `2.1.0`/`1.0.0` entries below predate this scheme.
+
 ### Added
 
 - Project governance: `ECMS-BOOK.md`, `CONTRIBUTING.md`, `SECURITY.md`, `LICENSE`,

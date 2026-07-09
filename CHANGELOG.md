@@ -9,9 +9,33 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+- **Sprint 3.2 — Audit & Activity Service** (platform `audit`, ADR-012; plan:
+  `docs/12-planning/sprint-3.2-plan.md`; reference: `docs/02-architecture/audit-service.md`):
+  completes the Sprint 2.1 audit core to its full designed spec.
+  - **Audited CSV export** (`GET /platform/audit-logs/export`, `auditLog.export`): streams
+    via a Mongo cursor (no full-result buffering), row-capped
+    (`audit.export.maxRows`, default 50,000), field-name-based `nationalId` masking, and
+    **the export itself is audited** (actor, filter, row count).
+  - **Entity timeline** (`GET /platform/timeline`): a merged view over the audit + activity
+    streams for one entity, newest-first. Implements
+    [BD-007](docs/01-domain/business-decisions.md#bd-007--timeline-authorization-degrades-gracefully) —
+    content degrades to whichever of `activityLog.view` / `auditLog.view` the caller holds
+    (activity-only, audit-only, or merged); neither ⇒ audited 403.
+  - **Retention governance**: `platform.audit.retention` (daily) purges expired
+    **activity** records in idempotent batches, settings-declared with a hard 365-day
+    floor (`audit.retention.activityDays`); the audit stream keeps its structural
+    no-delete guarantee.
+  - **Security-signal detection**: `platform.audit.securitySignals` (hourly) runs four
+    detectors — repeated permission denials, lockout clusters, export spikes,
+    refresh-token reuse — each raising an `alertRaised` audit record plus the reliable
+    `platform.audit.alertRaised` event, deduplicated per (signal, subject, window).
+  - **Query hardening**: `moduleId` filter added to the audit list/export; new
+    `ix_moduleId_at` / activity `ix_at` indexes.
+  - No new permissions, no new collections (`check:permission-matrix` unchanged).
+  - Unit + integration test suites; architecture review pending.
 - **Sprint 3.2 planning document** (`docs/12-planning/sprint-3.2-plan.md`): Audit & Activity
   Service — export, entity timelines, retention governance, security signals (docs only).
-  **Plan approved 2026-07-09**; implementation awaits the explicit GO.
+  **Plan approved 2026-07-09**.
 - **BD-007 — Timeline authorization degrades gracefully**
   (`docs/01-domain/business-decisions.md`): the timeline endpoint returns only what the
   caller is authorized to see (activity-only / audit-only / merged) instead of requiring

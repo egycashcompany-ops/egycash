@@ -7,7 +7,7 @@ import { platformPermissions, type PermissionDef } from '@ecms/contracts';
 import { connectMongo } from '../../infrastructure/database/mongo';
 import { logger } from '../../infrastructure/logging/logger';
 import { registerAuthEventHandlers, registerAuthSettings } from '../auth';
-import { registerAuditJobHandlers } from '../audit';
+import { registerAuditJobHandlers, registerAuditSettings } from '../audit';
 import { registerFileJobHandlers } from '../files';
 import { declareFeatureFlagSettings } from '../settings';
 import { rbacService } from '../rbac';
@@ -31,6 +31,7 @@ export const bootPlatform = async (options: BootOptions = {}): Promise<void> => 
 
   // Tier 0 — foundations: setting declarations, job handlers.
   registerAuthSettings();
+  registerAuditSettings();
   declareFeatureFlagSettings(z.boolean());
   registerAuditJobHandlers();
   registerOutboxJobHandlers();

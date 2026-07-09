@@ -46,6 +46,8 @@ auditLogSchema.index(
   { name: 'ix_entityRef_at' },
 );
 auditLogSchema.index({ 'actor.userId': 1, at: -1 }, { name: 'ix_actor_at' });
+// F5 (Sprint 3.2): covers moduleId-filtered list/export queries.
+auditLogSchema.index({ 'entityRef.moduleId': 1, at: -1 }, { name: 'ix_moduleId_at' });
 
 export const AuditLogModel = model<AuditLogDoc>('AuditLog', auditLogSchema, 'audit_logs');
 
@@ -72,6 +74,8 @@ activityLogSchema.index(
   { 'entityRef.entityType': 1, 'entityRef.entityId': 1, at: -1 },
   { name: 'ix_entityRef_at' },
 );
+// F4 (Sprint 3.2): covers the retention job's age-based batch scan.
+activityLogSchema.index({ at: 1 }, { name: 'ix_at' });
 
 export const ActivityLogModel = model<ActivityLogDoc>(
   'ActivityLog',

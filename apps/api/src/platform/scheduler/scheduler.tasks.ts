@@ -1,7 +1,11 @@
-// Platform-owned scheduled tasks for phase 2.1.
+// Platform-owned scheduled tasks for phase 2.1, plus the audit feature's F3/F4 tasks
+// (Sprint 3.2). Declarations are aggregated here — as with `platform.rbac.expiringAssignments`
+// below — rather than each feature importing the scheduler back, which would create an
+// audit ⇄ scheduler import cycle (scheduler already imports `auditService` from `../audit`).
 import { logger } from '../../infrastructure/logging/logger';
 import { relayOutbox } from '../kernel/event-bus';
 import { rbacService } from '../rbac';
+import { runActivityRetention, runSecuritySignalDetection } from '../audit';
 import { schedulerService } from './scheduler.service';
 
 export const registerPlatformScheduledTasks = (): void => {
@@ -30,6 +34,30 @@ export const registerPlatformScheduledTasks = (): void => {
           'role assignments expiring within 7 days',
         );
       }
+    },
+  });
+
+  // F4 — retention governance (Sprint 3.2): purge expired ACTIVITY records only;
+  // the audit stream has no delete path, here or anywhere (ADR-012).
+  schedulerService.declareTask({
+    key: 'platform.audit.retention',
+    description: 'Purge activity records past the retention floor in idempotent batches',
+    cron: '0 3 * * *',
+    ownerService: 'audit',
+    handler: async () => {
+      await runActivityRetention();
+    },
+  });
+
+  // F5 — security-signal detection (Sprint 3.2): raises `alertRaised` audit records +
+  // the reliable `platform.audit.alertRaised` event (Security Architecture §5).
+  schedulerService.declareTask({
+    key: 'platform.audit.securitySignals',
+    description: 'Run security-signal detectors over the trailing window',
+    cron: '0 * * * *',
+    ownerService: 'audit',
+    handler: async () => {
+      await runSecuritySignalDetection();
     },
   });
 };

@@ -1,2 +1,7 @@
 // Zod schemas re-exported from packages/contracts (shared with the frontend).
-export { ListAuditLogsQuerySchema, ListActivityLogsQuerySchema } from '@ecms/contracts';
+export {
+  ListAuditLogsQuerySchema,
+  ListActivityLogsQuerySchema,
+  ExportAuditLogsQuerySchema,
+  TimelineQuerySchema,
+} from '@ecms/contracts';

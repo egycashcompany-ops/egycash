@@ -11,6 +11,10 @@ export const SettingKeys = {
   LockoutMaxAttempts: 'auth.lockout.maxAttempts',
   LockoutMinutes: 'auth.lockout.minutes',
   TotpEnforcedForPrivileged: 'auth.totp.enforcedForPrivileged',
+  AuditRetentionActivityDays: 'audit.retention.activityDays',
+  AuditExportMaxRows: 'audit.export.maxRows',
+  AuditSignalsDeniedThreshold: 'audit.signals.deniedThreshold',
+  AuditSignalsExportSpikeThreshold: 'audit.signals.exportSpikeThreshold',
 } as const;
 export const SettingScopeSchema = z.enum(SETTING_SCOPES);
 export type SettingScope = z.infer<typeof SettingScopeSchema>;

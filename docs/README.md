@@ -5,9 +5,9 @@ Business capabilities (HR, Fleet, Cash Transportation, ATM Operations, …) are 
 plug into a reusable **Platform Core**. This documentation set is the single source of truth
 for how the platform is designed, built, and operated.
 
-> **Status: Milestone 1 — Design Phase.**
-> No implementation code exists yet. Every document below must be reviewed and approved
-> before implementation starts.
+> **Status: Milestone 2 — Platform Core implementation (phase 2.1 in progress).**
+> Milestone 1 (design) is approved. Implementation follows the vertical-slice plan in
+> [Architecture Review 01](10-reviews/2026-07-architecture-review-01.md) (phases 2.1–2.4).
 
 ---
 
@@ -44,4 +44,4 @@ also self-contained enough to be read on its own.
 | Document set | Version | Status | Approved by | Date |
 |---|---|---|---|---|
 | Milestone 1 (all documents) | 1.0.0 | ✅ Approved | EGYCASH | 2026-07-08 |
-| Architecture Review 01 (pre-Milestone 2) | draft | ⏳ Awaiting review | — | — |
+| Architecture Review 01 (pre-Milestone 2) | 1.0.0 | ✅ Approved (implementation of phases 2.1–2.4 authorized) | EGYCASH | 2026-07-08 |

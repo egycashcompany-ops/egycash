@@ -11,9 +11,22 @@ Operations, Vault Management, and more) plugged in on top.
 
 ## Status
 
-**Milestone 1 — Design Phase (awaiting review).**
-The complete platform design is documented; no implementation code exists yet. Implementation
-begins only after the design documents are reviewed and approved.
+**Milestone 2 — Platform Core implementation.**
+Milestone 1 (design) is approved. The platform is being delivered in vertical slices
+(phases 2.1–2.4 per [Architecture Review 01](docs/10-reviews/2026-07-architecture-review-01.md)).
+Phase 2.1 delivers the kernel + auth + users + rbac + organization + audit + settings —
+proving login → permission → scoped data → audit trail.
+
+### Quick start (development)
+
+```bash
+nvm use                # match pinned Node
+npm install            # all workspaces
+cp .env.example .env   # defaults work with docker-compose
+docker compose up -d   # mongo (replica set) + redis + mailpit
+npm run seed           # organization, roles, dev users
+npm run dev            # api + worker + web
+```
 
 ## Documentation
 

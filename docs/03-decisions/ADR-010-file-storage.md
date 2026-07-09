@@ -1,6 +1,6 @@
 # ADR-010: File metadata in MongoDB, binaries behind a StorageAdapter
 
-**Status:** Proposed · **Date:** 2026-07-08
+**Status:** Accepted · **Date:** 2026-07-08
 
 ## Context
 

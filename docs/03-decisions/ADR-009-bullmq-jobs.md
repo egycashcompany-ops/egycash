@@ -1,6 +1,6 @@
 # ADR-009: BullMQ worker process for all long-running work
 
-**Status:** Proposed · **Date:** 2026-07-08
+**Status:** Accepted · **Date:** 2026-07-08
 
 ## Context
 

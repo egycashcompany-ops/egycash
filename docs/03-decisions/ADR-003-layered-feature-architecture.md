@@ -1,6 +1,6 @@
 # ADR-003: Feature-based structure with Controller → Service → Repository layers
 
-**Status:** Proposed · **Date:** 2026-07-08
+**Status:** Accepted · **Date:** 2026-07-08
 
 ## Context
 

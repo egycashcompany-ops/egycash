@@ -50,10 +50,12 @@ idempotencyKey · attachments (file id references, §3f) · createdAt`
 
 Each `channels[]` entry: `channel · status · statusHistory[] · sentAt · deliveredAt ·
 readAt · error`. Status lifecycle: `queued → processing → sent → delivered → read` /
-`failed` / `cancelled` — **every transition is audited** (`action: 'statusChange'`,
-entity = the notification). `processing` never steps back to `queued`; a retry keeps
-the channel `processing` throughout its attempts (self-documenting idempotency guard —
-a duplicate job attempt sees a non-`queued` status and no-ops).
+`failed` / `cancelled`, with one back-edge — `processing → queued` between retry
+attempts (a channel waiting out its backoff is exactly "enqueued, not yet picked up",
+the plan's own definition of `queued`) — **every transition is audited**
+(`action: 'statusChange'`, entity = the notification). The idempotency guard checks for
+status `queued` before proceeding: a stale/duplicate job attempt for a channel already
+past that point (`processing` mid-attempt, or any terminal state) no-ops.
 
 ### `notification_templates` (versioned; `key + version` unique, `key + isLatest` unique-partial)
 

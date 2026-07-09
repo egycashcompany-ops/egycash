@@ -158,6 +158,21 @@ afterAll(async () => {
   if (replSet !== null) await replSet.stop();
 });
 
+// notify()'s returned NotificationDoc[] is a creation-time snapshot (the return value
+// captured before any queued-channel delivery runs) — it never reflects a later
+// delivery outcome, even though test-mode's inline dispatch has, by the time notify()
+// resolves, already updated the real document in the database. Re-fetch through the
+// REST API (as any real caller checking delivery status would) rather than trusting
+// the returned snapshot for anything beyond creation-time fields.
+const fetchNotification = async (token: string, id: string): Promise<NotificationDto> => {
+  const list = await request(app)
+    .get('/api/v1/platform/notifications')
+    .set('Authorization', `Bearer ${token}`);
+  const found = (list.body as { data: NotificationDto[] }).data.find((n) => n.id === id);
+  if (found === undefined) throw new Error(`notification ${id} not found in inbox`);
+  return found;
+};
+
 const createTemplate = async (
   token: string,
   overrides: Record<string, unknown> = {},
@@ -621,7 +636,8 @@ describe('preferences, settings defaults, and quiet hours (§3c)', () => {
       data: { name: 'QH' },
       entityRef: { moduleId: 'platform', entityType: 'test', entityId: 'qh-outside' },
     });
-    const email = doc[0]?.channels.find((c) => c.channel === 'email');
+    const fetched = await fetchNotification(aliceToken, String(doc[0]?._id));
+    const email = fetched.channels.find((c) => c.channel === 'email');
     expect(email?.status).toBe('sent');
 
     // Disable again so it doesn't leak into later tests.
@@ -654,7 +670,8 @@ describe('preferences, settings defaults, and quiet hours (§3c)', () => {
       data: { name: 'Crit' },
       entityRef: { moduleId: 'platform', entityType: 'test', entityId: 'critical-bypass' },
     });
-    const email = doc[0]?.channels.find((c) => c.channel === 'email');
+    const fetched = await fetchNotification(aliceToken, String(doc[0]?._id));
+    const email = fetched.channels.find((c) => c.channel === 'email');
     expect(email?.status).toBe('sent'); // never deferred, despite the active quiet-hours window
 
     await request(app)

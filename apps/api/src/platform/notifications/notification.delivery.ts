@@ -76,10 +76,12 @@ const handleDeliver = async (raw: unknown): Promise<void> => {
   const error = result.error ?? 'delivery failed';
   if (attempt < MAX_DELIVERY_ATTEMPTS) {
     logger.warn({ notificationId, channel, attempt, error }, 'delivery failed — retrying');
-    // Retry is self-managed via re-enqueue (file header). Status intentionally stays
-    // `processing` across the retry sequence — matching §3b's diagram exactly (no
-    // undocumented `processing → queued` edge) — and doubles as the idempotency guard:
-    // a duplicate/concurrent job attempt sees a non-`queued` status and no-ops.
+    // Retry is self-managed via re-enqueue (file header). Back to `queued` — "enqueued,
+    // not yet picked up" (§3b's own definition) exactly describes a channel waiting out
+    // its backoff — so the *next* attempt's idempotency guard above (line 36) sees
+    // `queued` and proceeds, instead of permanently no-op'ing every attempt after the
+    // first (the previous `processing`-throughout approach silently broke all retries).
+    await notificationsService.transitionChannel(doc._id, channel, 'queued', new Date());
     await notificationsService.enqueueDelivery(
       doc,
       channel,

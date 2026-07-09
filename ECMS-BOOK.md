@@ -20,6 +20,11 @@ Operations, …) as **plug-in modules** — the way SAP, Dynamics, Odoo, and Ser
 
 - Business context and module map: [Business Architecture](docs/01-business/business-architecture.md)
 - Canonical layer/module/feature hierarchy and IDs: [Module Hierarchy](docs/01-business/module-hierarchy.md)
+- The business domain itself — entities, bounded contexts, relationships, vocabulary:
+  [Domain Model](docs/01-domain/domain-model.md) ·
+  [Bounded Contexts](docs/01-domain/bounded-contexts.md) ·
+  [Entity Relationships](docs/01-domain/entity-relationships.md) ·
+  [Ubiquitous Language](docs/01-domain/ubiquitous-language.md)
 - Corrected operating model — **one organization, ~6 branches, branch is the primary scope**:
   [ADR-015](docs/03-decisions/ADR-015-single-organization-model.md)
 
@@ -63,6 +68,7 @@ spec, implementations scoped.
 | **Milestone 1**            | Complete platform design documentation                                                                                                                                                                          | design is reviewable                           | ✅ Approved 2026-07-08                                                                             |
 | **Architecture Review 01** | Critical pre-implementation review (R1–R32)                                                                                                                                                                     | design survives scrutiny                       | ✅ Approved 2026-07-08                                                                             |
 | **Sprint 2.1**             | Kernel (module registry, event bus, unit-of-work) + auth + users + rbac + organization + audit + settings, plus phase-2.1 review items (ADR-015, scheduler, TOTP 2FA, time-bound assignments, feature flags, …) | login → permission → scoped data → audit trail | ✅ **Completed — [PR #2](https://github.com/egycashcompany-ops/egycash/pull/2) merged 2026-07-09** |
+| **Phase 2.5**              | Domain modeling (design-only): entity catalogs, bounded contexts, relationships, ubiquitous language                                                                                                            | shared vocabulary before further services      | 🔍 In review                                                                                       |
 | Sprint 2.2                 | files + sequences + notifications (in-app + email) + localization                                                                                                                                               | document handling end-to-end                   | ⏳ Not started (awaiting approval to begin)                                                        |
 | Sprint 2.3                 | workflow v1 + approvals v1 (+ OCR with its first consumer)                                                                                                                                                      | recruitment pipeline runs                      | ⏳ Planned                                                                                         |
 | Sprint 2.4                 | search v1 + dashboards v1 + reports v1                                                                                                                                                                          | operational visibility                         | ⏳ Planned                                                                                         |

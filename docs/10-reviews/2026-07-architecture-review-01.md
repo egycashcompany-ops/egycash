@@ -403,6 +403,12 @@ and a **devcontainer** definition so onboarding is one click. Storybook for `sha
 | **OQ-2** | Should recruitment be driven by approved Job Requisitions/Vacancies, or remain applicant-first? | Recruitment detail design (phase 2.3) |
 | **OQ-3** | Confirm branch-scoped vs organization-scoped applicant numbering (affects sequence seeds). | Phase 2.2 |
 
+> **Resolution note (2026-07-09):** OQ-1 was answered in
+> [ADR-015](../03-decisions/ADR-015-single-organization-model.md) (departments belong to
+> branches). OQ-2 and OQ-3 were decided by the business — requisition-driven recruitment
+> and organization-wide applicant numbering — recorded in the
+> [Business Decisions log](../01-domain/business-decisions.md) (BD-001, BD-002).
+
 ## 6. What was reviewed and stands unchanged
 
 For completeness — these were re-examined, challenged, and endorsed: modular monolith (ADR-001),

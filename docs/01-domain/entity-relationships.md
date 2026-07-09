@@ -66,9 +66,11 @@ knows the meaning.
 
 ```mermaid
 erDiagram
+    JOB_REQUISITION }o--|| BRANCH : "opens at ▷"
+    JOB_REQUISITION }o--|| JOB_TITLE : "for position ▷"
+    JOB_REQUISITION ||--o| APPROVAL_REQUEST : "approved via ▷"
+    JOB_REQUISITION ||--o{ APPLICANT : "applied against"
     RECRUITMENT_SOURCE ||--o{ APPLICANT : "attracted"
-    APPLICANT }o--|| BRANCH : "belongs to ▷"
-    APPLICANT }o--o| JOB_TITLE : "applies for ▷"
     APPLICANT ||--o{ APPLICANT_NOTE : "annotated by"
     APPLICANT ||--o{ SCHEDULED_ACTIVITY : "planned for"
     APPLICANT ||--o{ SCREENING : "screened by"
@@ -86,14 +88,17 @@ erDiagram
 
 Cardinality notes with business meaning:
 
+- **The Job Requisition is the pipeline anchor**
+  ([BD-001](business-decisions.md#bd-001--recruitment-is-requisition-driven)): applicants
+  apply against exactly one approved requisition and inherit its branch and position
+  context; **no applicant can be hired without one**.
+- Applicant numbers are **organization-wide**, e.g. `APP-2026-000001`
+  ([BD-002](business-decisions.md#bd-002--applicant-numbering-is-organization-wide)).
 - An applicant may be screened and interviewed **multiple times** (re-application, multiple
   rounds); the workflow definition, not code, decides what repetition is legal.
 - At most **one open offer** per applicant at a time (an invariant of the Offer aggregate);
   history keeps every offer ever made.
 - A hiring document either awaits collection or points at exactly one Document version group.
-- If OQ-2 lands on requisition-driven recruiting, `JOB_REQUISITION ||--o{ APPLICANT` becomes
-  the anchor relationship and the branch/job-title references above hang off the requisition
-  instead — the diagram is drawn applicant-first pending that decision.
 
 ## 4. Core operations (future — indicative)
 

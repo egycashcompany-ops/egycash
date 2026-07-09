@@ -24,7 +24,8 @@ Operations, …) as **plug-in modules** — the way SAP, Dynamics, Odoo, and Ser
   [Domain Model](docs/01-domain/domain-model.md) ·
   [Bounded Contexts](docs/01-domain/bounded-contexts.md) ·
   [Entity Relationships](docs/01-domain/entity-relationships.md) ·
-  [Ubiquitous Language](docs/01-domain/ubiquitous-language.md)
+  [Ubiquitous Language](docs/01-domain/ubiquitous-language.md) ·
+  [Business Decisions](docs/01-domain/business-decisions.md)
 - Corrected operating model — **one organization, ~6 branches, branch is the primary scope**:
   [ADR-015](docs/03-decisions/ADR-015-single-organization-model.md)
 
@@ -74,9 +75,15 @@ spec, implementations scoped.
 | Sprint 2.4                 | search v1 + dashboards v1 + reports v1                                                                                                                                                                          | operational visibility                         | ⏳ Planned                                                                                         |
 | Milestone 3+               | HR/Recruitment module, then Fleet, Cash Transportation, ATM, …                                                                                                                                                  | business value                                 | ⏳ Planned                                                                                         |
 
-Open business questions blocking later phases: **OQ-2** (requisition-driven recruitment?) before
-phase 2.3 detail design; **OQ-3** (branch- vs organization-scoped applicant numbering) before
-phase 2.2 sequence seeds. OQ-1 was answered _departments belong to branches_ in ADR-015.
+All business questions raised through Phase 2.5 are **resolved** — see the
+[Business Decisions log](docs/01-domain/business-decisions.md): requisition-driven
+recruitment (BD-001), organization-wide applicant numbering (BD-002), one shared Client
+Registry (BD-003), multi-currency-ready EGP-first Money (BD-004), and separate cash/gold
+custody entities over a shared pattern (BD-005). OQ-1 was answered earlier in ADR-015.
+
+**Sprint sizing rule (BD-006):** every implementation sprint delivers **exactly one
+capability**; the phase groupings above are roadmap structure, delivered as a series of
+single-capability sprints unless combining is explicitly approved.
 
 ## 5. Quick start
 

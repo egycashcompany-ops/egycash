@@ -20,7 +20,7 @@ also self-contained enough to be read on its own.
 |---|------|-----------|----------|
 | 01 | **Business** | [Business Architecture](01-business/business-architecture.md) · [Module Hierarchy](01-business/module-hierarchy.md) | Everyone |
 | 01 | **Domain** | [Domain Model](01-domain/domain-model.md) · [Bounded Contexts](01-domain/bounded-contexts.md) · [Entity Relationships](01-domain/entity-relationships.md) · [Ubiquitous Language](01-domain/ubiquitous-language.md) · [Business Decisions](01-domain/business-decisions.md) | Everyone |
-| 02 | **Architecture** | [Software Architecture](02-architecture/software-architecture.md) · [Platform Core](02-architecture/platform-core.md) · [Folder Structure](02-architecture/folder-structure.md) · [Module Structure](02-architecture/module-structure.md) | Engineers, Architects |
+| 02 | **Architecture** | [Software Architecture](02-architecture/software-architecture.md) · [Platform Core](02-architecture/platform-core.md) · [Folder Structure](02-architecture/folder-structure.md) · [Module Structure](02-architecture/module-structure.md) · [File Management Service](02-architecture/files-service.md) | Engineers, Architects |
 | 03 | **Decisions** | [Architecture Decision Records (ADRs)](03-decisions/README.md) | Engineers, Architects |
 | 04 | **Standards** | [Coding Standards](04-standards/coding-standards.md) · [Naming Conventions](04-standards/naming-conventions.md) · [API Standards](04-standards/api-standards.md) | Engineers |
 | 05 | **Database** | [Database Design](05-database/database-design.md) · [ER Diagrams](05-database/er-diagrams.md) | Engineers |

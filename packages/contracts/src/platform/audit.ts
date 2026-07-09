@@ -21,6 +21,10 @@ export const AUDIT_ACTIONS = [
   'settingChanged',
   'roleAssigned',
   'roleRevoked',
+  'download',
+  'archive',
+  'restore',
+  'purge',
 ] as const;
 export const AuditActionSchema = z.enum(AUDIT_ACTIONS);
 export type AuditAction = z.infer<typeof AuditActionSchema>;

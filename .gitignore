@@ -20,5 +20,7 @@ coverage/
 .vscode/*
 !.vscode/extensions.json
 
-# local file storage (dev volume)
-storage/
+# local file storage (dev volume) — anchored so source folders named
+# "storage" (e.g. apps/api/src/infrastructure/storage) are NOT ignored
+/storage/
+apps/api/storage/

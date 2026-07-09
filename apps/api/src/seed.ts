@@ -9,6 +9,7 @@ import { closeQueues } from './infrastructure/queue/jobs';
 import { bootPlatform } from './platform/kernel/bootstrap';
 import { moduleManifests } from './modules';
 import { rbacService } from './platform/rbac';
+import { fileCategoryService } from './platform/files';
 import { userService } from './platform/users';
 
 const ensureUser = async (
@@ -60,6 +61,14 @@ const main = async (): Promise<void> => {
     last: { ar: 'الموارد', en: 'Manager' },
   });
   await rbacService.ensureAssignment(hrId, String(platformAdminRole._id), 'organization');
+
+  await fileCategoryService.ensure({
+    key: 'general',
+    name: { ar: 'مستندات عامة', en: 'General documents' },
+    allowedMimeTypes: ['application/pdf', 'image/*', 'text/plain'],
+    maxSizeMb: 20,
+    retentionDays: null,
+  });
 
   logger.info(
     { admin: env.SEED_ADMIN_EMAIL, hr: env.SEED_HR_EMAIL },

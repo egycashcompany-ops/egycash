@@ -97,12 +97,16 @@ Unique: `ux_key_scope_scopeRef`.
 ### files / file_groups / file_categories
 ```jsonc
 // files — metadata only (ADR-010)
-{ "groupId": "…", "version": 3, "isLatest": true,
-  "originalName": "id-front.jpg", "displayName": "National ID — front",
-  "description": "…", "categoryId": "…", "mime": "image/jpeg", "size": 482113,
-  "checksum": "sha256:…", "storage": { "driver": "local|s3", "key": "hr/applicants/…" },
+{ "groupId": "…", "fileVersion": 3, "isLatest": true,
+  "originalName": "id-front.jpg", "storedName": "3-<uuid>.jpg",
+  "displayName": "National ID — front", "description": "…",
+  "categoryId": "…", "tags": ["…"], "mime": "image/jpeg", "extension": ".jpg",
+  "size": 482113, "checksum": "sha256:…",
+  "visibility": "private|public", "status": "active|archived",
+  "storage": { "driver": "local|railway|s3|minio|azure", "key": "files/<groupId>/…" },
   "entityRef": { "moduleId": "hr", "entityType": "applicant", "entityId": "…" },
-  "uploadedBy": "…", "uploadedAt": "…", "scanStatus": "pending|clean|blocked" }
+  "uploadedBy": "…", "uploadedAt": "…",
+  "scanStatus": "unscanned|pending|clean|blocked" }
 ```
 Indexes: `ix_entityRef`, `ix_groupId_version`, `ix_checksum`.
 

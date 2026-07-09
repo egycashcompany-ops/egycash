@@ -14,6 +14,8 @@ synced to the DB registry at boot (Review R18).
 | `auditLog` | platform | ● |  |  |  | ● |  |  |  |  |
 | `branch` | platform | ● | ● | ● | ● |  |  |  |  |  |
 | `department` | platform | ● | ● | ● | ● |  |  |  |  |  |
+| `file` | platform | ● | ● | ● | ● |  |  |  |  | `file.download`, `file.purge` ⚠️ break-glass |
+| `fileCategory` | platform |  |  |  |  |  |  |  |  | `fileCategory.manage` |
 | `jobTitle` | platform | ● | ● | ● | ● |  |  |  |  |  |
 | `organization` | platform | ● |  | ● |  |  |  |  |  |  |
 | `permission` | platform | ● |  |  |  |  |  |  |  |  |
@@ -23,4 +25,4 @@ synced to the DB registry at boot (Review R18).
 | `setting` | platform | ● |  | ● |  |  |  |  |  |  |
 | `user` | platform | ● | ● | ● | ● | ● |  |  |  | `user.resetPassword`, `user.manageSessions` ⚠️ break-glass |
 
-Total permissions: **38**
+Total permissions: **45**

@@ -8,6 +8,7 @@ import { connectMongo } from '../../infrastructure/database/mongo';
 import { logger } from '../../infrastructure/logging/logger';
 import { registerAuthEventHandlers, registerAuthSettings } from '../auth';
 import { registerAuditJobHandlers } from '../audit';
+import { registerFileJobHandlers } from '../files';
 import { declareFeatureFlagSettings } from '../settings';
 import { rbacService } from '../rbac';
 import { organizationService } from '../organization';
@@ -33,6 +34,7 @@ export const bootPlatform = async (options: BootOptions = {}): Promise<void> => 
   declareFeatureFlagSettings(z.boolean());
   registerAuditJobHandlers();
   registerOutboxJobHandlers();
+  registerFileJobHandlers(); // files extension-point pipeline (worker executes)
 
   // Layer 2 — validate + register module manifests (permissions flow into the registry).
   for (const manifest of options.modules ?? []) {

@@ -10,8 +10,17 @@ its entry here in the same PR.
 ## [Unreleased]
 
 - **Sprint 3.3 planning document** (`docs/12-planning/sprint-3.3-plan.md`): Notifications
-  Service — in-app inbox + email channel, channel-adapter extension points (SMS/push
-  future), templates, preferences, Socket.IO live push (docs only).
+  Service — in-app inbox + email channel, channel-adapter extension points (SMS/push/
+  WhatsApp future), versioned templates, preferences, Socket.IO live push (docs only).
+  **Plan approved 2026-07-09**, then amended the same day (still pre-implementation) with
+  ten additional design decisions: template versioning + preview/test-send endpoints, the
+  full channel list, a 7-state auditable delivery-status lifecycle, an explicit retry/
+  dead-letter policy, category- and quiet-hours-aware preferences (digest mode reserved
+  for later), a closed notification-category vocabulary, real-time delivery details
+  (reconnect/missed notifications/acknowledgement/multi-tab), performance targets,
+  multi-branch fan-out considerations, and an explicit provider-agnostic commitment for
+  every channel. Two amendments **supersede** the original draft: preferences now key on
+  category instead of template, and delivery-status transitions are now audited.
 
 ## [0.4.0] - 2026-07-09
 

@@ -9,6 +9,10 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+- **Sprint 3.3 planning document** (`docs/12-planning/sprint-3.3-plan.md`): Notifications
+  Service — in-app inbox + email channel, channel-adapter extension points (SMS/push
+  future), templates, preferences, Socket.IO live push (docs only).
+
 ## [0.4.0] - 2026-07-09
 
 Release v0.4.0 — Sprint 3.2: **Audit & Activity Service**

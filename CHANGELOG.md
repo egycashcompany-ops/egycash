@@ -9,7 +9,8 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
-- _nothing yet — next sprint pending approval._
+- **Sprint 3.2 planning document** (`docs/12-planning/sprint-3.2-plan.md`): Audit & Activity
+  Service — export, entity timelines, retention governance, security signals (docs only).
 
 ## [0.3.0] - 2026-07-09
 

@@ -12,10 +12,14 @@ Operations, Vault Management, and more) plugged in on top.
 ## Status
 
 **Milestone 2 — Platform Core implementation.**
-Milestone 1 (design) is approved. The platform is being delivered in vertical slices
+Milestone 1 (design) is approved; delivery follows the vertical-slice plan
 (phases 2.1–2.4 per [Architecture Review 01](docs/10-reviews/2026-07-architecture-review-01.md)).
-Phase 2.1 delivers the kernel + auth + users + rbac + organization + audit + settings —
-proving login → permission → scoped data → audit trail.
+**Sprint 2.1 is completed** ([PR #2](https://github.com/egycashcompany-ops/egycash/pull/2),
+merged 2026-07-09): kernel + auth + users + rbac + organization + audit + settings —
+proving login → permission → scoped data → audit trail. Sprint 2.2 has not started.
+
+The full roadmap and project index live in [ECMS-BOOK.md](ECMS-BOOK.md);
+release history in [CHANGELOG.md](CHANGELOG.md).
 
 ### Quick start (development)
 

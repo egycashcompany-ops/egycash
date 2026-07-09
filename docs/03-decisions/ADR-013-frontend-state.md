@@ -1,6 +1,6 @@
 # ADR-013: TanStack Query for server state, Redux Toolkit for session/UI state
 
-**Status:** Proposed · **Date:** 2026-07-08
+**Status:** Accepted · **Date:** 2026-07-08
 
 ## Context
 

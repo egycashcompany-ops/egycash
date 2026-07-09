@@ -1,0 +1,42 @@
+{
+  "name": "egycash",
+  "private": true,
+  "version": "2.1.0",
+  "description": "ECMS Platform — EGYCASH Enterprise Cash Management System",
+  "type": "module",
+  "engines": {
+    "node": ">=22 <23",
+    "npm": ">=10"
+  },
+  "workspaces": [
+    "packages/config",
+    "packages/contracts",
+    "apps/api",
+    "apps/web"
+  ],
+  "scripts": {
+    "dev": "npm run build -w packages/contracts && concurrently -n api,worker,web -c blue,magenta,green \"npm run dev -w apps/api\" \"npm run dev:worker -w apps/api\" \"npm run dev -w apps/web\"",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "npm run build -w packages/contracts && npm run typecheck --workspaces --if-present",
+    "test": "npm run build -w packages/contracts && npm run test --workspaces --if-present",
+    "build": "npm run build -w packages/contracts && npm run build -w apps/api && npm run build -w apps/web",
+    "seed": "npm run build -w packages/contracts && npm run seed -w apps/api",
+    "gen:permission-matrix": "npm run build -w packages/contracts && node scripts/gen-permission-matrix.mjs",
+    "check:permission-matrix": "npm run build -w packages/contracts && node scripts/gen-permission-matrix.mjs --check",
+    "check:flag-expiry": "npm run build -w packages/contracts && node scripts/check-flag-expiry.mjs",
+    "test:unit": "npm run build -w packages/contracts && npm run test:unit -w apps/api && npm run test -w packages/contracts",
+    "test:integration": "npm run build -w packages/contracts && npm run test:integration -w apps/api"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.18.0",
+    "concurrently": "^9.1.0",
+    "eslint": "^9.18.0",
+    "eslint-plugin-boundaries": "^5.0.1",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.20.0"
+  }
+}

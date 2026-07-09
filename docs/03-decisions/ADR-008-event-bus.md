@@ -1,6 +1,6 @@
 # ADR-008: Typed event bus + outbox for inter-module communication
 
-**Status:** Proposed · **Date:** 2026-07-08
+**Status:** Accepted · **Date:** 2026-07-08
 
 ## Context
 

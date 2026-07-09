@@ -1,6 +1,6 @@
 # ADR-014: OCR as an independent, provider-pluggable service
 
-**Status:** Proposed · **Date:** 2026-07-08
+**Status:** Accepted · **Date:** 2026-07-08
 
 ## Context
 

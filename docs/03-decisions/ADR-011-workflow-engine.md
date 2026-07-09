@@ -1,6 +1,6 @@
 # ADR-011: Configurable workflow engine as data, not code
 
-**Status:** Proposed · **Date:** 2026-07-08
+**Status:** Accepted · **Date:** 2026-07-08
 
 ## Context
 

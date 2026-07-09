@@ -1,6 +1,6 @@
 # ADR-012: Three log streams — audit, activity, system (Pino)
 
-**Status:** Proposed · **Date:** 2026-07-08
+**Status:** Accepted · **Date:** 2026-07-08
 
 ## Context
 

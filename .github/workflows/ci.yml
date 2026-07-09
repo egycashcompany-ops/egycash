@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build contracts
+        run: npm run build -w packages/contracts
+
+      - name: Lint (incl. boundary rules)
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck --workspaces --if-present
+
+      - name: Permission matrix is generated from the code catalog (Review R18)
+        run: node scripts/gen-permission-matrix.mjs --check
+
+      - name: Feature flags past expiry fail CI (Review R27)
+        run: node scripts/check-flag-expiry.mjs
+
+      - name: Test
+        run: npm run test --workspaces --if-present
+
+      - name: Build
+        run: npm run build
+
+      - name: Dependency audit
+        run: npm audit --omit=dev --audit-level=critical

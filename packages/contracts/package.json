@@ -1,0 +1,26 @@
+{
+  "name": "@ecms/contracts",
+  "version": "2.1.0",
+  "private": true,
+  "description": "Shared API contracts: Zod schemas, DTO types, permission catalog, event names",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.0"
+  }
+}

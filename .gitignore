@@ -1,0 +1,24 @@
+# dependencies
+node_modules/
+
+# builds
+dist/
+*.tsbuildinfo
+
+# environment — never commit real values
+.env
+.env.*
+!.env.example
+
+# logs & coverage
+*.log
+coverage/
+
+# editor / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# local file storage (dev volume)
+storage/

@@ -1,6 +1,6 @@
 # ADR-007: Zod validation at every boundary; types inferred from schemas
 
-**Status:** Proposed · **Date:** 2026-07-08
+**Status:** Accepted · **Date:** 2026-07-08
 
 ## Context
 

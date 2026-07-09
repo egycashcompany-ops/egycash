@@ -1,6 +1,6 @@
 # ADR-005: MongoDB + Mongoose with module-prefixed collections
 
-**Status:** Proposed · **Date:** 2026-07-08
+**Status:** Accepted · **Date:** 2026-07-08
 
 ## Context
 

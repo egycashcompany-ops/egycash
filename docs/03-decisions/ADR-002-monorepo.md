@@ -1,6 +1,6 @@
 # ADR-002: Monorepo with npm workspaces
 
-**Status:** Proposed · **Date:** 2026-07-08
+**Status:** Accepted · **Date:** 2026-07-08
 
 ## Context
 

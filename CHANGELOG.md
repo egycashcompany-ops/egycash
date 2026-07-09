@@ -11,6 +11,11 @@ its entry here in the same PR.
 
 - **Sprint 3.2 planning document** (`docs/12-planning/sprint-3.2-plan.md`): Audit & Activity
   Service — export, entity timelines, retention governance, security signals (docs only).
+  **Plan approved 2026-07-09**; implementation awaits the explicit GO.
+- **BD-007 — Timeline authorization degrades gracefully**
+  (`docs/01-domain/business-decisions.md`): the timeline endpoint returns only what the
+  caller is authorized to see (activity-only / audit-only / merged) instead of requiring
+  both view permissions — resolves the decision flagged in the sprint plan §7.
 
 ## [0.3.0] - 2026-07-09
 

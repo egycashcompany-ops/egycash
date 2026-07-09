@@ -1,7 +1,9 @@
 # Sprint 3.2 Planning — Audit & Activity Service
 
-**Release:** v0.4.0 (proposed) · **Capability:** one — Audit & Activity (BD-006) ·
-**Status:** 📝 Awaiting approval · **Design authority:** ADR-012,
+**Release:** v0.4.0 · **Capability:** one — Audit & Activity (BD-006) ·
+**Status:** ✅ Approved 2026-07-09 (EGYCASH) — §7 resolved by
+[BD-007](../01-domain/business-decisions.md#bd-007--timeline-authorization-degrades-gracefully) ·
+**Design authority:** ADR-012,
 [Platform Core §8](../02-architecture/platform-core.md),
 [Security Architecture §5](../06-security/security-architecture.md)
 
@@ -81,11 +83,13 @@ collection, no new aggregate.
 | `GET /platform/audit-logs` *(existing, extended filters)* | `auditLog.view` | + `moduleId`, `resource` filters |
 | `GET /platform/audit-logs/export` *(new)* | `auditLog.export` | CSV; capped; audited; same filter params as the list |
 | `GET /platform/activity-logs` *(existing)* | `activityLog.view` | unchanged |
-| `GET /platform/timeline` *(new)* | `activityLog.view` **and** `auditLog.view`² | merged entity history, newest-first, paginated |
+| `GET /platform/timeline` *(new)* | `activityLog.view` **or** `auditLog.view`² | entity history, newest-first, paginated; content scoped to the caller's permissions |
 
-² Timeline exposes audit summaries; requiring both keeps it consistent with viewing the
-streams separately. If review prefers a softer rule (activity-only content for
-activity-only viewers), the composer degrades gracefully — decision flagged for review.
+² **Approved — [BD-007](../01-domain/business-decisions.md#bd-007--timeline-authorization-degrades-gracefully):
+graceful degradation.** The timeline returns only what the caller may see:
+`activityLog.view` only → activity entries; `auditLog.view` only → audit summaries; both →
+the merged timeline; neither → 403 (audited). Each stream stays gated by its own
+permission and data scope — no privilege widening.
 
 ## 8. Events
 
@@ -177,7 +181,9 @@ semantics · sequences/localization (separate sprints).
 
 - [ ] Export endpoint live: permission-gated, capped, streaming CSV, and **its use appears
       in the audit log** — proven by integration test.
-- [ ] Timeline endpoint returns the merged, ordered history for any entity ref.
+- [ ] Timeline endpoint returns the ordered history for any entity ref, scoped to the
+      caller's view permissions per BD-007 (activity-only / audit-only / merged) — each
+      variant proven by integration test.
 - [ ] Both scheduled tasks visible in the scheduler inventory; run-now works; retention
       respects floors and batches; signals raise `alertRaised` records + events.
 - [ ] Settings declared with floors; unknown/invalid values rejected as today.

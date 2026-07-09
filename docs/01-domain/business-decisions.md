@@ -14,6 +14,7 @@ work and future ADRs cite decisions by ID.
 | [BD-004](#bd-004--multi-currency-ready-egp-first) | Multi-currency ready, EGP first | OQ-5 | ✅ Approved | 2026-07-09 |
 | [BD-005](#bd-005--cash-and-gold-custody-shared-pattern-separate-entities) | Cash and gold custody: shared pattern, separate entities | OQ-6 | ✅ Approved | 2026-07-09 |
 | [BD-006](#bd-006--one-capability-per-implementation-sprint) | One capability per implementation sprint | — (governance) | ✅ Approved | 2026-07-09 |
+| [BD-007](#bd-007--timeline-authorization-degrades-gracefully) | Timeline authorization degrades gracefully | Sprint 3.2 plan §7 | ✅ Approved | 2026-07-09 |
 
 *(OQ-1 — departments belong to branches — was answered earlier and is recorded in
 [ADR-015](../03-decisions/ADR-015-single-organization-model.md).)*
@@ -129,3 +130,25 @@ R2 — e.g. phase 2.2 = files + sequences + notifications + localization) remain
 *roadmap* structure, but each phase is **delivered as a series of single-capability
 sprints** (e.g. Sprint 2.2.1 files, Sprint 2.2.2 sequences, …), each with its own PR and
 review gate. Sprint plans citing this rule appear in [ECMS-BOOK §4](../../ECMS-BOOK.md).
+
+## BD-007 — Timeline authorization degrades gracefully
+
+**Resolves:** the decision flagged for review in the
+[Sprint 3.2 plan §7](../12-planning/sprint-3.2-plan.md) (entity Timeline endpoint).
+
+**Decision:** The Timeline endpoint returns **only the information the current user is
+authorized to see**. It does **not** require both `auditLog.view` and `activityLog.view`.
+
+**Business rules:**
+
+1. `activityLog.view` only → the activity timeline only.
+2. `auditLog.view` only → the audit timeline only.
+3. Both permissions → the merged timeline.
+4. Neither permission → the request is denied (and the denial audited, as all 403s are).
+
+**Consequences:** least-privilege access is preserved — a composite *view* never demands
+more permission than the streams it exposes, and never widens access beyond each stream's
+own gate. Data-scope checks (`own | branch | organization`) continue to apply per stream
+exactly as on the underlying list endpoints. This is the model for any future composite
+read endpoint: degrade to the authorized subset rather than gate on the union of
+permissions.

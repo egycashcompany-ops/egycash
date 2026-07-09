@@ -9,37 +9,52 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
-- **Sprint 3.2 — Audit & Activity Service** (platform `audit`, ADR-012; plan:
-  `docs/12-planning/sprint-3.2-plan.md`; reference: `docs/02-architecture/audit-service.md`):
-  completes the Sprint 2.1 audit core to its full designed spec.
-  - **Audited CSV export** (`GET /platform/audit-logs/export`, `auditLog.export`): streams
-    via a Mongo cursor (no full-result buffering), row-capped
-    (`audit.export.maxRows`, default 50,000), field-name-based `nationalId` masking, and
-    **the export itself is audited** (actor, filter, row count).
-  - **Entity timeline** (`GET /platform/timeline`): a merged view over the audit + activity
-    streams for one entity, newest-first. Implements
-    [BD-007](docs/01-domain/business-decisions.md#bd-007--timeline-authorization-degrades-gracefully) —
-    content degrades to whichever of `activityLog.view` / `auditLog.view` the caller holds
-    (activity-only, audit-only, or merged); neither ⇒ audited 403.
-  - **Retention governance**: `platform.audit.retention` (daily) purges expired
-    **activity** records in idempotent batches, settings-declared with a hard 365-day
-    floor (`audit.retention.activityDays`); the audit stream keeps its structural
-    no-delete guarantee.
-  - **Security-signal detection**: `platform.audit.securitySignals` (hourly) runs four
-    detectors — repeated permission denials, lockout clusters, export spikes,
-    refresh-token reuse — each raising an `alertRaised` audit record plus the reliable
-    `platform.audit.alertRaised` event, deduplicated per (signal, subject, window).
-  - **Query hardening**: `moduleId` filter added to the audit list/export; new
-    `ix_moduleId_at` / activity `ix_at` indexes.
-  - No new permissions, no new collections (`check:permission-matrix` unchanged).
-  - Unit + integration test suites; architecture review pending.
-- **Sprint 3.2 planning document** (`docs/12-planning/sprint-3.2-plan.md`): Audit & Activity
-  Service — export, entity timelines, retention governance, security signals (docs only).
-  **Plan approved 2026-07-09**.
-- **BD-007 — Timeline authorization degrades gracefully**
-  (`docs/01-domain/business-decisions.md`): the timeline endpoint returns only what the
-  caller is authorized to see (activity-only / audit-only / merged) instead of requiring
-  both view permissions — resolves the decision flagged in the sprint plan §7.
+## [0.4.0] - 2026-07-09
+
+Release v0.4.0 — Sprint 3.2: **Audit & Activity Service**
+([PR #10](https://github.com/egycashcompany-ops/egycash/pull/10); plan:
+`docs/12-planning/sprint-3.2-plan.md`; reference: `docs/02-architecture/audit-service.md`).
+Completes the Sprint 2.1 audit core to its full ADR-012 spec.
+
+### Added
+
+- **Audited CSV export** (`GET /platform/audit-logs/export`, `auditLog.export`): streams
+  via a Mongo cursor (no full-result buffering), row-capped
+  (`audit.export.maxRows`, default 50,000), field-name-based `nationalId` masking, and
+  **the export itself is audited** (actor, filter, row count).
+- **Entity timeline** (`GET /platform/timeline`): a merged view over the audit + activity
+  streams for one entity, newest-first. Implements
+  [BD-007](docs/01-domain/business-decisions.md#bd-007--timeline-authorization-degrades-gracefully) —
+  content degrades to whichever of `activityLog.view` / `auditLog.view` the caller holds
+  (activity-only, audit-only, or merged); neither ⇒ audited 403.
+- **Retention governance**: `platform.audit.retention` (daily) purges expired
+  **activity** records in idempotent batches, settings-declared with a hard 365-day
+  floor (`audit.retention.activityDays`); the audit stream keeps its structural
+  no-delete guarantee.
+- **Security-signal detection**: `platform.audit.securitySignals` (hourly) runs four
+  detectors — repeated permission denials, lockout clusters, export spikes,
+  refresh-token reuse — each raising an `alertRaised` audit record plus the reliable
+  `platform.audit.alertRaised` event, deduplicated per (signal, subject, window).
+- **Query hardening**: `moduleId` filter added to the audit list/export; new
+  `ix_moduleId_at` / activity `ix_at` indexes.
+- **Sprint 3.2 planning document** (`docs/12-planning/sprint-3.2-plan.md`, approved
+  2026-07-09) and **BD-007 — Timeline authorization degrades gracefully**
+  (`docs/01-domain/business-decisions.md`), resolving the decision flagged in the plan's §7.
+
+No new permissions, no new collections (`check:permission-matrix` unchanged). Architecture
+review: self-assessed in the PR, no code changes required.
+
+### Backlog (recorded for future release planning — not implemented)
+
+1. Replace the entity timeline's in-memory merge with a cursor-based merge if a given
+   entity's history ever grows beyond current practical limits.
+2. Generalize CSV export masking (`audit.export.ts`) into a reusable PII-masking framework,
+   rather than the current field-name-based check.
+3. Consider making the `lockoutCluster` and `refreshReuse` signal thresholds
+   settings-configurable in a future release (currently fixed constants).
+4. The future Notifications Service (v0.5.0) should _subscribe_ to
+   `platform.audit.alertRaised` rather than introduce any direct coupling to the audit
+   service.
 
 ## [0.3.0] - 2026-07-09
 

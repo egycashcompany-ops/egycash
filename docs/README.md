@@ -54,4 +54,4 @@ also self-contained enough to be read on its own.
 | Sprint 3.2 plan — Audit & Activity Service ([PR #8](https://github.com/egycashcompany-ops/egycash/pull/8)) | 1.0.0 | ✅ Approved (§7 resolved by [BD-007](01-domain/business-decisions.md#bd-007--timeline-authorization-degrades-gracefully); implementation awaiting GO) | EGYCASH | 2026-07-09 |
 | Sprint 3.2 — Audit & Activity Service ([PR #10](https://github.com/egycashcompany-ops/egycash/pull/10)) | 0.4.0 | ✅ Reviewed & merged | EGYCASH | 2026-07-09 |
 | Sprint 3.2 bookkeeping — Release v0.4.0 recorded ([PR #11](https://github.com/egycashcompany-ops/egycash/pull/11)) | — | ✅ Reviewed & merged | EGYCASH | 2026-07-09 |
-| Sprint 3.3 plan — Notifications Service | draft | ⏳ Awaiting approval | — | — |
+| Sprint 3.3 plan — Notifications Service ([PR #12](https://github.com/egycashcompany-ops/egycash/pull/12)) | 1.0.0 | ✅ Approved (implementation awaiting GO) | EGYCASH | 2026-07-09 |

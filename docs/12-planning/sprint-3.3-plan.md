@@ -1,7 +1,8 @@
 # Sprint 3.3 Planning — Notifications Service
 
 **Release:** v0.5.0 · **Capability:** one — Notifications (BD-006) ·
-**Status:** ✅ Approved 2026-07-09 (EGYCASH) — implementation awaiting GO · **Design
+**Status:** 🧊 Frozen 2026-07-09 (EGYCASH-approved, fully specified) — implementation
+awaiting GO · **Design
 authority:** [Platform Core §6](../02-architecture/platform-core.md#6-notifications-notifications),
 [Domain Model §2.7 Communication](../01-domain/domain-model.md),
 [Bounded Contexts](../01-domain/bounded-contexts.md), ADR-008, ADR-009
@@ -15,6 +16,17 @@ authority:** [Platform Core §6](../02-architecture/platform-core.md#6-notificat
 > original draft (called out inline where they do): preferences now key on **category**
 > instead of `templateKey`, and delivery-status transitions **are** audited (originally
 > scoped as not-audited for volume reasons — see §8).
+>
+> **Amended again 2026-07-09** (same day, still pre-implementation): ten more decisions —
+> idempotency (§2a), the template rendering engine spec (§2b), scheduled/recurring
+> delivery (§2c), expiration (§2d), an attachment-reference strategy (§3f), first-read
+> semantics made explicit (§6), a future administration console (new section), an
+> observability approach (new section), and sender-validation/channel-authorization
+> (§12). One place **supersedes** the previous amendment: `priority` is now the
+> **four-tier `low | normal | high | critical`** (previously a two-tier `normal | urgent`)
+> — **`critical`** is the level that bypasses quiet hours, replacing `urgent` everywhere
+> it appeared. With this amendment, **Release v0.5.0 Planning is frozen** — see the
+> closing note after the Acceptance Criteria.
 
 > **Honest starting point:** unlike Files (Sprint 3.1) and Audit (Sprint 3.2), which
 > extended patterns already proven on this platform (storage adapters, queued writes),
@@ -60,8 +72,17 @@ authority:** [Platform Core §6](../02-architecture/platform-core.md#6-notificat
 - **Preferences** (§3c): per user × **notification category** (not per individual
   template — see the superseding note in the header) × channel, opt-in/opt-out, with an
   organization-wide default (settings-driven) when the user hasn't set one; plus
-  **quiet hours** (a per-user local time window that defers non-urgent channels) and a
-  **digest mode** flag reserved for a future release (not built now).
+  **quiet hours** (a per-user local time window that defers non-`critical` channels) and
+  a **digest mode** flag reserved for a future release (not built now).
+- **Priority** (§3, four levels: `low | normal | high | critical`) is a property of the
+  **template**, not the individual send — every notification created from a template
+  inherits its priority. Only `critical` has behavioral consequences this sprint: it
+  bypasses quiet hours (§3c). `low`/`high` are informational (future UI sort/grouping
+  hooks) and carry no delivery-path behavior yet — declared now so the enum doesn't need
+  a breaking change when a real use for them shows up.
+- **Idempotency** (§2a), **scheduled delivery** (§2c), **expiration** (§2d), and
+  **attachment references** (§3f) are documented in the architecture/database sections
+  below — each is a property of a single `notify()` call, not a separate capability.
 - **Delivery is always asynchronous** for real (network) channels and **never blocks or
   fails the caller's business operation** — the same non-blocking invariant ADR-012
   established for audit, extended here because a stalled SMTP server must not stall HR,
@@ -130,11 +151,104 @@ synchronous, reliable core; queued, best-effort fan-out):
    today), enqueue one `notifications.deliver` job per (notification, channel) with
    status `queued` — never looped synchronously in the caller's path, however many
    recipients there are. A channel deferred by quiet hours stays `queued` and is
-   re-enqueued when the recipient's quiet-hours window ends (§3c); **templates marked
-   `priority: urgent` bypass quiet hours** — a security alert must not wait until morning.
+   re-enqueued when the recipient's quiet-hours window ends (§3c); **`priority: critical`
+   templates bypass quiet hours** — a security alert must not wait until morning.
 6. `notify()` itself never throws for delivery failures downstream of step 3 — the
    Notification row existing **is** the guarantee; channel delivery failure is recorded
    on that row, not surfaced to the caller (same non-blocking invariant as audit writes).
+
+### 2a. Idempotency
+
+"Prevent duplicate notifications caused by event retries" is handled at **three
+independent layers**, each covering a different failure mode — no single mechanism
+covers all of them:
+
+1. **Event-level (the primary guarantee for this sprint's actual consumers).** The
+   kernel event bus already deduplicates reliable-tier delivery by event ID
+   (`ProcessedEventModel`, ADR-008) — a redelivered `platform.audit.alertRaised` or
+   `platform.roleAssignment.changed` **never re-invokes** the notifications subscriber a
+   second time. This is an existing platform guarantee, not something built here; both
+   of this sprint's wired-up subscriptions (§4) rely on it entirely.
+2. **Caller-level (for future, non-event-bus callers).** `notify()` accepts an optional
+   `idempotencyKey`: `notify(input, { session?, idempotencyKey? })`. When supplied, a
+   unique index `(recipientUserId, idempotencyKey)` on `notifications` makes a second
+   logical call for the same key a no-op (returns the existing notification instead of
+   creating a duplicate). Optional and unused by this sprint's two subscribers (event-
+   level dedup already covers them) — available for any future direct caller (e.g. an
+   HTTP-triggered business action that might itself be retried by a client) that needs
+   the stronger guarantee.
+3. **Delivery-job-level (protects against queue-infrastructure retries specifically).**
+   BullMQ's at-least-once job execution means a `notifications.deliver` job could in
+   theory be attempted again after a worker crash mid-send. The worker checks the
+   notification's **persisted channel status** before calling the channel adapter — a
+   channel already at `sent`/`delivered`/`failed`/`cancelled` (§2's status lifecycle) is
+   a no-op on a re-attempt, never a second real send. No extra table or dedup collection
+   needed; the status field the lifecycle already tracks *is* the idempotency guard.
+
+### 2b. Template rendering engine
+
+- **Placeholder syntax:** `{{variableName}}` — alphanumeric + underscore names only,
+  matched against the template's declared `variables` list. Deliberately **not** a full
+  templating language (no conditionals, loops, or expressions) — find-and-replace only,
+  which keeps rendering trivially safe to audit and impossible to use for anything more
+  than text substitution.
+- **Missing variables:** `notify()` validates the caller's `data` against the template's
+  declared `variables` **before** rendering — a required variable missing from `data`
+  throws (fail fast, this runs in trusted platform code, §1). An **extra** key in `data`
+  that isn't a declared variable is silently ignored, not an error (callers commonly pass
+  a superset for their own logging/debugging needs, per §3's `data` field).
+- **Escaping rules:** interpolated values are **HTML-escaped** (`& < > " '`) when
+  rendering the email HTML part (§2b below); the in-app channel and the email
+  plain-text part never interpret the result as markup, so no escaping is needed there
+  beyond passing the raw string through. This is the concrete implementation of the
+  template-injection mitigation already noted in §10.
+- **HTML and plain-text rendering:** a template author writes **one** plain-text `body`
+  per language (§3) — not two parallel bodies to maintain. The email adapter sends a
+  **multipart message**: the plain-text part is the rendered body verbatim; the HTML part
+  wraps the same rendered (and HTML-escaped) body in one **code-owned, generic HTML
+  shell** (brand header/footer, not authored per-template). This is the standard
+  email-deliverability practice of always sending a plain-text alternative, without
+  doubling every template author's workload. In-app is **always** plain text — there is
+  no HTML part for that channel, ever (client renders it as text, never as markup).
+
+### 2c. Scheduling
+
+- **Send now** (default, unchanged): `notify(input)` with no timing option runs the §2
+  sequence immediately.
+- **Scheduled delivery:** `notify(input, { sendAt? })`. When `sendAt` is a future `Date`,
+  `notify()` does **not** run the sequence immediately — it enqueues a single BullMQ
+  **delayed** job (`notifications.scheduledSend`, using BullMQ's native `delay` option,
+  no new queue infrastructure) carrying the original input. When that job fires at
+  `sendAt`, it runs the normal §2 sequence exactly as if `notify()` had been called at
+  that moment — **including the expiration check (§2d)**, so a schedule that outlives its
+  own expiry is skipped, not delivered stale. Nothing (not even the in-app row) is
+  created before `sendAt` — a scheduled notification does not appear in anyone's inbox
+  early.
+- **Recurring delivery is declared, not built.** A future capability would need a
+  cron-like declaration generating repeated `notify()` calls (conceptually similar to
+  the scheduler feature's task registry, Sprint 2.1/§3.2's pattern) — out of scope this
+  sprint (§ Out of scope). Stated here only so `sendAt` (singular) doesn't need to become
+  a breaking shape change if/when recurrence arrives (it would be a separate field, e.g.
+  `recurrence`, additive).
+
+### 2d. Expiration
+
+- Notifications may optionally carry `expiresAt: Date | null` (§3), set by the caller
+  (via `notify()`) or defaulted from the template's `defaultExpiryHours` (§3) when the
+  caller doesn't specify one.
+- **Enforcement — expired notifications are never delivered:**
+  - If `expiresAt` is already in the past when `notify()` runs (a caller bug, or a
+    scheduled send whose `sendAt` job fired late — §2c), the call is a **no-op**: no
+    Notification document is created, on any channel, in-app included.
+  - For a channel still `queued` when its delivery job is picked up, the worker checks
+    `expiresAt` before calling the adapter; if expired, the channel transitions straight
+    to `cancelled` (§3b's status lifecycle) — never `sent`, never attempted.
+  - An in-app row that was already created and later passes its `expiresAt` is **not**
+    retroactively hidden or deleted by this backend capability — "never delivered" is
+    about gating (further) send attempts, not about pruning an inbox the frontend already
+    rendered. Any UI treatment of an expired-but-already-shown entry is a frontend
+    concern, out of scope here (consistent with the inbox UI being out of scope entirely,
+    §8).
 
 **Socket.IO:** mounted on the same HTTP server as Express (per
 [Software Architecture](../02-architecture/software-architecture.md) — "same API process
@@ -166,18 +280,22 @@ fourth collection.)
 | `entityRef` | `{moduleId, entityType, entityId}` | **required** — shared kernel, "always references its origin entity" |
 | `templateKey`, `templateVersion` | string, number | which template + version produced this (§3's template versioning) |
 | `category` | string | denormalized from the template at send time — fast preference filtering/display without a join (§3a) |
-| `priority` | `'normal' \| 'urgent'` | denormalized from the template; `urgent` bypasses quiet hours (§3c) |
+| `priority` | `'low' \| 'normal' \| 'high' \| 'critical'` | denormalized from the template (§1); `critical` bypasses quiet hours (§3c) |
 | `data` | Mixed | the variables passed to `notify()`, kept for support/debugging |
 | `title`, `body` | `{ar, en}` | **rendered and snapshotted at send time** — template edits never retroactively change history |
 | `channels` | `[{ channel, status, statusHistory: [{status, at}], sentAt, deliveredAt, readAt, error }]` | one entry per channel this notification was sent on — see §3b for the status enum |
-| `readAt` | Date \| null | top-level convenience mirror of the in-app channel's `readAt` (what the inbox queries against) |
+| `readAt` | Date \| null | top-level convenience mirror of the in-app channel's `readAt`, set **only once** (§6 — first-read wins) — what the inbox queries against |
 | `archivedAt` | Date \| null | soft "delete" — same never-hard-delete rule as everywhere else |
+| `expiresAt` | Date \| null | §2d — caller-supplied or defaulted from the template; enforcement happens at delivery time, not by a background sweep |
+| `idempotencyKey` | string \| null | §2a — optional, caller-supplied |
+| `attachments` | `ObjectId[]` | §3f — **references** into the `files` collection; no binary data stored here |
 | `createdAt` | Date | |
 
 Indexes: `{recipientUserId, createdAt: -1}` (inbox listing), `{recipientUserId, readAt: 1}`
 (unread count), `{entityRef.entityType, entityRef.entityId}` (entity-scoped lookups — the
 same shape as the audit/activity `ix_entityRef_at` index, see §8 for why this matters),
-`{recipientUserId, category}` (category-filtered inbox views).
+`{recipientUserId, category}` (category-filtered inbox views), unique partial index
+`{recipientUserId, idempotencyKey}` where `idempotencyKey` exists (§2a).
 
 ### 3a. Notification categories (closed vocabulary)
 
@@ -232,11 +350,12 @@ why it's still the right call.
 | `version` | number | **monotonically increasing per `key`** — every edit creates a new version row rather than mutating in place, mirroring the Files version-group pattern (Sprint 3.1); `(key, version)` is the real identity of a specific rendering |
 | `isLatest` | boolean | exactly one `true` row per `key` — mirrors `FileDoc.isLatest` exactly |
 | `category` | string | one of §3a's closed vocabulary |
-| `priority` | `'normal' \| 'urgent'` | default `normal`; `urgent` bypasses quiet hours |
+| `priority` | `'low' \| 'normal' \| 'high' \| 'critical'` | default `normal`; `critical` bypasses quiet hours (§1, §2c) |
 | `subject` | `{ar, en}` | email only; null if the template has no email channel |
-| `body` | `{ar, en}` | `{{variable}}` placeholders |
-| `channels` | `string[]` | which channels this template supports |
-| `variables` | `string[]` | declared variable names — `notify()` validates `data` against this |
+| `body` | `{ar, en}` | `{{variable}}` placeholders — one plain-text body per language (§2b), not separate HTML/text variants |
+| `channels` | `string[]` | which channels this template supports — the channel-authorization boundary (§12) |
+| `variables` | `string[]` | declared variable names — `notify()` validates `data` against this (§2b) |
+| `defaultExpiryHours` | number \| null | §2d — used when a `notify()` call doesn't supply its own `expiresAt` |
 | `status` | `'active' \| 'inactive'` | deactivation, not deletion; applies to the `key` (via the latest version), not per-version |
 | `createdBy`, `createdAt` | | who/when this **version** was created |
 
@@ -268,13 +387,13 @@ sub-document alongside their per-category rows, same collection):
 | `quietHours.enabled` | boolean | default from `notifications.quietHours.enabledByDefault` (settings, §8) |
 | `quietHours.start`, `quietHours.end` | `"HH:mm"` | interpreted in the user's own locale/timezone context (same timezone handling the platform already assumes for `User.locale` — no new timezone model introduced) |
 
-**Scope:** quiet hours defer non-urgent, *external* channel delivery only (email today);
-the in-app row is still created immediately (step 3 of §2's sequence) — quiet hours is
-about not buzzing someone's phone at 2am, not about hiding information from their inbox.
-`priority: urgent` templates (e.g. security alerts) always bypass it.
+**Scope:** quiet hours defer non-`critical`, *external* channel delivery only (email
+today); the in-app row is still created immediately (step 3 of §2's sequence) — quiet
+hours is about not buzzing someone's phone at 2am, not about hiding information from
+their inbox. `priority: critical` templates (e.g. security alerts) always bypass it.
 
 **Digest mode is a documented placeholder, not built:** a future toggle that would batch
-a user's non-urgent notifications into one periodic (daily/weekly) email instead of
+a user's non-`critical` notifications into one periodic (daily/weekly) email instead of
 one-per-event. It needs a scheduled aggregation job (mirroring Sprint 3.2's retention
 task shape) that does not exist yet. Declared here so the preference schema doesn't need
 a breaking change when it arrives; **the `digestMode` field is reserved and unused** this
@@ -297,6 +416,27 @@ in this platform already uses** (`infrastructure/queue/jobs.ts`) — no special-
   business event that originally triggered `notify()` would need to fire again, or a
   future admin "retry delivery" action is added as its own small capability when there's
   a real operational need for it.
+
+### 3f. Attachment strategy
+
+`notify()` accepts an optional `attachments: fileId[]` — **references** to existing
+`files` documents (Sprint 3.1), never embedded binary data. Consistent with how every
+other part of the platform treats files (ADR-010): a notification never becomes the
+system of record for a binary, it just points at one.
+
+**Scope this sprint: the schema/interface accepts the reference, delivery does not yet
+attach anything.** Stored on the `notifications` document (§3) so the shape doesn't need
+a breaking change later; the email adapter does not fetch or attach the referenced file
+this sprint (§ Out of scope, unchanged from the previous amendment). When attachment
+delivery is built, the natural shape is already implied: the email adapter calls the
+existing `fileService` to stream the binary at send time — no new file-handling code in
+the notifications feature itself, the same "modules never touch storage directly, they
+call the owning service" rule Platform Core already enforces everywhere else.
+
+**Authorization note:** referencing a file does **not** grant the recipient access to it
+beyond what the Files service's own visibility/authorization rules (Sprint 3.1) already
+allow — a notification pointing at a `private` file the recipient can't otherwise
+download doesn't change that; this plan introduces no new file-access path.
 
 ## 4. Event contracts
 
@@ -374,6 +514,21 @@ Base: `/api/v1/platform` · standard envelope, pagination, error codes (API Stan
 | `GET /notification-preferences` | mine — per-category rows + `quietHours` |
 | `PUT /notification-preferences` | upsert mine, one `{category, channel, enabled}` at a time |
 | `PUT /notification-preferences/quiet-hours` | upsert mine — `{enabled, start, end}` (§3c) |
+
+**Read tracking, explicitly:**
+
+- **Read timestamp:** `readAt` (§3), set by `POST /notifications/:id/read`.
+- **First read wins:** the write is conditional — `readAt` is only set if currently
+  `null`. A second `POST .../read` on an already-read notification is a no-op that
+  returns success without changing the timestamp (idempotent, same principle as §2a).
+- **Unread counters:** `GET /notifications/unread-count` is a **live query**
+  (`{recipientUserId, readAt: null, archivedAt: null}` count), not a maintained counter
+  field — no risk of a denormalized counter drifting from reality.
+- **Mark single:** `POST /notifications/:id/read` — one notification, ownership-checked.
+- **Mark all:** `POST /notifications/read-all` — sets `readAt: now` on every currently-
+  unread, non-archived notification belonging to the caller; each is its own "first read"
+  (they were all unread beforehand, so the conditional-write rule above is trivially
+  satisfied for all of them).
 
 ### Real-time
 
@@ -471,25 +626,31 @@ sequenceDiagram
 
 ## 9. Testing strategy
 
-- **Unit:** template rendering (variable interpolation, missing-variable failure,
-  both-languages-required validation), the status-transition table (§3b — only the
-  documented transitions are legal; e.g. `read` is unreachable from `failed`), retry/
-  backoff configuration sanity, quiet-hours window math (in-window/out-of-window edges,
-  `urgent` bypass), preference resolution (explicit category row → settings default →
-  hard-coded fallback), channel adapter registry (duplicate-id guard, mirrors
+- **Unit:** template rendering (variable interpolation, missing-variable failure, extra-
+  variable tolerance, HTML-escaping on the email HTML part, no escaping on plain-text —
+  §2b), the status-transition table (§3b — only the documented transitions are legal;
+  e.g. `read` is unreachable from `failed`), retry/backoff configuration sanity,
+  quiet-hours window math (in-window/out-of-window edges, `critical`-priority bypass),
+  the delivery-job idempotency guard (a job re-attempted after the channel is already
+  `sent` is a no-op — §2a), preference resolution (explicit category row → settings
+  default → hard-coded fallback), channel adapter registry (duplicate-id guard, mirrors
   `registerFileProcessor`'s test), Socket.IO auth middleware (valid/expired/tampered
   token — pure function, no live socket needed).
 - **Integration:** `notify()` end-to-end (in-app doc created, inbox list/unread-count/
-  mark-read/archive, category filter), preference opt-out suppresses a channel, quiet
-  hours defers a non-urgent email but not an urgent one, template versioning (edit
-  creates a new version, `isLatest` moves, old notifications keep their snapshot,
-  `/versions` returns history) + its audit trail, preview renders without sending,
-  test-send actually delivers to the caller only, every delivery-status transition
-  produces its own audit row (§3b/§8), the two event subscriptions (emitting
-  `platform.audit.alertRaised` / `platform.roleAssignment.changed` in a test produces the
-  expected notification for the expected recipients), Socket.IO connect/auth (valid
-  token joins the room; invalid token is rejected), `notification:read` reaching a second
-  simulated tab, using a real Socket.IO client against the test server.
+  mark-read/archive, category filter), a repeated `idempotencyKey` produces exactly one
+  notification (§2a), preference opt-out suppresses a channel, quiet hours defers a
+  `normal`-priority email but not a `critical` one, an `expiresAt` already in the past
+  makes `notify()` a full no-op and a channel that expires while still `queued` is
+  `cancelled` not `sent` (§2d), a `sendAt` in the future creates nothing until it fires
+  (§2c), template versioning (edit creates a new version, `isLatest` moves, old
+  notifications keep their snapshot, `/versions` returns history) + its audit trail,
+  preview renders without sending, test-send actually delivers to the caller only, every
+  delivery-status transition produces its own audit row (§3b/§8), the two event
+  subscriptions (emitting `platform.audit.alertRaised` / `platform.roleAssignment.changed`
+  in a test produces the expected notification for the expected recipients), Socket.IO
+  connect/auth (valid token joins the room; invalid token is rejected), `notification:read`
+  reaching a second simulated tab, a second `POST .../read` call not overwriting the
+  original timestamp (§6), using a real Socket.IO client against the test server.
 - **Known, stated limitation (planned, not hidden):** the email adapter will be tested
   against nodemailer's in-memory/JSON transport in CI, **not a live SMTP server** — the
   same honest limitation Sprint 3.1 logged for cloud storage drivers ("configuration-
@@ -556,18 +717,90 @@ triggered the event.
 "office hours" in this model; each recipient's own quiet-hours window applies
 individually, consistent with them being personal preference state (§3c).
 
+## Future administration console
+
+Documented intent for a later capability — **nothing in this section is built this
+sprint**; it exists so the schema/API choices already made don't foreclose it.
+
+| Capability | Shape | Status |
+| --- | --- | --- |
+| Template management | `GET/POST/PATCH/DELETE /notification-templates` + preview/test | **this sprint** (§6) — the only item in this table not deferred |
+| Queue monitoring | A view over the `notifications` BullMQ queue's depth/active/failed counts | future — no dedicated queue-monitoring UI exists on this platform yet (a platform-wide gap, not specific to notifications) |
+| Failed notifications view | Query `notifications` where any `channels[].status = 'failed'`, filterable by category/channel/date | future — needs its own permission when built (not decided now; likely `notificationTemplate.view`-adjacent or a new admin-scoped read) |
+| Resend / retry | A manual "retry this delivery" action | future — explicitly out of scope this sprint (§3d) |
+| Statistics | Delivery success rate, volume by category/channel, retry rate | future — see Observability below; the underlying data (status + `statusHistory`, §3b) already exists once this sprint ships, a reporting *view* over it does not |
+
+## Observability
+
+- **Metrics** (delivery success rate, retry rate, queue depth, time-to-delivery per
+  channel): **no dedicated metrics backend (e.g. Prometheus/StatsD) exists on this
+  platform yet** — that's a platform-wide gap, not something this sprint introduces just
+  for notifications. Near-term substitute: every number above is derivable via a MongoDB
+  aggregation over `notifications.channels` (status distribution, `statusHistory` timing
+  deltas) — an ops/support query, not a live dashboard, until real metrics
+  infrastructure exists platform-wide.
+- **Structured logs:** reuse the existing Pino logger (already platform-wide, PII-
+  redacted) — no new logging system. Key lifecycle events (job picked up, sent, failed)
+  logged at the same levels the rest of the platform already uses (info for success,
+  warn/error for failure), matching the outbox relay's existing logging pattern.
+- **Tracing:** already solved, not a gap — `requestId` correlation across
+  api → queue → worker (ADR-012) already exists platform-wide; notifications inherits it
+  automatically through the existing queue/request-context infrastructure. No new
+  tracing system is introduced.
+- **Queue health:** BullMQ exposes queue depth/active/failed counts natively; surfacing
+  them in an admin view is the "queue monitoring" future-administration item above, not
+  built this sprint.
+- **Delivery success rate / retry rate:** queryable from day one from the audited
+  `statusChange` transitions (§3b/§8) and the `channels[].status` distribution — no new
+  instrumentation needed to *compute* these; a dedicated reporting *view* is future work
+  (administration console, above).
+
+## 12. Security
+
+- **Template permission model:** covered in full in §5 — `notificationTemplate`
+  view/create/edit/delete + the `.test` special; `preview` reuses `.view`. Not repeated
+  here.
+- **Audit requirements:** covered in full in §3b/§8 — every template version and every
+  delivery-status transition is audited. Not repeated here.
+- **Sender validation:** `notify()` is an in-process call from trusted platform/module
+  code (§1) — there is no runtime "who's really calling this" check, no per-call
+  attestation of the caller's identity beyond the `entityRef.moduleId` it supplies. This
+  matches the existing trust model for every other internal platform contract
+  (`auditService.record()`, `emit()`) — trust is established at **code-review time**
+  (Development Workflow §4: what calls `notify()` with what `entityRef` is visible in the
+  diff), not enforced at runtime. This is a deliberate, stated simplification appropriate
+  for in-process trusted code; it would need revisiting **only if** `notify()` were ever
+  exposed across a real trust boundary (a public API, a less-trusted plugin system) —
+  which it explicitly is not, and isn't proposed to be.
+- **Channel authorization** has two independent halves, both already specified above,
+  brought together here for clarity:
+  1. **What a template may use** — gated by the template's declared `channels: string[]`
+     (§3); a template that doesn't declare `email` cannot be delivered over email no
+     matter what a caller requests. Reviewed at template create/edit time
+     (`notificationTemplate.create`/`.edit`, §5).
+  2. **What a recipient will accept** — gated by their own preferences (§3c) and quiet
+     hours; a recipient's opt-out is never overridden by a caller, with the single stated
+     exception of `critical` priority bypassing quiet hours (never bypassing an outright
+     channel opt-out — quiet hours defers timing, it doesn't force a channel someone
+     disabled entirely).
+
 ## Out of scope
 
 Frontend inbox UI and Socket.IO client wiring (deferred to a UI-focused pass) ·
 SMS / push / WhatsApp channel adapters (interface-ready, not built) · digest/scheduled-
-summary notifications (schema field reserved, §3c) · a scheduled quiet-hours-expiry
-sweep job · an admin "manually re-send a failed delivery" action (§3d) · notification
+summary notifications (schema field reserved, §3c) · **recurring delivery** (§2c —
+`sendAt` is a one-time future timestamp only) · a scheduled quiet-hours-expiry sweep job
+· an admin "manually re-send a failed delivery" action (§3d) · notification
 retention/purge job (no retention concern identified yet — would mirror Sprint 3.2's
 pattern if one emerges) · any business-module notification content (the first real
-business consumer arrives with its own module) · attachments on email notifications ·
-read-receipt *delivery* over the socket (state changes stay REST-only; the socket only
-mirrors the result, §6) · load testing against the performance targets · a delivery-
-health dashboard consuming `platform.notification.deliveryFailed`.
+business consumer arrives with its own module) · **attaching** referenced files to email
+(the reference field exists, §3f; nothing fetches or attaches the binary) · read-receipt
+*delivery* over the socket (state changes stay REST-only; the socket only mirrors the
+result, §6) · load testing against the performance targets · a delivery-health dashboard
+consuming `platform.notification.deliveryFailed` · **the entire future administration
+console** (queue monitoring, failed-notifications view, resend/retry, statistics — see
+that section) · **a dedicated metrics backend** (Prometheus/StatsD or similar — a
+platform-wide gap, not notifications-specific, see Observability).
 
 ## Acceptance criteria
 
@@ -590,12 +823,34 @@ health dashboard consuming `platform.notification.deliveryFailed`.
       transitions are reachable.
 - [ ] Preferences suppress delivery on the opted-out channel at the **category** level;
       settings-driven default applies when no preference row exists; quiet hours defer a
-      non-urgent channel and are bypassed by `urgent` templates.
+      non-`critical` channel and are bypassed by `critical`-priority templates.
 - [ ] Branch-scoped fan-out (`to: {permission, scope: 'branch', branchId}`) reaches only
       that branch's qualifying users; organization-scoped fan-out is unaffected.
+- [ ] Idempotency: a repeated `idempotencyKey` never creates a second notification; a
+      retried delivery job never re-sends a channel already past `sent` (§2a).
+- [ ] Scheduling: `sendAt` creates nothing before it fires; expiration prevents delivery
+      entirely for an already-past `expiresAt` and cancels a still-queued channel that
+      expires before its turn (§2c/§2d).
+- [ ] `attachments` (file references) round-trip on the notification document without
+      the email adapter attaching anything this sprint (§3f).
+- [ ] First-read semantics: a second mark-read call on an already-read notification does
+      not change its `readAt` (§6).
 - [ ] No changes to any other platform service beyond the flagged, additive integration
       points (RBAC's new read query; the new settings keys).
 - [ ] All CI gates green (lint, typecheck, unit + integration, build, permission-matrix
       and flag-expiry checks).
 - [ ] Docs updated in the same PR: `docs/02-architecture/notifications-service.md`
       (files/audit-service-style reference), CHANGELOG, ECMS-BOOK sprint log.
+
+---
+
+## Planning frozen
+
+As of the second 2026-07-09 amendment, this plan covers: the original 10 sections, the
+first amendment's 10 decisions, and this amendment's 10 decisions — thirty design
+questions raised across three review passes, all resolved and recorded above, none
+deferred silently (every "not built" item is named explicitly in **Out of scope** with a
+reason). **No further design gaps are known.** Implementation awaits an explicit GO;
+any design question that surfaces *during* implementation gets recorded as a new,
+dated amendment here (or a formal ADR, if it turns out to be architectural rather than
+service-level) — not a silent deviation from what's written above.

@@ -56,4 +56,4 @@ also self-contained enough to be read on its own.
 | Sprint 3.2 bookkeeping — Release v0.4.0 recorded ([PR #11](https://github.com/egycashcompany-ops/egycash/pull/11)) | — | ✅ Reviewed & merged | EGYCASH | 2026-07-09 |
 | Sprint 3.3 plan — Notifications Service ([PR #12](https://github.com/egycashcompany-ops/egycash/pull/12)) | 1.0.0 | ✅ Approved (implementation awaiting GO) | EGYCASH | 2026-07-09 |
 | Sprint 3.3 plan amendment — 10 additional decisions ([PR #13](https://github.com/egycashcompany-ops/egycash/pull/13)) | 1.1.0 | ✅ Reviewed & merged | EGYCASH | 2026-07-09 |
-| Sprint 3.3 plan — 10 more decisions, planning frozen | 1.2.0 | 🧊 Pending PR (implementation awaiting GO) | EGYCASH | 2026-07-09 |
+| Sprint 3.3 plan — 10 more decisions, planning frozen ([PR #14](https://github.com/egycashcompany-ops/egycash/pull/14)) | 1.2.0 | 🧊 **Frozen & approved — implementation GO given** | EGYCASH | 2026-07-09 |

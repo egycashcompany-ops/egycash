@@ -17,6 +17,7 @@ synced to the DB registry at boot (Review R18).
 | `file` | platform | ● | ● | ● | ● |  |  |  |  | `file.download`, `file.purge` ⚠️ break-glass |
 | `fileCategory` | platform |  |  |  |  |  |  |  |  | `fileCategory.manage` |
 | `jobTitle` | platform | ● | ● | ● | ● |  |  |  |  |  |
+| `notificationTemplate` | platform | ● | ● | ● | ● |  |  |  |  | `notificationTemplate.test` |
 | `organization` | platform | ● |  | ● |  |  |  |  |  |  |
 | `permission` | platform | ● |  |  |  |  |  |  |  |  |
 | `role` | platform | ● | ● | ● | ● |  |  |  |  | `role.assign` |
@@ -25,4 +26,4 @@ synced to the DB registry at boot (Review R18).
 | `setting` | platform | ● |  | ● |  |  |  |  |  |  |
 | `user` | platform | ● | ● | ● | ● | ● |  |  |  | `user.resetPassword`, `user.manageSessions` ⚠️ break-glass |
 
-Total permissions: **45**
+Total permissions: **50**

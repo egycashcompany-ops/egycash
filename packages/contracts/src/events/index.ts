@@ -45,6 +45,9 @@ export const PlatformEvents = {
   VirusScanCompleted: 'platform.file.virusScanCompleted',
 
   AuditAlertRaised: 'platform.audit.alertRaised',
+
+  NotificationCreated: 'platform.notification.created',
+  NotificationDeliveryFailed: 'platform.notification.deliveryFailed',
 } as const;
 export type PlatformEventName = (typeof PlatformEvents)[keyof typeof PlatformEvents];
 
@@ -114,6 +117,20 @@ export const AuditAlertRaisedPayloadV1 = z.object({
   details: z.record(z.string(), z.unknown()).optional(),
 });
 
+export const NotificationCreatedPayloadV1 = z.object({
+  notificationId: objectId(),
+  recipientUserId: objectId(),
+  templateKey: z.string(),
+});
+
+export const NotificationDeliveryFailedPayloadV1 = z.object({
+  notificationId: objectId(),
+  recipientUserId: objectId(),
+  channel: z.string(),
+  templateKey: z.string(),
+  error: z.string(),
+});
+
 /** Current schema version per event name — bumped only via a new versioned constant. */
 export const EVENT_SCHEMA_VERSIONS: Record<PlatformEventName, number> = {
   [PlatformEvents.UserCreated]: 1,
@@ -136,4 +153,6 @@ export const EVENT_SCHEMA_VERSIONS: Record<PlatformEventName, number> = {
   [PlatformEvents.OcrCompleted]: 1,
   [PlatformEvents.VirusScanCompleted]: 1,
   [PlatformEvents.AuditAlertRaised]: 1,
+  [PlatformEvents.NotificationCreated]: 1,
+  [PlatformEvents.NotificationDeliveryFailed]: 1,
 };

@@ -53,6 +53,17 @@ const EnvSchema = z.object({
   AZURE_STORAGE_CONNECTION_STRING: z.string().default(''),
   AZURE_STORAGE_CONTAINER: z.string().default('ecms-files'),
 
+  // ── Notifications (Sprint 3.3) ────────────────────────────────────────────
+  SMTP_HOST: z.string().default('localhost'),
+  SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(1025),
+  SMTP_USER: z.string().default(''),
+  SMTP_PASSWORD: z.string().default(''),
+  SMTP_SECURE: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+  NOTIFICATIONS_EMAIL_FROM: z.string().default('EGYCASH <no-reply@ecms.local>'),
+
   SEED_ADMIN_EMAIL: z.string().email().default('admin@ecms.local'),
   SEED_ADMIN_PASSWORD: z.string().min(8).default('Admin#2026!ecms'),
   SEED_HR_EMAIL: z.string().email().default('hr@ecms.local'),

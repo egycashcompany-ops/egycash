@@ -15,6 +15,8 @@ export const SettingKeys = {
   AuditExportMaxRows: 'audit.export.maxRows',
   AuditSignalsDeniedThreshold: 'audit.signals.deniedThreshold',
   AuditSignalsExportSpikeThreshold: 'audit.signals.exportSpikeThreshold',
+  NotificationsEmailEnabled: 'notifications.email.enabled',
+  NotificationsQuietHoursEnabledByDefault: 'notifications.quietHours.enabledByDefault',
 } as const;
 export const SettingScopeSchema = z.enum(SETTING_SCOPES);
 export type SettingScope = z.infer<typeof SettingScopeSchema>;

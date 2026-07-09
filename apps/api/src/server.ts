@@ -5,7 +5,9 @@ import { logger } from './infrastructure/logging/logger';
 import { disconnectMongo } from './infrastructure/database/mongo';
 import { closeCache } from './infrastructure/redis/cache';
 import { closeQueues } from './infrastructure/queue/jobs';
+import { closeSocketServer } from './infrastructure/realtime/socket-server';
 import { bootPlatform } from './platform/kernel/bootstrap';
+import { attachNotificationSocket } from './platform/notifications';
 import { moduleManifests } from './modules';
 import { buildApp } from './app';
 
@@ -17,12 +19,13 @@ const main = async (): Promise<void> => {
   const server = app.listen(env.PORT, () => {
     logger.info({ port: env.PORT }, 'api listening');
   });
+  attachNotificationSocket(server); // Socket.IO runs in the api process only (§2/§6)
 
   // Graceful shutdown: stop accepting → drain → close pools (Deployment Strategy §1).
   const shutdown = (signal: string): void => {
     logger.info({ signal }, 'shutting down');
     server.close(() => {
-      Promise.allSettled([disconnectMongo(), closeCache(), closeQueues()])
+      Promise.allSettled([disconnectMongo(), closeCache(), closeQueues(), closeSocketServer()])
         .then(() => process.exit(0))
         .catch(() => process.exit(1));
     });

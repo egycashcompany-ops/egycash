@@ -30,7 +30,7 @@ also self-contained enough to be read on its own.
 | 09 | **Guides** | [Development Guide](09-guides/development-guide.md) · [Development Workflow](09-guides/development-workflow.md) | Engineers |
 | 10 | **Reviews** | [Architecture Review 01 (pre-Milestone 2)](10-reviews/2026-07-architecture-review-01.md) | Everyone |
 | 11 | **Retrospectives** | [Sprint 3.1 (Release v0.3.0)](11-retrospectives/2026-07-sprint-3.1.md) | Everyone |
-| 12 | **Planning** | [Sprint 3.2 — Audit & Activity Service](12-planning/sprint-3.2-plan.md) | Everyone |
+| 12 | **Planning** | [Sprint 3.3 — Notifications Service](12-planning/sprint-3.3-plan.md) | Everyone |
 
 ---
 
@@ -53,3 +53,5 @@ also self-contained enough to be read on its own.
 | Sprint 3.1 retrospective ([PR #7](https://github.com/egycashcompany-ops/egycash/pull/7)) | — | ✅ Completed & merged | EGYCASH | 2026-07-09 |
 | Sprint 3.2 plan — Audit & Activity Service ([PR #8](https://github.com/egycashcompany-ops/egycash/pull/8)) | 1.0.0 | ✅ Approved (§7 resolved by [BD-007](01-domain/business-decisions.md#bd-007--timeline-authorization-degrades-gracefully); implementation awaiting GO) | EGYCASH | 2026-07-09 |
 | Sprint 3.2 — Audit & Activity Service ([PR #10](https://github.com/egycashcompany-ops/egycash/pull/10)) | 0.4.0 | ✅ Reviewed & merged | EGYCASH | 2026-07-09 |
+| Sprint 3.2 bookkeeping — Release v0.4.0 recorded ([PR #11](https://github.com/egycashcompany-ops/egycash/pull/11)) | — | ✅ Reviewed & merged | EGYCASH | 2026-07-09 |
+| Sprint 3.3 plan — Notifications Service | draft | ⏳ Awaiting approval | — | — |

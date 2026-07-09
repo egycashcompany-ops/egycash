@@ -45,3 +45,4 @@ also self-contained enough to be read on its own.
 |---|---|---|---|---|
 | Milestone 1 (all documents) | 1.0.0 | ✅ Approved | EGYCASH | 2026-07-08 |
 | Architecture Review 01 (pre-Milestone 2) | 1.0.0 | ✅ Approved (implementation of phases 2.1–2.4 authorized) | EGYCASH | 2026-07-08 |
+| Sprint 2.1 implementation ([PR #2](https://github.com/egycashcompany-ops/egycash/pull/2)) | 2.1.0 | ✅ Reviewed & merged | EGYCASH | 2026-07-09 |

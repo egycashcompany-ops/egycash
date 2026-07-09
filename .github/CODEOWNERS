@@ -1,0 +1,20 @@
+# Code ownership → required reviewers (Development Workflow §4).
+# NOTE: replace the placeholder owner with real engineer/team handles
+# (e.g. @egycashcompany-ops/platform-core) as the team grows — GitHub ignores
+# entries that reference non-existent users or teams.
+
+# Default: everything needs at least one maintainer review.
+* @egycashcompany-ops
+
+# Security-critical areas require a second reviewer (2 approvals via branch protection):
+/apps/api/src/platform/auth/ @egycashcompany-ops
+/apps/api/src/platform/rbac/ @egycashcompany-ops
+/apps/api/src/infrastructure/database/ @egycashcompany-ops
+/packages/contracts/src/permissions/ @egycashcompany-ops
+
+# CI/CD and deployment changes:
+/.github/workflows/ @egycashcompany-ops
+/docker-compose.yml @egycashcompany-ops
+
+# Architecture decisions:
+/docs/03-decisions/ @egycashcompany-ops

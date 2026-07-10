@@ -9,6 +9,30 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+- **Sprint 4.1 implementation** — HR / Recruitment: **Applicants (Stage 1)**, the
+  platform's **first Layer 2 business module** (reference:
+  `docs/02-architecture/recruitment-applicants.md`; plan frozen 2026-07-10 with
+  OQ-7/8/9/10/29/30/31/32 resolved). Backend-first (OQ-29): full contracts + APIs +
+  services + persistence; the frontend is a later sprint. The `hr` module manifest
+  registers under `/api/v1/hr` (routes `applicants`, `applicant-sources`), owns
+  `hr_applicants` / `hr_applicant_sources` / `hr_sequences`, declares its own permissions
+  (`applicant.{view,create,edit,delete,export}`, `applicant.verifyIdentity`,
+  `applicantSource.manage`), and seeds the 10 applicant sources at boot. Capabilities: a
+  requisition-driven intake pipeline (BD-001 — mandatory immutable requisition reference
+  behind a Stage-0 validator seam), manual / National-ID-derived / ID-less registration,
+  deterministic Egyptian National-ID parsing (birth date, gender, governorate — real) with
+  live-uniqueness enforcement and masked-by-default DTOs, an OCR extraction **seam** (null
+  stub, OQ-30), organization-wide atomic applicant numbering `APP-{YYYY}-{seq:6}` (BD-002),
+  heuristic duplicate flagging (never blocks), human identity verification, withdrawal,
+  Arabic-normalized search, a filterable/sortable/paginated list, an audited PII-masked CSV
+  export, a generic per-row-audited bulk executor, and attachments delegated to the platform
+  Files service (title/category/notes, transactional count). Emits
+  `hr.applicant.{created,updated,identityVerified,withdrawn}`. **Additive platform seams for
+  the first module**: a `platform/web` barrel re-exporting HTTP helpers so modules build
+  routers within the layer boundary, and wiring of `manifest.seed` into the boot sequence.
+  Public/mobile intake, external-platform adapters, real OCR, and the Stage-0 requisition
+  service are **integration seams only** (their governing OQs remain open); **no part of
+  Stage 2 (Screening) or later is built.**
 - **Sprint 4.1 planning document** (`docs/12-planning/sprint-4.1-plan.md`): HR /
   Recruitment — Applicants (Release v0.6, first business module; docs only, no
   implementation). Business analysis of the full seven-stage recruitment lifecycle

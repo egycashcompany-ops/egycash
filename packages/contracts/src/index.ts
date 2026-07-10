@@ -12,3 +12,4 @@ export * from './platform/audit.js';
 export * from './platform/scheduler.js';
 export * from './platform/files.js';
 export * from './platform/notifications.js';
+export * from './modules/hr-recruitment.js';

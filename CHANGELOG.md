@@ -9,45 +9,68 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
-- **Sprint 3.3 planning document** (`docs/12-planning/sprint-3.3-plan.md`): Notifications
-  Service — in-app inbox + email channel, channel-adapter extension points (SMS/push/
-  WhatsApp future), versioned templates, preferences, Socket.IO live push (docs only).
-  **Plan approved 2026-07-09**, then amended the same day (still pre-implementation) with
-  ten additional design decisions: template versioning + preview/test-send endpoints, the
-  full channel list, a 7-state auditable delivery-status lifecycle, an explicit retry/
-  dead-letter policy, category- and quiet-hours-aware preferences (digest mode reserved
-  for later), a closed notification-category vocabulary, real-time delivery details
-  (reconnect/missed notifications/acknowledgement/multi-tab), performance targets,
-  multi-branch fan-out considerations, and an explicit provider-agnostic commitment for
-  every channel. Two amendments **supersede** the original draft: preferences now key on
-  category instead of template, and delivery-status transitions are now audited.
-  **Amended again 2026-07-09** with ten more decisions — idempotency (event-level,
-  caller-supplied key, delivery-job status guard), the template rendering engine spec
-  (placeholder syntax, escaping, missing-variable handling, HTML+plain-text multipart
-  email), scheduled delivery (`sendAt`, recurring explicitly future), expiration
-  (`expiresAt`, never delivered past it), a four-tier `low | normal | high | critical`
-  priority (supersedes the two-tier `normal | urgent` — `critical` now bypasses quiet
-  hours), an attachment-reference strategy (file IDs, never embedded binaries), explicit
-  first-read semantics, a documented future administration console, an observability
-  approach, and a security section (sender validation, channel authorization). **Release
-  v0.5.0 Planning is now frozen** — implementation still awaits an explicit GO.
-- **Sprint 3.3 implementation** (Notifications Service, reference:
-  `docs/02-architecture/notifications-service.md`): `notificationsService.notify()` —
-  the one platform-wide, in-process entry point; synchronous in-app inbox creation
-  (list, unread count, mark one/all read with first-read-wins, archive — self-scoped, no
-  permission required) plus asynchronous, queued email delivery through a channel-
-  adapter registry (`inApp`/`email`, self-managed 5-attempt exponential-backoff retry,
-  every delivery-status transition audited). Versioned notification templates
-  (`notificationTemplate` CRUD, preview, test-send — permission-gated and audited).
-  Category-level preferences with a settings-driven default, quiet hours (server/UTC,
-  `critical` priority bypass), idempotency keys, `sendAt` scheduling, `expiresAt`
-  expiration, and file-reference attachments. Socket.IO live push (`notification:new`/
-  `notification:read`) authenticated the same way as the HTTP API, relayed across the
-  api/worker process split over Redis pub/sub. Both initially-wired event subscriptions
-  (`platform.audit.alertRaised`, `platform.roleAssignment.changed`) produce real
-  notifications end-to-end against idempotently-seeded built-in templates. Additive-only
-  elsewhere: a new RBAC read query (`listUserIdsWithPermission`) and two new settings
-  (`notifications.email.enabled`, `notifications.quietHours.enabledByDefault`).
+## [0.5.0] - 2026-07-09
+
+Release v0.5.0 — Sprint 3.3: **Notifications Service**
+([PR #15](https://github.com/egycashcompany-ops/egycash/pull/15); plan:
+`docs/12-planning/sprint-3.3-plan.md`; reference:
+`docs/02-architecture/notifications-service.md`). Planning went through two amendment
+rounds ([PR #12](https://github.com/egycashcompany-ops/egycash/pull/12)/
+[#13](https://github.com/egycashcompany-ops/egycash/pull/13)/
+[#14](https://github.com/egycashcompany-ops/egycash/pull/14)) before being frozen —
+see those PRs for the full design-decision history.
+
+### Added
+
+- **`notificationsService.notify()`** — the one platform-wide, in-process entry point
+  (never an HTTP endpoint): synchronous, bilingual, entity-referenced in-app inbox
+  creation (the delivery guarantee) plus asynchronous, queued delivery on every other
+  enabled channel through a small channel-adapter registry (`inApp`/`email` built;
+  SMS/push/WhatsApp interface-ready). Delivery failure on any channel never throws back
+  to the caller.
+- **In-app inbox** (self-scoped, no permission required): list, live unread count, mark
+  one/all read (first-read-wins), archive.
+- **Email delivery**: self-managed 5-attempt exponential-backoff retry; every
+  delivery-status transition audited; final failure raises the reliable
+  `platform.notification.deliveryFailed` event.
+- **Versioned notification templates** (`notificationTemplate` CRUD, preview,
+  test-send — permission-gated and audited): every edit, including deactivation,
+  creates a new version; nothing is ever mutated in place.
+- **Preferences**: category-level opt-in/out with a settings-driven default
+  (`notifications.email.enabled`); quiet hours (server/UTC, `critical` priority
+  bypasses).
+- **Idempotency** (caller-supplied key + delivery-job status guard), `sendAt`
+  scheduling, `expiresAt` expiration, and file-reference attachments (no binary
+  handling this sprint, by design).
+- **Socket.IO live push** (`notification:new`/`notification:read`), authenticated the
+  same way as the HTTP API, relayed across the api/worker process split over Redis
+  pub/sub (a real gap the plan's own text didn't account for — reliable-tier
+  subscribers run in the worker, which has no Socket.IO server of its own).
+- **Both initially-wired event subscriptions** (`platform.audit.alertRaised`,
+  `platform.roleAssignment.changed`) produce real notifications end-to-end against
+  idempotently-seeded built-in templates.
+- Additive-only elsewhere: a new RBAC read query (`rbacService.listUserIdsWithPermission`)
+  and two new settings (`notifications.email.enabled`,
+  `notifications.quietHours.enabledByDefault`); no existing service's behavior changed.
+
+### Fixed
+
+- **Retry-after-failure was permanently stuck**: the delivery handler kept a failed
+  channel at `processing` across its whole retry sequence, intending that as the
+  idempotency guard for the next attempt — but the guard checks for status `queued`
+  before proceeding, so every attempt after the first silently no-op'd. A channel now
+  transitions back to `queued` before its next attempt is enqueued.
+
+### Backlog (recorded for future release planning — not implemented)
+
+1. Frontend inbox UI and Socket.IO client wiring.
+2. SMS / push / WhatsApp channel adapters (interface-ready, not built).
+3. Digest/scheduled-summary notifications (`digestMode` field reserved, unused) and
+   recurring delivery (`sendAt` is a one-time timestamp only).
+4. A quiet-hours-expiry sweep job, an admin "resend a failed delivery" action, and
+   notification retention/purge.
+5. The future administration console (template management, queue monitoring, failed
+   deliveries, resend/retry, statistics) and a dedicated metrics backend.
 
 ## [0.4.0] - 2026-07-09
 

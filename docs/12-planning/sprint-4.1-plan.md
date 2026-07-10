@@ -1,6 +1,8 @@
 # Sprint 4.1 Planning — HR / Recruitment: Applicants (Release v0.6)
 
 > **Status:** 📝 Draft — business analysis under review
+> **Baseline:** the recruitment workflow shape was **approved by EGYCASH on 2026-07-10**
+> (reproduced verbatim in §1) and is the anchor this analysis works against.
 > **Type:** Planning & business analysis only — **no implementation is authorized by this
 > document.** It deliberately contains no APIs, no database schema, no models, services,
 > controllers, or routes.
@@ -20,26 +22,81 @@ Related, already-approved material this document builds on (and never overrides)
 [Ubiquitous Language](../01-domain/ubiquitous-language.md).
 
 Where the workflow as stated leaves a business gap, this document **records an Open
-Question (§9) instead of assuming an answer** — per the review instruction. Open
-Questions continue the global numbering (OQ-1…OQ-6 are resolved; this document raises
-**OQ-7 … OQ-30**).
+Question (§10) instead of assuming an answer** — per the review instruction. Open
+Questions continue the global numbering (OQ-1…OQ-6 were resolved earlier; this document
+raises **OQ-7 … OQ-32**, of which **OQ-8 is already resolved** by the approved baseline
+workflow).
 
 ---
 
 ## 1. The recruitment lifecycle in context
 
-The recruitment process consists of seven business stages forming **one workflow, not
-seven isolated modules**:
+The recruitment process is **one workflow, not seven isolated modules**. The approved
+baseline (EGYCASH, 2026-07-10), reproduced verbatim:
 
-```mermaid
-flowchart LR
-    A[1 Applicants] --> B[2 Initial Screening]
-    B --> C[3 Interviews]
-    C --> D[4 Job Offer]
-    D --> E[5 Employee Hiring]
-    E --> F[6 Hiring Documents]
-    F --> G[7 Electronic Employee File]
 ```
+Applicant
+    │
+    ▼
+Initial Screening
+    │
+    ├── Rejected
+    └── Accepted
+             │
+             ▼
+Interview #1
+    │
+    ├── Failed
+    └── Passed
+             │
+             ▼
+Interview #2
+    │
+    ├── Failed
+    └── Passed
+             │
+             ▼
+Job Offer
+    │
+    ├── Rejected
+    ├── Expired
+    └── Accepted
+             │
+             ▼
+Hiring Documents
+             │
+             ▼
+Employee Created
+             │
+             ▼
+Electronic Employee File
+```
+
+What the approved baseline **settles**:
+
+- **Hiring Documents precede Employee Created.** This matches the approved domain
+  model's ordering (documents gate employment) and **resolves OQ-8**: no employee
+  exists until the hiring documents stage completes, so no "un-hire" path is needed.
+- **Job Offer has three outcomes — Rejected, Expired, Accepted.** *Expired* is now an
+  approved first-class outcome (this closes the offer-expiry gap this analysis raised;
+  the expiry policy's parameters — validity period, who sets it — are stage-4 planning
+  detail).
+- The failure exits are explicit at every evaluative stage: screening Rejected,
+  interview Failed, offer Rejected/Expired — each a terminal outcome for that
+  application.
+
+What the baseline **leaves open** (differences from the earlier written brief, recorded
+as Open Questions rather than assumed away):
+
+- The diagram shows **exactly two interview rounds**; the earlier brief said the number
+  of interview stages *"must NOT be fixed — administrators create interview stages
+  dynamically."* Is the diagram the canonical two-round example of an admin-defined
+  sequence, or is the count now fixed at two? → **OQ-31**
+- The diagram's screening shows only **Rejected/Accepted**; the earlier brief included
+  a third outcome, *"requires more information."* Dropped, or omitted for diagram
+  brevity? → **OQ-32**
+- The diagram starts at **Applicant** — it neither shows nor contradicts BD-001's Job
+  Requisition as stage 0, so **OQ-7 remains open and blocking**.
 
 ### 1.1 Lifecycle-level review findings
 
@@ -53,13 +110,11 @@ finding is recorded as an Open Question — none is assumed resolved.
    is being reconsidered. Everything downstream (which position an applicant is
    evaluated for, which branch context applies, when a vacancy is "filled") depends on
    this. → **OQ-7**
-2. **Stage order: employee before documents.** Stage 5 creates the Employee *before*
-   stage 6 collects and verifies hiring documents. The approved domain model orders it
-   the other way (*Hiring Case completes only when all required documents are collected
-   and verified; the Employee File is assembled only from a completed hiring case*).
-   Creating an employee whose criminal-record certificate or military status later
-   fails verification forces an "un-hire" path — heavy, audit-sensitive, and avoidable.
-   → **OQ-8**
+2. **Stage order: employee before documents — ✅ resolved by the approved baseline.**
+   The earlier seven-item list created the Employee before collecting hiring documents;
+   the approved baseline (§1) orders it Hiring Documents → Employee Created, matching
+   the approved domain model (*Hiring Case completes only when all required documents
+   are collected and verified*). No "un-hire" path is needed. → **OQ-8 resolved**
 3. **The Recruitment ⇄ Employment boundary.** Stages 5 and 7 (Employee, ongoing
    Electronic Employee File) sit on the boundary the bounded-context map explicitly
    defends ("will exert pressure to merge into one HR context — resist"). What
@@ -72,7 +127,8 @@ finding is recorded as an Open Question — none is assumed resolved.
 5. **Missing lifecycle edges.** The stages describe the happy path. Not described:
    applicant **withdrawal** (possible at any stage), **re-application** by the same
    person, a **talent pool** outcome ("good candidate, wrong timing" — neither pass
-   nor fail), interview **no-shows**, offer **negotiation/expiry/revocation**,
+   nor fail), interview **no-shows**, offer **negotiation/revocation** (expiry is now
+   an approved baseline outcome, §1),
    requisition **filled/cancelled/frozen** effects on in-flight applicants.
    → **OQ-12, OQ-13** (stage-2/3/4 specifics recorded when those stages are planned)
 6. **Notifying applicants is a platform gap.** Stage-3 WhatsApp/SMS/Email notifications
@@ -390,16 +446,21 @@ includes the full UI is the largest sizing decision in this release → **OQ-29*
 
 ---
 
-## 10. Open Questions (OQ-7 … OQ-30)
+## 10. Open Questions (OQ-7 … OQ-32)
 
 **No implementation planning can be frozen until the blocking questions are answered.**
+
+### Resolved during this analysis
+
+| ID | Question | Resolution |
+| --- | --- | --- |
+| **OQ-8** | Stage order: employee created before or after hiring-document verification? | ✅ **Resolved by the approved baseline workflow (2026-07-10)** — Hiring Documents precede Employee Created; verified documents gate employee creation; no un-hire path needed |
 
 ### Blocking / structural
 
 | ID | Question |
 | --- | --- |
-| **OQ-7** | Does **BD-001 stand**? Is the Job Requisition the unstated stage 0 — every applicant (including public-form applicants, who would then apply to a *listed vacancy*) attached to an approved requisition? Or is BD-001 being revisited? |
-| **OQ-8** | Stage order: may an Employee be created **before** hiring documents are verified (current stage 5→6 order), or do verified documents gate employee creation (approved domain-model order)? If before: what is the un-hire path when documents fail? |
+| **OQ-7** | Does **BD-001 stand**? Is the Job Requisition the unstated stage 0 — every applicant (including public-form applicants, who would then apply to a *listed vacancy*) attached to an approved requisition? Or is BD-001 being revisited? (The approved baseline diagram starts at *Applicant* and neither shows nor contradicts a requisition.) |
 | **OQ-9** | Is v0.6's "Employee" a **minimal identity record** (number, identity, permanent applicant reference, hire date) that the future Employment module extends — with all Employee Management explicitly out of scope? |
 | **OQ-10** | Is the Electronic Employee File's **ongoing** edit/grow lifecycle in v0.6, or only its creation from the sealed hiring snapshot? |
 | **OQ-29** | Does v0.6 include the **full frontend** (grids/filters/bulk/export foundation) or ship backend-first like all previous releases? |
@@ -415,6 +476,8 @@ includes the full UI is the largest sizing decision in this release → **OQ-29*
 | OQ-14 | Is extending the Notifications Service with **external recipients** (applicant phone/e-mail, no user account) the accepted direction for applicant-facing messages? |
 | OQ-15 | Recruiter **data scope**: branch-scoped pipelines or organization-wide visibility (ADR-004 machinery supports both)? |
 | OQ-16 | **PII retention** for terminal, never-hired applicants (ID scans, documents): retention window and purge policy (Egypt PDPL, Law 151/2020 exposure)? |
+| OQ-31 | The approved baseline shows **exactly two interview rounds**; the earlier brief required admin-defined, non-fixed stage counts. Is two the fixed count, or the canonical example of a configurable sequence? |
+| OQ-32 | The approved baseline's screening has only **Rejected/Accepted**; the earlier brief included *"requires more information."* Is that third outcome dropped, or omitted for brevity? |
 
 ### Stage-1 specific
 

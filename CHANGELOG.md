@@ -21,12 +21,16 @@ its entry here in the same PR.
   a complete business classification of applicant data (10 groups with stage gates
   and sensitivity levels), a four-population documents-ownership/lifecycle model
   (temporary → applicant → sealed hiring snapshot → employee file, reference-don't-
-  copy), and grid/filter/bulk/export requirements with safety rules. Records
-  **24 Open Questions (OQ-7…OQ-30)** — including whether BD-001's requisition anchor
-  is the unstated stage 0, the employee-before-documents ordering conflict with the
-  approved domain model, and the unbuilt-dependency sequencing (sequences service,
-  approvals, OCR, external-recipient notifications, frontend grid foundation) —
-  **none assumed, all awaiting business resolution before planning freezes**.
+  copy), and grid/filter/bulk/export requirements with safety rules. Anchored to the
+  **EGYCASH-approved baseline workflow (2026-07-10)**: screening → interviews →
+  offer (Rejected/Expired/Accepted) → hiring documents → employee created →
+  electronic file — the documents-before-employee ordering resolves OQ-8. Records
+  **Open Questions OQ-7…OQ-32** (24 open, OQ-8 resolved by the baseline) — including
+  whether BD-001's requisition anchor is the unstated stage 0, whether the interview
+  count is fixed at two or admin-configurable, and the unbuilt-dependency sequencing
+  (sequences service, approvals, OCR, external-recipient notifications, frontend grid
+  foundation) — **none assumed, all awaiting business resolution before planning
+  freezes**.
 
 ## [0.5.0] - 2026-07-09
 

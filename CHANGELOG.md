@@ -24,13 +24,17 @@ its entry here in the same PR.
   copy), and grid/filter/bulk/export requirements with safety rules. Anchored to the
   **EGYCASH-approved baseline workflow (2026-07-10)**: screening → interviews →
   offer (Rejected/Expired/Accepted) → hiring documents → employee created →
-  electronic file — the documents-before-employee ordering resolves OQ-8. Records
-  **Open Questions OQ-7…OQ-32** (24 open, OQ-8 resolved by the baseline) — including
-  whether BD-001's requisition anchor is the unstated stage 0, whether the interview
-  count is fixed at two or admin-configurable, and the unbuilt-dependency sequencing
-  (sequences service, approvals, OCR, external-recipient notifications, frontend grid
-  foundation) — **none assumed, all awaiting business resolution before planning
-  freezes**.
+  electronic file. **Four business decisions were approved 2026-07-10, resolving
+  OQ-7/8/31/32**: recruitment stays requisition-driven (BD-001 unchanged) with the
+  Job Requisition documented as a separately-planned **Stage 0** prerequisite that
+  every applicant references; hiring documents precede employee creation; interview
+  stages are **administrator-configurable** (two rounds is the default, not a limit);
+  and screening has **Accepted/Rejected outcomes only** (missing information keeps the
+  applicant in Screening, no separate state). Records **Open Questions OQ-7…OQ-32**
+  (4 resolved, 20 open) — the remaining blockers being the minimal-Employee shape, the
+  frontend scope, and unbuilt-dependency sequencing (sequences service, approvals, OCR,
+  external-recipient notifications, frontend grid foundation) — **none assumed, all
+  awaiting business resolution before planning freezes**.
 
 ## [0.5.0] - 2026-07-09
 

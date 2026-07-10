@@ -59,4 +59,4 @@ also self-contained enough to be read on its own.
 | Sprint 3.3 plan — 10 more decisions, planning frozen ([PR #14](https://github.com/egycashcompany-ops/egycash/pull/14)) | 1.2.0 | 🧊 **Frozen & approved — implementation GO given** | EGYCASH | 2026-07-09 |
 | Sprint 3.3 — Notifications Service ([PR #15](https://github.com/egycashcompany-ops/egycash/pull/15)) | 0.5.0 | ✅ Reviewed & merged | EGYCASH | 2026-07-09 |
 | Sprint 3.3 bookkeeping — Release v0.5.0 recorded ([PR #16](https://github.com/egycashcompany-ops/egycash/pull/16)) | — | ✅ Reviewed & merged | EGYCASH | 2026-07-10 |
-| Sprint 4.1 plan — HR/Recruitment: Applicants business analysis (this PR) | 1.1.0 | 🔍 Under review — baseline workflow approved 2026-07-10; OQ-8 resolved, OQ-7 + 23 others open | — | 2026-07-10 |
+| Sprint 4.1 plan — HR/Recruitment: Applicants business analysis (this PR) | 1.2.0 | 🔍 Under review — baseline workflow + 4 decisions approved 2026-07-10 (OQ-7/8/31/32 resolved); 20 OQs open | — | 2026-07-10 |

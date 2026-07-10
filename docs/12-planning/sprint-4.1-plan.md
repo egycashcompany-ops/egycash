@@ -24,8 +24,9 @@ Related, already-approved material this document builds on (and never overrides)
 Where the workflow as stated leaves a business gap, this document **records an Open
 Question (§10) instead of assuming an answer** — per the review instruction. Open
 Questions continue the global numbering (OQ-1…OQ-6 were resolved earlier; this document
-raises **OQ-7 … OQ-32**, of which **OQ-8 is already resolved** by the approved baseline
-workflow).
+raises **OQ-7 … OQ-32**). **Four are resolved by EGYCASH decisions of 2026-07-10** —
+OQ-7 (requisition-driven, Stage 0), OQ-8 (documents before employee), OQ-31 (interviews
+configurable), OQ-32 (screening Accepted/Rejected only) — leaving **20 open**.
 
 ---
 
@@ -85,31 +86,34 @@ What the approved baseline **settles**:
   interview Failed, offer Rejected/Expired — each a terminal outcome for that
   application.
 
-What the baseline **leaves open** (differences from the earlier written brief, recorded
-as Open Questions rather than assumed away):
+Two differences between the baseline diagram and the earlier written brief were resolved
+by EGYCASH on 2026-07-10 (reflected in the relevant sections below):
 
-- The diagram shows **exactly two interview rounds**; the earlier brief said the number
-  of interview stages *"must NOT be fixed — administrators create interview stages
-  dynamically."* Is the diagram the canonical two-round example of an admin-defined
-  sequence, or is the count now fixed at two? → **OQ-31**
-- The diagram's screening shows only **Rejected/Accepted**; the earlier brief included
-  a third outcome, *"requires more information."* Dropped, or omitted for diagram
-  brevity? → **OQ-32**
-- The diagram starts at **Applicant** — it neither shows nor contradicts BD-001's Job
-  Requisition as stage 0, so **OQ-7 remains open and blocking**.
+- **Interviews are configurable (→ OQ-31 resolved).** The diagram's two rounds are the
+  **default configuration**, not a domain limit. The number, names, and order of
+  interview stages are **administrator-configurable**; two interviews is only the
+  shipped default. (Detail lands with the Interviews stage plan; recorded here so the
+  Applicant/pipeline model treats the interview sequence as data, not a fixed shape.)
+- **Screening has exactly two outcomes (→ OQ-32 resolved).** The official screening
+  outcomes are **Accepted** and **Rejected** only. When HR needs more information, the
+  applicant **remains in the Screening stage** until the missing information is
+  completed — there is **no separate "Needs More Information" workflow state**.
+
+The diagram starts at **Applicant**; the Job Requisition that precedes it is documented
+as **Stage 0** in §1.2 (→ OQ-7 resolved: recruitment remains requisition-driven).
 
 ### 1.1 Lifecycle-level review findings
 
 A senior-HR-architect pass over the whole lifecycle before zooming into Stage 1. Each
 finding is recorded as an Open Question — none is assumed resolved.
 
-1. **The requisition question (blocking).** The seven stages begin at *Applicants*, but
-   the approved **BD-001** makes the **Job Requisition** the pipeline anchor: *"no
-   applicant can be hired without a Job Requisition; free-floating applicants do not
-   exist."* Either the requisition is the unstated stage 0 of this workflow, or BD-001
-   is being reconsidered. Everything downstream (which position an applicant is
-   evaluated for, which branch context applies, when a vacancy is "filled") depends on
-   this. → **OQ-7**
+1. **The requisition question — ✅ resolved (EGYCASH, 2026-07-10).** Recruitment is
+   **always requisition-driven; BD-001 stands unchanged.** The workflow starts from an
+   **approved Job Requisition (Stage 0)**, and **every applicant belongs to exactly one
+   Job Requisition**. The Job Requisition itself is **outside the Recruitment module**
+   and will be planned separately — this document treats it as a documented prerequisite
+   (§1.2), not as work in this sprint, and the Applicants workflow is unchanged by the
+   decision. → **OQ-7 resolved**
 2. **Stage order: employee before documents — ✅ resolved by the approved baseline.**
    The earlier seven-item list created the Employee before collecting hiring documents;
    the approved baseline (§1) orders it Hiring Documents → Employee Created, matching
@@ -141,16 +145,42 @@ finding is recorded as an Open Question — none is assumed resolved.
    (branch vs organization), and PII retention for applicants who are never hired.
    → **OQ-15, OQ-16**
 
-### 1.2 Platform dependencies the lifecycle assumes (reality check)
+### 1.2 Stage 0 — Job Requisition (prerequisite, planned separately)
+
+**Approved (EGYCASH, 2026-07-10):** recruitment is always requisition-driven; the
+pipeline begins at an **approved Job Requisition**. Recorded here as the documented
+prerequisite to Stage 1 — **not designed or built in this sprint**:
+
+- A **Job Requisition** is an approved vacancy (position/job title, branch, headcount,
+  budget — per the approved domain model and BD-001) that must be **approved before any
+  applicant can be attached to it**.
+- **Every Applicant belongs to exactly one Job Requisition** and inherits its position
+  and branch context. There are no free-floating applicants (BD-001).
+- The **Job Requisition lives outside the Recruitment module** and has its own planning
+  document, approval workflow, and lifecycle. Whether it belongs to a dedicated
+  `requisitions` sub-module or elsewhere in `hr` is decided in that separate plan.
+- **Consequence for Stage 1:** the Applicant model carries a **mandatory, immutable
+  reference to its Job Requisition**; registration (internal and public) selects the
+  requisition being applied to; a public applicant applies to a *published* requisition
+  (the publication mechanism is Stage-0/requisition-plan scope, not this document).
+  This is the only structural addition the decision makes to the Applicants workflow —
+  the workflow shape (§1) is otherwise unchanged.
+
+Because Stage 0 is a separate capability, its two enabling dependencies (an approvals
+mechanism, and requisition publication for public applicants) are tracked in §1.3 and do
+not gate Stage 1's own planning beyond providing the requisition reference.
+
+### 1.3 Platform dependencies the lifecycle assumes (reality check)
 
 | Dependency | Needed by | Status today |
 | --- | --- | --- |
 | Sequence/numbering service | Applicant numbers `APP-{YYYY}-{seq:6}` (BD-002); employee numbers later | ❌ not built (phase-2.2 backlog) |
-| Workflow / Approvals v1 | Requisition approval (BD-001), offer approval | ❌ not built (was Sprint 2.3 scope) |
+| Workflow / Approvals v1 | Requisition approval (BD-001, Stage 0), offer approval | ❌ not built (was Sprint 2.3 scope) |
 | OCR capability (ADR-014) | National ID extraction | ❌ not built — the Files service's `ocr` processor seam is the plug-in point |
 | Virus scanning (real engine) | Public-form file uploads | ❌ seam exists, no engine wired |
 | External-recipient notifications + WhatsApp/SMS adapters | Applicant-facing messages | ❌ user-only recipients today |
-| Frontend data-grid/filter/export foundation | Every screen requirement (§8) | ❌ `apps/web` is a minimal scaffold |
+| Frontend data-grid/filter/export foundation | Every screen requirement (§9) | ❌ `apps/web` is a minimal scaffold |
+| Job Requisition (Stage 0) | The mandatory requisition reference every Applicant carries | ❌ planned separately (§1.2) |
 
 Whether each is **built first**, **interim-manual**, or **de-scoped from v0.6** is a
 business sequencing decision → **OQ-30**.
@@ -272,9 +302,11 @@ recruiter verifies the National ID).
 
 The public form is a **subset** of the internal registration form (§7): identity as
 typed by the applicant, contact, address, education/experience summary, CV upload,
-expected salary and availability, and — if BD-001 stands — **which vacancy they are
-applying to** (public listing of open requisitions is then implied; whether vacancies
-are publicly listed is part of OQ-7's resolution).
+expected salary and availability, and — since recruitment is requisition-driven
+(OQ-7 resolved, §1.2) — **the Job Requisition they are applying to**. A public applicant
+therefore applies to a *published* requisition; the publication mechanism (how a Stage-0
+requisition is exposed to the public form) is **Stage-0 / requisition-plan scope**, not
+this document.
 
 ---
 
@@ -372,7 +404,7 @@ stage gate at which the group must be complete — confirming these gates is **O
 | 6 | **Work experience** | Prior employers (name, position, from/to, leaving reason), total years, current employment status, notice period | Screening | Low |
 | 7 | **Licenses & certifications** | Driving licenses (**grade/class and expiry** — decisive for driver roles), professional certificates, any security-work permits | Role-dependent: screening for driver/guard requisitions | Medium |
 | 8 | **References** | Name, relationship, phone — n entries | Optional; before hiring recommended | Medium — third-party PII |
-| 9 | **Application context** | Requisition applied to (per BD-001/OQ-7), source + source detail, intake channel, expected salary, earliest start date, willingness to relocate/travel/shift-work | Registration | Low |
+| 9 | **Application context** | **Job Requisition applied to** (mandatory, immutable — BD-001 / OQ-7 resolved, §1.2), source + source detail, intake channel, expected salary, earliest start date, willingness to relocate/travel/shift-work | Registration | Low |
 | 10 | **Marital & family status** | Marital status (card-face), dependents count | Identity gate (card-face part) | Medium |
 
 Explicitly recorded classification decisions:
@@ -450,21 +482,23 @@ includes the full UI is the largest sizing decision in this release → **OQ-29*
 
 **No implementation planning can be frozen until the blocking questions are answered.**
 
-### Resolved during this analysis
+### Resolved (EGYCASH decisions, 2026-07-10)
 
 | ID | Question | Resolution |
 | --- | --- | --- |
-| **OQ-8** | Stage order: employee created before or after hiring-document verification? | ✅ **Resolved by the approved baseline workflow (2026-07-10)** — Hiring Documents precede Employee Created; verified documents gate employee creation; no un-hire path needed |
+| **OQ-7** | Does BD-001 stand — is the Job Requisition the pipeline anchor? | ✅ **Yes, BD-001 unchanged.** Recruitment is always requisition-driven; the workflow starts from an approved **Job Requisition (Stage 0)**; every applicant belongs to exactly one requisition. The Job Requisition is **outside the Recruitment module, planned separately** (§1.2). The Applicants workflow is unchanged. |
+| **OQ-8** | Stage order: employee created before or after hiring-document verification? | ✅ **Resolved by the approved baseline workflow** — Hiring Documents precede Employee Created; verified documents gate employee creation; no un-hire path needed |
+| **OQ-31** | Is the interview count fixed at two, or configurable? | ✅ **Configurable.** Two interviews is the **default configuration only**; the number, names, and order of interview stages are **administrator-configurable** — not a domain limitation (detail with the Interviews stage plan) |
+| **OQ-32** | Does screening have a third "needs more information" outcome? | ✅ **No.** Official screening outcomes are **Accepted / Rejected only**. If HR needs more information, the applicant **remains in Screening** until it is completed — **no separate workflow state** is introduced |
 
-### Blocking / structural
+### Blocking / structural (still open)
 
 | ID | Question |
 | --- | --- |
-| **OQ-7** | Does **BD-001 stand**? Is the Job Requisition the unstated stage 0 — every applicant (including public-form applicants, who would then apply to a *listed vacancy*) attached to an approved requisition? Or is BD-001 being revisited? (The approved baseline diagram starts at *Applicant* and neither shows nor contradicts a requisition.) |
 | **OQ-9** | Is v0.6's "Employee" a **minimal identity record** (number, identity, permanent applicant reference, hire date) that the future Employment module extends — with all Employee Management explicitly out of scope? |
 | **OQ-10** | Is the Electronic Employee File's **ongoing** edit/grow lifecycle in v0.6, or only its creation from the sealed hiring snapshot? |
 | **OQ-29** | Does v0.6 include the **full frontend** (grids/filters/bulk/export foundation) or ship backend-first like all previous releases? |
-| **OQ-30** | For each unbuilt dependency (§1.2): build-first, interim-manual (e.g., manual applicant numbers until the sequence service exists?), or de-scope from v0.6? |
+| **OQ-30** | For each unbuilt dependency (§1.3): build-first, interim-manual (e.g., manual applicant numbers until the sequence service exists?), or de-scope from v0.6? |
 
 ### Lifecycle-wide
 
@@ -476,8 +510,6 @@ includes the full UI is the largest sizing decision in this release → **OQ-29*
 | OQ-14 | Is extending the Notifications Service with **external recipients** (applicant phone/e-mail, no user account) the accepted direction for applicant-facing messages? |
 | OQ-15 | Recruiter **data scope**: branch-scoped pipelines or organization-wide visibility (ADR-004 machinery supports both)? |
 | OQ-16 | **PII retention** for terminal, never-hired applicants (ID scans, documents): retention window and purge policy (Egypt PDPL, Law 151/2020 exposure)? |
-| OQ-31 | The approved baseline shows **exactly two interview rounds**; the earlier brief required admin-defined, non-fixed stage counts. Is two the fixed count, or the canonical example of a configurable sequence? |
-| OQ-32 | The approved baseline's screening has only **Rejected/Accepted**; the earlier brief included *"requires more information."* Is that third outcome dropped, or omitted for brevity? |
 
 ### Stage-1 specific
 

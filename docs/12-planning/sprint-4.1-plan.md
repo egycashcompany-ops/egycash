@@ -1,17 +1,31 @@
 # Sprint 4.1 Planning — HR / Recruitment: Applicants (Release v0.6)
 
-> **Status:** 📝 Draft — business analysis under review
+> **Status:** 🧊 **Frozen 2026-07-10 (EGYCASH-approved). Implementation of Stage 1
+> (Applicants) authorized — backend-first.**
 > **Baseline:** the recruitment workflow shape was **approved by EGYCASH on 2026-07-10**
 > (reproduced verbatim in §1) and is the anchor this analysis works against.
-> **Type:** Planning & business analysis only — **no implementation is authorized by this
-> document.** It deliberately contains no APIs, no database schema, no models, services,
-> controllers, or routes.
 > **Scope discipline (BD-006):** Release v0.6 covers the **Recruitment** sub-module of the
-> `hr` module only. This sprint plans **Stage 1 — Applicants** in depth; the other six
+> `hr` module only. This sprint implements **Stage 1 — Applicants** only; the other six
 > stages are surveyed to keep Stage 1 decisions lifecycle-safe, but their own planning
-> documents come later.
+> documents and implementation come later. **No part of Stage 2 (Screening) or beyond is
+> built.**
 > **Naming note:** "Sprint 4.x" is proposed for Milestone-3 (business module) sprints,
 > continuing from the 3.x platform-capability series. Rename freely at review.
+
+> **Freeze decisions (EGYCASH, 2026-07-10) — the last blocking Open Questions, resolved:**
+> - **OQ-29 → Backend-first.** Stage 1 ships the **full backend** (contracts + APIs +
+>   services + persistence). The **frontend is a separate later sprint** — `apps/web`
+>   grids/filters/export are not built here.
+> - **OQ-30 → Unbuilt dependencies become integration points/abstractions only.** Any
+>   capability that does not yet exist (OCR, external-recipient/WhatsApp-SMS
+>   notifications, the Stage-0 Job Requisition service, and the like) is represented by a
+>   **swappable interface/adapter with a safe default**, never a concrete implementation
+>   this sprint. Real, self-contained pieces that *can* be built without a missing
+>   dependency (Egyptian National-ID number parsing/validation, Arabic-normalized search,
+>   organization-wide applicant numbering) **are** built.
+> - **OQ-9 / OQ-10 → not blocking for Stage 1.** The definition of "Employee" and the
+>   Electronic Employee File lifecycle are handled in their own later stages and do **not**
+>   affect Applicants. They remain open, parked against those stages.
 
 Related, already-approved material this document builds on (and never overrides):
 [BD-001 (requisition-driven recruitment)](../01-domain/business-decisions.md#bd-001--recruitment-is-requisition-driven) ·
@@ -24,9 +38,14 @@ Related, already-approved material this document builds on (and never overrides)
 Where the workflow as stated leaves a business gap, this document **records an Open
 Question (§10) instead of assuming an answer** — per the review instruction. Open
 Questions continue the global numbering (OQ-1…OQ-6 were resolved earlier; this document
-raises **OQ-7 … OQ-32**). **Four are resolved by EGYCASH decisions of 2026-07-10** —
+raises **OQ-7 … OQ-32**). **Seven are resolved by EGYCASH decisions of 2026-07-10** —
 OQ-7 (requisition-driven, Stage 0), OQ-8 (documents before employee), OQ-31 (interviews
-configurable), OQ-32 (screening Accepted/Rejected only) — leaving **20 open**.
+configurable), OQ-32 (screening Accepted/Rejected only), **OQ-29 (backend-first),
+OQ-30 (unbuilt dependencies → abstractions), and OQ-9/OQ-10 declared non-blocking for
+Stage 1** — clearing the last blockers and **freezing the plan for Stage 1
+implementation**. The remaining open OQs concern later stages or intentionally-deferred
+Stage-1 policy (public-form anti-abuse OQ-17/18, retention OQ-16, bulk/export specifics
+OQ-27/28, …) and are handled as noted in §10.
 
 ---
 
@@ -470,17 +489,19 @@ Review — recommended additions and the rules that make the required set safe:
 | **Grid preferences** | Column show/hide/order per user; server-side pagination/sorting as the platform standard |
 | **Duplicate-flag surfacing** | The §2.1 heuristic flags must be a first-class filterable state, or they will be ignored |
 
-**Scope flag:** this is the platform's **first real frontend investment** (`apps/web`
-is a minimal scaffold; every prior sprint was backend-only). Building grids, filters,
-saved views, and export well means building a *reusable* foundation once — potentially
-its own sprint. Whether v0.6 Stage 1 ships backend-first (like every release so far) or
-includes the full UI is the largest sizing decision in this release → **OQ-29**.
+**Scope flag (resolved — OQ-29 → backend-first):** the frontend grid/filter/saved-view/
+export UI is a **separate later sprint**. Stage 1 delivers the **backend** for all of the
+above — a filterable, sortable, paginated list API; Arabic-normalized search; an audited,
+PII-masked export endpoint; and a generic per-row-audited bulk executor — so the future
+frontend has a complete API to build against.
 
 ---
 
 ## 10. Open Questions (OQ-7 … OQ-32)
 
-**No implementation planning can be frozen until the blocking questions are answered.**
+**All blocking questions are resolved (below); the plan is frozen for Stage 1
+implementation. The remaining open OQs govern later stages or intentionally-deferred
+Stage-1 policy and do not block the Applicants build.**
 
 ### Resolved (EGYCASH decisions, 2026-07-10)
 
@@ -488,19 +509,43 @@ includes the full UI is the largest sizing decision in this release → **OQ-29*
 | --- | --- | --- |
 | **OQ-7** | Does BD-001 stand — is the Job Requisition the pipeline anchor? | ✅ **Yes, BD-001 unchanged.** Recruitment is always requisition-driven; the workflow starts from an approved **Job Requisition (Stage 0)**; every applicant belongs to exactly one requisition. The Job Requisition is **outside the Recruitment module, planned separately** (§1.2). The Applicants workflow is unchanged. |
 | **OQ-8** | Stage order: employee created before or after hiring-document verification? | ✅ **Resolved by the approved baseline workflow** — Hiring Documents precede Employee Created; verified documents gate employee creation; no un-hire path needed |
+| **OQ-9** | Is v0.6's "Employee" a minimal identity record? | ✅ **Not blocking for Stage 1.** Employee definition is handled in its own later stage; it does not affect Applicants. Parked against the Employee-creation stage. |
+| **OQ-10** | Is the Electronic Employee File's ongoing lifecycle in v0.6? | ✅ **Not blocking for Stage 1.** Handled in the Electronic-File stage; does not affect Applicants. Parked. |
+| **OQ-29** | Full frontend, or backend-first? | ✅ **Backend-first.** Stage 1 ships the full backend (contracts + APIs + services + persistence); the frontend is a **separate later sprint**. |
+| **OQ-30** | Unbuilt dependencies: build, interim-manual, or de-scope? | ✅ **Integration points/abstractions only.** Any missing capability (OCR, external-recipient notifications, the Stage-0 requisition service, …) is a **swappable interface/adapter with a safe default**; self-contained pieces that need no missing dependency (National-ID parsing, Arabic search, applicant numbering) are built for real. |
 | **OQ-31** | Is the interview count fixed at two, or configurable? | ✅ **Configurable.** Two interviews is the **default configuration only**; the number, names, and order of interview stages are **administrator-configurable** — not a domain limitation (detail with the Interviews stage plan) |
 | **OQ-32** | Does screening have a third "needs more information" outcome? | ✅ **No.** Official screening outcomes are **Accepted / Rejected only**. If HR needs more information, the applicant **remains in Screening** until it is completed — **no separate workflow state** is introduced |
 
-### Blocking / structural (still open)
+### Deferred — do not block Stage 1 (resolved when their stage/topic is planned)
 
-| ID | Question |
-| --- | --- |
-| **OQ-9** | Is v0.6's "Employee" a **minimal identity record** (number, identity, permanent applicant reference, hire date) that the future Employment module extends — with all Employee Management explicitly out of scope? |
-| **OQ-10** | Is the Electronic Employee File's **ongoing** edit/grow lifecycle in v0.6, or only its creation from the sealed hiring snapshot? |
-| **OQ-29** | Does v0.6 include the **full frontend** (grids/filters/bulk/export foundation) or ship backend-first like all previous releases? |
-| **OQ-30** | For each unbuilt dependency (§1.3): build-first, interim-manual (e.g., manual applicant numbers until the sequence service exists?), or de-scope from v0.6? |
+The questions below stay open. Where a Stage-1 code path would otherwise need them, the
+implementation takes the **non-assuming, reversible** option and records it, rather than
+guessing the eventual policy:
 
-### Lifecycle-wide
+- **Public-form policy (OQ-17 anti-abuse level, OQ-18 convert-vs-auto):** the
+  unauthenticated public/mobile intake **surface is not built this sprint**. Per OQ-30,
+  the intake pipeline is exposed as a **service seam** a future public controller/adapter
+  can call once these are decided; only the authenticated internal registration path is
+  built now.
+- **Integration adapters (OQ-21 referral detail, OQ-22 agency catalog):** the source
+  catalog stores an optional structured `sourceDetail`; the referral-employee and
+  agency-catalog specifics are **not modeled as first-class entities** yet.
+- **OQ-25 attachment categories:** Stage 1 **reuses the existing platform file-category
+  catalog** (the non-assuming choice — no new catalog invented); a recruitment-owned list
+  remains a future option.
+- **OQ-16 retention, OQ-26 temp-upload purge, OQ-27 bulk actions/export unmasking,
+  OQ-28 shared saved views:** Stage 1 builds an **audited, PII-masked export** and a
+  **filterable list**; a **generic per-row-audited bulk executor** is provided but the
+  specific bulk action set and shared-view model are left minimal pending these.
+- **OQ-19 ID-mandatory gate, OQ-20 cross-requisition duplicates, OQ-23 religion,
+  OQ-24 field gates:** applicants may register **ID-less (identity-unverified)**;
+  duplicate National-ID among live applicants is flagged (not hard-blocked beyond the
+  unique-live-ID invariant); **religion is not stored**; only name + one contact channel
+  + the requisition reference are mandatory at registration.
+
+The full still-open register (unchanged wording), for traceability:
+
+#### Lifecycle-wide
 
 | ID | Question |
 | --- | --- |
@@ -511,7 +556,7 @@ includes the full UI is the largest sizing decision in this release → **OQ-29*
 | OQ-15 | Recruiter **data scope**: branch-scoped pipelines or organization-wide visibility (ADR-004 machinery supports both)? |
 | OQ-16 | **PII retention** for terminal, never-hired applicants (ID scans, documents): retention window and purge policy (Egypt PDPL, Law 151/2020 exposure)? |
 
-### Stage-1 specific
+#### Stage-1 specific
 
 | ID | Question |
 | --- | --- |
@@ -530,17 +575,25 @@ includes the full UI is the largest sizing decision in this release → **OQ-29*
 
 ---
 
-## Out of scope for this document
+## Out of scope for Stage 1 implementation
 
-Implementation of anything · APIs, schemas, models, services, controllers, routes ·
-Stages 2–7 detail planning (each gets its own document) · Employee Management,
-Attendance, Payroll, Leave, Performance, Training, Medical, Termination · job-posting
-management on external platforms · referral-bonus mechanics · any Notifications
-Service changes (OQ-14 would be planned in that service's own documents).
+**Any part of Stage 2 (Screening) or later** (interviews, offers, hiring, employee,
+electronic file) · the unauthenticated **public/mobile intake surface** (OQ-17/18 open —
+exposed only as a service seam) · **external-platform integration adapters** (boundaries
+documented, no adapter built) · **OCR image extraction** (interface + null stub only) ·
+the **Stage-0 Job Requisition** service (referenced via a validator seam) ·
+external-recipient / WhatsApp-SMS notifications · the **frontend** (separate sprint) ·
+Employee Management, Attendance, Payroll, Leave, Performance, Training, Medical,
+Termination · referral-bonus mechanics · agency catalog as a first-class entity.
 
 ---
 
-*Prepared as business analysis for review. Once the Open Questions are resolved and
-this analysis is approved, the normal process continues: planning document (with the
-approved answers folded in) → review & approval → implementation → code review →
-merge → bookkeeping.*
+## Planning frozen
+
+This document is **frozen as of 2026-07-10** (EGYCASH-approved). The recruitment workflow
+baseline, the seven decisions of 2026-07-10 (OQ-7/8/9/10/29/30/31/32), and the Stage-1
+scope boundary above are the authorized specification for the **Stage 1 (Applicants)
+backend implementation**. Further planning changes are made only to fix a real defect.
+Implementation follows the frozen document exactly, per the established process:
+implement → verify → self architecture review → open PR → await review → merge →
+bookkeeping.

@@ -77,6 +77,12 @@ export const bootPlatform = async (options: BootOptions = {}): Promise<void> => 
   registerPlatformScheduledTasks();
   await schedulerService.syncRegistry();
 
+  // Module reference-data seeds run last — after permissions, the org singleton, and the
+  // scheduler exist, since a module's seed may depend on any of them (Module Structure §2.1).
+  for (const manifest of getRegisteredModules()) {
+    if (manifest.seed !== undefined) await manifest.seed();
+  }
+
   logger.info({ modules: getRegisteredModules().map((m) => m.id) }, 'platform booted');
 };
 

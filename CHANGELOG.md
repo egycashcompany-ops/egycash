@@ -9,6 +9,25 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+- **Sprint 4.1 planning document** (`docs/12-planning/sprint-4.1-plan.md`): HR /
+  Recruitment — Applicants (Release v0.6, first business module; docs only, no
+  implementation). Business analysis of the full seven-stage recruitment lifecycle
+  with an in-depth Stage 1 (Applicants) treatment: registration paths (manual,
+  Egyptian National-ID OCR with confidence bands/cross-checks/failure and missing-ID
+  workflows, ID-less registration), attachment rules (title + category + notes),
+  admin-extensible source catalog with structured referral/agency detail, public
+  web/mobile intake as a new trust boundary (pending-submission review model),
+  integration domain boundaries (adapters translate, the intake pipeline decides),
+  a complete business classification of applicant data (10 groups with stage gates
+  and sensitivity levels), a four-population documents-ownership/lifecycle model
+  (temporary → applicant → sealed hiring snapshot → employee file, reference-don't-
+  copy), and grid/filter/bulk/export requirements with safety rules. Records
+  **24 Open Questions (OQ-7…OQ-30)** — including whether BD-001's requisition anchor
+  is the unstated stage 0, the employee-before-documents ordering conflict with the
+  approved domain model, and the unbuilt-dependency sequencing (sequences service,
+  approvals, OCR, external-recipient notifications, frontend grid foundation) —
+  **none assumed, all awaiting business resolution before planning freezes**.
+
 ## [0.5.0] - 2026-07-09
 
 Release v0.5.0 — Sprint 3.3: **Notifications Service**

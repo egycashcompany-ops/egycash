@@ -9,6 +9,33 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+- **Sprint 4.1 planning document** (`docs/12-planning/sprint-4.1-plan.md`): HR /
+  Recruitment — Applicants (Release v0.6, first business module; docs only, no
+  implementation). Business analysis of the full seven-stage recruitment lifecycle
+  with an in-depth Stage 1 (Applicants) treatment: registration paths (manual,
+  Egyptian National-ID OCR with confidence bands/cross-checks/failure and missing-ID
+  workflows, ID-less registration), attachment rules (title + category + notes),
+  admin-extensible source catalog with structured referral/agency detail, public
+  web/mobile intake as a new trust boundary (pending-submission review model),
+  integration domain boundaries (adapters translate, the intake pipeline decides),
+  a complete business classification of applicant data (10 groups with stage gates
+  and sensitivity levels), a four-population documents-ownership/lifecycle model
+  (temporary → applicant → sealed hiring snapshot → employee file, reference-don't-
+  copy), and grid/filter/bulk/export requirements with safety rules. Anchored to the
+  **EGYCASH-approved baseline workflow (2026-07-10)**: screening → interviews →
+  offer (Rejected/Expired/Accepted) → hiring documents → employee created →
+  electronic file. **Four business decisions were approved 2026-07-10, resolving
+  OQ-7/8/31/32**: recruitment stays requisition-driven (BD-001 unchanged) with the
+  Job Requisition documented as a separately-planned **Stage 0** prerequisite that
+  every applicant references; hiring documents precede employee creation; interview
+  stages are **administrator-configurable** (two rounds is the default, not a limit);
+  and screening has **Accepted/Rejected outcomes only** (missing information keeps the
+  applicant in Screening, no separate state). Records **Open Questions OQ-7…OQ-32**
+  (4 resolved, 20 open) — the remaining blockers being the minimal-Employee shape, the
+  frontend scope, and unbuilt-dependency sequencing (sequences service, approvals, OCR,
+  external-recipient notifications, frontend grid foundation) — **none assumed, all
+  awaiting business resolution before planning freezes**.
+
 ## [0.5.0] - 2026-07-09
 
 Release v0.5.0 — Sprint 3.3: **Notifications Service**

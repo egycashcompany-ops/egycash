@@ -28,16 +28,16 @@ export const toInterviewDto = (doc: InterviewDoc): InterviewDto => ({
   status: doc.status,
   outcome: doc.outcome,
   scheduledAt: doc.scheduledAt.toISOString(),
-  interviewerIds: doc.interviewerIds.map(String),
+  panel: doc.panel.map((p) => ({
+    interviewerId: String(p.interviewerId),
+    state: p.state,
+    recommendation: p.recommendation,
+    rating: p.rating,
+    notes: p.notes,
+    submittedAt: p.submittedAt === null ? null : p.submittedAt.toISOString(),
+  })),
   location: doc.location,
   notes: doc.notes,
-  evaluations: doc.evaluations.map((e) => ({
-    interviewerId: String(e.interviewerId),
-    recommendation: e.recommendation,
-    rating: e.rating,
-    notes: e.notes,
-    submittedAt: e.submittedAt.toISOString(),
-  })),
   decision:
     doc.status !== 'completed' || doc.decidedAt === null
       ? null

@@ -7,8 +7,10 @@ import {
   type DecideInterview,
   type ListInterviewStagesQuery,
   type ListInterviewsQuery,
+  type ReassignInterviewPanel,
   type RescheduleInterview,
   type ScheduleInterview,
+  type SkipInterviewer,
   type SubmitInterviewEvaluation,
   type UpdateInterviewStage,
 } from '@ecms/contracts';
@@ -46,6 +48,20 @@ export const rescheduleInterview = async (req: Request, res: Response): Promise<
   const ctx = authContext(req);
   const { body, params } = validated<RescheduleInterview, never, IdParam>(req);
   const doc = await interviewService.reschedule(ctx, params.id, body, scopeSelector(ctx, 'interview.edit'));
+  ok(res, toInterviewDto(doc));
+};
+
+export const reassignInterviewPanel = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<ReassignInterviewPanel, never, IdParam>(req);
+  const doc = await interviewService.reassignPanel(ctx, params.id, body, scopeSelector(ctx, 'interview.edit'));
+  ok(res, toInterviewDto(doc));
+};
+
+export const skipInterviewer = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<SkipInterviewer, never, IdParam>(req);
+  const doc = await interviewService.skipInterviewer(ctx, params.id, body, scopeSelector(ctx, 'interview.edit'));
   ok(res, toInterviewDto(doc));
 };
 

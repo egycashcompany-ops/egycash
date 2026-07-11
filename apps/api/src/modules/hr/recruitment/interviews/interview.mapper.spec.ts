@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { Types } from 'mongoose';
 import { toInterviewDto } from './interview.mapper';
-import { type InterviewDoc } from './interview.model';
+import { type InterviewDoc, type InterviewPanelist } from './interview.model';
+
+const panelist = (over: Partial<InterviewPanelist> = {}): InterviewPanelist => ({
+  interviewerId: new Types.ObjectId(),
+  state: 'pending',
+  recommendation: null,
+  rating: null,
+  notes: null,
+  submittedAt: null,
+  ...over,
+});
 
 const baseDoc = (over: Partial<InterviewDoc>): InterviewDoc =>
   ({
@@ -15,10 +25,9 @@ const baseDoc = (over: Partial<InterviewDoc>): InterviewDoc =>
     status: 'scheduled',
     outcome: 'pending',
     scheduledAt: new Date('2026-08-01T09:00:00.000Z'),
-    interviewerIds: [],
+    panel: [],
     location: null,
     notes: null,
-    evaluations: [],
     rescheduleCount: 0,
     decisionNotes: null,
     decidedBy: null,
@@ -33,40 +42,50 @@ const baseDoc = (over: Partial<InterviewDoc>): InterviewDoc =>
   }) as InterviewDoc;
 
 describe('toInterviewDto', () => {
-  it('leaves decision null while scheduled and maps the panel + stage snapshot', () => {
-    const panel = [new Types.ObjectId(), new Types.ObjectId()];
-    const dto = toInterviewDto(baseDoc({ interviewerIds: panel }));
+  it('leaves decision null while scheduled and maps the panel with per-member state', () => {
+    const a = new Types.ObjectId();
+    const b = new Types.ObjectId();
+    const dto = toInterviewDto(
+      baseDoc({
+        panel: [
+          panelist({ interviewerId: a, state: 'pending' }),
+          panelist({ interviewerId: b, state: 'skipped' }),
+        ],
+      }),
+    );
     expect(dto.status).toBe('scheduled');
-    expect(dto.outcome).toBe('pending');
     expect(dto.decision).toBeNull();
     expect(dto.stageName).toEqual({ ar: 'المقابلة الأولى', en: 'First Interview' });
-    expect(dto.interviewerIds).toEqual(panel.map(String));
+    expect(dto.panel).toEqual([
+      { interviewerId: String(a), state: 'pending', recommendation: null, rating: null, notes: null, submittedAt: null },
+      { interviewerId: String(b), state: 'skipped', recommendation: null, rating: null, notes: null, submittedAt: null },
+    ]);
   });
 
-  it('maps per-interviewer evaluations', () => {
+  it('maps a submitted panel member evaluation', () => {
     const interviewer = new Types.ObjectId();
     const dto = toInterviewDto(
       baseDoc({
-        evaluations: [
-          {
+        panel: [
+          panelist({
             interviewerId: interviewer,
+            state: 'submitted',
             recommendation: 'recommend',
             rating: 4,
             notes: 'solid',
             submittedAt: new Date('2026-08-01T10:00:00.000Z'),
-          },
+          }),
         ],
       }),
     );
-    expect(dto.evaluations).toEqual([
-      {
-        interviewerId: String(interviewer),
-        recommendation: 'recommend',
-        rating: 4,
-        notes: 'solid',
-        submittedAt: '2026-08-01T10:00:00.000Z',
-      },
-    ]);
+    expect(dto.panel[0]).toEqual({
+      interviewerId: String(interviewer),
+      state: 'submitted',
+      recommendation: 'recommend',
+      rating: 4,
+      notes: 'solid',
+      submittedAt: '2026-08-01T10:00:00.000Z',
+    });
   });
 
   it('derives a decision block from a completed interview', () => {

@@ -61,7 +61,7 @@ class InterviewRepository extends BaseRepository<InterviewDoc> {
     if (f.applicantId !== undefined) clauses.push({ applicantId: new Types.ObjectId(f.applicantId) });
     if (f.stageId !== undefined) clauses.push({ stageId: new Types.ObjectId(f.stageId) });
     if (f.interviewerId !== undefined) {
-      clauses.push({ interviewerIds: new Types.ObjectId(f.interviewerId) });
+      clauses.push({ 'panel.interviewerId': new Types.ObjectId(f.interviewerId) } as FilterQuery<InterviewDoc>);
     }
     if (f.branchId !== undefined) clauses.push({ branchId: new Types.ObjectId(f.branchId) });
     if (f.scheduledFrom !== undefined || f.scheduledTo !== undefined) {

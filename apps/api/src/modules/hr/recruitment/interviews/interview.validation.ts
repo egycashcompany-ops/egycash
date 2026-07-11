@@ -3,6 +3,8 @@
 export {
   ScheduleInterviewSchema,
   RescheduleInterviewSchema,
+  ReassignInterviewPanelSchema,
+  SkipInterviewerSchema,
   CancelInterviewSchema,
   SubmitInterviewEvaluationSchema,
   DecideInterviewSchema,

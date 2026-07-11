@@ -12,8 +12,10 @@ import {
   getInterview,
   listInterviewStages,
   listInterviews,
+  reassignInterviewPanel,
   rescheduleInterview,
   scheduleInterview,
+  skipInterviewer,
   submitInterviewEvaluation,
   updateInterviewStage,
 } from './interview.controller';
@@ -25,8 +27,10 @@ import {
   InterviewStageIdParamSchema,
   ListInterviewStagesQuerySchema,
   ListInterviewsQuerySchema,
+  ReassignInterviewPanelSchema,
   RescheduleInterviewSchema,
   ScheduleInterviewSchema,
+  SkipInterviewerSchema,
   SubmitInterviewEvaluationSchema,
   UpdateInterviewStageSchema,
 } from './interview.validation';
@@ -61,6 +65,20 @@ export const buildInterviewsRouter = (): Router => {
     authorize('interview.edit'),
     validate({ body: RescheduleInterviewSchema, params: InterviewIdParamSchema }),
     asyncHandler(rescheduleInterview),
+  );
+  router.post(
+    '/:id/panel',
+    authenticate,
+    authorize('interview.edit'),
+    validate({ body: ReassignInterviewPanelSchema, params: InterviewIdParamSchema }),
+    asyncHandler(reassignInterviewPanel),
+  );
+  router.post(
+    '/:id/panel/skip',
+    authenticate,
+    authorize('interview.edit'),
+    validate({ body: SkipInterviewerSchema, params: InterviewIdParamSchema }),
+    asyncHandler(skipInterviewer),
   );
   router.post(
     '/:id/cancel',

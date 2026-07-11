@@ -1,10 +1,11 @@
 // Stage 3 — HR / Recruitment: Interviews integration suite. Boots the HR manifest and
 // exercises the interview lifecycle on top of Stage-1 applicants and Stage-2 screening:
 // admin-configurable stages (default two), scheduling with a panel, per-interviewer
-// evaluations, reschedule/cancel with panel notifications (Notifications service), the
-// pass/fail decision, and applicant progression (pass advances / clears; fail rejects).
-// Also proves the workflow entry gate and the create/evaluate/decide permission split.
-// Runs against an in-memory Mongo replica set (MONGO_TEST_URI overrides).
+// evaluation state (pending/submitted/skipped), independent panel reassignment, reschedule/
+// cancel with panel notifications (Notifications service), the gated pass/fail decision
+// (blocked while any interviewer is pending), and applicant progression (pass advances /
+// clears; fail rejects). Also proves the workflow entry gate and the create/evaluate/decide
+// permission split. Runs against an in-memory Mongo replica set (MONGO_TEST_URI overrides).
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -39,7 +40,7 @@ let aliceToken: string; // no HR permissions
 let interviewerId: string;
 let interviewerToken: string; // interview.view + interview.evaluate; sits on panels
 let outsiderId: string;
-let outsiderToken: string; // interview.view + interview.evaluate; NOT on panels
+let outsiderToken: string; // interview.view + interview.evaluate; NOT on panels (unless added)
 let phoneCounter = 20_000_000;
 
 const resolveMongoUri = async (): Promise<string> => {
@@ -137,6 +138,16 @@ const schedule = (applicantId: string, stageId: string, over: Record<string, unk
     .set('Authorization', `Bearer ${adminToken}`)
     .send({ applicantId, stageId, scheduledAt: FUTURE, interviewerIds: [interviewerId], ...over });
 
+/** The sole interviewer submits their evaluation; returns the interview's new version. */
+const soloSubmit = async (interview: InterviewDto): Promise<number> => {
+  const res = await request(app)
+    .post(`/api/v1/hr/interviews/${interview.id}/evaluations`)
+    .set('Authorization', `Bearer ${interviewerToken}`)
+    .send({ recommendation: 'recommend', rating: 4, version: interview.version });
+  expect(res.status).toBe(200);
+  return (res.body.data as InterviewDto).version;
+};
+
 beforeAll(async () => {
   await bootPlatform({ mongoUri: await resolveMongoUri(), modules: moduleManifests });
   app = buildApp();
@@ -150,7 +161,7 @@ beforeAll(async () => {
   await rbacService.ensureAssignment(adminId, String(superAdmin._id), 'organization');
   await mkUser('alice@ecms.local'); // no roles
 
-  // Panel members: can view + evaluate, but not schedule or decide.
+  // Panel members: can view + evaluate, but not schedule, reassign, or decide.
   const panelRole = await rbacService.createRole(
     { name: { en: 'Interviewer', ar: 'مُحاور' }, permissionKeys: ['interview.view', 'interview.evaluate'] },
     adminId,
@@ -245,7 +256,7 @@ describe('interviews — permissions & entry gate', () => {
 });
 
 describe('interviews — schedule, notify, reschedule, cancel', () => {
-  it('schedules the first interview and notifies the panel', async () => {
+  it('schedules the first interview (panel pending) and notifies the panel', async () => {
     const applicant = await acceptedApplicant();
     const stage1 = await stageIdByKey('firstInterview');
     const res = await schedule(applicant.id, stage1, { location: 'HQ, room 2', notes: 'bring CV' });
@@ -254,9 +265,10 @@ describe('interviews — schedule, notify, reschedule, cancel', () => {
     expect(dto.status).toBe('scheduled');
     expect(dto.outcome).toBe('pending');
     expect(dto.stageOrder).toBe(1);
-    expect(dto.interviewerIds).toEqual([interviewerId]);
+    expect(dto.panel).toHaveLength(1);
+    expect(dto.panel[0]?.interviewerId).toBe(interviewerId);
+    expect(dto.panel[0]?.state).toBe('pending');
 
-    // The interviewer received an in-app notification (Notifications integration).
     const inbox = await request(app)
       .get('/api/v1/platform/notifications')
       .set('Authorization', `Bearer ${interviewerToken}`);
@@ -264,7 +276,7 @@ describe('interviews — schedule, notify, reschedule, cancel', () => {
     expect((inbox.body as { data: unknown[] }).data.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('reschedules a scheduled interview (bumping the reschedule count)', async () => {
+  it('reschedules a scheduled interview (date only, bumping the reschedule count)', async () => {
     const applicant = await acceptedApplicant();
     const stage1 = await stageIdByKey('firstInterview');
     const created = (await schedule(applicant.id, stage1)).body.data as InterviewDto;
@@ -276,6 +288,7 @@ describe('interviews — schedule, notify, reschedule, cancel', () => {
     const dto = res.body.data as InterviewDto;
     expect(dto.rescheduleCount).toBe(1);
     expect(dto.scheduledAt).toBe(new Date(LATER).toISOString());
+    expect(dto.panel).toHaveLength(1); // panel untouched by reschedule
   });
 
   it('cancels a scheduled interview', async () => {
@@ -288,14 +301,56 @@ describe('interviews — schedule, notify, reschedule, cancel', () => {
       .send({ reason: 'requisition withdrawn', version: created.version });
     expect(res.status).toBe(200);
     expect((res.body.data as InterviewDto).status).toBe('cancelled');
-    // A cancelled round may be replaced at the same stage.
     const again = await schedule(applicant.id, stage1);
     expect(again.status).toBe(201);
   });
 });
 
+describe('interviews — panel reassignment (independent of scheduling)', () => {
+  it('changes the panel without touching the schedule; retains states, adds pending, drops removed', async () => {
+    const applicant = await acceptedApplicant();
+    const stage1 = await stageIdByKey('firstInterview');
+    const created = (await schedule(applicant.id, stage1)).body.data as InterviewDto;
+
+    // The seated interviewer submits before we reassign.
+    const v1 = await soloSubmit(created);
+
+    // Add the outsider to the panel — schedule (date/time) unchanged.
+    const added = await request(app)
+      .post(`/api/v1/hr/interviews/${created.id}/panel`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ interviewerIds: [interviewerId, outsiderId], version: v1 });
+    expect(added.status).toBe(200);
+    const withBoth = added.body.data as InterviewDto;
+    expect(withBoth.scheduledAt).toBe(new Date(FUTURE).toISOString());
+    expect(withBoth.panel.map((p) => p.interviewerId).sort()).toEqual([interviewerId, outsiderId].sort());
+    // Retained member keeps their submitted state; the new one is pending.
+    expect(withBoth.panel.find((p) => p.interviewerId === interviewerId)?.state).toBe('submitted');
+    expect(withBoth.panel.find((p) => p.interviewerId === outsiderId)?.state).toBe('pending');
+
+    // Removing a member drops them off.
+    const dropped = await request(app)
+      .post(`/api/v1/hr/interviews/${created.id}/panel`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ interviewerIds: [outsiderId], version: withBoth.version });
+    expect(dropped.status).toBe(200);
+    expect((dropped.body.data as InterviewDto).panel.map((p) => p.interviewerId)).toEqual([outsiderId]);
+  });
+
+  it('does not allow a panel member to reassign the panel', async () => {
+    const applicant = await acceptedApplicant();
+    const stage1 = await stageIdByKey('firstInterview');
+    const created = (await schedule(applicant.id, stage1)).body.data as InterviewDto;
+    const denied = await request(app)
+      .post(`/api/v1/hr/interviews/${created.id}/panel`)
+      .set('Authorization', `Bearer ${interviewerToken}`)
+      .send({ interviewerIds: [interviewerId, outsiderId], version: created.version });
+    expect(denied.status).toBe(403);
+  });
+});
+
 describe('interviews — evaluation (per interviewer)', () => {
-  it('lets an assigned interviewer evaluate but rejects an outsider and a non-panel evaluator', async () => {
+  it('lets an assigned interviewer evaluate (state → submitted) but refuses a non-panel evaluator', async () => {
     const applicant = await acceptedApplicant();
     const stage1 = await stageIdByKey('firstInterview');
     const interview = (await schedule(applicant.id, stage1)).body.data as InterviewDto;
@@ -305,13 +360,14 @@ describe('interviews — evaluation (per interviewer)', () => {
       .set('Authorization', `Bearer ${interviewerToken}`)
       .send({ recommendation: 'recommend', rating: 4, notes: 'strong communicator', version: interview.version });
     expect(evalRes.status).toBe(200);
-    expect((evalRes.body.data as InterviewDto).evaluations).toHaveLength(1);
+    const dto = evalRes.body.data as InterviewDto;
+    expect(dto.panel.find((p) => p.interviewerId === interviewerId)?.state).toBe('submitted');
 
     // A user with the permission but not on the panel is refused.
     const outsider = await request(app)
       .post(`/api/v1/hr/interviews/${interview.id}/evaluations`)
       .set('Authorization', `Bearer ${outsiderToken}`)
-      .send({ recommendation: 'notRecommend', version: (evalRes.body.data as InterviewDto).version });
+      .send({ recommendation: 'notRecommend', version: dto.version });
     expect(outsider.status).toBe(403);
   });
 
@@ -334,6 +390,63 @@ describe('interviews — evaluation (per interviewer)', () => {
   });
 });
 
+describe('interviews — decision gate (all interviewers submitted or skipped)', () => {
+  it('blocks a decision while any interviewer is pending; unblocks via submit + skip', async () => {
+    const applicant = await acceptedApplicant();
+    const stage1 = await stageIdByKey('firstInterview');
+    const interview = (await schedule(applicant.id, stage1, { interviewerIds: [interviewerId, outsiderId] }))
+      .body.data as InterviewDto;
+    expect(interview.panel).toHaveLength(2);
+
+    // Both pending → blocked.
+    const blocked = await request(app)
+      .post(`/api/v1/hr/interviews/${interview.id}/decide`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ outcome: 'passed', version: interview.version });
+    expect(blocked.status).toBe(422);
+
+    // One submits; the other still pending → still blocked.
+    const submitted = await request(app)
+      .post(`/api/v1/hr/interviews/${interview.id}/evaluations`)
+      .set('Authorization', `Bearer ${interviewerToken}`)
+      .send({ recommendation: 'recommend', version: interview.version });
+    expect(submitted.status).toBe(200);
+    const v1 = (submitted.body.data as InterviewDto).version;
+    const stillBlocked = await request(app)
+      .post(`/api/v1/hr/interviews/${interview.id}/decide`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ outcome: 'passed', version: v1 });
+    expect(stillBlocked.status).toBe(422);
+
+    // Skip the absent member → now every member is submitted or skipped → decision allowed.
+    const skipped = await request(app)
+      .post(`/api/v1/hr/interviews/${interview.id}/panel/skip`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ interviewerId: outsiderId, reason: 'no-show', version: v1 });
+    expect(skipped.status).toBe(200);
+    expect((skipped.body.data as InterviewDto).panel.find((p) => p.interviewerId === outsiderId)?.state).toBe('skipped');
+
+    const decided = await request(app)
+      .post(`/api/v1/hr/interviews/${interview.id}/decide`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ outcome: 'passed', version: (skipped.body.data as InterviewDto).version });
+    expect(decided.status).toBe(200);
+    expect((decided.body.data as InterviewDto).status).toBe('completed');
+  });
+
+  it('rejects skipping an interviewer who has already submitted', async () => {
+    const applicant = await acceptedApplicant();
+    const stage1 = await stageIdByKey('firstInterview');
+    const interview = (await schedule(applicant.id, stage1)).body.data as InterviewDto;
+    const v1 = await soloSubmit(interview);
+    const res = await request(app)
+      .post(`/api/v1/hr/interviews/${interview.id}/panel/skip`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ interviewerId, version: v1 });
+    expect(res.status).toBe(422);
+  });
+});
+
 describe('interviews — decide & applicant progression', () => {
   it('passes round 1, then allows round 2; a second-round fail rejects the applicant', async () => {
     const applicant = await acceptedApplicant();
@@ -344,11 +457,10 @@ describe('interviews — decide & applicant progression', () => {
     const pass1 = await request(app)
       .post(`/api/v1/hr/interviews/${i1.id}/decide`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ outcome: 'passed', notes: 'advance', version: i1.version });
+      .send({ outcome: 'passed', notes: 'advance', version: await soloSubmit(i1) });
     expect(pass1.status).toBe(200);
     expect((pass1.body.data as InterviewDto).status).toBe('completed');
 
-    // Applicant still live after passing a non-final round.
     const mid = await request(app).get(`/api/v1/hr/applicants/${applicant.id}`).set('Authorization', `Bearer ${adminToken}`);
     expect((mid.body.data as ApplicantDto).status).toBe('new');
 
@@ -357,7 +469,7 @@ describe('interviews — decide & applicant progression', () => {
     const fail2 = await request(app)
       .post(`/api/v1/hr/interviews/${i2.id}/decide`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ outcome: 'failed', notes: 'not a fit', version: i2.version });
+      .send({ outcome: 'failed', notes: 'not a fit', version: await soloSubmit(i2) });
     expect(fail2.status).toBe(200);
 
     const after = await request(app).get(`/api/v1/hr/applicants/${applicant.id}`).set('Authorization', `Bearer ${adminToken}`);
@@ -378,7 +490,7 @@ describe('interviews — decide & applicant progression', () => {
     const first = await request(app)
       .post(`/api/v1/hr/interviews/${interview.id}/decide`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ outcome: 'passed', version: interview.version });
+      .send({ outcome: 'passed', version: await soloSubmit(interview) });
     expect(first.status).toBe(200);
     const second = await request(app)
       .post(`/api/v1/hr/interviews/${interview.id}/decide`)

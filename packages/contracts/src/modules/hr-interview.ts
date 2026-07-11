@@ -34,6 +34,16 @@ export const INTERVIEW_RECOMMENDATIONS = ['recommend', 'neutral', 'notRecommend'
 export const InterviewRecommendationSchema = z.enum(INTERVIEW_RECOMMENDATIONS);
 export type InterviewRecommendation = z.infer<typeof InterviewRecommendationSchema>;
 
+/**
+ * Per-interviewer evaluation state. `pending` until the panel member acts; `submitted` once
+ * they record an evaluation; `skipped` when they are marked absent/excused. A decision is
+ * blocked while any panel member is still `pending` (prevents premature decisions without
+ * deadlocking on a no-show).
+ */
+export const INTERVIEW_EVALUATION_STATES = ['pending', 'submitted', 'skipped'] as const;
+export const InterviewEvaluationStateSchema = z.enum(INTERVIEW_EVALUATION_STATES);
+export type InterviewEvaluationState = z.infer<typeof InterviewEvaluationStateSchema>;
+
 // ── Interview stages (admin-configurable reference catalog, OQ-31) ──────────
 
 export const CreateInterviewStageSchema = z
@@ -85,16 +95,37 @@ export const ScheduleInterviewSchema = z
   .strict();
 export type ScheduleInterview = z.infer<typeof ScheduleInterviewSchema>;
 
-/** Reschedule keeps the interview `scheduled`; the panel may be adjusted at the same time. */
+/** Reschedule only changes the date/time (the interview stays `scheduled`). */
 export const RescheduleInterviewSchema = z
   .object({
     scheduledAt: z.coerce.date(),
-    interviewerIds: z.array(objectId()).min(1).max(20).optional(),
     reason: z.string().max(500).optional(),
     version: z.number().int().min(0),
   })
   .strict();
 export type RescheduleInterview = z.infer<typeof RescheduleInterviewSchema>;
+
+/**
+ * Replace the interviewer panel WITHOUT touching the schedule. Retained members keep their
+ * evaluation state; newly added members start `pending`; removed members drop off.
+ */
+export const ReassignInterviewPanelSchema = z
+  .object({
+    interviewerIds: z.array(objectId()).min(1).max(20),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type ReassignInterviewPanel = z.infer<typeof ReassignInterviewPanelSchema>;
+
+/** Mark an assigned interviewer as skipped/absent so a decision is no longer blocked on them. */
+export const SkipInterviewerSchema = z
+  .object({
+    interviewerId: objectId(),
+    reason: z.string().max(500).optional(),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type SkipInterviewer = z.infer<typeof SkipInterviewerSchema>;
 
 export const CancelInterviewSchema = z
   .object({
@@ -152,12 +183,17 @@ export type ListInterviewsQuery = z.infer<typeof ListInterviewsQuerySchema>;
 
 // ── Interview DTO ──────────────────────────────────────────────────────────
 
-export interface InterviewEvaluationDto {
+/**
+ * One panel member and their evaluation state. `recommendation`/`rating`/`notes`/`submittedAt`
+ * are populated once `state` is `submitted`; null otherwise (including `pending`/`skipped`).
+ */
+export interface InterviewPanelistDto {
   interviewerId: string;
-  recommendation: InterviewRecommendation;
+  state: InterviewEvaluationState;
+  recommendation: InterviewRecommendation | null;
   rating: number | null;
   notes: string | null;
-  submittedAt: string;
+  submittedAt: string | null;
 }
 
 export interface InterviewDecisionDto {
@@ -178,10 +214,10 @@ export interface InterviewDto {
   status: InterviewStatus;
   outcome: InterviewOutcome;
   scheduledAt: string;
-  interviewerIds: string[];
+  /** The panel: every assigned interviewer with their individual evaluation state. */
+  panel: InterviewPanelistDto[];
   location: string | null;
   notes: string | null;
-  evaluations: InterviewEvaluationDto[];
   decision: InterviewDecisionDto | null;
   rescheduleCount: number;
   cancelledReason: string | null;

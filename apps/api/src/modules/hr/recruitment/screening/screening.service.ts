@@ -95,6 +95,11 @@ class ScreeningService {
     return screeningRepository.getById(id, scope);
   }
 
+  /** The applicant's screening, if any — used by later stages (Interviews) to gate entry. */
+  async findByApplicantId(applicantId: string): Promise<ScreeningDoc | null> {
+    return screeningRepository.findByApplicantId(applicantId);
+  }
+
   /** Append a note while `pending` (OQ-32 "needs more information"). */
   async addNote(
     ctx: AuthContext,

@@ -14,3 +14,4 @@ export * from './platform/files.js';
 export * from './platform/notifications.js';
 export * from './modules/hr-recruitment.js';
 export * from './modules/hr-screening.js';
+export * from './modules/hr-interview.js';

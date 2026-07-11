@@ -1,12 +1,13 @@
 // HR module manifest — THE single integration point between the HR business module and
 // the Platform Core (Module Structure §2.1). The kernel validates it at boot (unique id,
 // permission naming, `hr_` collection prefix, `/hr` route prefix) and fails the boot on
-// violation. Ships the Recruitment sub-module: Stage 1 (Applicants) + Stage 2 (Initial
-// Screening). Later recruitment stages (Interviews onward) are separate future sprints.
+// violation. Ships the Recruitment sub-module: Stage 1 (Applicants), Stage 2 (Initial
+// Screening), and Stage 3 (Interviews). Later stages (Job Offer onward) are future sprints.
 import { declarePermissions, type PermissionDef } from '@ecms/contracts';
 import { type ModuleManifest } from '../../platform/kernel/module-registry';
 import { buildApplicantSourcesRouter, buildApplicantsRouter } from './recruitment/applicants';
 import { buildScreeningsRouter } from './recruitment/screening';
+import { buildInterviewStagesRouter, buildInterviewsRouter } from './recruitment/interviews';
 import { seedHrRecruitment } from './hr.seed';
 
 const applicantPermissions = declarePermissions(
@@ -35,24 +36,58 @@ const screeningPermissions = declarePermissions(
   [{ action: 'decide', name: { en: 'Decide applicant screening', ar: 'اتخاذ قرار الفرز المبدئي' } }],
 );
 
+// Stage 3 — Interviews. `create` schedules a round; `edit` reschedules; `cancel`, `evaluate`
+// (a panel member records their own assessment), and `decide` (the terminal pass/fail) are
+// each their own grant. Stage config is admin-managed under `interviewStage.manage`.
+const interviewPermissions = declarePermissions(
+  'hr',
+  'interview',
+  { en: 'interviews', ar: 'المقابلات' },
+  ['view', 'create', 'edit'],
+  [
+    { action: 'cancel', name: { en: 'Cancel interview', ar: 'إلغاء المقابلة' } },
+    { action: 'evaluate', name: { en: 'Evaluate interview', ar: 'تقييم المقابلة' } },
+    { action: 'decide', name: { en: 'Decide interview outcome', ar: 'اتخاذ قرار المقابلة' } },
+  ],
+);
+
+const interviewStagePermissions = declarePermissions(
+  'hr',
+  'interviewStage',
+  { en: 'interview stages', ar: 'مراحل المقابلات' },
+  [],
+  [{ action: 'manage', name: { en: 'Manage interview stages', ar: 'إدارة مراحل المقابلات' } }],
+);
+
 export const hrPermissions: PermissionDef[] = [
   ...applicantPermissions,
   ...applicantSourcePermissions,
   ...screeningPermissions,
+  ...interviewPermissions,
+  ...interviewStagePermissions,
 ];
 
 export const hrModule: ModuleManifest = {
   id: 'hr',
   name: { en: 'Human Resources', ar: 'الموارد البشرية' },
-  version: '0.7.0',
+  version: '0.8.0',
   requiresPlatform: '^2.1',
   permissions: hrPermissions,
   routes: [
     { prefix: '/hr/applicants', router: buildApplicantsRouter() },
     { prefix: '/hr/applicant-sources', router: buildApplicantSourcesRouter() },
     { prefix: '/hr/screenings', router: buildScreeningsRouter() },
+    { prefix: '/hr/interviews', router: buildInterviewsRouter() },
+    { prefix: '/hr/interview-stages', router: buildInterviewStagesRouter() },
   ],
-  collections: ['hr_applicants', 'hr_applicant_sources', 'hr_sequences', 'hr_screenings'],
+  collections: [
+    'hr_applicants',
+    'hr_applicant_sources',
+    'hr_sequences',
+    'hr_screenings',
+    'hr_interviews',
+    'hr_interview_stages',
+  ],
   eventSubscriptions: [],
   seed: seedHrRecruitment,
 };

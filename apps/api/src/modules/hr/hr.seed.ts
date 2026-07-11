@@ -1,10 +1,13 @@
 // HR reference-data seed (Module Structure §2.1) — run at boot by the kernel after
 // permissions and the organization singleton exist. Idempotent: safe on every boot.
-// Seeds the 10 initial applicant sources (Sprint 4.1 plan §3). The OCR provider and
-// requisition validator default to their safe stubs at import time (OQ-30), so nothing
-// to register here.
-import { type CreateApplicantSource } from '@ecms/contracts';
+// Seeds the 10 initial applicant sources (Stage 1), the default two interview stages
+// (Stage 3, OQ-31 — number/names/order are admin-configurable thereafter), and the
+// interview notification templates the interview service sends through. The OCR provider
+// and requisition validator default to their safe stubs at import time (OQ-30).
+import { HrInterviewTemplates, type CreateApplicantSource, type CreateInterviewStage } from '@ecms/contracts';
+import { notificationTemplateService } from '../../platform/notifications';
 import { applicantSourceService } from './recruitment/applicants';
+import { interviewStageService } from './recruitment/interviews';
 
 const SOURCES: CreateApplicantSource[] = [
   { key: 'internalHr', name: { en: 'Internal HR', ar: 'الموارد البشرية الداخلية' }, kind: 'manual', requiresDetail: false },
@@ -19,8 +22,59 @@ const SOURCES: CreateApplicantSource[] = [
   { key: 'agency', name: { en: 'Recruitment Agency', ar: 'وكالة توظيف' }, kind: 'manual', requiresDetail: true },
 ];
 
+const INTERVIEW_STAGES: CreateInterviewStage[] = [
+  { key: 'firstInterview', name: { en: 'First Interview', ar: 'المقابلة الأولى' }, order: 1 },
+  { key: 'secondInterview', name: { en: 'Second Interview', ar: 'المقابلة الثانية' }, order: 2 },
+];
+
+const ensureInterviewTemplates = async (): Promise<void> => {
+  await notificationTemplateService.ensure({
+    key: HrInterviewTemplates.Scheduled,
+    category: 'hr',
+    priority: 'normal',
+    subject: { ar: 'موعد مقابلة جديد', en: 'New interview scheduled' },
+    body: {
+      ar: 'تمت جدولة مقابلة (الجولة {{round}}) للمتقدم {{applicantCode}} بتاريخ {{when}}.',
+      en: 'An interview (round {{round}}) for applicant {{applicantCode}} is scheduled for {{when}}.',
+    },
+    channels: ['inApp', 'email'],
+    variables: ['applicantCode', 'round', 'when'],
+    defaultExpiryHours: null,
+  });
+  await notificationTemplateService.ensure({
+    key: HrInterviewTemplates.Rescheduled,
+    category: 'hr',
+    priority: 'normal',
+    subject: { ar: 'تم تغيير موعد المقابلة', en: 'Interview rescheduled' },
+    body: {
+      ar: 'تم تغيير موعد المقابلة (الجولة {{round}}) للمتقدم {{applicantCode}} إلى {{when}}.',
+      en: 'The interview (round {{round}}) for applicant {{applicantCode}} was rescheduled to {{when}}.',
+    },
+    channels: ['inApp', 'email'],
+    variables: ['applicantCode', 'round', 'when'],
+    defaultExpiryHours: null,
+  });
+  await notificationTemplateService.ensure({
+    key: HrInterviewTemplates.Cancelled,
+    category: 'hr',
+    priority: 'normal',
+    subject: { ar: 'تم إلغاء المقابلة', en: 'Interview cancelled' },
+    body: {
+      ar: 'تم إلغاء المقابلة (الجولة {{round}}) للمتقدم {{applicantCode}}.',
+      en: 'The interview (round {{round}}) for applicant {{applicantCode}} was cancelled.',
+    },
+    channels: ['inApp', 'email'],
+    variables: ['applicantCode', 'round'],
+    defaultExpiryHours: null,
+  });
+};
+
 export const seedHrRecruitment = async (): Promise<void> => {
   for (const source of SOURCES) {
     await applicantSourceService.ensure(source);
   }
+  for (const stage of INTERVIEW_STAGES) {
+    await interviewStageService.ensure(stage);
+  }
+  await ensureInterviewTemplates();
 };

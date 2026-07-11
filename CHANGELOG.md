@@ -9,6 +9,19 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-07-10
+
+Release v0.6.0 — Sprint 4.1: **HR / Recruitment — Applicants (Stage 1)**, the platform's
+first Layer 2 business module
+([PR #18](https://github.com/egycashcompany-ops/egycash/pull/18); plan:
+`docs/12-planning/sprint-4.1-plan.md` (frozen 2026-07-10); reference:
+`docs/02-architecture/recruitment-applicants.md`; retrospective:
+`docs/11-retrospectives/2026-07-sprint-4.1.md`). Planning went through business analysis
+([PR #17](https://github.com/egycashcompany-ops/egycash/pull/17)) with the approved
+baseline workflow and eight resolved decisions (OQ-7/8/9/10/29/30/31/32).
+
+### Added
+
 - **Sprint 4.1 implementation** — HR / Recruitment: **Applicants (Stage 1)**, the
   platform's **first Layer 2 business module** (reference:
   `docs/02-architecture/recruitment-applicants.md`; plan frozen 2026-07-10 with
@@ -58,7 +71,20 @@ its entry here in the same PR.
   (4 resolved, 20 open) — the remaining blockers being the minimal-Employee shape, the
   frontend scope, and unbuilt-dependency sequencing (sequences service, approvals, OCR,
   external-recipient notifications, frontend grid foundation) — **none assumed, all
-  awaiting business resolution before planning freezes**.
+  awaiting business resolution before planning freezes**. The blocking set was
+  subsequently resolved 2026-07-10 (OQ-29 backend-first, OQ-30 abstractions,
+  OQ-9/10 non-blocking) and the plan **frozen** for Stage-1 implementation.
+
+### Backlog (recorded at review — non-blocking, for future sprints)
+
+1. Dedicated concurrency/stress test for the atomic applicant-number allocation
+   (no-gap/no-collision under parallel registration).
+2. Deeper documentation of the duplicate-detection heuristic (probe fields,
+   normalization, flag-resolution workflow) in the architecture reference.
+3. Search optimization for contains-style Arabic queries (text index / n-gram) if
+   applicant volume outgrows the current regex-over-`searchName` approach.
+4. Extend `gen-permission-matrix.mjs` to include module-manifest permissions alongside
+   the platform catalog.
 
 ## [0.5.0] - 2026-07-09
 

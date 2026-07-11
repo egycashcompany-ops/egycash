@@ -4,6 +4,7 @@
 import { type Router } from 'express';
 import { PERMISSION_KEY_PATTERN, type LocalizedString, type PermissionDef } from '@ecms/contracts';
 import { type EventHandler } from './event-bus';
+import { type ScheduledTaskDeclaration } from '../scheduler';
 
 /** Bumped by ADR-governed platform-contract changes (Review R25). */
 export const PLATFORM_VERSION = '2.1.0';
@@ -31,6 +32,8 @@ export interface ModuleManifest {
   /** Mongoose collection names the module owns — must carry the `<id>_` prefix. */
   collections: string[];
   eventSubscriptions: EventSubscription[];
+  /** Repeatable tasks the module owns — task keys must carry the `<id>.` prefix. */
+  scheduledTasks?: ScheduledTaskDeclaration[];
   seed?: () => Promise<void>;
 }
 
@@ -102,6 +105,11 @@ export const validateManifest = (manifest: ModuleManifest): void => {
   for (const route of manifest.routes) {
     if (route.prefix !== `/${id}` && !route.prefix.startsWith(`/${id}/`)) {
       throw new ManifestValidationError(id, `route prefix ${route.prefix} outside /${id}`);
+    }
+  }
+  for (const task of manifest.scheduledTasks ?? []) {
+    if (!task.key.startsWith(`${id}.`)) {
+      throw new ManifestValidationError(id, `scheduled task ${task.key} lacks the module prefix`);
     }
   }
 };

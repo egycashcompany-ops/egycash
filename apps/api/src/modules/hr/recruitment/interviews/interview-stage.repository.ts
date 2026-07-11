@@ -40,6 +40,15 @@ class InterviewStageRepository extends BaseRepository<InterviewStageDoc> {
       .lean<InterviewStageDoc>()
       .exec();
   }
+
+  /** The last (highest-order) active stage — the final interview round. */
+  async findLastActive(): Promise<InterviewStageDoc | null> {
+    return this.model
+      .findOne({ isDeleted: false, active: true })
+      .sort({ order: -1 })
+      .lean<InterviewStageDoc>()
+      .exec();
+  }
 }
 
 export const interviewStageRepository = new InterviewStageRepository();

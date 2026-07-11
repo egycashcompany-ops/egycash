@@ -4,7 +4,12 @@
 // (Stage 3, OQ-31 — number/names/order are admin-configurable thereafter), and the
 // interview notification templates the interview service sends through. The OCR provider
 // and requisition validator default to their safe stubs at import time (OQ-30).
-import { HrInterviewTemplates, type CreateApplicantSource, type CreateInterviewStage } from '@ecms/contracts';
+import {
+  HrInterviewTemplates,
+  HrOfferTemplates,
+  type CreateApplicantSource,
+  type CreateInterviewStage,
+} from '@ecms/contracts';
 import { notificationTemplateService } from '../../platform/notifications';
 import { applicantSourceService } from './recruitment/applicants';
 import { interviewStageService } from './recruitment/interviews';
@@ -69,6 +74,61 @@ const ensureInterviewTemplates = async (): Promise<void> => {
   });
 };
 
+const ensureOfferTemplates = async (): Promise<void> => {
+  await notificationTemplateService.ensure({
+    key: HrOfferTemplates.Sent,
+    category: 'hr',
+    priority: 'normal',
+    subject: { ar: 'تم إرسال عرض عمل', en: 'Job offer sent' },
+    body: {
+      ar: 'تم إرسال عرض عمل للمتقدم {{applicantCode}}، صالح حتى {{when}}.',
+      en: 'A job offer was sent to applicant {{applicantCode}}, valid until {{when}}.',
+    },
+    channels: ['inApp', 'email'],
+    variables: ['applicantCode', 'when'],
+    defaultExpiryHours: null,
+  });
+  await notificationTemplateService.ensure({
+    key: HrOfferTemplates.Accepted,
+    category: 'hr',
+    priority: 'normal',
+    subject: { ar: 'تم قبول عرض العمل', en: 'Job offer accepted' },
+    body: {
+      ar: 'قبل المتقدم {{applicantCode}} عرض العمل.',
+      en: 'Applicant {{applicantCode}} accepted the job offer.',
+    },
+    channels: ['inApp', 'email'],
+    variables: ['applicantCode'],
+    defaultExpiryHours: null,
+  });
+  await notificationTemplateService.ensure({
+    key: HrOfferTemplates.Rejected,
+    category: 'hr',
+    priority: 'normal',
+    subject: { ar: 'تم رفض عرض العمل', en: 'Job offer rejected' },
+    body: {
+      ar: 'رفض المتقدم {{applicantCode}} عرض العمل.',
+      en: 'Applicant {{applicantCode}} rejected the job offer.',
+    },
+    channels: ['inApp', 'email'],
+    variables: ['applicantCode'],
+    defaultExpiryHours: null,
+  });
+  await notificationTemplateService.ensure({
+    key: HrOfferTemplates.Expired,
+    category: 'hr',
+    priority: 'normal',
+    subject: { ar: 'انتهت صلاحية عرض العمل', en: 'Job offer expired' },
+    body: {
+      ar: 'انتهت صلاحية عرض العمل المرسل للمتقدم {{applicantCode}}.',
+      en: 'The job offer sent to applicant {{applicantCode}} has expired.',
+    },
+    channels: ['inApp', 'email'],
+    variables: ['applicantCode'],
+    defaultExpiryHours: null,
+  });
+};
+
 export const seedHrRecruitment = async (): Promise<void> => {
   for (const source of SOURCES) {
     await applicantSourceService.ensure(source);
@@ -77,4 +137,5 @@ export const seedHrRecruitment = async (): Promise<void> => {
     await interviewStageService.ensure(stage);
   }
   await ensureInterviewTemplates();
+  await ensureOfferTemplates();
 };

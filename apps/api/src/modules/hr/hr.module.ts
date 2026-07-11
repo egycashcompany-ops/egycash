@@ -2,12 +2,14 @@
 // the Platform Core (Module Structure §2.1). The kernel validates it at boot (unique id,
 // permission naming, `hr_` collection prefix, `/hr` route prefix) and fails the boot on
 // violation. Ships the Recruitment sub-module: Stage 1 (Applicants), Stage 2 (Initial
-// Screening), and Stage 3 (Interviews). Later stages (Job Offer onward) are future sprints.
+// Screening), Stage 3 (Interviews), and Stage 4 (Job Offer). Later stages (Employee
+// Creation onward) are future sprints.
 import { declarePermissions, type PermissionDef } from '@ecms/contracts';
 import { type ModuleManifest } from '../../platform/kernel/module-registry';
 import { buildApplicantSourcesRouter, buildApplicantsRouter } from './recruitment/applicants';
 import { buildScreeningsRouter } from './recruitment/screening';
 import { buildInterviewStagesRouter, buildInterviewsRouter } from './recruitment/interviews';
+import { buildJobOffersRouter, jobOfferService } from './recruitment/job-offers';
 import { seedHrRecruitment } from './hr.seed';
 
 const applicantPermissions = declarePermissions(
@@ -59,18 +61,34 @@ const interviewStagePermissions = declarePermissions(
   [{ action: 'manage', name: { en: 'Manage interview stages', ar: 'إدارة مراحل المقابلات' } }],
 );
 
+// Stage 4 — Job Offer. `send` issues a draft; `respond` records the applicant's
+// accept/reject; `withdraw` retracts — each its own grant, separate from `edit` (which
+// revises the package while draft/sent).
+const jobOfferPermissions = declarePermissions(
+  'hr',
+  'jobOffer',
+  { en: 'job offers', ar: 'عروض العمل' },
+  ['view', 'create', 'edit'],
+  [
+    { action: 'send', name: { en: 'Send job offer', ar: 'إرسال عرض العمل' } },
+    { action: 'respond', name: { en: 'Record job offer response', ar: 'تسجيل رد عرض العمل' } },
+    { action: 'withdraw', name: { en: 'Withdraw job offer', ar: 'سحب عرض العمل' } },
+  ],
+);
+
 export const hrPermissions: PermissionDef[] = [
   ...applicantPermissions,
   ...applicantSourcePermissions,
   ...screeningPermissions,
   ...interviewPermissions,
   ...interviewStagePermissions,
+  ...jobOfferPermissions,
 ];
 
 export const hrModule: ModuleManifest = {
   id: 'hr',
   name: { en: 'Human Resources', ar: 'الموارد البشرية' },
-  version: '0.8.0',
+  version: '0.9.0',
   requiresPlatform: '^2.1',
   permissions: hrPermissions,
   routes: [
@@ -79,6 +97,7 @@ export const hrModule: ModuleManifest = {
     { prefix: '/hr/screenings', router: buildScreeningsRouter() },
     { prefix: '/hr/interviews', router: buildInterviewsRouter() },
     { prefix: '/hr/interview-stages', router: buildInterviewStagesRouter() },
+    { prefix: '/hr/job-offers', router: buildJobOffersRouter() },
   ],
   collections: [
     'hr_applicants',
@@ -87,7 +106,20 @@ export const hrModule: ModuleManifest = {
     'hr_screenings',
     'hr_interviews',
     'hr_interview_stages',
+    'hr_job_offers',
   ],
   eventSubscriptions: [],
+  scheduledTasks: [
+    {
+      // Automatic offer expiration: flip sent offers past their validity to `expired`.
+      key: 'hr.jobOffers.expire',
+      description: 'Expire sent job offers whose validity has lapsed',
+      cron: '*/15 * * * *',
+      ownerService: 'hr',
+      handler: async () => {
+        await jobOfferService.expireOverdue();
+      },
+    },
+  ],
   seed: seedHrRecruitment,
 };

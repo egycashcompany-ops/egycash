@@ -47,12 +47,15 @@ class InterviewStageService {
   async list(query: ListInterviewStagesQuery): Promise<Paginated<InterviewStageDoc>> {
     const filter: Record<string, unknown> = {};
     if (query.active !== undefined) filter.active = query.active;
+    // Stages form an ordered sequence: default to ascending by `order` (the schema defaults
+    // sortDir to 'desc', so key off an explicit sortBy to know the caller really chose one).
+    const explicitSort = query.sortBy !== undefined;
     return interviewStageRepository.list({
       filter,
       page: query.page,
       pageSize: query.pageSize,
-      sortBy: query.sortBy ?? 'order',
-      sortDir: query.sortDir ?? 'asc',
+      sortBy: explicitSort ? query.sortBy : 'order',
+      sortDir: explicitSort ? query.sortDir : 'asc',
       sortableFields: ['order', 'createdAt', 'key'],
     });
   }

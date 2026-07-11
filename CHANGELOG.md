@@ -9,6 +9,66 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-07-11
+
+Release v0.8.0 — Sprint 4.3: **HR / Recruitment — Interviews (Stage 3)**
+([PR #21](https://github.com/egycashcompany-ops/egycash/pull/21)), the third stage of the
+approved seven-stage recruitment workflow. Additive on Stage 2; **no part of Stage 4 (Job
+Offer) or later is built.**
+
+### Added
+
+- **HR / Recruitment: Interviews (Stage 3).** An applicant who passed Initial Screening
+  advances through the interview rounds.
+  - **Administrator-configurable interview stages** (`hr_interview_stages`, OQ-31): an
+    ordered, localized, deactivatable catalog seeded with the two default rounds ("First
+    Interview", "Second Interview") — number/names/order are admin-managed thereafter
+    (`interviewStage.manage`).
+  - **Interview aggregate** (`hr_interviews`): a scheduled round with a **panel** where each
+    member carries an individual evaluation state — **`pending` / `submitted` / `skipped`**
+    (the roster and per-interviewer evaluations are one unified structure). Lifecycle:
+    **schedule** → **reschedule** (date/time only) · **reassign panel** (independent of the
+    schedule — retained members keep their state, added members start pending and are
+    notified, removed members drop off) · **cancel** · per-interviewer **evaluate** ·
+    **decide**.
+  - **Workflow gate & progression** (approved workflow): the earliest stage requires a passed
+    screening, each later stage requires the previous stage passed, and one live interview per
+    stage. A decision is **blocked until every panel member is `submitted` or `skipped`**
+    (prevents premature decisions without deadlocking on a no-show). Passing the final
+    configured stage clears the interview phase (the applicant is ready for a future Job
+    Offer); failing any round transitions the applicant to the terminal `rejected` status.
+  - **Notifications integration**: scheduling, rescheduling, and cancelling notify the panel
+    through the platform Notifications service (fire-and-forget — never blocks the operation);
+    the HR seed registers the three interview templates at boot.
+  - Permissions `interview.{view,create,edit,cancel,evaluate,decide}` (`evaluate` and `decide`
+    each their own grant) + `interviewStage.manage`; routes under `/api/v1/hr/interviews` and
+    `/hr/interview-stages`; events `hr.interview.{scheduled,rescheduled,cancelled,evaluated,decided}`.
+    The applicant terminal-rejection event (`hr.applicant.rejected`) was made source-agnostic
+    (screening or interview). **Additive platform seam**: `notificationTemplateService` is now
+    exposed on the `platform/notifications` barrel so a business module can register its own
+    templates at boot (the same idempotent seam the platform's built-ins use).
+
+## [0.7.0] - 2026-07-11
+
+Release v0.7.0 — Sprint 4.2: **HR / Recruitment — Initial Screening (Stage 2)**
+([PR #20](https://github.com/egycashcompany-ops/egycash/pull/20)), the second stage of the
+approved seven-stage recruitment workflow. Additive on Stage 1; **no part of Stage 3 or later
+is built in this release.**
+
+### Added
+
+- **HR / Recruitment: Initial Screening (Stage 2).** A `hr_screenings` aggregate, **one
+  screening per applicant** (partial unique index), decided to a single terminal outcome —
+  **Accepted or Rejected** (OQ-32, two outcomes only). "Needs more information" is **not a
+  state**: it is a note appended to a screening that stays `pending`; screening notes and the
+  mandatory rejection reason are stored. A **rejection** transitions the applicant to the
+  terminal `rejected` status (which frees the live National-ID for a fresh application,
+  exactly like a withdrawal); an **acceptance** leaves the applicant live for the interview
+  stage. Permissions `screening.{view,create,edit,decide}` (`decide` — the terminal
+  accept/reject — is a separate grant from `edit`, which only appends notes); route
+  `/api/v1/hr/screenings`; events `hr.screening.{created,decided}`. Extends the applicant
+  lifecycle with the terminal `rejected` status and the `hr.applicant.rejected` event.
+
 ## [0.6.0] - 2026-07-10
 
 Release v0.6.0 — Sprint 4.1: **HR / Recruitment — Applicants (Stage 1)**, the platform's

@@ -29,7 +29,7 @@ also self-contained enough to be read on its own.
 | 08 | **Operations** | [Deployment Strategy](08-operations/deployment-strategy.md) | DevOps, Engineers |
 | 09 | **Guides** | [Development Guide](09-guides/development-guide.md) · [Development Workflow](09-guides/development-workflow.md) | Engineers |
 | 10 | **Reviews** | [Architecture Review 01 (pre-Milestone 2)](10-reviews/2026-07-architecture-review-01.md) | Everyone |
-| 11 | **Retrospectives** | [Sprint 3.1 (Release v0.3.0)](11-retrospectives/2026-07-sprint-3.1.md) | Everyone |
+| 11 | **Retrospectives** | [Sprint 3.1 (Release v0.3.0)](11-retrospectives/2026-07-sprint-3.1.md) · [Sprint 4.1 (Release v0.6.0)](11-retrospectives/2026-07-sprint-4.1.md) · [Sprint 4.2–4.3 (Releases v0.7.0/v0.8.0)](11-retrospectives/2026-07-sprint-4.2-4.3.md) | Everyone |
 | 12 | **Planning** | [Sprint 3.3 — Notifications Service](12-planning/sprint-3.3-plan.md) | Everyone |
 
 ---
@@ -62,4 +62,7 @@ also self-contained enough to be read on its own.
 | Sprint 4.1 plan — HR/Recruitment: Applicants business analysis ([PR #17](https://github.com/egycashcompany-ops/egycash/pull/17)) | 1.2.0 | ✅ Reviewed & merged | EGYCASH | 2026-07-10 |
 | Sprint 4.1 plan — frozen; Stage 1 implementation GO ([PR #18](https://github.com/egycashcompany-ops/egycash/pull/18)) | 1.3.0 | 🧊 **Frozen & approved — 8 decisions (OQ-7/8/9/10/29/30/31/32); Stage 1 backend GO** | EGYCASH | 2026-07-10 |
 | Sprint 4.1 — HR/Recruitment: Applicants Stage 1 ([PR #18](https://github.com/egycashcompany-ops/egycash/pull/18)) | 0.6.0 | ✅ Reviewed & merged (business + architecture review: no blocking issues) | EGYCASH | 2026-07-10 |
-| Sprint 4.1 retrospective + Release v0.6.0 recorded (this PR) | — | 🔍 Under review | — | 2026-07-11 |
+| Sprint 4.1 retrospective + Release v0.6.0 recorded ([PR #19](https://github.com/egycashcompany-ops/egycash/pull/19)) | — | ✅ Completed & merged | EGYCASH | 2026-07-11 |
+| Sprint 4.2 — HR/Recruitment: Initial Screening Stage 2 ([PR #20](https://github.com/egycashcompany-ops/egycash/pull/20)) | 0.7.0 | ✅ Reviewed & merged (business + architecture review: no blocking issues) | EGYCASH | 2026-07-11 |
+| Sprint 4.3 — HR/Recruitment: Interviews Stage 3 ([PR #21](https://github.com/egycashcompany-ops/egycash/pull/21)) | 0.8.0 | ✅ Reviewed & merged (two review improvements — decoupled panel reassignment, gated decision — folded in before merge) | EGYCASH | 2026-07-11 |
+| Sprint 4.2–4.3 retrospective + Releases v0.7.0/v0.8.0 recorded (this PR) | — | 🔍 Under review | — | 2026-07-11 |

@@ -60,4 +60,6 @@ also self-contained enough to be read on its own.
 | Sprint 3.3 — Notifications Service ([PR #15](https://github.com/egycashcompany-ops/egycash/pull/15)) | 0.5.0 | ✅ Reviewed & merged | EGYCASH | 2026-07-09 |
 | Sprint 3.3 bookkeeping — Release v0.5.0 recorded ([PR #16](https://github.com/egycashcompany-ops/egycash/pull/16)) | — | ✅ Reviewed & merged | EGYCASH | 2026-07-10 |
 | Sprint 4.1 plan — HR/Recruitment: Applicants business analysis ([PR #17](https://github.com/egycashcompany-ops/egycash/pull/17)) | 1.2.0 | ✅ Reviewed & merged | EGYCASH | 2026-07-10 |
-| Sprint 4.1 plan — frozen; Stage 1 implementation GO (this PR) | 1.3.0 | 🧊 **Frozen & approved — 7 decisions (OQ-7/8/9/10/29/30/31/32); Stage 1 backend GO** | EGYCASH | 2026-07-10 |
+| Sprint 4.1 plan — frozen; Stage 1 implementation GO ([PR #18](https://github.com/egycashcompany-ops/egycash/pull/18)) | 1.3.0 | 🧊 **Frozen & approved — 8 decisions (OQ-7/8/9/10/29/30/31/32); Stage 1 backend GO** | EGYCASH | 2026-07-10 |
+| Sprint 4.1 — HR/Recruitment: Applicants Stage 1 ([PR #18](https://github.com/egycashcompany-ops/egycash/pull/18)) | 0.6.0 | ✅ Reviewed & merged (business + architecture review: no blocking issues) | EGYCASH | 2026-07-10 |
+| Sprint 4.1 retrospective + Release v0.6.0 recorded (this PR) | — | 🔍 Under review | — | 2026-07-11 |

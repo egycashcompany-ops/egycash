@@ -19,8 +19,13 @@ export const GENDERS = ['male', 'female'] as const;
 export const GenderSchema = z.enum(GENDERS);
 export type Gender = z.infer<typeof GenderSchema>;
 
-/** Stage-1 applicant lifecycle only. Screening/interview/offer states are Stage 2+. */
-export const APPLICANT_STATUSES = ['new', 'withdrawn'] as const;
+/**
+ * Applicant lifecycle. `new` = live in the active pipeline; `rejected` (Stage 2, Initial
+ * Screening) and `withdrawn` (Stage 1) are terminal. Interview/offer states are Stage 3+.
+ * A `rejected` applicant leaves the live National-ID uniqueness set, exactly like a
+ * `withdrawn` one, so the number frees up for a fresh application.
+ */
+export const APPLICANT_STATUSES = ['new', 'rejected', 'withdrawn'] as const;
 export const ApplicantStatusSchema = z.enum(APPLICANT_STATUSES);
 export type ApplicantStatus = z.infer<typeof ApplicantStatusSchema>;
 
@@ -448,6 +453,8 @@ export const HrEvents = {
   ApplicantUpdated: 'hr.applicant.updated',
   ApplicantIdentityVerified: 'hr.applicant.identityVerified',
   ApplicantWithdrawn: 'hr.applicant.withdrawn',
+  /** Terminal transition driven by an Initial-Screening rejection (Stage 2). */
+  ApplicantRejected: 'hr.applicant.rejected',
 } as const;
 export type HrEventName = (typeof HrEvents)[keyof typeof HrEvents];
 
@@ -461,5 +468,12 @@ export const ApplicantEventPayloadV1 = z.object({
 export const ApplicantWithdrawnPayloadV1 = z.object({
   applicantId: objectId(),
   code: z.string(),
+  reason: z.string(),
+});
+
+export const ApplicantRejectedPayloadV1 = z.object({
+  applicantId: objectId(),
+  code: z.string(),
+  screeningId: objectId(),
   reason: z.string(),
 });

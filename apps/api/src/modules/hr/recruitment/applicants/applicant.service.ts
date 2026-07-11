@@ -252,8 +252,8 @@ class ApplicantService {
     scope: ScopeSelector,
   ): Promise<ApplicantDoc> {
     const before = await applicantRepository.getById(id, scope);
-    if (before.status === 'withdrawn') {
-      throw new BusinessRuleError('cannot edit a withdrawn applicant');
+    if (before.status !== 'new') {
+      throw new BusinessRuleError('cannot edit an applicant that is not in the active pipeline');
     }
     const set: Partial<ApplicantDoc> = {};
     if (input.fullNameAr !== undefined) set.fullNameAr = input.fullNameAr;
@@ -412,6 +412,39 @@ class ApplicantService {
       changes: [{ field: 'status', old: before.status, new: 'withdrawn' }],
     });
     await emit(HrEvents.ApplicantWithdrawn, { applicantId: id, code: updated.code, reason: input.reason });
+    return updated;
+  }
+
+  /**
+   * Transition to the terminal `rejected` status as a consequence of an Initial-Screening
+   * rejection (Stage 2). Called only by the screening service (cross-feature via the
+   * applicants barrel). Idempotent and safe: only a live (`new`) applicant is transitioned;
+   * an already-terminal applicant (rejected/withdrawn) is left untouched, never overridden.
+   */
+  async markRejectedByScreening(
+    ctx: AuthContext,
+    id: string,
+    meta: { screeningId: string; reason: string },
+    scope: ScopeSelector,
+  ): Promise<ApplicantDoc> {
+    const before = await applicantRepository.getById(id, scope);
+    if (before.status !== 'new') return before;
+    const updated = await applicantRepository.updateById(
+      id,
+      { status: 'rejected' },
+      { by: ctx.userId, version: before.__v, scope },
+    );
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'statusChange',
+      changes: [{ field: 'status', old: before.status, new: 'rejected' }],
+    });
+    await emit(HrEvents.ApplicantRejected, {
+      applicantId: id,
+      code: updated.code,
+      screeningId: meta.screeningId,
+      reason: meta.reason,
+    });
     return updated;
   }
 

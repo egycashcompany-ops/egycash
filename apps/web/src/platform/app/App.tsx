@@ -1,11 +1,16 @@
-import { useEffect } from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+// App root: session bootstrap (silent refresh + /auth/me), locale/direction sync, and the top
+// route split — /login vs the authenticated recruitment module (lazy-loaded for code splitting).
+import { lazy, Suspense, useEffect } from 'react';
+import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAppDispatch, useAppSelector } from '../../store';
 import { signedIn, signedOut } from '../../store/authSlice';
 import { bootstrapSession } from '../auth/api';
 import { LoginPage } from '../auth/LoginPage';
-import { Shell } from '../layout/Shell';
+import { RequireAuth } from '../router/RequireAuth';
+import { LoadingState } from '../../shared/ui/states/LoadingState';
+
+const RecruitmentRoutes = lazy(() => import('../../modules/hr/recruitment/routes'));
 
 const useDirection = (): void => {
   const { locale, dir } = useAppSelector((state) => state.locale);
@@ -13,12 +18,6 @@ const useDirection = (): void => {
     document.documentElement.lang = locale;
     document.documentElement.dir = dir;
   }, [locale, dir]);
-};
-
-const Protected = ({ children }: { children: JSX.Element }): JSX.Element => {
-  const status = useAppSelector((state) => state.auth.status);
-  if (status === 'unknown') return <></>;
-  return status === 'signedIn' ? children : <Navigate to="/login" replace />;
 };
 
 export const App = (): JSX.Element => {
@@ -46,14 +45,15 @@ export const App = (): JSX.Element => {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route
-          path="/"
+          path="/*"
           element={
-            <Protected>
-              <Shell />
-            </Protected>
+            <RequireAuth>
+              <Suspense fallback={<div className="grid min-h-screen place-items-center"><LoadingState /></div>}>
+                <RecruitmentRoutes />
+              </Suspense>
+            </RequireAuth>
           }
         />
-        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );

@@ -73,8 +73,11 @@ export const bootPlatform = async (options: BootOptions = {}): Promise<void> => 
   // Built-in templates for the two wired-up event subscriptions above (Sprint 3.3 §4).
   await ensureBuiltinNotificationTemplates();
 
-  // Scheduler registry (Review R3).
+  // Scheduler registry (Review R3) — platform tasks, then any a module manifest declares.
   registerPlatformScheduledTasks();
+  for (const manifest of getRegisteredModules()) {
+    for (const task of manifest.scheduledTasks ?? []) schedulerService.declareTask(task);
+  }
   await schedulerService.syncRegistry();
 
   // Module reference-data seeds run last — after permissions, the org singleton, and the

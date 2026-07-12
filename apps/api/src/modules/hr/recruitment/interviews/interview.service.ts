@@ -165,6 +165,17 @@ class InterviewService {
     return interviewRepository.getById(id, scope);
   }
 
+  /**
+   * Whether the applicant has cleared every configured interview round — i.e. passed the
+   * final active stage (progression gating guarantees all prior stages were passed too).
+   * Used by the Job Offer stage (Stage 4) to gate offer creation.
+   */
+  async hasClearedAllInterviews(applicantId: string): Promise<boolean> {
+    const last = await interviewStageRepository.findLastActive();
+    if (last === null) return false;
+    return interviewRepository.hasPassedStage(applicantId, last.order);
+  }
+
   /** Reschedule a scheduled interview (date/time only); notifies the panel. */
   async reschedule(
     ctx: AuthContext,

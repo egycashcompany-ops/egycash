@@ -9,6 +9,43 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-07-12
+
+Release v0.9.0 — Sprint 4.4: **HR / Recruitment — Job Offer (Stage 4)**
+([PR #23](https://github.com/egycashcompany-ops/egycash/pull/23)), the fourth stage of the
+approved seven-stage recruitment workflow. Additive on Stage 3; **no part of Stage 5
+(Employee Creation) or later is built.**
+
+### Added
+
+- **HR / Recruitment: Job Offer (Stage 4).** A `hr_job_offers` aggregate: an applicant who
+  cleared every interview round receives a versioned compensation offer.
+  - **Lifecycle** `draft → sent → accepted / rejected / expired / withdrawn`. The offer
+    carries a full package — salary (`Money`), allowances, benefits, job title, department,
+    branch, reporting manager, employment type, probation period, start date, offer validity,
+    and notes. **Version history**: every revise snapshots the prior package into `revisions`.
+  - **Immutable, human-readable offer number** `JO-{YYYY}-{seq:6}` (organization-wide, atomic
+    per-year counter in the shared `hr_sequences` collection + unique index) — HR references
+    offers by this number, not the ObjectId; the list endpoint is searchable over it.
+  - **Immutable accepted-revision snapshot**: acceptance freezes the exact terms and their
+    revision number into `acceptedSnapshot`, never mutated afterward — the record Employee
+    Creation (Stage 5) will consume, decoupled from the live offer.
+  - **Guards**: creation requires all interview stages cleared; **at most one active
+    (draft/sent) offer per applicant** (partial unique index + service check); an applicant
+    who already accepted an offer cannot be issued another; sending requires a future
+    validity; a lapsed sent offer cannot be accepted. The **accepted-offer gate**
+    (`acceptedOfferFor`) is exposed so Stage 5 can require the latest offer be Accepted.
+  - **Automatic expiration**: a scheduled sweep (`hr.jobOffers.expire`, every 15 min) flips
+    sent offers past their validity to `expired` (audited, emitted, notified).
+  - **Notifications** for offer sent / accepted / rejected / expired (fire-and-forget, to the
+    hiring manager + the offer's author); **full audit trail** on every transition.
+  - Permissions `jobOffer.{view,create,edit,send,respond,withdraw}` (`send`/`respond`/
+    `withdraw` each their own grant); route `/api/v1/hr/job-offers`; events
+    `hr.jobOffer.{created,revised,sent,accepted,rejected,expired,withdrawn}`.
+  - **Additive platform seam**: `ModuleManifest.scheduledTasks` — a module can now declare
+    repeatable tasks (declared before the scheduler sync, validated to carry the module-id
+    prefix), the analogue of the existing `seed`/`eventSubscriptions` seams.
+
 ## [0.8.0] - 2026-07-11
 
 Release v0.8.0 — Sprint 4.3: **HR / Recruitment — Interviews (Stage 3)**

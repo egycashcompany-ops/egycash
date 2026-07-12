@@ -9,6 +9,42 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-07-12
+
+Release v0.14.0 — Sprint 5.2: **HR / Recruitment — Applicants Frontend (Phase 2)**
+([PR #33](https://github.com/egycashcompany-ops/egycash/pull/33)), the first Recruitment feature
+screen set, built on the Phase 1 foundation. **Applicants only** — no later stage. Approved with
+no blocking comments after two review changes (URL-synced list state; placeholder reference
+controls for cross-module IDs) folded in before merge.
+
+### Added
+
+- **HR / Recruitment: Applicants frontend (`apps/web`).**
+  - **List** — sortable/selectable `DataTable`; multi-filter bar (search + status / source /
+    intake channel / identity-verification / duplicates-only / has-files); `Pagination`;
+    **bulk withdraw** (reason dialog); **CSV export**; create entry point — all permission-gated.
+    Filters, search, sort and pagination are **synchronized with the URL query string**
+    (deep-linkable, back/forward aware).
+  - **Detail** — identity/contact/preferences/application read-out; **attachments** panel
+    (upload with title+category, signed-URL download, remove); **verify-identity** and
+    **withdraw** actions (version-checked).
+  - **Create / edit** — comprehensive manual-entry form (context, identity, contact, addresses,
+    preferences, education, military, experience, references, licenses, certifications) on the
+    shared form primitives; server-authoritative validation surfaced in a summary;
+    optimistic-concurrency-guarded edits.
+  - **OCR assist** — upload a National-ID image → extraction seam → apply fields with confidence
+    bands; degrades to manual entry when no provider is wired (OQ-30).
+  - **Cross-module references** (Job Requisition, Branch) use placeholder reference controls
+    (disabled "coming soon" selector, or a read-only chip when supplied by context via
+    `?requisitionId=&branchId=`) — internal IDs are never editable fields.
+  - Feature `api/` layer + TanStack Query hooks against the existing endpoints; `ar` + `en` i18n.
+    Added `getPage` (pagination meta) and `downloadBlob` (CSV export) to the shared api-client.
+
+### Notes
+
+- No new runtime dependencies. Verified via web typecheck, repo lint, and vite build (recruitment
+  stays a lazy chunk). No web unit-test runner yet (backlog: Vitest + React Testing Library).
+
 ## [0.13.0] - 2026-07-12
 
 Release v0.13.0 — Sprint 5.1: **HR / Recruitment — Frontend Foundation (Phase 1)**

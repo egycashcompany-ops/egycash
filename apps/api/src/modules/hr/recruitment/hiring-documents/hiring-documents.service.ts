@@ -20,7 +20,7 @@ import {
   type ReplaceHiringDocument,
   type UploadHiringDocument,
 } from '@ecms/contracts';
-import { BusinessRuleError, ConflictError, ValidationError } from '../../../../shared/errors';
+import { BusinessRuleError, ConflictError, StaleDocumentError, ValidationError } from '../../../../shared/errors';
 import { type AuthContext, type ScopeSelector } from '../../../../shared/types';
 import { auditService } from '../../../../platform/audit';
 import { emit } from '../../../../platform/kernel/event-bus';
@@ -137,6 +137,9 @@ class HiringDocumentsService {
     if (before.documents.some((d) => String(d.typeId) === meta.typeId)) {
       throw new ConflictError('a document for this type already exists — replace it instead');
     }
+    // Reject a stale request BEFORE writing bytes, so a lost optimistic-concurrency race
+    // never leaves an orphaned file version (HD-01). updateById re-checks atomically below.
+    if (before.__v !== meta.version) throw new StaleDocumentError();
 
     const categoryId = await resolveHiringDocsCategoryId();
     const file = await fileService.upload(

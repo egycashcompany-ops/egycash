@@ -292,6 +292,14 @@ describe('hiring documents — create, upload, completion gate', () => {
     expect(bad.status).toBe(422);
   });
 
+  it('rejects an upload carrying a stale version (optimistic concurrency)', async () => {
+    const emp = await hiredEmployee();
+    const hd = await createSet(emp.id);
+    const typeId = await idByKey('hiring-document-types', 'nationalIdCopy');
+    const stale = await uploadDoc(hd.id, typeId, hd.version + 5);
+    expect(stale.status).toBe(409);
+  });
+
   it('blocks completion while a required document is missing, then completes', async () => {
     const emp = await hiredEmployee();
     const hd = await createSet(emp.id);

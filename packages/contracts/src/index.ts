@@ -17,3 +17,4 @@ export * from './modules/hr-screening.js';
 export * from './modules/hr-interview.js';
 export * from './modules/hr-job-offer.js';
 export * from './modules/hr-employee.js';
+export * from './modules/hr-hiring-documents.js';

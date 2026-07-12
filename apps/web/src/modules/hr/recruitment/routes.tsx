@@ -2,12 +2,15 @@
 // Software Architecture §6). The layout route provides the shell; each stage route is
 // permission-gated and currently renders the shared placeholder (its real screen lands in a
 // later sprint). Default export so React.lazy can import it.
-import { Route, Routes } from 'react-router-dom';
+import { Outlet, Route, Routes } from 'react-router-dom';
 import { RequirePermission } from '../../../platform/router/RequirePermission';
 import { NotFoundPage } from '../../../platform/app/pages/NotFoundPage';
 import { RecruitmentLayout } from './RecruitmentLayout';
 import { RecruitmentOverview } from './pages/RecruitmentOverview';
 import { StagePlaceholder } from './pages/StagePlaceholder';
+import { ApplicantsListPage } from './applicants/pages/ApplicantsListPage';
+import { ApplicantDetailPage } from './applicants/pages/ApplicantDetailPage';
+import { ApplicantFormPage } from './applicants/pages/ApplicantFormPage';
 
 const stage = (permission: string, titleKey: string): JSX.Element => (
   <RequirePermission permission={permission}>
@@ -20,7 +23,33 @@ export default function RecruitmentRoutes(): JSX.Element {
     <Routes>
       <Route element={<RecruitmentLayout />}>
         <Route index element={<RecruitmentOverview />} />
-        <Route path="applicants/*" element={stage('applicant.view', 'recruitment.nav.applicants')} />
+        <Route
+          path="applicants"
+          element={
+            <RequirePermission permission="applicant.view">
+              <Outlet />
+            </RequirePermission>
+          }
+        >
+          <Route index element={<ApplicantsListPage />} />
+          <Route
+            path="new"
+            element={
+              <RequirePermission permission="applicant.create">
+                <ApplicantFormPage mode="create" />
+              </RequirePermission>
+            }
+          />
+          <Route path=":id" element={<ApplicantDetailPage />} />
+          <Route
+            path=":id/edit"
+            element={
+              <RequirePermission permission="applicant.edit">
+                <ApplicantFormPage mode="edit" />
+              </RequirePermission>
+            }
+          />
+        </Route>
         <Route path="screening/*" element={stage('screening.view', 'recruitment.nav.screening')} />
         <Route path="interviews/*" element={stage('interview.view', 'recruitment.nav.interviews')} />
         <Route path="job-offers/*" element={stage('jobOffer.view', 'recruitment.nav.offers')} />

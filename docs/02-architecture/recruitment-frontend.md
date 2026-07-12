@@ -1,9 +1,9 @@
 # Recruitment — Frontend Foundation (Phase 1)
 
 Implementation reference for the **HR / Recruitment web frontend foundation** — the reusable
-shell, shared UI kit, and platform integration that every recruitment screen builds on. This
-phase deliberately builds **no feature screen** (not even Applicants); it establishes the ground
-every later screen reuses. Stack and state rules follow
+shell, shared UI kit, and platform integration that every recruitment screen builds on. Phase 1
+(§1–§6) deliberately builds **no feature screen**; it establishes the ground every later screen
+reuses. **§7 records the Applicants screens added in Phase 2.** Stack and state rules follow
 [Software Architecture §6](software-architecture.md#6-frontend-architecture) and
 [ADR-013](../03-decisions/ADR-013-frontend-state.md).
 
@@ -83,7 +83,7 @@ replacing that element, with zero layout/routing work.
 
 ## 6. Deliberately deferred
 
-- **Feature screens** — Applicants and the other six stages (this phase is foundation only).
+- **Feature screens** — the six later-stage screens (Applicants ships in Phase 2 — see §7; Screening onward remain later sprints).
 - **shadcn/ui + react-hook-form** — §6 names these as the eventual kit; the foundation provides the
   same wrapped-in-`shared/ui` surface with hand-rolled, dependency-free primitives so a later
   migration is localized. No behavior depends on the concrete library.
@@ -91,3 +91,35 @@ replacing that element, with zero layout/routing work.
   Socket.IO badge land with that feature.
 - **Frontend unit tests** — no web test runner is configured yet; typecheck + lint + build are the
   current gates. A component test setup (Vitest + Testing Library) is a fast follow.
+
+## 7. Applicants (Phase 2)
+
+The first feature screen set, built entirely on the §3–§5 foundation. Folder:
+`modules/hr/recruitment/applicants/` with `api/` (feature api + TanStack Query hooks, ADR-013),
+`pages/` (list, detail, create/edit), and `components/` (filters, status badge, form, OCR assist,
+attachments).
+
+- **List** (`applicant.view`) — `DataTable` with sortable columns (code, created) and row
+  selection; `ApplicantFilters` (search + status/source/channel/identity/duplicates/has-files);
+  `Pagination` bound to the API `PageMeta`; **bulk withdraw** (`applicant.edit`) via `BulkActions`
+  + a reason dialog; **CSV export** (`applicant.export`) streamed to a browser download; a
+  **create** entry point (`applicant.create`).
+- **Detail** (`applicant.view`) — identity/contact/preferences/application read-out, the
+  **attachments** panel (list · upload with title+category · signed-URL download · remove), and
+  the **verify-identity** and **withdraw** actions (permission-gated, version-checked).
+- **Create / edit** — a comprehensive manual-entry form (application context, identity, contact,
+  addresses, preferences, education, military, work experience, references, licenses,
+  certifications) using the shared form primitives. Client checks cover the required fields; the
+  server stays authoritative and its validation errors surface in a summary. Edits are
+  optimistic-concurrency guarded (`version`).
+- **OCR assist** (create) — upload a National-ID image → the server extraction seam runs → each
+  field returns with a confidence band and can be applied to the form. Degrades gracefully to
+  "enter manually" when no provider is wired (OQ-30). Nothing is trusted; the user confirms.
+- **Integration** — all calls go through the feature `api/` layer against the existing endpoints
+  (`/hr/applicants`, `/hr/applicant-sources`, `/hr/applicants/ocr/national-id`,
+  `/hr/applicants/:id/attachments`, `/hr/applicants/export`, `/hr/applicants/bulk`, and
+  `/platform/files` + `/platform/file-categories` for uploads). Reads are cached and writes
+  invalidate the feature subtree.
+
+Deferred: URL-synced list state (filters/sort in the query string) and frontend component tests
+(pending the Vitest + RTL setup backlog item).

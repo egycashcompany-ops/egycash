@@ -30,8 +30,8 @@ export const Field = ({
   label?: string;
   htmlFor?: string;
   required?: boolean;
-  hint?: string;
-  error?: string;
+  hint?: string | undefined;
+  error?: string | undefined;
   children: ReactNode;
 }): JSX.Element => (
   <div className="space-y-1.5">

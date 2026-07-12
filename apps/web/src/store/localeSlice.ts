@@ -7,7 +7,13 @@ interface LocaleState {
   dir: 'rtl' | 'ltr';
 }
 
-const initialState: LocaleState = { locale: 'ar', dir: 'rtl' };
+const readLocale = (): Locale => {
+  const stored = typeof localStorage === 'undefined' ? null : localStorage.getItem('ecms.locale');
+  return stored === 'ar' || stored === 'en' ? stored : 'ar';
+};
+
+const initial = readLocale();
+const initialState: LocaleState = { locale: initial, dir: initial === 'ar' ? 'rtl' : 'ltr' };
 
 export const localeSlice = createSlice({
   name: 'locale',

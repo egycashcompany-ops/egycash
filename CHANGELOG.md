@@ -9,6 +9,34 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-07-12
+
+Release v0.10.0 — Sprint 4.5: **HR / Recruitment — Employee Creation (Stage 5)**
+([PR #25](https://github.com/egycashcompany-ops/egycash/pull/25)), the fifth stage of the
+approved seven-stage recruitment workflow. Additive on Stage 4; **no part of Stage 6 (Hiring
+Documents) or later is built.**
+
+### Added
+
+- **HR / Recruitment: Employee Creation (Stage 5).** A `hr_employees` aggregate: an applicant
+  whose Job Offer was **Accepted** becomes an Employee.
+  - **Accepted-offer gate** — creation is allowed only from an offer whose status is
+    `accepted`; the employment terms are read **exclusively from the offer's immutable
+    Accepted Snapshot** (never the live, mutable offer).
+  - **Unique employee number** `EMP-{YYYY}-{seq:6}` (organization-wide, atomic per-year counter
+    in the shared `hr_sequences` collection + unique index).
+  - **Atomic creation** — the number allocation and the record insert run in one transaction
+    (`unitOfWork`); a **unique index on `jobOfferId`** prevents a duplicate employee from the
+    same offer even under concurrency (with a fast-path service check).
+  - **Preserved references** to the Applicant, the Job Requisition (carried by the applicant),
+    and the Accepted Job Offer; **copies the approved employment terms** (job title,
+    department, branch, manager, employment type, salary, allowances, benefits, probation,
+    start date) plus the accepted offer revision number; sets the initial status **`active`**
+    and records the **hiring date** (defaults to now).
+  - **Publishes** `hr.employee.created`, **notifies** the reporting manager + the creator, and
+    **audits** every operation. Permissions `employee.{view,create}`; route
+    `/api/v1/hr/employees`; the employee number is searchable in the list endpoint.
+
 ## [0.9.0] - 2026-07-12
 
 Release v0.9.0 — Sprint 4.4: **HR / Recruitment — Job Offer (Stage 4)**

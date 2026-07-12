@@ -9,6 +9,46 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-07-12
+
+Release v0.13.0 — Sprint 5.1: **HR / Recruitment — Frontend Foundation (Phase 1)**
+([PR #31](https://github.com/egycashcompany-ops/egycash/pull/31)). The reusable web foundation for
+the Recruitment module — shell, shared UI kit, and platform integration — built foundation-first;
+**no feature screen (Applicants included) is built here.** Approved with two backlog notes (add
+Vitest + React Testing Library before the feature screens grow; revisit shadcn/ui later — the
+current abstraction layer is acceptable).
+
+### Added
+
+- **HR / Recruitment: frontend foundation (`apps/web`).**
+  - **App shell & layout** — generic `AppShell` (sidebar + topbar), RTL-safe and responsive
+    (persistent rail on desktop, off-canvas drawer on mobile), breadcrumbs, page container/header.
+  - **Theme** — light/dark/system (Tailwind class strategy, OS-reactive, persisted); brand token
+    scale; **Arabic RTL** default with logical utilities throughout.
+  - **Navigation & permission-aware routing** — `RequireAuth` + `RequirePermission` route guards,
+    `Can`/`useCan` role-based UI, 403/404 pages, and the recruitment module **lazy-loaded**
+    (route-based code splitting).
+  - **Shared UI kit** (`shared/ui`, imported via barrel) — DataTable (sort/selection/state-aware),
+    Pagination, SearchInput (debounced), FilterBar, BulkActions, Button, Field/Input/Textarea/
+    Select/Checkbox/Form, Dialog, FileUpload, Badge/StatusBadge, Timeline, Card, Spinner/Skeleton,
+    and Loading/Empty/Error/Success states.
+  - **API layer & data** — typed REST + multipart client (in-memory token per ADR-006, silent
+    refresh, envelope unwrap), error-code → localized message mapping, query-key factory, and
+    **TanStack Query with global error handling**; client toast store + `Toaster`;
+    `NotificationBell`; top-level `ErrorBoundary`.
+  - **Recruitment module shell** — nav, permission-aware landing overview, and per-stage
+    permission-gated placeholder routes for all seven stages (each real screen drops in by
+    replacing one element).
+  - **i18n** — `ar` + `en` catalog with `{{param}}` interpolation. Docs:
+    [recruitment-frontend.md](docs/02-architecture/recruitment-frontend.md).
+
+### Notes
+
+- No new runtime dependencies; the existing React + Vite + RTK + TanStack Query + Tailwind stack
+  was extended in place. Verified via web typecheck, repo lint, and vite production build (the
+  recruitment module emits as a separate lazy chunk). No web unit-test runner yet (backlog:
+  Vitest + React Testing Library).
+
 ## [0.12.0] - 2026-07-12
 
 Release v0.12.0 — Sprint 4.7: **HR / Recruitment — Electronic Employee File (Stage 7)**

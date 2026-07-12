@@ -20,7 +20,7 @@ also self-contained enough to be read on its own.
 |---|------|-----------|----------|
 | 01 | **Business** | [Business Architecture](01-business/business-architecture.md) · [Module Hierarchy](01-business/module-hierarchy.md) | Everyone |
 | 01 | **Domain** | [Domain Model](01-domain/domain-model.md) · [Bounded Contexts](01-domain/bounded-contexts.md) · [Entity Relationships](01-domain/entity-relationships.md) · [Ubiquitous Language](01-domain/ubiquitous-language.md) · [Business Decisions](01-domain/business-decisions.md) | Everyone |
-| 02 | **Architecture** | [Software Architecture](02-architecture/software-architecture.md) · [Platform Core](02-architecture/platform-core.md) · [Folder Structure](02-architecture/folder-structure.md) · [Module Structure](02-architecture/module-structure.md) · [File Management Service](02-architecture/files-service.md) · [Audit & Activity Service](02-architecture/audit-service.md) | Engineers, Architects |
+| 02 | **Architecture** | [Software Architecture](02-architecture/software-architecture.md) · [Platform Core](02-architecture/platform-core.md) · [Folder Structure](02-architecture/folder-structure.md) · [Module Structure](02-architecture/module-structure.md) · [File Management Service](02-architecture/files-service.md) · [Audit & Activity Service](02-architecture/audit-service.md) · [Recruitment — Applicants (backend)](02-architecture/recruitment-applicants.md) · [Recruitment — Frontend Foundation](02-architecture/recruitment-frontend.md) | Engineers, Architects |
 | 03 | **Decisions** | [Architecture Decision Records (ADRs)](03-decisions/README.md) | Engineers, Architects |
 | 04 | **Standards** | [Coding Standards](04-standards/coding-standards.md) · [Naming Conventions](04-standards/naming-conventions.md) · [API Standards](04-standards/api-standards.md) | Engineers |
 | 05 | **Database** | [Database Design](05-database/database-design.md) · [ER Diagrams](05-database/er-diagrams.md) | Engineers |
@@ -29,7 +29,7 @@ also self-contained enough to be read on its own.
 | 08 | **Operations** | [Deployment Strategy](08-operations/deployment-strategy.md) | DevOps, Engineers |
 | 09 | **Guides** | [Development Guide](09-guides/development-guide.md) · [Development Workflow](09-guides/development-workflow.md) | Engineers |
 | 10 | **Reviews** | [Architecture Review 01 (pre-Milestone 2)](10-reviews/2026-07-architecture-review-01.md) · [Hiring Documents (Stage 6)](10-reviews/2026-07-architecture-review-hiring-documents.md) · [Electronic Employee File (Stage 7)](10-reviews/2026-07-architecture-review-employee-file.md) | Everyone |
-| 11 | **Retrospectives** | [Sprint 3.1 (Release v0.3.0)](11-retrospectives/2026-07-sprint-3.1.md) · [Sprint 4.1 (Release v0.6.0)](11-retrospectives/2026-07-sprint-4.1.md) · [Sprint 4.2–4.3 (Releases v0.7.0/v0.8.0)](11-retrospectives/2026-07-sprint-4.2-4.3.md) · [Sprint 4.4 (Release v0.9.0)](11-retrospectives/2026-07-sprint-4.4.md) · [Sprint 4.5 (Release v0.10.0)](11-retrospectives/2026-07-sprint-4.5.md) | Everyone |
+| 11 | **Retrospectives** | [Sprint 3.1 (Release v0.3.0)](11-retrospectives/2026-07-sprint-3.1.md) · [Sprint 4.1 (Release v0.6.0)](11-retrospectives/2026-07-sprint-4.1.md) · [Sprint 4.2–4.3 (Releases v0.7.0/v0.8.0)](11-retrospectives/2026-07-sprint-4.2-4.3.md) · [Sprint 4.4 (Release v0.9.0)](11-retrospectives/2026-07-sprint-4.4.md) · [Sprint 4.5 (Release v0.10.0)](11-retrospectives/2026-07-sprint-4.5.md) · [Sprint 5.1 — Recruitment Frontend (Release v0.13.0)](11-retrospectives/2026-07-sprint-5.1-recruitment-frontend.md) | Everyone |
 | 12 | **Planning** | [Sprint 3.3 — Notifications Service](12-planning/sprint-3.3-plan.md) | Everyone |
 
 ---
@@ -75,4 +75,7 @@ also self-contained enough to be read on its own.
 | Sprint 4.6 close-out — Release v0.11.0 recorded ([PR #28](https://github.com/egycashcompany-ops/egycash/pull/28)) | — | ✅ Completed & merged | EGYCASH | 2026-07-12 |
 | Sprint 4.7 — HR/Recruitment: Electronic Employee File Stage 7 ([PR #29](https://github.com/egycashcompany-ops/egycash/pull/29)) | 0.12.0 | ✅ Reviewed & merged (self-conducted [architecture review](10-reviews/2026-07-architecture-review-employee-file.md); no Critical/High findings — all documented, no in-PR code change) | EGYCASH | 2026-07-12 |
 | Architecture Review — Electronic Employee File (Stage 7) | 1.0.0 | ✅ Completed (18 findings; approvable, no Critical/High) | EGYCASH | 2026-07-12 |
-| Sprint 4.7 close-out — Release v0.12.0 recorded (this PR) | — | 🔍 Under review | — | 2026-07-12 |
+| Sprint 4.7 close-out — Release v0.12.0 recorded ([PR #30](https://github.com/egycashcompany-ops/egycash/pull/30)) | — | ✅ Completed & merged | EGYCASH | 2026-07-12 |
+| Sprint 5.1 — HR/Recruitment: Frontend Foundation Phase 1 ([PR #31](https://github.com/egycashcompany-ops/egycash/pull/31)) | 0.13.0 | ✅ Reviewed & merged (aligns with architecture; no blocking comments; two backlog notes) | EGYCASH | 2026-07-12 |
+| Sprint 5.1 retrospective — Recruitment Frontend Foundation | — | ✅ Completed | EGYCASH | 2026-07-12 |
+| Sprint 5.1 close-out — Release v0.13.0 recorded (this PR) | — | 🔍 Under review | — | 2026-07-12 |

@@ -2,8 +2,8 @@
 // the Platform Core (Module Structure §2.1). The kernel validates it at boot (unique id,
 // permission naming, `hr_` collection prefix, `/hr` route prefix) and fails the boot on
 // violation. Ships the Recruitment sub-module: Stage 1 (Applicants), Stage 2 (Initial
-// Screening), Stage 3 (Interviews), Stage 4 (Job Offer), and Stage 5 (Employee Creation).
-// Later stages (Hiring Documents onward) are future sprints.
+// Screening), Stage 3 (Interviews), Stage 4 (Job Offer), Stage 5 (Employee Creation), and
+// Stage 6 (Hiring Documents). Later stages (Electronic File onward) are future sprints.
 import { declarePermissions, type PermissionDef } from '@ecms/contracts';
 import { type ModuleManifest } from '../../platform/kernel/module-registry';
 import { buildApplicantSourcesRouter, buildApplicantsRouter } from './recruitment/applicants';
@@ -11,6 +11,7 @@ import { buildScreeningsRouter } from './recruitment/screening';
 import { buildInterviewStagesRouter, buildInterviewsRouter } from './recruitment/interviews';
 import { buildJobOffersRouter, jobOfferService } from './recruitment/job-offers';
 import { buildEmployeesRouter } from './recruitment/employees';
+import { buildHiringDocumentTypesRouter, buildHiringDocumentsRouter } from './recruitment/hiring-documents';
 import { seedHrRecruitment } from './hr.seed';
 
 const applicantPermissions = declarePermissions(
@@ -86,6 +87,28 @@ const employeePermissions = declarePermissions(
   ['view', 'create'],
 );
 
+// Stage 6 — Hiring Documents. `upload` covers first upload + versioned replacement; `complete`
+// is the mandatory-completion gate — each its own grant. The document-type catalog is
+// admin-managed under `hiringDocumentType.manage`.
+const hiringDocumentsPermissions = declarePermissions(
+  'hr',
+  'hiringDocuments',
+  { en: 'hiring documents', ar: 'مستندات التعيين' },
+  ['view', 'create'],
+  [
+    { action: 'upload', name: { en: 'Upload hiring document', ar: 'رفع مستند تعيين' } },
+    { action: 'complete', name: { en: 'Complete hiring documents', ar: 'إكمال مستندات التعيين' } },
+  ],
+);
+
+const hiringDocumentTypePermissions = declarePermissions(
+  'hr',
+  'hiringDocumentType',
+  { en: 'hiring document types', ar: 'أنواع مستندات التعيين' },
+  [],
+  [{ action: 'manage', name: { en: 'Manage hiring document types', ar: 'إدارة أنواع مستندات التعيين' } }],
+);
+
 export const hrPermissions: PermissionDef[] = [
   ...applicantPermissions,
   ...applicantSourcePermissions,
@@ -94,12 +117,14 @@ export const hrPermissions: PermissionDef[] = [
   ...interviewStagePermissions,
   ...jobOfferPermissions,
   ...employeePermissions,
+  ...hiringDocumentsPermissions,
+  ...hiringDocumentTypePermissions,
 ];
 
 export const hrModule: ModuleManifest = {
   id: 'hr',
   name: { en: 'Human Resources', ar: 'الموارد البشرية' },
-  version: '0.10.0',
+  version: '0.11.0',
   requiresPlatform: '^2.1',
   permissions: hrPermissions,
   routes: [
@@ -110,6 +135,8 @@ export const hrModule: ModuleManifest = {
     { prefix: '/hr/interview-stages', router: buildInterviewStagesRouter() },
     { prefix: '/hr/job-offers', router: buildJobOffersRouter() },
     { prefix: '/hr/employees', router: buildEmployeesRouter() },
+    { prefix: '/hr/hiring-documents', router: buildHiringDocumentsRouter() },
+    { prefix: '/hr/hiring-document-types', router: buildHiringDocumentTypesRouter() },
   ],
   collections: [
     'hr_applicants',
@@ -120,6 +147,8 @@ export const hrModule: ModuleManifest = {
     'hr_interview_stages',
     'hr_job_offers',
     'hr_employees',
+    'hr_hiring_documents',
+    'hr_hiring_document_types',
   ],
   eventSubscriptions: [],
   scheduledTasks: [

@@ -6,14 +6,17 @@
 // and requisition validator default to their safe stubs at import time (OQ-30).
 import {
   HrEmployeeTemplates,
+  HrHiringDocumentsTemplates,
   HrInterviewTemplates,
   HrOfferTemplates,
   type CreateApplicantSource,
+  type CreateHiringDocumentType,
   type CreateInterviewStage,
 } from '@ecms/contracts';
 import { notificationTemplateService } from '../../platform/notifications';
 import { applicantSourceService } from './recruitment/applicants';
 import { interviewStageService } from './recruitment/interviews';
+import { ensureHiringDocsCategory, hiringDocumentTypeService } from './recruitment/hiring-documents';
 
 const SOURCES: CreateApplicantSource[] = [
   { key: 'internalHr', name: { en: 'Internal HR', ar: 'الموارد البشرية الداخلية' }, kind: 'manual', requiresDetail: false },
@@ -130,6 +133,35 @@ const ensureOfferTemplates = async (): Promise<void> => {
   });
 };
 
+const HIRING_DOCUMENT_TYPES: CreateHiringDocumentType[] = [
+  { key: 'nationalIdCopy', name: { en: 'National ID copy', ar: 'صورة بطاقة الرقم القومي' }, required: true },
+  { key: 'signedContract', name: { en: 'Signed employment contract', ar: 'عقد العمل الموقّع' }, required: true },
+  { key: 'personalPhoto', name: { en: 'Personal photo', ar: 'صورة شخصية' }, required: true },
+  { key: 'qualificationCertificate', name: { en: 'Qualification certificate', ar: 'شهادة المؤهل' }, required: false },
+  { key: 'criminalRecord', name: { en: 'Criminal record certificate', ar: 'صحيفة الحالة الجنائية' }, required: false },
+  { key: 'bankAccountDetails', name: { en: 'Bank account details', ar: 'بيانات الحساب البنكي' }, required: false },
+];
+
+const ensureHiringDocumentsSeeds = async (): Promise<void> => {
+  for (const type of HIRING_DOCUMENT_TYPES) {
+    await hiringDocumentTypeService.ensure(type);
+  }
+  await ensureHiringDocsCategory();
+  await notificationTemplateService.ensure({
+    key: HrHiringDocumentsTemplates.Completed,
+    category: 'hr',
+    priority: 'normal',
+    subject: { ar: 'اكتملت مستندات التعيين', en: 'Hiring documents completed' },
+    body: {
+      ar: 'اكتملت مستندات التعيين للموظف {{employeeCode}}.',
+      en: 'The hiring documents for employee {{employeeCode}} are complete.',
+    },
+    channels: ['inApp', 'email'],
+    variables: ['employeeCode'],
+    defaultExpiryHours: null,
+  });
+};
+
 const ensureEmployeeTemplates = async (): Promise<void> => {
   await notificationTemplateService.ensure({
     key: HrEmployeeTemplates.Created,
@@ -156,4 +188,5 @@ export const seedHrRecruitment = async (): Promise<void> => {
   await ensureInterviewTemplates();
   await ensureOfferTemplates();
   await ensureEmployeeTemplates();
+  await ensureHiringDocumentsSeeds();
 };

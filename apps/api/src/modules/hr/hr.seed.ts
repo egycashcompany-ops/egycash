@@ -5,6 +5,7 @@
 // interview notification templates the interview service sends through. The OCR provider
 // and requisition validator default to their safe stubs at import time (OQ-30).
 import {
+  HrEmployeeFileTemplates,
   HrEmployeeTemplates,
   HrHiringDocumentsTemplates,
   HrInterviewTemplates,
@@ -178,6 +179,22 @@ const ensureEmployeeTemplates = async (): Promise<void> => {
   });
 };
 
+const ensureEmployeeFileTemplates = async (): Promise<void> => {
+  await notificationTemplateService.ensure({
+    key: HrEmployeeFileTemplates.Created,
+    category: 'hr',
+    priority: 'normal',
+    subject: { ar: 'تم فتح الملف الإلكتروني للموظف', en: 'Electronic employee file opened' },
+    body: {
+      ar: 'تم فتح الملف الإلكتروني للموظف {{employeeCode}} واكتمل التعيين.',
+      en: 'The electronic file for employee {{employeeCode}} has been opened; hiring is complete.',
+    },
+    channels: ['inApp', 'email'],
+    variables: ['employeeCode'],
+    defaultExpiryHours: null,
+  });
+};
+
 export const seedHrRecruitment = async (): Promise<void> => {
   for (const source of SOURCES) {
     await applicantSourceService.ensure(source);
@@ -188,5 +205,6 @@ export const seedHrRecruitment = async (): Promise<void> => {
   await ensureInterviewTemplates();
   await ensureOfferTemplates();
   await ensureEmployeeTemplates();
+  await ensureEmployeeFileTemplates();
   await ensureHiringDocumentsSeeds();
 };

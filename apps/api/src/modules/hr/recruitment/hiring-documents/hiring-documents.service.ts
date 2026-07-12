@@ -116,6 +116,14 @@ class HiringDocumentsService {
     return hiringDocumentsRepository.getById(id, scope);
   }
 
+  /**
+   * The employee's hiring-documents set, if any — read by the Electronic Employee File
+   * (Stage 7) to gate assembly on completion and to link the hiring-documents history.
+   */
+  async findByEmployeeId(employeeId: string): Promise<HiringDocumentsDoc | null> {
+    return hiringDocumentsRepository.findByEmployeeId(employeeId);
+  }
+
   /** Upload the first PDF for a document type (a type present already must be replaced instead). */
   async uploadDocument(
     ctx: AuthContext,

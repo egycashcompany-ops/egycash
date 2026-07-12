@@ -71,7 +71,7 @@ collections, events, folders). This glossary is the vocabulary contract; the
 | Hiring Case | ملف التعيين | Post-acceptance conversion: the required-documents checklist to employment readiness | Onboarding (Employment-side, future) |
 | Hiring Document | مستند التعيين | One checklist item: required document type × collected file | Document (platform entity it points to) |
 | Document Type | نوع المستند | Recruitment catalog of documents a hire must provide | Document Category (platform files catalog) |
-| Employee File | الملف الوظيفي | The consolidated digital file handed to Employment on completion | Personnel file cabinet metaphors |
+| Electronic Employee File | الملف الإلكتروني للموظف | The consolidated digital file that completes hiring: it links all applicant history and starts the Employee Timeline, then is owned by the Employee module (BD-008) | Personnel file cabinet metaphors; Onboarding (not a recruitment stage) |
 | National ID | الرقم القومي | 14-digit Egyptian identity number; validated structurally; the person-correlation key across contexts (R9) | Passport/other IDs (future document types) |
 | Job Requisition | طلب شغل وظيفة | Approved vacancy (position, branch, headcount, budget) every applicant applies against — the pipeline anchor ([BD-001](business-decisions.md#bd-001--recruitment-is-requisition-driven)) | Job Title (catalog entry); ~~Vacancy~~ (informal synonym — not used in artifacts) |
 

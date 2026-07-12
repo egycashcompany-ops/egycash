@@ -2,8 +2,9 @@
 // the Platform Core (Module Structure §2.1). The kernel validates it at boot (unique id,
 // permission naming, `hr_` collection prefix, `/hr` route prefix) and fails the boot on
 // violation. Ships the Recruitment sub-module: Stage 1 (Applicants), Stage 2 (Initial
-// Screening), Stage 3 (Interviews), Stage 4 (Job Offer), Stage 5 (Employee Creation), and
-// Stage 6 (Hiring Documents). Later stages (Electronic File onward) are future sprints.
+// Screening), Stage 3 (Interviews), Stage 4 (Job Offer), Stage 5 (Employee Creation),
+// Stage 6 (Hiring Documents), and Stage 7 (Electronic Employee File) — the final stage of the
+// approved seven-stage workflow and the handoff artifact to the Employee module (BD-008).
 import { declarePermissions, type PermissionDef } from '@ecms/contracts';
 import { type ModuleManifest } from '../../platform/kernel/module-registry';
 import { buildApplicantSourcesRouter, buildApplicantsRouter } from './recruitment/applicants';
@@ -12,6 +13,7 @@ import { buildInterviewStagesRouter, buildInterviewsRouter } from './recruitment
 import { buildJobOffersRouter, jobOfferService } from './recruitment/job-offers';
 import { buildEmployeesRouter } from './recruitment/employees';
 import { buildHiringDocumentTypesRouter, buildHiringDocumentsRouter } from './recruitment/hiring-documents';
+import { buildEmployeeFilesRouter } from './recruitment/employee-file';
 import { seedHrRecruitment } from './hr.seed';
 
 const applicantPermissions = declarePermissions(
@@ -109,6 +111,16 @@ const hiringDocumentTypePermissions = declarePermissions(
   [{ action: 'manage', name: { en: 'Manage hiring document types', ar: 'إدارة أنواع مستندات التعيين' } }],
 );
 
+// Stage 7 — Electronic Employee File. `create` assembles the file from a completed hiring case
+// (BD-008); `view` reads it; `edit` appends notes to the Employee Timeline. This stage assembles
+// and reads only — the post-hire employee lifecycle belongs to the Employee module.
+const employeeFilePermissions = declarePermissions(
+  'hr',
+  'employeeFile',
+  { en: 'employee files', ar: 'ملفات الموظفين' },
+  ['view', 'create', 'edit'],
+);
+
 export const hrPermissions: PermissionDef[] = [
   ...applicantPermissions,
   ...applicantSourcePermissions,
@@ -119,12 +131,13 @@ export const hrPermissions: PermissionDef[] = [
   ...employeePermissions,
   ...hiringDocumentsPermissions,
   ...hiringDocumentTypePermissions,
+  ...employeeFilePermissions,
 ];
 
 export const hrModule: ModuleManifest = {
   id: 'hr',
   name: { en: 'Human Resources', ar: 'الموارد البشرية' },
-  version: '0.11.0',
+  version: '0.12.0',
   requiresPlatform: '^2.1',
   permissions: hrPermissions,
   routes: [
@@ -137,6 +150,7 @@ export const hrModule: ModuleManifest = {
     { prefix: '/hr/employees', router: buildEmployeesRouter() },
     { prefix: '/hr/hiring-documents', router: buildHiringDocumentsRouter() },
     { prefix: '/hr/hiring-document-types', router: buildHiringDocumentTypesRouter() },
+    { prefix: '/hr/employee-files', router: buildEmployeeFilesRouter() },
   ],
   collections: [
     'hr_applicants',
@@ -149,6 +163,7 @@ export const hrModule: ModuleManifest = {
     'hr_employees',
     'hr_hiring_documents',
     'hr_hiring_document_types',
+    'hr_employee_files',
   ],
   eventSubscriptions: [],
   scheduledTasks: [

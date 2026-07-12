@@ -22,6 +22,7 @@ const terms = (over: Partial<OfferTerms> = {}): OfferTerms => ({
 const baseDoc = (over: Partial<JobOfferDoc>): JobOfferDoc =>
   ({
     _id: new Types.ObjectId(),
+    code: 'JO-2026-000001',
     applicantId: new Types.ObjectId(),
     applicantCode: 'APP-2026-000001',
     branchId: new Types.ObjectId(),
@@ -30,6 +31,7 @@ const baseDoc = (over: Partial<JobOfferDoc>): JobOfferDoc =>
     terms: terms(),
     revisionNumber: 1,
     revisions: [],
+    acceptedSnapshot: null,
     sentAt: null,
     sentBy: null,
     respondedAt: null,
@@ -48,8 +50,10 @@ const baseDoc = (over: Partial<JobOfferDoc>): JobOfferDoc =>
 describe('toJobOfferDto', () => {
   it('maps the package terms, salary, allowances, and benefits', () => {
     const dto = toJobOfferDto(baseDoc({}));
+    expect(dto.code).toBe('JO-2026-000001');
     expect(dto.status).toBe('draft');
     expect(dto.active).toBe(true);
+    expect(dto.acceptedSnapshot).toBeNull();
     expect(dto.terms.salary).toEqual({ amount: 15000, currency: 'EGP' });
     expect(dto.terms.allowances).toEqual([{ name: 'transport', amount: 1000, currency: 'EGP' }]);
     expect(dto.terms.benefits).toEqual(['medical insurance']);
@@ -96,5 +100,22 @@ describe('toJobOfferDto', () => {
     expect(dto.sentAt).toBe('2026-09-03T00:00:00.000Z');
     expect(dto.respondedAt).toBe('2026-09-04T00:00:00.000Z');
     expect(dto.responseNote).toBe('delighted to join');
+  });
+
+  it('surfaces the frozen accepted snapshot (the exact accepted revision)', () => {
+    const dto = toJobOfferDto(
+      baseDoc({
+        status: 'accepted',
+        active: false,
+        acceptedSnapshot: {
+          revisionNumber: 2,
+          terms: terms({ salary: { amount: 18000, currency: 'EGP' } }),
+          acceptedAt: new Date('2026-09-04T00:00:00.000Z'),
+        },
+      }),
+    );
+    expect(dto.acceptedSnapshot?.revisionNumber).toBe(2);
+    expect(dto.acceptedSnapshot?.terms.salary.amount).toBe(18000);
+    expect(dto.acceptedSnapshot?.acceptedAt).toBe('2026-09-04T00:00:00.000Z');
   });
 });

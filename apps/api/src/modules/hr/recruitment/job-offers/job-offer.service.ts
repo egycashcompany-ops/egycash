@@ -31,6 +31,7 @@ import { notificationsService } from '../../../../platform/notifications';
 import { applicantService } from '../applicants';
 import { interviewService } from '../interviews';
 import { jobOfferRepository, type JobOfferListFilter } from './job-offer.repository';
+import { nextOfferNumber } from './offer-sequence';
 import { type JobOfferDoc, type OfferTerms } from './job-offer.model';
 
 const entityRef = (id: string) => ({ moduleId: 'hr', entityType: 'jobOffer', entityId: id });
@@ -80,10 +81,18 @@ class JobOfferService {
     if (existingActive !== null) {
       throw new ConflictError('this applicant already has an active offer');
     }
+    // An accepted offer is the end of this stage — no further offers (keeps the accepted
+    // snapshot the single source of truth for Employee Creation).
+    const alreadyAccepted = await jobOfferRepository.findAcceptedByApplicantId(input.applicantId);
+    if (alreadyAccepted !== null) {
+      throw new ConflictError('this applicant has already accepted an offer');
+    }
 
     const terms = buildTerms(input.terms);
+    const code = await nextOfferNumber(new Date().getUTCFullYear());
     const doc = await jobOfferRepository.create(
       {
+        code,
         applicantId: new Types.ObjectId(input.applicantId),
         applicantCode: applicant.code,
         branchId: terms.branchId,
@@ -92,6 +101,7 @@ class JobOfferService {
         terms,
         revisionNumber: 1,
         revisions: [],
+        acceptedSnapshot: null,
         sentAt: null,
         sentBy: null,
         respondedAt: null,
@@ -130,6 +140,7 @@ class JobOfferService {
       applicantId: query.applicantId,
       branchId: query.branchId,
       active: query.active,
+      search: query.search,
     };
   }
 
@@ -207,9 +218,22 @@ class JobOfferService {
   async accept(ctx: AuthContext, id: string, input: AcceptJobOffer, scope: ScopeSelector): Promise<JobOfferDoc> {
     const before = await jobOfferRepository.getById(id, scope);
     this.assertRespondable(before);
+    // Freeze the exact accepted terms — immutable, and what Employee Creation (Stage 5)
+    // consumes, independent of any later change to the live offer.
+    const acceptedSnapshot = {
+      revisionNumber: before.revisionNumber,
+      terms: before.terms,
+      acceptedAt: new Date(),
+    };
     const updated = await jobOfferRepository.updateById(
       id,
-      { status: 'accepted', active: false, respondedAt: new Date(), responseNote: input.note ?? null },
+      {
+        status: 'accepted',
+        active: false,
+        respondedAt: acceptedSnapshot.acceptedAt,
+        responseNote: input.note ?? null,
+        acceptedSnapshot,
+      },
       { by: ctx.userId, version: input.version, scope },
     );
     await this.recordStatus(before, updated);

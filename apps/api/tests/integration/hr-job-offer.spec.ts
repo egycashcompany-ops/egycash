@@ -241,12 +241,14 @@ describe('job offers — permissions & eligibility gate', () => {
 });
 
 describe('job offers — draft, revise, one-active invariant', () => {
-  it('drafts an offer for an offer-eligible applicant', async () => {
+  it('drafts an offer for an offer-eligible applicant with an immutable offer number', async () => {
     const applicant = await offerReadyApplicant();
     const dto = await draftFor(applicant);
     expect(dto.status).toBe('draft');
     expect(dto.active).toBe(true);
     expect(dto.revisionNumber).toBe(1);
+    expect(dto.code).toMatch(/^JO-\d{4}-\d{6}$/);
+    expect(dto.acceptedSnapshot).toBeNull();
     expect(dto.terms.salary).toEqual({ amount: 15000, currency: 'EGP' });
     expect(dto.terms.benefits).toEqual(['medical insurance']);
   });
@@ -344,6 +346,67 @@ describe('job offers — accept / reject / withdraw', () => {
     // No active offer remains, so a new one may be drafted.
     const again = await createOffer(applicant.id);
     expect(again.status).toBe(201);
+  });
+});
+
+describe('job offers — offer number & accepted snapshot', () => {
+  it('assigns sequential, searchable offer numbers', async () => {
+    const a1 = await offerReadyApplicant();
+    const a2 = await offerReadyApplicant();
+    const o1 = await draftFor(a1);
+    const o2 = await draftFor(a2);
+    expect(o1.code).toMatch(/^JO-\d{4}-\d{6}$/);
+    expect(o2.code).not.toBe(o1.code);
+
+    // The offer number is searchable (HR looks offers up by JO-number, not ObjectId).
+    const found = await request(app)
+      .get('/api/v1/hr/job-offers')
+      .query({ search: o1.code, pageSize: 20 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(found.status).toBe(200);
+    const codes = (found.body as { data: JobOfferDto[] }).data.map((o) => o.code);
+    expect(codes).toContain(o1.code);
+    expect(codes).not.toContain(o2.code);
+  });
+
+  it('freezes the accepted revision as an immutable snapshot and blocks further offers', async () => {
+    const applicant = await offerReadyApplicant();
+    const draft = await draftFor(applicant);
+    // Revise to a second version (higher salary), then send and accept.
+    const revised = await request(app)
+      .patch(`/api/v1/hr/job-offers/${draft.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ terms: offerTerms({ salary: { amount: 20000, currency: 'EGP' } }), version: draft.version });
+    expect(revised.status).toBe(200);
+    const rev2 = revised.body.data as JobOfferDto;
+    expect(rev2.revisionNumber).toBe(2);
+
+    const sent = await request(app)
+      .post(`/api/v1/hr/job-offers/${rev2.id}/send`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: rev2.version });
+    expect(sent.status).toBe(200);
+    const accepted = await request(app)
+      .post(`/api/v1/hr/job-offers/${rev2.id}/accept`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: (sent.body.data as JobOfferDto).version });
+    expect(accepted.status).toBe(200);
+
+    // The snapshot captures exactly the accepted revision (2) and its terms.
+    const dto = accepted.body.data as JobOfferDto;
+    expect(dto.acceptedSnapshot?.revisionNumber).toBe(2);
+    expect(dto.acceptedSnapshot?.terms.salary.amount).toBe(20000);
+
+    // Post-acceptance the offer is terminal: no revision can change the accepted terms.
+    const reviseAfter = await request(app)
+      .patch(`/api/v1/hr/job-offers/${rev2.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ terms: offerTerms({ salary: { amount: 99000, currency: 'EGP' } }), version: dto.version });
+    expect(reviseAfter.status).toBe(422);
+
+    // And an applicant who already accepted cannot be issued another offer.
+    const another = await createOffer(applicant.id);
+    expect(another.status).toBe(409);
   });
 });
 

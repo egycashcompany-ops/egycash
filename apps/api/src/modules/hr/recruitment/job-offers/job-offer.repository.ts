@@ -11,7 +11,10 @@ export interface JobOfferListFilter {
   applicantId?: string | undefined;
   branchId?: string | undefined;
   active?: boolean | undefined;
+  search?: string | undefined;
 }
+
+const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 class JobOfferRepository extends BaseRepository<JobOfferDoc> {
   constructor() {
@@ -51,6 +54,10 @@ class JobOfferRepository extends BaseRepository<JobOfferDoc> {
     if (f.applicantId !== undefined) clauses.push({ applicantId: new Types.ObjectId(f.applicantId) });
     if (f.branchId !== undefined) clauses.push({ branchId: new Types.ObjectId(f.branchId) });
     if (f.active !== undefined) clauses.push({ active: f.active });
+    if (f.search !== undefined && f.search.trim() !== '') {
+      const re = new RegExp(escapeRegExp(f.search.trim()), 'i');
+      clauses.push({ $or: [{ code: re }, { applicantCode: re }] } as FilterQuery<JobOfferDoc>);
+    }
     if (clauses.length === 0) return {};
     if (clauses.length === 1) return clauses[0] as FilterQuery<JobOfferDoc>;
     return { $and: clauses } as FilterQuery<JobOfferDoc>;

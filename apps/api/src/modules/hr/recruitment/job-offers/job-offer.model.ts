@@ -45,7 +45,15 @@ export interface OfferRevision {
   revisedAt: Date;
 }
 
+export interface OfferAcceptedSnapshot {
+  revisionNumber: number;
+  terms: OfferTerms;
+  acceptedAt: Date;
+}
+
 export interface JobOfferDoc extends BaseDocFields {
+  /** Immutable, unique, human-readable offer number `JO-{YYYY}-{seq:6}` (set once, at create). */
+  code: string;
   applicantId: Types.ObjectId;
   applicantCode: string;
   branchId: Types.ObjectId;
@@ -54,6 +62,8 @@ export interface JobOfferDoc extends BaseDocFields {
   terms: OfferTerms;
   revisionNumber: number;
   revisions: OfferRevision[];
+  /** Frozen accepted terms — set once on acceptance, never mutated (Stage 5 consumes this). */
+  acceptedSnapshot: OfferAcceptedSnapshot | null;
   sentAt: Date | null;
   sentBy: Types.ObjectId | null;
   respondedAt: Date | null;
@@ -102,6 +112,7 @@ const termsSchema = new Schema<OfferTerms>(
 
 const jobOfferSchema = new Schema<JobOfferDoc>(
   {
+    code: { type: String, required: true },
     applicantId: { type: Schema.Types.ObjectId, required: true },
     applicantCode: { type: String, required: true },
     branchId: { type: Schema.Types.ObjectId, required: true },
@@ -123,6 +134,17 @@ const jobOfferSchema = new Schema<JobOfferDoc>(
       ],
       default: [],
     },
+    acceptedSnapshot: {
+      type: new Schema<OfferAcceptedSnapshot>(
+        {
+          revisionNumber: { type: Number, required: true },
+          terms: { type: termsSchema, required: true },
+          acceptedAt: { type: Date, required: true },
+        },
+        { _id: false },
+      ),
+      default: null,
+    },
     sentAt: { type: Date, default: null },
     sentBy: { type: Schema.Types.ObjectId, default: null },
     respondedAt: { type: Date, default: null },
@@ -137,6 +159,8 @@ const jobOfferSchema = new Schema<JobOfferDoc>(
   baseSchemaOptions,
 );
 
+// The offer number is organization-wide unique and immutable.
+jobOfferSchema.index({ code: 1 }, { unique: true, name: 'ux_code' });
 // At most one ACTIVE (draft/sent) offer per applicant — the invariant, DB-enforced.
 jobOfferSchema.index(
   { applicantId: 1 },

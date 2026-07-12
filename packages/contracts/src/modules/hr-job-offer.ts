@@ -109,6 +109,8 @@ export const ListJobOffersQuerySchema = PaginationQuerySchema.extend({
   applicantId: objectId().optional(),
   branchId: objectId().optional(),
   active: z.coerce.boolean().optional(),
+  /** Free-text over the offer number (`code`) and applicant code (partial, case-insensitive). */
+  search: z.string().max(100).optional(),
 }).strict();
 export type ListJobOffersQuery = z.infer<typeof ListJobOffersQuerySchema>;
 
@@ -142,8 +144,20 @@ export interface OfferRevisionDto {
   revisedAt: string;
 }
 
+/**
+ * The frozen terms as they stood the moment the applicant accepted. Immutable once set — the
+ * exact revision Employee Creation (Stage 5) must consume, independent of the live `terms`.
+ */
+export interface OfferAcceptedSnapshotDto {
+  revisionNumber: number;
+  terms: OfferTermsDto;
+  acceptedAt: string;
+}
+
 export interface JobOfferDto {
   id: string;
+  /** Immutable, unique, human-readable offer number, e.g. `JO-2026-000001`. */
+  code: string;
   applicantId: string;
   applicantCode: string;
   branchId: string;
@@ -154,6 +168,8 @@ export interface JobOfferDto {
   revisionNumber: number;
   /** Superseded prior versions, oldest first. */
   revisions: OfferRevisionDto[];
+  /** Set once, on acceptance; null otherwise. The employment terms actually accepted. */
+  acceptedSnapshot: OfferAcceptedSnapshotDto | null;
   sentAt: string | null;
   respondedAt: string | null;
   responseNote: string | null;

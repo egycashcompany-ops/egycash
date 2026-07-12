@@ -22,6 +22,7 @@ const iso = (d: Date | null): string | null => (d === null ? null : d.toISOStrin
 
 export const toJobOfferDto = (doc: JobOfferDoc): JobOfferDto => ({
   id: String(doc._id),
+  code: doc.code,
   applicantId: String(doc.applicantId),
   applicantCode: doc.applicantCode,
   branchId: String(doc.branchId),
@@ -35,6 +36,14 @@ export const toJobOfferDto = (doc: JobOfferDoc): JobOfferDto => ({
     revisedBy: r.revisedBy === null ? null : String(r.revisedBy),
     revisedAt: r.revisedAt.toISOString(),
   })),
+  acceptedSnapshot:
+    doc.acceptedSnapshot === null
+      ? null
+      : {
+          revisionNumber: doc.acceptedSnapshot.revisionNumber,
+          terms: termsDto(doc.acceptedSnapshot.terms),
+          acceptedAt: doc.acceptedSnapshot.acceptedAt.toISOString(),
+        },
   sentAt: iso(doc.sentAt),
   respondedAt: iso(doc.respondedAt),
   responseNote: doc.responseNote,

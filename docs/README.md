@@ -29,7 +29,7 @@ also self-contained enough to be read on its own.
 | 08 | **Operations** | [Deployment Strategy](08-operations/deployment-strategy.md) | DevOps, Engineers |
 | 09 | **Guides** | [Development Guide](09-guides/development-guide.md) · [Development Workflow](09-guides/development-workflow.md) | Engineers |
 | 10 | **Reviews** | [Architecture Review 01 (pre-Milestone 2)](10-reviews/2026-07-architecture-review-01.md) · [Hiring Documents (Stage 6)](10-reviews/2026-07-architecture-review-hiring-documents.md) · [Electronic Employee File (Stage 7)](10-reviews/2026-07-architecture-review-employee-file.md) | Everyone |
-| 11 | **Retrospectives** | [Sprint 3.1 (Release v0.3.0)](11-retrospectives/2026-07-sprint-3.1.md) · [Sprint 4.1 (Release v0.6.0)](11-retrospectives/2026-07-sprint-4.1.md) · [Sprint 4.2–4.3 (Releases v0.7.0/v0.8.0)](11-retrospectives/2026-07-sprint-4.2-4.3.md) · [Sprint 4.4 (Release v0.9.0)](11-retrospectives/2026-07-sprint-4.4.md) · [Sprint 4.5 (Release v0.10.0)](11-retrospectives/2026-07-sprint-4.5.md) · [Sprint 5.1 — Recruitment Frontend (Release v0.13.0)](11-retrospectives/2026-07-sprint-5.1-recruitment-frontend.md) | Everyone |
+| 11 | **Retrospectives** | [Sprint 3.1 (Release v0.3.0)](11-retrospectives/2026-07-sprint-3.1.md) · [Sprint 4.1 (Release v0.6.0)](11-retrospectives/2026-07-sprint-4.1.md) · [Sprint 4.2–4.3 (Releases v0.7.0/v0.8.0)](11-retrospectives/2026-07-sprint-4.2-4.3.md) · [Sprint 4.4 (Release v0.9.0)](11-retrospectives/2026-07-sprint-4.4.md) · [Sprint 4.5 (Release v0.10.0)](11-retrospectives/2026-07-sprint-4.5.md) · [Sprint 5.1 — Recruitment Frontend (Release v0.13.0)](11-retrospectives/2026-07-sprint-5.1-recruitment-frontend.md) · [Sprint 5.2 — Applicants Frontend (Release v0.14.0)](11-retrospectives/2026-07-sprint-5.2-applicants-frontend.md) | Everyone |
 | 12 | **Planning** | [Sprint 3.3 — Notifications Service](12-planning/sprint-3.3-plan.md) | Everyone |
 
 ---
@@ -78,4 +78,7 @@ also self-contained enough to be read on its own.
 | Sprint 4.7 close-out — Release v0.12.0 recorded ([PR #30](https://github.com/egycashcompany-ops/egycash/pull/30)) | — | ✅ Completed & merged | EGYCASH | 2026-07-12 |
 | Sprint 5.1 — HR/Recruitment: Frontend Foundation Phase 1 ([PR #31](https://github.com/egycashcompany-ops/egycash/pull/31)) | 0.13.0 | ✅ Reviewed & merged (aligns with architecture; no blocking comments; two backlog notes) | EGYCASH | 2026-07-12 |
 | Sprint 5.1 retrospective — Recruitment Frontend Foundation | — | ✅ Completed | EGYCASH | 2026-07-12 |
-| Sprint 5.1 close-out — Release v0.13.0 recorded (this PR) | — | 🔍 Under review | — | 2026-07-12 |
+| Sprint 5.1 close-out — Release v0.13.0 recorded ([PR #32](https://github.com/egycashcompany-ops/egycash/pull/32)) | — | ✅ Completed & merged | EGYCASH | 2026-07-12 |
+| Sprint 5.2 — HR/Recruitment: Applicants Frontend Phase 2 ([PR #33](https://github.com/egycashcompany-ops/egycash/pull/33)) | 0.14.0 | ✅ Reviewed & merged (two review changes — URL-synced list state, placeholder reference controls — folded in before merge) | EGYCASH | 2026-07-12 |
+| Sprint 5.2 retrospective — Applicants Frontend | — | ✅ Completed | EGYCASH | 2026-07-12 |
+| Sprint 5.2 close-out — Release v0.14.0 recorded (this PR) | — | 🔍 Under review | — | 2026-07-12 |

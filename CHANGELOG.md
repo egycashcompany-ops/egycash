@@ -9,6 +9,47 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-07-12
+
+Release v0.12.0 — Sprint 4.7: **HR / Recruitment — Electronic Employee File (Stage 7)**
+([PR #29](https://github.com/egycashcompany-ops/egycash/pull/29)), the **seventh and final stage**
+of the approved seven-stage recruitment workflow and the handoff artifact to the (future) Employee
+module ([BD-008](docs/01-domain/business-decisions.md#bd-008--hiring-transforms-applicant-to-employee-no-separate-onboarding-stage)).
+Additive on Stage 6; **no part of the Employee module is built.** Merged after a self-conducted
+architecture review ([review](docs/10-reviews/2026-07-architecture-review-employee-file.md); 18
+findings, no Critical/High — all documented, no in-PR code change required).
+
+### Added
+
+- **HR / Recruitment: Electronic Employee File (Stage 7).** Once an employee's hiring documents
+  are **completed**, their electronic file is **assembled once**.
+  - **Electronic Employee File aggregate** (`hr_employee_files`) — **one file per employee**
+    (partial-unique index), gated on the employee existing **and** its hiring documents being
+    `completed`. **Links all applicant history** (applicant, job requisition, screening,
+    interviews, job offer, hiring documents) and builds the **initial Employee Timeline** from the
+    recruitment milestones (applicant registered → screening accepted → each interview passed →
+    offer accepted → employee created → hiring documents completed → file opened), ordered
+    chronologically.
+  - **Timeline notes** — free-form notes can be appended to the timeline (optimistic-concurrency
+    guarded). Status `active` / `archived`.
+  - Publishes `hr.employeeFile.{created,noteAdded}`, **notifies** the reporting manager + the
+    assembler on assembly, and **audits** every operation. Permissions
+    `employeeFile.{view,create,edit}`; routes `/api/v1/hr/employee-files` (+ `/:id`, `/:id/notes`).
+  - Cross-feature history is read through feature barrels only (ADR-003); new read hooks
+    `interviewService.listByApplicant` and `hiringDocumentsService.findByEmployeeId`.
+- **BD-008 — Hiring transforms Applicant to Employee; no separate Onboarding stage.** Recorded in
+  the [Business Decisions log](docs/01-domain/business-decisions.md#bd-008--hiring-transforms-applicant-to-employee-no-separate-onboarding-stage):
+  the recruitment workflow stands at **seven stages** (no eighth "Onboarding" stage), and the
+  post-hire employee lifecycle belongs to the future Employee module. Added the *Electronic
+  Employee File* entry to the [Ubiquitous Language](docs/01-domain/ubiquitous-language.md).
+
+### Notes
+
+- The seven-stage recruitment workflow (Applicant → Screening → Interview → Offer → Employee
+  Creation → Hiring Documents → Electronic Employee File) is now **complete**. The post-hire
+  employee lifecycle (documents, assets, contracts, attendance, payroll, leave) is the future
+  Employee module's remit (BD-008) and is not started.
+
 ## [0.11.0] - 2026-07-12
 
 Release v0.11.0 — Sprint 4.6: **HR / Recruitment — Hiring Documents (Stage 6)**

@@ -5,6 +5,7 @@
 // interview notification templates the interview service sends through. The OCR provider
 // and requisition validator default to their safe stubs at import time (OQ-30).
 import {
+  HrEmployeeTemplates,
   HrInterviewTemplates,
   HrOfferTemplates,
   type CreateApplicantSource,
@@ -129,6 +130,22 @@ const ensureOfferTemplates = async (): Promise<void> => {
   });
 };
 
+const ensureEmployeeTemplates = async (): Promise<void> => {
+  await notificationTemplateService.ensure({
+    key: HrEmployeeTemplates.Created,
+    category: 'hr',
+    priority: 'normal',
+    subject: { ar: 'تم إنشاء موظف جديد', en: 'New employee created' },
+    body: {
+      ar: 'تم تعيين المتقدم {{applicantCode}} كموظف برقم {{employeeCode}}.',
+      en: 'Applicant {{applicantCode}} was hired as employee {{employeeCode}}.',
+    },
+    channels: ['inApp', 'email'],
+    variables: ['applicantCode', 'employeeCode'],
+    defaultExpiryHours: null,
+  });
+};
+
 export const seedHrRecruitment = async (): Promise<void> => {
   for (const source of SOURCES) {
     await applicantSourceService.ensure(source);
@@ -138,4 +155,5 @@ export const seedHrRecruitment = async (): Promise<void> => {
   }
   await ensureInterviewTemplates();
   await ensureOfferTemplates();
+  await ensureEmployeeTemplates();
 };

@@ -2,14 +2,15 @@
 // the Platform Core (Module Structure §2.1). The kernel validates it at boot (unique id,
 // permission naming, `hr_` collection prefix, `/hr` route prefix) and fails the boot on
 // violation. Ships the Recruitment sub-module: Stage 1 (Applicants), Stage 2 (Initial
-// Screening), Stage 3 (Interviews), and Stage 4 (Job Offer). Later stages (Employee
-// Creation onward) are future sprints.
+// Screening), Stage 3 (Interviews), Stage 4 (Job Offer), and Stage 5 (Employee Creation).
+// Later stages (Hiring Documents onward) are future sprints.
 import { declarePermissions, type PermissionDef } from '@ecms/contracts';
 import { type ModuleManifest } from '../../platform/kernel/module-registry';
 import { buildApplicantSourcesRouter, buildApplicantsRouter } from './recruitment/applicants';
 import { buildScreeningsRouter } from './recruitment/screening';
 import { buildInterviewStagesRouter, buildInterviewsRouter } from './recruitment/interviews';
 import { buildJobOffersRouter, jobOfferService } from './recruitment/job-offers';
+import { buildEmployeesRouter } from './recruitment/employees';
 import { seedHrRecruitment } from './hr.seed';
 
 const applicantPermissions = declarePermissions(
@@ -76,6 +77,15 @@ const jobOfferPermissions = declarePermissions(
   ],
 );
 
+// Stage 5 — Employee Creation. `create` hires an applicant from an accepted offer; `view`
+// reads the resulting employee records. (Employee lifecycle management is a later concern.)
+const employeePermissions = declarePermissions(
+  'hr',
+  'employee',
+  { en: 'employees', ar: 'الموظفين' },
+  ['view', 'create'],
+);
+
 export const hrPermissions: PermissionDef[] = [
   ...applicantPermissions,
   ...applicantSourcePermissions,
@@ -83,12 +93,13 @@ export const hrPermissions: PermissionDef[] = [
   ...interviewPermissions,
   ...interviewStagePermissions,
   ...jobOfferPermissions,
+  ...employeePermissions,
 ];
 
 export const hrModule: ModuleManifest = {
   id: 'hr',
   name: { en: 'Human Resources', ar: 'الموارد البشرية' },
-  version: '0.9.0',
+  version: '0.10.0',
   requiresPlatform: '^2.1',
   permissions: hrPermissions,
   routes: [
@@ -98,6 +109,7 @@ export const hrModule: ModuleManifest = {
     { prefix: '/hr/interviews', router: buildInterviewsRouter() },
     { prefix: '/hr/interview-stages', router: buildInterviewStagesRouter() },
     { prefix: '/hr/job-offers', router: buildJobOffersRouter() },
+    { prefix: '/hr/employees', router: buildEmployeesRouter() },
   ],
   collections: [
     'hr_applicants',
@@ -107,6 +119,7 @@ export const hrModule: ModuleManifest = {
     'hr_interviews',
     'hr_interview_stages',
     'hr_job_offers',
+    'hr_employees',
   ],
   eventSubscriptions: [],
   scheduledTasks: [

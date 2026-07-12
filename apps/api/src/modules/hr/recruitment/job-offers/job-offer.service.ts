@@ -153,6 +153,12 @@ class JobOfferService {
     return jobOfferRepository.findAcceptedByApplicantId(applicantId);
   }
 
+  /** A specific offer by id, only if it is Accepted — the source Employee Creation reads from. */
+  async acceptedOfferById(offerId: string): Promise<JobOfferDoc | null> {
+    const offer = await jobOfferRepository.findById(offerId);
+    return offer !== null && offer.status === 'accepted' ? offer : null;
+  }
+
   /** Revise the package (keeps the prior version in history). Allowed while draft or sent. */
   async revise(
     ctx: AuthContext,

@@ -15,6 +15,7 @@ work and future ADRs cite decisions by ID.
 | [BD-005](#bd-005--cash-and-gold-custody-shared-pattern-separate-entities) | Cash and gold custody: shared pattern, separate entities | OQ-6 | ✅ Approved | 2026-07-09 |
 | [BD-006](#bd-006--one-capability-per-implementation-sprint) | One capability per implementation sprint | — (governance) | ✅ Approved | 2026-07-09 |
 | [BD-007](#bd-007--timeline-authorization-degrades-gracefully) | Timeline authorization degrades gracefully | Sprint 3.2 plan §7 | ✅ Approved | 2026-07-09 |
+| [BD-008](#bd-008--hiring-transforms-applicant-to-employee-no-separate-onboarding-stage) | Hiring transforms Applicant to Employee; no separate Onboarding stage | Domain simplification | ✅ Approved | 2026-07-12 |
 
 *(OQ-1 — departments belong to branches — was answered earlier and is recorded in
 [ADR-015](../03-decisions/ADR-015-single-organization-model.md).)*
@@ -152,3 +153,39 @@ own gate. Data-scope checks (`own | branch | organization`) continue to apply pe
 exactly as on the underlying list endpoints. This is the model for any future composite
 read endpoint: degrade to the authorized subset rather than gate on the union of
 permissions.
+
+## BD-008 — Hiring transforms Applicant to Employee; no separate Onboarding stage
+
+**Resolves:** a domain simplification approved 2026-07-12 (removes any ambiguity about a
+separate "Employee Onboarding" recruitment stage).
+
+**Decision:** There is **no separate "Employee Onboarding" recruitment stage.** The Hiring
+flow *is* the transformation of an Applicant into an Employee. Concretely, once an offer is
+accepted the hiring flow — Employee Creation → Hiring Documents → **Electronic Employee
+File** — completes the transformation, and on that completion the system:
+
+- generates the **Employee Number**;
+- creates the **Employee record**;
+- assigns **Branch, Department, Position (job title), Manager, Employment Type, Start Date,
+  and Probation Period** (copied from the immutable Accepted Offer Snapshot);
+- creates the **initial Employee Timeline**;
+- **links all Applicant history** (screening, interviews, offer, hiring documents); and
+- keeps a **full audit trail**.
+
+After hiring completes, the person is **officially an Employee**.
+
+**Business rules:**
+
+1. Onboarding is not a recruitment workflow stage. Its responsibilities are absorbed by
+   **Hiring** on the Recruitment side and by the **Employee (Employment) module** thereafter.
+2. The recruitment pipeline terminates at the **Electronic Employee File** — the handoff
+   artifact that assembles the employee record, the initial timeline, and the linked
+   recruitment history.
+3. Everything after hiring — further documents, assets, contracts, attendance, payroll,
+   leave, and the rest of the employee lifecycle — belongs to the **Employee module**, not to
+   Recruitment.
+
+**Consequences:** the recruitment workflow stands at its seven stages (Applicant → Screening
+→ Interview → Offer → Employee Creation → Hiring Documents → Electronic Employee File); **no
+eighth "Onboarding" stage is added.** This decision fixes the model boundary between
+Recruitment and Employment; it does not redesign the already-delivered stages.

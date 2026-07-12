@@ -39,6 +39,16 @@ class InterviewRepository extends BaseRepository<InterviewDoc> {
       .exec();
   }
 
+  /** All of an applicant's interviews, oldest stage first (drives the Employee Timeline). */
+  async findByApplicant(applicantId: string): Promise<InterviewDoc[]> {
+    if (!Types.ObjectId.isValid(applicantId)) return [];
+    return this.model
+      .find({ applicantId: new Types.ObjectId(applicantId), isDeleted: false })
+      .sort({ stageOrder: 1 })
+      .lean<InterviewDoc[]>()
+      .exec();
+  }
+
   /** Whether the applicant has a passed interview at the given stage order. */
   async hasPassedStage(applicantId: string, stageOrder: number): Promise<boolean> {
     if (!Types.ObjectId.isValid(applicantId)) return false;

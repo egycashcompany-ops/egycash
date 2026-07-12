@@ -166,6 +166,14 @@ class InterviewService {
   }
 
   /**
+   * All of an applicant's interviews, oldest stage first — read by the Electronic Employee File
+   * (Stage 7) to link the interview history and build the Employee Timeline.
+   */
+  async listByApplicant(applicantId: string): Promise<InterviewDoc[]> {
+    return interviewRepository.findByApplicant(applicantId);
+  }
+
+  /**
    * Whether the applicant has cleared every configured interview round — i.e. passed the
    * final active stage (progression gating guarantees all prior stages were passed too).
    * Used by the Job Offer stage (Stage 4) to gate offer creation.

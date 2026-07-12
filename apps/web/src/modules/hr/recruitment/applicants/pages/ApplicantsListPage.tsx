@@ -1,7 +1,9 @@
 // Applicants list: multi-filter + search, sortable/selectable DataTable, bulk withdraw,
 // pagination, CSV export, and a create entry point — all permission-gated and RTL-safe.
-import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+// Filters, search, sort, and pagination are synchronized with the URL query string, so views
+// are deep-linkable and back/forward navigation works. Selection is transient (not in the URL).
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { type ApplicantDto, type ApplicantSourceDto } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
@@ -17,14 +19,9 @@ import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { PlusIcon, DownloadIcon } from '../../../../../shared/ui/icons';
 import { formatDate, formatNumber, localized } from '../../../../../shared/lib/format';
 import { ApplicantStatusBadge } from '../components/ApplicantStatusBadge';
-import {
-  ApplicantFilters,
-  EMPTY_APPLICANT_FILTERS,
-  type ApplicantFiltersState,
-} from '../components/ApplicantFilters';
+import { ApplicantFilters, type ApplicantFiltersState } from '../components/ApplicantFilters';
 import { useApplicants, useApplicantSources, useBulkApplicants } from '../api/applicant-queries';
-import { exportApplicantsCsv } from '../api/applicant-api';
-import { type ApplicantListParams } from '../api/applicant-api';
+import { exportApplicantsCsv, type ApplicantListParams } from '../api/applicant-api';
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -32,14 +29,59 @@ export const ApplicantsListPage = (): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state) => state.locale.locale);
   const navigate = useNavigate();
+  const [sp, setSp] = useSearchParams();
 
-  const [filters, setFilters] = useState<ApplicantFiltersState>(EMPTY_APPLICANT_FILTERS);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
-  const [sort, setSort] = useState<{ by: string; dir: 'asc' | 'desc' }>({ by: 'createdAt', dir: 'desc' });
+  // ── URL-derived state ──────────────────────────────────────────────────────
+  const filters: ApplicantFiltersState = {
+    search: sp.get('q') ?? '',
+    status: (sp.get('status') ?? '') as ApplicantFiltersState['status'],
+    sourceId: sp.get('source') ?? '',
+    intakeChannel: (sp.get('channel') ?? '') as ApplicantFiltersState['intakeChannel'],
+    identityVerification: (sp.get('identity') ?? '') as ApplicantFiltersState['identityVerification'],
+    duplicateOnly: sp.get('dup') === '1',
+    hasAttachments: sp.get('files') === '1',
+  };
+  const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
+  const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
+  const [sortByRaw, sortDirRaw] = (sp.get('sort') ?? 'createdAt:desc').split(':');
+  const sort = { by: sortByRaw ?? 'createdAt', dir: sortDirRaw === 'asc' ? 'asc' : 'desc' } as {
+    by: string;
+    dir: 'asc' | 'desc';
+  };
+  const paramsKey = sp.toString();
+
+  const patch = (updates: Record<string, string | null>, resetPage = true): void => {
+    const next = new URLSearchParams(sp);
+    for (const [key, value] of Object.entries(updates)) {
+      if (value === null || value === '') next.delete(key);
+      else next.set(key, value);
+    }
+    if (resetPage && !('page' in updates)) next.delete('page');
+    setSp(next);
+  };
+
+  const changeFilters = (nf: ApplicantFiltersState): void =>
+    patch({
+      q: nf.search || null,
+      status: nf.status || null,
+      source: nf.sourceId || null,
+      channel: nf.intakeChannel || null,
+      identity: nf.identityVerification || null,
+      dup: nf.duplicateOnly ? '1' : null,
+      files: nf.hasAttachments ? '1' : null,
+    });
+  const changeSort = (by: string): void => {
+    const dir = sort.by === by && sort.dir === 'asc' ? 'desc' : 'asc';
+    patch({ sort: `${by}:${dir}` }, false);
+  };
+
+  // ── Transient (non-URL) state ──────────────────────────────────────────────
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [withdrawReason, setWithdrawReason] = useState('');
+  useEffect(() => {
+    setSelected(new Set());
+  }, [paramsKey]);
 
   const { data: sources = [] } = useApplicantSources();
   const sourceName = (id: string): string => {
@@ -61,23 +103,13 @@ export const ApplicantsListPage = (): JSX.Element => {
       ...(filters.duplicateOnly ? { duplicateOnly: true } : {}),
       ...(filters.hasAttachments ? { hasAttachments: true } : {}),
     }),
-    [page, pageSize, sort, filters],
+    // params are derived entirely from the URL; paramsKey captures every input
+    [paramsKey],
   );
 
   const { data, isLoading, isError, error, refetch } = useApplicants(params);
   const bulk = useBulkApplicants();
-
   const rows = data?.items ?? [];
-
-  const changeFilters = (next: ApplicantFiltersState): void => {
-    setFilters(next);
-    setPage(1);
-    setSelected(new Set());
-  };
-
-  const changeSort = (by: string): void => {
-    setSort((prev) => (prev.by === by ? { by, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { by, dir: 'asc' }));
-  };
 
   const toggleRow = (id: string): void => {
     setSelected((prev) => {
@@ -93,11 +125,7 @@ export const ApplicantsListPage = (): JSX.Element => {
 
   const submitWithdraw = async (): Promise<void> => {
     try {
-      const result = await bulk.mutateAsync({
-        action: 'withdraw',
-        ids: [...selected],
-        reason: withdrawReason,
-      });
+      const result = await bulk.mutateAsync({ action: 'withdraw', ids: [...selected], reason: withdrawReason });
       toast.success(
         t('applicants.bulk.withdrawDone', {
           ok: formatNumber(result.succeeded, locale),
@@ -144,18 +172,8 @@ export const ApplicantsListPage = (): JSX.Element => {
         </span>
       ),
     },
-    {
-      key: 'attachments',
-      header: t('applicants.columns.attachments'),
-      align: 'center',
-      render: (a) => formatNumber(a.attachmentCount, locale),
-    },
-    {
-      key: 'createdAt',
-      header: t('applicants.columns.created'),
-      sortable: true,
-      render: (a) => formatDate(a.createdAt, locale),
-    },
+    { key: 'attachments', header: t('applicants.columns.attachments'), align: 'center', render: (a) => formatNumber(a.attachmentCount, locale) },
+    { key: 'createdAt', header: t('applicants.columns.created'), sortable: true, render: (a) => formatDate(a.createdAt, locale) },
   ];
 
   return (
@@ -210,11 +228,8 @@ export const ApplicantsListPage = (): JSX.Element => {
         {data !== undefined && data.meta.totalItems > 0 && (
           <Pagination
             meta={data.meta}
-            onPageChange={setPage}
-            onPageSizeChange={(size) => {
-              setPageSize(size);
-              setPage(1);
-            }}
+            onPageChange={(p) => patch({ page: String(p) }, false)}
+            onPageSizeChange={(size) => patch({ size: String(size), page: null }, false)}
           />
         )}
       </div>
@@ -226,15 +241,8 @@ export const ApplicantsListPage = (): JSX.Element => {
         description={t('applicants.withdraw.bulkBody', { count: formatNumber(selected.size, locale) })}
         footer={
           <>
-            <Button variant="secondary" onClick={() => setWithdrawOpen(false)}>
-              {t('common.cancel')}
-            </Button>
-            <Button
-              variant="danger"
-              loading={bulk.isPending}
-              disabled={withdrawReason.trim() === ''}
-              onClick={() => void submitWithdraw()}
-            >
+            <Button variant="secondary" onClick={() => setWithdrawOpen(false)}>{t('common.cancel')}</Button>
+            <Button variant="danger" loading={bulk.isPending} disabled={withdrawReason.trim() === ''} onClick={() => void submitWithdraw()}>
               {t('applicants.actions.withdraw')}
             </Button>
           </>

@@ -103,7 +103,9 @@ attachments).
   selection; `ApplicantFilters` (search + status/source/channel/identity/duplicates/has-files);
   `Pagination` bound to the API `PageMeta`; **bulk withdraw** (`applicant.edit`) via `BulkActions`
   + a reason dialog; **CSV export** (`applicant.export`) streamed to a browser download; a
-  **create** entry point (`applicant.create`).
+  **create** entry point (`applicant.create`). **Filters, search, sort and pagination are
+  synchronized with the URL query string** (deep-linkable, back/forward aware); selection is
+  transient.
 - **Detail** (`applicant.view`) — identity/contact/preferences/application read-out, the
   **attachments** panel (list · upload with title+category · signed-URL download · remove), and
   the **verify-identity** and **withdraw** actions (permission-gated, version-checked).
@@ -121,5 +123,10 @@ attachments).
   `/platform/files` + `/platform/file-categories` for uploads). Reads are cached and writes
   invalidate the feature subtree.
 
-Deferred: URL-synced list state (filters/sort in the query string) and frontend component tests
-(pending the Vitest + RTL setup backlog item).
+**Cross-module references** (Job Requisition, Branch) are never entered as raw IDs: `RefPickers`
+renders a disabled "coming soon" selector when no value is present, or a read-only reference chip
+when one is supplied by context (the create route accepts `?requisitionId=…&branchId=…`, which the
+future Requisitions screen will deep-link). Detail views show the same read-only chip. Creation is
+gated until a requisition context is provided.
+
+Deferred: frontend component tests (pending the Vitest + RTL setup backlog item).

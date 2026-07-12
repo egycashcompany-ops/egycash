@@ -16,6 +16,7 @@ import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { EditIcon } from '../../../../../shared/ui/icons';
 import { formatDate, formatMoney } from '../../../../../shared/lib/format';
 import { ApplicantStatusBadge } from '../components/ApplicantStatusBadge';
+import { ReferenceChip } from '../components/RefPickers';
 import { AttachmentsPanel } from '../components/AttachmentsPanel';
 import { useApplicant, useVerifyApplicantIdentity, useWithdrawApplicant } from '../api/applicant-queries';
 
@@ -191,7 +192,8 @@ export const ApplicantDetailPage = (): JSX.Element => {
             <CardHeader title={t('applicants.detail.application')} />
             <CardBody>
               <dl className="space-y-3">
-                <Info label={t('applicants.form.jobRequisitionId')}><span className="font-mono text-xs" dir="ltr">{a.jobRequisitionId}</span></Info>
+                <Info label={t('applicants.ref.requisition')}><ReferenceChip kind="requisition" value={a.jobRequisitionId} /></Info>
+                {a.branchId !== null && <Info label={t('applicants.ref.branch')}><ReferenceChip kind="branch" value={a.branchId} /></Info>}
                 <Info label={t('applicants.form.channel')}>{t(`applicants.channel.${a.intakeChannel}`)}</Info>
                 <Info label={t('applicants.detail.registered')}>{formatDate(a.createdAt, locale)}</Info>
                 {a.duplicateFlag && <Info label={t('applicants.detail.duplicate')}><span className="text-amber-600">{t('applicants.detail.duplicateFlagged')}</span></Info>}

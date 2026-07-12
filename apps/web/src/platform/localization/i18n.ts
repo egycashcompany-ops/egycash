@@ -224,6 +224,12 @@ const en: Record<string, string> = {
   'applicants.form.editTitle': 'Edit applicant',
   'applicants.form.created': 'Applicant registered',
   'applicants.form.saved': 'Applicant updated',
+  'applicants.form.requisitionRequired': 'A requisition is required. Open this form from a requisition (Requisitions module coming soon).',
+  'applicants.ref.requisition': 'Requisition',
+  'applicants.ref.branch': 'Branch',
+  'applicants.ref.requisitionPending': 'Selectable when the Requisitions module ships',
+  'applicants.ref.branchPending': 'Inherited from the requisition',
+  'applicants.ref.fromContext': 'from context',
 
   // Applicants — OCR
   'applicants.ocr.title': 'National ID OCR',
@@ -480,6 +486,12 @@ const ar: Record<string, string> = {
   'applicants.form.editTitle': 'تعديل المتقدِّم',
   'applicants.form.created': 'تم تسجيل المتقدِّم',
   'applicants.form.saved': 'تم تحديث المتقدِّم',
+  'applicants.form.requisitionRequired': 'يلزم وجود طلب وظيفة. افتح هذا النموذج من طلب وظيفة (وحدة طلبات الوظائف قادمة قريبًا).',
+  'applicants.ref.requisition': 'طلب الوظيفة',
+  'applicants.ref.branch': 'الفرع',
+  'applicants.ref.requisitionPending': 'يمكن اختياره عند توفّر وحدة طلبات الوظائف',
+  'applicants.ref.branchPending': 'يُورَّث من طلب الوظيفة',
+  'applicants.ref.fromContext': 'من السياق',
 
   // Applicants — OCR
   'applicants.ocr.title': 'قراءة البطاقة ضوئيًا',

@@ -30,6 +30,7 @@ import { Button } from '../../../../../shared/ui/Button';
 import { Field, Input, Select, Checkbox, Form, FormActions } from '../../../../../shared/ui/form';
 import { PlusIcon, TrashIcon } from '../../../../../shared/ui/icons';
 import { OcrAssist } from './OcrAssist';
+import { ReferenceField } from './RefPickers';
 
 interface AddressForm {
   line1: string;
@@ -58,8 +59,6 @@ interface ReferenceRow {
 }
 
 interface FormState {
-  jobRequisitionId: string;
-  branchId: string;
   sourceId: string;
   intakeChannel: ApplicantIntakeChannel;
   fullNameAr: string;
@@ -95,8 +94,6 @@ interface FormState {
 }
 
 const fromDto = (a: ApplicantDto): FormState => ({
-  jobRequisitionId: a.jobRequisitionId,
-  branchId: a.branchId ?? '',
   sourceId: a.sourceId,
   intakeChannel: a.intakeChannel,
   fullNameAr: a.fullNameAr,
@@ -138,8 +135,6 @@ const fromDto = (a: ApplicantDto): FormState => ({
 });
 
 const emptyForm = (): FormState => ({
-  jobRequisitionId: '',
-  branchId: '',
   sourceId: '',
   intakeChannel: 'internal',
   fullNameAr: '',
@@ -231,6 +226,8 @@ export const ApplicantForm = ({
   initial,
   sources,
   submitting,
+  presetRequisitionId,
+  presetBranchId,
   onSubmit,
   onCancel,
 }: {
@@ -238,6 +235,9 @@ export const ApplicantForm = ({
   initial?: ApplicantDto;
   sources: ApplicantSourceDto[];
   submitting: boolean;
+  /** Supplied by context (URL) for create — the future Requisitions screen deep-links here. */
+  presetRequisitionId?: string | undefined;
+  presetBranchId?: string | undefined;
   onSubmit: (body: RegisterApplicant | UpdateApplicant) => Promise<void>;
   onCancel: () => void;
 }): JSX.Element => {
@@ -256,7 +256,9 @@ export const ApplicantForm = ({
     if (f.fullNameAr.trim().length < 2) ce.fullNameAr = t('applicants.form.required');
     if (f.primaryPhone.trim() === '') ce.primaryPhone = t('applicants.form.required');
     if (mode === 'create') {
-      if (f.jobRequisitionId.trim() === '') ce.jobRequisitionId = t('applicants.form.required');
+      if (presetRequisitionId === undefined || presetRequisitionId.trim() === '') {
+        ce.requisition = t('applicants.form.requisitionRequired');
+      }
       if (f.sourceId === '') ce.sourceId = t('applicants.form.required');
     }
     setClientErr(ce);
@@ -277,8 +279,8 @@ export const ApplicantForm = ({
         Object.entries(common).filter(([k]) => k !== 'fullNameAr' && k !== 'fullNameEn'),
       );
       body = {
-        jobRequisitionId: f.jobRequisitionId.trim(),
-        ...(str(f.branchId) ? { branchId: f.branchId.trim() } : {}),
+        jobRequisitionId: (presetRequisitionId ?? '').trim(),
+        ...(presetBranchId !== undefined && presetBranchId.trim() !== '' ? { branchId: presetBranchId.trim() } : {}),
         sourceId: f.sourceId,
         intakeChannel: f.intakeChannel,
         identity,
@@ -316,28 +318,31 @@ export const ApplicantForm = ({
           <OcrAssist onApply={(fields) => set({ ...(fields.nationalId !== undefined ? { nationalId: fields.nationalId } : {}), ...(fields.fullNameAr !== undefined ? { fullNameAr: fields.fullNameAr } : {}) })} />
           <Card>
             <CardHeader title={t('applicants.form.context')} />
-            <CardBody className={sectionCls}>
-              <Field label={t('applicants.form.jobRequisitionId')} required error={clientErr.jobRequisitionId}>
-                <Input value={f.jobRequisitionId} onChange={(e) => set({ jobRequisitionId: e.target.value })} dir="ltr" />
-              </Field>
-              <Field label={t('applicants.form.source')} required error={clientErr.sourceId}>
-                <Select value={f.sourceId} onChange={(e) => set({ sourceId: e.target.value })}>
-                  <option value="">{t('applicants.form.selectSource')}</option>
-                  {sources.map((s) => (
-                    <option key={s.id} value={s.id}>{localized(s.name, locale)}</option>
-                  ))}
-                </Select>
-              </Field>
-              <Field label={t('applicants.form.channel')}>
-                <Select value={f.intakeChannel} onChange={(e) => set({ intakeChannel: e.target.value as ApplicantIntakeChannel })}>
-                  {APPLICANT_INTAKE_CHANNELS.map((c) => (
-                    <option key={c} value={c}>{t(`applicants.channel.${c}`)}</option>
-                  ))}
-                </Select>
-              </Field>
-              <Field label={t('applicants.form.branchId')} hint={t('applicants.form.branchHint')}>
-                <Input value={f.branchId} onChange={(e) => set({ branchId: e.target.value })} dir="ltr" />
-              </Field>
+            <CardBody className="space-y-4">
+              {(presetRequisitionId === undefined || presetRequisitionId.trim() === '') && (
+                <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+                  {t('applicants.form.requisitionRequired')}
+                </p>
+              )}
+              <div className={sectionCls}>
+                <ReferenceField kind="requisition" value={presetRequisitionId} error={clientErr.requisition} />
+                <ReferenceField kind="branch" value={presetBranchId} />
+                <Field label={t('applicants.form.source')} required error={clientErr.sourceId}>
+                  <Select value={f.sourceId} onChange={(e) => set({ sourceId: e.target.value })}>
+                    <option value="">{t('applicants.form.selectSource')}</option>
+                    {sources.map((s) => (
+                      <option key={s.id} value={s.id}>{localized(s.name, locale)}</option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label={t('applicants.form.channel')}>
+                  <Select value={f.intakeChannel} onChange={(e) => set({ intakeChannel: e.target.value as ApplicantIntakeChannel })}>
+                    {APPLICANT_INTAKE_CHANNELS.map((c) => (
+                      <option key={c} value={c}>{t(`applicants.channel.${c}`)}</option>
+                    ))}
+                  </Select>
+                </Field>
+              </div>
             </CardBody>
           </Card>
         </>
@@ -577,7 +582,13 @@ export const ApplicantForm = ({
 
       <FormActions>
         <Button variant="secondary" onClick={onCancel}>{t('common.cancel')}</Button>
-        <Button type="submit" loading={submitting}>{mode === 'create' ? t('applicants.actions.create') : t('common.save')}</Button>
+        <Button
+          type="submit"
+          loading={submitting}
+          disabled={mode === 'create' && (presetRequisitionId === undefined || presetRequisitionId.trim() === '')}
+        >
+          {mode === 'create' ? t('applicants.actions.create') : t('common.save')}
+        </Button>
       </FormActions>
     </Form>
   );

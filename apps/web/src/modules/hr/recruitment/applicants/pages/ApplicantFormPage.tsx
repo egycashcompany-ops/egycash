@@ -1,7 +1,7 @@
 // Create/edit page: wires the ApplicantForm to the register/update mutations, loads reference
 // data (sources) and — in edit mode — the existing applicant. On success it toasts and routes to
 // the detail page; validation errors flow back into the form's summary.
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { type RegisterApplicant, type UpdateApplicant } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
@@ -20,6 +20,11 @@ export const ApplicantFormPage = ({ mode }: { mode: 'create' | 'edit' }): JSX.El
   const t = useT();
   const navigate = useNavigate();
   const { id = '' } = useParams();
+  const [sp] = useSearchParams();
+  // Requisition/branch are provided by context (the future Requisitions screen deep-links here),
+  // never typed as raw IDs in the form.
+  const presetRequisitionId = sp.get('requisitionId') ?? undefined;
+  const presetBranchId = sp.get('branchId') ?? undefined;
   const { data: sources = [] } = useApplicantSources();
   const register = useRegisterApplicant();
   const update = useUpdateApplicant(id);
@@ -56,6 +61,7 @@ export const ApplicantFormPage = ({ mode }: { mode: 'create' | 'edit' }): JSX.El
           <ApplicantForm
             mode={mode}
             {...(mode === 'edit' && applicant !== undefined ? { initial: applicant } : {})}
+            {...(mode === 'create' ? { presetRequisitionId, presetBranchId } : {})}
             sources={sources}
             submitting={register.isPending || update.isPending}
             onSubmit={onSubmit}

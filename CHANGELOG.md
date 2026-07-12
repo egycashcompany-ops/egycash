@@ -9,6 +9,42 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-07-12
+
+Release v0.11.0 — Sprint 4.6: **HR / Recruitment — Hiring Documents (Stage 6)**
+([PR #27](https://github.com/egycashcompany-ops/egycash/pull/27)), the sixth stage of the
+approved seven-stage recruitment workflow. Additive on Stage 5; **no part of Stage 7
+(Electronic File) or later is built.** Merged after a self-conducted architecture review
+([review](docs/10-reviews/2026-07-architecture-review-hiring-documents.md); no Critical/High
+findings — one small mitigation applied in-PR, the rest logged for later sprints).
+
+### Added
+
+- **HR / Recruitment: Hiring Documents (Stage 6).** After an employee is created, their hiring
+  documents are collected.
+  - **Administrator-defined document types** (`hr_hiring_document_types`) — required and
+    optional; a default set is seeded, admin-managed under `hiringDocumentType.manage`.
+  - **Hiring Documents aggregate** (`hr_hiring_documents`) — **one set per employee**. Each
+    document is an uploaded **PDF** backed by the platform Files service: the **original is
+    preserved** and **replacement creates a new version while keeping prior versions
+    retrievable**. Stores document metadata (type, name, uploader, upload date, version).
+  - **Required-completion validation** — completion is blocked while any active required type is
+    missing (`missingRequired` is surfaced on the DTO). Once **completed**, the set is
+    **immutable except through the versioning (replace) workflow**; documents are never
+    overwritten or deleted.
+  - PDF-only enforced by a dedicated Files category. Publishes
+    `hr.hiringDocuments.{created,documentUploaded,documentReplaced,completed}`, **notifies** the
+    reporting manager + creator on completion, and **audits** every operation. Permissions
+    `hiringDocuments.{view,create,upload,complete}` + `hiringDocumentType.manage`; routes
+    `/api/v1/hr/hiring-documents` and `/hr/hiring-document-types`.
+
+### Fixed
+
+- **Hiring-document upload/replace could orphan a file version on a lost optimistic-concurrency
+  race** (review finding HD-01): the service now rejects a stale `version` before writing bytes
+  to the Files service, so only an up-to-date request performs the upload (the atomic version
+  check in the repository still guards the commit).
+
 ## [0.10.0] - 2026-07-12
 
 Release v0.10.0 — Sprint 4.5: **HR / Recruitment — Employee Creation (Stage 5)**

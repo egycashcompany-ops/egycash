@@ -28,7 +28,7 @@ also self-contained enough to be read on its own.
 | 07 | **Workflows** | [Workflow & Approval Engine](07-workflows/workflow-engine.md) | Engineers, Analysts |
 | 08 | **Operations** | [Deployment Strategy](08-operations/deployment-strategy.md) | DevOps, Engineers |
 | 09 | **Guides** | [Development Guide](09-guides/development-guide.md) · [Development Workflow](09-guides/development-workflow.md) | Engineers |
-| 10 | **Reviews** | [Architecture Review 01 (pre-Milestone 2)](10-reviews/2026-07-architecture-review-01.md) | Everyone |
+| 10 | **Reviews** | [Architecture Review 01 (pre-Milestone 2)](10-reviews/2026-07-architecture-review-01.md) · [Hiring Documents (Stage 6)](10-reviews/2026-07-architecture-review-hiring-documents.md) | Everyone |
 | 11 | **Retrospectives** | [Sprint 3.1 (Release v0.3.0)](11-retrospectives/2026-07-sprint-3.1.md) · [Sprint 4.1 (Release v0.6.0)](11-retrospectives/2026-07-sprint-4.1.md) · [Sprint 4.2–4.3 (Releases v0.7.0/v0.8.0)](11-retrospectives/2026-07-sprint-4.2-4.3.md) · [Sprint 4.4 (Release v0.9.0)](11-retrospectives/2026-07-sprint-4.4.md) · [Sprint 4.5 (Release v0.10.0)](11-retrospectives/2026-07-sprint-4.5.md) | Everyone |
 | 12 | **Planning** | [Sprint 3.3 — Notifications Service](12-planning/sprint-3.3-plan.md) | Everyone |
 
@@ -69,4 +69,7 @@ also self-contained enough to be read on its own.
 | Sprint 4.4 — HR/Recruitment: Job Offer Stage 4 ([PR #23](https://github.com/egycashcompany-ops/egycash/pull/23)) | 0.9.0 | ✅ Reviewed & merged (two blocking items — offer number, immutable accepted snapshot — implemented before merge) | EGYCASH | 2026-07-12 |
 | Sprint 4.4 retrospective + Release v0.9.0 recorded ([PR #24](https://github.com/egycashcompany-ops/egycash/pull/24)) | — | ✅ Completed & merged | EGYCASH | 2026-07-12 |
 | Sprint 4.5 — HR/Recruitment: Employee Creation Stage 5 ([PR #25](https://github.com/egycashcompany-ops/egycash/pull/25)) | 0.10.0 | ✅ Reviewed & merged (business + architecture review: no blocking issues) | EGYCASH | 2026-07-12 |
-| Sprint 4.5 retrospective + Release v0.10.0 recorded (this PR) | — | 🔍 Under review | — | 2026-07-12 |
+| Sprint 4.5 retrospective + Release v0.10.0 recorded ([PR #26](https://github.com/egycashcompany-ops/egycash/pull/26)) | — | ✅ Completed & merged | EGYCASH | 2026-07-12 |
+| Sprint 4.6 — HR/Recruitment: Hiring Documents Stage 6 ([PR #27](https://github.com/egycashcompany-ops/egycash/pull/27)) | 0.11.0 | ✅ Reviewed & merged (self-conducted [architecture review](10-reviews/2026-07-architecture-review-hiring-documents.md); no Critical/High findings — HD-01 mitigation applied in-PR) | EGYCASH | 2026-07-12 |
+| Architecture Review — Hiring Documents (Stage 6) | 1.0.0 | ✅ Completed (18 findings; approvable, no Critical/High) | EGYCASH | 2026-07-12 |
+| Sprint 4.6 close-out — Release v0.11.0 recorded (this PR) | — | 🔍 Under review | — | 2026-07-12 |

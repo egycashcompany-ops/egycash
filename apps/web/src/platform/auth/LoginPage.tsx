@@ -1,13 +1,19 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { QRCodeSVG } from 'qrcode.react';
 import { type MeDto } from '@ecms/contracts';
 import { useAppDispatch } from '../../store';
 import { signedIn } from '../../store/authSlice';
 import { useT } from '../localization/useT';
 import { loginRequest, totpChallengeRequest, totpEnrollWithChallengeRequest } from './api';
 
+interface Enrollment {
+  secret: string;
+  otpauthUrl: string;
+}
 type Step =
-  { kind: 'credentials' } | { kind: 'totp'; challengeToken: string; enrollSecret: string | null };
+  | { kind: 'credentials' }
+  | { kind: 'totp'; challengeToken: string; enroll: Enrollment | null };
 
 export const LoginPage = (): JSX.Element => {
   const t = useT();
@@ -35,12 +41,11 @@ export const LoginPage = (): JSX.Element => {
         finish(response.me);
         return;
       }
-      let enrollSecret: string | null = null;
+      let enroll: Enrollment | null = null;
       if (response.enrollmentRequired) {
-        const enrollment = await totpEnrollWithChallengeRequest(response.challengeToken);
-        enrollSecret = enrollment.secret;
+        enroll = await totpEnrollWithChallengeRequest(response.challengeToken);
       }
-      setStep({ kind: 'totp', challengeToken: response.challengeToken, enrollSecret });
+      setStep({ kind: 'totp', challengeToken: response.challengeToken, enroll });
     } catch {
       setError(t('platform.auth.login.failed'));
     } finally {
@@ -107,13 +112,31 @@ export const LoginPage = (): JSX.Element => {
           </form>
         ) : (
           <form onSubmit={(e) => void submitTotp(e)} className="space-y-4">
-            {step.enrollSecret !== null && (
-              <p className="rounded bg-amber-50 p-3 text-sm text-amber-900">
-                {t('platform.auth.login.enrollHint')}
-                <code className="mt-2 block break-all text-xs" dir="ltr">
-                  {step.enrollSecret}
-                </code>
-              </p>
+            {step.enroll !== null && (
+              <div className="space-y-3">
+                <p className="rounded bg-amber-50 p-3 text-sm text-amber-900">
+                  {t('platform.auth.login.enrollHint')}
+                </p>
+                <div className="flex justify-center">
+                  {/* White backing so the code stays scannable in dark mode. */}
+                  <div className="rounded-lg bg-white p-3 ring-1 ring-slate-200">
+                    <QRCodeSVG
+                      value={step.enroll.otpauthUrl}
+                      size={172}
+                      marginSize={0}
+                      aria-label={t('platform.auth.login.enrollQrAlt')}
+                    />
+                  </div>
+                </div>
+                <details className="text-xs text-slate-500">
+                  <summary className="cursor-pointer select-none">
+                    {t('platform.auth.login.enrollManual')}
+                  </summary>
+                  <code className="mt-2 block break-all rounded bg-slate-50 p-2 text-slate-700" dir="ltr">
+                    {step.enroll.secret}
+                  </code>
+                </details>
+              </div>
             )}
             <label className="block">
               <span className="mb-1 block text-sm text-slate-600">

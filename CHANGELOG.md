@@ -9,6 +9,34 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-07-12
+
+Release v0.15.0 — Sprint 5.3: **HR / Recruitment — Initial Screening Frontend (Phase 3)**
+([PR #35](https://github.com/egycashcompany-ops/egycash/pull/35)), the second Recruitment feature
+screen set, built on the Phase 1 foundation and reusing the Applicants building blocks.
+**Screening only** — no later stage.
+
+### Added
+
+- **HR / Recruitment: Initial Screening frontend (`apps/web`).**
+  - **Queue** (`screening.view`) — sortable `DataTable` (status, notes, decided, created); filters
+    (status + created-date range + an **applicant search-picker** that reuses the Applicants list
+    API and resolves to the `applicantId` filter — the screening list has no free-text field);
+    pagination. Filters/sort/pagination are **URL-synchronized** (deep-linkable, back/forward). A
+    **Start screening** action (`screening.create`) opens a dialog to pick a live applicant + an
+    optional first note.
+  - **Detail** (`screening.view`) — applicant link, the **notes + decision timeline** (shared
+    `Timeline`), an **add-note** form while `pending` (`screening.edit`), and the **Accept / Reject**
+    workflow (`screening.decide`) via a dialog — a reason is required to reject (OQ-32), optional to
+    accept. All mutations version-checked.
+  - Feature `api/` layer + TanStack Query hooks against `/hr/screenings` (+ `/:id/notes`,
+    `/:id/decide`); `ar` + `en` i18n; permission-gated throughout.
+
+### Notes
+
+- No new runtime dependencies. Verified via web typecheck, repo lint, and vite build (recruitment
+  stays a lazy chunk). No web unit-test runner yet (backlog: Vitest + React Testing Library).
+
 ## [0.14.0] - 2026-07-12
 
 Release v0.14.0 — Sprint 5.2: **HR / Recruitment — Applicants Frontend (Phase 2)**

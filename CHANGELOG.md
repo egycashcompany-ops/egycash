@@ -9,6 +9,66 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-07-13
+
+Release v0.16.0 — Sprint 5.4: **HR / Recruitment — Interviews Frontend (Phase 4)**
+([PR #37](https://github.com/egycashcompany-ops/egycash/pull/37)), the third Recruitment feature
+screen set on the Phase 1 foundation, reusing the Applicants/Screening building blocks — plus two
+authentication **dev-login fixes** surfaced during review
+([PR #38](https://github.com/egycashcompany-ops/egycash/pull/38),
+[PR #39](https://github.com/egycashcompany-ops/egycash/pull/39)). **Interviews only** — no later
+stage.
+
+### Added
+
+- **HR / Recruitment: Interviews frontend (`apps/web`).**
+  - **Queue** (`interview.view`) — sortable `DataTable` (stage order, scheduled, created — the
+    backend's sortable fields); filters (status + outcome + stage + an **applicant search-picker**
+    resolving to `applicantId` + a scheduled-date range); pagination. Filters/sort/pagination are
+    **URL-synchronized** (deep-linkable, back/forward). A **Schedule interview** action
+    (`interview.create`) opens a dialog to pick applicant, stage, date/time, and panel.
+  - **Detail** (`interview.view`) — the **panel with per-interviewer evaluation state**
+    (recommend/neutral/notRecommend + rating + notes), the scheduling read-out, and the full action
+    surface: **reschedule** + **reassign panel** (`interview.edit`), **skip** a pending interviewer,
+    **submit/update your own evaluation** (`interview.evaluate`, assigned members only), **cancel**
+    (`interview.cancel`), and **Pass / Fail** (`interview.decide`) — blocked with an inline notice
+    while any panelist is still `pending`. All mutations version-checked; each write seeds the
+    detail cache from the response and invalidates only the list subtree.
+  - Interviewer references go through a **`UserPicker` / `UserName`** pair that reuses the platform
+    Users endpoint (`user.view`) rather than exposing raw ids; degrades to a short reference without
+    directory access. Feature `api/` layer + TanStack Query hooks against `/hr/interviews`
+    (+ `/hr/interview-stages`, `/:id/reschedule|panel|panel/skip|cancel|evaluations|decide`);
+    `ar` + `en` i18n. No new backend API.
+- **Auth: scannable QR for TOTP enrollment**
+  ([PR #38](https://github.com/egycashcompany-ops/egycash/pull/38)) — the mid-login 2FA enrollment
+  step renders the backend-provided `otpauthUrl` as a QR code (Microsoft Authenticator / Google
+  Authenticator / any TOTP app), with the manual base32 key kept as a collapsible fallback. Adds
+  `qrcode.react` (inline SVG, no network request). Standard TOTP (RFC 6238); no backend change.
+
+### Fixed
+
+- **Dev login blocked by TOTP enforcement**
+  ([PR #39](https://github.com/egycashcompany-ops/egycash/pull/39)) — every seeded account holds a
+  system role (privileged), and `auth.totp.enforcedForPrivileged` defaults to `true`, so a fresh
+  `npm run seed` produced accounts that could not complete an email/password login (login returned a
+  TOTP enrollment challenge, not a session). The seed now disables enforcement at **organization**
+  scope (dev/staging only; production keeps the default `true` and never runs the seed). The seed
+  data moved to an importable, side-effect-free `seed-data.ts`, and an **integration regression
+  test** exercises the real seed path and asserts a password-only login yields a token + working
+  `/me` — failing if the enforcement-disable is ever removed.
+
+### Changed
+
+- Recruitment now runs in the UI **through the Interview stage** (Applicants → Screening →
+  Interviews); Job Offer onward remain later phases.
+
+### Notes
+
+- One new web runtime dependency (`qrcode.react`). Verified via web typecheck, repo lint, and vite
+  build (recruitment stays a lazy chunk), plus API typecheck/lint/build; the seed-login regression
+  runs on CI's in-memory Mongo. No web unit-test runner yet (backlog: Vitest + React Testing
+  Library).
+
 ## [0.15.0] - 2026-07-12
 
 Release v0.15.0 — Sprint 5.3: **HR / Recruitment — Initial Screening Frontend (Phase 3)**

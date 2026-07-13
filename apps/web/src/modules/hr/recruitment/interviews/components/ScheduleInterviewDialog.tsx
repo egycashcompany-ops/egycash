@@ -123,11 +123,9 @@ export const ScheduleInterviewDialog = ({
           <UserPicker value={panel} onChange={setPanel} />
         </Field>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label={t('interviews.schedule.location')}>
-            <Input value={location} onChange={(e) => setLocation(e.target.value)} maxLength={200} />
-          </Field>
-        </div>
+        <Field label={t('interviews.schedule.location')}>
+          <Input value={location} onChange={(e) => setLocation(e.target.value)} maxLength={200} />
+        </Field>
 
         <Field label={t('interviews.schedule.notes')}>
           <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} maxLength={2000} />

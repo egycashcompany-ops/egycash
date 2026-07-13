@@ -179,7 +179,13 @@ backs the stage picker).
 - **Integration** — feature `api/` layer + TanStack Query hooks; the applicant lookup reuses the
   Applicants API and the interviewer lookup reuses the Users API — **no new backend API is
   introduced**. `ar` + `en` i18n. Permission-gated throughout
-  (`interview.{view,create,edit,cancel,evaluate,decide}`).
+  (`interview.{view,create,edit,cancel,evaluate,decide}`). Every write returns the fresh interview,
+  so its mutation **seeds the detail cache from the response and invalidates only the list subtree**
+  (`['hr','interviews','list',…]`) rather than the whole feature — this both narrows invalidation
+  and drops the post-write detail refetch. Interviewer name lookups are cached per id (5-min
+  `staleTime`, no retry) so the panel, decision, and skip views share one request per interviewer.
+  Concurrency conflicts (`STALE_DOCUMENT`) surface through the standard global error toast, as in the
+  other feature dialogs.
 
 Deferred (same as earlier phases): frontend component tests (Vitest + RTL). Interviewer names
 resolve only with `user.view`; a future dedicated interviewer-directory read would remove that

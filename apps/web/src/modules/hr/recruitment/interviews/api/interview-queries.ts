@@ -6,13 +6,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   type CancelInterview,
   type DecideInterview,
+  type InterviewDto,
   type ReassignInterviewPanel,
   type RescheduleInterview,
   type ScheduleInterview,
   type SkipInterviewer,
   type SubmitInterviewEvaluation,
 } from '@ecms/contracts';
-import { detailKey, featureKey, listKey } from '../../../../../shared/lib/query-keys';
+import { detailKey, listKey } from '../../../../../shared/lib/query-keys';
 import { listApplicants } from '../../applicants/api/applicant-api';
 import * as api from './interview-api';
 import { type InterviewListParams } from './interview-api';
@@ -75,53 +76,72 @@ export const useUser = (id: string, enabled: boolean) =>
     retry: false,
   });
 
-const useInvalidateInterviews = (): (() => void) => {
+// Minimal invalidation: a write returns the fresh interview, so we seed its detail cache directly
+// and invalidate only the list subtree (['hr','interviews','list',…]) — never the whole feature.
+const useInterviewWriters = (
+  id: string | null,
+): { seedAndInvalidate: (updated: InterviewDto) => void } => {
   const qc = useQueryClient();
-  return () => {
-    void qc.invalidateQueries({ queryKey: featureKey(MODULE, FEATURE) });
+  return {
+    seedAndInvalidate: (updated) => {
+      qc.setQueryData(detailKey(MODULE, FEATURE, id ?? updated.id), updated);
+      void qc.invalidateQueries({ queryKey: listKey(MODULE, FEATURE) });
+    },
   };
 };
 
 export const useScheduleInterview = () => {
-  const invalidate = useInvalidateInterviews();
-  return useMutation({ mutationFn: (body: ScheduleInterview) => api.scheduleInterview(body), onSuccess: invalidate });
+  const { seedAndInvalidate } = useInterviewWriters(null);
+  return useMutation({
+    mutationFn: (body: ScheduleInterview) => api.scheduleInterview(body),
+    onSuccess: seedAndInvalidate,
+  });
 };
 
 export const useRescheduleInterview = (id: string) => {
-  const invalidate = useInvalidateInterviews();
+  const { seedAndInvalidate } = useInterviewWriters(id);
   return useMutation({
     mutationFn: (body: RescheduleInterview) => api.rescheduleInterview(id, body),
-    onSuccess: invalidate,
+    onSuccess: seedAndInvalidate,
   });
 };
 
 export const useReassignPanel = (id: string) => {
-  const invalidate = useInvalidateInterviews();
+  const { seedAndInvalidate } = useInterviewWriters(id);
   return useMutation({
     mutationFn: (body: ReassignInterviewPanel) => api.reassignInterviewPanel(id, body),
-    onSuccess: invalidate,
+    onSuccess: seedAndInvalidate,
   });
 };
 
 export const useSkipInterviewer = (id: string) => {
-  const invalidate = useInvalidateInterviews();
-  return useMutation({ mutationFn: (body: SkipInterviewer) => api.skipInterviewer(id, body), onSuccess: invalidate });
+  const { seedAndInvalidate } = useInterviewWriters(id);
+  return useMutation({
+    mutationFn: (body: SkipInterviewer) => api.skipInterviewer(id, body),
+    onSuccess: seedAndInvalidate,
+  });
 };
 
 export const useCancelInterview = (id: string) => {
-  const invalidate = useInvalidateInterviews();
-  return useMutation({ mutationFn: (body: CancelInterview) => api.cancelInterview(id, body), onSuccess: invalidate });
+  const { seedAndInvalidate } = useInterviewWriters(id);
+  return useMutation({
+    mutationFn: (body: CancelInterview) => api.cancelInterview(id, body),
+    onSuccess: seedAndInvalidate,
+  });
 };
 
 export const useSubmitEvaluation = (id: string) => {
-  const invalidate = useInvalidateInterviews();
+  const { seedAndInvalidate } = useInterviewWriters(id);
   return useMutation({
     mutationFn: (body: SubmitInterviewEvaluation) => api.submitInterviewEvaluation(id, body),
-    onSuccess: invalidate,
+    onSuccess: seedAndInvalidate,
   });
 };
 
 export const useDecideInterview = (id: string) => {
-  const invalidate = useInvalidateInterviews();
-  return useMutation({ mutationFn: (body: DecideInterview) => api.decideInterview(id, body), onSuccess: invalidate });
+  const { seedAndInvalidate } = useInterviewWriters(id);
+  return useMutation({
+    mutationFn: (body: DecideInterview) => api.decideInterview(id, body),
+    onSuccess: seedAndInvalidate,
+  });
 };

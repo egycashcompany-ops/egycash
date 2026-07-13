@@ -13,6 +13,8 @@ import { ApplicantDetailPage } from './applicants/pages/ApplicantDetailPage';
 import { ApplicantFormPage } from './applicants/pages/ApplicantFormPage';
 import { ScreeningQueuePage } from './screening/pages/ScreeningQueuePage';
 import { ScreeningDetailPage } from './screening/pages/ScreeningDetailPage';
+import { InterviewQueuePage } from './interviews/pages/InterviewQueuePage';
+import { InterviewDetailPage } from './interviews/pages/InterviewDetailPage';
 
 const stage = (permission: string, titleKey: string): JSX.Element => (
   <RequirePermission permission={permission}>
@@ -63,7 +65,17 @@ export default function RecruitmentRoutes(): JSX.Element {
           <Route index element={<ScreeningQueuePage />} />
           <Route path=":id" element={<ScreeningDetailPage />} />
         </Route>
-        <Route path="interviews/*" element={stage('interview.view', 'recruitment.nav.interviews')} />
+        <Route
+          path="interviews"
+          element={
+            <RequirePermission permission="interview.view">
+              <Outlet />
+            </RequirePermission>
+          }
+        >
+          <Route index element={<InterviewQueuePage />} />
+          <Route path=":id" element={<InterviewDetailPage />} />
+        </Route>
         <Route path="job-offers/*" element={stage('jobOffer.view', 'recruitment.nav.offers')} />
         <Route path="employees/*" element={stage('employee.view', 'recruitment.nav.employees')} />
         <Route path="hiring-documents/*" element={stage('hiringDocuments.view', 'recruitment.nav.hiringDocuments')} />

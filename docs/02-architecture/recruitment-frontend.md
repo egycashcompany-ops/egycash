@@ -83,7 +83,7 @@ replacing that element, with zero layout/routing work.
 
 ## 6. Deliberately deferred
 
-- **Feature screens** — the later-stage screens (Applicants ships in Phase 2 — §7; Initial Screening in Phase 3 — §8; Interviews onward remain later sprints).
+- **Feature screens** — the later-stage screens (Applicants ships in Phase 2 — §7; Initial Screening in Phase 3 — §8; Interviews in Phase 4 — §9; Job Offer onward remain later sprints).
 - **shadcn/ui + react-hook-form** — §6 names these as the eventual kit; the foundation provides the
   same wrapped-in-`shared/ui` surface with hand-rolled, dependency-free primitives so a later
   migration is localized. No behavior depends on the concrete library.
@@ -151,3 +151,36 @@ Applicants building blocks. Endpoints: `/hr/screenings` (+ `/:id/notes`, `/:id/d
 
 Deferred (same as Phase 2): frontend component tests (Vitest + RTL). The active-applicant filter
 chip shows a short reference on deep-link reload until re-searched.
+
+## 9. Interviews (Phase 4)
+
+The third feature screen set (`modules/hr/recruitment/interviews/`), on the same foundation and
+reusing the Applicants building blocks. Endpoints (matched exactly): `/hr/interviews` (+
+`/:id/reschedule`, `/:id/panel`, `/:id/panel/skip`, `/:id/cancel`, `/:id/evaluations`,
+`/:id/decide`) and `/hr/interview-stages` (read-only here — the admin catalog labels rounds and
+backs the stage picker).
+
+- **Queue** (`interview.view`) — sortable `DataTable` (stage `#order`, scheduled, created — the
+  backend's sortable fields); `InterviewFilters` (status + outcome + stage + an **applicant
+  search-picker** → `applicantId` + a scheduled-date range); `Pagination`. Filters/sort/pagination
+  are **URL-synchronized** (deep-linkable, back/forward). A **Schedule interview** action
+  (`interview.create`) opens a dialog to pick an applicant, stage, date/time, and panel.
+- **Detail** (`interview.view`) — the **panel with per-interviewer evaluation state**
+  (`recommend`/`neutral`/`notRecommend`, rating, notes), the scheduling read-out, the decision, and
+  the full action surface: **reschedule** and **reassign panel** (`interview.edit`), **skip** a
+  pending interviewer (`interview.edit`), **submit/update your own evaluation** (`interview.evaluate`,
+  shown only to an assigned panel member), **cancel** (`interview.cancel`), and **Pass / Fail**
+  (`interview.decide`). Deciding is disabled — with an inline notice — while any panel member is
+  still `pending` (the server rule, surfaced in the UI). All mutations are version-checked.
+- **Interviewer references** — the panel is selected and displayed through a **`UserPicker` /
+  `UserName`** pair that reuses the existing platform Users endpoint (`/platform/users`, gated by
+  `user.view`) rather than exposing raw user ids. Without directory access it degrades to a short
+  reference and a hint (never an id-entry field), mirroring the Applicants reference-control rule.
+- **Integration** — feature `api/` layer + TanStack Query hooks; the applicant lookup reuses the
+  Applicants API and the interviewer lookup reuses the Users API — **no new backend API is
+  introduced**. `ar` + `en` i18n. Permission-gated throughout
+  (`interview.{view,create,edit,cancel,evaluate,decide}`).
+
+Deferred (same as earlier phases): frontend component tests (Vitest + RTL). Interviewer names
+resolve only with `user.view`; a future dedicated interviewer-directory read would remove that
+coupling. Interview-stage administration (create/edit of the catalog) is out of this scope.

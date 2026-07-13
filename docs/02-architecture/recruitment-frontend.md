@@ -83,7 +83,7 @@ replacing that element, with zero layout/routing work.
 
 ## 6. Deliberately deferred
 
-- **Feature screens** — the later-stage screens (Applicants ships in Phase 2 — §7; Initial Screening in Phase 3 — §8; Interviews in Phase 4 — §9; Job Offer onward remain later sprints).
+- **Feature screens** — the later-stage screens (Applicants ships in Phase 2 — §7; Initial Screening in Phase 3 — §8; Interviews in Phase 4 — §9; Job Offer in Phase 5 — §10; Employees onward remain later sprints).
 - **shadcn/ui + react-hook-form** — §6 names these as the eventual kit; the foundation provides the
   same wrapped-in-`shared/ui` surface with hand-rolled, dependency-free primitives so a later
   migration is localized. No behavior depends on the concrete library.
@@ -190,3 +190,39 @@ backs the stage picker).
 Deferred (same as earlier phases): frontend component tests (Vitest + RTL). Interviewer names
 resolve only with `user.view`; a future dedicated interviewer-directory read would remove that
 coupling. Interview-stage administration (create/edit of the catalog) is out of this scope.
+
+## 10. Job Offer (Phase 5)
+
+The fourth feature screen set (`modules/hr/recruitment/job-offers/`), on the same foundation.
+Endpoints (matched exactly): `/hr/job-offers` (+ `PATCH /:id` revise, `/:id/send`, `/:id/accept`,
+`/:id/reject`, `/:id/withdraw`). Organizational + manager references reuse existing platform
+endpoints — **no new backend API is introduced**.
+
+- **List** (`jobOffer.view`) — sortable `DataTable` (status, created — the backend's sortable
+  fields); `OfferFilters` (a **free-text search** over offer number/applicant code — the offer list
+  has a real `search` field — plus status + an active-only toggle); `Pagination`. Search, status,
+  active, sort and pagination are **URL-synchronized** (deep-linkable, back/forward). A **New offer**
+  entry point (`jobOffer.create`).
+- **Create / revise** — the shared `OfferTermsForm` builds the versioned package (job title,
+  department, branch, reporting manager, employment type, salary + currency, dynamic
+  allowances/benefits, probation, start/validity dates, notes). Create picks an applicant first
+  (`jobOffer.create`); revise edits a draft/sent offer's terms (`jobOffer.edit`, version-checked,
+  history preserved). Client checks cover the required fields + `validUntil > startDate`; the server
+  stays authoritative.
+- **Detail** (`jobOffer.view`) — the offer number, applicant link, status, the live package, the
+  immutable **accepted-terms snapshot** (once accepted) and the **revision history**, plus the
+  lifecycle action surface: **send** (`jobOffer.send`), **accept / reject** (`jobOffer.respond`,
+  reason required to reject), **withdraw** (`jobOffer.withdraw`), and **revise** (`jobOffer.edit`) —
+  each shown only in the states where it applies (draft·sent). All mutations are version-checked and
+  seed the detail cache + invalidate only the list subtree (minimal invalidation); `STALE_DOCUMENT`
+  surfaces through the standard global toast.
+- **References** — the reporting **manager** uses a single-select `ManagerPicker` (reuses
+  `/platform/users`, `user.view`); **job title / department / branch** are dropdowns fed by the
+  existing org endpoints (`jobTitle.view` / `department.view` / `branch.view`). Raw ids are never
+  entered; without the relevant `*.view` the control degrades to a hint. `ar` + `en` i18n throughout
+  (`jobOffer.{view,create,edit,send,respond,withdraw}`).
+
+Deferred (same as earlier phases): frontend component tests (Vitest + RTL). Reference names resolve
+only with the relevant `*.view` permission; a future dedicated reference-directory read would remove
+that coupling. Automatic offer **expiry** is a backend scheduled sweep — the UI reflects the
+resulting `expired` status but does not drive it.

@@ -83,7 +83,7 @@ replacing that element, with zero layout/routing work.
 
 ## 6. Deliberately deferred
 
-- **Feature screens** — the six later-stage screens (Applicants ships in Phase 2 — see §7; Screening onward remain later sprints).
+- **Feature screens** — the later-stage screens (Applicants ships in Phase 2 — §7; Initial Screening in Phase 3 — §8; Interviews onward remain later sprints).
 - **shadcn/ui + react-hook-form** — §6 names these as the eventual kit; the foundation provides the
   same wrapped-in-`shared/ui` surface with hand-rolled, dependency-free primitives so a later
   migration is localized. No behavior depends on the concrete library.
@@ -130,3 +130,24 @@ future Requisitions screen will deep-link). Detail views show the same read-only
 gated until a requisition context is provided.
 
 Deferred: frontend component tests (pending the Vitest + RTL setup backlog item).
+
+## 8. Initial Screening (Phase 3)
+
+The second feature screen set (`modules/hr/recruitment/screening/`), reusing the foundation and
+Applicants building blocks. Endpoints: `/hr/screenings` (+ `/:id/notes`, `/:id/decide`).
+
+- **Queue** (`screening.view`) — sortable `DataTable` (status, notes, decided, created);
+  `ScreeningFilters` (status + created-date range + an **applicant search-picker** that reuses the
+  Applicants list API and resolves to the `applicantId` filter, since screening's own list has no
+  free-text field); `Pagination`. Filters/sort/pagination are **URL-synchronized** (deep-linkable,
+  back/forward). A **Start screening** action (`screening.create`) opens a dialog to pick a live
+  applicant + an optional first note.
+- **Detail** (`screening.view`) — links to the applicant, the **notes + decision timeline** (shared
+  `Timeline`), an **add-note** form while `pending` (`screening.edit`), and the **Accept / Reject**
+  actions (`screening.decide`) via a dialog — a reason is required to reject (OQ-32) and optional
+  to accept. All mutations are version-checked.
+- **Integration** — feature `api/` layer + TanStack Query hooks; the applicant lookup reuses the
+  Applicants API. `ar` + `en` i18n. Permission-gated throughout (`screening.{view,create,edit,decide}`).
+
+Deferred (same as Phase 2): frontend component tests (Vitest + RTL). The active-applicant filter
+chip shows a short reference on deep-link reload until re-searched.

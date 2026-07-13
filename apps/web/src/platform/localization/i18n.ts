@@ -12,7 +12,9 @@ const en: Record<string, string> = {
   'platform.auth.login.totpCode': 'Authentication code',
   'platform.auth.login.totpSubmit': 'Verify',
   'platform.auth.login.enrollHint':
-    'Your account requires two-factor authentication. Scan the secret in your authenticator app, then enter the code.',
+    'Your account requires two-factor authentication. Scan this QR code with Microsoft Authenticator (or any authenticator app), then enter the 6-digit code.',
+  'platform.auth.login.enrollQrAlt': 'Two-factor setup QR code',
+  'platform.auth.login.enrollManual': "Can't scan? Enter this key manually",
   'platform.auth.login.failed': 'Sign-in failed',
   'platform.shell.signOut': 'Sign out',
   'platform.shell.language': 'العربية',
@@ -421,7 +423,9 @@ const ar: Record<string, string> = {
   'platform.auth.login.totpCode': 'رمز التحقق',
   'platform.auth.login.totpSubmit': 'تحقق',
   'platform.auth.login.enrollHint':
-    'حسابك يتطلب مصادقة ثنائية. امسح الرمز السري في تطبيق المصادقة ثم أدخل الرمز.',
+    'حسابك يتطلب مصادقة ثنائية. امسح رمز QR بتطبيق Microsoft Authenticator (أو أي تطبيق مصادقة) ثم أدخل الرمز المكوّن من 6 أرقام.',
+  'platform.auth.login.enrollQrAlt': 'رمز QR لإعداد المصادقة الثنائية',
+  'platform.auth.login.enrollManual': 'لا يمكنك المسح؟ أدخل هذا المفتاح يدويًا',
   'platform.auth.login.failed': 'فشل تسجيل الدخول',
   'platform.shell.signOut': 'تسجيل الخروج',
   'platform.shell.language': 'English',

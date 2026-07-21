@@ -9,6 +9,43 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-07-13
+
+Release v0.20.0 — Sprint 5.8: **HR / Recruitment — Electronic Employee File Frontend (Phase 8)**
+([PR #47](https://github.com/egycashcompany-ops/egycash/pull/47)), the **seventh and final**
+Recruitment feature screen set. **With this release all seven recruitment stages run in the UI on
+the single Phase 1 foundation.**
+
+### Added
+
+- **HR / Recruitment: Electronic Employee File frontend (`apps/web`).**
+  - **List** (`employeeFile.view`) — sortable `DataTable` (employee `code`, created — the backend's
+    sortable fields); filters (a **free-text search** over employee number / applicant code +
+    status); `Pagination`. Search, status, sort and pagination are **URL-synchronized**. An
+    **Assemble file** action (`employeeFile.create`) opens a dialog to pick an employee whose hiring
+    documents are complete (server-enforced; the employee search reuses the Employees list API).
+  - **Detail** (`employeeFile.view`) — the **Employee Timeline** (shared `Timeline`) built from the
+    recruitment milestones (`applicantRegistered` → … → `hiringDocumentsCompleted` → `fileOpened`)
+    plus free-form notes, with an **add-note** form (`employeeFile.edit`, version-checked) appending
+    to the timeline; and the **linked history** — deep-links into the applicant, screening,
+    interview, job-offer and hiring-documents screens (the Job Requisition shows as a read-only
+    reference). Each write seeds the detail cache + invalidates only the list subtree. `ar` + `en`
+    i18n.
+  - Removed the now-unused stage placeholder helper + `StagePlaceholder` (all seven stages are real
+    screens).
+
+### Changed
+
+- **Recruitment frontend complete** — all seven stages (Applicants → Screening → Interviews → Job
+  Offer → Employees → Hiring Documents → Electronic Employee File) run in the UI as one lazy route
+  chunk. Post-hire employee-lifecycle concerns belong to the future Employee module.
+
+### Notes
+
+- No new runtime dependencies and **no new backend API**. Verified via web typecheck, repo lint, and
+  vite build (recruitment stays a lazy chunk). No web unit-test runner yet (backlog: Vitest + React
+  Testing Library) — the primary follow-up before declaring the module production-ready.
+
 ## [0.19.0] - 2026-07-13
 
 Release v0.19.0 — Sprint 5.7: **HR / Recruitment — Hiring Documents Frontend (Phase 7)**

@@ -9,6 +9,45 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-07-13
+
+Release v0.19.0 — Sprint 5.7: **HR / Recruitment — Hiring Documents Frontend (Phase 7)**
+([PR #45](https://github.com/egycashcompany-ops/egycash/pull/45)), the sixth Recruitment feature
+screen set on the Phase 1 foundation, reusing the shared file-management infrastructure
+(`FileUpload`, the signed-URL download ticket, multipart `upload`). **Hiring Documents only** — the
+Electronic Employee File remains the final phase.
+
+### Added
+
+- **HR / Recruitment: Hiring Documents frontend (`apps/web`).**
+  - **List** (`hiringDocuments.view`) — sortable `DataTable` (employee `code`, created — the
+    backend's sortable fields); filters (a **free-text search** over employee number / applicant
+    code + status); `Pagination`. Search, status, sort and pagination are **URL-synchronized**. An
+    **Open document set** action (`hiringDocuments.create`) opens a dialog to pick an employee
+    (search reuses the Employees list API).
+  - **Detail** (`hiringDocuments.view`) — a **per-type checklist** merging the active document-type
+    catalog with the uploaded documents: each type shows uploaded/missing (required flagged), with
+    **download** (signed-URL ticket, reused from Applicants attachments), **version history**,
+    **replace**, and **upload** for missing types (`hiringDocuments.upload`, PDF-only via the shared
+    `FileUpload` + multipart). **Complete** (`hiringDocuments.complete`) is blocked — with the
+    missing-required banner — until every required document is present; once completed the set is
+    read-only. All mutations version-checked; each write seeds the detail cache + invalidates only
+    the list subtree. `ar` + `en` i18n.
+  - The document-type catalog (`/hr/hiring-document-types`) is **consumed read-only** to label +
+    require types; type administration is out of scope.
+
+### Changed
+
+- Recruitment now runs in the UI **through the Hiring Documents stage** (Applicants → Screening →
+  Interviews → Job Offer → Employees → Hiring Documents); the Electronic Employee File is the final
+  phase.
+
+### Notes
+
+- No new runtime dependencies and **no new backend API** — uploads/downloads reuse the existing
+  Files service seams. Verified via web typecheck, repo lint, and vite build (recruitment stays a
+  lazy chunk). No web unit-test runner yet (backlog: Vitest + React Testing Library).
+
 ## [0.18.0] - 2026-07-13
 
 Release v0.18.0 — Sprint 5.6: **HR / Recruitment — Employees Frontend (Phase 6)**

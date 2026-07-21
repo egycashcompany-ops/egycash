@@ -9,6 +9,48 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-07-13
+
+Release v0.17.0 — Sprint 5.5: **HR / Recruitment — Job Offer Frontend (Phase 5)**
+([PR #41](https://github.com/egycashcompany-ops/egycash/pull/41)), the fourth Recruitment feature
+screen set on the Phase 1 foundation, reusing the Applicants/Screening/Interviews building blocks.
+**Job Offer only** — no later stage.
+
+### Added
+
+- **HR / Recruitment: Job Offer frontend (`apps/web`).**
+  - **List** (`jobOffer.view`) — sortable `DataTable` (status, created — the backend's sortable
+    fields); `OfferFilters` (a **free-text search** over offer number / applicant code + status + an
+    active-only toggle); `Pagination`. Search, status, active, sort and pagination are
+    **URL-synchronized** (deep-linkable, back/forward). A **New offer** entry (`jobOffer.create`).
+  - **Create / revise** — the shared `OfferTermsForm` builds the versioned package (job title,
+    department, branch, reporting manager, employment type, salary + currency, dynamic
+    allowances/benefits, probation, start/validity dates, notes). Create picks an applicant first;
+    revise edits a draft/sent offer's terms (`jobOffer.edit`, version-checked, history preserved).
+    Client checks cover the required fields + `validUntil > startDate`; the server stays authoritative.
+  - **Detail** (`jobOffer.view`) — the offer number, applicant link, status, the live package, the
+    immutable **accepted-terms snapshot** and the **revision history**, plus the lifecycle actions:
+    **send** (`jobOffer.send`), **accept / reject** (`jobOffer.respond`, reason required to reject),
+    **withdraw** (`jobOffer.withdraw`), **revise** (`jobOffer.edit`) — each shown only in the states
+    where it applies (draft·sent). All mutations version-checked; each write seeds the detail cache
+    and invalidates only the list subtree; `STALE_DOCUMENT` surfaces via the standard global toast.
+  - **References** reuse existing platform endpoints (**no new backend API**): the reporting manager
+    via a `ManagerPicker` over `/platform/users` (`user.view`); job title / department / branch via
+    the org list endpoints (`jobTitle.view` / `department.view` / `branch.view`). Raw ids are never
+    entered; controls degrade to a hint without the relevant `*.view`. `ar` + `en` i18n.
+
+### Changed
+
+- Recruitment now runs in the UI **through the Job Offer stage** (Applicants → Screening →
+  Interviews → Job Offer); Employees onward remain later phases.
+
+### Notes
+
+- No new runtime dependencies. Verified via web typecheck, repo lint, and vite build (recruitment
+  stays a lazy chunk). Automatic offer expiry remains a backend scheduled sweep — the UI reflects the
+  resulting `expired` status but does not drive it. No web unit-test runner yet (backlog: Vitest +
+  React Testing Library).
+
 ## [0.16.0] - 2026-07-13
 
 Release v0.16.0 — Sprint 5.4: **HR / Recruitment — Interviews Frontend (Phase 4)**

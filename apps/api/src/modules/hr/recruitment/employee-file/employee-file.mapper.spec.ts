@@ -54,11 +54,11 @@ describe('toEmployeeFileDto', () => {
     expect(dto.links.hiringDocumentsId).toBe(String(doc.links.hiringDocumentsId));
   });
 
-  it('nulls optional links when absent', () => {
+  it('nulls optional links when absent (incl. a direct-intake Job Request)', () => {
     const doc = baseDoc({
       links: {
         applicantId: new Types.ObjectId(),
-        jobRequisitionId: new Types.ObjectId(),
+        jobRequisitionId: null,
         screeningId: null,
         interviewIds: [],
         jobOfferId: null,
@@ -66,6 +66,7 @@ describe('toEmployeeFileDto', () => {
       },
     });
     const dto = toEmployeeFileDto(doc);
+    expect(dto.links.jobRequisitionId).toBeNull();
     expect(dto.links.screeningId).toBeNull();
     expect(dto.links.jobOfferId).toBeNull();
     expect(dto.links.interviewIds).toEqual([]);

@@ -21,7 +21,7 @@ export const toApplicantDto = (doc: ApplicantDoc): ApplicantDto => ({
   id: String(doc._id),
   code: doc.code,
   status: doc.status,
-  jobRequisitionId: String(doc.jobRequisitionId),
+  jobRequisitionId: doc.jobRequisitionId === null ? null : String(doc.jobRequisitionId),
   branchId: doc.branchId === null ? null : String(doc.branchId),
   sourceId: String(doc.sourceId),
   sourceDetail:
@@ -49,6 +49,8 @@ export const toApplicantDto = (doc: ApplicantDoc): ApplicantDto => ({
   placeOfBirth: doc.placeOfBirth,
   photoFileId: doc.photoFileId === null ? null : String(doc.photoFileId),
   maritalStatus: doc.maritalStatus,
+  religion: doc.religion,
+  nationalIdExpiry: iso(doc.nationalIdExpiry),
   dependentsCount: doc.dependentsCount,
   contact: {
     primaryPhone: doc.contact.primaryPhone,

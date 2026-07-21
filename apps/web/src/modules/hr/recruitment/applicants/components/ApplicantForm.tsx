@@ -10,6 +10,7 @@ import {
   EDUCATION_LEVELS,
   MARITAL_STATUSES,
   MILITARY_STATUSES,
+  parseNationalId,
   type Address,
   type ApplicantDto,
   type ApplicantIntakeChannel,
@@ -23,13 +24,14 @@ import {
 } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
-import { localized } from '../../../../../shared/lib/format';
+import { localized, formatDate } from '../../../../../shared/lib/format';
 import { validationDetails } from '../../../../../shared/lib/errors';
 import { Card, CardBody, CardHeader } from '../../../../../shared/ui/Card';
 import { Button } from '../../../../../shared/ui/Button';
 import { Field, Input, Select, Checkbox, Form, FormActions } from '../../../../../shared/ui/form';
 import { PlusIcon, TrashIcon } from '../../../../../shared/ui/icons';
-import { OcrAssist } from './OcrAssist';
+import { transliterateArabicName, type NationalIdReviewData } from '../../../../../shared/national-id';
+import { ApplicantNationalIdOcr } from './ApplicantNationalIdOcr';
 import { ReferenceField } from './RefPickers';
 
 interface AddressForm {
@@ -66,6 +68,8 @@ interface FormState {
   nationalId: string;
   nationality: string;
   maritalStatus: '' | MaritalStatus;
+  religion: string;
+  nationalIdExpiry: string;
   dependentsCount: string;
   primaryPhone: string;
   secondaryPhone: string;
@@ -101,6 +105,8 @@ const fromDto = (a: ApplicantDto): FormState => ({
   nationalId: '',
   nationality: a.nationality,
   maritalStatus: a.maritalStatus ?? '',
+  religion: a.religion ?? '',
+  nationalIdExpiry: a.nationalIdExpiry === null ? '' : a.nationalIdExpiry.slice(0, 10),
   dependentsCount: a.dependentsCount === null ? '' : String(a.dependentsCount),
   primaryPhone: a.contact.primaryPhone,
   secondaryPhone: a.contact.secondaryPhone ?? '',
@@ -142,6 +148,8 @@ const emptyForm = (): FormState => ({
   nationalId: '',
   nationality: 'Egyptian',
   maritalStatus: '',
+  religion: '',
+  nationalIdExpiry: '',
   dependentsCount: '',
   primaryPhone: '',
   secondaryPhone: '',
@@ -247,18 +255,52 @@ export const ApplicantForm = ({
   const [errors, setErrors] = useState<{ field?: string; message: string }[]>([]);
   const [clientErr, setClientErr] = useState<Record<string, string>>({});
 
+  const [extracted, setExtracted] = useState(false);
+
   const set = (patch: Partial<FormState>): void => setF((prev) => ({ ...prev, ...patch }));
   const setAddr = (which: 'officialAddress' | 'currentAddress', patch: Partial<AddressForm>): void =>
     setF((prev) => ({ ...prev, [which]: { ...prev[which], ...patch } }));
+
+  // Deterministic National-ID derivation (birth date / gender / governorate) — computed from the
+  // number, never OCR'd. Recomputes live as the number is typed or extracted (§ value-objects).
+  const derived = parseNationalId(f.nationalId.trim());
+
+  // Setting the Arabic name auto-suggests an English transliteration ONLY while the English field
+  // is still empty — never clobbering a value the user (or OCR) already provided. Editable after.
+  const setArabicName = (value: string): void =>
+    setF((prev) => ({
+      ...prev,
+      fullNameAr: value,
+      fullNameEn: prev.fullNameEn.trim() === '' ? transliterateArabicName(value) : prev.fullNameEn,
+    }));
+
+  /** Populate the form from the reviewed National-ID data (after the user confirms the OCR review).
+   *  Reviewed values win; empty fields leave the current form value untouched. */
+  const applyReview = (r: NationalIdReviewData): void => {
+    setExtracted(true);
+    setF((prev) => ({
+      ...prev,
+      fullNameAr: r.fullNameAr.trim() === '' ? prev.fullNameAr : r.fullNameAr.trim(),
+      fullNameEn: r.fullNameEn.trim() === '' ? prev.fullNameEn : r.fullNameEn.trim(),
+      nationalId: r.nationalId.trim() === '' ? prev.nationalId : r.nationalId.trim(),
+      ...(r.maritalStatus === '' ? {} : { maritalStatus: r.maritalStatus }),
+      religion: r.religion.trim() === '' ? prev.religion : r.religion.trim(),
+      nationalIdExpiry: r.nationalIdExpiry === '' ? prev.nationalIdExpiry : r.nationalIdExpiry,
+      officialAddress: {
+        ...prev.officialAddress,
+        line1: r.addressLine.trim() === '' ? prev.officialAddress.line1 : r.addressLine.trim(),
+        city: r.city.trim() === '' ? prev.officialAddress.city : r.city.trim(),
+        // Governorate is derived from the number (not OCR'd).
+        governorate: r.governorate === '' ? prev.officialAddress.governorate : r.governorate,
+      },
+    }));
+  };
 
   const submit = async (): Promise<void> => {
     const ce: Record<string, string> = {};
     if (f.fullNameAr.trim().length < 2) ce.fullNameAr = t('applicants.form.required');
     if (f.primaryPhone.trim() === '') ce.primaryPhone = t('applicants.form.required');
     if (mode === 'create') {
-      if (presetRequisitionId === undefined || presetRequisitionId.trim() === '') {
-        ce.requisition = t('applicants.form.requisitionRequired');
-      }
       if (f.sourceId === '') ce.sourceId = t('applicants.form.required');
     }
     setClientErr(ce);
@@ -273,13 +315,19 @@ export const ApplicantForm = ({
         ...(str(f.nationalId) ? { nationalId: f.nationalId.trim() } : {}),
         nationality: f.nationality.trim() === '' ? 'Egyptian' : f.nationality.trim(),
         ...(f.maritalStatus === '' ? {} : { maritalStatus: f.maritalStatus }),
+        ...(str(f.religion) ? { religion: f.religion.trim() } : {}),
+        ...(str(f.nationalIdExpiry) ? { nationalIdExpiry: f.nationalIdExpiry } : {}),
         ...(num(f.dependentsCount) === undefined ? {} : { dependentsCount: num(f.dependentsCount) }),
       };
       const rest = Object.fromEntries(
         Object.entries(common).filter(([k]) => k !== 'fullNameAr' && k !== 'fullNameEn'),
       );
       body = {
-        jobRequisitionId: (presetRequisitionId ?? '').trim(),
+        // Requisition is OPTIONAL — a direct intake has no linked Job Request; it is only sent
+        // when provided by context (the future Requisitions screen deep-links here).
+        ...(presetRequisitionId !== undefined && presetRequisitionId.trim() !== ''
+          ? { jobRequisitionId: presetRequisitionId.trim() }
+          : {}),
         ...(presetBranchId !== undefined && presetBranchId.trim() !== '' ? { branchId: presetBranchId.trim() } : {}),
         sourceId: f.sourceId,
         intakeChannel: f.intakeChannel,
@@ -315,17 +363,17 @@ export const ApplicantForm = ({
 
       {mode === 'create' && (
         <>
-          <OcrAssist onApply={(fields) => set({ ...(fields.nationalId !== undefined ? { nationalId: fields.nationalId } : {}), ...(fields.fullNameAr !== undefined ? { fullNameAr: fields.fullNameAr } : {}) })} />
+          <ApplicantNationalIdOcr onConfirm={applyReview} />
+          {extracted && (
+            <p className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200">
+              {t('applicants.ocr.reviewBanner')}
+            </p>
+          )}
           <Card>
-            <CardHeader title={t('applicants.form.context')} />
+            <CardHeader title={t('applicants.form.context')} description={t('applicants.form.contextHint')} />
             <CardBody className="space-y-4">
-              {(presetRequisitionId === undefined || presetRequisitionId.trim() === '') && (
-                <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200">
-                  {t('applicants.form.requisitionRequired')}
-                </p>
-              )}
               <div className={sectionCls}>
-                <ReferenceField kind="requisition" value={presetRequisitionId} error={clientErr.requisition} />
+                <ReferenceField kind="requisition" value={presetRequisitionId} />
                 <ReferenceField kind="branch" value={presetBranchId} />
                 <Field label={t('applicants.form.source')} required error={clientErr.sourceId}>
                   <Select value={f.sourceId} onChange={(e) => set({ sourceId: e.target.value })}>
@@ -352,9 +400,9 @@ export const ApplicantForm = ({
         <CardHeader title={t('applicants.form.identity')} />
         <CardBody className={sectionCls}>
           <Field label={t('applicants.form.fullNameAr')} required error={clientErr.fullNameAr}>
-            <Input value={f.fullNameAr} onChange={(e) => set({ fullNameAr: e.target.value })} />
+            <Input value={f.fullNameAr} onChange={(e) => (mode === 'create' ? setArabicName(e.target.value) : set({ fullNameAr: e.target.value }))} />
           </Field>
-          <Field label={t('applicants.form.fullNameEn')}>
+          <Field label={t('applicants.form.fullNameEn')} hint={mode === 'create' ? t('applicants.form.fullNameEnHint') : undefined}>
             <Input value={f.fullNameEn} onChange={(e) => set({ fullNameEn: e.target.value })} dir="ltr" />
           </Field>
           {mode === 'create' && (
@@ -373,9 +421,36 @@ export const ApplicantForm = ({
                   ))}
                 </Select>
               </Field>
+              <Field label={t('applicants.form.religion')}>
+                <Input value={f.religion} onChange={(e) => set({ religion: e.target.value })} />
+              </Field>
+              <Field label={t('applicants.form.nationalIdExpiry')}>
+                <Input type="date" value={f.nationalIdExpiry} onChange={(e) => set({ nationalIdExpiry: e.target.value })} dir="ltr" />
+              </Field>
               <Field label={t('applicants.form.dependents')}>
                 <Input type="number" min={0} value={f.dependentsCount} onChange={(e) => set({ dependentsCount: e.target.value })} />
               </Field>
+              {derived !== null && (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/40 sm:col-span-2">
+                  <p className="mb-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+                    {t('applicants.form.derivedFromNid')}
+                  </p>
+                  <dl className="grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-3">
+                    <div className="flex justify-between gap-2 sm:block">
+                      <dt className="text-slate-500 dark:text-slate-400">{t('applicants.detail.birthDate')}</dt>
+                      <dd className="font-medium text-slate-700 dark:text-slate-200">{formatDate(derived.birthDate.toISOString(), locale)}</dd>
+                    </div>
+                    <div className="flex justify-between gap-2 sm:block">
+                      <dt className="text-slate-500 dark:text-slate-400">{t('applicants.detail.gender')}</dt>
+                      <dd className="font-medium text-slate-700 dark:text-slate-200">{t(`applicants.gender.${derived.gender}`)}</dd>
+                    </div>
+                    <div className="flex justify-between gap-2 sm:block">
+                      <dt className="text-slate-500 dark:text-slate-400">{t('applicants.detail.governorate')}</dt>
+                      <dd className="font-medium text-slate-700 dark:text-slate-200">{derived.governorate}</dd>
+                    </div>
+                  </dl>
+                </div>
+              )}
             </>
           )}
         </CardBody>
@@ -582,11 +657,7 @@ export const ApplicantForm = ({
 
       <FormActions>
         <Button variant="secondary" onClick={onCancel}>{t('common.cancel')}</Button>
-        <Button
-          type="submit"
-          loading={submitting}
-          disabled={mode === 'create' && (presetRequisitionId === undefined || presetRequisitionId.trim() === '')}
-        >
+        <Button type="submit" loading={submitting}>
           {mode === 'create' ? t('applicants.actions.create') : t('common.save')}
         </Button>
       </FormActions>

@@ -61,12 +61,16 @@ class ApplicantService {
       ]);
     }
 
-    // Requisition reference is mandatory (BD-001); validated behind the Stage-0 seam.
-    const resolution = await getRequisitionValidator().resolve({
-      jobRequisitionId: input.jobRequisitionId,
-      branchId: input.branchId ?? null,
-    });
-    if (!resolution.ok) {
+    // Requisition reference is OPTIONAL (direct intake). When supplied it is validated behind
+    // the Stage-0 seam; when absent the applicant simply carries no linked Job Request.
+    const resolution =
+      input.jobRequisitionId === undefined
+        ? null
+        : await getRequisitionValidator().resolve({
+            jobRequisitionId: input.jobRequisitionId,
+            branchId: input.branchId ?? null,
+          });
+    if (resolution !== null && !resolution.ok) {
       throw new ValidationError([
         { field: 'jobRequisitionId', code: 'INVALID', message: resolution.error ?? 'invalid requisition' },
       ]);
@@ -90,13 +94,14 @@ class ApplicantService {
 
     const now = new Date();
     const code = await nextApplicantNumber(now.getUTCFullYear());
-    const branchId = resolution.branchId ?? input.branchId ?? null;
+    const branchId = resolution?.branchId ?? input.branchId ?? null;
 
     const doc = await applicantRepository.create(
       {
         code,
         status: 'new',
-        jobRequisitionId: new Types.ObjectId(input.jobRequisitionId),
+        jobRequisitionId:
+          input.jobRequisitionId === undefined ? null : new Types.ObjectId(input.jobRequisitionId),
         branchId: oid(branchId),
         sourceId: new Types.ObjectId(input.sourceId),
         sourceDetail:
@@ -130,6 +135,8 @@ class ApplicantService {
         placeOfBirth: derived?.governorate ?? null,
         photoFileId: oid(input.identity.photoFileId),
         maritalStatus: input.identity.maritalStatus ?? null,
+        religion: input.identity.religion ?? null,
+        nationalIdExpiry: input.identity.nationalIdExpiry ?? null,
         dependentsCount: input.identity.dependentsCount ?? null,
         contact: {
           primaryPhone: input.contact.primaryPhone,
@@ -188,12 +195,15 @@ class ApplicantService {
     await auditService.record({
       entityRef: entityRef(String(doc._id)),
       action: 'create',
-      changes: diffChanges({}, { code: doc.code, source: source.key, requisition: input.jobRequisitionId }),
+      changes: diffChanges(
+        {},
+        { code: doc.code, source: source.key, requisition: input.jobRequisitionId ?? null },
+      ),
     });
     await emit(HrEvents.ApplicantCreated, {
       applicantId: String(doc._id),
       code: doc.code,
-      jobRequisitionId: input.jobRequisitionId,
+      ...(input.jobRequisitionId === undefined ? {} : { jobRequisitionId: input.jobRequisitionId }),
       sourceId: input.sourceId,
     });
     return withDuplicates;
@@ -330,7 +340,9 @@ class ApplicantService {
     await emit(HrEvents.ApplicantUpdated, {
       applicantId: id,
       code: updated.code,
-      jobRequisitionId: String(updated.jobRequisitionId),
+      ...(updated.jobRequisitionId === null
+        ? {}
+        : { jobRequisitionId: String(updated.jobRequisitionId) }),
       sourceId: String(updated.sourceId),
     });
     return updated;
@@ -387,7 +399,9 @@ class ApplicantService {
     await emit(HrEvents.ApplicantIdentityVerified, {
       applicantId: id,
       code: updated.code,
-      jobRequisitionId: String(updated.jobRequisitionId),
+      ...(updated.jobRequisitionId === null
+        ? {}
+        : { jobRequisitionId: String(updated.jobRequisitionId) }),
       sourceId: String(updated.sourceId),
     });
     return updated;

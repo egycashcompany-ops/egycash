@@ -59,6 +59,11 @@ describe('toEmployeeDto', () => {
     expect(dto.jobOfferId).toBe(String(offerId));
   });
 
+  it('maps a null Job Request (direct-intake hire) to null', () => {
+    const dto = toEmployeeDto(baseDoc({ jobRequisitionId: null }));
+    expect(dto.jobRequisitionId).toBeNull();
+  });
+
   it('surfaces the copied employment terms', () => {
     const dto = toEmployeeDto(baseDoc());
     expect(dto.employment.employmentType).toBe('fullTime');

@@ -67,7 +67,8 @@ export interface EmployeeDto {
   // Preserved references.
   applicantId: string;
   applicantCode: string;
-  jobRequisitionId: string;
+  /** null when the source applicant had no linked Job Request (direct intake). */
+  jobRequisitionId: string | null;
   jobOfferId: string;
   offerCode: string;
   /** The offer revision that was accepted (from the Accepted Snapshot). */

@@ -13,11 +13,21 @@ export interface OcrInput {
   backFileId?: string | undefined;
 }
 
-/** Raw provider output — every field carries a confidence band; nothing is trusted. */
+/**
+ * Raw provider output — every field carries a confidence band; nothing is trusted. A real
+ * provider reads the National-ID card front + back together; the number-derived fields
+ * (birth date, gender, governorate) are NOT part of this — they are computed downstream.
+ */
 export interface RawOcrResult {
   nationalId?: OcrFieldDto;
   fullNameAr?: OcrFieldDto;
+  /** Suggested English name (transliteration of the Arabic name). */
+  fullNameEn?: OcrFieldDto;
   address?: OcrFieldDto;
+  city?: OcrFieldDto;
+  maritalStatus?: OcrFieldDto;
+  religion?: OcrFieldDto;
+  nationalIdExpiry?: OcrFieldDto;
 }
 
 export interface NationalIdOcrProvider {
@@ -56,7 +66,18 @@ export const resetNationalIdOcrProvider = (): void => {
 export const extractNationalIdFields = async (input: OcrInput): Promise<OcrExtractionDto> => {
   const active = getNationalIdOcrProvider();
   if (!active.available) {
-    return { available: false, nationalId: null, fullNameAr: null, address: null, derived: null };
+    return {
+      available: false,
+      nationalId: null,
+      fullNameAr: null,
+      fullNameEn: null,
+      address: null,
+      city: null,
+      maritalStatus: null,
+      religion: null,
+      nationalIdExpiry: null,
+      derived: null,
+    };
   }
   const raw = await active.extract(input);
   const parsed =
@@ -65,7 +86,12 @@ export const extractNationalIdFields = async (input: OcrInput): Promise<OcrExtra
     available: true,
     nationalId: raw.nationalId ?? null,
     fullNameAr: raw.fullNameAr ?? null,
+    fullNameEn: raw.fullNameEn ?? null,
     address: raw.address ?? null,
+    city: raw.city ?? null,
+    maritalStatus: raw.maritalStatus ?? null,
+    religion: raw.religion ?? null,
+    nationalIdExpiry: raw.nationalIdExpiry ?? null,
     derived:
       parsed === null
         ? null

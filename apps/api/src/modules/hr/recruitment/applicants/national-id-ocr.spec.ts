@@ -15,7 +15,12 @@ describe('national-id OCR seam (OQ-30 abstraction)', () => {
       available: false,
       nationalId: null,
       fullNameAr: null,
+      fullNameEn: null,
       address: null,
+      city: null,
+      maritalStatus: null,
+      religion: null,
+      nationalIdExpiry: null,
       derived: null,
     });
   });
@@ -49,6 +54,32 @@ describe('national-id OCR seam (OQ-30 abstraction)', () => {
       extract: () => Promise.resolve({ nationalId: { value: '000', confidence: 'low' } }),
     });
     const result = await extractNationalIdFields({ frontFileId: 'f' });
+    expect(result.derived).toBeNull();
+  });
+
+  it('passes through the back-of-card fields a provider reads (name, marital, religion, expiry)', async () => {
+    setNationalIdOcrProvider({
+      id: 'test',
+      available: true,
+      extract: () =>
+        Promise.resolve({
+          fullNameAr: { value: 'محمد أحمد', confidence: 'high' },
+          fullNameEn: { value: 'Mohamed Ahmed', confidence: 'medium' },
+          maritalStatus: { value: 'متزوج', confidence: 'medium' },
+          religion: { value: 'مسلم', confidence: 'low' },
+          city: { value: 'طنطا', confidence: 'medium' },
+          nationalIdExpiry: { value: '2030-01-01T00:00:00.000Z', confidence: 'medium' },
+        }),
+    });
+    const result = await extractNationalIdFields({ frontFileId: 'f', backFileId: 'b' });
+    expect(result.available).toBe(true);
+    expect(result.fullNameAr?.value).toBe('محمد أحمد');
+    expect(result.fullNameEn?.value).toBe('Mohamed Ahmed');
+    expect(result.maritalStatus?.value).toBe('متزوج');
+    expect(result.religion?.value).toBe('مسلم');
+    expect(result.city?.value).toBe('طنطا');
+    expect(result.nationalIdExpiry?.value).toBe('2030-01-01T00:00:00.000Z');
+    // No number read → no derivation.
     expect(result.derived).toBeNull();
   });
 });

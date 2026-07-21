@@ -22,7 +22,7 @@ export const toEmployeeDto = (doc: EmployeeDoc): EmployeeDto => ({
   status: doc.status,
   applicantId: String(doc.applicantId),
   applicantCode: doc.applicantCode,
-  jobRequisitionId: String(doc.jobRequisitionId),
+  jobRequisitionId: doc.jobRequisitionId === null ? null : String(doc.jobRequisitionId),
   jobOfferId: String(doc.jobOfferId),
   offerCode: doc.offerCode,
   acceptedOfferRevision: doc.acceptedOfferRevision,

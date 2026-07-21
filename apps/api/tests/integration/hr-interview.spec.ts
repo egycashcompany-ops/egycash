@@ -338,6 +338,31 @@ describe('interviews — awaiting scheduling (pipeline entry)', () => {
     const applicant = await registerApplicant(); // no accepted screening
     expect(await awaitingIds()).not.toContain(applicant.id);
   });
+
+  it('a restored applicant resumes at the EXACT stage they left (back in awaiting interviews)', async () => {
+    // Approved in screening → awaiting their first interview.
+    const applicant = await acceptedApplicant();
+    expect(await awaitingIds()).toContain(applicant.id);
+
+    // Withdrawn from the interview stage → drops out of the pipeline entirely.
+    const withdrawn = (
+      await request(app)
+        .post(`/api/v1/hr/applicants/${applicant.id}/withdraw`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ reason: 'paused', version: applicant.version })
+    ).body.data as { version: number };
+    expect(await awaitingIds()).not.toContain(applicant.id);
+
+    // Restored → resumes at the INTERVIEW stage (their accepted screening is intact), NOT back at
+    // screening. Visibility is derived from the applicant's records, so they reappear in the
+    // interviews awaiting queue — the accepted screening was never lost.
+    const restored = await request(app)
+      .post(`/api/v1/hr/applicants/${applicant.id}/restore`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: withdrawn.version });
+    expect(restored.status).toBe(200);
+    expect(await awaitingIds()).toContain(applicant.id);
+  });
 });
 
 describe('interviews — panel reassignment (independent of scheduling)', () => {

@@ -65,6 +65,17 @@ const useInvalidateApplicants = (): (() => void) => {
   };
 };
 
+/** Withdraw/restore change pipeline visibility (the derived "awaiting" queues), so invalidate the
+ *  applicants feature AND the screening/interview awaiting subtrees the applicant may move in/out of. */
+const useInvalidateLifecycle = (): (() => void) => {
+  const qc = useQueryClient();
+  return () => {
+    void qc.invalidateQueries({ queryKey: featureKey(MODULE, FEATURE) });
+    void qc.invalidateQueries({ queryKey: [MODULE, 'screenings', 'awaiting'] });
+    void qc.invalidateQueries({ queryKey: [MODULE, 'interviews', 'awaiting'] });
+  };
+};
+
 export const useRegisterApplicant = () => {
   const invalidate = useInvalidateApplicants();
   return useMutation({
@@ -90,7 +101,7 @@ export const useVerifyApplicantIdentity = (id: string) => {
 };
 
 export const useWithdrawApplicant = (id: string) => {
-  const invalidate = useInvalidateApplicants();
+  const invalidate = useInvalidateLifecycle();
   return useMutation({
     mutationFn: (body: WithdrawApplicant) => api.withdrawApplicant(id, body),
     onSuccess: invalidate,
@@ -98,7 +109,7 @@ export const useWithdrawApplicant = (id: string) => {
 };
 
 export const useRestoreApplicant = (id: string) => {
-  const invalidate = useInvalidateApplicants();
+  const invalidate = useInvalidateLifecycle();
   return useMutation({
     mutationFn: (body: RestoreApplicant) => api.restoreApplicant(id, body),
     onSuccess: invalidate,

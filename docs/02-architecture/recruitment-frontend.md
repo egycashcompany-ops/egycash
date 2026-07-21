@@ -341,10 +341,16 @@ open/schedule/decide flows are untouched.
   (`ScheduleInterview` defaults to `[]`); an interview can be scheduled before a committee is
   assigned, with members added later via the reassign-panel action. Validation, version checks,
   optimistic updates and cache behaviour are unchanged.
-- **Withdrawn-applicant restore.** A withdrawn applicant can be **restored** to the active pipeline
-  (`POST /hr/applicants/:id/restore`, `applicant.edit`, version-checked → status `new`, emits
-  `hr.applicant.restored`). **All prior history is preserved** — screening, interviews, offers,
-  audit and timeline records are never deleted; the applicant simply becomes live again from
-  wherever they were, and re-appears in the derived queues as appropriate. The Restore action is on
-  the applicant detail (reachable from every stage via the ubiquitous applicant deep-link); both
-  withdrawal and restoration are fully audited.
+- **Withdraw / restore from any stage.** A shared **`ApplicantLifecycleActions`** control renders
+  the one relevant action for the applicant — **Withdraw** while active (`new`), **Restore** while
+  `withdrawn` — and is placed on the applicant detail **and every stage detail page** (Screening,
+  Interview, Job Offer), so HR can withdraw or restore *from wherever they are working* without
+  navigating away. Both actions are version-checked, `applicant.edit`-gated, and fully audited.
+  - Restore (`POST /hr/applicants/:id/restore` → status `new`, emits `hr.applicant.restored`)
+    **preserves all prior history** — screening decisions, interviews, offers, audit and timeline
+    records are never deleted. Because visibility is **derived from the applicant's records** (not a
+    stored stage pointer), a restored applicant **resumes from the exact stage they left**: one with
+    an accepted screening but no interview reappears in *Awaiting scheduling* (Interviews), one with
+    no screening reappears in *Awaiting screening*, one mid-interview or with an offer shows back in
+    that stage's list — they never restart from the beginning. Withdraw/restore invalidate the
+    screening + interview awaiting subtrees so the pipeline queues update immediately.

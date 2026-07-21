@@ -83,7 +83,7 @@ replacing that element, with zero layout/routing work.
 
 ## 6. Deliberately deferred
 
-- **Feature screens** — the later-stage screens (Applicants ships in Phase 2 — §7; Initial Screening in Phase 3 — §8; Interviews in Phase 4 — §9; Job Offer in Phase 5 — §10; Employees in Phase 6 — §11; Hiring Documents / Employee Files remain later sprints).
+- **Feature screens** — the later-stage screens (Applicants ships in Phase 2 — §7; Initial Screening in Phase 3 — §8; Interviews in Phase 4 — §9; Job Offer in Phase 5 — §10; Employees in Phase 6 — §11; Hiring Documents in Phase 7 — §12; the Electronic Employee File remains a later sprint).
 - **shadcn/ui + react-hook-form** — §6 names these as the eventual kit; the foundation provides the
   same wrapped-in-`shared/ui` surface with hand-rolled, dependency-free primitives so a later
   migration is localized. No behavior depends on the concrete library.
@@ -251,3 +251,29 @@ employee record is **read-only in this stage** — no lifecycle mutation is expo
 Deferred (same as earlier phases): frontend component tests (Vitest + RTL). Reference names resolve
 only with the relevant `*.view`. Employee lifecycle transitions (leave/suspend/terminate) are out of
 this stage's scope — a later Employee module concern.
+
+## 12. Hiring Documents (Phase 7)
+
+The sixth feature screen set (`modules/hr/recruitment/hiring-documents/`), on the same foundation.
+Endpoints (matched exactly): `/hr/hiring-documents` (list, `POST` create-for-employee, get,
+`/:id/documents` upload, `/:id/documents/:typeId/replace`, `/:id/documents/:typeId/versions`,
+`/:id/complete`) and `/hr/hiring-document-types` (**consumed read-only** to label + require types —
+type administration, `hiringDocumentType.manage`, is out of scope, like interview-stage admin).
+**No new backend API is introduced.**
+
+- **List** (`hiringDocuments.view`) — sortable `DataTable` (employee `code`, created — the backend's
+  sortable fields); filters (a **free-text search** over employee number/applicant code + status);
+  `Pagination`. Search, status, sort and pagination are **URL-synchronized**. An **Open document
+  set** action (`hiringDocuments.create`) opens a dialog to pick an employee (search reuses the
+  Employees list API).
+- **Detail** (`hiringDocuments.view`) — a **per-type checklist** merging the active type catalog with
+  the uploaded documents: each type shows uploaded/missing (required flagged), with **download**
+  (signed-URL ticket, reused from Applicants attachments), **version history**, **replace**, and
+  **upload** for missing types (`hiringDocuments.upload`, PDF-only via the shared `FileUpload` +
+  multipart `upload`). **Complete** (`hiringDocuments.complete`) is blocked — with the missing-list
+  banner — until every required document is present; once completed the set is read-only. All
+  mutations are version-checked; each write seeds the detail cache + invalidates only the list
+  subtree. `ar` + `en` i18n.
+
+Deferred (same as earlier phases): frontend component tests (Vitest + RTL). Document-type
+administration (create/edit the catalog) is out of scope; the catalog is consumed read-only.

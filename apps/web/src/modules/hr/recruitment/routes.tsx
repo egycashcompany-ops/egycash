@@ -18,6 +18,9 @@ import { InterviewDetailPage } from './interviews/pages/InterviewDetailPage';
 import { JobOffersListPage } from './job-offers/pages/JobOffersListPage';
 import { JobOfferDetailPage } from './job-offers/pages/JobOfferDetailPage';
 import { JobOfferFormPage } from './job-offers/pages/JobOfferFormPage';
+import { EmployeesListPage } from './employees/pages/EmployeesListPage';
+import { EmployeeDetailPage } from './employees/pages/EmployeeDetailPage';
+import { EmployeeCreatePage } from './employees/pages/EmployeeCreatePage';
 
 const stage = (permission: string, titleKey: string): JSX.Element => (
   <RequirePermission permission={permission}>
@@ -106,7 +109,25 @@ export default function RecruitmentRoutes(): JSX.Element {
             }
           />
         </Route>
-        <Route path="employees/*" element={stage('employee.view', 'recruitment.nav.employees')} />
+        <Route
+          path="employees"
+          element={
+            <RequirePermission permission="employee.view">
+              <Outlet />
+            </RequirePermission>
+          }
+        >
+          <Route index element={<EmployeesListPage />} />
+          <Route
+            path="new"
+            element={
+              <RequirePermission permission="employee.create">
+                <EmployeeCreatePage />
+              </RequirePermission>
+            }
+          />
+          <Route path=":id" element={<EmployeeDetailPage />} />
+        </Route>
         <Route path="hiring-documents/*" element={stage('hiringDocuments.view', 'recruitment.nav.hiringDocuments')} />
         <Route path="employee-files/*" element={stage('employeeFile.view', 'recruitment.nav.employeeFiles')} />
         <Route path="*" element={<NotFoundPage />} />

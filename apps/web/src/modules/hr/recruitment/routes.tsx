@@ -15,6 +15,9 @@ import { ScreeningQueuePage } from './screening/pages/ScreeningQueuePage';
 import { ScreeningDetailPage } from './screening/pages/ScreeningDetailPage';
 import { InterviewQueuePage } from './interviews/pages/InterviewQueuePage';
 import { InterviewDetailPage } from './interviews/pages/InterviewDetailPage';
+import { JobOffersListPage } from './job-offers/pages/JobOffersListPage';
+import { JobOfferDetailPage } from './job-offers/pages/JobOfferDetailPage';
+import { JobOfferFormPage } from './job-offers/pages/JobOfferFormPage';
 
 const stage = (permission: string, titleKey: string): JSX.Element => (
   <RequirePermission permission={permission}>
@@ -76,7 +79,33 @@ export default function RecruitmentRoutes(): JSX.Element {
           <Route index element={<InterviewQueuePage />} />
           <Route path=":id" element={<InterviewDetailPage />} />
         </Route>
-        <Route path="job-offers/*" element={stage('jobOffer.view', 'recruitment.nav.offers')} />
+        <Route
+          path="job-offers"
+          element={
+            <RequirePermission permission="jobOffer.view">
+              <Outlet />
+            </RequirePermission>
+          }
+        >
+          <Route index element={<JobOffersListPage />} />
+          <Route
+            path="new"
+            element={
+              <RequirePermission permission="jobOffer.create">
+                <JobOfferFormPage mode="create" />
+              </RequirePermission>
+            }
+          />
+          <Route path=":id" element={<JobOfferDetailPage />} />
+          <Route
+            path=":id/edit"
+            element={
+              <RequirePermission permission="jobOffer.edit">
+                <JobOfferFormPage mode="revise" />
+              </RequirePermission>
+            }
+          />
+        </Route>
         <Route path="employees/*" element={stage('employee.view', 'recruitment.nav.employees')} />
         <Route path="hiring-documents/*" element={stage('hiringDocuments.view', 'recruitment.nav.hiringDocuments')} />
         <Route path="employee-files/*" element={stage('employeeFile.view', 'recruitment.nav.employeeFiles')} />

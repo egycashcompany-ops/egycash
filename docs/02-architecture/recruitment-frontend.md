@@ -83,7 +83,7 @@ replacing that element, with zero layout/routing work.
 
 ## 6. Deliberately deferred
 
-- **Feature screens** — the later-stage screens (Applicants ships in Phase 2 — §7; Initial Screening in Phase 3 — §8; Interviews in Phase 4 — §9; Job Offer in Phase 5 — §10; Employees onward remain later sprints).
+- **Feature screens** — the later-stage screens (Applicants ships in Phase 2 — §7; Initial Screening in Phase 3 — §8; Interviews in Phase 4 — §9; Job Offer in Phase 5 — §10; Employees in Phase 6 — §11; Hiring Documents / Employee Files remain later sprints).
 - **shadcn/ui + react-hook-form** — §6 names these as the eventual kit; the foundation provides the
   same wrapped-in-`shared/ui` surface with hand-rolled, dependency-free primitives so a later
   migration is localized. No behavior depends on the concrete library.
@@ -226,3 +226,28 @@ Deferred (same as earlier phases): frontend component tests (Vitest + RTL). Refe
 only with the relevant `*.view` permission; a future dedicated reference-directory read would remove
 that coupling. Automatic offer **expiry** is a backend scheduled sweep — the UI reflects the
 resulting `expired` status but does not drive it.
+
+## 11. Employees (Phase 6)
+
+The fifth feature screen set (`modules/hr/recruitment/employees/`), on the same foundation.
+Endpoints (matched exactly): `/hr/employees` (list, `POST` create-from-accepted-offer, get). The
+employee record is **read-only in this stage** — no lifecycle mutation is exposed (the DTO carries
+`active`/`onLeave`/`suspended`/`terminated`, but transitions belong to a future Employee module).
+**No new backend API is introduced.**
+
+- **List** (`employee.view`) — sortable `DataTable` (employee `code`, hired, created — the backend's
+  sortable fields); `EmployeeFilters` (a **free-text search** over employee number/applicant code +
+  status); `Pagination`. Search, status, sort and pagination are **URL-synchronized**. A **Hire
+  employee** entry point (`employee.create`).
+- **Hire (create)** — the employment terms are **not** entered: they are copied server-side from the
+  offer's immutable accepted snapshot. The page picks an **accepted offer** (an `OfferPicker`
+  autocomplete reusing the Job Offer list API scoped to `status: accepted`) + an optional hiring
+  date. The server enforces the full rule (accepted + snapshot + not already hired).
+- **Detail** (`employee.view`) — the employee number, status, preserved references (applicant link +
+  accepted-offer link with its revision), and the copied **employment terms** read-out. The
+  employment view **reuses the Job Offer `UserName` + reference hooks** so org/manager names resolve
+  from the same cache. `ar` + `en` i18n; permission-gated (`employee.{view,create}`).
+
+Deferred (same as earlier phases): frontend component tests (Vitest + RTL). Reference names resolve
+only with the relevant `*.view`. Employee lifecycle transitions (leave/suspend/terminate) are out of
+this stage's scope — a later Employee module concern.

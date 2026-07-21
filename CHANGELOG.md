@@ -9,6 +9,43 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-07-13
+
+Release v0.18.0 — Sprint 5.6: **HR / Recruitment — Employees Frontend (Phase 6)**
+([PR #43](https://github.com/egycashcompany-ops/egycash/pull/43)), the fifth Recruitment feature
+screen set on the Phase 1 foundation, reusing the prior phases' building blocks (including the Job
+Offer reference infrastructure). **Employees only** — no later stage.
+
+### Added
+
+- **HR / Recruitment: Employees frontend (`apps/web`).**
+  - **List** (`employee.view`) — sortable `DataTable` (employee `code`, hired, created — the
+    backend's sortable fields); `EmployeeFilters` (a **free-text search** over employee number /
+    applicant code + status); `Pagination`. Search, status, sort and pagination are
+    **URL-synchronized** (deep-linkable, back/forward). A **Hire employee** entry (`employee.create`).
+  - **Hire / create** — the employment terms are **not** entered; they are copied server-side from
+    the offer's immutable accepted snapshot. The page picks an **accepted offer** (an `OfferPicker`
+    autocomplete reusing the Job Offer list API scoped to `status: accepted`) + an optional hiring
+    date. The server enforces the full rule (accepted + snapshot + not already hired). The create
+    write seeds the detail cache and invalidates only the list subtree.
+  - **Detail** (`employee.view`) — the employee number, status, preserved references (applicant link
+    + accepted-offer link with its revision), and the copied **employment terms** read-out. The
+    employment view **reuses the Job Offer `UserName` + reference hooks** so org/manager names resolve
+    from the same cache. `ar` + `en` i18n. The employee record is **read-only in this stage** — no
+    lifecycle mutation is exposed (statuses exist in the DTO but transitions belong to a future
+    Employee module).
+
+### Changed
+
+- Recruitment now runs in the UI **through the Employee stage** (Applicants → Screening → Interviews
+  → Job Offer → Employees); Hiring Documents and Employee Files remain later phases.
+
+### Notes
+
+- No new runtime dependencies and **no new backend API**. Verified via web typecheck, repo lint, and
+  vite build (recruitment stays a lazy chunk). No web unit-test runner yet (backlog: Vitest + React
+  Testing Library).
+
 ## [0.17.0] - 2026-07-13
 
 Release v0.17.0 — Sprint 5.5: **HR / Recruitment — Job Offer Frontend (Phase 5)**

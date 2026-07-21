@@ -1,9 +1,9 @@
-// Schedule an interview round: pick an applicant, a stage (admin catalog), a date/time, and a
-// panel of one or more interviewers; location + notes are optional. Matches ScheduleInterview
-// exactly. On success routes to the new interview.
+// Schedule an interview round: pick an applicant, a stage (admin catalog), and a date/time. The
+// interview committee is OPTIONAL (assign members later via reassign-panel); location + notes are
+// optional too. Matches ScheduleInterview exactly. On success routes to the new interview.
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { type ApplicantDto, type Locale } from '@ecms/contracts';
+import { type Locale } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
 import { Dialog } from '../../../../../shared/ui/Dialog';
@@ -15,6 +15,13 @@ import { ApplicantPicker } from './ApplicantPicker';
 import { UserPicker, type SelectedUser } from './UserPicker';
 import { useInterviewStages, useScheduleInterview } from '../api/interview-queries';
 
+/** Minimal applicant shape the dialog needs — satisfied by a full ApplicantDto or an awaiting row. */
+export interface PickedApplicant {
+  id: string;
+  code: string;
+  fullNameAr: string;
+}
+
 export const ScheduleInterviewDialog = ({
   open,
   onClose,
@@ -22,7 +29,7 @@ export const ScheduleInterviewDialog = ({
 }: {
   open: boolean;
   onClose: () => void;
-  applicant?: ApplicantDto;
+  applicant?: PickedApplicant;
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
@@ -30,7 +37,7 @@ export const ScheduleInterviewDialog = ({
   const schedule = useScheduleInterview();
   const { data: stages = [] } = useInterviewStages();
 
-  const [applicant, setApplicant] = useState<ApplicantDto | null>(presetApplicant ?? null);
+  const [applicant, setApplicant] = useState<PickedApplicant | null>(presetApplicant ?? null);
   const [stageId, setStageId] = useState('');
   const [scheduledAt, setScheduledAt] = useState('');
   const [panel, setPanel] = useState<SelectedUser[]>([]);
@@ -51,7 +58,9 @@ export const ScheduleInterviewDialog = ({
     reset();
   };
 
-  const valid = applicant !== null && stageId !== '' && scheduledAt !== '' && panel.length > 0;
+  // The committee is OPTIONAL — an interview can be scheduled before members are assigned
+  // (assign them later via reassign-panel). Only applicant, stage and time are required.
+  const valid = applicant !== null && stageId !== '' && scheduledAt !== '';
 
   const submit = async (): Promise<void> => {
     if (applicant === null || !valid) return;
@@ -119,7 +128,7 @@ export const ScheduleInterviewDialog = ({
           </Field>
         </div>
 
-        <Field label={t('interviews.schedule.panel')} required hint={t('interviews.schedule.panelHint')}>
+        <Field label={t('interviews.schedule.panel')} hint={t('interviews.schedule.panelOptionalHint')}>
           <UserPicker value={panel} onChange={setPanel} />
         </Field>
 

@@ -5,6 +5,7 @@ export {
   UpdateApplicantSchema,
   ConfirmApplicantIdentitySchema,
   WithdrawApplicantSchema,
+  RestoreApplicantSchema,
   ListApplicantsQuerySchema,
   ExportApplicantsQuerySchema,
   BulkApplicantsSchema,

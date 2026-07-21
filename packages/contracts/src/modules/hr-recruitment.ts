@@ -290,6 +290,16 @@ export const WithdrawApplicantSchema = z
   .strict();
 export type WithdrawApplicant = z.infer<typeof WithdrawApplicantSchema>;
 
+/**
+ * Restore a withdrawn applicant back into the active pipeline (status → `new`). All prior
+ * history — screening, interviews, offers, audit, timeline — is preserved (nothing is deleted);
+ * the applicant simply becomes live again from wherever they were. Version-checked + audited.
+ */
+export const RestoreApplicantSchema = z
+  .object({ reason: z.string().max(500).optional(), version: z.number().int().min(0) })
+  .strict();
+export type RestoreApplicant = z.infer<typeof RestoreApplicantSchema>;
+
 // ── Attachments (via the platform Files service, §2.2) ──────────────────────
 
 export const AddApplicantAttachmentSchema = z
@@ -481,6 +491,8 @@ export const HrEvents = {
   ApplicantWithdrawn: 'hr.applicant.withdrawn',
   /** Terminal transition driven by an Initial-Screening rejection (Stage 2). */
   ApplicantRejected: 'hr.applicant.rejected',
+  /** A withdrawn applicant is returned to the active pipeline (status → `new`). */
+  ApplicantRestored: 'hr.applicant.restored',
 } as const;
 export type HrEventName = (typeof HrEvents)[keyof typeof HrEvents];
 

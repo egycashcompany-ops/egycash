@@ -27,6 +27,7 @@ import {
   ocrExtractNationalId,
   registerApplicant,
   removeApplicantAttachment,
+  restoreApplicant,
   updateApplicant,
   updateApplicantSource,
   withdrawApplicant,
@@ -44,6 +45,7 @@ import {
   ListApplicantsQuerySchema,
   OcrExtractNationalIdSchema,
   RegisterApplicantSchema,
+  RestoreApplicantSchema,
   UpdateApplicantSchema,
   UpdateApplicantSourceSchema,
   WithdrawApplicantSchema,
@@ -139,6 +141,13 @@ export const buildApplicantsRouter = (): Router => {
     authorize('applicant.edit'),
     validate({ body: WithdrawApplicantSchema, params: ApplicantIdParamSchema }),
     asyncHandler(withdrawApplicant),
+  );
+  router.post(
+    '/:id/restore',
+    authenticate,
+    authorize('applicant.edit'),
+    validate({ body: RestoreApplicantSchema, params: ApplicantIdParamSchema }),
+    asyncHandler(restoreApplicant),
   );
 
   // Attachments (bytes via the platform Files service).

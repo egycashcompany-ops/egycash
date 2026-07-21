@@ -10,6 +10,7 @@ import {
   type FileDto,
   type OcrExtractNationalId,
   type RegisterApplicant,
+  type RestoreApplicant,
   type UpdateApplicant,
   type WithdrawApplicant,
 } from '@ecms/contracts';
@@ -92,6 +93,14 @@ export const useWithdrawApplicant = (id: string) => {
   const invalidate = useInvalidateApplicants();
   return useMutation({
     mutationFn: (body: WithdrawApplicant) => api.withdrawApplicant(id, body),
+    onSuccess: invalidate,
+  });
+};
+
+export const useRestoreApplicant = (id: string) => {
+  const invalidate = useInvalidateApplicants();
+  return useMutation({
+    mutationFn: (body: RestoreApplicant) => api.restoreApplicant(id, body),
     onSuccess: invalidate,
   });
 };

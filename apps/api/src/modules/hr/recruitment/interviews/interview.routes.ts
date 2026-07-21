@@ -10,6 +10,7 @@ import {
   createInterviewStage,
   decideInterview,
   getInterview,
+  listAwaitingInterviews,
   listInterviewStages,
   listInterviews,
   reassignInterviewPanel,
@@ -25,6 +26,7 @@ import {
   DecideInterviewSchema,
   InterviewIdParamSchema,
   InterviewStageIdParamSchema,
+  ListAwaitingInterviewsQuerySchema,
   ListInterviewStagesQuerySchema,
   ListInterviewsQuerySchema,
   ReassignInterviewPanelSchema,
@@ -44,6 +46,14 @@ export const buildInterviewsRouter = (): Router => {
     authorize('interview.view'),
     validate({ query: ListInterviewsQuerySchema }),
     asyncHandler(listInterviews),
+  );
+  // Pipeline entry: applicants awaiting their first interview (declared before `/:id`).
+  router.get(
+    '/awaiting',
+    authenticate,
+    authorize('interview.view'),
+    validate({ query: ListAwaitingInterviewsQuerySchema }),
+    asyncHandler(listAwaitingInterviews),
   );
   router.post(
     '/',

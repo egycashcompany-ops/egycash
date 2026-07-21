@@ -77,6 +77,26 @@ export const ListScreeningsQuerySchema = PaginationQuerySchema.extend({
 }).strict();
 export type ListScreeningsQuery = z.infer<typeof ListScreeningsQuerySchema>;
 
+// ── Awaiting screening (pipeline entry) ─────────────────────────────────────
+// Live applicants (status `new`) with no screening yet — the "automatically appears in the
+// Screening module once registered" queue. A derived read model (no screening record is
+// fabricated; the existing open-screening flow is untouched). The recruiter opens the screening
+// from here, keeping the manual workflow + permissions intact.
+
+export const ListAwaitingScreeningsQuerySchema = z
+  .object({ branchId: objectId().optional(), limit: z.coerce.number().int().min(1).max(200).default(100) })
+  .strict();
+export type ListAwaitingScreeningsQuery = z.infer<typeof ListAwaitingScreeningsQuerySchema>;
+
+export interface AwaitingScreeningDto {
+  applicantId: string;
+  applicantCode: string;
+  fullNameAr: string;
+  branchId: string | null;
+  /** When the applicant was registered (drives the queue order). */
+  registeredAt: string;
+}
+
 // ── Screening DTO ─────────────────────────────────────────────────────────────
 
 export interface ScreeningNoteDto {

@@ -317,3 +317,34 @@ workflow run in the UI on the single Phase 1 foundation, as one lazy route chunk
 Deferred (same as earlier phases): frontend component tests (Vitest + RTL). Timeline actor (`by`)
 resolution and inline previews could follow; post-hire employee-lifecycle concerns belong to the
 future Employee module, not this stage.
+
+## 14. Pipeline automation & lifecycle (v0.22 polish)
+
+Enhancements across the finished module that make the stages behave as a continuous pipeline while
+**keeping the existing workflow and permissions intact** — no stage was added, and the manual
+open/schedule/decide flows are untouched.
+
+- **Automatic pipeline progression (derived, not fabricated).** Applicants surface in the next
+  stage automatically, via **derived read-model "awaiting" queues** rather than auto-created
+  records (so there are no duplicate/placeholder rows and the existing create flows are unchanged):
+  - **Screening** — `GET /hr/screenings/awaiting` returns live applicants (`new`) with no screening
+    yet; the Screening queue shows an **"Awaiting screening"** panel, each row opening the existing
+    Start-screening dialog. A newly-registered applicant appears here immediately.
+  - **Interviews** — `GET /hr/interviews/awaiting` returns applicants who passed Initial Screening
+    and are still live but have no interview yet; the Interview queue shows an **"Awaiting
+    scheduling"** panel, each row opening the existing Schedule dialog. The list is backend-computed
+    (active applicant + accepted screening − already-interviewed), so withdrawn/rejected applicants
+    never appear. Scheduling invalidates the awaiting subtree.
+  - Both queues reuse existing list APIs/repos; the two new read-only endpoints are the only backend
+    additions and introduce no writes.
+- **Optional interview committee.** `interviewerIds` is now optional at scheduling
+  (`ScheduleInterview` defaults to `[]`); an interview can be scheduled before a committee is
+  assigned, with members added later via the reassign-panel action. Validation, version checks,
+  optimistic updates and cache behaviour are unchanged.
+- **Withdrawn-applicant restore.** A withdrawn applicant can be **restored** to the active pipeline
+  (`POST /hr/applicants/:id/restore`, `applicant.edit`, version-checked → status `new`, emits
+  `hr.applicant.restored`). **All prior history is preserved** — screening, interviews, offers,
+  audit and timeline records are never deleted; the applicant simply becomes live again from
+  wherever they were, and re-appears in the derived queues as appropriate. The Restore action is on
+  the applicant detail (reachable from every stage via the ubiquitous applicant deep-link); both
+  withdrawal and restoration are fully audited.

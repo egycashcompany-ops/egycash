@@ -4,6 +4,7 @@
 // (/hr/interviews, /hr/interview-stages). Interviewer selection/resolution reuses the existing
 // platform Users endpoint (/platform/users) — no new API is invented.
 import {
+  type AwaitingInterviewDto,
   type CancelInterview,
   type DecideInterview,
   type InterviewDto,
@@ -22,6 +23,12 @@ export type InterviewListParams = Record<string, string | number | boolean | und
 
 export const listInterviews = (params: InterviewListParams): Promise<Paginated<InterviewDto>> =>
   getPage<InterviewDto>(`/hr/interviews${buildQuery(params)}`);
+
+/** Applicants who passed Screening and await their first interview (pipeline entry). */
+export const listAwaitingInterviews = (
+  params: InterviewListParams,
+): Promise<AwaitingInterviewDto[]> =>
+  get<AwaitingInterviewDto[]>(`/hr/interviews/awaiting${buildQuery(params)}`);
 
 export const getInterview = (id: string): Promise<InterviewDto> => get<InterviewDto>(`/hr/interviews/${id}`);
 

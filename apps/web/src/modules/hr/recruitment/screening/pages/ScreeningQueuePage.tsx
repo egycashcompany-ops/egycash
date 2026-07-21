@@ -15,7 +15,8 @@ import { PlusIcon } from '../../../../../shared/ui/icons';
 import { formatDate, formatNumber } from '../../../../../shared/lib/format';
 import { ScreeningStatusBadge } from '../components/ScreeningStatusBadge';
 import { ScreeningFilters, type ScreeningFiltersState } from '../components/ScreeningFilters';
-import { CreateScreeningDialog } from '../components/CreateScreeningDialog';
+import { AwaitingScreeningsPanel } from '../components/AwaitingScreeningsPanel';
+import { CreateScreeningDialog, type PickedApplicant } from '../components/CreateScreeningDialog';
 import { useScreenings } from '../api/screening-queries';
 import { type ScreeningListParams } from '../api/screening-api';
 
@@ -27,6 +28,7 @@ export const ScreeningQueuePage = (): JSX.Element => {
   const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
   const [createOpen, setCreateOpen] = useState(false);
+  const [createFor, setCreateFor] = useState<PickedApplicant | null>(null);
 
   const filters: ScreeningFiltersState = {
     status: (sp.get('status') ?? '') as ScreeningFiltersState['status'],
@@ -109,7 +111,7 @@ export const ScreeningQueuePage = (): JSX.Element => {
         breadcrumbs={[{ label: t('recruitment.title'), to: '/' }, { label: t('recruitment.nav.screening') }]}
         actions={
           <Can permission="screening.create">
-            <Button size="sm" leftIcon={<PlusIcon className="h-4 w-4" />} onClick={() => setCreateOpen(true)}>
+            <Button size="sm" leftIcon={<PlusIcon className="h-4 w-4" />} onClick={() => { setCreateFor(null); setCreateOpen(true); }}>
               {t('screening.actions.create')}
             </Button>
           </Can>
@@ -117,6 +119,7 @@ export const ScreeningQueuePage = (): JSX.Element => {
       />
 
       <div className="space-y-4">
+        <AwaitingScreeningsPanel onOpen={(a) => { setCreateFor(a); setCreateOpen(true); }} />
         <ScreeningFilters value={filters} onChange={changeFilters} />
         <DataTable
           columns={columns}
@@ -138,7 +141,11 @@ export const ScreeningQueuePage = (): JSX.Element => {
         )}
       </div>
 
-      <CreateScreeningDialog open={createOpen} onClose={() => setCreateOpen(false)} />
+      <CreateScreeningDialog
+        open={createOpen}
+        onClose={() => { setCreateOpen(false); setCreateFor(null); }}
+        {...(createFor === null ? {} : { applicant: createFor })}
+      />
     </PageContainer>
   );
 };

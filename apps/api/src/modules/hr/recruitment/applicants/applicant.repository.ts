@@ -125,6 +125,32 @@ class ApplicantRepository extends BaseRepository<ApplicantDoc> {
     return this.model.findOne({ intakeKey, isDeleted: false }).lean<ApplicantDoc>().exec();
   }
 
+  /** Live applicants (`new`), most-recently-registered first — the screening-eligibility read model. */
+  async listActive(limit: number, branchId: string | undefined, scope?: ScopeSelector): Promise<ApplicantDoc[]> {
+    const extra: FilterQuery<ApplicantDoc> = { status: 'new', isDeleted: false };
+    if (branchId !== undefined && Types.ObjectId.isValid(branchId)) {
+      extra.branchId = new Types.ObjectId(branchId);
+    }
+    return this.model
+      .find(this.baseFilter(scope, extra))
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .lean<ApplicantDoc[]>()
+      .exec();
+  }
+
+  /** Of the given ids, those that are live (`new`) — the interview-eligibility read model. */
+  async liveIdsAmong(ids: string[], scope?: ScopeSelector): Promise<Set<string>> {
+    const objectIds = ids.filter((id) => Types.ObjectId.isValid(id)).map((id) => new Types.ObjectId(id));
+    if (objectIds.length === 0) return new Set();
+    const rows = await this.model
+      .find(this.baseFilter(scope, { _id: { $in: objectIds }, status: 'new', isDeleted: false }))
+      .select('_id')
+      .lean<{ _id: Types.ObjectId }[]>()
+      .exec();
+    return new Set(rows.map((r) => String(r._id)));
+  }
+
   /** Heuristic duplicate candidates among live applicants (§2.1 rule 5). */
   async findDuplicateCandidates(probe: DuplicateProbe): Promise<ApplicantDoc[]> {
     const ors: FilterQuery<ApplicantDoc>[] = [];

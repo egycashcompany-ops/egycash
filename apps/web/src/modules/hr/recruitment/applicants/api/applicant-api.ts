@@ -14,6 +14,7 @@ import {
   type OcrExtractionDto,
   type Paginated,
   type RegisterApplicant,
+  type RestoreApplicant,
   type UpdateApplicant,
   type WithdrawApplicant,
 } from '@ecms/contracts';
@@ -37,6 +38,9 @@ export const verifyApplicantIdentity = (id: string, body: ConfirmApplicantIdenti
 
 export const withdrawApplicant = (id: string, body: WithdrawApplicant): Promise<ApplicantDto> =>
   post<ApplicantDto>(`/hr/applicants/${id}/withdraw`, body);
+
+export const restoreApplicant = (id: string, body: RestoreApplicant): Promise<ApplicantDto> =>
+  post<ApplicantDto>(`/hr/applicants/${id}/restore`, body);
 
 export const bulkApplicants = (body: BulkApplicants): Promise<BulkApplicantsResultDto> =>
   post<BulkApplicantsResultDto>('/hr/applicants/bulk', body);

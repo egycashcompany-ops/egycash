@@ -14,6 +14,7 @@ import {
   type ListApplicantsQuery,
   type Paginated,
   type RegisterApplicant,
+  type RestoreApplicant,
   type UpdateApplicant,
   type WithdrawApplicant,
 } from '@ecms/contracts';
@@ -255,6 +256,16 @@ class ApplicantService {
     return applicantRepository.getById(id, scope);
   }
 
+  /** Of the given ids, those that are live (`new`) — used by the Interviews eligibility view. */
+  async liveIdsAmong(ids: string[], scope: ScopeSelector): Promise<Set<string>> {
+    return applicantRepository.liveIdsAmong(ids, scope);
+  }
+
+  /** Live applicants (`new`), recent-first — used by the Screening eligibility view. */
+  async listActive(limit: number, branchId: string | undefined, scope: ScopeSelector): Promise<ApplicantDoc[]> {
+    return applicantRepository.listActive(limit, branchId, scope);
+  }
+
   async update(
     ctx: AuthContext,
     id: string,
@@ -426,6 +437,47 @@ class ApplicantService {
       changes: [{ field: 'status', old: before.status, new: 'withdrawn' }],
     });
     await emit(HrEvents.ApplicantWithdrawn, { applicantId: id, code: updated.code, reason: input.reason });
+    return updated;
+  }
+
+  /**
+   * Restore a withdrawn applicant to the active pipeline (`withdrawn` → `new`). All prior
+   * history is preserved — screening, interviews, offers, audit and timeline records are left
+   * untouched; the applicant simply becomes live again from wherever they were. Version-checked
+   * + audited; emits `hr.applicant.restored` so downstream consumers can react.
+   */
+  async restore(
+    ctx: AuthContext,
+    id: string,
+    input: RestoreApplicant,
+    scope: ScopeSelector,
+  ): Promise<ApplicantDoc> {
+    const before = await applicantRepository.getById(id, scope);
+    if (before.status === 'new') return before; // idempotent — already active
+    if (before.status !== 'withdrawn') {
+      throw new BusinessRuleError('only a withdrawn applicant can be restored');
+    }
+    const updated = await applicantRepository.updateById(
+      id,
+      { status: 'new', withdrawnReason: null, withdrawnAt: null },
+      { by: ctx.userId, version: input.version, scope },
+    );
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'statusChange',
+      changes: [
+        { field: 'status', old: before.status, new: 'new' },
+        ...(input.reason === undefined ? [] : [{ field: 'restoreReason', old: null, new: input.reason }]),
+      ],
+    });
+    await emit(HrEvents.ApplicantRestored, {
+      applicantId: id,
+      code: updated.code,
+      ...(updated.jobRequisitionId === null
+        ? {}
+        : { jobRequisitionId: String(updated.jobRequisitionId) }),
+      sourceId: String(updated.sourceId),
+    });
     return updated;
   }
 

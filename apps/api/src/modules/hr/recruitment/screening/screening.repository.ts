@@ -30,6 +30,36 @@ class ScreeningRepository extends BaseRepository<ScreeningDoc> {
       .exec();
   }
 
+  /** Of the given applicant ids, those that already have a screening — for the "awaiting" view. */
+  async applicantIdsWithScreening(ids: string[]): Promise<Set<string>> {
+    const objectIds = ids.filter((id) => Types.ObjectId.isValid(id)).map((id) => new Types.ObjectId(id));
+    if (objectIds.length === 0) return new Set();
+    const rows = await this.model
+      .find({ applicantId: { $in: objectIds }, isDeleted: false })
+      .select('applicantId')
+      .lean<{ applicantId: Types.ObjectId }[]>()
+      .exec();
+    return new Set(rows.map((r) => String(r.applicantId)));
+  }
+
+  /** Accepted screenings (most-recently-decided first) — the interview-eligibility read model. */
+  async listAccepted(
+    limit: number,
+    branchId: string | undefined,
+    scope?: ScopeSelector,
+  ): Promise<ScreeningDoc[]> {
+    const extra: FilterQuery<ScreeningDoc> = { status: 'accepted', isDeleted: false };
+    if (branchId !== undefined && Types.ObjectId.isValid(branchId)) {
+      extra.branchId = new Types.ObjectId(branchId);
+    }
+    return this.model
+      .find(this.baseFilter(scope, extra))
+      .sort({ decidedAt: -1 })
+      .limit(limit)
+      .lean<ScreeningDoc[]>()
+      .exec();
+  }
+
   private buildFilter(f: ScreeningListFilter): FilterQuery<ScreeningDoc> {
     const clauses: FilterQuery<ScreeningDoc>[] = [];
     if (f.status !== undefined) clauses.push({ status: f.status });

@@ -276,6 +276,16 @@ describe('interviews — schedule, notify, reschedule, cancel', () => {
     expect((inbox.body as { data: unknown[] }).data.length).toBeGreaterThanOrEqual(1);
   });
 
+  it('schedules an interview with NO committee (optional) — panel is empty, assigned later', async () => {
+    const applicant = await acceptedApplicant();
+    const stage1 = await stageIdByKey('firstInterview');
+    const res = await schedule(applicant.id, stage1, { interviewerIds: [] });
+    expect(res.status).toBe(201);
+    const dto = res.body.data as InterviewDto;
+    expect(dto.status).toBe('scheduled');
+    expect(dto.panel).toHaveLength(0);
+  });
+
   it('reschedules a scheduled interview (date only, bumping the reschedule count)', async () => {
     const applicant = await acceptedApplicant();
     const stage1 = await stageIdByKey('firstInterview');
@@ -303,6 +313,30 @@ describe('interviews — schedule, notify, reschedule, cancel', () => {
     expect((res.body.data as InterviewDto).status).toBe('cancelled');
     const again = await schedule(applicant.id, stage1);
     expect(again.status).toBe(201);
+  });
+});
+
+describe('interviews — awaiting scheduling (pipeline entry)', () => {
+  const awaitingIds = async (): Promise<string[]> => {
+    const res = await request(app)
+      .get('/api/v1/hr/interviews/awaiting')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    return (res.body.data as { applicantId: string }[]).map((r) => r.applicantId);
+  };
+
+  it('surfaces a screening-approved applicant, then drops them once scheduled', async () => {
+    const applicant = await acceptedApplicant();
+    expect(await awaitingIds()).toContain(applicant.id);
+
+    const stage1 = await stageIdByKey('firstInterview');
+    expect((await schedule(applicant.id, stage1)).status).toBe(201);
+    expect(await awaitingIds()).not.toContain(applicant.id);
+  });
+
+  it('excludes an applicant who has not passed screening', async () => {
+    const applicant = await registerApplicant(); // no accepted screening
+    expect(await awaitingIds()).not.toContain(applicant.id);
   });
 });
 

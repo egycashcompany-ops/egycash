@@ -4,6 +4,7 @@
 import { type NavSection } from '../../../platform/navigation/nav';
 import {
   BadgeIcon,
+  BuildingIcon,
   ChatIcon,
   ClipboardIcon,
   FileIcon,
@@ -15,7 +16,10 @@ import {
 
 export const recruitmentNav: NavSection[] = [
   {
-    items: [{ to: '/', labelKey: 'recruitment.nav.overview', icon: HomeIcon, end: true }],
+    items: [
+      { to: '/', labelKey: 'recruitment.nav.overview', icon: HomeIcon, end: true },
+      { to: '/organization', labelKey: 'recruitment.nav.organization', icon: BuildingIcon, permission: 'branch.view' },
+    ],
   },
   {
     titleKey: 'recruitment.nav.pipeline',

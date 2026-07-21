@@ -7,7 +7,7 @@ import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
 import { authenticator } from 'otplib';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { platformPermissions, SettingKeys, type MeDto } from '@ecms/contracts';
+import { platformPermissions, SettingKeys, type JobTitleDto, type MeDto } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { buildApp } from '../../src/app';
 import { rbacService } from '../../src/platform/rbac';
@@ -328,6 +328,93 @@ describe('login → permission → scoped data → audit trail', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ code: 'DEP-X', name: { ar: 'س', en: 'X' }, branchId: '000000000000000000000001' });
     expect(orphanDept.status).toBe(422);
+  });
+
+  it('job titles are an enriched org-wide catalog (grade required; salary band coherent)', async () => {
+    // Full create with every enriched field — the title carries the role definition, not a location.
+    const created = await request(app)
+      .post('/api/v1/platform/job-titles')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        code: 'JT-CASH-OFFICER',
+        name: { ar: 'أمين خزينة', en: 'Cash Officer' },
+        jobGrade: 'G5',
+        description: { ar: 'مسؤول عن العهدة النقدية', en: 'Responsible for cash custody' },
+        salaryMin: 6000,
+        salaryMax: 9000,
+        requiredQualifications: { ar: 'بكالوريوس تجارة', en: 'B.Sc. Commerce' },
+        requiredExperienceYears: 2,
+      });
+    expect(created.status).toBe(201);
+    const jt = (created.body as { data: JobTitleDto }).data;
+    expect(jt.jobGrade).toBe('G5');
+    expect(jt.salaryMin).toBe(6000);
+    expect(jt.salaryMax).toBe(9000);
+    expect(jt.requiredExperienceYears).toBe(2);
+    expect(jt.description?.en).toBe('Responsible for cash custody');
+    const jobTitleId = jt.id;
+
+    // jobGrade is the only required rich field.
+    const noGrade = await request(app)
+      .post('/api/v1/platform/job-titles')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: 'JT-NOGRADE', name: { ar: 'س', en: 'X' } });
+    expect(noGrade.status).toBe(422);
+
+    // Salary band must be coherent on create.
+    const badBand = await request(app)
+      .post('/api/v1/platform/job-titles')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        code: 'JT-BADBAND',
+        name: { ar: 'س', en: 'X' },
+        jobGrade: 'G1',
+        salaryMin: 9000,
+        salaryMax: 6000,
+      });
+    expect(badBand.status).toBe(422);
+
+    // Minimal create (grade only) is allowed — everything else is optional (Talent-Pool friendly).
+    const minimal = await request(app)
+      .post('/api/v1/platform/job-titles')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: 'JT-MIN', name: { ar: 'بسيط', en: 'Minimal' }, jobGrade: 'G1' });
+    expect(minimal.status).toBe(201);
+    const min = (minimal.body as { data: JobTitleDto }).data;
+    expect(min.salaryMin).toBeNull();
+    expect(min.description).toBeNull();
+    expect(min.requiredExperienceYears).toBeNull();
+
+    // Merged-state salary check: lowering max below the *stored* min is rejected as a business rule.
+    const incoherent = await request(app)
+      .patch(`/api/v1/platform/job-titles/${jobTitleId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: jt.version, salaryMax: 5000 });
+    expect(incoherent.status).toBe(422);
+    expect((incoherent.body as { error: { code: string } }).error.code).toBe(
+      'BUSINESS_RULE_VIOLATION',
+    );
+
+    // A coherent enrich-update succeeds and bumps the version.
+    const updated = await request(app)
+      .patch(`/api/v1/platform/job-titles/${jobTitleId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: jt.version, jobGrade: 'G6', salaryMin: 6500, requiredExperienceYears: 3 });
+    expect(updated.status).toBe(200);
+    const after = (updated.body as { data: JobTitleDto }).data;
+    expect(after.jobGrade).toBe('G6');
+    expect(after.salaryMin).toBe(6500);
+    expect(after.requiredExperienceYears).toBe(3);
+    expect(after.version).toBe(jt.version + 1);
+
+    // Free-text search still hits the code/name.
+    const search = await request(app)
+      .get('/api/v1/platform/job-titles')
+      .query({ search: 'Cash' })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(search.status).toBe(200);
+    const rows = (search.body as { data: JobTitleDto[] }).data;
+    expect(rows.some((r) => r.code === 'JT-CASH-OFFICER')).toBe(true);
   });
 
   it('expires time-bound role assignments at computation time (Review R14)', async () => {

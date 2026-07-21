@@ -9,6 +9,29 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Added
+
+- **HR Foundation — Phase 1: Organization Structure.** The master organizational model that every
+  future module reuses, built on the existing `platform/organization` backend (ADR-015):
+  - **Organization admin (web).** A new lazy module at `/organization` to manage the **Company**
+    profile and the **Branch → Department → Section** hierarchy plus the org-wide **Job Titles**
+    catalog — list/detail/create/edit/delete, all RBAC-gated, version-checked, with URL-synced
+    filters, i18n + RTL. Branch/Department/Section share **one generic Unit\* implementation**
+    configured per unit (mirroring the backend `makeOrgUnitHandlers` factory). No new backend
+    endpoints, permissions or events were introduced.
+  - **Enriched Job Titles.** Job Titles gain `jobGrade` (required), `description`, `salaryMin`,
+    `salaryMax`, `requiredQualifications` and `requiredExperienceYears` (all optional). The salary
+    band must satisfy `min ≤ max`, enforced by the schema and by a merged-state check on partial
+    updates. Job Titles remain an **organization-wide catalog** — not tied to any Branch/Department/
+    Section (that linkage is the future Job Positions' concern).
+
+### Documented
+
+- **ADR-016** — Job Positions & Job Requisitions are **OPTIONAL** for applicants; the **Talent Pool**
+  is a first-class state that no future module may break.
+- **`docs/02-architecture/organization-structure.md`** — the Phase-1 design and the phase roadmap
+  (Organization Structure → Job Positions → Job Requisitions → Recruitment integration).
+
 ## [0.22.0] - 2026-07-21
 
 Release v0.22.0 — Sprint 5.10: **HR / Recruitment — Pipeline flow & applicant lifecycle**

@@ -114,20 +114,31 @@ attachments).
   certifications) using the shared form primitives. Client checks cover the required fields; the
   server stays authoritative and its validation errors surface in a summary. Edits are
   optimistic-concurrency guarded (`version`).
-- **OCR assist** (create) — upload a National-ID image → the server extraction seam runs → each
-  field returns with a confidence band and can be applied to the form. Degrades gracefully to
-  "enter manually" when no provider is wired (OQ-30). Nothing is trusted; the user confirms.
+- **National-ID capture + review** (create) — `NationalIdCapture` provides **two upload areas
+  (front + back)** read together in **one** extraction pass over the existing seam
+  (`/hr/applicants/ocr/national-id`, which already accepts `frontFileId` + `backFileId`). The
+  provider returns the card fields (Arabic name, number, marital status, official address, city,
+  religion, card expiry) each with a confidence band; **nothing is auto-saved** — the extraction
+  pre-fills the form, which *is* the review step: every value is editable before Save (§2.1 rule 4).
+  Degrades gracefully to "enter manually" when no provider is wired (OQ-30). Two things are computed
+  on the client instead of OCR'd: **birth date / gender / governorate** are **derived
+  deterministically from the number** (`parseNationalId`, recomputed live and shown read-only), and
+  the **English name** is seeded by transliterating the Arabic name (`lib/transliterate`, editable).
 - **Integration** — all calls go through the feature `api/` layer against the existing endpoints
   (`/hr/applicants`, `/hr/applicant-sources`, `/hr/applicants/ocr/national-id`,
   `/hr/applicants/:id/attachments`, `/hr/applicants/export`, `/hr/applicants/bulk`, and
   `/platform/files` + `/platform/file-categories` for uploads). Reads are cached and writes
-  invalidate the feature subtree.
+  invalidate the feature subtree. **No new backend endpoint** — the OCR extraction DTO was widened
+  (extra card fields) and the applicant identity gained `religion` + `nationalIdExpiry`.
 
-**Cross-module references** (Job Requisition, Branch) are never entered as raw IDs: `RefPickers`
-renders a disabled "coming soon" selector when no value is present, or a read-only reference chip
-when one is supplied by context (the create route accepts `?requisitionId=…&branchId=…`, which the
-future Requisitions screen will deep-link). Detail views show the same read-only chip. Creation is
-gated until a requisition context is provided.
+**Direct intake:** the Job Request is **optional**. An applicant can be created directly from the
+Applicants screen with no linked requisition (`jobRequisitionId` is nullable end-to-end — applicant,
+employee, and employee-file all tolerate `null`), and the reference can be attached later when the
+Job Requests module lands. **Cross-module references** (Job Requisition, Branch) are still never
+entered as raw IDs: `RefPickers` renders a disabled "coming soon" selector when no value is present,
+or a read-only reference chip when one is supplied by context (the create route accepts
+`?requisitionId=…&branchId=…`, which the future Requisitions screen will deep-link). Detail views
+show the same read-only chip (or "—" for a direct intake).
 
 Deferred: frontend component tests (pending the Vitest + RTL setup backlog item).
 

@@ -64,7 +64,8 @@ export interface EmployeeTimelineEntryDto {
 /** The linked recruitment history (BD-008 — "link all applicant history"). */
 export interface EmployeeFileLinksDto {
   applicantId: string;
-  jobRequisitionId: string;
+  /** null when the applicant was a direct intake with no linked Job Request. */
+  jobRequisitionId: string | null;
   screeningId: string | null;
   interviewIds: string[];
   jobOfferId: string | null;

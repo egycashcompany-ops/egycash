@@ -188,6 +188,40 @@ describe('registration (intake pipeline)', () => {
     expect(dto.nationalIdMasked).toBeNull();
   });
 
+  it('registers a direct-intake applicant with NO Job Request and stores religion + card expiry', async () => {
+    const sourceId = await sourceIdByKey('walkIn');
+    const res = await request(app)
+      .post('/api/v1/hr/applicants')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send(
+        registerBody({
+          sourceId,
+          jobRequisitionId: undefined,
+          identity: {
+            fullNameAr: 'منى علي',
+            nationality: 'Egyptian',
+            religion: 'مسلم',
+            nationalIdExpiry: '2030-06-01',
+          },
+          contact: { primaryPhone: '01044445555' },
+        }),
+      );
+    expect(res.status).toBe(201);
+    const dto = res.body.data as ApplicantDto;
+    expect(dto.jobRequisitionId).toBeNull();
+    expect(dto.religion).toBe('مسلم');
+    expect(dto.nationalIdExpiry?.startsWith('2030-06-01')).toBe(true);
+  });
+
+  it('rejects a malformed Job Request when one is supplied', async () => {
+    const sourceId = await sourceIdByKey('walkIn');
+    const res = await request(app)
+      .post('/api/v1/hr/applicants')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send(registerBody({ sourceId, jobRequisitionId: 'not-an-object-id', contact: { primaryPhone: '01066667777' } }));
+    expect(res.status).toBe(400);
+  });
+
   it('rejects a duplicate live National ID (uniqueness invariant)', async () => {
     const sourceId = await sourceIdByKey('internalHr');
     const res = await request(app)

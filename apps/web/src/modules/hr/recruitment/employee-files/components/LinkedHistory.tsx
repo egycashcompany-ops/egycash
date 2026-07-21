@@ -51,7 +51,11 @@ export const LinkedHistory = ({ links }: { links: EmployeeFileLinksDto }): JSX.E
         <RefLink to={`/hiring-documents/${links.hiringDocumentsId}`} label={t('employeeFiles.links.open')} />
       </Row>
       <Row label={t('employeeFiles.links.requisition')}>
-        <span className="font-mono text-xs text-slate-400" dir="ltr">#{links.jobRequisitionId.slice(-6)}</span>
+        {links.jobRequisitionId === null ? (
+          <span className="text-slate-400">—</span>
+        ) : (
+          <span className="font-mono text-xs text-slate-400" dir="ltr">#{links.jobRequisitionId.slice(-6)}</span>
+        )}
       </Row>
     </div>
   );

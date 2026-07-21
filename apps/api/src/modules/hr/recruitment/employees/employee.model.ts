@@ -39,7 +39,8 @@ export interface EmployeeDoc extends BaseDocFields {
   // Preserved references.
   applicantId: Types.ObjectId;
   applicantCode: string;
-  jobRequisitionId: Types.ObjectId;
+  /** null when the source applicant had no linked Job Request (direct intake). */
+  jobRequisitionId: Types.ObjectId | null;
   jobOfferId: Types.ObjectId;
   offerCode: string;
   acceptedOfferRevision: number;
@@ -89,7 +90,7 @@ const employeeSchema = new Schema<EmployeeDoc>(
     status: { type: String, enum: EMPLOYEE_STATUSES, required: true, default: 'active' },
     applicantId: { type: Schema.Types.ObjectId, required: true },
     applicantCode: { type: String, required: true },
-    jobRequisitionId: { type: Schema.Types.ObjectId, required: true },
+    jobRequisitionId: { type: Schema.Types.ObjectId, default: null },
     jobOfferId: { type: Schema.Types.ObjectId, required: true },
     offerCode: { type: String, required: true },
     acceptedOfferRevision: { type: Number, required: true },

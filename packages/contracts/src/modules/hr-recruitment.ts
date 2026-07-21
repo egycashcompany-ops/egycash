@@ -191,6 +191,10 @@ const IdentityInputSchema = z
     photoFileId: objectId().optional(),
     maritalStatus: MaritalStatusSchema.optional(),
     dependentsCount: z.number().int().min(0).max(50).optional(),
+    /** Read from the National-ID card (back). Free text — Egypt records a small set. */
+    religion: z.string().max(100).optional(),
+    /** National-ID card expiry (read from the card front; not derivable from the number). */
+    nationalIdExpiry: z.coerce.date().optional(),
   })
   .strict();
 
@@ -205,8 +209,10 @@ const ContactInputSchema = z
 
 export const RegisterApplicantSchema = z
   .object({
-    // Application context (§7 group 9) — the requisition is mandatory (BD-001).
-    jobRequisitionId: objectId(),
+    // Application context (§7 group 9). Historically mandatory (BD-001), but direct intake
+    // from the Applicants screen is now supported: the requisition is OPTIONAL and, when the
+    // future Job Requests module lands, an applicant can be linked to a requisition later.
+    jobRequisitionId: objectId().optional(),
     branchId: objectId().optional(),
     sourceId: objectId(),
     sourceDetail: SourceDetailSchema.optional(),
@@ -313,12 +319,28 @@ export interface OcrFieldDto {
   confidence: 'high' | 'medium' | 'low';
 }
 
-/** Result of an OCR attempt — every field carries a confidence band; nothing is trusted. */
+/**
+ * Result of an OCR attempt over the National-ID card (front + back read together). Every
+ * field carries a confidence band; NOTHING is trusted — the user reviews and edits every
+ * value before it is saved (§2.1 rule 4). Fields that can be computed from the number
+ * (birth date, gender, governorate) are NOT OCR'd — they are `derived` deterministically.
+ */
 export interface OcrExtractionDto {
   available: boolean; // false when no real provider is wired (OQ-30 null stub)
   nationalId: OcrFieldDto | null;
   fullNameAr: OcrFieldDto | null;
+  /** Suggested English name (transliteration of the Arabic name); freely editable. */
+  fullNameEn: OcrFieldDto | null;
+  /** Full official address as one string (front); the review step splits/edits it. */
   address: OcrFieldDto | null;
+  /** City / administrative area, when the card exposes it separately from the address. */
+  city: OcrFieldDto | null;
+  /** Marital status read from the back (raw text; the review step maps it to the enum). */
+  maritalStatus: OcrFieldDto | null;
+  /** Religion read from the back (raw text). */
+  religion: OcrFieldDto | null;
+  /** National-ID card expiry date (ISO), read from the front. */
+  nationalIdExpiry: OcrFieldDto | null;
   /** Deterministically derived from the number when present (birth date, gender, governorate). */
   derived: { birthDate: string; gender: Gender; governorate: string } | null;
 }
@@ -383,7 +405,8 @@ export interface ApplicantDto {
   id: string;
   code: string;
   status: ApplicantStatus;
-  jobRequisitionId: string;
+  /** null for a direct intake with no linked Job Request (the link may be added later). */
+  jobRequisitionId: string | null;
   branchId: string | null;
   sourceId: string;
   sourceDetail: {
@@ -405,6 +428,9 @@ export interface ApplicantDto {
   placeOfBirth: string | null;
   photoFileId: string | null;
   maritalStatus: MaritalStatus | null;
+  religion: string | null;
+  /** National-ID card expiry (ISO), when captured. Not derived from the number. */
+  nationalIdExpiry: string | null;
   dependentsCount: number | null;
   // Contact / address
   contact: ApplicantChannelContact;
@@ -461,7 +487,7 @@ export type HrEventName = (typeof HrEvents)[keyof typeof HrEvents];
 export const ApplicantEventPayloadV1 = z.object({
   applicantId: objectId(),
   code: z.string(),
-  jobRequisitionId: objectId(),
+  jobRequisitionId: objectId().optional(),
   sourceId: objectId(),
 });
 

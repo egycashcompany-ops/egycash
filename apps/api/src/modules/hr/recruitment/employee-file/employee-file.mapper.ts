@@ -6,7 +6,7 @@ import { type EmployeeFileDoc, type EmployeeFileLinks, type EmployeeTimelineEntr
 
 const linksDto = (l: EmployeeFileLinks): EmployeeFileLinksDto => ({
   applicantId: String(l.applicantId),
-  jobRequisitionId: String(l.jobRequisitionId),
+  jobRequisitionId: l.jobRequisitionId === null ? null : String(l.jobRequisitionId),
   screeningId: l.screeningId === null ? null : String(l.screeningId),
   interviewIds: l.interviewIds.map((id) => String(id)),
   jobOfferId: l.jobOfferId === null ? null : String(l.jobOfferId),

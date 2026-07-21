@@ -43,8 +43,9 @@ export interface ApplicantSourceDetail {
 export interface ApplicantDoc extends BaseDocFields {
   code: string;
   status: ApplicantStatus;
-  // Application context (§7 group 9)
-  jobRequisitionId: Types.ObjectId;
+  // Application context (§7 group 9). Optional: a direct intake has no linked Job Request
+  // (the reference may be attached later when the Job Requests module lands).
+  jobRequisitionId: Types.ObjectId | null;
   branchId: Types.ObjectId | null;
   sourceId: Types.ObjectId;
   sourceDetail: ApplicantSourceDetail | null;
@@ -70,6 +71,8 @@ export interface ApplicantDoc extends BaseDocFields {
   placeOfBirth: string | null;
   photoFileId: Types.ObjectId | null;
   maritalStatus: MaritalStatus | null;
+  religion: string | null;
+  nationalIdExpiry: Date | null;
   dependentsCount: number | null;
   // Contact + address (§7 groups 2,3)
   contact: ApplicantContact;
@@ -118,7 +121,7 @@ const applicantSchema = new Schema<ApplicantDoc>(
   {
     code: { type: String, required: true },
     status: { type: String, enum: APPLICANT_STATUSES, required: true, default: 'new' },
-    jobRequisitionId: { type: Schema.Types.ObjectId, required: true },
+    jobRequisitionId: { type: Schema.Types.ObjectId, default: null },
     branchId: { type: Schema.Types.ObjectId, default: null },
     sourceId: { type: Schema.Types.ObjectId, required: true },
     sourceDetail: {
@@ -177,6 +180,8 @@ const applicantSchema = new Schema<ApplicantDoc>(
     placeOfBirth: { type: String, default: null },
     photoFileId: { type: Schema.Types.ObjectId, default: null },
     maritalStatus: { type: String, enum: MARITAL_STATUSES, default: null },
+    religion: { type: String, default: null },
+    nationalIdExpiry: { type: Date, default: null },
     dependentsCount: { type: Number, default: null },
     contact: {
       type: new Schema<ApplicantContact>(

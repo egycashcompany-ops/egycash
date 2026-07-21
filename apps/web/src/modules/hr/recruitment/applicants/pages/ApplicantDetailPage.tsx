@@ -140,6 +140,9 @@ export const ApplicantDetailPage = (): JSX.Element => {
                 <Info label={t('applicants.detail.birthDate')}>{formatDate(a.birthDate, locale)}</Info>
                 <Info label={t('applicants.detail.gender')}>{a.gender === null ? '—' : t(`applicants.gender.${a.gender}`)}</Info>
                 <Info label={t('applicants.form.maritalStatus')}>{a.maritalStatus === null ? '—' : t(`applicants.marital.${a.maritalStatus}`)}</Info>
+                {a.placeOfBirth !== null && <Info label={t('applicants.detail.governorate')}>{a.placeOfBirth}</Info>}
+                {a.religion !== null && <Info label={t('applicants.form.religion')}>{a.religion}</Info>}
+                {a.nationalIdExpiry !== null && <Info label={t('applicants.form.nationalIdExpiry')}>{formatDate(a.nationalIdExpiry, locale)}</Info>}
               </dl>
             </CardBody>
           </Card>

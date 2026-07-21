@@ -27,7 +27,8 @@ export interface EmployeeTimelineEntry {
 /** The linked recruitment history (BD-008 — "link all applicant history"). */
 export interface EmployeeFileLinks {
   applicantId: Types.ObjectId;
-  jobRequisitionId: Types.ObjectId;
+  /** null when the applicant was a direct intake with no linked Job Request. */
+  jobRequisitionId: Types.ObjectId | null;
   screeningId: Types.ObjectId | null;
   interviewIds: Types.ObjectId[];
   jobOfferId: Types.ObjectId | null;
@@ -59,7 +60,7 @@ const timelineEntrySchema = new Schema<EmployeeTimelineEntry>(
 const linksSchema = new Schema<EmployeeFileLinks>(
   {
     applicantId: { type: Schema.Types.ObjectId, required: true },
-    jobRequisitionId: { type: Schema.Types.ObjectId, required: true },
+    jobRequisitionId: { type: Schema.Types.ObjectId, default: null },
     screeningId: { type: Schema.Types.ObjectId, default: null },
     interviewIds: { type: [Schema.Types.ObjectId], default: [] },
     jobOfferId: { type: Schema.Types.ObjectId, default: null },

@@ -9,6 +9,50 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-07-21
+
+Release v0.22.0 — Sprint 5.10: **HR / Recruitment — Pipeline flow & applicant lifecycle**
+([PR #51](https://github.com/egycashcompany-ops/egycash/pull/51) +
+[PR #52](https://github.com/egycashcompany-ops/egycash/pull/52)). Makes the finished seven-stage
+module behave as a continuous pipeline **without changing the existing workflow, permissions or
+create/decide flows** — visibility is derived from the applicant's current state, never from
+placeholder records.
+
+### Added
+
+- **Auto-appearing stage queues (derived read models).** Applicants surface in the next stage
+  automatically, computed server-side rather than via fabricated records:
+  - **Awaiting screening** (`GET /hr/screenings/awaiting`) — live applicants (`new`) with no
+    screening yet; a panel on the Screening queue opens the existing Start-screening dialog.
+  - **Awaiting scheduling** (`GET /hr/interviews/awaiting`) — applicants who passed Initial
+    Screening, still live, with no interview yet (active + accepted screening − already-interviewed,
+    so withdrawn/rejected never appear); a panel on the Interviews queue opens the existing Schedule
+    dialog. Both are read-only endpoints; no writes, no duplicate records.
+- **Withdraw / restore from any stage.** A shared `ApplicantLifecycleActions` control (Withdraw
+  while `new`, Restore while `withdrawn`) on the applicant detail **and** every pre-hire stage detail
+  page (Screening, Interviews, Job Offer). Withdraw/restore invalidate the awaiting subtrees so the
+  derived queues refresh immediately. (Intentionally not exposed on the post-hire stages — Employees,
+  Hiring Documents, Electronic Employee File — the person is already an employee there.)
+- **Applicant restore** (`POST /hr/applicants/:id/restore`, `applicant.edit`, version-checked → status
+  `new`, emits `hr.applicant.restored`). Restored applicants **resume from the exact stage they left**
+  (derived visibility), and **all history is preserved** — screening decisions, interviews, offers,
+  audit and timeline records are never deleted or recreated.
+
+### Changed
+
+- **Optional interview committee** — `ScheduleInterview.interviewerIds` now defaults to `[]`; an
+  interview can be scheduled before a committee is assigned, with members added later via the
+  reassign-panel action. Validation, version checks and cache behaviour unchanged.
+
+### Notes
+
+- **No new runtime dependencies.** Backend additions are two read-only "awaiting" endpoints and the
+  restore endpoint/event; no existing API, permission, versioning or event was changed. Verified via
+  web typecheck, repo lint, vite build (recruitment stays a lazy chunk), permission-matrix +
+  flag-expiry checks, and backend unit + integration specs (auto-appear queues incl. exclusions,
+  empty-committee schedule, restore lifecycle, and exact-stage resume). No web unit-test runner yet
+  (backlog: Vitest + React Testing Library).
+
 ## [0.21.0] - 2026-07-21
 
 Release v0.21.0 — Sprint 5.9: **HR / Recruitment — Applicants intake improvements + reusable

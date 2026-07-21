@@ -354,14 +354,14 @@ describe('login → permission → scoped data → audit trail', () => {
     expect(jt.description?.en).toBe('Responsible for cash custody');
     const jobTitleId = jt.id;
 
-    // jobGrade is the only required rich field.
+    // jobGrade is the only required rich field (schema validation → 400).
     const noGrade = await request(app)
       .post('/api/v1/platform/job-titles')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ code: 'JT-NOGRADE', name: { ar: 'س', en: 'X' } });
-    expect(noGrade.status).toBe(422);
+    expect(noGrade.status).toBe(400);
 
-    // Salary band must be coherent on create.
+    // Salary band must be coherent on create (schema refine → 400).
     const badBand = await request(app)
       .post('/api/v1/platform/job-titles')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -372,7 +372,7 @@ describe('login → permission → scoped data → audit trail', () => {
         salaryMin: 9000,
         salaryMax: 6000,
       });
-    expect(badBand.status).toBe(422);
+    expect(badBand.status).toBe(400);
 
     // Minimal create (grade only) is allowed — everything else is optional (Talent-Pool friendly).
     const minimal = await request(app)

@@ -1,13 +1,12 @@
 // Recruitment route subtree (lazy-loaded as one chunk — route-based code splitting per
-// Software Architecture §6). The layout route provides the shell; each stage route is
-// permission-gated and currently renders the shared placeholder (its real screen lands in a
-// later sprint). Default export so React.lazy can import it.
+// Software Architecture §6). The layout route provides the shell; every stage route is
+// permission-gated and renders its real screen — all seven recruitment stages are now built
+// (Applicants → … → Electronic Employee File). Default export so React.lazy can import it.
 import { Outlet, Route, Routes } from 'react-router-dom';
 import { RequirePermission } from '../../../platform/router/RequirePermission';
 import { NotFoundPage } from '../../../platform/app/pages/NotFoundPage';
 import { RecruitmentLayout } from './RecruitmentLayout';
 import { RecruitmentOverview } from './pages/RecruitmentOverview';
-import { StagePlaceholder } from './pages/StagePlaceholder';
 import { ApplicantsListPage } from './applicants/pages/ApplicantsListPage';
 import { ApplicantDetailPage } from './applicants/pages/ApplicantDetailPage';
 import { ApplicantFormPage } from './applicants/pages/ApplicantFormPage';
@@ -23,12 +22,8 @@ import { EmployeeDetailPage } from './employees/pages/EmployeeDetailPage';
 import { EmployeeCreatePage } from './employees/pages/EmployeeCreatePage';
 import { HiringDocsListPage } from './hiring-documents/pages/HiringDocsListPage';
 import { HiringDocsDetailPage } from './hiring-documents/pages/HiringDocsDetailPage';
-
-const stage = (permission: string, titleKey: string): JSX.Element => (
-  <RequirePermission permission={permission}>
-    <StagePlaceholder titleKey={titleKey} />
-  </RequirePermission>
-);
+import { EmployeeFilesListPage } from './employee-files/pages/EmployeeFilesListPage';
+import { EmployeeFileDetailPage } from './employee-files/pages/EmployeeFileDetailPage';
 
 export default function RecruitmentRoutes(): JSX.Element {
   return (
@@ -141,7 +136,17 @@ export default function RecruitmentRoutes(): JSX.Element {
           <Route index element={<HiringDocsListPage />} />
           <Route path=":id" element={<HiringDocsDetailPage />} />
         </Route>
-        <Route path="employee-files/*" element={stage('employeeFile.view', 'recruitment.nav.employeeFiles')} />
+        <Route
+          path="employee-files"
+          element={
+            <RequirePermission permission="employeeFile.view">
+              <Outlet />
+            </RequirePermission>
+          }
+        >
+          <Route index element={<EmployeeFilesListPage />} />
+          <Route path=":id" element={<EmployeeFileDetailPage />} />
+        </Route>
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>

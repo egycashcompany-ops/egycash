@@ -21,6 +21,8 @@ import { JobOfferFormPage } from './job-offers/pages/JobOfferFormPage';
 import { EmployeesListPage } from './employees/pages/EmployeesListPage';
 import { EmployeeDetailPage } from './employees/pages/EmployeeDetailPage';
 import { EmployeeCreatePage } from './employees/pages/EmployeeCreatePage';
+import { HiringDocsListPage } from './hiring-documents/pages/HiringDocsListPage';
+import { HiringDocsDetailPage } from './hiring-documents/pages/HiringDocsDetailPage';
 
 const stage = (permission: string, titleKey: string): JSX.Element => (
   <RequirePermission permission={permission}>
@@ -128,7 +130,17 @@ export default function RecruitmentRoutes(): JSX.Element {
           />
           <Route path=":id" element={<EmployeeDetailPage />} />
         </Route>
-        <Route path="hiring-documents/*" element={stage('hiringDocuments.view', 'recruitment.nav.hiringDocuments')} />
+        <Route
+          path="hiring-documents"
+          element={
+            <RequirePermission permission="hiringDocuments.view">
+              <Outlet />
+            </RequirePermission>
+          }
+        >
+          <Route index element={<HiringDocsListPage />} />
+          <Route path=":id" element={<HiringDocsDetailPage />} />
+        </Route>
         <Route path="employee-files/*" element={stage('employeeFile.view', 'recruitment.nav.employeeFiles')} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>

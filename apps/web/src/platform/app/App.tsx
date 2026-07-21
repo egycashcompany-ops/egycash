@@ -11,6 +11,7 @@ import { RequireAuth } from '../router/RequireAuth';
 import { LoadingState } from '../../shared/ui/states/LoadingState';
 
 const RecruitmentRoutes = lazy(() => import('../../modules/hr/recruitment/routes'));
+const OrganizationRoutes = lazy(() => import('../../modules/organization/routes'));
 
 const useDirection = (): void => {
   const { locale, dir } = useAppSelector((state) => state.locale);
@@ -44,6 +45,16 @@ export const App = (): JSX.Element => {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route
+          path="/organization/*"
+          element={
+            <RequireAuth>
+              <Suspense fallback={<div className="grid min-h-screen place-items-center"><LoadingState /></div>}>
+                <OrganizationRoutes />
+              </Suspense>
+            </RequireAuth>
+          }
+        />
         <Route
           path="/*"
           element={

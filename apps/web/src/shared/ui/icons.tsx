@@ -227,3 +227,33 @@ export const LinkIcon = (p: IconProps): JSX.Element => (
     <path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
   </Base>
 );
+
+export const BuildingIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <rect x="4" y="2" width="16" height="20" rx="1" />
+    <path d="M9 22v-4h6v4M8 6h.01M12 6h.01M16 6h.01M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01" />
+  </Base>
+);
+
+export const SitemapIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <rect x="9" y="2" width="6" height="5" rx="1" />
+    <rect x="2" y="17" width="6" height="5" rx="1" />
+    <rect x="16" y="17" width="6" height="5" rx="1" />
+    <path d="M12 7v5M5 17v-2a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v2" />
+  </Base>
+);
+
+export const LayersIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <polygon points="12 2 22 8.5 12 15 2 8.5 12 2" />
+    <polyline points="2 15.5 12 22 22 15.5" />
+  </Base>
+);
+
+export const TagIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <path d="M20.59 13.41 12 22l-9-9V3h10l7.59 7.59a2 2 0 0 1 0 2.82z" />
+    <circle cx="7.5" cy="7.5" r="1.5" />
+  </Base>
+);

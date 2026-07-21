@@ -68,9 +68,31 @@ export type CreateDepartment = z.infer<typeof CreateDepartmentSchema>;
 export const CreateSectionSchema = z.object({ ...orgUnitBase, departmentId: objectId() }).strict();
 export type CreateSection = z.infer<typeof CreateSectionSchema>;
 
+// Job Titles are an organization-wide catalog (ADR-015): they carry the *definition* of a role —
+// grade, salary band, and hiring requirements — but they do NOT belong to a Branch/Department/
+// Section. Linking a title to a concrete organizational location is the job of Job Positions
+// (a later phase). Only `jobGrade` is required; salary/description/qualifications/experience are
+// optional so a title can be created quickly and enriched over time.
+const jobTitleRichFields = {
+  jobGrade: z.string().trim().min(1).max(32).describe('Grade label/code, e.g. G7 or M2'),
+  description: LocalizedStringSchema.nullable().optional(),
+  salaryMin: z.number().min(0).max(100_000_000).nullable().optional(),
+  salaryMax: z.number().min(0).max(100_000_000).nullable().optional(),
+  requiredQualifications: LocalizedStringSchema.nullable().optional(),
+  requiredExperienceYears: z.number().int().min(0).max(60).nullable().optional(),
+};
+
+/** A salary band is coherent only when both ends are present and min ≤ max. */
+const salaryBandOk = (v: {
+  salaryMin?: number | null | undefined;
+  salaryMax?: number | null | undefined;
+}): boolean => v.salaryMin == null || v.salaryMax == null || v.salaryMin <= v.salaryMax;
+const salaryBandError = { message: 'salaryMax must be ≥ salaryMin', path: ['salaryMax'] };
+
 export const CreateJobTitleSchema = z
-  .object({ code: orgUnitBase.code, name: LocalizedStringSchema })
-  .strict();
+  .object({ code: orgUnitBase.code, name: LocalizedStringSchema, ...jobTitleRichFields })
+  .strict()
+  .refine(salaryBandOk, salaryBandError);
 export type CreateJobTitle = z.infer<typeof CreateJobTitleSchema>;
 
 const updatableUnitFields = {
@@ -96,9 +118,18 @@ export const UpdateJobTitleSchema = z
   .object({
     name: LocalizedStringSchema.optional(),
     status: z.enum(['active', 'inactive']).optional(),
+    jobGrade: z.string().trim().min(1).max(32).optional(),
+    description: LocalizedStringSchema.nullable().optional(),
+    salaryMin: z.number().min(0).max(100_000_000).nullable().optional(),
+    salaryMax: z.number().min(0).max(100_000_000).nullable().optional(),
+    requiredQualifications: LocalizedStringSchema.nullable().optional(),
+    requiredExperienceYears: z.number().int().min(0).max(60).nullable().optional(),
     version: z.number().int().min(0),
   })
-  .strict();
+  .strict()
+  // When both bounds arrive together they must be coherent; a partial update touching only one
+  // bound is re-checked against the stored value in the service (merged-state validation).
+  .refine(salaryBandOk, salaryBandError);
 export type UpdateJobTitle = z.infer<typeof UpdateJobTitleSchema>;
 
 export const ListOrgUnitsQuerySchema = PaginationQuerySchema.extend({
@@ -140,6 +171,15 @@ export interface JobTitleDto {
   id: string;
   code: string;
   name: { ar: string; en: string };
+  /** Grade label/code (required). */
+  jobGrade: string;
+  description: { ar: string; en: string } | null;
+  /** Salary band in the organization's currency (EGP); either bound may be null. */
+  salaryMin: number | null;
+  salaryMax: number | null;
+  requiredQualifications: { ar: string; en: string } | null;
+  /** Minimum years of experience expected for the role. */
+  requiredExperienceYears: number | null;
   status: 'active' | 'inactive';
   version: number;
   createdAt: string;

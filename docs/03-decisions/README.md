@@ -24,7 +24,9 @@ decision, write a new ADR that supersedes the old one.
 | [ADR-013](ADR-013-frontend-state.md) | TanStack Query for server state, Redux Toolkit for session/UI state | Accepted |
 | [ADR-014](ADR-014-ocr-independent-service.md) | OCR as an independent, provider-pluggable service | Accepted |
 | [ADR-015](ADR-015-single-organization-model.md) | Single-organization, multi-branch model (Branch is the primary scope) | Accepted |
+| [ADR-016](ADR-016-optional-position-requisition-linkage.md) | Job Positions & Job Requisitions are OPTIONAL for applicants (Talent Pool) | Accepted |
 
 ADR-001…014 were accepted with Milestone 1 approval (2026-07-08). ADR-015 records the
 single-organization correction from [Architecture Review 01](../10-reviews/2026-07-architecture-review-01.md),
-superseding the multi-company aspects of the Milestone 1 design.
+superseding the multi-company aspects of the Milestone 1 design. ADR-016 records the HR-Foundation
+invariant that an applicant need not belong to any vacancy (the Talent Pool).

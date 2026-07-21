@@ -83,7 +83,7 @@ replacing that element, with zero layout/routing work.
 
 ## 6. Deliberately deferred
 
-- **Feature screens** — all seven recruitment stages are now built (Applicants §7 · Initial Screening §8 · Interviews §9 · Job Offer §10 · Employees §11 · Hiring Documents §12 · Electronic Employee File §13). *(Phase 1 itself deliberately shipped none.)*
+- **Feature screens** — all seven recruitment stages are now built (Applicants §7 · Initial Screening §8 · Interviews §9 · Job Offer §10 · Employees §11 · Hiring Documents §12 · Electronic Employee File §13). *(Phase 1 itself deliberately shipped none.)* **The module is feature-complete; work is now in a polish phase** — Sprint 5.9 (v0.21.0) added direct applicant intake and the reusable National-ID OCR review flow (§7) without adding a stage.
 - **shadcn/ui + react-hook-form** — §6 names these as the eventual kit; the foundation provides the
   same wrapped-in-`shared/ui` surface with hand-rolled, dependency-free primitives so a later
   migration is localized. No behavior depends on the concrete library.

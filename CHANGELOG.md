@@ -9,6 +9,45 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-07-21
+
+Release v0.21.0 — Sprint 5.9: **HR / Recruitment — Applicants intake improvements + reusable
+National-ID OCR** ([PR #49](https://github.com/egycashcompany-ops/egycash/pull/49)). The first
+**polish** sprint on the completed Recruitment module — no new stage, an enhancement to the
+existing Applicants intake.
+
+### Added
+
+- **Reusable National-ID OCR flow (`apps/web/src/shared/national-id/`).** A module-agnostic
+  capture → review flow, reusable by Employees / KYC / any future module by injecting an
+  *extractor* (no HR coupling): `NationalIdOcr` (two upload areas — **front + back** — read
+  together in one extraction pass), a **dedicated `NationalIdReviewDialog`** showing **every**
+  extracted field editable (birth date / gender / governorate derived live from the number and
+  read-only), plus pure `mapping` + `transliterate` helpers and typed `NationalIdReviewData` /
+  `NationalIdExtractor`. Generic `nationalIdOcr.*` i18n (`ar` + `en`).
+- **Applicant identity: `religion` + `nationalIdExpiry`** — new nullable fields read from the ID
+  card (contract + model + service + mapper).
+
+### Changed
+
+- **Applicants create — direct intake.** The Job Request is now **optional**: an applicant can be
+  registered directly from the Applicants screen with no linked requisition. `jobRequisitionId` is
+  **nullable end-to-end** (applicant → employee → employee-file all tolerate `null`); when a
+  requisition is supplied it is still validated (malformed ids rejected), and the reference can be
+  attached later when the Job Requests module lands.
+- **National-ID capture flow.** Upload front → upload back → **Extract** → the dedicated review
+  dialog → edit → **Confirm** → *only then* the Applicant form is populated. Birth date / gender /
+  governorate are **derived** from the number (`parseNationalId`), never OCR'd; the English name is
+  seeded by transliterating the Arabic name (editable). Replaces the single-image OCR assist.
+
+### Notes
+
+- No new runtime dependencies and **no new backend endpoint** — the OCR extraction DTO was widened
+  with the card fields and the applicant identity gained two fields. Verified via web typecheck,
+  repo lint, and vite build (recruitment stays a lazy chunk); backend unit + integration specs
+  extended (direct intake with no requisition; OCR extraction shape; null-requisition mappers). No
+  web unit-test runner yet (backlog: Vitest + React Testing Library).
+
 ## [0.20.0] - 2026-07-13
 
 Release v0.20.0 — Sprint 5.8: **HR / Recruitment — Electronic Employee File Frontend (Phase 8)**

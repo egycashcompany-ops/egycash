@@ -9,6 +9,17 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-07-21
+
+Release v0.23.0 — Sprint 5.11: **HR Foundation — Phase 1: Organization Structure**
+([PR #54](https://github.com/egycashcompany-ops/egycash/pull/54)). Delivers the master
+organizational model every future module reuses — **Company, Branches, Departments, Sections and the
+Job Titles catalog** — built on the existing `platform/organization` backend (ADR-015). **Phase 1 is
+complete and released.** Job Positions and Job Requisitions are **intentionally deferred** to later
+phases; Job Titles remain an **organization-wide catalog**; and per **ADR-016** (now the governing
+decision) applicants are **never required** to be linked to a Job Position or Job Requisition — the
+**Talent Pool is first-class**.
+
 ### Added
 
 - **HR Foundation — Phase 1: Organization Structure.** The master organizational model that every

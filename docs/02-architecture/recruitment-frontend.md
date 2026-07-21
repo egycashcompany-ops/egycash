@@ -114,16 +114,20 @@ attachments).
   certifications) using the shared form primitives. Client checks cover the required fields; the
   server stays authoritative and its validation errors surface in a summary. Edits are
   optimistic-concurrency guarded (`version`).
-- **National-ID capture + review** (create) — `NationalIdCapture` provides **two upload areas
-  (front + back)** read together in **one** extraction pass over the existing seam
-  (`/hr/applicants/ocr/national-id`, which already accepts `frontFileId` + `backFileId`). The
-  provider returns the card fields (Arabic name, number, marital status, official address, city,
-  religion, card expiry) each with a confidence band; **nothing is auto-saved** — the extraction
-  pre-fills the form, which *is* the review step: every value is editable before Save (§2.1 rule 4).
-  Degrades gracefully to "enter manually" when no provider is wired (OQ-30). Two things are computed
-  on the client instead of OCR'd: **birth date / gender / governorate** are **derived
-  deterministically from the number** (`parseNationalId`, recomputed live and shown read-only), and
-  the **English name** is seeded by transliterating the Arabic name (`lib/transliterate`, editable).
+- **National-ID capture + review** (create) — a **reusable, module-agnostic** flow lives in
+  `shared/national-id/` (`NationalIdOcr` + `NationalIdReviewDialog` + `mapping`/`transliterate`), so
+  Employees / KYC / any future module can reuse it by injecting an *extractor*. It provides **two
+  upload areas (front + back)** read together in **one** extraction pass; the applicants binding
+  (`ApplicantNationalIdOcr`) supplies the extractor over the existing seam
+  (`/hr/applicants/ocr/national-id`, which already accepts `frontFileId` + `backFileId`). On
+  **Extract**, a **dedicated review dialog** opens showing **every** extracted field (Arabic name,
+  number, marital status, official address, city, religion, card expiry) editable; **nothing is
+  saved and the host form is not touched** until the user clicks **Confirm** — only then is the
+  reviewed data handed back and the Applicant form populated (§2.1 rule 4). Degrades gracefully — the
+  review dialog still opens for manual entry when no provider is wired (OQ-30). Two things are
+  computed on the client instead of OCR'd: **birth date / gender / governorate** are **derived
+  deterministically from the number** (`parseNationalId`, recomputed live in the dialog and shown
+  read-only), and the **English name** is seeded by transliterating the Arabic name (editable).
 - **Integration** — all calls go through the feature `api/` layer against the existing endpoints
   (`/hr/applicants`, `/hr/applicant-sources`, `/hr/applicants/ocr/national-id`,
   `/hr/applicants/:id/attachments`, `/hr/applicants/export`, `/hr/applicants/bulk`, and

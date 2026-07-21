@@ -19,7 +19,6 @@ import {
   type EducationLevel,
   type MaritalStatus,
   type MilitaryStatus,
-  type OcrExtractionDto,
   type RegisterApplicant,
   type UpdateApplicant,
 } from '@ecms/contracts';
@@ -31,19 +30,9 @@ import { Card, CardBody, CardHeader } from '../../../../../shared/ui/Card';
 import { Button } from '../../../../../shared/ui/Button';
 import { Field, Input, Select, Checkbox, Form, FormActions } from '../../../../../shared/ui/form';
 import { PlusIcon, TrashIcon } from '../../../../../shared/ui/icons';
-import { transliterateArabicName } from '../lib/transliterate';
-import { NationalIdCapture } from './NationalIdCapture';
+import { transliterateArabicName, type NationalIdReviewData } from '../../../../../shared/national-id';
+import { ApplicantNationalIdOcr } from './ApplicantNationalIdOcr';
 import { ReferenceField } from './RefPickers';
-
-/** Map a raw OCR marital-status string (Arabic or English) to the enum, else '' (unknown). */
-const mapMaritalStatus = (raw: string): MaritalStatus | '' => {
-  const s = raw.trim().toLowerCase();
-  if (/أعزب|اعزب|عزباء|single/.test(s)) return 'single';
-  if (/متزوجة|متزوج|married/.test(s)) return 'married';
-  if (/مطلقة|مطلق|divorc/.test(s)) return 'divorced';
-  if (/أرملة|ارملة|أرمل|ارمل|widow/.test(s)) return 'widowed';
-  return '';
-};
 
 interface AddressForm {
   line1: string;
@@ -285,35 +274,26 @@ export const ApplicantForm = ({
       fullNameEn: prev.fullNameEn.trim() === '' ? transliterateArabicName(value) : prev.fullNameEn,
     }));
 
-  /** Pre-fill the review fields from an OCR extraction (nothing is auto-saved). */
-  const applyExtraction = (r: OcrExtractionDto): void => {
+  /** Populate the form from the reviewed National-ID data (after the user confirms the OCR review).
+   *  Reviewed values win; empty fields leave the current form value untouched. */
+  const applyReview = (r: NationalIdReviewData): void => {
     setExtracted(true);
-    setF((prev) => {
-      const nameAr = r.fullNameAr?.value.trim() ?? prev.fullNameAr;
-      const marital = r.maritalStatus === null ? '' : mapMaritalStatus(r.maritalStatus.value);
-      const parsed = r.nationalId === null ? null : parseNationalId(r.nationalId.value.trim());
-      return {
-        ...prev,
-        ...(r.nationalId === null ? {} : { nationalId: r.nationalId.value.trim() }),
-        ...(r.fullNameAr === null ? {} : { fullNameAr: nameAr }),
-        fullNameEn:
-          r.fullNameEn !== null && r.fullNameEn.value.trim() !== ''
-            ? r.fullNameEn.value.trim()
-            : prev.fullNameEn.trim() === ''
-              ? transliterateArabicName(nameAr)
-              : prev.fullNameEn,
-        ...(marital === '' ? {} : { maritalStatus: marital }),
-        ...(r.religion === null ? {} : { religion: r.religion.value.trim() }),
-        ...(r.nationalIdExpiry === null ? {} : { nationalIdExpiry: r.nationalIdExpiry.value.slice(0, 10) }),
-        officialAddress: {
-          ...prev.officialAddress,
-          ...(r.address === null ? {} : { line1: r.address.value.trim() }),
-          ...(r.city === null ? {} : { city: r.city.value.trim() }),
-          // Governorate is DERIVED from the number (not OCR'd) when available.
-          ...(parsed !== null ? { governorate: parsed.governorate } : {}),
-        },
-      };
-    });
+    setF((prev) => ({
+      ...prev,
+      fullNameAr: r.fullNameAr.trim() === '' ? prev.fullNameAr : r.fullNameAr.trim(),
+      fullNameEn: r.fullNameEn.trim() === '' ? prev.fullNameEn : r.fullNameEn.trim(),
+      nationalId: r.nationalId.trim() === '' ? prev.nationalId : r.nationalId.trim(),
+      ...(r.maritalStatus === '' ? {} : { maritalStatus: r.maritalStatus }),
+      religion: r.religion.trim() === '' ? prev.religion : r.religion.trim(),
+      nationalIdExpiry: r.nationalIdExpiry === '' ? prev.nationalIdExpiry : r.nationalIdExpiry,
+      officialAddress: {
+        ...prev.officialAddress,
+        line1: r.addressLine.trim() === '' ? prev.officialAddress.line1 : r.addressLine.trim(),
+        city: r.city.trim() === '' ? prev.officialAddress.city : r.city.trim(),
+        // Governorate is derived from the number (not OCR'd).
+        governorate: r.governorate === '' ? prev.officialAddress.governorate : r.governorate,
+      },
+    }));
   };
 
   const submit = async (): Promise<void> => {
@@ -383,7 +363,7 @@ export const ApplicantForm = ({
 
       {mode === 'create' && (
         <>
-          <NationalIdCapture onExtract={applyExtraction} />
+          <ApplicantNationalIdOcr onConfirm={applyReview} />
           {extracted && (
             <p className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200">
               {t('applicants.ocr.reviewBanner')}

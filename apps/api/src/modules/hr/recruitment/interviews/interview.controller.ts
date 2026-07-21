@@ -5,6 +5,7 @@ import {
   type CancelInterview,
   type CreateInterviewStage,
   type DecideInterview,
+  type ListAwaitingInterviewsQuery,
   type ListInterviewStagesQuery,
   type ListInterviewsQuery,
   type ReassignInterviewPanel,
@@ -36,6 +37,12 @@ export const listInterviews = async (req: Request, res: Response): Promise<void>
   const ctx = authContext(req);
   const { query } = validated<never, ListInterviewsQuery>(req);
   okPage(res, await interviewService.list(query, scopeSelector(ctx, 'interview.view')), toInterviewDto);
+};
+
+export const listAwaitingInterviews = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { query } = validated<never, ListAwaitingInterviewsQuery>(req);
+  ok(res, await interviewService.listAwaiting(query, scopeSelector(ctx, 'interview.view')));
 };
 
 export const getInterview = async (req: Request, res: Response): Promise<void> => {

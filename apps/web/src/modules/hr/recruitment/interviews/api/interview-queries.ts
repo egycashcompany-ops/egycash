@@ -35,6 +35,16 @@ export const useInterview = (id: string) =>
     enabled: id !== '',
   });
 
+/** "Awaiting scheduling" — applicants who passed Screening and have no interview yet (pipeline
+ *  entry). Distinct subtree from the interviews list so scheduling invalidates it explicitly. */
+export const useAwaitingInterviews = (params: InterviewListParams = {}) =>
+  useQuery({
+    queryKey: [MODULE, FEATURE, 'awaiting', params],
+    queryFn: () => api.listAwaitingInterviews(params),
+    staleTime: 30_000,
+    placeholderData: (prev) => prev,
+  });
+
 /** Active interview-stage catalog (labels rounds + backs the stage picker). */
 export const useInterviewStages = () =>
   useQuery({
@@ -91,10 +101,15 @@ const useInterviewWriters = (
 };
 
 export const useScheduleInterview = () => {
+  const qc = useQueryClient();
   const { seedAndInvalidate } = useInterviewWriters(null);
   return useMutation({
     mutationFn: (body: ScheduleInterview) => api.scheduleInterview(body),
-    onSuccess: seedAndInvalidate,
+    onSuccess: (updated) => {
+      seedAndInvalidate(updated);
+      // Scheduling removes the applicant from the "awaiting scheduling" queue.
+      void qc.invalidateQueries({ queryKey: [MODULE, FEATURE, 'awaiting'] });
+    },
   });
 };
 

@@ -18,7 +18,12 @@ import { formatDate, formatMoney } from '../../../../../shared/lib/format';
 import { ApplicantStatusBadge } from '../components/ApplicantStatusBadge';
 import { ReferenceChip } from '../components/RefPickers';
 import { AttachmentsPanel } from '../components/AttachmentsPanel';
-import { useApplicant, useVerifyApplicantIdentity, useWithdrawApplicant } from '../api/applicant-queries';
+import {
+  useApplicant,
+  useRestoreApplicant,
+  useVerifyApplicantIdentity,
+  useWithdrawApplicant,
+} from '../api/applicant-queries';
 
 const Info = ({ label, children }: { label: string; children: ReactNode }): JSX.Element => (
   <div>
@@ -37,9 +42,11 @@ export const ApplicantDetailPage = (): JSX.Element => {
 
   const verify = useVerifyApplicantIdentity(id);
   const withdraw = useWithdrawApplicant(id);
+  const restore = useRestoreApplicant(id);
   const [verifyOpen, setVerifyOpen] = useState(false);
   const [nationalId, setNationalId] = useState('');
   const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [restoreOpen, setRestoreOpen] = useState(false);
   const [reason, setReason] = useState('');
 
   if (isLoading) {
@@ -82,6 +89,20 @@ export const ApplicantDetailPage = (): JSX.Element => {
     }
   };
 
+  const submitRestore = async (): Promise<void> => {
+    try {
+      await restore.mutateAsync({
+        version: a.version,
+        ...(reason.trim() === '' ? {} : { reason: reason.trim() }),
+      });
+      toast.success(t('applicants.restore.done'));
+      setRestoreOpen(false);
+      setReason('');
+    } catch {
+      // surfaced globally
+    }
+  };
+
   const gridCls = 'grid grid-cols-2 gap-4 sm:grid-cols-3';
 
   return (
@@ -104,6 +125,13 @@ export const ApplicantDetailPage = (): JSX.Element => {
               <Can permission="applicant.edit">
                 <Button size="sm" variant="secondary" onClick={() => setWithdrawOpen(true)}>
                   {t('applicants.actions.withdraw')}
+                </Button>
+              </Can>
+            )}
+            {a.status === 'withdrawn' && (
+              <Can permission="applicant.edit">
+                <Button size="sm" onClick={() => { setReason(''); setRestoreOpen(true); }}>
+                  {t('applicants.actions.restore')}
                 </Button>
               </Can>
             )}
@@ -240,6 +268,25 @@ export const ApplicantDetailPage = (): JSX.Element => {
         }
       >
         <Field label={t('applicants.withdraw.reason')} required>
+          <Textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} />
+        </Field>
+      </Dialog>
+
+      <Dialog
+        open={restoreOpen}
+        onClose={() => setRestoreOpen(false)}
+        title={t('applicants.restore.title')}
+        description={t('applicants.restore.body')}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setRestoreOpen(false)}>{t('common.cancel')}</Button>
+            <Button loading={restore.isPending} onClick={() => void submitRestore()}>
+              {t('applicants.actions.restore')}
+            </Button>
+          </>
+        }
+      >
+        <Field label={t('applicants.restore.reason')}>
           <Textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} />
         </Field>
       </Dialog>

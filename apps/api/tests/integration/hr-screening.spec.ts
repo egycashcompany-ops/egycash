@@ -201,6 +201,32 @@ describe('screening — create', () => {
   });
 });
 
+describe('screening — awaiting (pipeline entry)', () => {
+  const awaitingIds = async (): Promise<string[]> => {
+    const res = await request(app)
+      .get('/api/v1/hr/screenings/awaiting')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    return (res.body.data as { applicantId: string }[]).map((r) => r.applicantId);
+  };
+
+  it('surfaces a newly-registered applicant, then drops them once a screening is opened', async () => {
+    const applicant = await registerApplicant();
+    expect(await awaitingIds()).toContain(applicant.id);
+    expect((await openScreening(applicant.id)).status).toBe(201);
+    expect(await awaitingIds()).not.toContain(applicant.id);
+  });
+
+  it('excludes a withdrawn applicant', async () => {
+    const applicant = await registerApplicant();
+    await request(app)
+      .post(`/api/v1/hr/applicants/${applicant.id}/withdraw`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ reason: 'not interested', version: applicant.version });
+    expect(await awaitingIds()).not.toContain(applicant.id);
+  });
+});
+
 describe('screening — notes (needs more information)', () => {
   it('appends a note and stays pending', async () => {
     const applicant = await registerApplicant();

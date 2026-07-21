@@ -87,8 +87,12 @@ export const ScheduleInterviewSchema = z
     applicantId: objectId(),
     stageId: objectId(),
     scheduledAt: z.coerce.date(),
-    /** The panel — one or more interviewers (domain model: INTERVIEW }o--o{ USER). */
-    interviewerIds: z.array(objectId()).min(1).max(20),
+    /**
+     * The interview committee (domain model: INTERVIEW }o--o{ USER). OPTIONAL at scheduling —
+     * an interview may be scheduled before a committee is assigned; members are added later via
+     * the reassign-panel action. Defaults to an empty committee.
+     */
+    interviewerIds: z.array(objectId()).max(20).default([]),
     location: z.string().max(200).optional(),
     notes: z.string().max(2000).optional(),
   })
@@ -180,6 +184,25 @@ export const ListInterviewsQuerySchema = PaginationQuerySchema.extend({
   scheduledTo: z.coerce.date().optional(),
 }).strict();
 export type ListInterviewsQuery = z.infer<typeof ListInterviewsQuerySchema>;
+
+// ── Awaiting scheduling (pipeline entry) ────────────────────────────────────
+// Applicants who have passed Initial Screening and are active but have no interview yet — the
+// "automatically appears in Interviews once approved in Screening" queue. Derived read model
+// (no interview record is fabricated); the recruiter schedules the first round from here.
+
+export const ListAwaitingInterviewsQuerySchema = z
+  .object({ branchId: objectId().optional(), limit: z.coerce.number().int().min(1).max(200).default(100) })
+  .strict();
+export type ListAwaitingInterviewsQuery = z.infer<typeof ListAwaitingInterviewsQuerySchema>;
+
+export interface AwaitingInterviewDto {
+  applicantId: string;
+  applicantCode: string;
+  branchId: string | null;
+  screeningId: string;
+  /** When the screening was accepted (drives the queue order); null if not recorded. */
+  screeningDecidedAt: string | null;
+}
 
 // ── Interview DTO ──────────────────────────────────────────────────────────
 

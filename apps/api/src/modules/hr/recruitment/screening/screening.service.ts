@@ -10,8 +10,10 @@ import { Types } from 'mongoose';
 import {
   HrScreeningEvents,
   type AddScreeningNote,
+  type AwaitingScreeningDto,
   type CreateScreening,
   type DecideScreening,
+  type ListAwaitingScreeningsQuery,
   type ListScreeningsQuery,
   type Paginated,
 } from '@ecms/contracts';
@@ -98,6 +100,39 @@ class ScreeningService {
   /** The applicant's screening, if any — used by later stages (Interviews) to gate entry. */
   async findByApplicantId(applicantId: string): Promise<ScreeningDoc | null> {
     return screeningRepository.findByApplicantId(applicantId);
+  }
+
+  /** Accepted screenings (capped, recent-first) — the Interviews "awaiting scheduling" source. */
+  async listAcceptedForInterview(
+    branchId: string | undefined,
+    limit: number,
+    scope: ScopeSelector,
+  ): Promise<ScreeningDoc[]> {
+    return screeningRepository.listAccepted(limit, branchId, scope);
+  }
+
+  /**
+   * "Awaiting screening" — live applicants (status `new`) with no screening yet (the automatic
+   * pipeline entry: they appear here the moment they are registered). A derived read model — no
+   * screening is fabricated and the manual open-screening workflow + permissions are untouched.
+   */
+  async listAwaiting(
+    query: ListAwaitingScreeningsQuery,
+    scope: ScopeSelector,
+  ): Promise<AwaitingScreeningDto[]> {
+    const applicants = await applicantService.listActive(query.limit, query.branchId, scope);
+    const withScreening = await screeningRepository.applicantIdsWithScreening(
+      applicants.map((a) => String(a._id)),
+    );
+    return applicants
+      .filter((a) => !withScreening.has(String(a._id)))
+      .map((a) => ({
+        applicantId: String(a._id),
+        applicantCode: a.code,
+        fullNameAr: a.fullNameAr,
+        branchId: a.branchId === null ? null : String(a.branchId),
+        registeredAt: a.createdAt.toISOString(),
+      }));
   }
 
   /** Append a note while `pending` (OQ-32 "needs more information"). */

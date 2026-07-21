@@ -293,6 +293,43 @@ describe('lifecycle: verify, update, withdraw', () => {
     expect(withdrawn.status).toBe(200);
     expect((withdrawn.body.data as ApplicantDto).status).toBe('withdrawn');
   });
+
+  it('restores a withdrawn applicant back to the active pipeline (history preserved)', async () => {
+    const dto = await create('01021212121');
+    const withdrawn = (
+      await request(app)
+        .post(`/api/v1/hr/applicants/${dto.id}/withdraw`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ reason: 'changed mind', version: dto.version })
+    ).body.data as ApplicantDto;
+    expect(withdrawn.status).toBe('withdrawn');
+
+    const restored = await request(app)
+      .post(`/api/v1/hr/applicants/${dto.id}/restore`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ reason: 'reconsidered', version: withdrawn.version });
+    expect(restored.status).toBe(200);
+    const body = restored.body.data as ApplicantDto;
+    expect(body.status).toBe('new');
+    expect(body.withdrawnReason).toBeNull();
+    // Restore is idempotent for an already-active applicant.
+    const again = await request(app)
+      .post(`/api/v1/hr/applicants/${dto.id}/restore`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: body.version });
+    expect(again.status).toBe(200);
+    expect((again.body.data as ApplicantDto).status).toBe('new');
+  });
+
+  it('restoring an already-active applicant is an idempotent no-op', async () => {
+    const dto = await create('01023232323');
+    const res = await request(app)
+      .post(`/api/v1/hr/applicants/${dto.id}/restore`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: dto.version });
+    expect(res.status).toBe(200);
+    expect((res.body.data as ApplicantDto).status).toBe('new');
+  });
 });
 
 describe('list, search, export', () => {

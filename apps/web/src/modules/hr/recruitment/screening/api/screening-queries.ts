@@ -26,6 +26,16 @@ export const useScreening = (id: string) =>
     enabled: id !== '',
   });
 
+/** "Awaiting screening" — live applicants with no screening yet (pipeline entry). Within the
+ *  feature subtree, so opening a screening invalidates it automatically. */
+export const useAwaitingScreenings = (params: ScreeningListParams = {}) =>
+  useQuery({
+    queryKey: [MODULE, FEATURE, 'awaiting', params],
+    queryFn: () => api.listAwaitingScreenings(params),
+    staleTime: 30_000,
+    placeholderData: (prev) => prev,
+  });
+
 /** Applicant lookup for the queue filter + create dialog (reuses the Applicants list API). */
 export const useApplicantSearch = (term: string) =>
   useQuery({

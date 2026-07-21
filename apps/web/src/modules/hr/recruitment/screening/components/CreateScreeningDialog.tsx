@@ -2,7 +2,6 @@
 // One screening per applicant (server-enforced); on success routes to the new screening.
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { type ApplicantDto } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { Dialog } from '../../../../../shared/ui/Dialog';
 import { Button } from '../../../../../shared/ui/Button';
@@ -11,15 +10,30 @@ import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { ApplicantPicker } from './ApplicantPicker';
 import { useCreateScreening } from '../api/screening-queries';
 
-export const CreateScreeningDialog = ({ open, onClose }: { open: boolean; onClose: () => void }): JSX.Element => {
+/** Minimal applicant shape — satisfied by a full ApplicantDto or an awaiting-screening row. */
+export interface PickedApplicant {
+  id: string;
+  code: string;
+  fullNameAr: string;
+}
+
+export const CreateScreeningDialog = ({
+  open,
+  onClose,
+  applicant: presetApplicant,
+}: {
+  open: boolean;
+  onClose: () => void;
+  applicant?: PickedApplicant;
+}): JSX.Element => {
   const t = useT();
   const navigate = useNavigate();
   const create = useCreateScreening();
-  const [applicant, setApplicant] = useState<ApplicantDto | null>(null);
+  const [applicant, setApplicant] = useState<PickedApplicant | null>(presetApplicant ?? null);
   const [note, setNote] = useState('');
 
   const reset = (): void => {
-    setApplicant(null);
+    setApplicant(presetApplicant ?? null);
     setNote('');
   };
 

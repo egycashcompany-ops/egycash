@@ -39,6 +39,19 @@ class InterviewRepository extends BaseRepository<InterviewDoc> {
       .exec();
   }
 
+  /** Of the given applicant ids, those that already have any (non-cancelled) interview — used by
+   *  the "awaiting scheduling" eligibility view to exclude applicants already in the round. */
+  async applicantIdsWithInterview(ids: string[]): Promise<Set<string>> {
+    const objectIds = ids.filter((id) => Types.ObjectId.isValid(id)).map((id) => new Types.ObjectId(id));
+    if (objectIds.length === 0) return new Set();
+    const rows = await this.model
+      .find({ applicantId: { $in: objectIds }, isDeleted: false, status: { $in: ACTIVE_STATUSES } })
+      .select('applicantId')
+      .lean<{ applicantId: Types.ObjectId }[]>()
+      .exec();
+    return new Set(rows.map((r) => String(r.applicantId)));
+  }
+
   /** All of an applicant's interviews, oldest stage first (drives the Employee Timeline). */
   async findByApplicant(applicantId: string): Promise<InterviewDoc[]> {
     if (!Types.ObjectId.isValid(applicantId)) return [];

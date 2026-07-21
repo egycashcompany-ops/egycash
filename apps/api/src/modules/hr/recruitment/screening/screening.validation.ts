@@ -5,6 +5,7 @@ export {
   AddScreeningNoteSchema,
   DecideScreeningSchema,
   ListScreeningsQuerySchema,
+  ListAwaitingScreeningsQuerySchema,
 } from '@ecms/contracts';
 
 import { z } from 'zod';

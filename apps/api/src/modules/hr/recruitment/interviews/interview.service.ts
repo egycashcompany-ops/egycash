@@ -13,8 +13,10 @@ import { Types } from 'mongoose';
 import {
   HrInterviewEvents,
   HrInterviewTemplates,
+  type AwaitingInterviewDto,
   type CancelInterview,
   type DecideInterview,
+  type ListAwaitingInterviewsQuery,
   type ListInterviewsQuery,
   type Paginated,
   type ReassignInterviewPanel,
@@ -159,6 +161,33 @@ class InterviewService {
       scheduledFrom: query.scheduledFrom,
       scheduledTo: query.scheduledTo,
     };
+  }
+
+  /**
+   * "Awaiting scheduling" — applicants who passed Initial Screening and are still live but have
+   * no interview yet (the automatic pipeline entry: they appear here the moment Screening is
+   * approved). A derived read model (no interview record is fabricated); the recruiter schedules
+   * the first round from here. Excludes withdrawn/rejected applicants and any already in a round.
+   */
+  async listAwaiting(
+    query: ListAwaitingInterviewsQuery,
+    scope: ScopeSelector,
+  ): Promise<AwaitingInterviewDto[]> {
+    const accepted = await screeningService.listAcceptedForInterview(query.branchId, query.limit, scope);
+    const applicantIds = accepted.map((s) => String(s.applicantId));
+    const [liveIds, interviewedIds] = await Promise.all([
+      applicantService.liveIdsAmong(applicantIds, scope),
+      interviewRepository.applicantIdsWithInterview(applicantIds),
+    ]);
+    return accepted
+      .filter((s) => liveIds.has(String(s.applicantId)) && !interviewedIds.has(String(s.applicantId)))
+      .map((s) => ({
+        applicantId: String(s.applicantId),
+        applicantCode: s.applicantCode,
+        branchId: s.branchId === null ? null : String(s.branchId),
+        screeningId: String(s._id),
+        screeningDecidedAt: s.decidedAt === null ? null : s.decidedAt.toISOString(),
+      }));
   }
 
   async getById(id: string, scope: ScopeSelector): Promise<InterviewDoc> {

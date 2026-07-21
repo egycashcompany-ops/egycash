@@ -15,7 +15,8 @@ import { PlusIcon } from '../../../../../shared/ui/icons';
 import { formatDateTime, formatNumber, localized } from '../../../../../shared/lib/format';
 import { InterviewStatusBadge } from '../components/InterviewStatusBadge';
 import { InterviewFilters, type InterviewFiltersState } from '../components/InterviewFilters';
-import { ScheduleInterviewDialog } from '../components/ScheduleInterviewDialog';
+import { AwaitingInterviewsPanel } from '../components/AwaitingInterviewsPanel';
+import { ScheduleInterviewDialog, type PickedApplicant } from '../components/ScheduleInterviewDialog';
 import { useInterviews } from '../api/interview-queries';
 import { type InterviewListParams } from '../api/interview-api';
 
@@ -27,6 +28,7 @@ export const InterviewQueuePage = (): JSX.Element => {
   const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [scheduleFor, setScheduleFor] = useState<PickedApplicant | null>(null);
 
   const filters: InterviewFiltersState = {
     status: (sp.get('status') ?? '') as InterviewFiltersState['status'],
@@ -121,7 +123,7 @@ export const InterviewQueuePage = (): JSX.Element => {
         breadcrumbs={[{ label: t('recruitment.title'), to: '/' }, { label: t('recruitment.nav.interviews') }]}
         actions={
           <Can permission="interview.create">
-            <Button size="sm" leftIcon={<PlusIcon className="h-4 w-4" />} onClick={() => setScheduleOpen(true)}>
+            <Button size="sm" leftIcon={<PlusIcon className="h-4 w-4" />} onClick={() => { setScheduleFor(null); setScheduleOpen(true); }}>
               {t('interviews.actions.schedule')}
             </Button>
           </Can>
@@ -129,6 +131,9 @@ export const InterviewQueuePage = (): JSX.Element => {
       />
 
       <div className="space-y-4">
+        <AwaitingInterviewsPanel
+          onSchedule={(a) => { setScheduleFor(a); setScheduleOpen(true); }}
+        />
         <InterviewFilters value={filters} onChange={changeFilters} />
         <DataTable
           columns={columns}
@@ -150,7 +155,11 @@ export const InterviewQueuePage = (): JSX.Element => {
         )}
       </div>
 
-      <ScheduleInterviewDialog open={scheduleOpen} onClose={() => setScheduleOpen(false)} />
+      <ScheduleInterviewDialog
+        open={scheduleOpen}
+        onClose={() => { setScheduleOpen(false); setScheduleFor(null); }}
+        {...(scheduleFor === null ? {} : { applicant: scheduleFor })}
+      />
     </PageContainer>
   );
 };

@@ -23,6 +23,7 @@ import { CancelInterviewDialog } from '../components/CancelInterviewDialog';
 import { DecideInterviewDialog } from '../components/DecideInterviewDialog';
 import { EvaluateDialog } from '../components/EvaluateDialog';
 import { SkipInterviewerDialog } from '../components/SkipInterviewerDialog';
+import { ApplicantLifecycleActions } from '../../applicants/components/ApplicantLifecycleActions';
 import { useInterview } from '../api/interview-queries';
 
 export const InterviewDetailPage = (): JSX.Element => {
@@ -103,6 +104,9 @@ export const InterviewDetailPage = (): JSX.Element => {
           {iv.applicantCode}
         </Link>
         <InterviewStatusBadge status={iv.status} outcome={iv.outcome} />
+        <span className="ms-auto">
+          <ApplicantLifecycleActions applicantId={iv.applicantId} showWithdrawnHint />
+        </span>
       </div>
 
       {isScheduled && can('interview.decide') && anyPending && (

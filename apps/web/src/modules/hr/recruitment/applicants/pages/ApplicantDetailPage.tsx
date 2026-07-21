@@ -9,7 +9,7 @@ import { PageContainer, PageHeader } from '../../../../../platform/layout/PageCo
 import { Card, CardBody, CardHeader } from '../../../../../shared/ui/Card';
 import { Button } from '../../../../../shared/ui/Button';
 import { Dialog } from '../../../../../shared/ui/Dialog';
-import { Field, Input, Textarea } from '../../../../../shared/ui/form';
+import { Field, Input } from '../../../../../shared/ui/form';
 import { LoadingState } from '../../../../../shared/ui/states/LoadingState';
 import { ErrorState } from '../../../../../shared/ui/states/ErrorState';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
@@ -18,12 +18,8 @@ import { formatDate, formatMoney } from '../../../../../shared/lib/format';
 import { ApplicantStatusBadge } from '../components/ApplicantStatusBadge';
 import { ReferenceChip } from '../components/RefPickers';
 import { AttachmentsPanel } from '../components/AttachmentsPanel';
-import {
-  useApplicant,
-  useRestoreApplicant,
-  useVerifyApplicantIdentity,
-  useWithdrawApplicant,
-} from '../api/applicant-queries';
+import { ApplicantLifecycleActions } from '../components/ApplicantLifecycleActions';
+import { useApplicant, useVerifyApplicantIdentity } from '../api/applicant-queries';
 
 const Info = ({ label, children }: { label: string; children: ReactNode }): JSX.Element => (
   <div>
@@ -41,13 +37,8 @@ export const ApplicantDetailPage = (): JSX.Element => {
   const { data: a, isLoading, isError, error, refetch } = useApplicant(id);
 
   const verify = useVerifyApplicantIdentity(id);
-  const withdraw = useWithdrawApplicant(id);
-  const restore = useRestoreApplicant(id);
   const [verifyOpen, setVerifyOpen] = useState(false);
   const [nationalId, setNationalId] = useState('');
-  const [withdrawOpen, setWithdrawOpen] = useState(false);
-  const [restoreOpen, setRestoreOpen] = useState(false);
-  const [reason, setReason] = useState('');
 
   if (isLoading) {
     return (
@@ -78,31 +69,6 @@ export const ApplicantDetailPage = (): JSX.Element => {
     }
   };
 
-  const submitWithdraw = async (): Promise<void> => {
-    try {
-      await withdraw.mutateAsync({ version: a.version, reason: reason.trim() });
-      toast.success(t('applicants.withdraw.done'));
-      setWithdrawOpen(false);
-      setReason('');
-    } catch {
-      // surfaced globally
-    }
-  };
-
-  const submitRestore = async (): Promise<void> => {
-    try {
-      await restore.mutateAsync({
-        version: a.version,
-        ...(reason.trim() === '' ? {} : { reason: reason.trim() }),
-      });
-      toast.success(t('applicants.restore.done'));
-      setRestoreOpen(false);
-      setReason('');
-    } catch {
-      // surfaced globally
-    }
-  };
-
   const gridCls = 'grid grid-cols-2 gap-4 sm:grid-cols-3';
 
   return (
@@ -121,20 +87,7 @@ export const ApplicantDetailPage = (): JSX.Element => {
                 {t('applicants.actions.verify')}
               </Button>
             )}
-            {a.status === 'new' && (
-              <Can permission="applicant.edit">
-                <Button size="sm" variant="secondary" onClick={() => setWithdrawOpen(true)}>
-                  {t('applicants.actions.withdraw')}
-                </Button>
-              </Can>
-            )}
-            {a.status === 'withdrawn' && (
-              <Can permission="applicant.edit">
-                <Button size="sm" onClick={() => { setReason(''); setRestoreOpen(true); }}>
-                  {t('applicants.actions.restore')}
-                </Button>
-              </Can>
-            )}
+            <ApplicantLifecycleActions applicantId={a.id} applicant={a} />
             {a.status === 'new' && (
               <Can permission="applicant.edit">
                 <Button size="sm" leftIcon={<EditIcon className="h-4 w-4" />} onClick={() => navigate('edit')}>
@@ -251,43 +204,6 @@ export const ApplicantDetailPage = (): JSX.Element => {
       >
         <Field label={t('applicants.form.nationalId')} hint={t('applicants.verify.nationalIdHint')}>
           <Input value={nationalId} onChange={(e) => setNationalId(e.target.value)} dir="ltr" inputMode="numeric" />
-        </Field>
-      </Dialog>
-
-      <Dialog
-        open={withdrawOpen}
-        onClose={() => setWithdrawOpen(false)}
-        title={t('applicants.withdraw.title')}
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setWithdrawOpen(false)}>{t('common.cancel')}</Button>
-            <Button variant="danger" loading={withdraw.isPending} disabled={reason.trim() === ''} onClick={() => void submitWithdraw()}>
-              {t('applicants.actions.withdraw')}
-            </Button>
-          </>
-        }
-      >
-        <Field label={t('applicants.withdraw.reason')} required>
-          <Textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} />
-        </Field>
-      </Dialog>
-
-      <Dialog
-        open={restoreOpen}
-        onClose={() => setRestoreOpen(false)}
-        title={t('applicants.restore.title')}
-        description={t('applicants.restore.body')}
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setRestoreOpen(false)}>{t('common.cancel')}</Button>
-            <Button loading={restore.isPending} onClick={() => void submitRestore()}>
-              {t('applicants.actions.restore')}
-            </Button>
-          </>
-        }
-      >
-        <Field label={t('applicants.restore.reason')}>
-          <Textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} />
         </Field>
       </Dialog>
     </PageContainer>

@@ -21,6 +21,7 @@ import {
   SendOfferDialog,
   WithdrawOfferDialog,
 } from '../components/OfferDialogs';
+import { ApplicantLifecycleActions } from '../../applicants/components/ApplicantLifecycleActions';
 import { useJobOffer } from '../api/job-offer-queries';
 
 type ActionKind = 'send' | 'accept' | 'reject' | 'withdraw' | null;
@@ -97,6 +98,9 @@ export const JobOfferDetailPage = (): JSX.Element => {
         {o.revisionNumber > 0 && (
           <span className="text-xs text-slate-400">{t('offers.detail.revision', { n: o.revisionNumber })}</span>
         )}
+        <span className="ms-auto">
+          <ApplicantLifecycleActions applicantId={o.applicantId} showWithdrawnHint />
+        </span>
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">

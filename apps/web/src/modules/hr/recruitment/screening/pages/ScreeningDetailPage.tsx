@@ -19,6 +19,7 @@ import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { formatDateTime } from '../../../../../shared/lib/format';
 import { ScreeningStatusBadge } from '../components/ScreeningStatusBadge';
 import { DecideDialog } from '../components/DecideDialog';
+import { ApplicantLifecycleActions } from '../../applicants/components/ApplicantLifecycleActions';
 import { useAddScreeningNote, useScreening } from '../api/screening-queries';
 
 export const ScreeningDetailPage = (): JSX.Element => {
@@ -101,6 +102,9 @@ export const ScreeningDetailPage = (): JSX.Element => {
           {s.applicantCode}
         </Link>
         <ScreeningStatusBadge status={s.status} />
+        <span className="ms-auto">
+          <ApplicantLifecycleActions applicantId={s.applicantId} showWithdrawnHint />
+        </span>
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">

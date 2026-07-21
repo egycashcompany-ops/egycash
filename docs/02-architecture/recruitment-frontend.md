@@ -83,7 +83,7 @@ replacing that element, with zero layout/routing work.
 
 ## 6. Deliberately deferred
 
-- **Feature screens** — the later-stage screens (Applicants ships in Phase 2 — §7; Initial Screening in Phase 3 — §8; Interviews in Phase 4 — §9; Job Offer in Phase 5 — §10; Employees in Phase 6 — §11; Hiring Documents in Phase 7 — §12; the Electronic Employee File remains a later sprint).
+- **Feature screens** — all seven recruitment stages are now built (Applicants §7 · Initial Screening §8 · Interviews §9 · Job Offer §10 · Employees §11 · Hiring Documents §12 · Electronic Employee File §13). *(Phase 1 itself deliberately shipped none.)*
 - **shadcn/ui + react-hook-form** — §6 names these as the eventual kit; the foundation provides the
   same wrapped-in-`shared/ui` surface with hand-rolled, dependency-free primitives so a later
   migration is localized. No behavior depends on the concrete library.
@@ -277,3 +277,28 @@ type administration, `hiringDocumentType.manage`, is out of scope, like intervie
 
 Deferred (same as earlier phases): frontend component tests (Vitest + RTL). Document-type
 administration (create/edit the catalog) is out of scope; the catalog is consumed read-only.
+
+## 13. Electronic Employee File (Phase 8)
+
+The seventh and final feature screen set (`modules/hr/recruitment/employee-files/`) — the handoff
+artifact to the future Employee module (BD-008). Endpoints (matched exactly): `/hr/employee-files`
+(list, `POST` create-for-employee, get, `/:id/notes` add-note). **No new backend API is introduced.**
+
+- **List** (`employeeFile.view`) — sortable `DataTable` (employee `code`, created — the backend's
+  sortable fields); filters (a **free-text search** over employee number/applicant code + status);
+  `Pagination`. Search, status, sort and pagination are **URL-synchronized**. An **Assemble file**
+  action (`employeeFile.create`) opens a dialog to pick an employee (whose hiring documents are
+  complete — server-enforced; the employee search reuses the Employees list API).
+- **Detail** (`employeeFile.view`) — the **Employee Timeline** (shared `Timeline`) built from the
+  recruitment milestones (`applicantRegistered` → … → `hiringDocumentsCompleted` → `fileOpened`)
+  plus free-form notes, with an **add-note** form (`employeeFile.edit`, version-checked) that appends
+  to the timeline; and the **linked history** — deep-links into the applicant, screening, interview,
+  job-offer and hiring-documents screens (the Job Requisition shows as a read-only reference, no
+  screen yet). `ar` + `en` i18n. Each write seeds the detail cache + invalidates only the list subtree.
+
+**Recruitment frontend complete.** With this phase all seven stages of the approved recruitment
+workflow run in the UI on the single Phase 1 foundation, as one lazy route chunk.
+
+Deferred (same as earlier phases): frontend component tests (Vitest + RTL). Timeline actor (`by`)
+resolution and inline previews could follow; post-hire employee-lifecycle concerns belong to the
+future Employee module, not this stage.

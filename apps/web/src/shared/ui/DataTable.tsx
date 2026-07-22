@@ -38,6 +38,8 @@ export interface DataTableProps<T> {
   selectedIds?: Set<string>;
   onToggleRow?: (id: string) => void;
   onToggleAll?: (checked: boolean) => void;
+  /** Drop the table's own border/rounding/background when it sits inside a ListView surface. */
+  embedded?: boolean;
 }
 
 const alignClass: Record<'start' | 'center' | 'end', string> = {
@@ -61,6 +63,7 @@ export const DataTable = <T,>({
   selectedIds,
   onToggleRow,
   onToggleAll,
+  embedded = false,
 }: DataTableProps<T>): JSX.Element => {
   const colCount = columns.length + (selectable ? 1 : 0);
   const selected = selectedIds ?? new Set<string>();
@@ -144,7 +147,12 @@ export const DataTable = <T,>({
   })();
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+    <div
+      className={cn(
+        'overflow-x-auto',
+        !embedded && 'rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900',
+      )}
+    >
       <table className="w-full min-w-[40rem] border-collapse">
         <thead>
           <tr className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">

@@ -10,6 +10,7 @@ export { DataTable, type Column, type DataTableProps, type SortState } from './D
 export { Pagination } from './Pagination';
 export { SearchInput } from './SearchInput';
 export { FilterBar } from './FilterBar';
+export { ListView } from './ListView';
 export { BulkActions } from './BulkActions';
 export { Dialog } from './Dialog';
 export { FileUpload } from './FileUpload';

@@ -13,7 +13,7 @@ import { PageContainer, PageHeader } from '../../../../platform/layout/PageConta
 import { DataTable, type Column } from '../../../../shared/ui/DataTable';
 import { Pagination } from '../../../../shared/ui/Pagination';
 import { Button } from '../../../../shared/ui/Button';
-import { FilterBar } from '../../../../shared/ui/FilterBar';
+import { ListView } from '../../../../shared/ui/ListView';
 import { SearchInput } from '../../../../shared/ui/SearchInput';
 import { Select } from '../../../../shared/ui/form';
 import { StatusBadge } from '../../../../shared/ui/Badge';
@@ -153,43 +153,57 @@ export const SectionsListPage = (): JSX.Element => {
         }
       />
 
-      <div className="space-y-4">
-        <FilterBar
-          hasActiveFilters={search !== '' || status !== '' || branchId !== '' || departmentId !== ''}
-          onClear={() => setSp(new URLSearchParams())}
-        >
+      <ListView
+        total={data?.meta.totalItems}
+        hasActiveFilters={search !== '' || status !== '' || branchId !== '' || departmentId !== ''}
+        onClear={() => setSp(new URLSearchParams())}
+        search={
           <SearchInput
+            className="w-full sm:w-64"
             value={search}
             onChange={(v) => patch({ q: v || null })}
             placeholder={t('organization.filter.search')}
           />
-          <Select
-            className="w-48"
-            value={branchId}
-            onChange={(e) => patch({ branchId: e.target.value || null, departmentId: null })}
-          >
-            <option value="">{t('organization.filter.allBranches')}</option>
-            {branches.map((b) => (
-              <option key={b.id} value={b.id}>
-                {localized(b.name, locale)}
-              </option>
-            ))}
-          </Select>
-          <Select className="w-48" value={departmentId} onChange={(e) => patch({ departmentId: e.target.value || null })}>
-            <option value="">{t('organization.filter.allDepartments')}</option>
-            {filterDepartments.map((d) => (
-              <option key={d.id} value={d.id}>
-                {localized(d.name, locale)}
-              </option>
-            ))}
-          </Select>
-          <Select className="w-40" value={status} onChange={(e) => patch({ status: e.target.value || null })}>
-            <option value="">{t('organization.filter.allStatuses')}</option>
-            <option value="active">{t('organization.status.active')}</option>
-            <option value="inactive">{t('organization.status.inactive')}</option>
-          </Select>
-        </FilterBar>
-
+        }
+        filters={
+          <>
+            <Select
+              className="w-48"
+              value={branchId}
+              onChange={(e) => patch({ branchId: e.target.value || null, departmentId: null })}
+            >
+              <option value="">{t('organization.filter.allBranches')}</option>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {localized(b.name, locale)}
+                </option>
+              ))}
+            </Select>
+            <Select className="w-48" value={departmentId} onChange={(e) => patch({ departmentId: e.target.value || null })}>
+              <option value="">{t('organization.filter.allDepartments')}</option>
+              {filterDepartments.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {localized(d.name, locale)}
+                </option>
+              ))}
+            </Select>
+            <Select className="w-40" value={status} onChange={(e) => patch({ status: e.target.value || null })}>
+              <option value="">{t('organization.filter.allStatuses')}</option>
+              <option value="active">{t('organization.status.active')}</option>
+              <option value="inactive">{t('organization.status.inactive')}</option>
+            </Select>
+          </>
+        }
+        pagination={
+          data !== undefined && data.meta.totalItems > 0 ? (
+            <Pagination
+              meta={data.meta}
+              onPageChange={(p) => patch({ page: String(p) }, false)}
+              onPageSizeChange={(size) => patch({ size: String(size), page: null }, false)}
+            />
+          ) : undefined
+        }
+      >
         <DataTable
           columns={columns}
           rows={rows}
@@ -202,15 +216,9 @@ export const SectionsListPage = (): JSX.Element => {
             patch({ sort: `${by}:${sort.by === by && sort.dir === 'asc' ? 'desc' : 'asc'}` }, false)
           }
           onRowClick={(s) => navigate(s.id)}
+          embedded
         />
-        {data !== undefined && data.meta.totalItems > 0 && (
-          <Pagination
-            meta={data.meta}
-            onPageChange={(p) => patch({ page: String(p) }, false)}
-            onPageSizeChange={(size) => patch({ size: String(size), page: null }, false)}
-          />
-        )}
-      </div>
+      </ListView>
     </PageContainer>
   );
 };

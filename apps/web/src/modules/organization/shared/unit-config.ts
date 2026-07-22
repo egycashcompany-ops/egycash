@@ -22,6 +22,8 @@ export interface UnitConfig<TDto extends AnyUnitDto> {
   /** Parent selectors, outermost first — also drive the list filters. */
   parents: ParentKind[];
   hasAddress: boolean;
+  /** Carries an optional bilingual description (Departments/Sections; not Branches). */
+  hasDescription: boolean;
   routeBase: string;
   queries: UnitQueries<TDto>;
 }
@@ -36,6 +38,7 @@ export const branchConfig: UnitConfig<BranchDto> = {
   feature: 'branches',
   parents: [],
   hasAddress: true,
+  hasDescription: false,
   routeBase: '/organization/branches',
   queries: makeUnitQueries<BranchDto>('branches', branchApi),
 };
@@ -46,6 +49,7 @@ export const departmentConfig: UnitConfig<DepartmentDto> = {
   feature: 'departments',
   parents: ['branch'],
   hasAddress: false,
+  hasDescription: true,
   routeBase: '/organization/departments',
   queries: makeUnitQueries<DepartmentDto>('departments', departmentApi),
 };
@@ -56,6 +60,7 @@ export const sectionConfig: UnitConfig<SectionDto> = {
   feature: 'sections',
   parents: ['branch', 'department'],
   hasAddress: false,
+  hasDescription: false,
   routeBase: '/organization/sections',
   queries: makeUnitQueries<SectionDto>('sections', sectionApi),
 };

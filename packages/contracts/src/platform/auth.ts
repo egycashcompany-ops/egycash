@@ -55,6 +55,8 @@ export interface MeDto {
   branchId: string | null;
   /** Effective permission → widest granted scope (ADR-004, ADR-015). */
   permissions: Record<string, DataScope>;
+  /** Holds a protected system role or a break-glass permission — e.g. super-admin (Review R13). */
+  isPrivileged: boolean;
   flags: Record<string, boolean>;
   totpEnabled: boolean;
 }

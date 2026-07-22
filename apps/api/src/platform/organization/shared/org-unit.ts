@@ -94,6 +94,15 @@ export interface OrgUnitHooks<TDoc extends OrgUnitDoc> {
   hasChildren?: (id: string) => Promise<boolean>;
   /** Validates a referenced manager user id. */
   assertManagerExists: (userId: string) => Promise<void>;
+  /** Optional: reject a duplicate name (opt-in per unit, e.g. Branches). `excludeId` skips self. */
+  assertNameAvailable?: (name: LocalizedString, excludeId?: string) => Promise<void>;
+  /**
+   * Optional: map the raw update body to extra `$set` fields for per-unit columns that the generic
+   * update does not know about (e.g. Branch `address`, Department/Section `description`). Only keys
+   * present in the returned object are set, so callers guard with `!== undefined` to preserve
+   * omitted-field semantics.
+   */
+  buildUpdateSet?: (input: Record<string, unknown>) => Record<string, unknown>;
 }
 
 export class OrgUnitService<TDoc extends OrgUnitDoc> {
@@ -137,6 +146,9 @@ export class OrgUnitService<TDoc extends OrgUnitDoc> {
 
   async create(input: CreateUnitInput & Record<string, unknown>, by: string): Promise<TDoc> {
     await this.assertManagers(input);
+    if (this.hooks.assertNameAvailable !== undefined) {
+      await this.hooks.assertNameAvailable(input.name);
+    }
     const id = new Types.ObjectId();
     const extras = await this.hooks.buildCreateExtras(input, id);
     const doc = await this.repository.create(
@@ -169,6 +181,9 @@ export class OrgUnitService<TDoc extends OrgUnitDoc> {
 
   async update(id: string, input: UpdateUnitInput, by: string): Promise<TDoc> {
     await this.assertManagers(input);
+    if (input.name !== undefined && this.hooks.assertNameAvailable !== undefined) {
+      await this.hooks.assertNameAvailable(input.name, id);
+    }
     const before = await this.repository.getById(id);
     const set: Record<string, unknown> = {};
     if (input.name !== undefined) set.name = input.name;
@@ -181,6 +196,9 @@ export class OrgUnitService<TDoc extends OrgUnitDoc> {
         input.actingManager === null
           ? null
           : { ...input.actingManager, userId: new Types.ObjectId(input.actingManager.userId) };
+    }
+    if (this.hooks.buildUpdateSet !== undefined) {
+      Object.assign(set, this.hooks.buildUpdateSet(input as unknown as Record<string, unknown>));
     }
     const after = await this.repository.updateById(id, set, { by, version: input.version });
     await auditService.record({

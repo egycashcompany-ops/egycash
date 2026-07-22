@@ -20,14 +20,19 @@ export const departmentService = new OrgUnitService<DepartmentDoc>(
       return {
         branchId: new Types.ObjectId(input.branchId),
         path: `${input.branchId}/${String(id)}`,
+        description: input.description ?? null,
       } as Partial<DepartmentDoc>;
     },
     // hasChildren (sections guard) is wired by the organization composition.
     assertManagerExists,
+    // `description` is a per-unit column the generic update does not know about (ADR-015 seam).
+    buildUpdateSet: (input) =>
+      input.description !== undefined ? { description: input.description ?? null } : {},
   },
 );
 
 export const toDepartmentDto = (doc: DepartmentDoc): DepartmentDto => ({
   ...departmentService.baseDto(doc),
   branchId: String(doc.branchId),
+  description: doc.description ?? null,
 });

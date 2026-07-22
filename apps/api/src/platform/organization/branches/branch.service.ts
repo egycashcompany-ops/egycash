@@ -14,6 +14,14 @@ export const branchService = new OrgUnitService<BranchDoc>('branch', branchRepos
   },
   // hasChildren is wired by the organization service composition (departments guard).
   assertManagerExists,
+  // Branch names are unique (case-insensitive, ar or en) — surfaced to the admin as a conflict.
+  assertNameAvailable: async (name, excludeId) => {
+    const existing = await branchRepository.findByName(name, excludeId);
+    if (existing !== null) throw new ConflictError('A branch with this name already exists');
+  },
+  // `address` is a per-unit column the generic update does not know about — persist it on edit too.
+  buildUpdateSet: (input) =>
+    input.address !== undefined ? { address: input.address ?? null } : {},
 });
 
 /**

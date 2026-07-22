@@ -12,6 +12,10 @@ import { UnitListPage } from './shared/UnitListPage';
 import { UnitDetailPage } from './shared/UnitDetailPage';
 import { UnitFormPage } from './shared/UnitFormPage';
 import { branchConfig, departmentConfig, sectionConfig } from './shared/unit-config';
+import { BranchesListPage } from './branches/pages/BranchesListPage';
+import { BranchDetailPage } from './branches/pages/BranchDetailPage';
+import { DepartmentsListPage } from './departments/pages/DepartmentsListPage';
+import { DepartmentDetailPage } from './departments/pages/DepartmentDetailPage';
 import { JobTitlesListPage } from './job-titles/pages/JobTitlesListPage';
 import { JobTitleDetailPage } from './job-titles/pages/JobTitleDetailPage';
 import { JobTitleFormPage } from './job-titles/pages/JobTitleFormPage';
@@ -39,7 +43,7 @@ export default function OrganizationRoutes(): JSX.Element {
             </RequirePermission>
           }
         >
-          <Route index element={<UnitListPage config={branchConfig} />} />
+          <Route index element={<BranchesListPage />} />
           <Route
             path="new"
             element={
@@ -48,7 +52,7 @@ export default function OrganizationRoutes(): JSX.Element {
               </RequirePermission>
             }
           />
-          <Route path=":id" element={<UnitDetailPage config={branchConfig} />} />
+          <Route path=":id" element={<BranchDetailPage />} />
           <Route
             path=":id/edit"
             element={
@@ -67,7 +71,7 @@ export default function OrganizationRoutes(): JSX.Element {
             </RequirePermission>
           }
         >
-          <Route index element={<UnitListPage config={departmentConfig} />} />
+          <Route index element={<DepartmentsListPage />} />
           <Route
             path="new"
             element={
@@ -76,7 +80,7 @@ export default function OrganizationRoutes(): JSX.Element {
               </RequirePermission>
             }
           />
-          <Route path=":id" element={<UnitDetailPage config={departmentConfig} />} />
+          <Route path=":id" element={<DepartmentDetailPage />} />
           <Route
             path=":id/edit"
             element={

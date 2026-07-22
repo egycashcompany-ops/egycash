@@ -62,7 +62,13 @@ export const CreateBranchSchema = z
   .strict();
 export type CreateBranch = z.infer<typeof CreateBranchSchema>;
 
-export const CreateDepartmentSchema = z.object({ ...orgUnitBase, branchId: objectId() }).strict();
+export const CreateDepartmentSchema = z
+  .object({
+    ...orgUnitBase,
+    branchId: objectId(),
+    description: LocalizedStringSchema.nullable().optional(),
+  })
+  .strict();
 export type CreateDepartment = z.infer<typeof CreateDepartmentSchema>;
 
 export const CreateSectionSchema = z.object({ ...orgUnitBase, departmentId: objectId() }).strict();
@@ -115,7 +121,9 @@ export const ChangeBranchCodeSchema = z
   .strict();
 export type ChangeBranchCode = z.infer<typeof ChangeBranchCodeSchema>;
 
-export const UpdateDepartmentSchema = z.object(updatableUnitFields).strict();
+export const UpdateDepartmentSchema = z
+  .object({ ...updatableUnitFields, description: LocalizedStringSchema.nullable().optional() })
+  .strict();
 export type UpdateDepartment = z.infer<typeof UpdateDepartmentSchema>;
 
 export const UpdateSectionSchema = z.object(updatableUnitFields).strict();
@@ -167,6 +175,7 @@ export interface BranchDto extends OrgUnitDto {
 
 export interface DepartmentDto extends OrgUnitDto {
   branchId: string;
+  description: { ar: string; en: string } | null;
 }
 
 export interface SectionDto extends OrgUnitDto {

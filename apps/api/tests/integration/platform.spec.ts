@@ -723,6 +723,106 @@ describe('login → permission → scoped data → audit trail', () => {
     expect(inactiveApp.status).toBe(422);
   });
 
+  it('resolves the caller\'s effective applications: union, dedupe, active-only, grouped, ordered (PR #64)', async () => {
+    // A department under branch A, with a user placed inside it.
+    const dept = await request(app)
+      .post('/api/v1/platform/departments')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: 'DEP-ME', name: { ar: 'قسمي', en: 'Me Dept' }, branchId: branchAId });
+    const deptId = (dept.body as { data: { id: string } }).data.id;
+
+    const created = await request(app)
+      .post('/api/v1/platform/users')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        email: 'dave@ecms.local',
+        firstName: { ar: 'ديف', en: 'Dave' },
+        lastName: { ar: 'اختبار', en: 'Test' },
+        organization: { branchId: branchAId, departmentId: deptId, sectionId: null, jobTitleId: null },
+      });
+    expect(created.status).toBe(201);
+    const daveBody = (created.body as { data: { id: string; activationToken: string } }).data;
+    const daveId = daveBody.id;
+    await request(app)
+      .post('/api/v1/auth/activate')
+      .send({ token: daveBody.activationToken, password: PASSWORD });
+    const daveToken = (await doLogin('dave@ecms.local', PASSWORD)).body.data?.accessToken ?? '';
+
+    // With no assignments yet, the caller's navigation is empty.
+    const empty = await request(app)
+      .get('/api/v1/platform/me/applications')
+      .set('Authorization', `Bearer ${daveToken}`);
+    expect(empty.status).toBe(200);
+    expect((empty.body as { data: unknown[] }).data).toEqual([]);
+
+    // Two categories (HR sorts before Ops) and five applications.
+    const mkCat = async (en: string, ar: string, sortOrder: number): Promise<string> => {
+      const res = await request(app)
+        .post('/api/v1/platform/application-categories')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ name: { ar, en }, sortOrder });
+      return (res.body as { data: { id: string } }).data.id;
+    };
+    const hrCat = await mkCat('ME HR', 'م أفراد', 1);
+    const opsCat = await mkCat('ME Ops', 'م عمليات', 10);
+
+    const mkApp = async (code: string, categoryId: string, sortOrder: number): Promise<string> => {
+      const res = await request(app)
+        .post('/api/v1/platform/applications')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ name: { ar: code, en: code }, icon: 'x', route: `/${code}`, categoryId, sortOrder });
+      return (res.body as { data: { id: string } }).data.id;
+    };
+    const hr1 = await mkApp('ME-HR-1', hrCat, 2);
+    const hr2 = await mkApp('ME-HR-2', hrCat, 1);
+    const ops1 = await mkApp('ME-OPS-1', opsCat, 0);
+    const overlap = await mkApp('ME-OVERLAP', opsCat, 5);
+    const willDeactivate = await mkApp('ME-OFF', hrCat, 0);
+
+    // Department gets hr1, ops1, overlap. Dave (direct) gets hr2, overlap (a duplicate), willDeactivate.
+    const assignDept = (applicationId: string) =>
+      request(app)
+        .post(`/api/v1/platform/departments/${deptId}/applications`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ applicationId });
+    for (const id of [hr1, ops1, overlap]) expect((await assignDept(id)).status).toBe(201);
+
+    const assignUser = (applicationId: string) =>
+      request(app)
+        .post(`/api/v1/platform/users/${daveId}/applications`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ applicationId });
+    for (const id of [hr2, overlap, willDeactivate]) expect((await assignUser(id)).status).toBe(201);
+
+    // Deactivate one application *after* it was granted — the resolver must now drop it.
+    await request(app)
+      .patch(`/api/v1/platform/applications/${willDeactivate}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'inactive', version: 0 });
+
+    const nav = await request(app)
+      .get('/api/v1/platform/me/applications')
+      .set('Authorization', `Bearer ${daveToken}`);
+    expect(nav.status).toBe(200);
+    const groups = (nav.body as {
+      data: { id: string; applications: { id: string; name: unknown; icon: string; route: string }[] }[];
+    }).data;
+
+    // Categories ordered by sortOrder (HR then Ops); applications ordered by sortOrder within each.
+    expect(groups.map((g) => g.id)).toEqual([hrCat, opsCat]);
+    expect(groups[0]?.applications.map((a) => a.id)).toEqual([hr2, hr1]);
+    expect(groups[1]?.applications.map((a) => a.id)).toEqual([ops1, overlap]);
+
+    // The overlapping application appears exactly once; the deactivated one is gone.
+    const allIds = groups.flatMap((g) => g.applications.map((a) => a.id));
+    expect(allIds.filter((id) => id === overlap)).toHaveLength(1);
+    expect(allIds).not.toContain(willDeactivate);
+
+    // Only the fields the navigation renderer needs are returned.
+    expect(Object.keys(groups[0]?.applications[0] ?? {}).sort()).toEqual(['icon', 'id', 'name', 'route']);
+    expect(Object.keys(groups[0] ?? {}).sort()).toEqual(['applications', 'icon', 'id', 'name']);
+  });
+
   it('enforces DEPARTMENT scope: a department-scoped user sees only same-department users (ADR-017)', async () => {
     const dept = await request(app)
       .post('/api/v1/platform/departments')

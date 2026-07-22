@@ -98,3 +98,21 @@ export interface ApplicationDto {
   createdAt: string;
   updatedAt: string;
 }
+
+// ── Effective Applications (the caller's own navigation) ─────────────────────
+// The applications a signed-in user can actually open, grouped for the sidebar. The effective set is
+// the union of the department's applications and the user's direct grants — deduplicated, active-only,
+// ordered by category then application. Only the fields the navigation renderer needs are returned.
+export interface MyApplicationDto {
+  id: string;
+  name: { ar: string; en: string };
+  icon: string;
+  route: string;
+}
+
+export interface MyApplicationCategoryDto {
+  id: string;
+  name: { ar: string; en: string };
+  icon: string | null;
+  applications: MyApplicationDto[];
+}

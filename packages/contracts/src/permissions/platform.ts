@@ -73,6 +73,13 @@ export const jobTitlePermissions = declarePermissions(
   ['view', 'create', 'edit', 'delete'],
 );
 
+export const jobPositionPermissions = declarePermissions(
+  P,
+  'jobPosition',
+  { en: 'job positions', ar: 'الوظائف' },
+  ['view', 'create', 'edit', 'delete'],
+);
+
 export const settingPermissions = declarePermissions(
   P,
   'setting',
@@ -155,6 +162,7 @@ export const platformPermissions: PermissionDef[] = [
   ...departmentPermissions,
   ...sectionPermissions,
   ...jobTitlePermissions,
+  ...jobPositionPermissions,
   ...settingPermissions,
   ...auditLogPermissions,
   ...activityLogPermissions,

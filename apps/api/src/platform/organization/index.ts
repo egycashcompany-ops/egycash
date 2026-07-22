@@ -35,4 +35,10 @@ export {
   type SectionDoc,
 } from './sections';
 export { jobTitleService, buildJobTitlesRouter, type JobTitleDoc } from './job-titles';
+export {
+  jobPositionService,
+  buildJobPositionsRouter,
+  jobPositionRepository,
+  type JobPositionDoc,
+} from './job-positions';
 export { effectiveManagerId } from './shared/org-unit';

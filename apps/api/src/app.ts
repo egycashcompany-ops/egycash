@@ -20,6 +20,7 @@ import {
 import {
   buildBranchesRouter,
   buildDepartmentsRouter,
+  buildJobPositionsRouter,
   buildJobTitlesRouter,
   buildOrganizationRouter,
   buildSectionsRouter,
@@ -103,6 +104,7 @@ export const buildApp = (): Express => {
   api.use('/platform/departments', buildDepartmentsRouter());
   api.use('/platform/sections', buildSectionsRouter());
   api.use('/platform/job-titles', buildJobTitlesRouter());
+  api.use('/platform/job-positions', buildJobPositionsRouter());
   api.use('/platform/settings', buildSettingsRouter());
   api.use('/platform/feature-flags', buildFeatureFlagsRouter());
   api.use('/platform/audit-logs', buildAuditLogsRouter());

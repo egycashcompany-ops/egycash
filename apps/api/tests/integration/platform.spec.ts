@@ -430,6 +430,86 @@ describe('login → permission → scoped data → audit trail', () => {
     });
   });
 
+  it('manages Job Positions: department required, section optional and department-bound (PR #59)', async () => {
+    // A department (with a section) plus a section under a DIFFERENT department for the negative case.
+    const deptA = await request(app)
+      .post('/api/v1/platform/departments')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: 'DEP-JP-A', name: { ar: 'إدارة و', en: 'JP Dept A' }, branchId: branchAId });
+    const deptAId = (deptA.body as { data: { id: string } }).data.id;
+    const deptB = await request(app)
+      .post('/api/v1/platform/departments')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: 'DEP-JP-B', name: { ar: 'إدارة ز', en: 'JP Dept B' }, branchId: branchAId });
+    const deptBId = (deptB.body as { data: { id: string } }).data.id;
+    const secA = await request(app)
+      .post('/api/v1/platform/sections')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: 'SEC-JP-A', name: { ar: 'قسم و', en: 'JP Section A' }, departmentId: deptAId });
+    const secAId = (secA.body as { data: { id: string } }).data.id;
+    const secB = await request(app)
+      .post('/api/v1/platform/sections')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: 'SEC-JP-B', name: { ar: 'قسم ز', en: 'JP Section B' }, departmentId: deptBId });
+    const secBId = (secB.body as { data: { id: string } }).data.id;
+
+    // Create with department only (no section) — the master entity needs no Job Requisition.
+    const noSection = await request(app)
+      .post('/api/v1/platform/job-positions')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: { ar: 'محاسب', en: 'Accountant' }, departmentId: deptAId });
+    expect(noSection.status).toBe(201);
+    const posBody = (noSection.body as { data: { id: string; version: number; sectionId: string | null } })
+      .data;
+    expect(posBody.sectionId).toBeNull();
+    const posId = posBody.id;
+
+    // A section from another department is rejected (422 business rule).
+    const wrongSection = await request(app)
+      .post('/api/v1/platform/job-positions')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: { ar: 'مدير', en: 'Manager' }, departmentId: deptAId, sectionId: secBId });
+    expect(wrongSection.status).toBe(422);
+
+    // A section within the owning department is accepted.
+    const withSection = await request(app)
+      .post('/api/v1/platform/job-positions')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: { ar: 'أمين خزينة', en: 'Cashier' }, departmentId: deptAId, sectionId: secAId });
+    expect(withSection.status).toBe(201);
+    expect((withSection.body as { data: { sectionId: string } }).data.sectionId).toBe(secAId);
+
+    // Update: set then clear the section, and deactivate.
+    const setSection = await request(app)
+      .patch(`/api/v1/platform/job-positions/${posId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ sectionId: secAId, status: 'inactive', version: posBody.version });
+    expect(setSection.status).toBe(200);
+    const afterSet = (setSection.body as { data: { version: number; sectionId: string; status: string } })
+      .data;
+    expect(afterSet.sectionId).toBe(secAId);
+    expect(afterSet.status).toBe('inactive');
+
+    const clearSection = await request(app)
+      .patch(`/api/v1/platform/job-positions/${posId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ sectionId: null, version: afterSet.version });
+    expect(clearSection.status).toBe(200);
+    expect((clearSection.body as { data: { sectionId: string | null } }).data.sectionId).toBeNull();
+
+    // List, filtered by department, then soft-delete.
+    const listed = await request(app)
+      .get(`/api/v1/platform/job-positions?departmentId=${deptAId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(listed.status).toBe(200);
+    expect((listed.body as { data: unknown[] }).data.length).toBeGreaterThanOrEqual(2);
+
+    const removed = await request(app)
+      .delete(`/api/v1/platform/job-positions/${posId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(removed.status).toBe(204);
+  });
+
   it('enforces DEPARTMENT scope: a department-scoped user sees only same-department users (ADR-017)', async () => {
     const dept = await request(app)
       .post('/api/v1/platform/departments')

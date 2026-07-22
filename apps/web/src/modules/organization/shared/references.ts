@@ -7,6 +7,7 @@ import {
   type BranchDto,
   type DepartmentDto,
   type Paginated,
+  type SectionDto,
   type UserDto,
 } from '@ecms/contracts';
 import { buildQuery, get, getPage } from '../../../shared/lib/api-client';
@@ -18,6 +19,11 @@ const listBranches = (): Promise<Paginated<BranchDto>> =>
 const listDepartments = (branchId?: string): Promise<Paginated<DepartmentDto>> =>
   getPage<DepartmentDto>(
     `/platform/departments${buildQuery({ status: 'active', pageSize: 200, branchId })}`,
+  );
+
+const listSections = (departmentId?: string): Promise<Paginated<SectionDto>> =>
+  getPage<SectionDto>(
+    `/platform/sections${buildQuery({ status: 'active', pageSize: 200, departmentId })}`,
   );
 
 const searchUsers = (term: string): Promise<Paginated<UserDto>> =>
@@ -40,6 +46,17 @@ export const useDepartmentOptions = (branchId: string | undefined, enabled = tru
   useQuery({
     queryKey: [ORG_MODULE, 'departments', 'options', branchId ?? 'all'],
     queryFn: () => listDepartments(branchId),
+    enabled,
+    staleTime: 5 * 60_000,
+    retry: false,
+    select: (page) => page.items,
+  });
+
+/** Sections of a department (or all active sections when no department is given). */
+export const useSectionOptions = (departmentId: string | undefined, enabled = true) =>
+  useQuery({
+    queryKey: [ORG_MODULE, 'sections', 'options', departmentId ?? 'all'],
+    queryFn: () => listSections(departmentId),
     enabled,
     staleTime: 5 * 60_000,
     retry: false,

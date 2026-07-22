@@ -5,6 +5,7 @@
 // Job Titles catalog last.
 import { type NavSection } from '../../platform/navigation/nav';
 import {
+  BadgeIcon,
   BuildingIcon,
   HomeIcon,
   LayersIcon,
@@ -27,6 +28,7 @@ export const organizationNav: NavSection[] = [
       { to: '/organization/branches', labelKey: 'organization.nav.branches', icon: BuildingIcon, permission: 'branch.view' },
       { to: '/organization/departments', labelKey: 'organization.nav.departments', icon: SitemapIcon, permission: 'department.view' },
       { to: '/organization/sections', labelKey: 'organization.nav.sections', icon: LayersIcon, permission: 'section.view' },
+      { to: '/organization/job-positions', labelKey: 'organization.nav.jobPositions', icon: BadgeIcon, permission: 'jobPosition.view' },
       { to: '/organization/job-titles', labelKey: 'organization.nav.jobTitles', icon: TagIcon, permission: 'jobTitle.view' },
     ],
   },

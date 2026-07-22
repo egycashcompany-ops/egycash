@@ -136,6 +136,8 @@ beforeAll(async () => {
     userId: adminId,
     sessionId: 'seed',
     branchId: null,
+    departmentId: null,
+    sectionId: null,
     locale: 'en',
     permissions: { 'setting.edit': 'organization' },
     permissionVersion: 1,

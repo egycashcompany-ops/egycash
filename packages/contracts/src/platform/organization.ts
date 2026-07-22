@@ -108,6 +108,13 @@ export const UpdateBranchSchema = z
   .strict();
 export type UpdateBranch = z.infer<typeof UpdateBranchSchema>;
 
+// The Branch Code is immutable after creation (it is part of every employee's identity, ADR-017)
+// EXCEPT for a super-admin, who may correct it through this dedicated, privileged path.
+export const ChangeBranchCodeSchema = z
+  .object({ code: orgUnitBase.code, version: z.number().int().min(0) })
+  .strict();
+export type ChangeBranchCode = z.infer<typeof ChangeBranchCodeSchema>;
+
 export const UpdateDepartmentSchema = z.object(updatableUnitFields).strict();
 export type UpdateDepartment = z.infer<typeof UpdateDepartmentSchema>;
 

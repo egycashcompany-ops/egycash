@@ -8,7 +8,10 @@ export interface RoleAssignmentDoc extends BaseDocFields {
   userId: Types.ObjectId;
   roleId: Types.ObjectId;
   scope: DataScope;
+  /** The scope's resolved placement (the target user's home branch/department/section). */
   branchId: Types.ObjectId | null;
+  departmentId: Types.ObjectId | null;
+  sectionId: Types.ObjectId | null;
   validFrom: Date | null;
   validTo: Date | null;
 }
@@ -19,6 +22,8 @@ const roleAssignmentSchema = new Schema<RoleAssignmentDoc>(
     roleId: { type: Schema.Types.ObjectId, required: true },
     scope: { type: String, enum: DATA_SCOPES, required: true },
     branchId: { type: Schema.Types.ObjectId, default: null },
+    departmentId: { type: Schema.Types.ObjectId, default: null },
+    sectionId: { type: Schema.Types.ObjectId, default: null },
     validFrom: { type: Date, default: null },
     validTo: { type: Date, default: null },
     ...baseFields,

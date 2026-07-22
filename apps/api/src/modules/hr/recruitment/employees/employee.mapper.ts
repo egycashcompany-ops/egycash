@@ -6,7 +6,9 @@ import { type EmployeeDoc, type EmploymentDetails } from './employee.model';
 const employmentDto = (e: EmploymentDetails): EmploymentDetailsDto => ({
   jobTitleId: String(e.jobTitleId),
   departmentId: String(e.departmentId),
+  sectionId: e.sectionId === null ? null : String(e.sectionId),
   branchId: String(e.branchId),
+  jobPositionId: e.jobPositionId === null ? null : String(e.jobPositionId),
   managerId: String(e.managerId),
   employmentType: e.employmentType,
   salary: { amount: e.salary.amount, currency: e.salary.currency },
@@ -20,6 +22,7 @@ export const toEmployeeDto = (doc: EmployeeDoc): EmployeeDto => ({
   id: String(doc._id),
   code: doc.code,
   status: doc.status,
+  userId: doc.userId === null ? null : String(doc.userId),
   applicantId: String(doc.applicantId),
   applicantCode: doc.applicantCode,
   jobRequisitionId: doc.jobRequisitionId === null ? null : String(doc.jobRequisitionId),

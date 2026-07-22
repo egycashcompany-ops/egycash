@@ -11,6 +11,14 @@ export const USER_STATUSES = ['invited', 'active', 'suspended', 'archived'] as c
 export const UserStatusSchema = z.enum(USER_STATUSES);
 export type UserStatus = z.infer<typeof UserStatusSchema>;
 
+/** Login username: lowercase-normalized; defaults to the Employee Code (e.g. `001025`). */
+export const UsernameSchema = z
+  .string()
+  .trim()
+  .min(3)
+  .max(64)
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$/, 'letters, digits, dot, underscore or hyphen');
+
 const UserOrganizationSchema = z
   .object({
     branchId: objectId().nullable().default(null),
@@ -43,6 +51,8 @@ export const UpdateUserSchema = z
     lastName: LocalizedStringSchema.optional(),
     phone: PhoneNumberSchema.nullable().optional(),
     locale: LocaleSchema.optional(),
+    /** Administrators may change the username later (the Employee Code is never editable). */
+    username: UsernameSchema.optional(),
     organization: UserOrganizationSchema.partial().optional(),
     version: z.number().int().min(0),
   })
@@ -67,6 +77,10 @@ export type ListUsersQuery = z.infer<typeof ListUsersQuerySchema>;
 export interface UserDto {
   id: string;
   email: string;
+  /** Second login identifier; null for accounts that only log in by email. */
+  username: string | null;
+  /** The Employee this login belongs to; null for platform/system accounts. */
+  employeeId: string | null;
   phone: string | null;
   firstName: { ar: string; en: string };
   lastName: { ar: string; en: string };

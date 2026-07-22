@@ -1,11 +1,17 @@
-// User accounts (Platform Core §2). A user is NOT an employee — HR's future
-// Employee entity references a platform User; the platform stays business-agnostic.
+// User accounts (Platform Core §2). A login account belongs to at most one Employee (ADR-017):
+// the platform stores an opaque `employeeId` back-reference (no cross-layer import); the HR module
+// owns the linkage. `username` is a second login identifier (defaulted from the Employee Code);
+// email is retained. Platform/system accounts (e.g. the seeded super-admin) carry no employeeId.
 import { Schema, model, type Types } from 'mongoose';
 import { USER_STATUSES, type LocalizedString, type UserStatus } from '@ecms/contracts';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../shared/base/base.model';
 
 export interface UserDoc extends BaseDocFields {
   email: string;
+  /** Second login identifier (login accepts username OR email); null for legacy/system accounts. */
+  username: string | null;
+  /** The Employee this login belongs to (opaque back-reference); null for platform/system accounts. */
+  employeeId: Types.ObjectId | null;
   phone: string | null;
   passwordHash: string | null;
   profile: {
@@ -44,6 +50,8 @@ const localized = { ar: { type: String, required: true }, en: { type: String, re
 const userSchema = new Schema<UserDoc>(
   {
     email: { type: String, required: true, lowercase: true, trim: true },
+    username: { type: String, default: null, lowercase: true, trim: true },
+    employeeId: { type: Schema.Types.ObjectId, default: null },
     phone: { type: String, default: null },
     passwordHash: { type: String, default: null },
     profile: {
@@ -81,6 +89,20 @@ const userSchema = new Schema<UserDoc>(
 userSchema.index(
   { email: 1 },
   { unique: true, name: 'ux_email', partialFilterExpression: { isDeleted: false } },
+);
+// Username is unique among live accounts; accounts without a username are exempt.
+userSchema.index(
+  { username: 1 },
+  {
+    unique: true,
+    name: 'ux_username',
+    partialFilterExpression: { isDeleted: false, username: { $type: 'string' } },
+  },
+);
+// One login per employee (User → one Employee); platform/system accounts (no employeeId) are exempt.
+userSchema.index(
+  { employeeId: 1 },
+  { unique: true, name: 'ux_employeeId', partialFilterExpression: { employeeId: { $type: 'objectId' } } },
 );
 userSchema.index({ 'organization.branchId': 1, status: 1 }, { name: 'ix_branchId_status' });
 

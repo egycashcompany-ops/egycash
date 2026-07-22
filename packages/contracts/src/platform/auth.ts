@@ -3,12 +3,19 @@ import { objectId, LocaleSchema, type DataScope, type LocalizedString } from '..
 
 // API input is strict (mass-assignment defense, Security Architecture §4).
 
+// Login accepts a username OR an email (ADR-017). `identifier` is the forward-looking field;
+// `email` is retained for backward compatibility. At least one must be present.
 export const LoginSchema = z
   .object({
-    email: z.string().email(),
+    identifier: z.string().min(1).optional(),
+    email: z.string().email().optional(),
     password: z.string().min(1),
   })
-  .strict();
+  .strict()
+  .refine((v) => v.identifier !== undefined || v.email !== undefined, {
+    message: 'username or email is required',
+    path: ['identifier'],
+  });
 export type Login = z.infer<typeof LoginSchema>;
 
 export const TotpChallengeSchema = z

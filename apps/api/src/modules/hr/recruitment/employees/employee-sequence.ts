@@ -1,12 +1,13 @@
-// Atomic employee numbering (same BD-002 pattern as applicants/offers): a per-year key in the
-// shared module-local `hr_sequences` collection with an upserting `$inc` — a single atomic op,
-// so concurrent hiring never collides and never skips. The employee document also carries a
-// unique index on `code` as a second line of defence.
+// Atomic employee-code allocation (BD-002 pattern): a SINGLE global key in the shared module-local
+// `hr_sequences` collection with an upserting `$inc` — one atomic op, so concurrent hiring in any
+// branch never collides and never skips. The global number is then prefixed with the hiring
+// branch's code. The employee document also carries a unique index on `code` as a second line of
+// defence.
 import mongoose, { Schema, type ClientSession, type Model } from 'mongoose';
-import { employeeSequenceKey, formatEmployeeNumber } from './employee-number';
+import { EMPLOYEE_SEQUENCE_KEY, formatEmployeeCode } from './employee-number';
 
 interface SequenceDoc {
-  _id: string; // the sequence key, e.g. "employee:2026"
+  _id: string; // the sequence key, e.g. "employee:global"
   value: number;
 }
 
@@ -24,17 +25,20 @@ const HrSequenceModel: Model<SequenceDoc> =
   (mongoose.models.HrSequence as Model<SequenceDoc> | undefined) ??
   mongoose.model<SequenceDoc>('HrSequence', sequenceSchema);
 
-/** Atomically allocate the next employee number for `year`. */
-export const nextEmployeeNumber = async (
-  year: number = new Date().getUTCFullYear(),
+/**
+ * Atomically allocate the next GLOBAL employee sequence and format it with the branch code.
+ * `<branchCode><globalSeq>`; the numeric suffix is company-wide unique and never reused.
+ */
+export const nextEmployeeCode = async (
+  branchCode: string,
   session?: ClientSession,
 ): Promise<string> => {
   const doc = await HrSequenceModel.findOneAndUpdate(
-    { _id: employeeSequenceKey(year) },
+    { _id: EMPLOYEE_SEQUENCE_KEY },
     { $inc: { value: 1 } },
     { new: true, upsert: true, session: session ?? null },
   )
     .lean<SequenceDoc>()
     .exec();
-  return formatEmployeeNumber(year, doc.value);
+  return formatEmployeeCode(branchCode, doc.value);
 };

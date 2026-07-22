@@ -1,19 +1,17 @@
-// Employee numbering: organization-wide, yearly-reset, `EMP-{YYYY}-{seq:6}` — the immutable,
-// human-readable identifier HR uses instead of the Mongo ObjectId. Pure format/parse here;
-// the atomic sequence allocation that feeds it lives in `employee-sequence.ts` (needs Mongo).
-export const EMPLOYEE_NUMBER_PREFIX = 'EMP';
+// Branch-based Employee Code (ADR-017): `<BranchCode><GlobalSequence>`. The running number is a
+// SINGLE GLOBAL counter across the whole company — not per-branch — so the numeric suffix never
+// repeats anywhere; the branch-code prefix ties the code to the employee's hiring branch. Pure
+// format here; the atomic, concurrency-safe allocation lives in `employee-sequence.ts`.
+//
+// Examples (branch 001 then 002, global sequence 1,2,3,4,5):
+//   001001 · 001002 · 002003 · 003004 · 001005   (branch 001, global 25 → 001025)
 
-/** `EMP-2026-000001`. Pads the sequence to 6 digits; longer sequences are not truncated. */
-export const formatEmployeeNumber = (year: number, seq: number): string =>
-  `${EMPLOYEE_NUMBER_PREFIX}-${year}-${String(seq).padStart(6, '0')}`;
+/** The single global counter key in the shared `hr_sequences` collection. */
+export const EMPLOYEE_SEQUENCE_KEY = 'employee:global';
 
-/** The per-year sequence key (yearly reset), namespaced apart from the other counters. */
-export const employeeSequenceKey = (year: number): string => `employee:${year}`;
+/** Minimum width of the global running number (grows past it without truncation). */
+export const EMPLOYEE_SEQUENCE_MIN_DIGITS = 3;
 
-const EMPLOYEE_NUMBER_RE = /^EMP-(\d{4})-(\d{6,})$/;
-
-export const parseEmployeeNumber = (code: string): { year: number; seq: number } | null => {
-  const m = EMPLOYEE_NUMBER_RE.exec(code);
-  if (m === null) return null;
-  return { year: Number(m[1]), seq: Number(m[2]) };
-};
+/** `001` + `025` → `001025`. Longer sequences are not truncated. */
+export const formatEmployeeCode = (branchCode: string, seq: number): string =>
+  `${branchCode}${String(seq).padStart(EMPLOYEE_SEQUENCE_MIN_DIGITS, '0')}`;

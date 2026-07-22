@@ -190,20 +190,35 @@ class RbacService {
     const user = await userService.getById(input.userId);
     const role = await roleRepository.getById(input.roleId);
 
-    // 2.1 keeps branch-scope semantics exact and simple: branch scope always means
-    // the user's HOME branch. Multi-branch grants arrive with a real consumer.
-    let branchId: Types.ObjectId | null = null;
-    if (input.scope === 'branch') {
-      const home = user.organization.branchId;
+    // A hierarchical scope always resolves to the user's HOME placement at that level (ADR-015/017);
+    // multi-placement grants arrive with a real consumer. The optional *Id inputs, when present,
+    // must match that home placement.
+    const resolvePlacement = (
+      level: 'branch' | 'department' | 'section',
+      home: Types.ObjectId | null,
+      supplied: string | undefined,
+    ): Types.ObjectId | null => {
       if (home === null) {
-        throw new BusinessRuleError('Branch-scoped assignment requires the user to have a branch');
+        throw new BusinessRuleError(`A ${level}-scoped assignment requires the user to have a ${level}`);
       }
-      if (input.branchId !== undefined && input.branchId !== String(home)) {
+      if (supplied !== undefined && supplied !== String(home)) {
         throw new BusinessRuleError(
-          "Branch-scoped assignments must target the user's home branch (multi-branch grants are not supported yet)",
+          `${level}-scoped assignments must target the user's home ${level} (multi-${level} grants are not supported yet)`,
         );
       }
-      branchId = home;
+      return home;
+    };
+
+    const org = user.organization;
+    let branchId: Types.ObjectId | null = null;
+    let departmentId: Types.ObjectId | null = null;
+    let sectionId: Types.ObjectId | null = null;
+    if (input.scope === 'branch') {
+      branchId = resolvePlacement('branch', org.branchId, input.branchId);
+    } else if (input.scope === 'department') {
+      departmentId = resolvePlacement('department', org.departmentId, input.departmentId);
+    } else if (input.scope === 'section') {
+      sectionId = resolvePlacement('section', org.sectionId, input.sectionId);
     }
 
     const doc = await roleAssignmentRepository.create(
@@ -212,6 +227,8 @@ class RbacService {
         roleId: role._id,
         scope: input.scope,
         branchId,
+        departmentId,
+        sectionId,
         validFrom: input.validFrom ?? null,
         validTo: input.validTo ?? null,
       },
@@ -382,6 +399,8 @@ class RbacService {
       roleId: String(doc.roleId),
       scope: doc.scope,
       branchId: doc.branchId === null ? null : String(doc.branchId),
+      departmentId: doc.departmentId === null ? null : String(doc.departmentId),
+      sectionId: doc.sectionId === null ? null : String(doc.sectionId),
       validFrom: doc.validFrom === null ? null : doc.validFrom.toISOString(),
       validTo: doc.validTo === null ? null : doc.validTo.toISOString(),
       createdAt: doc.createdAt.toISOString(),
@@ -412,6 +431,8 @@ class RbacService {
         roleId: new Types.ObjectId(roleId),
         scope,
         branchId: null,
+        departmentId: null,
+        sectionId: null,
         validFrom: null,
         validTo: null,
       },

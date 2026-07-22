@@ -5,7 +5,14 @@
 // back to the Applicant, the Job Requisition, and the Accepted Job Offer. Scope is Stage 5
 // only: nothing here describes Hiring Documents / Electronic File or later stages.
 import { z } from 'zod';
-import { objectId, PaginationQuerySchema } from '../common/index.js';
+import {
+  objectId,
+  LocaleSchema,
+  LocalizedStringSchema,
+  PaginationQuerySchema,
+  PhoneNumberSchema,
+} from '../common/index.js';
+import { UsernameSchema, type UserDto } from '../platform/users.js';
 import { type EmploymentType, type OfferAllowanceDto } from './hr-job-offer.js';
 
 // ── Closed vocabulary ───────────────────────────────────────────────────────
@@ -31,6 +38,30 @@ export const CreateEmployeeSchema = z
   .strict();
 export type CreateEmployee = z.infer<typeof CreateEmployeeSchema>;
 
+// ── Login account for an Employee (ADR-017) ─────────────────────────────────
+// Every login belongs to one Employee. The organizational placement (branch/department/section/
+// job title) is copied from the Employee, never supplied here. `username` defaults to the Employee
+// Code when omitted. An email is required and remains a valid login identifier.
+export const CreateEmployeeLoginSchema = z
+  .object({
+    email: z.string().email(),
+    username: UsernameSchema.optional(),
+    firstName: LocalizedStringSchema,
+    lastName: LocalizedStringSchema,
+    phone: PhoneNumberSchema.optional(),
+    locale: LocaleSchema.default('ar'),
+  })
+  .strict();
+export type CreateEmployeeLogin = z.infer<typeof CreateEmployeeLoginSchema>;
+
+export interface EmployeeLoginDto {
+  user: UserDto;
+  /** Returned once at creation — used to build the activation link (dev: logged). */
+  activationToken: string;
+  /** Echo of the Employee Code the username defaulted from. */
+  employeeCode: string;
+}
+
 // ── List ─────────────────────────────────────────────────────────────────────
 
 export const ListEmployeesQuerySchema = PaginationQuerySchema.extend({
@@ -49,7 +80,11 @@ export type ListEmployeesQuery = z.infer<typeof ListEmployeesQuerySchema>;
 export interface EmploymentDetailsDto {
   jobTitleId: string;
   departmentId: string;
+  /** Section within the department; null when the offer did not specify one. */
+  sectionId: string | null;
   branchId: string;
+  /** Approved Job Position, when one exists — OPTIONAL forever (ADR-016 Talent Pool). */
+  jobPositionId: string | null;
   managerId: string;
   employmentType: EmploymentType;
   salary: { amount: number; currency: string };
@@ -61,9 +96,11 @@ export interface EmploymentDetailsDto {
 
 export interface EmployeeDto {
   id: string;
-  /** Immutable, unique, human-readable employee number, e.g. `EMP-2026-000001`. */
+  /** Immutable, unique employee code `<BranchCode><GlobalSequence>`, e.g. `001025` (ADR-017). */
   code: string;
   status: EmployeeStatus;
+  /** The linked login account, or null when the employee has no login yet (ADR-017). */
+  userId: string | null;
   // Preserved references.
   applicantId: string;
   applicantCode: string;

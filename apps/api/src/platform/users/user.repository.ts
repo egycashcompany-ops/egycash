@@ -5,12 +5,24 @@ import { UserModel, type UserDoc } from './user.model';
 
 class UserRepository extends BaseRepository<UserDoc> {
   constructor() {
-    super(UserModel, { branchField: 'organization.branchId' });
+    // Scoped by the full org hierarchy (ADR-017): section ⊂ department ⊂ branch ⊂ organization.
+    super(UserModel, {
+      branchField: 'organization.branchId',
+      departmentField: 'organization.departmentId',
+      sectionField: 'organization.sectionId',
+    });
   }
 
   async findByEmail(email: string): Promise<UserDoc | null> {
     return this.model
       .findOne({ email: email.toLowerCase(), isDeleted: false })
+      .lean<UserDoc>()
+      .exec();
+  }
+
+  async findByUsername(username: string): Promise<UserDoc | null> {
+    return this.model
+      .findOne({ username: username.toLowerCase(), isDeleted: false })
       .lean<UserDoc>()
       .exec();
   }

@@ -35,6 +35,8 @@ const entityRef = (userId: string) => ({
 
 const auditSnapshot = (doc: UserDoc): Record<string, unknown> => ({
   email: doc.email,
+  username: doc.username,
+  employeeId: doc.employeeId,
   phone: doc.phone,
   'profile.firstName': doc.profile.firstName,
   'profile.lastName': doc.profile.lastName,
@@ -50,15 +52,22 @@ class UserService {
   async create(
     input: CreateUser,
     by: string | null,
+    extra: { username?: string; employeeId?: string } = {},
   ): Promise<{ user: UserDoc; activationToken: string }> {
     const existing = await userRepository.findByEmail(input.email);
     if (existing !== null) throw new ConflictError('A user with this email already exists');
+    const username = extra.username?.toLowerCase();
+    if (username !== undefined && (await userRepository.findByUsername(username)) !== null) {
+      throw new ConflictError('A user with this username already exists');
+    }
 
     const activationToken = randomToken();
     const user = await unitOfWork(async (session) => {
       const created = await userRepository.create(
         {
           email: input.email,
+          username: username ?? null,
+          employeeId: extra.employeeId === undefined ? null : new Types.ObjectId(extra.employeeId),
           phone: input.phone ?? null,
           profile: { firstName: input.firstName, lastName: input.lastName },
           locale: input.locale,
@@ -112,6 +121,14 @@ class UserService {
     if (input.lastName !== undefined) set['profile.lastName'] = input.lastName;
     if (input.phone !== undefined) set.phone = input.phone;
     if (input.locale !== undefined) set.locale = input.locale;
+    if (input.username !== undefined) {
+      const username = input.username.toLowerCase();
+      const clash = await userRepository.findByUsername(username);
+      if (clash !== null && String(clash._id) !== id) {
+        throw new ConflictError('A user with this username already exists');
+      }
+      set.username = username;
+    }
     if (input.organization !== undefined) {
       for (const field of ['branchId', 'departmentId', 'sectionId', 'jobTitleId'] as const) {
         const value = input.organization[field];
@@ -184,6 +201,15 @@ class UserService {
 
   async findByEmail(email: string): Promise<UserDoc | null> {
     return userRepository.findByEmail(email);
+  }
+
+  /** Login resolution: an identifier is matched against username first, then email (ADR-017). */
+  async findByUsernameOrEmail(identifier: string): Promise<UserDoc | null> {
+    const normalized = identifier.toLowerCase().trim();
+    return (
+      (await userRepository.findByUsername(normalized)) ??
+      (await userRepository.findByEmail(normalized))
+    );
   }
 
   async list(query: ListUsersQuery, scope: ScopeSelector): Promise<Paginated<UserDoc>> {
@@ -340,6 +366,8 @@ class UserService {
     return {
       id: String(doc._id),
       email: doc.email,
+      username: doc.username,
+      employeeId: doc.employeeId === null ? null : String(doc.employeeId),
       phone: doc.phone,
       firstName: doc.profile.firstName,
       lastName: doc.profile.lastName,

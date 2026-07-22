@@ -1,5 +1,6 @@
-// Employee data access (Stage 5). Branch-scoped via `branchId` so the platform
-// own/branch/organization machinery (ADR-004, ADR-015) applies uniformly.
+// Employee data access (Stage 5). Scoped by the full org hierarchy via the denormalized
+// branch/department/section fields, so the platform own→section→department→branch→organization
+// machinery (ADR-004, ADR-015, ADR-017) applies uniformly.
 import { Types, type FilterQuery } from 'mongoose';
 import { type Paginated } from '@ecms/contracts';
 import { BaseRepository } from '../../../../shared/base/base.repository';
@@ -18,7 +19,12 @@ const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\
 
 class EmployeeRepository extends BaseRepository<EmployeeDoc> {
   constructor() {
-    super(EmployeeModel, { branchField: 'branchId', softDelete: true });
+    super(EmployeeModel, {
+      branchField: 'branchId',
+      departmentField: 'departmentId',
+      sectionField: 'sectionId',
+      softDelete: true,
+    });
   }
 
   /** The employee created from a given accepted offer, if any (duplicate-hire guard). */

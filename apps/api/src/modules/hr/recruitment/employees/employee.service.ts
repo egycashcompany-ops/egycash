@@ -12,6 +12,8 @@ import {
   HrEmployeeEvents,
   HrEmployeeTemplates,
   type CreateEmployee,
+  type CreateEmployeeLogin,
+  type CreateUser,
   type ListEmployeesQuery,
   type Paginated,
 } from '@ecms/contracts';
@@ -21,10 +23,12 @@ import { auditService } from '../../../../platform/audit';
 import { emit } from '../../../../platform/kernel/event-bus';
 import { unitOfWork } from '../../../../platform/kernel/unit-of-work';
 import { notificationsService } from '../../../../platform/notifications';
+import { branchService } from '../../../../platform/organization';
+import { userService, type UserDoc } from '../../../../platform/users';
 import { applicantService } from '../applicants';
 import { jobOfferService } from '../job-offers';
 import { employeeRepository, type EmployeeListFilter } from './employee.repository';
-import { nextEmployeeNumber } from './employee-sequence';
+import { nextEmployeeCode } from './employee-sequence';
 import { type EmployeeDoc, type EmploymentDetails } from './employee.model';
 
 const entityRef = (id: string) => ({ moduleId: 'hr', entityType: 'employee', entityId: id });
@@ -74,7 +78,10 @@ class EmployeeService {
     const employment: EmploymentDetails = {
       jobTitleId: t.jobTitleId,
       departmentId: t.departmentId,
+      // The offer snapshot does not carry a section/position; kept null (future-proof, ADR-016/017).
+      sectionId: null,
       branchId: t.branchId,
+      jobPositionId: null,
       managerId: t.managerId,
       employmentType: t.employmentType,
       salary: { amount: t.salary.amount, currency: t.salary.currency },
@@ -85,14 +92,20 @@ class EmployeeService {
     };
     const hiredAt = input.hiringDate ?? new Date();
 
-    // Atomic: allocate the number and insert the record in one transaction. The unique index
-    // on `jobOfferId` guarantees no duplicate employee even under concurrent creation.
+    // The immutable branch code prefixes the employee code (ADR-017); branch codes never change
+    // silently, so reading it before the transaction is safe.
+    const branch = await branchService.getById(String(employment.branchId));
+
+    // Atomic: allocate the GLOBAL sequence and insert the record in one transaction. The unique
+    // index on `jobOfferId` guarantees no duplicate employee even under concurrent creation, and the
+    // global counter guarantees the numeric suffix is company-wide unique.
     const doc = await unitOfWork(async (session) => {
-      const code = await nextEmployeeNumber(hiredAt.getUTCFullYear(), session);
+      const code = await nextEmployeeCode(branch.code, session);
       return employeeRepository.create(
         {
           code,
           status: 'active',
+          userId: null,
           applicantId: offer.applicantId,
           applicantCode: offer.applicantCode,
           jobRequisitionId: applicant.jobRequisitionId,
@@ -101,6 +114,8 @@ class EmployeeService {
           acceptedOfferRevision: snapshot.revisionNumber,
           employment,
           branchId: employment.branchId,
+          departmentId: employment.departmentId,
+          sectionId: employment.sectionId,
           hiredAt,
         },
         { by: ctx.userId, session },
@@ -148,6 +163,52 @@ class EmployeeService {
 
   async getById(id: string, scope: ScopeSelector): Promise<EmployeeDoc> {
     return employeeRepository.getById(id, scope);
+  }
+
+  /**
+   * Create the login account for an Employee (Employee ← one User, ADR-017). The organizational
+   * placement is copied from the Employee (never supplied by the caller); the username defaults to
+   * the Employee Code. The platform User is the authority for the link (`user.employeeId`, unique);
+   * the employee's `userId` is a denormalized back-reference set here.
+   */
+  async createLogin(
+    ctx: AuthContext,
+    employeeId: string,
+    input: CreateEmployeeLogin,
+    scope: ScopeSelector,
+  ): Promise<{ user: UserDoc; activationToken: string; employeeCode: string }> {
+    const employee = await employeeRepository.getById(employeeId, scope);
+    if (employee.userId !== null) {
+      throw new ConflictError('this employee already has a login account');
+    }
+    const createUser: CreateUser = {
+      email: input.email,
+      firstName: input.firstName,
+      lastName: input.lastName,
+      ...(input.phone === undefined ? {} : { phone: input.phone }),
+      locale: input.locale,
+      organization: {
+        branchId: String(employee.branchId),
+        departmentId: employee.departmentId === null ? null : String(employee.departmentId),
+        sectionId: employee.sectionId === null ? null : String(employee.sectionId),
+        jobTitleId: String(employee.employment.jobTitleId),
+      },
+    };
+    const { user, activationToken } = await userService.create(createUser, ctx.userId, {
+      username: input.username ?? employee.code,
+      employeeId,
+    });
+    await employeeRepository.updateById(
+      employeeId,
+      { userId: user._id },
+      { by: ctx.userId, version: employee.__v, scope },
+    );
+    await auditService.record({
+      entityRef: entityRef(employeeId),
+      action: 'loginCreated',
+      changes: [{ field: 'userId', old: null, new: String(user._id) }],
+    });
+    return { user, activationToken, employeeCode: employee.code };
   }
 }
 

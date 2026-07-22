@@ -53,6 +53,8 @@ interface UserSnapshot {
   status: string;
   permissionVersion: number;
   branchId: string | null;
+  departmentId: string | null;
+  sectionId: string | null;
   locale: 'ar' | 'en';
   totpEnabled: boolean;
 }
@@ -238,19 +240,20 @@ class AuthService {
   }
 
   async login(
-    email: string,
+    identifier: string,
     password: string,
   ): Promise<{ response: LoginResponse; tokens?: IssuedTokens }> {
     const policy = await this.loginPolicy();
-    const user = await userService.findByEmail(email);
+    // Accepts a username or an email (ADR-017); existing email logins are unaffected.
+    const user = await userService.findByUsernameOrEmail(identifier);
 
     if (user === null || user.passwordHash === null) {
       await auditService.record({
-        entityRef: { moduleId: 'platform', entityType: 'user', entityId: email },
+        entityRef: { moduleId: 'platform', entityType: 'user', entityId: identifier },
         action: 'loginFailed',
         actor: actorOf(null),
       });
-      await emit(PlatformEvents.AuthLoginFailed, { email, reason: 'unknown-user' });
+      await emit(PlatformEvents.AuthLoginFailed, { email: identifier, reason: 'unknown-user' });
       throw new UnauthenticatedError(ErrorCodes.AUTH_INVALID_CREDENTIALS, 'Invalid credentials');
     }
 
@@ -275,7 +278,7 @@ class AuthService {
       });
       await emit(PlatformEvents.AuthLoginFailed, {
         userId: String(user._id),
-        email,
+        email: user.email,
         reason: locked ? 'locked' : 'bad-password',
       });
       throw new UnauthenticatedError(ErrorCodes.AUTH_INVALID_CREDENTIALS, 'Invalid credentials');
@@ -559,10 +562,13 @@ class AuthService {
     const cached = await cache.get(key);
     if (cached !== null) return JSON.parse(cached) as UserSnapshot;
     const user = await userService.getById(userId);
+    const org = user.organization;
     const snapshot: UserSnapshot = {
       status: user.status,
       permissionVersion: user.security.permissionVersion,
-      branchId: user.organization.branchId === null ? null : String(user.organization.branchId),
+      branchId: org.branchId === null ? null : String(org.branchId),
+      departmentId: org.departmentId === null ? null : String(org.departmentId),
+      sectionId: org.sectionId === null ? null : String(org.sectionId),
       locale: user.locale,
       totpEnabled: user.security.totp.enabled,
     };
@@ -594,6 +600,8 @@ class AuthService {
       userId: claims.sub,
       sessionId: claims.sid,
       branchId: snapshot.branchId,
+      departmentId: snapshot.departmentId,
+      sectionId: snapshot.sectionId,
       locale: snapshot.locale,
       permissions: effective.permissions,
       permissionVersion: snapshot.permissionVersion,

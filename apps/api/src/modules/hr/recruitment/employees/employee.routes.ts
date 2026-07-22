@@ -5,8 +5,14 @@ import { Router } from 'express';
 import { asyncHandler, validate } from '../../../../platform/web';
 import { authenticate } from '../../../../platform/auth';
 import { authorize } from '../../../../platform/rbac';
-import { createEmployee, getEmployee, listEmployees } from './employee.controller';
 import {
+  createEmployee,
+  createEmployeeLogin,
+  getEmployee,
+  listEmployees,
+} from './employee.controller';
+import {
+  CreateEmployeeLoginSchema,
   CreateEmployeeSchema,
   EmployeeIdParamSchema,
   ListEmployeesQuerySchema,
@@ -35,6 +41,14 @@ export const buildEmployeesRouter = (): Router => {
     authorize('employee.view'),
     validate({ params: EmployeeIdParamSchema }),
     asyncHandler(getEmployee),
+  );
+  // Create the login account for an employee (Employee ← one User, ADR-017).
+  router.post(
+    '/:id/login',
+    authenticate,
+    authorize('user.create'),
+    validate({ body: CreateEmployeeLoginSchema, params: EmployeeIdParamSchema }),
+    asyncHandler(createEmployeeLogin),
   );
 
   return router;

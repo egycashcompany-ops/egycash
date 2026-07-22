@@ -32,7 +32,7 @@ const PASSWORD = 'Str0ng#Pass!';
 const REQUISITION_ID = '64b1f0aaaaaaaaaaaaaaaaaa';
 const JOB_TITLE_ID = '64b1f0cccccccccccccccc01';
 const DEPARTMENT_ID = '64b1f0cccccccccccccccc02';
-const BRANCH_ID = '64b1f0cccccccccccccccc03';
+let BRANCH_ID = ''; // real branch created in beforeAll (employee code is BranchCode-based)
 const FUTURE_VALID = '2027-03-01T00:00:00.000Z';
 const START_DATE = '2027-04-01T00:00:00.000Z';
 const HIRING_DATE = '2027-03-15T00:00:00.000Z';
@@ -213,6 +213,8 @@ beforeAll(async () => {
     userId: adminId,
     sessionId: 'seed',
     branchId: null,
+    departmentId: null,
+    sectionId: null,
     locale: 'en',
     permissions: { 'setting.edit': 'organization' },
     permissionVersion: 1,
@@ -221,6 +223,11 @@ beforeAll(async () => {
   await settingsService.set(ctx, { key: SettingKeys.TotpEnforcedForPrivileged, scope: 'organization', value: false });
 
   adminToken = await login('admin@ecms.local');
+  const branchRes = await request(app)
+    .post('/api/v1/platform/branches')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ code: '001', name: { ar: 'الرئيسي', en: 'HQ' } });
+  BRANCH_ID = (branchRes.body as { data: { id: string } }).data.id;
   aliceToken = await login('alice@ecms.local');
   interviewerToken = await login('interviewer@ecms.local');
 }, 180_000);
@@ -265,7 +272,7 @@ describe('employees — creation from the accepted offer snapshot', () => {
     const emp = res.body.data as EmployeeDto;
 
     // Unique, human-readable employee number.
-    expect(emp.code).toMatch(/^EMP-\d{4}-\d{6}$/);
+    expect(emp.code).toMatch(/^001\d{3,}$/); // <BranchCode><GlobalSequence>
     expect(emp.status).toBe('active');
     expect(emp.hiredAt).toBe(new Date(HIRING_DATE).toISOString());
 
@@ -321,5 +328,89 @@ describe('employees — creation from the accepted offer snapshot', () => {
       .set('Authorization', `Bearer ${adminToken}`);
     expect(found.status).toBe(200);
     expect((found.body as { data: EmployeeDto[] }).data.map((e) => e.code)).toContain(emp.code);
+  });
+});
+
+describe('platform identity (ADR-017) — branch code, global sequence, login account', () => {
+  const hire = async (): Promise<EmployeeDto> => {
+    const applicant = await offerReadyApplicant();
+    const offer = await acceptedOffer(applicant.id);
+    return (await createEmployee(offer.id)).body.data as EmployeeDto;
+  };
+
+  it('derives codes as <BranchCode><GlobalSequence> from a single GLOBAL counter', async () => {
+    const first = await hire();
+    const second = await hire();
+    expect(first.code).toMatch(/^001\d{3,}$/);
+    expect(second.code).toMatch(/^001\d{3,}$/);
+    // Same branch prefix; the GLOBAL running number strictly increases and never repeats.
+    expect(Number(second.code.slice(3))).toBeGreaterThan(Number(first.code.slice(3)));
+  });
+
+  it('creates a login for an employee (username defaults to the code) and logs in by username OR email', async () => {
+    const emp = await hire();
+    expect(emp.userId).toBeNull();
+
+    const email = `emp-${emp.code}@ecms.local`;
+    const loginRes = await request(app)
+      .post(`/api/v1/hr/employees/${emp.id}/login`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ email, firstName: { ar: 'موظف', en: 'Emp' }, lastName: { ar: 'جديد', en: 'New' } });
+    expect(loginRes.status).toBe(201);
+    const account = loginRes.body.data as {
+      user: { id: string; username: string | null; employeeId: string | null };
+      activationToken: string;
+      employeeCode: string;
+    };
+    expect(account.user.username).toBe(emp.code); // defaulted to the Employee Code
+    expect(account.user.employeeId).toBe(emp.id);
+    expect(account.employeeCode).toBe(emp.code);
+
+    // The employee now back-references the account.
+    const reread = await request(app)
+      .get(`/api/v1/hr/employees/${emp.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect((reread.body.data as EmployeeDto).userId).toBe(account.user.id);
+
+    // A second login for the same employee is rejected (one account per employee).
+    const dup = await request(app)
+      .post(`/api/v1/hr/employees/${emp.id}/login`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ email: `dup-${emp.code}@ecms.local`, firstName: { ar: 'x', en: 'x' }, lastName: { ar: 'y', en: 'y' } });
+    expect(dup.status).toBe(409);
+
+    // Activate the invited account, then log in BY USERNAME (the Employee Code)…
+    const activated = await request(app)
+      .post('/api/v1/auth/activate')
+      .send({ token: account.activationToken, password: PASSWORD });
+    expect(activated.status).toBe(204);
+    const byUsername = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ identifier: emp.code, password: PASSWORD });
+    expect(byUsername.status).toBe(200);
+    expect(byUsername.body.data?.me?.id).toBe(account.user.id);
+
+    // …and the email still works as a login identifier (email support is not removed).
+    const byEmail = await request(app).post('/api/v1/auth/login').send({ email, password: PASSWORD });
+    expect(byEmail.status).toBe(200);
+    expect(byEmail.body.data?.me?.id).toBe(account.user.id);
+  });
+
+  it('lets a super-admin correct an otherwise-immutable branch code, but forbids ordinary editors', async () => {
+    const branch = await request(app)
+      .post('/api/v1/platform/branches')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: 'BR-TMP-9', name: { ar: 'مؤقت', en: 'Temp' } });
+    expect(branch.status).toBe(201);
+    const branchId = (branch.body as { data: { id: string; version: number } }).data.id;
+    const version = (branch.body as { data: { version: number } }).data.version;
+
+    // A super-admin (privileged) may change it.
+    const ok = await request(app)
+      .patch(`/api/v1/platform/branches/${branchId}/code`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: 'BR-TMP-8', version });
+    expect(ok.status).toBe(200);
+    expect((ok.body as { data: { code: string } }).data.code).toBe('BR-TMP-8');
   });
 });

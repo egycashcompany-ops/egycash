@@ -60,7 +60,7 @@ export const sectionConfig: UnitConfig<SectionDto> = {
   feature: 'sections',
   parents: ['branch', 'department'],
   hasAddress: false,
-  hasDescription: false,
+  hasDescription: true,
   routeBase: '/organization/sections',
   queries: makeUnitQueries<SectionDto>('sections', sectionApi),
 };

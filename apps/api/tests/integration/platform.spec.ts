@@ -510,6 +510,64 @@ describe('login → permission → scoped data → audit trail', () => {
     expect(removed.status).toBe(204);
   });
 
+  it('manages Applications: CRUD, category filter, and soft delete (PR #60)', async () => {
+    const created = await request(app)
+      .post('/api/v1/platform/applications')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: { ar: 'التوظيف', en: 'Recruitment' },
+        icon: 'users',
+        route: '/hr/recruitment',
+        category: 'HR',
+        sortOrder: 10,
+      });
+    expect(created.status).toBe(201);
+    const appDoc = (
+      created.body as {
+        data: { id: string; version: number; sortOrder: number; status: string; category: string };
+      }
+    ).data;
+    expect(appDoc.sortOrder).toBe(10);
+    expect(appDoc.status).toBe('active');
+
+    // A second application in a different category, for the filter check.
+    await request(app)
+      .post('/api/v1/platform/applications')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: { ar: 'الخزينة', en: 'Treasury' }, icon: 'building', route: '/treasury', category: 'Treasury' });
+
+    // Update route + deactivate.
+    const updated = await request(app)
+      .patch(`/api/v1/platform/applications/${appDoc.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ route: '/hr/recruitment/pipeline', status: 'inactive', version: appDoc.version });
+    expect(updated.status).toBe(200);
+    const afterUpdate = (updated.body as { data: { route: string; status: string } }).data;
+    expect(afterUpdate.route).toBe('/hr/recruitment/pipeline');
+    expect(afterUpdate.status).toBe('inactive');
+
+    // Filter by category returns only the HR application.
+    const listed = await request(app)
+      .get('/api/v1/platform/applications?category=HR')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(listed.status).toBe(200);
+    const items = (listed.body as { data: { category: string }[] }).data;
+    expect(items.length).toBe(1);
+    expect(items[0]?.category).toBe('HR');
+
+    // Missing a required field is a validation error (400).
+    const invalid = await request(app)
+      .post('/api/v1/platform/applications')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: { ar: 'ناقص', en: 'Incomplete' }, icon: 'x', category: 'HR' });
+    expect(invalid.status).toBe(400);
+
+    const removed = await request(app)
+      .delete(`/api/v1/platform/applications/${appDoc.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(removed.status).toBe(204);
+  });
+
   it('enforces DEPARTMENT scope: a department-scoped user sees only same-department users (ADR-017)', async () => {
     const dept = await request(app)
       .post('/api/v1/platform/departments')

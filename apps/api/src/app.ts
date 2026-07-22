@@ -25,6 +25,7 @@ import {
   buildOrganizationRouter,
   buildSectionsRouter,
 } from './platform/organization';
+import { buildApplicationsRouter } from './platform/applications';
 import { buildFeatureFlagsRouter, buildSettingsRouter } from './platform/settings';
 import {
   buildActivityLogsRouter,
@@ -105,6 +106,7 @@ export const buildApp = (): Express => {
   api.use('/platform/sections', buildSectionsRouter());
   api.use('/platform/job-titles', buildJobTitlesRouter());
   api.use('/platform/job-positions', buildJobPositionsRouter());
+  api.use('/platform/applications', buildApplicationsRouter());
   api.use('/platform/settings', buildSettingsRouter());
   api.use('/platform/feature-flags', buildFeatureFlagsRouter());
   api.use('/platform/audit-logs', buildAuditLogsRouter());

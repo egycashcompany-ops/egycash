@@ -1,7 +1,8 @@
 // Dynamic sidebar: a persistent rail on desktop (lg+) and an off-canvas drawer on mobile (driven by
 // ui.sidebarOpen). The navigation is loaded exclusively from GET /platform/me/applications — a tree
-// of Category → Application, rendered in the backend's order. Categories collapse/expand locally.
-// Fully RTL-safe via logical borders/spacing; the drawer slides from the reading-start edge.
+// of Category → Application, rendered in the backend's order. Categories collapse/expand locally and
+// the collapsed set is remembered across reloads. Fully RTL-safe via logical borders/spacing; the
+// drawer slides from the reading-start edge.
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { type Locale } from '@ecms/contracts';
@@ -16,17 +17,48 @@ import { ErrorState } from '../../shared/ui/states/ErrorState';
 import { useMyApplications } from '../navigation/me-applications-queries';
 import { resolveNavIcon } from '../navigation/app-icon';
 
+// Collapsed categories persist across reloads so the rail keeps the shape the user left it in.
+const COLLAPSE_KEY = 'ecms.sidebar.collapsed';
+
+const loadCollapsed = (): Set<string> => {
+  try {
+    const raw = localStorage.getItem(COLLAPSE_KEY);
+    return new Set(raw === null ? [] : (JSON.parse(raw) as string[]));
+  } catch {
+    return new Set();
+  }
+};
+
+const persistCollapsed = (ids: Set<string>): void => {
+  try {
+    localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...ids]));
+  } catch {
+    // storage unavailable (private mode etc.) — collapse still works for the session
+  }
+};
+
+const navItemClass = ({ isActive }: { isActive: boolean }): string =>
+  cn(
+    'group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600/40',
+    // Active items carry an inline-start accent bar (RTL-safe) plus a stronger weight/tint.
+    isActive
+      ? "font-semibold text-brand-700 dark:text-brand-200 bg-brand-50 dark:bg-brand-950 before:absolute before:inset-y-1.5 before:start-0 before:w-1 before:rounded-e-full before:bg-brand-600 before:content-['']"
+      : 'font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white',
+  );
+
 const NavTree = ({ onNavigate }: { onNavigate: () => void }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const { data = [], isLoading, isError, error, refetch } = useMyApplications();
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  const [collapsed, setCollapsed] = useState<Set<string>>(loadCollapsed);
 
   const toggle = (id: string): void =>
     setCollapsed((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
+      persistCollapsed(next);
       return next;
     });
 
@@ -54,7 +86,7 @@ const NavTree = ({ onNavigate }: { onNavigate: () => void }): JSX.Element => {
   }
 
   return (
-    <nav className="flex-1 space-y-4 overflow-y-auto px-3 py-4">
+    <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
       {data.map((category) => {
         const isCollapsed = collapsed.has(category.id);
         return (
@@ -63,31 +95,23 @@ const NavTree = ({ onNavigate }: { onNavigate: () => void }): JSX.Element => {
               type="button"
               onClick={() => toggle(category.id)}
               aria-expanded={!isCollapsed}
-              className="flex w-full items-center gap-2 rounded-lg px-3 pb-2 pt-1 text-start text-xs font-semibold uppercase tracking-wide text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
+              className="group flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-start text-[0.7rem] font-semibold uppercase tracking-wider text-slate-400 transition-colors hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600/30 dark:text-slate-500 dark:hover:text-slate-200"
             >
               <ChevronIcon
-                className={cn('h-4 w-4 shrink-0 transition-transform', isCollapsed && '-rotate-90 rtl:rotate-90')}
+                className={cn(
+                  'h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform duration-200 group-hover:text-slate-500 dark:text-slate-500',
+                  isCollapsed && '-rotate-90 rtl:rotate-90',
+                )}
               />
               <span className="truncate">{localized(category.name, locale)}</span>
             </button>
             {!isCollapsed && (
-              <ul className="space-y-1">
+              <ul className="mt-1 space-y-0.5">
                 {category.applications.map((app) => {
                   const Icon = resolveNavIcon(app.icon, FileIcon);
                   return (
                     <li key={app.id}>
-                      <NavLink
-                        to={app.route}
-                        onClick={onNavigate}
-                        className={({ isActive }) =>
-                          cn(
-                            'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-                            isActive
-                              ? 'bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-200'
-                              : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800',
-                          )
-                        }
-                      >
+                      <NavLink to={app.route} onClick={onNavigate} className={navItemClass}>
                         <Icon className="h-5 w-5 shrink-0" />
                         <span className="truncate">{localized(app.name, locale)}</span>
                       </NavLink>
@@ -106,11 +130,11 @@ const NavTree = ({ onNavigate }: { onNavigate: () => void }): JSX.Element => {
 const Brand = ({ titleKey }: { titleKey: string }): JSX.Element => {
   const t = useT();
   return (
-    <div className="flex h-14 items-center gap-2 border-b border-slate-200 px-5 dark:border-slate-800">
-      <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-600 text-sm font-bold text-white">
+    <div className="flex h-14 items-center gap-2.5 border-b border-slate-200 px-5 dark:border-slate-800">
+      <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-600 text-sm font-bold text-white shadow-sm">
         E
       </span>
-      <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">{t(titleKey)}</span>
+      <span className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{t(titleKey)}</span>
     </div>
   );
 };

@@ -36,6 +36,13 @@ export default {
           'sans-serif',
         ],
       },
+      // Signature elevation language. Two tokens only, both tinted with slate-900 (cooler and more
+      // intentional than pure-black defaults): `card` for resting surfaces, `elevated` for anything
+      // that floats above the page (dialogs, menus, the command palette, toasts).
+      boxShadow: {
+        card: '0 1px 2px 0 rgb(15 23 42 / 0.04), 0 1px 3px 0 rgb(15 23 42 / 0.06)',
+        elevated: '0 12px 32px -12px rgb(15 23 42 / 0.28), 0 4px 12px -4px rgb(15 23 42 / 0.12)',
+      },
     },
   },
   plugins: [],

@@ -318,7 +318,7 @@ export const Sidebar = (): JSX.Element => {
         />
         <aside
           className={cn(
-            'absolute inset-y-0 start-0 flex max-w-[88%] bg-white shadow-xl transition-transform dark:bg-slate-900',
+            'absolute inset-y-0 start-0 flex max-w-[88%] bg-white shadow-elevated transition-transform dark:bg-slate-900',
             open ? 'translate-x-0' : '-translate-x-full rtl:translate-x-full',
           )}
           role="dialog"

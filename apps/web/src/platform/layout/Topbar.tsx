@@ -5,57 +5,17 @@ import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '../../store';
 import { signedOut } from '../../store/authSlice';
-import { setLocale } from '../../store/localeSlice';
 import { toggleSidebar } from '../../store/uiSlice';
 import { logoutRequest } from '../auth/api';
 import { useT } from '../localization/useT';
-import { useTheme } from '../theme/useTheme';
 import { fullName } from '../../shared/lib/format';
 import { useOnClickOutside } from '../../shared/lib/useOnClickOutside';
 import { cn } from '../../shared/lib/cn';
 import { NotificationBell } from '../notifications/NotificationBell';
-import {
-  GlobeIcon,
-  LogOutIcon,
-  MenuIcon,
-  MonitorIcon,
-  MoonIcon,
-  SearchIcon,
-  SunIcon,
-} from '../../shared/ui/icons';
-
-const ThemeToggle = (): JSX.Element => {
-  const { theme, cycle } = useTheme();
-  const t = useT();
-  const Icon = theme === 'light' ? SunIcon : theme === 'dark' ? MoonIcon : MonitorIcon;
-  return (
-    <button
-      type="button"
-      onClick={cycle}
-      className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
-      aria-label={t(`common.theme.${theme}`)}
-      title={t(`common.theme.${theme}`)}
-    >
-      <Icon />
-    </button>
-  );
-};
-
-const LanguageToggle = (): JSX.Element => {
-  const dispatch = useAppDispatch();
-  const locale = useAppSelector((state) => state.locale.locale);
-  return (
-    <button
-      type="button"
-      onClick={() => dispatch(setLocale(locale === 'ar' ? 'en' : 'ar'))}
-      className="flex items-center gap-1.5 rounded-lg p-2 text-sm text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
-      aria-label={locale === 'ar' ? 'English' : 'العربية'}
-    >
-      <GlobeIcon className="h-5 w-5" />
-      <span className="hidden font-medium sm:inline">{locale === 'ar' ? 'EN' : 'ع'}</span>
-    </button>
-  );
-};
+import { BrandMark } from '../../shared/ui';
+import { LogOutIcon, MenuIcon, SearchIcon } from '../../shared/ui/icons';
+import { ThemeToggle } from './ThemeToggle';
+import { LanguageToggle } from './LanguageToggle';
 
 const UserMenu = (): JSX.Element => {
   const t = useT();
@@ -96,7 +56,7 @@ const UserMenu = (): JSX.Element => {
       {open && (
         <div
           role="menu"
-          className="absolute end-0 mt-2 w-56 rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-800"
+          className="absolute end-0 mt-2 w-56 rounded-lg border border-slate-200 bg-white py-1 shadow-elevated dark:border-slate-700 dark:bg-slate-800"
         >
           <div className="border-b border-slate-100 px-4 py-3 dark:border-slate-700">
             <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">{name}</p>
@@ -138,9 +98,7 @@ export const Topbar = ({ onOpenSearch }: { onOpenSearch: () => void }): JSX.Elem
 
       {/* Product identity */}
       <div className="flex shrink-0 items-center gap-2.5 ps-1">
-        <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 text-sm font-bold text-white shadow-sm">
-          E
-        </span>
+        <BrandMark size="sm" />
         <span className="hidden text-base font-semibold tracking-tight text-slate-800 dark:text-slate-100 sm:block">
           ECMS
         </span>

@@ -147,7 +147,7 @@ export const CommandPalette = ({ open, onClose }: { open: boolean; onClose: () =
         role="dialog"
         aria-modal="true"
         aria-label={t('nav.command.placeholder')}
-        className="relative flex max-h-[70vh] w-full max-w-xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+        className="relative flex max-h-[70vh] w-full max-w-xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-elevated dark:border-slate-700 dark:bg-slate-900"
       >
         <div className="flex items-center gap-2.5 border-b border-slate-100 px-4 dark:border-slate-800">
           <SearchIcon className="h-5 w-5 shrink-0 text-slate-400" />

@@ -25,7 +25,7 @@ export const Toaster = (): JSX.Element => {
           key={t.id}
           role="status"
           className={cn(
-            'pointer-events-auto w-full max-w-sm rounded-lg border px-4 py-3 shadow-lg',
+            'pointer-events-auto w-full max-w-sm rounded-lg border px-4 py-3 shadow-elevated',
             VARIANT[t.variant],
           )}
         >

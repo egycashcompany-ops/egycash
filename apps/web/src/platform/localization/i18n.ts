@@ -16,6 +16,11 @@ const en: Record<string, string> = {
   'platform.auth.login.enrollQrAlt': 'Two-factor setup QR code',
   'platform.auth.login.enrollManual': "Can't scan? Enter this key manually",
   'platform.auth.login.failed': 'Sign-in failed',
+  'platform.auth.login.welcome': 'Welcome back',
+  'platform.auth.login.subtitle': 'Sign in to continue to your workspace.',
+  'platform.auth.brand.tagline': 'The unified enterprise platform.',
+  'platform.auth.brand.subtitle': 'One system for HR, operations, and everything your organization runs on.',
+  'platform.auth.brand.footer': 'ECMS · Enterprise Platform',
   'platform.shell.signOut': 'Sign out',
   'platform.shell.language': 'العربية',
 
@@ -979,6 +984,11 @@ const ar: Record<string, string> = {
   'platform.auth.login.enrollQrAlt': 'رمز QR لإعداد المصادقة الثنائية',
   'platform.auth.login.enrollManual': 'لا يمكنك المسح؟ أدخل هذا المفتاح يدويًا',
   'platform.auth.login.failed': 'فشل تسجيل الدخول',
+  'platform.auth.login.welcome': 'مرحبًا بعودتك',
+  'platform.auth.login.subtitle': 'سجّل الدخول للمتابعة إلى مساحة عملك.',
+  'platform.auth.brand.tagline': 'المنصة المؤسسية الموحّدة.',
+  'platform.auth.brand.subtitle': 'نظام واحد للموارد البشرية والعمليات وكل ما تعتمد عليه مؤسستك.',
+  'platform.auth.brand.footer': 'ECMS · المنصة المؤسسية',
   'platform.shell.signOut': 'تسجيل الخروج',
   'platform.shell.language': 'English',
 

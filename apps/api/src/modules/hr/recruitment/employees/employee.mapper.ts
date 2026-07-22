@@ -1,7 +1,20 @@
 // Employee DTO mapping (Stage 5). Dates are ISO strings; the copied employment terms and the
 // preserved references are surfaced as-is.
-import { type EmployeeDto, type EmploymentDetailsDto } from '@ecms/contracts';
-import { type EmployeeDoc, type EmploymentDetails } from './employee.model';
+import {
+  type EmployeeDto,
+  type EmployeeStatusEventDto,
+  type EmploymentDetailsDto,
+} from '@ecms/contracts';
+import { type EmployeeDoc, type EmployeeStatusEvent, type EmploymentDetails } from './employee.model';
+
+const statusEventDto = (e: EmployeeStatusEvent): EmployeeStatusEventDto => ({
+  from: e.from,
+  to: e.to,
+  reason: e.reason,
+  effectiveDate: e.effectiveDate.toISOString(),
+  at: e.at.toISOString(),
+  by: e.by === null ? null : String(e.by),
+});
 
 const employmentDto = (e: EmploymentDetails): EmploymentDetailsDto => ({
   jobTitleId: String(e.jobTitleId),
@@ -23,6 +36,7 @@ export const toEmployeeDto = (doc: EmployeeDoc): EmployeeDto => ({
   employeeNumber: doc.employeeNumber,
   code: doc.code,
   status: doc.status,
+  statusHistory: (doc.statusHistory ?? []).map(statusEventDto),
   userId: doc.userId === null ? null : String(doc.userId),
   applicantId: String(doc.applicantId),
   applicantCode: doc.applicantCode,

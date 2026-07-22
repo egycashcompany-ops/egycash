@@ -8,9 +8,12 @@
 //
 // Cross-feature access to the Applicant and Job Offer aggregates goes through their barrels
 // only (ADR-003). This stage never touches Hiring Documents / Electronic File.
+import { Types } from 'mongoose';
 import {
   HrEmployeeEvents,
   HrEmployeeTemplates,
+  canTransitionEmployeeStatus,
+  type ChangeEmployeeStatus,
   type CreateEmployee,
   type CreateEmployeeLogin,
   type CreateUser,
@@ -30,7 +33,7 @@ import { jobOfferService } from '../job-offers';
 import { employeeRepository, type EmployeeListFilter } from './employee.repository';
 import { nextEmployeeNumber } from './employee-sequence';
 import { buildEmployeeCode } from './employee-number';
-import { type EmployeeDoc, type EmploymentDetails } from './employee.model';
+import { type EmployeeDoc, type EmployeeStatusEvent, type EmploymentDetails } from './employee.model';
 
 const entityRef = (id: string) => ({ moduleId: 'hr', entityType: 'employee', entityId: id });
 
@@ -104,11 +107,20 @@ class EmployeeService {
     const doc = await unitOfWork(async (session) => {
       const employeeNumber = await nextEmployeeNumber(session);
       const code = buildEmployeeCode(branch.code, employeeNumber);
+      const hireEvent: EmployeeStatusEvent = {
+        from: null,
+        to: 'active',
+        reason: null,
+        effectiveDate: hiredAt,
+        at: new Date(),
+        by: new Types.ObjectId(ctx.userId),
+      };
       return employeeRepository.create(
         {
           employeeNumber,
           code,
           status: 'active',
+          statusHistory: [hireEvent],
           userId: null,
           applicantId: offer.applicantId,
           applicantCode: offer.applicantCode,
@@ -213,6 +225,59 @@ class EmployeeService {
       changes: [{ field: 'userId', old: null, new: String(user._id) }],
     });
     return { user, activationToken, employeeCode: employee.code };
+  }
+
+  /**
+   * Move an employee to a new lifecycle status (leave / return / suspend / reinstate / terminate).
+   * The transition is validated against the shared matrix; the change is appended to the status
+   * trail with its reason + effective date, audited, and published as `hr.employee.statusChanged`.
+   * Optimistic-concurrency guarded via the caller-supplied `version`.
+   */
+  async changeStatus(
+    ctx: AuthContext,
+    id: string,
+    input: ChangeEmployeeStatus,
+    scope: ScopeSelector,
+  ): Promise<EmployeeDoc> {
+    const employee = await employeeRepository.getById(id, scope);
+    const from = employee.status;
+    const to = input.status;
+    if (from === to) {
+      throw new BusinessRuleError('the employee already has this status');
+    }
+    if (!canTransitionEmployeeStatus(from, to)) {
+      throw new BusinessRuleError(`cannot change employee status from ${from} to ${to}`);
+    }
+
+    const now = new Date();
+    const event: EmployeeStatusEvent = {
+      from,
+      to,
+      reason: input.reason ?? null,
+      effectiveDate: input.effectiveDate ?? now,
+      at: now,
+      by: new Types.ObjectId(ctx.userId),
+    };
+    const statusHistory = [...(employee.statusHistory ?? []), event];
+
+    const updated = await employeeRepository.updateById(
+      id,
+      { status: to, statusHistory },
+      { by: ctx.userId, version: input.version, scope },
+    );
+
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'statusChange',
+      changes: [{ field: 'status', old: from, new: to }],
+    });
+    await emit(HrEmployeeEvents.EmployeeStatusChanged, {
+      employeeId: id,
+      code: updated.code,
+      from,
+      to,
+    });
+    return updated;
   }
 }
 

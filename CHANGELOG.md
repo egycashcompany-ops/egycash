@@ -11,6 +11,14 @@ its entry here in the same PR.
 
 ### Added
 
+- **HR — Employees: employment lifecycle.** The post-hire workforce capability. An employee can now
+  be moved through their lifecycle — **go on leave, return, suspend, reinstate, terminate** — via
+  `PATCH /hr/employees/:id/status`, gated by the new **`employee.changeStatus`** permission and
+  enforced against a single shared transition matrix (`terminated` is terminal; same-status and
+  illegal jumps are refused). Suspend/terminate require a reason. Every change is appended to an
+  auditable **status trail** (`statusHistory`, surfaced on the Employee DTO — the hire is recorded as
+  its first entry), written under optimistic-concurrency control, audited, and published as
+  `hr.employee.statusChanged`. Backend-first; UI is a later slice.
 - **HR Foundation — Phase 2: Platform Identity & Organizational Access Control** (ADR-017). Permanent
   platform infrastructure every future module reuses:
   - **Hierarchical data scope.** The visibility ladder extends from `own | branch | organization` to

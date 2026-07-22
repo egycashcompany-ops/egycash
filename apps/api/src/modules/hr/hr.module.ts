@@ -80,13 +80,15 @@ const jobOfferPermissions = declarePermissions(
   ],
 );
 
-// Stage 5 — Employee Creation. `create` hires an applicant from an accepted offer; `view`
-// reads the resulting employee records. (Employee lifecycle management is a later concern.)
+// Employees sub-module. `create` hires an applicant from an accepted offer; `view` reads the
+// resulting records; `changeStatus` drives the post-hire lifecycle (leave / suspend / reinstate /
+// terminate), enforced against the shared transition matrix and recorded as a status trail.
 const employeePermissions = declarePermissions(
   'hr',
   'employee',
   { en: 'employees', ar: 'الموظفين' },
   ['view', 'create'],
+  [{ action: 'changeStatus', name: { en: 'Change employee status', ar: 'تغيير حالة الموظف' } }],
 );
 
 // Stage 6 — Hiring Documents. `upload` covers first upload + versioned replacement; `complete`

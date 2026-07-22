@@ -419,3 +419,83 @@ describe('platform identity (ADR-017) — branch code, global sequence, login ac
     expect((ok.body as { data: { code: string } }).data.code).toBe('BR-TMP-8');
   });
 });
+
+describe('employees — lifecycle (status transitions)', () => {
+  const hire = async (): Promise<EmployeeDto> => {
+    const applicant = await offerReadyApplicant();
+    const offer = await acceptedOffer(applicant.id);
+    return (await createEmployee(offer.id)).body.data as EmployeeDto;
+  };
+  const changeStatus = (id: string, body: Record<string, unknown>, token = adminToken) =>
+    request(app).patch(`/api/v1/hr/employees/${id}/status`).set('Authorization', `Bearer ${token}`).send(body);
+  const last = (e: EmployeeDto): EmployeeDto['statusHistory'][number] | undefined =>
+    e.statusHistory[e.statusHistory.length - 1];
+
+  it('records the hire as the first status-history entry', async () => {
+    const emp = await hire();
+    expect(emp.statusHistory).toHaveLength(1);
+    expect(emp.statusHistory[0]).toMatchObject({ from: null, to: 'active' });
+  });
+
+  it('moves active → onLeave → active, appending an auditable trail', async () => {
+    const emp = await hire();
+    const onLeave = await changeStatus(emp.id, { status: 'onLeave', version: emp.version });
+    expect(onLeave.status).toBe(200);
+    const afterLeave = onLeave.body.data as EmployeeDto;
+    expect(afterLeave.status).toBe('onLeave');
+    expect(last(afterLeave)).toMatchObject({ from: 'active', to: 'onLeave' });
+
+    const back = await changeStatus(emp.id, { status: 'active', version: afterLeave.version });
+    expect(back.status).toBe(200);
+    expect((back.body.data as EmployeeDto).status).toBe('active');
+
+    const audit = await request(app)
+      .get('/api/v1/platform/audit-logs')
+      .query({ entityType: 'employee', pageSize: 20 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect((audit.body as { data: { action: string }[] }).data.some((r) => r.action === 'statusChange')).toBe(true);
+  });
+
+  it('requires a reason to suspend or terminate, then treats terminated as terminal', async () => {
+    const emp = await hire();
+    // Missing reason → request-schema validation failure (Zod refine → 400), distinct from the
+    // service-level business-rule rejections (422) exercised below.
+    expect((await changeStatus(emp.id, { status: 'suspended', version: emp.version })).status).toBe(400);
+
+    const suspended = await changeStatus(emp.id, { status: 'suspended', reason: 'investigation', version: emp.version });
+    expect(suspended.status).toBe(200);
+    const s = suspended.body.data as EmployeeDto;
+    expect(s.status).toBe('suspended');
+    expect(last(s)).toMatchObject({ from: 'active', to: 'suspended', reason: 'investigation' });
+
+    const terminated = await changeStatus(emp.id, { status: 'terminated', reason: 'end of contract', version: s.version });
+    expect(terminated.status).toBe(200);
+    const term = terminated.body.data as EmployeeDto;
+    expect(term.status).toBe('terminated');
+    // Terminal: any further transition is rejected by the matrix.
+    expect((await changeStatus(emp.id, { status: 'active', version: term.version })).status).toBe(422);
+  });
+
+  it('rejects a no-op and an illegal transition', async () => {
+    const emp = await hire();
+    // No-op (same status).
+    expect((await changeStatus(emp.id, { status: 'active', version: emp.version })).status).toBe(422);
+    // suspended → onLeave is illegal (must reinstate to active first).
+    const suspended = (await changeStatus(emp.id, { status: 'suspended', reason: 'x', version: emp.version }))
+      .body.data as EmployeeDto;
+    expect((await changeStatus(emp.id, { status: 'onLeave', version: suspended.version })).status).toBe(422);
+  });
+
+  it('enforces optimistic concurrency (stale version → 409)', async () => {
+    const emp = await hire();
+    expect((await changeStatus(emp.id, { status: 'onLeave', version: emp.version })).status).toBe(200);
+    // Reusing the now-stale original version fails.
+    expect((await changeStatus(emp.id, { status: 'active', version: emp.version })).status).toBe(409);
+  });
+
+  it('denies a user without employee.changeStatus', async () => {
+    const emp = await hire();
+    const denied = await changeStatus(emp.id, { status: 'onLeave', version: emp.version }, aliceToken);
+    expect(denied.status).toBe(403);
+  });
+});

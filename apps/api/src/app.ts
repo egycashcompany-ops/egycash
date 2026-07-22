@@ -27,6 +27,7 @@ import {
 } from './platform/organization';
 import { buildApplicationsRouter } from './platform/applications';
 import { buildApplicationCategoriesRouter } from './platform/application-categories';
+import { buildDepartmentApplicationsRouter } from './platform/department-applications';
 import { buildFeatureFlagsRouter, buildSettingsRouter } from './platform/settings';
 import {
   buildActivityLogsRouter,
@@ -104,6 +105,7 @@ export const buildApp = (): Express => {
   api.use('/platform/organization', buildOrganizationRouter());
   api.use('/platform/branches', buildBranchesRouter());
   api.use('/platform/departments', buildDepartmentsRouter());
+  api.use('/platform/departments/:departmentId/applications', buildDepartmentApplicationsRouter());
   api.use('/platform/sections', buildSectionsRouter());
   api.use('/platform/job-titles', buildJobTitlesRouter());
   api.use('/platform/job-positions', buildJobPositionsRouter());

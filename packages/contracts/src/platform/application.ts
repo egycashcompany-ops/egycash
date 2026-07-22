@@ -1,15 +1,59 @@
 import { z } from 'zod';
-import { LocalizedStringSchema, PaginationQuerySchema } from '../common/index.js';
+import { LocalizedStringSchema, PaginationQuerySchema, objectId } from '../common/index.js';
 
 // Applications (Modules) are a standalone platform catalog. Each Application is a navigable module
-// (icon + client route) grouped by a free-form category and ordered by `sortOrder`. This is the
-// future source of navigation and module access; the Organization hierarchy remains responsible only
-// for data scope. This slice covers the master entity CRUD only.
+// (icon + client route) that belongs to an Application Category and is ordered by `sortOrder`. This
+// is the future source of navigation and module access; the Organization hierarchy remains
+// responsible only for data scope. This slice covers the master entity CRUD only.
+
+// ── Application Categories ───────────────────────────────────────────────────
+// A standalone catalog that groups Applications in the sidebar (bilingual name, optional icon,
+// ascending sort order, status).
+const applicationCategoryBase = {
+  name: LocalizedStringSchema,
+  icon: z.string().trim().min(1).max(64).nullable().optional(),
+  sortOrder: z.number().int().min(0).max(100_000),
+};
+
+export const CreateApplicationCategorySchema = z
+  .object({ ...applicationCategoryBase, sortOrder: applicationCategoryBase.sortOrder.optional() })
+  .strict();
+export type CreateApplicationCategory = z.infer<typeof CreateApplicationCategorySchema>;
+
+export const UpdateApplicationCategorySchema = z
+  .object({
+    name: LocalizedStringSchema.optional(),
+    icon: z.string().trim().min(1).max(64).nullable().optional(),
+    sortOrder: applicationCategoryBase.sortOrder.optional(),
+    status: z.enum(['active', 'inactive']).optional(),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type UpdateApplicationCategory = z.infer<typeof UpdateApplicationCategorySchema>;
+
+export const ListApplicationCategoriesQuerySchema = PaginationQuerySchema.extend({
+  status: z.enum(['active', 'inactive']).optional(),
+  search: z.string().max(200).optional(),
+}).strict();
+export type ListApplicationCategoriesQuery = z.infer<typeof ListApplicationCategoriesQuerySchema>;
+
+export interface ApplicationCategoryDto {
+  id: string;
+  name: { ar: string; en: string };
+  icon: string | null;
+  sortOrder: number;
+  status: 'active' | 'inactive';
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ── Applications ─────────────────────────────────────────────────────────────
 const applicationBase = {
   name: LocalizedStringSchema,
   icon: z.string().trim().min(1).max(64),
   route: z.string().trim().min(1).max(200),
-  category: z.string().trim().min(1).max(64),
+  categoryId: objectId(),
   sortOrder: z.number().int().min(0).max(100_000),
 };
 
@@ -23,7 +67,7 @@ export const UpdateApplicationSchema = z
     name: LocalizedStringSchema.optional(),
     icon: applicationBase.icon.optional(),
     route: applicationBase.route.optional(),
-    category: applicationBase.category.optional(),
+    categoryId: objectId().optional(),
     sortOrder: applicationBase.sortOrder.optional(),
     status: z.enum(['active', 'inactive']).optional(),
     version: z.number().int().min(0),
@@ -33,7 +77,7 @@ export type UpdateApplication = z.infer<typeof UpdateApplicationSchema>;
 
 export const ListApplicationsQuerySchema = PaginationQuerySchema.extend({
   status: z.enum(['active', 'inactive']).optional(),
-  category: z.string().max(64).optional(),
+  categoryId: objectId().optional(),
   search: z.string().max(200).optional(),
 }).strict();
 export type ListApplicationsQuery = z.infer<typeof ListApplicationsQuerySchema>;
@@ -45,8 +89,8 @@ export interface ApplicationDto {
   icon: string;
   /** Client route the application opens at, e.g. `/hr/recruitment`. */
   route: string;
-  /** Free-form grouping label used to cluster applications in the sidebar. */
-  category: string;
+  /** The Application Category this application belongs to. */
+  categoryId: string;
   /** Ascending display order within a category. */
   sortOrder: number;
   status: 'active' | 'inactive';

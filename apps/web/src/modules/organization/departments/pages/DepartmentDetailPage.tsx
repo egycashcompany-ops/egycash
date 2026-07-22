@@ -22,6 +22,7 @@ import { formatDateTime, localized } from '../../../../shared/lib/format';
 import { UserName } from '../../shared/UserPicker';
 import { useBranchOptions } from '../../shared/references';
 import { departmentConfig } from '../../shared/unit-config';
+import { DepartmentApplicationsCard } from '../DepartmentApplicationsCard';
 
 const Row = ({ label, children }: { label: string; children: React.ReactNode }): JSX.Element => (
   <div>
@@ -187,6 +188,10 @@ export const DepartmentDetailPage = (): JSX.Element => {
             </dl>
           </CardBody>
         </Card>
+      </div>
+
+      <div className="mt-4">
+        <DepartmentApplicationsCard departmentId={department.id} />
       </div>
 
       <Dialog

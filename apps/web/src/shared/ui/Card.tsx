@@ -6,7 +6,7 @@ import { cn } from '../lib/cn';
 export const Card = ({ className, children }: { className?: string; children: ReactNode }): JSX.Element => (
   <div
     className={cn(
-      'rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900',
+      'rounded-lg border border-slate-200 bg-white shadow-card dark:border-slate-800 dark:bg-slate-900',
       className,
     )}
   >

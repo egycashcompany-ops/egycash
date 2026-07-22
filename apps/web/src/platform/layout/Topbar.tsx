@@ -1,53 +1,21 @@
-// Recruitment topbar: mobile menu toggle, page title, and the global actions — theme cycle,
-// language switch, notification bell, and the user menu (sign out). RTL-safe; collapses
-// gracefully on small screens.
+// The ECMS shell bar (full width, top): product identity, the global ⌘K search/jump trigger, and the
+// account utilities (theme, language, notifications, user). The page's own title/breadcrumbs live in
+// the page header, so the shell bar stays a clean command surface.
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '../../store';
 import { signedOut } from '../../store/authSlice';
-import { setLocale } from '../../store/localeSlice';
 import { toggleSidebar } from '../../store/uiSlice';
 import { logoutRequest } from '../auth/api';
 import { useT } from '../localization/useT';
-import { useTheme } from '../theme/useTheme';
 import { fullName } from '../../shared/lib/format';
 import { useOnClickOutside } from '../../shared/lib/useOnClickOutside';
 import { cn } from '../../shared/lib/cn';
 import { NotificationBell } from '../notifications/NotificationBell';
-import { GlobeIcon, LogOutIcon, MenuIcon, MonitorIcon, MoonIcon, SunIcon } from '../../shared/ui/icons';
-
-const ThemeToggle = (): JSX.Element => {
-  const { theme, cycle } = useTheme();
-  const t = useT();
-  const Icon = theme === 'light' ? SunIcon : theme === 'dark' ? MoonIcon : MonitorIcon;
-  return (
-    <button
-      type="button"
-      onClick={cycle}
-      className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
-      aria-label={t(`common.theme.${theme}`)}
-      title={t(`common.theme.${theme}`)}
-    >
-      <Icon />
-    </button>
-  );
-};
-
-const LanguageToggle = (): JSX.Element => {
-  const dispatch = useAppDispatch();
-  const locale = useAppSelector((state) => state.locale.locale);
-  return (
-    <button
-      type="button"
-      onClick={() => dispatch(setLocale(locale === 'ar' ? 'en' : 'ar'))}
-      className="flex items-center gap-1.5 rounded-lg p-2 text-sm text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
-      aria-label={locale === 'ar' ? 'English' : 'العربية'}
-    >
-      <GlobeIcon className="h-5 w-5" />
-      <span className="hidden font-medium sm:inline">{locale === 'ar' ? 'EN' : 'ع'}</span>
-    </button>
-  );
-};
+import { BrandMark } from '../../shared/ui';
+import { LogOutIcon, MenuIcon, SearchIcon } from '../../shared/ui/icons';
+import { ThemeToggle } from './ThemeToggle';
+import { LanguageToggle } from './LanguageToggle';
 
 const UserMenu = (): JSX.Element => {
   const t = useT();
@@ -88,7 +56,7 @@ const UserMenu = (): JSX.Element => {
       {open && (
         <div
           role="menu"
-          className="absolute end-0 mt-2 w-56 rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-800"
+          className="absolute end-0 mt-2 w-56 origin-top animate-menu-in rounded-lg border border-slate-200 bg-white py-1 shadow-elevated dark:border-slate-700 dark:bg-slate-800"
         >
           <div className="border-b border-slate-100 px-4 py-3 dark:border-slate-700">
             <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">{name}</p>
@@ -114,11 +82,11 @@ const UserMenu = (): JSX.Element => {
   );
 };
 
-export const Topbar = ({ title }: { title?: string }): JSX.Element => {
+export const Topbar = ({ onOpenSearch }: { onOpenSearch: () => void }): JSX.Element => {
   const t = useT();
   const dispatch = useAppDispatch();
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-slate-200 bg-white/90 px-4 backdrop-blur dark:border-slate-800 dark:bg-slate-900/90">
+    <header className="flex h-14 shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-3 dark:border-slate-800 dark:bg-slate-900">
       <button
         type="button"
         onClick={() => dispatch(toggleSidebar())}
@@ -127,10 +95,30 @@ export const Topbar = ({ title }: { title?: string }): JSX.Element => {
       >
         <MenuIcon />
       </button>
-      <h1 className="truncate text-base font-semibold text-slate-800 dark:text-slate-100">
-        {title ?? t('recruitment.title')}
-      </h1>
-      <div className="ms-auto flex items-center gap-0.5">
+
+      {/* Product identity */}
+      <div className="flex shrink-0 items-center gap-2.5 ps-1">
+        <BrandMark size="sm" />
+        <span className="hidden text-base font-semibold tracking-tight text-slate-800 dark:text-slate-100 sm:block">
+          ECMS
+        </span>
+      </div>
+
+      {/* Global command / search trigger */}
+      <button
+        type="button"
+        onClick={onOpenSearch}
+        className="mx-auto flex h-9 w-full max-w-md items-center gap-2.5 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-400 transition-colors hover:border-slate-300 hover:bg-white dark:border-slate-700 dark:bg-slate-800/60 dark:hover:border-slate-600 dark:hover:bg-slate-800"
+      >
+        <SearchIcon className="h-4 w-4 shrink-0" />
+        <span className="flex-1 truncate text-start">{t('nav.search')}</span>
+        <kbd className="hidden shrink-0 rounded border border-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-400 dark:border-slate-600 sm:inline">
+          ⌘K
+        </kbd>
+      </button>
+
+      {/* Utilities */}
+      <div className="flex shrink-0 items-center gap-0.5">
         <ThemeToggle />
         <LanguageToggle />
         <NotificationBell />

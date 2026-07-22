@@ -34,7 +34,7 @@ export const NotificationBell = (): JSX.Element => {
         <div
           role="dialog"
           aria-label={t('notifications.title')}
-          className="absolute end-0 mt-2 w-80 max-w-[90vw] rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-800"
+          className="absolute end-0 mt-2 w-80 max-w-[90vw] origin-top animate-menu-in rounded-lg border border-slate-200 bg-white shadow-elevated dark:border-slate-700 dark:bg-slate-800"
         >
           <div className="border-b border-slate-100 px-4 py-3 dark:border-slate-700">
             <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">

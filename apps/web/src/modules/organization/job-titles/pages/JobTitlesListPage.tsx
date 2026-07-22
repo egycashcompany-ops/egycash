@@ -10,7 +10,7 @@ import { PageContainer, PageHeader } from '../../../../platform/layout/PageConta
 import { DataTable, type Column } from '../../../../shared/ui/DataTable';
 import { Pagination } from '../../../../shared/ui/Pagination';
 import { Button } from '../../../../shared/ui/Button';
-import { FilterBar } from '../../../../shared/ui/FilterBar';
+import { ListView } from '../../../../shared/ui/ListView';
 import { SearchInput } from '../../../../shared/ui/SearchInput';
 import { Select } from '../../../../shared/ui/form';
 import { StatusBadge } from '../../../../shared/ui/Badge';
@@ -130,20 +130,35 @@ export const JobTitlesListPage = (): JSX.Element => {
         }
       />
 
-      <div className="space-y-4">
-        <FilterBar hasActiveFilters={search !== '' || status !== ''} onClear={() => setSp(new URLSearchParams())}>
+      <ListView
+        total={data?.meta.totalItems}
+        hasActiveFilters={search !== '' || status !== ''}
+        onClear={() => setSp(new URLSearchParams())}
+        search={
           <SearchInput
+            className="w-full sm:w-64"
             value={search}
             onChange={(v) => patch({ q: v || null })}
             placeholder={t('organization.filter.search')}
           />
+        }
+        filters={
           <Select className="w-40" value={status} onChange={(e) => patch({ status: e.target.value || null })}>
             <option value="">{t('organization.filter.allStatuses')}</option>
             <option value="active">{t('organization.status.active')}</option>
             <option value="inactive">{t('organization.status.inactive')}</option>
           </Select>
-        </FilterBar>
-
+        }
+        pagination={
+          data !== undefined && data.meta.totalItems > 0 ? (
+            <Pagination
+              meta={data.meta}
+              onPageChange={(p) => patch({ page: String(p) }, false)}
+              onPageSizeChange={(size) => patch({ size: String(size), page: null }, false)}
+            />
+          ) : undefined
+        }
+      >
         <DataTable
           columns={columns}
           rows={rows}
@@ -156,15 +171,9 @@ export const JobTitlesListPage = (): JSX.Element => {
             patch({ sort: `${by}:${sort.by === by && sort.dir === 'asc' ? 'desc' : 'asc'}` }, false)
           }
           onRowClick={(jt) => navigate(jt.id)}
+          embedded
         />
-        {data !== undefined && data.meta.totalItems > 0 && (
-          <Pagination
-            meta={data.meta}
-            onPageChange={(p) => patch({ page: String(p) }, false)}
-            onPageSizeChange={(size) => patch({ size: String(size), page: null }, false)}
-          />
-        )}
-      </div>
+      </ListView>
     </PageContainer>
   );
 };

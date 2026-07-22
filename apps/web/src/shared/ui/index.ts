@@ -1,6 +1,7 @@
 // Barrel for the shared UI kit. Features import components from here (never reach into a
 // component's file), keeping the kit's surface swappable in one place (Software Architecture §6).
 export { Button, type ButtonProps } from './Button';
+export { BrandMark } from './BrandMark';
 export { Badge, StatusBadge, type Tone } from './Badge';
 export { Card, CardHeader, CardBody } from './Card';
 export { Spinner } from './Spinner';
@@ -9,6 +10,7 @@ export { DataTable, type Column, type DataTableProps, type SortState } from './D
 export { Pagination } from './Pagination';
 export { SearchInput } from './SearchInput';
 export { FilterBar } from './FilterBar';
+export { ListView } from './ListView';
 export { BulkActions } from './BulkActions';
 export { Dialog } from './Dialog';
 export { FileUpload } from './FileUpload';

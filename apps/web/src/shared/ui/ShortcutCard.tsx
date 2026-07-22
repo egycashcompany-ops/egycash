@@ -18,9 +18,9 @@ export const ShortcutCard = ({
   icon: ComponentType<SVGProps<SVGSVGElement>>;
 }): JSX.Element => (
   <Link to={to} className="group focus:outline-none">
-    <Card className="h-full transition-shadow group-hover:shadow-md group-focus-visible:ring-2 group-focus-visible:ring-brand-500">
+    <Card className="h-full transition-all duration-200 group-hover:-translate-y-0.5 group-hover:border-brand-200 group-hover:shadow-elevated group-focus-visible:ring-2 group-focus-visible:ring-brand-500 dark:group-hover:border-brand-900">
       <CardBody className="flex items-start gap-4">
-        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-600 dark:bg-brand-950 dark:text-brand-300">
+        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-600 transition-colors group-hover:bg-brand-100 dark:bg-brand-950 dark:text-brand-300 dark:group-hover:bg-brand-900">
           <Icon className="h-6 w-6" />
         </span>
         <div className="min-w-0 flex-1">

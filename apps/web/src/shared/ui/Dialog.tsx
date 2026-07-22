@@ -50,13 +50,13 @@ export const Dialog = ({
 
   return createPortal(
     <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" aria-hidden="true" />
+      <div className="absolute inset-0 animate-fade-in bg-slate-900/50 backdrop-blur-sm" aria-hidden="true" />
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={cn('relative w-full rounded-xl bg-white shadow-xl dark:bg-slate-900', SIZE[size])}
+        className={cn('relative w-full animate-pop-in rounded-xl bg-white shadow-elevated dark:bg-slate-900', SIZE[size])}
       >
         <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4 dark:border-slate-800">
           <div className="min-w-0">

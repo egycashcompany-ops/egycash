@@ -28,6 +28,7 @@ import {
 import { buildApplicationsRouter } from './platform/applications';
 import { buildApplicationCategoriesRouter } from './platform/application-categories';
 import { buildDepartmentApplicationsRouter } from './platform/department-applications';
+import { buildUserApplicationsRouter } from './platform/user-applications';
 import { buildFeatureFlagsRouter, buildSettingsRouter } from './platform/settings';
 import {
   buildActivityLogsRouter,
@@ -99,6 +100,7 @@ export const buildApp = (): Express => {
   const api = Router();
   api.use('/auth', buildAuthRouter());
   api.use('/platform/users', buildUsersRouter());
+  api.use('/platform/users/:userId/applications', buildUserApplicationsRouter());
   api.use('/platform/roles', buildRolesRouter());
   api.use('/platform/role-assignments', buildRoleAssignmentsRouter());
   api.use('/platform/permissions', buildPermissionsRouter());

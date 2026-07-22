@@ -657,6 +657,72 @@ describe('login → permission → scoped data → audit trail', () => {
     expect(inactive.status).toBe(422);
   });
 
+  it('assigns and removes User ↔ Application links (PR #63)', async () => {
+    const cat = await request(app)
+      .post('/api/v1/platform/application-categories')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: { ar: 'فئة م', en: 'UA Cat' } });
+    const catId = (cat.body as { data: { id: string } }).data.id;
+    const appRes = await request(app)
+      .post('/api/v1/platform/applications')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: { ar: 'تطبيق م', en: 'UA App' }, icon: 'x', route: '/ua', categoryId: catId });
+    const appId = (appRes.body as { data: { id: string } }).data.id;
+
+    // Assign the application directly to the (active) admin user → 201 with the application.
+    const assigned = await request(app)
+      .post(`/api/v1/platform/users/${adminId}/applications`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ applicationId: appId });
+    expect(assigned.status).toBe(201);
+    expect((assigned.body as { data: { id: string } }).data.id).toBe(appId);
+
+    // Duplicate → 409.
+    const dup = await request(app)
+      .post(`/api/v1/platform/users/${adminId}/applications`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ applicationId: appId });
+    expect(dup.status).toBe(409);
+
+    // List shows the assigned application.
+    const listed = await request(app)
+      .get(`/api/v1/platform/users/${adminId}/applications`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(listed.status).toBe(200);
+    const items = (listed.body as { data: { id: string }[] }).data;
+    expect(items.length).toBe(1);
+    expect(items[0]?.id).toBe(appId);
+
+    // Remove → 204; the user and application still exist afterwards.
+    const removed = await request(app)
+      .delete(`/api/v1/platform/users/${adminId}/applications/${appId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(removed.status).toBe(204);
+    const afterList = await request(app)
+      .get(`/api/v1/platform/users/${adminId}/applications`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect((afterList.body as { data: unknown[] }).data.length).toBe(0);
+    expect((await request(app).get(`/api/v1/platform/users/${adminId}`).set('Authorization', `Bearer ${adminToken}`)).status).toBe(200);
+    expect((await request(app).get(`/api/v1/platform/applications/${appId}`).set('Authorization', `Bearer ${adminToken}`)).status).toBe(200);
+
+    // Removing an assignment that does not exist → 404.
+    const missing = await request(app)
+      .delete(`/api/v1/platform/users/${adminId}/applications/${appId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(missing.status).toBe(404);
+
+    // Assigning an inactive application → 422.
+    await request(app)
+      .patch(`/api/v1/platform/applications/${appId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'inactive', version: 0 });
+    const inactiveApp = await request(app)
+      .post(`/api/v1/platform/users/${adminId}/applications`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ applicationId: appId });
+    expect(inactiveApp.status).toBe(422);
+  });
+
   it('enforces DEPARTMENT scope: a department-scoped user sees only same-department users (ADR-017)', async () => {
     const dept = await request(app)
       .post('/api/v1/platform/departments')

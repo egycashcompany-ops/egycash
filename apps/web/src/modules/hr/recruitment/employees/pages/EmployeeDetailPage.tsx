@@ -12,6 +12,7 @@ import { formatDateTime, formatNumber } from '../../../../../shared/lib/format';
 import { EmployeeStatusBadge } from '../components/EmployeeStatusBadge';
 import { EmploymentView } from '../components/EmploymentView';
 import { EmployeeAccountCard } from '../components/EmployeeAccountCard';
+import { UserApplicationsCard } from '../components/UserApplicationsCard';
 import { useEmployee } from '../api/employee-queries';
 
 export const EmployeeDetailPage = (): JSX.Element => {
@@ -66,6 +67,7 @@ export const EmployeeDetailPage = (): JSX.Element => {
 
         <div className="space-y-4">
           <EmployeeAccountCard employee={e} />
+          {e.userId !== null && <UserApplicationsCard userId={e.userId} />}
           <Card>
             <CardHeader title={t('employees.detail.summary')} />
             <CardBody>

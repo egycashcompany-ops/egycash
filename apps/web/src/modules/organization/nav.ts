@@ -7,6 +7,7 @@ import { type NavSection } from '../../platform/navigation/nav';
 import {
   BadgeIcon,
   BuildingIcon,
+  FolderIcon,
   HomeIcon,
   LayersIcon,
   SitemapIcon,
@@ -30,6 +31,12 @@ export const organizationNav: NavSection[] = [
       { to: '/organization/sections', labelKey: 'organization.nav.sections', icon: LayersIcon, permission: 'section.view' },
       { to: '/organization/job-positions', labelKey: 'organization.nav.jobPositions', icon: BadgeIcon, permission: 'jobPosition.view' },
       { to: '/organization/job-titles', labelKey: 'organization.nav.jobTitles', icon: TagIcon, permission: 'jobTitle.view' },
+    ],
+  },
+  {
+    titleKey: 'organization.nav.platform',
+    items: [
+      { to: '/organization/applications', labelKey: 'organization.nav.applications', icon: FolderIcon, permission: 'application.view' },
     ],
   },
 ];

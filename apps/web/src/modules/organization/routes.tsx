@@ -20,6 +20,9 @@ import { SectionDetailPage } from './sections/pages/SectionDetailPage';
 import { JobPositionsListPage } from './job-positions/pages/JobPositionsListPage';
 import { JobPositionDetailPage } from './job-positions/pages/JobPositionDetailPage';
 import { JobPositionFormPage } from './job-positions/pages/JobPositionFormPage';
+import { ApplicationsListPage } from './applications/pages/ApplicationsListPage';
+import { ApplicationDetailPage } from './applications/pages/ApplicationDetailPage';
+import { ApplicationFormPage } from './applications/pages/ApplicationFormPage';
 import { JobTitlesListPage } from './job-titles/pages/JobTitlesListPage';
 import { JobTitleDetailPage } from './job-titles/pages/JobTitleDetailPage';
 import { JobTitleFormPage } from './job-titles/pages/JobTitleFormPage';
@@ -174,6 +177,34 @@ export default function OrganizationRoutes(): JSX.Element {
             element={
               <RequirePermission permission="jobTitle.edit">
                 <JobTitleFormPage mode="edit" />
+              </RequirePermission>
+            }
+          />
+        </Route>
+
+        <Route
+          path="applications"
+          element={
+            <RequirePermission permission="application.view">
+              <Outlet />
+            </RequirePermission>
+          }
+        >
+          <Route index element={<ApplicationsListPage />} />
+          <Route
+            path="new"
+            element={
+              <RequirePermission permission="application.create">
+                <ApplicationFormPage mode="create" />
+              </RequirePermission>
+            }
+          />
+          <Route path=":id" element={<ApplicationDetailPage />} />
+          <Route
+            path=":id/edit"
+            element={
+              <RequirePermission permission="application.edit">
+                <ApplicationFormPage mode="edit" />
               </RequirePermission>
             }
           />

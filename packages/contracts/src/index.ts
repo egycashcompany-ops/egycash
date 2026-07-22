@@ -7,6 +7,7 @@ export * from './platform/auth.js';
 export * from './platform/users.js';
 export * from './platform/rbac.js';
 export * from './platform/organization.js';
+export * from './platform/application.js';
 export * from './platform/settings.js';
 export * from './platform/audit.js';
 export * from './platform/scheduler.js';

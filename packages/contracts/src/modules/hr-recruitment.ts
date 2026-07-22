@@ -510,9 +510,10 @@ export const ApplicantWithdrawnPayloadV1 = z.object({
 });
 
 /**
- * The applicant's terminal rejection can originate in Initial Screening (Stage 2) or in an
- * interview round (Stage 3); the originating aggregate id is carried in whichever field
- * applies. Both are optional so the event stays source-agnostic as the pipeline grows.
+ * The applicant's terminal rejection can originate in Initial Screening (Stage 2), an interview
+ * round (Stage 3), or an evaluation phase (Security/Medical/Driving); the originating aggregate id
+ * is carried in whichever field applies. All are optional so the event stays source-agnostic as
+ * the pipeline grows.
  */
 export const ApplicantRejectedPayloadV1 = z.object({
   applicantId: objectId(),
@@ -520,4 +521,5 @@ export const ApplicantRejectedPayloadV1 = z.object({
   reason: z.string(),
   screeningId: objectId().optional(),
   interviewId: objectId().optional(),
+  evaluationId: objectId().optional(),
 });

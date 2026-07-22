@@ -10,6 +10,7 @@ import { type ModuleManifest } from '../../platform/kernel/module-registry';
 import { buildApplicantSourcesRouter, buildApplicantsRouter } from './recruitment/applicants';
 import { buildScreeningsRouter } from './recruitment/screening';
 import { buildInterviewStagesRouter, buildInterviewsRouter } from './recruitment/interviews';
+import { buildEvaluationPhasesRouter, buildEvaluationsRouter } from './recruitment/evaluations';
 import { buildJobOffersRouter, jobOfferService } from './recruitment/job-offers';
 import { buildEmployeesRouter } from './recruitment/employees';
 import { buildHiringDocumentTypesRouter, buildHiringDocumentsRouter } from './recruitment/hiring-documents';
@@ -63,6 +64,25 @@ const interviewStagePermissions = declarePermissions(
   { en: 'interview stages', ar: 'مراحل المقابلات' },
   [],
   [{ action: 'manage', name: { en: 'Manage interview stages', ar: 'إدارة مراحل المقابلات' } }],
+);
+
+// Evaluation phases — the post-interview, file-based approval checks (Security Check, Medical
+// Examination, Driving Test, …). `view` reads phases + records; `manage` opens/uploads/decides an
+// applicant's evaluation. The phase catalog itself is admin-managed under `evaluationPhase.manage`.
+const evaluationPermissions = declarePermissions(
+  'hr',
+  'evaluation',
+  { en: 'evaluations', ar: 'التقييمات' },
+  ['view'],
+  [{ action: 'manage', name: { en: 'Manage evaluations', ar: 'إدارة التقييمات' } }],
+);
+
+const evaluationPhasePermissions = declarePermissions(
+  'hr',
+  'evaluationPhase',
+  { en: 'evaluation phases', ar: 'مراحل التقييم' },
+  [],
+  [{ action: 'manage', name: { en: 'Manage evaluation phases', ar: 'إدارة مراحل التقييم' } }],
 );
 
 // Stage 4 — Job Offer. `send` issues a draft; `respond` records the applicant's
@@ -129,6 +149,8 @@ export const hrPermissions: PermissionDef[] = [
   ...screeningPermissions,
   ...interviewPermissions,
   ...interviewStagePermissions,
+  ...evaluationPermissions,
+  ...evaluationPhasePermissions,
   ...jobOfferPermissions,
   ...employeePermissions,
   ...hiringDocumentsPermissions,
@@ -139,7 +161,7 @@ export const hrPermissions: PermissionDef[] = [
 export const hrModule: ModuleManifest = {
   id: 'hr',
   name: { en: 'Human Resources', ar: 'الموارد البشرية' },
-  version: '0.12.0',
+  version: '0.13.0',
   requiresPlatform: '^2.1',
   permissions: hrPermissions,
   routes: [
@@ -148,6 +170,8 @@ export const hrModule: ModuleManifest = {
     { prefix: '/hr/screenings', router: buildScreeningsRouter() },
     { prefix: '/hr/interviews', router: buildInterviewsRouter() },
     { prefix: '/hr/interview-stages', router: buildInterviewStagesRouter() },
+    { prefix: '/hr/evaluations', router: buildEvaluationsRouter() },
+    { prefix: '/hr/evaluation-phases', router: buildEvaluationPhasesRouter() },
     { prefix: '/hr/job-offers', router: buildJobOffersRouter() },
     { prefix: '/hr/employees', router: buildEmployeesRouter() },
     { prefix: '/hr/hiring-documents', router: buildHiringDocumentsRouter() },
@@ -161,6 +185,8 @@ export const hrModule: ModuleManifest = {
     'hr_screenings',
     'hr_interviews',
     'hr_interview_stages',
+    'hr_evaluations',
+    'hr_evaluation_phases',
     'hr_job_offers',
     'hr_employees',
     'hr_hiring_documents',

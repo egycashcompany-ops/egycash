@@ -11,6 +11,17 @@ its entry here in the same PR.
 
 ### Added
 
+- **HR — Recruitment: evaluation phases (Security / Medical / Driving, extensible).** A new
+  post-interview, file-based approval stage. An **administrator-configurable** phase catalog
+  (`hr_evaluation_phases`, seeded with **Security Check / Medical Examination / Driving Test**, the
+  last flagged drivers-only) sits after the interview rounds — new phases are added with **no code
+  changes**, exactly like interview stages. Per applicant × phase, an **evaluation** record
+  (`hr_evaluations`) collects **one or more files** (via the platform Files service) and carries an
+  **approved / rejected** decision with a reason; the decision stays **editable**. A **rejection at
+  any phase removes the applicant from the active pipeline** (mirrors a failed interview round).
+  Endpoints under `/hr/evaluations` (+ `/hr/evaluation-phases`) gated by new `evaluation.view` /
+  `evaluation.manage` / `evaluationPhase.manage` permissions; every mutation audited, and
+  `hr.evaluation.decided` published. Backend-first; the pipeline/kanban UI follows.
 - **HR — Employees: employment lifecycle.** The post-hire workforce capability. An employee can now
   be moved through their lifecycle — **go on leave, return, suspend, reinstate, terminate** — via
   `PATCH /hr/employees/:id/status`, gated by the new **`employee.changeStatus`** permission and

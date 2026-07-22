@@ -546,6 +546,39 @@ class ApplicantService {
     return updated;
   }
 
+  /**
+   * Transition to the terminal `rejected` status as a consequence of a rejected Evaluation phase
+   * (Security Check / Medical / Driving Test / …). Called only by the evaluation service. Idempotent
+   * and safe: only a live (`new`) applicant is transitioned; an already-terminal applicant is left
+   * untouched, never overridden.
+   */
+  async markRejectedByEvaluation(
+    ctx: AuthContext,
+    id: string,
+    meta: { evaluationId: string; phaseKey: string; reason: string },
+    scope: ScopeSelector,
+  ): Promise<ApplicantDoc> {
+    const before = await applicantRepository.getById(id, scope);
+    if (before.status !== 'new') return before;
+    const updated = await applicantRepository.updateById(
+      id,
+      { status: 'rejected' },
+      { by: ctx.userId, version: before.__v, scope },
+    );
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'statusChange',
+      changes: [{ field: 'status', old: before.status, new: 'rejected' }],
+    });
+    await emit(HrEvents.ApplicantRejected, {
+      applicantId: id,
+      code: updated.code,
+      evaluationId: meta.evaluationId,
+      reason: meta.reason,
+    });
+    return updated;
+  }
+
   // ── Bulk (generic per-row-audited executor — §9) ────────────────────────────
 
   async bulk(

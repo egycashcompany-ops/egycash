@@ -9,6 +9,7 @@ import { rbacService } from './platform/rbac';
 import { fileCategoryService } from './platform/files';
 import { settingsService } from './platform/settings';
 import { userService } from './platform/users';
+import { seedBootstrapNavigation } from './seed-navigation';
 import { type AuthContext } from './shared/types';
 
 const ensureUser = async (
@@ -88,6 +89,10 @@ export const seedDevData = async (): Promise<{ adminId: string; hrId: string }> 
     maxSizeMb: 20,
     retentionDays: null,
   });
+
+  // First-run navigation: default Application Categories + Applications, granted to the admin, so a
+  // fresh install has a functional (fully data-driven) sidebar with no manual DB setup.
+  await seedBootstrapNavigation(adminId);
 
   return { adminId, hrId };
 };

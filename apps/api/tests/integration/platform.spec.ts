@@ -341,6 +341,60 @@ describe('login → permission → scoped data → audit trail', () => {
     expect(orphanDept.status).toBe(422);
   });
 
+  it('persists the department description on create and update, and clears it (Phase 3.2)', async () => {
+    const created = await request(app)
+      .post('/api/v1/platform/departments')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        code: 'DEP-DESC',
+        name: { ar: 'الموارد البشرية', en: 'Human Resources' },
+        branchId: branchAId,
+        description: { ar: 'إدارة شؤون الموظفين', en: 'Manages employee affairs' },
+      });
+    expect(created.status).toBe(201);
+    const dept = (created.body as { data: { id: string; version: number; description: unknown } })
+      .data;
+    expect(dept.description).toEqual({ ar: 'إدارة شؤون الموظفين', en: 'Manages employee affairs' });
+
+    // Update the description (the generic update seam must persist a per-unit column).
+    const updated = await request(app)
+      .patch(`/api/v1/platform/departments/${dept.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ description: { ar: 'إدارة الموارد البشرية', en: 'HR management' }, version: dept.version });
+    expect(updated.status).toBe(200);
+    const afterUpdate = (updated.body as { data: { version: number; description: unknown } }).data;
+    expect(afterUpdate.description).toEqual({ ar: 'إدارة الموارد البشرية', en: 'HR management' });
+
+    // Clear the description back to null.
+    const cleared = await request(app)
+      .patch(`/api/v1/platform/departments/${dept.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ description: null, version: afterUpdate.version });
+    expect(cleared.status).toBe(200);
+    expect((cleared.body as { data: { description: unknown } }).data.description).toBeNull();
+  });
+
+  it('persists a branch address on update via the generic per-unit seam', async () => {
+    const created = await request(app)
+      .post('/api/v1/platform/branches')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: 'BR-ADDR', name: { ar: 'فرع العنوان', en: 'Address Branch' } });
+    expect(created.status).toBe(201);
+    const branch = (created.body as { data: { id: string; version: number } }).data;
+
+    const updated = await request(app)
+      .patch(`/api/v1/platform/branches/${branch.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        address: { line1: '1 Nile St', city: 'Cairo', governorate: 'Cairo' },
+        version: branch.version,
+      });
+    expect(updated.status).toBe(200);
+    expect((updated.body as { data: { address: { city: string } | null } }).data.address?.city).toBe(
+      'Cairo',
+    );
+  });
+
   it('enforces DEPARTMENT scope: a department-scoped user sees only same-department users (ADR-017)', async () => {
     const dept = await request(app)
       .post('/api/v1/platform/departments')

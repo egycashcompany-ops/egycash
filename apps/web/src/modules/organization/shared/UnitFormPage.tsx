@@ -17,7 +17,7 @@ import { ErrorState } from '../../../shared/ui/states/ErrorState';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { ApiError } from '../../../shared/lib/api-client';
 import { localized } from '../../../shared/lib/format';
-import { LocalizedNameFields, StatusSelect, type LocalizedValue } from './form-fields';
+import { LocalizedNameFields, StatusSelect, localizedOrNull, type LocalizedValue } from './form-fields';
 import { UserPicker } from './UserPicker';
 import { useBranchOptions, useDepartmentOptions } from './references';
 import { type AnyUnitDto, type UnitBody } from './org-unit-resource';
@@ -62,6 +62,10 @@ const UnitFormBody = <TDto extends AnyUnitDto>({
   const [branchId, setBranchId] = useState<string>(existing?.branchId ?? '');
   const [departmentId, setDepartmentId] = useState<string>(existing?.departmentId ?? '');
   const [address, setAddress] = useState<AddressForm>(toAddressForm(existing?.address));
+  const [description, setDescription] = useState<LocalizedValue>({
+    ar: existing?.description?.ar ?? '',
+    en: existing?.description?.en ?? '',
+  });
 
   const { data: branches = [] } = useBranchOptions(wantsBranch && isCreate);
   const { data: departments = [] } = useDepartmentOptions(
@@ -119,6 +123,7 @@ const UnitFormBody = <TDto extends AnyUnitDto>({
         if (wantsBranch) body.branchId = branchId;
         if (wantsDept) body.departmentId = departmentId;
         if (config.hasAddress && addr !== null) body.address = addr;
+        if (config.hasDescription) body.description = localizedOrNull(description);
         const doc = await create.mutateAsync(body);
         toast.success(t(`organization.${config.entity}.created`));
         navigate(`${config.routeBase}/${doc.id}`);
@@ -130,6 +135,7 @@ const UnitFormBody = <TDto extends AnyUnitDto>({
           managerId,
         };
         if (config.hasAddress && addr !== null) body.address = addr;
+        if (config.hasDescription) body.description = localizedOrNull(description);
         const doc = await update.mutateAsync(body);
         toast.success(t(`organization.${config.entity}.updated`));
         navigate(`${config.routeBase}/${doc.id}`);
@@ -175,6 +181,14 @@ const UnitFormBody = <TDto extends AnyUnitDto>({
             )}
 
             <LocalizedNameFields label={t('organization.field.name')} value={name} onChange={setName} required />
+
+            {config.hasDescription && (
+              <LocalizedNameFields
+                label={t('organization.field.description')}
+                value={description}
+                onChange={setDescription}
+              />
+            )}
 
             {isCreate && wantsBranch && (
               <Field label={t('organization.nav.branches')} required>

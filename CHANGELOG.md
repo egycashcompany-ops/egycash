@@ -52,6 +52,21 @@ its entry here in the same PR.
     or en); a collision surfaces as a `409` conflict. `GET /platform/auth/me` now returns
     `isPrivileged` so the web can gate the super-admin-only Branch-Code action. No new backend
     endpoints, permissions or events; audit fields and soft-delete are unchanged.
+- **Organization Management UI — Phase 3.2: Departments Management.** A dedicated Departments admin
+  on the same `platform/organization` backend. Each department belongs to exactly one branch and is a
+  **platform-wide** unit (not HR-only):
+  - **Departments list.** Columns per spec — **Branch, Arabic Name, English Name, Status, Created At,
+    Updated At** — with a **branch** filter (server-side `?branchId=`), free-text **search**, a
+    **status** filter, **pagination** and sortable status/created columns, all URL-synchronized. Each
+    row carries an inline **Activate/Deactivate** toggle (version-checked, gated on `department.edit`).
+  - **Department detail + form.** Identity (Code, ar/en names, **Description**, manager), the owning
+    Branch (linked), path and audit timestamps, with **Edit**, **Activate/Deactivate** and **Delete**
+    (soft, guarded against departments that still have sections). The create/edit form gains an
+    optional bilingual **Description** field.
+  - **New `description` field.** Departments gain an optional bilingual `description` (contracts +
+    model + DTO). The generic org-unit **update** now persists per-unit columns via a `buildUpdateSet`
+    seam — which also **fixes branch `address`** being editable only at creation. No new endpoints,
+    permissions or events; audit fields and soft-delete unchanged.
 
 ### Documented
 

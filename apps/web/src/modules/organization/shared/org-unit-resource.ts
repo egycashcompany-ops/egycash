@@ -10,11 +10,12 @@ import { detailKey, featureKey, listKey } from '../../../shared/lib/query-keys';
 
 export const ORG_MODULE = 'organization';
 
-/** Widened org-unit shape: the common fields plus the parent/address fields some units carry. */
+/** Widened org-unit shape: the common fields plus the parent/address/description fields some units carry. */
 export type AnyUnitDto = OrgUnitDto & {
   branchId?: string;
   departmentId?: string;
   address?: Address | null;
+  description?: { ar: string; en: string } | null;
 };
 
 export type UnitListParams = Record<string, string | number | boolean | undefined | null>;

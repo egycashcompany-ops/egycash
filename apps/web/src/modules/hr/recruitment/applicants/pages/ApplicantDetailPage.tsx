@@ -24,7 +24,7 @@ import { useApplicant, useVerifyApplicantIdentity } from '../api/applicant-queri
 const Info = ({ label, children }: { label: string; children: ReactNode }): JSX.Element => (
   <div>
     <dt className="text-xs text-slate-400 dark:text-slate-500">{label}</dt>
-    <dd className="text-sm text-slate-800 dark:text-slate-100">{children ?? '—'}</dd>
+    <dd className="mt-1 text-sm text-slate-700 dark:text-slate-200">{children ?? '—'}</dd>
   </div>
 );
 

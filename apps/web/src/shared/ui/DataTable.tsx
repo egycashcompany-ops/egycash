@@ -127,7 +127,13 @@ export const DataTable = <T,>({
           {columns.map((c) => (
             <td
               key={c.key}
-              className={cn('px-4 py-3 text-sm text-slate-700 dark:text-slate-200', alignClass[c.align ?? 'start'], c.className)}
+              className={cn(
+                'px-4 py-3 text-sm text-slate-700 dark:text-slate-200',
+                alignClass[c.align ?? 'start'],
+                // Numeric (end-aligned) columns line up cleanly with lining figures.
+                c.align === 'end' && 'tabular-nums',
+                c.className,
+              )}
             >
               {c.render(row)}
             </td>
@@ -161,13 +167,22 @@ export const DataTable = <T,>({
               return (
                 <th
                   key={c.key}
-                  className={cn('px-4 py-3 font-semibold', alignClass[c.align ?? 'start'], c.headerClassName)}
+                  className={cn(
+                    'px-4 py-3 font-semibold',
+                    // Emphasize the column the table is currently sorted by.
+                    active && 'text-slate-700 dark:text-slate-200',
+                    alignClass[c.align ?? 'start'],
+                    c.headerClassName,
+                  )}
                 >
                   {c.sortable === true && onSortChange !== undefined ? (
                     <button
                       type="button"
                       onClick={() => onSortChange(c.key)}
-                      className="inline-flex items-center gap-1 hover:text-slate-700 dark:hover:text-slate-200"
+                      className={cn(
+                        'inline-flex items-center gap-1 rounded hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600/30 dark:hover:text-slate-200',
+                        active && 'text-slate-700 dark:text-slate-200',
+                      )}
                     >
                       {c.header}
                       <ChevronIcon

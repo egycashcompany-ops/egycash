@@ -11,6 +11,7 @@ import { ErrorState } from '../../../../../shared/ui/states/ErrorState';
 import { formatDateTime, formatNumber } from '../../../../../shared/lib/format';
 import { EmployeeStatusBadge } from '../components/EmployeeStatusBadge';
 import { EmploymentView } from '../components/EmploymentView';
+import { EmployeeAccountCard } from '../components/EmployeeAccountCard';
 import { useEmployee } from '../api/employee-queries';
 
 export const EmployeeDetailPage = (): JSX.Element => {
@@ -64,6 +65,7 @@ export const EmployeeDetailPage = (): JSX.Element => {
         </div>
 
         <div className="space-y-4">
+          <EmployeeAccountCard employee={e} />
           <Card>
             <CardHeader title={t('employees.detail.summary')} />
             <CardBody>

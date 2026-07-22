@@ -4,7 +4,10 @@ import { widerScope, type DataScope, type Locale } from '@ecms/contracts';
 export interface AuthContext {
   userId: string;
   sessionId: string;
+  /** The caller's organizational placement — backs the branch/department/section scopes. */
   branchId: string | null;
+  departmentId: string | null;
+  sectionId: string | null;
   locale: Locale;
   /** Effective permission → widest granted scope. */
   permissions: Record<string, DataScope>;
@@ -24,12 +27,16 @@ export interface ScopeSelector {
   scope: DataScope;
   userId: string;
   branchId: string | null;
+  departmentId: string | null;
+  sectionId: string | null;
 }
 
 export const scopeSelector = (ctx: AuthContext, permissionKey: string): ScopeSelector => ({
   scope: ctx.permissions[permissionKey] ?? 'own',
   userId: ctx.userId,
   branchId: ctx.branchId,
+  departmentId: ctx.departmentId,
+  sectionId: ctx.sectionId,
 });
 
 export { widerScope };

@@ -68,6 +68,8 @@ export const seedDevData = async (): Promise<{ adminId: string; hrId: string }> 
     userId: adminId,
     sessionId: 'seed',
     branchId: null,
+    departmentId: null,
+    sectionId: null,
     locale: 'ar',
     permissions: { 'setting.edit': 'organization' },
     permissionVersion: 0,

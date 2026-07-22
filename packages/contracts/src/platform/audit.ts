@@ -21,6 +21,7 @@ export const AUDIT_ACTIONS = [
   'settingChanged',
   'roleAssigned',
   'roleRevoked',
+  'loginCreated',
   'download',
   'archive',
   'restore',

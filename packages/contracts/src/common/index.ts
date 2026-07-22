@@ -7,17 +7,23 @@ export * from './localized.js';
 export const objectId = () =>
   z.string().regex(/^[0-9a-fA-F]{24}$/, { message: 'must be a 24-hex-char ObjectId' });
 
-// ── Data scopes (ADR-004, amended by ADR-015: own | branch | organization) ──
+// ── Data scopes (ADR-004; ADR-015 org model; ADR-017 hierarchical scopes) ────
+// The organizational visibility ladder, narrowest → widest:
+//   own (Self) ⊂ section ⊂ department ⊂ branch ⊂ organization (Company).
+// The tokens `own` and `organization` are kept (backward compatible — they map to
+// the business terms "Self" and "Company"); `section` and `department` are added.
 
-export const DATA_SCOPES = ['own', 'branch', 'organization'] as const;
+export const DATA_SCOPES = ['own', 'section', 'department', 'branch', 'organization'] as const;
 export const DataScopeSchema = z.enum(DATA_SCOPES);
 export type DataScope = z.infer<typeof DataScopeSchema>;
 
 /** Widest wins when a user holds the same permission at several scopes. */
 export const DATA_SCOPE_RANK: Record<DataScope, number> = {
   own: 0,
-  branch: 1,
-  organization: 2,
+  section: 1,
+  department: 2,
+  branch: 3,
+  organization: 4,
 };
 
 export const widerScope = (a: DataScope, b: DataScope): DataScope =>

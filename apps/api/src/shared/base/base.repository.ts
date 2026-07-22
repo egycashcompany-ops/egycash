@@ -17,6 +17,10 @@ import { type BaseDocFields } from './base.model';
 export interface BaseRepositoryOptions {
   /** Dot path of the branch scoping field (e.g. `branchId`, `organization.branchId`). */
   branchField?: string;
+  /** Dot path of the department scoping field; enables the `department` scope. */
+  departmentField?: string;
+  /** Dot path of the section scoping field; enables the `section` scope. */
+  sectionField?: string;
   /** Collection carries the standard `assignees` array (Review R17). */
   hasAssignees?: boolean;
   /** Business data soft-deletes by default; operational collections may opt out. */
@@ -53,13 +57,30 @@ export class BaseRepository<T extends BaseDocFields> {
     protected readonly options: BaseRepositoryOptions = {},
   ) {}
 
+  /**
+   * Filter one organizational scope by its configured field. When the collection does not declare
+   * that field the scope widens to organization-wide ({}) — the same convention `branch` has always
+   * used, so finer scopes are opt-in per collection and backward compatible (ADR-017).
+   */
+  private orgScopeFilter(field: string | undefined, id: string | null): FilterQuery<T> {
+    if (field === undefined) return {};
+    if (id === null) return NEVER as FilterQuery<T>;
+    return { [field]: new Types.ObjectId(id) } as FilterQuery<T>;
+  }
+
   protected scopeFilter(selector: ScopeSelector | undefined): FilterQuery<T> {
     if (selector === undefined || selector.scope === 'organization') return {};
+    // Hierarchical scopes filter by the caller's own placement (branch ⊃ department ⊃ section).
+    // Filtering by departmentId naturally includes every section under it; branch includes the
+    // whole branch — matching the business rules for each scope.
     if (selector.scope === 'branch') {
-      const branchField = this.options.branchField;
-      if (branchField === undefined) return {}; // unscoped collection: branch behaves as organization
-      if (selector.branchId === null) return NEVER as FilterQuery<T>;
-      return { [branchField]: new Types.ObjectId(selector.branchId) } as FilterQuery<T>;
+      return this.orgScopeFilter(this.options.branchField, selector.branchId);
+    }
+    if (selector.scope === 'department') {
+      return this.orgScopeFilter(this.options.departmentField, selector.departmentId);
+    }
+    if (selector.scope === 'section') {
+      return this.orgScopeFilter(this.options.sectionField, selector.sectionId);
     }
     // own: records the user created or is assigned to (Review R17)
     const userId = new Types.ObjectId(selector.userId);

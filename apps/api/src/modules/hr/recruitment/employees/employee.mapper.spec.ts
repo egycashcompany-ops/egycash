@@ -6,7 +6,9 @@ import { type EmployeeDoc, type EmploymentDetails } from './employee.model';
 const employment = (over: Partial<EmploymentDetails> = {}): EmploymentDetails => ({
   jobTitleId: new Types.ObjectId(),
   departmentId: new Types.ObjectId(),
+  sectionId: null,
   branchId: new Types.ObjectId(),
+  jobPositionId: null,
   managerId: new Types.ObjectId(),
   employmentType: 'fullTime',
   salary: { amount: 15000, currency: 'EGP' },
@@ -20,8 +22,10 @@ const employment = (over: Partial<EmploymentDetails> = {}): EmploymentDetails =>
 const baseDoc = (over: Partial<EmployeeDoc> = {}): EmployeeDoc =>
   ({
     _id: new Types.ObjectId(),
-    code: 'EMP-2026-000001',
+    employeeNumber: '000125',
+    code: '001000125',
     status: 'active',
+    userId: null,
     applicantId: new Types.ObjectId(),
     applicantCode: 'APP-2026-000001',
     jobRequisitionId: new Types.ObjectId(),
@@ -30,6 +34,8 @@ const baseDoc = (over: Partial<EmployeeDoc> = {}): EmployeeDoc =>
     acceptedOfferRevision: 2,
     employment: employment(),
     branchId: new Types.ObjectId(),
+    departmentId: new Types.ObjectId(),
+    sectionId: null,
     hiredAt: new Date('2026-09-20T00:00:00.000Z'),
     __v: 0,
     createdAt: new Date('2026-09-20T00:00:00.000Z'),
@@ -38,10 +44,12 @@ const baseDoc = (over: Partial<EmployeeDoc> = {}): EmployeeDoc =>
   }) as EmployeeDoc;
 
 describe('toEmployeeDto', () => {
-  it('maps the employee number, status, and hiring date', () => {
+  it('maps the permanent Global Employee Number, derived code, status, and hiring date', () => {
     const dto = toEmployeeDto(baseDoc());
-    expect(dto.code).toBe('EMP-2026-000001');
+    expect(dto.employeeNumber).toBe('000125');
+    expect(dto.code).toBe('001000125'); // <CurrentBranchCode><GlobalEmployeeNumber>
     expect(dto.status).toBe('active');
+    expect(dto.userId).toBeNull();
     expect(dto.offerCode).toBe('JO-2026-000001');
     expect(dto.acceptedOfferRevision).toBe(2);
     expect(dto.hiredAt).toBe('2026-09-20T00:00:00.000Z');

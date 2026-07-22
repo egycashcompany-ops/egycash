@@ -1,12 +1,13 @@
-// Atomic employee numbering (same BD-002 pattern as applicants/offers): a per-year key in the
-// shared module-local `hr_sequences` collection with an upserting `$inc` — a single atomic op,
-// so concurrent hiring never collides and never skips. The employee document also carries a
-// unique index on `code` as a second line of defence.
+// Atomic Global-Employee-Number allocation (BD-002 pattern): a SINGLE global key in the shared
+// module-local `hr_sequences` collection with an upserting `$inc` — one atomic op, so concurrent
+// hiring in any branch never collides and never skips. This yields the PERMANENT identity; the
+// displayed Employee Code (current branch + this number) is derived separately (ADR-017). A unique
+// index on `employeeNumber` is the second line of defence.
 import mongoose, { Schema, type ClientSession, type Model } from 'mongoose';
-import { employeeSequenceKey, formatEmployeeNumber } from './employee-number';
+import { EMPLOYEE_SEQUENCE_KEY, formatEmployeeNumber } from './employee-number';
 
 interface SequenceDoc {
-  _id: string; // the sequence key, e.g. "employee:2026"
+  _id: string; // the sequence key, e.g. "employee:global"
   value: number;
 }
 
@@ -24,17 +25,17 @@ const HrSequenceModel: Model<SequenceDoc> =
   (mongoose.models.HrSequence as Model<SequenceDoc> | undefined) ??
   mongoose.model<SequenceDoc>('HrSequence', sequenceSchema);
 
-/** Atomically allocate the next employee number for `year`. */
-export const nextEmployeeNumber = async (
-  year: number = new Date().getUTCFullYear(),
-  session?: ClientSession,
-): Promise<string> => {
+/**
+ * Atomically allocate the next Global Employee Number (the permanent, company-wide-unique identity).
+ * Branch-agnostic — the displayed Employee Code is derived from the current branch separately.
+ */
+export const nextEmployeeNumber = async (session?: ClientSession): Promise<string> => {
   const doc = await HrSequenceModel.findOneAndUpdate(
-    { _id: employeeSequenceKey(year) },
+    { _id: EMPLOYEE_SEQUENCE_KEY },
     { $inc: { value: 1 } },
     { new: true, upsert: true, session: session ?? null },
   )
     .lean<SequenceDoc>()
     .exec();
-  return formatEmployeeNumber(year, doc.value);
+  return formatEmployeeNumber(doc.value);
 };

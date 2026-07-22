@@ -9,6 +9,40 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Added
+
+- **HR Foundation — Phase 2: Platform Identity & Organizational Access Control** (ADR-017). Permanent
+  platform infrastructure every future module reuses:
+  - **Hierarchical data scope.** The visibility ladder extends from `own | branch | organization` to
+    **`own(Self) ⊂ section ⊂ department ⊂ branch ⊂ organization(Company)`**, enforced in the single
+    existing place (`BaseRepository.scopeFilter`). Collections opt into finer scopes by declaring
+    `departmentField`/`sectionField`; Users and Employees now scope by the full hierarchy. Role
+    assignments, `AuthContext` and `ScopeSelector` carry department/section. Fully backward
+    compatible — existing grants keep working; **no permission changes**.
+  - **Login account ← Employee.** Every login belongs to exactly one Employee (`User.employeeId`,
+    unique; `Employee.userId` back-reference). Create a login from the employee
+    (`POST /hr/employees/:id/login`); the **username defaults to the Employee Code** and is editable;
+    login now accepts **username OR email** (email retained). Departing employees are disabled, not
+    deleted.
+  - **Permanent Global Employee Number + branch-derived Employee Code.** The **Global Employee
+    Number** (e.g. `000125`) is the permanent identity — a single **global**, concurrency-safe atomic
+    sequence (reusing the existing `hr_sequences` `$inc` primitive), never reused, never changed. The
+    displayed **Employee Code** is derived as **`<CurrentBranchCode><GlobalEmployeeNumber>`**
+    (e.g. `001000125`); on a branch transfer only the prefix changes (`004000125`) while the number
+    stays fixed. Never manually editable.
+  - **Branch Code** stays required/unique/immutable, now correctable by a **super-admin**
+    (`PATCH /platform/branches/:id/code`).
+  - **Minimal UI** on the Employee detail (`EmployeeAccountCard`): shows Employee Code + Branch Code,
+    creates the login, edits the username, shows the account's data scopes.
+  - **Future-proof:** employment carries optional `sectionId` + `jobPositionId` (null until set), so
+    an employee can later belong to Branch → Department → Section → Job Position with no schema change
+    — without ever forcing a vacancy link (ADR-016 Talent Pool preserved).
+
+### Documented
+
+- **ADR-017** — Platform Identity & Organizational Access Control.
+- **`docs/02-architecture/platform-identity.md`** — the Phase-2 design.
+
 ## [0.23.0] - 2026-07-21
 
 Release v0.23.0 — Sprint 5.11: **HR Foundation — Phase 1: Organization Structure**

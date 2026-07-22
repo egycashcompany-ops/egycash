@@ -33,7 +33,7 @@ const PASSWORD = 'Str0ng#Pass!';
 const REQUISITION_ID = '64b1f0aaaaaaaaaaaaaaaaaa';
 const JOB_TITLE_ID = '64b1f0cccccccccccccccc01';
 const DEPARTMENT_ID = '64b1f0cccccccccccccccc02';
-const BRANCH_ID = '64b1f0cccccccccccccccc03';
+let BRANCH_ID = ''; // real branch created in beforeAll (employee code is BranchCode-based)
 const FUTURE = '2027-03-01T00:00:00.000Z';
 const START_DATE = '2027-04-01T00:00:00.000Z';
 const REQUIRED_KEYS = ['nationalIdCopy', 'signedContract', 'personalPhoto'];
@@ -216,6 +216,8 @@ beforeAll(async () => {
     userId: adminId,
     sessionId: 'seed',
     branchId: null,
+    departmentId: null,
+    sectionId: null,
     locale: 'en',
     permissions: { 'setting.edit': 'organization' },
     permissionVersion: 1,
@@ -224,6 +226,11 @@ beforeAll(async () => {
   await settingsService.set(ctx, { key: SettingKeys.TotpEnforcedForPrivileged, scope: 'organization', value: false });
 
   adminToken = await login('admin@ecms.local');
+  const branchRes = await request(app)
+    .post('/api/v1/platform/branches')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ code: '001', name: { ar: 'الرئيسي', en: 'HQ' } });
+  BRANCH_ID = (branchRes.body as { data: { id: string } }).data.id;
   aliceToken = await login('alice@ecms.local');
   interviewerToken = await login('interviewer@ecms.local');
 }, 180_000);

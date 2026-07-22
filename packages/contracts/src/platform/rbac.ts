@@ -4,6 +4,7 @@ import {
   DataScopeSchema,
   LocalizedStringSchema,
   PaginationQuerySchema,
+  type DataScope,
 } from '../common/index.js';
 
 export const CreateRoleSchema = z
@@ -43,8 +44,11 @@ export const CreateRoleAssignmentSchema = z
     userId: objectId(),
     roleId: objectId(),
     scope: DataScopeSchema,
-    /** Required when scope is `branch` and the target user has no home branch. */
+    // The hierarchical scopes resolve to the target user's own placement; these are optional and,
+    // when present, must match that placement (multi-scope grants are not supported yet).
     branchId: objectId().optional(),
+    departmentId: objectId().optional(),
+    sectionId: objectId().optional(),
     validFrom: z.coerce.date().optional(),
     validTo: z.coerce.date().optional(),
   })
@@ -59,8 +63,10 @@ export interface RoleAssignmentDto {
   id: string;
   userId: string;
   roleId: string;
-  scope: 'own' | 'branch' | 'organization';
+  scope: DataScope;
   branchId: string | null;
+  departmentId: string | null;
+  sectionId: string | null;
   validFrom: string | null;
   validTo: string | null;
   createdAt: string;

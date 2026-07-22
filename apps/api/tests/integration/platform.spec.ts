@@ -45,6 +45,8 @@ const adminCtx = (): AuthContext => ({
   userId: adminId,
   sessionId: 'test-session',
   branchId: null,
+  departmentId: null,
+  sectionId: null,
   locale: 'en',
   permissions: { 'setting.edit': 'organization', 'setting.view': 'organization' },
   permissionVersion: 1,
@@ -328,6 +330,63 @@ describe('login → permission → scoped data → audit trail', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ code: 'DEP-X', name: { ar: 'س', en: 'X' }, branchId: '000000000000000000000001' });
     expect(orphanDept.status).toBe(422);
+  });
+
+  it('enforces DEPARTMENT scope: a department-scoped user sees only same-department users (ADR-017)', async () => {
+    const dept = await request(app)
+      .post('/api/v1/platform/departments')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: 'DEP-FIN', name: { ar: 'المالية', en: 'Finance' }, branchId: branchAId });
+    expect(dept.status).toBe(201);
+    const deptId = (dept.body as { data: { id: string } }).data.id;
+
+    const mkScopedUser = async (
+      email: string,
+      departmentId: string | null,
+    ): Promise<{ id: string; activationToken: string }> => {
+      const res = await request(app)
+        .post('/api/v1/platform/users')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          email,
+          firstName: { ar: 'م', en: 'U' },
+          lastName: { ar: 'م', en: 'U' },
+          organization: { branchId: branchAId, departmentId, sectionId: null, jobTitleId: null },
+        });
+      expect(res.status).toBe(201);
+      return (res.body as { data: { id: string; activationToken: string } }).data;
+    };
+    const dan = await mkScopedUser('dan@ecms.local', deptId);
+    await mkScopedUser('dina@ecms.local', deptId);
+    await mkScopedUser('evan@ecms.local', null); // same branch, no department
+
+    const role = await request(app)
+      .post('/api/v1/platform/roles')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: { ar: 'مشاهد الإدارة', en: 'Dept Viewer' }, permissionKeys: ['user.view'] });
+    const roleId = (role.body as { data: { id: string } }).data.id;
+    const assignment = await request(app)
+      .post('/api/v1/platform/role-assignments')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ userId: dan.id, roleId, scope: 'department' });
+    expect(assignment.status).toBe(201);
+    // The hierarchical scope resolved to Dan's home department.
+    expect((assignment.body as { data: { departmentId: string | null } }).data.departmentId).toBe(deptId);
+
+    await request(app).post('/api/v1/auth/activate').send({ token: dan.activationToken, password: PASSWORD });
+    const login = await doLogin('dan@ecms.local', PASSWORD);
+    expect(login.status).toBe(200);
+    expect(login.body.data?.me?.permissions['user.view']).toBe('department');
+    const danToken = login.body.data?.accessToken ?? '';
+
+    const list = await request(app).get('/api/v1/platform/users').set('Authorization', `Bearer ${danToken}`);
+    expect(list.status).toBe(200);
+    const emails = (list.body as { data: { email: string }[] }).data.map((u) => u.email);
+    expect(emails).toContain('dan@ecms.local');
+    expect(emails).toContain('dina@ecms.local');
+    expect(emails).not.toContain('evan@ecms.local'); // same branch, different (no) department
+    expect(emails).not.toContain('carol@ecms.local'); // branch B
+    expect(emails).not.toContain('admin@ecms.local'); // no department
   });
 
   it('job titles are an enriched org-wide catalog (grade required; salary band coherent)', async () => {

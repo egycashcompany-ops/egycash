@@ -56,7 +56,7 @@ const UserMenu = (): JSX.Element => {
       {open && (
         <div
           role="menu"
-          className="absolute end-0 mt-2 w-56 rounded-lg border border-slate-200 bg-white py-1 shadow-elevated dark:border-slate-700 dark:bg-slate-800"
+          className="absolute end-0 mt-2 w-56 origin-top animate-menu-in rounded-lg border border-slate-200 bg-white py-1 shadow-elevated dark:border-slate-700 dark:bg-slate-800"
         >
           <div className="border-b border-slate-100 px-4 py-3 dark:border-slate-700">
             <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">{name}</p>

@@ -27,11 +27,11 @@ export const PageHeader = ({
     )}
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
-        <h1 className="truncate text-xl font-semibold tracking-tight text-slate-900 dark:text-white">
+        <h1 className="truncate text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">
           {title}
         </h1>
         {description !== undefined && (
-          <p className="mt-1 max-w-2xl text-sm text-slate-500 dark:text-slate-400">{description}</p>
+          <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">{description}</p>
         )}
       </div>
       {actions !== undefined && (

@@ -36,6 +36,7 @@ export const CommandPalette = ({ open, onClose }: { open: boolean; onClose: () =
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const activeItemRef = useRef<HTMLButtonElement>(null);
 
   const apps = useMemo(() => flattenApps(data), [data]);
   const modules = useMemo(() => toModules(data), [data]);
@@ -119,6 +120,11 @@ export const CommandPalette = ({ open, onClose }: { open: boolean; onClose: () =
     setActive((i) => Math.min(i, Math.max(0, items.length - 1)));
   }, [items.length]);
 
+  // Keep the highlighted result visible when arrowing through a long catalog (hundreds of apps).
+  useEffect(() => {
+    activeItemRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [active]);
+
   if (!open) return null;
 
   const onInputKey = (e: ReactKeyboardEvent<HTMLInputElement>): void => {
@@ -142,12 +148,12 @@ export const CommandPalette = ({ open, onClose }: { open: boolean; onClose: () =
 
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-start justify-center p-4 pt-[12vh]">
-      <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" aria-hidden="true" onClick={onClose} />
+      <div className="absolute inset-0 animate-fade-in bg-slate-900/40 backdrop-blur-sm" aria-hidden="true" onClick={onClose} />
       <div
         role="dialog"
         aria-modal="true"
         aria-label={t('nav.command.placeholder')}
-        className="relative flex max-h-[70vh] w-full max-w-xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-elevated dark:border-slate-700 dark:bg-slate-900"
+        className="relative flex max-h-[70vh] w-full max-w-xl animate-pop-in flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-elevated dark:border-slate-700 dark:bg-slate-900"
       >
         <div className="flex items-center gap-2.5 border-b border-slate-100 px-4 dark:border-slate-800">
           <SearchIcon className="h-5 w-5 shrink-0 text-slate-400" />
@@ -185,6 +191,7 @@ export const CommandPalette = ({ open, onClose }: { open: boolean; onClose: () =
                   )}
                   <button
                     type="button"
+                    ref={isActive ? activeItemRef : undefined}
                     onMouseEnter={() => setActive(i)}
                     onClick={() => item.run()}
                     className={cn(

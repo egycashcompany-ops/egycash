@@ -32,6 +32,7 @@ const RecentTracker = (): null => {
 
 const Shell = (): JSX.Element => {
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const { pathname } = useLocation();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -51,7 +52,10 @@ const Shell = (): JSX.Element => {
       <div className="flex min-h-0 flex-1">
         <Sidebar />
         <main className="min-w-0 flex-1 overflow-y-auto">
-          <Outlet />
+          {/* Keyed on the path so each navigation settles in with a subtle fade instead of a hard cut. */}
+          <div key={pathname} className="animate-fade-in">
+            <Outlet />
+          </div>
         </main>
       </div>
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />

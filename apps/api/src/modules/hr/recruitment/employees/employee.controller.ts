@@ -2,6 +2,7 @@
 // infrastructure) rather than importing infrastructure directly.
 import { type Request, type Response } from 'express';
 import {
+  type ChangeEmployeeStatus,
   type CreateEmployee,
   type CreateEmployeeLogin,
   type EmployeeLoginDto,
@@ -33,6 +34,19 @@ export const getEmployee = async (req: Request, res: Response): Promise<void> =>
   const ctx = authContext(req);
   const { params } = validated<never, never, IdParam>(req);
   ok(res, toEmployeeDto(await employeeService.getById(params.id, scopeSelector(ctx, 'employee.view'))));
+};
+
+/** Change an employee's lifecycle status (leave / suspend / reinstate / terminate). */
+export const changeEmployeeStatus = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<ChangeEmployeeStatus, never, IdParam>(req);
+  const doc = await employeeService.changeStatus(
+    ctx,
+    params.id,
+    body,
+    scopeSelector(ctx, 'employee.changeStatus'),
+  );
+  ok(res, toEmployeeDto(doc));
 };
 
 /** Create the login account for an employee (Employee ← one User, ADR-017). Gated by `user.create`. */

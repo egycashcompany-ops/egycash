@@ -3,6 +3,7 @@
 export {
   CreateEmployeeSchema,
   CreateEmployeeLoginSchema,
+  ChangeEmployeeStatusSchema,
   ListEmployeesQuerySchema,
 } from '@ecms/contracts';
 

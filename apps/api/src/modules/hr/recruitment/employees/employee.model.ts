@@ -19,6 +19,16 @@ export interface EmployeeAllowance {
   currency: string;
 }
 
+/** One entry in the employee's status trail (the hire is recorded as `from: null → to: 'active'`). */
+export interface EmployeeStatusEvent {
+  from: EmployeeStatus | null;
+  to: EmployeeStatus;
+  reason: string | null;
+  effectiveDate: Date;
+  at: Date;
+  by: Types.ObjectId | null;
+}
+
 export interface EmploymentDetails {
   jobTitleId: Types.ObjectId;
   departmentId: Types.ObjectId;
@@ -46,6 +56,8 @@ export interface EmployeeDoc extends BaseDocFields {
    */
   code: string;
   status: EmployeeStatus;
+  /** Full lifecycle trail, oldest first (starts with the hire). */
+  statusHistory: EmployeeStatusEvent[];
   /** The linked login account (Employee ← one User), null until a login is created (ADR-017). */
   userId: Types.ObjectId | null;
   // Preserved references.
@@ -101,11 +113,24 @@ const employmentSchema = new Schema<EmploymentDetails>(
   { _id: false },
 );
 
+const statusEventSchema = new Schema<EmployeeStatusEvent>(
+  {
+    from: { type: String, enum: [...EMPLOYEE_STATUSES, null], default: null },
+    to: { type: String, enum: EMPLOYEE_STATUSES, required: true },
+    reason: { type: String, default: null },
+    effectiveDate: { type: Date, required: true },
+    at: { type: Date, required: true },
+    by: { type: Schema.Types.ObjectId, default: null },
+  },
+  { _id: false },
+);
+
 const employeeSchema = new Schema<EmployeeDoc>(
   {
     employeeNumber: { type: String, required: true },
     code: { type: String, required: true },
     status: { type: String, enum: EMPLOYEE_STATUSES, required: true, default: 'active' },
+    statusHistory: { type: [statusEventSchema], default: [] },
     userId: { type: Schema.Types.ObjectId, default: null },
     applicantId: { type: Schema.Types.ObjectId, required: true },
     applicantCode: { type: String, required: true },

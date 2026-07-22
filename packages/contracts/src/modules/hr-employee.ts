@@ -22,6 +22,30 @@ export const EMPLOYEE_STATUSES = ['active', 'onLeave', 'suspended', 'terminated'
 export const EmployeeStatusSchema = z.enum(EMPLOYEE_STATUSES);
 export type EmployeeStatus = z.infer<typeof EmployeeStatusSchema>;
 
+/**
+ * Allowed employee status transitions — the single source of truth shared by the API (which
+ * enforces them) and the web (which offers only the valid actions). `terminated` is terminal;
+ * a transition to the same status is never allowed (guarded separately).
+ *
+ *   active    → onLeave · suspended · terminated
+ *   onLeave   → active   · suspended · terminated
+ *   suspended → active   · terminated
+ *   terminated → (none)
+ */
+export const EMPLOYEE_STATUS_TRANSITIONS = {
+  active: ['onLeave', 'suspended', 'terminated'],
+  onLeave: ['active', 'suspended', 'terminated'],
+  suspended: ['active', 'terminated'],
+  terminated: [],
+} as const satisfies Record<EmployeeStatus, readonly EmployeeStatus[]>;
+
+/** True when `to` is a legal next status for an employee currently in `from`. */
+export const canTransitionEmployeeStatus = (from: EmployeeStatus, to: EmployeeStatus): boolean =>
+  from !== to && (EMPLOYEE_STATUS_TRANSITIONS[from] as readonly EmployeeStatus[]).includes(to);
+
+/** Transitions that must carry a reason (negative / terminal outcomes). */
+export const EMPLOYEE_STATUS_REASON_REQUIRED: readonly EmployeeStatus[] = ['suspended', 'terminated'];
+
 // ── Create (the only mutation this stage adds) ──────────────────────────────
 
 /**
@@ -37,6 +61,27 @@ export const CreateEmployeeSchema = z
   })
   .strict();
 export type CreateEmployee = z.infer<typeof CreateEmployeeSchema>;
+
+// ── Employee lifecycle: change status (employees sub-module) ─────────────────
+/**
+ * Move an employee to a new lifecycle status (go on leave, return, suspend, reinstate, terminate).
+ * The transition is validated against {@link EMPLOYEE_STATUS_TRANSITIONS}; suspend/terminate require
+ * a reason. `version` carries optimistic concurrency (API Standards §6). `effectiveDate` defaults to
+ * now — the date the change takes business effect (may differ from when it was recorded).
+ */
+export const ChangeEmployeeStatusSchema = z
+  .object({
+    status: EmployeeStatusSchema,
+    effectiveDate: z.coerce.date().optional(),
+    reason: z.string().trim().min(1).max(500).optional(),
+    version: z.number().int().nonnegative(),
+  })
+  .strict()
+  .refine(
+    (v) => !EMPLOYEE_STATUS_REASON_REQUIRED.includes(v.status) || (v.reason !== undefined && v.reason.length > 0),
+    { path: ['reason'], message: 'a reason is required when suspending or terminating an employee' },
+  );
+export type ChangeEmployeeStatus = z.infer<typeof ChangeEmployeeStatusSchema>;
 
 // ── Login account for an Employee (ADR-017) ─────────────────────────────────
 // Every login belongs to one Employee. The organizational placement (branch/department/section/
@@ -94,6 +139,19 @@ export interface EmploymentDetailsDto {
   startDate: string;
 }
 
+/** One entry in an employee's status trail. The hire is recorded as `from: null → to: 'active'`. */
+export interface EmployeeStatusEventDto {
+  from: EmployeeStatus | null;
+  to: EmployeeStatus;
+  reason: string | null;
+  /** The date the change takes business effect (ISO date-time). */
+  effectiveDate: string;
+  /** When the change was recorded (ISO date-time). */
+  at: string;
+  /** The user who made the change, or null for a system/seed action. */
+  by: string | null;
+}
+
 export interface EmployeeDto {
   id: string;
   /** Permanent identity: the Global Employee Number, e.g. `000125` — never changes (ADR-017). */
@@ -104,6 +162,8 @@ export interface EmployeeDto {
    */
   code: string;
   status: EmployeeStatus;
+  /** Full lifecycle trail, oldest first (starts with the hire). */
+  statusHistory: EmployeeStatusEventDto[];
   /** The linked login account, or null when the employee has no login yet (ADR-017). */
   userId: string | null;
   // Preserved references.
@@ -127,6 +187,7 @@ export interface EmployeeDto {
 
 export const HrEmployeeEvents = {
   EmployeeCreated: 'hr.employee.created',
+  EmployeeStatusChanged: 'hr.employee.statusChanged',
 } as const;
 export type HrEmployeeEventName = (typeof HrEmployeeEvents)[keyof typeof HrEmployeeEvents];
 
@@ -135,6 +196,13 @@ export const EmployeeCreatedPayloadV1 = z.object({
   code: z.string(),
   applicantId: objectId(),
   jobOfferId: objectId(),
+});
+
+export const EmployeeStatusChangedPayloadV1 = z.object({
+  employeeId: objectId(),
+  code: z.string(),
+  from: EmployeeStatusSchema,
+  to: EmployeeStatusSchema,
 });
 
 // ── Notification template key (seeded at boot by the HR module) ─────────────

@@ -12,10 +12,10 @@ the **web admin** to manage the whole structure end to end.
 ```
 Company (singleton)
 └── Branch
-    └── Department          (platform-wide — every module belongs to one, not HR-only)
-        └── Section
-            ├── Job Position   (later phase)
-            └── Employee       (later phase)
+    └── Department               (platform-wide — every module belongs to one, not HR-only)
+        ├── Job Position         (belongs to the DEPARTMENT, never a Section — later phase)
+        └── Section              (organizational subdivision only)
+            └── Employee         (belongs to a Section; its Job Position is the Department's — later phase)
 
 Job Titles ── organization-wide catalog (NOT nested under Section)
 ```
@@ -89,9 +89,9 @@ by any future module**. Recruitment already runs the full pipeline for a null re
 ## 5. Roadmap (do not mix phases)
 
 1. **Organization Structure** — *this phase* (Company, Branches, Departments, Sections, Job Titles).
-2. **Job Positions** — an approved, budgeted headcount at a location (Branch + Department + Section
-   + Job Title), e.g. *Cash Officer · authorized 120 · occupied 103 · vacant 17*. A position links a
-   Job Title to a place; it is **not** a requisition.
+2. **Job Positions** — an approved, budgeted headcount **owned by a Department** (Department + Job
+   Title; **not** a Section — see §7), e.g. *Cash Officer · authorized 120 · occupied 103 · vacant
+   17*. A position links a Job Title to a Department; it is **not** a requisition.
 3. **Job Requisitions** — a hiring request against a position (quantity, reason, priority, needed-by,
    budget, approval workflow).
 4. **Recruitment integration** — two entry paths (from a requisition, and direct/Talent-Pool), with
@@ -158,3 +158,68 @@ Planned model (deferred — do **not** build until its own phase):
 > **Guardrail for future phases:** keep `platform/organization` free of any navigation/menu/sidebar
 > logic. Sidebar generation belongs to the (future) Applications track, keyed off the user's assigned
 > Applications and Roles, with the org hierarchy supplying data scope only.
+
+## 7. Access & Applications model (locked; NOT implemented yet)
+
+Three relationship rules are **locked now** so that Branches, Departments, Sections and (future) Job
+Positions are built without foreclosing them. **None of these are implemented in this phase** — they
+constrain future design only. The current code already leaves room for all three (see §7.4).
+
+### 7.1 Applications ↔ Departments is **many-to-many**
+
+Applications are **not owned by Departments**. A Department is a **consumer** of Applications, and the
+**same Application can serve many Departments**:
+
+```
+Recruitment   → HR
+Payroll       → HR, Finance
+Treasury      → Treasury
+Cash Transfer → Operations, Treasury
+ATM           → ATM Operations
+Accounting    → Finance
+```
+
+Modelled later as a **join** (`department ⇄ application`), never as an Application field on Department
+or a Department list on Application. This keeps an Application reusable across departments.
+
+### 7.2 Access derivation: User → Job Position → Department → Applications → Roles
+
+Users are **not** assigned Applications directly by default. The preferred chain is:
+
+```
+User → Job Position → Department → Applications → Roles
+```
+
+i.e. a user's Applications (and thus their sidebar) are **derived** from the Department their Job
+Position belongs to, then filtered by Roles. **Keep this flexible:** the architecture must still allow
+an **optional direct User → Application (and/or Role) assignment** as a business exception later. The
+existing `role_assignments` collection already links `userId → roleId` directly, so both the derived
+path and a direct-override path remain open — no rework required.
+
+### 7.3 Job Positions belong to **Departments**, not Sections
+
+A **Job Position** is owned by a **Department** (e.g. *HR → HR Manager · Recruiter · HR Specialist*;
+*Finance → Accountant · Senior Accountant · Finance Manager*). **Sections are organizational
+subdivisions only.** An **Employee belongs to a Section**, but the **Job Position it holds belongs to
+the Department** — the two are independent references on the employee, not a Position-under-Section
+nesting. When Job Positions are built (roadmap #2), the entity carries `departmentId` (required) and
+**no** required `sectionId`.
+
+### 7.4 Why nothing built blocks this
+
+- **Employee** already carries `departmentId` (required), `sectionId` (nullable) and `jobPositionId`
+  (nullable) as **independent opaque references** — so "belongs to a Section, holds a Department's Job
+  Position" is already representable with no schema change.
+- **Job Position** and **Application** entities **do not exist yet**, so their shape is unconstrained;
+  when added they will be a Department-owned Position and a many-to-many Application join.
+- **Departments/Sections** are plain org units (`branchId`, and `departmentId` for sections) with no
+  embedded application/position lists that would force a one-to-many — a future M2M join is a pure
+  addition.
+- **RBAC** already supports direct `userId → roleId` assignments with scope, so the derived
+  (Position→Department→Applications→Roles) model and the optional direct override can both be layered
+  on additively.
+
+> **Guardrail for future phases:** Applications are a catalog joined **many-to-many** to Departments;
+> a user's Applications are **derived** via Job Position → Department (direct user assignment allowed
+> only as an explicit exception); and Job Positions are **Department-owned** (Sections never own
+> Positions). Do not build any of this until its own phase.

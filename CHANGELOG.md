@@ -64,6 +64,14 @@ its entry here in the same PR.
   the **Sidebar is generated from the Applications (Modules) assigned to the user** — a separate,
   deferred track keyed off *Applications × Roles*, with the org tree supplying data scope only. The
   Organization module stays free of any navigation logic (verified in the current code).
+- **`docs/02-architecture/organization-structure.md` §7** — *Access & Applications model (locked; not
+  implemented).* Locks three forward rules so Organization Management does not foreclose them:
+  **Applications ↔ Departments is many-to-many** (Departments consume Applications; an Application
+  serves many Departments); a user's Applications are **derived** via **User → Job Position →
+  Department → Applications → Roles** (with an optional direct user assignment kept possible as an
+  exception); and **Job Positions are Department-owned, never Section-owned** (Sections are
+  subdivisions; an Employee belongs to a Section but holds a Department's Job Position). Confirms the
+  current models already leave room for all three — no code change.
 
 ## [0.23.0] - 2026-07-21
 

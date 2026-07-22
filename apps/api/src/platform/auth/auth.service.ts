@@ -625,6 +625,7 @@ class AuthService {
       locale: user.locale,
       branchId: user.organization.branchId === null ? null : String(user.organization.branchId),
       permissions: effective.permissions,
+      isPrivileged: effective.isPrivileged,
       flags,
       totpEnabled: user.security.totp.enabled,
     };

@@ -135,6 +135,8 @@ describe('login → permission → scoped data → audit trail', () => {
     expect(result.body.data?.totpRequired).toBe(false);
     expect(result.body.data?.accessToken).toBeTruthy();
     expect(result.body.data?.me?.permissions['user.view']).toBe('organization');
+    // The super-admin identity carries the privileged flag (used by the UI to gate super-admin-only actions).
+    expect(result.body.data?.me?.isPrivileged).toBe(true);
     expect(result.cookie).toContain('HttpOnly');
     adminToken = result.body.data?.accessToken ?? '';
   });
@@ -176,6 +178,13 @@ describe('login → permission → scoped data → audit trail', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ code: 'BR-CAI-1', name: { ar: 'مكرر', en: 'Duplicate' } });
     expect(dup.status).toBe(409);
+
+    // duplicate NAME (case-insensitive, different code) → also 409
+    const dupName = await request(app)
+      .post('/api/v1/platform/branches')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: 'BR-CAI-2', name: { ar: 'فرع القاهرة ١', en: 'cairo branch 1' } });
+    expect(dupName.status).toBe(409);
 
     const createUser = (email: string, branchId: string) =>
       request(app)

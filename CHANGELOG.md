@@ -37,6 +37,21 @@ its entry here in the same PR.
   - **Future-proof:** employment carries optional `sectionId` + `jobPositionId` (null until set), so
     an employee can later belong to Branch → Department → Section → Job Position with no schema change
     — without ever forcing a vacancy link (ADR-016 Talent Pool preserved).
+- **Organization Management UI — Phase 3.1: Branches Management.** A dedicated Branches admin that
+  completes the branch surface on top of the existing `platform/organization` backend:
+  - **Branches list.** Columns per spec — **Branch Code, Arabic Name, English Name, Status, Created
+    At, Updated At** — with free-text **search** (code or name), a **status** filter, **pagination**
+    and sortable code/status/created columns, all URL-synchronized. Each row carries an inline
+    **Activate/Deactivate** toggle (version-checked, gated on `branch.edit`).
+  - **Branch detail.** Identity (Code, ar/en names, manager), address and audit timestamps, with
+    **Edit**, **Activate/Deactivate** and **Delete** (soft, guarded against branches that still have
+    departments). The **Branch Code** stays immutable after creation and is editable **only by a
+    super-admin** through a dedicated correction dialog (`isPrivileged`, `PATCH
+    /platform/branches/:id/code`, ADR-017).
+  - **Duplicate protection.** Branch **names** join branch **codes** as unique (case-insensitive, ar
+    or en); a collision surfaces as a `409` conflict. `GET /platform/auth/me` now returns
+    `isPrivileged` so the web can gate the super-admin-only Branch-Code action. No new backend
+    endpoints, permissions or events; audit fields and soft-delete are unchanged.
 
 ### Documented
 

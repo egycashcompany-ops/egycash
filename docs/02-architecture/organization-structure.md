@@ -20,10 +20,11 @@ Company (singleton)
 Job Titles ── organization-wide catalog (NOT nested under Section)
 ```
 
-This tree is the **canonical organizational backbone** and the **source of navigation** (see §6):
-**Branch is the first node** below the Company singleton; Departments, Sections, Job Positions and
-Employees hang beneath it in later phases. Branches are therefore a **Platform** concern, never an
-HR one.
+This tree is the **canonical organizational backbone**: **Branch is the first node** below the
+Company singleton; Departments, Sections, Job Positions and Employees hang beneath it in later
+phases. Branches are a **Platform** concern, never an HR one. The tree governs **data visibility &
+scope, HR, reporting and approvals — it does NOT generate the navigation sidebar.** Organization and
+Navigation are two independent hierarchies; see §6.
 
 - **Company** is a singleton profile (`/platform/organization`, `organization.view|edit`).
 - **Branch → Department → Section** is the fixed hierarchy. Each unit carries a `code`, a bilingual
@@ -95,41 +96,65 @@ by any future module**. Recruitment already runs the full pipeline for a null re
    budget, approval workflow).
 4. **Recruitment integration** — two entry paths (from a requisition, and direct/Talent-Pool), with
    `jobRequisitionId` and `jobPositionId` kept **OPTIONAL** per ADR-016.
-5. **Dynamic organizational sidebar** — the hierarchy in §1 rendered as a scope-filtered navigation
-   tree (see §6).
+
+Navigation is **not** part of this roadmap — it is a **separate track** (Applications; see §6).
 
 Each phase is delivered on its own, reviewed, and merged before the next begins.
 
-## 6. Navigation: the Organization Tree drives the sidebar (forward design)
+## 6. Organization vs Navigation — two independent hierarchies
 
-The hierarchy in §1 is not only master data — it is the **navigation backbone**. The dynamic,
-role-aware sidebar is future work, but the platform is **already architected to receive it
-additively**; nothing below requires reworking the Branches implementation shipped in Phase 3.1.
+**The Organization hierarchy does NOT generate the sidebar.** These are two different concepts and
+must stay decoupled; the Organization module must never know anything about navigation.
 
-**What already exists (the seams):**
+### 6.1 Organization hierarchy — data scope, not navigation
 
-- **Materialized tree.** Every unit stores a `path` — Branch `<branchId>`, Department
-  `<branchId>/<departmentId>`, Section `<branchId>/<departmentId>/<sectionId>` — and Departments/
-  Sections carry explicit parent ids (`branchId`, `departmentId`). The full tree is therefore
-  reconstructable from the existing list endpoints; a later `GET /platform/organization/tree`
-  read-model is a **pure addition** with no schema change.
-- **Platform-generic, HR-free.** Branches/Departments/Sections live in `platform/organization`. The
-  layer boundary (`eslint-plugin-boundaries`: `platform` may import only `platform|shared|
-  infrastructure`) makes it **impossible** for a Branch to depend on HR. A Department is a
-  first-class platform node that *any* module (Finance, Treasury, IT, Fleet, Audit, …) belongs to —
-  department names are pure data, not code.
-- **Scope machinery for the visible subtree.** Access already resolves through the five-rung data
-  scope `own ⊂ section ⊂ department ⊂ branch ⊂ organization` (ADR-017), with `branchId`/
-  `departmentId`/`sectionId` carried on the `AuthContext` and returned on `me`. This is exactly the
-  input the dynamic sidebar consumes to decide what a viewer may see:
-  - **System Administrator** (`organization` scope / `isPrivileged`) → the whole tree.
-  - **Department Manager** (`department` scope) → their department + its sections.
-  - **Section Manager** (`section` scope) → their section.
-  - **Employee** (`own` scope) → only their assigned applications.
+`Company → Branch → Department → Section → Job Position → Employee` (§1) is the **organizational
+backbone**. Its *only* jobs are:
 
-**What is deliberately deferred (and why it needs no rework now):** the tree read-model endpoint and
-a data-driven tree navigation component. The current static, permission-filtered `NavSection[]`
-(module-contributed) and the future scope-filtered org tree are **separate concerns** that coexist —
-the dynamic tree is a new component fed by API data + `me` scope, not a rewrite of the existing nav
-model. Building it before a consumer exists would be speculative; it lands with the phase that needs
-it.
+- **Data visibility & scope** — the five-rung ladder `own ⊂ section ⊂ department ⊂ branch ⊂
+  organization` (ADR-017), enforced in `BaseRepository.scopeFilter`, with `branchId`/`departmentId`/
+  `sectionId` carried on the `AuthContext` and returned on `me`.
+- **HR, reporting and approvals** — org placement, reporting lines, approval routing.
+
+It answers *“what data may this user see and act on?”* — never *“which screens appear in the
+sidebar?”*.
+
+### 6.2 Navigation / Sidebar — generated from Applications (a separate, future concept)
+
+The sidebar is generated from the **Applications (Modules)** assigned to the user — **not** from the
+organization tree. The intended shape (illustrative; **not implemented yet**):
+
+```
+HR Department              Treasury Department        ATM Operations
+  Recruitment                Treasury                   ATM
+  Employees                  Cash Transfer              Cash Loading
+  Attendance                 Gold Treasury              ATM Reconciliation
+  Payroll
+```
+
+Planned model (deferred — do **not** build until its own phase):
+
+- An **Application** (a.k.a. Module) is a first-class catalog entity (e.g. *Recruitment*, *Payroll*,
+  *Treasury*, *ATM Reconciliation*).
+- Each **Department** is later linked to **one or more Applications**.
+- Each **User** carries: **Branch · Department · Section · Job Position · Applications · Roles**.
+- The **Sidebar is built from the user's assigned Applications** (grouped for display, e.g. by
+  department/application group), filtered by the user's **Roles/permissions**. The organization
+  tree contributes **scope** to what data those applications show — it does **not** decide which
+  applications appear.
+
+### 6.3 Why the current code already honours this separation
+
+- The **backend** `platform/organization` module has **no navigation concept** at all (verified: no
+  `nav`/`sidebar`/`menu` references). It only serves org master data + scope.
+- On the **web**, each module contributes its **own** static `NavSection[]` to its **own** shell
+  (`AppShell nav={…}`); the shared `Sidebar` is a dumb renderer that receives `nav` as a prop.
+  Nothing derives a sidebar from the organization tree, and the org admin's nav is just that module's
+  own section list.
+- When the Applications concept lands, the dynamic sidebar becomes a **new** read-model over
+  *Applications × Roles* — an additive component that does not touch the Organization module and does
+  not reuse the org tree as a menu source.
+
+> **Guardrail for future phases:** keep `platform/organization` free of any navigation/menu/sidebar
+> logic. Sidebar generation belongs to the (future) Applications track, keyed off the user's assigned
+> Applications and Roles, with the org hierarchy supplying data scope only.

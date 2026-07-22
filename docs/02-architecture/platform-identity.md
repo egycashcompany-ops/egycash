@@ -38,13 +38,16 @@ records can the user see?" — orthogonal to permissions ("what can the user do?
 - **Disable, never delete.** Departing employees are suspended/archived through the existing status
   lifecycle; history is preserved. Password reset is unchanged.
 
-## 3. Branch-based Employee Code
+## 3. Permanent Global Employee Number + derived Employee Code
 
-`<BranchCode><GlobalSequence>` — e.g. `001025`. The running number is a **single global atomic
-counter** (`hr_sequences` key `employee:global`, `$inc` in a transaction), so the suffix is
-company-wide unique and never repeats; a unique `code` index is the backstop. Set once at hire,
-immutable, never manually editable. The **Branch Code** is immutable after creation except for a
-super-admin (`PATCH /platform/branches/:id/code`).
+The **permanent identity** is the **Global Employee Number** (e.g. `000125`) — a **single global
+atomic counter** (`hr_sequences` key `employee:global`, `$inc` in a transaction), company-wide unique,
+never reused, never changed (unique `employeeNumber` index). The **displayed Employee Code** is
+**derived** as `<CurrentBranchCode><GlobalEmployeeNumber>` (e.g. `001000125`) — it always reflects the
+employee's current branch. On a branch transfer only the prefix changes (`004000125`); the number is
+fixed, and the code is recomputed via `buildEmployeeCode(currentBranchCode, employeeNumber)`. Never
+manually editable. The **Branch Code** is immutable after creation except for a super-admin
+(`PATCH /platform/branches/:id/code`).
 
 ## 4. Minimal UI (this phase)
 

@@ -37,7 +37,13 @@ export interface EmploymentDetails {
 }
 
 export interface EmployeeDoc extends BaseDocFields {
-  /** Immutable, unique employee code `<BranchCode><GlobalSequence>` (set once at hire, ADR-017). */
+  /** PERMANENT identity: the Global Employee Number `000125` — never changes, globally unique (ADR-017). */
+  employeeNumber: string;
+  /**
+   * Displayed Employee Code, DERIVED as `<CurrentBranchCode><employeeNumber>` (e.g. `001000125`).
+   * Denormalized for search/display; recomputed when the employee transfers branches — only the
+   * prefix changes, the Global Employee Number never does.
+   */
   code: string;
   status: EmployeeStatus;
   /** The linked login account (Employee ← one User), null until a login is created (ADR-017). */
@@ -97,6 +103,7 @@ const employmentSchema = new Schema<EmploymentDetails>(
 
 const employeeSchema = new Schema<EmployeeDoc>(
   {
+    employeeNumber: { type: String, required: true },
     code: { type: String, required: true },
     status: { type: String, enum: EMPLOYEE_STATUSES, required: true, default: 'active' },
     userId: { type: Schema.Types.ObjectId, default: null },
@@ -116,7 +123,9 @@ const employeeSchema = new Schema<EmployeeDoc>(
   baseSchemaOptions,
 );
 
-// The employee code is organization-wide unique and immutable.
+// The Global Employee Number is the permanent, organization-wide-unique identity (never changes).
+employeeSchema.index({ employeeNumber: 1 }, { unique: true, name: 'ux_employeeNumber' });
+// The derived Employee Code is also unique at any point in time (branch code + unique number).
 employeeSchema.index({ code: 1 }, { unique: true, name: 'ux_code' });
 // At most one employee per accepted offer — prevents duplicate hiring, DB-enforced.
 employeeSchema.index(

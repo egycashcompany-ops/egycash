@@ -1,10 +1,10 @@
-// Atomic employee-code allocation (BD-002 pattern): a SINGLE global key in the shared module-local
-// `hr_sequences` collection with an upserting `$inc` — one atomic op, so concurrent hiring in any
-// branch never collides and never skips. The global number is then prefixed with the hiring
-// branch's code. The employee document also carries a unique index on `code` as a second line of
-// defence.
+// Atomic Global-Employee-Number allocation (BD-002 pattern): a SINGLE global key in the shared
+// module-local `hr_sequences` collection with an upserting `$inc` — one atomic op, so concurrent
+// hiring in any branch never collides and never skips. This yields the PERMANENT identity; the
+// displayed Employee Code (current branch + this number) is derived separately (ADR-017). A unique
+// index on `employeeNumber` is the second line of defence.
 import mongoose, { Schema, type ClientSession, type Model } from 'mongoose';
-import { EMPLOYEE_SEQUENCE_KEY, formatEmployeeCode } from './employee-number';
+import { EMPLOYEE_SEQUENCE_KEY, formatEmployeeNumber } from './employee-number';
 
 interface SequenceDoc {
   _id: string; // the sequence key, e.g. "employee:global"
@@ -26,13 +26,10 @@ const HrSequenceModel: Model<SequenceDoc> =
   mongoose.model<SequenceDoc>('HrSequence', sequenceSchema);
 
 /**
- * Atomically allocate the next GLOBAL employee sequence and format it with the branch code.
- * `<branchCode><globalSeq>`; the numeric suffix is company-wide unique and never reused.
+ * Atomically allocate the next Global Employee Number (the permanent, company-wide-unique identity).
+ * Branch-agnostic — the displayed Employee Code is derived from the current branch separately.
  */
-export const nextEmployeeCode = async (
-  branchCode: string,
-  session?: ClientSession,
-): Promise<string> => {
+export const nextEmployeeNumber = async (session?: ClientSession): Promise<string> => {
   const doc = await HrSequenceModel.findOneAndUpdate(
     { _id: EMPLOYEE_SEQUENCE_KEY },
     { $inc: { value: 1 } },
@@ -40,5 +37,5 @@ export const nextEmployeeCode = async (
   )
     .lean<SequenceDoc>()
     .exec();
-  return formatEmployeeCode(branchCode, doc.value);
+  return formatEmployeeNumber(doc.value);
 };

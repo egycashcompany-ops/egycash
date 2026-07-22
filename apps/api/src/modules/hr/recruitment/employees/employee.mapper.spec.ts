@@ -22,7 +22,8 @@ const employment = (over: Partial<EmploymentDetails> = {}): EmploymentDetails =>
 const baseDoc = (over: Partial<EmployeeDoc> = {}): EmployeeDoc =>
   ({
     _id: new Types.ObjectId(),
-    code: '001001',
+    employeeNumber: '000125',
+    code: '001000125',
     status: 'active',
     userId: null,
     applicantId: new Types.ObjectId(),
@@ -43,9 +44,10 @@ const baseDoc = (over: Partial<EmployeeDoc> = {}): EmployeeDoc =>
   }) as EmployeeDoc;
 
 describe('toEmployeeDto', () => {
-  it('maps the branch-based employee code, status, and hiring date', () => {
+  it('maps the permanent Global Employee Number, derived code, status, and hiring date', () => {
     const dto = toEmployeeDto(baseDoc());
-    expect(dto.code).toBe('001001');
+    expect(dto.employeeNumber).toBe('000125');
+    expect(dto.code).toBe('001000125'); // <CurrentBranchCode><GlobalEmployeeNumber>
     expect(dto.status).toBe('active');
     expect(dto.userId).toBeNull();
     expect(dto.offerCode).toBe('JO-2026-000001');

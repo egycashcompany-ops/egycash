@@ -20,6 +20,7 @@ const employmentDto = (e: EmploymentDetails): EmploymentDetailsDto => ({
 
 export const toEmployeeDto = (doc: EmployeeDoc): EmployeeDto => ({
   id: String(doc._id),
+  employeeNumber: doc.employeeNumber,
   code: doc.code,
   status: doc.status,
   userId: doc.userId === null ? null : String(doc.userId),

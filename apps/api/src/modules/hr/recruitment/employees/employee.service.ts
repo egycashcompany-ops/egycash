@@ -28,7 +28,8 @@ import { userService, type UserDoc } from '../../../../platform/users';
 import { applicantService } from '../applicants';
 import { jobOfferService } from '../job-offers';
 import { employeeRepository, type EmployeeListFilter } from './employee.repository';
-import { nextEmployeeCode } from './employee-sequence';
+import { nextEmployeeNumber } from './employee-sequence';
+import { buildEmployeeCode } from './employee-number';
 import { type EmployeeDoc, type EmploymentDetails } from './employee.model';
 
 const entityRef = (id: string) => ({ moduleId: 'hr', entityType: 'employee', entityId: id });
@@ -92,17 +93,20 @@ class EmployeeService {
     };
     const hiredAt = input.hiringDate ?? new Date();
 
-    // The immutable branch code prefixes the employee code (ADR-017); branch codes never change
-    // silently, so reading it before the transaction is safe.
+    // The current branch code prefixes the (derived) employee code (ADR-017); reading it before the
+    // transaction is safe. On a future transfer, `code` is recomputed from the new branch code +
+    // the unchanged Global Employee Number via `buildEmployeeCode`.
     const branch = await branchService.getById(String(employment.branchId));
 
-    // Atomic: allocate the GLOBAL sequence and insert the record in one transaction. The unique
-    // index on `jobOfferId` guarantees no duplicate employee even under concurrent creation, and the
-    // global counter guarantees the numeric suffix is company-wide unique.
+    // Atomic: allocate the permanent Global Employee Number and insert the record in one transaction.
+    // The unique index on `jobOfferId` guarantees no duplicate employee even under concurrent
+    // creation; the global counter guarantees the number is company-wide unique and never reused.
     const doc = await unitOfWork(async (session) => {
-      const code = await nextEmployeeCode(branch.code, session);
+      const employeeNumber = await nextEmployeeNumber(session);
+      const code = buildEmployeeCode(branch.code, employeeNumber);
       return employeeRepository.create(
         {
+          employeeNumber,
           code,
           status: 'active',
           userId: null,

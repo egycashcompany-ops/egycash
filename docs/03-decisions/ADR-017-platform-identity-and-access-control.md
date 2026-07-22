@@ -47,13 +47,19 @@ and `organization` are **kept** (backward compatible); `section` and `department
 - Accounts are **enabled/disabled** through the existing status lifecycle — an employee who leaves is
   **disabled, never deleted** (history is preserved). Password reset is unchanged.
 
-### 3. Branch-based Employee Code — one global sequence
+### 3. Permanent Global Employee Number + a branch-derived Employee Code
 
-- The Employee Code is **`<BranchCode><GlobalSequence>`** (e.g. branch `001`, global `25` → `001025`),
-  set once at hire, immutable, never manually editable. The running number is a **single GLOBAL
-  counter across the whole company** (not per-branch), so the numeric suffix never repeats anywhere.
-- Allocation reuses the existing atomic `$inc` sequence primitive (BD-002) on one global key inside a
-  transaction — concurrency-safe, no race conditions, no duplicates (a unique `code` index backs it).
+- The **permanent identity** is the **Global Employee Number** — a company-wide, monotonic, zero-padded
+  sequence (e.g. `000125`) that **never changes** and is globally unique. It is allocated from a
+  **single global** atomic `$inc` sequence (BD-002) on one key inside the hiring transaction —
+  concurrency-safe, no duplicates (a unique `employeeNumber` index backs it). The database treats it
+  (with the Employee `_id`) as the permanent identity.
+- The **displayed Employee Code** is **derived**: `<CurrentBranchCode><GlobalEmployeeNumber>`
+  (e.g. `001` + `000125` → `001000125`). It immediately tells you the employee's current branch.
+- On a **branch transfer**, only the branch prefix changes (`001000125` → `004000125`); the Global
+  Employee Number is fixed. The code is denormalized for search/display and recomputed from
+  `buildEmployeeCode(currentBranchCode, employeeNumber)` whenever the branch changes — the reusable
+  seam a future transfer uses. It is never manually editable.
 
 ### 4. Branch Code is immutable — except super-admin
 

@@ -24,10 +24,12 @@ its entry here in the same PR.
     (`POST /hr/employees/:id/login`); the **username defaults to the Employee Code** and is editable;
     login now accepts **username OR email** (email retained). Departing employees are disabled, not
     deleted.
-  - **Branch-based Employee Code.** The employee code becomes **`<BranchCode><GlobalSequence>`**
-    (e.g. `001025`) — a single **global**, concurrency-safe atomic sequence (reusing the existing
-    `hr_sequences` `$inc` primitive), so the numeric suffix never repeats company-wide. Immutable,
-    never manually editable.
+  - **Permanent Global Employee Number + branch-derived Employee Code.** The **Global Employee
+    Number** (e.g. `000125`) is the permanent identity — a single **global**, concurrency-safe atomic
+    sequence (reusing the existing `hr_sequences` `$inc` primitive), never reused, never changed. The
+    displayed **Employee Code** is derived as **`<CurrentBranchCode><GlobalEmployeeNumber>`**
+    (e.g. `001000125`); on a branch transfer only the prefix changes (`004000125`) while the number
+    stays fixed. Never manually editable.
   - **Branch Code** stays required/unique/immutable, now correctable by a **super-admin**
     (`PATCH /platform/branches/:id/code`).
   - **Minimal UI** on the Employee detail (`EmployeeAccountCard`): shows Employee Code + Branch Code,

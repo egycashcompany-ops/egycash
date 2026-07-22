@@ -96,7 +96,12 @@ export interface EmploymentDetailsDto {
 
 export interface EmployeeDto {
   id: string;
-  /** Immutable, unique employee code `<BranchCode><GlobalSequence>`, e.g. `001025` (ADR-017). */
+  /** Permanent identity: the Global Employee Number, e.g. `000125` — never changes (ADR-017). */
+  employeeNumber: string;
+  /**
+   * Displayed Employee Code, derived as `<CurrentBranchCode><employeeNumber>`, e.g. `001000125`.
+   * On a branch transfer only the prefix changes (→ `004000125`); the number stays fixed.
+   */
   code: string;
   status: EmployeeStatus;
   /** The linked login account, or null when the employee has no login yet (ADR-017). */

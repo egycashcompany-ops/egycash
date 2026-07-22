@@ -272,7 +272,9 @@ describe('employees — creation from the accepted offer snapshot', () => {
     const emp = res.body.data as EmployeeDto;
 
     // Unique, human-readable employee number.
-    expect(emp.code).toMatch(/^001\d{3,}$/); // <BranchCode><GlobalSequence>
+    // Permanent Global Employee Number + derived code <CurrentBranchCode><employeeNumber>.
+    expect(emp.employeeNumber).toMatch(/^\d{6,}$/);
+    expect(emp.code).toBe(`001${emp.employeeNumber}`);
     expect(emp.status).toBe('active');
     expect(emp.hiredAt).toBe(new Date(HIRING_DATE).toISOString());
 
@@ -338,13 +340,16 @@ describe('platform identity (ADR-017) — branch code, global sequence, login ac
     return (await createEmployee(offer.id)).body.data as EmployeeDto;
   };
 
-  it('derives codes as <BranchCode><GlobalSequence> from a single GLOBAL counter', async () => {
+  it('assigns a permanent Global Employee Number from a single GLOBAL counter; code = branch + number', async () => {
     const first = await hire();
     const second = await hire();
-    expect(first.code).toMatch(/^001\d{3,}$/);
-    expect(second.code).toMatch(/^001\d{3,}$/);
-    // Same branch prefix; the GLOBAL running number strictly increases and never repeats.
-    expect(Number(second.code.slice(3))).toBeGreaterThan(Number(first.code.slice(3)));
+    // Global Employee Number is 6+ digits and strictly increases (never repeats).
+    expect(first.employeeNumber).toMatch(/^\d{6,}$/);
+    expect(second.employeeNumber).toMatch(/^\d{6,}$/);
+    expect(Number(second.employeeNumber)).toBeGreaterThan(Number(first.employeeNumber));
+    // The displayed code is the current branch code prefixed onto the permanent number.
+    expect(first.code).toBe(`001${first.employeeNumber}`);
+    expect(second.code).toBe(`001${second.employeeNumber}`);
   });
 
   it('creates a login for an employee (username defaults to the code) and logs in by username OR email', async () => {

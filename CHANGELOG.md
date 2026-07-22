@@ -57,6 +57,12 @@ its entry here in the same PR.
 
 - **ADR-017** — Platform Identity & Organizational Access Control.
 - **`docs/02-architecture/platform-identity.md`** — the Phase-2 design.
+- **`docs/02-architecture/organization-structure.md` §6** — *Navigation: the Organization Tree drives
+  the sidebar.* Records that the Company → Branch → Department → Section (→ Job Position/Employee)
+  hierarchy is the navigation backbone, that Departments are a **platform-wide** concept (never
+  HR-only), and that the future **scope-filtered dynamic sidebar** is an additive read-model over the
+  already-materialized tree + the ADR-017 data-scope machinery — no rework of the Phase-3.1 Branches
+  implementation required.
 
 ## [0.23.0] - 2026-07-21
 

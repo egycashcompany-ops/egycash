@@ -12,11 +12,18 @@ the **web admin** to manage the whole structure end to end.
 ```
 Company (singleton)
 └── Branch
-    └── Department
+    └── Department          (platform-wide — every module belongs to one, not HR-only)
         └── Section
+            ├── Job Position   (later phase)
+            └── Employee       (later phase)
 
 Job Titles ── organization-wide catalog (NOT nested under Section)
 ```
+
+This tree is the **canonical organizational backbone** and the **source of navigation** (see §6):
+**Branch is the first node** below the Company singleton; Departments, Sections, Job Positions and
+Employees hang beneath it in later phases. Branches are therefore a **Platform** concern, never an
+HR one.
 
 - **Company** is a singleton profile (`/platform/organization`, `organization.view|edit`).
 - **Branch → Department → Section** is the fixed hierarchy. Each unit carries a `code`, a bilingual
@@ -88,5 +95,41 @@ by any future module**. Recruitment already runs the full pipeline for a null re
    budget, approval workflow).
 4. **Recruitment integration** — two entry paths (from a requisition, and direct/Talent-Pool), with
    `jobRequisitionId` and `jobPositionId` kept **OPTIONAL** per ADR-016.
+5. **Dynamic organizational sidebar** — the hierarchy in §1 rendered as a scope-filtered navigation
+   tree (see §6).
 
 Each phase is delivered on its own, reviewed, and merged before the next begins.
+
+## 6. Navigation: the Organization Tree drives the sidebar (forward design)
+
+The hierarchy in §1 is not only master data — it is the **navigation backbone**. The dynamic,
+role-aware sidebar is future work, but the platform is **already architected to receive it
+additively**; nothing below requires reworking the Branches implementation shipped in Phase 3.1.
+
+**What already exists (the seams):**
+
+- **Materialized tree.** Every unit stores a `path` — Branch `<branchId>`, Department
+  `<branchId>/<departmentId>`, Section `<branchId>/<departmentId>/<sectionId>` — and Departments/
+  Sections carry explicit parent ids (`branchId`, `departmentId`). The full tree is therefore
+  reconstructable from the existing list endpoints; a later `GET /platform/organization/tree`
+  read-model is a **pure addition** with no schema change.
+- **Platform-generic, HR-free.** Branches/Departments/Sections live in `platform/organization`. The
+  layer boundary (`eslint-plugin-boundaries`: `platform` may import only `platform|shared|
+  infrastructure`) makes it **impossible** for a Branch to depend on HR. A Department is a
+  first-class platform node that *any* module (Finance, Treasury, IT, Fleet, Audit, …) belongs to —
+  department names are pure data, not code.
+- **Scope machinery for the visible subtree.** Access already resolves through the five-rung data
+  scope `own ⊂ section ⊂ department ⊂ branch ⊂ organization` (ADR-017), with `branchId`/
+  `departmentId`/`sectionId` carried on the `AuthContext` and returned on `me`. This is exactly the
+  input the dynamic sidebar consumes to decide what a viewer may see:
+  - **System Administrator** (`organization` scope / `isPrivileged`) → the whole tree.
+  - **Department Manager** (`department` scope) → their department + its sections.
+  - **Section Manager** (`section` scope) → their section.
+  - **Employee** (`own` scope) → only their assigned applications.
+
+**What is deliberately deferred (and why it needs no rework now):** the tree read-model endpoint and
+a data-driven tree navigation component. The current static, permission-filtered `NavSection[]`
+(module-contributed) and the future scope-filtered org tree are **separate concerns** that coexist —
+the dynamic tree is a new component fed by API data + `me` scope, not a rewrite of the existing nav
+model. Building it before a consumer exists would be speculative; it lands with the phase that needs
+it.

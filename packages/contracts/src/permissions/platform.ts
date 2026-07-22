@@ -87,6 +87,13 @@ export const applicationPermissions = declarePermissions(
   ['view', 'create', 'edit', 'delete'],
 );
 
+export const applicationCategoryPermissions = declarePermissions(
+  P,
+  'applicationCategory',
+  { en: 'application categories', ar: 'فئات التطبيقات' },
+  ['view', 'create', 'edit', 'delete'],
+);
+
 export const settingPermissions = declarePermissions(
   P,
   'setting',
@@ -171,6 +178,7 @@ export const platformPermissions: PermissionDef[] = [
   ...jobTitlePermissions,
   ...jobPositionPermissions,
   ...applicationPermissions,
+  ...applicationCategoryPermissions,
   ...settingPermissions,
   ...auditLogPermissions,
   ...activityLogPermissions,

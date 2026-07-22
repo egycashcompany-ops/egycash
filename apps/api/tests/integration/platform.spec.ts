@@ -510,7 +510,23 @@ describe('login → permission → scoped data → audit trail', () => {
     expect(removed.status).toBe(204);
   });
 
-  it('manages Applications: CRUD, category filter, and soft delete (PR #60)', async () => {
+  it('manages Application Categories + Applications: categoryId link, filter, delete-guard (PR #61)', async () => {
+    // Two categories to group applications and to exercise the categoryId filter.
+    const catHr = await request(app)
+      .post('/api/v1/platform/application-categories')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: { ar: 'الموارد البشرية', en: 'HR' }, icon: 'users', sortOrder: 1 });
+    expect(catHr.status).toBe(201);
+    const hrId = (catHr.body as { data: { id: string; icon: string | null } }).data.id;
+    expect((catHr.body as { data: { icon: string | null } }).data.icon).toBe('users');
+
+    const catTreasury = await request(app)
+      .post('/api/v1/platform/application-categories')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: { ar: 'الخزينة', en: 'Treasury' } });
+    const treasuryId = (catTreasury.body as { data: { id: string } }).data.id;
+
+    // An application must reference an existing active category.
     const created = await request(app)
       .post('/api/v1/platform/applications')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -518,54 +534,54 @@ describe('login → permission → scoped data → audit trail', () => {
         name: { ar: 'التوظيف', en: 'Recruitment' },
         icon: 'users',
         route: '/hr/recruitment',
-        category: 'HR',
+        categoryId: hrId,
         sortOrder: 10,
       });
     expect(created.status).toBe(201);
     const appDoc = (
-      created.body as {
-        data: { id: string; version: number; sortOrder: number; status: string; category: string };
-      }
+      created.body as { data: { id: string; version: number; sortOrder: number; categoryId: string } }
     ).data;
     expect(appDoc.sortOrder).toBe(10);
-    expect(appDoc.status).toBe('active');
+    expect(appDoc.categoryId).toBe(hrId);
 
-    // A second application in a different category, for the filter check.
+    // A second application in the Treasury category, for the filter check.
     await request(app)
       .post('/api/v1/platform/applications')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ name: { ar: 'الخزينة', en: 'Treasury' }, icon: 'building', route: '/treasury', category: 'Treasury' });
+      .send({ name: { ar: 'الخزينة', en: 'Treasury' }, icon: 'building', route: '/treasury', categoryId: treasuryId });
 
-    // Update route + deactivate.
-    const updated = await request(app)
-      .patch(`/api/v1/platform/applications/${appDoc.id}`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ route: '/hr/recruitment/pipeline', status: 'inactive', version: appDoc.version });
-    expect(updated.status).toBe(200);
-    const afterUpdate = (updated.body as { data: { route: string; status: string } }).data;
-    expect(afterUpdate.route).toBe('/hr/recruitment/pipeline');
-    expect(afterUpdate.status).toBe('inactive');
-
-    // Filter by category returns only the HR application.
-    const listed = await request(app)
-      .get('/api/v1/platform/applications?category=HR')
-      .set('Authorization', `Bearer ${adminToken}`);
-    expect(listed.status).toBe(200);
-    const items = (listed.body as { data: { category: string }[] }).data;
-    expect(items.length).toBe(1);
-    expect(items[0]?.category).toBe('HR');
-
-    // Missing a required field is a validation error (400).
-    const invalid = await request(app)
+    // An unknown / inactive category is a business-rule violation (422).
+    const badCategory = await request(app)
       .post('/api/v1/platform/applications')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ name: { ar: 'ناقص', en: 'Incomplete' }, icon: 'x', category: 'HR' });
-    expect(invalid.status).toBe(400);
+      .send({ name: { ar: 'س', en: 'X' }, icon: 'x', route: '/x', categoryId: '000000000000000000000009' });
+    expect(badCategory.status).toBe(422);
 
+    // Filter by categoryId returns only the HR application.
+    const listed = await request(app)
+      .get(`/api/v1/platform/applications?categoryId=${hrId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(listed.status).toBe(200);
+    const items = (listed.body as { data: { categoryId: string }[] }).data;
+    expect(items.length).toBe(1);
+    expect(items[0]?.categoryId).toBe(hrId);
+
+    // A category still referenced by an application cannot be deleted (422, specific code).
+    const blocked = await request(app)
+      .delete(`/api/v1/platform/application-categories/${hrId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(blocked.status).toBe(422);
+    expect((blocked.body as { error: { code: string } }).error.code).toBe('APPLICATION_CATEGORY_IN_USE');
+
+    // Once the application is removed, the category can be deleted.
     const removed = await request(app)
       .delete(`/api/v1/platform/applications/${appDoc.id}`)
       .set('Authorization', `Bearer ${adminToken}`);
     expect(removed.status).toBe(204);
+    const catRemoved = await request(app)
+      .delete(`/api/v1/platform/application-categories/${hrId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(catRemoved.status).toBe(204);
   });
 
   it('enforces DEPARTMENT scope: a department-scoped user sees only same-department users (ADR-017)', async () => {

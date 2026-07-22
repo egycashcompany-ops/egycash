@@ -23,6 +23,9 @@ import { JobPositionFormPage } from './job-positions/pages/JobPositionFormPage';
 import { ApplicationsListPage } from './applications/pages/ApplicationsListPage';
 import { ApplicationDetailPage } from './applications/pages/ApplicationDetailPage';
 import { ApplicationFormPage } from './applications/pages/ApplicationFormPage';
+import { ApplicationCategoriesListPage } from './application-categories/pages/ApplicationCategoriesListPage';
+import { ApplicationCategoryDetailPage } from './application-categories/pages/ApplicationCategoryDetailPage';
+import { ApplicationCategoryFormPage } from './application-categories/pages/ApplicationCategoryFormPage';
 import { JobTitlesListPage } from './job-titles/pages/JobTitlesListPage';
 import { JobTitleDetailPage } from './job-titles/pages/JobTitleDetailPage';
 import { JobTitleFormPage } from './job-titles/pages/JobTitleFormPage';
@@ -205,6 +208,34 @@ export default function OrganizationRoutes(): JSX.Element {
             element={
               <RequirePermission permission="application.edit">
                 <ApplicationFormPage mode="edit" />
+              </RequirePermission>
+            }
+          />
+        </Route>
+
+        <Route
+          path="application-categories"
+          element={
+            <RequirePermission permission="applicationCategory.view">
+              <Outlet />
+            </RequirePermission>
+          }
+        >
+          <Route index element={<ApplicationCategoriesListPage />} />
+          <Route
+            path="new"
+            element={
+              <RequirePermission permission="applicationCategory.create">
+                <ApplicationCategoryFormPage mode="create" />
+              </RequirePermission>
+            }
+          />
+          <Route path=":id" element={<ApplicationCategoryDetailPage />} />
+          <Route
+            path=":id/edit"
+            element={
+              <RequirePermission permission="applicationCategory.edit">
+                <ApplicationCategoryFormPage mode="edit" />
               </RequirePermission>
             }
           />

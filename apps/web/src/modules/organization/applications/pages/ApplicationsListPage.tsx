@@ -19,6 +19,7 @@ import { StatusBadge } from '../../../../shared/ui/Badge';
 import { PlusIcon } from '../../../../shared/ui/icons';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { formatDate, localized } from '../../../../shared/lib/format';
+import { useApplicationCategoryOptions } from '../../application-categories/application-category-queries';
 import { useApplications, useUpdateApplication } from '../application-queries';
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -65,7 +66,7 @@ export const ApplicationsListPage = (): JSX.Element => {
 
   const search = sp.get('q') ?? '';
   const status = sp.get('status') ?? '';
-  const category = sp.get('category') ?? '';
+  const categoryId = sp.get('categoryId') ?? '';
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
   const [sortByRaw, sortDirRaw] = (sp.get('sort') ?? 'sortOrder:asc').split(':');
@@ -85,12 +86,11 @@ export const ApplicationsListPage = (): JSX.Element => {
     setSp(next);
   };
 
-  // A lightweight full fetch drives the category filter options (categories are free-form).
-  const { data: allApps } = useApplications({ pageSize: 200, sortBy: 'category', sortDir: 'asc' });
-  const categories = useMemo(
-    () => [...new Set((allApps?.items ?? []).map((a) => a.category))].sort((a, b) => a.localeCompare(b)),
-    [allApps],
-  );
+  const { data: categories = [] } = useApplicationCategoryOptions();
+  const categoryName = (id: string): string => {
+    const c = categories.find((x) => x.id === id);
+    return c === undefined ? id : localized(c.name, locale);
+  };
 
   const params = useMemo(
     () => ({
@@ -100,7 +100,7 @@ export const ApplicationsListPage = (): JSX.Element => {
       sortDir: sort.dir,
       search: search || undefined,
       status: status || undefined,
-      category: category || undefined,
+      categoryId: categoryId || undefined,
     }),
     [paramsKey],
   );
@@ -115,7 +115,7 @@ export const ApplicationsListPage = (): JSX.Element => {
       header: t('organization.field.name'),
       render: (a) => <span>{localized(a.name, locale)}</span>,
     },
-    { key: 'category', header: t('organization.application.category'), sortable: true, render: (a) => <span>{a.category}</span> },
+    { key: 'category', header: t('organization.application.category'), render: (a) => <span>{categoryName(a.categoryId)}</span> },
     {
       key: 'route',
       header: t('organization.application.route'),
@@ -158,7 +158,7 @@ export const ApplicationsListPage = (): JSX.Element => {
 
       <div className="space-y-4">
         <FilterBar
-          hasActiveFilters={search !== '' || status !== '' || category !== ''}
+          hasActiveFilters={search !== '' || status !== '' || categoryId !== ''}
           onClear={() => setSp(new URLSearchParams())}
         >
           <SearchInput
@@ -166,11 +166,11 @@ export const ApplicationsListPage = (): JSX.Element => {
             onChange={(v) => patch({ q: v || null })}
             placeholder={t('organization.application.searchPlaceholder')}
           />
-          <Select className="w-48" value={category} onChange={(e) => patch({ category: e.target.value || null })}>
+          <Select className="w-48" value={categoryId} onChange={(e) => patch({ categoryId: e.target.value || null })}>
             <option value="">{t('organization.application.allCategories')}</option>
             {categories.map((c) => (
-              <option key={c} value={c}>
-                {c}
+              <option key={c.id} value={c.id}>
+                {localized(c.name, locale)}
               </option>
             ))}
           </Select>

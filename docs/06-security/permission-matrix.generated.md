@@ -12,6 +12,7 @@ synced to the DB registry at boot (Review R18).
 |---|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|---|
 | `activityLog` | platform | ● |  |  |  |  |  |  |  |  |
 | `application` | platform | ● | ● | ● | ● |  |  |  |  |  |
+| `applicationCategory` | platform | ● | ● | ● | ● |  |  |  |  |  |
 | `auditLog` | platform | ● |  |  |  | ● |  |  |  |  |
 | `branch` | platform | ● | ● | ● | ● |  |  |  |  |  |
 | `department` | platform | ● | ● | ● | ● |  |  |  |  |  |
@@ -28,4 +29,4 @@ synced to the DB registry at boot (Review R18).
 | `setting` | platform | ● |  | ● |  |  |  |  |  |  |
 | `user` | platform | ● | ● | ● | ● | ● |  |  |  | `user.resetPassword`, `user.manageSessions` ⚠️ break-glass |
 
-Total permissions: **58**
+Total permissions: **62**

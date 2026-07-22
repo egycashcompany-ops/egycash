@@ -1,14 +1,18 @@
-// Application create & edit. Name is required bilingual; icon and client route are required strings;
-// the owning Category is required (picked from the Application Categories catalog); sort order is a
-// non-negative integer (defaults to 0). Edits are version-checked; a stale save surfaces as a toast.
+// Application Category create & edit. Name is required bilingual; icon is optional; sort order is a
+// non-negative integer (defaults to 0). Edits are version-checked.
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { type ApplicationDto, type CreateApplication, type Locale, type UpdateApplication } from '@ecms/contracts';
+import {
+  type ApplicationCategoryDto,
+  type CreateApplicationCategory,
+  type Locale,
+  type UpdateApplicationCategory,
+} from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../store';
 import { PageContainer, PageHeader } from '../../../../platform/layout/PageContainer';
 import { Card, CardBody, CardHeader } from '../../../../shared/ui/Card';
-import { Field, Input, Form, FormActions, Select } from '../../../../shared/ui/form';
+import { Field, Input, Form, FormActions } from '../../../../shared/ui/form';
 import { Button } from '../../../../shared/ui/Button';
 import { LoadingState } from '../../../../shared/ui/states/LoadingState';
 import { ErrorState } from '../../../../shared/ui/states/ErrorState';
@@ -16,40 +20,31 @@ import { toast } from '../../../../shared/ui/toast/toast-store';
 import { ApiError } from '../../../../shared/lib/api-client';
 import { localized } from '../../../../shared/lib/format';
 import { LocalizedNameFields, StatusSelect, type LocalizedValue } from '../../shared/form-fields';
-import { useApplicationCategoryOptions } from '../../application-categories/application-category-queries';
-import { useApplication, useCreateApplication, useUpdateApplication } from '../application-queries';
+import {
+  useApplicationCategory,
+  useCreateApplicationCategory,
+  useUpdateApplicationCategory,
+} from '../application-category-queries';
 
-const ROUTE_BASE = '/organization/applications';
+const ROUTE_BASE = '/organization/application-categories';
 
-const ApplicationFormBody = ({ existing }: { existing: ApplicationDto | null }): JSX.Element => {
+const CategoryFormBody = ({ existing }: { existing: ApplicationCategoryDto | null }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const navigate = useNavigate();
   const isCreate = existing === null;
 
-  const create = useCreateApplication();
-  const update = useUpdateApplication(existing?.id ?? '');
+  const create = useCreateApplicationCategory();
+  const update = useUpdateApplicationCategory(existing?.id ?? '');
 
   const [name, setName] = useState<LocalizedValue>({ ar: existing?.name.ar ?? '', en: existing?.name.en ?? '' });
   const [icon, setIcon] = useState(existing?.icon ?? '');
-  const [route, setRoute] = useState(existing?.route ?? '');
-  const [categoryId, setCategoryId] = useState(existing?.categoryId ?? '');
   const [sortOrder, setSortOrder] = useState(String(existing?.sortOrder ?? 0));
   const [status, setStatus] = useState<'active' | 'inactive'>(existing?.status ?? 'active');
-
-  const { data: categories = [] } = useApplicationCategoryOptions();
 
   const submit = async (): Promise<void> => {
     if (name.ar.trim() === '' || name.en.trim() === '') {
       toast.error(t('organization.form.nameRequired'));
-      return;
-    }
-    if (icon.trim() === '' || route.trim() === '') {
-      toast.error(t('organization.application.fieldsRequired'));
-      return;
-    }
-    if (categoryId === '') {
-      toast.error(t('organization.application.categoryRequired'));
       return;
     }
     const order = Number.parseInt(sortOrder, 10);
@@ -57,30 +52,27 @@ const ApplicationFormBody = ({ existing }: { existing: ApplicationDto | null }):
       toast.error(t('organization.application.sortOrderInvalid'));
       return;
     }
+    const trimmedIcon = icon.trim();
     try {
       if (isCreate) {
-        const body: CreateApplication = {
+        const body: CreateApplicationCategory = {
           name: { ar: name.ar.trim(), en: name.en.trim() },
-          icon: icon.trim(),
-          route: route.trim(),
-          categoryId,
           sortOrder: order,
         };
+        if (trimmedIcon !== '') body.icon = trimmedIcon;
         const doc = await create.mutateAsync(body);
-        toast.success(t('organization.application.created'));
+        toast.success(t('organization.applicationCategory.created'));
         navigate(`${ROUTE_BASE}/${doc.id}`);
       } else {
-        const body: UpdateApplication = {
+        const body: UpdateApplicationCategory = {
           version: existing.version,
           name: { ar: name.ar.trim(), en: name.en.trim() },
-          icon: icon.trim(),
-          route: route.trim(),
-          categoryId,
+          icon: trimmedIcon === '' ? null : trimmedIcon,
           sortOrder: order,
           status,
         };
         const doc = await update.mutateAsync(body);
-        toast.success(t('organization.application.updated'));
+        toast.success(t('organization.applicationCategory.updated'));
         navigate(`${ROUTE_BASE}/${doc.id}`);
       }
     } catch (e) {
@@ -93,7 +85,7 @@ const ApplicationFormBody = ({ existing }: { existing: ApplicationDto | null }):
 
   const submitting = create.isPending || update.isPending;
   const title = isCreate
-    ? t('organization.application.create')
+    ? t('organization.applicationCategory.create')
     : t('organization.form.editTitle', { name: localized(existing.name, locale) });
 
   return (
@@ -102,7 +94,7 @@ const ApplicationFormBody = ({ existing }: { existing: ApplicationDto | null }):
         title={title}
         breadcrumbs={[
           { label: t('organization.title'), to: '/organization' },
-          { label: t('organization.nav.applications'), to: ROUTE_BASE },
+          { label: t('organization.nav.applicationCategories'), to: ROUTE_BASE },
           { label: isCreate ? t('organization.form.newCrumb') : localized(existing.name, locale) },
         ]}
       />
@@ -113,33 +105,11 @@ const ApplicationFormBody = ({ existing }: { existing: ApplicationDto | null }):
             <LocalizedNameFields label={t('organization.field.name')} value={name} onChange={setName} required />
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label={t('organization.application.icon')} required hint={t('organization.application.iconHint')}>
+              <Field label={t('organization.application.icon')} hint={t('organization.application.iconHint')}>
                 <Input dir="ltr" value={icon} onChange={(e) => setIcon(e.target.value)} placeholder="users" />
               </Field>
-              <Field label={t('organization.application.category')} required hint={t('organization.application.categoryHint')}>
-                <Select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-                  <option value="">{t('organization.application.selectCategory')}</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {localized(c.name, locale)}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label={t('organization.application.route')} required hint={t('organization.application.routeHint')}>
-                <Input dir="ltr" value={route} onChange={(e) => setRoute(e.target.value)} placeholder="/hr/recruitment" />
-              </Field>
               <Field label={t('organization.application.sortOrder')} hint={t('organization.application.sortOrderHint')}>
-                <Input
-                  dir="ltr"
-                  type="number"
-                  min={0}
-                  value={sortOrder}
-                  onChange={(e) => setSortOrder(e.target.value)}
-                />
+                <Input dir="ltr" type="number" min={0} value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} />
               </Field>
             </div>
 
@@ -160,11 +130,11 @@ const ApplicationFormBody = ({ existing }: { existing: ApplicationDto | null }):
   );
 };
 
-export const ApplicationFormPage = ({ mode }: { mode: 'create' | 'edit' }): JSX.Element => {
+export const ApplicationCategoryFormPage = ({ mode }: { mode: 'create' | 'edit' }): JSX.Element => {
   const { id = '' } = useParams();
-  const { data, isLoading, isError, error, refetch } = useApplication(mode === 'edit' ? id : '');
+  const { data, isLoading, isError, error, refetch } = useApplicationCategory(mode === 'edit' ? id : '');
 
-  if (mode === 'create') return <ApplicationFormBody existing={null} />;
+  if (mode === 'create') return <CategoryFormBody existing={null} />;
   if (isLoading) {
     return (
       <PageContainer>
@@ -179,5 +149,5 @@ export const ApplicationFormPage = ({ mode }: { mode: 'create' | 'edit' }): JSX.
       </PageContainer>
     );
   }
-  return <ApplicationFormBody existing={data} />;
+  return <CategoryFormBody existing={data} />;
 };

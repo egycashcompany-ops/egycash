@@ -16,6 +16,7 @@ import { ErrorState } from '../../../../shared/ui/states/ErrorState';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { ApiError } from '../../../../shared/lib/api-client';
 import { formatDateTime, localized } from '../../../../shared/lib/format';
+import { useApplicationCategoryOptions } from '../../application-categories/application-category-queries';
 import { useApplication, useDeleteApplication, useUpdateApplication } from '../application-queries';
 
 const Row = ({ label, children }: { label: string; children: React.ReactNode }): JSX.Element => (
@@ -34,6 +35,7 @@ export const ApplicationDetailPage = (): JSX.Element => {
   const { data: application, isLoading, isError, error, refetch } = useApplication(id);
   const update = useUpdateApplication(id);
   const remove = useDeleteApplication();
+  const { data: categories = [] } = useApplicationCategoryOptions();
 
   const [confirming, setConfirming] = useState(false);
 
@@ -150,7 +152,12 @@ export const ApplicationDetailPage = (): JSX.Element => {
                   {application.route}
                 </span>
               </Row>
-              <Row label={t('organization.application.category')}>{application.category}</Row>
+              <Row label={t('organization.application.category')}>
+                {(() => {
+                  const c = categories.find((x) => x.id === application.categoryId);
+                  return c === undefined ? application.categoryId : localized(c.name, locale);
+                })()}
+              </Row>
               <Row label={t('organization.application.sortOrder')}>{application.sortOrder}</Row>
               <Row label={t('organization.field.created')}>{formatDateTime(application.createdAt, locale)}</Row>
               <Row label={t('organization.field.updated')}>{formatDateTime(application.updatedAt, locale)}</Row>

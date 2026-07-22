@@ -37,6 +37,7 @@ export const organizationNav: NavSection[] = [
     titleKey: 'organization.nav.platform',
     items: [
       { to: '/organization/applications', labelKey: 'organization.nav.applications', icon: FolderIcon, permission: 'application.view' },
+      { to: '/organization/application-categories', labelKey: 'organization.nav.applicationCategories', icon: TagIcon, permission: 'applicationCategory.view' },
     ],
   },
 ];

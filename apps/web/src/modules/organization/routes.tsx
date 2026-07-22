@@ -1,21 +1,22 @@
 // Organization module route subtree (lazy-loaded as one chunk — route-based code splitting per
 // Software Architecture §6). The layout route provides the shell; every screen is permission-gated.
-// Branch/Department/Section reuse the generic Unit* screens (configured per unit); Job Titles and
-// the Company profile have their own screens. Default export so React.lazy can import it.
+// Branch/Department/Section each have dedicated List + Detail screens; create/edit reuse the generic
+// UnitFormPage (configured per unit). Job Titles and the Company profile have their own screens.
+// Default export so React.lazy can import it.
 import { Outlet, Route, Routes } from 'react-router-dom';
 import { RequirePermission } from '../../platform/router/RequirePermission';
 import { NotFoundPage } from '../../platform/app/pages/NotFoundPage';
 import { OrganizationLayout } from './OrganizationLayout';
 import { OrganizationOverview } from './pages/OrganizationOverview';
 import { CompanyPage } from './company/CompanyPage';
-import { UnitListPage } from './shared/UnitListPage';
-import { UnitDetailPage } from './shared/UnitDetailPage';
 import { UnitFormPage } from './shared/UnitFormPage';
 import { branchConfig, departmentConfig, sectionConfig } from './shared/unit-config';
 import { BranchesListPage } from './branches/pages/BranchesListPage';
 import { BranchDetailPage } from './branches/pages/BranchDetailPage';
 import { DepartmentsListPage } from './departments/pages/DepartmentsListPage';
 import { DepartmentDetailPage } from './departments/pages/DepartmentDetailPage';
+import { SectionsListPage } from './sections/pages/SectionsListPage';
+import { SectionDetailPage } from './sections/pages/SectionDetailPage';
 import { JobTitlesListPage } from './job-titles/pages/JobTitlesListPage';
 import { JobTitleDetailPage } from './job-titles/pages/JobTitleDetailPage';
 import { JobTitleFormPage } from './job-titles/pages/JobTitleFormPage';
@@ -99,7 +100,7 @@ export default function OrganizationRoutes(): JSX.Element {
             </RequirePermission>
           }
         >
-          <Route index element={<UnitListPage config={sectionConfig} />} />
+          <Route index element={<SectionsListPage />} />
           <Route
             path="new"
             element={
@@ -108,7 +109,7 @@ export default function OrganizationRoutes(): JSX.Element {
               </RequirePermission>
             }
           />
-          <Route path=":id" element={<UnitDetailPage config={sectionConfig} />} />
+          <Route path=":id" element={<SectionDetailPage />} />
           <Route
             path=":id/edit"
             element={

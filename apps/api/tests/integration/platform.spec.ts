@@ -395,6 +395,41 @@ describe('login → permission → scoped data → audit trail', () => {
     );
   });
 
+  it('creates a section under a department with a description, and updates it (Phase 3.3)', async () => {
+    const dept = await request(app)
+      .post('/api/v1/platform/departments')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: 'DEP-SEC', name: { ar: 'قسم الأم', en: 'Parent Dept' }, branchId: branchAId });
+    expect(dept.status).toBe(201);
+    const deptId = (dept.body as { data: { id: string } }).data.id;
+
+    const created = await request(app)
+      .post('/api/v1/platform/sections')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        code: 'SEC-A',
+        name: { ar: 'قسم أ', en: 'Section A' },
+        departmentId: deptId,
+        description: { ar: 'وصف القسم', en: 'Section description' },
+      });
+    expect(created.status).toBe(201);
+    const section = (
+      created.body as { data: { id: string; version: number; path: string; description: unknown } }
+    ).data;
+    expect(section.path).toContain(deptId);
+    expect(section.description).toEqual({ ar: 'وصف القسم', en: 'Section description' });
+
+    const updated = await request(app)
+      .patch(`/api/v1/platform/sections/${section.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ description: { ar: 'وصف مُحدّث', en: 'Updated description' }, version: section.version });
+    expect(updated.status).toBe(200);
+    expect((updated.body as { data: { description: unknown } }).data.description).toEqual({
+      ar: 'وصف مُحدّث',
+      en: 'Updated description',
+    });
+  });
+
   it('enforces DEPARTMENT scope: a department-scoped user sees only same-department users (ADR-017)', async () => {
     const dept = await request(app)
       .post('/api/v1/platform/departments')

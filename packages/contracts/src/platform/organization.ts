@@ -71,7 +71,13 @@ export const CreateDepartmentSchema = z
   .strict();
 export type CreateDepartment = z.infer<typeof CreateDepartmentSchema>;
 
-export const CreateSectionSchema = z.object({ ...orgUnitBase, departmentId: objectId() }).strict();
+export const CreateSectionSchema = z
+  .object({
+    ...orgUnitBase,
+    departmentId: objectId(),
+    description: LocalizedStringSchema.nullable().optional(),
+  })
+  .strict();
 export type CreateSection = z.infer<typeof CreateSectionSchema>;
 
 // Job Titles are an organization-wide catalog (ADR-015): they carry the *definition* of a role —
@@ -126,7 +132,9 @@ export const UpdateDepartmentSchema = z
   .strict();
 export type UpdateDepartment = z.infer<typeof UpdateDepartmentSchema>;
 
-export const UpdateSectionSchema = z.object(updatableUnitFields).strict();
+export const UpdateSectionSchema = z
+  .object({ ...updatableUnitFields, description: LocalizedStringSchema.nullable().optional() })
+  .strict();
 export type UpdateSection = z.infer<typeof UpdateSectionSchema>;
 
 export const UpdateJobTitleSchema = z
@@ -181,6 +189,7 @@ export interface DepartmentDto extends OrgUnitDto {
 export interface SectionDto extends OrgUnitDto {
   branchId: string;
   departmentId: string;
+  description: { ar: string; en: string } | null;
 }
 
 export interface JobTitleDto {

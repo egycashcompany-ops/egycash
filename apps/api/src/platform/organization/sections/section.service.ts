@@ -18,13 +18,18 @@ export const sectionService = new OrgUnitService<SectionDoc>('section', sectionR
       branchId: department.branchId,
       departmentId: department._id,
       path: `${String(department.branchId)}/${String(department._id)}/${String(id)}`,
+      description: input.description ?? null,
     } as Partial<SectionDoc>;
   },
   assertManagerExists,
+  // `description` is a per-unit column the generic update does not know about (ADR-015 seam).
+  buildUpdateSet: (input) =>
+    input.description !== undefined ? { description: input.description ?? null } : {},
 });
 
 export const toSectionDto = (doc: SectionDoc): SectionDto => ({
   ...sectionService.baseDto(doc),
   branchId: String(doc.branchId),
   departmentId: String(doc.departmentId),
+  description: doc.description ?? null,
 });

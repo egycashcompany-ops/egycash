@@ -80,6 +80,41 @@ describe('seed → password login (regression)', () => {
     expect((me.body as { data: MeDto }).data.permissions['user.view']).toBe('organization');
   });
 
+  it('the seeded admin has a functional data-driven sidebar out of the box (first-run bootstrap)', async () => {
+    const login = await doLogin(env.SEED_ADMIN_EMAIL, env.SEED_ADMIN_PASSWORD);
+    const token = login.body.data?.accessToken ?? '';
+    const res = await request(app)
+      .get('/api/v1/platform/me/applications')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    const groups = (
+      res.body as {
+        data: { name: { en: string }; applications: { route: string }[] }[];
+      }
+    ).data;
+
+    // Default categories are seeded and returned in sortOrder.
+    expect(groups.map((g) => g.name.en)).toEqual(['HR', 'Organization', 'Administration']);
+    // Applications map to the app's real client routes, granted directly to the admin.
+    const routes = groups.flatMap((g) => g.applications.map((a) => a.route));
+    expect(routes).toContain('/applicants');
+    expect(routes).toContain('/organization/branches');
+    expect(routes).toContain('/organization/applications');
+    expect(routes).toHaveLength(15); // 7 (HR) + 6 (Organization) + 2 (Administration)
+  });
+
+  it('re-running the seed is idempotent — no duplicate categories/applications/grants', async () => {
+    await seedDevData();
+    const login = await doLogin(env.SEED_ADMIN_EMAIL, env.SEED_ADMIN_PASSWORD);
+    const token = login.body.data?.accessToken ?? '';
+    const res = await request(app)
+      .get('/api/v1/platform/me/applications')
+      .set('Authorization', `Bearer ${token}`);
+    const groups = (res.body as { data: { applications: unknown[] }[] }).data;
+    expect(groups).toHaveLength(3);
+    expect(groups.reduce((n, g) => n + g.applications.length, 0)).toBe(15);
+  });
+
   it('the seeded HR user also logs in with email/password', async () => {
     const result = await doLogin(env.SEED_HR_EMAIL, env.SEED_HR_PASSWORD);
     expect(result.status).toBe(200);

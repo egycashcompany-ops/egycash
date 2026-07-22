@@ -1,145 +1,301 @@
-// Dynamic sidebar: a persistent rail on desktop (lg+) and an off-canvas drawer on mobile (driven by
-// ui.sidebarOpen). The navigation is loaded exclusively from GET /platform/me/applications — a tree
-// of Category → Application, rendered in the backend's order. Categories collapse/expand locally and
-// the collapsed set is remembered across reloads. Fully RTL-safe via logical borders/spacing; the
-// drawer slides from the reading-start edge.
-import { useState } from 'react';
-import { NavLink } from 'react-router-dom';
-import { type Locale } from '@ecms/contracts';
+// The ECMS navigation shell: a two-part rail designed to stay clean at dozens of modules and
+// hundreds of pages.
+//   • ModuleRail — a slim vertical strip of colored module identities (monograms). Switching modules
+//     is one glance + one click; it scales far better than a long scrolling list.
+//   • ModulePanel — the selected module's pages, plus the user's cross-module Pinned favorites.
+// Data is the dynamic GET /platform/me/applications (PR #64/#65); nothing here changes the backend,
+// routing, or permission model. Persistent on desktop (lg+); an off-canvas drawer on mobile.
+import { useEffect, useMemo, useState } from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
+import { type Locale, type MyApplicationDto } from '@ecms/contracts';
 import { useAppDispatch, useAppSelector } from '../../store';
 import { setSidebarOpen } from '../../store/uiSlice';
 import { useT } from '../localization/useT';
 import { cn } from '../../shared/lib/cn';
 import { localized } from '../../shared/lib/format';
-import { CloseIcon, ChevronIcon, FileIcon, InboxIcon } from '../../shared/ui/icons';
+import {
+  ChevronStartIcon,
+  CloseIcon,
+  FileIcon,
+  InboxIcon,
+  StarIcon,
+} from '../../shared/ui/icons';
 import { LoadingState } from '../../shared/ui/states/LoadingState';
 import { ErrorState } from '../../shared/ui/states/ErrorState';
 import { useMyApplications } from '../navigation/me-applications-queries';
 import { resolveNavIcon } from '../navigation/app-icon';
+import { useNavPrefs } from '../navigation/NavPrefs';
+import {
+  flattenApps,
+  moduleColor,
+  moduleOfPathname,
+  monogram,
+  toModules,
+  type NavApp,
+  type NavModule,
+} from '../navigation/nav-model';
 
-// Collapsed categories persist across reloads so the rail keeps the shape the user left it in.
-const COLLAPSE_KEY = 'ecms.sidebar.collapsed';
-
-const loadCollapsed = (): Set<string> => {
+const PANEL_KEY = 'ecms.nav.panelCollapsed';
+const loadCollapsed = (): boolean => {
   try {
-    const raw = localStorage.getItem(COLLAPSE_KEY);
-    return new Set(raw === null ? [] : (JSON.parse(raw) as string[]));
+    return localStorage.getItem(PANEL_KEY) === '1';
   } catch {
-    return new Set();
+    return false;
+  }
+};
+const persistCollapsed = (v: boolean): void => {
+  try {
+    localStorage.setItem(PANEL_KEY, v ? '1' : '0');
+  } catch {
+    /* ignore */
   }
 };
 
-const persistCollapsed = (ids: Set<string>): void => {
-  try {
-    localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...ids]));
-  } catch {
-    // storage unavailable (private mode etc.) — collapse still works for the session
-  }
-};
-
-const navItemClass = ({ isActive }: { isActive: boolean }): string =>
+// Active page = a filled brand pill; unmistakable at a glance.
+const rowClass = ({ isActive }: { isActive: boolean }): string =>
   cn(
-    'group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
-    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600/40',
-    // Active items carry an inline-start accent bar (RTL-safe) plus a stronger weight/tint.
+    'group/item flex items-center gap-2.5 rounded-md px-2 py-1.5 text-[13px] leading-5 transition-colors',
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40',
     isActive
-      ? "font-semibold text-brand-700 dark:text-brand-200 bg-brand-50 dark:bg-brand-950 before:absolute before:inset-y-1.5 before:start-0 before:w-1 before:rounded-e-full before:bg-brand-600 before:content-['']"
-      : 'font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white',
+      ? 'bg-brand-600 font-medium text-white shadow-sm'
+      : 'font-normal text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/70 dark:hover:text-slate-100',
   );
 
-const NavTree = ({ onNavigate }: { onNavigate: () => void }): JSX.Element => {
+const AppRow = ({ app, onNavigate }: { app: MyApplicationDto; onNavigate?: (() => void) | undefined }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
-  const { data = [], isLoading, isError, error, refetch } = useMyApplications();
-  const [collapsed, setCollapsed] = useState<Set<string>>(loadCollapsed);
-
-  const toggle = (id: string): void =>
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      persistCollapsed(next);
-      return next;
-    });
-
-  if (isLoading) {
-    return (
-      <div className="flex-1 overflow-y-auto">
-        <LoadingState />
-      </div>
-    );
-  }
-  if (isError) {
-    return (
-      <div className="flex-1 overflow-y-auto">
-        <ErrorState error={error} onRetry={() => void refetch()} />
-      </div>
-    );
-  }
-  if (data.length === 0) {
-    return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 py-16 text-center">
-        <InboxIcon className="h-10 w-10 text-slate-300 dark:text-slate-600" />
-        <p className="text-sm text-slate-400 dark:text-slate-500">{t('sidebar.empty')}</p>
-      </div>
-    );
-  }
-
+  const { isPinned, togglePin } = useNavPrefs();
+  const Icon = resolveNavIcon(app.icon, FileIcon);
+  const pinned = isPinned(app.id);
   return (
-    <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
-      {data.map((category) => {
-        const isCollapsed = collapsed.has(category.id);
-        return (
-          <div key={category.id}>
-            <button
-              type="button"
-              onClick={() => toggle(category.id)}
-              aria-expanded={!isCollapsed}
-              className="group flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-start text-[0.7rem] font-semibold uppercase tracking-wider text-slate-400 transition-colors hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600/30 dark:text-slate-500 dark:hover:text-slate-200"
-            >
-              <ChevronIcon
-                className={cn(
-                  'h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform duration-200 group-hover:text-slate-500 dark:text-slate-500',
-                  isCollapsed && '-rotate-90 rtl:rotate-90',
-                )}
-              />
-              <span className="truncate">{localized(category.name, locale)}</span>
-            </button>
-            {!isCollapsed && (
-              <ul className="mt-1 space-y-0.5">
-                {category.applications.map((app) => {
-                  const Icon = resolveNavIcon(app.icon, FileIcon);
-                  return (
-                    <li key={app.id}>
-                      <NavLink to={app.route} onClick={onNavigate} className={navItemClass}>
-                        <Icon className="h-5 w-5 shrink-0" />
-                        <span className="truncate">{localized(app.name, locale)}</span>
-                      </NavLink>
-                    </li>
-                  );
-                })}
-              </ul>
+    <NavLink to={app.route} onClick={onNavigate} className={rowClass}>
+      {({ isActive }) => (
+        <>
+          <Icon
+            className={cn('h-[18px] w-[18px] shrink-0', isActive ? 'text-white' : 'text-slate-400 dark:text-slate-500')}
+          />
+          <span className="min-w-0 flex-1 truncate">{localized(app.name, locale)}</span>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              togglePin(app.id);
+            }}
+            aria-label={t(pinned ? 'nav.unpin' : 'nav.pin')}
+            className={cn(
+              'grid h-5 w-5 shrink-0 place-items-center rounded transition',
+              isActive ? 'text-white/70 hover:text-white' : 'text-slate-300 hover:text-amber-500 dark:text-slate-600',
+              pinned ? 'opacity-100' : 'opacity-0 focus:opacity-100 group-hover/item:opacity-100',
             )}
-          </div>
-        );
-      })}
-    </nav>
+          >
+            <StarIcon className={cn('h-3.5 w-3.5', pinned && 'fill-current text-amber-400')} />
+          </button>
+        </>
+      )}
+    </NavLink>
   );
 };
 
-const Brand = ({ titleKey }: { titleKey: string }): JSX.Element => {
-  const t = useT();
+const ModuleRail = ({
+  modules,
+  shownId,
+  onPick,
+}: {
+  modules: NavModule[];
+  shownId: string;
+  onPick: (id: string) => void;
+}): JSX.Element => {
+  const locale = useAppSelector((state): Locale => state.locale.locale);
   return (
-    <div className="flex h-14 items-center gap-2.5 border-b border-slate-200 px-5 dark:border-slate-800">
-      <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-600 text-sm font-bold text-white shadow-sm">
-        E
-      </span>
-      <span className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{t(titleKey)}</span>
+    <div className="flex w-14 shrink-0 flex-col items-center gap-1.5 overflow-y-auto border-e border-slate-200 bg-slate-50 py-3 dark:border-slate-800 dark:bg-slate-950">
+      {modules.map((m) => {
+        const name = localized(m.name, locale);
+        const shown = m.id === shownId;
+        return (
+          <button
+            key={m.id}
+            type="button"
+            onClick={() => onPick(m.id)}
+            title={name}
+            aria-label={name}
+            aria-current={shown ? 'page' : undefined}
+            className={cn(
+              'grid h-10 w-10 shrink-0 place-items-center rounded-xl text-[12px] font-bold text-white shadow-sm transition-all',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50',
+              moduleColor(m.id),
+              shown
+                ? 'ring-2 ring-slate-900/20 ring-offset-2 ring-offset-slate-50 dark:ring-white/30 dark:ring-offset-slate-950'
+                : 'opacity-70 hover:opacity-100',
+            )}
+          >
+            {monogram(name)}
+          </button>
+        );
+      })}
     </div>
   );
 };
 
-export const Sidebar = ({ titleKey }: { titleKey: string }): JSX.Element => {
+const ModulePanel = ({
+  module,
+  collapsible,
+  onCollapse,
+  onNavigate,
+}: {
+  module: NavModule;
+  collapsible: boolean;
+  onCollapse: () => void;
+  onNavigate?: (() => void) | undefined;
+}): JSX.Element => {
+  const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  const { data = [] } = useMyApplications();
+  const { pinned } = useNavPrefs();
+
+  const pinnedApps = useMemo(() => {
+    const all = flattenApps(data);
+    return pinned
+      .map((id) => all.find((a) => a.id === id))
+      .filter((a): a is NavApp => a !== undefined);
+  }, [data, pinned]);
+
+  return (
+    <div className="flex w-56 shrink-0 flex-col border-e border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+      <div className="flex h-12 items-center justify-between gap-2 border-b border-slate-100 px-3 dark:border-slate-800/70">
+        <div className="flex min-w-0 items-center gap-2">
+          <span
+            className={cn(
+              'grid h-6 w-6 shrink-0 place-items-center rounded-md text-[10px] font-bold text-white',
+              moduleColor(module.id),
+            )}
+          >
+            {monogram(localized(module.name, locale))}
+          </span>
+          <span className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
+            {localized(module.name, locale)}
+          </span>
+        </div>
+        {collapsible && (
+          <button
+            type="button"
+            onClick={onCollapse}
+            aria-label={t('nav.collapse')}
+            title={t('nav.collapse')}
+            className="hidden shrink-0 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 lg:block"
+          >
+            <ChevronStartIcon className="h-4 w-4 rtl:-scale-x-100" />
+          </button>
+        )}
+      </div>
+      <div className="flex-1 overflow-y-auto px-2 pb-3 pt-2">
+        {pinnedApps.length > 0 && (
+          <div className="pb-1">
+            <p className="px-2 pb-1 text-[0.68rem] font-semibold uppercase tracking-[0.09em] text-slate-400 dark:text-slate-500">
+              {t('nav.pinned')}
+            </p>
+            <ul className="space-y-px">
+              {pinnedApps.map((a) => (
+                <li key={`pin-${a.id}`}>
+                  <AppRow app={a} onNavigate={onNavigate} />
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <ul className={cn('space-y-px', pinnedApps.length > 0 && 'pt-2')}>
+          {module.apps.map((a) => (
+            <li key={a.id}>
+              <AppRow app={a} onNavigate={onNavigate} />
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+};
+
+const StateShell = ({ children }: { children: JSX.Element }): JSX.Element => (
+  <div className="flex w-64 shrink-0 flex-col border-e border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+    <div className="flex flex-1 items-center justify-center overflow-y-auto">{children}</div>
+  </div>
+);
+
+const NavShell = ({
+  collapsible = true,
+  onNavigate,
+}: {
+  collapsible?: boolean;
+  onNavigate?: (() => void) | undefined;
+}): JSX.Element => {
+  const t = useT();
+  const { data = [], isLoading, isError, error, refetch } = useMyApplications();
+  const modules = useMemo(() => toModules(data), [data]);
+  const { pathname } = useLocation();
+  const activeModuleId = useMemo(() => moduleOfPathname(modules, pathname), [modules, pathname]);
+  const [picked, setPicked] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState<boolean>(() => collapsible && loadCollapsed());
+
+  // Navigating clears a manual module peek so the panel follows the current page's module.
+  useEffect(() => {
+    setPicked(null);
+  }, [pathname]);
+
+  if (isLoading) {
+    return (
+      <StateShell>
+        <LoadingState />
+      </StateShell>
+    );
+  }
+  if (isError) {
+    return (
+      <StateShell>
+        <ErrorState error={error} onRetry={() => void refetch()} />
+      </StateShell>
+    );
+  }
+  if (modules.length === 0) {
+    return (
+      <StateShell>
+        <div className="flex flex-col items-center gap-2 px-6 text-center">
+          <InboxIcon className="h-9 w-9 text-slate-300 dark:text-slate-600" />
+          <p className="text-sm text-slate-400 dark:text-slate-500">{t('sidebar.empty')}</p>
+        </div>
+      </StateShell>
+    );
+  }
+
+  const shownModule = modules.find((m) => m.id === (picked ?? activeModuleId)) ?? modules[0]!;
+  const showPanel = !collapsible || !collapsed;
+
+  const pick = (id: string): void => {
+    setPicked(id);
+    if (collapsed) {
+      setCollapsed(false);
+      persistCollapsed(false);
+    }
+  };
+
+  return (
+    <div className="flex h-full">
+      <ModuleRail modules={modules} shownId={shownModule.id} onPick={pick} />
+      {showPanel && (
+        <ModulePanel
+          module={shownModule}
+          collapsible={collapsible}
+          onCollapse={() => {
+            setCollapsed(true);
+            persistCollapsed(true);
+          }}
+          onNavigate={onNavigate}
+        />
+      )}
+    </div>
+  );
+};
+
+export const Sidebar = (): JSX.Element => {
   const t = useT();
   const dispatch = useAppDispatch();
   const open = useAppSelector((state) => state.ui.sidebarOpen);
@@ -149,42 +305,35 @@ export const Sidebar = ({ titleKey }: { titleKey: string }): JSX.Element => {
 
   return (
     <>
-      {/* Desktop rail */}
-      <aside className="hidden w-64 shrink-0 flex-col border-e border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 lg:flex">
-        <Brand titleKey={titleKey} />
-        <NavTree onNavigate={() => undefined} />
-      </aside>
+      {/* Desktop */}
+      <div className="hidden h-full shrink-0 lg:flex">
+        <NavShell />
+      </div>
 
       {/* Mobile drawer */}
       <div className={cn('fixed inset-0 z-40 lg:hidden', open ? '' : 'pointer-events-none')} aria-hidden={!open}>
         <div
-          className={cn(
-            'absolute inset-0 bg-slate-900/50 transition-opacity',
-            open ? 'opacity-100' : 'opacity-0',
-          )}
+          className={cn('absolute inset-0 bg-slate-900/50 transition-opacity', open ? 'opacity-100' : 'opacity-0')}
           onClick={close}
         />
         <aside
           className={cn(
-            'absolute inset-y-0 start-0 flex w-72 max-w-[80%] flex-col bg-white shadow-xl transition-transform dark:bg-slate-900',
+            'absolute inset-y-0 start-0 flex max-w-[88%] bg-white shadow-xl transition-transform dark:bg-slate-900',
             open ? 'translate-x-0' : '-translate-x-full rtl:translate-x-full',
           )}
           role="dialog"
           aria-modal="true"
-          aria-label={t(titleKey)}
+          aria-label={t('common.menu')}
         >
-          <div className="flex items-center justify-between border-b border-slate-200 pe-2 dark:border-slate-800">
-            <Brand titleKey={titleKey} />
-            <button
-              type="button"
-              onClick={close}
-              className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
-              aria-label={t('common.close')}
-            >
-              <CloseIcon />
-            </button>
-          </div>
-          <NavTree onNavigate={close} />
+          <NavShell collapsible={false} onNavigate={close} />
+          <button
+            type="button"
+            onClick={close}
+            aria-label={t('common.close')}
+            className="absolute end-2 top-2.5 z-10 rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+          >
+            <CloseIcon />
+          </button>
         </aside>
       </div>
     </>

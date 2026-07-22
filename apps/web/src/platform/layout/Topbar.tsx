@@ -1,6 +1,6 @@
-// Recruitment topbar: mobile menu toggle, page title, and the global actions — theme cycle,
-// language switch, notification bell, and the user menu (sign out). RTL-safe; collapses
-// gracefully on small screens.
+// The ECMS shell bar (full width, top): product identity, the global ⌘K search/jump trigger, and the
+// account utilities (theme, language, notifications, user). The page's own title/breadcrumbs live in
+// the page header, so the shell bar stays a clean command surface.
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '../../store';
@@ -14,7 +14,15 @@ import { fullName } from '../../shared/lib/format';
 import { useOnClickOutside } from '../../shared/lib/useOnClickOutside';
 import { cn } from '../../shared/lib/cn';
 import { NotificationBell } from '../notifications/NotificationBell';
-import { GlobeIcon, LogOutIcon, MenuIcon, MonitorIcon, MoonIcon, SunIcon } from '../../shared/ui/icons';
+import {
+  GlobeIcon,
+  LogOutIcon,
+  MenuIcon,
+  MonitorIcon,
+  MoonIcon,
+  SearchIcon,
+  SunIcon,
+} from '../../shared/ui/icons';
 
 const ThemeToggle = (): JSX.Element => {
   const { theme, cycle } = useTheme();
@@ -114,11 +122,11 @@ const UserMenu = (): JSX.Element => {
   );
 };
 
-export const Topbar = ({ title }: { title?: string }): JSX.Element => {
+export const Topbar = ({ onOpenSearch }: { onOpenSearch: () => void }): JSX.Element => {
   const t = useT();
   const dispatch = useAppDispatch();
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-slate-200 bg-white/90 px-4 backdrop-blur dark:border-slate-800 dark:bg-slate-900/90">
+    <header className="flex h-14 shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-3 dark:border-slate-800 dark:bg-slate-900">
       <button
         type="button"
         onClick={() => dispatch(toggleSidebar())}
@@ -127,10 +135,32 @@ export const Topbar = ({ title }: { title?: string }): JSX.Element => {
       >
         <MenuIcon />
       </button>
-      <h1 className="truncate text-base font-semibold text-slate-800 dark:text-slate-100">
-        {title ?? t('recruitment.title')}
-      </h1>
-      <div className="ms-auto flex items-center gap-0.5">
+
+      {/* Product identity */}
+      <div className="flex shrink-0 items-center gap-2.5 ps-1">
+        <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 text-sm font-bold text-white shadow-sm">
+          E
+        </span>
+        <span className="hidden text-base font-semibold tracking-tight text-slate-800 dark:text-slate-100 sm:block">
+          ECMS
+        </span>
+      </div>
+
+      {/* Global command / search trigger */}
+      <button
+        type="button"
+        onClick={onOpenSearch}
+        className="mx-auto flex h-9 w-full max-w-md items-center gap-2.5 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-400 transition-colors hover:border-slate-300 hover:bg-white dark:border-slate-700 dark:bg-slate-800/60 dark:hover:border-slate-600 dark:hover:bg-slate-800"
+      >
+        <SearchIcon className="h-4 w-4 shrink-0" />
+        <span className="flex-1 truncate text-start">{t('nav.search')}</span>
+        <kbd className="hidden shrink-0 rounded border border-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-400 dark:border-slate-600 sm:inline">
+          ⌘K
+        </kbd>
+      </button>
+
+      {/* Utilities */}
+      <div className="flex shrink-0 items-center gap-0.5">
         <ThemeToggle />
         <LanguageToggle />
         <NotificationBell />

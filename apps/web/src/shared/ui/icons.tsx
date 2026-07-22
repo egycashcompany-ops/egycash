@@ -257,3 +257,25 @@ export const TagIcon = (p: IconProps): JSX.Element => (
     <circle cx="7.5" cy="7.5" r="1.5" />
   </Base>
 );
+
+export const StarIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <path d="m12 17.27 6.18 3.73-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
+  </Base>
+);
+
+export const GridIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <rect x="3" y="3" width="7" height="7" rx="1" />
+    <rect x="14" y="3" width="7" height="7" rx="1" />
+    <rect x="14" y="14" width="7" height="7" rx="1" />
+    <rect x="3" y="14" width="7" height="7" rx="1" />
+  </Base>
+);
+
+export const CornerDownIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <polyline points="9 10 4 15 9 20" />
+    <path d="M20 4v7a4 4 0 0 1-4 4H4" />
+  </Base>
+);

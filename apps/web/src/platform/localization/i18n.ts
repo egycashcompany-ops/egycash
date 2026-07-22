@@ -37,6 +37,22 @@ const en: Record<string, string> = {
   'common.forbidden.body': 'You do not have permission to view this page.',
   'sidebar.empty': 'No applications assigned yet',
 
+  // Navigation system (shell bar, module rail/panel, command palette)
+  'nav.search': 'Search or jump to…',
+  'nav.pinned': 'Pinned',
+  'nav.pin': 'Pin',
+  'nav.unpin': 'Unpin',
+  'nav.collapse': 'Collapse panel',
+  'nav.command.placeholder': 'Search applications and modules…',
+  'nav.command.empty': 'No results',
+  'nav.command.applications': 'Applications',
+  'nav.command.modules': 'Modules',
+  'nav.command.recent': 'Recent',
+  'nav.command.module': 'Module',
+  'nav.command.hintMove': 'navigate',
+  'nav.command.hintOpen': 'open',
+  'nav.command.hintClose': 'close',
+
   // Module home / dashboard
   'home.overview': 'Overview',
   'home.quickAccess': 'Quick access',
@@ -983,6 +999,22 @@ const ar: Record<string, string> = {
   'common.forbidden.title': 'تم رفض الوصول',
   'common.forbidden.body': 'ليس لديك صلاحية لعرض هذه الصفحة.',
   'sidebar.empty': 'لا توجد تطبيقات مُسنَدة بعد',
+
+  // Navigation system (shell bar, module rail/panel, command palette)
+  'nav.search': 'ابحث أو انتقل…',
+  'nav.pinned': 'المثبّتة',
+  'nav.pin': 'تثبيت',
+  'nav.unpin': 'إلغاء التثبيت',
+  'nav.collapse': 'طيّ اللوحة',
+  'nav.command.placeholder': 'ابحث في التطبيقات والوحدات…',
+  'nav.command.empty': 'لا توجد نتائج',
+  'nav.command.applications': 'التطبيقات',
+  'nav.command.modules': 'الوحدات',
+  'nav.command.recent': 'الأخيرة',
+  'nav.command.module': 'وحدة',
+  'nav.command.hintMove': 'تنقّل',
+  'nav.command.hintOpen': 'فتح',
+  'nav.command.hintClose': 'إغلاق',
 
   // Module home / dashboard
   'home.overview': 'نظرة عامة',

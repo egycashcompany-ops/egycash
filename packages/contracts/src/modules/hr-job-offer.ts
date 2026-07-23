@@ -51,10 +51,11 @@ export const OfferTermsSchema = z
     jobTitleId: objectId(),
     departmentId: objectId(),
     branchId: objectId(),
-    /** The reporting manager (a platform user). */
-    managerId: objectId(),
+    /** The reporting manager (a platform user). OPTIONAL — may be null/omitted. */
+    managerId: objectId().nullish(),
     employmentType: EmploymentTypeSchema,
-    salary: MoneySchema,
+    /** Compensation package. OPTIONAL — may be null/omitted. */
+    salary: MoneySchema.nullish(),
     allowances: z.array(AllowanceSchema).max(30).default([]),
     benefits: z.array(z.string().min(1).max(200)).max(50).default([]),
     probationMonths: z.number().int().min(0).max(24),
@@ -126,9 +127,11 @@ export interface OfferTermsDto {
   jobTitleId: string;
   departmentId: string;
   branchId: string;
-  managerId: string;
+  /** null when no reporting manager was set on the offer. */
+  managerId: string | null;
   employmentType: EmploymentType;
-  salary: { amount: number; currency: string };
+  /** null when no salary was set on the offer. */
+  salary: { amount: number; currency: string } | null;
   allowances: OfferAllowanceDto[];
   benefits: string[];
   probationMonths: number;

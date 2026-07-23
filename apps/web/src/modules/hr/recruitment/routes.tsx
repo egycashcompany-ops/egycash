@@ -14,6 +14,8 @@ import { ScreeningQueuePage } from './screening/pages/ScreeningQueuePage';
 import { ScreeningDetailPage } from './screening/pages/ScreeningDetailPage';
 import { InterviewQueuePage } from './interviews/pages/InterviewQueuePage';
 import { InterviewDetailPage } from './interviews/pages/InterviewDetailPage';
+import { EvaluationQueuePage } from './evaluations/pages/EvaluationQueuePage';
+import { EvaluationDetailPage } from './evaluations/pages/EvaluationDetailPage';
 import { JobOffersListPage } from './job-offers/pages/JobOffersListPage';
 import { JobOfferDetailPage } from './job-offers/pages/JobOfferDetailPage';
 import { JobOfferFormPage } from './job-offers/pages/JobOfferFormPage';
@@ -78,6 +80,17 @@ export default function RecruitmentRoutes(): JSX.Element {
         >
           <Route index element={<InterviewQueuePage />} />
           <Route path=":id" element={<InterviewDetailPage />} />
+        </Route>
+        <Route
+          path="evaluations"
+          element={
+            <RequirePermission permission="evaluation.view">
+              <Outlet />
+            </RequirePermission>
+          }
+        >
+          <Route index element={<EvaluationQueuePage />} />
+          <Route path=":id" element={<EvaluationDetailPage />} />
         </Route>
         <Route
           path="job-offers"

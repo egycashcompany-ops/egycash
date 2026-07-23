@@ -40,8 +40,9 @@ const entityRef = (id: string) => ({ moduleId: 'hr', entityType: 'employee', ent
 class EmployeeService {
   /** Fire-and-forget hiring notification to the reporting manager + the creator. */
   private async notifyHire(doc: EmployeeDoc): Promise<void> {
-    const recipients = new Set<string>([String(doc.employment.managerId), doc.createdBy === null ? '' : String(doc.createdBy)]);
-    recipients.delete('');
+    const recipients = new Set<string>();
+    if (doc.employment.managerId !== null) recipients.add(String(doc.employment.managerId));
+    if (doc.createdBy !== null) recipients.add(String(doc.createdBy));
     await notificationsService
       .notify({
         template: HrEmployeeTemplates.Created,
@@ -88,7 +89,7 @@ class EmployeeService {
       jobPositionId: null,
       managerId: t.managerId,
       employmentType: t.employmentType,
-      salary: { amount: t.salary.amount, currency: t.salary.currency },
+      salary: t.salary === null ? null : { amount: t.salary.amount, currency: t.salary.currency },
       allowances: t.allowances.map((a) => ({ name: a.name, amount: a.amount, currency: a.currency })),
       benefits: [...t.benefits],
       probationMonths: t.probationMonths,

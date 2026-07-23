@@ -74,6 +74,10 @@ export const makeOrgUnitHandlers = <TDoc extends OrgUnitDoc, TDto>(
       await config.service.softDelete(params.id, ctx.userId);
       noContent(res);
     },
+    // Reference options for form dropdowns — any authenticated user, decoupled from `<r>.view`.
+    options: async (_req: Request, res: Response): Promise<void> => {
+      ok(res, await config.service.options());
+    },
   };
 };
 
@@ -90,6 +94,9 @@ export const makeOrgUnitRouter = <TDoc extends OrgUnitDoc, TDto>(
     validate({ query: ListOrgUnitsQuerySchema }),
     asyncHandler(handlers.list),
   );
+  // Reference options for form dropdowns (declared before `/:id`). Authenticated but NOT gated by
+  // `<r>.view`, so a user who can create a Department/Section can still pick a Branch (bug fix).
+  router.get('/options', authenticate, asyncHandler(handlers.options));
   router.get(
     '/:id',
     authenticate,

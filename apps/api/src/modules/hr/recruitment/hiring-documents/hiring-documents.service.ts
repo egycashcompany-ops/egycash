@@ -42,8 +42,9 @@ class HiringDocumentsService {
 
   /** Fire-and-forget completion notification to the reporting manager + the creator. */
   private async notifyCompleted(doc: HiringDocumentsDoc): Promise<void> {
-    const recipients = new Set<string>([String(doc.managerId), doc.createdBy === null ? '' : String(doc.createdBy)]);
-    recipients.delete('');
+    const recipients = new Set<string>();
+    if (doc.managerId !== null) recipients.add(String(doc.managerId));
+    if (doc.createdBy !== null) recipients.add(String(doc.createdBy));
     await notificationsService
       .notify({
         template: HrHiringDocumentsTemplates.Completed,

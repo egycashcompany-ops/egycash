@@ -37,9 +37,11 @@ export interface EmploymentDetails {
   branchId: Types.ObjectId;
   /** Approved Job Position, when one exists — OPTIONAL forever (ADR-016 Talent Pool). */
   jobPositionId: Types.ObjectId | null;
-  managerId: Types.ObjectId;
+  /** Reporting manager — null when the accepted offer set none. */
+  managerId: Types.ObjectId | null;
   employmentType: EmploymentType;
-  salary: EmployeeMoney;
+  /** Compensation — null when the accepted offer set none. */
+  salary: EmployeeMoney | null;
   allowances: EmployeeAllowance[];
   benefits: string[];
   probationMonths: number;
@@ -84,14 +86,14 @@ const employmentSchema = new Schema<EmploymentDetails>(
     sectionId: { type: Schema.Types.ObjectId, default: null },
     branchId: { type: Schema.Types.ObjectId, required: true },
     jobPositionId: { type: Schema.Types.ObjectId, default: null },
-    managerId: { type: Schema.Types.ObjectId, required: true },
+    managerId: { type: Schema.Types.ObjectId, default: null },
     employmentType: { type: String, enum: EMPLOYMENT_TYPES, required: true },
     salary: {
       type: new Schema<EmployeeMoney>(
         { amount: { type: Number, required: true }, currency: { type: String, required: true } },
         { _id: false },
       ),
-      required: true,
+      default: null,
     },
     allowances: {
       type: [

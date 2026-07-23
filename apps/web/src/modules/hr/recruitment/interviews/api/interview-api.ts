@@ -17,7 +17,7 @@ import {
   type SubmitInterviewEvaluation,
   type UserDto,
 } from '@ecms/contracts';
-import { buildQuery, get, getPage, post } from '../../../../../shared/lib/api-client';
+import { buildQuery, get, getPage, patch, post } from '../../../../../shared/lib/api-client';
 
 export type InterviewListParams = Record<string, string | number | boolean | undefined | null>;
 
@@ -52,6 +52,10 @@ export const submitInterviewEvaluation = (id: string, body: SubmitInterviewEvalu
 
 export const decideInterview = (id: string, body: DecideInterview): Promise<InterviewDto> =>
   post<InterviewDto>(`/hr/interviews/${id}/decide`, body);
+
+/** Edit the outcome of a completed interview (D7: a decision is not final; fully audited). */
+export const redecideInterview = (id: string, body: DecideInterview): Promise<InterviewDto> =>
+  patch<InterviewDto>(`/hr/interviews/${id}/decision`, body);
 
 // Interview stages (admin-configurable catalog, OQ-31). The queue/schedule flow reads the active
 // stages to label rounds and to pick a stage; management (create/update) is out of this scope.

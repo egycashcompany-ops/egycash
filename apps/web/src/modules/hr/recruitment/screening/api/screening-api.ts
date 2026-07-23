@@ -8,7 +8,7 @@ import {
   type Paginated,
   type ScreeningDto,
 } from '@ecms/contracts';
-import { buildQuery, get, getPage, post } from '../../../../../shared/lib/api-client';
+import { buildQuery, get, getPage, patch, post } from '../../../../../shared/lib/api-client';
 
 export type ScreeningListParams = Record<string, string | number | boolean | undefined | null>;
 
@@ -31,3 +31,7 @@ export const addScreeningNote = (id: string, body: AddScreeningNote): Promise<Sc
 
 export const decideScreening = (id: string, body: DecideScreening): Promise<ScreeningDto> =>
   post<ScreeningDto>(`/hr/screenings/${id}/decide`, body);
+
+/** Edit an already-decided screening (D7: a decision is not final; fully audited). */
+export const redecideScreening = (id: string, body: DecideScreening): Promise<ScreeningDto> =>
+  patch<ScreeningDto>(`/hr/screenings/${id}/decision`, body);

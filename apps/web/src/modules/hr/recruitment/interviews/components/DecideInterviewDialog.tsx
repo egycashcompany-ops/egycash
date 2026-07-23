@@ -8,7 +8,7 @@ import { Dialog } from '../../../../../shared/ui/Dialog';
 import { Button } from '../../../../../shared/ui/Button';
 import { Field, Textarea } from '../../../../../shared/ui/form';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
-import { useDecideInterview } from '../api/interview-queries';
+import { useDecideInterview, useRedecideInterview } from '../api/interview-queries';
 
 export const DecideInterviewDialog = ({
   open,
@@ -16,15 +16,20 @@ export const DecideInterviewDialog = ({
   interviewId,
   outcome,
   version,
+  edit = false,
 }: {
   open: boolean;
   onClose: () => void;
   interviewId: string;
   outcome: InterviewDecision;
   version: number;
+  /** True when editing an already-completed interview (D7); uses the audited re-decide endpoint. */
+  edit?: boolean;
 }): JSX.Element => {
   const t = useT();
-  const decide = useDecideInterview(interviewId);
+  const decideFresh = useDecideInterview(interviewId);
+  const redecide = useRedecideInterview(interviewId);
+  const decide = edit ? redecide : decideFresh;
   const [notes, setNotes] = useState('');
   const isFail = outcome === 'failed';
 

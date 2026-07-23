@@ -213,6 +213,18 @@ export interface BranchDto extends OrgUnitDto {
   address: Address | null;
 }
 
+/**
+ * Minimal reference option for populating dropdowns (e.g. the Branch selector on the Department /
+ * Section forms). Exposed by `GET /platform/<unit>/options`, authorized for any authenticated user
+ * and decoupled from the unit's `view` data-scope permission — it carries only non-sensitive
+ * identifiers needed to fill a form.
+ */
+export interface OrgUnitOptionDto {
+  id: string;
+  code: string;
+  name: { ar: string; en: string };
+}
+
 export interface DepartmentDto extends OrgUnitDto {
   branchId: string;
   description: { ar: string; en: string } | null;

@@ -7,7 +7,7 @@ import { Dialog } from '../../../../../shared/ui/Dialog';
 import { Button } from '../../../../../shared/ui/Button';
 import { Field, Textarea } from '../../../../../shared/ui/form';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
-import { useDecideScreening } from '../api/screening-queries';
+import { useDecideScreening, useRedecideScreening } from '../api/screening-queries';
 
 export const DecideDialog = ({
   open,
@@ -15,15 +15,20 @@ export const DecideDialog = ({
   outcome,
   screeningId,
   version,
+  edit = false,
 }: {
   open: boolean;
   onClose: () => void;
   outcome: ScreeningOutcome;
   screeningId: string;
   version: number;
+  /** True when editing an already-decided screening (D7); uses the audited re-decide endpoint. */
+  edit?: boolean;
 }): JSX.Element => {
   const t = useT();
-  const decide = useDecideScreening(screeningId);
+  const decideFresh = useDecideScreening(screeningId);
+  const redecide = useRedecideScreening(screeningId);
+  const decide = edit ? redecide : decideFresh;
   const [reason, setReason] = useState('');
   const isReject = outcome === 'rejected';
 

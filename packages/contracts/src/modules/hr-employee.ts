@@ -130,9 +130,11 @@ export interface EmploymentDetailsDto {
   branchId: string;
   /** Approved Job Position, when one exists — OPTIONAL forever (ADR-016 Talent Pool). */
   jobPositionId: string | null;
-  managerId: string;
+  /** Reporting manager — null when the accepted offer set none. */
+  managerId: string | null;
   employmentType: EmploymentType;
-  salary: { amount: number; currency: string };
+  /** Compensation — null when the accepted offer set none. */
+  salary: { amount: number; currency: string } | null;
   allowances: OfferAllowanceDto[];
   benefits: string[];
   probationMonths: number;

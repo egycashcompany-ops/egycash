@@ -11,6 +11,38 @@ its entry here in the same PR.
 
 ### Added
 
+- **HR — Recruitment workflow redesign (one coherent flow).** The Recruitment module now runs as a
+  single end-to-end pipeline, backend + web:
+  - **Evaluation phases (Security / Medical / Driving, extensible).** A post-interview, file-based
+    approval stage. An **administrator-configurable** phase catalog (`hr_evaluation_phases`, seeded
+    with **Security Check / Medical Examination / Driving Test**, the last flagged drivers-only) runs
+    **sequentially** after the interview rounds — phases are added, disabled, or reordered with **no
+    code changes**, exactly like interview stages. Per applicant × phase an **evaluation**
+    (`hr_evaluations`) collects **one or more files** (platform Files service) and an
+    **approved / rejected** decision with a reason. New endpoints under `/hr/evaluations`
+    (+ `/hr/evaluation-phases`), gated by `evaluation.view` / `evaluation.manage` /
+    `evaluationPhase.manage`; every mutation audited and `hr.evaluation.decided` published. A new web
+    **Evaluations** module (queue + detail: open, upload files, decide) is wired into the navigation.
+  - **Job Offer is hard-gated** until the applicant has cleared **all required interviews *and* all
+    required evaluation phases** (driver-only phases gate only when opened).
+  - **Rejection is not final (fully audited).** HR can **edit the decision** of any stage — Screening
+    (`PATCH /hr/screenings/:id/decision`), Interviews (`PATCH /hr/interviews/:id/decision`), and
+    Evaluations — and a corrected rejection **reactivates the applicant** into the pipeline at the
+    right stage (`applicantService.reactivateFromRejection`). Edit-decision actions added to the web
+    Screening, Interview, and Evaluation screens.
+  - **Job Offers: Direct Manager and Salary are optional.** `managerId` / `salary` are nullable and
+    handled as NULL through the offer → employee → hiring-documents → employee-file chain; the web
+    offer form and read-out treat them as optional.
+  - **Employee Files hold independent COPIES of the hiring documents** (new `fileService.copy`) plus
+    **custom uploads**; editing/removing a copy never touches the original. Surfaced on the web
+    Employee File detail, gated by the new `employeeFile.upload` permission.
+  - **Hiring-documents checklist** seeded to the approved **7-document** set (Employment Contract,
+    Employment Acceptance Acknowledgment, Social Status Form, Relatives Declaration, Job Description,
+    National Bank / Banque Misr Letter, Company ID Card).
+- **Organization — reference-options endpoint.** `GET /platform/<unit>/options` returns minimal
+  `{id, code, name}` for active units, authorized for any authenticated user and **decoupled from the
+  unit's `view` permission** — so the **Branch dropdown on the Department / Section forms** is always
+  populated (bug fix).
 - **HR — Employees: employment lifecycle.** The post-hire workforce capability. An employee can now
   be moved through their lifecycle — **go on leave, return, suspend, reinstate, terminate** — via
   `PATCH /hr/employees/:id/status`, gated by the new **`employee.changeStatus`** permission and

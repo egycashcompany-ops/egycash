@@ -19,6 +19,7 @@ import { EmptyState } from '../../../../../shared/ui/states/EmptyState';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { formatDateTime } from '../../../../../shared/lib/format';
 import { EmployeeFileStatusBadge } from '../components/EmployeeFileStatusBadge';
+import { EmployeeFileDocuments } from '../components/EmployeeFileDocuments';
 import { LinkedHistory } from '../components/LinkedHistory';
 import { useAddEmployeeFileNote, useEmployeeFile } from '../api/employee-file-queries';
 
@@ -104,6 +105,8 @@ export const EmployeeFileDetailPage = (): JSX.Element => {
               {timeline.length === 0 ? <EmptyState title={t('employeeFiles.detail.timelineEmpty')} /> : <Timeline entries={timeline} />}
             </CardBody>
           </Card>
+
+          <EmployeeFileDocuments fileId={f.id} documents={f.documents} version={f.version} />
 
           {canAddNote && (
             <Card>

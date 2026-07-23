@@ -12,6 +12,7 @@ import {
   SettingKeys,
   type ApplicantDto,
   type EmployeeDto,
+  type EvaluationDto,
   type EmployeeFileDto,
   type HiringDocumentsDto,
   type InterviewDto,
@@ -36,7 +37,13 @@ const DEPARTMENT_ID = '64b1f0cccccccccccccccc02';
 let BRANCH_ID = ''; // real branch created in beforeAll (employee code is BranchCode-based)
 const FUTURE = '2027-03-01T00:00:00.000Z';
 const START_DATE = '2027-04-01T00:00:00.000Z';
-const REQUIRED_KEYS = ['nationalIdCopy', 'signedContract', 'personalPhoto'];
+const REQUIRED_KEYS = [
+  'employmentContract',
+  'employmentAcceptance',
+  'socialStatusForm',
+  'relativesDeclaration',
+  'jobDescription',
+];
 let replSet: MongoMemoryReplSet | null = null;
 let app: Express;
 let adminToken: string;
@@ -130,6 +137,20 @@ const hiredEmployee = async (): Promise<EmployeeDto> => {
       .post(`/api/v1/hr/interviews/${interview.id}/decide`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ outcome: 'passed', version: (submitted.body.data as InterviewDto).version });
+  }
+
+  // Clear the required evaluation phases (offer gate) before drafting the offer.
+  for (const key of ['securityCheck', 'medicalExam']) {
+    const phaseId = await idByKey('evaluation-phases', key);
+    const opened = await request(app)
+      .post('/api/v1/hr/evaluations')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ applicantId: applicant.id, phaseId });
+    const evaluation = opened.body.data as EvaluationDto;
+    await request(app)
+      .patch(`/api/v1/hr/evaluations/${evaluation.id}/decision`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ decision: 'approved', version: evaluation.version });
   }
 
   const draft = (

@@ -39,9 +39,9 @@ export const EmploymentView = ({ employment }: { employment: EmploymentDetailsDt
         <Row label={t('offers.form.jobTitle')}>{nameOf(jobTitles.data, employment.jobTitleId)}</Row>
         <Row label={t('offers.form.department')}>{nameOf(departments.data, employment.departmentId)}</Row>
         <Row label={t('offers.form.branch')}>{nameOf(branches.data, employment.branchId)}</Row>
-        <Row label={t('offers.form.manager')}><UserName id={employment.managerId} /></Row>
+        <Row label={t('offers.form.manager')}>{employment.managerId === null ? '—' : <UserName id={employment.managerId} />}</Row>
         <Row label={t('offers.form.employmentType')}>{t(`offers.employmentType.${employment.employmentType}`)}</Row>
-        <Row label={t('offers.form.salary')}>{formatMoney(employment.salary.amount, employment.salary.currency, locale)}</Row>
+        <Row label={t('offers.form.salary')}>{employment.salary === null ? '—' : formatMoney(employment.salary.amount, employment.salary.currency, locale)}</Row>
         <Row label={t('offers.form.probation')}>{t('offers.terms.months', { n: employment.probationMonths })}</Row>
         <Row label={t('offers.form.startDate')}>{formatDate(employment.startDate, locale)}</Row>
       </dl>

@@ -35,6 +35,22 @@ export interface EmployeeFileLinks {
   hiringDocumentsId: Types.ObjectId;
 }
 
+/**
+ * A document held in the Employee File. `hiringDocumentCopy` items are INDEPENDENT copies made at
+ * assembly from the hiring documents (`copiedFromFileId` is the original; editing/removing the copy
+ * never touches it). `custom` items are additional HR uploads with a user-defined name.
+ */
+export interface EmployeeFileDocument {
+  _id: Types.ObjectId;
+  source: 'hiringDocumentCopy' | 'custom';
+  name: string;
+  fileId: Types.ObjectId;
+  fileName: string;
+  copiedFromFileId: Types.ObjectId | null;
+  uploadedBy: Types.ObjectId | null;
+  uploadedAt: Date;
+}
+
 export interface EmployeeFileDoc extends BaseDocFields {
   employeeId: Types.ObjectId;
   employeeCode: string;
@@ -42,6 +58,8 @@ export interface EmployeeFileDoc extends BaseDocFields {
   branchId: Types.ObjectId;
   status: EmployeeFileStatus;
   links: EmployeeFileLinks;
+  /** Independent copies of the hiring documents + any custom uploads (HR-spec). */
+  documents: EmployeeFileDocument[];
   timeline: EmployeeTimelineEntry[];
 }
 
@@ -69,6 +87,19 @@ const linksSchema = new Schema<EmployeeFileLinks>(
   { _id: false },
 );
 
+const documentSchema = new Schema<EmployeeFileDocument>(
+  {
+    source: { type: String, enum: ['hiringDocumentCopy', 'custom'], required: true },
+    name: { type: String, required: true },
+    fileId: { type: Schema.Types.ObjectId, required: true },
+    fileName: { type: String, required: true },
+    copiedFromFileId: { type: Schema.Types.ObjectId, default: null },
+    uploadedBy: { type: Schema.Types.ObjectId, default: null },
+    uploadedAt: { type: Date, required: true },
+  },
+  { _id: true },
+);
+
 const employeeFileSchema = new Schema<EmployeeFileDoc>(
   {
     employeeId: { type: Schema.Types.ObjectId, required: true },
@@ -77,6 +108,7 @@ const employeeFileSchema = new Schema<EmployeeFileDoc>(
     branchId: { type: Schema.Types.ObjectId, required: true },
     status: { type: String, enum: EMPLOYEE_FILE_STATUSES, required: true, default: 'active' },
     links: { type: linksSchema, required: true },
+    documents: { type: [documentSchema], default: [] },
     timeline: { type: [timelineEntrySchema], default: [] },
     ...baseFields,
   },

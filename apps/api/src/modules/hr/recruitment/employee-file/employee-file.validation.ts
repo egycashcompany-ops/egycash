@@ -4,9 +4,14 @@ export {
   CreateEmployeeFileSchema,
   AddEmployeeFileNoteSchema,
   ListEmployeeFilesQuerySchema,
+  UploadEmployeeFileDocumentSchema,
+  RemoveEmployeeFileDocumentSchema,
 } from '@ecms/contracts';
 
 import { z } from 'zod';
 import { objectId } from '@ecms/contracts';
 
 export const EmployeeFileIdParamSchema = z.object({ id: objectId() }).strict();
+export const EmployeeFileDocumentParamSchema = z
+  .object({ id: objectId(), documentId: objectId() })
+  .strict();

@@ -256,6 +256,24 @@ export class OrgUnitService<TDoc extends OrgUnitDoc> {
     });
   }
 
+  /**
+   * Minimal active-unit options ({id, code, name}) for populating reference dropdowns across the app
+   * (e.g. the Branch selector on the Department / Section forms). Organization-wide and NOT gated by
+   * the unit's data-scope `view` permission — it exposes only non-sensitive identifiers a form needs.
+   */
+  async options(): Promise<{ id: string; code: string; name: LocalizedString }[]> {
+    const page = await this.repository.list({
+      filter: { status: 'active' } as FilterQuery<TDoc>,
+      page: 1,
+      pageSize: 500,
+      sortBy: 'code',
+      sortDir: 'asc',
+      sortableFields: ['code'],
+      scope: { scope: 'organization', userId: '', branchId: null, departmentId: null, sectionId: null },
+    });
+    return page.items.map((u) => ({ id: String(u._id), code: u.code, name: u.name }));
+  }
+
   baseDto(doc: TDoc): OrgUnitDto {
     return {
       id: String(doc._id),

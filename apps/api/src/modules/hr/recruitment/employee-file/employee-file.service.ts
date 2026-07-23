@@ -17,11 +17,14 @@ import {
   type CreateEmployeeFile,
   type ListEmployeeFilesQuery,
   type Paginated,
+  type RemoveEmployeeFileDocument,
+  type UploadEmployeeFileDocument,
 } from '@ecms/contracts';
-import { BusinessRuleError, ConflictError } from '../../../../shared/errors';
+import { BusinessRuleError, ConflictError, ValidationError } from '../../../../shared/errors';
 import { type AuthContext, type ScopeSelector } from '../../../../shared/types';
 import { auditService } from '../../../../platform/audit';
 import { emit } from '../../../../platform/kernel/event-bus';
+import { fileService, type UploadedBinary } from '../../../../platform/files';
 import { notificationsService } from '../../../../platform/notifications';
 import { applicantService } from '../applicants';
 import { screeningService } from '../screening';
@@ -30,7 +33,13 @@ import { jobOfferService } from '../job-offers';
 import { employeeService } from '../employees';
 import { hiringDocumentsService } from '../hiring-documents';
 import { employeeFileRepository, type EmployeeFileListFilter } from './employee-file.repository';
-import { type EmployeeFileDoc, type EmployeeFileLinks, type EmployeeTimelineEntry } from './employee-file.model';
+import { resolveEmployeeFileCategoryId } from './employee-file.files';
+import {
+  type EmployeeFileDoc,
+  type EmployeeFileDocument,
+  type EmployeeFileLinks,
+  type EmployeeTimelineEntry,
+} from './employee-file.model';
 
 const entityRef = (id: string) => ({ moduleId: 'hr', entityType: 'employeeFile', entityId: id });
 
@@ -45,9 +54,10 @@ const milestone = (
 
 class EmployeeFileService {
   /** Fire-and-forget assembly notification to the reporting manager + the assembler. */
-  private async notifyCreated(doc: EmployeeFileDoc, managerId: Types.ObjectId): Promise<void> {
-    const recipients = new Set<string>([String(managerId), doc.createdBy === null ? '' : String(doc.createdBy)]);
-    recipients.delete('');
+  private async notifyCreated(doc: EmployeeFileDoc, managerId: Types.ObjectId | null): Promise<void> {
+    const recipients = new Set<string>();
+    if (managerId !== null) recipients.add(String(managerId));
+    if (doc.createdBy !== null) recipients.add(String(doc.createdBy));
     await notificationsService
       .notify({
         template: HrEmployeeFileTemplates.Created,
@@ -125,6 +135,33 @@ class EmployeeFileService {
       hiringDocumentsId: hiringDocs._id,
     };
 
+    // Independent COPIES of every hiring document (HR-spec): each is re-stored as a fresh file
+    // under this employee file, so editing/removing a copy never touches the original hiring
+    // document. `copiedFromFileId` records the source for traceability.
+    const categoryId = await resolveEmployeeFileCategoryId();
+    const documents: EmployeeFileDocument[] = [];
+    const now = new Date();
+    for (const item of hiringDocs.documents) {
+      const copy = await fileService.copy(ctx, String(item.fileId), {
+        moduleId: 'hr',
+        entityType: 'employeeFile',
+        entityId: String(employee._id),
+        categoryId,
+        displayName: item.typeName.en,
+        visibility: 'private',
+      });
+      documents.push({
+        _id: new Types.ObjectId(),
+        source: 'hiringDocumentCopy',
+        name: item.typeName.en,
+        fileId: copy._id,
+        fileName: copy.originalName,
+        copiedFromFileId: item.fileId,
+        uploadedBy: new Types.ObjectId(ctx.userId),
+        uploadedAt: now,
+      });
+    }
+
     const doc = await employeeFileRepository.create(
       {
         employeeId: employee._id,
@@ -133,6 +170,7 @@ class EmployeeFileService {
         branchId: employee.branchId,
         status: 'active',
         links,
+        documents,
         timeline,
       },
       { by: ctx.userId },
@@ -188,6 +226,86 @@ class EmployeeFileService {
       changes: [{ field: 'timeline', old: before.timeline.length, new: updated.timeline.length }],
     });
     await emit(HrEmployeeFileEvents.NoteAdded, this.payload(updated));
+    return updated;
+  }
+
+  /**
+   * Upload an additional CUSTOM document (a fresh file, not a copy) into the Employee File with a
+   * user-defined name. Independent of the hiring documents entirely.
+   */
+  async uploadDocument(
+    ctx: AuthContext,
+    id: string,
+    meta: UploadEmployeeFileDocument,
+    binary: UploadedBinary,
+    scope: ScopeSelector,
+  ): Promise<EmployeeFileDoc> {
+    const before = await employeeFileRepository.getById(id, scope);
+    const categoryId = await resolveEmployeeFileCategoryId();
+    const file = await fileService.upload(
+      ctx,
+      {
+        moduleId: 'hr',
+        entityType: 'employeeFile',
+        entityId: id,
+        categoryId,
+        displayName: meta.name,
+        visibility: 'private',
+        tags: [],
+      },
+      binary,
+    );
+    const entry: EmployeeFileDocument = {
+      _id: new Types.ObjectId(),
+      source: 'custom',
+      name: meta.name,
+      fileId: file._id,
+      fileName: file.originalName,
+      copiedFromFileId: null,
+      uploadedBy: new Types.ObjectId(ctx.userId),
+      uploadedAt: new Date(),
+    };
+    const updated = await employeeFileRepository.updateById(
+      id,
+      { documents: [...before.documents, entry] },
+      { by: ctx.userId, version: meta.version, scope },
+    );
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'update',
+      changes: [{ field: 'document', old: null, new: `custom:${meta.name}` }],
+    });
+    return updated;
+  }
+
+  /**
+   * Remove a document from the Employee File. Only this file's independent copy/upload is deleted —
+   * the original hiring document (`copiedFromFileId`) is never touched.
+   */
+  async removeDocument(
+    ctx: AuthContext,
+    id: string,
+    documentId: string,
+    meta: RemoveEmployeeFileDocument,
+    scope: ScopeSelector,
+  ): Promise<EmployeeFileDoc> {
+    const before = await employeeFileRepository.getById(id, scope);
+    const doc = before.documents.find((d) => String(d._id) === documentId);
+    if (doc === undefined) {
+      throw new ValidationError([{ field: 'documentId', code: 'INVALID', message: 'no such document in this file' }]);
+    }
+    const updated = await employeeFileRepository.updateById(
+      id,
+      { documents: before.documents.filter((d) => String(d._id) !== documentId) },
+      { by: ctx.userId, version: meta.version, scope },
+    );
+    // Soft-delete this file's own copy/upload only (never the source hiring document).
+    await fileService.softDelete(ctx, String(doc.fileId)).catch(() => undefined);
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'update',
+      changes: [{ field: 'document', old: `${doc.source}:${doc.name}`, new: null }],
+    });
     return updated;
   }
 }

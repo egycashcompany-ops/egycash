@@ -51,11 +51,13 @@ export const OfferTermsForm = ({
   const [departmentId, setDepartmentId] = useState(initial?.departmentId ?? '');
   const [branchId, setBranchId] = useState(initial?.branchId ?? '');
   const [manager, setManager] = useState<ManagerRef | null>(
-    initial === null ? null : { id: initial.managerId, label: '' },
+    initial === null || initial.managerId === null ? null : { id: initial.managerId, label: '' },
   );
   const [employmentType, setEmploymentType] = useState<'' | EmploymentType>(initial?.employmentType ?? '');
-  const [salaryAmount, setSalaryAmount] = useState(initial === null ? '' : String(initial.salary.amount));
-  const [salaryCurrency, setSalaryCurrency] = useState(initial?.salary.currency ?? 'EGP');
+  const [salaryAmount, setSalaryAmount] = useState(
+    initial === null || initial.salary === null ? '' : String(initial.salary.amount),
+  );
+  const [salaryCurrency, setSalaryCurrency] = useState(initial?.salary?.currency ?? 'EGP');
   const [allowances, setAllowances] = useState<AllowanceRow[]>(
     initial === null
       ? []
@@ -70,18 +72,17 @@ export const OfferTermsForm = ({
   const [notes, setNotes] = useState(initial?.notes ?? '');
   const [error, setError] = useState<string | null>(null);
 
+  // Direct Manager and Salary are OPTIONAL (approved spec) — everything else stays required.
   const valid =
     jobTitleId !== '' &&
     departmentId !== '' &&
     branchId !== '' &&
-    manager !== null &&
     employmentType !== '' &&
-    salaryAmount !== '' &&
     startDate !== '' &&
     validUntil !== '';
 
   const submit = (): void => {
-    if (manager === null || employmentType === '') return;
+    if (employmentType === '') return;
     if (new Date(validUntil) <= new Date(startDate)) {
       setError(t('offers.form.validUntilAfterStart'));
       return;
@@ -91,9 +92,12 @@ export const OfferTermsForm = ({
       jobTitleId,
       departmentId,
       branchId,
-      managerId: manager.id,
+      managerId: manager?.id ?? null,
       employmentType,
-      salary: { amount: Number(salaryAmount), currency: salaryCurrency.trim().toUpperCase() || 'EGP' },
+      salary:
+        salaryAmount.trim() === ''
+          ? null
+          : { amount: Number(salaryAmount), currency: salaryCurrency.trim().toUpperCase() || 'EGP' },
       allowances: allowances
         .filter((a) => a.name.trim() !== '')
         .map((a) => ({
@@ -147,7 +151,7 @@ export const OfferTermsForm = ({
             ))}
           </Select>
         </Field>
-        <Field label={t('offers.form.manager')} required>
+        <Field label={t('offers.form.manager')} hint={t('offers.form.optional')}>
           <ManagerPicker value={manager} onChange={setManager} />
         </Field>
       </div>
@@ -161,7 +165,7 @@ export const OfferTermsForm = ({
             ))}
           </Select>
         </Field>
-        <Field label={t('offers.form.salary')} required>
+        <Field label={t('offers.form.salary')} hint={t('offers.form.optional')}>
           <Input type="number" min={0} value={salaryAmount} onChange={(e) => setSalaryAmount(e.target.value)} dir="ltr" />
         </Field>
         <Field label={t('offers.form.currency')}>

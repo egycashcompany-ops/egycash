@@ -32,6 +32,7 @@ export const ScreeningDetailPage = (): JSX.Element => {
   const addNote = useAddScreeningNote(id);
   const [note, setNote] = useState('');
   const [decide, setDecide] = useState<ScreeningOutcome | null>(null);
+  const [editDecide, setEditDecide] = useState<ScreeningOutcome | null>(null);
 
   if (isLoading) {
     return (
@@ -93,7 +94,17 @@ export const ScreeningDetailPage = (): JSX.Element => {
               <Button size="sm" variant="secondary" onClick={() => setDecide('accepted')}>{t('screening.actions.accept')}</Button>
               <Button size="sm" variant="danger" onClick={() => setDecide('rejected')}>{t('screening.actions.reject')}</Button>
             </Can>
-          ) : undefined
+          ) : (
+            <Can permission="screening.decide">
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setEditDecide(s.status === 'accepted' ? 'rejected' : 'accepted')}
+              >
+                {t('screening.actions.editDecision')}
+              </Button>
+            </Can>
+          )
         }
       />
 
@@ -172,6 +183,9 @@ export const ScreeningDetailPage = (): JSX.Element => {
 
       {decide !== null && (
         <DecideDialog open onClose={() => setDecide(null)} outcome={decide} screeningId={s.id} version={s.version} />
+      )}
+      {editDecide !== null && (
+        <DecideDialog open edit onClose={() => setEditDecide(null)} outcome={editDecide} screeningId={s.id} version={s.version} />
       )}
     </PageContainer>
   );

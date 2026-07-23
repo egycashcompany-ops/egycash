@@ -39,6 +39,7 @@ export const InterviewDetailPage = (): JSX.Element => {
   const [cancelOpen, setCancelOpen] = useState(false);
   const [evaluateOpen, setEvaluateOpen] = useState(false);
   const [decideOutcome, setDecideOutcome] = useState<InterviewDecision | null>(null);
+  const [editOutcome, setEditOutcome] = useState<InterviewDecision | null>(null);
   const [skipTarget, setSkipTarget] = useState<string | null>(null);
 
   if (isLoading) {
@@ -95,6 +96,16 @@ export const InterviewDetailPage = (): JSX.Element => {
                 <Button size="sm" variant="ghost" onClick={() => setCancelOpen(true)}>{t('interviews.actions.cancel')}</Button>
               </Can>
             </div>
+          ) : iv.status === 'completed' ? (
+            <Can permission="interview.decide">
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setEditOutcome(iv.outcome === 'passed' ? 'failed' : 'passed')}
+              >
+                {t('interviews.actions.editDecision')}
+              </Button>
+            </Can>
           ) : undefined
         }
       />
@@ -231,6 +242,16 @@ export const InterviewDetailPage = (): JSX.Element => {
           onClose={() => setDecideOutcome(null)}
           interviewId={iv.id}
           outcome={decideOutcome}
+          version={iv.version}
+        />
+      )}
+      {editOutcome !== null && (
+        <DecideInterviewDialog
+          open
+          edit
+          onClose={() => setEditOutcome(null)}
+          interviewId={iv.id}
+          outcome={editOutcome}
           version={iv.version}
         />
       )}

@@ -12,6 +12,7 @@ import {
   SettingKeys,
   type ApplicantDto,
   type EmployeeDto,
+  type EvaluationDto,
   type HiringDocumentTypeDto,
   type HiringDocumentsDto,
   type InterviewDto,
@@ -36,7 +37,13 @@ const DEPARTMENT_ID = '64b1f0cccccccccccccccc02';
 let BRANCH_ID = ''; // real branch created in beforeAll (employee code is BranchCode-based)
 const FUTURE = '2027-03-01T00:00:00.000Z';
 const START_DATE = '2027-04-01T00:00:00.000Z';
-const REQUIRED_KEYS = ['nationalIdCopy', 'signedContract', 'personalPhoto'];
+const REQUIRED_KEYS = [
+  'employmentContract',
+  'employmentAcceptance',
+  'socialStatusForm',
+  'relativesDeclaration',
+  'jobDescription',
+];
 let replSet: MongoMemoryReplSet | null = null;
 let app: Express;
 let adminToken: string;
@@ -130,6 +137,20 @@ const hiredEmployee = async (): Promise<EmployeeDto> => {
       .post(`/api/v1/hr/interviews/${interview.id}/decide`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ outcome: 'passed', version: (submitted.body.data as InterviewDto).version });
+  }
+
+  // Clear the required evaluation phases (offer gate) before drafting the offer.
+  for (const key of ['securityCheck', 'medicalExam']) {
+    const phaseId = await idByKey('evaluation-phases', key);
+    const opened = await request(app)
+      .post('/api/v1/hr/evaluations')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ applicantId: applicant.id, phaseId });
+    const evaluation = opened.body.data as EvaluationDto;
+    await request(app)
+      .patch(`/api/v1/hr/evaluations/${evaluation.id}/decision`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ decision: 'approved', version: evaluation.version });
   }
 
   const draft = (
@@ -282,27 +303,27 @@ describe('hiring documents — create, upload, completion gate', () => {
   it('uploads a PDF (metadata + version tracked) and rejects a non-PDF', async () => {
     const emp = await hiredEmployee();
     const hd = await createSet(emp.id);
-    const typeId = await idByKey('hiring-document-types', 'nationalIdCopy');
+    const typeId = await idByKey('hiring-document-types', 'employmentContract');
 
     const ok = await uploadDoc(hd.id, typeId, hd.version, 'id.pdf');
     expect(ok.status).toBe(200);
     const dto = ok.body.data as HiringDocumentsDto;
     expect(dto.documents).toHaveLength(1);
-    expect(dto.documents[0]).toMatchObject({ typeKey: 'nationalIdCopy', fileVersion: 1, fileName: 'id.pdf' });
-    expect(dto.missingRequired).not.toContain('nationalIdCopy');
+    expect(dto.documents[0]).toMatchObject({ typeKey: 'employmentContract', fileVersion: 1, fileName: 'id.pdf' });
+    expect(dto.missingRequired).not.toContain('employmentContract');
 
     // A duplicate upload for the same type must go through replace.
     expect((await uploadDoc(hd.id, typeId, dto.version)).status).toBe(409);
 
     // Non-PDF is rejected by the file category.
-    const bad = await uploadDoc(hd.id, await idByKey('hiring-document-types', 'signedContract'), dto.version, 'x.txt', 'text/plain');
+    const bad = await uploadDoc(hd.id, await idByKey('hiring-document-types', 'employmentAcceptance'), dto.version, 'x.txt', 'text/plain');
     expect(bad.status).toBe(422);
   });
 
   it('rejects an upload carrying a stale version (optimistic concurrency)', async () => {
     const emp = await hiredEmployee();
     const hd = await createSet(emp.id);
-    const typeId = await idByKey('hiring-document-types', 'nationalIdCopy');
+    const typeId = await idByKey('hiring-document-types', 'employmentContract');
     const stale = await uploadDoc(hd.id, typeId, hd.version + 5);
     expect(stale.status).toBe(409);
   });
@@ -340,7 +361,7 @@ describe('hiring documents — versioning & post-completion immutability', () =>
   it('replaces a document, preserving previous versions', async () => {
     const emp = await hiredEmployee();
     const hd = await createSet(emp.id);
-    const typeId = await idByKey('hiring-document-types', 'nationalIdCopy');
+    const typeId = await idByKey('hiring-document-types', 'employmentContract');
     const up = await uploadDoc(hd.id, typeId, hd.version, 'id-v1.pdf');
     const v1 = up.body.data as HiringDocumentsDto;
 
@@ -350,7 +371,7 @@ describe('hiring documents — versioning & post-completion immutability', () =>
       .field('version', String(v1.version))
       .attach('file', pdf(), { filename: 'id-v2.pdf', contentType: 'application/pdf' });
     expect(replaced.status).toBe(200);
-    const doc = (replaced.body.data as HiringDocumentsDto).documents.find((d) => d.typeKey === 'nationalIdCopy');
+    const doc = (replaced.body.data as HiringDocumentsDto).documents.find((d) => d.typeKey === 'employmentContract');
     expect(doc?.fileVersion).toBe(2);
 
     // Both versions are retained (original preserved).
@@ -373,18 +394,18 @@ describe('hiring documents — versioning & post-completion immutability', () =>
     const done = completed.body.data as HiringDocumentsDto;
 
     // Adding a NEW document type after completion is blocked.
-    const optionalType = await idByKey('hiring-document-types', 'bankAccountDetails');
+    const optionalType = await idByKey('hiring-document-types', 'bankLetter');
     const blockedUpload = await uploadDoc(hd.id, optionalType, done.version);
     expect(blockedUpload.status).toBe(422);
 
     // Replacing (versioning) an existing document is still allowed.
-    const contractType = await idByKey('hiring-document-types', 'signedContract');
+    const contractType = await idByKey('hiring-document-types', 'employmentAcceptance');
     const replaced = await request(app)
       .post(`/api/v1/hr/hiring-documents/${hd.id}/documents/${contractType}/replace`)
       .set('Authorization', `Bearer ${adminToken}`)
       .field('version', String(done.version))
       .attach('file', pdf(), { filename: 'contract-v2.pdf', contentType: 'application/pdf' });
     expect(replaced.status).toBe(200);
-    expect((replaced.body.data as HiringDocumentsDto).documents.find((d) => d.typeKey === 'signedContract')?.fileVersion).toBe(2);
+    expect((replaced.body.data as HiringDocumentsDto).documents.find((d) => d.typeKey === 'employmentAcceptance')?.fileVersion).toBe(2);
   });
 });

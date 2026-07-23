@@ -30,6 +30,7 @@ import { emit } from '../../../../platform/kernel/event-bus';
 import { notificationsService } from '../../../../platform/notifications';
 import { applicantService } from '../applicants';
 import { interviewService } from '../interviews';
+import { evaluationService } from '../evaluations';
 import { jobOfferRepository, type JobOfferListFilter } from './job-offer.repository';
 import { nextOfferNumber } from './offer-sequence';
 import { type JobOfferDoc, type OfferTerms } from './job-offer.model';
@@ -40,9 +41,9 @@ const buildTerms = (t: OfferTermsInput): OfferTerms => ({
   jobTitleId: new Types.ObjectId(t.jobTitleId),
   departmentId: new Types.ObjectId(t.departmentId),
   branchId: new Types.ObjectId(t.branchId),
-  managerId: new Types.ObjectId(t.managerId),
+  managerId: t.managerId === null || t.managerId === undefined ? null : new Types.ObjectId(t.managerId),
   employmentType: t.employmentType,
-  salary: { amount: t.salary.amount, currency: t.salary.currency },
+  salary: t.salary === null || t.salary === undefined ? null : { amount: t.salary.amount, currency: t.salary.currency },
   allowances: t.allowances.map((a) => ({ name: a.name, amount: a.amount, currency: a.currency })),
   benefits: [...t.benefits],
   probationMonths: t.probationMonths,
@@ -54,7 +55,8 @@ const buildTerms = (t: OfferTermsInput): OfferTerms => ({
 class JobOfferService {
   /** Fire-and-forget lifecycle notification to the hiring manager + the offer's author. */
   private async notifyOffer(doc: JobOfferDoc, template: string, includeValidity: boolean): Promise<void> {
-    const recipients = new Set<string>([String(doc.terms.managerId)]);
+    const recipients = new Set<string>();
+    if (doc.terms.managerId !== null) recipients.add(String(doc.terms.managerId));
     if (doc.createdBy !== null && doc.createdBy !== undefined) recipients.add(String(doc.createdBy));
     const data: Record<string, string> = { applicantCode: doc.applicantCode };
     if (includeValidity) data.when = doc.terms.validUntil.toISOString();
@@ -76,6 +78,9 @@ class JobOfferService {
     }
     if (!(await interviewService.hasClearedAllInterviews(input.applicantId))) {
       throw new BusinessRuleError('applicant must complete all interview stages before an offer');
+    }
+    if (!(await evaluationService.hasClearedRequiredEvaluations(input.applicantId))) {
+      throw new BusinessRuleError('applicant must clear all required evaluation phases before an offer');
     }
     const existingActive = await jobOfferRepository.findActiveByApplicantId(input.applicantId);
     if (existingActive !== null) {

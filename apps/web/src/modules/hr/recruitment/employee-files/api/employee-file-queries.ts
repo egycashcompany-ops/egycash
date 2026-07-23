@@ -61,3 +61,21 @@ export const useAddEmployeeFileNote = (id: string) => {
     onSuccess: seedAndInvalidate,
   });
 };
+
+export const useUploadEmployeeFileDocument = (id: string) => {
+  const { seedAndInvalidate } = useFileWriters(id);
+  return useMutation({
+    mutationFn: (vars: { file: File; name: string; version: number }) =>
+      api.uploadEmployeeFileDocument(id, vars.file, vars.name, vars.version),
+    onSuccess: seedAndInvalidate,
+  });
+};
+
+export const useRemoveEmployeeFileDocument = (id: string) => {
+  const { seedAndInvalidate } = useFileWriters(id);
+  return useMutation({
+    mutationFn: (vars: { documentId: string; version: number }) =>
+      api.removeEmployeeFileDocument(id, vars.documentId, vars.version),
+    onSuccess: seedAndInvalidate,
+  });
+};

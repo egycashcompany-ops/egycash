@@ -12,6 +12,7 @@ import {
   type ConfirmApplicantIdentity,
   type ExportApplicantsQuery,
   type ListApplicantsQuery,
+  type MoveApplicantToOffer,
   type Paginated,
   type RegisterApplicant,
   type RestoreApplicant,
@@ -187,6 +188,8 @@ class ApplicantService {
         attachmentCount: 0,
         withdrawnReason: null,
         withdrawnAt: null,
+        movedToOfferAt: null,
+        movedToOfferBy: null,
       },
       { by: ctx.userId },
     );
@@ -246,6 +249,7 @@ class ApplicantService {
       identityVerification: query.identityVerification,
       duplicateOnly: query.duplicateOnly,
       hasAttachments: query.hasAttachments,
+      movedToOffer: query.movedToOffer,
       createdFrom: query.createdFrom,
       createdTo: query.createdTo,
       search: 'search' in query ? query.search : undefined,
@@ -476,6 +480,46 @@ class ApplicantService {
       ...(updated.jobRequisitionId === null
         ? {}
         : { jobRequisitionId: String(updated.jobRequisitionId) }),
+      sourceId: String(updated.sourceId),
+    });
+    return updated;
+  }
+
+  /**
+   * Explicitly move a live applicant to the Job Offer stage. Offer eligibility is NEVER
+   * automatic — completing interviews/evaluations does not qualify an applicant; HR moves
+   * them here from any interview or evaluation stage when they judge the applicant ready.
+   * Only moved applicants can receive an offer (enforced by the Job Offer service) and only
+   * they surface in the New Job Offer picker. Idempotent when already moved; audited.
+   */
+  async moveToOffer(
+    ctx: AuthContext,
+    id: string,
+    input: MoveApplicantToOffer,
+    scope: ScopeSelector,
+  ): Promise<ApplicantDoc> {
+    const before = await applicantRepository.getById(id, scope);
+    if (before.movedToOfferAt !== null) return before; // idempotent — already in the offer stage
+    if (before.status !== 'new') {
+      throw new BusinessRuleError('only an applicant in the active pipeline can be moved to the offer stage');
+    }
+    const updated = await applicantRepository.updateById(
+      id,
+      { movedToOfferAt: new Date(), movedToOfferBy: new Types.ObjectId(ctx.userId) },
+      { by: ctx.userId, version: input.version, scope },
+    );
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'statusChange',
+      changes: [
+        { field: 'movedToOffer', old: false, new: true },
+        ...(input.note === undefined ? [] : [{ field: 'moveToOfferNote', old: null, new: input.note }]),
+      ],
+    });
+    await emit(HrEvents.ApplicantMovedToOffer, {
+      applicantId: id,
+      code: updated.code,
+      ...(updated.jobRequisitionId === null ? {} : { jobRequisitionId: String(updated.jobRequisitionId) }),
       sourceId: String(updated.sourceId),
     });
     return updated;

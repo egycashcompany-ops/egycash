@@ -109,6 +109,7 @@ export const toApplicantDto = (doc: ApplicantDoc): ApplicantDto => ({
   duplicateOf: doc.duplicateOf.map(String),
   attachmentCount: doc.attachmentCount,
   withdrawnReason: doc.withdrawnReason,
+  movedToOfferAt: doc.movedToOfferAt === null ? null : doc.movedToOfferAt.toISOString(),
   version: doc.__v,
   createdAt: doc.createdAt.toISOString(),
   updatedAt: doc.updatedAt.toISOString(),

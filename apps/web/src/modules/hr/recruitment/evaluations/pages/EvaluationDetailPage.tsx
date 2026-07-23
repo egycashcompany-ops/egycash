@@ -18,6 +18,7 @@ import { TrashIcon } from '../../../../../shared/ui/icons';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { formatDateTime, localized } from '../../../../../shared/lib/format';
 import { EvaluationStatusBadge } from '../components/EvaluationStatusBadge';
+import { MoveToOfferButton } from '../../applicants/components/MoveToOfferButton';
 import {
   useDecideEvaluation,
   useEvaluation,
@@ -90,7 +91,12 @@ export const EvaluationDetailPage = (): JSX.Element => {
           { label: t('recruitment.nav.evaluations'), to: '/evaluations' },
           { label: ev.applicantCode },
         ]}
-        actions={<EvaluationStatusBadge status={ev.status} />}
+        actions={
+          <div className="flex items-center gap-2">
+            <MoveToOfferButton applicantId={ev.applicantId} />
+            <EvaluationStatusBadge status={ev.status} />
+          </div>
+        }
       />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">

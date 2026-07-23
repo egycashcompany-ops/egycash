@@ -300,6 +300,17 @@ export const RestoreApplicantSchema = z
   .strict();
 export type RestoreApplicant = z.infer<typeof RestoreApplicantSchema>;
 
+/**
+ * Explicitly move a live applicant to the Job Offer stage. Offer eligibility is NEVER automatic:
+ * completing interviews/evaluations does not qualify an applicant — HR moves them here from any
+ * interview or evaluation stage when they judge the applicant ready, and only moved applicants
+ * appear in the New Job Offer screen. Version-checked + audited; idempotent when already moved.
+ */
+export const MoveApplicantToOfferSchema = z
+  .object({ note: z.string().max(500).optional(), version: z.number().int().min(0) })
+  .strict();
+export type MoveApplicantToOffer = z.infer<typeof MoveApplicantToOfferSchema>;
+
 // ── Attachments (via the platform Files service, §2.2) ──────────────────────
 
 export const AddApplicantAttachmentSchema = z
@@ -366,6 +377,8 @@ export const ListApplicantsQuerySchema = PaginationQuerySchema.extend({
   identityVerification: IdentityVerificationSchema.optional(),
   duplicateOnly: z.coerce.boolean().optional(),
   hasAttachments: z.coerce.boolean().optional(),
+  /** True → only applicants explicitly moved to the Job Offer stage (the New Offer pool). */
+  movedToOffer: z.coerce.boolean().optional(),
   createdFrom: z.coerce.date().optional(),
   createdTo: z.coerce.date().optional(),
   /** Free-text: Arabic-normalized name / applicant code / national ID / phone (partial). */
@@ -476,6 +489,8 @@ export interface ApplicantDto {
   duplicateOf: string[];
   attachmentCount: number;
   withdrawnReason: string | null;
+  /** When HR explicitly moved the applicant to the Job Offer stage; null until moved. */
+  movedToOfferAt: string | null;
   /** Optimistic-concurrency token (__v) — echo back in update/verify/withdraw. */
   version: number;
   createdAt: string;
@@ -493,6 +508,8 @@ export const HrEvents = {
   ApplicantRejected: 'hr.applicant.rejected',
   /** A withdrawn applicant is returned to the active pipeline (status → `new`). */
   ApplicantRestored: 'hr.applicant.restored',
+  /** HR explicitly moved the applicant to the Job Offer stage (never automatic). */
+  ApplicantMovedToOffer: 'hr.applicant.movedToOffer',
 } as const;
 export type HrEventName = (typeof HrEvents)[keyof typeof HrEvents];
 

@@ -84,11 +84,18 @@ export const EvaluationQueuePage = (): JSX.Element => {
         description={t('evaluations.list.subtitle')}
         breadcrumbs={[{ label: t('recruitment.title'), to: '/' }, { label: t('recruitment.nav.evaluations') }]}
         actions={
-          <Can permission="evaluation.manage">
-            <Button size="sm" leftIcon={<PlusIcon className="h-4 w-4" />} onClick={() => setOpenDialog(true)}>
-              {t('evaluations.actions.open')}
-            </Button>
-          </Can>
+          <div className="flex items-center gap-2">
+            <Can permission="evaluationPhase.manage">
+              <Button size="sm" variant="ghost" onClick={() => navigate('phases')}>
+                {t('evaluations.phases.title')}
+              </Button>
+            </Can>
+            <Can permission="evaluation.manage">
+              <Button size="sm" leftIcon={<PlusIcon className="h-4 w-4" />} onClick={() => setOpenDialog(true)}>
+                {t('evaluations.actions.open')}
+              </Button>
+            </Can>
+          </div>
         }
       />
 

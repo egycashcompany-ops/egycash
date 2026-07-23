@@ -17,6 +17,7 @@ import { InterviewStatusBadge } from '../components/InterviewStatusBadge';
 import { InterviewFilters, type InterviewFiltersState } from '../components/InterviewFilters';
 import { AwaitingInterviewsPanel } from '../components/AwaitingInterviewsPanel';
 import { ScheduleInterviewDialog, type PickedApplicant } from '../components/ScheduleInterviewDialog';
+import { PhaseBoard } from '../components/PhaseBoard';
 import { useInterviews } from '../api/interview-queries';
 import { type InterviewListParams } from '../api/interview-api';
 
@@ -29,6 +30,7 @@ export const InterviewQueuePage = (): JSX.Element => {
   const [sp, setSp] = useSearchParams();
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [scheduleFor, setScheduleFor] = useState<PickedApplicant | null>(null);
+  const view = sp.get('view') === 'board' ? 'board' : 'list';
 
   const filters: InterviewFiltersState = {
     status: (sp.get('status') ?? '') as InterviewFiltersState['status'],
@@ -122,38 +124,78 @@ export const InterviewQueuePage = (): JSX.Element => {
         description={t('interviews.queue.subtitle')}
         breadcrumbs={[{ label: t('recruitment.title'), to: '/' }, { label: t('recruitment.nav.interviews') }]}
         actions={
-          <Can permission="interview.create">
-            <Button size="sm" leftIcon={<PlusIcon className="h-4 w-4" />} onClick={() => { setScheduleFor(null); setScheduleOpen(true); }}>
-              {t('interviews.actions.schedule')}
-            </Button>
-          </Can>
+          <div className="flex items-center gap-2">
+            {/* List ⇄ Phases (Kanban) toggle, persisted in the URL. */}
+            <div className="flex rounded-lg border border-slate-200 p-0.5 dark:border-slate-700" role="tablist">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={view === 'list'}
+                onClick={() => patch({ view: null }, false)}
+                className={
+                  view === 'list'
+                    ? 'rounded-md bg-brand-600 px-3 py-1 text-xs font-medium text-white'
+                    : 'rounded-md px-3 py-1 text-xs font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400'
+                }
+              >
+                {t('interviews.view.list')}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={view === 'board'}
+                onClick={() => patch({ view: 'board' }, false)}
+                className={
+                  view === 'board'
+                    ? 'rounded-md bg-brand-600 px-3 py-1 text-xs font-medium text-white'
+                    : 'rounded-md px-3 py-1 text-xs font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400'
+                }
+              >
+                {t('interviews.view.board')}
+              </button>
+            </div>
+            <Can permission="interviewStage.manage">
+              <Button size="sm" variant="ghost" onClick={() => navigate('stages')}>
+                {t('interviews.stages.title')}
+              </Button>
+            </Can>
+            <Can permission="interview.create">
+              <Button size="sm" leftIcon={<PlusIcon className="h-4 w-4" />} onClick={() => { setScheduleFor(null); setScheduleOpen(true); }}>
+                {t('interviews.actions.schedule')}
+              </Button>
+            </Can>
+          </div>
         }
       />
 
-      <div className="space-y-4">
-        <AwaitingInterviewsPanel
-          onSchedule={(a) => { setScheduleFor(a); setScheduleOpen(true); }}
-        />
-        <InterviewFilters value={filters} onChange={changeFilters} />
-        <DataTable
-          columns={columns}
-          rows={rows}
-          rowKey={(i) => i.id}
-          loading={isLoading}
-          error={isError ? error : undefined}
-          onRetry={() => void refetch()}
-          sort={sort}
-          onSortChange={changeSort}
-          onRowClick={(i) => navigate(i.id)}
-        />
-        {data !== undefined && data.meta.totalItems > 0 && (
-          <Pagination
-            meta={data.meta}
-            onPageChange={(p) => patch({ page: String(p) }, false)}
-            onPageSizeChange={(size) => patch({ size: String(size), page: null }, false)}
+      {view === 'board' ? (
+        <PhaseBoard />
+      ) : (
+        <div className="space-y-4">
+          <AwaitingInterviewsPanel
+            onSchedule={(a) => { setScheduleFor(a); setScheduleOpen(true); }}
           />
-        )}
-      </div>
+          <InterviewFilters value={filters} onChange={changeFilters} />
+          <DataTable
+            columns={columns}
+            rows={rows}
+            rowKey={(i) => i.id}
+            loading={isLoading}
+            error={isError ? error : undefined}
+            onRetry={() => void refetch()}
+            sort={sort}
+            onSortChange={changeSort}
+            onRowClick={(i) => navigate(i.id)}
+          />
+          {data !== undefined && data.meta.totalItems > 0 && (
+            <Pagination
+              meta={data.meta}
+              onPageChange={(p) => patch({ page: String(p) }, false)}
+              onPageSizeChange={(size) => patch({ size: String(size), page: null }, false)}
+            />
+          )}
+        </div>
+      )}
 
       <ScheduleInterviewDialog
         open={scheduleOpen}

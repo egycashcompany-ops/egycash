@@ -24,6 +24,7 @@ import { DecideInterviewDialog } from '../components/DecideInterviewDialog';
 import { EvaluateDialog } from '../components/EvaluateDialog';
 import { SkipInterviewerDialog } from '../components/SkipInterviewerDialog';
 import { ApplicantLifecycleActions } from '../../applicants/components/ApplicantLifecycleActions';
+import { MoveToOfferButton } from '../../applicants/components/MoveToOfferButton';
 import { useInterview } from '../api/interview-queries';
 
 export const InterviewDetailPage = (): JSX.Element => {
@@ -115,7 +116,8 @@ export const InterviewDetailPage = (): JSX.Element => {
           {iv.applicantCode}
         </Link>
         <InterviewStatusBadge status={iv.status} outcome={iv.outcome} />
-        <span className="ms-auto">
+        <span className="ms-auto flex items-center gap-2">
+          <MoveToOfferButton applicantId={iv.applicantId} />
           <ApplicantLifecycleActions applicantId={iv.applicantId} showWithdrawnHint />
         </span>
       </div>

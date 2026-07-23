@@ -10,6 +10,7 @@ import {
   type ListApplicantsQuery,
   type OcrExtractNationalId,
   type RegisterApplicant,
+  type MoveApplicantToOffer,
   type RestoreApplicant,
   type UpdateApplicant,
   type UpdateApplicantSource,
@@ -89,6 +90,13 @@ export const restoreApplicant = async (req: Request, res: Response): Promise<voi
   const ctx = authContext(req);
   const { body, params } = validated<RestoreApplicant, never, IdParam>(req);
   const doc = await applicantService.restore(ctx, params.id, body, scopeSelector(ctx, 'applicant.edit'));
+  ok(res, toApplicantDto(doc));
+};
+
+export const moveApplicantToOffer = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<MoveApplicantToOffer, never, IdParam>(req);
+  const doc = await applicantService.moveToOffer(ctx, params.id, body, scopeSelector(ctx, 'applicant.moveToOffer'));
   ok(res, toApplicantDto(doc));
 };
 

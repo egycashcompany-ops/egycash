@@ -11,6 +11,29 @@ its entry here in the same PR.
 
 ### Added
 
+- **HR — Recruitment workflow completion (follow-up to the workflow redesign).**
+  - **Interview Phases (Kanban) view.** `/interviews` gains a **List ⇄ Phases toggle** (URL-persisted).
+    The board's columns are *Waiting for Scheduling → each active interview stage → each active
+    evaluation phase → Job Offer*, composed from the existing per-stage endpoints; cards show the
+    Application Number only. Waiting + interview columns support **multi-selection** with **bulk
+    actions**: *Schedule interviews* for all selected at once (one stage + time; every row still goes
+    through the normal endpoint so all workflow rules apply) and *Move to Job Offer*.
+  - **Stage & phase management UIs.** New settings screens — `/interviews/stages`
+    (`interviewStage.manage`) and `/evaluations/phases` (`evaluationPhase.manage`) — to add a 3rd/4th
+    interview round or a new evaluation phase, rename, reorder (order number), toggle drivers-only,
+    and enable/disable, all without touching the API directly.
+  - **Explicit Job Offer stage (eligibility is never automatic).** Completing interviews/evaluations
+    no longer qualifies an applicant for an offer. HR **explicitly moves** an applicant to the Job
+    Offer stage — `POST /hr/applicants/:id/move-to-offer`, new **`applicant.moveToOffer`** permission,
+    audited, `hr.applicant.movedToOffer` published — from ANY interview or evaluation stage ("Move to
+    Job Offer" on the Interview and Evaluation detail screens + the board bulk action). Offer creation
+    now requires the move (the interviews/evaluations hard-gate is replaced), and the **New Job Offer
+    picker lists only moved applicants** (`movedToOffer` filter on the applicants list).
+  - **Hiring documents: all SEVEN checklist documents are now seeded as REQUIRED** (completion blocks
+    until every one is uploaded). On databases seeded before this change, flip the two previously
+    optional types (bank letter, company ID card) via `PATCH /hr/hiring-document-types/:id` — the boot
+    seed intentionally never overrides admin-edited flags.
+
 - **HR — Recruitment workflow redesign (one coherent flow).** The Recruitment module now runs as a
   single end-to-end pipeline, backend + web:
   - **Evaluation phases (Security / Medical / Driving, extensible).** A post-interview, file-based

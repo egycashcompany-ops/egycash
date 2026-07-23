@@ -104,6 +104,9 @@ export interface ApplicantDoc extends BaseDocFields {
   // Withdrawal (Stage-1 terminal)
   withdrawnReason: string | null;
   withdrawnAt: Date | null;
+  // Explicit HR move to the Job Offer stage (never automatic) — null until moved.
+  movedToOfferAt: Date | null;
+  movedToOfferBy: Types.ObjectId | null;
 }
 
 const addressSchema = new Schema<Address>(
@@ -264,6 +267,8 @@ const applicantSchema = new Schema<ApplicantDoc>(
     attachmentCount: { type: Number, required: true, default: 0 },
     withdrawnReason: { type: String, default: null },
     withdrawnAt: { type: Date, default: null },
+    movedToOfferAt: { type: Date, default: null },
+    movedToOfferBy: { type: Schema.Types.ObjectId, default: null },
     ...baseFields,
   },
   baseSchemaOptions,

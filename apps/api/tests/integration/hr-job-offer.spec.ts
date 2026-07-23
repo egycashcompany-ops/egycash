@@ -12,7 +12,6 @@ import {
   platformPermissions,
   SettingKeys,
   type ApplicantDto,
-  type EvaluationDto,
   type InterviewDto,
   type JobOfferDto,
   type ScreeningDto,
@@ -135,31 +134,24 @@ const passStage = async (applicantId: string, stageKey: string): Promise<void> =
   expect(decided.status).toBe(200);
 };
 
-/** Open + approve the required (non-driver) evaluation phases so the offer gate is satisfied. */
-const clearEvaluations = async (applicantId: string): Promise<void> => {
-  for (const key of ['securityCheck', 'medicalExam']) {
-    const phaseId = await idByKey('evaluation-phases', key);
-    const opened = await request(app)
-      .post('/api/v1/hr/evaluations')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ applicantId, phaseId });
-    expect(opened.status).toBe(201);
-    const evaluation = opened.body.data as EvaluationDto;
-    const decided = await request(app)
-      .patch(`/api/v1/hr/evaluations/${evaluation.id}/decision`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ decision: 'approved', version: evaluation.version });
-    expect(decided.status).toBe(200);
-  }
+/** Explicitly move the applicant to the Job Offer stage (eligibility is never automatic). */
+const moveToOffer = async (applicant: ApplicantDto): Promise<void> => {
+  const current = await request(app)
+    .get(`/api/v1/hr/applicants/${applicant.id}`)
+    .set('Authorization', `Bearer ${adminToken}`);
+  const moved = await request(app)
+    .post(`/api/v1/hr/applicants/${applicant.id}/move-to-offer`)
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ version: (current.body.data as ApplicantDto).version });
+  expect(moved.status).toBe(200);
+  expect((moved.body.data as ApplicantDto).movedToOfferAt).not.toBeNull();
 };
 
-/** An applicant who cleared screening + both default interviews + required evaluations. */
+/** An applicant HR has explicitly moved to the Job Offer stage — offer-eligible. */
 const offerReadyApplicant = async (): Promise<ApplicantDto> => {
   const applicant = await registerApplicant();
   await acceptScreening(applicant.id);
-  await passStage(applicant.id, 'firstInterview');
-  await passStage(applicant.id, 'secondInterview');
-  await clearEvaluations(applicant.id);
+  await moveToOffer(applicant);
   return applicant;
 };
 
@@ -253,21 +245,30 @@ describe('job offers — permissions & eligibility gate', () => {
     expect(denied.status).toBe(403);
   });
 
-  it('refuses to create an offer before all interviews are cleared', async () => {
+  it('refuses an offer for an applicant NOT explicitly moved to the Job Offer stage', async () => {
     const applicant = await registerApplicant();
     await acceptScreening(applicant.id);
-    await passStage(applicant.id, 'firstInterview'); // only round 1 — round 2 not passed
+    await passStage(applicant.id, 'firstInterview');
+    await passStage(applicant.id, 'secondInterview'); // completing stages does NOT auto-qualify
     const res = await createOffer(applicant.id);
     expect(res.status).toBe(422);
   });
 
-  it('refuses to create an offer before the required evaluation phases are cleared', async () => {
+  it('HR moves an applicant to the offer stage from mid-pipeline and drafts an offer', async () => {
     const applicant = await registerApplicant();
     await acceptScreening(applicant.id);
-    await passStage(applicant.id, 'firstInterview');
-    await passStage(applicant.id, 'secondInterview'); // interviews cleared, evaluations not
+    await passStage(applicant.id, 'firstInterview'); // round 2 NOT passed — moved anyway
+    await moveToOffer(applicant);
     const res = await createOffer(applicant.id);
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(201);
+
+    // Only moved applicants surface in the New Offer pool.
+    const pool = await request(app)
+      .get('/api/v1/hr/applicants')
+      .query({ movedToOffer: true, pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    const ids = (pool.body.data as ApplicantDto[]).map((a) => a.id);
+    expect(ids).toContain(applicant.id);
   });
 });
 

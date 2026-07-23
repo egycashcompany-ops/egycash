@@ -12,7 +12,6 @@ import {
   SettingKeys,
   type ApplicantDto,
   type EmployeeDto,
-  type EvaluationDto,
   type EmployeeFileDto,
   type HiringDocumentsDto,
   type InterviewDto,
@@ -43,6 +42,8 @@ const REQUIRED_KEYS = [
   'socialStatusForm',
   'relativesDeclaration',
   'jobDescription',
+  'bankLetter',
+  'companyIdCard',
 ];
 let replSet: MongoMemoryReplSet | null = null;
 let app: Express;
@@ -139,18 +140,16 @@ const hiredEmployee = async (): Promise<EmployeeDto> => {
       .send({ outcome: 'passed', version: (submitted.body.data as InterviewDto).version });
   }
 
-  // Clear the required evaluation phases (offer gate) before drafting the offer.
-  for (const key of ['securityCheck', 'medicalExam']) {
-    const phaseId = await idByKey('evaluation-phases', key);
-    const opened = await request(app)
-      .post('/api/v1/hr/evaluations')
+  // Explicitly move the applicant to the Job Offer stage (offer eligibility is never automatic).
+  {
+    const current = await request(app)
+      .get(`/api/v1/hr/applicants/${applicant.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const moved = await request(app)
+      .post(`/api/v1/hr/applicants/${applicant.id}/move-to-offer`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ applicantId: applicant.id, phaseId });
-    const evaluation = opened.body.data as EvaluationDto;
-    await request(app)
-      .patch(`/api/v1/hr/evaluations/${evaluation.id}/decision`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ decision: 'approved', version: evaluation.version });
+      .send({ version: (current.body.data as ApplicantDto).version });
+    expect(moved.status).toBe(200);
   }
 
   const draft = (

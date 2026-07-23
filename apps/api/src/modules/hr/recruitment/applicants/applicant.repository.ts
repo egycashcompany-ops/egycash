@@ -18,6 +18,7 @@ export interface ApplicantListFilter {
   identityVerification?: string | undefined;
   duplicateOnly?: boolean | undefined;
   hasAttachments?: boolean | undefined;
+  movedToOffer?: boolean | undefined;
   createdFrom?: Date | undefined;
   createdTo?: Date | undefined;
   search?: string | undefined;
@@ -51,6 +52,9 @@ class ApplicantRepository extends BaseRepository<ApplicantDoc> {
     if (f.duplicateOnly === true) clauses.push({ duplicateFlag: true });
     if (f.hasAttachments !== undefined) {
       clauses.push(f.hasAttachments ? { attachmentCount: { $gt: 0 } } : { attachmentCount: 0 });
+    }
+    if (f.movedToOffer !== undefined) {
+      clauses.push(f.movedToOffer ? { movedToOfferAt: { $ne: null } } : { movedToOfferAt: null });
     }
     if (f.createdFrom !== undefined || f.createdTo !== undefined) {
       const range: Record<string, Date> = {};

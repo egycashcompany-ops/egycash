@@ -37,7 +37,13 @@ const DEPARTMENT_ID = '64b1f0cccccccccccccccc02';
 let BRANCH_ID = ''; // real branch created in beforeAll (employee code is BranchCode-based)
 const FUTURE = '2027-03-01T00:00:00.000Z';
 const START_DATE = '2027-04-01T00:00:00.000Z';
-const REQUIRED_KEYS = ['nationalIdCopy', 'signedContract', 'personalPhoto'];
+const REQUIRED_KEYS = [
+  'employmentContract',
+  'employmentAcceptance',
+  'socialStatusForm',
+  'relativesDeclaration',
+  'jobDescription',
+];
 let replSet: MongoMemoryReplSet | null = null;
 let app: Express;
 let adminToken: string;

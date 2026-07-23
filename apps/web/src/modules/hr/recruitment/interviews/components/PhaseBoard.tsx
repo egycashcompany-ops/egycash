@@ -58,6 +58,19 @@ export const PhaseBoard = (): JSX.Element => {
     staleTime: 30_000,
     select: (page) => page.items,
   });
+  // Rejected/withdrawn applicants must never surface on the board, even where the stage record
+  // itself doesn't carry the rejection (e.g. a screening re-decision after interviews were passed).
+  const excluded = useQuery({
+    queryKey: ['hr', 'applicants', 'board', 'excluded'],
+    queryFn: async () => {
+      const [rejected, withdrawn] = await Promise.all([
+        listApplicants({ status: 'rejected', pageSize: 100 }),
+        listApplicants({ status: 'withdrawn', pageSize: 100 }),
+      ]);
+      return new Set([...rejected.items, ...withdrawn.items].map((a) => a.id));
+    },
+    staleTime: 30_000,
+  });
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkSchedule, setBulkSchedule] = useState(false);
@@ -66,6 +79,7 @@ export const PhaseBoard = (): JSX.Element => {
   const columns = useMemo<BoardColumn[]>(() => {
     const stageList = [...(stages.data ?? [])].sort((a, b) => a.order - b.order);
     const phaseList = [...(phases.data ?? [])].sort((a, b) => a.order - b.order);
+    const gone = excluded.data ?? new Set<string>();
     const assigned = new Set<string>();
 
     // Job Offer column — applicants HR explicitly moved (eligibility is never automatic).
@@ -88,7 +102,12 @@ export const PhaseBoard = (): JSX.Element => {
       if (prev === undefined || ev.phaseOrder > prev.phaseOrder) latestEval.set(ev.applicantId, ev);
     }
     for (const ev of latestEval.values()) {
-      if (assigned.has(ev.applicantId) || ev.status === 'rejected') continue;
+      if (assigned.has(ev.applicantId)) continue;
+      if (ev.status === 'rejected' || gone.has(ev.applicantId)) {
+        // Left the pipeline — claim the id so they don't resurface in an earlier column.
+        assigned.add(ev.applicantId);
+        continue;
+      }
       assigned.add(ev.applicantId);
       const card: BoardCard = {
         applicantId: ev.applicantId,
@@ -114,7 +133,11 @@ export const PhaseBoard = (): JSX.Element => {
       if (prev === undefined || iv.stageOrder > prev.stageOrder) latestInterview.set(iv.applicantId, iv);
     }
     for (const iv of latestInterview.values()) {
-      if (assigned.has(iv.applicantId) || iv.outcome === 'failed') continue;
+      if (assigned.has(iv.applicantId)) continue;
+      if (iv.outcome === 'failed' || gone.has(iv.applicantId)) {
+        assigned.add(iv.applicantId);
+        continue;
+      }
       assigned.add(iv.applicantId);
       const card: BoardCard = {
         applicantId: iv.applicantId,
@@ -133,7 +156,7 @@ export const PhaseBoard = (): JSX.Element => {
 
     // Waiting for Scheduling — passed screening, no interview yet.
     const waitingCards: BoardCard[] = (awaiting.data ?? [])
-      .filter((a) => !assigned.has(a.applicantId))
+      .filter((a) => !assigned.has(a.applicantId) && !gone.has(a.applicantId))
       .map((a) => ({
         applicantId: a.applicantId,
         applicantCode: a.applicantCode,
@@ -158,10 +181,15 @@ export const PhaseBoard = (): JSX.Element => {
       })),
       { id: 'offer', title: t('interviews.board.offer'), cards: offerCards, selectable: false },
     ];
-  }, [stages.data, phases.data, awaiting.data, interviews.data, evaluations.data, moved.data, locale, t]);
+  }, [stages.data, phases.data, awaiting.data, interviews.data, evaluations.data, moved.data, excluded.data, locale, t]);
 
   const loading =
-    stages.isLoading || phases.isLoading || awaiting.isLoading || interviews.isLoading || evaluations.isLoading;
+    stages.isLoading ||
+    phases.isLoading ||
+    awaiting.isLoading ||
+    interviews.isLoading ||
+    evaluations.isLoading ||
+    excluded.isLoading;
   if (loading) return <LoadingState />;
 
   const toggle = (applicantId: string): void =>

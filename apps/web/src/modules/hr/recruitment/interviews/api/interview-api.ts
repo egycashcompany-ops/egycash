@@ -6,6 +6,7 @@
 import {
   type AwaitingInterviewDto,
   type CancelInterview,
+  type CreateInterviewStage,
   type DecideInterview,
   type InterviewDto,
   type InterviewStageDto,
@@ -15,6 +16,7 @@ import {
   type ScheduleInterview,
   type SkipInterviewer,
   type SubmitInterviewEvaluation,
+  type UpdateInterviewStage,
   type UserDto,
 } from '@ecms/contracts';
 import { buildQuery, get, getPage, patch, post } from '../../../../../shared/lib/api-client';
@@ -58,9 +60,19 @@ export const redecideInterview = (id: string, body: DecideInterview): Promise<In
   patch<InterviewDto>(`/hr/interviews/${id}/decision`, body);
 
 // Interview stages (admin-configurable catalog, OQ-31). The queue/schedule flow reads the active
-// stages to label rounds and to pick a stage; management (create/update) is out of this scope.
+// stages to label rounds and to pick a stage; the settings screen manages the catalog (create /
+// edit / reorder / enable-disable) so a 3rd or 4th round is configured from the UI, not the API.
 export const listInterviewStages = (): Promise<Paginated<InterviewStageDto>> =>
   getPage<InterviewStageDto>(`/hr/interview-stages${buildQuery({ active: true, pageSize: 100 })}`);
+
+export const listAllInterviewStages = (): Promise<Paginated<InterviewStageDto>> =>
+  getPage<InterviewStageDto>(`/hr/interview-stages${buildQuery({ pageSize: 100 })}`);
+
+export const createInterviewStage = (body: CreateInterviewStage): Promise<InterviewStageDto> =>
+  post<InterviewStageDto>('/hr/interview-stages', body);
+
+export const updateInterviewStage = (id: string, body: UpdateInterviewStage): Promise<InterviewStageDto> =>
+  patch<InterviewStageDto>(`/hr/interview-stages/${id}`, body);
 
 // Platform Users (reused for panel selection + name resolution — an existing endpoint, gated by
 // `user.view`; degrades to raw identifiers when the caller lacks directory access).

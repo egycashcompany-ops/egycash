@@ -1,6 +1,6 @@
-// Applicant search-picker (autocomplete) for the create-offer flow. Debounced search against the
-// Applicants list API; selecting one returns the full DTO. The server enforces offer eligibility
-// (the applicant must have cleared interviews). RTL-safe.
+// Applicant search-picker (autocomplete) for the create-offer flow. Debounced search over ONLY
+// the applicants HR explicitly moved to the Job Offer stage (eligibility is never automatic);
+// the server enforces the same rule on create. RTL-safe.
 import { useRef, useState } from 'react';
 import { type ApplicantDto } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';

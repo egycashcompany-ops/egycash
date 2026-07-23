@@ -12,7 +12,6 @@ import {
   SettingKeys,
   type ApplicantDto,
   type EmployeeDto,
-  type EvaluationDto,
   type HiringDocumentTypeDto,
   type HiringDocumentsDto,
   type InterviewDto,
@@ -43,6 +42,8 @@ const REQUIRED_KEYS = [
   'socialStatusForm',
   'relativesDeclaration',
   'jobDescription',
+  'bankLetter',
+  'companyIdCard',
 ];
 let replSet: MongoMemoryReplSet | null = null;
 let app: Express;
@@ -139,18 +140,16 @@ const hiredEmployee = async (): Promise<EmployeeDto> => {
       .send({ outcome: 'passed', version: (submitted.body.data as InterviewDto).version });
   }
 
-  // Clear the required evaluation phases (offer gate) before drafting the offer.
-  for (const key of ['securityCheck', 'medicalExam']) {
-    const phaseId = await idByKey('evaluation-phases', key);
-    const opened = await request(app)
-      .post('/api/v1/hr/evaluations')
+  // Explicitly move the applicant to the Job Offer stage (offer eligibility is never automatic).
+  {
+    const current = await request(app)
+      .get(`/api/v1/hr/applicants/${applicant.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const moved = await request(app)
+      .post(`/api/v1/hr/applicants/${applicant.id}/move-to-offer`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ applicantId: applicant.id, phaseId });
-    const evaluation = opened.body.data as EvaluationDto;
-    await request(app)
-      .patch(`/api/v1/hr/evaluations/${evaluation.id}/decision`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ decision: 'approved', version: evaluation.version });
+      .send({ version: (current.body.data as ApplicantDto).version });
+    expect(moved.status).toBe(200);
   }
 
   const draft = (
@@ -266,13 +265,13 @@ beforeEach(async () => {
 });
 
 describe('hiring documents — types catalog & permissions', () => {
-  it('seeds default document types (required + optional) and denies alice', async () => {
+  it('seeds all seven document types as REQUIRED and denies alice', async () => {
     const res = await request(app).get('/api/v1/hr/hiring-document-types').query({ pageSize: 50 }).set('Authorization', `Bearer ${adminToken}`);
     expect(res.status).toBe(200);
     const types = (res.body as { data: HiringDocumentTypeDto[] }).data;
     const required = types.filter((t) => t.required).map((t) => t.key);
     expect(required).toEqual(expect.arrayContaining(REQUIRED_KEYS));
-    expect(types.some((t) => !t.required)).toBe(true);
+    expect(required).toHaveLength(7);
 
     const denied = await request(app).get('/api/v1/hr/hiring-documents').set('Authorization', `Bearer ${aliceToken}`);
     expect(denied.status).toBe(403);
@@ -393,9 +392,10 @@ describe('hiring documents — versioning & post-completion immutability', () =>
     expect(completed.status).toBe(200);
     const done = completed.body.data as HiringDocumentsDto;
 
-    // Adding a NEW document type after completion is blocked.
-    const optionalType = await idByKey('hiring-document-types', 'bankLetter');
-    const blockedUpload = await uploadDoc(hd.id, optionalType, done.version);
+    // Adding a NEW document type after completion is blocked (medicalCheck was admin-created
+    // earlier in this suite and never uploaded to this set).
+    const extraType = await idByKey('hiring-document-types', 'medicalCheck');
+    const blockedUpload = await uploadDoc(hd.id, extraType, done.version);
     expect(blockedUpload.status).toBe(422);
 
     // Replacing (versioning) an existing document is still allowed.

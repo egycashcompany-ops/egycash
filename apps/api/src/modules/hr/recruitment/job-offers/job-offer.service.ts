@@ -29,8 +29,6 @@ import { auditService } from '../../../../platform/audit';
 import { emit } from '../../../../platform/kernel/event-bus';
 import { notificationsService } from '../../../../platform/notifications';
 import { applicantService } from '../applicants';
-import { interviewService } from '../interviews';
-import { evaluationService } from '../evaluations';
 import { jobOfferRepository, type JobOfferListFilter } from './job-offer.repository';
 import { nextOfferNumber } from './offer-sequence';
 import { type JobOfferDoc, type OfferTerms } from './job-offer.model';
@@ -70,17 +68,18 @@ class JobOfferService {
       .catch(() => undefined);
   }
 
-  /** Draft a new offer for an applicant who has cleared every interview round. */
+  /**
+   * Draft a new offer. Eligibility is NEVER automatic — completing interviews/evaluations does
+   * not qualify an applicant. Only an applicant HR has explicitly moved to the Job Offer stage
+   * (from any interview or evaluation stage) can receive an offer.
+   */
   async create(ctx: AuthContext, input: CreateJobOffer, scope: ScopeSelector): Promise<JobOfferDoc> {
     const applicant = await applicantService.getById(input.applicantId, scope);
     if (applicant.status !== 'new') {
       throw new BusinessRuleError('only an applicant in the active pipeline can receive an offer');
     }
-    if (!(await interviewService.hasClearedAllInterviews(input.applicantId))) {
-      throw new BusinessRuleError('applicant must complete all interview stages before an offer');
-    }
-    if (!(await evaluationService.hasClearedRequiredEvaluations(input.applicantId))) {
-      throw new BusinessRuleError('applicant must clear all required evaluation phases before an offer');
+    if (applicant.movedToOfferAt === null) {
+      throw new BusinessRuleError('applicant must be moved to the Job Offer stage before an offer');
     }
     const existingActive = await jobOfferRepository.findActiveByApplicantId(input.applicantId);
     if (existingActive !== null) {

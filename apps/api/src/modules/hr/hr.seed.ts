@@ -144,17 +144,16 @@ const ensureOfferTemplates = async (): Promise<void> => {
   });
 };
 
-// The standard hiring-documents checklist (approved Recruitment spec — 7 documents). The set is
-// admin-configurable thereafter (add / remove / toggle required). The core legal documents are
-// required for completion; the bank letter and company ID card are issued later, so optional.
+// The standard hiring-documents checklist (approved Recruitment spec — 7 documents, ALL required
+// for completion). The set stays admin-configurable thereafter (add / remove / toggle required).
 const HIRING_DOCUMENT_TYPES: CreateHiringDocumentType[] = [
   { key: 'employmentContract', name: { en: 'Employment Contract', ar: 'عقد العمل' }, required: true },
   { key: 'employmentAcceptance', name: { en: 'Employment Acceptance Acknowledgment', ar: 'إقرار قبول التعيين' }, required: true },
   { key: 'socialStatusForm', name: { en: 'Social Status Form', ar: 'استمارة الحالة الاجتماعية' }, required: true },
   { key: 'relativesDeclaration', name: { en: 'Relatives Declaration', ar: 'إقرار الأقارب' }, required: true },
   { key: 'jobDescription', name: { en: 'Job Description', ar: 'الوصف الوظيفي' }, required: true },
-  { key: 'bankLetter', name: { en: 'National Bank / Banque Misr Letter', ar: 'خطاب البنك الأهلي / بنك مصر' }, required: false },
-  { key: 'companyIdCard', name: { en: 'Company ID Card', ar: 'كارنيه الشركة' }, required: false },
+  { key: 'bankLetter', name: { en: 'National Bank / Banque Misr Letter', ar: 'خطاب البنك الأهلي / بنك مصر' }, required: true },
+  { key: 'companyIdCard', name: { en: 'Company ID Card', ar: 'كارنيه الشركة' }, required: true },
 ];
 
 const ensureHiringDocumentsSeeds = async (): Promise<void> => {

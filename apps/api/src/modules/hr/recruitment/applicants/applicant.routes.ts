@@ -27,6 +27,7 @@ import {
   ocrExtractNationalId,
   registerApplicant,
   removeApplicantAttachment,
+  moveApplicantToOffer,
   restoreApplicant,
   updateApplicant,
   updateApplicantSource,
@@ -45,6 +46,7 @@ import {
   ListApplicantsQuerySchema,
   OcrExtractNationalIdSchema,
   RegisterApplicantSchema,
+  MoveApplicantToOfferSchema,
   RestoreApplicantSchema,
   UpdateApplicantSchema,
   UpdateApplicantSourceSchema,
@@ -148,6 +150,14 @@ export const buildApplicantsRouter = (): Router => {
     authorize('applicant.edit'),
     validate({ body: RestoreApplicantSchema, params: ApplicantIdParamSchema }),
     asyncHandler(restoreApplicant),
+  );
+  // Explicit HR move to the Job Offer stage (offer eligibility is never automatic).
+  router.post(
+    '/:id/move-to-offer',
+    authenticate,
+    authorize('applicant.moveToOffer'),
+    validate({ body: MoveApplicantToOfferSchema, params: ApplicantIdParamSchema }),
+    asyncHandler(moveApplicantToOffer),
   );
 
   // Attachments (bytes via the platform Files service).

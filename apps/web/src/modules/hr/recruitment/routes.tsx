@@ -14,8 +14,10 @@ import { ScreeningQueuePage } from './screening/pages/ScreeningQueuePage';
 import { ScreeningDetailPage } from './screening/pages/ScreeningDetailPage';
 import { InterviewQueuePage } from './interviews/pages/InterviewQueuePage';
 import { InterviewDetailPage } from './interviews/pages/InterviewDetailPage';
+import { InterviewStagesPage } from './interviews/pages/InterviewStagesPage';
 import { EvaluationQueuePage } from './evaluations/pages/EvaluationQueuePage';
 import { EvaluationDetailPage } from './evaluations/pages/EvaluationDetailPage';
+import { EvaluationPhasesPage } from './evaluations/pages/EvaluationPhasesPage';
 import { JobOffersListPage } from './job-offers/pages/JobOffersListPage';
 import { JobOfferDetailPage } from './job-offers/pages/JobOfferDetailPage';
 import { JobOfferFormPage } from './job-offers/pages/JobOfferFormPage';
@@ -79,6 +81,14 @@ export default function RecruitmentRoutes(): JSX.Element {
           }
         >
           <Route index element={<InterviewQueuePage />} />
+          <Route
+            path="stages"
+            element={
+              <RequirePermission permission="interviewStage.manage">
+                <InterviewStagesPage />
+              </RequirePermission>
+            }
+          />
           <Route path=":id" element={<InterviewDetailPage />} />
         </Route>
         <Route
@@ -90,6 +100,14 @@ export default function RecruitmentRoutes(): JSX.Element {
           }
         >
           <Route index element={<EvaluationQueuePage />} />
+          <Route
+            path="phases"
+            element={
+              <RequirePermission permission="evaluationPhase.manage">
+                <EvaluationPhasesPage />
+              </RequirePermission>
+            }
+          />
           <Route path=":id" element={<EvaluationDetailPage />} />
         </Route>
         <Route

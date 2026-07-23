@@ -5,6 +5,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   type CancelInterview,
+  type CreateInterviewStage,
   type DecideInterview,
   type InterviewDto,
   type ReassignInterviewPanel,
@@ -12,6 +13,7 @@ import {
   type ScheduleInterview,
   type SkipInterviewer,
   type SubmitInterviewEvaluation,
+  type UpdateInterviewStage,
 } from '@ecms/contracts';
 import { detailKey, listKey } from '../../../../../shared/lib/query-keys';
 import { listApplicants } from '../../applicants/api/applicant-api';
@@ -53,6 +55,36 @@ export const useInterviewStages = () =>
     staleTime: 5 * 60_000,
     select: (page) => page.items,
   });
+
+/** Full catalog (incl. disabled stages) — the settings screen. */
+export const useAllInterviewStages = () =>
+  useQuery({
+    queryKey: [MODULE, 'interviewStages', 'all'],
+    queryFn: () => api.listAllInterviewStages(),
+    select: (page) => page.items,
+  });
+
+const useInvalidateStages = () => {
+  const qc = useQueryClient();
+  return () => void qc.invalidateQueries({ queryKey: [MODULE, 'interviewStages'] });
+};
+
+export const useCreateInterviewStage = () => {
+  const invalidate = useInvalidateStages();
+  return useMutation({
+    mutationFn: (body: CreateInterviewStage) => api.createInterviewStage(body),
+    onSuccess: invalidate,
+  });
+};
+
+export const useUpdateInterviewStage = () => {
+  const invalidate = useInvalidateStages();
+  return useMutation({
+    mutationFn: (vars: { id: string; body: UpdateInterviewStage }) =>
+      api.updateInterviewStage(vars.id, vars.body),
+    onSuccess: invalidate,
+  });
+};
 
 /** Applicant lookup for the queue filter + schedule dialog (reuses the Applicants list API; the
  *  server enforces interview eligibility on schedule). Distinct cache key from other features'

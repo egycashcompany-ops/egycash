@@ -22,7 +22,11 @@ const applicantPermissions = declarePermissions(
   'applicant',
   { en: 'applicants', ar: 'المتقدمين' },
   ['view', 'create', 'edit', 'delete', 'export'],
-  [{ action: 'verifyIdentity', name: { en: 'Verify applicant identity', ar: 'توثيق هوية المتقدم' } }],
+  [
+    { action: 'verifyIdentity', name: { en: 'Verify applicant identity', ar: 'توثيق هوية المتقدم' } },
+    // Offer eligibility is never automatic: HR explicitly moves an applicant to the Job Offer stage.
+    { action: 'moveToOffer', name: { en: 'Move applicant to job offer', ar: 'نقل المتقدم لمرحلة عرض العمل' } },
+  ],
 );
 
 const applicantSourcePermissions = declarePermissions(

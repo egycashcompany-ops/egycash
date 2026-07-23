@@ -34,11 +34,14 @@ export const useJobOffer = (id: string) =>
     enabled: id !== '',
   });
 
-/** Applicant lookup for the create form (reuses the Applicants list API). */
+/**
+ * Applicant lookup for the create form — ONLY applicants HR explicitly moved to the Job Offer
+ * stage (eligibility is never automatic; the server enforces the same rule on create).
+ */
 export const useApplicantSearch = (term: string) =>
   useQuery({
     queryKey: [MODULE, 'applicants', 'search', 'jobOffer', term],
-    queryFn: () => listApplicants({ search: term, pageSize: 8 }),
+    queryFn: () => listApplicants({ search: term, movedToOffer: true, status: 'new', pageSize: 8 }),
     enabled: term.trim().length >= 2,
     staleTime: 30_000,
     select: (page) => page.items,

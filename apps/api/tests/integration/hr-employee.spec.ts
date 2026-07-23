@@ -13,7 +13,6 @@ import {
   SettingKeys,
   type ApplicantDto,
   type EmployeeDto,
-  type EvaluationDto,
   type InterviewDto,
   type JobOfferDto,
   type ScreeningDto,
@@ -135,19 +134,16 @@ const passStage = async (applicantId: string, stageKey: string): Promise<void> =
   expect(decided.status).toBe(200);
 };
 
-const clearEvaluations = async (applicantId: string): Promise<void> => {
-  for (const key of ['securityCheck', 'medicalExam']) {
-    const phaseId = await idByKey('evaluation-phases', key);
-    const opened = await request(app)
-      .post('/api/v1/hr/evaluations')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ applicantId, phaseId });
-    const evaluation = opened.body.data as EvaluationDto;
-    await request(app)
-      .patch(`/api/v1/hr/evaluations/${evaluation.id}/decision`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ decision: 'approved', version: evaluation.version });
-  }
+/** Explicitly move the applicant to the Job Offer stage (offer eligibility is never automatic). */
+const moveToOffer = async (applicantId: string): Promise<void> => {
+  const current = await request(app)
+    .get(`/api/v1/hr/applicants/${applicantId}`)
+    .set('Authorization', `Bearer ${adminToken}`);
+  const moved = await request(app)
+    .post(`/api/v1/hr/applicants/${applicantId}/move-to-offer`)
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ version: (current.body.data as ApplicantDto).version });
+  expect(moved.status).toBe(200);
 };
 
 const offerReadyApplicant = async (): Promise<ApplicantDto> => {
@@ -155,7 +151,7 @@ const offerReadyApplicant = async (): Promise<ApplicantDto> => {
   await acceptScreening(applicant.id);
   await passStage(applicant.id, 'firstInterview');
   await passStage(applicant.id, 'secondInterview');
-  await clearEvaluations(applicant.id);
+  await moveToOffer(applicant.id);
   return applicant;
 };
 

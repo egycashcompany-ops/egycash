@@ -3,11 +3,13 @@
 // wrap these in TanStack Query with keys + invalidation. Endpoints match the backend contract
 // exactly (/hr/evaluations, /hr/evaluation-phases). The applicant picker reuses the Applicants list.
 import {
+  type CreateEvaluationPhase,
   type DecideEvaluation,
   type EvaluationDto,
   type EvaluationPhaseDto,
   type OpenEvaluation,
   type Paginated,
+  type UpdateEvaluationPhase,
 } from '@ecms/contracts';
 import { api, buildQuery, get, getPage, patch, post, upload } from '../../../../../shared/lib/api-client';
 
@@ -45,6 +47,16 @@ export const removeEvaluationFile = (id: string, fileId: string, version: number
     body: JSON.stringify({ version }),
   });
 
-// Active evaluation-phase catalog (labels + backs the phase picker; sequential order).
+// Evaluation-phase catalog (labels + backs the phase picker; sequential order). The settings
+// screen manages it (create / edit / reorder / enable-disable) — extensible without code changes.
 export const listEvaluationPhases = (): Promise<Paginated<EvaluationPhaseDto>> =>
   getPage<EvaluationPhaseDto>(`/hr/evaluation-phases${buildQuery({ active: true, pageSize: 100 })}`);
+
+export const listAllEvaluationPhases = (): Promise<Paginated<EvaluationPhaseDto>> =>
+  getPage<EvaluationPhaseDto>(`/hr/evaluation-phases${buildQuery({ pageSize: 100 })}`);
+
+export const createEvaluationPhase = (body: CreateEvaluationPhase): Promise<EvaluationPhaseDto> =>
+  post<EvaluationPhaseDto>('/hr/evaluation-phases', body);
+
+export const updateEvaluationPhase = (id: string, body: UpdateEvaluationPhase): Promise<EvaluationPhaseDto> =>
+  patch<EvaluationPhaseDto>(`/hr/evaluation-phases/${id}`, body);

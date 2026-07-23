@@ -10,6 +10,7 @@ import {
   type FileDto,
   type OcrExtractNationalId,
   type RegisterApplicant,
+  type MoveApplicantToOffer,
   type RestoreApplicant,
   type UpdateApplicant,
   type WithdrawApplicant,
@@ -104,6 +105,14 @@ export const useWithdrawApplicant = (id: string) => {
   const invalidate = useInvalidateLifecycle();
   return useMutation({
     mutationFn: (body: WithdrawApplicant) => api.withdrawApplicant(id, body),
+    onSuccess: invalidate,
+  });
+};
+
+export const useMoveApplicantToOffer = (id: string) => {
+  const invalidate = useInvalidateApplicants();
+  return useMutation({
+    mutationFn: (body: MoveApplicantToOffer) => api.moveApplicantToOffer(id, body),
     onSuccess: invalidate,
   });
 };

@@ -14,6 +14,7 @@ import {
   type OcrExtractionDto,
   type Paginated,
   type RegisterApplicant,
+  type MoveApplicantToOffer,
   type RestoreApplicant,
   type UpdateApplicant,
   type WithdrawApplicant,
@@ -38,6 +39,10 @@ export const verifyApplicantIdentity = (id: string, body: ConfirmApplicantIdenti
 
 export const withdrawApplicant = (id: string, body: WithdrawApplicant): Promise<ApplicantDto> =>
   post<ApplicantDto>(`/hr/applicants/${id}/withdraw`, body);
+
+/** Explicit HR move to the Job Offer stage (offer eligibility is never automatic). */
+export const moveApplicantToOffer = (id: string, body: MoveApplicantToOffer): Promise<ApplicantDto> =>
+  post<ApplicantDto>(`/hr/applicants/${id}/move-to-offer`, body);
 
 export const restoreApplicant = (id: string, body: RestoreApplicant): Promise<ApplicantDto> =>
   post<ApplicantDto>(`/hr/applicants/${id}/restore`, body);

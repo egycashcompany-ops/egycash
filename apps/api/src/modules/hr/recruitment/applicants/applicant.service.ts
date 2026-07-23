@@ -546,6 +546,75 @@ class ApplicantService {
     return updated;
   }
 
+  /**
+   * Transition to the terminal `rejected` status as a consequence of a rejected Evaluation phase
+   * (Security Check / Medical / Driving Test / …). Called only by the evaluation service. Idempotent
+   * and safe: only a live (`new`) applicant is transitioned; an already-terminal applicant is left
+   * untouched, never overridden.
+   */
+  async markRejectedByEvaluation(
+    ctx: AuthContext,
+    id: string,
+    meta: { evaluationId: string; phaseKey: string; reason: string },
+    scope: ScopeSelector,
+  ): Promise<ApplicantDoc> {
+    const before = await applicantRepository.getById(id, scope);
+    if (before.status !== 'new') return before;
+    const updated = await applicantRepository.updateById(
+      id,
+      { status: 'rejected' },
+      { by: ctx.userId, version: before.__v, scope },
+    );
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'statusChange',
+      changes: [{ field: 'status', old: before.status, new: 'rejected' }],
+    });
+    await emit(HrEvents.ApplicantRejected, {
+      applicantId: id,
+      code: updated.code,
+      evaluationId: meta.evaluationId,
+      reason: meta.reason,
+    });
+    return updated;
+  }
+
+  /**
+   * Re-enter the pipeline after a stage decision that rejected the applicant is corrected
+   * (`rejected` → `new`). Called only by the stage services when HR edits a rejection (the
+   * approved "rejection is not final" rule). Idempotent: a non-rejected applicant is returned
+   * untouched. Audited; emits `hr.applicant.restored`.
+   */
+  async reactivateFromRejection(
+    ctx: AuthContext,
+    id: string,
+    meta: { reason: string },
+    scope: ScopeSelector,
+  ): Promise<ApplicantDoc> {
+    const before = await applicantRepository.getById(id, scope);
+    if (before.status !== 'rejected') return before;
+    const updated = await applicantRepository.updateById(
+      id,
+      { status: 'new' },
+      { by: ctx.userId, version: before.__v, scope },
+    );
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'statusChange',
+      changes: [
+        { field: 'status', old: before.status, new: 'new' },
+        { field: 'reactivateReason', old: null, new: meta.reason },
+      ],
+    });
+    await emit(HrEvents.ApplicantRestored, {
+      applicantId: id,
+      code: updated.code,
+      ...(updated.jobRequisitionId === null ? {} : { jobRequisitionId: String(updated.jobRequisitionId) }),
+      sourceId: String(updated.sourceId),
+    });
+    return updated;
+  }
+
   // ── Bulk (generic per-row-audited executor — §9) ────────────────────────────
 
   async bulk(

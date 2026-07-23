@@ -13,6 +13,7 @@ import {
   SettingKeys,
   type ApplicantDto,
   type EmployeeDto,
+  type EvaluationDto,
   type InterviewDto,
   type JobOfferDto,
   type ScreeningDto,
@@ -134,11 +135,27 @@ const passStage = async (applicantId: string, stageKey: string): Promise<void> =
   expect(decided.status).toBe(200);
 };
 
+const clearEvaluations = async (applicantId: string): Promise<void> => {
+  for (const key of ['securityCheck', 'medicalExam']) {
+    const phaseId = await idByKey('evaluation-phases', key);
+    const opened = await request(app)
+      .post('/api/v1/hr/evaluations')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ applicantId, phaseId });
+    const evaluation = opened.body.data as EvaluationDto;
+    await request(app)
+      .post(`/api/v1/hr/evaluations/${evaluation.id}/decide`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ decision: 'approved', version: evaluation.version });
+  }
+};
+
 const offerReadyApplicant = async (): Promise<ApplicantDto> => {
   const applicant = await registerApplicant();
   await acceptScreening(applicant.id);
   await passStage(applicant.id, 'firstInterview');
   await passStage(applicant.id, 'secondInterview');
+  await clearEvaluations(applicant.id);
   return applicant;
 };
 
@@ -286,7 +303,7 @@ describe('employees — creation from the accepted offer snapshot', () => {
 
     // Employment terms copied from the accepted snapshot (not defaults).
     expect(emp.acceptedOfferRevision).toBe(offer.acceptedSnapshot?.revisionNumber);
-    expect(emp.employment.salary.amount).toBe(20000);
+    expect(emp.employment.salary?.amount).toBe(20000);
     expect(emp.employment.employmentType).toBe('fullTime');
     expect(emp.employment.benefits).toEqual(['medical insurance']);
     expect(emp.employment.startDate).toBe(new Date(START_DATE).toISOString());

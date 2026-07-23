@@ -27,9 +27,11 @@ export interface OfferTerms {
   jobTitleId: Types.ObjectId;
   departmentId: Types.ObjectId;
   branchId: Types.ObjectId;
-  managerId: Types.ObjectId;
+  /** Reporting manager — OPTIONAL (may be null). */
+  managerId: Types.ObjectId | null;
   employmentType: EmploymentType;
-  salary: OfferMoney;
+  /** Compensation — OPTIONAL (may be null). */
+  salary: OfferMoney | null;
   allowances: OfferAllowance[];
   benefits: string[];
   probationMonths: number;
@@ -85,9 +87,9 @@ const termsSchema = new Schema<OfferTerms>(
     jobTitleId: { type: Schema.Types.ObjectId, required: true },
     departmentId: { type: Schema.Types.ObjectId, required: true },
     branchId: { type: Schema.Types.ObjectId, required: true },
-    managerId: { type: Schema.Types.ObjectId, required: true },
+    managerId: { type: Schema.Types.ObjectId, default: null },
     employmentType: { type: String, enum: EMPLOYMENT_TYPES, required: true },
-    salary: { type: moneySchema, required: true },
+    salary: { type: moneySchema, default: null },
     allowances: {
       type: [
         new Schema<OfferAllowance>(

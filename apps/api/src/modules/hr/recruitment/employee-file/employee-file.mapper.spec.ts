@@ -29,6 +29,7 @@ const baseDoc = (over: Partial<EmployeeFileDoc> = {}): EmployeeFileDoc =>
       jobOfferId: new Types.ObjectId(),
       hiringDocumentsId: new Types.ObjectId(),
     },
+    documents: [],
     timeline: [],
     __v: 0,
     createdBy: null,
@@ -52,6 +53,48 @@ describe('toEmployeeFileDto', () => {
     expect(dto.links.interviewIds).toEqual(doc.links.interviewIds.map((id) => String(id)));
     expect(dto.links.jobOfferId).toBe(String(doc.links.jobOfferId));
     expect(dto.links.hiringDocumentsId).toBe(String(doc.links.hiringDocumentsId));
+  });
+
+  it('maps document copies + custom uploads with string ids and ISO dates', () => {
+    const copyFileId = new Types.ObjectId();
+    const sourceFileId = new Types.ObjectId();
+    const customFileId = new Types.ObjectId();
+    const uploader = new Types.ObjectId();
+    const doc = baseDoc({
+      documents: [
+        {
+          _id: new Types.ObjectId(),
+          source: 'hiringDocumentCopy',
+          name: 'Employment Contract',
+          fileId: copyFileId,
+          fileName: 'contract.pdf',
+          copiedFromFileId: sourceFileId,
+          uploadedBy: uploader,
+          uploadedAt: new Date('2026-09-21T00:00:00.000Z'),
+        },
+        {
+          _id: new Types.ObjectId(),
+          source: 'custom',
+          name: 'Extra',
+          fileId: customFileId,
+          fileName: 'extra.pdf',
+          copiedFromFileId: null,
+          uploadedBy: null,
+          uploadedAt: new Date('2026-09-22T00:00:00.000Z'),
+        },
+      ],
+    } as unknown as Partial<EmployeeFileDoc>);
+    const dto = toEmployeeFileDto(doc);
+    expect(dto.documents).toHaveLength(2);
+    expect(dto.documents[0]).toMatchObject({
+      source: 'hiringDocumentCopy',
+      name: 'Employment Contract',
+      fileId: String(copyFileId),
+      copiedFromFileId: String(sourceFileId),
+      uploadedBy: String(uploader),
+      uploadedAt: '2026-09-21T00:00:00.000Z',
+    });
+    expect(dto.documents[1]).toMatchObject({ source: 'custom', copiedFromFileId: null, uploadedBy: null });
   });
 
   it('nulls optional links when absent (incl. a direct-intake Job Request)', () => {

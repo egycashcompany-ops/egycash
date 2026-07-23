@@ -31,7 +31,8 @@ export interface HiringDocumentsDoc extends BaseDocFields {
   employeeCode: string;
   applicantId: Types.ObjectId;
   branchId: Types.ObjectId;
-  managerId: Types.ObjectId;
+  /** Reporting manager, denormalized from the employee — null when the accepted offer set none. */
+  managerId: Types.ObjectId | null;
   status: HiringDocumentsStatus;
   documents: HiringDocumentItem[];
   completedAt: Date | null;
@@ -60,7 +61,7 @@ const hiringDocumentsSchema = new Schema<HiringDocumentsDoc>(
     employeeCode: { type: String, required: true },
     applicantId: { type: Schema.Types.ObjectId, required: true },
     branchId: { type: Schema.Types.ObjectId, required: true },
-    managerId: { type: Schema.Types.ObjectId, required: true },
+    managerId: { type: Schema.Types.ObjectId, default: null },
     status: { type: String, enum: HIRING_DOCUMENTS_STATUSES, required: true, default: 'inProgress' },
     documents: { type: [documentItemSchema], default: [] },
     completedAt: { type: Date, default: null },

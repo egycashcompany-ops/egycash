@@ -81,7 +81,7 @@ describe('toJobOfferDto', () => {
     expect(dto.revisionNumber).toBe(2);
     expect(dto.revisions).toHaveLength(1);
     expect(dto.revisions[0]?.revisionNumber).toBe(1);
-    expect(dto.revisions[0]?.terms.salary.amount).toBe(12000);
+    expect(dto.revisions[0]?.terms.salary?.amount).toBe(12000);
     expect(dto.revisions[0]?.revisedBy).toBe(String(reviser));
   });
 
@@ -115,7 +115,7 @@ describe('toJobOfferDto', () => {
       }),
     );
     expect(dto.acceptedSnapshot?.revisionNumber).toBe(2);
-    expect(dto.acceptedSnapshot?.terms.salary.amount).toBe(18000);
+    expect(dto.acceptedSnapshot?.terms.salary?.amount).toBe(18000);
     expect(dto.acceptedSnapshot?.acceptedAt).toBe('2026-09-04T00:00:00.000Z');
   });
 });

@@ -203,6 +203,66 @@ class ScreeningService {
     });
     return updated;
   }
+
+  /**
+   * Edit a screening that was ALREADY decided (the approved "a decision is not final" rule, D7):
+   * HR may flip Accepted ↔ Rejected. The change is fully audited. Flipping to `rejected` removes
+   * the applicant from the pipeline; flipping a `rejected` screening back to `accepted` reactivates
+   * the applicant (rejected → new) so they re-enter at the appropriate stage.
+   */
+  async redecide(
+    ctx: AuthContext,
+    id: string,
+    input: DecideScreening,
+    scope: ScopeSelector,
+  ): Promise<ScreeningDoc> {
+    const before = await screeningRepository.getById(id, scope);
+    if (before.status === 'pending') {
+      throw new BusinessRuleError('screening has not been decided yet');
+    }
+    if (before.status === input.outcome) {
+      throw new BusinessRuleError('the screening already has this decision');
+    }
+    const reason = input.reason ?? null;
+    const updated = await screeningRepository.updateById(
+      id,
+      { status: input.outcome, decisionReason: reason, decidedBy: new Types.ObjectId(ctx.userId), decidedAt: new Date() },
+      { by: ctx.userId, version: input.version, scope },
+    );
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'statusChange',
+      changes: [
+        { field: 'status', old: before.status, new: input.outcome },
+        { field: 'decisionEdited', old: null, new: reason ?? 'decision edited' },
+      ],
+    });
+
+    const applicantId = String(before.applicantId);
+    if (input.outcome === 'rejected') {
+      await applicantService.markRejectedByScreening(
+        ctx,
+        applicantId,
+        { screeningId: id, reason: reason ?? 'screening decision edited to rejected' },
+        scope,
+      );
+    } else {
+      await applicantService.reactivateFromRejection(
+        ctx,
+        applicantId,
+        { reason: reason ?? 'screening decision edited to accepted' },
+        scope,
+      );
+    }
+
+    await emit(HrScreeningEvents.ScreeningDecided, {
+      screeningId: id,
+      applicantId,
+      applicantCode: before.applicantCode,
+      outcome: input.outcome,
+    });
+    return updated;
+  }
 }
 
 export const screeningService = new ScreeningService();

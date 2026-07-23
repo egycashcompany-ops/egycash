@@ -40,6 +40,16 @@ export const AddEmployeeFileNoteSchema = z
   .strict();
 export type AddEmployeeFileNote = z.infer<typeof AddEmployeeFileNoteSchema>;
 
+/** Upload an additional custom document (multipart `file`) with a user-defined name. */
+export const UploadEmployeeFileDocumentSchema = z
+  .object({ name: z.string().trim().min(1).max(200), version: z.coerce.number().int().min(0) })
+  .strict();
+export type UploadEmployeeFileDocument = z.infer<typeof UploadEmployeeFileDocumentSchema>;
+
+/** Remove a document from the Employee File (its independent copy — never the original). */
+export const RemoveEmployeeFileDocumentSchema = z.object({ version: z.number().int().min(0) }).strict();
+export type RemoveEmployeeFileDocument = z.infer<typeof RemoveEmployeeFileDocumentSchema>;
+
 export const ListEmployeeFilesQuerySchema = PaginationQuerySchema.extend({
   status: EmployeeFileStatusSchema.optional(),
   employeeId: objectId().optional(),
@@ -72,6 +82,23 @@ export interface EmployeeFileLinksDto {
   hiringDocumentsId: string;
 }
 
+/**
+ * A document held in the Employee File. `hiringDocumentCopy` items are INDEPENDENT copies made at
+ * assembly from the hiring documents (`copiedFromFileId` records the source; editing/removing a copy
+ * never touches the original). `custom` items are additional HR uploads with a user-defined name.
+ */
+export interface EmployeeFileDocumentDto {
+  id: string;
+  source: 'hiringDocumentCopy' | 'custom';
+  name: string;
+  fileId: string;
+  fileName: string;
+  /** For a hiring-document copy: the original file it was copied from (never mutated). */
+  copiedFromFileId: string | null;
+  uploadedBy: string | null;
+  uploadedAt: string;
+}
+
 export interface EmployeeFileDto {
   id: string;
   employeeId: string;
@@ -80,11 +107,16 @@ export interface EmployeeFileDto {
   branchId: string;
   status: EmployeeFileStatus;
   links: EmployeeFileLinksDto;
+  /** Independent document copies from hiring + any custom uploads. */
+  documents: EmployeeFileDocumentDto[];
   timeline: EmployeeTimelineEntryDto[];
   version: number;
   createdAt: string;
   updatedAt: string;
 }
+
+/** Files-service category the Employee File's document copies + custom uploads live under. */
+export const EMPLOYEE_FILE_DOCUMENT_CATEGORY = 'hr-employee-file-documents';
 
 // ── Events (ADR-008 naming `<module>.<entity>.<event>`) ─────────────────────
 

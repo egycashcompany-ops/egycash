@@ -55,3 +55,10 @@ export const decideScreening = async (req: Request, res: Response): Promise<void
   const doc = await screeningService.decide(ctx, params.id, body, scopeSelector(ctx, 'screening.decide'));
   ok(res, toScreeningDto(doc));
 };
+
+export const redecideScreening = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<DecideScreening, never, IdParam>(req);
+  const doc = await screeningService.redecide(ctx, params.id, body, scopeSelector(ctx, 'screening.decide'));
+  ok(res, toScreeningDto(doc));
+};

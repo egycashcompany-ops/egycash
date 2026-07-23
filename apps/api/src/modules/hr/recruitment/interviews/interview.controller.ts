@@ -93,6 +93,13 @@ export const decideInterview = async (req: Request, res: Response): Promise<void
   ok(res, toInterviewDto(doc));
 };
 
+export const redecideInterview = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<DecideInterview, never, IdParam>(req);
+  const doc = await interviewService.redecide(ctx, params.id, body, scopeSelector(ctx, 'interview.decide'));
+  ok(res, toInterviewDto(doc));
+};
+
 // ── Interview stages (admin catalog) ─────────────────────────────────────────
 
 export const createInterviewStage = async (req: Request, res: Response): Promise<void> => {

@@ -12,6 +12,7 @@ import {
   SettingKeys,
   type ApplicantDto,
   type EmployeeDto,
+  type EvaluationDto,
   type EmployeeFileDto,
   type HiringDocumentsDto,
   type InterviewDto,
@@ -130,6 +131,20 @@ const hiredEmployee = async (): Promise<EmployeeDto> => {
       .post(`/api/v1/hr/interviews/${interview.id}/decide`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ outcome: 'passed', version: (submitted.body.data as InterviewDto).version });
+  }
+
+  // Clear the required evaluation phases (offer gate) before drafting the offer.
+  for (const key of ['securityCheck', 'medicalExam']) {
+    const phaseId = await idByKey('evaluation-phases', key);
+    const opened = await request(app)
+      .post('/api/v1/hr/evaluations')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ applicantId: applicant.id, phaseId });
+    const evaluation = opened.body.data as EvaluationDto;
+    await request(app)
+      .post(`/api/v1/hr/evaluations/${evaluation.id}/decide`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ decision: 'approved', version: evaluation.version });
   }
 
   const draft = (

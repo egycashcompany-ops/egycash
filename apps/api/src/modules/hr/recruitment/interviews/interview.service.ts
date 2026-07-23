@@ -453,6 +453,73 @@ class InterviewService {
     });
     return updated;
   }
+
+  /**
+   * Edit the outcome of an already-COMPLETED interview round (D7: "a decision is not final"); fully
+   * audited. Flipping to `failed` rejects the applicant (removes them from the pipeline); flipping a
+   * `failed` round back to `passed` reactivates the applicant (rejected → new) so they re-enter the
+   * pipeline at this stage and can advance.
+   */
+  async redecide(
+    ctx: AuthContext,
+    id: string,
+    input: DecideInterview,
+    scope: ScopeSelector,
+  ): Promise<InterviewDoc> {
+    const before = await interviewRepository.getById(id, scope);
+    if (before.status !== 'completed') {
+      throw new BusinessRuleError('only a completed interview decision can be edited');
+    }
+    if (before.outcome === input.outcome) {
+      throw new BusinessRuleError('the interview already has this outcome');
+    }
+    const updated = await interviewRepository.updateById(
+      id,
+      {
+        outcome: input.outcome,
+        decisionNotes: input.notes ?? null,
+        decidedBy: new Types.ObjectId(ctx.userId),
+        decidedAt: new Date(),
+      },
+      { by: ctx.userId, version: input.version, scope },
+    );
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'statusChange',
+      changes: [
+        { field: 'outcome', old: before.outcome, new: input.outcome },
+        { field: 'decisionEdited', old: null, new: input.notes ?? 'decision edited' },
+      ],
+    });
+
+    const applicantId = String(before.applicantId);
+    if (input.outcome === 'failed') {
+      await applicantService.markRejectedByInterview(
+        ctx,
+        applicantId,
+        { interviewId: id, reason: input.notes ?? 'interview decision edited to failed' },
+        scope,
+      );
+    } else {
+      await applicantService.reactivateFromRejection(
+        ctx,
+        applicantId,
+        { reason: input.notes ?? 'interview decision edited to passed' },
+        scope,
+      );
+    }
+
+    const nextStage = await interviewStageRepository.findNextActiveAfter(before.stageOrder);
+    await emit(HrInterviewEvents.InterviewDecided, {
+      interviewId: id,
+      applicantId,
+      applicantCode: before.applicantCode,
+      stageOrder: before.stageOrder,
+      outcome: input.outcome,
+      finalStage: nextStage === null,
+    });
+    return updated;
+  }
 }
 
 export const interviewService = new InterviewService();

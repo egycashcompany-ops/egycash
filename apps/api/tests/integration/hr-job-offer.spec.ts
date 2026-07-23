@@ -12,6 +12,7 @@ import {
   platformPermissions,
   SettingKeys,
   type ApplicantDto,
+  type EvaluationDto,
   type InterviewDto,
   type JobOfferDto,
   type ScreeningDto,
@@ -134,12 +135,31 @@ const passStage = async (applicantId: string, stageKey: string): Promise<void> =
   expect(decided.status).toBe(200);
 };
 
-/** An applicant who cleared screening + both default interview rounds — offer-eligible. */
+/** Open + approve the required (non-driver) evaluation phases so the offer gate is satisfied. */
+const clearEvaluations = async (applicantId: string): Promise<void> => {
+  for (const key of ['securityCheck', 'medicalExam']) {
+    const phaseId = await idByKey('evaluation-phases', key);
+    const opened = await request(app)
+      .post('/api/v1/hr/evaluations')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ applicantId, phaseId });
+    expect(opened.status).toBe(201);
+    const evaluation = opened.body.data as EvaluationDto;
+    const decided = await request(app)
+      .post(`/api/v1/hr/evaluations/${evaluation.id}/decide`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ decision: 'approved', version: evaluation.version });
+    expect(decided.status).toBe(200);
+  }
+};
+
+/** An applicant who cleared screening + both default interviews + required evaluations. */
 const offerReadyApplicant = async (): Promise<ApplicantDto> => {
   const applicant = await registerApplicant();
   await acceptScreening(applicant.id);
   await passStage(applicant.id, 'firstInterview');
   await passStage(applicant.id, 'secondInterview');
+  await clearEvaluations(applicant.id);
   return applicant;
 };
 
@@ -240,6 +260,15 @@ describe('job offers — permissions & eligibility gate', () => {
     const res = await createOffer(applicant.id);
     expect(res.status).toBe(422);
   });
+
+  it('refuses to create an offer before the required evaluation phases are cleared', async () => {
+    const applicant = await registerApplicant();
+    await acceptScreening(applicant.id);
+    await passStage(applicant.id, 'firstInterview');
+    await passStage(applicant.id, 'secondInterview'); // interviews cleared, evaluations not
+    const res = await createOffer(applicant.id);
+    expect(res.status).toBe(422);
+  });
 });
 
 describe('job offers — draft, revise, one-active invariant', () => {
@@ -272,9 +301,9 @@ describe('job offers — draft, revise, one-active invariant', () => {
     expect(revised.status).toBe(200);
     const dto = revised.body.data as JobOfferDto;
     expect(dto.revisionNumber).toBe(2);
-    expect(dto.terms.salary.amount).toBe(18000);
+    expect(dto.terms.salary?.amount).toBe(18000);
     expect(dto.revisions).toHaveLength(1);
-    expect(dto.revisions[0]?.terms.salary.amount).toBe(15000);
+    expect(dto.revisions[0]?.terms.salary?.amount).toBe(15000);
   });
 });
 
@@ -397,7 +426,7 @@ describe('job offers — offer number & accepted snapshot', () => {
     // The snapshot captures exactly the accepted revision (2) and its terms.
     const dto = accepted.body.data as JobOfferDto;
     expect(dto.acceptedSnapshot?.revisionNumber).toBe(2);
-    expect(dto.acceptedSnapshot?.terms.salary.amount).toBe(20000);
+    expect(dto.acceptedSnapshot?.terms.salary?.amount).toBe(20000);
 
     // Post-acceptance the offer is terminal: no revision can change the accepted terms.
     const reviseAfter = await request(app)

@@ -11,12 +11,14 @@ import {
   HrInterviewTemplates,
   HrOfferTemplates,
   type CreateApplicantSource,
+  type CreateEvaluationPhase,
   type CreateHiringDocumentType,
   type CreateInterviewStage,
 } from '@ecms/contracts';
 import { notificationTemplateService } from '../../platform/notifications';
 import { applicantSourceService } from './recruitment/applicants';
 import { interviewStageService } from './recruitment/interviews';
+import { ensureEvaluationCategory, evaluationPhaseService } from './recruitment/evaluations';
 import { ensureHiringDocsCategory, hiringDocumentTypeService } from './recruitment/hiring-documents';
 
 const SOURCES: CreateApplicantSource[] = [
@@ -35,6 +37,14 @@ const SOURCES: CreateApplicantSource[] = [
 const INTERVIEW_STAGES: CreateInterviewStage[] = [
   { key: 'firstInterview', name: { en: 'First Interview', ar: 'المقابلة الأولى' }, order: 1 },
   { key: 'secondInterview', name: { en: 'Second Interview', ar: 'المقابلة الثانية' }, order: 2 },
+];
+
+// Default post-interview evaluation phases (admin-configurable thereafter — number/names/order
+// are changed with no code change). Driving Test is flagged drivers-only.
+const EVALUATION_PHASES: CreateEvaluationPhase[] = [
+  { key: 'securityCheck', name: { en: 'Security Check', ar: 'الفحص الأمني' }, order: 1, driversOnly: false },
+  { key: 'medicalExam', name: { en: 'Medical Examination', ar: 'الكشف الطبي' }, order: 2, driversOnly: false },
+  { key: 'drivingTest', name: { en: 'Driving Test', ar: 'اختبار القيادة' }, order: 3, driversOnly: true },
 ];
 
 const ensureInterviewTemplates = async (): Promise<void> => {
@@ -134,13 +144,17 @@ const ensureOfferTemplates = async (): Promise<void> => {
   });
 };
 
+// The standard hiring-documents checklist (approved Recruitment spec — 7 documents). The set is
+// admin-configurable thereafter (add / remove / toggle required). The core legal documents are
+// required for completion; the bank letter and company ID card are issued later, so optional.
 const HIRING_DOCUMENT_TYPES: CreateHiringDocumentType[] = [
-  { key: 'nationalIdCopy', name: { en: 'National ID copy', ar: 'صورة بطاقة الرقم القومي' }, required: true },
-  { key: 'signedContract', name: { en: 'Signed employment contract', ar: 'عقد العمل الموقّع' }, required: true },
-  { key: 'personalPhoto', name: { en: 'Personal photo', ar: 'صورة شخصية' }, required: true },
-  { key: 'qualificationCertificate', name: { en: 'Qualification certificate', ar: 'شهادة المؤهل' }, required: false },
-  { key: 'criminalRecord', name: { en: 'Criminal record certificate', ar: 'صحيفة الحالة الجنائية' }, required: false },
-  { key: 'bankAccountDetails', name: { en: 'Bank account details', ar: 'بيانات الحساب البنكي' }, required: false },
+  { key: 'employmentContract', name: { en: 'Employment Contract', ar: 'عقد العمل' }, required: true },
+  { key: 'employmentAcceptance', name: { en: 'Employment Acceptance Acknowledgment', ar: 'إقرار قبول التعيين' }, required: true },
+  { key: 'socialStatusForm', name: { en: 'Social Status Form', ar: 'استمارة الحالة الاجتماعية' }, required: true },
+  { key: 'relativesDeclaration', name: { en: 'Relatives Declaration', ar: 'إقرار الأقارب' }, required: true },
+  { key: 'jobDescription', name: { en: 'Job Description', ar: 'الوصف الوظيفي' }, required: true },
+  { key: 'bankLetter', name: { en: 'National Bank / Banque Misr Letter', ar: 'خطاب البنك الأهلي / بنك مصر' }, required: false },
+  { key: 'companyIdCard', name: { en: 'Company ID Card', ar: 'كارنيه الشركة' }, required: false },
 ];
 
 const ensureHiringDocumentsSeeds = async (): Promise<void> => {
@@ -202,6 +216,10 @@ export const seedHrRecruitment = async (): Promise<void> => {
   for (const stage of INTERVIEW_STAGES) {
     await interviewStageService.ensure(stage);
   }
+  for (const phase of EVALUATION_PHASES) {
+    await evaluationPhaseService.ensure(phase);
+  }
+  await ensureEvaluationCategory();
   await ensureInterviewTemplates();
   await ensureOfferTemplates();
   await ensureEmployeeTemplates();

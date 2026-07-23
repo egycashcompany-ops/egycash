@@ -89,7 +89,7 @@ export const JobOffersListPage = (): JSX.Element => {
       key: 'salary',
       header: t('offers.columns.salary'),
       align: 'end',
-      render: (o) => formatMoney(o.terms.salary.amount, o.terms.salary.currency, locale),
+      render: (o) => (o.terms.salary === null ? '—' : formatMoney(o.terms.salary.amount, o.terms.salary.currency, locale)),
     },
     { key: 'createdAt', header: t('offers.columns.created'), sortable: true, render: (o) => formatDate(o.createdAt, locale) },
   ];

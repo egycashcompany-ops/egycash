@@ -14,6 +14,7 @@ import {
   listInterviewStages,
   listInterviews,
   reassignInterviewPanel,
+  redecideInterview,
   rescheduleInterview,
   scheduleInterview,
   skipInterviewer,
@@ -110,6 +111,14 @@ export const buildInterviewsRouter = (): Router => {
     authorize('interview.decide'),
     validate({ body: DecideInterviewSchema, params: InterviewIdParamSchema }),
     asyncHandler(decideInterview),
+  );
+  // Edit the outcome of a completed interview (D7: "a decision is not final"); fully audited.
+  router.patch(
+    '/:id/decision',
+    authenticate,
+    authorize('interview.decide'),
+    validate({ body: DecideInterviewSchema, params: InterviewIdParamSchema }),
+    asyncHandler(redecideInterview),
   );
 
   return router;

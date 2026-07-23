@@ -12,6 +12,7 @@ import {
   getScreening,
   listAwaitingScreenings,
   listScreenings,
+  redecideScreening,
 } from './screening.controller';
 import {
   AddScreeningNoteSchema,
@@ -67,6 +68,14 @@ export const buildScreeningsRouter = (): Router => {
     authorize('screening.decide'),
     validate({ body: DecideScreeningSchema, params: ScreeningIdParamSchema }),
     asyncHandler(decideScreening),
+  );
+  // Edit an already-decided screening (D7: "a decision is not final"); fully audited.
+  router.patch(
+    '/:id/decision',
+    authenticate,
+    authorize('screening.decide'),
+    validate({ body: DecideScreeningSchema, params: ScreeningIdParamSchema }),
+    asyncHandler(redecideScreening),
   );
 
   return router;

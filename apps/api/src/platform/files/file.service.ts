@@ -55,6 +55,14 @@ const mimeAllowed = (mime: string, allowed: string[]): boolean =>
     rule.endsWith('/*') ? mime.startsWith(rule.slice(0, -1)) : mime === rule,
   );
 
+const streamToBuffer = async (stream: NodeJS.ReadableStream): Promise<Buffer> => {
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) {
+    chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : (chunk as Buffer));
+  }
+  return Buffer.concat(chunks);
+};
+
 const fileEventPayload = (doc: FileDoc) => ({
   fileId: String(doc._id),
   groupId: String(doc.groupId),
@@ -240,6 +248,63 @@ class FileService {
       changes: [
         { field: 'fileVersion', old: current.fileVersion, new: doc.fileVersion },
         { field: 'checksum', old: current.checksum, new: doc.checksum },
+      ],
+    });
+    await enqueueFileProcessing(doc._id);
+    return doc;
+  }
+
+  /**
+   * Independent COPY of a file's current bytes into a NEW group under a different entity. The copy
+   * is a standalone v1 with freshly stored bytes and its own history — replacing, versioning, or
+   * deleting it never touches the source (and vice-versa). Used by the Electronic Employee File to
+   * hold copies of the hiring documents that stay put even if the originals are later changed.
+   */
+  async copy(
+    ctx: AuthContext,
+    sourceFileId: string,
+    target: {
+      moduleId: string;
+      entityType: string;
+      entityId: string;
+      categoryId: string;
+      displayName: string;
+      visibility: FileDoc['visibility'];
+      tags?: string[];
+      description?: string | null;
+    },
+  ): Promise<FileDoc> {
+    const source = await fileRepository.getById(sourceFileId);
+    const category = await this.loadActiveCategory(target.categoryId);
+    const buffer = await streamToBuffer(await getStorageProvider().getStream(source.storage.key));
+    const binary: UploadedBinary = {
+      originalName: source.originalName,
+      mime: source.mime,
+      size: source.size,
+      buffer,
+    };
+    const entityRef = { moduleId: target.moduleId, entityType: target.entityType, entityId: target.entityId };
+    const group = await fileRepository.createGroup(entityRef);
+    const doc = await this.storeVersion({
+      binary,
+      category,
+      groupId: group._id,
+      fileVersion: 1,
+      fields: {
+        entityRef,
+        visibility: target.visibility,
+        tags: target.tags ?? [],
+        displayName: target.displayName,
+        description: target.description ?? null,
+      },
+      by: ctx.userId,
+    });
+    await auditService.record({
+      entityRef: entityRefOf(String(doc._id)),
+      action: 'create',
+      changes: [
+        { field: 'copiedFrom', old: null, new: sourceFileId },
+        { field: 'checksum', old: null, new: doc.checksum },
       ],
     });
     await enqueueFileProcessing(doc._id);

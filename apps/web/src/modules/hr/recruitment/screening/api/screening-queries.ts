@@ -67,3 +67,8 @@ export const useDecideScreening = (id: string) => {
   const invalidate = useInvalidateScreenings();
   return useMutation({ mutationFn: (body: DecideScreening) => api.decideScreening(id, body), onSuccess: invalidate });
 };
+
+export const useRedecideScreening = (id: string) => {
+  const invalidate = useInvalidateScreenings();
+  return useMutation({ mutationFn: (body: DecideScreening) => api.redecideScreening(id, body), onSuccess: invalidate });
+};

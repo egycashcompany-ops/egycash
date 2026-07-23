@@ -12,6 +12,8 @@ import {
   type ApplicantDto,
   type EvaluationDto,
   type EvaluationPhaseDto,
+  type InterviewDto,
+  type ScreeningDto,
 } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { buildApp } from '../../src/app';
@@ -30,6 +32,8 @@ let replSet: MongoMemoryReplSet | null = null;
 let app: Express;
 let adminToken: string;
 let aliceToken: string;
+let interviewerId: string;
+let interviewerToken: string;
 let phoneCounter = 60_000_000;
 
 const resolveMongoUri = async (): Promise<string> => {
@@ -122,6 +126,45 @@ const applicantStatus = async (id: string): Promise<string> => {
   return (res.body.data as ApplicantDto).status;
 };
 
+const stageId = async (key: string): Promise<string> => {
+  const res = await request(app).get('/api/v1/hr/interview-stages').query({ pageSize: 50 }).set('Authorization', `Bearer ${adminToken}`);
+  const found = (res.body as { data: { id: string; key: string }[] }).data.find((s) => s.key === key);
+  if (found === undefined) throw new Error(`stage ${key} not seeded`);
+  return found.id;
+};
+
+const passStage = async (applicantId: string, key: string): Promise<void> => {
+  const interview = (
+    await request(app)
+      .post('/api/v1/hr/interviews')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ applicantId, stageId: await stageId(key), scheduledAt: '2027-03-01T00:00:00.000Z', interviewerIds: [interviewerId] })
+  ).body.data as InterviewDto;
+  const submitted = await request(app)
+    .post(`/api/v1/hr/interviews/${interview.id}/evaluations`)
+    .set('Authorization', `Bearer ${interviewerToken}`)
+    .send({ recommendation: 'recommend', version: interview.version });
+  await request(app)
+    .post(`/api/v1/hr/interviews/${interview.id}/decide`)
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ outcome: 'passed', version: (submitted.body.data as InterviewDto).version });
+};
+
+/** An applicant who has cleared screening + both interview rounds — eligible for evaluations. */
+const readyApplicant = async (): Promise<ApplicantDto> => {
+  const applicant = await registerApplicant();
+  const screening = (
+    await request(app).post('/api/v1/hr/screenings').set('Authorization', `Bearer ${adminToken}`).send({ applicantId: applicant.id })
+  ).body.data as ScreeningDto;
+  await request(app)
+    .post(`/api/v1/hr/screenings/${screening.id}/decide`)
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ outcome: 'accepted', version: screening.version });
+  await passStage(applicant.id, 'firstInterview');
+  await passStage(applicant.id, 'secondInterview');
+  return applicant;
+};
+
 beforeAll(async () => {
   await bootPlatform({ mongoUri: await resolveMongoUri(), modules: moduleManifests });
   app = buildApp();
@@ -134,6 +177,13 @@ beforeAll(async () => {
   const adminId = await mkUser('admin@ecms.local');
   await rbacService.ensureAssignment(adminId, String(superAdmin._id), 'organization');
   await mkUser('alice@ecms.local');
+
+  const panelRole = await rbacService.createRole(
+    { name: { en: 'Interviewer', ar: 'مُحاور' }, permissionKeys: ['interview.view', 'interview.evaluate'] },
+    adminId,
+  );
+  interviewerId = await mkUser('interviewer@ecms.local');
+  await rbacService.ensureAssignment(interviewerId, String(panelRole._id), 'organization');
 
   const ctx: AuthContext = {
     userId: adminId,
@@ -150,6 +200,7 @@ beforeAll(async () => {
 
   adminToken = await login('admin@ecms.local');
   aliceToken = await login('alice@ecms.local');
+  interviewerToken = await login('interviewer@ecms.local');
 }, 180_000);
 
 afterAll(async () => {
@@ -180,7 +231,7 @@ describe('evaluation phases — seeded catalog & permissions', () => {
 
 describe('evaluations — open, files, decision', () => {
   it('opens a pending evaluation (idempotent) and attaches then removes a file', async () => {
-    const applicant = await registerApplicant();
+    const applicant = await readyApplicant();
     const phase = await phaseByKey('securityCheck');
 
     const opened = await open(applicant.id, phase.id);
@@ -214,8 +265,9 @@ describe('evaluations — open, files, decision', () => {
   });
 
   it('requires a reason to reject, removes the applicant from the pipeline, and stays editable', async () => {
-    const applicant = await registerApplicant();
-    const phase = await phaseByKey('medicalExam');
+    const applicant = await readyApplicant();
+    // securityCheck is the first phase (no prior-phase gate); the reject behavior is what's asserted.
+    const phase = await phaseByKey('securityCheck');
     const evaluation = (await open(applicant.id, phase.id)).body.data as EvaluationDto;
 
     // Missing reason → request-schema validation failure (400).

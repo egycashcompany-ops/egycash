@@ -4,8 +4,8 @@
 // than erroring the whole screen.
 import { useQuery } from '@tanstack/react-query';
 import {
-  type BranchDto,
   type DepartmentDto,
+  type OrgUnitOptionDto,
   type Paginated,
   type SectionDto,
   type UserDto,
@@ -13,8 +13,10 @@ import {
 import { buildQuery, get, getPage } from '../../../shared/lib/api-client';
 import { ORG_MODULE } from './org-unit-resource';
 
-const listBranches = (): Promise<Paginated<BranchDto>> =>
-  getPage<BranchDto>(`/platform/branches${buildQuery({ status: 'active', pageSize: 200 })}`);
+// Branch options come from the reference-options endpoint, which any authenticated user may read —
+// so the Branch dropdown on the Department/Section forms is populated even without `branch.view`.
+const listBranchOptions = (): Promise<OrgUnitOptionDto[]> =>
+  get<OrgUnitOptionDto[]>('/platform/branches/options');
 
 const listDepartments = (branchId?: string): Promise<Paginated<DepartmentDto>> =>
   getPage<DepartmentDto>(
@@ -34,11 +36,10 @@ const getUser = (id: string): Promise<UserDto> => get<UserDto>(`/platform/users/
 export const useBranchOptions = (enabled = true) =>
   useQuery({
     queryKey: [ORG_MODULE, 'branches', 'options'],
-    queryFn: listBranches,
+    queryFn: listBranchOptions,
     enabled,
     staleTime: 5 * 60_000,
     retry: false,
-    select: (page) => page.items,
   });
 
 /** Departments of a branch (or all active departments when no branch is given). */

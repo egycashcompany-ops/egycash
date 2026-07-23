@@ -7,7 +7,7 @@ import {
   type EmployeeFileDto,
   type Paginated,
 } from '@ecms/contracts';
-import { buildQuery, get, getPage, post } from '../../../../../shared/lib/api-client';
+import { api, buildQuery, get, getPage, post, upload } from '../../../../../shared/lib/api-client';
 
 export type EmployeeFileListParams = Record<string, string | number | boolean | undefined | null>;
 
@@ -22,3 +22,28 @@ export const createEmployeeFile = (body: CreateEmployeeFile): Promise<EmployeeFi
 
 export const addEmployeeFileNote = (id: string, body: AddEmployeeFileNote): Promise<EmployeeFileDto> =>
   post<EmployeeFileDto>(`/hr/employee-files/${id}/notes`, body);
+
+/** Upload an additional CUSTOM document (independent of the hiring documents). */
+export const uploadEmployeeFileDocument = (
+  id: string,
+  file: File,
+  name: string,
+  version: number,
+): Promise<EmployeeFileDto> => {
+  const form = new FormData();
+  form.append('file', file);
+  form.append('name', name);
+  form.append('version', String(version));
+  return upload<EmployeeFileDto>(`/hr/employee-files/${id}/documents`, form);
+};
+
+/** Remove a document (its independent copy/upload only — never the original hiring document). */
+export const removeEmployeeFileDocument = (
+  id: string,
+  documentId: string,
+  version: number,
+): Promise<EmployeeFileDto> =>
+  api<EmployeeFileDto>(`/hr/employee-files/${id}/documents/${documentId}`, {
+    method: 'DELETE',
+    body: JSON.stringify({ version }),
+  });

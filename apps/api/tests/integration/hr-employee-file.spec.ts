@@ -142,7 +142,7 @@ const hiredEmployee = async (): Promise<EmployeeDto> => {
       .send({ applicantId: applicant.id, phaseId });
     const evaluation = opened.body.data as EvaluationDto;
     await request(app)
-      .post(`/api/v1/hr/evaluations/${evaluation.id}/decide`)
+      .patch(`/api/v1/hr/evaluations/${evaluation.id}/decision`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ decision: 'approved', version: evaluation.version });
   }

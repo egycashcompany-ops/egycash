@@ -146,7 +146,7 @@ const clearEvaluations = async (applicantId: string): Promise<void> => {
     expect(opened.status).toBe(201);
     const evaluation = opened.body.data as EvaluationDto;
     const decided = await request(app)
-      .post(`/api/v1/hr/evaluations/${evaluation.id}/decide`)
+      .patch(`/api/v1/hr/evaluations/${evaluation.id}/decision`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ decision: 'approved', version: evaluation.version });
     expect(decided.status).toBe(200);

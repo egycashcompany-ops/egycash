@@ -160,3 +160,11 @@ export const useDecideInterview = (id: string) => {
     onSuccess: seedAndInvalidate,
   });
 };
+
+export const useRedecideInterview = (id: string) => {
+  const { seedAndInvalidate } = useInterviewWriters(id);
+  return useMutation({
+    mutationFn: (body: DecideInterview) => api.redecideInterview(id, body),
+    onSuccess: seedAndInvalidate,
+  });
+};

@@ -421,7 +421,7 @@ export interface RehireCheckResultDto {
 export interface EmployeeTimelineItemDto {
   at: string;
   /** Where the entry comes from: recruitment-era file milestone, personnel action, file note, or audited personal edit. */
-  source: 'recruitment' | 'action' | 'note' | 'personal';
+  source: 'recruitment' | 'action' | 'note' | 'personal' | 'leave';
   /** Milestone/action type token (e.g. `offerAccepted`, `transfer`, `note`). */
   type: string;
   refType: string | null;

@@ -86,6 +86,19 @@ class LeaveRequestRepository extends BaseRepository<LeaveRequestDoc> {
       .exec();
   }
 
+  /** Of the given employees, the ids that have ANY open (blocking) leave request. */
+  async employeeIdsWithOpenLeave(employeeIds: string[]): Promise<Set<string>> {
+    if (employeeIds.length === 0) return new Set();
+    const ids = await this.model
+      .distinct('employeeId', {
+        employeeId: { $in: employeeIds.map((id) => new Types.ObjectId(id)) },
+        status: { $in: [...LEAVE_BLOCKING_STATUSES] },
+        isDeleted: false,
+      })
+      .exec();
+    return new Set(ids.map(String));
+  }
+
   /** pendingManager requests whose subject is one of the given employees (manager queue). */
   async findPendingManagerFor(employeeIds: string[]): Promise<LeaveRequestDoc[]> {
     if (employeeIds.length === 0) return [];

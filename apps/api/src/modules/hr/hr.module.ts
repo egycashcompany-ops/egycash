@@ -307,13 +307,14 @@ export const hrModule: ModuleManifest = {
       },
     },
     {
-      // Rehires open a fresh pro-rated grant in the new employment period (leave design R12).
+      // Rehires open a fresh pro-rated grant in the new employment period (leave design R12) —
+      // same-year rehires re-grant via a period-keyed adjustment (the grant key is consumed).
       event: 'hr.employee.rehired',
       handlerId: 'leave.grantOnRehire',
       handler: async (envelope) => {
         const payload = envelope.payload as { employeeId?: string };
         if (typeof payload.employeeId === 'string') {
-          await leaveBalanceService.grantCurrentYearFor(payload.employeeId);
+          await leaveBalanceService.regrantOnRehire(payload.employeeId);
         }
       },
     },

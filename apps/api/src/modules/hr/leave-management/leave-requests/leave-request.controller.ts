@@ -123,6 +123,11 @@ export const attachToLeaveRequest = async (req: Request, res: Response): Promise
   ok(res, toLeaveRequestDto(doc));
 };
 
+export const unreconciledLeave = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  ok(res, await leaveRequestService.unreconciled(scopeSelector(ctx, 'leave.approve')));
+};
+
 export const leaveCalendar = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { query } = validated<never, LeaveCalendarQuery, never>(req);

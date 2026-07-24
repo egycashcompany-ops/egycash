@@ -340,29 +340,35 @@ class LeaveBalanceService {
 
   // ── Grants, carryover, expiry (L3/L6, §4) ─────────────────────────────────
 
-  /** Pro-rated grant for one employee × banked type × year. Idempotent via the grant key. */
-  async grantForEmployee(employee: EmployeeDoc, type: LeaveTypeDoc, year: number): Promise<void> {
+  /** The current employment period's start (rehires open a fresh period, R12). */
+  private periodStartOf(employee: EmployeeDoc): Date {
+    const currentPeriod =
+      employee.employmentPeriods.find((p) => p.exitedAt === null) ??
+      employee.employmentPeriods[employee.employmentPeriods.length - 1];
+    return toDateOnly(currentPeriod?.hiredAt ?? employee.hiredAt);
+  }
+
+  /** Pro-rated grant amount for one employee × banked type × year (L3 — hire-year pro-rata). */
+  private async grantDaysFor(employee: EmployeeDoc, type: LeaveTypeDoc, year: number): Promise<number> {
     const yearStart = new Date(Date.UTC(year, 0, 1));
     const yearEnd = new Date(Date.UTC(year, 11, 31));
     const acrossPeriods = await settingsService.resolve<boolean>(
       HrLeaveSettingKeys.ServiceAcrossPeriods,
       ORG_SUBJECT,
     );
-    const currentPeriod =
-      employee.employmentPeriods.find((p) => p.exitedAt === null) ??
-      employee.employmentPeriods[employee.employmentPeriods.length - 1];
-    const periodStart = toDateOnly(currentPeriod?.hiredAt ?? employee.hiredAt);
-    if (periodStart.getTime() > yearEnd.getTime()) return;
-
+    const periodStart = this.periodStartOf(employee);
+    if (periodStart.getTime() > yearEnd.getTime()) return 0;
     const months = serviceMonthsOf(employee, yearEnd, acrossPeriods);
     const entitled = entitledDays(type, Math.floor(months / 12), ageOf(employee, yearEnd));
-    let granted = entitled;
-    if (periodStart.getTime() > yearStart.getTime()) {
-      const monthsInYear = 12 - periodStart.getUTCMonth();
-      granted = Math.round(((entitled * monthsInYear) / 12) * 2) / 2;
-    }
-    if (granted <= 0) return;
+    if (periodStart.getTime() <= yearStart.getTime()) return entitled;
+    const monthsInYear = 12 - periodStart.getUTCMonth();
+    return Math.round(((entitled * monthsInYear) / 12) * 2) / 2;
+  }
 
+  /** Pro-rated grant for one employee × banked type × year. Idempotent via the grant key. */
+  async grantForEmployee(employee: EmployeeDoc, type: LeaveTypeDoc, year: number): Promise<boolean> {
+    const granted = await this.grantDaysFor(employee, type, year);
+    if (granted <= 0) return false;
     const inserted = await this.appendLedger({
       employeeId: employee._id,
       typeId: type._id,
@@ -371,10 +377,10 @@ class LeaveBalanceService {
       kind: 'grant',
       days: granted,
       requestId: null,
-      effectiveFrom: yearStart,
-      effectiveTo: yearEnd,
+      effectiveFrom: new Date(Date.UTC(year, 0, 1)),
+      effectiveTo: new Date(Date.UTC(year, 11, 31)),
       paidBreakdown: [],
-      note: `annual grant (${String(entitled)} entitled)`,
+      note: `annual grant (${dateOnlyIso(this.periodStartOf(employee))})`,
       by: null,
     });
     if (inserted) {
@@ -382,6 +388,52 @@ class LeaveBalanceService {
       await LeaveBalanceModel.updateOne(
         { employeeId: employee._id, typeId: type._id, year },
         { $inc: { granted } },
+      ).exec();
+    }
+    return inserted;
+  }
+
+  /**
+   * Rehire re-grant (R12): a SAME-YEAR rehire finds the year's grant key already consumed by
+   * the previous employment period (whose availability the exit expired), so the fresh period's
+   * pro-rata lands as a period-keyed compensating adjustment instead. Later-year rehires take
+   * the plain grant path.
+   */
+  async regrantOnRehire(employeeId: string): Promise<void> {
+    const employee = await employeeRepository.findById(employeeId);
+    if (employee === null) return;
+    const year = leaveYearOf(cairoToday());
+    const periodNote = `rehire grant (${dateOnlyIso(this.periodStartOf(employee))})`;
+    for (const type of await leaveTypeRepository.listActiveBanked()) {
+      if (await this.grantForEmployee(employee, type, year)) continue;
+      const granted = await this.grantDaysFor(employee, type, year);
+      if (granted <= 0) continue;
+      const already = await LeaveLedgerModel.exists({
+        employeeId: employee._id,
+        balanceTypeId: type._id,
+        year,
+        kind: 'adjust',
+        note: periodNote,
+      });
+      if (already !== null) continue;
+      await this.appendLedger({
+        employeeId: employee._id,
+        typeId: type._id,
+        balanceTypeId: type._id,
+        year,
+        kind: 'adjust',
+        days: granted,
+        requestId: null,
+        effectiveFrom: null,
+        effectiveTo: null,
+        paidBreakdown: [],
+        note: periodNote,
+        by: null,
+      });
+      await this.ensureRow(String(employee._id), String(type._id), year);
+      await LeaveBalanceModel.updateOne(
+        { employeeId: employee._id, typeId: type._id, year },
+        { $inc: { adjusted: granted } },
       ).exec();
     }
   }

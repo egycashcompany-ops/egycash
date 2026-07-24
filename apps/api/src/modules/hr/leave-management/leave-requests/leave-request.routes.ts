@@ -21,6 +21,7 @@ import {
   rejectLeaveRequest,
   returnLeaveRequest,
   submitLeaveRequest,
+  unreconciledLeave,
 } from './leave-request.controller';
 import {
   CancelLeaveRequestSchema,
@@ -74,6 +75,13 @@ export const buildLeaveRequestsRouter = (): Router => {
   );
   // The approvals inbox unions the relationship-based manager queue and the HR queue (R9).
   router.get('/pending-approvals', authenticate, asyncHandler(pendingLeaveApprovals));
+  // Migration §12 ③ — employees left onLeave by manual actions with no leave request.
+  router.get(
+    '/unreconciled',
+    authenticate,
+    authorize('leave.approve'),
+    asyncHandler(unreconciledLeave),
+  );
   router.get(
     '/:id',
     authenticate,

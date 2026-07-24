@@ -46,6 +46,13 @@ export const useLeaveCalendar = (from: string, to: string) =>
     placeholderData: (prev) => prev,
   });
 
+export const useUnreconciledLeave = (enabled: boolean) =>
+  useQuery({
+    queryKey: [...ROOT, 'unreconciled'],
+    queryFn: api.unreconciledLeave,
+    enabled,
+  });
+
 export const useWorkCalendar = (from: string, to: string) =>
   useQuery({
     queryKey: [...ROOT, 'workCalendar', from, to],

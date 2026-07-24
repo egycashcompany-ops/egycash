@@ -429,6 +429,13 @@ export interface LeaveEligibilityDto {
   violations: LeaveRuleViolationDto[];
 }
 
+/** Migration §12 ③ — an employee left `onLeave` by manual actions, with no leave request. */
+export interface UnreconciledLeaveDto {
+  employeeId: string;
+  code: string;
+  fullNameAr: string;
+}
+
 // ── Events (ADR-008 `<module>.<entity>.<event>`) ────────────────────────────
 
 export const HrLeaveEvents = {

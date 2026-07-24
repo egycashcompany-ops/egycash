@@ -15,6 +15,7 @@ import {
   type LeaveTypeDto,
   type Paginated,
   type ReturnLeaveRequest,
+  type UnreconciledLeaveDto,
   type UpdateLeaveType,
   type WorkCalendarDto,
 } from '@ecms/contracts';
@@ -63,6 +64,8 @@ export const attachToLeaveRequest = (id: string, file: File): Promise<LeaveReque
 };
 export const leaveCalendar = (from: string, to: string): Promise<LeaveRequestDto[]> =>
   get<LeaveRequestDto[]>(`/hr/leave-calendar${buildQuery({ from, to })}`);
+export const unreconciledLeave = (): Promise<UnreconciledLeaveDto[]> =>
+  get<UnreconciledLeaveDto[]>('/hr/leave-requests/unreconciled');
 
 // ── Balances, ledger, eligibility (employee-keyed) ──────────────────────────
 export const employeeLeaveBalances = (employeeId: string, year?: number): Promise<LeaveBalanceDto[]> =>

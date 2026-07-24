@@ -98,9 +98,10 @@ describe('seed → password login (regression)', () => {
     // Applications map to the app's real client routes, granted directly to the admin.
     const routes = groups.flatMap((g) => g.applications.map((a) => a.route));
     expect(routes).toContain('/applicants');
+    expect(routes).toContain('/leave');
     expect(routes).toContain('/organization/branches');
     expect(routes).toContain('/organization/applications');
-    expect(routes).toHaveLength(16); // 8 (HR) + 6 (Organization) + 2 (Administration)
+    expect(routes).toHaveLength(17); // 9 (HR) + 6 (Organization) + 2 (Administration)
   });
 
   it('re-running the seed is idempotent — no duplicate categories/applications/grants', async () => {
@@ -112,7 +113,7 @@ describe('seed → password login (regression)', () => {
       .set('Authorization', `Bearer ${token}`);
     const groups = (res.body as { data: { applications: unknown[] }[] }).data;
     expect(groups).toHaveLength(3);
-    expect(groups.reduce((n, g) => n + g.applications.length, 0)).toBe(16);
+    expect(groups.reduce((n, g) => n + g.applications.length, 0)).toBe(17);
   });
 
   it('the seeded HR user also logs in with email/password', async () => {

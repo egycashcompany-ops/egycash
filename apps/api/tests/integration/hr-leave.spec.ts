@@ -53,7 +53,7 @@ const resolveMongoUri = async (): Promise<string> => {
     return url.toString();
   }
   replSet = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
-  return `${replSet.getUri()}${dbName}`;
+  return replSet.getUri(dbName);
 };
 
 const mkUser = async (email: string): Promise<string> => {

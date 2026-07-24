@@ -707,6 +707,33 @@ class EmployeeService {
       // audit source unavailable — degrade (BD-007)
     }
 
+    // 4 — Leave (approved/active/completed) via dynamic import: leave-management depends on
+    // employees, so the timeline reaches the leave feature the same acyclic way it reaches the
+    // Employee File (leave design §1.3; absent ⇒ degrade, BD-007).
+    try {
+      const { leaveRequestRepository } = await import(
+        '../../leave-management/leave-requests/leave-request.repository'
+      );
+      const leave = await leaveRequestRepository.listRequests(
+        { page: 1, pageSize: 100, employeeId: id },
+        undefined,
+      );
+      for (const r of leave.items) {
+        if (r.status !== 'approved' && r.status !== 'active' && r.status !== 'completed') continue;
+        items.push({
+          at: r.startDate.toISOString(),
+          source: 'leave',
+          type: r.typeCode,
+          refType: 'leaveRequest',
+          refId: String(r._id),
+          detail: `${r.startDate.toISOString().slice(0, 10)} → ${r.endDate.toISOString().slice(0, 10)} (${String(r.days)}d)`,
+          by: r.createdBy === null ? null : String(r.createdBy),
+        });
+      }
+    } catch {
+      // leave source unavailable — degrade (BD-007)
+    }
+
     return items.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
   }
 

@@ -18,6 +18,7 @@ import {
   type ListLeaveRequestsQuery,
   type Paginated,
   type ReturnLeaveRequest,
+  type UnreconciledLeaveDto,
 } from '@ecms/contracts';
 import {
   BusinessRuleError,
@@ -861,6 +862,29 @@ class LeaveRequestService {
 
   async calendar(from: Date, to: Date, scope: ScopeSelector): Promise<LeaveRequestDoc[]> {
     return leaveRequestRepository.findSpansInRange(toDateOnly(from), toDateOnly(to), scope);
+  }
+
+  /**
+   * Migration §12 ③ — employees left `onLeave` by pre-module manual actions, with no leave
+   * request: HR records a retroactive request or ends the leave; the module never guesses.
+   */
+  async unreconciled(scope: ScopeSelector): Promise<UnreconciledLeaveDto[]> {
+    const onLeave = await employeeRepository.listEmployees({
+      filter: { status: 'onLeave' },
+      page: 1,
+      pageSize: 200,
+      scope,
+    });
+    const covered = await leaveRequestRepository.employeeIdsWithOpenLeave(
+      onLeave.items.map((e) => String(e._id)),
+    );
+    return onLeave.items
+      .filter((e) => !covered.has(String(e._id)))
+      .map((e) => ({
+        employeeId: String(e._id),
+        code: e.code,
+        fullNameAr: e.personal.fullNameAr,
+      }));
   }
 
   async eligibility(

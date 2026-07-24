@@ -926,6 +926,41 @@ class EmployeeActionService {
     }
   }
 
+  // ── Leave-module seam (frozen leave design §1.2) ──────────────────────────
+
+  /**
+   * Internal entry for the Leave module: drive `leaveStart`/`leaveEnd` attributed to the leave
+   * APPROVER (the leave service already authorized the decision — organization scope here).
+   * Throws exactly like the HTTP paths; the caller records the outcome instead of rolling the
+   * leave back (leave design R5: the absence is a fact, the status is a projection).
+   */
+  async driveLeaveAction(
+    byUserId: string,
+    employeeId: string,
+    type: 'leaveStart' | 'leaveEnd',
+    effectiveDate: Date,
+    note: string,
+  ): Promise<void> {
+    const employee = await employeeRepository.findRawById(employeeId);
+    if (employee === null) throw new BusinessRuleError('employee not found');
+    // The engine's create path reads ONLY userId from the context (verified invariant).
+    const ctx = { userId: byUserId } as AuthContext;
+    const scope: ScopeSelector = {
+      scope: 'organization',
+      userId: byUserId,
+      branchId: null,
+      departmentId: null,
+      sectionId: null,
+    };
+    const input: EmploymentAction =
+      type === 'leaveStart'
+        ? { type: 'leaveStart', effectiveDate, note, version: employee.__v }
+        : { type: 'leaveEnd', effectiveDate, note, version: employee.__v };
+    await this.createEmploymentAction(ctx, employeeId, input, scope, {
+      canManageCompensation: false,
+    });
+  }
+
   // ── Cancel / list / scheduler ─────────────────────────────────────────────
 
   /**

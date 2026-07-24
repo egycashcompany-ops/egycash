@@ -95,6 +95,23 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
     return res.modifiedCount;
   }
 
+  /** The employee a login belongs to (self-service own-resolution, leave design C1-R). */
+  async findByUserIdSystem(userId: string): Promise<EmployeeDoc | null> {
+    if (!Types.ObjectId.isValid(userId)) return null;
+    return this.model
+      .findOne({ userId: new Types.ObjectId(userId), isDeleted: false })
+      .lean<EmployeeDoc>()
+      .exec();
+  }
+
+  /** Every employed employee (probation/active/onLeave/suspended) — leave grants iterate this. */
+  async listEmployedSystem(): Promise<EmployeeDoc[]> {
+    return this.model
+      .find({ status: { $in: [...EMPLOYED_STATUSES] }, isDeleted: false })
+      .lean<EmployeeDoc[]>()
+      .exec();
+  }
+
   /** Employees whose probation deadline falls inside the window (the reminder task). */
   async findProbationEndingSystem(from: Date, to: Date): Promise<EmployeeDoc[]> {
     return this.model

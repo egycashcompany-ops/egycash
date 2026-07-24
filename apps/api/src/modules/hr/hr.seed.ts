@@ -9,6 +9,7 @@ import {
   HrEmployeeTemplates,
   HrHiringDocumentsTemplates,
   HrInterviewTemplates,
+  HrLeaveTemplates,
   HrOfferTemplates,
   type CreateApplicantSource,
   type CreateEvaluationPhase,
@@ -21,6 +22,8 @@ import { interviewStageService } from './recruitment/interviews';
 import { ensureEvaluationCategory, evaluationPhaseService } from './recruitment/evaluations';
 import { ensureHiringDocsCategory, hiringDocumentTypeService } from './recruitment/hiring-documents';
 import { migrateEmployeesToRegistry } from './employee-management/employees';
+import { ensureLeaveAttachmentsCategory } from './leave-management/leave-requests';
+import { migrateLeaveModule } from './leave-management/leave.migration';
 
 const SOURCES: CreateApplicantSource[] = [
   { key: 'internalHr', name: { en: 'Internal HR', ar: 'الموارد البشرية الداخلية' }, kind: 'manual', requiresDetail: false },
@@ -274,6 +277,114 @@ const ensureEmployeeFileTemplates = async (): Promise<void> => {
   });
 };
 
+const ensureLeaveTemplates = async (): Promise<void> => {
+  const ensure = notificationTemplateService.ensure.bind(notificationTemplateService);
+  await ensure({
+    key: HrLeaveTemplates.RequestSubmitted,
+    category: 'hr',
+    priority: 'normal',
+    subject: { ar: 'طلب إجازة جديد', en: 'New leave request' },
+    body: {
+      ar: 'الموظف {{employeeCode}} طلب إجازة {{typeCode}} بدءًا من {{startDate}} ({{days}} يوم) — بانتظار قرارك.',
+      en: 'Employee {{employeeCode}} requested {{typeCode}} leave starting {{startDate}} ({{days}} day(s)) — awaiting your decision.',
+    },
+    channels: ['inApp', 'email'],
+    variables: ['employeeCode', 'typeCode', 'startDate', 'days'],
+    defaultExpiryHours: null,
+  });
+  await ensure({
+    key: HrLeaveTemplates.RequestApproved,
+    category: 'hr',
+    priority: 'normal',
+    subject: { ar: 'تمت الموافقة على إجازتك', en: 'Your leave was approved' },
+    body: {
+      ar: 'تمت الموافقة على إجازة {{typeCode}} بدءًا من {{startDate}} ({{days}} يوم).',
+      en: 'Your {{typeCode}} leave starting {{startDate}} ({{days}} day(s)) was approved.',
+    },
+    channels: ['inApp', 'email'],
+    variables: ['typeCode', 'startDate', 'days'],
+    defaultExpiryHours: null,
+  });
+  await ensure({
+    key: HrLeaveTemplates.RequestRejected,
+    category: 'hr',
+    priority: 'high',
+    subject: { ar: 'تم رفض طلب الإجازة', en: 'Your leave request was rejected' },
+    body: {
+      ar: 'تم رفض طلب إجازة {{typeCode}} بدءًا من {{startDate}}.',
+      en: 'Your {{typeCode}} leave request starting {{startDate}} was rejected.',
+    },
+    channels: ['inApp', 'email'],
+    variables: ['typeCode', 'startDate', 'days'],
+    defaultExpiryHours: null,
+  });
+  await ensure({
+    key: HrLeaveTemplates.RequestCancelled,
+    category: 'hr',
+    priority: 'normal',
+    subject: { ar: 'تم إلغاء طلب إجازة', en: 'Leave request cancelled' },
+    body: {
+      ar: 'تم إلغاء طلب إجازة {{typeCode}} للموظف {{employeeCode}}.',
+      en: 'The {{typeCode}} leave request of employee {{employeeCode}} was cancelled.',
+    },
+    channels: ['inApp'],
+    variables: ['employeeCode', 'typeCode'],
+    defaultExpiryHours: null,
+  });
+  await ensure({
+    key: HrLeaveTemplates.ApprovalReminder,
+    category: 'hr',
+    priority: 'high',
+    subject: { ar: 'طلب إجازة بانتظار قرار', en: 'Leave request awaiting decision' },
+    body: {
+      ar: 'طلب إجازة {{typeCode}} للموظف {{employeeCode}} ({{days}} يوم) ما زال بانتظار القرار.',
+      en: 'The {{typeCode}} leave request of employee {{employeeCode}} ({{days}} day(s)) is still awaiting a decision.',
+    },
+    channels: ['inApp', 'email'],
+    variables: ['employeeCode', 'typeCode', 'days'],
+    defaultExpiryHours: null,
+  });
+  await ensure({
+    key: HrLeaveTemplates.ReturnDue,
+    category: 'hr',
+    priority: 'normal',
+    subject: { ar: 'عودة من إجازة غدًا', en: 'Return from leave due tomorrow' },
+    body: {
+      ar: 'الموظف {{employeeCode}} يعود من إجازة {{typeCode}} غدًا.',
+      en: 'Employee {{employeeCode}} returns from {{typeCode}} leave tomorrow.',
+    },
+    channels: ['inApp'],
+    variables: ['employeeCode', 'typeCode'],
+    defaultExpiryHours: null,
+  });
+  await ensure({
+    key: HrLeaveTemplates.LongLeaveStarted,
+    category: 'hr',
+    priority: 'high',
+    subject: { ar: 'بدء إجازة طويلة', en: 'Long leave started' },
+    body: {
+      ar: 'بدأت إجازة {{typeCode}} للموظف {{employeeCode}}: {{detail}}',
+      en: '{{typeCode}} leave for employee {{employeeCode}}: {{detail}}',
+    },
+    channels: ['inApp', 'email'],
+    variables: ['employeeCode', 'typeCode', 'detail'],
+    defaultExpiryHours: null,
+  });
+  await ensure({
+    key: HrLeaveTemplates.BalanceAdjusted,
+    category: 'hr',
+    priority: 'normal',
+    subject: { ar: 'تعديل رصيد الإجازات', en: 'Leave balance adjusted' },
+    body: {
+      ar: 'تم تعديل رصيد إجازة {{typeCode}} لعام {{year}} بمقدار {{days}} يوم.',
+      en: 'Your {{typeCode}} leave balance for {{year}} was adjusted by {{days}} day(s).',
+    },
+    channels: ['inApp', 'email'],
+    variables: ['typeCode', 'days', 'year'],
+    defaultExpiryHours: null,
+  });
+};
+
 export const seedHrRecruitment = async (): Promise<void> => {
   for (const source of SOURCES) {
     await applicantSourceService.ensure(source);
@@ -292,4 +403,9 @@ export const seedHrRecruitment = async (): Promise<void> => {
   await ensureHiringDocumentsSeeds();
   // Employee-registry boot migration (frozen design §10) — idempotent, legacy docs only.
   await migrateEmployeesToRegistry();
+  // Leave Management (frozen leave design §12): templates, attachments category, types,
+  // holidays, current-year grants, ESS role.
+  await ensureLeaveTemplates();
+  await ensureLeaveAttachmentsCategory();
+  await migrateLeaveModule();
 };

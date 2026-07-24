@@ -23,6 +23,12 @@ export interface BaseRepositoryOptions {
   sectionField?: string;
   /** Collection carries the standard `assignees` array (Review R17). */
   hasAssignees?: boolean;
+  /**
+   * Dot path of a denormalized SUBJECT-user field (Leave design C1-R): `own` scope then
+   * matches records the caller created OR is the subject of (e.g. leave requests carry
+   * `employeeUserId`). Opt-in per collection, like the org-scope fields above.
+   */
+  ownerUserField?: string;
   /** Business data soft-deletes by default; operational collections may opt out. */
   softDelete?: boolean;
 }
@@ -82,11 +88,14 @@ export class BaseRepository<T extends BaseDocFields> {
     if (selector.scope === 'section') {
       return this.orgScopeFilter(this.options.sectionField, selector.sectionId);
     }
-    // own: records the user created or is assigned to (Review R17)
+    // own: records the user created, is assigned to (Review R17), or is the subject of (C1-R)
     const userId = new Types.ObjectId(selector.userId);
     const ors: FilterQuery<T>[] = [{ createdBy: userId } as FilterQuery<T>];
     if (this.options.hasAssignees === true) {
       ors.push({ 'assignees.userId': userId } as FilterQuery<T>);
+    }
+    if (this.options.ownerUserField !== undefined) {
+      ors.push({ [this.options.ownerUserField]: userId } as FilterQuery<T>);
     }
     return { $or: ors } as FilterQuery<T>;
   }

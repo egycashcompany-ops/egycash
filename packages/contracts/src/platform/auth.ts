@@ -53,6 +53,8 @@ export interface MeDto {
   name: { firstName: LocalizedString; lastName: LocalizedString };
   locale: 'ar' | 'en';
   branchId: string | null;
+  /** The Employee this login belongs to (ADR-017) — the self-service subject (leave C1-R). */
+  employeeId: string | null;
   /** Effective permission → widest granted scope (ADR-004, ADR-015). */
   permissions: Record<string, DataScope>;
   /** Holds a protected system role or a break-glass permission — e.g. super-admin (Review R13). */

@@ -624,6 +624,7 @@ class AuthService {
       name: { firstName: user.profile.firstName, lastName: user.profile.lastName },
       locale: user.locale,
       branchId: user.organization.branchId === null ? null : String(user.organization.branchId),
+      employeeId: user.employeeId === null ? null : String(user.employeeId),
       permissions: effective.permissions,
       isPrivileged: effective.isPrivileged,
       flags,

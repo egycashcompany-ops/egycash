@@ -11,6 +11,28 @@ its entry here in the same PR.
 
 ### Added
 
+- **HR — Leave Management module (frozen design: `docs/12-planning/leave-management-design.md`).**
+  Law and policy live as editable configuration: the seeded leave-type catalog models the
+  Egyptian Labor Law defaults (annual 15/21/30 with age-50 step, casual deducted from annual,
+  tiered-pay sick leave with a certificate gate, maternity, pilgrimage, unpaid) — **HR must
+  verify the amounts before production (L4)**. The append-only leave ledger is the truth for
+  every balance movement, with an atomic reservation gate on the balance cache, frozen
+  `paidBreakdown` snapshots on consumption (the Payroll read contract) and pro-rated grants at
+  boot, year-end and hire time. Requests flow submit → dynamic current-manager approval
+  (relationship-based — line managers need no leave permission) → optional HR step, with HR
+  override, synchronous catch-up for backdated spans, soft-rule override for HR on-behalf
+  filing (L8), early return, cancellation, attachments via the Files platform and a live
+  eligibility preflight. Status-affecting types (maternity/Hajj/long unpaid) drive
+  `leaveStart`/`leaveEnd` through the Personnel Actions engine and never roll back when a drive
+  fails. The shared `work-calendar` feature (Fri+Sat weekend setting + holiday catalog, Cairo
+  business dates) is Attendance-ready. Web ships the Leave app (My Leave + wizard, approvals
+  inbox, team calendar, HR administration) and the employee profile's Leave tab; the first
+  self-service surface arrives with the seeded **Employee Self-Service** role (own-scoped),
+  `MeDto.employeeId`, the `ownerUserField` own-scope repository option and the
+  `hr.employee.loginLinked` backfill event (C1-R). Four scheduler tasks, eight notification
+  templates, four audit actions, exit settlement and the deprecated manual leave dialogs
+  removed from the Employees UI complete the module.
+
 - **HR — Employee Management module (frozen design: `docs/12-planning/employee-module-design.md`).**
   The employee becomes the post-hire system of record, moved out of Recruitment into
   `modules/hr/employee-management` (URLs and permission keys unchanged).

@@ -44,6 +44,7 @@ const CATALOG: CategoryDef[] = [
       { en: 'Evaluations', ar: 'التقييمات', route: '/evaluations', icon: 'clipboard' },
       { en: 'Job Offers', ar: 'عروض العمل', route: '/job-offers', icon: 'offer' },
       { en: 'Employees', ar: 'الموظفون', route: '/employees', icon: 'badge' },
+      { en: 'Leave', ar: 'الإجازات', route: '/leave', icon: 'calendar' },
       { en: 'Hiring Documents', ar: 'مستندات التعيين', route: '/hiring-documents', icon: 'file' },
       { en: 'Employee Files', ar: 'ملفات الموظفين', route: '/employee-files', icon: 'folder' },
     ],

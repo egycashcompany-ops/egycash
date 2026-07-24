@@ -15,7 +15,7 @@ import { LoadingState } from '../../../../../shared/ui/states/LoadingState';
 import { ErrorState } from '../../../../../shared/ui/states/ErrorState';
 import { EmptyState } from '../../../../../shared/ui/states/EmptyState';
 import { formatDate, formatDateTime } from '../../../../../shared/lib/format';
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { EmployeeStatusBadge } from '../components/EmployeeStatusBadge';
 import { EmploymentView } from '../components/EmploymentView';
 import { EmployeeAccountCard } from '../components/EmployeeAccountCard';
@@ -28,8 +28,11 @@ import { EmployeeFileDocuments } from '../../employee-files/components/EmployeeF
 import { useEmployeeFiles } from '../../employee-files/api/employee-file-queries';
 import { useEmployee, useEmployeeActions, useEmployeeTimeline } from '../api/employee-queries';
 
-const TABS = ['overview', 'personal', 'employment', 'documents', 'timeline', 'account'] as const;
+const TABS = ['overview', 'personal', 'employment', 'leave', 'documents', 'timeline', 'account'] as const;
 type Tab = (typeof TABS)[number];
+
+// The Leave tab is owned by the Leave module and lazy-loaded (additive tab, Employee design F6).
+const EmployeeLeaveTab = lazy(() => import('../../../leave-management/components/EmployeeLeaveTab'));
 
 const ProbationCard = ({ e }: { e: EmployeeDto }): JSX.Element | null => {
   const t = useT();
@@ -300,6 +303,11 @@ export const EmployeeProfilePage = (): JSX.Element => {
         </div>
       )}
       {tab === 'employment' && <ActionHistory employee={e} />}
+      {tab === 'leave' && (
+        <Suspense fallback={<LoadingState />}>
+          <EmployeeLeaveTab employee={e} />
+        </Suspense>
+      )}
       {tab === 'documents' && <DocumentsTab e={e} />}
       {tab === 'timeline' && <TimelineTab e={e} />}
       {tab === 'account' && (

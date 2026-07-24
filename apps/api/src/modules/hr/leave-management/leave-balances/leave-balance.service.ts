@@ -510,6 +510,19 @@ class LeaveBalanceService {
     return processed;
   }
 
+  /**
+   * Hire/rehire grant (§4): employees who join AFTER the boot/year-end run get their pro-rated
+   * current-year grant immediately (event-driven; idempotent via the ledger grant key).
+   */
+  async grantCurrentYearFor(employeeId: string): Promise<void> {
+    const employee = await employeeRepository.findById(employeeId);
+    if (employee === null) return;
+    const year = leaveYearOf(cairoToday());
+    for (const type of await leaveTypeRepository.listActiveBanked()) {
+      await this.grantForEmployee(employee, type, year);
+    }
+  }
+
   /** Exit closure (R12): expire whatever availability remains, every year. */
   async expireAllFor(employeeId: string, note: string): Promise<void> {
     const rows = await LeaveBalanceModel.find({ employeeId: new Types.ObjectId(employeeId) })

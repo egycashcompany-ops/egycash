@@ -295,6 +295,28 @@ export const hrModule: ModuleManifest = {
         }
       },
     },
+    {
+      // Mid-year joiners get their pro-rated grant immediately (leave design §4).
+      event: 'hr.employee.created',
+      handlerId: 'leave.grantOnHire',
+      handler: async (envelope) => {
+        const payload = envelope.payload as { employeeId?: string };
+        if (typeof payload.employeeId === 'string') {
+          await leaveBalanceService.grantCurrentYearFor(payload.employeeId);
+        }
+      },
+    },
+    {
+      // Rehires open a fresh pro-rated grant in the new employment period (leave design R12).
+      event: 'hr.employee.rehired',
+      handlerId: 'leave.grantOnRehire',
+      handler: async (envelope) => {
+        const payload = envelope.payload as { employeeId?: string };
+        if (typeof payload.employeeId === 'string') {
+          await leaveBalanceService.grantCurrentYearFor(payload.employeeId);
+        }
+      },
+    },
   ],
   scheduledTasks: [
     {

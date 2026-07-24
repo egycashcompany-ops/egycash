@@ -320,7 +320,7 @@ beforeAll(async () => {
   const titleRes = await request(app)
     .post('/api/v1/platform/job-titles')
     .set('Authorization', `Bearer ${adminToken}`)
-    .send({ code: 'JT-OPS-1', name: { ar: 'أخصائي', en: 'Specialist' } });
+    .send({ code: 'JT-OPS-1', name: { ar: 'أخصائي', en: 'Specialist' }, jobGrade: 'G5' });
   expect(titleRes.status).toBe(201);
   JOB_TITLE_ID = (titleRes.body as { data: { id: string } }).data.id;
 }, 180_000);

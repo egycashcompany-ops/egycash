@@ -73,7 +73,8 @@ export interface EmployeeTimelineEntryDto {
 
 /** The linked recruitment history (BD-008 — "link all applicant history"). */
 export interface EmployeeFileLinksDto {
-  applicantId: string;
+  /** null for a DIRECT-registration employee (no recruitment history). */
+  applicantId: string | null;
   /** null when the applicant was a direct intake with no linked Job Request. */
   jobRequisitionId: string | null;
   screeningId: string | null;
@@ -103,7 +104,8 @@ export interface EmployeeFileDto {
   id: string;
   employeeId: string;
   employeeCode: string;
-  applicantId: string;
+  /** null for a DIRECT-registration employee. */
+  applicantId: string | null;
   branchId: string;
   status: EmployeeFileStatus;
   links: EmployeeFileLinksDto;

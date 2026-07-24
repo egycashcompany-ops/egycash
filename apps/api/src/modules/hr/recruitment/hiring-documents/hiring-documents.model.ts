@@ -29,7 +29,8 @@ export interface HiringDocumentItem {
 export interface HiringDocumentsDoc extends BaseDocFields {
   employeeId: Types.ObjectId;
   employeeCode: string;
-  applicantId: Types.ObjectId;
+  /** null for a DIRECT-registration employee. */
+  applicantId: Types.ObjectId | null;
   branchId: Types.ObjectId;
   /** Reporting manager, denormalized from the employee — null when the accepted offer set none. */
   managerId: Types.ObjectId | null;
@@ -59,7 +60,7 @@ const hiringDocumentsSchema = new Schema<HiringDocumentsDoc>(
   {
     employeeId: { type: Schema.Types.ObjectId, required: true },
     employeeCode: { type: String, required: true },
-    applicantId: { type: Schema.Types.ObjectId, required: true },
+    applicantId: { type: Schema.Types.ObjectId, default: null },
     branchId: { type: Schema.Types.ObjectId, required: true },
     managerId: { type: Schema.Types.ObjectId, default: null },
     status: { type: String, enum: HIRING_DOCUMENTS_STATUSES, required: true, default: 'inProgress' },

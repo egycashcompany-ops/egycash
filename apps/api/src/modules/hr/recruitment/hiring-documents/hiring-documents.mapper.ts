@@ -30,7 +30,7 @@ export const toHiringDocumentsDto = (
   id: String(doc._id),
   employeeId: String(doc.employeeId),
   employeeCode: doc.employeeCode,
-  applicantId: String(doc.applicantId),
+  applicantId: doc.applicantId === null ? null : String(doc.applicantId),
   branchId: String(doc.branchId),
   status: doc.status,
   documents: doc.documents.map((d) => ({

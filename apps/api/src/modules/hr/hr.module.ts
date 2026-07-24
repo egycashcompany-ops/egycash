@@ -12,9 +12,10 @@ import { buildScreeningsRouter } from './recruitment/screening';
 import { buildInterviewStagesRouter, buildInterviewsRouter } from './recruitment/interviews';
 import { buildEvaluationPhasesRouter, buildEvaluationsRouter } from './recruitment/evaluations';
 import { buildJobOffersRouter, jobOfferService } from './recruitment/job-offers';
-import { buildEmployeesRouter } from './recruitment/employees';
+import { buildEmployeesRouter, employeeService } from './employee-management/employees';
+import { buildEmployeeActionsRouter, employeeActionService } from './employee-management/employee-actions';
 import { buildHiringDocumentTypesRouter, buildHiringDocumentsRouter } from './recruitment/hiring-documents';
-import { buildEmployeeFilesRouter } from './recruitment/employee-file';
+import { buildEmployeeFilesRouter } from './employee-management/employee-file';
 import { seedHrRecruitment } from './hr.seed';
 
 const applicantPermissions = declarePermissions(
@@ -104,15 +105,31 @@ const jobOfferPermissions = declarePermissions(
   ],
 );
 
-// Employees sub-module. `create` hires an applicant from an accepted offer; `view` reads the
-// resulting records; `changeStatus` drives the post-hire lifecycle (leave / suspend / reinstate /
-// terminate), enforced against the shared transition matrix and recorded as a status trail.
+// Employee Management — the registry (frozen design docs/12-planning/employee-module-design.md).
+// `create` hires from an accepted offer; `registerDirect` onboards without a pipeline (D4);
+// `editPersonal` maintains the owned personal data; the Personnel Actions engine is gated per
+// group: `manageActions` (promotion/transfer/probation/suspension/leave), `manageCompensation` +
+// `viewCompensation` (salary write/read split), `exit` (typed exits), `rehire` +
+// `rehireOverride` (D2). `changeStatus` remains for the deprecated status alias (one release).
+// `viewSensitive` is declared for the future unmasked-NID surface (unmasked egress is deferred
+// platform-wide, OQ-27).
 const employeePermissions = declarePermissions(
   'hr',
   'employee',
   { en: 'employees', ar: 'الموظفين' },
   ['view', 'create'],
-  [{ action: 'changeStatus', name: { en: 'Change employee status', ar: 'تغيير حالة الموظف' } }],
+  [
+    { action: 'registerDirect', name: { en: 'Register employee directly', ar: 'تسجيل موظف مباشرة' } },
+    { action: 'editPersonal', name: { en: 'Edit employee personal data', ar: 'تعديل البيانات الشخصية للموظف' } },
+    { action: 'manageActions', name: { en: 'Manage personnel actions', ar: 'إدارة الإجراءات الوظيفية' } },
+    { action: 'manageCompensation', name: { en: 'Manage employee compensation', ar: 'إدارة أجر الموظف' } },
+    { action: 'viewCompensation', name: { en: 'View employee compensation', ar: 'عرض أجر الموظف' } },
+    { action: 'exit', name: { en: 'Record employee exit', ar: 'تسجيل انتهاء خدمة الموظف' } },
+    { action: 'rehire', name: { en: 'Rehire an exited employee', ar: 'إعادة تعيين موظف منتهي الخدمة' } },
+    { action: 'rehireOverride', name: { en: 'Override rehire ineligibility', ar: 'تجاوز عدم أهلية إعادة التعيين' } },
+    { action: 'viewSensitive', name: { en: 'View sensitive employee data', ar: 'عرض البيانات الحساسة للموظف' } },
+    { action: 'changeStatus', name: { en: 'Change employee status (deprecated alias)', ar: 'تغيير حالة الموظف (مسار قديم)' } },
+  ],
 );
 
 // Stage 6 — Hiring Documents. `upload` covers first upload + versioned replacement; `complete`
@@ -180,6 +197,7 @@ export const hrModule: ModuleManifest = {
     { prefix: '/hr/evaluations', router: buildEvaluationsRouter() },
     { prefix: '/hr/evaluation-phases', router: buildEvaluationPhasesRouter() },
     { prefix: '/hr/job-offers', router: buildJobOffersRouter() },
+    { prefix: '/hr/employees', router: buildEmployeeActionsRouter() },
     { prefix: '/hr/employees', router: buildEmployeesRouter() },
     { prefix: '/hr/hiring-documents', router: buildHiringDocumentsRouter() },
     { prefix: '/hr/hiring-document-types', router: buildHiringDocumentTypesRouter() },
@@ -196,6 +214,7 @@ export const hrModule: ModuleManifest = {
     'hr_evaluation_phases',
     'hr_job_offers',
     'hr_employees',
+    'hr_employee_actions',
     'hr_hiring_documents',
     'hr_hiring_document_types',
     'hr_employee_files',
@@ -210,6 +229,26 @@ export const hrModule: ModuleManifest = {
       ownerService: 'hr',
       handler: async () => {
         await jobOfferService.expireOverdue();
+      },
+    },
+    {
+      // Personnel Actions: apply due SCHEDULED actions in effective-date order (frozen design §3).
+      key: 'hr.employeeActions.applyScheduled',
+      description: 'Apply due scheduled personnel actions',
+      cron: '*/10 * * * *',
+      ownerService: 'hr',
+      handler: async () => {
+        await employeeActionService.applyDueScheduled();
+      },
+    },
+    {
+      // Probation reminders (D1): notify HR + the manager before a probation deadline lapses.
+      key: 'hr.employees.probationReminder',
+      description: 'Remind about probations ending within the next 7 days',
+      cron: '0 6 * * *',
+      ownerService: 'hr',
+      handler: async () => {
+        await employeeService.remindEndingProbations();
       },
     },
   ],

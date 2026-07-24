@@ -121,6 +121,9 @@ const regEmployee = async (over: Record<string, unknown> = {}, male = true): Pro
         startDate: '2024-01-01T00:00:00.000Z',
         ...over,
       },
+      // The REAL hire date (defaults to now when omitted): entitlement steps and minService
+      // read the employment period, so the suite back-dates it for determinism.
+      hiringDate: '2024-01-01T00:00:00.000Z',
     });
   expect(res.status).toBe(201);
   await settle();
@@ -595,11 +598,12 @@ describe('status-affecting leave (L2/R5) + exit settlement (R12)', () => {
     expect(active.statusDriveOutcome).toBe('applied');
     expect((await rereadEmployee(emp.id)).status).toBe('onLeave');
 
-    // Early return tomorrow: completed + status projected back (base status).
+    // Early return effective TODAY (a future return date would schedule the leaveEnd action
+    // for that date instead — R5 semantics): completed + status projected back immediately.
     const returned = await request(app)
       .post(`/api/v1/hr/leave-requests/${active.id}/return`)
       .set('Authorization', `Bearer ${managerAuth.token}`)
-      .send({ actualReturnDate: dayOffsetIso(1), version: active.version });
+      .send({ actualReturnDate: dayOffsetIso(0), version: active.version });
     expect(returned.status).toBe(200);
     expect((returned.body.data as LeaveRequestDto).status).toBe('completed');
     expect((await rereadEmployee(emp.id)).status).not.toBe('onLeave');

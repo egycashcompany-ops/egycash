@@ -203,6 +203,17 @@ const rereadEmployee = async (id: string): Promise<EmployeeDto> =>
   (await request(app).get(`/api/v1/hr/employees/${id}`).set('Authorization', `Bearer ${adminToken}`)).body
     .data as EmployeeDto;
 
+/** First day-offset ≥ `from` that is COUNTABLE for the type (skips weekends/holidays — fixed
+ *  offsets land on Fri/Sat depending on the run date). */
+const countableOffset = async (employeeId: string, tId: string, from: number): Promise<number> => {
+  for (let off = from; off < from + 10; off += 1) {
+    const day = dayOffsetIso(off);
+    const probe = await eligibility(employeeId, { typeId: tId, start: day, end: day });
+    if (probe.days > 0) return off;
+  }
+  throw new Error(`no countable day within 10 days of offset ${String(from)}`);
+};
+
 /** Year-boundary guard: give the NEXT leave-year some annual headroom so spans that spill past
  *  Dec 31 (when CI runs late in the year) can still reserve their split portions. */
 const grantNextYearHeadroom = async (employeeId: string): Promise<void> => {
@@ -372,13 +383,14 @@ describe('request lifecycle — self-service + relationship approvals (§3, R9, 
   });
 
   it('walks submit → pendingManager → manager approves by RELATIONSHIP (no leave permission)', async () => {
+    const day = await countableOffset(emp.id, typeId('ANNUAL'), 14);
     const probe = await eligibility(emp.id, {
       typeId: typeId('ANNUAL'),
-      start: dayOffsetIso(14),
-      end: dayOffsetIso(15),
+      start: dayOffsetIso(day),
+      end: dayOffsetIso(day),
     }, ess.token);
     const res = await submit(
-      { typeId: typeId('ANNUAL'), startDate: dayOffsetIso(14), endDate: dayOffsetIso(15) },
+      { typeId: typeId('ANNUAL'), startDate: dayOffsetIso(day), endDate: dayOffsetIso(day) },
       ess.token,
     );
     expect(res.status).toBe(201);
@@ -405,16 +417,19 @@ describe('request lifecycle — self-service + relationship approvals (§3, R9, 
   });
 
   it('rejects overlapping submissions (R2)', async () => {
+    // The first test's request occupies its probed day — any span crossing it must 422.
+    const day = await countableOffset(emp.id, typeId('ANNUAL'), 14);
     const res = await submit(
-      { typeId: typeId('ANNUAL'), startDate: dayOffsetIso(14), endDate: dayOffsetIso(16) },
+      { typeId: typeId('ANNUAL'), startDate: dayOffsetIso(day - 1), endDate: dayOffsetIso(day + 1) },
       ess.token,
     );
     expect(res.status).toBe(422);
   });
 
   it('blocks the subject from deciding their own request (C7)', async () => {
+    const day = await countableOffset(emp.id, typeId('ANNUAL'), 30);
     const res = await submit(
-      { typeId: typeId('ANNUAL'), startDate: dayOffsetIso(30), endDate: dayOffsetIso(31) },
+      { typeId: typeId('ANNUAL'), startDate: dayOffsetIso(day), endDate: dayOffsetIso(day) },
       ess.token,
     );
     expect(res.status).toBe(201);
@@ -428,8 +443,9 @@ describe('request lifecycle — self-service + relationship approvals (§3, R9, 
 
   it('releases the reservation on rejection (§4)', async () => {
     const before = await annualBalance(emp.id);
+    const day = await countableOffset(emp.id, typeId('ANNUAL'), 45);
     const res = await submit(
-      { typeId: typeId('ANNUAL'), startDate: dayOffsetIso(40), endDate: dayOffsetIso(41) },
+      { typeId: typeId('ANNUAL'), startDate: dayOffsetIso(day), endDate: dayOffsetIso(day) },
       ess.token,
     );
     expect(res.status).toBe(201);
@@ -442,8 +458,9 @@ describe('request lifecycle — self-service + relationship approvals (§3, R9, 
 
   it('lets the requester cancel a pending request, releasing days', async () => {
     const before = await annualBalance(emp.id);
+    const day = await countableOffset(emp.id, typeId('ANNUAL'), 60);
     const res = await submit(
-      { typeId: typeId('ANNUAL'), startDate: dayOffsetIso(50), endDate: dayOffsetIso(51) },
+      { typeId: typeId('ANNUAL'), startDate: dayOffsetIso(day), endDate: dayOffsetIso(day) },
       ess.token,
     );
     expect(res.status).toBe(201);
@@ -473,7 +490,7 @@ describe('request lifecycle — self-service + relationship approvals (§3, R9, 
 
   it('blocks an over-balance request through the atomic gate (L5)', async () => {
     const res = await submit(
-      { typeId: typeId('ANNUAL'), startDate: dayOffsetIso(60), endDate: dayOffsetIso(200), employeeId: emp.id },
+      { typeId: typeId('ANNUAL'), startDate: dayOffsetIso(80), endDate: dayOffsetIso(220), employeeId: emp.id },
       adminToken,
     );
     expect(res.status).toBe(422);
@@ -619,8 +636,9 @@ describe('status-affecting leave (L2/R5) + exit settlement (R12)', () => {
   it('settles open leave and expires balances when the employee exits (R12)', async () => {
     const emp = await regEmployee({ managerId: managerAuth.userId });
     const ess = await activateEssLogin(emp, ESS_ROLE_ID);
+    const day = await countableOffset(emp.id, typeId('ANNUAL'), 30);
     const res = await submit(
-      { typeId: typeId('ANNUAL'), startDate: dayOffsetIso(30), endDate: dayOffsetIso(31) },
+      { typeId: typeId('ANNUAL'), startDate: dayOffsetIso(day), endDate: dayOffsetIso(day) },
       ess.token,
     );
     expect(res.status).toBe(201);

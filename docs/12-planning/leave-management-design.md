@@ -37,7 +37,9 @@ Integration points with existing modules — **exhaustive list**:
 2. **Drives** the Personnel Actions engine for status-affecting leaves through ONE new internal
    engine method `driveLeaveAction(byUserId, employeeId, 'leaveStart'|'leaveEnd', effectiveDate,
    requestRef)` — attributed to the approver, audited normally (the engine stays the only writer
-   of employment facts). This is the only change to existing module code besides (3).
+   of employment facts). Changes to existing code are exactly three, all additive: this method,
+   the timeline dynamic import (3), and `createLogin` emitting `hr.employee.loginLinked` (C1-R,
+   §8) — plus the opt-in `ownerUserField` base-repository option (platform, backward compatible).
 3. **Timeline**: the employee profile timeline composer adds leave rows via dynamic `import()`
    of the leave feature (same acyclic escape hatch the employee-file source uses; BD-007
    graceful degradation when absent).
@@ -149,10 +151,11 @@ compute due-ness with the same utility.
 ## 6. Data model summary (all new collections; zero changes to existing ones)
 
 `hr_leave_types` (§2) · `hr_leave_requests` — employeeId + denormalized employeeCode/searchName/
-branchId/departmentId/sectionId (scoping), typeId, startDate, endDate, halfDayStart/End, frozen
-`days`, reason, `attachments: fileId[]`, status, `approvals[]`, `actualReturnDate`,
-`statusDriveOutcome`, `version`, createdBy; indexes `(employeeId, status, startDate)`,
-`(status, startDate)`, `(branchId, status, startDate)` · `hr_leave_ledger` (§4) ·
+branchId/departmentId/sectionId (scoping) + `employeeUserId` (nullable — the own-scope owner
+field, C1-R), typeId, startDate, endDate, halfDayStart/End, frozen `days`, reason,
+`attachments: fileId[]`, status, `approvals[]`, `actualReturnDate`, `statusDriveOutcome`,
+`version`, createdBy; indexes `(employeeId, status, startDate)`, `(status, startDate)`,
+`(branchId, status, startDate)`, `(employeeUserId, startDate)` · `hr_leave_ledger` (§4) ·
 `hr_leave_balances` (§4) · `hr_holidays` (§5).
 
 ## 7. APIs (mounted under `/api/v1/hr`)
@@ -183,11 +186,17 @@ All scope-aware (own/section/department/branch/organization).
 - **ESS role** (L7): seeded "Employee Self-Service" role = `leave.view` + `leave.request` @ `own`;
   granted to users linked to employees (migration step ④); the reusable seam for every future
   self-service surface.
-- **`own` scope has two shapes, both service-level (R14/C1 — no platform change)**: list
-  endpoints resolve the caller's employee record (`employee.userId === ctx.userId`, one indexed
-  lookup) and filter `employeeId` (∪ `createdBy`); employee-keyed single-target endpoints
-  enforce the same match on the target. No denormalized owner field; correct even for requests
-  filed before the employee's login existed.
+- **`own` scope has two shapes (R14, revised C1-R)**. *Lists*: the base repository gains an
+  opt-in `ownerUserField` option (peer of `hasAssignees`); own-filter = `createdBy` ∪ owner
+  field. Leave requests denormalize `employeeUserId` at creation (the creating service already
+  holds the employee). Records filed before the employee's login exists are backfilled by a new
+  `hr.employee.loginLinked` event emitted by `createLogin` — consuming modules run an idempotent
+  `updateMany` (the link is set at most once per employee under ADR-017, so backfill is
+  one-shot). This keeps the platform's declarative scoping model uniform: the standard
+  `repo.list({scope})` idiom stays correct for own-scope, and every future employee-subject
+  module (Attendance, Payroll, Performance) reuses the same recipe — field + option + one
+  subscriber. *Single-target* employee-keyed endpoints (balances, ledger, eligibility) have no
+  row to filter: the service enforces `employee.userId === ctx.userId` on the resolved target.
 - **Relationship-based approval (R9)**: approve/reject/pending-approvals routes authenticate
   only; the SERVICE authorizes: current manager of the subject **or** `leave.approve` in scope.
   Denials audited. Visibility matrix: requester · current manager · `leave.view` in scope.
@@ -205,7 +214,9 @@ All scope-aware (own/section/department/branch/organization).
   Requests immutable after decision; every ledger `adjust` pairs with an audit record.
 - **Events**: `hr.leave.requested` · `hr.leave.decided` · `hr.leave.cancelled` ·
   `hr.leave.started` / `hr.leave.ended` (payload: employeeId, code, typeId, dates, halfDay —
-  the Attendance feed) · `hr.leave.balanceAdjusted`.
+  the Attendance feed) · `hr.leave.balanceAdjusted`. Plus one EMPLOYEE-module event addition:
+  `hr.employee.loginLinked` (emitted by `createLogin`; consumed by leave's own-scope backfill,
+  C1-R — reusable by any future employee-subject module).
 
 ## 10. Scheduler (declared in the HR manifest; all idempotent via ledger unique keys + status-conditional updates)
 
@@ -271,7 +282,13 @@ decisions; approval catch-up; status-drive failure semantics; `driveLeaveAction`
 submission-time freezing + `paidBreakdown`; timeline dynamic import; relationship authorization +
 visibility matrix; Cairo date rule; `typeId`/`balanceTypeId` split; exit/rehire closure;
 half-day constraint; own-scope shapes; migration plan) and final consistency fixes **C1–C8**
-(own-scope moved to service-level resolution — platform seam dropped; `workCalendar.*`
-permission/setting naming; final request-status enum without a draft state; per-type negative
-cap; balance rows for banked types only; per-year caps inside the post-insert recheck;
-self-decision binds the subject; ESS grant as migration step ④) are incorporated above.
+(`workCalendar.*` permission/setting naming; final request-status enum without a draft state;
+per-type negative cap; balance rows for banked types only; per-year caps inside the post-insert
+recheck; self-decision binds the subject; ESS grant as migration step ④) are incorporated above.
+**C1 was subsequently re-reviewed and REVISED (C1-R)**: the original service-level-only
+resolution was rejected because it breaks the platform's declarative scoping idiom (a repo call
+with an own-scope selector would silently apply `createdBy` semantics) and forces every future
+employee-subject module to reimplement own-scope. Final architecture: restore the
+`ownerUserField` platform seam + creation-time `employeeUserId` denormalization, close the
+pre-login staleness flaw with the `hr.employee.loginLinked` event + idempotent backfill, and
+keep service-level userId matching for single-target endpoints (§8).

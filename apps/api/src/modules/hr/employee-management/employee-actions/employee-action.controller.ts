@@ -14,7 +14,11 @@ import {
 import { created, ok, okPage, validated } from '../../../../platform/web';
 import { authContext } from '../../../../platform/auth';
 import { hasPermission, scopeSelector } from '../../../../shared/types';
-import { employeeActionService } from './employee-action.service';
+import {
+  ACTION_GROUP_PERMISSIONS,
+  employeeActionService,
+  type ActionGroupGrants,
+} from './employee-action.service';
 import { employeeService, toEmployeeDto } from '../employees';
 import { toEmployeeActionDto } from './employee-action.mapper';
 
@@ -81,13 +85,12 @@ export const createRehireAction = async (req: Request, res: Response): Promise<v
 export const cancelEmployeeAction = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { body, params } = validated<CancelEmployeeAction, never, ActionParam>(req);
-  const doc = await employeeActionService.cancel(
-    ctx,
-    params.id,
-    params.actionId,
-    body,
-    scopeSelector(ctx, 'employee.manageActions'),
-  );
+  // Cancel follows the ACTION's group — hand the service a scope per held group permission.
+  const grants: ActionGroupGrants = {};
+  for (const key of ACTION_GROUP_PERMISSIONS) {
+    if (hasPermission(ctx, key)) grants[key] = scopeSelector(ctx, key);
+  }
+  const doc = await employeeActionService.cancel(ctx, params.id, params.actionId, body, grants);
   ok(res, toEmployeeActionDto(doc, { compensationVisible: compVisible(req) }));
 };
 

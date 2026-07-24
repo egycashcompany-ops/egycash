@@ -649,6 +649,36 @@ describe('personnel actions — scheduling (effective dating)', () => {
     expect(applied).toBeGreaterThanOrEqual(1);
     expect((await reread(emp.id)).status).toBe('suspended');
   });
+
+  it("cancel requires the permission of the ACTION's group (F5)", async () => {
+    const emp = await hire();
+    const inTwoDays = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString();
+    const current = await reread(emp.id);
+    const susp = await action(emp.id, 'employment', {
+      type: 'suspend',
+      reason: 'inquiry',
+      effectiveDate: inTwoDays,
+      version: current.version,
+    });
+    expect(susp.status).toBe(201);
+    const actionId = (susp.body.data as EmployeeActionDto).id;
+
+    // The rehire-only user passes the route gate (holds a group permission) but not the
+    // employment group this action belongs to.
+    const denied = await request(app)
+      .post(`/api/v1/hr/employees/${emp.id}/actions/${actionId}/cancel`)
+      .set('Authorization', `Bearer ${limitedRehireToken}`)
+      .send({ version: current.version });
+    expect(denied.status).toBe(403);
+
+    // A holder of the group permission cancels it.
+    const cancelled = await request(app)
+      .post(`/api/v1/hr/employees/${emp.id}/actions/${actionId}/cancel`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: current.version });
+    expect(cancelled.status).toBe(200);
+    expect((cancelled.body.data as EmployeeActionDto).status).toBe('cancelled');
+  });
 });
 
 describe('direct registration (D4) + person guard (F2/I6) + personal edits (I4)', () => {

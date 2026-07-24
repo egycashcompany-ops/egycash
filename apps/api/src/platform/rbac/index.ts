@@ -1,5 +1,5 @@
 export { rbacService, type EffectivePermissions } from './rbac.service';
-export { authorize } from './rbac.middleware';
+export { authorize, authorizeAny } from './rbac.middleware';
 export {
   buildPermissionsRouter,
   buildRolesRouter,

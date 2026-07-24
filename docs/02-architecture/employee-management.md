@@ -28,7 +28,8 @@ captures `from` values at application time, mutates the snapshot (explicit `__v`
 saves don't bump it), propagates (user placement + login status through the users seam, file
 code/branch through `employeeFileService.syncEmployeeIdentity`), audits (`personnelAction`),
 emits, and — on the scheduler path — records failures as `failed` + notification instead of
-throwing. Cancel is an append-only status flip. The scheduler task
+throwing. Cancel is an append-only status flip, gated by the permission of the targeted
+action's group (route admits any group holder; the service resolves the group). The scheduler task
 (`hr.employeeActions.applyScheduled`, 10-min cron) applies due work in (effectiveDate, seq)
 order; `hr.employees.probationReminder` (daily) notifies ahead of probation deadlines.
 

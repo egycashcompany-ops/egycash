@@ -1,10 +1,11 @@
 // Router: authenticate → authorize → validate → controller. One Personnel Actions engine,
 // permission-grouped routes (frozen design F5): employment / compensation / exit / rehire.
-// Cancel sits under the employment group's permission; listing follows employee.view.
+// Cancel requires the permission of the targeted ACTION's group — the route admits any group
+// holder and the service resolves the exact group; listing follows employee.view.
 import { Router } from 'express';
 import { asyncHandler, validate } from '../../../../platform/web';
 import { authenticate } from '../../../../platform/auth';
-import { authorize } from '../../../../platform/rbac';
+import { authorize, authorizeAny } from '../../../../platform/rbac';
 import {
   cancelEmployeeAction,
   changeEmployeeStatusAlias,
@@ -76,7 +77,12 @@ export const buildEmployeeActionsRouter = (): Router => {
   router.post(
     '/:id/actions/:actionId/cancel',
     authenticate,
-    authorize('employee.manageActions'),
+    authorizeAny(
+      'employee.manageActions',
+      'employee.manageCompensation',
+      'employee.exit',
+      'employee.rehire',
+    ),
     validate({ body: CancelEmployeeActionSchema, params: EmployeeActionIdParamSchema }),
     asyncHandler(cancelEmployeeAction),
   );

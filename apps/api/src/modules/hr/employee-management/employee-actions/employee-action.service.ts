@@ -60,6 +60,25 @@ type AnyAction = EmploymentAction | CompensationAction | ExitAction | RehireActi
 const isExitType = (t: string): t is EmployeeExitType =>
   (EMPLOYEE_EXIT_TYPES as readonly string[]).includes(t);
 
+/** The four route groups of the engine (frozen design F5) — cancel follows the ACTION's group. */
+export const ACTION_GROUP_PERMISSIONS = [
+  'employee.manageActions',
+  'employee.manageCompensation',
+  'employee.exit',
+  'employee.rehire',
+] as const;
+export type ActionGroupPermission = (typeof ACTION_GROUP_PERMISSIONS)[number];
+
+/** Scope selectors for the group permissions the caller actually holds (controller-computed). */
+export type ActionGroupGrants = Partial<Record<ActionGroupPermission, ScopeSelector>>;
+
+const groupPermissionFor = (type: string): ActionGroupPermission => {
+  if (type === 'salaryChange') return 'employee.manageCompensation';
+  if (type === 'rehire') return 'employee.rehire';
+  if (isExitType(type)) return 'employee.exit';
+  return 'employee.manageActions';
+};
+
 class EmployeeActionService {
   // ── Entry points (one per permission-grouped route) ───────────────────────
 
@@ -909,19 +928,27 @@ class EmployeeActionService {
 
   // ── Cancel / list / scheduler ─────────────────────────────────────────────
 
-  /** Cancel a SCHEDULED action before it applies — append-only (status flip), audited. */
+  /**
+   * Cancel a SCHEDULED action before it applies — append-only (status flip), audited.
+   * Requires the permission of the ACTION's group (frozen design §6): the action is loaded
+   * first to resolve its group, then the employee through that permission's scope.
+   */
   async cancel(
     ctx: AuthContext,
     employeeId: string,
     actionId: string,
     input: CancelEmployeeAction,
-    scope: ScopeSelector,
+    grants: ActionGroupGrants,
   ): Promise<EmployeeActionDoc> {
+    const action = await employeeActionRepository.getForEmployee(employeeId, actionId);
+    const scope = grants[groupPermissionFor(action.type)];
+    if (scope === undefined) {
+      throw new ForbiddenError("cancelling this action requires its group's permission");
+    }
     const employee = await employeeRepository.getById(employeeId, scope);
     if (input.version !== employee.__v) {
       throw new ConflictError('the employee was modified — reload and retry');
     }
-    const action = await employeeActionRepository.getForEmployee(employeeId, actionId);
     if (action.status !== 'scheduled') {
       throw new BusinessRuleError('only a scheduled action can be cancelled');
     }

@@ -25,3 +25,29 @@ export const authorize = (permissionKey: string): RequestHandler => {
     next();
   };
 };
+
+/**
+ * Passes when the caller holds ANY of the listed permissions. For endpoints whose exact
+ * permission depends on the targeted record (e.g. cancelling a Personnel Action requires the
+ * permission of that action's group) — the service resolves the fine-grained rule; this gate
+ * keeps unauthorized callers out at the route like `authorize` does.
+ */
+export const authorizeAny = (...permissionKeys: [string, ...string[]]): RequestHandler => {
+  return (req: Request, _res: Response, next: NextFunction): void => {
+    const ctx = authContextOrNull(req);
+    if (ctx === null) {
+      next(new UnauthenticatedError());
+      return;
+    }
+    if (!permissionKeys.some((key) => hasPermission(ctx, key))) {
+      void auditService.record({
+        entityRef: { moduleId: 'platform', entityType: 'user', entityId: ctx.userId },
+        action: 'permissionDenied',
+        changes: [{ field: 'permission', old: null, new: permissionKeys.join('|') }],
+      });
+      next(new ForbiddenError());
+      return;
+    }
+    next();
+  };
+};

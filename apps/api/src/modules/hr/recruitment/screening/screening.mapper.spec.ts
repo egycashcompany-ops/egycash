@@ -8,6 +8,7 @@ const baseDoc = (over: Partial<ScreeningDoc>): ScreeningDoc =>
     _id: new Types.ObjectId(),
     applicantId: new Types.ObjectId(),
     applicantCode: 'APP-2026-000001',
+    applicantName: 'أحمد محمد',
     branchId: null,
     status: 'pending',
     notes: [],

@@ -44,7 +44,7 @@ export const AllRequestsPage = (): JSX.Element => {
     }),
     [sp.toString()],
   );
-  const { data, isLoading, isError, refetch } = useLeaveRequests(params);
+  const { data, isLoading, isError, error, refetch } = useLeaveRequests(params);
 
   return (
     <PageContainer>
@@ -88,7 +88,7 @@ export const AllRequestsPage = (): JSX.Element => {
       <RequestsTable
         rows={data?.items ?? []}
         loading={isLoading}
-        error={isError}
+        error={isError ? error : undefined}
         onRetry={() => void refetch()}
         showEmployee
         empty={<EmptyState title={t('leave.all.empty')} />}

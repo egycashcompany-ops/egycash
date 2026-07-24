@@ -25,6 +25,7 @@ export const toJobOfferDto = (doc: JobOfferDoc): JobOfferDto => ({
   code: doc.code,
   applicantId: String(doc.applicantId),
   applicantCode: doc.applicantCode,
+  applicantName: doc.applicantName ?? '',
   branchId: String(doc.branchId),
   status: doc.status,
   active: doc.active,

@@ -65,7 +65,7 @@ export const EvaluationQueuePage = (): JSX.Element => {
     {
       key: 'applicantCode',
       header: t('evaluations.columns.applicant'),
-      render: (e) => <span className="font-mono text-xs" dir="ltr">{e.applicantCode}</span>,
+      render: (e) => <span>{e.applicantName} <span className="font-mono text-xs text-slate-500" dir="ltr">{e.applicantCode}</span></span>,
     },
     { key: 'phase', header: t('evaluations.columns.phase'), render: (e) => `${e.phaseOrder}. ${localized(e.phaseName, locale)}` },
     { key: 'status', header: t('evaluations.columns.status'), render: (e) => <EvaluationStatusBadge status={e.status} /> },

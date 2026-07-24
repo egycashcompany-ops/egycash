@@ -31,7 +31,7 @@ export const DepartmentApplicationsCard = ({ departmentId }: { departmentId: str
   );
 
   const { data: assigned = [], isLoading } = useDepartmentApplications(departmentId);
-  const { data: allApps } = useApplications({ status: 'active', pageSize: 200 });
+  const { data: allApps } = useApplications({ status: 'active', pageSize: 100 });
   const assign = useAssignDepartmentApplication(departmentId);
   const remove = useRemoveDepartmentApplication(departmentId);
 

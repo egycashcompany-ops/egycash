@@ -26,6 +26,7 @@ export interface EvaluationDecisionEvent {
 export interface EvaluationDoc extends BaseDocFields {
   applicantId: Types.ObjectId;
   applicantCode: string;
+  applicantName: string;
   branchId: Types.ObjectId | null;
   phaseId: Types.ObjectId;
   phaseKey: string;
@@ -54,6 +55,7 @@ const evaluationSchema = new Schema<EvaluationDoc>(
   {
     applicantId: { type: Schema.Types.ObjectId, required: true },
     applicantCode: { type: String, required: true },
+    applicantName: { type: String, required: true, default: '' },
     branchId: { type: Schema.Types.ObjectId, default: null },
     phaseId: { type: Schema.Types.ObjectId, required: true },
     phaseKey: { type: String, required: true },

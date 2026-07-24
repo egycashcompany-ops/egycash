@@ -98,7 +98,7 @@ export const InterviewQueuePage = (): JSX.Element => {
     {
       key: 'applicant',
       header: t('interviews.columns.applicant'),
-      render: (i) => <span className="font-mono text-xs" dir="ltr">{i.applicantCode}</span>,
+      render: (i) => <span>{i.applicantName} <span className="font-mono text-xs text-slate-500" dir="ltr">{i.applicantCode}</span></span>,
     },
     {
       key: 'stageOrder',

@@ -103,6 +103,7 @@ class InterviewService {
       {
         applicantId: new Types.ObjectId(input.applicantId),
         applicantCode: applicant.code,
+        applicantName: applicant.fullNameAr,
         branchId: applicant.branchId,
         stageId: new Types.ObjectId(input.stageId),
         stageOrder: stage.order,
@@ -184,6 +185,7 @@ class InterviewService {
       .map((s) => ({
         applicantId: String(s.applicantId),
         applicantCode: s.applicantCode,
+        applicantName: s.applicantName ?? '',
         branchId: s.branchId === null ? null : String(s.branchId),
         screeningId: String(s._id),
         screeningDecidedAt: s.decidedAt === null ? null : s.decidedAt.toISOString(),

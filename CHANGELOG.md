@@ -9,6 +9,36 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Upgrade compatibility + field-test fixes (post-Leave-merge QA round).**
+  - *Sidebar*: the navigation catalog now syncs at every api boot (`syncNavigationCatalog`),
+    so installs upgraded from older releases receive newly shipped applications (e.g. `/leave`)
+    and super-admins are granted them automatically — previously the catalog only seeded on
+    fresh installs.
+  - *Permissions*: `syncPermissionRegistry` invalidates super-admin/platform-admin holders'
+    cached permission snapshots when the catalog changes — new-module permissions apply
+    immediately after deploy instead of 403ing until cache expiry.
+  - *Applicants list 500*: documents created by earlier releases lack later-added fields and
+    `.lean()` reads skip schema defaults (`undefined.toISOString()` crashed the list). The
+    applicant mapper is now total over legacy shapes and a boot migration
+    (`migrateRecruitmentLegacy`) backfills the stored documents.
+  - *Person names in tables*: Screening/Interview/Evaluation/Job-Offer rows now denormalize
+    `applicantName` (backfilled for existing rows); queue tables, the workflow board and the
+    awaiting panels show the display name next to the code, and job-offer search matches it.
+  - *Leave error reporting*: leave tables no longer mask API failures behind a generic
+    message — the real error (permission, validation, server) surfaces in the error state.
+  - *Reference lookups*: dropdown queries requested `pageSize: 200` against the API's
+    `MAX_PAGE_SIZE = 100` and silently degraded to empty lists — the Department picker on the
+    Section form (and four sibling lookups) now work.
+  - *Numeric org-unit codes*: `01`-style codes are accepted (min length 1), Arabic-Indic
+    digits are folded to ASCII in the code input, and the hint copy no longer implies letters
+    are required.
+  - *i18n*: added the missing `employees.tabs.leave` label (en + ar).
+  - *Job Titles vs Job Positions*: kept as two entities (WHAT vs WHERE — see
+    `docs/02-architecture/organization-structure.md` §2); both pages now state the
+    distinction explicitly in both languages.
+
 ### Added
 
 - **HR — Leave Management module (frozen design: `docs/12-planning/leave-management-design.md`).**

@@ -47,6 +47,7 @@ class ScreeningService {
       {
         applicantId: new Types.ObjectId(input.applicantId),
         applicantCode: applicant.code,
+        applicantName: applicant.fullNameAr,
         branchId: applicant.branchId,
         status: 'pending',
         notes,

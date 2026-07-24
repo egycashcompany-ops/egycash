@@ -22,6 +22,7 @@ import { interviewStageService } from './recruitment/interviews';
 import { ensureEvaluationCategory, evaluationPhaseService } from './recruitment/evaluations';
 import { ensureHiringDocsCategory, hiringDocumentTypeService } from './recruitment/hiring-documents';
 import { migrateEmployeesToRegistry } from './employee-management/employees';
+import { migrateRecruitmentLegacy } from './recruitment/recruitment.migration';
 import { ensureLeaveAttachmentsCategory } from './leave-management/leave-requests';
 import { migrateLeaveModule } from './leave-management/leave.migration';
 
@@ -401,6 +402,9 @@ export const seedHrRecruitment = async (): Promise<void> => {
   await ensureEmployeeTemplates();
   await ensureEmployeeFileTemplates();
   await ensureHiringDocumentsSeeds();
+  // Legacy recruitment documents: late-added applicant fields + denormalized applicantName
+  // on the stage collections (idempotent, missing-field guarded).
+  await migrateRecruitmentLegacy();
   // Employee-registry boot migration (frozen design §10) — idempotent, legacy docs only.
   await migrateEmployeesToRegistry();
   // Leave Management (frozen leave design §12): templates, attachments category, types,

@@ -198,6 +198,8 @@ export type ListAwaitingInterviewsQuery = z.infer<typeof ListAwaitingInterviewsQ
 export interface AwaitingInterviewDto {
   applicantId: string;
   applicantCode: string;
+  /** Denormalized applicant display name (Arabic full name). */
+  applicantName: string;
   branchId: string | null;
   screeningId: string;
   /** When the screening was accepted (drives the queue order); null if not recorded. */
@@ -230,6 +232,8 @@ export interface InterviewDto {
   id: string;
   applicantId: string;
   applicantCode: string;
+  /** Denormalized applicant display name (Arabic full name) — tables never show bare codes. */
+  applicantName: string;
   branchId: string | null;
   stageId: string;
   stageOrder: number;

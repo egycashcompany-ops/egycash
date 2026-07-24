@@ -45,3 +45,14 @@ export const fullName = (
   name: { firstName: LocalizedString; lastName: LocalizedString },
   locale: Locale,
 ): string => `${name.firstName[locale]} ${name.lastName[locale]}`.trim();
+
+/**
+ * Fold Arabic-Indic (٠-٩) and Extended Arabic-Indic (۰-۹) digits to ASCII — code inputs
+ * accept only ASCII, and an Arabic keyboard produces ٠١٢ for what the user reads as 012.
+ */
+export const asciiDigits = (value: string): string =>
+  value.replace(/[\u0660-\u0669\u06f0-\u06f9]/g, (ch) => {
+    const cp = ch.codePointAt(0) ?? 0;
+    const base = cp >= 0x06f0 ? 0x06f0 : 0x0660;
+    return String(cp - base);
+  });

@@ -7,6 +7,7 @@ export const toScreeningDto = (doc: ScreeningDoc): ScreeningDto => ({
   id: String(doc._id),
   applicantId: String(doc.applicantId),
   applicantCode: doc.applicantCode,
+  applicantName: doc.applicantName ?? '',
   branchId: doc.branchId === null ? null : String(doc.branchId),
   status: doc.status,
   notes: doc.notes.map((n) => ({

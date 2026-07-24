@@ -17,6 +17,7 @@ export interface ScreeningNote {
 export interface ScreeningDoc extends BaseDocFields {
   applicantId: Types.ObjectId;
   applicantCode: string;
+  applicantName: string;
   branchId: Types.ObjectId | null;
   status: ScreeningStatus;
   notes: ScreeningNote[];
@@ -31,6 +32,7 @@ const screeningSchema = new Schema<ScreeningDoc>(
   {
     applicantId: { type: Schema.Types.ObjectId, required: true },
     applicantCode: { type: String, required: true },
+    applicantName: { type: String, required: true, default: '' },
     branchId: { type: Schema.Types.ObjectId, default: null },
     status: { type: String, enum: SCREENING_STATUSES, required: true, default: 'pending' },
     notes: {

@@ -50,7 +50,7 @@ export type ActingManager = z.infer<typeof ActingManagerSchema>;
 const orgUnitBase = {
   code: z
     .string()
-    .regex(/^[A-Z0-9][A-Z0-9-]{1,19}$/, 'uppercase code, e.g. BR-CAI-1')
+    .regex(/^[A-Z0-9][A-Z0-9-]{0,19}$/, 'uppercase letters/digits, e.g. 01 or BR-CAI-1')
     .describe('Unique unit code (sequence-generated codes arrive with phase 2.2)'),
   name: LocalizedStringSchema,
   managerId: objectId().nullable().optional(),

@@ -14,7 +14,7 @@ const num = (v: string): number | null => (v.trim() === '' ? null : Number(v));
 
 export const LeaveTypesPage = (): JSX.Element => {
   const t = useT();
-  const { data, isLoading, isError, refetch } = useLeaveTypes();
+  const { data, isLoading, isError, error, refetch } = useLeaveTypes();
   const update = useUpdateLeaveType();
   const [editing, setEditing] = useState<LeaveTypeDto | null>(null);
   const [form, setForm] = useState({
@@ -103,7 +103,7 @@ export const LeaveTypesPage = (): JSX.Element => {
         rows={data ?? []}
         rowKey={(x) => x.id}
         loading={isLoading}
-        error={isError}
+        error={isError ? error : undefined}
         onRetry={() => void refetch()}
         onRowClick={openEdit}
       />

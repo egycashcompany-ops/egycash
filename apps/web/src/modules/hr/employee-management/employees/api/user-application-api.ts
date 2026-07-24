@@ -14,4 +14,4 @@ export const removeUserApplication = (userId: string, applicationId: string): Pr
   del<void>(`/platform/users/${userId}/applications/${applicationId}`);
 
 export const listActiveApplications = (): Promise<Paginated<ApplicationDto>> =>
-  getPage<ApplicationDto>(`/platform/applications${buildQuery({ status: 'active', pageSize: 200 })}`);
+  getPage<ApplicationDto>(`/platform/applications${buildQuery({ status: 'active', pageSize: 100 })}`);

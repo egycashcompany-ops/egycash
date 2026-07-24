@@ -127,6 +127,8 @@ export interface EvaluationDto {
   id: string;
   applicantId: string;
   applicantCode: string;
+  /** Denormalized applicant display name (Arabic full name) — tables never show bare codes. */
+  applicantName: string;
   branchId: string | null;
   phaseId: string;
   phaseKey: string;

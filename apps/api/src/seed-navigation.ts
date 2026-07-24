@@ -14,6 +14,7 @@
 import { Types } from 'mongoose';
 import { applicationCategoryService, applicationCategoryRepository } from './platform/application-categories';
 import { applicationService, applicationRepository } from './platform/applications';
+import { rbacService } from './platform/rbac';
 import { userApplicationService, userApplicationRepository } from './platform/user-applications';
 
 interface AppDef {
@@ -114,6 +115,29 @@ export const seedBootstrapNavigation = async (adminId: string): Promise<void> =>
     for (const app of category.apps) {
       const applicationId = await ensureApplication(app, categoryId, sortOrder, adminId);
       await ensureGrant(adminId, applicationId);
+      sortOrder += 10;
+    }
+  }
+};
+
+/**
+ * Boot-time catalog sync (runs on EVERY api start): existing installs must receive catalog
+ * entries added by newer releases — the dev seed above only runs on fresh installs, which is
+ * how `/leave` never appeared on databases seeded before the Leave module existed. Ensures
+ * every category/application exists (keyed by name/route, create-only) and grants each
+ * application to every current super-admin, so upgrades surface new modules without manual
+ * DB work. Department/user assignment for everyone else stays an admin decision.
+ */
+export const syncNavigationCatalog = async (): Promise<void> => {
+  const adminIds = await rbacService.userIdsWithSystemRole('super-admin');
+  const actor = adminIds[0];
+  if (actor === undefined) return; // pre-seed boot (no admin yet) — the dev seed covers it
+  for (const category of CATALOG) {
+    const categoryId = await ensureCategory(category, actor);
+    let sortOrder = 0;
+    for (const app of category.apps) {
+      const applicationId = await ensureApplication(app, categoryId, sortOrder, actor);
+      for (const adminId of adminIds) await ensureGrant(adminId, applicationId);
       sortOrder += 10;
     }
   }

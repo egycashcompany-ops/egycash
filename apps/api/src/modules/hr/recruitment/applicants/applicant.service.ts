@@ -31,7 +31,7 @@ import { applicantSourceRepository } from './applicant-source.repository';
 import { nextApplicantNumber } from './applicant-sequence';
 import { getRequisitionValidator } from './requisition-ref';
 import { applicantExportRow } from './applicant.mapper';
-import { type ApplicantDoc } from './applicant.model';
+import { ApplicantModel, type ApplicantDoc } from './applicant.model';
 
 export const APPLICANT_EXPORT_MAX_ROWS = 10_000;
 
@@ -258,6 +258,23 @@ class ApplicantService {
 
   async getById(id: string, scope: ScopeSelector): Promise<ApplicantDoc> {
     return applicantRepository.getById(id, scope);
+  }
+
+  /**
+   * Unscoped raw lookup for SYSTEM flows (Employee-registry boot migration and the one-time
+   * personal-data copy at hire). Returns the doc as stored — the raw national id is present;
+   * callers must never expose it unmasked (Security Architecture §3).
+   */
+  async findByIdSystem(id: string): Promise<ApplicantDoc | null> {
+    return ApplicantModel.findOne({ _id: new Types.ObjectId(id), isDeleted: false });
+  }
+
+  /**
+   * Unscoped: live (`new`) applicants holding this national id — the Employee module's
+   * direct-registration duplicate guard (frozen design I6) checks applicants AND employees.
+   */
+  async findLiveByNationalIdSystem(nationalId: string): Promise<ApplicantDoc | null> {
+    return ApplicantModel.findOne({ nationalId, status: 'new', isDeleted: false });
   }
 
   /** Of the given ids, those that are live (`new`) — used by the Interviews eligibility view. */

@@ -22,6 +22,8 @@ export const AUDIT_ACTIONS = [
   'roleAssigned',
   'roleRevoked',
   'loginCreated',
+  'personnelAction',
+  'personnelActionCancelled',
   'download',
   'archive',
   'restore',

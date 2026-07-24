@@ -108,7 +108,8 @@ export interface HiringDocumentsDto {
   id: string;
   employeeId: string;
   employeeCode: string;
-  applicantId: string;
+  /** null for a DIRECT-registration employee (no recruitment history). */
+  applicantId: string | null;
   branchId: string;
   status: HiringDocumentsStatus;
   documents: HiringDocumentItemDto[];

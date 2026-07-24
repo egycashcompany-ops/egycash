@@ -3,8 +3,10 @@
 export {
   CreateEmployeeSchema,
   CreateEmployeeLoginSchema,
-  ChangeEmployeeStatusSchema,
+  DirectRegisterEmployeeSchema,
   ListEmployeesQuerySchema,
+  RehireCheckQuerySchema,
+  UpdateEmployeePersonalSchema,
 } from '@ecms/contracts';
 
 import { z } from 'zod';

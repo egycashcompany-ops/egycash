@@ -1,5 +1,9 @@
-// Public surface of the Employees feature (Stage 5). The HR manifest and tests import from
-// here; internal files are not reached across the feature boundary.
+// Public surface of the Employees feature — the employee registry (frozen design). The HR
+// manifest, sibling employee-management features, and tests import from here; internal files
+// are not reached across the feature boundary.
 export { buildEmployeesRouter } from './employee.routes';
 export { employeeService } from './employee.service';
-export { type EmployeeDoc } from './employee.model';
+export { employeeRepository } from './employee.repository';
+export { buildEmployeeCode } from './employee-number';
+export { migrateEmployeesToRegistry, personalFromApplicant } from './employee.migration';
+export { type EmployeeDoc, type EmployeePersonalData, type EmploymentDetails } from './employee.model';

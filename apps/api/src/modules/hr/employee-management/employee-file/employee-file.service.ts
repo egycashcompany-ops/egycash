@@ -92,32 +92,45 @@ class EmployeeFileService {
 
     const existing = await employeeFileRepository.findByEmployeeId(input.employeeId);
     if (existing !== null) {
+      // Rehire (frozen design F1): a NEW completed hiring case supplements the EXISTING file
+      // (same employee number → same file, forever). Same-case re-assembly stays a conflict.
+      if (String(existing.links.hiringDocumentsId) !== String(hiringDocs._id)) {
+        return this.supplementAfterRehire(ctx, existing, hiringDocs);
+      }
       throw new ConflictError('this employee already has an electronic file');
     }
 
-    // Gather the recruitment history (read-only, via barrels).
-    const applicantId = String(employee.applicantId);
-    const applicant = await applicantService.getById(applicantId, scope);
-    const screening = await screeningService.findByApplicantId(applicantId);
-    const interviews = await interviewService.listByApplicant(applicantId);
-    const offer = await jobOfferService.acceptedOfferById(String(employee.jobOfferId));
-
-    // Build the initial Employee Timeline from the milestones (oldest first).
+    // Gather the recruitment history (read-only, via barrels). Direct registrations have no
+    // recruitment trail — their timeline starts at the hire.
     const timeline: EmployeeTimelineEntry[] = [];
-    timeline.push(milestone(applicant.createdAt, 'applicantRegistered', 'applicant', applicant._id, applicant.code));
-    if (screening !== null && screening.status === 'accepted' && screening.decidedAt !== null) {
-      timeline.push(milestone(screening.decidedAt, 'screeningAccepted', 'screening', screening._id, null));
-    }
-    for (const interview of interviews) {
-      if (interview.status === 'completed' && interview.outcome === 'passed' && interview.decidedAt !== null) {
-        timeline.push(
-          milestone(interview.decidedAt, 'interviewPassed', 'interview', interview._id, interview.stageName.en),
-        );
+    let screeningId: Types.ObjectId | null = null;
+    let interviewIds: Types.ObjectId[] = [];
+    if (employee.applicantId !== null) {
+      const applicantId = String(employee.applicantId);
+      const applicant = await applicantService.getById(applicantId, scope);
+      const screening = await screeningService.findByApplicantId(applicantId);
+      const interviews = await interviewService.listByApplicant(applicantId);
+      const offer =
+        employee.jobOfferId === null
+          ? null
+          : await jobOfferService.acceptedOfferById(String(employee.jobOfferId));
+      timeline.push(milestone(applicant.createdAt, 'applicantRegistered', 'applicant', applicant._id, applicant.code));
+      if (screening !== null && screening.status === 'accepted' && screening.decidedAt !== null) {
+        timeline.push(milestone(screening.decidedAt, 'screeningAccepted', 'screening', screening._id, null));
       }
-    }
-    const offerAcceptedAt = offer?.acceptedSnapshot?.acceptedAt ?? offer?.respondedAt ?? null;
-    if (offer !== null && offerAcceptedAt !== null) {
-      timeline.push(milestone(offerAcceptedAt, 'offerAccepted', 'jobOffer', offer._id, offer.code));
+      for (const interview of interviews) {
+        if (interview.status === 'completed' && interview.outcome === 'passed' && interview.decidedAt !== null) {
+          timeline.push(
+            milestone(interview.decidedAt, 'interviewPassed', 'interview', interview._id, interview.stageName.en),
+          );
+        }
+      }
+      const offerAcceptedAt = offer?.acceptedSnapshot?.acceptedAt ?? offer?.respondedAt ?? null;
+      if (offer !== null && offerAcceptedAt !== null) {
+        timeline.push(milestone(offerAcceptedAt, 'offerAccepted', 'jobOffer', offer._id, offer.code));
+      }
+      screeningId = screening === null ? null : screening._id;
+      interviewIds = interviews.map((i) => i._id);
     }
     timeline.push(milestone(employee.hiredAt, 'employeeCreated', 'employee', employee._id, employee.code));
     if (hiringDocs.completedAt !== null) {
@@ -129,8 +142,8 @@ class EmployeeFileService {
     const links: EmployeeFileLinks = {
       applicantId: employee.applicantId,
       jobRequisitionId: employee.jobRequisitionId,
-      screeningId: screening === null ? null : screening._id,
-      interviewIds: interviews.map((i) => i._id),
+      screeningId,
+      interviewIds,
       jobOfferId: employee.jobOfferId,
       hiringDocumentsId: hiringDocs._id,
     };
@@ -184,6 +197,83 @@ class EmployeeFileService {
     await emit(HrEmployeeFileEvents.Created, this.payload(doc));
     await this.notifyCreated(doc, employee.employment.managerId);
     return doc;
+  }
+
+  /**
+   * Rehire supplement (frozen design F1): copy the NEW completed hiring case's documents into
+   * the EXISTING file (independent copies, as at assembly) and extend the timeline. The file —
+   * like the employee number — is permanent across employments.
+   */
+  private async supplementAfterRehire(
+    ctx: AuthContext,
+    file: EmployeeFileDoc,
+    hiringDocs: { _id: Types.ObjectId; completedAt: Date | null; documents: { fileId: Types.ObjectId; typeName: { en: string } }[] },
+  ): Promise<EmployeeFileDoc> {
+    const categoryId = await resolveEmployeeFileCategoryId();
+    const now = new Date();
+    const additions: EmployeeFileDocument[] = [];
+    for (const item of hiringDocs.documents) {
+      const copy = await fileService.copy(ctx, String(item.fileId), {
+        moduleId: 'hr',
+        entityType: 'employeeFile',
+        entityId: String(file.employeeId),
+        categoryId,
+        displayName: item.typeName.en,
+        visibility: 'private',
+      });
+      additions.push({
+        _id: new Types.ObjectId(),
+        source: 'hiringDocumentCopy',
+        name: item.typeName.en,
+        fileId: copy._id,
+        fileName: copy.originalName,
+        copiedFromFileId: item.fileId,
+        uploadedBy: new Types.ObjectId(ctx.userId),
+        uploadedAt: now,
+      });
+    }
+    const timeline = [...file.timeline];
+    if (hiringDocs.completedAt !== null) {
+      timeline.push(
+        milestone(hiringDocs.completedAt, 'hiringDocumentsCompleted', 'hiringDocuments', hiringDocs._id, null),
+      );
+    }
+    const updated = await employeeFileRepository.updateById(
+      String(file._id),
+      {
+        documents: [...file.documents, ...additions],
+        timeline,
+        links: { ...file.links, hiringDocumentsId: hiringDocs._id },
+      },
+      { by: ctx.userId, version: file.__v },
+    );
+    await auditService.record({
+      entityRef: entityRef(String(file._id)),
+      action: 'update',
+      changes: [{ field: 'documents', old: null, new: `+${String(additions.length)}` }],
+    });
+    return updated;
+  }
+
+  /** Unscoped read for the composed profile timeline (Employee module). */
+  async findByEmployeeIdSystem(employeeId: string): Promise<EmployeeFileDoc | null> {
+    return employeeFileRepository.findByEmployeeId(employeeId);
+  }
+
+  /**
+   * F1 propagation from the Personnel Actions engine: keep the file's denormalized employee
+   * code + branch in sync after a branch transfer / rehire / branch-code change. No-op when
+   * the employee has no file yet.
+   */
+  async syncEmployeeIdentity(employeeId: string, employeeCode: string, branchId: string): Promise<void> {
+    const file = await employeeFileRepository.findByEmployeeId(employeeId);
+    if (file === null) return;
+    if (file.employeeCode === employeeCode && String(file.branchId) === branchId) return;
+    await employeeFileRepository.updateById(
+      String(file._id),
+      { employeeCode, branchId: new Types.ObjectId(branchId) },
+      { by: null, version: file.__v },
+    );
   }
 
   async list(query: ListEmployeeFilesQuery, scope: ScopeSelector): Promise<Paginated<EmployeeFileDoc>> {

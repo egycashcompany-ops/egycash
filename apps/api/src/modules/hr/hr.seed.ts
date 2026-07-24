@@ -20,6 +20,7 @@ import { applicantSourceService } from './recruitment/applicants';
 import { interviewStageService } from './recruitment/interviews';
 import { ensureEvaluationCategory, evaluationPhaseService } from './recruitment/evaluations';
 import { ensureHiringDocsCategory, hiringDocumentTypeService } from './recruitment/hiring-documents';
+import { migrateEmployeesToRegistry } from './employee-management/employees';
 
 const SOURCES: CreateApplicantSource[] = [
   { key: 'internalHr', name: { en: 'Internal HR', ar: 'الموارد البشرية الداخلية' }, kind: 'manual', requiresDetail: false },
@@ -190,6 +191,71 @@ const ensureEmployeeTemplates = async (): Promise<void> => {
     variables: ['applicantCode', 'employeeCode'],
     defaultExpiryHours: null,
   });
+  await notificationTemplateService.ensure({
+    key: HrEmployeeTemplates.ProbationEnding,
+    category: 'hr',
+    priority: 'high',
+    subject: { ar: 'فترة اختبار على وشك الانتهاء', en: 'Probation ending soon' },
+    body: {
+      ar: 'فترة اختبار الموظف {{employeeCode}} تنتهي في {{endDate}} — يلزم التثبيت أو التمديد أو الإنهاء.',
+      en: 'Probation for employee {{employeeCode}} ends on {{endDate}} — confirm, extend or fail it.',
+    },
+    channels: ['inApp', 'email'],
+    variables: ['employeeCode', 'endDate'],
+    defaultExpiryHours: null,
+  });
+  await notificationTemplateService.ensure({
+    key: HrEmployeeTemplates.ScheduledActionApplied,
+    category: 'hr',
+    priority: 'normal',
+    subject: { ar: 'تم تنفيذ إجراء مجدول', en: 'Scheduled action applied' },
+    body: {
+      ar: 'تم تنفيذ الإجراء المجدول ({{type}}) للموظف {{employeeCode}}.',
+      en: 'The scheduled action ({{type}}) for employee {{employeeCode}} was applied.',
+    },
+    channels: ['inApp'],
+    variables: ['employeeCode', 'type'],
+    defaultExpiryHours: null,
+  });
+  await notificationTemplateService.ensure({
+    key: HrEmployeeTemplates.ScheduledActionFailed,
+    category: 'hr',
+    priority: 'high',
+    subject: { ar: 'فشل تنفيذ إجراء مجدول', en: 'Scheduled action failed' },
+    body: {
+      ar: 'فشل تنفيذ الإجراء المجدول ({{type}}) للموظف {{employeeCode}}: {{failure}}',
+      en: 'The scheduled action ({{type}}) for employee {{employeeCode}} failed: {{failure}}',
+    },
+    channels: ['inApp', 'email'],
+    variables: ['employeeCode', 'type', 'failure'],
+    defaultExpiryHours: null,
+  });
+  await notificationTemplateService.ensure({
+    key: HrEmployeeTemplates.Exited,
+    category: 'hr',
+    priority: 'normal',
+    subject: { ar: 'انتهاء خدمة موظف', en: 'Employee exited' },
+    body: {
+      ar: 'تم تسجيل انتهاء خدمة الموظف {{employeeCode}} ({{exitType}}).',
+      en: 'Employee {{employeeCode}} exited ({{exitType}}).',
+    },
+    channels: ['inApp'],
+    variables: ['employeeCode', 'exitType'],
+    defaultExpiryHours: null,
+  });
+  await notificationTemplateService.ensure({
+    key: HrEmployeeTemplates.Rehired,
+    category: 'hr',
+    priority: 'normal',
+    subject: { ar: 'إعادة تعيين موظف', en: 'Employee rehired' },
+    body: {
+      ar: 'تمت إعادة تعيين الموظف {{employeeCode}} بنفس الرقم الوظيفي.',
+      en: 'Employee {{employeeCode}} was rehired on the same employee number.',
+    },
+    channels: ['inApp'],
+    variables: ['employeeCode'],
+    defaultExpiryHours: null,
+  });
 };
 
 const ensureEmployeeFileTemplates = async (): Promise<void> => {
@@ -224,4 +290,6 @@ export const seedHrRecruitment = async (): Promise<void> => {
   await ensureEmployeeTemplates();
   await ensureEmployeeFileTemplates();
   await ensureHiringDocumentsSeeds();
+  // Employee-registry boot migration (frozen design §10) — idempotent, legacy docs only.
+  await migrateEmployeesToRegistry();
 };

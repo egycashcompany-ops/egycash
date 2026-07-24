@@ -26,7 +26,8 @@ export interface EmployeeTimelineEntry {
 
 /** The linked recruitment history (BD-008 — "link all applicant history"). */
 export interface EmployeeFileLinks {
-  applicantId: Types.ObjectId;
+  /** null for a DIRECT-registration employee (no recruitment history). */
+  applicantId: Types.ObjectId | null;
   /** null when the applicant was a direct intake with no linked Job Request. */
   jobRequisitionId: Types.ObjectId | null;
   screeningId: Types.ObjectId | null;
@@ -54,7 +55,8 @@ export interface EmployeeFileDocument {
 export interface EmployeeFileDoc extends BaseDocFields {
   employeeId: Types.ObjectId;
   employeeCode: string;
-  applicantId: Types.ObjectId;
+  /** null for a DIRECT-registration employee. */
+  applicantId: Types.ObjectId | null;
   branchId: Types.ObjectId;
   status: EmployeeFileStatus;
   links: EmployeeFileLinks;
@@ -77,7 +79,7 @@ const timelineEntrySchema = new Schema<EmployeeTimelineEntry>(
 
 const linksSchema = new Schema<EmployeeFileLinks>(
   {
-    applicantId: { type: Schema.Types.ObjectId, required: true },
+    applicantId: { type: Schema.Types.ObjectId, default: null },
     jobRequisitionId: { type: Schema.Types.ObjectId, default: null },
     screeningId: { type: Schema.Types.ObjectId, default: null },
     interviewIds: { type: [Schema.Types.ObjectId], default: [] },
@@ -104,7 +106,7 @@ const employeeFileSchema = new Schema<EmployeeFileDoc>(
   {
     employeeId: { type: Schema.Types.ObjectId, required: true },
     employeeCode: { type: String, required: true },
-    applicantId: { type: Schema.Types.ObjectId, required: true },
+    applicantId: { type: Schema.Types.ObjectId, default: null },
     branchId: { type: Schema.Types.ObjectId, required: true },
     status: { type: String, enum: EMPLOYEE_FILE_STATUSES, required: true, default: 'active' },
     links: { type: linksSchema, required: true },

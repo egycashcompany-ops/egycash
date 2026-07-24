@@ -16,7 +16,19 @@ import { buildEmployeesRouter, employeeService } from './employee-management/emp
 import { buildEmployeeActionsRouter, employeeActionService } from './employee-management/employee-actions';
 import { buildHiringDocumentTypesRouter, buildHiringDocumentsRouter } from './recruitment/hiring-documents';
 import { buildEmployeeFilesRouter } from './employee-management/employee-file';
+import { buildHolidaysRouter, buildWorkCalendarRouter, registerHrWorkCalendarSettings } from './work-calendar';
+import { buildLeaveTypesRouter } from './leave-management/leave-types';
+import { buildLeaveBalancesRouter, leaveBalanceService } from './leave-management/leave-balances';
+import {
+  buildLeaveCalendarRouter,
+  buildLeaveRequestsRouter,
+  leaveRequestService,
+} from './leave-management/leave-requests';
 import { seedHrRecruitment } from './hr.seed';
+
+// Business-calendar + leave settings enter the registry at module load, before boot resolves
+// any value (Leave design C2).
+registerHrWorkCalendarSettings();
 
 const applicantPermissions = declarePermissions(
   'hr',
@@ -167,6 +179,34 @@ const employeeFilePermissions = declarePermissions(
   [{ action: 'upload', name: { en: 'Upload employee file document', ar: 'رفع مستند ملف الموظف' } }],
 );
 
+// Leave Management (frozen design docs/12-planning/leave-management-design.md §8). `view` +
+// `request` at OWN scope form the seeded Employee Self-Service role (L7). `approve` is the HR
+// step + override — line managers act by RELATIONSHIP, not permission (R9). The calendar is
+// its own resource: Attendance will share it (C2).
+const leavePermissions = declarePermissions(
+  'hr',
+  'leave',
+  { en: 'leave', ar: 'الإجازات' },
+  ['view'],
+  [
+    { action: 'request', name: { en: 'Request own leave', ar: 'طلب إجازة' } },
+    { action: 'requestForOthers', name: { en: 'File leave for others', ar: 'تسجيل إجازة لموظف آخر' } },
+    { action: 'approve', name: { en: 'Approve leave (HR step + override)', ar: 'اعتماد الإجازات' } },
+    { action: 'cancelApproved', name: { en: 'Cancel approved leave', ar: 'إلغاء إجازة معتمدة' } },
+    { action: 'manageTypes', name: { en: 'Manage leave types', ar: 'إدارة أنواع الإجازات' } },
+    { action: 'adjustBalances', name: { en: 'Adjust leave balances', ar: 'تعديل أرصدة الإجازات' } },
+    { action: 'viewLedger', name: { en: 'View the leave ledger', ar: 'عرض سجل حركات الإجازات' } },
+  ],
+);
+
+const workCalendarPermissions = declarePermissions(
+  'hr',
+  'workCalendar',
+  { en: 'work calendar', ar: 'تقويم العمل' },
+  [],
+  [{ action: 'manage', name: { en: 'Manage the work calendar', ar: 'إدارة تقويم العمل' } }],
+);
+
 export const hrPermissions: PermissionDef[] = [
   ...applicantPermissions,
   ...applicantSourcePermissions,
@@ -180,12 +220,14 @@ export const hrPermissions: PermissionDef[] = [
   ...hiringDocumentsPermissions,
   ...hiringDocumentTypePermissions,
   ...employeeFilePermissions,
+  ...leavePermissions,
+  ...workCalendarPermissions,
 ];
 
 export const hrModule: ModuleManifest = {
   id: 'hr',
   name: { en: 'Human Resources', ar: 'الموارد البشرية' },
-  version: '0.13.0',
+  version: '0.14.0',
   requiresPlatform: '^2.1',
   permissions: hrPermissions,
   routes: [
@@ -198,10 +240,16 @@ export const hrModule: ModuleManifest = {
     { prefix: '/hr/evaluation-phases', router: buildEvaluationPhasesRouter() },
     { prefix: '/hr/job-offers', router: buildJobOffersRouter() },
     { prefix: '/hr/employees', router: buildEmployeeActionsRouter() },
+    { prefix: '/hr/employees', router: buildLeaveBalancesRouter() },
     { prefix: '/hr/employees', router: buildEmployeesRouter() },
     { prefix: '/hr/hiring-documents', router: buildHiringDocumentsRouter() },
     { prefix: '/hr/hiring-document-types', router: buildHiringDocumentTypesRouter() },
     { prefix: '/hr/employee-files', router: buildEmployeeFilesRouter() },
+    { prefix: '/hr/leave-types', router: buildLeaveTypesRouter() },
+    { prefix: '/hr/leave-requests', router: buildLeaveRequestsRouter() },
+    { prefix: '/hr/leave-calendar', router: buildLeaveCalendarRouter() },
+    { prefix: '/hr/holidays', router: buildHolidaysRouter() },
+    { prefix: '/hr/work-calendar', router: buildWorkCalendarRouter() },
   ],
   collections: [
     'hr_applicants',
@@ -218,8 +266,36 @@ export const hrModule: ModuleManifest = {
     'hr_hiring_documents',
     'hr_hiring_document_types',
     'hr_employee_files',
+    'hr_leave_types',
+    'hr_leave_requests',
+    'hr_leave_ledger',
+    'hr_leave_balances',
+    'hr_holidays',
   ],
-  eventSubscriptions: [],
+  eventSubscriptions: [
+    {
+      // Exit settlement (leave design R12): terminate open leave, release, expire balances.
+      event: 'hr.employee.exited',
+      handlerId: 'leave.exitSettlement',
+      handler: async (envelope) => {
+        const payload = envelope.payload as { employeeId?: string };
+        if (typeof payload.employeeId === 'string') {
+          await leaveRequestService.onEmployeeExited(payload.employeeId);
+        }
+      },
+    },
+    {
+      // Own-scope owner-field backfill (leave design C1-R).
+      event: 'hr.employee.loginLinked',
+      handlerId: 'leave.ownerBackfill',
+      handler: async (envelope) => {
+        const payload = envelope.payload as { employeeId?: string; userId?: string };
+        if (typeof payload.employeeId === 'string' && typeof payload.userId === 'string') {
+          await leaveRequestService.onLoginLinked(payload.employeeId, payload.userId);
+        }
+      },
+    },
+  ],
   scheduledTasks: [
     {
       // Automatic offer expiration: flip sent offers past their validity to `expired`.
@@ -249,6 +325,46 @@ export const hrModule: ModuleManifest = {
       ownerService: 'hr',
       handler: async () => {
         await employeeService.remindEndingProbations();
+      },
+    },
+    {
+      // Leave (§10): approved → active at the Cairo start date (+ leaveStart drive).
+      key: 'hr.leave.activateStarted',
+      description: 'Activate approved leave whose start date has arrived',
+      cron: '*/30 * * * *',
+      ownerService: 'hr',
+      handler: async () => {
+        await leaveRequestService.activateDueStarted();
+      },
+    },
+    {
+      // Leave (§10): active → completed after the end date; reservations become consumption.
+      key: 'hr.leave.completeEnded',
+      description: 'Complete active leave past its end date and finalize consumption',
+      cron: '0 1 * * *',
+      ownerService: 'hr',
+      handler: async () => {
+        await leaveRequestService.completeDueEnded();
+      },
+    },
+    {
+      // Leave (§10): SLA nudge for stale pending approvals.
+      key: 'hr.leave.approvalReminder',
+      description: 'Remind approvers about stale pending leave requests',
+      cron: '0 6 * * *',
+      ownerService: 'hr',
+      handler: async () => {
+        await leaveRequestService.remindPendingApprovals();
+      },
+    },
+    {
+      // Leave (§10): year-end close — carryover, new-year grants, carryover expiry.
+      key: 'hr.leave.yearEnd',
+      description: 'Year-end leave processing: carryover + entitlement grants',
+      cron: '30 0 1 1 *',
+      ownerService: 'hr',
+      handler: async () => {
+        await leaveBalanceService.yearEndProcessing();
       },
     },
   ],

@@ -756,6 +756,12 @@ class EmployeeService {
       action: 'loginCreated',
       changes: [{ field: 'userId', old: null, new: String(user._id) }],
     });
+    // C1-R (Leave design): employee-subject modules backfill their denormalized owner field.
+    await emit(HrEmployeeEvents.EmployeeLoginLinked, {
+      employeeId,
+      userId: String(user._id),
+      code: employee.code,
+    });
     return { user, activationToken, employeeCode: employee.code };
   }
 

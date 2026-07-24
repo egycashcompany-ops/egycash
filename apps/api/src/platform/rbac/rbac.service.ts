@@ -410,7 +410,7 @@ class RbacService {
   // ── Seed helpers ──────────────────────────────────────────────────────────
 
   async ensureSystemRole(
-    key: 'super-admin' | 'platform-admin',
+    key: 'super-admin' | 'platform-admin' | 'employee-self-service',
     name: { ar: string; en: string },
     permissionKeys: string[],
   ): Promise<RoleDoc> {

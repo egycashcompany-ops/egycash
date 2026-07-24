@@ -42,6 +42,7 @@ import {
   buildEmployeeCode,
   employeeRepository,
   type EmployeeDoc,
+  type EmployeeEntity,
   type EmploymentDetails,
 } from '../employees';
 import { employeeActionRepository } from './employee-action.repository';
@@ -311,7 +312,7 @@ class EmployeeActionService {
   /** The per-type mutation. Returns the change set with application-time `from` values (C1). */
   private async applyToEmployee(
     action: EmployeeActionDoc,
-    employee: EmployeeDoc & { save: () => Promise<unknown> },
+    employee: EmployeeEntity,
   ): Promise<EmployeeActionChange[]> {
     const p = action.payload as Record<string, unknown>;
     const changes: EmployeeActionChange[] = [];
@@ -483,6 +484,9 @@ class EmployeeActionService {
         throw new BusinessRuleError(`unsupported action type: ${action.type as string}`);
     }
 
+    // Mongoose does not bump __v for scalar-only changes — bump explicitly so optimistic
+    // concurrency (API Standards §6) holds between successive actions.
+    employee.increment();
     await employee.save();
     return changes;
   }
@@ -490,7 +494,7 @@ class EmployeeActionService {
   // ── Transfer (F1 propagation: code prefix, user placement, employee file) ──
 
   private async applyTransfer(
-    employee: EmployeeDoc & { save: () => Promise<unknown> },
+    employee: EmployeeEntity,
     p: Record<string, unknown>,
     changes: EmployeeActionChange[],
     actorId: string,
@@ -605,7 +609,7 @@ class EmployeeActionService {
   }
 
   private async applyExit(
-    employee: EmployeeDoc & { save: () => Promise<unknown> },
+    employee: EmployeeEntity,
     exit: {
       type: EmployeeExitType;
       reason: string | null;
@@ -691,7 +695,7 @@ class EmployeeActionService {
   // ── Rehire (same number, same file — a NEW employment period) ─────────────
 
   private async applyRehire(
-    employee: EmployeeDoc & { save: () => Promise<unknown> },
+    employee: EmployeeEntity,
     p: Record<string, unknown>,
     action: EmployeeActionDoc,
     changes: EmployeeActionChange[],
@@ -841,7 +845,8 @@ class EmployeeActionService {
 
   private async suspendLogin(userId: string, changes: EmployeeActionChange[], actorId: string): Promise<void> {
     const user = await userService.getById(userId);
-    if (user.status === 'suspended' || user.status === 'archived') return;
+    // Only an ACTIVE login can be suspended (invited accounts have nothing to cut off yet).
+    if (user.status !== 'active') return;
     await userService.changeStatus(userId, { status: 'suspended', version: user.__v }, actorId);
     changes.push({ field: 'user.status', from: user.status, to: 'suspended' });
   }

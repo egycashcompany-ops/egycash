@@ -15,6 +15,7 @@ import { created, ok, okPage, validated } from '../../../../platform/web';
 import { authContext } from '../../../../platform/auth';
 import { hasPermission, scopeSelector } from '../../../../shared/types';
 import { employeeActionService } from './employee-action.service';
+import { employeeService, toEmployeeDto } from '../employees';
 import { toEmployeeActionDto } from './employee-action.mapper';
 
 type IdParam = { id: string };
@@ -101,15 +102,14 @@ export const listEmployeeActions = async (req: Request, res: Response): Promise<
   );
 };
 
-/** DEPRECATED alias over the actions engine — kept one release (frozen design §6). */
+/**
+ * DEPRECATED alias over the actions engine — kept one release (frozen design §6). Returns the
+ * UPDATED EMPLOYEE (the old endpoint's shape) so existing clients keep working.
+ */
 export const changeEmployeeStatusAlias = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { body, params } = validated<ChangeEmployeeStatus, never, IdParam>(req);
-  const doc = await employeeActionService.statusAlias(
-    ctx,
-    params.id,
-    body,
-    scopeSelector(ctx, 'employee.changeStatus'),
-  );
-  ok(res, toEmployeeActionDto(doc, { compensationVisible: compVisible(req) }));
+  await employeeActionService.statusAlias(ctx, params.id, body, scopeSelector(ctx, 'employee.changeStatus'));
+  const employee = await employeeService.getById(params.id, scopeSelector(ctx, 'employee.changeStatus'));
+  ok(res, toEmployeeDto(employee, { compensationVisible: compVisible(req) }));
 };

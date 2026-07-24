@@ -7,7 +7,7 @@ import { EMPLOYED_STATUSES, type Paginated } from '@ecms/contracts';
 import { BaseRepository } from '../../../../shared/base/base.repository';
 import { type ScopeSelector } from '../../../../shared/types';
 import { normalizeArabic } from '../../shared/arabic';
-import { EmployeeModel, type EmployeeDoc } from './employee.model';
+import { EmployeeModel, type EmployeeDoc, type EmployeeEntity } from './employee.model';
 
 export interface EmployeeListFilter {
   status?: string | undefined;
@@ -67,7 +67,7 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
   }
 
   /** Hydrated (save-able) doc for the Personnel Actions engine's apply path. Unscoped. */
-  async findRawById(id: string): Promise<(EmployeeDoc & { save: () => Promise<unknown> }) | null> {
+  async findRawById(id: string): Promise<EmployeeEntity | null> {
     if (!Types.ObjectId.isValid(id)) return null;
     return this.model.findOne({ _id: new Types.ObjectId(id), isDeleted: false }).exec();
   }

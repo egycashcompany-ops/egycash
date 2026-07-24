@@ -3,7 +3,13 @@
 // are not reached across the feature boundary.
 export { buildEmployeesRouter } from './employee.routes';
 export { employeeService } from './employee.service';
+export { toEmployeeDto, toRehireCheckResultDto } from './employee.mapper';
 export { employeeRepository } from './employee.repository';
 export { buildEmployeeCode } from './employee-number';
 export { migrateEmployeesToRegistry, personalFromApplicant } from './employee.migration';
-export { type EmployeeDoc, type EmployeePersonalData, type EmploymentDetails } from './employee.model';
+export {
+  type EmployeeDoc,
+  type EmployeeEntity,
+  type EmployeePersonalData,
+  type EmploymentDetails,
+} from './employee.model';

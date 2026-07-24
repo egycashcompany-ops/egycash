@@ -11,6 +11,52 @@ its entry here in the same PR.
 
 ### Added
 
+- **HR — Employee Management module (frozen design: `docs/12-planning/employee-module-design.md`).**
+  The employee becomes the post-hire system of record, moved out of Recruitment into
+  `modules/hr/employee-management` (URLs and permission keys unchanged).
+  - **Probation-first lifecycle.** Statuses are now `probation → active ⇄ onLeave ⇄ suspended →
+    exited`; every new hire starts in probation (0 months ⇒ straight to active) with explicit
+    confirm / extend / fail decisions and a scheduler reminder before the deadline. `exited` is the
+    single terminal status — the exit *type* (`resignation | termination | endOfContract |
+    retirement | death`), reason, effective date and an explicit **rehire-eligibility** decision are
+    data on the exit record. Returning from suspension/leave lands on the BASE status (probation if
+    never confirmed). The legacy `terminated` status is migrated to `exited` at boot.
+  - **Personnel Actions engine** (`hr_employee_actions`) — the only writer of employment facts.
+    Append-only, per-employee sequenced, **effective-dated** (past applies immediately; future is
+    `scheduled` and applied by a scheduler task in date order, with org referents re-validated at
+    application time — failures are recorded + notified, never silent), cancellable while scheduled.
+    Permission-grouped endpoints: `POST /hr/employees/:id/actions/{employment|compensation|exit|rehire}`
+    + cancel + list. The old `PATCH /:id/status` remains one release as a thin alias (exits refused
+    there). Propagation: a branch transfer recomputes the employee code and syncs the **linked user's
+    placement** and the Employee File's code/branch; an exit **auto-suspends the login**, settles
+    direct reports (bulk reassign or explicit unassigned) and closes the employment period;
+    self-actions are always rejected.
+  - **Owned personal data.** The applicant's personal data is copied ONCE at hire (raw national id,
+    masked in DTOs) and maintained on the employee via audited `PATCH /:id/personal` edits — the
+    applicant record stays immutable pre-hire history.
+  - **Direct Registration** (`POST /hr/employees/direct`, `employee.registerDirect`) — onboard the
+    existing workforce or walk-in hires without a pipeline (recruitment references null), with the
+    shared national-id OCR and duplicate guards against employees AND live applicants.
+  - **Rehire on the SAME employee number** — reopens a new employment period (same number, same
+    Electronic File; a new completed hiring case *supplements* the existing file). Terms come from an
+    accepted offer or direct entry; rehiring someone marked not-eligible needs the dedicated
+    **`employee.rehireOverride`** permission. Hiring a returning person through recruitment or direct
+    registration is refused and routed to Rehire (one person = one employee, forever).
+  - **Compensation split.** `employee.viewCompensation` / `employee.manageCompensation` — salary and
+    allowances are redacted end-to-end (profile, lists, action history) without view rights.
+  - **Employees web app.** `/employees` becomes its own sidebar app: an employed-by-default registry
+    list (+ exited view), a profile hub (Overview / Personal / Employment / Documents / Timeline /
+    Account) with a status-and-permission-filtered Actions menu, focused action dialogs (suspend's
+    "disable login" checked by default), pending-exit + probation banners, a Direct Registration
+    form with a live rehire-match check, and a composed timeline (recruitment milestones + personnel
+    actions + audited personal edits). `/employee-files` moves alongside unchanged.
+  - New permissions: `employee.{registerDirect, editPersonal, manageActions, manageCompensation,
+    viewCompensation, exit, rehire, rehireOverride, viewSensitive}`; new events
+    `hr.employee.{actionApplied, transferred, exited, rehired}`; five notification templates; boot
+    migration is idempotent (origin backfill, employment periods, personal copy, synthesized hire
+    actions, frozen legacy status trail). Hiring-documents / employee-file applicant references are
+    nullable for direct-registration employees.
+
 - **HR — Recruitment workflow completion (follow-up to the workflow redesign).**
   - **Interview Phases (Kanban) view.** `/interviews` gains a **List ⇄ Phases toggle** (URL-persisted).
     The board's columns are *Waiting for Scheduling → each active interview stage → each active

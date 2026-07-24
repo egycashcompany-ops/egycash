@@ -288,7 +288,11 @@ describe('employees — creation from the accepted offer snapshot', () => {
     // Permanent Global Employee Number + derived code <CurrentBranchCode><employeeNumber>.
     expect(emp.employeeNumber).toMatch(/^\d{6,}$/);
     expect(emp.code).toBe(`001${emp.employeeNumber}`);
-    expect(emp.status).toBe('active');
+    // Probation-first entry (D1) — the offer's 3 probation months put the hire in probation.
+    expect(emp.status).toBe('probation');
+    expect(emp.origin).toBe('recruitment');
+    expect(emp.probation?.confirmedAt).toBeNull();
+    expect(emp.employmentPeriods).toHaveLength(1);
     expect(emp.hiredAt).toBe(new Date(HIRING_DATE).toISOString());
 
     // Preserved references.
@@ -433,7 +437,7 @@ describe('platform identity (ADR-017) — branch code, global sequence, login ac
   });
 });
 
-describe('employees — lifecycle (status transitions)', () => {
+describe('employees — lifecycle (probation-first + the deprecated status alias)', () => {
   const hire = async (): Promise<EmployeeDto> => {
     const applicant = await offerReadyApplicant();
     const offer = await acceptedOffer(applicant.id);
@@ -441,22 +445,48 @@ describe('employees — lifecycle (status transitions)', () => {
   };
   const changeStatus = (id: string, body: Record<string, unknown>, token = adminToken) =>
     request(app).patch(`/api/v1/hr/employees/${id}/status`).set('Authorization', `Bearer ${token}`).send(body);
-  const last = (e: EmployeeDto): EmployeeDto['statusHistory'][number] | undefined =>
-    e.statusHistory[e.statusHistory.length - 1];
+  const employmentAction = (id: string, body: Record<string, unknown>) =>
+    request(app)
+      .post(`/api/v1/hr/employees/${id}/actions/employment`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send(body);
+  const reread = async (id: string): Promise<EmployeeDto> =>
+    (await request(app).get(`/api/v1/hr/employees/${id}`).set('Authorization', `Bearer ${adminToken}`)).body
+      .data as EmployeeDto;
+  /** Probation-confirm the fresh hire so status-based flows start from `active`. */
+  const hireActive = async (): Promise<EmployeeDto> => {
+    const emp = await hire();
+    const confirmed = await employmentAction(emp.id, { type: 'probationConfirm', version: emp.version });
+    expect(confirmed.status).toBe(201);
+    return reread(emp.id);
+  };
 
-  it('records the hire as the first status-history entry', async () => {
+  it('records the hire as the first status-history entry and as the hire action (seq 1)', async () => {
     const emp = await hire();
     expect(emp.statusHistory).toHaveLength(1);
-    expect(emp.statusHistory[0]).toMatchObject({ from: null, to: 'active' });
+    expect(emp.statusHistory[0]).toMatchObject({ from: null, to: 'probation' });
+    const actions = await request(app)
+      .get(`/api/v1/hr/employees/${emp.id}/actions`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(actions.status).toBe(200);
+    const rows = (actions.body as { data: { type: string; seq: number; status: string }[] }).data;
+    expect(rows.some((a) => a.type === 'hire' && a.seq === 1 && a.status === 'applied')).toBe(true);
   });
 
-  it('moves active → onLeave → active, appending an auditable trail', async () => {
-    const emp = await hire();
+  it('confirms probation → active; probation cannot be re-entered from active', async () => {
+    const emp = await hireActive();
+    expect(emp.status).toBe('active');
+    expect(emp.probation?.confirmedAt).not.toBeNull();
+    const again = await employmentAction(emp.id, { type: 'probationConfirm', version: emp.version });
+    expect(again.status).toBe(422);
+  });
+
+  it('moves active → onLeave → active through the alias, audited as a personnel action', async () => {
+    const emp = await hireActive();
     const onLeave = await changeStatus(emp.id, { status: 'onLeave', version: emp.version });
     expect(onLeave.status).toBe(200);
     const afterLeave = onLeave.body.data as EmployeeDto;
     expect(afterLeave.status).toBe('onLeave');
-    expect(last(afterLeave)).toMatchObject({ from: 'active', to: 'onLeave' });
 
     const back = await changeStatus(emp.id, { status: 'active', version: afterLeave.version });
     expect(back.status).toBe(200);
@@ -466,43 +496,50 @@ describe('employees — lifecycle (status transitions)', () => {
       .get('/api/v1/platform/audit-logs')
       .query({ entityType: 'employee', pageSize: 20 })
       .set('Authorization', `Bearer ${adminToken}`);
-    expect((audit.body as { data: { action: string }[] }).data.some((r) => r.action === 'statusChange')).toBe(true);
+    expect((audit.body as { data: { action: string }[] }).data.some((r) => r.action === 'personnelAction')).toBe(
+      true,
+    );
   });
 
-  it('requires a reason to suspend or terminate, then treats terminated as terminal', async () => {
-    const emp = await hire();
-    // Missing reason → request-schema validation failure (Zod refine → 400), distinct from the
-    // service-level business-rule rejections (422) exercised below.
-    expect((await changeStatus(emp.id, { status: 'suspended', version: emp.version })).status).toBe(400);
-
-    const suspended = await changeStatus(emp.id, { status: 'suspended', reason: 'investigation', version: emp.version });
+  it('returns to PROBATION (not active) after a suspension during an unconfirmed probation', async () => {
+    const emp = await hire(); // still in probation
+    const suspended = await changeStatus(emp.id, { status: 'suspended', reason: 'inquiry', version: emp.version });
     expect(suspended.status).toBe(200);
-    const s = suspended.body.data as EmployeeDto;
-    expect(s.status).toBe('suspended');
-    expect(last(s)).toMatchObject({ from: 'active', to: 'suspended', reason: 'investigation' });
+    expect((suspended.body.data as EmployeeDto).status).toBe('suspended');
+    const back = await changeStatus(emp.id, {
+      status: 'active',
+      version: (suspended.body.data as EmployeeDto).version,
+    });
+    expect(back.status).toBe(200);
+    // Base-status rule (frozen design F4): probation was never confirmed.
+    expect((back.body.data as EmployeeDto).status).toBe('probation');
+  });
 
-    const terminated = await changeStatus(emp.id, { status: 'terminated', reason: 'end of contract', version: s.version });
-    expect(terminated.status).toBe(200);
-    const term = terminated.body.data as EmployeeDto;
-    expect(term.status).toBe('terminated');
-    // Terminal: any further transition is rejected by the matrix.
-    expect((await changeStatus(emp.id, { status: 'active', version: term.version })).status).toBe(422);
+  it('requires a reason to suspend; the alias refuses exits (typed exit endpoint instead)', async () => {
+    const emp = await hireActive();
+    expect((await changeStatus(emp.id, { status: 'suspended', version: emp.version })).status).toBe(400);
+    expect(
+      (await changeStatus(emp.id, { status: 'exited', reason: 'x', version: emp.version })).status,
+    ).toBe(422);
+    // The removed legacy value is no longer a valid status at all.
+    expect(
+      (await changeStatus(emp.id, { status: 'terminated', reason: 'x', version: emp.version })).status,
+    ).toBe(400);
   });
 
   it('rejects a no-op and an illegal transition', async () => {
-    const emp = await hire();
-    // No-op (same status).
+    const emp = await hireActive();
+    // "Return to active" while already active is meaningless.
     expect((await changeStatus(emp.id, { status: 'active', version: emp.version })).status).toBe(422);
-    // suspended → onLeave is illegal (must reinstate to active first).
+    // suspended → onLeave is illegal (must reinstate first).
     const suspended = (await changeStatus(emp.id, { status: 'suspended', reason: 'x', version: emp.version }))
       .body.data as EmployeeDto;
     expect((await changeStatus(emp.id, { status: 'onLeave', version: suspended.version })).status).toBe(422);
   });
 
   it('enforces optimistic concurrency (stale version → 409)', async () => {
-    const emp = await hire();
+    const emp = await hireActive();
     expect((await changeStatus(emp.id, { status: 'onLeave', version: emp.version })).status).toBe(200);
-    // Reusing the now-stale original version fails.
     expect((await changeStatus(emp.id, { status: 'active', version: emp.version })).status).toBe(409);
   });
 

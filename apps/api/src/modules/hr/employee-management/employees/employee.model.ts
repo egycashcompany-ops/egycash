@@ -7,7 +7,7 @@
 // feature); `statusHistory` is the LEGACY pre-actions trail, frozen at migration.
 // `employmentPeriods` is a DERIVED index over hire/rehire/exit actions. A unique index on
 // `jobOfferId` guarantees at most one employee per accepted offer.
-import { Schema, model, type Types } from 'mongoose';
+import { Schema, model, type HydratedDocument, type Types } from 'mongoose';
 import {
   EMPLOYEE_EXIT_TYPES,
   EMPLOYEE_ORIGINS,
@@ -418,5 +418,8 @@ employeeSchema.index({ sectionId: 1, status: 1 }, { name: 'ix_sectionId_status' 
 employeeSchema.index({ 'personal.nationalId': 1 }, { name: 'ix_nationalId' });
 // Direct reports (subordinates endpoint / exit direct-reports decision).
 employeeSchema.index({ 'employment.managerId': 1, status: 1 }, { name: 'ix_managerId_status' });
+
+/** Hydrated (save-able) document — what the Personnel Actions engine mutates. */
+export type EmployeeEntity = HydratedDocument<EmployeeDoc>;
 
 export const EmployeeModel = model<EmployeeDoc>('Employee', employeeSchema, 'hr_employees');

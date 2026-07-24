@@ -31,7 +31,7 @@ Recruitment is a pipeline that ends; Employee Management is a registry that live
 | Login account link (ADR-017) | Employee Management |
 
 **Code restructure (behavior-frozen):** `apps/api/src/modules/hr/recruitment/{employees,employee-file}`
-move to `apps/api/src/modules/hr/employees/`; the web features likewise become their own sidebar
+move to `apps/api/src/modules/hr/employee-management/`; the web features likewise become their own sidebar
 app. Routes stay `/hr/employees` and `/hr/employee-files`; permission keys stay `employee.*` /
 `employeeFile.*`. Dependency direction (verified): Employee module → Recruitment features →
 Platform; never the reverse. The applicant record is immutable pre-hire history after the hire.

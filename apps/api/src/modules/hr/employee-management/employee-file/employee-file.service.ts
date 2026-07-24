@@ -26,12 +26,12 @@ import { auditService } from '../../../../platform/audit';
 import { emit } from '../../../../platform/kernel/event-bus';
 import { fileService, type UploadedBinary } from '../../../../platform/files';
 import { notificationsService } from '../../../../platform/notifications';
-import { applicantService } from '../applicants';
-import { screeningService } from '../screening';
-import { interviewService } from '../interviews';
-import { jobOfferService } from '../job-offers';
+import { applicantService } from '../../recruitment/applicants';
+import { screeningService } from '../../recruitment/screening';
+import { interviewService } from '../../recruitment/interviews';
+import { jobOfferService } from '../../recruitment/job-offers';
 import { employeeService } from '../employees';
-import { hiringDocumentsService } from '../hiring-documents';
+import { hiringDocumentsService } from '../../recruitment/hiring-documents';
 import { employeeFileRepository, type EmployeeFileListFilter } from './employee-file.repository';
 import { resolveEmployeeFileCategoryId } from './employee-file.files';
 import {

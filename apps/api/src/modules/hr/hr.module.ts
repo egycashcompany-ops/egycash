@@ -12,9 +12,9 @@ import { buildScreeningsRouter } from './recruitment/screening';
 import { buildInterviewStagesRouter, buildInterviewsRouter } from './recruitment/interviews';
 import { buildEvaluationPhasesRouter, buildEvaluationsRouter } from './recruitment/evaluations';
 import { buildJobOffersRouter, jobOfferService } from './recruitment/job-offers';
-import { buildEmployeesRouter } from './recruitment/employees';
+import { buildEmployeesRouter } from './employee-management/employees';
 import { buildHiringDocumentTypesRouter, buildHiringDocumentsRouter } from './recruitment/hiring-documents';
-import { buildEmployeeFilesRouter } from './recruitment/employee-file';
+import { buildEmployeeFilesRouter } from './employee-management/employee-file';
 import { seedHrRecruitment } from './hr.seed';
 
 const applicantPermissions = declarePermissions(

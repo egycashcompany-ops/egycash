@@ -26,7 +26,7 @@ import { auditService } from '../../../../platform/audit';
 import { emit } from '../../../../platform/kernel/event-bus';
 import { fileService, type UploadedBinary } from '../../../../platform/files';
 import { notificationsService } from '../../../../platform/notifications';
-import { employeeService } from '../employees';
+import { employeeService } from '../../employee-management/employees';
 import { hiringDocumentsRepository, type HiringDocumentsListFilter } from './hiring-documents.repository';
 import { hiringDocumentTypeRepository } from './hiring-document-type.repository';
 import { resolveHiringDocsCategoryId } from './hiring-documents.files';

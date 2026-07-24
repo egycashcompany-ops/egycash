@@ -16,7 +16,7 @@ import { LoadingState } from '../../../shared/ui/states/LoadingState';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { ApiError } from '../../../shared/lib/api-client';
-import { localized } from '../../../shared/lib/format';
+import { asciiDigits, localized } from '../../../shared/lib/format';
 import { LocalizedNameFields, StatusSelect, localizedOrNull, type LocalizedValue } from './form-fields';
 import { UserPicker } from './UserPicker';
 import { useBranchOptions, useDepartmentOptions } from './references';
@@ -174,7 +174,7 @@ const UnitFormBody = <TDto extends AnyUnitDto>({
                 <Input
                   dir="ltr"
                   value={code}
-                  onChange={(e) => setCode(e.target.value.toUpperCase())}
+                  onChange={(e) => setCode(asciiDigits(e.target.value).toUpperCase())}
                   placeholder="BR-CAI-1"
                 />
               </Field>

@@ -29,7 +29,7 @@ export const MyLeavePage = (): JSX.Element => {
   const employeeId = useAppSelector((state) => state.auth.me?.employeeId ?? null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const params = useMemo(() => ({ page: 1, pageSize: 50, sortBy: 'createdAt', sortDir: 'desc' }), []);
-  const { data, isLoading, isError, refetch } = useLeaveRequests(params);
+  const { data, isLoading, isError, error, refetch } = useLeaveRequests(params);
 
   return (
     <PageContainer>
@@ -60,7 +60,7 @@ export const MyLeavePage = (): JSX.Element => {
           <RequestsTable
             rows={data?.items ?? []}
             loading={isLoading}
-            error={isError}
+            error={isError ? error : undefined}
             onRetry={() => void refetch()}
             empty={<EmptyState title={t('leave.my.empty')} />}
           />

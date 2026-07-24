@@ -38,6 +38,7 @@ export const toEvaluationDto = (doc: EvaluationDoc): EvaluationDto => ({
   id: String(doc._id),
   applicantId: String(doc.applicantId),
   applicantCode: doc.applicantCode,
+  applicantName: doc.applicantName ?? '',
   branchId: doc.branchId === null ? null : String(doc.branchId),
   phaseId: String(doc.phaseId),
   phaseKey: doc.phaseKey,

@@ -9,11 +9,14 @@ import { closeSocketServer } from './infrastructure/realtime/socket-server';
 import { bootPlatform } from './platform/kernel/bootstrap';
 import { attachNotificationSocket } from './platform/notifications';
 import { moduleManifests } from './modules';
+import { syncNavigationCatalog } from './seed-navigation';
 import { buildApp } from './app';
 
 const main = async (): Promise<void> => {
   initSentry('api');
   await bootPlatform({ modules: moduleManifests });
+  // Upgrades add navigation catalog entries — existing installs pick them up here (BF-1).
+  await syncNavigationCatalog();
 
   const app = buildApp();
   const server = app.listen(env.PORT, () => {

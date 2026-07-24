@@ -90,7 +90,7 @@ export const ScreeningQueuePage = (): JSX.Element => {
     {
       key: 'applicant',
       header: t('screening.columns.applicant'),
-      render: (s) => <span className="font-mono text-xs" dir="ltr">{s.applicantCode}</span>,
+      render: (s) => <span>{s.applicantName} <span className="font-mono text-xs text-slate-500" dir="ltr">{s.applicantCode}</span></span>,
     },
     { key: 'status', header: t('screening.columns.status'), sortable: true, render: (s) => <ScreeningStatusBadge status={s.status} /> },
     { key: 'notes', header: t('screening.columns.notes'), align: 'center', render: (s) => formatNumber(s.notes.length, locale) },

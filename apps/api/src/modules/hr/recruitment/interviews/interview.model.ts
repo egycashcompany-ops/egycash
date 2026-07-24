@@ -30,6 +30,7 @@ export interface InterviewPanelist {
 export interface InterviewDoc extends BaseDocFields {
   applicantId: Types.ObjectId;
   applicantCode: string;
+  applicantName: string;
   branchId: Types.ObjectId | null;
   stageId: Types.ObjectId;
   stageOrder: number;
@@ -55,6 +56,7 @@ const interviewSchema = new Schema<InterviewDoc>(
   {
     applicantId: { type: Schema.Types.ObjectId, required: true },
     applicantCode: { type: String, required: true },
+    applicantName: { type: String, required: true, default: '' },
     branchId: { type: Schema.Types.ObjectId, default: null },
     stageId: { type: Schema.Types.ObjectId, required: true },
     stageOrder: { type: Number, required: true },

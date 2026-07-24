@@ -58,6 +58,7 @@ export interface JobOfferDoc extends BaseDocFields {
   code: string;
   applicantId: Types.ObjectId;
   applicantCode: string;
+  applicantName: string;
   branchId: Types.ObjectId;
   status: OfferStatus;
   active: boolean;
@@ -117,6 +118,7 @@ const jobOfferSchema = new Schema<JobOfferDoc>(
     code: { type: String, required: true },
     applicantId: { type: Schema.Types.ObjectId, required: true },
     applicantCode: { type: String, required: true },
+    applicantName: { type: String, required: true, default: '' },
     branchId: { type: Schema.Types.ObjectId, required: true },
     status: { type: String, enum: OFFER_STATUSES, required: true, default: 'draft' },
     active: { type: Boolean, required: true, default: true },

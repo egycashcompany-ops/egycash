@@ -1,13 +1,16 @@
 // Balance cards per banked type (My Leave + the profile Leave tab + HR balances view).
 import { type LeaveBalanceDto } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
-import { Card, CardBody } from '../../../../shared/ui';
+import { Card, CardBody, ErrorState } from '../../../../shared/ui';
 import { useEmployeeLeaveBalances } from '../api/leave-queries';
 import { typeLabel } from './typeLabel';
 
 export const BalanceCards = ({ employeeId, year }: { employeeId: string; year?: number }): JSX.Element => {
   const t = useT();
-  const { data } = useEmployeeLeaveBalances(employeeId, year);
+  const { data, isError, error, refetch } = useEmployeeLeaveBalances(employeeId, year);
+  if (isError) {
+    return <ErrorState error={error} onRetry={() => void refetch()} />;
+  }
   const rows: LeaveBalanceDto[] = data ?? [];
   if (rows.length === 0) {
     return <p className="text-sm text-slate-500">{t('leave.balances.none')}</p>;

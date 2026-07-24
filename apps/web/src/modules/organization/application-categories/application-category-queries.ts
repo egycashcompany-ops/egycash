@@ -27,7 +27,7 @@ export const useApplicationCategory = (id: string) =>
 export const useApplicationCategoryOptions = (enabled = true) =>
   useQuery({
     queryKey: [ORG_MODULE, FEATURE, 'options'],
-    queryFn: () => api.listApplicationCategories({ status: 'active', pageSize: 200, sortBy: 'sortOrder', sortDir: 'asc' }),
+    queryFn: () => api.listApplicationCategories({ status: 'active', pageSize: 100, sortBy: 'sortOrder', sortDir: 'asc' }),
     enabled,
     staleTime: 5 * 60_000,
     retry: false,

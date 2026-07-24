@@ -21,6 +21,7 @@ export const toInterviewDto = (doc: InterviewDoc): InterviewDto => ({
   id: String(doc._id),
   applicantId: String(doc.applicantId),
   applicantCode: doc.applicantCode,
+  applicantName: doc.applicantName ?? '',
   branchId: doc.branchId === null ? null : String(doc.branchId),
   stageId: String(doc.stageId),
   stageOrder: doc.stageOrder,

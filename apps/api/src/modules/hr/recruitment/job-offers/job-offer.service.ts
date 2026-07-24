@@ -99,6 +99,7 @@ class JobOfferService {
         code,
         applicantId: new Types.ObjectId(input.applicantId),
         applicantCode: applicant.code,
+        applicantName: applicant.fullNameAr,
         branchId: terms.branchId,
         status: 'draft',
         active: true,

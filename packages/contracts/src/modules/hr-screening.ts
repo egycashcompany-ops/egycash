@@ -116,6 +116,8 @@ export interface ScreeningDto {
   id: string;
   applicantId: string;
   applicantCode: string;
+  /** Denormalized applicant display name (Arabic full name) — tables never show bare codes. */
+  applicantName: string;
   branchId: string | null;
   status: ScreeningStatus;
   notes: ScreeningNoteDto[];

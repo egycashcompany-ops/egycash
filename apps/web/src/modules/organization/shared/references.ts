@@ -20,12 +20,12 @@ const listBranchOptions = (): Promise<OrgUnitOptionDto[]> =>
 
 const listDepartments = (branchId?: string): Promise<Paginated<DepartmentDto>> =>
   getPage<DepartmentDto>(
-    `/platform/departments${buildQuery({ status: 'active', pageSize: 200, branchId })}`,
+    `/platform/departments${buildQuery({ status: 'active', pageSize: 100, branchId })}`,
   );
 
 const listSections = (departmentId?: string): Promise<Paginated<SectionDto>> =>
   getPage<SectionDto>(
-    `/platform/sections${buildQuery({ status: 'active', pageSize: 200, departmentId })}`,
+    `/platform/sections${buildQuery({ status: 'active', pageSize: 100, departmentId })}`,
   );
 
 const searchUsers = (term: string): Promise<Paginated<UserDto>> =>

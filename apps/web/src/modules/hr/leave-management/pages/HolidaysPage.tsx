@@ -17,7 +17,7 @@ export const HolidaysPage = (): JSX.Element => {
   const [rangeYear, setRangeYear] = useState(year);
   const from = `${String(rangeYear)}-01-01`;
   const to = `${String(rangeYear)}-12-31`;
-  const { data, isLoading, isError, refetch } = useWorkCalendar(from, to);
+  const { data, isLoading, isError, error, refetch } = useWorkCalendar(from, to);
   const create = useCreateHoliday();
   const remove = useDeleteHoliday();
   const [adding, setAdding] = useState(false);
@@ -79,7 +79,7 @@ export const HolidaysPage = (): JSX.Element => {
         rows={rows}
         rowKey={(h) => h.id}
         loading={isLoading}
-        error={isError}
+        error={isError ? error : undefined}
         onRetry={() => void refetch()}
       />
       <Dialog

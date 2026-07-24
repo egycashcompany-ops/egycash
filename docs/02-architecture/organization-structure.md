@@ -40,6 +40,23 @@ A **Job Title defines a role** — it is deliberately **not** tied to a Branch/D
 Attaching a title to a concrete organizational location is the job of **Job Positions** (a later
 phase), which keeps the Talent-Pool rule (ADR-016) possible.
 
+### Job Titles vs Job Positions (reviewed 2026-07 — kept as TWO entities)
+
+The distinction is **WHAT vs WHERE**, and the two lifecycles are independent:
+
+- **Job Title** = WHAT a role is: the company-wide catalog entry carrying grade, salary band and
+  requirements. It is the **compensation identity** and is referenced today by employees
+  (`employment.jobTitleId`), user profiles, personnel actions and job offers.
+- **Job Position** = WHERE a role sits: a **seat** anchored to a Department (optionally a Section)
+  per ADR-016. A seat can change its title without moving; a title outlives any seat. Positions
+  are the anchor for headcount planning and future Job Requisitions; the employee link
+  (`employment.jobPositionId`) exists in the schema and is deliberately dormant until that phase.
+
+Consolidating them was considered and **rejected**: merging would jam two lifecycles into one
+entity, force every title to carry a department linkage (breaking the org-wide catalog and the
+Talent-Pool rule), and require migrating every existing `jobTitleId` reference. The UX cost of
+the pairing is addressed with explicit WHAT/WHERE page descriptions in both languages instead.
+
 ### Enriched fields (this phase)
 
 | Field | Type | Required | Notes |

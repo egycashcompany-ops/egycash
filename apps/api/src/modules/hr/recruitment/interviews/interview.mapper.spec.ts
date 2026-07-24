@@ -18,6 +18,7 @@ const baseDoc = (over: Partial<InterviewDoc>): InterviewDoc =>
     _id: new Types.ObjectId(),
     applicantId: new Types.ObjectId(),
     applicantCode: 'APP-2026-000001',
+    applicantName: 'أحمد محمد',
     branchId: null,
     stageId: new Types.ObjectId(),
     stageOrder: 1,

@@ -70,7 +70,7 @@ const EmployeeLeaveTab = ({ employee }: { employee: EmployeeDto }): JSX.Element 
   const t = useT();
   const [adjusting, setAdjusting] = useState(false);
   const [filing, setFiling] = useState(false);
-  const { data, isLoading, isError, refetch } = useLeaveRequests({
+  const { data, isLoading, isError, error, refetch } = useLeaveRequests({
     page: 1,
     pageSize: 50,
     employeeId: employee.id,
@@ -100,7 +100,7 @@ const EmployeeLeaveTab = ({ employee }: { employee: EmployeeDto }): JSX.Element 
       <RequestsTable
         rows={data?.items ?? []}
         loading={isLoading}
-        error={isError}
+        error={isError ? error : undefined}
         onRetry={() => void refetch()}
         empty={<EmptyState title={t('leave.profile.empty')} />}
       />

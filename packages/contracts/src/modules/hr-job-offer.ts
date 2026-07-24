@@ -163,6 +163,8 @@ export interface JobOfferDto {
   code: string;
   applicantId: string;
   applicantCode: string;
+  /** Denormalized applicant display name (Arabic full name) — tables never show bare codes. */
+  applicantName: string;
   branchId: string;
   status: OfferStatus;
   /** True while draft/sent — the "only one active offer per applicant" flag. */

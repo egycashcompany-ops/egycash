@@ -9,7 +9,7 @@ import { RequestsTable } from '../components/RequestsTable';
 
 export const ApprovalsInboxPage = (): JSX.Element => {
   const t = useT();
-  const { data, isLoading, isError, refetch } = usePendingApprovals();
+  const { data, isLoading, isError, error, refetch } = usePendingApprovals();
   return (
     <PageContainer>
       <PageHeader
@@ -20,7 +20,7 @@ export const ApprovalsInboxPage = (): JSX.Element => {
       <RequestsTable
         rows={data ?? []}
         loading={isLoading}
-        error={isError}
+        error={isError ? error : undefined}
         onRetry={() => void refetch()}
         showEmployee
         empty={<EmptyState title={t('leave.approvals.empty')} />}

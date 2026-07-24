@@ -49,6 +49,7 @@ export const AwaitingInterviewsPanel = ({
           >
             <div className="flex min-w-0 items-center gap-3">
               <span className="font-mono text-xs text-slate-500" dir="ltr">{a.applicantCode}</span>
+              <span className="truncate text-sm text-slate-700 dark:text-slate-200">{a.applicantName}</span>
               {a.screeningDecidedAt !== null && (
                 <span className="text-xs text-slate-400">
                   {t('interviews.awaiting.approvedOn', { date: formatDate(a.screeningDecidedAt, locale) })}

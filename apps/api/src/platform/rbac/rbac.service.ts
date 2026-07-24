@@ -71,13 +71,22 @@ class RbacService {
     await PermissionModel.deleteMany({ key: { $nin: [...seen] } }).exec();
     this.registryKeys = seen;
 
-    // Protected system roles track the catalog: super-admin holds everything.
-    await roleRepository.setPermissionKeysByKey('super-admin', [...seen]);
-    await roleRepository.setPermissionKeysByKey(
-      'platform-admin',
-      defs.filter((d) => d.moduleId === 'platform').map((d) => d.key),
-    );
-    logger.info({ count: seen.size }, 'permission registry synced');
+    // Protected system roles track the catalog: super-admin holds everything. When the
+    // catalog changed (a new module registered permissions), the holders' cached permission
+    // snapshots are stale — without invalidation the new module 403s until the cache expires.
+    const changedRoleKeys: string[] = [];
+    if (await roleRepository.setPermissionKeysByKey('super-admin', [...seen])) {
+      changedRoleKeys.push('super-admin');
+    }
+    const platformKeys = defs.filter((d) => d.moduleId === 'platform').map((d) => d.key);
+    if (await roleRepository.setPermissionKeysByKey('platform-admin', platformKeys)) {
+      changedRoleKeys.push('platform-admin');
+    }
+    for (const key of changedRoleKeys) {
+      const role = await roleRepository.findByKey(key);
+      if (role !== null) await this.invalidateUsersOfRole(String(role._id));
+    }
+    logger.info({ count: seen.size, invalidatedRoles: changedRoleKeys }, 'permission registry synced');
   }
 
   isRegisteredPermission(key: string): boolean {
@@ -408,6 +417,15 @@ class RbacService {
   }
 
   // ── Seed helpers ──────────────────────────────────────────────────────────
+
+  /** Users currently assigned a seeded system role (e.g. nav-catalog sync grants to admins). */
+  async userIdsWithSystemRole(
+    key: 'super-admin' | 'platform-admin' | 'employee-self-service',
+  ): Promise<string[]> {
+    const role = await roleRepository.findByKey(key);
+    if (role === null) return [];
+    return roleAssignmentRepository.distinctUserIdsForRole(String(role._id));
+  }
 
   async ensureSystemRole(
     key: 'super-admin' | 'platform-admin' | 'employee-self-service',

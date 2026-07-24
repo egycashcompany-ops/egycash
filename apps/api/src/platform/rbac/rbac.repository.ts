@@ -20,9 +20,21 @@ class RoleRepository extends BaseRepository<RoleDoc> {
       .exec();
   }
 
-  /** Registry sync helper — keeps a system role's grants equal to the full catalog. */
-  async setPermissionKeysByKey(key: string, permissionKeys: string[]): Promise<void> {
+  /**
+   * Registry sync helper — keeps a system role's grants equal to the full catalog.
+   * Returns true when the stored key set actually changed (callers must then invalidate
+   * the role holders' cached permission snapshots).
+   */
+  async setPermissionKeysByKey(key: string, permissionKeys: string[]): Promise<boolean> {
+    const current = await this.findByKey(key);
+    if (current === null) return false;
+    const next = new Set(permissionKeys);
+    const same =
+      current.permissionKeys.length === next.size &&
+      current.permissionKeys.every((k) => next.has(k));
+    if (same) return false;
     await this.model.updateOne({ key, isDeleted: false }, { $set: { permissionKeys } }).exec();
+    return true;
   }
 
   async findGrantingPermission(permissionKey: string): Promise<RoleDoc[]> {

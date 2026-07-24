@@ -33,5 +33,11 @@ const applicationSchema = new Schema<ApplicationDoc>(
 );
 applicationSchema.index({ categoryId: 1, sortOrder: 1 }, { name: 'ix_categoryId_sortOrder' });
 applicationSchema.index({ status: 1 }, { name: 'ix_status' });
+// The route IS the catalog identity (the boot sync keys on it) — live duplicates would break
+// both routing and idempotency, so the DB enforces it even under concurrent boots.
+applicationSchema.index(
+  { route: 1 },
+  { unique: true, name: 'ux_route', partialFilterExpression: { isDeleted: false } },
+);
 
 export const ApplicationModel = model<ApplicationDoc>('Application', applicationSchema, 'applications');

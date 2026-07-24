@@ -56,7 +56,9 @@ class JobOfferRepository extends BaseRepository<JobOfferDoc> {
     if (f.active !== undefined) clauses.push({ active: f.active });
     if (f.search !== undefined && f.search.trim() !== '') {
       const re = new RegExp(escapeRegExp(f.search.trim()), 'i');
-      clauses.push({ $or: [{ code: re }, { applicantCode: re }] } as FilterQuery<JobOfferDoc>);
+      clauses.push({
+        $or: [{ code: re }, { applicantCode: re }, { applicantName: re }],
+      } as FilterQuery<JobOfferDoc>);
     }
     if (clauses.length === 0) return {};
     if (clauses.length === 1) return clauses[0] as FilterQuery<JobOfferDoc>;

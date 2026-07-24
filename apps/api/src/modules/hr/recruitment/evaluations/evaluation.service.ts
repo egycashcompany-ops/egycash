@@ -57,6 +57,7 @@ class EvaluationService {
         {
           applicantId: new Types.ObjectId(input.applicantId),
           applicantCode: applicant.code,
+          applicantName: applicant.fullNameAr,
           branchId: applicant.branchId,
           phaseId: phase._id,
           phaseKey: phase.key,

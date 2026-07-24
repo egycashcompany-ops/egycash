@@ -25,6 +25,7 @@ const baseDoc = (over: Partial<JobOfferDoc>): JobOfferDoc =>
     code: 'JO-2026-000001',
     applicantId: new Types.ObjectId(),
     applicantCode: 'APP-2026-000001',
+    applicantName: 'أحمد محمد',
     branchId: new Types.ObjectId(),
     status: 'draft',
     active: true,

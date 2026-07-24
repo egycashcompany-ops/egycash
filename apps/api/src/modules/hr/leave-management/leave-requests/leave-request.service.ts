@@ -954,7 +954,13 @@ class LeaveRequestService {
           { $set: { status: 'cancelled', cancelReason: 'employee exited' }, $inc: { __v: 1 } },
           { new: true },
         ).exec();
-        if (updated !== null) await this.releaseAll(updated, type, null, 'employee exited');
+        if (updated !== null) {
+          await this.releaseAll(updated, type, null, 'employee exited');
+          await emit(HrLeaveEvents.Cancelled, {
+            requestId: String(request._id),
+            employeeId: String(request.employeeId),
+          });
+        }
       }
     }
     await leaveBalanceService.expireAllFor(employeeId, 'employee exited');

@@ -476,6 +476,20 @@ export const LeaveSpanPayloadV1 = z.object({
   halfDayEnd: z.boolean(),
 });
 
+/** Fires on EVERY transition to `cancelled` — user/HR cancellation and exit settlement alike. */
+export const LeaveCancelledPayloadV1 = z.object({
+  requestId: objectId(),
+  employeeId: objectId(),
+});
+
+/** Manual balance correction (`leave.adjustBalances`); `days` is signed. */
+export const LeaveBalanceAdjustedPayloadV1 = z.object({
+  employeeId: objectId(),
+  typeId: objectId(),
+  year: z.number().int(),
+  days: z.number(),
+});
+
 // ── Notification templates (§9) ─────────────────────────────────────────────
 
 /** Files-service category leave attachments (medical certificates, …) live under. */

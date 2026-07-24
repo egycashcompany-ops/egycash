@@ -6,7 +6,6 @@ import {
   type CancelLeaveRequest,
   type CreateHoliday,
   type CreateLeaveRequest,
-  type CreateLeaveType,
   type DecideLeaveRequest,
   type ReturnLeaveRequest,
   type UpdateLeaveType,
@@ -65,14 +64,6 @@ export const useEmployeeLeaveBalances = (employeeId: string, year?: number) =>
     queryKey: [...ROOT, 'balances', employeeId, year ?? 'current'],
     queryFn: () => api.employeeLeaveBalances(employeeId, year),
     enabled: employeeId !== '',
-  });
-
-export const useEmployeeLeaveLedger = (employeeId: string, params: LeaveListParams) =>
-  useQuery({
-    queryKey: [...ROOT, 'ledger', employeeId, params],
-    queryFn: () => api.employeeLeaveLedger(employeeId, params),
-    enabled: employeeId !== '',
-    placeholderData: (prev) => prev,
   });
 
 export const useLeaveEligibility = (employeeId: string, params: LeaveListParams, enabled: boolean) =>
@@ -143,11 +134,6 @@ export const useAdjustLeaveBalance = () => {
       api.adjustLeaveBalance(vars.employeeId, vars.body),
     onSuccess: invalidate,
   });
-};
-
-export const useCreateLeaveType = () => {
-  const invalidate = useLeaveInvalidation();
-  return useMutation({ mutationFn: (body: CreateLeaveType) => api.createLeaveType(body), onSuccess: invalidate });
 };
 
 export const useUpdateLeaveType = () => {

@@ -126,10 +126,10 @@ class LeaveRequestRepository extends BaseRepository<LeaveRequestDoc> {
       .exec();
   }
 
-  /** Approved/active spans crossing a range (team calendar + Attendance read). */
+  /** Approved/active spans crossing a range (frozen §7 — the team calendar read). */
   async findSpansInRange(from: Date, to: Date, scope: ScopeSelector | undefined): Promise<LeaveRequestDoc[]> {
     const filter: FilterQuery<LeaveRequestDoc> = {
-      status: { $in: ['approved', 'active', 'completed'] },
+      status: { $in: ['approved', 'active'] },
       startDate: { $lte: to },
       endDate: { $gte: from },
       isDeleted: false,

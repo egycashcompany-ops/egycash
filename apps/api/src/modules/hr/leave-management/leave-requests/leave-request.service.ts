@@ -277,14 +277,23 @@ class LeaveRequestService {
       throw error;
     }
 
-    // Post-insert recheck (R2/C6): deterministic loser self-rejects and releases.
+    // Post-insert recheck (R2/C6): overlap AND per-year caps re-run after the write — the
+    // deterministic loser (or the cap-crossing newcomer) self-rejects and releases.
     const conflicts = await leaveRequestRepository.findOverlapping(
       String(employee._id),
       start,
       end,
       String(doc._id),
     );
-    const loser = conflicts.some((c) => String(c._id) < String(doc._id));
+    let loser = conflicts.some((c) => String(c._id) < String(doc._id));
+    if (!loser && type.maxPerYearDays !== null && balanceTypeId !== null) {
+      const used = await leaveBalanceService.usedOfTypeInYear(
+        String(employee._id),
+        String(type._id),
+        leaveYearOf(start),
+      );
+      if (used > type.maxPerYearDays) loser = true;
+    }
     if (loser) {
       await leaveBalanceService.releaseForRequest({
         employeeId: String(employee._id),
@@ -384,8 +393,13 @@ class LeaveRequestService {
         : request.status === 'pendingManager' && type.approvalShape === 'managerThenHr'
           ? 'pendingHr'
           : 'approved';
-    // The certificate gate: a requiresAttachment type never reaches APPROVED without one.
-    if (nextStatus === 'approved' && type.requiresAttachment && request.attachments.length === 0) {
+    // The certificate gate: a requiresAttachment type never reaches APPROVED without one;
+    // `atSubmission` types (§2) additionally hold EVERY decision step until it is attached.
+    if (
+      type.requiresAttachment &&
+      request.attachments.length === 0 &&
+      (nextStatus === 'approved' || type.attachmentStage === 'atSubmission')
+    ) {
       throw new BusinessRuleError('an attachment is required before approval');
     }
 

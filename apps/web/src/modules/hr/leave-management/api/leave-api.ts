@@ -5,12 +5,10 @@ import {
   type CancelLeaveRequest,
   type CreateHoliday,
   type CreateLeaveRequest,
-  type CreateLeaveType,
   type DecideLeaveRequest,
   type HolidayDto,
   type LeaveBalanceDto,
   type LeaveEligibilityDto,
-  type LeaveLedgerEntryDto,
   type LeaveRequestDto,
   type LeaveTypeDto,
   type Paginated,
@@ -24,17 +22,14 @@ import { buildQuery, del, get, getPage, patch, post, upload } from '../../../../
 export type LeaveListParams = Record<string, string | number | boolean | undefined | null>;
 
 // ── Types catalog ───────────────────────────────────────────────────────────
+// (Type CREATION stays an API/seed concern for now — the admin UI edits the seeded catalog.)
 export const listLeaveTypes = (): Promise<LeaveTypeDto[]> => get<LeaveTypeDto[]>('/hr/leave-types');
-export const createLeaveType = (body: CreateLeaveType): Promise<LeaveTypeDto> =>
-  post<LeaveTypeDto>('/hr/leave-types', body);
 export const updateLeaveType = (id: string, body: UpdateLeaveType): Promise<LeaveTypeDto> =>
   patch<LeaveTypeDto>(`/hr/leave-types/${id}`, body);
 
-// ── Work calendar ───────────────────────────────────────────────────────────
+// ── Work calendar (HolidaysPage reads the MERGED calendar — weekends + holidays) ─
 export const getWorkCalendar = (from: string, to: string): Promise<WorkCalendarDto> =>
   get<WorkCalendarDto>(`/hr/work-calendar${buildQuery({ from, to })}`);
-export const listHolidays = (from: string, to: string): Promise<HolidayDto[]> =>
-  get<HolidayDto[]>(`/hr/holidays${buildQuery({ from, to })}`);
 export const createHoliday = (body: CreateHoliday): Promise<HolidayDto> =>
   post<HolidayDto>('/hr/holidays', body);
 export const deleteHoliday = (id: string): Promise<{ deleted: boolean }> =>
@@ -67,14 +62,9 @@ export const leaveCalendar = (from: string, to: string): Promise<LeaveRequestDto
 export const unreconciledLeave = (): Promise<UnreconciledLeaveDto[]> =>
   get<UnreconciledLeaveDto[]>('/hr/leave-requests/unreconciled');
 
-// ── Balances, ledger, eligibility (employee-keyed) ──────────────────────────
+// ── Balances + eligibility (employee-keyed; the ledger endpoint is API/audit-facing) ─
 export const employeeLeaveBalances = (employeeId: string, year?: number): Promise<LeaveBalanceDto[]> =>
   get<LeaveBalanceDto[]>(`/hr/employees/${employeeId}/leave-balances${buildQuery({ year })}`);
-export const employeeLeaveLedger = (
-  employeeId: string,
-  params: LeaveListParams,
-): Promise<Paginated<LeaveLedgerEntryDto>> =>
-  getPage<LeaveLedgerEntryDto>(`/hr/employees/${employeeId}/leave-ledger${buildQuery(params)}`);
 export const adjustLeaveBalance = (
   employeeId: string,
   body: AdjustLeaveBalance,

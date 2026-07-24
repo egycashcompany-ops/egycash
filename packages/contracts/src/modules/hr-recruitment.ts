@@ -120,7 +120,7 @@ const ExpectedSalarySchema = z
   .object({ amount: z.number().nonnegative(), currency: z.string().length(3).default('EGP') })
   .strict();
 
-const MilitaryServiceSchema = z
+export const MilitaryServiceSchema = z
   .object({
     status: MilitaryStatusSchema,
     certificateRef: z.string().max(100).optional(),
@@ -128,7 +128,7 @@ const MilitaryServiceSchema = z
   })
   .strict();
 
-const EducationSchema = z
+export const EducationSchema = z
   .object({
     level: EducationLevelSchema,
     institution: z.string().max(200).optional(),
@@ -138,7 +138,7 @@ const EducationSchema = z
   })
   .strict();
 
-const ExperienceEntrySchema = z
+export const ExperienceEntrySchema = z
   .object({
     employer: z.string().min(1).max(200),
     position: z.string().max(200).optional(),
@@ -148,14 +148,14 @@ const ExperienceEntrySchema = z
   })
   .strict();
 
-const DrivingLicenseSchema = z
+export const DrivingLicenseSchema = z
   .object({
     class: z.string().min(1).max(50), // e.g. "private", "1st", "2nd", "3rd" grade
     expiry: z.coerce.date().optional(),
   })
   .strict();
 
-const ReferenceSchema = z
+export const ReferenceSchema = z
   .object({
     name: z.string().min(1).max(200),
     relationship: z.string().max(100).optional(),
@@ -182,7 +182,7 @@ const SourceDetailSchema = z
  * §2.1 rule 2). When a National ID is supplied it must be structurally valid; birth date,
  * gender and place of birth are then derived server-side (never trusted from the client).
  */
-const IdentityInputSchema = z
+export const IdentityInputSchema = z
   .object({
     fullNameAr: z.string().min(2).max(200),
     fullNameEn: z.string().max(200).optional(),
@@ -198,7 +198,7 @@ const IdentityInputSchema = z
   })
   .strict();
 
-const ContactInputSchema = z
+export const ContactInputSchema = z
   .object({
     primaryPhone: PhoneNumberSchema,
     secondaryPhone: PhoneNumberSchema.optional(),

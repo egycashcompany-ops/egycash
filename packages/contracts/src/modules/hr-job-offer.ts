@@ -26,11 +26,11 @@ export type EmploymentType = z.infer<typeof EmploymentTypeSchema>;
 
 // ── Money / package sub-objects ─────────────────────────────────────────────
 
-const MoneySchema = z
+export const MoneySchema = z
   .object({ amount: z.number().nonnegative(), currency: z.string().length(3).default('EGP') })
   .strict();
 
-const AllowanceSchema = z
+export const AllowanceSchema = z
   .object({
     name: z.string().min(1).max(100),
     amount: z.number().nonnegative(),

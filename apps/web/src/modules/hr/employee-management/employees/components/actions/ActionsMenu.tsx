@@ -12,8 +12,6 @@ import { PromotionDialog, TransferDialog, SalaryChangeDialog, ManagerChangeDialo
 import {
   SuspendDialog,
   ReinstateDialog,
-  LeaveStartDialog,
-  LeaveEndDialog,
   ProbationConfirmDialog,
   ProbationExtendDialog,
   ProbationFailDialog,
@@ -27,8 +25,6 @@ type DialogKind =
   | 'manager'
   | 'suspend'
   | 'reinstate'
-  | 'leaveStart'
-  | 'leaveEnd'
   | 'probationConfirm'
   | 'probationExtend'
   | 'probationFail'
@@ -73,12 +69,8 @@ export const ActionsMenu = ({ employee }: { employee: EmployeeDto }): JSX.Elemen
   if (employed && comp && (s === 'probation' || s === 'active')) {
     items.push({ kind: 'salary', label: t('employees.actions.salary.title') });
   }
-  if (manage && (s === 'probation' || s === 'active')) {
-    items.push({ kind: 'leaveStart', label: t('employees.actions.leaveStart.title') });
-  }
-  if (manage && s === 'onLeave') {
-    items.push({ kind: 'leaveEnd', label: t('employees.actions.leaveEnd.title') });
-  }
+  // Manual leaveStart/leaveEnd dialogs are HIDDEN now that the Leave module owns absence
+  // (Employee design F6 / Leave design §11); the engine's API alias remains for HR repair.
   if (manage && (s === 'probation' || s === 'active' || s === 'onLeave')) {
     items.push({ kind: 'suspend', label: t('employees.actions.suspend.title'), danger: true });
   }
@@ -125,8 +117,6 @@ export const ActionsMenu = ({ employee }: { employee: EmployeeDto }): JSX.Elemen
       <ManagerChangeDialog employee={employee} open={dialog === 'manager'} onClose={() => setDialog(null)} />
       <SuspendDialog employee={employee} open={dialog === 'suspend'} onClose={() => setDialog(null)} />
       <ReinstateDialog employee={employee} open={dialog === 'reinstate'} onClose={() => setDialog(null)} />
-      <LeaveStartDialog employee={employee} open={dialog === 'leaveStart'} onClose={() => setDialog(null)} />
-      <LeaveEndDialog employee={employee} open={dialog === 'leaveEnd'} onClose={() => setDialog(null)} />
       <ProbationConfirmDialog employee={employee} open={dialog === 'probationConfirm'} onClose={() => setDialog(null)} />
       <ProbationExtendDialog employee={employee} open={dialog === 'probationExtend'} onClose={() => setDialog(null)} />
       <ProbationFailDialog employee={employee} open={dialog === 'probationFail'} onClose={() => setDialog(null)} />

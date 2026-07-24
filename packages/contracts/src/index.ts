@@ -23,3 +23,4 @@ export * from './modules/hr-employee.js';
 export * from './modules/hr-employee-actions.js';
 export * from './modules/hr-hiring-documents.js';
 export * from './modules/hr-employee-file.js';
+export * from './modules/hr-leave.js';

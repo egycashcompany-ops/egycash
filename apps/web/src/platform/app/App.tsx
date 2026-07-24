@@ -14,6 +14,7 @@ const RecruitmentRoutes = lazy(() => import('../../modules/hr/recruitment/routes
 const EmployeeManagementRoutes = lazy(() => import('../../modules/hr/employee-management/routes'));
 const EmployeeFilesRoutes = lazy(() => import('../../modules/hr/employee-management/files-routes'));
 const OrganizationRoutes = lazy(() => import('../../modules/organization/routes'));
+const LeaveManagementRoutes = lazy(() => import('../../modules/hr/leave-management/routes'));
 
 const useDirection = (): void => {
   const { locale, dir } = useAppSelector((state) => state.locale);
@@ -63,6 +64,16 @@ export const App = (): JSX.Element => {
             <RequireAuth>
               <Suspense fallback={<div className="grid min-h-screen place-items-center"><LoadingState /></div>}>
                 <EmployeeManagementRoutes />
+              </Suspense>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/leave/*"
+          element={
+            <RequireAuth>
+              <Suspense fallback={<div className="grid min-h-screen place-items-center"><LoadingState /></div>}>
+                <LeaveManagementRoutes />
               </Suspense>
             </RequireAuth>
           }

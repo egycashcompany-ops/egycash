@@ -421,7 +421,7 @@ export interface RehireCheckResultDto {
 export interface EmployeeTimelineItemDto {
   at: string;
   /** Where the entry comes from: recruitment-era file milestone, personnel action, file note, or audited personal edit. */
-  source: 'recruitment' | 'action' | 'note' | 'personal';
+  source: 'recruitment' | 'action' | 'note' | 'personal' | 'leave';
   /** Milestone/action type token (e.g. `offerAccepted`, `transfer`, `note`). */
   type: string;
   refType: string | null;
@@ -439,6 +439,8 @@ export const HrEmployeeEvents = {
   EmployeeTransferred: 'hr.employee.transferred',
   EmployeeExited: 'hr.employee.exited',
   EmployeeRehired: 'hr.employee.rehired',
+  /** C1-R: a login was linked to an employee — own-scope owner-field backfill hook. */
+  EmployeeLoginLinked: 'hr.employee.loginLinked',
 } as const;
 export type HrEmployeeEventName = (typeof HrEmployeeEvents)[keyof typeof HrEmployeeEvents];
 
@@ -470,6 +472,13 @@ export const EmployeeTransferredPayloadV1 = z.object({
   oldCode: z.string(),
   newCode: z.string(),
   branchId: objectId().nullable(),
+});
+
+/** C1-R: consumed by employee-subject modules to backfill their denormalized owner field. */
+export const EmployeeLoginLinkedPayloadV1 = z.object({
+  employeeId: objectId(),
+  userId: objectId(),
+  code: z.string(),
 });
 
 export const EmployeeExitedPayloadV1 = z.object({

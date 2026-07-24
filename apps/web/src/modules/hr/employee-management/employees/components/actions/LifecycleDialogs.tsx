@@ -108,53 +108,8 @@ export const ReinstateDialog = ({ employee, open, onClose }: DialogProps): JSX.E
   );
 };
 
-export const LeaveStartDialog = ({ employee, open, onClose }: DialogProps): JSX.Element | null => {
-  const t = useT();
-  const { fields, common } = useActionCommonFields();
-  const [reason, setReason] = useState('');
-  const { pending, run } = useSubmit(employee, onClose);
-
-  return (
-    <ActionDialog
-      open={open}
-      onClose={onClose}
-      title={t('employees.actions.leaveStart.title')}
-      submitting={pending}
-      onSubmit={() =>
-        void run({
-          type: 'leaveStart',
-          ...(reason.trim() === '' ? {} : { reason: reason.trim() }),
-          version: employee.version,
-          ...common,
-        })
-      }
-    >
-      <Field label={t('employees.actions.reason')} hint={t('offers.form.optional')}>
-        <Input value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} />
-      </Field>
-      {fields}
-    </ActionDialog>
-  );
-};
-
-export const LeaveEndDialog = ({ employee, open, onClose }: DialogProps): JSX.Element | null => {
-  const t = useT();
-  const { fields, common } = useActionCommonFields();
-  const { pending, run } = useSubmit(employee, onClose);
-
-  return (
-    <ActionDialog
-      open={open}
-      onClose={onClose}
-      title={t('employees.actions.leaveEnd.title')}
-      description={t('employees.actions.reinstate.baseHint')}
-      submitting={pending}
-      onSubmit={() => void run({ type: 'leaveEnd', version: employee.version, ...common })}
-    >
-      {fields}
-    </ActionDialog>
-  );
-};
+// LeaveStart/LeaveEnd dialogs were REMOVED: the Leave module owns absence now (Employee
+// design F6 / Leave design §11). The engine's leaveStart/leaveEnd actions remain server-side.
 
 export const ProbationConfirmDialog = ({ employee, open, onClose }: DialogProps): JSX.Element | null => {
   const t = useT();

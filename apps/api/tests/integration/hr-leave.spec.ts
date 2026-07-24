@@ -126,8 +126,15 @@ const regEmployee = async (over: Record<string, unknown> = {}, male = true): Pro
       hiringDate: '2024-01-01T00:00:00.000Z',
     });
   expect(res.status).toBe(201);
-  await settle();
-  return res.body.data as EmployeeDto;
+  const emp = res.body.data as EmployeeDto;
+  // The grant-on-hire event handler is fire-and-forget in-process — poll until the ANNUAL
+  // grant lands instead of sleeping a fixed amount (CI runners vary).
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const rows = await balances(emp.id);
+    if (rows.some((b) => b.typeCode === 'ANNUAL' && b.granted > 0)) return emp;
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  }
+  throw new Error(`hire-time grant never landed for ${emp.code}`);
 };
 
 /** Give an employee an ACTIVATED login + the own-scoped self-service grants (L7). */

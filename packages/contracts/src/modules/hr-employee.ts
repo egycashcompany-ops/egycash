@@ -439,6 +439,8 @@ export const HrEmployeeEvents = {
   EmployeeTransferred: 'hr.employee.transferred',
   EmployeeExited: 'hr.employee.exited',
   EmployeeRehired: 'hr.employee.rehired',
+  /** C1-R: a login was linked to an employee — own-scope owner-field backfill hook. */
+  EmployeeLoginLinked: 'hr.employee.loginLinked',
 } as const;
 export type HrEmployeeEventName = (typeof HrEmployeeEvents)[keyof typeof HrEmployeeEvents];
 
@@ -470,6 +472,13 @@ export const EmployeeTransferredPayloadV1 = z.object({
   oldCode: z.string(),
   newCode: z.string(),
   branchId: objectId().nullable(),
+});
+
+/** C1-R: consumed by employee-subject modules to backfill their denormalized owner field. */
+export const EmployeeLoginLinkedPayloadV1 = z.object({
+  employeeId: objectId(),
+  userId: objectId(),
+  code: z.string(),
 });
 
 export const EmployeeExitedPayloadV1 = z.object({

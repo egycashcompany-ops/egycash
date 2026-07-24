@@ -123,21 +123,37 @@ export const seedBootstrapNavigation = async (adminId: string): Promise<void> =>
 /**
  * Boot-time catalog sync (runs on EVERY api start): existing installs must receive catalog
  * entries added by newer releases — the dev seed above only runs on fresh installs, which is
- * how `/leave` never appeared on databases seeded before the Leave module existed. Ensures
- * every category/application exists (keyed by name/route, create-only) and grants each
- * application to every current super-admin, so upgrades surface new modules without manual
- * DB work. Department/user assignment for everyone else stays an admin decision.
+ * how `/leave` never appeared on databases seeded before the Leave module existed.
+ *
+ * STRICTLY ADDITIVE — administrator customizations are never touched:
+ * - existing applications are matched by route and left completely alone (name, icon,
+ *   ordering, category, status all stay whatever the admin made them);
+ * - grants are created ONLY for applications this sync just created — a grant the admin
+ *   revoked on an existing application stays revoked across restarts;
+ * - a new application joins the category its group's existing apps live in TODAY (respecting
+ *   admin re-grouping/renames); the seed category is created only when the whole group is new.
  */
 export const syncNavigationCatalog = async (): Promise<void> => {
   const adminIds = await rbacService.userIdsWithSystemRole('super-admin');
   const actor = adminIds[0];
   if (actor === undefined) return; // pre-seed boot (no admin yet) — the dev seed covers it
   for (const category of CATALOG) {
-    const categoryId = await ensureCategory(category, actor);
+    let categoryId: string | null = null;
     let sortOrder = 0;
     for (const app of category.apps) {
-      const applicationId = await ensureApplication(app, categoryId, sortOrder, actor);
-      for (const adminId of adminIds) await ensureGrant(adminId, applicationId);
+      const existing = await applicationRepository.findOne({ route: app.route });
+      if (existing !== null) {
+        categoryId ??= String(existing.categoryId);
+        sortOrder += 10;
+        continue;
+      }
+      categoryId ??= await ensureCategory(category, actor);
+      const created = await applicationService.create(
+        { name: { ar: app.ar, en: app.en }, icon: app.icon, route: app.route, categoryId, sortOrder },
+        actor,
+      );
+      // Surface the NEW module to current super-admins; everyone else stays admin-assigned.
+      for (const adminId of adminIds) await ensureGrant(adminId, String(created._id));
       sortOrder += 10;
     }
   }

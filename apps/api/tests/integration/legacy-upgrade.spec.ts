@@ -22,8 +22,12 @@ import { rbacService } from '../../src/platform/rbac';
 import { userService } from '../../src/platform/users';
 import { settingsService } from '../../src/platform/settings';
 import { applicationRepository } from '../../src/platform/applications';
-import { userApplicationRepository } from '../../src/platform/user-applications';
+import { applicationCategoryRepository } from '../../src/platform/application-categories';
+import { userApplicationRepository, userApplicationService } from '../../src/platform/user-applications';
 import { syncNavigationCatalog } from '../../src/seed-navigation';
+import { seedHrRecruitment } from '../../src/modules/hr/hr.seed';
+import { ApplicantSourceModel } from '../../src/modules/hr/recruitment/applicants/applicant-source.model';
+import { LeaveTypeModel } from '../../src/modules/hr/leave-management/leave-types/leave-type.model';
 import { ApplicantModel } from '../../src/modules/hr/recruitment/applicants/applicant.model';
 import { ScreeningModel } from '../../src/modules/hr/recruitment/screening/screening.model';
 import { migrateRecruitmentLegacy } from '../../src/modules/hr/recruitment/recruitment.migration';
@@ -213,6 +217,74 @@ describe('permission registry sync invalidates system-role holders', () => {
 
     // Restore the real catalog for any later assertions.
     await rbacService.syncPermissionRegistry(catalog);
+  });
+});
+
+describe('administrator customizations survive the boot sync', () => {
+  it('a revoked super-admin grant stays revoked across restarts', async () => {
+    const leaveApp = await applicationRepository.findOne({ route: '/leave' });
+    expect(leaveApp).not.toBeNull();
+    await userApplicationService.remove(adminId, String(leaveApp?._id), adminId);
+
+    await syncNavigationCatalog();
+
+    const grant = await userApplicationRepository.findOne({
+      userId: new Types.ObjectId(adminId),
+      applicationId: leaveApp?._id,
+    });
+    expect(grant).toBeNull();
+  });
+
+  it('a renamed category is not re-created and existing app metadata is untouched', async () => {
+    const before = await applicationCategoryRepository.count({});
+    const hr = await applicationCategoryRepository.findOne({ 'name.en': 'HR' });
+    expect(hr).not.toBeNull();
+    await applicationCategoryRepository.updateById(
+      String(hr?._id),
+      { name: { ar: 'الموارد البشرية', en: 'People Operations' } },
+      { by: adminId, version: hr?.__v ?? 0 },
+    );
+    const employeesApp = await applicationRepository.findOne({ route: '/employees' });
+    const iconBefore = employeesApp?.icon;
+
+    await syncNavigationCatalog();
+
+    expect(await applicationCategoryRepository.count({})).toBe(before);
+    const employeesAfter = await applicationRepository.findOne({ route: '/employees' });
+    expect(employeesAfter?.icon).toBe(iconBefore);
+  });
+});
+
+describe('repeated boots against the same database', () => {
+  it('re-running every boot step creates no duplicates and no permission-version churn', async () => {
+    const counts = async (): Promise<Record<string, number>> => ({
+      apps: await applicationRepository.count({}),
+      categories: await applicationCategoryRepository.count({}),
+      grants: await userApplicationRepository.count({}),
+      sources: await ApplicantSourceModel.countDocuments({}).exec(),
+      leaveTypes: await LeaveTypeModel.countDocuments({}).exec(),
+    });
+
+    // Settle once (module seeds already ran at bootPlatform; nav sync ran above).
+    await seedHrRecruitment();
+    await syncNavigationCatalog();
+    const versionBefore = (await userService.findByEmail('admin@ecms.local'))?.security
+      .permissionVersion;
+    const baseline = await counts();
+
+    // "Restart" twice more: permission registry, module seeds, nav catalog.
+    for (let boot = 0; boot < 2; boot += 1) {
+      await rbacService.syncPermissionRegistry([...platformPermissions, ...hrPermissions]);
+      await seedHrRecruitment();
+      await syncNavigationCatalog();
+    }
+
+    expect(await counts()).toEqual(baseline);
+    expect(await applicationRepository.count({ route: '/leave' })).toBe(1);
+    // Unchanged catalog ⇒ no invalidation ⇒ no cache/version churn on plain redeploys.
+    const versionAfter = (await userService.findByEmail('admin@ecms.local'))?.security
+      .permissionVersion;
+    expect(versionAfter).toBe(versionBefore);
   });
 });
 

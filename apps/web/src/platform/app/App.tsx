@@ -11,6 +11,8 @@ import { RequireAuth } from '../router/RequireAuth';
 import { LoadingState } from '../../shared/ui/states/LoadingState';
 
 const RecruitmentRoutes = lazy(() => import('../../modules/hr/recruitment/routes'));
+const EmployeeManagementRoutes = lazy(() => import('../../modules/hr/employee-management/routes'));
+const EmployeeFilesRoutes = lazy(() => import('../../modules/hr/employee-management/files-routes'));
 const OrganizationRoutes = lazy(() => import('../../modules/organization/routes'));
 
 const useDirection = (): void => {
@@ -51,6 +53,26 @@ export const App = (): JSX.Element => {
             <RequireAuth>
               <Suspense fallback={<div className="grid min-h-screen place-items-center"><LoadingState /></div>}>
                 <OrganizationRoutes />
+              </Suspense>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/employees/*"
+          element={
+            <RequireAuth>
+              <Suspense fallback={<div className="grid min-h-screen place-items-center"><LoadingState /></div>}>
+                <EmployeeManagementRoutes />
+              </Suspense>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/employee-files/*"
+          element={
+            <RequireAuth>
+              <Suspense fallback={<div className="grid min-h-screen place-items-center"><LoadingState /></div>}>
+                <EmployeeFilesRoutes />
               </Suspense>
             </RequireAuth>
           }

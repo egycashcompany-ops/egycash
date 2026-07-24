@@ -7,8 +7,8 @@ import { useT } from '../../../../../platform/localization/useT';
 import { useCan } from '../../../../../platform/rbac/Can';
 import { useAppSelector } from '../../../../../store';
 import { formatDate, formatMoney, localized } from '../../../../../shared/lib/format';
-import { UserName } from '../../job-offers/components/UserName';
-import { useBranches, useDepartments, useJobTitles } from '../../job-offers/api/job-offer-queries';
+import { UserName } from '../../../recruitment/job-offers/components/UserName';
+import { useBranches, useDepartments, useJobTitles } from '../../../recruitment/job-offers/api/job-offer-queries';
 
 const Row = ({ label, children }: { label: string; children: ReactNode }): JSX.Element => (
   <div>
@@ -17,7 +17,14 @@ const Row = ({ label, children }: { label: string; children: ReactNode }): JSX.E
   </div>
 );
 
-export const EmploymentView = ({ employment }: { employment: EmploymentDetailsDto }): JSX.Element => {
+export const EmploymentView = ({
+  employment,
+  compensationVisible = true,
+}: {
+  employment: EmploymentDetailsDto;
+  /** false → salary/allowances were redacted server-side (no employee.viewCompensation). */
+  compensationVisible?: boolean;
+}): JSX.Element => {
   const t = useT();
   const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
@@ -41,7 +48,13 @@ export const EmploymentView = ({ employment }: { employment: EmploymentDetailsDt
         <Row label={t('offers.form.branch')}>{nameOf(branches.data, employment.branchId)}</Row>
         <Row label={t('offers.form.manager')}>{employment.managerId === null ? '—' : <UserName id={employment.managerId} />}</Row>
         <Row label={t('offers.form.employmentType')}>{t(`offers.employmentType.${employment.employmentType}`)}</Row>
-        <Row label={t('offers.form.salary')}>{employment.salary === null ? '—' : formatMoney(employment.salary.amount, employment.salary.currency, locale)}</Row>
+        <Row label={t('offers.form.salary')}>
+          {!compensationVisible
+            ? t('employees.compensation.hidden')
+            : employment.salary === null
+              ? '—'
+              : formatMoney(employment.salary.amount, employment.salary.currency, locale)}
+        </Row>
         <Row label={t('offers.form.probation')}>{t('offers.terms.months', { n: employment.probationMonths })}</Row>
         <Row label={t('offers.form.startDate')}>{formatDate(employment.startDate, locale)}</Row>
       </dl>

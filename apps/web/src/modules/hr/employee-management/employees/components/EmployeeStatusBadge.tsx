@@ -4,10 +4,11 @@ import { StatusBadge, type Tone } from '../../../../../shared/ui/Badge';
 import { useT } from '../../../../../platform/localization/useT';
 
 const TONE: Record<EmployeeStatus, Tone> = {
+  probation: 'brand',
   active: 'success',
   onLeave: 'info',
   suspended: 'warning',
-  terminated: 'danger',
+  exited: 'danger',
 };
 
 export const EmployeeStatusBadge = ({ status }: { status: EmployeeStatus }): JSX.Element => {

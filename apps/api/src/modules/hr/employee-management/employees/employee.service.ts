@@ -673,10 +673,10 @@ class EmployeeService {
       items.push({
         at: (a.appliedAt ?? a.effectiveDate).toISOString(),
         source: 'action',
-        type: a.status === 'scheduled' ? `${a.type} (scheduled)` : a.type,
+        type: a.type,
         refType: 'employeeAction',
         refId: String(a._id),
-        detail: a.reason,
+        detail: a.status === 'scheduled' ? `⏳ ${a.reason ?? ''}`.trim() : a.reason,
         by: a.by === null ? null : String(a.by),
       });
     }

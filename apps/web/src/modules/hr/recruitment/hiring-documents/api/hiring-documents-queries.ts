@@ -5,7 +5,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type CompleteHiringDocuments, type CreateHiringDocuments, type HiringDocumentsDto } from '@ecms/contracts';
 import { detailKey, listKey } from '../../../../../shared/lib/query-keys';
-import { listEmployees } from '../../employees/api/employee-api';
+import { listEmployees } from '../../../employee-management/employees/api/employee-api';
 import * as api from './hiring-documents-api';
 import { type HiringDocsListParams } from './hiring-documents-api';
 

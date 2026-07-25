@@ -31,6 +31,7 @@ import { userService } from '../../src/platform/users';
 import { settingsService } from '../../src/platform/settings';
 import { getCache } from '../../src/infrastructure/redis/cache';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
+import { addDays, cairoToday } from '../../src/modules/hr/shared/business-date';
 import { type AuthContext } from '../../src/shared/types';
 
 const PASSWORD = 'Str0ng#Pass!';
@@ -86,8 +87,10 @@ const nextNid = (male: boolean): string => {
   return `290010101${serial3}${male ? '1' : '2'}0`;
 };
 
-const dayOffsetIso = (n: number): string =>
-  new Date(Date.now() + n * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+// Offsets from the CAIRO business "today" — the engine validates against cairoToday(), and
+// between 21:00 and 24:00 UTC a UTC-based "today" is already yesterday in Cairo (backdate rules
+// would reject spans starting "today").
+const dayOffsetIso = (n: number): string => addDays(cairoToday(), n).toISOString().slice(0, 10);
 
 /** In-process event handlers (grant-on-hire) are fire-and-forget — let them land. */
 const settle = async (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 200));

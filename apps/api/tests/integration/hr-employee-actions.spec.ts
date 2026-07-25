@@ -81,8 +81,9 @@ const mkUser = async (email: string): Promise<string> => {
   return String(user._id);
 };
 
-const login = async (email: string): Promise<string> => {
-  const res = await request(app).post('/api/v1/auth/login').send({ email, password: PASSWORD });
+/** Sign in by any enabled identifier (email or employee code) with the suite PASSWORD. */
+const login = async (identifier: string): Promise<string> => {
+  const res = await request(app).post('/api/v1/auth/login').send({ identifier, password: PASSWORD });
   expect(res.status).toBe(200);
   return (res.body as { data: { accessToken: string } }).data.accessToken;
 };
@@ -229,13 +230,18 @@ const action = (
     .set('Authorization', `Bearer ${token}`)
     .send(body);
 
-/** Accounts are auto-provisioned with the employee (auth design D1) — return the user id. */
+/**
+ * Accounts are auto-provisioned with the employee (auth design D1) — return the user id.
+ * The suite's sessions authenticate with PASSWORD, so replace the unseen temp password
+ * (service-level setPassword also clears the first-login gate).
+ */
 const activateLogin = async (emp: EmployeeDto): Promise<string> => {
   const reread = await request(app)
     .get(`/api/v1/hr/employees/${emp.id}`)
     .set('Authorization', `Bearer ${adminToken}`);
   const userId = (reread.body.data as EmployeeDto).userId;
   expect(userId).not.toBeNull();
+  await userService.setPassword(String(userId), PASSWORD, 'passwordReset');
   return String(userId);
 };
 
@@ -415,7 +421,7 @@ describe('personnel actions — self-action rejection (I1)', () => {
       userId,
     );
     await rbacService.ensureAssignment(userId, String(hrRole._id), 'organization');
-    const selfToken = await login(`act-${emp.code}@ecms.local`);
+    const selfToken = await login(emp.code);
     const fresh = await reread(emp.id);
     const res = await action(emp.id, 'employment', { type: 'probationConfirm', version: fresh.version }, selfToken);
     expect(res.status).toBe(422);

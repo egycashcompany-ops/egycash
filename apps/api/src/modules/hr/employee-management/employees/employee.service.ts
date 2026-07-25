@@ -808,6 +808,8 @@ class EmployeeService {
         { _id: employee._id, userId: null },
         { $set: { userId: user._id } },
       ).exec();
+      // Reflect the link on the in-memory doc — creation responses map THIS object to the DTO.
+      employee.userId = user._id;
       // ESS role lands at LINK TIME (design 4.1 step 4) — not at the next boot.
       const essRole = await rbacService.ensureSystemRole(
         'employee-self-service',

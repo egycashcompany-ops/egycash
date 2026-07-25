@@ -1,7 +1,16 @@
-# Authentication & Employee Account Lifecycle — Design (FROZEN)
+# Authentication & Employee Account Lifecycle — Design (FROZEN, Revision 2)
 
 **Status: FROZEN — approved with decisions D1–D7 as recorded below (D3 and D6 amended by the
 approver). Implementation proceeds as a single PR.**
+
+> **Revision 2 (2026-07-25, approver's credentials-delivery amendments R1–R11 — §12).**
+> The provisioning flow changed materially: the National ID is **never** used as a credential
+> (every account gets a unique CSPRNG temporary password), credentials are **delivered to the
+> employee via WhatsApp + email** through a provider-agnostic transport layer, temporary
+> passwords **expire** after a configurable period with an admin re-issue flow, and passwords
+> are **never exposed through any API response**. §12 supersedes D3, §4.1 step 3, §4.4, and
+> the `temporaryPassword` response fields in §5 wherever they conflict. Everything else
+> stands as approved in Revision 1.
 
 One cohesive feature: every employee automatically receives a working login the moment they are
 registered, first login forces a password change, login accepts username/employee-code/email,
@@ -262,6 +271,114 @@ identifier matrix, admin reset / TOTP reset / TOTP force-on, username change + c
 legacy-user non-impact, repeated boots) → docs. Same discipline as always: adversarial pass,
 CI green, wait for review.
 
+## 12. Revision 2 — credentials delivery amendments (R1–R11, approved 2026-07-25)
+
+The approver's second review adjusted the provisioning flow. Where §12 conflicts with
+earlier sections, **§12 wins**.
+
+### R1 — Temporary passwords are always random (supersedes D3 and §4.1 step 3)
+
+Every provisioned or reset account receives a **unique, cryptographically random temporary
+password** (`crypto.randomInt`, 14 chars, guaranteed character classes). The National ID is
+**never** used as a credential in any path — the Revision-1 `tempPasswordSource` identity
+seam (userId → NID) is **removed**; the `employeeCode → userId` login-resolver seam stays.
+
+### R2 — Auto-provisioning is the only normal path (D1 confirmed)
+
+Both creation paths (hire-from-offer and direct registration) auto-provision. The manual
+"Create Login" endpoint/UI remains **only** as the escape hatch for audited provisioning
+skips (D7) — never part of the normal workflow.
+
+### R3 — Credentials are delivered to the employee (WhatsApp + email), transiently
+
+A new platform seam **`credentialsDelivery`** (platform/users) composes a bilingual message
+containing: **username, Employee Code, temporary password, login URL** (env
+`WEB_PUBLIC_URL`), and a clear notice that the password is temporary and must be changed at
+first sign-in. Delivery:
+
+- **WhatsApp** → the employee's `primaryPhone` (normalized to E.164; Egyptian `01…` numbers
+  become `+20…`), through the provider-agnostic transport (R9).
+- **Email** → the account email, when present, through the existing SMTP `sendMail`
+  infrastructure.
+- **Never through the persisted notifications pipeline**: `notify()` stores rendered bodies
+  (inbox + delivery records), which would persist the password in plaintext — forbidden by
+  R11. Credential messages are rendered, sent, and discarded.
+- Each channel's outcome is audited as **`credentialsDelivered`** with
+  `changes: [{field: channel, new: 'sent' | <error>}]` — the password itself never appears.
+- If **no** channel succeeds (no phone reachable, no email), provisioning still succeeds and
+  the failure is audited; the admin fixes the contact details and **re-issues** (R6/R10).
+  The API **never** returns the password (R11): the Revision-1 `temporaryPassword` fields in
+  the creation response and the admin-reset response are **removed**.
+
+### R4 — First-login gate (D4 confirmed, unchanged)
+
+`mustChangePassword` stays server-enforced; only `password/change`, `me`, `logout`,
+`refresh` are exempt; everything else fails with `PASSWORD_CHANGE_REQUIRED`.
+
+### R5 — Login identifiers (§4.3 confirmed, unchanged)
+
+Username, Employee Code, and email (optional) — configurable via `auth.loginIdentifiers`.
+
+### R6 — Admin password reset (supersedes §4.4's admin paths)
+
+One reset semantic: **generate a new random temporary password → deliver via WhatsApp +
+email → revoke all sessions → `mustChangePassword = true` → new expiry window (R10)**.
+The Revision-1 "admin supplies an explicit `newPassword`" option is **removed** — passwords
+are never chosen by, shown to, or returned to administrators.
+
+### R7 — TOTP (D6 + §4.5 confirmed, unchanged)
+
+Self enable/disable on the Security page; admin reset + require/un-require (secrets never
+admin-visible); `TotpEnforcedForPrivileged` keeps working.
+
+### R8 — Backfill (D2 confirmed, extended)
+
+The idempotent boot backfill provisions existing employed employees with the **same flow**:
+random temp password + WhatsApp/email delivery + armed gate + expiry. Outcomes are audited
+per employee; employees with no reachable channel are provisioned anyway and re-issued
+later (R3).
+
+### R9 — Provider-agnostic delivery transports
+
+A `whatsappTransport` interface (infrastructure/messaging) with pluggable drivers selected
+by env: **`meta`** (WhatsApp Cloud API), **`twilio`**, and **`disabled`** (default — logs a
+warning, reports not-delivered; keeps dev/CI hermetic). Email stays behind the existing
+`sendMail` seam (SMTP today; SendGrid et al. are future drivers of that seam). The account
+lifecycle depends only on the `credentialsDelivery` interface — switching providers never
+touches lifecycle logic.
+
+### R10 — Temporary-password expiry + re-issue
+
+- New org setting **`auth.tempPassword.ttlHours`** (default **48**, min 1, max 336).
+- `security.tempPasswordExpiresAt: Date | null` is set whenever a temporary password is
+  issued and cleared on the successful (policy-checked) password change.
+- A login presenting the **correct but expired** temporary password fails with the dedicated
+  code **`AUTH_TEMP_PASSWORD_EXPIRED`** (the UI says "ask HR to issue a new password").
+- Re-issue = the same admin reset (R6): the new hash instantly invalidates the previous
+  temporary password, a fresh delivery goes out, and a new expiry window starts.
+
+### R11 — Audit + secrecy guarantees
+
+Audited: account auto-created, every credential delivery (per channel), password reset,
+**first successful login** of a gated account (new action **`firstLogin`**), forced password
+change, TOTP enable/disable/reset/require. Passwords are never logged, never stored outside
+the argon2id hash, and never returned by any API. Credential messages exist only in transit.
+
+### Revision-2 API/data deltas (summary)
+
+| Surface | Change |
+|---|---|
+| `EmployeeLoginProvisionDto` | `{ username, delivery: CredentialsDeliveryResultDto[] }` — `temporaryPassword` removed |
+| `POST /platform/users/:id/reset-password` | Body removed; response `{ delivery: [...] }` — `newPassword` + `temporaryPassword` removed |
+| `CredentialsDeliveryResultDto` | `{ channel: 'whatsapp' \| 'email', ok: boolean, detail: string \| null }` |
+| Errors | + `AUTH_TEMP_PASSWORD_EXPIRED` |
+| Settings | + `auth.tempPassword.ttlHours` (48h default) |
+| Audit actions | + `credentialsDelivered`, + `firstLogin` |
+| users model | + `security.tempPasswordExpiresAt: Date \| null` |
+| Env | + `WEB_PUBLIC_URL`, `WHATSAPP_PROVIDER` (`meta`/`twilio`/`disabled`), provider credentials |
+| Identity seams | `tempPasswordSource` (NID) **removed**; `employeeCode` resolver unchanged |
+| Web | Creation/reset dialogs show **delivery status** instead of a one-time password |
+
 ## Review trail
 
 Approved with amendments (2026-07-24): D1/D2/D4/D5/D7 as proposed; **D3 amended** (random
@@ -270,3 +387,9 @@ one-time-visible temp password instead of Employee-Code fallback — codes are p
 Additions: configurable login identifiers, admin username management with permanent
 Employee-Code login, reset = revoke sessions + re-arm gate, Security page ships Active
 Sessions, full audit enumeration (§4.6), future-provider compatibility (§10).
+
+**Revision 2 approved (2026-07-25):** credentials-delivery amendments R1–R11 (§12) — NID
+never a password, always-random unique temp passwords, WhatsApp + email delivery through
+provider-agnostic transports, temp-password expiry (configurable, 48h default) with admin
+re-issue, no password ever exposed through any API, extended audit (credential delivery +
+first login). Everything else stands as Revision 1.

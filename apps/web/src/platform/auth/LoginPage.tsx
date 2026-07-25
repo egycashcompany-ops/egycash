@@ -27,7 +27,7 @@ export const LoginPage = (): JSX.Element => {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const [step, setStep] = useState<Step>({ kind: 'credentials' });
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -42,7 +42,7 @@ export const LoginPage = (): JSX.Element => {
     setBusy(true);
     setError(null);
     try {
-      const response = await loginRequest(email, password);
+      const response = await loginRequest(identifier.trim(), password);
       if (!response.totpRequired) {
         finish(response.me);
         return;
@@ -151,15 +151,15 @@ export const LoginPage = (): JSX.Element => {
 
             {onCredentials ? (
               <Form onSubmit={() => void submitCredentials()}>
-                <Field label={t('platform.auth.login.email')} htmlFor="login-email">
+                <Field label={t('platform.auth.login.identifier')} htmlFor="login-identifier">
                   <Input
-                    id="login-email"
-                    type="email"
+                    id="login-identifier"
                     required
                     autoComplete="username"
                     dir="ltr"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    value={identifier}
+                    onChange={(e) => setIdentifier(e.target.value)}
+                    placeholder={t('platform.auth.login.identifierHint')}
                   />
                 </Field>
                 <Field label={t('platform.auth.login.password')} htmlFor="login-password">

@@ -11,6 +11,8 @@ export const SettingKeys = {
   LockoutMaxAttempts: 'auth.lockout.maxAttempts',
   LockoutMinutes: 'auth.lockout.minutes',
   TotpEnforcedForPrivileged: 'auth.totp.enforcedForPrivileged',
+  /** Enabled login identifier kinds (design 4.3): username / email / employeeCode. */
+  AuthLoginIdentifiers: 'auth.loginIdentifiers',
   AuditRetentionActivityDays: 'audit.retention.activityDays',
   AuditExportMaxRows: 'audit.export.maxRows',
   AuditSignalsDeniedThreshold: 'audit.signals.deniedThreshold',

@@ -229,20 +229,14 @@ const action = (
     .set('Authorization', `Bearer ${token}`)
     .send(body);
 
-/** Give an employee an ACTIVATED login account; returns its user id. */
+/** Accounts are auto-provisioned with the employee (auth design D1) — return the user id. */
 const activateLogin = async (emp: EmployeeDto): Promise<string> => {
-  const email = `act-${emp.code}@ecms.local`;
-  const loginRes = await request(app)
-    .post(`/api/v1/hr/employees/${emp.id}/login`)
-    .set('Authorization', `Bearer ${adminToken}`)
-    .send({ email, firstName: { ar: 'م', en: 'E' }, lastName: { ar: 'م', en: 'E' } });
-  expect(loginRes.status).toBe(201);
-  const account = loginRes.body.data as { user: { id: string }; activationToken: string };
-  const activated = await request(app)
-    .post('/api/v1/auth/activate')
-    .send({ token: account.activationToken, password: PASSWORD });
-  expect(activated.status).toBe(204);
-  return account.user.id;
+  const reread = await request(app)
+    .get(`/api/v1/hr/employees/${emp.id}`)
+    .set('Authorization', `Bearer ${adminToken}`);
+  const userId = (reread.body.data as EmployeeDto).userId;
+  expect(userId).not.toBeNull();
+  return String(userId);
 };
 
 beforeAll(async () => {

@@ -6,6 +6,7 @@ import {
   type ListUsersQuery,
   type UpdateUser,
   type AdminResetPassword,
+  type TotpRequire,
 } from '@ecms/contracts';
 import { created, noContent, ok, okPage } from '../../infrastructure/http/respond';
 import { validated } from '../../infrastructure/http/validate';
@@ -65,8 +66,29 @@ export const deleteUser = async (req: Request, res: Response): Promise<void> => 
 
 export const adminResetPassword = async (req: Request, res: Response): Promise<void> => {
   const { body, params } = validated<AdminResetPassword, never, IdParam>(req);
-  await userService.setPassword(params.id, body.newPassword, 'passwordReset');
+  let temporaryPassword: string | null = null;
+  if (body.newPassword !== undefined) {
+    // Admin-chosen password still arms the change gate (design 4.4).
+    await userService.setPassword(params.id, body.newPassword, 'passwordReset');
+    await userService.armPasswordGate(params.id);
+  } else {
+    temporaryPassword = (await userService.resetToTempPassword(params.id)).temporaryPassword;
+  }
   await authService.revokeAllSessionsForUser(params.id, 'admin-password-reset');
+  ok(res, { temporaryPassword });
+};
+
+export const adminResetTotp = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<never, never, IdParam>(req);
+  await userService.resetTotp(params.id);
+  await authService.revokeAllSessionsForUser(params.id, 'admin-totp-reset');
+  noContent(res);
+};
+
+export const adminRequireTotp = async (req: Request, res: Response): Promise<void> => {
+  const { body, params } = validated<TotpRequire, never, IdParam>(req);
+  await userService.setTotpRequired(params.id, body.required);
+  if (body.required) await authService.revokeAllSessionsForUser(params.id, 'admin-totp-required');
   noContent(res);
 };
 

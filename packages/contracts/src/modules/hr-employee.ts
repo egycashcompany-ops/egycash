@@ -407,6 +407,13 @@ export interface EmployeeDto {
 }
 
 /** Exited-employee match for a national id (the Rehire prompt / duplicate guard). */
+/** Auto-provisioned login (frozen auth design 4.1) — present on the CREATING response only. */
+export interface EmployeeLoginProvisionDto {
+  username: string;
+  /** Present ONLY when a random password was generated (employee has no NID) — shown once. */
+  temporaryPassword: string | null;
+}
+
 export interface RehireCheckResultDto {
   employeeId: string;
   employeeNumber: string;

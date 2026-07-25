@@ -18,6 +18,7 @@ import { useAppSelector } from '../../../../../store';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
 import { Card, CardBody, CardHeader } from '../../../../../shared/ui/Card';
 import { Button } from '../../../../../shared/ui/Button';
+import { Dialog } from '../../../../../shared/ui/Dialog';
 import { Field, Input, Select } from '../../../../../shared/ui/form';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { localized } from '../../../../../shared/lib/format';
@@ -41,6 +42,11 @@ export const DirectRegisterPage = (): JSX.Element => {
   const register = useRegisterEmployeeDirect();
 
   // Identity + contact.
+  const [credentials, setCredentials] = useState<{
+    id: string;
+    username: string;
+    temporaryPassword: string | null;
+  } | null>(null);
   const [fullNameAr, setFullNameAr] = useState('');
   const [fullNameEn, setFullNameEn] = useState('');
   const [nationalId, setNationalId] = useState('');
@@ -122,6 +128,11 @@ export const DirectRegisterPage = (): JSX.Element => {
     try {
       const created = await register.mutateAsync(body);
       toast.success(t('employees.register.done', { code: created.code }));
+      if (created.provisionedLogin !== null && created.provisionedLogin.temporaryPassword !== null) {
+        // One-time credentials (auth design D3): shown exactly once, never retrievable again.
+        setCredentials({ id: created.id, ...created.provisionedLogin });
+        return;
+      }
       navigate(`/employees/${created.id}`);
     } catch {
       // surfaced globally
@@ -318,6 +329,30 @@ export const DirectRegisterPage = (): JSX.Element => {
           </Button>
         </div>
       </div>
+      {credentials !== null && (
+        <Dialog
+          open
+          onClose={() => navigate(`/employees/${credentials.id}`)}
+          title={t('employees.register.credentialsTitle')}
+          description={t('employees.register.credentialsHint')}
+        >
+          <dl className="space-y-3 text-sm">
+            <div>
+              <dt className="text-xs text-slate-400">{t('employees.account.username')}</dt>
+              <dd className="mt-1 select-all font-mono" dir="ltr">{credentials.username}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-slate-400">{t('employees.register.temporaryPassword')}</dt>
+              <dd className="mt-1 select-all font-mono" dir="ltr">{credentials.temporaryPassword}</dd>
+            </div>
+          </dl>
+          <div className="mt-5 flex justify-end">
+            <Button onClick={() => navigate(`/employees/${credentials.id}`)}>
+              {t('common.continue')}
+            </Button>
+          </div>
+        </Dialog>
+      )}
     </PageContainer>
   );
 };

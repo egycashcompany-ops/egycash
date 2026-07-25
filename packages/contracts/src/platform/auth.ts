@@ -49,7 +49,11 @@ export type ActivateAccount = z.infer<typeof ActivateAccountSchema>;
 
 export interface MeDto {
   id: string;
-  email: string;
+  email: string | null;
+  /** Second login identifier (defaults to the Employee Code); null for email-only accounts. */
+  username: string | null;
+  /** Server-enforced first-login gate (design 4.2) — true until the password is changed. */
+  mustChangePassword: boolean;
   name: { firstName: LocalizedString; lastName: LocalizedString };
   locale: 'ar' | 'en';
   branchId: string | null;
@@ -65,7 +69,7 @@ export interface MeDto {
 
 export type LoginResponse =
   | { totpRequired: true; challengeToken: string; enrollmentRequired: boolean }
-  | { totpRequired: false; accessToken: string; me: MeDto };
+  | { totpRequired: false; accessToken: string; me: MeDto; mustChangePassword: boolean };
 
 export interface RefreshResponse {
   accessToken: string;
@@ -92,10 +96,24 @@ export interface SessionDto {
 
 export const ListSessionsQuerySchema = z.object({}).strict();
 
+/**
+ * Admin reset (design 4.4): omit `newPassword` to apply the temp-password POLICY — the linked
+ * employee's National ID when present, otherwise a strong random password returned exactly
+ * once. Either way the account is gated by `mustChangePassword` and all sessions are revoked.
+ */
 export const AdminResetPasswordSchema = z
-  .object({ newPassword: z.string().min(8).max(128) })
+  .object({ newPassword: z.string().min(8).max(128).optional() })
   .strict();
 export type AdminResetPassword = z.infer<typeof AdminResetPasswordSchema>;
+
+export interface AdminResetPasswordResultDto {
+  /** Present ONLY when a random password was generated (no NID, none supplied) — shown once. */
+  temporaryPassword: string | null;
+}
+
+/** D6 force-on/off: force ON clears any enrolled secret; the user re-enrolls at next login. */
+export const TotpRequireSchema = z.object({ required: z.boolean() }).strict();
+export type TotpRequire = z.infer<typeof TotpRequireSchema>;
 
 export const UserIdParamSchema = z.object({ id: objectId() }).strict();
 

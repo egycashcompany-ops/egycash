@@ -17,6 +17,9 @@ import {
   useBranch,
   useCreateEmployeeLogin,
   useLinkedUser,
+  useRequireUserTotp,
+  useResetUserPassword,
+  useResetUserTotp,
   useUpdateUser,
   useUserAssignments,
 } from '../api/employee-queries';
@@ -125,6 +128,69 @@ const CreateLoginDialog = ({
   );
 };
 
+/** Admin security actions (auth design 4.4/4.5) — reset password / authenticator control. */
+const SecurityActions = ({ userId }: { userId: string }): JSX.Element => {
+  const t = useT();
+  const { data: user } = useLinkedUser(userId);
+  const resetPassword = useResetUserPassword(userId);
+  const resetTotp = useResetUserTotp(userId);
+  const requireTotp = useRequireUserTotp(userId);
+  const [oneTime, setOneTime] = useState<string | null>(null);
+
+  const doResetPassword = async (): Promise<void> => {
+    const result = await resetPassword.mutateAsync();
+    setOneTime(result.temporaryPassword);
+    toast.success(t('employees.account.passwordResetDone'));
+  };
+  const doResetTotp = async (): Promise<void> => {
+    await resetTotp.mutateAsync();
+    toast.success(t('employees.account.totpResetDone'));
+  };
+  const toggleRequired = async (): Promise<void> => {
+    const next = !(user?.totpRequired ?? false);
+    await requireTotp.mutateAsync(next);
+    toast.success(next ? t('employees.account.totpRequiredOn') : t('employees.account.totpRequiredOff'));
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-1.5">
+        {(user?.mustChangePassword ?? false) && (
+          <Badge tone="warning">{t('employees.account.mustChange')}</Badge>
+        )}
+        <Badge tone={(user?.totpEnabled ?? false) ? 'success' : 'neutral'}>
+          {(user?.totpEnabled ?? false)
+            ? t('employees.account.totpOn')
+            : t('employees.account.totpOff')}
+        </Badge>
+        {(user?.totpRequired ?? false) && <Badge tone="info">{t('employees.account.totpRequired')}</Badge>}
+      </div>
+      {oneTime !== null && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-900/50 dark:bg-amber-950/40">
+          <p className="text-amber-900 dark:text-amber-200">{t('employees.account.oneTimePassword')}</p>
+          <code className="mt-1 block select-all font-mono text-amber-900 dark:text-amber-100" dir="ltr">
+            {oneTime}
+          </code>
+        </div>
+      )}
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" variant="secondary" loading={resetPassword.isPending} onClick={() => void doResetPassword()}>
+          {t('employees.account.resetPassword')}
+        </Button>
+        <Button size="sm" variant="ghost" loading={resetTotp.isPending} onClick={() => void doResetTotp()}>
+          {t('employees.account.resetTotp')}
+        </Button>
+        <Button size="sm" variant="ghost" loading={requireTotp.isPending} onClick={() => void toggleRequired()}>
+          {(user?.totpRequired ?? false)
+            ? t('employees.account.unrequireTotp')
+            : t('employees.account.requireTotp')}
+        </Button>
+      </div>
+      <p className="text-xs text-slate-400">{t('employees.account.resetHint')}</p>
+    </div>
+  );
+};
+
 const UsernameEditor = ({ userId, current }: { userId: string; current: string }): JSX.Element => {
   const t = useT();
   const update = useUpdateUser(userId);
@@ -195,6 +261,13 @@ export const EmployeeAccountCard = ({ employee }: { employee: EmployeeDto }): JS
               <UsernameEditor userId={employee.userId} current={user?.username ?? employee.code} />
             )}
           </Row>
+          {employee.userId !== null && (
+            <Can permission="user.resetPassword">
+              <Row label={t('employees.account.security')}>
+                <SecurityActions userId={employee.userId} />
+              </Row>
+            </Can>
+          )}
           {employee.userId !== null && (
             <Row label={t('employees.account.dataScope')}>
               {assignments.length === 0 ? (

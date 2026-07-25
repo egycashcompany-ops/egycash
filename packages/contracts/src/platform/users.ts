@@ -30,7 +30,7 @@ const UserOrganizationSchema = z
 
 export const CreateUserSchema = z
   .object({
-    email: z.string().email(),
+    email: z.string().email().optional(),
     firstName: LocalizedStringSchema,
     lastName: LocalizedStringSchema,
     phone: PhoneNumberSchema.optional(),
@@ -76,9 +76,14 @@ export type ListUsersQuery = z.infer<typeof ListUsersQuerySchema>;
 
 export interface UserDto {
   id: string;
-  email: string;
+  email: string | null;
   /** Second login identifier; null for accounts that only log in by email. */
   username: string | null;
+  /** First-login gate state (admin visibility; design 4.2). */
+  mustChangePassword: boolean;
+  totpEnabled: boolean;
+  /** D6 — admin-forced TOTP enrollment pending/active. */
+  totpRequired: boolean;
   /** The Employee this login belongs to; null for platform/system accounts. */
   employeeId: string | null;
   phone: string | null;
@@ -92,7 +97,6 @@ export interface UserDto {
     sectionId: string | null;
     jobTitleId: string | null;
   };
-  totpEnabled: boolean;
   version: number;
   createdAt: string;
   updatedAt: string;

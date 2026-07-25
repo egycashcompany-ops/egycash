@@ -1,9 +1,10 @@
 // TanStack Query owns server state (ADR-013); this is the auth feature's api/ surface.
-import { type LoginResponse, type MeDto } from '@ecms/contracts';
-import { api, post, setAccessToken } from '../../shared/lib/api-client';
+import { type LoginResponse, type MeDto, type SessionDto } from '@ecms/contracts';
+import { api, del, post, setAccessToken } from '../../shared/lib/api-client';
 
-export const loginRequest = async (email: string, password: string): Promise<LoginResponse> => {
-  const response = await post<LoginResponse>('/auth/login', { email, password });
+/** Login by ANY enabled identifier — username, employee code, or email (auth design 4.3). */
+export const loginRequest = async (identifier: string, password: string): Promise<LoginResponse> => {
+  const response = await post<LoginResponse>('/auth/login', { identifier, password });
   if (!response.totpRequired) setAccessToken(response.accessToken);
   return response;
 };
@@ -39,3 +40,21 @@ export const bootstrapSession = async (): Promise<MeDto | null> => {
     return null;
   }
 };
+
+// ── Security page + first-login gate (auth design 4.2/4.4/4.5) ──────────────
+
+export const changePasswordRequest = (currentPassword: string, newPassword: string): Promise<void> =>
+  post<void>('/auth/password/change', { currentPassword, newPassword });
+
+export const totpEnrollRequest = (): Promise<{ secret: string; otpauthUrl: string }> =>
+  post('/auth/totp/enroll', {});
+
+export const totpVerifyRequest = (code: string): Promise<{ enabled: true; backupCodes: string[] }> =>
+  post('/auth/totp/verify', { code });
+
+export const totpDisableRequest = (code: string): Promise<void> =>
+  post<void>('/auth/totp/disable', { code });
+
+export const listSessionsRequest = (): Promise<SessionDto[]> => api('/auth/sessions');
+
+export const revokeSessionRequest = (id: string): Promise<void> => del<void>(`/auth/sessions/${id}`);

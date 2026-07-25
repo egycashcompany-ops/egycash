@@ -10,7 +10,9 @@ import {
   type CreateEmployeeLogin,
   type DirectRegisterEmployee,
   type EmployeeActionDto,
+  type AdminResetPasswordResultDto,
   type EmployeeDto,
+  type EmployeeLoginProvisionDto,
   type EmployeeLoginDto,
   type EmployeeTimelineItemDto,
   type EmploymentAction,
@@ -32,12 +34,16 @@ export const listEmployees = (params: EmployeeListParams): Promise<Paginated<Emp
 
 export const getEmployee = (id: string): Promise<EmployeeDto> => get<EmployeeDto>(`/hr/employees/${id}`);
 
-export const createEmployee = (body: CreateEmployee): Promise<EmployeeDto> =>
-  post<EmployeeDto>('/hr/employees', body);
+export const createEmployee = (
+  body: CreateEmployee,
+): Promise<EmployeeDto & { provisionedLogin: EmployeeLoginProvisionDto | null }> =>
+  post<EmployeeDto & { provisionedLogin: EmployeeLoginProvisionDto | null }>('/hr/employees', body);
 
 /** Direct Registration (D4) — onboard without a recruitment pipeline. */
-export const registerEmployeeDirect = (body: DirectRegisterEmployee): Promise<EmployeeDto> =>
-  post<EmployeeDto>('/hr/employees/direct', body);
+export const registerEmployeeDirect = (
+  body: DirectRegisterEmployee,
+): Promise<EmployeeDto & { provisionedLogin: EmployeeLoginProvisionDto | null }> =>
+  post<EmployeeDto & { provisionedLogin: EmployeeLoginProvisionDto | null }>('/hr/employees/direct', body);
 
 /** Post-hire personal-data edits — plain audited updates, not personnel actions. */
 export const updateEmployeePersonal = (id: string, body: UpdateEmployeePersonal): Promise<EmployeeDto> =>
@@ -90,6 +96,16 @@ export const getUser = (id: string): Promise<UserDto> => get<UserDto>(`/platform
 
 export const updateUser = (id: string, body: UpdateUser): Promise<UserDto> =>
   patch<UserDto>(`/platform/users/${id}`, body);
+
+// ── Account security administration (auth design 4.4/4.5) ──────────────────
+export const resetUserPassword = (id: string): Promise<AdminResetPasswordResultDto> =>
+  post<AdminResetPasswordResultDto>(`/platform/users/${id}/reset-password`, {});
+
+export const resetUserTotp = (id: string): Promise<void> =>
+  post<void>(`/platform/users/${id}/totp/reset`, {});
+
+export const requireUserTotp = (id: string, required: boolean): Promise<void> =>
+  post<void>(`/platform/users/${id}/totp/require`, { required });
 
 export const listUserAssignments = (userId: string): Promise<Paginated<RoleAssignmentDto>> =>
   getPage<RoleAssignmentDto>(`/platform/role-assignments${buildQuery({ userId, pageSize: 50 })}`);

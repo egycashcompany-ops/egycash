@@ -38,6 +38,13 @@ export const registerAuthSettings = (): void => {
     allowedScopes: ['organization'],
   });
   declareSetting({
+    key: SettingKeys.AuthLoginIdentifiers,
+    description: 'Enabled login identifier kinds (auth design 4.3)',
+    schema: z.array(z.enum(['username', 'email', 'employeeCode'])).min(1),
+    defaultValue: ['username', 'email', 'employeeCode'],
+    allowedScopes: ['organization'],
+  });
+  declareSetting({
     key: SettingKeys.TotpEnforcedForPrivileged,
     description:
       'Enforce TOTP 2FA for privileged accounts (system roles / break-glass permissions) — Review R13',

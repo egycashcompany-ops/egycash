@@ -5,6 +5,7 @@ import { authenticate } from '../auth';
 import { authorize } from '../rbac';
 import {
   AdminResetPasswordSchema,
+  TotpRequireSchema,
   ChangeUserStatusSchema,
   CreateUserSchema,
   ListUsersQuerySchema,
@@ -12,7 +13,9 @@ import {
   UserIdParamSchema,
 } from './user.validation';
 import {
+  adminRequireTotp,
   adminResetPassword,
+  adminResetTotp,
   adminRevokeSessions,
   changeUserStatus,
   createUser,
@@ -80,6 +83,20 @@ export const buildUsersRouter = (): Router => {
     authorize('user.manageSessions'),
     validate({ params: UserIdParamSchema }),
     asyncHandler(adminRevokeSessions),
+  );
+  router.post(
+    '/:id/totp/reset',
+    authenticate,
+    authorize('user.resetPassword'),
+    validate({ params: UserIdParamSchema }),
+    asyncHandler(adminResetTotp),
+  );
+  router.post(
+    '/:id/totp/require',
+    authenticate,
+    authorize('user.resetPassword'),
+    validate({ body: TotpRequireSchema, params: UserIdParamSchema }),
+    asyncHandler(adminRequireTotp),
   );
   return router;
 };

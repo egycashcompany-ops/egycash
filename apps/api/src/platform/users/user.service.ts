@@ -1,5 +1,6 @@
 // Business rules for user accounts. Lifecycle: invite → activate → suspend → archive —
 // never hard-delete (audit integrity, Platform Core §2).
+import { randomInt } from 'node:crypto';
 import { Types } from 'mongoose';
 import {
   ErrorCodes,
@@ -18,6 +19,8 @@ import { type ScopeSelector } from '../../shared/types';
 import { diffChanges } from '../../shared/utils/diff';
 import { randomToken, sha256 } from '../../shared/utils/crypto';
 import { hashPassword, passwordPolicyViolation } from '../../shared/utils/passwords';
+import { getCache } from '../../infrastructure/redis/cache';
+import { resolveEmployeeCode, resolveTempPassword } from '../auth/identity-seams';
 import { auditService } from '../audit';
 import { settingsService } from '../settings';
 import { emit, nudgeOutboxRelay } from '../kernel/event-bus';
@@ -54,8 +57,10 @@ class UserService {
     by: string | null,
     extra: { username?: string; employeeId?: string } = {},
   ): Promise<{ user: UserDoc; activationToken: string }> {
-    const existing = await userRepository.findByEmail(input.email);
-    if (existing !== null) throw new ConflictError('A user with this email already exists');
+    if (input.email !== undefined) {
+      const existing = await userRepository.findByEmail(input.email);
+      if (existing !== null) throw new ConflictError('A user with this email already exists');
+    }
     const username = extra.username?.toLowerCase();
     if (username !== undefined && (await userRepository.findByUsername(username)) !== null) {
       throw new ConflictError('A user with this username already exists');
@@ -65,7 +70,7 @@ class UserService {
     const user = await unitOfWork(async (session) => {
       const created = await userRepository.create(
         {
-          email: input.email,
+          email: input.email ?? null,
           username: username ?? null,
           employeeId: extra.employeeId === undefined ? null : new Types.ObjectId(extra.employeeId),
           phone: input.phone ?? null,
@@ -114,6 +119,73 @@ class UserService {
     return { user, activationToken };
   }
 
+  /**
+   * Auto-provisioned account (frozen auth design 4.1): ACTIVE immediately with a hashed temp
+   * password and the change gate armed — no invite flow. Used by the HR employee lifecycle.
+   */
+  async createProvisioned(
+    input: Omit<CreateUser, 'email'> & { email?: string },
+    by: string | null,
+    extra: { username: string; employeeId: string; tempPassword: string },
+  ): Promise<UserDoc> {
+    const username = extra.username.toLowerCase();
+    if ((await userRepository.findByUsername(username)) !== null) {
+      throw new ConflictError('A user with this username already exists');
+    }
+    if (input.email !== undefined && (await userRepository.findByEmail(input.email)) !== null) {
+      throw new ConflictError('A user with this email already exists');
+    }
+    const passwordHash = await hashPassword(extra.tempPassword);
+    const user = await unitOfWork(async (session) => {
+      const created = await userRepository.create(
+        {
+          email: input.email ?? null,
+          username,
+          employeeId: new Types.ObjectId(extra.employeeId),
+          phone: input.phone ?? null,
+          passwordHash,
+          profile: { firstName: input.firstName, lastName: input.lastName },
+          locale: input.locale,
+          status: 'active',
+          organization: {
+            branchId:
+              input.organization.branchId === null
+                ? null
+                : new Types.ObjectId(input.organization.branchId),
+            departmentId:
+              input.organization.departmentId === null
+                ? null
+                : new Types.ObjectId(input.organization.departmentId),
+            sectionId:
+              input.organization.sectionId === null
+                ? null
+                : new Types.ObjectId(input.organization.sectionId),
+            jobTitleId:
+              input.organization.jobTitleId === null
+                ? null
+                : new Types.ObjectId(input.organization.jobTitleId),
+          },
+          security: { mustChangePassword: true } as UserDoc['security'],
+          activation: { tokenHash: null, expiresAt: null },
+        },
+        { by, session },
+      );
+      await emit(
+        PlatformEvents.UserCreated,
+        { userId: String(created._id), email: created.email, status: created.status },
+        { reliable: true, session },
+      );
+      return created;
+    });
+    nudgeOutboxRelay();
+    await auditService.record({
+      entityRef: entityRef(String(user._id)),
+      action: 'accountAutoCreated',
+      changes: [{ field: 'username', old: null, new: username }],
+    });
+    return user;
+  }
+
   async update(id: string, input: UpdateUser, by: string, scope?: ScopeSelector): Promise<UserDoc> {
     const before = await userRepository.getById(id, scope);
     const set: Record<string, unknown> = {};
@@ -144,6 +216,13 @@ class UserService {
       action: 'update',
       changes: diffChanges(auditSnapshot(before), auditSnapshot(after)),
     });
+    if (input.username !== undefined && before.username !== after.username) {
+      await auditService.record({
+        entityRef: entityRef(id),
+        action: 'usernameChanged',
+        changes: [{ field: 'username', old: before.username, new: after.username }],
+      });
+    }
     await emit(PlatformEvents.UserUpdated, {
       userId: id,
       email: after.email,
@@ -210,6 +289,32 @@ class UserService {
       (await userRepository.findByUsername(normalized)) ??
       (await userRepository.findByEmail(normalized))
     );
+  }
+
+  /**
+   * Configurable login resolution (design 4.3): the enabled identifier kinds come from the
+   * `auth.loginIdentifiers` org setting; `employeeCode` resolves through the HR seam so the
+   * printed code keeps working even after an admin changes the username.
+   */
+  async findByIdentifier(identifier: string): Promise<UserDoc | null> {
+    const normalized = identifier.toLowerCase().trim();
+    const kinds = await settingsService.resolve<string[]>(SettingKeys.AuthLoginIdentifiers, {
+      userId: null,
+      branchId: null,
+    });
+    if (kinds.includes('username')) {
+      const byUsername = await userRepository.findByUsername(normalized);
+      if (byUsername !== null) return byUsername;
+    }
+    if (kinds.includes('email')) {
+      const byEmail = await userRepository.findByEmail(normalized);
+      if (byEmail !== null) return byEmail;
+    }
+    if (kinds.includes('employeeCode')) {
+      const userId = await resolveEmployeeCode(identifier.trim().toUpperCase());
+      if (userId !== null) return userRepository.findById(userId);
+    }
+    return null;
   }
 
   async list(query: ListUsersQuery, scope: ScopeSelector): Promise<Paginated<UserDoc>> {
@@ -282,10 +387,110 @@ class UserService {
         'security.passwordChangedAt': new Date(),
         'security.failedLogins': 0,
         'security.lockedUntil': null,
+        // A successful change is the ONLY thing that clears the first-login gate (design 4.2).
+        'security.mustChangePassword': false,
       },
     });
     if (updated === null) throw new NotFoundError();
+    await getCache().del(`auth:user:${userId}`); // the gate lives on the auth snapshot
     await auditService.record({ entityRef: entityRef(userId), action });
+  }
+
+  /**
+   * Temp-password issuance (design 4.1/4.4): hashes WITHOUT the policy check (a numeric NID
+   * is a to-be-replaced credential — the policy applies to the user's NEW password) and arms
+   * the server-enforced change gate.
+   */
+  async setTempPassword(userId: string, password: string): Promise<void> {
+    const updated = await userRepository.updateSecurity(userId, {
+      $set: {
+        passwordHash: await hashPassword(password),
+        'security.passwordChangedAt': null,
+        'security.failedLogins': 0,
+        'security.lockedUntil': null,
+        'security.mustChangePassword': true,
+      },
+    });
+    if (updated === null) throw new NotFoundError();
+    await getCache().del(`auth:user:${userId}`);
+  }
+
+  /** Arm the first-login gate without touching the password (admin-chosen reset path). */
+  async armPasswordGate(userId: string): Promise<void> {
+    const updated = await userRepository.updateSecurity(userId, {
+      $set: { 'security.mustChangePassword': true },
+    });
+    if (updated === null) throw new NotFoundError();
+    await getCache().del(`auth:user:${userId}`);
+  }
+
+  /** Policy-compliant random temporary password (D3 — shown once, stored as hash only). */
+  generateTempPassword(): string {
+    const lower = 'abcdefghjkmnpqrstuvwxyz';
+    const upper = 'ABCDEFGHJKMNPQRSTUVWXYZ';
+    const digits = '23456789';
+    const symbols = '!@#$%&*';
+    const all = lower + upper + digits + symbols;
+    const pick = (set: string): string => set[randomInt(set.length)] ?? set[0]!;
+    const chars = [pick(lower), pick(upper), pick(digits), pick(symbols)];
+    while (chars.length < 14) chars.push(pick(all));
+    for (let i = chars.length - 1; i > 0; i -= 1) {
+      const j = randomInt(i + 1);
+      [chars[i], chars[j]] = [chars[j]!, chars[i]!];
+    }
+    return chars.join('');
+  }
+
+  /**
+   * Admin reset to the temp-password POLICY (design 4.4): the linked employee's National ID
+   * when available (HR already knows it), otherwise a random password returned exactly once.
+   */
+  async resetToTempPassword(userId: string): Promise<{ temporaryPassword: string | null }> {
+    const nid = await resolveTempPassword(userId);
+    if (nid !== null) {
+      await this.setTempPassword(userId, nid);
+      await auditService.record({ entityRef: entityRef(userId), action: 'passwordReset' });
+      return { temporaryPassword: null };
+    }
+    const generated = this.generateTempPassword();
+    await this.setTempPassword(userId, generated);
+    await auditService.record({ entityRef: entityRef(userId), action: 'passwordReset' });
+    return { temporaryPassword: generated };
+  }
+
+  /** D6 admin force-on/off: force ON clears any enrolled secret — the user re-enrolls. */
+  async setTotpRequired(userId: string, required: boolean): Promise<void> {
+    const update = required
+      ? {
+          $set: {
+            'security.totp': { enabled: false, secret: null, backupCodeHashes: [], required: true },
+          },
+        }
+      : { $set: { 'security.totp.required': false } };
+    const updated = await userRepository.updateSecurity(userId, update);
+    if (updated === null) throw new NotFoundError();
+    await auditService.record({
+      entityRef: entityRef(userId),
+      action: 'totpRequiredChanged',
+      changes: [{ field: 'required', old: !required, new: required }],
+    });
+  }
+
+  /** Admin TOTP reset (D6): wipes enrollment, keeps the `required` flag as-is. */
+  async resetTotp(userId: string): Promise<void> {
+    const current = await userRepository.getById(userId);
+    const updated = await userRepository.updateSecurity(userId, {
+      $set: {
+        'security.totp': {
+          enabled: false,
+          secret: null,
+          backupCodeHashes: [],
+          required: current.security.totp.required,
+        },
+      },
+    });
+    if (updated === null) throw new NotFoundError();
+    await auditService.record({ entityRef: entityRef(userId), action: 'totpReset' });
   }
 
   async assertPasswordPolicy(password: string): Promise<void> {
@@ -381,7 +586,9 @@ class UserService {
         jobTitleId:
           doc.organization.jobTitleId === null ? null : String(doc.organization.jobTitleId),
       },
+      mustChangePassword: doc.security.mustChangePassword ?? false,
       totpEnabled: doc.security.totp.enabled,
+      totpRequired: doc.security.totp.required ?? false,
       version: doc.__v,
       createdAt: doc.createdAt.toISOString(),
       updatedAt: doc.updatedAt.toISOString(),

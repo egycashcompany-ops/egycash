@@ -80,6 +80,10 @@ export const bootPlatform = async (options: BootOptions = {}): Promise<void> => 
   }
   await schedulerService.syncRegistry();
 
+  // Platform data migrations (auth design §7) — idempotent, before module seeds.
+  const { migrateUserAuthIndexes } = await import('../users/user.migration');
+  await migrateUserAuthIndexes();
+
   // Module reference-data seeds run last — after permissions, the org singleton, and the
   // scheduler exist, since a module's seed may depend on any of them (Module Structure §2.1).
   for (const manifest of getRegisteredModules()) {

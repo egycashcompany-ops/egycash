@@ -57,6 +57,7 @@ interface UserSnapshot {
   sectionId: string | null;
   locale: 'ar' | 'en';
   totpEnabled: boolean;
+  mustChangePassword: boolean;
 }
 
 const userEntityRef = (userId: string) => ({
@@ -244,8 +245,8 @@ class AuthService {
     password: string,
   ): Promise<{ response: LoginResponse; tokens?: IssuedTokens }> {
     const policy = await this.loginPolicy();
-    // Accepts a username or an email (ADR-017); existing email logins are unaffected.
-    const user = await userService.findByUsernameOrEmail(identifier);
+    // Configurable identifier kinds (auth design 4.3): username / email / employee code.
+    const user = await userService.findByIdentifier(identifier);
 
     if (user === null || user.passwordHash === null) {
       await auditService.record({
@@ -300,7 +301,8 @@ class AuthService {
         },
       };
     }
-    if (policy.totpEnforced && effective.isPrivileged) {
+    // D6 admin force-on OR the R13 privileged policy: enrollment happens at login.
+    if ((user.security.totp.required ?? false) || (policy.totpEnforced && effective.isPrivileged)) {
       return {
         response: {
           totpRequired: true,
@@ -330,7 +332,12 @@ class AuthService {
     });
     const me = await this.buildMe(user);
     return {
-      response: { totpRequired: false, accessToken, me },
+      response: {
+        totpRequired: false,
+        accessToken,
+        me,
+        mustChangePassword: user.security.mustChangePassword ?? false,
+      },
       tokens: { accessToken, refreshToken, refreshExpiresAt },
     };
   }
@@ -351,7 +358,7 @@ class AuthService {
     await getCache().set(this.pendingTotpKey(userId), secret, PENDING_TOTP_TTL_SECONDS);
     return {
       secret,
-      otpauthUrl: authenticator.keyuri(user.email, 'ECMS', secret),
+      otpauthUrl: authenticator.keyuri(user.email ?? user.username ?? String(user._id), 'ECMS', secret),
     };
   }
 
@@ -566,6 +573,7 @@ class AuthService {
     const snapshot: UserSnapshot = {
       status: user.status,
       permissionVersion: user.security.permissionVersion,
+      mustChangePassword: user.security.mustChangePassword ?? false,
       branchId: org.branchId === null ? null : String(org.branchId),
       departmentId: org.departmentId === null ? null : String(org.departmentId),
       sectionId: org.sectionId === null ? null : String(org.sectionId),
@@ -621,6 +629,8 @@ class AuthService {
     return {
       id: String(user._id),
       email: user.email,
+      username: user.username,
+      mustChangePassword: user.security.mustChangePassword ?? false,
       name: { firstName: user.profile.firstName, lastName: user.profile.lastName },
       locale: user.locale,
       branchId: user.organization.branchId === null ? null : String(user.organization.branchId),
@@ -634,6 +644,12 @@ class AuthService {
 
   async me(ctx: AuthContext): Promise<MeDto> {
     return this.buildMe(await userService.getById(ctx.userId));
+  }
+
+  /** First-login gate probe (design 4.2) — reads the cached snapshot the request already warmed. */
+  async passwordGateActive(userId: string): Promise<boolean> {
+    const snapshot = await this.userSnapshot(userId);
+    return snapshot.mustChangePassword;
   }
 }
 

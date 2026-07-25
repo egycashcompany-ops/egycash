@@ -65,17 +65,11 @@ export const deleteUser = async (req: Request, res: Response): Promise<void> => 
 };
 
 export const adminResetPassword = async (req: Request, res: Response): Promise<void> => {
-  const { body, params } = validated<AdminResetPassword, never, IdParam>(req);
-  let temporaryPassword: string | null = null;
-  if (body.newPassword !== undefined) {
-    // Admin-chosen password still arms the change gate (design 4.4).
-    await userService.setPassword(params.id, body.newPassword, 'passwordReset');
-    await userService.armPasswordGate(params.id);
-  } else {
-    temporaryPassword = (await userService.resetToTempPassword(params.id)).temporaryPassword;
-  }
+  const { params } = validated<AdminResetPassword, never, IdParam>(req);
+  // §12 R6: random temp + delivery; the password itself never appears in any response.
+  const delivery = await userService.resetToTempPassword(params.id);
   await authService.revokeAllSessionsForUser(params.id, 'admin-password-reset');
-  ok(res, { temporaryPassword });
+  ok(res, { delivery });
 };
 
 export const adminResetTotp = async (req: Request, res: Response): Promise<void> => {

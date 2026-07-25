@@ -7,6 +7,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  type CredentialsDeliveryResultDto,
   type DirectRegisterEmployee,
   type EmploymentType,
   type Locale,
@@ -45,7 +46,7 @@ export const DirectRegisterPage = (): JSX.Element => {
   const [credentials, setCredentials] = useState<{
     id: string;
     username: string;
-    temporaryPassword: string | null;
+    delivery: CredentialsDeliveryResultDto[];
   } | null>(null);
   const [fullNameAr, setFullNameAr] = useState('');
   const [fullNameEn, setFullNameEn] = useState('');
@@ -128,8 +129,8 @@ export const DirectRegisterPage = (): JSX.Element => {
     try {
       const created = await register.mutateAsync(body);
       toast.success(t('employees.register.done', { code: created.code }));
-      if (created.provisionedLogin !== null && created.provisionedLogin.temporaryPassword !== null) {
-        // One-time credentials (auth design D3): shown exactly once, never retrievable again.
+      if (created.provisionedLogin !== null) {
+        // §12 R3: credentials were DELIVERED to the employee — show the per-channel outcome.
         setCredentials({ id: created.id, ...created.provisionedLogin });
         return;
       }
@@ -342,8 +343,20 @@ export const DirectRegisterPage = (): JSX.Element => {
               <dd className="mt-1 select-all font-mono" dir="ltr">{credentials.username}</dd>
             </div>
             <div>
-              <dt className="text-xs text-slate-400">{t('employees.register.temporaryPassword')}</dt>
-              <dd className="mt-1 select-all font-mono" dir="ltr">{credentials.temporaryPassword}</dd>
+              <dt className="text-xs text-slate-400">{t('employees.account.deliveryTitle')}</dt>
+              <dd className="mt-1">
+                <ul className="space-y-0.5">
+                  {credentials.delivery.map((d) => (
+                    <li key={d.channel}>
+                      {t(d.channel === 'whatsapp' ? 'employees.account.channelWhatsapp' : 'employees.account.channelEmail')}
+                      {': '}
+                      {d.ok
+                        ? t('employees.account.deliverySent')
+                        : (d.detail ?? t('employees.account.deliveryFailed'))}
+                    </li>
+                  ))}
+                </ul>
+              </dd>
             </div>
           </dl>
           <div className="mt-5 flex justify-end">

@@ -397,14 +397,11 @@ describe('platform identity (ADR-017) — branch code, global sequence, login ac
       .send({ email: `dup-${emp.code}@ecms.local`, firstName: { ar: 'x', en: 'x' }, lastName: { ar: 'y', en: 'y' } });
     expect(dup.status).toBe(409);
 
-    // Admin reset with an explicit password re-arms the gate (design 4.4)…
-    const reset = await request(app)
-      .post(`/api/v1/platform/users/${userId}/reset-password`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ newPassword: PASSWORD });
-    expect(reset.status).toBe(200);
+    // Credentials are delivered, never echoed (§12 R11) — issue a known temp at the
+    // service level to walk the same gated first-login flow.
+    await userService.setTempPassword(userId, PASSWORD, new Date(Date.now() + 3_600_000));
 
-    // …the employee signs in BY EMPLOYEE CODE and is gated:
+    // The employee signs in BY EMPLOYEE CODE and is gated:
     const gated = await request(app)
       .post('/api/v1/auth/login')
       .send({ identifier: emp.code, password: PASSWORD });

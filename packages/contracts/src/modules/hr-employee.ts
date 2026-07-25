@@ -18,6 +18,7 @@ import {
   type Address,
 } from '../common/index.js';
 import { UsernameSchema, type UserDto } from '../platform/users.js';
+import { type CredentialsDeliveryResultDto } from '../platform/auth.js';
 import {
   AllowanceSchema,
   EmploymentTypeSchema,
@@ -410,8 +411,8 @@ export interface EmployeeDto {
 /** Auto-provisioned login (frozen auth design 4.1) — present on the CREATING response only. */
 export interface EmployeeLoginProvisionDto {
   username: string;
-  /** Present ONLY when a random password was generated (employee has no NID) — shown once. */
-  temporaryPassword: string | null;
+  /** Per-channel credential-delivery outcomes (design §12 R3) — never the password itself. */
+  delivery: CredentialsDeliveryResultDto[];
 }
 
 export interface RehireCheckResultDto {

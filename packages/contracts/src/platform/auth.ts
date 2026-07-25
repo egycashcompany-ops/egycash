@@ -97,18 +97,22 @@ export interface SessionDto {
 export const ListSessionsQuerySchema = z.object({}).strict();
 
 /**
- * Admin reset (design 4.4): omit `newPassword` to apply the temp-password POLICY — the linked
- * employee's National ID when present, otherwise a strong random password returned exactly
- * once. Either way the account is gated by `mustChangePassword` and all sessions are revoked.
+ * Admin reset (design §12 R6): no body — a new random temporary password is generated
+ * server-side, delivered to the employee (WhatsApp + email), all sessions are revoked and
+ * the change gate re-arms. Passwords are never supplied by nor returned to admins (R11).
  */
-export const AdminResetPasswordSchema = z
-  .object({ newPassword: z.string().min(8).max(128).optional() })
-  .strict();
+export const AdminResetPasswordSchema = z.object({}).strict();
 export type AdminResetPassword = z.infer<typeof AdminResetPasswordSchema>;
 
+/** Per-channel outcome of a transient credentials delivery (design §12 R3). */
+export interface CredentialsDeliveryResultDto {
+  channel: 'whatsapp' | 'email';
+  ok: boolean;
+  detail: string | null;
+}
+
 export interface AdminResetPasswordResultDto {
-  /** Present ONLY when a random password was generated (no NID, none supplied) — shown once. */
-  temporaryPassword: string | null;
+  delivery: CredentialsDeliveryResultDto[];
 }
 
 /** D6 force-on/off: force ON clears any enrolled secret; the user re-enrolls at next login. */

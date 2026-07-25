@@ -1,11 +1,12 @@
 // Auth & Employee Account Lifecycle suite (frozen design docs/12-planning/
-// auth-account-lifecycle-design.md). Covers what the adapted employee/leave suites don't:
-// the NID temp-password path, the no-NID one-time password (D3), the policy-based admin
-// reset, TOTP force-on (D6), username change with permanent employee-code login,
-// email-optional accounts, backfill idempotency (D2), and legacy-user non-impact.
+// auth-account-lifecycle-design.md, Revision 2). Covers what the adapted employee/leave
+// suites don't: random temp provisioning with per-channel delivery outcomes (§12 R1/R3),
+// temp-password expiry + admin re-issue (R10), the no-password-in-any-API rule (R11),
+// TOTP force-on (D6), username change with permanent employee-code login, email-optional
+// accounts, backfill idempotency (D2), and legacy-user non-impact.
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type Express } from 'express';
 import { platformPermissions, SettingKeys, type EmployeeDto, type UserDto } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
@@ -16,6 +17,7 @@ import { rbacService } from '../../src/platform/rbac';
 import { userService } from '../../src/platform/users';
 import { settingsService } from '../../src/platform/settings';
 import { employeeService } from '../../src/modules/hr/employee-management/employees/employee.service';
+import { UserModel } from '../../src/platform/users/user.model';
 import { getCache } from '../../src/infrastructure/redis/cache';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { type AuthContext } from '../../src/shared/types';
@@ -160,20 +162,46 @@ beforeEach(async () => {
   await getCache().delByPrefix('rl:');
 });
 
-describe('auto-provisioning (D1/D3)', () => {
-  it('NID employees: username = code, temp password = NID, gate armed, ESS granted', async () => {
-    const nid = nextNid();
-    const emp = await regEmployee({ nationalId: nid });
-    expect(emp.userId).not.toBeNull();
-    expect((emp as EmployeeDto & { provisionedLogin: unknown }).provisionedLogin).toEqual({
-      username: emp.code,
-      temporaryPassword: null, // NID path — nothing to show, HR already knows it (D3)
-    });
+/** The next temp password is DELIVERED, never echoed (§12 R11) — capture it at the source. */
+const captureTemp = (): ReturnType<typeof vi.spyOn> => vi.spyOn(userService, 'generateTempPassword');
+const lastTemp = (spy: { mock: { results: { type: string; value: unknown }[] } }): string => {
+  const result = spy.mock.results[spy.mock.results.length - 1];
+  if (result === undefined || result.type !== 'return') throw new Error('no temp generated');
+  return result.value as string;
+};
 
-    // First sign-in with employee code + NID → gated.
+interface ProvisionShape {
+  provisionedLogin: {
+    username: string;
+    delivery: { channel: string; ok: boolean; detail: string | null }[];
+  } | null;
+}
+
+describe('auto-provisioning (D1 + §12 R1/R3)', () => {
+  it('provisions at creation: username = code, random temp, delivery attempted, gate armed, ESS granted', async () => {
+    const spy = captureTemp();
+    const emp = await regEmployee({});
+    const temp = lastTemp(spy);
+    spy.mockRestore();
+
+    expect(emp.userId).not.toBeNull();
+    const provision = (emp as EmployeeDto & ProvisionShape).provisionedLogin;
+    expect(provision?.username).toBe(emp.code);
+    // The response reports per-channel outcomes — never the password (§12 R11).
+    expect(provision).not.toHaveProperty('temporaryPassword');
+    const channels = (provision?.delivery ?? []).map((d) => d.channel).sort();
+    expect(channels).toEqual(['email', 'whatsapp']);
+    // Hermetic CI: the whatsapp transport is disabled and the fixture has no email.
+    expect(provision?.delivery.every((d) => !d.ok)).toBe(true);
+
+    // The generated temp is strong and never a public identifier (R1).
+    expect(temp.length).toBeGreaterThanOrEqual(12);
+    expect(temp).not.toBe(emp.code);
+
+    // First sign-in with employee code + the delivered temp → gated.
     const gated = await request(app)
       .post('/api/v1/auth/login')
-      .send({ identifier: emp.code, password: nid });
+      .send({ identifier: emp.code, password: temp });
     expect(gated.status).toBe(200);
     const body = gated.body.data as { accessToken: string; mustChangePassword: boolean };
     expect(body.mustChangePassword).toBe(true);
@@ -194,7 +222,7 @@ describe('auto-provisioning (D1/D3)', () => {
     const changed = await request(app)
       .post('/api/v1/auth/password/change')
       .set('Authorization', `Bearer ${body.accessToken}`)
-      .send({ currentPassword: nid, newPassword: PASSWORD });
+      .send({ currentPassword: temp, newPassword: PASSWORD });
     expect(changed.status).toBe(204);
     const unlocked = await request(app)
       .get('/api/v1/hr/leave-requests?page=1&pageSize=10')
@@ -202,21 +230,38 @@ describe('auto-provisioning (D1/D3)', () => {
     expect(unlocked.status).toBe(200);
   });
 
-  it('no-NID employees: a strong one-time password is returned exactly once (D3)', async () => {
-    const emp = await regEmployee({ nationalId: null });
-    const provision = (emp as EmployeeDto & {
-      provisionedLogin: { username: string; temporaryPassword: string | null } | null;
-    }).provisionedLogin;
-    expect(provision).not.toBeNull();
-    expect(provision?.temporaryPassword).not.toBeNull();
-    const oneTime = String(provision?.temporaryPassword);
-    expect(oneTime.length).toBeGreaterThanOrEqual(12);
-    // The employee code is NEVER the password (D3 amendment).
-    expect(oneTime).not.toBe(emp.code);
+  it('a correct but EXPIRED temp password is refused; a re-issue restores access (§12 R10)', async () => {
+    const spy = captureTemp();
+    const emp = await regEmployee({});
+    const expired = lastTemp(spy);
 
+    await UserModel.updateOne(
+      { _id: emp.userId },
+      { $set: { 'security.tempPasswordExpiresAt': new Date(Date.now() - 60_000) } },
+    ).exec();
+    const refused = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ identifier: emp.code, password: expired });
+    expect(refused.status).toBe(401);
+    expect((refused.body as { error: { code: string } }).error.code).toBe('AUTH_TEMP_PASSWORD_EXPIRED');
+
+    // Admin re-issue: new random temp, new window, previous temp instantly invalid.
+    const reissue = await request(app)
+      .post(`/api/v1/platform/users/${String(emp.userId)}/reset-password`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({});
+    expect(reissue.status).toBe(200);
+    const fresh = lastTemp(spy);
+    spy.mockRestore();
+    expect(fresh).not.toBe(expired);
+
+    const oldTemp = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ identifier: emp.code, password: expired });
+    expect(oldTemp.status).toBe(401);
     const gated = await request(app)
       .post('/api/v1/auth/login')
-      .send({ identifier: emp.code, password: oneTime });
+      .send({ identifier: emp.code, password: fresh });
     expect(gated.status).toBe(200);
     expect((gated.body.data as { mustChangePassword: boolean }).mustChangePassword).toBe(true);
   });
@@ -236,62 +281,61 @@ describe('auto-provisioning (D1/D3)', () => {
   });
 });
 
-describe('password management (4.4)', () => {
-  it('policy reset without a body derives the NID temp password and revokes sessions', async () => {
-    const nid = nextNid();
-    const emp = await regEmployee({ nationalId: nid });
+describe('password management (§12 R6)', () => {
+  it('admin reset: fresh random temp delivered, sessions revoked, gate re-armed, nothing echoed', async () => {
+    const spy = captureTemp();
+    const emp = await regEmployee({});
+    const temp = lastTemp(spy);
     const userId = String(emp.userId);
 
-    // establish a real session first (via NID + change)
+    // establish a real session first (temp + forced change)
     const gated = await request(app)
       .post('/api/v1/auth/login')
-      .send({ identifier: emp.code, password: nid });
+      .send({ identifier: emp.code, password: temp });
     const token = (gated.body.data as { accessToken: string }).accessToken;
     await request(app)
       .post('/api/v1/auth/password/change')
       .set('Authorization', `Bearer ${token}`)
-      .send({ currentPassword: nid, newPassword: PASSWORD });
+      .send({ currentPassword: temp, newPassword: PASSWORD });
 
-    // POLICY reset (empty body): NID again, nothing echoed, gate re-armed, session dead.
     const reset = await request(app)
       .post(`/api/v1/platform/users/${userId}/reset-password`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({});
     expect(reset.status).toBe(200);
-    expect((reset.body.data as { temporaryPassword: string | null }).temporaryPassword).toBeNull();
+    const resetBody = reset.body.data as {
+      delivery: { channel: string; ok: boolean }[];
+    } & Record<string, unknown>;
+    // Delivery outcomes only — the password NEVER appears in any API response (R11).
+    expect(resetBody.temporaryPassword).toBeUndefined();
+    expect(resetBody.delivery.map((d) => d.channel).sort()).toEqual(['email', 'whatsapp']);
+    const reissued = lastTemp(spy);
+    spy.mockRestore();
 
     const revoked = await request(app)
       .get('/api/v1/auth/me')
       .set('Authorization', `Bearer ${token}`);
     expect(revoked.status).toBe(401);
 
+    // The replaced password is dead; the delivered one signs in gated.
+    const stale = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ identifier: emp.code, password: PASSWORD });
+    expect(stale.status).toBe(401);
     const relogin = await request(app)
       .post('/api/v1/auth/login')
-      .send({ identifier: emp.code, password: nid });
+      .send({ identifier: emp.code, password: reissued });
     expect(relogin.status).toBe(200);
     expect((relogin.body.data as { mustChangePassword: boolean }).mustChangePassword).toBe(true);
-  });
-
-  it('policy reset for an employee WITHOUT a NID returns a one-time password', async () => {
-    const emp = await regEmployee({ nationalId: null });
-    const reset = await request(app)
-      .post(`/api/v1/platform/users/${String(emp.userId)}/reset-password`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({});
-    expect(reset.status).toBe(200);
-    const temp = (reset.body.data as { temporaryPassword: string | null }).temporaryPassword;
-    expect(temp).not.toBeNull();
-    const gated = await request(app)
-      .post('/api/v1/auth/login')
-      .send({ identifier: emp.code, password: String(temp) });
-    expect(gated.status).toBe(200);
   });
 });
 
 describe('username management + identifiers (4.3/4.3b)', () => {
   it('an admin-changed username works, and the employee CODE still logs in', async () => {
-    const nid = nextNid();
-    const emp = await regEmployee({ nationalId: nid });
+    const spy = captureTemp();
+    const emp = await regEmployee({});
+    const temp = lastTemp(spy);
+    spy.mockRestore();
     const userId = String(emp.userId);
     const userRes = await request(app)
       .get(`/api/v1/platform/users/${userId}`)
@@ -306,21 +350,23 @@ describe('username management + identifiers (4.3/4.3b)', () => {
 
     const byNewUsername = await request(app)
       .post('/api/v1/auth/login')
-      .send({ identifier: `renamed-${emp.code}`, password: nid });
+      .send({ identifier: `renamed-${emp.code}`, password: temp });
     expect(byNewUsername.status).toBe(200);
 
     // The printed employee code resolves through the HR seam — it can never break.
     const byCode = await request(app)
       .post('/api/v1/auth/login')
-      .send({ identifier: emp.code, password: nid });
+      .send({ identifier: emp.code, password: temp });
     expect(byCode.status).toBe(200);
   });
 });
 
 describe('TOTP administration (D6/4.5)', () => {
   it('force-on demands enrollment at the next login; force-off releases it', async () => {
-    const nid = nextNid();
-    const emp = await regEmployee({ nationalId: nid });
+    const spy = captureTemp();
+    const emp = await regEmployee({});
+    const temp = lastTemp(spy);
+    spy.mockRestore();
     const userId = String(emp.userId);
 
     const forceOn = await request(app)
@@ -331,7 +377,7 @@ describe('TOTP administration (D6/4.5)', () => {
 
     const challenge = await request(app)
       .post('/api/v1/auth/login')
-      .send({ identifier: emp.code, password: nid });
+      .send({ identifier: emp.code, password: temp });
     expect(challenge.status).toBe(200);
     const body = challenge.body.data as { totpRequired: boolean; enrollmentRequired?: boolean };
     expect(body.totpRequired).toBe(true);
@@ -344,7 +390,7 @@ describe('TOTP administration (D6/4.5)', () => {
     expect(forceOff.status).toBe(204);
     const plain = await request(app)
       .post('/api/v1/auth/login')
-      .send({ identifier: emp.code, password: nid });
+      .send({ identifier: emp.code, password: temp });
     expect((plain.body.data as { totpRequired: boolean }).totpRequired).toBe(false);
   });
 });

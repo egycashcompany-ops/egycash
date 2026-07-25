@@ -29,6 +29,8 @@ export const AUDIT_ACTIONS = [
   'leaveCancellation',
   'leaveBalanceAdjustment',
   'accountAutoCreated',
+  'credentialsDelivered',
+  'firstLogin',
   'totpReset',
   'totpRequiredChanged',
   'usernameChanged',

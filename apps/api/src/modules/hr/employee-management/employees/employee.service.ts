@@ -39,7 +39,7 @@ import {
   sectionService,
 } from '../../../../platform/organization';
 import { rbacService } from '../../../../platform/rbac';
-import { userService, type UserDoc } from '../../../../platform/users';
+import { deliverCredentials, userService, type UserDoc } from '../../../../platform/users';
 import { normalizeArabic } from '../../shared/arabic';
 import { applicantService } from '../../recruitment/applicants';
 import { jobOfferService } from '../../recruitment/job-offers';
@@ -770,25 +770,28 @@ class EmployeeService {
   }
 
   /**
-   * Auto-provision the employee's login (frozen auth design 4.1, D1–D3). Idempotent: skips
+   * Auto-provision the employee's login (frozen auth design 4.1 + §12). Idempotent: skips
    * when a login exists; a username collision is audited and skipped (the manual escape hatch
-   * covers it, D7). Temp password = National ID, else a random one returned ONCE. Never throws
-   * — account provisioning must not fail employee creation.
+   * covers it, D7). Every account gets a unique random temp password (R1), delivered to the
+   * employee via WhatsApp + email (R3) — the password never appears in any response. Never
+   * throws — account provisioning must not fail employee creation.
    */
   async ensureLoginFor(
     employee: EmployeeDoc,
     by: string | null,
-  ): Promise<{ username: string; temporaryPassword: string | null } | null> {
+  ): Promise<EmployeeLoginProvisionDto | null> {
     if (employee.userId !== null) return null;
     if (!(EMPLOYED_STATUSES as readonly string[]).includes(employee.status)) return null;
     try {
-      const nid = employee.personal.nationalId;
-      const generated = nid === null ? userService.generateTempPassword() : null;
+      const tempPassword = userService.generateTempPassword();
+      const tempPasswordExpiresAt = await userService.tempPasswordExpiry();
       const email = employee.personal.contact.email;
+      const phone = employee.personal.contact.primaryPhone;
       const user = await userService.createProvisioned(
         {
           ...(email === null ? {} : { email }),
           ...this.profileNamesOf(employee),
+          phone,
           locale: 'ar',
           organization: {
             branchId: String(employee.branchId),
@@ -801,7 +804,8 @@ class EmployeeService {
         {
           username: employee.code,
           employeeId: String(employee._id),
-          tempPassword: nid ?? generated ?? '',
+          tempPassword,
+          tempPasswordExpiresAt,
         },
       );
       await EmployeeModel.updateOne(
@@ -827,7 +831,17 @@ class EmployeeService {
         userId: String(user._id),
         code: employee.code,
       });
-      return { username: employee.code, temporaryPassword: generated };
+      // §12 R3 — transient delivery; outcomes (never the password) go back to the caller.
+      const delivery = await deliverCredentials({
+        userId: String(user._id),
+        username: user.username ?? employee.code.toLowerCase(),
+        employeeCode: employee.code,
+        phone,
+        email,
+        temporaryPassword: tempPassword,
+        expiresAt: tempPasswordExpiresAt,
+      });
+      return { username: employee.code, delivery };
     } catch (error) {
       // Collision or transient failure: creation proceeds; HR uses the manual path (D7).
       logger.warn(
@@ -847,8 +861,9 @@ class EmployeeService {
 
   /**
    * D2 boot backfill (idempotent): every employed employee without a login gets one under the
-   * standard policy. NID-less employees receive an unseen random hash — HR issues a visible
-   * temp password via admin reset when needed.
+   * standard §12 flow — random temp password, WhatsApp/email delivery, armed gate, expiry.
+   * Unreachable employees (no phone/email) are still provisioned; an admin re-issues after
+   * fixing the contact details (R10).
    */
   async provisionMissingLogins(): Promise<number> {
     const employed = await employeeRepository.listEmployedSystem();

@@ -8,6 +8,7 @@ import {
   SettingKeys,
   type ChangeUserStatus,
   type CreateUser,
+  type CredentialsDeliveryResultDto,
   type ListUsersQuery,
   type Paginated,
   type UpdateUser,
@@ -20,7 +21,8 @@ import { diffChanges } from '../../shared/utils/diff';
 import { randomToken, sha256 } from '../../shared/utils/crypto';
 import { hashPassword, passwordPolicyViolation } from '../../shared/utils/passwords';
 import { getCache } from '../../infrastructure/redis/cache';
-import { resolveEmployeeCode, resolveTempPassword } from '../auth/identity-seams';
+import { resolveEmployeeCode, resolveEmployeeCodeOfUser } from '../auth/identity-seams';
+import { deliverCredentials } from './credentials-delivery';
 import { auditService } from '../audit';
 import { settingsService } from '../settings';
 import { emit, nudgeOutboxRelay } from '../kernel/event-bus';
@@ -126,7 +128,12 @@ class UserService {
   async createProvisioned(
     input: Omit<CreateUser, 'email'> & { email?: string },
     by: string | null,
-    extra: { username: string; employeeId: string; tempPassword: string },
+    extra: {
+      username: string;
+      employeeId: string;
+      tempPassword: string;
+      tempPasswordExpiresAt: Date;
+    },
   ): Promise<UserDoc> {
     const username = extra.username.toLowerCase();
     if ((await userRepository.findByUsername(username)) !== null) {
@@ -165,7 +172,10 @@ class UserService {
                 ? null
                 : new Types.ObjectId(input.organization.jobTitleId),
           },
-          security: { mustChangePassword: true } as UserDoc['security'],
+          security: {
+            mustChangePassword: true,
+            tempPasswordExpiresAt: extra.tempPasswordExpiresAt,
+          } as UserDoc['security'],
           activation: { tokenHash: null, expiresAt: null },
         },
         { by, session },
@@ -389,6 +399,7 @@ class UserService {
         'security.lockedUntil': null,
         // A successful change is the ONLY thing that clears the first-login gate (design 4.2).
         'security.mustChangePassword': false,
+        'security.tempPasswordExpiresAt': null,
       },
     });
     if (updated === null) throw new NotFoundError();
@@ -397,11 +408,11 @@ class UserService {
   }
 
   /**
-   * Temp-password issuance (design 4.1/4.4): hashes WITHOUT the policy check (a numeric NID
-   * is a to-be-replaced credential — the policy applies to the user's NEW password) and arms
-   * the server-enforced change gate.
+   * Temp-password issuance (design 4.1/4.4 + §12 R10): hashes WITHOUT the policy check (the
+   * policy applies to the user's NEW password), arms the server-enforced change gate and
+   * starts the validity window. Replacing the hash instantly invalidates any previous temp.
    */
-  async setTempPassword(userId: string, password: string): Promise<void> {
+  async setTempPassword(userId: string, password: string, expiresAt: Date): Promise<void> {
     const updated = await userRepository.updateSecurity(userId, {
       $set: {
         passwordHash: await hashPassword(password),
@@ -409,19 +420,20 @@ class UserService {
         'security.failedLogins': 0,
         'security.lockedUntil': null,
         'security.mustChangePassword': true,
+        'security.tempPasswordExpiresAt': expiresAt,
       },
     });
     if (updated === null) throw new NotFoundError();
     await getCache().del(`auth:user:${userId}`);
   }
 
-  /** Arm the first-login gate without touching the password (admin-chosen reset path). */
-  async armPasswordGate(userId: string): Promise<void> {
-    const updated = await userRepository.updateSecurity(userId, {
-      $set: { 'security.mustChangePassword': true },
+  /** End of the validity window for a temp password issued right now (§12 R10). */
+  async tempPasswordExpiry(): Promise<Date> {
+    const ttlHours = await settingsService.resolve<number>(SettingKeys.TempPasswordTtlHours, {
+      userId: null,
+      branchId: null,
     });
-    if (updated === null) throw new NotFoundError();
-    await getCache().del(`auth:user:${userId}`);
+    return new Date(Date.now() + ttlHours * 3_600_000);
   }
 
   /** Policy-compliant random temporary password (D3 — shown once, stored as hash only). */
@@ -442,20 +454,24 @@ class UserService {
   }
 
   /**
-   * Admin reset to the temp-password POLICY (design 4.4): the linked employee's National ID
-   * when available (HR already knows it), otherwise a random password returned exactly once.
+   * Admin reset (design §12 R6): a fresh random temporary password — hashed, gated, expiring
+   * — delivered to the user via WhatsApp + email. The password never leaves the server.
    */
-  async resetToTempPassword(userId: string): Promise<{ temporaryPassword: string | null }> {
-    const nid = await resolveTempPassword(userId);
-    if (nid !== null) {
-      await this.setTempPassword(userId, nid);
-      await auditService.record({ entityRef: entityRef(userId), action: 'passwordReset' });
-      return { temporaryPassword: null };
-    }
+  async resetToTempPassword(userId: string): Promise<CredentialsDeliveryResultDto[]> {
+    const user = await userRepository.getById(userId);
     const generated = this.generateTempPassword();
-    await this.setTempPassword(userId, generated);
+    const expiresAt = await this.tempPasswordExpiry();
+    await this.setTempPassword(userId, generated, expiresAt);
     await auditService.record({ entityRef: entityRef(userId), action: 'passwordReset' });
-    return { temporaryPassword: generated };
+    return deliverCredentials({
+      userId,
+      username: user.username ?? user.email ?? userId,
+      employeeCode: await resolveEmployeeCodeOfUser(userId),
+      phone: user.phone,
+      email: user.email,
+      temporaryPassword: generated,
+      expiresAt,
+    });
   }
 
   /** D6 admin force-on/off: force ON clears any enrolled secret — the user re-enrolls. */

@@ -287,6 +287,26 @@ class AuthService {
 
     await userService.resetLoginFailures(String(user._id));
 
+    // §12 R10: a CORRECT but expired temporary password never signs in — the UI tells the
+    // user to ask an admin for a re-issue (which replaces the hash and the window).
+    const tempExpiresAt = user.security.tempPasswordExpiresAt ?? null;
+    if (
+      (user.security.mustChangePassword ?? false) &&
+      tempExpiresAt !== null &&
+      tempExpiresAt.getTime() < Date.now()
+    ) {
+      await auditService.record({
+        entityRef: userEntityRef(String(user._id)),
+        action: 'loginFailed',
+        changes: [{ field: 'reason', old: null, new: 'temp-password-expired' }],
+        actor: actorOf(user),
+      });
+      throw new UnauthenticatedError(
+        ErrorCodes.AUTH_TEMP_PASSWORD_EXPIRED,
+        'Temporary password has expired — ask an administrator to issue a new one',
+      );
+    }
+
     // 2FA step (Review R13): enrolled users always verify; privileged users MUST enroll.
     const effective = await rbacService.getEffectivePermissions(
       String(user._id),
@@ -325,6 +345,14 @@ class AuthService {
       action: 'login',
       actor: actorOf(user),
     });
+    // §12 R11: the first successful sign-in on a freshly issued (still-gated) credential.
+    if (user.security.mustChangePassword ?? false) {
+      await auditService.record({
+        entityRef: userEntityRef(String(user._id)),
+        action: 'firstLogin',
+        actor: actorOf(user),
+      });
+    }
     await emit(PlatformEvents.AuthLoggedIn, {
       userId: String(user._id),
       email: user.email,

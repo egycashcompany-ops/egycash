@@ -3,7 +3,13 @@
 // defaults to the Employee Code), edit the username later, and see the account's data scopes. This
 // is deliberately the *minimum* identity UI — no full account-administration dashboard.
 import { useState } from 'react';
-import { type CreateEmployeeLogin, type EmployeeDto, type Locale, type LocalizedString } from '@ecms/contracts';
+import {
+  type CreateEmployeeLogin,
+  type CredentialsDeliveryResultDto,
+  type EmployeeDto,
+  type Locale,
+  type LocalizedString,
+} from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { Can } from '../../../../../platform/rbac/Can';
 import { Card, CardBody, CardHeader } from '../../../../../shared/ui/Card';
@@ -128,18 +134,18 @@ const CreateLoginDialog = ({
   );
 };
 
-/** Admin security actions (auth design 4.4/4.5) — reset password / authenticator control. */
+/** Admin security actions (auth design 4.4/4.5 + §12) — reset password / authenticator. */
 const SecurityActions = ({ userId }: { userId: string }): JSX.Element => {
   const t = useT();
   const { data: user } = useLinkedUser(userId);
   const resetPassword = useResetUserPassword(userId);
   const resetTotp = useResetUserTotp(userId);
   const requireTotp = useRequireUserTotp(userId);
-  const [oneTime, setOneTime] = useState<string | null>(null);
+  const [delivery, setDelivery] = useState<CredentialsDeliveryResultDto[] | null>(null);
 
   const doResetPassword = async (): Promise<void> => {
     const result = await resetPassword.mutateAsync();
-    setOneTime(result.temporaryPassword);
+    setDelivery(result.delivery);
     toast.success(t('employees.account.passwordResetDone'));
   };
   const doResetTotp = async (): Promise<void> => {
@@ -165,12 +171,18 @@ const SecurityActions = ({ userId }: { userId: string }): JSX.Element => {
         </Badge>
         {(user?.totpRequired ?? false) && <Badge tone="info">{t('employees.account.totpRequired')}</Badge>}
       </div>
-      {oneTime !== null && (
+      {delivery !== null && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-900/50 dark:bg-amber-950/40">
-          <p className="text-amber-900 dark:text-amber-200">{t('employees.account.oneTimePassword')}</p>
-          <code className="mt-1 block select-all font-mono text-amber-900 dark:text-amber-100" dir="ltr">
-            {oneTime}
-          </code>
+          <p className="text-amber-900 dark:text-amber-200">{t('employees.account.deliveryTitle')}</p>
+          <ul className="mt-1 space-y-0.5 text-amber-900 dark:text-amber-100">
+            {delivery.map((d) => (
+              <li key={d.channel}>
+                {t(d.channel === 'whatsapp' ? 'employees.account.channelWhatsapp' : 'employees.account.channelEmail')}
+                {': '}
+                {d.ok ? t('employees.account.deliverySent') : (d.detail ?? t('employees.account.deliveryFailed'))}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
       <div className="flex flex-wrap gap-2">

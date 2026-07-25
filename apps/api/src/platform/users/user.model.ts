@@ -35,6 +35,8 @@ export interface UserDoc extends BaseDocFields {
     permissionVersion: number;
     /** First-login gate (auth design 4.2): true until the user changes the temp password. */
     mustChangePassword: boolean;
+    /** Temp-password validity end (design §12 R10); null once a real password is set. */
+    tempPasswordExpiresAt: Date | null;
     totp: {
       enabled: boolean;
       /** Base32 TOTP secret; at-rest encryption is the DB provider's (Security §3). */
@@ -77,6 +79,7 @@ const userSchema = new Schema<UserDoc>(
       lockedUntil: { type: Date, default: null },
       permissionVersion: { type: Number, default: 1 },
       mustChangePassword: { type: Boolean, default: false },
+      tempPasswordExpiresAt: { type: Date, default: null },
       totp: {
         enabled: { type: Boolean, default: false },
         secret: { type: String, default: null },

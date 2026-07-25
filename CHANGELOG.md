@@ -12,31 +12,38 @@ its entry here in the same PR.
 ### Added
 
 - **Authentication & Employee Account Lifecycle (frozen design:
-  `docs/12-planning/auth-account-lifecycle-design.md`).** Every employed employee now gets a
-  login account **automatically at creation** (hire or direct registration) and via an
-  idempotent boot backfill for existing databases: username = the Employee Code, born
-  `active`, Employee Self-Service role granted at link time. The temporary password is the
-  National ID when on file; otherwise a strong random password is generated server-side
-  (CSPRNG) and shown to HR **exactly once** — the Employee Code is never a password (D3).
-  Temporary credentials arm a **server-enforced first-login gate**: every authenticated
-  endpoint except change-password/me/logout/refresh returns `PASSWORD_CHANGE_REQUIRED` until
-  the user sets a real (policy-checked) password; the web renders a dedicated change screen.
-  Login identifiers are configurable (`auth.loginIdentifiers`): username, email (now
-  **optional** on accounts — partial unique index, migrated at boot) and the Employee Code,
-  which resolves through an HR seam and keeps working even after an admin renames the
-  username. Admin password reset (permission `user.resetPassword`) follows the same
-  temp-password policy, revokes all of the user's sessions and re-arms the gate; admins can
-  also **Reset** a user's authenticator or **Require/Un-require TOTP** (force-on wipes any
+  `docs/12-planning/auth-account-lifecycle-design.md`, Revision 2).** Every employed employee
+  now gets a login account **automatically at creation** (hire or direct registration) and via
+  an idempotent boot backfill for existing databases: username = the Employee Code, born
+  `active`, Employee Self-Service role granted at link time. Every account receives a
+  **unique, cryptographically random temporary password** — the National ID and the Employee
+  Code are never credentials (§12 R1) — **delivered to the employee via WhatsApp + email**
+  (username, Employee Code, temporary password, login URL, must-change notice) through
+  provider-agnostic transports (Meta Cloud API / Twilio / disabled — §12 R9); delivery is
+  transient (never persisted, never in any API response — §12 R11) and audited per channel.
+  Temporary passwords **expire** (`auth.tempPassword.ttlHours`, default 48h): a correct but
+  expired temp fails with `AUTH_TEMP_PASSWORD_EXPIRED` and an admin re-issue (same reset)
+  invalidates the old one and re-delivers. Temporary credentials arm a **server-enforced
+  first-login gate**: every authenticated endpoint except change-password/me/logout/refresh
+  returns `PASSWORD_CHANGE_REQUIRED` until the user sets a real (policy-checked) password;
+  the web renders a dedicated change screen. Login identifiers are configurable
+  (`auth.loginIdentifiers`): username, email (now **optional** on accounts — partial unique
+  index, migrated at boot) and the Employee Code, which resolves through an HR seam and keeps
+  working even after an admin renames the username. Admin password reset (permission
+  `user.resetPassword`) always generates + delivers a fresh temp, revokes all sessions and
+  re-arms the gate — admins never choose, see, or receive a password; admins can also
+  **Reset** a user's authenticator or **Require/Un-require TOTP** (force-on wipes any
   enrolled secret and demands enrollment at the next login — admins can never see or generate
   a secret, D6). Self-service gets an **Account Security** page (change password,
   enable/disable authenticator with QR + one-time backup codes, active-session list with
-  revoke). All lifecycle events are audited (`accountAutoCreated`, `passwordReset`,
-  `passwordChanged`, `totpEnrolled`/`totpDisabled`/`totpReset`/`totpRequiredChanged`,
-  `usernameChanged`). Fully backward-compatible: existing email-only accounts, the invite →
-  activate flow and enrolled TOTP users behave exactly as before, and the identifier
-  resolution + challenge-token seams keep the door open for LDAP/AD, OIDC/SAML, WebAuthn and
-  SMS/Email OTP without redesign (§10). Also fixes the web login form, which only sent
-  `email` and silently broke username-based sign-in.
+  revoke). All lifecycle events are audited (`accountAutoCreated`, `credentialsDelivered`,
+  `firstLogin`, `passwordReset`, `passwordChanged`,
+  `totpEnrolled`/`totpDisabled`/`totpReset`/`totpRequiredChanged`, `usernameChanged`).
+  Fully backward-compatible: existing email-only accounts, the invite → activate flow and
+  enrolled TOTP users behave exactly as before, and the identifier resolution +
+  challenge-token seams keep the door open for LDAP/AD, OIDC/SAML, WebAuthn and SMS/Email
+  OTP without redesign (§10). Also fixes the web login form, which only sent `email` and
+  silently broke username-based sign-in.
 
 ### Fixed
 

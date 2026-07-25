@@ -142,8 +142,9 @@ const regEmployee = async (over: Record<string, unknown> = {}, male = true): Pro
 
 /**
  * Get a working self-service SESSION for an auto-provisioned employee account (auth design
- * D1/D2): the account already exists (created with the employee) with the ESS role at own
- * scope — an admin reset arms the first-login gate, and the forced change clears it.
+ * D1/D2 + §12): the account already exists (created with the employee) with the ESS role at
+ * own scope. Credentials are DELIVERED, never echoed by any API (§12 R11), so the suite
+ * issues a known temp at the service level, then walks the same gated first-login flow.
  */
 const activateEssLogin = async (emp: EmployeeDto): Promise<{ userId: string; token: string }> => {
   const reread = await request(app)
@@ -151,11 +152,7 @@ const activateEssLogin = async (emp: EmployeeDto): Promise<{ userId: string; tok
     .set('Authorization', `Bearer ${adminToken}`);
   const userId = (reread.body.data as EmployeeDto).userId;
   expect(userId).not.toBeNull();
-  const reset = await request(app)
-    .post(`/api/v1/platform/users/${String(userId)}/reset-password`)
-    .set('Authorization', `Bearer ${adminToken}`)
-    .send({ newPassword: PASSWORD });
-  expect(reset.status).toBe(200);
+  await userService.setTempPassword(String(userId), PASSWORD, new Date(Date.now() + 3_600_000));
   const gated = await request(app)
     .post('/api/v1/auth/login')
     .send({ identifier: emp.code, password: PASSWORD });

@@ -45,6 +45,13 @@ export const registerAuthSettings = (): void => {
     allowedScopes: ['organization'],
   });
   declareSetting({
+    key: SettingKeys.TempPasswordTtlHours,
+    description: 'Temporary-password validity window in hours (auth design §12 R10)',
+    schema: z.number().int().min(1).max(336),
+    defaultValue: 48,
+    allowedScopes: ['organization'],
+  });
+  declareSetting({
     key: SettingKeys.TotpEnforcedForPrivileged,
     description:
       'Enforce TOTP 2FA for privileged accounts (system roles / break-glass permissions) — Review R13',

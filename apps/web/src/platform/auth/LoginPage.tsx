@@ -12,6 +12,7 @@ import { ThemeToggle } from '../layout/ThemeToggle';
 import { LanguageToggle } from '../layout/LanguageToggle';
 import { BrandMark, Button, Field, Form, Input } from '../../shared/ui';
 import { AlertIcon } from '../../shared/ui/icons';
+import { ApiError } from '../../shared/lib/api-client';
 import { loginRequest, totpChallengeRequest, totpEnrollWithChallengeRequest } from './api';
 
 interface Enrollment {
@@ -52,8 +53,13 @@ export const LoginPage = (): JSX.Element => {
         enroll = await totpEnrollWithChallengeRequest(response.challengeToken);
       }
       setStep({ kind: 'totp', challengeToken: response.challengeToken, enroll });
-    } catch {
-      setError(t('platform.auth.login.failed'));
+    } catch (e) {
+      // §12 R10: an expired temporary password needs an HR re-issue, not a retry.
+      setError(
+        e instanceof ApiError && e.code === 'AUTH_TEMP_PASSWORD_EXPIRED'
+          ? t('platform.auth.login.tempExpired')
+          : t('platform.auth.login.failed'),
+      );
     } finally {
       setBusy(false);
     }

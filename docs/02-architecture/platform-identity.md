@@ -33,11 +33,12 @@ records can the user see?" — orthogonal to permissions ("what can the user do?
   denormalized back-reference. The platform never imports a module type — the HR module owns the
   linkage. Platform/system accounts carry no `employeeId`.
 - **Accounts are auto-provisioned** at employee creation (and backfilled at boot) per the frozen
-  Auth & Account Lifecycle design (`docs/12-planning/auth-account-lifecycle-design.md`): username =
-  Employee Code, temp password = National ID (or a one-time random password), server-enforced
-  first-login change gate. The old **create-login-from-employee** flow
-  (`POST /hr/employees/:id/login`, gated by `user.create`) remains as the manual override for
-  audited provisioning skips (D7).
+  Auth & Account Lifecycle design (`docs/12-planning/auth-account-lifecycle-design.md`, Rev 2):
+  username = Employee Code, a unique random temporary password **delivered to the employee via
+  WhatsApp + email** (transient — never persisted or echoed by any API), expiring after
+  `auth.tempPassword.ttlHours`, with a server-enforced first-login change gate. The old
+  **create-login-from-employee** flow (`POST /hr/employees/:id/login`, gated by `user.create`)
+  remains as the manual override for audited provisioning skips (D7).
 - **Configurable identifiers.** `auth.loginIdentifiers` enables username, email (optional on
   accounts) and the Employee Code, which resolves through an HR seam
   (`platform/auth/identity-seams.ts`) so the printed code logs in even after a username change.

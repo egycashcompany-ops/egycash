@@ -26,6 +26,7 @@ import {
 } from '@ecms/contracts';
 import { BusinessRuleError, ConflictError, ForbiddenError } from '../../../../shared/errors';
 import { type AuthContext, type ScopeSelector } from '../../../../shared/types';
+import { cairoToday, toDateOnly } from '../../shared/business-date';
 import { auditService } from '../../../../platform/audit';
 import { emit } from '../../../../platform/kernel/event-bus';
 import { notificationsService } from '../../../../platform/notifications';
@@ -167,7 +168,11 @@ class EmployeeActionService {
 
     const now = new Date();
     const effectiveDate = input.effectiveDate ?? now;
-    const scheduled = effectiveDate.getTime() > now.getTime();
+    // Effective dating is day-based on the CAIRO business calendar: an action effective
+    // "today" applies immediately even between Cairo midnight and UTC midnight (the leave
+    // module activates spans by cairoToday() — the two engines must agree on when a
+    // business date has begun).
+    const scheduled = toDateOnly(effectiveDate).getTime() > cairoToday().getTime();
 
     // Pending-exit rule: while an exit is scheduled, refuse actions effective on/after it.
     const pendingExit = await employeeActionRepository.findScheduledExit(employeeId);

@@ -1,6 +1,7 @@
-# Authentication & Employee Account Lifecycle — Design (for approval)
+# Authentication & Employee Account Lifecycle — Design (FROZEN)
 
-**Status: DRAFT — awaiting approval. No implementation yet.**
+**Status: FROZEN — approved with decisions D1–D7 as recorded below (D3 and D6 amended by the
+approver). Implementation proceeds as a single PR.**
 
 One cohesive feature: every employee automatically receives a working login the moment they are
 registered, first login forces a password change, login accepts username/employee-code/email,
@@ -34,10 +35,10 @@ Genuinely new: **auto-creation**, **temp-password policy**, **`mustChangePasswor
 |---|---|---|
 | **D1** | When is the account created? | **At employee creation** (both paths: hire-from-offer and direct registration). Probationers need self-service (leave, payslips later) from day one; "confirmation" gates nothing account-related. |
 | **D2** | Backfill existing employees without logins? | **Yes** — one idempotent boot backfill creates accounts for every *employed* employee with `userId: null`, same policy (username = code, temp password = NID, `mustChangePassword`). This is what makes "no manual step" true for your current database. Exited employees are skipped. |
-| **D3** | Temp password when the employee has **no National ID** (field is nullable)? | **Fallback = Employee Code** (uppercase, as printed). Deterministic, communicable by HR without a side channel. The forced change neutralizes both defaults equally. |
+| **D3** | Temp password when the employee has **no National ID** (field is nullable)? | **APPROVED AS AMENDED: never the Employee Code — it is public information.** With NID: temp password = NID. Without NID: generate a **strong random temporary password, shown exactly once to HR** (in the creation/reset response), stored as hash only. Boot-backfilled NID-less employees get an unseen random hash; HR issues a visible one via admin reset when that employee actually needs access. |
 | **D4** | Enforcement point for `mustChangePassword` | **Server-side**: while the flag is set, every authenticated call except `password/change`, `me`, `logout` fails with a dedicated error code; the web shows a full-screen change-password gate. Client-only redirects are not security. |
 | **D5** | Admin password-reset permission | New catalog permission **`user.resetPassword`** (scope-aware), granted to super-admin automatically via the catalog sync. Reusing `user.edit` would silently widen an existing grant — additive is safer. |
-| **D6** | Admin TOTP control semantics | Admin can **disable** and **reset** (clear secret + backup codes so the user re-enrolls). Admin **cannot directly "enable"** — enrollment mathematically requires the user's device to scan the secret. "Admin enable" = reset + the user enrolls at next login/profile visit. `TotpEnforcedForPrivileged` (R13) is kept as-is. |
+| **D6** | Admin TOTP control semantics | **APPROVED AS AMENDED.** Admin can **disable**, **reset**, and **force TOTP ON**: a per-user `security.totp.required` flag — force-on clears any existing secret and sets it; the user completes enrollment at the next login through the existing enroll-challenge flow. Admins can never generate or view a secret. `TotpEnforcedForPrivileged` (R13) is kept: login requires enrollment when `totp.required` OR (privileged AND policy). |
 | **D7** | Should the manual "Create Login" UI remain? | **Yes, repurposed** — the Account tab keeps an admin escape hatch (custom email/username) for edge cases, but the normal workflow never needs it because the account already exists. |
 
 ---
@@ -67,6 +68,7 @@ as today, so the own-scope backfill keeps working unchanged.
 **`users`**
 - `security.mustChangePassword: boolean` — schema default `false` ⇒ **existing documents are
   unaffected** (missing ⇒ false on hydrated reads; the auth gate treats only explicit `true` as set).
+- `security.totp.required: boolean` — default `false` (D6 force-on flag; existing users unaffected).
 - `email: string | null` — becomes optional. The live-unique index becomes partial on
   `email: { $type: 'string' }` (same pattern as `username`). Existing emails keep working.
 - No other changes; TOTP structure, activation, lockout stay as-is.
@@ -91,7 +93,9 @@ creation paths (hire-from-offer, direct registration) and from the boot backfill
 3. Create the user: `username = employee.code` (lowercased for storage, resolution is
    case-insensitive), `email = employee.personal.contact.email ?? null`, names/locale/org
    placement copied from the employee, **status `active` immediately** (no invite),
-   `passwordHash = hash(NID ?? employee code)` (D3), `mustChangePassword = true`.
+   `passwordHash = hash(NID)` — or, when the employee has no NID, the hash of a generated
+   strong random password returned **once** in the creating call's response (D3 amended; the
+   Employee Code is never a password), `mustChangePassword = true`.
 4. Link `employee.userId`, grant the **ESS role at link time** (closing today's gap where the
    grant waits for the next boot), audit `loginCreated`, emit `hr.employee.loginLinked`
    (unchanged payload — Leave backfill just works).
@@ -113,14 +117,25 @@ plaintext** — it is derived from data HR already possesses.
   `passwordChangedAt`. Nothing else clears it.
 - Existing users: flag absent ⇒ never gated.
 
-### 4.3 Identifier resolution
+### 4.3 Identifier resolution (configurable)
 
 `findByIdentifier(raw)` resolution order (first match wins), all case-insensitive:
 1. `username` (covers employee codes for all auto-created + createLogin accounts);
-2. `email`;
-3. `employees.code` → linked `userId` (covers the corner where an admin changed the username —
-   the printed employee code always works).
-Unknown-identifier handling, lockout counters, and audit stay exactly as today.
+2. `email` (when the account has one);
+3. `employees.code` → linked `userId` — so the printed Employee Code **always** works, even
+   after an admin changes the username.
+
+The enabled identifier kinds live in a declared org setting
+`auth.loginIdentifiers` (default `["username", "email", "employeeCode"]`) — future identifier
+kinds (UPN, phone) extend the list without touching the login endpoint. Unknown-identifier
+handling, lockout counters, and audit stay exactly as today.
+
+### 4.3b Username management
+
+`username` becomes admin-editable through the standard user-update path (`user.edit`),
+live-uniqueness enforced by the existing `ux_username` index, audited as `usernameChanged`.
+Because resolution path 3 goes through the employee registry, changing a username never breaks
+Employee-Code login.
 
 ### 4.4 Password management
 
@@ -137,11 +152,24 @@ Unknown-identifier handling, lockout counters, and audit stay exactly as today.
   enroll-challenge when the privileged-enforcement setting demands it (R13 kept).
 - **Self-service**: the Security page exposes the existing enroll/verify/disable endpoints
   (disable requires a valid code — unchanged).
-- **Admin**: `POST /platform/users/:id/totp/reset` (permission `user.resetPassword` — same
-  trust level): clears `enabled/secret/backupCodes`, revokes sessions, audits, notifies. Per D6
-  there is no admin "enable"; enforcement remains the R13 setting.
+- **Admin** (permission `user.resetPassword` — same trust level; secrets are never visible):
+  - `POST /platform/users/:id/totp/reset` — clears `enabled/secret/backupCodes`
+    (keeps `required` as-is), revokes sessions, audits, notifies;
+  - `POST /platform/users/:id/totp/require` body `{ required: boolean }` — force ON clears any
+    existing secret and sets `totp.required = true` (enrollment happens at the user's next
+    login via the existing enroll-challenge); force OFF clears the flag. Audited.
+  - Login rule: enroll-challenge fires when `totp.required === true` and not enrolled, OR the
+    R13 privileged policy demands it; the plain TOTP challenge fires whenever enrolled.
 
 ---
+
+### 4.6 Audit trail (closed-enum additions)
+
+Every security-sensitive action is audited with actor + target:
+`accountAutoCreated` (auto-provision + backfill) · `passwordReset` (admin) ·
+`passwordChanged` (self; no payload beyond the event) · `totpEnabled` · `totpDisabled` ·
+`totpReset` (admin) · `totpRequiredChanged` (admin force-on/off) · `usernameChanged`.
+(`loginCreated` remains for the manual escape hatch.)
 
 ## 5. API changes (all additive)
 
@@ -152,6 +180,8 @@ Unknown-identifier handling, lockout counters, and audit stay exactly as today.
 | `POST /auth/password/change` | also clears `mustChangePassword` |
 | `POST /platform/users/:id/reset-password` | **new** — `user.resetPassword` |
 | `POST /platform/users/:id/totp/reset` | **new** — `user.resetPassword` |
+| `POST /platform/users/:id/totp/require` | **new** — `user.resetPassword` (D6 force-on/off) |
+| `PATCH /platform/users/:id` | `username` becomes updatable (`user.edit`), audited |
 | `POST /platform/users` (admin create) | `email` becomes optional in `CreateUserSchema` |
 | `POST /hr/employees/:id/login` | kept (D7); auto-creation makes it an escape hatch |
 | Error codes | **new** `PASSWORD_CHANGE_REQUIRED` |
@@ -165,7 +195,9 @@ No endpoint is removed or reshaped — every existing client keeps working.
 2. **Forced-change gate** — full-screen, current + new + confirm, no navigation escape (server
    enforces anyway); success → normal entry.
 3. **Security page** (`/account/security`, any authenticated user) — change password; TOTP
-   status + enroll (QR) / disable. New platform page, linked from the user menu.
+   status + enroll (QR) / disable; **Active Sessions** with per-session revoke (the
+   `GET/DELETE /auth/sessions` API already exists — shipped now, not a placeholder). New
+   platform page, linked from the user menu.
 4. **Users admin detail** — "Reset password" and "Reset authenticator" actions (gated by
    `user.resetPassword`), with confirm dialogs explaining the consequences.
 5. **Employee profile → Account tab** — shows the auto-created account (username, status,
@@ -204,9 +236,37 @@ No endpoint is removed or reshaped — every existing client keeps working.
 | Admin reset abuse | Dedicated audited permission (`user.resetPassword`), every use audited with actor + target; break-glass review applies. |
 | Password policy | Existing ≥8/≤128 on change; the gate forces the *new* password through this policy immediately, so NID-strength secrets live only for one login. |
 
-## 10. Delivery plan (after approval)
+## 10. Future identity-provider compatibility (no redesign required later)
+
+The refactor isolates the seams that LDAP/AD, Azure AD, OIDC/SAML, WebAuthn and SMS/email OTP
+plug into, without adding speculative code now:
+
+- **Identifier resolution** is already data-driven (`auth.loginIdentifiers`); a directory
+  identifier (UPN) or phone number is a new list entry + resolver, not a new endpoint.
+- **Credential verification** becomes a single function (`verifyLocalCredentials`) — the only
+  bcrypt call site in login. An `IdentityProvider` strategy (local / ldap / oidc…) slots in
+  behind that call; the user record's provider linkage would be one additive nullable field
+  (`authProvider`, reserved — NOT added now).
+- **Second factors** already flow through the challenge-token pattern (`totp-challenge` /
+  `totp-enroll` typed tokens). WebAuthn assertions and SMS/email OTP are new challenge types on
+  the same envelope — the login response contract (`totpRequired`/`challengeToken`) generalizes
+  to `secondFactorRequired` without breaking existing clients.
+- **Session issuance** (access/refresh/permissions) is already independent of how the identity
+  was proven — federated logins reuse it unchanged.
+
+## 11. Delivery plan (frozen)
 
 One PR: contracts → platform (users/auth/rbac) → HR auto-provision + backfill → web → tests
 (unit + integration: auto-provision idempotency, gate enforcement incl. bypass attempts,
-identifier matrix, admin reset/TOTP reset, legacy-user non-impact, repeated boots) → docs.
-Same discipline as always: adversarial pass, CI green, wait for review.
+identifier matrix, admin reset / TOTP reset / TOTP force-on, username change + code login,
+legacy-user non-impact, repeated boots) → docs. Same discipline as always: adversarial pass,
+CI green, wait for review.
+
+## Review trail
+
+Approved with amendments (2026-07-24): D1/D2/D4/D5/D7 as proposed; **D3 amended** (random
+one-time-visible temp password instead of Employee-Code fallback — codes are public);
+**D6 amended** (admin force-TOTP-ON via `totp.required`, secrets never admin-visible).
+Additions: configurable login identifiers, admin username management with permanent
+Employee-Code login, reset = revoke sessions + re-arm gate, Security page ships Active
+Sessions, full audit enumeration (§4.6), future-provider compatibility (§10).

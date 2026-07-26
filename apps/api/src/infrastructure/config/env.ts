@@ -97,6 +97,9 @@ const EnvSchema = z.object({
   /** twilio only: the sending WhatsApp number (E.164). */
   WHATSAPP_FROM_NUMBER: z.string().default(''),
 
+  /** Contracts D8/Q1 — chromium binary for worker-side PDF rendering; '' disables. */
+  CHROMIUM_PATH: z.string().default(''),
+
   SEED_ADMIN_EMAIL: z.string().email().default('admin@ecms.local'),
   SEED_ADMIN_PASSWORD: z.string().min(8).default('Admin#2026!ecms'),
   SEED_HR_EMAIL: z.string().email().default('hr@ecms.local'),

@@ -46,6 +46,14 @@ export const ErrorCodes = {
   ROLE_PROTECTED: 'ROLE_PROTECTED',
   PERMISSION_UNKNOWN: 'PERMISSION_UNKNOWN',
 
+  // contracts (hr module — frozen design §8/§9)
+  /** A4/§15 — signed/archived contracts refuse every direct modification. */
+  CONTRACT_IMMUTABLE: 'CONTRACT_IMMUTABLE',
+  /** A16 — generation refused; details carry the structured validation report. */
+  CONTRACT_VARIABLES_MISSING: 'CONTRACT_VARIABLES_MISSING',
+  /** A17 — only a PUBLISHED template version can generate. */
+  CONTRACT_TEMPLATE_NOT_PUBLISHED: 'CONTRACT_TEMPLATE_NOT_PUBLISHED',
+
   // files
   FILE_TYPE_NOT_ALLOWED: 'FILE_TYPE_NOT_ALLOWED',
   FILE_TOO_LARGE: 'FILE_TOO_LARGE',

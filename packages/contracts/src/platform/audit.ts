@@ -45,6 +45,12 @@ export const AUDIT_ACTIONS = [
   'restore',
   'purge',
   'alertRaised',
+  'contractGenerated',
+  'contractSigned',
+  'contractAmended',
+  'contractRenewed',
+  'templateCloned',
+  'templatePublished',
 ] as const;
 export const AuditActionSchema = z.enum(AUDIT_ACTIONS);
 export type AuditAction = z.infer<typeof AuditActionSchema>;

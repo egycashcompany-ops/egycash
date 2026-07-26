@@ -1,5 +1,6 @@
 // Express app assembly (no listen) — global middleware, platform + module routes,
 // central error handling.
+import path from 'node:path';
 import express, { Router, type Express } from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
@@ -135,6 +136,30 @@ export const buildApp = (): Express => {
   }
 
   app.use('/api/v1', api);
+
+  // Single-service deployment: serve the built web bundle same-origin so the
+  // strict-SameSite refresh cookie needs no cross-site exception. Hashed assets are
+  // immutable; the HTML shell must revalidate so deploys take effect immediately.
+  if (env.WEB_STATIC_DIR !== '') {
+    const webRoot = path.resolve(env.WEB_STATIC_DIR);
+    app.use(
+      express.static(webRoot, {
+        index: false,
+        maxAge: '1y',
+        immutable: true,
+        setHeaders: (res, filePath) => {
+          if (filePath.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
+        },
+      }),
+    );
+    app.use((req, res, next) => {
+      const spa =
+        req.method === 'GET' && !req.path.startsWith('/api/') && !req.path.startsWith('/health/');
+      if (!spa) return next();
+      res.setHeader('Cache-Control', 'no-cache');
+      res.sendFile(path.join(webRoot, 'index.html'));
+    });
+  }
 
   app.use(notFoundHandler);
   app.use(errorHandler);

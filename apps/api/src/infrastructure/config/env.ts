@@ -34,6 +34,13 @@ const EnvSchema = z.object({
   SENTRY_DSN: z.string().default(''),
   SLOW_QUERY_MS: z.coerce.number().int().min(1).default(200),
 
+  /**
+   * Single-service deployment (Railway guide): path of the built web bundle to serve
+   * same-origin from the api (SPA fallback included). Empty (default) keeps the api
+   * headless — dev and split deployments are unaffected.
+   */
+  WEB_STATIC_DIR: z.string().default(''),
+
   // ── File storage (ADR-010) ────────────────────────────────────────────────
   STORAGE_DRIVER: z.enum(['local', 'railway', 's3', 'minio', 'azure']).default('local'),
   STORAGE_LOCAL_ROOT: z.string().default('./storage'),

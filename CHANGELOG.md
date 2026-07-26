@@ -61,6 +61,14 @@ its entry here in the same PR.
   place sessions are born); lifecycle state + sequence diagrams live in
   `docs/02-architecture/account-lifecycle.md`.
 
+- **Railway deployment support.** Config-as-code for a two-service deployment
+  (`railway.json` → api + web, `railway.worker.json` → BullMQ worker + scheduler), a new
+  `WEB_STATIC_DIR` option that lets the api serve the built web bundle **same-origin**
+  (hashed assets immutable, HTML shell no-cache, SPA fallback) so the `SameSite=Strict`
+  refresh cookie works without cross-site exceptions, and a step-by-step guide
+  (`docs/09-guides/railway-deployment.md`) covering Atlas (transactions require a replica
+  set), Redis, volumes, env vars and first-boot seeding.
+
 ### Fixed
 
 - **Upgrade compatibility + field-test fixes (post-Leave-merge QA round).**

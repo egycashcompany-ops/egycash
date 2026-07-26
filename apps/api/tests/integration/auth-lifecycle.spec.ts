@@ -220,9 +220,11 @@ describe('auto-provisioning (D1 + §14)', () => {
       .send({ identifier: emp.code, password: PASSWORD });
     expect(early.status).toBe(401);
 
-    // The employee opens the link and chooses their OWN policy-checked password.
-    const weak = await activate(token, 'short');
+    // The employee opens the link and chooses their OWN policy-checked password. A weak one
+    // (passes the transport schema, fails the settings-driven policy) must NOT burn the token.
+    const weak = await activate(token, 'weakpass');
     expect(weak.status).toBe(422);
+    expect((weak.body as { error: { code: string } }).error.code).toBe('AUTH_PASSWORD_POLICY');
     expect((await activate(token)).status).toBe(204);
 
     // Sign in by employee code — no forced change; ESS arrived at link time (leave.view own).

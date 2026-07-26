@@ -138,6 +138,10 @@ export interface ContractTemplateDto {
   updatedAt: string;
   /** Optimistic concurrency for in-place draft edits. */
   version: number;
+  /** Key-level annotation on LIST responses only: the key's published version, if any
+   *  (the create wizard pins it for both preview and generation). */
+  publishedTemplateId?: string | null;
+  publishedTemplateVersion?: number | null;
 }
 
 // ── Variable catalog + provenance (D5, A3/A16) ───────────────────────────────
@@ -350,10 +354,12 @@ export const AddContractAttachmentSchema = z
   .strict();
 export type AddContractAttachment = z.infer<typeof AddContractAttachmentSchema>;
 
-/** Preview (D6/A18): draft-shaped input rendered server-side; NEVER persisted. */
+/** Preview (D6/A18): draft-shaped input rendered server-side; NEVER persisted.
+ *  Without `employeeId` the render substitutes catalog SAMPLE values — the template
+ *  editor's live preview (same renderer, so preview ≡ final holds there too). */
 export const PreviewContractSchema = z
   .object({
-    employeeId: objectId(),
+    employeeId: objectId().optional(),
     templateId: objectId(),
     typeId: objectId().optional(),
     startDate: isoDate().optional(),

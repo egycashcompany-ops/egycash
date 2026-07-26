@@ -217,6 +217,11 @@ class ContractTemplateService {
     return published;
   }
 
+  /** Nullable variant for list annotations (the create wizard's published pin). */
+  async publishedOf(key: string): Promise<ContractTemplateDoc | null> {
+    return contractTemplateRepository.findPublishedByKey(key);
+  }
+
   async pinnedVersion(key: string, templateVersion: number): Promise<ContractTemplateDoc> {
     const doc = await contractTemplateRepository.findVersion(key, templateVersion);
     if (doc === null) throw new NotFoundError('template version not found');

@@ -43,16 +43,21 @@ const resolveFromData = async (key: string, input: ResolutionInput): Promise<str
       return employee.personal.nationalId ?? '';
     case 'employee.address':
       return addressOf(employee);
+    // Broken/missing referents resolve to '' so a REQUIRED one surfaces as a structured
+    // A16 issue (fail loud with a report) instead of a raw lookup error.
     case 'job.title': {
-      const title = await jobTitleService.getById(String(employee.employment.jobTitleId));
+      const title = await jobTitleService.getById(String(employee.employment.jobTitleId)).catch(() => null);
+      if (title === null) return '';
       return input.language === 'ar' ? title.name.ar : title.name.en;
     }
     case 'department.name': {
-      const dep = await departmentService.getById(String(employee.employment.departmentId));
+      const dep = await departmentService.getById(String(employee.employment.departmentId)).catch(() => null);
+      if (dep === null) return '';
       return input.language === 'ar' ? dep.name.ar : dep.name.en;
     }
     case 'branch.name': {
-      const branch = await branchService.getById(String(employee.employment.branchId));
+      const branch = await branchService.getById(String(employee.employment.branchId)).catch(() => null);
+      if (branch === null) return '';
       return input.language === 'ar' ? branch.name.ar : branch.name.en;
     }
     case 'salary.basic':
@@ -66,7 +71,8 @@ const resolveFromData = async (key: string, input: ResolutionInput): Promise<str
     case 'contract.endDate':
       return input.endDate ?? '';
     case 'company.name': {
-      const org = await organizationService.get();
+      const org = await organizationService.get().catch(() => null);
+      if (org === null) return '';
       const name = org.name as { ar?: string; en?: string } | string;
       if (typeof name === 'string') return name;
       return (input.language === 'ar' ? name.ar : name.en) ?? '';

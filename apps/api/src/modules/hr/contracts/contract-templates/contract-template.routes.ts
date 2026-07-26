@@ -14,7 +14,7 @@ import {
 } from '@ecms/contracts';
 import { asyncHandler, created, ok, validate, validated } from '../../../../platform/web';
 import { authContext, authenticate } from '../../../../platform/auth';
-import { authorize } from '../../../../platform/rbac';
+import { authorize, authorizeAny } from '../../../../platform/rbac';
 import { contractTemplateService } from './contract-template.service';
 
 const IdParamSchema = z.object({ id: objectId() }).strict();
@@ -22,7 +22,21 @@ const KeyParamSchema = z.object({ key: z.string().min(1).max(100) }).strict();
 const VersionBodySchema = z.object({ version: z.number().int().min(0) }).strict();
 
 const listTemplates = async (_req: Request, res: Response): Promise<void> => {
-  ok(res, (await contractTemplateService.listLatest()).map((t) => contractTemplateService.toDto(t)));
+  const latest = await contractTemplateService.listLatest();
+  ok(
+    res,
+    await Promise.all(
+      latest.map(async (t) => {
+        const dto = contractTemplateService.toDto(t);
+        // Key-level annotation: which version the create wizard pins (published, A17).
+        const published =
+          t.status === 'published' ? t : await contractTemplateService.publishedOf(t.key);
+        dto.publishedTemplateId = published === null ? null : String(published._id);
+        dto.publishedTemplateVersion = published?.templateVersion ?? null;
+        return dto;
+      }),
+    ),
+  );
 };
 
 const listTemplateVersions = async (req: Request, res: Response): Promise<void> => {
@@ -70,15 +84,17 @@ const archiveTemplate = async (req: Request, res: Response): Promise<void> => {
 export const buildContractTemplatesRouter = (): Router => {
   const router = Router();
   const manage = [authenticate, authorize('contractTemplate.manage')] as const;
+  // Reads are also open to contract users — the create wizard needs the template picker.
+  const read = [authenticate, authorizeAny('contractTemplate.manage', 'contract.view')] as const;
 
-  router.get('/', ...manage, asyncHandler(listTemplates));
+  router.get('/', ...read, asyncHandler(listTemplates));
   router.get(
     '/keys/:key/versions',
     ...manage,
     validate({ params: KeyParamSchema }),
     asyncHandler(listTemplateVersions),
   );
-  router.get('/:id', ...manage, validate({ params: IdParamSchema }), asyncHandler(getTemplate));
+  router.get('/:id', ...read, validate({ params: IdParamSchema }), asyncHandler(getTemplate));
   router.post('/', ...manage, validate({ body: CreateContractTemplateSchema }), asyncHandler(createTemplate));
   router.patch(
     '/:id',

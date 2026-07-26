@@ -1,9 +1,11 @@
 // Router: authenticate → authorize → validate → thin handlers (ADR-003). Reads under
 // contract.view (branch-scoped), lifecycle actions each under their own grant; the
 // document/PDF exports are audited under contract.print (A12 list search included).
-import { Router, type Request, type Response } from 'express';
+import { Router, type NextFunction, type Request, type RequestHandler, type Response } from 'express';
+import multer from 'multer';
 import { z } from 'zod';
 import {
+  ErrorCodes,
   AddContractAttachmentSchema,
   AmendOrRenewContractSchema,
   ContractVersionOnlySchema,
@@ -26,9 +28,10 @@ import {
   type TerminateContract,
   type UpdateContractDraft,
 } from '@ecms/contracts';
+import { AppError, BusinessRuleError } from '../../../../shared/errors';
 import { asyncHandler, created, ok, okPage, validate, validated } from '../../../../platform/web';
 import { authContext, authenticate } from '../../../../platform/auth';
-import { authorize } from '../../../../platform/rbac';
+import { authorize, authorizeAny } from '../../../../platform/rbac';
 import { fileService } from '../../../../platform/files';
 import { scopeSelector } from '../../../../shared/types';
 import { CONTRACT_VARIABLE_CATALOG } from '../shared/variable-catalog';
@@ -37,6 +40,31 @@ import { contractService } from './contract.service';
 
 const IdParamSchema = z.object({ id: objectId() }).strict();
 const AttachmentParamSchema = z.object({ id: objectId(), attachmentId: objectId() }).strict();
+/** Multipart fields arrive as strings — coerce the concurrency version. */
+const UploadAttachmentFieldsSchema = AddContractAttachmentSchema.omit({ fileId: true }).extend({
+  version: z.coerce.number().int().min(0),
+});
+
+const ATTACHMENT_MAX_MB = 20;
+const multipartSingle = (): RequestHandler => {
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: ATTACHMENT_MAX_MB * 1024 * 1024, files: 1 },
+  }).single('file');
+  return (req: Request, res: Response, next: NextFunction): void => {
+    upload(req, res, (error: unknown) => {
+      if (error === undefined || error === null) {
+        next();
+        return;
+      }
+      if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+        next(new AppError(ErrorCodes.FILE_TOO_LARGE, 422, `File exceeds the ${ATTACHMENT_MAX_MB} MB cap`));
+        return;
+      }
+      next(error);
+    });
+  };
+};
 
 type IdParam = { id: string };
 
@@ -119,6 +147,26 @@ const deleteDraft = async (req: Request, res: Response): Promise<void> => {
   res.status(204).end();
 };
 
+const uploadAttachment = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<
+    Omit<AddContractAttachment, 'fileId'> & { version: number },
+    never,
+    IdParam
+  >(req);
+  const file = req.file;
+  if (file === undefined) throw new BusinessRuleError('a file part named "file" is required');
+  await contractService.uploadAttachment(
+    ctx,
+    params.id,
+    { category: body.category, label: body.label },
+    body.version,
+    { originalName: file.originalname, mime: file.mimetype, size: file.size, buffer: file.buffer },
+    scopeSelector(ctx, 'contract.create'),
+  );
+  ok(res, await withTypeName(params.id, ctx));
+};
+
 const removeAttachment = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { body, params } = validated<ContractVersionOnly, never, { id: string; attachmentId: string }>(req);
@@ -135,7 +183,9 @@ export const buildContractsRouter = (): Router => {
   router.get('/', ...guard('contract.view'), validate({ query: ListContractsQuerySchema }), asyncHandler(listContracts));
   router.get('/variables', ...guard('contract.view'), asyncHandler(listContractVariables));
   router.post('/', ...guard('contract.create'), validate({ body: CreateContractSchema }), asyncHandler(createContract));
-  router.post('/preview', ...guard('contract.create'), validate({ body: PreviewContractSchema }), asyncHandler(previewContract));
+  // Preview also serves the template editor's sample render (no employeeId in the body).
+  router.post('/preview', authenticate, authorizeAny('contract.create', 'contractTemplate.manage'),
+    validate({ body: PreviewContractSchema }), asyncHandler(previewContract));
   router.get('/:id', ...guard('contract.view'), validate({ params: IdParamSchema }), asyncHandler(getContract));
   router.patch('/:id', ...guard('contract.create'), validate({ body: UpdateContractDraftSchema, params: IdParamSchema }),
     asyncHandler(act<UpdateContractDraft>((ctx, id, body) => contractService.updateDraft(ctx, id, body, scopeSelector(ctx, 'contract.create')))));
@@ -172,6 +222,8 @@ export const buildContractsRouter = (): Router => {
     validate({ body: AddContractAttachmentSchema.extend({ version: z.number().int().min(0) }), params: IdParamSchema }),
     asyncHandler(act<AddContractAttachment & { version: number }>((ctx, id, body) =>
       contractService.addAttachment(ctx, id, body, body.version, scopeSelector(ctx, 'contract.create')))));
+  router.post('/:id/attachments/upload', ...guard('contract.create'), multipartSingle(),
+    validate({ body: UploadAttachmentFieldsSchema, params: IdParamSchema }), asyncHandler(uploadAttachment));
   router.delete('/:id/attachments/:attachmentId', ...guard('contract.terminate'),
     validate({ body: ContractVersionOnlySchema, params: AttachmentParamSchema }), asyncHandler(removeAttachment));
   router.get('/:id/document', ...guard('contract.print'), validate({ params: IdParamSchema }), asyncHandler(documentHtml));

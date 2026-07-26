@@ -34,9 +34,15 @@ const sanitizeAttributes = (attrs: string): string => {
  * removed with their content.
  */
 export const sanitizeTemplateHtml = (html: string): string => {
-  // Drop dangerous containers with their entire content first.
+  // Drop dangerous PAIRED containers with their entire content first (script payload
+  // text must never survive as document text)…
   let out = html.replace(
-    /<(script|style|iframe|object|embed|link|meta|form|input|textarea|svg|math)\b[\s\S]*?(<\/\1>|\/>|>)/gi,
+    /<(script|style|iframe|object|embed|form|textarea|svg|math)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,
+    '',
+  );
+  // …then any remaining lone/unclosed/self-closing dangerous tags.
+  out = out.replace(
+    /<\/?(script|style|iframe|object|embed|link|meta|form|input|textarea|svg|math)\b[^>]*>/gi,
     '',
   );
   // Then process every remaining tag against the allow-list.

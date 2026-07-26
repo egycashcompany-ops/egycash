@@ -28,11 +28,12 @@ import { EmployeeFileDocuments } from '../../employee-files/components/EmployeeF
 import { useEmployeeFiles } from '../../employee-files/api/employee-file-queries';
 import { useEmployee, useEmployeeActions, useEmployeeTimeline } from '../api/employee-queries';
 
-const TABS = ['overview', 'personal', 'employment', 'leave', 'documents', 'timeline', 'account'] as const;
+const TABS = ['overview', 'personal', 'employment', 'leave', 'contracts', 'documents', 'timeline', 'account'] as const;
 type Tab = (typeof TABS)[number];
 
-// The Leave tab is owned by the Leave module and lazy-loaded (additive tab, Employee design F6).
+// The Leave and Contracts tabs are owned by their modules and lazy-loaded (additive tabs).
 const EmployeeLeaveTab = lazy(() => import('../../../leave-management/components/EmployeeLeaveTab'));
+const EmployeeContractsTab = lazy(() => import('../../../contracts/components/EmployeeContractsTab'));
 
 const ProbationCard = ({ e }: { e: EmployeeDto }): JSX.Element | null => {
   const t = useT();
@@ -306,6 +307,11 @@ export const EmployeeProfilePage = (): JSX.Element => {
       {tab === 'leave' && (
         <Suspense fallback={<LoadingState />}>
           <EmployeeLeaveTab employee={e} />
+        </Suspense>
+      )}
+      {tab === 'contracts' && (
+        <Suspense fallback={<LoadingState />}>
+          <EmployeeContractsTab employee={e} />
         </Suspense>
       )}
       {tab === 'documents' && <DocumentsTab e={e} />}

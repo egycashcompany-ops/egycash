@@ -17,6 +17,7 @@ import {
   type DecideContractApproval,
   type ListContractsQuery,
   type Paginated,
+  type ContractVariableSource,
   type PreviewContract,
   type SignContractBlock,
   type TerminateContract,
@@ -28,9 +29,12 @@ import { auditService } from '../../../../platform/audit';
 import { settingsService } from '../../../../platform/settings';
 import { notificationsService } from '../../../../platform/notifications';
 import { emit } from '../../../../platform/kernel/event-bus';
+import { fileService, type UploadedBinary } from '../../../../platform/files';
+import { fileCategoryService } from '../../../../platform/files';
 import { employeeService } from '../../employee-management/employees';
 import { contractTypeService } from '../contract-types';
 import { contractTemplateService } from '../contract-templates';
+import { CONTRACT_VARIABLE_CATALOG } from '../shared/variable-catalog';
 import { DEFAULT_CONTRACT_NUMBER_FORMAT, nextContractNumber } from './contract-number';
 import { resolveContractVariables } from './contract-variables';
 import { renderContractHtml } from './contract-render';
@@ -518,6 +522,45 @@ class ContractService {
     return after;
   }
 
+  /** Multipart path: store the binary via the platform Files service, then attach (A6). */
+  async uploadAttachment(
+    ctx: AuthContext,
+    id: string,
+    input: Omit<AddContractAttachment, 'fileId'>,
+    version: number,
+    binary: UploadedBinary,
+    scope: ScopeSelector,
+  ): Promise<ContractDoc> {
+    await contractRepository.getById(id, scope); // scope check before storing bytes
+    const category = await fileCategoryService.ensure({
+      key: 'hr.contractAttachments',
+      name: { ar: 'مرفقات العقود', en: 'Contract attachments' },
+      allowedMimeTypes: ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'],
+      maxSizeMb: 20,
+      retentionDays: null,
+    });
+    const file = await fileService.upload(
+      ctx,
+      {
+        moduleId: 'hr',
+        entityType: 'contract',
+        entityId: id,
+        categoryId: String(category._id),
+        displayName: input.label,
+        visibility: 'private',
+        tags: [],
+      },
+      binary,
+    );
+    return this.addAttachment(
+      ctx,
+      id,
+      { fileId: String(file._id), category: input.category, label: input.label },
+      version,
+      scope,
+    );
+  }
+
   async removeAttachment(ctx: AuthContext, id: string, attachmentId: string, version: number, scope: ScopeSelector): Promise<ContractDoc> {
     const doc = await contractRepository.getById(id, scope);
     this.assertMutable(doc); // A6 — removal is blocked once signed/archived
@@ -538,6 +581,20 @@ class ContractService {
 
   async preview(input: PreviewContract, scope: ScopeSelector): Promise<ContractPreviewDto> {
     const template = await contractTemplateService.getById(input.templateId);
+    if (input.employeeId === undefined) {
+      // Template-editor sample render: catalog sample values through the SAME renderer,
+      // so the A18 preview ≡ final guarantee extends to template authoring.
+      const values = template.placeholders.map((key) => {
+        const entry = CONTRACT_VARIABLE_CATALOG.find((v) => v.key === key);
+        return {
+          key,
+          value: input.overrides[key] ?? entry?.sample ?? '',
+          source: (entry?.source ?? 'contract') as ContractVariableSource,
+          overriddenBy: null,
+        };
+      });
+      return { html: renderContractHtml(template, values), issues: [] };
+    }
     const employee = await employeeService.getById(input.employeeId, scope);
     const { values, issues } = await resolveContractVariables(template.placeholders, {
       employee,

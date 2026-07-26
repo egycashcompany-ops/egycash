@@ -38,7 +38,7 @@ has four packages; the config files above tell it what to build and run.
 |---|---|
 | `NODE_ENV` | `production` |
 | `MONGO_URI` | the Atlas connection string (includes the db name) |
-| `REDIS_URL` | `${{Redis.REDIS_URL}}` |
+| `REDIS_URL` | `${{Redis.REDIS_URL}}?family=0` |
 | `JWT_ACCESS_SECRET` | long random secret (required in production) |
 | `STORAGE_SIGNING_SECRET` | long random secret (required in production) |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_SECURE` | your mail provider |
@@ -50,7 +50,7 @@ has four packages; the config files above tell it what to build and run.
 | Variable | Value |
 |---|---|
 | `VITE_API_BASE_URL` | `/api/v1` (baked into the web build — same-origin) |
-| `WEB_STATIC_DIR` | `apps/web/dist` |
+| `WEB_STATIC_DIR` | `/app/apps/web/dist` (absolute — `npm start -w` runs with cwd `apps/api`, so a relative path resolves wrong) |
 | `API_PUBLIC_URL` | `https://<app-domain>` (signed download URLs) |
 | `WEB_PUBLIC_URL` | `https://<app-domain>` (the setup/activation links in messages) |
 | `CORS_ORIGINS` | `https://<app-domain>` |
@@ -59,6 +59,21 @@ has four packages; the config files above tell it what to build and run.
 
 `PORT` is injected by Railway and honored automatically. Changing `VITE_API_BASE_URL` or
 any `VITE_*` value requires a **redeploy** — it is a build-time value.
+
+> **Why `?family=0` on `REDIS_URL`:** Railway private networking is IPv6-only; without it
+> ioredis resolves the private hostname over IPv4 and the queues fail with
+> `connect ETIMEDOUT`. `family=0` lets ioredis use whichever family DNS returns.
+
+**worker only — contract PDF rendering (optional but recommended):**
+
+The Contracts module renders its PDFs in the **worker** through headless chromium. Without
+these variables generation still completes and the print view serves exports — only the
+downloadable PDF is skipped.
+
+| Variable | Value |
+|---|---|
+| `RAILPACK_DEPLOY_APT_PACKAGES` | `chromium fonts-noto fonts-noto-color-emoji` (installs the browser + Arabic-capable Noto fonts into the deploy image) |
+| `CHROMIUM_PATH` | `/usr/bin/chromium` |
 
 ## 4. First boot
 

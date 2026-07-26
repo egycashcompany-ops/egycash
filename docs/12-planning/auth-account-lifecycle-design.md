@@ -1,4 +1,4 @@
-# Authentication & Employee Account Lifecycle — Design (FROZEN, Revision 3)
+# Authentication & Employee Account Lifecycle — Design (FROZEN, Revision 4)
 
 **Status: FROZEN — approved with decisions D1–D7 as recorded below (D3 and D6 amended by the
 approver). Implementation proceeds as a single PR.**
@@ -449,6 +449,65 @@ AD / Google Workspace / LDAP / SAML / OAuth alongside local accounts — no life
 | Audit | `credentialsDelivered` gains a `mode` change entry: `initial` / `reset` / `resend` |
 | Web | Employee account card gains **Resend credentials** (visible while the gate is armed) |
 
+## 14. Revision 4 — activation-link provisioning (approved 2026-07-26)
+
+The approver reviewed the resend flow and rejected password regeneration on resend as a UX
+hazard (an employee holding the first message would find its password silently dead). Two
+options were offered; **Option 1 — the enterprise standard — was chosen: no passwords are
+sent at all.** (Option 2, encrypted-at-rest temporary passwords, is explicitly rejected:
+it would weaken R12's hash-only invariant.) Where §14 conflicts with §12/§13, **§14 wins**.
+
+### The model
+
+1. **Provisioning issues a one-time activation link, never a password.** `ensureLoginFor`
+   creates the account in the existing `invited` state with **no password hash** and a
+   hashed one-time activation token (the platform's original invite machinery). The
+   delivered message (WhatsApp + email, §12 R3 transports, §13 R15 template) contains:
+   username, Employee Code, the **setup link** (`{WEB_PUBLIC_URL}/activate?token=…`) and
+   its expiry. The employee opens the link and **chooses their own policy-checked
+   password** — `POST /auth/activate` — which activates the account.
+2. **No forced-change gate in the normal flow.** The user sets their own password at
+   activation, so `mustChangePassword` is never armed by provisioning or reset. The gate
+   machinery (field, middleware, `PASSWORD_CHANGE_REQUIRED`, web screen) **remains
+   implemented** as approved — dormant defense-in-depth for any future temp-credential
+   path — but nothing arms it today.
+3. **Resend = new token, old link dies** (exactly the approver's rule): allowed only while
+   a setup link is pending (`activation.tokenHash != null`); generates a fresh token with a
+   fresh window and re-delivers; the previous link is instantly invalid. An account with no
+   pending link (already activated, no reset in flight) refuses resend with `422` — that is
+   a reset.
+4. **Admin reset = lock out + new link**: clears the password hash, revokes every session,
+   issues a fresh activation token and delivers the setup link. The user re-establishes
+   their own password through the link. Completion of `POST /auth/activate` now accepts
+   both `invited` (first setup) and `active` (post-reset) accounts holding a valid token.
+5. **Link expiry** replaces temp-password expiry: org setting
+   **`auth.activationLink.ttlHours`** (default 48, 1–336) governs provisioning/reset/resend
+   links. An expired link fails with the existing `AUTH_ACTIVATION_TOKEN_INVALID`; a
+   not-yet-activated account signing in gets the existing `AUTH_ACCOUNT_NOT_ACTIVE`.
+6. **Retired by this revision** (all unreleased — no compatibility impact): temp-password
+   generation/issuance (`generateTempPassword`, `policyTempPassword`, `setTempPassword`),
+   `security.tempPasswordExpiresAt`, `AUTH_TEMP_PASSWORD_EXPIRED`, `auth.tempPassword.ttlHours`,
+   and the R17 password-readability rule (nothing to read — there is no password in transit).
+   R11/R12 are now trivially absolute: no credential ever exists outside the user's head
+   and the argon2id hash.
+7. **Audit**: `credentialsDelivered` (per channel + mode `initial`/`reset`/`resend`) now
+   describes link delivery; **`firstLogin` is recorded at activation completion** (the
+   first authenticated use of the account's credential).
+8. **Web**: a public **`/activate`** page (token from the URL, choose password + confirm →
+   activate → sign-in) replaces the force-change surface in the normal flow; the employee
+   account card shows an **Awaiting activation** state with **Send new link** (reset) and
+   **Resend link** actions and per-channel delivery status; `UserDto` gains
+   `setupLinkPending`.
+
+### Why this dissolves the earlier conflicts
+
+- The §13 R14 conflict (resend vs. hash-only storage) disappears: there is nothing secret
+  to re-deliver — a link resend invalidating its predecessor is the industry-expected
+  behavior the approver asked for.
+- The message template (R15), transports (R9), channel independence (R16), transient
+  delivery + audit (R12/R11), non-blocking provisioning (R13), backfill (R8) and SSO seams
+  (R18) all carry over unchanged — only the payload changed from a password to a link.
+
 ## Review trail
 
 Approved with amendments (2026-07-24): D1/D2/D4/D5/D7 as proposed; **D3 amended** (random
@@ -457,6 +516,12 @@ one-time-visible temp password instead of Employee-Code fallback — codes are p
 Additions: configurable login identifiers, admin username management with permanent
 Employee-Code login, reset = revoke sessions + re-arm gate, Security page ships Active
 Sessions, full audit enumeration (§4.6), future-provider compatibility (§10).
+
+**Revision 4 approved (2026-07-26):** activation-link provisioning (§14) — Option 1 of the
+approver's resend review: no passwords are ever sent; provisioning/reset/resend deliver a
+one-time setup link (new token invalidates the old), the employee chooses their own password
+at `/activate`, the forced-change gate goes dormant, and the temp-password machinery is
+retired. Option 2 (encrypted-at-rest passwords) explicitly rejected.
 
 **Revision 3 approved (2026-07-26):** delivery-hardening amendments R12–R18 (§13) —
 memory-only credentials made a hard invariant, retryable delivery with a dedicated resend

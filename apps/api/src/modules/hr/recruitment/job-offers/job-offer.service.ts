@@ -14,7 +14,9 @@ import {
   HrOfferEvents,
   HrOfferTemplates,
   type AcceptJobOffer,
+  type AwaitingOfferDto,
   type CreateJobOffer,
+  type ListAwaitingOffersQuery,
   type ListJobOffersQuery,
   type OfferTerms as OfferTermsInput,
   type Paginated,
@@ -66,6 +68,31 @@ class JobOfferService {
         entityRef: entityRef(String(doc._id)),
       })
       .catch(() => undefined);
+  }
+
+  /**
+   * "Awaiting offer" — the workflow queue on /job-offers: live applicants HR moved to the
+   * Job Offer stage who hold no blocking offer yet (no active draft/sent one, no accepted
+   * one). A derived read model (no offer record is fabricated); "New Offer" drafts the
+   * first one from here. Mirrors the interviews awaiting-scheduling queue.
+   */
+  async listAwaiting(
+    query: ListAwaitingOffersQuery,
+    scope: ScopeSelector,
+  ): Promise<AwaitingOfferDto[]> {
+    const moved = await applicantService.listMovedToOffer(query.branchId, query.limit, scope);
+    const blocked = await jobOfferRepository.applicantIdsWithBlockingOffer(
+      moved.map((a) => String(a._id)),
+    );
+    return moved
+      .filter((a) => !blocked.has(String(a._id)) && a.movedToOfferAt !== null)
+      .map((a) => ({
+        applicantId: String(a._id),
+        applicantCode: a.code,
+        applicantName: a.fullNameAr,
+        branchId: a.branchId === null ? null : String(a.branchId),
+        movedToOfferAt: (a.movedToOfferAt as Date).toISOString(),
+      }));
   }
 
   /**

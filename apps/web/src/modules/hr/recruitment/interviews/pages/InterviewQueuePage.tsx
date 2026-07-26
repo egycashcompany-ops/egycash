@@ -118,7 +118,8 @@ export const InterviewQueuePage = (): JSX.Element => {
   ];
 
   return (
-    <PageContainer>
+    // The phases board is a kanban — it gets the full page width (no 80rem cap).
+    <PageContainer wide={view === 'board'}>
       <PageHeader
         title={t('recruitment.nav.interviews')}
         description={t('interviews.queue.subtitle')}

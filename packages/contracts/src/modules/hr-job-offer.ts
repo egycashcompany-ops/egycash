@@ -115,6 +115,26 @@ export const ListJobOffersQuerySchema = PaginationQuerySchema.extend({
 }).strict();
 export type ListJobOffersQuery = z.infer<typeof ListJobOffersQuerySchema>;
 
+// ── Awaiting offer (workflow queue) ──────────────────────────────────────────
+// Applicants HR moved to the Job Offer stage who have no blocking offer yet (no active
+// draft/sent one and no accepted one) surface automatically on /job-offers. Derived read
+// model — no offer record is fabricated; "New Offer" drafts the first one from here.
+
+export const ListAwaitingOffersQuerySchema = z
+  .object({ branchId: objectId().optional(), limit: z.coerce.number().int().min(1).max(200).default(100) })
+  .strict();
+export type ListAwaitingOffersQuery = z.infer<typeof ListAwaitingOffersQuerySchema>;
+
+export interface AwaitingOfferDto {
+  applicantId: string;
+  applicantCode: string;
+  /** Denormalized applicant display name (Arabic full name). */
+  applicantName: string;
+  branchId: string | null;
+  /** When HR moved the applicant to the Job Offer stage (drives the queue order). */
+  movedToOfferAt: string;
+}
+
 // ── DTOs ─────────────────────────────────────────────────────────────────────
 
 export interface OfferAllowanceDto {

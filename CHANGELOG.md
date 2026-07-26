@@ -11,6 +11,23 @@ its entry here in the same PR.
 
 ### Added
 
+- **Recruitment workflow UX.** The Interviews phases board (`/interviews?view=board`) now
+  uses the full page width (kanban-style; the standard 80rem cap remains everywhere else).
+  Scheduling an interview from an **accepted Screening** opens the schedule dialog with
+  the applicant preselected and read-only — searching exists only when scheduling a
+  completely new interview. `/job-offers` becomes a workflow queue: applicants moved to
+  the Job Offer stage with no offer drafted yet surface automatically in an
+  **Awaiting offer** panel (name, code, eligibility status, moved-on date; derived
+  read model via `GET /hr/job-offers/awaiting` — no offer record is fabricated), and
+  **New Offer** opens the create form with that applicant preselected; the applicant
+  search remains only for standalone offers. Drafting an offer removes the applicant from
+  the queue.
+- **Contracts module design document** (`docs/12-planning/contracts-module-design.md`) —
+  design-phase only, awaiting approval: first-class HR Contracts module (list + lifecycle
+  with amend/renew/terminate/expire, admin-owned versioned templates with a rich-text
+  editor + variable browser, render-on-create with live preview, immutable generated
+  snapshots + PDF strategy). No Contracts code ships until the design is frozen.
+
 - **Authentication & Employee Account Lifecycle (frozen design:
   `docs/12-planning/auth-account-lifecycle-design.md`, Revisions 2–6).** Every employed
   employee now gets a login account **automatically at creation** (hire or direct

@@ -34,6 +34,29 @@ class UserRepository extends BaseRepository<UserDoc> {
       .exec();
   }
 
+  /** §15.7 sweep input: live accounts still holding an expired pending link. */
+  async findExpiredActivations(now: Date): Promise<UserDoc[]> {
+    return this.model
+      .find({
+        'activation.tokenHash': { $ne: null },
+        'activation.expiresAt': { $lt: now },
+        isDeleted: false,
+      })
+      .lean<UserDoc[]>()
+      .exec();
+  }
+
+  /** Clears a pending link only if the SAME token is still current (sweep-vs-resend race). */
+  async clearActivationByHash(userId: string, tokenHash: string): Promise<boolean> {
+    const result = await this.model
+      .updateOne(
+        { _id: userId, 'activation.tokenHash': tokenHash, isDeleted: false } as FilterQuery<UserDoc>,
+        { $set: { 'activation.tokenHash': null, 'activation.expiresAt': null } },
+      )
+      .exec();
+    return result.modifiedCount === 1;
+  }
+
   /** Security-state updates bypass optimistic concurrency (single-field counters). */
   async updateSecurity(userId: string, update: UpdateQuery<UserDoc>): Promise<UserDoc | null> {
     return this.model

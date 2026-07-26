@@ -11,6 +11,8 @@ import {
   type LocalizedString,
 } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
+import { useAppSelector } from '../../../../../store';
+import { formatDateTime } from '../../../../../shared/lib/format';
 import { Can } from '../../../../../platform/rbac/Can';
 import { Card, CardBody, CardHeader } from '../../../../../shared/ui/Card';
 import { Button } from '../../../../../shared/ui/Button';
@@ -135,9 +137,10 @@ const CreateLoginDialog = ({
   );
 };
 
-/** Admin security actions (auth design 4.4/4.5 + §12) — reset password / authenticator. */
+/** Admin security actions + the Account panel (auth design 4.4/4.5 + §15.4/§16.5). */
 const SecurityActions = ({ userId }: { userId: string }): JSX.Element => {
   const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
   const { data: user } = useLinkedUser(userId);
   const resetPassword = useResetUserPassword(userId);
   const resendCredentials = useResendUserCredentials(userId);
@@ -165,11 +168,21 @@ const SecurityActions = ({ userId }: { userId: string }): JSX.Element => {
     toast.success(next ? t('employees.account.totpRequiredOn') : t('employees.account.totpRequiredOff'));
   };
 
+  // §15.4 — the derived five-state account status ("not invited" renders on the login row).
+  const statusTones = {
+    invitationSent: 'warning',
+    activated: 'success',
+    expired: 'danger',
+    locked: 'neutral',
+  } as const;
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-1.5">
-        {(user?.setupLinkPending ?? false) && (
-          <Badge tone="warning">{t('employees.account.awaitingSetup')}</Badge>
+        {user !== undefined && (
+          <Badge tone={statusTones[user.accountStatus]}>
+            {t(`employees.account.status.${user.accountStatus}`)}
+          </Badge>
         )}
         {(user?.mustChangePassword ?? false) && (
           <Badge tone="warning">{t('employees.account.mustChange')}</Badge>
@@ -181,11 +194,32 @@ const SecurityActions = ({ userId }: { userId: string }): JSX.Element => {
         </Badge>
         {(user?.totpRequired ?? false) && <Badge tone="info">{t('employees.account.totpRequired')}</Badge>}
       </div>
-      {delivery !== null && (
+      {/* §16.5 — lifecycle timestamps for the admin Account panel. */}
+      {user !== undefined && (
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs sm:grid-cols-3">
+          {(
+            [
+              ['sentAt', user.invitationSentAt],
+              ['expiresAt', user.invitationExpiresAt],
+              ['activatedAt', user.activatedAt],
+              ['lastLogin', user.lastLoginAt],
+              ['passwordChanged', user.passwordChangedAt],
+            ] as const
+          ).map(([key, value]) => (
+            <div key={key}>
+              <dt className="text-slate-400">{t(`employees.account.${key}`)}</dt>
+              <dd className="mt-0.5 text-slate-600 dark:text-slate-300">
+                {formatDateTime(value, locale)}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {(delivery ?? user?.lastDelivery ?? null) !== null && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-900/50 dark:bg-amber-950/40">
           <p className="text-amber-900 dark:text-amber-200">{t('employees.account.deliveryTitle')}</p>
           <ul className="mt-1 space-y-0.5 text-amber-900 dark:text-amber-100">
-            {delivery.map((d) => (
+            {(delivery ?? user?.lastDelivery ?? []).map((d) => (
               <li key={d.channel}>
                 {t(d.channel === 'whatsapp' ? 'employees.account.channelWhatsapp' : 'employees.account.channelEmail')}
                 {': '}
@@ -279,6 +313,7 @@ export const EmployeeAccountCard = ({ employee }: { employee: EmployeeDto }): JS
           <Row label={t('employees.account.login')}>
             {employee.userId === null ? (
               <div className="flex flex-col items-start gap-2">
+                <Badge tone="neutral">{t('employees.account.status.notInvited')}</Badge>
                 <span className="text-slate-400">{t('employees.account.noLogin')}</span>
                 <Can permission="user.create">
                   <Button size="sm" onClick={() => setCreating(true)}>{t('employees.account.createLogin')}</Button>

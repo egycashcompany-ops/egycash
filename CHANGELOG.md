@@ -12,7 +12,7 @@ its entry here in the same PR.
 ### Added
 
 - **Authentication & Employee Account Lifecycle (frozen design:
-  `docs/12-planning/auth-account-lifecycle-design.md`, Revisions 2–4).** Every employed
+  `docs/12-planning/auth-account-lifecycle-design.md`, Revisions 2–6).** Every employed
   employee now gets a login account **automatically at creation** (hire or direct
   registration) and via an idempotent boot backfill for existing databases: username = the
   Employee Code, Employee Self-Service role granted at link time. **No passwords are ever
@@ -45,6 +45,21 @@ its entry here in the same PR.
   resolution + challenge-token seams keep the door open for Azure AD / Google Workspace /
   LDAP / SAML / OAuth, WebAuthn and SMS/Email OTP without redesign (§10/R18). Also fixes
   the web login form, which only sent `email` and silently broke username-based sign-in.
+  **Hardening + enterprise completeness (§15/§16):** a never-activated login answers a
+  dedicated `AUTH_ACCOUNT_NOT_ACTIVATED` (unknown identifier and wrong password stay
+  indistinguishable); admins see a derived **account status** (Not Invited / Invitation
+  Sent / Activated / Expired / Locked) plus a full **Account panel** on the employee page
+  (invitation sent/expires, activated at, last login, password last changed, MFA state,
+  per-channel delivery outcomes); disabling an account, deleting it, or an **employee
+  exit** revokes any pending setup link *and every session* in the same operation (the
+  status machine now allows suspending a never-activated login); an **hourly sweep**
+  revokes expired links; the whole invitation lifecycle is audited (`invitationCreated` /
+  `invitationResent` / `invitationExpired` / `invitationUsed` / `invitationAttemptInvalid`
+  / `invitationRevoked`) with nothing ever deleted — history lives in the append-only
+  audit stream and the invitation metadata survives consumption; activation is single-use,
+  device-independent, MFA-independent and **never mints a session** (login is the only
+  place sessions are born); lifecycle state + sequence diagrams live in
+  `docs/02-architecture/account-lifecycle.md`.
 
 ### Fixed
 

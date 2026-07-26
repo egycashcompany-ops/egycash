@@ -54,9 +54,9 @@ export const LoginPage = (): JSX.Element => {
       }
       setStep({ kind: 'totp', challengeToken: response.challengeToken, enroll });
     } catch (e) {
-      // §14: a not-yet-activated account needs its setup link, not a retry.
+      // §15.3: a not-yet-activated account needs its setup link, not a retry.
       setError(
-        e instanceof ApiError && e.code === 'AUTH_ACCOUNT_NOT_ACTIVE'
+        e instanceof ApiError && e.code === 'AUTH_ACCOUNT_NOT_ACTIVATED'
           ? t('platform.auth.login.notActivated')
           : t('platform.auth.login.failed'),
       );

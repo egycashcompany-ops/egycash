@@ -29,6 +29,10 @@ export interface UserDoc extends BaseDocFields {
   };
   security: {
     passwordChangedAt: Date | null;
+    /** First successful activation (§16.5); null while invited. */
+    activatedAt: Date | null;
+    /** Last completed login (§16.5). */
+    lastLoginAt: Date | null;
     failedLogins: number;
     lockedUntil: Date | null;
     /** Effective-permission cache key version (ADR-004). */
@@ -47,6 +51,9 @@ export interface UserDoc extends BaseDocFields {
   activation: {
     tokenHash: string | null;
     expiresAt: Date | null;
+    /** §16.1 — last-invitation metadata SURVIVES consumption/supersession/expiry. */
+    sentAt: Date | null;
+    delivery: { channel: 'whatsapp' | 'email'; ok: boolean; detail: string | null }[] | null;
   };
 }
 
@@ -73,6 +80,8 @@ const userSchema = new Schema<UserDoc>(
     },
     security: {
       passwordChangedAt: { type: Date, default: null },
+      activatedAt: { type: Date, default: null },
+      lastLoginAt: { type: Date, default: null },
       failedLogins: { type: Number, default: 0 },
       lockedUntil: { type: Date, default: null },
       permissionVersion: { type: Number, default: 1 },
@@ -87,6 +96,8 @@ const userSchema = new Schema<UserDoc>(
     activation: {
       tokenHash: { type: String, default: null },
       expiresAt: { type: Date, default: null },
+      sentAt: { type: Date, default: null },
+      delivery: { type: [{ _id: false, channel: String, ok: Boolean, detail: { type: String, default: null } }], default: null },
     },
     ...baseFields,
   },

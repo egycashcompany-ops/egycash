@@ -869,8 +869,9 @@ class EmployeeActionService {
 
   private async suspendLogin(userId: string, changes: EmployeeActionChange[], actorId: string): Promise<void> {
     const user = await userService.getById(userId);
-    // Only an ACTIVE login can be suspended (invited accounts have nothing to cut off yet).
-    if (user.status !== 'active') return;
+    // §15.5 — an exit disables ACTIVE logins and NEVER-ACTIVATED (invited) ones alike;
+    // suspending an invited account also revokes its pending setup link in the same operation.
+    if (user.status !== 'active' && user.status !== 'invited') return;
     await userService.changeStatus(userId, { status: 'suspended', version: user.__v }, actorId);
     changes.push({ field: 'user.status', from: user.status, to: 'suspended' });
   }

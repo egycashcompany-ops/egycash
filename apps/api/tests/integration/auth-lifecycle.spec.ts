@@ -1,9 +1,12 @@
 // Auth & Employee Account Lifecycle suite (frozen design docs/12-planning/
-// auth-account-lifecycle-design.md, Revision 4). Covers what the adapted employee/leave
+// auth-account-lifecycle-design.md, Revisions 4–6). Covers what the adapted employee/leave
 // suites don't: activation-link provisioning with per-channel delivery outcomes (§14),
 // one-time/expiring links + admin reset and resend semantics, the no-credential-in-any-API
-// rule (R11/R12), TOTP force-on (D6), username change with permanent employee-code login,
-// email-optional accounts, backfill idempotency (D2), and legacy-user non-impact.
+// rule (R11/R12), the §15 hardening (dedicated not-activated error, derived accountStatus,
+// exit/disable link revocation, invitation audit trail + expiry sweep), the §16 enterprise
+// invariants (session policy, panel fields, enumeration parity), TOTP force-on (D6),
+// username change with permanent employee-code login, email-optional accounts, backfill
+// idempotency (D2), and legacy-user non-impact.
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
@@ -207,18 +210,19 @@ describe('auto-provisioning (D1 + §14)', () => {
     const account = await request(app)
       .get(`/api/v1/platform/users/${String(emp.userId)}`)
       .set('Authorization', `Bearer ${adminToken}`);
-    const accountBody = account.body.data as {
-      status: string;
-      setupLinkPending: boolean;
-      mustChangePassword: boolean;
-    };
+    const accountBody = account.body.data as UserDto;
     expect(accountBody.status).toBe('invited');
     expect(accountBody.setupLinkPending).toBe(true);
+    expect(accountBody.accountStatus).toBe('invitationSent'); // §15.4
     expect(accountBody.mustChangePassword).toBe(false); // the gate is dormant (§14.2)
     const early = await request(app)
       .post('/api/v1/auth/login')
       .send({ identifier: emp.code, password: PASSWORD });
     expect(early.status).toBe(401);
+    // §15.3 — the DEDICATED code: the web can point the employee at their setup link.
+    expect((early.body as { error: { code: string } }).error.code).toBe(
+      'AUTH_ACCOUNT_NOT_ACTIVATED',
+    );
 
     // The employee opens the link and chooses their OWN policy-checked password. A weak one
     // (passes the transport schema, fails the settings-driven policy) must NOT burn the token.
@@ -257,6 +261,11 @@ describe('auto-provisioning (D1 + §14)', () => {
     expect((refused.body as { error: { code: string } }).error.code).toBe(
       'AUTH_ACTIVATION_TOKEN_INVALID',
     );
+    // §15.4 — admins see the dead link as "expired".
+    const expiredView = await request(app)
+      .get(`/api/v1/platform/users/${String(emp.userId)}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect((expiredView.body.data as UserDto).accountStatus).toBe('expired');
 
     // Admin reset: fresh token + fresh window; the stale link stays dead.
     const reissue = await request(app)
@@ -449,6 +458,193 @@ describe('TOTP administration (D6/4.5)', () => {
       .post('/api/v1/auth/login')
       .send({ identifier: emp.code, password: PASSWORD });
     expect((plain.body.data as { totpRequired: boolean }).totpRequired).toBe(false);
+  });
+});
+
+const rereadEmp = async (id: string): Promise<EmployeeDto> =>
+  (await request(app).get(`/api/v1/hr/employees/${id}`).set('Authorization', `Bearer ${adminToken}`))
+    .body.data as EmployeeDto;
+
+const getUser = async (userId: string): Promise<UserDto> =>
+  (
+    await request(app)
+      .get(`/api/v1/platform/users/${userId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+  ).body.data as UserDto;
+
+const auditActionsOf = async (userId: string): Promise<string[]> => {
+  const res = await request(app)
+    .get(`/api/v1/platform/audit-logs?entityType=user&entityId=${userId}&pageSize=100`)
+    .set('Authorization', `Bearer ${adminToken}`);
+  expect(res.status).toBe(200);
+  return (res.body.data as { action: string }[]).map((entry) => entry.action);
+};
+
+describe('activation hardening + enterprise completeness (§15/§16)', () => {
+  it('answers login attempts without leaking accounts: unknown identifier ≡ wrong password (§16.6)', async () => {
+    const spy = captureToken();
+    const emp = await regEmployee({});
+    expect((await activate(lastToken(spy))).status).toBe(204);
+    spy.mockRestore();
+
+    const unknown = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ identifier: 'no-such-user-xyz', password: PASSWORD });
+    const wrongPassword = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ identifier: emp.code, password: `${PASSWORD}nope` });
+    expect(unknown.status).toBe(401);
+    expect(wrongPassword.status).toBe(401);
+    expect((unknown.body as { error: { code: string } }).error.code).toBe(
+      'AUTH_INVALID_CREDENTIALS',
+    );
+    expect((wrongPassword.body as { error: { code: string } }).error.code).toBe(
+      'AUTH_INVALID_CREDENTIALS',
+    );
+  });
+
+  it('an employee EXIT kills the never-used setup link and locks the account (§15.5)', async () => {
+    const spy = captureToken();
+    const emp = await regEmployee({});
+    const token = lastToken(spy);
+    spy.mockRestore();
+
+    const fresh = await rereadEmp(emp.id);
+    const exit = await request(app)
+      .post(`/api/v1/hr/employees/${emp.id}/actions/exit`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ type: 'resignation', eligibleForRehire: true, version: fresh.version });
+    expect(exit.status).toBe(201);
+
+    // The invited login was suspended and its pending link revoked in the same operation.
+    const account = await getUser(String(emp.userId));
+    expect(account.status).toBe('suspended');
+    expect(account.accountStatus).toBe('locked');
+    expect(account.setupLinkPending).toBe(false);
+    expect((await activate(token)).status).toBe(422);
+    expect(await auditActionsOf(String(emp.userId))).toContain('invitationRevoked');
+  });
+
+  it('the hourly sweep revokes expired links, audits once, and stays idempotent (§15.7)', async () => {
+    const spy = captureToken();
+    const emp = await regEmployee({});
+    const token = lastToken(spy);
+    spy.mockRestore();
+    const userId = String(emp.userId);
+
+    await UserModel.updateOne(
+      { _id: emp.userId },
+      { $set: { 'activation.expiresAt': new Date(Date.now() - 60_000) } },
+    ).exec();
+
+    expect(await userService.sweepExpiredInvitations()).toBeGreaterThanOrEqual(1);
+    const swept = await getUser(userId);
+    expect(swept.setupLinkPending).toBe(false); // the stale secret no longer lingers
+    expect(swept.accountStatus).toBe('expired');
+    expect(swept.invitationSentAt).not.toBeNull(); // §16.1 — metadata survives expiry
+    expect(await auditActionsOf(userId)).toContain('invitationExpired');
+    expect((await activate(token)).status).toBe(422);
+    expect(await userService.sweepExpiredInvitations()).toBe(0); // idempotent
+
+    // After the sweep, resend refuses (nothing pending) — re-issue is an admin RESET.
+    const resend = await request(app)
+      .post(`/api/v1/platform/users/${userId}/credentials/resend`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({});
+    expect(resend.status).toBe(422);
+    const tokenSpy = captureToken();
+    const reset = await request(app)
+      .post(`/api/v1/platform/users/${userId}/reset-password`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({});
+    expect(reset.status).toBe(200);
+    expect((await activate(lastToken(tokenSpy))).status).toBe(204);
+    tokenSpy.mockRestore();
+  });
+
+  it('audits the complete invitation lifecycle (§15.7/§16.1)', async () => {
+    const spy = captureToken();
+    const emp = await regEmployee({});
+    const userId = String(emp.userId);
+
+    // resend (supersedes) → expired ATTEMPT (attributable) → reset → activate (used).
+    await request(app)
+      .post(`/api/v1/platform/users/${userId}/credentials/resend`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({});
+    await UserModel.updateOne(
+      { _id: emp.userId },
+      { $set: { 'activation.expiresAt': new Date(Date.now() - 60_000) } },
+    ).exec();
+    expect((await activate(lastToken(spy))).status).toBe(422);
+    await request(app)
+      .post(`/api/v1/platform/users/${userId}/reset-password`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({});
+    expect((await activate(lastToken(spy))).status).toBe(204);
+    spy.mockRestore();
+
+    const actions = await auditActionsOf(userId);
+    for (const expected of [
+      'invitationCreated',
+      'invitationResent',
+      'invitationAttemptInvalid',
+      'invitationUsed',
+      'firstLogin',
+    ]) {
+      expect(actions).toContain(expected);
+    }
+  });
+
+  it('activation never mints a session, and the panel fields fill in (§16.2/§16.5)', async () => {
+    const spy = captureToken();
+    const emp = await regEmployee({ email: `panel-${String(Date.now())}@ecms.local` });
+    const userId = String(emp.userId);
+
+    const before = await getUser(userId);
+    expect(before.invitationSentAt).not.toBeNull();
+    expect(before.invitationExpiresAt).not.toBeNull();
+    expect(before.activatedAt).toBeNull();
+    expect(before.lastDelivery?.find((d) => d.channel === 'email')?.ok).toBe(true);
+
+    const activated = await activate(lastToken(spy));
+    spy.mockRestore();
+    expect(activated.status).toBe(204);
+    expect(activated.body).toEqual({}); // §16.2 — no tokens: login is the only session mint
+    const login = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ identifier: emp.code, password: PASSWORD });
+    expect(login.status).toBe(200);
+
+    const after = await getUser(userId);
+    expect(after.accountStatus).toBe('activated');
+    expect(after.invitationExpiresAt).toBeNull(); // consumed
+    expect(after.invitationSentAt).not.toBeNull(); // §16.1 — history survives consumption
+    expect(after.activatedAt).not.toBeNull();
+    expect(after.lastLoginAt).not.toBeNull();
+    expect(after.passwordChangedAt).not.toBeNull();
+  });
+
+  it('activation is MFA-independent: a pre-required TOTP account activates, then enrolls at login (§15.8)', async () => {
+    const spy = captureToken();
+    const emp = await regEmployee({});
+    const userId = String(emp.userId);
+    // Admin forces TOTP BEFORE the employee ever activates.
+    const forceOn = await request(app)
+      .post(`/api/v1/platform/users/${userId}/totp/require`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ required: true });
+    expect(forceOn.status).toBe(204);
+
+    expect((await activate(lastToken(spy))).status).toBe(204);
+    spy.mockRestore();
+    const challenge = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ identifier: emp.code, password: PASSWORD });
+    expect(challenge.status).toBe(200);
+    const body = challenge.body.data as { totpRequired: boolean; enrollmentRequired?: boolean };
+    expect(body.totpRequired).toBe(true);
+    expect(body.enrollmentRequired).toBe(true);
   });
 });
 

@@ -5,6 +5,7 @@ import {
   ErrorCodes,
   PlatformEvents,
   SettingKeys,
+  type AccountStatus,
   type ChangeUserStatus,
   type CreateUser,
   type CredentialsDeliveryResultDto,
@@ -99,6 +100,8 @@ class UserService {
           activation: {
             tokenHash: sha256(activationToken),
             expiresAt: new Date(Date.now() + ACTIVATION_TTL_DAYS * 86_400_000),
+            sentAt: new Date(),
+            delivery: null,
           },
         },
         { by, session },
@@ -116,6 +119,11 @@ class UserService {
       entityRef: entityRef(String(user._id)),
       action: 'create',
       changes: diffChanges({}, auditSnapshot(user)),
+    });
+    await auditService.record({
+      entityRef: entityRef(String(user._id)),
+      action: 'invitationCreated',
+      changes: [{ field: 'mode', old: null, new: 'invite' }],
     });
     return { user, activationToken };
   }
@@ -173,6 +181,8 @@ class UserService {
           activation: {
             tokenHash: sha256(extra.activationToken),
             expiresAt: extra.activationExpiresAt,
+            sentAt: new Date(),
+            delivery: null,
           },
         },
         { by, session },
@@ -189,6 +199,11 @@ class UserService {
       entityRef: entityRef(String(user._id)),
       action: 'accountAutoCreated',
       changes: [{ field: 'username', old: null, new: username }],
+    });
+    await auditService.record({
+      entityRef: entityRef(String(user._id)),
+      action: 'invitationCreated',
+      changes: [{ field: 'mode', old: null, new: 'initial' }],
     });
     return user;
   }
@@ -241,7 +256,8 @@ class UserService {
   async changeStatus(id: string, input: ChangeUserStatus, by: string): Promise<UserDoc> {
     const before = await userRepository.getById(id);
     const allowed: Record<UserStatus, UserStatus[]> = {
-      invited: ['archived'],
+      // §15.5 — a never-activated login can be disabled (exit/admin) before first use.
+      invited: ['suspended', 'archived'],
       active: ['suspended', 'archived'],
       suspended: ['active', 'archived'],
       archived: [],
@@ -251,9 +267,15 @@ class UserService {
         `Status change ${before.status} → ${input.status} is not allowed`,
       );
     }
+    // §15.5 — disabling an account kills any pending setup link in the same operation.
+    const revokeInvitation =
+      (input.status === 'suspended' || input.status === 'archived') &&
+      before.activation.tokenHash !== null;
     const after = await userRepository.updateById(
       id,
-      { status: input.status },
+      revokeInvitation
+        ? { status: input.status, 'activation.tokenHash': null, 'activation.expiresAt': null }
+        : { status: input.status },
       { by, version: input.version },
     );
 
@@ -262,6 +284,13 @@ class UserService {
       action: 'statusChange',
       changes: [{ field: 'status', old: before.status, new: after.status }],
     });
+    if (revokeInvitation) {
+      await auditService.record({
+        entityRef: entityRef(id),
+        action: 'invitationRevoked',
+        changes: [{ field: 'reason', old: null, new: `user-${input.status}` }],
+      });
+    }
     // auth reacts in-process (session revocation on suspend/archive).
     await emit(PlatformEvents.UserStatusChanged, {
       userId: id,
@@ -272,6 +301,18 @@ class UserService {
   }
 
   async softDelete(id: string, by: string, scope?: ScopeSelector): Promise<void> {
+    const before = await userRepository.getById(id, scope);
+    // §15.5 — a pending setup link dies with the account.
+    if (before.activation.tokenHash !== null) {
+      await userRepository.updateSecurity(id, {
+        $set: { 'activation.tokenHash': null, 'activation.expiresAt': null },
+      });
+      await auditService.record({
+        entityRef: entityRef(id),
+        action: 'invitationRevoked',
+        changes: [{ field: 'reason', old: null, new: 'user-deleted' }],
+      });
+    }
     const doc = await userRepository.softDeleteById(id, { by, scope });
     await auditService.record({ entityRef: entityRef(id), action: 'delete' });
     await emit(PlatformEvents.UserStatusChanged, {
@@ -347,12 +388,22 @@ class UserService {
     const user = await userRepository.findByActivationTokenHash(sha256(token));
     // §14: a valid token completes FIRST setup (invited) or a post-reset re-setup (active) —
     // token possession is the authorization either way. Suspended/archived accounts refuse.
-    if (
-      user === null ||
-      (user.status !== 'invited' && user.status !== 'active') ||
-      user.activation.expiresAt === null ||
-      user.activation.expiresAt < new Date()
-    ) {
+    const eligible = user !== null && (user.status === 'invited' || user.status === 'active');
+    const expired =
+      user !== null &&
+      (user.activation.expiresAt === null || user.activation.expiresAt < new Date());
+    if (user === null || !eligible || expired) {
+      // §15.7 — an attempt that matched a user is attributable; unknown tokens are not
+      // (they carry no identity) and are covered by the route's strict rate limit.
+      if (user !== null) {
+        await auditService.record({
+          entityRef: entityRef(String(user._id)),
+          action: 'invitationAttemptInvalid',
+          changes: [
+            { field: 'reason', old: null, new: eligible ? 'expired' : 'account-not-eligible' },
+          ],
+        });
+      }
       throw new BusinessRuleError(
         'Activation token is invalid or expired',
         ErrorCodes.AUTH_ACTIVATION_TOKEN_INVALID,
@@ -365,12 +416,22 @@ class UserService {
         passwordHash: await hashPassword(password),
         status: 'active',
         'security.passwordChangedAt': new Date(),
+        // §16.5 — first activation only; a post-reset re-setup keeps the original date.
+        ...((user.security.activatedAt ?? null) === null
+          ? { 'security.activatedAt': new Date() }
+          : {}),
         'activation.tokenHash': null,
         'activation.expiresAt': null,
       },
     });
     if (updated === null) throw new NotFoundError();
 
+    // §15.7 — the one-time link was consumed successfully (§15.1: it is now dead).
+    await auditService.record({
+      entityRef: entityRef(String(user._id)),
+      action: 'invitationUsed',
+      actor: { userId: String(user._id), ip: null, userAgent: null },
+    });
     if (wasInvited) {
       await auditService.record({
         entityRef: entityRef(String(user._id)),
@@ -434,6 +495,14 @@ class UserService {
     return new Date(Date.now() + ttlHours * 3_600_000);
   }
 
+  /** §16.5 — persist the per-channel outcome of the latest invitation delivery. */
+  async recordDeliveryOutcomes(
+    userId: string,
+    delivery: CredentialsDeliveryResultDto[],
+  ): Promise<void> {
+    await userRepository.updateSecurity(userId, { $set: { 'activation.delivery': delivery } });
+  }
+
   /** §14 — deliver the setup link over every reachable channel; outcomes only. */
   private async deliverLinkFor(
     user: UserDoc,
@@ -442,7 +511,7 @@ class UserService {
     mode: 'reset' | 'resend',
   ): Promise<CredentialsDeliveryResultDto[]> {
     const userId = String(user._id);
-    return deliverCredentials({
+    const delivery = await deliverCredentials({
       userId,
       username: user.username ?? user.email ?? userId,
       employeeCode: await resolveEmployeeCodeOfUser(userId),
@@ -452,6 +521,8 @@ class UserService {
       expiresAt,
       mode,
     });
+    await this.recordDeliveryOutcomes(userId, delivery);
+    return delivery;
   }
 
   /**
@@ -470,11 +541,17 @@ class UserService {
         'security.lockedUntil': null,
         'activation.tokenHash': sha256(token),
         'activation.expiresAt': expiresAt,
+        'activation.sentAt': new Date(),
       },
     });
     if (updated === null) throw new NotFoundError();
     await getCache().del(`auth:user:${userId}`);
     await auditService.record({ entityRef: entityRef(userId), action: 'passwordReset' });
+    await auditService.record({
+      entityRef: entityRef(userId),
+      action: 'invitationCreated',
+      changes: [{ field: 'mode', old: null, new: 'reset' }],
+    });
     return this.deliverLinkFor(user, token, expiresAt, 'reset');
   }
 
@@ -492,9 +569,15 @@ class UserService {
     const token = this.generateActivationToken();
     const expiresAt = await this.activationLinkExpiry();
     const updated = await userRepository.updateSecurity(userId, {
-      $set: { 'activation.tokenHash': sha256(token), 'activation.expiresAt': expiresAt },
+      $set: {
+        'activation.tokenHash': sha256(token),
+        'activation.expiresAt': expiresAt,
+        'activation.sentAt': new Date(),
+      },
     });
     if (updated === null) throw new NotFoundError();
+    // §15.7 — the replacement token invalidated its predecessor (§15.5).
+    await auditService.record({ entityRef: entityRef(userId), action: 'invitationResent' });
     return this.deliverLinkFor(user, token, expiresAt, 'resend');
   }
 
@@ -546,12 +629,45 @@ class UserService {
     }
   }
 
+  /**
+   * §15.7 hourly sweep: expired pending links are REVOKED (stale secrets never linger) and
+   * `invitationExpired` is audited once per invitation. Re-issue afterwards is an admin reset.
+   */
+  async sweepExpiredInvitations(): Promise<number> {
+    const expired = await userRepository.findExpiredActivations(new Date());
+    let swept = 0;
+    for (const user of expired) {
+      // Guarded by the same hash so a concurrent resend/activation is never clobbered.
+      const cleared = await userRepository.clearActivationByHash(
+        String(user._id),
+        user.activation.tokenHash ?? '',
+      );
+      if (!cleared) continue;
+      swept += 1;
+      await auditService.record({
+        entityRef: entityRef(String(user._id)),
+        action: 'invitationExpired',
+      });
+    }
+    return swept;
+  }
+
   /** Seed-only: activates an account without the invite/activation flow. */
   async forceActivate(userId: string): Promise<void> {
     const updated = await userRepository.updateSecurity(userId, {
-      $set: { status: 'active', 'activation.tokenHash': null, 'activation.expiresAt': null },
+      $set: {
+        status: 'active',
+        'security.activatedAt': new Date(),
+        'activation.tokenHash': null,
+        'activation.expiresAt': null,
+      },
     });
     if (updated === null) throw new NotFoundError();
+  }
+
+  /** §16.5 — stamp the last completed login (called by the auth pipeline only). */
+  async recordLogin(userId: string): Promise<void> {
+    await userRepository.updateSecurity(userId, { $set: { 'security.lastLoginAt': new Date() } });
   }
 
   async recordFailedLogin(
@@ -607,6 +723,23 @@ class UserService {
     return userRepository.consumeBackupCode(userId, codeHash);
   }
 
+  /** §15.4 — derived, never stored. First matching rule wins. */
+  accountStatusOf(doc: UserDoc): AccountStatus {
+    if (doc.status === 'suspended' || doc.status === 'archived') return 'locked';
+    if (doc.security.lockedUntil !== null && doc.security.lockedUntil > new Date()) {
+      return 'locked';
+    }
+    // Awaiting a setup link: never activated, or credential cleared by an admin reset.
+    if (doc.status === 'invited' || doc.passwordHash === null) {
+      const linkValid =
+        doc.activation.tokenHash !== null &&
+        doc.activation.expiresAt !== null &&
+        doc.activation.expiresAt > new Date();
+      return linkValid ? 'invitationSent' : 'expired';
+    }
+    return 'activated';
+  }
+
   toDto(doc: UserDoc): UserDto {
     return {
       id: String(doc._id),
@@ -628,6 +761,13 @@ class UserService {
       },
       mustChangePassword: doc.security.mustChangePassword ?? false,
       setupLinkPending: doc.activation.tokenHash !== null,
+      accountStatus: this.accountStatusOf(doc),
+      invitationSentAt: (doc.activation.sentAt ?? null)?.toISOString() ?? null,
+      invitationExpiresAt: (doc.activation.expiresAt ?? null)?.toISOString() ?? null,
+      activatedAt: (doc.security.activatedAt ?? null)?.toISOString() ?? null,
+      lastLoginAt: (doc.security.lastLoginAt ?? null)?.toISOString() ?? null,
+      passwordChangedAt: (doc.security.passwordChangedAt ?? null)?.toISOString() ?? null,
+      lastDelivery: doc.activation.delivery ?? null,
       totpEnabled: doc.security.totp.enabled,
       totpRequired: doc.security.totp.required ?? false,
       version: doc.__v,

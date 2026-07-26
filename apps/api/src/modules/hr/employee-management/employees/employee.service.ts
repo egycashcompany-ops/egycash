@@ -831,7 +831,8 @@ class EmployeeService {
         userId: String(user._id),
         code: employee.code,
       });
-      // §14 — transient delivery of the one-time setup link; outcomes go back to the caller.
+      // §14 — transient delivery of the one-time setup link; outcomes go back to the caller
+      // and onto the account for the admin panel (§16.5).
       const delivery = await deliverCredentials({
         userId: String(user._id),
         username: user.username ?? employee.code.toLowerCase(),
@@ -842,6 +843,7 @@ class EmployeeService {
         expiresAt: activationExpiresAt,
         mode: 'initial',
       });
+      await userService.recordDeliveryOutcomes(String(user._id), delivery);
       return { username: employee.code, delivery };
     } catch (error) {
       // Collision or transient failure: creation proceeds; HR uses the manual path (D7).

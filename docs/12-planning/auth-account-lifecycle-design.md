@@ -508,7 +508,188 @@ it would weaken R12's hash-only invariant.) Where §14 conflicts with §12/§13,
   delivery + audit (R12/R11), non-blocking provisioning (R13), backfill (R8) and SSO seams
   (R18) all carry over unchanged — only the payload changed from a password to a link.
 
+## 15. Revision 5 — activation hardening (approved 2026-07-26)
+
+Eight final requirements before release. Four were already §14 behavior and are promoted to
+**named invariants**; four change code. Where §15 conflicts with earlier sections, §15 wins.
+
+### 15.1 Single-use links (invariant — confirmed)
+
+A successful `POST /auth/activate` **atomically clears** `activation.tokenHash` +
+`expiresAt` in the same write that stores the chosen password's hash — the token is
+permanently dead from that moment; any later presentation (even instantly) fails with
+`AUTH_ACTIVATION_TOKEN_INVALID`.
+
+### 15.2 CSPRNG tokens, hash-only at rest (invariant — confirmed)
+
+Tokens are 48 bytes of `crypto.randomBytes` (base64url, ~384 bits); **only the SHA-256
+hash is ever persisted** — exactly the refresh-token discipline. The raw token exists in
+memory during delivery and in the recipient's message, nowhere else. *Recorded exception:*
+the pre-existing platform invite response (`InvitedUserDto.activationToken`, POST
+`/platform/users`) still echoes the token **once** for platform/system accounts that have
+no delivery channel; it is never persisted and is scheduled for retirement once
+platform-account delivery ships. Employee provisioning never echoes a token anywhere.
+
+### 15.3 No login before activation — dedicated error
+
+`invited` accounts cannot authenticate (they hold no password hash at all). **New:** the
+login pipeline now answers a **dedicated `AUTH_ACCOUNT_NOT_ACTIVATED` (401)** for invited
+accounts; `AUTH_ACCOUNT_NOT_ACTIVE` now means suspended/archived only. The web login maps
+the new code to a "use your setup link" message.
+
+### 15.4 Admin-visible account status
+
+`UserDto` gains a **derived** (never stored) `accountStatus`, shown on the employee
+account card; **Not Invited** is the card's rendering of an employee with no linked login.
+First matching row wins:
+
+| Condition | `accountStatus` |
+|---|---|
+| user status `suspended` / `archived` | `locked` |
+| `security.lockedUntil` in the future (lockout) | `locked` |
+| `invited` or credential cleared by reset, **valid** link pending | `invitationSent` |
+| `invited` or credential cleared by reset, link expired or revoked | `expired` |
+| `active` with a credential | `activated` |
+
+### 15.5 Immediate invalidation
+
+A pending activation link dies **in the same operation** whenever:
+- **a new link is issued** (reset/resend — §14.3, already the rule),
+- **the account is disabled**: every transition to `suspended`/`archived` (admin action,
+  soft delete) clears the token and audits `invitationRevoked`,
+- **the employee exits**: exit propagation now also covers **never-activated logins** —
+  the status machine gains `invited → suspended` (and rehire's `suspended → active` is
+  unchanged; a formerly-invited rehire shows `expired` until an admin issues a fresh link
+  via reset). Defense-in-depth: `/auth/activate` accepts only `invited`/`active` accounts,
+  so even an un-cleared token is useless on a disabled account.
+
+### 15.6 No internal identifiers in messages (invariant — confirmed)
+
+The URL carries **only** the token (`/activate?token=…`) — no user id, employee id, or any
+database identifier. The message body contains the Employee Code because §12 R3 requires
+it — it is the public business identifier printed on cards, not a database key.
+
+### 15.7 Invitation audit trail
+
+New audit actions cover the full invitation lifecycle:
+
+| Event | Recorded by |
+|---|---|
+| `invitationCreated` | provisioning, the legacy invite, and every reset that issues a fresh link |
+| `invitationResent` | resend (new token replaces the old) |
+| `invitationExpired` | **hourly sweep** `platform.auth.invitationExpirySweep`: revokes (clears) every expired pending token — stale secrets never linger — and audits once per invitation; after the sweep, re-issue is an admin **reset** |
+| `invitationUsed` | successful activation (alongside `firstLogin`/`statusChange` or `passwordChanged`) |
+| `invitationAttemptInvalid` | failed activation attempts attributable to a user (token matched but expired, or account not eligible); unmatched tokens cannot be attributed — the strict rate limit on `/auth/activate` covers them |
+| `invitationRevoked` | disable/exit/soft-delete clearing a pending link (15.5) |
+
+### 15.8 MFA-independent activation (invariant — confirmed)
+
+Activation establishes only the knowledge factor; **factor negotiation lives exclusively
+in the login pipeline** (TOTP challenge/enroll today, more factors later). An account with
+`totp.required` set *before* activation activates normally and is prompted to enroll at
+first login — additional factors never touch the activation lifecycle.
+
+### Revision-5 API/data deltas (summary)
+
+| Surface | Change |
+|---|---|
+| Errors | + `AUTH_ACCOUNT_NOT_ACTIVATED` (401 — login by an invited account); `AUTH_ACCOUNT_NOT_ACTIVE` narrowed to suspended/archived |
+| `UserDto` | + derived `accountStatus`: `invitationSent` / `activated` / `expired` / `locked` |
+| User status machine | + `invited → suspended` (exit/disable before first activation) |
+| Suspend / archive / soft-delete | atomically revoke any pending link (+ `invitationRevoked`) |
+| Audit | + `invitationCreated` / `invitationResent` / `invitationExpired` / `invitationUsed` / `invitationAttemptInvalid` / `invitationRevoked` |
+| Scheduler | + `platform.auth.invitationExpirySweep` (hourly) |
+| Web | account card shows the five account states (incl. **Not invited**); login maps the dedicated error |
+
+## 16. Revision 6 — enterprise completeness (approved 2026-07-26)
+
+Final requirements (approver items 26–32) before the lifecycle is considered complete.
+
+### 16.1 Expiration deletes nothing (item 26)
+
+Invitations are **not** first-class entities; their complete lifecycle history lives in the
+**append-only audit stream** (`invitationCreated` → `invitationResent`/`invitationExpired`/
+`invitationRevoked` → `invitationUsed`/`invitationAttemptInvalid`), which is immutable and
+has no delete path (ADR-012) — so nothing about an invitation is ever deleted. What expiry
+and supersession remove is only the **live secret pointer** (`activation.tokenHash`); the
+invitation's metadata (`sentAt`, last delivery outcomes) is denormalized on the account and
+**survives** consumption, supersession and expiry for the admin panel. A resend appends
+`invitationResent` (the supersession record) and replaces the pointer — the full chain of
+who was invited, when, over which channels, and what became of every link is reconstructible
+from the audit trail alone.
+
+### 16.2 Session policy (item 27 — confirmed invariants)
+
+- **Password reset** revokes **all** sessions (§14.4 — already the rule).
+- **Disable / exit**: every transition to `suspended`/`archived` revokes all sessions
+  (platform event handler on `UserStatusChanged`) — §15.5 extends this to exits of
+  never-activated logins.
+- **Activation never creates a session**: `POST /auth/activate` answers `204` with **no
+  tokens**; the employee then authenticates through the normal login pipeline (TOTP and
+  future factors included). Sessions are born in exactly one place.
+- Brute-force lockout (`lockedUntil`) is a *login* barrier by design; it does not revoke
+  standing sessions (they belong to the legitimate holder) — admins who want the axe use
+  suspend or reset.
+
+### 16.3 Device independence (item 28 — confirmed invariant)
+
+Tokens carry no device binding — no fingerprint, IP pin, or user-agent check. The link may
+be opened on any device; **the first successful activation consumes the token** (§15.1)
+and every later attempt fails regardless of device.
+
+### 16.4 Notification resilience (item 29 — confirmed invariants)
+
+Channels attempt independently (§13 R16); a failed delivery is retryable via **resend**
+(new link — §14.3) without touching the account; delivery failures **never roll back
+provisioning** (§13 R13) — they are audited (`credentialsDelivered` outcomes per channel)
+and now also **persisted** on the account for the admin panel (16.1).
+
+### 16.5 Administrative visibility — the Account panel (item 30)
+
+The employee page's account card becomes a full **Account panel**. `UserDto` gains
+read-only, server-derived/denormalized fields: `invitationSentAt`, `invitationExpiresAt`
+(null once consumed), `activatedAt`, `lastLoginAt`, `passwordChangedAt`, and
+`lastDelivery` (per-channel outcome of the most recent invitation delivery). Together with
+Revision 5's `accountStatus`, the existing username editor and the TOTP badges, the panel
+shows: Account Status + Activation Status, Username, Invitation Sent/Expires, Activated
+At, Last Login, Password Last Changed, MFA status, and per-channel delivery status.
+
+### 16.6 Security hardening (item 31)
+
+- **Rate limiting**: every unauthenticated auth surface (`login`, `activate`,
+  `totp/challenge`, `totp/enroll-challenge`, `refresh`) already sits behind the same
+  strict Redis-backed limiter — confirmed consistent. Authenticated admin operations
+  (reset/resend/TOTP admin) are permission-gated (`user.resetPassword`) and fully audited.
+- **Audit**: every listed endpoint records outcomes (`login`/`loginFailed`/`lockout`,
+  `invitationUsed`/`invitationAttemptInvalid`, `passwordReset`/`passwordChanged`,
+  `totpEnrolled`/`totpDisabled`/`totpReset`).
+- **Enumeration**: unknown identifier and wrong password answer the **identical**
+  `AUTH_INVALID_CREDENTIALS`. Recorded tension: the state-specific answers
+  (`AUTH_ACCOUNT_NOT_ACTIVATED`, `AUTH_ACCOUNT_LOCKED`) reveal that an account exists —
+  **deliberately accepted** per item 3 (employees need actionable guidance in an internal
+  ERP) and mitigated by the strict rate limit.
+
+### 16.7 Documentation (item 32)
+
+`docs/02-architecture/account-lifecycle.md` (new) carries the complete account-lifecycle
+**state diagram** and **sequence diagrams** for employee creation, invitation, activation,
+login, password reset, account disable and employee exit.
+
 ## Review trail
+
+**Revision 6 approved (2026-07-26):** enterprise completeness (§16) — expiry deletes
+nothing (audit stream is the invitation history; metadata persists for the panel), session
+policy invariants (reset/disable/exit revoke all; activation never mints a session), device
+independence, notification resilience, the full admin Account panel
+(sent/expires/activated/last-login/password-changed/MFA/delivery on `UserDto`), consistent
+rate limiting + enumeration-parity note, and the dedicated lifecycle architecture document.
+
+**Revision 5 approved (2026-07-26):** activation hardening (§15) — single-use, CSPRNG +
+hash-only, token-only URLs and MFA independence promoted to named invariants; dedicated
+`AUTH_ACCOUNT_NOT_ACTIVATED` login error; derived admin-visible `accountStatus`
+(Not Invited / Invitation Sent / Activated / Expired / Locked); immediate link revocation on
+disable/exit/re-issue (status machine gains `invited → suspended`); full invitation audit
+trail with an hourly expiry sweep.
 
 Approved with amendments (2026-07-24): D1/D2/D4/D5/D7 as proposed; **D3 amended** (random
 one-time-visible temp password instead of Employee-Code fallback — codes are public);

@@ -33,13 +33,16 @@ records can the user see?" — orthogonal to permissions ("what can the user do?
   denormalized back-reference. The platform never imports a module type — the HR module owns the
   linkage. Platform/system accounts carry no `employeeId`.
 - **Accounts are auto-provisioned** at employee creation (and backfilled at boot) per the frozen
-  Auth & Account Lifecycle design (`docs/12-planning/auth-account-lifecycle-design.md`, Rev 4):
+  Auth & Account Lifecycle design (`docs/12-planning/auth-account-lifecycle-design.md`, Rev 6):
   username = Employee Code, born `invited` with a **one-time setup link delivered to the employee
   via WhatsApp + email** (transient — never persisted or echoed by any API), expiring after
   `auth.activationLink.ttlHours`; the employee chooses their own policy-checked password at
   `/activate`. Resend issues a new link (old one dies); admin reset locks the account and sends a
-  fresh link. The old **create-login-from-employee** flow (`POST /hr/employees/:id/login`, gated
-  by `user.create`) remains as the manual override for audited provisioning skips (D7).
+  fresh link; disable/exit revokes any pending link and all sessions; an hourly sweep revokes
+  expired links. The full invitation lifecycle is audited and the state/sequence diagrams live in
+  `docs/02-architecture/account-lifecycle.md`. The old **create-login-from-employee** flow
+  (`POST /hr/employees/:id/login`, gated by `user.create`) remains as the manual override for
+  audited provisioning skips (D7).
 - **Configurable identifiers.** `auth.loginIdentifiers` enables username, email (optional on
   accounts) and the Employee Code, which resolves through an HR seam
   (`platform/auth/identity-seams.ts`) so the printed code logs in even after a username change.
@@ -59,11 +62,12 @@ manually editable. The **Branch Code** is immutable after creation except for a 
 
 ## 4. Minimal UI (this phase)
 
-Identity UI lives on the **Employee detail** page (`EmployeeAccountCard`): shows the Employee Code
-and Branch Code, surfaces the auto-provisioned account with its security state (awaiting
-activation, TOTP on/required), admin actions (reset — lock + fresh setup link, resend setup link,
-reset authenticator, require/un-require TOTP — all under `user.resetPassword`), the manual
-create-login override, and username editing. Self-service account security (change password,
+Identity UI lives on the **Employee detail** page (`EmployeeAccountCard`), now a full Account
+panel (design §16.5): the derived account status (Not Invited / Invitation Sent / Activated /
+Expired / Locked), lifecycle timestamps (invitation sent/expires, activated at, last login,
+password last changed), per-channel delivery outcomes, TOTP state, admin actions (reset — lock +
+fresh setup link, resend setup link, reset authenticator, require/un-require TOTP — all under
+`user.resetPassword`), the manual create-login override, and username editing. Self-service account security (change password,
 authenticator, sessions) is at `/account/security`; the public setup page is `/activate`. No
 account-administration dashboard yet.
 

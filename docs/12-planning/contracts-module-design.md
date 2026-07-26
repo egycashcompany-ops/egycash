@@ -1,9 +1,8 @@
-# Contracts Module — Architecture & Design (for approval)
+# Contracts Module — Architecture & Design
 
-**Status: REVISION 1 — awaiting freeze.** Design-phase only (like Leave Management and
-Authentication): nothing here is implemented until the approver freezes this document.
-Amendments are recorded as numbered revisions in the review trail. §8 (Revision 1)
-supersedes §2–§7 wherever they conflict.
+**Status: FROZEN (Revision 2, 2026-07-26).** Approved for implementation. Later
+sections supersede earlier ones wherever they conflict (§9 > §8 > §2–§7). Amendments
+after the freeze require a new recorded revision.
 
 ## 1. Purpose & scope
 
@@ -350,7 +349,94 @@ employee name + employee code, and reference number** (indexed), combined with t
 structured filters **contract type, status, start/end date ranges** — same pattern as the
 employees/offers lists.
 
+## 9. Revision 2 — final amendments (A13–A22)
+
+### A13 — Asynchronous generation
+
+`POST /hr/contracts/:id/generate` performs only the synchronous, cheap part — variable
+resolution + validation (A16) and the snapshot freeze — then **enqueues** the document
+job and returns immediately. The contract carries a **generation state**
+(`generation.status`: `queued` → `rendering` → `completed` | `failed` + `error`), polled
+by the UI to show progress; the PDF is produced in the **worker** (D8/A21). Large
+templates never block an API request; a failed job is retryable (`/generate/retry`)
+without touching the frozen snapshot.
+
+### A14 — PDF integrity metadata
+
+Every generated PDF embeds (document info + a footer line): generation timestamp,
+**generator version** (platform version + renderer identifier), template version,
+contract version, and the **SHA-256 hash of the stored snapshot HTML**. The same fields
+are persisted on the contract (`generation.integrity`) so a future verification tool can
+recompute and compare without opening the PDF.
+
+### A15 — One immutable file per contract version
+
+Each generation/amendment writes a **new** Files record — never a replacement. The
+contract version keeps its `pdfFileId` forever; an amendment's new version gets its own
+file. Files-service retention/immutability applies; nothing in the module can overwrite
+a stored document.
+
+### A16 — Variable validation (fail loud, never silent)
+
+Generation resolves **every placeholder used by the pinned template version** and fails
+with a structured **validation report** (`[{placeholder, source, reason}]`, error
+`CONTRACT_VARIABLES_MISSING`, 422) when any required value is absent — an unresolved
+`{{…}}` can never reach a rendered document. The create screen surfaces the report next
+to the fields; manual per-variable overrides (A3) are the escape hatch.
+
+### A17 — Template publishing gate
+
+Template versions carry `draft → published → archived`. **Only a `published` version can
+generate** (draft versions render sample previews only); editing a published version
+creates the next `draft` version — publishing it never touches contracts generated from
+earlier published versions (A2). Archiving hides a template from new drafts; history
+stays.
+
+### A18 — Preview ≡ final document
+
+One rendering path (D6/A11): the preview endpoint and the PDF job consume the **same
+server-side renderer and the same print stylesheet** — the PDF is chromium printing the
+exact HTML the preview iframe shows (same page box, fonts, margins). Pixel parity is a
+test-guarded invariant, not an aspiration: preview output and the PDF job's input are
+byte-identical HTML.
+
+### A19 — Template audit trail (recoverable history)
+
+Every template edit records who/when/what: the append-only version chain (D4) keeps
+every prior version **readable and restorable** (restore = clone an old version into a
+new draft), and each version stores `changedBy`/`changedAt` + an audit entry with the
+field-level diff. Nothing about a template's history is ever deleted.
+
+### A20 — Storage layout (snapshot + PDF together)
+
+The contract version stores the rendered **HTML snapshot** (source of truth) alongside
+the generated **PDF file** (A15). Every future export — reprint, re-download, future
+formats — reads the stored snapshot/PDF; **no export path regenerates from mutable
+data**, ever.
+
+### A21 — Deterministic, print-ready PDFs
+
+A4 with fixed margins, **embedded fonts** (bundled Arabic + Latin faces shipped with the
+renderer — no system-font dependence), deterministic chromium print settings
+(`printBackground`, fixed scale, no headers/footers beyond the A14 integrity line) so the
+same snapshot yields the same document on every environment.
+
+### A22 — Stable query service (no direct table reads)
+
+Consumers (Payroll, Employee Files, Workflow, Document Management) integrate ONLY
+through the module's **query seam** (`contract-query.service.ts` behind the module
+barrel) — `activeSnapshotAt(employeeId, date)`, `listForEmployee`, `getSnapshot(id)` —
+plus the `hr.contract.*` events. The collections are module-private; the seam's DTOs are
+the compatibility contract.
+
 ## Review trail
+
+**Revision 2 (2026-07-26) — DESIGN FROZEN:** final amendments A13–A22 incorporated
+(async generation with UI progress, PDF integrity metadata incl. SHA-256, one immutable
+file per version, loud variable validation, template publishing gate, preview ≡ PDF
+parity, recoverable template audit trail, snapshot+PDF storage with no regeneration on
+export, deterministic A4/embedded-font output, stable query seam). Q1–Q3 re-confirmed.
+Implementation approved.
 
 **Revision 1 (2026-07-26):** Q1 approved (worker-side chromium PDF), Q2 confirmed
 (one language per template + clone), Q3 confirmed (one active contract per employee per

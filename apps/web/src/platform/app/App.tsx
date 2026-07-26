@@ -26,6 +26,9 @@ const useDirection = (): void => {
   }, [locale, dir]);
 };
 
+// Subpath deployments: the router mirrors Vite's base (BASE_URL is '/' at the root).
+const BASENAME = import.meta.env.BASE_URL.replace(/\/$/, '') || '/';
+
 export const App = (): JSX.Element => {
   useDirection();
   const dispatch = useAppDispatch();
@@ -47,7 +50,7 @@ export const App = (): JSX.Element => {
   }, [status, isFetched, data, dispatch]);
 
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={BASENAME}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/activate" element={<ActivationPage />} />

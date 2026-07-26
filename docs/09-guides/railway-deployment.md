@@ -76,7 +76,55 @@ any `VITE_*` value requires a **redeploy** — it is a build-time value.
 
 3. Open `https://<app-domain>` → log in with the seeded admin.
 
-## 5. Notes
+## 5. Serving under a subpath — `https://egycash.com.eg/ecms`
+
+The whole app can live under a path prefix on the company domain while still running on
+Railway. Two pieces:
+
+### 5.1 App configuration (prefix-aware build + runtime)
+
+Set on the **app** service (replacing the corresponding §3 values), then redeploy:
+
+| Variable | Value |
+|---|---|
+| `BASE_PATH` | `/ecms` — mounts the api (`/ecms/api/v1`), the web, and the refresh-cookie path under the prefix; `/health/*` also stays at the root for Railway's probe |
+| `VITE_BASE_PATH` | `/ecms/` (asset base + router basename — build-time) |
+| `VITE_API_BASE_URL` | `/ecms/api/v1` |
+| `API_PUBLIC_URL` | `https://egycash.com.eg/ecms` |
+| `WEB_PUBLIC_URL` | `https://egycash.com.eg/ecms` (activation links become `https://egycash.com.eg/ecms/activate?token=…`) |
+| `CORS_ORIGINS` | `https://egycash.com.eg` |
+| `COOKIE_SECURE` | `true` |
+
+The worker needs no path-related variables.
+
+### 5.2 Reverse proxy on the egycash.com.eg web server
+
+Railway custom domains are host-based, so a *path* on an existing domain is delegated by
+the server that already hosts `egycash.com.eg`. Nginx example — **the prefix is passed
+through verbatim** (no rewriting; the app expects it), and the `Host` header must be the
+Railway domain because Railway's edge routes by host:
+
+```nginx
+location /ecms {
+    proxy_pass https://<app-service>.up.railway.app;   # no trailing URI part — path passed as-is
+    proxy_set_header Host <app-service>.up.railway.app;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;            # future websocket use
+    proxy_set_header Connection "upgrade";
+    client_max_body_size 30m;                          # ≥ MAX_UPLOAD_MB
+}
+```
+
+(Apache equivalent: `ProxyPass /ecms https://<app>.up.railway.app/ecms` +
+`ProxyPreserveHost Off` + `RequestHeader set Host "<app>.up.railway.app"`.)
+
+Verify after deploy: `https://egycash.com.eg/ecms/health/ready` answers `{"status":"ok"}`,
+the login page loads at `https://egycash.com.eg/ecms`, and after signing in the browser
+holds the `ecms_refresh` cookie scoped to `/ecms/api/v1/auth`.
+
+## 6. Notes
 
 - **Worker is required**: notifications, the outbox relay, scheduled personnel actions,
   offer expiration and the invitation expiry sweep all run there. Without it the app works

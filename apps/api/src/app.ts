@@ -88,14 +88,22 @@ export const buildApp = (): Express => {
   app.use(cookieParser());
   app.use(mongoSanitize());
 
-  // Health endpoints (Deployment Strategy §1).
-  app.get('/health/live', (_req, res) => {
+  // Health endpoints (Deployment Strategy §1) — always at the root so platform probes
+  // (e.g. Railway's healthcheck) work regardless of a BASE_PATH; aliased under the
+  // prefix too so a fronting reverse proxy can monitor through its own route.
+  const healthLive = (_req: express.Request, res: express.Response): void => {
     res.json({ status: 'ok' });
-  });
-  app.get('/health/ready', (_req, res) => {
+  };
+  const healthReady = (_req: express.Request, res: express.Response): void => {
     const ready = mongoReady();
     res.status(ready ? 200 : 503).json({ status: ready ? 'ok' : 'not-ready' });
-  });
+  };
+  app.get('/health/live', healthLive);
+  app.get('/health/ready', healthReady);
+  if (env.BASE_PATH !== '') {
+    app.get(`${env.BASE_PATH}/health/live`, healthLive);
+    app.get(`${env.BASE_PATH}/health/ready`, healthReady);
+  }
 
   // Routers are built here — after every feature module finished evaluating —
   // so cross-feature middleware references are safe (no import-cycle reads).
@@ -135,14 +143,16 @@ export const buildApp = (): Express => {
     }
   }
 
-  app.use('/api/v1', api);
+  app.use(`${env.BASE_PATH}/api/v1`, api);
 
   // Single-service deployment: serve the built web bundle same-origin so the
   // strict-SameSite refresh cookie needs no cross-site exception. Hashed assets are
   // immutable; the HTML shell must revalidate so deploys take effect immediately.
+  // With a BASE_PATH everything lives under the prefix (subpath deployments).
   if (env.WEB_STATIC_DIR !== '') {
     const webRoot = path.resolve(env.WEB_STATIC_DIR);
     app.use(
+      env.BASE_PATH === '' ? '/' : env.BASE_PATH,
       express.static(webRoot, {
         index: false,
         maxAge: '1y',
@@ -152,10 +162,19 @@ export const buildApp = (): Express => {
         },
       }),
     );
+    if (env.BASE_PATH !== '') {
+      app.get('/', (_req, res) => res.redirect(`${env.BASE_PATH}/`));
+    }
     app.use((req, res, next) => {
-      const spa =
-        req.method === 'GET' && !req.path.startsWith('/api/') && !req.path.startsWith('/health/');
-      if (!spa) return next();
+      const underBase =
+        env.BASE_PATH === '' ||
+        req.path === env.BASE_PATH ||
+        req.path.startsWith(`${env.BASE_PATH}/`);
+      const reserved =
+        req.path.startsWith(`${env.BASE_PATH}/api/`) ||
+        req.path.startsWith(`${env.BASE_PATH}/health/`) ||
+        req.path.startsWith('/health/');
+      if (req.method !== 'GET' || !underBase || reserved) return next();
       res.setHeader('Cache-Control', 'no-cache');
       res.sendFile(path.join(webRoot, 'index.html'));
     });

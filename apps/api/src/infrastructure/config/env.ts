@@ -40,6 +40,20 @@ const EnvSchema = z.object({
    * headless — dev and split deployments are unaffected.
    */
   WEB_STATIC_DIR: z.string().default(''),
+  /**
+   * Subpath deployment (e.g. https://egycash.com.eg/ecms): every HTTP surface — the api,
+   * the static web, the refresh-cookie path — mounts under this prefix. The web build
+   * must match (VITE_BASE_PATH + VITE_API_BASE_URL). Empty (default) = root. Health
+   * endpoints stay additionally reachable at the root for platform probes.
+   */
+  BASE_PATH: z
+    .string()
+    .default('')
+    .transform((v) => {
+      const trimmed = v.trim().replace(/\/+$/, '');
+      if (trimmed === '' || trimmed === '/') return '';
+      return trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+    }),
 
   // ── File storage (ADR-010) ────────────────────────────────────────────────
   STORAGE_DRIVER: z.enum(['local', 'railway', 's3', 'minio', 'azure']).default('local'),

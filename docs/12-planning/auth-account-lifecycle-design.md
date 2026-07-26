@@ -1,4 +1,4 @@
-# Authentication & Employee Account Lifecycle — Design (FROZEN, Revision 2)
+# Authentication & Employee Account Lifecycle — Design (FROZEN, Revision 3)
 
 **Status: FROZEN — approved with decisions D1–D7 as recorded below (D3 and D6 amended by the
 approver). Implementation proceeds as a single PR.**
@@ -379,6 +379,76 @@ the argon2id hash, and never returned by any API. Credential messages exist only
 | Identity seams | `tempPasswordSource` (NID) **removed**; `employeeCode` resolver unchanged |
 | Web | Creation/reset dialogs show **delivery status** instead of a one-time password |
 
+## 13. Revision 3 — delivery-hardening amendments (R12–R18, approved 2026-07-26)
+
+### R12 — Credentials exist only in memory (confirmed + made explicit)
+
+The temporary password lives in process memory between generation and delivery, and only its
+argon2id **hash** is ever stored. Delivery logging records provider + recipient + outcome,
+never the message body. Audit records carry per-channel outcomes only. This was already the
+Revision-2 behavior; R12 promotes it to a hard invariant — and it constrains R14 (below).
+
+### R13 — Delivery failures never block creation; delivery is retryable
+
+Already true: provisioning succeeds regardless of channel outcomes, and per-channel status is
+returned + audited. **New:** a dedicated retry —
+`POST /platform/users/:id/credentials/resend` (permission `user.resetPassword`) re-delivers
+credentials to a still-gated account without the disruption of a full reset (no session
+revocation, no gate churn).
+
+### R14 — Regenerate only when necessary (and the R12 conflict, resolved)
+
+- **Expired temp** → resend issues a fresh password **and** a fresh validity window (R10).
+- **Still-valid temp** → resend preserves the **remaining validity window**.
+- **Conflict note (R12 wins):** literally re-sending *the same* password would require the
+  plaintext to be recoverable after delivery — exactly what R12 forbids (hash-only). So a
+  resend transparently replaces the hash with a fresh policy-compliant password while
+  keeping the window. From the employee's perspective the credentials are simply delivered
+  again (the previous message's password — which they evidently never used — stops
+  working). No session is revoked and the gate state is untouched, so this is *not* a
+  password reset in the R6 sense. If the approver prefers true same-password resend, R12
+  must be relaxed to encrypted-at-rest retention until first use — **not** recommended.
+- Resend refuses accounts whose gate is cleared (the account is in active use — that is a
+  reset, R6): `422`.
+
+### R15 — Configurable message templates
+
+The credential message is no longer hardcoded: a seeded, **admin-editable** notification
+template (`platform.credentialsDelivery`, variables `username`, `employeeCode`,
+`temporaryPassword`, `loginUrl`, `expiresAt`) is loaded from the existing template system
+(`findLatestByKey`) and rendered **in memory** by the pure rendering engine. Seeding is
+create-if-missing, so admin edits survive every deploy. The rendered result is sent through
+the transient transports and discarded — the persisted `notify()` pipeline is still never
+involved (R12). If the template is missing, delivery falls back to the built-in wording.
+
+### R16 — Channels are independent (confirmed)
+
+Each channel attempts independently: email-only employees and phone-only employees both
+receive credentials; the account never depends on both succeeding (nor on either — R13).
+
+### R17 — Temp passwords satisfy the permanent-password policy, readably
+
+The generator's alphabet already excludes ambiguous glyphs (no `O/0`, `I/l/1`). **New:** the
+generated length adapts to the configured policy (`max(14, auth.password.minLength)`) and
+every generated password is verified against the live policy before issuance — a policy
+tightened by an admin can never be violated by a machine-generated credential.
+
+### R18 — SSO-ready (confirmed)
+
+Unchanged §10: identifier resolution (`findByIdentifier`), the challenge-token second-factor
+seam and the isolated local-credential verification remain the integration points for Azure
+AD / Google Workspace / LDAP / SAML / OAuth alongside local accounts — no lifecycle redesign.
+
+### Revision-3 API/data deltas (summary)
+
+| Surface | Change |
+|---|---|
+| `POST /platform/users/:id/credentials/resend` | New — re-deliver to a gated account; `{ delivery: [...] }`; 422 if the gate is cleared |
+| Notification templates | + seeded `platform.credentialsDelivery` (admin-editable; create-if-missing) |
+| Temp-password generator | Policy-aware length + pre-issuance policy verification |
+| Audit | `credentialsDelivered` gains a `mode` change entry: `initial` / `reset` / `resend` |
+| Web | Employee account card gains **Resend credentials** (visible while the gate is armed) |
+
 ## Review trail
 
 Approved with amendments (2026-07-24): D1/D2/D4/D5/D7 as proposed; **D3 amended** (random
@@ -387,6 +457,12 @@ one-time-visible temp password instead of Employee-Code fallback — codes are p
 Additions: configurable login identifiers, admin username management with permanent
 Employee-Code login, reset = revoke sessions + re-arm gate, Security page ships Active
 Sessions, full audit enumeration (§4.6), future-provider compatibility (§10).
+
+**Revision 3 approved (2026-07-26):** delivery-hardening amendments R12–R18 (§13) —
+memory-only credentials made a hard invariant, retryable delivery with a dedicated resend
+(regenerate-only-when-necessary, R12 conflict resolved in R12's favor), admin-editable
+message templates via the notification-template system, explicit channel independence,
+policy-verified readable temp passwords, SSO seams reconfirmed.
 
 **Revision 2 approved (2026-07-25):** credentials-delivery amendments R1–R11 (§12) — NID
 never a password, always-random unique temp passwords, WhatsApp + email delivery through

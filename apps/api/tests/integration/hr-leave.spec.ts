@@ -350,9 +350,13 @@ describe('grants (§4, L3) + eligibility preflight', () => {
   });
 
   it('counts a freshly-added holiday out of the span (workdays mode)', async () => {
-    // Find a non-weekend day inside a far-future window and declare it a holiday.
+    // Find a non-weekend day inside a far-future window and declare it a holiday. The weekday
+    // must be derived from the SAME Cairo-based date dayOffsetIso sends — probing via UTC
+    // "now" is one day behind between Cairo midnight and UTC midnight (21:00–24:00 UTC).
+    const weekdayOf = (offset: number): number =>
+      ((addDays(cairoToday(), offset).getUTCDay() + 6) % 7) + 1;
     let probe = 60;
-    while ([5, 6].includes(((new Date(Date.now() + probe * 86_400_000).getUTCDay() + 6) % 7) + 1)) {
+    while ([5, 6].includes(weekdayOf(probe))) {
       probe += 1;
     }
     const day = dayOffsetIso(probe);

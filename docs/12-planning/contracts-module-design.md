@@ -1,8 +1,9 @@
 # Contracts Module — Architecture & Design (for approval)
 
-**Status: DRAFT — awaiting approval.** Design-phase only (like Leave Management and
+**Status: REVISION 1 — awaiting freeze.** Design-phase only (like Leave Management and
 Authentication): nothing here is implemented until the approver freezes this document.
-Amendments are recorded as numbered revisions in the review trail.
+Amendments are recorded as numbered revisions in the review trail. §8 (Revision 1)
+supersedes §2–§7 wherever they conflict.
 
 ## 1. Purpose & scope
 
@@ -230,15 +231,132 @@ missing-variable blocking · print/download audit (`export`) · employee-tab rea
 E-signature, approval chains (Workflow module later), payroll calculations, bulk
 generation, DOCX import/export, historical back-dating rules beyond start/end dates.
 
-## 7. Open questions for the approver
+## 7. Open questions for the approver — RESOLVED (Revision 1)
 
-- **Q1 (D8):** approve the server-side chromium PDF in the worker (recommended), or ship
-  phase 1 with the print-view-only fallback and add the PDF job later?
-- **Q2 (D4):** template languages — confirm one-language-per-template (clone for the
-  other) over a single bilingual template.
-- **Q3 (D3):** confirm one-active-contract-per-type default (with the catalog override
-  flag) matches EGYCASH's practice.
+- **Q1 (D8): approved** — server-side PDF via headless Chromium in the worker.
+- **Q2 (D4): confirmed** — one language per template; clone for other languages.
+- **Q3 (D3): confirmed** — one active contract per employee per contract type.
+
+## 8. Revision 1 — approver amendments (A1–A12)
+
+### A1 — Configurable contract numbering
+
+The number format becomes an org **setting** `contracts.numberFormat` — a pattern of
+tokens `{prefix}`, `{year}`, `{seq}` with configurable prefix and sequence padding
+(default `ECMS-CON-{year}-{seq:6}` → `ECMS-CON-2026-000001`). The sequence stays a single
+atomic counter per year (`hr_sequences`, like offers/employees). A format change affects
+**future** contracts only; every issued number remains immutable forever (D2). The
+rendered number is also a placeholder (`{{contract.code}}`, D5).
+
+### A2 — Template-version permanence (confirmed hard invariant)
+
+Restates D9 as an approver requirement: a generated contract **permanently references the
+exact template version** (`templateId` + `templateVersion`); editing a template creates a
+new version consumed only by future generations — no code path can re-render or relink an
+issued contract.
+
+### A3 — Variable snapshots (confirmed hard invariant)
+
+Besides `renderedHtml`, the contract permanently stores the **full resolved variable map**
+used at generation (D2 `variables`), now with per-variable **provenance** — each entry
+records its source (`employee` / `employment` / `organization` / `contract` / `manual
+override` + who overrode). Future audits can explain where every printed value came from.
+
+### A4 — Immutability of Signed / Archived contracts
+
+The D3 machine gains two states:
+
+```
+draft ─(approve, A7)─▶ active ─sign─▶ signed ─archive─▶ archived
+```
+
+- **`signed`** — the manual signature record for phase 1 (A5): each D4 signature block is
+  marked signed (who recorded it, when, optional scanned signed copy as an attachment —
+  A6). All blocks signed ⇒ contract `signed`.
+- **`archived`** — terminal filing state for superseded/terminated/expired contracts.
+- From `signed` or `archived` the contract is **fully immutable** — document, metadata and
+  dates. The only permitted operations are the lifecycle transitions themselves:
+  **amend/renew produce a NEW version/contract** (each with its own snapshot); terminate
+  records the termination on top without touching the document. Direct edits are refused
+  (`CONTRACT_IMMUTABLE`, 422).
+
+### A5 — Electronic-signature future-proofing
+
+Signature capture goes behind a **provider seam** (`signature-provider.ts`, mirroring the
+storage/WhatsApp driver pattern): `manual` (phase 1 — HR records physical signatures) and
+future `docusign` / `adobesign` drivers implementing `initiate(contract, signers)` +
+`handleCallback(webhook)`. The contract's signer records (block, status
+`pending`/`signed`/`declined`, method, `signedAt`, evidence file, provider envelope id)
+are provider-agnostic, so integrating a provider changes **no lifecycle state or schema**
+— only a new driver + its webhook route.
+
+### A6 — Attachments (platform Files)
+
+Contracts carry categorized attachments — NDA, annex, scanned signed copy, approval
+document, other — through the **existing Files service** (upload validation, signing,
+retention, audit all inherited; a seeded `hr.contract` file category). Attachments are
+addable in every state (they never mutate the contract document); removal is blocked once
+the contract is `signed`/`archived` except by `contract.terminate`-level permission, and
+always audited.
+
+### A7 — Approval compatible with the Workflow Engine (ADR-011)
+
+Phase 1 ships a **single-step approval gate**: `draft → (submit) → pendingApproval →
+(approve/reject: permission `contract.approve`) → approved → generate`, toggled by the
+org setting `contracts.requireApproval` (default **on**; off ⇒ draft generates directly).
+The approval record is stored as **workflow-shaped steps**
+(`[{step, decidedBy, decision, note, at}]`) and emits `hr.contract.approvalRequested` /
+`hr.contract.approvalDecided` — when the Workflow Engine lands, it replaces the
+*driver* of this gate (who decides and in what order) while statuses, records and events
+stay identical. No redesign.
+
+### A8 — Employee timeline
+
+Every lifecycle event — created, approved, signed, generated, renewed, amended,
+terminated, expired, archived — is recorded **twice**: the audit entry on the contract
+(D10) and an **activity entry on the Employee** (`hr.contract.*` message keys), exactly
+how personnel actions surface. Contracts therefore appear in the Employee timeline and
+the Electronic Employee File automatically.
+
+### A9 — Leave boundary (read-only)
+
+Leave Management **never** writes to contracts, and Contracts never mutates leave.
+Contracts may *read* leave data solely for reporting/rendering (e.g. a future report
+placeholder); the dependency direction is one-way and report-only.
+
+### A10 — Payroll reads snapshots, never live data
+
+Payroll (future) consumes **contract compensation snapshots** — the A3 frozen variable
+values (`salary.basic`, `salary.currency`, allowances when added to the catalog) of the
+relevant contract version — never mutable employee/employment records. The module exposes
+`GET /hr/contracts/active-snapshot?employeeId&at=` (the contract version in force at a
+date) plus the `hr.contract.*` events. Compensation used by a past payroll run stays
+historically stable by construction: amendments create new versions; old snapshots never
+change.
+
+### A11 — Server-side PDF only (security invariant)
+
+PDFs are generated **exclusively server-side** (worker, Q1) from the **stored, sanitized
+snapshot** — the API accepts no client-supplied HTML anywhere: preview renders
+server-side from the saved template + server-resolved variables (D6), generation freezes
+the server render, and the PDF job reads only the stored snapshot. A browser can
+therefore never alter contract content ahead of PDF generation.
+
+### A12 — Search + reference number
+
+The contract gains an optional **`referenceNumber`** (free external/manual reference,
+searchable). `GET /hr/contracts` supports free-text `search` across **contract number,
+employee name + employee code, and reference number** (indexed), combined with the
+structured filters **contract type, status, start/end date ranges** — same pattern as the
+employees/offers lists.
 
 ## Review trail
 
-*(empty — awaiting first review)*
+**Revision 1 (2026-07-26):** Q1 approved (worker-side chromium PDF), Q2 confirmed
+(one language per template + clone), Q3 confirmed (one active contract per employee per
+type) — and twelve amendments incorporated (§8): configurable numbering format,
+template-version permanence, variable snapshots with provenance, signed/archived
+immutability, e-signature provider seam, Files-backed attachments, Workflow-compatible
+approval gate, employee-timeline activity entries, read-only Leave boundary,
+snapshot-based Payroll reads, server-side-only PDF, and full search + reference number.
+**Awaiting the approver's freeze.**

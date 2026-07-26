@@ -142,9 +142,9 @@ const regEmployee = async (over: Record<string, unknown> = {}, male = true): Pro
 
 /**
  * Get a working self-service SESSION for an auto-provisioned employee account (auth design
- * D1/D2 + §12): the account already exists (created with the employee) with the ESS role at
- * own scope. Credentials are DELIVERED, never echoed by any API (§12 R11), so the suite
- * issues a known temp at the service level, then walks the same gated first-login flow.
+ * D1/D2 + §14): the account exists (born invited, awaiting its setup link) with the ESS
+ * role at own scope. The suite establishes the password at the service level — the same
+ * state activation reaches — and signs in by employee code.
  */
 const activateEssLogin = async (emp: EmployeeDto): Promise<{ userId: string; token: string }> => {
   const reread = await request(app)
@@ -152,23 +152,13 @@ const activateEssLogin = async (emp: EmployeeDto): Promise<{ userId: string; tok
     .set('Authorization', `Bearer ${adminToken}`);
   const userId = (reread.body.data as EmployeeDto).userId;
   expect(userId).not.toBeNull();
-  await userService.setTempPassword(String(userId), PASSWORD, new Date(Date.now() + 3_600_000));
-  const gated = await request(app)
-    .post('/api/v1/auth/login')
-    .send({ identifier: emp.code, password: PASSWORD });
-  expect(gated.status).toBe(200);
-  const gatedBody = gated.body.data as { accessToken: string; mustChangePassword: boolean; me: { id: string } };
-  expect(gatedBody.mustChangePassword).toBe(true);
-  const changed = await request(app)
-    .post('/api/v1/auth/password/change')
-    .set('Authorization', `Bearer ${gatedBody.accessToken}`)
-    .send({ currentPassword: PASSWORD, newPassword: `${PASSWORD}2` });
-  expect(changed.status).toBe(204);
+  await userService.setPassword(String(userId), PASSWORD, 'passwordReset');
+  await userService.forceActivate(String(userId));
   const full = await request(app)
     .post('/api/v1/auth/login')
-    .send({ identifier: emp.code, password: `${PASSWORD}2` });
+    .send({ identifier: emp.code, password: PASSWORD });
   expect(full.status).toBe(200);
-  return { userId: gatedBody.me.id, token: (full.body.data as { accessToken: string }).accessToken };
+  return { userId: String(userId), token: (full.body.data as { accessToken: string }).accessToken };
 };
 
 const balances = async (employeeId: string, year?: number): Promise<LeaveBalanceDto[]> => {

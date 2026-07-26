@@ -168,6 +168,9 @@ const SecurityActions = ({ userId }: { userId: string }): JSX.Element => {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-1.5">
+        {(user?.setupLinkPending ?? false) && (
+          <Badge tone="warning">{t('employees.account.awaitingSetup')}</Badge>
+        )}
         {(user?.mustChangePassword ?? false) && (
           <Badge tone="warning">{t('employees.account.mustChange')}</Badge>
         )}
@@ -196,7 +199,7 @@ const SecurityActions = ({ userId }: { userId: string }): JSX.Element => {
         <Button size="sm" variant="secondary" loading={resetPassword.isPending} onClick={() => void doResetPassword()}>
           {t('employees.account.resetPassword')}
         </Button>
-        {(user?.mustChangePassword ?? false) && (
+        {(user?.setupLinkPending ?? false) && (
           <Button size="sm" variant="secondary" loading={resendCredentials.isPending} onClick={() => void doResend()}>
             {t('employees.account.resendCredentials')}
           </Button>

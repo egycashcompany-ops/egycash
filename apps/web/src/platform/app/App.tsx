@@ -7,6 +7,7 @@ import { useAppDispatch, useAppSelector } from '../../store';
 import { signedIn, signedOut } from '../../store/authSlice';
 import { bootstrapSession } from '../auth/api';
 import { LoginPage } from '../auth/LoginPage';
+import { ActivationPage } from '../auth/ActivationPage';
 import { RequireAuth } from '../router/RequireAuth';
 import { LoadingState } from '../../shared/ui/states/LoadingState';
 
@@ -49,6 +50,7 @@ export const App = (): JSX.Element => {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/activate" element={<ActivationPage />} />
         <Route
           path="/organization/*"
           element={

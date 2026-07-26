@@ -45,8 +45,8 @@ export const registerAuthSettings = (): void => {
     allowedScopes: ['organization'],
   });
   declareSetting({
-    key: SettingKeys.TempPasswordTtlHours,
-    description: 'Temporary-password validity window in hours (auth design §12 R10)',
+    key: SettingKeys.ActivationLinkTtlHours,
+    description: 'Activation/setup-link validity window in hours (auth design §14)',
     schema: z.number().int().min(1).max(336),
     defaultValue: 48,
     allowedScopes: ['organization'],

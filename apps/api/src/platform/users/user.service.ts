@@ -1,6 +1,5 @@
 // Business rules for user accounts. Lifecycle: invite → activate → suspend → archive —
 // never hard-delete (audit integrity, Platform Core §2).
-import { randomInt } from 'node:crypto';
 import { Types } from 'mongoose';
 import {
   ErrorCodes,
@@ -122,8 +121,9 @@ class UserService {
   }
 
   /**
-   * Auto-provisioned account (frozen auth design 4.1): ACTIVE immediately with a hashed temp
-   * password and the change gate armed — no invite flow. Used by the HR employee lifecycle.
+   * Auto-provisioned account (frozen auth design 4.1 + §14): INVITED with a one-time
+   * activation token — no password exists until the employee chooses one at the setup
+   * link. Used by the HR employee lifecycle.
    */
   async createProvisioned(
     input: Omit<CreateUser, 'email'> & { email?: string },
@@ -131,8 +131,8 @@ class UserService {
     extra: {
       username: string;
       employeeId: string;
-      tempPassword: string;
-      tempPasswordExpiresAt: Date;
+      activationToken: string;
+      activationExpiresAt: Date;
     },
   ): Promise<UserDoc> {
     const username = extra.username.toLowerCase();
@@ -142,7 +142,6 @@ class UserService {
     if (input.email !== undefined && (await userRepository.findByEmail(input.email)) !== null) {
       throw new ConflictError('A user with this email already exists');
     }
-    const passwordHash = await hashPassword(extra.tempPassword);
     const user = await unitOfWork(async (session) => {
       const created = await userRepository.create(
         {
@@ -150,10 +149,9 @@ class UserService {
           username,
           employeeId: new Types.ObjectId(extra.employeeId),
           phone: input.phone ?? null,
-          passwordHash,
           profile: { firstName: input.firstName, lastName: input.lastName },
           locale: input.locale,
-          status: 'active',
+          status: 'invited',
           organization: {
             branchId:
               input.organization.branchId === null
@@ -172,11 +170,10 @@ class UserService {
                 ? null
                 : new Types.ObjectId(input.organization.jobTitleId),
           },
-          security: {
-            mustChangePassword: true,
-            tempPasswordExpiresAt: extra.tempPasswordExpiresAt,
-          } as UserDoc['security'],
-          activation: { tokenHash: null, expiresAt: null },
+          activation: {
+            tokenHash: sha256(extra.activationToken),
+            expiresAt: extra.activationExpiresAt,
+          },
         },
         { by, session },
       );
@@ -348,9 +345,11 @@ class UserService {
 
   async activateWithToken(token: string, password: string): Promise<UserDoc> {
     const user = await userRepository.findByActivationTokenHash(sha256(token));
+    // §14: a valid token completes FIRST setup (invited) or a post-reset re-setup (active) —
+    // token possession is the authorization either way. Suspended/archived accounts refuse.
     if (
       user === null ||
-      user.status !== 'invited' ||
+      (user.status !== 'invited' && user.status !== 'active') ||
       user.activation.expiresAt === null ||
       user.activation.expiresAt < new Date()
     ) {
@@ -360,6 +359,7 @@ class UserService {
       );
     }
     await this.assertPasswordPolicy(password);
+    const wasInvited = user.status === 'invited';
     const updated = await userRepository.updateSecurity(String(user._id), {
       $set: {
         passwordHash: await hashPassword(password),
@@ -371,17 +371,31 @@ class UserService {
     });
     if (updated === null) throw new NotFoundError();
 
-    await auditService.record({
-      entityRef: entityRef(String(user._id)),
-      action: 'statusChange',
-      changes: [{ field: 'status', old: 'invited', new: 'active' }],
-      actor: { userId: String(user._id), ip: null, userAgent: null },
-    });
-    await emit(PlatformEvents.UserStatusChanged, {
-      userId: String(user._id),
-      email: updated.email,
-      status: 'active',
-    });
+    if (wasInvited) {
+      await auditService.record({
+        entityRef: entityRef(String(user._id)),
+        action: 'statusChange',
+        changes: [{ field: 'status', old: 'invited', new: 'active' }],
+        actor: { userId: String(user._id), ip: null, userAgent: null },
+      });
+      // §14: the first authenticated use of the account's credential.
+      await auditService.record({
+        entityRef: entityRef(String(user._id)),
+        action: 'firstLogin',
+        actor: { userId: String(user._id), ip: null, userAgent: null },
+      });
+      await emit(PlatformEvents.UserStatusChanged, {
+        userId: String(user._id),
+        email: updated.email,
+        status: 'active',
+      });
+    } else {
+      await auditService.record({
+        entityRef: entityRef(String(user._id)),
+        action: 'passwordChanged',
+        actor: { userId: String(user._id), ip: null, userAgent: null },
+      });
+    }
     return updated;
   }
 
@@ -399,7 +413,6 @@ class UserService {
         'security.lockedUntil': null,
         // A successful change is the ONLY thing that clears the first-login gate (design 4.2).
         'security.mustChangePassword': false,
-        'security.tempPasswordExpiresAt': null,
       },
     });
     if (updated === null) throw new NotFoundError();
@@ -407,76 +420,24 @@ class UserService {
     await auditService.record({ entityRef: entityRef(userId), action });
   }
 
-  /**
-   * Temp-password issuance (design 4.1/4.4 + §12 R10): hashes WITHOUT the policy check (the
-   * policy applies to the user's NEW password), arms the server-enforced change gate and
-   * starts the validity window. Replacing the hash instantly invalidates any previous temp.
-   */
-  async setTempPassword(userId: string, password: string, expiresAt: Date): Promise<void> {
-    const updated = await userRepository.updateSecurity(userId, {
-      $set: {
-        passwordHash: await hashPassword(password),
-        'security.passwordChangedAt': null,
-        'security.failedLogins': 0,
-        'security.lockedUntil': null,
-        'security.mustChangePassword': true,
-        'security.tempPasswordExpiresAt': expiresAt,
-      },
-    });
-    if (updated === null) throw new NotFoundError();
-    await getCache().del(`auth:user:${userId}`);
+  /** One-time setup token — a dedicated seam so tests can capture the delivered secret. */
+  generateActivationToken(): string {
+    return randomToken();
   }
 
-  /** End of the validity window for a temp password issued right now (§12 R10). */
-  async tempPasswordExpiry(): Promise<Date> {
-    const ttlHours = await settingsService.resolve<number>(SettingKeys.TempPasswordTtlHours, {
+  /** End of the validity window for a setup link issued right now (§14). */
+  async activationLinkExpiry(): Promise<Date> {
+    const ttlHours = await settingsService.resolve<number>(SettingKeys.ActivationLinkTtlHours, {
       userId: null,
       branchId: null,
     });
     return new Date(Date.now() + ttlHours * 3_600_000);
   }
 
-  /**
-   * Random temporary password (§12 R1 + §13 R17): unambiguous alphabet (no O/0, I/l/1),
-   * guaranteed character classes, CSPRNG throughout. Length defaults to 14 — callers that
-   * must honor the live policy go through `policyTempPassword`.
-   */
-  generateTempPassword(length = 14): string {
-    const lower = 'abcdefghjkmnpqrstuvwxyz';
-    const upper = 'ABCDEFGHJKMNPQRSTUVWXYZ';
-    const digits = '23456789';
-    const symbols = '!@#$%&*';
-    const all = lower + upper + digits + symbols;
-    const pick = (set: string): string => set[randomInt(set.length)] ?? set[0]!;
-    const chars = [pick(lower), pick(upper), pick(digits), pick(symbols)];
-    while (chars.length < length) chars.push(pick(all));
-    for (let i = chars.length - 1; i > 0; i -= 1) {
-      const j = randomInt(i + 1);
-      [chars[i], chars[j]] = [chars[j]!, chars[i]!];
-    }
-    return chars.join('');
-  }
-
-  /** R17 — the generated temp must satisfy the SAME policy as permanent passwords. */
-  async policyTempPassword(): Promise<string> {
-    const subject = { userId: null, branchId: null };
-    const minLength = await settingsService.resolve<number>(SettingKeys.PasswordMinLength, subject);
-    const requireComplexity = await settingsService.resolve<boolean>(
-      SettingKeys.PasswordRequireComplexity,
-      subject,
-    );
-    const generated = this.generateTempPassword(Math.max(14, minLength));
-    const violation = passwordPolicyViolation(generated, { minLength, requireComplexity });
-    // All four classes + adaptive length make a violation structurally impossible; the check
-    // is a guard against future policy dimensions the generator does not yet know about.
-    if (violation !== null) throw new Error(`generated temp password rejected: ${violation}`);
-    return generated;
-  }
-
-  /** §12 R3 — compose + send over every reachable channel; outcomes only, never the secret. */
-  private async deliverFor(
+  /** §14 — deliver the setup link over every reachable channel; outcomes only. */
+  private async deliverLinkFor(
     user: UserDoc,
-    temporaryPassword: string,
+    setupToken: string,
     expiresAt: Date,
     mode: 'reset' | 'resend',
   ): Promise<CredentialsDeliveryResultDto[]> {
@@ -487,43 +448,54 @@ class UserService {
       employeeCode: await resolveEmployeeCodeOfUser(userId),
       phone: user.phone,
       email: user.email,
-      temporaryPassword,
+      setupToken,
       expiresAt,
       mode,
     });
   }
 
   /**
-   * Admin reset (design §12 R6): a fresh random temporary password — hashed, gated, expiring
-   * — delivered to the user via WhatsApp + email. The password never leaves the server.
+   * Admin reset (design §14.4): lock the account out — password hash cleared, a fresh
+   * one-time setup link delivered. The user re-establishes their own password at the link.
+   * (Session revocation happens at the route so audit/order match the other admin ops.)
    */
-  async resetToTempPassword(userId: string): Promise<CredentialsDeliveryResultDto[]> {
+  async resetViaSetupLink(userId: string): Promise<CredentialsDeliveryResultDto[]> {
     const user = await userRepository.getById(userId);
-    const generated = await this.policyTempPassword();
-    const expiresAt = await this.tempPasswordExpiry();
-    await this.setTempPassword(userId, generated, expiresAt);
+    const token = this.generateActivationToken();
+    const expiresAt = await this.activationLinkExpiry();
+    const updated = await userRepository.updateSecurity(userId, {
+      $set: {
+        passwordHash: null,
+        'security.failedLogins': 0,
+        'security.lockedUntil': null,
+        'activation.tokenHash': sha256(token),
+        'activation.expiresAt': expiresAt,
+      },
+    });
+    if (updated === null) throw new NotFoundError();
+    await getCache().del(`auth:user:${userId}`);
     await auditService.record({ entityRef: entityRef(userId), action: 'passwordReset' });
-    return this.deliverFor(user, generated, expiresAt, 'reset');
+    return this.deliverLinkFor(user, token, expiresAt, 'reset');
   }
 
   /**
-   * Re-deliver credentials to a still-gated account (§13 R13/R14) — no session revocation,
-   * no gate churn. The plaintext is unrecoverable (R12: hash only), so the hash is replaced
-   * transparently; a still-valid window is PRESERVED, an expired one renews (R10).
+   * Re-deliver the setup link (§14.3): allowed only while a link is PENDING — a fresh token
+   * replaces (and instantly invalidates) the previous one, with a fresh validity window.
    */
-  async resendCredentials(userId: string): Promise<CredentialsDeliveryResultDto[]> {
+  async resendSetupLink(userId: string): Promise<CredentialsDeliveryResultDto[]> {
     const user = await userRepository.getById(userId);
-    if (!(user.security.mustChangePassword ?? false)) {
+    if (user.activation.tokenHash === null) {
       throw new BusinessRuleError(
-        'this account has already set its own password — use reset instead',
+        'no setup link is pending for this account — use reset instead',
       );
     }
-    const current = user.security.tempPasswordExpiresAt ?? null;
-    const expiresAt =
-      current !== null && current.getTime() > Date.now() ? current : await this.tempPasswordExpiry();
-    const generated = await this.policyTempPassword();
-    await this.setTempPassword(userId, generated, expiresAt);
-    return this.deliverFor(user, generated, expiresAt, 'resend');
+    const token = this.generateActivationToken();
+    const expiresAt = await this.activationLinkExpiry();
+    const updated = await userRepository.updateSecurity(userId, {
+      $set: { 'activation.tokenHash': sha256(token), 'activation.expiresAt': expiresAt },
+    });
+    if (updated === null) throw new NotFoundError();
+    return this.deliverLinkFor(user, token, expiresAt, 'resend');
   }
 
   /** D6 admin force-on/off: force ON clears any enrolled secret — the user re-enrolls. */
@@ -655,6 +627,7 @@ class UserService {
           doc.organization.jobTitleId === null ? null : String(doc.organization.jobTitleId),
       },
       mustChangePassword: doc.security.mustChangePassword ?? false,
+      setupLinkPending: doc.activation.tokenHash !== null,
       totpEnabled: doc.security.totp.enabled,
       totpRequired: doc.security.totp.required ?? false,
       version: doc.__v,

@@ -1,9 +1,9 @@
-// Transient credentials delivery (auth design §12 R3): composes the bilingual first-login
-// message (username, Employee Code, temporary password, login URL, must-change notice) and
-// sends it via WhatsApp + email DIRECTLY through the infrastructure transports. It must NOT
-// go through the persisted notifications pipeline — notify() stores rendered bodies, which
-// would persist the password in plaintext (forbidden by R11). Messages exist only in transit;
-// audits record per-channel outcomes, never the password.
+// Transient credentials delivery (auth design §12 R3 + §14): composes the bilingual
+// account-setup message (username, Employee Code, one-time setup LINK, expiry) and sends it
+// via WhatsApp + email DIRECTLY through the infrastructure transports. It must NOT go
+// through the persisted notifications pipeline — notify() stores rendered bodies, which
+// would persist the one-time link (forbidden by R11/R12). Messages exist only in transit;
+// audits record per-channel outcomes, never the link.
 import { type CredentialsDeliveryResultDto } from '@ecms/contracts';
 import { env } from '../../infrastructure/config/env';
 import { sendMail } from '../../infrastructure/email/mailer';
@@ -21,10 +21,10 @@ export interface DeliverCredentialsInput {
   employeeCode: string | null;
   phone: string | null;
   email: string | null;
-  /** Transit-only — never persisted, never logged. */
-  temporaryPassword: string;
+  /** One-time setup token (§14) — transit-only, never persisted or logged in the clear. */
+  setupToken: string;
   expiresAt: Date;
-  /** Provenance for the audit trail (§13 R14). */
+  /** Provenance for the audit trail (§13 R14/§14). */
   mode: 'initial' | 'reset' | 'resend';
 }
 
@@ -34,18 +34,18 @@ const escapeHtml = (value: string): string =>
 /** Built-in wording — the fallback when the seeded template has been deleted. */
 const FALLBACK = {
   subject: {
-    ar: 'EGYCASH — بيانات الدخول',
-    en: 'EGYCASH — your login credentials',
+    ar: 'EGYCASH — تفعيل حساب الدخول',
+    en: 'EGYCASH — activate your account',
   },
   body: {
     ar:
       'EGYCASH — حساب الدخول الخاص بك\nاسم المستخدم: {{username}}\nكود الموظف: {{employeeCode}}\n' +
-      'كلمة المرور المؤقتة: {{temporaryPassword}}\nرابط الدخول: {{loginUrl}}\n' +
-      'هذه كلمة مرور مؤقتة ويجب تغييرها عند أول تسجيل دخول. صلاحيتها تنتهي في {{expiresAt}}.',
+      'لاختيار كلمة المرور وتفعيل حسابك افتح الرابط التالي:\n{{setupLink}}\n' +
+      'هذا الرابط يُستخدم مرة واحدة وتنتهي صلاحيته في {{expiresAt}}.',
     en:
       'EGYCASH — your login account\nUsername: {{username}}\nEmployee Code: {{employeeCode}}\n' +
-      'Temporary password: {{temporaryPassword}}\nLogin: {{loginUrl}}\n' +
-      'This password is TEMPORARY and must be changed at your first sign-in. It expires at {{expiresAt}}.',
+      'Open this one-time link to choose your password and activate your account:\n{{setupLink}}\n' +
+      'The link can be used once and expires at {{expiresAt}}.',
   },
 };
 
@@ -64,8 +64,7 @@ const composeMessage = async (
   const rendered = renderTemplate(source, {
     username: input.username,
     employeeCode: input.employeeCode ?? '—',
-    temporaryPassword: input.temporaryPassword,
-    loginUrl: env.WEB_PUBLIC_URL,
+    setupLink: `${env.WEB_PUBLIC_URL}/activate?token=${input.setupToken}`,
     expiresAt: `${input.expiresAt.toISOString().replace('T', ' ').slice(0, 16)} UTC`,
   });
   const subject = rendered.subject ?? rendered.body;

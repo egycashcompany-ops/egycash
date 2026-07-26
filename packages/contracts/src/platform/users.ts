@@ -79,8 +79,10 @@ export interface UserDto {
   email: string | null;
   /** Second login identifier; null for accounts that only log in by email. */
   username: string | null;
-  /** First-login gate state (admin visibility; design 4.2). */
+  /** First-login gate state (admin visibility; design 4.2 — dormant since §14). */
   mustChangePassword: boolean;
+  /** A one-time setup/activation link is outstanding (design §14) — resend is possible. */
+  setupLinkPending: boolean;
   totpEnabled: boolean;
   /** D6 — admin-forced TOTP enrollment pending/active. */
   totpRequired: boolean;

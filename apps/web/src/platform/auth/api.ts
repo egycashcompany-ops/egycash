@@ -43,6 +43,10 @@ export const bootstrapSession = async (): Promise<MeDto | null> => {
 
 // ── Security page + first-login gate (auth design 4.2/4.4/4.5) ──────────────
 
+/** Complete the one-time setup link: the user chooses their own password (§14). */
+export const activateRequest = (token: string, password: string): Promise<void> =>
+  post<void>('/auth/activate', { token, password });
+
 export const changePasswordRequest = (currentPassword: string, newPassword: string): Promise<void> =>
   post<void>('/auth/password/change', { currentPassword, newPassword });
 

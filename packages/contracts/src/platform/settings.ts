@@ -13,8 +13,8 @@ export const SettingKeys = {
   TotpEnforcedForPrivileged: 'auth.totp.enforcedForPrivileged',
   /** Enabled login identifier kinds (design 4.3): username / email / employeeCode. */
   AuthLoginIdentifiers: 'auth.loginIdentifiers',
-  /** Temp-password validity window in hours (design §12 R10). */
-  TempPasswordTtlHours: 'auth.tempPassword.ttlHours',
+  /** Activation/setup-link validity window in hours (design §14). */
+  ActivationLinkTtlHours: 'auth.activationLink.ttlHours',
   AuditRetentionActivityDays: 'audit.retention.activityDays',
   AuditExportMaxRows: 'audit.export.maxRows',
   AuditSignalsDeniedThreshold: 'audit.signals.deniedThreshold',

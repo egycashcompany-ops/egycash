@@ -232,8 +232,8 @@ const action = (
 
 /**
  * Accounts are auto-provisioned with the employee (auth design D1) — return the user id.
- * The suite's sessions authenticate with PASSWORD, so replace the unseen temp password
- * (service-level setPassword also clears the first-login gate).
+ * Provisioned accounts are born `invited` awaiting the setup link (Rev 4), so the suite
+ * activates them at the service level with its own PASSWORD instead of walking the link flow.
  */
 const activateLogin = async (emp: EmployeeDto): Promise<string> => {
   const reread = await request(app)
@@ -242,6 +242,7 @@ const activateLogin = async (emp: EmployeeDto): Promise<string> => {
   const userId = (reread.body.data as EmployeeDto).userId;
   expect(userId).not.toBeNull();
   await userService.setPassword(String(userId), PASSWORD, 'passwordReset');
+  await userService.forceActivate(String(userId));
   return String(userId);
 };
 

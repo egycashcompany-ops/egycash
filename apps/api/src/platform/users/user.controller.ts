@@ -66,16 +66,16 @@ export const deleteUser = async (req: Request, res: Response): Promise<void> => 
 
 export const adminResetPassword = async (req: Request, res: Response): Promise<void> => {
   const { params } = validated<AdminResetPassword, never, IdParam>(req);
-  // §12 R6: random temp + delivery; the password itself never appears in any response.
-  const delivery = await userService.resetToTempPassword(params.id);
+  // §14.4: lock out (hash cleared, sessions revoked) + deliver a fresh one-time setup link.
+  const delivery = await userService.resetViaSetupLink(params.id);
   await authService.revokeAllSessionsForUser(params.id, 'admin-password-reset');
   ok(res, { delivery });
 };
 
 export const adminResendCredentials = async (req: Request, res: Response): Promise<void> => {
   const { params } = validated<never, never, IdParam>(req);
-  // §13 R13/R14: re-deliver to a still-gated account — no session revocation, no gate churn.
-  const delivery = await userService.resendCredentials(params.id);
+  // §14.3: new token replaces (and invalidates) the pending link — no other side effects.
+  const delivery = await userService.resendSetupLink(params.id);
   ok(res, { delivery });
 };
 

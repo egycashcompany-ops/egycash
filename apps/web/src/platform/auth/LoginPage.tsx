@@ -54,10 +54,10 @@ export const LoginPage = (): JSX.Element => {
       }
       setStep({ kind: 'totp', challengeToken: response.challengeToken, enroll });
     } catch (e) {
-      // §12 R10: an expired temporary password needs an HR re-issue, not a retry.
+      // §14: a not-yet-activated account needs its setup link, not a retry.
       setError(
-        e instanceof ApiError && e.code === 'AUTH_TEMP_PASSWORD_EXPIRED'
-          ? t('platform.auth.login.tempExpired')
+        e instanceof ApiError && e.code === 'AUTH_ACCOUNT_NOT_ACTIVE'
+          ? t('platform.auth.login.notActivated')
           : t('platform.auth.login.failed'),
       );
     } finally {

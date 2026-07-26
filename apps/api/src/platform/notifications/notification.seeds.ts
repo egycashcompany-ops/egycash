@@ -9,30 +9,30 @@ export const SECURITY_ALERT_TEMPLATE_KEY = 'platform.securityAlertRaised';
 export const ROLE_ASSIGNMENT_CHANGED_TEMPLATE_KEY = 'platform.roleAssignmentChanged';
 
 export const ensureBuiltinNotificationTemplates = async (): Promise<void> => {
-  // Credential message (auth design §13 R15): ADMIN-EDITABLE wording; rendered in memory by
-  // the transient credentials-delivery service — never sent through the persisted pipeline
-  // (the body carries a temporary password, which must never be stored, R12). `channels`
-  // is informational here: delivery goes to WhatsApp + email transports directly.
+  // Account-setup message (auth design §13 R15 + §14): ADMIN-EDITABLE wording; rendered in
+  // memory by the transient credentials-delivery service — never sent through the persisted
+  // pipeline (the body carries a one-time setup link, which must never be stored, R12).
+  // `channels` is informational here: delivery goes to WhatsApp + email transports directly.
   await notificationTemplateService.ensure({
     key: CREDENTIALS_TEMPLATE_KEY,
     category: 'security',
     priority: 'critical',
     subject: {
-      ar: 'EGYCASH — بيانات الدخول',
-      en: 'EGYCASH — your login credentials',
+      ar: 'EGYCASH — تفعيل حساب الدخول',
+      en: 'EGYCASH — activate your account',
     },
     body: {
       ar:
         'EGYCASH — حساب الدخول الخاص بك\nاسم المستخدم: {{username}}\nكود الموظف: {{employeeCode}}\n' +
-        'كلمة المرور المؤقتة: {{temporaryPassword}}\nرابط الدخول: {{loginUrl}}\n' +
-        'هذه كلمة مرور مؤقتة ويجب تغييرها عند أول تسجيل دخول. صلاحيتها تنتهي في {{expiresAt}}.',
+        'لاختيار كلمة المرور وتفعيل حسابك افتح الرابط التالي:\n{{setupLink}}\n' +
+        'هذا الرابط يُستخدم مرة واحدة وتنتهي صلاحيته في {{expiresAt}}.',
       en:
         'EGYCASH — your login account\nUsername: {{username}}\nEmployee Code: {{employeeCode}}\n' +
-        'Temporary password: {{temporaryPassword}}\nLogin: {{loginUrl}}\n' +
-        'This password is TEMPORARY and must be changed at your first sign-in. It expires at {{expiresAt}}.',
+        'Open this one-time link to choose your password and activate your account:\n{{setupLink}}\n' +
+        'The link can be used once and expires at {{expiresAt}}.',
     },
     channels: ['email'],
-    variables: ['username', 'employeeCode', 'temporaryPassword', 'loginUrl', 'expiresAt'],
+    variables: ['username', 'employeeCode', 'setupLink', 'expiresAt'],
     defaultExpiryHours: null,
   });
   await notificationTemplateService.ensure({

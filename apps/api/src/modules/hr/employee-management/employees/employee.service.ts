@@ -783,8 +783,8 @@ class EmployeeService {
     if (employee.userId !== null) return null;
     if (!(EMPLOYED_STATUSES as readonly string[]).includes(employee.status)) return null;
     try {
-      const tempPassword = await userService.policyTempPassword();
-      const tempPasswordExpiresAt = await userService.tempPasswordExpiry();
+      const activationToken = userService.generateActivationToken();
+      const activationExpiresAt = await userService.activationLinkExpiry();
       const email = employee.personal.contact.email;
       const phone = employee.personal.contact.primaryPhone;
       const user = await userService.createProvisioned(
@@ -804,8 +804,8 @@ class EmployeeService {
         {
           username: employee.code,
           employeeId: String(employee._id),
-          tempPassword,
-          tempPasswordExpiresAt,
+          activationToken,
+          activationExpiresAt,
         },
       );
       await EmployeeModel.updateOne(
@@ -831,15 +831,15 @@ class EmployeeService {
         userId: String(user._id),
         code: employee.code,
       });
-      // §12 R3 — transient delivery; outcomes (never the password) go back to the caller.
+      // §14 — transient delivery of the one-time setup link; outcomes go back to the caller.
       const delivery = await deliverCredentials({
         userId: String(user._id),
         username: user.username ?? employee.code.toLowerCase(),
         employeeCode: employee.code,
         phone,
         email,
-        temporaryPassword: tempPassword,
-        expiresAt: tempPasswordExpiresAt,
+        setupToken: activationToken,
+        expiresAt: activationExpiresAt,
         mode: 'initial',
       });
       return { username: employee.code, delivery };

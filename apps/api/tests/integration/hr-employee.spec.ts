@@ -369,7 +369,7 @@ describe('platform identity (ADR-017) — branch code, global sequence, login ac
     expect(second.code).toBe(`001${second.employeeNumber}`);
   });
 
-  it('auto-provisions the login at hire (username = the code) and gates the first sign-in', async () => {
+  it('auto-provisions the login at hire (username = the code) awaiting its setup link (§14)', async () => {
     const emp = await hire();
     // The account exists the moment the employee does (auth design D1) — no manual step.
     expect(emp.userId).not.toBeNull();
@@ -384,11 +384,13 @@ describe('platform identity (ADR-017) — branch code, global sequence, login ac
       employeeId: string | null;
       status: string;
       mustChangePassword: boolean;
+      setupLinkPending: boolean;
     };
     expect(user.username).toBe(emp.code.toLowerCase()); // defaulted to the Employee Code
     expect(user.employeeId).toBe(emp.id);
-    expect(user.status).toBe('active'); // born active — no invite flow
-    expect(user.mustChangePassword).toBe(true); // first-login gate armed
+    expect(user.status).toBe('invited'); // §14: no password exists until the employee sets one
+    expect(user.setupLinkPending).toBe(true); // the one-time setup link is outstanding
+    expect(user.mustChangePassword).toBe(false); // the gate is dormant in the link model
 
     // The manual escape hatch (D7) refuses a second account for the same employee.
     const dup = await request(app)
@@ -397,36 +399,21 @@ describe('platform identity (ADR-017) — branch code, global sequence, login ac
       .send({ email: `dup-${emp.code}@ecms.local`, firstName: { ar: 'x', en: 'x' }, lastName: { ar: 'y', en: 'y' } });
     expect(dup.status).toBe(409);
 
-    // Credentials are delivered, never echoed (§12 R11) — issue a known temp at the
-    // service level to walk the same gated first-login flow.
-    await userService.setTempPassword(userId, PASSWORD, new Date(Date.now() + 3_600_000));
-
-    // The employee signs in BY EMPLOYEE CODE and is gated:
-    const gated = await request(app)
+    // A not-yet-activated account cannot sign in with ANY password.
+    const early = await request(app)
       .post('/api/v1/auth/login')
       .send({ identifier: emp.code, password: PASSWORD });
-    expect(gated.status).toBe(200);
-    const gatedBody = gated.body.data as { accessToken: string; mustChangePassword: boolean };
-    expect(gatedBody.mustChangePassword).toBe(true);
+    expect(early.status).toBe(401);
 
-    // The gate is SERVER-enforced: any non-exempt endpoint fails with the dedicated code.
-    const blocked = await request(app)
-      .get('/api/v1/hr/employees')
-      .set('Authorization', `Bearer ${gatedBody.accessToken}`);
-    expect(blocked.status).toBe(403);
-    expect((blocked.body as { error: { code: string } }).error.code).toBe('PASSWORD_CHANGE_REQUIRED');
-
-    // Changing the password clears the gate and unlocks the app.
-    const changed = await request(app)
-      .post('/api/v1/auth/password/change')
-      .set('Authorization', `Bearer ${gatedBody.accessToken}`)
-      .send({ currentPassword: PASSWORD, newPassword: `${PASSWORD}9` });
-    expect(changed.status).toBe(204);
-    const unlocked = await request(app)
+    // Establish the password the way activation would (link contract lives in
+    // auth-lifecycle.spec), then the employee signs in BY EMPLOYEE CODE:
+    await userService.setPassword(userId, PASSWORD, 'passwordReset');
+    await userService.forceActivate(userId);
+    const login = await request(app)
       .post('/api/v1/auth/login')
-      .send({ identifier: emp.code, password: `${PASSWORD}9` });
-    expect(unlocked.status).toBe(200);
-    expect((unlocked.body.data as { mustChangePassword: boolean }).mustChangePassword).toBe(false);
+      .send({ identifier: emp.code, password: PASSWORD });
+    expect(login.status).toBe(200);
+    expect((login.body.data as { mustChangePassword: boolean }).mustChangePassword).toBe(false);
   });
 
   it('lets a super-admin correct an otherwise-immutable branch code, but forbids ordinary editors', async () => {

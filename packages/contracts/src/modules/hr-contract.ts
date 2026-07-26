@@ -272,6 +272,17 @@ export interface ContractAttachmentDto {
 
 const isoDate = () => z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
+/**
+ * A3/A16 — one manual override. Sent as PAIRS (not a keyed record): catalog keys carry
+ * dots (`employee.fullName`) and the platform's mongo-sanitize middleware strips dotted
+ * keys from request bodies, so a Record<key, value> can never arrive intact.
+ */
+export const ContractOverrideSchema = z
+  .object({ key: z.string().min(1).max(100), value: z.string().max(500) })
+  .strict();
+export type ContractOverride = z.infer<typeof ContractOverrideSchema>;
+const overridesField = () => z.array(ContractOverrideSchema).max(50);
+
 export const CreateContractSchema = z
   .object({
     employeeId: objectId(),
@@ -282,7 +293,7 @@ export const CreateContractSchema = z
     endDate: isoDate().nullable().default(null),
     referenceNumber: z.string().max(100).nullable().default(null),
     /** A3/A16 — per-variable manual values (the validation escape hatch). */
-    overrides: z.record(z.string().max(500)).default({}),
+    overrides: overridesField().default([]),
   })
   .strict();
 export type CreateContract = z.infer<typeof CreateContractSchema>;
@@ -294,7 +305,7 @@ export const UpdateContractDraftSchema = z
     startDate: isoDate().optional(),
     endDate: isoDate().nullable().optional(),
     referenceNumber: z.string().max(100).nullable().optional(),
-    overrides: z.record(z.string().max(500)).optional(),
+    overrides: overridesField().optional(),
     version: z.number().int().min(0),
   })
   .strict();
@@ -330,7 +341,7 @@ export const AmendOrRenewContractSchema = z
     templateId: objectId().optional(),
     startDate: isoDate(),
     endDate: isoDate().nullable().default(null),
-    overrides: z.record(z.string().max(500)).default({}),
+    overrides: overridesField().default([]),
     version: z.number().int().min(0),
   })
   .strict();
@@ -364,7 +375,7 @@ export const PreviewContractSchema = z
     typeId: objectId().optional(),
     startDate: isoDate().optional(),
     endDate: isoDate().nullable().optional(),
-    overrides: z.record(z.string().max(500)).default({}),
+    overrides: overridesField().default([]),
   })
   .strict();
 export type PreviewContract = z.infer<typeof PreviewContractSchema>;

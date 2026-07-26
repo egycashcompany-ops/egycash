@@ -39,7 +39,7 @@ import { DEFAULT_CONTRACT_NUMBER_FORMAT, nextContractNumber } from './contract-n
 import { resolveContractVariables } from './contract-variables';
 import { renderContractHtml } from './contract-render';
 import { contractRepository } from './contract.repository';
-import { fromOverridePairs, toOverridePairs, type ContractDoc } from './contract.model';
+import { fromOverridePairs, type ContractDoc } from './contract.model';
 
 const GENERATOR_VERSION = 'ecms-api/2.1.0';
 
@@ -125,7 +125,7 @@ class ContractService {
         supersededById: null,
         startDate: dateOnly(input.startDate),
         endDate: input.endDate === null ? null : dateOnly(input.endDate),
-        overrides: toOverridePairs(input.overrides),
+        overrides: input.overrides,
         variables: [],
         renderedHtml: null,
         generation: { status: 'idle', error: null, requestedAt: null, completedAt: null, integrity: null, pdfFileId: null },
@@ -159,7 +159,7 @@ class ContractService {
     if (input.startDate !== undefined) set.startDate = dateOnly(input.startDate);
     if (input.endDate !== undefined) set.endDate = input.endDate === null ? null : dateOnly(input.endDate);
     if (input.referenceNumber !== undefined) set.referenceNumber = input.referenceNumber;
-    if (input.overrides !== undefined) set.overrides = toOverridePairs(input.overrides);
+    if (input.overrides !== undefined) set.overrides = input.overrides;
     const after = await contractRepository.updateById(id, set, { by: ctx.userId, version: input.version });
     await auditService.record({ entityRef: entityRef(id), action: 'update' });
     return after;
@@ -412,7 +412,7 @@ class ContractService {
         supersededById: null,
         startDate: dateOnly(input.startDate),
         endDate: input.endDate === null ? null : dateOnly(input.endDate),
-        overrides: toOverridePairs(input.overrides),
+        overrides: input.overrides,
         variables: [],
         renderedHtml: null,
         generation: { status: 'idle', error: null, requestedAt: null, completedAt: null, integrity: null, pdfFileId: null },
@@ -581,6 +581,7 @@ class ContractService {
 
   async preview(input: PreviewContract, scope: ScopeSelector): Promise<ContractPreviewDto> {
     const template = await contractTemplateService.getById(input.templateId);
+    const overrides = fromOverridePairs(input.overrides);
     if (input.employeeId === undefined) {
       // Template-editor sample render: catalog sample values through the SAME renderer,
       // so the A18 preview ≡ final guarantee extends to template authoring.
@@ -588,7 +589,7 @@ class ContractService {
         const entry = CONTRACT_VARIABLE_CATALOG.find((v) => v.key === key);
         return {
           key,
-          value: input.overrides[key] ?? entry?.sample ?? '',
+          value: overrides[key] ?? entry?.sample ?? '',
           source: (entry?.source ?? 'contract') as ContractVariableSource,
           overriddenBy: null,
         };
@@ -602,7 +603,7 @@ class ContractService {
       startDate: input.startDate ?? '',
       endDate: input.endDate ?? null,
       language: template.language,
-      overrides: input.overrides,
+      overrides,
       overriddenBy: null,
     });
     return { html: renderContractHtml(template, values), issues };

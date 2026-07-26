@@ -15,6 +15,7 @@ import { Button, Card, CardBody, CardHeader, SearchInput, toast } from '../../..
 import { Field, Input, Select } from '../../../../shared/ui/form';
 import { localized } from '../../../../shared/lib/format';
 import { ApiError } from '../../../../shared/lib/api-client';
+import { toOverridePairs } from '../api/contract-api';
 import { listEmployees, getEmployee } from '../../employee-management/employees/api/employee-api';
 import {
   useContractTemplate,
@@ -153,7 +154,7 @@ export const ContractCreatePage = (): JSX.Element => {
           templateId: published.id,
           startDate,
           endDate: endDate === '' ? null : endDate,
-          overrides,
+          overrides: toOverridePairs(overrides),
         })
         .then((result) => {
           if (previewSeq.current === seq) setPreviewHtml(result.html);
@@ -176,7 +177,7 @@ export const ContractCreatePage = (): JSX.Element => {
         startDate,
         endDate: endDate === '' || chosenType?.allowsEndDate === false ? null : endDate,
         referenceNumber: referenceNumber.trim() === '' ? null : referenceNumber.trim(),
-        overrides,
+        overrides: toOverridePairs(overrides),
       });
       if (andGenerate) {
         try {

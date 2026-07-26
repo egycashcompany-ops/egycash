@@ -141,7 +141,7 @@ export const TemplateEditorPage = (): JSX.Element => {
     const target = isNew || dirty ? await save() : { id, version: existing?.version ?? 0 };
     if (target === null) return;
     try {
-      const result = await previewContract({ templateId: target.id, overrides: {} });
+      const result = await previewContract({ templateId: target.id, overrides: [] });
       setPreviewHtml(result.html);
     } catch {
       toast.error(t('contracts.templates.previewFailed'));

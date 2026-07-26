@@ -27,6 +27,11 @@ import { api, buildQuery, get, getPage, getText, patch, post, upload } from '../
 
 export type ContractListParams = Record<string, string | number | boolean | undefined | null>;
 
+/** UI state keeps overrides as a record; the wire carries PAIRS (dotted keys would be
+ *  stripped from a keyed record by the server's mongo-sanitize middleware). */
+export const toOverridePairs = (record: Record<string, string>): { key: string; value: string }[] =>
+  Object.entries(record).map(([key, value]) => ({ key, value }));
+
 // ── Contracts ───────────────────────────────────────────────────────────────
 export const listContracts = (params: ContractListParams): Promise<Paginated<ContractDto>> =>
   getPage<ContractDto>(`/hr/contracts${buildQuery(params)}`);

@@ -483,7 +483,7 @@ describe('contracts — generation, snapshot, integrity (approval OFF from here)
   it('freezes the snapshot: pinned version, variables with provenance, SHA-256 integrity (A2/A3/A14)', async () => {
     const employee = await mkEmployee();
     const draft = await mkDraft(employee.id, typeId, templateId, {
-      overrides: { 'employee.fullName': 'الاسم المتفق عليه' },
+      overrides: [{ key: 'employee.fullName', value: 'الاسم المتفق عليه' }],
     });
     const active = await generate(draft);
 
@@ -542,7 +542,7 @@ describe('contracts — generation, snapshot, integrity (approval OFF from here)
     const patched = await request(app)
       .patch(`/api/v1/hr/contracts/${draft.id}`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ overrides: { 'employee.nationalId': '29001011234567' }, version: draft.version });
+      .send({ overrides: [{ key: 'employee.nationalId', value: '29001011234567' }], version: draft.version });
     expect(patched.status).toBe(200);
     const active = await generate(patched.body.data as ContractDto);
     expect(active.status).toBe('active');
@@ -596,7 +596,7 @@ describe('contracts — generation, snapshot, integrity (approval OFF from here)
     const res = await request(app)
       .post('/api/v1/hr/contracts/preview')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ employeeId: employee.id, templateId, startDate: START_DATE, overrides: {} });
+      .send({ employeeId: employee.id, templateId, startDate: START_DATE, overrides: [] });
     expect(res.status).toBe(200);
     const preview = res.body.data as ContractPreviewDto;
     expect(preview.html).toContain('موظف العقود');
@@ -606,7 +606,7 @@ describe('contracts — generation, snapshot, integrity (approval OFF from here)
     const sample = await request(app)
       .post('/api/v1/hr/contracts/preview')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ templateId, overrides: {} });
+      .send({ templateId, overrides: [] });
     expect(sample.status).toBe(200);
     expect((sample.body.data as ContractPreviewDto).html).toContain('أحمد محمد علي');
     expect((sample.body.data as ContractPreviewDto).issues).toEqual([]);
@@ -654,7 +654,7 @@ describe('contracts — signing, immutability, amend/renew chains (A4/A5/D9)', (
     const amendRes = await request(app)
       .post(`/api/v1/hr/contracts/${v1.id}/amend`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ startDate: '2026-09-01', endDate: FAR_END_DATE, overrides: {}, version: v1.version });
+      .send({ startDate: '2026-09-01', endDate: FAR_END_DATE, overrides: [], version: v1.version });
     expect(amendRes.status).toBe(201);
     const v2draft = amendRes.body.data as ContractDto;
     expect(v2draft.code).toBe(v1.code);
@@ -681,7 +681,7 @@ describe('contracts — signing, immutability, amend/renew chains (A4/A5/D9)', (
     const renewRes = await request(app)
       .post(`/api/v1/hr/contracts/${source.id}/renew`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ startDate: '2028-08-01', endDate: null, overrides: {}, version: source.version });
+      .send({ startDate: '2028-08-01', endDate: null, overrides: [], version: source.version });
     expect(renewRes.status).toBe(201);
     const renewal = renewRes.body.data as ContractDto;
     expect(renewal.code).not.toBe(source.code);

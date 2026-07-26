@@ -31,7 +31,7 @@ export const AmendRenewDialog = ({
   const busy = amend.isPending || renew.isPending;
 
   const submit = async (): Promise<void> => {
-    const body = { startDate, endDate: endDate === '' ? null : endDate, overrides: {}, version: contract.version };
+    const body = { startDate, endDate: endDate === '' ? null : endDate, overrides: [], version: contract.version };
     try {
       const next =
         mode === 'amend'

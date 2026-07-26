@@ -29,7 +29,7 @@ import {
   toast,
 } from '../../../../shared/ui';
 import { formatDate, formatDateTime, localized } from '../../../../shared/lib/format';
-import { contractDocumentHtml } from '../api/contract-api';
+import { contractDocumentHtml, toOverridePairs } from '../api/contract-api';
 import {
   useContract,
   useContracts,
@@ -90,7 +90,7 @@ const EditDraftDialog = ({
           startDate,
           endDate: endDate === '' ? null : endDate,
           referenceNumber: referenceNumber.trim() === '' ? null : referenceNumber.trim(),
-          overrides,
+          overrides: toOverridePairs(overrides),
           version: contract.version,
         },
       });

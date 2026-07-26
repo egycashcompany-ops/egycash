@@ -81,8 +81,9 @@ const mkUser = async (email: string): Promise<string> => {
   return String(user._id);
 };
 
-const login = async (email: string): Promise<string> => {
-  const res = await request(app).post('/api/v1/auth/login').send({ email, password: PASSWORD });
+/** Sign in by any enabled identifier (email or employee code) with the suite PASSWORD. */
+const login = async (identifier: string): Promise<string> => {
+  const res = await request(app).post('/api/v1/auth/login').send({ identifier, password: PASSWORD });
   expect(res.status).toBe(200);
   return (res.body as { data: { accessToken: string } }).data.accessToken;
 };
@@ -229,20 +230,20 @@ const action = (
     .set('Authorization', `Bearer ${token}`)
     .send(body);
 
-/** Give an employee an ACTIVATED login account; returns its user id. */
+/**
+ * Accounts are auto-provisioned with the employee (auth design D1) — return the user id.
+ * Provisioned accounts are born `invited` awaiting the setup link (Rev 4), so the suite
+ * activates them at the service level with its own PASSWORD instead of walking the link flow.
+ */
 const activateLogin = async (emp: EmployeeDto): Promise<string> => {
-  const email = `act-${emp.code}@ecms.local`;
-  const loginRes = await request(app)
-    .post(`/api/v1/hr/employees/${emp.id}/login`)
-    .set('Authorization', `Bearer ${adminToken}`)
-    .send({ email, firstName: { ar: 'م', en: 'E' }, lastName: { ar: 'م', en: 'E' } });
-  expect(loginRes.status).toBe(201);
-  const account = loginRes.body.data as { user: { id: string }; activationToken: string };
-  const activated = await request(app)
-    .post('/api/v1/auth/activate')
-    .send({ token: account.activationToken, password: PASSWORD });
-  expect(activated.status).toBe(204);
-  return account.user.id;
+  const reread = await request(app)
+    .get(`/api/v1/hr/employees/${emp.id}`)
+    .set('Authorization', `Bearer ${adminToken}`);
+  const userId = (reread.body.data as EmployeeDto).userId;
+  expect(userId).not.toBeNull();
+  await userService.setPassword(String(userId), PASSWORD, 'passwordReset');
+  await userService.forceActivate(String(userId));
+  return String(userId);
 };
 
 beforeAll(async () => {
@@ -421,7 +422,7 @@ describe('personnel actions — self-action rejection (I1)', () => {
       userId,
     );
     await rbacService.ensureAssignment(userId, String(hrRole._id), 'organization');
-    const selfToken = await login(`act-${emp.code}@ecms.local`);
+    const selfToken = await login(emp.code);
     const fresh = await reread(emp.id);
     const res = await action(emp.id, 'employment', { type: 'probationConfirm', version: fresh.version }, selfToken);
     expect(res.status).toBe(422);

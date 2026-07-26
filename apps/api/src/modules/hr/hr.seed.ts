@@ -407,6 +407,9 @@ export const seedHrRecruitment = async (): Promise<void> => {
   await migrateRecruitmentLegacy();
   // Employee-registry boot migration (frozen design §10) — idempotent, legacy docs only.
   await migrateEmployeesToRegistry();
+  // Auth design D2 — every employed employee gets an auto-provisioned login (idempotent).
+  const { employeeService } = await import('./employee-management/employees/employee.service');
+  await employeeService.provisionMissingLogins();
   // Leave Management (frozen leave design §12): templates, attachments category, types,
   // holidays, current-year grants, ESS role.
   await ensureLeaveTemplates();

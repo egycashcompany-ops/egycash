@@ -52,8 +52,8 @@ export const useCreateEmployee = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: CreateEmployee) => api.createEmployee(body),
-    onSuccess: (created: EmployeeDto) => {
-      qc.setQueryData(detailKey(MODULE, FEATURE, created.id), created);
+    onSuccess: ({ provisionedLogin: _login, ...employee }) => {
+      qc.setQueryData(detailKey(MODULE, FEATURE, employee.id), employee);
       void qc.invalidateQueries({ queryKey: listKey(MODULE, FEATURE) });
     },
   });
@@ -115,8 +115,8 @@ export const useRegisterEmployeeDirect = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: DirectRegisterEmployee) => api.registerEmployeeDirect(body),
-    onSuccess: (created: EmployeeDto) => {
-      qc.setQueryData(detailKey(MODULE, FEATURE, created.id), created);
+    onSuccess: ({ provisionedLogin: _login, ...employee }) => {
+      qc.setQueryData(detailKey(MODULE, FEATURE, employee.id), employee);
       void qc.invalidateQueries({ queryKey: listKey(MODULE, FEATURE) });
     },
   });
@@ -213,5 +213,38 @@ export const useCancelEmployeeAction = (id: string) => {
     mutationFn: ({ actionId, body }: { actionId: string; body: CancelEmployeeAction }) =>
       api.cancelEmployeeAction(id, actionId, body),
     onSuccess: invalidate,
+  });
+};
+
+// ── Account security administration (auth design 4.4/4.5) ──────────────────
+export const useResetUserPassword = (userId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.resetUserPassword(userId),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['hr'] }),
+  });
+};
+
+export const useResendUserCredentials = (userId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.resendUserCredentials(userId),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['hr'] }),
+  });
+};
+
+export const useResetUserTotp = (userId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.resetUserTotp(userId),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['hr'] }),
+  });
+};
+
+export const useRequireUserTotp = (userId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (required: boolean) => api.requireUserTotp(userId, required),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['hr'] }),
   });
 };

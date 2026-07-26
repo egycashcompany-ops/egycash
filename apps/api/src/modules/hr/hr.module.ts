@@ -17,6 +17,7 @@ import { buildEmployeeActionsRouter, employeeActionService } from './employee-ma
 import { buildHiringDocumentTypesRouter, buildHiringDocumentsRouter } from './recruitment/hiring-documents';
 import { buildEmployeeFilesRouter } from './employee-management/employee-file';
 import { buildHolidaysRouter, buildWorkCalendarRouter, registerHrWorkCalendarSettings } from './work-calendar';
+import { registerHrIdentitySeams } from './employee-management/employees/identity-seams';
 import { buildLeaveTypesRouter } from './leave-management/leave-types';
 import { buildLeaveBalancesRouter, leaveBalanceService } from './leave-management/leave-balances';
 import {
@@ -29,6 +30,8 @@ import { seedHrRecruitment } from './hr.seed';
 // Business-calendar + leave settings enter the registry at module load, before boot resolves
 // any value (Leave design C2).
 registerHrWorkCalendarSettings();
+// Auth design 4.3/4.4 — employee-code login + NID temp-password source (platform seams).
+registerHrIdentitySeams();
 
 const applicantPermissions = declarePermissions(
   'hr',

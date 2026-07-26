@@ -13,7 +13,7 @@ import { useOnClickOutside } from '../../shared/lib/useOnClickOutside';
 import { cn } from '../../shared/lib/cn';
 import { NotificationBell } from '../notifications/NotificationBell';
 import { BrandMark } from '../../shared/ui';
-import { LogOutIcon, MenuIcon, SearchIcon } from '../../shared/ui/icons';
+import { LogOutIcon, ShieldIcon, MenuIcon, SearchIcon } from '../../shared/ui/icons';
 import { ThemeToggle } from './ThemeToggle';
 import { LanguageToggle } from './LanguageToggle';
 
@@ -64,6 +64,18 @@ const UserMenu = (): JSX.Element => {
               {me.email}
             </p>
           </div>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => { setOpen(false); navigate('/account/security'); }}
+            className={cn(
+              'flex w-full items-center gap-2 px-4 py-2 text-start text-sm text-slate-700 hover:bg-slate-50',
+              'dark:text-slate-200 dark:hover:bg-slate-700',
+            )}
+          >
+            <ShieldIcon className="h-4 w-4" />
+            {t('platform.shell.security')}
+          </button>
           <button
             type="button"
             role="menuitem"

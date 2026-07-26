@@ -26,6 +26,7 @@ import {
 } from '@ecms/contracts';
 import { BusinessRuleError, ConflictError, ForbiddenError } from '../../../../shared/errors';
 import { type AuthContext, type ScopeSelector } from '../../../../shared/types';
+import { cairoToday, toDateOnly } from '../../shared/business-date';
 import { auditService } from '../../../../platform/audit';
 import { emit } from '../../../../platform/kernel/event-bus';
 import { notificationsService } from '../../../../platform/notifications';
@@ -167,7 +168,11 @@ class EmployeeActionService {
 
     const now = new Date();
     const effectiveDate = input.effectiveDate ?? now;
-    const scheduled = effectiveDate.getTime() > now.getTime();
+    // Effective dating is day-based on the CAIRO business calendar: an action effective
+    // "today" applies immediately even between Cairo midnight and UTC midnight (the leave
+    // module activates spans by cairoToday() — the two engines must agree on when a
+    // business date has begun).
+    const scheduled = toDateOnly(effectiveDate).getTime() > cairoToday().getTime();
 
     // Pending-exit rule: while an exit is scheduled, refuse actions effective on/after it.
     const pendingExit = await employeeActionRepository.findScheduledExit(employeeId);
@@ -864,8 +869,9 @@ class EmployeeActionService {
 
   private async suspendLogin(userId: string, changes: EmployeeActionChange[], actorId: string): Promise<void> {
     const user = await userService.getById(userId);
-    // Only an ACTIVE login can be suspended (invited accounts have nothing to cut off yet).
-    if (user.status !== 'active') return;
+    // §15.5 — an exit disables ACTIVE logins and NEVER-ACTIVATED (invited) ones alike;
+    // suspending an invited account also revokes its pending setup link in the same operation.
+    if (user.status !== 'active' && user.status !== 'invited') return;
     await userService.changeStatus(userId, { status: 'suspended', version: user.__v }, actorId);
     changes.push({ field: 'user.status', from: user.status, to: 'suspended' });
   }

@@ -369,53 +369,51 @@ describe('platform identity (ADR-017) — branch code, global sequence, login ac
     expect(second.code).toBe(`001${second.employeeNumber}`);
   });
 
-  it('creates a login for an employee (username defaults to the code) and logs in by username OR email', async () => {
+  it('auto-provisions the login at hire (username = the code) awaiting its setup link (§14)', async () => {
     const emp = await hire();
-    expect(emp.userId).toBeNull();
+    // The account exists the moment the employee does (auth design D1) — no manual step.
+    expect(emp.userId).not.toBeNull();
+    const userId = String(emp.userId);
 
-    const email = `emp-${emp.code}@ecms.local`;
-    const loginRes = await request(app)
-      .post(`/api/v1/hr/employees/${emp.id}/login`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ email, firstName: { ar: 'موظف', en: 'Emp' }, lastName: { ar: 'جديد', en: 'New' } });
-    expect(loginRes.status).toBe(201);
-    const account = loginRes.body.data as {
-      user: { id: string; username: string | null; employeeId: string | null };
-      activationToken: string;
-      employeeCode: string;
-    };
-    expect(account.user.username).toBe(emp.code); // defaulted to the Employee Code
-    expect(account.user.employeeId).toBe(emp.id);
-    expect(account.employeeCode).toBe(emp.code);
-
-    // The employee now back-references the account.
-    const reread = await request(app)
-      .get(`/api/v1/hr/employees/${emp.id}`)
+    const account = await request(app)
+      .get(`/api/v1/platform/users/${userId}`)
       .set('Authorization', `Bearer ${adminToken}`);
-    expect((reread.body.data as EmployeeDto).userId).toBe(account.user.id);
+    expect(account.status).toBe(200);
+    const user = account.body.data as {
+      username: string | null;
+      employeeId: string | null;
+      status: string;
+      mustChangePassword: boolean;
+      setupLinkPending: boolean;
+    };
+    expect(user.username).toBe(emp.code.toLowerCase()); // defaulted to the Employee Code
+    expect(user.employeeId).toBe(emp.id);
+    expect(user.status).toBe('invited'); // §14: no password exists until the employee sets one
+    expect(user.setupLinkPending).toBe(true); // the one-time setup link is outstanding
+    expect(user.mustChangePassword).toBe(false); // the gate is dormant in the link model
 
-    // A second login for the same employee is rejected (one account per employee).
+    // The manual escape hatch (D7) refuses a second account for the same employee.
     const dup = await request(app)
       .post(`/api/v1/hr/employees/${emp.id}/login`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ email: `dup-${emp.code}@ecms.local`, firstName: { ar: 'x', en: 'x' }, lastName: { ar: 'y', en: 'y' } });
     expect(dup.status).toBe(409);
 
-    // Activate the invited account, then log in BY USERNAME (the Employee Code)…
-    const activated = await request(app)
-      .post('/api/v1/auth/activate')
-      .send({ token: account.activationToken, password: PASSWORD });
-    expect(activated.status).toBe(204);
-    const byUsername = await request(app)
+    // A not-yet-activated account cannot sign in with ANY password.
+    const early = await request(app)
       .post('/api/v1/auth/login')
       .send({ identifier: emp.code, password: PASSWORD });
-    expect(byUsername.status).toBe(200);
-    expect(byUsername.body.data?.me?.id).toBe(account.user.id);
+    expect(early.status).toBe(401);
 
-    // …and the email still works as a login identifier (email support is not removed).
-    const byEmail = await request(app).post('/api/v1/auth/login').send({ email, password: PASSWORD });
-    expect(byEmail.status).toBe(200);
-    expect(byEmail.body.data?.me?.id).toBe(account.user.id);
+    // Establish the password the way activation would (link contract lives in
+    // auth-lifecycle.spec), then the employee signs in BY EMPLOYEE CODE:
+    await userService.setPassword(userId, PASSWORD, 'passwordReset');
+    await userService.forceActivate(userId);
+    const login = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ identifier: emp.code, password: PASSWORD });
+    expect(login.status).toBe(200);
+    expect((login.body.data as { mustChangePassword: boolean }).mustChangePassword).toBe(false);
   });
 
   it('lets a super-admin correct an otherwise-immutable branch code, but forbids ordinary editors', async () => {

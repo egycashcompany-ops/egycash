@@ -173,6 +173,13 @@ export const UploadIcon = (p: IconProps): JSX.Element => (
   </Base>
 );
 
+export const ShieldIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6l7-3z" />
+    <path d="M9.5 12l2 2 3.5-3.5" />
+  </Base>
+);
+
 export const AlertIcon = (p: IconProps): JSX.Element => (
   <Base {...p}>
     <path d="M10.3 3.3 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.3a2 2 0 0 0-3.4 0z" />

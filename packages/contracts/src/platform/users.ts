@@ -11,6 +11,14 @@ export const USER_STATUSES = ['invited', 'active', 'suspended', 'archived'] as c
 export const UserStatusSchema = z.enum(USER_STATUSES);
 export type UserStatus = z.infer<typeof UserStatusSchema>;
 
+/**
+ * Admin-visible activation state (design §15.4) — DERIVED server-side, never stored.
+ * The employee card renders a fifth state, "not invited", for an employee with no login.
+ */
+export const ACCOUNT_STATUSES = ['invitationSent', 'activated', 'expired', 'locked'] as const;
+export const AccountStatusSchema = z.enum(ACCOUNT_STATUSES);
+export type AccountStatus = z.infer<typeof AccountStatusSchema>;
+
 /** Login username: lowercase-normalized; defaults to the Employee Code (e.g. `001025`). */
 export const UsernameSchema = z
   .string()
@@ -30,7 +38,7 @@ const UserOrganizationSchema = z
 
 export const CreateUserSchema = z
   .object({
-    email: z.string().email(),
+    email: z.string().email().optional(),
     firstName: LocalizedStringSchema,
     lastName: LocalizedStringSchema,
     phone: PhoneNumberSchema.optional(),
@@ -76,9 +84,29 @@ export type ListUsersQuery = z.infer<typeof ListUsersQuerySchema>;
 
 export interface UserDto {
   id: string;
-  email: string;
+  email: string | null;
   /** Second login identifier; null for accounts that only log in by email. */
   username: string | null;
+  /** First-login gate state (admin visibility; design 4.2 — dormant since §14). */
+  mustChangePassword: boolean;
+  /** A one-time setup/activation link is outstanding (design §14) — resend is possible. */
+  setupLinkPending: boolean;
+  /** Derived activation state for admin screens (design §15.4). */
+  accountStatus: AccountStatus;
+  // ── Account panel (design §16.5) — read-only lifecycle timestamps + delivery outcomes ──
+  /** When the most recent setup link was issued; survives consumption (§16.1). */
+  invitationSentAt: string | null;
+  /** Validity end of the PENDING link; null once consumed, superseded, or swept. */
+  invitationExpiresAt: string | null;
+  /** First successful activation; null while invited. */
+  activatedAt: string | null;
+  lastLoginAt: string | null;
+  passwordChangedAt: string | null;
+  /** Per-channel outcome of the most recent invitation delivery (§16.4). */
+  lastDelivery: { channel: 'whatsapp' | 'email'; ok: boolean; detail: string | null }[] | null;
+  totpEnabled: boolean;
+  /** D6 — admin-forced TOTP enrollment pending/active. */
+  totpRequired: boolean;
   /** The Employee this login belongs to; null for platform/system accounts. */
   employeeId: string | null;
   phone: string | null;
@@ -92,7 +120,6 @@ export interface UserDto {
     sectionId: string | null;
     jobTitleId: string | null;
   };
-  totpEnabled: boolean;
   version: number;
   createdAt: string;
   updatedAt: string;

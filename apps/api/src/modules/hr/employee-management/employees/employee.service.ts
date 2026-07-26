@@ -22,9 +22,12 @@ import {
   type ListEmployeesQuery,
   type Paginated,
   type UpdateEmployeePersonal,
+  EMPLOYED_STATUSES,
+  type EmployeeLoginProvisionDto,
 } from '@ecms/contracts';
 import { BusinessRuleError, ConflictError, ValidationError } from '../../../../shared/errors';
 import { type AuthContext, type ScopeSelector } from '../../../../shared/types';
+import { logger } from '../../../../infrastructure/logging/logger';
 import { auditService } from '../../../../platform/audit';
 import { emit } from '../../../../platform/kernel/event-bus';
 import { unitOfWork } from '../../../../platform/kernel/unit-of-work';
@@ -35,7 +38,8 @@ import {
   jobTitleService,
   sectionService,
 } from '../../../../platform/organization';
-import { userService, type UserDoc } from '../../../../platform/users';
+import { rbacService } from '../../../../platform/rbac';
+import { deliverCredentials, userService, type UserDoc } from '../../../../platform/users';
 import { normalizeArabic } from '../../shared/arabic';
 import { applicantService } from '../../recruitment/applicants';
 import { jobOfferService } from '../../recruitment/job-offers';
@@ -46,6 +50,7 @@ import { nextEmployeeNumber } from './employee-sequence';
 import { buildEmployeeCode } from './employee-number';
 import { personalFromApplicant } from './employee.migration';
 import {
+  EmployeeModel,
   type EmployeeDoc,
   type EmployeePersonalData,
   type EmployeeProbation,
@@ -128,7 +133,11 @@ class EmployeeService {
    * Create an Employee from an Accepted Job Offer. Reads employment data only from the offer's
    * Accepted Snapshot and copies the personal data ONCE from the applicant's raw document (I5).
    */
-  async create(ctx: AuthContext, input: CreateEmployee, scope: ScopeSelector): Promise<EmployeeDoc> {
+  async create(
+    ctx: AuthContext,
+    input: CreateEmployee,
+    scope: ScopeSelector,
+  ): Promise<{ doc: EmployeeDoc; provisionedLogin: EmployeeLoginProvisionDto | null }> {
     const offer = await jobOfferService.acceptedOfferById(input.jobOfferId);
     if (offer === null) {
       throw new BusinessRuleError('employee creation requires an accepted job offer');
@@ -233,7 +242,8 @@ class EmployeeService {
       origin: 'recruitment',
     });
     await this.notifyHire(doc);
-    return doc;
+    const provisionedLogin = await this.ensureLoginFor(doc, ctx.userId);
+    return { doc, provisionedLogin };
   }
 
   /**
@@ -245,7 +255,7 @@ class EmployeeService {
     ctx: AuthContext,
     input: DirectRegisterEmployee,
     scope: ScopeSelector,
-  ): Promise<EmployeeDoc> {
+  ): Promise<{ doc: EmployeeDoc; provisionedLogin: EmployeeLoginProvisionDto | null }> {
     void scope;
     const identity = input.personal.identity;
 
@@ -424,7 +434,8 @@ class EmployeeService {
       origin: 'direct',
     });
     await this.notifyHire(doc);
-    return doc;
+    const provisionedLogin = await this.ensureLoginFor(doc, ctx.userId);
+    return { doc, provisionedLogin };
   }
 
   /**
@@ -743,6 +754,131 @@ class EmployeeService {
    * the Employee Code. The platform User is the authority for the link (`user.employeeId`, unique);
    * the employee's `userId` is a denormalized back-reference set here.
    */
+  /** Split a full name into localized first/last parts for the user profile. */
+  private profileNamesOf(employee: EmployeeDoc): {
+    firstName: { ar: string; en: string };
+    lastName: { ar: string; en: string };
+  } {
+    const split = (full: string): [string, string] => {
+      const parts = full.trim().split(/\s+/);
+      const first = parts[0] ?? full;
+      return [first, parts.slice(1).join(' ') || first];
+    };
+    const [arFirst, arLast] = split(employee.personal.fullNameAr);
+    const [enFirst, enLast] = split(employee.personal.fullNameEn ?? employee.personal.fullNameAr);
+    return { firstName: { ar: arFirst, en: enFirst }, lastName: { ar: arLast, en: enLast } };
+  }
+
+  /**
+   * Auto-provision the employee's login (frozen auth design 4.1 + §12). Idempotent: skips
+   * when a login exists; a username collision is audited and skipped (the manual escape hatch
+   * covers it, D7). Every account gets a unique random temp password (R1), delivered to the
+   * employee via WhatsApp + email (R3) — the password never appears in any response. Never
+   * throws — account provisioning must not fail employee creation.
+   */
+  async ensureLoginFor(
+    employee: EmployeeDoc,
+    by: string | null,
+  ): Promise<EmployeeLoginProvisionDto | null> {
+    if (employee.userId !== null) return null;
+    if (!(EMPLOYED_STATUSES as readonly string[]).includes(employee.status)) return null;
+    try {
+      const activationToken = userService.generateActivationToken();
+      const activationExpiresAt = await userService.activationLinkExpiry();
+      const email = employee.personal.contact.email;
+      const phone = employee.personal.contact.primaryPhone;
+      const user = await userService.createProvisioned(
+        {
+          ...(email === null ? {} : { email }),
+          ...this.profileNamesOf(employee),
+          phone,
+          locale: 'ar',
+          organization: {
+            branchId: String(employee.branchId),
+            departmentId: employee.departmentId === null ? null : String(employee.departmentId),
+            sectionId: employee.sectionId === null ? null : String(employee.sectionId),
+            jobTitleId: String(employee.employment.jobTitleId),
+          },
+        },
+        by,
+        {
+          username: employee.code,
+          employeeId: String(employee._id),
+          activationToken,
+          activationExpiresAt,
+        },
+      );
+      await EmployeeModel.updateOne(
+        { _id: employee._id, userId: null },
+        { $set: { userId: user._id } },
+      ).exec();
+      // Reflect the link on the in-memory doc — creation responses map THIS object to the DTO.
+      employee.userId = user._id;
+      // ESS role lands at LINK TIME (design 4.1 step 4) — not at the next boot.
+      const essRole = await rbacService.ensureSystemRole(
+        'employee-self-service',
+        { en: 'Employee Self-Service', ar: 'الخدمة الذاتية للموظفين' },
+        ['leave.view', 'leave.request'],
+      );
+      await rbacService.ensureAssignment(String(user._id), String(essRole._id), 'own');
+      await auditService.record({
+        entityRef: entityRef(String(employee._id)),
+        action: 'accountAutoCreated',
+        changes: [{ field: 'username', old: null, new: employee.code }],
+      });
+      await emit(HrEmployeeEvents.EmployeeLoginLinked, {
+        employeeId: String(employee._id),
+        userId: String(user._id),
+        code: employee.code,
+      });
+      // §14 — transient delivery of the one-time setup link; outcomes go back to the caller
+      // and onto the account for the admin panel (§16.5).
+      const delivery = await deliverCredentials({
+        userId: String(user._id),
+        username: user.username ?? employee.code.toLowerCase(),
+        employeeCode: employee.code,
+        phone,
+        email,
+        setupToken: activationToken,
+        expiresAt: activationExpiresAt,
+        mode: 'initial',
+      });
+      await userService.recordDeliveryOutcomes(String(user._id), delivery);
+      return { username: employee.code, delivery };
+    } catch (error) {
+      // Collision or transient failure: creation proceeds; HR uses the manual path (D7).
+      logger.warn(
+        { err: error, employeeId: String(employee._id), code: employee.code },
+        'auto-provisioning the employee login failed',
+      );
+      await auditService
+        .record({
+          entityRef: entityRef(String(employee._id)),
+          action: 'alertRaised',
+          changes: [{ field: 'loginProvisioning', old: null, new: 'skipped' }],
+        })
+        .catch(() => undefined);
+      return null;
+    }
+  }
+
+  /**
+   * D2 boot backfill (idempotent): every employed employee without a login gets one under the
+   * standard §12 flow — random temp password, WhatsApp/email delivery, armed gate, expiry.
+   * Unreachable employees (no phone/email) are still provisioned; an admin re-issues after
+   * fixing the contact details (R10).
+   */
+  async provisionMissingLogins(): Promise<number> {
+    const employed = await employeeRepository.listEmployedSystem();
+    let provisioned = 0;
+    for (const employee of employed) {
+      if (employee.userId !== null) continue;
+      const result = await this.ensureLoginFor(employee, null);
+      if (result !== null) provisioned += 1;
+    }
+    return provisioned;
+  }
+
   async createLogin(
     ctx: AuthContext,
     employeeId: string,

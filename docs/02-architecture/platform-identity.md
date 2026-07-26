@@ -31,12 +31,23 @@ records can the user see?" — orthogonal to permissions ("what can the user do?
 
 - `User.employeeId` (opaque, unique) links a login to exactly one Employee; `Employee.userId` is the
   denormalized back-reference. The platform never imports a module type — the HR module owns the
-  linkage and the **create-login-from-employee** flow (`POST /hr/employees/:id/login`, gated by
-  `user.create`). Platform/system accounts carry no `employeeId`.
-- **Username OR email.** A unique, mutable `username` (defaults to the Employee Code) is a second
-  login identifier; email is retained. `login` accepts `identifier` (username or email) or `email`.
+  linkage. Platform/system accounts carry no `employeeId`.
+- **Accounts are auto-provisioned** at employee creation (and backfilled at boot) per the frozen
+  Auth & Account Lifecycle design (`docs/12-planning/auth-account-lifecycle-design.md`, Rev 6):
+  username = Employee Code, born `invited` with a **one-time setup link delivered to the employee
+  via WhatsApp + email** (transient — never persisted or echoed by any API), expiring after
+  `auth.activationLink.ttlHours`; the employee chooses their own policy-checked password at
+  `/activate`. Resend issues a new link (old one dies); admin reset locks the account and sends a
+  fresh link; disable/exit revokes any pending link and all sessions; an hourly sweep revokes
+  expired links. The full invitation lifecycle is audited and the state/sequence diagrams live in
+  `docs/02-architecture/account-lifecycle.md`. The old **create-login-from-employee** flow
+  (`POST /hr/employees/:id/login`, gated by `user.create`) remains as the manual override for
+  audited provisioning skips (D7).
+- **Configurable identifiers.** `auth.loginIdentifiers` enables username, email (optional on
+  accounts) and the Employee Code, which resolves through an HR seam
+  (`platform/auth/identity-seams.ts`) so the printed code logs in even after a username change.
 - **Disable, never delete.** Departing employees are suspended/archived through the existing status
-  lifecycle; history is preserved. Password reset is unchanged.
+  lifecycle; history is preserved.
 
 ## 3. Permanent Global Employee Number + derived Employee Code
 
@@ -51,9 +62,14 @@ manually editable. The **Branch Code** is immutable after creation except for a 
 
 ## 4. Minimal UI (this phase)
 
-Only the minimum identity UI, on the **Employee detail** page (`EmployeeAccountCard`): shows the
-Employee Code and Branch Code, creates the login account (username defaults to the code), edits the
-username, and shows the account's data scopes. No account-administration dashboard yet.
+Identity UI lives on the **Employee detail** page (`EmployeeAccountCard`), now a full Account
+panel (design §16.5): the derived account status (Not Invited / Invitation Sent / Activated /
+Expired / Locked), lifecycle timestamps (invitation sent/expires, activated at, last login,
+password last changed), per-channel delivery outcomes, TOTP state, admin actions (reset — lock +
+fresh setup link, resend setup link, reset authenticator, require/un-require TOTP — all under
+`user.resetPassword`), the manual create-login override, and username editing. Self-service account security (change password,
+authenticator, sessions) is at `/account/security`; the public setup page is `/activate`. No
+account-administration dashboard yet.
 
 ## 5. Future-proofing
 

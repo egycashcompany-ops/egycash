@@ -27,10 +27,14 @@ const compVisible = (req: Request): boolean =>
 export const createEmployee = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { body } = validated<CreateEmployee>(req);
-  const doc = await employeeService.create(ctx, body, scopeSelector(ctx, 'employee.create'));
+  const { doc, provisionedLogin } = await employeeService.create(
+    ctx,
+    body,
+    scopeSelector(ctx, 'employee.create'),
+  );
   created(
     res,
-    toEmployeeDto(doc, { compensationVisible: compVisible(req) }),
+    { ...toEmployeeDto(doc, { compensationVisible: compVisible(req) }), provisionedLogin },
     `/api/v1/hr/employees/${String(doc._id)}`,
   );
 };
@@ -39,10 +43,14 @@ export const createEmployee = async (req: Request, res: Response): Promise<void>
 export const registerEmployeeDirect = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { body } = validated<DirectRegisterEmployee>(req);
-  const doc = await employeeService.registerDirect(ctx, body, scopeSelector(ctx, 'employee.registerDirect'));
+  const { doc, provisionedLogin } = await employeeService.registerDirect(
+    ctx,
+    body,
+    scopeSelector(ctx, 'employee.registerDirect'),
+  );
   created(
     res,
-    toEmployeeDto(doc, { compensationVisible: compVisible(req) }),
+    { ...toEmployeeDto(doc, { compensationVisible: compVisible(req) }), provisionedLogin },
     `/api/v1/hr/employees/${String(doc._id)}`,
   );
 };

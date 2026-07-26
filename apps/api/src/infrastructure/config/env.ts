@@ -34,6 +34,27 @@ const EnvSchema = z.object({
   SENTRY_DSN: z.string().default(''),
   SLOW_QUERY_MS: z.coerce.number().int().min(1).default(200),
 
+  /**
+   * Single-service deployment (Railway guide): path of the built web bundle to serve
+   * same-origin from the api (SPA fallback included). Empty (default) keeps the api
+   * headless — dev and split deployments are unaffected.
+   */
+  WEB_STATIC_DIR: z.string().default(''),
+  /**
+   * Subpath deployment (e.g. https://egycash.com.eg/ecms): every HTTP surface — the api,
+   * the static web, the refresh-cookie path — mounts under this prefix. The web build
+   * must match (VITE_BASE_PATH + VITE_API_BASE_URL). Empty (default) = root. Health
+   * endpoints stay additionally reachable at the root for platform probes.
+   */
+  BASE_PATH: z
+    .string()
+    .default('')
+    .transform((v) => {
+      const trimmed = v.trim().replace(/\/+$/, '');
+      if (trimmed === '' || trimmed === '/') return '';
+      return trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+    }),
+
   // ── File storage (ADR-010) ────────────────────────────────────────────────
   STORAGE_DRIVER: z.enum(['local', 'railway', 's3', 'minio', 'azure']).default('local'),
   STORAGE_LOCAL_ROOT: z.string().default('./storage'),
@@ -63,6 +84,18 @@ const EnvSchema = z.object({
     .default('false')
     .transform((v) => v === 'true'),
   NOTIFICATIONS_EMAIL_FROM: z.string().default('EGYCASH <no-reply@ecms.local>'),
+
+  // ── Credentials delivery (auth design §12 R3/R9) ──────────────────────────
+  /** Absolute base URL of the web app — the login link in credential messages. */
+  WEB_PUBLIC_URL: z.string().url().default('http://localhost:5173'),
+  /** WhatsApp transport driver: 'disabled' keeps dev/CI hermetic (logs + not-delivered). */
+  WHATSAPP_PROVIDER: z.enum(['disabled', 'meta', 'twilio']).default('disabled'),
+  /** meta: Cloud API access token · twilio: auth token. */
+  WHATSAPP_API_TOKEN: z.string().default(''),
+  /** meta: phone-number id · twilio: account SID. */
+  WHATSAPP_ACCOUNT_ID: z.string().default(''),
+  /** twilio only: the sending WhatsApp number (E.164). */
+  WHATSAPP_FROM_NUMBER: z.string().default(''),
 
   SEED_ADMIN_EMAIL: z.string().email().default('admin@ecms.local'),
   SEED_ADMIN_PASSWORD: z.string().min(8).default('Admin#2026!ecms'),

@@ -31,6 +31,7 @@ import { userService } from '../../src/platform/users';
 import { settingsService } from '../../src/platform/settings';
 import { getCache } from '../../src/infrastructure/redis/cache';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
+import { addDays, cairoToday } from '../../src/modules/hr/shared/business-date';
 import { type AuthContext } from '../../src/shared/types';
 
 const PASSWORD = 'Str0ng#Pass!';
@@ -86,8 +87,10 @@ const nextNid = (male: boolean): string => {
   return `290010101${serial3}${male ? '1' : '2'}0`;
 };
 
-const dayOffsetIso = (n: number): string =>
-  new Date(Date.now() + n * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+// Offsets from the CAIRO business "today" — the engine validates against cairoToday(), and
+// between 21:00 and 24:00 UTC a UTC-based "today" is already yesterday in Cairo (backdate rules
+// would reject spans starting "today").
+const dayOffsetIso = (n: number): string => addDays(cairoToday(), n).toISOString().slice(0, 10);
 
 /** In-process event handlers (grant-on-hire) are fire-and-forget — let them land. */
 const settle = async (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 200));
@@ -137,21 +140,25 @@ const regEmployee = async (over: Record<string, unknown> = {}, male = true): Pro
   throw new Error(`hire-time grant never landed for ${emp.code}`);
 };
 
-/** Give an employee an ACTIVATED login + the own-scoped self-service grants (L7). */
-const activateEssLogin = async (emp: EmployeeDto, essRoleId: string): Promise<{ userId: string; token: string }> => {
-  const email = `leave-${emp.code}@ecms.local`;
-  const loginRes = await request(app)
-    .post(`/api/v1/hr/employees/${emp.id}/login`)
-    .set('Authorization', `Bearer ${adminToken}`)
-    .send({ email, firstName: { ar: 'م', en: 'E' }, lastName: { ar: 'م', en: 'E' } });
-  expect(loginRes.status).toBe(201);
-  const account = loginRes.body.data as { user: { id: string }; activationToken: string };
-  const activated = await request(app)
-    .post('/api/v1/auth/activate')
-    .send({ token: account.activationToken, password: PASSWORD });
-  expect(activated.status).toBe(204);
-  await rbacService.ensureAssignment(account.user.id, essRoleId, 'own');
-  return { userId: account.user.id, token: await login(email) };
+/**
+ * Get a working self-service SESSION for an auto-provisioned employee account (auth design
+ * D1/D2 + §14): the account exists (born invited, awaiting its setup link) with the ESS
+ * role at own scope. The suite establishes the password at the service level — the same
+ * state activation reaches — and signs in by employee code.
+ */
+const activateEssLogin = async (emp: EmployeeDto): Promise<{ userId: string; token: string }> => {
+  const reread = await request(app)
+    .get(`/api/v1/hr/employees/${emp.id}`)
+    .set('Authorization', `Bearer ${adminToken}`);
+  const userId = (reread.body.data as EmployeeDto).userId;
+  expect(userId).not.toBeNull();
+  await userService.setPassword(String(userId), PASSWORD, 'passwordReset');
+  await userService.forceActivate(String(userId));
+  const full = await request(app)
+    .post('/api/v1/auth/login')
+    .send({ identifier: emp.code, password: PASSWORD });
+  expect(full.status).toBe(200);
+  return { userId: String(userId), token: (full.body.data as { accessToken: string }).accessToken };
 };
 
 const balances = async (employeeId: string, year?: number): Promise<LeaveBalanceDto[]> => {
@@ -229,7 +236,6 @@ const grantNextYearHeadroom = async (employeeId: string): Promise<void> => {
   expect(res.status).toBe(200);
 };
 
-let ESS_ROLE_ID = '';
 let manager: EmployeeDto;
 let managerAuth: { userId: string; token: string };
 
@@ -284,15 +290,8 @@ beforeAll(async () => {
   expect(typesRes.status).toBe(200);
   TYPES = typesRes.body.data as LeaveTypeDto[];
 
-  // The self-service role: own-scoped view + request (mirrors the seeded ESS role, L7).
-  const essRole = await rbacService.createRole(
-    { name: { en: 'ESS test', ar: 'خدمة ذاتية' }, permissionKeys: ['leave.view', 'leave.request'] },
-    adminId,
-  );
-  ESS_ROLE_ID = String(essRole._id);
-
   manager = await regEmployee();
-  managerAuth = await activateEssLogin(manager, ESS_ROLE_ID);
+  managerAuth = await activateEssLogin(manager);
 }, 180_000);
 
 afterAll(async () => {
@@ -378,7 +377,7 @@ describe('request lifecycle — self-service + relationship approvals (§3, R9, 
 
   beforeAll(async () => {
     emp = await regEmployee({ managerId: managerAuth.userId });
-    ess = await activateEssLogin(emp, ESS_ROLE_ID);
+    ess = await activateEssLogin(emp);
     await grantNextYearHeadroom(emp.id);
   });
 
@@ -503,7 +502,7 @@ describe('policy rules — casual/annual accounting, soft overrides, gender (R11
 
   beforeAll(async () => {
     emp = await regEmployee({ managerId: managerAuth.userId });
-    ess = await activateEssLogin(emp, ESS_ROLE_ID);
+    ess = await activateEssLogin(emp);
     await grantNextYearHeadroom(emp.id);
   });
 
@@ -556,7 +555,7 @@ describe('policy rules — casual/annual accounting, soft overrides, gender (R11
 describe('sick leave — certificate gate + tiered pay on backdated completion (R4/R7)', () => {
   it('refuses approval without an attachment, then completes a fully-past span with 75% tiers', async () => {
     const emp = await regEmployee({ managerId: managerAuth.userId });
-    const ess = await activateEssLogin(emp, ESS_ROLE_ID);
+    const ess = await activateEssLogin(emp);
     const res = await submit(
       { typeId: typeId('SICK'), startDate: dayOffsetIso(-2), endDate: dayOffsetIso(-1) },
       ess.token,
@@ -600,7 +599,7 @@ describe('sick leave — certificate gate + tiered pay on backdated completion (
 describe('status-affecting leave (L2/R5) + exit settlement (R12)', () => {
   it('drives the employee to onLeave for long unpaid leave and back on early return', async () => {
     const emp = await regEmployee({ managerId: managerAuth.userId });
-    const ess = await activateEssLogin(emp, ESS_ROLE_ID);
+    const ess = await activateEssLogin(emp);
     // 20 calendar days from today — over the 14-day unpaid threshold (managerThenHr chain).
     const res = await submit(
       { typeId: typeId('UNPAID'), startDate: dayOffsetIso(0), endDate: dayOffsetIso(19) },
@@ -635,7 +634,7 @@ describe('status-affecting leave (L2/R5) + exit settlement (R12)', () => {
 
   it('settles open leave and expires balances when the employee exits (R12)', async () => {
     const emp = await regEmployee({ managerId: managerAuth.userId });
-    const ess = await activateEssLogin(emp, ESS_ROLE_ID);
+    const ess = await activateEssLogin(emp);
     const day = await countableOffset(emp.id, typeId('ANNUAL'), 30);
     const res = await submit(
       { typeId: typeId('ANNUAL'), startDate: dayOffsetIso(day), endDate: dayOffsetIso(day) },

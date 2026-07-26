@@ -49,7 +49,11 @@ export type ActivateAccount = z.infer<typeof ActivateAccountSchema>;
 
 export interface MeDto {
   id: string;
-  email: string;
+  email: string | null;
+  /** Second login identifier (defaults to the Employee Code); null for email-only accounts. */
+  username: string | null;
+  /** Server-enforced first-login gate (design 4.2) — true until the password is changed. */
+  mustChangePassword: boolean;
   name: { firstName: LocalizedString; lastName: LocalizedString };
   locale: 'ar' | 'en';
   branchId: string | null;
@@ -65,7 +69,7 @@ export interface MeDto {
 
 export type LoginResponse =
   | { totpRequired: true; challengeToken: string; enrollmentRequired: boolean }
-  | { totpRequired: false; accessToken: string; me: MeDto };
+  | { totpRequired: false; accessToken: string; me: MeDto; mustChangePassword: boolean };
 
 export interface RefreshResponse {
   accessToken: string;
@@ -92,10 +96,28 @@ export interface SessionDto {
 
 export const ListSessionsQuerySchema = z.object({}).strict();
 
-export const AdminResetPasswordSchema = z
-  .object({ newPassword: z.string().min(8).max(128) })
-  .strict();
+/**
+ * Admin reset (design §12 R6): no body — a new random temporary password is generated
+ * server-side, delivered to the employee (WhatsApp + email), all sessions are revoked and
+ * the change gate re-arms. Passwords are never supplied by nor returned to admins (R11).
+ */
+export const AdminResetPasswordSchema = z.object({}).strict();
 export type AdminResetPassword = z.infer<typeof AdminResetPasswordSchema>;
+
+/** Per-channel outcome of a transient credentials delivery (design §12 R3). */
+export interface CredentialsDeliveryResultDto {
+  channel: 'whatsapp' | 'email';
+  ok: boolean;
+  detail: string | null;
+}
+
+export interface AdminResetPasswordResultDto {
+  delivery: CredentialsDeliveryResultDto[];
+}
+
+/** D6 force-on/off: force ON clears any enrolled secret; the user re-enrolls at next login. */
+export const TotpRequireSchema = z.object({ required: z.boolean() }).strict();
+export type TotpRequire = z.infer<typeof TotpRequireSchema>;
 
 export const UserIdParamSchema = z.object({ id: objectId() }).strict();
 

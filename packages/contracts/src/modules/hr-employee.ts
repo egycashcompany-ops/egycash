@@ -18,6 +18,7 @@ import {
   type Address,
 } from '../common/index.js';
 import { UsernameSchema, type UserDto } from '../platform/users.js';
+import { type CredentialsDeliveryResultDto } from '../platform/auth.js';
 import {
   AllowanceSchema,
   EmploymentTypeSchema,
@@ -407,6 +408,13 @@ export interface EmployeeDto {
 }
 
 /** Exited-employee match for a national id (the Rehire prompt / duplicate guard). */
+/** Auto-provisioned login (frozen auth design 4.1) — present on the CREATING response only. */
+export interface EmployeeLoginProvisionDto {
+  username: string;
+  /** Per-channel credential-delivery outcomes (design §12 R3) — never the password itself. */
+  delivery: CredentialsDeliveryResultDto[];
+}
+
 export interface RehireCheckResultDto {
   employeeId: string;
   employeeNumber: string;

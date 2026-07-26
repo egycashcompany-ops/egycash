@@ -7,6 +7,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  type CredentialsDeliveryResultDto,
   type DirectRegisterEmployee,
   type EmploymentType,
   type Locale,
@@ -18,6 +19,7 @@ import { useAppSelector } from '../../../../../store';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
 import { Card, CardBody, CardHeader } from '../../../../../shared/ui/Card';
 import { Button } from '../../../../../shared/ui/Button';
+import { Dialog } from '../../../../../shared/ui/Dialog';
 import { Field, Input, Select } from '../../../../../shared/ui/form';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { localized } from '../../../../../shared/lib/format';
@@ -41,6 +43,11 @@ export const DirectRegisterPage = (): JSX.Element => {
   const register = useRegisterEmployeeDirect();
 
   // Identity + contact.
+  const [credentials, setCredentials] = useState<{
+    id: string;
+    username: string;
+    delivery: CredentialsDeliveryResultDto[];
+  } | null>(null);
   const [fullNameAr, setFullNameAr] = useState('');
   const [fullNameEn, setFullNameEn] = useState('');
   const [nationalId, setNationalId] = useState('');
@@ -122,6 +129,11 @@ export const DirectRegisterPage = (): JSX.Element => {
     try {
       const created = await register.mutateAsync(body);
       toast.success(t('employees.register.done', { code: created.code }));
+      if (created.provisionedLogin !== null) {
+        // §12 R3: credentials were DELIVERED to the employee — show the per-channel outcome.
+        setCredentials({ id: created.id, ...created.provisionedLogin });
+        return;
+      }
       navigate(`/employees/${created.id}`);
     } catch {
       // surfaced globally
@@ -318,6 +330,42 @@ export const DirectRegisterPage = (): JSX.Element => {
           </Button>
         </div>
       </div>
+      {credentials !== null && (
+        <Dialog
+          open
+          onClose={() => navigate(`/employees/${credentials.id}`)}
+          title={t('employees.register.credentialsTitle')}
+          description={t('employees.register.credentialsHint')}
+        >
+          <dl className="space-y-3 text-sm">
+            <div>
+              <dt className="text-xs text-slate-400">{t('employees.account.username')}</dt>
+              <dd className="mt-1 select-all font-mono" dir="ltr">{credentials.username}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-slate-400">{t('employees.account.deliveryTitle')}</dt>
+              <dd className="mt-1">
+                <ul className="space-y-0.5">
+                  {credentials.delivery.map((d) => (
+                    <li key={d.channel}>
+                      {t(d.channel === 'whatsapp' ? 'employees.account.channelWhatsapp' : 'employees.account.channelEmail')}
+                      {': '}
+                      {d.ok
+                        ? t('employees.account.deliverySent')
+                        : (d.detail ?? t('employees.account.deliveryFailed'))}
+                    </li>
+                  ))}
+                </ul>
+              </dd>
+            </div>
+          </dl>
+          <div className="mt-5 flex justify-end">
+            <Button onClick={() => navigate(`/employees/${credentials.id}`)}>
+              {t('common.continue')}
+            </Button>
+          </div>
+        </Dialog>
+      )}
     </PageContainer>
   );
 };

@@ -38,6 +38,20 @@ export const registerAuthSettings = (): void => {
     allowedScopes: ['organization'],
   });
   declareSetting({
+    key: SettingKeys.AuthLoginIdentifiers,
+    description: 'Enabled login identifier kinds (auth design 4.3)',
+    schema: z.array(z.enum(['username', 'email', 'employeeCode'])).min(1),
+    defaultValue: ['username', 'email', 'employeeCode'],
+    allowedScopes: ['organization'],
+  });
+  declareSetting({
+    key: SettingKeys.ActivationLinkTtlHours,
+    description: 'Activation/setup-link validity window in hours (auth design §14)',
+    schema: z.number().int().min(1).max(336),
+    defaultValue: 48,
+    allowedScopes: ['organization'],
+  });
+  declareSetting({
     key: SettingKeys.TotpEnforcedForPrivileged,
     description:
       'Enforce TOTP 2FA for privileged accounts (system roles / break-glass permissions) — Review R13',

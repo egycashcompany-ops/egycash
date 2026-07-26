@@ -7,7 +7,8 @@ import { USER_STATUSES, type LocalizedString, type UserStatus } from '@ecms/cont
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../shared/base/base.model';
 
 export interface UserDoc extends BaseDocFields {
-  email: string;
+  /** Optional contact/login identifier — auto-provisioned employee accounts may have none. */
+  email: string | null;
   /** Second login identifier (login accepts username OR email); null for legacy/system accounts. */
   username: string | null;
   /** The Employee this login belongs to (opaque back-reference); null for platform/system accounts. */
@@ -28,20 +29,31 @@ export interface UserDoc extends BaseDocFields {
   };
   security: {
     passwordChangedAt: Date | null;
+    /** First successful activation (§16.5); null while invited. */
+    activatedAt: Date | null;
+    /** Last completed login (§16.5). */
+    lastLoginAt: Date | null;
     failedLogins: number;
     lockedUntil: Date | null;
     /** Effective-permission cache key version (ADR-004). */
     permissionVersion: number;
+    /** First-login gate (auth design 4.2): true until the user changes the temp password. */
+    mustChangePassword: boolean;
     totp: {
       enabled: boolean;
       /** Base32 TOTP secret; at-rest encryption is the DB provider's (Security §3). */
       secret: string | null;
       backupCodeHashes: string[];
+      /** D6 — admin-forced enrollment: login demands enrollment until enabled. */
+      required: boolean;
     };
   };
   activation: {
     tokenHash: string | null;
     expiresAt: Date | null;
+    /** §16.1 — last-invitation metadata SURVIVES consumption/supersession/expiry. */
+    sentAt: Date | null;
+    delivery: { channel: 'whatsapp' | 'email'; ok: boolean; detail: string | null }[] | null;
   };
 }
 
@@ -49,7 +61,7 @@ const localized = { ar: { type: String, required: true }, en: { type: String, re
 
 const userSchema = new Schema<UserDoc>(
   {
-    email: { type: String, required: true, lowercase: true, trim: true },
+    email: { type: String, default: null, lowercase: true, trim: true },
     username: { type: String, default: null, lowercase: true, trim: true },
     employeeId: { type: Schema.Types.ObjectId, default: null },
     phone: { type: String, default: null },
@@ -68,27 +80,38 @@ const userSchema = new Schema<UserDoc>(
     },
     security: {
       passwordChangedAt: { type: Date, default: null },
+      activatedAt: { type: Date, default: null },
+      lastLoginAt: { type: Date, default: null },
       failedLogins: { type: Number, default: 0 },
       lockedUntil: { type: Date, default: null },
       permissionVersion: { type: Number, default: 1 },
+      mustChangePassword: { type: Boolean, default: false },
       totp: {
         enabled: { type: Boolean, default: false },
         secret: { type: String, default: null },
         backupCodeHashes: { type: [String], default: [] },
+        required: { type: Boolean, default: false },
       },
     },
     activation: {
       tokenHash: { type: String, default: null },
       expiresAt: { type: Date, default: null },
+      sentAt: { type: Date, default: null },
+      delivery: { type: [{ _id: false, channel: String, ok: Boolean, detail: { type: String, default: null } }], default: null },
     },
     ...baseFields,
   },
   baseSchemaOptions,
 );
 
+// Email is optional (auth design §3): unique among live accounts that HAVE one.
 userSchema.index(
   { email: 1 },
-  { unique: true, name: 'ux_email', partialFilterExpression: { isDeleted: false } },
+  {
+    unique: true,
+    name: 'ux_email',
+    partialFilterExpression: { isDeleted: false, email: { $type: 'string' } },
+  },
 );
 // Username is unique among live accounts; accounts without a username are exempt.
 userSchema.index(

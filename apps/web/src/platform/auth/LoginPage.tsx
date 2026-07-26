@@ -12,6 +12,7 @@ import { ThemeToggle } from '../layout/ThemeToggle';
 import { LanguageToggle } from '../layout/LanguageToggle';
 import { BrandMark, Button, Field, Form, Input } from '../../shared/ui';
 import { AlertIcon } from '../../shared/ui/icons';
+import { ApiError } from '../../shared/lib/api-client';
 import { loginRequest, totpChallengeRequest, totpEnrollWithChallengeRequest } from './api';
 
 interface Enrollment {
@@ -27,7 +28,7 @@ export const LoginPage = (): JSX.Element => {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const [step, setStep] = useState<Step>({ kind: 'credentials' });
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -42,7 +43,7 @@ export const LoginPage = (): JSX.Element => {
     setBusy(true);
     setError(null);
     try {
-      const response = await loginRequest(email, password);
+      const response = await loginRequest(identifier.trim(), password);
       if (!response.totpRequired) {
         finish(response.me);
         return;
@@ -52,8 +53,13 @@ export const LoginPage = (): JSX.Element => {
         enroll = await totpEnrollWithChallengeRequest(response.challengeToken);
       }
       setStep({ kind: 'totp', challengeToken: response.challengeToken, enroll });
-    } catch {
-      setError(t('platform.auth.login.failed'));
+    } catch (e) {
+      // §15.3: a not-yet-activated account needs its setup link, not a retry.
+      setError(
+        e instanceof ApiError && e.code === 'AUTH_ACCOUNT_NOT_ACTIVATED'
+          ? t('platform.auth.login.notActivated')
+          : t('platform.auth.login.failed'),
+      );
     } finally {
       setBusy(false);
     }
@@ -151,15 +157,15 @@ export const LoginPage = (): JSX.Element => {
 
             {onCredentials ? (
               <Form onSubmit={() => void submitCredentials()}>
-                <Field label={t('platform.auth.login.email')} htmlFor="login-email">
+                <Field label={t('platform.auth.login.identifier')} htmlFor="login-identifier">
                   <Input
-                    id="login-email"
-                    type="email"
+                    id="login-identifier"
                     required
                     autoComplete="username"
                     dir="ltr"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    value={identifier}
+                    onChange={(e) => setIdentifier(e.target.value)}
+                    placeholder={t('platform.auth.login.identifierHint')}
                   />
                 </Field>
                 <Field label={t('platform.auth.login.password')} htmlFor="login-password">

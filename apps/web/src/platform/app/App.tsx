@@ -7,6 +7,7 @@ import { useAppDispatch, useAppSelector } from '../../store';
 import { signedIn, signedOut } from '../../store/authSlice';
 import { bootstrapSession } from '../auth/api';
 import { LoginPage } from '../auth/LoginPage';
+import { ActivationPage } from '../auth/ActivationPage';
 import { RequireAuth } from '../router/RequireAuth';
 import { LoadingState } from '../../shared/ui/states/LoadingState';
 
@@ -15,6 +16,7 @@ const EmployeeManagementRoutes = lazy(() => import('../../modules/hr/employee-ma
 const EmployeeFilesRoutes = lazy(() => import('../../modules/hr/employee-management/files-routes'));
 const OrganizationRoutes = lazy(() => import('../../modules/organization/routes'));
 const LeaveManagementRoutes = lazy(() => import('../../modules/hr/leave-management/routes'));
+const AccountRoutes = lazy(() => import('../account/routes'));
 
 const useDirection = (): void => {
   const { locale, dir } = useAppSelector((state) => state.locale);
@@ -23,6 +25,9 @@ const useDirection = (): void => {
     document.documentElement.dir = dir;
   }, [locale, dir]);
 };
+
+// Subpath deployments: the router mirrors Vite's base (BASE_URL is '/' at the root).
+const BASENAME = import.meta.env.BASE_URL.replace(/\/$/, '') || '/';
 
 export const App = (): JSX.Element => {
   useDirection();
@@ -45,9 +50,10 @@ export const App = (): JSX.Element => {
   }, [status, isFetched, data, dispatch]);
 
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={BASENAME}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/activate" element={<ActivationPage />} />
         <Route
           path="/organization/*"
           element={
@@ -74,6 +80,16 @@ export const App = (): JSX.Element => {
             <RequireAuth>
               <Suspense fallback={<div className="grid min-h-screen place-items-center"><LoadingState /></div>}>
                 <LeaveManagementRoutes />
+              </Suspense>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/account/security"
+          element={
+            <RequireAuth>
+              <Suspense fallback={<div className="grid min-h-screen place-items-center"><LoadingState /></div>}>
+                <AccountRoutes />
               </Suspense>
             </RequireAuth>
           }

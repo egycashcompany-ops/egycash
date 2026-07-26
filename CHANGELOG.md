@@ -9,6 +9,66 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Added
+
+- **Authentication & Employee Account Lifecycle (frozen design:
+  `docs/12-planning/auth-account-lifecycle-design.md`, Revisions 2–6).** Every employed
+  employee now gets a login account **automatically at creation** (hire or direct
+  registration) and via an idempotent boot backfill for existing databases: username = the
+  Employee Code, Employee Self-Service role granted at link time. **No passwords are ever
+  sent (§14, enterprise standard):** the account is born awaiting a **one-time setup link**
+  delivered to the employee **via WhatsApp + email** (username, Employee Code, link, expiry)
+  through provider-agnostic transports (Meta Cloud API / Twilio / disabled — R9); the
+  employee opens `/activate` and **chooses their own policy-checked password**. Delivery is
+  transient — the persisted notification pipeline is never used, nothing secret is ever
+  stored (hash-only), logged, or returned by any API (R11/R12) — and the message wording is
+  an **admin-editable notification template** (`platform.credentialsDelivery`,
+  create-if-missing so edits survive deploys, R15). Channels are independent (email-only or
+  WhatsApp-only both work, R16). Links **expire** (`auth.activationLink.ttlHours`, default
+  48h); **Resend** issues a new link that instantly invalidates the previous one (only while
+  a link is pending); **admin Reset** (permission `user.resetPassword`) locks the account —
+  password cleared, all sessions revoked — and delivers a fresh link. Login identifiers are
+  configurable (`auth.loginIdentifiers`): username, email (now **optional** on accounts —
+  partial unique index, migrated at boot) and the Employee Code, which resolves through an
+  HR seam and keeps working even after an admin renames the username. Admins can also
+  **Reset** a user's authenticator or **Require/Un-require TOTP** (force-on wipes any
+  enrolled secret and demands enrollment at the next login — admins can never see or
+  generate a secret, D6). Self-service gets an **Account Security** page (change password,
+  enable/disable authenticator with QR + one-time backup codes, active-session list with
+  revoke). The server-enforced first-login gate (`mustChangePassword` →
+  `PASSWORD_CHANGE_REQUIRED`) remains implemented as dormant defense-in-depth — the link
+  model never needs it. All lifecycle events are audited (`accountAutoCreated`,
+  `credentialsDelivered` per channel + mode, `firstLogin` at activation, `passwordReset`,
+  `passwordChanged`, `totpEnrolled`/`totpDisabled`/`totpReset`/`totpRequiredChanged`,
+  `usernameChanged`). Fully backward-compatible: existing email-only accounts, the invite →
+  activate flow and enrolled TOTP users behave exactly as before, and the identifier
+  resolution + challenge-token seams keep the door open for Azure AD / Google Workspace /
+  LDAP / SAML / OAuth, WebAuthn and SMS/Email OTP without redesign (§10/R18). Also fixes
+  the web login form, which only sent `email` and silently broke username-based sign-in.
+  **Hardening + enterprise completeness (§15/§16):** a never-activated login answers a
+  dedicated `AUTH_ACCOUNT_NOT_ACTIVATED` (unknown identifier and wrong password stay
+  indistinguishable); admins see a derived **account status** (Not Invited / Invitation
+  Sent / Activated / Expired / Locked) plus a full **Account panel** on the employee page
+  (invitation sent/expires, activated at, last login, password last changed, MFA state,
+  per-channel delivery outcomes); disabling an account, deleting it, or an **employee
+  exit** revokes any pending setup link *and every session* in the same operation (the
+  status machine now allows suspending a never-activated login); an **hourly sweep**
+  revokes expired links; the whole invitation lifecycle is audited (`invitationCreated` /
+  `invitationResent` / `invitationExpired` / `invitationUsed` / `invitationAttemptInvalid`
+  / `invitationRevoked`) with nothing ever deleted — history lives in the append-only
+  audit stream and the invitation metadata survives consumption; activation is single-use,
+  device-independent, MFA-independent and **never mints a session** (login is the only
+  place sessions are born); lifecycle state + sequence diagrams live in
+  `docs/02-architecture/account-lifecycle.md`.
+
+- **Railway deployment support.** Config-as-code for a two-service deployment
+  (`railway.json` → api + web, `railway.worker.json` → BullMQ worker + scheduler), a new
+  `WEB_STATIC_DIR` option that lets the api serve the built web bundle **same-origin**
+  (hashed assets immutable, HTML shell no-cache, SPA fallback) so the `SameSite=Strict`
+  refresh cookie works without cross-site exceptions, and a step-by-step guide
+  (`docs/09-guides/railway-deployment.md`) covering Atlas (transactions require a replica
+  set), Redis, volumes, env vars and first-boot seeding.
+
 ### Fixed
 
 - **Upgrade compatibility + field-test fixes (post-Leave-merge QA round).**

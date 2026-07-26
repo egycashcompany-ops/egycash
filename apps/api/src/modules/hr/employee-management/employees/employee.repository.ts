@@ -95,6 +95,11 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
     return res.modifiedCount;
   }
 
+  /** Employee by CODE (auth design 4.3 — the employee-code login identifier). */
+  async findByCodeSystem(code: string): Promise<EmployeeDoc | null> {
+    return this.model.findOne({ code, isDeleted: false }).lean<EmployeeDoc>().exec();
+  }
+
   /** The employee a login belongs to (self-service own-resolution, leave design C1-R). */
   async findByUserIdSystem(userId: string): Promise<EmployeeDoc | null> {
     if (!Types.ObjectId.isValid(userId)) return null;

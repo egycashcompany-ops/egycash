@@ -6,6 +6,7 @@ import { logger } from '../../infrastructure/logging/logger';
 import { relayOutbox } from '../kernel/event-bus';
 import { rbacService } from '../rbac';
 import { runActivityRetention, runSecuritySignalDetection } from '../audit';
+import { userService } from '../users';
 import { schedulerService } from './scheduler.service';
 
 export const registerPlatformScheduledTasks = (): void => {
@@ -46,6 +47,19 @@ export const registerPlatformScheduledTasks = (): void => {
     ownerService: 'audit',
     handler: async () => {
       await runActivityRetention();
+    },
+  });
+
+  // Auth design §15.7 — expired setup links are revoked (stale secrets never linger)
+  // and `invitationExpired` is audited once per invitation.
+  schedulerService.declareTask({
+    key: 'platform.auth.invitationExpirySweep',
+    description: 'Revoke expired activation links and audit invitationExpired',
+    cron: '0 * * * *',
+    ownerService: 'users',
+    handler: async () => {
+      const swept = await userService.sweepExpiredInvitations();
+      if (swept > 0) logger.info({ swept }, 'expired activation links revoked');
     },
   });
 

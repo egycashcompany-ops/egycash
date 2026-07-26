@@ -3,8 +3,16 @@
 // defaults to the Employee Code), edit the username later, and see the account's data scopes. This
 // is deliberately the *minimum* identity UI — no full account-administration dashboard.
 import { useState } from 'react';
-import { type CreateEmployeeLogin, type EmployeeDto, type Locale, type LocalizedString } from '@ecms/contracts';
+import {
+  type CreateEmployeeLogin,
+  type CredentialsDeliveryResultDto,
+  type EmployeeDto,
+  type Locale,
+  type LocalizedString,
+} from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
+import { useAppSelector } from '../../../../../store';
+import { formatDateTime } from '../../../../../shared/lib/format';
 import { Can } from '../../../../../platform/rbac/Can';
 import { Card, CardBody, CardHeader } from '../../../../../shared/ui/Card';
 import { Button } from '../../../../../shared/ui/Button';
@@ -17,6 +25,10 @@ import {
   useBranch,
   useCreateEmployeeLogin,
   useLinkedUser,
+  useRequireUserTotp,
+  useResendUserCredentials,
+  useResetUserPassword,
+  useResetUserTotp,
   useUpdateUser,
   useUserAssignments,
 } from '../api/employee-queries';
@@ -125,6 +137,121 @@ const CreateLoginDialog = ({
   );
 };
 
+/** Admin security actions + the Account panel (auth design 4.4/4.5 + §15.4/§16.5). */
+const SecurityActions = ({ userId }: { userId: string }): JSX.Element => {
+  const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  const { data: user } = useLinkedUser(userId);
+  const resetPassword = useResetUserPassword(userId);
+  const resendCredentials = useResendUserCredentials(userId);
+  const resetTotp = useResetUserTotp(userId);
+  const requireTotp = useRequireUserTotp(userId);
+  const [delivery, setDelivery] = useState<CredentialsDeliveryResultDto[] | null>(null);
+
+  const doResetPassword = async (): Promise<void> => {
+    const result = await resetPassword.mutateAsync();
+    setDelivery(result.delivery);
+    toast.success(t('employees.account.passwordResetDone'));
+  };
+  const doResend = async (): Promise<void> => {
+    const result = await resendCredentials.mutateAsync();
+    setDelivery(result.delivery);
+    toast.success(t('employees.account.resendDone'));
+  };
+  const doResetTotp = async (): Promise<void> => {
+    await resetTotp.mutateAsync();
+    toast.success(t('employees.account.totpResetDone'));
+  };
+  const toggleRequired = async (): Promise<void> => {
+    const next = !(user?.totpRequired ?? false);
+    await requireTotp.mutateAsync(next);
+    toast.success(next ? t('employees.account.totpRequiredOn') : t('employees.account.totpRequiredOff'));
+  };
+
+  // §15.4 — the derived five-state account status ("not invited" renders on the login row).
+  const statusTones = {
+    invitationSent: 'warning',
+    activated: 'success',
+    expired: 'danger',
+    locked: 'neutral',
+  } as const;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-1.5">
+        {user !== undefined && (
+          <Badge tone={statusTones[user.accountStatus]}>
+            {t(`employees.account.status.${user.accountStatus}`)}
+          </Badge>
+        )}
+        {(user?.mustChangePassword ?? false) && (
+          <Badge tone="warning">{t('employees.account.mustChange')}</Badge>
+        )}
+        <Badge tone={(user?.totpEnabled ?? false) ? 'success' : 'neutral'}>
+          {(user?.totpEnabled ?? false)
+            ? t('employees.account.totpOn')
+            : t('employees.account.totpOff')}
+        </Badge>
+        {(user?.totpRequired ?? false) && <Badge tone="info">{t('employees.account.totpRequired')}</Badge>}
+      </div>
+      {/* §16.5 — lifecycle timestamps for the admin Account panel. */}
+      {user !== undefined && (
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs sm:grid-cols-3">
+          {(
+            [
+              ['sentAt', user.invitationSentAt],
+              ['expiresAt', user.invitationExpiresAt],
+              ['activatedAt', user.activatedAt],
+              ['lastLogin', user.lastLoginAt],
+              ['passwordChanged', user.passwordChangedAt],
+            ] as const
+          ).map(([key, value]) => (
+            <div key={key}>
+              <dt className="text-slate-400">{t(`employees.account.${key}`)}</dt>
+              <dd className="mt-0.5 text-slate-600 dark:text-slate-300">
+                {formatDateTime(value, locale)}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {(delivery ?? user?.lastDelivery ?? null) !== null && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-900/50 dark:bg-amber-950/40">
+          <p className="text-amber-900 dark:text-amber-200">{t('employees.account.deliveryTitle')}</p>
+          <ul className="mt-1 space-y-0.5 text-amber-900 dark:text-amber-100">
+            {(delivery ?? user?.lastDelivery ?? []).map((d) => (
+              <li key={d.channel}>
+                {t(d.channel === 'whatsapp' ? 'employees.account.channelWhatsapp' : 'employees.account.channelEmail')}
+                {': '}
+                {d.ok ? t('employees.account.deliverySent') : (d.detail ?? t('employees.account.deliveryFailed'))}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" variant="secondary" loading={resetPassword.isPending} onClick={() => void doResetPassword()}>
+          {t('employees.account.resetPassword')}
+        </Button>
+        {(user?.setupLinkPending ?? false) && (
+          <Button size="sm" variant="secondary" loading={resendCredentials.isPending} onClick={() => void doResend()}>
+            {t('employees.account.resendCredentials')}
+          </Button>
+        )}
+        <Button size="sm" variant="ghost" loading={resetTotp.isPending} onClick={() => void doResetTotp()}>
+          {t('employees.account.resetTotp')}
+        </Button>
+        <Button size="sm" variant="ghost" loading={requireTotp.isPending} onClick={() => void toggleRequired()}>
+          {(user?.totpRequired ?? false)
+            ? t('employees.account.unrequireTotp')
+            : t('employees.account.requireTotp')}
+        </Button>
+      </div>
+      <p className="text-xs text-slate-400">{t('employees.account.resetHint')}</p>
+    </div>
+  );
+};
+
 const UsernameEditor = ({ userId, current }: { userId: string; current: string }): JSX.Element => {
   const t = useT();
   const update = useUpdateUser(userId);
@@ -186,6 +313,7 @@ export const EmployeeAccountCard = ({ employee }: { employee: EmployeeDto }): JS
           <Row label={t('employees.account.login')}>
             {employee.userId === null ? (
               <div className="flex flex-col items-start gap-2">
+                <Badge tone="neutral">{t('employees.account.status.notInvited')}</Badge>
                 <span className="text-slate-400">{t('employees.account.noLogin')}</span>
                 <Can permission="user.create">
                   <Button size="sm" onClick={() => setCreating(true)}>{t('employees.account.createLogin')}</Button>
@@ -195,6 +323,13 @@ export const EmployeeAccountCard = ({ employee }: { employee: EmployeeDto }): JS
               <UsernameEditor userId={employee.userId} current={user?.username ?? employee.code} />
             )}
           </Row>
+          {employee.userId !== null && (
+            <Can permission="user.resetPassword">
+              <Row label={t('employees.account.security')}>
+                <SecurityActions userId={employee.userId} />
+              </Row>
+            </Can>
+          )}
           {employee.userId !== null && (
             <Row label={t('employees.account.dataScope')}>
               {assignments.length === 0 ? (

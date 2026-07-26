@@ -15,6 +15,9 @@ export const emailChannelAdapter: ChannelAdapter = {
     } catch {
       return { ok: false, error: 'recipient not found' };
     }
+    if (user.email === null) {
+      return { ok: false, error: 'recipient has no email address' };
+    }
     const locale = user.locale === 'ar' ? 'ar' : 'en';
     const subject = rendered.subject?.[locale] ?? rendered.body[locale];
     const bodyText = rendered.body[locale];

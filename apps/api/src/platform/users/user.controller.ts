@@ -6,6 +6,7 @@ import {
   type ListUsersQuery,
   type UpdateUser,
   type AdminResetPassword,
+  type TotpRequire,
 } from '@ecms/contracts';
 import { created, noContent, ok, okPage } from '../../infrastructure/http/respond';
 import { validated } from '../../infrastructure/http/validate';
@@ -64,9 +65,31 @@ export const deleteUser = async (req: Request, res: Response): Promise<void> => 
 };
 
 export const adminResetPassword = async (req: Request, res: Response): Promise<void> => {
-  const { body, params } = validated<AdminResetPassword, never, IdParam>(req);
-  await userService.setPassword(params.id, body.newPassword, 'passwordReset');
+  const { params } = validated<AdminResetPassword, never, IdParam>(req);
+  // §14.4: lock out (hash cleared, sessions revoked) + deliver a fresh one-time setup link.
+  const delivery = await userService.resetViaSetupLink(params.id);
   await authService.revokeAllSessionsForUser(params.id, 'admin-password-reset');
+  ok(res, { delivery });
+};
+
+export const adminResendCredentials = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<never, never, IdParam>(req);
+  // §14.3: new token replaces (and invalidates) the pending link — no other side effects.
+  const delivery = await userService.resendSetupLink(params.id);
+  ok(res, { delivery });
+};
+
+export const adminResetTotp = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<never, never, IdParam>(req);
+  await userService.resetTotp(params.id);
+  await authService.revokeAllSessionsForUser(params.id, 'admin-totp-reset');
+  noContent(res);
+};
+
+export const adminRequireTotp = async (req: Request, res: Response): Promise<void> => {
+  const { body, params } = validated<TotpRequire, never, IdParam>(req);
+  await userService.setTotpRequired(params.id, body.required);
+  if (body.required) await authService.revokeAllSessionsForUser(params.id, 'admin-totp-required');
   noContent(res);
 };
 

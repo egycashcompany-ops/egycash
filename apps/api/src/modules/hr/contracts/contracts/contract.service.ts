@@ -39,7 +39,7 @@ import { DEFAULT_CONTRACT_NUMBER_FORMAT, nextContractNumber } from './contract-n
 import { resolveContractVariables } from './contract-variables';
 import { renderContractHtml } from './contract-render';
 import { contractRepository } from './contract.repository';
-import { type ContractDoc } from './contract.model';
+import { fromOverridePairs, toOverridePairs, type ContractDoc } from './contract.model';
 
 const GENERATOR_VERSION = 'ecms-api/2.1.0';
 
@@ -125,7 +125,7 @@ class ContractService {
         supersededById: null,
         startDate: dateOnly(input.startDate),
         endDate: input.endDate === null ? null : dateOnly(input.endDate),
-        overrides: input.overrides,
+        overrides: toOverridePairs(input.overrides),
         variables: [],
         renderedHtml: null,
         generation: { status: 'idle', error: null, requestedAt: null, completedAt: null, integrity: null, pdfFileId: null },
@@ -159,7 +159,7 @@ class ContractService {
     if (input.startDate !== undefined) set.startDate = dateOnly(input.startDate);
     if (input.endDate !== undefined) set.endDate = input.endDate === null ? null : dateOnly(input.endDate);
     if (input.referenceNumber !== undefined) set.referenceNumber = input.referenceNumber;
-    if (input.overrides !== undefined) set.overrides = input.overrides;
+    if (input.overrides !== undefined) set.overrides = toOverridePairs(input.overrides);
     const after = await contractRepository.updateById(id, set, { by: ctx.userId, version: input.version });
     await auditService.record({ entityRef: entityRef(id), action: 'update' });
     return after;
@@ -232,7 +232,7 @@ class ContractService {
     // A17 — pin the PUBLISHED version of the chosen template key.
     const pinned = await contractTemplateService.publishedVersionOf(String(doc.templateId));
     const employee = await employeeService.getById(String(doc.employeeId), scope);
-    const overrides = doc.overrides ?? {};
+    const overrides = fromOverridePairs(doc.overrides);
     const { values, issues } = await resolveContractVariables(pinned.placeholders, {
       employee,
       code: doc.code,
@@ -412,7 +412,7 @@ class ContractService {
         supersededById: null,
         startDate: dateOnly(input.startDate),
         endDate: input.endDate === null ? null : dateOnly(input.endDate),
-        overrides: input.overrides,
+        overrides: toOverridePairs(input.overrides),
         variables: [],
         renderedHtml: null,
         generation: { status: 'idle', error: null, requestedAt: null, completedAt: null, integrity: null, pdfFileId: null },
@@ -670,8 +670,7 @@ class ContractService {
   // ── DTO ────────────────────────────────────────────────────────────────────
 
   toDto(doc: ContractDoc): ContractDto {
-    const raw = doc.overrides as unknown;
-    const overrides = raw instanceof Map ? Object.fromEntries(raw as Map<string, string>) : ((raw ?? {}) as Record<string, string>);
+    const overrides = fromOverridePairs(doc.overrides);
     return {
       id: String(doc._id),
       code: doc.code,
@@ -696,7 +695,7 @@ class ContractService {
         source: v.source,
         overriddenBy: v.overriddenBy === null ? null : String(v.overriddenBy),
       })),
-      overrides: overrides as Record<string, string>,
+      overrides,
       generation: {
         status: doc.generation.status,
         error: doc.generation.error,

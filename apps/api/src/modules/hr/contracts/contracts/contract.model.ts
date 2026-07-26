@@ -20,6 +20,19 @@ export interface ContractVariableValue {
   overriddenBy: Types.ObjectId | null;
 }
 
+/** Overrides persist as PAIRS: Mongoose Map rejects the dotted catalog keys. */
+export interface ContractOverridePair {
+  key: string;
+  value: string;
+}
+
+export const toOverridePairs = (record: Record<string, string>): ContractOverridePair[] =>
+  Object.entries(record).map(([key, value]) => ({ key, value }));
+
+export const fromOverridePairs = (
+  pairs: readonly ContractOverridePair[] | undefined | null,
+): Record<string, string> => Object.fromEntries((pairs ?? []).map((p) => [p.key, p.value]));
+
 export interface ContractSigner {
   key: string;
   label: string;
@@ -67,8 +80,8 @@ export interface ContractDoc extends BaseDocFields {
   supersededById: Types.ObjectId | null;
   startDate: Date;
   endDate: Date | null;
-  /** Lean reads return a plain object; the schema stores a Map. */
-  overrides: Record<string, string>;
+  /** Draft-time manual values, stored as pairs (keys carry dots — see above). */
+  overrides: ContractOverridePair[];
   /** Frozen at generation with provenance (A3). */
   variables: ContractVariableValue[];
   /** The immutable rendered snapshot (A20); null while draft. */
@@ -154,7 +167,16 @@ const contractSchema = new Schema<ContractDoc>(
     supersededById: { type: Schema.Types.ObjectId, default: null },
     startDate: { type: Date, required: true },
     endDate: { type: Date, default: null },
-    overrides: { type: Map, of: String, default: {} },
+    overrides: {
+      type: [
+        {
+          _id: false,
+          key: { type: String, required: true },
+          value: { type: String, required: true },
+        },
+      ],
+      default: [],
+    },
     variables: {
       type: [
         {

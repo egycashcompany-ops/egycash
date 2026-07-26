@@ -436,8 +436,12 @@ class UserService {
     return new Date(Date.now() + ttlHours * 3_600_000);
   }
 
-  /** Policy-compliant random temporary password (D3 — shown once, stored as hash only). */
-  generateTempPassword(): string {
+  /**
+   * Random temporary password (§12 R1 + §13 R17): unambiguous alphabet (no O/0, I/l/1),
+   * guaranteed character classes, CSPRNG throughout. Length defaults to 14 — callers that
+   * must honor the live policy go through `policyTempPassword`.
+   */
+  generateTempPassword(length = 14): string {
     const lower = 'abcdefghjkmnpqrstuvwxyz';
     const upper = 'ABCDEFGHJKMNPQRSTUVWXYZ';
     const digits = '23456789';
@@ -445,12 +449,48 @@ class UserService {
     const all = lower + upper + digits + symbols;
     const pick = (set: string): string => set[randomInt(set.length)] ?? set[0]!;
     const chars = [pick(lower), pick(upper), pick(digits), pick(symbols)];
-    while (chars.length < 14) chars.push(pick(all));
+    while (chars.length < length) chars.push(pick(all));
     for (let i = chars.length - 1; i > 0; i -= 1) {
       const j = randomInt(i + 1);
       [chars[i], chars[j]] = [chars[j]!, chars[i]!];
     }
     return chars.join('');
+  }
+
+  /** R17 — the generated temp must satisfy the SAME policy as permanent passwords. */
+  async policyTempPassword(): Promise<string> {
+    const subject = { userId: null, branchId: null };
+    const minLength = await settingsService.resolve<number>(SettingKeys.PasswordMinLength, subject);
+    const requireComplexity = await settingsService.resolve<boolean>(
+      SettingKeys.PasswordRequireComplexity,
+      subject,
+    );
+    const generated = this.generateTempPassword(Math.max(14, minLength));
+    const violation = passwordPolicyViolation(generated, { minLength, requireComplexity });
+    // All four classes + adaptive length make a violation structurally impossible; the check
+    // is a guard against future policy dimensions the generator does not yet know about.
+    if (violation !== null) throw new Error(`generated temp password rejected: ${violation}`);
+    return generated;
+  }
+
+  /** §12 R3 — compose + send over every reachable channel; outcomes only, never the secret. */
+  private async deliverFor(
+    user: UserDoc,
+    temporaryPassword: string,
+    expiresAt: Date,
+    mode: 'reset' | 'resend',
+  ): Promise<CredentialsDeliveryResultDto[]> {
+    const userId = String(user._id);
+    return deliverCredentials({
+      userId,
+      username: user.username ?? user.email ?? userId,
+      employeeCode: await resolveEmployeeCodeOfUser(userId),
+      phone: user.phone,
+      email: user.email,
+      temporaryPassword,
+      expiresAt,
+      mode,
+    });
   }
 
   /**
@@ -459,19 +499,31 @@ class UserService {
    */
   async resetToTempPassword(userId: string): Promise<CredentialsDeliveryResultDto[]> {
     const user = await userRepository.getById(userId);
-    const generated = this.generateTempPassword();
+    const generated = await this.policyTempPassword();
     const expiresAt = await this.tempPasswordExpiry();
     await this.setTempPassword(userId, generated, expiresAt);
     await auditService.record({ entityRef: entityRef(userId), action: 'passwordReset' });
-    return deliverCredentials({
-      userId,
-      username: user.username ?? user.email ?? userId,
-      employeeCode: await resolveEmployeeCodeOfUser(userId),
-      phone: user.phone,
-      email: user.email,
-      temporaryPassword: generated,
-      expiresAt,
-    });
+    return this.deliverFor(user, generated, expiresAt, 'reset');
+  }
+
+  /**
+   * Re-deliver credentials to a still-gated account (§13 R13/R14) — no session revocation,
+   * no gate churn. The plaintext is unrecoverable (R12: hash only), so the hash is replaced
+   * transparently; a still-valid window is PRESERVED, an expired one renews (R10).
+   */
+  async resendCredentials(userId: string): Promise<CredentialsDeliveryResultDto[]> {
+    const user = await userRepository.getById(userId);
+    if (!(user.security.mustChangePassword ?? false)) {
+      throw new BusinessRuleError(
+        'this account has already set its own password — use reset instead',
+      );
+    }
+    const current = user.security.tempPasswordExpiresAt ?? null;
+    const expiresAt =
+      current !== null && current.getTime() > Date.now() ? current : await this.tempPasswordExpiry();
+    const generated = await this.policyTempPassword();
+    await this.setTempPassword(userId, generated, expiresAt);
+    return this.deliverFor(user, generated, expiresAt, 'resend');
   }
 
   /** D6 admin force-on/off: force ON clears any enrolled secret — the user re-enrolls. */

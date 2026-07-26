@@ -783,7 +783,7 @@ class EmployeeService {
     if (employee.userId !== null) return null;
     if (!(EMPLOYED_STATUSES as readonly string[]).includes(employee.status)) return null;
     try {
-      const tempPassword = userService.generateTempPassword();
+      const tempPassword = await userService.policyTempPassword();
       const tempPasswordExpiresAt = await userService.tempPasswordExpiry();
       const email = employee.personal.contact.email;
       const phone = employee.personal.contact.primaryPhone;
@@ -840,6 +840,7 @@ class EmployeeService {
         email,
         temporaryPassword: tempPassword,
         expiresAt: tempPasswordExpiresAt,
+        mode: 'initial',
       });
       return { username: employee.code, delivery };
     } catch (error) {

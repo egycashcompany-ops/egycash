@@ -12,7 +12,7 @@ its entry here in the same PR.
 ### Added
 
 - **Authentication & Employee Account Lifecycle (frozen design:
-  `docs/12-planning/auth-account-lifecycle-design.md`, Revision 2).** Every employed employee
+  `docs/12-planning/auth-account-lifecycle-design.md`, Revisions 2–3).** Every employed employee
   now gets a login account **automatically at creation** (hire or direct registration) and via
   an idempotent boot backfill for existing databases: username = the Employee Code, born
   `active`, Employee Self-Service role granted at link time. Every account receives a
@@ -43,7 +43,17 @@ its entry here in the same PR.
   enrolled TOTP users behave exactly as before, and the identifier resolution +
   challenge-token seams keep the door open for LDAP/AD, OIDC/SAML, WebAuthn and SMS/Email
   OTP without redesign (§10). Also fixes the web login form, which only sent `email` and
-  silently broke username-based sign-in.
+  silently broke username-based sign-in. **Revision 3 hardening (§13):** credentials exist
+  only in memory between generation and delivery (hash-only storage, no password in any log
+  or API — a hard invariant); a dedicated **Resend credentials** action re-delivers to a
+  still-gated account with no session revocation and no gate churn, preserving a still-valid
+  expiry window and renewing an expired one (a literal same-password resend would require
+  recoverable plaintext, which the memory-only rule forbids — the hash is replaced
+  transparently); the message wording is an **admin-editable notification template**
+  (`platform.credentialsDelivery`, create-if-missing so edits survive deploys) rendered in
+  memory; channels stay fully independent (email-only or WhatsApp-only employees are fine);
+  generated temp passwords use an unambiguous alphabet (no O/0, I/l/1) and are verified
+  against the live password policy with policy-adaptive length.
 
 ### Fixed
 

@@ -24,6 +24,7 @@ import {
   useCreateEmployeeLogin,
   useLinkedUser,
   useRequireUserTotp,
+  useResendUserCredentials,
   useResetUserPassword,
   useResetUserTotp,
   useUpdateUser,
@@ -139,6 +140,7 @@ const SecurityActions = ({ userId }: { userId: string }): JSX.Element => {
   const t = useT();
   const { data: user } = useLinkedUser(userId);
   const resetPassword = useResetUserPassword(userId);
+  const resendCredentials = useResendUserCredentials(userId);
   const resetTotp = useResetUserTotp(userId);
   const requireTotp = useRequireUserTotp(userId);
   const [delivery, setDelivery] = useState<CredentialsDeliveryResultDto[] | null>(null);
@@ -147,6 +149,11 @@ const SecurityActions = ({ userId }: { userId: string }): JSX.Element => {
     const result = await resetPassword.mutateAsync();
     setDelivery(result.delivery);
     toast.success(t('employees.account.passwordResetDone'));
+  };
+  const doResend = async (): Promise<void> => {
+    const result = await resendCredentials.mutateAsync();
+    setDelivery(result.delivery);
+    toast.success(t('employees.account.resendDone'));
   };
   const doResetTotp = async (): Promise<void> => {
     await resetTotp.mutateAsync();
@@ -189,6 +196,11 @@ const SecurityActions = ({ userId }: { userId: string }): JSX.Element => {
         <Button size="sm" variant="secondary" loading={resetPassword.isPending} onClick={() => void doResetPassword()}>
           {t('employees.account.resetPassword')}
         </Button>
+        {(user?.mustChangePassword ?? false) && (
+          <Button size="sm" variant="secondary" loading={resendCredentials.isPending} onClick={() => void doResend()}>
+            {t('employees.account.resendCredentials')}
+          </Button>
+        )}
         <Button size="sm" variant="ghost" loading={resetTotp.isPending} onClick={() => void doResetTotp()}>
           {t('employees.account.resetTotp')}
         </Button>

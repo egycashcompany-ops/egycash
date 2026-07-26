@@ -9,6 +9,11 @@ import { env } from '../../infrastructure/config/env';
 import { sendMail } from '../../infrastructure/email/mailer';
 import { sendWhatsApp } from '../../infrastructure/messaging/whatsapp';
 import { auditService } from '../audit';
+import { notificationTemplateRepository } from '../notifications/notification-template.repository';
+import { renderTemplate } from '../notifications/notification.rendering';
+
+/** Admin-editable message template (§13 R15) — seeded create-if-missing at boot. */
+export const CREDENTIALS_TEMPLATE_KEY = 'platform.credentialsDelivery';
 
 export interface DeliverCredentialsInput {
   userId: string;
@@ -19,31 +24,58 @@ export interface DeliverCredentialsInput {
   /** Transit-only — never persisted, never logged. */
   temporaryPassword: string;
   expiresAt: Date;
+  /** Provenance for the audit trail (§13 R14). */
+  mode: 'initial' | 'reset' | 'resend';
 }
 
 const escapeHtml = (value: string): string =>
   value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-const composeMessage = (input: DeliverCredentialsInput): { subject: string; body: string } => {
-  const expiry = input.expiresAt.toISOString().replace('T', ' ').slice(0, 16);
-  const codeLineEn = input.employeeCode === null ? '' : `Employee Code: ${input.employeeCode}\n`;
-  const codeLineAr = input.employeeCode === null ? '' : `كود الموظف: ${input.employeeCode}\n`;
-  const body =
-    `EGYCASH — حساب الدخول الخاص بك\n` +
-    `اسم المستخدم: ${input.username}\n` +
-    codeLineAr +
-    `كلمة المرور المؤقتة: ${input.temporaryPassword}\n` +
-    `رابط الدخول: ${env.WEB_PUBLIC_URL}\n` +
-    `هذه كلمة مرور مؤقتة ويجب تغييرها عند أول تسجيل دخول. صلاحيتها تنتهي في ${expiry} UTC.\n` +
-    `\n` +
-    `EGYCASH — your login account\n` +
-    `Username: ${input.username}\n` +
-    codeLineEn +
-    `Temporary password: ${input.temporaryPassword}\n` +
-    `Login: ${env.WEB_PUBLIC_URL}\n` +
-    `This password is TEMPORARY and must be changed at your first sign-in. ` +
-    `It expires at ${expiry} UTC.`;
-  return { subject: 'EGYCASH — بيانات الدخول / your login credentials', body };
+/** Built-in wording — the fallback when the seeded template has been deleted. */
+const FALLBACK = {
+  subject: {
+    ar: 'EGYCASH — بيانات الدخول',
+    en: 'EGYCASH — your login credentials',
+  },
+  body: {
+    ar:
+      'EGYCASH — حساب الدخول الخاص بك\nاسم المستخدم: {{username}}\nكود الموظف: {{employeeCode}}\n' +
+      'كلمة المرور المؤقتة: {{temporaryPassword}}\nرابط الدخول: {{loginUrl}}\n' +
+      'هذه كلمة مرور مؤقتة ويجب تغييرها عند أول تسجيل دخول. صلاحيتها تنتهي في {{expiresAt}}.',
+    en:
+      'EGYCASH — your login account\nUsername: {{username}}\nEmployee Code: {{employeeCode}}\n' +
+      'Temporary password: {{temporaryPassword}}\nLogin: {{loginUrl}}\n' +
+      'This password is TEMPORARY and must be changed at your first sign-in. It expires at {{expiresAt}}.',
+  },
+};
+
+/**
+ * Render the credential message from the ADMIN-EDITABLE template (§13 R15) — in memory only.
+ * The persisted notify() pipeline is never used: it would store the password (forbidden, R12).
+ */
+const composeMessage = async (
+  input: DeliverCredentialsInput,
+): Promise<{ subject: string; body: string }> => {
+  const template = await notificationTemplateRepository
+    .findLatestByKey(CREDENTIALS_TEMPLATE_KEY)
+    .catch(() => null);
+  const source =
+    template === null ? FALLBACK : { subject: template.subject ?? FALLBACK.subject, body: template.body };
+  const rendered = renderTemplate(source, {
+    username: input.username,
+    employeeCode: input.employeeCode ?? '—',
+    temporaryPassword: input.temporaryPassword,
+    loginUrl: env.WEB_PUBLIC_URL,
+    expiresAt: `${input.expiresAt.toISOString().replace('T', ' ').slice(0, 16)} UTC`,
+  });
+  const subject = rendered.subject ?? rendered.body;
+  return {
+    subject: `${subject.ar} / ${subject.en}`,
+    body:
+      rendered.body.ar === rendered.body.en
+        ? rendered.body.ar
+        : `${rendered.body.ar}\n\n${rendered.body.en}`,
+  };
 };
 
 /**
@@ -54,7 +86,7 @@ const composeMessage = (input: DeliverCredentialsInput): { subject: string; body
 export const deliverCredentials = async (
   input: DeliverCredentialsInput,
 ): Promise<CredentialsDeliveryResultDto[]> => {
-  const { subject, body } = composeMessage(input);
+  const { subject, body } = await composeMessage(input);
   const results: CredentialsDeliveryResultDto[] = [];
 
   if (input.phone === null || input.phone.trim() === '') {
@@ -88,11 +120,14 @@ export const deliverCredentials = async (
     .record({
       entityRef: { moduleId: 'platform', entityType: 'user', entityId: input.userId },
       action: 'credentialsDelivered',
-      changes: results.map((r) => ({
-        field: r.channel,
-        old: null,
-        new: r.ok ? 'sent' : (r.detail ?? 'failed'),
-      })),
+      changes: [
+        { field: 'mode', old: null, new: input.mode },
+        ...results.map((r) => ({
+          field: r.channel,
+          old: null,
+          new: r.ok ? 'sent' : (r.detail ?? 'failed'),
+        })),
+      ],
     })
     .catch(() => undefined);
   return results;

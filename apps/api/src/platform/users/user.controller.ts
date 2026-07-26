@@ -72,6 +72,13 @@ export const adminResetPassword = async (req: Request, res: Response): Promise<v
   ok(res, { delivery });
 };
 
+export const adminResendCredentials = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<never, never, IdParam>(req);
+  // §13 R13/R14: re-deliver to a still-gated account — no session revocation, no gate churn.
+  const delivery = await userService.resendCredentials(params.id);
+  ok(res, { delivery });
+};
+
 export const adminResetTotp = async (req: Request, res: Response): Promise<void> => {
   const { params } = validated<never, never, IdParam>(req);
   await userService.resetTotp(params.id);

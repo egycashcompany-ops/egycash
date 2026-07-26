@@ -6,7 +6,7 @@
 // accounts, backfill idempotency (D2), and legacy-user non-impact.
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { type Express } from 'express';
 import { platformPermissions, SettingKeys, type EmployeeDto, type UserDto } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
@@ -18,6 +18,7 @@ import { userService } from '../../src/platform/users';
 import { settingsService } from '../../src/platform/settings';
 import { employeeService } from '../../src/modules/hr/employee-management/employees/employee.service';
 import { UserModel } from '../../src/platform/users/user.model';
+import { notificationTemplateRepository } from '../../src/platform/notifications/notification-template.repository';
 import { getCache } from '../../src/infrastructure/redis/cache';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { type AuthContext } from '../../src/shared/types';
@@ -50,7 +51,7 @@ let phoneSeq = 7000;
 const nextPhone = (): string => `010123${String((phoneSeq += 1)).padStart(5, '0')}`;
 
 const regEmployee = async (
-  over: { nationalId?: string | null } = {},
+  over: { nationalId?: string | null; email?: string } = {},
 ): Promise<EmployeeDto> => {
   const nationalId = over.nationalId === undefined ? nextNid() : over.nationalId;
   const res = await request(app)
@@ -63,7 +64,10 @@ const regEmployee = async (
           ...(nationalId === null ? {} : { nationalId }),
           nationality: 'Egyptian',
         },
-        contact: { primaryPhone: nextPhone() },
+        contact: {
+          primaryPhone: nextPhone(),
+          ...(over.email === undefined ? {} : { email: over.email }),
+        },
         experience: [],
         drivingLicenses: [],
         certifications: [],
@@ -163,7 +167,8 @@ beforeEach(async () => {
 });
 
 /** The next temp password is DELIVERED, never echoed (§12 R11) — capture it at the source. */
-const captureTemp = (): ReturnType<typeof vi.spyOn> => vi.spyOn(userService, 'generateTempPassword');
+const captureTemp = (): MockInstance<(length?: number) => string> =>
+  vi.spyOn(userService, 'generateTempPassword');
 const lastTemp = (spy: { mock: { results: { type: string; value: unknown }[] } }): string => {
   const result = spy.mock.results[spy.mock.results.length - 1];
   if (result === undefined || result.type !== 'return') throw new Error('no temp generated');
@@ -327,6 +332,63 @@ describe('password management (§12 R6)', () => {
       .send({ identifier: emp.code, password: reissued });
     expect(relogin.status).toBe(200);
     expect((relogin.body.data as { mustChangePassword: boolean }).mustChangePassword).toBe(true);
+  });
+
+  it('resend re-delivers to a gated account without reset side effects (§13 R13/R14)', async () => {
+    const spy = captureTemp();
+    const emp = await regEmployee({});
+    const userId = String(emp.userId);
+    const before = await UserModel.findById(userId).exec();
+    const window = before?.security.tempPasswordExpiresAt ?? null;
+    expect(window).not.toBeNull();
+
+    const resend = await request(app)
+      .post(`/api/v1/platform/users/${userId}/credentials/resend`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({});
+    expect(resend.status).toBe(200);
+    expect((resend.body.data as { delivery: unknown[] }).delivery).toHaveLength(2);
+    const fresh = lastTemp(spy);
+    spy.mockRestore();
+
+    // The still-valid window is PRESERVED — regenerate-only-when-necessary (R14).
+    const after = await UserModel.findById(userId).exec();
+    expect(after?.security.tempPasswordExpiresAt?.getTime()).toBe(window?.getTime());
+
+    const gated = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ identifier: emp.code, password: fresh });
+    expect(gated.status).toBe(200);
+    const gatedBody = gated.body.data as { accessToken: string; mustChangePassword: boolean };
+    expect(gatedBody.mustChangePassword).toBe(true);
+
+    // Once the user owns their password, resend refuses — that is a reset (R6).
+    await request(app)
+      .post('/api/v1/auth/password/change')
+      .set('Authorization', `Bearer ${gatedBody.accessToken}`)
+      .send({ currentPassword: fresh, newPassword: PASSWORD });
+    const refused = await request(app)
+      .post(`/api/v1/platform/users/${userId}/credentials/resend`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({});
+    expect(refused.status).toBe(422);
+  });
+
+  it('channels are independent: email alone delivers when WhatsApp is unavailable (§13 R16)', async () => {
+    const emp = await regEmployee({ email: `ess-${String(Date.now())}@ecms.local` });
+    const provision = (emp as EmployeeDto & ProvisionShape).provisionedLogin;
+    const byChannel = new Map((provision?.delivery ?? []).map((d) => [d.channel, d]));
+    expect(byChannel.get('whatsapp')?.ok).toBe(false); // transport disabled in CI
+    expect(byChannel.get('email')?.ok).toBe(true); // email alone suffices — no dual-channel dependency
+  });
+
+  it('the credential message template is seeded and admin-editable (§13 R15)', async () => {
+    const template = await notificationTemplateRepository.findLatestByKey(
+      'platform.credentialsDelivery',
+    );
+    expect(template).not.toBeNull();
+    expect(template?.body.en).toContain('{{temporaryPassword}}');
+    expect(template?.variables).toContain('loginUrl');
   });
 });
 

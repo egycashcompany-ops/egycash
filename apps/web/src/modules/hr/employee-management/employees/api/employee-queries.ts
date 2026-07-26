@@ -225,6 +225,14 @@ export const useResetUserPassword = (userId: string) => {
   });
 };
 
+export const useResendUserCredentials = (userId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.resendUserCredentials(userId),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['hr'] }),
+  });
+};
+
 export const useResetUserTotp = (userId: string) => {
   const qc = useQueryClient();
   return useMutation({

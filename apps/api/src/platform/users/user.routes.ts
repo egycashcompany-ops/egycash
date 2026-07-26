@@ -14,6 +14,7 @@ import {
 } from './user.validation';
 import {
   adminRequireTotp,
+  adminResendCredentials,
   adminResetPassword,
   adminResetTotp,
   adminRevokeSessions,
@@ -76,6 +77,13 @@ export const buildUsersRouter = (): Router => {
     authorize('user.resetPassword'),
     validate({ body: AdminResetPasswordSchema, params: UserIdParamSchema }),
     asyncHandler(adminResetPassword),
+  );
+  router.post(
+    '/:id/credentials/resend',
+    authenticate,
+    authorize('user.resetPassword'),
+    validate({ params: UserIdParamSchema }),
+    asyncHandler(adminResendCredentials),
   );
   router.delete(
     '/:id/sessions',

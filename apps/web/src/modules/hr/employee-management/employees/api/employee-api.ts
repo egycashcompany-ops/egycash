@@ -101,6 +101,10 @@ export const updateUser = (id: string, body: UpdateUser): Promise<UserDto> =>
 export const resetUserPassword = (id: string): Promise<AdminResetPasswordResultDto> =>
   post<AdminResetPasswordResultDto>(`/platform/users/${id}/reset-password`, {});
 
+/** Re-deliver credentials to a still-gated account (design §13 R13/R14) — no reset side effects. */
+export const resendUserCredentials = (id: string): Promise<AdminResetPasswordResultDto> =>
+  post<AdminResetPasswordResultDto>(`/platform/users/${id}/credentials/resend`, {});
+
 export const resetUserTotp = (id: string): Promise<void> =>
   post<void>(`/platform/users/${id}/totp/reset`, {});
 

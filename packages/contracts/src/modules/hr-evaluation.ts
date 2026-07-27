@@ -1,15 +1,14 @@
 // HR / Recruitment — Evaluation Phases. The post-interview, file-based approval checks
 // (Security Check, Medical Examination, Driving Test, …). The set of phases is an
 // ADMINISTRATOR-CONFIGURABLE ordered catalog — new phases are added with no code changes, exactly
-// like the interview-stage catalog. An applicant who has cleared the interview rounds passes
-// through the active phases; each phase collects one or more files and carries an
-// approved/rejected decision with a reason. The decision stays EDITABLE. A rejection at any phase
+// like the interview-stage catalog. The phases are INDEPENDENT (RW6) — an applicant who has
+// cleared the interview rounds may be worked through any applicable phase in any order; each
+// phase collects one or more files and carries an approved/rejected decision with a reason. The decision stays EDITABLE. A rejection at any phase
 // removes the applicant from the active pipeline (mirrors a failed interview round).
 import { z } from 'zod';
 import { objectId, LocalizedStringSchema, PaginationQuerySchema, type LocalizedString } from '../common/index.js';
 import {
   BulkRequestBaseSchema,
-  EvaluationBucketSchema,
   type AttemptMarkerDto,
   type PlacementDto,
   type PlacementLabelDto,
@@ -17,8 +16,16 @@ import {
 
 // ── Closed vocabularies ─────────────────────────────────────────────────────
 
-/** An evaluation is `pending` until decided; `approved` clears the phase, `rejected` removes the applicant. */
-export const EVALUATION_STATUSES = ['pending', 'approved', 'rejected'] as const;
+/**
+ * The evaluation's single status enum (I10). `waiting` until decided — it also describes an
+ * applicant who is due at this phase with no record opened yet, so the phase page's three tabs,
+ * the list filter and the counter buckets all use these exact values. `approved` clears the
+ * phase; `rejected` removes the applicant from the pipeline.
+ *
+ * `waiting` replaced the former `pending` (I10); stored values are rewritten by the boot
+ * migration and `pending` is still accepted as a query alias for one release.
+ */
+export const EVALUATION_STATUSES = ['waiting', 'approved', 'rejected'] as const;
 export const EvaluationStatusSchema = z.enum(EVALUATION_STATUSES);
 export type EvaluationStatus = z.infer<typeof EvaluationStatusSchema>;
 
@@ -190,10 +197,9 @@ export type BulkEvaluations = z.infer<typeof BulkEvaluationsSchema>;
 export const ListEvaluationsQuerySchema = PaginationQuerySchema.extend({
   applicantId: objectId().optional(),
   phaseId: objectId().optional(),
+  /** Doubles as the phase page's tab (I10/RW6a): waiting | approved | rejected. */
   status: EvaluationStatusSchema.optional(),
   branchId: objectId().optional(),
-  /** The phase page's tab: `waiting` | `approved` | `rejected` (RW6a). */
-  bucket: EvaluationBucketSchema.optional(),
   batchId: objectId().optional(),
   /** Include records belonging to superseded attempts (default false for queues). */
   includeSuperseded: z.coerce.boolean().default(false),

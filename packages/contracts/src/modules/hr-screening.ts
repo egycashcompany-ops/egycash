@@ -2,13 +2,12 @@
 // second stage of the approved seven-stage recruitment workflow: an applicant, once
 // registered (Stage 1), is screened to a single terminal outcome — Accepted or Rejected
 // (OQ-32). "Needs more information" is NOT a state: it is a note added to a screening that
-// stays `pending`. Screening notes and rejection reasons are first-class and stored.
+// stays `waiting`. Screening notes and rejection reasons are first-class and stored.
 // Scope is Stage 2 only: nothing here describes Interviews (Stage 3) or later.
 import { z } from 'zod';
 import { objectId, PaginationQuerySchema } from '../common/index.js';
 import {
   BulkRequestBaseSchema,
-  ScreeningBucketSchema,
   type AttemptMarkerDto,
   type PlacementDto,
   type PlacementLabelDto,
@@ -17,12 +16,16 @@ import {
 // ── Closed vocabularies ─────────────────────────────────────────────────────
 
 /**
- * Screening lifecycle. `pending` = under review (notes may accumulate); `accepted` and
- * `rejected` are terminal decisions (OQ-32 — only two outcomes). A rejected screening
- * transitions its applicant to the terminal `rejected` status; an accepted screening
- * leaves the applicant `new` (live), ready for the later interview stage.
+ * The screening's single status enum (I10). `waiting` = under review, notes may accumulate — it
+ * also describes a registered applicant with no screening opened yet, so the page's three tabs,
+ * the list filter and the counter buckets all use these exact values. `accepted` and `rejected`
+ * are the two terminal decisions (OQ-32). A rejected screening transitions its applicant to the
+ * terminal `rejected` status; an accepted one leaves the applicant `new` (live).
+ *
+ * `waiting` replaced the former `pending` (I10); stored values are rewritten by the boot
+ * migration and `pending` is still accepted as a query alias for one release.
  */
-export const SCREENING_STATUSES = ['pending', 'accepted', 'rejected'] as const;
+export const SCREENING_STATUSES = ['waiting', 'accepted', 'rejected'] as const;
 export const ScreeningStatusSchema = z.enum(SCREENING_STATUSES);
 export type ScreeningStatus = z.infer<typeof ScreeningStatusSchema>;
 
@@ -43,7 +46,7 @@ export const CreateScreeningSchema = z
 export type CreateScreening = z.infer<typeof CreateScreeningSchema>;
 
 /**
- * Append a note to a `pending` screening — the "needs more information" flow (OQ-32): the
+ * Append a note to a `waiting` screening — the "needs more information" flow (OQ-32): the
  * screening stays pending; the note is recorded with author + timestamp.
  */
 export const AddScreeningNoteSchema = z
@@ -74,6 +77,7 @@ export type DecideScreening = z.infer<typeof DecideScreeningSchema>;
 // ── List ─────────────────────────────────────────────────────────────────────
 
 export const ListScreeningsQuerySchema = PaginationQuerySchema.extend({
+  /** Doubles as the screening page's tab (I10): waiting | accepted | rejected. */
   status: ScreeningStatusSchema.optional(),
   applicantId: objectId().optional(),
   branchId: objectId().optional(),
@@ -81,8 +85,6 @@ export const ListScreeningsQuerySchema = PaginationQuerySchema.extend({
   decidedTo: z.coerce.date().optional(),
   createdFrom: z.coerce.date().optional(),
   createdTo: z.coerce.date().optional(),
-  /** The screening page's tab: `waiting` | `accepted` | `rejected`. */
-  bucket: ScreeningBucketSchema.optional(),
   /** Include screenings belonging to superseded attempts (default false for queues). */
   includeSuperseded: z.coerce.boolean().default(false),
   search: z.string().max(200).optional(),
@@ -159,7 +161,7 @@ export interface ScreeningDto extends AttemptMarkerDto {
   placement: PlacementDto;
   placementLabel: PlacementLabelDto;
   notes: ScreeningNoteDto[];
-  /** Present once the screening has been decided; null while `pending`. */
+  /** Present once the screening has been decided; null while `waiting`. */
   decision: ScreeningDecisionDto | null;
   /** Optimistic-concurrency token (__v) — echo back in note/decide. */
   version: number;

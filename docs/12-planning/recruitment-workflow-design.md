@@ -1,7 +1,7 @@
 # Recruitment Workflow Refactor — Design
 
-> Status: **FROZEN** (Revision 2.1, 2026-07-27 — reviewed and frozen by the approver;
-> §20 records the implementation invariants added with the build authorization).
+> Status: **FROZEN** (Revision 2.2, 2026-07-27 — reviewed and frozen by the approver;
+> §20 records the implementation invariants I1–I10 added during the build).
 > Approved for implementation as a **single PR** (§16), exactly as for Leave
 > (`leave-management-design.md`), Auth (`auth-account-lifecycle-design.md`) and Contracts
 > (`contracts-module-design.md`).
@@ -1105,3 +1105,71 @@ every current permission keeps working (RW7's superset rule). The migration is v
 integration test that boots against a database seeded with pre-refactor documents, asserts the
 pipeline still resolves to the same stage for every applicant, and re-runs the migration to prove
 idempotency.
+
+### I9 — Timeline identity and correlation
+
+Every timeline entry carries **three** ids, each with exactly one job:
+
+| Field | Job |
+|---|---|
+| `eventId` | The entry's own **immutable public identity** — assigned once at write, time-sortable, never reused, never changed, never recycled by a repair run. Deep links and client caches key on it. |
+| `correlationId` + `correlationType` | The **episode** the entry belongs to. Entries that describe one business happening share them, so the UI groups and labels without inspecting event types. |
+| `sourceKey` | Internal **idempotency/repair** key (deterministic from the source record + type). Uniquely indexed so the reconciliation task (I5) can rebuild a missing entry without ever duplicating one. Never shown. |
+
+An episode is the subject the events are about, so `correlationId` is that subject's id and
+`correlationType` names its kind:
+
+```
+correlationType: placementChange     correlationType: interview
+correlationId:   <change id>         correlationId:   <interview round id>
+├── branchChanged                    ├── interviewScheduled
+└── positionChanged                  ├── interviewStarted
+                                     └── interviewCompleted
+```
+
+The same holds for `evaluation` (opened → scheduled → decided), `batch` (added → issued →
+resultRecorded), `offer` (drafted → sent → accepted), `screening`, `return` and `hire`. Filtering
+by `correlationType` gives "show me all interview activity"; grouping by `correlationId` renders
+one collapsible card per round, batch or offer — no client-side type-sniffing.
+
+### I10 — One status enum per workflow object; no boolean state flags
+
+Every workflow object exposes **exactly one** status enum. There are no `isScheduled` /
+`isStarted` / `isCompleted` / `isActive` booleans anywhere — in the model, the DTO, or the query
+layer — because they permit combinations the domain does not have.
+
+| Object | The single enum |
+|---|---|
+| Interview | `waiting` · `scheduled` · `inProgress` · `completed` · `cancelled` |
+| Evaluation | `waiting` · `approved` · `rejected` |
+| Job Offer | `draft` · `sent` · `accepted` · `rejected` · `withdrawn` · `expired` · `superseded` |
+| Screening | `waiting` · `accepted` · `rejected` |
+| Applicant | `new` · `rejected` · `withdrawn` (unchanged) |
+
+Consequences, all applied:
+
+- **The status enum IS the queue vocabulary.** The separate bucket enums drafted in RW15 are
+  deleted; stage tabs, list filters and counter buckets all use the status enum. `waiting` is the
+  value meaning *no active record yet* — it is derived at the stage level and never persisted on
+  a record (a record that does not exist cannot store a status).
+- **`pending` → `waiting`** on both Evaluations and Screenings — across model, DTO and
+  `decisionHistory[]` — with an idempotent boot migration rewriting stored values (I8: automatic,
+  no manual step). `pending` is still accepted as a query-parameter alias for one release so
+  existing links keep working.
+- **Where a value is derived, it is never persisted.** `waiting` on Interviews means "no round
+  exists yet", so the interview model's schema enum accepts only the persistable subset
+  (`scheduled` · `inProgress` · `completed` · `cancelled`) while the DTO, filters and counters use
+  the full enum. One vocabulary, with the database refusing to store a state that cannot exist.
+- **Job Offer gains `superseded`** — what a return-to-stage sets on an active offer (RW13), which
+  is more truthful than the withdrawal it used to record. `expired` is **kept**: the automatic
+  expiry sweep is live behaviour, and the approver's list was illustrative, not a removal.
+- **`JobOfferDoc.active` is deleted.** The "at most one active offer per applicant" invariant
+  moves to a partial unique index on `status: { $in: ['draft', 'sent'] }`, so the invariant is
+  enforced by the status itself rather than by a flag that could disagree with it. The `active`
+  query filter is replaced by filtering on those statuses.
+- **`placementEditable` is deleted** from the applicant and workflow DTOs. Capability belongs in
+  `availableActions[]`, which already carries `enabled` + `reason`; a duplicate boolean would be a
+  second source of truth (I1).
+- **Supersede is a timestamp, not a flag**: `supersededAt` (with `supersededBy`,
+  `supersededByReturnId`) carries when and by whom. No `isSuperseded` boolean is ever introduced;
+  callers test the timestamp.

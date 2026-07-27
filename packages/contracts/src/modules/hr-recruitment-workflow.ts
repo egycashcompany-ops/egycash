@@ -218,8 +218,31 @@ export const RECRUITMENT_TIMELINE_TYPES = [
 export const RecruitmentTimelineTypeSchema = z.enum(RECRUITMENT_TIMELINE_TYPES);
 export type RecruitmentTimelineType = z.infer<typeof RecruitmentTimelineTypeSchema>;
 
+/**
+ * The episode a timeline entry belongs to (I9). `correlationId` is the SUBJECT's id — the
+ * interview round, the batch, the offer, the placement change — and the type names its kind, so
+ * the UI groups and labels entries without inspecting event types.
+ */
+export const TIMELINE_CORRELATION_TYPES = [
+  'applicant',
+  'screening',
+  'interview',
+  'evaluation',
+  'batch',
+  'offer',
+  'placementChange',
+  'return',
+  'hire',
+] as const;
+export const TimelineCorrelationTypeSchema = z.enum(TIMELINE_CORRELATION_TYPES);
+export type TimelineCorrelationType = z.infer<typeof TimelineCorrelationTypeSchema>;
+
 export interface RecruitmentTimelineEntryDto {
-  id: string;
+  /**
+   * This entry's immutable public identity (I9) — assigned once at write, time-sortable, never
+   * reused and never rewritten, including by the reconciliation repair task.
+   */
+  eventId: string;
   applicantId: string;
   applicantCode: string;
   at: string;
@@ -237,16 +260,23 @@ export interface RecruitmentTimelineEntryDto {
   entityRef: { entityType: string; entityId: string } | null;
   reason: string | null;
   note: string | null;
-  /** Groups entries produced by one action (e.g. position + branch changed together). */
-  correlationId: string | null;
-  /** True when the entry belongs to a superseded attempt — shown, never hidden (A8). */
-  superseded: boolean;
+  /** The episode this entry belongs to (I9) — always set, never null. */
+  correlationType: TimelineCorrelationType;
+  correlationId: string;
+  /**
+   * When the attempt this entry belongs to was superseded (RW13/A8); null while current.
+   * A timestamp, never an `isSuperseded` flag (I10) — superseded entries stay visible.
+   */
+  supersededAt: string | null;
   metadata: Record<string, unknown>;
 }
 
 export const ListRecruitmentTimelineQuerySchema = z
   .object({
     type: RecruitmentTimelineTypeSchema.optional(),
+    /** Filter to one episode kind ("all interview activity") or one episode (I9). */
+    correlationType: TimelineCorrelationTypeSchema.optional(),
+    correlationId: objectId().optional(),
     stageKind: RecruitmentStageKindSchema.optional(),
     from: z.coerce.date().optional(),
     to: z.coerce.date().optional(),
@@ -291,12 +321,18 @@ export interface WorkflowStateDto {
   applicantStatus: string;
   /** Where the candidate stands now; null once hired or terminally closed. */
   stage: StageRefDto | null;
-  bucket: string | null;
+  /**
+   * The stage object's single status enum value (I10) — `waiting` when no active record exists
+   * yet. Never a set of booleans, and never a second vocabulary alongside the record's status.
+   */
+  status: string | null;
   attempt: number;
   placement: PlacementDto;
   placementLabel: PlacementLabelDto;
-  /** True while the placement may still be reassigned (RW2/RW3). */
-  placementEditable: boolean;
+  /**
+   * What the caller may do next. Capability lives HERE and nowhere else (I10) — there is no
+   * `placementEditable` boolean; "can I reassign?" is `availableActions`' `reassign` entry.
+   */
   availableActions: WorkflowActionDto[];
 }
 
@@ -369,18 +405,11 @@ export interface RecruitmentStageCountsDto {
   generatedAt: string;
 }
 
-/** Bucket vocabularies, per stage kind (the tabs each stage page renders). */
-export const SCREENING_BUCKETS = ['waiting', 'accepted', 'rejected'] as const;
-export const INTERVIEW_BUCKETS = ['waiting', 'scheduled', 'inProgress', 'completed'] as const;
-export const EVALUATION_BUCKETS = ['waiting', 'approved', 'rejected'] as const;
-export const JOB_OFFER_BUCKETS = ['waiting', 'sent', 'accepted'] as const;
-
-export const InterviewBucketSchema = z.enum(INTERVIEW_BUCKETS);
-export type InterviewBucket = z.infer<typeof InterviewBucketSchema>;
-export const EvaluationBucketSchema = z.enum(EVALUATION_BUCKETS);
-export type EvaluationBucket = z.infer<typeof EvaluationBucketSchema>;
-export const ScreeningBucketSchema = z.enum(SCREENING_BUCKETS);
-export type ScreeningBucket = z.infer<typeof ScreeningBucketSchema>;
+// Stage tabs, list filters and counter buckets all use the OBJECT'S OWN STATUS ENUM (I10) —
+// there is no second "bucket" vocabulary to keep in sync. Each stage contract owns its enum
+// (`InterviewStatus`, `EvaluationStatus`, `ScreeningStatus`, `OfferStatus`), and `waiting` is the
+// value meaning "no active record yet": derived at the stage level, never persisted on a record.
+// `buckets` on StageCountDto is therefore keyed by that enum's values.
 
 // ── Navigation (RW16 / OQ-2) ────────────────────────────────────────────────
 // Stage navigation is DYNAMIC BUSINESS DATA served by the counters endpoint, never Platform

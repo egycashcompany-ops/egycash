@@ -9,7 +9,6 @@ import { z } from 'zod';
 import { objectId, LocalizedStringSchema, PaginationQuerySchema, type LocalizedString } from '../common/index.js';
 import {
   BulkRequestBaseSchema,
-  InterviewBucketSchema,
   type AttemptMarkerDto,
   type PlacementDto,
   type PlacementLabelDto,
@@ -26,9 +25,30 @@ import {
  * `inProgress` was ADDED by the workflow refactor — consumers are tolerant readers (ADR-008), and
  * every existing filter keeps working unchanged.
  */
-export const INTERVIEW_STATUSES = ['scheduled', 'inProgress', 'completed', 'cancelled'] as const;
+export const INTERVIEW_STATUSES = [
+  'waiting',
+  'scheduled',
+  'inProgress',
+  'completed',
+  'cancelled',
+] as const;
 export const InterviewStatusSchema = z.enum(INTERVIEW_STATUSES);
 export type InterviewStatus = z.infer<typeof InterviewStatusSchema>;
+
+/**
+ * The subset a RECORD may persist. `waiting` means "no round exists yet", so it is derived at the
+ * stage level and can never be stored — the Mongoose schema enum uses this list, while DTOs,
+ * filters, tabs and counters use the full `INTERVIEW_STATUSES` (I10: one vocabulary, with the
+ * database refusing to store a state that cannot exist).
+ */
+export const INTERVIEW_RECORD_STATUSES = [
+  'scheduled',
+  'inProgress',
+  'completed',
+  'cancelled',
+] as const;
+export const InterviewRecordStatusSchema = z.enum(INTERVIEW_RECORD_STATUSES);
+export type InterviewRecordStatus = z.infer<typeof InterviewRecordStatusSchema>;
 
 /** Round outcome. `pending` until decided; `passed` advances the applicant, `failed` rejects. */
 export const INTERVIEW_OUTCOMES = ['pending', 'passed', 'failed'] as const;
@@ -213,6 +233,7 @@ export type DecideInterview = z.infer<typeof DecideInterviewSchema>;
 // ── List ─────────────────────────────────────────────────────────────────────
 
 export const ListInterviewsQuerySchema = PaginationQuerySchema.extend({
+  /** Doubles as the stage page's tab (I10): `waiting` lists applicants with no round yet. */
   status: InterviewStatusSchema.optional(),
   outcome: InterviewOutcomeSchema.optional(),
   applicantId: objectId().optional(),
@@ -221,8 +242,6 @@ export const ListInterviewsQuerySchema = PaginationQuerySchema.extend({
   branchId: objectId().optional(),
   scheduledFrom: z.coerce.date().optional(),
   scheduledTo: z.coerce.date().optional(),
-  /** The stage page's tab: `waiting` | `scheduled` | `inProgress` | `completed` (RW11/A3). */
-  bucket: InterviewBucketSchema.optional(),
   /** Include rounds belonging to superseded attempts (default false for queues). */
   includeSuperseded: z.coerce.boolean().default(false),
   search: z.string().max(200).optional(),
@@ -337,7 +356,8 @@ export interface InterviewDto extends AttemptMarkerDto {
   stageKey: string;
   stageOrder: number;
   stageName: LocalizedString;
-  status: InterviewStatus;
+  /** A stored round is never `waiting` — that value only ever describes a stage with no round. */
+  status: InterviewRecordStatus;
   outcome: InterviewOutcome;
   scheduledAt: string;
   /** Server-stamped when the round was started (RW12); null while merely scheduled. */

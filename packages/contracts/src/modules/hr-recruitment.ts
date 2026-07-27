@@ -478,8 +478,6 @@ export interface ApplicantDto {
    */
   placement: PlacementDto;
   placementLabel: PlacementLabelDto;
-  /** True while the placement may still be reassigned — false once an offer is accepted (RW3). */
-  placementEditable: boolean;
   /** Every reassignment, oldest first; never truncated (RW2). */
   placementHistory: PlacementChangeDto[];
   sourceId: string;

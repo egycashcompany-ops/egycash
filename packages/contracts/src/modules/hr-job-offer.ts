@@ -16,7 +16,16 @@ import { objectId, PaginationQuerySchema } from '../common/index.js';
  * lapsed — automatic), or `withdrawn` (retracted by HR). Only `draft`/`sent` are "active";
  * an applicant may have at most one active offer at a time.
  */
-export const OFFER_STATUSES = ['draft', 'sent', 'accepted', 'rejected', 'expired', 'withdrawn'] as const;
+export const OFFER_STATUSES = [
+  'draft',
+  'sent',
+  'accepted',
+  'rejected',
+  'expired',
+  'withdrawn',
+  /** Set when a return to an earlier stage retires a live offer (RW13) — truthful than a withdrawal. */
+  'superseded',
+] as const;
 export const OfferStatusSchema = z.enum(OFFER_STATUSES);
 export type OfferStatus = z.infer<typeof OfferStatusSchema>;
 
@@ -117,7 +126,6 @@ export const ListJobOffersQuerySchema = PaginationQuerySchema.extend({
   status: OfferStatusSchema.optional(),
   applicantId: objectId().optional(),
   branchId: objectId().optional(),
-  active: z.coerce.boolean().optional(),
   /** Free-text over the offer number (`code`) and applicant code (partial, case-insensitive). */
   search: z.string().max(100).optional(),
 }).strict();
@@ -217,8 +225,6 @@ export interface JobOfferDto {
   applicantName: string;
   branchId: string;
   status: OfferStatus;
-  /** True while draft/sent — the "only one active offer per applicant" flag. */
-  active: boolean;
   terms: OfferTermsDto;
   revisionNumber: number;
   /** Superseded prior versions, oldest first. */

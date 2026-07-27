@@ -9,7 +9,7 @@
 // integrations, analytics — is a CONSUMER of that event (I15), subscribed through the dispatcher.
 // The engine performs none of them itself, which is what keeps it deterministic.
 import { Types, type ClientSession, type Model } from 'mongoose';
-import { BusinessRuleError, ConflictError, NotFoundError } from '../../../../shared/errors';
+import { BusinessRuleError, ConflictError, NotFoundError, StaleDocumentError } from '../../../../shared/errors';
 import { unitOfWork } from '../../../../platform/kernel/unit-of-work';
 import { type BaseDocFields } from '../../../../shared/base/base.model';
 import { newCorrelationId, newEventId } from '../timeline/recruitment-timeline.keys';
@@ -322,6 +322,12 @@ class RecruitmentWorkflowEngine {
     reason: string | null,
     session: ClientSession,
     correlationId?: string,
+    /**
+     * `set` carries the non-managed fields that belong to the SAME act (a withdrawal's reason and
+     * timestamp), so the status and its detail commit together. `expectedVersion` preserves the
+     * optimistic-concurrency guarantee a caller coming from an HTTP PATCH already had.
+     */
+    options?: { set?: Record<string, unknown>; expectedVersion?: number },
   ): Promise<{ applicant: ApplicantLike; event: WorkflowEventDoc } | null> {
     const before = await model
       .findOne({ _id: new Types.ObjectId(applicantId), isDeleted: false })
@@ -337,11 +343,16 @@ class RecruitmentWorkflowEngine {
 
     const updated = await model
       .findOneAndUpdate(
-        { _id: before._id, isDeleted: false },
+        {
+          _id: before._id,
+          isDeleted: false,
+          ...(options?.expectedVersion === undefined ? {} : { __v: options.expectedVersion }),
+        },
         {
           $set: {
             status: check.rule.to,
             updatedBy: actorUserId === null ? null : new Types.ObjectId(actorUserId),
+            ...(options?.set ?? {}),
           },
           $inc: { __v: 1 },
         },
@@ -349,7 +360,12 @@ class RecruitmentWorkflowEngine {
       )
       .lean<ApplicantLike>()
       .exec();
-    if (updated === null) throw new ConflictError('the applicant changed since it was read');
+    if (updated === null) {
+      // With a version supplied, matching nothing means the caller read a stale copy — the same
+      // answer the repository gives, so the HTTP status does not change with the code path.
+      if (options?.expectedVersion !== undefined) throw new StaleDocumentError();
+      throw new ConflictError('the applicant changed since it was read');
+    }
 
     // I11 — the queues are plain reads over persisted rows, so a candidate who leaves the pipeline
     // has to stop matching one. Nothing else about their records changes: same status, same

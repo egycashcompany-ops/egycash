@@ -1003,6 +1003,12 @@ Two corrections to this document, recorded rather than quietly fixed:
   been built. It now exists (`applicants/components/ReturnToStageDialog.tsx`): target picker,
   server-rendered consequence preview, mandatory reason, and a confirm button that stays disabled
   until the preview has arrived.
+- `applicantService.withdraw` and `restore` wrote `applicant.status` straight through the
+  repository, despite `raiseLifecycleEvent`'s own comment claiming to be "the ONLY path that
+  changes it". I13/I14 was therefore documented but not held for the two most common lifecycle
+  moves. Both now go through the engine, which is what carries the change onto the candidate's
+  stage records; the extra fields (`withdrawnReason`, `withdrawnAt`) and the caller's version
+  check travel with it, so the act stays atomic and still answers 409 on a stale write.
 - The web client called `POST /hr/interviews/start` — the single-candidate route, whose schema is
   `.strict()` — with a bulk body, so bulk "Start now" answered 400 on every click. The server was
   correct and tested throughout; only the client was wrong, which is why nothing caught it. There

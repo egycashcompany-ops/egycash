@@ -487,11 +487,13 @@ class ApplicantService {
   ): Promise<ApplicantDoc> {
     const before = await applicantRepository.getById(id, scope);
     if (before.status === 'withdrawn') return before; // idempotent
-    const updated = await applicantRepository.updateById(
-      id,
-      { status: 'withdrawn', withdrawnReason: input.reason, withdrawnAt: new Date() },
-      { by: ctx.userId, version: input.version, scope },
-    );
+    // I13/I14 — the ENGINE owns `applicant.status`. Writing it here directly is what let a
+    // withdrawn candidate keep matching every stage queue: the engine is where a lifecycle move
+    // propagates onto the stage records, and a direct repository write skips that entirely.
+    const updated = await this.raiseLifecycleEvent(ctx, id, 'withdrawal', input.reason, undefined, {
+      set: { withdrawnReason: input.reason, withdrawnAt: new Date() },
+      expectedVersion: input.version,
+    });
     await auditService.record({
       entityRef: entityRef(id),
       action: 'statusChange',
@@ -518,10 +520,17 @@ class ApplicantService {
     if (before.status !== 'withdrawn') {
       throw new BusinessRuleError('only a withdrawn applicant can be restored');
     }
-    const updated = await applicantRepository.updateById(
+    // Same rule as withdrawal: the engine moves the lifecycle, which is what brings the
+    // candidate's stage records back into the queues at exactly the stage they left.
+    const updated = await this.raiseLifecycleEvent(
+      ctx,
       id,
-      { status: 'new', withdrawnReason: null, withdrawnAt: null },
-      { by: ctx.userId, version: input.version, scope },
+      'reactivation',
+      // `reactivation` demands a reason; the restore DTO leaves it optional, so an unexplained
+      // restore still records WHY the status moved rather than being refused as a no-op.
+      input.reason ?? 'restored to the active pipeline',
+      undefined,
+      { set: { withdrawnReason: null, withdrawnAt: null }, expectedVersion: input.version },
     );
     await auditService.record({
       entityRef: entityRef(id),
@@ -598,6 +607,7 @@ class ApplicantService {
     event: LifecycleEvent,
     reason: string,
     correlationId?: string,
+    options?: { set?: Record<string, unknown>; expectedVersion?: number },
   ): Promise<ApplicantDoc> {
     const result = await unitOfWork(async (session) =>
       recruitmentWorkflowEngine.applyLifecycleEvent(
@@ -608,6 +618,7 @@ class ApplicantService {
         reason,
         session,
         correlationId,
+        options,
       ),
     );
     // The engine returns null when the event does not apply (already terminal): either way the

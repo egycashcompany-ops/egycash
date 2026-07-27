@@ -19,6 +19,12 @@ its entry here in the same PR.
   partial-success envelope, and a half-finished run if the tab was closed. A test pins
   that the single route refuses a bulk body.
 
+- **Recruitment: withdrawing or restoring a candidate bypassed the workflow engine.** Both wrote
+  `applicant.status` directly through the repository, so the invariant that the engine owns every
+  lifecycle change (I13/I14) was documented but not enforced for the two most common moves — and
+  nothing downstream of the engine ran for them. Both now go through it, carrying their own
+  fields and the caller's version check in the same act.
+
 - **Recruitment: withdrawn and rejected candidates lingered in the stage counters.** The
   counters read stage rows without regard to whether the candidate was still in the
   running, so a badge could out-count its own page indefinitely. Stage records now carry

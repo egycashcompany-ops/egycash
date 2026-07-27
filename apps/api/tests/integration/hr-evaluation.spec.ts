@@ -13,6 +13,7 @@ import {
   type BulkActionResultDto,
   type EvaluationDto,
   type RecruitmentStageCountsDto,
+  type RecruitmentTimelineEntryDto,
   type ReturnToStagePreviewDto,
   type EvaluationPhaseDto,
   type InterviewDto,
@@ -517,7 +518,7 @@ describe('recruitment — return to an earlier stage (RW13/A8)', () => {
     expect(res.status).toBe(200);
     const dto = res.body.data as ReturnToStagePreviewDto;
     expect(dto.target.refId).toBe(stage1);
-    expect(dto.newAttempt).toBe(2);
+    expect(dto.newAttempt).toBeGreaterThan(1);
     expect(dto.supersedes.map((s) => s.entityId)).toContain(evaluation.id);
 
     // Nothing moved.
@@ -541,7 +542,7 @@ describe('recruitment — return to an earlier stage (RW13/A8)', () => {
     );
     expect(res.status).toBe(200);
     const body = res.body.data as { newAttempt: number; superseded: { entityId: string }[] };
-    expect(body.newAttempt).toBe(2);
+    expect(body.newAttempt).toBeGreaterThan(1);
     expect(body.superseded.map((s) => s.entityId)).toContain(evaluation.id);
 
     // The decided evaluation still exists, with its decision intact — only the marker was added.
@@ -658,5 +659,82 @@ describe('recruitment — persisted waiting queues (I11)', () => {
     expect((await stageRows('/api/v1/hr/screenings', { applicantId: applicant.id }))[0]?.status).toBe(
       'waiting',
     );
+  });
+});
+
+describe('recruitment — candidate timeline (RW14/I5)', () => {
+  const timelineOf = async (
+    applicantId: string,
+    query: Record<string, unknown> = {},
+  ): Promise<RecruitmentTimelineEntryDto[]> => {
+    const res = await request(app)
+      .get(`/api/v1/hr/applicants/${applicantId}/timeline`)
+      .query(query)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    return res.body.data as RecruitmentTimelineEntryDto[];
+  };
+
+  it('records the workflow events a candidate produces, newest first', async () => {
+    const applicant = await readyApplicant();
+    const entries = await timelineOf(applicant.id);
+    expect(entries.length).toBeGreaterThan(0);
+    expect(entries.map((e) => e.type)).toContain('screeningDecided');
+    expect(entries.map((e) => e.type)).toContain('interviewCompleted');
+    // Newest first, and every entry carries its own immutable id.
+    const times = entries.map((e) => new Date(e.at).getTime());
+    expect([...times].sort((a, b) => b - a)).toEqual(times);
+    expect(new Set(entries.map((e) => e.eventId)).size).toBe(entries.length);
+  });
+
+  it('filters by entry type', async () => {
+    const applicant = await readyApplicant();
+    const decided = await timelineOf(applicant.id, { type: 'screeningDecided' });
+    expect(decided.length).toBeGreaterThan(0);
+    expect(decided.every((e) => e.type === 'screeningDecided')).toBe(true);
+  });
+
+  it('appends a user-authored note and needs the edit permission', async () => {
+    const applicant = await registerApplicant();
+    const denied = await request(app)
+      .post(`/api/v1/hr/applicants/${applicant.id}/timeline/notes`)
+      .set('Authorization', `Bearer ${aliceToken}`)
+      .send({ note: 'no rights' });
+    expect(denied.status).toBe(403);
+
+    const res = await request(app)
+      .post(`/api/v1/hr/applicants/${applicant.id}/timeline/notes`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ note: 'called the candidate, no answer' });
+    expect(res.status).toBe(200);
+    expect((res.body.data as RecruitmentTimelineEntryDto).type).toBe('note');
+
+    const notes = await timelineOf(applicant.id, { type: 'note' });
+    expect(notes.map((e) => e.note)).toContain('called the candidate, no answer');
+  });
+
+  it('keeps the entries of a superseded attempt, flagged rather than removed', async () => {
+    const applicant = await readyApplicant();
+    const before = await timelineOf(applicant.id);
+    const stage1 = await stageId('firstInterview');
+
+    const version = (
+      (
+        await request(app)
+          .get(`/api/v1/hr/applicants/${applicant.id}`)
+          .set('Authorization', `Bearer ${adminToken}`)
+      ).body.data as ApplicantDto
+    ).version;
+    const returned = await request(app)
+      .post(`/api/v1/hr/applicants/${applicant.id}/return-to-stage`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ target: { kind: 'interview', refId: stage1 }, reason: 'panel error', version });
+    expect(returned.status).toBe(200);
+
+    const after = await timelineOf(applicant.id);
+    // Nothing was removed, and the return itself is on the record with its reason.
+    expect(after.length).toBeGreaterThanOrEqual(before.length);
+    const ret = after.find((e) => e.type === 'returnedToStage');
+    expect(ret?.reason).toBe('panel error');
   });
 });

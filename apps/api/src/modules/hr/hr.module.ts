@@ -13,6 +13,7 @@ import { buildInterviewStagesRouter, buildInterviewsRouter } from './recruitment
 import { buildEvaluationPhasesRouter, buildEvaluationsRouter } from './recruitment/evaluations';
 import { buildRecruitmentCountersRouter } from './recruitment/counters';
 import { buildReturnToStageRouter } from './recruitment/return-to-stage';
+import { buildRecruitmentTimelineRouter } from './recruitment/timeline';
 import { buildJobOffersRouter, jobOfferService } from './recruitment/job-offers';
 import { buildEmployeesRouter, employeeService } from './employee-management/employees';
 import { buildEmployeeActionsRouter, employeeActionService } from './employee-management/employee-actions';
@@ -335,6 +336,7 @@ export const hrModule: ModuleManifest = {
   requiresPlatform: '^2.1',
   permissions: hrPermissions,
   routes: [
+    { prefix: '/hr/applicants', router: buildRecruitmentTimelineRouter() },
     { prefix: '/hr/applicants', router: buildReturnToStageRouter() },
     { prefix: '/hr/applicants', router: buildApplicantsRouter() },
     { prefix: '/hr/applicant-sources', router: buildApplicantSourcesRouter() },

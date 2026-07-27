@@ -23,6 +23,27 @@ import { recruitmentWorkflowEngine } from '../workflow';
 
 const CATALOG_PAGE_SIZE = 100;
 
+/**
+ * Materialization OPENS a stage the candidate has no live record at — it never re-opens one they
+ * already left. Re-opening after a return is the return's job, which supplies the attempt
+ * explicitly; without this guard a replayed event would keep minting attempts, because a terminal
+ * record is exactly what `ensureStageRecord` re-opens.
+ */
+const hasLiveRecord = async (
+  model: { findOne: (filter: Record<string, unknown>) => { lean: () => { exec: () => Promise<unknown> } } },
+  applicantId: string,
+  stageField?: 'stageId' | 'phaseId',
+  stageRefId?: Types.ObjectId,
+): Promise<boolean> => {
+  const filter: Record<string, unknown> = {
+    applicantId: new Types.ObjectId(applicantId),
+    supersededAt: null,
+    isDeleted: false,
+  };
+  if (stageField !== undefined && stageRefId !== undefined) filter[stageField] = stageRefId;
+  return (await model.findOne(filter).lean().exec()) !== null;
+};
+
 /** The applicant fields the engine needs to stamp on a new stage record. */
 const subjectOf = (applicant: ApplicantDoc) => ({
   applicantId: String(applicant._id),
@@ -38,6 +59,8 @@ class QueueMaterializerService {
   async openScreening(applicantId: string, actorUserId: string | null): Promise<void> {
     const applicant = await applicantService.findByIdSystem(applicantId);
     if (applicant === null || applicant.status !== 'new') return;
+    const binding = screeningService.workflowBinding as unknown as { model: never };
+    if (await hasLiveRecord(binding.model, applicantId)) return;
     await recruitmentWorkflowEngine.ensureStageRecord({
       binding: screeningService.workflowBinding,
       ...subjectOf(applicant),
@@ -92,8 +115,10 @@ class QueueMaterializerService {
       active: true,
     });
     const isDriver = applicant.drivingLicenses.length > 0;
+    const binding = evaluationService.workflowBinding as unknown as { model: never };
     for (const phase of phases.items) {
       if (phase.applicability === 'driversOnly' && !isDriver) continue;
+      if (await hasLiveRecord(binding.model, applicantId, 'phaseId', phase._id)) continue;
       await recruitmentWorkflowEngine.ensureStageRecord({
         binding: evaluationService.workflowBinding,
         ...subjectOf(applicant),
@@ -114,6 +139,8 @@ class QueueMaterializerService {
   async openJobOffer(applicantId: string, actorUserId: string | null): Promise<void> {
     const applicant = await applicantService.findByIdSystem(applicantId);
     if (applicant === null || applicant.status !== 'new') return;
+    const binding = jobOfferService.workflowBinding as unknown as { model: never };
+    if (await hasLiveRecord(binding.model, applicantId)) return;
     await recruitmentWorkflowEngine.ensureStageRecord({
       binding: jobOfferService.workflowBinding,
       ...subjectOf(applicant),
@@ -136,6 +163,8 @@ class QueueMaterializerService {
     });
     const stage = stages.items.find((s) => String(s._id) === stageId);
     if (stage === undefined) return;
+    const binding = interviewService.workflowBinding as unknown as { model: never };
+    if (await hasLiveRecord(binding.model, applicantId, 'stageId', stage._id)) return;
     await recruitmentWorkflowEngine.ensureStageRecord({
       binding: interviewService.workflowBinding,
       ...subjectOf(applicant),
@@ -165,4 +194,3 @@ class QueueMaterializerService {
 }
 
 export const queueMaterializerService = new QueueMaterializerService();
-export const materializerObjectId = (id: string): Types.ObjectId => new Types.ObjectId(id);

@@ -2,6 +2,7 @@
 // history through `recruitmentTimelineService` and reads it through these helpers — nothing
 // reaches into the model or repository directly.
 export { recruitmentTimelineService, type RecordTimelineInput } from './recruitment-timeline.service';
+export { buildRecruitmentTimelineRouter } from './recruitment-timeline.routes';
 export { timelineEntryDto, timelineSummaryDto } from './recruitment-timeline.mapper';
 export { newCorrelationId, newEventId, timelineSourceKey } from './recruitment-timeline.keys';
 export {

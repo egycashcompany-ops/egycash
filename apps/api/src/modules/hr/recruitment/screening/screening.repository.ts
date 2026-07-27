@@ -83,9 +83,6 @@ class ScreeningRepository extends BaseRepository<ScreeningDoc> {
       if (f.createdTo !== undefined) range.$lte = f.createdTo;
       clauses.push({ createdAt: range } as FilterQuery<ScreeningDoc>);
     }
-    // I11 — a QUEUE only holds candidates still in the running. Asking for one applicant's own
-    // records is not a queue, so their history stays fully visible after they withdraw.
-    if (f.applicantId === undefined) clauses.push({ applicantLive: true } as FilterQuery<ScreeningDoc>);
     if (clauses.length === 0) return {};
     if (clauses.length === 1) return clauses[0] as FilterQuery<ScreeningDoc>;
     return { $and: clauses } as FilterQuery<ScreeningDoc>;

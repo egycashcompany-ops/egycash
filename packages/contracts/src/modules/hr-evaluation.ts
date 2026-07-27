@@ -27,7 +27,13 @@ import {
  * `waiting` replaced the former `pending` (I10); stored values are rewritten by the boot
  * migration and `pending` is still accepted as a query alias for one release.
  */
-export const EVALUATION_STATUSES = ['waiting', 'approved', 'rejected'] as const;
+/**
+ * `cancelled` is the terminal state a still-`waiting` phase reaches when the CANDIDATE leaves the
+ * pipeline (I14) — never a decision, which stays `approved` / `rejected`. It is what keeps a
+ * departed candidate out of the queue through the status itself rather than a lifecycle mirror
+ * (I1/I10).
+ */
+export const EVALUATION_STATUSES = ['waiting', 'approved', 'rejected', 'cancelled'] as const;
 export const EvaluationStatusSchema = z.enum(EVALUATION_STATUSES);
 export type EvaluationStatus = z.infer<typeof EvaluationStatusSchema>;
 

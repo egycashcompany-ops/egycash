@@ -989,11 +989,33 @@ so every queue in the product is a plain indexed read over rows.
 
 Removing them exposed what those derived views had been hiding: they filtered by the applicant's
 own status, while a `status=waiting` read does not. A withdrawn or rejected candidate would have
-lingered in every queue **and in every counter** — the counters had that bug already. Stage records
-now carry `applicantLive`, denormalized from the lifecycle and written only by the engine, in the
-same transaction as the lifecycle change (`workflow/stage-fields.ts`, `workflow-engine.ts`). It is
-listed in `WORKFLOW_MANAGED_FIELDS`, backfilled by the boot migration, and filtered by every queue
-and counter but never by a request for one applicant's own records.
+lingered in every queue **and in every counter** — the counters had that bug already.
+
+The first attempt at a fix denormalized an `applicantLive` boolean onto every stage record. That
+violated **I1** ("no status mirror", plus a closed list of permitted denormalizations that does not
+include it) and **I10** ("no boolean state flags anywhere"), and it repeated exactly the pattern
+I10 deleted `JobOfferDoc.active` for. It was removed rather than legitimized by amending the
+invariants.
+
+**What the design was missing, and how it is answered.** I14 states the lifecycle gate as "a
+withdrawn candidate gets no NEW stage records" and says nothing about the records they already
+hold; I11 forbids the read-time `$lookup` that would otherwise exclude them. The gap is closed the
+way the rest of the module works — through status:
+
+> **A lifecycle exit closes the candidate's open stage records.** The engine transitions each of
+> them to a terminal status in the same transaction as the lifecycle change: screening and
+> evaluation to `cancelled`, interviews to `cancelled`, a live offer to `withdrawn`. Decided
+> records are never touched. Because each closure status is terminal, reactivation re-opens the
+> stage on a **new attempt** (I11/I12) rather than reviving a closed row.
+
+This adds one value to two frozen enums — `cancelled` on Screening and on Evaluation — which is
+what I10 asks for: the vocabulary carries the state, and no flag can disagree with it. `cancelled`
+is never a decision; the decisions stay `accepted`/`rejected` and `approved`/`rejected`.
+
+The boot migration closes the open records of applicants who had already left before this existed.
+It writes the terminal statuses directly rather than replaying transitions: there is no actor and
+no moment to attribute for something that should have happened months ago, and inventing either
+would put fiction on the timeline.
 
 ### Where the plan's wording did not match what shipped
 

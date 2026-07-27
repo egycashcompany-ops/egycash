@@ -115,10 +115,28 @@ export interface TransitionResult<T extends StageRecord> {
  * after a cancelled round, or drafting a fresh offer after one was withdrawn.
  */
 const TERMINAL_STATUSES: Record<StageObject, readonly string[]> = {
-  screening: [],
+  screening: ['cancelled'],
   interview: ['completed', 'cancelled'],
-  evaluation: [],
+  evaluation: ['cancelled'],
   offer: ['accepted', 'rejected', 'expired', 'withdrawn', 'superseded'],
+};
+
+/**
+ * What an OPEN stage record becomes when the candidate leaves the pipeline, and which statuses
+ * count as open (I14). The lifecycle never edits a decided record — an accepted screening or a
+ * completed round is history and stays exactly as it was; only the unfinished work closes.
+ *
+ * This is the whole mechanism by which a withdrawn or rejected candidate leaves every queue and
+ * every counter: their rows carry a terminal STATUS. No mirrored lifecycle field exists anywhere
+ * on a stage record (I1/I10), and because each closure status is terminal above, reactivating the
+ * candidate re-opens the stage on a fresh attempt rather than reviving a closed row (I11/I12).
+ */
+const LIFECYCLE_CLOSE: Record<StageObject, { open: readonly string[]; to: WorkflowStatus }> = {
+  screening: { open: ['waiting'], to: 'cancelled' },
+  interview: { open: ['waiting', 'scheduled', 'inProgress'], to: 'cancelled' },
+  evaluation: { open: ['waiting'], to: 'cancelled' },
+  // The offer has always had a word for this; it needs no new one.
+  offer: { open: ['waiting', 'draft', 'sent'], to: 'withdrawn' },
 };
 
 interface ApplicantLike extends BaseDocFields {
@@ -367,19 +385,13 @@ class RecruitmentWorkflowEngine {
       throw new ConflictError('the applicant changed since it was read');
     }
 
-    // I11 — the queues are plain reads over persisted rows, so a candidate who leaves the pipeline
-    // has to stop matching one. Nothing else about their records changes: same status, same
-    // attempt, same history. Restoring them flips this back, which is what makes them resume at
-    // the exact stage they left instead of at a fresh attempt.
-    const live = check.rule.to === 'new';
-    for (const binding of stageBindings.values()) {
-      await binding.model
-        .updateMany(
-          { applicantId: new Types.ObjectId(applicantId), applicantLive: { $ne: live } },
-          { $set: { applicantLive: live } },
-        )
-        .session(session)
-        .exec();
+    // I14 — the candidate left the pipeline, so the work that was still open closes. Each closure
+    // is a REAL transition through this same engine: validated against the rulebook, publishing
+    // its own event, and therefore audited and on the timeline like any other. Nothing derived,
+    // nothing mirrored — a departed candidate leaves the queues because their rows now carry a
+    // terminal status (I1/I10).
+    if (check.rule.to !== 'new') {
+      await this.closeOpenStages(applicantId, reason, actorUserId, session);
     }
 
     const published = await this.publish(
@@ -402,6 +414,46 @@ class RecruitmentWorkflowEngine {
       session,
     );
     return { applicant: updated, event: published };
+  }
+
+  /**
+   * Close every still-open stage record for a candidate who has left the pipeline. Runs inside the
+   * lifecycle transaction, so the applicant's status and the closures commit together or not at
+   * all: there is no window in which a withdrawn candidate still holds an open queue row.
+   *
+   * A decided record is never touched — only the statuses `LIFECYCLE_CLOSE` calls open.
+   */
+  private async closeOpenStages(
+    applicantId: string,
+    reason: string | null,
+    actorUserId: string | null,
+    session: ClientSession,
+  ): Promise<void> {
+    for (const binding of stageBindings.values()) {
+      const rule = LIFECYCLE_CLOSE[binding.object];
+      const open = await binding.model
+        .find({
+          applicantId: new Types.ObjectId(applicantId),
+          supersededAt: null,
+          isDeleted: false,
+          status: { $in: rule.open },
+        })
+        .session(session)
+        .lean<StageRecord[]>()
+        .exec();
+      for (const record of open) {
+        await this.transitionIn(
+          {
+            binding,
+            id: String(record._id),
+            to: rule.to,
+            actorUserId,
+            reason: reason ?? 'the candidate left the pipeline',
+          },
+          session,
+        );
+      }
+    }
   }
 
   /** Retire an attempt when a return to an earlier stage supersedes it (RW13). */

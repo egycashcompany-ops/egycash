@@ -16,12 +16,16 @@ Records are opened by the **queue materializer** (`recruitment/materializer/`), 
 facts the workflow engine publishes. It never decides anything: the transition already did.
 
 Because a queue is now a plain read over rows, a candidate who leaves the pipeline has to stop
-matching one. Every stage record therefore carries `applicantLive`, denormalized from the
-applicant's lifecycle exactly as `applicantName` and `branchId` are, and written only by the
-engine inside the same transaction as the lifecycle change. Nothing else about the record moves:
-same status, same attempt, same history — which is why restoring a candidate puts them back at
-the stage they left rather than at a fresh attempt. Queues and counters filter on it; a request
-for one applicant's own records does not, so their history stays visible after they withdraw.
+matching one — and the only thing that may say so is the record's own **status** (I1/I10 forbid any
+mirrored lifecycle field). So a lifecycle exit CLOSES the work that was still open: the engine
+transitions every open stage record to a terminal status inside the lifecycle transaction —
+screening and evaluation to `cancelled`, interviews to `cancelled`, a live offer to `withdrawn`.
+Decided records are never touched; an accepted screening or a completed round is history.
+
+Each closure is a real transition, so it validates against the rulebook, publishes its own event,
+and lands on the timeline and the audit trail like anything else. And because every closure status
+is terminal, **reactivation re-opens the stage on a fresh attempt** rather than reviving a closed
+row — the departure left its trace in the status vocabulary, and the return reads it back out.
 
 ```
 applicant registered         → screening waiting

@@ -26,7 +26,13 @@ import {
  * `waiting` replaced the former `pending` (I10); stored values are rewritten by the boot
  * migration and `pending` is still accepted as a query alias for one release.
  */
-export const SCREENING_STATUSES = ['waiting', 'accepted', 'rejected'] as const;
+/**
+ * `cancelled` is the terminal state a still-`waiting` screening reaches when the CANDIDATE leaves
+ * the pipeline — withdrawn, rejected elsewhere, or hired (I14). It is never a decision: the two
+ * decisions stay `accepted` / `rejected`. It exists so a departed candidate stops matching the
+ * queue through the status itself, rather than through a mirrored lifecycle flag (I1/I10).
+ */
+export const SCREENING_STATUSES = ['waiting', 'accepted', 'rejected', 'cancelled'] as const;
 export const ScreeningStatusSchema = z.enum(SCREENING_STATUSES);
 export type ScreeningStatus = z.infer<typeof ScreeningStatusSchema>;
 

@@ -63,9 +63,6 @@ class EvaluationRepository extends BaseRepository<EvaluationDoc> {
     if (f.phaseId !== undefined) clauses.push({ phaseId: new Types.ObjectId(f.phaseId) });
     if (f.status !== undefined) clauses.push({ status: f.status });
     if (f.branchId !== undefined) clauses.push({ branchId: new Types.ObjectId(f.branchId) });
-    // I11 — a QUEUE only holds candidates still in the running. Asking for one applicant's own
-    // records is not a queue, so their history stays fully visible after they withdraw.
-    if (f.applicantId === undefined) clauses.push({ applicantLive: true } as FilterQuery<EvaluationDoc>);
     if (clauses.length === 0) return {};
     if (clauses.length === 1) return clauses[0] as FilterQuery<EvaluationDoc>;
     return { $and: clauses } as FilterQuery<EvaluationDoc>;

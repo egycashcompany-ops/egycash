@@ -24,6 +24,13 @@ export const registerQueueMaterializer = (): void => {
       );
       return;
     }
+    // I14 — reactivation re-opens the stages the departure closed, each on a fresh attempt.
+    if (event.name === WorkflowEvents.ApplicantReactivated) {
+      await queueMaterializerService.safely('reopenAfterReactivation', () =>
+        queueMaterializerService.reopenAfterReactivation(applicantId, null),
+      );
+      return;
+    }
     if (event.name === WorkflowEvents.InterviewCompleted || event.name === WorkflowEvents.InterviewRedecided) {
       const payload = event.payload as { outcome?: unknown; stageOrder?: unknown };
       if (payload.outcome !== 'passed' || typeof payload.stageOrder !== 'number') return;

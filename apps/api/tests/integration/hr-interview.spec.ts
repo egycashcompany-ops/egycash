@@ -346,7 +346,7 @@ describe('interviews — the waiting queue is persisted rows', () => {
     expect(await waitingIds()).not.toContain(applicant.id);
   });
 
-  it('a restored applicant resumes at the EXACT stage they left (their waiting round)', async () => {
+  it('a restored applicant resumes at the EXACT stage they left, on a new attempt', async () => {
     // Approved in screening → a waiting first round exists for them.
     const applicant = await acceptedApplicant();
     expect(await waitingIds()).toContain(applicant.id);
@@ -361,7 +361,8 @@ describe('interviews — the waiting queue is persisted rows', () => {
     expect(await waitingIds()).not.toContain(applicant.id);
 
     // Restored → resumes at the INTERVIEW stage (their accepted screening is intact), NOT back at
-    // screening: the waiting round they left is the same row, so it simply becomes visible again.
+    // screening. The round they left was CLOSED by the withdrawal, so the reactivation opens a
+    // fresh attempt at that same stage — history is never revived (I11/I12/I14).
     const restored = await request(app)
       .post(`/api/v1/hr/applicants/${applicant.id}/restore`)
       .set('Authorization', `Bearer ${adminToken}`)

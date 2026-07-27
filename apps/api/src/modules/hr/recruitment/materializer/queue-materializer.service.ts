@@ -54,6 +54,59 @@ const subjectOf = (applicant: ApplicantDoc) => ({
   placementLabel: applicant.placementLabel,
 });
 
+/** The shape `reopenAfterReactivation` reads back off a closed row. */
+type ClosedRow = Record<string, unknown> & { _id: Types.ObjectId };
+interface ClosedRecordModel {
+  find: (filter: Record<string, unknown>) => { lean: () => { exec: () => Promise<ClosedRow[]> } };
+}
+
+/**
+ * Per stage: the status its records land in when the candidate leaves (mirroring the engine's
+ * `LIFECYCLE_CLOSE`), and how to rebuild the catalog fields a fresh attempt needs — copied off the
+ * closed row, so no catalog lookup can disagree with the round the candidate actually stood at.
+ */
+const REOPENABLE: {
+  binding: () => never;
+  closedAs: string;
+  stageField?: 'stageId' | 'phaseId';
+  defaults: (row: ClosedRow) => Record<string, unknown>;
+}[] = [
+  {
+    binding: () => screeningService.workflowBinding as never,
+    closedAs: 'cancelled',
+    defaults: () => ({}),
+  },
+  {
+    binding: () => interviewService.workflowBinding as never,
+    closedAs: 'cancelled',
+    stageField: 'stageId',
+    defaults: (row) => ({
+      stageId: row.stageId,
+      stageKey: row.stageKey,
+      stageOrder: row.stageOrder,
+      stageName: row.stageName,
+      outcome: 'pending',
+    }),
+  },
+  {
+    binding: () => evaluationService.workflowBinding as never,
+    closedAs: 'cancelled',
+    stageField: 'phaseId',
+    defaults: (row) => ({
+      phaseId: row.phaseId,
+      phaseKey: row.phaseKey,
+      phaseName: row.phaseName,
+      phaseOrder: row.phaseOrder,
+      phaseKind: row.phaseKind,
+    }),
+  },
+  {
+    binding: () => jobOfferService.workflowBinding as never,
+    closedAs: 'withdrawn',
+    defaults: () => ({}),
+  },
+];
+
 class QueueMaterializerService {
   /** The screening queue an applicant joins the moment they are registered. */
   async openScreening(applicantId: string, actorUserId: string | null): Promise<void> {
@@ -132,6 +185,45 @@ class QueueMaterializerService {
           phaseKind: phase.kind,
         },
       } as never);
+    }
+  }
+
+  /**
+   * Reactivation (I14): the candidate is back, so the stages their departure CLOSED re-open — each
+   * on a fresh attempt, because the closed row is terminal and history is never revived (I11/I12).
+   *
+   * Which stages? Exactly the ones carrying a lifecycle-closure status on their latest live
+   * attempt. That is inferable from the records themselves, which is the point: the departure left
+   * its trace in the status vocabulary rather than in a flag, so the return can read it back out
+   * without any mirrored lifecycle state existing anywhere (I1/I10).
+   *
+   * The new attempt is stamped with the candidate's CURRENT placement, like any materialization.
+   */
+  async reopenAfterReactivation(applicantId: string, actorUserId: string | null): Promise<void> {
+    const applicant = await applicantService.findByIdSystem(applicantId);
+    if (applicant === null || applicant.status !== 'new') return;
+
+    for (const stage of REOPENABLE) {
+      const binding = stage.binding() as unknown as { model: ClosedRecordModel };
+      const closed = await binding.model
+        .find({
+          applicantId: new Types.ObjectId(applicantId),
+          supersededAt: null,
+          isDeleted: false,
+          status: stage.closedAs,
+        })
+        .lean()
+        .exec();
+      for (const record of closed) {
+        const refId = stage.stageField === undefined ? undefined : record[stage.stageField];
+        await recruitmentWorkflowEngine.ensureStageRecord({
+          binding: stage.binding(),
+          ...subjectOf(applicant),
+          ...(refId === undefined ? {} : { stageRefId: refId }),
+          actorUserId,
+          defaults: stage.defaults(record),
+        } as never);
+      }
     }
   }
 

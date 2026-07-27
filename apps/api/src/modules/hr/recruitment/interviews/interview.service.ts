@@ -53,8 +53,8 @@ const BINDING = {
   stageField: 'stageId',
 } as unknown as StageBinding<never>;
 
-// So the engine can carry the applicant's pipeline liveness onto this collection when their
-// lifecycle moves (I11) — the stage never reaches into the lifecycle, only the engine does.
+// So the engine can close this collection's still-open records when the candidate leaves the
+// pipeline (I14) — the stage never reaches into the lifecycle, only the engine does.
 registerStageBinding(BINDING);
 
 const newPanelist = (interviewerId: string): InterviewPanelist => ({
@@ -730,9 +730,6 @@ class InterviewService {
       'stageId',
       {
         supersededAt: null,
-        // The badge must equal the rows on the page (RW15), so it excludes exactly what the
-        // queue excludes: candidates who have left the pipeline (I11).
-        applicantLive: true,
         ...(branchId === undefined ? {} : { branchId: new Types.ObjectId(branchId) }),
       },
       scope,

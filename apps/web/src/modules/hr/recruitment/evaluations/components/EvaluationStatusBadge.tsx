@@ -7,6 +7,8 @@ const TONE: Record<EvaluationStatus, Tone> = {
   waiting: 'warning',
   approved: 'success',
   rejected: 'danger',
+  // Not a decision — the candidate left before the phase was assessed (I14).
+  cancelled: 'neutral',
 };
 
 export const EvaluationStatusBadge = ({ status }: { status: EvaluationStatus }): JSX.Element => {

@@ -27,12 +27,15 @@ its entry here in the same PR.
 
 - **Recruitment: withdrawn and rejected candidates lingered in the stage counters.** The
   counters read stage rows without regard to whether the candidate was still in the
-  running, so a badge could out-count its own page indefinitely. Stage records now carry
-  `applicantLive`, denormalized from the applicant's lifecycle and written only by the
-  workflow engine in the same transaction as the lifecycle change; queues and counters
-  filter on it, a request for one applicant's own records does not, and restoring a
-  candidate returns them to the exact stage they left rather than a fresh attempt. The
-  boot migration backfills existing rows.
+  running, so a badge could out-count its own page indefinitely. A lifecycle exit now
+  **closes** the candidate's open stage records: the workflow engine transitions each of
+  them to a terminal status in the same transaction — screening and evaluation to the new
+  `cancelled`, interviews to `cancelled`, a live offer to `withdrawn` — so they leave every
+  queue and counter through the status vocabulary itself, with no mirrored lifecycle field
+  anywhere (I1/I10). Decided records are never touched. Because each closure status is
+  terminal, restoring a candidate re-opens the stage on a **new attempt** rather than
+  reviving a closed row (I11/I12). The boot migration closes the records of applicants who
+  had already left.
 
 - **Contract templates: Save Draft is no longer completeness-gated — Publish is.**
   Saving a template draft no longer demands the full names, contract type and body up

@@ -605,6 +605,11 @@ class ApplicantService {
     // The engine returns null when the event does not apply (already terminal): either way the
     // caller wants the current document.
     void result;
+    // Publish only AFTER the transaction commits (I15). Without this the lifecycle event and the
+    // stage closures it performed would sit in the outbox until some unrelated transition flushed
+    // it — so the timeline would lag, and reactivation (whose re-materialization is a consumer of
+    // the event) would not re-open the candidate's stage at all.
+    await recruitmentWorkflowEngine.flush();
     const current = await applicantRepository.findById(id);
     if (current === null) throw new NotFoundError();
     return current;

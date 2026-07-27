@@ -320,31 +320,39 @@ const dropReplacedIndexes = async (): Promise<void> => {
 };
 
 /**
- * I11 — `applicantLive` is what keeps a withdrawn or rejected candidate out of every queue and
- * every counter. Rows written before it existed have no value at all, and a missing field does
- * not match `applicantLive: true`, so they would silently vanish from the queues. Backfill from
- * the applicant's own status: live means still in the running.
+ * I14 — a candidate who has left the pipeline must hold no OPEN stage record, because a queue is
+ * a plain read over statuses and nothing else marks them as gone (I1/I10). Rows written before
+ * the lifecycle closed its stages are still sitting in `waiting` / `scheduled` / `draft`, so they
+ * would keep appearing in queues and counters forever.
+ *
+ * The backfill writes the same terminal statuses the engine now writes. It is a data repair of
+ * history, not a transition: there is no actor and no event to publish for something that should
+ * have happened months ago, and inventing either would put fiction on the timeline.
  */
-const backfillApplicantLiveness = async (): Promise<void> => {
-  const stages: Model<{ applicantId: Types.ObjectId }>[] = [
-    ScreeningModel as never,
-    InterviewModel as never,
-    EvaluationModel as never,
-    JobOfferModel as never,
-  ];
+const closeStagesOfDepartedApplicants = async (): Promise<void> => {
   const gone = await ApplicantModel.find({ status: { $ne: 'new' } }, { _id: 1 }).lean().exec();
   const goneIds = gone.map((a) => a._id);
-  for (const model of stages) {
-    await model.updateMany({ applicantLive: { $exists: false } }, { $set: { applicantLive: true } }).exec();
-    if (goneIds.length > 0) {
-      await model.updateMany({ applicantId: { $in: goneIds } }, { $set: { applicantLive: false } }).exec();
-    }
+  if (goneIds.length === 0) return;
+
+  const closures: [Model<{ applicantId: Types.ObjectId }>, string[], string][] = [
+    [ScreeningModel as never, ['waiting'], 'cancelled'],
+    [InterviewModel as never, ['waiting', 'scheduled', 'inProgress'], 'cancelled'],
+    [EvaluationModel as never, ['waiting'], 'cancelled'],
+    [JobOfferModel as never, ['waiting', 'draft', 'sent'], 'withdrawn'],
+  ];
+  for (const [model, open, to] of closures) {
+    await model
+      .updateMany(
+        { applicantId: { $in: goneIds }, supersededAt: null, isDeleted: false, status: { $in: open } },
+        { $set: { status: to } },
+      )
+      .exec();
   }
 };
 
 export const migrateRecruitmentWorkflow = async (): Promise<void> => {
   await backfillAttemptMarkers();
-  await backfillApplicantLiveness();
+  await closeStagesOfDepartedApplicants();
   await backfillPlacement();
   await renamePendingToWaiting();
   await backfillPhaseTyping();

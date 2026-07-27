@@ -240,7 +240,12 @@ describe('screening — the waiting queue is persisted rows', () => {
     expect(await waitingIds()).not.toContain(applicant.id);
   });
 
-  it('drops a withdrawn candidate from the queue and brings them back on restore', async () => {
+  /**
+   * I14/I1/I10 — a departed candidate leaves the queue because their record carries a terminal
+   * STATUS, not because anything mirrors the lifecycle onto the stage. Reactivation therefore
+   * re-opens the stage on a NEW attempt; the closed attempt stays readable forever.
+   */
+  it('closes the waiting screening on withdrawal and re-opens a new attempt on restore', async () => {
     const applicant = await registerApplicant();
     expect(await waitingIds()).toContain(applicant.id);
 
@@ -252,11 +257,17 @@ describe('screening — the waiting queue is persisted rows', () => {
     ).body.data as { version: number };
     expect(await waitingIds()).not.toContain(applicant.id);
 
-    // The row itself was never touched — the candidate's own history still shows it.
-    const own = await request(app)
-      .get(`/api/v1/hr/screenings?applicantId=${applicant.id}`)
-      .set('Authorization', `Bearer ${adminToken}`);
-    expect((own.body.data as ScreeningDto[]).map((r) => r.status)).toContain('waiting');
+    // The record is CLOSED, not deleted and not flagged — its own status says so.
+    const own = async (): Promise<ScreeningDto[]> => {
+      const res = await request(app)
+        .get(`/api/v1/hr/screenings?applicantId=${applicant.id}&pageSize=50`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      return res.body.data as ScreeningDto[];
+    };
+    const afterWithdraw = await own();
+    expect(afterWithdraw).toHaveLength(1);
+    expect(afterWithdraw[0]?.status).toBe('cancelled');
+    expect(afterWithdraw[0]?.attempt).toBe(1);
 
     const restored = await request(app)
       .post(`/api/v1/hr/applicants/${applicant.id}/restore`)
@@ -264,6 +275,13 @@ describe('screening — the waiting queue is persisted rows', () => {
       .send({ version: withdrawn.version });
     expect(restored.status).toBe(200);
     expect(await waitingIds()).toContain(applicant.id);
+
+    // Attempt 1 is untouched history; attempt 2 is the live row (I11/I12).
+    const afterRestore = await own();
+    expect(afterRestore).toHaveLength(2);
+    const byAttempt = new Map(afterRestore.map((r) => [r.attempt, r.status]));
+    expect(byAttempt.get(1)).toBe('cancelled');
+    expect(byAttempt.get(2)).toBe('waiting');
   });
 });
 

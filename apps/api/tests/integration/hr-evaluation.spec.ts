@@ -568,14 +568,15 @@ describe('recruitment — return to an earlier stage (RW13/A8)', () => {
   });
 
   it('refuses a target that is not behind the applicant', async () => {
-    const applicant = await readyApplicant();
-    const stage2 = await stageId('secondInterview');
+    // A newly registered applicant stands AT screening, so screening is not behind them and
+    // there is nothing to undo.
+    const applicant = await registerApplicant();
     const res = await returnTo(
       applicant.id,
-      { kind: 'interview', refId: stage2 },
+      { kind: 'screening' },
       { reason: 'nothing to undo', version: await applicantVersion(applicant.id) },
     );
-    expect(res.status).toBe(422);
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
   });
 
   it('requires a reason and the returnToStage permission', async () => {

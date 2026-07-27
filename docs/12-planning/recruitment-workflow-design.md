@@ -1,10 +1,10 @@
 # Recruitment Workflow Refactor — Design
 
 > Status: **FROZEN** (Revision 2.3, 2026-07-27 — reviewed and frozen by the approver;
-> §20 records the implementation invariants I1–I13 added during the build. I11 supersedes the
+> §20 records the implementation invariants I1–I14 added during the build. I11 supersedes the
 > derived-`waiting` treatment in I10: `waiting` is an explicit persisted status and every stage
 > always has a record; I12–I13 make stage ownership DB-enforced and route every transition through
-> a single workflow engine).
+> a single workflow engine; I14 keeps the applicant lifecycle separate from the stage workflow).
 > Approved for implementation as a **single PR** (§16), exactly as for Leave
 > (`leave-management-design.md`), Auth (`auth-account-lifecycle-design.md`) and Contracts
 > (`contracts-module-design.md`).
@@ -1284,3 +1284,55 @@ readable only by looking for an Employee row elsewhere, which is precisely the i
 removes. `APPLICANT_STATUSES` becomes `new · hired · rejected · withdrawn`; the engine performs
 `new → hired` at employee creation, and the boot migration backfills candidates who already have
 an Employee.
+
+### I14 — Lifecycle is separate from workflow
+
+The applicant's status is the **final business outcome**, nothing else:
+
+```
+Applicant   new · hired · rejected · withdrawn
+```
+
+Stage objects keep their own independent enums (I10/I11). The engine orchestrates stage
+transitions, and touches `applicant.status` **only when a true lifecycle event occurs** — never as
+a side effect of a stage moving.
+
+**The complete set of lifecycle events.** Nothing else may write `applicant.status`:
+
+| Event | Transition | Raised by |
+|---|---|---|
+| Employee created | `new → hired` | the hire (not a stage transition at all) |
+| Permanent rejection | `new → rejected` | a stage decision that ends the candidacy |
+| Withdrawal | `new → withdrawn` | the candidate withdrawing |
+| Reactivation | `rejected \| withdrawn → new` | an explicit, reasoned HR action |
+
+**Which stage transitions raise a lifecycle event — and which deliberately do not:**
+
+| Stage transition | Lifecycle effect |
+|---|---|
+| screening → `rejected` | permanent rejection |
+| interview → `completed` with outcome `failed` | permanent rejection |
+| evaluation → `rejected` | permanent rejection |
+| interview → `completed` with outcome `passed` | **none** |
+| offer → `rejected` (the candidate declined) | **none** — declining an offer is not a rejection of the person; HR may re-offer |
+| offer → `withdrawn` / `expired` / `superseded` | **none** |
+| offer → `accepted` | **none** — the hire is its own event |
+| **return to a previous stage (RW13)** | **none, ever** |
+
+**Consequences, all applied:**
+
+- **Return-to-stage never touches the lifecycle.** Where a returned candidate is currently
+  `rejected`, the operation performs an explicit *reactivation* lifecycle event alongside the
+  stage move — two separately validated, separately recorded transitions, never one dragging the
+  other.
+- **Stage corrections no longer auto-reactivate.** Flipping a failed interview back to `passed`
+  used to silently set the applicant `new` again, while the identical correction on an evaluation
+  deliberately did not — an inconsistency this separation removes. A correction now changes the
+  stage record only; returning the candidate to the pipeline is an explicit reactivation, which is
+  the honest behaviour when someone may have been rejected at more than one stage.
+- **Stage services stop calling `markRejectedBy*`.** Those paths become engine-raised lifecycle
+  events, so the applicant aggregate has exactly one writer for its status (I1/I13).
+- **The dependency direction is one-way.** Workflow reads lifecycle to gate itself (a withdrawn
+  candidate gets no new stage records); lifecycle never reads stage state to decide what it is.
+  Reporting, analytics and rehire ask `applicant.status` and get an answer that does not shift
+  because someone rescheduled an interview.

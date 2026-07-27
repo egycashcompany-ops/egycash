@@ -8,7 +8,21 @@
 // may write a status (I13), there is no other way in.
 import { type EvaluationStatus, type InterviewStatus, type OfferStatus, type ScreeningStatus } from '@ecms/contracts';
 
-export const WORKFLOW_OBJECTS = ['applicant', 'screening', 'interview', 'evaluation', 'offer'] as const;
+/**
+ * The four STAGE objects. Each owns its own status enum and moves independently of the others and
+ * of the applicant's lifecycle (I14).
+ */
+export const STAGE_OBJECTS = ['screening', 'interview', 'evaluation', 'offer'] as const;
+export type StageObject = (typeof STAGE_OBJECTS)[number];
+
+/**
+ * The LIFECYCLE object — the applicant's final business outcome, deliberately NOT a stage (I14).
+ * It appears in this table so its transitions are validated by the same engine, but nothing in the
+ * stage machinery may move it: see `workflow-lifecycle.ts` for the closed set of events that can.
+ */
+export const LIFECYCLE_OBJECT = 'applicant' as const;
+
+export const WORKFLOW_OBJECTS = [LIFECYCLE_OBJECT, ...STAGE_OBJECTS] as const;
 export type WorkflowObject = (typeof WORKFLOW_OBJECTS)[number];
 
 /** The applicant's own lifecycle. `hired` is terminal-successful (I13). */

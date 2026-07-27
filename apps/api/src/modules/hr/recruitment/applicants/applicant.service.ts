@@ -760,6 +760,17 @@ class ApplicantService {
     await fileService.softDelete(ctx, fileId, scope);
     await applicantRepository.adjustAttachmentCount(id, -1);
   }
+
+  /**
+   * Applicant counts per lifecycle status, for the aggregated stage counters (RW15/I3). One
+   * grouped query, scoped like every other read.
+   */
+  async statusCounts(branchId: string | undefined, scope: ScopeSelector): Promise<Record<string, number>> {
+    return applicantRepository.countByStatus(
+      branchId === undefined ? {} : { branchId: new Types.ObjectId(branchId) },
+      scope,
+    );
+  }
 }
 
 export const applicantService = new ApplicantService();

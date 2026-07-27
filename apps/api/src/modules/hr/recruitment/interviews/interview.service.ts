@@ -742,6 +742,24 @@ class InterviewService {
       { entityType: 'interview', action: 'start', actorUserId: ctx.userId },
     );
   }
+
+  /**
+   * Round counts per status, split by interview stage, over the LIVE attempts — the per-stage
+   * numbers the aggregated counters endpoint reports (RW15/I3). One grouped query for all stages.
+   */
+  async statusCountsByStage(
+    branchId: string | undefined,
+    scope: ScopeSelector,
+  ): Promise<Record<string, Record<string, number>>> {
+    return interviewRepository.countByStatusGrouped(
+      'stageId',
+      {
+        supersededAt: null,
+        ...(branchId === undefined ? {} : { branchId: new Types.ObjectId(branchId) }),
+      },
+      scope,
+    );
+  }
 }
 
 export const interviewService = new InterviewService();

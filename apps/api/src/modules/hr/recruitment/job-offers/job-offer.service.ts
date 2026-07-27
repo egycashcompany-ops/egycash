@@ -445,6 +445,32 @@ class JobOfferService {
       },
     );
   }
+
+  /** Offer counts per status over the LIVE attempts, for the stage counters (RW15/I3). */
+  async statusCounts(branchId: string | undefined, scope: ScopeSelector): Promise<Record<string, number>> {
+    return jobOfferRepository.countByStatus(
+      {
+        supersededAt: null,
+        ...(branchId === undefined ? {} : { branchId: new Types.ObjectId(branchId) }),
+      },
+      scope,
+    );
+  }
+
+  /**
+   * The Employees Ready queue (A6): accepted offers not yet converted into an Employee. Readable
+   * from a fact on the offer rather than from the absence of an Employee row (I11).
+   */
+  async countEmployeesReady(branchId: string | undefined, scope: ScopeSelector): Promise<number> {
+    return jobOfferRepository.count(
+      {
+        status: 'accepted',
+        hiredEmployeeId: null,
+        ...(branchId === undefined ? {} : { branchId: new Types.ObjectId(branchId) }),
+      },
+      scope,
+    );
+  }
 }
 
 export const jobOfferService = new JobOfferService();

@@ -306,6 +306,17 @@ class ScreeningService {
       },
     );
   }
+
+  /** Screening counts per status over the LIVE attempts, for the stage counters (RW15/I3). */
+  async statusCounts(branchId: string | undefined, scope: ScopeSelector): Promise<Record<string, number>> {
+    return screeningRepository.countByStatus(
+      {
+        supersededAt: null,
+        ...(branchId === undefined ? {} : { branchId: new Types.ObjectId(branchId) }),
+      },
+      scope,
+    );
+  }
 }
 
 export const screeningService = new ScreeningService();

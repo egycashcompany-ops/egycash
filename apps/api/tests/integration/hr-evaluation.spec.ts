@@ -12,6 +12,7 @@ import {
   type ApplicantDto,
   type BulkActionResultDto,
   type EvaluationDto,
+  type RecruitmentStageCountsDto,
   type EvaluationPhaseDto,
   type InterviewDto,
   type ScreeningDto,
@@ -371,5 +372,63 @@ describe('evaluations — bulk approve/reject (RW10/RW17/I4)', () => {
     const evaluation = (await open((await readyApplicant()).id, phase.id)).body.data as EvaluationDto;
     const res = await bulk({ action: 'approve', ids: [evaluation.id], phaseId: phase.id }, aliceToken);
     expect(res.status).toBe(403);
+  });
+});
+
+describe('recruitment — aggregated stage counters (RW15/I3)', () => {
+  const counts = async (token = adminToken): Promise<RecruitmentStageCountsDto> => {
+    const res = await request(app)
+      .get('/api/v1/hr/recruitment/stage-counts')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    return res.body.data as RecruitmentStageCountsDto;
+  };
+
+  const stageByKey = (dto: RecruitmentStageCountsDto, key: string) =>
+    dto.stages.find((s) => s.key === key);
+
+  it('returns every stage once, in display order, with a generation timestamp', async () => {
+    const dto = await counts();
+    expect(new Date(dto.generatedAt).getTime()).not.toBeNaN();
+    expect(dto.stages.map((s) => s.order)).toEqual(dto.stages.map((_, i) => i));
+
+    const keys = dto.stages.map((s) => s.key);
+    expect(keys).toContain('applicants');
+    expect(keys).toContain('screening');
+    expect(keys).toContain('jobOffers');
+    expect(keys).toContain('employeesReady');
+    expect(new Set(keys).size).toBe(keys.length);
+
+    // The two catalog-driven kinds get one entry per active stage / phase.
+    const phaseList = await phases();
+    for (const phase of phaseList.filter((p) => p.active)) {
+      expect(keys).toContain(`evaluation:${phase.id}`);
+    }
+    const evaluation = stageByKey(dto, `evaluation:${(await phaseByKey('securityCheck')).id}`);
+    expect(evaluation?.kind).toBe('evaluation');
+    expect(evaluation?.refId).toBe((await phaseByKey('securityCheck')).id);
+    expect(evaluation?.name?.en).toBe((await phaseByKey('securityCheck')).name.en);
+  });
+
+  it('counts the waiting bucket, and moves an applicant between buckets on a decision', async () => {
+    const phase = await phaseByKey('securityCheck');
+    const key = `evaluation:${phase.id}`;
+    const before = stageByKey(await counts(), key);
+
+    const evaluation = (await open((await readyApplicant()).id, phase.id)).body.data as EvaluationDto;
+    const opened = stageByKey(await counts(), key);
+    expect(opened?.count).toBe((before?.count ?? 0) + 1);
+    expect(opened?.buckets.waiting).toBe(opened?.count);
+
+    await decide(evaluation.id, { decision: 'approved', version: evaluation.version });
+    const decided = stageByKey(await counts(), key);
+    // The record left `waiting` for `approved` — the navigation number drops, the tab badge rises.
+    expect(decided?.count).toBe(before?.count ?? 0);
+    expect(decided?.buckets.approved).toBe((opened?.buckets.approved ?? 0) + 1);
+  });
+
+  it('omits stages the caller cannot view rather than reporting them as zero', async () => {
+    const dto = await counts(aliceToken); // no HR permissions at all
+    expect(dto.stages).toEqual([]);
   });
 });

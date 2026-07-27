@@ -11,6 +11,7 @@ import { buildApplicantSourcesRouter, buildApplicantsRouter } from './recruitmen
 import { buildScreeningsRouter } from './recruitment/screening';
 import { buildInterviewStagesRouter, buildInterviewsRouter } from './recruitment/interviews';
 import { buildEvaluationPhasesRouter, buildEvaluationsRouter } from './recruitment/evaluations';
+import { buildRecruitmentCountersRouter } from './recruitment/counters';
 import { buildJobOffersRouter, jobOfferService } from './recruitment/job-offers';
 import { buildEmployeesRouter, employeeService } from './employee-management/employees';
 import { buildEmployeeActionsRouter, employeeActionService } from './employee-management/employee-actions';
@@ -105,6 +106,47 @@ const evaluationPermissions = declarePermissions(
   { en: 'evaluations', ar: 'التقييمات' },
   ['view'],
   [{ action: 'manage', name: { en: 'Manage evaluations', ar: 'إدارة التقييمات' } }],
+);
+
+// RW7 — one concrete resource per business check, so a security officer, a driving examiner and
+// a company doctor each see only their own phase. A phase row points at its resource through
+// `permissionResource`; admin-created phases keep the generic `evaluation` resource.
+//
+// Back-compat: the generic `evaluation.view` / `evaluation.manage` grants are a SUPERSET —
+// holding one satisfies any phase's check, so existing roles keep working with no migration.
+const securityCheckPermissions = declarePermissions(
+  'hr',
+  'securityCheck',
+  { en: 'security checks', ar: 'التحريات الأمنية' },
+  ['view'],
+  [
+    { action: 'manage', name: { en: 'Manage security checks', ar: 'إدارة التحريات الأمنية' } },
+    { action: 'manageBatch', name: { en: 'Manage security check batches', ar: 'إدارة دفعات التحريات الأمنية' } },
+    { action: 'export', name: { en: 'Export security checks', ar: 'تصدير التحريات الأمنية' } },
+  ],
+);
+
+const drivingTestPermissions = declarePermissions(
+  'hr',
+  'drivingTest',
+  { en: 'driving tests', ar: 'اختبارات القيادة' },
+  ['view'],
+  [
+    { action: 'manage', name: { en: 'Manage driving tests', ar: 'إدارة اختبارات القيادة' } },
+    { action: 'manageBatch', name: { en: 'Manage driving test batches', ar: 'إدارة دفعات اختبارات القيادة' } },
+    { action: 'export', name: { en: 'Export driving tests', ar: 'تصدير اختبارات القيادة' } },
+  ],
+);
+
+const medicalCheckPermissions = declarePermissions(
+  'hr',
+  'medicalCheck',
+  { en: 'medical checks', ar: 'الفحوصات الطبية' },
+  ['view'],
+  [
+    { action: 'manage', name: { en: 'Manage medical checks', ar: 'إدارة الفحوصات الطبية' } },
+    { action: 'export', name: { en: 'Export medical checks', ar: 'تصدير الفحوصات الطبية' } },
+  ],
 );
 
 const evaluationPhasePermissions = declarePermissions(
@@ -264,6 +306,9 @@ export const hrPermissions: PermissionDef[] = [
   ...interviewPermissions,
   ...interviewStagePermissions,
   ...evaluationPermissions,
+  ...securityCheckPermissions,
+  ...drivingTestPermissions,
+  ...medicalCheckPermissions,
   ...evaluationPhasePermissions,
   ...jobOfferPermissions,
   ...employeePermissions,
@@ -288,6 +333,7 @@ export const hrModule: ModuleManifest = {
     { prefix: '/hr/interview-stages', router: buildInterviewStagesRouter() },
     { prefix: '/hr/evaluations', router: buildEvaluationsRouter() },
     { prefix: '/hr/evaluation-phases', router: buildEvaluationPhasesRouter() },
+    { prefix: '/hr/recruitment', router: buildRecruitmentCountersRouter() },
     { prefix: '/hr/job-offers', router: buildJobOffersRouter() },
     { prefix: '/hr/employees', router: buildEmployeeActionsRouter() },
     { prefix: '/hr/employees', router: buildLeaveBalancesRouter() },

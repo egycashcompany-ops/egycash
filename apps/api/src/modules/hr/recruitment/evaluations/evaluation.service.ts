@@ -302,6 +302,24 @@ class EvaluationService {
       },
     );
   }
+
+  /**
+   * Evaluation counts per status, split by phase, over the LIVE attempts — the per-phase numbers
+   * the aggregated counters endpoint reports (RW15/I3). One grouped query for all phases.
+   */
+  async statusCountsByPhase(
+    branchId: string | undefined,
+    scope: ScopeSelector,
+  ): Promise<Record<string, Record<string, number>>> {
+    return evaluationRepository.countByStatusGrouped(
+      'phaseId',
+      {
+        supersededAt: null,
+        ...(branchId === undefined ? {} : { branchId: new Types.ObjectId(branchId) }),
+      },
+      scope,
+    );
+  }
 }
 
 export const evaluationService = new EvaluationService();

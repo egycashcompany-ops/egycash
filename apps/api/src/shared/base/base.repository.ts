@@ -138,6 +138,47 @@ export class BaseRepository<T extends BaseDocFields> {
     return this.model.countDocuments(this.baseFilter(scope, filter)).exec();
   }
 
+  /**
+   * One `$group` producing every status bucket at once, scope- and soft-delete-aware. Callers that
+   * need per-status numbers use this instead of a count per status, so a queue dashboard costs one
+   * round trip per collection rather than one per bucket.
+   */
+  async countByStatus(
+    filter: FilterQuery<T> = {},
+    scope?: ScopeSelector,
+  ): Promise<Record<string, number>> {
+    const rows = await this.model
+      .aggregate<{ _id: string; count: number }>([
+        { $match: this.baseFilter(scope, filter) },
+        { $group: { _id: '$status', count: { $sum: 1 } } },
+      ])
+      .exec();
+    return Object.fromEntries(rows.map((r) => [String(r._id), r.count]));
+  }
+
+  /**
+   * The same `$group`, split by a second key as well — the per-stage / per-phase form of
+   * `countByStatus`. Returns `{ [groupId]: { [status]: count } }`.
+   */
+  async countByStatusGrouped(
+    groupField: string,
+    filter: FilterQuery<T> = {},
+    scope?: ScopeSelector,
+  ): Promise<Record<string, Record<string, number>>> {
+    const rows = await this.model
+      .aggregate<{ _id: { group: unknown; status: string }; count: number }>([
+        { $match: this.baseFilter(scope, filter) },
+        { $group: { _id: { group: `$${groupField}`, status: '$status' }, count: { $sum: 1 } } },
+      ])
+      .exec();
+    const out: Record<string, Record<string, number>> = {};
+    for (const row of rows) {
+      const key = String(row._id.group);
+      out[key] = { ...(out[key] ?? {}), [String(row._id.status)]: row.count };
+    }
+    return out;
+  }
+
   async list(params: ListParams<T>): Promise<Paginated<T>> {
     const pageSize = Math.min(params.pageSize, MAX_PAGE_SIZE);
     const page = Math.max(1, params.page);

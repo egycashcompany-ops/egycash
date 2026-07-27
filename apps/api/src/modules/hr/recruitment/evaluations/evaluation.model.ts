@@ -75,7 +75,7 @@ const evaluationSchema = new Schema<EvaluationDoc>(
   {
     applicantId: { type: Schema.Types.ObjectId, required: true },
     applicantCode: { type: String, required: true },
-    applicantName: { type: String, required: true, default: '' },
+    applicantName: { type: String, default: '' },
     branchId: { type: Schema.Types.ObjectId, default: null },
     phaseId: { type: Schema.Types.ObjectId, required: true },
     phaseKey: { type: String, required: true },

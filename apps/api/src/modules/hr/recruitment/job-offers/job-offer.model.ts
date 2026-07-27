@@ -129,7 +129,7 @@ const jobOfferSchema = new Schema<JobOfferDoc>(
     code: { type: String, default: null },
     applicantId: { type: Schema.Types.ObjectId, required: true },
     applicantCode: { type: String, required: true },
-    applicantName: { type: String, required: true, default: '' },
+    applicantName: { type: String, default: '' },
     branchId: { type: Schema.Types.ObjectId, default: null },
     status: { type: String, enum: OFFER_STATUSES, required: true, default: 'waiting' },
     terms: { type: termsSchema, default: null },

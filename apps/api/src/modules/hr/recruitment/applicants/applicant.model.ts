@@ -229,7 +229,7 @@ const applicantSchema = new Schema<ApplicantDoc>(
     identityVerifiedAt: { type: Date, default: null },
     fullNameAr: { type: String, required: true },
     fullNameEn: { type: String, default: null },
-    searchName: { type: String, required: true, default: '' },
+    searchName: { type: String, default: '' },
     nationalId: { type: String, default: null },
     birthDate: { type: Date, default: null },
     gender: { type: String, enum: GENDERS, default: null },

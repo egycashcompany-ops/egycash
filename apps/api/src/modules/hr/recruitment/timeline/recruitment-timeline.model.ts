@@ -102,7 +102,10 @@ const timelineSchema = new Schema<RecruitmentTimelineDoc>(
     applicantCode: { type: String, required: true },
     at: { type: Date, required: true },
     actorUserId: { type: Schema.Types.ObjectId, default: null },
-    actorName: { type: String, required: true, default: '' },
+    // Denormalized so it survives a user rename; EMPTY for a system actor. Deliberately not
+    // `required`: Mongoose rejects '' for a required String, which would make its own default
+    // unsavable — the bug that silently emptied this collection.
+    actorName: { type: String, default: '' },
     type: { type: String, enum: RECRUITMENT_TIMELINE_TYPES, required: true },
     correlationType: { type: String, enum: TIMELINE_CORRELATION_TYPES, required: true },
     correlationId: { type: String, required: true },

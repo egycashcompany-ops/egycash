@@ -19,6 +19,8 @@ import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { PlusIcon, DownloadIcon } from '../../../../../shared/ui/icons';
 import { formatDate, formatNumber, localized } from '../../../../../shared/lib/format';
 import { ApplicantStatusBadge } from '../components/ApplicantStatusBadge';
+import { type PlacementDto } from '@ecms/contracts';
+import { BulkReassignDialog } from '../components/BulkReassignDialog';
 import { ApplicantFilters, type ApplicantFiltersState } from '../components/ApplicantFilters';
 import { useApplicants, useApplicantSources, useBulkApplicants } from '../api/applicant-queries';
 import { exportApplicantsCsv, type ApplicantListParams } from '../api/applicant-api';
@@ -78,6 +80,7 @@ export const ApplicantsListPage = (): JSX.Element => {
   // ── Transient (non-URL) state ──────────────────────────────────────────────
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [bulkReassignOpen, setBulkReassignOpen] = useState(false);
   const [withdrawReason, setWithdrawReason] = useState('');
   useEffect(() => {
     setSelected(new Set());
@@ -138,6 +141,18 @@ export const ApplicantsListPage = (): JSX.Element => {
     } catch {
       // surfaced by the global error handler
     }
+  };
+
+  const submitBulkReassign = async (placement: PlacementDto, reason: string): Promise<void> => {
+    const result = await bulk.mutateAsync({ action: 'reassign', ids: [...selected], placement, reason });
+    toast.success(
+      t('applicants.bulk.withdrawDone', {
+        ok: formatNumber(result.succeeded, locale),
+        total: formatNumber(result.requested, locale),
+      }),
+    );
+    setBulkReassignOpen(false);
+    setSelected(new Set());
   };
 
   const runExport = (): void => {
@@ -201,13 +216,20 @@ export const ApplicantsListPage = (): JSX.Element => {
       <div className="space-y-4">
         <ApplicantFilters value={filters} onChange={changeFilters} sources={sources} />
 
-        <Can permission="applicant.edit">
-          <BulkActions count={selected.size} onClear={() => setSelected(new Set())}>
+        <BulkActions count={selected.size} onClear={() => setSelected(new Set())}>
+          {/* RW17 — one placement over the whole selection; each candidate is still checked
+              against the editing window on its own. */}
+          <Can permission="applicant.reassign">
+            <Button size="sm" variant="secondary" onClick={() => setBulkReassignOpen(true)}>
+              {t('applicants.reassign.selected')}
+            </Button>
+          </Can>
+          <Can permission="applicant.edit">
             <Button size="sm" variant="danger" onClick={() => setWithdrawOpen(true)}>
               {t('applicants.actions.withdraw')}
             </Button>
-          </BulkActions>
-        </Can>
+          </Can>
+        </BulkActions>
 
         <DataTable
           columns={columns}
@@ -252,6 +274,14 @@ export const ApplicantsListPage = (): JSX.Element => {
           <Textarea value={withdrawReason} onChange={(e) => setWithdrawReason(e.target.value)} rows={3} />
         </Field>
       </Dialog>
+      <BulkReassignDialog
+        open={bulkReassignOpen}
+        count={selected.size}
+        pending={bulk.isPending}
+        onClose={() => setBulkReassignOpen(false)}
+        onSubmit={submitBulkReassign}
+      />
+
     </PageContainer>
   );
 };

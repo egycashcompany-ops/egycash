@@ -66,11 +66,26 @@ class JobOfferRepository extends BaseRepository<JobOfferDoc> {
     return latest === null ? 1 : latest.attempt + 1;
   }
 
+  /** Every offer an applicant has ever held, newest first (history, never filtered). */
+  async findByApplicant(applicantId: string): Promise<JobOfferDoc[]> {
+    if (!Types.ObjectId.isValid(applicantId)) return [];
+    return this.model
+      .find({ applicantId: new Types.ObjectId(applicantId), isDeleted: false })
+      .sort({ createdAt: -1 })
+      .lean<JobOfferDoc[]>()
+      .exec();
+  }
+
   /** The applicant's accepted offer, if any (the Employee-Creation gate for Stage 5). */
   async findAcceptedByApplicantId(applicantId: string): Promise<JobOfferDoc | null> {
     if (!Types.ObjectId.isValid(applicantId)) return null;
     return this.model
-      .findOne({ applicantId: new Types.ObjectId(applicantId), status: 'accepted', isDeleted: false })
+      .findOne({
+        applicantId: new Types.ObjectId(applicantId),
+        status: 'accepted',
+        supersededAt: null,
+        isDeleted: false,
+      })
       .lean<JobOfferDoc>()
       .exec();
   }
@@ -88,6 +103,7 @@ class JobOfferRepository extends BaseRepository<JobOfferDoc> {
       .find({
         applicantId: { $in: objectIds },
         isDeleted: false,
+        supersededAt: null,
         $or: [{ status: { $in: ['waiting', 'draft', 'sent'] } }, { status: 'accepted' }],
       })
       .select('applicantId')
@@ -99,7 +115,7 @@ class JobOfferRepository extends BaseRepository<JobOfferDoc> {
   /** Sent offers whose validity has lapsed as of `asOf` — the automatic-expiration sweep. */
   async findOverdueSent(asOf: Date, limit = 500): Promise<JobOfferDoc[]> {
     return this.model
-      .find({ status: 'sent', isDeleted: false, 'terms.validUntil': { $lte: asOf } })
+      .find({ status: 'sent', isDeleted: false, supersededAt: null, 'terms.validUntil': { $lte: asOf } })
       .limit(limit)
       .lean<JobOfferDoc[]>()
       .exec();

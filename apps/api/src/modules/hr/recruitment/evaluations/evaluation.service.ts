@@ -257,7 +257,10 @@ class EvaluationService {
       evaluationPhaseRepository.findAllActive(),
       evaluationRepository.findByApplicant(applicantId),
     ]);
-    const byPhase = new Map(evaluations.map((e) => [String(e.phaseId), e]));
+    // A superseded attempt is history, never a gate input (RW13).
+    const byPhase = new Map(
+      evaluations.filter((e) => e.supersededAt === null).map((e) => [String(e.phaseId), e]),
+    );
     return phases.every((phase) => {
       const record = byPhase.get(String(phase._id));
       // Driver-only phases only gate when they were opened for this applicant.
@@ -319,6 +322,15 @@ class EvaluationService {
       },
       scope,
     );
+  }
+
+  /**
+   * How the workflow engine addresses this stage (I13). Exposed so cross-stage orchestration —
+   * a return to an earlier stage — drives this stage through the SAME engine, never by touching
+   * the collection directly.
+   */
+  get workflowBinding(): StageBinding<never> {
+    return BINDING;
   }
 }
 

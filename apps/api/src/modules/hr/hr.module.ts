@@ -12,6 +12,7 @@ import { buildScreeningsRouter } from './recruitment/screening';
 import { buildInterviewStagesRouter, buildInterviewsRouter } from './recruitment/interviews';
 import { buildEvaluationPhasesRouter, buildEvaluationsRouter } from './recruitment/evaluations';
 import { buildRecruitmentCountersRouter } from './recruitment/counters';
+import { buildReturnToStageRouter } from './recruitment/return-to-stage';
 import { buildJobOffersRouter, jobOfferService } from './recruitment/job-offers';
 import { buildEmployeesRouter, employeeService } from './employee-management/employees';
 import { buildEmployeeActionsRouter, employeeActionService } from './employee-management/employee-actions';
@@ -53,6 +54,12 @@ const applicantPermissions = declarePermissions(
     { action: 'verifyIdentity', name: { en: 'Verify applicant identity', ar: 'توثيق هوية المتقدم' } },
     // Offer eligibility is never automatic: HR explicitly moves an applicant to the Job Offer stage.
     { action: 'moveToOffer', name: { en: 'Move applicant to job offer', ar: 'نقل المتقدم لمرحلة عرض العمل' } },
+    // RW13 — send a candidate back to an earlier stage. Nothing is deleted; forward records are
+    // superseded and the target re-opens on a new attempt.
+    {
+      action: 'returnToStage',
+      name: { en: 'Return applicant to an earlier stage', ar: 'إعادة المتقدم لمرحلة سابقة' },
+    },
   ],
 );
 
@@ -326,6 +333,7 @@ export const hrModule: ModuleManifest = {
   requiresPlatform: '^2.1',
   permissions: hrPermissions,
   routes: [
+    { prefix: '/hr/applicants', router: buildReturnToStageRouter() },
     { prefix: '/hr/applicants', router: buildApplicantsRouter() },
     { prefix: '/hr/applicant-sources', router: buildApplicantSourcesRouter() },
     { prefix: '/hr/screenings', router: buildScreeningsRouter() },

@@ -471,6 +471,20 @@ class JobOfferService {
       scope,
     );
   }
+
+  /**
+   * How the workflow engine addresses this stage (I13). Exposed so cross-stage orchestration —
+   * a return to an earlier stage — drives this stage through the SAME engine, never by touching
+   * the collection directly.
+   */
+  get workflowBinding(): StageBinding<never> {
+    return BINDING;
+  }
+
+  /** Every offer an applicant has ever held, newest first — read by return-to-stage. */
+  async listByApplicant(applicantId: string): Promise<JobOfferDoc[]> {
+    return jobOfferRepository.findByApplicant(applicantId);
+  }
 }
 
 export const jobOfferService = new JobOfferService();

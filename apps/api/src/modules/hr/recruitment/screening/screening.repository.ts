@@ -39,8 +39,11 @@ class ScreeningRepository extends BaseRepository<ScreeningDoc> {
   /** The live screening for an applicant, if any (one per applicant). */
   async findByApplicantId(applicantId: string): Promise<ScreeningDoc | null> {
     if (!Types.ObjectId.isValid(applicantId)) return null;
+    // The LIVE screening is the highest non-superseded attempt — a return to this stage opens a
+    // new one and every gate must read that, not the retired attempt behind it (I12).
     return this.model
-      .findOne({ applicantId: new Types.ObjectId(applicantId), isDeleted: false })
+      .findOne({ applicantId: new Types.ObjectId(applicantId), supersededAt: null, isDeleted: false })
+      .sort({ attempt: -1 })
       .lean<ScreeningDoc>()
       .exec();
   }

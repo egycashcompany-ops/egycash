@@ -317,6 +317,15 @@ class ScreeningService {
       scope,
     );
   }
+
+  /**
+   * How the workflow engine addresses this stage (I13). Exposed so cross-stage orchestration —
+   * a return to an earlier stage — drives this stage through the SAME engine, never by touching
+   * the collection directly.
+   */
+  get workflowBinding(): StageBinding<never> {
+    return BINDING;
+  }
 }
 
 export const screeningService = new ScreeningService();

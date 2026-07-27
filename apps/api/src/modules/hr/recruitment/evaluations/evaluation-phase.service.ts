@@ -20,7 +20,32 @@ const snapshot = (doc: EvaluationPhaseDoc) => ({
   order: doc.order,
   active: doc.active,
   driversOnly: doc.driversOnly,
+  kind: doc.kind,
+  applicability: doc.applicability,
+  permissionResource: doc.permissionResource,
+  appointmentEnabled: doc.appointmentEnabled,
+  requiresResultDocument: doc.requiresResultDocument,
 });
+
+/**
+ * The persisted shape of a new phase. `applicability` is the typed field and `driversOnly` its
+ * read alias, so a caller may set either and the two never disagree.
+ */
+const newPhaseFields = (input: CreateEvaluationPhase): Partial<EvaluationPhaseDoc> => {
+  const applicability = input.applicability ?? (input.driversOnly ? 'driversOnly' : 'all');
+  return {
+    key: input.key,
+    name: input.name,
+    order: input.order,
+    active: true,
+    driversOnly: applicability === 'driversOnly',
+    kind: input.kind,
+    applicability,
+    permissionResource: input.permissionResource,
+    appointmentEnabled: input.appointmentEnabled,
+    requiresResultDocument: input.requiresResultDocument,
+  };
+};
 
 class EvaluationPhaseService {
   async create(input: CreateEvaluationPhase, by: string): Promise<EvaluationPhaseDoc> {
@@ -28,10 +53,7 @@ class EvaluationPhaseService {
     if (existing !== null) throw new ConflictError(`Evaluation phase "${input.key}" already exists`);
     const clash = await evaluationPhaseRepository.findActiveByOrder(input.order);
     if (clash !== null) throw new ConflictError(`An active evaluation phase at order ${input.order} already exists`);
-    const doc = await evaluationPhaseRepository.create(
-      { key: input.key, name: input.name, order: input.order, active: true, driversOnly: input.driversOnly },
-      { by },
-    );
+    const doc = await evaluationPhaseRepository.create(newPhaseFields(input), { by });
     await auditService.record({
       entityRef: entityRef(String(doc._id)),
       action: 'create',
@@ -44,10 +66,7 @@ class EvaluationPhaseService {
   async ensure(input: CreateEvaluationPhase): Promise<EvaluationPhaseDoc> {
     const existing = await evaluationPhaseRepository.findByKey(input.key);
     if (existing !== null) return existing;
-    return evaluationPhaseRepository.create(
-      { key: input.key, name: input.name, order: input.order, active: true, driversOnly: input.driversOnly },
-      { by: null },
-    );
+    return evaluationPhaseRepository.create(newPhaseFields(input), { by: null });
   }
 
   async list(query: ListEvaluationPhasesQuery): Promise<Paginated<EvaluationPhaseDoc>> {
@@ -81,7 +100,20 @@ class EvaluationPhaseService {
     if (input.name !== undefined) set.name = input.name;
     if (input.order !== undefined) set.order = input.order;
     if (input.active !== undefined) set.active = input.active;
-    if (input.driversOnly !== undefined) set.driversOnly = input.driversOnly;
+    // `applicability` and `driversOnly` are the same fact; setting either keeps both in step.
+    if (input.applicability !== undefined) {
+      set.applicability = input.applicability;
+      set.driversOnly = input.applicability === 'driversOnly';
+    } else if (input.driversOnly !== undefined) {
+      set.driversOnly = input.driversOnly;
+      set.applicability = input.driversOnly ? 'driversOnly' : 'all';
+    }
+    if (input.kind !== undefined) set.kind = input.kind;
+    if (input.permissionResource !== undefined) set.permissionResource = input.permissionResource;
+    if (input.appointmentEnabled !== undefined) set.appointmentEnabled = input.appointmentEnabled;
+    if (input.requiresResultDocument !== undefined) {
+      set.requiresResultDocument = input.requiresResultDocument;
+    }
     const updated = await evaluationPhaseRepository.updateById(id, set, { by, version: input.version });
     await auditService.record({
       entityRef: entityRef(id),

@@ -13,6 +13,7 @@ import {
   type BulkActionResultDto,
   type EvaluationDto,
   type RecruitmentStageCountsDto,
+  type ReturnToStagePreviewDto,
   type EvaluationPhaseDto,
   type InterviewDto,
   type ScreeningDto,
@@ -435,9 +436,12 @@ describe('recruitment — aggregated stage counters (RW15/I3)', () => {
 });
 
 describe('recruitment — boot migration (I8, idempotent)', () => {
+  // Only the seeded three — an earlier test in this file adds an admin-created phase.
+  const SEEDED = ['securityCheck', 'drivingTest', 'medicalExam'];
+
   const phaseShape = async () =>
     (await phases())
-      .filter((p) => p.active)
+      .filter((p) => p.active && SEEDED.includes(p.key))
       .map((p) => ({ key: p.key, order: p.order, kind: p.kind, resource: p.permissionResource }));
 
   it('leaves the seeded catalog in business order, with Medical last', async () => {
@@ -467,5 +471,124 @@ describe('recruitment — boot migration (I8, idempotent)', () => {
     const dto = after.body.data as EvaluationDto;
     expect(dto.status).toBe('waiting');
     expect(dto.version).toBe(evaluation.version);
+  });
+});
+
+describe('recruitment — return to an earlier stage (RW13/A8)', () => {
+  const preview = (applicantId: string, kind: string, refId?: string) =>
+    request(app)
+      .get(`/api/v1/hr/applicants/${applicantId}/return-to-stage/preview`)
+      .query(refId === undefined ? { kind } : { kind, refId })
+      .set('Authorization', `Bearer ${adminToken}`);
+
+  const returnTo = (
+    applicantId: string,
+    target: Record<string, unknown>,
+    body: Record<string, unknown>,
+    token = adminToken,
+  ) =>
+    request(app)
+      .post(`/api/v1/hr/applicants/${applicantId}/return-to-stage`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ target, ...body });
+
+  const applicantVersion = async (id: string): Promise<number> => {
+    const res = await request(app)
+      .get(`/api/v1/hr/applicants/${id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    return (res.body.data as ApplicantDto).version;
+  };
+
+  const evaluationsOf = async (applicantId: string): Promise<EvaluationDto[]> => {
+    const res = await request(app)
+      .get('/api/v1/hr/evaluations')
+      .query({ applicantId, pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    return res.body.data as EvaluationDto[];
+  };
+
+  it('previews the consequences without changing anything', async () => {
+    const applicant = await readyApplicant();
+    const phase = await phaseByKey('securityCheck');
+    const evaluation = (await open(applicant.id, phase.id)).body.data as EvaluationDto;
+    const stage1 = await stageId('firstInterview');
+
+    const res = await preview(applicant.id, 'interview', stage1);
+    expect(res.status).toBe(200);
+    const dto = res.body.data as ReturnToStagePreviewDto;
+    expect(dto.target.refId).toBe(stage1);
+    expect(dto.newAttempt).toBe(2);
+    expect(dto.supersedes.map((s) => s.entityId)).toContain(evaluation.id);
+
+    // Nothing moved.
+    const after = await request(app)
+      .get(`/api/v1/hr/evaluations/${evaluation.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect((after.body.data as EvaluationDto).status).toBe('waiting');
+  });
+
+  it('supersedes forward records without deleting them and opens the next attempt', async () => {
+    const applicant = await readyApplicant();
+    const phase = await phaseByKey('securityCheck');
+    const evaluation = (await open(applicant.id, phase.id)).body.data as EvaluationDto;
+    await decide(evaluation.id, { decision: 'approved', version: evaluation.version });
+    const stage1 = await stageId('firstInterview');
+
+    const res = await returnTo(
+      applicant.id,
+      { kind: 'interview', refId: stage1 },
+      { reason: 'the wrong candidate was interviewed', version: await applicantVersion(applicant.id) },
+    );
+    expect(res.status).toBe(200);
+    const body = res.body.data as { newAttempt: number; superseded: { entityId: string }[] };
+    expect(body.newAttempt).toBe(2);
+    expect(body.superseded.map((s) => s.entityId)).toContain(evaluation.id);
+
+    // The decided evaluation still exists, with its decision intact — only the marker was added.
+    const kept = await request(app)
+      .get(`/api/v1/hr/evaluations/${evaluation.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(kept.status).toBe(200);
+    expect((kept.body.data as EvaluationDto).status).toBe('approved');
+
+    // The interview stage re-opened: a fresh waiting round on attempt 2.
+    const rounds = await request(app)
+      .get('/api/v1/hr/interviews')
+      .query({ applicantId: applicant.id, stageId: stage1, pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    const waiting = (rounds.body.data as InterviewDto[]).filter((i) => i.status === 'waiting');
+    expect(waiting).toHaveLength(1);
+
+    // And the superseded approval no longer counts towards the phase gate: re-opening the
+    // evaluation phase yields a NEW record rather than the retired one.
+    const reopened = (await open(applicant.id, phase.id)).body.data as EvaluationDto;
+    expect(reopened.id).not.toBe(evaluation.id);
+    expect((await evaluationsOf(applicant.id)).map((e) => e.id)).toContain(evaluation.id);
+  });
+
+  it('refuses a target that is not behind the applicant', async () => {
+    const applicant = await readyApplicant();
+    const stage2 = await stageId('secondInterview');
+    const res = await returnTo(
+      applicant.id,
+      { kind: 'interview', refId: stage2 },
+      { reason: 'nothing to undo', version: await applicantVersion(applicant.id) },
+    );
+    expect(res.status).toBe(422);
+  });
+
+  it('requires a reason and the returnToStage permission', async () => {
+    const applicant = await readyApplicant();
+    const stage1 = await stageId('firstInterview');
+    const version = await applicantVersion(applicant.id);
+
+    expect((await returnTo(applicant.id, { kind: 'interview', refId: stage1 }, { version })).status).toBe(400);
+    const denied = await returnTo(
+      applicant.id,
+      { kind: 'interview', refId: stage1 },
+      { reason: 'no rights', version },
+      aliceToken,
+    );
+    expect(denied.status).toBe(403);
   });
 });

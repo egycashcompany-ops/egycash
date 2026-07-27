@@ -45,6 +45,15 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
       .exec();
   }
 
+  /** The employee created from a given applicant, if any — the post-hire guard (RW13). */
+  async findByApplicantIdSystem(applicantId: string): Promise<EmployeeDoc | null> {
+    if (!Types.ObjectId.isValid(applicantId)) return null;
+    return this.model
+      .findOne({ applicantId: new Types.ObjectId(applicantId), isDeleted: false })
+      .lean<EmployeeDoc>()
+      .exec();
+  }
+
   /**
    * Unscoped person-identity lookup by national id (duplicate guard + rehire check — frozen
    * design F2/I6). One person = one employee, whatever their branch, so scoping cannot apply.

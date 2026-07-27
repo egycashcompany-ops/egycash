@@ -48,6 +48,7 @@ class InterviewRepository extends BaseRepository<InterviewDoc> {
         applicantId: new Types.ObjectId(applicantId),
         stageOrder,
         isDeleted: false,
+        supersededAt: null,
         status: { $in: ACTIVE_STATUSES },
       })
       .lean<InterviewDoc>()
@@ -60,7 +61,12 @@ class InterviewRepository extends BaseRepository<InterviewDoc> {
     const objectIds = ids.filter((id) => Types.ObjectId.isValid(id)).map((id) => new Types.ObjectId(id));
     if (objectIds.length === 0) return new Set();
     const rows = await this.model
-      .find({ applicantId: { $in: objectIds }, isDeleted: false, status: { $in: ACTIVE_STATUSES } })
+      .find({
+        applicantId: { $in: objectIds },
+        isDeleted: false,
+        supersededAt: null,
+        status: { $in: ACTIVE_STATUSES },
+      })
       .select('applicantId')
       .lean<{ applicantId: Types.ObjectId }[]>()
       .exec();
@@ -85,6 +91,7 @@ class InterviewRepository extends BaseRepository<InterviewDoc> {
         applicantId: new Types.ObjectId(applicantId),
         stageOrder,
         isDeleted: false,
+        supersededAt: null,
         status: 'completed',
         outcome: 'passed',
       })

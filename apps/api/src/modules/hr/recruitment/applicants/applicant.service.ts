@@ -8,7 +8,7 @@ import {
   HrEvents,
   parseNationalId,
   type BulkApplicants,
-  type BulkApplicantsResultDto,
+  type BulkActionResultDto,
   type ConfirmApplicantIdentity,
   type ExportApplicantsQuery,
   type ListApplicantsQuery,
@@ -42,7 +42,7 @@ import { ApplicantModel, type ApplicantDoc } from './applicant.model';
 import { type Model } from 'mongoose';
 import { unitOfWork } from '../../../../platform/kernel/unit-of-work';
 import { type BaseDocFields } from '../../../../shared/base/base.model';
-import { recruitmentWorkflowEngine, type LifecycleEvent } from '../workflow';
+import { recruitmentWorkflowEngine, runBulk, type LifecycleEvent } from '../workflow';
 
 export const APPLICANT_EXPORT_MAX_ROWS = 10_000;
 
@@ -671,42 +671,41 @@ class ApplicantService {
     ctx: AuthContext,
     input: BulkApplicants,
     scope: ScopeSelector,
-  ): Promise<BulkApplicantsResultDto> {
-    const results: BulkApplicantsResultDto['results'] = [];
-    for (const id of input.ids) {
-      try {
+  ): Promise<BulkActionResultDto> {
+    return runBulk(
+      input.ids,
+      async (id) => {
+        const current = await applicantRepository.getById(id, scope);
         if (input.action === 'withdraw') {
-          const current = await applicantRepository.getById(id, scope);
           await this.withdraw(
             ctx,
             id,
             { reason: input.reason ?? 'bulk withdraw', version: current.__v },
             scope,
           );
+          return;
         }
         // RW17 — ONE placement applied across the selection; each candidate is still checked
         // against the editing window on its own, so an ineligible one fails as that item alone.
-        if (input.action === 'reassign') {
-          const current = await applicantRepository.getById(id, scope);
-          await this.reassign(
-            ctx,
-            id,
-            {
-              placement: input.placement as ReassignPlacement['placement'],
-              reason: input.reason as string,
-              source: 'manual',
-              version: current.__v,
-            },
-            scope,
-          );
-        }
-        results.push({ id, ok: true });
-      } catch (error) {
-        results.push({ id, ok: false, error: error instanceof Error ? error.message : String(error) });
-      }
-    }
-    const succeeded = results.filter((r) => r.ok).length;
-    return { requested: input.ids.length, succeeded, failed: results.length - succeeded, results };
+        await this.reassign(
+          ctx,
+          id,
+          {
+            placement: input.placement as ReassignPlacement['placement'],
+            reason: input.reason as string,
+            source: 'manual',
+            version: current.__v,
+          },
+          scope,
+        );
+      },
+      {
+        entityType: 'applicant',
+        action: input.action,
+        actorUserId: ctx.userId,
+        reason: input.reason ?? null,
+      },
+    );
   }
 
   /**

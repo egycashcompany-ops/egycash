@@ -20,6 +20,7 @@ import { ReferenceChip } from '../components/RefPickers';
 import { AttachmentsPanel } from '../components/AttachmentsPanel';
 import { ApplicantLifecycleActions } from '../components/ApplicantLifecycleActions';
 import { ReassignDialog } from '../components/ReassignDialog';
+import { ReturnToStageDialog } from '../components/ReturnToStageDialog';
 import { useApplicant, useVerifyApplicantIdentity } from '../api/applicant-queries';
 import { CandidateTimeline } from '../../timeline/components/CandidateTimeline';
 
@@ -41,6 +42,7 @@ export const ApplicantDetailPage = (): JSX.Element => {
   const verify = useVerifyApplicantIdentity(id);
   const [verifyOpen, setVerifyOpen] = useState(false);
   const [reassignOpen, setReassignOpen] = useState(false);
+  const [returnOpen, setReturnOpen] = useState(false);
   const [nationalId, setNationalId] = useState('');
 
   if (isLoading) {
@@ -95,6 +97,14 @@ export const ApplicantDetailPage = (): JSX.Element => {
               <Can permission="applicant.reassign">
                 <Button size="sm" variant="secondary" onClick={() => setReassignOpen(true)}>
                   {t('applicants.reassign.title')}
+                </Button>
+              </Can>
+            )}
+            {/* RW13 — send the candidate back to an earlier stage; supersedes, never deletes. */}
+            {a.status === 'new' && (
+              <Can permission="applicant.returnToStage">
+                <Button size="sm" variant="secondary" onClick={() => setReturnOpen(true)}>
+                  {t('applicants.returnToStage.title')}
                 </Button>
               </Can>
             )}
@@ -229,6 +239,7 @@ export const ApplicantDetailPage = (): JSX.Element => {
         </Field>
       </Dialog>
       <ReassignDialog applicant={a} open={reassignOpen} onClose={() => setReassignOpen(false)} />
+      <ReturnToStageDialog applicant={a} open={returnOpen} onClose={() => setReturnOpen(false)} />
 
     </PageContainer>
   );

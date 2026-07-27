@@ -10,7 +10,7 @@ import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { ApplicantPicker } from './ApplicantPicker';
 import { useCreateScreening } from '../api/screening-queries';
 
-/** Minimal applicant shape — satisfied by a full ApplicantDto or an awaiting-screening row. */
+/** Minimal applicant shape — satisfied by a full ApplicantDto or a queue row. */
 export interface PickedApplicant {
   id: string;
   code: string;

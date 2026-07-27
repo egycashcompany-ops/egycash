@@ -11,6 +11,23 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **Recruitment: bulk "Start now" was a no-op.** The web client posted the bulk body to
+  `POST /hr/interviews/start` — the single-candidate route, whose schema is `.strict()` —
+  so every click answered 400. It now calls `POST /hr/interviews/bulk/start`, and bulk
+  scheduling likewise calls `POST /hr/interviews/bulk/schedule` instead of looping
+  single-schedule calls client-side, which produced no bulk audit record, no
+  partial-success envelope, and a half-finished run if the tab was closed. A test pins
+  that the single route refuses a bulk body.
+
+- **Recruitment: withdrawn and rejected candidates lingered in the stage counters.** The
+  counters read stage rows without regard to whether the candidate was still in the
+  running, so a badge could out-count its own page indefinitely. Stage records now carry
+  `applicantLive`, denormalized from the applicant's lifecycle and written only by the
+  workflow engine in the same transaction as the lifecycle change; queues and counters
+  filter on it, a request for one applicant's own records does not, and restoring a
+  candidate returns them to the exact stage they left rather than a fresh attempt. The
+  boot migration backfills existing rows.
+
 - **Contract templates: Save Draft is no longer completeness-gated — Publish is.**
   Saving a template draft no longer demands the full names, contract type and body up
   front ("Complete the Full Names, Contract Type, and Body before saving"): a draft is
@@ -28,7 +45,35 @@ its entry here in the same PR.
   outside this validation (it renders the current editor state, now even with unlabeled
   signature rows), and unnamed drafts list as "(untitled draft)" so they stay reachable.
 
+### Removed
+
+- **Recruitment: the derived "awaiting" queues are gone (I11).** `GET /hr/screenings/awaiting`,
+  `GET /hr/interviews/awaiting` and `GET /hr/job-offers/awaiting` — with their contracts,
+  services and the three panels that rendered them — have been removed. Every queue in the
+  product is now a plain indexed read over persisted `waiting` rows, so there is no second
+  "who ought to be here" model that can disagree with the first. Also removed: the four
+  deprecated loose selection props on `DataTable` (superseded by `selection`) and the
+  duplicated `BulkApplicantsResultDto` (superseded by the shared `BulkActionResultDto`);
+  applicant bulk actions now run through the same executor as every other module, so they
+  are audited once as an act as well as per item.
+
 ### Added
+
+- **Recruitment: every backend capability is now reachable from the UI.** The pieces that
+  existed only as endpoints are wired to real screens: **Return to stage** (RW13) gets its
+  own dialog — target picker, the server's own consequence preview of what will be
+  superseded and what will be closed first, a mandatory reason, and a confirm button that
+  stays disabled until that preview has arrived. **Start interview** (RW12) gets buttons on
+  the round's page and on each row of a stage queue, covering both "start now" for a
+  candidate whose round does not exist yet and "start" for one already scheduled; the
+  server stamps who started it and when, and the screens render those moments on the
+  Africa/Cairo business calendar rather than the viewer's timezone. **Placement
+  recommendations** (RW5) can finally be *recorded* — previously only displayed and
+  applied — on both interviews and evaluation phases, including clearing one. **Employees
+  Ready** appears in the navigation with its live counter and filters server-side, so its
+  pagination and its badge agree. **Bulk complete** arrives for Hiring Documents (new
+  endpoint) and **bulk close/cancel** for Evaluation Batches, completing bulk actions on
+  every recruitment table.
 
 - **Recruitment: Position & Branch stay editable until hire (RW1–RW5).** A candidate now
   carries a first-class `placement` (position, title, department, branch, section) that

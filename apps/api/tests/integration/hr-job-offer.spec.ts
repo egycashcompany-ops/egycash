@@ -272,36 +272,33 @@ describe('job offers — permissions & eligibility gate', () => {
     expect(ids).toContain(applicant.id);
   });
 
-  it('surfaces moved applicants in the awaiting-offer queue until an offer is drafted', async () => {
+  // I11 — the offer queue is REAL rows whose status is `waiting`, materialized when HR moves the
+  // candidate to this stage. Nothing is derived from a missing row.
+  it('materializes a waiting offer on move-to-offer, which drafting then consumes', async () => {
     const applicant = await registerApplicant();
     await acceptScreening(applicant.id);
     await passStage(applicant.id, 'firstInterview');
 
-    const awaitingOf = async (): Promise<string[]> => {
+    const waitingOf = async (): Promise<JobOfferDto[]> => {
       const res = await request(app)
-        .get('/api/v1/hr/job-offers/awaiting')
+        .get('/api/v1/hr/job-offers?status=waiting&pageSize=100')
         .set('Authorization', `Bearer ${adminToken}`);
       expect(res.status).toBe(200);
-      return (res.body.data as { applicantId: string }[]).map((row) => row.applicantId);
+      return res.body.data as JobOfferDto[];
     };
 
-    // Not moved yet → not in the queue (eligibility is never automatic).
-    expect(await awaitingOf()).not.toContain(applicant.id);
+    // Not moved yet → no row at all (eligibility is never automatic).
+    expect((await waitingOf()).map((o) => o.applicantId)).not.toContain(applicant.id);
 
     await moveToOffer(applicant);
-    const rows = await request(app)
-      .get('/api/v1/hr/job-offers/awaiting')
-      .set('Authorization', `Bearer ${adminToken}`);
-    const mine = (rows.body.data as { applicantId: string; applicantCode: string; applicantName: string; movedToOfferAt: string }[])
-      .find((row) => row.applicantId === applicant.id);
+    const mine = (await waitingOf()).find((row) => row.applicantId === applicant.id);
     expect(mine).toBeDefined();
     expect(mine?.applicantCode).toBe(applicant.code);
     expect(mine?.applicantName).not.toBe('');
-    expect(mine?.movedToOfferAt).not.toBe('');
 
-    // Drafting the offer consumes the queue entry.
+    // Drafting moves that same row on; it is not a second record.
     expect((await createOffer(applicant.id)).status).toBe(201);
-    expect(await awaitingOf()).not.toContain(applicant.id);
+    expect((await waitingOf()).map((o) => o.applicantId)).not.toContain(applicant.id);
   });
 });
 

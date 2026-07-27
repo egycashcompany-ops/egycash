@@ -19,7 +19,7 @@ import { formatDate, localized } from '../../../../../shared/lib/format';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { getApplicant, listApplicants, moveApplicantToOffer } from '../../applicants/api/applicant-api';
 import { useEvaluationPhases, useEvaluations } from '../../evaluations/api/evaluation-queries';
-import { useAwaitingInterviews, useInterviews, useInterviewStages } from '../api/interview-queries';
+import { useInterviews, useInterviewStages } from '../api/interview-queries';
 import { BulkScheduleDialog } from './BulkScheduleDialog';
 
 interface BoardCard {
@@ -50,7 +50,6 @@ export const PhaseBoard = (): JSX.Element => {
 
   const stages = useInterviewStages();
   const phases = useEvaluationPhases();
-  const awaiting = useAwaitingInterviews({});
   const interviews = useInterviews({ page: 1, pageSize: 100, sortBy: 'createdAt', sortDir: 'desc' });
   const evaluations = useEvaluations({ page: 1, pageSize: 100 });
   const moved = useQuery({
@@ -127,8 +126,11 @@ export const PhaseBoard = (): JSX.Element => {
       evalCards.set(ev.phaseId, list);
     }
 
-    // Interview columns — each applicant sits at their LATEST non-cancelled round.
+    // Interview columns — each applicant sits at their LATEST non-cancelled round. A round whose
+    // status is still `waiting` is a REAL row (I11), so it heads the waiting column rather than the
+    // stage column: the board reads the same rows as the queues and can never disagree with them.
     const interviewCards = new Map<string, BoardCard[]>();
+    const waitingCards: BoardCard[] = [];
     const latestInterview = new Map<string, InterviewDto>();
     for (const iv of interviews.data?.items ?? []) {
       if (iv.status === 'cancelled') continue;
@@ -150,25 +152,19 @@ export const PhaseBoard = (): JSX.Element => {
         badge:
           iv.outcome === 'passed'
             ? { tone: 'success', label: t('interviews.board.passed') }
-            : { tone: 'info', label: t('interviews.board.scheduled') },
+            : iv.status === 'waiting'
+              ? null
+              : { tone: 'info', label: t('interviews.board.scheduled') },
         href: `/interviews/${iv.id}`,
       };
+      if (iv.status === 'waiting') {
+        waitingCards.push(card);
+        continue;
+      }
       const list = interviewCards.get(iv.stageId) ?? [];
       list.push(card);
       interviewCards.set(iv.stageId, list);
     }
-
-    // Waiting for Scheduling — passed screening, no interview yet.
-    const waitingCards: BoardCard[] = (awaiting.data ?? [])
-      .filter((a) => !assigned.has(a.applicantId) && !gone.has(a.applicantId))
-      .map((a) => ({
-        applicantId: a.applicantId,
-        applicantCode: a.applicantCode,
-        applicantName: a.applicantName,
-        meta: a.screeningDecidedAt === null ? null : formatDate(a.screeningDecidedAt, locale),
-        badge: null,
-        href: `/applicants/${a.applicantId}`,
-      }));
 
     return [
       { id: 'waiting', title: t('interviews.board.waiting'), cards: waitingCards, selectable: true },
@@ -186,12 +182,11 @@ export const PhaseBoard = (): JSX.Element => {
       })),
       { id: 'offer', title: t('interviews.board.offer'), cards: offerCards, selectable: false },
     ];
-  }, [stages.data, phases.data, awaiting.data, interviews.data, evaluations.data, moved.data, excluded.data, locale, t]);
+  }, [stages.data, phases.data, interviews.data, evaluations.data, moved.data, excluded.data, locale, t]);
 
   const loading =
     stages.isLoading ||
     phases.isLoading ||
-    awaiting.isLoading ||
     interviews.isLoading ||
     evaluations.isLoading ||
     excluded.isLoading;

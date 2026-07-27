@@ -4,6 +4,7 @@
 // and name resolution reuse the platform Users endpoint.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  type BulkScheduleInterviews,
   type BulkStartInterviews,
   type CancelInterview,
   type CreateInterviewStage,
@@ -12,7 +13,10 @@ import {
   type ReassignInterviewPanel,
   type RescheduleInterview,
   type ScheduleInterview,
+  type SetPlacementRecommendation,
   type SkipInterviewer,
+  type StartInterview,
+  type StartScheduledInterview,
   type SubmitInterviewEvaluation,
   type UpdateInterviewStage,
   type BulkInterviews,
@@ -39,16 +43,6 @@ export const useInterview = (id: string) =>
     queryKey: detailKey(MODULE, FEATURE, id),
     queryFn: () => api.getInterview(id),
     enabled: id !== '',
-  });
-
-/** "Awaiting scheduling" — applicants who passed Screening and have no interview yet (pipeline
- *  entry). Distinct subtree from the interviews list so scheduling invalidates it explicitly. */
-export const useAwaitingInterviews = (params: InterviewListParams = {}) =>
-  useQuery({
-    queryKey: [MODULE, FEATURE, 'awaiting', params],
-    queryFn: () => api.listAwaitingInterviews(params),
-    staleTime: 30_000,
-    placeholderData: (prev) => prev,
   });
 
 /** Active interview-stage catalog (labels rounds + backs the stage picker). */
@@ -137,14 +131,11 @@ const useInterviewWriters = (
 };
 
 export const useScheduleInterview = () => {
-  const qc = useQueryClient();
   const { seedAndInvalidate } = useInterviewWriters(null);
   return useMutation({
     mutationFn: (body: ScheduleInterview) => api.scheduleInterview(body),
     onSuccess: (updated) => {
       seedAndInvalidate(updated);
-      // Scheduling removes the applicant from the "awaiting scheduling" queue.
-      void qc.invalidateQueries({ queryKey: [MODULE, FEATURE, 'awaiting'] });
     },
   });
 };
@@ -206,6 +197,49 @@ export const useRedecideInterview = (id: string) => {
 };
 
 /** Bulk cancel / pass / fail the selection (RW17). */
+/**
+ * RW12 — start ONE candidate's round now. Invalidates the whole recruitment subtree because the
+ * round may not have existed a moment ago: the stage counters move with it.
+ */
+export const useStartInterview = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: StartInterview) => api.startInterview(body),
+    onSuccess: () => invalidateRecruitment(qc),
+  });
+};
+
+/** Start an already-scheduled round (`scheduled → inProgress`). */
+export const useStartScheduledInterview = (id: string) => {
+  const { seedAndInvalidate } = useInterviewWriters(id);
+  return useMutation({
+    mutationFn: (body: StartScheduledInterview) => api.startScheduledInterview(id, body),
+    onSuccess: seedAndInvalidate,
+  });
+};
+
+/**
+ * The same act addressed by id at call time — a queue row starts a round it does not "own", so it
+ * cannot bind a hook per row.
+ */
+export const useStartScheduledInterviewRow = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { id: string; version: number }) =>
+      api.startScheduledInterview(vars.id, { version: vars.version }),
+    onSuccess: () => invalidateRecruitment(qc),
+  });
+};
+
+/** RW5 — record (or clear) this round's advisory placement recommendation. */
+export const useSetInterviewRecommendation = (id: string) => {
+  const { seedAndInvalidate } = useInterviewWriters(id);
+  return useMutation({
+    mutationFn: (body: SetPlacementRecommendation) => api.setInterviewRecommendation(id, body),
+    onSuccess: seedAndInvalidate,
+  });
+};
+
 /** RW12 — bulk "Start now" over a stage's waiting queue. */
 export const useBulkStartInterviews = (onApplied?: () => void) =>
   useBulkMutation<BulkStartInterviews>((body) => api.bulkStartInterviews(body), {
@@ -215,6 +249,13 @@ export const useBulkStartInterviews = (onApplied?: () => void) =>
 
 export const useBulkInterviews = (onApplied?: () => void) =>
   useBulkMutation<BulkInterviews>((body) => api.bulkInterviews(body), {
+    invalidate: invalidateRecruitment,
+    ...(onApplied === undefined ? {} : { onApplied }),
+  });
+
+/** RW17 — one stage + one date/panel across a selection, through the shared bulk executor. */
+export const useBulkScheduleInterviews = (onApplied?: () => void) =>
+  useBulkMutation<BulkScheduleInterviews>((body) => api.bulkScheduleInterviews(body), {
     invalidate: invalidateRecruitment,
     ...(onApplied === undefined ? {} : { onApplied }),
   });

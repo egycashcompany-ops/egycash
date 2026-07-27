@@ -980,6 +980,34 @@ from the plan's wording, the reason is recorded here so the document and the cod
 | 9 Web recruitment | `modules/hr/recruitment/**`, `employees/pages/EmployeesReadyPage.tsx` | as planned |
 | 10 Tests + docs | `apps/api/tests/integration/hr-*.spec.ts`, CHANGELOG | integration suites require a real replica set and run in CI |
 
+### I11 completion — the derived queues are gone
+
+The first pass shipped the persisted `waiting` records but left the older derived read models
+(`/hr/screenings/awaiting`, `/hr/interviews/awaiting`, `/hr/job-offers/awaiting`) in place, and the
+three screens that used them. They have been removed — endpoints, services, contracts and panels —
+so every queue in the product is a plain indexed read over rows.
+
+Removing them exposed what those derived views had been hiding: they filtered by the applicant's
+own status, while a `status=waiting` read does not. A withdrawn or rejected candidate would have
+lingered in every queue **and in every counter** — the counters had that bug already. Stage records
+now carry `applicantLive`, denormalized from the lifecycle and written only by the engine, in the
+same transaction as the lifecycle change (`workflow/stage-fields.ts`, `workflow-engine.ts`). It is
+listed in `WORKFLOW_MANAGED_FIELDS`, backfilled by the boot migration, and filtered by every queue
+and counter but never by a request for one applicant's own records.
+
+### Where the plan's wording did not match what shipped
+
+Two corrections to this document, recorded rather than quietly fixed:
+
+- Step 9 was previously marked "as planned" while the **return-to-stage dialog** it lists had not
+  been built. It now exists (`applicants/components/ReturnToStageDialog.tsx`): target picker,
+  server-rendered consequence preview, mandatory reason, and a confirm button that stays disabled
+  until the preview has arrived.
+- The web client called `POST /hr/interviews/start` — the single-candidate route, whose schema is
+  `.strict()` — with a bulk body, so bulk "Start now" answered 400 on every click. The server was
+  correct and tested throughout; only the client was wrong, which is why nothing caught it. There
+  is now a test pinning that the single route refuses a bulk body.
+
 Two implementation facts worth keeping visible, because both cost a debugging cycle:
 
 - **A `required: true` String cannot carry `default: ''`.** Mongoose treats `''` as missing, so

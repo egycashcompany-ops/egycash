@@ -9,6 +9,7 @@ import {
   type EvaluationPhaseDto,
   type OpenEvaluation,
   type SetEvaluationAppointment,
+  type SetPlacementRecommendation,
   type Paginated,
   type UpdateEvaluationPhase,
   type BulkActionResultDto,
@@ -32,6 +33,12 @@ export const decideEvaluation = (id: string, body: DecideEvaluation): Promise<Ev
   patch<EvaluationDto>(`/hr/evaluations/${id}/decision`, body);
 
 /** RW9 — book (or clear) the visit on an individual phase that schedules one. */
+/** RW5 — the phase's advisory placement recommendation; never moves the candidate by itself. */
+export const setEvaluationRecommendation = (
+  id: string,
+  body: SetPlacementRecommendation,
+): Promise<EvaluationDto> => patch<EvaluationDto>(`/hr/evaluations/${id}/recommendation`, body);
+
 export const setEvaluationAppointment = (
   id: string,
   body: SetEvaluationAppointment,

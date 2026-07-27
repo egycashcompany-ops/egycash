@@ -37,18 +37,9 @@ export interface DataTableProps<T> {
   onRowClick?: (row: T) => void;
   /**
    * The whole selection model in one prop — pass `useTableSelection(rows.map(rowKey))` and the
-   * table is selectable (RW17). The four props below are the deprecated loose form, kept for one
-   * release so existing call sites keep working.
+   * table is selectable (RW17). Its presence is what makes the table selectable.
    */
   selection?: TableSelection;
-  /** @deprecated pass `selection` instead. */
-  selectable?: boolean;
-  /** @deprecated pass `selection` instead. */
-  selectedIds?: Set<string>;
-  /** @deprecated pass `selection` instead. */
-  onToggleRow?: (id: string) => void;
-  /** @deprecated pass `selection` instead. */
-  onToggleAll?: (checked: boolean) => void;
   /** Drop the table's own border/rounding/background when it sits inside a ListView surface. */
   embedded?: boolean;
 }
@@ -71,17 +62,13 @@ export const DataTable = <T,>({
   onSortChange,
   onRowClick,
   selection,
-  selectable = false,
-  selectedIds,
-  onToggleRow,
-  onToggleAll,
   embedded = false,
 }: DataTableProps<T>): JSX.Element => {
   // One prop wins; the loose props remain as the deprecated form.
-  const isSelectable = selection !== undefined || selectable;
-  const selected = selection?.selectedIds ?? selectedIds ?? new Set<string>();
-  const toggleRow = selection?.toggleRow ?? onToggleRow;
-  const toggleAll = selection?.toggleAll ?? onToggleAll;
+  const isSelectable = selection !== undefined;
+  const selected = selection?.selectedIds ?? new Set<string>();
+  const toggleRow = selection?.toggleRow;
+  const toggleAll = selection?.toggleAll;
   const colCount = columns.length + (isSelectable ? 1 : 0);
   const allSelected = rows.length > 0 && rows.every((r) => selected.has(rowKey(r)));
   const someSelected = rows.some((r) => selected.has(rowKey(r)));

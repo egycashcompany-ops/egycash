@@ -56,6 +56,20 @@ export interface StageBinding<T extends StageRecord> {
   stageField?: 'stageId' | 'phaseId';
 }
 
+/**
+ * Every stage collection the engine must reach when the APPLICANT's lifecycle moves. Stage
+ * features register their binding at module load (the same seam pattern as the queue
+ * materializer), so the engine can propagate liveness without importing any of them.
+ */
+const stageBindings = new Map<StageObject, StageBinding<StageRecord>>();
+
+export const registerStageBinding = <T extends StageRecord>(binding: StageBinding<T>): void => {
+  stageBindings.set(binding.object, binding as unknown as StageBinding<StageRecord>);
+};
+
+/** Test seam. */
+export const resetStageBindings = (): void => stageBindings.clear();
+
 export interface EnsureStageInput<T extends StageRecord> {
   binding: StageBinding<T>;
   applicantId: string;
@@ -336,6 +350,21 @@ class RecruitmentWorkflowEngine {
       .lean<ApplicantLike>()
       .exec();
     if (updated === null) throw new ConflictError('the applicant changed since it was read');
+
+    // I11 — the queues are plain reads over persisted rows, so a candidate who leaves the pipeline
+    // has to stop matching one. Nothing else about their records changes: same status, same
+    // attempt, same history. Restoring them flips this back, which is what makes them resume at
+    // the exact stage they left instead of at a fresh attempt.
+    const live = check.rule.to === 'new';
+    for (const binding of stageBindings.values()) {
+      await binding.model
+        .updateMany(
+          { applicantId: new Types.ObjectId(applicantId), applicantLive: { $ne: live } },
+          { $set: { applicantLive: live } },
+        )
+        .session(session)
+        .exec();
+    }
 
     const published = await this.publish(
       {

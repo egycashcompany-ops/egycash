@@ -17,6 +17,10 @@ export {
   workflowConsumerIds,
   type WorkflowEventConsumer,
 } from './workflow-dispatcher';
+export {
+  registerStageBinding,
+  resetStageBindings,
+} from './workflow-engine';
 export { runBulk, type BulkRunOptions } from './bulk-runner';
 export { WorkflowEvents, type WorkflowEventName } from './workflow-events';
 export {

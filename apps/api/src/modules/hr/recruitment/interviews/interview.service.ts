@@ -13,10 +13,8 @@ import { Types } from 'mongoose';
 import {
   HrInterviewEvents,
   HrInterviewTemplates,
-  type AwaitingInterviewDto,
   type CancelInterview,
   type DecideInterview,
-  type ListAwaitingInterviewsQuery,
   type ListInterviewsQuery,
   type Paginated,
   type ReassignInterviewPanel,
@@ -39,7 +37,7 @@ import { emit } from '../../../../platform/kernel/event-bus';
 import { notificationsService } from '../../../../platform/notifications';
 import { applicantService, resolvePlacement } from '../applicants';
 import { screeningService } from '../screening';
-import { recruitmentWorkflowEngine, runBulk, type StageBinding } from '../workflow';
+import { recruitmentWorkflowEngine, registerStageBinding, runBulk, type StageBinding } from '../workflow';
 import { InterviewModel } from './interview.model';
 import { interviewRepository, type InterviewListFilter } from './interview.repository';
 import { interviewStageRepository } from './interview-stage.repository';
@@ -54,6 +52,10 @@ const BINDING = {
   entityType: 'interview',
   stageField: 'stageId',
 } as unknown as StageBinding<never>;
+
+// So the engine can carry the applicant's pipeline liveness onto this collection when their
+// lifecycle moves (I11) — the stage never reaches into the lifecycle, only the engine does.
+registerStageBinding(BINDING);
 
 const newPanelist = (interviewerId: string): InterviewPanelist => ({
   interviewerId: new Types.ObjectId(interviewerId),
@@ -274,34 +276,6 @@ class InterviewService {
       scheduledFrom: query.scheduledFrom,
       scheduledTo: query.scheduledTo,
     };
-  }
-
-  /**
-   * "Awaiting scheduling" — applicants who passed Initial Screening and are still live but have
-   * no interview yet (the automatic pipeline entry: they appear here the moment Screening is
-   * approved). A derived read model (no interview record is fabricated); the recruiter schedules
-   * the first round from here. Excludes withdrawn/rejected applicants and any already in a round.
-   */
-  async listAwaiting(
-    query: ListAwaitingInterviewsQuery,
-    scope: ScopeSelector,
-  ): Promise<AwaitingInterviewDto[]> {
-    const accepted = await screeningService.listAcceptedForInterview(query.branchId, query.limit, scope);
-    const applicantIds = accepted.map((s) => String(s.applicantId));
-    const [liveIds, interviewedIds] = await Promise.all([
-      applicantService.liveIdsAmong(applicantIds, scope),
-      interviewRepository.applicantIdsWithInterview(applicantIds),
-    ]);
-    return accepted
-      .filter((s) => liveIds.has(String(s.applicantId)) && !interviewedIds.has(String(s.applicantId)))
-      .map((s) => ({
-        applicantId: String(s.applicantId),
-        applicantCode: s.applicantCode,
-        applicantName: s.applicantName ?? '',
-        branchId: s.branchId === null ? null : String(s.branchId),
-        screeningId: String(s._id),
-        screeningDecidedAt: s.decidedAt === null ? null : s.decidedAt.toISOString(),
-      }));
   }
 
   async getById(id: string, scope: ScopeSelector): Promise<InterviewDoc> {
@@ -756,6 +730,9 @@ class InterviewService {
       'stageId',
       {
         supersededAt: null,
+        // The badge must equal the rows on the page (RW15), so it excludes exactly what the
+        // queue excludes: candidates who have left the pipeline (I11).
+        applicantLive: true,
         ...(branchId === undefined ? {} : { branchId: new Types.ObjectId(branchId) }),
       },
       scope,

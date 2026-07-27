@@ -13,6 +13,7 @@ import {
   type ApplicantDto,
   type EmployeeDto,
   type HiringDocumentTypeDto,
+  type BulkActionResultDto,
   type HiringDocumentsDto,
   type InterviewDto,
   type JobOfferDto,
@@ -407,5 +408,43 @@ describe('hiring documents — versioning & post-completion immutability', () =>
       .attach('file', pdf(), { filename: 'contract-v2.pdf', contentType: 'application/pdf' });
     expect(replaced.status).toBe(200);
     expect((replaced.body.data as HiringDocumentsDto).documents.find((d) => d.typeKey === 'employmentAcceptance')?.fileVersion).toBe(2);
+  });
+});
+
+// RW17/I4 — completing is the one group act on this stage. Each set runs its own `complete`, so a
+// set that still misses a mandatory document fails as THAT item while the rest go through.
+describe('hiring documents — bulk complete reports partial success honestly', () => {
+  it('completes the ready sets and names the one that is not ready', async () => {
+    const readyEmployee = await hiredEmployee();
+    const ready = await createSet(readyEmployee.id);
+    await uploadAllRequired(ready);
+
+    const blockedEmployee = await hiredEmployee();
+    const blocked = await createSet(blockedEmployee.id); // no documents uploaded at all
+
+    const res = await request(app)
+      .post('/api/v1/hr/hiring-documents/bulk')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ action: 'complete', ids: [ready.id, blocked.id] });
+    expect(res.status).toBe(200);
+
+    const envelope = res.body.data as BulkActionResultDto;
+    expect(envelope.requested).toBe(2);
+    expect(envelope.succeeded).toBe(1);
+    expect(envelope.failed).toBe(1);
+    expect(envelope.results.find((r) => r.id === ready.id)?.ok).toBe(true);
+    const failure = envelope.results.find((r) => r.id === blocked.id);
+    expect(failure?.ok).toBe(false);
+    expect(failure?.error).toContain('missing required documents');
+
+    // The successful item really did complete; the failed one is untouched.
+    const after = await request(app)
+      .get(`/api/v1/hr/hiring-documents/${ready.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect((after.body.data as HiringDocumentsDto).status).toBe('completed');
+    const untouched = await request(app)
+      .get(`/api/v1/hr/hiring-documents/${blocked.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect((untouched.body.data as HiringDocumentsDto).status).toBe('inProgress');
   });
 });

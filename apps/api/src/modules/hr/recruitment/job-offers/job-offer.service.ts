@@ -14,9 +14,7 @@ import {
   HrOfferEvents,
   HrOfferTemplates,
   type AcceptJobOffer,
-  type AwaitingOfferDto,
   type CreateJobOffer,
-  type ListAwaitingOffersQuery,
   type BulkActionResultDto,
   type BulkJobOffers,
   type ListJobOffersQuery,
@@ -33,7 +31,7 @@ import { auditService } from '../../../../platform/audit';
 import { emit } from '../../../../platform/kernel/event-bus';
 import { notificationsService } from '../../../../platform/notifications';
 import { applicantService } from '../applicants';
-import { recruitmentWorkflowEngine, runBulk, type StageBinding } from '../workflow';
+import { recruitmentWorkflowEngine, registerStageBinding, runBulk, type StageBinding } from '../workflow';
 import { JobOfferModel } from './job-offer.model';
 import { jobOfferRepository, type JobOfferListFilter } from './job-offer.repository';
 import { nextOfferNumber } from './offer-sequence';
@@ -47,6 +45,10 @@ const BINDING = {
   model: JobOfferModel,
   entityType: 'jobOffer',
 } as unknown as StageBinding<never>;
+
+// So the engine can carry the applicant's pipeline liveness onto this collection when their
+// lifecycle moves (I11) — the stage never reaches into the lifecycle, only the engine does.
+registerStageBinding(BINDING);
 
 type OfferTransition = { record: JobOfferDoc };
 
@@ -84,31 +86,6 @@ class JobOfferService {
         entityRef: entityRef(String(doc._id)),
       })
       .catch(() => undefined);
-  }
-
-  /**
-   * "Awaiting offer" — the workflow queue on /job-offers: live applicants HR moved to the
-   * Job Offer stage who hold no blocking offer yet (no active draft/sent one, no accepted
-   * one). A derived read model (no offer record is fabricated); "New Offer" drafts the
-   * first one from here. Mirrors the interviews awaiting-scheduling queue.
-   */
-  async listAwaiting(
-    query: ListAwaitingOffersQuery,
-    scope: ScopeSelector,
-  ): Promise<AwaitingOfferDto[]> {
-    const moved = await applicantService.listMovedToOffer(query.branchId, query.limit, scope);
-    const blocked = await jobOfferRepository.applicantIdsWithBlockingOffer(
-      moved.map((a) => String(a._id)),
-    );
-    return moved
-      .filter((a) => !blocked.has(String(a._id)) && a.movedToOfferAt !== null)
-      .map((a) => ({
-        applicantId: String(a._id),
-        applicantCode: a.code,
-        applicantName: a.fullNameAr,
-        branchId: a.branchId === null ? null : String(a.branchId),
-        movedToOfferAt: (a.movedToOfferAt as Date).toISOString(),
-      }));
   }
 
   /**
@@ -191,6 +168,7 @@ class JobOfferService {
       status: query.status,
       applicantId: query.applicantId,
       branchId: query.branchId,
+      hired: query.hired,
       search: query.search,
     };
   }
@@ -507,6 +485,9 @@ class JobOfferService {
     return jobOfferRepository.countByStatus(
       {
         supersededAt: null,
+        // The badge must equal the rows on the page (RW15), so it excludes exactly what the
+        // queue excludes: candidates who have left the pipeline (I11).
+        applicantLive: true,
         ...(branchId === undefined ? {} : { branchId: new Types.ObjectId(branchId) }),
       },
       scope,
@@ -522,6 +503,9 @@ class JobOfferService {
       {
         status: 'accepted',
         hiredEmployeeId: null,
+        // Same predicate as the page's `hired=false` list, including the liveness filter every
+        // queue applies (I11) — the badge and the rows are one query shape, so they cannot drift.
+        applicantLive: true,
         ...(branchId === undefined ? {} : { branchId: new Types.ObjectId(branchId) }),
       },
       scope,

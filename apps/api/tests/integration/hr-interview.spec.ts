@@ -321,33 +321,35 @@ describe('interviews — schedule, notify, reschedule, cancel', () => {
   });
 });
 
-describe('interviews — awaiting scheduling (pipeline entry)', () => {
-  const awaitingIds = async (): Promise<string[]> => {
+// I11 — the queue is REAL rows whose status is `waiting`, materialized when screening is
+// accepted. There is no derived "who ought to be here" read model to disagree with them.
+describe('interviews — the waiting queue is persisted rows', () => {
+  const waitingIds = async (): Promise<string[]> => {
     const res = await request(app)
-      .get('/api/v1/hr/interviews/awaiting')
+      .get('/api/v1/hr/interviews?status=waiting&pageSize=100')
       .set('Authorization', `Bearer ${adminToken}`);
     expect(res.status).toBe(200);
-    return (res.body.data as { applicantId: string }[]).map((r) => r.applicantId);
+    return (res.body.data as InterviewDto[]).map((r) => r.applicantId);
   };
 
-  it('surfaces a screening-approved applicant, then drops them once scheduled', async () => {
+  it('materializes a waiting round on screening approval, then leaves it once scheduled', async () => {
     const applicant = await acceptedApplicant();
-    expect(await awaitingIds()).toContain(applicant.id);
+    expect(await waitingIds()).toContain(applicant.id);
 
     const stage1 = await stageIdByKey('firstInterview');
     expect((await schedule(applicant.id, stage1)).status).toBe(201);
-    expect(await awaitingIds()).not.toContain(applicant.id);
+    expect(await waitingIds()).not.toContain(applicant.id);
   });
 
-  it('excludes an applicant who has not passed screening', async () => {
+  it('opens no round for an applicant who has not passed screening', async () => {
     const applicant = await registerApplicant(); // no accepted screening
-    expect(await awaitingIds()).not.toContain(applicant.id);
+    expect(await waitingIds()).not.toContain(applicant.id);
   });
 
-  it('a restored applicant resumes at the EXACT stage they left (back in awaiting interviews)', async () => {
-    // Approved in screening → awaiting their first interview.
+  it('a restored applicant resumes at the EXACT stage they left (their waiting round)', async () => {
+    // Approved in screening → a waiting first round exists for them.
     const applicant = await acceptedApplicant();
-    expect(await awaitingIds()).toContain(applicant.id);
+    expect(await waitingIds()).toContain(applicant.id);
 
     // Withdrawn from the interview stage → drops out of the pipeline entirely.
     const withdrawn = (
@@ -356,17 +358,16 @@ describe('interviews — awaiting scheduling (pipeline entry)', () => {
         .set('Authorization', `Bearer ${adminToken}`)
         .send({ reason: 'paused', version: applicant.version })
     ).body.data as { version: number };
-    expect(await awaitingIds()).not.toContain(applicant.id);
+    expect(await waitingIds()).not.toContain(applicant.id);
 
     // Restored → resumes at the INTERVIEW stage (their accepted screening is intact), NOT back at
-    // screening. Visibility is derived from the applicant's records, so they reappear in the
-    // interviews awaiting queue — the accepted screening was never lost.
+    // screening: the waiting round they left is the same row, so it simply becomes visible again.
     const restored = await request(app)
       .post(`/api/v1/hr/applicants/${applicant.id}/restore`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ version: withdrawn.version });
     expect(restored.status).toBe(200);
-    expect(await awaitingIds()).toContain(applicant.id);
+    expect(await waitingIds()).toContain(applicant.id);
   });
 });
 
@@ -696,5 +697,104 @@ describe('interviews — bulk (RW17/I4)', () => {
       .query({ applicantId: two.id })
       .set('Authorization', `Bearer ${adminToken}`);
     expect((listed.body.data as InterviewDto[])[0]?.status).toBe('inProgress');
+  });
+
+  /**
+   * The bulk routes are `/bulk/start` and `/bulk/schedule`. The single-candidate route is
+   * `/start`, and its schema is `.strict()` — posting a bulk body there is a 400, not a partial
+   * success. Pinned because the web client once did exactly that and the failure was invisible
+   * server-side: every request was well-formed HTTP and simply refused.
+   */
+  it('refuses a bulk body on the single-candidate start route', async () => {
+    const stage1 = await stageIdByKey('firstInterview');
+    const one = await acceptedApplicant();
+    const res = await request(app)
+      .post('/api/v1/hr/interviews/start')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ applicantIds: [one.id], stageId: stage1 });
+    expect(res.status).toBe(400);
+  });
+});
+
+// RW12 — starting one candidate's round stamps the actor and the moment server-side. The client
+// sends neither, so a wrong browser clock or a spoofed field cannot rewrite when a round began.
+describe('interviews — Start assigns the current user and the server clock', () => {
+  it('stamps startedBy/startedAt and seats the caller when starting a scheduled round', async () => {
+    const applicant = await acceptedApplicant();
+    const stage1 = await stageIdByKey('firstInterview');
+    const scheduled = (await schedule(applicant.id, stage1)).body.data as InterviewDto;
+    expect(scheduled.startedAt).toBeNull();
+
+    const before = Date.now();
+    const res = await request(app)
+      .post(`/api/v1/hr/interviews/${scheduled.id}/start`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: scheduled.version });
+    expect(res.status).toBe(200);
+
+    const started = res.body.data as InterviewDto;
+    expect(started.status).toBe('inProgress');
+    expect(started.startedBy).toBe(adminUserId);
+    expect(started.startedAt).not.toBeNull();
+    expect(new Date(started.startedAt as string).getTime()).toBeGreaterThanOrEqual(before - 1000);
+    // The caller is on the panel afterwards whether or not they were seated before.
+    expect(started.panel.map((p) => p.interviewerId)).toContain(adminUserId);
+  });
+
+  it('opens the waiting round and starts it in one act for a candidate with no scheduled round', async () => {
+    const applicant = await acceptedApplicant();
+    const stage1 = await stageIdByKey('firstInterview');
+
+    const res = await request(app)
+      .post('/api/v1/hr/interviews/start')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ applicantId: applicant.id, stageId: stage1, interviewerIds: [] });
+    expect(res.status).toBe(201);
+
+    const started = res.body.data as InterviewDto;
+    expect(started.status).toBe('inProgress');
+    expect(started.startedBy).toBe(adminUserId);
+    expect(started.panel.map((p) => p.interviewerId)).toContain(adminUserId);
+  });
+});
+
+// RW5 — the panel's advisory placement recommendation. Data on the record, never a move.
+describe('interviews — placement recommendation', () => {
+  it('records, then clears, a recommendation without moving the candidate', async () => {
+    const applicant = await acceptedApplicant();
+    const stage1 = await stageIdByKey('firstInterview');
+    const iv = (await schedule(applicant.id, stage1)).body.data as InterviewDto;
+
+    const set = await request(app)
+      .patch(`/api/v1/hr/interviews/${iv.id}/recommendation`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        recommendedPlacement: {
+          jobPositionId: null,
+          jobTitleId: null,
+          departmentId: null,
+          sectionId: null,
+          branchId: applicant.placement.branchId,
+        },
+        recommendationNote: 'better suited to the other branch',
+        version: iv.version,
+      });
+    expect(set.status).toBe(200);
+    const withRec = set.body.data as InterviewDto;
+    expect(withRec.recommendedPlacement).not.toBeNull();
+    expect(withRec.recommendationNote).toBe('better suited to the other branch');
+
+    // The candidate has NOT moved — a recommendation is advisory (RW5).
+    const candidate = await request(app)
+      .get(`/api/v1/hr/applicants/${applicant.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect((candidate.body.data as ApplicantDto).placement).toEqual(applicant.placement);
+
+    const cleared = await request(app)
+      .patch(`/api/v1/hr/interviews/${iv.id}/recommendation`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ recommendedPlacement: null, version: withRec.version });
+    expect(cleared.status).toBe(200);
+    expect((cleared.body.data as InterviewDto).recommendedPlacement).toBeNull();
   });
 });

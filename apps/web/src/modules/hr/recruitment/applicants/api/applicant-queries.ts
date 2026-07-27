@@ -13,6 +13,8 @@ import {
   type RegisterApplicant,
   type MoveApplicantToOffer,
   type RestoreApplicant,
+  type ReturnToStage,
+  type StageRef,
   type UpdateApplicant,
   type WithdrawApplicant,
 } from '@ecms/contracts';
@@ -68,14 +70,12 @@ const useInvalidateApplicants = (): (() => void) => {
   };
 };
 
-/** Withdraw/restore change pipeline visibility (the derived "awaiting" queues), so invalidate the
- *  applicants feature AND the screening/interview awaiting subtrees the applicant may move in/out of. */
+/** Withdraw/restore change pipeline visibility, so invalidate the whole recruitment subtree: the
+ *  candidate's stage records and every queue counter move with them (I11/RW15). */
 const useInvalidateLifecycle = (): (() => void) => {
   const qc = useQueryClient();
   return () => {
     void qc.invalidateQueries({ queryKey: featureKey(MODULE, FEATURE) });
-    void qc.invalidateQueries({ queryKey: [MODULE, 'screenings', 'awaiting'] });
-    void qc.invalidateQueries({ queryKey: [MODULE, 'interviews', 'awaiting'] });
   };
 };
 
@@ -132,6 +132,31 @@ export const useReassignApplicant = (id: string) => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: ReassignPlacement) => api.reassignApplicant(id, body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: detailKey(MODULE, FEATURE, id) });
+      invalidateRecruitment(qc);
+    },
+  });
+};
+
+/**
+ * RW13 — what returning this candidate to `target` WOULD do. Enabled only while the dialog holds a
+ * target, and never cached: the answer depends on live records the user is about to change.
+ */
+export const useReturnToStagePreview = (id: string, target: StageRef | null) =>
+  useQuery({
+    queryKey: [MODULE, FEATURE, id, 'returnPreview', target?.kind ?? null, target?.refId ?? null],
+    queryFn: () => api.previewReturnToStage(id, target as StageRef),
+    enabled: id !== '' && target !== null,
+    staleTime: 0,
+    gcTime: 0,
+  });
+
+/** RW13 — the act itself. Supersedes forward records and re-opens the target on a new attempt. */
+export const useReturnToStage = (id: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ReturnToStage) => api.returnApplicantToStage(id, body),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: detailKey(MODULE, FEATURE, id) });
       invalidateRecruitment(qc);

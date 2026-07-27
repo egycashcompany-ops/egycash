@@ -25,6 +25,7 @@ import {
   useDecideEvaluation,
   useEvaluation,
   useRemoveEvaluationFile,
+  useSetEvaluationRecommendation,
   useUploadEvaluationFile,
 } from '../api/evaluation-queries';
 
@@ -33,6 +34,7 @@ export const EvaluationDetailPage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const { id = '' } = useParams();
   const { data: ev, isLoading, isError, error, refetch } = useEvaluation(id);
+  const setRecommendation = useSetEvaluationRecommendation(id);
   // RW5 — applying a recommendation is an ordinary reassignment, so it needs the
   // candidate's own record (its version and current placement).
   const { data: candidate } = useApplicant(ev?.applicantId ?? '');
@@ -112,6 +114,10 @@ export const EvaluationDetailPage = (): JSX.Element => {
             recommendationNote={ev.recommendationNote}
             currentLabel={candidate?.placementLabel ?? ev.placementLabel}
             sourceRef={{ entityType: 'evaluation', entityId: ev.id }}
+            version={ev.version}
+            editPermission="evaluation.manage"
+            pending={setRecommendation.isPending}
+            onSave={(input) => setRecommendation.mutateAsync(input)}
           />
           {/* Files */}
           <Card>

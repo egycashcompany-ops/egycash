@@ -5,8 +5,8 @@ import {
   type ReassignPlacement,
   type ApplicantDto,
   type ApplicantSourceDto,
+  type BulkActionResultDto,
   type BulkApplicants,
-  type BulkApplicantsResultDto,
   type ConfirmApplicantIdentity,
   type DownloadTicketDto,
   type FileCategoryDto,
@@ -17,6 +17,9 @@ import {
   type RegisterApplicant,
   type MoveApplicantToOffer,
   type RestoreApplicant,
+  type ReturnToStage,
+  type ReturnToStagePreviewDto,
+  type StageRef,
   type UpdateApplicant,
   type WithdrawApplicant,
 } from '@ecms/contracts';
@@ -52,8 +55,26 @@ export const restoreApplicant = (id: string, body: RestoreApplicant): Promise<Ap
 export const reassignApplicant = (id: string, body: ReassignPlacement): Promise<ApplicantDto> =>
   post<ApplicantDto>(`/hr/applicants/${id}/reassign`, body);
 
-export const bulkApplicants = (body: BulkApplicants): Promise<BulkApplicantsResultDto> =>
-  post<BulkApplicantsResultDto>('/hr/applicants/bulk', body);
+export const bulkApplicants = (body: BulkApplicants): Promise<BulkActionResultDto> =>
+  post<BulkActionResultDto>('/hr/applicants/bulk', body);
+
+// ── Return to an earlier stage (RW13) ────────────────────────────────────────
+// Two calls, deliberately: the preview answers "what would this do?" with the SAME resolution the
+// act uses, so the confirmation dialog can never promise something different from what happens.
+
+export const previewReturnToStage = (
+  id: string,
+  target: StageRef,
+): Promise<ReturnToStagePreviewDto> =>
+  get<ReturnToStagePreviewDto>(
+    `/hr/applicants/${id}/return-to-stage/preview${buildQuery({
+      kind: target.kind,
+      refId: target.refId,
+    })}`,
+  );
+
+export const returnApplicantToStage = (id: string, body: ReturnToStage): Promise<ApplicantDto> =>
+  post<ApplicantDto>(`/hr/applicants/${id}/return-to-stage`, body);
 
 export const ocrExtractNationalId = (body: OcrExtractNationalId): Promise<OcrExtractionDto> =>
   post<OcrExtractionDto>('/hr/applicants/ocr/national-id', body);

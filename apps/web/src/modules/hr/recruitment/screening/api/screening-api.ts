@@ -2,7 +2,6 @@
 // screening-queries.ts wrap these in TanStack Query with keys + invalidation.
 import {
   type AddScreeningNote,
-  type AwaitingScreeningDto,
   type CreateScreening,
   type DecideScreening,
   type Paginated,
@@ -18,11 +17,6 @@ export const listScreenings = (params: ScreeningListParams): Promise<Paginated<S
   getPage<ScreeningDto>(`/hr/screenings${buildQuery(params)}`);
 
 /** Live applicants who registered but have no screening yet (pipeline entry). */
-export const listAwaitingScreenings = (
-  params: ScreeningListParams,
-): Promise<AwaitingScreeningDto[]> =>
-  get<AwaitingScreeningDto[]>(`/hr/screenings/awaiting${buildQuery(params)}`);
-
 export const getScreening = (id: string): Promise<ScreeningDto> => get<ScreeningDto>(`/hr/screenings/${id}`);
 
 export const createScreening = (body: CreateScreening): Promise<ScreeningDto> =>

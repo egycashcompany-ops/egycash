@@ -319,8 +319,32 @@ const dropReplacedIndexes = async (): Promise<void> => {
   }
 };
 
+/**
+ * I11 — `applicantLive` is what keeps a withdrawn or rejected candidate out of every queue and
+ * every counter. Rows written before it existed have no value at all, and a missing field does
+ * not match `applicantLive: true`, so they would silently vanish from the queues. Backfill from
+ * the applicant's own status: live means still in the running.
+ */
+const backfillApplicantLiveness = async (): Promise<void> => {
+  const stages: Model<{ applicantId: Types.ObjectId }>[] = [
+    ScreeningModel as never,
+    InterviewModel as never,
+    EvaluationModel as never,
+    JobOfferModel as never,
+  ];
+  const gone = await ApplicantModel.find({ status: { $ne: 'new' } }, { _id: 1 }).lean().exec();
+  const goneIds = gone.map((a) => a._id);
+  for (const model of stages) {
+    await model.updateMany({ applicantLive: { $exists: false } }, { $set: { applicantLive: true } }).exec();
+    if (goneIds.length > 0) {
+      await model.updateMany({ applicantId: { $in: goneIds } }, { $set: { applicantLive: false } }).exec();
+    }
+  }
+};
+
 export const migrateRecruitmentWorkflow = async (): Promise<void> => {
   await backfillAttemptMarkers();
+  await backfillApplicantLiveness();
   await backfillPlacement();
   await renamePendingToWaiting();
   await backfillPhaseTyping();

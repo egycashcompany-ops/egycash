@@ -7,6 +7,7 @@ import {
   type DecideEvaluation,
   type OpenEvaluation,
   type SetEvaluationAppointment,
+  type SetPlacementRecommendation,
   type UpdateEvaluationPhase,
   type BulkEvaluations,
 } from '@ecms/contracts';
@@ -100,6 +101,15 @@ export const useSetEvaluationAppointment = (id: string) => {
   const invalidate = useInvalidate();
   return useMutation({
     mutationFn: (body: SetEvaluationAppointment) => api.setEvaluationAppointment(id, body),
+    onSuccess: () => invalidate(id),
+  });
+};
+
+/** RW5 — record (or clear) this phase's advisory placement recommendation. */
+export const useSetEvaluationRecommendation = (id: string) => {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (body: SetPlacementRecommendation) => api.setEvaluationRecommendation(id, body),
     onSuccess: () => invalidate(id),
   });
 };

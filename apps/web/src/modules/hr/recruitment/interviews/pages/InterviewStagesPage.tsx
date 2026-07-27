@@ -1,7 +1,7 @@
 // Interview-stage settings: the admin-configurable round catalog (OQ-31). List every stage
 // (incl. disabled), add a new round (3rd / 4th interview…), edit names, reorder by changing the
 // order number, and enable/disable — all from the UI, gated by `interviewStage.manage`. The
-// pipeline (progression, awaiting queue, board columns) derives from the ACTIVE stages in order.
+// pipeline (progression, per-stage queues, board columns) derives from the ACTIVE stages in order.
 import { useState } from 'react';
 import { type InterviewStageDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';

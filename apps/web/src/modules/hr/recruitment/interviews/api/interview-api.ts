@@ -4,8 +4,8 @@
 // (/hr/interviews, /hr/interview-stages). Interviewer selection/resolution reuses the existing
 // platform Users endpoint (/platform/users) — no new API is invented.
 import {
+  type BulkScheduleInterviews,
   type BulkStartInterviews,
-  type AwaitingInterviewDto,
   type CancelInterview,
   type CreateInterviewStage,
   type DecideInterview,
@@ -15,7 +15,10 @@ import {
   type ReassignInterviewPanel,
   type RescheduleInterview,
   type ScheduleInterview,
+  type SetPlacementRecommendation,
   type SkipInterviewer,
+  type StartInterview,
+  type StartScheduledInterview,
   type SubmitInterviewEvaluation,
   type UpdateInterviewStage,
   type UserDto,
@@ -29,16 +32,30 @@ export type InterviewListParams = Record<string, string | number | boolean | und
 export const listInterviews = (params: InterviewListParams): Promise<Paginated<InterviewDto>> =>
   getPage<InterviewDto>(`/hr/interviews${buildQuery(params)}`);
 
-/** Applicants who passed Screening and await their first interview (pipeline entry). */
-export const listAwaitingInterviews = (
-  params: InterviewListParams,
-): Promise<AwaitingInterviewDto[]> =>
-  get<AwaitingInterviewDto[]>(`/hr/interviews/awaiting${buildQuery(params)}`);
-
 export const getInterview = (id: string): Promise<InterviewDto> => get<InterviewDto>(`/hr/interviews/${id}`);
 
 export const scheduleInterview = (body: ScheduleInterview): Promise<InterviewDto> =>
   post<InterviewDto>('/hr/interviews', body);
+
+/**
+ * RW12 — start a round for ONE candidate right now. The round need not exist yet, so this
+ * addresses the CANDIDATE and the stage; the server opens the waiting record if it has to and
+ * stamps the actor and the start time itself.
+ */
+export const startInterview = (body: StartInterview): Promise<InterviewDto> =>
+  post<InterviewDto>('/hr/interviews/start', body);
+
+/** Start a round that was already scheduled: `scheduled → inProgress`, server-stamped. */
+export const startScheduledInterview = (
+  id: string,
+  body: StartScheduledInterview,
+): Promise<InterviewDto> => post<InterviewDto>(`/hr/interviews/${id}/start`, body);
+
+/** RW5 — the panel's advisory placement recommendation; never moves the candidate by itself. */
+export const setInterviewRecommendation = (
+  id: string,
+  body: SetPlacementRecommendation,
+): Promise<InterviewDto> => patch<InterviewDto>(`/hr/interviews/${id}/recommendation`, body);
 
 export const rescheduleInterview = (id: string, body: RescheduleInterview): Promise<InterviewDto> =>
   post<InterviewDto>(`/hr/interviews/${id}/reschedule`, body);
@@ -84,10 +101,15 @@ export const searchUsers = (term: string): Promise<Paginated<UserDto>> =>
 
 export const getUser = (id: string): Promise<UserDto> => get<UserDto>(`/platform/users/${id}`);
 
-/** Bulk cancel / pass / fail / reassign a selection of rounds (RW17). */
-/** RW12 — start the selected candidates' round NOW (no prior scheduling required). */
+/** RW12 — start the selected candidates' rounds NOW (no prior scheduling required). */
 export const bulkStartInterviews = (body: BulkStartInterviews): Promise<BulkActionResultDto> =>
-  post<BulkActionResultDto>('/hr/interviews/start', body);
+  post<BulkActionResultDto>('/hr/interviews/bulk/start', body);
 
+/** RW17 — one stage + one date/panel applied across a selection of candidates. */
+export const bulkScheduleInterviews = (
+  body: BulkScheduleInterviews,
+): Promise<BulkActionResultDto> => post<BulkActionResultDto>('/hr/interviews/bulk/schedule', body);
+
+/** Bulk cancel / pass / fail / reassign a selection of rounds (RW17). */
 export const bulkInterviews = (body: BulkInterviews): Promise<BulkActionResultDto> =>
   post<BulkActionResultDto>('/hr/interviews/bulk', body);

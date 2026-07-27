@@ -26,6 +26,7 @@ export const WORKFLOW_MANAGED_FIELDS = [
   'supersededByReturnId',
   'placementSnapshot',
   'placementSnapshotLabel',
+  'applicantLive',
 ] as const;
 
 /**

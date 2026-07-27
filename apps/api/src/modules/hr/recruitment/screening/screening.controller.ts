@@ -6,7 +6,6 @@ import {
   type BulkScreenings,
   type CreateScreening,
   type DecideScreening,
-  type ListAwaitingScreeningsQuery,
   type ListScreeningsQuery,
 } from '@ecms/contracts';
 import { created, ok, okPage, validated } from '../../../../platform/web';
@@ -29,12 +28,6 @@ export const listScreenings = async (req: Request, res: Response): Promise<void>
   const { query } = validated<never, ListScreeningsQuery>(req);
   const page = await screeningService.list(query, scopeSelector(ctx, 'screening.view'));
   okPage(res, page, toScreeningDto);
-};
-
-export const listAwaitingScreenings = async (req: Request, res: Response): Promise<void> => {
-  const ctx = authContext(req);
-  const { query } = validated<never, ListAwaitingScreeningsQuery>(req);
-  ok(res, await screeningService.listAwaiting(query, scopeSelector(ctx, 'screening.view')));
 };
 
 export const getScreening = async (req: Request, res: Response): Promise<void> => {

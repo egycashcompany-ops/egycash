@@ -213,38 +213,57 @@ describe('screening — create', () => {
   });
 });
 
-describe('screening — awaiting (pipeline entry)', () => {
-  const awaitingIds = async (): Promise<string[]> => {
+// I11 — the queue is REAL rows whose status is `waiting`, materialized at registration. There is
+// no derived "who ought to be here" read model that could disagree with them.
+describe('screening — the waiting queue is persisted rows', () => {
+  const waitingIds = async (): Promise<string[]> => {
     const res = await request(app)
-      .get('/api/v1/hr/screenings/awaiting')
+      .get('/api/v1/hr/screenings?status=waiting&pageSize=100')
       .set('Authorization', `Bearer ${adminToken}`);
     expect(res.status).toBe(200);
-    return (res.body.data as { applicantId: string }[]).map((r) => r.applicantId);
+    return (res.body.data as ScreeningDto[]).map((r) => r.applicantId);
   };
 
-  it('surfaces a newly-registered applicant, then drops them once the screening is decided', async () => {
+  it('materializes a waiting screening at registration; the DECISION is what clears it', async () => {
     const applicant = await registerApplicant();
-    expect(await awaitingIds()).toContain(applicant.id);
-    // Opening does NOT clear the queue any more — the record is waiting from registration (I11);
-    // it is the DECISION that removes them.
+    expect(await waitingIds()).toContain(applicant.id);
+
+    // Opening does not clear the queue — the record was already waiting (I11).
     const screening = (await openScreening(applicant.id)).body.data as ScreeningDto;
-    expect(await awaitingIds()).toContain(applicant.id);
+    expect(await waitingIds()).toContain(applicant.id);
 
     const decided = await request(app)
       .post(`/api/v1/hr/screenings/${screening.id}/decide`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ outcome: 'accepted', version: screening.version });
     expect(decided.status).toBe(200);
-    expect(await awaitingIds()).not.toContain(applicant.id);
+    expect(await waitingIds()).not.toContain(applicant.id);
   });
 
-  it('excludes a withdrawn applicant', async () => {
+  it('drops a withdrawn candidate from the queue and brings them back on restore', async () => {
     const applicant = await registerApplicant();
-    await request(app)
-      .post(`/api/v1/hr/applicants/${applicant.id}/withdraw`)
+    expect(await waitingIds()).toContain(applicant.id);
+
+    const withdrawn = (
+      await request(app)
+        .post(`/api/v1/hr/applicants/${applicant.id}/withdraw`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ reason: 'not interested', version: applicant.version })
+    ).body.data as { version: number };
+    expect(await waitingIds()).not.toContain(applicant.id);
+
+    // The row itself was never touched — the candidate's own history still shows it.
+    const own = await request(app)
+      .get(`/api/v1/hr/screenings?applicantId=${applicant.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect((own.body.data as ScreeningDto[]).map((r) => r.status)).toContain('waiting');
+
+    const restored = await request(app)
+      .post(`/api/v1/hr/applicants/${applicant.id}/restore`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ reason: 'not interested', version: applicant.version });
-    expect(await awaitingIds()).not.toContain(applicant.id);
+      .send({ version: withdrawn.version });
+    expect(restored.status).toBe(200);
+    expect(await waitingIds()).toContain(applicant.id);
   });
 });
 

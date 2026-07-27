@@ -118,25 +118,6 @@ export const BulkScreeningsSchema = BulkRequestBaseSchema.extend({
   });
 export type BulkScreenings = z.infer<typeof BulkScreeningsSchema>;
 
-// ── Awaiting screening (DEPRECATED — superseded by explicit `waiting` records, I11) ──────────
-// The queue is now `GET /hr/screenings?status=waiting` over REAL rows: the screening record is
-// materialized when the applicant is registered. Retained for one release while the stage
-// services and web screens migrate.
-
-export const ListAwaitingScreeningsQuerySchema = z
-  .object({ branchId: objectId().optional(), limit: z.coerce.number().int().min(1).max(200).default(100) })
-  .strict();
-export type ListAwaitingScreeningsQuery = z.infer<typeof ListAwaitingScreeningsQuerySchema>;
-
-export interface AwaitingScreeningDto {
-  applicantId: string;
-  applicantCode: string;
-  fullNameAr: string;
-  branchId: string | null;
-  /** When the applicant was registered (drives the queue order). */
-  registeredAt: string;
-}
-
 // ── Screening DTO ─────────────────────────────────────────────────────────────
 
 export interface ScreeningNoteDto {

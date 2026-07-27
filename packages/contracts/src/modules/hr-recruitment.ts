@@ -445,17 +445,6 @@ export const BulkApplicantsSchema = z
   );
 export type BulkApplicants = z.infer<typeof BulkApplicantsSchema>;
 
-/**
- * @deprecated Use the shared `BulkActionResultDto` (hr-recruitment-workflow) — every module's
- * bulk endpoint returns that exact shape. Kept as an alias so existing callers keep compiling.
- */
-export interface BulkApplicantsResultDto {
-  requested: number;
-  succeeded: number;
-  failed: number;
-  results: { id: string; ok: boolean; error?: string }[];
-}
-
 // ── Applicant DTO ───────────────────────────────────────────────────────────
 
 export interface ApplicantChannelContact {

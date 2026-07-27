@@ -10,6 +10,13 @@ import { LoginPage } from '../auth/LoginPage';
 import { ActivationPage } from '../auth/ActivationPage';
 import { RequireAuth } from '../router/RequireAuth';
 import { LoadingState } from '../../shared/ui/states/LoadingState';
+import { registerRecruitmentNavProviders } from '../../modules/hr/recruitment/counters/register-nav-providers';
+
+// The sidebar renders on EVERY authenticated page, so the recruitment stage menus and their live
+// counters must be registered eagerly. Registering them from inside the lazy recruitment chunk
+// left the badges — and the Employees Ready row — missing until the user happened to open a
+// recruitment page. The registry itself is a few lines; the counters query is shared.
+registerRecruitmentNavProviders();
 
 const RecruitmentRoutes = lazy(() => import('../../modules/hr/recruitment/routes'));
 const EmployeeManagementRoutes = lazy(() => import('../../modules/hr/employee-management/routes'));

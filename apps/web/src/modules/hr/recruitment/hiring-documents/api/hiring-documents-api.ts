@@ -2,6 +2,8 @@
 // (`/hr/hiring-documents`, `/hr/hiring-document-types`). PDF bytes flow through the aggregate's
 // multipart endpoints (Files service server-side); downloads reuse the platform signed-URL ticket.
 import {
+  type BulkActionResultDto,
+  type BulkHiringDocuments,
   type CompleteHiringDocuments,
   type CreateHiringDocuments,
   type FileDto,
@@ -39,3 +41,7 @@ export const completeHiringDocs = (id: string, body: CompleteHiringDocuments): P
 /** The admin document-type catalog — consumed read-only here to label + require types. */
 export const listHiringDocumentTypes = (): Promise<Paginated<HiringDocumentTypeDto>> =>
   getPage<HiringDocumentTypeDto>(`/hr/hiring-document-types${buildQuery({ active: true, pageSize: 100 })}`);
+
+/** RW17 — complete a whole selection through the shared bulk executor. */
+export const bulkHiringDocs = (body: BulkHiringDocuments): Promise<BulkActionResultDto> =>
+  post<BulkActionResultDto>('/hr/hiring-documents/bulk', body);

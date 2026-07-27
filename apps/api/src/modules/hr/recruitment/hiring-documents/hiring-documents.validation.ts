@@ -5,6 +5,7 @@ export {
   UploadHiringDocumentSchema,
   ReplaceHiringDocumentSchema,
   CompleteHiringDocumentsSchema,
+  BulkHiringDocumentsSchema,
   ListHiringDocumentsQuerySchema,
   CreateHiringDocumentTypeSchema,
   UpdateHiringDocumentTypeSchema,

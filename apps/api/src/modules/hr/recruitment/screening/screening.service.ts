@@ -10,10 +10,8 @@ import { Types } from 'mongoose';
 import {
   HrScreeningEvents,
   type AddScreeningNote,
-  type AwaitingScreeningDto,
   type CreateScreening,
   type DecideScreening,
-  type ListAwaitingScreeningsQuery,
   type BulkActionResultDto,
   type BulkScreenings,
   type ListScreeningsQuery,
@@ -24,7 +22,7 @@ import { type AuthContext, type ScopeSelector } from '../../../../shared/types';
 import { auditService } from '../../../../platform/audit';
 import { emit } from '../../../../platform/kernel/event-bus';
 import { applicantService } from '../applicants';
-import { recruitmentWorkflowEngine, runBulk, type StageBinding } from '../workflow';
+import { recruitmentWorkflowEngine, registerStageBinding, runBulk, type StageBinding } from '../workflow';
 import { ScreeningModel } from './screening.model';
 import { screeningRepository, type ScreeningListFilter } from './screening.repository';
 import { type ScreeningDoc, type ScreeningNote } from './screening.model';
@@ -37,6 +35,10 @@ const BINDING = {
   model: ScreeningModel,
   entityType: 'screening',
 } as unknown as StageBinding<never>;
+
+// So the engine can carry the applicant's pipeline liveness onto this collection when their
+// lifecycle moves (I11) — the stage never reaches into the lifecycle, only the engine does.
+registerStageBinding(BINDING);
 
 class ScreeningService {
   /**
@@ -131,32 +133,6 @@ class ScreeningService {
     scope: ScopeSelector,
   ): Promise<ScreeningDoc[]> {
     return screeningRepository.listAccepted(limit, branchId, scope);
-  }
-
-  /**
-   * "Awaiting screening" — live applicants (status `new`) with no screening yet (the automatic
-   * pipeline entry: they appear here the moment they are registered). A derived read model — no
-   * screening is fabricated and the manual open-screening workflow + permissions are untouched.
-   */
-  async listAwaiting(
-    query: ListAwaitingScreeningsQuery,
-    scope: ScopeSelector,
-  ): Promise<AwaitingScreeningDto[]> {
-    const applicants = await applicantService.listActive(query.limit, query.branchId, scope);
-    // The queue is the applicants whose screening record is still `waiting` (I11) — a real row,
-    // not "no row yet".
-    const awaiting = await screeningRepository.applicantIdsAwaitingDecision(
-      applicants.map((a) => String(a._id)),
-    );
-    return applicants
-      .filter((a) => awaiting.has(String(a._id)))
-      .map((a) => ({
-        applicantId: String(a._id),
-        applicantCode: a.code,
-        fullNameAr: a.fullNameAr,
-        branchId: a.branchId === null ? null : String(a.branchId),
-        registeredAt: a.createdAt.toISOString(),
-      }));
   }
 
   /** Append a note while `waiting` (OQ-32 "needs more information"). */
@@ -324,6 +300,9 @@ class ScreeningService {
     return screeningRepository.countByStatus(
       {
         supersededAt: null,
+        // The badge must equal the rows on the page (RW15), so it excludes exactly what the
+        // queue excludes: candidates who have left the pipeline (I11).
+        applicantLive: true,
         ...(branchId === undefined ? {} : { branchId: new Types.ObjectId(branchId) }),
       },
       scope,

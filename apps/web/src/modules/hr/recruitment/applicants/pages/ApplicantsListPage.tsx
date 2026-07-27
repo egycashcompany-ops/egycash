@@ -2,7 +2,7 @@
 // pagination, CSV export, and a create entry point — all permission-gated and RTL-safe.
 // Filters, search, sort, and pagination are synchronized with the URL query string, so views
 // are deep-linkable and back/forward navigation works. Selection is transient (not in the URL).
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { type ApplicantDto, type ApplicantSourceDto } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
@@ -12,6 +12,7 @@ import { PageContainer, PageHeader } from '../../../../../platform/layout/PageCo
 import { DataTable, type Column } from '../../../../../shared/ui/DataTable';
 import { Pagination } from '../../../../../shared/ui/Pagination';
 import { BulkActions } from '../../../../../shared/ui/BulkActions';
+import { useTableSelection } from '../../../../../shared/ui/useTableSelection';
 import { Button } from '../../../../../shared/ui/Button';
 import { Dialog } from '../../../../../shared/ui/Dialog';
 import { Field, Textarea } from '../../../../../shared/ui/form';
@@ -78,13 +79,9 @@ export const ApplicantsListPage = (): JSX.Element => {
   };
 
   // ── Transient (non-URL) state ──────────────────────────────────────────────
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [bulkReassignOpen, setBulkReassignOpen] = useState(false);
   const [withdrawReason, setWithdrawReason] = useState('');
-  useEffect(() => {
-    setSelected(new Set());
-  }, [paramsKey]);
 
   const { data: sources = [] } = useApplicantSources();
   const sourceName = (id: string): string => {
@@ -114,21 +111,14 @@ export const ApplicantsListPage = (): JSX.Element => {
   const bulk = useBulkApplicants();
   const rows = data?.items ?? [];
 
-  const toggleRow = (id: string): void => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-  const toggleAll = (checked: boolean): void => {
-    setSelected(checked ? new Set(rows.map((r) => r.id)) : new Set());
-  };
+  // The shared selection model (RW17): always the intersection with the rows on screen, so a
+  // filter or page change can never leave a selection meaning something the user did not see.
+  const rowIds = useMemo(() => rows.map((a) => a.id), [rows]);
+  const selection = useTableSelection(rowIds);
 
   const submitWithdraw = async (): Promise<void> => {
     try {
-      const result = await bulk.mutateAsync({ action: 'withdraw', ids: [...selected], reason: withdrawReason });
+      const result = await bulk.mutateAsync({ action: 'withdraw', ids: selection.ids, reason: withdrawReason });
       toast.success(
         t('applicants.bulk.withdrawDone', {
           ok: formatNumber(result.succeeded, locale),
@@ -137,14 +127,14 @@ export const ApplicantsListPage = (): JSX.Element => {
       );
       setWithdrawOpen(false);
       setWithdrawReason('');
-      setSelected(new Set());
+      selection.clear();
     } catch {
       // surfaced by the global error handler
     }
   };
 
   const submitBulkReassign = async (placement: PlacementDto, reason: string): Promise<void> => {
-    const result = await bulk.mutateAsync({ action: 'reassign', ids: [...selected], placement, reason });
+    const result = await bulk.mutateAsync({ action: 'reassign', ids: selection.ids, placement, reason });
     toast.success(
       t('applicants.bulk.withdrawDone', {
         ok: formatNumber(result.succeeded, locale),
@@ -152,7 +142,7 @@ export const ApplicantsListPage = (): JSX.Element => {
       }),
     );
     setBulkReassignOpen(false);
-    setSelected(new Set());
+    selection.clear();
   };
 
   const runExport = (): void => {
@@ -216,7 +206,7 @@ export const ApplicantsListPage = (): JSX.Element => {
       <div className="space-y-4">
         <ApplicantFilters value={filters} onChange={changeFilters} sources={sources} />
 
-        <BulkActions count={selected.size} onClear={() => setSelected(new Set())}>
+        <BulkActions count={selection.count} onClear={selection.clear}>
           {/* RW17 — one placement over the whole selection; each candidate is still checked
               against the editing window on its own. */}
           <Can permission="applicant.reassign">
@@ -241,10 +231,7 @@ export const ApplicantsListPage = (): JSX.Element => {
           sort={sort}
           onSortChange={changeSort}
           onRowClick={(a) => navigate(a.id)}
-          selectable
-          selectedIds={selected}
-          onToggleRow={toggleRow}
-          onToggleAll={toggleAll}
+          selection={selection}
         />
 
         {data !== undefined && data.meta.totalItems > 0 && (
@@ -260,7 +247,7 @@ export const ApplicantsListPage = (): JSX.Element => {
         open={withdrawOpen}
         onClose={() => setWithdrawOpen(false)}
         title={t('applicants.withdraw.title')}
-        description={t('applicants.withdraw.bulkBody', { count: formatNumber(selected.size, locale) })}
+        description={t('applicants.withdraw.bulkBody', { count: formatNumber(selection.count, locale) })}
         footer={
           <>
             <Button variant="secondary" onClick={() => setWithdrawOpen(false)}>{t('common.cancel')}</Button>
@@ -276,7 +263,7 @@ export const ApplicantsListPage = (): JSX.Element => {
       </Dialog>
       <BulkReassignDialog
         open={bulkReassignOpen}
-        count={selected.size}
+        count={selection.count}
         pending={bulk.isPending}
         onClose={() => setBulkReassignOpen(false)}
         onSubmit={submitBulkReassign}

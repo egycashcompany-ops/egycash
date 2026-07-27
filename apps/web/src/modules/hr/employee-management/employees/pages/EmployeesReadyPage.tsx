@@ -38,13 +38,22 @@ export const EmployeesReadyPage = (): JSX.Element => {
     setSp(next);
   };
 
+  // `hired: false` is a SERVER-side predicate — the same one the stage counter counts. Filtering
+  // client-side would page over already-hired offers and make the page's totals disagree with the
+  // badge, which is exactly the drift this queue exists to avoid.
   const params = useMemo(
-    () => ({ page, pageSize, status: 'accepted', sortBy: 'respondedAt', sortDir: 'desc' as const }),
+    () => ({
+      page,
+      pageSize,
+      status: 'accepted',
+      hired: false,
+      sortBy: 'respondedAt',
+      sortDir: 'desc' as const,
+    }),
     [page, pageSize],
   );
   const { data, isLoading, isError, error, refetch } = useJobOffers(params);
-  // An offer that already produced an Employee has left this queue.
-  const rows = (data?.items ?? []).filter((o) => o.hiredEmployeeId === null);
+  const rows = data?.items ?? [];
 
   const columns: Column<JobOfferDto>[] = [
     {

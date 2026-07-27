@@ -15,12 +15,23 @@ cross-collection derivation of who *should* be there.
 Records are opened by the **queue materializer** (`recruitment/materializer/`), which reacts to
 facts the workflow engine publishes. It never decides anything: the transition already did.
 
+Because a queue is now a plain read over rows, a candidate who leaves the pipeline has to stop
+matching one. Every stage record therefore carries `applicantLive`, denormalized from the
+applicant's lifecycle exactly as `applicantName` and `branchId` are, and written only by the
+engine inside the same transaction as the lifecycle change. Nothing else about the record moves:
+same status, same attempt, same history — which is why restoring a candidate puts them back at
+the stage they left rather than at a fresh attempt. Queues and counters filter on it; a request
+for one applicant's own records does not, so their history stays visible after they withdraw.
+
 ```
 applicant registered         → screening waiting
 screening accepted           → first interview stage waiting
 interview passed             → next stage waiting, or every applicable evaluation phase
 applicant moved to Job Offer → offer waiting
 ```
+
+There is no second, derived "who ought to be here" read model anywhere. The `/awaiting` endpoints
+that predated this rule are gone, along with their contracts and their screens.
 
 Each record carries the shared `stageFields` (`workflow/stage-fields.ts`): the attempt number, the
 supersede markers, and an immutable `placementSnapshot` + `placementSnapshotLabel`.
@@ -122,6 +133,17 @@ The recruitment stage menus are dynamic business data, so the web module registe
 sidebar's **nav-children provider registry** (`platform/navigation/nav-children.ts`) rather than
 adding rows to the Applications catalog — stages never become Platform Applications.
 
+## 7a. Starting a round (RW12)
+
+Two entry points, one rule: the **server** stamps who started it and when. `POST /hr/interviews/start`
+takes a CANDIDATE and a stage — the round need not exist yet, so it opens the waiting record and
+begins it in one act; `POST /hr/interviews/:id/start` begins a round that was already scheduled.
+Both seat the caller on the panel if they are not on it, and both record `startedAt` from the
+server clock: a wrong browser clock cannot rewrite when a round began.
+
+Screens render those moments on the **Africa/Cairo** business calendar
+(`formatBusinessDateTime`), not the viewer's timezone, so a start time reads the same to everyone.
+
 ## 8. Bulk actions (RW17/I4)
 
 Every recruitment bulk endpoint runs through one executor (`workflow/bulk-runner.ts`). Each item
@@ -132,6 +154,12 @@ approval of forty is auditable both as forty decisions and as one act.
 
 The UI reports the envelope **honestly**: `bulkOutcomeMessage` says how many applied and how many
 did not, never a blanket "done" over a mixed result.
+
+Every recruitment table has one: applicants (withdraw, reassign), screening, the interview queue
+and each stage page (schedule, start, cancel), the evaluation queue and each phase page, job
+offers, batches and their items, and hiring documents (complete). The client always calls the
+bulk endpoint — never a loop of single calls, which would produce no bulk audit record and no
+envelope, and would leave a half-finished run behind if the tab closed.
 
 ## 9. Two traps worth remembering
 

@@ -48,18 +48,6 @@ class ScreeningRepository extends BaseRepository<ScreeningDoc> {
       .exec();
   }
 
-  /** Of the given applicant ids, those that already have a screening — for the "awaiting" view. */
-  async applicantIdsWithScreening(ids: string[]): Promise<Set<string>> {
-    const objectIds = ids.filter((id) => Types.ObjectId.isValid(id)).map((id) => new Types.ObjectId(id));
-    if (objectIds.length === 0) return new Set();
-    const rows = await this.model
-      .find({ applicantId: { $in: objectIds }, isDeleted: false })
-      .select('applicantId')
-      .lean<{ applicantId: Types.ObjectId }[]>()
-      .exec();
-    return new Set(rows.map((r) => String(r.applicantId)));
-  }
-
   /**
    * Applicants whose LIVE screening is still waiting — the real backing rows of the screening
    * queue (I11). Replaces deriving "has no screening yet", which stopped meaning anything once
@@ -111,6 +99,9 @@ class ScreeningRepository extends BaseRepository<ScreeningDoc> {
       if (f.createdTo !== undefined) range.$lte = f.createdTo;
       clauses.push({ createdAt: range } as FilterQuery<ScreeningDoc>);
     }
+    // I11 — a QUEUE only holds candidates still in the running. Asking for one applicant's own
+    // records is not a queue, so their history stays fully visible after they withdraw.
+    if (f.applicantId === undefined) clauses.push({ applicantLive: true } as FilterQuery<ScreeningDoc>);
     if (clauses.length === 0) return {};
     if (clauses.length === 1) return clauses[0] as FilterQuery<ScreeningDoc>;
     return { $and: clauses } as FilterQuery<ScreeningDoc>;

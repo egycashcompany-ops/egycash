@@ -8,6 +8,7 @@
 // describes the Electronic File (Stage 7) or later.
 import { z } from 'zod';
 import { objectId, LocalizedStringSchema, PaginationQuerySchema, type LocalizedString } from '../common/index.js';
+import { BulkRequestBaseSchema } from './hr-recruitment-workflow.js';
 
 // ── Closed vocabulary ───────────────────────────────────────────────────────
 
@@ -87,6 +88,22 @@ export const ListHiringDocumentsQuerySchema = PaginationQuerySchema.extend({
   search: z.string().max(100).optional(),
 }).strict();
 export type ListHiringDocumentsQuery = z.infer<typeof ListHiringDocumentsQuerySchema>;
+
+// ── Bulk (RW17/I4 — per-item transaction, partial success) ──────────────────
+
+/**
+ * `complete` is the only sensible group act on this stage: uploading is inherently per-document
+ * (one file, one type), so it can never be a selection-wide action. A set that still misses a
+ * mandatory document fails as THAT item and is reported in the envelope; the rest still complete.
+ */
+export const BULK_HIRING_DOCUMENTS_ACTIONS = ['complete'] as const;
+export const BulkHiringDocumentsActionSchema = z.enum(BULK_HIRING_DOCUMENTS_ACTIONS);
+export type BulkHiringDocumentsAction = z.infer<typeof BulkHiringDocumentsActionSchema>;
+
+export const BulkHiringDocumentsSchema = BulkRequestBaseSchema.extend({
+  action: BulkHiringDocumentsActionSchema,
+}).strict();
+export type BulkHiringDocuments = z.infer<typeof BulkHiringDocumentsSchema>;
 
 // ── DTOs ─────────────────────────────────────────────────────────────────────
 

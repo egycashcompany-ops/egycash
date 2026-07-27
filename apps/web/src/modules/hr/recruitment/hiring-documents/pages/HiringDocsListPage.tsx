@@ -9,6 +9,8 @@ import { useAppSelector } from '../../../../../store';
 import { Can } from '../../../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../../../shared/ui/DataTable';
+import { BulkActionBar } from '../../../../../shared/ui/BulkActionBar';
+import { useTableSelection } from '../../../../../shared/ui/useTableSelection';
 import { Pagination } from '../../../../../shared/ui/Pagination';
 import { Button } from '../../../../../shared/ui/Button';
 import { PlusIcon } from '../../../../../shared/ui/icons';
@@ -16,7 +18,7 @@ import { formatDate, formatNumber } from '../../../../../shared/lib/format';
 import { HiringDocsStatusBadge } from '../components/HiringDocsStatusBadge';
 import { HiringDocsFilters, type HiringDocsFiltersState } from '../components/HiringDocsFilters';
 import { CreateHiringDocsDialog } from '../components/CreateHiringDocsDialog';
-import { useHiringDocsList } from '../api/hiring-documents-queries';
+import { useBulkHiringDocs, useHiringDocsList } from '../api/hiring-documents-queries';
 import { type HiringDocsListParams } from '../api/hiring-documents-api';
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -72,6 +74,15 @@ export const HiringDocsListPage = (): JSX.Element => {
   const { data, isLoading, isError, error, refetch } = useHiringDocsList(params);
   const rows = data?.items ?? [];
 
+  // RW17 — completing is the one group act on this stage; uploading is inherently per-document.
+  // A set that still misses a mandatory document fails as that item and is named in the envelope.
+  const rowIds = useMemo(() => rows.map((h) => h.id), [rows]);
+  const selection = useTableSelection(rowIds);
+  const bulk = useBulkHiringDocs(() => selection.clear());
+  const completable = rows
+    .filter((h) => selection.selectedIds.has(h.id) && h.status === 'inProgress')
+    .map((h) => h.id);
+
   const columns: Column<HiringDocumentsDto>[] = [
     {
       key: 'employeeCode',
@@ -112,7 +123,20 @@ export const HiringDocsListPage = (): JSX.Element => {
 
       <div className="space-y-4">
         <HiringDocsFilters value={filters} onChange={changeFilters} />
+        <Can permission="hiringDocuments.complete">
+          <BulkActionBar count={selection.count} onClear={selection.clear}>
+            <Button
+              size="sm"
+              loading={bulk.isPending}
+              disabled={completable.length === 0}
+              onClick={() => void bulk.mutateAsync({ action: 'complete', ids: completable })}
+            >
+              {t('hiringDocs.actions.completeSelected')}
+            </Button>
+          </BulkActionBar>
+        </Can>
         <DataTable
+          selection={selection}
           columns={columns}
           rows={rows}
           rowKey={(h) => h.id}

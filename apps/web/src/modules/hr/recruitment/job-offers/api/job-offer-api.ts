@@ -4,7 +4,6 @@
 // job-titles / users) — no new API is introduced.
 import {
   type AcceptJobOffer,
-  type AwaitingOfferDto,
   type BranchDto,
   type CreateJobOffer,
   type DepartmentDto,
@@ -27,9 +26,6 @@ export const listJobOffers = (params: JobOfferListParams): Promise<Paginated<Job
   getPage<JobOfferDto>(`/hr/job-offers${buildQuery(params)}`);
 
 export const getJobOffer = (id: string): Promise<JobOfferDto> => get<JobOfferDto>(`/hr/job-offers/${id}`);
-
-export const listAwaitingOffers = (params: JobOfferListParams = {}): Promise<AwaitingOfferDto[]> =>
-  get<AwaitingOfferDto[]>(`/hr/job-offers/awaiting${buildQuery(params)}`);
 
 export const createJobOffer = (body: CreateJobOffer): Promise<JobOfferDto> =>
   post<JobOfferDto>('/hr/job-offers', body);

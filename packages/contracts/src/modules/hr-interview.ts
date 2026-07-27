@@ -286,27 +286,6 @@ export const BulkStartInterviewsSchema = z
   .strict();
 export type BulkStartInterviews = z.infer<typeof BulkStartInterviewsSchema>;
 
-// ── Awaiting scheduling (DEPRECATED — superseded by explicit `waiting` records, I11) ─────────
-// The queue is now `GET /hr/interviews?stageId=…&status=waiting` over REAL rows: the round is
-// materialized when the previous stage is cleared. Retained for one release while the stage
-// services and web screens migrate.
-
-export const ListAwaitingInterviewsQuerySchema = z
-  .object({ branchId: objectId().optional(), limit: z.coerce.number().int().min(1).max(200).default(100) })
-  .strict();
-export type ListAwaitingInterviewsQuery = z.infer<typeof ListAwaitingInterviewsQuerySchema>;
-
-export interface AwaitingInterviewDto {
-  applicantId: string;
-  applicantCode: string;
-  /** Denormalized applicant display name (Arabic full name). */
-  applicantName: string;
-  branchId: string | null;
-  screeningId: string;
-  /** When the screening was accepted (drives the queue order); null if not recorded. */
-  screeningDecidedAt: string | null;
-}
-
 // ── Interview DTO ──────────────────────────────────────────────────────────
 
 /**

@@ -3,6 +3,7 @@
 // against the live document-type catalog and passed into the mapper.
 import { type Request, type Response } from 'express';
 import {
+  type BulkHiringDocuments,
   type CompleteHiringDocuments,
   type CreateHiringDocumentType,
   type CreateHiringDocuments,
@@ -108,6 +109,13 @@ export const completeHiringDocuments = async (req: Request, res: Response): Prom
   const { body, params } = validated<CompleteHiringDocuments, never, IdParam>(req);
   const doc = await hiringDocumentsService.complete(ctx, params.id, body, scopeSelector(ctx, 'hiringDocuments.complete'));
   await respond(res, doc);
+};
+
+/** Bulk complete (RW17/I4) — one act, one envelope, per-set rules still enforced. */
+export const bulkHiringDocuments = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body } = validated<BulkHiringDocuments>(req);
+  ok(res, await hiringDocumentsService.bulk(ctx, body, scopeSelector(ctx, 'hiringDocuments.complete')));
 };
 
 // ── Document types (admin catalog) ───────────────────────────────────────────

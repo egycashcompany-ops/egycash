@@ -11,7 +11,12 @@ export interface JobOfferListFilter {
   status?: string | undefined;
   applicantId?: string | undefined;
   branchId?: string | undefined;
-
+  /**
+   * A6/RW15 — whether the offer already produced an Employee. The Employees Ready queue asks for
+   * `false`, which is exactly the predicate `countEmployeesReady` counts, so the page's totals
+   * and the stage counter are one query shape and cannot drift.
+   */
+  hired?: boolean | undefined;
   search?: string | undefined;
 }
 
@@ -126,12 +131,20 @@ class JobOfferRepository extends BaseRepository<JobOfferDoc> {
     if (f.status !== undefined) clauses.push({ status: f.status });
     if (f.applicantId !== undefined) clauses.push({ applicantId: new Types.ObjectId(f.applicantId) });
     if (f.branchId !== undefined) clauses.push({ branchId: new Types.ObjectId(f.branchId) });
+    if (f.hired !== undefined) {
+      clauses.push(
+        (f.hired ? { hiredEmployeeId: { $ne: null } } : { hiredEmployeeId: null }) as FilterQuery<JobOfferDoc>,
+      );
+    }
     if (f.search !== undefined && f.search.trim() !== '') {
       const re = new RegExp(escapeRegExp(f.search.trim()), 'i');
       clauses.push({
         $or: [{ code: re }, { applicantCode: re }, { applicantName: re }],
       } as FilterQuery<JobOfferDoc>);
     }
+    // I11 — a QUEUE only holds candidates still in the running. Asking for one applicant's own
+    // records is not a queue, so their history stays fully visible after they withdraw.
+    if (f.applicantId === undefined) clauses.push({ applicantLive: true } as FilterQuery<JobOfferDoc>);
     if (clauses.length === 0) return {};
     if (clauses.length === 1) return clauses[0] as FilterQuery<JobOfferDoc>;
     return { $and: clauses } as FilterQuery<JobOfferDoc>;

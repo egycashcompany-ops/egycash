@@ -10,7 +10,6 @@ export {
   SubmitInterviewEvaluationSchema,
   DecideInterviewSchema,
   ListInterviewsQuerySchema,
-  ListAwaitingInterviewsQuerySchema,
   CreateInterviewStageSchema,
   UpdateInterviewStageSchema,
   ListInterviewStagesQuerySchema,

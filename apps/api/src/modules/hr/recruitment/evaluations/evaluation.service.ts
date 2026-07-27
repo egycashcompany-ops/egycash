@@ -24,7 +24,7 @@ import { fileService, type UploadedBinary } from '../../../../platform/files';
 import { applicantService, resolvePlacement } from '../applicants';
 import { interviewService } from '../interviews';
 import { recruitmentTimelineService } from '../timeline';
-import { recruitmentWorkflowEngine, runBulk, type StageBinding } from '../workflow';
+import { recruitmentWorkflowEngine, registerStageBinding, runBulk, type StageBinding } from '../workflow';
 import { EvaluationModel } from './evaluation.model';
 import { evaluationRepository, type EvaluationListFilter } from './evaluation.repository';
 import { evaluationPhaseRepository } from './evaluation-phase.repository';
@@ -40,6 +40,10 @@ const BINDING = {
   entityType: 'evaluation',
   stageField: 'phaseId',
 } as unknown as StageBinding<never>;
+
+// So the engine can carry the applicant's pipeline liveness onto this collection when their
+// lifecycle moves (I11) — the stage never reaches into the lifecycle, only the engine does.
+registerStageBinding(BINDING);
 
 class EvaluationService {
   /**
@@ -394,6 +398,9 @@ class EvaluationService {
       'phaseId',
       {
         supersededAt: null,
+        // The badge must equal the rows on the page (RW15), so it excludes exactly what the
+        // queue excludes: candidates who have left the pipeline (I11).
+        applicantLive: true,
         ...(branchId === undefined ? {} : { branchId: new Types.ObjectId(branchId) }),
       },
       scope,

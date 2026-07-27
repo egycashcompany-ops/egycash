@@ -15,7 +15,7 @@ import { ApplicantPicker } from './ApplicantPicker';
 import { UserPicker, type SelectedUser } from './UserPicker';
 import { useInterviewStages, useScheduleInterview } from '../api/interview-queries';
 
-/** Minimal applicant shape the dialog needs — satisfied by a full ApplicantDto or an awaiting row. */
+/** Minimal applicant shape the dialog needs — satisfied by a full ApplicantDto or a queue row. */
 export interface PickedApplicant {
   id: string;
   code: string;

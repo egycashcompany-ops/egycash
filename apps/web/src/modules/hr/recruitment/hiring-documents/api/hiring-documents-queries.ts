@@ -3,8 +3,14 @@
 // the list subtree. The employee lookup reuses the Employees list API; the document-type catalog is
 // read-only. No new backend API.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { type CompleteHiringDocuments, type CreateHiringDocuments, type HiringDocumentsDto } from '@ecms/contracts';
+import {
+  type BulkHiringDocuments,
+  type CompleteHiringDocuments,
+  type CreateHiringDocuments,
+  type HiringDocumentsDto,
+} from '@ecms/contracts';
 import { detailKey, listKey } from '../../../../../shared/lib/query-keys';
+import { useBulkMutation } from '../../../../../shared/lib/useBulkMutation';
 import { listEmployees } from '../../../employee-management/employees/api/employee-api';
 import * as api from './hiring-documents-api';
 import { type HiringDocsListParams } from './hiring-documents-api';
@@ -93,3 +99,14 @@ export const useCompleteHiringDocs = (id: string) => {
     onSuccess: seedAndInvalidate,
   });
 };
+
+/** RW17 — bulk complete. The envelope is reported honestly: a set still missing a mandatory
+ *  document fails as that item and is named, while the rest complete. */
+export const useBulkHiringDocs = (onApplied?: () => void) =>
+  useBulkMutation<BulkHiringDocuments>((body) => api.bulkHiringDocs(body), {
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: listKey(MODULE, FEATURE) });
+      void qc.invalidateQueries({ queryKey: [MODULE, FEATURE] });
+    },
+    ...(onApplied === undefined ? {} : { onApplied }),
+  });

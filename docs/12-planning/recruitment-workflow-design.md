@@ -1,7 +1,9 @@
 # Recruitment Workflow Refactor — Design
 
-> Status: **FROZEN** (Revision 2.2, 2026-07-27 — reviewed and frozen by the approver;
-> §20 records the implementation invariants I1–I10 added during the build).
+> Status: **FROZEN** (Revision 2.3, 2026-07-27 — reviewed and frozen by the approver;
+> §20 records the implementation invariants I1–I11 added during the build. I11 supersedes the
+> derived-`waiting` treatment in I10: `waiting` is an explicit persisted status and every stage
+> always has a record).
 > Approved for implementation as a **single PR** (§16), exactly as for Leave
 > (`leave-management-design.md`), Auth (`auth-account-lifecycle-design.md`) and Contracts
 > (`contracts-module-design.md`).
@@ -630,12 +632,15 @@ along in the same response to fill the tab badges, costing no extra round trip.
 
 | Stage | `waiting` counts |
 |---|---|
-| Applicants | live applicants with no screening yet |
-| Screening | screenings `pending` (latest attempt) |
-| Interview stage *S* | applicants eligible for *S* with no round yet (existing "awaiting" derivation) |
-| Evaluation phase *P* | applicable applicants who cleared interviews with no decision at *P* (record `pending` or no record) |
-| Job Offers | applicants moved to offer with no blocking offer |
-| **Employees Ready** (A6) | applicants with an **accepted offer and no Employee yet** — the hire queue, gated by `employee.create` |
+| Applicants | live applicants (`status: new`) |
+| Screening | screenings `waiting` (latest attempt) |
+| Interview stage *S* | rounds at *S* with `status: waiting` (latest attempt) |
+| Evaluation phase *P* | records at *P* with `status: waiting` (latest attempt) |
+| Job Offers | offers `waiting` |
+| **Employees Ready** (A6) | offers `accepted` with `hiredEmployeeId: null` — the hire queue, gated by `employee.create` |
+
+Every one of these is a plain indexed count over **explicit status values** (I11) — no
+eligibility derivation, no "rows that should exist but don't".
 
 **Efficiency.** Six `$group` aggregations (one per collection) plus the derived-eligibility
 counts, issued in parallel inside one request, all served by existing indexes
@@ -1163,13 +1168,66 @@ Consequences, all applied:
 - **Job Offer gains `superseded`** — what a return-to-stage sets on an active offer (RW13), which
   is more truthful than the withdrawal it used to record. `expired` is **kept**: the automatic
   expiry sweep is live behaviour, and the approver's list was illustrative, not a removal.
-- **`JobOfferDoc.active` is deleted.** The "at most one active offer per applicant" invariant
-  moves to a partial unique index on `status: { $in: ['draft', 'sent'] }`, so the invariant is
-  enforced by the status itself rather than by a flag that could disagree with it. The `active`
-  query filter is replaced by filtering on those statuses.
+- **`JobOfferDoc.active` is deleted.** The "at most one live offer per applicant" invariant moves
+  to a partial unique index on `status: { $in: ['waiting', 'draft', 'sent'] }` (the live set once
+  I11 makes `waiting` a real record), so the invariant is enforced by the status itself rather
+  than by a flag that could disagree with it. The `active` query filter is replaced by filtering
+  on those statuses.
 - **`placementEditable` is deleted** from the applicant and workflow DTOs. Capability belongs in
   `availableActions[]`, which already carries `enabled` + `reason`; a duplicate boolean would be a
   second source of truth (I1).
 - **Supersede is a timestamp, not a flag**: `supersededAt` (with `supersededBy`,
   `supersededByReturnId`) carries when and by whom. No `isSuperseded` boolean is ever introduced;
   callers test the timestamp.
+
+### I11 — `waiting` is an explicit, persisted status; every stage always has a record
+
+**This supersedes the derived-`waiting` treatment in I10.** Absence of a record must never carry
+meaning. The workflow engine, counters, bulk actions, reporting, timeline, permissions, filtering
+and any future automation all read **explicit state in data**, never "no row found".
+
+| Object | The single enum (all values persisted) |
+|---|---|
+| Screening | `waiting` · `accepted` · `rejected` |
+| Interview | `waiting` · `scheduled` · `inProgress` · `completed` · `cancelled` |
+| Evaluation | `waiting` · `approved` · `rejected` |
+| Job Offer | `waiting` · `draft` · `sent` · `accepted` · `rejected` · `withdrawn` · `superseded` · `expired` |
+
+**Materialization.** A stage record is created in `waiting` the moment the candidate reaches that
+stage — by one engine method, `ensureStageRecord()`, which is the only creator:
+
+| Trigger | Materializes |
+|---|---|
+| Applicant registered | the Screening record (`waiting`) |
+| Screening accepted | the first interview stage's record (`waiting`) |
+| Interview stage *N* passed | stage *N+1*'s record (`waiting`) |
+| Interview round cancelled | a new attempt at the same stage (`waiting`) |
+| All interview stages cleared | one record per **applicable** evaluation phase (`waiting`) |
+| HR moves the candidate to Job Offer | the Job Offer record (`waiting`) |
+| Return to an earlier stage (RW13) | the target stage's new attempt (`waiting`) |
+
+Materialization is idempotent — it is the attempt-unique index plus a find-or-create, so a retry,
+a concurrent request and the migration all converge on the same single record.
+
+**Consequences, all applied:**
+
+- **`INTERVIEW_RECORD_STATUSES` is deleted.** There is no persistable subset: `waiting` is stored
+  like any other value, and the schema enum accepts the full list.
+- **Fields a waiting record cannot yet have become nullable** — the same draft-permissive
+  treatment the Contracts module already uses: `interview.scheduledAt`, and on the offer both
+  `terms` and `code`. The offer number is allocated when the record leaves `waiting` for `draft`,
+  and its unique index becomes partial on `code: { $type: 'string' }`. Completeness is enforced at
+  the transition that needs it (schedule requires a date; send requires terms), never at creation.
+- **The derived "awaiting" read models disappear.** `listAwaiting*` for screening, interviews and
+  offers become ordinary `status: 'waiting'` queries against real rows, and their bespoke DTOs are
+  retired. One list endpoint per stage, one vocabulary, one code path.
+- **Counters get simpler and faster (I3).** The single aggregation now groups stage records by
+  `status` — no eligibility derivation, no cross-collection `$lookup` to discover who *should*
+  appear. `waiting` counts are a plain index-served count.
+- **Employees Ready stays data-driven too**: it is `offer.status === 'accepted'` with
+  `offer.hiredEmployeeId === null`, and the offer records `hiredEmployeeId` at hire. The queue is
+  read from facts on the offer, not from the absence of an Employee.
+- **Migration (I8) materializes the backlog.** The boot migration walks every live applicant,
+  resolves the stage they currently stand at from their existing records, and creates the missing
+  `waiting` rows — automatically, idempotently, with no manual step. An applicant mid-pipeline
+  keeps their exact position and simply gains the explicit row that position always implied.

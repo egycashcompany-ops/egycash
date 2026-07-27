@@ -3,8 +3,9 @@
 // ADMINISTRATOR-CONFIGURABLE ordered catalog — new phases are added with no code changes, exactly
 // like the interview-stage catalog. The phases are INDEPENDENT (RW6) — an applicant who has
 // cleared the interview rounds may be worked through any applicable phase in any order; each
-// phase collects one or more files and carries an approved/rejected decision with a reason. The decision stays EDITABLE. A rejection at any phase
-// removes the applicant from the active pipeline (mirrors a failed interview round).
+// phase collects one or more files and carries an approved/rejected decision with a reason. The
+// decision stays EDITABLE. A rejection at any phase removes the applicant from the active
+// pipeline (mirrors a failed interview round).
 import { z } from 'zod';
 import { objectId, LocalizedStringSchema, PaginationQuerySchema, type LocalizedString } from '../common/index.js';
 import {
@@ -17,10 +18,11 @@ import {
 // ── Closed vocabularies ─────────────────────────────────────────────────────
 
 /**
- * The evaluation's single status enum (I10). `waiting` until decided — it also describes an
- * applicant who is due at this phase with no record opened yet, so the phase page's three tabs,
- * the list filter and the counter buckets all use these exact values. `approved` clears the
- * phase; `rejected` removes the applicant from the pipeline.
+ * The evaluation's single status enum (I10/I11). Every value is PERSISTED: one record per
+ * applicable phase is materialized in `waiting` the moment the candidate clears the interviews,
+ * so a phase queue is real rows and never the absence of one. `waiting` lasts until decided;
+ * `approved` clears the phase; `rejected` removes the applicant from the pipeline. The phase
+ * page's three tabs, the list filter and the counter buckets all use these exact values.
  *
  * `waiting` replaced the former `pending` (I10); stored values are rewritten by the boot
  * migration and `pending` is still accepted as a query alias for one release.
@@ -129,7 +131,11 @@ export interface EvaluationPhaseDto {
 
 // ── Per-applicant evaluation records ────────────────────────────────────────
 
-/** Open (start) an evaluation for an applicant at a phase — idempotent per (applicant, phase). */
+/**
+ * Open an evaluation for an applicant at a phase. Records are materialized at `waiting` when the
+ * candidate clears the interviews (I11), so this is a find-or-create retained for the manual path
+ * and for phases that become applicable later. Idempotent per (applicant, phase, attempt).
+ */
 export const OpenEvaluationSchema = z
   .object({ applicantId: objectId(), phaseId: objectId() })
   .strict();

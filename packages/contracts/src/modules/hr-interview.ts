@@ -35,21 +35,6 @@ export const INTERVIEW_STATUSES = [
 export const InterviewStatusSchema = z.enum(INTERVIEW_STATUSES);
 export type InterviewStatus = z.infer<typeof InterviewStatusSchema>;
 
-/**
- * The subset a RECORD may persist. `waiting` means "no round exists yet", so it is derived at the
- * stage level and can never be stored — the Mongoose schema enum uses this list, while DTOs,
- * filters, tabs and counters use the full `INTERVIEW_STATUSES` (I10: one vocabulary, with the
- * database refusing to store a state that cannot exist).
- */
-export const INTERVIEW_RECORD_STATUSES = [
-  'scheduled',
-  'inProgress',
-  'completed',
-  'cancelled',
-] as const;
-export const InterviewRecordStatusSchema = z.enum(INTERVIEW_RECORD_STATUSES);
-export type InterviewRecordStatus = z.infer<typeof InterviewRecordStatusSchema>;
-
 /** Round outcome. `pending` until decided; `passed` advances the applicant, `failed` rejects. */
 export const INTERVIEW_OUTCOMES = ['pending', 'passed', 'failed'] as const;
 export const InterviewOutcomeSchema = z.enum(INTERVIEW_OUTCOMES);
@@ -301,10 +286,10 @@ export const BulkStartInterviewsSchema = z
   .strict();
 export type BulkStartInterviews = z.infer<typeof BulkStartInterviewsSchema>;
 
-// ── Awaiting scheduling (pipeline entry) ────────────────────────────────────
-// Applicants who have passed Initial Screening and are active but have no interview yet — the
-// "automatically appears in Interviews once approved in Screening" queue. Derived read model
-// (no interview record is fabricated); the recruiter schedules the first round from here.
+// ── Awaiting scheduling (DEPRECATED — superseded by explicit `waiting` records, I11) ─────────
+// The queue is now `GET /hr/interviews?stageId=…&status=waiting` over REAL rows: the round is
+// materialized when the previous stage is cleared. Retained for one release while the stage
+// services and web screens migrate.
 
 export const ListAwaitingInterviewsQuerySchema = z
   .object({ branchId: objectId().optional(), limit: z.coerce.number().int().min(1).max(200).default(100) })
@@ -356,10 +341,15 @@ export interface InterviewDto extends AttemptMarkerDto {
   stageKey: string;
   stageOrder: number;
   stageName: LocalizedString;
-  /** A stored round is never `waiting` — that value only ever describes a stage with no round. */
-  status: InterviewRecordStatus;
+  /**
+   * The round's single status (I10/I11). Every value is PERSISTED, including `waiting`: the record
+   * is materialized the moment the candidate reaches the stage, so a queue is never inferred from
+   * a missing row.
+   */
+  status: InterviewStatus;
   outcome: InterviewOutcome;
-  scheduledAt: string;
+  /** null while `waiting` — a round that has not been scheduled yet has no date (I11). */
+  scheduledAt: string | null;
   /** Server-stamped when the round was started (RW12); null while merely scheduled. */
   startedAt: string | null;
   startedBy: string | null;

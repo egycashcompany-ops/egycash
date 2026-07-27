@@ -16,11 +16,12 @@ import {
 // ── Closed vocabularies ─────────────────────────────────────────────────────
 
 /**
- * The screening's single status enum (I10). `waiting` = under review, notes may accumulate — it
- * also describes a registered applicant with no screening opened yet, so the page's three tabs,
- * the list filter and the counter buckets all use these exact values. `accepted` and `rejected`
- * are the two terminal decisions (OQ-32). A rejected screening transitions its applicant to the
- * terminal `rejected` status; an accepted one leaves the applicant `new` (live).
+ * The screening's single status enum (I10/I11). Every value is PERSISTED: the record is
+ * materialized in `waiting` the moment the applicant is registered, so the queue is real rows and
+ * never the absence of one. `waiting` = under review, notes may accumulate; `accepted` and
+ * `rejected` are the two terminal decisions (OQ-32). A rejected screening transitions its
+ * applicant to the terminal `rejected` status; an accepted one leaves the applicant `new` (live).
+ * The page's three tabs, the list filter and the counter buckets all use these exact values.
  *
  * `waiting` replaced the former `pending` (I10); stored values are rewritten by the boot
  * migration and `pending` is still accepted as a query alias for one release.
@@ -36,7 +37,11 @@ export type ScreeningOutcome = z.infer<typeof ScreeningOutcomeSchema>;
 
 // ── Create / note / decide ──────────────────────────────────────────────────
 
-/** Open a screening for an applicant (one per applicant). An optional first note is stored. */
+/**
+ * Open a screening for an applicant. Since the record is materialized at registration (I11) this
+ * is now a find-or-create that stores an optional first note — kept so the manual "open screening"
+ * flow and its permission keep working unchanged.
+ */
 export const CreateScreeningSchema = z
   .object({
     applicantId: objectId(),
@@ -47,7 +52,7 @@ export type CreateScreening = z.infer<typeof CreateScreeningSchema>;
 
 /**
  * Append a note to a `waiting` screening — the "needs more information" flow (OQ-32): the
- * screening stays pending; the note is recorded with author + timestamp.
+ * screening stays `waiting`; the note is recorded with author + timestamp.
  */
 export const AddScreeningNoteSchema = z
   .object({
@@ -113,11 +118,10 @@ export const BulkScreeningsSchema = BulkRequestBaseSchema.extend({
   });
 export type BulkScreenings = z.infer<typeof BulkScreeningsSchema>;
 
-// ── Awaiting screening (pipeline entry) ─────────────────────────────────────
-// Live applicants (status `new`) with no screening yet — the "automatically appears in the
-// Screening module once registered" queue. A derived read model (no screening record is
-// fabricated; the existing open-screening flow is untouched). The recruiter opens the screening
-// from here, keeping the manual workflow + permissions intact.
+// ── Awaiting screening (DEPRECATED — superseded by explicit `waiting` records, I11) ──────────
+// The queue is now `GET /hr/screenings?status=waiting` over REAL rows: the screening record is
+// materialized when the applicant is registered. Retained for one release while the stage
+// services and web screens migrate.
 
 export const ListAwaitingScreeningsQuerySchema = z
   .object({ branchId: objectId().optional(), limit: z.coerce.number().int().min(1).max(200).default(100) })

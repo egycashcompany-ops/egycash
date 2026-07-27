@@ -3,6 +3,7 @@
 import { type NextFunction, type Request, type Response } from 'express';
 import { ErrorCodes, type ApiFailure } from '@ecms/contracts';
 import { AppError, RateLimitedError } from '../../shared/errors';
+import { isProduction } from '../config/env';
 import { logger } from '../logging/logger';
 import { captureError } from '../observability/sentry';
 import { getRequestId } from './request-context';
@@ -54,7 +55,16 @@ export const errorHandler = (
   captureError(error, { requestId, path: req.path });
   const body: ApiFailure = {
     success: false,
-    error: { code: ErrorCodes.INTERNAL, message: 'Unexpected error', requestId },
+    error: {
+      code: ErrorCodes.INTERNAL,
+      message: 'Unexpected error',
+      // Production leaks nothing. Everywhere else the cause travels with the response, because an
+      // opaque 500 in a test run or a dev session costs far more than it protects.
+      ...(isProduction || !(error instanceof Error)
+        ? {}
+        : { details: [{ code: error.name, message: error.message }] }),
+      requestId,
+    },
   };
   res.status(500).json(body);
 };

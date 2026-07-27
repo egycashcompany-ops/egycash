@@ -20,6 +20,7 @@ import { ReferenceChip } from '../components/RefPickers';
 import { AttachmentsPanel } from '../components/AttachmentsPanel';
 import { ApplicantLifecycleActions } from '../components/ApplicantLifecycleActions';
 import { useApplicant, useVerifyApplicantIdentity } from '../api/applicant-queries';
+import { CandidateTimeline } from '../../timeline/components/CandidateTimeline';
 
 const Info = ({ label, children }: { label: string; children: ReactNode }): JSX.Element => (
   <div>
@@ -188,6 +189,11 @@ export const ApplicantDetailPage = (): JSX.Element => {
 
           <AttachmentsPanel applicantId={a.id} canEdit={a.status === 'new' && can('applicant.edit')} />
         </div>
+      </div>
+
+      {/* THE recruitment history (I5) — every stage writes here, every screen reads here. */}
+      <div className="mt-6">
+        <CandidateTimeline applicantId={a.id} />
       </div>
 
       <Dialog

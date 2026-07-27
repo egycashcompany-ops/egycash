@@ -6,6 +6,7 @@
 import { Outlet, Route, Routes } from 'react-router-dom';
 import { RequirePermission } from '../../../platform/router/RequirePermission';
 import { NotFoundPage } from '../../../platform/app/pages/NotFoundPage';
+import { registerRecruitmentNavProviders } from './counters/register-nav-providers';
 import { RecruitmentLayout } from './RecruitmentLayout';
 import { RecruitmentOverview } from './pages/RecruitmentOverview';
 import { ApplicantsListPage } from './applicants/pages/ApplicantsListPage';
@@ -16,14 +17,22 @@ import { ScreeningDetailPage } from './screening/pages/ScreeningDetailPage';
 import { InterviewQueuePage } from './interviews/pages/InterviewQueuePage';
 import { InterviewDetailPage } from './interviews/pages/InterviewDetailPage';
 import { InterviewStagesPage } from './interviews/pages/InterviewStagesPage';
+import { InterviewStageQueuePage } from './interviews/pages/InterviewStageQueuePage';
 import { EvaluationQueuePage } from './evaluations/pages/EvaluationQueuePage';
 import { EvaluationDetailPage } from './evaluations/pages/EvaluationDetailPage';
 import { EvaluationPhasesPage } from './evaluations/pages/EvaluationPhasesPage';
+import { EvaluationPhaseQueuePage } from './evaluations/pages/EvaluationPhaseQueuePage';
+import { EvaluationBatchesPage } from './evaluation-batches/pages/EvaluationBatchesPage';
+import { EvaluationBatchDetailPage } from './evaluation-batches/pages/EvaluationBatchDetailPage';
 import { JobOffersListPage } from './job-offers/pages/JobOffersListPage';
 import { JobOfferDetailPage } from './job-offers/pages/JobOfferDetailPage';
 import { JobOfferFormPage } from './job-offers/pages/JobOfferFormPage';
 import { HiringDocsListPage } from './hiring-documents/pages/HiringDocsListPage';
 import { HiringDocsDetailPage } from './hiring-documents/pages/HiringDocsDetailPage';
+
+// The recruitment stage menus are dynamic business data, so the module registers them with the
+// sidebar's provider registry rather than adding rows to the Applications catalog (RW16/OQ-2).
+registerRecruitmentNavProviders();
 
 export default function RecruitmentRoutes(): JSX.Element {
   return (
@@ -85,6 +94,8 @@ export default function RecruitmentRoutes(): JSX.Element {
               </RequirePermission>
             }
           />
+          {/* One page per interview stage (RW11) — the flat stage menu opens these. */}
+          <Route path="stage/:stageId" element={<InterviewStageQueuePage />} />
           <Route path=":id" element={<InterviewDetailPage />} />
         </Route>
         <Route
@@ -104,7 +115,16 @@ export default function RecruitmentRoutes(): JSX.Element {
               </RequirePermission>
             }
           />
+          {/* One page per evaluation phase (RW6a) — independent phases, independent pages. */}
+          <Route path="phase/:phaseId" element={<EvaluationPhaseQueuePage />} />
           <Route path=":id" element={<EvaluationDetailPage />} />
+        </Route>
+        {/* Security / Driving batches (RW8) — the group form of the external checks. Sight is
+            per phase (RW7), so the pages authorize themselves rather than gating the subtree on
+            one permission. */}
+        <Route path="evaluation-batches">
+          <Route index element={<EvaluationBatchesPage />} />
+          <Route path=":id" element={<EvaluationBatchDetailPage />} />
         </Route>
         <Route
           path="job-offers"

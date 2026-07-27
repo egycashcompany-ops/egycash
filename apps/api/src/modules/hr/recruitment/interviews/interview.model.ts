@@ -69,7 +69,7 @@ const interviewSchema = new Schema<InterviewDoc>(
   {
     applicantId: { type: Schema.Types.ObjectId, required: true },
     applicantCode: { type: String, required: true },
-    applicantName: { type: String, required: true, default: '' },
+    applicantName: { type: String, default: '' },
     branchId: { type: Schema.Types.ObjectId, default: null },
     stageId: { type: Schema.Types.ObjectId, required: true },
     stageOrder: { type: Number, required: true },
@@ -81,7 +81,7 @@ const interviewSchema = new Schema<InterviewDoc>(
     startedBy: { type: Schema.Types.ObjectId, default: null },
     recommendedPlacement: { type: placementSchema, default: null },
     recommendationNote: { type: String, default: null },
-    stageKey: { type: String, required: true, default: '' },
+    stageKey: { type: String, default: '' },
     panel: {
       type: [
         new Schema<InterviewPanelist>(

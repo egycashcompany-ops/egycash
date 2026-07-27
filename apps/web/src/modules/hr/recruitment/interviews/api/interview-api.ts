@@ -18,6 +18,8 @@ import {
   type SubmitInterviewEvaluation,
   type UpdateInterviewStage,
   type UserDto,
+  type BulkActionResultDto,
+  type BulkInterviews,
 } from '@ecms/contracts';
 import { buildQuery, get, getPage, patch, post } from '../../../../../shared/lib/api-client';
 
@@ -80,3 +82,7 @@ export const searchUsers = (term: string): Promise<Paginated<UserDto>> =>
   getPage<UserDto>(`/platform/users${buildQuery({ search: term, status: 'active', pageSize: 8 })}`);
 
 export const getUser = (id: string): Promise<UserDto> => get<UserDto>(`/platform/users/${id}`);
+
+/** Bulk cancel / pass / fail / reassign a selection of rounds (RW17). */
+export const bulkInterviews = (body: BulkInterviews): Promise<BulkActionResultDto> =>
+  post<BulkActionResultDto>('/hr/interviews/bulk', body);

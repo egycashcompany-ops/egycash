@@ -39,8 +39,11 @@ class ScreeningRepository extends BaseRepository<ScreeningDoc> {
   /** The live screening for an applicant, if any (one per applicant). */
   async findByApplicantId(applicantId: string): Promise<ScreeningDoc | null> {
     if (!Types.ObjectId.isValid(applicantId)) return null;
+    // The LIVE screening is the highest non-superseded attempt — a return to this stage opens a
+    // new one and every gate must read that, not the retired attempt behind it (I12).
     return this.model
-      .findOne({ applicantId: new Types.ObjectId(applicantId), isDeleted: false })
+      .findOne({ applicantId: new Types.ObjectId(applicantId), supersededAt: null, isDeleted: false })
+      .sort({ attempt: -1 })
       .lean<ScreeningDoc>()
       .exec();
   }
@@ -51,6 +54,22 @@ class ScreeningRepository extends BaseRepository<ScreeningDoc> {
     if (objectIds.length === 0) return new Set();
     const rows = await this.model
       .find({ applicantId: { $in: objectIds }, isDeleted: false })
+      .select('applicantId')
+      .lean<{ applicantId: Types.ObjectId }[]>()
+      .exec();
+    return new Set(rows.map((r) => String(r.applicantId)));
+  }
+
+  /**
+   * Applicants whose LIVE screening is still waiting — the real backing rows of the screening
+   * queue (I11). Replaces deriving "has no screening yet", which stopped meaning anything once
+   * the record is materialized at registration.
+   */
+  async applicantIdsAwaitingDecision(ids: string[]): Promise<Set<string>> {
+    const objectIds = ids.filter((id) => Types.ObjectId.isValid(id)).map((id) => new Types.ObjectId(id));
+    if (objectIds.length === 0) return new Set();
+    const rows = await this.model
+      .find({ applicantId: { $in: objectIds }, status: 'waiting', supersededAt: null, isDeleted: false })
       .select('applicantId')
       .lean<{ applicantId: Types.ObjectId }[]>()
       .exec();

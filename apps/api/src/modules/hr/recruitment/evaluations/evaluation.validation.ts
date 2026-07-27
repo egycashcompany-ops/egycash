@@ -8,6 +8,7 @@ export {
   DecideEvaluationSchema,
   UploadEvaluationFileSchema,
   RemoveEvaluationFileSchema,
+  SetEvaluationAppointmentSchema,
   ListEvaluationsQuerySchema,
   BulkEvaluationsSchema,
 } from '@ecms/contracts';

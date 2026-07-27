@@ -14,9 +14,12 @@ import {
   type SkipInterviewer,
   type SubmitInterviewEvaluation,
   type UpdateInterviewStage,
+  type BulkInterviews,
 } from '@ecms/contracts';
 import { detailKey, listKey } from '../../../../../shared/lib/query-keys';
 import { listApplicants } from '../../applicants/api/applicant-api';
+import { useBulkMutation } from '../../../../../shared/lib/useBulkMutation';
+import { invalidateRecruitment } from '../../shared/invalidate-recruitment';
 import * as api from './interview-api';
 import { type InterviewListParams } from './interview-api';
 
@@ -200,3 +203,10 @@ export const useRedecideInterview = (id: string) => {
     onSuccess: seedAndInvalidate,
   });
 };
+
+/** Bulk cancel / pass / fail the selection (RW17). */
+export const useBulkInterviews = (onApplied?: () => void) =>
+  useBulkMutation<BulkInterviews>((body) => api.bulkInterviews(body), {
+    invalidate: invalidateRecruitment,
+    ...(onApplied === undefined ? {} : { onApplied }),
+  });

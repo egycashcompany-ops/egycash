@@ -9,6 +9,10 @@ import { useAppSelector } from '../../../../../store';
 import { Can } from '../../../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../../../shared/ui/DataTable';
+import { BulkActionBar } from '../../../../../shared/ui/BulkActionBar';
+import { useTableSelection } from '../../../../../shared/ui/useTableSelection';
+import { Dialog } from '../../../../../shared/ui/Dialog';
+import { Field, Input } from '../../../../../shared/ui/form';
 import { Pagination } from '../../../../../shared/ui/Pagination';
 import { Button } from '../../../../../shared/ui/Button';
 import { PlusIcon } from '../../../../../shared/ui/icons';
@@ -18,7 +22,7 @@ import { InterviewFilters, type InterviewFiltersState } from '../components/Inte
 import { AwaitingInterviewsPanel } from '../components/AwaitingInterviewsPanel';
 import { ScheduleInterviewDialog, type PickedApplicant } from '../components/ScheduleInterviewDialog';
 import { PhaseBoard } from '../components/PhaseBoard';
-import { useInterviews } from '../api/interview-queries';
+import { useBulkInterviews, useInterviews } from '../api/interview-queries';
 import { type InterviewListParams } from '../api/interview-api';
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -93,6 +97,22 @@ export const InterviewQueuePage = (): JSX.Element => {
 
   const { data, isLoading, isError, error, refetch } = useInterviews(params);
   const rows = data?.items ?? [];
+
+  // Bulk cancel (RW17). Pass/fail is deliberately NOT offered in bulk: a round can only be
+  // decided once every panel member has submitted or been skipped, which is a per-round fact
+  // the queue cannot show — so the decision stays on the round's own page.
+  const rowIds = useMemo(() => rows.map((i) => i.id), [rows]);
+  const selection = useTableSelection(rowIds);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [reason, setReason] = useState('');
+  const bulk = useBulkInterviews(() => {
+    selection.clear();
+    setCancelOpen(false);
+    setReason('');
+  });
+  const cancellable = rows
+    .filter((i) => selection.selectedIds.has(i.id) && (i.status === 'scheduled' || i.status === 'inProgress'))
+    .map((i) => i.id);
 
   const columns: Column<InterviewDto>[] = [
     {
@@ -177,7 +197,20 @@ export const InterviewQueuePage = (): JSX.Element => {
             onSchedule={(a) => { setScheduleFor(a); setScheduleOpen(true); }}
           />
           <InterviewFilters value={filters} onChange={changeFilters} />
+          <Can permission="interview.cancel">
+            <BulkActionBar count={selection.count} onClear={selection.clear}>
+              <Button
+                size="sm"
+                variant="danger"
+                disabled={cancellable.length === 0}
+                onClick={() => setCancelOpen(true)}
+              >
+                {t('interviews.actions.cancelSelected')}
+              </Button>
+            </BulkActionBar>
+          </Can>
           <DataTable
+            selection={selection}
             columns={columns}
             rows={rows}
             rowKey={(i) => i.id}
@@ -197,6 +230,34 @@ export const InterviewQueuePage = (): JSX.Element => {
           )}
         </div>
       )}
+
+      <Dialog
+        open={cancelOpen}
+        onClose={() => setCancelOpen(false)}
+        title={t('interviews.actions.cancelSelected')}
+        description={t('bulk.reason.required')}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setCancelOpen(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              variant="danger"
+              loading={bulk.isPending}
+              disabled={reason.trim() === ''}
+              onClick={() =>
+                void bulk.mutateAsync({ action: 'cancel', ids: cancellable, reason: reason.trim() })
+              }
+            >
+              {t('interviews.actions.cancelSelected')}
+            </Button>
+          </>
+        }
+      >
+        <Field label={t('bulk.reason.title')}>
+          <Input value={reason} onChange={(e) => setReason(e.target.value)} />
+        </Field>
+      </Dialog>
 
       <ScheduleInterviewDialog
         open={scheduleOpen}

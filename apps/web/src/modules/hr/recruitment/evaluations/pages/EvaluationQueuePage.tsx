@@ -9,6 +9,10 @@ import { useAppSelector } from '../../../../../store';
 import { Can } from '../../../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../../../shared/ui/DataTable';
+import { BulkActionBar } from '../../../../../shared/ui/BulkActionBar';
+import { useTableSelection } from '../../../../../shared/ui/useTableSelection';
+import { Dialog } from '../../../../../shared/ui/Dialog';
+import { Field, Input } from '../../../../../shared/ui/form';
 import { Pagination } from '../../../../../shared/ui/Pagination';
 import { Button } from '../../../../../shared/ui/Button';
 import { Select } from '../../../../../shared/ui/form';
@@ -16,7 +20,7 @@ import { PlusIcon } from '../../../../../shared/ui/icons';
 import { formatDate, localized } from '../../../../../shared/lib/format';
 import { EvaluationStatusBadge } from '../components/EvaluationStatusBadge';
 import { OpenEvaluationDialog } from '../components/OpenEvaluationDialog';
-import { useEvaluations } from '../api/evaluation-queries';
+import { useBulkEvaluations, useEvaluations } from '../api/evaluation-queries';
 import { type EvaluationListParams } from '../api/evaluation-api';
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -60,6 +64,24 @@ export const EvaluationQueuePage = (): JSX.Element => {
 
   const { data, isLoading, isError, error, refetch } = useEvaluations(params);
   const rows = data?.items ?? [];
+
+  // Bulk decide (RW10/RW17). A selection can only be decided together when it belongs to ONE
+  // phase and every row is still waiting — the backend enforces both, and the UI offers the
+  // actions only when they can actually apply.
+  const rowIds = useMemo(() => rows.map((e) => e.id), [rows]);
+  const selection = useTableSelection(rowIds);
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [reason, setReason] = useState('');
+  const bulk = useBulkEvaluations(() => {
+    selection.clear();
+    setRejectOpen(false);
+    setReason('');
+  });
+  const picked = rows.filter((e) => selection.selectedIds.has(e.id));
+  const phaseIds = new Set(picked.map((e) => e.phaseId));
+  const decidable = picked.filter((e) => e.status === 'waiting');
+  const canDecide = phaseIds.size === 1 && decidable.length === picked.length && picked.length > 0;
+  const phaseId = [...phaseIds][0] ?? '';
 
   const columns: Column<EvaluationDto>[] = [
     {
@@ -113,7 +135,30 @@ export const EvaluationQueuePage = (): JSX.Element => {
             ))}
           </Select>
         </div>
+        <Can permission="evaluation.manage">
+          <BulkActionBar count={selection.count} onClear={selection.clear}>
+            <Button
+              size="sm"
+              loading={bulk.isPending}
+              disabled={!canDecide}
+              onClick={() =>
+                void bulk.mutateAsync({ action: 'approve', ids: selection.ids, phaseId })
+              }
+            >
+              {t('evaluations.actions.approveSelected')}
+            </Button>
+            <Button size="sm" variant="danger" disabled={!canDecide} onClick={() => setRejectOpen(true)}>
+              {t('evaluations.actions.rejectSelected')}
+            </Button>
+            {!canDecide && selection.count > 0 && (
+              <span className="text-xs text-slate-600 dark:text-slate-300">
+                {t('evaluations.bulk.samePhaseOnly')}
+              </span>
+            )}
+          </BulkActionBar>
+        </Can>
         <DataTable
+          selection={selection}
           columns={columns}
           rows={rows}
           rowKey={(e) => e.id}
@@ -134,6 +179,38 @@ export const EvaluationQueuePage = (): JSX.Element => {
       </div>
 
       <OpenEvaluationDialog open={openDialog} onClose={() => setOpenDialog(false)} />
+      <Dialog
+        open={rejectOpen}
+        onClose={() => setRejectOpen(false)}
+        title={t('evaluations.actions.rejectSelected')}
+        description={t('bulk.reason.required')}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setRejectOpen(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              variant="danger"
+              loading={bulk.isPending}
+              disabled={reason.trim() === ''}
+              onClick={() =>
+                void bulk.mutateAsync({
+                  action: 'reject',
+                  ids: selection.ids,
+                  phaseId,
+                  reason: reason.trim(),
+                })
+              }
+            >
+              {t('evaluations.actions.rejectSelected')}
+            </Button>
+          </>
+        }
+      >
+        <Field label={t('bulk.reason.title')}>
+          <Input value={reason} onChange={(e) => setReason(e.target.value)} />
+        </Field>
+      </Dialog>
     </PageContainer>
   );
 };

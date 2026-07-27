@@ -48,7 +48,7 @@ const fileSchema = new Schema<FileDoc>(
     displayName: { type: String, required: true },
     description: { type: String, default: null },
     mime: { type: String, required: true },
-    extension: { type: String, required: true, default: '' },
+    extension: { type: String, default: '' },
     size: { type: Number, required: true, min: 0 },
     checksum: { type: String, required: true },
     categoryId: { type: Schema.Types.ObjectId, required: true },

@@ -16,3 +16,8 @@ export {
   resetRequisitionValidator,
   type RequisitionReferenceValidator,
 } from './requisition-ref';
+export {
+  setStageMaterializer,
+  resetStageMaterializer,
+  type StageMaterializer,
+} from './stage-materializer-seam';

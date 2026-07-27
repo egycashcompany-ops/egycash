@@ -12,6 +12,9 @@ import {
   type ApplicantDto,
   type BulkActionResultDto,
   type EvaluationDto,
+  type RecruitmentStageCountsDto,
+  type RecruitmentTimelineEntryDto,
+  type ReturnToStagePreviewDto,
   type EvaluationPhaseDto,
   type InterviewDto,
   type ScreeningDto,
@@ -20,6 +23,7 @@ import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { buildApp } from '../../src/app';
 import { moduleManifests } from '../../src/modules';
 import { hrPermissions } from '../../src/modules/hr/hr.module';
+import { migrateRecruitmentWorkflow } from '../../src/modules/hr/recruitment/recruitment.migration';
 import { rbacService } from '../../src/platform/rbac';
 import { userService } from '../../src/platform/users';
 import { settingsService } from '../../src/platform/settings';
@@ -230,6 +234,40 @@ describe('evaluation phases — seeded catalog & permissions', () => {
   });
 });
 
+describe('evaluations — appointments (RW9)', () => {
+  it('books and clears the visit on a phase that schedules one', async () => {
+    const applicant = await readyApplicant();
+    const medical = await phaseByKey('medicalExam');
+    const evaluation = (await open(applicant.id, medical.id)).body.data as EvaluationDto;
+
+    const booked = await request(app)
+      .patch(`/api/v1/hr/evaluations/${evaluation.id}/appointment`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ appointmentAt: '2027-05-01T09:00:00.000Z', version: evaluation.version });
+    expect(booked.status).toBe(200);
+    expect((booked.body.data as EvaluationDto).appointmentAt).toBe('2027-05-01T09:00:00.000Z');
+
+    const cleared = await request(app)
+      .patch(`/api/v1/hr/evaluations/${evaluation.id}/appointment`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ appointmentAt: null, version: (booked.body.data as EvaluationDto).version });
+    expect(cleared.status).toBe(200);
+    expect((cleared.body.data as EvaluationDto).appointmentAt).toBeNull();
+  });
+
+  it('refuses an appointment on a phase that does not schedule one', async () => {
+    const applicant = await readyApplicant();
+    const security = await phaseByKey('securityCheck');
+    const evaluation = (await open(applicant.id, security.id)).body.data as EvaluationDto;
+
+    const res = await request(app)
+      .patch(`/api/v1/hr/evaluations/${evaluation.id}/appointment`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ appointmentAt: '2027-05-01T09:00:00.000Z', version: evaluation.version });
+    expect(res.status).toBe(422);
+  });
+});
+
 describe('evaluations — open, files, decision', () => {
   it('opens a waiting evaluation (idempotent) and attaches then removes a file', async () => {
     const applicant = await readyApplicant();
@@ -371,5 +409,368 @@ describe('evaluations — bulk approve/reject (RW10/RW17/I4)', () => {
     const evaluation = (await open((await readyApplicant()).id, phase.id)).body.data as EvaluationDto;
     const res = await bulk({ action: 'approve', ids: [evaluation.id], phaseId: phase.id }, aliceToken);
     expect(res.status).toBe(403);
+  });
+});
+
+describe('recruitment — aggregated stage counters (RW15/I3)', () => {
+  const counts = async (token = adminToken): Promise<RecruitmentStageCountsDto> => {
+    const res = await request(app)
+      .get('/api/v1/hr/recruitment/stage-counts')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    return res.body.data as RecruitmentStageCountsDto;
+  };
+
+  const stageByKey = (dto: RecruitmentStageCountsDto, key: string) =>
+    dto.stages.find((s) => s.key === key);
+
+  it('returns every stage once, in display order, with a generation timestamp', async () => {
+    const dto = await counts();
+    expect(new Date(dto.generatedAt).getTime()).not.toBeNaN();
+    expect(dto.stages.map((s) => s.order)).toEqual(dto.stages.map((_, i) => i));
+
+    const keys = dto.stages.map((s) => s.key);
+    expect(keys).toContain('applicants');
+    expect(keys).toContain('screening');
+    expect(keys).toContain('jobOffers');
+    expect(keys).toContain('employeesReady');
+    expect(new Set(keys).size).toBe(keys.length);
+
+    // The two catalog-driven kinds get one entry per active stage / phase.
+    const phaseList = await phases();
+    for (const phase of phaseList.filter((p) => p.active)) {
+      expect(keys).toContain(`evaluation:${phase.id}`);
+    }
+    const evaluation = stageByKey(dto, `evaluation:${(await phaseByKey('securityCheck')).id}`);
+    expect(evaluation?.kind).toBe('evaluation');
+    expect(evaluation?.refId).toBe((await phaseByKey('securityCheck')).id);
+    expect(evaluation?.name?.en).toBe((await phaseByKey('securityCheck')).name.en);
+  });
+
+  it('counts the waiting bucket, and moves an applicant between buckets on a decision', async () => {
+    const phase = await phaseByKey('securityCheck');
+    const key = `evaluation:${phase.id}`;
+    const before = stageByKey(await counts(), key);
+
+    const evaluation = (await open((await readyApplicant()).id, phase.id)).body.data as EvaluationDto;
+    const opened = stageByKey(await counts(), key);
+    expect(opened?.count).toBe((before?.count ?? 0) + 1);
+    expect(opened?.buckets.waiting).toBe(opened?.count);
+
+    await decide(evaluation.id, { decision: 'approved', version: evaluation.version });
+    const decided = stageByKey(await counts(), key);
+    // The record left `waiting` for `approved` — the navigation number drops, the tab badge rises.
+    expect(decided?.count).toBe(before?.count ?? 0);
+    expect(decided?.buckets.approved).toBe((opened?.buckets.approved ?? 0) + 1);
+  });
+
+  it('omits stages the caller cannot view rather than reporting them as zero', async () => {
+    const dto = await counts(aliceToken); // no HR permissions at all
+    expect(dto.stages).toEqual([]);
+  });
+});
+
+describe('recruitment — boot migration (I8, idempotent)', () => {
+  // Only the seeded three — an earlier test in this file adds an admin-created phase.
+  const SEEDED = ['securityCheck', 'drivingTest', 'medicalExam'];
+
+  const phaseShape = async () =>
+    (await phases())
+      .filter((p) => p.active && SEEDED.includes(p.key))
+      .map((p) => ({ key: p.key, order: p.order, kind: p.kind, resource: p.permissionResource }));
+
+  it('leaves the seeded catalog in business order, with Medical last', async () => {
+    expect(await phaseShape()).toEqual([
+      { key: 'securityCheck', order: 1, kind: 'batch', resource: 'securityCheck' },
+      { key: 'drivingTest', order: 2, kind: 'batch', resource: 'drivingTest' },
+      { key: 'medicalExam', order: 3, kind: 'individual', resource: 'medicalCheck' },
+    ]);
+  });
+
+  it('is a no-op when re-run — the reorder never fires twice', async () => {
+    const before = await phaseShape();
+    await migrateRecruitmentWorkflow();
+    await migrateRecruitmentWorkflow();
+    expect(await phaseShape()).toEqual(before);
+  });
+
+  it('leaves live records untouched on a second run', async () => {
+    const phase = await phaseByKey('securityCheck');
+    const evaluation = (await open((await readyApplicant()).id, phase.id)).body.data as EvaluationDto;
+    await migrateRecruitmentWorkflow();
+
+    const after = await request(app)
+      .get(`/api/v1/hr/evaluations/${evaluation.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(after.status).toBe(200);
+    const dto = after.body.data as EvaluationDto;
+    expect(dto.status).toBe('waiting');
+    expect(dto.version).toBe(evaluation.version);
+  });
+});
+
+describe('recruitment — return to an earlier stage (RW13/A8)', () => {
+  const preview = (applicantId: string, kind: string, refId?: string) =>
+    request(app)
+      .get(`/api/v1/hr/applicants/${applicantId}/return-to-stage/preview`)
+      .query(refId === undefined ? { kind } : { kind, refId })
+      .set('Authorization', `Bearer ${adminToken}`);
+
+  const returnTo = (
+    applicantId: string,
+    target: Record<string, unknown>,
+    body: Record<string, unknown>,
+    token = adminToken,
+  ) =>
+    request(app)
+      .post(`/api/v1/hr/applicants/${applicantId}/return-to-stage`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ target, ...body });
+
+  const applicantVersion = async (id: string): Promise<number> => {
+    const res = await request(app)
+      .get(`/api/v1/hr/applicants/${id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    return (res.body.data as ApplicantDto).version;
+  };
+
+  const evaluationsOf = async (applicantId: string): Promise<EvaluationDto[]> => {
+    const res = await request(app)
+      .get('/api/v1/hr/evaluations')
+      .query({ applicantId, pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    return res.body.data as EvaluationDto[];
+  };
+
+  it('previews the consequences without changing anything', async () => {
+    const applicant = await readyApplicant();
+    const phase = await phaseByKey('securityCheck');
+    const evaluation = (await open(applicant.id, phase.id)).body.data as EvaluationDto;
+    const stage1 = await stageId('firstInterview');
+
+    const res = await preview(applicant.id, 'interview', stage1);
+    expect(res.status).toBe(200);
+    const dto = res.body.data as ReturnToStagePreviewDto;
+    expect(dto.target.refId).toBe(stage1);
+    expect(dto.newAttempt).toBeGreaterThan(1);
+    expect(dto.supersedes.map((s) => s.entityId)).toContain(evaluation.id);
+
+    // Nothing moved.
+    const after = await request(app)
+      .get(`/api/v1/hr/evaluations/${evaluation.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect((after.body.data as EvaluationDto).status).toBe('waiting');
+  });
+
+  it('supersedes forward records without deleting them and opens the next attempt', async () => {
+    const applicant = await readyApplicant();
+    const phase = await phaseByKey('securityCheck');
+    const evaluation = (await open(applicant.id, phase.id)).body.data as EvaluationDto;
+    await decide(evaluation.id, { decision: 'approved', version: evaluation.version });
+    const stage1 = await stageId('firstInterview');
+
+    const res = await returnTo(
+      applicant.id,
+      { kind: 'interview', refId: stage1 },
+      { reason: 'the wrong candidate was interviewed', version: await applicantVersion(applicant.id) },
+    );
+    expect(res.status).toBe(200);
+    const body = res.body.data as { newAttempt: number; superseded: { entityId: string }[] };
+    expect(body.newAttempt).toBeGreaterThan(1);
+    expect(body.superseded.map((s) => s.entityId)).toContain(evaluation.id);
+
+    // The decided evaluation still exists, with its decision intact — only the marker was added.
+    const kept = await request(app)
+      .get(`/api/v1/hr/evaluations/${evaluation.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(kept.status).toBe(200);
+    expect((kept.body.data as EvaluationDto).status).toBe('approved');
+
+    // The interview stage re-opened: a fresh waiting round on attempt 2.
+    const rounds = await request(app)
+      .get('/api/v1/hr/interviews')
+      .query({ applicantId: applicant.id, stageId: stage1, pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    const waiting = (rounds.body.data as InterviewDto[]).filter((i) => i.status === 'waiting');
+    expect(waiting).toHaveLength(1);
+
+    // The superseded approval no longer counts: the candidate is back in the interviews, so the
+    // evaluation phase refuses to open until they clear them again. The retired record is still
+    // listed — superseded, never deleted.
+    expect((await open(applicant.id, phase.id)).status).toBe(422);
+    expect((await evaluationsOf(applicant.id)).map((e) => e.id)).toContain(evaluation.id);
+  });
+
+  it('refuses a target that is not behind the applicant', async () => {
+    // A newly registered applicant stands AT screening, so screening is not behind them and
+    // there is nothing to undo.
+    const applicant = await registerApplicant();
+    const res = await returnTo(
+      applicant.id,
+      { kind: 'screening' },
+      { reason: 'nothing to undo', version: await applicantVersion(applicant.id) },
+    );
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+  });
+
+  it('requires a reason and the returnToStage permission', async () => {
+    const applicant = await readyApplicant();
+    const stage1 = await stageId('firstInterview');
+    const version = await applicantVersion(applicant.id);
+
+    expect((await returnTo(applicant.id, { kind: 'interview', refId: stage1 }, { version })).status).toBe(400);
+    const denied = await returnTo(
+      applicant.id,
+      { kind: 'interview', refId: stage1 },
+      { reason: 'no rights', version },
+      aliceToken,
+    );
+    expect(denied.status).toBe(403);
+  });
+});
+
+describe('recruitment — persisted waiting queues (I11)', () => {
+  const stageRows = async (path: string, query: Record<string, unknown>) => {
+    const res = await request(app)
+      .get(path)
+      .query({ ...query, pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    return res.body.data as { id: string; status: string }[];
+  };
+
+  it('opens the screening row at registration, not on first use', async () => {
+    const applicant = await registerApplicant();
+    const rows = await stageRows('/api/v1/hr/screenings', { applicantId: applicant.id });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.status).toBe('waiting');
+  });
+
+  it('opens the first interview round when screening is accepted', async () => {
+    const applicant = await registerApplicant();
+    const screening = (
+      await request(app)
+        .post('/api/v1/hr/screenings')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ applicantId: applicant.id })
+    ).body.data as ScreeningDto;
+    expect(await stageRows('/api/v1/hr/interviews', { applicantId: applicant.id })).toHaveLength(0);
+
+    await request(app)
+      .post(`/api/v1/hr/screenings/${screening.id}/decide`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ outcome: 'accepted', version: screening.version });
+
+    const rounds = await stageRows('/api/v1/hr/interviews', { applicantId: applicant.id });
+    expect(rounds).toHaveLength(1);
+    expect(rounds[0]?.status).toBe('waiting');
+  });
+
+  it('opens every applicable evaluation phase once the interviews are cleared', async () => {
+    const applicant = await readyApplicant();
+    const rows = await stageRows('/api/v1/hr/evaluations', { applicantId: applicant.id });
+    // securityCheck + medicalExam apply to everyone; drivingTest only to drivers.
+    expect(rows.length).toBeGreaterThanOrEqual(2);
+    expect(rows.every((r) => r.status === 'waiting')).toBe(true);
+    const keys = (
+      await request(app)
+        .get('/api/v1/hr/evaluations')
+        .query({ applicantId: applicant.id, pageSize: 50 })
+        .set('Authorization', `Bearer ${adminToken}`)
+    ).body.data as EvaluationDto[];
+    expect(keys.map((e) => e.phaseKey)).toContain('securityCheck');
+    expect(keys.map((e) => e.phaseKey)).not.toContain('drivingTest');
+  });
+
+  it('counts the waiting rows in the aggregated counters', async () => {
+    const applicant = await registerApplicant();
+    const res = await request(app)
+      .get('/api/v1/hr/recruitment/stage-counts')
+      .set('Authorization', `Bearer ${adminToken}`);
+    const screening = (res.body.data as RecruitmentStageCountsDto).stages.find(
+      (s) => s.key === 'screening',
+    );
+    expect(screening?.count).toBeGreaterThan(0);
+    expect((await stageRows('/api/v1/hr/screenings', { applicantId: applicant.id }))[0]?.status).toBe(
+      'waiting',
+    );
+  });
+});
+
+describe('recruitment — candidate timeline (RW14/I5)', () => {
+  const timelineOf = async (
+    applicantId: string,
+    query: Record<string, unknown> = {},
+  ): Promise<RecruitmentTimelineEntryDto[]> => {
+    const res = await request(app)
+      .get(`/api/v1/hr/applicants/${applicantId}/timeline`)
+      .query(query)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    return res.body.data as RecruitmentTimelineEntryDto[];
+  };
+
+  it('records the workflow events a candidate produces, newest first', async () => {
+    const applicant = await readyApplicant();
+    const entries = await timelineOf(applicant.id);
+    expect(entries.length).toBeGreaterThan(0);
+    expect(entries.map((e) => e.type)).toContain('screeningDecided');
+    expect(entries.map((e) => e.type)).toContain('interviewCompleted');
+    // Newest first, and every entry carries its own immutable id.
+    const times = entries.map((e) => new Date(e.at).getTime());
+    expect([...times].sort((a, b) => b - a)).toEqual(times);
+    expect(new Set(entries.map((e) => e.eventId)).size).toBe(entries.length);
+  });
+
+  it('filters by entry type', async () => {
+    const applicant = await readyApplicant();
+    const decided = await timelineOf(applicant.id, { type: 'screeningDecided' });
+    expect(decided.length).toBeGreaterThan(0);
+    expect(decided.every((e) => e.type === 'screeningDecided')).toBe(true);
+  });
+
+  it('appends a user-authored note and needs the edit permission', async () => {
+    const applicant = await registerApplicant();
+    const denied = await request(app)
+      .post(`/api/v1/hr/applicants/${applicant.id}/timeline/notes`)
+      .set('Authorization', `Bearer ${aliceToken}`)
+      .send({ note: 'no rights' });
+    expect(denied.status).toBe(403);
+
+    const res = await request(app)
+      .post(`/api/v1/hr/applicants/${applicant.id}/timeline/notes`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ note: 'called the candidate, no answer' });
+    expect(JSON.stringify(res.body)).toContain('success');
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect((res.body.data as RecruitmentTimelineEntryDto).type).toBe('note');
+
+    const notes = await timelineOf(applicant.id, { type: 'note' });
+    expect(notes.map((e) => e.note)).toContain('called the candidate, no answer');
+  });
+
+  it('keeps the entries of a superseded attempt, flagged rather than removed', async () => {
+    const applicant = await readyApplicant();
+    const before = await timelineOf(applicant.id);
+    const stage1 = await stageId('firstInterview');
+
+    const version = (
+      (
+        await request(app)
+          .get(`/api/v1/hr/applicants/${applicant.id}`)
+          .set('Authorization', `Bearer ${adminToken}`)
+      ).body.data as ApplicantDto
+    ).version;
+    const returned = await request(app)
+      .post(`/api/v1/hr/applicants/${applicant.id}/return-to-stage`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ target: { kind: 'interview', refId: stage1 }, reason: 'panel error', version });
+    expect(returned.status).toBe(200);
+
+    const after = await timelineOf(applicant.id);
+    // Nothing was removed, and the return itself is on the record with its reason.
+    expect(after.length).toBeGreaterThanOrEqual(before.length);
+    const ret = after.find((e) => e.type === 'returnedToStage');
+    expect(ret?.reason).toBe('panel error');
   });
 });

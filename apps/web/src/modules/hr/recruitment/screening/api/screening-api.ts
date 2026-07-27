@@ -7,6 +7,8 @@ import {
   type DecideScreening,
   type Paginated,
   type ScreeningDto,
+  type BulkActionResultDto,
+  type BulkScreenings,
 } from '@ecms/contracts';
 import { buildQuery, get, getPage, patch, post } from '../../../../../shared/lib/api-client';
 
@@ -35,3 +37,7 @@ export const decideScreening = (id: string, body: DecideScreening): Promise<Scre
 /** Edit an already-decided screening (D7: a decision is not final; fully audited). */
 export const redecideScreening = (id: string, body: DecideScreening): Promise<ScreeningDto> =>
   patch<ScreeningDto>(`/hr/screenings/${id}/decision`, body);
+
+/** Bulk approve/reject a screening selection (RW17/I4) — answers a partial-success envelope. */
+export const bulkScreenings = (body: BulkScreenings): Promise<BulkActionResultDto> =>
+  post<BulkActionResultDto>('/hr/screenings/bulk', body);

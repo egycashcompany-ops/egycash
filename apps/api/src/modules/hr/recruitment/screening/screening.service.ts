@@ -39,15 +39,25 @@ const BINDING = {
 } as unknown as StageBinding<never>;
 
 class ScreeningService {
-  /** Open the (single) screening for a live applicant. */
+  /**
+   * Open the screening for a live applicant. The record is normally materialized the moment the
+   * applicant is registered (I11), so this is a find-or-create against the LIVE attempt: it
+   * returns the waiting record (adding the note, if given) rather than refusing. An already
+   * DECIDED screening still conflicts — re-opening one is a return-to-stage, not a create.
+   */
   async create(ctx: AuthContext, input: CreateScreening, scope: ScopeSelector): Promise<ScreeningDoc> {
     const applicant = await applicantService.getById(input.applicantId, scope);
     if (applicant.status !== 'new') {
       throw new BusinessRuleError('only an applicant in the active pipeline can be screened');
     }
     const existing = await screeningRepository.findByApplicantId(input.applicantId);
+    if (existing !== null && existing.status !== 'waiting') {
+      throw new ConflictError('this applicant already has a decided screening');
+    }
     if (existing !== null) {
-      throw new ConflictError('this applicant already has a screening');
+      return input.note === undefined
+        ? existing
+        : this.addNote(ctx, String(existing._id), { note: input.note, version: existing.__v }, scope);
     }
 
     const now = new Date();
@@ -133,11 +143,13 @@ class ScreeningService {
     scope: ScopeSelector,
   ): Promise<AwaitingScreeningDto[]> {
     const applicants = await applicantService.listActive(query.limit, query.branchId, scope);
-    const withScreening = await screeningRepository.applicantIdsWithScreening(
+    // The queue is the applicants whose screening record is still `waiting` (I11) — a real row,
+    // not "no row yet".
+    const awaiting = await screeningRepository.applicantIdsAwaitingDecision(
       applicants.map((a) => String(a._id)),
     );
     return applicants
-      .filter((a) => !withScreening.has(String(a._id)))
+      .filter((a) => awaiting.has(String(a._id)))
       .map((a) => ({
         applicantId: String(a._id),
         applicantCode: a.code,
@@ -305,6 +317,26 @@ class ScreeningService {
         reason: input.reason ?? null,
       },
     );
+  }
+
+  /** Screening counts per status over the LIVE attempts, for the stage counters (RW15/I3). */
+  async statusCounts(branchId: string | undefined, scope: ScopeSelector): Promise<Record<string, number>> {
+    return screeningRepository.countByStatus(
+      {
+        supersededAt: null,
+        ...(branchId === undefined ? {} : { branchId: new Types.ObjectId(branchId) }),
+      },
+      scope,
+    );
+  }
+
+  /**
+   * How the workflow engine addresses this stage (I13). Exposed so cross-stage orchestration —
+   * a return to an earlier stage — drives this stage through the SAME engine, never by touching
+   * the collection directly.
+   */
+  get workflowBinding(): StageBinding<never> {
+    return BINDING;
   }
 }
 

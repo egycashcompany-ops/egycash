@@ -21,6 +21,7 @@ import { notificationTemplateService } from '../../platform/notifications';
 import { applicantSourceService } from './recruitment/applicants';
 import { interviewStageService } from './recruitment/interviews';
 import { ensureEvaluationCategory, evaluationPhaseService } from './recruitment/evaluations';
+import { ensureEvaluationBatchCategory } from './recruitment/evaluation-batches';
 import { ensureHiringDocsCategory, hiringDocumentTypeService } from './recruitment/hiring-documents';
 import { migrateEmployeesToRegistry } from './employee-management/employees';
 import { migrateRecruitmentLegacy } from './recruitment/recruitment.migration';
@@ -433,6 +434,7 @@ export const seedHrRecruitment = async (): Promise<void> => {
     await evaluationPhaseService.ensure(phase);
   }
   await ensureEvaluationCategory();
+  await ensureEvaluationBatchCategory();
   await ensureInterviewTemplates();
   await ensureOfferTemplates();
   await ensureEmployeeTemplates();

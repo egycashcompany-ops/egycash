@@ -125,7 +125,7 @@ class JobOfferService {
       throw new BusinessRuleError('applicant must be moved to the Job Offer stage before an offer');
     }
     const existingActive = await jobOfferRepository.findActiveByApplicantId(input.applicantId);
-    if (existingActive !== null) {
+    if (existingActive !== null && existingActive.status !== 'waiting') {
       throw new ConflictError('this applicant already has an active offer');
     }
     // An accepted offer is the end of this stage — no further offers (keeps the accepted
@@ -136,38 +136,41 @@ class JobOfferService {
     }
 
     const terms = buildTerms(input.terms);
+    // The offer number is allocated when the record LEAVES the queue for `draft` — a waiting
+    // offer has none yet (I11).
     const code = await nextOfferNumber(new Date().getUTCFullYear());
-    const attempt = await jobOfferRepository.nextAttemptFor(input.applicantId);
-    const doc = await jobOfferRepository.create(
-      {
+
+    // The queue row is materialized when HR moves the applicant to this stage (I11), so drafting
+    // is a transition on that row; only a first-ever offer creates one.
+    const waiting =
+      existingActive ??
+      (
+        (await recruitmentWorkflowEngine.ensureStageRecord({
+          binding: BINDING,
+          applicantId: input.applicantId,
+          applicantCode: applicant.code,
+          applicantName: applicant.fullNameAr,
+          branchId: applicant.branchId,
+          attempt: await jobOfferRepository.nextAttemptFor(input.applicantId),
+          actorUserId: ctx.userId,
+          placement: applicant.placement,
+          placementLabel: applicant.placementLabel,
+        } as never)) as unknown as { record: JobOfferDoc }
+      ).record;
+
+    const { record: doc } = (await recruitmentWorkflowEngine.transition({
+      binding: BINDING,
+      id: String(waiting._id),
+      to: 'draft',
+      actorUserId: ctx.userId,
+      set: {
         code,
-        attempt,
-        applicantId: new Types.ObjectId(input.applicantId),
-        applicantCode: applicant.code,
-        applicantName: applicant.fullNameAr,
         branchId: terms.branchId,
-        status: 'draft',
         terms,
         revisionNumber: 1,
-        revisions: [],
-        acceptedSnapshot: null,
-        sentAt: null,
-        sentBy: null,
-        respondedAt: null,
-        responseNote: null,
-        rejectionReason: null,
-        withdrawnReason: null,
-        withdrawnBy: null,
-        withdrawnAt: null,
-        expiredAt: null,
       },
-      { by: ctx.userId },
-    );
-    await auditService.record({
-      entityRef: entityRef(String(doc._id)),
-      action: 'create',
-      changes: [{ field: 'status', old: null, new: 'draft' }],
-    });
+    } as never)) as unknown as OfferTransition;
+
     await emit(HrOfferEvents.OfferCreated, this.payload(doc));
     return doc;
   }
@@ -444,6 +447,46 @@ class JobOfferService {
         reason: input.reason ?? null,
       },
     );
+  }
+
+  /** Offer counts per status over the LIVE attempts, for the stage counters (RW15/I3). */
+  async statusCounts(branchId: string | undefined, scope: ScopeSelector): Promise<Record<string, number>> {
+    return jobOfferRepository.countByStatus(
+      {
+        supersededAt: null,
+        ...(branchId === undefined ? {} : { branchId: new Types.ObjectId(branchId) }),
+      },
+      scope,
+    );
+  }
+
+  /**
+   * The Employees Ready queue (A6): accepted offers not yet converted into an Employee. Readable
+   * from a fact on the offer rather than from the absence of an Employee row (I11).
+   */
+  async countEmployeesReady(branchId: string | undefined, scope: ScopeSelector): Promise<number> {
+    return jobOfferRepository.count(
+      {
+        status: 'accepted',
+        hiredEmployeeId: null,
+        ...(branchId === undefined ? {} : { branchId: new Types.ObjectId(branchId) }),
+      },
+      scope,
+    );
+  }
+
+  /**
+   * How the workflow engine addresses this stage (I13). Exposed so cross-stage orchestration —
+   * a return to an earlier stage — drives this stage through the SAME engine, never by touching
+   * the collection directly.
+   */
+  get workflowBinding(): StageBinding<never> {
+    return BINDING;
+  }
+
+  /** Every offer an applicant has ever held, newest first — read by return-to-stage. */
+  async listByApplicant(applicantId: string): Promise<JobOfferDoc[]> {
+    return jobOfferRepository.findByApplicant(applicantId);
   }
 }
 

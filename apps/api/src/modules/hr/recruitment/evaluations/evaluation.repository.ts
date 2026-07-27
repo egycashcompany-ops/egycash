@@ -39,8 +39,10 @@ class EvaluationRepository extends BaseRepository<EvaluationDoc> {
       .findOne({
         applicantId: new Types.ObjectId(applicantId),
         phaseId: new Types.ObjectId(phaseId),
+        supersededAt: null,
         isDeleted: false,
       })
+      .sort({ attempt: -1 })
       .lean<EvaluationDoc>()
       .exec();
   }

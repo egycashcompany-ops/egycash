@@ -11,6 +11,13 @@ import { buildApplicantSourcesRouter, buildApplicantsRouter } from './recruitmen
 import { buildScreeningsRouter } from './recruitment/screening';
 import { buildInterviewStagesRouter, buildInterviewsRouter } from './recruitment/interviews';
 import { buildEvaluationPhasesRouter, buildEvaluationsRouter } from './recruitment/evaluations';
+import {
+  buildEvaluationBatchesRouter,
+  buildEvaluationBatchPackage,
+} from './recruitment/evaluation-batches';
+import { buildRecruitmentCountersRouter } from './recruitment/counters';
+import { buildReturnToStageRouter } from './recruitment/return-to-stage';
+import { buildRecruitmentTimelineRouter } from './recruitment/timeline/recruitment-timeline.routes';
 import { buildJobOffersRouter, jobOfferService } from './recruitment/job-offers';
 import { buildEmployeesRouter, employeeService } from './employee-management/employees';
 import { buildEmployeeActionsRouter, employeeActionService } from './employee-management/employee-actions';
@@ -19,6 +26,7 @@ import { buildEmployeeFilesRouter } from './employee-management/employee-file';
 import { buildHolidaysRouter, buildWorkCalendarRouter, registerHrWorkCalendarSettings } from './work-calendar';
 import { registerHrIdentitySeams } from './employee-management/employees/identity-seams';
 import { registerRecruitmentWorkflowConsumers } from './recruitment/workflow';
+import { registerQueueMaterializer } from './recruitment/materializer';
 import { buildLeaveTypesRouter } from './leave-management/leave-types';
 import { buildLeaveBalancesRouter, leaveBalanceService } from './leave-management/leave-balances';
 import {
@@ -42,6 +50,7 @@ registerHrIdentitySeams();
 // Workflow consumers (I15): the timeline projection and the audit trail react to published
 // workflow events; the engine itself performs no side effects.
 registerRecruitmentWorkflowConsumers();
+registerQueueMaterializer();
 
 const applicantPermissions = declarePermissions(
   'hr',
@@ -52,6 +61,12 @@ const applicantPermissions = declarePermissions(
     { action: 'verifyIdentity', name: { en: 'Verify applicant identity', ar: 'توثيق هوية المتقدم' } },
     // Offer eligibility is never automatic: HR explicitly moves an applicant to the Job Offer stage.
     { action: 'moveToOffer', name: { en: 'Move applicant to job offer', ar: 'نقل المتقدم لمرحلة عرض العمل' } },
+    // RW13 — send a candidate back to an earlier stage. Nothing is deleted; forward records are
+    // superseded and the target re-opens on a new attempt.
+    {
+      action: 'returnToStage',
+      name: { en: 'Return applicant to an earlier stage', ar: 'إعادة المتقدم لمرحلة سابقة' },
+    },
   ],
 );
 
@@ -105,6 +120,47 @@ const evaluationPermissions = declarePermissions(
   { en: 'evaluations', ar: 'التقييمات' },
   ['view'],
   [{ action: 'manage', name: { en: 'Manage evaluations', ar: 'إدارة التقييمات' } }],
+);
+
+// RW7 — one concrete resource per business check, so a security officer, a driving examiner and
+// a company doctor each see only their own phase. A phase row points at its resource through
+// `permissionResource`; admin-created phases keep the generic `evaluation` resource.
+//
+// Back-compat: the generic `evaluation.view` / `evaluation.manage` grants are a SUPERSET —
+// holding one satisfies any phase's check, so existing roles keep working with no migration.
+const securityCheckPermissions = declarePermissions(
+  'hr',
+  'securityCheck',
+  { en: 'security checks', ar: 'التحريات الأمنية' },
+  ['view'],
+  [
+    { action: 'manage', name: { en: 'Manage security checks', ar: 'إدارة التحريات الأمنية' } },
+    { action: 'manageBatch', name: { en: 'Manage security check batches', ar: 'إدارة دفعات التحريات الأمنية' } },
+    { action: 'export', name: { en: 'Export security checks', ar: 'تصدير التحريات الأمنية' } },
+  ],
+);
+
+const drivingTestPermissions = declarePermissions(
+  'hr',
+  'drivingTest',
+  { en: 'driving tests', ar: 'اختبارات القيادة' },
+  ['view'],
+  [
+    { action: 'manage', name: { en: 'Manage driving tests', ar: 'إدارة اختبارات القيادة' } },
+    { action: 'manageBatch', name: { en: 'Manage driving test batches', ar: 'إدارة دفعات اختبارات القيادة' } },
+    { action: 'export', name: { en: 'Export driving tests', ar: 'تصدير اختبارات القيادة' } },
+  ],
+);
+
+const medicalCheckPermissions = declarePermissions(
+  'hr',
+  'medicalCheck',
+  { en: 'medical checks', ar: 'الفحوصات الطبية' },
+  ['view'],
+  [
+    { action: 'manage', name: { en: 'Manage medical checks', ar: 'إدارة الفحوصات الطبية' } },
+    { action: 'export', name: { en: 'Export medical checks', ar: 'تصدير الفحوصات الطبية' } },
+  ],
 );
 
 const evaluationPhasePermissions = declarePermissions(
@@ -264,6 +320,9 @@ export const hrPermissions: PermissionDef[] = [
   ...interviewPermissions,
   ...interviewStagePermissions,
   ...evaluationPermissions,
+  ...securityCheckPermissions,
+  ...drivingTestPermissions,
+  ...medicalCheckPermissions,
   ...evaluationPhasePermissions,
   ...jobOfferPermissions,
   ...employeePermissions,
@@ -281,6 +340,8 @@ export const hrModule: ModuleManifest = {
   requiresPlatform: '^2.1',
   permissions: hrPermissions,
   routes: [
+    { prefix: '/hr/applicants', router: buildRecruitmentTimelineRouter() },
+    { prefix: '/hr/applicants', router: buildReturnToStageRouter() },
     { prefix: '/hr/applicants', router: buildApplicantsRouter() },
     { prefix: '/hr/applicant-sources', router: buildApplicantSourcesRouter() },
     { prefix: '/hr/screenings', router: buildScreeningsRouter() },
@@ -288,6 +349,8 @@ export const hrModule: ModuleManifest = {
     { prefix: '/hr/interview-stages', router: buildInterviewStagesRouter() },
     { prefix: '/hr/evaluations', router: buildEvaluationsRouter() },
     { prefix: '/hr/evaluation-phases', router: buildEvaluationPhasesRouter() },
+    { prefix: '/hr/evaluation-batches', router: buildEvaluationBatchesRouter() },
+    { prefix: '/hr/recruitment', router: buildRecruitmentCountersRouter() },
     { prefix: '/hr/job-offers', router: buildJobOffersRouter() },
     { prefix: '/hr/employees', router: buildEmployeeActionsRouter() },
     { prefix: '/hr/employees', router: buildLeaveBalancesRouter() },
@@ -313,6 +376,7 @@ export const hrModule: ModuleManifest = {
     'hr_interview_stages',
     'hr_evaluations',
     'hr_evaluation_phases',
+    'hr_evaluation_batches',
     'hr_recruitment_timeline',
     'hr_recruitment_events',
     'hr_job_offers',
@@ -341,6 +405,18 @@ export const hrModule: ModuleManifest = {
         const payload = envelope.payload as { contractId?: string };
         if (typeof payload.contractId === 'string') {
           await renderContractPdf(payload.contractId);
+        }
+      },
+    },
+    {
+      // RW8b — the reliable tier executes in the WORKER: build the official PDF list and the
+      // ZIP export package for an issued batch. Issuing never waits on chromium.
+      event: 'hr.evaluationBatch.generated',
+      handlerId: 'evaluationBatches.buildPackage',
+      handler: async (envelope) => {
+        const payload = envelope.payload as { batchId?: string };
+        if (typeof payload.batchId === 'string') {
+          await buildEvaluationBatchPackage(payload.batchId);
         }
       },
     },

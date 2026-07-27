@@ -11,6 +11,7 @@ import {
   type BulkActionResultDto,
   type BulkEvaluations,
   type OpenEvaluation,
+  type SetEvaluationAppointment,
   type Paginated,
   type UploadEvaluationFile,
 } from '@ecms/contracts';
@@ -21,6 +22,7 @@ import { emit } from '../../../../platform/kernel/event-bus';
 import { fileService, type UploadedBinary } from '../../../../platform/files';
 import { applicantService } from '../applicants';
 import { interviewService } from '../interviews';
+import { recruitmentTimelineService } from '../timeline';
 import { recruitmentWorkflowEngine, runBulk, type StageBinding } from '../workflow';
 import { EvaluationModel } from './evaluation.model';
 import { evaluationRepository, type EvaluationListFilter } from './evaluation.repository';
@@ -248,6 +250,79 @@ class EvaluationService {
   }
 
   /**
+   * Record or clear the appointment date (RW9). Only phases that declare `appointmentEnabled`
+   * carry one — Medical Check is the individual phase this exists for: HR books the visit on the
+   * applicant's own record, then uploads the result and decides there.
+   */
+  async setAppointment(
+    ctx: AuthContext,
+    id: string,
+    input: SetEvaluationAppointment,
+    scope: ScopeSelector,
+  ): Promise<EvaluationDoc> {
+    const before = await evaluationRepository.getById(id, scope);
+    const phase = await evaluationPhaseRepository.findActiveById(String(before.phaseId));
+    if (phase === null || !phase.appointmentEnabled) {
+      throw new BusinessRuleError('this evaluation phase does not schedule appointments');
+    }
+    const updated = await evaluationRepository.updateById(
+      id,
+      { appointmentAt: input.appointmentAt },
+      { by: ctx.userId, version: input.version, scope },
+    );
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'update',
+      changes: [
+        {
+          field: 'appointmentAt',
+          old: before.appointmentAt === null ? null : before.appointmentAt.toISOString(),
+          new: input.appointmentAt === null ? null : input.appointmentAt.toISOString(),
+        },
+        ...(input.note === undefined ? [] : [{ field: 'note', old: null, new: input.note }]),
+      ],
+    });
+    await recruitmentTimelineService.record({
+      applicantId: String(before.applicantId),
+      applicantCode: before.applicantCode,
+      branchId: before.branchId,
+      type: 'note',
+      stage: { kind: 'evaluation', refId: String(before.phaseId), name: before.phaseName },
+      correlation: { type: 'evaluation', id },
+      entity: { type: 'evaluation', id },
+      discriminator: `appointment:${String(before.attempt)}`,
+      actorUserId: ctx.userId,
+      note:
+        input.appointmentAt === null
+          ? `${before.phaseKey}: appointment cleared`
+          : `${before.phaseKey}: appointment ${input.appointmentAt.toISOString()}`,
+    });
+    return updated;
+  }
+
+  /**
+   * Stamp (or release) the batch this record is being worked under (RW8). The batch feature owns
+   * the coordination record; the evaluation stays the applicant's single phase result, so the
+   * attribution is written here rather than by reaching into the collection from outside.
+   */
+  async attachToBatch(
+    ctx: AuthContext,
+    id: string,
+    batch: { batchId: string; batchCode: string } | null,
+    scope: ScopeSelector,
+  ): Promise<EvaluationDoc> {
+    const before = await evaluationRepository.getById(id, scope);
+    return evaluationRepository.updateById(
+      id,
+      {
+        batchId: batch === null ? null : new Types.ObjectId(batch.batchId),
+        batchCode: batch === null ? null : batch.batchCode,
+      },
+      { by: ctx.userId, version: before.__v, scope },
+    );
+  }
+
+  /**
    * Whether the applicant has cleared every active evaluation phase — every non-driver phase is
    * `approved`, plus any driver phase that was actually opened for them. Used by later stages to
    * gate a Job Offer after the interview + evaluation pipeline.
@@ -257,7 +332,10 @@ class EvaluationService {
       evaluationPhaseRepository.findAllActive(),
       evaluationRepository.findByApplicant(applicantId),
     ]);
-    const byPhase = new Map(evaluations.map((e) => [String(e.phaseId), e]));
+    // A superseded attempt is history, never a gate input (RW13).
+    const byPhase = new Map(
+      evaluations.filter((e) => e.supersededAt === null).map((e) => [String(e.phaseId), e]),
+    );
     return phases.every((phase) => {
       const record = byPhase.get(String(phase._id));
       // Driver-only phases only gate when they were opened for this applicant.
@@ -301,6 +379,33 @@ class EvaluationService {
         reason: input.reason ?? null,
       },
     );
+  }
+
+  /**
+   * Evaluation counts per status, split by phase, over the LIVE attempts — the per-phase numbers
+   * the aggregated counters endpoint reports (RW15/I3). One grouped query for all phases.
+   */
+  async statusCountsByPhase(
+    branchId: string | undefined,
+    scope: ScopeSelector,
+  ): Promise<Record<string, Record<string, number>>> {
+    return evaluationRepository.countByStatusGrouped(
+      'phaseId',
+      {
+        supersededAt: null,
+        ...(branchId === undefined ? {} : { branchId: new Types.ObjectId(branchId) }),
+      },
+      scope,
+    );
+  }
+
+  /**
+   * How the workflow engine addresses this stage (I13). Exposed so cross-stage orchestration —
+   * a return to an earlier stage — drives this stage through the SAME engine, never by touching
+   * the collection directly.
+   */
+  get workflowBinding(): StageBinding<never> {
+    return BINDING;
   }
 }
 

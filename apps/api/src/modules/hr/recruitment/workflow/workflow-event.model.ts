@@ -35,7 +35,7 @@ const workflowEventSchema = new Schema<WorkflowEventDoc>(
     occurredAt: { type: Date, required: true },
     actorUserId: { type: Schema.Types.ObjectId, default: null },
     applicantId: { type: Schema.Types.ObjectId, required: true },
-    applicantCode: { type: String, required: true, default: '' },
+    applicantCode: { type: String, default: '' },
     object: { type: String, enum: WORKFLOW_OBJECTS, required: true },
     entityType: { type: String, default: null },
     entityId: { type: Schema.Types.ObjectId, default: null },

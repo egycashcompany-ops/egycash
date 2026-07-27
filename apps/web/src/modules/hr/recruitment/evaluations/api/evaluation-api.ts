@@ -8,8 +8,11 @@ import {
   type EvaluationDto,
   type EvaluationPhaseDto,
   type OpenEvaluation,
+  type SetEvaluationAppointment,
   type Paginated,
   type UpdateEvaluationPhase,
+  type BulkActionResultDto,
+  type BulkEvaluations,
 } from '@ecms/contracts';
 import { api, buildQuery, get, getPage, patch, post, upload } from '../../../../../shared/lib/api-client';
 
@@ -27,6 +30,12 @@ export const openEvaluation = (body: OpenEvaluation): Promise<EvaluationDto> =>
 /** Decide (approve/reject) — re-settable: calling again edits the decision (audited). */
 export const decideEvaluation = (id: string, body: DecideEvaluation): Promise<EvaluationDto> =>
   patch<EvaluationDto>(`/hr/evaluations/${id}/decision`, body);
+
+/** RW9 — book (or clear) the visit on an individual phase that schedules one. */
+export const setEvaluationAppointment = (
+  id: string,
+  body: SetEvaluationAppointment,
+): Promise<EvaluationDto> => patch<EvaluationDto>(`/hr/evaluations/${id}/appointment`, body);
 
 export const uploadEvaluationFile = (
   id: string,
@@ -60,3 +69,7 @@ export const createEvaluationPhase = (body: CreateEvaluationPhase): Promise<Eval
 
 export const updateEvaluationPhase = (id: string, body: UpdateEvaluationPhase): Promise<EvaluationPhaseDto> =>
   patch<EvaluationPhaseDto>(`/hr/evaluation-phases/${id}`, body);
+
+/** Bulk approve/reject one phase's queue (RW10/RW17) — answers a partial-success envelope. */
+export const bulkEvaluations = (body: BulkEvaluations): Promise<BulkActionResultDto> =>
+  post<BulkActionResultDto>('/hr/evaluations/bulk', body);

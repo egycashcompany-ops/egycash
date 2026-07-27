@@ -23,6 +23,7 @@ import {
   listEvaluations,
   openEvaluation,
   removeEvaluationFile,
+  setEvaluationAppointment,
   updateEvaluationPhase,
   uploadEvaluationFile,
 } from './evaluation.controller';
@@ -37,6 +38,7 @@ import {
   ListEvaluationsQuerySchema,
   OpenEvaluationSchema,
   RemoveEvaluationFileSchema,
+  SetEvaluationAppointmentSchema,
   UpdateEvaluationPhaseSchema,
   UploadEvaluationFileSchema,
 } from './evaluation.validation';
@@ -110,6 +112,14 @@ export const buildEvaluationsRouter = (): Router => {
     authorize('evaluation.manage'),
     validate({ body: RemoveEvaluationFileSchema, params: EvaluationFileParamSchema }),
     asyncHandler(removeEvaluationFile),
+  );
+  // RW9 — Medical Check is individual: HR books the visit on the applicant's own record.
+  router.patch(
+    '/:id/appointment',
+    authenticate,
+    authorize('evaluation.manage'),
+    validate({ body: SetEvaluationAppointmentSchema, params: EvaluationIdParamSchema }),
+    asyncHandler(setEvaluationAppointment),
   );
   router.patch(
     '/:id/decision',

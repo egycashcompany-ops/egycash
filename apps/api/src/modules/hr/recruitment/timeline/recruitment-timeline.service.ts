@@ -152,6 +152,30 @@ class RecruitmentTimelineService {
     return recruitmentTimelineRepository.listForApplicant(applicantId, filter, limit, scope);
   }
 
+  /**
+   * The one USER-AUTHORED entry (RW14). Everything else on the timeline is a projection of a
+   * workflow event, so a note carries its own correlation id rather than joining an episode.
+   */
+  async addNote(input: {
+    applicantId: string;
+    applicantCode: string;
+    branchId: Types.ObjectId | null;
+    actorUserId: string;
+    note: string;
+  }): Promise<RecruitmentTimelineDoc> {
+    const correlationId = newCorrelationId();
+    return this.record({
+      applicantId: input.applicantId,
+      applicantCode: input.applicantCode,
+      type: 'note',
+      correlation: { type: 'applicant', id: correlationId },
+      actorUserId: input.actorUserId,
+      note: input.note,
+      branchId: input.branchId,
+      discriminator: correlationId,
+    });
+  }
+
   async countForApplicant(applicantId: string): Promise<number> {
     return recruitmentTimelineRepository.countForApplicant(applicantId);
   }

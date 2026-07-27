@@ -6,9 +6,13 @@ import {
   type CreateEvaluationPhase,
   type DecideEvaluation,
   type OpenEvaluation,
+  type SetEvaluationAppointment,
   type UpdateEvaluationPhase,
+  type BulkEvaluations,
 } from '@ecms/contracts';
 import { detailKey, listKey } from '../../../../../shared/lib/query-keys';
+import { useBulkMutation } from '../../../../../shared/lib/useBulkMutation';
+import { invalidateRecruitment } from '../../shared/invalidate-recruitment';
 import * as api from './evaluation-api';
 import { type EvaluationListParams } from './evaluation-api';
 
@@ -92,6 +96,14 @@ export const useDecideEvaluation = (id: string) => {
   });
 };
 
+export const useSetEvaluationAppointment = (id: string) => {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (body: SetEvaluationAppointment) => api.setEvaluationAppointment(id, body),
+    onSuccess: () => invalidate(id),
+  });
+};
+
 export const useUploadEvaluationFile = (id: string) => {
   const invalidate = useInvalidate();
   return useMutation({
@@ -109,3 +121,10 @@ export const useRemoveEvaluationFile = (id: string) => {
     onSuccess: () => invalidate(id),
   });
 };
+
+/** Bulk approve/reject one phase's queue (RW10/RW17). */
+export const useBulkEvaluations = (onApplied?: () => void) =>
+  useBulkMutation<BulkEvaluations>((body) => api.bulkEvaluations(body), {
+    invalidate: invalidateRecruitment,
+    ...(onApplied === undefined ? {} : { onApplied }),
+  });

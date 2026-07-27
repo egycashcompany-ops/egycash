@@ -33,7 +33,7 @@ const screeningSchema = new Schema<ScreeningDoc>(
   {
     applicantId: { type: Schema.Types.ObjectId, required: true },
     applicantCode: { type: String, required: true },
-    applicantName: { type: String, required: true, default: '' },
+    applicantName: { type: String, default: '' },
     branchId: { type: Schema.Types.ObjectId, default: null },
     status: { type: String, enum: SCREENING_STATUSES, required: true, default: 'waiting' },
     notes: {

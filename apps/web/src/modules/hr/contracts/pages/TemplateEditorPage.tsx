@@ -42,6 +42,13 @@ const slug = (value: string): string =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/(^-|-$)/g, '') || 'signer';
 
+/** Rich-text "empty": the editor leaves `<p></p>` behind — that is still an empty body. */
+const isBlankHtml = (html: string): boolean =>
+  html
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .trim() === '';
+
 export const TemplateEditorPage = (): JSX.Element => {
   const t = useT();
   const navigate = useNavigate();
@@ -150,16 +157,19 @@ export const TemplateEditorPage = (): JSX.Element => {
   };
 
   const doPublish = async (): Promise<void> => {
-    // Publish is the ONLY completeness-gated action; the server enforces the same
-    // rule — this pre-check just gives a friendlier message than the 422 would.
-    if (
-      nameAr.trim() === '' ||
-      nameEn.trim() === '' ||
-      contractTypeId === '' ||
-      body.trim() === '' ||
-      signatures.some((block) => block.label.trim() === '')
-    ) {
-      toast.warning(t('contracts.templates.publishIncomplete'));
+    // Publish is the ONLY completeness-gated action; the server enforces the same rule
+    // (plus unknown-placeholder checks) — this pre-check just names every missing part
+    // in a friendlier way than the 422 would.
+    const missing: string[] = [];
+    if (nameAr.trim() === '') missing.push(t('contracts.templates.nameAr'));
+    if (nameEn.trim() === '') missing.push(t('contracts.templates.nameEn'));
+    if (contractTypeId === '') missing.push(t('contracts.columns.type'));
+    if (isBlankHtml(body)) missing.push(t('contracts.templates.sectionBody'));
+    if (signatures.some((block) => block.label.trim() === '')) missing.push(t('contracts.templates.signatureLabels'));
+    if (missing.length > 0) {
+      toast.warning(
+        t('contracts.templates.publishIncomplete', { list: missing.join(locale === 'ar' ? '، ' : ', ') }),
+      );
       return;
     }
     const target = dirty || isNew ? await save() : { id, version: existing?.version ?? 0 };

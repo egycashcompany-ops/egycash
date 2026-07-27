@@ -1600,7 +1600,8 @@ const en: Record<string, string> = {
   'contracts.templates.signatureTitle': 'Title (optional)',
   'contracts.templates.addSignature': 'Add signature block',
   'contracts.templates.publishIncomplete':
-    'Publishing requires the names, type, body and signature labels — you can keep saving it as a draft meanwhile.',
+    'Publishing requires completing: {{list}}. You can keep saving it as a draft meanwhile.',
+  'contracts.templates.signatureLabels': 'Signature labels',
   'contracts.templates.untitled': '(untitled draft)',
   'contracts.templates.saved': 'Template saved.',
   'contracts.templates.forked': 'Draft v{{version}} created — the published version stays unchanged.',
@@ -3263,7 +3264,8 @@ const ar: Record<string, string> = {
   'contracts.templates.signatureTitle': 'الصفة (اختياري)',
   'contracts.templates.addSignature': 'إضافة خانة توقيع',
   'contracts.templates.publishIncomplete':
-    'يتطلب النشر إكمال الاسمين والنوع والمتن وتسميات التوقيع — ويمكنك متابعة حفظه كمسودة حتى اكتماله.',
+    'يتطلب النشر إكمال: {{list}}. ويمكنك متابعة حفظه كمسودة حتى اكتماله.',
+  'contracts.templates.signatureLabels': 'تسميات التوقيع',
   'contracts.templates.untitled': '(مسودة بلا اسم)',
   'contracts.templates.saved': 'تم حفظ القالب.',
   'contracts.templates.forked': 'أُنشئت المسودة v{{version}} — يبقى الإصدار المنشور دون تغيير.',

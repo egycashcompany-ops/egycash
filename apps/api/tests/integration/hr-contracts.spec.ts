@@ -316,19 +316,30 @@ describe('contract templates — sanitize, placeholders, publish gate, versions 
     expect(template.sections.body).toBe('<p>نص</p>');
   });
 
-  it('rejects placeholders outside the server catalog (D5)', async () => {
+  it('tolerates unknown placeholders while DRAFTING; publish rejects them (D5 at the gate)', async () => {
+    // A typo'd placeholder must not block Save Draft — D5 holds where it matters:
+    // nothing unknown can publish, and therefore nothing unknown can ever generate.
     const res = await request(app)
       .post('/api/v1/hr/contract-templates')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
-        name: { ar: 'خطأ', en: 'Bad' },
+        name: { ar: 'مسودة بخطأ', en: 'Draft with typo' },
         language: 'ar',
         contractTypeId: typeId,
         sections: { header: '', body: '<p>{{no.such.variable}}</p>', footer: '' },
         logoFileId: null,
         signatures: [],
       });
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(201);
+    const draft = res.body.data as ContractTemplateDto;
+    expect(draft.placeholders).toContain('no.such.variable');
+
+    const blocked = await request(app)
+      .post(`/api/v1/hr/contract-templates/${draft.id}/publish`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: draft.version });
+    expect(blocked.status).toBe(422);
+    expect((blocked.body as { error: { message: string } }).error.message).toContain('no.such.variable');
   });
 
   it('derives the placeholder list on save', async () => {

@@ -23,6 +23,13 @@ import { type ContractTemplateDoc } from './contract-template.model';
 
 const entityRef = (id: string) => ({ moduleId: 'hr', entityType: 'contractTemplate', entityId: id });
 
+/** Rich-text "empty": no text content once tags/entities are stripped (`<p></p>` counts). */
+const isBlankHtml = (html: string): boolean =>
+  html
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .trim() === '';
+
 const auditSnapshot = (doc: ContractTemplateDoc): Record<string, unknown> => ({
   'name.en': doc.name.en,
   'name.ar': doc.name.ar,
@@ -36,7 +43,11 @@ const auditSnapshot = (doc: ContractTemplateDoc): Record<string, unknown> => ({
 });
 
 class ContractTemplateService {
-  /** Sanitize + validate sections against the variable catalog (D5/D6/A11). */
+  /**
+   * Sanitize sections + derive the placeholder list (D5/D6/A11). Unknown placeholders
+   * do NOT block drafting — they surface as preview issues while authoring and hard-block
+   * at publish, which enforces D5 where it matters: nothing unknown can ever generate.
+   */
   private prepareSections(input: TemplateSections): { sections: TemplateSections; placeholders: string[] } {
     const sections = {
       header: sanitizeTemplateHtml(input.header),
@@ -44,10 +55,6 @@ class ContractTemplateService {
       footer: sanitizeTemplateHtml(input.footer),
     };
     const placeholders = extractPlaceholders(`${sections.header}\n${sections.body}\n${sections.footer}`);
-    const unknown = placeholders.filter((key) => !CATALOG_KEYS.has(key));
-    if (unknown.length > 0) {
-      throw new BusinessRuleError(`unknown placeholders: ${unknown.join(', ')}`);
-    }
     return { sections, placeholders };
   }
 
@@ -160,10 +167,16 @@ class ContractTemplateService {
     if (doc.name.ar.trim() === '') missing.push('Arabic name');
     if (doc.name.en.trim() === '') missing.push('English name');
     if (doc.contractTypeId === null) missing.push('contract type');
-    if (doc.sections.body.trim() === '') missing.push('body');
+    // A body of empty markup (e.g. the editor's leftover `<p></p>`) is still empty.
+    if (isBlankHtml(doc.sections.body)) missing.push('body');
     if (doc.signatures.some((block) => block.label.trim() === '')) missing.push('signature labels');
-    if (missing.length > 0) {
-      throw new BusinessRuleError(`cannot publish an incomplete template — missing: ${missing.join(', ')}`);
+    const unknown = doc.placeholders.filter((key) => !CATALOG_KEYS.has(key));
+    if (missing.length > 0 || unknown.length > 0) {
+      const parts = [
+        ...(missing.length > 0 ? [`missing: ${missing.join(', ')}`] : []),
+        ...(unknown.length > 0 ? [`unknown placeholders: ${unknown.join(', ')}`] : []),
+      ];
+      throw new BusinessRuleError(`cannot publish an incomplete template — ${parts.join('; ')}`);
     }
     await contractTypeService.getById(String(doc.contractTypeId)); // the type must still exist
     // The previous published version (if any) goes back to archived — one published per key.

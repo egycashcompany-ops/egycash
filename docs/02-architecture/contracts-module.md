@@ -49,7 +49,11 @@ expiring-soon notice exactly once per contract (D11).
   stored snapshot — there is no re-render path.
 - **A17 — publish gate**: `publishedVersionOf()` throws `CONTRACT_TEMPLATE_NOT_PUBLISHED`;
   editing a published version forks the next draft version (A19) — the chain is
-  append-only and every version remains readable.
+  append-only and every version remains readable. Publish is also the SINGLE completeness
+  gate: drafts save freely while incomplete (empty names/type/body, unlabeled signature
+  rows, even unknown placeholders — Save Draft and Preview are never blocked), and
+  `publish()` rejects with the full list of problems (names, type, body, signature
+  labels, unknown placeholders) — so nothing incomplete or unknown can ever generate.
 - **Q3 — one active per employee per type** unless the type opts out
   (`multipleActiveAllowed`), checked against every non-terminal status.
 - **A16 — loud validation**: `CONTRACT_VARIABLES_MISSING` carries the placeholder list;

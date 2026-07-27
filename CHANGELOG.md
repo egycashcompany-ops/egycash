@@ -21,9 +21,12 @@ its entry here in the same PR.
   with a friendly message and server-side with a 422 listing exactly what is missing
   (Arabic/English names, contract type, body, signature labels) — until the draft is
   complete, which also preserves the invariant that only complete templates can ever
-  generate contracts (A17). Preview stays entirely outside this validation (it renders
-  the current editor state, now even with unlabeled signature rows), and unnamed drafts
-  list as "(untitled draft)" so they stay reachable.
+  generate contracts (A17). Unknown placeholders (e.g. a typo like `{{employe.name}}`)
+  no longer block draft saves either — they surface as preview issues while authoring
+  and are rejected at publish (D5 enforced at the gate), and a body of empty markup
+  (the editor's leftover `<p></p>`) counts as empty there too. Preview stays entirely
+  outside this validation (it renders the current editor state, now even with unlabeled
+  signature rows), and unnamed drafts list as "(untitled draft)" so they stay reachable.
 
 ### Added
 

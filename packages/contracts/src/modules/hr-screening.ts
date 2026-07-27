@@ -6,6 +6,13 @@
 // Scope is Stage 2 only: nothing here describes Interviews (Stage 3) or later.
 import { z } from 'zod';
 import { objectId, PaginationQuerySchema } from '../common/index.js';
+import {
+  BulkRequestBaseSchema,
+  ScreeningBucketSchema,
+  type AttemptMarkerDto,
+  type PlacementDto,
+  type PlacementLabelDto,
+} from './hr-recruitment-workflow.js';
 
 // ── Closed vocabularies ─────────────────────────────────────────────────────
 
@@ -74,8 +81,35 @@ export const ListScreeningsQuerySchema = PaginationQuerySchema.extend({
   decidedTo: z.coerce.date().optional(),
   createdFrom: z.coerce.date().optional(),
   createdTo: z.coerce.date().optional(),
+  /** The screening page's tab: `waiting` | `accepted` | `rejected`. */
+  bucket: ScreeningBucketSchema.optional(),
+  /** Include screenings belonging to superseded attempts (default false for queues). */
+  includeSuperseded: z.coerce.boolean().default(false),
+  search: z.string().max(200).optional(),
 }).strict();
 export type ListScreeningsQuery = z.infer<typeof ListScreeningsQuerySchema>;
+
+export const ExportScreeningsQuerySchema = ListScreeningsQuerySchema.omit({
+  page: true,
+  pageSize: true,
+}).strict();
+export type ExportScreeningsQuery = z.infer<typeof ExportScreeningsQuerySchema>;
+
+// ── Bulk (RW17/I4 — per-item transaction, partial success) ──────────────────
+
+export const BULK_SCREENING_ACTIONS = ['approve', 'reject'] as const;
+export const BulkScreeningActionSchema = z.enum(BULK_SCREENING_ACTIONS);
+export type BulkScreeningAction = z.infer<typeof BulkScreeningActionSchema>;
+
+export const BulkScreeningsSchema = BulkRequestBaseSchema.extend({
+  action: BulkScreeningActionSchema,
+})
+  .strict()
+  .refine((v) => v.action !== 'reject' || (v.reason !== undefined && v.reason.trim() !== ''), {
+    path: ['reason'],
+    message: 'a reason is required when rejecting applicants',
+  });
+export type BulkScreenings = z.infer<typeof BulkScreeningsSchema>;
 
 // ── Awaiting screening (pipeline entry) ─────────────────────────────────────
 // Live applicants (status `new`) with no screening yet — the "automatically appears in the
@@ -112,14 +146,18 @@ export interface ScreeningDecisionDto {
   decidedAt: string;
 }
 
-export interface ScreeningDto {
+export interface ScreeningDto extends AttemptMarkerDto {
   id: string;
   applicantId: string;
   applicantCode: string;
   /** Denormalized applicant display name (Arabic full name) — tables never show bare codes. */
   applicantName: string;
+  /** Data-scope field: follows the applicant on reassignment (RW2 step 3). */
   branchId: string | null;
   status: ScreeningStatus;
+  /** The placement in force when the screening was opened; immutable (RW4). */
+  placement: PlacementDto;
+  placementLabel: PlacementLabelDto;
   notes: ScreeningNoteDto[];
   /** Present once the screening has been decided; null while `pending`. */
   decision: ScreeningDecisionDto | null;

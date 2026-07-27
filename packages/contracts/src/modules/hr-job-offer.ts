@@ -51,6 +51,14 @@ export const OfferTermsSchema = z
     jobTitleId: objectId(),
     departmentId: objectId(),
     branchId: objectId(),
+    /**
+     * The seat this hire fills (platform `job_positions`) and the section within the department.
+     * OPTIONAL (ADR-016). Pre-filled from the applicant's current placement (RW3) and carried
+     * into the accepted snapshot, so the Employee record finally receives its position/section
+     * instead of the hard-coded nulls the hire path used before the workflow refactor.
+     */
+    jobPositionId: objectId().nullish(),
+    sectionId: objectId().nullish(),
     /** The reporting manager (a platform user). OPTIONAL — may be null/omitted. */
     managerId: objectId().nullish(),
     employmentType: EmploymentTypeSchema,
@@ -115,6 +123,25 @@ export const ListJobOffersQuerySchema = PaginationQuerySchema.extend({
 }).strict();
 export type ListJobOffersQuery = z.infer<typeof ListJobOffersQuerySchema>;
 
+// ── Bulk (RW17/I4 — per-item transaction, partial success) ──────────────────
+
+export const BULK_JOB_OFFER_ACTIONS = ['send', 'withdraw'] as const;
+export const BulkJobOfferActionSchema = z.enum(BULK_JOB_OFFER_ACTIONS);
+export type BulkJobOfferAction = z.infer<typeof BulkJobOfferActionSchema>;
+
+export const BulkJobOffersSchema = z
+  .object({
+    action: BulkJobOfferActionSchema,
+    ids: z.array(objectId()).min(1).max(200),
+    reason: z.string().min(1).max(2000).optional(),
+  })
+  .strict()
+  .refine((v) => v.action !== 'withdraw' || (v.reason !== undefined && v.reason.length > 0), {
+    path: ['reason'],
+    message: 'a reason is required to withdraw offers',
+  });
+export type BulkJobOffers = z.infer<typeof BulkJobOffersSchema>;
+
 // ── Awaiting offer (workflow queue) ──────────────────────────────────────────
 // Applicants HR moved to the Job Offer stage who have no blocking offer yet (no active
 // draft/sent one and no accepted one) surface automatically on /job-offers. Derived read
@@ -147,6 +174,9 @@ export interface OfferTermsDto {
   jobTitleId: string;
   departmentId: string;
   branchId: string;
+  /** The seat + section this hire fills; null when not set (ADR-016). Flows to the Employee (RW3). */
+  jobPositionId: string | null;
+  sectionId: string | null;
   /** null when no reporting manager was set on the offer. */
   managerId: string | null;
   employmentType: EmploymentType;

@@ -45,12 +45,47 @@ const INTERVIEW_STAGES: CreateInterviewStage[] = [
   { key: 'secondInterview', name: { en: 'Second Interview', ar: 'المقابلة الثانية' }, order: 2 },
 ];
 
-// Default post-interview evaluation phases (admin-configurable thereafter — number/names/order
-// are changed with no code change). Driving Test is flagged drivers-only.
+// Default post-interview evaluation phases, in REAL BUSINESS ORDER (frozen workflow design
+// OQ-1): Security Check → Driving Test → Medical Check, with Medical last because it is normally
+// the final external approval before hiring. The phases are INDEPENDENT (RW6) — `order` is
+// display order only — and the catalog stays admin-configurable (number/names/order/kind change
+// with no code change). Security and Driving are run as BATCHES (RW8); Medical is always
+// individual (RW9). Each of the three has its own permission resource (RW7); phases an admin
+// adds later fall back to the generic `evaluation` resource.
 const EVALUATION_PHASES: CreateEvaluationPhase[] = [
-  { key: 'securityCheck', name: { en: 'Security Check', ar: 'الفحص الأمني' }, order: 1, driversOnly: false },
-  { key: 'medicalExam', name: { en: 'Medical Examination', ar: 'الكشف الطبي' }, order: 2, driversOnly: false },
-  { key: 'drivingTest', name: { en: 'Driving Test', ar: 'اختبار القيادة' }, order: 3, driversOnly: true },
+  {
+    key: 'securityCheck',
+    name: { en: 'Security Check', ar: 'الفحص الأمني' },
+    order: 1,
+    driversOnly: false,
+    applicability: 'all',
+    kind: 'batch',
+    permissionResource: 'securityCheck',
+    appointmentEnabled: false,
+    requiresResultDocument: true,
+  },
+  {
+    key: 'drivingTest',
+    name: { en: 'Driving Test', ar: 'اختبار القيادة' },
+    order: 2,
+    driversOnly: true,
+    applicability: 'driversOnly',
+    kind: 'batch',
+    permissionResource: 'drivingTest',
+    appointmentEnabled: false,
+    requiresResultDocument: true,
+  },
+  {
+    key: 'medicalExam',
+    name: { en: 'Medical Check', ar: 'الكشف الطبي' },
+    order: 3,
+    driversOnly: false,
+    applicability: 'all',
+    kind: 'individual',
+    permissionResource: 'medicalCheck',
+    appointmentEnabled: true,
+    requiresResultDocument: true,
+  },
 ];
 
 const ensureInterviewTemplates = async (): Promise<void> => {

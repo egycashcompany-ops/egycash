@@ -7,6 +7,13 @@
 // removes the applicant from the active pipeline (mirrors a failed interview round).
 import { z } from 'zod';
 import { objectId, LocalizedStringSchema, PaginationQuerySchema, type LocalizedString } from '../common/index.js';
+import {
+  BulkRequestBaseSchema,
+  EvaluationBucketSchema,
+  type AttemptMarkerDto,
+  type PlacementDto,
+  type PlacementLabelDto,
+} from './hr-recruitment-workflow.js';
 
 // ── Closed vocabularies ─────────────────────────────────────────────────────
 
@@ -20,16 +27,55 @@ export const EVALUATION_DECISIONS = ['approved', 'rejected'] as const;
 export const EvaluationDecisionSchema = z.enum(EVALUATION_DECISIONS);
 export type EvaluationDecision = z.infer<typeof EvaluationDecisionSchema>;
 
+/**
+ * How a phase is worked (RW6). `batch` phases (Security Check, Driving Test) are run over a group
+ * of applicants at once and expose the batch surface; `individual` phases (Medical Check) are
+ * always per-applicant and never generate a batch (RW9).
+ */
+export const EVALUATION_PHASE_KINDS = ['batch', 'individual'] as const;
+export const EvaluationPhaseKindSchema = z.enum(EVALUATION_PHASE_KINDS);
+export type EvaluationPhaseKind = z.infer<typeof EvaluationPhaseKindSchema>;
+
+/** Who a phase applies to. Replaces the `driversOnly` flag, which is kept as a read alias. */
+export const EVALUATION_APPLICABILITIES = ['all', 'driversOnly'] as const;
+export const EvaluationApplicabilitySchema = z.enum(EVALUATION_APPLICABILITIES);
+export type EvaluationApplicability = z.infer<typeof EvaluationApplicabilitySchema>;
+
+/**
+ * The permission resource a phase is gated by (RW7). The three shipped phases have their own
+ * resources; admin-created phases fall back to the generic `evaluation` resource. Holding the
+ * generic `evaluation.view`/`evaluation.manage` grant satisfies ANY phase (compatibility superset),
+ * so no role migration is needed when this ships.
+ */
+export const EVALUATION_PERMISSION_RESOURCES = [
+  'evaluation',
+  'securityCheck',
+  'drivingTest',
+  'medicalCheck',
+] as const;
+export const EvaluationPermissionResourceSchema = z.enum(EVALUATION_PERMISSION_RESOURCES);
+export type EvaluationPermissionResource = z.infer<typeof EvaluationPermissionResourceSchema>;
+
 // ── Evaluation-phase catalog (admin-configurable) ───────────────────────────
 
 export const CreateEvaluationPhaseSchema = z
   .object({
     key: z.string().regex(/^[a-z][a-zA-Z0-9.]{1,49}$/),
     name: LocalizedStringSchema,
-    /** 1-based position in the post-interview sequence; unique among active phases. */
+    /**
+     * 1-based DISPLAY position. Since phases are independent (RW6), order no longer gates
+     * anything — it only decides the sequence of the flat navigation and the phase pages.
+     */
     order: z.number().int().min(1).max(50),
     /** Advisory flag: this phase is only relevant to driver applicants (e.g. Driving Test). */
     driversOnly: z.boolean().default(false),
+    kind: EvaluationPhaseKindSchema.default('individual'),
+    applicability: EvaluationApplicabilitySchema.optional(),
+    permissionResource: EvaluationPermissionResourceSchema.default('evaluation'),
+    /** The phase records an appointment date on each applicant's record (e.g. Medical). */
+    appointmentEnabled: z.boolean().default(false),
+    /** Approval is blocked until a result document is attached. */
+    requiresResultDocument: z.boolean().default(false),
   })
   .strict();
 export type CreateEvaluationPhase = z.infer<typeof CreateEvaluationPhaseSchema>;
@@ -40,6 +86,11 @@ export const UpdateEvaluationPhaseSchema = z
     order: z.number().int().min(1).max(50).optional(),
     active: z.boolean().optional(),
     driversOnly: z.boolean().optional(),
+    kind: EvaluationPhaseKindSchema.optional(),
+    applicability: EvaluationApplicabilitySchema.optional(),
+    permissionResource: EvaluationPermissionResourceSchema.optional(),
+    appointmentEnabled: z.boolean().optional(),
+    requiresResultDocument: z.boolean().optional(),
     version: z.number().int().min(0),
   })
   .strict();
@@ -47,6 +98,7 @@ export type UpdateEvaluationPhase = z.infer<typeof UpdateEvaluationPhaseSchema>;
 
 export const ListEvaluationPhasesQuerySchema = PaginationQuerySchema.extend({
   active: z.coerce.boolean().optional(),
+  kind: EvaluationPhaseKindSchema.optional(),
 }).strict();
 export type ListEvaluationPhasesQuery = z.infer<typeof ListEvaluationPhasesQuerySchema>;
 
@@ -56,7 +108,15 @@ export interface EvaluationPhaseDto {
   name: LocalizedString;
   order: number;
   active: boolean;
+  /** Read alias of `applicability === 'driversOnly'`; kept for backward compatibility. */
   driversOnly: boolean;
+  kind: EvaluationPhaseKind;
+  applicability: EvaluationApplicability;
+  permissionResource: EvaluationPermissionResource;
+  appointmentEnabled: boolean;
+  requiresResultDocument: boolean;
+  /** The client route this phase's page lives at — `/evaluations/phase/<key>`. */
+  route: string;
   version: number;
 }
 
@@ -96,13 +156,57 @@ export type UploadEvaluationFile = z.infer<typeof UploadEvaluationFileSchema>;
 export const RemoveEvaluationFileSchema = z.object({ version: z.number().int().min(0) }).strict();
 export type RemoveEvaluationFile = z.infer<typeof RemoveEvaluationFileSchema>;
 
+/** Record or clear the appointment date on a phase that enables one (RW6/RW9). */
+export const SetEvaluationAppointmentSchema = z
+  .object({
+    appointmentAt: z.coerce.date().nullable(),
+    note: z.string().max(500).optional(),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type SetEvaluationAppointment = z.infer<typeof SetEvaluationAppointmentSchema>;
+
+/**
+ * Bulk approve/reject a phase's queue (RW10/A4). Each item runs in its own transaction and
+ * produces its own audit entry, domain event and timeline entry (I4); failures are reported
+ * per id. A reason is mandatory to reject.
+ */
+export const BULK_EVALUATION_ACTIONS = ['approve', 'reject'] as const;
+export const BulkEvaluationActionSchema = z.enum(BULK_EVALUATION_ACTIONS);
+export type BulkEvaluationAction = z.infer<typeof BulkEvaluationActionSchema>;
+
+export const BulkEvaluationsSchema = BulkRequestBaseSchema.extend({
+  action: BulkEvaluationActionSchema,
+  /** Guards against a selection spanning phases — the page always knows its own phase. */
+  phaseId: objectId(),
+})
+  .strict()
+  .refine((v) => v.action !== 'reject' || (v.reason !== undefined && v.reason.length > 0), {
+    path: ['reason'],
+    message: 'a reason is required to reject evaluations',
+  });
+export type BulkEvaluations = z.infer<typeof BulkEvaluationsSchema>;
+
 export const ListEvaluationsQuerySchema = PaginationQuerySchema.extend({
   applicantId: objectId().optional(),
   phaseId: objectId().optional(),
   status: EvaluationStatusSchema.optional(),
   branchId: objectId().optional(),
+  /** The phase page's tab: `waiting` | `approved` | `rejected` (RW6a). */
+  bucket: EvaluationBucketSchema.optional(),
+  batchId: objectId().optional(),
+  /** Include records belonging to superseded attempts (default false for queues). */
+  includeSuperseded: z.coerce.boolean().default(false),
+  search: z.string().max(200).optional(),
 }).strict();
 export type ListEvaluationsQuery = z.infer<typeof ListEvaluationsQuerySchema>;
+
+/** Per-phase report export; reuses the list filter (paging ignored). */
+export const ExportEvaluationsQuerySchema = ListEvaluationsQuerySchema.omit({
+  page: true,
+  pageSize: true,
+}).strict();
+export type ExportEvaluationsQuery = z.infer<typeof ExportEvaluationsQuerySchema>;
 
 // ── DTOs ─────────────────────────────────────────────────────────────────────
 
@@ -123,21 +227,34 @@ export interface EvaluationDecisionEventDto {
   by: string | null;
 }
 
-export interface EvaluationDto {
+export interface EvaluationDto extends AttemptMarkerDto {
   id: string;
   applicantId: string;
   applicantCode: string;
   /** Denormalized applicant display name (Arabic full name) — tables never show bare codes. */
   applicantName: string;
+  /** Data-scope field: follows the applicant on reassignment (RW2 step 3). */
   branchId: string | null;
   phaseId: string;
   phaseKey: string;
   phaseName: LocalizedString;
   phaseOrder: number;
+  phaseKind: EvaluationPhaseKind;
   status: EvaluationStatus;
   /** Set when the current status is `rejected` (or a note left on approval); null otherwise. */
   reason: string | null;
   files: EvaluationFileDto[];
+  /** The placement in force when this record was opened; immutable (RW4). */
+  placement: PlacementDto;
+  placementLabel: PlacementLabelDto;
+  /** Advisory: a different seat/branch this phase recommends (RW5). Never moves the candidate. */
+  recommendedPlacement: PlacementDto | null;
+  recommendationNote: string | null;
+  /** Set for records that belong to a batch (RW8); null for individual phases. */
+  batchId: string | null;
+  batchCode: string | null;
+  /** Only meaningful when the phase has `appointmentEnabled`. */
+  appointmentAt: string | null;
   decidedBy: string | null;
   decidedAt: string | null;
   /** Full audited trail of decision changes (oldest first); empty until first decided. */
@@ -154,7 +271,15 @@ export const EVALUATION_FILE_CATEGORY = 'hr-evaluations';
 // ── Events (ADR-008 naming `<module>.<entity>.<event>`) ─────────────────────
 
 export const HrEvaluationEvents = {
+  /** Opening a phase record for an applicant (I2 — every workflow action emits). */
+  EvaluationOpened: 'hr.evaluation.opened',
+  /**
+   * The original decision event. KEPT and still emitted alongside the outcome-specific pair
+   * below, so existing subscribers keep working (I2 — names are added to, never renamed).
+   */
   EvaluationDecided: 'hr.evaluation.decided',
+  EvaluationApproved: 'hr.evaluation.approved',
+  EvaluationRejected: 'hr.evaluation.rejected',
 } as const;
 export type HrEvaluationEventName = (typeof HrEvaluationEvents)[keyof typeof HrEvaluationEvents];
 
@@ -164,4 +289,13 @@ export const EvaluationDecidedPayloadV1 = z.object({
   applicantCode: z.string(),
   phaseKey: z.string(),
   decision: EvaluationDecisionSchema,
+});
+
+export const EvaluationOpenedPayloadV1 = z.object({
+  evaluationId: objectId(),
+  applicantId: objectId(),
+  applicantCode: z.string(),
+  phaseKey: z.string(),
+  attempt: z.number().int().min(1),
+  batchId: objectId().optional(),
 });

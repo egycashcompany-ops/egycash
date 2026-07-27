@@ -174,7 +174,7 @@ class ContractTemplateService {
     if (missing.length > 0 || unknown.length > 0) {
       const parts = [
         ...(missing.length > 0 ? [`missing: ${missing.join(', ')}`] : []),
-        ...(unknown.length > 0 ? [`unknown placeholders: ${unknown.join(', ')}`] : []),
+        ...(unknown.length > 0 ? [`unknown placeholders: ${unknown.map((key) => `{{${key}}}`).join(', ')}`] : []),
       ];
       throw new BusinessRuleError(`cannot publish an incomplete template — ${parts.join('; ')}`);
     }

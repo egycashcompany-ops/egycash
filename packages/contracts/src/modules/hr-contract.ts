@@ -125,9 +125,10 @@ export const UpdateContractTemplateSchema = z
   .strict();
 export type UpdateContractTemplate = z.infer<typeof UpdateContractTemplateSchema>;
 
+// Clone spawns a new DRAFT — its name may be blanked out like any other draft field.
 export const CloneContractTemplateSchema = z
   .object({
-    name: LocalizedStringSchema.optional(),
+    name: DraftTemplateNameSchema.optional(),
     language: ContractTemplateLanguageSchema.optional(),
   })
   .strict();

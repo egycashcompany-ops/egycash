@@ -286,6 +286,33 @@ describe('lifecycle: verify, update, withdraw', () => {
     expect((res.body.data as ApplicantDto).identityVerification).toBe('verified');
   });
 
+  // I5 — the candidate's history starts at the application. Neither registration nor identity
+  // verification is a workflow transition, so if the services did not write them the timeline
+  // would silently begin mid-pipeline at the first decision.
+  it('opens the candidate timeline at the application and records the identity check', async () => {
+    const dto = await create('01033445566');
+    const afterRegistration = await request(app)
+      .get(`/api/v1/hr/applicants/${dto.id}/timeline`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(afterRegistration.status).toBe(200);
+    const applied = (afterRegistration.body as { data: { type: string }[] }).data.filter(
+      (e) => e.type === 'applied',
+    );
+    expect(applied).toHaveLength(1);
+
+    await request(app)
+      .post(`/api/v1/hr/applicants/${dto.id}/verify-identity`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ nationalId: '29912310154321', version: dto.version });
+
+    const afterVerify = await request(app)
+      .get(`/api/v1/hr/applicants/${dto.id}/timeline`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const types = (afterVerify.body as { data: { type: string }[] }).data.map((e) => e.type);
+    expect(types).toContain('applied');
+    expect(types).toContain('identityVerified');
+  });
+
   it('withdraws an applicant (terminal)', async () => {
     const dto = await create('01020202020');
     const withdrawn = await request(app)

@@ -321,21 +321,31 @@ describe('electronic employee file — assembly, links & timeline', () => {
     expect(file.links.screeningId).not.toBeNull();
     expect(file.links.interviewIds).toHaveLength(2);
 
-    // The initial Employee Timeline captures every milestone, oldest first.
+    // I5 — the file's OWN timeline holds post-hire facts only. It does NOT re-derive the
+    // recruitment milestones: those belong to the canonical recruitment timeline, asserted below.
     const types = file.timeline.map((t) => t.type);
-    expect(types).toEqual([
-      'applicantRegistered',
-      'screeningAccepted',
-      'interviewPassed',
-      'interviewPassed',
-      'offerAccepted',
-      'employeeCreated',
-      'hiringDocumentsCompleted',
-      'fileOpened',
-    ]);
+    expect(types).toEqual(['employeeCreated', 'hiringDocumentsCompleted', 'fileOpened']);
     // Timeline is chronologically ordered.
     const ats = file.timeline.map((t) => new Date(t.at).getTime());
     expect([...ats]).toEqual([...ats].sort((a, b) => a - b));
+
+    // I5 — the recruitment history comes from `hr_recruitment_timeline`, and it is the SAME
+    // history the canonical endpoint serves. One collection, two readers.
+    const canonical = await request(app)
+      .get(`/api/v1/hr/applicants/${String(emp.applicantId)}/timeline`)
+      .query({ limit: 500, includeSuperseded: true })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(canonical.status).toBe(200);
+    const canonicalIds = (canonical.body as { data: { eventId: string }[] }).data.map((e) => e.eventId);
+    expect(canonicalIds.length).toBeGreaterThan(0);
+    expect(file.recruitmentTimeline.map((e) => e.eventId)).toEqual(canonicalIds);
+    // The recruitment story is on that history — and only on it. It starts at the application
+    // and runs through the pipeline to the hire.
+    const recruitmentTypes = file.recruitmentTimeline.map((e) => e.type);
+    for (const expected of ['applied', 'screeningDecided', 'interviewCompleted', 'offerAccepted', 'hired']) {
+      expect(recruitmentTypes, `recruitment timeline is missing ${expected}`).toContain(expected);
+    }
+    expect(types.some((t) => t.startsWith('applicant') || t.startsWith('screening'))).toBe(false);
 
     // Assembly is audited and notifies the reporting manager (interviewer).
     const audit = await request(app)

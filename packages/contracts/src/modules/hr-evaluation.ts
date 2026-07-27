@@ -236,15 +236,6 @@ export interface EvaluationFileDto {
   uploadedAt: string;
 }
 
-/** One audited decision change on an evaluation (backs editability — HR can re-decide). */
-export interface EvaluationDecisionEventDto {
-  at: string;
-  from: EvaluationStatus;
-  to: EvaluationStatus;
-  reason: string | null;
-  by: string | null;
-}
-
 export interface EvaluationDto extends AttemptMarkerDto {
   id: string;
   applicantId: string;
@@ -275,8 +266,9 @@ export interface EvaluationDto extends AttemptMarkerDto {
   appointmentAt: string | null;
   decidedBy: string | null;
   decidedAt: string | null;
-  /** Full audited trail of decision changes (oldest first); empty until first decided. */
-  decisionHistory: EvaluationDecisionEventDto[];
+  // I5 — an evaluation carries its CURRENT decision, not a log of past ones. Every re-decision is
+  // an `evaluationDecided` entry on `hr_recruitment_timeline` with the same from/to/reason/actor,
+  // so a second copy here could only ever disagree with it.
   version: number;
   createdAt: string;
   updatedAt: string;

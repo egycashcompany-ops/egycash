@@ -2,11 +2,16 @@
 // seven-stage recruitment workflow and the handoff artifact to the Employee module (BD-008):
 // once an employee's hiring documents are completed, their Electronic Employee File is
 // assembled — it LINKS all applicant history (screening, interviews, offer, hiring documents)
-// and starts the EMPLOYEE TIMELINE from the recruitment milestones. After this, the person is
-// officially an Employee and further concerns belong to the Employee module. Scope is Stage 7
-// only: this stage assembles and reads; it does not own the post-hire employee lifecycle.
+// and opens the EMPLOYEE TIMELINE at the hire. After this, the person is officially an Employee
+// and further concerns belong to the Employee module. Scope is Stage 7 only: this stage
+// assembles and reads; it does not own the post-hire employee lifecycle.
+//
+// I5 — the recruitment history is NOT part of this aggregate. `hr_recruitment_timeline` is the
+// one chronological history of a candidate; the file exposes it as `recruitmentTimeline`, read
+// at request time, and keeps no second copy that could drift from it.
 import { z } from 'zod';
 import { objectId, PaginationQuerySchema } from '../common/index.js';
+import { type RecruitmentTimelineEntryDto } from './hr-recruitment-workflow.js';
 
 // ── Closed vocabularies ─────────────────────────────────────────────────────
 
@@ -14,12 +19,13 @@ export const EMPLOYEE_FILE_STATUSES = ['active', 'archived'] as const;
 export const EmployeeFileStatusSchema = z.enum(EMPLOYEE_FILE_STATUSES);
 export type EmployeeFileStatus = z.infer<typeof EmployeeFileStatusSchema>;
 
-/** Milestone types the initial Employee Timeline is built from (plus free-form `note`). */
+/**
+ * What the file's OWN timeline records — post-hire facts, plus free-form `note`. The recruitment
+ * milestones that used to be re-derived here (`applicantRegistered`, `screeningAccepted`,
+ * `interviewPassed`, `offerAccepted`) are gone: they live on the canonical recruitment timeline
+ * and are surfaced through `recruitmentTimeline` (I5).
+ */
 export const EMPLOYEE_TIMELINE_EVENT_TYPES = [
-  'applicantRegistered',
-  'screeningAccepted',
-  'interviewPassed',
-  'offerAccepted',
   'employeeCreated',
   'hiringDocumentsCompleted',
   'fileOpened',
@@ -64,7 +70,7 @@ export type ListEmployeeFilesQuery = z.infer<typeof ListEmployeeFilesQuerySchema
 export interface EmployeeTimelineEntryDto {
   at: string;
   type: EmployeeTimelineEventType;
-  /** The linked aggregate kind/id this milestone refers to (null for `fileOpened`/`note`). */
+  /** The linked aggregate kind/id this entry refers to (null for `fileOpened`/`note`). */
   refType: string | null;
   refId: string | null;
   detail: string | null;
@@ -111,7 +117,17 @@ export interface EmployeeFileDto {
   links: EmployeeFileLinksDto;
   /** Independent document copies from hiring + any custom uploads. */
   documents: EmployeeFileDocumentDto[];
+  /**
+   * The file's OWN post-hire entries: the hire, the completed hiring documents, the file being
+   * opened, and any notes since. It is not a history of the recruitment — see below.
+   */
   timeline: EmployeeTimelineEntryDto[];
+  /**
+   * I5 — the candidate's recruitment history, read from `hr_recruitment_timeline` at request
+   * time. The file does not copy or re-derive it: there is exactly one chronological history of
+   * an applicant, and this is a view of it. Empty for a direct registration (no recruitment).
+   */
+  recruitmentTimeline: RecruitmentTimelineEntryDto[];
   version: number;
   createdAt: string;
   updatedAt: string;

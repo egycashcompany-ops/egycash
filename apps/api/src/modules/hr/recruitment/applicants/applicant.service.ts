@@ -43,6 +43,9 @@ import { type Model } from 'mongoose';
 import { unitOfWork } from '../../../../platform/kernel/unit-of-work';
 import { type BaseDocFields } from '../../../../shared/base/base.model';
 import { recruitmentWorkflowEngine, runBulk, type LifecycleEvent } from '../workflow';
+// I5 — registration and identity verification are candidate facts, not workflow transitions, so
+// they are written here. The barrel carries no HTTP layer, so this does not close a cycle.
+import { recruitmentTimelineService } from '../timeline';
 
 export const APPLICANT_EXPORT_MAX_ROWS = 10_000;
 
@@ -238,6 +241,23 @@ class ApplicantService {
       ...(input.jobRequisitionId === undefined ? {} : { jobRequisitionId: input.jobRequisitionId }),
       sourceId: input.sourceId,
     });
+    // I5 — a candidate's history starts with their application. Registration is not a workflow
+    // transition, so nothing downstream of the engine would record it; the timeline would begin
+    // mid-pipeline at the first decision. `recordSafe` keeps a history failure from failing the
+    // registration — the deterministic `sourceKey` lets reconciliation repair it later.
+    await recruitmentTimelineService.recordSafe({
+      applicantId: String(doc._id),
+      applicantCode: doc.code,
+      type: 'applied',
+      correlation: { type: 'applicant', id: String(doc._id) },
+      actorUserId: ctx.userId,
+      at: doc.createdAt,
+      entity: { type: 'applicant', id: String(doc._id) },
+      placement: doc.placement,
+      placementLabel: doc.placementLabel,
+      branchId: doc.branchId,
+      metadata: { source: source.key, intakeChannel: doc.intakeChannel },
+    });
     // The screening queue row exists from registration (I11) — the queue is data, never a
     // derivation of who has no record yet.
     await materializeAfterRegistration(String(doc._id));
@@ -409,10 +429,11 @@ class ApplicantService {
     scope: ScopeSelector,
   ): Promise<ApplicantDoc> {
     const before = await applicantRepository.getById(id, scope);
+    const verifiedAt = new Date();
     const set: Partial<ApplicantDoc> = {
       identityVerification: 'verified',
       identityVerifiedBy: new Types.ObjectId(ctx.userId),
-      identityVerifiedAt: new Date(),
+      identityVerifiedAt: verifiedAt,
     };
     if (input.fullNameAr !== undefined) {
       set.fullNameAr = input.fullNameAr;
@@ -448,6 +469,20 @@ class ApplicantService {
       entityRef: entityRef(id),
       action: 'statusChange',
       changes: [{ field: 'identityVerification', old: before.identityVerification, new: 'verified' }],
+    });
+    // I5 — verification is a fact about the candidate, not a workflow transition, so it is
+    // recorded here or nowhere. The verification instant discriminates the entry, so correcting
+    // and re-verifying adds a second entry rather than colliding with the first.
+    await recruitmentTimelineService.recordSafe({
+      applicantId: id,
+      applicantCode: updated.code,
+      type: 'identityVerified',
+      correlation: { type: 'applicant', id },
+      actorUserId: ctx.userId,
+      at: verifiedAt,
+      entity: { type: 'applicant', id },
+      discriminator: verifiedAt.toISOString(),
+      branchId: updated.branchId,
     });
     await emit(HrEvents.ApplicantIdentityVerified, {
       applicantId: id,
@@ -673,28 +708,40 @@ class ApplicantService {
       input.ids,
       async (id) => {
         const current = await applicantRepository.getById(id, scope);
-        if (input.action === 'withdraw') {
-          await this.withdraw(
-            ctx,
-            id,
-            { reason: input.reason ?? 'bulk withdraw', version: current.__v },
-            scope,
-          );
-          return;
+        switch (input.action) {
+          case 'withdraw':
+            await this.withdraw(
+              ctx,
+              id,
+              { reason: input.reason ?? 'bulk withdraw', version: current.__v },
+              scope,
+            );
+            return;
+          case 'moveToOffer':
+            await this.moveToOffer(ctx, id, { version: current.__v }, scope);
+            return;
+          case 'moveToScreening':
+            // I11 — the screening row is materialized at registration, so "move to screening" is
+            // exactly "make sure that row exists". Idempotent, and the repair for a candidate
+            // registered before materialization existed.
+            await materializeAfterRegistration(id);
+            return;
+          case 'reassign':
+            // RW17 — ONE placement applied across the selection; each candidate is still checked
+            // against the editing window on its own, so an ineligible one fails as that item alone.
+            await this.reassign(
+              ctx,
+              id,
+              {
+                placement: input.placement as ReassignPlacement['placement'],
+                reason: input.reason as string,
+                source: 'manual',
+                version: current.__v,
+              },
+              scope,
+            );
+            return;
         }
-        // RW17 — ONE placement applied across the selection; each candidate is still checked
-        // against the editing window on its own, so an ineligible one fails as that item alone.
-        await this.reassign(
-          ctx,
-          id,
-          {
-            placement: input.placement as ReassignPlacement['placement'],
-            reason: input.reason as string,
-            source: 'manual',
-            version: current.__v,
-          },
-          scope,
-        );
       },
       {
         entityType: 'applicant',

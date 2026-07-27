@@ -6,6 +6,7 @@ import {
   type EmployeeFileDto,
   type EmployeeFileLinksDto,
   type EmployeeTimelineEntryDto,
+  type RecruitmentTimelineEntryDto,
 } from '@ecms/contracts';
 import {
   type EmployeeFileDoc,
@@ -43,7 +44,15 @@ const timelineEntryDto = (e: EmployeeTimelineEntry): EmployeeTimelineEntryDto =>
   by: e.by === null ? null : String(e.by),
 });
 
-export const toEmployeeFileDto = (doc: EmployeeFileDoc): EmployeeFileDto => ({
+/**
+ * I5 — `recruitmentTimeline` is the canonical history read from `hr_recruitment_timeline`, passed
+ * in by the service. It defaults to empty so a caller that does not need it (a list row) pays
+ * nothing, and so a direct registration — which has no recruitment — maps naturally.
+ */
+export const toEmployeeFileDto = (
+  doc: EmployeeFileDoc,
+  recruitmentTimeline: RecruitmentTimelineEntryDto[] = [],
+): EmployeeFileDto => ({
   id: String(doc._id),
   employeeId: String(doc.employeeId),
   employeeCode: doc.employeeCode,
@@ -53,6 +62,7 @@ export const toEmployeeFileDto = (doc: EmployeeFileDoc): EmployeeFileDto => ({
   links: linksDto(doc.links),
   documents: doc.documents.map(documentDto),
   timeline: doc.timeline.map(timelineEntryDto),
+  recruitmentTimeline,
   version: doc.__v,
   createdAt: doc.createdAt.toISOString(),
   updatedAt: doc.updatedAt.toISOString(),

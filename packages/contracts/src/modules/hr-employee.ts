@@ -428,9 +428,13 @@ export interface RehireCheckResultDto {
 
 export interface EmployeeTimelineItemDto {
   at: string;
-  /** Where the entry comes from: recruitment-era file milestone, personnel action, file note, or audited personal edit. */
+  /**
+   * Where the entry comes from: an Employee File entry, a personnel action, a file note, an
+   * audited personal edit, or leave. `recruitment` means the hiring handoff the file records —
+   * the candidate's recruitment history itself is NOT here, it is on the recruitment timeline (I5).
+   */
   source: 'recruitment' | 'action' | 'note' | 'personal' | 'leave';
-  /** Milestone/action type token (e.g. `offerAccepted`, `transfer`, `note`). */
+  /** Entry/action type token (e.g. `hiringDocumentsCompleted`, `transfer`, `note`). */
   type: string;
   refType: string | null;
   refId: string | null;

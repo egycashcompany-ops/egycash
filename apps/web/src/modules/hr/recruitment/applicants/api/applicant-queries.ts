@@ -20,6 +20,7 @@ import {
 } from '@ecms/contracts';
 import { detailKey, featureKey, listKey } from '../../../../../shared/lib/query-keys';
 import { invalidateRecruitment } from '../../shared/invalidate-recruitment';
+import { useBulkMutation } from '../../../../../shared/lib/useBulkMutation';
 import * as api from './applicant-api';
 import { type ApplicantListParams } from './applicant-api';
 
@@ -164,13 +165,16 @@ export const useReturnToStage = (id: string) => {
   });
 };
 
-export const useBulkApplicants = () => {
-  const invalidate = useInvalidateApplicants();
-  return useMutation({
-    mutationFn: (body: BulkApplicants) => api.bulkApplicants(body),
-    onSuccess: invalidate,
+/**
+ * Bulk withdraw / reassign / move the selection (RW17). I7 — the SAME hook every other bulk
+ * action uses, so the partial-success envelope is reported the same way here as everywhere else
+ * instead of each page inventing its own wording for a mixed result.
+ */
+export const useBulkApplicants = (onApplied?: () => void) =>
+  useBulkMutation<BulkApplicants>((body) => api.bulkApplicants(body), {
+    invalidate: invalidateRecruitment,
+    ...(onApplied === undefined ? {} : { onApplied }),
   });
-};
 
 export const useAddApplicantAttachment = (id: string) => {
   const invalidate = useInvalidateApplicants();

@@ -350,6 +350,42 @@ describe('reassignment (RW2)', () => {
     expect((await getApplicant(a.id)).placement.branchId).toBe(BRANCH_B);
     expect((await getApplicant(b.id)).placement.branchId).toBe(BRANCH_B);
   });
+
+  // RW17 — the executor must be EXHAUSTIVE over its own action vocabulary. It once handled
+  // `withdraw` and fell through to `reassign` for everything else, so a bulk `moveToOffer`
+  // silently ran a reassignment with no placement instead of moving anyone.
+  it('moves a selection to the Job Offer stage rather than falling through to reassign', async () => {
+    const [a, b] = [await register({ jobPositionId: POSITION_A }), await register({ jobPositionId: POSITION_A })];
+    const res = await request(app)
+      .post('/api/v1/hr/applicants/bulk')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ action: 'moveToOffer', ids: [a.id, b.id] });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect((res.body.data as BulkActionResultDto).succeeded).toBe(2);
+
+    for (const applicant of [a, b]) {
+      const after = await getApplicant(applicant.id);
+      expect(after.movedToOfferAt).not.toBeNull();
+      // The placement is untouched — this was a stage move, not a reassignment.
+      expect(after.placement.jobPositionId).toBe(POSITION_A);
+    }
+  });
+
+  it('opens the screening row for a selection (idempotent under I11)', async () => {
+    const a = await register({ jobPositionId: POSITION_A });
+    const res = await request(app)
+      .post('/api/v1/hr/applicants/bulk')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ action: 'moveToScreening', ids: [a.id] });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect((res.body.data as BulkActionResultDto).succeeded).toBe(1);
+
+    const screenings = await request(app)
+      .get('/api/v1/hr/screenings')
+      .query({ applicantId: a.id })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect((screenings.body as { data: unknown[] }).data).toHaveLength(1);
+  });
 });
 
 describe('the editing window closes at acceptance (RW3)', () => {

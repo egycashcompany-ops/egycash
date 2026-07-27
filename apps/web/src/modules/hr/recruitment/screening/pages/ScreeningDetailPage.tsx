@@ -21,6 +21,7 @@ import { ScreeningStatusBadge } from '../components/ScreeningStatusBadge';
 import { DecideDialog } from '../components/DecideDialog';
 import { ApplicantLifecycleActions } from '../../applicants/components/ApplicantLifecycleActions';
 import { ScheduleInterviewDialog } from '../../interviews/components/ScheduleInterviewDialog';
+import { CandidateTimeline } from '../../timeline/components/CandidateTimeline';
 import { useAddScreeningNote, useScreening } from '../api/screening-queries';
 
 export const ScreeningDetailPage = (): JSX.Element => {
@@ -191,6 +192,11 @@ export const ScreeningDetailPage = (): JSX.Element => {
             </CardBody>
           </Card>
         </div>
+      </div>
+
+      {/* THE recruitment history (I5) — every stage writes here, every screen reads here. */}
+      <div className="mt-6">
+        <CandidateTimeline applicantId={s.applicantId} />
       </div>
 
       {decide !== null && (

@@ -12,6 +12,7 @@ import {
   unmappedTransitions,
   type WorkflowEventName,
 } from './workflow-events';
+import { timelineTypeForEvent, unmappedWorkflowEvents } from './workflow-timeline-map';
 import { LIFECYCLE_EVENTS } from './workflow-lifecycle';
 import { STAGE_OBJECTS, WORKFLOW_TRANSITIONS, type WorkflowObject } from './workflow-transitions';
 
@@ -119,5 +120,21 @@ describe('offer events', () => {
 
   it('calls drafting the offer OfferCreated — the first real offer fact', () => {
     expect(eventForTransition('offer', 'waiting', 'draft')).toBe(WorkflowEvents.OfferCreated);
+  });
+});
+
+describe('timeline projection coverage (I5)', () => {
+  it('names a timeline entry type for every published event', () => {
+    // An unmapped event still lands on the timeline — as a generic `note`. That is worse than a
+    // crash: the candidate's history shows a blank line where a real fact happened, and nothing
+    // fails. Adding an event without naming its entry must fail here instead.
+    expect(unmappedWorkflowEvents()).toEqual([]);
+  });
+
+  it('distinguishes a lifecycle closure from a decision', () => {
+    expect(timelineTypeForEvent(WorkflowEvents.ScreeningCancelled)).toBe('screeningCancelled');
+    expect(timelineTypeForEvent(WorkflowEvents.ScreeningRejected)).toBe('screeningDecided');
+    expect(timelineTypeForEvent(WorkflowEvents.EvaluationCancelled)).toBe('evaluationCancelled');
+    expect(timelineTypeForEvent(WorkflowEvents.EvaluationRejected)).toBe('evaluationDecided');
   });
 });

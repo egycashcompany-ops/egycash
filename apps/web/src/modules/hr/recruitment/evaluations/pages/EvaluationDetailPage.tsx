@@ -1,7 +1,10 @@
-// Evaluation detail: the applicant's record for one phase — attached files (upload / remove), the
-// approve/reject decision with reason (editable — re-deciding is audited), and the full audited
-// decision history. Application Number only (no names). All mutations permission-gated + version-
-// checked. A rejection removes the applicant from the pipeline; correcting it reactivates them.
+// Evaluation detail: the applicant's record for one phase — attached files (upload / remove) and
+// the approve/reject decision with reason (editable — re-deciding is audited). Application Number
+// only (no names). All mutations permission-gated + version-checked. A rejection removes the
+// applicant from the pipeline; correcting it reactivates them.
+//
+// I5 — the decision history is NOT kept on the evaluation. Every decision and re-decision is on
+// the canonical recruitment timeline, which this page renders below.
 import { useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { type EvaluationDecision, type Locale } from '@ecms/contracts';
@@ -21,6 +24,7 @@ import { EvaluationStatusBadge } from '../components/EvaluationStatusBadge';
 import { useApplicant } from '../../applicants/api/applicant-queries';
 import { RecommendationCard } from '../../shared/RecommendationCard';
 import { MoveToOfferButton } from '../../applicants/components/MoveToOfferButton';
+import { CandidateTimeline } from '../../timeline/components/CandidateTimeline';
 import {
   useDecideEvaluation,
   useEvaluation,
@@ -232,25 +236,12 @@ export const EvaluationDetailPage = (): JSX.Element => {
             </CardBody>
           </Card>
 
-          {ev.decisionHistory.length > 0 && (
-            <Card>
-              <CardHeader title={t('evaluations.history.title')} />
-              <CardBody>
-                <ol className="space-y-3">
-                  {[...ev.decisionHistory].reverse().map((h, i) => (
-                    <li key={i} className="border-s-2 border-slate-200 ps-3 dark:border-slate-700">
-                      <p className="text-sm text-slate-700 dark:text-slate-200">
-                        {t(`evaluations.status.${h.from}`)} → {t(`evaluations.status.${h.to}`)}
-                      </p>
-                      <p className="text-xs text-slate-400">{formatDateTime(h.at, locale)}</p>
-                      {h.reason !== null && <p className="text-xs text-slate-500">{h.reason}</p>}
-                    </li>
-                  ))}
-                </ol>
-              </CardBody>
-            </Card>
-          )}
         </div>
+      </div>
+
+      {/* THE recruitment history (I5) — every stage writes here, every screen reads here. */}
+      <div className="mt-6">
+        <CandidateTimeline applicantId={ev.applicantId} />
       </div>
     </PageContainer>
   );

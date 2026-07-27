@@ -26,15 +26,6 @@ export interface EvaluationFile {
   uploadedAt: Date;
 }
 
-/** One audited decision change (backs editability — HR can re-decide a phase). */
-export interface EvaluationDecisionEvent {
-  at: Date;
-  from: EvaluationStatus;
-  to: EvaluationStatus;
-  reason: string | null;
-  by: Types.ObjectId | null;
-}
-
 export interface EvaluationDoc extends BaseDocFields, StageDocFields {
   applicantId: Types.ObjectId;
   applicantCode: string;
@@ -57,7 +48,6 @@ export interface EvaluationDoc extends BaseDocFields, StageDocFields {
   recommendationNote: string | null;
   decidedBy: Types.ObjectId | null;
   decidedAt: Date | null;
-  decisionHistory: EvaluationDecisionEvent[];
 }
 
 const fileSchema = new Schema<EvaluationFile>(
@@ -92,21 +82,8 @@ const evaluationSchema = new Schema<EvaluationDoc>(
     recommendationNote: { type: String, default: null },
     decidedBy: { type: Schema.Types.ObjectId, default: null },
     decidedAt: { type: Date, default: null },
-    decisionHistory: {
-      type: [
-        new Schema<EvaluationDecisionEvent>(
-          {
-            at: { type: Date, required: true },
-            from: { type: String, enum: EVALUATION_STATUSES, required: true },
-            to: { type: String, enum: EVALUATION_STATUSES, required: true },
-            reason: { type: String, default: null },
-            by: { type: Schema.Types.ObjectId, default: null },
-          },
-          { _id: false },
-        ),
-      ],
-      default: [],
-    },
+    // I5 — no `decisionHistory` here. Re-decisions are recorded once, on the canonical
+    // recruitment timeline; an aggregate that also logged them would be a second history.
     ...stageFields,
     ...baseFields,
   },

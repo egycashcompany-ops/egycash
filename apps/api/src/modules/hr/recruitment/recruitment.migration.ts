@@ -350,8 +350,22 @@ const closeStagesOfDepartedApplicants = async (): Promise<void> => {
   }
 };
 
+/**
+ * I5 — an evaluation used to log every re-decision in its own `decisionHistory[]`, alongside the
+ * `evaluationDecided` entries the canonical timeline records for exactly the same from/to/reason/
+ * actor. Two histories of one fact can only drift, so the aggregate's copy is dropped. Nothing is
+ * lost: the timeline holds every one of those decisions, and it always did.
+ */
+const dropEvaluationDecisionHistory = async (): Promise<void> => {
+  await EvaluationModel.updateMany(
+    { decisionHistory: { $exists: true } } as never,
+    { $unset: { decisionHistory: '' } },
+  ).exec();
+};
+
 export const migrateRecruitmentWorkflow = async (): Promise<void> => {
   await backfillAttemptMarkers();
+  await dropEvaluationDecisionHistory();
   await closeStagesOfDepartedApplicants();
   await backfillPlacement();
   await renamePendingToWaiting();

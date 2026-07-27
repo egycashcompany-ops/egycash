@@ -29,7 +29,7 @@ import { EvaluationModel } from './evaluation.model';
 import { evaluationRepository, type EvaluationListFilter } from './evaluation.repository';
 import { evaluationPhaseRepository } from './evaluation-phase.repository';
 import { resolveEvaluationCategoryId } from './evaluation.files';
-import { type EvaluationDoc, type EvaluationDecisionEvent, type EvaluationFile } from './evaluation.model';
+import { type EvaluationDoc, type EvaluationFile } from './evaluation.model';
 
 const entityRef = (id: string) => ({ moduleId: 'hr', entityType: 'evaluation', entityId: id });
 
@@ -87,7 +87,6 @@ class EvaluationService {
           files: [],
           decidedBy: null,
           decidedAt: null,
-          decisionHistory: [],
         },
         { by: ctx.userId },
       );
@@ -213,14 +212,9 @@ class EvaluationService {
   async decide(ctx: AuthContext, id: string, input: DecideEvaluation, scope: ScopeSelector): Promise<EvaluationDoc> {
     const before = await evaluationRepository.getById(id, scope);
     const now = new Date();
-    const event: EvaluationDecisionEvent = {
-      at: now,
-      from: before.status,
-      to: input.decision,
-      reason: input.reason ?? null,
-      by: new Types.ObjectId(ctx.userId),
-    };
-    // The engine owns the status change and publishes the event (I13/I15).
+    // The engine owns the status change and publishes the event (I13/I15). The re-decision is
+    // recorded ONCE, by the timeline projection over that event — this aggregate keeps the
+    // current decision and no log of past ones (I5).
     const { record: updated } = await recruitmentWorkflowEngine.transition({
       binding: BINDING,
       id,
@@ -232,7 +226,6 @@ class EvaluationService {
         reason: input.reason ?? null,
         decidedBy: new Types.ObjectId(ctx.userId),
         decidedAt: now,
-        decisionHistory: [...(before.decisionHistory ?? []), event],
       },
       payload: { phaseKey: before.phaseKey },
     } as never) as unknown as { record: EvaluationDoc };

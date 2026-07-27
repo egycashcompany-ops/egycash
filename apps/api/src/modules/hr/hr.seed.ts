@@ -24,6 +24,7 @@ import { ensureEvaluationCategory, evaluationPhaseService } from './recruitment/
 import { ensureEvaluationBatchCategory } from './recruitment/evaluation-batches';
 import { ensureHiringDocsCategory, hiringDocumentTypeService } from './recruitment/hiring-documents';
 import { migrateEmployeesToRegistry } from './employee-management/employees';
+import { migrateEmployeeFiles } from './employee-management/employee-file';
 import { migrateRecruitmentLegacy } from './recruitment/recruitment.migration';
 import { ensureLeaveAttachmentsCategory } from './leave-management/leave-requests';
 import { migrateLeaveModule } from './leave-management/leave.migration';
@@ -445,6 +446,9 @@ export const seedHrRecruitment = async (): Promise<void> => {
   await migrateRecruitmentLegacy();
   // Employee-registry boot migration (frozen design §10) — idempotent, legacy docs only.
   await migrateEmployeesToRegistry();
+  // I5 — drop the re-derived recruitment milestones from legacy Employee Files; the canonical
+  // recruitment timeline is now the only history (idempotent).
+  await migrateEmployeeFiles();
   // Auth design D2 — every employed employee gets an auto-provisioned login (idempotent).
   const { employeeService } = await import('./employee-management/employees/employee.service');
   await employeeService.provisionMissingLogins();

@@ -1017,6 +1017,86 @@ It writes the terminal statuses directly rather than replaying transitions: ther
 no moment to attribute for something that should have happened months ago, and inventing either
 would put fiction on the timeline.
 
+### I5 completion — one history, and only one
+
+Three parallel histories survived the first pass. Each has been removed, not wrapped:
+
+- **The Electronic Employee File re-derived the recruitment milestones.** It read the applicant,
+  the screening, the interviews and the offer at assembly time and wrote its own
+  `applicantRegistered` / `screeningAccepted` / `interviewPassed` / `offerAccepted` entries. Those
+  four values are gone from `EMPLOYEE_TIMELINE_EVENT_TYPES`, the derivation is deleted, and a boot
+  migration `$pull`s them from files already assembled. The file's own timeline now holds
+  post-hire facts only (the hire, the completed hiring case, the file opening, notes), and the
+  recruitment history arrives as `recruitmentTimeline` — a read of `hr_recruitment_timeline` at
+  request time, on single-file responses only (a list row shows no history, so it pays nothing).
+  The file still *links* the recruitment records; a link is not a history.
+- **`EvaluationDoc.decisionHistory[]` logged every re-decision** — `at`, `from`, `to`, `reason`,
+  `by` — which is field-for-field what the timeline's `evaluationDecided` entry already carries
+  for the same act. Two records of one fact can only ever disagree, so the array is dropped from
+  the model, the DTO and the mapper, and unset by the boot migration.
+- **Screens that showed history without reading it.** The four stage detail pages, the Employee
+  File and the employee profile's recruitment section now all render the canonical timeline
+  through one component. `CandidateTimeline` keeps the fetch, the filter and the note dialog;
+  `RecruitmentTimelineList` draws the entries and is what the Employee File reuses, fed from the
+  entries its own response carried.
+
+`ApplicantDoc.placementHistory[]` **stays**: RW1 defines it as the placement record, and it is
+not a projection of workflow events.
+
+**Two facts the timeline was silently missing.** Both were found by writing the assertion rather
+than reading the code, which is why they are recorded here:
+
+- **`applied` and `identityVerified` were declared but never written.** Registration and identity
+  verification are candidate facts, not workflow transitions, so nothing downstream of the engine
+  recorded them and every candidate's history began mid-pipeline at the first decision. Both are
+  now written by `applicantService` through `recordSafe`, so a history failure cannot fail a
+  registration and the deterministic `sourceKey` lets reconciliation repair it. Re-verifying
+  discriminates on the verification instant, so a correction adds an entry rather than colliding
+  with the first.
+- **The event → entry-type mapping was not total.** `ScreeningCancelled` and `EvaluationCancelled`
+  — added when a lifecycle exit began closing open stages — had no entry type, and an unmapped
+  event does not fail: it lands as a generic `note`, so a real closure showed as a blank line in
+  the candidate's history. The vocabulary gains `screeningCancelled` and `evaluationCancelled`
+  (the distinction `interviewCancelled` already drew: a closure is not a decision), the mapping
+  moved to a pure `workflow-timeline-map.ts` beside the rulebook, and `unmappedWorkflowEvents()`
+  is asserted by a unit test so the next event cannot repeat this.
+
+**Still open (batch history).** I5 lists batch detail among the screens that read the timeline,
+and `RECRUITMENT_TIMELINE_TYPES` declares `batchAdded` / `batchIssued` / `batchResultRecorded` —
+but nothing writes them: a batch deliberately drives the ordinary evaluation records, so only the
+evaluation's own decisions reach the timeline. Adding the three entries is straightforward
+(one per applicant in the batch, on their own history). Showing a batch's history *as a batch* is
+not: the timeline is read per applicant, so a group screen would need either a new
+correlation-scoped endpoint or a per-row drawer. That is a design decision, not an implementation
+detail, so it is recorded here rather than answered unilaterally.
+
+### I7 completion — one toolbar, one selection model
+
+The kit had **two** bulk toolbars: `BulkActionBar` (used by nine recruitment tables) and an older
+`BulkActions` with its own markup and its own `common.bulk.*` strings (used by the applicants list
+and the phase board). `BulkActions` is **deleted** — not deprecated — and both call sites moved to
+`BulkActionBar`; the orphaned i18n keys went with it.
+
+The phase board also kept its own `useState<Set<string>>` selection and moved candidates with a
+client-side loop of single-item requests. It now uses `useTableSelection` over the ids of its
+selectable columns — so a card that leaves the board drops out of the selection by itself — and
+one `POST /hr/applicants/bulk` with `action: 'moveToOffer'`, which is where the per-item
+transaction, the partial-success envelope and the single audit record for the act already live.
+
+The applicants list was the last page reporting a bulk result in its own words; it now uses the
+shared `useBulkMutation` like every other table, so a mixed result reads identically everywhere.
+
+Converging the toolbar surfaced a **server** bug behind it: `applicantService.bulk` handled
+`withdraw` and fell through to `reassign` for everything else, so `moveToOffer` and
+`moveToScreening` — both in the closed `BULK_APPLICANT_ACTIONS` vocabulary, and the former the
+action the phase board now calls — ran a reassignment with an undefined placement instead of
+moving anyone. The executor is exhaustive over its vocabulary now; `moveToScreening` opens the
+screening row, which under I11 is exactly what "move to screening" can mean, and is idempotent.
+Both actions are offered on the applicants table, completing RW17's row for it.
+
+`BulkActionBar` and `useTableSelection` are now exported from the shared UI barrel, which is where
+the kit says its surface lives. No bespoke selection state remains anywhere in the web app.
+
 ### Where the plan's wording did not match what shipped
 
 Two corrections to this document, recorded rather than quietly fixed:
@@ -1232,25 +1312,33 @@ layer — because they permit combinations the domain does not have.
 | Object | The single enum |
 |---|---|
 | Interview | `waiting` · `scheduled` · `inProgress` · `completed` · `cancelled` |
-| Evaluation | `waiting` · `approved` · `rejected` |
-| Job Offer | `draft` · `sent` · `accepted` · `rejected` · `withdrawn` · `expired` · `superseded` |
-| Screening | `waiting` · `accepted` · `rejected` |
-| Applicant | `new` · `rejected` · `withdrawn` (unchanged) |
+| Evaluation | `waiting` · `approved` · `rejected` · `cancelled` |
+| Job Offer | `waiting` · `draft` · `sent` · `accepted` · `rejected` · `withdrawn` · `expired` · `superseded` |
+| Screening | `waiting` · `accepted` · `rejected` · `cancelled` |
+| Applicant | `new` · `hired` · `rejected` · `withdrawn` |
+
+> **Correction to this table.** It was written before I11 made `waiting` a real persisted record
+> and before a lifecycle exit began closing open stages. `cancelled` on Screening and Evaluation
+> is that closure (recorded under "I11 completion" above); `waiting` on Job Offer is the
+> materialized record; `hired` on Applicant is the lifecycle terminal the engine writes. The
+> enums below are what the code holds, and the two paragraphs that follow are corrected with them.
 
 Consequences, all applied:
 
 - **The status enum IS the queue vocabulary.** The separate bucket enums drafted in RW15 are
-  deleted; stage tabs, list filters and counter buckets all use the status enum. `waiting` is the
-  value meaning *no active record yet* — it is derived at the stage level and never persisted on
-  a record (a record that does not exist cannot store a status).
+  deleted; stage tabs, list filters and counter buckets all use the status enum. `waiting` means
+  *the next action has not been taken*, and — corrected by I11 — it is a REAL PERSISTED VALUE on a
+  real row, not a derivation over rows that do not exist. The original wording here ("derived at
+  the stage level and never persisted") is what I11 overturned.
 - **`pending` → `waiting`** on both Evaluations and Screenings — across model, DTO and
   `decisionHistory[]` — with an idempotent boot migration rewriting stored values (I8: automatic,
   no manual step). `pending` is still accepted as a query-parameter alias for one release so
   existing links keep working.
-- **Where a value is derived, it is never persisted.** `waiting` on Interviews means "no round
-  exists yet", so the interview model's schema enum accepts only the persistable subset
-  (`scheduled` · `inProgress` · `completed` · `cancelled`) while the DTO, filters and counters use
-  the full enum. One vocabulary, with the database refusing to store a state that cannot exist.
+- ~~**Where a value is derived, it is never persisted.**~~ **Superseded by I11.** This clause
+  restricted the interview schema to `scheduled · inProgress · completed · cancelled` on the
+  grounds that `waiting` meant "no round exists yet". I11 replaced that reading: the round is
+  materialized the moment the candidate reaches the stage, so `waiting` is a stored value like any
+  other and the schema enum is the full `INTERVIEW_STATUSES`. One vocabulary, all of it persisted.
 - **Job Offer gains `superseded`** — what a return-to-stage sets on an active offer (RW13), which
   is more truthful than the withdrawal it used to record. `expired` is **kept**: the automatic
   expiry sweep is live behaviour, and the approver's list was illustrative, not a removal.

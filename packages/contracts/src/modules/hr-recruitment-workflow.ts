@@ -189,6 +189,9 @@ export const RECRUITMENT_TIMELINE_TYPES = [
   'identityVerified',
   'screeningOpened',
   'screeningDecided',
+  // A lifecycle exit closes an undecided screening (I14). That is not a decision, so it has its
+  // own type — the same distinction `interviewCancelled` already draws for a round.
+  'screeningCancelled',
   'interviewScheduled',
   'interviewStarted',
   'interviewCompleted',
@@ -196,6 +199,8 @@ export const RECRUITMENT_TIMELINE_TYPES = [
   'evaluationOpened',
   'evaluationScheduled',
   'evaluationDecided',
+  /** Closed by a lifecycle exit rather than decided (I14). */
+  'evaluationCancelled',
   'batchAdded',
   'batchIssued',
   'batchResultRecorded',

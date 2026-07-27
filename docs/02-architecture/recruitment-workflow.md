@@ -165,6 +165,39 @@ offers, batches and their items, and hiring documents (complete). The client alw
 bulk endpoint — never a loop of single calls, which would produce no bulk audit record and no
 envelope, and would leave a half-finished run behind if the tab closed.
 
+Every one of them renders the SAME `BulkActionBar` over the SAME `useTableSelection` (I7),
+including the phase board, whose cards are a table in other clothing. There is no second toolbar
+and no bespoke selection state anywhere in the web app.
+
+## 8a. One history (I5)
+
+`hr_recruitment_timeline` is the candidate's chronological history, and it is the only one. Every
+screen that shows history reads it: applicant detail, all four stage detail pages, the Electronic
+Employee File, and the employee profile's recruitment section. Two components serve them —
+`CandidateTimeline` fetches, filters and carries the one user-authored note; `RecruitmentTimelineList`
+draws the entries and is what the Employee File reuses, fed from the `recruitmentTimeline` its own
+response already carries rather than a second request.
+
+Nothing keeps a copy. The Employee File no longer re-derives recruitment milestones (its own
+timeline starts at the hire), and an evaluation no longer logs its re-decisions in
+`decisionHistory[]` — that array held exactly what the timeline's `evaluationDecided` entry holds,
+so two records of one fact could only ever disagree. Both are dropped, with the boot migration
+cleaning up documents already written.
+
+`ApplicantDoc.placementHistory[]` is not an exception: it is the placement record RW1 defines, not
+a projection of workflow events.
+
+Every published workflow event names its entry type, and `unmappedWorkflowEvents()` is asserted by
+a unit test — an unmapped event would not fail, it would quietly land as a generic `note`, which is
+a blank line where a real fact happened. `applied` and `identityVerified` are written directly by
+the applicant service, because registration and verification are candidate facts rather than
+workflow transitions and nothing downstream of the engine would record them.
+
+Known gap: `batchAdded` / `batchIssued` / `batchResultRecorded` exist in the timeline vocabulary
+but nothing writes them — a batch deliberately drives the ordinary evaluations, so only their
+decisions reach the timeline. Showing a batch's history *as a batch* needs a read that is not
+per-applicant, which is an open design question rather than a missing line of code.
+
 ## 9. Two traps worth remembering
 
 - **A `required: true` String cannot carry `default: ''`.** Mongoose treats `''` as missing, so

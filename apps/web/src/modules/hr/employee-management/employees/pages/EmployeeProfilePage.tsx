@@ -26,6 +26,7 @@ import { PersonalView } from '../components/PersonalView';
 import { EditPersonalDialog } from '../components/EditPersonalDialog';
 import { EmployeeFileDocuments } from '../../employee-files/components/EmployeeFileDocuments';
 import { useEmployeeFiles } from '../../employee-files/api/employee-file-queries';
+import { CandidateTimeline } from '../../../recruitment/timeline/components/CandidateTimeline';
 import { useEmployee, useEmployeeActions, useEmployeeTimeline } from '../api/employee-queries';
 
 const TABS = ['overview', 'personal', 'employment', 'leave', 'contracts', 'documents', 'timeline', 'account'] as const;
@@ -197,13 +198,21 @@ const TimelineTab = ({ e }: { e: EmployeeDto }): JSX.Element => {
     tone:
       item.source === 'action' ? ('brand' as const) : item.source === 'personal' ? ('warning' as const) : ('neutral' as const),
   }));
-  if (entries.length === 0) return <EmptyState title={t('employees.timeline.empty')} />;
   return (
-    <Card>
-      <CardBody>
-        <Timeline entries={entries} />
-      </CardBody>
-    </Card>
+    <div className="space-y-4">
+      <Card>
+        <CardHeader title={t('employees.timeline.title')} description={t('employees.timeline.hint')} />
+        <CardBody>
+          {entries.length === 0 ? (
+            <EmptyState title={t('employees.timeline.empty')} />
+          ) : (
+            <Timeline entries={entries} />
+          )}
+        </CardBody>
+      </Card>
+      {/* I5 — the recruitment section reads THE recruitment history, it does not re-tell it. */}
+      {e.applicantId === null ? null : <CandidateTimeline applicantId={e.applicantId} />}
+    </div>
   );
 };
 

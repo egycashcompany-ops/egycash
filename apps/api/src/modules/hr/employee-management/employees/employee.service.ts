@@ -663,7 +663,9 @@ class EmployeeService {
     const employee = await employeeRepository.getById(id, scope);
     const items: EmployeeTimelineItemDto[] = [];
 
-    // 1 — Recruitment-era milestones + notes from the Employee File (when assembled).
+    // 1 — The Employee File's own entries + notes (when assembled). This is the hiring handoff,
+    // not the candidate's recruitment history: that has one home, `hr_recruitment_timeline`, and
+    // the Employee File page reads it there (I5).
     try {
       const { employeeFileService } = await import('../employee-file');
       const file = await employeeFileService.findByEmployeeIdSystem(id);

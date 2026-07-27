@@ -1,14 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { Types } from 'mongoose';
+import { type RecruitmentTimelineEntryDto } from '@ecms/contracts';
 import { toEmployeeFileDto } from './employee-file.mapper';
 import { type EmployeeFileDoc, type EmployeeTimelineEntry } from './employee-file.model';
 
 const entry = (over: Partial<EmployeeTimelineEntry> = {}): EmployeeTimelineEntry => ({
   at: new Date('2026-09-20T00:00:00.000Z'),
-  type: 'applicantRegistered',
-  refType: 'applicant',
+  type: 'employeeCreated',
+  refType: 'employee',
   refId: new Types.ObjectId(),
-  detail: 'APP-2026-000001',
+  detail: 'EMP-2026-000001',
   by: null,
   ...over,
 });
@@ -120,7 +121,7 @@ describe('toEmployeeFileDto', () => {
     const author = new Types.ObjectId();
     const doc = baseDoc({
       timeline: [
-        entry({ type: 'interviewPassed', refType: 'interview', refId, detail: 'First Interview' }),
+        entry({ type: 'hiringDocumentsCompleted', refType: 'hiringDocuments', refId, detail: null }),
         entry({
           at: new Date('2026-09-25T10:00:00.000Z'),
           type: 'note',
@@ -134,10 +135,10 @@ describe('toEmployeeFileDto', () => {
     const dto = toEmployeeFileDto(doc);
     expect(dto.timeline).toHaveLength(2);
     expect(dto.timeline[0]).toMatchObject({
-      type: 'interviewPassed',
-      refType: 'interview',
+      type: 'hiringDocumentsCompleted',
+      refType: 'hiringDocuments',
       refId: String(refId),
-      detail: 'First Interview',
+      detail: null,
       at: '2026-09-20T00:00:00.000Z',
       by: null,
     });
@@ -149,5 +150,16 @@ describe('toEmployeeFileDto', () => {
       at: '2026-09-25T10:00:00.000Z',
       by: String(author),
     });
+  });
+
+  // I5 — the recruitment history is a VIEW the service supplies, not something the file rebuilds.
+  // The mapper must carry it through untouched, and default to empty when nobody asked for it.
+  it('carries the canonical recruitment timeline through and defaults it to empty', () => {
+    const canonical = [
+      { eventId: 'evt-1', type: 'applied' },
+      { eventId: 'evt-2', type: 'screeningDecided' },
+    ] as unknown as RecruitmentTimelineEntryDto[];
+    expect(toEmployeeFileDto(baseDoc()).recruitmentTimeline).toEqual([]);
+    expect(toEmployeeFileDto(baseDoc(), canonical).recruitmentTimeline).toBe(canonical);
   });
 });

@@ -11,7 +11,7 @@ import { Can } from '../../../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../../../shared/ui/DataTable';
 import { Pagination } from '../../../../../shared/ui/Pagination';
-import { BulkActions } from '../../../../../shared/ui/BulkActions';
+import { BulkActionBar } from '../../../../../shared/ui/BulkActionBar';
 import { useTableSelection } from '../../../../../shared/ui/useTableSelection';
 import { Button } from '../../../../../shared/ui/Button';
 import { Dialog } from '../../../../../shared/ui/Dialog';
@@ -108,7 +108,9 @@ export const ApplicantsListPage = (): JSX.Element => {
   );
 
   const { data, isLoading, isError, error, refetch } = useApplicants(params);
-  const bulk = useBulkApplicants();
+  // I7 — the shared bulk hook: it reports the partial-success envelope the same way every other
+  // recruitment table does, and clears the selection when at least one item applied.
+  const bulk = useBulkApplicants(() => selection.clear());
   const rows = data?.items ?? [];
 
   // The shared selection model (RW17): always the intersection with the rows on screen, so a
@@ -118,31 +120,26 @@ export const ApplicantsListPage = (): JSX.Element => {
 
   const submitWithdraw = async (): Promise<void> => {
     try {
-      const result = await bulk.mutateAsync({ action: 'withdraw', ids: selection.ids, reason: withdrawReason });
-      toast.success(
-        t('applicants.bulk.withdrawDone', {
-          ok: formatNumber(result.succeeded, locale),
-          total: formatNumber(result.requested, locale),
-        }),
-      );
+      await bulk.mutateAsync({ action: 'withdraw', ids: selection.ids, reason: withdrawReason });
       setWithdrawOpen(false);
       setWithdrawReason('');
-      selection.clear();
+    } catch {
+      // surfaced by the global error handler
+    }
+  };
+
+  /** The actions that need nothing but the selection — the hook reports the envelope. */
+  const runBulk = async (action: 'moveToOffer' | 'moveToScreening'): Promise<void> => {
+    try {
+      await bulk.mutateAsync({ action, ids: selection.ids });
     } catch {
       // surfaced by the global error handler
     }
   };
 
   const submitBulkReassign = async (placement: PlacementDto, reason: string): Promise<void> => {
-    const result = await bulk.mutateAsync({ action: 'reassign', ids: selection.ids, placement, reason });
-    toast.success(
-      t('applicants.bulk.withdrawDone', {
-        ok: formatNumber(result.succeeded, locale),
-        total: formatNumber(result.requested, locale),
-      }),
-    );
+    await bulk.mutateAsync({ action: 'reassign', ids: selection.ids, placement, reason });
     setBulkReassignOpen(false);
-    selection.clear();
   };
 
   const runExport = (): void => {
@@ -206,7 +203,7 @@ export const ApplicantsListPage = (): JSX.Element => {
       <div className="space-y-4">
         <ApplicantFilters value={filters} onChange={changeFilters} sources={sources} />
 
-        <BulkActions count={selection.count} onClear={selection.clear}>
+        <BulkActionBar count={selection.count} onClear={selection.clear}>
           {/* RW17 — one placement over the whole selection; each candidate is still checked
               against the editing window on its own. */}
           <Can permission="applicant.reassign">
@@ -214,12 +211,32 @@ export const ApplicantsListPage = (): JSX.Element => {
               {t('applicants.reassign.selected')}
             </Button>
           </Can>
+          <Can permission="applicant.moveToOffer">
+            <Button
+              size="sm"
+              variant="secondary"
+              loading={bulk.isPending}
+              onClick={() => void runBulk('moveToOffer')}
+            >
+              {t('applicants.bulk.moveToOffer')}
+            </Button>
+          </Can>
+          <Can permission="applicant.edit">
+            <Button
+              size="sm"
+              variant="secondary"
+              loading={bulk.isPending}
+              onClick={() => void runBulk('moveToScreening')}
+            >
+              {t('applicants.bulk.moveToScreening')}
+            </Button>
+          </Can>
           <Can permission="applicant.edit">
             <Button size="sm" variant="danger" onClick={() => setWithdrawOpen(true)}>
               {t('applicants.actions.withdraw')}
             </Button>
           </Can>
-        </BulkActions>
+        </BulkActionBar>
 
         <DataTable
           columns={columns}

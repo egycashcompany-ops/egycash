@@ -27,6 +27,7 @@ import { ApplicantLifecycleActions } from '../../applicants/components/Applicant
 import { useApplicant } from '../../applicants/api/applicant-queries';
 import { RecommendationCard } from '../../shared/RecommendationCard';
 import { MoveToOfferButton } from '../../applicants/components/MoveToOfferButton';
+import { CandidateTimeline } from '../../timeline/components/CandidateTimeline';
 import {
   useInterview,
   useSetInterviewRecommendation,
@@ -273,6 +274,11 @@ export const InterviewDetailPage = (): JSX.Element => {
             </CardBody>
           </Card>
         </div>
+      </div>
+
+      {/* THE recruitment history (I5) — every stage writes here, every screen reads here. */}
+      <div className="mt-6">
+        <CandidateTimeline applicantId={iv.applicantId} />
       </div>
 
       {rescheduleOpen && (

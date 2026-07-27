@@ -9,7 +9,49 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Changed
+
+- **Recruitment: one history, and only one (I5).** Three parallel histories are gone. The
+  Electronic Employee File no longer re-derives the recruitment milestones — its own timeline
+  starts at the hire, and the candidate's recruitment history arrives as `recruitmentTimeline`,
+  read from `hr_recruitment_timeline` at request time. `EvaluationDoc.decisionHistory[]` is
+  removed: it logged `at`/`from`/`to`/`reason`/`by` for every re-decision, which is exactly what
+  the timeline's `evaluationDecided` entry already records for the same act. And every screen that
+  shows history now reads the canonical collection through one renderer — the four stage detail
+  pages, the Employee File and the employee profile's recruitment section included. The boot
+  migration drops the four derived milestone types from files already assembled and unsets the
+  evaluation array; nothing is lost, because the timeline held all of it.
+
+- **Recruitment: one bulk toolbar and one selection model (I7).** The older `BulkActions`
+  component is deleted rather than deprecated, and its two call sites — the applicants list and
+  the phase board — moved to the shared `BulkActionBar`. The phase board also dropped its own
+  `useState<Set<string>>` selection for `useTableSelection`, and its "move to Job Offer" now
+  issues one `POST /hr/applicants/bulk` instead of a client-side loop of single-item requests,
+  so the act gets the per-item transaction, the partial-success envelope and the single audit
+  record every other bulk action already had. `BulkActionBar` and `useTableSelection` are now part
+  of the shared UI barrel.
+
 ### Fixed
+
+- **Recruitment: the candidate timeline was missing its first two entries.** `applied` and
+  `identityVerified` were in the frozen vocabulary but nothing wrote them — registration and
+  identity verification are candidate facts, not workflow transitions, so no consumer recorded
+  them and every history began mid-pipeline at the first decision. Both are now written by the
+  applicant service.
+
+- **Recruitment: a stage closed by a withdrawal showed as a blank note.** `hr.screening.cancelled`
+  and `hr.evaluation.cancelled` had no timeline entry type, and an unmapped event does not fail —
+  it falls through to a generic `note`. The vocabulary gains `screeningCancelled` and
+  `evaluationCancelled`, and a unit test now asserts the mapping is total, so the next event
+  cannot repeat this.
+
+- **Recruitment: bulk "Move to Job Offer" silently ran a reassignment instead.** The applicant
+  bulk executor handled `withdraw` and fell through to `reassign` for everything else, so
+  `moveToOffer` and `moveToScreening` — both in the closed action vocabulary — reassigned the
+  selection with an undefined placement rather than moving anyone. The executor is now exhaustive
+  over its own vocabulary: `moveToOffer` moves, and `moveToScreening` opens the screening row
+  (idempotent, since I11 materializes it at registration). Both are now offered on the applicants
+  table, completing RW17's action list for it, and both are covered by integration tests.
 
 - **Recruitment: bulk "Start now" was a no-op.** The web client posted the bulk body to
   `POST /hr/interviews/start` — the single-candidate route, whose schema is `.strict()` —

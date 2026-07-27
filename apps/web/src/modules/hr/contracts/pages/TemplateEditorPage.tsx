@@ -42,6 +42,13 @@ const slug = (value: string): string =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/(^-|-$)/g, '') || 'signer';
 
+/** Rich-text "empty": the editor leaves `<p></p>` behind — that is still an empty body. */
+const isBlankHtml = (html: string): boolean =>
+  html
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .trim() === '';
+
 export const TemplateEditorPage = (): JSX.Element => {
   const t = useT();
   const navigate = useNavigate();
@@ -79,7 +86,7 @@ export const TemplateEditorPage = (): JSX.Element => {
     setNameAr(existing.name.ar);
     setNameEn(existing.name.en);
     setLanguage(existing.language);
-    setContractTypeId(existing.contractTypeId);
+    setContractTypeId(existing.contractTypeId ?? '');
     setHeader(existing.sections.header);
     setBody(existing.sections.body);
     setFooter(existing.sections.footer);
@@ -94,17 +101,15 @@ export const TemplateEditorPage = (): JSX.Element => {
     setDirty(true);
   };
 
+  // Saving a DRAFT is never completeness-gated — a draft is expected to be
+  // incomplete while it is being authored. Publish is the only gated action.
   const save = async (): Promise<{ id: string; version: number } | null> => {
-    if (nameAr.trim() === '' || nameEn.trim() === '' || contractTypeId === '' || body.trim() === '') {
-      toast.warning(t('contracts.templates.incomplete'));
-      return null;
-    }
     try {
       if (isNew) {
         const created = await create.mutateAsync({
           name: { ar: nameAr, en: nameEn },
           language,
-          contractTypeId,
+          contractTypeId: contractTypeId === '' ? null : contractTypeId,
           sections: { header, body, footer },
           logoFileId: null,
           signatures,
@@ -117,7 +122,7 @@ export const TemplateEditorPage = (): JSX.Element => {
         id,
         body: {
           name: { ar: nameAr, en: nameEn },
-          contractTypeId,
+          contractTypeId: contractTypeId === '' ? null : contractTypeId,
           sections: { header, body, footer },
           signatures,
           version: existing?.version ?? 0,
@@ -152,6 +157,21 @@ export const TemplateEditorPage = (): JSX.Element => {
   };
 
   const doPublish = async (): Promise<void> => {
+    // Publish is the ONLY completeness-gated action; the server enforces the same rule
+    // (plus unknown-placeholder checks) — this pre-check just names every missing part
+    // in a friendlier way than the 422 would.
+    const missing: string[] = [];
+    if (nameAr.trim() === '') missing.push(t('contracts.templates.nameAr'));
+    if (nameEn.trim() === '') missing.push(t('contracts.templates.nameEn'));
+    if (contractTypeId === '') missing.push(t('contracts.columns.type'));
+    if (isBlankHtml(body)) missing.push(t('contracts.templates.sectionBody'));
+    if (signatures.some((block) => block.label.trim() === '')) missing.push(t('contracts.templates.signatureLabels'));
+    if (missing.length > 0) {
+      toast.warning(
+        t('contracts.templates.publishIncomplete', { list: missing.join(locale === 'ar' ? '، ' : ', ') }),
+      );
+      return;
+    }
     const target = dirty || isNew ? await save() : { id, version: existing?.version ?? 0 };
     if (target === null) return;
     try {

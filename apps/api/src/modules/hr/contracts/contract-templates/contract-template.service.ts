@@ -23,10 +23,17 @@ import { type ContractTemplateDoc } from './contract-template.model';
 
 const entityRef = (id: string) => ({ moduleId: 'hr', entityType: 'contractTemplate', entityId: id });
 
+/** Rich-text "empty": no text content once tags/entities are stripped (`<p></p>` counts). */
+const isBlankHtml = (html: string): boolean =>
+  html
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .trim() === '';
+
 const auditSnapshot = (doc: ContractTemplateDoc): Record<string, unknown> => ({
   'name.en': doc.name.en,
   'name.ar': doc.name.ar,
-  contractTypeId: String(doc.contractTypeId),
+  contractTypeId: doc.contractTypeId === null ? null : String(doc.contractTypeId),
   status: doc.status,
   header: doc.sections.header,
   body: doc.sections.body,
@@ -36,7 +43,11 @@ const auditSnapshot = (doc: ContractTemplateDoc): Record<string, unknown> => ({
 });
 
 class ContractTemplateService {
-  /** Sanitize + validate sections against the variable catalog (D5/D6/A11). */
+  /**
+   * Sanitize sections + derive the placeholder list (D5/D6/A11). Unknown placeholders
+   * do NOT block drafting — they surface as preview issues while authoring and hard-block
+   * at publish, which enforces D5 where it matters: nothing unknown can ever generate.
+   */
   private prepareSections(input: TemplateSections): { sections: TemplateSections; placeholders: string[] } {
     const sections = {
       header: sanitizeTemplateHtml(input.header),
@@ -44,22 +55,19 @@ class ContractTemplateService {
       footer: sanitizeTemplateHtml(input.footer),
     };
     const placeholders = extractPlaceholders(`${sections.header}\n${sections.body}\n${sections.footer}`);
-    const unknown = placeholders.filter((key) => !CATALOG_KEYS.has(key));
-    if (unknown.length > 0) {
-      throw new BusinessRuleError(`unknown placeholders: ${unknown.join(', ')}`);
-    }
     return { sections, placeholders };
   }
 
   async create(input: CreateContractTemplate, by: string): Promise<ContractTemplateDoc> {
-    await contractTypeService.getById(input.contractTypeId); // must exist
+    // A draft may not have picked its type yet; when it has, the type must exist.
+    if (input.contractTypeId !== null) await contractTypeService.getById(input.contractTypeId);
     const { sections, placeholders } = this.prepareSections(input.sections);
     const doc = await contractTemplateRepository.create(
       {
         key: randomUUID(),
         name: input.name,
         language: input.language,
-        contractTypeId: new Types.ObjectId(input.contractTypeId),
+        contractTypeId: input.contractTypeId === null ? null : new Types.ObjectId(input.contractTypeId),
         status: 'draft',
         templateVersion: 1,
         sections,
@@ -87,7 +95,14 @@ class ContractTemplateService {
     if (before.status === 'archived') {
       throw new BusinessRuleError('an archived template cannot be edited — clone it instead');
     }
+    if (input.contractTypeId != null) await contractTypeService.getById(input.contractTypeId);
     const prepared = input.sections === undefined ? null : this.prepareSections(input.sections);
+    const nextTypeId = (fallback: Types.ObjectId | null): Types.ObjectId | null =>
+      input.contractTypeId === undefined
+        ? fallback
+        : input.contractTypeId === null
+          ? null
+          : new Types.ObjectId(input.contractTypeId);
 
     if (before.status === 'published') {
       const latest = await contractTemplateRepository.findLatestByKey(before.key);
@@ -96,8 +111,7 @@ class ContractTemplateService {
           key: before.key,
           name: input.name ?? before.name,
           language: before.language,
-          contractTypeId:
-            input.contractTypeId === undefined ? before.contractTypeId : new Types.ObjectId(input.contractTypeId),
+          contractTypeId: nextTypeId(before.contractTypeId),
           status: 'draft',
           templateVersion: (latest?.templateVersion ?? before.templateVersion) + 1,
           sections: prepared?.sections ?? before.sections,
@@ -123,7 +137,7 @@ class ContractTemplateService {
 
     const set: Record<string, unknown> = { changedBy: new Types.ObjectId(by) };
     if (input.name !== undefined) set.name = input.name;
-    if (input.contractTypeId !== undefined) set.contractTypeId = new Types.ObjectId(input.contractTypeId);
+    if (input.contractTypeId !== undefined) set.contractTypeId = nextTypeId(null);
     if (prepared !== null) {
       set.sections = prepared.sections;
       set.placeholders = prepared.placeholders;
@@ -141,11 +155,30 @@ class ContractTemplateService {
     return after;
   }
 
-  /** A17 — only published versions can generate; publishing supersedes prior published ones. */
+  /**
+   * A17 — only published versions can generate; publishing supersedes prior published ones.
+   * This is THE completeness gate: drafts save incomplete freely, but nothing incomplete
+   * can ever publish (and therefore never generate a contract).
+   */
   async publish(id: string, by: string, version: number): Promise<ContractTemplateDoc> {
     const doc = await contractTemplateRepository.getById(id);
     if (doc.status !== 'draft') throw new BusinessRuleError('only a draft version can be published');
-    if (doc.sections.body.trim() === '') throw new BusinessRuleError('the template body is empty');
+    const missing: string[] = [];
+    if (doc.name.ar.trim() === '') missing.push('Arabic name');
+    if (doc.name.en.trim() === '') missing.push('English name');
+    if (doc.contractTypeId === null) missing.push('contract type');
+    // A body of empty markup (e.g. the editor's leftover `<p></p>`) is still empty.
+    if (isBlankHtml(doc.sections.body)) missing.push('body');
+    if (doc.signatures.some((block) => block.label.trim() === '')) missing.push('signature labels');
+    const unknown = doc.placeholders.filter((key) => !CATALOG_KEYS.has(key));
+    if (missing.length > 0 || unknown.length > 0) {
+      const parts = [
+        ...(missing.length > 0 ? [`missing: ${missing.join(', ')}`] : []),
+        ...(unknown.length > 0 ? [`unknown placeholders: ${unknown.map((key) => `{{${key}}}`).join(', ')}`] : []),
+      ];
+      throw new BusinessRuleError(`cannot publish an incomplete template — ${parts.join('; ')}`);
+    }
+    await contractTypeService.getById(String(doc.contractTypeId)); // the type must still exist
     // The previous published version (if any) goes back to archived — one published per key.
     const current = await contractTemplateRepository.findPublishedByKey(doc.key);
     if (current !== null && String(current._id) !== id) {
@@ -242,7 +275,7 @@ class ContractTemplateService {
       key: doc.key,
       name: doc.name,
       language: doc.language,
-      contractTypeId: String(doc.contractTypeId),
+      contractTypeId: doc.contractTypeId === null ? null : String(doc.contractTypeId),
       status: doc.status,
       templateVersion: doc.templateVersion,
       sections: doc.sections,

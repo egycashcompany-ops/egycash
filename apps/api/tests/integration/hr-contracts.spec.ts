@@ -316,19 +316,30 @@ describe('contract templates — sanitize, placeholders, publish gate, versions 
     expect(template.sections.body).toBe('<p>نص</p>');
   });
 
-  it('rejects placeholders outside the server catalog (D5)', async () => {
+  it('tolerates unknown placeholders while DRAFTING; publish rejects them (D5 at the gate)', async () => {
+    // A typo'd placeholder must not block Save Draft — D5 holds where it matters:
+    // nothing unknown can publish, and therefore nothing unknown can ever generate.
     const res = await request(app)
       .post('/api/v1/hr/contract-templates')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
-        name: { ar: 'خطأ', en: 'Bad' },
+        name: { ar: 'مسودة بخطأ', en: 'Draft with typo' },
         language: 'ar',
         contractTypeId: typeId,
         sections: { header: '', body: '<p>{{no.such.variable}}</p>', footer: '' },
         logoFileId: null,
         signatures: [],
       });
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(201);
+    const draft = res.body.data as ContractTemplateDto;
+    expect(draft.placeholders).toContain('no.such.variable');
+
+    const blocked = await request(app)
+      .post(`/api/v1/hr/contract-templates/${draft.id}/publish`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: draft.version });
+    expect(blocked.status).toBe(422);
+    expect((blocked.body as { error: { message: string } }).error.message).toContain('no.such.variable');
   });
 
   it('derives the placeholder list on save', async () => {
@@ -337,6 +348,52 @@ describe('contract templates — sanitize, placeholders, publish gate, versions 
     expect(template.placeholders).toContain('employee.fullName');
     expect(template.status).toBe('draft');
     expect(template.templateVersion).toBe(1);
+  });
+
+  it('saves an INCOMPLETE draft freely — publish is the only completeness gate', async () => {
+    // Save Draft is never blocked: a draft is expected to be incomplete while authored —
+    // no names, no type, empty body, an unlabeled signature row.
+    const created = await request(app)
+      .post('/api/v1/hr/contract-templates')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: { ar: '', en: '' },
+        language: 'ar',
+        contractTypeId: null,
+        sections: { header: '', body: '', footer: '' },
+        logoFileId: null,
+        signatures: [{ key: 'employer', label: '' }],
+      });
+    expect(created.status).toBe(201);
+    const draft = created.body.data as ContractTemplateDto;
+    expect(draft.status).toBe('draft');
+    expect(draft.contractTypeId).toBeNull();
+
+    // Publish blocks with a readable report of everything still missing.
+    const blocked = await request(app)
+      .post(`/api/v1/hr/contract-templates/${draft.id}/publish`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: draft.version });
+    expect(blocked.status).toBe(422);
+    const message = (blocked.body as { error: { message: string } }).error.message;
+    for (const part of ['Arabic name', 'English name', 'contract type', 'body', 'signature labels']) {
+      expect(message).toContain(part);
+    }
+
+    // Completing the draft unlocks publishing.
+    const completed = await request(app)
+      .patch(`/api/v1/hr/contract-templates/${draft.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: { ar: 'قالب مكتمل', en: 'Completed' },
+        contractTypeId: typeId,
+        sections: { header: '', body: '<p>{{contract.code}}</p>', footer: '' },
+        signatures: [{ key: 'employer', label: 'الطرف الأول' }],
+        version: draft.version,
+      });
+    expect(completed.status).toBe(200);
+    const published = await publishTemplate(completed.body.data as ContractTemplateDto);
+    expect(published.status).toBe('published');
   });
 
   it('edits a DRAFT in place; editing a PUBLISHED version forks the next draft (A19)', async () => {
@@ -814,7 +871,8 @@ describe('contracts — numbering setting, search, sweeps, PDF fallback, attachm
             body: '<p>{{employee.fullName}} — {{no.such.thing}} — {{contract.currentDate}}</p>',
             footer: '',
           },
-          signatures: [],
+          // An unlabeled just-added signature row must not block previewing either.
+          signatures: [{ key: 'employer', label: '' }],
         },
         overrides: [],
       });

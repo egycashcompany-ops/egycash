@@ -9,6 +9,10 @@ import { useAppSelector } from '../../../../../store';
 import { Can } from '../../../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../../../shared/ui/DataTable';
+import { BulkActionBar } from '../../../../../shared/ui/BulkActionBar';
+import { useTableSelection } from '../../../../../shared/ui/useTableSelection';
+import { Dialog } from '../../../../../shared/ui/Dialog';
+import { Field, Input } from '../../../../../shared/ui/form';
 import { Pagination } from '../../../../../shared/ui/Pagination';
 import { Button } from '../../../../../shared/ui/Button';
 import { PlusIcon } from '../../../../../shared/ui/icons';
@@ -17,7 +21,7 @@ import { ScreeningStatusBadge } from '../components/ScreeningStatusBadge';
 import { ScreeningFilters, type ScreeningFiltersState } from '../components/ScreeningFilters';
 import { AwaitingScreeningsPanel } from '../components/AwaitingScreeningsPanel';
 import { CreateScreeningDialog, type PickedApplicant } from '../components/CreateScreeningDialog';
-import { useScreenings } from '../api/screening-queries';
+import { useBulkScreenings, useScreenings } from '../api/screening-queries';
 import { type ScreeningListParams } from '../api/screening-api';
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -86,6 +90,19 @@ export const ScreeningQueuePage = (): JSX.Element => {
   const { data, isLoading, isError, error, refetch } = useScreenings(params);
   const rows = data?.items ?? [];
 
+  // Bulk decide (RW17). Only WAITING rows can be decided, so the selection offers the actions
+  // exactly when every picked row can take them — never a button that half-works.
+  const rowIds = useMemo(() => rows.map((s) => s.id), [rows]);
+  const selection = useTableSelection(rowIds);
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [reason, setReason] = useState('');
+  const bulk = useBulkScreenings(() => {
+    selection.clear();
+    setRejectOpen(false);
+    setReason('');
+  });
+  const decidable = selection.ids.filter((id) => rows.find((r) => r.id === id)?.status === 'waiting');
+
   const columns: Column<ScreeningDto>[] = [
     {
       key: 'applicant',
@@ -121,6 +138,26 @@ export const ScreeningQueuePage = (): JSX.Element => {
       <div className="space-y-4">
         <AwaitingScreeningsPanel onOpen={(a) => { setCreateFor(a); setCreateOpen(true); }} />
         <ScreeningFilters value={filters} onChange={changeFilters} />
+        <Can permission="screening.decide">
+          <BulkActionBar count={selection.count} onClear={selection.clear}>
+            <Button
+              size="sm"
+              loading={bulk.isPending}
+              disabled={decidable.length === 0}
+              onClick={() => void bulk.mutateAsync({ action: 'approve', ids: decidable })}
+            >
+              {t('screening.actions.approveSelected')}
+            </Button>
+            <Button
+              size="sm"
+              variant="danger"
+              disabled={decidable.length === 0}
+              onClick={() => setRejectOpen(true)}
+            >
+              {t('screening.actions.rejectSelected')}
+            </Button>
+          </BulkActionBar>
+        </Can>
         <DataTable
           columns={columns}
           rows={rows}
@@ -131,6 +168,7 @@ export const ScreeningQueuePage = (): JSX.Element => {
           sort={sort}
           onSortChange={changeSort}
           onRowClick={(s) => navigate(s.id)}
+          selection={selection}
         />
         {data !== undefined && data.meta.totalItems > 0 && (
           <Pagination
@@ -140,6 +178,34 @@ export const ScreeningQueuePage = (): JSX.Element => {
           />
         )}
       </div>
+
+      <Dialog
+        open={rejectOpen}
+        onClose={() => setRejectOpen(false)}
+        title={t('screening.actions.rejectSelected')}
+        description={t('bulk.reason.required')}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setRejectOpen(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              variant="danger"
+              loading={bulk.isPending}
+              disabled={reason.trim() === ''}
+              onClick={() =>
+                void bulk.mutateAsync({ action: 'reject', ids: decidable, reason: reason.trim() })
+              }
+            >
+              {t('screening.actions.rejectSelected')}
+            </Button>
+          </>
+        }
+      >
+        <Field label={t('bulk.reason.title')}>
+          <Input value={reason} onChange={(e) => setReason(e.target.value)} />
+        </Field>
+      </Dialog>
 
       <CreateScreeningDialog
         open={createOpen}

@@ -256,6 +256,16 @@ const en: Record<string, string> = {
   'common.create': 'Create',
   'common.download': 'Download',
 
+  'screening.actions.approveSelected': 'Approve selected',
+  'screening.actions.rejectSelected': 'Reject selected',
+  // Bulk actions (RW17) — a partial-success envelope is reported exactly, never as "done".
+  'bulk.selected': '{n} selected',
+  'bulk.clear': 'Clear selection',
+  'bulk.result.allOk': '{n} applied',
+  'bulk.result.allFailed': 'None applied — {n} failed',
+  'bulk.result.partial': '{ok} applied, {failed} failed',
+  'bulk.reason.title': 'Reason',
+  'bulk.reason.required': 'A reason is required for this action.',
   // Candidate timeline (RW14) — the one recruitment history every screen reads.
   'timeline.title': 'Timeline',
   'timeline.empty': 'Nothing has happened on this candidate yet.',
@@ -1967,6 +1977,16 @@ const ar: Record<string, string> = {
   'common.download': 'تنزيل',
 
   // Applicants — enums
+  'screening.actions.approveSelected': 'قبول المحدد',
+  'screening.actions.rejectSelected': 'رفض المحدد',
+  // Bulk actions (RW17).
+  'bulk.selected': 'محدد: {n}',
+  'bulk.clear': 'إلغاء التحديد',
+  'bulk.result.allOk': 'تم تنفيذ {n}',
+  'bulk.result.allFailed': 'لم يُنفذ أي عنصر — فشل {n}',
+  'bulk.result.partial': 'تم تنفيذ {ok}، وفشل {failed}',
+  'bulk.reason.title': 'السبب',
+  'bulk.reason.required': 'هذا الإجراء يتطلب ذكر السبب.',
   // Candidate timeline (RW14).
   'timeline.title': 'السجل الزمني',
   'timeline.empty': 'لا توجد أحداث لهذا المتقدم بعد.',

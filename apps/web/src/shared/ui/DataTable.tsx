@@ -7,6 +7,7 @@ import { Skeleton } from './Skeleton';
 import { ChevronIcon } from './icons';
 import { EmptyState } from './states/EmptyState';
 import { ErrorState } from './states/ErrorState';
+import { type TableSelection } from './useTableSelection';
 
 export interface Column<T> {
   key: string;
@@ -34,9 +35,19 @@ export interface DataTableProps<T> {
   sort?: SortState;
   onSortChange?: (key: string) => void;
   onRowClick?: (row: T) => void;
+  /**
+   * The whole selection model in one prop — pass `useTableSelection(rows.map(rowKey))` and the
+   * table is selectable (RW17). The four props below are the deprecated loose form, kept for one
+   * release so existing call sites keep working.
+   */
+  selection?: TableSelection;
+  /** @deprecated pass `selection` instead. */
   selectable?: boolean;
+  /** @deprecated pass `selection` instead. */
   selectedIds?: Set<string>;
+  /** @deprecated pass `selection` instead. */
   onToggleRow?: (id: string) => void;
+  /** @deprecated pass `selection` instead. */
   onToggleAll?: (checked: boolean) => void;
   /** Drop the table's own border/rounding/background when it sits inside a ListView surface. */
   embedded?: boolean;
@@ -59,14 +70,19 @@ export const DataTable = <T,>({
   sort,
   onSortChange,
   onRowClick,
+  selection,
   selectable = false,
   selectedIds,
   onToggleRow,
   onToggleAll,
   embedded = false,
 }: DataTableProps<T>): JSX.Element => {
-  const colCount = columns.length + (selectable ? 1 : 0);
-  const selected = selectedIds ?? new Set<string>();
+  // One prop wins; the loose props remain as the deprecated form.
+  const isSelectable = selection !== undefined || selectable;
+  const selected = selection?.selectedIds ?? selectedIds ?? new Set<string>();
+  const toggleRow = selection?.toggleRow ?? onToggleRow;
+  const toggleAll = selection?.toggleAll ?? onToggleAll;
+  const colCount = columns.length + (isSelectable ? 1 : 0);
   const allSelected = rows.length > 0 && rows.every((r) => selected.has(rowKey(r)));
   const someSelected = rows.some((r) => selected.has(rowKey(r)));
 
@@ -83,7 +99,7 @@ export const DataTable = <T,>({
     if (loading) {
       return Array.from({ length: 5 }).map((_, i) => (
         <tr key={`sk-${i}`} className="border-t border-slate-100 dark:border-slate-800">
-          {selectable && (
+          {isSelectable && (
             <td className="px-4 py-3">
               <Skeleton className="h-4 w-4" />
             </td>
@@ -116,13 +132,13 @@ export const DataTable = <T,>({
             isSelected && 'bg-brand-50/60 dark:bg-brand-950/40',
           )}
         >
-          {selectable && (
+          {isSelectable && (
             <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
               <input
                 type="checkbox"
                 className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
                 checked={isSelected}
-                onChange={() => onToggleRow?.(id)}
+                onChange={() => toggleRow?.(id)}
                 aria-label="select row"
               />
             </td>
@@ -156,7 +172,7 @@ export const DataTable = <T,>({
       <table className="w-full min-w-[40rem] border-collapse">
         <thead>
           <tr className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
-            {selectable && (
+            {isSelectable && (
               <th className="w-10 px-4 py-3">
                 <input
                   type="checkbox"
@@ -165,7 +181,7 @@ export const DataTable = <T,>({
                   ref={(el) => {
                     if (el !== null) el.indeterminate = someSelected && !allSelected;
                   }}
-                  onChange={(e) => onToggleAll?.(e.target.checked)}
+                  onChange={(e) => toggleAll?.(e.target.checked)}
                   aria-label="select all"
                 />
               </th>

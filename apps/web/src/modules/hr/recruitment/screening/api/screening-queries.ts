@@ -3,9 +3,16 @@
 // the Applicants list API (screening's own list has no free-text field — it filters by
 // applicantId), so a name/code lookup resolves to that filter.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { type AddScreeningNote, type CreateScreening, type DecideScreening } from '@ecms/contracts';
+import {
+  type AddScreeningNote,
+  type BulkScreenings,
+  type CreateScreening,
+  type DecideScreening,
+} from '@ecms/contracts';
 import { detailKey, featureKey, listKey } from '../../../../../shared/lib/query-keys';
 import { listApplicants } from '../../applicants/api/applicant-api';
+import { useBulkMutation } from '../../../../../shared/lib/useBulkMutation';
+import { invalidateRecruitment } from '../../shared/invalidate-recruitment';
 import * as api from './screening-api';
 import { type ScreeningListParams } from './screening-api';
 
@@ -72,3 +79,10 @@ export const useRedecideScreening = (id: string) => {
   const invalidate = useInvalidateScreenings();
   return useMutation({ mutationFn: (body: DecideScreening) => api.redecideScreening(id, body), onSuccess: invalidate });
 };
+
+/** Bulk approve/reject the selection (RW17). Reports the partial-success envelope exactly. */
+export const useBulkScreenings = (onApplied?: () => void) =>
+  useBulkMutation<BulkScreenings>((body) => api.bulkScreenings(body), {
+    invalidate: invalidateRecruitment,
+    ...(onApplied === undefined ? {} : { onApplied }),
+  });

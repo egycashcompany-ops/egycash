@@ -13,7 +13,7 @@ import { buildInterviewStagesRouter, buildInterviewsRouter } from './recruitment
 import { buildEvaluationPhasesRouter, buildEvaluationsRouter } from './recruitment/evaluations';
 import { buildRecruitmentCountersRouter } from './recruitment/counters';
 import { buildReturnToStageRouter } from './recruitment/return-to-stage';
-import { buildRecruitmentTimelineRouter } from './recruitment/timeline';
+import { buildRecruitmentTimelineRouter } from './recruitment/timeline/recruitment-timeline.routes';
 import { buildJobOffersRouter, jobOfferService } from './recruitment/job-offers';
 import { buildEmployeesRouter, employeeService } from './employee-management/employees';
 import { buildEmployeeActionsRouter, employeeActionService } from './employee-management/employee-actions';

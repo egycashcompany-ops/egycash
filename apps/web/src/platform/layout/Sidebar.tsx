@@ -34,6 +34,11 @@ import {
   type NavApp,
   type NavModule,
 } from '../navigation/nav-model';
+import {
+  navChildrenProviderFor,
+  type NavChild,
+  type NavChildrenProvider,
+} from '../navigation/nav-children';
 
 const PANEL_KEY = 'ecms.nav.panelCollapsed';
 const loadCollapsed = (): boolean => {
@@ -61,7 +66,57 @@ const rowClass = ({ isActive }: { isActive: boolean }): string =>
       : 'font-normal text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/70 dark:hover:text-slate-100',
   );
 
-const AppRow = ({ app, onNavigate }: { app: MyApplicationDto; onNavigate?: (() => void) | undefined }): JSX.Element => {
+/**
+ * The live queue count on a nav row. Zero is deliberately NOT rendered: a badge means "there is
+ * work here", so an empty queue is silence rather than a "0" the eye has to dismiss.
+ */
+const NavBadge = ({ count, active }: { count: number | null; active: boolean }): JSX.Element | null => {
+  if (count === null || count === 0) return null;
+  return (
+    <span
+      className={cn(
+        'shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular-nums',
+        active
+          ? 'bg-white/20 text-white'
+          : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+      )}
+    >
+      {count > 99 ? '99+' : count}
+    </span>
+  );
+};
+
+/** A dynamic stage under its family app (RW16) — its own route, its own live count. */
+const ChildRow = ({
+  child,
+  onNavigate,
+}: {
+  child: NavChild;
+  onNavigate?: (() => void) | undefined;
+}): JSX.Element => {
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  return (
+    <NavLink to={child.route} onClick={onNavigate} className={rowClass}>
+      {({ isActive }) => (
+        <>
+          <span className="ms-6 min-w-0 flex-1 truncate">{localized(child.label, locale)}</span>
+          <NavBadge count={child.count} active={isActive} />
+        </>
+      )}
+    </NavLink>
+  );
+};
+
+const AppRow = ({
+  app,
+  onNavigate,
+  count = null,
+}: {
+  app: MyApplicationDto;
+  onNavigate?: (() => void) | undefined;
+  /** Live queue count published by the module's nav provider, if it has one (RW16). */
+  count?: number | null;
+}): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const { isPinned, togglePin } = useNavPrefs();
@@ -75,6 +130,7 @@ const AppRow = ({ app, onNavigate }: { app: MyApplicationDto; onNavigate?: (() =
             className={cn('h-[18px] w-[18px] shrink-0', isActive ? 'text-white' : 'text-slate-400 dark:text-slate-500')}
           />
           <span className="min-w-0 flex-1 truncate">{localized(app.name, locale)}</span>
+          <NavBadge count={count} active={isActive} />
           <button
             type="button"
             onClick={(e) => {
@@ -95,6 +151,55 @@ const AppRow = ({ app, onNavigate }: { app: MyApplicationDto; onNavigate?: (() =
       )}
     </NavLink>
   );
+};
+
+/**
+ * An app whose module publishes dynamic children for its route (RW16). A provider is a hook, so
+ * it lives in its OWN component that always calls it — never behind a condition.
+ */
+const DynamicAppRow = ({
+  app,
+  provider,
+  onNavigate,
+}: {
+  app: MyApplicationDto;
+  provider: NavChildrenProvider;
+  onNavigate?: (() => void) | undefined;
+}): JSX.Element => {
+  const { count, children } = provider();
+  return (
+    <li>
+      <AppRow app={app} onNavigate={onNavigate} count={count} />
+      {children.length > 0 && (
+        <ul className="space-y-px">
+          {children.map((c) => (
+            <li key={c.key}>
+              <ChildRow child={c} onNavigate={onNavigate} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </li>
+  );
+};
+
+/** Picks the dynamic or the plain row. The choice is stable for a given app, so hooks are too. */
+const AppWithChildren = ({
+  app,
+  onNavigate,
+}: {
+  app: MyApplicationDto;
+  onNavigate?: (() => void) | undefined;
+}): JSX.Element => {
+  const provider = navChildrenProviderFor(app.route);
+  if (provider === undefined) {
+    return (
+      <li>
+        <AppRow app={app} onNavigate={onNavigate} />
+      </li>
+    );
+  }
+  return <DynamicAppRow app={app} provider={provider} onNavigate={onNavigate} />;
 };
 
 const ModuleRail = ({
@@ -205,9 +310,7 @@ const ModulePanel = ({
         )}
         <ul className={cn('space-y-px', pinnedApps.length > 0 && 'pt-2')}>
           {module.apps.map((a) => (
-            <li key={a.id}>
-              <AppRow app={a} onNavigate={onNavigate} />
-            </li>
+            <AppWithChildren key={a.id} app={a} onNavigate={onNavigate} />
           ))}
         </ul>
       </div>

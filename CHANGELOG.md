@@ -30,6 +30,38 @@ its entry here in the same PR.
 
 ### Added
 
+- **Recruitment: Security / Driving check batches (RW8).** The two external checks that
+  are performed on a GROUP of applicants are now worked as batches. HR picks candidates
+  from a phase's waiting queue (`GET /hr/evaluation-batches/candidates` lists exactly the
+  eligible ones — live applicant, all interviews cleared, phase applicable, not already
+  held by an open batch), the system allocates an immutable batch number
+  (`SEC-2026-000001` / `DRV-2026-000001`, atomic per prefix and year) and drafts the
+  batch. Issuing freezes membership, stamps the sent date and queues the package build.
+  A batch never becomes a second source of truth: every item points at the applicant's
+  ordinary per-phase evaluation record, and deciding an item decides that evaluation
+  through the existing service — one writer, one audit trail, one event, one timeline
+  entry. Membership is only editable while the batch is a draft; afterwards an item is
+  **voided with a reason**, never removed, and batches themselves are never deleted or
+  purged, so the whole history (cancelled ones included) stays available permanently.
+  Closing requires every item to be decided or voided. Bulk approve/reject/void run
+  per item with the shared partial-success envelope (RW10/I4). Sight is per phase (RW7):
+  the generic `evaluation.*` grants remain a superset, and a caller who only holds
+  `medicalCheck.*` never sees a security batch — including in an unfiltered list.
+  Medical Check stays individual and offers no batch surface at all (RW9).
+
+- **Recruitment: batch package — official PDF list + ZIP export (RW8b).** Issuing emits
+  `hr.evaluationBatch.generated` on the reliable tier; the **worker** renders the official
+  list through the existing chromium seam (company branding header, batch identity, a
+  numbered candidate table and a signature block, printed RTL), writes a manifest CSV, and
+  packs `list.pdf`, `manifest.csv` and `attachments/<applicantCode>/…` into one ZIP stored
+  in a new `hr-evaluation-batches` Files category. With the PDF driver disabled (dev/CI)
+  the batch still issues and the package still builds — it simply reports that it holds no
+  `list.pdf`, the same graceful degradation contracts uses — and the build is retryable
+  from the UI. Returned results are uploaded against the same batch
+  (`POST /hr/evaluation-batches/:id/results`, multipart); the first upload stamps
+  `returnedAt`, and a document may be attributed to one applicant's item (RW8c).
+  Adds one runtime dependency: `archiver`.
+
 - **Contracts: preview without saving + `{{contract.currentDate}}`.** The template
   editor's Preview now renders the CURRENT form state directly — nothing has to be
   completed or saved first: `POST /hr/contracts/preview` accepts an `inlineTemplate`

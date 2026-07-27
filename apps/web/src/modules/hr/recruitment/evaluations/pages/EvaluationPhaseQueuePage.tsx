@@ -23,6 +23,7 @@ import { formatDate, localized } from '../../../../../shared/lib/format';
 import { StageBuckets } from '../../shared/StageBuckets';
 import { useRecruitmentStageCounts } from '../../counters/stage-counts-queries';
 import { EvaluationStatusBadge } from '../components/EvaluationStatusBadge';
+import { GenerateBatchDialog } from '../../evaluation-batches/components/GenerateBatchDialog';
 import { useBulkEvaluations, useEvaluationPhases, useEvaluations } from '../api/evaluation-queries';
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -68,6 +69,7 @@ export const EvaluationPhaseQueuePage = (): JSX.Element => {
   const rowIds = useMemo(() => rows.map((e) => e.id), [rows]);
   const selection = useTableSelection(rowIds);
   const [rejectOpen, setRejectOpen] = useState(false);
+  const [batchOpen, setBatchOpen] = useState(false);
   const [reason, setReason] = useState('');
   const bulk = useBulkEvaluations(() => {
     selection.clear();
@@ -115,6 +117,19 @@ export const EvaluationPhaseQueuePage = (): JSX.Element => {
           { label: t('recruitment.nav.evaluations'), to: '/evaluations' },
           { label: phase === undefined ? '' : localized(phase.name, locale) },
         ]}
+        // Only a BATCH phase offers batch generation — Medical Check is individual (RW9).
+        actions={
+          phase?.kind === 'batch' ? (
+            <>
+              <Button variant="secondary" onClick={() => navigate('/evaluation-batches')}>
+                {t('batches.title')}
+              </Button>
+              <Can permission="evaluation.manage">
+                <Button onClick={() => setBatchOpen(true)}>{t('batches.generate.open')}</Button>
+              </Can>
+            </>
+          ) : undefined
+        }
       />
 
       <div className="space-y-4">
@@ -191,6 +206,16 @@ export const EvaluationPhaseQueuePage = (): JSX.Element => {
           <Input value={reason} onChange={(e) => setReason(e.target.value)} />
         </Field>
       </Dialog>
+
+      <GenerateBatchDialog
+        phaseId={phaseId}
+        open={batchOpen}
+        onClose={() => setBatchOpen(false)}
+        onCreated={(batchId) => {
+          setBatchOpen(false);
+          navigate(`/evaluation-batches/${batchId}`);
+        }}
+      />
     </PageContainer>
   );
 };

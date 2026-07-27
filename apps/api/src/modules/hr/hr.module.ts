@@ -11,6 +11,10 @@ import { buildApplicantSourcesRouter, buildApplicantsRouter } from './recruitmen
 import { buildScreeningsRouter } from './recruitment/screening';
 import { buildInterviewStagesRouter, buildInterviewsRouter } from './recruitment/interviews';
 import { buildEvaluationPhasesRouter, buildEvaluationsRouter } from './recruitment/evaluations';
+import {
+  buildEvaluationBatchesRouter,
+  buildEvaluationBatchPackage,
+} from './recruitment/evaluation-batches';
 import { buildRecruitmentCountersRouter } from './recruitment/counters';
 import { buildReturnToStageRouter } from './recruitment/return-to-stage';
 import { buildRecruitmentTimelineRouter } from './recruitment/timeline/recruitment-timeline.routes';
@@ -345,6 +349,7 @@ export const hrModule: ModuleManifest = {
     { prefix: '/hr/interview-stages', router: buildInterviewStagesRouter() },
     { prefix: '/hr/evaluations', router: buildEvaluationsRouter() },
     { prefix: '/hr/evaluation-phases', router: buildEvaluationPhasesRouter() },
+    { prefix: '/hr/evaluation-batches', router: buildEvaluationBatchesRouter() },
     { prefix: '/hr/recruitment', router: buildRecruitmentCountersRouter() },
     { prefix: '/hr/job-offers', router: buildJobOffersRouter() },
     { prefix: '/hr/employees', router: buildEmployeeActionsRouter() },
@@ -371,6 +376,7 @@ export const hrModule: ModuleManifest = {
     'hr_interview_stages',
     'hr_evaluations',
     'hr_evaluation_phases',
+    'hr_evaluation_batches',
     'hr_recruitment_timeline',
     'hr_recruitment_events',
     'hr_job_offers',
@@ -399,6 +405,18 @@ export const hrModule: ModuleManifest = {
         const payload = envelope.payload as { contractId?: string };
         if (typeof payload.contractId === 'string') {
           await renderContractPdf(payload.contractId);
+        }
+      },
+    },
+    {
+      // RW8b — the reliable tier executes in the WORKER: build the official PDF list and the
+      // ZIP export package for an issued batch. Issuing never waits on chromium.
+      event: 'hr.evaluationBatch.generated',
+      handlerId: 'evaluationBatches.buildPackage',
+      handler: async (envelope) => {
+        const payload = envelope.payload as { batchId?: string };
+        if (typeof payload.batchId === 'string') {
+          await buildEvaluationBatchPackage(payload.batchId);
         }
       },
     },

@@ -248,6 +248,28 @@ class EvaluationService {
   }
 
   /**
+   * Stamp (or release) the batch this record is being worked under (RW8). The batch feature owns
+   * the coordination record; the evaluation stays the applicant's single phase result, so the
+   * attribution is written here rather than by reaching into the collection from outside.
+   */
+  async attachToBatch(
+    ctx: AuthContext,
+    id: string,
+    batch: { batchId: string; batchCode: string } | null,
+    scope: ScopeSelector,
+  ): Promise<EvaluationDoc> {
+    const before = await evaluationRepository.getById(id, scope);
+    return evaluationRepository.updateById(
+      id,
+      {
+        batchId: batch === null ? null : new Types.ObjectId(batch.batchId),
+        batchCode: batch === null ? null : batch.batchCode,
+      },
+      { by: ctx.userId, version: before.__v, scope },
+    );
+  }
+
+  /**
    * Whether the applicant has cleared every active evaluation phase — every non-driver phase is
    * `approved`, plus any driver phase that was actually opened for them. Used by later stages to
    * gate a Job Offer after the interview + evaluation pipeline.

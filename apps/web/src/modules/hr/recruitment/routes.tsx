@@ -22,6 +22,8 @@ import { EvaluationQueuePage } from './evaluations/pages/EvaluationQueuePage';
 import { EvaluationDetailPage } from './evaluations/pages/EvaluationDetailPage';
 import { EvaluationPhasesPage } from './evaluations/pages/EvaluationPhasesPage';
 import { EvaluationPhaseQueuePage } from './evaluations/pages/EvaluationPhaseQueuePage';
+import { EvaluationBatchesPage } from './evaluation-batches/pages/EvaluationBatchesPage';
+import { EvaluationBatchDetailPage } from './evaluation-batches/pages/EvaluationBatchDetailPage';
 import { JobOffersListPage } from './job-offers/pages/JobOffersListPage';
 import { JobOfferDetailPage } from './job-offers/pages/JobOfferDetailPage';
 import { JobOfferFormPage } from './job-offers/pages/JobOfferFormPage';
@@ -116,6 +118,13 @@ export default function RecruitmentRoutes(): JSX.Element {
           {/* One page per evaluation phase (RW6a) — independent phases, independent pages. */}
           <Route path="phase/:phaseId" element={<EvaluationPhaseQueuePage />} />
           <Route path=":id" element={<EvaluationDetailPage />} />
+        </Route>
+        {/* Security / Driving batches (RW8) — the group form of the external checks. Sight is
+            per phase (RW7), so the pages authorize themselves rather than gating the subtree on
+            one permission. */}
+        <Route path="evaluation-batches">
+          <Route index element={<EvaluationBatchesPage />} />
+          <Route path=":id" element={<EvaluationBatchDetailPage />} />
         </Route>
         <Route
           path="job-offers"

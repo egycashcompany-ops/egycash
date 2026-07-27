@@ -31,11 +31,22 @@ import { auditService } from '../../../../platform/audit';
 import { emit } from '../../../../platform/kernel/event-bus';
 import { notificationsService } from '../../../../platform/notifications';
 import { applicantService } from '../applicants';
+import { recruitmentWorkflowEngine, type StageBinding } from '../workflow';
+import { JobOfferModel } from './job-offer.model';
 import { jobOfferRepository, type JobOfferListFilter } from './job-offer.repository';
 import { nextOfferNumber } from './offer-sequence';
 import { type JobOfferDoc, type OfferTerms } from './job-offer.model';
 
 const entityRef = (id: string) => ({ moduleId: 'hr', entityType: 'jobOffer', entityId: id });
+
+/** How the engine addresses this stage (I13) — one live offer per applicant per attempt. */
+const BINDING = {
+  object: 'offer',
+  model: JobOfferModel,
+  entityType: 'jobOffer',
+} as unknown as StageBinding<never>;
+
+type OfferTransition = { record: JobOfferDoc };
 
 const buildTerms = (t: OfferTermsInput): OfferTerms => ({
   jobTitleId: new Types.ObjectId(t.jobTitleId),
@@ -254,12 +265,14 @@ class JobOfferService {
     if (before.terms.validUntil.getTime() <= Date.now()) {
       throw new BusinessRuleError('offer validity must be in the future to send');
     }
-    const updated = await jobOfferRepository.updateById(
+    const { record: updated } = (await recruitmentWorkflowEngine.transition({
+      binding: BINDING,
       id,
-      { status: 'sent', active: true, sentAt: new Date(), sentBy: new Types.ObjectId(ctx.userId) },
-      { by: ctx.userId, version: input.version, scope },
-    );
-    await this.recordStatus(before, updated);
+      to: 'sent',
+      actorUserId: ctx.userId,
+      version: input.version,
+      set: { sentAt: new Date(), sentBy: new Types.ObjectId(ctx.userId) },
+    } as never)) as unknown as OfferTransition;
     await emit(HrOfferEvents.OfferSent, this.payload(updated));
     await this.notifyOffer(updated, HrOfferTemplates.Sent, true);
     return updated;
@@ -276,18 +289,18 @@ class JobOfferService {
       terms: before.terms,
       acceptedAt: new Date(),
     };
-    const updated = await jobOfferRepository.updateById(
+    const { record: updated } = (await recruitmentWorkflowEngine.transition({
+      binding: BINDING,
       id,
-      {
-        status: 'accepted',
-        active: false,
+      to: 'accepted',
+      actorUserId: ctx.userId,
+      version: input.version,
+      set: {
         respondedAt: acceptedSnapshot.acceptedAt,
         responseNote: input.note ?? null,
         acceptedSnapshot,
       },
-      { by: ctx.userId, version: input.version, scope },
-    );
-    await this.recordStatus(before, updated);
+    } as never)) as unknown as OfferTransition;
     await emit(HrOfferEvents.OfferAccepted, this.payload(updated));
     await this.notifyOffer(updated, HrOfferTemplates.Accepted, false);
     return updated;
@@ -297,18 +310,19 @@ class JobOfferService {
   async reject(ctx: AuthContext, id: string, input: RejectJobOffer, scope: ScopeSelector): Promise<JobOfferDoc> {
     const before = await jobOfferRepository.getById(id, scope);
     this.assertRespondable(before);
-    const updated = await jobOfferRepository.updateById(
+    const { record: updated } = (await recruitmentWorkflowEngine.transition({
+      binding: BINDING,
       id,
-      {
-        status: 'rejected',
-        active: false,
+      to: 'rejected',
+      actorUserId: ctx.userId,
+      reason: input.reason,
+      version: input.version,
+      set: {
         respondedAt: new Date(),
         rejectionReason: input.reason,
         responseNote: input.note ?? null,
       },
-      { by: ctx.userId, version: input.version, scope },
-    );
-    await this.recordStatus(before, updated);
+    } as never)) as unknown as OfferTransition;
     await emit(HrOfferEvents.OfferRejected, this.payload(updated));
     await this.notifyOffer(updated, HrOfferTemplates.Rejected, false);
     return updated;
@@ -320,18 +334,19 @@ class JobOfferService {
     if (before.status !== 'draft' && before.status !== 'sent') {
       throw new BusinessRuleError('only a draft or sent offer can be withdrawn');
     }
-    const updated = await jobOfferRepository.updateById(
+    const { record: updated } = (await recruitmentWorkflowEngine.transition({
+      binding: BINDING,
       id,
-      {
-        status: 'withdrawn',
-        active: false,
+      to: 'withdrawn',
+      actorUserId: ctx.userId,
+      reason: input.reason,
+      version: input.version,
+      set: {
         withdrawnReason: input.reason,
         withdrawnBy: new Types.ObjectId(ctx.userId),
         withdrawnAt: new Date(),
       },
-      { by: ctx.userId, version: input.version, scope },
-    );
-    await this.recordStatus(before, updated);
+    } as never)) as unknown as OfferTransition;
     await emit(HrOfferEvents.OfferWithdrawn, this.payload(updated));
     return updated;
   }
@@ -346,16 +361,14 @@ class JobOfferService {
     let expired = 0;
     for (const before of overdue) {
       try {
-        const updated = await jobOfferRepository.updateById(
-          String(before._id),
-          { status: 'expired', active: false, expiredAt: asOf },
-          { by: null, version: before.__v },
-        );
-        await auditService.record({
-          entityRef: entityRef(String(before._id)),
-          action: 'statusChange',
-          changes: [{ field: 'status', old: 'sent', new: 'expired' }],
-        });
+        const { record: updated } = (await recruitmentWorkflowEngine.transition({
+          binding: BINDING,
+          id: String(before._id),
+          to: 'expired',
+          actorUserId: null,
+          version: before.__v,
+          set: { expiredAt: asOf },
+        } as never)) as unknown as OfferTransition;
         await emit(HrOfferEvents.OfferExpired, this.payload(updated));
         await this.notifyOffer(updated, HrOfferTemplates.Expired, false);
         expired += 1;
@@ -364,6 +377,18 @@ class JobOfferService {
       }
     }
     return expired;
+  }
+
+  /**
+   * Record the Employee created from this accepted offer (I11). Not a workflow transition — the
+   * offer stays `accepted`; this makes the Employees Ready queue readable from a fact on the
+   * offer rather than from the absence of an Employee row.
+   */
+  async markHired(offerId: string, employeeId: string): Promise<void> {
+    await JobOfferModel.updateOne(
+      { _id: new Types.ObjectId(offerId) },
+      { $set: { hiredEmployeeId: new Types.ObjectId(employeeId) } },
+    ).exec();
   }
 
   private assertRespondable(offer: JobOfferDoc): void {

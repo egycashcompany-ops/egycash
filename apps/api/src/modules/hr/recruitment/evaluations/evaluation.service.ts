@@ -19,12 +19,22 @@ import { emit } from '../../../../platform/kernel/event-bus';
 import { fileService, type UploadedBinary } from '../../../../platform/files';
 import { applicantService } from '../applicants';
 import { interviewService } from '../interviews';
+import { recruitmentWorkflowEngine, type StageBinding } from '../workflow';
+import { EvaluationModel } from './evaluation.model';
 import { evaluationRepository, type EvaluationListFilter } from './evaluation.repository';
 import { evaluationPhaseRepository } from './evaluation-phase.repository';
 import { resolveEvaluationCategoryId } from './evaluation.files';
 import { type EvaluationDoc, type EvaluationDecisionEvent, type EvaluationFile } from './evaluation.model';
 
 const entityRef = (id: string) => ({ moduleId: 'hr', entityType: 'evaluation', entityId: id });
+
+/** How the engine addresses this stage (I13) — one record per applicant × phase × attempt. */
+const BINDING = {
+  object: 'evaluation',
+  model: EvaluationModel,
+  entityType: 'evaluation',
+  stageField: 'phaseId',
+} as unknown as StageBinding<never>;
 
 class EvaluationService {
   /**
@@ -201,35 +211,27 @@ class EvaluationService {
       reason: input.reason ?? null,
       by: new Types.ObjectId(ctx.userId),
     };
-    const updated = await evaluationRepository.updateById(
+    // The engine owns the status change and publishes the event (I13/I15).
+    const { record: updated } = await recruitmentWorkflowEngine.transition({
+      binding: BINDING,
       id,
-      {
-        status: input.decision,
+      to: input.decision,
+      actorUserId: ctx.userId,
+      reason: input.reason ?? null,
+      version: input.version,
+      set: {
         reason: input.reason ?? null,
         decidedBy: new Types.ObjectId(ctx.userId),
         decidedAt: now,
         decisionHistory: [...(before.decisionHistory ?? []), event],
       },
-      { by: ctx.userId, version: input.version, scope },
-    );
-    await auditService.record({
-      entityRef: entityRef(id),
-      action: 'statusChange',
-      changes: [{ field: 'status', old: before.status, new: input.decision }],
-    });
+      payload: { phaseKey: before.phaseKey },
+    } as never) as unknown as { record: EvaluationDoc };
     if (input.decision === 'rejected') {
       await applicantService.markRejectedByEvaluation(
         ctx,
         String(before.applicantId),
         { evaluationId: id, phaseKey: before.phaseKey, reason: input.reason ?? `rejected at ${before.phaseKey}` },
-        scope,
-      );
-    } else if (before.status === 'rejected') {
-      // Rejection is not final: correcting it re-enters the applicant into the pipeline (audited).
-      await applicantService.reactivateFromRejection(
-        ctx,
-        String(before.applicantId),
-        { reason: `${before.phaseKey} decision corrected to ${input.decision}` },
         scope,
       );
     }

@@ -19,7 +19,7 @@ import {
   type UpdateApplicant,
   type WithdrawApplicant,
 } from '@ecms/contracts';
-import { BusinessRuleError, ConflictError, ValidationError } from '../../../../shared/errors';
+import { BusinessRuleError, ConflictError, NotFoundError, ValidationError } from '../../../../shared/errors';
 import { type AuthContext, type ScopeSelector } from '../../../../shared/types';
 import { diffChanges } from '../../../../shared/utils/diff';
 import { auditService } from '../../../../platform/audit';
@@ -32,6 +32,10 @@ import { nextApplicantNumber } from './applicant-sequence';
 import { getRequisitionValidator } from './requisition-ref';
 import { applicantExportRow } from './applicant.mapper';
 import { ApplicantModel, type ApplicantDoc } from './applicant.model';
+import { type Model } from 'mongoose';
+import { unitOfWork } from '../../../../platform/kernel/unit-of-work';
+import { type BaseDocFields } from '../../../../shared/base/base.model';
+import { recruitmentWorkflowEngine, type LifecycleEvent } from '../workflow';
 
 export const APPLICANT_EXPORT_MAX_ROWS = 10_000;
 
@@ -45,6 +49,13 @@ const oid = (v: string | undefined | null): Types.ObjectId | null =>
 
 const csvEscape = (value: string): string =>
   /[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+
+/** The subset of the applicant document the engine's lifecycle path needs. */
+interface ApplicantLifecycleDoc extends BaseDocFields {
+  code: string;
+  status: 'new' | 'hired' | 'rejected' | 'withdrawn';
+  branchId: Types.ObjectId | null;
+}
 
 class ApplicantService {
   /** The single intake entry point (§2.1). */
@@ -551,138 +562,85 @@ class ApplicantService {
     return updated;
   }
 
+  // ── Lifecycle (I13/I14) — every applicant status change goes through the engine ─────────────
+
   /**
-   * Transition to the terminal `rejected` status as a consequence of an Initial-Screening
-   * rejection (Stage 2). Called only by the screening service (cross-feature via the
-   * applicants barrel). Idempotent and safe: only a live (`new`) applicant is transitioned;
-   * an already-terminal applicant (rejected/withdrawn) is left untouched, never overridden.
+   * Raise a lifecycle event on the applicant. The ONLY path that changes `applicant.status`:
+   * the engine validates it against the lifecycle rules, writes the status and publishes the
+   * event in one transaction. An event that does not apply (already rejected, already hired) is
+   * a no-op, so the stage transition that raised it still stands.
+   */
+  async raiseLifecycleEvent(
+    ctx: AuthContext,
+    id: string,
+    event: LifecycleEvent,
+    reason: string,
+    correlationId?: string,
+  ): Promise<ApplicantDoc> {
+    const result = await unitOfWork(async (session) =>
+      recruitmentWorkflowEngine.applyLifecycleEvent(
+        ApplicantModel as unknown as Model<ApplicantLifecycleDoc>,
+        id,
+        event,
+        ctx.userId,
+        reason,
+        session,
+        correlationId,
+      ),
+    );
+    // The engine returns null when the event does not apply (already terminal): either way the
+    // caller wants the current document.
+    void result;
+    const current = await applicantRepository.findById(id);
+    if (current === null) throw new NotFoundError();
+    return current;
+  }
+
+  /**
+   * Terminal rejection raised by an Initial-Screening rejection (Stage 2). Called only by the
+   * screening service (cross-feature via the applicants barrel). Idempotent: an already-terminal
+   * applicant is left untouched, never overridden.
    */
   async markRejectedByScreening(
     ctx: AuthContext,
     id: string,
     meta: { screeningId: string; reason: string },
-    scope: ScopeSelector,
+    _scope: ScopeSelector,
   ): Promise<ApplicantDoc> {
-    const before = await applicantRepository.getById(id, scope);
-    if (before.status !== 'new') return before;
-    const updated = await applicantRepository.updateById(
-      id,
-      { status: 'rejected' },
-      { by: ctx.userId, version: before.__v, scope },
-    );
-    await auditService.record({
-      entityRef: entityRef(id),
-      action: 'statusChange',
-      changes: [{ field: 'status', old: before.status, new: 'rejected' }],
-    });
-    await emit(HrEvents.ApplicantRejected, {
-      applicantId: id,
-      code: updated.code,
-      screeningId: meta.screeningId,
-      reason: meta.reason,
-    });
-    return updated;
+    return this.raiseLifecycleEvent(ctx, id, 'permanentRejection', meta.reason);
   }
 
-  /**
-   * Transition to the terminal `rejected` status as a consequence of a failed interview
-   * round (Stage 3). Called only by the interview service. Idempotent and safe: only a
-   * live (`new`) applicant is transitioned; an already-terminal applicant is left untouched.
-   */
+  /** Terminal rejection raised by a failed interview round (Stage 3). */
   async markRejectedByInterview(
     ctx: AuthContext,
     id: string,
     meta: { interviewId: string; reason: string },
-    scope: ScopeSelector,
+    _scope: ScopeSelector,
   ): Promise<ApplicantDoc> {
-    const before = await applicantRepository.getById(id, scope);
-    if (before.status !== 'new') return before;
-    const updated = await applicantRepository.updateById(
-      id,
-      { status: 'rejected' },
-      { by: ctx.userId, version: before.__v, scope },
-    );
-    await auditService.record({
-      entityRef: entityRef(id),
-      action: 'statusChange',
-      changes: [{ field: 'status', old: before.status, new: 'rejected' }],
-    });
-    await emit(HrEvents.ApplicantRejected, {
-      applicantId: id,
-      code: updated.code,
-      interviewId: meta.interviewId,
-      reason: meta.reason,
-    });
-    return updated;
+    return this.raiseLifecycleEvent(ctx, id, 'permanentRejection', meta.reason);
   }
 
-  /**
-   * Transition to the terminal `rejected` status as a consequence of a rejected Evaluation phase
-   * (Security Check / Medical / Driving Test / …). Called only by the evaluation service. Idempotent
-   * and safe: only a live (`new`) applicant is transitioned; an already-terminal applicant is left
-   * untouched, never overridden.
-   */
+  /** Terminal rejection raised by a rejected evaluation phase. */
   async markRejectedByEvaluation(
     ctx: AuthContext,
     id: string,
     meta: { evaluationId: string; phaseKey: string; reason: string },
-    scope: ScopeSelector,
+    _scope: ScopeSelector,
   ): Promise<ApplicantDoc> {
-    const before = await applicantRepository.getById(id, scope);
-    if (before.status !== 'new') return before;
-    const updated = await applicantRepository.updateById(
-      id,
-      { status: 'rejected' },
-      { by: ctx.userId, version: before.__v, scope },
-    );
-    await auditService.record({
-      entityRef: entityRef(id),
-      action: 'statusChange',
-      changes: [{ field: 'status', old: before.status, new: 'rejected' }],
-    });
-    await emit(HrEvents.ApplicantRejected, {
-      applicantId: id,
-      code: updated.code,
-      evaluationId: meta.evaluationId,
-      reason: meta.reason,
-    });
-    return updated;
+    return this.raiseLifecycleEvent(ctx, id, 'permanentRejection', meta.reason);
   }
 
   /**
-   * Re-enter the pipeline after a stage decision that rejected the applicant is corrected
-   * (`rejected` → `new`). Called only by the stage services when HR edits a rejection (the
-   * approved "rejection is not final" rule). Idempotent: a non-rejected applicant is returned
-   * untouched. Audited; emits `hr.applicant.restored`.
+   * Re-enter the pipeline after a rejection is corrected (`rejected` → `new`). Explicit, never a
+   * side effect of a stage correction (I14). Idempotent: a non-rejected applicant is untouched.
    */
   async reactivateFromRejection(
     ctx: AuthContext,
     id: string,
     meta: { reason: string },
-    scope: ScopeSelector,
+    _scope: ScopeSelector,
   ): Promise<ApplicantDoc> {
-    const before = await applicantRepository.getById(id, scope);
-    if (before.status !== 'rejected') return before;
-    const updated = await applicantRepository.updateById(
-      id,
-      { status: 'new' },
-      { by: ctx.userId, version: before.__v, scope },
-    );
-    await auditService.record({
-      entityRef: entityRef(id),
-      action: 'statusChange',
-      changes: [
-        { field: 'status', old: before.status, new: 'new' },
-        { field: 'reactivateReason', old: null, new: meta.reason },
-      ],
-    });
-    await emit(HrEvents.ApplicantRestored, {
-      applicantId: id,
-      code: updated.code,
-      ...(updated.jobRequisitionId === null ? {} : { jobRequisitionId: String(updated.jobRequisitionId) }),
-      sourceId: String(updated.sourceId),
-    });
-    return updated;
+    return this.raiseLifecycleEvent(ctx, id, 'reactivation', meta.reason);
   }
 
   // ── Bulk (generic per-row-audited executor — §9) ────────────────────────────

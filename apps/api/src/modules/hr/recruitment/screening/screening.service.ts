@@ -22,10 +22,19 @@ import { type AuthContext, type ScopeSelector } from '../../../../shared/types';
 import { auditService } from '../../../../platform/audit';
 import { emit } from '../../../../platform/kernel/event-bus';
 import { applicantService } from '../applicants';
+import { recruitmentWorkflowEngine, type StageBinding } from '../workflow';
+import { ScreeningModel } from './screening.model';
 import { screeningRepository, type ScreeningListFilter } from './screening.repository';
 import { type ScreeningDoc, type ScreeningNote } from './screening.model';
 
 const entityRef = (id: string) => ({ moduleId: 'hr', entityType: 'screening', entityId: id });
+
+/** How the engine addresses this stage (I13) — the screening is a singleton per attempt. */
+const BINDING = {
+  object: 'screening',
+  model: ScreeningModel,
+  entityType: 'screening',
+} as unknown as StageBinding<never>;
 
 class ScreeningService {
   /** Open the (single) screening for a live applicant. */
@@ -176,16 +185,20 @@ class ScreeningService {
       throw new BusinessRuleError('screening has already been decided');
     }
     const reason = input.reason ?? null;
-    const updated = await screeningRepository.updateById(
+    // The engine owns the status change and publishes the event (I13/I15).
+    const { record: updated } = await recruitmentWorkflowEngine.transition({
+      binding: BINDING,
       id,
-      { status: input.outcome, decisionReason: reason, decidedBy: new Types.ObjectId(ctx.userId), decidedAt: new Date() },
-      { by: ctx.userId, version: input.version, scope },
-    );
-    await auditService.record({
-      entityRef: entityRef(id),
-      action: 'statusChange',
-      changes: [{ field: 'status', old: before.status, new: input.outcome }],
-    });
+      to: input.outcome,
+      actorUserId: ctx.userId,
+      reason,
+      version: input.version,
+      set: {
+        decisionReason: reason,
+        decidedBy: new Types.ObjectId(ctx.userId),
+        decidedAt: new Date(),
+      },
+    } as never) as unknown as { record: ScreeningDoc };
 
     if (input.outcome === 'rejected') {
       await applicantService.markRejectedByScreening(
@@ -225,19 +238,19 @@ class ScreeningService {
       throw new BusinessRuleError('the screening already has this decision');
     }
     const reason = input.reason ?? null;
-    const updated = await screeningRepository.updateById(
+    const { record: updated } = await recruitmentWorkflowEngine.transition({
+      binding: BINDING,
       id,
-      { status: input.outcome, decisionReason: reason, decidedBy: new Types.ObjectId(ctx.userId), decidedAt: new Date() },
-      { by: ctx.userId, version: input.version, scope },
-    );
-    await auditService.record({
-      entityRef: entityRef(id),
-      action: 'statusChange',
-      changes: [
-        { field: 'status', old: before.status, new: input.outcome },
-        { field: 'decisionEdited', old: null, new: reason ?? 'decision edited' },
-      ],
-    });
+      to: input.outcome,
+      actorUserId: ctx.userId,
+      reason: reason ?? 'decision edited',
+      version: input.version,
+      set: {
+        decisionReason: reason,
+        decidedBy: new Types.ObjectId(ctx.userId),
+        decidedAt: new Date(),
+      },
+    } as never) as unknown as { record: ScreeningDoc };
 
     const applicantId = String(before.applicantId);
     if (input.outcome === 'rejected') {
@@ -245,13 +258,6 @@ class ScreeningService {
         ctx,
         applicantId,
         { screeningId: id, reason: reason ?? 'screening decision edited to rejected' },
-        scope,
-      );
-    } else {
-      await applicantService.reactivateFromRejection(
-        ctx,
-        applicantId,
-        { reason: reason ?? 'screening decision edited to accepted' },
         scope,
       );
     }

@@ -241,6 +241,18 @@ class EmployeeService {
       jobOfferId: String(doc.jobOfferId),
       origin: 'recruitment',
     });
+    // The candidate's pipeline outcome (I14): raised through the workflow engine, which owns
+    // `applicant.status` and publishes `hr.applicant.hired`. The offer records the Employee so
+    // the Employees Ready queue reads a fact rather than the absence of one (I11).
+    if (doc.applicantId !== null) {
+      await applicantService.raiseLifecycleEvent(
+        ctx,
+        String(doc.applicantId),
+        'hire',
+        `hired as ${doc.code}`,
+      );
+    }
+    await jobOfferService.markHired(String(doc.jobOfferId), String(doc._id));
     await this.notifyHire(doc);
     const provisionedLogin = await this.ensureLoginFor(doc, ctx.userId);
     return { doc, provisionedLogin };

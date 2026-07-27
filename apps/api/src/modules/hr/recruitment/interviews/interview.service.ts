@@ -32,11 +32,21 @@ import { emit } from '../../../../platform/kernel/event-bus';
 import { notificationsService } from '../../../../platform/notifications';
 import { applicantService } from '../applicants';
 import { screeningService } from '../screening';
+import { recruitmentWorkflowEngine, type StageBinding } from '../workflow';
+import { InterviewModel } from './interview.model';
 import { interviewRepository, type InterviewListFilter } from './interview.repository';
 import { interviewStageRepository } from './interview-stage.repository';
 import { type InterviewDoc, type InterviewPanelist } from './interview.model';
 
 const entityRef = (id: string) => ({ moduleId: 'hr', entityType: 'interview', entityId: id });
+
+/** How the engine addresses this stage (I13) — one round per applicant × stage × attempt. */
+const BINDING = {
+  object: 'interview',
+  model: InterviewModel,
+  entityType: 'interview',
+  stageField: 'stageId',
+} as unknown as StageBinding<never>;
 
 const newPanelist = (interviewerId: string): InterviewPanelist => ({
   interviewerId: new Types.ObjectId(interviewerId),
@@ -99,37 +109,40 @@ class InterviewService {
       throw new ConflictError('this applicant already has an interview at this stage');
     }
 
-    const doc = await interviewRepository.create(
-      {
-        applicantId: new Types.ObjectId(input.applicantId),
-        applicantCode: applicant.code,
-        applicantName: applicant.fullNameAr,
-        branchId: applicant.branchId,
+    // The record is materialized in `waiting` and then transitioned — both through the engine
+    // (I11/I13), so the queue is real rows and the status change publishes its event.
+    const { record: waiting } = await recruitmentWorkflowEngine.ensureStageRecord({
+      binding: BINDING,
+      applicantId: input.applicantId,
+      applicantCode: applicant.code,
+      applicantName: applicant.fullNameAr,
+      branchId: applicant.branchId,
+      stageRefId: new Types.ObjectId(input.stageId),
+      actorUserId: ctx.userId,
+      placement: applicant.placement,
+      placementLabel: applicant.placementLabel,
+      defaults: {
         stageId: new Types.ObjectId(input.stageId),
+        stageKey: stage.key,
         stageOrder: stage.order,
         stageName: stage.name,
-        status: 'scheduled',
         outcome: 'pending',
+      },
+    } as never) as unknown as { record: InterviewDoc };
+
+    const { record: doc } = await recruitmentWorkflowEngine.transition({
+      binding: BINDING,
+      id: String(waiting._id),
+      to: 'scheduled',
+      actorUserId: ctx.userId,
+      set: {
         scheduledAt: input.scheduledAt,
         panel: [...new Set(input.interviewerIds)].map(newPanelist),
         location: input.location ?? null,
         notes: input.notes ?? null,
-        rescheduleCount: 0,
-        decisionNotes: null,
-        decidedBy: null,
-        decidedAt: null,
-        cancelledReason: null,
-        cancelledBy: null,
-        cancelledAt: null,
       },
-      { by: ctx.userId },
-    );
-
-    await auditService.record({
-      entityRef: entityRef(String(doc._id)),
-      action: 'create',
-      changes: [{ field: 'stageOrder', old: null, new: stage.order }],
-    });
+      payload: { stageOrder: stage.order },
+    } as never) as unknown as { record: InterviewDoc };
     await emit(HrInterviewEvents.InterviewScheduled, {
       interviewId: String(doc._id),
       applicantId: input.applicantId,
@@ -297,21 +310,19 @@ class InterviewService {
     if (before.status !== 'scheduled') {
       throw new BusinessRuleError('only a scheduled interview can be cancelled');
     }
-    const updated = await interviewRepository.updateById(
+    const { record: updated } = await recruitmentWorkflowEngine.transition({
+      binding: BINDING,
       id,
-      {
-        status: 'cancelled',
+      to: 'cancelled',
+      actorUserId: ctx.userId,
+      reason: input.reason,
+      version: input.version,
+      set: {
         cancelledReason: input.reason,
         cancelledBy: new Types.ObjectId(ctx.userId),
         cancelledAt: new Date(),
       },
-      { by: ctx.userId, version: input.version, scope },
-    );
-    await auditService.record({
-      entityRef: entityRef(id),
-      action: 'statusChange',
-      changes: [{ field: 'status', old: before.status, new: 'cancelled' }],
-    });
+    } as never) as unknown as { record: InterviewDoc };
     await emit(HrInterviewEvents.InterviewCancelled, {
       interviewId: id,
       applicantId: String(before.applicantId),
@@ -423,22 +434,21 @@ class InterviewService {
     if (before.panel.some((p) => p.state === 'pending')) {
       throw new BusinessRuleError('every interviewer must submit or be skipped before deciding');
     }
-    const updated = await interviewRepository.updateById(
+    const { record: updated } = await recruitmentWorkflowEngine.transition({
+      binding: BINDING,
       id,
-      {
-        status: 'completed',
+      to: 'completed',
+      actorUserId: ctx.userId,
+      outcome: input.outcome,
+      version: input.version,
+      set: {
         outcome: input.outcome,
         decisionNotes: input.notes ?? null,
         decidedBy: new Types.ObjectId(ctx.userId),
         decidedAt: new Date(),
       },
-      { by: ctx.userId, version: input.version, scope },
-    );
-    await auditService.record({
-      entityRef: entityRef(id),
-      action: 'statusChange',
-      changes: [{ field: 'outcome', old: before.outcome, new: input.outcome }],
-    });
+      payload: { outcome: input.outcome, stageOrder: before.stageOrder },
+    } as never) as unknown as { record: InterviewDoc };
 
     if (input.outcome === 'failed') {
       await applicantService.markRejectedByInterview(
@@ -481,24 +491,22 @@ class InterviewService {
     if (before.outcome === input.outcome) {
       throw new BusinessRuleError('the interview already has this outcome');
     }
-    const updated = await interviewRepository.updateById(
+    const { record: updated } = await recruitmentWorkflowEngine.transition({
+      binding: BINDING,
       id,
-      {
+      to: 'completed',
+      actorUserId: ctx.userId,
+      outcome: input.outcome,
+      reason: input.notes ?? 'decision edited',
+      version: input.version,
+      set: {
         outcome: input.outcome,
         decisionNotes: input.notes ?? null,
         decidedBy: new Types.ObjectId(ctx.userId),
         decidedAt: new Date(),
       },
-      { by: ctx.userId, version: input.version, scope },
-    );
-    await auditService.record({
-      entityRef: entityRef(id),
-      action: 'statusChange',
-      changes: [
-        { field: 'outcome', old: before.outcome, new: input.outcome },
-        { field: 'decisionEdited', old: null, new: input.notes ?? 'decision edited' },
-      ],
-    });
+      payload: { outcome: input.outcome, stageOrder: before.stageOrder },
+    } as never) as unknown as { record: InterviewDoc };
 
     const applicantId = String(before.applicantId);
     if (input.outcome === 'failed') {
@@ -506,13 +514,6 @@ class InterviewService {
         ctx,
         applicantId,
         { interviewId: id, reason: input.notes ?? 'interview decision edited to failed' },
-        scope,
-      );
-    } else {
-      await applicantService.reactivateFromRejection(
-        ctx,
-        applicantId,
-        { reason: input.notes ?? 'interview decision edited to passed' },
         scope,
       );
     }

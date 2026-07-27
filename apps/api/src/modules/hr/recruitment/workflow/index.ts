@@ -18,6 +18,12 @@ export {
   type WorkflowEventConsumer,
 } from './workflow-dispatcher';
 export { WorkflowEvents, type WorkflowEventName } from './workflow-events';
+export {
+  auditWorkflowEvent,
+  projectToTimeline,
+  registerRecruitmentWorkflowConsumers,
+  resetRecruitmentWorkflowConsumerRegistration,
+} from './workflow-consumers';
 export { type WorkflowEventDoc } from './workflow-event.model';
 export { workflowEventRepository } from './workflow-event.repository';
 export {

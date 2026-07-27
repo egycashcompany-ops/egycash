@@ -13,6 +13,7 @@ import { BusinessRuleError, ConflictError, NotFoundError } from '../../../../sha
 import { unitOfWork } from '../../../../platform/kernel/unit-of-work';
 import { type BaseDocFields } from '../../../../shared/base/base.model';
 import { newCorrelationId, newEventId } from '../timeline/recruitment-timeline.keys';
+import { dispatchPendingWorkflowEvents } from './workflow-dispatcher';
 import { workflowEventRepository } from './workflow-event.repository';
 import { type WorkflowEventDoc } from './workflow-event.model';
 import {
@@ -187,6 +188,7 @@ class RecruitmentWorkflowEngine {
         },
         session,
       );
+      if (session === undefined) await this.flush();
       return { record, created };
     } catch (error) {
       // The unique index is the race backstop: re-read and return the winner (I12).
@@ -204,7 +206,20 @@ class RecruitmentWorkflowEngine {
    * constitutes one (I14), and publishes exactly one domain event (I15).
    */
   async transition<T extends StageRecord>(input: TransitionInput<T>): Promise<TransitionResult<T>> {
-    return unitOfWork(async (session) => this.transitionIn(input, session));
+    const result = await unitOfWork(async (session) => this.transitionIn(input, session));
+    // The outbox is published only AFTER the producing transaction commits (I15) — consumers must
+    // never observe a state change that could still roll back.
+    await this.flush();
+    return result;
+  }
+
+  /**
+   * Publish everything the outbox is holding. Safe to call at any time: delivery is per-event and
+   * marked, so a second call publishes nothing twice. The scheduled sweep is the crash-recovery
+   * net for events whose dispatch never ran.
+   */
+  async flush(): Promise<void> {
+    await dispatchPendingWorkflowEvents();
   }
 
   /** The transactional body — reused by bulk operations that already hold a session (I4). */

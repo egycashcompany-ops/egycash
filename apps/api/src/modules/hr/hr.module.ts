@@ -21,6 +21,7 @@ import { buildEmployeeFilesRouter } from './employee-management/employee-file';
 import { buildHolidaysRouter, buildWorkCalendarRouter, registerHrWorkCalendarSettings } from './work-calendar';
 import { registerHrIdentitySeams } from './employee-management/employees/identity-seams';
 import { registerRecruitmentWorkflowConsumers } from './recruitment/workflow';
+import { registerQueueMaterializer } from './recruitment/materializer';
 import { buildLeaveTypesRouter } from './leave-management/leave-types';
 import { buildLeaveBalancesRouter, leaveBalanceService } from './leave-management/leave-balances';
 import {
@@ -44,6 +45,7 @@ registerHrIdentitySeams();
 // Workflow consumers (I15): the timeline projection and the audit trail react to published
 // workflow events; the engine itself performs no side effects.
 registerRecruitmentWorkflowConsumers();
+registerQueueMaterializer();
 
 const applicantPermissions = declarePermissions(
   'hr',

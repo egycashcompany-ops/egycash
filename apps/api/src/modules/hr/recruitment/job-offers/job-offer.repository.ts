@@ -91,8 +91,8 @@ class JobOfferRepository extends BaseRepository<JobOfferDoc> {
   }
 
   /**
-   * Among `applicantIds`, the ones holding an offer that BLOCKS drafting a new one —
-   * a live (waiting/draft/sent) offer or an accepted one. Feeds the awaiting-offer queue.
+   * Among `applicantIds`, the ones holding an offer that BLOCKS drafting a new one — a drafted,
+   * sent or accepted one. A `waiting` record is the queue itself (I11), never a block.
    */
   async applicantIdsWithBlockingOffer(applicantIds: string[]): Promise<Set<string>> {
     const objectIds = applicantIds
@@ -104,7 +104,7 @@ class JobOfferRepository extends BaseRepository<JobOfferDoc> {
         applicantId: { $in: objectIds },
         isDeleted: false,
         supersededAt: null,
-        $or: [{ status: { $in: ['waiting', 'draft', 'sent'] } }, { status: 'accepted' }],
+        status: { $in: ['draft', 'sent', 'accepted'] },
       })
       .select('applicantId')
       .lean<{ applicantId: Types.ObjectId }[]>()

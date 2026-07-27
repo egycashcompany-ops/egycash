@@ -26,6 +26,10 @@ import { auditService } from '../../../../platform/audit';
 import { emit } from '../../../../platform/kernel/event-bus';
 import { fileService, type UploadedBinary } from '../../../../platform/files';
 import { normalizeArabic } from '../../shared/arabic';
+import {
+  materializeAfterMoveToOffer,
+  materializeAfterRegistration,
+} from './stage-materializer-seam';
 import { applicantRepository, type ApplicantListFilter } from './applicant.repository';
 import { applicantSourceRepository } from './applicant-source.repository';
 import { nextApplicantNumber } from './applicant-sequence';
@@ -221,6 +225,9 @@ class ApplicantService {
       ...(input.jobRequisitionId === undefined ? {} : { jobRequisitionId: input.jobRequisitionId }),
       sourceId: input.sourceId,
     });
+    // The screening queue row exists from registration (I11) — the queue is data, never a
+    // derivation of who has no record yet.
+    await materializeAfterRegistration(String(doc._id));
     return withDuplicates;
   }
 
@@ -559,6 +566,8 @@ class ApplicantService {
       ...(updated.jobRequisitionId === null ? {} : { jobRequisitionId: String(updated.jobRequisitionId) }),
       sourceId: String(updated.sourceId),
     });
+    // Moving to the Job Offer stage opens that stage's queue row (I11).
+    await materializeAfterMoveToOffer(id);
     return updated;
   }
 

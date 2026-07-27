@@ -186,9 +186,18 @@ describe('screening — create', () => {
     expect(dto.notes.map((n) => n.text)).toEqual(['looks promising']);
   });
 
-  it('rejects a second screening for the same applicant', async () => {
+  it('is idempotent while waiting, and refuses once the screening is decided', async () => {
     const applicant = await registerApplicant();
-    expect((await openScreening(applicant.id)).status).toBe(201);
+    const first = (await openScreening(applicant.id)).body.data as ScreeningDto;
+    // The record is materialized at registration (I11), so opening again returns the same row.
+    const again = await openScreening(applicant.id);
+    expect(again.status).toBe(201);
+    expect((again.body.data as ScreeningDto).id).toBe(first.id);
+
+    await request(app)
+      .post(`/api/v1/hr/screenings/${first.id}/decide`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ outcome: 'accepted', version: first.version });
     expect((await openScreening(applicant.id)).status).toBe(409);
   });
 
@@ -213,10 +222,19 @@ describe('screening — awaiting (pipeline entry)', () => {
     return (res.body.data as { applicantId: string }[]).map((r) => r.applicantId);
   };
 
-  it('surfaces a newly-registered applicant, then drops them once a screening is opened', async () => {
+  it('surfaces a newly-registered applicant, then drops them once the screening is decided', async () => {
     const applicant = await registerApplicant();
     expect(await awaitingIds()).toContain(applicant.id);
-    expect((await openScreening(applicant.id)).status).toBe(201);
+    // Opening does NOT clear the queue any more — the record is waiting from registration (I11);
+    // it is the DECISION that removes them.
+    const screening = (await openScreening(applicant.id)).body.data as ScreeningDto;
+    expect(await awaitingIds()).toContain(applicant.id);
+
+    const decided = await request(app)
+      .post(`/api/v1/hr/screenings/${screening.id}/decide`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ outcome: 'accepted', version: screening.version });
+    expect(decided.status).toBe(200);
     expect(await awaitingIds()).not.toContain(applicant.id);
   });
 

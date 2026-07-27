@@ -559,10 +559,10 @@ describe('recruitment — return to an earlier stage (RW13/A8)', () => {
     const waiting = (rounds.body.data as InterviewDto[]).filter((i) => i.status === 'waiting');
     expect(waiting).toHaveLength(1);
 
-    // And the superseded approval no longer counts towards the phase gate: re-opening the
-    // evaluation phase yields a NEW record rather than the retired one.
-    const reopened = (await open(applicant.id, phase.id)).body.data as EvaluationDto;
-    expect(reopened.id).not.toBe(evaluation.id);
+    // The superseded approval no longer counts: the candidate is back in the interviews, so the
+    // evaluation phase refuses to open until they clear them again. The retired record is still
+    // listed — superseded, never deleted.
+    expect((await open(applicant.id, phase.id)).status).toBe(422);
     expect((await evaluationsOf(applicant.id)).map((e) => e.id)).toContain(evaluation.id);
   });
 
@@ -590,5 +590,73 @@ describe('recruitment — return to an earlier stage (RW13/A8)', () => {
       aliceToken,
     );
     expect(denied.status).toBe(403);
+  });
+});
+
+describe('recruitment — persisted waiting queues (I11)', () => {
+  const stageRows = async (path: string, query: Record<string, unknown>) => {
+    const res = await request(app)
+      .get(path)
+      .query({ ...query, pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    return res.body.data as { id: string; status: string }[];
+  };
+
+  it('opens the screening row at registration, not on first use', async () => {
+    const applicant = await registerApplicant();
+    const rows = await stageRows('/api/v1/hr/screenings', { applicantId: applicant.id });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.status).toBe('waiting');
+  });
+
+  it('opens the first interview round when screening is accepted', async () => {
+    const applicant = await registerApplicant();
+    const screening = (
+      await request(app)
+        .post('/api/v1/hr/screenings')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ applicantId: applicant.id })
+    ).body.data as ScreeningDto;
+    expect(await stageRows('/api/v1/hr/interviews', { applicantId: applicant.id })).toHaveLength(0);
+
+    await request(app)
+      .post(`/api/v1/hr/screenings/${screening.id}/decide`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ outcome: 'accepted', version: screening.version });
+
+    const rounds = await stageRows('/api/v1/hr/interviews', { applicantId: applicant.id });
+    expect(rounds).toHaveLength(1);
+    expect(rounds[0]?.status).toBe('waiting');
+  });
+
+  it('opens every applicable evaluation phase once the interviews are cleared', async () => {
+    const applicant = await readyApplicant();
+    const rows = await stageRows('/api/v1/hr/evaluations', { applicantId: applicant.id });
+    // securityCheck + medicalExam apply to everyone; drivingTest only to drivers.
+    expect(rows.length).toBeGreaterThanOrEqual(2);
+    expect(rows.every((r) => r.status === 'waiting')).toBe(true);
+    const keys = (
+      await request(app)
+        .get('/api/v1/hr/evaluations')
+        .query({ applicantId: applicant.id, pageSize: 50 })
+        .set('Authorization', `Bearer ${adminToken}`)
+    ).body.data as EvaluationDto[];
+    expect(keys.map((e) => e.phaseKey)).toContain('securityCheck');
+    expect(keys.map((e) => e.phaseKey)).not.toContain('drivingTest');
+  });
+
+  it('counts the waiting rows in the aggregated counters', async () => {
+    const applicant = await registerApplicant();
+    const res = await request(app)
+      .get('/api/v1/hr/recruitment/stage-counts')
+      .set('Authorization', `Bearer ${adminToken}`);
+    const screening = (res.body.data as RecruitmentStageCountsDto).stages.find(
+      (s) => s.key === 'screening',
+    );
+    expect(screening?.count).toBeGreaterThan(0);
+    expect((await stageRows('/api/v1/hr/screenings', { applicantId: applicant.id }))[0]?.status).toBe(
+      'waiting',
+    );
   });
 });

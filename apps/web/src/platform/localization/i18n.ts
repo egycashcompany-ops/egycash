@@ -256,6 +256,9 @@ const en: Record<string, string> = {
   'common.create': 'Create',
   'common.download': 'Download',
 
+  'interviews.stagePage.subtitle': 'Everyone at this interview stage, by where they stand.',
+  'evaluations.phasePage.subtitle': 'Everyone at this check, by where they stand.',
+  'evaluations.columns.opened': 'Opened',
   'evaluations.actions.approveSelected': 'Approve selected',
   'evaluations.actions.rejectSelected': 'Reject selected',
   'evaluations.bulk.samePhaseOnly': 'Select waiting records from a single phase to decide them together.',
@@ -1983,6 +1986,9 @@ const ar: Record<string, string> = {
   'common.download': 'تنزيل',
 
   // Applicants — enums
+  'interviews.stagePage.subtitle': 'كل المتقدمين في هذه المرحلة، حسب موقفهم.',
+  'evaluations.phasePage.subtitle': 'كل المتقدمين في هذا الفحص، حسب موقفهم.',
+  'evaluations.columns.opened': 'تاريخ الفتح',
   'evaluations.actions.approveSelected': 'اعتماد المحدد',
   'evaluations.actions.rejectSelected': 'رفض المحدد',
   'evaluations.bulk.samePhaseOnly': 'اختر سجلات قيد الانتظار من مرحلة واحدة لاتخاذ القرار دفعة واحدة.',

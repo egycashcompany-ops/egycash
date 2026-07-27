@@ -279,6 +279,11 @@ const en: Record<string, string> = {
   'screening.actions.approveSelected': 'Approve selected',
   'screening.actions.rejectSelected': 'Reject selected',
   // Bulk actions (RW17) — a partial-success envelope is reported exactly, never as "done".
+  // Stage placement recommendations (RW5) — advisory, never a move on their own.
+  'recommendation.title': 'Suggested placement',
+  'recommendation.body': 'This stage suggested a different position or branch. It is advisory — applying it records a normal reassignment.',
+  'recommendation.apply': 'Apply',
+  'recommendation.current': 'Currently: {current}',
   // Reassignment (RW2) — Position/Branch stay editable until the offer is accepted.
   'applicants.reassign.title': 'Reassign',
   'applicants.reassign.body': 'Move this candidate to a different position or branch. Their history follows them; nothing already decided is rewritten.',
@@ -2109,6 +2114,11 @@ const ar: Record<string, string> = {
   'screening.actions.approveSelected': 'قبول المحدد',
   'screening.actions.rejectSelected': 'رفض المحدد',
   // Bulk actions (RW17).
+  // Stage placement recommendations (RW5).
+  'recommendation.title': 'الوظيفة المقترحة',
+  'recommendation.body': 'اقترحت هذه المرحلة وظيفة أو فرعًا مختلفًا. الاقتراح استرشادي — وتطبيقه يُسجَّل كإعادة تعيين عادية.',
+  'recommendation.apply': 'تطبيق',
+  'recommendation.current': 'الحالي: {current}',
   // Reassignment (RW2).
   'applicants.reassign.title': 'إعادة التعيين',
   'applicants.reassign.body': 'نقل المتقدم إلى وظيفة أو فرع آخر. يتبعه سجله بالكامل، ولا يُعاد كتابة أي قرار سابق.',

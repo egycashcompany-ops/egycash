@@ -24,6 +24,8 @@ import { DecideInterviewDialog } from '../components/DecideInterviewDialog';
 import { EvaluateDialog } from '../components/EvaluateDialog';
 import { SkipInterviewerDialog } from '../components/SkipInterviewerDialog';
 import { ApplicantLifecycleActions } from '../../applicants/components/ApplicantLifecycleActions';
+import { useApplicant } from '../../applicants/api/applicant-queries';
+import { RecommendationCard } from '../../shared/RecommendationCard';
 import { MoveToOfferButton } from '../../applicants/components/MoveToOfferButton';
 import { useInterview } from '../api/interview-queries';
 
@@ -34,6 +36,9 @@ export const InterviewDetailPage = (): JSX.Element => {
   const can = useCan();
   const { id = '' } = useParams();
   const { data: iv, isLoading, isError, error, refetch } = useInterview(id);
+  // RW5 — applying a recommendation is an ordinary reassignment, so it needs the
+  // candidate's own record (its version and current placement).
+  const { data: candidate } = useApplicant(iv?.applicantId ?? '');
 
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [reassignOpen, setReassignOpen] = useState(false);
@@ -130,6 +135,13 @@ export const InterviewDetailPage = (): JSX.Element => {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
+          <RecommendationCard
+            applicant={candidate ?? null}
+            recommendedPlacement={iv.recommendedPlacement}
+            recommendationNote={iv.recommendationNote}
+            currentLabel={candidate?.placementLabel ?? iv.placementLabel}
+            sourceRef={{ entityType: 'interview', entityId: iv.id }}
+          />
           <Card>
             <CardHeader title={t('interviews.panel.title')} />
             <CardBody>

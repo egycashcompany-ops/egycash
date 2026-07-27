@@ -18,6 +18,8 @@ import { TrashIcon } from '../../../../../shared/ui/icons';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { formatDateTime, localized } from '../../../../../shared/lib/format';
 import { EvaluationStatusBadge } from '../components/EvaluationStatusBadge';
+import { useApplicant } from '../../applicants/api/applicant-queries';
+import { RecommendationCard } from '../../shared/RecommendationCard';
 import { MoveToOfferButton } from '../../applicants/components/MoveToOfferButton';
 import {
   useDecideEvaluation,
@@ -31,6 +33,9 @@ export const EvaluationDetailPage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const { id = '' } = useParams();
   const { data: ev, isLoading, isError, error, refetch } = useEvaluation(id);
+  // RW5 — applying a recommendation is an ordinary reassignment, so it needs the
+  // candidate's own record (its version and current placement).
+  const { data: candidate } = useApplicant(ev?.applicantId ?? '');
   const decide = useDecideEvaluation(id);
   const uploadFile = useUploadEvaluationFile(id);
   const removeFile = useRemoveEvaluationFile(id);
@@ -101,6 +106,13 @@ export const EvaluationDetailPage = (): JSX.Element => {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
+          <RecommendationCard
+            applicant={candidate ?? null}
+            recommendedPlacement={ev.recommendedPlacement}
+            recommendationNote={ev.recommendationNote}
+            currentLabel={candidate?.placementLabel ?? ev.placementLabel}
+            sourceRef={{ entityType: 'evaluation', entityId: ev.id }}
+          />
           {/* Files */}
           <Card>
             <CardHeader

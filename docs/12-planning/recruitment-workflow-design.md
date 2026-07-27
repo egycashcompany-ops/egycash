@@ -1,10 +1,12 @@
 # Recruitment Workflow Refactor — Design
 
 > Status: **FROZEN** (Revision 2.3, 2026-07-27 — reviewed and frozen by the approver;
-> §20 records the implementation invariants I1–I14 added during the build. I11 supersedes the
+> §20 records the implementation invariants I1–I15 added during the build. I11 supersedes the
 > derived-`waiting` treatment in I10: `waiting` is an explicit persisted status and every stage
 > always has a record; I12–I13 make stage ownership DB-enforced and route every transition through
-> a single workflow engine; I14 keeps the applicant lifecycle separate from the stage workflow).
+> a single workflow engine; I14 keeps the applicant lifecycle separate from the stage workflow;
+> I15 makes every transition publish one durable domain event and moves all side effects into
+> consumers, which is how I4/I5 now achieve their guarantees).
 > Approved for implementation as a **single PR** (§16), exactly as for Leave
 > (`leave-management-design.md`), Auth (`auth-account-lifecycle-design.md`) and Contracts
 > (`contracts-module-design.md`).
@@ -1336,3 +1338,48 @@ a side effect of a stage moving.
   candidate gets no new stage records); lifecycle never reads stage state to decide what it is.
   Reporting, analytics and rehire ask `applicant.status` and get an answer that does not shift
   because someone rescheduled an interview.
+
+### I15 — Every transition publishes one immutable domain event; consumers do the rest
+
+The engine's job is exactly three things: **validate** the transition, **update the aggregate
+atomically**, **publish one event**. It performs no side effects of its own. Timeline, audit,
+notifications, counters, navigation badges, file generation, integrations, analytics and any
+future workflow or automation engine are **consumers** that react to the published fact.
+
+**No consumer may modify workflow state.** Events are append-only facts, not commands; a consumer
+that needs a state change raises a new intent through the engine like any other caller.
+
+**One event per transition**, named for what happened:
+
+| Transition | Event |
+|---|---|
+| a stage record is materialized (I11) | `hr.recruitment.stageEntered` |
+| a stage record is superseded by a return (RW13) | `hr.recruitment.stageLeft` |
+| screening decided | `hr.screening.accepted` · `.rejected` · `.redecided` |
+| interview | `hr.interview.scheduled` · `.started` · `.completed` · `.cancelled` · `.redecided` |
+| evaluation | `hr.evaluation.approved` · `.rejected` · `.redecided` · `.reopened` |
+| offer | `hr.jobOffer.created` · `.sent` · `.accepted` · `.rejected` · `.withdrawn` · `.expired` · `.superseded` |
+| lifecycle (I14) | `hr.applicant.hired` · `.rejected` · `.withdrawn` · `.reactivated` |
+
+A transition never emits two events: the state it left travels as `from` in the payload, so
+consumers never have to correlate a pair or dedupe. Several transitions may share one name when
+they are the same fact (rejected→new and withdrawn→new are both a reactivation).
+
+**How this preserves I4 and I5 — the transactional outbox.** Making the timeline a consumer would
+otherwise weaken the guarantee that a state change and its history commit together. So the event
+is itself durable: the engine writes **the aggregate change and the event record in one
+transaction** to an append-only `hr_recruitment_events` collection, and a dispatcher publishes to
+subscribers after commit.
+
+- **I4 holds**: the atomic unit is (aggregate + event). A bulk item either commits both or
+  neither; nothing can half-apply.
+- **I5 holds**: the timeline is a projector over durable events, and because every event carries
+  its immutable `eventId` the projection is idempotent and replayable. The reconciliation task
+  becomes a replay of unprojected events rather than a re-derivation from aggregates.
+- **A consumer failing never corrupts the workflow**: notifications or analytics can be down and
+  the pipeline still advances, with their work replayed when they recover.
+
+**The engine is deterministic**: given the same aggregate and the same command it always produces
+the same transition and the same event, with no I/O beyond its own transaction. Everything that
+varies — who gets notified, what gets rendered, which dashboard updates — lives in consumers and
+can change without touching the recruitment domain.

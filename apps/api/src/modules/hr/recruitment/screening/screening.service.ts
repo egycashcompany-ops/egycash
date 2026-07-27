@@ -126,15 +126,6 @@ class ScreeningService {
     return screeningRepository.findByApplicantId(applicantId);
   }
 
-  /** Accepted screenings (capped, recent-first) — the Interviews "awaiting scheduling" source. */
-  async listAcceptedForInterview(
-    branchId: string | undefined,
-    limit: number,
-    scope: ScopeSelector,
-  ): Promise<ScreeningDoc[]> {
-    return screeningRepository.listAccepted(limit, branchId, scope);
-  }
-
   /** Append a note while `waiting` (OQ-32 "needs more information"). */
   async addNote(
     ctx: AuthContext,

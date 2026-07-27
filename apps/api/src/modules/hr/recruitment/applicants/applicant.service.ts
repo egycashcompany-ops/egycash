@@ -308,25 +308,6 @@ class ApplicantService {
     return ApplicantModel.findOne({ nationalId, status: 'new', isDeleted: false });
   }
 
-  /** Of the given ids, those that are live (`new`) — used by the Interviews eligibility view. */
-  async liveIdsAmong(ids: string[], scope: ScopeSelector): Promise<Set<string>> {
-    return applicantRepository.liveIdsAmong(ids, scope);
-  }
-
-  /** Live applicants at the Job Offer stage, oldest move first — the awaiting-offer queue. */
-  async listMovedToOffer(
-    branchId: string | undefined,
-    limit: number,
-    scope: ScopeSelector,
-  ): Promise<ApplicantDoc[]> {
-    return applicantRepository.findMovedToOffer(branchId, limit, scope);
-  }
-
-  /** Live applicants (`new`), recent-first — used by the Screening eligibility view. */
-  async listActive(limit: number, branchId: string | undefined, scope: ScopeSelector): Promise<ApplicantDoc[]> {
-    return applicantRepository.listActive(limit, branchId, scope);
-  }
-
   async update(
     ctx: AuthContext,
     id: string,

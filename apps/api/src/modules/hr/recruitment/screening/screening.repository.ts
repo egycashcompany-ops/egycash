@@ -48,22 +48,6 @@ class ScreeningRepository extends BaseRepository<ScreeningDoc> {
       .exec();
   }
 
-  /**
-   * Applicants whose LIVE screening is still waiting — the real backing rows of the screening
-   * queue (I11). Replaces deriving "has no screening yet", which stopped meaning anything once
-   * the record is materialized at registration.
-   */
-  async applicantIdsAwaitingDecision(ids: string[]): Promise<Set<string>> {
-    const objectIds = ids.filter((id) => Types.ObjectId.isValid(id)).map((id) => new Types.ObjectId(id));
-    if (objectIds.length === 0) return new Set();
-    const rows = await this.model
-      .find({ applicantId: { $in: objectIds }, status: 'waiting', supersededAt: null, isDeleted: false })
-      .select('applicantId')
-      .lean<{ applicantId: Types.ObjectId }[]>()
-      .exec();
-    return new Set(rows.map((r) => String(r.applicantId)));
-  }
-
   /** Accepted screenings (most-recently-decided first) — the interview-eligibility read model. */
   async listAccepted(
     limit: number,

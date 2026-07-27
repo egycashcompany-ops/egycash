@@ -95,28 +95,6 @@ class JobOfferRepository extends BaseRepository<JobOfferDoc> {
       .exec();
   }
 
-  /**
-   * Among `applicantIds`, the ones holding an offer that BLOCKS drafting a new one — a drafted,
-   * sent or accepted one. A `waiting` record is the queue itself (I11), never a block.
-   */
-  async applicantIdsWithBlockingOffer(applicantIds: string[]): Promise<Set<string>> {
-    const objectIds = applicantIds
-      .filter((id) => Types.ObjectId.isValid(id))
-      .map((id) => new Types.ObjectId(id));
-    if (objectIds.length === 0) return new Set();
-    const rows = await this.model
-      .find({
-        applicantId: { $in: objectIds },
-        isDeleted: false,
-        supersededAt: null,
-        status: { $in: ['draft', 'sent', 'accepted'] },
-      })
-      .select('applicantId')
-      .lean<{ applicantId: Types.ObjectId }[]>()
-      .exec();
-    return new Set(rows.map((r) => String(r.applicantId)));
-  }
-
   /** Sent offers whose validity has lapsed as of `asOf` — the automatic-expiration sweep. */
   async findOverdueSent(asOf: Date, limit = 500): Promise<JobOfferDoc[]> {
     return this.model

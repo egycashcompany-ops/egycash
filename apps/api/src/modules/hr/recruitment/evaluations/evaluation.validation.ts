@@ -9,6 +9,7 @@ export {
   UploadEvaluationFileSchema,
   RemoveEvaluationFileSchema,
   ListEvaluationsQuerySchema,
+  BulkEvaluationsSchema,
 } from '@ecms/contracts';
 
 import { z } from 'zod';

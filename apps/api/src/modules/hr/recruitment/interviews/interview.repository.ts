@@ -19,7 +19,7 @@ export interface InterviewListFilter {
 }
 
 /** Interviews at a stage that are not cancelled — i.e. that "occupy" the round. */
-const ACTIVE_STATUSES = ['scheduled', 'completed'];
+const ACTIVE_STATUSES = ['scheduled', 'inProgress', 'completed'];
 
 class InterviewRepository extends BaseRepository<InterviewDoc> {
   constructor() {

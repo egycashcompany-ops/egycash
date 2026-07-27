@@ -14,6 +14,8 @@ import {
   type CreateScreening,
   type DecideScreening,
   type ListAwaitingScreeningsQuery,
+  type BulkActionResultDto,
+  type BulkScreenings,
   type ListScreeningsQuery,
   type Paginated,
 } from '@ecms/contracts';
@@ -22,7 +24,7 @@ import { type AuthContext, type ScopeSelector } from '../../../../shared/types';
 import { auditService } from '../../../../platform/audit';
 import { emit } from '../../../../platform/kernel/event-bus';
 import { applicantService } from '../applicants';
-import { recruitmentWorkflowEngine, type StageBinding } from '../workflow';
+import { recruitmentWorkflowEngine, runBulk, type StageBinding } from '../workflow';
 import { ScreeningModel } from './screening.model';
 import { screeningRepository, type ScreeningListFilter } from './screening.repository';
 import { type ScreeningDoc, type ScreeningNote } from './screening.model';
@@ -269,6 +271,40 @@ class ScreeningService {
       outcome: input.outcome,
     });
     return updated;
+  }
+
+  /**
+   * Bulk approve/reject a screening queue (RW17/I4). Each item runs the single-item `decide`
+   * in its own transaction; failures are reported per id and never abort the rest.
+   */
+  async bulk(
+    ctx: AuthContext,
+    input: BulkScreenings,
+    scope: ScopeSelector,
+  ): Promise<BulkActionResultDto> {
+    const outcome = input.action === 'approve' ? 'accepted' : 'rejected';
+    return runBulk(
+      input.ids,
+      async (id) => {
+        const current = await screeningRepository.getById(id, scope);
+        await this.decide(
+          ctx,
+          id,
+          {
+            outcome,
+            ...(input.reason === undefined ? {} : { reason: input.reason }),
+            version: current.__v,
+          },
+          scope,
+        );
+      },
+      {
+        entityType: 'screening',
+        action: input.action,
+        actorUserId: ctx.userId,
+        reason: input.reason ?? null,
+      },
+    );
   }
 }
 

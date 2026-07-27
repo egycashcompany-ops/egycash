@@ -15,6 +15,7 @@ import { asyncHandler, validate } from '../../../../platform/web';
 import { authenticate } from '../../../../platform/auth';
 import { authorize } from '../../../../platform/rbac';
 import {
+  bulkEvaluations,
   createEvaluationPhase,
   decideEvaluation,
   getEvaluation,
@@ -26,6 +27,7 @@ import {
   uploadEvaluationFile,
 } from './evaluation.controller';
 import {
+  BulkEvaluationsSchema,
   CreateEvaluationPhaseSchema,
   DecideEvaluationSchema,
   EvaluationFileParamSchema,
@@ -78,6 +80,14 @@ export const buildEvaluationsRouter = (): Router => {
     authorize('evaluation.manage'),
     validate({ body: OpenEvaluationSchema }),
     asyncHandler(openEvaluation),
+  );
+  // Bulk approve/reject one phase's queue (RW10/RW17) — declared before `/:id`.
+  router.post(
+    '/bulk',
+    authenticate,
+    authorize('evaluation.manage'),
+    validate({ body: BulkEvaluationsSchema }),
+    asyncHandler(bulkEvaluations),
   );
   router.get(
     '/:id',

@@ -2,6 +2,9 @@
 // infrastructure) rather than importing infrastructure directly.
 import { type Request, type Response } from 'express';
 import {
+  type BulkInterviews,
+  type BulkScheduleInterviews,
+  type BulkStartInterviews,
   type CancelInterview,
   type CreateInterviewStage,
   type DecideInterview,
@@ -12,6 +15,8 @@ import {
   type RescheduleInterview,
   type ScheduleInterview,
   type SkipInterviewer,
+  type StartInterview,
+  type StartScheduledInterview,
   type SubmitInterviewEvaluation,
   type UpdateInterviewStage,
 } from '@ecms/contracts';
@@ -119,4 +124,40 @@ export const updateInterviewStage = async (req: Request, res: Response): Promise
   const { body, params } = validated<UpdateInterviewStage, never, IdParam>(req);
   const doc = await interviewStageService.update(params.id, body, ctx.userId);
   ok(res, toInterviewStageDto(doc));
+};
+
+// ── Start now (RW12/A3) ──────────────────────────────────────────────────────
+
+export const startInterview = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body } = validated<StartInterview>(req);
+  const doc = await interviewService.start(ctx, body, scopeSelector(ctx, 'interview.create'));
+  created(res, toInterviewDto(doc), `/api/v1/hr/interviews/${String(doc._id)}`);
+};
+
+export const startScheduledInterview = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<StartScheduledInterview, never, IdParam>(req);
+  const doc = await interviewService.startScheduled(ctx, params.id, body, scopeSelector(ctx, 'interview.edit'));
+  ok(res, toInterviewDto(doc));
+};
+
+// ── Bulk (RW17/I4) ───────────────────────────────────────────────────────────
+
+export const bulkInterviews = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body } = validated<BulkInterviews>(req);
+  ok(res, await interviewService.bulk(ctx, body, scopeSelector(ctx, 'interview.edit')));
+};
+
+export const bulkScheduleInterviews = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body } = validated<BulkScheduleInterviews>(req);
+  ok(res, await interviewService.bulkSchedule(ctx, body, scopeSelector(ctx, 'interview.create')));
+};
+
+export const bulkStartInterviews = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body } = validated<BulkStartInterviews>(req);
+  ok(res, await interviewService.bulkStart(ctx, body, scopeSelector(ctx, 'interview.create')));
 };

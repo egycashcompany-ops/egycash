@@ -8,6 +8,8 @@ import {
   HrEvaluationEvents,
   type DecideEvaluation,
   type ListEvaluationsQuery,
+  type BulkActionResultDto,
+  type BulkEvaluations,
   type OpenEvaluation,
   type Paginated,
   type UploadEvaluationFile,
@@ -19,7 +21,7 @@ import { emit } from '../../../../platform/kernel/event-bus';
 import { fileService, type UploadedBinary } from '../../../../platform/files';
 import { applicantService } from '../applicants';
 import { interviewService } from '../interviews';
-import { recruitmentWorkflowEngine, type StageBinding } from '../workflow';
+import { recruitmentWorkflowEngine, runBulk, type StageBinding } from '../workflow';
 import { EvaluationModel } from './evaluation.model';
 import { evaluationRepository, type EvaluationListFilter } from './evaluation.repository';
 import { evaluationPhaseRepository } from './evaluation-phase.repository';
@@ -56,11 +58,11 @@ class EvaluationService {
       ]);
     }
 
-    // Sequential entry gate: all interview rounds cleared, then every prior evaluation phase.
+    // Phases are INDEPENDENT (RW6): the only entry gate is that the applicant cleared every
+    // interview round — evaluations are post-interview checks that may then run in any order.
     if (!(await interviewService.hasClearedAllInterviews(input.applicantId))) {
       throw new BusinessRuleError('applicant must clear all interviews before the evaluation phases');
     }
-    await this.assertPriorPhasesCleared(input.applicantId, phase.order);
 
     try {
       const doc = await evaluationRepository.create(
@@ -245,21 +247,6 @@ class EvaluationService {
     return updated;
   }
 
-  /** Sequential gate: every active prior phase must be approved (driver-only priors are optional). */
-  private async assertPriorPhasesCleared(applicantId: string, order: number): Promise<void> {
-    const priors = (await evaluationPhaseRepository.findAllActive()).filter((p) => p.order < order);
-    if (priors.length === 0) return;
-    const evals = await evaluationRepository.findByApplicant(applicantId);
-    const byPhase = new Map(evals.map((e) => [String(e.phaseId), e]));
-    for (const p of priors) {
-      const rec = byPhase.get(String(p._id));
-      if (p.driversOnly && rec === undefined) continue;
-      if (rec === undefined || rec.status !== 'approved') {
-        throw new BusinessRuleError(`applicant must clear "${p.name.en}" before this phase`);
-      }
-    }
-  }
-
   /**
    * Whether the applicant has cleared every active evaluation phase — every non-driver phase is
    * `approved`, plus any driver phase that was actually opened for them. Used by later stages to
@@ -277,6 +264,43 @@ class EvaluationService {
       if (phase.driversOnly && record === undefined) return true;
       return record !== undefined && record.status === 'approved';
     });
+  }
+
+  /**
+   * Bulk approve/reject one phase's queue (RW10/RW17/I4). Each item runs the single-item
+   * `decide` in its own transaction; a selection spanning another phase is rejected per id.
+   */
+  async bulk(
+    ctx: AuthContext,
+    input: BulkEvaluations,
+    scope: ScopeSelector,
+  ): Promise<BulkActionResultDto> {
+    const decision = input.action === 'approve' ? 'approved' : 'rejected';
+    return runBulk(
+      input.ids,
+      async (id) => {
+        const current = await evaluationRepository.getById(id, scope);
+        if (String(current.phaseId) !== input.phaseId) {
+          throw new BusinessRuleError('this record belongs to a different evaluation phase');
+        }
+        await this.decide(
+          ctx,
+          id,
+          {
+            decision,
+            ...(input.reason === undefined ? {} : { reason: input.reason }),
+            version: current.__v,
+          },
+          scope,
+        );
+      },
+      {
+        entityType: 'evaluation',
+        action: input.action,
+        actorUserId: ctx.userId,
+        reason: input.reason ?? null,
+      },
+    );
   }
 }
 

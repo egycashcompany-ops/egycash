@@ -21,8 +21,14 @@ import {
   type Paginated,
   type ReassignInterviewPanel,
   type RescheduleInterview,
+  type BulkActionResultDto,
+  type BulkInterviews,
+  type BulkScheduleInterviews,
+  type BulkStartInterviews,
   type ScheduleInterview,
   type SkipInterviewer,
+  type StartInterview,
+  type StartScheduledInterview,
   type SubmitInterviewEvaluation,
 } from '@ecms/contracts';
 import { BusinessRuleError, ConflictError, ForbiddenError, ValidationError } from '../../../../shared/errors';
@@ -32,7 +38,7 @@ import { emit } from '../../../../platform/kernel/event-bus';
 import { notificationsService } from '../../../../platform/notifications';
 import { applicantService } from '../applicants';
 import { screeningService } from '../screening';
-import { recruitmentWorkflowEngine, type StageBinding } from '../workflow';
+import { recruitmentWorkflowEngine, runBulk, type StageBinding } from '../workflow';
 import { InterviewModel } from './interview.model';
 import { interviewRepository, type InterviewListFilter } from './interview.repository';
 import { interviewStageRepository } from './interview-stage.repository';
@@ -91,17 +97,7 @@ class InterviewService {
       ]);
     }
 
-    // Entry gate (approved workflow): the earliest stage requires a passed screening; every
-    // later stage requires the applicant to have passed the immediately preceding stage.
-    const prev = await interviewStageRepository.findPrevActiveBefore(stage.order);
-    if (prev === null) {
-      const screening = await screeningService.findByApplicantId(input.applicantId);
-      if (screening === null || screening.status !== 'accepted') {
-        throw new BusinessRuleError('applicant must pass Initial Screening before interviews');
-      }
-    } else if (!(await interviewRepository.hasPassedStage(input.applicantId, prev.order))) {
-      throw new BusinessRuleError(`applicant must pass "${prev.name.en}" before this interview`);
-    }
+    await this.assertStageEntry(input.applicantId, stage);
 
     // One live interview per stage (a cancelled round may be replaced).
     const active = await interviewRepository.findActiveAtStage(input.applicantId, stage.order);
@@ -151,6 +147,108 @@ class InterviewService {
     });
     await this.notifyPanel(doc, HrInterviewTemplates.Scheduled, true);
     return doc;
+  }
+
+  /**
+   * START NOW (RW12/A3). The round is created already `inProgress`: the server assigns the
+   * CURRENTLY AUTHENTICATED user as the interviewer and stamps `startedAt` from its own clock —
+   * neither is supplied or editable by the client. Works from Screening → first stage and from
+   * Interview N → N+1, using the same entry gate as scheduling.
+   */
+  async start(ctx: AuthContext, input: StartInterview, scope: ScopeSelector): Promise<InterviewDoc> {
+    const applicant = await applicantService.getById(input.applicantId, scope);
+    if (applicant.status !== 'new') {
+      throw new BusinessRuleError('only an applicant in the active pipeline can be interviewed');
+    }
+    const stage = await interviewStageRepository.findActiveById(input.stageId);
+    if (stage === null) {
+      throw new ValidationError([
+        { field: 'stageId', code: 'INVALID', message: 'unknown or inactive interview stage' },
+      ]);
+    }
+    await this.assertStageEntry(input.applicantId, stage);
+
+    const { record: waiting } = (await recruitmentWorkflowEngine.ensureStageRecord({
+      binding: BINDING,
+      applicantId: input.applicantId,
+      applicantCode: applicant.code,
+      applicantName: applicant.fullNameAr,
+      branchId: applicant.branchId,
+      stageRefId: new Types.ObjectId(input.stageId),
+      actorUserId: ctx.userId,
+      placement: applicant.placement,
+      placementLabel: applicant.placementLabel,
+      defaults: {
+        stageId: new Types.ObjectId(input.stageId),
+        stageKey: stage.key,
+        stageOrder: stage.order,
+        stageName: stage.name,
+        outcome: 'pending',
+      },
+    } as never)) as unknown as { record: InterviewDoc };
+
+    const now = new Date();
+    const panel = [...new Set([ctx.userId, ...input.interviewerIds])].map(newPanelist);
+    const { record: doc } = (await recruitmentWorkflowEngine.transition({
+      binding: BINDING,
+      id: String(waiting._id),
+      to: 'inProgress',
+      actorUserId: ctx.userId,
+      set: {
+        scheduledAt: now,
+        startedAt: now,
+        startedBy: new Types.ObjectId(ctx.userId),
+        panel,
+        location: input.location ?? null,
+        notes: input.notes ?? null,
+      },
+      payload: { stageOrder: stage.order },
+    } as never)) as unknown as { record: InterviewDoc };
+
+    await emit(HrInterviewEvents.InterviewStarted, {
+      interviewId: String(doc._id),
+      applicantId: input.applicantId,
+      applicantCode: applicant.code,
+      stageOrder: stage.order,
+      startedBy: ctx.userId,
+      startedAt: now,
+    });
+    return doc;
+  }
+
+  /** Start a round that was already scheduled: `scheduled → inProgress`, server-stamped. */
+  async startScheduled(
+    ctx: AuthContext,
+    id: string,
+    input: StartScheduledInterview,
+    scope: ScopeSelector,
+  ): Promise<InterviewDoc> {
+    const before = await interviewRepository.getById(id, scope);
+    const now = new Date();
+    const onPanel = before.panel.some((p) => String(p.interviewerId) === ctx.userId);
+    const { record: updated } = (await recruitmentWorkflowEngine.transition({
+      binding: BINDING,
+      id,
+      to: 'inProgress',
+      actorUserId: ctx.userId,
+      version: input.version,
+      set: {
+        startedAt: now,
+        startedBy: new Types.ObjectId(ctx.userId),
+        ...(onPanel ? {} : { panel: [...before.panel, newPanelist(ctx.userId)] }),
+      },
+      payload: { stageOrder: before.stageOrder },
+    } as never)) as unknown as { record: InterviewDoc };
+
+    await emit(HrInterviewEvents.InterviewStarted, {
+      interviewId: id,
+      applicantId: String(before.applicantId),
+      applicantCode: before.applicantCode,
+      stageOrder: before.stageOrder,
+      startedBy: ctx.userId,
+      startedAt: now,
+    });
+    return updated;
   }
 
   async list(query: ListInterviewsQuery, scope: ScopeSelector): Promise<Paginated<InterviewDoc>> {
@@ -307,8 +405,8 @@ class InterviewService {
     scope: ScopeSelector,
   ): Promise<InterviewDoc> {
     const before = await interviewRepository.getById(id, scope);
-    if (before.status !== 'scheduled') {
-      throw new BusinessRuleError('only a scheduled interview can be cancelled');
+    if (before.status !== 'scheduled' && before.status !== 'inProgress') {
+      throw new BusinessRuleError('only a scheduled or in-progress interview can be cancelled');
     }
     const { record: updated } = await recruitmentWorkflowEngine.transition({
       binding: BINDING,
@@ -341,8 +439,8 @@ class InterviewService {
     scope: ScopeSelector,
   ): Promise<InterviewDoc> {
     const before = await interviewRepository.getById(id, scope);
-    if (before.status !== 'scheduled') {
-      throw new BusinessRuleError('can only evaluate a scheduled interview');
+    if (before.status !== 'scheduled' && before.status !== 'inProgress') {
+      throw new BusinessRuleError('can only evaluate an open interview');
     }
     if (!before.panel.some((p) => String(p.interviewerId) === ctx.userId)) {
       throw new ForbiddenError('only an assigned interviewer may evaluate this round');
@@ -387,8 +485,8 @@ class InterviewService {
     scope: ScopeSelector,
   ): Promise<InterviewDoc> {
     const before = await interviewRepository.getById(id, scope);
-    if (before.status !== 'scheduled') {
-      throw new BusinessRuleError('can only change evaluators on a scheduled interview');
+    if (before.status !== 'scheduled' && before.status !== 'inProgress') {
+      throw new BusinessRuleError('can only change evaluators on an open interview');
     }
     const target = before.panel.find((p) => String(p.interviewerId) === input.interviewerId);
     if (target === undefined) {
@@ -428,7 +526,7 @@ class InterviewService {
     scope: ScopeSelector,
   ): Promise<InterviewDoc> {
     const before = await interviewRepository.getById(id, scope);
-    if (before.status !== 'scheduled') {
+    if (before.status !== 'scheduled' && before.status !== 'inProgress') {
       throw new BusinessRuleError('interview has already been closed');
     }
     if (before.panel.some((p) => p.state === 'pending')) {
@@ -528,6 +626,121 @@ class InterviewService {
       finalStage: nextStage === null,
     });
     return updated;
+  }
+
+  /**
+   * Entry gate (approved workflow): the earliest stage requires a passed screening; every later
+   * stage requires the applicant to have passed the immediately preceding stage. Shared by
+   * scheduling and starting so both paths gate identically.
+   */
+  private async assertStageEntry(
+    applicantId: string,
+    stage: { order: number; name: { en: string } },
+  ): Promise<void> {
+    const prev = await interviewStageRepository.findPrevActiveBefore(stage.order);
+    if (prev === null) {
+      const screening = await screeningService.findByApplicantId(applicantId);
+      if (screening === null || screening.status !== 'accepted') {
+        throw new BusinessRuleError('applicant must pass Initial Screening before interviews');
+      }
+      return;
+    }
+    if (!(await interviewRepository.hasPassedStage(applicantId, prev.order))) {
+      throw new BusinessRuleError(`applicant must pass "${prev.name.en}" before this interview`);
+    }
+  }
+
+  /** Bulk cancel / decide / reassign-panel (RW17/I4) — per item, partial success. */
+  async bulk(
+    ctx: AuthContext,
+    input: BulkInterviews,
+    scope: ScopeSelector,
+  ): Promise<BulkActionResultDto> {
+    return runBulk(
+      input.ids,
+      async (id) => {
+        const current = await interviewRepository.getById(id, scope);
+        if (input.action === 'cancel') {
+          await this.cancel(ctx, id, { reason: input.reason ?? '', version: current.__v }, scope);
+          return;
+        }
+        if (input.action === 'reassignPanel') {
+          await this.reassignPanel(
+            ctx,
+            id,
+            { interviewerIds: input.interviewerIds ?? [], version: current.__v },
+            scope,
+          );
+          return;
+        }
+        await this.decide(
+          ctx,
+          id,
+          {
+            outcome: input.action === 'pass' ? 'passed' : 'failed',
+            ...(input.notes === undefined ? {} : { notes: input.notes }),
+            version: current.__v,
+          },
+          scope,
+        );
+      },
+      {
+        entityType: 'interview',
+        action: input.action,
+        actorUserId: ctx.userId,
+        reason: input.reason ?? null,
+      },
+    );
+  }
+
+  /** Schedule one date/panel across a selection of waiting applicants (RW17). */
+  async bulkSchedule(
+    ctx: AuthContext,
+    input: BulkScheduleInterviews,
+    scope: ScopeSelector,
+  ): Promise<BulkActionResultDto> {
+    return runBulk(
+      input.applicantIds,
+      async (applicantId) => {
+        await this.schedule(
+          ctx,
+          {
+            applicantId,
+            stageId: input.stageId,
+            scheduledAt: input.scheduledAt,
+            interviewerIds: input.interviewerIds,
+            ...(input.location === undefined ? {} : { location: input.location }),
+            ...(input.notes === undefined ? {} : { notes: input.notes }),
+          },
+          scope,
+        );
+      },
+      { entityType: 'interview', action: 'schedule', actorUserId: ctx.userId },
+    );
+  }
+
+  /** Start rounds immediately for a selection of waiting applicants (RW12/RW17). */
+  async bulkStart(
+    ctx: AuthContext,
+    input: BulkStartInterviews,
+    scope: ScopeSelector,
+  ): Promise<BulkActionResultDto> {
+    return runBulk(
+      input.applicantIds,
+      async (applicantId) => {
+        await this.start(
+          ctx,
+          {
+            applicantId,
+            stageId: input.stageId,
+            interviewerIds: [],
+            ...(input.location === undefined ? {} : { location: input.location }),
+          },
+          scope,
+        );
+      },
+      { entityType: 'interview', action: 'start', actorUserId: ctx.userId },
+    );
   }
 }
 

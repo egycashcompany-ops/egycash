@@ -10,6 +10,7 @@ import {
   platformPermissions,
   SettingKeys,
   type ApplicantDto,
+  type BulkActionResultDto,
   type EvaluationDto,
   type EvaluationPhaseDto,
   type InterviewDto,
@@ -279,9 +280,11 @@ describe('evaluations — open, files, decision', () => {
     // Reject removes the applicant from the active pipeline.
     expect(await applicantStatus(applicant.id)).toBe('rejected');
 
-    // The decision is editable: correcting to approved re-decides the same record.
+    // The decision is editable: correcting to approved re-decides the same record. A correction
+    // always carries its reason (the rulebook refuses it otherwise).
     const corrected = await decide(evaluation.id, {
       decision: 'approved',
+      reason: 'medical report was misread',
       version: (rejected.body.data as EvaluationDto).version,
     });
     expect(corrected.status).toBe(200);
@@ -303,5 +306,70 @@ describe('evaluation phases — extensible catalog', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ key: 'another', name: { en: 'Another', ar: 'أخرى' }, order: 1 });
     expect(clash.status).toBe(409);
+  });
+});
+
+describe('evaluations — bulk approve/reject (RW10/RW17/I4)', () => {
+  const bulk = (body: Record<string, unknown>, token = adminToken) =>
+    request(app)
+      .post('/api/v1/hr/evaluations/bulk')
+      .set('Authorization', `Bearer ${token}`)
+      .send(body);
+
+  it('approves a phase queue and reports one result per id', async () => {
+    const phase = await phaseByKey('securityCheck');
+    const a = (await open((await readyApplicant()).id, phase.id)).body.data as EvaluationDto;
+    const b = (await open((await readyApplicant()).id, phase.id)).body.data as EvaluationDto;
+
+    const res = await bulk({ action: 'approve', ids: [a.id, b.id], phaseId: phase.id });
+    expect(res.status).toBe(200);
+    const envelope = res.body.data as BulkActionResultDto;
+    expect(envelope.requested).toBe(2);
+    expect(envelope.succeeded).toBe(2);
+    expect(envelope.failed).toBe(0);
+
+    const after = await request(app)
+      .get(`/api/v1/hr/evaluations/${a.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect((after.body.data as EvaluationDto).status).toBe('approved');
+  });
+
+  it('refuses a selection that spans another phase, per id', async () => {
+    const security = await phaseByKey('securityCheck');
+    const driving = await phaseByKey('drivingTest');
+    const mine = (await open((await readyApplicant()).id, security.id)).body.data as EvaluationDto;
+    const other = (await open((await readyApplicant()).id, driving.id)).body.data as EvaluationDto;
+
+    const res = await bulk({ action: 'approve', ids: [mine.id, other.id], phaseId: security.id });
+    expect(res.status).toBe(200);
+    const envelope = res.body.data as BulkActionResultDto;
+    expect(envelope.succeeded).toBe(1);
+    expect(envelope.failed).toBe(1);
+    expect(envelope.results.find((r) => r.id === other.id)?.ok).toBe(false);
+  });
+
+  it('requires a reason to reject, and rejects the applicants when given one', async () => {
+    const phase = await phaseByKey('securityCheck');
+    const applicant = await readyApplicant();
+    const evaluation = (await open(applicant.id, phase.id)).body.data as EvaluationDto;
+
+    expect((await bulk({ action: 'reject', ids: [evaluation.id], phaseId: phase.id })).status).toBe(400);
+
+    const res = await bulk({
+      action: 'reject',
+      ids: [evaluation.id],
+      phaseId: phase.id,
+      reason: 'security clearance denied',
+    });
+    expect(res.status).toBe(200);
+    expect((res.body.data as BulkActionResultDto).succeeded).toBe(1);
+    expect(await applicantStatus(applicant.id)).toBe('rejected');
+  });
+
+  it('needs the manage permission', async () => {
+    const phase = await phaseByKey('securityCheck');
+    const evaluation = (await open((await readyApplicant()).id, phase.id)).body.data as EvaluationDto;
+    const res = await bulk({ action: 'approve', ids: [evaluation.id], phaseId: phase.id }, aliceToken);
+    expect(res.status).toBe(403);
   });
 });

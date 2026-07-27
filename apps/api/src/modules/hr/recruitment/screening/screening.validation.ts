@@ -6,6 +6,7 @@ export {
   DecideScreeningSchema,
   ListScreeningsQuerySchema,
   ListAwaitingScreeningsQuerySchema,
+  BulkScreeningsSchema,
 } from '@ecms/contracts';
 
 import { z } from 'zod';

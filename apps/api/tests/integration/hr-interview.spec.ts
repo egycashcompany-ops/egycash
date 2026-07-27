@@ -14,6 +14,7 @@ import {
   platformPermissions,
   SettingKeys,
   type ApplicantDto,
+  type BulkActionResultDto,
   type InterviewDto,
   type InterviewStageDto,
   type ScreeningDto,
@@ -35,6 +36,7 @@ const FUTURE = '2026-09-01T09:00:00.000Z';
 const LATER = '2026-09-08T09:00:00.000Z';
 let replSet: MongoMemoryReplSet | null = null;
 let app: Express;
+let adminUserId: string;
 let adminToken: string;
 let aliceToken: string; // no HR permissions
 let interviewerId: string;
@@ -158,6 +160,7 @@ beforeAll(async () => {
     [...platformPermissions, ...hrPermissions].map((p) => p.key),
   );
   const adminId = await mkUser('admin@ecms.local');
+  adminUserId = adminId;
   await rbacService.ensureAssignment(adminId, String(superAdmin._id), 'organization');
   await mkUser('alice@ecms.local'); // no roles
 
@@ -558,5 +561,131 @@ describe('interviews — decide & applicant progression', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ outcome: 'passed', version: (first.body.data as InterviewDto).version });
     expect(second.status).toBe(422);
+  });
+});
+
+describe('interviews — start now (RW12/A3)', () => {
+  const start = (applicantId: string, stageId: string, over: Record<string, unknown> = {}) =>
+    request(app)
+      .post('/api/v1/hr/interviews/start')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ applicantId, stageId, ...over });
+
+  it('opens the round in progress, with the caller on the panel and a server timestamp', async () => {
+    const applicant = await acceptedApplicant();
+    const stage1 = await stageIdByKey('firstInterview');
+    const before = Date.now();
+    const res = await start(applicant.id, stage1);
+    expect(res.status).toBe(201);
+    const dto = res.body.data as InterviewDto;
+    expect(dto.status).toBe('inProgress');
+    expect(dto.startedAt).not.toBeNull();
+    expect(new Date(dto.startedAt as string).getTime()).toBeGreaterThanOrEqual(before - 1000);
+    // The CURRENT user is the interviewer — the client never supplies one.
+    expect(dto.panel.map((p) => p.interviewerId)).toContain(adminUserId);
+  });
+
+  it('enforces the same entry gate as scheduling', async () => {
+    const applicant = await registerApplicant(); // screening not yet accepted
+    const stage1 = await stageIdByKey('firstInterview');
+    expect((await start(applicant.id, stage1)).status).toBe(422);
+  });
+
+  it('starts a round that was already scheduled and lets it be decided', async () => {
+    const applicant = await acceptedApplicant();
+    const stage1 = await stageIdByKey('firstInterview');
+    const created = (await schedule(applicant.id, stage1)).body.data as InterviewDto;
+
+    const started = await request(app)
+      .post(`/api/v1/hr/interviews/${created.id}/start`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: created.version });
+    expect(started.status).toBe(200);
+    expect((started.body.data as InterviewDto).status).toBe('inProgress');
+
+    const version = await soloSubmit(started.body.data as InterviewDto);
+    const decided = await request(app)
+      .post(`/api/v1/hr/interviews/${created.id}/decide`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ outcome: 'passed', version });
+    expect(decided.status).toBe(200);
+    expect((decided.body.data as InterviewDto).status).toBe('completed');
+    expect((decided.body.data as InterviewDto).outcome).toBe('passed');
+  });
+});
+
+describe('interviews — bulk (RW17/I4)', () => {
+  it('cancels a selection and reports one result per id', async () => {
+    const stage1 = await stageIdByKey('firstInterview');
+    const a = (await schedule((await acceptedApplicant()).id, stage1)).body.data as InterviewDto;
+    const b = (await schedule((await acceptedApplicant()).id, stage1)).body.data as InterviewDto;
+
+    const res = await request(app)
+      .post('/api/v1/hr/interviews/bulk')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ action: 'cancel', ids: [a.id, b.id], reason: 'requisition frozen' });
+    expect(res.status).toBe(200);
+    const envelope = res.body.data as BulkActionResultDto;
+    expect(envelope.requested).toBe(2);
+    expect(envelope.succeeded).toBe(2);
+    expect(envelope.failed).toBe(0);
+
+    const after = await request(app)
+      .get(`/api/v1/hr/interviews/${a.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect((after.body.data as InterviewDto).status).toBe('cancelled');
+  });
+
+  it('refuses a bulk cancel with no reason', async () => {
+    const stage1 = await stageIdByKey('firstInterview');
+    const a = (await schedule((await acceptedApplicant()).id, stage1)).body.data as InterviewDto;
+    const res = await request(app)
+      .post('/api/v1/hr/interviews/bulk')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ action: 'cancel', ids: [a.id] });
+    expect(res.status).toBe(400);
+  });
+
+  it('schedules one date and panel across a selection of applicants', async () => {
+    const stage1 = await stageIdByKey('firstInterview');
+    const one = await acceptedApplicant();
+    const two = await acceptedApplicant();
+
+    const res = await request(app)
+      .post('/api/v1/hr/interviews/bulk/schedule')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        applicantIds: [one.id, two.id],
+        stageId: stage1,
+        scheduledAt: FUTURE,
+        interviewerIds: [interviewerId],
+      });
+    expect(res.status).toBe(200);
+    expect((res.body.data as BulkActionResultDto).succeeded).toBe(2);
+
+    const listed = await request(app)
+      .get('/api/v1/hr/interviews')
+      .query({ applicantId: one.id })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect((listed.body.data as InterviewDto[])[0]?.status).toBe('scheduled');
+  });
+
+  it('starts rounds immediately across a selection of applicants', async () => {
+    const stage1 = await stageIdByKey('firstInterview');
+    const one = await acceptedApplicant();
+    const two = await acceptedApplicant();
+
+    const res = await request(app)
+      .post('/api/v1/hr/interviews/bulk/start')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ applicantIds: [one.id, two.id], stageId: stage1 });
+    expect(res.status).toBe(200);
+    expect((res.body.data as BulkActionResultDto).succeeded).toBe(2);
+
+    const listed = await request(app)
+      .get('/api/v1/hr/interviews')
+      .query({ applicantId: two.id })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect((listed.body.data as InterviewDto[])[0]?.status).toBe('inProgress');
   });
 });

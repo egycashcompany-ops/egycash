@@ -17,6 +17,7 @@ export {
   workflowConsumerIds,
   type WorkflowEventConsumer,
 } from './workflow-dispatcher';
+export { runBulk, type BulkRunOptions } from './bulk-runner';
 export { WorkflowEvents, type WorkflowEventName } from './workflow-events';
 export {
   auditWorkflowEvent,

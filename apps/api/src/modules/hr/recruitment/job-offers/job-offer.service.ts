@@ -17,6 +17,8 @@ import {
   type AwaitingOfferDto,
   type CreateJobOffer,
   type ListAwaitingOffersQuery,
+  type BulkActionResultDto,
+  type BulkJobOffers,
   type ListJobOffersQuery,
   type OfferTerms as OfferTermsInput,
   type Paginated,
@@ -31,7 +33,7 @@ import { auditService } from '../../../../platform/audit';
 import { emit } from '../../../../platform/kernel/event-bus';
 import { notificationsService } from '../../../../platform/notifications';
 import { applicantService } from '../applicants';
-import { recruitmentWorkflowEngine, type StageBinding } from '../workflow';
+import { recruitmentWorkflowEngine, runBulk, type StageBinding } from '../workflow';
 import { JobOfferModel } from './job-offer.model';
 import { jobOfferRepository, type JobOfferListFilter } from './job-offer.repository';
 import { nextOfferNumber } from './offer-sequence';
@@ -135,9 +137,11 @@ class JobOfferService {
 
     const terms = buildTerms(input.terms);
     const code = await nextOfferNumber(new Date().getUTCFullYear());
+    const attempt = await jobOfferRepository.nextAttemptFor(input.applicantId);
     const doc = await jobOfferRepository.create(
       {
         code,
+        attempt,
         applicantId: new Types.ObjectId(input.applicantId),
         applicantCode: applicant.code,
         applicantName: applicant.fullNameAr,
@@ -415,6 +419,31 @@ class JobOfferService {
       applicantCode: doc.applicantCode,
       status: doc.status,
     };
+  }
+
+  /** Bulk send/withdraw (RW17/I4) — each item in its own transaction, partial success. */
+  async bulk(
+    ctx: AuthContext,
+    input: BulkJobOffers,
+    scope: ScopeSelector,
+  ): Promise<BulkActionResultDto> {
+    return runBulk(
+      input.ids,
+      async (id) => {
+        const current = await jobOfferRepository.getById(id, scope);
+        if (input.action === 'send') {
+          await this.send(ctx, id, { version: current.__v }, scope);
+          return;
+        }
+        await this.withdraw(ctx, id, { reason: input.reason ?? '', version: current.__v }, scope);
+      },
+      {
+        entityType: 'jobOffer',
+        action: input.action,
+        actorUserId: ctx.userId,
+        reason: input.reason ?? null,
+      },
+    );
   }
 }
 

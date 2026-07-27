@@ -3,6 +3,7 @@
 import { type Request, type Response } from 'express';
 import {
   type AcceptJobOffer,
+  type BulkJobOffers,
   type CreateJobOffer,
   type ListAwaitingOffersQuery,
   type ListJobOffersQuery,
@@ -77,4 +78,10 @@ export const withdrawJobOffer = async (req: Request, res: Response): Promise<voi
   const { body, params } = validated<WithdrawJobOffer, never, IdParam>(req);
   const doc = await jobOfferService.withdraw(ctx, params.id, body, scopeSelector(ctx, 'jobOffer.withdraw'));
   ok(res, toJobOfferDto(doc));
+};
+
+export const bulkJobOffers = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body } = validated<BulkJobOffers>(req);
+  ok(res, await jobOfferService.bulk(ctx, body, scopeSelector(ctx, 'jobOffer.edit')));
 };

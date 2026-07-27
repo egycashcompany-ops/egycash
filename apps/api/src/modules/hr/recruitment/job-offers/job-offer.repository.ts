@@ -50,6 +50,22 @@ class JobOfferRepository extends BaseRepository<JobOfferDoc> {
       .exec();
   }
 
+  /**
+   * The attempt a NEW offer for this applicant takes (I12). Terminal offers keep
+   * `supersededAt: null`, so a re-offer after a withdrawn/rejected/expired one must claim the
+   * next attempt rather than collide with the live-record unique index.
+   */
+  async nextAttemptFor(applicantId: string): Promise<number> {
+    if (!Types.ObjectId.isValid(applicantId)) return 1;
+    const latest = await this.model
+      .findOne({ applicantId: new Types.ObjectId(applicantId), isDeleted: false })
+      .sort({ attempt: -1 })
+      .select('attempt')
+      .lean<{ attempt: number }>()
+      .exec();
+    return latest === null ? 1 : latest.attempt + 1;
+  }
+
   /** The applicant's accepted offer, if any (the Employee-Creation gate for Stage 5). */
   async findAcceptedByApplicantId(applicantId: string): Promise<JobOfferDoc | null> {
     if (!Types.ObjectId.isValid(applicantId)) return null;

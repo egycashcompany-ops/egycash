@@ -7,6 +7,7 @@ import { authenticate } from '../../../../platform/auth';
 import { authorize } from '../../../../platform/rbac';
 import {
   acceptJobOffer,
+  bulkJobOffers,
   createJobOffer,
   getJobOffer,
   listAwaitingOffers,
@@ -18,6 +19,7 @@ import {
 } from './job-offer.controller';
 import {
   AcceptJobOfferSchema,
+  BulkJobOffersSchema,
   CreateJobOfferSchema,
   JobOfferIdParamSchema,
   ListAwaitingOffersQuerySchema,
@@ -52,6 +54,14 @@ export const buildJobOffersRouter = (): Router => {
     authorize('jobOffer.view'),
     validate({ query: ListAwaitingOffersQuerySchema }),
     asyncHandler(listAwaitingOffers),
+  );
+  // Bulk send/withdraw (RW17/I4) — declared before `/:id`.
+  router.post(
+    '/bulk',
+    authenticate,
+    authorize('jobOffer.edit'),
+    validate({ body: BulkJobOffersSchema }),
+    asyncHandler(bulkJobOffers),
   );
   router.get(
     '/:id',

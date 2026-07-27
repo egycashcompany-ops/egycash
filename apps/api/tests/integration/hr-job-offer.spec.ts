@@ -12,6 +12,7 @@ import {
   platformPermissions,
   SettingKeys,
   type ApplicantDto,
+  type BulkActionResultDto,
   type InterviewDto,
   type JobOfferDto,
   type ScreeningDto,
@@ -485,5 +486,54 @@ describe('job offers — automatic expiration', () => {
     const after = await request(app).get(`/api/v1/hr/job-offers/${sent.id}`).set('Authorization', `Bearer ${adminToken}`);
     expect((after.body.data as JobOfferDto).status).toBe('expired');
     expect((after.body.data as JobOfferDto).status).not.toBe('draft');
+  });
+});
+
+describe('job offers — bulk send/withdraw (RW17/I4)', () => {
+  const bulk = (body: Record<string, unknown>) =>
+    request(app)
+      .post('/api/v1/hr/job-offers/bulk')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send(body);
+
+  it('sends a selection of drafts and reports one result per id', async () => {
+    const a = await draftFor(await offerReadyApplicant());
+    const b = await draftFor(await offerReadyApplicant());
+
+    const res = await bulk({ action: 'send', ids: [a.id, b.id] });
+    expect(res.status).toBe(200);
+    const envelope = res.body.data as BulkActionResultDto;
+    expect(envelope.requested).toBe(2);
+    expect(envelope.succeeded).toBe(2);
+    expect(envelope.failed).toBe(0);
+
+    const after = await request(app)
+      .get(`/api/v1/hr/job-offers/${a.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect((after.body.data as JobOfferDto).status).toBe('sent');
+  });
+
+  it('withdraws with a reason and leaves the applicants free for a fresh offer', async () => {
+    const applicant = await offerReadyApplicant();
+    const sent = await sentFor(applicant);
+
+    expect((await bulk({ action: 'withdraw', ids: [sent.id] })).status).toBe(400);
+
+    const res = await bulk({ action: 'withdraw', ids: [sent.id], reason: 'budget frozen' });
+    expect(res.status).toBe(200);
+    expect((res.body.data as BulkActionResultDto).succeeded).toBe(1);
+    expect((await createOffer(applicant.id)).status).toBe(201);
+  });
+
+  it('applies the sendable item and reports the one that cannot be sent', async () => {
+    const good = await draftFor(await offerReadyApplicant());
+    const alreadySent = await sentFor(await offerReadyApplicant());
+
+    const res = await bulk({ action: 'send', ids: [good.id, alreadySent.id] });
+    expect(res.status).toBe(200);
+    const envelope = res.body.data as BulkActionResultDto;
+    expect(envelope.succeeded).toBe(1);
+    expect(envelope.failed).toBe(1);
+    expect(envelope.results.find((r) => r.id === alreadySent.id)?.ok).toBe(false);
   });
 });

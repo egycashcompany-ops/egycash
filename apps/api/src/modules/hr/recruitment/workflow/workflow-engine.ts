@@ -94,6 +94,18 @@ export interface TransitionResult<T extends StageRecord> {
   lifecycle: LifecycleEvent | null;
 }
 
+/**
+ * States from which a stage record can no longer move forward. A candidate returning to this
+ * stage gets a NEW attempt rather than reviving a terminal row (I11/I12) — e.g. re-scheduling
+ * after a cancelled round, or drafting a fresh offer after one was withdrawn.
+ */
+const TERMINAL_STATUSES: Record<StageObject, readonly string[]> = {
+  screening: [],
+  interview: ['completed', 'cancelled'],
+  evaluation: [],
+  offer: ['accepted', 'rejected', 'expired', 'withdrawn', 'superseded'],
+};
+
 interface ApplicantLike extends BaseDocFields {
   code: string;
   status: ApplicantWorkflowStatus;
@@ -110,19 +122,28 @@ class RecruitmentWorkflowEngine {
     input: EnsureStageInput<T>,
     session?: ClientSession,
   ): Promise<{ record: T; created: boolean }> {
-    const attempt = input.attempt ?? 1;
-    const filter: Record<string, unknown> = {
+    const stageFilter: Record<string, unknown> = {
       applicantId: new Types.ObjectId(input.applicantId),
-      attempt,
       supersededAt: null,
       isDeleted: false,
     };
     if (input.binding.stageField !== undefined) {
-      filter[input.binding.stageField] = input.stageRefId;
+      stageFilter[input.binding.stageField] = input.stageRefId;
     }
 
-    const before = await input.binding.model.findOne(filter).lean<T>().exec();
-    if (before !== null) return { record: before, created: false };
+    // The live record is the highest attempt that has not been superseded. When it is terminal
+    // (a cancelled round, a withdrawn offer) the stage re-opens on the NEXT attempt.
+    const latest = await input.binding.model
+      .findOne(stageFilter)
+      .sort({ attempt: -1 })
+      .lean<T>()
+      .exec();
+    const terminal = TERMINAL_STATUSES[input.binding.object];
+    if (latest !== null && !terminal.includes(latest.status)) {
+      return { record: latest, created: false };
+    }
+    const attempt = input.attempt ?? (latest === null ? 1 : latest.attempt + 1);
+    const filter = { ...stageFilter, attempt };
 
     const setOnInsert = {
       ...filter,

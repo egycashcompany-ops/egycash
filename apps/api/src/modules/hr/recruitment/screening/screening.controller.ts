@@ -3,6 +3,7 @@
 import { type Request, type Response } from 'express';
 import {
   type AddScreeningNote,
+  type BulkScreenings,
   type CreateScreening,
   type DecideScreening,
   type ListAwaitingScreeningsQuery,
@@ -61,4 +62,10 @@ export const redecideScreening = async (req: Request, res: Response): Promise<vo
   const { body, params } = validated<DecideScreening, never, IdParam>(req);
   const doc = await screeningService.redecide(ctx, params.id, body, scopeSelector(ctx, 'screening.decide'));
   ok(res, toScreeningDto(doc));
+};
+
+export const bulkScreenings = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body } = validated<BulkScreenings>(req);
+  ok(res, await screeningService.bulk(ctx, body, scopeSelector(ctx, 'screening.decide')));
 };

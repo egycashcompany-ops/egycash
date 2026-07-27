@@ -231,14 +231,14 @@ describe('evaluation phases — seeded catalog & permissions', () => {
 });
 
 describe('evaluations — open, files, decision', () => {
-  it('opens a pending evaluation (idempotent) and attaches then removes a file', async () => {
+  it('opens a waiting evaluation (idempotent) and attaches then removes a file', async () => {
     const applicant = await readyApplicant();
     const phase = await phaseByKey('securityCheck');
 
     const opened = await open(applicant.id, phase.id);
     expect(opened.status).toBe(201);
     const evaluation = opened.body.data as EvaluationDto;
-    expect(evaluation.status).toBe('pending');
+    expect(evaluation.status).toBe('waiting');
     expect(evaluation.files).toHaveLength(0);
 
     // Idempotent: opening the same (applicant, phase) returns the same record.

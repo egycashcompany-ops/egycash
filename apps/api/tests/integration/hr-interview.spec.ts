@@ -603,11 +603,20 @@ describe('interviews — start now (RW12/A3)', () => {
     expect(started.status).toBe(200);
     expect((started.body.data as InterviewDto).status).toBe('inProgress');
 
-    const version = await soloSubmit(started.body.data as InterviewDto);
+    // Starting the round put the caller on the panel, so both members must now submit.
+    const afterPanel = started.body.data as InterviewDto;
+    expect(afterPanel.panel.map((p) => p.interviewerId)).toContain(adminUserId);
+    const afterInterviewer = await soloSubmit(afterPanel);
+    const adminSubmitted = await request(app)
+      .post(`/api/v1/hr/interviews/${created.id}/evaluations`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ recommendation: 'recommend', rating: 5, version: afterInterviewer });
+    expect(adminSubmitted.status).toBe(200);
+
     const decided = await request(app)
       .post(`/api/v1/hr/interviews/${created.id}/decide`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ outcome: 'passed', version });
+      .send({ outcome: 'passed', version: (adminSubmitted.body.data as InterviewDto).version });
     expect(decided.status).toBe(200);
     expect((decided.body.data as InterviewDto).status).toBe('completed');
     expect((decided.body.data as InterviewDto).outcome).toBe('passed');

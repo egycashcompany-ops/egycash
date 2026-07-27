@@ -16,6 +16,8 @@ const EmployeeManagementRoutes = lazy(() => import('../../modules/hr/employee-ma
 const EmployeeFilesRoutes = lazy(() => import('../../modules/hr/employee-management/files-routes'));
 const OrganizationRoutes = lazy(() => import('../../modules/organization/routes'));
 const LeaveManagementRoutes = lazy(() => import('../../modules/hr/leave-management/routes'));
+const ContractsRoutes = lazy(() => import('../../modules/hr/contracts/routes'));
+const VerifyContractPage = lazy(() => import('../../modules/hr/contracts/pages/VerifyContractPage'));
 const AccountRoutes = lazy(() => import('../account/routes'));
 
 const useDirection = (): void => {
@@ -54,6 +56,15 @@ export const App = (): JSX.Element => {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/activate" element={<ActivationPage />} />
+        {/* A23 — public document verification (the PDF QR's target). */}
+        <Route
+          path="/verify/contract"
+          element={
+            <Suspense fallback={<div className="grid min-h-screen place-items-center"><LoadingState /></div>}>
+              <VerifyContractPage />
+            </Suspense>
+          }
+        />
         <Route
           path="/organization/*"
           element={
@@ -80,6 +91,16 @@ export const App = (): JSX.Element => {
             <RequireAuth>
               <Suspense fallback={<div className="grid min-h-screen place-items-center"><LoadingState /></div>}>
                 <LeaveManagementRoutes />
+              </Suspense>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/contracts/*"
+          element={
+            <RequireAuth>
+              <Suspense fallback={<div className="grid min-h-screen place-items-center"><LoadingState /></div>}>
+                <ContractsRoutes />
               </Suspense>
             </RequireAuth>
           }

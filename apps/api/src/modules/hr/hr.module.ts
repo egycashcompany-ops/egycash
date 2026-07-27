@@ -25,11 +25,17 @@ import {
   buildLeaveRequestsRouter,
   leaveRequestService,
 } from './leave-management/leave-requests';
+import { buildContractTypesRouter } from './contracts/contract-types';
+import { buildContractTemplatesRouter } from './contracts/contract-templates';
+import { buildContractsRouter, contractService, renderContractPdf } from './contracts/contracts';
+import { registerHrContractSettings } from './contracts/contracts.settings';
 import { seedHrRecruitment } from './hr.seed';
 
 // Business-calendar + leave settings enter the registry at module load, before boot resolves
 // any value (Leave design C2).
 registerHrWorkCalendarSettings();
+// Contracts settings (frozen contracts design A1/A7/D11).
+registerHrContractSettings();
 // Auth design 4.3/4.4 — employee-code login + NID temp-password source (platform seams).
 registerHrIdentitySeams();
 
@@ -210,7 +216,44 @@ const workCalendarPermissions = declarePermissions(
   [{ action: 'manage', name: { en: 'Manage the work calendar', ar: 'إدارة تقويم العمل' } }],
 );
 
+// Contracts module (frozen design docs/12-planning/contracts-module-design.md §2 D10):
+// lifecycle actions are each their own grant; print/download is separately auditable;
+// templates and the type catalog are admin surfaces.
+const contractPermissions = declarePermissions(
+  'hr',
+  'contract',
+  { en: 'contracts', ar: 'العقود' },
+  ['view', 'create'],
+  [
+    { action: 'approve', name: { en: 'Approve contracts', ar: 'اعتماد العقود' } },
+    { action: 'generate', name: { en: 'Generate contracts & record signatures', ar: 'إصدار العقود وتسجيل التوقيعات' } },
+    { action: 'amend', name: { en: 'Amend contracts', ar: 'تعديل العقود' } },
+    { action: 'renew', name: { en: 'Renew contracts', ar: 'تجديد العقود' } },
+    { action: 'terminate', name: { en: 'Terminate contracts', ar: 'إنهاء العقود' } },
+    { action: 'print', name: { en: 'Print & download contracts', ar: 'طباعة وتنزيل العقود' } },
+  ],
+);
+
+const contractTemplatePermissions = declarePermissions(
+  'hr',
+  'contractTemplate',
+  { en: 'contract templates', ar: 'قوالب العقود' },
+  [],
+  [{ action: 'manage', name: { en: 'Manage contract templates', ar: 'إدارة قوالب العقود' } }],
+);
+
+const contractTypePermissions = declarePermissions(
+  'hr',
+  'contractType',
+  { en: 'contract types', ar: 'أنواع العقود' },
+  [],
+  [{ action: 'manage', name: { en: 'Manage contract types', ar: 'إدارة أنواع العقود' } }],
+);
+
 export const hrPermissions: PermissionDef[] = [
+  ...contractPermissions,
+  ...contractTemplatePermissions,
+  ...contractTypePermissions,
   ...applicantPermissions,
   ...applicantSourcePermissions,
   ...screeningPermissions,
@@ -253,6 +296,9 @@ export const hrModule: ModuleManifest = {
     { prefix: '/hr/leave-calendar', router: buildLeaveCalendarRouter() },
     { prefix: '/hr/holidays', router: buildHolidaysRouter() },
     { prefix: '/hr/work-calendar', router: buildWorkCalendarRouter() },
+    { prefix: '/hr/contracts', router: buildContractsRouter() },
+    { prefix: '/hr/contract-templates', router: buildContractTemplatesRouter() },
+    { prefix: '/hr/contract-types', router: buildContractTypesRouter() },
   ],
   collections: [
     'hr_applicants',
@@ -274,8 +320,24 @@ export const hrModule: ModuleManifest = {
     'hr_leave_ledger',
     'hr_leave_balances',
     'hr_holidays',
+    'hr_contracts',
+    'hr_contract_templates',
+    'hr_contract_types',
+    'hr_contract_branding',
   ],
   eventSubscriptions: [
+    {
+      // Contracts A13/D8 — the reliable tier executes in the WORKER: render the PDF
+      // from the STORED snapshot and store one immutable file per contract version.
+      event: 'hr.contract.renderRequested',
+      handlerId: 'contracts.renderPdf',
+      handler: async (envelope) => {
+        const payload = envelope.payload as { contractId?: string };
+        if (typeof payload.contractId === 'string') {
+          await renderContractPdf(payload.contractId);
+        }
+      },
+    },
     {
       // Exit settlement (leave design R12): terminate open leave, release, expire balances.
       event: 'hr.employee.exited',
@@ -323,6 +385,26 @@ export const hrModule: ModuleManifest = {
     },
   ],
   scheduledTasks: [
+    {
+      // Contracts D11 — fixed-term contracts past their end date flip to `expired`.
+      key: 'hr.contracts.expire',
+      description: 'Expire fixed-term contracts past their end date',
+      cron: '0 * * * *',
+      ownerService: 'hr',
+      handler: async () => {
+        await contractService.expireOverdue();
+      },
+    },
+    {
+      // Contracts D11 — expiring-soon notices (once per contract, window setting-driven).
+      key: 'hr.contracts.expiryNotice',
+      description: 'Notify contract viewers about contracts ending within the notice window',
+      cron: '0 7 * * *',
+      ownerService: 'hr',
+      handler: async () => {
+        await contractService.notifyExpiring();
+      },
+    },
     {
       // Automatic offer expiration: flip sent offers past their validity to `expired`.
       key: 'hr.jobOffers.expire',

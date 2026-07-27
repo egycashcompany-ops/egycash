@@ -29,3 +29,24 @@
     }
   }
 }
+
+@layer components {
+  /* Contract template editor content (TipTap). Preflight strips heading/list styling,
+     so the editable area restores the document-like look authors expect. Mirrors the
+     server print CSS closely enough that WYSIWYG intuition holds; the true render
+     always comes from the server preview (A18). */
+  .contract-editor h1 { @apply mb-2 mt-3 text-2xl font-bold; }
+  .contract-editor h2 { @apply mb-2 mt-3 text-xl font-bold; }
+  .contract-editor h3 { @apply mb-1.5 mt-2 text-lg font-semibold; }
+  .contract-editor h4 { @apply mb-1 mt-2 text-base font-semibold; }
+  .contract-editor p { @apply my-1.5 leading-7; }
+  .contract-editor ul { @apply my-2 list-disc ps-6; }
+  .contract-editor ol { @apply my-2 list-decimal ps-6; }
+  .contract-editor blockquote { @apply my-2 border-s-4 border-slate-300 ps-3 text-slate-600 dark:border-slate-600 dark:text-slate-300; }
+  .contract-editor hr { @apply my-3 border-slate-300 dark:border-slate-600; }
+  .contract-editor table { @apply my-2 w-full border-collapse; }
+  .contract-editor td,
+  .contract-editor th { @apply border border-slate-400 px-2 py-1 align-top dark:border-slate-500; }
+  .contract-editor th { @apply bg-slate-100 font-semibold dark:bg-slate-800; }
+  .contract-editor .selectedCell { @apply bg-brand-50 dark:bg-brand-950; }
+}

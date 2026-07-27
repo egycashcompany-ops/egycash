@@ -9,6 +9,7 @@ import {
   acceptJobOffer,
   createJobOffer,
   getJobOffer,
+  listAwaitingOffers,
   listJobOffers,
   rejectJobOffer,
   reviseJobOffer,
@@ -19,6 +20,7 @@ import {
   AcceptJobOfferSchema,
   CreateJobOfferSchema,
   JobOfferIdParamSchema,
+  ListAwaitingOffersQuerySchema,
   ListJobOffersQuerySchema,
   RejectJobOfferSchema,
   ReviseJobOfferSchema,
@@ -42,6 +44,14 @@ export const buildJobOffersRouter = (): Router => {
     authorize('jobOffer.create'),
     validate({ body: CreateJobOfferSchema }),
     asyncHandler(createJobOffer),
+  );
+  // Workflow-queue entry: applicants awaiting their first offer (declared before `/:id`).
+  router.get(
+    '/awaiting',
+    authenticate,
+    authorize('jobOffer.view'),
+    validate({ query: ListAwaitingOffersQuerySchema }),
+    asyncHandler(listAwaitingOffers),
   );
   router.get(
     '/:id',

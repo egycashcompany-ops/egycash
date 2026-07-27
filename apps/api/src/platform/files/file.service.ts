@@ -494,6 +494,14 @@ class FileService {
     }
   }
 
+  /** Authorized byte read for server-side embedding (e.g. branding logos in renders). */
+  async readBuffer(ctx: AuthContext, id: string): Promise<{ doc: FileDoc; buffer: Buffer }> {
+    const doc = await fileRepository.getById(id);
+    await this.authorizeDownload(ctx, doc);
+    const buffer = await streamToBuffer(await getStorageProvider().getStream(doc.storage.key));
+    return { doc, buffer };
+  }
+
   async issueDownloadTicket(ctx: AuthContext, id: string): Promise<DownloadTicketDto> {
     const doc = await fileRepository.getById(id);
     await this.authorizeDownload(ctx, doc);

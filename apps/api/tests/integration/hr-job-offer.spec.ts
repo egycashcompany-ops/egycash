@@ -270,6 +270,38 @@ describe('job offers — permissions & eligibility gate', () => {
     const ids = (pool.body.data as ApplicantDto[]).map((a) => a.id);
     expect(ids).toContain(applicant.id);
   });
+
+  it('surfaces moved applicants in the awaiting-offer queue until an offer is drafted', async () => {
+    const applicant = await registerApplicant();
+    await acceptScreening(applicant.id);
+    await passStage(applicant.id, 'firstInterview');
+
+    const awaitingOf = async (): Promise<string[]> => {
+      const res = await request(app)
+        .get('/api/v1/hr/job-offers/awaiting')
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status).toBe(200);
+      return (res.body.data as { applicantId: string }[]).map((row) => row.applicantId);
+    };
+
+    // Not moved yet → not in the queue (eligibility is never automatic).
+    expect(await awaitingOf()).not.toContain(applicant.id);
+
+    await moveToOffer(applicant);
+    const rows = await request(app)
+      .get('/api/v1/hr/job-offers/awaiting')
+      .set('Authorization', `Bearer ${adminToken}`);
+    const mine = (rows.body.data as { applicantId: string; applicantCode: string; applicantName: string; movedToOfferAt: string }[])
+      .find((row) => row.applicantId === applicant.id);
+    expect(mine).toBeDefined();
+    expect(mine?.applicantCode).toBe(applicant.code);
+    expect(mine?.applicantName).not.toBe('');
+    expect(mine?.movedToOfferAt).not.toBe('');
+
+    // Drafting the offer consumes the queue entry.
+    expect((await createOffer(applicant.id)).status).toBe(201);
+    expect(await awaitingOf()).not.toContain(applicant.id);
+  });
 });
 
 describe('job offers — draft, revise, one-active invariant', () => {

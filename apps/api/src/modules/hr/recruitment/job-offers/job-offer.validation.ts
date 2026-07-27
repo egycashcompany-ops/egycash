@@ -8,6 +8,7 @@ export {
   RejectJobOfferSchema,
   WithdrawJobOfferSchema,
   ListJobOffersQuerySchema,
+  ListAwaitingOffersQuerySchema,
 } from '@ecms/contracts';
 
 import { z } from 'zod';

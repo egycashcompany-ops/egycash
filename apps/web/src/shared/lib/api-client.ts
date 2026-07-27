@@ -105,6 +105,21 @@ export const getPage = async <T>(path: string): Promise<Paginated<T>> => {
 export const patch = <T>(path: string, body: unknown): Promise<T> =>
   api<T>(path, { method: 'PATCH', body: JSON.stringify(body) });
 
+/** Fetch a raw text response (endpoints outside the JSON envelope, e.g. document HTML). */
+export const getText = async (path: string): Promise<string> => {
+  const authHeaders = (): Headers => {
+    const h = new Headers();
+    if (accessToken !== null) h.set('Authorization', `Bearer ${accessToken}`);
+    return h;
+  };
+  let response = await fetch(`${BASE_URL}${path}`, { headers: authHeaders(), credentials: 'include' });
+  if (response.status === 401 && (await tryRefresh())) {
+    response = await fetch(`${BASE_URL}${path}`, { headers: authHeaders(), credentials: 'include' });
+  }
+  if (!response.ok) throw new ApiError('FETCH_FAILED', 'text fetch failed', response.status);
+  return response.text();
+};
+
 export const del = <T>(path: string): Promise<T> => api<T>(path, { method: 'DELETE' });
 
 /** Build a `?a=1&b=2` query string, dropping empty/undefined values (API Standards §4). */

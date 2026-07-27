@@ -4,6 +4,7 @@ import { type Request, type Response } from 'express';
 import {
   type AcceptJobOffer,
   type CreateJobOffer,
+  type ListAwaitingOffersQuery,
   type ListJobOffersQuery,
   type RejectJobOffer,
   type ReviseJobOffer,
@@ -29,6 +30,12 @@ export const listJobOffers = async (req: Request, res: Response): Promise<void> 
   const ctx = authContext(req);
   const { query } = validated<never, ListJobOffersQuery>(req);
   okPage(res, await jobOfferService.list(query, scopeSelector(ctx, 'jobOffer.view')), toJobOfferDto);
+};
+
+export const listAwaitingOffers = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { query } = validated<never, ListAwaitingOffersQuery>(req);
+  ok(res, await jobOfferService.listAwaiting(query, scopeSelector(ctx, 'jobOffer.view')));
 };
 
 export const getJobOffer = async (req: Request, res: Response): Promise<void> => {

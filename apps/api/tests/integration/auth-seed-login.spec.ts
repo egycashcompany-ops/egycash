@@ -101,7 +101,8 @@ describe('seed → password login (regression)', () => {
     expect(routes).toContain('/leave');
     expect(routes).toContain('/organization/branches');
     expect(routes).toContain('/organization/applications');
-    expect(routes).toHaveLength(17); // 9 (HR) + 6 (Organization) + 2 (Administration)
+    expect(routes).toContain('/contracts');
+    expect(routes).toHaveLength(18); // 10 (HR) + 6 (Organization) + 2 (Administration)
   });
 
   it('re-running the seed is idempotent — no duplicate categories/applications/grants', async () => {
@@ -113,7 +114,7 @@ describe('seed → password login (regression)', () => {
       .set('Authorization', `Bearer ${token}`);
     const groups = (res.body as { data: { applications: unknown[] }[] }).data;
     expect(groups).toHaveLength(3);
-    expect(groups.reduce((n, g) => n + g.applications.length, 0)).toBe(17);
+    expect(groups.reduce((n, g) => n + g.applications.length, 0)).toBe(18);
   });
 
   it('the seeded HR user also logs in with email/password', async () => {

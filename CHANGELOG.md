@@ -11,6 +11,70 @@ its entry here in the same PR.
 
 ### Added
 
+- **Recruitment workflow UX.** The Interviews phases board (`/interviews?view=board`) now
+  uses the full page width (kanban-style; the standard 80rem cap remains everywhere else).
+  Scheduling an interview from an **accepted Screening** opens the schedule dialog with
+  the applicant preselected and read-only — searching exists only when scheduling a
+  completely new interview. `/job-offers` becomes a workflow queue: applicants moved to
+  the Job Offer stage with no offer drafted yet surface automatically in an
+  **Awaiting offer** panel (name, code, eligibility status, moved-on date; derived
+  read model via `GET /hr/job-offers/awaiting` — no offer record is fabricated), and
+  **New Offer** opens the create form with that applicant preselected; the applicant
+  search remains only for standalone offers. Drafting an offer removes the applicant from
+  the queue.
+- **Contracts module (frozen design `docs/12-planning/contracts-module-design.md`,
+  Revision 2 — D1–D12, A1–A22, Q1–Q3; architecture:
+  `docs/02-architecture/contracts-module.md`).** First-class HR module:
+  - **Templates** — admin-owned, ONE document per version in an append-only recoverable
+    chain (A19): drafts edit in place, editing a *published* version forks the next
+    draft, and only **published** versions generate (A17, one published per key). Rich
+    sections (header/body/footer) pass an allow-list sanitizer on every save (A11 — no
+    active content survives), placeholders are validated against the server-owned
+    variable catalog (D5), clone creates the cross-language copy (Q2), archive retires a
+    version. Web: `/contracts/templates` + the D7 **TipTap** editor whose toolbar
+    mirrors the sanitizer exactly, variable browser (insert `{{key}}` at the caret),
+    signature-block editor, version history, and a sample-data **server** preview.
+  - **Contracts** — draft → optional single-step approval (A7, `contracts.requireApproval`,
+    default on) → **generate**: pins the published template version (A2), resolves every
+    variable **with provenance** incl. manual overrides (A3), refuses loudly with a
+    structured report when required values are empty (A16 — `CONTRACT_VARIABLES_MISSING`),
+    renders the immutable snapshot through ONE renderer (A18/A20), stores SHA-256 +
+    generator/template/contract-version integrity metadata (A14) and hands the PDF to the
+    **worker** over the reliable event tier (A13). One immutable Files record per contract
+    version (A15); with no chromium (`CHROMIUM_PATH` empty) generation completes and the
+    print view serves exports (D8). Configurable numbering `contracts.numberFormat`
+    (A1, default `ECMS-CON-{year}-{seq:6}`) over per-year atomic counters. Signing per
+    template block (A5); fully signed or archived ⇒ `CONTRACT_IMMUTABLE` (A4). Amend =
+    next version of the same code, renew = new linked contract (D9); generating the
+    successor supersedes the predecessor. Q3: one active contract per employee per type
+    unless the type allows multiple. Hourly expiry sweep + once-per-contract
+    expiring-soon notice (D11, `contracts.expiryNoticeDays`). Free-text search over
+    number/employee/reference (A12); attachments via the platform Files service (A6);
+    every lifecycle step lands on the employee timeline (A8).
+  - **Integration seam (A22)** — consumers (Payroll, Employee Files, Workflow, Document
+    Management) read ONLY `contractQueryService` snapshots (`activeSnapshotAt`,
+    `listForEmployee`, `getSnapshot`) and the `hr.contract.*` events — never the tables.
+  - **Revision 3 (freeze confirmed) — A23–A26.** Every PDF carries a **verification QR**
+    targeting the public non-PII endpoint `GET /hr/contracts/verify` (key = the A14
+    SHA-256, bound to the exact issued snapshot) and the public `/verify/contract` web
+    page renders the verdict (A23). A **company branding profile** (logo, header/footer
+    lines, watermark, brand color — each ar+en, managed on the Templates page under
+    `contractTemplate.manage`) is applied by the server at every render and preview and
+    frozen into each issued snapshot, so branding changes never alter existing documents
+    (A24). The worker records a `contractRendered` audit entry on every PDF run —
+    completing the audit inventory across template edits, generation, approvals,
+    signatures, downloads and lifecycle transitions (A25). The renderer abstraction is a
+    recorded invariant: the domain depends only on `platform/pdf`, never on Chromium
+    (A26).
+  - **Web app** — `/contracts` register (Employee/Type/Version/Status/dates + Preview /
+    Print / Download PDF / Amend / Renew / Terminate, permission- and state-gated),
+    `/contracts/new` two-pane creation with a debounced live **server** preview (the
+    exact document generation freezes) + per-variable overrides + generation progress,
+    `/contracts/:id` detail (snapshot viewer, integrity line, variables with sources,
+    approval, signing, attachments, amendment chain), and a **Contracts** tab on the
+    employee profile. Full ar/en i18n; sidebar entry seeded for new AND existing
+    installs.
+
 - **Authentication & Employee Account Lifecycle (frozen design:
   `docs/12-planning/auth-account-lifecycle-design.md`, Revisions 2–6).** Every employed
   employee now gets a login account **automatically at creation** (hire or direct
@@ -67,7 +131,11 @@ its entry here in the same PR.
   (hashed assets immutable, HTML shell no-cache, SPA fallback) so the `SameSite=Strict`
   refresh cookie works without cross-site exceptions, and a step-by-step guide
   (`docs/09-guides/railway-deployment.md`) covering Atlas (transactions require a replica
-  set), Redis, volumes, env vars and first-boot seeding.
+  set), Redis, volumes, env vars and first-boot seeding. Field-tested notes are folded in:
+  `REDIS_URL` needs `?family=0` (Railway private networking is IPv6-only), `WEB_STATIC_DIR`
+  must be absolute (`/app/apps/web/dist` — `npm start -w` sets cwd to `apps/api`), and the
+  worker's optional contract-PDF stack (`RAILPACK_DEPLOY_APT_PACKAGES` chromium + Noto
+  fonts, `CHROMIUM_PATH=/usr/bin/chromium`).
 
 ### Fixed
 

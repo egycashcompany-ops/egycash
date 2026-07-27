@@ -5,6 +5,7 @@
 // interview notification templates the interview service sends through. The OCR provider
 // and requisition validator default to their safe stubs at import time (OQ-30).
 import {
+  HrContractTemplates,
   HrEmployeeFileTemplates,
   HrEmployeeTemplates,
   HrHiringDocumentsTemplates,
@@ -415,4 +416,18 @@ export const seedHrRecruitment = async (): Promise<void> => {
   await ensureLeaveTemplates();
   await ensureLeaveAttachmentsCategory();
   await migrateLeaveModule();
+  // Contracts (frozen contracts design D11): the expiring-soon notice template.
+  await notificationTemplateService.ensure({
+    key: HrContractTemplates.ExpiringSoon,
+    category: 'hr',
+    priority: 'normal',
+    subject: { ar: 'عقد يوشك على الانتهاء', en: 'Contract expiring soon' },
+    body: {
+      ar: 'عقد {{employeeName}} رقم {{code}} ينتهي في {{endDate}}.',
+      en: 'Contract {{code}} for {{employeeName}} ends on {{endDate}}.',
+    },
+    channels: ['inApp', 'email'],
+    variables: ['code', 'employeeName', 'endDate'],
+    defaultExpiryHours: null,
+  });
 };

@@ -20,6 +20,7 @@ import { formatDateTime } from '../../../../../shared/lib/format';
 import { ScreeningStatusBadge } from '../components/ScreeningStatusBadge';
 import { DecideDialog } from '../components/DecideDialog';
 import { ApplicantLifecycleActions } from '../../applicants/components/ApplicantLifecycleActions';
+import { ScheduleInterviewDialog } from '../../interviews/components/ScheduleInterviewDialog';
 import { useAddScreeningNote, useScreening } from '../api/screening-queries';
 
 export const ScreeningDetailPage = (): JSX.Element => {
@@ -33,6 +34,7 @@ export const ScreeningDetailPage = (): JSX.Element => {
   const [note, setNote] = useState('');
   const [decide, setDecide] = useState<ScreeningOutcome | null>(null);
   const [editDecide, setEditDecide] = useState<ScreeningOutcome | null>(null);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
 
   if (isLoading) {
     return (
@@ -95,15 +97,25 @@ export const ScreeningDetailPage = (): JSX.Element => {
               <Button size="sm" variant="danger" onClick={() => setDecide('rejected')}>{t('screening.actions.reject')}</Button>
             </Can>
           ) : (
-            <Can permission="screening.decide">
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => setEditDecide(s.status === 'accepted' ? 'rejected' : 'accepted')}
-              >
-                {t('screening.actions.editDecision')}
-              </Button>
-            </Can>
+            <>
+              {/* The applicant is already known here — scheduling never asks for them again. */}
+              {s.status === 'accepted' && (
+                <Can permission="interview.create">
+                  <Button size="sm" onClick={() => setScheduleOpen(true)}>
+                    {t('interviews.actions.schedule')}
+                  </Button>
+                </Can>
+              )}
+              <Can permission="screening.decide">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setEditDecide(s.status === 'accepted' ? 'rejected' : 'accepted')}
+                >
+                  {t('screening.actions.editDecision')}
+                </Button>
+              </Can>
+            </>
           )
         }
       />
@@ -187,6 +199,12 @@ export const ScreeningDetailPage = (): JSX.Element => {
       {editDecide !== null && (
         <DecideDialog open edit onClose={() => setEditDecide(null)} outcome={editDecide} screeningId={s.id} version={s.version} />
       )}
+      {/* Preselected — the dialog shows the applicant read-only, no second search (UX §2). */}
+      <ScheduleInterviewDialog
+        open={scheduleOpen}
+        onClose={() => setScheduleOpen(false)}
+        applicant={{ id: s.applicantId, code: s.applicantCode, fullNameAr: s.applicantName }}
+      />
     </PageContainer>
   );
 };

@@ -155,6 +155,26 @@ class ApplicantRepository extends BaseRepository<ApplicantDoc> {
     return new Set(rows.map((r) => String(r._id)));
   }
 
+  /** Live applicants HR moved to the Job Offer stage — the awaiting-offer queue input. */
+  async findMovedToOffer(
+    branchId: string | undefined,
+    limit: number,
+    scope?: ScopeSelector,
+  ): Promise<ApplicantDoc[]> {
+    const filter: FilterQuery<ApplicantDoc> = {
+      status: 'new',
+      movedToOfferAt: { $ne: null },
+      isDeleted: false,
+    };
+    if (branchId !== undefined) filter.branchId = new Types.ObjectId(branchId);
+    return this.model
+      .find(this.baseFilter(scope, filter))
+      .sort({ movedToOfferAt: 1 })
+      .limit(limit)
+      .lean<ApplicantDoc[]>()
+      .exec();
+  }
+
   /** Heuristic duplicate candidates among live applicants (§2.1 rule 5). */
   async findDuplicateCandidates(probe: DuplicateProbe): Promise<ApplicantDoc[]> {
     const ors: FilterQuery<ApplicantDoc>[] = [];

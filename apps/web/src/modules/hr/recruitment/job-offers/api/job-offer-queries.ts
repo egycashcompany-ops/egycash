@@ -34,6 +34,13 @@ export const useJobOffer = (id: string) =>
     enabled: id !== '',
   });
 
+/** The awaiting-offer workflow queue — eligible applicants with no blocking offer yet. */
+export const useAwaitingOffers = (params: JobOfferListParams = {}) =>
+  useQuery({
+    queryKey: [MODULE, FEATURE, 'awaiting', params],
+    queryFn: () => api.listAwaitingOffers(params),
+  });
+
 /**
  * Applicant lookup for the create form — ONLY applicants HR explicitly moved to the Job Offer
  * stage (eligibility is never automatic; the server enforces the same rule on create).
@@ -110,7 +117,15 @@ const useOfferWriters = (
 
 export const useCreateJobOffer = () => {
   const { seedAndInvalidate } = useOfferWriters(null);
-  return useMutation({ mutationFn: (body: CreateJobOffer) => api.createJobOffer(body), onSuccess: seedAndInvalidate });
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateJobOffer) => api.createJobOffer(body),
+    onSuccess: (created) => {
+      seedAndInvalidate(created);
+      // Drafting removes the applicant from the "awaiting offer" queue.
+      void qc.invalidateQueries({ queryKey: [MODULE, FEATURE, 'awaiting'] });
+    },
+  });
 };
 
 export const useReviseJobOffer = (id: string) => {

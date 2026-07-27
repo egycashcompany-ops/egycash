@@ -4,8 +4,19 @@
 import { type ReactNode } from 'react';
 import { Breadcrumbs, type Crumb } from './Breadcrumbs';
 
-export const PageContainer = ({ children }: { children: ReactNode }): JSX.Element => (
-  <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">{children}</div>
+export const PageContainer = ({
+  children,
+  wide = false,
+}: {
+  children: ReactNode;
+  /** Full available width — board/kanban screens; default keeps the standard reading width. */
+  wide?: boolean;
+}): JSX.Element => (
+  <div
+    className={`mx-auto w-full px-4 py-6 sm:px-6 lg:px-8 lg:py-8 ${wide ? 'max-w-none' : 'max-w-7xl'}`}
+  >
+    {children}
+  </div>
 );
 
 export const PageHeader = ({

@@ -1,9 +1,10 @@
 # Recruitment Workflow Refactor — Design
 
 > Status: **FROZEN** (Revision 2.3, 2026-07-27 — reviewed and frozen by the approver;
-> §20 records the implementation invariants I1–I11 added during the build. I11 supersedes the
+> §20 records the implementation invariants I1–I13 added during the build. I11 supersedes the
 > derived-`waiting` treatment in I10: `waiting` is an explicit persisted status and every stage
-> always has a record).
+> always has a record; I12–I13 make stage ownership DB-enforced and route every transition through
+> a single workflow engine).
 > Approved for implementation as a **single PR** (§16), exactly as for Leave
 > (`leave-management-design.md`), Auth (`auth-account-lifecycle-design.md`) and Contracts
 > (`contracts-module-design.md`).
@@ -1231,3 +1232,55 @@ a concurrent request and the migration all converge on the same single record.
   resolves the stage they currently stand at from their existing records, and creates the missing
   `waiting` rows — automatically, idempotently, with no manual step. An applicant mid-pipeline
   keeps their exact position and simply gains the explicit row that position always implied.
+
+### I12 — Stage ownership: one active record per attempt, always idempotent
+
+The invariant, enforced by the database rather than by application care:
+
+```
+(applicantId, stageId, attempt)  UNIQUE  where supersededAt = null AND isDeleted = false
+```
+
+Per collection, `stageId` is the stage's natural discriminator — the interview `stageId`, the
+evaluation `phaseId`, and nothing at all for the two singleton stages (screening, offer), whose
+index is `(applicantId, attempt)`. A completed attempt and the next `waiting` attempt coexist
+happily; two live rows for the same attempt cannot exist at all.
+
+**`ensureStageRecord()` is idempotent by construction.** It is a single atomic
+`findOneAndUpdate(..., { upsert: true, $setOnInsert })` keyed on the invariant above — not a
+read-then-write — so a retried request, two concurrent transitions and the boot migration all
+converge on the same one row. The unique index is the second line of defence: on a duplicate key
+the engine re-reads and returns the existing record rather than failing the operation. A record
+is therefore never created by accident, and never twice.
+
+### I13 — One workflow engine owns every transition
+
+**No stage service may write a status.** Interview, Evaluation, Offer, Screening, Hiring — none of
+them set `status`, `attempt` or `supersededAt`. Every transition goes through
+`recruitmentWorkflowEngine.transition()`, which is the only component permitted to move a record
+between states:
+
+```
+waiting → scheduled → inProgress → completed        (interview)
+waiting → approved | rejected, approved → waiting    (evaluation)
+waiting → draft → sent → accepted                    (offer)
+new → hired                                          (applicant, at employee creation)
+```
+
+The engine owns the legal-transition table, and **every side effect originates there**: the
+timeline entry, the audit record, the domain event, the counter invalidation, the notification,
+and the automatic materialization of the next stage's `waiting` record (I11). A stage service
+keeps its own domain work — panel membership, file uploads, offer terms, batch items — and calls
+the engine for the state change.
+
+**Enforcement is mechanical, not conventional.** The shared update seam on every stage repository
+rejects `status`, `attempt`, `supersededAt` and `placementSnapshot`; the only path that may set
+them is `applyTransition()`, which requires an engine-held token. A unit test asserts that a
+direct status patch throws, so a future module cannot bypass the workflow rules even by mistake.
+
+**Consequence — the applicant gains a `hired` status.** "Accepted → Hired" is a real workflow
+transition, and today an applicant who became an employee stays `new` for ever: their outcome is
+readable only by looking for an Employee row elsewhere, which is precisely the inference I11
+removes. `APPLICANT_STATUSES` becomes `new · hired · rejected · withdrawn`; the engine performs
+`new → hired` at employee creation, and the boot migration backfills candidates who already have
+an Employee.

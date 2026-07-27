@@ -26,12 +26,16 @@ export const GenderSchema = z.enum(GENDERS);
 export type Gender = z.infer<typeof GenderSchema>;
 
 /**
- * Applicant lifecycle. `new` = live in the active pipeline; `rejected` (Stage 2, Initial
- * Screening) and `withdrawn` (Stage 1) are terminal. Interview/offer states are Stage 3+.
- * A `rejected` applicant leaves the live National-ID uniqueness set, exactly like a
- * `withdrawn` one, so the number frees up for a fresh application.
+ * The applicant's single lifecycle enum (I10/I13). `new` = live in the active pipeline; `hired`,
+ * `rejected` and `withdrawn` are terminal. A `rejected` or `withdrawn` applicant leaves the live
+ * National-ID uniqueness set, so the number frees up for a fresh application.
+ *
+ * `hired` is the terminal SUCCESS state, set by the workflow engine at employee creation. Before
+ * the refactor a hired candidate stayed `new` for ever and their outcome was readable only by
+ * looking for an Employee row elsewhere — exactly the inference I11 removes. The boot migration
+ * backfills candidates who already have an Employee.
  */
-export const APPLICANT_STATUSES = ['new', 'rejected', 'withdrawn'] as const;
+export const APPLICANT_STATUSES = ['new', 'hired', 'rejected', 'withdrawn'] as const;
 export const ApplicantStatusSchema = z.enum(APPLICANT_STATUSES);
 export type ApplicantStatus = z.infer<typeof ApplicantStatusSchema>;
 

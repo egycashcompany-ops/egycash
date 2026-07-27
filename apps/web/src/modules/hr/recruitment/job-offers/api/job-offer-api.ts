@@ -16,6 +16,8 @@ import {
   type SendJobOffer,
   type UserDto,
   type WithdrawJobOffer,
+  type BulkActionResultDto,
+  type BulkJobOffers,
 } from '@ecms/contracts';
 import { buildQuery, get, getPage, patch, post } from '../../../../../shared/lib/api-client';
 
@@ -61,3 +63,7 @@ export const searchUsers = (term: string): Promise<Paginated<UserDto>> =>
   getPage<UserDto>(`/platform/users${buildQuery({ search: term, status: 'active', pageSize: 8 })}`);
 
 export const getUser = (id: string): Promise<UserDto> => get<UserDto>(`/platform/users/${id}`);
+
+/** Bulk send/withdraw a selection of offers (RW17) — answers a partial-success envelope. */
+export const bulkJobOffers = (body: BulkJobOffers): Promise<BulkActionResultDto> =>
+  post<BulkActionResultDto>('/hr/job-offers/bulk', body);

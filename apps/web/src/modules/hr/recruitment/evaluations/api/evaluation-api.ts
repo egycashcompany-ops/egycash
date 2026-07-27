@@ -10,6 +10,8 @@ import {
   type OpenEvaluation,
   type Paginated,
   type UpdateEvaluationPhase,
+  type BulkActionResultDto,
+  type BulkEvaluations,
 } from '@ecms/contracts';
 import { api, buildQuery, get, getPage, patch, post, upload } from '../../../../../shared/lib/api-client';
 
@@ -60,3 +62,7 @@ export const createEvaluationPhase = (body: CreateEvaluationPhase): Promise<Eval
 
 export const updateEvaluationPhase = (id: string, body: UpdateEvaluationPhase): Promise<EvaluationPhaseDto> =>
   patch<EvaluationPhaseDto>(`/hr/evaluation-phases/${id}`, body);
+
+/** Bulk approve/reject one phase's queue (RW10/RW17) — answers a partial-success envelope. */
+export const bulkEvaluations = (body: BulkEvaluations): Promise<BulkActionResultDto> =>
+  post<BulkActionResultDto>('/hr/evaluations/bulk', body);

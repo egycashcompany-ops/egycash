@@ -11,9 +11,12 @@ import {
   type ReviseJobOffer,
   type SendJobOffer,
   type WithdrawJobOffer,
+  type BulkJobOffers,
 } from '@ecms/contracts';
 import { detailKey, listKey } from '../../../../../shared/lib/query-keys';
 import { listApplicants } from '../../applicants/api/applicant-api';
+import { useBulkMutation } from '../../../../../shared/lib/useBulkMutation';
+import { invalidateRecruitment } from '../../shared/invalidate-recruitment';
 import * as api from './job-offer-api';
 import { type JobOfferListParams } from './job-offer-api';
 
@@ -152,3 +155,10 @@ export const useWithdrawJobOffer = (id: string) => {
   const { seedAndInvalidate } = useOfferWriters(id);
   return useMutation({ mutationFn: (body: WithdrawJobOffer) => api.withdrawJobOffer(id, body), onSuccess: seedAndInvalidate });
 };
+
+/** Bulk send/withdraw the selection (RW17). */
+export const useBulkJobOffers = (onApplied?: () => void) =>
+  useBulkMutation<BulkJobOffers>((body) => api.bulkJobOffers(body), {
+    invalidate: invalidateRecruitment,
+    ...(onApplied === undefined ? {} : { onApplied }),
+  });

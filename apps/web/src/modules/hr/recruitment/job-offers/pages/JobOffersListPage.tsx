@@ -1,7 +1,7 @@
 // Job Offer list: free-text search + status + active-only filters, a sortable DataTable, pagination,
 // and a create entry point — all permission-gated. Filters/sort/pagination are synchronized with the
 // URL query string (deep-linkable, back/forward aware).
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { type JobOfferDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
@@ -9,6 +9,10 @@ import { useAppSelector } from '../../../../../store';
 import { Can } from '../../../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../../../shared/ui/DataTable';
+import { BulkActionBar } from '../../../../../shared/ui/BulkActionBar';
+import { useTableSelection } from '../../../../../shared/ui/useTableSelection';
+import { Dialog } from '../../../../../shared/ui/Dialog';
+import { Field, Input } from '../../../../../shared/ui/form';
 import { Pagination } from '../../../../../shared/ui/Pagination';
 import { Button } from '../../../../../shared/ui/Button';
 import { PlusIcon } from '../../../../../shared/ui/icons';
@@ -16,7 +20,7 @@ import { formatDate, formatMoney } from '../../../../../shared/lib/format';
 import { OfferStatusBadge } from '../components/OfferStatusBadge';
 import { OfferFilters, type OfferFiltersState } from '../components/OfferFilters';
 import { AwaitingOffersPanel } from '../components/AwaitingOffersPanel';
-import { useJobOffers } from '../api/job-offer-queries';
+import { useJobOffers, useBulkJobOffers } from '../api/job-offer-queries';
 import { type JobOfferListParams } from '../api/job-offer-api';
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -74,6 +78,23 @@ export const JobOffersListPage = (): JSX.Element => {
   const { data, isLoading, isError, error, refetch } = useJobOffers(params);
   const rows = data?.items ?? [];
 
+  // Bulk send/withdraw (RW17). Each action is offered only for the rows that can take it: a
+  // draft can be sent, a draft or sent offer can be withdrawn.
+  const rowIds = useMemo(() => rows.map((o) => o.id), [rows]);
+  const selection = useTableSelection(rowIds);
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [reason, setReason] = useState('');
+  const bulk = useBulkJobOffers(() => {
+    selection.clear();
+    setWithdrawOpen(false);
+    setReason('');
+  });
+  const picked = rows.filter((o) => selection.selectedIds.has(o.id));
+  const sendable = picked.filter((o) => o.status === 'draft').map((o) => o.id);
+  const withdrawable = picked
+    .filter((o) => o.status === 'draft' || o.status === 'sent')
+    .map((o) => o.id);
+
   const columns: Column<JobOfferDto>[] = [
     {
       key: 'code',
@@ -116,7 +137,28 @@ export const JobOffersListPage = (): JSX.Element => {
       <div className="space-y-4">
         <AwaitingOffersPanel />
         <OfferFilters value={filters} onChange={changeFilters} />
+        <Can permission="jobOffer.edit">
+          <BulkActionBar count={selection.count} onClear={selection.clear}>
+            <Button
+              size="sm"
+              loading={bulk.isPending}
+              disabled={sendable.length === 0}
+              onClick={() => void bulk.mutateAsync({ action: 'send', ids: sendable })}
+            >
+              {t('offers.actions.sendSelected')}
+            </Button>
+            <Button
+              size="sm"
+              variant="danger"
+              disabled={withdrawable.length === 0}
+              onClick={() => setWithdrawOpen(true)}
+            >
+              {t('offers.actions.withdrawSelected')}
+            </Button>
+          </BulkActionBar>
+        </Can>
         <DataTable
+          selection={selection}
           columns={columns}
           rows={rows}
           rowKey={(o) => o.id}
@@ -135,6 +177,34 @@ export const JobOffersListPage = (): JSX.Element => {
           />
         )}
       </div>
+
+      <Dialog
+        open={withdrawOpen}
+        onClose={() => setWithdrawOpen(false)}
+        title={t('offers.actions.withdrawSelected')}
+        description={t('bulk.reason.required')}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setWithdrawOpen(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              variant="danger"
+              loading={bulk.isPending}
+              disabled={reason.trim() === ''}
+              onClick={() =>
+                void bulk.mutateAsync({ action: 'withdraw', ids: withdrawable, reason: reason.trim() })
+              }
+            >
+              {t('offers.actions.withdrawSelected')}
+            </Button>
+          </>
+        }
+      >
+        <Field label={t('bulk.reason.title')}>
+          <Input value={reason} onChange={(e) => setReason(e.target.value)} />
+        </Field>
+      </Dialog>
     </PageContainer>
   );
 };

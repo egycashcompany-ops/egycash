@@ -143,6 +143,29 @@ class ReturnToStageService {
         );
       }
 
+      // The return itself is history, written INSIDE the transaction (I5): it commits with the
+      // supersede markers or not at all, so the timeline can never show a return that did not
+      // happen — or miss one that did.
+      await recruitmentTimelineService.record(
+        {
+          applicantId,
+          applicantCode: plan.applicant.code,
+          type: 'returnedToStage',
+          correlation: { type: 'applicant', id: returnId },
+          actorUserId: ctx.userId,
+          reason: input.reason,
+          branchId: plan.applicant.branchId,
+          discriminator: returnId,
+          metadata: {
+            returnId,
+            targetKey: plan.target.dto.key,
+            newAttempt: plan.newAttempt,
+            superseded: plan.supersedes.map((s) => `${s.kind}:${s.id}`),
+          },
+        },
+        session,
+      );
+
       // The target re-opens on the next attempt, carrying the applicant's CURRENT placement.
       await recruitmentWorkflowEngine.ensureStageRecord(
         {
@@ -160,23 +183,6 @@ class ReturnToStageService {
         },
         session,
       );
-    });
-
-    await recruitmentTimelineService.recordSafe({
-      applicantId,
-      applicantCode: plan.applicant.code,
-      type: 'returnedToStage',
-      correlation: { type: 'applicant', id: returnId },
-      actorUserId: ctx.userId,
-      reason: input.reason,
-      branchId: plan.applicant.branchId,
-      discriminator: returnId,
-      metadata: {
-        returnId,
-        targetKey: plan.target.dto.key,
-        newAttempt: plan.newAttempt,
-        superseded: plan.supersedes.map((s) => `${s.kind}:${s.id}`),
-      },
     });
 
     await auditService.record({

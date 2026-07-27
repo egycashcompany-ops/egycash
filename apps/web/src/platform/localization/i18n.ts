@@ -256,6 +256,12 @@ const en: Record<string, string> = {
   'common.create': 'Create',
   'common.download': 'Download',
 
+  'evaluations.actions.approveSelected': 'Approve selected',
+  'evaluations.actions.rejectSelected': 'Reject selected',
+  'evaluations.bulk.samePhaseOnly': 'Select waiting records from a single phase to decide them together.',
+  'offers.actions.sendSelected': 'Send selected',
+  'offers.actions.withdrawSelected': 'Withdraw selected',
+  'interviews.actions.cancelSelected': 'Cancel selected',
   'screening.actions.approveSelected': 'Approve selected',
   'screening.actions.rejectSelected': 'Reject selected',
   // Bulk actions (RW17) — a partial-success envelope is reported exactly, never as "done".
@@ -1977,6 +1983,12 @@ const ar: Record<string, string> = {
   'common.download': 'تنزيل',
 
   // Applicants — enums
+  'evaluations.actions.approveSelected': 'اعتماد المحدد',
+  'evaluations.actions.rejectSelected': 'رفض المحدد',
+  'evaluations.bulk.samePhaseOnly': 'اختر سجلات قيد الانتظار من مرحلة واحدة لاتخاذ القرار دفعة واحدة.',
+  'offers.actions.sendSelected': 'إرسال المحدد',
+  'offers.actions.withdrawSelected': 'سحب المحدد',
+  'interviews.actions.cancelSelected': 'إلغاء المحدد',
   'screening.actions.approveSelected': 'قبول المحدد',
   'screening.actions.rejectSelected': 'رفض المحدد',
   // Bulk actions (RW17).

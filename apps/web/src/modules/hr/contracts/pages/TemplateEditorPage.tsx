@@ -68,7 +68,7 @@ export const TemplateEditorPage = (): JSX.Element => {
     { key: 'employee', label: 'الطرف الثاني' },
   ]);
   const [dirty, setDirty] = useState(false);
-  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [preview, setPreview] = useState<{ html: string; issues: { placeholder: string; reason: string }[] } | null>(null);
   const [activeEditor, setActiveEditor] = useState<Editor | null>(null);
   const [loadedId, setLoadedId] = useState('');
 
@@ -137,12 +137,15 @@ export const TemplateEditorPage = (): JSX.Element => {
     }
   };
 
+  // Previews the CURRENT form state — nothing needs to be saved (or even valid) first;
+  // unresolved/unknown placeholders come back as issues and are listed, never blocking.
   const doPreview = async (): Promise<void> => {
-    const target = isNew || dirty ? await save() : { id, version: existing?.version ?? 0 };
-    if (target === null) return;
     try {
-      const result = await previewContract({ templateId: target.id, overrides: [] });
-      setPreviewHtml(result.html);
+      const result = await previewContract({
+        inlineTemplate: { language, sections: { header, body, footer }, signatures },
+        overrides: [],
+      });
+      setPreview(result);
     } catch {
       toast.error(t('contracts.templates.previewFailed'));
     }
@@ -391,17 +394,29 @@ export const TemplateEditorPage = (): JSX.Element => {
       </div>
 
       <Dialog
-        open={previewHtml !== null}
-        onClose={() => setPreviewHtml(null)}
+        open={preview !== null}
+        onClose={() => setPreview(null)}
         title={t('contracts.templates.previewTitle')}
         size="lg"
       >
         <p className="mb-3 text-xs text-slate-400">{t('contracts.templates.previewSampleHint')}</p>
-        {previewHtml !== null && (
+        {preview !== null && preview.issues.length > 0 && (
+          <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+            <p className="font-medium">{t('contracts.create.issuesTitle')}</p>
+            <ul className="mt-1 list-disc ps-5">
+              {preview.issues.map((issue) => (
+                <li key={issue.placeholder}>
+                  <code dir="ltr">{issue.placeholder}</code> — {issue.reason}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {preview !== null && (
           <iframe
             title={t('contracts.templates.previewTitle')}
             sandbox=""
-            srcDoc={previewHtml}
+            srcDoc={preview.html}
             className="h-[70vh] w-full rounded border border-slate-200 bg-white dark:border-slate-700"
           />
         )}

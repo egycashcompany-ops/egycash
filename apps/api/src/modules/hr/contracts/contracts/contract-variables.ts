@@ -9,6 +9,7 @@ import {
   type ContractVariableSource,
 } from '@ecms/contracts';
 import { branchService, departmentService, jobTitleService, organizationService } from '../../../../platform/organization';
+import { cairoToday, dateOnlyIso } from '../../shared/business-date';
 import { type EmployeeDoc } from '../../employee-management/employees/employee.model';
 import { CONTRACT_VARIABLE_CATALOG, isRequiredVariable } from '../shared/variable-catalog';
 import { type ContractVariableValue } from './contract.model';
@@ -70,6 +71,9 @@ const resolveFromData = async (key: string, input: ResolutionInput): Promise<str
       return input.startDate;
     case 'contract.endDate':
       return input.endDate ?? '';
+    case 'contract.currentDate':
+      // The signing-office calendar (Africa/Cairo), not the server's UTC clock.
+      return dateOnlyIso(cairoToday());
     case 'company.name': {
       const org = await organizationService.get().catch(() => null);
       if (org === null) return '';

@@ -15,6 +15,7 @@ export const CONTRACT_VARIABLE_CATALOG: ContractVariableDto[] = [
   { key: 'contract.code', label: { en: 'Contract number', ar: 'رقم العقد' }, source: 'contract', sample: 'ECMS-CON-2026-000001', required: true },
   { key: 'contract.startDate', label: { en: 'Contract start date', ar: 'تاريخ بداية العقد' }, source: 'contract', sample: '2026-08-01', required: true },
   { key: 'contract.endDate', label: { en: 'Contract end date', ar: 'تاريخ نهاية العقد' }, source: 'contract', sample: '2027-07-31', required: false },
+  { key: 'contract.currentDate', label: { en: "Today's date", ar: 'تاريخ اليوم' }, source: 'contract', sample: '2026-07-27', required: false },
   { key: 'company.name', label: { en: 'Company name', ar: 'اسم الشركة' }, source: 'company', sample: 'EGYCASH', required: true },
 ];
 

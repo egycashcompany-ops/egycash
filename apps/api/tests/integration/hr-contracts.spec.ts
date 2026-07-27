@@ -21,6 +21,7 @@ import {
   type EmployeeDto,
 } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
+import { cairoToday, dateOnlyIso } from '../../src/modules/hr/shared/business-date';
 import { buildApp } from '../../src/app';
 import { moduleManifests } from '../../src/modules';
 import { hrPermissions } from '../../src/modules/hr/hr.module';
@@ -796,6 +797,48 @@ describe('contracts — numbering setting, search, sweeps, PDF fallback, attachm
       .send({ version: dto.version });
     expect(removed.status).toBe(200);
     expect((removed.body.data as ContractDto).attachments).toHaveLength(0);
+  });
+
+  it('previews an UNSAVED inline template — nothing persisted, problems reported not blocking', async () => {
+    const before = await request(app)
+      .get('/api/v1/hr/contract-templates')
+      .set('Authorization', `Bearer ${adminToken}`);
+    const res = await request(app)
+      .post('/api/v1/hr/contracts/preview')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        inlineTemplate: {
+          language: 'ar',
+          sections: {
+            header: '',
+            body: '<p>{{employee.fullName}} — {{no.such.thing}} — {{contract.currentDate}}</p>',
+            footer: '',
+          },
+          signatures: [],
+        },
+        overrides: [],
+      });
+    expect(res.status).toBe(200);
+    const preview = res.body.data as { html: string; issues: { placeholder: string; reason: string }[] };
+    // Sample values render; the unknown placeholder is REPORTED, not a 422.
+    expect(preview.html).toContain('أحمد محمد علي');
+    expect(preview.issues.some((i) => i.placeholder === 'no.such.thing')).toBe(true);
+    // Nothing was saved by previewing.
+    const after = await request(app)
+      .get('/api/v1/hr/contract-templates')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect((after.body.data as unknown[]).length).toBe((before.body.data as unknown[]).length);
+  });
+
+  it('resolves {{contract.currentDate}} to the Cairo-calendar date', async () => {
+    const template = await publishedTemplate(typeId, {
+      sections: { header: '', body: '<p>حُرِّر في {{contract.currentDate}} — {{contract.code}}</p>', footer: '' },
+    });
+    const contract = await generated(typeId, template.id);
+    const cairoDate = dateOnlyIso(cairoToday());
+    const entry = contract.variables.find((v) => v.key === 'contract.currentDate');
+    expect(entry?.value).toBe(cairoDate);
+    expect(await documentOf(contract.id)).toContain(cairoDate);
   });
 
   it('verifies issued documents PUBLICLY via the QR pair — no authentication (A23)', async () => {

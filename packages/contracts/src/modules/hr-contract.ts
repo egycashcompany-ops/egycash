@@ -365,19 +365,42 @@ export const AddContractAttachmentSchema = z
   .strict();
 export type AddContractAttachment = z.infer<typeof AddContractAttachmentSchema>;
 
+/** The template editor's UNSAVED form state — previewable without saving first.
+ *  Sections may be empty here (unlike TemplateSectionsSchema): a half-written
+ *  template must still preview; problems surface as issues, never as blocks. */
+export const InlinePreviewTemplateSchema = z
+  .object({
+    language: ContractTemplateLanguageSchema,
+    sections: z
+      .object({
+        header: z.string().max(20_000).default(''),
+        body: z.string().max(200_000).default(''),
+        footer: z.string().max(20_000).default(''),
+      })
+      .strict(),
+    signatures: z.array(SignatureBlockSchema).max(10).default([]),
+  })
+  .strict();
+export type InlinePreviewTemplate = z.infer<typeof InlinePreviewTemplateSchema>;
+
 /** Preview (D6/A18): draft-shaped input rendered server-side; NEVER persisted.
  *  Without `employeeId` the render substitutes catalog SAMPLE values — the template
- *  editor's live preview (same renderer, so preview ≡ final holds there too). */
+ *  editor's live preview (same renderer, so preview ≡ final holds there too).
+ *  Source is EITHER a saved `templateId` OR the `inlineTemplate` form state. */
 export const PreviewContractSchema = z
   .object({
     employeeId: objectId().optional(),
-    templateId: objectId(),
+    templateId: objectId().optional(),
+    inlineTemplate: InlinePreviewTemplateSchema.optional(),
     typeId: objectId().optional(),
     startDate: isoDate().optional(),
     endDate: isoDate().nullable().optional(),
     overrides: overridesField().default([]),
   })
-  .strict();
+  .strict()
+  .refine((v) => (v.templateId === undefined) !== (v.inlineTemplate === undefined), {
+    message: 'provide exactly one of templateId or inlineTemplate',
+  });
 export type PreviewContract = z.infer<typeof PreviewContractSchema>;
 
 export interface ContractPreviewDto {

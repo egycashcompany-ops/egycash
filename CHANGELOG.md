@@ -11,6 +11,16 @@ its entry here in the same PR.
 
 ### Added
 
+- **Contracts: preview without saving + `{{contract.currentDate}}`.** The template
+  editor's Preview now renders the CURRENT form state directly — nothing has to be
+  completed or saved first: `POST /hr/contracts/preview` accepts an `inlineTemplate`
+  (language + sections + signature blocks) as an alternative to a saved `templateId`,
+  sanitizes it through the same pipeline, and reports unknown or unresolved
+  placeholders as listed issues in the preview dialog instead of blocking. A new
+  built-in catalog variable `{{contract.currentDate}}` resolves to the current date on
+  the **Africa/Cairo** calendar (same `YYYY-MM-DD` shape as the other date variables)
+  and is available in every template via the variable browser.
+
 - **Recruitment workflow UX.** The Interviews phases board (`/interviews?view=board`) now
   uses the full page width (kanban-style; the standard 80rem cap remains everywhere else).
   Scheduling an interview from an **accepted Screening** opens the schedule dialog with

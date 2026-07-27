@@ -962,6 +962,33 @@ selection/bulk infrastructure in RW17.
 10. **Tests + docs** — §17, plus `docs/02-architecture/recruitment-*.md` updates, permission
     matrix regeneration, CHANGELOG.
 
+### Implementation status
+
+All ten steps above are implemented and merged into the recruitment module. Where reality differs
+from the plan's wording, the reason is recorded here so the document and the code agree:
+
+| Step | Where it landed | Note |
+|---|---|---|
+| 1 Contracts | `packages/contracts/src/modules/hr-*` | as planned |
+| 2 Placement & timeline | `recruitment/placement/`, `recruitment/timeline/` | reassignment lives in its OWN feature, not inside Applicants — the stage features import Applicants, so composing them from inside it would close an import cycle. Applicants exposes a seam (`placement-seam.ts`) that the HR manifest wires, exactly as the queue materializer does, so `applicantService.reassign` stays the single public entry point |
+| 3 Attempts & return-to-stage | `recruitment/return-to-stage/`, `workflow/stage-fields.ts` | as planned |
+| 4 Interviews | `recruitment/interviews/` | as planned; `PATCH /:id/recommendation` carries RW5 |
+| 5 Evaluations | `recruitment/evaluations/` | as planned; `PATCH /:id/appointment` carries RW9 |
+| 6 Batches | `recruitment/evaluation-batches/` | as planned; `archiver` is the one new runtime dependency |
+| 7 Stage counts + manifest | `recruitment/counters/`, `hr.module.ts` | as planned |
+| 8 Web shared infrastructure | `shared/ui/useTableSelection.ts`, `BulkActionBar`, `useBulkMutation`, `platform/navigation/nav-children.ts` | as planned |
+| 9 Web recruitment | `modules/hr/recruitment/**`, `employees/pages/EmployeesReadyPage.tsx` | as planned |
+| 10 Tests + docs | `apps/api/tests/integration/hr-*.spec.ts`, CHANGELOG | integration suites require a real replica set and run in CI |
+
+Two implementation facts worth keeping visible, because both cost a debugging cycle:
+
+- **A `required: true` String cannot carry `default: ''`.** Mongoose treats `''` as missing, so
+  such a field can never save its own default. Every denormalized display name on a stage record
+  is therefore declared `{ type: String, default: '' }` without `required`.
+- **A schema-level `.refine()` answers 400, not 422.** A missing mandatory reason is a validation
+  failure; only a rule the schema cannot express (an offer already accepted, a batch already
+  closed) is a business-rule refusal.
+
 ## 17. Test plan
 
 - **Unit**: placement transitions and guards; attempt/supersede resolution; queue-count

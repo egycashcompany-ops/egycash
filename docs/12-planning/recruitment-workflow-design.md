@@ -1,6 +1,7 @@
 # Recruitment Workflow Refactor — Design
 
-> Status: **FROZEN** (Revision 2, 2026-07-27 — reviewed and frozen by the approver).
+> Status: **FROZEN** (Revision 2.1, 2026-07-27 — reviewed and frozen by the approver;
+> §20 records the implementation invariants added with the build authorization).
 > Approved for implementation as a **single PR** (§16), exactly as for Leave
 > (`leave-management-design.md`), Auth (`auth-account-lifecycle-design.md`) and Contracts
 > (`contracts-module-design.md`).
@@ -989,3 +990,118 @@ Job requisitions; candidate self-service portal; interview scorecard/competency 
 e-signature; calendar/room integration for scheduling; automated candidate ranking; bulk
 operations for Employees/Leave/Contracts (infrastructure only, per RW17); post-hire changes
 (owned by the Employee module's personnel actions).
+
+---
+
+## 20. Implementation rules — hard invariants (I1–I8)
+
+Recorded with the freeze (Revision 2.1). These constrain **how** the approved design is built;
+they change no decision above. Every one is verified by a test named in §17, and a violation is
+a blocking review finding — not a judgement call.
+
+### I1 — One source of truth
+
+Workflow state is **never duplicated**. There is no `currentStage` field, no status mirror, no
+cached stage cursor. The current state of any stage is **derived from the latest active attempt**
+(`max(attempt)` where `supersededAt === null && isDeleted === false`), through one shared resolver
+used by every gate, queue, counter and DTO — never re-implemented per feature.
+
+Historical attempts are **read-only**: the repository update seam rejects any write to a record
+carrying `supersededAt`, except the supersede marker itself (RW13/A8). The only intentionally
+denormalized values remain the ones that already exist for display and scoping — `applicantCode`,
+`applicantName`, `branchId` (scope), `placementLabel` — and each has exactly one writer.
+
+### I2 — Everything is event-driven
+
+**Every** workflow action emits its domain event, at the boundary of the service method that
+performed it, after the state change, with a versioned payload (ADR-008):
+
+| Action | Event |
+|---|---|
+| Placement changed | `hr.applicant.placementChanged` |
+| Returned to a previous stage | `hr.applicant.returnedToStage` |
+| Screening decided | `hr.screening.decided` |
+| Interview scheduled / started / completed / cancelled | `hr.interview.scheduled` · `.started` · `.completed` · `.cancelled` |
+| Evaluation approved / rejected | `hr.evaluation.approved` · `hr.evaluation.rejected` |
+| Batch generated / issued / returned / closed | `hr.evaluationBatch.generated` · `.issued` · `.returned` · `.closed` |
+| Offer created / sent / accepted / rejected / withdrawn | `hr.jobOffer.created` · `.sent` · `.accepted` · `.rejected` · `.withdrawn` |
+| Applicant hired | `hr.applicant.hired` |
+
+Existing event names are kept and **added to, never renamed** (`hr.evaluation.decided` continues
+to fire alongside the new `approved`/`rejected` pair for one release, so current subscribers keep
+working). Emission is fire-and-forget through the bus and never blocks or fails the business
+operation; the timeline write (I5) is the durable record.
+
+### I3 — Performance: one aggregation, no N+1
+
+The recruitment dashboard and **all** navigation counters are produced by **one aggregation
+pipeline** — a single round trip — rooted on `hr_applicants` with `$lookup` into screenings,
+interviews, evaluations, offers and employees, and `$facet` fanning out every stage bucket at
+once. No per-stage query, no per-phase query, no loop issuing queries.
+
+Across the module: **no N+1 anywhere**. Queues resolve their display data through the existing
+denormalized fields or one batched `$in` lookup per page — never one query per row. Bulk
+operations load their targets in a single `$in` query before the per-item loop. Every new query
+path is backed by an index named in §10, and the PR includes an `explain()` check that the
+counters pipeline and every stage queue use one.
+
+### I4 — Bulk operations are transactional and fully audited
+
+Each item in a bulk operation executes **inside its own transaction** (`unitOfWork`): its state
+change, audit entry, domain event and timeline entry all commit together, or none of them do.
+A failing item rolls back completely and is reported in the partial-success envelope (RW17) —
+it can never leave a half-applied record, an orphan audit row or an event without a state change.
+
+The bulk operation **itself** also records one audit entry — actor, action, requested ids,
+succeeded/failed counts, reason — so an approval of forty candidates is auditable both as forty
+individual decisions and as the single administrative act that produced them.
+
+> Per-item atomicity (not all-or-nothing across the selection) is the deliberate reading: it is
+> what makes the approved partial-success envelope in RW10/RW17 possible. If a future decision
+> wants a whole selection to fail as one unit, it is a one-line change to wrap the loop.
+
+### I5 — The timeline is the single history
+
+`hr_recruitment_timeline` is **the** chronological history of an applicant. Every screen that
+shows history — applicant detail, stage details, batch detail, the Electronic Employee File,
+the employee profile's recruitment section — **reads from it**. No screen keeps, derives or
+re-assembles a parallel history, and the Employee File's hand-rolled milestone derivation is
+deleted rather than left alongside (RW14).
+
+One writer: `recruitmentTimeline.record(...)`. A workflow transition that does not write a
+timeline entry is an incomplete implementation.
+
+### I6 — API consistency: no follow-up refresh
+
+Every workflow endpoint returns, in one response:
+
+```ts
+{ data: <the updated aggregate DTO>,
+  workflow: WorkflowStateDto,        // derived current state (I1): stage, bucket, placement,
+                                     // available actions, counters delta
+  timeline: TimelineSummaryDto }     // the entries this action produced + the latest N entries
+```
+
+The frontend never issues an extra request to learn what just happened. Bulk endpoints return the
+same envelope per succeeded id plus the aggregate result. Read endpoints (`GET`) are unchanged.
+
+### I7 — UI consistency
+
+Every recruitment table is the shared `DataTable` with the shared `useTableSelection` +
+`BulkActionBar` (RW17). No bespoke table, no bespoke selection state, no per-page bulk toolbar.
+A deviation requires a recorded justification in the PR description; "it was quicker" is not one.
+Filters use the shared `FilterBar`, states use the shared empty/error/loading states, and every
+new string ships with `ar` + `en` keys.
+
+### I8 — Backward compatibility: automatic migration
+
+Existing applicants migrate **automatically at boot** — the idempotent migration in §15, run by
+the kernel on every start, with no manual step, no script to remember, no downtime window and no
+operator action of any kind. Every applicant currently mid-pipeline keeps its exact position.
+
+**Existing history stays accessible exactly as before**: no record is rewritten, no id changes,
+every current endpoint keeps its path and response shape, every existing deep link resolves, and
+every current permission keeps working (RW7's superset rule). The migration is verified by an
+integration test that boots against a database seeded with pre-refactor documents, asserts the
+pipeline still resolves to the same stage for every applicant, and re-runs the migration to prove
+idempotency.

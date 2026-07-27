@@ -75,14 +75,39 @@ export const TemplateSectionsSchema = z
   .strict();
 export type TemplateSections = z.infer<typeof TemplateSectionsSchema>;
 
+// ── Draft-permissive template writes ─────────────────────────────────────────
+// Create/update can only ever produce a DRAFT (editing a published version forks
+// the next draft — A17/A19), and a draft is allowed to be incomplete while it is
+// being authored: names, contract type, body and signature labels may all be
+// empty here. `publish` is the single completeness gate.
+
+/** Template names while drafting — either language may still be blank. */
+const DraftTemplateNameSchema = z
+  .object({ ar: z.string().max(200).default(''), en: z.string().max(200).default('') })
+  .strict();
+
+/** Sections while drafting — even the body may still be empty. */
+export const DraftTemplateSectionsSchema = z
+  .object({
+    header: z.string().max(20_000).default(''),
+    body: z.string().max(200_000).default(''),
+    footer: z.string().max(20_000).default(''),
+  })
+  .strict();
+
+/** Signature blocks while drafting — a just-added row has no label yet. */
+export const DraftSignatureBlockSchema = SignatureBlockSchema.extend({
+  label: z.string().max(120).default(''),
+});
+
 export const CreateContractTemplateSchema = z
   .object({
-    name: LocalizedStringSchema,
+    name: DraftTemplateNameSchema,
     language: ContractTemplateLanguageSchema,
-    contractTypeId: objectId(),
-    sections: TemplateSectionsSchema,
+    contractTypeId: objectId().nullable().default(null),
+    sections: DraftTemplateSectionsSchema,
     logoFileId: objectId().nullable().default(null),
-    signatures: z.array(SignatureBlockSchema).max(10).default([]),
+    signatures: z.array(DraftSignatureBlockSchema).max(10).default([]),
   })
   .strict();
 export type CreateContractTemplate = z.infer<typeof CreateContractTemplateSchema>;
@@ -90,11 +115,11 @@ export type CreateContractTemplate = z.infer<typeof CreateContractTemplateSchema
 /** Editing a PUBLISHED version forks the next draft version instead (A17/A19). */
 export const UpdateContractTemplateSchema = z
   .object({
-    name: LocalizedStringSchema.optional(),
-    contractTypeId: objectId().optional(),
-    sections: TemplateSectionsSchema.optional(),
+    name: DraftTemplateNameSchema.optional(),
+    contractTypeId: objectId().nullable().optional(),
+    sections: DraftTemplateSectionsSchema.optional(),
     logoFileId: objectId().nullable().optional(),
-    signatures: z.array(SignatureBlockSchema).max(10).optional(),
+    signatures: z.array(DraftSignatureBlockSchema).max(10).optional(),
     version: z.number().int().min(0),
   })
   .strict();
@@ -124,7 +149,8 @@ export interface ContractTemplateDto {
   key: string;
   name: { ar: string; en: string };
   language: ContractTemplateLanguage;
-  contractTypeId: string;
+  /** Null while a draft is still being authored — publish requires a type. */
+  contractTypeId: string | null;
   status: ContractTemplateStatus;
   /** Template version number (1..n per key). */
   templateVersion: number;
@@ -378,7 +404,7 @@ export const InlinePreviewTemplateSchema = z
         footer: z.string().max(20_000).default(''),
       })
       .strict(),
-    signatures: z.array(SignatureBlockSchema).max(10).default([]),
+    signatures: z.array(DraftSignatureBlockSchema).max(10).default([]),
   })
   .strict();
 export type InlinePreviewTemplate = z.infer<typeof InlinePreviewTemplateSchema>;

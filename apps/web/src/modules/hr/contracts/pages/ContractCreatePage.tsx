@@ -168,11 +168,14 @@ export const ContractCreatePage = (): JSX.Element => {
   const canSubmit = employee !== null && published !== undefined && startDate !== '';
 
   const submit = async (andGenerate: boolean): Promise<void> => {
-    if (employee === null || published === undefined) return;
+    // A published template always carries a type (the publish gate enforces it) —
+    // the null check only narrows the DTO type for still-authoring drafts.
+    const typeId = published?.contractTypeId ?? null;
+    if (employee === null || published === undefined || typeId === null) return;
     try {
       const draft = await create.mutateAsync({
         employeeId: employee.id,
-        typeId: published.contractTypeId,
+        typeId,
         templateId: published.id,
         startDate,
         endDate: endDate === '' || chosenType?.allowsEndDate === false ? null : endDate,

@@ -182,13 +182,18 @@ export const TemplatesListPage = (): JSX.Element => {
   const [cloneTarget, setCloneTarget] = useState<ContractTemplateDto | null>(null);
   const [typeDialog, setTypeDialog] = useState<{ type: ContractTypeDto | null } | null>(null);
 
-  const typeName = (typeId: string): string => {
+  const typeName = (typeId: string | null): string => {
     const type = (types ?? []).find((x) => x.id === typeId);
     return type === undefined ? '—' : localized(type.name, locale);
   };
 
   const columns: Column<ContractTemplateDto>[] = [
-    { key: 'name', header: t('contracts.templates.name'), render: (x) => localized(x.name, locale) },
+    {
+      key: 'name',
+      header: t('contracts.templates.name'),
+      // Incomplete drafts may still be unnamed — keep the row readable/clickable.
+      render: (x) => localized(x.name, locale) || t('contracts.templates.untitled'),
+    },
     {
       key: 'language',
       header: t('contracts.templates.language'),

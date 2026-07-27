@@ -16,7 +16,8 @@ export interface ContractTemplateDoc extends BaseDocFields {
   key: string;
   name: LocalizedString;
   language: ContractTemplateLanguage;
-  contractTypeId: Types.ObjectId;
+  /** Null while a DRAFT is being authored — the publish gate requires a type. */
+  contractTypeId: Types.ObjectId | null;
   status: ContractTemplateStatus;
   templateVersion: number;
   sections: { header: string; body: string; footer: string };
@@ -27,19 +28,21 @@ export interface ContractTemplateDoc extends BaseDocFields {
   changedBy: Types.ObjectId | null;
 }
 
-const localized = { ar: { type: String, required: true }, en: { type: String, required: true } };
+// Drafts may be incomplete while being authored (names/type/body/labels empty —
+// `required` would even reject '' on String paths); publish() is the completeness gate.
+const localized = { ar: { type: String, default: '' }, en: { type: String, default: '' } };
 
 const contractTemplateSchema = new Schema<ContractTemplateDoc>(
   {
     key: { type: String, required: true },
     name: localized,
     language: { type: String, enum: ['ar', 'en'], required: true },
-    contractTypeId: { type: Schema.Types.ObjectId, required: true },
+    contractTypeId: { type: Schema.Types.ObjectId, default: null },
     status: { type: String, enum: ['draft', 'published', 'archived'], default: 'draft' },
     templateVersion: { type: Number, required: true },
     sections: {
       header: { type: String, default: '' },
-      body: { type: String, required: true },
+      body: { type: String, default: '' },
       footer: { type: String, default: '' },
     },
     logoFileId: { type: Schema.Types.ObjectId, default: null },
@@ -48,7 +51,7 @@ const contractTemplateSchema = new Schema<ContractTemplateDoc>(
         {
           _id: false,
           key: { type: String, required: true },
-          label: { type: String, required: true },
+          label: { type: String, default: '' },
           name: { type: String },
           title: { type: String },
         },

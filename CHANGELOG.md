@@ -9,6 +9,22 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Contract templates: Save Draft is no longer completeness-gated — Publish is.**
+  Saving a template draft no longer demands the full names, contract type and body up
+  front ("Complete the Full Names, Contract Type, and Body before saving"): a draft is
+  expected to be incomplete while it is being authored, so drafts now save freely with
+  empty names, no contract type, an empty body and unlabeled signature rows (schemas,
+  Mongoose model and editor all relaxed; the template DTO's `contractTypeId` is `null`
+  while unset). **Publish** becomes the single completeness gate: it blocks — client-side
+  with a friendly message and server-side with a 422 listing exactly what is missing
+  (Arabic/English names, contract type, body, signature labels) — until the draft is
+  complete, which also preserves the invariant that only complete templates can ever
+  generate contracts (A17). Preview stays entirely outside this validation (it renders
+  the current editor state, now even with unlabeled signature rows), and unnamed drafts
+  list as "(untitled draft)" so they stay reachable.
+
 ### Added
 
 - **Contracts: preview without saving + `{{contract.currentDate}}`.** The template

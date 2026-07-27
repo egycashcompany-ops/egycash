@@ -234,6 +234,40 @@ describe('evaluation phases — seeded catalog & permissions', () => {
   });
 });
 
+describe('evaluations — appointments (RW9)', () => {
+  it('books and clears the visit on a phase that schedules one', async () => {
+    const applicant = await readyApplicant();
+    const medical = await phaseByKey('medicalExam');
+    const evaluation = (await open(applicant.id, medical.id)).body.data as EvaluationDto;
+
+    const booked = await request(app)
+      .patch(`/api/v1/hr/evaluations/${evaluation.id}/appointment`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ appointmentAt: '2027-05-01T09:00:00.000Z', version: evaluation.version });
+    expect(booked.status).toBe(200);
+    expect((booked.body.data as EvaluationDto).appointmentAt).toBe('2027-05-01T09:00:00.000Z');
+
+    const cleared = await request(app)
+      .patch(`/api/v1/hr/evaluations/${evaluation.id}/appointment`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ appointmentAt: null, version: (booked.body.data as EvaluationDto).version });
+    expect(cleared.status).toBe(200);
+    expect((cleared.body.data as EvaluationDto).appointmentAt).toBeNull();
+  });
+
+  it('refuses an appointment on a phase that does not schedule one', async () => {
+    const applicant = await readyApplicant();
+    const security = await phaseByKey('securityCheck');
+    const evaluation = (await open(applicant.id, security.id)).body.data as EvaluationDto;
+
+    const res = await request(app)
+      .patch(`/api/v1/hr/evaluations/${evaluation.id}/appointment`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ appointmentAt: '2027-05-01T09:00:00.000Z', version: evaluation.version });
+    expect(res.status).toBe(422);
+  });
+});
+
 describe('evaluations — open, files, decision', () => {
   it('opens a waiting evaluation (idempotent) and attaches then removes a file', async () => {
     const applicant = await readyApplicant();

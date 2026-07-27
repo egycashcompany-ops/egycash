@@ -11,6 +11,7 @@ import {
   type BulkActionResultDto,
   type BulkEvaluations,
   type OpenEvaluation,
+  type SetEvaluationAppointment,
   type Paginated,
   type UploadEvaluationFile,
 } from '@ecms/contracts';
@@ -21,6 +22,7 @@ import { emit } from '../../../../platform/kernel/event-bus';
 import { fileService, type UploadedBinary } from '../../../../platform/files';
 import { applicantService } from '../applicants';
 import { interviewService } from '../interviews';
+import { recruitmentTimelineService } from '../timeline';
 import { recruitmentWorkflowEngine, runBulk, type StageBinding } from '../workflow';
 import { EvaluationModel } from './evaluation.model';
 import { evaluationRepository, type EvaluationListFilter } from './evaluation.repository';
@@ -243,6 +245,57 @@ class EvaluationService {
       applicantCode: before.applicantCode,
       phaseKey: before.phaseKey,
       decision: input.decision,
+    });
+    return updated;
+  }
+
+  /**
+   * Record or clear the appointment date (RW9). Only phases that declare `appointmentEnabled`
+   * carry one — Medical Check is the individual phase this exists for: HR books the visit on the
+   * applicant's own record, then uploads the result and decides there.
+   */
+  async setAppointment(
+    ctx: AuthContext,
+    id: string,
+    input: SetEvaluationAppointment,
+    scope: ScopeSelector,
+  ): Promise<EvaluationDoc> {
+    const before = await evaluationRepository.getById(id, scope);
+    const phase = await evaluationPhaseRepository.findActiveById(String(before.phaseId));
+    if (phase === null || !phase.appointmentEnabled) {
+      throw new BusinessRuleError('this evaluation phase does not schedule appointments');
+    }
+    const updated = await evaluationRepository.updateById(
+      id,
+      { appointmentAt: input.appointmentAt },
+      { by: ctx.userId, version: input.version, scope },
+    );
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'update',
+      changes: [
+        {
+          field: 'appointmentAt',
+          old: before.appointmentAt === null ? null : before.appointmentAt.toISOString(),
+          new: input.appointmentAt === null ? null : input.appointmentAt.toISOString(),
+        },
+        ...(input.note === undefined ? [] : [{ field: 'note', old: null, new: input.note }]),
+      ],
+    });
+    await recruitmentTimelineService.record({
+      applicantId: String(before.applicantId),
+      applicantCode: before.applicantCode,
+      branchId: before.branchId,
+      type: 'note',
+      stage: { kind: 'evaluation', refId: String(before.phaseId), name: before.phaseName },
+      correlation: { type: 'evaluation', id },
+      entity: { type: 'evaluation', id },
+      discriminator: `appointment:${String(before.attempt)}`,
+      actorUserId: ctx.userId,
+      note:
+        input.appointmentAt === null
+          ? `${before.phaseKey}: appointment cleared`
+          : `${before.phaseKey}: appointment ${input.appointmentAt.toISOString()}`,
     });
     return updated;
   }

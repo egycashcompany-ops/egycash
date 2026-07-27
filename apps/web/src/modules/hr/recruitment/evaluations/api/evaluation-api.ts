@@ -8,6 +8,7 @@ import {
   type EvaluationDto,
   type EvaluationPhaseDto,
   type OpenEvaluation,
+  type SetEvaluationAppointment,
   type Paginated,
   type UpdateEvaluationPhase,
   type BulkActionResultDto,
@@ -29,6 +30,12 @@ export const openEvaluation = (body: OpenEvaluation): Promise<EvaluationDto> =>
 /** Decide (approve/reject) — re-settable: calling again edits the decision (audited). */
 export const decideEvaluation = (id: string, body: DecideEvaluation): Promise<EvaluationDto> =>
   patch<EvaluationDto>(`/hr/evaluations/${id}/decision`, body);
+
+/** RW9 — book (or clear) the visit on an individual phase that schedules one. */
+export const setEvaluationAppointment = (
+  id: string,
+  body: SetEvaluationAppointment,
+): Promise<EvaluationDto> => patch<EvaluationDto>(`/hr/evaluations/${id}/appointment`, body);
 
 export const uploadEvaluationFile = (
   id: string,

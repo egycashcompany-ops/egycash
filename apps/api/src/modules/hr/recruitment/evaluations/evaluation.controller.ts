@@ -9,6 +9,7 @@ import {
   type ListEvaluationsQuery,
   type OpenEvaluation,
   type RemoveEvaluationFile,
+  type SetEvaluationAppointment,
   type UpdateEvaluationPhase,
   type UploadEvaluationFile,
 } from '@ecms/contracts';
@@ -103,6 +104,14 @@ export const decideEvaluation = async (req: Request, res: Response): Promise<voi
   const ctx = authContext(req);
   const { body, params } = validated<DecideEvaluation, never, IdParam>(req);
   const doc = await evaluationService.decide(ctx, params.id, body, scopeSelector(ctx, 'evaluation.manage'));
+  ok(res, toEvaluationDto(doc));
+};
+
+/** RW9 — book (or clear) the visit on an individual phase that schedules one. */
+export const setEvaluationAppointment = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<SetEvaluationAppointment, never, IdParam>(req);
+  const doc = await evaluationService.setAppointment(ctx, params.id, body, scopeSelector(ctx, 'evaluation.manage'));
   ok(res, toEvaluationDto(doc));
 };
 

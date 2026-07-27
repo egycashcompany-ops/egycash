@@ -445,7 +445,9 @@ describe('returning results and deciding items (RW8c)', () => {
       .patch(`/api/v1/hr/evaluation-batches/${issued.id}/items/${applicant.id}/decision`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ result: 'rejected', version: issued.version });
-    expect(noReason.status).toBe(422);
+    // The reason gate lives in the schema, so a missing one is a validation failure, not a
+    // business-rule refusal.
+    expect(noReason.status).toBe(400);
 
     const rejected = await request(app)
       .patch(`/api/v1/hr/evaluation-batches/${issued.id}/items/${applicant.id}/decision`)

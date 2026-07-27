@@ -24,6 +24,7 @@ import { StageBuckets } from '../../shared/StageBuckets';
 import { useRecruitmentStageCounts } from '../../counters/stage-counts-queries';
 import { EvaluationStatusBadge } from '../components/EvaluationStatusBadge';
 import { GenerateBatchDialog } from '../../evaluation-batches/components/GenerateBatchDialog';
+import { RecordResultDialog } from '../components/RecordResultDialog';
 import { useBulkEvaluations, useEvaluationPhases, useEvaluations } from '../api/evaluation-queries';
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -70,6 +71,7 @@ export const EvaluationPhaseQueuePage = (): JSX.Element => {
   const selection = useTableSelection(rowIds);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [batchOpen, setBatchOpen] = useState(false);
+  const [resultFor, setResultFor] = useState<EvaluationDto | null>(null);
   const [reason, setReason] = useState('');
   const bulk = useBulkEvaluations(() => {
     selection.clear();
@@ -97,6 +99,29 @@ export const EvaluationPhaseQueuePage = (): JSX.Element => {
     { key: 'status', header: t('evaluations.columns.status'), render: (e) => <EvaluationStatusBadge status={e.status} /> },
     { key: 'files', header: t('evaluations.columns.files'), align: 'center', render: (e) => e.files.length },
     { key: 'createdAt', header: t('evaluations.columns.opened'), render: (e) => formatDate(e.createdAt, locale) },
+    // RW9 — an individual phase is worked one applicant at a time: the result document and the
+    // decision are recorded right here, without a detour through the detail page.
+    ...(phase?.kind === 'individual'
+      ? [
+          {
+            key: 'actions',
+            header: '',
+            align: 'end' as const,
+            render: (e: EvaluationDto) => (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setResultFor(e);
+                }}
+              >
+                {t('evaluations.result.open')}
+              </Button>
+            ),
+          },
+        ]
+      : []),
   ];
 
   if (phases === undefined) {
@@ -206,6 +231,13 @@ export const EvaluationPhaseQueuePage = (): JSX.Element => {
           <Input value={reason} onChange={(e) => setReason(e.target.value)} />
         </Field>
       </Dialog>
+
+      <RecordResultDialog
+        evaluation={resultFor}
+        appointmentEnabled={phase?.appointmentEnabled ?? false}
+        open={resultFor !== null}
+        onClose={() => setResultFor(null)}
+      />
 
       <GenerateBatchDialog
         phaseId={phaseId}

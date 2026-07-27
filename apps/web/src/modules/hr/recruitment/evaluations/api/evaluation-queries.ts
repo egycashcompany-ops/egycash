@@ -6,6 +6,7 @@ import {
   type CreateEvaluationPhase,
   type DecideEvaluation,
   type OpenEvaluation,
+  type SetEvaluationAppointment,
   type UpdateEvaluationPhase,
   type BulkEvaluations,
 } from '@ecms/contracts';
@@ -91,6 +92,14 @@ export const useDecideEvaluation = (id: string) => {
   const invalidate = useInvalidate();
   return useMutation({
     mutationFn: (body: DecideEvaluation) => api.decideEvaluation(id, body),
+    onSuccess: () => invalidate(id),
+  });
+};
+
+export const useSetEvaluationAppointment = (id: string) => {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (body: SetEvaluationAppointment) => api.setEvaluationAppointment(id, body),
     onSuccess: () => invalidate(id),
   });
 };

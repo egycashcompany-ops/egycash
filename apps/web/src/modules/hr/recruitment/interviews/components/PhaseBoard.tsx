@@ -118,7 +118,7 @@ export const PhaseBoard = (): JSX.Element => {
         badge:
           ev.status === 'approved'
             ? { tone: 'success', label: t('evaluations.status.approved') }
-            : { tone: 'warning', label: t('evaluations.status.pending') },
+            : { tone: 'warning', label: t('evaluations.status.waiting') },
         href: `/evaluations/${ev.id}`,
       };
       const list = evalCards.get(ev.phaseId) ?? [];

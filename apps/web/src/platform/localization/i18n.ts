@@ -188,6 +188,7 @@ const en: Record<string, string> = {
   'evaluations.columns.status': 'Status',
   'evaluations.columns.decidedAt': 'Decided',
   'evaluations.columns.created': 'Opened',
+  'evaluations.columns.files': 'Files',
   'evaluations.phase.driversOnly': 'drivers only',
   'evaluations.open.title': 'Open an evaluation',
   'evaluations.open.body': 'Start an evaluation for an applicant at a phase. Phases run in order.',
@@ -321,6 +322,7 @@ const en: Record<string, string> = {
   'applicants.returnToStage.previewFailed': 'Could not work out what this would do. Nothing has changed.',
   'applicants.returnToStage.reasonHint': 'Recorded on the timeline and the audit trail.',
   // Employees Ready (A6) — accepted offers not yet converted into an employee.
+  'employees.title': 'Employees',
   'employees.ready.title': 'Ready to hire',
   'employees.ready.subtitle': 'Candidates who accepted an offer and have not been created as employees yet.',
   'employees.ready.columns.applicant': 'Candidate',
@@ -2036,6 +2038,7 @@ const ar: Record<string, string> = {
   'evaluations.columns.status': 'الحالة',
   'evaluations.columns.decidedAt': 'تاريخ القرار',
   'evaluations.columns.created': 'تاريخ الفتح',
+  'evaluations.columns.files': 'المرفقات',
   'evaluations.phase.driversOnly': 'للسائقين فقط',
   'evaluations.open.title': 'فتح تقييم',
   'evaluations.open.body': 'ابدأ تقييمًا لمتقدِّم في مرحلة معينة. المراحل تُنفَّذ بالترتيب.',
@@ -2170,6 +2173,7 @@ const ar: Record<string, string> = {
   'applicants.returnToStage.previewFailed': 'تعذّر تحديد أثر هذا الإجراء. لم يتغيّر شيء.',
   'applicants.returnToStage.reasonHint': 'يُسجَّل في الخط الزمني وسجل التدقيق.',
   // Employees Ready (A6).
+  'employees.title': 'الموظفون',
   'employees.ready.title': 'جاهزون للتعيين',
   'employees.ready.subtitle': 'المتقدمون الذين قبلوا العرض ولم يتم إنشاؤهم كموظفين بعد.',
   'employees.ready.columns.applicant': 'المتقدم',

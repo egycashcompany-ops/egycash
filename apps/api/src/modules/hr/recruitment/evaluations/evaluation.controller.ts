@@ -10,6 +10,7 @@ import {
   type OpenEvaluation,
   type RemoveEvaluationFile,
   type SetEvaluationAppointment,
+  type SetPlacementRecommendation,
   type UpdateEvaluationPhase,
   type UploadEvaluationFile,
 } from '@ecms/contracts';
@@ -112,6 +113,14 @@ export const setEvaluationAppointment = async (req: Request, res: Response): Pro
   const ctx = authContext(req);
   const { body, params } = validated<SetEvaluationAppointment, never, IdParam>(req);
   const doc = await evaluationService.setAppointment(ctx, params.id, body, scopeSelector(ctx, 'evaluation.manage'));
+  ok(res, toEvaluationDto(doc));
+};
+
+/** RW5 — the reviewer's advisory placement recommendation; never moves the candidate by itself. */
+export const setEvaluationRecommendation = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<SetPlacementRecommendation, never, IdParam>(req);
+  const doc = await evaluationService.setRecommendation(ctx, params.id, body, scopeSelector(ctx, 'evaluation.manage'));
   ok(res, toEvaluationDto(doc));
 };
 

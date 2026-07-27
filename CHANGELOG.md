@@ -30,6 +30,30 @@ its entry here in the same PR.
 
 ### Added
 
+- **Recruitment: Position & Branch stay editable until hire (RW1–RW5).** A candidate now
+  carries a first-class `placement` (position, title, department, branch, section) that
+  may be set at intake and stays editable from Screening through Offer Acceptance.
+  Moving one is its OWN audited action — `POST /hr/applicants/:id/reassign` behind the new
+  `applicant.reassign` grant, with a mandatory reason — never a field on the edit form, so
+  a routine data correction can't silently move someone to another branch. One act does all
+  of it: writes the placement and its ADR-015 scope mirror, appends to `placementHistory`,
+  syncs the **scope field only** on the candidate's screenings, interviews, evaluations and
+  offers so a branch-scoped user keeps seeing their whole history, writes one timeline entry
+  per moved dimension under a shared correlation id, and drives a live (`draft`/`sent`) offer
+  through a normal versioned revision so the package follows the placement. Selecting a job
+  position completes the rest of the placement from the seat. Every stage record keeps its
+  **immutable `placementSnapshot`** — queues show where the candidate stands today, history
+  shows what it was created under, and nothing already decided is rewritten. Acceptance
+  closes the window: afterwards the path is revise / withdraw → re-accept → hire, because the
+  accepted snapshot is the contractual artifact. Bulk reassignment applies one placement to a
+  whole selection with the shared partial-success envelope. Interviews and evaluations can
+  record an advisory `recommendedPlacement` that never moves anyone by itself.
+
+- **Recruitment: Employees Ready queue + bulk "Start now".** `/employees/ready` lists
+  accepted offers not yet converted into an Employee — read from a fact on the offer, the
+  same source the stage counter uses — with a direct hire action. Interview stage queues gain
+  a bulk **Start now** (RW12) alongside bulk cancel.
+
 - **Recruitment: Security / Driving check batches (RW8).** The two external checks that
   are performed on a GROUP of applicants are now worked as batches. HR picks candidates
   from a phase's waiting queue (`GET /hr/evaluation-batches/candidates` lists exactly the

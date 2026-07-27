@@ -2,6 +2,7 @@
 // api-client (typed REST + multipart + silent refresh); the hooks in applicant-queries.ts wrap
 // these in TanStack Query with keys + invalidation.
 import {
+  type ReassignPlacement,
   type ApplicantDto,
   type ApplicantSourceDto,
   type BulkApplicants,
@@ -46,6 +47,10 @@ export const moveApplicantToOffer = (id: string, body: MoveApplicantToOffer): Pr
 
 export const restoreApplicant = (id: string, body: RestoreApplicant): Promise<ApplicantDto> =>
   post<ApplicantDto>(`/hr/applicants/${id}/restore`, body);
+
+/** RW2 — reassign Position and/or Branch (audited, reason mandatory). */
+export const reassignApplicant = (id: string, body: ReassignPlacement): Promise<ApplicantDto> =>
+  post<ApplicantDto>(`/hr/applicants/${id}/reassign`, body);
 
 export const bulkApplicants = (body: BulkApplicants): Promise<BulkApplicantsResultDto> =>
   post<BulkApplicantsResultDto>('/hr/applicants/bulk', body);

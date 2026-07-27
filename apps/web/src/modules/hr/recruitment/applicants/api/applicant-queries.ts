@@ -3,6 +3,7 @@
 // Failures surface via the global Query/Mutation error handler; components add success toasts.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  type ReassignPlacement,
   type ApplicantSourceDto,
   type BulkApplicants,
   type ConfirmApplicantIdentity,
@@ -16,6 +17,7 @@ import {
   type WithdrawApplicant,
 } from '@ecms/contracts';
 import { detailKey, featureKey, listKey } from '../../../../../shared/lib/query-keys';
+import { invalidateRecruitment } from '../../shared/invalidate-recruitment';
 import * as api from './applicant-api';
 import { type ApplicantListParams } from './applicant-api';
 
@@ -122,6 +124,18 @@ export const useRestoreApplicant = (id: string) => {
   return useMutation({
     mutationFn: (body: RestoreApplicant) => api.restoreApplicant(id, body),
     onSuccess: invalidate,
+  });
+};
+
+/** RW2 — reassignment moves the candidate, so every recruitment surface refreshes with it. */
+export const useReassignApplicant = (id: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ReassignPlacement) => api.reassignApplicant(id, body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: detailKey(MODULE, FEATURE, id) });
+      invalidateRecruitment(qc);
+    },
   });
 };
 

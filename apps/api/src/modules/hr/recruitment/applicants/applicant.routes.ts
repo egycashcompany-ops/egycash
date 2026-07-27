@@ -28,6 +28,7 @@ import {
   registerApplicant,
   removeApplicantAttachment,
   moveApplicantToOffer,
+  reassignApplicant,
   restoreApplicant,
   updateApplicant,
   updateApplicantSource,
@@ -47,6 +48,7 @@ import {
   OcrExtractNationalIdSchema,
   RegisterApplicantSchema,
   MoveApplicantToOfferSchema,
+  ReassignPlacementSchema,
   RestoreApplicantSchema,
   UpdateApplicantSchema,
   UpdateApplicantSourceSchema,
@@ -150,6 +152,15 @@ export const buildApplicantsRouter = (): Router => {
     authorize('applicant.edit'),
     validate({ body: RestoreApplicantSchema, params: ApplicantIdParamSchema }),
     asyncHandler(restoreApplicant),
+  );
+  // RW2 — reassignment is its OWN action, never part of the PATCH: a routine data correction
+  // must not be able to silently move a candidate to another branch or seat.
+  router.post(
+    '/:id/reassign',
+    authenticate,
+    authorize('applicant.reassign'),
+    validate({ body: ReassignPlacementSchema, params: ApplicantIdParamSchema }),
+    asyncHandler(reassignApplicant),
   );
   // Explicit HR move to the Job Offer stage (offer eligibility is never automatic).
   router.post(

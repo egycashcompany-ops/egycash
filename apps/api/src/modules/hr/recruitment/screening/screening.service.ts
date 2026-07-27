@@ -335,6 +335,20 @@ class ScreeningService {
    * a return to an earlier stage — drives this stage through the SAME engine, never by touching
    * the collection directly.
    */
+  /**
+   * RW2 step 3 — a reassignment moves the candidate, so their records must follow into the new
+   * branch or a branch-scoped user would lose sight of their own history. This touches the
+   * denormalized SCOPE FIELD only: no decision, no status, and never a `placementSnapshot`
+   * (RW4 — what a record was created under is history and is never rewritten).
+   */
+  async syncApplicantBranch(applicantId: string, branchId: Types.ObjectId | null): Promise<void> {
+    if (!Types.ObjectId.isValid(applicantId)) return;
+    await ScreeningModel.updateMany(
+      { applicantId: new Types.ObjectId(applicantId) },
+      { $set: { branchId } },
+    ).exec();
+  }
+
   get workflowBinding(): StageBinding<never> {
     return BINDING;
   }

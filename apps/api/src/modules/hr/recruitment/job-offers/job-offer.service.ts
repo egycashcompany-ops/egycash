@@ -260,6 +260,59 @@ class JobOfferService {
     return updated;
   }
 
+  /**
+   * RW2 step 5 — a reassignment moves the candidate, so a LIVE offer has to follow it. This is a
+   * normal versioned revision, not a silent field edit: the prior package lands in `revisions[]`
+   * with everything else the candidate was offered left exactly as it was.
+   *
+   * A `waiting` record has no terms yet and an accepted/closed offer is out of the editing window
+   * (RW3) — both are no-ops, so a reassignment never fails because of the offer stage.
+   */
+  async followPlacement(
+    ctx: AuthContext,
+    applicantId: string,
+    placement: {
+      jobPositionId: Types.ObjectId | null;
+      jobTitleId: Types.ObjectId | null;
+      departmentId: Types.ObjectId | null;
+      branchId: Types.ObjectId | null;
+      sectionId: Types.ObjectId | null;
+    },
+    scope: ScopeSelector,
+  ): Promise<JobOfferDoc | null> {
+    const offers = await jobOfferRepository.findByApplicant(applicantId);
+    const live = offers.find(
+      (o) => o.supersededAt === null && (o.status === 'draft' || o.status === 'sent'),
+    );
+    if (live === undefined || live.terms === null) return null;
+    // The placement decides the seat; everything else in the package is the candidate's offer.
+    const terms = live.terms;
+    return this.revise(
+      ctx,
+      String(live._id),
+      {
+        terms: {
+          jobTitleId: String(placement.jobTitleId ?? terms.jobTitleId),
+          departmentId: String(placement.departmentId ?? terms.departmentId),
+          branchId: String(placement.branchId ?? terms.branchId),
+          jobPositionId: placement.jobPositionId === null ? null : String(placement.jobPositionId),
+          sectionId: placement.sectionId === null ? null : String(placement.sectionId),
+          managerId: terms.managerId === null ? null : String(terms.managerId),
+          employmentType: terms.employmentType,
+          salary: terms.salary,
+          allowances: terms.allowances,
+          benefits: terms.benefits,
+          probationMonths: terms.probationMonths,
+          startDate: terms.startDate,
+          validUntil: terms.validUntil,
+          ...(terms.notes === null ? {} : { notes: terms.notes }),
+        },
+        version: live.__v,
+      },
+      scope,
+    );
+  }
+
   /** Issue a draft offer to the applicant. */
   async send(ctx: AuthContext, id: string, input: SendJobOffer, scope: ScopeSelector): Promise<JobOfferDoc> {
     const before = await jobOfferRepository.getById(id, scope);
@@ -480,6 +533,20 @@ class JobOfferService {
    * a return to an earlier stage — drives this stage through the SAME engine, never by touching
    * the collection directly.
    */
+  /**
+   * RW2 step 3 — a reassignment moves the candidate, so their records must follow into the new
+   * branch or a branch-scoped user would lose sight of their own history. This touches the
+   * denormalized SCOPE FIELD only: no decision, no status, and never a `placementSnapshot`
+   * (RW4 — what a record was created under is history and is never rewritten).
+   */
+  async syncApplicantBranch(applicantId: string, branchId: Types.ObjectId | null): Promise<void> {
+    if (!Types.ObjectId.isValid(applicantId)) return;
+    await JobOfferModel.updateMany(
+      { applicantId: new Types.ObjectId(applicantId) },
+      { $set: { branchId } },
+    ).exec();
+  }
+
   get workflowBinding(): StageBinding<never> {
     return BINDING;
   }

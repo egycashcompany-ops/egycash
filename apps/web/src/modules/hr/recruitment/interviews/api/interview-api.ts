@@ -4,6 +4,7 @@
 // (/hr/interviews, /hr/interview-stages). Interviewer selection/resolution reuses the existing
 // platform Users endpoint (/platform/users) — no new API is invented.
 import {
+  type BulkStartInterviews,
   type AwaitingInterviewDto,
   type CancelInterview,
   type CreateInterviewStage,
@@ -84,5 +85,9 @@ export const searchUsers = (term: string): Promise<Paginated<UserDto>> =>
 export const getUser = (id: string): Promise<UserDto> => get<UserDto>(`/platform/users/${id}`);
 
 /** Bulk cancel / pass / fail / reassign a selection of rounds (RW17). */
+/** RW12 — start the selected candidates' round NOW (no prior scheduling required). */
+export const bulkStartInterviews = (body: BulkStartInterviews): Promise<BulkActionResultDto> =>
+  post<BulkActionResultDto>('/hr/interviews/start', body);
+
 export const bulkInterviews = (body: BulkInterviews): Promise<BulkActionResultDto> =>
   post<BulkActionResultDto>('/hr/interviews/bulk', body);

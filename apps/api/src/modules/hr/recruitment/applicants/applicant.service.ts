@@ -14,6 +14,7 @@ import {
   type ListApplicantsQuery,
   type MoveApplicantToOffer,
   type Paginated,
+  type ReassignPlacement,
   type RegisterApplicant,
   type RestoreApplicant,
   type UpdateApplicant,
@@ -35,6 +36,8 @@ import { applicantSourceRepository } from './applicant-source.repository';
 import { nextApplicantNumber } from './applicant-sequence';
 import { getRequisitionValidator } from './requisition-ref';
 import { applicantExportRow } from './applicant.mapper';
+import { reassignThroughSeam } from './placement-seam';
+import { resolvePlacement } from './placement-resolver';
 import { ApplicantModel, type ApplicantDoc } from './applicant.model';
 import { type Model } from 'mongoose';
 import { unitOfWork } from '../../../../platform/kernel/unit-of-work';
@@ -111,12 +114,22 @@ class ApplicantService {
 
     const now = new Date();
     const code = await nextApplicantNumber(now.getUTCFullYear());
-    const branchId = resolution?.branchId ?? input.branchId ?? null;
+    // RW1 — placement may be set at intake and stays editable until Offer Acceptance. When both
+    // a placement and a bare branchId arrive, `placement.branchId` wins and the scope field
+    // follows it; direct intake with neither keeps working (ADR-016).
+    const { placement, label: placementLabel } = await resolvePlacement(input.placement);
+    const branchId =
+      placement.branchId !== null
+        ? String(placement.branchId)
+        : (resolution?.branchId ?? input.branchId ?? null);
 
     const doc = await applicantRepository.create(
       {
         code,
         status: 'new',
+        placement,
+        placementLabel,
+        placementHistory: [],
         jobRequisitionId:
           input.jobRequisitionId === undefined ? null : new Types.ObjectId(input.jobRequisitionId),
         branchId: oid(branchId),
@@ -671,6 +684,22 @@ class ApplicantService {
             scope,
           );
         }
+        // RW17 — ONE placement applied across the selection; each candidate is still checked
+        // against the editing window on its own, so an ineligible one fails as that item alone.
+        if (input.action === 'reassign') {
+          const current = await applicantRepository.getById(id, scope);
+          await this.reassign(
+            ctx,
+            id,
+            {
+              placement: input.placement as ReassignPlacement['placement'],
+              reason: input.reason as string,
+              source: 'manual',
+              version: current.__v,
+            },
+            scope,
+          );
+        }
         results.push({ id, ok: true });
       } catch (error) {
         results.push({ id, ok: false, error: error instanceof Error ? error.message : String(error) });
@@ -678,6 +707,37 @@ class ApplicantService {
     }
     const succeeded = results.filter((r) => r.ok).length;
     return { requested: input.ids.length, succeeded, failed: results.length - succeeded, results };
+  }
+
+  /**
+   * RW1 — the single writer of `placement` and its ADR-015 scope mirror `branchId`. The
+   * reassignment feature composes the whole act (history, stage scopes, timeline, offer revision)
+   * and calls this for the applicant's own row, so the mirror can never drift.
+   */
+  async writePlacement(
+    ctx: AuthContext,
+    id: string,
+    version: number,
+    scope: ScopeSelector,
+    set: Pick<ApplicantDoc, 'placement' | 'placementLabel' | 'placementHistory'> & {
+      branchId: ApplicantDoc['branchId'];
+    },
+  ): Promise<ApplicantDoc> {
+    return applicantRepository.updateById(id, set, { by: ctx.userId, version, scope });
+  }
+
+  /**
+   * RW2 — reassign a live candidate's Position and/or Branch. Its own audited action with a
+   * mandatory reason and its own permission, never a field edit. Implemented in
+   * `placement-reassign.ts`; exposed here so the feature keeps ONE public service.
+   */
+  async reassign(
+    ctx: AuthContext,
+    id: string,
+    input: ReassignPlacement,
+    scope: ScopeSelector,
+  ): Promise<ApplicantDoc> {
+    return reassignThroughSeam<ApplicantDoc>(ctx, id, input, scope);
   }
 
   // ── Export (audited, PII-masked by default — §9) ────────────────────────────

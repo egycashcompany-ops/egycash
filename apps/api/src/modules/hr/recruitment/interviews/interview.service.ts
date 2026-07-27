@@ -30,13 +30,14 @@ import {
   type StartInterview,
   type StartScheduledInterview,
   type SubmitInterviewEvaluation,
+  type SetPlacementRecommendation,
 } from '@ecms/contracts';
 import { BusinessRuleError, ConflictError, ForbiddenError, ValidationError } from '../../../../shared/errors';
 import { type AuthContext, type ScopeSelector } from '../../../../shared/types';
 import { auditService } from '../../../../platform/audit';
 import { emit } from '../../../../platform/kernel/event-bus';
 import { notificationsService } from '../../../../platform/notifications';
-import { applicantService } from '../applicants';
+import { applicantService, resolvePlacement } from '../applicants';
 import { screeningService } from '../screening';
 import { recruitmentWorkflowEngine, runBulk, type StageBinding } from '../workflow';
 import { InterviewModel } from './interview.model';
@@ -766,6 +767,56 @@ class InterviewService {
    * a return to an earlier stage — drives this stage through the SAME engine, never by touching
    * the collection directly.
    */
+  /**
+   * RW5 — record (or clear) this stage's advisory placement recommendation. It is DATA on the
+   * record, never a move: accepting it is a separate, audited reassignment, and the
+   * recommendation stays here forever whether it was accepted or not.
+   */
+  async setRecommendation(
+    ctx: AuthContext,
+    id: string,
+    input: SetPlacementRecommendation,
+    scope: ScopeSelector,
+  ): Promise<InterviewDoc> {
+    const before = await interviewRepository.getById(id, scope);
+    const resolved =
+      input.recommendedPlacement === null ? null : await resolvePlacement(input.recommendedPlacement);
+    const updated = await interviewRepository.updateById(
+      id,
+      {
+        recommendedPlacement: resolved === null ? null : resolved.placement,
+        recommendationNote: input.recommendationNote ?? null,
+      },
+      { by: ctx.userId, version: input.version, scope },
+    );
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'update',
+      changes: [
+        {
+          field: 'recommendedPlacement',
+          old: before.recommendedPlacement === null ? null : 'set',
+          new: resolved === null ? null : [resolved.label.position, resolved.label.branch].filter((v) => v !== null).join(' · '),
+        },
+      ],
+    });
+    return updated;
+  }
+
+  /**
+   * RW2 step 3 — a reassignment moves the candidate, so their records must follow into the new
+   * branch or a branch-scoped user would lose sight of their own history. This touches the
+   * denormalized SCOPE FIELD only: no decision, no status, and never a `placementSnapshot`
+   * (RW4 — what a record was created under is history and is never rewritten).
+   */
+  async syncApplicantBranch(applicantId: string, branchId: Types.ObjectId | null): Promise<void> {
+    if (!Types.ObjectId.isValid(applicantId)) return;
+    await InterviewModel.updateMany(
+      { applicantId: new Types.ObjectId(applicantId) },
+      { $set: { branchId } },
+    ).exec();
+  }
+
   get workflowBinding(): StageBinding<never> {
     return BINDING;
   }

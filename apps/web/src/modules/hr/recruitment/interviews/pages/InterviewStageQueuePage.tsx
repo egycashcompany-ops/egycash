@@ -24,7 +24,12 @@ import { formatDate, localized } from '../../../../../shared/lib/format';
 import { StageBuckets } from '../../shared/StageBuckets';
 import { useRecruitmentStageCounts } from '../../counters/stage-counts-queries';
 import { InterviewStatusBadge } from '../components/InterviewStatusBadge';
-import { useBulkInterviews, useInterviews, useInterviewStages } from '../api/interview-queries';
+import {
+  useBulkInterviews,
+  useBulkStartInterviews,
+  useInterviews,
+  useInterviewStages,
+} from '../api/interview-queries';
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -70,6 +75,7 @@ export const InterviewStageQueuePage = (): JSX.Element => {
   const selection = useTableSelection(rowIds);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [reason, setReason] = useState('');
+  const bulkStart = useBulkStartInterviews(() => selection.clear());
   const bulk = useBulkInterviews(() => {
     selection.clear();
     setCancelOpen(false);
@@ -78,6 +84,11 @@ export const InterviewStageQueuePage = (): JSX.Element => {
   const cancellable = rows
     .filter((i) => selection.selectedIds.has(i.id) && (i.status === 'scheduled' || i.status === 'inProgress'))
     .map((i) => i.id);
+  // "Start now" addresses APPLICANTS (RW12): the round may not exist yet, so the endpoint takes
+  // the candidate and the stage, not an interview id.
+  const startable = rows
+    .filter((i) => selection.selectedIds.has(i.id) && (i.status === 'waiting' || i.status === 'scheduled'))
+    .map((i) => i.applicantId);
 
   const columns: Column<InterviewDto>[] = [
     {
@@ -133,8 +144,21 @@ export const InterviewStageQueuePage = (): JSX.Element => {
           onPick={(key) => patch({ status: key })}
         />
 
-        <Can permission="interview.cancel">
-          <BulkActionBar count={selection.count} onClear={selection.clear}>
+        <BulkActionBar count={selection.count} onClear={selection.clear}>
+          {/* RW12 — start the round NOW for everyone still waiting at this stage. */}
+          <Can permission="interview.create">
+            <Button
+              size="sm"
+              loading={bulkStart.isPending}
+              disabled={startable.length === 0}
+              onClick={() =>
+                void bulkStart.mutateAsync({ applicantIds: startable, stageId })
+              }
+            >
+              {t('interviews.actions.startSelected')}
+            </Button>
+          </Can>
+          <Can permission="interview.cancel">
             <Button
               size="sm"
               variant="danger"
@@ -143,8 +167,8 @@ export const InterviewStageQueuePage = (): JSX.Element => {
             >
               {t('interviews.actions.cancelSelected')}
             </Button>
-          </BulkActionBar>
-        </Can>
+          </Can>
+        </BulkActionBar>
 
         <DataTable
           selection={selection}

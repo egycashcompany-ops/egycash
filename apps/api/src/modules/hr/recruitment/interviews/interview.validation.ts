@@ -1,6 +1,7 @@
 // Zod schemas re-exported from packages/contracts (shared with the frontend), plus
 // route-local param schemas. The module validates every boundary (ADR-007).
 export {
+  SetPlacementRecommendationSchema,
   ScheduleInterviewSchema,
   RescheduleInterviewSchema,
   ReassignInterviewPanelSchema,

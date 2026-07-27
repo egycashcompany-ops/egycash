@@ -1,0 +1,131 @@
+// The Employees Ready queue (A6/RW15) — candidates who ACCEPTED an offer and have not been
+// converted into an Employee yet. It is read from a fact on the offer (`accepted` with no
+// `hiredEmployeeId`) rather than from the absence of an Employee row, which is why the stage
+// counter and this page can never disagree.
+//
+// Hiring copies the terms from the offer's immutable accepted snapshot, so this page only has to
+// get HR to the right offer.
+import { useMemo } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { type JobOfferDto, type Locale } from '@ecms/contracts';
+import { useT } from '../../../../../platform/localization/useT';
+import { useAppSelector } from '../../../../../store';
+import { Can } from '../../../../../platform/rbac/Can';
+import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
+import { DataTable, type Column } from '../../../../../shared/ui/DataTable';
+import { Pagination } from '../../../../../shared/ui/Pagination';
+import { Button } from '../../../../../shared/ui/Button';
+import { formatDate } from '../../../../../shared/lib/format';
+import { useJobOffers } from '../../../recruitment/job-offers/api/job-offer-queries';
+
+const DEFAULT_PAGE_SIZE = 25;
+
+export const EmployeesReadyPage = (): JSX.Element => {
+  const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  const navigate = useNavigate();
+  const [sp, setSp] = useSearchParams();
+
+  const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
+  const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
+
+  const patch = (updates: Record<string, string | null>): void => {
+    const next = new URLSearchParams(sp);
+    for (const [key, val] of Object.entries(updates)) {
+      if (val === null || val === '') next.delete(key);
+      else next.set(key, val);
+    }
+    setSp(next);
+  };
+
+  const params = useMemo(
+    () => ({ page, pageSize, status: 'accepted', sortBy: 'respondedAt', sortDir: 'desc' as const }),
+    [page, pageSize],
+  );
+  const { data, isLoading, isError, error, refetch } = useJobOffers(params);
+  // An offer that already produced an Employee has left this queue.
+  const rows = (data?.items ?? []).filter((o) => o.hiredEmployeeId === null);
+
+  const columns: Column<JobOfferDto>[] = [
+    {
+      key: 'applicant',
+      header: t('employees.ready.columns.applicant'),
+      render: (o) => (
+        <span>
+          {o.applicantName}{' '}
+          <span className="font-mono text-xs text-slate-500" dir="ltr">
+            {o.applicantCode}
+          </span>
+        </span>
+      ),
+    },
+    {
+      key: 'offer',
+      header: t('employees.ready.columns.offer'),
+      render: (o) => (
+        <span className="font-mono text-xs" dir="ltr">
+          {o.code ?? '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'acceptedAt',
+      header: t('employees.ready.columns.acceptedAt'),
+      render: (o) => (o.respondedAt === null ? '—' : formatDate(o.respondedAt, locale)),
+    },
+    {
+      key: 'startDate',
+      header: t('employees.ready.columns.startDate'),
+      render: (o) =>
+        o.acceptedSnapshot === null ? '—' : formatDate(o.acceptedSnapshot.terms.startDate, locale),
+    },
+    {
+      key: 'actions',
+      header: '',
+      align: 'end',
+      render: (o) => (
+        <Can permission="employee.create">
+          <Button
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              navigate(`/employees/new?offerId=${o.id}`);
+            }}
+          >
+            {t('employees.ready.hire')}
+          </Button>
+        </Can>
+      ),
+    },
+  ];
+
+  return (
+    <PageContainer>
+      <PageHeader
+        title={t('employees.ready.title')}
+        description={t('employees.ready.subtitle')}
+        breadcrumbs={[{ label: t('employees.title'), to: '/employees' }, { label: t('employees.ready.title') }]}
+      />
+
+      <div className="space-y-4">
+        <DataTable
+          columns={columns}
+          rows={rows}
+          rowKey={(o) => o.id}
+          loading={isLoading}
+          error={isError ? error : undefined}
+          onRetry={() => void refetch()}
+          empty={t('employees.ready.empty')}
+          onRowClick={(o) => navigate(`/job-offers/${o.id}`)}
+        />
+        {data !== undefined && data.meta.totalItems > 0 && (
+          <Pagination
+            meta={data.meta}
+            onPageChange={(p) => patch({ page: String(p) })}
+            onPageSizeChange={(size) => patch({ size: String(size), page: null })}
+          />
+        )}
+      </div>
+    </PageContainer>
+  );
+};

@@ -2,6 +2,7 @@
 // infrastructure) rather than importing infrastructure directly.
 import { type Request, type Response } from 'express';
 import {
+  type ReassignPlacement,
   type BulkApplicants,
   type ConfirmApplicantIdentity,
   type CreateApplicantSource,
@@ -97,6 +98,14 @@ export const moveApplicantToOffer = async (req: Request, res: Response): Promise
   const ctx = authContext(req);
   const { body, params } = validated<MoveApplicantToOffer, never, IdParam>(req);
   const doc = await applicantService.moveToOffer(ctx, params.id, body, scopeSelector(ctx, 'applicant.moveToOffer'));
+  ok(res, toApplicantDto(doc));
+};
+
+/** RW2 — reassign Position and/or Branch on a live candidate (audited, reason mandatory). */
+export const reassignApplicant = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<ReassignPlacement, never, IdParam>(req);
+  const doc = await applicantService.reassign(ctx, params.id, body, scopeSelector(ctx, 'applicant.reassign'));
   ok(res, toApplicantDto(doc));
 };
 

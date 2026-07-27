@@ -27,6 +27,7 @@ import { buildHolidaysRouter, buildWorkCalendarRouter, registerHrWorkCalendarSet
 import { registerHrIdentitySeams } from './employee-management/employees/identity-seams';
 import { registerRecruitmentWorkflowConsumers } from './recruitment/workflow';
 import { registerQueueMaterializer } from './recruitment/materializer';
+import { registerPlacementReassignment } from './recruitment/placement';
 import { buildLeaveTypesRouter } from './leave-management/leave-types';
 import { buildLeaveBalancesRouter, leaveBalanceService } from './leave-management/leave-balances';
 import {
@@ -51,6 +52,8 @@ registerHrIdentitySeams();
 // workflow events; the engine itself performs no side effects.
 registerRecruitmentWorkflowConsumers();
 registerQueueMaterializer();
+// RW2 — reassignment spans every stage, so it registers itself through the Applicants seam.
+registerPlacementReassignment();
 
 const applicantPermissions = declarePermissions(
   'hr',
@@ -63,6 +66,12 @@ const applicantPermissions = declarePermissions(
     { action: 'moveToOffer', name: { en: 'Move applicant to job offer', ar: 'نقل المتقدم لمرحلة عرض العمل' } },
     // RW13 — send a candidate back to an earlier stage. Nothing is deleted; forward records are
     // superseded and the target re-opens on a new attempt.
+    // RW2 — Position/Branch stay editable until the offer is accepted, but only through this
+    // explicit grant: an `applicant.edit` holder can correct data, not move a candidate.
+    {
+      action: 'reassign',
+      name: { en: 'Reassign applicant position or branch', ar: 'إعادة تعيين وظيفة أو فرع المتقدم' },
+    },
     {
       action: 'returnToStage',
       name: { en: 'Return applicant to an earlier stage', ar: 'إعادة المتقدم لمرحلة سابقة' },

@@ -10,6 +10,7 @@ import { AppShell } from '../../../platform/layout/AppShell';
 import { EmployeesListPage } from './employees/pages/EmployeesListPage';
 import { EmployeeProfilePage } from './employees/pages/EmployeeProfilePage';
 import { EmployeeCreatePage } from './employees/pages/EmployeeCreatePage';
+import { EmployeesReadyPage } from './employees/pages/EmployeesReadyPage';
 import { DirectRegisterPage } from './employees/pages/DirectRegisterPage';
 
 export default function EmployeeManagementRoutes(): JSX.Element {
@@ -29,6 +30,15 @@ export default function EmployeeManagementRoutes(): JSX.Element {
             element={
               <RequirePermission permission="employee.create">
                 <EmployeeCreatePage />
+              </RequirePermission>
+            }
+          />
+          {/* A6/RW15 — accepted offers not yet converted into an Employee. */}
+          <Route
+            path="ready"
+            element={
+              <RequirePermission permission="employee.create">
+                <EmployeesReadyPage />
               </RequirePermission>
             }
           />

@@ -7,6 +7,7 @@ import { authenticate } from '../../../../platform/auth';
 import { authorize } from '../../../../platform/rbac';
 import {
   bulkInterviews,
+  setInterviewRecommendation,
   bulkScheduleInterviews,
   bulkStartInterviews,
   cancelInterview,
@@ -28,6 +29,7 @@ import {
 } from './interview.controller';
 import {
   BulkInterviewsSchema,
+  SetPlacementRecommendationSchema,
   BulkScheduleInterviewsSchema,
   BulkStartInterviewsSchema,
   CancelInterviewSchema,
@@ -72,6 +74,14 @@ export const buildInterviewsRouter = (): Router => {
     authorize('interview.create'),
     validate({ body: ScheduleInterviewSchema }),
     asyncHandler(scheduleInterview),
+  );
+  // RW5 — advisory placement recommendation from the panel.
+  router.patch(
+    '/:id/recommendation',
+    authenticate,
+    authorize('interview.evaluate'),
+    validate({ body: SetPlacementRecommendationSchema, params: InterviewIdParamSchema }),
+    asyncHandler(setInterviewRecommendation),
   );
   // START NOW (RW12/A3): the round opens `inProgress` on the caller's own clock.
   router.post(

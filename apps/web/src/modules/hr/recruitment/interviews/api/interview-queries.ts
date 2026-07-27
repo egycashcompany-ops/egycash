@@ -4,6 +4,7 @@
 // and name resolution reuse the platform Users endpoint.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  type BulkStartInterviews,
   type CancelInterview,
   type CreateInterviewStage,
   type DecideInterview,
@@ -205,6 +206,13 @@ export const useRedecideInterview = (id: string) => {
 };
 
 /** Bulk cancel / pass / fail the selection (RW17). */
+/** RW12 — bulk "Start now" over a stage's waiting queue. */
+export const useBulkStartInterviews = (onApplied?: () => void) =>
+  useBulkMutation<BulkStartInterviews>((body) => api.bulkStartInterviews(body), {
+    invalidate: invalidateRecruitment,
+    ...(onApplied === undefined ? {} : { onApplied }),
+  });
+
 export const useBulkInterviews = (onApplied?: () => void) =>
   useBulkMutation<BulkInterviews>((body) => api.bulkInterviews(body), {
     invalidate: invalidateRecruitment,

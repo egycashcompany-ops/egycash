@@ -2,6 +2,7 @@
 // infrastructure) rather than importing infrastructure directly.
 import { type Request, type Response } from 'express';
 import {
+  type SetPlacementRecommendation,
   type BulkInterviews,
   type BulkScheduleInterviews,
   type BulkStartInterviews,
@@ -143,6 +144,14 @@ export const startScheduledInterview = async (req: Request, res: Response): Prom
 };
 
 // ── Bulk (RW17/I4) ───────────────────────────────────────────────────────────
+
+/** RW5 — the panel's advisory placement recommendation; never moves the candidate by itself. */
+export const setInterviewRecommendation = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<SetPlacementRecommendation, never, IdParam>(req);
+  const doc = await interviewService.setRecommendation(ctx, params.id, body, scopeSelector(ctx, 'interview.evaluate'));
+  ok(res, toInterviewDto(doc));
+};
 
 export const bulkInterviews = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);

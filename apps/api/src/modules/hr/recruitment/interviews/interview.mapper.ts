@@ -5,6 +5,12 @@ import {
   type InterviewDto,
   type InterviewStageDto,
 } from '@ecms/contracts';
+import {
+  attemptMarkerDto,
+  placementDto,
+  placementDtoOrNull,
+  placementLabelDto,
+} from '../workflow/stage-mapper';
 import { type InterviewDoc } from './interview.model';
 import { type InterviewStageDoc } from './interview-stage.model';
 
@@ -24,11 +30,21 @@ export const toInterviewDto = (doc: InterviewDoc): InterviewDto => ({
   applicantName: doc.applicantName ?? '',
   branchId: doc.branchId === null ? null : String(doc.branchId),
   stageId: String(doc.stageId),
+  stageKey: doc.stageKey ?? '',
   stageOrder: doc.stageOrder,
   stageName: doc.stageName,
   status: doc.status,
   outcome: doc.outcome,
-  scheduledAt: doc.scheduledAt.toISOString(),
+  // Legacy tolerance: `.lean()` reads skip schema defaults, so fields added by the workflow
+  // refactor may be absent on documents written before it — normalize `undefined` too.
+  scheduledAt: doc.scheduledAt == null ? null : doc.scheduledAt.toISOString(),
+  startedAt: doc.startedAt == null ? null : doc.startedAt.toISOString(),
+  startedBy: doc.startedBy == null ? null : String(doc.startedBy),
+  placement: placementDto(doc.placementSnapshot),
+  placementLabel: placementLabelDto(doc.placementSnapshotLabel),
+  recommendedPlacement: placementDtoOrNull(doc.recommendedPlacement),
+  recommendationNote: doc.recommendationNote ?? null,
+  ...attemptMarkerDto(doc),
   panel: doc.panel.map((p) => ({
     interviewerId: String(p.interviewerId),
     state: p.state,

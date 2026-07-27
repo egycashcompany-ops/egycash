@@ -49,6 +49,8 @@ export const JobOfferDetailPage = (): JSX.Element => {
     );
   }
 
+  // A `waiting` offer has no number and no package yet (I11).
+  const code = o.code ?? t('offers.detail.notDrafted');
   const isDraft = o.status === 'draft';
   const isSent = o.status === 'sent';
   const canRevise = isDraft || isSent;
@@ -56,11 +58,11 @@ export const JobOfferDetailPage = (): JSX.Element => {
   return (
     <PageContainer>
       <PageHeader
-        title={t('offers.detail.title', { code: o.code })}
+        title={t('offers.detail.title', { code })}
         breadcrumbs={[
           { label: t('recruitment.title'), to: '/' },
           { label: t('recruitment.nav.offers'), to: '/job-offers' },
-          { label: o.code },
+          { label: code },
         ]}
         actions={
           <div className="flex flex-wrap items-center gap-2">
@@ -108,7 +110,13 @@ export const JobOfferDetailPage = (): JSX.Element => {
           <Card>
             <CardHeader title={t('offers.form.package')} />
             <CardBody>
-              <TermsView terms={o.terms} />
+              {o.terms === null ? (
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  {t('offers.detail.notDraftedHint')}
+                </p>
+              ) : (
+                <TermsView terms={o.terms} />
+              )}
             </CardBody>
           </Card>
 

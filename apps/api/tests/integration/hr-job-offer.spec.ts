@@ -309,12 +309,11 @@ describe('job offers — draft, revise, one-active invariant', () => {
     const applicant = await offerReadyApplicant();
     const dto = await draftFor(applicant);
     expect(dto.status).toBe('draft');
-    expect(dto.active).toBe(true);
     expect(dto.revisionNumber).toBe(1);
     expect(dto.code).toMatch(/^JO-\d{4}-\d{6}$/);
     expect(dto.acceptedSnapshot).toBeNull();
-    expect(dto.terms.salary).toEqual({ amount: 15000, currency: 'EGP' });
-    expect(dto.terms.benefits).toEqual(['medical insurance']);
+    expect(dto.terms?.salary).toEqual({ amount: 15000, currency: 'EGP' });
+    expect(dto.terms?.benefits).toEqual(['medical insurance']);
   });
 
   it('prevents a second active offer for the same applicant', async () => {
@@ -334,7 +333,7 @@ describe('job offers — draft, revise, one-active invariant', () => {
     expect(revised.status).toBe(200);
     const dto = revised.body.data as JobOfferDto;
     expect(dto.revisionNumber).toBe(2);
-    expect(dto.terms.salary?.amount).toBe(18000);
+    expect(dto.terms?.salary?.amount).toBe(18000);
     expect(dto.revisions).toHaveLength(1);
     expect(dto.revisions[0]?.terms.salary?.amount).toBe(15000);
   });
@@ -373,7 +372,7 @@ describe('job offers — accept / reject / withdraw', () => {
       .send({ note: 'delighted to join', version: sent.version });
     expect(accepted.status).toBe(200);
     expect((accepted.body.data as JobOfferDto).status).toBe('accepted');
-    expect((accepted.body.data as JobOfferDto).active).toBe(false);
+    expect((accepted.body.data as JobOfferDto).status).not.toBe('draft');
 
     // The gate Stage 5 will consult: the applicant now has an accepted offer.
     const gate = await jobOfferService.acceptedOfferFor(applicant.id);
@@ -485,6 +484,6 @@ describe('job offers — automatic expiration', () => {
 
     const after = await request(app).get(`/api/v1/hr/job-offers/${sent.id}`).set('Authorization', `Bearer ${adminToken}`);
     expect((after.body.data as JobOfferDto).status).toBe('expired');
-    expect((after.body.data as JobOfferDto).active).toBe(false);
+    expect((after.body.data as JobOfferDto).status).not.toBe('draft');
   });
 });

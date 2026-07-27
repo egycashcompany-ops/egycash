@@ -41,6 +41,9 @@ const buildTerms = (t: OfferTermsInput): OfferTerms => ({
   jobTitleId: new Types.ObjectId(t.jobTitleId),
   departmentId: new Types.ObjectId(t.departmentId),
   branchId: new Types.ObjectId(t.branchId),
+  jobPositionId:
+    t.jobPositionId === null || t.jobPositionId === undefined ? null : new Types.ObjectId(t.jobPositionId),
+  sectionId: t.sectionId === null || t.sectionId === undefined ? null : new Types.ObjectId(t.sectionId),
   managerId: t.managerId === null || t.managerId === undefined ? null : new Types.ObjectId(t.managerId),
   employmentType: t.employmentType,
   salary: t.salary === null || t.salary === undefined ? null : { amount: t.salary.amount, currency: t.salary.currency },
@@ -56,10 +59,10 @@ class JobOfferService {
   /** Fire-and-forget lifecycle notification to the hiring manager + the offer's author. */
   private async notifyOffer(doc: JobOfferDoc, template: string, includeValidity: boolean): Promise<void> {
     const recipients = new Set<string>();
-    if (doc.terms.managerId !== null) recipients.add(String(doc.terms.managerId));
+    if (doc.terms !== null && doc.terms.managerId !== null) recipients.add(String(doc.terms.managerId));
     if (doc.createdBy !== null && doc.createdBy !== undefined) recipients.add(String(doc.createdBy));
     const data: Record<string, string> = { applicantCode: doc.applicantCode };
-    if (includeValidity) data.when = doc.terms.validUntil.toISOString();
+    if (includeValidity && doc.terms !== null) data.when = doc.terms.validUntil.toISOString();
     await notificationsService
       .notify({
         template,
@@ -129,7 +132,6 @@ class JobOfferService {
         applicantName: applicant.fullNameAr,
         branchId: terms.branchId,
         status: 'draft',
-        active: true,
         terms,
         revisionNumber: 1,
         revisions: [],
@@ -171,7 +173,6 @@ class JobOfferService {
       status: query.status,
       applicantId: query.applicantId,
       branchId: query.branchId,
-      active: query.active,
       search: query.search,
     };
   }
@@ -205,7 +206,16 @@ class JobOfferService {
     const terms = buildTerms(input.terms);
     const revisions = [
       ...before.revisions,
-      { revisionNumber: before.revisionNumber, terms: before.terms, revisedBy: new Types.ObjectId(ctx.userId), revisedAt: new Date() },
+      ...(before.terms === null
+        ? []
+        : [
+            {
+              revisionNumber: before.revisionNumber,
+              terms: before.terms,
+              revisedBy: new Types.ObjectId(ctx.userId),
+              revisedAt: new Date(),
+            },
+          ]),
     ];
     const set: Partial<JobOfferDoc> = {
       terms,
@@ -237,6 +247,9 @@ class JobOfferService {
     const before = await jobOfferRepository.getById(id, scope);
     if (before.status !== 'draft') {
       throw new BusinessRuleError('only a draft offer can be sent');
+    }
+    if (before.terms === null) {
+      throw new BusinessRuleError('the offer has no terms yet — draft it before sending');
     }
     if (before.terms.validUntil.getTime() <= Date.now()) {
       throw new BusinessRuleError('offer validity must be in the future to send');
@@ -357,7 +370,7 @@ class JobOfferService {
     if (offer.status !== 'sent') {
       throw new BusinessRuleError('only a sent offer can be accepted or rejected');
     }
-    if (offer.terms.validUntil.getTime() <= Date.now()) {
+    if (offer.terms !== null && offer.terms.validUntil.getTime() <= Date.now()) {
       throw new BusinessRuleError('offer has expired');
     }
   }

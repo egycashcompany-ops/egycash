@@ -16,6 +16,12 @@ import {
   type LocalizedString,
 } from '@ecms/contracts';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../../shared/base/base.model';
+import {
+  placementSchema,
+  stageFields,
+  type StageDocFields,
+  type StagePlacement,
+} from '../workflow/stage-fields';
 
 /** One panel member and their evaluation. Evaluation fields are set only when `submitted`. */
 export interface InterviewPanelist {
@@ -27,7 +33,7 @@ export interface InterviewPanelist {
   submittedAt: Date | null;
 }
 
-export interface InterviewDoc extends BaseDocFields {
+export interface InterviewDoc extends BaseDocFields, StageDocFields {
   applicantId: Types.ObjectId;
   applicantCode: string;
   applicantName: string;
@@ -37,7 +43,14 @@ export interface InterviewDoc extends BaseDocFields {
   stageName: LocalizedString;
   status: InterviewStatus;
   outcome: InterviewOutcome;
-  scheduledAt: Date;
+  /** null while `waiting` — a round that has not been scheduled yet has no date (I11). */
+  scheduledAt: Date | null;
+  startedAt: Date | null;
+  startedBy: Types.ObjectId | null;
+  /** Advisory placement this round recommends (RW5); never moves the candidate by itself. */
+  recommendedPlacement: StagePlacement | null;
+  recommendationNote: string | null;
+  stageKey: string;
   panel: InterviewPanelist[];
   location: string | null;
   notes: string | null;
@@ -61,9 +74,14 @@ const interviewSchema = new Schema<InterviewDoc>(
     stageId: { type: Schema.Types.ObjectId, required: true },
     stageOrder: { type: Number, required: true },
     stageName: { ar: { type: String, required: true }, en: { type: String, required: true } },
-    status: { type: String, enum: INTERVIEW_STATUSES, required: true, default: 'scheduled' },
+    status: { type: String, enum: INTERVIEW_STATUSES, required: true, default: 'waiting' },
     outcome: { type: String, enum: INTERVIEW_OUTCOMES, required: true, default: 'pending' },
-    scheduledAt: { type: Date, required: true },
+    scheduledAt: { type: Date, default: null },
+    startedAt: { type: Date, default: null },
+    startedBy: { type: Schema.Types.ObjectId, default: null },
+    recommendedPlacement: { type: placementSchema, default: null },
+    recommendationNote: { type: String, default: null },
+    stageKey: { type: String, required: true, default: '' },
     panel: {
       type: [
         new Schema<InterviewPanelist>(
@@ -90,12 +108,24 @@ const interviewSchema = new Schema<InterviewDoc>(
     cancelledReason: { type: String, default: null },
     cancelledBy: { type: Schema.Types.ObjectId, default: null },
     cancelledAt: { type: Date, default: null },
+    ...stageFields,
     ...baseFields,
   },
   baseSchemaOptions,
 );
 
+// I12 — one ACTIVE record per (applicant, stage, attempt).
+interviewSchema.index(
+  { applicantId: 1, stageId: 1, attempt: 1 },
+  {
+    unique: true,
+    name: 'ux_interview_applicant_stage_attempt',
+    partialFilterExpression: { supersededAt: null, isDeleted: false },
+  },
+);
 interviewSchema.index({ applicantId: 1, stageOrder: 1 }, { name: 'ix_applicant_stage' });
+// Per-stage queues + the counters aggregation.
+interviewSchema.index({ stageId: 1, status: 1 }, { name: 'ix_stage_status' });
 interviewSchema.index({ status: 1, scheduledAt: 1 }, { name: 'ix_status_scheduledAt' });
 interviewSchema.index({ branchId: 1, status: 1 }, { name: 'ix_branchId_status' });
 interviewSchema.index({ 'panel.interviewerId': 1, status: 1 }, { name: 'ix_interviewer_status' });

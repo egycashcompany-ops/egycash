@@ -61,7 +61,7 @@ class InterviewService {
       applicantCode: doc.applicantCode,
       round: String(doc.stageOrder),
     };
-    if (includeWhen) data.when = doc.scheduledAt.toISOString();
+    if (includeWhen && doc.scheduledAt !== null) data.when = doc.scheduledAt.toISOString();
     await notificationsService
       .notify({ template, to: { userIds }, data, entityRef: entityRef(String(doc._id)) })
       .catch(() => undefined);
@@ -234,7 +234,13 @@ class InterviewService {
     await auditService.record({
       entityRef: entityRef(id),
       action: 'update',
-      changes: [{ field: 'scheduledAt', old: before.scheduledAt.toISOString(), new: input.scheduledAt.toISOString() }],
+      changes: [
+        {
+          field: 'scheduledAt',
+          old: before.scheduledAt === null ? null : before.scheduledAt.toISOString(),
+          new: input.scheduledAt.toISOString(),
+        },
+      ],
     });
     await emit(HrInterviewEvents.InterviewRescheduled, {
       interviewId: id,

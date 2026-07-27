@@ -10,7 +10,7 @@ const baseDoc = (over: Partial<ScreeningDoc>): ScreeningDoc =>
     applicantCode: 'APP-2026-000001',
     applicantName: 'أحمد محمد',
     branchId: null,
-    status: 'pending',
+    status: 'waiting',
     notes: [],
     decisionReason: null,
     decidedBy: null,
@@ -26,11 +26,11 @@ describe('toScreeningDto', () => {
     const author = new Types.ObjectId();
     const dto = toScreeningDto(
       baseDoc({
-        status: 'pending',
+        status: 'waiting',
         notes: [{ text: 'needs more info', by: author, at: new Date('2026-07-02T00:00:00.000Z') }],
       }),
     );
-    expect(dto.status).toBe('pending');
+    expect(dto.status).toBe('waiting');
     expect(dto.decision).toBeNull();
     expect(dto.notes).toEqual([
       { text: 'needs more info', by: String(author), at: '2026-07-02T00:00:00.000Z' },

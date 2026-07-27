@@ -63,7 +63,7 @@ class EvaluationService {
           phaseKey: phase.key,
           phaseName: phase.name,
           phaseOrder: phase.order,
-          status: 'pending',
+          status: 'waiting',
           reason: null,
           files: [],
           decidedBy: null,

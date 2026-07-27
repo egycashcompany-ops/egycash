@@ -7,6 +7,11 @@
 // Employee Creation", enforced by that later stage against this aggregate.
 import { z } from 'zod';
 import { objectId, PaginationQuerySchema } from '../common/index.js';
+import {
+  type AttemptMarkerDto,
+  type PlacementDto,
+  type PlacementLabelDto,
+} from './hr-recruitment-workflow.js';
 
 // ── Closed vocabularies ─────────────────────────────────────────────────────
 
@@ -227,7 +232,7 @@ export interface OfferAcceptedSnapshotDto {
   acceptedAt: string;
 }
 
-export interface JobOfferDto {
+export interface JobOfferDto extends AttemptMarkerDto {
   id: string;
   /**
    * Immutable, unique offer number `JO-2026-000001`, allocated when the record leaves `waiting`
@@ -240,6 +245,9 @@ export interface JobOfferDto {
   applicantName: string;
   branchId: string | null;
   status: OfferStatus;
+  /** The placement in force when the offer record was materialized; immutable (RW4). */
+  placement: PlacementDto;
+  placementLabel: PlacementLabelDto;
   /**
    * The compensation package. null while `waiting` — the record is materialized when HR moves the
    * candidate to this stage, before anything has been drafted (I11). Completeness is enforced at

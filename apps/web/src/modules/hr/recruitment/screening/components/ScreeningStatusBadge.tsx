@@ -4,7 +4,7 @@ import { StatusBadge, type Tone } from '../../../../../shared/ui/Badge';
 import { useT } from '../../../../../platform/localization/useT';
 
 const TONE: Record<ScreeningStatus, Tone> = {
-  pending: 'warning',
+  waiting: 'warning',
   accepted: 'success',
   rejected: 'danger',
 };

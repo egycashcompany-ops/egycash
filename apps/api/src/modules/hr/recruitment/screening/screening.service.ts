@@ -1,5 +1,5 @@
 // Initial Screening lifecycle (Sprint 4.2, Stage 2). An applicant registered in Stage 1 is
-// screened to a single terminal outcome — Accepted or Rejected (OQ-32). While `pending`,
+// screened to a single terminal outcome — Accepted or Rejected (OQ-32). While `waiting`,
 // recruiters accumulate notes (the "needs more information" flow — not a separate state).
 // A rejection transitions the applicant to the terminal `rejected` status; an acceptance
 // leaves the applicant live for the later interview stage (not built this sprint).
@@ -49,7 +49,7 @@ class ScreeningService {
         applicantCode: applicant.code,
         applicantName: applicant.fullNameAr,
         branchId: applicant.branchId,
-        status: 'pending',
+        status: 'waiting',
         notes,
         decisionReason: null,
         decidedBy: null,
@@ -136,7 +136,7 @@ class ScreeningService {
       }));
   }
 
-  /** Append a note while `pending` (OQ-32 "needs more information"). */
+  /** Append a note while `waiting` (OQ-32 "needs more information"). */
   async addNote(
     ctx: AuthContext,
     id: string,
@@ -144,7 +144,7 @@ class ScreeningService {
     scope: ScopeSelector,
   ): Promise<ScreeningDoc> {
     const before = await screeningRepository.getById(id, scope);
-    if (before.status !== 'pending') {
+    if (before.status !== 'waiting') {
       throw new BusinessRuleError('cannot add a note to a screening that is already decided');
     }
     const note: ScreeningNote = { text: input.note, by: new Types.ObjectId(ctx.userId), at: new Date() };
@@ -172,7 +172,7 @@ class ScreeningService {
     scope: ScopeSelector,
   ): Promise<ScreeningDoc> {
     const before = await screeningRepository.getById(id, scope);
-    if (before.status !== 'pending') {
+    if (before.status !== 'waiting') {
       throw new BusinessRuleError('screening has already been decided');
     }
     const reason = input.reason ?? null;
@@ -218,7 +218,7 @@ class ScreeningService {
     scope: ScopeSelector,
   ): Promise<ScreeningDoc> {
     const before = await screeningRepository.getById(id, scope);
-    if (before.status === 'pending') {
+    if (before.status === 'waiting') {
       throw new BusinessRuleError('screening has not been decided yet');
     }
     if (before.status === input.outcome) {

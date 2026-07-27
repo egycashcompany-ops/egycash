@@ -178,7 +178,7 @@ const en: Record<string, string> = {
   'evaluations.list.subtitle': 'Post-interview approval checks — Security, Medical, Driving.',
   'evaluations.actions.open': 'Open evaluation',
   'evaluations.filters.allStatuses': 'All statuses',
-  'evaluations.status.pending': 'Pending',
+  'evaluations.status.waiting': 'Waiting',
   'evaluations.status.approved': 'Approved',
   'evaluations.status.rejected': 'Rejected',
   'evaluations.columns.applicant': 'Application №',
@@ -258,6 +258,7 @@ const en: Record<string, string> = {
 
   // Applicants — enums
   'applicants.status.new': 'Active',
+  'applicants.status.hired': 'Hired',
   'applicants.status.rejected': 'Rejected',
   'applicants.status.withdrawn': 'Withdrawn',
   'applicants.channel.internal': 'Internal',
@@ -471,7 +472,7 @@ const en: Record<string, string> = {
   'applicants.detail.duplicateFlagged': 'Possible duplicate',
 
   // Screening
-  'screening.status.pending': 'Pending',
+  'screening.status.waiting': 'Waiting',
   'screening.status.accepted': 'Accepted',
   'screening.status.rejected': 'Rejected',
   'screening.queue.subtitle': 'Review applicants and decide accept or reject.',
@@ -658,7 +659,9 @@ const en: Record<string, string> = {
   'interviews.detail.rescheduled': 'Rescheduled',
 
   // Job Offers (Stage 4)
+  'offers.status.waiting': 'Waiting',
   'offers.status.draft': 'Draft',
+  'offers.status.superseded': 'Superseded',
   'offers.status.sent': 'Sent',
   'offers.status.accepted': 'Accepted',
   'offers.status.rejected': 'Rejected',
@@ -863,6 +866,8 @@ const en: Record<string, string> = {
   'offers.form.validUntilAfterStart': 'The validity date must be after the start date.',
   'offers.terms.months': '{{n}} months',
   'offers.detail.title': 'Offer — {{code}}',
+  'offers.detail.notDrafted': 'Not drafted yet',
+  'offers.detail.notDraftedHint': 'This candidate is queued for an offer. Use New Offer to draft the package.',
   'offers.detail.revision': 'rev. {{n}}',
   'offers.detail.revisionN': 'Revision {{n}}',
   'offers.detail.summary': 'Summary',
@@ -1842,7 +1847,7 @@ const ar: Record<string, string> = {
   'evaluations.list.subtitle': 'فحوص الاعتماد بعد المقابلات — الأمني، الطبي، القيادة.',
   'evaluations.actions.open': 'فتح تقييم',
   'evaluations.filters.allStatuses': 'كل الحالات',
-  'evaluations.status.pending': 'قيد المراجعة',
+  'evaluations.status.waiting': 'في الانتظار',
   'evaluations.status.approved': 'مقبول',
   'evaluations.status.rejected': 'مرفوض',
   'evaluations.columns.applicant': 'رقم الطلب',
@@ -1922,6 +1927,7 @@ const ar: Record<string, string> = {
 
   // Applicants — enums
   'applicants.status.new': 'نشط',
+  'applicants.status.hired': 'تم التعيين',
   'applicants.status.rejected': 'مرفوض',
   'applicants.status.withdrawn': 'منسحب',
   'applicants.channel.internal': 'داخلي',
@@ -2135,7 +2141,7 @@ const ar: Record<string, string> = {
   'applicants.detail.duplicateFlagged': 'احتمال تكرار',
 
   // Screening
-  'screening.status.pending': 'قيد المراجعة',
+  'screening.status.waiting': 'في الانتظار',
   'screening.status.accepted': 'مقبول',
   'screening.status.rejected': 'مرفوض',
   'screening.queue.subtitle': 'راجع المتقدِّمين واتخذ قرار القبول أو الرفض.',
@@ -2322,7 +2328,9 @@ const ar: Record<string, string> = {
   'interviews.detail.rescheduled': 'أُعيد جدولتها',
 
   // Job Offers (Stage 4)
+  'offers.status.waiting': 'في الانتظار',
   'offers.status.draft': 'مسودة',
+  'offers.status.superseded': 'ملغى بالرجوع لمرحلة سابقة',
   'offers.status.sent': 'مُرسَل',
   'offers.status.accepted': 'مقبول',
   'offers.status.rejected': 'مرفوض',
@@ -2527,6 +2535,8 @@ const ar: Record<string, string> = {
   'offers.form.validUntilAfterStart': 'تاريخ الصلاحية يجب أن يكون بعد تاريخ المباشرة.',
   'offers.terms.months': '{{n}} أشهر',
   'offers.detail.title': 'عرض — {{code}}',
+  'offers.detail.notDrafted': 'لم يتم إعداده بعد',
+  'offers.detail.notDraftedHint': 'هذا المتقدم في انتظار عرض العمل. استخدم «عرض جديد» لإعداد التفاصيل.',
   'offers.detail.revision': 'مراجعة {{n}}',
   'offers.detail.revisionN': 'المراجعة {{n}}',
   'offers.detail.summary': 'الملخّص',

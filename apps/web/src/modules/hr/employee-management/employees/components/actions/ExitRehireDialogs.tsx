@@ -274,7 +274,7 @@ export const RehireDialog = ({ employee, open, onClose }: DialogProps): JSX.Elem
 
       {mode === 'offer' ? (
         <div className="space-y-2">
-          <OfferPicker onSelect={(o) => setJobOfferId({ id: o.id, code: o.code })} />
+          <OfferPicker onSelect={(o) => setJobOfferId({ id: o.id, code: o.code ?? o.id })} />
           {jobOfferId !== null && (
             <p className="text-sm">
               {t('employees.actions.rehire.pickedOffer')}{' '}

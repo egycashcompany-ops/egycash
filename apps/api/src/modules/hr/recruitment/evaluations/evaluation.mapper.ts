@@ -5,6 +5,12 @@ import {
   type EvaluationFileDto,
   type EvaluationPhaseDto,
 } from '@ecms/contracts';
+import {
+  attemptMarkerDto,
+  placementDto,
+  placementDtoOrNull,
+  placementLabelDto,
+} from '../workflow/stage-mapper';
 import { type EvaluationPhaseDoc } from './evaluation-phase.model';
 import { type EvaluationDecisionEvent, type EvaluationDoc, type EvaluationFile } from './evaluation.model';
 
@@ -22,7 +28,13 @@ export const toEvaluationPhaseDto = (doc: EvaluationPhaseDoc): EvaluationPhaseDt
   name: doc.name,
   order: doc.order,
   active: doc.active,
-  driversOnly: doc.driversOnly,
+  driversOnly: doc.applicability === 'driversOnly' || doc.driversOnly,
+  kind: doc.kind ?? 'individual',
+  applicability: doc.applicability ?? (doc.driversOnly ? 'driversOnly' : 'all'),
+  permissionResource: doc.permissionResource ?? 'evaluation',
+  appointmentEnabled: doc.appointmentEnabled ?? false,
+  requiresResultDocument: doc.requiresResultDocument ?? false,
+  route: `/evaluations/phase/${doc.key}`,
   version: doc.__v,
 });
 
@@ -43,7 +55,16 @@ export const toEvaluationDto = (doc: EvaluationDoc): EvaluationDto => ({
   phaseId: String(doc.phaseId),
   phaseKey: doc.phaseKey,
   phaseName: doc.phaseName,
+  placement: placementDto(doc.placementSnapshot),
+  placementLabel: placementLabelDto(doc.placementSnapshotLabel),
+  recommendedPlacement: placementDtoOrNull(doc.recommendedPlacement),
+  recommendationNote: doc.recommendationNote ?? null,
+  batchId: doc.batchId == null ? null : String(doc.batchId),
+  batchCode: doc.batchCode ?? null,
+  appointmentAt: doc.appointmentAt == null ? null : doc.appointmentAt.toISOString(),
+  ...attemptMarkerDto(doc),
   phaseOrder: doc.phaseOrder,
+  phaseKind: doc.phaseKind ?? 'individual',
   status: doc.status,
   reason: doc.reason,
   files: doc.files.map(fileDto),

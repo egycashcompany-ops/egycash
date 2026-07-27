@@ -309,6 +309,8 @@ export const hrModule: ModuleManifest = {
     'hr_interview_stages',
     'hr_evaluations',
     'hr_evaluation_phases',
+    'hr_recruitment_timeline',
+    'hr_recruitment_events',
     'hr_job_offers',
     'hr_employees',
     'hr_employee_actions',

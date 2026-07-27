@@ -3,6 +3,7 @@
 import { Types, type FilterQuery } from 'mongoose';
 import { type Paginated } from '@ecms/contracts';
 import { BaseRepository } from '../../../../shared/base/base.repository';
+import { assertNotWorkflowManaged } from '../workflow/workflow-guard';
 import { type ScopeSelector } from '../../../../shared/types';
 import { JobOfferModel, type JobOfferDoc } from './job-offer.model';
 
@@ -19,6 +20,20 @@ const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\
 class JobOfferRepository extends BaseRepository<JobOfferDoc> {
   constructor() {
     super(JobOfferModel, { branchField: 'branchId', softDelete: true });
+  }
+
+  /**
+   * I13 — the workflow engine owns `status`, `attempt` and the supersede/placement markers.
+   * A stage service updating its own domain data never touches them; attempting to does not
+   * silently corrupt the pipeline, it throws.
+   */
+  override async updateById(
+    id: string,
+    set: Parameters<BaseRepository<JobOfferDoc>['updateById']>[1],
+    meta: Parameters<BaseRepository<JobOfferDoc>['updateById']>[2],
+  ): Promise<JobOfferDoc> {
+    assertNotWorkflowManaged(set ?? {}, 'jobOffer');
+    return super.updateById(id, set, meta);
   }
 
   /** The applicant's current LIVE (waiting/draft/sent) offer, if any. */

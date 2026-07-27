@@ -3,6 +3,7 @@
 import { Types, type FilterQuery } from 'mongoose';
 import { type Paginated } from '@ecms/contracts';
 import { BaseRepository } from '../../../../shared/base/base.repository';
+import { assertNotWorkflowManaged } from '../workflow/workflow-guard';
 import { type ScopeSelector } from '../../../../shared/types';
 import { InterviewModel, type InterviewDoc } from './interview.model';
 
@@ -23,6 +24,20 @@ const ACTIVE_STATUSES = ['scheduled', 'completed'];
 class InterviewRepository extends BaseRepository<InterviewDoc> {
   constructor() {
     super(InterviewModel, { branchField: 'branchId', softDelete: true });
+  }
+
+  /**
+   * I13 — the workflow engine owns `status`, `attempt` and the supersede/placement markers.
+   * A stage service updating its own domain data never touches them; attempting to does not
+   * silently corrupt the pipeline, it throws.
+   */
+  override async updateById(
+    id: string,
+    set: Parameters<BaseRepository<InterviewDoc>['updateById']>[1],
+    meta: Parameters<BaseRepository<InterviewDoc>['updateById']>[2],
+  ): Promise<InterviewDoc> {
+    assertNotWorkflowManaged(set ?? {}, 'interview');
+    return super.updateById(id, set, meta);
   }
 
   /** A non-cancelled interview for this applicant at the given stage order, if any. */

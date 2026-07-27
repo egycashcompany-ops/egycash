@@ -1,12 +1,32 @@
 # Recruitment Workflow Refactor — Design
 
-> Status: **DRAFT — awaiting review and freeze.** Nothing in this document is implemented.
-> Once the approver freezes it, implementation lands in a **single PR** (§16), exactly as for
-> Leave (`leave-management-design.md`), Auth (`auth-account-lifecycle-design.md`) and Contracts
+> Status: **FROZEN** (Revision 2, 2026-07-27 — reviewed and frozen by the approver).
+> Approved for implementation as a **single PR** (§16), exactly as for Leave
+> (`leave-management-design.md`), Auth (`auth-account-lifecycle-design.md`) and Contracts
 > (`contracts-module-design.md`).
 >
 > Later sections supersede earlier ones wherever they conflict. Amendments after the freeze
 > require a new recorded revision.
+>
+> **Revision 2 — approver decisions.** The three open questions are resolved and eight
+> amendments (A1–A8) are incorporated throughout:
+>
+> | | Resolution |
+> |---|---|
+> | **OQ-1** | Evaluation phases run in real business order: **1 Security Check · 2 Driving Test · 3 Medical Check**. Medical stays last because it is normally the final external approval before hiring (RW6, §15 migration) |
+> | **OQ-2** | Stage navigation is a **client-side provider fed by the counters endpoint**. Stages are dynamic business data and must **not** become Platform Applications (RW16) |
+> | **OQ-3** | Placement editing stops at **Offer Acceptance**; afterwards changes go through the existing revise / withdraw / re-accept flow so the accepted snapshot stays the legal source of truth (RW3) |
+>
+> | Amendment | Incorporated in |
+> |---|---|
+> | **A1** Placement editable Screening → Offer Acceptance; board shows current, history shows snapshots | RW1, RW2, RW4, RW4a |
+> | **A2** One chronological timeline for every movement, permanently auditable | RW14 |
+> | **A3** Interview phases expose Waiting / Scheduled / In Progress / Completed; Start assigns the current user + `startedAt` automatically | RW11, RW12 |
+> | **A4** Each evaluation phase is a full independent page with Waiting / Approved / Rejected + bulk decide with reason | RW6, RW9, RW10 |
+> | **A5** Batches carry PDF list, applicant files, status, sent date, returned date, result files; history permanent; Medical never batched | RW8, RW9 |
+> | **A6** Live counters on every recruitment nav item, one endpoint, permission-aware, incl. **Employees Ready** | RW15, RW16 |
+> | **A7** Multi-select on **every** recruitment table with business-appropriate bulk actions | RW17 |
+> | **A8** Return-to-stage supersedes + re-attempts, never modifies history | RW13 |
 
 ---
 
@@ -148,7 +168,17 @@ One transaction does all of:
 5. if an **active offer** (`draft` / `sent`) exists, drive `jobOfferService.revise` so the offer
    terms follow the placement — a normal, versioned offer revision with its own history entry.
 
-Allowed while the applicant is live (`status === 'new'`) and no accepted offer exists.
+**Editing window (A1).** Placement is *set* at intake (optional) and *editable* from **Screening
+through Offer Acceptance** — screening, every interview phase, every evaluation phase, and while
+an offer is `draft` or `sent`. It requires a live applicant (`status === 'new'`) and no accepted
+offer. On acceptance the window closes (RW3).
+
+| Stage | Reassign allowed |
+|---|---|
+| Intake (before screening) | set on the applicant form (no reason required) |
+| Screening · Interviews · Evaluations | **yes** — `applicant.reassign`, reason mandatory |
+| Job Offer `draft` / `sent` | **yes** — drives an offer revision (step 5 above) |
+| Offer `accepted` → hired | **no** — revise / withdraw → re-accept → hire |
 
 ### RW3 — Hiring always uses the final placement; acceptance freezes it
 
@@ -160,8 +190,9 @@ Allowed while the applicant is live (`status === 'new'`) and no accepted offer e
   path: withdraw or revise the offer, have it re-accepted, then hire. Rationale: the accepted
   snapshot is the contractual artifact the Employee, Contract and Payroll records descend from;
   silently changing the branch under an accepted offer would make the hire disagree with what
-  the candidate accepted. This is the one deliberate narrowing of "editable until hiring", and
-  it is listed as **OQ-3** for the approver.
+  the candidate accepted. **Approved (OQ-3)** — after acceptance every change goes through
+  revise / withdraw → re-accept → hire, so the accepted snapshot always remains the legal
+  source of truth.
 
 ### RW4 — Every stage record snapshots the placement it was created under
 
@@ -180,6 +211,20 @@ position is later renamed or deactivated), written at creation and **never rewri
 Immutable history + a mutable current placement, with the scope field as the only synced value
 (RW2 step 3). "Previous stages are never rewritten" is enforced by the repository: the update
 seam for these records rejects writes to `placementSnapshot`.
+
+### RW4a — Display rule: board shows current, history shows original (A1)
+
+One rule, applied everywhere, so nobody has to guess which placement they are looking at:
+
+| Surface | Placement shown |
+|---|---|
+| Recruitment board, every stage queue, applicant list, counters, search/filters | **CURRENT** placement (`applicant.placement`) |
+| Stage record detail (screening, interview round, evaluation, batch item), offer revision, timeline entry, exports of historical records | that record's **immutable `placementSnapshot`** |
+
+Where a record's snapshot differs from the candidate's current placement, the detail view shows
+both — `Recommended at the time: Cairo · Driver` next to `Current: Giza · Senior Driver` — with a
+link to the timeline entry that moved it. Queue rows therefore always reflect where the candidate
+stands *today*, while history never silently re-labels itself.
 
 ### RW5 — Stage-level recommendations are preserved forever
 
@@ -217,10 +262,34 @@ be opened, run and decided at any time once the applicant has cleared all interv
 The offer gate `hasClearedRequiredEvaluations` is unchanged in meaning: every *applicable* phase
 approved, driver-only phases only when opened for that applicant.
 
-Seeded phases keep their **current keys and order** (Security Check 1, Medical Examination 2,
-Driving Test 3) so no existing data moves; order is now display order only and remains
-admin-editable. Kinds: `securityCheck → batch`, `medicalExam → individual`,
-`drivingTest → batch`. (Phase↔number labelling is **OQ-1**.)
+**Phase order (OQ-1, approved).** The seeded phases run in real business order, with Medical
+last because it is normally the final external approval before hiring:
+
+| # | Phase | `key` | `kind` | Permission resource |
+|---|---|---|---|---|
+| 1 | Security Check | `securityCheck` | `batch` | `securityCheck` |
+| 2 | Driving Test | `drivingTest` | `batch` | `drivingTest` |
+| 3 | Medical Check | `medicalExam` | `individual` | `medicalCheck` |
+
+Keys are unchanged (no data moves); only `order` changes for the two swapped rows — `drivingTest`
+3 → 2 and `medicalExam` 2 → 3 — which the migration performs in three steps because `order` is
+uniquely indexed among active phases (§15). Since phases are now independent, `order` is display
+order only and stays admin-editable.
+
+### RW6a — Each phase is a full independent page (A4)
+
+Every phase page is a complete workspace of its own — own route, queue, filters, actions,
+permissions, export — organised into three buckets:
+
+| Bucket | Contents |
+|---|---|
+| **Waiting** | applicable applicants with no decision yet at this phase (record `pending`, or eligible with no record) — the bucket the navigation counter reports |
+| **Approved** | records `approved` at this phase |
+| **Rejected** | records `rejected` at this phase |
+
+Batch phases add a **Batches** strip above the buckets (open batches with their status);
+Medical never shows one (RW9). Each bucket is a selectable table with the bulk actions of RW10
+and RW17.
 
 ### RW7 — Per-phase permissions
 
@@ -252,7 +321,9 @@ interface EvaluationBatch {
   status: 'draft' | 'issued' | 'closed' | 'cancelled';
   title: string | null;
   scheduledFor: Date | null;          // the phase's "scheduling"
+  sentAt: Date | null;                // A5 — when the batch physically went out
   expectedReturnAt: Date | null;
+  returnedAt: Date | null;            // A5 — when the results came back
   items: BatchItem[];                 // immutable membership once issued
   counts: { total, pending, approved, rejected, voided };   // denormalized for lists
   package: {                          // generated artifacts (RW8b)
@@ -285,6 +356,12 @@ draft ──issue──▶ issued ──(results uploaded, items decided)──�
   │                 └── every item decided ⇒ "ready to close" (HR closes explicitly)
   └──cancel──▶ cancelled          issued ──cancel(reason)──▶ cancelled
 ```
+
+**A5 — what a batch always carries:** the generated **PDF list**, the **attached applicant
+files**, its **status**, its **sent date** (`sentAt`, set on issue or recorded later),
+its **returned date** (`returnedAt`, set on the first results upload), and the **uploaded result
+files** (`returnedDocuments[]` + per-item `resultFileId`). Batches are **never deleted and never
+purged** — the complete batch history stays available permanently, including cancelled ones.
 
 - Creating/issuing a batch **opens the underlying per-applicant evaluation record** for each
   item (existing idempotent `evaluationService.open`), so a batch never becomes a second source
@@ -363,9 +440,19 @@ Routes (chosen so existing deep links keep working):
 | `/interviews/stages` | stage catalog admin (unchanged) |
 | `/interviews/:id` | round detail (**unchanged**; matched after the two literals above) |
 
-Each stage page has its own queue (rounds at that stage in a non-terminal state), its own
-filters (status, outcome, interviewer, branch, date range, placement), its own scheduling and
-start actions, and its own selection + bulk actions.
+Each stage page has its own filters (status, outcome, interviewer, branch, date range,
+placement), its own scheduling and start actions, and its own selection + bulk actions —
+organised into **four buckets (A3)**:
+
+| Bucket | Contents | Primary actions |
+|---|---|---|
+| **Waiting** | applicants eligible for this stage with no round yet (derived: previous stage passed / screening accepted) — the bucket the navigation counter reports | Schedule · **Start now** |
+| **Scheduled** | rounds `scheduled` at this stage | Start · Reschedule · Reassign panel · Cancel |
+| **In Progress** | rounds `inProgress` at this stage | Open form · Submit evaluation · Decide |
+| **Completed** | rounds `completed` (passed/failed) + `cancelled` | View · Re-decide · Start next phase |
+
+The same four buckets are returned by the counters endpoint (RW15), so the tab badges and the
+navigation number never disagree.
 
 ### RW12 — Start Interview
 
@@ -377,6 +464,11 @@ gains `startedAt` / `startedBy`.
 | **Start now** (no round yet) | `POST /hr/interviews/start` `{ applicantId, stageId, location?, notes?, interviewerIds? }` | creates the round with `status: 'inProgress'`, `scheduledAt = now`, `startedAt = now`, `startedBy = ctx.userId`, panel = **the authenticated user** (plus any extras), then the client opens the interview form immediately |
 | **Start** (round already scheduled) | `POST /hr/interviews/:id/start` `{ version }` | `scheduled → inProgress`, records `startedAt/By`; adds the caller to the panel if absent |
 | Schedule | `POST /hr/interviews` | unchanged — scheduling remains available separately |
+
+**A3 — nothing is typed by hand.** Start assigns the **currently authenticated user** as the
+interviewer, stamps `startedAt` with the server clock, and flips the round to **In Progress** in
+one action. Interviewer, start time and status are **server-set and not editable in the form** —
+the interviewer opens the evaluation form and records their assessment, nothing else.
 
 - New permission **`interview.start`**.
 - Entry gates are the existing ones, unchanged: Screening → first stage requires an accepted
@@ -418,8 +510,11 @@ gains `startedAt` / `startedBy`.
 - Target must be strictly *before* the applicant's furthest reached stage.
 - Blocked once an **Employee exists** for the applicant (post-hire changes belong to the
   Employee module's personnel actions), and while the applicant is `withdrawn`.
-- Nothing is ever deleted; superseded records remain visible in the candidate view and the
-  timeline, visibly marked.
+- **Nothing is ever deleted or modified (A8).** Every previous decision, attachment, interview
+  round, evaluation record, batch item and offer keeps every field exactly as it was; the only
+  write to a superseded record is the `supersededAt/By/ByReturnId` marker. The candidate view
+  and the timeline keep showing them, visibly flagged as superseded, with the attempt number and
+  a link to the return event that superseded them — the complete history is always visible.
 - Batch items belonging to a superseded evaluation are voided with the return reason (the batch
   itself and its history are untouched).
 
@@ -454,8 +549,30 @@ interface RecruitmentTimelineEntry {
 `interviewScheduled`, `interviewStarted`, `interviewCompleted`, `interviewCancelled`,
 `evaluationOpened`, `evaluationScheduled`, `evaluationDecided`, `batchAdded`, `batchIssued`,
 `batchResultRecorded`, `offerDrafted`, `offerSent`, `offerRevised`, `offerAccepted`,
-`offerRejected`, `offerWithdrawn`, `offerExpired`, `hired`, `reassigned`, `returnedToStage`,
-`withdrawn`, `rejected`, `restored`, `note`.
+`offerRejected`, `offerWithdrawn`, `offerExpired`, `hired`, **`positionChanged`**,
+**`branchChanged`**, `returnedToStage`, `withdrawn`, `rejected`, `restored`, `note`.
+
+**A2 — every movement, one chronological stream.** A reassignment writes **one entry per changed
+dimension** (`positionChanged` and/or `branchChanged`), sharing a `correlationId` so the UI can
+group them into a single "Reassigned" card while each dimension stays independently queryable.
+Worked examples of what the stream reads like:
+
+| Timeline row | Source |
+|---|---|
+| Screening completed — *accepted* | `screeningDecided`, from `pending` → `accepted` |
+| Position changed — *Driver → Senior Driver* | `positionChanged` (reason mandatory) |
+| Branch changed — *Cairo → Giza* | `branchChanged` (same `correlationId`) |
+| Interview scheduled — *Second Interview, 12 Aug 10:00* | `interviewScheduled` |
+| Interview started — *by Ahmed Samir* | `interviewStarted` (RW12) |
+| Interview finished — *passed* | `interviewCompleted`, `scheduled`/`inProgress` → `completed` |
+| Offer sent — *JO-2026-000123* | `offerSent` |
+| Offer accepted | `offerAccepted` |
+| Security approved | `evaluationDecided`, phase = Security Check → `approved` |
+| Medical rejected — *reason* | `evaluationDecided`, phase = Medical Check → `rejected` |
+
+The collection is **append-only and permanent**: entries are never updated or deleted, the
+collection is excluded from retention purge, and superseded stages (RW13) keep their entries with
+a `superseded` marker rather than losing them.
 
 **Writing.** One helper, `recruitmentTimeline.record(...)`, called by every workflow transition —
 the single writer. Where the operation already runs in `unitOfWork`, the entry is written inside
@@ -489,29 +606,42 @@ idempotent and re-runnable.
 
 ```jsonc
 { "stages": [
-  { "key": "applicants",            "kind": "applicants",  "refId": null, "count": 122 },
-  { "key": "screening",             "kind": "screening",   "refId": null, "count": 34 },
-  { "key": "interview:<stageId>",   "kind": "interview",   "refId": "…", "name": {…}, "count": 18 },
-  { "key": "evaluation:<phaseId>",  "kind": "evaluation",  "refId": "…", "name": {…}, "count": 24 },
-  { "key": "jobOffers",             "kind": "jobOffer",    "refId": null, "count": 9 }
+  { "key": "applicants",           "kind": "applicants", "refId": null, "count": 122,
+    "buckets": { "new": 122 } },
+  { "key": "screening",            "kind": "screening",  "refId": null, "count": 18,
+    "buckets": { "waiting": 18, "accepted": 240, "rejected": 61 } },
+  { "key": "interview:<stageId>",  "kind": "interview",  "refId": "…", "name": {…}, "count": 10,
+    "buckets": { "waiting": 10, "scheduled": 6, "inProgress": 2, "completed": 143 } },
+  { "key": "evaluation:<phaseId>", "kind": "evaluation", "refId": "…", "name": {…}, "count": 6,
+    "buckets": { "waiting": 6, "approved": 88, "rejected": 12 } },
+  { "key": "jobOffers",            "kind": "jobOffer",   "refId": null, "count": 5,
+    "buckets": { "waiting": 5, "sent": 7, "accepted": 31 } },
+  { "key": "employeesReady",       "kind": "employeesReady", "refId": null, "count": 2,
+    "buckets": { "waiting": 2 } }
 ] }
 ```
 
-**Queue definitions** ("currently waiting" = needs action at that stage):
+**`count` is always the `waiting` bucket** — "applicants currently waiting there" — so the number
+in the navigation is exactly the number of rows in the page's first tab. The other buckets ride
+along in the same response to fill the tab badges, costing no extra round trip.
 
-| Stage | Counted |
+**Queue definitions** (`waiting` = the next action has not been taken):
+
+| Stage | `waiting` counts |
 |---|---|
 | Applicants | live applicants with no screening yet |
 | Screening | screenings `pending` (latest attempt) |
-| Interview stage *S* | rounds at *S* in `scheduled`/`inProgress` **+** applicants eligible for *S* with no round yet (the existing "awaiting" derivation) |
-| Evaluation phase *P* | evaluations at *P* `pending` **+** applicable applicants who cleared interviews with no record at *P* |
-| Job Offers | applicants moved to offer with no blocking offer **+** offers `draft`/`sent` |
+| Interview stage *S* | applicants eligible for *S* with no round yet (existing "awaiting" derivation) |
+| Evaluation phase *P* | applicable applicants who cleared interviews with no decision at *P* (record `pending` or no record) |
+| Job Offers | applicants moved to offer with no blocking offer |
+| **Employees Ready** (A6) | applicants with an **accepted offer and no Employee yet** — the hire queue, gated by `employee.create` |
 
-**Efficiency.** Five `$group` aggregations (one per collection) plus the two derived-eligibility
+**Efficiency.** Six `$group` aggregations (one per collection) plus the derived-eligibility
 counts, issued in parallel inside one request, all served by existing indexes
 (`ix_status_createdAt`, `ix_applicant_stage`, `ix_phase_status`, `ix_branchId_status`). Results
 are scoped by the caller's data scope and **filtered by permission** — a stage the caller cannot
-view is omitted entirely, not returned as zero.
+view is omitted entirely, not returned as zero, so the navigation never advertises a queue the
+user cannot open.
 
 **Freshness.** The web keeps one React Query key `['recruitment', 'stage-counts', branchId]`
 with a short `staleTime`; a shared `invalidateRecruitment()` helper is called by *every*
@@ -530,14 +660,22 @@ with no change to the platform Applications catalog.**
 - The web sidebar gains a generic, client-side **nav-children provider registry**: a module may
   register a provider for an app route that returns `{ key, label, route, count }[]`. The
   recruitment module registers providers for `/interviews` and `/evaluations` fed by
-  `GET /hr/recruitment/stage-counts` (one query, shared cache). The sidebar renders them nested
-  under the app row with their counters:
+  `GET /hr/recruitment/stage-counts` (one query, shared cache). The sidebar renders the counter
+  on every recruitment item and nests the stage children under their family:
 
   ```
-  Interviews                 Evaluations
-  ├── First Interview  (18)  ├── Security Check   (24)
-  ├── Second Interview  (7)  ├── Medical Check    (11)
-  └── Final Interview   (3)  └── Driving Test      (5)
+  Applicants        (122)
+  Screening          (18)
+  Interviews
+  ├── Phase 1        (10)
+  ├── Phase 2         (4)
+  └── Final           (2)
+  Evaluations
+  ├── Security        (6)
+  ├── Driving         (3)
+  └── Medical         (1)
+  Job Offers          (5)
+  Employees Ready     (2)
   ```
 
 - The **same hook** renders an in-page stage rail on every stage page, so the flat navigation is
@@ -546,10 +684,10 @@ with no change to the platform Applications catalog.**
 - Children respect permissions (the server omits stages the caller cannot view) and collapse to
   nothing when the provider has no data — the sidebar degrades to today's behaviour.
 
-Rejected alternative: storing stage children as catalog Applications. Rejected because stages
-are admin-configurable *workflow* rows — seeding them as apps would fork the catalog every time
-HR adds a phase, and counters would need a DB write per change. Recorded as **OQ-2** in case the
-approver prefers catalog entries.
+**Rejected alternative (OQ-2, decided):** storing stage children as catalog Applications.
+Rejected by the approver — *the recruitment workflow is dynamic business data, not platform
+navigation metadata*. Seeding stages as apps would fork the catalog every time HR adds a phase
+or renames a stage, and every counter change would become a DB write.
 
 Web routes added: `/interviews/stage/:stageKey`, `/evaluations/phase/:phaseKey`,
 `/evaluations/phase/:phaseKey/batches`, `/evaluations/batches/:id`. `/evaluations` and
@@ -574,11 +712,32 @@ looping the single-item service method (same permissions, same audit, same event
 the shared envelope. Partial success is normal and is reported per id — never an all-or-nothing
 transaction across candidates.
 
-**Scope of adoption in this PR:** the infrastructure ships once and every existing DataTable
-gains selection capability; **recruitment surfaces get real bulk operations** (applicants,
-screening, per-stage interviews, per-phase evaluations, batch items, job offers). Other modules
-(Employees, Leave, Contracts) inherit the selection UI and adopt their own bulk operations when
-they are next touched — inventing bulk semantics for them here would be scope creep.
+**A7 — every recruitment table is multi-select, with the bulk actions that make business sense
+there.** No recruitment surface requires repeating an action row by row:
+
+| Table | Bulk actions | Endpoint |
+|---|---|---|
+| Applicants | move to screening · move to offer · export · withdraw · **reassign** (position/branch, one reason) | `POST /hr/applicants/bulk` |
+| Screening queue | approve · reject (reason) · export | `POST /hr/screenings/bulk` |
+| Interviews — Waiting | **schedule** (one date/panel for all) · **start** · export | `POST /hr/interviews/bulk-schedule`, `/bulk-start` |
+| Interviews — Scheduled | **assign / reassign panel** · reschedule · cancel (reason) · export | `POST /hr/interviews/bulk` |
+| Interviews — In Progress / Completed | decide (pass/fail + notes) · export | `POST /hr/interviews/bulk` |
+| Evaluation phase — Waiting | approve · reject (reason) · **generate batch** (batch phases) · export | `POST /hr/evaluations/bulk`, `POST /hr/evaluation-batches` |
+| Evaluation phase — Approved / Rejected | re-decide (reason) · export | `POST /hr/evaluations/bulk` |
+| Batch items | approve · reject (reason) · void (reason) · export | `POST /hr/evaluation-batches/:id/items/bulk` |
+| Job Offers | send · withdraw (reason) · export | `POST /hr/job-offers/bulk` |
+| Employees Ready | hire · export | `POST /hr/employees/bulk-hire` |
+| Batches list | export · close | `POST /hr/evaluation-batches/bulk` |
+
+Every one of them is the same loop-the-single-service-method pattern with the same
+partial-success envelope, the same permission checks, the same audit trail and the same timeline
+entries — a bulk action can never do something its single-row equivalent could not.
+**Generate batch** is the one bulk action that creates rather than mutates: it drafts a batch
+from the current selection (RW8) and opens it.
+
+Outside recruitment, every existing DataTable gains the selection capability from the shared
+infrastructure; Employees, Leave and Contracts adopt their own bulk *operations* when next
+touched — inventing bulk semantics for them here would be scope creep.
 
 ---
 
@@ -671,9 +830,17 @@ GET    /hr/recruitment/stage-counts?branchId=  → aggregated counters (RW15)
 ```
 POST   /hr/interviews/start                    { applicantId, stageId, location?, notes?, interviewerIds? }
 POST   /hr/interviews/:id/start                { version }
-GET    /hr/interviews?stageId=…                (existing; per-stage queues)
-POST   /hr/interviews/bulk                     { ids, action: 'cancel', reason }
+GET    /hr/interviews?stageId=…&bucket=…       (existing; per-stage queues, four buckets)
+POST   /hr/interviews/bulk                     { ids, action: 'cancel'|'decide'|'reassignPanel', reason?, … }
+POST   /hr/interviews/bulk-schedule            { applicantIds[], stageId, scheduledAt, interviewerIds[] }
+POST   /hr/interviews/bulk-start               { applicantIds[], stageId }
 PATCH  /hr/interviews/:id/recommendation       { recommendedPlacement, note, version }
+```
+**Screening · Job Offers · Employees Ready (bulk, A7)**
+```
+POST   /hr/screenings/bulk                     { ids, action: 'approve'|'reject', reason? }
+POST   /hr/job-offers/bulk                     { ids, action: 'send'|'withdraw', reason? }
+POST   /hr/employees/bulk-hire                 { jobOfferIds[], hiringDate? }
 ```
 **Evaluations**
 ```
@@ -690,7 +857,8 @@ GET    /hr/evaluation-batches?phaseId=&status= list (paged, scoped)
 GET    /hr/evaluation-batches/:id              detail
 POST   /hr/evaluation-batches/:id/items        { applicantIds[] }        (draft only)
 DELETE /hr/evaluation-batches/:id/items/:applicantId                     (draft only)
-POST   /hr/evaluation-batches/:id/issue        { version } → queues the package
+POST   /hr/evaluation-batches/:id/issue        { version, sentAt? } → queues the package
+PATCH  /hr/evaluation-batches/:id              { title?, scheduledFor?, sentAt?, expectedReturnAt?, version }
 POST   /hr/evaluation-batches/:id/package/retry
 GET    /hr/evaluation-batches/:id/package      → download (PDF / ZIP)
 POST   /hr/evaluation-batches/:id/results      multipart: returned documents
@@ -735,6 +903,11 @@ selection/bulk infrastructure in RW17.
    their own terms.
 3. Evaluation phases backfilled: `kind` (security/driving → `batch`, medical → `individual`,
    others → `individual`), `permissionResource`, `applicability` from `driversOnly`.
+3b. **Phase reorder to business order (OQ-1)** — `drivingTest` 3 → 2, `medicalExam` 2 → 3.
+   `ux_active_order` is unique among active phases, so the migration moves the two rows through
+   a temporary high order in three steps (`medicalExam` → 900, `drivingTest` → 2,
+   `medicalExam` → 3), guarded by a check that the current orders are the pre-migration values
+   so an admin who has already reordered them is never overridden. Idempotent and logged.
 4. Offer terms backfilled with `jobPositionId: null`, `sectionId: null`.
 5. Index migration: drop the two one-shot unique indexes, create the attempt-based and
    active-partial replacements (guarded, logged, safe to re-run).
@@ -794,7 +967,7 @@ selection/bulk infrastructure in RW17.
 - **Web**: selection/bulk behaviour incl. partial failure reporting; counters refresh after every
   mutation; per-stage routing and redirects; RTL and ar/en rendering.
 
-## 18. Risks & open questions
+## 18. Risks & resolved questions
 
 | Risk | Mitigation |
 |---|---|
@@ -802,12 +975,13 @@ selection/bulk infrastructure in RW17.
 | Timeline write loss | Deterministic `sourceKey` + nightly reconciliation rebuild |
 | ZIP/PDF build cost on large batches | Worker-side, async, retryable; batch size limit (setting, default 200) |
 | Removing sequential phase ordering surprises HR | Behaviour change called out in release notes; phase `order` still drives display |
+| Phase reorder collides with the unique active-order index | Three-step migration through a temporary order, guarded against admin-reordered installs (§15 step 3b) |
 
-**OQ-1** — Phase labelling/order: keep the seeded order (Security 1, Medical 2, Driving 3) as
-proposed, or relabel so the two batch phases come first (Security 1, Driving 2, Medical 3)?
-**OQ-2** — Sidebar stage children as a client-side provider (proposed) or as catalog Applications?
-**OQ-3** — Confirm RW3: reassignment blocked after offer **acceptance** (path = revise/withdraw
-→ re-accept → hire), rather than up to the hire itself.
+**All open questions are resolved** (Revision 2, recorded in the header): OQ-1 → business order
+Security · Driving · Medical, Medical last as the final external approval; OQ-2 → client-side
+navigation provider fed by the counters endpoint, stages stay business data and never become
+Platform Applications; OQ-3 → placement editing stops at Offer Acceptance, with revise / withdraw
+/ re-accept as the only path afterwards so the accepted snapshot remains the legal source of truth.
 
 ## 19. Explicitly out of scope
 

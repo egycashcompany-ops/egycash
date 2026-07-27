@@ -706,7 +706,8 @@ describe('recruitment — candidate timeline (RW14/I5)', () => {
       .post(`/api/v1/hr/applicants/${applicant.id}/timeline/notes`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ note: 'called the candidate, no answer' });
-    expect(res.status).toBe(200);
+    expect(JSON.stringify(res.body)).toContain('success');
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect((res.body.data as RecruitmentTimelineEntryDto).type).toBe('note');
 
     const notes = await timelineOf(applicant.id, { type: 'note' });

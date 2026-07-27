@@ -20,6 +20,7 @@ const PRINT_CSS = `
   .signature { min-width: 45mm; text-align: center; }
   .signature .line { border-top: 1px solid #111; margin-top: 14mm; padding-top: 2mm; }
   .integrity { font-size: 7.5pt; color: #666; margin-top: 6mm; direction: ltr; text-align: left; }
+  .integrity img.qr { width: 20mm; height: 20mm; float: right; margin-left: 4mm; }
 `;
 
 export interface RenderOptions {
@@ -27,6 +28,16 @@ export interface RenderOptions {
   integrityLine?: string | undefined;
   /** Absolute/relative URL for the logo image, when the template carries one. */
   logoUrl?: string | undefined;
+  /** A24 — the company branding profile, frozen into the snapshot at render. */
+  branding?:
+    | {
+        logoDataUri: string | null;
+        headerText: string;
+        footerText: string;
+        watermark: string;
+        primaryColor: string;
+      }
+    | undefined;
 }
 
 /** Substitute {{key}} → value across a section (missing keys render as empty). */
@@ -57,15 +68,49 @@ export const renderContractHtml = (
   const integrity =
     options.integrityLine === undefined ? '' : `<div class="integrity">${options.integrityLine}</div>`;
 
+  // A24 — the branding profile wraps the template's own sections; every piece is
+  // optional and the whole block is frozen into the snapshot.
+  const branding = options.branding;
+  const brandCss =
+    branding === undefined
+      ? ''
+      : `
+  h1, h2, h3, h4 { color: ${branding.primaryColor}; }
+  header, footer { border-color: ${branding.primaryColor}; }
+  .brand-header { display: flex; align-items: center; gap: 5mm; border-bottom: 2px solid ${branding.primaryColor};
+                  padding-bottom: 3mm; margin-bottom: 5mm; }
+  .brand-header img { max-height: 18mm; }
+  .brand-header .line { font-size: 10pt; font-weight: 600; color: ${branding.primaryColor}; }
+  .brand-footer { margin-top: 3mm; font-size: 8.5pt; color: ${branding.primaryColor}; text-align: center; }
+  .watermark { position: fixed; inset: 0; display: grid; place-items: center; z-index: -1;
+               transform: rotate(-35deg); font-size: 46pt; font-weight: 700;
+               color: ${branding.primaryColor}; opacity: 0.07; pointer-events: none; }`;
+  const watermark =
+    branding === undefined || branding.watermark === ''
+      ? ''
+      : `<div class="watermark">${branding.watermark}</div>`;
+  const brandHeader =
+    branding === undefined || (branding.logoDataUri === null && branding.headerText === '')
+      ? ''
+      : `<div class="brand-header">${
+          branding.logoDataUri === null ? '' : `<img src="${branding.logoDataUri}" alt="" />`
+        }${branding.headerText === '' ? '' : `<span class="line">${branding.headerText}</span>`}</div>`;
+  const brandFooter =
+    branding === undefined || branding.footerText === ''
+      ? ''
+      : `<div class="brand-footer">${branding.footerText}</div>`;
+
   return `<!doctype html>
 <html lang="${template.language}" dir="${dir}">
-<head><meta charset="utf-8" /><style>${PRINT_CSS}</style></head>
+<head><meta charset="utf-8" /><style>${PRINT_CSS}${brandCss}</style></head>
 <body>
+  ${watermark}
   <div class="page">
+    ${brandHeader}
     <header>${logo}${substitute(template.sections.header, values)}</header>
     <main>${substitute(template.sections.body, values)}</main>
     <div class="signatures">${signatures}</div>
-    <footer>${substitute(template.sections.footer, values)}${integrity}</footer>
+    <footer>${substitute(template.sections.footer, values)}${brandFooter}${integrity}</footer>
   </div>
 </body>
 </html>`;

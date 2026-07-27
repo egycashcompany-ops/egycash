@@ -100,6 +100,11 @@ class ContractRepository extends BaseRepository<ContractDoc> {
       .exec();
   }
 
+  /** A23 verification: all versions carrying this contract number. */
+  async findByCode(code: string): Promise<ContractDoc[]> {
+    return this.model.find({ code, isDeleted: false }).lean<ContractDoc[]>().exec();
+  }
+
   /** Worker-side generation-state writes: no optimistic concurrency, no scope. */
   async systemSet(id: string, set: Record<string, unknown>): Promise<void> {
     await this.model.updateOne({ _id: id }, { $set: set }).exec();

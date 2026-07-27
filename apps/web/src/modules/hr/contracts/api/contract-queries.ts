@@ -14,6 +14,7 @@ import {
   type PreviewContract,
   type SignContractBlock,
   type TerminateContract,
+  type UpdateContractBranding,
   type UpdateContractDraft,
   type UpdateContractTemplate,
   type UpdateContractType,
@@ -257,4 +258,22 @@ export const useArchiveContractTemplate = () => {
     mutationFn: (vars: { id: string; version: number }) => api.archiveContractTemplate(vars.id, vars.version),
     onSuccess: invalidate,
   });
+};
+
+// ── Branding profile (A24) ──────────────────────────────────────────────────
+
+export const useContractBranding = (enabled = true) =>
+  useQuery({ queryKey: [...ROOT, 'branding'], queryFn: api.getContractBranding, enabled });
+
+export const useUpdateContractBranding = () => {
+  const invalidate = useContractsInvalidation();
+  return useMutation({
+    mutationFn: (body: UpdateContractBranding) => api.updateContractBranding(body),
+    onSuccess: invalidate,
+  });
+};
+
+export const useUploadContractBrandingLogo = () => {
+  const invalidate = useContractsInvalidation();
+  return useMutation({ mutationFn: (file: File) => api.uploadContractBrandingLogo(file), onSuccess: invalidate });
 };

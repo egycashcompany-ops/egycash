@@ -32,6 +32,7 @@ import { emit } from '../../../../platform/kernel/event-bus';
 import { fileService, type UploadedBinary } from '../../../../platform/files';
 import { fileCategoryService } from '../../../../platform/files';
 import { employeeService } from '../../employee-management/employees';
+import { contractBrandingService } from '../branding';
 import { contractTypeService } from '../contract-types';
 import { contractTemplateService } from '../contract-templates';
 import { CONTRACT_VARIABLE_CATALOG } from '../shared/variable-catalog';
@@ -250,7 +251,8 @@ class ContractService {
       );
     }
 
-    const renderedHtml = renderContractHtml(pinned, values);
+    const branding = await contractBrandingService.resolveRenderBranding(ctx, pinned.language);
+    const renderedHtml = renderContractHtml(pinned, values, { branding });
     const sha256 = createHash('sha256').update(renderedHtml).digest('hex');
     const now = new Date();
     const after = await contractRepository.updateById(
@@ -579,9 +581,10 @@ class ContractService {
 
   // ── Preview (D6/A18) + reads ───────────────────────────────────────────────
 
-  async preview(input: PreviewContract, scope: ScopeSelector): Promise<ContractPreviewDto> {
+  async preview(ctx: AuthContext, input: PreviewContract, scope: ScopeSelector): Promise<ContractPreviewDto> {
     const template = await contractTemplateService.getById(input.templateId);
     const overrides = fromOverridePairs(input.overrides);
+    const branding = await contractBrandingService.resolveRenderBranding(ctx, template.language);
     if (input.employeeId === undefined) {
       // Template-editor sample render: catalog sample values through the SAME renderer,
       // so the A18 preview ≡ final guarantee extends to template authoring.
@@ -594,7 +597,7 @@ class ContractService {
           overriddenBy: null,
         };
       });
-      return { html: renderContractHtml(template, values), issues: [] };
+      return { html: renderContractHtml(template, values, { branding }), issues: [] };
     }
     const employee = await employeeService.getById(input.employeeId, scope);
     const { values, issues } = await resolveContractVariables(template.placeholders, {
@@ -606,7 +609,7 @@ class ContractService {
       overrides,
       overriddenBy: null,
     });
-    return { html: renderContractHtml(template, values), issues };
+    return { html: renderContractHtml(template, values, { branding }), issues };
   }
 
   /** The immutable snapshot (A20) — every export reads THIS, never a fresh render. */

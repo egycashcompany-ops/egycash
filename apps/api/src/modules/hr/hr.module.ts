@@ -323,6 +323,7 @@ export const hrModule: ModuleManifest = {
     'hr_contracts',
     'hr_contract_templates',
     'hr_contract_types',
+    'hr_contract_branding',
   ],
   eventSubscriptions: [
     {

@@ -54,6 +54,18 @@ its entry here in the same PR.
   - **Integration seam (A22)** — consumers (Payroll, Employee Files, Workflow, Document
     Management) read ONLY `contractQueryService` snapshots (`activeSnapshotAt`,
     `listForEmployee`, `getSnapshot`) and the `hr.contract.*` events — never the tables.
+  - **Revision 3 (freeze confirmed) — A23–A26.** Every PDF carries a **verification QR**
+    targeting the public non-PII endpoint `GET /hr/contracts/verify` (key = the A14
+    SHA-256, bound to the exact issued snapshot) and the public `/verify/contract` web
+    page renders the verdict (A23). A **company branding profile** (logo, header/footer
+    lines, watermark, brand color — each ar+en, managed on the Templates page under
+    `contractTemplate.manage`) is applied by the server at every render and preview and
+    frozen into each issued snapshot, so branding changes never alter existing documents
+    (A24). The worker records a `contractRendered` audit entry on every PDF run —
+    completing the audit inventory across template edits, generation, approvals,
+    signatures, downloads and lifecycle transitions (A25). The renderer abstraction is a
+    recorded invariant: the domain depends only on `platform/pdf`, never on Chromium
+    (A26).
   - **Web app** — `/contracts` register (Employee/Type/Version/Status/dates + Preview /
     Print / Download PDF / Amend / Renew / Terminate, permission- and state-gated),
     `/contracts/new` two-pane creation with a debounced live **server** preview (the

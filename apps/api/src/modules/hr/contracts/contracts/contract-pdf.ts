@@ -6,9 +6,11 @@
 import { CONTRACT_DOCUMENTS_FILE_CATEGORY, type CreateFileCategory } from '@ecms/contracts';
 import { logger } from '../../../../infrastructure/logging/logger';
 import { type AuthContext } from '../../../../shared/types';
+import { auditService } from '../../../../platform/audit';
 import { fileCategoryService, fileService } from '../../../../platform/files';
 import { pdfDriverEnabled, renderPdfFromHtml } from '../../../../platform/pdf';
 import { contractRepository } from './contract.repository';
+import { verificationQrDataUri } from './contract-verify';
 
 const CONTRACTS_CATEGORY: CreateFileCategory = {
   key: CONTRACT_DOCUMENTS_FILE_CATEGORY,
@@ -45,10 +47,23 @@ export const renderContractPdf = async (contractId: string): Promise<void> => {
   if (doc === null || doc.renderedHtml === null || doc.generation.integrity === null) return;
   if (doc.generation.pdfFileId !== null) return; // A15 — one immutable file per version
   await contractRepository.systemSet(contractId, { 'generation.status': 'rendering' });
+  const auditRender = (outcome: string): Promise<unknown> =>
+    auditService.record({
+      entityRef: { moduleId: 'hr', entityType: 'contract', entityId: contractId },
+      action: 'contractRendered',
+      changes: [{ field: 'outcome', old: null, new: outcome }],
+    });
   try {
     const integrity = doc.generation.integrity;
     const line = `${integrity.generatedAt.toISOString()} · ${integrity.generatorVersion} · template v${integrity.templateVersion} · contract v${integrity.contractVersion} · SHA-256 ${integrity.sha256}`;
-    const html = doc.renderedHtml.replace('</footer>', `<div class="integrity">${line}</div></footer>`);
+    // A23 — the verification QR rides next to the A14 integrity line (both are
+    // PDF-time augmentations: the stored snapshot's hash stays verifiable).
+    const qr = await verificationQrDataUri(doc.code, integrity.sha256);
+    const qrBlock = qr === null ? '' : `<img class="qr" src="${qr}" alt="verification QR" />`;
+    const html = doc.renderedHtml.replace(
+      '</footer>',
+      `<div class="integrity">${qrBlock}${line}</div></footer>`,
+    );
     const pdf = await renderPdfFromHtml(html);
     if (pdf === null) {
       // Driver disabled — completed without a PDF; print view remains the export path (D8).
@@ -56,6 +71,7 @@ export const renderContractPdf = async (contractId: string): Promise<void> => {
         'generation.status': 'completed',
         'generation.completedAt': new Date(),
       });
+      await auditRender('completedNoPdf');
       if (pdfDriverEnabled()) logger.warn({ contractId }, 'pdf driver returned null');
       return;
     }
@@ -77,11 +93,13 @@ export const renderContractPdf = async (contractId: string): Promise<void> => {
       'generation.completedAt': new Date(),
       'generation.pdfFileId': file._id,
     });
+    await auditRender('pdfStored');
   } catch (error) {
     logger.error({ err: error, contractId }, 'contract pdf rendering failed');
     await contractRepository.systemSet(contractId, {
       'generation.status': 'failed',
       'generation.error': error instanceof Error ? error.message : 'pdf rendering failed',
     });
+    await auditRender('failed').catch(() => undefined);
   }
 };

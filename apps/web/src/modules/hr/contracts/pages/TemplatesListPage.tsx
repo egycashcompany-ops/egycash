@@ -38,6 +38,7 @@ import {
   useUpdateContractType,
 } from '../api/contract-queries';
 import { TemplateStatusBadge } from '../components/ContractStatusBadge';
+import { BrandingCard } from '../components/BrandingCard';
 
 const CloneDialog = ({
   template,
@@ -266,6 +267,10 @@ export const TemplatesListPage = (): JSX.Element => {
         onRowClick={(x) => navigate(`/contracts/templates/${x.id}`)}
         empty={<EmptyState title={t('contracts.templates.empty')} />}
       />
+
+      <div className="mt-6">
+        <BrandingCard />
+      </div>
 
       {can('contractType.manage') && (
         <div className="mt-6">

@@ -442,6 +442,57 @@ export interface ContractDto {
   version: number;
 }
 
+// ── Verification (A23) — PUBLIC, non-PII ─────────────────────────────────────
+
+/** The QR's query string: the contract number + the A14 SHA-256 as the key. */
+export const VerifyContractQuerySchema = z
+  .object({
+    code: z.string().min(1).max(80),
+    key: z.string().regex(/^[a-f0-9]{64}$/),
+  })
+  .strict();
+export type VerifyContractQuery = z.infer<typeof VerifyContractQuerySchema>;
+
+/** Never carries employee data — this answer is world-readable by design. */
+export interface ContractVerificationDto {
+  valid: boolean;
+  code?: string;
+  contractVersion?: number;
+  status?: ContractStatus;
+  generatedAt?: string;
+  templateVersion?: number;
+  generatorVersion?: string;
+}
+
+// ── Branding profile (A24) ───────────────────────────────────────────────────
+
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+/** Branding lines may be empty (= that element disabled), unlike LocalizedStringSchema. */
+const BrandingTextSchema = z.object({ ar: z.string().max(300), en: z.string().max(300) }).strict();
+
+export const UpdateContractBrandingSchema = z
+  .object({
+    headerText: BrandingTextSchema.optional(),
+    footerText: BrandingTextSchema.optional(),
+    watermark: BrandingTextSchema.optional(),
+    primaryColor: z.string().regex(HEX_COLOR).optional(),
+    /** Clear the logo with null; upload sets it via the multipart route. */
+    logoFileId: objectId().nullable().optional(),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type UpdateContractBranding = z.infer<typeof UpdateContractBrandingSchema>;
+
+export interface ContractBrandingDto {
+  headerText: { ar: string; en: string };
+  footerText: { ar: string; en: string };
+  watermark: { ar: string; en: string };
+  primaryColor: string;
+  logoFileId: string | null;
+  version: number;
+  updatedAt: string;
+}
+
 /** A22 — the stable query-seam DTO Payroll/Employee Files consume. */
 export interface ContractSnapshotDto {
   contractId: string;

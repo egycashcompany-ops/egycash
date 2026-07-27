@@ -1,8 +1,9 @@
 # Contracts Module — Architecture & Design
 
-**Status: FROZEN (Revision 2, 2026-07-26).** Approved for implementation. Later
-sections supersede earlier ones wherever they conflict (§9 > §8 > §2–§7). Amendments
-after the freeze require a new recorded revision.
+**Status: FROZEN (Revision 3, 2026-07-27 — freeze confirmed by the approver).**
+Approved for implementation. Later sections supersede earlier ones wherever they
+conflict (§10 > §9 > §8 > §2–§7). Amendments after the freeze require a new recorded
+revision.
 
 ## 1. Purpose & scope
 
@@ -429,7 +430,72 @@ barrel) — `activeSnapshotAt(employeeId, date)`, `listForEmployee`, `getSnapsho
 plus the `hr.contract.*` events. The collections are module-private; the seam's DTOs are
 the compatibility contract.
 
+## 10. Revision 3 — approver freeze confirmation + additional requirements (R1–R8)
+
+The approver confirmed the freeze of Revision 1 with all amendments A1–A12 and the three
+decisions (Q1 chromium-from-day-one, Q2 single-language templates with independent
+version histories, Q3 one active contract per employee per type — amendments/renewals/
+replacements version, never mutate), and attached eight additional requirements. Six are
+already frozen decisions; the mapping is recorded so nothing rests on memory:
+
+| Req | Requirement | Status |
+|---|---|---|
+| R1 | Permanent contract number — independent of employee/template/contract version, never changes | **Frozen as A1**: the number is issued from the atomic per-year sequence at draft creation and is immutable (unique index as second defence). Per the approved D9/Q3 semantics, an *amendment* is the SAME contract at the next `contractVersion` — the number stays; a *renewal/replacement* is a NEW contract with a NEW number. |
+| R2 | Verification QR in every generated PDF | **NEW — A23** below |
+| R3 | Configurable company branding (logo/header/footer/watermark/colors) independent of the template body | **NEW — A24** below |
+| R4 | Deterministic variable resolution; fail loud with a report | **Frozen as A16** (`CONTRACT_VARIABLES_MISSING` + structured issue list; broken referents resolve empty and surface the same way) |
+| R5 | Strict immutability once Signed; corrections only via amendment | **Frozen as A4** (`CONTRACT_IMMUTABLE`) |
+| R6 | Complete audit trail (template create/edit, rendering, generation, approvals, signatures, downloads, lifecycle) | Frozen across D10/A19 (+ platform Files audits every download individually); the one gap — the worker-side RENDERING step — closes as **A25** below |
+| R7 | Draft/Published template workflow; editing Published forks a Draft | **Frozen as A17/A19** |
+| R8 | Renderer abstraction; the domain never depends on Chromium | Already built as the `platform/pdf` seam; formalized as **A26** below |
+
+### A23 — Verification QR (document authenticity)
+
+Every PDF carries a QR encoding a verification URL:
+`{WEB_PUBLIC_URL}/verify/contract?code={contractNumber}&key={sha256}` — the SHA-256 from
+the A14 integrity metadata acts as the verification key (unguessable, bound to the exact
+snapshot). A **public** endpoint `GET /hr/contracts/verify` answers with a minimal
+non-PII verdict: `{ valid, code, contractVersion, status, generatedAt, templateVersion,
+generatorVersion }` — never employee data. A public web page at `/verify/contract`
+renders the verdict for anyone scanning the QR. The QR (like the A14 integrity line) is
+injected at PDF-render time, so the stored snapshot's hash stays verifiable against the
+snapshot bytes.
+
+### A24 — Company branding profile
+
+A module-owned singleton (`hr_contract_branding`, managed under
+`contractTemplate.manage`, fully audited) configures branding INDEPENDENTLY of template
+bodies: logo (uploaded via Files with public visibility), header line, footer line and
+watermark (each ar+en — the rendered document picks its template's language), and the
+primary brand color. The renderer applies branding around the template's own sections
+(logo strip + header line above, footer line below, diagonal watermark behind, color on
+headings/borders) at GENERATION and PREVIEW alike (A18 parity) — so branding is frozen
+into each snapshot: changing branding later never alters issued documents (A2/A20).
+
+### A25 — Rendering audit record
+
+The worker-side PDF job records an audit entry (`contractRendered`) on completion —
+including whether a PDF was stored or the no-driver fallback applied — and on failure
+with the error. This closes the R6 audit inventory: template create/edit/publish/clone
+(diffed), generation (sha + pinned version), approvals, signatures, downloads (platform
+Files), exports, lifecycle transitions, and now rendering.
+
+### A26 — Renderer abstraction (formalized)
+
+The Contracts domain calls only `platform/pdf` (`pdfDriverEnabled()`,
+`renderPdfFromHtml(html)`); the Chromium driver lives in `infrastructure/pdf` behind the
+`CHROMIUM_PATH` env (empty = disabled → print-view fallback). Introducing another
+renderer is an infrastructure swap — no business-logic change. This is a standing
+architectural invariant, not an implementation detail.
+
 ## Review trail
+
+**Revision 3 (2026-07-27) — FREEZE CONFIRMED BY THE APPROVER:** Q1–Q3 restated and
+confirmed; requirements R1–R8 recorded with their mapping (R1/R4/R5/R6/R7/R8 already
+frozen as A1/A16/A4/D10+A25/A17/A26); new amendments A23 (verification QR + public
+verify endpoint/page), A24 (branding profile), A25 (rendering audit), A26 (renderer
+abstraction formalized). Implementation proceeds in the SAME single PR; the PR stays
+unmerged until explicit approval.
 
 **Revision 2 (2026-07-26) — DESIGN FROZEN:** final amendments A13–A22 incorporated
 (async generation with UI progress, PDF integrity metadata incl. SHA-256, one immutable

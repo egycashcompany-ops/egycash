@@ -5,6 +5,7 @@ import {
   type AddContractAttachment,
   type AmendOrRenewContract,
   type CloneContractTemplate,
+  type ContractBrandingDto,
   type ContractDto,
   type ContractPreviewDto,
   type ContractTemplateDto,
@@ -19,6 +20,7 @@ import {
   type PreviewContract,
   type SignContractBlock,
   type TerminateContract,
+  type UpdateContractBranding,
   type UpdateContractDraft,
   type UpdateContractTemplate,
   type UpdateContractType,
@@ -117,3 +119,14 @@ export const cloneContractTemplate = (id: string, body: CloneContractTemplate): 
   post<ContractTemplateDto>(`/hr/contract-templates/${id}/clone`, body);
 export const archiveContractTemplate = (id: string, version: number): Promise<ContractTemplateDto> =>
   post<ContractTemplateDto>(`/hr/contract-templates/${id}/archive`, { version });
+
+// ── Branding profile (A24) ──────────────────────────────────────────────────
+export const getContractBranding = (): Promise<ContractBrandingDto> =>
+  get<ContractBrandingDto>('/hr/contract-templates/branding');
+export const updateContractBranding = (body: UpdateContractBranding): Promise<ContractBrandingDto> =>
+  patch<ContractBrandingDto>('/hr/contract-templates/branding', body);
+export const uploadContractBrandingLogo = (file: File): Promise<ContractBrandingDto> => {
+  const form = new FormData();
+  form.append('file', file);
+  return upload<ContractBrandingDto>('/hr/contract-templates/branding/logo', form);
+};

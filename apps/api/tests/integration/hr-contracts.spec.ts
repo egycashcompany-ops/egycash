@@ -798,6 +798,62 @@ describe('contracts — numbering setting, search, sweeps, PDF fallback, attachm
     expect((removed.body.data as ContractDto).attachments).toHaveLength(0);
   });
 
+  it('verifies issued documents PUBLICLY via the QR pair — no authentication (A23)', async () => {
+    const contract = await generated(typeId, templateId);
+    const sha = contract.generation.integrity?.sha256 ?? '';
+    // No Authorization header on purpose: the QR target must be world-readable.
+    const okRes = await request(app)
+      .get('/api/v1/hr/contracts/verify')
+      .query({ code: contract.code, key: sha });
+    expect(okRes.status).toBe(200);
+    const verdict = okRes.body.data as { valid: boolean; code?: string; contractVersion?: number };
+    expect(verdict.valid).toBe(true);
+    expect(verdict.code).toBe(contract.code);
+    expect(verdict.contractVersion).toBe(1);
+    // The verdict never carries employee data.
+    expect(JSON.stringify(okRes.body.data)).not.toContain('موظف');
+
+    const bad = await request(app)
+      .get('/api/v1/hr/contracts/verify')
+      .query({ code: contract.code, key: 'a'.repeat(64) });
+    expect(bad.status).toBe(200);
+    expect((bad.body.data as { valid: boolean }).valid).toBe(false);
+  });
+
+  it('applies the branding profile at generation and freezes it into the snapshot (A24)', async () => {
+    const current = await request(app)
+      .get('/api/v1/hr/contract-templates/branding')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(current.status).toBe(200);
+    const branded = await request(app)
+      .patch('/api/v1/hr/contract-templates/branding')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        watermark: { ar: 'سري', en: 'CONFIDENTIAL' },
+        footerText: { ar: 'إيجي كاش — جميع الحقوق محفوظة', en: 'EGYCASH — all rights reserved' },
+        primaryColor: '#0a5c36',
+        version: (current.body.data as { version: number }).version,
+      });
+    expect(branded.status).toBe(200);
+
+    const contract = await generated(typeId, templateId); // an ARABIC template
+    const html = await documentOf(contract.id);
+    expect(html).toContain('سري'); // the language-matched watermark
+    expect(html).toContain('إيجي كاش — جميع الحقوق محفوظة');
+    expect(html).toContain('#0a5c36');
+
+    // Changing branding later NEVER alters an issued snapshot (A2/A20).
+    const rebrand = await request(app)
+      .patch('/api/v1/hr/contract-templates/branding')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        watermark: { ar: 'علامة جديدة', en: 'NEW MARK' },
+        version: (branded.body.data as { version: number }).version,
+      });
+    expect(rebrand.status).toBe(200);
+    expect(await documentOf(contract.id)).toBe(html);
+  });
+
   it('serves consumers ONLY through the query seam (A22)', async () => {
     const employee = await mkEmployee();
     const contract = await generate(await mkDraft(employee.id, typeId, templateId));

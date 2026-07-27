@@ -46,6 +46,7 @@ export const AUDIT_ACTIONS = [
   'purge',
   'alertRaised',
   'contractGenerated',
+  'contractRendered',
   'contractSigned',
   'contractAmended',
   'contractRenewed',

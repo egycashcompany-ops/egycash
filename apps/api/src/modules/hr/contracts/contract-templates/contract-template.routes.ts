@@ -1,25 +1,78 @@
 // Router: authenticate → authorize → validate → controller. Template administration is
 // contractTemplate.manage; the variable catalog is also readable by contract.create
 // (the create wizard shows it). Thin handlers live here — the feature is HTTP-mapping only.
-import { Router, type Request, type Response } from 'express';
+import { Router, type NextFunction, type Request, type RequestHandler, type Response } from 'express';
+import multer from 'multer';
 import { z } from 'zod';
 import {
   CloneContractTemplateSchema,
   CreateContractTemplateSchema,
+  ErrorCodes,
+  UpdateContractBrandingSchema,
   UpdateContractTemplateSchema,
   objectId,
   type CloneContractTemplate,
   type CreateContractTemplate,
+  type UpdateContractBranding,
   type UpdateContractTemplate,
 } from '@ecms/contracts';
+import { AppError, BusinessRuleError } from '../../../../shared/errors';
 import { asyncHandler, created, ok, validate, validated } from '../../../../platform/web';
 import { authContext, authenticate } from '../../../../platform/auth';
 import { authorize, authorizeAny } from '../../../../platform/rbac';
+import { contractBrandingService } from '../branding';
 import { contractTemplateService } from './contract-template.service';
 
 const IdParamSchema = z.object({ id: objectId() }).strict();
 const KeyParamSchema = z.object({ key: z.string().min(1).max(100) }).strict();
 const VersionBodySchema = z.object({ version: z.number().int().min(0) }).strict();
+
+const LOGO_MAX_MB = 5;
+const logoUpload = (): RequestHandler => {
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: LOGO_MAX_MB * 1024 * 1024, files: 1 },
+  }).single('file');
+  return (req: Request, res: Response, next: NextFunction): void => {
+    upload(req, res, (error: unknown) => {
+      if (error === undefined || error === null) {
+        next();
+        return;
+      }
+      if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+        next(new AppError(ErrorCodes.FILE_TOO_LARGE, 422, `File exceeds the ${LOGO_MAX_MB} MB cap`));
+        return;
+      }
+      next(error);
+    });
+  };
+};
+
+// ── A24 — branding profile handlers ─────────────────────────────────────────
+
+const getBranding = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  ok(res, contractBrandingService.toDto(await contractBrandingService.get(ctx.userId)));
+};
+
+const updateBranding = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body } = validated<UpdateContractBranding>(req);
+  ok(res, contractBrandingService.toDto(await contractBrandingService.update(ctx, body)));
+};
+
+const uploadBrandingLogo = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const file = req.file;
+  if (file === undefined) throw new BusinessRuleError('a file part named "file" is required');
+  const doc = await contractBrandingService.uploadLogo(ctx, {
+    originalName: file.originalname,
+    mime: file.mimetype,
+    size: file.size,
+    buffer: file.buffer,
+  });
+  ok(res, contractBrandingService.toDto(doc));
+};
 
 const listTemplates = async (_req: Request, res: Response): Promise<void> => {
   const latest = await contractTemplateService.listLatest();
@@ -88,6 +141,15 @@ export const buildContractTemplatesRouter = (): Router => {
   const read = [authenticate, authorizeAny('contractTemplate.manage', 'contract.view')] as const;
 
   router.get('/', ...read, asyncHandler(listTemplates));
+  // A24 — the branding profile (declared before '/:id').
+  router.get('/branding', ...manage, asyncHandler(getBranding));
+  router.patch(
+    '/branding',
+    ...manage,
+    validate({ body: UpdateContractBrandingSchema }),
+    asyncHandler(updateBranding),
+  );
+  router.post('/branding/logo', ...manage, logoUpload(), asyncHandler(uploadBrandingLogo));
   router.get(
     '/keys/:key/versions',
     ...manage,

@@ -27,6 +27,8 @@ import {
   type SignContractBlock,
   type TerminateContract,
   type UpdateContractDraft,
+  VerifyContractQuerySchema,
+  type VerifyContractQuery,
 } from '@ecms/contracts';
 import { AppError, BusinessRuleError } from '../../../../shared/errors';
 import { asyncHandler, created, ok, okPage, validate, validated } from '../../../../platform/web';
@@ -37,6 +39,7 @@ import { scopeSelector } from '../../../../shared/types';
 import { CONTRACT_VARIABLE_CATALOG } from '../shared/variable-catalog';
 import { contractTypeService } from '../contract-types';
 import { contractService } from './contract.service';
+import { verifyContract } from './contract-verify';
 
 const IdParamSchema = z.object({ id: objectId() }).strict();
 const AttachmentParamSchema = z.object({ id: objectId(), attachmentId: objectId() }).strict();
@@ -99,6 +102,12 @@ const listContractVariables = async (_req: Request, res: Response): Promise<void
   ok(res, CONTRACT_VARIABLE_CATALOG);
 };
 
+/** A23 — PUBLIC document verification (the QR target). Non-PII by design. */
+const verifyContractHandler = async (req: Request, res: Response): Promise<void> => {
+  const { query } = validated<never, VerifyContractQuery>(req);
+  ok(res, await verifyContract(query.code, query.key));
+};
+
 const createContract = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { body } = validated<CreateContract>(req);
@@ -109,7 +118,7 @@ const createContract = async (req: Request, res: Response): Promise<void> => {
 const previewContract = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { body } = validated<PreviewContract>(req);
-  ok(res, await contractService.preview(body, scopeSelector(ctx, 'contract.create')));
+  ok(res, await contractService.preview(ctx, body, scopeSelector(ctx, 'contract.create')));
 };
 
 const act =
@@ -182,6 +191,8 @@ export const buildContractsRouter = (): Router => {
 
   router.get('/', ...guard('contract.view'), validate({ query: ListContractsQuerySchema }), asyncHandler(listContracts));
   router.get('/variables', ...guard('contract.view'), asyncHandler(listContractVariables));
+  // A23 — public (no authenticate): anyone scanning the QR can verify authenticity.
+  router.get('/verify', validate({ query: VerifyContractQuerySchema }), asyncHandler(verifyContractHandler));
   router.post('/', ...guard('contract.create'), validate({ body: CreateContractSchema }), asyncHandler(createContract));
   // Preview also serves the template editor's sample render (no employeeId in the body).
   router.post('/preview', authenticate, authorizeAny('contract.create', 'contractTemplate.manage'),

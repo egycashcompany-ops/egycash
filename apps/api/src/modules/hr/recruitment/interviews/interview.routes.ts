@@ -6,6 +6,9 @@ import { asyncHandler, validate } from '../../../../platform/web';
 import { authenticate } from '../../../../platform/auth';
 import { authorize } from '../../../../platform/rbac';
 import {
+  bulkInterviews,
+  bulkScheduleInterviews,
+  bulkStartInterviews,
   cancelInterview,
   createInterviewStage,
   decideInterview,
@@ -18,10 +21,15 @@ import {
   rescheduleInterview,
   scheduleInterview,
   skipInterviewer,
+  startInterview,
+  startScheduledInterview,
   submitInterviewEvaluation,
   updateInterviewStage,
 } from './interview.controller';
 import {
+  BulkInterviewsSchema,
+  BulkScheduleInterviewsSchema,
+  BulkStartInterviewsSchema,
   CancelInterviewSchema,
   CreateInterviewStageSchema,
   DecideInterviewSchema,
@@ -34,6 +42,8 @@ import {
   RescheduleInterviewSchema,
   ScheduleInterviewSchema,
   SkipInterviewerSchema,
+  StartInterviewSchema,
+  StartScheduledInterviewSchema,
   SubmitInterviewEvaluationSchema,
   UpdateInterviewStageSchema,
 } from './interview.validation';
@@ -63,6 +73,36 @@ export const buildInterviewsRouter = (): Router => {
     validate({ body: ScheduleInterviewSchema }),
     asyncHandler(scheduleInterview),
   );
+  // START NOW (RW12/A3): the round opens `inProgress` on the caller's own clock.
+  router.post(
+    '/start',
+    authenticate,
+    authorize('interview.create'),
+    validate({ body: StartInterviewSchema }),
+    asyncHandler(startInterview),
+  );
+  // Bulk actions (RW17/I4) — all declared before `/:id`.
+  router.post(
+    '/bulk',
+    authenticate,
+    authorize('interview.edit'),
+    validate({ body: BulkInterviewsSchema }),
+    asyncHandler(bulkInterviews),
+  );
+  router.post(
+    '/bulk/schedule',
+    authenticate,
+    authorize('interview.create'),
+    validate({ body: BulkScheduleInterviewsSchema }),
+    asyncHandler(bulkScheduleInterviews),
+  );
+  router.post(
+    '/bulk/start',
+    authenticate,
+    authorize('interview.create'),
+    validate({ body: BulkStartInterviewsSchema }),
+    asyncHandler(bulkStartInterviews),
+  );
   router.get(
     '/:id',
     authenticate,
@@ -90,6 +130,13 @@ export const buildInterviewsRouter = (): Router => {
     authorize('interview.edit'),
     validate({ body: SkipInterviewerSchema, params: InterviewIdParamSchema }),
     asyncHandler(skipInterviewer),
+  );
+  router.post(
+    '/:id/start',
+    authenticate,
+    authorize('interview.edit'),
+    validate({ body: StartScheduledInterviewSchema, params: InterviewIdParamSchema }),
+    asyncHandler(startScheduledInterview),
   );
   router.post(
     '/:id/cancel',

@@ -3,6 +3,7 @@
 import { Types, type FilterQuery } from 'mongoose';
 import { type Paginated } from '@ecms/contracts';
 import { BaseRepository } from '../../../../shared/base/base.repository';
+import { assertNotWorkflowManaged } from '../workflow/workflow-guard';
 import { type ScopeSelector } from '../../../../shared/types';
 import { ScreeningModel, type ScreeningDoc } from './screening.model';
 
@@ -19,6 +20,20 @@ export interface ScreeningListFilter {
 class ScreeningRepository extends BaseRepository<ScreeningDoc> {
   constructor() {
     super(ScreeningModel, { branchField: 'branchId', softDelete: true });
+  }
+
+  /**
+   * I13 — the workflow engine owns `status`, `attempt` and the supersede/placement markers.
+   * A stage service updating its own domain data never touches them; attempting to does not
+   * silently corrupt the pipeline, it throws.
+   */
+  override async updateById(
+    id: string,
+    set: Parameters<BaseRepository<ScreeningDoc>['updateById']>[1],
+    meta: Parameters<BaseRepository<ScreeningDoc>['updateById']>[2],
+  ): Promise<ScreeningDoc> {
+    assertNotWorkflowManaged(set ?? {}, 'screening');
+    return super.updateById(id, set, meta);
   }
 
   /** The live screening for an applicant, if any (one per applicant). */

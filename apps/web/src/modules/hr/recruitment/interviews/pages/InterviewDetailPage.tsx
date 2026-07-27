@@ -213,7 +213,7 @@ export const InterviewDetailPage = (): JSX.Element => {
           open
           onClose={() => setRescheduleOpen(false)}
           interviewId={iv.id}
-          currentScheduledAt={iv.scheduledAt}
+          currentScheduledAt={iv.scheduledAt ?? ''}
           version={iv.version}
         />
       )}

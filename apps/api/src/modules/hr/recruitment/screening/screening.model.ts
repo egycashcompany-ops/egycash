@@ -7,6 +7,7 @@
 import { Schema, model, type Types } from 'mongoose';
 import { SCREENING_STATUSES, type ScreeningStatus } from '@ecms/contracts';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../../shared/base/base.model';
+import { stageFields, type StageDocFields } from '../workflow/stage-fields';
 
 export interface ScreeningNote {
   text: string;
@@ -14,7 +15,7 @@ export interface ScreeningNote {
   at: Date;
 }
 
-export interface ScreeningDoc extends BaseDocFields {
+export interface ScreeningDoc extends BaseDocFields, StageDocFields {
   applicantId: Types.ObjectId;
   applicantCode: string;
   applicantName: string;
@@ -34,7 +35,7 @@ const screeningSchema = new Schema<ScreeningDoc>(
     applicantCode: { type: String, required: true },
     applicantName: { type: String, required: true, default: '' },
     branchId: { type: Schema.Types.ObjectId, default: null },
-    status: { type: String, enum: SCREENING_STATUSES, required: true, default: 'pending' },
+    status: { type: String, enum: SCREENING_STATUSES, required: true, default: 'waiting' },
     notes: {
       type: [
         new Schema<ScreeningNote>(
@@ -51,16 +52,22 @@ const screeningSchema = new Schema<ScreeningDoc>(
     decisionReason: { type: String, default: null },
     decidedBy: { type: Schema.Types.ObjectId, default: null },
     decidedAt: { type: Date, default: null },
+    ...stageFields,
     ...baseFields,
   },
   baseSchemaOptions,
 );
 
-// One live screening per applicant (Stage 2 — one screening record per applicant).
+// I12 — one ACTIVE record per attempt; a superseded attempt and its successor coexist.
 screeningSchema.index(
-  { applicantId: 1 },
-  { unique: true, name: 'ux_screening_applicant', partialFilterExpression: { isDeleted: false } },
+  { applicantId: 1, attempt: 1 },
+  {
+    unique: true,
+    name: 'ux_screening_applicant_attempt',
+    partialFilterExpression: { supersededAt: null, isDeleted: false },
+  },
 );
+screeningSchema.index({ applicantId: 1, supersededAt: 1 }, { name: 'ix_applicant_superseded' });
 screeningSchema.index({ status: 1, createdAt: -1 }, { name: 'ix_status_createdAt' });
 screeningSchema.index({ branchId: 1, status: 1 }, { name: 'ix_branchId_status' });
 screeningSchema.index({ decidedAt: -1 }, { name: 'ix_decidedAt' });

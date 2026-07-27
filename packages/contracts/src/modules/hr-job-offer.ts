@@ -7,16 +7,36 @@
 // Employee Creation", enforced by that later stage against this aggregate.
 import { z } from 'zod';
 import { objectId, PaginationQuerySchema } from '../common/index.js';
+import {
+  type AttemptMarkerDto,
+  type PlacementDto,
+  type PlacementLabelDto,
+} from './hr-recruitment-workflow.js';
 
 // ── Closed vocabularies ─────────────────────────────────────────────────────
 
 /**
  * Offer lifecycle. `draft` (being prepared) → `sent` (issued to the applicant) → one of the
  * terminal states: `accepted` / `rejected` (the applicant's decision), `expired` (validity
- * lapsed — automatic), or `withdrawn` (retracted by HR). Only `draft`/`sent` are "active";
- * an applicant may have at most one active offer at a time.
+ * lapsed — automatic), `withdrawn` (retracted by HR), or `superseded` (retired by a return to an
+ * earlier stage, RW13). An applicant has at most one live offer (`waiting`/`draft`/`sent`) at a
+ * time, enforced by a partial unique index on those statuses rather than by a boolean (I10).
  */
-export const OFFER_STATUSES = ['draft', 'sent', 'accepted', 'rejected', 'expired', 'withdrawn'] as const;
+export const OFFER_STATUSES = [
+  /**
+   * The record exists and the candidate is queued for an offer, but nothing has been drafted yet
+   * (I11). Materialized when HR moves the candidate to the Job Offer stage.
+   */
+  'waiting',
+  'draft',
+  'sent',
+  'accepted',
+  'rejected',
+  'expired',
+  'withdrawn',
+  /** Set when a return to an earlier stage retires a live offer (RW13) — truthful than a withdrawal. */
+  'superseded',
+] as const;
 export const OfferStatusSchema = z.enum(OFFER_STATUSES);
 export type OfferStatus = z.infer<typeof OfferStatusSchema>;
 
@@ -51,6 +71,14 @@ export const OfferTermsSchema = z
     jobTitleId: objectId(),
     departmentId: objectId(),
     branchId: objectId(),
+    /**
+     * The seat this hire fills (platform `job_positions`) and the section within the department.
+     * OPTIONAL (ADR-016). Pre-filled from the applicant's current placement (RW3) and carried
+     * into the accepted snapshot, so the Employee record finally receives its position/section
+     * instead of the hard-coded nulls the hire path used before the workflow refactor.
+     */
+    jobPositionId: objectId().nullish(),
+    sectionId: objectId().nullish(),
     /** The reporting manager (a platform user). OPTIONAL — may be null/omitted. */
     managerId: objectId().nullish(),
     employmentType: EmploymentTypeSchema,
@@ -69,6 +97,11 @@ export type OfferTerms = z.infer<typeof OfferTermsSchema>;
 
 // ── Create / revise / send / respond / withdraw ─────────────────────────────
 
+/**
+ * Draft the candidate's offer: fills the `waiting` record materialized when HR moved them to this
+ * stage (I11) and allocates the offer number. Idempotent per candidate — there is exactly one live
+ * offer record, so this transitions it rather than creating a second one.
+ */
 export const CreateJobOfferSchema = z
   .object({ applicantId: objectId(), terms: OfferTermsSchema })
   .strict();
@@ -109,16 +142,35 @@ export const ListJobOffersQuerySchema = PaginationQuerySchema.extend({
   status: OfferStatusSchema.optional(),
   applicantId: objectId().optional(),
   branchId: objectId().optional(),
-  active: z.coerce.boolean().optional(),
   /** Free-text over the offer number (`code`) and applicant code (partial, case-insensitive). */
   search: z.string().max(100).optional(),
 }).strict();
 export type ListJobOffersQuery = z.infer<typeof ListJobOffersQuerySchema>;
 
-// ── Awaiting offer (workflow queue) ──────────────────────────────────────────
-// Applicants HR moved to the Job Offer stage who have no blocking offer yet (no active
-// draft/sent one and no accepted one) surface automatically on /job-offers. Derived read
-// model — no offer record is fabricated; "New Offer" drafts the first one from here.
+// ── Bulk (RW17/I4 — per-item transaction, partial success) ──────────────────
+
+export const BULK_JOB_OFFER_ACTIONS = ['send', 'withdraw'] as const;
+export const BulkJobOfferActionSchema = z.enum(BULK_JOB_OFFER_ACTIONS);
+export type BulkJobOfferAction = z.infer<typeof BulkJobOfferActionSchema>;
+
+export const BulkJobOffersSchema = z
+  .object({
+    action: BulkJobOfferActionSchema,
+    ids: z.array(objectId()).min(1).max(200),
+    reason: z.string().min(1).max(2000).optional(),
+  })
+  .strict()
+  .refine((v) => v.action !== 'withdraw' || (v.reason !== undefined && v.reason.length > 0), {
+    path: ['reason'],
+    message: 'a reason is required to withdraw offers',
+  });
+export type BulkJobOffers = z.infer<typeof BulkJobOffersSchema>;
+
+// ── Awaiting offer (DEPRECATED — superseded by explicit `waiting` records, I11) ──────────────
+// The queue is now `GET /hr/job-offers?status=waiting` over REAL rows: the offer record is
+// materialized when HR moves the candidate to this stage, so nothing is derived from a missing
+// row. These two declarations are retained for one release while the stage services and web
+// screens migrate, and are removed with the awaiting endpoints.
 
 export const ListAwaitingOffersQuerySchema = z
   .object({ branchId: objectId().optional(), limit: z.coerce.number().int().min(1).max(200).default(100) })
@@ -147,6 +199,9 @@ export interface OfferTermsDto {
   jobTitleId: string;
   departmentId: string;
   branchId: string;
+  /** The seat + section this hire fills; null when not set (ADR-016). Flows to the Employee (RW3). */
+  jobPositionId: string | null;
+  sectionId: string | null;
   /** null when no reporting manager was set on the offer. */
   managerId: string | null;
   employmentType: EmploymentType;
@@ -177,24 +232,39 @@ export interface OfferAcceptedSnapshotDto {
   acceptedAt: string;
 }
 
-export interface JobOfferDto {
+export interface JobOfferDto extends AttemptMarkerDto {
   id: string;
-  /** Immutable, unique, human-readable offer number, e.g. `JO-2026-000001`. */
-  code: string;
+  /**
+   * Immutable, unique offer number `JO-2026-000001`, allocated when the record leaves `waiting`
+   * for `draft` — a queued offer has no number yet (I11), so this is null while `waiting`.
+   */
+  code: string | null;
   applicantId: string;
   applicantCode: string;
   /** Denormalized applicant display name (Arabic full name) — tables never show bare codes. */
   applicantName: string;
-  branchId: string;
+  branchId: string | null;
   status: OfferStatus;
-  /** True while draft/sent — the "only one active offer per applicant" flag. */
-  active: boolean;
-  terms: OfferTermsDto;
+  /** The placement in force when the offer record was materialized; immutable (RW4). */
+  placement: PlacementDto;
+  placementLabel: PlacementLabelDto;
+  /**
+   * The compensation package. null while `waiting` — the record is materialized when HR moves the
+   * candidate to this stage, before anything has been drafted (I11). Completeness is enforced at
+   * the transitions that need it (draft requires terms; send requires a complete package), never
+   * at creation — the same draft-permissive treatment the Contracts module uses.
+   */
+  terms: OfferTermsDto | null;
   revisionNumber: number;
   /** Superseded prior versions, oldest first. */
   revisions: OfferRevisionDto[];
   /** Set once, on acceptance; null otherwise. The employment terms actually accepted. */
   acceptedSnapshot: OfferAcceptedSnapshotDto | null;
+  /**
+   * The Employee created from this accepted offer, once hired. Makes the "Employees Ready" queue
+   * a fact ON THE OFFER rather than the absence of an Employee row (I11).
+   */
+  hiredEmployeeId: string | null;
   sentAt: string | null;
   respondedAt: string | null;
   responseNote: string | null;

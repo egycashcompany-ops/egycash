@@ -54,6 +54,10 @@ const PhaseDialog = ({ editing, onClose }: { editing: NonNullable<Editing>; onCl
           name: { en: nameEn.trim(), ar: nameAr.trim() },
           order: Number(order),
           driversOnly,
+          kind: 'individual',
+          permissionResource: 'evaluation',
+          appointmentEnabled: false,
+          requiresResultDocument: false,
         });
         toast.success(t('evaluations.phases.created'));
       } else {

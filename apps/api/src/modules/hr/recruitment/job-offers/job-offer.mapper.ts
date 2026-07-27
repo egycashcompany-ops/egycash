@@ -1,12 +1,19 @@
 // Job Offer DTO mapping (Stage 4). Terms and their prior versions are surfaced as-is; dates
 // are ISO strings.
 import { type JobOfferDto, type OfferTermsDto } from '@ecms/contracts';
+import {
+  attemptMarkerDto,
+  placementDto,
+  placementLabelDto,
+} from '../workflow/stage-mapper';
 import { type JobOfferDoc, type OfferTerms } from './job-offer.model';
 
 const termsDto = (t: OfferTerms): OfferTermsDto => ({
   jobTitleId: String(t.jobTitleId),
   departmentId: String(t.departmentId),
   branchId: String(t.branchId),
+  jobPositionId: t.jobPositionId == null ? null : String(t.jobPositionId),
+  sectionId: t.sectionId == null ? null : String(t.sectionId),
   managerId: t.managerId === null ? null : String(t.managerId),
   employmentType: t.employmentType,
   salary: t.salary === null ? null : { amount: t.salary.amount, currency: t.salary.currency },
@@ -18,7 +25,12 @@ const termsDto = (t: OfferTerms): OfferTermsDto => ({
   notes: t.notes,
 });
 
-const iso = (d: Date | null): string | null => (d === null ? null : d.toISOString());
+// Legacy tolerance: `.lean()` reads skip schema defaults (see applicant.mapper).
+const iso = (d: Date | null | undefined): string | null => (d == null ? null : d.toISOString());
+
+/** null while the offer is `waiting` — nothing has been drafted yet (I11). */
+const termsDtoOrNull = (t: OfferTerms | null | undefined): OfferTermsDto | null =>
+  t == null ? null : termsDto(t);
 
 export const toJobOfferDto = (doc: JobOfferDoc): JobOfferDto => ({
   id: String(doc._id),
@@ -26,19 +38,22 @@ export const toJobOfferDto = (doc: JobOfferDoc): JobOfferDto => ({
   applicantId: String(doc.applicantId),
   applicantCode: doc.applicantCode,
   applicantName: doc.applicantName ?? '',
-  branchId: String(doc.branchId),
+  branchId: doc.branchId == null ? null : String(doc.branchId),
   status: doc.status,
-  active: doc.active,
-  terms: termsDto(doc.terms),
+  terms: termsDtoOrNull(doc.terms),
+  placement: placementDto(doc.placementSnapshot),
+  placementLabel: placementLabelDto(doc.placementSnapshotLabel),
+  hiredEmployeeId: doc.hiredEmployeeId == null ? null : String(doc.hiredEmployeeId),
+  ...attemptMarkerDto(doc),
   revisionNumber: doc.revisionNumber,
-  revisions: doc.revisions.map((r) => ({
+  revisions: (doc.revisions ?? []).map((r) => ({
     revisionNumber: r.revisionNumber,
     terms: termsDto(r.terms),
     revisedBy: r.revisedBy === null ? null : String(r.revisedBy),
     revisedAt: r.revisedAt.toISOString(),
   })),
   acceptedSnapshot:
-    doc.acceptedSnapshot === null
+    doc.acceptedSnapshot == null
       ? null
       : {
           revisionNumber: doc.acceptedSnapshot.revisionNumber,

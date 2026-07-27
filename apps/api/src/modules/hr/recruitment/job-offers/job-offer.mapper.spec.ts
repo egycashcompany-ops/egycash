@@ -7,6 +7,8 @@ const terms = (over: Partial<OfferTerms> = {}): OfferTerms => ({
   jobTitleId: new Types.ObjectId(),
   departmentId: new Types.ObjectId(),
   branchId: new Types.ObjectId(),
+  jobPositionId: null,
+  sectionId: null,
   managerId: new Types.ObjectId(),
   employmentType: 'fullTime',
   salary: { amount: 15000, currency: 'EGP' },
@@ -28,8 +30,7 @@ const baseDoc = (over: Partial<JobOfferDoc>): JobOfferDoc =>
     applicantName: 'أحمد محمد',
     branchId: new Types.ObjectId(),
     status: 'draft',
-    active: true,
-    terms: terms(),
+        terms: terms(),
     revisionNumber: 1,
     revisions: [],
     acceptedSnapshot: null,
@@ -53,14 +54,14 @@ describe('toJobOfferDto', () => {
     const dto = toJobOfferDto(baseDoc({}));
     expect(dto.code).toBe('JO-2026-000001');
     expect(dto.status).toBe('draft');
-    expect(dto.active).toBe(true);
     expect(dto.acceptedSnapshot).toBeNull();
-    expect(dto.terms.salary).toEqual({ amount: 15000, currency: 'EGP' });
-    expect(dto.terms.allowances).toEqual([{ name: 'transport', amount: 1000, currency: 'EGP' }]);
-    expect(dto.terms.benefits).toEqual(['medical insurance']);
-    expect(dto.terms.employmentType).toBe('fullTime');
-    expect(dto.terms.startDate).toBe('2026-10-01T00:00:00.000Z');
-    expect(dto.terms.validUntil).toBe('2026-09-15T00:00:00.000Z');
+    expect(dto.terms).not.toBeNull();
+    expect(dto.terms?.salary).toEqual({ amount: 15000, currency: 'EGP' });
+    expect(dto.terms?.allowances).toEqual([{ name: 'transport', amount: 1000, currency: 'EGP' }]);
+    expect(dto.terms?.benefits).toEqual(['medical insurance']);
+    expect(dto.terms?.employmentType).toBe('fullTime');
+    expect(dto.terms?.startDate).toBe('2026-10-01T00:00:00.000Z');
+    expect(dto.terms?.validUntil).toBe('2026-09-15T00:00:00.000Z');
     expect(dto.revisions).toEqual([]);
   });
 
@@ -90,14 +91,12 @@ describe('toJobOfferDto', () => {
     const dto = toJobOfferDto(
       baseDoc({
         status: 'accepted',
-        active: false,
-        sentAt: new Date('2026-09-03T00:00:00.000Z'),
+          sentAt: new Date('2026-09-03T00:00:00.000Z'),
         respondedAt: new Date('2026-09-04T00:00:00.000Z'),
         responseNote: 'delighted to join',
       }),
     );
     expect(dto.status).toBe('accepted');
-    expect(dto.active).toBe(false);
     expect(dto.sentAt).toBe('2026-09-03T00:00:00.000Z');
     expect(dto.respondedAt).toBe('2026-09-04T00:00:00.000Z');
     expect(dto.responseNote).toBe('delighted to join');
@@ -107,8 +106,7 @@ describe('toJobOfferDto', () => {
     const dto = toJobOfferDto(
       baseDoc({
         status: 'accepted',
-        active: false,
-        acceptedSnapshot: {
+          acceptedSnapshot: {
           revisionNumber: 2,
           terms: terms({ salary: { amount: 18000, currency: 'EGP' } }),
           acceptedAt: new Date('2026-09-04T00:00:00.000Z'),

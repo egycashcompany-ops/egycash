@@ -7,6 +7,7 @@ import { authenticate } from '../../../../platform/auth';
 import { authorize } from '../../../../platform/rbac';
 import {
   addScreeningNote,
+  bulkScreenings,
   createScreening,
   decideScreening,
   getScreening,
@@ -16,6 +17,7 @@ import {
 } from './screening.controller';
 import {
   AddScreeningNoteSchema,
+  BulkScreeningsSchema,
   CreateScreeningSchema,
   DecideScreeningSchema,
   ListAwaitingScreeningsQuerySchema,
@@ -47,6 +49,14 @@ export const buildScreeningsRouter = (): Router => {
     authorize('screening.create'),
     validate({ body: CreateScreeningSchema }),
     asyncHandler(createScreening),
+  );
+  // Bulk approve/reject the waiting queue (RW17/I4) — declared before `/:id`.
+  router.post(
+    '/bulk',
+    authenticate,
+    authorize('screening.decide'),
+    validate({ body: BulkScreeningsSchema }),
+    asyncHandler(bulkScreenings),
   );
   router.get(
     '/:id',

@@ -7,7 +7,13 @@
 // list. Every access below therefore normalizes `undefined` to the field's default. The boot
 // migration (recruitment.migration.ts) backfills the stored documents; this keeps the mapper
 // total even if a future field is missed.
-import { maskNationalId, type ApplicantDto, type ApplicantSourceDto } from '@ecms/contracts';
+import {
+  maskNationalId,
+  type ApplicantDto,
+  type ApplicantSourceDto,
+  type PlacementChangeDto,
+} from '@ecms/contracts';
+import { placementDto, placementLabelDto } from '../workflow/stage-mapper';
 import { type ApplicantDoc } from './applicant.model';
 import { type ApplicantSourceDoc } from './applicant-source.model';
 
@@ -34,6 +40,25 @@ export const toApplicantDto = (doc: ApplicantDoc): ApplicantDto => {
     status: doc.status,
     jobRequisitionId: doc.jobRequisitionId == null ? null : String(doc.jobRequisitionId),
     branchId: doc.branchId == null ? null : String(doc.branchId),
+    placement: placementDto(doc.placement),
+    placementLabel: placementLabelDto(doc.placementLabel),
+    placementHistory: (doc.placementHistory ?? []).map((c) => ({
+      from: placementDto(c.from),
+      to: placementDto(c.to),
+      fromLabel: placementLabelDto(c.fromLabel),
+      toLabel: placementLabelDto(c.toLabel),
+      changed: c.changed as PlacementChangeDto['changed'],
+      reason: c.reason,
+      note: c.note,
+      source: c.source as PlacementChangeDto['source'],
+      sourceRef:
+        c.sourceEntityType === null || c.sourceEntityId === null
+          ? null
+          : { entityType: c.sourceEntityType, entityId: String(c.sourceEntityId) },
+      by: c.by === null ? null : String(c.by),
+      at: c.at.toISOString(),
+      correlationId: c.correlationId,
+    })),
     sourceId: String(doc.sourceId),
     sourceDetail:
       sourceDetail === null

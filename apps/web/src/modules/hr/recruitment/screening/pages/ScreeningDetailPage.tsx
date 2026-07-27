@@ -51,7 +51,7 @@ export const ScreeningDetailPage = (): JSX.Element => {
     );
   }
 
-  const isPending = s.status === 'pending';
+  const isPending = s.status === 'waiting';
 
   const submitNote = async (): Promise<void> => {
     if (note.trim() === '') return;

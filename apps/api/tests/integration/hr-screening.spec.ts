@@ -14,6 +14,7 @@ import {
   platformPermissions,
   SettingKeys,
   type ApplicantDto,
+  type BulkActionResultDto,
   type ScreeningDto,
 } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
@@ -173,12 +174,12 @@ describe('screening — permissions', () => {
 });
 
 describe('screening — create', () => {
-  it('opens a pending screening (one per applicant) and stores an initial note', async () => {
+  it('opens a waiting screening (one per applicant) and stores an initial note', async () => {
     const applicant = await registerApplicant();
     const res = await openScreening(applicant.id, adminToken, 'looks promising');
     expect(res.status).toBe(201);
     const dto = res.body.data as ScreeningDto;
-    expect(dto.status).toBe('pending');
+    expect(dto.status).toBe('waiting');
     expect(dto.applicantId).toBe(applicant.id);
     expect(dto.applicantCode).toBe(applicant.code);
     expect(dto.decision).toBeNull();
@@ -239,7 +240,7 @@ describe('screening — notes (needs more information)', () => {
       .send({ note: 'requested transcripts', version: screening.version });
     expect(res.status).toBe(200);
     const dto = res.body.data as ScreeningDto;
-    expect(dto.status).toBe('pending');
+    expect(dto.status).toBe('waiting');
     expect(dto.notes.map((n) => n.text)).toEqual(['first', 'requested transcripts']);
   });
 });
@@ -346,5 +347,72 @@ describe('screening — decide permission is separate from edit (OQ-32)', () => 
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ outcome: 'accepted', version: (noted.body.data as ScreeningDto).version });
     expect(adminDecide.status).toBe(200);
+  });
+});
+
+describe('screening — bulk approve/reject (RW17/I4)', () => {
+  const bulk = (body: Record<string, unknown>, token = adminToken) =>
+    request(app)
+      .post('/api/v1/hr/screenings/bulk')
+      .set('Authorization', `Bearer ${token}`)
+      .send(body);
+
+  it('approves a selection and reports one result per id', async () => {
+    const a = (await openScreening((await registerApplicant()).id)).body.data as ScreeningDto;
+    const b = (await openScreening((await registerApplicant()).id)).body.data as ScreeningDto;
+
+    const res = await bulk({ action: 'approve', ids: [a.id, b.id] });
+    expect(res.status).toBe(200);
+    const envelope = res.body.data as BulkActionResultDto;
+    expect(envelope.requested).toBe(2);
+    expect(envelope.succeeded).toBe(2);
+    expect(envelope.failed).toBe(0);
+    expect(envelope.results.map((r) => r.id).sort()).toEqual([a.id, b.id].sort());
+
+    for (const id of [a.id, b.id]) {
+      const after = await request(app)
+        .get(`/api/v1/hr/screenings/${id}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect((after.body.data as ScreeningDto).status).toBe('accepted');
+    }
+  });
+
+  it('applies the successful items and reports the failing one (partial success)', async () => {
+    const good = (await openScreening((await registerApplicant()).id)).body.data as ScreeningDto;
+    const decided = (await openScreening((await registerApplicant()).id)).body.data as ScreeningDto;
+    // Already accepted → `accepted → accepted` is not a legal move, so this id fails.
+    await request(app)
+      .post(`/api/v1/hr/screenings/${decided.id}/decide`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ outcome: 'accepted', version: decided.version });
+
+    const res = await bulk({ action: 'approve', ids: [good.id, decided.id] });
+    expect(res.status).toBe(200);
+    const envelope = res.body.data as BulkActionResultDto;
+    expect(envelope.succeeded).toBe(1);
+    expect(envelope.failed).toBe(1);
+    expect(envelope.results.find((r) => r.id === decided.id)?.ok).toBe(false);
+    expect(envelope.results.find((r) => r.id === good.id)?.ok).toBe(true);
+  });
+
+  it('requires a reason to reject and rejects the applicants when given one', async () => {
+    const applicant = await registerApplicant();
+    const screening = (await openScreening(applicant.id)).body.data as ScreeningDto;
+
+    expect((await bulk({ action: 'reject', ids: [screening.id] })).status).toBe(400);
+
+    const res = await bulk({ action: 'reject', ids: [screening.id], reason: 'no relevant experience' });
+    expect(res.status).toBe(200);
+    expect((res.body.data as BulkActionResultDto).succeeded).toBe(1);
+
+    const after = await request(app)
+      .get(`/api/v1/hr/applicants/${applicant.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect((after.body.data as ApplicantDto).status).toBe('rejected');
+  });
+
+  it('needs the decide permission', async () => {
+    const screening = (await openScreening((await registerApplicant()).id)).body.data as ScreeningDto;
+    expect((await bulk({ action: 'approve', ids: [screening.id] }, screenerToken)).status).toBe(403);
   });
 });

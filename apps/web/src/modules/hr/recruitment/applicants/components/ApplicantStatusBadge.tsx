@@ -5,6 +5,7 @@ import { useT } from '../../../../../platform/localization/useT';
 
 const TONE: Record<ApplicantStatus, Tone> = {
   new: 'info',
+  hired: 'success',
   rejected: 'danger',
   withdrawn: 'neutral',
 };

@@ -7,15 +7,31 @@
 // round). Scope is Stage 3 only: nothing here describes Job Offer (Stage 4) or later.
 import { z } from 'zod';
 import { objectId, LocalizedStringSchema, PaginationQuerySchema, type LocalizedString } from '../common/index.js';
+import {
+  BulkRequestBaseSchema,
+  type AttemptMarkerDto,
+  type PlacementDto,
+  type PlacementLabelDto,
+} from './hr-recruitment-workflow.js';
 
 // ── Closed vocabularies ─────────────────────────────────────────────────────
 
 /**
- * Interview lifecycle. `scheduled` (a date/time + panel are set) → terminal `completed`
- * (a pass/fail decision was recorded) or `cancelled`. Rescheduling keeps a scheduled
- * interview `scheduled` (only the date/time and panel change).
+ * Interview lifecycle. `scheduled` (a date/time + panel are set) → `inProgress` (the interviewer
+ * started it — RW12) → terminal `completed` (a pass/fail decision was recorded) or `cancelled`.
+ * Rescheduling keeps a scheduled interview `scheduled` (only the date/time and panel change); a
+ * round already in progress is completed or cancelled, never rescheduled.
+ *
+ * `inProgress` was ADDED by the workflow refactor — consumers are tolerant readers (ADR-008), and
+ * every existing filter keeps working unchanged.
  */
-export const INTERVIEW_STATUSES = ['scheduled', 'completed', 'cancelled'] as const;
+export const INTERVIEW_STATUSES = [
+  'waiting',
+  'scheduled',
+  'inProgress',
+  'completed',
+  'cancelled',
+] as const;
 export const InterviewStatusSchema = z.enum(INTERVIEW_STATUSES);
 export type InterviewStatus = z.infer<typeof InterviewStatusSchema>;
 
@@ -99,6 +115,34 @@ export const ScheduleInterviewSchema = z
   .strict();
 export type ScheduleInterview = z.infer<typeof ScheduleInterviewSchema>;
 
+/**
+ * START AN INTERVIEW IMMEDIATELY (RW12/A3) — the alternative to scheduling. The round is created
+ * already `inProgress`: the server assigns the CURRENTLY AUTHENTICATED user as the interviewer,
+ * stamps `startedAt` from the server clock, and the client opens the evaluation form straight
+ * away. Interviewer and start time are never supplied or edited by the client, which is why this
+ * schema carries neither. Works from Screening → first stage and from Interview N → N+1.
+ */
+export const StartInterviewSchema = z
+  .object({
+    applicantId: objectId(),
+    stageId: objectId(),
+    /** Optional co-interviewers; the caller is always on the panel regardless. */
+    interviewerIds: z.array(objectId()).max(20).default([]),
+    location: z.string().max(200).optional(),
+    notes: z.string().max(2000).optional(),
+  })
+  .strict();
+export type StartInterview = z.infer<typeof StartInterviewSchema>;
+
+/**
+ * Start a round that was already SCHEDULED: `scheduled → inProgress`, stamping `startedAt` and
+ * `startedBy` server-side and adding the caller to the panel if they are not already on it.
+ */
+export const StartScheduledInterviewSchema = z
+  .object({ version: z.number().int().min(0) })
+  .strict();
+export type StartScheduledInterview = z.infer<typeof StartScheduledInterviewSchema>;
+
 /** Reschedule only changes the date/time (the interview stays `scheduled`). */
 export const RescheduleInterviewSchema = z
   .object({
@@ -174,6 +218,7 @@ export type DecideInterview = z.infer<typeof DecideInterviewSchema>;
 // ── List ─────────────────────────────────────────────────────────────────────
 
 export const ListInterviewsQuerySchema = PaginationQuerySchema.extend({
+  /** Doubles as the stage page's tab (I10): `waiting` lists applicants with no round yet. */
   status: InterviewStatusSchema.optional(),
   outcome: InterviewOutcomeSchema.optional(),
   applicantId: objectId().optional(),
@@ -182,13 +227,69 @@ export const ListInterviewsQuerySchema = PaginationQuerySchema.extend({
   branchId: objectId().optional(),
   scheduledFrom: z.coerce.date().optional(),
   scheduledTo: z.coerce.date().optional(),
+  /** Include rounds belonging to superseded attempts (default false for queues). */
+  includeSuperseded: z.coerce.boolean().default(false),
+  search: z.string().max(200).optional(),
 }).strict();
 export type ListInterviewsQuery = z.infer<typeof ListInterviewsQuerySchema>;
 
-// ── Awaiting scheduling (pipeline entry) ────────────────────────────────────
-// Applicants who have passed Initial Screening and are active but have no interview yet — the
-// "automatically appears in Interviews once approved in Screening" queue. Derived read model
-// (no interview record is fabricated); the recruiter schedules the first round from here.
+/** Per-stage report export; reuses the list filter (paging ignored). */
+export const ExportInterviewsQuerySchema = ListInterviewsQuerySchema.omit({
+  page: true,
+  pageSize: true,
+}).strict();
+export type ExportInterviewsQuery = z.infer<typeof ExportInterviewsQuerySchema>;
+
+// ── Bulk (RW17/I4 — per-item transaction, partial success) ──────────────────
+
+export const BULK_INTERVIEW_ACTIONS = ['cancel', 'pass', 'fail', 'reassignPanel'] as const;
+export const BulkInterviewActionSchema = z.enum(BULK_INTERVIEW_ACTIONS);
+export type BulkInterviewAction = z.infer<typeof BulkInterviewActionSchema>;
+
+export const BulkInterviewsSchema = BulkRequestBaseSchema.extend({
+  action: BulkInterviewActionSchema,
+  /** Required for `reassignPanel`; ignored otherwise. */
+  interviewerIds: z.array(objectId()).max(20).optional(),
+  notes: z.string().max(2000).optional(),
+})
+  .strict()
+  .refine((v) => v.action !== 'cancel' || (v.reason !== undefined && v.reason.length > 0), {
+    path: ['reason'],
+    message: 'a reason is required to cancel interviews',
+  })
+  .refine(
+    (v) => v.action !== 'reassignPanel' || (v.interviewerIds !== undefined && v.interviewerIds.length > 0),
+    { path: ['interviewerIds'], message: 'at least one interviewer is required' },
+  );
+export type BulkInterviews = z.infer<typeof BulkInterviewsSchema>;
+
+/** Schedule one date/panel across a selection of WAITING applicants (RW17). */
+export const BulkScheduleInterviewsSchema = z
+  .object({
+    applicantIds: z.array(objectId()).min(1).max(200),
+    stageId: objectId(),
+    scheduledAt: z.coerce.date(),
+    interviewerIds: z.array(objectId()).max(20).default([]),
+    location: z.string().max(200).optional(),
+    notes: z.string().max(2000).optional(),
+  })
+  .strict();
+export type BulkScheduleInterviews = z.infer<typeof BulkScheduleInterviewsSchema>;
+
+/** Start rounds immediately for a selection of WAITING applicants (RW12 semantics, per item). */
+export const BulkStartInterviewsSchema = z
+  .object({
+    applicantIds: z.array(objectId()).min(1).max(200),
+    stageId: objectId(),
+    location: z.string().max(200).optional(),
+  })
+  .strict();
+export type BulkStartInterviews = z.infer<typeof BulkStartInterviewsSchema>;
+
+// ── Awaiting scheduling (DEPRECATED — superseded by explicit `waiting` records, I11) ─────────
+// The queue is now `GET /hr/interviews?stageId=…&status=waiting` over REAL rows: the round is
+// materialized when the previous stage is cleared. Retained for one release while the stage
+// services and web screens migrate.
 
 export const ListAwaitingInterviewsQuerySchema = z
   .object({ branchId: objectId().optional(), limit: z.coerce.number().int().min(1).max(200).default(100) })
@@ -228,23 +329,40 @@ export interface InterviewDecisionDto {
   decidedAt: string;
 }
 
-export interface InterviewDto {
+export interface InterviewDto extends AttemptMarkerDto {
   id: string;
   applicantId: string;
   applicantCode: string;
   /** Denormalized applicant display name (Arabic full name) — tables never show bare codes. */
   applicantName: string;
+  /** Data-scope field: follows the applicant on reassignment (RW2 step 3). */
   branchId: string | null;
   stageId: string;
+  stageKey: string;
   stageOrder: number;
   stageName: LocalizedString;
+  /**
+   * The round's single status (I10/I11). Every value is PERSISTED, including `waiting`: the record
+   * is materialized the moment the candidate reaches the stage, so a queue is never inferred from
+   * a missing row.
+   */
   status: InterviewStatus;
   outcome: InterviewOutcome;
-  scheduledAt: string;
+  /** null while `waiting` — a round that has not been scheduled yet has no date (I11). */
+  scheduledAt: string | null;
+  /** Server-stamped when the round was started (RW12); null while merely scheduled. */
+  startedAt: string | null;
+  startedBy: string | null;
   /** The panel: every assigned interviewer with their individual evaluation state. */
   panel: InterviewPanelistDto[];
   location: string | null;
   notes: string | null;
+  /** The placement in force when the round was created; immutable (RW4). */
+  placement: PlacementDto;
+  placementLabel: PlacementLabelDto;
+  /** Advisory: a different seat/branch this round recommends (RW5). Never moves the candidate. */
+  recommendedPlacement: PlacementDto | null;
+  recommendationNote: string | null;
   decision: InterviewDecisionDto | null;
   rescheduleCount: number;
   cancelledReason: string | null;
@@ -257,10 +375,17 @@ export interface InterviewDto {
 
 export const HrInterviewEvents = {
   InterviewScheduled: 'hr.interview.scheduled',
+  /** The round was started — interviewer + timestamp assigned server-side (RW12/I2). */
+  InterviewStarted: 'hr.interview.started',
   InterviewRescheduled: 'hr.interview.rescheduled',
   InterviewCancelled: 'hr.interview.cancelled',
   InterviewEvaluated: 'hr.interview.evaluated',
+  /**
+   * The original decision event. KEPT and still emitted alongside `completed`, so existing
+   * subscribers keep working (I2 — names are added to, never renamed).
+   */
   InterviewDecided: 'hr.interview.decided',
+  InterviewCompleted: 'hr.interview.completed',
 } as const;
 export type HrInterviewEventName = (typeof HrInterviewEvents)[keyof typeof HrInterviewEvents];
 
@@ -269,6 +394,15 @@ export const InterviewEventPayloadV1 = z.object({
   applicantId: objectId(),
   applicantCode: z.string(),
   stageOrder: z.number().int(),
+});
+
+export const InterviewStartedPayloadV1 = z.object({
+  interviewId: objectId(),
+  applicantId: objectId(),
+  applicantCode: z.string(),
+  stageOrder: z.number().int(),
+  startedBy: objectId(),
+  startedAt: z.coerce.date(),
 });
 
 export const InterviewDecidedPayloadV1 = z.object({

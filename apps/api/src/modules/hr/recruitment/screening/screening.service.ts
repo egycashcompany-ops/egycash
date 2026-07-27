@@ -1,5 +1,5 @@
 // Initial Screening lifecycle (Sprint 4.2, Stage 2). An applicant registered in Stage 1 is
-// screened to a single terminal outcome — Accepted or Rejected (OQ-32). While `pending`,
+// screened to a single terminal outcome — Accepted or Rejected (OQ-32). While `waiting`,
 // recruiters accumulate notes (the "needs more information" flow — not a separate state).
 // A rejection transitions the applicant to the terminal `rejected` status; an acceptance
 // leaves the applicant live for the later interview stage (not built this sprint).
@@ -14,6 +14,8 @@ import {
   type CreateScreening,
   type DecideScreening,
   type ListAwaitingScreeningsQuery,
+  type BulkActionResultDto,
+  type BulkScreenings,
   type ListScreeningsQuery,
   type Paginated,
 } from '@ecms/contracts';
@@ -22,10 +24,19 @@ import { type AuthContext, type ScopeSelector } from '../../../../shared/types';
 import { auditService } from '../../../../platform/audit';
 import { emit } from '../../../../platform/kernel/event-bus';
 import { applicantService } from '../applicants';
+import { recruitmentWorkflowEngine, runBulk, type StageBinding } from '../workflow';
+import { ScreeningModel } from './screening.model';
 import { screeningRepository, type ScreeningListFilter } from './screening.repository';
 import { type ScreeningDoc, type ScreeningNote } from './screening.model';
 
 const entityRef = (id: string) => ({ moduleId: 'hr', entityType: 'screening', entityId: id });
+
+/** How the engine addresses this stage (I13) — the screening is a singleton per attempt. */
+const BINDING = {
+  object: 'screening',
+  model: ScreeningModel,
+  entityType: 'screening',
+} as unknown as StageBinding<never>;
 
 class ScreeningService {
   /** Open the (single) screening for a live applicant. */
@@ -49,7 +60,7 @@ class ScreeningService {
         applicantCode: applicant.code,
         applicantName: applicant.fullNameAr,
         branchId: applicant.branchId,
-        status: 'pending',
+        status: 'waiting',
         notes,
         decisionReason: null,
         decidedBy: null,
@@ -136,7 +147,7 @@ class ScreeningService {
       }));
   }
 
-  /** Append a note while `pending` (OQ-32 "needs more information"). */
+  /** Append a note while `waiting` (OQ-32 "needs more information"). */
   async addNote(
     ctx: AuthContext,
     id: string,
@@ -144,7 +155,7 @@ class ScreeningService {
     scope: ScopeSelector,
   ): Promise<ScreeningDoc> {
     const before = await screeningRepository.getById(id, scope);
-    if (before.status !== 'pending') {
+    if (before.status !== 'waiting') {
       throw new BusinessRuleError('cannot add a note to a screening that is already decided');
     }
     const note: ScreeningNote = { text: input.note, by: new Types.ObjectId(ctx.userId), at: new Date() };
@@ -172,20 +183,24 @@ class ScreeningService {
     scope: ScopeSelector,
   ): Promise<ScreeningDoc> {
     const before = await screeningRepository.getById(id, scope);
-    if (before.status !== 'pending') {
+    if (before.status !== 'waiting') {
       throw new BusinessRuleError('screening has already been decided');
     }
     const reason = input.reason ?? null;
-    const updated = await screeningRepository.updateById(
+    // The engine owns the status change and publishes the event (I13/I15).
+    const { record: updated } = await recruitmentWorkflowEngine.transition({
+      binding: BINDING,
       id,
-      { status: input.outcome, decisionReason: reason, decidedBy: new Types.ObjectId(ctx.userId), decidedAt: new Date() },
-      { by: ctx.userId, version: input.version, scope },
-    );
-    await auditService.record({
-      entityRef: entityRef(id),
-      action: 'statusChange',
-      changes: [{ field: 'status', old: before.status, new: input.outcome }],
-    });
+      to: input.outcome,
+      actorUserId: ctx.userId,
+      reason,
+      version: input.version,
+      set: {
+        decisionReason: reason,
+        decidedBy: new Types.ObjectId(ctx.userId),
+        decidedAt: new Date(),
+      },
+    } as never) as unknown as { record: ScreeningDoc };
 
     if (input.outcome === 'rejected') {
       await applicantService.markRejectedByScreening(
@@ -218,26 +233,26 @@ class ScreeningService {
     scope: ScopeSelector,
   ): Promise<ScreeningDoc> {
     const before = await screeningRepository.getById(id, scope);
-    if (before.status === 'pending') {
+    if (before.status === 'waiting') {
       throw new BusinessRuleError('screening has not been decided yet');
     }
     if (before.status === input.outcome) {
       throw new BusinessRuleError('the screening already has this decision');
     }
     const reason = input.reason ?? null;
-    const updated = await screeningRepository.updateById(
+    const { record: updated } = await recruitmentWorkflowEngine.transition({
+      binding: BINDING,
       id,
-      { status: input.outcome, decisionReason: reason, decidedBy: new Types.ObjectId(ctx.userId), decidedAt: new Date() },
-      { by: ctx.userId, version: input.version, scope },
-    );
-    await auditService.record({
-      entityRef: entityRef(id),
-      action: 'statusChange',
-      changes: [
-        { field: 'status', old: before.status, new: input.outcome },
-        { field: 'decisionEdited', old: null, new: reason ?? 'decision edited' },
-      ],
-    });
+      to: input.outcome,
+      actorUserId: ctx.userId,
+      reason: reason ?? 'decision edited',
+      version: input.version,
+      set: {
+        decisionReason: reason,
+        decidedBy: new Types.ObjectId(ctx.userId),
+        decidedAt: new Date(),
+      },
+    } as never) as unknown as { record: ScreeningDoc };
 
     const applicantId = String(before.applicantId);
     if (input.outcome === 'rejected') {
@@ -245,13 +260,6 @@ class ScreeningService {
         ctx,
         applicantId,
         { screeningId: id, reason: reason ?? 'screening decision edited to rejected' },
-        scope,
-      );
-    } else {
-      await applicantService.reactivateFromRejection(
-        ctx,
-        applicantId,
-        { reason: reason ?? 'screening decision edited to accepted' },
         scope,
       );
     }
@@ -263,6 +271,40 @@ class ScreeningService {
       outcome: input.outcome,
     });
     return updated;
+  }
+
+  /**
+   * Bulk approve/reject a screening queue (RW17/I4). Each item runs the single-item `decide`
+   * in its own transaction; failures are reported per id and never abort the rest.
+   */
+  async bulk(
+    ctx: AuthContext,
+    input: BulkScreenings,
+    scope: ScopeSelector,
+  ): Promise<BulkActionResultDto> {
+    const outcome = input.action === 'approve' ? 'accepted' : 'rejected';
+    return runBulk(
+      input.ids,
+      async (id) => {
+        const current = await screeningRepository.getById(id, scope);
+        await this.decide(
+          ctx,
+          id,
+          {
+            outcome,
+            ...(input.reason === undefined ? {} : { reason: input.reason }),
+            version: current.__v,
+          },
+          scope,
+        );
+      },
+      {
+        entityType: 'screening',
+        action: input.action,
+        actorUserId: ctx.userId,
+        reason: input.reason ?? null,
+      },
+    );
   }
 }
 

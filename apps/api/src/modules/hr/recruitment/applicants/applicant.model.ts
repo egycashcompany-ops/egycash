@@ -24,6 +24,14 @@ import {
   type MilitaryStatus,
 } from '@ecms/contracts';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../../shared/base/base.model';
+import {
+  emptyPlacement,
+  emptyPlacementLabel,
+  placementLabelSchema,
+  placementSchema,
+  type StagePlacement,
+  type StagePlacementLabel,
+} from '../workflow/stage-fields';
 
 export interface ApplicantContact {
   primaryPhone: string;
@@ -40,9 +48,30 @@ export interface ApplicantSourceDetail {
   note: string | null;
 }
 
+/** One audited reassignment (RW2). */
+export interface PlacementChange {
+  from: StagePlacement;
+  to: StagePlacement;
+  fromLabel: StagePlacementLabel;
+  toLabel: StagePlacementLabel;
+  changed: string[];
+  reason: string;
+  note: string | null;
+  source: string;
+  sourceEntityType: string | null;
+  sourceEntityId: Types.ObjectId | null;
+  by: Types.ObjectId | null;
+  at: Date;
+  correlationId: string;
+}
+
 export interface ApplicantDoc extends BaseDocFields {
   code: string;
   status: ApplicantStatus;
+  /** CURRENT Position + Branch (RW1); `branchId` below is its synced data-scope mirror. */
+  placement: StagePlacement;
+  placementLabel: StagePlacementLabel;
+  placementHistory: PlacementChange[];
   // Application context (§7 group 9). Optional: a direct intake has no linked Job Request
   // (the reference may be attached later when the Job Requests module lands).
   jobRequisitionId: Types.ObjectId | null;
@@ -124,6 +153,31 @@ const applicantSchema = new Schema<ApplicantDoc>(
   {
     code: { type: String, required: true },
     status: { type: String, enum: APPLICANT_STATUSES, required: true, default: 'new' },
+    placement: { type: placementSchema, default: emptyPlacement },
+    placementLabel: { type: placementLabelSchema, default: emptyPlacementLabel },
+    placementHistory: {
+      type: [
+        new Schema<PlacementChange>(
+          {
+            from: { type: placementSchema, required: true },
+            to: { type: placementSchema, required: true },
+            fromLabel: { type: placementLabelSchema, required: true },
+            toLabel: { type: placementLabelSchema, required: true },
+            changed: { type: [String], default: [] },
+            reason: { type: String, required: true },
+            note: { type: String, default: null },
+            source: { type: String, required: true, default: 'manual' },
+            sourceEntityType: { type: String, default: null },
+            sourceEntityId: { type: Schema.Types.ObjectId, default: null },
+            by: { type: Schema.Types.ObjectId, default: null },
+            at: { type: Date, required: true },
+            correlationId: { type: String, required: true },
+          },
+          { _id: false },
+        ),
+      ],
+      default: [],
+    },
     jobRequisitionId: { type: Schema.Types.ObjectId, default: null },
     branchId: { type: Schema.Types.ObjectId, default: null },
     sourceId: { type: Schema.Types.ObjectId, required: true },

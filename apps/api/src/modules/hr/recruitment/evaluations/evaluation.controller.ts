@@ -2,6 +2,7 @@
 // rather than importing infrastructure directly.
 import { type Request, type Response } from 'express';
 import {
+  type BulkEvaluations,
   type CreateEvaluationPhase,
   type DecideEvaluation,
   type ListEvaluationPhasesQuery,
@@ -103,4 +104,10 @@ export const decideEvaluation = async (req: Request, res: Response): Promise<voi
   const { body, params } = validated<DecideEvaluation, never, IdParam>(req);
   const doc = await evaluationService.decide(ctx, params.id, body, scopeSelector(ctx, 'evaluation.manage'));
   ok(res, toEvaluationDto(doc));
+};
+
+export const bulkEvaluations = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body } = validated<BulkEvaluations>(req);
+  ok(res, await evaluationService.bulk(ctx, body, scopeSelector(ctx, 'evaluation.manage')));
 };

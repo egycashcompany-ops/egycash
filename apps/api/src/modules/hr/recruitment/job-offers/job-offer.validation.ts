@@ -9,6 +9,7 @@ export {
   WithdrawJobOfferSchema,
   ListJobOffersQuerySchema,
   ListAwaitingOffersQuerySchema,
+  BulkJobOffersSchema,
 } from '@ecms/contracts';
 
 import { z } from 'zod';

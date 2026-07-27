@@ -3,6 +3,7 @@
 import { Types, type FilterQuery } from 'mongoose';
 import { type Paginated } from '@ecms/contracts';
 import { BaseRepository } from '../../../../shared/base/base.repository';
+import { assertNotWorkflowManaged } from '../workflow/workflow-guard';
 import { type ScopeSelector } from '../../../../shared/types';
 import { JobOfferModel, type JobOfferDoc } from './job-offer.model';
 
@@ -10,7 +11,7 @@ export interface JobOfferListFilter {
   status?: string | undefined;
   applicantId?: string | undefined;
   branchId?: string | undefined;
-  active?: boolean | undefined;
+
   search?: string | undefined;
 }
 
@@ -21,13 +22,48 @@ class JobOfferRepository extends BaseRepository<JobOfferDoc> {
     super(JobOfferModel, { branchField: 'branchId', softDelete: true });
   }
 
-  /** The applicant's current active (draft/sent) offer, if any. */
+  /**
+   * I13 — the workflow engine owns `status`, `attempt` and the supersede/placement markers.
+   * A stage service updating its own domain data never touches them; attempting to does not
+   * silently corrupt the pipeline, it throws.
+   */
+  override async updateById(
+    id: string,
+    set: Parameters<BaseRepository<JobOfferDoc>['updateById']>[1],
+    meta: Parameters<BaseRepository<JobOfferDoc>['updateById']>[2],
+  ): Promise<JobOfferDoc> {
+    assertNotWorkflowManaged(set ?? {}, 'jobOffer');
+    return super.updateById(id, set, meta);
+  }
+
+  /** The applicant's current LIVE (waiting/draft/sent) offer, if any. */
   async findActiveByApplicantId(applicantId: string): Promise<JobOfferDoc | null> {
     if (!Types.ObjectId.isValid(applicantId)) return null;
     return this.model
-      .findOne({ applicantId: new Types.ObjectId(applicantId), active: true, isDeleted: false })
+      .findOne({
+        applicantId: new Types.ObjectId(applicantId),
+        status: { $in: ['waiting', 'draft', 'sent'] },
+        supersededAt: null,
+        isDeleted: false,
+      })
       .lean<JobOfferDoc>()
       .exec();
+  }
+
+  /**
+   * The attempt a NEW offer for this applicant takes (I12). Terminal offers keep
+   * `supersededAt: null`, so a re-offer after a withdrawn/rejected/expired one must claim the
+   * next attempt rather than collide with the live-record unique index.
+   */
+  async nextAttemptFor(applicantId: string): Promise<number> {
+    if (!Types.ObjectId.isValid(applicantId)) return 1;
+    const latest = await this.model
+      .findOne({ applicantId: new Types.ObjectId(applicantId), isDeleted: false })
+      .sort({ attempt: -1 })
+      .select('attempt')
+      .lean<{ attempt: number }>()
+      .exec();
+    return latest === null ? 1 : latest.attempt + 1;
   }
 
   /** The applicant's accepted offer, if any (the Employee-Creation gate for Stage 5). */
@@ -41,7 +77,7 @@ class JobOfferRepository extends BaseRepository<JobOfferDoc> {
 
   /**
    * Among `applicantIds`, the ones holding an offer that BLOCKS drafting a new one —
-   * an active (draft/sent) offer or an accepted one. Feeds the awaiting-offer queue.
+   * a live (waiting/draft/sent) offer or an accepted one. Feeds the awaiting-offer queue.
    */
   async applicantIdsWithBlockingOffer(applicantIds: string[]): Promise<Set<string>> {
     const objectIds = applicantIds
@@ -52,7 +88,7 @@ class JobOfferRepository extends BaseRepository<JobOfferDoc> {
       .find({
         applicantId: { $in: objectIds },
         isDeleted: false,
-        $or: [{ active: true }, { status: 'accepted' }],
+        $or: [{ status: { $in: ['waiting', 'draft', 'sent'] } }, { status: 'accepted' }],
       })
       .select('applicantId')
       .lean<{ applicantId: Types.ObjectId }[]>()
@@ -74,7 +110,6 @@ class JobOfferRepository extends BaseRepository<JobOfferDoc> {
     if (f.status !== undefined) clauses.push({ status: f.status });
     if (f.applicantId !== undefined) clauses.push({ applicantId: new Types.ObjectId(f.applicantId) });
     if (f.branchId !== undefined) clauses.push({ branchId: new Types.ObjectId(f.branchId) });
-    if (f.active !== undefined) clauses.push({ active: f.active });
     if (f.search !== undefined && f.search.trim() !== '') {
       const re = new RegExp(escapeRegExp(f.search.trim()), 'i');
       clauses.push({

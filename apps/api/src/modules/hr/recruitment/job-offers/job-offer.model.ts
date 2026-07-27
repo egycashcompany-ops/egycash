@@ -11,6 +11,7 @@ import {
   type OfferStatus,
 } from '@ecms/contracts';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../../shared/base/base.model';
+import { stageFields, type StageDocFields } from '../workflow/stage-fields';
 
 export interface OfferMoney {
   amount: number;
@@ -27,6 +28,9 @@ export interface OfferTerms {
   jobTitleId: Types.ObjectId;
   departmentId: Types.ObjectId;
   branchId: Types.ObjectId;
+  /** The seat + section this hire fills; carried into the Employee record (RW3). */
+  jobPositionId: Types.ObjectId | null;
+  sectionId: Types.ObjectId | null;
   /** Reporting manager — OPTIONAL (may be null). */
   managerId: Types.ObjectId | null;
   employmentType: EmploymentType;
@@ -53,16 +57,21 @@ export interface OfferAcceptedSnapshot {
   acceptedAt: Date;
 }
 
-export interface JobOfferDoc extends BaseDocFields {
-  /** Immutable, unique, human-readable offer number `JO-{YYYY}-{seq:6}` (set once, at create). */
-  code: string;
+export interface JobOfferDoc extends BaseDocFields, StageDocFields {
+  /**
+   * Immutable offer number `JO-{YYYY}-{seq:6}`, allocated when the record leaves `waiting` for
+   * `draft` — a queued offer has no number yet (I11).
+   */
+  code: string | null;
   applicantId: Types.ObjectId;
   applicantCode: string;
   applicantName: string;
-  branchId: Types.ObjectId;
+  branchId: Types.ObjectId | null;
   status: OfferStatus;
-  active: boolean;
-  terms: OfferTerms;
+  /** null while `waiting`; the package is filled in when the offer is drafted (I11). */
+  terms: OfferTerms | null;
+  /** The Employee created from this accepted offer — the Employees Ready queue reads it (I11). */
+  hiredEmployeeId: Types.ObjectId | null;
   revisionNumber: number;
   revisions: OfferRevision[];
   /** Frozen accepted terms — set once on acceptance, never mutated (Stage 5 consumes this). */
@@ -88,6 +97,8 @@ const termsSchema = new Schema<OfferTerms>(
     jobTitleId: { type: Schema.Types.ObjectId, required: true },
     departmentId: { type: Schema.Types.ObjectId, required: true },
     branchId: { type: Schema.Types.ObjectId, required: true },
+    jobPositionId: { type: Schema.Types.ObjectId, default: null },
+    sectionId: { type: Schema.Types.ObjectId, default: null },
     managerId: { type: Schema.Types.ObjectId, default: null },
     employmentType: { type: String, enum: EMPLOYMENT_TYPES, required: true },
     salary: { type: moneySchema, default: null },
@@ -115,14 +126,14 @@ const termsSchema = new Schema<OfferTerms>(
 
 const jobOfferSchema = new Schema<JobOfferDoc>(
   {
-    code: { type: String, required: true },
+    code: { type: String, default: null },
     applicantId: { type: Schema.Types.ObjectId, required: true },
     applicantCode: { type: String, required: true },
     applicantName: { type: String, required: true, default: '' },
-    branchId: { type: Schema.Types.ObjectId, required: true },
-    status: { type: String, enum: OFFER_STATUSES, required: true, default: 'draft' },
-    active: { type: Boolean, required: true, default: true },
-    terms: { type: termsSchema, required: true },
+    branchId: { type: Schema.Types.ObjectId, default: null },
+    status: { type: String, enum: OFFER_STATUSES, required: true, default: 'waiting' },
+    terms: { type: termsSchema, default: null },
+    hiredEmployeeId: { type: Schema.Types.ObjectId, default: null },
     revisionNumber: { type: Number, required: true, default: 1 },
     revisions: {
       type: [
@@ -158,18 +169,29 @@ const jobOfferSchema = new Schema<JobOfferDoc>(
     withdrawnBy: { type: Schema.Types.ObjectId, default: null },
     withdrawnAt: { type: Date, default: null },
     expiredAt: { type: Date, default: null },
+    ...stageFields,
     ...baseFields,
   },
   baseSchemaOptions,
 );
 
-// The offer number is organization-wide unique and immutable.
-jobOfferSchema.index({ code: 1 }, { unique: true, name: 'ux_code' });
-// At most one ACTIVE (draft/sent) offer per applicant — the invariant, DB-enforced.
+// The offer number is organization-wide unique and immutable — partial, since a `waiting`
+// record has none yet (I11).
 jobOfferSchema.index(
-  { applicantId: 1 },
-  { unique: true, name: 'ux_active_offer', partialFilterExpression: { active: true, isDeleted: false } },
+  { code: 1 },
+  { unique: true, name: 'ux_code', partialFilterExpression: { code: { $type: 'string' } } },
 );
+// I12 — one ACTIVE record per attempt (replaces the `active` boolean, I10).
+jobOfferSchema.index(
+  { applicantId: 1, attempt: 1 },
+  {
+    unique: true,
+    name: 'ux_offer_applicant_attempt',
+    partialFilterExpression: { supersededAt: null, isDeleted: false },
+  },
+);
+// The Employees Ready queue: accepted offers not yet converted into an Employee (I11).
+jobOfferSchema.index({ status: 1, hiredEmployeeId: 1 }, { name: 'ix_status_hiredEmployee' });
 jobOfferSchema.index({ applicantId: 1, createdAt: -1 }, { name: 'ix_applicant_createdAt' });
 jobOfferSchema.index({ status: 1, createdAt: -1 }, { name: 'ix_status_createdAt' });
 jobOfferSchema.index({ branchId: 1, status: 1 }, { name: 'ix_branchId_status' });

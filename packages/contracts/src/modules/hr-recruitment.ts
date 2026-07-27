@@ -12,6 +12,12 @@ import {
   type Address,
   type LocalizedString,
 } from '../common/index.js';
+import {
+  PlacementSchema,
+  type PlacementChangeDto,
+  type PlacementDto,
+  type PlacementLabelDto,
+} from './hr-recruitment-workflow.js';
 
 // ── Closed vocabularies ─────────────────────────────────────────────────────
 
@@ -20,12 +26,16 @@ export const GenderSchema = z.enum(GENDERS);
 export type Gender = z.infer<typeof GenderSchema>;
 
 /**
- * Applicant lifecycle. `new` = live in the active pipeline; `rejected` (Stage 2, Initial
- * Screening) and `withdrawn` (Stage 1) are terminal. Interview/offer states are Stage 3+.
- * A `rejected` applicant leaves the live National-ID uniqueness set, exactly like a
- * `withdrawn` one, so the number frees up for a fresh application.
+ * The applicant's single lifecycle enum (I10/I13). `new` = live in the active pipeline; `hired`,
+ * `rejected` and `withdrawn` are terminal. A `rejected` or `withdrawn` applicant leaves the live
+ * National-ID uniqueness set, so the number frees up for a fresh application.
+ *
+ * `hired` is the terminal SUCCESS state, set by the workflow engine at employee creation. Before
+ * the refactor a hired candidate stayed `new` for ever and their outcome was readable only by
+ * looking for an Employee row elsewhere — exactly the inference I11 removes. The boot migration
+ * backfills candidates who already have an Employee.
  */
-export const APPLICANT_STATUSES = ['new', 'rejected', 'withdrawn'] as const;
+export const APPLICANT_STATUSES = ['new', 'hired', 'rejected', 'withdrawn'] as const;
 export const ApplicantStatusSchema = z.enum(APPLICANT_STATUSES);
 export type ApplicantStatus = z.infer<typeof ApplicantStatusSchema>;
 
@@ -214,6 +224,12 @@ export const RegisterApplicantSchema = z
     // future Job Requests module lands, an applicant can be linked to a requisition later.
     jobRequisitionId: objectId().optional(),
     branchId: objectId().optional(),
+    /**
+     * Position + Branch at intake (RW1). Optional — a walk-in with no target seat is normal;
+     * the placement is completed later and stays editable until Offer Acceptance (RW2/RW3).
+     * When both are supplied, `placement.branchId` wins and `branchId` follows it.
+     */
+    placement: PlacementSchema.partial().optional(),
     sourceId: objectId(),
     sourceDetail: SourceDetailSchema.optional(),
     intakeChannel: ApplicantIntakeChannelSchema.default('internal'),
@@ -247,7 +263,13 @@ export const RegisterApplicantSchema = z
   .strict();
 export type RegisterApplicant = z.infer<typeof RegisterApplicantSchema>;
 
-/** Edits after registration; identity-derived fields are never client-set here. */
+/**
+ * Edits after registration; identity-derived fields are never client-set here.
+ *
+ * Placement (Position + Branch) is DELIBERATELY ABSENT: moving a candidate is an explicit,
+ * reason-carrying, audited action (`POST /hr/applicants/:id/reassign`, RW2) so a routine data
+ * correction can never silently reassign someone.
+ */
 export const UpdateApplicantSchema = z
   .object({
     fullNameAr: z.string().min(2).max(200).optional(),
@@ -395,7 +417,12 @@ export type ExportApplicantsQuery = z.infer<typeof ExportApplicantsQuerySchema>;
 
 // ── Bulk (generic, per-row-audited executor — §9, OQ-27 minimal) ────────────
 
-export const BULK_APPLICANT_ACTIONS = ['withdraw'] as const;
+export const BULK_APPLICANT_ACTIONS = [
+  'withdraw',
+  'moveToScreening',
+  'moveToOffer',
+  'reassign',
+] as const;
 export const BulkApplicantActionSchema = z.enum(BULK_APPLICANT_ACTIONS);
 export type BulkApplicantAction = z.infer<typeof BulkApplicantActionSchema>;
 
@@ -404,10 +431,24 @@ export const BulkApplicantsSchema = z
     action: BulkApplicantActionSchema,
     ids: z.array(objectId()).min(1).max(200),
     reason: z.string().min(1).max(500).optional(),
+    /** Required for the `reassign` action — one placement applied to the whole selection (RW17). */
+    placement: PlacementSchema.optional(),
   })
-  .strict();
+  .strict()
+  .refine((v) => v.action !== 'withdraw' || (v.reason !== undefined && v.reason.length > 0), {
+    path: ['reason'],
+    message: 'a reason is required to withdraw applicants',
+  })
+  .refine(
+    (v) => v.action !== 'reassign' || (v.placement !== undefined && v.reason !== undefined),
+    { path: ['placement'], message: 'a placement and a reason are required to reassign applicants' },
+  );
 export type BulkApplicants = z.infer<typeof BulkApplicantsSchema>;
 
+/**
+ * @deprecated Use the shared `BulkActionResultDto` (hr-recruitment-workflow) — every module's
+ * bulk endpoint returns that exact shape. Kept as an alias so existing callers keep compiling.
+ */
 export interface BulkApplicantsResultDto {
   requested: number;
   succeeded: number;
@@ -430,7 +471,19 @@ export interface ApplicantDto {
   status: ApplicantStatus;
   /** null for a direct intake with no linked Job Request (the link may be added later). */
   jobRequisitionId: string | null;
+  /**
+   * The ADR-015 data-scope field. Kept in sync with `placement.branchId` by the applicant
+   * service (its single writer) so every existing scope query and index keeps working.
+   */
   branchId: string | null;
+  /**
+   * CURRENT Position + Branch (RW1). The board, every queue and every counter show this;
+   * historical stage records show their own immutable snapshot instead (RW4a).
+   */
+  placement: PlacementDto;
+  placementLabel: PlacementLabelDto;
+  /** Every reassignment, oldest first; never truncated (RW2). */
+  placementHistory: PlacementChangeDto[];
   sourceId: string;
   sourceDetail: {
     referrerUserId?: string;

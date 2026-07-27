@@ -2,20 +2,31 @@
 // second stage of the approved seven-stage recruitment workflow: an applicant, once
 // registered (Stage 1), is screened to a single terminal outcome — Accepted or Rejected
 // (OQ-32). "Needs more information" is NOT a state: it is a note added to a screening that
-// stays `pending`. Screening notes and rejection reasons are first-class and stored.
+// stays `waiting`. Screening notes and rejection reasons are first-class and stored.
 // Scope is Stage 2 only: nothing here describes Interviews (Stage 3) or later.
 import { z } from 'zod';
 import { objectId, PaginationQuerySchema } from '../common/index.js';
+import {
+  BulkRequestBaseSchema,
+  type AttemptMarkerDto,
+  type PlacementDto,
+  type PlacementLabelDto,
+} from './hr-recruitment-workflow.js';
 
 // ── Closed vocabularies ─────────────────────────────────────────────────────
 
 /**
- * Screening lifecycle. `pending` = under review (notes may accumulate); `accepted` and
- * `rejected` are terminal decisions (OQ-32 — only two outcomes). A rejected screening
- * transitions its applicant to the terminal `rejected` status; an accepted screening
- * leaves the applicant `new` (live), ready for the later interview stage.
+ * The screening's single status enum (I10/I11). Every value is PERSISTED: the record is
+ * materialized in `waiting` the moment the applicant is registered, so the queue is real rows and
+ * never the absence of one. `waiting` = under review, notes may accumulate; `accepted` and
+ * `rejected` are the two terminal decisions (OQ-32). A rejected screening transitions its
+ * applicant to the terminal `rejected` status; an accepted one leaves the applicant `new` (live).
+ * The page's three tabs, the list filter and the counter buckets all use these exact values.
+ *
+ * `waiting` replaced the former `pending` (I10); stored values are rewritten by the boot
+ * migration and `pending` is still accepted as a query alias for one release.
  */
-export const SCREENING_STATUSES = ['pending', 'accepted', 'rejected'] as const;
+export const SCREENING_STATUSES = ['waiting', 'accepted', 'rejected'] as const;
 export const ScreeningStatusSchema = z.enum(SCREENING_STATUSES);
 export type ScreeningStatus = z.infer<typeof ScreeningStatusSchema>;
 
@@ -26,7 +37,11 @@ export type ScreeningOutcome = z.infer<typeof ScreeningOutcomeSchema>;
 
 // ── Create / note / decide ──────────────────────────────────────────────────
 
-/** Open a screening for an applicant (one per applicant). An optional first note is stored. */
+/**
+ * Open a screening for an applicant. Since the record is materialized at registration (I11) this
+ * is now a find-or-create that stores an optional first note — kept so the manual "open screening"
+ * flow and its permission keep working unchanged.
+ */
 export const CreateScreeningSchema = z
   .object({
     applicantId: objectId(),
@@ -36,8 +51,8 @@ export const CreateScreeningSchema = z
 export type CreateScreening = z.infer<typeof CreateScreeningSchema>;
 
 /**
- * Append a note to a `pending` screening — the "needs more information" flow (OQ-32): the
- * screening stays pending; the note is recorded with author + timestamp.
+ * Append a note to a `waiting` screening — the "needs more information" flow (OQ-32): the
+ * screening stays `waiting`; the note is recorded with author + timestamp.
  */
 export const AddScreeningNoteSchema = z
   .object({
@@ -67,6 +82,7 @@ export type DecideScreening = z.infer<typeof DecideScreeningSchema>;
 // ── List ─────────────────────────────────────────────────────────────────────
 
 export const ListScreeningsQuerySchema = PaginationQuerySchema.extend({
+  /** Doubles as the screening page's tab (I10): waiting | accepted | rejected. */
   status: ScreeningStatusSchema.optional(),
   applicantId: objectId().optional(),
   branchId: objectId().optional(),
@@ -74,14 +90,38 @@ export const ListScreeningsQuerySchema = PaginationQuerySchema.extend({
   decidedTo: z.coerce.date().optional(),
   createdFrom: z.coerce.date().optional(),
   createdTo: z.coerce.date().optional(),
+  /** Include screenings belonging to superseded attempts (default false for queues). */
+  includeSuperseded: z.coerce.boolean().default(false),
+  search: z.string().max(200).optional(),
 }).strict();
 export type ListScreeningsQuery = z.infer<typeof ListScreeningsQuerySchema>;
 
-// ── Awaiting screening (pipeline entry) ─────────────────────────────────────
-// Live applicants (status `new`) with no screening yet — the "automatically appears in the
-// Screening module once registered" queue. A derived read model (no screening record is
-// fabricated; the existing open-screening flow is untouched). The recruiter opens the screening
-// from here, keeping the manual workflow + permissions intact.
+export const ExportScreeningsQuerySchema = ListScreeningsQuerySchema.omit({
+  page: true,
+  pageSize: true,
+}).strict();
+export type ExportScreeningsQuery = z.infer<typeof ExportScreeningsQuerySchema>;
+
+// ── Bulk (RW17/I4 — per-item transaction, partial success) ──────────────────
+
+export const BULK_SCREENING_ACTIONS = ['approve', 'reject'] as const;
+export const BulkScreeningActionSchema = z.enum(BULK_SCREENING_ACTIONS);
+export type BulkScreeningAction = z.infer<typeof BulkScreeningActionSchema>;
+
+export const BulkScreeningsSchema = BulkRequestBaseSchema.extend({
+  action: BulkScreeningActionSchema,
+})
+  .strict()
+  .refine((v) => v.action !== 'reject' || (v.reason !== undefined && v.reason.trim() !== ''), {
+    path: ['reason'],
+    message: 'a reason is required when rejecting applicants',
+  });
+export type BulkScreenings = z.infer<typeof BulkScreeningsSchema>;
+
+// ── Awaiting screening (DEPRECATED — superseded by explicit `waiting` records, I11) ──────────
+// The queue is now `GET /hr/screenings?status=waiting` over REAL rows: the screening record is
+// materialized when the applicant is registered. Retained for one release while the stage
+// services and web screens migrate.
 
 export const ListAwaitingScreeningsQuerySchema = z
   .object({ branchId: objectId().optional(), limit: z.coerce.number().int().min(1).max(200).default(100) })
@@ -112,16 +152,20 @@ export interface ScreeningDecisionDto {
   decidedAt: string;
 }
 
-export interface ScreeningDto {
+export interface ScreeningDto extends AttemptMarkerDto {
   id: string;
   applicantId: string;
   applicantCode: string;
   /** Denormalized applicant display name (Arabic full name) — tables never show bare codes. */
   applicantName: string;
+  /** Data-scope field: follows the applicant on reassignment (RW2 step 3). */
   branchId: string | null;
   status: ScreeningStatus;
+  /** The placement in force when the screening was opened; immutable (RW4). */
+  placement: PlacementDto;
+  placementLabel: PlacementLabelDto;
   notes: ScreeningNoteDto[];
-  /** Present once the screening has been decided; null while `pending`. */
+  /** Present once the screening has been decided; null while `waiting`. */
   decision: ScreeningDecisionDto | null;
   /** Optimistic-concurrency token (__v) — echo back in note/decide. */
   version: number;

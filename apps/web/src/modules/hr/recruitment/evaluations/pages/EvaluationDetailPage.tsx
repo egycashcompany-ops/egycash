@@ -157,7 +157,7 @@ export const EvaluationDetailPage = (): JSX.Element => {
           {/* Decision (editable — re-deciding is audited) */}
           <Can permission="evaluation.manage">
             <Card>
-              <CardHeader title={ev.status === 'pending' ? t('evaluations.decide.title') : t('evaluations.decide.editTitle')} />
+              <CardHeader title={ev.status === 'waiting' ? t('evaluations.decide.title') : t('evaluations.decide.editTitle')} />
               <CardBody>
                 <div className="space-y-4">
                   <Field label={t('evaluations.decide.decision')} required>
@@ -175,7 +175,7 @@ export const EvaluationDetailPage = (): JSX.Element => {
                   </Field>
                   <div className="flex justify-end">
                     <Button loading={decide.isPending} onClick={() => void submitDecision()}>
-                      {ev.status === 'pending' ? t('evaluations.decide.submit') : t('evaluations.decide.update')}
+                      {ev.status === 'waiting' ? t('evaluations.decide.submit') : t('evaluations.decide.update')}
                     </Button>
                   </div>
                 </div>

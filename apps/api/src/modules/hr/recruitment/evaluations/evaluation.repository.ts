@@ -3,6 +3,7 @@
 import { Types, type FilterQuery } from 'mongoose';
 import { type Paginated } from '@ecms/contracts';
 import { BaseRepository } from '../../../../shared/base/base.repository';
+import { assertNotWorkflowManaged } from '../workflow/workflow-guard';
 import { type ScopeSelector } from '../../../../shared/types';
 import { EvaluationModel, type EvaluationDoc } from './evaluation.model';
 
@@ -16,6 +17,20 @@ export interface EvaluationListFilter {
 class EvaluationRepository extends BaseRepository<EvaluationDoc> {
   constructor() {
     super(EvaluationModel, { branchField: 'branchId', softDelete: true });
+  }
+
+  /**
+   * I13 — the workflow engine owns `status`, `attempt` and the supersede/placement markers.
+   * A stage service updating its own domain data never touches them; attempting to does not
+   * silently corrupt the pipeline, it throws.
+   */
+  override async updateById(
+    id: string,
+    set: Parameters<BaseRepository<EvaluationDoc>['updateById']>[1],
+    meta: Parameters<BaseRepository<EvaluationDoc>['updateById']>[2],
+  ): Promise<EvaluationDoc> {
+    assertNotWorkflowManaged(set ?? {}, 'evaluation');
+    return super.updateById(id, set, meta);
   }
 
   async findByApplicantAndPhase(applicantId: string, phaseId: string): Promise<EvaluationDoc | null> {

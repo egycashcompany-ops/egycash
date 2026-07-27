@@ -21,6 +21,7 @@ import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { buildApp } from '../../src/app';
 import { moduleManifests } from '../../src/modules';
 import { hrPermissions } from '../../src/modules/hr/hr.module';
+import { migrateRecruitmentWorkflow } from '../../src/modules/hr/recruitment/recruitment.migration';
 import { rbacService } from '../../src/platform/rbac';
 import { userService } from '../../src/platform/users';
 import { settingsService } from '../../src/platform/settings';
@@ -430,5 +431,41 @@ describe('recruitment — aggregated stage counters (RW15/I3)', () => {
   it('omits stages the caller cannot view rather than reporting them as zero', async () => {
     const dto = await counts(aliceToken); // no HR permissions at all
     expect(dto.stages).toEqual([]);
+  });
+});
+
+describe('recruitment — boot migration (I8, idempotent)', () => {
+  const phaseShape = async () =>
+    (await phases())
+      .filter((p) => p.active)
+      .map((p) => ({ key: p.key, order: p.order, kind: p.kind, resource: p.permissionResource }));
+
+  it('leaves the seeded catalog in business order, with Medical last', async () => {
+    expect(await phaseShape()).toEqual([
+      { key: 'securityCheck', order: 1, kind: 'batch', resource: 'securityCheck' },
+      { key: 'drivingTest', order: 2, kind: 'batch', resource: 'drivingTest' },
+      { key: 'medicalExam', order: 3, kind: 'individual', resource: 'medicalCheck' },
+    ]);
+  });
+
+  it('is a no-op when re-run — the reorder never fires twice', async () => {
+    const before = await phaseShape();
+    await migrateRecruitmentWorkflow();
+    await migrateRecruitmentWorkflow();
+    expect(await phaseShape()).toEqual(before);
+  });
+
+  it('leaves live records untouched on a second run', async () => {
+    const phase = await phaseByKey('securityCheck');
+    const evaluation = (await open((await readyApplicant()).id, phase.id)).body.data as EvaluationDto;
+    await migrateRecruitmentWorkflow();
+
+    const after = await request(app)
+      .get(`/api/v1/hr/evaluations/${evaluation.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(after.status).toBe(200);
+    const dto = after.body.data as EvaluationDto;
+    expect(dto.status).toBe('waiting');
+    expect(dto.version).toBe(evaluation.version);
   });
 });

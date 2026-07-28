@@ -9,6 +9,16 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-07-28
+
+Release v0.24.0 — **HR completed: Recruitment, Employee Management, Leave Management, Contracts,
+and the Authentication & Account Lifecycle**, closing with the **Recruitment Workflow Refactor**
+([PR #85](https://github.com/egycashcompany-ops/egycash/pull/85), merged 2026-07-28) whose frozen
+design (`docs/12-planning/recruitment-workflow-design.md`, Revision 2.6 — decisions RW1–RW17,
+invariants I1–I15) is now **fully implemented and audited with zero remaining implementation
+gaps**. This release accumulates every change merged since v0.23.0; the Recruitment module is
+**approved by EGYCASH**.
+
 ### Changed
 
 - **Recruitment: every workflow mutation answers with the full state (I6, server half).** All
@@ -1587,4 +1597,5 @@ default` resolution with caching and change events; flags evaluated on the hiera
 Milestone 1 — complete platform design documentation (`docs/`), approved by EGYCASH,
 followed by Architecture Review 01 (pre-Milestone 2 critical review, R1–R32).
 
-[Unreleased]: https://github.com/egycashcompany-ops/egycash/compare/main...HEAD
+[Unreleased]: https://github.com/egycashcompany-ops/egycash/compare/v0.24.0...HEAD
+[0.24.0]: https://github.com/egycashcompany-ops/egycash/releases/tag/v0.24.0

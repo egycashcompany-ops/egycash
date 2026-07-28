@@ -11,12 +11,23 @@ Operations, Vault Management, and more) plugged in on top.
 
 ## Status
 
-**Milestone 2 — Platform Core implementation.**
-Milestone 1 (design) is approved; delivery follows the vertical-slice plan
-(phases 2.1–2.4 per [Architecture Review 01](docs/10-reviews/2026-07-architecture-review-01.md)).
-**Sprint 2.1 is completed** ([PR #2](https://github.com/egycashcompany-ops/egycash/pull/2),
-merged 2026-07-09): kernel + auth + users + rbac + organization + audit + settings —
-proving login → permission → scoped data → audit trail. Sprint 2.2 has not started.
+**Latest release: [v0.24.0](docs/13-releases/v0.24.0.md) — HR, complete** (2026-07-28).
+
+The Platform Core is in place (kernel, auth, users, RBAC, organization, files, audit,
+notifications, settings, scheduler), and the **HR module is delivered end to end**:
+
+| Capability | State |
+| --- | --- |
+| Recruitment (7 stages, workflow engine, timeline, counters) | ✅ Released — frozen design RW1–RW17 / I1–I15 fully implemented and audited |
+| Employee Management (registry, lifecycle, personnel actions) | ✅ Released |
+| Leave Management (calendar, types, ledger, approvals, ESS) | ✅ Released |
+| Contracts (types, versioned templates, PDF, public verification) | ✅ Released |
+| Authentication & Employee Account Lifecycle | ✅ Released |
+| Organization Structure (Company · Branch · Department · Section · Job Titles) | ✅ Released |
+
+Job Positions and Job Requisitions remain **intentionally deferred**, and per
+[ADR-016](docs/03-decisions/ADR-016-optional-position-requisition-linkage.md) applicants are never
+required to link to either — the Talent Pool is first-class. The next module has not started.
 
 The full roadmap and project index live in [ECMS-BOOK.md](ECMS-BOOK.md);
 release history in [CHANGELOG.md](CHANGELOG.md).

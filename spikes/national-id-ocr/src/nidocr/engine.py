@@ -51,18 +51,25 @@ class PaddleRecognizer:
     id = "paddleocr-3.x"
 
     def __init__(self, model_dir: str | None = None, lang: str = "ar") -> None:
-        from paddleocr import PaddleOCR  # noqa: PLC0415 — intentionally lazy
-
         self._model_dir = model_dir or os.environ.get("PADDLE_OCR_MODEL_DIR", "/models")
-        # `use_textline_orientation=False`: crops come from a rectified, deskewed card and are
-        # already upright, so the orientation classifier is pure latency here.
+        # Point PaddleX's cache at the baked weights BEFORE importing paddleocr — the module reads
+        # this at import time (paddlex/utils/cache.py). With the weights already present, model
+        # resolution is a local lookup and nothing is fetched, which is what makes the container
+        # offline by construction rather than by firewall.
+        os.environ["PADDLE_PDX_CACHE_HOME"] = self._model_dir
+
+        from paddleocr import PaddleOCR  # noqa: PLC0415 — lazy, and must follow the env set above
+
+        # The three stages are disabled for the same reason they are not baked: crops come from a
+        # card that preprocess.py has already rectified and deskewed, so orientation and unwarping
+        # are pure latency. Model directories are deliberately NOT passed — PaddleOCR resolves
+        # them from the cache above, and hand-built paths would have to mirror PaddleX's internal
+        # layout, which is not a contract this spike should depend on.
         self._ocr = PaddleOCR(
             lang=lang,
+            use_doc_orientation_classify=False,
+            use_doc_unwarping=False,
             use_textline_orientation=False,
-            det_model_dir=os.path.join(self._model_dir, "det"),
-            rec_model_dir=os.path.join(self._model_dir, "rec"),
-            cls_model_dir=os.path.join(self._model_dir, "cls"),
-            show_log=False,
         )
 
     def recognize(self, crop: np.ndarray) -> Recognition:

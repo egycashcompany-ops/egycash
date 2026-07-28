@@ -29,14 +29,28 @@ LANG = os.environ.get("PADDLE_OCR_LANG", "ar")
 
 def main() -> int:
     MODEL_HOME.mkdir(parents=True, exist_ok=True)
-    os.environ.setdefault("PADDLE_HOME", str(MODEL_HOME))
+    # PaddleOCR 3.x delegates model management to PaddleX, and PaddleX caches under
+    # `PADDLE_PDX_CACHE_HOME` (paddlex/utils/cache.py) — NOT `PADDLE_HOME`, which is a
+    # PaddlePaddle variable that has no bearing on where weights land. Setting the wrong one is
+    # silent: the download succeeds into `~/.paddlex`, the assertion below finds nothing here, and
+    # the build fails with weights sitting in a directory the runtime image never copies.
+    # This must be set before paddleocr is imported.
+    os.environ["PADDLE_PDX_CACHE_HOME"] = str(MODEL_HOME)
 
     print(f"baking PP-OCR weights (lang={LANG}) into {MODEL_HOME} …", flush=True)
     from paddleocr import PaddleOCR
 
-    # Constructing it is what triggers the fetch. Orientation classification is disabled to match
-    # the runtime configuration, so no weights are pulled that production will never load.
-    PaddleOCR(lang=LANG, use_textline_orientation=False)
+    # Constructing it is what triggers the fetch. All three optional stages are disabled so that
+    # only the two models production actually loads — detection and Arabic recognition — are
+    # pulled. Leaving them on downloads document-orientation and unwarping models as well, which
+    # this pipeline never runs: crops come from a card that preprocess.py has already rectified
+    # and deskewed.
+    PaddleOCR(
+        lang=LANG,
+        use_doc_orientation_classify=False,
+        use_doc_unwarping=False,
+        use_textline_orientation=False,
+    )
 
     weights = [p for p in MODEL_HOME.rglob("*") if p.is_file() and p.stat().st_size > 100_000]
     if not weights:

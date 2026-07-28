@@ -104,4 +104,20 @@ evaluationSchema.index({ applicantId: 1, phaseOrder: 1 }, { name: 'ix_applicant_
 evaluationSchema.index({ phaseId: 1, status: 1 }, { name: 'ix_phase_status' });
 evaluationSchema.index({ branchId: 1, status: 1 }, { name: 'ix_branch_status' });
 
+// I3 — the aggregated stage counters (RW15) group the LIVE set by status, with no predicate to
+// narrow it: exactly the shape that would otherwise scan the collection and fetch every document
+// to read one field. This index gives the counters' `$match` an equality bound on both of its
+// fields and carries `status` in the key, so the group is an index-only scan — retired rows sit in
+// a different key range and are never examined.
+//
+// It is deliberately NOT a partial index over `{ supersededAt: null, isDeleted: false }`, which is
+// the obvious-looking shape and does not work: MongoDB will not use a partial index for a query
+// whose predicate is a `null` EQUALITY, because `$eq: null` also matches documents where the field
+// is missing and those may not be in the index. Such a plan is not merely rejected — it is never
+// generated (`rejectedPlans: []`), and the query silently collection-scans.
+evaluationSchema.index(
+  { supersededAt: 1, isDeleted: 1, branchId: 1, status: 1 },
+  { name: 'ix_live_counters' },
+);
+
 export const EvaluationModel = model<EvaluationDoc>('Evaluation', evaluationSchema, 'hr_evaluations');

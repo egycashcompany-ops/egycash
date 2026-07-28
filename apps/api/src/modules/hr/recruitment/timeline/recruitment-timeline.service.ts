@@ -198,6 +198,14 @@ class RecruitmentTimelineService {
     return recruitmentTimelineRepository.findByEventIds(eventIds);
   }
 
+  /**
+   * The idempotency keys this candidate's history already holds (I5) — how the repair task asks
+   * "is this entry missing?" without guessing from counts or timestamps.
+   */
+  async existingSourceKeys(applicantId: string): Promise<Set<string>> {
+    return recruitmentTimelineRepository.existingSourceKeys(applicantId);
+  }
+
   /** Mark a superseded attempt's entries (RW13/A8) — a marker, never a removal. */
   async markSuperseded(
     applicantId: string,

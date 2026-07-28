@@ -60,7 +60,9 @@ export {
   type WorkflowStatus,
 } from './workflow-transitions';
 export {
+  assertNotSuperseded,
   assertNotWorkflowManaged,
+  LIVE_ATTEMPT_ONLY,
   WORKFLOW_MANAGED_FIELDS,
 } from './workflow-guard';
 export {

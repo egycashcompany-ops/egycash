@@ -649,6 +649,45 @@ describe('recruitment — return to an earlier stage (RW13/A8)', () => {
     expect((await evaluationsOf(applicant.id)).map((e) => e.id)).toContain(evaluation.id);
   });
 
+  it('makes the retired attempt read-only for ORDINARY writes too, not just transitions (I1)', async () => {
+    const applicant = await readyApplicant();
+    const phase = await phaseByKey('securityCheck');
+    const evaluation = mutated<EvaluationDto>(await open(applicant.id, phase.id));
+    const stage1 = await stageId('firstInterview');
+
+    const returned = await returnTo(
+      applicant.id,
+      { kind: 'interview', refId: stage1 },
+      { reason: 'panel asked for a re-run', version: await applicantVersion(applicant.id) },
+    );
+    expect(returned.status).toBe(200);
+
+    // Reads are untouched: the retired record stays fully visible, which is the whole point of
+    // superseding rather than deleting.
+    const read = await request(app)
+      .get(`/api/v1/hr/evaluations/${evaluation.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(read.status).toBe(200);
+    const retired = read.body.data as EvaluationDto;
+
+    // A recommendation is ordinary domain data — no status, no attempt, nothing the engine owns —
+    // so I13's field guard would let it through. I1 is what stops it: the row itself is history.
+    const write = await request(app)
+      .patch(`/api/v1/hr/evaluations/${evaluation.id}/recommendation`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ recommendedPlacement: null, recommendationNote: 'still worth a look', version: retired.version });
+    expect(write.status, JSON.stringify(write.body)).toBe(422);
+    // And it says WHY — a caller retrying with a fresher version would get nowhere.
+    expect(JSON.stringify(write.body)).toMatch(/superseded/);
+
+    // Nothing was written.
+    const after = await request(app)
+      .get(`/api/v1/hr/evaluations/${evaluation.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect((after.body.data as EvaluationDto).recommendationNote).toBe(retired.recommendationNote);
+    expect((after.body.data as EvaluationDto).version).toBe(retired.version);
+  });
+
   it('refuses a target that is not behind the applicant', async () => {
     // A newly registered applicant stands AT screening, so screening is not behind them and
     // there is nothing to undo.

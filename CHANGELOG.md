@@ -52,6 +52,54 @@ its entry here in the same PR.
   wired into `npm run test --workspaces`) and its first suite: 21 cases over the cache layer,
   including the ones that would catch a refetch creeping back in.
 
+- **Recruitment: a retired attempt is read-only for every write, not just transitions (I1).** The
+  stage repositories already refused to let a service write `status`, `attempt` or the supersede
+  markers (I13), and the engine already refused to transition a superseded record — but an ordinary
+  domain write addressed by id (a note, a file, a panel edit, a recommendation) could still land on
+  an attempt a return-to-stage had retired. `BaseRepository` gains two generic hooks,
+  `writeConditions()` and `assertWritable()`; the four stage repositories narrow them to the live
+  set. The condition rides inside the same atomic `findOneAndUpdate` as the write, so a return
+  landing mid-request cannot be overtaken, and the refusal says *why* (422, "superseded by a return
+  to an earlier stage") rather than reporting a version conflict a retry could never resolve. Two
+  writers still reach a retired row, both named by I1 itself: the supersede marker, and the
+  denormalized branch scope a reassignment syncs across a candidate's whole history.
+
+- **Recruitment: the outbox has a scheduled recovery sweep (I15).** `hr.recruitment.workflowOutbox`
+  runs every 5 minutes and publishes committed workflow events whose dispatch never ran. The engine
+  writes the aggregate change and its event in one transaction and publishes after commit; a process
+  killed in that gap left a committed state change with no timeline entry, no notification and no
+  projection until some later write happened to drain the outbox. Now it heals on a timer too. Safe
+  to overlap and safe to repeat — delivery is per-event and marked.
+
+- **Recruitment: the timeline repair task exists (I5).** `hr.recruitment.timelineReconcile` runs
+  hourly and puts back entries that should exist and do not: events committed but never projected
+  (replayed through the dispatcher's own projection), and the two facts that have no event behind
+  them — `applied` and `identityVerified`, whose writer logs and swallows rather than failing a
+  registration — rebuilt from the applicant document. Every write it makes is keyed on the
+  deterministic `sourceKey`, so a run against a healthy database changes nothing and a rebuilt row
+  keeps its original `eventId`. The promise `recordSafe` has been making in a comment since the
+  timeline was introduced is now kept in code.
+
+- **Recruitment: I3 is enforced by tests instead of asserted in prose.** A new integration suite
+  seeds 2,000 rows across four stage collections and runs `explain()`: every stage queue must show
+  an `IXSCAN` and never a `COLLSCAN`, and each counters aggregation must touch only rows that match
+  — keys and documents examined both equal the live count, never the collection size. Making that
+  true needed a new index, `ix_live_counters` on `{ supersededAt, isDeleted, branchId, status }`,
+  which puts the retired rows in a key range the scan never enters.
+
+  Two things about `null` came out of writing the check, and neither is visible without it. The
+  obvious PARTIAL index over `{ supersededAt: null, isDeleted: false }` does not work and fails
+  silently — MongoDB will not use a partial index for a `null`-equality predicate, because
+  `$eq: null` also matches missing fields, so the plan is never generated and the query
+  collection-scans exactly as before. And for the same reason the scan is index-*served* but not
+  index-*only*: an index entry cannot tell a stored `null` from an absent field, so each matching
+  document is still read. Both claims sound alike and only one is true.
+  The same suite benchmarks the shipped counters shape (N grouped aggregations in parallel)
+  against the single `$unionWith` pipeline I3's wording describes, asserts both return identical
+  numbers, and fails if the shipped shape is slower; the rationale for keeping it is documented in
+  `docs/02-architecture/recruitment-workflow.md` §7 and flagged there as a deviation from the
+  frozen wording rather than a re-reading of it.
+
 - **Recruitment: one history, and only one (I5).** Three parallel histories are gone. The
   Electronic Employee File no longer re-derives the recruitment milestones — its own timeline
   starts at the hire, and the candidate's recruitment history arrives as `recruitmentTimeline`,

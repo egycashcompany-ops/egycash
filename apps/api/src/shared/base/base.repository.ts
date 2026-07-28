@@ -226,6 +226,27 @@ export class BaseRepository<T extends BaseDocFields> {
   }
 
   /**
+   * Extra conditions EVERY write through this seam must satisfy, on top of id, version and scope.
+   * Empty here; a subclass narrows it to make a class of rows permanently unwritable.
+   *
+   * It is a filter rather than a pre-check on purpose: the condition rides inside the same atomic
+   * `findOneAndUpdate` as the write, so a concurrent change that makes the row unwritable cannot be
+   * overtaken by a request that read it a moment earlier.
+   */
+  protected writeConditions(): FilterQuery<T> {
+    return {} as FilterQuery<T>;
+  }
+
+  /**
+   * Explain a write that matched nothing because `writeConditions()` excluded the row. Called with
+   * the row as it actually is, BEFORE the miss is reported as a version conflict or a 404, so the
+   * caller is told the real reason. No-op here; a subclass that narrows the conditions throws.
+   */
+  protected assertWritable(_current: T): void {
+    /* nothing is excluded by default */
+  }
+
+  /**
    * Optimistic-concurrency update (API Standards §6): the caller supplies the document
    * `version` (__v); mismatch → 409 STALE_DOCUMENT.
    */
@@ -237,6 +258,7 @@ export class BaseRepository<T extends BaseDocFields> {
     const filter = this.baseFilter(meta.scope, {
       _id: new Types.ObjectId(id),
       __v: meta.version,
+      ...this.writeConditions(),
     } as FilterQuery<T>);
     const by = meta.by === null ? null : new Types.ObjectId(meta.by);
     const updated = await this.model
@@ -251,6 +273,9 @@ export class BaseRepository<T extends BaseDocFields> {
 
     const current = await this.findById(id, meta.scope);
     if (current === null) throw new NotFoundError();
+    // Why it missed, in order of precision: "this row may never be written" beats "someone else
+    // wrote it first", because retrying with a fresh version would not help.
+    this.assertWritable(current);
     throw new StaleDocumentError();
   }
 
@@ -261,7 +286,10 @@ export class BaseRepository<T extends BaseDocFields> {
     const by = meta.by === null ? null : new Types.ObjectId(meta.by);
     const deleted = await this.model
       .findOneAndUpdate(
-        this.baseFilter(meta.scope, { _id: new Types.ObjectId(id) } as FilterQuery<T>),
+        this.baseFilter(meta.scope, {
+          _id: new Types.ObjectId(id),
+          ...this.writeConditions(),
+        } as FilterQuery<T>),
         {
           $set: { isDeleted: true, deletedAt: new Date(), deletedBy: by, updatedBy: by },
           $inc: { __v: 1 },
@@ -270,7 +298,10 @@ export class BaseRepository<T extends BaseDocFields> {
       )
       .lean<T>()
       .exec();
-    if (deleted === null) throw new NotFoundError();
-    return deleted;
+    if (deleted !== null) return deleted;
+
+    const current = await this.findById(id, meta.scope);
+    if (current !== null) this.assertWritable(current);
+    throw new NotFoundError();
   }
 }

@@ -3,7 +3,11 @@
 import { Types, type FilterQuery } from 'mongoose';
 import { type Paginated } from '@ecms/contracts';
 import { BaseRepository } from '../../../../shared/base/base.repository';
-import { assertNotWorkflowManaged } from '../workflow/workflow-guard';
+import {
+  assertNotSuperseded,
+  assertNotWorkflowManaged,
+  LIVE_ATTEMPT_ONLY,
+} from '../workflow/workflow-guard';
 import { type ScopeSelector } from '../../../../shared/types';
 import { InterviewModel, type InterviewDoc } from './interview.model';
 
@@ -38,6 +42,19 @@ class InterviewRepository extends BaseRepository<InterviewDoc> {
   ): Promise<InterviewDoc> {
     assertNotWorkflowManaged(set ?? {}, 'interview');
     return super.updateById(id, set, meta);
+  }
+
+  /**
+   * I1 — a retired attempt is history, and history is not edited. The condition rides inside the
+   * same atomic write as the change, so a return-to-stage landing mid-request cannot be overtaken
+   * by a caller that read the record a moment earlier.
+   */
+  protected override writeConditions(): FilterQuery<InterviewDoc> {
+    return LIVE_ATTEMPT_ONLY as FilterQuery<InterviewDoc>;
+  }
+
+  protected override assertWritable(current: InterviewDoc): void {
+    assertNotSuperseded(current, 'interview');
   }
 
   /** A non-cancelled interview for this applicant at the given stage order, if any. */

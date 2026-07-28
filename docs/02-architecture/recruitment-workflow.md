@@ -137,6 +137,61 @@ The recruitment stage menus are dynamic business data, so the web module registe
 sidebar's **nav-children provider registry** (`platform/navigation/nav-children.ts`) rather than
 adding rows to the Applications catalog — stages never become Platform Applications.
 
+### Why the counters are N parallel aggregations, not one pipeline
+
+I3 as frozen says "one aggregation pipeline — a single round trip — rooted on `hr_applicants` with
+`$lookup` into screenings, interviews, evaluations, offers and employees, and `$facet`". Half of
+that sentence was already overturned by **I11**, which removed the cross-collection `$lookup`
+outright: once every stage has a real `waiting` row, the counters group stage records by `status`
+and there is no eligibility to derive, so there is nothing to look up. What remains open is the
+other half — "a single round trip".
+
+The shipped implementation issues **one `$match` + `$group` per stage collection, in parallel**
+(`Promise.all`). It is a fixed number of queries, never a function of row count, and each is served
+from an index. Three reasons it is shaped that way, in order of weight:
+
+1. **A stage the caller cannot see is not queried at all.** RW15 requires such a stage to be
+   *omitted*, not returned as zero. With one query per stage that is a plain permission check
+   guarding the call. Inside a single `$unionWith` every branch is built into the pipeline and runs
+   regardless, so the omission becomes conditional pipeline assembly — harder to read, harder to
+   audit, and it does work on data the caller has no grant for.
+2. **Each stage carries its own data scope.** Every collection is filtered through its own
+   `ScopeSelector` (ADR-004/ADR-015), resolved per permission, and the same caller can legitimately
+   resolve to a different scope on different stages. Per-collection queries keep that inside
+   `BaseRepository`, which is *the one place data scopes are enforced*. Hand-assembling five scope
+   filters into sub-pipelines would move that enforcement out of the only place it currently lives.
+3. **It costs nothing.** The queries run concurrently, so the wall-clock cost is one round trip's
+   latency, not N. That is not an assumption:
+   `tests/integration/hr-recruitment-performance.spec.ts` runs both shapes over the same 2,000-row
+   ×4 dataset, asserts they return identical numbers, and fails if the shipped shape is slower. The
+   measurement is printed on every CI run.
+
+The same suite makes the rest of I3 mechanical rather than aspirational. Every stage queue must
+show an `IXSCAN` and never a `COLLSCAN`. Each counters aggregation must be served by
+`ix_live_counters` — `{ supersededAt, isDeleted, branchId, status }` — and must touch **only rows
+that match**: `totalKeysExamined` and `totalDocsExamined` both equal the size of the live set, never
+the size of the collection. `supersededAt: null` is an equality bound on the index prefix, so the
+retired rows sit in a key range the scan never enters — ignoring history costs nothing rather than
+costing a filter, and the work is proportional to what the answer is about.
+
+> **Two things about `null` that only `explain()` will tell you**, both learned the hard way here.
+>
+> The obvious index is a PARTIAL one over `{ supersededAt: null, isDeleted: false }`. It does not
+> work, and it fails *silently*: MongoDB will not use a partial index for a query whose predicate is
+> a `null` equality, because `$eq: null` also matches documents where the field is **missing** and
+> those may not be in the index. The plan is never even generated (`rejectedPlans: []`) and the
+> query collection-scans exactly as it did before the index was added.
+>
+> For the same underlying reason, the scan is index-**served** but not index-**only**: an index
+> entry cannot distinguish a stored `null` from an absent field, so the server reads each matching
+> document to confirm it. `totalDocsExamined` is therefore the live count, not zero. Both claims
+> sound alike and only one of them is true, which is precisely the sort of thing a prose invariant
+> cannot keep honest and a test can.
+
+**This deviates from the letter of the frozen I3 and is recorded here as a deviation, not as a
+re-reading of it.** The invariant's substance — no N+1, index-backed, one bounded pass — is met and
+enforced by tests; its "single round trip" wording is not.
+
 ## 7a. Starting a round (RW12)
 
 Two entry points, one rule: the **server** stamps who started it and when. `POST /hr/interviews/start`
@@ -286,6 +341,47 @@ re-read exactly once, while every other recruitment list is marked stale without
 `useWorkflowState(applicantId)` reads the stored `workflow` half. It has no `queryFn` on purpose: a
 screen that has not yet acted simply has no entry, which is the honest answer — inventing one would
 mean deriving workflow state on the client, and the point of I6 is that the server derives it.
+
+## 8d. When something goes wrong: the two recovery tasks (I15, I5)
+
+Both invariants that promise durability need something that runs *after* a failure, and both now
+have it, registered in the HR manifest like any other scheduled task.
+
+**`hr.recruitment.workflowOutbox`, every 5 minutes (I15).** The engine writes the aggregate change
+and its event in one transaction and publishes after that transaction commits. The gap between
+those two moments is small but real: a process killed inside it leaves a committed state change
+whose event was never delivered — no timeline entry, no notification, no projection. Any subsequent
+transition drains the whole outbox, so the system normally heals itself on the next write; this
+sweep is what heals it when there is no next write. It is safe to overlap and safe to repeat:
+delivery is per-event and marked, and consumers key on the immutable `eventId`.
+
+**`hr.recruitment.timelineReconcile`, hourly (I5).** The timeline is THE history, which makes a
+missing entry silent rather than loud — nothing errors, the history is simply shorter than the
+truth. The repair task closes both holes that can produce one:
+
+- an event that was committed but never projected — replayed through the same projection the
+  dispatcher uses;
+- an entry with **no event to replay**. Two facts are not workflow transitions and were never in
+  the outbox: the application itself (`applied`) and the identity check (`identityVerified`). Both
+  are written with `recordSafe`, which logs and swallows rather than failing the registration or
+  the verification that produced them — on the explicit promise that reconciliation would rebuild
+  them. It rebuilds them from the applicant document.
+
+Rebuilding is safe because both halves are **keyed, not timed**: `sourceKey` is derived only from
+facts that identify the happening, never from the clock or a random value, so the key a rebuild
+computes is the key the original write used and the unique index turns a duplicate into a no-op. A
+rebuilt row keeps its original `eventId` — the repair task re-derives `sourceKey`, never `eventId`,
+because deep links and client caches key on the latter (I9). A run against a healthy database
+changes nothing, however often it runs.
+
+One honesty note in the rebuilt rows: the ACTOR of a repaired `applied` entry is `null`. It was the
+request's user and the applicant document does not keep it; `null` reads as "the system", which is
+truthful for a repaired row in a way that a plausible-looking guess would not be. Repaired entries
+also carry `metadata.reconciled: true`.
+
+`tests/integration/hr-recruitment-recovery.spec.ts` covers both by breaking the database on
+purpose — un-dispatching an event, deleting entries, wedging a consumer — and asserting the task
+puts things back exactly once.
 
 ## 9. Two traps worth remembering
 

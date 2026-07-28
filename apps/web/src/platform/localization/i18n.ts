@@ -1857,6 +1857,15 @@ const en: Record<string, string> = {
   'contracts.branding.saved': 'Branding saved — new documents will use it.',
   'contracts.branding.logoSaved': 'Logo uploaded.',
   'contracts.branding.logoCleared': 'Logo removed.',
+  'screening.filters.ageFrom': 'Age from',
+  'screening.filters.ageTo': 'Age to',
+  'screening.filters.education': 'Education level',
+  'screening.filters.allEducation': 'All education levels',
+  'evaluations.filters.from': 'From',
+  'evaluations.filters.to': 'To',
+  'employeesReady.filters.search': 'Offer number or applicant',
+  'employeesReady.filters.from': 'Accepted from',
+  'employeesReady.filters.to': 'Accepted to',
 };
 
 const ar: Record<string, string> = {
@@ -3713,6 +3722,15 @@ const ar: Record<string, string> = {
   'contracts.branding.saved': 'حُفظت الهوية — ستُطبَّق على المستندات الجديدة.',
   'contracts.branding.logoSaved': 'رُفع الشعار.',
   'contracts.branding.logoCleared': 'حُذف الشعار.',
+  'screening.filters.ageFrom': 'السن من',
+  'screening.filters.ageTo': 'السن إلى',
+  'screening.filters.education': 'المؤهل الدراسي',
+  'screening.filters.allEducation': 'كل المؤهلات',
+  'evaluations.filters.from': 'من',
+  'evaluations.filters.to': 'إلى',
+  'employeesReady.filters.search': 'رقم العرض أو المتقدِّم',
+  'employeesReady.filters.from': 'القبول من',
+  'employeesReady.filters.to': 'القبول إلى',
 };
 
 const catalogs: Record<Locale, Record<string, string>> = { en, ar };

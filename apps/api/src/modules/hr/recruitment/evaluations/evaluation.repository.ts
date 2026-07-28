@@ -16,6 +16,8 @@ export interface EvaluationListFilter {
   phaseId?: string | undefined;
   status?: string | undefined;
   branchId?: string | undefined;
+  createdFrom?: Date | undefined;
+  createdTo?: Date | undefined;
 }
 
 class EvaluationRepository extends BaseRepository<EvaluationDoc> {
@@ -80,6 +82,12 @@ class EvaluationRepository extends BaseRepository<EvaluationDoc> {
     if (f.phaseId !== undefined) clauses.push({ phaseId: new Types.ObjectId(f.phaseId) });
     if (f.status !== undefined) clauses.push({ status: f.status });
     if (f.branchId !== undefined) clauses.push({ branchId: new Types.ObjectId(f.branchId) });
+    if (f.createdFrom !== undefined || f.createdTo !== undefined) {
+      const range: Record<string, Date> = {};
+      if (f.createdFrom !== undefined) range.$gte = f.createdFrom;
+      if (f.createdTo !== undefined) range.$lte = f.createdTo;
+      clauses.push({ createdAt: range } as FilterQuery<EvaluationDoc>);
+    }
     if (clauses.length === 0) return {};
     if (clauses.length === 1) return clauses[0] as FilterQuery<EvaluationDoc>;
     return { $and: clauses } as FilterQuery<EvaluationDoc>;

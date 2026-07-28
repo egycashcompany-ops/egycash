@@ -19,6 +19,13 @@ export interface ScreeningListFilter {
   decidedTo?: Date | undefined;
   createdFrom?: Date | undefined;
   createdTo?: Date | undefined;
+  /**
+   * Candidate-attribute narrowing, already resolved to ids by the service (I1/I3): the age and
+   * education predicates live on the applicant, so they arrive here as the set they matched.
+   * `undefined` = no such filter; an EMPTY array = the filter matched nobody, which must select
+   * nothing rather than everything.
+   */
+  applicantIdIn?: Types.ObjectId[] | undefined;
 }
 
 class ScreeningRepository extends BaseRepository<ScreeningDoc> {
@@ -87,6 +94,7 @@ class ScreeningRepository extends BaseRepository<ScreeningDoc> {
     const clauses: FilterQuery<ScreeningDoc>[] = [];
     if (f.status !== undefined) clauses.push({ status: f.status });
     if (f.applicantId !== undefined) clauses.push({ applicantId: new Types.ObjectId(f.applicantId) });
+    if (f.applicantIdIn !== undefined) clauses.push({ applicantId: { $in: f.applicantIdIn } });
     if (f.branchId !== undefined) clauses.push({ branchId: new Types.ObjectId(f.branchId) });
     if (f.decidedFrom !== undefined || f.decidedTo !== undefined) {
       const range: Record<string, Date> = {};

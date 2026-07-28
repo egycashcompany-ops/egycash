@@ -1,6 +1,11 @@
-// Screening queue filters: status, an applicant (via search-picker → applicantId), and a
-// created-date range. Emits a flat state; the queue page maps it to/from the URL query string.
-import { SCREENING_STATUSES, type ScreeningStatus } from '@ecms/contracts';
+// Screening queue filters: status, an applicant (via search-picker → applicantId), a created-date
+// range, and the candidate-attribute filters — age band and education level. Emits a flat state;
+// the queue page maps it to/from the URL query string.
+//
+// Age and education are filtered on the SERVER even though they live on the applicant rather than
+// the screening. Doing it here would only ever filter the current page, which is a different (and
+// wrong) answer as soon as there is more than one.
+import { EDUCATION_LEVELS, SCREENING_STATUSES, type EducationLevel, type ScreeningStatus } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { FilterBar } from '../../../../../shared/ui/FilterBar';
 import { Select, Input } from '../../../../../shared/ui/form';
@@ -13,6 +18,10 @@ export interface ScreeningFiltersState {
   applicantLabel: string;
   createdFrom: string;
   createdTo: string;
+  /** Whole years, as typed. Kept as strings so a half-entered bound stays in the box. */
+  ageFrom: string;
+  ageTo: string;
+  educationLevel: '' | EducationLevel;
 }
 
 export const EMPTY_SCREENING_FILTERS: ScreeningFiltersState = {
@@ -21,10 +30,19 @@ export const EMPTY_SCREENING_FILTERS: ScreeningFiltersState = {
   applicantLabel: '',
   createdFrom: '',
   createdTo: '',
+  ageFrom: '',
+  ageTo: '',
+  educationLevel: '',
 };
 
 const isActive = (f: ScreeningFiltersState): boolean =>
-  f.status !== '' || f.applicantId !== '' || f.createdFrom !== '' || f.createdTo !== '';
+  f.status !== '' ||
+  f.applicantId !== '' ||
+  f.createdFrom !== '' ||
+  f.createdTo !== '' ||
+  f.ageFrom !== '' ||
+  f.ageTo !== '' ||
+  f.educationLevel !== '';
 
 export const ScreeningFilters = ({
   value,
@@ -74,6 +92,47 @@ export const ScreeningFilters = ({
         <span className="hidden sm:inline">{t('screening.filters.to')}</span>
         <Input type="date" value={value.createdTo} onChange={(e) => set({ createdTo: e.target.value })} dir="ltr" className="w-auto" />
       </label>
+
+      <label className="flex items-center gap-1.5 text-sm text-slate-500">
+        <span className="hidden whitespace-nowrap sm:inline">{t('screening.filters.ageFrom')}</span>
+        <Input
+          type="number"
+          inputMode="numeric"
+          min={0}
+          max={120}
+          value={value.ageFrom}
+          onChange={(e) => set({ ageFrom: e.target.value })}
+          aria-label={t('screening.filters.ageFrom')}
+          dir="ltr"
+          className="w-20"
+        />
+      </label>
+      <label className="flex items-center gap-1.5 text-sm text-slate-500">
+        <span className="hidden whitespace-nowrap sm:inline">{t('screening.filters.ageTo')}</span>
+        <Input
+          type="number"
+          inputMode="numeric"
+          min={0}
+          max={120}
+          value={value.ageTo}
+          onChange={(e) => set({ ageTo: e.target.value })}
+          aria-label={t('screening.filters.ageTo')}
+          dir="ltr"
+          className="w-20"
+        />
+      </label>
+
+      <Select
+        aria-label={t('screening.filters.education')}
+        value={value.educationLevel}
+        onChange={(e) => set({ educationLevel: e.target.value as ScreeningFiltersState['educationLevel'] })}
+        className="w-auto"
+      >
+        <option value="">{t('screening.filters.allEducation')}</option>
+        {EDUCATION_LEVELS.map((level) => (
+          <option key={level} value={level}>{t(`applicants.education.${level}`)}</option>
+        ))}
+      </Select>
     </FilterBar>
   );
 };

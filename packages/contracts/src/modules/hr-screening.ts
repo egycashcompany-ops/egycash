@@ -6,6 +6,7 @@
 // Scope is Stage 2 only: nothing here describes Interviews (Stage 3) or later.
 import { z } from 'zod';
 import { objectId, PaginationQuerySchema } from '../common/index.js';
+import { EducationLevelSchema } from './hr-recruitment.js';
 import {
   BulkRequestBaseSchema,
   type AttemptMarkerDto,
@@ -87,7 +88,12 @@ export type DecideScreening = z.infer<typeof DecideScreeningSchema>;
 
 // ── List ─────────────────────────────────────────────────────────────────────
 
-export const ListScreeningsQuerySchema = PaginationQuerySchema.extend({
+/**
+ * The filter surface, unrefined, so the export schema can still `.omit()` the paging fields —
+ * `.refine()` produces a ZodEffects, which has no `.omit()`. Both exported schemas apply the same
+ * age-ordering rule below.
+ */
+const ListScreeningsQueryShape = PaginationQuerySchema.extend({
   /** Doubles as the screening page's tab (I10): waiting | accepted | rejected. */
   status: ScreeningStatusSchema.optional(),
   applicantId: objectId().optional(),
@@ -99,13 +105,38 @@ export const ListScreeningsQuerySchema = PaginationQuerySchema.extend({
   /** Include screenings belonging to superseded attempts (default false for queues). */
   includeSuperseded: z.coerce.boolean().default(false),
   search: z.string().max(200).optional(),
+  /**
+   * Candidate-attribute filters. These live on the APPLICANT, not the screening — the screening
+   * denormalizes only what it displays (`applicantCode`, `applicantName`, `branchId`), and I1 is
+   * explicit about that list. The service resolves them against `hr_applicants` first and narrows
+   * the screening query by id, which is the batched-`$in` shape I3 permits.
+   *
+   * Age is expressed in whole years and converted to a `birthDate` range at the boundary, so the
+   * stored field stays the date it always was. An applicant with no `birthDate` is excluded when
+   * either bound is supplied — "unknown age" cannot satisfy a range, and silently including them
+   * would make the filter mean nothing.
+   */
+  ageFrom: z.coerce.number().int().min(0).max(120).optional(),
+  ageTo: z.coerce.number().int().min(0).max(120).optional(),
+  /** Highest completed education level. Applicants with no education record are excluded. */
+  educationLevel: EducationLevelSchema.optional(),
 }).strict();
+
+/** An inverted age range is a validation failure (400), not an empty result the user must decode. */
+const AGE_ORDER_ISSUE = { message: 'ageFrom must be less than or equal to ageTo', path: ['ageFrom'] };
+
+export const ListScreeningsQuerySchema = ListScreeningsQueryShape.refine(
+  (q) => q.ageFrom === undefined || q.ageTo === undefined || q.ageFrom <= q.ageTo,
+  AGE_ORDER_ISSUE,
+);
 export type ListScreeningsQuery = z.infer<typeof ListScreeningsQuerySchema>;
 
-export const ExportScreeningsQuerySchema = ListScreeningsQuerySchema.omit({
+export const ExportScreeningsQuerySchema = ListScreeningsQueryShape.omit({
   page: true,
   pageSize: true,
-}).strict();
+})
+  .strict()
+  .refine((q) => q.ageFrom === undefined || q.ageTo === undefined || q.ageFrom <= q.ageTo, AGE_ORDER_ISSUE);
 export type ExportScreeningsQuery = z.infer<typeof ExportScreeningsQuerySchema>;
 
 // ── Bulk (RW17/I4 — per-item transaction, partial success) ──────────────────

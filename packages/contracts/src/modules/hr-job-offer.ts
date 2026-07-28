@@ -150,6 +150,12 @@ export const ListJobOffersQuerySchema = PaginationQuerySchema.extend({
    * stage counter run the SAME server-side predicate and their totals cannot drift.
    */
   hired: booleanQuery().optional(),
+  /**
+   * When the candidate answered the offer. This is the date the Employees Ready queue sorts by,
+   * so it is the one a user filtering that queue means by "accepted between".
+   */
+  respondedFrom: z.coerce.date().optional(),
+  respondedTo: z.coerce.date().optional(),
 }).strict();
 export type ListJobOffersQuery = z.infer<typeof ListJobOffersQuerySchema>;
 

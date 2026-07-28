@@ -344,6 +344,12 @@ applicantSchema.index({ status: 1, createdAt: -1 }, { name: 'ix_status_createdAt
 applicantSchema.index({ sourceId: 1 }, { name: 'ix_sourceId' });
 applicantSchema.index({ jobRequisitionId: 1 }, { name: 'ix_jobRequisitionId' });
 applicantSchema.index({ branchId: 1, status: 1 }, { name: 'ix_branchId_status' });
+// Candidate-attribute filters on the stage queues (age range + education level) resolve to a set
+// of applicant ids here before the queue narrows itself, so this query runs once per request and
+// must not scan. `education.level` leads because it is an equality bound; `birthDate` follows as
+// the range, which is the order an index can actually use for both.
+applicantSchema.index({ 'education.level': 1, birthDate: 1 }, { name: 'ix_education_birthDate' });
+applicantSchema.index({ birthDate: 1 }, { name: 'ix_birthDate' });
 applicantSchema.index(
   { intakeKey: 1 },
   { unique: true, name: 'ux_intakeKey', partialFilterExpression: { intakeKey: { $type: 'string' } } },

@@ -9,6 +9,40 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Added
+
+- **Recruitment: filter bars on every stage queue that was missing one.** The per-stage interview
+  pages (First Interview, Second Interview, …), the per-phase evaluation pages (Security Check,
+  Driving Test, Medical Examination, …) and Employees Ready now filter like the rest of the module:
+  URL-synchronized, server-side, and part of the React Query key, so a filtered view is
+  deep-linkable, survives a refresh, and can never share a cache entry with a different one.
+
+  The interview bar is the existing component with a new `omit` prop rather than a second bar (I7):
+  on a per-stage page the stage comes from the route and the status is the tab strip, so offering
+  either again would be two controls for one piece of state. `clear filters` and the
+  "any filters active?" hint both respect what the page owns. Evaluations get an applicant picker
+  and a created-date range; Employees Ready gets free-text search over the offer number and
+  applicant code plus an accepted-date range — never its own `status`/`hired` predicates, which
+  ARE the queue (A6/RW15) and whose totals must keep agreeing with the stage counter.
+
+  New query parameters: `createdFrom`/`createdTo` on evaluations, `respondedFrom`/`respondedTo` on
+  job offers.
+
+- **Prescreening: age-range and education-level filters, applied on the server.** Both facts live
+  on the APPLICANT, not on the screening — the screening denormalizes only what it displays, and
+  I1 is explicit that the list is closed. So the service resolves them against `hr_applicants`
+  first and narrows the screening query by the id set they matched: the batched `$in` I3 permits,
+  one extra indexed query per request rather than one per row. Two supporting indexes back it
+  (`ix_education_birthDate`, `ix_birthDate`), the equality bound leading the range.
+
+  Age is entered in whole years and converted to a half-open `birthDate` range at the boundary
+  (`$lte now − from`, `$gt now − (to + 1)`), so "25 to 30" includes a candidate through the day
+  before their 31st birthday and the stored field stays the date it always was. An applicant with
+  no birth date — or no education record — is excluded when the corresponding filter is supplied:
+  unknown cannot satisfy a predicate, and including those rows would make the filter mean nothing.
+  An inverted range (`ageFrom > ageTo`) is a 400 at the contract boundary, not an empty page the
+  user has to decode.
+
 ### Fixed
 
 - **Recruitment: interview status labels rendered as raw translation keys.** `/interviews`,

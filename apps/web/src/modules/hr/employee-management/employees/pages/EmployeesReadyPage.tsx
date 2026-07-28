@@ -16,6 +16,10 @@ import { DataTable, type Column } from '../../../../../shared/ui/DataTable';
 import { Pagination } from '../../../../../shared/ui/Pagination';
 import { Button } from '../../../../../shared/ui/Button';
 import { formatDate } from '../../../../../shared/lib/format';
+import {
+  EmployeesReadyFilters,
+  type EmployeesReadyFiltersState,
+} from '../components/EmployeesReadyFilters';
 import { useJobOffers } from '../../../recruitment/job-offers/api/job-offer-queries';
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -26,31 +30,55 @@ export const EmployeesReadyPage = (): JSX.Element => {
   const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
 
+  // Every filter round-trips through the URL: deep-linkable, and a refresh restores the view.
+  const filters: EmployeesReadyFiltersState = {
+    search: sp.get('q') ?? '',
+    acceptedFrom: sp.get('af') ?? '',
+    acceptedTo: sp.get('at') ?? '',
+  };
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
 
-  const patch = (updates: Record<string, string | null>): void => {
+  const patch = (updates: Record<string, string | null>, resetPage = false): void => {
     const next = new URLSearchParams(sp);
     for (const [key, val] of Object.entries(updates)) {
       if (val === null || val === '') next.delete(key);
       else next.set(key, val);
     }
+    if (resetPage && !('page' in updates)) next.delete('page');
     setSp(next);
   };
+
+  // Narrowing the result set moves the rows, so page 3 of the old set is meaningless — back to 1.
+  const changeFilters = (nf: EmployeesReadyFiltersState): void =>
+    patch(
+      {
+        q: nf.search || null,
+        af: nf.acceptedFrom || null,
+        at: nf.acceptedTo || null,
+      },
+      true,
+    );
 
   // `hired: false` is a SERVER-side predicate — the same one the stage counter counts. Filtering
   // client-side would page over already-hired offers and make the page's totals disagree with the
   // badge, which is exactly the drift this queue exists to avoid.
+  // Keyed on the whole query string, so every filter is part of the React Query key and two
+  // different filter sets can never share a cache entry.
+  const paramsKey = sp.toString();
   const params = useMemo(
     () => ({
       page,
       pageSize,
       status: 'accepted',
       hired: false,
+      search: filters.search,
+      respondedFrom: filters.acceptedFrom,
+      respondedTo: filters.acceptedTo,
       sortBy: 'respondedAt',
       sortDir: 'desc' as const,
     }),
-    [page, pageSize],
+    [paramsKey, page, pageSize],
   );
   const { data, isLoading, isError, error, refetch } = useJobOffers(params);
   const rows = data?.items ?? [];
@@ -117,6 +145,8 @@ export const EmployeesReadyPage = (): JSX.Element => {
       />
 
       <div className="space-y-4">
+        <EmployeesReadyFilters value={filters} onChange={changeFilters} />
+
         <DataTable
           columns={columns}
           rows={rows}

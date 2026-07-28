@@ -170,6 +170,8 @@ class JobOfferService {
       branchId: query.branchId,
       hired: query.hired,
       search: query.search,
+      respondedFrom: query.respondedFrom,
+      respondedTo: query.respondedTo,
     };
   }
 

@@ -1,6 +1,11 @@
 // Interview queue filters: status, outcome, stage (from the admin catalog), an applicant
 // (search-picker → applicantId), and a scheduled-date range. Emits a flat state; the queue page
 // maps it to/from the URL query string.
+//
+// `omit` exists so a PER-STAGE page can reuse this bar rather than growing its own: on
+// `/interviews/stage/:stageId` the stage is fixed by the route and the status is the tab strip, so
+// offering either again would be two controls for one piece of state — the second one silently
+// losing. Everything else is identical, which is the point (I7).
 import {
   INTERVIEW_OUTCOMES,
   INTERVIEW_STATUSES,
@@ -45,20 +50,38 @@ const isActive = (f: InterviewFiltersState): boolean =>
   f.scheduledFrom !== '' ||
   f.scheduledTo !== '';
 
+/** Controls a page already owns elsewhere. */
+export type InterviewFilterControl = 'status' | 'stage';
+
 export const InterviewFilters = ({
   value,
   onChange,
+  omit = [],
 }: {
   value: InterviewFiltersState;
   onChange: (next: InterviewFiltersState) => void;
+  omit?: readonly InterviewFilterControl[];
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const { data: stages = [] } = useInterviewStages();
   const set = (patch: Partial<InterviewFiltersState>): void => onChange({ ...value, ...patch });
+  const shows = (control: InterviewFilterControl): boolean => !omit.includes(control);
+
+  // Clearing must not wipe what the page owns: on a stage page the stage id comes from the route,
+  // so "clear filters" keeps it and resets only the controls actually on screen.
+  const cleared: InterviewFiltersState = {
+    ...EMPTY_INTERVIEW_FILTERS,
+    ...(shows('stage') ? {} : { stageId: value.stageId }),
+    ...(shows('status') ? {} : { status: value.status }),
+  };
+  // …and the "any filters active?" hint must ignore them too, or the Clear button never goes away.
+  const active =
+    isActive({ ...value, ...(shows('stage') ? {} : { stageId: '' }), ...(shows('status') ? {} : { status: '' }) });
 
   return (
-    <FilterBar onClear={() => onChange(EMPTY_INTERVIEW_FILTERS)} hasActiveFilters={isActive(value)}>
+    <FilterBar onClear={() => onChange(cleared)} hasActiveFilters={active}>
+      {shows('status') && (
       <Select
         aria-label={t('interviews.filters.status')}
         value={value.status}
@@ -70,6 +93,7 @@ export const InterviewFilters = ({
           <option key={s} value={s}>{t(`interviews.status.${s}`)}</option>
         ))}
       </Select>
+      )}
 
       <Select
         aria-label={t('interviews.filters.outcome')}
@@ -83,6 +107,7 @@ export const InterviewFilters = ({
         ))}
       </Select>
 
+      {shows('stage') && (
       <Select
         aria-label={t('interviews.filters.stage')}
         value={value.stageId}
@@ -94,6 +119,7 @@ export const InterviewFilters = ({
           <option key={s.id} value={s.id}>{localized(s.name, locale)}</option>
         ))}
       </Select>
+      )}
 
       {value.applicantId === '' ? (
         <ApplicantPicker onSelect={(a) => set({ applicantId: a.id, applicantLabel: `${a.code} — ${a.fullNameAr}` })} />

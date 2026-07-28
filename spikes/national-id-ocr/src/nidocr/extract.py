@@ -23,6 +23,7 @@ from typing import Any
 import numpy as np
 
 from .engine import MockRecognizer, Recognizer
+from .nid import salvage_digits
 from .layout import BACK_FIELDS, FRONT_FIELDS, FieldBox
 from .preprocess import StageTimings, load_bgr, prepare_card, prepare_field
 from .postprocess import (
@@ -59,14 +60,39 @@ def _recognize_box(
     left, top, right, bottom = box.to_pixels((card.shape[1], card.shape[0]))
     if right <= left or bottom <= top:
         return "", 0.0
-    crop = prepare_field(card[top:bottom, left:right], box.kind)
+    region = card[top:bottom, left:right]
     # The mock replays by field name; real recognizers only ever see pixels.
     if isinstance(recognizer, MockRecognizer):
         recognizer.bind(box.name)
+
     # The national ID and the expiry are numbers: their spaced groups read left to right even
     # on an otherwise right-to-left card. Ordering them as Arabic would reverse the value
     # while keeping every digit correct — a failure that looks entirely plausible.
-    out = recognizer.recognize(crop, rtl=box.kind != "digits")
+    rtl = box.kind != "digits"
+    if box.kind != "digits":
+        return _read(recognizer, prepare_field(region, box.kind), rtl)
+
+    # Digits get read twice, thresholded and not, and the better read wins.
+    #
+    # Binarizing digit crops was a reasonable default derived from synthetic fixtures, where the
+    # number sits on clean card stock. On a real Egyptian ID it is printed over the pyramid
+    # watermark, and adaptive thresholding fragments the glyphs against it — which is how a
+    # 14-digit number came back as four digits. But the opposite is true on a clean scan, where
+    # thresholding genuinely sharpens the row.
+    #
+    # Rather than pick one and be wrong for half the inputs, run both and choose by the property
+    # that actually matters: how many digits survived. A digit field has a known shape, so "more
+    # digits recovered" is a real quality signal rather than a heuristic, and confidence only
+    # breaks ties.
+    candidates = [
+        _read(recognizer, prepare_field(region, "digits"), rtl),
+        _read(recognizer, prepare_field(region, "text"), rtl),
+    ]
+    return max(candidates, key=lambda out: (len(salvage_digits(out[0])), out[1]))
+
+
+def _read(recognizer: Recognizer, crop: np.ndarray, rtl: bool) -> tuple[str, float]:
+    out = recognizer.recognize(crop, rtl=rtl)
     return out.text, out.score
 
 

@@ -9,6 +9,7 @@ import {
   LIVE_ATTEMPT_ONLY,
 } from '../workflow/workflow-guard';
 import { type ScopeSelector } from '../../../../shared/types';
+import { escapeRegExp } from '../../shared/arabic';
 import { InterviewModel, type InterviewDoc } from './interview.model';
 
 export interface InterviewListFilter {
@@ -20,6 +21,8 @@ export interface InterviewListFilter {
   branchId?: string | undefined;
   scheduledFrom?: Date | undefined;
   scheduledTo?: Date | undefined;
+  /** Free text over the denormalized applicant code and name — the queue's search box. */
+  search?: string | undefined;
 }
 
 /** Interviews at a stage that are not cancelled — i.e. that "occupy" the round. */
@@ -108,6 +111,13 @@ class InterviewRepository extends BaseRepository<InterviewDoc> {
       clauses.push({ 'panel.interviewerId': new Types.ObjectId(f.interviewerId) } as FilterQuery<InterviewDoc>);
     }
     if (f.branchId !== undefined) clauses.push({ branchId: new Types.ObjectId(f.branchId) });
+    if (f.search !== undefined && f.search.trim() !== '') {
+      // Escaped, so a user typing `.` or `[` searches for that character instead of injecting a
+      // pattern. Matches the shape the offers queue already uses (minus `code`, which a round
+      // does not have — an interview is addressed by its candidate).
+      const re = new RegExp(escapeRegExp(f.search.trim()), 'i');
+      clauses.push({ $or: [{ applicantCode: re }, { applicantName: re }] } as FilterQuery<InterviewDoc>);
+    }
     if (f.scheduledFrom !== undefined || f.scheduledTo !== undefined) {
       const range: Record<string, Date> = {};
       if (f.scheduledFrom !== undefined) range.$gte = f.scheduledFrom;

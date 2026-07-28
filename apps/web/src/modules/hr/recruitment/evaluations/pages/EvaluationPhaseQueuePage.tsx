@@ -46,8 +46,10 @@ export const EvaluationPhaseQueuePage = (): JSX.Element => {
   // The phase comes from the route and the status from the tab strip, so the bar carries only the
   // rest. Every value round-trips through the URL: deep-linkable, refresh-safe.
   const filters: EvaluationFiltersState = {
+    search: sp.get('q') ?? '',
     applicantId: sp.get('applicant') ?? '',
     applicantLabel: sp.get('al') ?? '',
+    branchId: sp.get('branch') ?? '',
     createdFrom: sp.get('cf') ?? '',
     createdTo: sp.get('ct') ?? '',
   };
@@ -75,6 +77,8 @@ export const EvaluationPhaseQueuePage = (): JSX.Element => {
     patch({
       applicant: nf.applicantId || null,
       al: nf.applicantLabel || null,
+      q: nf.search || null,
+      branch: nf.branchId || null,
       cf: nf.createdFrom || null,
       ct: nf.createdTo || null,
     });
@@ -89,6 +93,8 @@ export const EvaluationPhaseQueuePage = (): JSX.Element => {
       phaseId,
       status,
       applicantId: filters.applicantId,
+      search: filters.search,
+      branchId: filters.branchId,
       createdFrom: filters.createdFrom,
       createdTo: filters.createdTo,
       sortBy: 'createdAt',

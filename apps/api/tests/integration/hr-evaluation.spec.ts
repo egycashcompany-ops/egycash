@@ -863,3 +863,108 @@ describe('recruitment — candidate timeline (RW14/I5)', () => {
     expect(ret?.reason).toBe('panel error');
   });
 });
+
+/**
+ * Queue filters on a phase page: free-text search and the branch. Both are applied by the SERVER —
+ * a phase queue that filtered in the browser would page over unmatched rows, and its totals would
+ * stop agreeing with the counters the navigation badge reads.
+ *
+ * `search` was declared in the contract before anything implemented it, so a client could send it
+ * and silently get an unfiltered list. These pin it shut.
+ */
+describe('evaluations — queue filters (search, branch)', () => {
+  const BRANCH_A = '64b1f0dddddddddddddddddd';
+  const BRANCH_B = '64b1f0eeeeeeeeeeeeeeeeee';
+
+  /** Register with a name + branch this test can address, walk to the phase, and open it. */
+  const openFor = async (fullNameAr: string, branchId: string): Promise<EvaluationDto> => {
+    const created = await request(app)
+      .post('/api/v1/hr/applicants')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        jobRequisitionId: REQUISITION_ID,
+        sourceId: await sourceId(),
+        intakeChannel: 'internal',
+        branchId,
+        identity: { fullNameAr, nationality: 'Egyptian' },
+        contact: { primaryPhone: nextPhone() },
+      });
+    expect(created.status).toBe(201);
+    const applicant = mutated<ApplicantDto>(created);
+
+    const screening = mutated<ScreeningDto>(
+      await request(app)
+        .post('/api/v1/hr/screenings')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ applicantId: applicant.id }),
+    );
+    await request(app)
+      .post(`/api/v1/hr/screenings/${screening.id}/decide`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ outcome: 'accepted', version: screening.version });
+    await passStage(applicant.id, 'firstInterview');
+    await passStage(applicant.id, 'secondInterview');
+
+    const phase = await phaseByKey('securityCheck');
+    const res = await open(applicant.id, phase.id);
+    expect([200, 201]).toContain(res.status);
+    return mutated<EvaluationDto>(res);
+  };
+
+  const list = (query: Record<string, string | number>) =>
+    request(app)
+      .get('/api/v1/hr/evaluations')
+      .query({ pageSize: 100, ...query })
+      .set('Authorization', `Bearer ${adminToken}`);
+
+  const codesIn = (res: { body: unknown }): string[] =>
+    ((res.body as { data: { applicantCode: string }[] }).data ?? []).map((e) => e.applicantCode);
+
+  let nadia: EvaluationDto;
+  let tarek: EvaluationDto;
+
+  beforeAll(async () => {
+    nadia = await openFor('نادية حسن', BRANCH_A);
+    tarek = await openFor('طارق منصور', BRANCH_B);
+  }, 60_000);
+
+  it('searches by applicant code', async () => {
+    const codes = codesIn(await list({ search: nadia.applicantCode }));
+    expect(codes).toContain(nadia.applicantCode);
+    expect(codes).not.toContain(tarek.applicantCode);
+  });
+
+  it('searches by applicant name, partially', async () => {
+    const codes = codesIn(await list({ search: 'نادية' }));
+    expect(codes).toContain(nadia.applicantCode);
+    expect(codes).not.toContain(tarek.applicantCode);
+  });
+
+  it('treats a regex metacharacter as a literal, not as a pattern', async () => {
+    const res = await list({ search: '.' });
+    expect(res.status).toBe(200);
+    expect(codesIn(res)).toHaveLength(0);
+  });
+
+  it('filters by branch', async () => {
+    const a = codesIn(await list({ branchId: BRANCH_A }));
+    expect(a).toContain(nadia.applicantCode);
+    expect(a).not.toContain(tarek.applicantCode);
+  });
+
+  it('composes search with the phase and status the page already owns', async () => {
+    const phase = await phaseByKey('securityCheck');
+    const res = await list({ phaseId: phase.id, status: 'waiting', search: nadia.applicantCode });
+    expect(res.status).toBe(200);
+    const body = res.body as { data: { applicantCode: string }[]; meta: { totalItems: number } };
+    expect(body.data.map((e) => e.applicantCode)).toEqual([nadia.applicantCode]);
+    // The FILTERED total — a pager reporting the phase's whole backlog would lie.
+    expect(body.meta.totalItems).toBe(1);
+  });
+
+  it('a search matching nobody returns an empty page, not everything', async () => {
+    const res = await list({ search: 'no-such-candidate-anywhere' });
+    expect(res.status).toBe(200);
+    expect((res.body as { data: unknown[] }).data).toHaveLength(0);
+  });
+});

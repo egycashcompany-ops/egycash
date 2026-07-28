@@ -33,6 +33,7 @@ export const EmployeesReadyPage = (): JSX.Element => {
   // Every filter round-trips through the URL: deep-linkable, and a refresh restores the view.
   const filters: EmployeesReadyFiltersState = {
     search: sp.get('q') ?? '',
+    branchId: sp.get('branch') ?? '',
     acceptedFrom: sp.get('af') ?? '',
     acceptedTo: sp.get('at') ?? '',
   };
@@ -54,6 +55,7 @@ export const EmployeesReadyPage = (): JSX.Element => {
     patch(
       {
         q: nf.search || null,
+        branch: nf.branchId || null,
         af: nf.acceptedFrom || null,
         at: nf.acceptedTo || null,
       },
@@ -73,6 +75,7 @@ export const EmployeesReadyPage = (): JSX.Element => {
       status: 'accepted',
       hired: false,
       search: filters.search,
+      branchId: filters.branchId,
       respondedFrom: filters.acceptedFrom,
       respondedTo: filters.acceptedTo,
       sortBy: 'respondedAt',

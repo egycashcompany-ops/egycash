@@ -125,6 +125,7 @@ class ScreeningService {
       decidedTo: query.decidedTo,
       createdFrom: query.createdFrom,
       createdTo: query.createdTo,
+      search: query.search,
       // `null` means no candidate filter was asked for — leave the query unnarrowed. An empty
       // array is a real answer (nobody matched) and must narrow to nothing.
       ...(applicantIdIn === null ? {} : { applicantIdIn }),

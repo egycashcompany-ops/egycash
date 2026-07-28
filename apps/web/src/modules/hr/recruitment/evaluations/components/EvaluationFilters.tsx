@@ -1,5 +1,10 @@
-// Evaluation phase-queue filters: an applicant (search-picker → applicantId) and a created-date
-// range. Emits a flat state; the phase page maps it to/from the URL query string.
+// Evaluation phase-queue filters: free-text search, an applicant (search-picker → applicantId), the
+// branch, and a created-date range. Emits a flat state; the phase page maps it to/from the URL
+// query string.
+//
+// There is no "assigned user" here: a phase record has a decider, recorded when the decision is
+// made, but nobody is assigned to work it. Offering one would be a control over a fact that does
+// not exist yet for every row in the queue.
 //
 // Status and phase are deliberately absent: the phase comes from the route and the status is the
 // tab strip above the table. Offering either here would be a second control for state the page
@@ -10,26 +15,36 @@
 // pager and the tab counts would stop agreeing with the table.
 import { useT } from '../../../../../platform/localization/useT';
 import { FilterBar } from '../../../../../shared/ui/FilterBar';
+import { SearchInput } from '../../../../../shared/ui/SearchInput';
 import { Input } from '../../../../../shared/ui/form';
 import { CloseIcon } from '../../../../../shared/ui/icons';
+import { BranchFilterSelect } from '../../shared/BranchFilterSelect';
 import { ApplicantPicker } from '../../screening/components/ApplicantPicker';
 
 export interface EvaluationFiltersState {
+  search: string;
   applicantId: string;
   applicantLabel: string;
+  branchId: string;
   createdFrom: string;
   createdTo: string;
 }
 
 export const EMPTY_EVALUATION_FILTERS: EvaluationFiltersState = {
+  search: '',
   applicantId: '',
   applicantLabel: '',
+  branchId: '',
   createdFrom: '',
   createdTo: '',
 };
 
 const isActive = (f: EvaluationFiltersState): boolean =>
-  f.applicantId !== '' || f.createdFrom !== '' || f.createdTo !== '';
+  f.search !== '' ||
+  f.applicantId !== '' ||
+  f.branchId !== '' ||
+  f.createdFrom !== '' ||
+  f.createdTo !== '';
 
 export const EvaluationFilters = ({
   value,
@@ -43,6 +58,14 @@ export const EvaluationFilters = ({
 
   return (
     <FilterBar onClear={() => onChange(EMPTY_EVALUATION_FILTERS)} hasActiveFilters={isActive(value)}>
+      <div className="w-full sm:w-72">
+        <SearchInput
+          value={value.search}
+          onChange={(v) => set({ search: v })}
+          placeholder={t('evaluations.filters.search')}
+        />
+      </div>
+
       {value.applicantId === '' ? (
         <ApplicantPicker onSelect={(a) => set({ applicantId: a.id, applicantLabel: `${a.code} — ${a.fullNameAr}` })} />
       ) : (
@@ -58,6 +81,8 @@ export const EvaluationFilters = ({
           </button>
         </span>
       )}
+
+      <BranchFilterSelect value={value.branchId} onChange={(branchId) => set({ branchId })} />
 
       <label className="flex items-center gap-1.5 text-sm text-slate-500">
         <span className="hidden sm:inline">{t('evaluations.filters.from')}</span>

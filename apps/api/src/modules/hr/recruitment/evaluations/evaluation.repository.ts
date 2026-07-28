@@ -9,6 +9,7 @@ import {
   LIVE_ATTEMPT_ONLY,
 } from '../workflow/workflow-guard';
 import { type ScopeSelector } from '../../../../shared/types';
+import { escapeRegExp } from '../../shared/arabic';
 import { EvaluationModel, type EvaluationDoc } from './evaluation.model';
 
 export interface EvaluationListFilter {
@@ -18,6 +19,8 @@ export interface EvaluationListFilter {
   branchId?: string | undefined;
   createdFrom?: Date | undefined;
   createdTo?: Date | undefined;
+  /** Free text over the denormalized applicant code and name — the queue's search box. */
+  search?: string | undefined;
 }
 
 class EvaluationRepository extends BaseRepository<EvaluationDoc> {
@@ -82,6 +85,12 @@ class EvaluationRepository extends BaseRepository<EvaluationDoc> {
     if (f.phaseId !== undefined) clauses.push({ phaseId: new Types.ObjectId(f.phaseId) });
     if (f.status !== undefined) clauses.push({ status: f.status });
     if (f.branchId !== undefined) clauses.push({ branchId: new Types.ObjectId(f.branchId) });
+    if (f.search !== undefined && f.search.trim() !== '') {
+      // Escaped, so a user typing `.` or `[` searches for that character rather than injecting a
+      // pattern. Same shape as the other recruitment queues.
+      const re = new RegExp(escapeRegExp(f.search.trim()), 'i');
+      clauses.push({ $or: [{ applicantCode: re }, { applicantName: re }] } as FilterQuery<EvaluationDoc>);
+    }
     if (f.createdFrom !== undefined || f.createdTo !== undefined) {
       const range: Record<string, Date> = {};
       if (f.createdFrom !== undefined) range.$gte = f.createdFrom;

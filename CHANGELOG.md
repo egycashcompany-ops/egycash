@@ -25,8 +25,27 @@ its entry here in the same PR.
   applicant code plus an accepted-date range — never its own `status`/`hired` predicates, which
   ARE the queue (A6/RW15) and whose totals must keep agreeing with the stage counter.
 
+  Each queue also gets the standard controls it can support: **free-text search** over the
+  denormalized applicant code and name (interviews, evaluations; Employees Ready already searched
+  its offer number), the **branch**, and — on interviews, the only stage where a record is assigned
+  to anyone — the **interviewer**. Evaluations and accepted offers have no assignee, so neither
+  offers a control for one.
+
+  Branch and interviewer come from two new shared controls rather than three copies each, and both
+  render *nothing* when the caller lacks the permission that reads their catalog (`branch.view`,
+  `user.view`) — an empty dropdown would filter nothing while implying access nobody granted. The
+  user picker is the one the offer form already used, generalized: `ManagerPicker` is now that
+  control with the offer form's wording.
+
   New query parameters: `createdFrom`/`createdTo` on evaluations, `respondedFrom`/`respondedTo` on
   job offers.
+
+- **`search` now actually filters on screenings, interviews and evaluations.** All three declared
+  the parameter in their contracts, and none of the three implemented it — a client could send
+  `search=…` and get an unfiltered list back, which is worse than a 400 because it looks like it
+  worked. All three now match the offers queue: an escaped, case-insensitive regex over the
+  denormalized `applicantCode` and `applicantName`, so a user typing `.` searches for a dot instead
+  of matching every row.
 
 - **Prescreening: age-range and education-level filters, applied on the server.** Both facts live
   on the APPLICANT, not on the screening — the screening denormalizes only what it displays, and
@@ -44,6 +63,13 @@ its entry here in the same PR.
   user has to decode.
 
 ### Fixed
+
+- **A deep link to page 2 of any searchable list bounced back to page 1.** `SearchInput`'s debounce
+  effect listed `onChange` in its dependencies, and every caller passes an inline closure — so the
+  effect re-ran on each parent render and re-emitted the *unchanged* search term. On a list whose
+  filter handler resets paging (the correct behaviour when a filter really changes), that discarded
+  the page the user had linked to or refreshed on. The effect now emits only when the text differs
+  from the value it was given, which also stops "clear filters" echoing back a change of its own.
 
 - **Recruitment: interview status labels rendered as raw translation keys.** `/interviews`,
   `/interviews/:id` and `/interviews/stage/:stageId` showed `interviews.status.waiting` and

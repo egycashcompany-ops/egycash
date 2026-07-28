@@ -711,3 +711,37 @@ describe('screening — candidate-attribute filters (age, education)', () => {
     expect(all).toContain(seeded.thirtyExactly);
   });
 });
+
+/**
+ * Free-text search. The contract has declared `search` on this endpoint since Stage 2, but nothing
+ * implemented it — a client could send it and get an unfiltered list back, which is worse than a
+ * 400 because it looks like it worked.
+ */
+describe('screening — free-text search', () => {
+  const list = (query: Record<string, string | number>) =>
+    request(app)
+      .get('/api/v1/hr/screenings')
+      .query({ pageSize: 100, ...query })
+      .set('Authorization', `Bearer ${adminToken}`);
+
+  const codesIn = (res: { body: unknown }): string[] =>
+    ((res.body as { data: { applicantCode: string }[] }).data ?? []).map((s) => s.applicantCode);
+
+  it('narrows to the matching applicant code instead of ignoring the parameter', async () => {
+    const all = codesIn(await list({}));
+    expect(all.length).toBeGreaterThan(1);
+
+    const target = all[0] as string;
+    const found = codesIn(await list({ search: target }));
+    expect(found).toContain(target);
+    expect(found.length).toBeLessThan(all.length);
+  });
+
+  it('treats a regex metacharacter as a literal, not as a pattern', async () => {
+    expect(codesIn(await list({ search: '.' }))).toHaveLength(0);
+  });
+
+  it('a search matching nobody returns an empty page, not everything', async () => {
+    expect(codesIn(await list({ search: 'no-such-candidate-anywhere' }))).toHaveLength(0);
+  });
+});

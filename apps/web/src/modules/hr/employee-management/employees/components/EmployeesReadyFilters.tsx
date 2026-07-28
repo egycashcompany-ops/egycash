@@ -1,19 +1,21 @@
-// Employees Ready queue filters: free-text search (offer number / applicant code) and the
-// accepted-date range. Emits a flat state; the page maps it to/from the URL query string.
+// Employees Ready queue filters: free-text search (offer number / applicant code), the branch, and
+// the accepted-date range. Emits a flat state; the page maps it to/from the URL query string.
 //
 // Status and `hired` are deliberately absent — they ARE the queue (accepted, not yet hired,
 // A6/RW15). Offering them here would let a user filter their way out of the very queue they
 // opened, and the table would stop agreeing with the stage counter that runs the same predicate.
 //
-// No branch filter: it would need the branch catalog, and reading that is a permission this page
-// does not otherwise require. The queue stays visible to exactly who it was visible to before.
+// There is no "assigned user": nobody is assigned an accepted offer. The person who will hire is
+// whoever opens the queue, which is a permission, not a field.
 import { useT } from '../../../../../platform/localization/useT';
 import { FilterBar } from '../../../../../shared/ui/FilterBar';
 import { SearchInput } from '../../../../../shared/ui/SearchInput';
 import { Input } from '../../../../../shared/ui/form';
+import { BranchFilterSelect } from '../../../recruitment/shared/BranchFilterSelect';
 
 export interface EmployeesReadyFiltersState {
   search: string;
+  branchId: string;
   /** `respondedAt` — the date the candidate ACCEPTED, which is what this queue sorts by. */
   acceptedFrom: string;
   acceptedTo: string;
@@ -21,12 +23,13 @@ export interface EmployeesReadyFiltersState {
 
 export const EMPTY_EMPLOYEES_READY_FILTERS: EmployeesReadyFiltersState = {
   search: '',
+  branchId: '',
   acceptedFrom: '',
   acceptedTo: '',
 };
 
 const isActive = (f: EmployeesReadyFiltersState): boolean =>
-  f.search !== '' || f.acceptedFrom !== '' || f.acceptedTo !== '';
+  f.search !== '' || f.branchId !== '' || f.acceptedFrom !== '' || f.acceptedTo !== '';
 
 export const EmployeesReadyFilters = ({
   value,
@@ -50,6 +53,8 @@ export const EmployeesReadyFilters = ({
           placeholder={t('employeesReady.filters.search')}
         />
       </div>
+
+      <BranchFilterSelect value={value.branchId} onChange={(branchId) => set({ branchId })} />
 
       <label className="flex items-center gap-1.5 text-sm text-slate-500">
         <span className="hidden whitespace-nowrap sm:inline">{t('employeesReady.filters.from')}</span>

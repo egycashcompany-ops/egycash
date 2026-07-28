@@ -126,6 +126,7 @@ class EvaluationService {
       createdFrom: query.createdFrom,
       createdTo: query.createdTo,
       branchId: query.branchId,
+      search: query.search,
     };
   }
 

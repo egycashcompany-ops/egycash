@@ -1866,6 +1866,11 @@ const en: Record<string, string> = {
   'employeesReady.filters.search': 'Offer number or applicant',
   'employeesReady.filters.from': 'Accepted from',
   'employeesReady.filters.to': 'Accepted to',
+  'interviews.filters.search': 'Applicant code or name',
+  'interviews.filters.interviewerSearch': 'Interviewer',
+  'evaluations.filters.search': 'Applicant code or name',
+  'recruitment.filters.branch': 'Branch',
+  'recruitment.filters.allBranches': 'All branches',
 };
 
 const ar: Record<string, string> = {
@@ -3731,6 +3736,11 @@ const ar: Record<string, string> = {
   'employeesReady.filters.search': 'رقم العرض أو المتقدِّم',
   'employeesReady.filters.from': 'القبول من',
   'employeesReady.filters.to': 'القبول إلى',
+  'interviews.filters.search': 'كود المتقدِّم أو الاسم',
+  'interviews.filters.interviewerSearch': 'المُقابِل',
+  'evaluations.filters.search': 'كود المتقدِّم أو الاسم',
+  'recruitment.filters.branch': 'الفرع',
+  'recruitment.filters.allBranches': 'كل الفروع',
 };
 
 const catalogs: Record<Locale, Record<string, string>> = { en, ar };

@@ -9,6 +9,7 @@ import {
   LIVE_ATTEMPT_ONLY,
 } from '../workflow/workflow-guard';
 import { type ScopeSelector } from '../../../../shared/types';
+import { escapeRegExp } from '../../shared/arabic';
 import { ScreeningModel, type ScreeningDoc } from './screening.model';
 
 export interface ScreeningListFilter {
@@ -26,6 +27,8 @@ export interface ScreeningListFilter {
    * nothing rather than everything.
    */
   applicantIdIn?: Types.ObjectId[] | undefined;
+  /** Free text over the denormalized applicant code and name. */
+  search?: string | undefined;
 }
 
 class ScreeningRepository extends BaseRepository<ScreeningDoc> {
@@ -96,6 +99,12 @@ class ScreeningRepository extends BaseRepository<ScreeningDoc> {
     if (f.applicantId !== undefined) clauses.push({ applicantId: new Types.ObjectId(f.applicantId) });
     if (f.applicantIdIn !== undefined) clauses.push({ applicantId: { $in: f.applicantIdIn } });
     if (f.branchId !== undefined) clauses.push({ branchId: new Types.ObjectId(f.branchId) });
+    if (f.search !== undefined && f.search.trim() !== '') {
+      // Escaped, so a user typing `.` or `[` searches for that character rather than injecting a
+      // pattern. Same shape as the other recruitment queues.
+      const re = new RegExp(escapeRegExp(f.search.trim()), 'i');
+      clauses.push({ $or: [{ applicantCode: re }, { applicantName: re }] } as FilterQuery<ScreeningDoc>);
+    }
     if (f.decidedFrom !== undefined || f.decidedTo !== undefined) {
       const range: Record<string, Date> = {};
       if (f.decidedFrom !== undefined) range.$gte = f.decidedFrom;

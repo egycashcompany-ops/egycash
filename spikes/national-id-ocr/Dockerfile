@@ -52,6 +52,11 @@ COPY src/ /app/src/
 COPY bench/ /app/bench/
 COPY tools/ /app/tools/
 COPY fixtures/ /app/fixtures/
+# Calibrated geometry, shipped with the image so OCR_LAYOUT_PROFILE can name a path that exists
+# without mounting anything. Omitting this directory does not degrade quietly — `load_profile`
+# raises and the container refuses to start, which is the intended failure but a confusing one
+# if the file was expected to be here.
+COPY profiles/ /app/profiles/
 
 # Record the image's own size so `measure.py` can report it as a real number rather than an
 # estimate. Approximated from the filesystem at build time — `docker images` remains the

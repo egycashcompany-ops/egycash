@@ -13,6 +13,14 @@ const EnvSchema = z.object({
     .default('mongodb://localhost:27017/ecms?replicaSet=rs0&directConnection=true'),
   REDIS_URL: z.string().min(1).default('redis://localhost:6379'),
 
+  /**
+   * Local National-ID OCR sidecar (OQ-30). UNSET = the null stub stays registered and OCR reports
+   * `available: false`, which is the pre-existing behaviour. Set it only where the offline
+   * `nid-ocr` container actually runs, e.g. `http://nid-ocr:8099`.
+   */
+  NATIONAL_ID_OCR_URL: z.string().url().optional(),
+  NATIONAL_ID_OCR_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(20_000),
+
   JWT_ACCESS_SECRET: z.string().min(16).default('dev-only-access-secret-change-me'),
   JWT_ACCESS_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(900),
   REFRESH_TTL_DAYS: z.coerce.number().int().min(1).max(90).default(7),

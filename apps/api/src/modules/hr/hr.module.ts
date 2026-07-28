@@ -31,6 +31,7 @@ import {
 } from './recruitment/workflow';
 import { reconcileRecruitmentTimeline } from './recruitment/recruitment.reconciler';
 import { registerQueueMaterializer } from './recruitment/materializer';
+import { registerNationalIdOcrProvider } from './recruitment/applicants';
 import { registerPlacementReassignment } from './recruitment/placement';
 import { buildLeaveTypesRouter } from './leave-management/leave-types';
 import { buildLeaveBalancesRouter, leaveBalanceService } from './leave-management/leave-balances';
@@ -56,6 +57,9 @@ registerHrIdentitySeams();
 // workflow events; the engine itself performs no side effects.
 registerRecruitmentWorkflowConsumers();
 registerQueueMaterializer();
+// OQ-30 — the local OCR provider, only when a sidecar URL is configured; otherwise the null
+// stub stays and National-ID OCR keeps reporting `available: false`.
+registerNationalIdOcrProvider();
 // RW2 — reassignment spans every stage, so it registers itself through the Applicants seam.
 registerPlacementReassignment();
 

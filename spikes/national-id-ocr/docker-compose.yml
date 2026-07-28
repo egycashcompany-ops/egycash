@@ -1,0 +1,37 @@
+# Offline National-ID OCR sidecar.
+#
+# The weights are baked into the image, so the container needs no egress at all. The bench profile
+# below runs with `network_mode: none` to prove exactly that: if an external dependency ever crept
+# in, the measurement run would fail loudly instead of quietly phoning home.
+#
+# The API reaches the service over the shared network and is pointed at it with
+# NATIONAL_ID_OCR_URL=http://nid-ocr:8099. Without that variable the API keeps the null stub and
+# National-ID OCR reports `available: false`, exactly as before this existed.
+services:
+  nid-ocr:
+    build: .
+    image: ecms/nid-ocr:latest
+    restart: unless-stopped
+    environment:
+      OCR_PORT: "8099"
+      OCR_PRELOAD: "1" # pay the model load at start, not on a user's first request
+      # Calibration profile, once the built-in geometry has been tuned for real card stock.
+      # OCR_LAYOUT_PROFILE: /profiles/egypt-2026.json
+    # volumes:
+    #   - ./profiles:/profiles:ro
+    ports:
+      - "127.0.0.1:8099:8099" # loopback only — never expose this beyond the host
+    networks: [ecms]
+
+  # Measurement run: the same image, a different command, no network whatsoever.
+  nid-ocr-bench:
+    profiles: [bench]
+    image: ecms/nid-ocr:latest
+    network_mode: none
+    volumes:
+      - ./fixtures/real:/app/fixtures/real:ro # anonymized cards, never baked into a layer
+    command: ["bench/measure.py", "--fixtures", "fixtures/real", "--recognizer", "paddle"]
+
+networks:
+  ecms:
+    driver: bridge

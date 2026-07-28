@@ -11,6 +11,33 @@ its entry here in the same PR.
 
 ### Added
 
+- **National-ID OCR now has a real, fully local provider (OQ-30).** The seam has carried a null
+  stub since Sprint 4.1 — `available: false`, no extraction — because image-to-text was a deferred
+  capability. It is now implemented: a PaddleOCR 3.x sidecar carrying the PP-OCR weights baked into
+  its image, reached by `PaddleNationalIdOcrProvider` behind the existing
+  `NationalIdOcrProvider` seam. No third-party service and no external API at runtime.
+
+  The pipeline is field-based rather than full-page — the card has fixed geometry, so each field is
+  rectified, deskewed, denoised, contrast-enhanced, cropped and recognized on its own. That gives
+  each field its own confidence band (which `OcrFieldDto` requires) and removes the guesswork of
+  mapping a bag of strings back onto fields. Card geometry is data, not code: `OCR_LAYOUT_PROFILE`
+  points at a JSON profile so real card stock can be calibrated without rebuilding the image.
+
+  Deliberately unchanged: `parseNationalId` remains the sole owner of birth date, gender and
+  governorate — the provider never returns them; the contracts in `packages/contracts`; the
+  recruitment workflow; and the review dialog with its confidence model. Every field still goes to
+  a human.
+
+  **Off by default.** Without `NATIONAL_ID_OCR_URL` the null stub stays registered and the endpoint
+  answers exactly as before, so this ships safely ahead of the sidecar being deployed anywhere. The
+  provider reads card images through the Files service under the CALLER's context, so OCR cannot
+  widen who can see a card, and it degrades to "no fields" on every failure path — an unreachable
+  sidecar means the reviewer types the card in, not that recruitment stops.
+
+  Accuracy against real Egyptian cards is **not yet measured**; the measurement harness and its
+  documented process ship alongside in `spikes/national-id-ocr/`.
+
+
 - **Recruitment: filter bars on every stage queue that was missing one.** The per-stage interview
   pages (First Interview, Second Interview, …), the per-phase evaluation pages (Security Check,
   Driving Test, Medical Examination, …) and Employees Ready now filter like the rest of the module:

@@ -176,7 +176,16 @@ export const exportApplicants = async (req: Request, res: Response): Promise<voi
 
 export const ocrExtractNationalId = async (req: Request, res: Response): Promise<void> => {
   const { body } = validated<OcrExtractNationalId>(req);
-  ok(res, await extractNationalIdFields({ frontFileId: body.frontFileId, backFileId: body.backFileId }));
+  // The actor rides along so a provider that reads the stored images does it under the caller's
+  // own download authorization — the OCR path must not widen who can see a card.
+  ok(
+    res,
+    await extractNationalIdFields({
+      frontFileId: body.frontFileId,
+      backFileId: body.backFileId,
+      actor: authContext(req),
+    }),
+  );
 };
 
 // ── Attachments ────────────────────────────────────────────────────────────

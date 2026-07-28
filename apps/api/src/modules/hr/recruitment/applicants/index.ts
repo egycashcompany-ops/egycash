@@ -24,3 +24,8 @@ export {
   resetStageMaterializer,
   type StageMaterializer,
 } from './stage-materializer-seam';
+export {
+  registerNationalIdOcrProvider,
+  resetNationalIdOcrProviderRegistration,
+} from './register-ocr-provider';
+export { PaddleNationalIdOcrProvider } from './paddle-ocr-provider';

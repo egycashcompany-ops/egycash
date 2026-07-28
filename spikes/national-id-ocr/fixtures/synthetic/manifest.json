@@ -1,0 +1,130 @@
+[
+  {
+    "id": "synthetic-000",
+    "front": "synthetic-000-front.jpg",
+    "back": "synthetic-000-back.jpg",
+    "quality": "clean",
+    "source": "synthetic",
+    "truth": {
+      "fullNameAr": "كريم محمد رضوان الحديدى عبده",
+      "address": "٣٤ ش الجمهورية المنصورة أول - الدقهلية",
+      "nationalId": "29008040395767",
+      "occupation": "مهندس مدني",
+      "religion": "مسيحي",
+      "maritalStatus": "عزباء",
+      "nationalIdExpiry": "2032-10-16"
+    }
+  },
+  {
+    "id": "synthetic-001",
+    "front": "synthetic-001-front.jpg",
+    "back": "synthetic-001-back.jpg",
+    "quality": "light",
+    "source": "synthetic",
+    "truth": {
+      "fullNameAr": "سلمى محمد رضوان الحديدى عبده",
+      "address": "برج الشروق - ش أحمد ماهر المنصورة أول - الدقهلية",
+      "nationalId": "30104080189821",
+      "occupation": "محاسب",
+      "religion": "مسلمة",
+      "maritalStatus": "مطلق",
+      "nationalIdExpiry": "2029-05-11"
+    }
+  },
+  {
+    "id": "synthetic-002",
+    "front": "synthetic-002-front.jpg",
+    "back": "synthetic-002-back.jpg",
+    "quality": "light",
+    "source": "synthetic",
+    "truth": {
+      "fullNameAr": "أحمد علي حسن إبراهيم",
+      "address": "٣٤ ش الجمهورية قسم أول - القاهرة",
+      "nationalId": "29601088881484",
+      "occupation": "معيدة بقسم الصحة العامة",
+      "religion": "مسيحي",
+      "maritalStatus": "مطلقة",
+      "nationalIdExpiry": "2033-11-09"
+    }
+  },
+  {
+    "id": "synthetic-003",
+    "front": "synthetic-003-front.jpg",
+    "back": "synthetic-003-back.jpg",
+    "quality": "harsh",
+    "source": "synthetic",
+    "truth": {
+      "fullNameAr": "سلمى سامح بدوى محمد",
+      "address": "٧ ش النيل - المعمورة قسم أول - القاهرة",
+      "nationalId": "27005101257618",
+      "occupation": "محاسب",
+      "religion": "مسلمة",
+      "maritalStatus": "مطلق",
+      "nationalIdExpiry": "2028-09-17"
+    }
+  },
+  {
+    "id": "synthetic-004",
+    "front": "synthetic-004-front.jpg",
+    "back": "synthetic-004-back.jpg",
+    "quality": "clean",
+    "source": "synthetic",
+    "truth": {
+      "fullNameAr": "محمود علي حسن إبراهيم",
+      "address": "١٢ ش الجلاء قسم أول - القاهرة",
+      "nationalId": "30606150114200",
+      "occupation": "أخصائي موارد بشرية",
+      "religion": "مسيحية",
+      "maritalStatus": "مطلق",
+      "nationalIdExpiry": "2030-05-28"
+    }
+  },
+  {
+    "id": "synthetic-005",
+    "front": "synthetic-005-front.jpg",
+    "back": "synthetic-005-back.jpg",
+    "quality": "light",
+    "source": "synthetic",
+    "truth": {
+      "fullNameAr": "أحمد محمد رضوان الحديدى عبده",
+      "address": "برج الشروق - ش أحمد ماهر قسم أول - القاهرة",
+      "nationalId": "27011101222636",
+      "occupation": "مهندس مدني",
+      "religion": "مسيحية",
+      "maritalStatus": "عزباء",
+      "nationalIdExpiry": "2028-08-16"
+    }
+  },
+  {
+    "id": "synthetic-006",
+    "front": "synthetic-006-front.jpg",
+    "back": "synthetic-006-back.jpg",
+    "quality": "light",
+    "source": "synthetic",
+    "truth": {
+      "fullNameAr": "كريم علي حسن إبراهيم",
+      "address": "٣٤ ش الجمهورية قسم أول - القاهرة",
+      "nationalId": "26212012193155",
+      "occupation": "مهندس مدني",
+      "religion": "مسيحي",
+      "maritalStatus": "عزباء",
+      "nationalIdExpiry": "2030-07-28"
+    }
+  },
+  {
+    "id": "synthetic-007",
+    "front": "synthetic-007-front.jpg",
+    "back": "synthetic-007-back.jpg",
+    "quality": "harsh",
+    "source": "synthetic",
+    "truth": {
+      "fullNameAr": "طارق فؤاد سمير عطية",
+      "address": "١٢ ش الجلاء طنطا - الغربية",
+      "nationalId": "30612100136018",
+      "occupation": "أخصائي موارد بشرية",
+      "religion": "مسلم",
+      "maritalStatus": "متزوج",
+      "nationalIdExpiry": "2031-01-22"
+    }
+  }
+]

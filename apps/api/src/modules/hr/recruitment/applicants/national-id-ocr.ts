@@ -7,10 +7,17 @@
 // date / gender / governorate derivation and structural validation are deterministic
 // (`parseNationalId`, contracts) — no external dependency — and are always applied.
 import { parseNationalId, type OcrExtractionDto, type OcrFieldDto } from '@ecms/contracts';
+import { type AuthContext } from '../../../../shared/types';
 
 export interface OcrInput {
   frontFileId?: string | undefined;
   backFileId?: string | undefined;
+  /**
+   * The caller, so a provider that must fetch the stored images can do so under THEIR authority
+   * rather than a standing credential of its own. Optional: the null stub ignores it, and every
+   * existing caller keeps compiling.
+   */
+  actor?: AuthContext | undefined;
 }
 
 /**

@@ -1,7 +1,8 @@
 // The Job Offer aggregate (Stage 4) — the compensation offer extended to an applicant who
 // cleared all interview rounds. Terms are versioned: every revision snapshots the prior
-// package into `revisions`. `active` is a denormalized flag (true while draft/sent) that
-// backs the "at most one active offer per applicant" partial unique index. `applicantCode`
+// package into `revisions`. "At most one live offer per applicant" is enforced by the
+// attempt-unique index over non-superseded rows (I12) — the `active` boolean that used to back
+// it is deleted, because a flag can disagree with the status it mirrors (I10). `applicantCode`
 // and `branchId` are denormalized (branch is the primary data scope, ADR-015).
 import { Schema, model, type Types } from 'mongoose';
 import {

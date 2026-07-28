@@ -361,6 +361,23 @@ class ApplicantService {
     return ApplicantModel.findOne({ nationalId, status: 'new', isDeleted: false });
   }
 
+  /**
+   * SYSTEM walk over every live applicant, id only, in `_id` order — the input to the boot
+   * backfill that materializes missing `waiting` rows (I8/I11).
+   *
+   * A cursor rather than a page list: the backlog is the whole live pipeline and must never be
+   * held in memory. `visit` owns its own failures; one applicant throwing must not end the walk,
+   * so anything it lets escape is the caller's decision, not this seam's.
+   */
+  async eachLiveIdSystem(batchSize: number, visit: (applicantId: string) => Promise<void>): Promise<void> {
+    const cursor = ApplicantModel.find({ status: 'new', isDeleted: false }, { _id: 1 })
+      .sort({ _id: 1 })
+      .batchSize(batchSize)
+      .lean()
+      .cursor();
+    for await (const row of cursor) await visit(String(row._id));
+  }
+
   async update(
     ctx: AuthContext,
     id: string,

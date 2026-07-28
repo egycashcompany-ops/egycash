@@ -139,16 +139,25 @@ adding rows to the Applications catalog — stages never become Platform Applica
 
 ### Why the counters are N parallel aggregations, not one pipeline
 
-I3 as frozen says "one aggregation pipeline — a single round trip — rooted on `hr_applicants` with
-`$lookup` into screenings, interviews, evaluations, offers and employees, and `$facet`". Half of
-that sentence was already overturned by **I11**, which removed the cross-collection `$lookup`
-outright: once every stage has a real `waiting` row, the counters group stage records by `status`
-and there is no eligibility to derive, so there is nothing to look up. What remains open is the
-other half — "a single round trip".
+Two passages of the frozen design describe this endpoint, and they do not say the same thing.
 
-The shipped implementation issues **one `$match` + `$group` per stage collection, in parallel**
+**I3** says "one aggregation pipeline — a single round trip — rooted on `hr_applicants` with
+`$lookup` into screenings, interviews, evaluations, offers and employees, and `$facet`". **RW15 §7
+"Efficiency"** — the decision that actually specifies the counters endpoint — says "**Six `$group`
+aggregations (one per collection) plus the derived-eligibility counts, issued in parallel inside one
+request**, all served by existing indexes".
+
+The tension resolves without anyone having to choose sides, because I3's sentence describes a shape
+the design itself later deleted. **I11** removed the cross-collection `$lookup` outright — "the
+single aggregation now groups stage records by `status` — no eligibility derivation, no
+cross-collection `$lookup` to discover who *should* appear" — and a pipeline "rooted on
+`hr_applicants` with `$lookup` … and `$facet`" is exactly the eligibility derivation I11 abolished.
+What survives of I3 is its substance: no N+1, index-backed, one bounded pass, verified by
+`explain()`. What RW15 specifies is what is shipped, verbatim.
+
+So the implementation issues **one `$match` + `$group` per stage collection, in parallel**
 (`Promise.all`). It is a fixed number of queries, never a function of row count, and each is served
-from an index. Three reasons it is shaped that way, in order of weight:
+from an index. Three reasons that shape is also the right one, in order of weight:
 
 1. **A stage the caller cannot see is not queried at all.** RW15 requires such a stage to be
    *omitted*, not returned as zero. With one query per stage that is a plain permission check
@@ -188,9 +197,10 @@ costing a filter, and the work is proportional to what the answer is about.
 > sound alike and only one of them is true, which is precisely the sort of thing a prose invariant
 > cannot keep honest and a test can.
 
-**This deviates from the letter of the frozen I3 and is recorded here as a deviation, not as a
-re-reading of it.** The invariant's substance — no N+1, index-backed, one bounded pass — is met and
-enforced by tests; its "single round trip" wording is not.
+**Net: this matches RW15 §7 verbatim and satisfies I3 as I11 left it.** The one phrase it does not
+match is I3's "a single round trip", which belongs to the `$lookup`-and-`$facet` pipeline I11
+deleted. No approval is being claimed for a deviation here — the deviation would be building the
+`$facet` pipeline, since that would reintroduce the derivation I11 removed.
 
 ## 7a. Starting a round (RW12)
 
@@ -342,10 +352,11 @@ re-read exactly once, while every other recruitment list is marked stale without
 screen that has not yet acted simply has no entry, which is the honest answer — inventing one would
 mean deriving workflow state on the client, and the point of I6 is that the server derives it.
 
-## 8d. When something goes wrong: the two recovery tasks (I15, I5)
+## 8d. When something goes wrong: the three recovery paths (I15, I5, I11)
 
-Both invariants that promise durability need something that runs *after* a failure, and both now
-have it, registered in the HR manifest like any other scheduled task.
+Every invariant that promises durability needs something that runs *after* a failure. Two are
+scheduled tasks registered in the HR manifest; the third runs at boot, because what it repairs is
+created at boot too.
 
 **`hr.recruitment.workflowOutbox`, every 5 minutes (I15).** The engine writes the aggregate change
 and its event in one transaction and publishes after that transaction commits. The gap between
@@ -379,9 +390,30 @@ request's user and the applicant document does not keep it; `null` reads as "the
 truthful for a repaired row in a way that a plausible-looking guess would not be. Repaired entries
 also carry `metadata.reconciled: true`.
 
-`tests/integration/hr-recruitment-recovery.spec.ts` covers both by breaking the database on
-purpose — un-dispatching an event, deleting entries, wedging a consumer — and asserting the task
-puts things back exactly once.
+**The waiting-row backfill, at every boot (I8/I11).** Since I11, `waiting` is a persisted row and
+absence carries no meaning — which means a candidate with no row is not "waiting", they are
+*invisible*: to the queue, the counter, the badge and every bulk action. Two populations have
+exactly that shape. Every applicant registered before I11 existed, because the pipeline they moved
+through never created the row. And any applicant whose materialization threw: materialization is a
+projection run through `safely()`, which logs and swallows so a failed projection can never roll
+back the decision that triggered it — on the promise that a backfill would repair it.
+
+So `migrateRecruitmentWorkflow()` ends by walking every live applicant and resolving, **from their
+own records rather than any stored cursor (I1)**, how far they got: no live screening → open it; an
+accepted screening → open the first interview stage; the furthest round they passed → open what
+comes after it, which for the last round is every applicable evaluation phase; `movedToOfferAt` set
+→ open the offer. Each row is opened through the same `open*` method the live path uses, and each
+of those returns early when the row is already there. The step runs last in the migration because
+it must read the normalized shape the earlier steps produce.
+
+It is safe on every boot for the same reason `ensureStageRecord()` is idempotent (I12): the second
+run repairs nothing and writes nothing. And it never revives history — a decided screening is not a
+missing one, so no second attempt appears beside it, and a withdrawn candidate is not scanned at
+all, because withdrawal is a lifecycle terminal (I14) and nothing re-admits them to a queue.
+
+`tests/integration/hr-recruitment-recovery.spec.ts` covers all three by breaking the database on
+purpose — un-dispatching an event, deleting timeline entries, wedging a consumer, deleting the
+stage row a live applicant stands on — and asserting the repair puts things back exactly once.
 
 ## 9. Two traps worth remembering
 

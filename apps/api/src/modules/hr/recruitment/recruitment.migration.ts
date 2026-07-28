@@ -356,6 +356,20 @@ const closeStagesOfDepartedApplicants = async (): Promise<void> => {
  * actor. Two histories of one fact can only drift, so the aggregate's copy is dropped. Nothing is
  * lost: the timeline holds every one of those decisions, and it always did.
  */
+/**
+ * §15 / I11 — every live applicant gets the `waiting` row their position already implies.
+ *
+ * Pre-refactor applicants moved through a pipeline where "waiting" meant *no row*, so every one of
+ * them stands at a stage the new queues cannot see. The materializer knows how to resolve and open
+ * that row and is idempotent by construction (I12), so this is a walk plus a no-op on every
+ * subsequent boot. Imported lazily: the materializer pulls in the workflow engine and all four
+ * stage services, and the migration module must stay loadable without them.
+ */
+const materializeWaitingBacklog = async (): Promise<void> => {
+  const { queueMaterializerService } = await import('./materializer');
+  await queueMaterializerService.backfillWaitingBacklog();
+};
+
 const dropEvaluationDecisionHistory = async (): Promise<void> => {
   await EvaluationModel.updateMany(
     { decisionHistory: { $exists: true } } as never,
@@ -373,6 +387,10 @@ export const migrateRecruitmentWorkflow = async (): Promise<void> => {
   await reorderPhasesToBusinessOrder();
   await backfillOfferTerms();
   await dropReplacedIndexes();
+  // LAST — I11's backlog. Every step above normalizes the rows that already exist; this one opens
+  // the `waiting` rows that never existed, and it must read the normalized shape (attempt markers,
+  // the `pending` → `waiting` rename, phase typing) to resolve where each candidate stands.
+  await materializeWaitingBacklog();
 };
 
 export const migrateRecruitmentLegacy = async (): Promise<void> => {

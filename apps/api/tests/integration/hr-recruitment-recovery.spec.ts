@@ -31,6 +31,13 @@ import { getCache } from '../../src/infrastructure/redis/cache';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { type AuthContext } from '../../src/shared/types';
 import { mutated } from './helpers/workflow-envelope';
+import {
+  queueMaterializerService,
+  registerQueueMaterializer,
+  resetQueueMaterializerRegistration,
+} from '../../src/modules/hr/recruitment/materializer';
+import { ScreeningModel } from '../../src/modules/hr/recruitment/screening/screening.model';
+import { InterviewModel } from '../../src/modules/hr/recruitment/interviews/interview.model';
 
 const PASSWORD = 'Str0ng#Pass!';
 const REQUISITION_ID = '64b1f0aaaaaaaaaaaaaaaaaa';
@@ -172,9 +179,16 @@ afterAll(async () => {
 afterEach(async () => {
   await getCache().delByPrefix('rl:');
   // Whatever a test wedged into the dispatcher, the next one starts from the real consumer set.
+  // `resetWorkflowConsumers()` drops EVERY subscriber, so the queue materializer has to be put
+  // back too — it subscribes through the same registry, and without this it stays silently
+  // unsubscribed for the rest of the file: registration still opens a screening row (that path
+  // runs through the Applicants seam), but nothing would ever open the interview row an accepted
+  // screening implies.
   resetWorkflowConsumers();
   resetRecruitmentWorkflowConsumerRegistration();
   registerRecruitmentWorkflowConsumers();
+  resetQueueMaterializerRegistration();
+  registerQueueMaterializer();
 });
 
 describe('outbox recovery sweep (I15)', () => {
@@ -327,5 +341,118 @@ describe('timeline reconciliation (I5)', () => {
     await reconcileRecruitmentTimeline();
 
     expect((await entries(applicant.id)).map((e) => e.sourceKey).sort()).toEqual(before);
+  });
+});
+
+/**
+ * I8/I11 — the boot backfill. `waiting` is a persisted row, so a candidate with no row is invisible
+ * to every queue, counter and badge. Two populations have exactly that shape: applicants who moved
+ * through the pipeline before I11 existed, and applicants whose materialization threw and was
+ * swallowed so the decision that triggered it would still commit.
+ *
+ * Both are reproduced the same way — delete the row the live path created — because after the
+ * deletion the two are indistinguishable in storage, which is the point: the backfill repairs a
+ * STATE, not a history of how that state came about.
+ */
+describe('waiting-row backlog backfill (I8/I11)', () => {
+  const liveScreenings = async (applicantId: string): Promise<{ status: string; attempt: number }[]> =>
+    ScreeningModel.find({ applicantId, supersededAt: null, isDeleted: false })
+      .select('status attempt -_id')
+      .lean<{ status: string; attempt: number }[]>()
+      .exec();
+
+  const liveInterviews = async (
+    applicantId: string,
+  ): Promise<{ status: string; attempt: number; stageOrder: number }[]> =>
+    InterviewModel.find({ applicantId, supersededAt: null, isDeleted: false })
+      .select('status attempt stageOrder -_id')
+      .lean<{ status: string; attempt: number; stageOrder: number }[]>()
+      .exec();
+
+  const acceptScreening = async (applicantId: string): Promise<void> => {
+    const [row] = await ScreeningModel.find({ applicantId, supersededAt: null }).lean().exec();
+    const res = await request(app)
+      .post(`/api/v1/hr/screenings/${String(row!._id)}/decide`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ outcome: 'accepted', version: row!.__v });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+  };
+
+  it('opens the screening row a candidate registered before I11 never got', async () => {
+    const applicant = await registerApplicant();
+    expect(await liveScreenings(applicant.id)).toHaveLength(1);
+
+    // Rewind to the pre-refactor world: the applicant exists, the queue row does not.
+    await ScreeningModel.deleteMany({ applicantId: applicant.id }).exec();
+    expect(await liveScreenings(applicant.id)).toHaveLength(0);
+
+    const report = await queueMaterializerService.backfillWaitingBacklog();
+
+    expect(report.repaired).toBeGreaterThanOrEqual(1);
+    expect(report.failed).toBe(0);
+    expect(await liveScreenings(applicant.id)).toEqual([{ status: 'waiting', attempt: 1 }]);
+  });
+
+  it('resolves the stage from the candidate’s own records, not a stored cursor (I1)', async () => {
+    const applicant = await registerApplicant();
+    await verifyIdentity(applicant);
+    await acceptScreening(applicant.id);
+    const opened = await liveInterviews(applicant.id);
+    expect(opened, 'accepting screening materializes the first interview stage').toHaveLength(1);
+
+    // The screening decision survives; only the row it implied is gone.
+    await InterviewModel.deleteMany({ applicantId: applicant.id }).exec();
+    expect(await liveInterviews(applicant.id)).toHaveLength(0);
+
+    await queueMaterializerService.backfillWaitingBacklog();
+
+    const repaired = await liveInterviews(applicant.id);
+    expect(repaired).toHaveLength(1);
+    expect(repaired[0]?.status).toBe('waiting');
+    expect(repaired[0]?.stageOrder).toBe(opened[0]?.stageOrder);
+  });
+
+  it('re-running writes nothing — which is what makes it safe on every boot', async () => {
+    const applicant = await registerApplicant();
+    await ScreeningModel.deleteMany({ applicantId: applicant.id }).exec();
+
+    const first = await queueMaterializerService.backfillWaitingBacklog();
+    expect(first.repaired).toBeGreaterThanOrEqual(1);
+    const after = await liveScreenings(applicant.id);
+
+    const second = await queueMaterializerService.backfillWaitingBacklog();
+
+    expect(second.repaired).toBe(0);
+    expect(second.failed).toBe(0);
+    expect(second.scanned).toBe(first.scanned);
+    expect(await liveScreenings(applicant.id)).toEqual(after);
+  });
+
+  it('never re-opens a stage the candidate already left', async () => {
+    const applicant = await registerApplicant();
+    await verifyIdentity(applicant);
+    await acceptScreening(applicant.id);
+    const decided = await liveScreenings(applicant.id);
+    expect(decided).toEqual([{ status: 'accepted', attempt: 1 }]);
+
+    await queueMaterializerService.backfillWaitingBacklog();
+
+    // A decided screening is not a missing one: no second attempt, no `waiting` row beside it.
+    expect(await liveScreenings(applicant.id)).toEqual(decided);
+  });
+
+  it('leaves a departed candidate out of the pipeline entirely', async () => {
+    const applicant = await registerApplicant();
+    const withdrawn = await request(app)
+      .post(`/api/v1/hr/applicants/${applicant.id}/withdraw`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ reason: 'took another offer', version: applicant.version });
+    expect(withdrawn.status).toBe(200);
+    await ScreeningModel.deleteMany({ applicantId: applicant.id }).exec();
+
+    await queueMaterializerService.backfillWaitingBacklog();
+
+    // Withdrawal is a lifecycle terminal (I14); nothing re-admits them to a queue.
+    expect(await liveScreenings(applicant.id)).toHaveLength(0);
   });
 });

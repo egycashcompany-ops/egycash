@@ -80,6 +80,18 @@ its entry here in the same PR.
   keeps its original `eventId`. The promise `recordSafe` has been making in a comment since the
   timeline was introduced is now kept in code.
 
+- **Recruitment: the boot migration materializes the waiting backlog (I8/I11).** Since I11 made
+  `waiting` a persisted row, a candidate with no row is not "waiting" — they are invisible to every
+  queue, counter, badge and bulk action. Two populations had exactly that shape and nothing put them
+  back: applicants who moved through the pipeline before I11 existed, and applicants whose
+  materialization threw and was swallowed by `safely()` so the decision that triggered it would
+  still commit. `migrateRecruitmentWorkflow()` now ends by walking every live applicant and
+  resolving how far they got from their own records — never from a stored cursor (I1) — then opening
+  whatever is missing through the same `open*` methods the live path uses. Re-running repairs
+  nothing and writes nothing, which is what makes it safe on every boot; a decided stage is never
+  re-opened, and a withdrawn candidate is not scanned at all. This closes the repair `safely()` has
+  promised in a comment since materialization was introduced.
+
 - **Recruitment: I3 is enforced by tests instead of asserted in prose.** A new integration suite
   seeds 2,000 rows across four stage collections and runs `explain()`: every stage queue must show
   an `IXSCAN` and never a `COLLSCAN`, and each counters aggregation must touch only rows that match
@@ -95,10 +107,12 @@ its entry here in the same PR.
   index-*only*: an index entry cannot tell a stored `null` from an absent field, so each matching
   document is still read. Both claims sound alike and only one is true.
   The same suite benchmarks the shipped counters shape (N grouped aggregations in parallel)
-  against the single `$unionWith` pipeline I3's wording describes, asserts both return identical
-  numbers, and fails if the shipped shape is slower; the rationale for keeping it is documented in
-  `docs/02-architecture/recruitment-workflow.md` §7 and flagged there as a deviation from the
-  frozen wording rather than a re-reading of it.
+  against a single `$unionWith` pipeline, asserts both return identical numbers, and fails if the
+  shipped shape is slower. The shape itself is what RW15 §7 specifies verbatim — "six `$group`
+  aggregations (one per collection) … issued in parallel inside one request" — and the `$lookup`
+  pipeline I3's wording describes is the one I11 deleted when it made `waiting` a real row and
+  removed the eligibility derivation. `docs/02-architecture/recruitment-workflow.md` §7 records how
+  the two passages reconcile.
 
 - **Recruitment: one history, and only one (I5).** Three parallel histories are gone. The
   Electronic Employee File no longer re-derives the recruitment milestones — its own timeline

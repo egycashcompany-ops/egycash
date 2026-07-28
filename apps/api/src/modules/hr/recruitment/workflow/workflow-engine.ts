@@ -13,6 +13,7 @@ import { BusinessRuleError, ConflictError, NotFoundError, StaleDocumentError } f
 import { unitOfWork } from '../../../../platform/kernel/unit-of-work';
 import { type BaseDocFields } from '../../../../shared/base/base.model';
 import { newCorrelationId, newEventId } from '../timeline/recruitment-timeline.keys';
+import { noteWorkflowEvent } from './workflow-capture';
 import { dispatchPendingWorkflowEvents } from './workflow-dispatcher';
 import { workflowEventRepository } from './workflow-event.repository';
 import { type WorkflowEventDoc } from './workflow-event.model';
@@ -69,6 +70,17 @@ export const registerStageBinding = <T extends StageRecord>(binding: StageBindin
 
 /** Test seam. */
 export const resetStageBindings = (): void => stageBindings.clear();
+
+/**
+ * The registered stage bindings in PIPELINE order, so a reader scanning for "where does this
+ * candidate stand" walks the stages the way the business does rather than in registration order.
+ */
+const PIPELINE_ORDER: StageObject[] = ['screening', 'interview', 'evaluation', 'offer'];
+
+export const stageBindingsInOrder = (): StageBinding<StageRecord>[] =>
+  PIPELINE_ORDER.map((object) => stageBindings.get(object)).filter(
+    (b): b is StageBinding<StageRecord> => b !== undefined,
+  );
 
 export interface EnsureStageInput<T extends StageRecord> {
   binding: StageBinding<T>;
@@ -525,9 +537,13 @@ class RecruitmentWorkflowEngine {
     session?: ClientSession,
   ): Promise<WorkflowEventDoc> {
     const occurredAt = new Date();
+    const eventId = newEventId(occurredAt);
+    // I6 — tell the open capture scope, if any, that this action produced this event. The
+    // envelope echoes exactly these entries back rather than guessing from a timestamp.
+    noteWorkflowEvent(eventId);
     return workflowEventRepository.append(
       {
-        eventId: newEventId(occurredAt),
+        eventId,
         name: input.name,
         occurredAt,
         actorUserId:

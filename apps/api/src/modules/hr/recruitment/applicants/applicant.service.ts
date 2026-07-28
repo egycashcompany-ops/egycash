@@ -42,7 +42,12 @@ import { ApplicantModel, type ApplicantDoc } from './applicant.model';
 import { type Model } from 'mongoose';
 import { unitOfWork } from '../../../../platform/kernel/unit-of-work';
 import { type BaseDocFields } from '../../../../shared/base/base.model';
-import { recruitmentWorkflowEngine, runBulk, type LifecycleEvent } from '../workflow';
+import {
+  recruitmentWorkflowEngine,
+  registerWorkflowApplicantReader,
+  runBulk,
+  type LifecycleEvent,
+} from '../workflow';
 // I5 — registration and identity verification are candidate facts, not workflow transitions, so
 // they are written here. The barrel carries no HTTP layer, so this does not close a cycle.
 import { recruitmentTimelineService } from '../timeline';
@@ -66,6 +71,34 @@ interface ApplicantLifecycleDoc extends BaseDocFields {
   status: 'new' | 'hired' | 'rejected' | 'withdrawn';
   branchId: Types.ObjectId | null;
 }
+
+/**
+ * I6 — the workflow envelope needs the candidate's status and placement to describe where they
+ * stand. The workflow folder must not import this feature (this feature imports it), so Applicants
+ * hands it a reader at module load — the same seam pattern as the stage bindings.
+ */
+registerWorkflowApplicantReader(async (applicantId) => {
+  if (!Types.ObjectId.isValid(applicantId)) return null;
+  const doc = await ApplicantModel.findOne({ _id: new Types.ObjectId(applicantId), isDeleted: false })
+    .select('code status placement placementLabel')
+    .lean<{
+      _id: Types.ObjectId;
+      code: string;
+      status: string;
+      placement: ApplicantDoc['placement'];
+      placementLabel: ApplicantDoc['placementLabel'];
+    }>()
+    .exec();
+  return doc === null
+    ? null
+    : {
+        _id: doc._id,
+        code: doc.code,
+        status: doc.status,
+        placement: doc.placement,
+        placementLabel: doc.placementLabel,
+      };
+});
 
 class ApplicantService {
   /** The single intake entry point (§2.1). */

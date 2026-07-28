@@ -63,7 +63,10 @@ def _recognize_box(
     # The mock replays by field name; real recognizers only ever see pixels.
     if isinstance(recognizer, MockRecognizer):
         recognizer.bind(box.name)
-    out = recognizer.recognize(crop)
+    # The national ID and the expiry are numbers: their spaced groups read left to right even
+    # on an otherwise right-to-left card. Ordering them as Arabic would reverse the value
+    # while keeping every digit correct — a failure that looks entirely plausible.
+    out = recognizer.recognize(crop, rtl=box.kind != "digits")
     return out.text, out.score
 
 

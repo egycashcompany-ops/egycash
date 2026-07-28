@@ -13,7 +13,8 @@ FROM python:3.11-slim AS builder
 
 ENV PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PADDLE_HOME=/models
+    PADDLE_HOME=/models \
+    PADDLE_PDX_CACHE_HOME=/models
 
 # libgl/libglib: OpenCV's runtime deps even in the headless wheel.
 # libraqm: complex-text shaping, required to render Arabic correctly in the fixture generator.
@@ -36,6 +37,7 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PADDLE_HOME=/models \
     PADDLE_OCR_MODEL_DIR=/models \
+    PADDLE_PDX_CACHE_HOME=/models \
     PYTHONPATH=/app/src
 
 RUN apt-get update && apt-get install -y --no-install-recommends \

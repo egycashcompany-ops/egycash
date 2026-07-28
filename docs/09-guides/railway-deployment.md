@@ -152,8 +152,20 @@ outbound calls at runtime. **Deploy it only if you want the scan button to work*
 which is the default everywhere.
 
 1. **Add a third service from the same repo** → name it e.g. **nid-ocr** → Settings → Build →
-   **Root Directory** = `spikes/national-id-ocr` (Railway then builds its `Dockerfile`).
-   **No public domain** — the card images are personal data and only the api needs to reach it.
+   **Root Directory** = `spikes/national-id-ocr`. **No public domain** — the card images are
+   personal data and only the api needs to reach it.
+
+   > **Set the Root Directory, not the Dockerfile Path.** They are not interchangeable here.
+   > Pointing *Dockerfile Path* at `spikes/national-id-ocr/Dockerfile` leaves the service rooted
+   > at the repo, so Railway still reads the root `railway.json` — and its
+   > `startCommand: npm run start -w apps/api` overrides the image's `CMD`. The build succeeds and
+   > the deploy dies with **"The executable `npm` could not be found"**, because the sidecar image
+   > is `python:3.11-slim` and has no Node in it. With the Root Directory set, config resolution
+   > moves with it and `spikes/national-id-ocr/railway.json` applies instead.
+
+   That file deliberately sets **no `startCommand`**: the Dockerfile declares
+   `ENTRYPOINT ["python"]` with `CMD ["-m", "nidocr.service"]`, and a Railway start command would
+   be layered onto the entrypoint rather than replacing it.
 2. Variables on **nid-ocr**:
 
    | Variable | Value |

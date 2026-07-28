@@ -114,7 +114,21 @@ def main() -> None:
     parser.add_argument("--check", action="store_true", help="fail if any box misses its text")
     parser.add_argument("--overlay", metavar="FIXTURE_ID", help="write an annotated card")
     parser.add_argument("--out", default=str(root / "build" / "calibration"))
+    parser.add_argument(
+        "--emit-profile",
+        metavar="PATH",
+        help="write the active geometry as a calibration profile the provider can load",
+    )
     args = parser.parse_args()
+
+    if args.emit_profile:
+        from nidocr.layout import to_profile_dict
+
+        target = Path(args.emit_profile)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(to_profile_dict(), indent=2), encoding="utf-8")
+        print(f"wrote profile → {target}  (point OCR_LAYOUT_PROFILE at it)")
+        return
 
     if args.overlay:
         overlay(Path(args.fixtures), args.overlay, Path(args.out))

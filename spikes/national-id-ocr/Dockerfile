@@ -65,5 +65,13 @@ ENV OMP_NUM_THREADS=1 \
 # rather than at the first request.
 RUN test -d /models && echo "models present"
 
-ENTRYPOINT ["python", "bench/measure.py"]
-CMD ["--fixtures", "fixtures/synthetic", "--recognizer", "paddle"]
+EXPOSE 8099
+
+# Default: serve. The API's provider talks to this. Measurement is the same image with a
+# different command — `docker run <image> bench/measure.py --fixtures …` — so the thing being
+# measured is byte-for-byte the thing that runs in production.
+ENTRYPOINT ["python"]
+CMD ["-m", "nidocr.service"]
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
+  CMD python -c "import urllib.request,os;urllib.request.urlopen('http://127.0.0.1:'+os.environ.get('OCR_PORT','8099')+'/health').read()" || exit 1

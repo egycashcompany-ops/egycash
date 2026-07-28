@@ -1,14 +1,16 @@
-# National-ID OCR — Stage 1 technical spike
+# National-ID OCR — local, offline PaddleOCR provider
 
-A fully local, offline OCR pipeline for Egyptian National ID cards, built to answer **one
-question**:
+A fully local, offline OCR pipeline for Egyptian National ID cards, now **integrated with the
+production seam**. It runs as a sidecar container carrying the PP-OCR weights; the API's
+`PaddleNationalIdOcrProvider` calls it. No third-party service and no external API at runtime.
 
-> Is a fully local OCR solution good enough for Egyptian National IDs?
+The pipeline began as a Stage-1 spike and is the implementation foundation for the provider. The
+measurement harness stays, because the accuracy question is open until real anonymized cards have
+been measured.
 
-This is a spike, not production code. Nothing here is wired into the API:
-`NationalIdOcrProvider` is untouched, `parseNationalId` is untouched, and the existing
-registration workflow is unchanged. Stage 2 — a real provider behind that seam — happens only if
-the numbers justify it.
+**What did NOT change, by design:** `parseNationalId` still owns every number-derived field, the
+contracts in `packages/contracts` are untouched, the recruitment workflow is untouched, and the
+review dialog and its confidence model are unchanged.
 
 ---
 
@@ -32,7 +34,6 @@ capture → rectify → deskew → denoise → enhance → crop per field → re
 | Not done | Why |
 | --- | --- |
 | Derive birth date / age / gender / governorate | `parseNationalId` owns these. They come from the number deterministically, in TypeScript, exactly once. |
-| Decode the barcode | Excluded by explicit instruction. Not investigated, not implemented. |
 | Decide anything | Every field carries a confidence band and goes to a human in the review dialog. |
 | Read gender from the back | It is derived from the number. A second, weaker source for a deterministic value is a liability. |
 
@@ -43,14 +44,39 @@ capture → rectify → deskew → denoise → enhance → crop per field → re
 ```bash
 make fixtures   # regenerate the synthetic set
 make check      # verify every field box lands on its text
-make test       # 31 model-free unit tests (no weights, no network)
+make test       # 39 model-free unit tests (no weights, no network)
 make build      # build the offline image — downloads and bakes the weights
 make measure    # the deliverable: accuracy, timing, image size, CPU/memory, failures, verdict
 ```
 
-`make test` and `make check` need only `numpy`, `opencv-python-headless`, `Pillow`, `pytest`.
-`make build` and `make measure` need Docker and, for the build only, network access to PyPI and
-the PaddleOCR model host.
+`make serve` runs the sidecar. `make test` and `make check` need only `numpy`,
+`opencv-python-headless`, `Pillow`, `pytest`. `make build` needs Docker and — for the build only —
+network access to PyPI and the PaddleOCR model host; the resulting image needs neither.
+
+---
+
+## Wiring it to the API
+
+```yaml
+services:
+  nid-ocr: { build: ./spikes/national-id-ocr, networks: [ecms] }
+  api:
+    environment:
+      NATIONAL_ID_OCR_URL: http://nid-ocr:8099
+```
+
+`NATIONAL_ID_OCR_URL` is the whole switch. Unset — the default everywhere today — the API keeps the
+null stub and `/hr/applicants/ocr/national-id` answers `available: false`, exactly as before. That
+is what makes this safe to ship before the sidecar is deployed anywhere.
+
+The provider reads the card images through the Files service **using the caller's own context**, so
+OCR cannot widen who can see a card: a user who could not download the image cannot have it read on
+their behalf. The sidecar holds no credentials and has no database access — it receives bytes and
+returns text.
+
+When the sidecar is unreachable, slow, or returns something malformed, the provider returns no
+fields. The review dialog opens empty and the user types the card in. Recruitment never stops
+because OCR is down.
 
 ---
 
@@ -120,11 +146,11 @@ regardless of how sure the model claims to be.
 
 ### 6. Decide
 
-* **All thresholds met on real fixtures** → proceed to Stage 2: a real provider behind
-  `NationalIdOcrProvider`.
+* **All thresholds met on real fixtures** → the provider is production-ready; enable it by setting
+  `NATIONAL_ID_OCR_URL` in the target environment.
 * **Below threshold** → evaluate a local vision-language model before considering any cloud OCR.
   The `Recognizer` protocol in `src/nidocr/engine.py` is the only thing that changes; preprocessing,
-  geometry, post-processing, scoring and the harness all stay.
+  geometry, post-processing, scoring, the harness and the whole API-side integration all stay.
 
 A run containing only synthetic fixtures reports **INCONCLUSIVE** by design, however good the
 numbers look.
@@ -143,9 +169,10 @@ src/nidocr/
   postprocess.py  field-typed cleanup, vocabulary snapping, confidence bands
   extract.py      orchestration → RawOcrResult shape
   scoring.py      exact / normalized / CER
+  service.py      the offline HTTP surface the API's provider calls
 bench/            measure.py (the harness) + report.py (Markdown view of the JSON)
 tools/            generate_synthetic.py, calibrate.py
-tests/            31 model-free tests
+tests/            39 model-free tests (pipeline + HTTP contract)
 ```
 
 `MockRecognizer` replays known text through the **real** preprocessing and geometry. That is what
@@ -155,13 +182,36 @@ plumbing.
 
 ---
 
+## Calibration workflow
+
+Real card stock will not share the synthetic geometry, and re-calibrating must not mean rebuilding
+the image — so geometry is data:
+
+```bash
+python3 tools/calibrate.py --overlay real-001 --fixtures fixtures/real   # see where boxes fall
+make profile                                                             # → build/profile.json
+# tune the JSON, then point the sidecar at it:
+#   OCR_LAYOUT_PROFILE=/profiles/egypt-2026.json
+```
+
+A profile that fails to load raises at start rather than falling back silently — a service running
+geometry the operator believes they replaced would produce empty reads that get blamed on the
+model. `/health` reports the active profile, so what is live is always visible.
+
+---
+
 ## Status
 
-Built and verified in a sandbox without access to the PaddleOCR model host, so:
+Built and verified in a sandbox with no access to the PaddleOCR model host or Docker Hub:
 
-* **Verified by execution** — synthetic fixture generation (Arabic shapes and joins correctly),
-  the full preprocessing chain on degraded images, field-box geometry across all 8 fixtures, the
-  post-processors, the scoring, the harness end to end, and 31 unit tests.
-* **Not yet executed** — PaddleOCR recognition itself, the Docker build, and therefore the real
-  accuracy / image-size numbers. Those require the model host and Docker Hub. Run `make build &&
-  make measure` in a normal environment to produce them.
+* **Verified by execution** — synthetic fixture generation (Arabic shapes and joins correctly), the
+  preprocessing chain on degraded images, field-box geometry across all 8 fixtures, the
+  post-processors, scoring, the harness end to end, the live HTTP contract the TypeScript provider
+  consumes, 39 Python tests, and 15 TypeScript tests covering the provider mapping and every
+  degradation path.
+* **NOT executed** — PaddleOCR recognition itself, the Docker build, and therefore the real
+  accuracy, latency and image-size numbers. Those need the model host, and no code change makes
+  them reachable from here. Run `make build && make measure-real` in a normal environment.
+
+Until `make measure-real` has run against real anonymized cards, the accuracy question is
+**unanswered**. The integration is complete and testable; "good enough" is still unmeasured.

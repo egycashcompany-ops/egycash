@@ -158,8 +158,9 @@ def render_back(record: dict, font_path: str) -> Image.Image:
     _in_box(draw, boxes["maritalStatus"], [record["maritalStatus"]], mid)
     _in_box(draw, boxes["nationalIdExpiry"], [to_indic(record["expiry_printed"])], mid)
 
-    # A dense block standing in for the 2D barcode. Present so the deskew estimator meets the same
-    # high-contrast distraction it meets on a real card — NOT decoded, by explicit instruction.
+    # A dense high-contrast block, as printed across the lower back of the card. Included only so
+    # the deskew estimator meets the same strong-gradient distraction it meets on a real card;
+    # nothing in this pipeline reads it.
     rng = random.Random(record["nationalId"])
     for i in range(120):
         x = 40 + i * 7

@@ -118,7 +118,7 @@ def deskew(image: np.ndarray, *, max_angle: float = 15.0) -> np.ndarray:
     """Rotate out residual skew, estimated from the dominant text-line angle.
 
     `max_angle` guards against the pathological case where the estimator locks onto the card's
-    border or the barcode block and proposes a 40° rotation that destroys an otherwise fine image.
+    border or the dense printed block and proposes a 40° rotation that ruins a fine image.
     """
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     inverted = cv2.bitwise_not(gray)

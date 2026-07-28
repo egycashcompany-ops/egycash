@@ -24,7 +24,9 @@ the kind of thing the spike exists to discover, so treat these as a starting poi
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
+from pathlib import Path
 
 # ID-1 credential ratio (85.6 × 54 mm ≈ 1.585). ~12 px/mm gives a crop tall enough for the
 # recognizer's 48 px input height without upscaling artefacts.
@@ -78,3 +80,77 @@ BACK_FIELDS: tuple[FieldBox, ...] = (
 ALL_FIELD_NAMES: tuple[str, ...] = tuple(
     box.name for box in (*FRONT_FIELDS, *BACK_FIELDS)
 )
+
+
+# ── Calibration profiles ─────────────────────────────────────────────────────
+# Real cards will not share the synthetic geometry, and re-calibrating must not mean rebuilding
+# the image. `OCR_LAYOUT_PROFILE` points at a JSON file of the same shape as the boxes above; it is
+# loaded once at import and replaces the defaults.
+#
+# This is the calibration workflow's runtime half: `tools/calibrate.py --overlay` shows where the
+# boxes fall, `--emit-profile` writes a profile, and the provider picks it up on restart. Operators
+# tune geometry for their card stock without touching Python.
+
+_ACTIVE_PROFILE = "built-in"
+
+
+def active_profile_name() -> str:
+    """Which geometry is in force — surfaced by `/health` so a misconfigured profile is visible."""
+    return _ACTIVE_PROFILE
+
+
+def _boxes_from(entries: list[dict]) -> tuple[FieldBox, ...]:
+    return tuple(
+        FieldBox(
+            name=entry["name"],
+            x=float(entry["x"]),
+            y=float(entry["y"]),
+            w=float(entry["w"]),
+            h=float(entry["h"]),
+            kind=entry.get("kind", "text"),
+        )
+        for entry in entries
+    )
+
+
+def load_profile(path: str) -> None:
+    """Replace the default boxes from a JSON profile.
+
+    Raises on a malformed profile rather than silently falling back. A profile that fails to load
+    would leave the service running with geometry the operator believes they replaced — and the
+    resulting empty reads would be blamed on the model.
+    """
+    global FRONT_FIELDS, BACK_FIELDS, ALL_FIELD_NAMES, CANONICAL_SIZE, _ACTIVE_PROFILE  # noqa: PLW0603
+
+    import json
+
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    front = _boxes_from(data["front"])
+    back = _boxes_from(data["back"])
+    names = [box.name for box in (*front, *back)]
+    if len(names) != len(set(names)):
+        raise ValueError(f"{path}: duplicate field names in profile")
+    unknown = set(names) - set(ALL_FIELD_NAMES)
+    if unknown:
+        # A profile may narrow the field set, but inventing a field the pipeline cannot
+        # post-process would produce values nothing downstream knows how to handle.
+        raise ValueError(f"{path}: unknown fields {sorted(unknown)}")
+
+    if "canonicalSize" in data:
+        CANONICAL_SIZE = (int(data["canonicalSize"][0]), int(data["canonicalSize"][1]))
+    FRONT_FIELDS, BACK_FIELDS = front, back
+    ALL_FIELD_NAMES = tuple(names)
+    _ACTIVE_PROFILE = Path(path).name
+
+
+def to_profile_dict() -> dict:
+    """The active geometry as a profile document — the source for `--emit-profile`."""
+    dump = lambda boxes: [  # noqa: E731 — trivial local formatter
+        {"name": b.name, "x": b.x, "y": b.y, "w": b.w, "h": b.h, "kind": b.kind} for b in boxes
+    ]
+    return {"canonicalSize": list(CANONICAL_SIZE), "front": dump(FRONT_FIELDS), "back": dump(BACK_FIELDS)}
+
+
+_PROFILE_PATH = os.environ.get("OCR_LAYOUT_PROFILE")
+if _PROFILE_PATH:
+    load_profile(_PROFILE_PATH)

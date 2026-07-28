@@ -197,20 +197,25 @@ export const upload = async <T>(path: string, form: FormData): Promise<T> => {
 
 // ── Workflow endpoints (I6) ─────────────────────────────────────────────────
 //
-// A recruitment workflow endpoint answers with `{ data, workflow, timeline, counters }` so the
-// client never needs a follow-up request. These helpers take the `data` half only, which is what
-// the mutation hooks and pages consume today — the envelope's other three fields are the input to
-// the cache-update work that replaces the invalidate/refetch pattern.
+// A recruitment workflow endpoint answers with `{ data, workflow, timeline, counters }`, and these
+// helpers hand the WHOLE envelope to the caller. That is the point of the invariant: the response
+// already contains everything the client needs to redraw — the updated aggregate, where the
+// candidate now stands, the history the act wrote, and the refreshed queue counters — so there is
+// nothing left to go and ask for.
 //
-// Bulk endpoints need no helper: `BulkWorkflowResultDto` extends `BulkActionResultDto`, so a
-// caller typed against the narrower shape already reads the response correctly.
+// Typing them separately from `post`/`patch`/`upload` is deliberate: a workflow endpoint and an
+// ordinary one no longer have the same response shape, and the type should say so at the call site.
 
-export const postWorkflow = async <T>(path: string, body: unknown): Promise<T> =>
-  (await post<WorkflowEnvelopeDto<T>>(path, body)).data;
+export const postWorkflow = <T>(path: string, body: unknown): Promise<WorkflowEnvelopeDto<T>> =>
+  post<WorkflowEnvelopeDto<T>>(path, body);
 
-export const patchWorkflow = async <T>(path: string, body: unknown): Promise<T> =>
-  (await patch<WorkflowEnvelopeDto<T>>(path, body)).data;
+export const patchWorkflow = <T>(path: string, body: unknown): Promise<WorkflowEnvelopeDto<T>> =>
+  patch<WorkflowEnvelopeDto<T>>(path, body);
 
 /** The multipart counterpart — evaluation files and hiring documents are workflow actions too. */
-export const uploadWorkflow = async <T>(path: string, form: FormData): Promise<T> =>
-  (await upload<WorkflowEnvelopeDto<T>>(path, form)).data;
+export const uploadWorkflow = <T>(path: string, form: FormData): Promise<WorkflowEnvelopeDto<T>> =>
+  upload<WorkflowEnvelopeDto<T>>(path, form);
+
+/** DELETE with a body — the evaluation-file removal, which is a workflow action like any other. */
+export const delWorkflow = <T>(path: string, body: unknown): Promise<WorkflowEnvelopeDto<T>> =>
+  api<WorkflowEnvelopeDto<T>>(path, { method: 'DELETE', body: JSON.stringify(body) });

@@ -22,8 +22,9 @@ import {
   type SubmitInterviewEvaluation,
   type UpdateInterviewStage,
   type UserDto,
-  type BulkActionResultDto,
   type BulkInterviews,
+  type BulkWorkflowResultDto,
+  type WorkflowEnvelopeDto,
 } from '@ecms/contracts';
 import {
   buildQuery,
@@ -37,12 +38,14 @@ import {
 
 export type InterviewListParams = Record<string, string | number | boolean | undefined | null>;
 
+type InterviewEnvelope = Promise<WorkflowEnvelopeDto<InterviewDto>>;
+
 export const listInterviews = (params: InterviewListParams): Promise<Paginated<InterviewDto>> =>
   getPage<InterviewDto>(`/hr/interviews${buildQuery(params)}`);
 
 export const getInterview = (id: string): Promise<InterviewDto> => get<InterviewDto>(`/hr/interviews/${id}`);
 
-export const scheduleInterview = (body: ScheduleInterview): Promise<InterviewDto> =>
+export const scheduleInterview = (body: ScheduleInterview): InterviewEnvelope =>
   postWorkflow<InterviewDto>('/hr/interviews', body);
 
 /**
@@ -50,41 +53,41 @@ export const scheduleInterview = (body: ScheduleInterview): Promise<InterviewDto
  * addresses the CANDIDATE and the stage; the server opens the waiting record if it has to and
  * stamps the actor and the start time itself.
  */
-export const startInterview = (body: StartInterview): Promise<InterviewDto> =>
+export const startInterview = (body: StartInterview): InterviewEnvelope =>
   postWorkflow<InterviewDto>('/hr/interviews/start', body);
 
 /** Start a round that was already scheduled: `scheduled → inProgress`, server-stamped. */
 export const startScheduledInterview = (
   id: string,
   body: StartScheduledInterview,
-): Promise<InterviewDto> => postWorkflow<InterviewDto>(`/hr/interviews/${id}/start`, body);
+): InterviewEnvelope => postWorkflow<InterviewDto>(`/hr/interviews/${id}/start`, body);
 
 /** RW5 — the panel's advisory placement recommendation; never moves the candidate by itself. */
 export const setInterviewRecommendation = (
   id: string,
   body: SetPlacementRecommendation,
-): Promise<InterviewDto> => patchWorkflow<InterviewDto>(`/hr/interviews/${id}/recommendation`, body);
+): InterviewEnvelope => patchWorkflow<InterviewDto>(`/hr/interviews/${id}/recommendation`, body);
 
-export const rescheduleInterview = (id: string, body: RescheduleInterview): Promise<InterviewDto> =>
+export const rescheduleInterview = (id: string, body: RescheduleInterview): InterviewEnvelope =>
   postWorkflow<InterviewDto>(`/hr/interviews/${id}/reschedule`, body);
 
-export const reassignInterviewPanel = (id: string, body: ReassignInterviewPanel): Promise<InterviewDto> =>
+export const reassignInterviewPanel = (id: string, body: ReassignInterviewPanel): InterviewEnvelope =>
   postWorkflow<InterviewDto>(`/hr/interviews/${id}/panel`, body);
 
-export const skipInterviewer = (id: string, body: SkipInterviewer): Promise<InterviewDto> =>
+export const skipInterviewer = (id: string, body: SkipInterviewer): InterviewEnvelope =>
   postWorkflow<InterviewDto>(`/hr/interviews/${id}/panel/skip`, body);
 
-export const cancelInterview = (id: string, body: CancelInterview): Promise<InterviewDto> =>
+export const cancelInterview = (id: string, body: CancelInterview): InterviewEnvelope =>
   postWorkflow<InterviewDto>(`/hr/interviews/${id}/cancel`, body);
 
-export const submitInterviewEvaluation = (id: string, body: SubmitInterviewEvaluation): Promise<InterviewDto> =>
+export const submitInterviewEvaluation = (id: string, body: SubmitInterviewEvaluation): InterviewEnvelope =>
   postWorkflow<InterviewDto>(`/hr/interviews/${id}/evaluations`, body);
 
-export const decideInterview = (id: string, body: DecideInterview): Promise<InterviewDto> =>
+export const decideInterview = (id: string, body: DecideInterview): InterviewEnvelope =>
   postWorkflow<InterviewDto>(`/hr/interviews/${id}/decide`, body);
 
 /** Edit the outcome of a completed interview (D7: a decision is not final; fully audited). */
-export const redecideInterview = (id: string, body: DecideInterview): Promise<InterviewDto> =>
+export const redecideInterview = (id: string, body: DecideInterview): InterviewEnvelope =>
   patchWorkflow<InterviewDto>(`/hr/interviews/${id}/decision`, body);
 
 // Interview stages (admin-configurable catalog, OQ-31). The queue/schedule flow reads the active
@@ -110,14 +113,14 @@ export const searchUsers = (term: string): Promise<Paginated<UserDto>> =>
 export const getUser = (id: string): Promise<UserDto> => get<UserDto>(`/platform/users/${id}`);
 
 /** RW12 — start the selected candidates' rounds NOW (no prior scheduling required). */
-export const bulkStartInterviews = (body: BulkStartInterviews): Promise<BulkActionResultDto> =>
-  post<BulkActionResultDto>('/hr/interviews/bulk/start', body);
+export const bulkStartInterviews = (body: BulkStartInterviews): Promise<BulkWorkflowResultDto> =>
+  post<BulkWorkflowResultDto>('/hr/interviews/bulk/start', body);
 
 /** RW17 — one stage + one date/panel applied across a selection of candidates. */
 export const bulkScheduleInterviews = (
   body: BulkScheduleInterviews,
-): Promise<BulkActionResultDto> => post<BulkActionResultDto>('/hr/interviews/bulk/schedule', body);
+): Promise<BulkWorkflowResultDto> => post<BulkWorkflowResultDto>('/hr/interviews/bulk/schedule', body);
 
 /** Bulk cancel / pass / fail / reassign a selection of rounds (RW17). */
-export const bulkInterviews = (body: BulkInterviews): Promise<BulkActionResultDto> =>
-  post<BulkActionResultDto>('/hr/interviews/bulk', body);
+export const bulkInterviews = (body: BulkInterviews): Promise<BulkWorkflowResultDto> =>
+  post<BulkWorkflowResultDto>('/hr/interviews/bulk', body);

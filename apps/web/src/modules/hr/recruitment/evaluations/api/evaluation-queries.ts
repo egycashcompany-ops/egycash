@@ -1,6 +1,6 @@
 // TanStack Query hooks for the Evaluations feature (ADR-013). Reads cached by the shared key
-// factory; writes invalidate the feature subtree on success. The applicant picker reuses the
-// Applicants list API; the phase catalog backs the sequential phase picker + labels.
+// factory; writes apply the workflow envelope to the cache (I6) rather than refetching. The
+// applicant picker reuses the Applicants list API; the phase catalog backs the phase picker.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   type CreateEvaluationPhase,
@@ -13,7 +13,7 @@ import {
 } from '@ecms/contracts';
 import { detailKey, listKey } from '../../../../../shared/lib/query-keys';
 import { useBulkMutation } from '../../../../../shared/lib/useBulkMutation';
-import { invalidateRecruitment } from '../../shared/invalidate-recruitment';
+import { applyBulkWorkflowResult, useWorkflowMutation } from '../../shared/useWorkflowMutation';
 import * as api from './evaluation-api';
 import { type EvaluationListParams } from './evaluation-api';
 
@@ -73,68 +73,33 @@ export const useUpdateEvaluationPhase = () => {
   });
 };
 
-const useInvalidate = () => {
-  const qc = useQueryClient();
-  return (id?: string) => {
-    void qc.invalidateQueries({ queryKey: [MODULE, FEATURE] });
-    if (id !== undefined) void qc.invalidateQueries({ queryKey: detailKey(MODULE, FEATURE, id) });
-  };
-};
+export const useOpenEvaluation = () =>
+  useWorkflowMutation(FEATURE, (body: OpenEvaluation) => api.openEvaluation(body));
 
-export const useOpenEvaluation = () => {
-  const invalidate = useInvalidate();
-  return useMutation({
-    mutationFn: (body: OpenEvaluation) => api.openEvaluation(body),
-    onSuccess: (doc) => invalidate(doc.id),
-  });
-};
+export const useDecideEvaluation = (id: string) =>
+  useWorkflowMutation(FEATURE, (body: DecideEvaluation) => api.decideEvaluation(id, body));
 
-export const useDecideEvaluation = (id: string) => {
-  const invalidate = useInvalidate();
-  return useMutation({
-    mutationFn: (body: DecideEvaluation) => api.decideEvaluation(id, body),
-    onSuccess: () => invalidate(id),
-  });
-};
-
-export const useSetEvaluationAppointment = (id: string) => {
-  const invalidate = useInvalidate();
-  return useMutation({
-    mutationFn: (body: SetEvaluationAppointment) => api.setEvaluationAppointment(id, body),
-    onSuccess: () => invalidate(id),
-  });
-};
+/** RW9 — book (or clear) the visit on a phase that schedules one. */
+export const useSetEvaluationAppointment = (id: string) =>
+  useWorkflowMutation(FEATURE, (body: SetEvaluationAppointment) => api.setEvaluationAppointment(id, body));
 
 /** RW5 — record (or clear) this phase's advisory placement recommendation. */
-export const useSetEvaluationRecommendation = (id: string) => {
-  const invalidate = useInvalidate();
-  return useMutation({
-    mutationFn: (body: SetPlacementRecommendation) => api.setEvaluationRecommendation(id, body),
-    onSuccess: () => invalidate(id),
-  });
-};
+export const useSetEvaluationRecommendation = (id: string) =>
+  useWorkflowMutation(FEATURE, (body: SetPlacementRecommendation) => api.setEvaluationRecommendation(id, body));
 
-export const useUploadEvaluationFile = (id: string) => {
-  const invalidate = useInvalidate();
-  return useMutation({
-    mutationFn: (vars: { file: File; version: number; note?: string }) =>
-      api.uploadEvaluationFile(id, vars.file, vars.version, vars.note),
-    onSuccess: () => invalidate(id),
-  });
-};
+export const useUploadEvaluationFile = (id: string) =>
+  useWorkflowMutation(FEATURE, (vars: { file: File; version: number; note?: string }) =>
+    api.uploadEvaluationFile(id, vars.file, vars.version, vars.note),
+  );
 
-export const useRemoveEvaluationFile = (id: string) => {
-  const invalidate = useInvalidate();
-  return useMutation({
-    mutationFn: (vars: { fileId: string; version: number }) =>
-      api.removeEvaluationFile(id, vars.fileId, vars.version),
-    onSuccess: () => invalidate(id),
-  });
-};
+export const useRemoveEvaluationFile = (id: string) =>
+  useWorkflowMutation(FEATURE, (vars: { fileId: string; version: number }) =>
+    api.removeEvaluationFile(id, vars.fileId, vars.version),
+  );
 
 /** Bulk approve/reject one phase's queue (RW10/RW17). */
 export const useBulkEvaluations = (onApplied?: () => void) =>
   useBulkMutation<BulkEvaluations>((body) => api.bulkEvaluations(body), {
-    invalidate: invalidateRecruitment,
+    applyResult: (qc, result) => applyBulkWorkflowResult(qc, FEATURE, result),
     ...(onApplied === undefined ? {} : { onApplied }),
   });

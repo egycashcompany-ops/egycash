@@ -13,12 +13,12 @@ import {
   type Paginated,
   type UpdateEvaluationPhase,
   type WorkflowEnvelopeDto,
-  type BulkActionResultDto,
   type BulkEvaluations,
+  type BulkWorkflowResultDto,
 } from '@ecms/contracts';
 import {
-  api,
   buildQuery,
+  delWorkflow,
   get,
   getPage,
   patch,
@@ -30,17 +30,19 @@ import {
 
 export type EvaluationListParams = Record<string, string | number | boolean | undefined | null>;
 
+type EvaluationEnvelope = Promise<WorkflowEnvelopeDto<EvaluationDto>>;
+
 export const listEvaluations = (params: EvaluationListParams): Promise<Paginated<EvaluationDto>> =>
   getPage<EvaluationDto>(`/hr/evaluations${buildQuery(params)}`);
 
 export const getEvaluation = (id: string): Promise<EvaluationDto> =>
   get<EvaluationDto>(`/hr/evaluations/${id}`);
 
-export const openEvaluation = (body: OpenEvaluation): Promise<EvaluationDto> =>
+export const openEvaluation = (body: OpenEvaluation): EvaluationEnvelope =>
   postWorkflow<EvaluationDto>('/hr/evaluations', body);
 
 /** Decide (approve/reject) — re-settable: calling again edits the decision (audited). */
-export const decideEvaluation = (id: string, body: DecideEvaluation): Promise<EvaluationDto> =>
+export const decideEvaluation = (id: string, body: DecideEvaluation): EvaluationEnvelope =>
   patchWorkflow<EvaluationDto>(`/hr/evaluations/${id}/decision`, body);
 
 /** RW9 — book (or clear) the visit on an individual phase that schedules one. */
@@ -48,19 +50,19 @@ export const decideEvaluation = (id: string, body: DecideEvaluation): Promise<Ev
 export const setEvaluationRecommendation = (
   id: string,
   body: SetPlacementRecommendation,
-): Promise<EvaluationDto> => patchWorkflow<EvaluationDto>(`/hr/evaluations/${id}/recommendation`, body);
+): EvaluationEnvelope => patchWorkflow<EvaluationDto>(`/hr/evaluations/${id}/recommendation`, body);
 
 export const setEvaluationAppointment = (
   id: string,
   body: SetEvaluationAppointment,
-): Promise<EvaluationDto> => patchWorkflow<EvaluationDto>(`/hr/evaluations/${id}/appointment`, body);
+): EvaluationEnvelope => patchWorkflow<EvaluationDto>(`/hr/evaluations/${id}/appointment`, body);
 
 export const uploadEvaluationFile = (
   id: string,
   file: File,
   version: number,
   note?: string,
-): Promise<EvaluationDto> => {
+): EvaluationEnvelope => {
   const form = new FormData();
   form.append('file', file);
   form.append('version', String(version));
@@ -68,17 +70,11 @@ export const uploadEvaluationFile = (
   return uploadWorkflow<EvaluationDto>(`/hr/evaluations/${id}/files`, form);
 };
 
-export const removeEvaluationFile = async (
+export const removeEvaluationFile = (
   id: string,
   fileId: string,
   version: number,
-): Promise<EvaluationDto> => {
-  const envelope = await api<WorkflowEnvelopeDto<EvaluationDto>>(
-    `/hr/evaluations/${id}/files/${fileId}`,
-    { method: 'DELETE', body: JSON.stringify({ version }) },
-  );
-  return envelope.data;
-};
+): EvaluationEnvelope => delWorkflow<EvaluationDto>(`/hr/evaluations/${id}/files/${fileId}`, { version });
 
 // Evaluation-phase catalog (labels + backs the phase picker; sequential order). The settings
 // screen manages it (create / edit / reorder / enable-disable) — extensible without code changes.
@@ -95,5 +91,5 @@ export const updateEvaluationPhase = (id: string, body: UpdateEvaluationPhase): 
   patch<EvaluationPhaseDto>(`/hr/evaluation-phases/${id}`, body);
 
 /** Bulk approve/reject one phase's queue (RW10/RW17) — answers a partial-success envelope. */
-export const bulkEvaluations = (body: BulkEvaluations): Promise<BulkActionResultDto> =>
-  post<BulkActionResultDto>('/hr/evaluations/bulk', body);
+export const bulkEvaluations = (body: BulkEvaluations): Promise<BulkWorkflowResultDto> =>
+  post<BulkWorkflowResultDto>('/hr/evaluations/bulk', body);

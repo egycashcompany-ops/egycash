@@ -248,6 +248,45 @@ Ordinary audited edits are not workflow actions and are unchanged: `PATCH /hr/ap
 attachments, OCR, export, and the Electronic Employee File (an employment artifact that owns no
 stage record and never moves through the engine).
 
+## 8c. The client half: the envelope IS the refresh
+
+The response only pays for itself if the client stops asking a second time. It does.
+
+`invalidateRecruitment()` — which fanned seven query subtrees out to the network after every write —
+is **gone**. Its replacement is `shared/workflow-cache.ts`, and every recruitment mutation goes
+through the one hook that uses it, `useWorkflowMutation(feature, run)`. Applying an envelope is a
+sequence of cache **writes**:
+
+| half | written to |
+| --- | --- |
+| `data` | the aggregate's detail key, and its row inside every cached list page |
+| `workflow` | `['hr','recruitmentWorkflow',applicantId]` — written by mutations, fetched by none |
+| `timeline` | merged into every cached view of that candidate's history, newest first, by `eventId` |
+| `counters` | the ONE counters key the sidebar, the stage rail and every queue badge read (I3) |
+
+Three rules make that safe:
+
+- **Membership stays the server's judgement.** Which rows belong on a filtered, sorted, paginated
+  queue is not re-derived here — that would be a second source of truth about what a queue contains
+  (I1). Cached pages are marked stale with `refetchType: 'none'`, which issues **no request** and
+  lets the next mount or focus re-read them. The visible list stays correct meanwhile because the
+  row is patched in place, and dropped from a page whose `status` filter it no longer satisfies —
+  the one local rule worth keeping, because it is the whole reason a decided item leaves its queue
+  the moment it is decided.
+- **Empty counters are not written.** The server degrades `counters` to `[]` rather than failing an
+  action whose transaction already committed (BD-007); blanking the navigation because a secondary
+  read hiccuped would be worse than showing the previous numbers a moment longer.
+- **An empty `workflow.applicantId` is not written.** That is the deliberate empty state a
+  candidate-less act answers with, never a real state.
+
+Bulk is the one place a request remains, and for the honest reason: `BulkWorkflowResultDto` carries
+the counters and the entries the batch wrote, but **not the changed rows** — so the acted-on list is
+re-read exactly once, while every other recruitment list is marked stale without fetching.
+
+`useWorkflowState(applicantId)` reads the stored `workflow` half. It has no `queryFn` on purpose: a
+screen that has not yet acted simply has no entry, which is the honest answer — inventing one would
+mean deriving workflow state on the client, and the point of I6 is that the server derives it.
+
 ## 9. Two traps worth remembering
 
 - **A `required: true` String cannot carry `default: ''`.** Mongoose treats `''` as missing, so

@@ -1,6 +1,7 @@
-// TanStack Query hooks for the Applicants feature (ADR-013). Reads are cached by the shared
-// key factory; writes invalidate the feature subtree (and the specific detail) on success.
-// Failures surface via the global Query/Mutation error handler; components add success toasts.
+// TanStack Query hooks for the Applicants feature (ADR-013). Reads are cached by the shared key
+// factory; workflow writes apply the response envelope to the cache (I6) rather than invalidating
+// and refetching. Failures surface via the global Query/Mutation error handler; components add
+// success toasts.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   type ReassignPlacement,
@@ -18,8 +19,13 @@ import {
   type UpdateApplicant,
   type WithdrawApplicant,
 } from '@ecms/contracts';
-import { detailKey, featureKey, listKey } from '../../../../../shared/lib/query-keys';
-import { invalidateRecruitment } from '../../shared/invalidate-recruitment';
+import { detailKey, listKey } from '../../../../../shared/lib/query-keys';
+import {
+  applyBulkWorkflowResult,
+  applyWorkflowEnvelope,
+  useWorkflowMutation,
+} from '../../shared/useWorkflowMutation';
+import { markAllRecruitmentListsStale } from '../../shared/workflow-cache';
 import { useBulkMutation } from '../../../../../shared/lib/useBulkMutation';
 import * as api from './applicant-api';
 import { type ApplicantListParams } from './applicant-api';
@@ -64,78 +70,38 @@ export const useApplicantAttachments = (id: string) =>
     enabled: id !== '',
   });
 
-const useInvalidateApplicants = (): (() => void) => {
-  const qc = useQueryClient();
-  return () => {
-    void qc.invalidateQueries({ queryKey: featureKey(MODULE, FEATURE) });
-  };
-};
+// ── Workflow acts (I6 — the envelope refreshes the cache; nothing is refetched) ───────────────
 
-/** Withdraw/restore change pipeline visibility, so invalidate the whole recruitment subtree: the
- *  candidate's stage records and every queue counter move with them (I11/RW15). */
-const useInvalidateLifecycle = (): (() => void) => {
-  const qc = useQueryClient();
-  return () => {
-    void qc.invalidateQueries({ queryKey: featureKey(MODULE, FEATURE) });
-  };
-};
+export const useRegisterApplicant = () =>
+  useWorkflowMutation(FEATURE, (body: RegisterApplicant) => api.registerApplicant(body));
 
-export const useRegisterApplicant = () => {
-  const invalidate = useInvalidateApplicants();
-  return useMutation({
-    mutationFn: (body: RegisterApplicant) => api.registerApplicant(body),
-    onSuccess: invalidate,
-  });
-};
+export const useVerifyApplicantIdentity = (id: string) =>
+  useWorkflowMutation(FEATURE, (body: ConfirmApplicantIdentity) => api.verifyApplicantIdentity(id, body));
 
+export const useWithdrawApplicant = (id: string) =>
+  useWorkflowMutation(FEATURE, (body: WithdrawApplicant) => api.withdrawApplicant(id, body));
+
+export const useMoveApplicantToOffer = (id: string) =>
+  useWorkflowMutation(FEATURE, (body: MoveApplicantToOffer) => api.moveApplicantToOffer(id, body));
+
+export const useRestoreApplicant = (id: string) =>
+  useWorkflowMutation(FEATURE, (body: RestoreApplicant) => api.restoreApplicant(id, body));
+
+/** RW2 — reassignment moves the candidate; the envelope carries where they landed. */
+export const useReassignApplicant = (id: string) =>
+  useWorkflowMutation(FEATURE, (body: ReassignPlacement) => api.reassignApplicant(id, body));
+
+/**
+ * An ordinary audited edit, not a workflow act (I4): it answers with the applicant alone, so it
+ * seeds the detail cache and marks the lists stale without asking for anything.
+ */
 export const useUpdateApplicant = (id: string) => {
-  const invalidate = useInvalidateApplicants();
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: UpdateApplicant) => api.updateApplicant(id, body),
-    onSuccess: invalidate,
-  });
-};
-
-export const useVerifyApplicantIdentity = (id: string) => {
-  const invalidate = useInvalidateApplicants();
-  return useMutation({
-    mutationFn: (body: ConfirmApplicantIdentity) => api.verifyApplicantIdentity(id, body),
-    onSuccess: invalidate,
-  });
-};
-
-export const useWithdrawApplicant = (id: string) => {
-  const invalidate = useInvalidateLifecycle();
-  return useMutation({
-    mutationFn: (body: WithdrawApplicant) => api.withdrawApplicant(id, body),
-    onSuccess: invalidate,
-  });
-};
-
-export const useMoveApplicantToOffer = (id: string) => {
-  const invalidate = useInvalidateApplicants();
-  return useMutation({
-    mutationFn: (body: MoveApplicantToOffer) => api.moveApplicantToOffer(id, body),
-    onSuccess: invalidate,
-  });
-};
-
-export const useRestoreApplicant = (id: string) => {
-  const invalidate = useInvalidateLifecycle();
-  return useMutation({
-    mutationFn: (body: RestoreApplicant) => api.restoreApplicant(id, body),
-    onSuccess: invalidate,
-  });
-};
-
-/** RW2 — reassignment moves the candidate, so every recruitment surface refreshes with it. */
-export const useReassignApplicant = (id: string) => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: ReassignPlacement) => api.reassignApplicant(id, body),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: detailKey(MODULE, FEATURE, id) });
-      invalidateRecruitment(qc);
+    onSuccess: (updated) => {
+      qc.setQueryData(detailKey(MODULE, FEATURE, updated.id), updated);
+      void qc.invalidateQueries({ queryKey: listKey(MODULE, FEATURE), refetchType: 'none' });
     },
   });
 };
@@ -153,14 +119,19 @@ export const useReturnToStagePreview = (id: string, target: StageRef | null) =>
     gcTime: 0,
   });
 
-/** RW13 — the act itself. Supersedes forward records and re-opens the target on a new attempt. */
+/**
+ * RW13 — the act itself. Its `data` is the plan rather than an aggregate, so the candidate inside
+ * it is what seeds the applicant caches; the stages it superseded are marked stale (no request),
+ * because a response about one candidate cannot carry every other feature's rows.
+ */
 export const useReturnToStage = (id: string) => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: ReturnToStage) => api.returnApplicantToStage(id, body),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: detailKey(MODULE, FEATURE, id) });
-      invalidateRecruitment(qc);
+    mutationFn: async (body: ReturnToStage) => {
+      const envelope = await api.returnApplicantToStage(id, body);
+      applyWorkflowEnvelope(qc, FEATURE, { ...envelope, data: envelope.data.applicant });
+      markAllRecruitmentListsStale(qc);
+      return envelope.data;
     },
   });
 };
@@ -172,12 +143,22 @@ export const useReturnToStage = (id: string) => {
  */
 export const useBulkApplicants = (onApplied?: () => void) =>
   useBulkMutation<BulkApplicants>((body) => api.bulkApplicants(body), {
-    invalidate: invalidateRecruitment,
+    applyResult: (qc, result) => applyBulkWorkflowResult(qc, FEATURE, result),
     ...(onApplied === undefined ? {} : { onApplied }),
   });
 
+// ── Attachments (files on the record, not moves through the pipeline) ─────────────────────────
+
+const useInvalidateAttachments = (id: string): (() => void) => {
+  const qc = useQueryClient();
+  return () => {
+    void qc.invalidateQueries({ queryKey: [...detailKey(MODULE, FEATURE, id), 'attachments'] });
+    void qc.invalidateQueries({ queryKey: detailKey(MODULE, FEATURE, id) });
+  };
+};
+
 export const useAddApplicantAttachment = (id: string) => {
-  const invalidate = useInvalidateApplicants();
+  const invalidate = useInvalidateAttachments(id);
   return useMutation({
     mutationFn: (form: FormData) => api.addApplicantAttachment(id, form),
     onSuccess: invalidate,
@@ -185,7 +166,7 @@ export const useAddApplicantAttachment = (id: string) => {
 };
 
 export const useRemoveApplicantAttachment = (id: string) => {
-  const invalidate = useInvalidateApplicants();
+  const invalidate = useInvalidateAttachments(id);
   return useMutation({
     mutationFn: (fileId: string) => api.removeApplicantAttachment(id, fileId),
     onSuccess: invalidate,

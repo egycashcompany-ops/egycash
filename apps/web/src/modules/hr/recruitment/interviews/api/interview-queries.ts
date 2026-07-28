@@ -1,7 +1,7 @@
 // TanStack Query hooks for the Interviews feature (ADR-013). Reads cached by the shared key
-// factory; writes invalidate the feature subtree on success. The queue's applicant search reuses
-// the Applicants list API (interviews filter by applicantId, not free text); interviewer selection
-// and name resolution reuse the platform Users endpoint.
+// factory; writes apply the workflow envelope to the cache (I6) rather than refetching. The queue's
+// applicant search reuses the Applicants list API (interviews filter by applicantId, not free
+// text); interviewer selection and name resolution reuse the platform Users endpoint.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   type BulkScheduleInterviews,
@@ -9,7 +9,6 @@ import {
   type CancelInterview,
   type CreateInterviewStage,
   type DecideInterview,
-  type InterviewDto,
   type ReassignInterviewPanel,
   type RescheduleInterview,
   type ScheduleInterview,
@@ -24,7 +23,7 @@ import {
 import { detailKey, listKey } from '../../../../../shared/lib/query-keys';
 import { listApplicants } from '../../applicants/api/applicant-api';
 import { useBulkMutation } from '../../../../../shared/lib/useBulkMutation';
-import { invalidateRecruitment } from '../../shared/invalidate-recruitment';
+import { applyBulkWorkflowResult, useWorkflowMutation } from '../../shared/useWorkflowMutation';
 import * as api from './interview-api';
 import { type InterviewListParams } from './interview-api';
 
@@ -116,146 +115,71 @@ export const useUser = (id: string, enabled: boolean) =>
     retry: false,
   });
 
-// Minimal invalidation: a write returns the fresh interview, so we seed its detail cache directly
-// and invalidate only the list subtree (['hr','interviews','list',…]) — never the whole feature.
-const useInterviewWriters = (
-  id: string | null,
-): { seedAndInvalidate: (updated: InterviewDto) => void } => {
-  const qc = useQueryClient();
-  return {
-    seedAndInvalidate: (updated) => {
-      qc.setQueryData(detailKey(MODULE, FEATURE, id ?? updated.id), updated);
-      void qc.invalidateQueries({ queryKey: listKey(MODULE, FEATURE) });
-    },
-  };
-};
+export const useScheduleInterview = () =>
+  useWorkflowMutation(FEATURE, (body: ScheduleInterview) => api.scheduleInterview(body));
 
-export const useScheduleInterview = () => {
-  const { seedAndInvalidate } = useInterviewWriters(null);
-  return useMutation({
-    mutationFn: (body: ScheduleInterview) => api.scheduleInterview(body),
-    onSuccess: (updated) => {
-      seedAndInvalidate(updated);
-    },
-  });
-};
+export const useRescheduleInterview = (id: string) =>
+  useWorkflowMutation(FEATURE, (body: RescheduleInterview) => api.rescheduleInterview(id, body));
 
-export const useRescheduleInterview = (id: string) => {
-  const { seedAndInvalidate } = useInterviewWriters(id);
-  return useMutation({
-    mutationFn: (body: RescheduleInterview) => api.rescheduleInterview(id, body),
-    onSuccess: seedAndInvalidate,
-  });
-};
+export const useReassignPanel = (id: string) =>
+  useWorkflowMutation(FEATURE, (body: ReassignInterviewPanel) => api.reassignInterviewPanel(id, body));
 
-export const useReassignPanel = (id: string) => {
-  const { seedAndInvalidate } = useInterviewWriters(id);
-  return useMutation({
-    mutationFn: (body: ReassignInterviewPanel) => api.reassignInterviewPanel(id, body),
-    onSuccess: seedAndInvalidate,
-  });
-};
+export const useSkipInterviewer = (id: string) =>
+  useWorkflowMutation(FEATURE, (body: SkipInterviewer) => api.skipInterviewer(id, body));
 
-export const useSkipInterviewer = (id: string) => {
-  const { seedAndInvalidate } = useInterviewWriters(id);
-  return useMutation({
-    mutationFn: (body: SkipInterviewer) => api.skipInterviewer(id, body),
-    onSuccess: seedAndInvalidate,
-  });
-};
+export const useCancelInterview = (id: string) =>
+  useWorkflowMutation(FEATURE, (body: CancelInterview) => api.cancelInterview(id, body));
 
-export const useCancelInterview = (id: string) => {
-  const { seedAndInvalidate } = useInterviewWriters(id);
-  return useMutation({
-    mutationFn: (body: CancelInterview) => api.cancelInterview(id, body),
-    onSuccess: seedAndInvalidate,
-  });
-};
+export const useSubmitEvaluation = (id: string) =>
+  useWorkflowMutation(FEATURE, (body: SubmitInterviewEvaluation) => api.submitInterviewEvaluation(id, body));
 
-export const useSubmitEvaluation = (id: string) => {
-  const { seedAndInvalidate } = useInterviewWriters(id);
-  return useMutation({
-    mutationFn: (body: SubmitInterviewEvaluation) => api.submitInterviewEvaluation(id, body),
-    onSuccess: seedAndInvalidate,
-  });
-};
+export const useDecideInterview = (id: string) =>
+  useWorkflowMutation(FEATURE, (body: DecideInterview) => api.decideInterview(id, body));
 
-export const useDecideInterview = (id: string) => {
-  const { seedAndInvalidate } = useInterviewWriters(id);
-  return useMutation({
-    mutationFn: (body: DecideInterview) => api.decideInterview(id, body),
-    onSuccess: seedAndInvalidate,
-  });
-};
+export const useRedecideInterview = (id: string) =>
+  useWorkflowMutation(FEATURE, (body: DecideInterview) => api.redecideInterview(id, body));
 
-export const useRedecideInterview = (id: string) => {
-  const { seedAndInvalidate } = useInterviewWriters(id);
-  return useMutation({
-    mutationFn: (body: DecideInterview) => api.redecideInterview(id, body),
-    onSuccess: seedAndInvalidate,
-  });
-};
-
-/** Bulk cancel / pass / fail the selection (RW17). */
 /**
- * RW12 — start ONE candidate's round now. Invalidates the whole recruitment subtree because the
- * round may not have existed a moment ago: the stage counters move with it.
+ * RW12 — start ONE candidate's round now. The round may not have existed a moment ago, and the
+ * envelope reports the one it opened, so this needs no more refreshing than any other act.
  */
-export const useStartInterview = () => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: StartInterview) => api.startInterview(body),
-    onSuccess: () => invalidateRecruitment(qc),
-  });
-};
+export const useStartInterview = () =>
+  useWorkflowMutation(FEATURE, (body: StartInterview) => api.startInterview(body));
 
 /** Start an already-scheduled round (`scheduled → inProgress`). */
-export const useStartScheduledInterview = (id: string) => {
-  const { seedAndInvalidate } = useInterviewWriters(id);
-  return useMutation({
-    mutationFn: (body: StartScheduledInterview) => api.startScheduledInterview(id, body),
-    onSuccess: seedAndInvalidate,
-  });
-};
+export const useStartScheduledInterview = (id: string) =>
+  useWorkflowMutation(FEATURE, (body: StartScheduledInterview) => api.startScheduledInterview(id, body));
 
 /**
  * The same act addressed by id at call time — a queue row starts a round it does not "own", so it
  * cannot bind a hook per row.
  */
-export const useStartScheduledInterviewRow = () => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (vars: { id: string; version: number }) =>
-      api.startScheduledInterview(vars.id, { version: vars.version }),
-    onSuccess: () => invalidateRecruitment(qc),
-  });
-};
+export const useStartScheduledInterviewRow = () =>
+  useWorkflowMutation(FEATURE, (vars: { id: string; version: number }) =>
+    api.startScheduledInterview(vars.id, { version: vars.version }),
+  );
 
 /** RW5 — record (or clear) this round's advisory placement recommendation. */
-export const useSetInterviewRecommendation = (id: string) => {
-  const { seedAndInvalidate } = useInterviewWriters(id);
-  return useMutation({
-    mutationFn: (body: SetPlacementRecommendation) => api.setInterviewRecommendation(id, body),
-    onSuccess: seedAndInvalidate,
-  });
-};
+export const useSetInterviewRecommendation = (id: string) =>
+  useWorkflowMutation(FEATURE, (body: SetPlacementRecommendation) => api.setInterviewRecommendation(id, body));
 
 /** RW12 — bulk "Start now" over a stage's waiting queue. */
 export const useBulkStartInterviews = (onApplied?: () => void) =>
   useBulkMutation<BulkStartInterviews>((body) => api.bulkStartInterviews(body), {
-    invalidate: invalidateRecruitment,
+    applyResult: (qc, result) => applyBulkWorkflowResult(qc, FEATURE, result),
     ...(onApplied === undefined ? {} : { onApplied }),
   });
 
+/** Bulk cancel / pass / fail a selection of rounds (RW17). */
 export const useBulkInterviews = (onApplied?: () => void) =>
   useBulkMutation<BulkInterviews>((body) => api.bulkInterviews(body), {
-    invalidate: invalidateRecruitment,
+    applyResult: (qc, result) => applyBulkWorkflowResult(qc, FEATURE, result),
     ...(onApplied === undefined ? {} : { onApplied }),
   });
 
 /** RW17 — one stage + one date/panel across a selection, through the shared bulk executor. */
 export const useBulkScheduleInterviews = (onApplied?: () => void) =>
   useBulkMutation<BulkScheduleInterviews>((body) => api.bulkScheduleInterviews(body), {
-    invalidate: invalidateRecruitment,
+    applyResult: (qc, result) => applyBulkWorkflowResult(qc, FEATURE, result),
     ...(onApplied === undefined ? {} : { onApplied }),
   });

@@ -20,10 +20,7 @@ its entry here in the same PR.
   CALLER may do next — an action they lack the permission for is listed with `enabled: false` and
   the permission it needs, because capability lives in `availableActions` and nowhere else (I10).
   `counters` is the same aggregated stage-counts payload the navigation already reads (RW15),
-  refreshed after the act. Reads (`GET`) are unchanged, and the frontend is unchanged too: three
-  unwrapping helpers in `api-client.ts` take the `data` half, so every existing hook, page and
-  component behaves exactly as before. Consuming the other three halves — and removing the
-  invalidate/refetch pattern they exist to replace — is the next slice.
+  refreshed after the act. Reads (`GET`) are unchanged.
 
   Two kinds of endpoint stay outside the envelope, for the same reason: there is no single
   candidate whose state to report. Bulk endpoints answer with `BulkWorkflowResultDto` — the
@@ -31,6 +28,29 @@ its entry here in the same PR.
   `workflow`. Batch-LEVEL evaluation actions (create, add/remove members, issue, upload results,
   close, cancel) span every candidate in the batch; their per-candidate siblings (decide/void an
   item) do carry the full envelope.
+
+- **Recruitment: the response IS the refresh (I6, client half).** `invalidateRecruitment()` — which
+  fanned seven query subtrees out to the network after every write — is deleted, not deprecated.
+  Every recruitment mutation now goes through one hook, `useWorkflowMutation`, which applies the
+  response envelope to the TanStack Query cache: `data` seeds the aggregate's detail key and
+  patches its row inside every cached list page, `workflow` is stored per candidate, `timeline` is
+  merged into that candidate's history by `eventId` (newest first), and `counters` writes the one
+  aggregated key the sidebar, the stage rail and every queue badge read. No request is issued.
+
+  List MEMBERSHIP stays the server's judgement (I1): cached pages are marked stale with
+  `refetchType: 'none'` — no request now, re-read on the next mount — while the visible list stays
+  correct because the row is patched in place and dropped from a page whose `status` filter it no
+  longer satisfies. Two responses are deliberately not written: empty `counters` (the BD-007
+  degradation must not blank the navigation) and an empty `workflow.applicantId` (the empty state a
+  candidate-less act answers with). Bulk keeps exactly one refetch, because
+  `BulkWorkflowResultDto` carries the counters and the entries the batch wrote but not the changed
+  rows; the other stages are marked stale without fetching. Adding a timeline note no longer
+  invalidates anything either — the entry it returns is merged straight in.
+
+  UI behaviour is unchanged throughout: the hooks still resolve to the aggregate, so every page,
+  dialog and component reads exactly what it read before. `apps/web` gains a test runner (`vitest`,
+  wired into `npm run test --workspaces`) and its first suite: 21 cases over the cache layer,
+  including the ones that would catch a refetch creeping back in.
 
 - **Recruitment: one history, and only one (I5).** Three parallel histories are gone. The
   Electronic Employee File no longer re-derives the recruitment milestones — its own timeline

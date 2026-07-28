@@ -1,14 +1,19 @@
 // One hook for every bulk action (RW17/I4). The backend runs each item in its own transaction and
 // answers with a partial-success envelope, so the UI's job is to report it HONESTLY: how many
 // applied, how many did not, and why — never a blanket "done" over a mixed result.
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { type BulkActionResultDto } from '@ecms/contracts';
+//
+// I6 — a bulk response also carries the entries the batch wrote and the refreshed counters, so the
+// caller's `applyResult` writes those into the cache instead of invalidating them. What it cannot
+// carry is the changed rows themselves (a selection spans many, and which of them still belong on a
+// filtered queue is the server's judgement), so the affected list is re-read once.
+import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { type BulkActionResultDto, type BulkWorkflowResultDto } from '@ecms/contracts';
 import { useT } from '../../platform/localization/useT';
 import { toast } from '../ui/toast/toast-store';
 
 export interface BulkMutationOptions {
-  /** Invalidate everything the action can affect — one helper per module. */
-  invalidate: (qc: ReturnType<typeof useQueryClient>) => void;
+  /** Apply the bulk response to the cache — one helper per module. */
+  applyResult: (qc: QueryClient, result: BulkWorkflowResultDto) => void;
   /** Called after a run in which at least one item applied (e.g. to clear the selection). */
   onApplied?: () => void;
 }
@@ -33,7 +38,7 @@ export const bulkOutcomeMessage = (
 };
 
 export const useBulkMutation = <TInput>(
-  run: (input: TInput) => Promise<BulkActionResultDto>,
+  run: (input: TInput) => Promise<BulkWorkflowResultDto>,
   options: BulkMutationOptions,
 ) => {
   const qc = useQueryClient();
@@ -41,7 +46,7 @@ export const useBulkMutation = <TInput>(
   return useMutation({
     mutationFn: run,
     onSuccess: (result) => {
-      options.invalidate(qc);
+      options.applyResult(qc, result);
       const { message, ok } = bulkOutcomeMessage(result, t);
       if (ok) toast.success(message);
       else toast.error(message);

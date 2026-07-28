@@ -35,6 +35,15 @@ class Recognizer(Protocol):
 
     def recognize(self, crop: np.ndarray) -> Recognition: ...
 
+    def detect_lines(self, image: np.ndarray) -> list[tuple[object, str, float]]:
+        """Every text line on the image as (polygon, text, score) — for calibration.
+
+        Distinct from `recognize`, which is handed a crop the field boxes already chose. This
+        looks at the whole card and reports what is on it, which is the only way to find out
+        where the boxes *should* be rather than what they happened to catch.
+        """
+        ...
+
 
 class PaddleRecognizer:
     """PP-OCR via PaddleOCR 3.x, Arabic recognition, CPU, strictly offline.
@@ -71,6 +80,10 @@ class PaddleRecognizer:
             use_doc_unwarping=False,
             use_textline_orientation=False,
         )
+
+    def detect_lines(self, image: np.ndarray) -> list[tuple[object, str, float]]:
+        """Full-page detection + recognition, keeping each line's polygon."""
+        return _flatten_paddle_polys(self._ocr.ocr(image))
 
     def recognize(self, crop: np.ndarray) -> Recognition:
         result = self._ocr.ocr(crop)
@@ -118,6 +131,43 @@ def _flatten_paddle_result(result: object) -> list[tuple[str, float]]:
     return lines
 
 
+def _flatten_paddle_polys(result: object) -> list[tuple[object, str, float]]:
+    """Like `_flatten_paddle_result`, but keeps each line's polygon.
+
+    Parsed just as defensively and for the same reason: PaddleOCR moved the polygon key between
+    releases (`dt_polys` / `rec_polys`), and a silent miss here would report a card with no text
+    on it — which reads as "the card is blank" rather than "the key was renamed".
+    """
+    lines: list[tuple[object, str, float]] = []
+    if not result:
+        return lines
+
+    first = result[0] if isinstance(result, (list, tuple)) and result else None
+    if isinstance(first, dict):
+        for page in result:  # type: ignore[union-attr]
+            texts = page.get("rec_texts") or []
+            scores = page.get("rec_scores") or []
+            polys = page.get("rec_polys")
+            if polys is None or len(polys) == 0:
+                polys = page.get("dt_polys") or []
+            for poly, text, score in zip(polys, texts, scores):
+                lines.append((poly, str(text), float(score)))
+        return lines
+
+    # 2.x: list[page] of [box, (text, score)].
+    for page in result:  # type: ignore[union-attr]
+        if not page:
+            continue
+        for entry in page:
+            try:
+                poly = entry[0]
+                text, score = entry[1]
+                lines.append((poly, str(text), float(score)))
+            except (IndexError, TypeError, ValueError):
+                continue
+    return lines
+
+
 class MockRecognizer:
     """Replays known text per field — the pipeline harness without model weights.
 
@@ -129,10 +179,20 @@ class MockRecognizer:
 
     id = "mock"
 
-    def __init__(self, values: dict[str, str], score: float = 0.97) -> None:
+    def __init__(
+        self,
+        values: dict[str, str],
+        score: float = 0.97,
+        lines: list[tuple[object, str, float]] | None = None,
+    ) -> None:
         self._values = values
         self._score = score
         self._current: str | None = None
+        #: Replayed by `detect_lines`, so the diagnose path is exercisable without weights.
+        self._lines = lines or []
+
+    def detect_lines(self, image: np.ndarray) -> list[tuple[object, str, float]]:  # noqa: ARG002
+        return list(self._lines)
 
     def bind(self, field_name: str) -> None:
         self._current = field_name

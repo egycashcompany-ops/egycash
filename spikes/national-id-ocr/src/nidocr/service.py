@@ -31,6 +31,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+from .diagnose import diagnose
 from .extract import extract
 from .layout import active_profile_name
 
@@ -117,7 +118,8 @@ class Handler(BaseHTTPRequestHandler):
         )
 
     def do_POST(self) -> None:  # noqa: N802 — BaseHTTPRequestHandler API
-        if self.path.rstrip("/") != "/extract":
+        route = self.path.rstrip("/")
+        if route not in ("/extract", "/diagnose"):
             self._send(404, {"error": "not found"})
             return
 
@@ -141,6 +143,21 @@ class Handler(BaseHTTPRequestHandler):
             back = _decode(payload.get("backImageBase64"), "-back.jpg")
             if front is None and back is None:
                 self._send(400, {"error": "at least one of frontImageBase64 / backImageBase64"})
+                return
+
+            if route == "/diagnose":
+                # Geometry only — see diagnose.py. No card text is returned or logged, so the
+                # output can be shared to correct the field boxes without sharing the card.
+                report = {
+                    side: diagnose(path, get_recognizer())
+                    for side, path in (("front", front), ("back", back))
+                    if path is not None
+                }
+                LOG.info(
+                    "diagnosed %s",
+                    {side: data["regionCount"] for side, data in report.items()},
+                )
+                self._send(200, report)
                 return
 
             started = time.perf_counter()

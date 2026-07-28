@@ -10,6 +10,9 @@ domains would break silent session refresh. Config-as-code lives at the repo roo
 | **app** (public) | `railway.json` (picked up automatically) | api + serves the built web + Socket.IO |
 | **worker** (private) | `railway.worker.json` (set as *Config File Path*) | BullMQ consumers + the scheduler |
 
+(A third, **optional** service — the National-ID OCR sidecar — is covered in §6. Skip it and
+the platform runs exactly as before, with National-ID scanning reporting `available: false`.)
+
 Railpack's "No start command detected" error on a raw deploy is expected — the workspace
 has four packages; the config files above tell it what to build and run.
 
@@ -139,7 +142,48 @@ Verify after deploy: `https://egycash.com.eg/ecms/health/ready` answers `{"statu
 the login page loads at `https://egycash.com.eg/ecms`, and after signing in the browser
 holds the `ecms_refresh` cookie scoped to `/ecms/api/v1/auth`.
 
-## 6. Notes
+## 6. Optional — the National-ID OCR sidecar
+
+Scanning a National ID card is an **assisted** feature: it pre-fills the applicant form and a
+human confirms every field in the review dialog. The reader is a separate Python container
+(`spikes/national-id-ocr/`) with the PaddleOCR weights baked into the image, so it makes no
+outbound calls at runtime. **Deploy it only if you want the scan button to work** — with
+`NATIONAL_ID_OCR_URL` unset the api keeps its null provider and applicants are entered by hand,
+which is the default everywhere.
+
+1. **Add a third service from the same repo** → name it e.g. **nid-ocr** → Settings → Build →
+   **Root Directory** = `spikes/national-id-ocr` (Railway then builds its `Dockerfile`).
+   **No public domain** — the card images are personal data and only the api needs to reach it.
+2. Variables on **nid-ocr**:
+
+   | Variable | Value |
+   |---|---|
+   | `OCR_PORT` | `8099` |
+   | `OCR_PRELOAD` | `1` (loads the model at boot instead of on a recruiter's first scan) |
+   | `OCR_LAYOUT_PROFILE` | *(optional)* path to a calibrated geometry profile |
+
+3. Point the **app** service at it — this is the only variable the platform itself needs:
+
+   | Variable | Value |
+   |---|---|
+   | `NATIONAL_ID_OCR_URL` | `http://nid-ocr.railway.internal:8099` (use the service's own name) |
+   | `NATIONAL_ID_OCR_TIMEOUT_MS` | `20000` (default; raise only if the service runs cold) |
+
+   The **worker** needs neither — OCR runs on the request path, not in a queue.
+
+Sizing: the image carries the recognition weights and PaddlePaddle, so give the service more
+memory than the api (it holds the model resident) and expect a slow first boot while it loads.
+Model load happens once per container, not per request.
+
+> **IPv6:** the sidecar binds `::` dual-stack for the same reason `REDIS_URL` needs `?family=0`
+> — Railway's private network is IPv6-only, and a service bound to `0.0.0.0` is simply
+> unreachable at `*.railway.internal`. Nothing to configure; noted because the symptom of
+> getting it wrong is an OCR timeout that looks like a model problem.
+
+Verify: the sidecar's deploy log ends with `nidocr listening on [::]:8099`, and in the app a
+National-ID scan returns fields into the review dialog rather than "OCR unavailable".
+
+## 7. Notes
 
 - **Worker is required**: notifications, the outbox relay, scheduled personnel actions,
   offer expiration and the invitation expiry sweep all run there. Without it the app works

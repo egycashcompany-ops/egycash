@@ -25,6 +25,7 @@ import binascii
 import json
 import logging
 import os
+import socket
 import tempfile
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -168,17 +169,63 @@ class Handler(BaseHTTPRequestHandler):
                     Path(path).unlink(missing_ok=True)
 
 
+class DualStackServer(ThreadingHTTPServer):
+    """Listens on IPv6 and, on a dual-stack host, IPv4 as well.
+
+    This is not a nicety — Railway's private network is IPv6-ONLY. A service bound to
+    `0.0.0.0` is simply unreachable at `http://<service>.railway.internal`, and the failure
+    looks like a timeout rather than a binding mistake. (The same trap is already documented for
+    Redis in `docs/09-guides/railway-deployment.md`, which is why `REDIS_URL` needs `?family=0`.)
+
+    Binding `::` with `IPV6_V6ONLY` off accepts both families, so one configuration serves
+    Railway's private network, a compose bridge, and `localhost` in development.
+    """
+
+    address_family = socket.AF_INET6
+    daemon_threads = True
+
+    def server_bind(self) -> None:
+        if hasattr(socket, "IPPROTO_IPV6"):
+            try:
+                self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+            except OSError:
+                # Some kernels forbid changing it; IPv6-only still serves Railway, which is the
+                # case that would otherwise break silently.
+                LOG.warning("could not disable IPV6_V6ONLY; serving IPv6 only")
+        super().server_bind()
+
+
+def _build_server(host: str, port: int) -> ThreadingHTTPServer:
+    """Prefer dual-stack; fall back to IPv4 where IPv6 is unavailable."""
+    try:
+        return DualStackServer((host, port), Handler)
+    except OSError as error:
+        LOG.warning("IPv6 bind on [%s]:%d failed (%s) — falling back to IPv4", host, port, error)
+        return ThreadingHTTPServer(("0.0.0.0", port), Handler)  # noqa: S104 — internal network only
+
+
 def main() -> None:
     logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"), format="%(asctime)s %(message)s")
-    host = os.environ.get("OCR_HOST", "0.0.0.0")  # noqa: S104 — container-internal network only
-    port = int(os.environ.get("OCR_PORT", "8099"))
+    # `::` = every interface, both families. Override with OCR_HOST to pin it narrower.
+    host = os.environ.get("OCR_HOST", "::")
+    # OCR_PORT is the explicit setting. `PORT` is the fallback because platforms that inject it
+    # (Railway among them) expect the process to honour it; without the fallback a forgotten
+    # OCR_PORT leaves the container listening somewhere the platform never routes to.
+    port = int(os.environ.get("OCR_PORT") or os.environ.get("PORT") or "8099")
 
     if os.environ.get("OCR_PRELOAD", "1") == "1":
         # Pay the model-load cost at start rather than on the first user-facing request.
         get_recognizer()
 
-    LOG.info("nidocr listening on %s:%d (profile=%s)", host, port, active_profile_name())
-    ThreadingHTTPServer((host, port), Handler).serve_forever()
+    server = _build_server(host, port)
+    LOG.info(
+        "nidocr listening on [%s]:%d (family=%s, profile=%s)",
+        host,
+        port,
+        server.address_family.name,
+        active_profile_name(),
+    )
+    server.serve_forever()
 
 
 if __name__ == "__main__":

@@ -1,5 +1,8 @@
 // Thin HTTP mapping only (ADR-003). Uses the platform web kit (module → platform →
-// infrastructure) rather than importing infrastructure directly. `missingRequired` is derived
+// infrastructure) rather than importing infrastructure directly.
+//
+// I6 — Stage 6 acts on a hired candidate's document set, which is still their pipeline, so every
+// mutation answers with the full workflow envelope. The document-TYPE catalog is unchanged. `missingRequired` is derived
 // against the live document-type catalog and passed into the mapper.
 import { type Request, type Response } from 'express';
 import {
@@ -15,7 +18,8 @@ import {
 } from '@ecms/contracts';
 import { created, ok, okPage, validated } from '../../../../platform/web';
 import { authContext } from '../../../../platform/auth';
-import { scopeSelector } from '../../../../shared/types';
+import { scopeSelector, type AuthContext } from '../../../../shared/types';
+import { withBulkWorkflowEnvelope, withWorkflowEnvelope } from '../workflow';
 import { ValidationError } from '../../../../shared/errors';
 import { type UploadedBinary } from '../../../../platform/files';
 import { hiringDocumentsService } from './hiring-documents.service';
@@ -40,11 +44,32 @@ const binaryOf = (req: Request): UploadedBinary => {
   return { originalName: file.originalname, mime: file.mimetype, size: file.size, buffer: file.buffer };
 };
 
-const respond = async (res: Response, doc: HiringDocumentsDoc, status = 200): Promise<void> => {
+/** Reads are unchanged by I6 — a GET answers with the aggregate, as it always did. */
+const respondRead = async (res: Response, doc: HiringDocumentsDoc): Promise<void> => {
   const keys = await hiringDocumentsService.activeRequiredKeys();
-  const dto = toHiringDocumentsDto(doc, computeMissingRequired(doc, keys));
-  if (status === 201) created(res, dto, `/api/v1/hr/hiring-documents/${dto.id}`);
-  else ok(res, dto);
+  ok(res, toHiringDocumentsDto(doc, computeMissingRequired(doc, keys)));
+};
+
+/**
+ * One place that answers with the envelope, because every hiring-documents mutation returns the
+ * same aggregate. `applicantId` is null for a DIRECT registration — that candidate never had a
+ * recruitment pipeline, so the workflow half comes back empty rather than invented.
+ */
+const respond = async (
+  ctx: AuthContext,
+  res: Response,
+  action: () => Promise<HiringDocumentsDoc>,
+  status = 200,
+): Promise<void> => {
+  const keys = await hiringDocumentsService.activeRequiredKeys();
+  const envelope = await withWorkflowEnvelope(
+    ctx,
+    action,
+    (doc) => toHiringDocumentsDto(doc, computeMissingRequired(doc, keys)),
+    (doc) => (doc.applicantId === null ? '' : String(doc.applicantId)),
+  );
+  if (status === 201) created(res, envelope, `/api/v1/hr/hiring-documents/${envelope.data.id}`);
+  else ok(res, envelope);
 };
 
 // ── Hiring documents ─────────────────────────────────────────────────────────
@@ -52,8 +77,8 @@ const respond = async (res: Response, doc: HiringDocumentsDoc, status = 200): Pr
 export const createHiringDocuments = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { body } = validated<CreateHiringDocuments>(req);
-  const doc = await hiringDocumentsService.create(ctx, body, scopeSelector(ctx, 'hiringDocuments.create'));
-  await respond(res, doc, 201);
+  const scope = scopeSelector(ctx, 'hiringDocuments.create');
+  await respond(ctx, res, () => hiringDocumentsService.create(ctx, body, scope), 201);
 };
 
 export const listHiringDocuments = async (req: Request, res: Response): Promise<void> => {
@@ -68,34 +93,25 @@ export const getHiringDocuments = async (req: Request, res: Response): Promise<v
   const ctx = authContext(req);
   const { params } = validated<never, never, IdParam>(req);
   const doc = await hiringDocumentsService.getById(params.id, scopeSelector(ctx, 'hiringDocuments.view'));
-  await respond(res, doc);
+  await respondRead(res, doc);
 };
 
 export const uploadHiringDocument = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { body, params } = validated<UploadHiringDocument, never, IdParam>(req);
-  const doc = await hiringDocumentsService.uploadDocument(
-    ctx,
-    params.id,
-    body,
-    binaryOf(req),
-    scopeSelector(ctx, 'hiringDocuments.upload'),
+  const scope = scopeSelector(ctx, 'hiringDocuments.upload');
+  await respond(ctx, res, () =>
+    hiringDocumentsService.uploadDocument(ctx, params.id, body, binaryOf(req), scope),
   );
-  await respond(res, doc);
 };
 
 export const replaceHiringDocument = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { body, params } = validated<ReplaceHiringDocument, never, TypeParam>(req);
-  const doc = await hiringDocumentsService.replaceDocument(
-    ctx,
-    params.id,
-    params.typeId,
-    body,
-    binaryOf(req),
-    scopeSelector(ctx, 'hiringDocuments.upload'),
+  const scope = scopeSelector(ctx, 'hiringDocuments.upload');
+  await respond(ctx, res, () =>
+    hiringDocumentsService.replaceDocument(ctx, params.id, params.typeId, body, binaryOf(req), scope),
   );
-  await respond(res, doc);
 };
 
 export const listHiringDocumentVersions = async (req: Request, res: Response): Promise<void> => {
@@ -107,15 +123,16 @@ export const listHiringDocumentVersions = async (req: Request, res: Response): P
 export const completeHiringDocuments = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { body, params } = validated<CompleteHiringDocuments, never, IdParam>(req);
-  const doc = await hiringDocumentsService.complete(ctx, params.id, body, scopeSelector(ctx, 'hiringDocuments.complete'));
-  await respond(res, doc);
+  const scope = scopeSelector(ctx, 'hiringDocuments.complete');
+  await respond(ctx, res, () => hiringDocumentsService.complete(ctx, params.id, body, scope));
 };
 
 /** Bulk complete (RW17/I4) — one act, one envelope, per-set rules still enforced. */
 export const bulkHiringDocuments = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { body } = validated<BulkHiringDocuments>(req);
-  ok(res, await hiringDocumentsService.bulk(ctx, body, scopeSelector(ctx, 'hiringDocuments.complete')));
+  const scope = scopeSelector(ctx, 'hiringDocuments.complete');
+  ok(res, await withBulkWorkflowEnvelope(ctx, () => hiringDocumentsService.bulk(ctx, body, scope)));
 };
 
 // ── Document types (admin catalog) ───────────────────────────────────────────

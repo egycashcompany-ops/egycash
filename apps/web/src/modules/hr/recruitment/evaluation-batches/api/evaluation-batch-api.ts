@@ -18,7 +18,17 @@ import {
   type UpdateEvaluationBatch,
   type VoidBatchItem,
 } from '@ecms/contracts';
-import { api, buildQuery, get, getPage, patch, post, upload } from '../../../../../shared/lib/api-client';
+import {
+  api,
+  buildQuery,
+  get,
+  getPage,
+  patch,
+  patchWorkflow,
+  post,
+  postWorkflow,
+  upload,
+} from '../../../../../shared/lib/api-client';
 
 export type BatchListParams = Record<string, string | number | boolean | undefined | null>;
 
@@ -88,14 +98,14 @@ export const decideBatchItem = (
   applicantId: string,
   body: DecideBatchItem,
 ): Promise<EvaluationBatchDto> =>
-  patch<EvaluationBatchDto>(`/hr/evaluation-batches/${id}/items/${applicantId}/decision`, body);
+  patchWorkflow<EvaluationBatchDto>(`/hr/evaluation-batches/${id}/items/${applicantId}/decision`, body);
 
 export const voidBatchItem = (
   id: string,
   applicantId: string,
   body: VoidBatchItem,
 ): Promise<EvaluationBatchDto> =>
-  post<EvaluationBatchDto>(`/hr/evaluation-batches/${id}/items/${applicantId}/void`, body);
+  postWorkflow<EvaluationBatchDto>(`/hr/evaluation-batches/${id}/items/${applicantId}/void`, body);
 
 export const bulkBatchItems = (id: string, body: BulkBatchItems): Promise<BulkActionResultDto> =>
   post<BulkActionResultDto>(`/hr/evaluation-batches/${id}/items/bulk`, body);

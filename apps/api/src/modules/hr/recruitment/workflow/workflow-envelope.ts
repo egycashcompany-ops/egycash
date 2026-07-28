@@ -7,9 +7,9 @@
 // the action actually produced. The old pattern (mutate, then invalidate seven query subtrees and
 // refetch) had exactly that race: two requests, two moments, two truths.
 //
-// `timeline.produced` is what THIS action wrote, resolved from the event ids the engine reported
-// into the capture scope — not "entries written since I started", which a concurrent request on the
-// same candidate would poison.
+// `timeline.produced` is what THIS action wrote, resolved from the entry ids reported into the
+// capture scope — not "entries written since I started", which a concurrent request on the same
+// candidate would poison.
 import {
   type BulkActionResultDto,
   type BulkWorkflowResultDto,
@@ -17,8 +17,7 @@ import {
   type WorkflowEnvelopeDto,
 } from '@ecms/contracts';
 import { type AuthContext } from '../../../../shared/types';
-import { recruitmentTimelineService, timelineSummaryDto } from '../timeline';
-import { captureWorkflowEvents } from './workflow-capture';
+import { captureTimelineEntries, recruitmentTimelineService, timelineSummaryDto } from '../timeline';
 import { buildWorkflowState } from './workflow-state';
 
 /** How many recent entries ride along, so a timeline view renders without asking again. */
@@ -70,12 +69,12 @@ export const withWorkflowEnvelope = async <TDoc, TDto>(
   toDto: (doc: TDoc) => TDto,
   applicantIdOf: (doc: TDoc) => string,
 ): Promise<WorkflowEnvelopeDto<TDto>> => {
-  const { result, eventIds } = await captureWorkflowEvents(action);
+  const { result, entryIds } = await captureTimelineEntries(action);
   const applicantId = applicantIdOf(result);
 
   const [state, produced, latest, total, counters] = await Promise.all([
     buildWorkflowState(ctx, applicantId),
-    recruitmentTimelineService.findByEventIds(eventIds),
+    recruitmentTimelineService.findByEventIds(entryIds),
     recruitmentTimelineService.listForApplicant(applicantId, { includeSuperseded: true }, LATEST_ENTRIES),
     recruitmentTimelineService.countForApplicant(applicantId),
     countersFor(ctx),
@@ -98,9 +97,9 @@ export const withBulkWorkflowEnvelope = async (
   ctx: AuthContext,
   action: () => Promise<BulkActionResultDto>,
 ): Promise<BulkWorkflowResultDto> => {
-  const { result, eventIds } = await captureWorkflowEvents(action);
+  const { result, entryIds } = await captureTimelineEntries(action);
   const [produced, counters] = await Promise.all([
-    recruitmentTimelineService.findByEventIds(eventIds),
+    recruitmentTimelineService.findByEventIds(entryIds),
     countersFor(ctx),
   ]);
   return {

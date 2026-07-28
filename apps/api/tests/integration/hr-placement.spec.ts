@@ -11,7 +11,6 @@ import {
   platformPermissions,
   SettingKeys,
   type ApplicantDto,
-  type BulkActionResultDto,
   type InterviewDto,
   type JobOfferDto,
   type RecruitmentTimelineEntryDto,
@@ -27,6 +26,7 @@ import { settingsService } from '../../src/platform/settings';
 import { getCache } from '../../src/infrastructure/redis/cache';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { type AuthContext } from '../../src/shared/types';
+import { actionEnabled, bulkEnvelope, counter, envelope, mutated } from './helpers/workflow-envelope';
 
 const PASSWORD = 'Str0ng#Pass!';
 let replSet: MongoMemoryReplSet | null = null;
@@ -103,12 +103,14 @@ const register = async (placement?: Record<string, string>): Promise<ApplicantDt
       ...(placement === undefined ? {} : { placement }),
     });
   expect(res.status).toBe(201);
-  return res.body.data as ApplicantDto;
+  // Registration is a workflow action (I6) — the aggregate rides inside the envelope.
+  return mutated<ApplicantDto>(res);
 };
 
 const getApplicant = async (id: string): Promise<ApplicantDto> => {
   const res = await request(app).get(`/api/v1/hr/applicants/${id}`).set('Authorization', `Bearer ${adminToken}`);
   expect(res.status).toBe(200);
+  // A READ is unchanged by I6.
   return res.body.data as ApplicantDto;
 };
 
@@ -275,12 +277,29 @@ describe('reassignment (RW2)', () => {
       version: applicant.version,
     });
     expect(res.status).toBe(200);
-    const after = res.body.data as ApplicantDto;
+    const body = envelope<ApplicantDto>(res);
+    const after = body.data;
 
     expect(after.placement.jobPositionId).toBe(POSITION_B);
     expect(after.placement.branchId).toBe(BRANCH_B);
     expect(after.branchId).toBe(BRANCH_B);
     expect(after.placementLabel.position).toBe('Driver');
+
+    // I6 — the envelope answers "where do they stand now?" without a follow-up request.
+    expect(body.workflow.applicantId).toBe(applicant.id);
+    expect(body.workflow.applicantStatus).toBe('new');
+    expect(body.workflow.placement.jobPositionId).toBe(POSITION_B);
+    expect(body.workflow.stage?.kind).toBe('screening');
+    // …what it just wrote…
+    expect(body.timeline.produced.map((e) => e.type)).toEqual(
+      expect.arrayContaining(['positionChanged', 'branchChanged']),
+    );
+    expect(body.timeline.total).toBeGreaterThan(0);
+    // …the refreshed counters…
+    expect(counter(body.counters, 'screening')).toBeDefined();
+    // …and what this caller may do next (a super-admin holds every grant).
+    expect(actionEnabled(body.workflow, 'reassign')).toBe(true);
+    expect(actionEnabled(body.workflow, 'accept')).toBe(true);
 
     // The screening row opened at registration follows the candidate's scope (RW2 step 3)…
     const screening = await screeningOf(applicant.id);
@@ -330,7 +349,11 @@ describe('reassignment (RW2)', () => {
       version: applicant.version,
     });
     expect(res.status).toBe(200);
-    expect((res.body.data as ApplicantDto).version).toBe(applicant.version);
+    const body = envelope<ApplicantDto>(res);
+    expect(body.data.version).toBe(applicant.version);
+    // Nothing moved, so nothing was written — but the envelope still reports current truth.
+    expect(body.timeline.produced).toEqual([]);
+    expect(body.workflow.applicantId).toBe(applicant.id);
   });
 
   it('applies one placement across a selection with a partial-success envelope (RW17)', async () => {
@@ -345,8 +368,11 @@ describe('reassignment (RW2)', () => {
         reason: 'إعادة توزيع جماعية',
       });
     expect(res.status).toBe(200);
-    const envelope = res.body.data as BulkActionResultDto;
-    expect(envelope.succeeded).toBe(2);
+    const result = bulkEnvelope(res);
+    expect(result.succeeded).toBe(2);
+    // I6 — a bulk act reports what the whole batch wrote, plus the refreshed counters.
+    expect(result.timeline.produced.length).toBeGreaterThan(0);
+    expect(counter(result.counters, 'screening')).toBeDefined();
     expect((await getApplicant(a.id)).placement.branchId).toBe(BRANCH_B);
     expect((await getApplicant(b.id)).placement.branchId).toBe(BRANCH_B);
   });
@@ -361,7 +387,9 @@ describe('reassignment (RW2)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ action: 'moveToOffer', ids: [a.id, b.id] });
     expect(res.status, JSON.stringify(res.body)).toBe(200);
-    expect((res.body.data as BulkActionResultDto).succeeded).toBe(2);
+    const moved = bulkEnvelope(res);
+    expect(moved.succeeded).toBe(2);
+    expect(counter(moved.counters, 'jobOffers')).toBeDefined();
 
     for (const applicant of [a, b]) {
       const after = await getApplicant(applicant.id);
@@ -378,7 +406,7 @@ describe('reassignment (RW2)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ action: 'moveToScreening', ids: [a.id] });
     expect(res.status, JSON.stringify(res.body)).toBe(200);
-    expect((res.body.data as BulkActionResultDto).succeeded).toBe(1);
+    expect(bulkEnvelope(res).succeeded).toBe(1);
 
     const screenings = await request(app)
       .get('/api/v1/hr/screenings')
@@ -400,7 +428,7 @@ describe('the editing window closes at acceptance (RW3)', () => {
   };
 
   const passStage = async (applicantId: string, key: string): Promise<void> => {
-    const interview = (
+    const interview = mutated<InterviewDto>(
       await request(app)
         .post('/api/v1/hr/interviews')
         .set('Authorization', `Bearer ${adminToken}`)
@@ -409,8 +437,8 @@ describe('the editing window closes at acceptance (RW3)', () => {
           stageId: await stageId(key),
           scheduledAt: '2027-03-01T00:00:00.000Z',
           interviewerIds: [interviewerId],
-        })
-    ).body.data as InterviewDto;
+        }),
+    );
     const submitted = await request(app)
       .post(`/api/v1/hr/interviews/${interview.id}/evaluations`)
       .set('Authorization', `Bearer ${interviewerToken}`)
@@ -418,7 +446,7 @@ describe('the editing window closes at acceptance (RW3)', () => {
     await request(app)
       .post(`/api/v1/hr/interviews/${interview.id}/decide`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ outcome: 'passed', version: (submitted.body.data as InterviewDto).version });
+      .send({ outcome: 'passed', version: mutated<InterviewDto>(submitted).version });
   };
 
   it('follows a live offer into the new placement, then refuses once accepted', async () => {
@@ -437,7 +465,7 @@ describe('the editing window closes at acceptance (RW3)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ version: moved.version });
 
-    const offer = (
+    const offer = mutated<JobOfferDto>(
       await request(app)
         .post('/api/v1/hr/job-offers')
         .set('Authorization', `Bearer ${adminToken}`)
@@ -453,8 +481,8 @@ describe('the editing window closes at acceptance (RW3)', () => {
             startDate: '2027-06-01T00:00:00.000Z',
             validUntil: '2027-05-01T00:00:00.000Z',
           },
-        })
-    ).body.data as JobOfferDto;
+        }),
+    );
     expect(offer.status).toBe('draft');
 
     // A draft offer is inside the editing window: the package follows the placement (RW2 step 5).
@@ -466,6 +494,7 @@ describe('the editing window closes at acceptance (RW3)', () => {
     });
     expect(res.status).toBe(200);
 
+    // A READ is unchanged by I6.
     const revised = (
       await request(app).get(`/api/v1/hr/job-offers/${offer.id}`).set('Authorization', `Bearer ${adminToken}`)
     ).body.data as JobOfferDto;
@@ -475,12 +504,12 @@ describe('the editing window closes at acceptance (RW3)', () => {
     // The prior package is kept, not overwritten.
     expect(revised.revisions.length).toBe(1);
 
-    const sent = (
+    const sent = mutated<JobOfferDto>(
       await request(app)
         .post(`/api/v1/hr/job-offers/${offer.id}/send`)
         .set('Authorization', `Bearer ${adminToken}`)
-        .send({ version: revised.version })
-    ).body.data as JobOfferDto;
+        .send({ version: revised.version }),
+    );
     await request(app)
       .post(`/api/v1/hr/job-offers/${offer.id}/accept`)
       .set('Authorization', `Bearer ${adminToken}`)
@@ -513,7 +542,7 @@ describe('stage recommendations (RW5)', () => {
     const first = (stages.body as { data: { id: string; key: string }[] }).data.find(
       (s) => s.key === 'firstInterview',
     );
-    const interview = (
+    const interview = mutated<InterviewDto>(
       await request(app)
         .post('/api/v1/hr/interviews')
         .set('Authorization', `Bearer ${adminToken}`)
@@ -522,8 +551,8 @@ describe('stage recommendations (RW5)', () => {
           stageId: first?.id,
           scheduledAt: '2027-03-01T00:00:00.000Z',
           interviewerIds: [interviewerId],
-        })
-    ).body.data as InterviewDto;
+        }),
+    );
 
     const res = await request(app)
       .patch(`/api/v1/hr/interviews/${interview.id}/recommendation`)
@@ -534,7 +563,11 @@ describe('stage recommendations (RW5)', () => {
         version: interview.version,
       });
     expect(res.status).toBe(200);
-    expect((res.body.data as InterviewDto).recommendedPlacement?.jobPositionId).toBe(POSITION_B);
+    const recommended = envelope<InterviewDto>(res);
+    expect(recommended.data.recommendedPlacement?.jobPositionId).toBe(POSITION_B);
+    // RW5 — a recommendation is advisory: the candidate has NOT moved.
+    expect(recommended.workflow.placement.jobPositionId).toBe(POSITION_A);
+    expect(recommended.workflow.stage?.kind).toBe('interview');
 
     // Advisory only — the candidate has NOT moved.
     expect((await getApplicant(applicant.id)).placement.jobPositionId).toBe(POSITION_A);

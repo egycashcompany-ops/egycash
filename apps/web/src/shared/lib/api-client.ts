@@ -1,6 +1,12 @@
 // Platform API client: envelope-aware fetch wrapper with in-memory access token
 // and silent refresh on expiry (ADR-006 — the token never touches storage APIs).
-import { type ApiEnvelope, type ApiErrorDetail, type PageMeta, type Paginated } from '@ecms/contracts';
+import {
+  type ApiEnvelope,
+  type ApiErrorDetail,
+  type PageMeta,
+  type Paginated,
+  type WorkflowEnvelopeDto,
+} from '@ecms/contracts';
 
 const BASE_URL: string =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://localhost:3000/api/v1';
@@ -122,6 +128,7 @@ export const getText = async (path: string): Promise<string> => {
 
 export const del = <T>(path: string): Promise<T> => api<T>(path, { method: 'DELETE' });
 
+
 /** Build a `?a=1&b=2` query string, dropping empty/undefined values (API Standards §4). */
 export const buildQuery = (
   params: Record<string, string | number | boolean | undefined | null>,
@@ -187,3 +194,23 @@ export const upload = async <T>(path: string, form: FormData): Promise<T> => {
     throw error;
   }
 };
+
+// ── Workflow endpoints (I6) ─────────────────────────────────────────────────
+//
+// A recruitment workflow endpoint answers with `{ data, workflow, timeline, counters }` so the
+// client never needs a follow-up request. These helpers take the `data` half only, which is what
+// the mutation hooks and pages consume today — the envelope's other three fields are the input to
+// the cache-update work that replaces the invalidate/refetch pattern.
+//
+// Bulk endpoints need no helper: `BulkWorkflowResultDto` extends `BulkActionResultDto`, so a
+// caller typed against the narrower shape already reads the response correctly.
+
+export const postWorkflow = async <T>(path: string, body: unknown): Promise<T> =>
+  (await post<WorkflowEnvelopeDto<T>>(path, body)).data;
+
+export const patchWorkflow = async <T>(path: string, body: unknown): Promise<T> =>
+  (await patch<WorkflowEnvelopeDto<T>>(path, body)).data;
+
+/** The multipart counterpart — evaluation files and hiring documents are workflow actions too. */
+export const uploadWorkflow = async <T>(path: string, form: FormData): Promise<T> =>
+  (await upload<WorkflowEnvelopeDto<T>>(path, form)).data;

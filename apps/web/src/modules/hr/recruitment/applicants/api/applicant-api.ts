@@ -23,7 +23,17 @@ import {
   type UpdateApplicant,
   type WithdrawApplicant,
 } from '@ecms/contracts';
-import { buildQuery, del, downloadBlob, get, getPage, patch, post, upload } from '../../../../../shared/lib/api-client';
+import {
+  buildQuery,
+  del,
+  downloadBlob,
+  get,
+  getPage,
+  patch,
+  post,
+  postWorkflow,
+  upload,
+} from '../../../../../shared/lib/api-client';
 
 export type ApplicantListParams = Record<string, string | number | boolean | undefined | null>;
 
@@ -33,27 +43,27 @@ export const listApplicants = (params: ApplicantListParams): Promise<Paginated<A
 export const getApplicant = (id: string): Promise<ApplicantDto> => get<ApplicantDto>(`/hr/applicants/${id}`);
 
 export const registerApplicant = (body: RegisterApplicant): Promise<ApplicantDto> =>
-  post<ApplicantDto>('/hr/applicants', body);
+  postWorkflow<ApplicantDto>('/hr/applicants', body);
 
 export const updateApplicant = (id: string, body: UpdateApplicant): Promise<ApplicantDto> =>
   patch<ApplicantDto>(`/hr/applicants/${id}`, body);
 
 export const verifyApplicantIdentity = (id: string, body: ConfirmApplicantIdentity): Promise<ApplicantDto> =>
-  post<ApplicantDto>(`/hr/applicants/${id}/verify-identity`, body);
+  postWorkflow<ApplicantDto>(`/hr/applicants/${id}/verify-identity`, body);
 
 export const withdrawApplicant = (id: string, body: WithdrawApplicant): Promise<ApplicantDto> =>
-  post<ApplicantDto>(`/hr/applicants/${id}/withdraw`, body);
+  postWorkflow<ApplicantDto>(`/hr/applicants/${id}/withdraw`, body);
 
 /** Explicit HR move to the Job Offer stage (offer eligibility is never automatic). */
 export const moveApplicantToOffer = (id: string, body: MoveApplicantToOffer): Promise<ApplicantDto> =>
-  post<ApplicantDto>(`/hr/applicants/${id}/move-to-offer`, body);
+  postWorkflow<ApplicantDto>(`/hr/applicants/${id}/move-to-offer`, body);
 
 export const restoreApplicant = (id: string, body: RestoreApplicant): Promise<ApplicantDto> =>
-  post<ApplicantDto>(`/hr/applicants/${id}/restore`, body);
+  postWorkflow<ApplicantDto>(`/hr/applicants/${id}/restore`, body);
 
 /** RW2 — reassign Position and/or Branch (audited, reason mandatory). */
 export const reassignApplicant = (id: string, body: ReassignPlacement): Promise<ApplicantDto> =>
-  post<ApplicantDto>(`/hr/applicants/${id}/reassign`, body);
+  postWorkflow<ApplicantDto>(`/hr/applicants/${id}/reassign`, body);
 
 export const bulkApplicants = (body: BulkApplicants): Promise<BulkActionResultDto> =>
   post<BulkActionResultDto>('/hr/applicants/bulk', body);
@@ -74,7 +84,7 @@ export const previewReturnToStage = (
   );
 
 export const returnApplicantToStage = (id: string, body: ReturnToStage): Promise<ApplicantDto> =>
-  post<ApplicantDto>(`/hr/applicants/${id}/return-to-stage`, body);
+  postWorkflow<ApplicantDto>(`/hr/applicants/${id}/return-to-stage`, body);
 
 export const ocrExtractNationalId = (body: OcrExtractNationalId): Promise<OcrExtractionDto> =>
   post<OcrExtractionDto>('/hr/applicants/ocr/national-id', body);

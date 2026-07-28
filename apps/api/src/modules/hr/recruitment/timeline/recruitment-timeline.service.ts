@@ -23,6 +23,7 @@ import {
   recruitmentTimelineRepository,
   type TimelineListFilter,
 } from './recruitment-timeline.repository';
+import { noteTimelineEntry } from './recruitment-timeline.capture';
 import { newCorrelationId, newEventId, timelineSourceKey } from './recruitment-timeline.keys';
 import {
   type RecruitmentTimelineDoc,
@@ -52,6 +53,12 @@ export interface RecordTimelineInput {
   /** Separates several entries of one type on one entity (attempt number, changed dimension…). */
   discriminator?: string | number | null;
   metadata?: Record<string, unknown>;
+  /**
+   * The entry's public identity, supplied ONLY by the workflow projection: an entry that projects
+   * an outbox event takes that event's id, so "which entries did this action produce?" (I6) can be
+   * answered from the ids the engine reported at publish time — before the entry existed.
+   */
+  eventId?: string;
 }
 
 const toObjectId = (value: Types.ObjectId | string | null | undefined): Types.ObjectId | null => {
@@ -75,9 +82,16 @@ class RecruitmentTimelineService {
       entityId: input.entity?.id ?? null,
       discriminator: input.discriminator ?? null,
     });
+    const newEntryId = input.eventId ?? newEventId(at);
+    // I6 — an entry written OUTSIDE the engine (an application, an identity check, a placement
+    // change) has no outbox event to name it, so it reports itself into the capture scope. A
+    // projected entry does not: the engine already reported its id at publish time, and reporting
+    // it again here would let a foreign event — one this request merely happened to drain from the
+    // shared outbox — into this action's envelope.
+    if (input.eventId === undefined) noteTimelineEntry(newEntryId);
     return recruitmentTimelineRepository.append(
       {
-        eventId: newEventId(at),
+        eventId: newEntryId,
         applicantId: new Types.ObjectId(input.applicantId),
         applicantCode: input.applicantCode,
         at,

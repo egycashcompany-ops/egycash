@@ -28,6 +28,7 @@ import { settingsService } from '../../src/platform/settings';
 import { getCache } from '../../src/infrastructure/redis/cache';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { type AuthContext } from '../../src/shared/types';
+import { envelope, mutated } from './helpers/workflow-envelope';
 
 const PASSWORD = 'Str0ng#Pass!';
 const REQUISITION_ID = '64b1f0aaaaaaaaaaaaaaaaaa';
@@ -98,10 +99,16 @@ const idByKey = async (path: string, key: string): Promise<string> => {
   return found.id;
 };
 
-/** Register → screen → both interviews → offer accepted → employee. */
+/**
+ * Register → screen → both interviews → offer accepted → employee.
+ *
+ * Every recruitment step here is a workflow mutation, so each answers with the envelope (I6) and
+ * this helper reads its `data` half. The employee endpoint is Stage 5's own aggregate, outside the
+ * recruitment pipeline, so it answers with the DTO as it always did.
+ */
 const hiredEmployee = async (): Promise<EmployeeDto> => {
   const sourceId = await idByKey('applicant-sources', 'internalHr');
-  const applicant = (
+  const applicant = mutated<ApplicantDto>(
     await request(app)
       .post('/api/v1/hr/applicants')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -111,12 +118,12 @@ const hiredEmployee = async (): Promise<EmployeeDto> => {
         intakeChannel: 'internal',
         identity: { fullNameAr: 'أحمد محمد', nationality: 'Egyptian' },
         contact: { primaryPhone: nextPhone() },
-      })
-  ).body.data as ApplicantDto;
+      }),
+  );
 
-  const screening = (
-    await request(app).post('/api/v1/hr/screenings').set('Authorization', `Bearer ${adminToken}`).send({ applicantId: applicant.id })
-  ).body.data as ScreeningDto;
+  const screening = mutated<ScreeningDto>(
+    await request(app).post('/api/v1/hr/screenings').set('Authorization', `Bearer ${adminToken}`).send({ applicantId: applicant.id }),
+  );
   await request(app)
     .post(`/api/v1/hr/screenings/${screening.id}/decide`)
     .set('Authorization', `Bearer ${adminToken}`)
@@ -124,12 +131,12 @@ const hiredEmployee = async (): Promise<EmployeeDto> => {
 
   for (const key of ['firstInterview', 'secondInterview']) {
     const stageId = await idByKey('interview-stages', key);
-    const interview = (
+    const interview = mutated<InterviewDto>(
       await request(app)
         .post('/api/v1/hr/interviews')
         .set('Authorization', `Bearer ${adminToken}`)
-        .send({ applicantId: applicant.id, stageId, scheduledAt: FUTURE, interviewerIds: [interviewerId] })
-    ).body.data as InterviewDto;
+        .send({ applicantId: applicant.id, stageId, scheduledAt: FUTURE, interviewerIds: [interviewerId] }),
+    );
     const submitted = await request(app)
       .post(`/api/v1/hr/interviews/${interview.id}/evaluations`)
       .set('Authorization', `Bearer ${interviewerToken}`)
@@ -137,7 +144,7 @@ const hiredEmployee = async (): Promise<EmployeeDto> => {
     await request(app)
       .post(`/api/v1/hr/interviews/${interview.id}/decide`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ outcome: 'passed', version: (submitted.body.data as InterviewDto).version });
+      .send({ outcome: 'passed', version: mutated<InterviewDto>(submitted).version });
   }
 
   // Explicitly move the applicant to the Job Offer stage (offer eligibility is never automatic).
@@ -148,11 +155,11 @@ const hiredEmployee = async (): Promise<EmployeeDto> => {
     const moved = await request(app)
       .post(`/api/v1/hr/applicants/${applicant.id}/move-to-offer`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ version: (current.body.data as ApplicantDto).version });
+      .send({ version: (current.body.data as ApplicantDto).version }); // a read
     expect(moved.status).toBe(200);
   }
 
-  const draft = (
+  const draft = mutated<JobOfferDto>(
     await request(app)
       .post('/api/v1/hr/job-offers')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -171,17 +178,17 @@ const hiredEmployee = async (): Promise<EmployeeDto> => {
           startDate: START_DATE,
           validUntil: FUTURE,
         },
-      })
-  ).body.data as JobOfferDto;
+      }),
+  );
   const sent = await request(app).post(`/api/v1/hr/job-offers/${draft.id}/send`).set('Authorization', `Bearer ${adminToken}`).send({ version: draft.version });
   const accepted = await request(app)
     .post(`/api/v1/hr/job-offers/${draft.id}/accept`)
     .set('Authorization', `Bearer ${adminToken}`)
-    .send({ version: (sent.body.data as JobOfferDto).version });
+    .send({ version: mutated<JobOfferDto>(sent).version });
   const emp = await request(app)
     .post('/api/v1/hr/employees')
     .set('Authorization', `Bearer ${adminToken}`)
-    .send({ jobOfferId: (accepted.body.data as JobOfferDto).id });
+    .send({ jobOfferId: mutated<JobOfferDto>(accepted).id });
   expect(emp.status).toBe(201);
   return emp.body.data as EmployeeDto;
 };
@@ -196,20 +203,24 @@ const uploadDoc = (hdId: string, typeId: string, version: number) =>
 
 /** Open the hiring-documents set, upload every required document, and complete it. */
 const completedHiringDocs = async (employeeId: string): Promise<HiringDocumentsDto> => {
-  const hd = (
-    await request(app).post('/api/v1/hr/hiring-documents').set('Authorization', `Bearer ${adminToken}`).send({ employeeId })
-  ).body.data as HiringDocumentsDto;
+  const hd = mutated<HiringDocumentsDto>(
+    await request(app).post('/api/v1/hr/hiring-documents').set('Authorization', `Bearer ${adminToken}`).send({ employeeId }),
+  );
   let version = hd.version;
   for (const key of REQUIRED_KEYS) {
     const typeId = await idByKey('hiring-document-types', key);
-    version = ((await uploadDoc(hd.id, typeId, version)).body.data as HiringDocumentsDto).version;
+    version = mutated<HiringDocumentsDto>(await uploadDoc(hd.id, typeId, version)).version;
   }
   const completed = await request(app)
     .post(`/api/v1/hr/hiring-documents/${hd.id}/complete`)
     .set('Authorization', `Bearer ${adminToken}`)
     .send({ version });
   expect(completed.status).toBe(200);
-  return completed.body.data as HiringDocumentsDto;
+  // Stage 6 acts on the hired candidate's pipeline, so completion answers with the envelope too.
+  const body = envelope<HiringDocumentsDto>(completed);
+  expect(body.workflow.applicantStatus).toBe('hired');
+  expect(body.workflow.stage).toBeNull();
+  return body.data;
 };
 
 beforeAll(async () => {
@@ -306,6 +317,9 @@ describe('electronic employee file — assembly, links & timeline', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ employeeId: emp.id });
     expect(res.status).toBe(201);
+    // The Electronic Employee File is an employment artifact, not a pipeline stage: it owns no
+    // stage record and never moves through the workflow engine, so it stays outside the workflow
+    // envelope (I6) and answers with its aggregate.
     const file = res.body.data as EmployeeFileDto;
 
     expect(file.status).toBe('active');

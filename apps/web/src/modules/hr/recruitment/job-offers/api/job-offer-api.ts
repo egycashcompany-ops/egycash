@@ -18,7 +18,14 @@ import {
   type BulkActionResultDto,
   type BulkJobOffers,
 } from '@ecms/contracts';
-import { buildQuery, get, getPage, patch, post } from '../../../../../shared/lib/api-client';
+import {
+  buildQuery,
+  get,
+  getPage,
+  patchWorkflow,
+  post,
+  postWorkflow,
+} from '../../../../../shared/lib/api-client';
 
 export type JobOfferListParams = Record<string, string | number | boolean | undefined | null>;
 
@@ -28,22 +35,22 @@ export const listJobOffers = (params: JobOfferListParams): Promise<Paginated<Job
 export const getJobOffer = (id: string): Promise<JobOfferDto> => get<JobOfferDto>(`/hr/job-offers/${id}`);
 
 export const createJobOffer = (body: CreateJobOffer): Promise<JobOfferDto> =>
-  post<JobOfferDto>('/hr/job-offers', body);
+  postWorkflow<JobOfferDto>('/hr/job-offers', body);
 
 export const reviseJobOffer = (id: string, body: ReviseJobOffer): Promise<JobOfferDto> =>
-  patch<JobOfferDto>(`/hr/job-offers/${id}`, body);
+  patchWorkflow<JobOfferDto>(`/hr/job-offers/${id}`, body);
 
 export const sendJobOffer = (id: string, body: SendJobOffer): Promise<JobOfferDto> =>
-  post<JobOfferDto>(`/hr/job-offers/${id}/send`, body);
+  postWorkflow<JobOfferDto>(`/hr/job-offers/${id}/send`, body);
 
 export const acceptJobOffer = (id: string, body: AcceptJobOffer): Promise<JobOfferDto> =>
-  post<JobOfferDto>(`/hr/job-offers/${id}/accept`, body);
+  postWorkflow<JobOfferDto>(`/hr/job-offers/${id}/accept`, body);
 
 export const rejectJobOffer = (id: string, body: RejectJobOffer): Promise<JobOfferDto> =>
-  post<JobOfferDto>(`/hr/job-offers/${id}/reject`, body);
+  postWorkflow<JobOfferDto>(`/hr/job-offers/${id}/reject`, body);
 
 export const withdrawJobOffer = (id: string, body: WithdrawJobOffer): Promise<JobOfferDto> =>
-  post<JobOfferDto>(`/hr/job-offers/${id}/withdraw`, body);
+  postWorkflow<JobOfferDto>(`/hr/job-offers/${id}/withdraw`, body);
 
 // ── Reference data (existing platform endpoints, reused; each gated by its own *.view) ──────────
 export const listBranches = (): Promise<Paginated<BranchDto>> =>

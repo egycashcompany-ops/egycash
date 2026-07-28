@@ -12,8 +12,8 @@ import { Types, type ClientSession, type Model } from 'mongoose';
 import { BusinessRuleError, ConflictError, NotFoundError, StaleDocumentError } from '../../../../shared/errors';
 import { unitOfWork } from '../../../../platform/kernel/unit-of-work';
 import { type BaseDocFields } from '../../../../shared/base/base.model';
+import { noteTimelineEntry } from '../timeline/recruitment-timeline.capture';
 import { newCorrelationId, newEventId } from '../timeline/recruitment-timeline.keys';
-import { noteWorkflowEvent } from './workflow-capture';
 import { dispatchPendingWorkflowEvents } from './workflow-dispatcher';
 import { workflowEventRepository } from './workflow-event.repository';
 import { type WorkflowEventDoc } from './workflow-event.model';
@@ -538,9 +538,11 @@ class RecruitmentWorkflowEngine {
   ): Promise<WorkflowEventDoc> {
     const occurredAt = new Date();
     const eventId = newEventId(occurredAt);
-    // I6 — tell the open capture scope, if any, that this action produced this event. The
-    // envelope echoes exactly these entries back rather than guessing from a timestamp.
-    noteWorkflowEvent(eventId);
+    // I6 — tell the open capture scope, if any, that this action produced this event. The timeline
+    // projection gives the resulting entry this very id, so the envelope echoes exactly the entries
+    // this action wrote rather than guessing from a timestamp — and reporting here, inside the
+    // producing request, is what keeps a shared-outbox drain from claiming another request's work.
+    noteTimelineEntry(eventId);
     return workflowEventRepository.append(
       {
         eventId,

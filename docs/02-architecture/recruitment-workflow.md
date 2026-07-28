@@ -198,6 +198,56 @@ but nothing writes them — a batch deliberately drives the ordinary evaluations
 decisions reach the timeline. Showing a batch's history *as a batch* needs a read that is not
 per-applicant, which is an open design question rather than a missing line of code.
 
+## 8b. One response, no follow-up (I6)
+
+Every recruitment workflow **mutation** answers with the same four-part envelope:
+
+```ts
+{ data,        // the updated aggregate DTO — exactly what the endpoint returned before
+  workflow,    // WorkflowStateDto: where the candidate stands now + what may be done next
+  timeline,    // TimelineSummaryDto: what THIS action wrote, plus the latest N entries
+  counters }   // the refreshed stage counters (RW15), so the badge redraws from this response
+```
+
+Reads (`GET`) are untouched: a list is still a page, a detail is still an aggregate.
+
+`workflow` is **derived on every response, stored nowhere** (I1). It reads the live stage rows
+through the engine's stage bindings — the stage features import the workflow folder, so importing
+them back would close a cycle — and reports the **furthest** stage that still has open work, which
+is the truthful answer to "what happens next?". Capability lives in its `availableActions` and
+nowhere else (I10): an action the caller may not perform is still listed, with `enabled: false`
+and the permission it needs, because a UI that hides what it cannot explain teaches nothing.
+`ACTION_PERMISSIONS` mirrors the routes' `authorize(...)` calls and is pinned against the rulebook
+by a unit test, so the button the UI renders and the gate the request meets cannot drift.
+
+`timeline.produced` is the hard part. "Entries written since I started" would be poisoned by a
+concurrent request on the same candidate, so instead each writer **reports its entry as it writes**,
+into an `AsyncLocalStorage` scope the request opens (`recruitment-timeline.capture.ts` — the same
+mechanism the platform uses for the request id, ADR-012). Two kinds of writer report there, and
+both name the entry by its `eventId`:
+
+- the workflow **engine**, at publish time — the outbox event's id becomes the timeline entry's id
+  when the projection runs, so the report can happen before the entry exists;
+- the timeline **service**, for entries written outside the engine (`applied`, `identityVerified`,
+  a placement change) — those have no outbox event to name them.
+
+A projected entry is deliberately NOT reported twice: the engine already named it inside the
+producing request, and reporting it again at projection time would let a foreign event — one this
+request merely happened to drain from the shared outbox — into somebody else's envelope.
+
+Two kinds of endpoint stay outside the envelope, for the same reason in both cases — there is no
+single candidate whose state to report:
+
+- **Bulk** endpoints answer with `BulkWorkflowResultDto`: the partial-success envelope plus what
+  the batch wrote and the refreshed counters, but no `workflow`. A selection has no one state.
+- **Batch-LEVEL** evaluation actions (create, add/remove members, issue, upload results, close,
+  cancel) span every candidate in the batch. Their per-CANDIDATE siblings — deciding or voiding an
+  item — do carry the full envelope.
+
+Ordinary audited edits are not workflow actions and are unchanged: `PATCH /hr/applicants/:id`,
+attachments, OCR, export, and the Electronic Employee File (an employment artifact that owns no
+stage record and never moves through the engine).
+
 ## 9. Two traps worth remembering
 
 - **A `required: true` String cannot carry `default: ''`.** Mongoose treats `''` as missing, so

@@ -13,7 +13,6 @@ import {
   type ApplicantDto,
   type EmployeeDto,
   type HiringDocumentTypeDto,
-  type BulkActionResultDto,
   type HiringDocumentsDto,
   type InterviewDto,
   type JobOfferDto,
@@ -29,6 +28,7 @@ import { settingsService } from '../../src/platform/settings';
 import { getCache } from '../../src/infrastructure/redis/cache';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { type AuthContext } from '../../src/shared/types';
+import { bulkEnvelope, counter, envelope, mutated } from './helpers/workflow-envelope';
 
 const PASSWORD = 'Str0ng#Pass!';
 const REQUISITION_ID = '64b1f0aaaaaaaaaaaaaaaaaa';
@@ -99,10 +99,15 @@ const idByKey = async (path: string, key: string): Promise<string> => {
   return found.id;
 };
 
-/** Register → screen → both interviews → offer accepted → employee. */
+/**
+ * Register → screen → both interviews → offer accepted → employee.
+ *
+ * Every recruitment step is a workflow mutation and answers with the envelope (I6); this helper
+ * reads its `data` half. The employee endpoint is Stage 5's own aggregate and is unchanged.
+ */
 const hiredEmployee = async (): Promise<EmployeeDto> => {
   const sourceId = await idByKey('applicant-sources', 'internalHr');
-  const applicant = (
+  const applicant = mutated<ApplicantDto>(
     await request(app)
       .post('/api/v1/hr/applicants')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -112,12 +117,12 @@ const hiredEmployee = async (): Promise<EmployeeDto> => {
         intakeChannel: 'internal',
         identity: { fullNameAr: 'أحمد محمد', nationality: 'Egyptian' },
         contact: { primaryPhone: nextPhone() },
-      })
-  ).body.data as ApplicantDto;
+      }),
+  );
 
-  const screening = (
-    await request(app).post('/api/v1/hr/screenings').set('Authorization', `Bearer ${adminToken}`).send({ applicantId: applicant.id })
-  ).body.data as ScreeningDto;
+  const screening = mutated<ScreeningDto>(
+    await request(app).post('/api/v1/hr/screenings').set('Authorization', `Bearer ${adminToken}`).send({ applicantId: applicant.id }),
+  );
   await request(app)
     .post(`/api/v1/hr/screenings/${screening.id}/decide`)
     .set('Authorization', `Bearer ${adminToken}`)
@@ -125,12 +130,12 @@ const hiredEmployee = async (): Promise<EmployeeDto> => {
 
   for (const key of ['firstInterview', 'secondInterview']) {
     const stageId = await idByKey('interview-stages', key);
-    const interview = (
+    const interview = mutated<InterviewDto>(
       await request(app)
         .post('/api/v1/hr/interviews')
         .set('Authorization', `Bearer ${adminToken}`)
-        .send({ applicantId: applicant.id, stageId, scheduledAt: FUTURE, interviewerIds: [interviewerId] })
-    ).body.data as InterviewDto;
+        .send({ applicantId: applicant.id, stageId, scheduledAt: FUTURE, interviewerIds: [interviewerId] }),
+    );
     const submitted = await request(app)
       .post(`/api/v1/hr/interviews/${interview.id}/evaluations`)
       .set('Authorization', `Bearer ${interviewerToken}`)
@@ -138,7 +143,7 @@ const hiredEmployee = async (): Promise<EmployeeDto> => {
     await request(app)
       .post(`/api/v1/hr/interviews/${interview.id}/decide`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ outcome: 'passed', version: (submitted.body.data as InterviewDto).version });
+      .send({ outcome: 'passed', version: mutated<InterviewDto>(submitted).version });
   }
 
   // Explicitly move the applicant to the Job Offer stage (offer eligibility is never automatic).
@@ -149,11 +154,11 @@ const hiredEmployee = async (): Promise<EmployeeDto> => {
     const moved = await request(app)
       .post(`/api/v1/hr/applicants/${applicant.id}/move-to-offer`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ version: (current.body.data as ApplicantDto).version });
+      .send({ version: (current.body.data as ApplicantDto).version }); // a read
     expect(moved.status).toBe(200);
   }
 
-  const draft = (
+  const draft = mutated<JobOfferDto>(
     await request(app)
       .post('/api/v1/hr/job-offers')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -172,17 +177,17 @@ const hiredEmployee = async (): Promise<EmployeeDto> => {
           startDate: START_DATE,
           validUntil: FUTURE,
         },
-      })
-  ).body.data as JobOfferDto;
+      }),
+  );
   const sent = await request(app).post(`/api/v1/hr/job-offers/${draft.id}/send`).set('Authorization', `Bearer ${adminToken}`).send({ version: draft.version });
   const accepted = await request(app)
     .post(`/api/v1/hr/job-offers/${draft.id}/accept`)
     .set('Authorization', `Bearer ${adminToken}`)
-    .send({ version: (sent.body.data as JobOfferDto).version });
+    .send({ version: mutated<JobOfferDto>(sent).version });
   const emp = await request(app)
     .post('/api/v1/hr/employees')
     .set('Authorization', `Bearer ${adminToken}`)
-    .send({ jobOfferId: (accepted.body.data as JobOfferDto).id });
+    .send({ jobOfferId: mutated<JobOfferDto>(accepted).id });
   expect(emp.status).toBe(201);
   return emp.body.data as EmployeeDto;
 };
@@ -190,7 +195,13 @@ const hiredEmployee = async (): Promise<EmployeeDto> => {
 const createSet = async (employeeId: string): Promise<HiringDocumentsDto> => {
   const res = await request(app).post('/api/v1/hr/hiring-documents').set('Authorization', `Bearer ${adminToken}`).send({ employeeId });
   expect(res.status).toBe(201);
-  return res.body.data as HiringDocumentsDto;
+  // I6 — the candidate is hired, so the workflow half reports a lifecycle with no open stage; the
+  // set is still their pipeline, which is why this act carries the envelope at all.
+  const body = envelope<HiringDocumentsDto>(res);
+  expect(body.workflow.applicantStatus).toBe('hired');
+  expect(body.workflow.stage).toBeNull();
+  expect(counter(body.counters, 'jobOffers')).toBeDefined();
+  return body.data;
 };
 
 const uploadDoc = (hdId: string, typeId: string, version: number, filename = 'doc.pdf', contentType = 'application/pdf') =>
@@ -208,7 +219,7 @@ const uploadAllRequired = async (hd: HiringDocumentsDto): Promise<number> => {
     const typeId = await idByKey('hiring-document-types', key);
     const res = await uploadDoc(hd.id, typeId, version);
     expect(res.status).toBe(200);
-    version = (res.body.data as HiringDocumentsDto).version;
+    version = mutated<HiringDocumentsDto>(res).version;
   }
   return version;
 };
@@ -307,10 +318,17 @@ describe('hiring documents — create, upload, completion gate', () => {
 
     const ok = await uploadDoc(hd.id, typeId, hd.version, 'id.pdf');
     expect(ok.status).toBe(200);
-    const dto = ok.body.data as HiringDocumentsDto;
+    const uploaded = envelope<HiringDocumentsDto>(ok);
+    const dto = uploaded.data;
     expect(dto.documents).toHaveLength(1);
     expect(dto.documents[0]).toMatchObject({ typeKey: 'employmentContract', fileVersion: 1, fileName: 'id.pdf' });
     expect(dto.missingRequired).not.toContain('employmentContract');
+    // I6 — a multipart action answers with the same envelope as a JSON one. Filing a document is
+    // not a status move, so it produced no history, and the envelope says so.
+    expect(uploaded.workflow.applicantStatus).toBe('hired');
+    expect(uploaded.timeline.produced).toEqual([]);
+    expect(uploaded.timeline.total).toBeGreaterThan(0);
+    expect(Array.isArray(uploaded.counters)).toBe(true);
 
     // A duplicate upload for the same type must go through replace.
     expect((await uploadDoc(hd.id, typeId, dto.version)).status).toBe(409);
@@ -343,8 +361,11 @@ describe('hiring documents — create, upload, completion gate', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ version });
     expect(completed.status).toBe(200);
-    expect((completed.body.data as HiringDocumentsDto).status).toBe('completed');
-    expect((completed.body.data as HiringDocumentsDto).missingRequired).toEqual([]);
+    const done = envelope<HiringDocumentsDto>(completed);
+    expect(done.data.status).toBe('completed');
+    expect(done.data.missingRequired).toEqual([]);
+    expect(done.workflow.applicantStatus).toBe('hired');
+    expect(done.workflow.availableActions).toEqual([]);
 
     // Completion notifies the hiring manager and is audited.
     const inbox = await request(app).get('/api/v1/platform/notifications').set('Authorization', `Bearer ${interviewerToken}`);
@@ -363,7 +384,7 @@ describe('hiring documents — versioning & post-completion immutability', () =>
     const hd = await createSet(emp.id);
     const typeId = await idByKey('hiring-document-types', 'employmentContract');
     const up = await uploadDoc(hd.id, typeId, hd.version, 'id-v1.pdf');
-    const v1 = up.body.data as HiringDocumentsDto;
+    const v1 = mutated<HiringDocumentsDto>(up);
 
     const replaced = await request(app)
       .post(`/api/v1/hr/hiring-documents/${hd.id}/documents/${typeId}/replace`)
@@ -371,7 +392,7 @@ describe('hiring documents — versioning & post-completion immutability', () =>
       .field('version', String(v1.version))
       .attach('file', pdf(), { filename: 'id-v2.pdf', contentType: 'application/pdf' });
     expect(replaced.status).toBe(200);
-    const doc = (replaced.body.data as HiringDocumentsDto).documents.find((d) => d.typeKey === 'employmentContract');
+    const doc = mutated<HiringDocumentsDto>(replaced).documents.find((d) => d.typeKey === 'employmentContract');
     expect(doc?.fileVersion).toBe(2);
 
     // Both versions are retained (original preserved).
@@ -391,7 +412,7 @@ describe('hiring documents — versioning & post-completion immutability', () =>
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ version });
     expect(completed.status).toBe(200);
-    const done = completed.body.data as HiringDocumentsDto;
+    const done = mutated<HiringDocumentsDto>(completed);
 
     // Adding a NEW document type after completion is blocked (medicalCheck was admin-created
     // earlier in this suite and never uploaded to this set).
@@ -407,7 +428,9 @@ describe('hiring documents — versioning & post-completion immutability', () =>
       .field('version', String(done.version))
       .attach('file', pdf(), { filename: 'contract-v2.pdf', contentType: 'application/pdf' });
     expect(replaced.status).toBe(200);
-    expect((replaced.body.data as HiringDocumentsDto).documents.find((d) => d.typeKey === 'employmentAcceptance')?.fileVersion).toBe(2);
+    expect(
+      mutated<HiringDocumentsDto>(replaced).documents.find((d) => d.typeKey === 'employmentAcceptance')?.fileVersion,
+    ).toBe(2);
   });
 });
 
@@ -428,14 +451,17 @@ describe('hiring documents — bulk complete reports partial success honestly', 
       .send({ action: 'complete', ids: [ready.id, blocked.id] });
     expect(res.status).toBe(200);
 
-    const envelope = res.body.data as BulkActionResultDto;
-    expect(envelope.requested).toBe(2);
-    expect(envelope.succeeded).toBe(1);
-    expect(envelope.failed).toBe(1);
-    expect(envelope.results.find((r) => r.id === ready.id)?.ok).toBe(true);
-    const failure = envelope.results.find((r) => r.id === blocked.id);
+    const result = bulkEnvelope(res);
+    expect(result.requested).toBe(2);
+    expect(result.succeeded).toBe(1);
+    expect(result.failed).toBe(1);
+    expect(result.results.find((r) => r.id === ready.id)?.ok).toBe(true);
+    const failure = result.results.find((r) => r.id === blocked.id);
     expect(failure?.ok).toBe(false);
     expect(failure?.error).toContain('missing required documents');
+    // I6 — the bulk act reports the refreshed counters so the queue redraws from this one response.
+    expect(Array.isArray(result.counters)).toBe(true);
+    expect(result.timeline.total).toBe(result.timeline.produced.length);
 
     // The successful item really did complete; the failed one is untouched.
     const after = await request(app)

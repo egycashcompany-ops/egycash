@@ -11,7 +11,6 @@ import {
   SettingKeys,
   type ApplicantDto,
   type BatchCandidateDto,
-  type BulkActionResultDto,
   type EvaluationBatchDto,
   type EvaluationBatchSummaryDto,
   type EvaluationDto,
@@ -30,6 +29,7 @@ import { settingsService } from '../../src/platform/settings';
 import { getCache } from '../../src/infrastructure/redis/cache';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { type AuthContext } from '../../src/shared/types';
+import { bulkEnvelope, counter, envelope, mutated } from './helpers/workflow-envelope';
 
 const PASSWORD = 'Str0ng#Pass!';
 const REQUISITION_ID = '64b1f0aaaaaaaaaaaaaaaaaa';
@@ -108,7 +108,7 @@ const stageId = async (key: string): Promise<string> => {
 };
 
 const passStage = async (applicantId: string, key: string): Promise<void> => {
-  const interview = (
+  const interview = mutated<InterviewDto>(
     await request(app)
       .post('/api/v1/hr/interviews')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -117,8 +117,8 @@ const passStage = async (applicantId: string, key: string): Promise<void> => {
         stageId: await stageId(key),
         scheduledAt: '2027-03-01T00:00:00.000Z',
         interviewerIds: [interviewerId],
-      })
-  ).body.data as InterviewDto;
+      }),
+  );
   const submitted = await request(app)
     .post(`/api/v1/hr/interviews/${interview.id}/evaluations`)
     .set('Authorization', `Bearer ${interviewerToken}`)
@@ -126,7 +126,7 @@ const passStage = async (applicantId: string, key: string): Promise<void> => {
   await request(app)
     .post(`/api/v1/hr/interviews/${interview.id}/decide`)
     .set('Authorization', `Bearer ${adminToken}`)
-    .send({ outcome: 'passed', version: (submitted.body.data as InterviewDto).version });
+    .send({ outcome: 'passed', version: mutated<InterviewDto>(submitted).version });
 };
 
 /** An applicant who has cleared screening + both interview rounds — sitting in the phase queues. */
@@ -142,13 +142,13 @@ const readyApplicant = async (): Promise<ApplicantDto> => {
       contact: { primaryPhone: nextPhone() },
     });
   expect(registered.status).toBe(201);
-  const applicant = registered.body.data as ApplicantDto;
-  const screening = (
+  const applicant = mutated<ApplicantDto>(registered);
+  const screening = mutated<ScreeningDto>(
     await request(app)
       .post('/api/v1/hr/screenings')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ applicantId: applicant.id })
-  ).body.data as ScreeningDto;
+      .send({ applicantId: applicant.id }),
+  );
   await request(app)
     .post(`/api/v1/hr/screenings/${screening.id}/decide`)
     .set('Authorization', `Bearer ${adminToken}`)
@@ -158,6 +158,9 @@ const readyApplicant = async (): Promise<ApplicantDto> => {
   return applicant;
 };
 
+// I6 — batch-LEVEL acts (create, add/remove members, issue, upload results, close, cancel) span
+// many candidates, so there is no single workflow state to report and they keep the plain response.
+// The per-CANDIDATE acts below (decide/void an item) do carry the envelope.
 const createBatch = async (applicantIds: string[], title = 'دفعة'): Promise<EvaluationBatchDto> => {
   const phase = await phaseByKey('securityCheck');
   const res = await request(app)
@@ -427,9 +430,16 @@ describe('returning results and deciding items (RW8c)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ result: 'approved', version: issued.version });
     expect(decided.status).toBe(200);
-    const after = decided.body.data as EvaluationBatchDto;
+    // I6 — deciding an ITEM names one candidate, so this act carries the full envelope even though
+    // its `data` is the batch: the state reported is the candidate the decision was about.
+    const body = envelope<EvaluationBatchDto>(decided);
+    const after = body.data;
     expect(after.items[0]!.result).toBe('approved');
     expect(after.counts).toMatchObject({ pending: 0, approved: 1 });
+    expect(body.workflow.applicantId).toBe(applicant.id);
+    expect(body.workflow.applicantStatus).toBe('new');
+    expect(body.timeline.produced.map((e) => e.type)).toContain('evaluationDecided');
+    expect(counter(body.counters, `evaluation:${(await phaseByKey('securityCheck')).id}`)).toBeDefined();
 
     const evaluation = await request(app)
       .get(`/api/v1/hr/evaluations/${evaluationId}`)
@@ -454,6 +464,14 @@ describe('returning results and deciding items (RW8c)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ result: 'rejected', reason: 'تحريات سلبية', version: issued.version });
     expect(rejected.status).toBe(200);
+    // I6 — the departure is in the SAME response: no follow-up request can disagree with it.
+    const body = envelope<EvaluationBatchDto>(rejected);
+    expect(body.workflow.applicantId).toBe(applicant.id);
+    expect(body.workflow.applicantStatus).toBe('rejected');
+    expect(body.workflow.stage).toBeNull();
+    expect(body.timeline.produced.map((e) => e.type)).toEqual(
+      expect.arrayContaining(['evaluationDecided', 'rejected']),
+    );
 
     const profile = await request(app)
       .get(`/api/v1/hr/applicants/${applicant.id}`)
@@ -470,7 +488,10 @@ describe('returning results and deciding items (RW8c)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ reason: 'انسحب المرشح', version: issued.version });
     expect(voided.status).toBe(200);
-    const after = voided.body.data as EvaluationBatchDto;
+    const voidedBody = envelope<EvaluationBatchDto>(voided);
+    const after = voidedBody.data;
+    // Voiding names one candidate too, so it answers with that candidate's state (I6).
+    expect(voidedBody.workflow.applicantId).toBe(applicant.id);
     // Nothing is removed, ever — the item stays with its reason.
     expect(after.items).toHaveLength(1);
     expect(after.items[0]!.result).toBe('voided');
@@ -493,10 +514,14 @@ describe('returning results and deciding items (RW8c)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ action: 'approve', ids: [a.id, b.id, '64b1f0aaaaaaaaaaaaaaaaab'] });
     expect(res.status).toBe(200);
-    const envelope = res.body.data as BulkActionResultDto;
-    expect(envelope.requested).toBe(3);
-    expect(envelope.succeeded).toBe(2);
-    expect(envelope.failed).toBe(1);
+    const result = bulkEnvelope(res);
+    expect(result.requested).toBe(3);
+    expect(result.succeeded).toBe(2);
+    expect(result.failed).toBe(1);
+    // I6/RW17 — the batch spans candidates, so it reports the entries it wrote and the counters
+    // rather than a single workflow state.
+    expect(result.timeline.produced.map((e) => e.type)).toEqual(['evaluationDecided', 'evaluationDecided']);
+    expect(counter(result.counters, `evaluation:${(await phaseByKey('securityCheck')).id}`)).toBeDefined();
 
     expect((await getBatch(issued.id)).counts).toMatchObject({ approved: 2, pending: 0 });
   });
@@ -521,8 +546,9 @@ describe('closing and cancelling', () => {
     const closed = await request(app)
       .post(`/api/v1/hr/evaluation-batches/${issued.id}/close`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ version: (decided.body.data as EvaluationBatchDto).version });
+      .send({ version: mutated<EvaluationBatchDto>(decided).version });
     expect(closed.status).toBe(200);
+    // Closing is a batch-LEVEL act — no single candidate, so no envelope (see the note above).
     expect((closed.body.data as EvaluationBatchDto).status).toBe('closed');
   });
 
@@ -564,7 +590,7 @@ describe('closing and cancelling', () => {
       await request(app)
         .post(`/api/v1/hr/evaluation-batches/${issued.id}/close`)
         .set('Authorization', `Bearer ${adminToken}`)
-        .send({ version: (decided.body.data as EvaluationBatchDto).version })
+        .send({ version: mutated<EvaluationBatchDto>(decided).version })
     ).body.data as EvaluationBatchDto;
 
     const res = await request(app)

@@ -6,6 +6,7 @@ import { ok, validated } from '../../../../platform/web';
 import { authContext } from '../../../../platform/auth';
 import { scopeSelector } from '../../../../shared/types';
 import { toApplicantDto } from '../applicants/applicant.mapper';
+import { withWorkflowEnvelope } from '../workflow';
 import { returnToStageService } from './return-to-stage.service';
 import { type ReturnToStagePreviewQuery } from './return-to-stage.validation';
 
@@ -21,16 +22,21 @@ export const previewReturnToStage = async (req: Request, res: Response): Promise
 export const returnApplicantToStage = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { body, params } = validated<ReturnToStage, never, IdParam>(req);
-  const plan = await returnToStageService.execute(
-    ctx,
-    params.id,
-    body,
-    scopeSelector(ctx, 'applicant.returnToStage'),
+  const scope = scopeSelector(ctx, 'applicant.returnToStage');
+  // RW13 is the action that changes the most at once — forward records superseded, a new attempt
+  // opened — so it is exactly the one a client must not have to re-query to understand (I6).
+  ok(
+    res,
+    await withWorkflowEnvelope(
+      ctx,
+      () => returnToStageService.execute(ctx, params.id, body, scope),
+      (plan) => ({
+        applicant: toApplicantDto(plan.applicant),
+        target: plan.target.dto,
+        newAttempt: plan.newAttempt,
+        superseded: plan.supersedes.map((s) => ({ entityType: s.kind, entityId: s.id, status: s.status })),
+      }),
+      (plan) => String(plan.applicant._id),
+    ),
   );
-  ok(res, {
-    applicant: toApplicantDto(plan.applicant),
-    target: plan.target.dto,
-    newAttempt: plan.newAttempt,
-    superseded: plan.supersedes.map((s) => ({ entityType: s.kind, entityId: s.id, status: s.status })),
-  });
 };

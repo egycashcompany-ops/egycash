@@ -1,5 +1,9 @@
 // Thin HTTP mapping only (ADR-003). Uses the platform web kit (module → platform →
 // infrastructure) rather than importing infrastructure directly.
+//
+// I6 — every action that moves the candidate through the pipeline answers with the full workflow
+// envelope. `PATCH /:id` deliberately does NOT: an ordinary audited data edit is not a workflow
+// move (I4), and the attachment/OCR/export routes are document plumbing rather than pipeline.
 import { type Request, type Response } from 'express';
 import {
   type ReassignPlacement,
@@ -22,12 +26,16 @@ import { authContext } from '../../../../platform/auth';
 import { scopeSelector } from '../../../../shared/types';
 import { ValidationError } from '../../../../shared/errors';
 import { type UploadedBinary } from '../../../../platform/files';
+import { withBulkWorkflowEnvelope, withWorkflowEnvelope } from '../workflow';
 import { applicantService } from './applicant.service';
 import { applicantSourceService } from './applicant-source.service';
 import { toApplicantDto, toApplicantSourceDto } from './applicant.mapper';
 import { extractNationalIdFields } from './national-id-ocr';
+import { type ApplicantDoc } from './applicant.model';
 
 type IdParam = { id: string };
+
+const selfId = (doc: ApplicantDoc): string => String(doc._id);
 
 const binaryOf = (req: Request): UploadedBinary => {
   const file = req.file;
@@ -44,8 +52,13 @@ const binaryOf = (req: Request): UploadedBinary => {
 export const registerApplicant = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { body } = validated<RegisterApplicant>(req);
-  const doc = await applicantService.register(ctx, body);
-  created(res, toApplicantDto(doc), `/api/v1/hr/applicants/${String(doc._id)}`);
+  const envelope = await withWorkflowEnvelope(
+    ctx,
+    () => applicantService.register(ctx, body),
+    toApplicantDto,
+    selfId,
+  );
+  created(res, envelope, `/api/v1/hr/applicants/${envelope.data.id}`);
 };
 
 export const listApplicants = async (req: Request, res: Response): Promise<void> => {
@@ -71,48 +84,84 @@ export const updateApplicant = async (req: Request, res: Response): Promise<void
 export const confirmApplicantIdentity = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { body, params } = validated<ConfirmApplicantIdentity, never, IdParam>(req);
-  const doc = await applicantService.confirmIdentity(
-    ctx,
-    params.id,
-    body,
-    scopeSelector(ctx, 'applicant.verifyIdentity'),
+  const scope = scopeSelector(ctx, 'applicant.verifyIdentity');
+  ok(
+    res,
+    await withWorkflowEnvelope(
+      ctx,
+      () => applicantService.confirmIdentity(ctx, params.id, body, scope),
+      toApplicantDto,
+      selfId,
+    ),
   );
-  ok(res, toApplicantDto(doc));
 };
 
 export const withdrawApplicant = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { body, params } = validated<WithdrawApplicant, never, IdParam>(req);
-  const doc = await applicantService.withdraw(ctx, params.id, body, scopeSelector(ctx, 'applicant.edit'));
-  ok(res, toApplicantDto(doc));
+  const scope = scopeSelector(ctx, 'applicant.edit');
+  ok(
+    res,
+    await withWorkflowEnvelope(
+      ctx,
+      () => applicantService.withdraw(ctx, params.id, body, scope),
+      toApplicantDto,
+      selfId,
+    ),
+  );
 };
 
 export const restoreApplicant = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { body, params } = validated<RestoreApplicant, never, IdParam>(req);
-  const doc = await applicantService.restore(ctx, params.id, body, scopeSelector(ctx, 'applicant.edit'));
-  ok(res, toApplicantDto(doc));
+  const scope = scopeSelector(ctx, 'applicant.edit');
+  ok(
+    res,
+    await withWorkflowEnvelope(
+      ctx,
+      () => applicantService.restore(ctx, params.id, body, scope),
+      toApplicantDto,
+      selfId,
+    ),
+  );
 };
 
 export const moveApplicantToOffer = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { body, params } = validated<MoveApplicantToOffer, never, IdParam>(req);
-  const doc = await applicantService.moveToOffer(ctx, params.id, body, scopeSelector(ctx, 'applicant.moveToOffer'));
-  ok(res, toApplicantDto(doc));
+  const scope = scopeSelector(ctx, 'applicant.moveToOffer');
+  ok(
+    res,
+    await withWorkflowEnvelope(
+      ctx,
+      () => applicantService.moveToOffer(ctx, params.id, body, scope),
+      toApplicantDto,
+      selfId,
+    ),
+  );
 };
 
 /** RW2 — reassign Position and/or Branch on a live candidate (audited, reason mandatory). */
 export const reassignApplicant = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { body, params } = validated<ReassignPlacement, never, IdParam>(req);
-  const doc = await applicantService.reassign(ctx, params.id, body, scopeSelector(ctx, 'applicant.reassign'));
-  ok(res, toApplicantDto(doc));
+  const scope = scopeSelector(ctx, 'applicant.reassign');
+  ok(
+    res,
+    await withWorkflowEnvelope(
+      ctx,
+      () => applicantService.reassign(ctx, params.id, body, scope),
+      toApplicantDto,
+      selfId,
+    ),
+  );
 };
 
 export const bulkApplicants = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { body } = validated<BulkApplicants>(req);
-  ok(res, await applicantService.bulk(ctx, body, scopeSelector(ctx, 'applicant.edit')));
+  const scope = scopeSelector(ctx, 'applicant.edit');
+  ok(res, await withBulkWorkflowEnvelope(ctx, () => applicantService.bulk(ctx, body, scope)));
 };
 
 export const exportApplicants = async (req: Request, res: Response): Promise<void> => {

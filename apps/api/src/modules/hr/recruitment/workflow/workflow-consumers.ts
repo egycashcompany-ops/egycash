@@ -28,6 +28,9 @@ const correlationTypeOf = (event: WorkflowEventDoc): 'applicant' | 'screening' |
 /** The timeline projection (I5/I15) — idempotent on the event's own id. */
 export const projectToTimeline = async (event: WorkflowEventDoc): Promise<void> => {
   await recruitmentTimelineService.record({
+    // The entry IS the event, as far as identity goes (I6): it takes the event's id, so the action
+    // that published the event can echo the entry back without knowing when the projection ran.
+    eventId: event.eventId,
     applicantId: String(event.applicantId),
     applicantCode: event.applicantCode,
     type: timelineType(event),

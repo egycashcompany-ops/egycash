@@ -24,7 +24,6 @@ export {
 export { runBulk, type BulkRunOptions } from './bulk-runner';
 // I6 — the one envelope every workflow endpoint answers with, and the pieces that build it.
 export { withBulkWorkflowEnvelope, withWorkflowEnvelope } from './workflow-envelope';
-export { captureWorkflowEvents } from './workflow-capture';
 export {
   buildWorkflowState,
   registerWorkflowApplicantReader,

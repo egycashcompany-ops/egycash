@@ -11,6 +11,27 @@ its entry here in the same PR.
 
 ### Changed
 
+- **Recruitment: every workflow mutation answers with the full state (I6, server half).** All
+  seven recruitment controllers — screening, applicants, interviews, evaluations, job offers,
+  hiring documents, return-to-stage — plus the per-candidate evaluation-batch actions now return
+  `{ data, workflow, timeline, counters }` instead of the bare aggregate. `data` is byte-for-byte
+  what they returned before; the other three are derived on the server, on every response, and
+  stored nowhere (I1). `workflow` reports the furthest stage that still has open work and what the
+  CALLER may do next — an action they lack the permission for is listed with `enabled: false` and
+  the permission it needs, because capability lives in `availableActions` and nowhere else (I10).
+  `counters` is the same aggregated stage-counts payload the navigation already reads (RW15),
+  refreshed after the act. Reads (`GET`) are unchanged, and the frontend is unchanged too: three
+  unwrapping helpers in `api-client.ts` take the `data` half, so every existing hook, page and
+  component behaves exactly as before. Consuming the other three halves — and removing the
+  invalidate/refetch pattern they exist to replace — is the next slice.
+
+  Two kinds of endpoint stay outside the envelope, for the same reason: there is no single
+  candidate whose state to report. Bulk endpoints answer with `BulkWorkflowResultDto` — the
+  partial-success envelope plus what the batch wrote and the refreshed counters, but no
+  `workflow`. Batch-LEVEL evaluation actions (create, add/remove members, issue, upload results,
+  close, cancel) span every candidate in the batch; their per-candidate siblings (decide/void an
+  item) do carry the full envelope.
+
 - **Recruitment: one history, and only one (I5).** Three parallel histories are gone. The
   Electronic Employee File no longer re-derives the recruitment milestones — its own timeline
   starts at the hire, and the candidate's recruitment history arrives as `recruitmentTimeline`,
@@ -32,6 +53,13 @@ its entry here in the same PR.
   of the shared UI barrel.
 
 ### Fixed
+
+- **Recruitment: `timeline.produced` could never resolve.** The envelope's "what did this action
+  write?" half joined the workflow event ids the engine reported against the timeline's `eventId`
+  column — but the projection minted a *fresh* id for the entry, so the two never matched and the
+  slice would have shipped permanently empty. A projected entry now takes its event's id, which is
+  also what makes the join idempotent across a redelivery, and entries written outside the engine
+  report themselves at write time. Found before the contract had a single consumer.
 
 - **Recruitment: the candidate timeline was missing its first two entries.** `applied` and
   `identityVerified` were in the frozen vocabulary but nothing wrote them — registration and

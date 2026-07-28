@@ -12,7 +12,6 @@ import {
   platformPermissions,
   SettingKeys,
   type ApplicantDto,
-  type BulkActionResultDto,
   type InterviewDto,
   type JobOfferDto,
   type ScreeningDto,
@@ -28,6 +27,7 @@ import { settingsService } from '../../src/platform/settings';
 import { getCache } from '../../src/infrastructure/redis/cache';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { type AuthContext } from '../../src/shared/types';
+import { actionEnabled, bulkEnvelope, counter, envelope, mutated } from './helpers/workflow-envelope';
 
 const PASSWORD = 'Str0ng#Pass!';
 const REQUISITION_ID = '64b1f0aaaaaaaaaaaaaaaaaa';
@@ -101,13 +101,13 @@ const registerApplicant = async (): Promise<ApplicantDto> => {
       contact: { primaryPhone: nextPhone() },
     });
   expect(res.status).toBe(201);
-  return res.body.data as ApplicantDto;
+  return mutated<ApplicantDto>(res);
 };
 
 const acceptScreening = async (applicantId: string): Promise<void> => {
-  const screening = (
-    await request(app).post('/api/v1/hr/screenings').set('Authorization', `Bearer ${adminToken}`).send({ applicantId })
-  ).body.data as ScreeningDto;
+  const screening = mutated<ScreeningDto>(
+    await request(app).post('/api/v1/hr/screenings').set('Authorization', `Bearer ${adminToken}`).send({ applicantId }),
+  );
   const decided = await request(app)
     .post(`/api/v1/hr/screenings/${screening.id}/decide`)
     .set('Authorization', `Bearer ${adminToken}`)
@@ -117,12 +117,12 @@ const acceptScreening = async (applicantId: string): Promise<void> => {
 
 const passStage = async (applicantId: string, stageKey: string): Promise<void> => {
   const stageId = await idByKey('interview-stages', stageKey);
-  const interview = (
+  const interview = mutated<InterviewDto>(
     await request(app)
       .post('/api/v1/hr/interviews')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ applicantId, stageId, scheduledAt: FUTURE_VALID, interviewerIds: [interviewerId] })
-  ).body.data as InterviewDto;
+      .send({ applicantId, stageId, scheduledAt: FUTURE_VALID, interviewerIds: [interviewerId] }),
+  );
   const submitted = await request(app)
     .post(`/api/v1/hr/interviews/${interview.id}/evaluations`)
     .set('Authorization', `Bearer ${interviewerToken}`)
@@ -131,7 +131,7 @@ const passStage = async (applicantId: string, stageKey: string): Promise<void> =
   const decided = await request(app)
     .post(`/api/v1/hr/interviews/${interview.id}/decide`)
     .set('Authorization', `Bearer ${adminToken}`)
-    .send({ outcome: 'passed', version: (submitted.body.data as InterviewDto).version });
+    .send({ outcome: 'passed', version: mutated<InterviewDto>(submitted).version });
   expect(decided.status).toBe(200);
 };
 
@@ -143,9 +143,15 @@ const moveToOffer = async (applicant: ApplicantDto): Promise<void> => {
   const moved = await request(app)
     .post(`/api/v1/hr/applicants/${applicant.id}/move-to-offer`)
     .set('Authorization', `Bearer ${adminToken}`)
-    .send({ version: (current.body.data as ApplicantDto).version });
+    .send({ version: (current.body.data as ApplicantDto).version }); // a read
   expect(moved.status).toBe(200);
-  expect((moved.body.data as ApplicantDto).movedToOfferAt).not.toBeNull();
+  const body = envelope<ApplicantDto>(moved);
+  expect(body.data.movedToOfferAt).not.toBeNull();
+  // I6/I11 — the move materialized the waiting offer row, and the envelope already stands there.
+  expect(body.workflow.stage?.kind).toBe('jobOffer');
+  expect(body.workflow.status).toBe('waiting');
+  expect(body.timeline.produced.map((e) => e.type)).toContain('offerDrafted');
+  expect(counter(body.counters, 'jobOffers')).toBeDefined();
 };
 
 /** An applicant HR has explicitly moved to the Job Offer stage — offer-eligible. */
@@ -180,7 +186,7 @@ const createOffer = (applicantId: string, termsOver: Record<string, unknown> = {
 const draftFor = async (applicant: ApplicantDto, termsOver: Record<string, unknown> = {}): Promise<JobOfferDto> => {
   const res = await createOffer(applicant.id, termsOver);
   expect(res.status).toBe(201);
-  return res.body.data as JobOfferDto;
+  return mutated<JobOfferDto>(res);
 };
 
 const sentFor = async (applicant: ApplicantDto, termsOver: Record<string, unknown> = {}): Promise<JobOfferDto> => {
@@ -190,7 +196,7 @@ const sentFor = async (applicant: ApplicantDto, termsOver: Record<string, unknow
     .set('Authorization', `Bearer ${adminToken}`)
     .send({ version: draft.version });
   expect(sent.status).toBe(200);
-  return sent.body.data as JobOfferDto;
+  return mutated<JobOfferDto>(sent);
 };
 
 beforeAll(async () => {
@@ -329,11 +335,19 @@ describe('job offers — draft, revise, one-active invariant', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ terms: offerTerms({ salary: { amount: 18000, currency: 'EGP' } }), version: draft.version });
     expect(revised.status).toBe(200);
-    const dto = revised.body.data as JobOfferDto;
+    const body = envelope<JobOfferDto>(revised);
+    const dto = body.data;
     expect(dto.revisionNumber).toBe(2);
     expect(dto.terms?.salary?.amount).toBe(18000);
     expect(dto.revisions).toHaveLength(1);
     expect(dto.revisions[0]?.terms.salary?.amount).toBe(15000);
+
+    // I6 — a revision edits the offer without moving it, so the state is unchanged, nothing was
+    // written to history, and `send` is still what comes next.
+    expect(body.workflow.stage?.kind).toBe('jobOffer');
+    expect(body.workflow.status).toBe('draft');
+    expect(actionEnabled(body.workflow, 'send')).toBe(true);
+    expect(body.timeline.produced).toEqual([]);
   });
 });
 
@@ -369,8 +383,16 @@ describe('job offers — accept / reject / withdraw', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ note: 'delighted to join', version: sent.version });
     expect(accepted.status).toBe(200);
-    expect((accepted.body.data as JobOfferDto).status).toBe('accepted');
-    expect((accepted.body.data as JobOfferDto).status).not.toBe('draft');
+    const body = envelope<JobOfferDto>(accepted);
+    expect(body.data.status).toBe('accepted');
+
+    // I6/I14 — acceptance is terminal for the OFFER and moves the lifecycle not at all: the hire is
+    // a separate act. The offer therefore stops being where the candidate stands, and the envelope
+    // reports that from the live rows rather than from anything mirrored onto the applicant.
+    expect(body.workflow.applicantStatus).toBe('new');
+    expect(body.workflow.stage?.kind).not.toBe('jobOffer');
+    expect(body.timeline.produced.map((e) => e.type)).toContain('offerAccepted');
+    expect(counter(body.counters, 'jobOffers')).toBeDefined();
 
     // The gate Stage 5 will consult: the applicant now has an accepted offer.
     const gate = await jobOfferService.acceptedOfferFor(applicant.id);
@@ -391,8 +413,14 @@ describe('job offers — accept / reject / withdraw', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ reason: 'accepted another role', version: sent.version });
     expect(rejected.status).toBe(200);
-    expect((rejected.body.data as JobOfferDto).status).toBe('rejected');
-    expect((rejected.body.data as JobOfferDto).rejectionReason).toBe('accepted another role');
+    const body = envelope<JobOfferDto>(rejected);
+    expect(body.data.status).toBe('rejected');
+    expect(body.data.rejectionReason).toBe('accepted another role');
+    // I14 — declining a PACKAGE says nothing about the person, so the lifecycle does not move:
+    // HR may revise and re-offer. The envelope reports the offer's own status and nothing more.
+    expect(body.workflow.applicantStatus).toBe('new');
+    expect(body.workflow.stage?.kind).not.toBe('jobOffer');
+    expect(body.timeline.produced.map((e) => e.type)).toEqual(['offerRejected']);
   });
 
   it('withdraws an offer and frees the applicant for a fresh offer', async () => {
@@ -403,7 +431,10 @@ describe('job offers — accept / reject / withdraw', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ reason: 'budget frozen', version: sent.version });
     expect(withdrawn.status).toBe(200);
-    expect((withdrawn.body.data as JobOfferDto).status).toBe('withdrawn');
+    const body = envelope<JobOfferDto>(withdrawn);
+    expect(body.data.status).toBe('withdrawn');
+    expect(body.timeline.produced.map((e) => e.type)).toEqual(['offerWithdrawn']);
+    expect(counter(body.counters, 'jobOffers')).toBeDefined();
     // No active offer remains, so a new one may be drafted.
     const again = await createOffer(applicant.id);
     expect(again.status).toBe(201);
@@ -439,7 +470,7 @@ describe('job offers — offer number & accepted snapshot', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ terms: offerTerms({ salary: { amount: 20000, currency: 'EGP' } }), version: draft.version });
     expect(revised.status).toBe(200);
-    const rev2 = revised.body.data as JobOfferDto;
+    const rev2 = mutated<JobOfferDto>(revised);
     expect(rev2.revisionNumber).toBe(2);
 
     const sent = await request(app)
@@ -450,11 +481,11 @@ describe('job offers — offer number & accepted snapshot', () => {
     const accepted = await request(app)
       .post(`/api/v1/hr/job-offers/${rev2.id}/accept`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ version: (sent.body.data as JobOfferDto).version });
+      .send({ version: mutated<JobOfferDto>(sent).version });
     expect(accepted.status).toBe(200);
 
     // The snapshot captures exactly the accepted revision (2) and its terms.
-    const dto = accepted.body.data as JobOfferDto;
+    const dto = mutated<JobOfferDto>(accepted);
     expect(dto.acceptedSnapshot?.revisionNumber).toBe(2);
     expect(dto.acceptedSnapshot?.terms.salary?.amount).toBe(20000);
 
@@ -499,10 +530,13 @@ describe('job offers — bulk send/withdraw (RW17/I4)', () => {
 
     const res = await bulk({ action: 'send', ids: [a.id, b.id] });
     expect(res.status).toBe(200);
-    const envelope = res.body.data as BulkActionResultDto;
-    expect(envelope.requested).toBe(2);
-    expect(envelope.succeeded).toBe(2);
-    expect(envelope.failed).toBe(0);
+    const result = bulkEnvelope(res);
+    expect(result.requested).toBe(2);
+    expect(result.succeeded).toBe(2);
+    expect(result.failed).toBe(0);
+    // I6/RW17 — one entry per offer that actually moved, plus the refreshed queue counters.
+    expect(result.timeline.produced.map((e) => e.type)).toEqual(['offerSent', 'offerSent']);
+    expect(counter(result.counters, 'jobOffers')).toBeDefined();
 
     const after = await request(app)
       .get(`/api/v1/hr/job-offers/${a.id}`)
@@ -518,7 +552,9 @@ describe('job offers — bulk send/withdraw (RW17/I4)', () => {
 
     const res = await bulk({ action: 'withdraw', ids: [sent.id], reason: 'budget frozen' });
     expect(res.status).toBe(200);
-    expect((res.body.data as BulkActionResultDto).succeeded).toBe(1);
+    const result = bulkEnvelope(res);
+    expect(result.succeeded).toBe(1);
+    expect(result.timeline.produced.map((e) => e.type)).toEqual(['offerWithdrawn']);
     expect((await createOffer(applicant.id)).status).toBe(201);
   });
 
@@ -528,9 +564,11 @@ describe('job offers — bulk send/withdraw (RW17/I4)', () => {
 
     const res = await bulk({ action: 'send', ids: [good.id, alreadySent.id] });
     expect(res.status).toBe(200);
-    const envelope = res.body.data as BulkActionResultDto;
-    expect(envelope.succeeded).toBe(1);
-    expect(envelope.failed).toBe(1);
-    expect(envelope.results.find((r) => r.id === alreadySent.id)?.ok).toBe(false);
+    const result = bulkEnvelope(res);
+    expect(result.succeeded).toBe(1);
+    expect(result.failed).toBe(1);
+    expect(result.results.find((r) => r.id === alreadySent.id)?.ok).toBe(false);
+    // Only the item that moved wrote history — the refused one produced nothing.
+    expect(result.timeline.produced.map((e) => e.type)).toEqual(['offerSent']);
   });
 });

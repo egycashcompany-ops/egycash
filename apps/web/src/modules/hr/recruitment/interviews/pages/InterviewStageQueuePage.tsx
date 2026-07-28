@@ -14,6 +14,7 @@ import { Can } from '../../../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../../../shared/ui/DataTable';
 import { BulkActionBar } from '../../../../../shared/ui/BulkActionBar';
+import { InterviewFilters, type InterviewFiltersState } from '../components/InterviewFilters';
 import { useTableSelection } from '../../../../../shared/ui/useTableSelection';
 import { Pagination } from '../../../../../shared/ui/Pagination';
 import { Button } from '../../../../../shared/ui/Button';
@@ -47,6 +48,21 @@ export const InterviewStageQueuePage = (): JSX.Element => {
   const [sp, setSp] = useSearchParams();
 
   const status = (sp.get('status') ?? 'waiting') as InterviewStatus;
+  // The stage comes from the route and the status from the tab strip, so the bar omits both and
+  // carries the rest. Every value round-trips through the URL: deep-linkable, refresh-safe.
+  const filters: InterviewFiltersState = {
+    status,
+    stageId,
+    outcome: (sp.get('outcome') ?? '') as InterviewFiltersState['outcome'],
+    applicantId: sp.get('applicant') ?? '',
+    applicantLabel: sp.get('al') ?? '',
+    search: sp.get('q') ?? '',
+    interviewerId: sp.get('interviewer') ?? '',
+    interviewerLabel: sp.get('il') ?? '',
+    branchId: sp.get('branch') ?? '',
+    scheduledFrom: sp.get('sf') ?? '',
+    scheduledTo: sp.get('st') ?? '',
+  };
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
 
@@ -67,9 +83,39 @@ export const InterviewStageQueuePage = (): JSX.Element => {
   const buckets =
     counts?.stages.find((s) => s.refId === stageId && s.kind === 'interview')?.buckets ?? {};
 
+  const changeFilters = (nf: InterviewFiltersState): void =>
+    patch({
+      outcome: nf.outcome || null,
+      applicant: nf.applicantId || null,
+      al: nf.applicantLabel || null,
+      q: nf.search || null,
+      interviewer: nf.interviewerId || null,
+      il: nf.interviewerLabel || null,
+      branch: nf.branchId || null,
+      sf: nf.scheduledFrom || null,
+      st: nf.scheduledTo || null,
+    });
+
+  // Keyed on the whole query string, so every filter is part of the React Query key and two
+  // different filter sets can never share a cache entry.
+  const paramsKey = sp.toString();
   const params = useMemo(
-    () => ({ page, pageSize, stageId, status, sortBy: 'scheduledAt', sortDir: 'asc' as const }),
-    [page, pageSize, stageId, status],
+    () => ({
+      page,
+      pageSize,
+      stageId,
+      status,
+      outcome: filters.outcome,
+      applicantId: filters.applicantId,
+      search: filters.search,
+      interviewerId: filters.interviewerId,
+      branchId: filters.branchId,
+      scheduledFrom: filters.scheduledFrom,
+      scheduledTo: filters.scheduledTo,
+      sortBy: 'scheduledAt',
+      sortDir: 'asc' as const,
+    }),
+    [paramsKey, page, pageSize, stageId, status],
   );
   const { data, isLoading, isError, error, refetch } = useInterviews(params);
   const rows = data?.items ?? [];
@@ -191,6 +237,8 @@ export const InterviewStageQueuePage = (): JSX.Element => {
           active={status}
           onPick={(key) => patch({ status: key })}
         />
+
+        <InterviewFilters value={filters} onChange={changeFilters} omit={['status', 'stage']} />
 
         <BulkActionBar count={selection.count} onClear={selection.clear}>
           {/* RW17 — one date across the selection, through the shared bulk executor. */}

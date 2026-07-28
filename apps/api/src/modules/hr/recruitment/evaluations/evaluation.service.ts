@@ -123,7 +123,10 @@ class EvaluationService {
       applicantId: query.applicantId,
       phaseId: query.phaseId,
       status: query.status,
+      createdFrom: query.createdFrom,
+      createdTo: query.createdTo,
       branchId: query.branchId,
+      search: query.search,
     };
   }
 

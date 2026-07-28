@@ -3,13 +3,14 @@
 // built this sprint (OQ-17/18 open) but would call `register()` the same way. Requisition
 // reference and OCR extraction go through swappable seams (OQ-30). National-ID derivation
 // and applicant numbering are real (BD-002).
-import { Types } from 'mongoose';
+import { Types, type FilterQuery } from 'mongoose';
 import {
   HrEvents,
   parseNationalId,
   type BulkApplicants,
   type BulkActionResultDto,
   type ConfirmApplicantIdentity,
+  type EducationLevel,
   type ExportApplicantsQuery,
   type ListApplicantsQuery,
   type MoveApplicantToOffer,
@@ -38,6 +39,7 @@ import { getRequisitionValidator } from './requisition-ref';
 import { applicantExportRow } from './applicant.mapper';
 import { reassignThroughSeam } from './placement-seam';
 import { resolvePlacement } from './placement-resolver';
+import { birthDateRangeForAges } from './age-range';
 import { ApplicantModel, type ApplicantDoc } from './applicant.model';
 import { type Model } from 'mongoose';
 import { unitOfWork } from '../../../../platform/kernel/unit-of-work';
@@ -359,6 +361,42 @@ class ApplicantService {
    */
   async findLiveByNationalIdSystem(nationalId: string): Promise<ApplicantDoc | null> {
     return ApplicantModel.findOne({ nationalId, status: 'new', isDeleted: false });
+  }
+
+  /**
+   * SYSTEM: the ids of applicants matching candidate-attribute predicates — age range and
+   * education level. Stage queues filter on these, but the facts live HERE: a screening
+   * denormalizes only what it displays (`applicantCode`, `applicantName`, `branchId`), and I1 is
+   * explicit that the denormalized set is closed. So the stage service asks this feature for ids
+   * and narrows its own query by them — the batched `$in` I3 permits, not a per-row join.
+   *
+   * `null` means "no predicate applied": the caller must NOT narrow, which is different from an
+   * empty array, which means "nothing matches" and must produce an empty page.
+   *
+   * Applicants missing the attribute are excluded, deliberately. An unknown birth date cannot
+   * satisfy an age range, and quietly including those rows would make the filter mean nothing.
+   *
+   * On size: this returns every match, uncapped, because a cap would silently drop candidates from
+   * a filtered queue — a wrong answer is worse than a large one. The list is one id per matching
+   * applicant, which is bounded by the recruitment pipeline rather than by transaction history. If
+   * a deployment ever outgrows that, the fix is denormalizing the two fields onto the stage
+   * records, and that is an amendment to I1 rather than a tweak here.
+   */
+  async idsMatchingAttributesSystem(filter: {
+    ageFrom?: number | undefined;
+    ageTo?: number | undefined;
+    educationLevel?: EducationLevel | undefined;
+  }): Promise<Types.ObjectId[] | null> {
+    const conditions: FilterQuery<ApplicantDoc> = {};
+    const birthDate = birthDateRangeForAges(filter.ageFrom, filter.ageTo);
+    if (birthDate !== null) conditions.birthDate = birthDate;
+    if (filter.educationLevel !== undefined) conditions['education.level'] = filter.educationLevel;
+    if (Object.keys(conditions).length === 0) return null;
+
+    const rows = await ApplicantModel.find({ ...conditions, isDeleted: false }, { _id: 1 })
+      .lean<{ _id: Types.ObjectId }[]>()
+      .exec();
+    return rows.map((r) => r._id);
   }
 
   /**

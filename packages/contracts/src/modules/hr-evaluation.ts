@@ -216,6 +216,9 @@ export const ListEvaluationsQuerySchema = PaginationQuerySchema.extend({
   /** Include records belonging to superseded attempts (default false for queues). */
   includeSuperseded: z.coerce.boolean().default(false),
   search: z.string().max(200).optional(),
+  /** When the record entered this phase — the phase queue's date range, mirroring screening. */
+  createdFrom: z.coerce.date().optional(),
+  createdTo: z.coerce.date().optional(),
 }).strict();
 export type ListEvaluationsQuery = z.infer<typeof ListEvaluationsQuerySchema>;
 

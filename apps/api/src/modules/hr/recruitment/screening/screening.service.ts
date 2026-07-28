@@ -96,7 +96,7 @@ class ScreeningService {
 
   async list(query: ListScreeningsQuery, scope: ScopeSelector): Promise<Paginated<ScreeningDoc>> {
     return screeningRepository.listScreenings({
-      filter: this.toFilter(query),
+      filter: await this.toFilter(query),
       page: query.page,
       pageSize: query.pageSize,
       sortBy: query.sortBy,
@@ -105,7 +105,18 @@ class ScreeningService {
     });
   }
 
-  private toFilter(query: ListScreeningsQuery): ScreeningListFilter {
+  /**
+   * Age and education are facts about the CANDIDATE, not about this screening — the record
+   * denormalizes only what it displays (I1). So they are resolved against the applicant registry
+   * first and arrive at the repository as the id set they matched: one extra indexed query per
+   * request, never one per row (I3).
+   */
+  private async toFilter(query: ListScreeningsQuery): Promise<ScreeningListFilter> {
+    const applicantIdIn = await applicantService.idsMatchingAttributesSystem({
+      ageFrom: query.ageFrom,
+      ageTo: query.ageTo,
+      educationLevel: query.educationLevel,
+    });
     return {
       status: query.status,
       applicantId: query.applicantId,
@@ -114,6 +125,10 @@ class ScreeningService {
       decidedTo: query.decidedTo,
       createdFrom: query.createdFrom,
       createdTo: query.createdTo,
+      search: query.search,
+      // `null` means no candidate filter was asked for — leave the query unnarrowed. An empty
+      // array is a real answer (nobody matched) and must narrow to nothing.
+      ...(applicantIdIn === null ? {} : { applicantIdIn }),
     };
   }
 

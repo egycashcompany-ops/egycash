@@ -1,7 +1,7 @@
 // Debounced search box (controlled). Emits `onChange` after the user pauses; reflects external
 // resets (e.g. "clear filters"). RTL-safe: the search icon sits at the reading start, the clear
 // button at the end.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useT } from '../../platform/localization/useT';
 import { cn } from '../lib/cn';
 import { CloseIcon, SearchIcon } from './icons';
@@ -21,20 +21,21 @@ export const SearchInput = ({
 }): JSX.Element => {
   const t = useT();
   const [text, setText] = useState(value);
-  const first = useRef(true);
 
   useEffect(() => {
     setText(value);
   }, [value]);
 
+  // Emit only what the USER changed. Callers pass an inline `onChange`, so its identity changes on
+  // every parent render and this effect re-runs constantly; without the guard it re-emitted the
+  // unchanged term, and a caller that resets the page on any filter change would throw away the
+  // page the user deep-linked to. Comparing against the incoming `value` is also what makes an
+  // external reset ("clear filters") settle instead of echoing back.
   useEffect(() => {
-    if (first.current) {
-      first.current = false;
-      return;
-    }
+    if (text === value) return;
     const id = window.setTimeout(() => onChange(text), debounceMs);
     return () => window.clearTimeout(id);
-  }, [text, debounceMs, onChange]);
+  }, [text, value, debounceMs, onChange]);
 
   const clear = (): void => {
     setText('');

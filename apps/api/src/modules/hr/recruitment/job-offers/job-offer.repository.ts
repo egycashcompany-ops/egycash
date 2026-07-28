@@ -22,6 +22,8 @@ export interface JobOfferListFilter {
    */
   hired?: boolean | undefined;
   search?: string | undefined;
+  respondedFrom?: Date | undefined;
+  respondedTo?: Date | undefined;
 }
 
 const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -136,6 +138,12 @@ class JobOfferRepository extends BaseRepository<JobOfferDoc> {
       clauses.push({
         $or: [{ code: re }, { applicantCode: re }, { applicantName: re }],
       } as FilterQuery<JobOfferDoc>);
+    }
+    if (f.respondedFrom !== undefined || f.respondedTo !== undefined) {
+      const range: Record<string, Date> = {};
+      if (f.respondedFrom !== undefined) range.$gte = f.respondedFrom;
+      if (f.respondedTo !== undefined) range.$lte = f.respondedTo;
+      clauses.push({ respondedAt: range } as FilterQuery<JobOfferDoc>);
     }
     if (clauses.length === 0) return {};
     if (clauses.length === 1) return clauses[0] as FilterQuery<JobOfferDoc>;

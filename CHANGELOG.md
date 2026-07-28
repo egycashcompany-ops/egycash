@@ -9,7 +9,67 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Added
+
+- **Recruitment: filter bars on every stage queue that was missing one.** The per-stage interview
+  pages (First Interview, Second Interview, …), the per-phase evaluation pages (Security Check,
+  Driving Test, Medical Examination, …) and Employees Ready now filter like the rest of the module:
+  URL-synchronized, server-side, and part of the React Query key, so a filtered view is
+  deep-linkable, survives a refresh, and can never share a cache entry with a different one.
+
+  The interview bar is the existing component with a new `omit` prop rather than a second bar (I7):
+  on a per-stage page the stage comes from the route and the status is the tab strip, so offering
+  either again would be two controls for one piece of state. `clear filters` and the
+  "any filters active?" hint both respect what the page owns. Evaluations get an applicant picker
+  and a created-date range; Employees Ready gets free-text search over the offer number and
+  applicant code plus an accepted-date range — never its own `status`/`hired` predicates, which
+  ARE the queue (A6/RW15) and whose totals must keep agreeing with the stage counter.
+
+  Each queue also gets the standard controls it can support: **free-text search** over the
+  denormalized applicant code and name (interviews, evaluations; Employees Ready already searched
+  its offer number), the **branch**, and — on interviews, the only stage where a record is assigned
+  to anyone — the **interviewer**. Evaluations and accepted offers have no assignee, so neither
+  offers a control for one.
+
+  Branch and interviewer come from two new shared controls rather than three copies each, and both
+  render *nothing* when the caller lacks the permission that reads their catalog (`branch.view`,
+  `user.view`) — an empty dropdown would filter nothing while implying access nobody granted. The
+  user picker is the one the offer form already used, generalized: `ManagerPicker` is now that
+  control with the offer form's wording.
+
+  New query parameters: `createdFrom`/`createdTo` on evaluations, `respondedFrom`/`respondedTo` on
+  job offers.
+
+- **`search` now actually filters on screenings, interviews and evaluations.** All three declared
+  the parameter in their contracts, and none of the three implemented it — a client could send
+  `search=…` and get an unfiltered list back, which is worse than a 400 because it looks like it
+  worked. All three now match the offers queue: an escaped, case-insensitive regex over the
+  denormalized `applicantCode` and `applicantName`, so a user typing `.` searches for a dot instead
+  of matching every row.
+
+- **Prescreening: age-range and education-level filters, applied on the server.** Both facts live
+  on the APPLICANT, not on the screening — the screening denormalizes only what it displays, and
+  I1 is explicit that the list is closed. So the service resolves them against `hr_applicants`
+  first and narrows the screening query by the id set they matched: the batched `$in` I3 permits,
+  one extra indexed query per request rather than one per row. Two supporting indexes back it
+  (`ix_education_birthDate`, `ix_birthDate`), the equality bound leading the range.
+
+  Age is entered in whole years and converted to a half-open `birthDate` range at the boundary
+  (`$lte now − from`, `$gt now − (to + 1)`), so "25 to 30" includes a candidate through the day
+  before their 31st birthday and the stored field stays the date it always was. An applicant with
+  no birth date — or no education record — is excluded when the corresponding filter is supplied:
+  unknown cannot satisfy a predicate, and including those rows would make the filter mean nothing.
+  An inverted range (`ageFrom > ageTo`) is a 400 at the contract boundary, not an empty page the
+  user has to decode.
+
 ### Fixed
+
+- **A deep link to page 2 of any searchable list bounced back to page 1.** `SearchInput`'s debounce
+  effect listed `onChange` in its dependencies, and every caller passes an inline closure — so the
+  effect re-ran on each parent render and re-emitted the *unchanged* search term. On a list whose
+  filter handler resets paging (the correct behaviour when a filter really changes), that discarded
+  the page the user had linked to or refreshed on. The effect now emits only when the text differs
+  from the value it was given, which also stops "clear filters" echoing back a change of its own.
 
 - **Recruitment: interview status labels rendered as raw translation keys.** `/interviews`,
   `/interviews/:id` and `/interviews/stage/:stageId` showed `interviews.status.waiting` and

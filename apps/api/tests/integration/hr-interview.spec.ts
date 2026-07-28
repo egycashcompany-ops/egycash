@@ -894,3 +894,135 @@ describe('interviews — placement recommendation', () => {
     expect(mutated<InterviewDto>(cleared).recommendedPlacement).toBeNull();
   });
 });
+
+/**
+ * Queue filters: free-text search, the assigned interviewer, and the branch. These back the filter
+ * bar on `/interviews` and on each stage's own page, so what matters is that the SERVER applies
+ * them — a queue that filtered in the browser would page over unmatched rows and disagree with its
+ * own pager and counters.
+ *
+ * `search` in particular was declared in the contract long before anything implemented it, so a
+ * client could send it and silently get an unfiltered list. These pin it shut.
+ */
+describe('interviews — queue filters (search, interviewer, branch)', () => {
+  const BRANCH_A = '64b1f0bbbbbbbbbbbbbbbbbb';
+  const BRANCH_B = '64b1f0cccccccccccccccccc';
+
+  /** Register → pass screening → schedule, with a name and branch this test can address. */
+  const roundFor = async (fullNameAr: string, branchId?: string): Promise<InterviewDto> => {
+    const sourceId = await sourceIdByKey('internalHr');
+    const created = await request(app)
+      .post('/api/v1/hr/applicants')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        jobRequisitionId: REQUISITION_ID,
+        sourceId,
+        intakeChannel: 'internal',
+        ...(branchId === undefined ? {} : { branchId }),
+        identity: { fullNameAr, nationality: 'Egyptian' },
+        contact: { primaryPhone: nextPhone() },
+      });
+    expect(created.status).toBe(201);
+    const applicant = mutated<ApplicantDto>(created);
+
+    const screening = mutated<ScreeningDto>(
+      await request(app)
+        .post('/api/v1/hr/screenings')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ applicantId: applicant.id }),
+    );
+    expect(
+      (
+        await request(app)
+          .post(`/api/v1/hr/screenings/${screening.id}/decide`)
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ outcome: 'accepted', version: screening.version })
+      ).status,
+    ).toBe(200);
+
+    const stage1 = await stageIdByKey('firstInterview');
+    const res = await schedule(applicant.id, stage1);
+    expect(res.status).toBe(201);
+    return mutated<InterviewDto>(res);
+  };
+
+  const list = (query: Record<string, string | number>) =>
+    request(app)
+      .get('/api/v1/hr/interviews')
+      .query({ pageSize: 100, ...query })
+      .set('Authorization', `Bearer ${adminToken}`);
+
+  const codesIn = (res: { body: unknown }): string[] =>
+    ((res.body as { data: { applicantCode: string }[] }).data ?? []).map((i) => i.applicantCode);
+
+  let zahra: InterviewDto;
+  let khaled: InterviewDto;
+  let branchB: InterviewDto;
+
+  beforeAll(async () => {
+    zahra = await roundFor('زهراء السيد', BRANCH_A);
+    khaled = await roundFor('خالد عبد الله', BRANCH_A);
+    branchB = await roundFor('سلمى فؤاد', BRANCH_B);
+  }, 60_000);
+
+  it('searches by applicant code', async () => {
+    const res = await list({ search: zahra.applicantCode });
+    expect(res.status).toBe(200);
+    const codes = codesIn(res);
+    expect(codes).toContain(zahra.applicantCode);
+    expect(codes).not.toContain(khaled.applicantCode);
+  });
+
+  it('searches by applicant name, partially and case-insensitively', async () => {
+    const codes = codesIn(await list({ search: 'زهراء' }));
+    expect(codes).toContain(zahra.applicantCode);
+    expect(codes).not.toContain(khaled.applicantCode);
+
+    // Latin codes prove the case-insensitivity that Arabic cannot.
+    const lower = codesIn(await list({ search: zahra.applicantCode.toLowerCase() }));
+    expect(lower).toContain(zahra.applicantCode);
+  });
+
+  it('treats a regex metacharacter as a literal, not as a pattern', async () => {
+    // Unescaped, `.` matches every character and this would return the whole queue.
+    const res = await list({ search: '.' });
+    expect(res.status).toBe(200);
+    expect(codesIn(res)).toHaveLength(0);
+  });
+
+  it('filters by the assigned interviewer (a panel member)', async () => {
+    const mine = codesIn(await list({ interviewerId }));
+    expect(mine).toContain(zahra.applicantCode);
+
+    // `outsiderId` is a real user who sits on no panel here.
+    const theirs = codesIn(await list({ interviewerId: outsiderId }));
+    expect(theirs).not.toContain(zahra.applicantCode);
+    expect(theirs).not.toContain(khaled.applicantCode);
+  });
+
+  it('filters by branch', async () => {
+    const a = codesIn(await list({ branchId: BRANCH_A }));
+    expect(a).toContain(zahra.applicantCode);
+    expect(a).not.toContain(branchB.applicantCode);
+
+    const b = codesIn(await list({ branchId: BRANCH_B }));
+    expect(b).toContain(branchB.applicantCode);
+    expect(b).not.toContain(zahra.applicantCode);
+  });
+
+  it('composes filters with each other and with pagination', async () => {
+    const res = await list({ branchId: BRANCH_A, status: 'scheduled', page: 1, pageSize: 1 });
+    expect(res.status).toBe(200);
+    const body = res.body as { data: unknown[]; meta: { pageSize: number; totalItems: number } };
+    expect(body.data).toHaveLength(1);
+    expect(body.meta.pageSize).toBe(1);
+    // The FILTERED total — a pager reporting the collection's count would lie about the last page.
+    expect(body.meta.totalItems).toBe(2);
+  });
+
+  it('a search matching nobody returns an empty page, not everything', async () => {
+    const res = await list({ search: 'no-such-candidate-anywhere' });
+    expect(res.status).toBe(200);
+    expect((res.body as { data: unknown[] }).data).toHaveLength(0);
+  });
+});

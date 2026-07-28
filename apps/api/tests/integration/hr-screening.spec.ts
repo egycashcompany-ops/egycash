@@ -571,3 +571,177 @@ describe('screening — bulk approve/reject (RW17/I4)', () => {
     expect((await bulk({ action: 'approve', ids: [screening.id] }, screenerToken)).status).toBe(403);
   });
 });
+
+/**
+ * Candidate-attribute filters (age range, education level). These are the first screening filters
+ * whose predicate lives on the APPLICANT rather than on the screening — the record denormalizes
+ * only what it displays (I1) — so the interesting thing to prove is not "a filter works" but that
+ * the cross-collection narrowing is correct at its edges and composes with everything else.
+ *
+ * Birth dates are seeded through the national ID, because that is the only way an applicant gets
+ * one: it is derived at registration, never client-set.
+ */
+describe('screening — candidate-attribute filters (age, education)', () => {
+  /** `2`/`3` = 1900s/2000s, then YYMMDD, governorate, serial. No checksum is enforced. */
+  const nid = (century: '2' | '3', yy: string, mm: string, dd: string, serial: string): string =>
+    `${century}${yy}${mm}${dd}01${serial}`;
+
+  interface Seeded {
+    thirtyExactly: string;
+    twentyFive: string;
+    fortyOne: string;
+    noBirthDate: string;
+  }
+  let seeded: Seeded;
+
+  const list = (query: Record<string, string | number>) =>
+    request(app)
+      .get('/api/v1/hr/screenings')
+      .query({ pageSize: 100, ...query })
+      .set('Authorization', `Bearer ${adminToken}`);
+
+  const codesIn = (res: { body: unknown }): string[] =>
+    ((res.body as { data: { applicantCode: string }[] }).data ?? []).map((s) => s.applicantCode);
+
+  beforeAll(async () => {
+    // Ages are relative to "today", so the seed is expressed as birth dates that are a fixed
+    // distance from it rather than as fixed years.
+    const today = new Date();
+    const yy = (yearsAgo: number): { century: '2' | '3'; yy: string } => {
+      const year = today.getUTCFullYear() - yearsAgo;
+      return { century: year < 2000 ? '2' : '3', yy: String(year % 100).padStart(2, '0') };
+    };
+    const mm = String(today.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(today.getUTCDate()).padStart(2, '0');
+
+    const a30 = yy(30);
+    const a25 = yy(25);
+    const a41 = yy(41);
+
+    const mk = async (nationalId: string | undefined, level: string | undefined): Promise<string> => {
+      const applicant = await registerApplicant({
+        ...(nationalId === undefined
+          ? {}
+          : { identity: { fullNameAr: 'أحمد محمد', nationality: 'Egyptian', nationalId } }),
+        ...(level === undefined ? {} : { education: { level } }),
+      });
+      return applicant.code;
+    };
+
+    seeded = {
+      // Birthday today → exactly 30 / 25 / 41.
+      thirtyExactly: await mk(nid(a30.century, a30.yy, mm, dd, '11111'), 'bachelor'),
+      twentyFive: await mk(nid(a25.century, a25.yy, mm, dd, '22222'), 'diploma'),
+      fortyOne: await mk(nid(a41.century, a41.yy, mm, dd, '33333'), 'bachelor'),
+      // No national ID → no birth date, and no education record either.
+      noBirthDate: await mk(undefined, undefined),
+    };
+  }, 60_000);
+
+  it('an age range selects its band and excludes everyone outside it', async () => {
+    const res = await list({ ageFrom: 25, ageTo: 30 });
+    expect(res.status).toBe(200);
+    const codes = codesIn(res);
+    expect(codes).toContain(seeded.thirtyExactly);
+    expect(codes).toContain(seeded.twentyFive);
+    expect(codes).not.toContain(seeded.fortyOne);
+  });
+
+  it('includes the candidate whose birthday is today at BOTH ends of the range', async () => {
+    // The half-open conversion is the easy thing to get wrong: 30 must be in [25,30] and in [30,40].
+    expect(codesIn(await list({ ageFrom: 30, ageTo: 30 }))).toContain(seeded.thirtyExactly);
+    expect(codesIn(await list({ ageFrom: 25, ageTo: 30 }))).toContain(seeded.thirtyExactly);
+    expect(codesIn(await list({ ageFrom: 30, ageTo: 40 }))).toContain(seeded.thirtyExactly);
+    expect(codesIn(await list({ ageFrom: 31, ageTo: 40 }))).not.toContain(seeded.thirtyExactly);
+  });
+
+  it('excludes candidates with no birth date — unknown age cannot satisfy a range', async () => {
+    const codes = codesIn(await list({ ageFrom: 0, ageTo: 120 }));
+    expect(codes).not.toContain(seeded.noBirthDate);
+    expect(codes).toContain(seeded.thirtyExactly);
+  });
+
+  it('filters by education level, excluding candidates with no education record', async () => {
+    const codes = codesIn(await list({ educationLevel: 'bachelor' }));
+    expect(codes).toContain(seeded.thirtyExactly);
+    expect(codes).toContain(seeded.fortyOne);
+    expect(codes).not.toContain(seeded.twentyFive); // diploma
+    expect(codes).not.toContain(seeded.noBirthDate); // no education
+  });
+
+  it('combines age and education — both must hold, not either', async () => {
+    const codes = codesIn(await list({ ageFrom: 25, ageTo: 35, educationLevel: 'bachelor' }));
+    expect(codes).toContain(seeded.thirtyExactly);
+    expect(codes).not.toContain(seeded.twentyFive); // in the age band, wrong level
+    expect(codes).not.toContain(seeded.fortyOne); // right level, outside the band
+  });
+
+  it('composes with the ordinary filters, sorting and pagination', async () => {
+    const res = await list({
+      status: 'waiting',
+      educationLevel: 'bachelor',
+      sortBy: 'createdAt',
+      sortDir: 'asc',
+      page: 1,
+      pageSize: 1,
+    });
+    expect(res.status).toBe(200);
+    const body = res.body as { data: unknown[]; meta: { pageSize: number; totalItems: number } };
+    expect(body.data).toHaveLength(1);
+    expect(body.meta.pageSize).toBe(1);
+    // The count is the FILTERED total, not the collection's — otherwise the pager lies.
+    expect(body.meta.totalItems).toBeGreaterThanOrEqual(2);
+    expect(body.meta.totalItems).toBeLessThan(100);
+  });
+
+  it('a filter that matches nobody returns an empty page, not everything', async () => {
+    const res = await list({ ageFrom: 119, ageTo: 120 });
+    expect(res.status).toBe(200);
+    expect((res.body as { data: unknown[] }).data).toHaveLength(0);
+  });
+
+  it('rejects an inverted age range at the boundary rather than answering with nothing', async () => {
+    const res = await list({ ageFrom: 40, ageTo: 20 });
+    expect(res.status).toBe(400);
+  });
+
+  it('leaves results untouched when neither attribute filter is supplied', async () => {
+    const all = codesIn(await list({}));
+    expect(all).toContain(seeded.noBirthDate);
+    expect(all).toContain(seeded.thirtyExactly);
+  });
+});
+
+/**
+ * Free-text search. The contract has declared `search` on this endpoint since Stage 2, but nothing
+ * implemented it — a client could send it and get an unfiltered list back, which is worse than a
+ * 400 because it looks like it worked.
+ */
+describe('screening — free-text search', () => {
+  const list = (query: Record<string, string | number>) =>
+    request(app)
+      .get('/api/v1/hr/screenings')
+      .query({ pageSize: 100, ...query })
+      .set('Authorization', `Bearer ${adminToken}`);
+
+  const codesIn = (res: { body: unknown }): string[] =>
+    ((res.body as { data: { applicantCode: string }[] }).data ?? []).map((s) => s.applicantCode);
+
+  it('narrows to the matching applicant code instead of ignoring the parameter', async () => {
+    const all = codesIn(await list({}));
+    expect(all.length).toBeGreaterThan(1);
+
+    const target = all[0] as string;
+    const found = codesIn(await list({ search: target }));
+    expect(found).toContain(target);
+    expect(found.length).toBeLessThan(all.length);
+  });
+
+  it('treats a regex metacharacter as a literal, not as a pattern', async () => {
+    expect(codesIn(await list({ search: '.' }))).toHaveLength(0);
+  });
+
+  it('a search matching nobody returns an empty page, not everything', async () => {
+    expect(codesIn(await list({ search: 'no-such-candidate-anywhere' }))).toHaveLength(0);
+  });
+});

@@ -39,6 +39,9 @@ export const ScreeningQueuePage = (): JSX.Element => {
     applicantLabel: sp.get('al') ?? '',
     createdFrom: sp.get('cf') ?? '',
     createdTo: sp.get('ct') ?? '',
+    ageFrom: sp.get('af') ?? '',
+    ageTo: sp.get('at') ?? '',
+    educationLevel: (sp.get('edu') ?? '') as ScreeningFiltersState['educationLevel'],
   };
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
@@ -66,6 +69,9 @@ export const ScreeningQueuePage = (): JSX.Element => {
       al: nf.applicantLabel || null,
       cf: nf.createdFrom || null,
       ct: nf.createdTo || null,
+      af: nf.ageFrom || null,
+      at: nf.ageTo || null,
+      edu: nf.educationLevel || null,
     });
   const changeSort = (by: string): void => {
     const dir = sort.by === by && sort.dir === 'asc' ? 'desc' : 'asc';
@@ -82,6 +88,11 @@ export const ScreeningQueuePage = (): JSX.Element => {
       applicantId: filters.applicantId,
       createdFrom: filters.createdFrom,
       createdTo: filters.createdTo,
+      // Empty stays empty: `buildQuery` drops blanks, so an untouched box adds no parameter and
+      // the server never sees `ageFrom=`.
+      ageFrom: filters.ageFrom,
+      ageTo: filters.ageTo,
+      educationLevel: filters.educationLevel,
     }),
     [paramsKey],
   );

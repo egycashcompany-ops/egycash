@@ -275,6 +275,7 @@ class InterviewService {
       branchId: query.branchId,
       scheduledFrom: query.scheduledFrom,
       scheduledTo: query.scheduledTo,
+      search: query.search,
     };
   }
 

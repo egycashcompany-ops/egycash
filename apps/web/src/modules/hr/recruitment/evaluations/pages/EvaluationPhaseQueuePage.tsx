@@ -13,6 +13,7 @@ import { Can } from '../../../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../../../shared/ui/DataTable';
 import { BulkActionBar } from '../../../../../shared/ui/BulkActionBar';
+import { EvaluationFilters, type EvaluationFiltersState } from '../components/EvaluationFilters';
 import { useTableSelection } from '../../../../../shared/ui/useTableSelection';
 import { Pagination } from '../../../../../shared/ui/Pagination';
 import { Button } from '../../../../../shared/ui/Button';
@@ -42,6 +43,16 @@ export const EvaluationPhaseQueuePage = (): JSX.Element => {
   const [sp, setSp] = useSearchParams();
 
   const status = (sp.get('status') ?? 'waiting') as EvaluationStatus;
+  // The phase comes from the route and the status from the tab strip, so the bar carries only the
+  // rest. Every value round-trips through the URL: deep-linkable, refresh-safe.
+  const filters: EvaluationFiltersState = {
+    search: sp.get('q') ?? '',
+    applicantId: sp.get('applicant') ?? '',
+    applicantLabel: sp.get('al') ?? '',
+    branchId: sp.get('branch') ?? '',
+    createdFrom: sp.get('cf') ?? '',
+    createdTo: sp.get('ct') ?? '',
+  };
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
 
@@ -62,9 +73,34 @@ export const EvaluationPhaseQueuePage = (): JSX.Element => {
   const buckets =
     counts?.stages.find((s) => s.refId === phaseId && s.kind === 'evaluation')?.buckets ?? {};
 
+  const changeFilters = (nf: EvaluationFiltersState): void =>
+    patch({
+      applicant: nf.applicantId || null,
+      al: nf.applicantLabel || null,
+      q: nf.search || null,
+      branch: nf.branchId || null,
+      cf: nf.createdFrom || null,
+      ct: nf.createdTo || null,
+    });
+
+  // Keyed on the whole query string, so every filter is part of the React Query key and two
+  // different filter sets can never share a cache entry.
+  const paramsKey = sp.toString();
   const params = useMemo(
-    () => ({ page, pageSize, phaseId, status, sortBy: 'createdAt', sortDir: 'desc' as const }),
-    [page, pageSize, phaseId, status],
+    () => ({
+      page,
+      pageSize,
+      phaseId,
+      status,
+      applicantId: filters.applicantId,
+      search: filters.search,
+      branchId: filters.branchId,
+      createdFrom: filters.createdFrom,
+      createdTo: filters.createdTo,
+      sortBy: 'createdAt',
+      sortDir: 'desc' as const,
+    }),
+    [paramsKey, page, pageSize, phaseId, status],
   );
   const { data, isLoading, isError, error, refetch } = useEvaluations(params);
   const rows = data?.items ?? [];
@@ -165,6 +201,8 @@ export const EvaluationPhaseQueuePage = (): JSX.Element => {
           active={status}
           onPick={(key) => patch({ status: key })}
         />
+
+        <EvaluationFilters value={filters} onChange={changeFilters} />
 
         <Can permission="evaluation.manage">
           <BulkActionBar count={selection.count} onClear={selection.clear}>

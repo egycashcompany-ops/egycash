@@ -712,7 +712,9 @@ const en: Record<string, string> = {
   'screening.detail.applicant': 'Applicant',
 
   // Interviews (Stage 3)
+  'interviews.status.waiting': 'Waiting',
   'interviews.status.scheduled': 'Scheduled',
+  'interviews.status.inProgress': 'In progress',
   'interviews.status.completed': 'Completed',
   'interviews.status.cancelled': 'Cancelled',
   'interviews.outcome.pending': 'Pending',
@@ -2566,7 +2568,9 @@ const ar: Record<string, string> = {
   'screening.detail.applicant': 'المتقدِّم',
 
   // Interviews (Stage 3)
+  'interviews.status.waiting': 'في الانتظار',
   'interviews.status.scheduled': 'مجدولة',
+  'interviews.status.inProgress': 'جارية',
   'interviews.status.completed': 'مكتملة',
   'interviews.status.cancelled': 'ملغاة',
   'interviews.outcome.pending': 'قيد الانتظار',

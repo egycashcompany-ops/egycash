@@ -1,0 +1,6 @@
+build/
+__pycache__/
+*.pyc
+.pytest_cache/
+# Real cards must never enter an image layer — mount them at run time instead.
+fixtures/real/

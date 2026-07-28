@@ -1,0 +1,8 @@
+# Pinned so the spike's numbers are reproducible: an unpinned PaddleOCR bump can change both
+# accuracy and the shape of the result object, and an accuracy report you cannot reproduce is not
+# a measurement.
+paddlepaddle==3.0.0
+paddleocr==3.7.0
+opencv-python-headless==4.11.0.86
+numpy==2.2.4
+Pillow==11.1.0

@@ -1,0 +1,7 @@
+# Real anonymized cards are mounted at run time, never committed. See fixtures/README.md.
+fixtures/real/*
+!fixtures/real/.gitkeep
+build/
+__pycache__/
+*.pyc
+.pytest_cache/

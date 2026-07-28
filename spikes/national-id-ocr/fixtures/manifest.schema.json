@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "National-ID OCR fixture manifest",
+  "description": "Ground truth for one fixture set. Synthetic and real sets use this identical shape — that is what lets real anonymized cards be dropped into fixtures/real/ and measured with no code change.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["id", "truth"],
+    "additionalProperties": false,
+    "properties": {
+      "id": {
+        "type": "string",
+        "description": "Stable identifier, used in failure reports. Must NOT encode anything about a real person."
+      },
+      "front": { "type": "string", "description": "Front image filename, relative to this manifest." },
+      "back": { "type": "string", "description": "Back image filename, relative to this manifest." },
+      "quality": {
+        "enum": ["clean", "light", "harsh", "unknown"],
+        "description": "Capture difficulty. Lets the report separate 'fails on bad photos' from 'fails generally' — the difference between a UX fix and a model change."
+      },
+      "source": {
+        "enum": ["synthetic", "real-anonymized"],
+        "description": "Drives the report's caveat. A run containing only 'synthetic' is reported as INCONCLUSIVE by design."
+      },
+      "truth": {
+        "type": "object",
+        "description": "Expected value per field. Omit a field the card does not carry; omitted fields are not scored. Transcribe EXACTLY what is printed, including orthography — the scorer applies the Arabic fold itself.",
+        "additionalProperties": false,
+        "properties": {
+          "fullNameAr": { "type": "string" },
+          "address": { "type": "string" },
+          "nationalId": {
+            "type": "string",
+            "pattern": "^[0-9]{14}$",
+            "description": "ASCII digits, not Indic — the pipeline folds the card's numerals before comparison."
+          },
+          "occupation": { "type": "string" },
+          "religion": { "type": "string" },
+          "maritalStatus": { "type": "string" },
+          "nationalIdExpiry": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+            "description": "ISO-8601. The pipeline emits ISO on a successful parse, so truth uses it too."
+          }
+        }
+      }
+    }
+  }
+}

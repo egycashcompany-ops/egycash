@@ -1,0 +1,12 @@
+# Standalone runner for the spike. Deliberately not wired into the project's compose stack: this
+# is Stage 1, and nothing here touches the production API.
+services:
+  nid-ocr-spike:
+    build: .
+    image: ecms/nid-ocr-spike:latest
+    # No ports, no depends_on: the spike is a batch measurement, not a service. The production
+    # step (Stage 2) is where this becomes a long-running provider behind the existing seam.
+    network_mode: none # proves the pipeline is genuinely offline — weights are baked in
+    volumes:
+      - ./fixtures/real:/app/fixtures/real:ro # anonymized cards, never in an image layer
+    command: ["--fixtures", "fixtures/synthetic", "--recognizer", "paddle"]

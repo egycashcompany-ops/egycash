@@ -319,14 +319,78 @@ const dropReplacedIndexes = async (): Promise<void> => {
   }
 };
 
+/**
+ * I14 — a candidate who has left the pipeline must hold no OPEN stage record, because a queue is
+ * a plain read over statuses and nothing else marks them as gone (I1/I10). Rows written before
+ * the lifecycle closed its stages are still sitting in `waiting` / `scheduled` / `draft`, so they
+ * would keep appearing in queues and counters forever.
+ *
+ * The backfill writes the same terminal statuses the engine now writes. It is a data repair of
+ * history, not a transition: there is no actor and no event to publish for something that should
+ * have happened months ago, and inventing either would put fiction on the timeline.
+ */
+const closeStagesOfDepartedApplicants = async (): Promise<void> => {
+  const gone = await ApplicantModel.find({ status: { $ne: 'new' } }, { _id: 1 }).lean().exec();
+  const goneIds = gone.map((a) => a._id);
+  if (goneIds.length === 0) return;
+
+  const closures: [Model<{ applicantId: Types.ObjectId }>, string[], string][] = [
+    [ScreeningModel as never, ['waiting'], 'cancelled'],
+    [InterviewModel as never, ['waiting', 'scheduled', 'inProgress'], 'cancelled'],
+    [EvaluationModel as never, ['waiting'], 'cancelled'],
+    [JobOfferModel as never, ['waiting', 'draft', 'sent'], 'withdrawn'],
+  ];
+  for (const [model, open, to] of closures) {
+    await model
+      .updateMany(
+        { applicantId: { $in: goneIds }, supersededAt: null, isDeleted: false, status: { $in: open } },
+        { $set: { status: to } },
+      )
+      .exec();
+  }
+};
+
+/**
+ * I5 — an evaluation used to log every re-decision in its own `decisionHistory[]`, alongside the
+ * `evaluationDecided` entries the canonical timeline records for exactly the same from/to/reason/
+ * actor. Two histories of one fact can only drift, so the aggregate's copy is dropped. Nothing is
+ * lost: the timeline holds every one of those decisions, and it always did.
+ */
+/**
+ * §15 / I11 — every live applicant gets the `waiting` row their position already implies.
+ *
+ * Pre-refactor applicants moved through a pipeline where "waiting" meant *no row*, so every one of
+ * them stands at a stage the new queues cannot see. The materializer knows how to resolve and open
+ * that row and is idempotent by construction (I12), so this is a walk plus a no-op on every
+ * subsequent boot. Imported lazily: the materializer pulls in the workflow engine and all four
+ * stage services, and the migration module must stay loadable without them.
+ */
+const materializeWaitingBacklog = async (): Promise<void> => {
+  const { queueMaterializerService } = await import('./materializer');
+  await queueMaterializerService.backfillWaitingBacklog();
+};
+
+const dropEvaluationDecisionHistory = async (): Promise<void> => {
+  await EvaluationModel.updateMany(
+    { decisionHistory: { $exists: true } } as never,
+    { $unset: { decisionHistory: '' } },
+  ).exec();
+};
+
 export const migrateRecruitmentWorkflow = async (): Promise<void> => {
   await backfillAttemptMarkers();
+  await dropEvaluationDecisionHistory();
+  await closeStagesOfDepartedApplicants();
   await backfillPlacement();
   await renamePendingToWaiting();
   await backfillPhaseTyping();
   await reorderPhasesToBusinessOrder();
   await backfillOfferTerms();
   await dropReplacedIndexes();
+  // LAST — I11's backlog. Every step above normalizes the rows that already exist; this one opens
+  // the `waiting` rows that never existed, and it must read the normalized shape (attempt markers,
+  // the `pending` → `waiting` rename, phase typing) to resolve where each candidate stands.
+  await materializeWaitingBacklog();
 };
 
 export const migrateRecruitmentLegacy = async (): Promise<void> => {

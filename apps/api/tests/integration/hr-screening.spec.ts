@@ -14,7 +14,6 @@ import {
   platformPermissions,
   SettingKeys,
   type ApplicantDto,
-  type BulkActionResultDto,
   type ScreeningDto,
 } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
@@ -27,6 +26,7 @@ import { settingsService } from '../../src/platform/settings';
 import { getCache } from '../../src/infrastructure/redis/cache';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { type AuthContext } from '../../src/shared/types';
+import { actionEnabled, bulkEnvelope, counter, envelope, mutated } from './helpers/workflow-envelope';
 
 const PASSWORD = 'Str0ng#Pass!';
 const REQUISITION_ID = '64b1f0aaaaaaaaaaaaaaaaaa';
@@ -100,7 +100,7 @@ const registerApplicant = async (
       ...over,
     });
   expect(res.status).toBe(201);
-  return res.body.data as ApplicantDto;
+  return mutated<ApplicantDto>(res);
 };
 
 const openScreening = (applicantId: string, token = adminToken, note?: string) =>
@@ -178,21 +178,34 @@ describe('screening — create', () => {
     const applicant = await registerApplicant();
     const res = await openScreening(applicant.id, adminToken, 'looks promising');
     expect(res.status).toBe(201);
-    const dto = res.body.data as ScreeningDto;
+    const body = envelope<ScreeningDto>(res);
+    const dto = body.data;
     expect(dto.status).toBe('waiting');
     expect(dto.applicantId).toBe(applicant.id);
     expect(dto.applicantCode).toBe(applicant.code);
     expect(dto.decision).toBeNull();
     expect(dto.notes.map((n) => n.text)).toEqual(['looks promising']);
+
+    // I6 — the same response says where the candidate now stands, so the client asks nothing else.
+    expect(body.workflow.applicantId).toBe(applicant.id);
+    expect(body.workflow.applicantCode).toBe(applicant.code);
+    expect(body.workflow.applicantStatus).toBe('new');
+    expect(body.workflow.stage?.kind).toBe('screening');
+    expect(body.workflow.status).toBe('waiting');
+    // Capability lives in `availableActions` and nowhere else (I10).
+    expect(actionEnabled(body.workflow, 'accept')).toBe(true);
+    expect(actionEnabled(body.workflow, 'reject')).toBe(true);
+    expect(body.timeline.total).toBeGreaterThan(0);
+    expect(counter(body.counters, 'screening')?.count).toBeGreaterThan(0);
   });
 
   it('is idempotent while waiting, and refuses once the screening is decided', async () => {
     const applicant = await registerApplicant();
-    const first = (await openScreening(applicant.id)).body.data as ScreeningDto;
+    const first = mutated<ScreeningDto>(await openScreening(applicant.id));
     // The record is materialized at registration (I11), so opening again returns the same row.
     const again = await openScreening(applicant.id);
     expect(again.status).toBe(201);
-    expect((again.body.data as ScreeningDto).id).toBe(first.id);
+    expect(mutated<ScreeningDto>(again).id).toBe(first.id);
 
     await request(app)
       .post(`/api/v1/hr/screenings/${first.id}/decide`)
@@ -213,68 +226,156 @@ describe('screening — create', () => {
   });
 });
 
-describe('screening — awaiting (pipeline entry)', () => {
-  const awaitingIds = async (): Promise<string[]> => {
+// I11 — the queue is REAL rows whose status is `waiting`, materialized at registration. There is
+// no derived "who ought to be here" read model that could disagree with them.
+describe('screening — the waiting queue is persisted rows', () => {
+  const waitingIds = async (): Promise<string[]> => {
     const res = await request(app)
-      .get('/api/v1/hr/screenings/awaiting')
+      .get('/api/v1/hr/screenings?status=waiting&pageSize=100')
       .set('Authorization', `Bearer ${adminToken}`);
     expect(res.status).toBe(200);
-    return (res.body.data as { applicantId: string }[]).map((r) => r.applicantId);
+    // A read — the list endpoint answers with the page it always did (I6 leaves GETs alone).
+    return (res.body.data as ScreeningDto[]).map((r) => r.applicantId);
   };
 
-  it('surfaces a newly-registered applicant, then drops them once the screening is decided', async () => {
+  it('materializes a waiting screening at registration; the DECISION is what clears it', async () => {
     const applicant = await registerApplicant();
-    expect(await awaitingIds()).toContain(applicant.id);
-    // Opening does NOT clear the queue any more — the record is waiting from registration (I11);
-    // it is the DECISION that removes them.
-    const screening = (await openScreening(applicant.id)).body.data as ScreeningDto;
-    expect(await awaitingIds()).toContain(applicant.id);
+    expect(await waitingIds()).toContain(applicant.id);
+
+    // Opening does not clear the queue — the record was already waiting (I11).
+    const screening = mutated<ScreeningDto>(await openScreening(applicant.id));
+    expect(await waitingIds()).toContain(applicant.id);
 
     const decided = await request(app)
       .post(`/api/v1/hr/screenings/${screening.id}/decide`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ outcome: 'accepted', version: screening.version });
     expect(decided.status).toBe(200);
-    expect(await awaitingIds()).not.toContain(applicant.id);
+    expect(await waitingIds()).not.toContain(applicant.id);
+
+    // I6 — the counters that ride along are the REFRESHED ones, so the badge the client redraws
+    // matches the queue this very request just changed.
+    const body = envelope<ScreeningDto>(decided);
+    expect(counter(body.counters, 'screening')).toBeDefined();
+    expect(body.workflow.stage?.kind).not.toBe('screening');
   });
 
-  it('excludes a withdrawn applicant', async () => {
+  /**
+   * I14/I1/I10 — a departed candidate leaves the queue because their record carries a terminal
+   * STATUS, not because anything mirrors the lifecycle onto the stage. Reactivation therefore
+   * re-opens the stage on a NEW attempt; the closed attempt stays readable forever.
+   */
+  it('closes the waiting screening on withdrawal and re-opens a new attempt on restore', async () => {
     const applicant = await registerApplicant();
-    await request(app)
+    expect(await waitingIds()).toContain(applicant.id);
+
+    const withdrawRes = await request(app)
       .post(`/api/v1/hr/applicants/${applicant.id}/withdraw`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ reason: 'not interested', version: applicant.version });
-    expect(await awaitingIds()).not.toContain(applicant.id);
+    const withdrawBody = envelope<ApplicantDto>(withdrawRes);
+    const withdrawn = withdrawBody.data;
+    // I6 — a lifecycle exit reports the state it produced: nowhere to stand, nothing open (I14).
+    expect(withdrawBody.workflow.applicantStatus).toBe('withdrawn');
+    expect(withdrawBody.workflow.stage).toBeNull();
+    expect(withdrawBody.workflow.status).toBeNull();
+    expect(actionEnabled(withdrawBody.workflow, 'restore')).toBe(true);
+    expect(withdrawBody.timeline.produced.map((e) => e.type)).toContain('withdrawn');
+    expect(counter(withdrawBody.counters, 'screening')).toBeDefined();
+    expect(await waitingIds()).not.toContain(applicant.id);
+
+    // The record is CLOSED, not deleted and not flagged — its own status says so.
+    const own = async (): Promise<ScreeningDto[]> => {
+      const res = await request(app)
+        .get(`/api/v1/hr/screenings?applicantId=${applicant.id}&pageSize=50`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      return res.body.data as ScreeningDto[]; // a read — unchanged by I6
+    };
+    const afterWithdraw = await own();
+    expect(afterWithdraw).toHaveLength(1);
+    expect(afterWithdraw[0]?.status).toBe('cancelled');
+    expect(afterWithdraw[0]?.attempt).toBe(1);
+
+    const restored = await request(app)
+      .post(`/api/v1/hr/applicants/${applicant.id}/restore`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: withdrawn.version });
+    expect(restored.status).toBe(200);
+    expect(await waitingIds()).toContain(applicant.id);
+
+    // I6 — the reactivation answers with the NEW attempt it just materialized (I11/I12), so the
+    // screen the user is looking at can redraw itself without asking where the candidate went.
+    const restoredBody = envelope<ApplicantDto>(restored);
+    expect(restoredBody.workflow.applicantStatus).toBe('new');
+    expect(restoredBody.workflow.stage?.kind).toBe('screening');
+    expect(restoredBody.workflow.status).toBe('waiting');
+    expect(restoredBody.workflow.attempt).toBe(2);
+    expect(restoredBody.timeline.produced.map((e) => e.type)).toEqual(
+      expect.arrayContaining(['restored', 'screeningOpened']),
+    );
+    expect(counter(restoredBody.counters, 'screening')).toBeDefined();
+
+    // Attempt 1 is untouched history; attempt 2 is the live row (I11/I12).
+    const afterRestore = await own();
+    expect(afterRestore).toHaveLength(2);
+    const byAttempt = new Map(afterRestore.map((r) => [r.attempt, r.status]));
+    expect(byAttempt.get(1)).toBe('cancelled');
+    expect(byAttempt.get(2)).toBe('waiting');
   });
 });
 
 describe('screening — notes (needs more information)', () => {
   it('appends a note and stays pending', async () => {
     const applicant = await registerApplicant();
-    const screening = (await openScreening(applicant.id, adminToken, 'first')).body.data as ScreeningDto;
+    const screening = mutated<ScreeningDto>(await openScreening(applicant.id, adminToken, 'first'));
     const res = await request(app)
       .post(`/api/v1/hr/screenings/${screening.id}/notes`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ note: 'requested transcripts', version: screening.version });
     expect(res.status).toBe(200);
-    const dto = res.body.data as ScreeningDto;
+    const body = envelope<ScreeningDto>(res);
+    const dto = body.data;
     expect(dto.status).toBe('waiting');
     expect(dto.notes.map((n) => n.text)).toEqual(['first', 'requested transcripts']);
+
+    // I6 — an action that moves nothing still answers with the envelope: the state is unchanged and
+    // the timeline produced nothing, which is a truthful answer rather than a missing one.
+    expect(body.workflow.stage?.kind).toBe('screening');
+    expect(body.workflow.status).toBe('waiting');
+    expect(body.timeline.produced).toEqual([]);
+    expect(actionEnabled(body.workflow, 'accept')).toBe(true);
+    expect(counter(body.counters, 'screening')).toBeDefined();
   });
 });
 
 describe('screening — decide', () => {
   it('accepts a screening and leaves the applicant live', async () => {
     const applicant = await registerApplicant();
-    const screening = (await openScreening(applicant.id)).body.data as ScreeningDto;
+    const screening = mutated<ScreeningDto>(await openScreening(applicant.id));
     const res = await request(app)
       .post(`/api/v1/hr/screenings/${screening.id}/decide`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ outcome: 'accepted', version: screening.version });
     expect(res.status).toBe(200);
-    expect((res.body.data as ScreeningDto).status).toBe('accepted');
-    expect((res.body.data as ScreeningDto).decision?.outcome).toBe('accepted');
+    const body = envelope<ScreeningDto>(res);
+    expect(body.data.status).toBe('accepted');
+    expect(body.data.decision?.outcome).toBe('accepted');
 
+    // I6 — the decision's own response carries the candidate FORWARD: acceptance materializes the
+    // first interview round (I11), and the envelope already says the candidate stands there. This
+    // is the whole point of the invariant — no follow-up request, and no window in which the client
+    // could read a different answer than the one this action produced.
+    expect(body.workflow.applicantStatus).toBe('new');
+    expect(body.workflow.stage?.kind).toBe('interview');
+    expect(body.workflow.status).toBe('waiting');
+    expect(body.timeline.produced.map((e) => e.type)).toEqual(
+      expect.arrayContaining(['screeningDecided', 'interviewScheduled']),
+    );
+    expect(body.timeline.latest.length).toBeGreaterThan(0);
+    expect(counter(body.counters, 'screening')).toBeDefined();
+    expect(counter(body.counters, 'applicants')).toBeDefined();
+
+    // The read is unchanged (I6 touches mutations only).
     const after = await request(app)
       .get(`/api/v1/hr/applicants/${applicant.id}`)
       .set('Authorization', `Bearer ${adminToken}`);
@@ -283,13 +384,23 @@ describe('screening — decide', () => {
 
   it('rejects a screening, transitioning the applicant to rejected', async () => {
     const applicant = await registerApplicant();
-    const screening = (await openScreening(applicant.id)).body.data as ScreeningDto;
+    const screening = mutated<ScreeningDto>(await openScreening(applicant.id));
     const res = await request(app)
       .post(`/api/v1/hr/screenings/${screening.id}/decide`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ outcome: 'rejected', reason: 'insufficient experience', version: screening.version });
     expect(res.status).toBe(200);
-    expect((res.body.data as ScreeningDto).decision?.reason).toBe('insufficient experience');
+    const body = envelope<ScreeningDto>(res);
+    expect(body.data.decision?.reason).toBe('insufficient experience');
+
+    // The lifecycle moved with the decision, and the envelope says so without a second request.
+    expect(body.workflow.applicantStatus).toBe('rejected');
+    expect(body.workflow.stage).toBeNull();
+    expect(actionEnabled(body.workflow, 'reactivate')).toBe(true);
+    expect(body.timeline.produced.map((e) => e.type)).toEqual(
+      expect.arrayContaining(['screeningDecided', 'rejected']),
+    );
+    expect(counter(body.counters, 'screening')).toBeDefined();
 
     const after = await request(app)
       .get(`/api/v1/hr/applicants/${applicant.id}`)
@@ -299,7 +410,7 @@ describe('screening — decide', () => {
 
   it('requires a reason to reject', async () => {
     const applicant = await registerApplicant();
-    const screening = (await openScreening(applicant.id)).body.data as ScreeningDto;
+    const screening = mutated<ScreeningDto>(await openScreening(applicant.id));
     const res = await request(app)
       .post(`/api/v1/hr/screenings/${screening.id}/decide`)
       .set('Authorization', `Bearer ${adminToken}`)
@@ -309,7 +420,7 @@ describe('screening — decide', () => {
 
   it('refuses to decide a screening twice', async () => {
     const applicant = await registerApplicant();
-    const screening = (await openScreening(applicant.id)).body.data as ScreeningDto;
+    const screening = mutated<ScreeningDto>(await openScreening(applicant.id));
     const first = await request(app)
       .post(`/api/v1/hr/screenings/${screening.id}/decide`)
       .set('Authorization', `Bearer ${adminToken}`)
@@ -318,7 +429,7 @@ describe('screening — decide', () => {
     const second = await request(app)
       .post(`/api/v1/hr/screenings/${screening.id}/decide`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ outcome: 'accepted', version: (first.body.data as ScreeningDto).version });
+      .send({ outcome: 'accepted', version: mutated<ScreeningDto>(first).version });
     expect(second.status).toBe(422);
   });
 
@@ -327,7 +438,7 @@ describe('screening — decide', () => {
     const first = await registerApplicant({
       identity: { fullNameAr: 'خالد', nationality: 'Egyptian', nationalId: nid },
     });
-    const screening = (await openScreening(first.id)).body.data as ScreeningDto;
+    const screening = mutated<ScreeningDto>(await openScreening(first.id));
     const decide = await request(app)
       .post(`/api/v1/hr/screenings/${screening.id}/decide`)
       .set('Authorization', `Bearer ${adminToken}`)
@@ -346,25 +457,38 @@ describe('screening — decide permission is separate from edit (OQ-32)', () => 
     const applicant = await registerApplicant();
     const created = await openScreening(applicant.id, screenerToken, 'screened by recruiter');
     expect(created.status).toBe(201);
-    const screening = created.body.data as ScreeningDto;
+    const createdBody = envelope<ScreeningDto>(created);
+    const screening = createdBody.data;
+
+    // I6/I10 — the envelope the screener receives already tells them they may NOT decide, and why,
+    // rather than leaving the UI to guess and the request to fail at the gate.
+    expect(actionEnabled(createdBody.workflow, 'accept')).toBe(false);
+    expect(
+      createdBody.workflow.availableActions.find((a) => a.key === 'accept')?.reason,
+    ).toBe('requires screening.decide');
 
     const noted = await request(app)
       .post(`/api/v1/hr/screenings/${screening.id}/notes`)
       .set('Authorization', `Bearer ${screenerToken}`)
       .send({ note: 'follow-up call done', version: screening.version });
     expect(noted.status).toBe(200);
+    const notedBody = envelope<ScreeningDto>(noted);
 
     const deniedDecide = await request(app)
       .post(`/api/v1/hr/screenings/${screening.id}/decide`)
       .set('Authorization', `Bearer ${screenerToken}`)
-      .send({ outcome: 'accepted', version: (noted.body.data as ScreeningDto).version });
+      .send({ outcome: 'accepted', version: notedBody.data.version });
     expect(deniedDecide.status).toBe(403);
 
     const adminDecide = await request(app)
       .post(`/api/v1/hr/screenings/${screening.id}/decide`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ outcome: 'accepted', version: (noted.body.data as ScreeningDto).version });
+      .send({ outcome: 'accepted', version: notedBody.data.version });
     expect(adminDecide.status).toBe(200);
+    // The same list, built for a caller who DOES hold the permission, no longer refuses it.
+    const adminBody = envelope<ScreeningDto>(adminDecide);
+    expect(adminBody.workflow.availableActions.every((a) => a.permission !== '')).toBe(true);
+    expect(adminBody.timeline.produced.map((e) => e.type)).toContain('screeningDecided');
   });
 });
 
@@ -376,16 +500,22 @@ describe('screening — bulk approve/reject (RW17/I4)', () => {
       .send(body);
 
   it('approves a selection and reports one result per id', async () => {
-    const a = (await openScreening((await registerApplicant()).id)).body.data as ScreeningDto;
-    const b = (await openScreening((await registerApplicant()).id)).body.data as ScreeningDto;
+    const a = mutated<ScreeningDto>(await openScreening((await registerApplicant()).id));
+    const b = mutated<ScreeningDto>(await openScreening((await registerApplicant()).id));
 
     const res = await bulk({ action: 'approve', ids: [a.id, b.id] });
     expect(res.status).toBe(200);
-    const envelope = res.body.data as BulkActionResultDto;
-    expect(envelope.requested).toBe(2);
-    expect(envelope.succeeded).toBe(2);
-    expect(envelope.failed).toBe(0);
-    expect(envelope.results.map((r) => r.id).sort()).toEqual([a.id, b.id].sort());
+    const result = bulkEnvelope(res);
+    expect(result.requested).toBe(2);
+    expect(result.succeeded).toBe(2);
+    expect(result.failed).toBe(0);
+    expect(result.results.map((r) => r.id).sort()).toEqual([a.id, b.id].sort());
+
+    // I6/RW17 — a bulk act spans many candidates, so there is no single `workflow`; what it CAN
+    // answer is everything it wrote and the refreshed counters, which is what the queue redraws.
+    expect(result.timeline.produced.map((e) => e.type)).toContain('screeningDecided');
+    expect(result.timeline.produced.length).toBeGreaterThanOrEqual(2);
+    expect(counter(result.counters, 'screening')).toBeDefined();
 
     for (const id of [a.id, b.id]) {
       const after = await request(app)
@@ -396,8 +526,8 @@ describe('screening — bulk approve/reject (RW17/I4)', () => {
   });
 
   it('applies the successful items and reports the failing one (partial success)', async () => {
-    const good = (await openScreening((await registerApplicant()).id)).body.data as ScreeningDto;
-    const decided = (await openScreening((await registerApplicant()).id)).body.data as ScreeningDto;
+    const good = mutated<ScreeningDto>(await openScreening((await registerApplicant()).id));
+    const decided = mutated<ScreeningDto>(await openScreening((await registerApplicant()).id));
     // Already accepted → `accepted → accepted` is not a legal move, so this id fails.
     await request(app)
       .post(`/api/v1/hr/screenings/${decided.id}/decide`)
@@ -406,22 +536,29 @@ describe('screening — bulk approve/reject (RW17/I4)', () => {
 
     const res = await bulk({ action: 'approve', ids: [good.id, decided.id] });
     expect(res.status).toBe(200);
-    const envelope = res.body.data as BulkActionResultDto;
-    expect(envelope.succeeded).toBe(1);
-    expect(envelope.failed).toBe(1);
-    expect(envelope.results.find((r) => r.id === decided.id)?.ok).toBe(false);
-    expect(envelope.results.find((r) => r.id === good.id)?.ok).toBe(true);
+    const result = bulkEnvelope(res);
+    expect(result.succeeded).toBe(1);
+    expect(result.failed).toBe(1);
+    expect(result.results.find((r) => r.id === decided.id)?.ok).toBe(false);
+    expect(result.results.find((r) => r.id === good.id)?.ok).toBe(true);
+    // Only the item that actually moved wrote history — the refused one produced nothing.
+    expect(result.timeline.produced.filter((e) => e.type === 'screeningDecided')).toHaveLength(1);
   });
 
   it('requires a reason to reject and rejects the applicants when given one', async () => {
     const applicant = await registerApplicant();
-    const screening = (await openScreening(applicant.id)).body.data as ScreeningDto;
+    const screening = mutated<ScreeningDto>(await openScreening(applicant.id));
 
     expect((await bulk({ action: 'reject', ids: [screening.id] })).status).toBe(400);
 
     const res = await bulk({ action: 'reject', ids: [screening.id], reason: 'no relevant experience' });
     expect(res.status).toBe(200);
-    expect((res.body.data as BulkActionResultDto).succeeded).toBe(1);
+    const result = bulkEnvelope(res);
+    expect(result.succeeded).toBe(1);
+    expect(result.timeline.produced.map((e) => e.type)).toEqual(
+      expect.arrayContaining(['screeningDecided', 'rejected']),
+    );
+    expect(counter(result.counters, 'applicants')).toBeDefined();
 
     const after = await request(app)
       .get(`/api/v1/hr/applicants/${applicant.id}`)
@@ -430,7 +567,7 @@ describe('screening — bulk approve/reject (RW17/I4)', () => {
   });
 
   it('needs the decide permission', async () => {
-    const screening = (await openScreening((await registerApplicant()).id)).body.data as ScreeningDto;
+    const screening = mutated<ScreeningDto>(await openScreening((await registerApplicant()).id));
     expect((await bulk({ action: 'approve', ids: [screening.id] }, screenerToken)).status).toBe(403);
   });
 });

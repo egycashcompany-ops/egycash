@@ -20,11 +20,19 @@ import { Button } from '../../../../../shared/ui/Button';
 import { Dialog } from '../../../../../shared/ui/Dialog';
 import { Field, Input } from '../../../../../shared/ui/form';
 import { LoadingState } from '../../../../../shared/ui/states/LoadingState';
-import { formatDate, localized } from '../../../../../shared/lib/format';
+import { formatBusinessDateTime, localized } from '../../../../../shared/lib/format';
 import { StageBuckets } from '../../shared/StageBuckets';
 import { useRecruitmentStageCounts } from '../../counters/stage-counts-queries';
 import { InterviewStatusBadge } from '../components/InterviewStatusBadge';
-import { useBulkInterviews, useInterviews, useInterviewStages } from '../api/interview-queries';
+import { BulkScheduleDialog } from '../components/BulkScheduleDialog';
+import {
+  useBulkInterviews,
+  useBulkStartInterviews,
+  useInterviews,
+  useInterviewStages,
+  useStartInterview,
+  useStartScheduledInterviewRow,
+} from '../api/interview-queries';
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -69,7 +77,9 @@ export const InterviewStageQueuePage = (): JSX.Element => {
   const rowIds = useMemo(() => rows.map((i) => i.id), [rows]);
   const selection = useTableSelection(rowIds);
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
   const [reason, setReason] = useState('');
+  const bulkStart = useBulkStartInterviews(() => selection.clear());
   const bulk = useBulkInterviews(() => {
     selection.clear();
     setCancelOpen(false);
@@ -78,6 +88,33 @@ export const InterviewStageQueuePage = (): JSX.Element => {
   const cancellable = rows
     .filter((i) => selection.selectedIds.has(i.id) && (i.status === 'scheduled' || i.status === 'inProgress'))
     .map((i) => i.id);
+  // "Start now" addresses APPLICANTS (RW12): the round may not exist yet, so the endpoint takes
+  // the candidate and the stage, not an interview id.
+  const startable = rows
+    .filter((i) => selection.selectedIds.has(i.id) && (i.status === 'waiting' || i.status === 'scheduled'))
+    .map((i) => i.applicantId);
+  // Scheduling addresses candidates too: a waiting row has no round to move yet.
+  const schedulable = rows
+    .filter((i) => selection.selectedIds.has(i.id) && i.status === 'waiting')
+    .map((i) => i.applicantId);
+
+  // RW12 — a single row's "Start now". A waiting row has no scheduled round yet, so it starts
+  // through the candidate; a scheduled one just begins. Both are server-stamped with the actor
+  // and the start time.
+  const startNow = useStartInterview();
+  const startScheduled = useStartScheduledInterviewRow();
+  const [startingId, setStartingId] = useState<string | null>(null);
+  const startRow = async (row: InterviewDto): Promise<void> => {
+    setStartingId(row.id);
+    try {
+      if (row.status === 'scheduled') await startScheduled.mutateAsync({ id: row.id, version: row.version });
+      else await startNow.mutateAsync({ applicantId: row.applicantId, stageId, interviewerIds: [] });
+    } catch {
+      // surfaced globally
+    } finally {
+      setStartingId(null);
+    }
+  };
 
   const columns: Column<InterviewDto>[] = [
     {
@@ -96,13 +133,35 @@ export const InterviewStageQueuePage = (): JSX.Element => {
     {
       key: 'scheduledAt',
       header: t('interviews.columns.scheduled'),
-      render: (i) => (i.scheduledAt === null ? '—' : formatDate(i.scheduledAt, locale)),
+      // The Cairo business calendar (R10) — a start time must read the same to every user.
+      render: (i) => formatBusinessDateTime(i.scheduledAt, locale),
     },
     {
       key: 'panel',
       header: t('interviews.columns.panel'),
       align: 'center',
       render: (i) => i.panel.length,
+    },
+    {
+      key: 'actions',
+      header: '',
+      align: 'end',
+      render: (i) =>
+        i.status === 'waiting' || i.status === 'scheduled' ? (
+          <Can permission="interview.create">
+            <Button
+              size="sm"
+              variant="secondary"
+              loading={startingId === i.id}
+              onClick={(e) => {
+                e.stopPropagation();
+                void startRow(i);
+              }}
+            >
+              {t('interviews.actions.start')}
+            </Button>
+          </Can>
+        ) : null,
     },
   ];
 
@@ -133,8 +192,32 @@ export const InterviewStageQueuePage = (): JSX.Element => {
           onPick={(key) => patch({ status: key })}
         />
 
-        <Can permission="interview.cancel">
-          <BulkActionBar count={selection.count} onClear={selection.clear}>
+        <BulkActionBar count={selection.count} onClear={selection.clear}>
+          {/* RW17 — one date across the selection, through the shared bulk executor. */}
+          <Can permission="interview.create">
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={schedulable.length === 0}
+              onClick={() => setScheduleOpen(true)}
+            >
+              {t('interviews.bulk.schedule')}
+            </Button>
+          </Can>
+          {/* RW12 — start the round NOW for everyone still waiting at this stage. */}
+          <Can permission="interview.create">
+            <Button
+              size="sm"
+              loading={bulkStart.isPending}
+              disabled={startable.length === 0}
+              onClick={() =>
+                void bulkStart.mutateAsync({ applicantIds: startable, stageId })
+              }
+            >
+              {t('interviews.actions.startSelected')}
+            </Button>
+          </Can>
+          <Can permission="interview.cancel">
             <Button
               size="sm"
               variant="danger"
@@ -143,8 +226,8 @@ export const InterviewStageQueuePage = (): JSX.Element => {
             >
               {t('interviews.actions.cancelSelected')}
             </Button>
-          </BulkActionBar>
-        </Can>
+          </Can>
+        </BulkActionBar>
 
         <DataTable
           selection={selection}
@@ -164,6 +247,15 @@ export const InterviewStageQueuePage = (): JSX.Element => {
           />
         )}
       </div>
+
+      {scheduleOpen && (
+        <BulkScheduleDialog
+          applicantIds={schedulable}
+          stageId={stageId}
+          onClose={() => setScheduleOpen(false)}
+          onDone={() => selection.clear()}
+        />
+      )}
 
       <Dialog
         open={cancelOpen}

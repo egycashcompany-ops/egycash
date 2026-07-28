@@ -12,6 +12,8 @@ import { Types } from 'mongoose';
 import {
   HrHiringDocumentsEvents,
   HrHiringDocumentsTemplates,
+  type BulkActionResultDto,
+  type BulkHiringDocuments,
   type CompleteHiringDocuments,
   type CreateHiringDocuments,
   type FileDto,
@@ -27,6 +29,7 @@ import { emit } from '../../../../platform/kernel/event-bus';
 import { fileService, type UploadedBinary } from '../../../../platform/files';
 import { notificationsService } from '../../../../platform/notifications';
 import { employeeService } from '../../employee-management/employees';
+import { runBulk } from '../workflow/bulk-runner';
 import { hiringDocumentsRepository, type HiringDocumentsListFilter } from './hiring-documents.repository';
 import { hiringDocumentTypeRepository } from './hiring-document-type.repository';
 import { resolveHiringDocsCategoryId } from './hiring-documents.files';
@@ -275,6 +278,31 @@ class HiringDocumentsService {
     await emit(HrHiringDocumentsEvents.Completed, this.payload(updated));
     await this.notifyCompleted(updated);
     return updated;
+  }
+
+  /**
+   * Complete a whole selection (RW17/I4). Each set runs `complete` on its own — same gate, same
+   * audit, same event, same notification — so a set still missing a mandatory document fails as
+   * THAT item and is named in the envelope while the rest complete.
+   */
+  async bulk(
+    ctx: AuthContext,
+    input: BulkHiringDocuments,
+    scope: ScopeSelector,
+  ): Promise<BulkActionResultDto> {
+    return runBulk(
+      input.ids,
+      async (id) => {
+        const current = await hiringDocumentsRepository.getById(id, scope);
+        await this.complete(ctx, id, { version: current.__v }, scope);
+      },
+      {
+        entityType: 'hiringDocuments',
+        action: input.action,
+        actorUserId: ctx.userId,
+        reason: input.reason ?? null,
+      },
+    );
   }
 }
 

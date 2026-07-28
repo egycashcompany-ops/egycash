@@ -28,6 +28,7 @@ export const WorkflowEvents = {
 
   ScreeningAccepted: 'hr.screening.accepted',
   ScreeningRejected: 'hr.screening.rejected',
+  ScreeningCancelled: 'hr.screening.cancelled',
   ScreeningRedecided: 'hr.screening.redecided',
 
   InterviewScheduled: 'hr.interview.scheduled',
@@ -38,6 +39,7 @@ export const WorkflowEvents = {
 
   EvaluationApproved: 'hr.evaluation.approved',
   EvaluationRejected: 'hr.evaluation.rejected',
+  EvaluationCancelled: 'hr.evaluation.cancelled',
   EvaluationRedecided: 'hr.evaluation.redecided',
   EvaluationReopened: 'hr.evaluation.reopened',
 
@@ -78,6 +80,7 @@ const TRANSITION_EVENTS: Record<string, WorkflowEventName> = {
   // ── Screening ─────────────────────────────────────────────────────────────
   [key('screening', 'waiting', 'accepted')]: WorkflowEvents.ScreeningAccepted,
   [key('screening', 'waiting', 'rejected')]: WorkflowEvents.ScreeningRejected,
+  [key('screening', 'waiting', 'cancelled')]: WorkflowEvents.ScreeningCancelled,
   [key('screening', 'accepted', 'rejected')]: WorkflowEvents.ScreeningRedecided,
   [key('screening', 'rejected', 'accepted')]: WorkflowEvents.ScreeningRedecided,
 
@@ -95,6 +98,7 @@ const TRANSITION_EVENTS: Record<string, WorkflowEventName> = {
   // ── Evaluation ────────────────────────────────────────────────────────────
   [key('evaluation', 'waiting', 'approved')]: WorkflowEvents.EvaluationApproved,
   [key('evaluation', 'waiting', 'rejected')]: WorkflowEvents.EvaluationRejected,
+  [key('evaluation', 'waiting', 'cancelled')]: WorkflowEvents.EvaluationCancelled,
   [key('evaluation', 'approved', 'rejected')]: WorkflowEvents.EvaluationRedecided,
   [key('evaluation', 'rejected', 'approved')]: WorkflowEvents.EvaluationRedecided,
   [key('evaluation', 'approved', 'waiting')]: WorkflowEvents.EvaluationReopened,

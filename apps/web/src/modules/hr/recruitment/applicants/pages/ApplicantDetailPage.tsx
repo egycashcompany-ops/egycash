@@ -19,6 +19,8 @@ import { ApplicantStatusBadge } from '../components/ApplicantStatusBadge';
 import { ReferenceChip } from '../components/RefPickers';
 import { AttachmentsPanel } from '../components/AttachmentsPanel';
 import { ApplicantLifecycleActions } from '../components/ApplicantLifecycleActions';
+import { ReassignDialog } from '../components/ReassignDialog';
+import { ReturnToStageDialog } from '../components/ReturnToStageDialog';
 import { useApplicant, useVerifyApplicantIdentity } from '../api/applicant-queries';
 import { CandidateTimeline } from '../../timeline/components/CandidateTimeline';
 
@@ -39,6 +41,8 @@ export const ApplicantDetailPage = (): JSX.Element => {
 
   const verify = useVerifyApplicantIdentity(id);
   const [verifyOpen, setVerifyOpen] = useState(false);
+  const [reassignOpen, setReassignOpen] = useState(false);
+  const [returnOpen, setReturnOpen] = useState(false);
   const [nationalId, setNationalId] = useState('');
 
   if (isLoading) {
@@ -88,6 +92,22 @@ export const ApplicantDetailPage = (): JSX.Element => {
                 {t('applicants.actions.verify')}
               </Button>
             )}
+            {/* RW2 — reassignment is its own action with its own grant, never the edit form. */}
+            {a.status === 'new' && (
+              <Can permission="applicant.reassign">
+                <Button size="sm" variant="secondary" onClick={() => setReassignOpen(true)}>
+                  {t('applicants.reassign.title')}
+                </Button>
+              </Can>
+            )}
+            {/* RW13 — send the candidate back to an earlier stage; supersedes, never deletes. */}
+            {a.status === 'new' && (
+              <Can permission="applicant.returnToStage">
+                <Button size="sm" variant="secondary" onClick={() => setReturnOpen(true)}>
+                  {t('applicants.returnToStage.title')}
+                </Button>
+              </Can>
+            )}
             <ApplicantLifecycleActions applicantId={a.id} applicant={a} />
             {a.status === 'new' && (
               <Can permission="applicant.edit">
@@ -103,6 +123,12 @@ export const ApplicantDetailPage = (): JSX.Element => {
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <span className="font-mono text-sm text-slate-500" dir="ltr">{a.code}</span>
         <ApplicantStatusBadge status={a.status} />
+        {/* RW4a — the board always shows where the candidate stands TODAY. */}
+        {(a.placementLabel.position !== null || a.placementLabel.branch !== null) && (
+          <span className="text-sm text-slate-600 dark:text-slate-300">
+            {[a.placementLabel.position, a.placementLabel.branch].filter((v) => v !== null).join(' · ')}
+          </span>
+        )}
         <span className={a.identityVerification === 'verified' ? 'text-sm text-emerald-600' : 'text-sm text-slate-400'}>
           {t(`applicants.identity.${a.identityVerification}`)}
         </span>
@@ -212,6 +238,9 @@ export const ApplicantDetailPage = (): JSX.Element => {
           <Input value={nationalId} onChange={(e) => setNationalId(e.target.value)} dir="ltr" inputMode="numeric" />
         </Field>
       </Dialog>
+      <ReassignDialog applicant={a} open={reassignOpen} onClose={() => setReassignOpen(false)} />
+      <ReturnToStageDialog applicant={a} open={returnOpen} onClose={() => setReturnOpen(false)} />
+
     </PageContainer>
   );
 };

@@ -1,12 +1,11 @@
 // TanStack Query hooks for the Job Offer feature (ADR-013). Reads cached by the shared key factory;
-// each write returns the fresh offer, so it seeds the detail cache from the response and invalidates
-// only the list subtree (minimal invalidation). The applicant lookup reuses the Applicants list API;
-// org/manager references reuse the existing platform endpoints.
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+// each write applies the workflow envelope to the cache (I6), so nothing is refetched. The applicant
+// lookup reuses the Applicants list API; org/manager references reuse the existing platform
+// endpoints.
+import { useQuery } from '@tanstack/react-query';
 import {
   type AcceptJobOffer,
   type CreateJobOffer,
-  type JobOfferDto,
   type RejectJobOffer,
   type ReviseJobOffer,
   type SendJobOffer,
@@ -16,7 +15,7 @@ import {
 import { detailKey, listKey } from '../../../../../shared/lib/query-keys';
 import { listApplicants } from '../../applicants/api/applicant-api';
 import { useBulkMutation } from '../../../../../shared/lib/useBulkMutation';
-import { invalidateRecruitment } from '../../shared/invalidate-recruitment';
+import { applyBulkWorkflowResult, useWorkflowMutation } from '../../shared/useWorkflowMutation';
 import * as api from './job-offer-api';
 import { type JobOfferListParams } from './job-offer-api';
 
@@ -35,13 +34,6 @@ export const useJobOffer = (id: string) =>
     queryKey: detailKey(MODULE, FEATURE, id),
     queryFn: () => api.getJobOffer(id),
     enabled: id !== '',
-  });
-
-/** The awaiting-offer workflow queue — eligible applicants with no blocking offer yet. */
-export const useAwaitingOffers = (params: JobOfferListParams = {}) =>
-  useQuery({
-    queryKey: [MODULE, FEATURE, 'awaiting', params],
-    queryFn: () => api.listAwaitingOffers(params),
   });
 
 /**
@@ -106,59 +98,27 @@ export const useUser = (id: string, enabled: boolean) =>
     retry: false,
   });
 
-const useOfferWriters = (
-  id: string | null,
-): { seedAndInvalidate: (updated: JobOfferDto) => void } => {
-  const qc = useQueryClient();
-  return {
-    seedAndInvalidate: (updated) => {
-      qc.setQueryData(detailKey(MODULE, FEATURE, id ?? updated.id), updated);
-      void qc.invalidateQueries({ queryKey: listKey(MODULE, FEATURE) });
-    },
-  };
-};
+export const useCreateJobOffer = () =>
+  useWorkflowMutation(FEATURE, (body: CreateJobOffer) => api.createJobOffer(body));
 
-export const useCreateJobOffer = () => {
-  const { seedAndInvalidate } = useOfferWriters(null);
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: CreateJobOffer) => api.createJobOffer(body),
-    onSuccess: (created) => {
-      seedAndInvalidate(created);
-      // Drafting removes the applicant from the "awaiting offer" queue.
-      void qc.invalidateQueries({ queryKey: [MODULE, FEATURE, 'awaiting'] });
-    },
-  });
-};
+export const useReviseJobOffer = (id: string) =>
+  useWorkflowMutation(FEATURE, (body: ReviseJobOffer) => api.reviseJobOffer(id, body));
 
-export const useReviseJobOffer = (id: string) => {
-  const { seedAndInvalidate } = useOfferWriters(id);
-  return useMutation({ mutationFn: (body: ReviseJobOffer) => api.reviseJobOffer(id, body), onSuccess: seedAndInvalidate });
-};
+export const useSendJobOffer = (id: string) =>
+  useWorkflowMutation(FEATURE, (body: SendJobOffer) => api.sendJobOffer(id, body));
 
-export const useSendJobOffer = (id: string) => {
-  const { seedAndInvalidate } = useOfferWriters(id);
-  return useMutation({ mutationFn: (body: SendJobOffer) => api.sendJobOffer(id, body), onSuccess: seedAndInvalidate });
-};
+export const useAcceptJobOffer = (id: string) =>
+  useWorkflowMutation(FEATURE, (body: AcceptJobOffer) => api.acceptJobOffer(id, body));
 
-export const useAcceptJobOffer = (id: string) => {
-  const { seedAndInvalidate } = useOfferWriters(id);
-  return useMutation({ mutationFn: (body: AcceptJobOffer) => api.acceptJobOffer(id, body), onSuccess: seedAndInvalidate });
-};
+export const useRejectJobOffer = (id: string) =>
+  useWorkflowMutation(FEATURE, (body: RejectJobOffer) => api.rejectJobOffer(id, body));
 
-export const useRejectJobOffer = (id: string) => {
-  const { seedAndInvalidate } = useOfferWriters(id);
-  return useMutation({ mutationFn: (body: RejectJobOffer) => api.rejectJobOffer(id, body), onSuccess: seedAndInvalidate });
-};
-
-export const useWithdrawJobOffer = (id: string) => {
-  const { seedAndInvalidate } = useOfferWriters(id);
-  return useMutation({ mutationFn: (body: WithdrawJobOffer) => api.withdrawJobOffer(id, body), onSuccess: seedAndInvalidate });
-};
+export const useWithdrawJobOffer = (id: string) =>
+  useWorkflowMutation(FEATURE, (body: WithdrawJobOffer) => api.withdrawJobOffer(id, body));
 
 /** Bulk send/withdraw the selection (RW17). */
 export const useBulkJobOffers = (onApplied?: () => void) =>
   useBulkMutation<BulkJobOffers>((body) => api.bulkJobOffers(body), {
-    invalidate: invalidateRecruitment,
+    applyResult: (qc, result) => applyBulkWorkflowResult(qc, FEATURE, result),
     ...(onApplied === undefined ? {} : { onApplied }),
   });

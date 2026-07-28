@@ -3,7 +3,11 @@
 import { Types, type FilterQuery } from 'mongoose';
 import { type Paginated } from '@ecms/contracts';
 import { BaseRepository } from '../../../../shared/base/base.repository';
-import { assertNotWorkflowManaged } from '../workflow/workflow-guard';
+import {
+  assertNotSuperseded,
+  assertNotWorkflowManaged,
+  LIVE_ATTEMPT_ONLY,
+} from '../workflow/workflow-guard';
 import { type ScopeSelector } from '../../../../shared/types';
 import { EvaluationModel, type EvaluationDoc } from './evaluation.model';
 
@@ -31,6 +35,19 @@ class EvaluationRepository extends BaseRepository<EvaluationDoc> {
   ): Promise<EvaluationDoc> {
     assertNotWorkflowManaged(set ?? {}, 'evaluation');
     return super.updateById(id, set, meta);
+  }
+
+  /**
+   * I1 — a retired attempt is history, and history is not edited. The condition rides inside the
+   * same atomic write as the change, so a return-to-stage landing mid-request cannot be overtaken
+   * by a caller that read the record a moment earlier.
+   */
+  protected override writeConditions(): FilterQuery<EvaluationDoc> {
+    return LIVE_ATTEMPT_ONLY as FilterQuery<EvaluationDoc>;
+  }
+
+  protected override assertWritable(current: EvaluationDoc): void {
+    assertNotSuperseded(current, 'evaluation');
   }
 
   async findByApplicantAndPhase(applicantId: string, phaseId: string): Promise<EvaluationDoc | null> {

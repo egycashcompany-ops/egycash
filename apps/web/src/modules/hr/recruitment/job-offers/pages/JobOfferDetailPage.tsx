@@ -22,6 +22,7 @@ import {
   WithdrawOfferDialog,
 } from '../components/OfferDialogs';
 import { ApplicantLifecycleActions } from '../../applicants/components/ApplicantLifecycleActions';
+import { CandidateTimeline } from '../../timeline/components/CandidateTimeline';
 import { useJobOffer } from '../api/job-offer-queries';
 
 type ActionKind = 'send' | 'accept' | 'reject' | 'withdraw' | null;
@@ -207,6 +208,11 @@ export const JobOfferDetailPage = (): JSX.Element => {
             </CardBody>
           </Card>
         </div>
+      </div>
+
+      {/* THE recruitment history (I5) — every stage writes here, every screen reads here. */}
+      <div className="mt-6">
+        <CandidateTimeline applicantId={o.applicantId} />
       </div>
 
       {action === 'send' && <SendOfferDialog onClose={() => setAction(null)} offerId={o.id} version={o.version} />}

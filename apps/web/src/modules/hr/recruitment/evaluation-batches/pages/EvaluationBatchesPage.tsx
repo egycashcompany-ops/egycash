@@ -1,17 +1,22 @@
 // Every batch of every phase the caller can see (RW8). Batches are permanent, so this list is the
 // complete history — cancelled and closed ones included — with the status strip as its filter.
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { type EvaluationBatchStatus, type EvaluationBatchSummaryDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../../../shared/ui/DataTable';
+import { BulkActionBar } from '../../../../../shared/ui/BulkActionBar';
+import { useTableSelection } from '../../../../../shared/ui/useTableSelection';
+import { Button } from '../../../../../shared/ui/Button';
+import { Dialog } from '../../../../../shared/ui/Dialog';
+import { Field, Input } from '../../../../../shared/ui/form';
 import { Pagination } from '../../../../../shared/ui/Pagination';
 import { formatDate, localized } from '../../../../../shared/lib/format';
 import { StageBuckets } from '../../shared/StageBuckets';
 import { BatchPackageBadge, BatchStatusBadge } from '../components/BatchStatusBadge';
-import { useEvaluationBatches } from '../api/evaluation-batch-queries';
+import { useBulkEvaluationBatches, useEvaluationBatches } from '../api/evaluation-batch-queries';
 
 const DEFAULT_PAGE_SIZE = 25;
 const STATUSES: EvaluationBatchStatus[] = ['draft', 'issued', 'closed', 'cancelled'];
@@ -48,6 +53,22 @@ export const EvaluationBatchesPage = (): JSX.Element => {
   );
   const { data, isLoading, isError, error, refetch } = useEvaluationBatches(params);
   const rows = data?.items ?? [];
+
+  // RW17 — closing and cancelling are the two acts that make sense over a selection; both run per
+  // batch through the ordinary service, so one that is already terminal fails as that item alone.
+  const rowIds = useMemo(() => rows.map((b) => b.id), [rows]);
+  const selection = useTableSelection(rowIds);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [reason, setReason] = useState('');
+  const bulk = useBulkEvaluationBatches(() => {
+    selection.clear();
+    setCancelOpen(false);
+    setReason('');
+  });
+  const closable = rows.filter((b) => selection.selectedIds.has(b.id) && b.status === 'issued').map((b) => b.id);
+  const cancellable = rows
+    .filter((b) => selection.selectedIds.has(b.id) && (b.status === 'draft' || b.status === 'issued'))
+    .map((b) => b.id);
 
   const columns: Column<EvaluationBatchSummaryDto>[] = [
     {
@@ -103,7 +124,27 @@ export const EvaluationBatchesPage = (): JSX.Element => {
           onPick={(key) => patch({ status: key })}
         />
 
+        <BulkActionBar count={selection.count} onClear={selection.clear}>
+          <Button
+            size="sm"
+            loading={bulk.isPending}
+            disabled={closable.length === 0}
+            onClick={() => void bulk.mutateAsync({ action: 'close', ids: closable })}
+          >
+            {t('batches.actions.closeSelected')}
+          </Button>
+          <Button
+            size="sm"
+            variant="danger"
+            disabled={cancellable.length === 0}
+            onClick={() => setCancelOpen(true)}
+          >
+            {t('batches.actions.cancelSelected')}
+          </Button>
+        </BulkActionBar>
+
         <DataTable
+          selection={selection}
           columns={columns}
           rows={rows}
           rowKey={(b) => b.id}
@@ -120,6 +161,34 @@ export const EvaluationBatchesPage = (): JSX.Element => {
           />
         )}
       </div>
+
+      <Dialog
+        open={cancelOpen}
+        onClose={() => setCancelOpen(false)}
+        title={t('batches.actions.cancelSelected')}
+        description={t('bulk.reason.required')}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setCancelOpen(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              variant="danger"
+              loading={bulk.isPending}
+              disabled={reason.trim() === ''}
+              onClick={() =>
+                void bulk.mutateAsync({ action: 'cancel', ids: cancellable, reason: reason.trim() })
+              }
+            >
+              {t('batches.actions.cancelSelected')}
+            </Button>
+          </>
+        }
+      >
+        <Field label={t('bulk.reason.title')}>
+          <Input value={reason} onChange={(e) => setReason(e.target.value)} />
+        </Field>
+      </Dialog>
     </PageContainer>
   );
 };

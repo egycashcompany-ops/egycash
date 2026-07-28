@@ -17,6 +17,7 @@ import {
   type PlacementChangeDto,
   type PlacementDto,
   type PlacementLabelDto,
+  type StageRefDto,
 } from './hr-recruitment-workflow.js';
 
 // ── Closed vocabularies ─────────────────────────────────────────────────────
@@ -445,17 +446,6 @@ export const BulkApplicantsSchema = z
   );
 export type BulkApplicants = z.infer<typeof BulkApplicantsSchema>;
 
-/**
- * @deprecated Use the shared `BulkActionResultDto` (hr-recruitment-workflow) — every module's
- * bulk endpoint returns that exact shape. Kept as an alias so existing callers keep compiling.
- */
-export interface BulkApplicantsResultDto {
-  requested: number;
-  succeeded: number;
-  failed: number;
-  results: { id: string; ok: boolean; error?: string }[];
-}
-
 // ── Applicant DTO ───────────────────────────────────────────────────────────
 
 export interface ApplicantChannelContact {
@@ -548,6 +538,21 @@ export interface ApplicantDto {
   version: number;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * What a return to an earlier stage actually did (RW13/A8) — the `data` half of that action's
+ * workflow envelope. It is a PLAN, not an aggregate: the act spans every stage, superseding forward
+ * records and re-opening the target on a fresh attempt, so the candidate it moved travels inside it
+ * rather than being the response itself.
+ */
+export interface ReturnToStageResultDto {
+  applicant: ApplicantDto;
+  target: StageRefDto;
+  /** The attempt number the target stage re-opened on (I11/I12). */
+  newAttempt: number;
+  /** Retired, never deleted — the marker is `supersededAt` on each record. */
+  superseded: { entityType: string; entityId: string; status: string }[];
 }
 
 // ── Events emitted by the module (ADR-008 naming `<module>.<entity>.<event>`) ─

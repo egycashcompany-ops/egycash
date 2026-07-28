@@ -7,6 +7,14 @@ export * from './localized.js';
 export const objectId = () =>
   z.string().regex(/^[0-9a-fA-F]{24}$/, { message: 'must be a 24-hex-char ObjectId' });
 
+/**
+ * A boolean carried in a query string. NOT `z.coerce.boolean()`: coercion follows JavaScript
+ * truthiness, so the literal string `'false'` coerces to `true` — a filter that asks for the
+ * negative case would silently return the positive one.
+ */
+export const booleanQuery = () =>
+  z.union([z.boolean(), z.enum(['true', 'false']).transform((v) => v === 'true')]);
+
 // ── Data scopes (ADR-004; ADR-015 org model; ADR-017 hierarchical scopes) ────
 // The organizational visibility ladder, narrowest → widest:
 //   own (Self) ⊂ section ⊂ department ⊂ branch ⊂ organization (Company).

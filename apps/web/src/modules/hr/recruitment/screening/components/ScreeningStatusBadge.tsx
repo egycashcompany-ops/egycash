@@ -7,6 +7,8 @@ const TONE: Record<ScreeningStatus, Tone> = {
   waiting: 'warning',
   accepted: 'success',
   rejected: 'danger',
+  // Not a decision — the candidate left before one was made (I14).
+  cancelled: 'neutral',
 };
 
 export const ScreeningStatusBadge = ({ status }: { status: ScreeningStatus }): JSX.Element => {

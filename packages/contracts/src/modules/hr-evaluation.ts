@@ -27,7 +27,13 @@ import {
  * `waiting` replaced the former `pending` (I10); stored values are rewritten by the boot
  * migration and `pending` is still accepted as a query alias for one release.
  */
-export const EVALUATION_STATUSES = ['waiting', 'approved', 'rejected'] as const;
+/**
+ * `cancelled` is the terminal state a still-`waiting` phase reaches when the CANDIDATE leaves the
+ * pipeline (I14) — never a decision, which stays `approved` / `rejected`. It is what keeps a
+ * departed candidate out of the queue through the status itself rather than a lifecycle mirror
+ * (I1/I10).
+ */
+export const EVALUATION_STATUSES = ['waiting', 'approved', 'rejected', 'cancelled'] as const;
 export const EvaluationStatusSchema = z.enum(EVALUATION_STATUSES);
 export type EvaluationStatus = z.infer<typeof EvaluationStatusSchema>;
 
@@ -230,15 +236,6 @@ export interface EvaluationFileDto {
   uploadedAt: string;
 }
 
-/** One audited decision change on an evaluation (backs editability — HR can re-decide). */
-export interface EvaluationDecisionEventDto {
-  at: string;
-  from: EvaluationStatus;
-  to: EvaluationStatus;
-  reason: string | null;
-  by: string | null;
-}
-
 export interface EvaluationDto extends AttemptMarkerDto {
   id: string;
   applicantId: string;
@@ -269,8 +266,9 @@ export interface EvaluationDto extends AttemptMarkerDto {
   appointmentAt: string | null;
   decidedBy: string | null;
   decidedAt: string | null;
-  /** Full audited trail of decision changes (oldest first); empty until first decided. */
-  decisionHistory: EvaluationDecisionEventDto[];
+  // I5 — an evaluation carries its CURRENT decision, not a log of past ones. Every re-decision is
+  // an `evaluationDecided` entry on `hr_recruitment_timeline` with the same from/to/reason/actor,
+  // so a second copy here could only ever disagree with it.
   version: number;
   createdAt: string;
   updatedAt: string;

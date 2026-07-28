@@ -1,6 +1,12 @@
 // Platform API client: envelope-aware fetch wrapper with in-memory access token
 // and silent refresh on expiry (ADR-006 — the token never touches storage APIs).
-import { type ApiEnvelope, type ApiErrorDetail, type PageMeta, type Paginated } from '@ecms/contracts';
+import {
+  type ApiEnvelope,
+  type ApiErrorDetail,
+  type PageMeta,
+  type Paginated,
+  type WorkflowEnvelopeDto,
+} from '@ecms/contracts';
 
 const BASE_URL: string =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://localhost:3000/api/v1';
@@ -122,6 +128,7 @@ export const getText = async (path: string): Promise<string> => {
 
 export const del = <T>(path: string): Promise<T> => api<T>(path, { method: 'DELETE' });
 
+
 /** Build a `?a=1&b=2` query string, dropping empty/undefined values (API Standards §4). */
 export const buildQuery = (
   params: Record<string, string | number | boolean | undefined | null>,
@@ -187,3 +194,28 @@ export const upload = async <T>(path: string, form: FormData): Promise<T> => {
     throw error;
   }
 };
+
+// ── Workflow endpoints (I6) ─────────────────────────────────────────────────
+//
+// A recruitment workflow endpoint answers with `{ data, workflow, timeline, counters }`, and these
+// helpers hand the WHOLE envelope to the caller. That is the point of the invariant: the response
+// already contains everything the client needs to redraw — the updated aggregate, where the
+// candidate now stands, the history the act wrote, and the refreshed queue counters — so there is
+// nothing left to go and ask for.
+//
+// Typing them separately from `post`/`patch`/`upload` is deliberate: a workflow endpoint and an
+// ordinary one no longer have the same response shape, and the type should say so at the call site.
+
+export const postWorkflow = <T>(path: string, body: unknown): Promise<WorkflowEnvelopeDto<T>> =>
+  post<WorkflowEnvelopeDto<T>>(path, body);
+
+export const patchWorkflow = <T>(path: string, body: unknown): Promise<WorkflowEnvelopeDto<T>> =>
+  patch<WorkflowEnvelopeDto<T>>(path, body);
+
+/** The multipart counterpart — evaluation files and hiring documents are workflow actions too. */
+export const uploadWorkflow = <T>(path: string, form: FormData): Promise<WorkflowEnvelopeDto<T>> =>
+  upload<WorkflowEnvelopeDto<T>>(path, form);
+
+/** DELETE with a body — the evaluation-file removal, which is a workflow action like any other. */
+export const delWorkflow = <T>(path: string, body: unknown): Promise<WorkflowEnvelopeDto<T>> =>
+  api<WorkflowEnvelopeDto<T>>(path, { method: 'DELETE', body: JSON.stringify(body) });

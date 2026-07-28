@@ -1,18 +1,18 @@
 // TanStack Query hooks for the Screening feature (ADR-013). Reads cached by the shared key
-// factory; writes invalidate the feature subtree on success. The queue's applicant search reuses
-// the Applicants list API (screening's own list has no free-text field — it filters by
-// applicantId), so a name/code lookup resolves to that filter.
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+// factory; writes apply the workflow envelope to the cache (I6) instead of invalidating and
+// refetching. The queue's applicant search reuses the Applicants list API (screening's own list has
+// no free-text field — it filters by applicantId), so a name/code lookup resolves to that filter.
+import { useQuery } from '@tanstack/react-query';
 import {
   type AddScreeningNote,
   type BulkScreenings,
   type CreateScreening,
   type DecideScreening,
 } from '@ecms/contracts';
-import { detailKey, featureKey, listKey } from '../../../../../shared/lib/query-keys';
+import { detailKey, listKey } from '../../../../../shared/lib/query-keys';
 import { listApplicants } from '../../applicants/api/applicant-api';
 import { useBulkMutation } from '../../../../../shared/lib/useBulkMutation';
-import { invalidateRecruitment } from '../../shared/invalidate-recruitment';
+import { applyBulkWorkflowResult, useWorkflowMutation } from '../../shared/useWorkflowMutation';
 import * as api from './screening-api';
 import { type ScreeningListParams } from './screening-api';
 
@@ -33,16 +33,6 @@ export const useScreening = (id: string) =>
     enabled: id !== '',
   });
 
-/** "Awaiting screening" — live applicants with no screening yet (pipeline entry). Within the
- *  feature subtree, so opening a screening invalidates it automatically. */
-export const useAwaitingScreenings = (params: ScreeningListParams = {}) =>
-  useQuery({
-    queryKey: [MODULE, FEATURE, 'awaiting', params],
-    queryFn: () => api.listAwaitingScreenings(params),
-    staleTime: 30_000,
-    placeholderData: (prev) => prev,
-  });
-
 /** Applicant lookup for the queue filter + create dialog (reuses the Applicants list API). */
 export const useApplicantSearch = (term: string) =>
   useQuery({
@@ -53,36 +43,21 @@ export const useApplicantSearch = (term: string) =>
     select: (page) => page.items,
   });
 
-const useInvalidateScreenings = (): (() => void) => {
-  const qc = useQueryClient();
-  return () => {
-    void qc.invalidateQueries({ queryKey: featureKey(MODULE, FEATURE) });
-  };
-};
+export const useCreateScreening = () =>
+  useWorkflowMutation(FEATURE, (body: CreateScreening) => api.createScreening(body));
 
-export const useCreateScreening = () => {
-  const invalidate = useInvalidateScreenings();
-  return useMutation({ mutationFn: (body: CreateScreening) => api.createScreening(body), onSuccess: invalidate });
-};
+export const useAddScreeningNote = (id: string) =>
+  useWorkflowMutation(FEATURE, (body: AddScreeningNote) => api.addScreeningNote(id, body));
 
-export const useAddScreeningNote = (id: string) => {
-  const invalidate = useInvalidateScreenings();
-  return useMutation({ mutationFn: (body: AddScreeningNote) => api.addScreeningNote(id, body), onSuccess: invalidate });
-};
+export const useDecideScreening = (id: string) =>
+  useWorkflowMutation(FEATURE, (body: DecideScreening) => api.decideScreening(id, body));
 
-export const useDecideScreening = (id: string) => {
-  const invalidate = useInvalidateScreenings();
-  return useMutation({ mutationFn: (body: DecideScreening) => api.decideScreening(id, body), onSuccess: invalidate });
-};
-
-export const useRedecideScreening = (id: string) => {
-  const invalidate = useInvalidateScreenings();
-  return useMutation({ mutationFn: (body: DecideScreening) => api.redecideScreening(id, body), onSuccess: invalidate });
-};
+export const useRedecideScreening = (id: string) =>
+  useWorkflowMutation(FEATURE, (body: DecideScreening) => api.redecideScreening(id, body));
 
 /** Bulk approve/reject the selection (RW17). Reports the partial-success envelope exactly. */
 export const useBulkScreenings = (onApplied?: () => void) =>
   useBulkMutation<BulkScreenings>((body) => api.bulkScreenings(body), {
-    invalidate: invalidateRecruitment,
+    applyResult: (qc, result) => applyBulkWorkflowResult(qc, FEATURE, result),
     ...(onApplied === undefined ? {} : { onApplied }),
   });

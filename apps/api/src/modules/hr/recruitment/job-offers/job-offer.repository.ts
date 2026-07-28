@@ -3,7 +3,11 @@
 import { Types, type FilterQuery } from 'mongoose';
 import { type Paginated } from '@ecms/contracts';
 import { BaseRepository } from '../../../../shared/base/base.repository';
-import { assertNotWorkflowManaged } from '../workflow/workflow-guard';
+import {
+  assertNotSuperseded,
+  assertNotWorkflowManaged,
+  LIVE_ATTEMPT_ONLY,
+} from '../workflow/workflow-guard';
 import { type ScopeSelector } from '../../../../shared/types';
 import { JobOfferModel, type JobOfferDoc } from './job-offer.model';
 
@@ -11,7 +15,12 @@ export interface JobOfferListFilter {
   status?: string | undefined;
   applicantId?: string | undefined;
   branchId?: string | undefined;
-
+  /**
+   * A6/RW15 — whether the offer already produced an Employee. The Employees Ready queue asks for
+   * `false`, which is exactly the predicate `countEmployeesReady` counts, so the page's totals
+   * and the stage counter are one query shape and cannot drift.
+   */
+  hired?: boolean | undefined;
   search?: string | undefined;
 }
 
@@ -34,6 +43,19 @@ class JobOfferRepository extends BaseRepository<JobOfferDoc> {
   ): Promise<JobOfferDoc> {
     assertNotWorkflowManaged(set ?? {}, 'jobOffer');
     return super.updateById(id, set, meta);
+  }
+
+  /**
+   * I1 — a retired attempt is history, and history is not edited. The condition rides inside the
+   * same atomic write as the change, so a return-to-stage landing mid-request cannot be overtaken
+   * by a caller that read the record a moment earlier.
+   */
+  protected override writeConditions(): FilterQuery<JobOfferDoc> {
+    return LIVE_ATTEMPT_ONLY as FilterQuery<JobOfferDoc>;
+  }
+
+  protected override assertWritable(current: JobOfferDoc): void {
+    assertNotSuperseded(current, 'jobOffer');
   }
 
   /** The applicant's current LIVE (waiting/draft/sent) offer, if any. */
@@ -90,28 +112,6 @@ class JobOfferRepository extends BaseRepository<JobOfferDoc> {
       .exec();
   }
 
-  /**
-   * Among `applicantIds`, the ones holding an offer that BLOCKS drafting a new one — a drafted,
-   * sent or accepted one. A `waiting` record is the queue itself (I11), never a block.
-   */
-  async applicantIdsWithBlockingOffer(applicantIds: string[]): Promise<Set<string>> {
-    const objectIds = applicantIds
-      .filter((id) => Types.ObjectId.isValid(id))
-      .map((id) => new Types.ObjectId(id));
-    if (objectIds.length === 0) return new Set();
-    const rows = await this.model
-      .find({
-        applicantId: { $in: objectIds },
-        isDeleted: false,
-        supersededAt: null,
-        status: { $in: ['draft', 'sent', 'accepted'] },
-      })
-      .select('applicantId')
-      .lean<{ applicantId: Types.ObjectId }[]>()
-      .exec();
-    return new Set(rows.map((r) => String(r.applicantId)));
-  }
-
   /** Sent offers whose validity has lapsed as of `asOf` — the automatic-expiration sweep. */
   async findOverdueSent(asOf: Date, limit = 500): Promise<JobOfferDoc[]> {
     return this.model
@@ -126,6 +126,11 @@ class JobOfferRepository extends BaseRepository<JobOfferDoc> {
     if (f.status !== undefined) clauses.push({ status: f.status });
     if (f.applicantId !== undefined) clauses.push({ applicantId: new Types.ObjectId(f.applicantId) });
     if (f.branchId !== undefined) clauses.push({ branchId: new Types.ObjectId(f.branchId) });
+    if (f.hired !== undefined) {
+      clauses.push(
+        (f.hired ? { hiredEmployeeId: { $ne: null } } : { hiredEmployeeId: null }) as FilterQuery<JobOfferDoc>,
+      );
+    }
     if (f.search !== undefined && f.search.trim() !== '') {
       const re = new RegExp(escapeRegExp(f.search.trim()), 'i');
       clauses.push({

@@ -1,6 +1,5 @@
 // Evaluation + phase DTO mapping. Dates are ISO strings; ids are stringified.
 import {
-  type EvaluationDecisionEventDto,
   type EvaluationDto,
   type EvaluationFileDto,
   type EvaluationPhaseDto,
@@ -12,15 +11,7 @@ import {
   placementLabelDto,
 } from '../workflow/stage-mapper';
 import { type EvaluationPhaseDoc } from './evaluation-phase.model';
-import { type EvaluationDecisionEvent, type EvaluationDoc, type EvaluationFile } from './evaluation.model';
-
-const decisionEventDto = (e: EvaluationDecisionEvent): EvaluationDecisionEventDto => ({
-  at: e.at.toISOString(),
-  from: e.from,
-  to: e.to,
-  reason: e.reason,
-  by: e.by === null ? null : String(e.by),
-});
+import { type EvaluationDoc, type EvaluationFile } from './evaluation.model';
 
 export const toEvaluationPhaseDto = (doc: EvaluationPhaseDoc): EvaluationPhaseDto => ({
   id: String(doc._id),
@@ -70,7 +61,6 @@ export const toEvaluationDto = (doc: EvaluationDoc): EvaluationDto => ({
   files: doc.files.map(fileDto),
   decidedBy: doc.decidedBy === null ? null : String(doc.decidedBy),
   decidedAt: doc.decidedAt === null ? null : doc.decidedAt.toISOString(),
-  decisionHistory: (doc.decisionHistory ?? []).map(decisionEventDto),
   version: doc.__v,
   createdAt: doc.createdAt.toISOString(),
   updatedAt: doc.updatedAt.toISOString(),

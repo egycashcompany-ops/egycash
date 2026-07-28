@@ -9,49 +9,15 @@ import { type RecruitmentTimelineType } from '@ecms/contracts';
 import { auditService } from '../../../../platform/audit';
 import { recruitmentTimelineService } from '../timeline';
 import { onWorkflowEvent } from './workflow-dispatcher';
-import { WorkflowEvents } from './workflow-events';
+import { WorkflowEvents, type WorkflowEventName } from './workflow-events';
+import { stageEnteredType, timelineTypeForEvent } from './workflow-timeline-map';
+import { type StageObject } from './workflow-transitions';
 import { type WorkflowEventDoc } from './workflow-event.model';
 
-/** Event name → timeline entry type. Unmapped events are recorded as a generic note. */
-const TIMELINE_TYPES: Record<string, RecruitmentTimelineType> = {
-  [WorkflowEvents.StageEntered]: 'evaluationOpened',
-  [WorkflowEvents.StageLeft]: 'returnedToStage',
-  [WorkflowEvents.ScreeningAccepted]: 'screeningDecided',
-  [WorkflowEvents.ScreeningRejected]: 'screeningDecided',
-  [WorkflowEvents.ScreeningRedecided]: 'screeningDecided',
-  [WorkflowEvents.InterviewScheduled]: 'interviewScheduled',
-  [WorkflowEvents.InterviewStarted]: 'interviewStarted',
-  [WorkflowEvents.InterviewCompleted]: 'interviewCompleted',
-  [WorkflowEvents.InterviewCancelled]: 'interviewCancelled',
-  [WorkflowEvents.InterviewRedecided]: 'interviewCompleted',
-  [WorkflowEvents.EvaluationApproved]: 'evaluationDecided',
-  [WorkflowEvents.EvaluationRejected]: 'evaluationDecided',
-  [WorkflowEvents.EvaluationRedecided]: 'evaluationDecided',
-  [WorkflowEvents.EvaluationReopened]: 'evaluationOpened',
-  [WorkflowEvents.OfferCreated]: 'offerDrafted',
-  [WorkflowEvents.OfferSent]: 'offerSent',
-  [WorkflowEvents.OfferAccepted]: 'offerAccepted',
-  [WorkflowEvents.OfferRejected]: 'offerRejected',
-  [WorkflowEvents.OfferWithdrawn]: 'offerWithdrawn',
-  [WorkflowEvents.OfferExpired]: 'offerExpired',
-  [WorkflowEvents.OfferSuperseded]: 'offerWithdrawn',
-  [WorkflowEvents.ApplicantHired]: 'hired',
-  [WorkflowEvents.ApplicantRejected]: 'rejected',
-  [WorkflowEvents.ApplicantWithdrawn]: 'withdrawn',
-  [WorkflowEvents.ApplicantReactivated]: 'restored',
-};
-
-/** Stage-entered on an interview or offer is a more specific fact than the generic default. */
-const stageEnteredType = (event: WorkflowEventDoc): RecruitmentTimelineType => {
-  if (event.object === 'screening') return 'screeningOpened';
-  if (event.object === 'interview') return 'interviewScheduled';
-  if (event.object === 'offer') return 'offerDrafted';
-  return 'evaluationOpened';
-};
-
 const timelineType = (event: WorkflowEventDoc): RecruitmentTimelineType => {
-  if (event.name === WorkflowEvents.StageEntered) return stageEnteredType(event);
-  return TIMELINE_TYPES[event.name] ?? 'note';
+  if (event.name === WorkflowEvents.StageEntered) return stageEnteredType(event.object as StageObject);
+  // `note` is unreachable while the mapping stays total, which a unit test enforces.
+  return timelineTypeForEvent(event.name as WorkflowEventName) ?? 'note';
 };
 
 const correlationTypeOf = (event: WorkflowEventDoc): 'applicant' | 'screening' | 'interview' | 'evaluation' | 'offer' => {
@@ -62,6 +28,9 @@ const correlationTypeOf = (event: WorkflowEventDoc): 'applicant' | 'screening' |
 /** The timeline projection (I5/I15) — idempotent on the event's own id. */
 export const projectToTimeline = async (event: WorkflowEventDoc): Promise<void> => {
   await recruitmentTimelineService.record({
+    // The entry IS the event, as far as identity goes (I6): it takes the event's id, so the action
+    // that published the event can echo the entry back without knowing when the projection ran.
+    eventId: event.eventId,
     applicantId: String(event.applicantId),
     applicantCode: event.applicantCode,
     type: timelineType(event),

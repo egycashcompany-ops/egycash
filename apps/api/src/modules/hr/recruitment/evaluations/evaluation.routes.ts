@@ -24,6 +24,7 @@ import {
   openEvaluation,
   removeEvaluationFile,
   setEvaluationAppointment,
+  setEvaluationRecommendation,
   updateEvaluationPhase,
   uploadEvaluationFile,
 } from './evaluation.controller';
@@ -39,6 +40,7 @@ import {
   OpenEvaluationSchema,
   RemoveEvaluationFileSchema,
   SetEvaluationAppointmentSchema,
+  SetPlacementRecommendationSchema,
   UpdateEvaluationPhaseSchema,
   UploadEvaluationFileSchema,
 } from './evaluation.validation';
@@ -120,6 +122,14 @@ export const buildEvaluationsRouter = (): Router => {
     authorize('evaluation.manage'),
     validate({ body: SetEvaluationAppointmentSchema, params: EvaluationIdParamSchema }),
     asyncHandler(setEvaluationAppointment),
+  );
+  // RW5 — advisory placement recommendation from the reviewer.
+  router.patch(
+    '/:id/recommendation',
+    authenticate,
+    authorize('evaluation.manage'),
+    validate({ body: SetPlacementRecommendationSchema, params: EvaluationIdParamSchema }),
+    asyncHandler(setEvaluationRecommendation),
   );
   router.patch(
     '/:id/decision',

@@ -4,7 +4,6 @@
 // job-titles / users) — no new API is introduced.
 import {
   type AcceptJobOffer,
-  type AwaitingOfferDto,
   type BranchDto,
   type CreateJobOffer,
   type DepartmentDto,
@@ -16,38 +15,45 @@ import {
   type SendJobOffer,
   type UserDto,
   type WithdrawJobOffer,
-  type BulkActionResultDto,
   type BulkJobOffers,
+  type BulkWorkflowResultDto,
+  type WorkflowEnvelopeDto,
 } from '@ecms/contracts';
-import { buildQuery, get, getPage, patch, post } from '../../../../../shared/lib/api-client';
+import {
+  buildQuery,
+  get,
+  getPage,
+  patchWorkflow,
+  post,
+  postWorkflow,
+} from '../../../../../shared/lib/api-client';
 
 export type JobOfferListParams = Record<string, string | number | boolean | undefined | null>;
+
+type OfferEnvelope = Promise<WorkflowEnvelopeDto<JobOfferDto>>;
 
 export const listJobOffers = (params: JobOfferListParams): Promise<Paginated<JobOfferDto>> =>
   getPage<JobOfferDto>(`/hr/job-offers${buildQuery(params)}`);
 
 export const getJobOffer = (id: string): Promise<JobOfferDto> => get<JobOfferDto>(`/hr/job-offers/${id}`);
 
-export const listAwaitingOffers = (params: JobOfferListParams = {}): Promise<AwaitingOfferDto[]> =>
-  get<AwaitingOfferDto[]>(`/hr/job-offers/awaiting${buildQuery(params)}`);
+export const createJobOffer = (body: CreateJobOffer): OfferEnvelope =>
+  postWorkflow<JobOfferDto>('/hr/job-offers', body);
 
-export const createJobOffer = (body: CreateJobOffer): Promise<JobOfferDto> =>
-  post<JobOfferDto>('/hr/job-offers', body);
+export const reviseJobOffer = (id: string, body: ReviseJobOffer): OfferEnvelope =>
+  patchWorkflow<JobOfferDto>(`/hr/job-offers/${id}`, body);
 
-export const reviseJobOffer = (id: string, body: ReviseJobOffer): Promise<JobOfferDto> =>
-  patch<JobOfferDto>(`/hr/job-offers/${id}`, body);
+export const sendJobOffer = (id: string, body: SendJobOffer): OfferEnvelope =>
+  postWorkflow<JobOfferDto>(`/hr/job-offers/${id}/send`, body);
 
-export const sendJobOffer = (id: string, body: SendJobOffer): Promise<JobOfferDto> =>
-  post<JobOfferDto>(`/hr/job-offers/${id}/send`, body);
+export const acceptJobOffer = (id: string, body: AcceptJobOffer): OfferEnvelope =>
+  postWorkflow<JobOfferDto>(`/hr/job-offers/${id}/accept`, body);
 
-export const acceptJobOffer = (id: string, body: AcceptJobOffer): Promise<JobOfferDto> =>
-  post<JobOfferDto>(`/hr/job-offers/${id}/accept`, body);
+export const rejectJobOffer = (id: string, body: RejectJobOffer): OfferEnvelope =>
+  postWorkflow<JobOfferDto>(`/hr/job-offers/${id}/reject`, body);
 
-export const rejectJobOffer = (id: string, body: RejectJobOffer): Promise<JobOfferDto> =>
-  post<JobOfferDto>(`/hr/job-offers/${id}/reject`, body);
-
-export const withdrawJobOffer = (id: string, body: WithdrawJobOffer): Promise<JobOfferDto> =>
-  post<JobOfferDto>(`/hr/job-offers/${id}/withdraw`, body);
+export const withdrawJobOffer = (id: string, body: WithdrawJobOffer): OfferEnvelope =>
+  postWorkflow<JobOfferDto>(`/hr/job-offers/${id}/withdraw`, body);
 
 // ── Reference data (existing platform endpoints, reused; each gated by its own *.view) ──────────
 export const listBranches = (): Promise<Paginated<BranchDto>> =>
@@ -65,5 +71,5 @@ export const searchUsers = (term: string): Promise<Paginated<UserDto>> =>
 export const getUser = (id: string): Promise<UserDto> => get<UserDto>(`/platform/users/${id}`);
 
 /** Bulk send/withdraw a selection of offers (RW17) — answers a partial-success envelope. */
-export const bulkJobOffers = (body: BulkJobOffers): Promise<BulkActionResultDto> =>
-  post<BulkActionResultDto>('/hr/job-offers/bulk', body);
+export const bulkJobOffers = (body: BulkJobOffers): Promise<BulkWorkflowResultDto> =>
+  post<BulkWorkflowResultDto>('/hr/job-offers/bulk', body);

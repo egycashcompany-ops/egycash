@@ -8,12 +8,13 @@ import {
   HrEvents,
   parseNationalId,
   type BulkApplicants,
-  type BulkApplicantsResultDto,
+  type BulkActionResultDto,
   type ConfirmApplicantIdentity,
   type ExportApplicantsQuery,
   type ListApplicantsQuery,
   type MoveApplicantToOffer,
   type Paginated,
+  type ReassignPlacement,
   type RegisterApplicant,
   type RestoreApplicant,
   type UpdateApplicant,
@@ -35,11 +36,21 @@ import { applicantSourceRepository } from './applicant-source.repository';
 import { nextApplicantNumber } from './applicant-sequence';
 import { getRequisitionValidator } from './requisition-ref';
 import { applicantExportRow } from './applicant.mapper';
+import { reassignThroughSeam } from './placement-seam';
+import { resolvePlacement } from './placement-resolver';
 import { ApplicantModel, type ApplicantDoc } from './applicant.model';
 import { type Model } from 'mongoose';
 import { unitOfWork } from '../../../../platform/kernel/unit-of-work';
 import { type BaseDocFields } from '../../../../shared/base/base.model';
-import { recruitmentWorkflowEngine, type LifecycleEvent } from '../workflow';
+import {
+  recruitmentWorkflowEngine,
+  registerWorkflowApplicantReader,
+  runBulk,
+  type LifecycleEvent,
+} from '../workflow';
+// I5 — registration and identity verification are candidate facts, not workflow transitions, so
+// they are written here. The barrel carries no HTTP layer, so this does not close a cycle.
+import { recruitmentTimelineService } from '../timeline';
 
 export const APPLICANT_EXPORT_MAX_ROWS = 10_000;
 
@@ -60,6 +71,34 @@ interface ApplicantLifecycleDoc extends BaseDocFields {
   status: 'new' | 'hired' | 'rejected' | 'withdrawn';
   branchId: Types.ObjectId | null;
 }
+
+/**
+ * I6 — the workflow envelope needs the candidate's status and placement to describe where they
+ * stand. The workflow folder must not import this feature (this feature imports it), so Applicants
+ * hands it a reader at module load — the same seam pattern as the stage bindings.
+ */
+registerWorkflowApplicantReader(async (applicantId) => {
+  if (!Types.ObjectId.isValid(applicantId)) return null;
+  const doc = await ApplicantModel.findOne({ _id: new Types.ObjectId(applicantId), isDeleted: false })
+    .select('code status placement placementLabel')
+    .lean<{
+      _id: Types.ObjectId;
+      code: string;
+      status: string;
+      placement: ApplicantDoc['placement'];
+      placementLabel: ApplicantDoc['placementLabel'];
+    }>()
+    .exec();
+  return doc === null
+    ? null
+    : {
+        _id: doc._id,
+        code: doc.code,
+        status: doc.status,
+        placement: doc.placement,
+        placementLabel: doc.placementLabel,
+      };
+});
 
 class ApplicantService {
   /** The single intake entry point (§2.1). */
@@ -111,12 +150,22 @@ class ApplicantService {
 
     const now = new Date();
     const code = await nextApplicantNumber(now.getUTCFullYear());
-    const branchId = resolution?.branchId ?? input.branchId ?? null;
+    // RW1 — placement may be set at intake and stays editable until Offer Acceptance. When both
+    // a placement and a bare branchId arrive, `placement.branchId` wins and the scope field
+    // follows it; direct intake with neither keeps working (ADR-016).
+    const { placement, label: placementLabel } = await resolvePlacement(input.placement);
+    const branchId =
+      placement.branchId !== null
+        ? String(placement.branchId)
+        : (resolution?.branchId ?? input.branchId ?? null);
 
     const doc = await applicantRepository.create(
       {
         code,
         status: 'new',
+        placement,
+        placementLabel,
+        placementHistory: [],
         jobRequisitionId:
           input.jobRequisitionId === undefined ? null : new Types.ObjectId(input.jobRequisitionId),
         branchId: oid(branchId),
@@ -225,6 +274,23 @@ class ApplicantService {
       ...(input.jobRequisitionId === undefined ? {} : { jobRequisitionId: input.jobRequisitionId }),
       sourceId: input.sourceId,
     });
+    // I5 — a candidate's history starts with their application. Registration is not a workflow
+    // transition, so nothing downstream of the engine would record it; the timeline would begin
+    // mid-pipeline at the first decision. `recordSafe` keeps a history failure from failing the
+    // registration — the deterministic `sourceKey` lets reconciliation repair it later.
+    await recruitmentTimelineService.recordSafe({
+      applicantId: String(doc._id),
+      applicantCode: doc.code,
+      type: 'applied',
+      correlation: { type: 'applicant', id: String(doc._id) },
+      actorUserId: ctx.userId,
+      at: doc.createdAt,
+      entity: { type: 'applicant', id: String(doc._id) },
+      placement: doc.placement,
+      placementLabel: doc.placementLabel,
+      branchId: doc.branchId,
+      metadata: { source: source.key, intakeChannel: doc.intakeChannel },
+    });
     // The screening queue row exists from registration (I11) — the queue is data, never a
     // derivation of who has no record yet.
     await materializeAfterRegistration(String(doc._id));
@@ -295,23 +361,21 @@ class ApplicantService {
     return ApplicantModel.findOne({ nationalId, status: 'new', isDeleted: false });
   }
 
-  /** Of the given ids, those that are live (`new`) — used by the Interviews eligibility view. */
-  async liveIdsAmong(ids: string[], scope: ScopeSelector): Promise<Set<string>> {
-    return applicantRepository.liveIdsAmong(ids, scope);
-  }
-
-  /** Live applicants at the Job Offer stage, oldest move first — the awaiting-offer queue. */
-  async listMovedToOffer(
-    branchId: string | undefined,
-    limit: number,
-    scope: ScopeSelector,
-  ): Promise<ApplicantDoc[]> {
-    return applicantRepository.findMovedToOffer(branchId, limit, scope);
-  }
-
-  /** Live applicants (`new`), recent-first — used by the Screening eligibility view. */
-  async listActive(limit: number, branchId: string | undefined, scope: ScopeSelector): Promise<ApplicantDoc[]> {
-    return applicantRepository.listActive(limit, branchId, scope);
+  /**
+   * SYSTEM walk over every live applicant, id only, in `_id` order — the input to the boot
+   * backfill that materializes missing `waiting` rows (I8/I11).
+   *
+   * A cursor rather than a page list: the backlog is the whole live pipeline and must never be
+   * held in memory. `visit` owns its own failures; one applicant throwing must not end the walk,
+   * so anything it lets escape is the caller's decision, not this seam's.
+   */
+  async eachLiveIdSystem(batchSize: number, visit: (applicantId: string) => Promise<void>): Promise<void> {
+    const cursor = ApplicantModel.find({ status: 'new', isDeleted: false }, { _id: 1 })
+      .sort({ _id: 1 })
+      .batchSize(batchSize)
+      .lean()
+      .cursor();
+    for await (const row of cursor) await visit(String(row._id));
   }
 
   async update(
@@ -415,10 +479,11 @@ class ApplicantService {
     scope: ScopeSelector,
   ): Promise<ApplicantDoc> {
     const before = await applicantRepository.getById(id, scope);
+    const verifiedAt = new Date();
     const set: Partial<ApplicantDoc> = {
       identityVerification: 'verified',
       identityVerifiedBy: new Types.ObjectId(ctx.userId),
-      identityVerifiedAt: new Date(),
+      identityVerifiedAt: verifiedAt,
     };
     if (input.fullNameAr !== undefined) {
       set.fullNameAr = input.fullNameAr;
@@ -455,6 +520,20 @@ class ApplicantService {
       action: 'statusChange',
       changes: [{ field: 'identityVerification', old: before.identityVerification, new: 'verified' }],
     });
+    // I5 — verification is a fact about the candidate, not a workflow transition, so it is
+    // recorded here or nowhere. The verification instant discriminates the entry, so correcting
+    // and re-verifying adds a second entry rather than colliding with the first.
+    await recruitmentTimelineService.recordSafe({
+      applicantId: id,
+      applicantCode: updated.code,
+      type: 'identityVerified',
+      correlation: { type: 'applicant', id },
+      actorUserId: ctx.userId,
+      at: verifiedAt,
+      entity: { type: 'applicant', id },
+      discriminator: verifiedAt.toISOString(),
+      branchId: updated.branchId,
+    });
     await emit(HrEvents.ApplicantIdentityVerified, {
       applicantId: id,
       code: updated.code,
@@ -474,11 +553,13 @@ class ApplicantService {
   ): Promise<ApplicantDoc> {
     const before = await applicantRepository.getById(id, scope);
     if (before.status === 'withdrawn') return before; // idempotent
-    const updated = await applicantRepository.updateById(
-      id,
-      { status: 'withdrawn', withdrawnReason: input.reason, withdrawnAt: new Date() },
-      { by: ctx.userId, version: input.version, scope },
-    );
+    // I13/I14 — the ENGINE owns `applicant.status`. Writing it here directly is what let a
+    // withdrawn candidate keep matching every stage queue: the engine is where a lifecycle move
+    // propagates onto the stage records, and a direct repository write skips that entirely.
+    const updated = await this.raiseLifecycleEvent(ctx, id, 'withdrawal', input.reason, undefined, {
+      set: { withdrawnReason: input.reason, withdrawnAt: new Date() },
+      expectedVersion: input.version,
+    });
     await auditService.record({
       entityRef: entityRef(id),
       action: 'statusChange',
@@ -505,10 +586,17 @@ class ApplicantService {
     if (before.status !== 'withdrawn') {
       throw new BusinessRuleError('only a withdrawn applicant can be restored');
     }
-    const updated = await applicantRepository.updateById(
+    // Same rule as withdrawal: the engine moves the lifecycle, which is what brings the
+    // candidate's stage records back into the queues at exactly the stage they left.
+    const updated = await this.raiseLifecycleEvent(
+      ctx,
       id,
-      { status: 'new', withdrawnReason: null, withdrawnAt: null },
-      { by: ctx.userId, version: input.version, scope },
+      'reactivation',
+      // `reactivation` demands a reason; the restore DTO leaves it optional, so an unexplained
+      // restore still records WHY the status moved rather than being refused as a no-op.
+      input.reason ?? 'restored to the active pipeline',
+      undefined,
+      { set: { withdrawnReason: null, withdrawnAt: null }, expectedVersion: input.version },
     );
     await auditService.record({
       entityRef: entityRef(id),
@@ -585,6 +673,7 @@ class ApplicantService {
     event: LifecycleEvent,
     reason: string,
     correlationId?: string,
+    options?: { set?: Record<string, unknown>; expectedVersion?: number },
   ): Promise<ApplicantDoc> {
     const result = await unitOfWork(async (session) =>
       recruitmentWorkflowEngine.applyLifecycleEvent(
@@ -595,11 +684,17 @@ class ApplicantService {
         reason,
         session,
         correlationId,
+        options,
       ),
     );
     // The engine returns null when the event does not apply (already terminal): either way the
     // caller wants the current document.
     void result;
+    // Publish only AFTER the transaction commits (I15). Without this the lifecycle event and the
+    // stage closures it performed would sit in the outbox until some unrelated transition flushed
+    // it — so the timeline would lag, and reactivation (whose re-materialization is a consumer of
+    // the event) would not re-open the candidate's stage at all.
+    await recruitmentWorkflowEngine.flush();
     const current = await applicantRepository.findById(id);
     if (current === null) throw new NotFoundError();
     return current;
@@ -658,26 +753,84 @@ class ApplicantService {
     ctx: AuthContext,
     input: BulkApplicants,
     scope: ScopeSelector,
-  ): Promise<BulkApplicantsResultDto> {
-    const results: BulkApplicantsResultDto['results'] = [];
-    for (const id of input.ids) {
-      try {
-        if (input.action === 'withdraw') {
-          const current = await applicantRepository.getById(id, scope);
-          await this.withdraw(
-            ctx,
-            id,
-            { reason: input.reason ?? 'bulk withdraw', version: current.__v },
-            scope,
-          );
+  ): Promise<BulkActionResultDto> {
+    return runBulk(
+      input.ids,
+      async (id) => {
+        const current = await applicantRepository.getById(id, scope);
+        switch (input.action) {
+          case 'withdraw':
+            await this.withdraw(
+              ctx,
+              id,
+              { reason: input.reason ?? 'bulk withdraw', version: current.__v },
+              scope,
+            );
+            return;
+          case 'moveToOffer':
+            await this.moveToOffer(ctx, id, { version: current.__v }, scope);
+            return;
+          case 'moveToScreening':
+            // I11 — the screening row is materialized at registration, so "move to screening" is
+            // exactly "make sure that row exists". Idempotent, and the repair for a candidate
+            // registered before materialization existed.
+            await materializeAfterRegistration(id);
+            return;
+          case 'reassign':
+            // RW17 — ONE placement applied across the selection; each candidate is still checked
+            // against the editing window on its own, so an ineligible one fails as that item alone.
+            await this.reassign(
+              ctx,
+              id,
+              {
+                placement: input.placement as ReassignPlacement['placement'],
+                reason: input.reason as string,
+                source: 'manual',
+                version: current.__v,
+              },
+              scope,
+            );
+            return;
         }
-        results.push({ id, ok: true });
-      } catch (error) {
-        results.push({ id, ok: false, error: error instanceof Error ? error.message : String(error) });
-      }
-    }
-    const succeeded = results.filter((r) => r.ok).length;
-    return { requested: input.ids.length, succeeded, failed: results.length - succeeded, results };
+      },
+      {
+        entityType: 'applicant',
+        action: input.action,
+        actorUserId: ctx.userId,
+        reason: input.reason ?? null,
+      },
+    );
+  }
+
+  /**
+   * RW1 — the single writer of `placement` and its ADR-015 scope mirror `branchId`. The
+   * reassignment feature composes the whole act (history, stage scopes, timeline, offer revision)
+   * and calls this for the applicant's own row, so the mirror can never drift.
+   */
+  async writePlacement(
+    ctx: AuthContext,
+    id: string,
+    version: number,
+    scope: ScopeSelector,
+    set: Pick<ApplicantDoc, 'placement' | 'placementLabel' | 'placementHistory'> & {
+      branchId: ApplicantDoc['branchId'];
+    },
+  ): Promise<ApplicantDoc> {
+    return applicantRepository.updateById(id, set, { by: ctx.userId, version, scope });
+  }
+
+  /**
+   * RW2 — reassign a live candidate's Position and/or Branch. Its own audited action with a
+   * mandatory reason and its own permission, never a field edit. Implemented in
+   * `placement-reassign.ts`; exposed here so the feature keeps ONE public service.
+   */
+  async reassign(
+    ctx: AuthContext,
+    id: string,
+    input: ReassignPlacement,
+    scope: ScopeSelector,
+  ): Promise<ApplicantDoc> {
+    return reassignThroughSeam<ApplicantDoc>(ctx, id, input, scope);
   }
 
   // ── Export (audited, PII-masked by default — §9) ────────────────────────────

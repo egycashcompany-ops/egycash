@@ -1,62 +1,51 @@
-// Bulk scheduling: create interviews for MANY selected applicants at once (Phase-Board bulk
-// action). One stage + one date/time applied to every selected applicant; the committee stays
-// optional (assign later per interview). Each applicant is scheduled through the normal endpoint
-// so every server rule (stage progression, one-live-interview, applicant liveness) still applies;
-// per-applicant failures are counted and reported without aborting the rest.
+// RW17 — schedule ONE stage at ONE time across a whole selection of candidates.
+//
+// The whole selection goes to `POST /hr/interviews/bulk/schedule` in a single request. That is not
+// a detail: the server runs each candidate in its own transaction through the ordinary schedule
+// path (same gates, same audit, same events, same timeline), audits the bulk act once, and answers
+// with the partial-success envelope the shared hook reports honestly. A client-side loop could
+// give none of that — no single act to audit, and a half-finished run if the tab closes.
 import { useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import { type Locale } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
 import { Dialog } from '../../../../../shared/ui/Dialog';
 import { Button } from '../../../../../shared/ui/Button';
 import { Field, Input, Select } from '../../../../../shared/ui/form';
-import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { localized } from '../../../../../shared/lib/format';
-import { scheduleInterview } from '../api/interview-api';
-import { useInterviewStages } from '../api/interview-queries';
+import { useBulkScheduleInterviews, useInterviewStages } from '../api/interview-queries';
 
 export const BulkScheduleDialog = ({
   applicantIds,
+  /** Pre-selected stage — the per-stage queue page already knows which round it is scheduling. */
+  stageId: fixedStageId,
   onClose,
   onDone,
 }: {
   applicantIds: string[];
+  stageId?: string;
   onClose: () => void;
   onDone: () => void;
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
-  const qc = useQueryClient();
   const stages = useInterviewStages();
-  const [stageId, setStageId] = useState('');
+  const [stageId, setStageId] = useState(fixedStageId ?? '');
   const [scheduledAt, setScheduledAt] = useState('');
-  const [busy, setBusy] = useState(false);
+
+  const bulkSchedule = useBulkScheduleInterviews(() => {
+    onDone();
+    onClose();
+  });
 
   const submit = async (): Promise<void> => {
     if (stageId === '' || scheduledAt === '') return;
-    setBusy(true);
-    let ok = 0;
-    let failed = 0;
-    for (const applicantId of applicantIds) {
-      try {
-        await scheduleInterview({
-          applicantId,
-          stageId,
-          scheduledAt: new Date(scheduledAt),
-          interviewerIds: [],
-        });
-        ok += 1;
-      } catch {
-        failed += 1; // server rule refused this applicant (progression / duplicate / not live)
-      }
-    }
-    setBusy(false);
-    void qc.invalidateQueries({ queryKey: ['hr', 'interviews'] });
-    if (failed === 0) toast.success(t('interviews.bulk.scheduledAll', { count: ok }));
-    else toast.error(t('interviews.bulk.scheduledSome', { ok, failed }));
-    onDone();
-    onClose();
+    await bulkSchedule.mutateAsync({
+      applicantIds,
+      stageId,
+      scheduledAt: new Date(scheduledAt),
+      interviewerIds: [],
+    });
   };
 
   return (
@@ -68,21 +57,27 @@ export const BulkScheduleDialog = ({
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>{t('common.cancel')}</Button>
-          <Button loading={busy} disabled={stageId === '' || scheduledAt === ''} onClick={() => void submit()}>
+          <Button
+            loading={bulkSchedule.isPending}
+            disabled={stageId === '' || scheduledAt === '' || applicantIds.length === 0}
+            onClick={() => void submit()}
+          >
             {t('interviews.actions.schedule')}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
-        <Field label={t('interviews.schedule.stage')} required>
-          <Select value={stageId} onChange={(e) => setStageId(e.target.value)}>
-            <option value="">{t('offers.form.selectRef')}</option>
-            {(stages.data ?? []).map((s) => (
-              <option key={s.id} value={s.id}>{s.order}. {localized(s.name, locale)}</option>
-            ))}
-          </Select>
-        </Field>
+        {fixedStageId === undefined && (
+          <Field label={t('interviews.schedule.stage')} required>
+            <Select value={stageId} onChange={(e) => setStageId(e.target.value)}>
+              <option value="">{t('offers.form.selectRef')}</option>
+              {(stages.data ?? []).map((s) => (
+                <option key={s.id} value={s.id}>{s.order}. {localized(s.name, locale)}</option>
+              ))}
+            </Select>
+          </Field>
+        )}
         <Field label={t('interviews.schedule.when')} required>
           <Input type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} dir="ltr" />
         </Field>

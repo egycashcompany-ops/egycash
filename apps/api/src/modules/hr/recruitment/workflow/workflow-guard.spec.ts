@@ -1,10 +1,13 @@
-// I13 is enforced mechanically, so it has mechanical tests: a stage service that tries to write a
-// status must fail, and `applyTransition` must refuse anyone without the engine's token.
+// I13 and I1 are enforced mechanically, so they have mechanical tests: a stage service that tries
+// to write a status must fail, `applyTransition` must refuse anyone without the engine's token, and
+// a retired attempt must refuse every write regardless of the field.
 import { describe, expect, it } from 'vitest';
 import {
+  LIVE_ATTEMPT_ONLY,
   WORKFLOW_ENGINE_TOKEN,
   WORKFLOW_MANAGED_FIELDS,
   assertEngineToken,
+  assertNotSuperseded,
   assertNotWorkflowManaged,
 } from './workflow-guard';
 
@@ -61,5 +64,45 @@ describe('assertEngineToken', () => {
     expect(() => assertEngineToken(Symbol('recruitment.workflow.engine'), 'offer')).toThrow();
     expect(() => assertEngineToken('recruitment.workflow.engine', 'offer')).toThrow();
     expect(() => assertEngineToken({ token: WORKFLOW_ENGINE_TOKEN }, 'offer')).toThrow();
+  });
+});
+
+describe('assertNotSuperseded (I1 — a retired attempt is read-only)', () => {
+  it('admits a live attempt', () => {
+    expect(() => assertNotSuperseded({ supersededAt: null }, 'interview')).not.toThrow();
+  });
+
+  it('refuses a retired one, and says why rather than blaming the version', () => {
+    expect(() => assertNotSuperseded({ supersededAt: new Date() }, 'interview')).toThrow(
+      /superseded by a return to an earlier stage/,
+    );
+  });
+
+  it('is a business-rule refusal, not a 500 — a deep link into an old round is an honest mistake', () => {
+    try {
+      assertNotSuperseded({ supersededAt: new Date() }, 'evaluation');
+      expect.unreachable('should have thrown');
+    } catch (error) {
+      expect((error as { httpStatus?: number }).httpStatus).toBe(422);
+      expect((error as { expected?: boolean }).expected).toBe(true);
+    }
+  });
+
+  it('names the entity so the failure points at the offending record', () => {
+    expect(() => assertNotSuperseded({ supersededAt: new Date() }, 'screening')).toThrow(
+      /^screening:/,
+    );
+  });
+
+  it('refuses on the marker alone — the epoch is a real timestamp, not a falsy sentinel', () => {
+    expect(() => assertNotSuperseded({ supersededAt: new Date(0) }, 'jobOffer')).toThrow();
+  });
+});
+
+describe('LIVE_ATTEMPT_ONLY', () => {
+  it('is the condition the stage repositories add to every write', () => {
+    // A filter, not a pre-check: it rides inside the same atomic update as the write, so a
+    // return-to-stage landing mid-request cannot be overtaken.
+    expect(LIVE_ATTEMPT_ONLY).toEqual({ supersededAt: null });
   });
 });

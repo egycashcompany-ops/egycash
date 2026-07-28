@@ -25,8 +25,13 @@ import { buildHiringDocumentTypesRouter, buildHiringDocumentsRouter } from './re
 import { buildEmployeeFilesRouter } from './employee-management/employee-file';
 import { buildHolidaysRouter, buildWorkCalendarRouter, registerHrWorkCalendarSettings } from './work-calendar';
 import { registerHrIdentitySeams } from './employee-management/employees/identity-seams';
-import { registerRecruitmentWorkflowConsumers } from './recruitment/workflow';
+import {
+  dispatchPendingWorkflowEvents,
+  registerRecruitmentWorkflowConsumers,
+} from './recruitment/workflow';
+import { reconcileRecruitmentTimeline } from './recruitment/recruitment.reconciler';
 import { registerQueueMaterializer } from './recruitment/materializer';
+import { registerPlacementReassignment } from './recruitment/placement';
 import { buildLeaveTypesRouter } from './leave-management/leave-types';
 import { buildLeaveBalancesRouter, leaveBalanceService } from './leave-management/leave-balances';
 import {
@@ -51,6 +56,8 @@ registerHrIdentitySeams();
 // workflow events; the engine itself performs no side effects.
 registerRecruitmentWorkflowConsumers();
 registerQueueMaterializer();
+// RW2 — reassignment spans every stage, so it registers itself through the Applicants seam.
+registerPlacementReassignment();
 
 const applicantPermissions = declarePermissions(
   'hr',
@@ -63,6 +70,12 @@ const applicantPermissions = declarePermissions(
     { action: 'moveToOffer', name: { en: 'Move applicant to job offer', ar: 'نقل المتقدم لمرحلة عرض العمل' } },
     // RW13 — send a candidate back to an earlier stage. Nothing is deleted; forward records are
     // superseded and the target re-opens on a new attempt.
+    // RW2 — Position/Branch stay editable until the offer is accepted, but only through this
+    // explicit grant: an `applicant.edit` holder can correct data, not move a candidate.
+    {
+      action: 'reassign',
+      name: { en: 'Reassign applicant position or branch', ar: 'إعادة تعيين وظيفة أو فرع المتقدم' },
+    },
     {
       action: 'returnToStage',
       name: { en: 'Return applicant to an earlier stage', ar: 'إعادة المتقدم لمرحلة سابقة' },
@@ -467,6 +480,46 @@ export const hrModule: ModuleManifest = {
     },
   ],
   scheduledTasks: [
+    {
+      // I15 — the outbox's crash-recovery net.
+      //
+      // A workflow event is written in the SAME transaction as the aggregate change and published
+      // only after that transaction commits. The gap between those two moments is small but real:
+      // a process killed inside it leaves a committed state change whose event was never
+      // delivered — no timeline entry, no notification, no projection. Every subsequent transition
+      // drains the whole outbox, so the system usually heals itself on the next write; this sweep
+      // is what heals it when there is no next write, on a quiet queue or overnight.
+      //
+      // Safe to run at any time and safe to overlap: delivery is per-event and marked, so an event
+      // already dispatched is never dispatched twice, and consumers key on the immutable `eventId`.
+      key: 'hr.recruitment.workflowOutbox',
+      description: 'Publish committed recruitment workflow events whose dispatch never ran (I15)',
+      cron: '*/5 * * * *',
+      ownerService: 'hr',
+      handler: async () => {
+        await dispatchPendingWorkflowEvents();
+      },
+    },
+    {
+      // I5 — the timeline's repair task.
+      //
+      // The timeline is THE history, which makes a missing entry silent: nothing errors, the
+      // history is just shorter than the truth. This puts back what should be there — events that
+      // were committed but never projected, and the two facts written outside the engine
+      // (`applied`, `identityVerified`) whose writer logs and swallows rather than failing the
+      // business operation. Every write it makes is keyed on a deterministic `sourceKey`, so a run
+      // against a healthy database changes nothing and a rebuilt row keeps its original identity.
+      //
+      // Hourly rather than by the minute: this is a repair, not a delivery path — the outbox sweep
+      // above is what keeps the normal case current.
+      key: 'hr.recruitment.timelineReconcile',
+      description: 'Rebuild recruitment timeline entries that should exist and do not (I5)',
+      cron: '20 * * * *',
+      ownerService: 'hr',
+      handler: async () => {
+        await reconcileRecruitmentTimeline();
+      },
+    },
     {
       // Contracts D11 — fixed-term contracts past their end date flip to `expired`.
       key: 'hr.contracts.expire',

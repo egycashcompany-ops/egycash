@@ -1,6 +1,6 @@
 // Create a new offer (pick an applicant + fill the package) or revise an existing draft/sent offer
 // (edit its terms; version-checked, keeps history). Both use the shared OfferTermsForm. Arriving
-// from the awaiting-offer queue preselects the applicant (read-only) — search exists only for a
+// from the offer queue preselects the applicant (read-only) — search exists only for a
 // completely standalone offer.
 import { useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -16,7 +16,7 @@ import { ApplicantPicker } from '../components/ApplicantPicker';
 import { OfferTermsForm } from '../components/OfferTermsForm';
 import { useCreateJobOffer, useJobOffer, useReviseJobOffer } from '../api/job-offer-queries';
 
-/** Minimal applicant shape the form needs — satisfied by a full ApplicantDto or an awaiting row. */
+/** Minimal applicant shape the form needs — satisfied by a full ApplicantDto or a queue row. */
 interface PickedApplicant {
   id: string;
   code: string;
@@ -32,7 +32,7 @@ export const JobOfferFormPage = ({ mode }: { mode: 'create' | 'revise' }): JSX.E
   const create = useCreateJobOffer();
   const revise = useReviseJobOffer(id);
   const { data: offer, isLoading, isError, error, refetch } = useJobOffer(mode === 'revise' ? id : '');
-  // Preselected from the awaiting-offer queue (router state) — no second search.
+  // Preselected from the offer queue (router state) — no second search.
   const preset = (location.state as { applicant?: PickedApplicant } | null)?.applicant ?? null;
   const [applicant, setApplicant] = useState<PickedApplicant | null>(preset);
 

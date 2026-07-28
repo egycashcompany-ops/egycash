@@ -5,6 +5,9 @@ import { type Locale, type LocalizedString } from '@ecms/contracts';
 
 const PLACEHOLDER = '—';
 
+/** The HR business calendar (Leave design R10) — see `formatBusinessDateTime`. */
+const CAIRO_TZ = 'Africa/Cairo';
+
 const intlLocale = (locale: Locale): string => (locale === 'ar' ? 'ar-EG' : 'en-GB');
 const numberLocale = (locale: Locale): string => (locale === 'ar' ? 'ar-EG' : 'en-US');
 
@@ -26,6 +29,26 @@ export const formatDateTime = (value: string | Date | null | undefined, locale: 
   return d === null
     ? PLACEHOLDER
     : new Intl.DateTimeFormat(intlLocale(locale), { dateStyle: 'medium', timeStyle: 'short' }).format(d);
+};
+
+/**
+ * The company's business calendar is Africa/Cairo (Leave design R10), so a moment that a rule or
+ * an audit trail cares about — when a round was actually started — must read the same to every
+ * user. `formatDateTime` follows the BROWSER's timezone; this one does not, which is why the
+ * recruitment screens use it for workflow timestamps.
+ */
+export const formatBusinessDateTime = (
+  value: string | Date | null | undefined,
+  locale: Locale,
+): string => {
+  const d = toDate(value);
+  return d === null
+    ? PLACEHOLDER
+    : new Intl.DateTimeFormat(intlLocale(locale), {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+        timeZone: CAIRO_TZ,
+      }).format(d);
 };
 
 export const formatNumber = (value: number | null | undefined, locale: Locale): string =>

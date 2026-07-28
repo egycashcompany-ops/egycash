@@ -17,7 +17,21 @@ export {
   workflowConsumerIds,
   type WorkflowEventConsumer,
 } from './workflow-dispatcher';
+export {
+  registerStageBinding,
+  resetStageBindings,
+} from './workflow-engine';
 export { runBulk, type BulkRunOptions } from './bulk-runner';
+// I6 — the one envelope every workflow endpoint answers with, and the pieces that build it.
+export { withBulkWorkflowEnvelope, withWorkflowEnvelope } from './workflow-envelope';
+export {
+  buildWorkflowState,
+  registerWorkflowApplicantReader,
+  resetWorkflowApplicantReader,
+  type WorkflowApplicant,
+} from './workflow-state';
+export { availableActions, permissionForAction, unmappedActions } from './workflow-actions';
+export { stageBindingsInOrder } from './workflow-engine';
 export { WorkflowEvents, type WorkflowEventName } from './workflow-events';
 export {
   auditWorkflowEvent,
@@ -46,7 +60,9 @@ export {
   type WorkflowStatus,
 } from './workflow-transitions';
 export {
+  assertNotSuperseded,
   assertNotWorkflowManaged,
+  LIVE_ATTEMPT_ONLY,
   WORKFLOW_MANAGED_FIELDS,
 } from './workflow-guard';
 export {

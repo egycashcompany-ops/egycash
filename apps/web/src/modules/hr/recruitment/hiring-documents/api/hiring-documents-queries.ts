@@ -1,10 +1,15 @@
 // TanStack Query hooks for the Hiring Documents feature (ADR-013). Reads cached by the shared key
-// factory; each write returns the fresh aggregate, so it seeds the detail cache and invalidates only
-// the list subtree. The employee lookup reuses the Employees list API; the document-type catalog is
-// read-only. No new backend API.
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { type CompleteHiringDocuments, type CreateHiringDocuments, type HiringDocumentsDto } from '@ecms/contracts';
+// factory; each write applies the workflow envelope to the cache (I6), so nothing is refetched. The
+// employee lookup reuses the Employees list API; the document-type catalog is read-only.
+import { useQuery } from '@tanstack/react-query';
+import {
+  type BulkHiringDocuments,
+  type CompleteHiringDocuments,
+  type CreateHiringDocuments,
+} from '@ecms/contracts';
 import { detailKey, listKey } from '../../../../../shared/lib/query-keys';
+import { useBulkMutation } from '../../../../../shared/lib/useBulkMutation';
+import { applyBulkWorkflowResult, useWorkflowMutation } from '../../shared/useWorkflowMutation';
 import { listEmployees } from '../../../employee-management/employees/api/employee-api';
 import * as api from './hiring-documents-api';
 import { type HiringDocsListParams } from './hiring-documents-api';
@@ -53,43 +58,22 @@ export const useDocumentVersions = (id: string, typeId: string | null) =>
     enabled: id !== '' && typeId !== null,
   });
 
-const useHiringDocsWriters = (
-  id: string | null,
-): { seedAndInvalidate: (updated: HiringDocumentsDto) => void } => {
-  const qc = useQueryClient();
-  return {
-    seedAndInvalidate: (updated) => {
-      qc.setQueryData(detailKey(MODULE, FEATURE, id ?? updated.id), updated);
-      void qc.invalidateQueries({ queryKey: listKey(MODULE, FEATURE) });
-    },
-  };
-};
+export const useCreateHiringDocs = () =>
+  useWorkflowMutation(FEATURE, (body: CreateHiringDocuments) => api.createHiringDocs(body));
 
-export const useCreateHiringDocs = () => {
-  const { seedAndInvalidate } = useHiringDocsWriters(null);
-  return useMutation({
-    mutationFn: (body: CreateHiringDocuments) => api.createHiringDocs(body),
-    onSuccess: seedAndInvalidate,
+export const useUploadHiringDoc = (id: string) =>
+  useWorkflowMutation(FEATURE, (form: FormData) => api.uploadHiringDoc(id, form));
+
+export const useReplaceHiringDoc = (id: string, typeId: string) =>
+  useWorkflowMutation(FEATURE, (form: FormData) => api.replaceHiringDoc(id, typeId, form));
+
+export const useCompleteHiringDocs = (id: string) =>
+  useWorkflowMutation(FEATURE, (body: CompleteHiringDocuments) => api.completeHiringDocs(id, body));
+
+/** RW17 — bulk complete. The envelope is reported honestly: a set still missing a mandatory
+ *  document fails as that item and is named, while the rest complete. */
+export const useBulkHiringDocs = (onApplied?: () => void) =>
+  useBulkMutation<BulkHiringDocuments>((body) => api.bulkHiringDocs(body), {
+    applyResult: (qc, result) => applyBulkWorkflowResult(qc, FEATURE, result),
+    ...(onApplied === undefined ? {} : { onApplied }),
   });
-};
-
-export const useUploadHiringDoc = (id: string) => {
-  const { seedAndInvalidate } = useHiringDocsWriters(id);
-  return useMutation({ mutationFn: (form: FormData) => api.uploadHiringDoc(id, form), onSuccess: seedAndInvalidate });
-};
-
-export const useReplaceHiringDoc = (id: string, typeId: string) => {
-  const { seedAndInvalidate } = useHiringDocsWriters(id);
-  return useMutation({
-    mutationFn: (form: FormData) => api.replaceHiringDoc(id, typeId, form),
-    onSuccess: seedAndInvalidate,
-  });
-};
-
-export const useCompleteHiringDocs = (id: string) => {
-  const { seedAndInvalidate } = useHiringDocsWriters(id);
-  return useMutation({
-    mutationFn: (body: CompleteHiringDocuments) => api.completeHiringDocs(id, body),
-    onSuccess: seedAndInvalidate,
-  });
-};

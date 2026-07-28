@@ -1,14 +1,18 @@
 // Electronic Employee File assembly (Stage 7) — the final stage of the seven-stage recruitment
 // workflow and the handoff artifact to the Employee module (BD-008). Once an employee's hiring
 // documents are completed, their file is assembled ONCE: it links all applicant history
-// (screening, interviews, offer, hiring documents) and builds the initial Employee Timeline
-// from the recruitment milestones (applicant registered → screening accepted → each interview
-// passed → offer accepted → employee created → hiring documents completed → file opened). After
-// assembly, notes may be appended to the timeline; the post-hire employee lifecycle belongs to
-// the Employee module, not here. Assembly and notes publish events, notify, and are audited.
+// (screening, interviews, offer, hiring documents) and opens the Employee Timeline at the hire
+// (employee created → hiring documents completed → file opened). After assembly, notes may be
+// appended to the timeline; the post-hire employee lifecycle belongs to the Employee module, not
+// here. Assembly and notes publish events, notify, and are audited.
 //
-// Cross-feature access to the Applicant, Screening, Interview, Job Offer, Employee, and Hiring
-// Documents aggregates goes through their barrels only (ADR-003).
+// I5 — the file keeps NO recruitment history of its own. `hr_recruitment_timeline` is the one
+// chronological history of a candidate, so the file's own timeline begins at the hire and the
+// recruitment part is READ from the canonical collection at request time (`recruitmentTimeline`
+// on the DTO). Two histories can drift; one cannot.
+//
+// Cross-feature access to the Screening, Interview, Timeline, Employee, and Hiring Documents
+// aggregates goes through their barrels only (ADR-003).
 import { Types } from 'mongoose';
 import {
   HrEmployeeFileEvents,
@@ -17,19 +21,19 @@ import {
   type CreateEmployeeFile,
   type ListEmployeeFilesQuery,
   type Paginated,
+  type RecruitmentTimelineEntryDto,
   type RemoveEmployeeFileDocument,
   type UploadEmployeeFileDocument,
 } from '@ecms/contracts';
 import { BusinessRuleError, ConflictError, ValidationError } from '../../../../shared/errors';
-import { type AuthContext, type ScopeSelector } from '../../../../shared/types';
+import { scopeSelector, type AuthContext, type ScopeSelector } from '../../../../shared/types';
 import { auditService } from '../../../../platform/audit';
 import { emit } from '../../../../platform/kernel/event-bus';
 import { fileService, type UploadedBinary } from '../../../../platform/files';
 import { notificationsService } from '../../../../platform/notifications';
-import { applicantService } from '../../recruitment/applicants';
 import { screeningService } from '../../recruitment/screening';
 import { interviewService } from '../../recruitment/interviews';
-import { jobOfferService } from '../../recruitment/job-offers';
+import { recruitmentTimelineService, timelineEntryDto } from '../../recruitment/timeline';
 import { employeeService } from '../employees';
 import { hiringDocumentsService } from '../../recruitment/hiring-documents';
 import { employeeFileRepository, type EmployeeFileListFilter } from './employee-file.repository';
@@ -42,6 +46,14 @@ import {
 } from './employee-file.model';
 
 const entityRef = (id: string) => ({ moduleId: 'hr', entityType: 'employeeFile', entityId: id });
+
+/**
+ * How much canonical recruitment history the file shows. A candidate's pipeline produces on the
+ * order of tens of entries even across several attempts, so this is a safety bound rather than a
+ * page — the file shows the whole history and the dedicated timeline endpoint serves anything
+ * beyond it.
+ */
+const RECRUITMENT_TIMELINE_LIMIT = 500;
 
 const milestone = (
   at: Date,
@@ -100,35 +112,15 @@ class EmployeeFileService {
       throw new ConflictError('this employee already has an electronic file');
     }
 
-    // Gather the recruitment history (read-only, via barrels). Direct registrations have no
-    // recruitment trail — their timeline starts at the hire.
+    // Resolve the recruitment records the file LINKS to (a link is not a history — I5). Direct
+    // registrations have no recruitment trail, so they simply link nothing.
     const timeline: EmployeeTimelineEntry[] = [];
     let screeningId: Types.ObjectId | null = null;
     let interviewIds: Types.ObjectId[] = [];
     if (employee.applicantId !== null) {
       const applicantId = String(employee.applicantId);
-      const applicant = await applicantService.getById(applicantId, scope);
       const screening = await screeningService.findByApplicantId(applicantId);
       const interviews = await interviewService.listByApplicant(applicantId);
-      const offer =
-        employee.jobOfferId === null
-          ? null
-          : await jobOfferService.acceptedOfferById(String(employee.jobOfferId));
-      timeline.push(milestone(applicant.createdAt, 'applicantRegistered', 'applicant', applicant._id, applicant.code));
-      if (screening !== null && screening.status === 'accepted' && screening.decidedAt !== null) {
-        timeline.push(milestone(screening.decidedAt, 'screeningAccepted', 'screening', screening._id, null));
-      }
-      for (const interview of interviews) {
-        if (interview.status === 'completed' && interview.outcome === 'passed' && interview.decidedAt !== null) {
-          timeline.push(
-            milestone(interview.decidedAt, 'interviewPassed', 'interview', interview._id, interview.stageName.en),
-          );
-        }
-      }
-      const offerAcceptedAt = offer?.acceptedSnapshot?.acceptedAt ?? offer?.respondedAt ?? null;
-      if (offer !== null && offerAcceptedAt !== null) {
-        timeline.push(milestone(offerAcceptedAt, 'offerAccepted', 'jobOffer', offer._id, offer.code));
-      }
       screeningId = screening === null ? null : screening._id;
       interviewIds = interviews.map((i) => i._id);
     }
@@ -299,6 +291,32 @@ class EmployeeFileService {
 
   async getById(id: string, scope: ScopeSelector): Promise<EmployeeFileDoc> {
     return employeeFileRepository.getById(id, scope);
+  }
+
+  /**
+   * I5 — the file's recruitment history, read from `hr_recruitment_timeline` at request time.
+   * This is a VIEW of the canonical collection, not a copy: nothing here re-derives milestones
+   * from stage records, and nothing is persisted on the file. Superseded entries are included
+   * because a retired attempt is still what happened (RW13/A8); the client renders the marker.
+   * Empty for a direct registration, which has no recruitment.
+   *
+   * The read is scoped by `applicant.view` — the permission that guards this history everywhere
+   * else — and NOT by the employeeFile permission that let the caller open the file. Reading a
+   * file must not widen what someone may see of a candidate's history; a caller without the grant
+   * falls back to `own` and sees nothing extra.
+   */
+  async recruitmentTimelineOf(
+    file: EmployeeFileDoc,
+    ctx: AuthContext,
+  ): Promise<RecruitmentTimelineEntryDto[]> {
+    if (file.applicantId === null) return [];
+    const entries = await recruitmentTimelineService.listForApplicant(
+      String(file.applicantId),
+      { includeSuperseded: true },
+      RECRUITMENT_TIMELINE_LIMIT,
+      scopeSelector(ctx, 'applicant.view'),
+    );
+    return entries.map(timelineEntryDto);
   }
 
   /** Append a free-form note to the Employee Timeline (keeps the timeline growable). */

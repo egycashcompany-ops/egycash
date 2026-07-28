@@ -7,11 +7,13 @@ export { Card, CardHeader, CardBody } from './Card';
 export { Spinner } from './Spinner';
 export { Skeleton } from './Skeleton';
 export { DataTable, type Column, type DataTableProps, type SortState } from './DataTable';
+// I7 — the one bulk toolbar and the one selection model every table uses.
+export { BulkActionBar } from './BulkActionBar';
+export { useTableSelection, type TableSelection } from './useTableSelection';
 export { Pagination } from './Pagination';
 export { SearchInput } from './SearchInput';
 export { FilterBar } from './FilterBar';
 export { ListView } from './ListView';
-export { BulkActions } from './BulkActions';
 export { Dialog } from './Dialog';
 export { FileUpload } from './FileUpload';
 export { Timeline, type TimelineEntry } from './Timeline';

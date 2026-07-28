@@ -9,14 +9,28 @@ import {
   type EvaluationPhaseDto,
   type OpenEvaluation,
   type SetEvaluationAppointment,
+  type SetPlacementRecommendation,
   type Paginated,
   type UpdateEvaluationPhase,
-  type BulkActionResultDto,
+  type WorkflowEnvelopeDto,
   type BulkEvaluations,
+  type BulkWorkflowResultDto,
 } from '@ecms/contracts';
-import { api, buildQuery, get, getPage, patch, post, upload } from '../../../../../shared/lib/api-client';
+import {
+  buildQuery,
+  delWorkflow,
+  get,
+  getPage,
+  patch,
+  patchWorkflow,
+  post,
+  postWorkflow,
+  uploadWorkflow,
+} from '../../../../../shared/lib/api-client';
 
 export type EvaluationListParams = Record<string, string | number | boolean | undefined | null>;
+
+type EvaluationEnvelope = Promise<WorkflowEnvelopeDto<EvaluationDto>>;
 
 export const listEvaluations = (params: EvaluationListParams): Promise<Paginated<EvaluationDto>> =>
   getPage<EvaluationDto>(`/hr/evaluations${buildQuery(params)}`);
@@ -24,37 +38,43 @@ export const listEvaluations = (params: EvaluationListParams): Promise<Paginated
 export const getEvaluation = (id: string): Promise<EvaluationDto> =>
   get<EvaluationDto>(`/hr/evaluations/${id}`);
 
-export const openEvaluation = (body: OpenEvaluation): Promise<EvaluationDto> =>
-  post<EvaluationDto>('/hr/evaluations', body);
+export const openEvaluation = (body: OpenEvaluation): EvaluationEnvelope =>
+  postWorkflow<EvaluationDto>('/hr/evaluations', body);
 
 /** Decide (approve/reject) — re-settable: calling again edits the decision (audited). */
-export const decideEvaluation = (id: string, body: DecideEvaluation): Promise<EvaluationDto> =>
-  patch<EvaluationDto>(`/hr/evaluations/${id}/decision`, body);
+export const decideEvaluation = (id: string, body: DecideEvaluation): EvaluationEnvelope =>
+  patchWorkflow<EvaluationDto>(`/hr/evaluations/${id}/decision`, body);
 
 /** RW9 — book (or clear) the visit on an individual phase that schedules one. */
+/** RW5 — the phase's advisory placement recommendation; never moves the candidate by itself. */
+export const setEvaluationRecommendation = (
+  id: string,
+  body: SetPlacementRecommendation,
+): EvaluationEnvelope => patchWorkflow<EvaluationDto>(`/hr/evaluations/${id}/recommendation`, body);
+
 export const setEvaluationAppointment = (
   id: string,
   body: SetEvaluationAppointment,
-): Promise<EvaluationDto> => patch<EvaluationDto>(`/hr/evaluations/${id}/appointment`, body);
+): EvaluationEnvelope => patchWorkflow<EvaluationDto>(`/hr/evaluations/${id}/appointment`, body);
 
 export const uploadEvaluationFile = (
   id: string,
   file: File,
   version: number,
   note?: string,
-): Promise<EvaluationDto> => {
+): EvaluationEnvelope => {
   const form = new FormData();
   form.append('file', file);
   form.append('version', String(version));
   if (note !== undefined && note.trim() !== '') form.append('note', note.trim());
-  return upload<EvaluationDto>(`/hr/evaluations/${id}/files`, form);
+  return uploadWorkflow<EvaluationDto>(`/hr/evaluations/${id}/files`, form);
 };
 
-export const removeEvaluationFile = (id: string, fileId: string, version: number): Promise<EvaluationDto> =>
-  api<EvaluationDto>(`/hr/evaluations/${id}/files/${fileId}`, {
-    method: 'DELETE',
-    body: JSON.stringify({ version }),
-  });
+export const removeEvaluationFile = (
+  id: string,
+  fileId: string,
+  version: number,
+): EvaluationEnvelope => delWorkflow<EvaluationDto>(`/hr/evaluations/${id}/files/${fileId}`, { version });
 
 // Evaluation-phase catalog (labels + backs the phase picker; sequential order). The settings
 // screen manages it (create / edit / reorder / enable-disable) — extensible without code changes.
@@ -71,5 +91,5 @@ export const updateEvaluationPhase = (id: string, body: UpdateEvaluationPhase): 
   patch<EvaluationPhaseDto>(`/hr/evaluation-phases/${id}`, body);
 
 /** Bulk approve/reject one phase's queue (RW10/RW17) — answers a partial-success envelope. */
-export const bulkEvaluations = (body: BulkEvaluations): Promise<BulkActionResultDto> =>
-  post<BulkActionResultDto>('/hr/evaluations/bulk', body);
+export const bulkEvaluations = (body: BulkEvaluations): Promise<BulkWorkflowResultDto> =>
+  post<BulkWorkflowResultDto>('/hr/evaluations/bulk', body);

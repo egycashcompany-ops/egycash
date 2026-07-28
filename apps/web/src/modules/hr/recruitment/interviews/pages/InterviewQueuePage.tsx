@@ -19,7 +19,6 @@ import { PlusIcon } from '../../../../../shared/ui/icons';
 import { formatDateTime, formatNumber, localized } from '../../../../../shared/lib/format';
 import { InterviewStatusBadge } from '../components/InterviewStatusBadge';
 import { InterviewFilters, type InterviewFiltersState } from '../components/InterviewFilters';
-import { AwaitingInterviewsPanel } from '../components/AwaitingInterviewsPanel';
 import { ScheduleInterviewDialog, type PickedApplicant } from '../components/ScheduleInterviewDialog';
 import { PhaseBoard } from '../components/PhaseBoard';
 import { useBulkInterviews, useInterviews } from '../api/interview-queries';
@@ -193,9 +192,6 @@ export const InterviewQueuePage = (): JSX.Element => {
         <PhaseBoard />
       ) : (
         <div className="space-y-4">
-          <AwaitingInterviewsPanel
-            onSchedule={(a) => { setScheduleFor(a); setScheduleOpen(true); }}
-          />
           <InterviewFilters value={filters} onChange={changeFilters} />
           <Can permission="interview.cancel">
             <BulkActionBar count={selection.count} onClear={selection.clear}>

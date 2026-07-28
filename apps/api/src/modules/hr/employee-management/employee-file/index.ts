@@ -2,4 +2,5 @@
 // and tests import from here; internal files are not reached across the feature boundary.
 export { buildEmployeeFilesRouter } from './employee-file.routes';
 export { employeeFileService } from './employee-file.service';
+export { migrateEmployeeFiles } from './employee-file.migration';
 export { type EmployeeFileDoc } from './employee-file.model';

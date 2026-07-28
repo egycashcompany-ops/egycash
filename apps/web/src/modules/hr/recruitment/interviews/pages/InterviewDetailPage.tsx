@@ -13,7 +13,7 @@ import { Card, CardBody, CardHeader } from '../../../../../shared/ui/Card';
 import { Button } from '../../../../../shared/ui/Button';
 import { LoadingState } from '../../../../../shared/ui/states/LoadingState';
 import { ErrorState } from '../../../../../shared/ui/states/ErrorState';
-import { formatDateTime, localized } from '../../../../../shared/lib/format';
+import { formatBusinessDateTime, formatDateTime, localized } from '../../../../../shared/lib/format';
 import { InterviewStatusBadge } from '../components/InterviewStatusBadge';
 import { PanelList } from '../components/PanelList';
 import { UserName } from '../components/UserName';
@@ -24,8 +24,16 @@ import { DecideInterviewDialog } from '../components/DecideInterviewDialog';
 import { EvaluateDialog } from '../components/EvaluateDialog';
 import { SkipInterviewerDialog } from '../components/SkipInterviewerDialog';
 import { ApplicantLifecycleActions } from '../../applicants/components/ApplicantLifecycleActions';
+import { useApplicant } from '../../applicants/api/applicant-queries';
+import { RecommendationCard } from '../../shared/RecommendationCard';
 import { MoveToOfferButton } from '../../applicants/components/MoveToOfferButton';
-import { useInterview } from '../api/interview-queries';
+import { CandidateTimeline } from '../../timeline/components/CandidateTimeline';
+import {
+  useInterview,
+  useSetInterviewRecommendation,
+  useStartInterview,
+  useStartScheduledInterview,
+} from '../api/interview-queries';
 
 export const InterviewDetailPage = (): JSX.Element => {
   const t = useT();
@@ -34,6 +42,12 @@ export const InterviewDetailPage = (): JSX.Element => {
   const can = useCan();
   const { id = '' } = useParams();
   const { data: iv, isLoading, isError, error, refetch } = useInterview(id);
+  const setRecommendation = useSetInterviewRecommendation(id);
+  const startScheduled = useStartScheduledInterview(id);
+  const startNow = useStartInterview();
+  // RW5 — applying a recommendation is an ordinary reassignment, so it needs the
+  // candidate's own record (its version and current placement).
+  const { data: candidate } = useApplicant(iv?.applicantId ?? '');
 
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [reassignOpen, setReassignOpen] = useState(false);
@@ -58,10 +72,22 @@ export const InterviewDetailPage = (): JSX.Element => {
     );
   }
 
-  const isScheduled = iv.status === 'scheduled';
+  // A round is "live" once it is scheduled AND while it is running (RW12) — the panel evaluates
+  // and the decision is taken in both states, so the action set must not vanish on Start.
+  const isLive = iv.status === 'scheduled' || iv.status === 'inProgress';
   const anyPending = iv.panel.some((p) => p.state === 'pending');
   const mine = me === null ? null : iv.panel.find((p) => p.interviewerId === me.id) ?? null;
-  const canEvaluate = isScheduled && mine !== null && can('interview.evaluate');
+  const canEvaluate = isLive && mine !== null && can('interview.evaluate');
+  // RW12 — "Start now" from a waiting row opens the round; from a scheduled one it just begins it.
+  const startable = iv.status === 'waiting' || iv.status === 'scheduled';
+
+  const start = async (): Promise<void> => {
+    if (iv.status === 'scheduled') {
+      await startScheduled.mutateAsync({ version: iv.version });
+      return;
+    }
+    await startNow.mutateAsync({ applicantId: iv.applicantId, stageId: iv.stageId, interviewerIds: [] });
+  };
 
   return (
     <PageContainer>
@@ -74,22 +100,36 @@ export const InterviewDetailPage = (): JSX.Element => {
           { label: iv.applicantCode },
         ]}
         actions={
-          isScheduled ? (
+          isLive || startable ? (
             <div className="flex flex-wrap items-center gap-2">
+              {/* RW12 — the server stamps the actor and the start time; the UI sends neither. */}
+              {startable && (
+                <Can permission="interview.create">
+                  <Button
+                    size="sm"
+                    loading={startNow.isPending || startScheduled.isPending}
+                    onClick={() => void start()}
+                  >
+                    {t('interviews.actions.start')}
+                  </Button>
+                </Can>
+              )}
               {canEvaluate && (
                 <Button size="sm" variant="secondary" onClick={() => setEvaluateOpen(true)}>
                   {mine?.state === 'submitted' ? t('interviews.actions.reevaluate') : t('interviews.actions.evaluate')}
                 </Button>
               )}
-              <Can permission="interview.edit">
-                <Button size="sm" variant="ghost" onClick={() => setRescheduleOpen(true)}>{t('interviews.actions.reschedule')}</Button>
-                <Button size="sm" variant="ghost" onClick={() => setReassignOpen(true)}>{t('interviews.actions.reassign')}</Button>
-              </Can>
+              {isLive && (
+                <Can permission="interview.edit">
+                  <Button size="sm" variant="ghost" onClick={() => setRescheduleOpen(true)}>{t('interviews.actions.reschedule')}</Button>
+                  <Button size="sm" variant="ghost" onClick={() => setReassignOpen(true)}>{t('interviews.actions.reassign')}</Button>
+                </Can>
+              )}
               <Can permission="interview.decide">
-                <Button size="sm" variant="secondary" disabled={anyPending} onClick={() => setDecideOutcome('passed')}>
+                <Button size="sm" variant="secondary" disabled={!isLive || anyPending} onClick={() => setDecideOutcome('passed')}>
                   {t('interviews.actions.pass')}
                 </Button>
-                <Button size="sm" variant="danger" disabled={anyPending} onClick={() => setDecideOutcome('failed')}>
+                <Button size="sm" variant="danger" disabled={!isLive || anyPending} onClick={() => setDecideOutcome('failed')}>
                   {t('interviews.actions.fail')}
                 </Button>
               </Can>
@@ -122,7 +162,7 @@ export const InterviewDetailPage = (): JSX.Element => {
         </span>
       </div>
 
-      {isScheduled && can('interview.decide') && anyPending && (
+      {isLive && can('interview.decide') && anyPending && (
         <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
           {t('interviews.decide.blocked')}
         </p>
@@ -130,12 +170,23 @@ export const InterviewDetailPage = (): JSX.Element => {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
+          <RecommendationCard
+            applicant={candidate ?? null}
+            recommendedPlacement={iv.recommendedPlacement}
+            recommendationNote={iv.recommendationNote}
+            currentLabel={candidate?.placementLabel ?? iv.placementLabel}
+            sourceRef={{ entityType: 'interview', entityId: iv.id }}
+            version={iv.version}
+            editPermission="interview.evaluate"
+            pending={setRecommendation.isPending}
+            onSave={(input) => setRecommendation.mutateAsync(input)}
+          />
           <Card>
             <CardHeader title={t('interviews.panel.title')} />
             <CardBody>
               <PanelList
                 panel={iv.panel}
-                canSkip={isScheduled && can('interview.edit')}
+                canSkip={isLive && can('interview.edit')}
                 onSkip={(interviewerId) => setSkipTarget(interviewerId)}
               />
             </CardBody>
@@ -176,8 +227,25 @@ export const InterviewDetailPage = (): JSX.Element => {
                 </div>
                 <div>
                   <dt className="text-xs text-slate-400">{t('interviews.columns.scheduled')}</dt>
-                  <dd className="mt-1 text-slate-700 dark:text-slate-200">{formatDateTime(iv.scheduledAt, locale)}</dd>
+                  {/* Workflow moments read on the Cairo business calendar, not the browser's. */}
+                  <dd className="mt-1 text-slate-700 dark:text-slate-200">
+                    {formatBusinessDateTime(iv.scheduledAt, locale)}
+                  </dd>
                 </div>
+                {iv.startedAt !== null && (
+                  <div>
+                    <dt className="text-xs text-slate-400">{t('interviews.detail.startedAt')}</dt>
+                    <dd className="mt-1 text-slate-700 dark:text-slate-200">
+                      {formatBusinessDateTime(iv.startedAt, locale)}
+                      {iv.startedBy !== null && (
+                        <>
+                          {' — '}
+                          <UserName id={iv.startedBy} />
+                        </>
+                      )}
+                    </dd>
+                  </div>
+                )}
                 {iv.location !== null && iv.location !== '' && (
                   <div>
                     <dt className="text-xs text-slate-400">{t('interviews.detail.location')}</dt>
@@ -206,6 +274,11 @@ export const InterviewDetailPage = (): JSX.Element => {
             </CardBody>
           </Card>
         </div>
+      </div>
+
+      {/* THE recruitment history (I5) — every stage writes here, every screen reads here. */}
+      <div className="mt-6">
+        <CandidateTimeline applicantId={iv.applicantId} />
       </div>
 
       {rescheduleOpen && (

@@ -10,10 +10,8 @@ import { Types } from 'mongoose';
 import {
   HrScreeningEvents,
   type AddScreeningNote,
-  type AwaitingScreeningDto,
   type CreateScreening,
   type DecideScreening,
-  type ListAwaitingScreeningsQuery,
   type BulkActionResultDto,
   type BulkScreenings,
   type ListScreeningsQuery,
@@ -24,7 +22,7 @@ import { type AuthContext, type ScopeSelector } from '../../../../shared/types';
 import { auditService } from '../../../../platform/audit';
 import { emit } from '../../../../platform/kernel/event-bus';
 import { applicantService } from '../applicants';
-import { recruitmentWorkflowEngine, runBulk, type StageBinding } from '../workflow';
+import { recruitmentWorkflowEngine, registerStageBinding, runBulk, type StageBinding } from '../workflow';
 import { ScreeningModel } from './screening.model';
 import { screeningRepository, type ScreeningListFilter } from './screening.repository';
 import { type ScreeningDoc, type ScreeningNote } from './screening.model';
@@ -37,6 +35,10 @@ const BINDING = {
   model: ScreeningModel,
   entityType: 'screening',
 } as unknown as StageBinding<never>;
+
+// So the engine can close this collection's still-open records when the candidate leaves the
+// pipeline (I14) — the stage never reaches into the lifecycle, only the engine does.
+registerStageBinding(BINDING);
 
 class ScreeningService {
   /**
@@ -122,41 +124,6 @@ class ScreeningService {
   /** The applicant's screening, if any — used by later stages (Interviews) to gate entry. */
   async findByApplicantId(applicantId: string): Promise<ScreeningDoc | null> {
     return screeningRepository.findByApplicantId(applicantId);
-  }
-
-  /** Accepted screenings (capped, recent-first) — the Interviews "awaiting scheduling" source. */
-  async listAcceptedForInterview(
-    branchId: string | undefined,
-    limit: number,
-    scope: ScopeSelector,
-  ): Promise<ScreeningDoc[]> {
-    return screeningRepository.listAccepted(limit, branchId, scope);
-  }
-
-  /**
-   * "Awaiting screening" — live applicants (status `new`) with no screening yet (the automatic
-   * pipeline entry: they appear here the moment they are registered). A derived read model — no
-   * screening is fabricated and the manual open-screening workflow + permissions are untouched.
-   */
-  async listAwaiting(
-    query: ListAwaitingScreeningsQuery,
-    scope: ScopeSelector,
-  ): Promise<AwaitingScreeningDto[]> {
-    const applicants = await applicantService.listActive(query.limit, query.branchId, scope);
-    // The queue is the applicants whose screening record is still `waiting` (I11) — a real row,
-    // not "no row yet".
-    const awaiting = await screeningRepository.applicantIdsAwaitingDecision(
-      applicants.map((a) => String(a._id)),
-    );
-    return applicants
-      .filter((a) => awaiting.has(String(a._id)))
-      .map((a) => ({
-        applicantId: String(a._id),
-        applicantCode: a.code,
-        fullNameAr: a.fullNameAr,
-        branchId: a.branchId === null ? null : String(a.branchId),
-        registeredAt: a.createdAt.toISOString(),
-      }));
   }
 
   /** Append a note while `waiting` (OQ-32 "needs more information"). */
@@ -335,6 +302,20 @@ class ScreeningService {
    * a return to an earlier stage — drives this stage through the SAME engine, never by touching
    * the collection directly.
    */
+  /**
+   * RW2 step 3 — a reassignment moves the candidate, so their records must follow into the new
+   * branch or a branch-scoped user would lose sight of their own history. This touches the
+   * denormalized SCOPE FIELD only: no decision, no status, and never a `placementSnapshot`
+   * (RW4 — what a record was created under is history and is never rewritten).
+   */
+  async syncApplicantBranch(applicantId: string, branchId: Types.ObjectId | null): Promise<void> {
+    if (!Types.ObjectId.isValid(applicantId)) return;
+    await ScreeningModel.updateMany(
+      { applicantId: new Types.ObjectId(applicantId) },
+      { $set: { branchId } },
+    ).exec();
+  }
+
   get workflowBinding(): StageBinding<never> {
     return BINDING;
   }

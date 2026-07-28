@@ -10,7 +10,6 @@ import {
   platformPermissions,
   SettingKeys,
   type ApplicantDto,
-  type BulkActionResultDto,
   type EvaluationDto,
   type RecruitmentStageCountsDto,
   type RecruitmentTimelineEntryDto,
@@ -30,6 +29,7 @@ import { settingsService } from '../../src/platform/settings';
 import { getCache } from '../../src/infrastructure/redis/cache';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { type AuthContext } from '../../src/shared/types';
+import { actionEnabled, bulkEnvelope, counter, envelope, mutated } from './helpers/workflow-envelope';
 
 const PASSWORD = 'Str0ng#Pass!';
 const REQUISITION_ID = '64b1f0aaaaaaaaaaaaaaaaaa';
@@ -99,7 +99,7 @@ const registerApplicant = async (): Promise<ApplicantDto> => {
       contact: { primaryPhone: nextPhone() },
     });
   expect(res.status).toBe(201);
-  return res.body.data as ApplicantDto;
+  return mutated<ApplicantDto>(res);
 };
 
 const phases = async (): Promise<EvaluationPhaseDto[]> => {
@@ -128,7 +128,7 @@ const decide = (id: string, body: Record<string, unknown>) =>
 
 const applicantStatus = async (id: string): Promise<string> => {
   const res = await request(app).get(`/api/v1/hr/applicants/${id}`).set('Authorization', `Bearer ${adminToken}`);
-  return (res.body.data as ApplicantDto).status;
+  return (res.body.data as ApplicantDto).status; // a read — unchanged by I6
 };
 
 const stageId = async (key: string): Promise<string> => {
@@ -139,12 +139,12 @@ const stageId = async (key: string): Promise<string> => {
 };
 
 const passStage = async (applicantId: string, key: string): Promise<void> => {
-  const interview = (
+  const interview = mutated<InterviewDto>(
     await request(app)
       .post('/api/v1/hr/interviews')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ applicantId, stageId: await stageId(key), scheduledAt: '2027-03-01T00:00:00.000Z', interviewerIds: [interviewerId] })
-  ).body.data as InterviewDto;
+      .send({ applicantId, stageId: await stageId(key), scheduledAt: '2027-03-01T00:00:00.000Z', interviewerIds: [interviewerId] }),
+  );
   const submitted = await request(app)
     .post(`/api/v1/hr/interviews/${interview.id}/evaluations`)
     .set('Authorization', `Bearer ${interviewerToken}`)
@@ -152,15 +152,15 @@ const passStage = async (applicantId: string, key: string): Promise<void> => {
   await request(app)
     .post(`/api/v1/hr/interviews/${interview.id}/decide`)
     .set('Authorization', `Bearer ${adminToken}`)
-    .send({ outcome: 'passed', version: (submitted.body.data as InterviewDto).version });
+    .send({ outcome: 'passed', version: mutated<InterviewDto>(submitted).version });
 };
 
 /** An applicant who has cleared screening + both interview rounds — eligible for evaluations. */
 const readyApplicant = async (): Promise<ApplicantDto> => {
   const applicant = await registerApplicant();
-  const screening = (
-    await request(app).post('/api/v1/hr/screenings').set('Authorization', `Bearer ${adminToken}`).send({ applicantId: applicant.id })
-  ).body.data as ScreeningDto;
+  const screening = mutated<ScreeningDto>(
+    await request(app).post('/api/v1/hr/screenings').set('Authorization', `Bearer ${adminToken}`).send({ applicantId: applicant.id }),
+  );
   await request(app)
     .post(`/api/v1/hr/screenings/${screening.id}/decide`)
     .set('Authorization', `Bearer ${adminToken}`)
@@ -238,27 +238,36 @@ describe('evaluations — appointments (RW9)', () => {
   it('books and clears the visit on a phase that schedules one', async () => {
     const applicant = await readyApplicant();
     const medical = await phaseByKey('medicalExam');
-    const evaluation = (await open(applicant.id, medical.id)).body.data as EvaluationDto;
+    const evaluation = mutated<EvaluationDto>(await open(applicant.id, medical.id));
 
     const booked = await request(app)
       .patch(`/api/v1/hr/evaluations/${evaluation.id}/appointment`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ appointmentAt: '2027-05-01T09:00:00.000Z', version: evaluation.version });
     expect(booked.status).toBe(200);
-    expect((booked.body.data as EvaluationDto).appointmentAt).toBe('2027-05-01T09:00:00.000Z');
+    const bookedBody = envelope<EvaluationDto>(booked);
+    expect(bookedBody.data.appointmentAt).toBe('2027-05-01T09:00:00.000Z');
+    // I6 — booking a visit does not MOVE the phase, so the state is unchanged; but RW9 does put
+    // the booking on the candidate's history, and the envelope carries that entry rather than
+    // making the client re-read the timeline to see the visit it just booked.
+    expect(bookedBody.workflow.stage?.kind).toBe('evaluation');
+    expect(bookedBody.workflow.status).toBe('waiting');
+    expect(bookedBody.timeline.produced.map((e) => e.type)).toEqual(['note']);
+    expect(bookedBody.timeline.produced[0]?.note).toContain('2027-05-01T09:00:00.000Z');
+    expect(counter(bookedBody.counters, `evaluation:${medical.id}`)).toBeDefined();
 
     const cleared = await request(app)
       .patch(`/api/v1/hr/evaluations/${evaluation.id}/appointment`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ appointmentAt: null, version: (booked.body.data as EvaluationDto).version });
+      .send({ appointmentAt: null, version: bookedBody.data.version });
     expect(cleared.status).toBe(200);
-    expect((cleared.body.data as EvaluationDto).appointmentAt).toBeNull();
+    expect(mutated<EvaluationDto>(cleared).appointmentAt).toBeNull();
   });
 
   it('refuses an appointment on a phase that does not schedule one', async () => {
     const applicant = await readyApplicant();
     const security = await phaseByKey('securityCheck');
-    const evaluation = (await open(applicant.id, security.id)).body.data as EvaluationDto;
+    const evaluation = mutated<EvaluationDto>(await open(applicant.id, security.id));
 
     const res = await request(app)
       .patch(`/api/v1/hr/evaluations/${evaluation.id}/appointment`)
@@ -275,13 +284,19 @@ describe('evaluations — open, files, decision', () => {
 
     const opened = await open(applicant.id, phase.id);
     expect(opened.status).toBe(201);
-    const evaluation = opened.body.data as EvaluationDto;
+    const openedBody = envelope<EvaluationDto>(opened);
+    const evaluation = openedBody.data;
     expect(evaluation.status).toBe('waiting');
     expect(evaluation.files).toHaveLength(0);
+    // I6/I10 — capability lives in `availableActions`: the phase is waiting, so it can be decided.
+    expect(openedBody.workflow.applicantId).toBe(applicant.id);
+    expect(actionEnabled(openedBody.workflow, 'approve')).toBe(true);
+    expect(actionEnabled(openedBody.workflow, 'reject')).toBe(true);
+    expect(counter(openedBody.counters, `evaluation:${phase.id}`)).toBeDefined();
 
     // Idempotent: opening the same (applicant, phase) returns the same record.
     const again = await open(applicant.id, phase.id);
-    expect((again.body.data as EvaluationDto).id).toBe(evaluation.id);
+    expect(mutated<EvaluationDto>(again).id).toBe(evaluation.id);
 
     const uploaded = await request(app)
       .post(`/api/v1/hr/evaluations/${evaluation.id}/files`)
@@ -292,7 +307,8 @@ describe('evaluations — open, files, decision', () => {
         contentType: 'application/pdf',
       });
     expect(uploaded.status).toBe(201);
-    const withFile = uploaded.body.data as EvaluationDto;
+    // Multipart attach and JSON detach both answer with the envelope — one contract, no exceptions.
+    const withFile = mutated<EvaluationDto>(uploaded);
     expect(withFile.files).toHaveLength(1);
 
     const removed = await request(app)
@@ -300,21 +316,32 @@ describe('evaluations — open, files, decision', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ version: withFile.version });
     expect(removed.status).toBe(200);
-    expect((removed.body.data as EvaluationDto).files).toHaveLength(0);
+    const removedBody = envelope<EvaluationDto>(removed);
+    expect(removedBody.data.files).toHaveLength(0);
+    expect(removedBody.workflow.status).toBe('waiting');
+    expect(removedBody.timeline.produced).toEqual([]);
   });
 
   it('requires a reason to reject, removes the applicant from the pipeline, and stays editable', async () => {
     const applicant = await readyApplicant();
     // securityCheck is the first phase (no prior-phase gate); the reject behavior is what's asserted.
     const phase = await phaseByKey('securityCheck');
-    const evaluation = (await open(applicant.id, phase.id)).body.data as EvaluationDto;
+    const evaluation = mutated<EvaluationDto>(await open(applicant.id, phase.id));
 
     // Missing reason → request-schema validation failure (400).
     expect((await decide(evaluation.id, { decision: 'rejected', version: evaluation.version })).status).toBe(400);
 
     const rejected = await decide(evaluation.id, { decision: 'rejected', reason: 'failed medical', version: evaluation.version });
     expect(rejected.status).toBe(200);
-    expect((rejected.body.data as EvaluationDto).status).toBe('rejected');
+    const rejectedBody = envelope<EvaluationDto>(rejected);
+    expect(rejectedBody.data.status).toBe('rejected');
+    // I6 — the decision and the departure it caused arrive together, in one response.
+    expect(rejectedBody.workflow.applicantStatus).toBe('rejected');
+    expect(rejectedBody.workflow.stage).toBeNull();
+    expect(rejectedBody.timeline.produced.map((e) => e.type)).toEqual(
+      expect.arrayContaining(['evaluationDecided', 'rejected']),
+    );
+    expect(counter(rejectedBody.counters, `evaluation:${phase.id}`)).toBeDefined();
     // Reject removes the applicant from the active pipeline.
     expect(await applicantStatus(applicant.id)).toBe('rejected');
 
@@ -323,10 +350,12 @@ describe('evaluations — open, files, decision', () => {
     const corrected = await decide(evaluation.id, {
       decision: 'approved',
       reason: 'medical report was misread',
-      version: (rejected.body.data as EvaluationDto).version,
+      version: rejectedBody.data.version,
     });
     expect(corrected.status).toBe(200);
-    expect((corrected.body.data as EvaluationDto).status).toBe('approved');
+    const correctedBody = envelope<EvaluationDto>(corrected);
+    expect(correctedBody.data.status).toBe('approved');
+    expect(correctedBody.timeline.produced.map((e) => e.type)).toContain('evaluationDecided');
   });
 });
 
@@ -356,15 +385,18 @@ describe('evaluations — bulk approve/reject (RW10/RW17/I4)', () => {
 
   it('approves a phase queue and reports one result per id', async () => {
     const phase = await phaseByKey('securityCheck');
-    const a = (await open((await readyApplicant()).id, phase.id)).body.data as EvaluationDto;
-    const b = (await open((await readyApplicant()).id, phase.id)).body.data as EvaluationDto;
+    const a = mutated<EvaluationDto>(await open((await readyApplicant()).id, phase.id));
+    const b = mutated<EvaluationDto>(await open((await readyApplicant()).id, phase.id));
 
     const res = await bulk({ action: 'approve', ids: [a.id, b.id], phaseId: phase.id });
     expect(res.status).toBe(200);
-    const envelope = res.body.data as BulkActionResultDto;
-    expect(envelope.requested).toBe(2);
-    expect(envelope.succeeded).toBe(2);
-    expect(envelope.failed).toBe(0);
+    const result = bulkEnvelope(res);
+    expect(result.requested).toBe(2);
+    expect(result.succeeded).toBe(2);
+    expect(result.failed).toBe(0);
+    // I6/RW17 — one entry per record that moved, plus the phase counter the queue redraws from.
+    expect(result.timeline.produced.map((e) => e.type)).toEqual(['evaluationDecided', 'evaluationDecided']);
+    expect(counter(result.counters, `evaluation:${phase.id}`)).toBeDefined();
 
     const after = await request(app)
       .get(`/api/v1/hr/evaluations/${a.id}`)
@@ -375,21 +407,23 @@ describe('evaluations — bulk approve/reject (RW10/RW17/I4)', () => {
   it('refuses a selection that spans another phase, per id', async () => {
     const security = await phaseByKey('securityCheck');
     const driving = await phaseByKey('drivingTest');
-    const mine = (await open((await readyApplicant()).id, security.id)).body.data as EvaluationDto;
-    const other = (await open((await readyApplicant()).id, driving.id)).body.data as EvaluationDto;
+    const mine = mutated<EvaluationDto>(await open((await readyApplicant()).id, security.id));
+    const other = mutated<EvaluationDto>(await open((await readyApplicant()).id, driving.id));
 
     const res = await bulk({ action: 'approve', ids: [mine.id, other.id], phaseId: security.id });
     expect(res.status).toBe(200);
-    const envelope = res.body.data as BulkActionResultDto;
-    expect(envelope.succeeded).toBe(1);
-    expect(envelope.failed).toBe(1);
-    expect(envelope.results.find((r) => r.id === other.id)?.ok).toBe(false);
+    const result = bulkEnvelope(res);
+    expect(result.succeeded).toBe(1);
+    expect(result.failed).toBe(1);
+    expect(result.results.find((r) => r.id === other.id)?.ok).toBe(false);
+    // Only the in-phase record moved, so only it wrote history.
+    expect(result.timeline.produced.map((e) => e.type)).toEqual(['evaluationDecided']);
   });
 
   it('requires a reason to reject, and rejects the applicants when given one', async () => {
     const phase = await phaseByKey('securityCheck');
     const applicant = await readyApplicant();
-    const evaluation = (await open(applicant.id, phase.id)).body.data as EvaluationDto;
+    const evaluation = mutated<EvaluationDto>(await open(applicant.id, phase.id));
 
     expect((await bulk({ action: 'reject', ids: [evaluation.id], phaseId: phase.id })).status).toBe(400);
 
@@ -400,13 +434,18 @@ describe('evaluations — bulk approve/reject (RW10/RW17/I4)', () => {
       reason: 'security clearance denied',
     });
     expect(res.status).toBe(200);
-    expect((res.body.data as BulkActionResultDto).succeeded).toBe(1);
+    const result = bulkEnvelope(res);
+    expect(result.succeeded).toBe(1);
+    expect(result.timeline.produced.map((e) => e.type)).toEqual(
+      expect.arrayContaining(['evaluationDecided', 'rejected']),
+    );
+    expect(counter(result.counters, 'applicants')).toBeDefined();
     expect(await applicantStatus(applicant.id)).toBe('rejected');
   });
 
   it('needs the manage permission', async () => {
     const phase = await phaseByKey('securityCheck');
-    const evaluation = (await open((await readyApplicant()).id, phase.id)).body.data as EvaluationDto;
+    const evaluation = mutated<EvaluationDto>(await open((await readyApplicant()).id, phase.id));
     const res = await bulk({ action: 'approve', ids: [evaluation.id], phaseId: phase.id }, aliceToken);
     expect(res.status).toBe(403);
   });
@@ -452,7 +491,7 @@ describe('recruitment — aggregated stage counters (RW15/I3)', () => {
     const key = `evaluation:${phase.id}`;
     const before = stageByKey(await counts(), key);
 
-    const evaluation = (await open((await readyApplicant()).id, phase.id)).body.data as EvaluationDto;
+    const evaluation = mutated<EvaluationDto>(await open((await readyApplicant()).id, phase.id));
     const opened = stageByKey(await counts(), key);
     expect(opened?.count).toBe((before?.count ?? 0) + 1);
     expect(opened?.buckets.waiting).toBe(opened?.count);
@@ -496,7 +535,7 @@ describe('recruitment — boot migration (I8, idempotent)', () => {
 
   it('leaves live records untouched on a second run', async () => {
     const phase = await phaseByKey('securityCheck');
-    const evaluation = (await open((await readyApplicant()).id, phase.id)).body.data as EvaluationDto;
+    const evaluation = mutated<EvaluationDto>(await open((await readyApplicant()).id, phase.id));
     await migrateRecruitmentWorkflow();
 
     const after = await request(app)
@@ -545,7 +584,7 @@ describe('recruitment — return to an earlier stage (RW13/A8)', () => {
   it('previews the consequences without changing anything', async () => {
     const applicant = await readyApplicant();
     const phase = await phaseByKey('securityCheck');
-    const evaluation = (await open(applicant.id, phase.id)).body.data as EvaluationDto;
+    const evaluation = mutated<EvaluationDto>(await open(applicant.id, phase.id));
     const stage1 = await stageId('firstInterview');
 
     const res = await preview(applicant.id, 'interview', stage1);
@@ -565,7 +604,7 @@ describe('recruitment — return to an earlier stage (RW13/A8)', () => {
   it('supersedes forward records without deleting them and opens the next attempt', async () => {
     const applicant = await readyApplicant();
     const phase = await phaseByKey('securityCheck');
-    const evaluation = (await open(applicant.id, phase.id)).body.data as EvaluationDto;
+    const evaluation = mutated<EvaluationDto>(await open(applicant.id, phase.id));
     await decide(evaluation.id, { decision: 'approved', version: evaluation.version });
     const stage1 = await stageId('firstInterview');
 
@@ -575,9 +614,18 @@ describe('recruitment — return to an earlier stage (RW13/A8)', () => {
       { reason: 'the wrong candidate was interviewed', version: await applicantVersion(applicant.id) },
     );
     expect(res.status).toBe(200);
-    const body = res.body.data as { newAttempt: number; superseded: { entityId: string }[] };
+    // RW13 changes the most at once, so it is exactly the action a client must not have to
+    // re-query to understand: the plan, the resulting state and the history all arrive together.
+    const returned = envelope<{ newAttempt: number; superseded: { entityId: string }[] }>(res);
+    const body = returned.data;
     expect(body.newAttempt).toBeGreaterThan(1);
     expect(body.superseded.map((s) => s.entityId)).toContain(evaluation.id);
+    expect(returned.workflow.applicantId).toBe(applicant.id);
+    expect(returned.workflow.stage?.kind).toBe('interview');
+    expect(returned.workflow.status).toBe('waiting');
+    expect(returned.workflow.attempt).toBe(body.newAttempt);
+    expect(returned.timeline.produced.map((e) => e.type)).toContain('returnedToStage');
+    expect(counter(returned.counters, `evaluation:${phase.id}`)).toBeDefined();
 
     // The decided evaluation still exists, with its decision intact — only the marker was added.
     const kept = await request(app)
@@ -599,6 +647,45 @@ describe('recruitment — return to an earlier stage (RW13/A8)', () => {
     // listed — superseded, never deleted.
     expect((await open(applicant.id, phase.id)).status).toBe(422);
     expect((await evaluationsOf(applicant.id)).map((e) => e.id)).toContain(evaluation.id);
+  });
+
+  it('makes the retired attempt read-only for ORDINARY writes too, not just transitions (I1)', async () => {
+    const applicant = await readyApplicant();
+    const phase = await phaseByKey('securityCheck');
+    const evaluation = mutated<EvaluationDto>(await open(applicant.id, phase.id));
+    const stage1 = await stageId('firstInterview');
+
+    const returned = await returnTo(
+      applicant.id,
+      { kind: 'interview', refId: stage1 },
+      { reason: 'panel asked for a re-run', version: await applicantVersion(applicant.id) },
+    );
+    expect(returned.status).toBe(200);
+
+    // Reads are untouched: the retired record stays fully visible, which is the whole point of
+    // superseding rather than deleting.
+    const read = await request(app)
+      .get(`/api/v1/hr/evaluations/${evaluation.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(read.status).toBe(200);
+    const retired = read.body.data as EvaluationDto;
+
+    // A recommendation is ordinary domain data — no status, no attempt, nothing the engine owns —
+    // so I13's field guard would let it through. I1 is what stops it: the row itself is history.
+    const write = await request(app)
+      .patch(`/api/v1/hr/evaluations/${evaluation.id}/recommendation`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ recommendedPlacement: null, recommendationNote: 'still worth a look', version: retired.version });
+    expect(write.status, JSON.stringify(write.body)).toBe(422);
+    // And it says WHY — a caller retrying with a fresher version would get nowhere.
+    expect(JSON.stringify(write.body)).toMatch(/superseded/);
+
+    // Nothing was written.
+    const after = await request(app)
+      .get(`/api/v1/hr/evaluations/${evaluation.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect((after.body.data as EvaluationDto).recommendationNote).toBe(retired.recommendationNote);
+    expect((after.body.data as EvaluationDto).version).toBe(retired.version);
   });
 
   it('refuses a target that is not behind the applicant', async () => {
@@ -648,12 +735,12 @@ describe('recruitment — persisted waiting queues (I11)', () => {
 
   it('opens the first interview round when screening is accepted', async () => {
     const applicant = await registerApplicant();
-    const screening = (
+    const screening = mutated<ScreeningDto>(
       await request(app)
         .post('/api/v1/hr/screenings')
         .set('Authorization', `Bearer ${adminToken}`)
-        .send({ applicantId: applicant.id })
-    ).body.data as ScreeningDto;
+        .send({ applicantId: applicant.id }),
+    );
     expect(await stageRows('/api/v1/hr/interviews', { applicantId: applicant.id })).toHaveLength(0);
 
     await request(app)
@@ -743,6 +830,8 @@ describe('recruitment — candidate timeline (RW14/I5)', () => {
       .send({ note: 'called the candidate, no answer' });
     expect(JSON.stringify(res.body)).toContain('success');
     expect(res.status, JSON.stringify(res.body)).toBe(200);
+    // A note is history, not a workflow move: it answers with the entry it wrote, which is already
+    // everything the client needs to append it (I6 changes the ACTION endpoints, not this one).
     expect((res.body.data as RecruitmentTimelineEntryDto).type).toBe('note');
 
     const notes = await timelineOf(applicant.id, { type: 'note' });

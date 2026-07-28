@@ -27,6 +27,7 @@ import { settingsService } from '../../src/platform/settings';
 import { getCache } from '../../src/infrastructure/redis/cache';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { type AuthContext } from '../../src/shared/types';
+import { mutated } from './helpers/workflow-envelope';
 
 const PASSWORD = 'Str0ng#Pass!';
 const REQUISITION_ID = '64b1f0aaaaaaaaaaaaaaaaaa';
@@ -100,13 +101,15 @@ const registerApplicant = async (): Promise<ApplicantDto> => {
       contact: { primaryPhone: nextPhone() },
     });
   expect(res.status).toBe(201);
-  return res.body.data as ApplicantDto;
+  // Every recruitment step below answers with the workflow envelope (I6); Stage 5's own employee
+  // endpoints are unchanged, so only the recruitment calls unwrap.
+  return mutated<ApplicantDto>(res);
 };
 
 const acceptScreening = async (applicantId: string): Promise<void> => {
-  const screening = (
-    await request(app).post('/api/v1/hr/screenings').set('Authorization', `Bearer ${adminToken}`).send({ applicantId })
-  ).body.data as ScreeningDto;
+  const screening = mutated<ScreeningDto>(
+    await request(app).post('/api/v1/hr/screenings').set('Authorization', `Bearer ${adminToken}`).send({ applicantId }),
+  );
   const decided = await request(app)
     .post(`/api/v1/hr/screenings/${screening.id}/decide`)
     .set('Authorization', `Bearer ${adminToken}`)
@@ -116,12 +119,12 @@ const acceptScreening = async (applicantId: string): Promise<void> => {
 
 const passStage = async (applicantId: string, stageKey: string): Promise<void> => {
   const stageId = await idByKey('interview-stages', stageKey);
-  const interview = (
+  const interview = mutated<InterviewDto>(
     await request(app)
       .post('/api/v1/hr/interviews')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ applicantId, stageId, scheduledAt: FUTURE_VALID, interviewerIds: [interviewerId] })
-  ).body.data as InterviewDto;
+      .send({ applicantId, stageId, scheduledAt: FUTURE_VALID, interviewerIds: [interviewerId] }),
+  );
   const submitted = await request(app)
     .post(`/api/v1/hr/interviews/${interview.id}/evaluations`)
     .set('Authorization', `Bearer ${interviewerToken}`)
@@ -130,7 +133,7 @@ const passStage = async (applicantId: string, stageKey: string): Promise<void> =
   const decided = await request(app)
     .post(`/api/v1/hr/interviews/${interview.id}/decide`)
     .set('Authorization', `Bearer ${adminToken}`)
-    .send({ outcome: 'passed', version: (submitted.body.data as InterviewDto).version });
+    .send({ outcome: 'passed', version: mutated<InterviewDto>(submitted).version });
   expect(decided.status).toBe(200);
 };
 
@@ -142,7 +145,7 @@ const moveToOffer = async (applicantId: string): Promise<void> => {
   const moved = await request(app)
     .post(`/api/v1/hr/applicants/${applicantId}/move-to-offer`)
     .set('Authorization', `Bearer ${adminToken}`)
-    .send({ version: (current.body.data as ApplicantDto).version });
+    .send({ version: (current.body.data as ApplicantDto).version }); // a read
   expect(moved.status).toBe(200);
 };
 
@@ -176,7 +179,7 @@ const draftFor = async (applicantId: string, termsOver: Record<string, unknown> 
     .set('Authorization', `Bearer ${adminToken}`)
     .send({ applicantId, terms: offerTerms(termsOver) });
   expect(res.status).toBe(201);
-  return res.body.data as JobOfferDto;
+  return mutated<JobOfferDto>(res);
 };
 
 /** Drive an offer to Accepted, returning the accepted offer DTO. */
@@ -187,13 +190,13 @@ const acceptedOffer = async (applicantId: string, termsOver: Record<string, unkn
     .set('Authorization', `Bearer ${adminToken}`)
     .send({ version: offer.version });
   expect(sent.status).toBe(200);
-  offer = sent.body.data as JobOfferDto;
+  offer = mutated<JobOfferDto>(sent);
   const accepted = await request(app)
     .post(`/api/v1/hr/job-offers/${offer.id}/accept`)
     .set('Authorization', `Bearer ${adminToken}`)
     .send({ version: offer.version });
   expect(accepted.status).toBe(200);
-  return accepted.body.data as JobOfferDto;
+  return mutated<JobOfferDto>(accepted);
 };
 
 const createEmployee = (jobOfferId: string, hiringDate?: string) =>

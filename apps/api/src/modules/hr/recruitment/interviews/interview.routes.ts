@@ -7,13 +7,13 @@ import { authenticate } from '../../../../platform/auth';
 import { authorize } from '../../../../platform/rbac';
 import {
   bulkInterviews,
+  setInterviewRecommendation,
   bulkScheduleInterviews,
   bulkStartInterviews,
   cancelInterview,
   createInterviewStage,
   decideInterview,
   getInterview,
-  listAwaitingInterviews,
   listInterviewStages,
   listInterviews,
   reassignInterviewPanel,
@@ -28,6 +28,7 @@ import {
 } from './interview.controller';
 import {
   BulkInterviewsSchema,
+  SetPlacementRecommendationSchema,
   BulkScheduleInterviewsSchema,
   BulkStartInterviewsSchema,
   CancelInterviewSchema,
@@ -35,7 +36,6 @@ import {
   DecideInterviewSchema,
   InterviewIdParamSchema,
   InterviewStageIdParamSchema,
-  ListAwaitingInterviewsQuerySchema,
   ListInterviewStagesQuerySchema,
   ListInterviewsQuerySchema,
   ReassignInterviewPanelSchema,
@@ -58,20 +58,20 @@ export const buildInterviewsRouter = (): Router => {
     validate({ query: ListInterviewsQuerySchema }),
     asyncHandler(listInterviews),
   );
-  // Pipeline entry: applicants awaiting their first interview (declared before `/:id`).
-  router.get(
-    '/awaiting',
-    authenticate,
-    authorize('interview.view'),
-    validate({ query: ListAwaitingInterviewsQuerySchema }),
-    asyncHandler(listAwaitingInterviews),
-  );
   router.post(
     '/',
     authenticate,
     authorize('interview.create'),
     validate({ body: ScheduleInterviewSchema }),
     asyncHandler(scheduleInterview),
+  );
+  // RW5 — advisory placement recommendation from the panel.
+  router.patch(
+    '/:id/recommendation',
+    authenticate,
+    authorize('interview.evaluate'),
+    validate({ body: SetPlacementRecommendationSchema, params: InterviewIdParamSchema }),
+    asyncHandler(setInterviewRecommendation),
   );
   // START NOW (RW12/A3): the round opens `inProgress` on the caller's own clock.
   router.post(

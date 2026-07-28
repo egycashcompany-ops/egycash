@@ -3,23 +3,29 @@
 // evaluation phase → Job Offer (applicants HR explicitly moved there). Cards show the
 // Application Number only. Waiting + interview columns support multi-selection with bulk
 // actions: schedule interviews for all selected at once, or move them to the Job Offer stage.
-// Every bulk row goes through the normal endpoints so all server rules keep applying.
+// Every bulk row goes through the real bulk endpoint so all server rules keep applying and one
+// audit record covers the act (RW17).
+//
+// I7 — the board is a table in card clothing: it uses the SAME `useTableSelection` model and the
+// SAME `BulkActionBar` as every recruitment list, so a selection behaves identically here.
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { type EvaluationDto, type InterviewDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
 import { useCan } from '../../../../../platform/rbac/Can';
 import { Button } from '../../../../../shared/ui/Button';
-import { BulkActions } from '../../../../../shared/ui/BulkActions';
+import { BulkActionBar } from '../../../../../shared/ui/BulkActionBar';
+import { useTableSelection } from '../../../../../shared/ui/useTableSelection';
 import { StatusBadge, type Tone } from '../../../../../shared/ui/Badge';
 import { LoadingState } from '../../../../../shared/ui/states/LoadingState';
 import { formatDate, localized } from '../../../../../shared/lib/format';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
-import { getApplicant, listApplicants, moveApplicantToOffer } from '../../applicants/api/applicant-api';
+import { listApplicants } from '../../applicants/api/applicant-api';
+import { useBulkApplicants } from '../../applicants/api/applicant-queries';
 import { useEvaluationPhases, useEvaluations } from '../../evaluations/api/evaluation-queries';
-import { useAwaitingInterviews, useInterviews, useInterviewStages } from '../api/interview-queries';
+import { useInterviews, useInterviewStages } from '../api/interview-queries';
 import { BulkScheduleDialog } from './BulkScheduleDialog';
 
 interface BoardCard {
@@ -46,11 +52,9 @@ export const PhaseBoard = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const navigate = useNavigate();
   const can = useCan();
-  const qc = useQueryClient();
 
   const stages = useInterviewStages();
   const phases = useEvaluationPhases();
-  const awaiting = useAwaitingInterviews({});
   const interviews = useInterviews({ page: 1, pageSize: 100, sortBy: 'createdAt', sortDir: 'desc' });
   const evaluations = useEvaluations({ page: 1, pageSize: 100 });
   const moved = useQuery({
@@ -73,9 +77,8 @@ export const PhaseBoard = (): JSX.Element => {
     staleTime: 30_000,
   });
 
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkSchedule, setBulkSchedule] = useState(false);
-  const [movingBulk, setMovingBulk] = useState(false);
+  const bulk = useBulkApplicants();
 
   const columns = useMemo<BoardColumn[]>(() => {
     const stageList = [...(stages.data ?? [])].sort((a, b) => a.order - b.order);
@@ -119,7 +122,7 @@ export const PhaseBoard = (): JSX.Element => {
         badge:
           ev.status === 'approved'
             ? { tone: 'success', label: t('evaluations.status.approved') }
-            : { tone: 'warning', label: t('evaluations.status.pending') },
+            : { tone: 'warning', label: t('evaluations.status.waiting') },
         href: `/evaluations/${ev.id}`,
       };
       const list = evalCards.get(ev.phaseId) ?? [];
@@ -127,8 +130,11 @@ export const PhaseBoard = (): JSX.Element => {
       evalCards.set(ev.phaseId, list);
     }
 
-    // Interview columns — each applicant sits at their LATEST non-cancelled round.
+    // Interview columns — each applicant sits at their LATEST non-cancelled round. A round whose
+    // status is still `waiting` is a REAL row (I11), so it heads the waiting column rather than the
+    // stage column: the board reads the same rows as the queues and can never disagree with them.
     const interviewCards = new Map<string, BoardCard[]>();
+    const waitingCards: BoardCard[] = [];
     const latestInterview = new Map<string, InterviewDto>();
     for (const iv of interviews.data?.items ?? []) {
       if (iv.status === 'cancelled') continue;
@@ -150,25 +156,19 @@ export const PhaseBoard = (): JSX.Element => {
         badge:
           iv.outcome === 'passed'
             ? { tone: 'success', label: t('interviews.board.passed') }
-            : { tone: 'info', label: t('interviews.board.scheduled') },
+            : iv.status === 'waiting'
+              ? null
+              : { tone: 'info', label: t('interviews.board.scheduled') },
         href: `/interviews/${iv.id}`,
       };
+      if (iv.status === 'waiting') {
+        waitingCards.push(card);
+        continue;
+      }
       const list = interviewCards.get(iv.stageId) ?? [];
       list.push(card);
       interviewCards.set(iv.stageId, list);
     }
-
-    // Waiting for Scheduling — passed screening, no interview yet.
-    const waitingCards: BoardCard[] = (awaiting.data ?? [])
-      .filter((a) => !assigned.has(a.applicantId) && !gone.has(a.applicantId))
-      .map((a) => ({
-        applicantId: a.applicantId,
-        applicantCode: a.applicantCode,
-        applicantName: a.applicantName,
-        meta: a.screeningDecidedAt === null ? null : formatDate(a.screeningDecidedAt, locale),
-        badge: null,
-        href: `/applicants/${a.applicantId}`,
-      }));
 
     return [
       { id: 'waiting', title: t('interviews.board.waiting'), cards: waitingCards, selectable: true },
@@ -186,46 +186,36 @@ export const PhaseBoard = (): JSX.Element => {
       })),
       { id: 'offer', title: t('interviews.board.offer'), cards: offerCards, selectable: false },
     ];
-  }, [stages.data, phases.data, awaiting.data, interviews.data, evaluations.data, moved.data, excluded.data, locale, t]);
+  }, [stages.data, phases.data, interviews.data, evaluations.data, moved.data, excluded.data, locale, t]);
+
+  // I7 — one selection model. Selectable columns are the board's "rows on screen", so a card that
+  // leaves the board (scheduled, moved, rejected) drops out of the selection by itself.
+  const selectableIds = useMemo(
+    () => columns.filter((c) => c.selectable).flatMap((c) => c.cards.map((card) => card.applicantId)),
+    [columns],
+  );
+  const selection = useTableSelection(selectableIds);
 
   const loading =
     stages.isLoading ||
     phases.isLoading ||
-    awaiting.isLoading ||
     interviews.isLoading ||
     evaluations.isLoading ||
     excluded.isLoading;
   if (loading) return <LoadingState />;
 
-  const toggle = (applicantId: string): void =>
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(applicantId)) next.delete(applicantId);
-      else next.add(applicantId);
-      return next;
-    });
-
-  const clearSelection = (): void => setSelected(new Set());
-
+  // RW17 — ONE request for the whole selection: the server runs each item in its own transaction
+  // and answers with the partial-success envelope, so a per-row loop here would only invent a
+  // second, weaker version of a rule the endpoint already enforces.
   const bulkMove = async (): Promise<void> => {
-    setMovingBulk(true);
-    let ok = 0;
-    let failed = 0;
-    for (const id of selected) {
-      try {
-        const current = await getApplicant(id);
-        await moveApplicantToOffer(id, { version: current.version });
-        ok += 1;
-      } catch {
-        failed += 1;
-      }
+    try {
+      const result = await bulk.mutateAsync({ action: 'moveToOffer', ids: selection.ids });
+      if (result.failed === 0) toast.success(t('interviews.bulk.movedAll', { count: result.succeeded }));
+      else toast.error(t('interviews.bulk.movedSome', { ok: result.succeeded, failed: result.failed }));
+      selection.clear();
+    } catch {
+      // The global mutation error handler surfaces the failure.
     }
-    setMovingBulk(false);
-    void qc.invalidateQueries({ queryKey: ['hr', 'applicants'] });
-    void qc.invalidateQueries({ queryKey: ['hr', 'interviews'] });
-    if (failed === 0) toast.success(t('interviews.bulk.movedAll', { count: ok }));
-    else toast.error(t('interviews.bulk.movedSome', { ok, failed }));
-    clearSelection();
   };
 
   const canSchedule = can('interview.create');
@@ -234,18 +224,18 @@ export const PhaseBoard = (): JSX.Element => {
   return (
     <div className="space-y-4">
       {(canSchedule || canMove) && (
-        <BulkActions count={selected.size} onClear={clearSelection}>
+        <BulkActionBar count={selection.count} onClear={selection.clear}>
           {canSchedule && (
             <Button size="sm" variant="secondary" onClick={() => setBulkSchedule(true)}>
               {t('interviews.bulk.schedule')}
             </Button>
           )}
           {canMove && (
-            <Button size="sm" variant="secondary" loading={movingBulk} onClick={() => void bulkMove()}>
+            <Button size="sm" variant="secondary" loading={bulk.isPending} onClick={() => void bulkMove()}>
               {t('interviews.bulk.moveToOffer')}
             </Button>
           )}
-        </BulkActions>
+        </BulkActionBar>
       )}
 
       <div className="overflow-x-auto pb-2">
@@ -274,8 +264,8 @@ export const PhaseBoard = (): JSX.Element => {
                         <input
                           type="checkbox"
                           className="h-4 w-4 shrink-0 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
-                          checked={selected.has(card.applicantId)}
-                          onChange={() => toggle(card.applicantId)}
+                          checked={selection.selectedIds.has(card.applicantId)}
+                          onChange={() => selection.toggleRow(card.applicantId)}
                           aria-label={card.applicantCode}
                         />
                       )}
@@ -302,9 +292,9 @@ export const PhaseBoard = (): JSX.Element => {
 
       {bulkSchedule && (
         <BulkScheduleDialog
-          applicantIds={[...selected]}
+          applicantIds={selection.ids}
           onClose={() => setBulkSchedule(false)}
-          onDone={clearSelection}
+          onDone={selection.clear}
         />
       )}
     </div>

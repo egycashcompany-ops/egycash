@@ -1,10 +1,13 @@
 // The Electronic Employee File aggregate (Stage 7) — one per employee, assembled once the
 // employee's hiring documents are completed. It is the handoff artifact of the seven-stage
 // recruitment workflow (BD-008): it LINKS all applicant history (screening, interviews, offer,
-// hiring documents) and holds the initial EMPLOYEE TIMELINE built from the recruitment
-// milestones. After this the person is officially an Employee and further concerns belong to
-// the Employee module. `employeeCode`/`applicantId`/`branchId` are denormalized for
-// list/scoping and stable display (branch is the primary data scope, ADR-015).
+// hiring documents) and opens the EMPLOYEE TIMELINE at the hire. After this the person is
+// officially an Employee and further concerns belong to the Employee module.
+// `employeeCode`/`applicantId`/`branchId` are denormalized for list/scoping and stable display
+// (branch is the primary data scope, ADR-015).
+//
+// I5 — `timeline` holds this file's OWN post-hire facts only. The recruitment history is read
+// from `hr_recruitment_timeline`, never copied here.
 import { Schema, model, type Types } from 'mongoose';
 import {
   EMPLOYEE_FILE_STATUSES,

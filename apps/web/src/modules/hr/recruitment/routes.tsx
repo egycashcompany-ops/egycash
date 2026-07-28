@@ -6,7 +6,6 @@
 import { Outlet, Route, Routes } from 'react-router-dom';
 import { RequirePermission } from '../../../platform/router/RequirePermission';
 import { NotFoundPage } from '../../../platform/app/pages/NotFoundPage';
-import { registerRecruitmentNavProviders } from './counters/register-nav-providers';
 import { RecruitmentLayout } from './RecruitmentLayout';
 import { RecruitmentOverview } from './pages/RecruitmentOverview';
 import { ApplicantsListPage } from './applicants/pages/ApplicantsListPage';
@@ -29,10 +28,6 @@ import { JobOfferDetailPage } from './job-offers/pages/JobOfferDetailPage';
 import { JobOfferFormPage } from './job-offers/pages/JobOfferFormPage';
 import { HiringDocsListPage } from './hiring-documents/pages/HiringDocsListPage';
 import { HiringDocsDetailPage } from './hiring-documents/pages/HiringDocsDetailPage';
-
-// The recruitment stage menus are dynamic business data, so the module registers them with the
-// sidebar's provider registry rather than adding rows to the Applications catalog (RW16/OQ-2).
-registerRecruitmentNavProviders();
 
 export default function RecruitmentRoutes(): JSX.Element {
   return (

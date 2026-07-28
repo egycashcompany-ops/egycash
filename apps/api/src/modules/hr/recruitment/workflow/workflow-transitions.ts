@@ -53,6 +53,9 @@ export interface TransitionDef {
  * The complete rulebook. Read it as: "for this object, these are the only moves that exist".
  *
  * Notes on the deliberate ones:
+ *  • `cancelled` on screening and evaluation is NOT a decision. It is where an open record lands
+ *    when the CANDIDATE leaves the pipeline (I14) — so a departed candidate stops matching a
+ *    queue through the status itself, with no mirrored lifecycle field anywhere (I1/I10).
  *  • `scheduled → completed` is permitted alongside `inProgress → completed`: an interview held
  *    without anyone pressing Start must still be decidable, or the round becomes stuck.
  *  • self-transitions (`completed → completed`, `approved → approved`) are the re-decision paths
@@ -74,6 +77,8 @@ export const WORKFLOW_TRANSITIONS: Record<WorkflowObject, readonly TransitionDef
   screening: [
     { from: 'waiting', to: 'accepted', action: 'accept' },
     { from: 'waiting', to: 'rejected', action: 'reject', requiresReason: true },
+    // The candidate left the pipeline (I14). Not a decision — the screening was never made.
+    { from: 'waiting', to: 'cancelled', action: 'close', requiresReason: true },
     { from: 'accepted', to: 'rejected', action: 'redecide', requiresReason: true, isCorrection: true },
     { from: 'rejected', to: 'accepted', action: 'redecide', requiresReason: true, isCorrection: true },
   ],
@@ -94,6 +99,8 @@ export const WORKFLOW_TRANSITIONS: Record<WorkflowObject, readonly TransitionDef
   evaluation: [
     { from: 'waiting', to: 'approved', action: 'approve' },
     { from: 'waiting', to: 'rejected', action: 'reject', requiresReason: true },
+    // The candidate left the pipeline (I14). Not a decision — the phase was never assessed.
+    { from: 'waiting', to: 'cancelled', action: 'close', requiresReason: true },
     { from: 'approved', to: 'rejected', action: 'redecide', requiresReason: true, isCorrection: true },
     { from: 'rejected', to: 'approved', action: 'redecide', requiresReason: true, isCorrection: true },
     // Re-open a decided phase for another look (the approver's "Approved → Waiting").

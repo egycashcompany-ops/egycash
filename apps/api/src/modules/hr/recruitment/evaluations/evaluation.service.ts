@@ -14,21 +14,22 @@ import {
   type SetEvaluationAppointment,
   type Paginated,
   type UploadEvaluationFile,
+  type SetPlacementRecommendation,
 } from '@ecms/contracts';
 import { BusinessRuleError, ConflictError, ValidationError } from '../../../../shared/errors';
 import { type AuthContext, type ScopeSelector } from '../../../../shared/types';
 import { auditService } from '../../../../platform/audit';
 import { emit } from '../../../../platform/kernel/event-bus';
 import { fileService, type UploadedBinary } from '../../../../platform/files';
-import { applicantService } from '../applicants';
+import { applicantService, resolvePlacement } from '../applicants';
 import { interviewService } from '../interviews';
 import { recruitmentTimelineService } from '../timeline';
-import { recruitmentWorkflowEngine, runBulk, type StageBinding } from '../workflow';
+import { recruitmentWorkflowEngine, registerStageBinding, runBulk, type StageBinding } from '../workflow';
 import { EvaluationModel } from './evaluation.model';
 import { evaluationRepository, type EvaluationListFilter } from './evaluation.repository';
 import { evaluationPhaseRepository } from './evaluation-phase.repository';
 import { resolveEvaluationCategoryId } from './evaluation.files';
-import { type EvaluationDoc, type EvaluationDecisionEvent, type EvaluationFile } from './evaluation.model';
+import { type EvaluationDoc, type EvaluationFile } from './evaluation.model';
 
 const entityRef = (id: string) => ({ moduleId: 'hr', entityType: 'evaluation', entityId: id });
 
@@ -39,6 +40,10 @@ const BINDING = {
   entityType: 'evaluation',
   stageField: 'phaseId',
 } as unknown as StageBinding<never>;
+
+// So the engine can close this collection's still-open records when the candidate leaves the
+// pipeline (I14) — the stage never reaches into the lifecycle, only the engine does.
+registerStageBinding(BINDING);
 
 class EvaluationService {
   /**
@@ -82,7 +87,6 @@ class EvaluationService {
           files: [],
           decidedBy: null,
           decidedAt: null,
-          decisionHistory: [],
         },
         { by: ctx.userId },
       );
@@ -208,14 +212,9 @@ class EvaluationService {
   async decide(ctx: AuthContext, id: string, input: DecideEvaluation, scope: ScopeSelector): Promise<EvaluationDoc> {
     const before = await evaluationRepository.getById(id, scope);
     const now = new Date();
-    const event: EvaluationDecisionEvent = {
-      at: now,
-      from: before.status,
-      to: input.decision,
-      reason: input.reason ?? null,
-      by: new Types.ObjectId(ctx.userId),
-    };
-    // The engine owns the status change and publishes the event (I13/I15).
+    // The engine owns the status change and publishes the event (I13/I15). The re-decision is
+    // recorded ONCE, by the timeline projection over that event — this aggregate keeps the
+    // current decision and no log of past ones (I5).
     const { record: updated } = await recruitmentWorkflowEngine.transition({
       binding: BINDING,
       id,
@@ -227,7 +226,6 @@ class EvaluationService {
         reason: input.reason ?? null,
         decidedBy: new Types.ObjectId(ctx.userId),
         decidedAt: now,
-        decisionHistory: [...(before.decisionHistory ?? []), event],
       },
       payload: { phaseKey: before.phaseKey },
     } as never) as unknown as { record: EvaluationDoc };
@@ -404,6 +402,56 @@ class EvaluationService {
    * a return to an earlier stage — drives this stage through the SAME engine, never by touching
    * the collection directly.
    */
+  /**
+   * RW5 — record (or clear) this stage's advisory placement recommendation. It is DATA on the
+   * record, never a move: accepting it is a separate, audited reassignment, and the
+   * recommendation stays here forever whether it was accepted or not.
+   */
+  async setRecommendation(
+    ctx: AuthContext,
+    id: string,
+    input: SetPlacementRecommendation,
+    scope: ScopeSelector,
+  ): Promise<EvaluationDoc> {
+    const before = await evaluationRepository.getById(id, scope);
+    const resolved =
+      input.recommendedPlacement === null ? null : await resolvePlacement(input.recommendedPlacement);
+    const updated = await evaluationRepository.updateById(
+      id,
+      {
+        recommendedPlacement: resolved === null ? null : resolved.placement,
+        recommendationNote: input.recommendationNote ?? null,
+      },
+      { by: ctx.userId, version: input.version, scope },
+    );
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'update',
+      changes: [
+        {
+          field: 'recommendedPlacement',
+          old: before.recommendedPlacement === null ? null : 'set',
+          new: resolved === null ? null : [resolved.label.position, resolved.label.branch].filter((v) => v !== null).join(' · '),
+        },
+      ],
+    });
+    return updated;
+  }
+
+  /**
+   * RW2 step 3 — a reassignment moves the candidate, so their records must follow into the new
+   * branch or a branch-scoped user would lose sight of their own history. This touches the
+   * denormalized SCOPE FIELD only: no decision, no status, and never a `placementSnapshot`
+   * (RW4 — what a record was created under is history and is never rewritten).
+   */
+  async syncApplicantBranch(applicantId: string, branchId: Types.ObjectId | null): Promise<void> {
+    if (!Types.ObjectId.isValid(applicantId)) return;
+    await EvaluationModel.updateMany(
+      { applicantId: new Types.ObjectId(applicantId) },
+      { $set: { branchId } },
+    ).exec();
+  }
+
   get workflowBinding(): StageBinding<never> {
     return BINDING;
   }

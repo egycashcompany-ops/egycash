@@ -19,7 +19,6 @@ import { PlusIcon } from '../../../../../shared/ui/icons';
 import { formatDate, formatNumber } from '../../../../../shared/lib/format';
 import { ScreeningStatusBadge } from '../components/ScreeningStatusBadge';
 import { ScreeningFilters, type ScreeningFiltersState } from '../components/ScreeningFilters';
-import { AwaitingScreeningsPanel } from '../components/AwaitingScreeningsPanel';
 import { CreateScreeningDialog, type PickedApplicant } from '../components/CreateScreeningDialog';
 import { useBulkScreenings, useScreenings } from '../api/screening-queries';
 import { type ScreeningListParams } from '../api/screening-api';
@@ -136,7 +135,6 @@ export const ScreeningQueuePage = (): JSX.Element => {
       />
 
       <div className="space-y-4">
-        <AwaitingScreeningsPanel onOpen={(a) => { setCreateFor(a); setCreateOpen(true); }} />
         <ScreeningFilters value={filters} onChange={changeFilters} />
         <Can permission="screening.decide">
           <BulkActionBar count={selection.count} onClear={selection.clear}>

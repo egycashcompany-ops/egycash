@@ -5,7 +5,6 @@ export {
   AddScreeningNoteSchema,
   DecideScreeningSchema,
   ListScreeningsQuerySchema,
-  ListAwaitingScreeningsQuerySchema,
   BulkScreeningsSchema,
 } from '@ecms/contracts';
 

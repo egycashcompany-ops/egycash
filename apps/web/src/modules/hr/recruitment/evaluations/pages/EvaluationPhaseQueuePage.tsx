@@ -30,7 +30,9 @@ import { useBulkEvaluations, useEvaluationPhases, useEvaluations } from '../api/
 const DEFAULT_PAGE_SIZE = 25;
 
 /** The buckets a phase page offers. `waiting` is the queue the navigation counter reports. */
-const BUCKETS: EvaluationStatus[] = ['waiting', 'approved', 'rejected'];
+// The phase's own status enum (I10) — `cancelled` included, so a phase closed by the candidate
+// leaving the pipeline is still reachable rather than silently absent from every tab.
+const BUCKETS: EvaluationStatus[] = ['waiting', 'approved', 'rejected', 'cancelled'];
 
 export const EvaluationPhaseQueuePage = (): JSX.Element => {
   const t = useT();

@@ -9,7 +9,185 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Changed
+
+- **Recruitment: every workflow mutation answers with the full state (I6, server half).** All
+  seven recruitment controllers — screening, applicants, interviews, evaluations, job offers,
+  hiring documents, return-to-stage — plus the per-candidate evaluation-batch actions now return
+  `{ data, workflow, timeline, counters }` instead of the bare aggregate. `data` is byte-for-byte
+  what they returned before; the other three are derived on the server, on every response, and
+  stored nowhere (I1). `workflow` reports the furthest stage that still has open work and what the
+  CALLER may do next — an action they lack the permission for is listed with `enabled: false` and
+  the permission it needs, because capability lives in `availableActions` and nowhere else (I10).
+  `counters` is the same aggregated stage-counts payload the navigation already reads (RW15),
+  refreshed after the act. Reads (`GET`) are unchanged.
+
+  Two kinds of endpoint stay outside the envelope, for the same reason: there is no single
+  candidate whose state to report. Bulk endpoints answer with `BulkWorkflowResultDto` — the
+  partial-success envelope plus what the batch wrote and the refreshed counters, but no
+  `workflow`. Batch-LEVEL evaluation actions (create, add/remove members, issue, upload results,
+  close, cancel) span every candidate in the batch; their per-candidate siblings (decide/void an
+  item) do carry the full envelope.
+
+- **Recruitment: the response IS the refresh (I6, client half).** `invalidateRecruitment()` — which
+  fanned seven query subtrees out to the network after every write — is deleted, not deprecated.
+  Every recruitment mutation now goes through one hook, `useWorkflowMutation`, which applies the
+  response envelope to the TanStack Query cache: `data` seeds the aggregate's detail key and
+  patches its row inside every cached list page, `workflow` is stored per candidate, `timeline` is
+  merged into that candidate's history by `eventId` (newest first), and `counters` writes the one
+  aggregated key the sidebar, the stage rail and every queue badge read. No request is issued.
+
+  List MEMBERSHIP stays the server's judgement (I1): cached pages are marked stale with
+  `refetchType: 'none'` — no request now, re-read on the next mount — while the visible list stays
+  correct because the row is patched in place and dropped from a page whose `status` filter it no
+  longer satisfies. Two responses are deliberately not written: empty `counters` (the BD-007
+  degradation must not blank the navigation) and an empty `workflow.applicantId` (the empty state a
+  candidate-less act answers with). Bulk keeps exactly one refetch, because
+  `BulkWorkflowResultDto` carries the counters and the entries the batch wrote but not the changed
+  rows; the other stages are marked stale without fetching. Adding a timeline note no longer
+  invalidates anything either — the entry it returns is merged straight in.
+
+  UI behaviour is unchanged throughout: the hooks still resolve to the aggregate, so every page,
+  dialog and component reads exactly what it read before. `apps/web` gains a test runner (`vitest`,
+  wired into `npm run test --workspaces`) and its first suite: 21 cases over the cache layer,
+  including the ones that would catch a refetch creeping back in.
+
+- **Recruitment: a retired attempt is read-only for every write, not just transitions (I1).** The
+  stage repositories already refused to let a service write `status`, `attempt` or the supersede
+  markers (I13), and the engine already refused to transition a superseded record — but an ordinary
+  domain write addressed by id (a note, a file, a panel edit, a recommendation) could still land on
+  an attempt a return-to-stage had retired. `BaseRepository` gains two generic hooks,
+  `writeConditions()` and `assertWritable()`; the four stage repositories narrow them to the live
+  set. The condition rides inside the same atomic `findOneAndUpdate` as the write, so a return
+  landing mid-request cannot be overtaken, and the refusal says *why* (422, "superseded by a return
+  to an earlier stage") rather than reporting a version conflict a retry could never resolve. Two
+  writers still reach a retired row, both named by I1 itself: the supersede marker, and the
+  denormalized branch scope a reassignment syncs across a candidate's whole history.
+
+- **Recruitment: the outbox has a scheduled recovery sweep (I15).** `hr.recruitment.workflowOutbox`
+  runs every 5 minutes and publishes committed workflow events whose dispatch never ran. The engine
+  writes the aggregate change and its event in one transaction and publishes after commit; a process
+  killed in that gap left a committed state change with no timeline entry, no notification and no
+  projection until some later write happened to drain the outbox. Now it heals on a timer too. Safe
+  to overlap and safe to repeat — delivery is per-event and marked.
+
+- **Recruitment: the timeline repair task exists (I5).** `hr.recruitment.timelineReconcile` runs
+  hourly and puts back entries that should exist and do not: events committed but never projected
+  (replayed through the dispatcher's own projection), and the two facts that have no event behind
+  them — `applied` and `identityVerified`, whose writer logs and swallows rather than failing a
+  registration — rebuilt from the applicant document. Every write it makes is keyed on the
+  deterministic `sourceKey`, so a run against a healthy database changes nothing and a rebuilt row
+  keeps its original `eventId`. The promise `recordSafe` has been making in a comment since the
+  timeline was introduced is now kept in code.
+
+- **Recruitment: the boot migration materializes the waiting backlog (I8/I11).** Since I11 made
+  `waiting` a persisted row, a candidate with no row is not "waiting" — they are invisible to every
+  queue, counter, badge and bulk action. Two populations had exactly that shape and nothing put them
+  back: applicants who moved through the pipeline before I11 existed, and applicants whose
+  materialization threw and was swallowed by `safely()` so the decision that triggered it would
+  still commit. `migrateRecruitmentWorkflow()` now ends by walking every live applicant and
+  resolving how far they got from their own records — never from a stored cursor (I1) — then opening
+  whatever is missing through the same `open*` methods the live path uses. Re-running repairs
+  nothing and writes nothing, which is what makes it safe on every boot; a decided stage is never
+  re-opened, and a withdrawn candidate is not scanned at all. This closes the repair `safely()` has
+  promised in a comment since materialization was introduced.
+
+- **Recruitment: I3 is enforced by tests instead of asserted in prose.** A new integration suite
+  seeds 2,000 rows across four stage collections and runs `explain()`: every stage queue must show
+  an `IXSCAN` and never a `COLLSCAN`, and each counters aggregation must touch only rows that match
+  — keys and documents examined both equal the live count, never the collection size. Making that
+  true needed a new index, `ix_live_counters` on `{ supersededAt, isDeleted, branchId, status }`,
+  which puts the retired rows in a key range the scan never enters.
+
+  Two things about `null` came out of writing the check, and neither is visible without it. The
+  obvious PARTIAL index over `{ supersededAt: null, isDeleted: false }` does not work and fails
+  silently — MongoDB will not use a partial index for a `null`-equality predicate, because
+  `$eq: null` also matches missing fields, so the plan is never generated and the query
+  collection-scans exactly as before. And for the same reason the scan is index-*served* but not
+  index-*only*: an index entry cannot tell a stored `null` from an absent field, so each matching
+  document is still read. Both claims sound alike and only one is true.
+  The same suite benchmarks the shipped counters shape (N grouped aggregations in parallel)
+  against a single `$unionWith` pipeline, asserts both return identical numbers, and fails if the
+  shipped shape is slower. The shape itself is what RW15 §7 specifies verbatim — "six `$group`
+  aggregations (one per collection) … issued in parallel inside one request" — and the `$lookup`
+  pipeline I3's wording describes is the one I11 deleted when it made `waiting` a real row and
+  removed the eligibility derivation. `docs/02-architecture/recruitment-workflow.md` §7 records how
+  the two passages reconcile.
+
+- **Recruitment: one history, and only one (I5).** Three parallel histories are gone. The
+  Electronic Employee File no longer re-derives the recruitment milestones — its own timeline
+  starts at the hire, and the candidate's recruitment history arrives as `recruitmentTimeline`,
+  read from `hr_recruitment_timeline` at request time. `EvaluationDoc.decisionHistory[]` is
+  removed: it logged `at`/`from`/`to`/`reason`/`by` for every re-decision, which is exactly what
+  the timeline's `evaluationDecided` entry already records for the same act. And every screen that
+  shows history now reads the canonical collection through one renderer — the four stage detail
+  pages, the Employee File and the employee profile's recruitment section included. The boot
+  migration drops the four derived milestone types from files already assembled and unsets the
+  evaluation array; nothing is lost, because the timeline held all of it.
+
+- **Recruitment: one bulk toolbar and one selection model (I7).** The older `BulkActions`
+  component is deleted rather than deprecated, and its two call sites — the applicants list and
+  the phase board — moved to the shared `BulkActionBar`. The phase board also dropped its own
+  `useState<Set<string>>` selection for `useTableSelection`, and its "move to Job Offer" now
+  issues one `POST /hr/applicants/bulk` instead of a client-side loop of single-item requests,
+  so the act gets the per-item transaction, the partial-success envelope and the single audit
+  record every other bulk action already had. `BulkActionBar` and `useTableSelection` are now part
+  of the shared UI barrel.
+
 ### Fixed
+
+- **Recruitment: `timeline.produced` could never resolve.** The envelope's "what did this action
+  write?" half joined the workflow event ids the engine reported against the timeline's `eventId`
+  column — but the projection minted a *fresh* id for the entry, so the two never matched and the
+  slice would have shipped permanently empty. A projected entry now takes its event's id, which is
+  also what makes the join idempotent across a redelivery, and entries written outside the engine
+  report themselves at write time. Found before the contract had a single consumer.
+
+- **Recruitment: the candidate timeline was missing its first two entries.** `applied` and
+  `identityVerified` were in the frozen vocabulary but nothing wrote them — registration and
+  identity verification are candidate facts, not workflow transitions, so no consumer recorded
+  them and every history began mid-pipeline at the first decision. Both are now written by the
+  applicant service.
+
+- **Recruitment: a stage closed by a withdrawal showed as a blank note.** `hr.screening.cancelled`
+  and `hr.evaluation.cancelled` had no timeline entry type, and an unmapped event does not fail —
+  it falls through to a generic `note`. The vocabulary gains `screeningCancelled` and
+  `evaluationCancelled`, and a unit test now asserts the mapping is total, so the next event
+  cannot repeat this.
+
+- **Recruitment: bulk "Move to Job Offer" silently ran a reassignment instead.** The applicant
+  bulk executor handled `withdraw` and fell through to `reassign` for everything else, so
+  `moveToOffer` and `moveToScreening` — both in the closed action vocabulary — reassigned the
+  selection with an undefined placement rather than moving anyone. The executor is now exhaustive
+  over its own vocabulary: `moveToOffer` moves, and `moveToScreening` opens the screening row
+  (idempotent, since I11 materializes it at registration). Both are now offered on the applicants
+  table, completing RW17's action list for it, and both are covered by integration tests.
+
+- **Recruitment: bulk "Start now" was a no-op.** The web client posted the bulk body to
+  `POST /hr/interviews/start` — the single-candidate route, whose schema is `.strict()` —
+  so every click answered 400. It now calls `POST /hr/interviews/bulk/start`, and bulk
+  scheduling likewise calls `POST /hr/interviews/bulk/schedule` instead of looping
+  single-schedule calls client-side, which produced no bulk audit record, no
+  partial-success envelope, and a half-finished run if the tab was closed. A test pins
+  that the single route refuses a bulk body.
+
+- **Recruitment: withdrawing or restoring a candidate bypassed the workflow engine.** Both wrote
+  `applicant.status` directly through the repository, so the invariant that the engine owns every
+  lifecycle change (I13/I14) was documented but not enforced for the two most common moves — and
+  nothing downstream of the engine ran for them. Both now go through it, carrying their own
+  fields and the caller's version check in the same act.
+
+- **Recruitment: withdrawn and rejected candidates lingered in the stage counters.** The
+  counters read stage rows without regard to whether the candidate was still in the
+  running, so a badge could out-count its own page indefinitely. A lifecycle exit now
+  **closes** the candidate's open stage records: the workflow engine transitions each of
+  them to a terminal status in the same transaction — screening and evaluation to the new
+  `cancelled`, interviews to `cancelled`, a live offer to `withdrawn` — so they leave every
+  queue and counter through the status vocabulary itself, with no mirrored lifecycle field
+  anywhere (I1/I10). Decided records are never touched. Because each closure status is
+  terminal, restoring a candidate re-opens the stage on a **new attempt** rather than
+  reviving a closed row (I11/I12). The boot migration closes the records of applicants who
+  had already left.
 
 - **Contract templates: Save Draft is no longer completeness-gated — Publish is.**
   Saving a template draft no longer demands the full names, contract type and body up
@@ -28,7 +206,59 @@ its entry here in the same PR.
   outside this validation (it renders the current editor state, now even with unlabeled
   signature rows), and unnamed drafts list as "(untitled draft)" so they stay reachable.
 
+### Removed
+
+- **Recruitment: the derived "awaiting" queues are gone (I11).** `GET /hr/screenings/awaiting`,
+  `GET /hr/interviews/awaiting` and `GET /hr/job-offers/awaiting` — with their contracts,
+  services and the three panels that rendered them — have been removed. Every queue in the
+  product is now a plain indexed read over persisted `waiting` rows, so there is no second
+  "who ought to be here" model that can disagree with the first. Also removed: the four
+  deprecated loose selection props on `DataTable` (superseded by `selection`) and the
+  duplicated `BulkApplicantsResultDto` (superseded by the shared `BulkActionResultDto`);
+  applicant bulk actions now run through the same executor as every other module, so they
+  are audited once as an act as well as per item.
+
 ### Added
+
+- **Recruitment: every backend capability is now reachable from the UI.** The pieces that
+  existed only as endpoints are wired to real screens: **Return to stage** (RW13) gets its
+  own dialog — target picker, the server's own consequence preview of what will be
+  superseded and what will be closed first, a mandatory reason, and a confirm button that
+  stays disabled until that preview has arrived. **Start interview** (RW12) gets buttons on
+  the round's page and on each row of a stage queue, covering both "start now" for a
+  candidate whose round does not exist yet and "start" for one already scheduled; the
+  server stamps who started it and when, and the screens render those moments on the
+  Africa/Cairo business calendar rather than the viewer's timezone. **Placement
+  recommendations** (RW5) can finally be *recorded* — previously only displayed and
+  applied — on both interviews and evaluation phases, including clearing one. **Employees
+  Ready** appears in the navigation with its live counter and filters server-side, so its
+  pagination and its badge agree. **Bulk complete** arrives for Hiring Documents (new
+  endpoint) and **bulk close/cancel** for Evaluation Batches, completing bulk actions on
+  every recruitment table.
+
+- **Recruitment: Position & Branch stay editable until hire (RW1–RW5).** A candidate now
+  carries a first-class `placement` (position, title, department, branch, section) that
+  may be set at intake and stays editable from Screening through Offer Acceptance.
+  Moving one is its OWN audited action — `POST /hr/applicants/:id/reassign` behind the new
+  `applicant.reassign` grant, with a mandatory reason — never a field on the edit form, so
+  a routine data correction can't silently move someone to another branch. One act does all
+  of it: writes the placement and its ADR-015 scope mirror, appends to `placementHistory`,
+  syncs the **scope field only** on the candidate's screenings, interviews, evaluations and
+  offers so a branch-scoped user keeps seeing their whole history, writes one timeline entry
+  per moved dimension under a shared correlation id, and drives a live (`draft`/`sent`) offer
+  through a normal versioned revision so the package follows the placement. Selecting a job
+  position completes the rest of the placement from the seat. Every stage record keeps its
+  **immutable `placementSnapshot`** — queues show where the candidate stands today, history
+  shows what it was created under, and nothing already decided is rewritten. Acceptance
+  closes the window: afterwards the path is revise / withdraw → re-accept → hire, because the
+  accepted snapshot is the contractual artifact. Bulk reassignment applies one placement to a
+  whole selection with the shared partial-success envelope. Interviews and evaluations can
+  record an advisory `recommendedPlacement` that never moves anyone by itself.
+
+- **Recruitment: Employees Ready queue + bulk "Start now".** `/employees/ready` lists
+  accepted offers not yet converted into an Employee — read from a fact on the offer, the
+  same source the stage counter uses — with a direct hire action. Interview stage queues gain
+  a bulk **Start now** (RW12) alongside bulk cancel.
 
 - **Recruitment: Security / Driving check batches (RW8).** The two external checks that
   are performed on a GROUP of applicants are now worked as batches. HR picks candidates

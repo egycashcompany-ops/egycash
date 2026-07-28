@@ -30,6 +30,22 @@ class WorkflowEventRepository extends BaseRepository<WorkflowEventDoc> {
       .exec();
   }
 
+  /**
+   * The reconciler's scan (I5): the most recent events regardless of dispatch state.
+   *
+   * Deliberately NOT filtered to `dispatchedAt: null` — that set is the dispatcher's queue, and an
+   * event marked dispatched is exactly the case the repair task exists for. "Delivered" means every
+   * consumer returned; it does not prove the row a consumer wrote is still there.
+   */
+  async listForReconciliation(limit: number): Promise<WorkflowEventDoc[]> {
+    return this.model
+      .find({})
+      .sort({ occurredAt: -1 })
+      .limit(limit)
+      .lean<WorkflowEventDoc[]>()
+      .exec();
+  }
+
   async markDispatched(eventId: string): Promise<void> {
     await this.model.updateOne({ eventId }, { $set: { dispatchedAt: new Date() } }).exec();
   }

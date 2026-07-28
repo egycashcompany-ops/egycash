@@ -3,7 +3,11 @@
 import { Types, type FilterQuery } from 'mongoose';
 import { type Paginated } from '@ecms/contracts';
 import { BaseRepository } from '../../../../shared/base/base.repository';
-import { assertNotWorkflowManaged } from '../workflow/workflow-guard';
+import {
+  assertNotSuperseded,
+  assertNotWorkflowManaged,
+  LIVE_ATTEMPT_ONLY,
+} from '../workflow/workflow-guard';
 import { type ScopeSelector } from '../../../../shared/types';
 import { ScreeningModel, type ScreeningDoc } from './screening.model';
 
@@ -36,6 +40,19 @@ class ScreeningRepository extends BaseRepository<ScreeningDoc> {
     return super.updateById(id, set, meta);
   }
 
+  /**
+   * I1 — a retired attempt is history, and history is not edited. The condition rides inside the
+   * same atomic write as the change, so a return-to-stage landing mid-request cannot be overtaken
+   * by a caller that read the record a moment earlier.
+   */
+  protected override writeConditions(): FilterQuery<ScreeningDoc> {
+    return LIVE_ATTEMPT_ONLY as FilterQuery<ScreeningDoc>;
+  }
+
+  protected override assertWritable(current: ScreeningDoc): void {
+    assertNotSuperseded(current, 'screening');
+  }
+
   /** The live screening for an applicant, if any (one per applicant). */
   async findByApplicantId(applicantId: string): Promise<ScreeningDoc | null> {
     if (!Types.ObjectId.isValid(applicantId)) return null;
@@ -46,34 +63,6 @@ class ScreeningRepository extends BaseRepository<ScreeningDoc> {
       .sort({ attempt: -1 })
       .lean<ScreeningDoc>()
       .exec();
-  }
-
-  /** Of the given applicant ids, those that already have a screening — for the "awaiting" view. */
-  async applicantIdsWithScreening(ids: string[]): Promise<Set<string>> {
-    const objectIds = ids.filter((id) => Types.ObjectId.isValid(id)).map((id) => new Types.ObjectId(id));
-    if (objectIds.length === 0) return new Set();
-    const rows = await this.model
-      .find({ applicantId: { $in: objectIds }, isDeleted: false })
-      .select('applicantId')
-      .lean<{ applicantId: Types.ObjectId }[]>()
-      .exec();
-    return new Set(rows.map((r) => String(r.applicantId)));
-  }
-
-  /**
-   * Applicants whose LIVE screening is still waiting — the real backing rows of the screening
-   * queue (I11). Replaces deriving "has no screening yet", which stopped meaning anything once
-   * the record is materialized at registration.
-   */
-  async applicantIdsAwaitingDecision(ids: string[]): Promise<Set<string>> {
-    const objectIds = ids.filter((id) => Types.ObjectId.isValid(id)).map((id) => new Types.ObjectId(id));
-    if (objectIds.length === 0) return new Set();
-    const rows = await this.model
-      .find({ applicantId: { $in: objectIds }, status: 'waiting', supersededAt: null, isDeleted: false })
-      .select('applicantId')
-      .lean<{ applicantId: Types.ObjectId }[]>()
-      .exec();
-    return new Set(rows.map((r) => String(r.applicantId)));
   }
 
   /** Accepted screenings (most-recently-decided first) — the interview-eligibility read model. */

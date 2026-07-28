@@ -11,7 +11,6 @@ import {
   createScreening,
   decideScreening,
   getScreening,
-  listAwaitingScreenings,
   listScreenings,
   redecideScreening,
 } from './screening.controller';
@@ -20,7 +19,6 @@ import {
   BulkScreeningsSchema,
   CreateScreeningSchema,
   DecideScreeningSchema,
-  ListAwaitingScreeningsQuerySchema,
   ListScreeningsQuerySchema,
   ScreeningIdParamSchema,
 } from './screening.validation';
@@ -34,14 +32,6 @@ export const buildScreeningsRouter = (): Router => {
     authorize('screening.view'),
     validate({ query: ListScreeningsQuerySchema }),
     asyncHandler(listScreenings),
-  );
-  // Pipeline entry: live applicants with no screening yet (declared before `/:id`).
-  router.get(
-    '/awaiting',
-    authenticate,
-    authorize('screening.view'),
-    validate({ query: ListAwaitingScreeningsQuerySchema }),
-    asyncHandler(listAwaitingScreenings),
   );
   router.post(
     '/',

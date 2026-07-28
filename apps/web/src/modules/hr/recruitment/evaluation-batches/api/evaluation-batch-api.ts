@@ -4,8 +4,8 @@
 import {
   type AddBatchItems,
   type BatchCandidateDto,
-  type BulkActionResultDto,
   type BulkBatchItems,
+  type BulkWorkflowResultDto,
   type BulkEvaluationBatches,
   type CancelEvaluationBatch,
   type CloseEvaluationBatch,
@@ -17,10 +17,28 @@ import {
   type Paginated,
   type UpdateEvaluationBatch,
   type VoidBatchItem,
+  type WorkflowEnvelopeDto,
 } from '@ecms/contracts';
-import { api, buildQuery, get, getPage, patch, post, upload } from '../../../../../shared/lib/api-client';
+import {
+  api,
+  buildQuery,
+  get,
+  getPage,
+  patch,
+  patchWorkflow,
+  post,
+  postWorkflow,
+  upload,
+} from '../../../../../shared/lib/api-client';
 
 export type BatchListParams = Record<string, string | number | boolean | undefined | null>;
+
+/**
+ * I6 — the acts that name ONE candidate answer with the workflow envelope. The batch-LEVEL acts
+ * (create, add/remove members, issue, upload results, close, cancel) span every candidate in the
+ * batch, so there is no single workflow state to report and they answer with the batch alone.
+ */
+type BatchItemEnvelope = Promise<WorkflowEnvelopeDto<EvaluationBatchDto>>;
 
 export const listEvaluationBatches = (
   params: BatchListParams,
@@ -87,18 +105,18 @@ export const decideBatchItem = (
   id: string,
   applicantId: string,
   body: DecideBatchItem,
-): Promise<EvaluationBatchDto> =>
-  patch<EvaluationBatchDto>(`/hr/evaluation-batches/${id}/items/${applicantId}/decision`, body);
+): BatchItemEnvelope =>
+  patchWorkflow<EvaluationBatchDto>(`/hr/evaluation-batches/${id}/items/${applicantId}/decision`, body);
 
 export const voidBatchItem = (
   id: string,
   applicantId: string,
   body: VoidBatchItem,
-): Promise<EvaluationBatchDto> =>
-  post<EvaluationBatchDto>(`/hr/evaluation-batches/${id}/items/${applicantId}/void`, body);
+): BatchItemEnvelope =>
+  postWorkflow<EvaluationBatchDto>(`/hr/evaluation-batches/${id}/items/${applicantId}/void`, body);
 
-export const bulkBatchItems = (id: string, body: BulkBatchItems): Promise<BulkActionResultDto> =>
-  post<BulkActionResultDto>(`/hr/evaluation-batches/${id}/items/bulk`, body);
+export const bulkBatchItems = (id: string, body: BulkBatchItems): Promise<BulkWorkflowResultDto> =>
+  post<BulkWorkflowResultDto>(`/hr/evaluation-batches/${id}/items/bulk`, body);
 
 export const closeEvaluationBatch = (
   id: string,
@@ -110,5 +128,5 @@ export const cancelEvaluationBatch = (
   body: CancelEvaluationBatch,
 ): Promise<EvaluationBatchDto> => post<EvaluationBatchDto>(`/hr/evaluation-batches/${id}/cancel`, body);
 
-export const bulkEvaluationBatches = (body: BulkEvaluationBatches): Promise<BulkActionResultDto> =>
-  post<BulkActionResultDto>('/hr/evaluation-batches/bulk', body);
+export const bulkEvaluationBatches = (body: BulkEvaluationBatches): Promise<BulkWorkflowResultDto> =>
+  post<BulkWorkflowResultDto>('/hr/evaluation-batches/bulk', body);

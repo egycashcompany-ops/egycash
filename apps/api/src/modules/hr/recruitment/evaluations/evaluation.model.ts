@@ -26,15 +26,6 @@ export interface EvaluationFile {
   uploadedAt: Date;
 }
 
-/** One audited decision change (backs editability — HR can re-decide a phase). */
-export interface EvaluationDecisionEvent {
-  at: Date;
-  from: EvaluationStatus;
-  to: EvaluationStatus;
-  reason: string | null;
-  by: Types.ObjectId | null;
-}
-
 export interface EvaluationDoc extends BaseDocFields, StageDocFields {
   applicantId: Types.ObjectId;
   applicantCode: string;
@@ -57,7 +48,6 @@ export interface EvaluationDoc extends BaseDocFields, StageDocFields {
   recommendationNote: string | null;
   decidedBy: Types.ObjectId | null;
   decidedAt: Date | null;
-  decisionHistory: EvaluationDecisionEvent[];
 }
 
 const fileSchema = new Schema<EvaluationFile>(
@@ -92,21 +82,8 @@ const evaluationSchema = new Schema<EvaluationDoc>(
     recommendationNote: { type: String, default: null },
     decidedBy: { type: Schema.Types.ObjectId, default: null },
     decidedAt: { type: Date, default: null },
-    decisionHistory: {
-      type: [
-        new Schema<EvaluationDecisionEvent>(
-          {
-            at: { type: Date, required: true },
-            from: { type: String, enum: EVALUATION_STATUSES, required: true },
-            to: { type: String, enum: EVALUATION_STATUSES, required: true },
-            reason: { type: String, default: null },
-            by: { type: Schema.Types.ObjectId, default: null },
-          },
-          { _id: false },
-        ),
-      ],
-      default: [],
-    },
+    // I5 — no `decisionHistory` here. Re-decisions are recorded once, on the canonical
+    // recruitment timeline; an aggregate that also logged them would be a second history.
     ...stageFields,
     ...baseFields,
   },
@@ -126,5 +103,21 @@ evaluationSchema.index({ batchId: 1 }, { name: 'ix_batchId' });
 evaluationSchema.index({ applicantId: 1, phaseOrder: 1 }, { name: 'ix_applicant_order' });
 evaluationSchema.index({ phaseId: 1, status: 1 }, { name: 'ix_phase_status' });
 evaluationSchema.index({ branchId: 1, status: 1 }, { name: 'ix_branch_status' });
+
+// I3 — the aggregated stage counters (RW15) group the LIVE set by status, with no predicate to
+// narrow it: exactly the shape that would otherwise scan the collection and fetch every document
+// to read one field. This index gives the counters' `$match` an equality bound on both of its
+// fields and carries `status` in the key, so the group is an index-only scan — retired rows sit in
+// a different key range and are never examined.
+//
+// It is deliberately NOT a partial index over `{ supersededAt: null, isDeleted: false }`, which is
+// the obvious-looking shape and does not work: MongoDB will not use a partial index for a query
+// whose predicate is a `null` EQUALITY, because `$eq: null` also matches documents where the field
+// is missing and those may not be in the index. Such a plan is not merely rejected — it is never
+// generated (`rejectedPlans: []`), and the query silently collection-scans.
+evaluationSchema.index(
+  { supersededAt: 1, isDeleted: 1, branchId: 1, status: 1 },
+  { name: 'ix_live_counters' },
+);
 
 export const EvaluationModel = model<EvaluationDoc>('Evaluation', evaluationSchema, 'hr_evaluations');

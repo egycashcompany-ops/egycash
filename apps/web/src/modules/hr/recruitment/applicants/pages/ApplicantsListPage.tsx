@@ -2,7 +2,7 @@
 // pagination, CSV export, and a create entry point — all permission-gated and RTL-safe.
 // Filters, search, sort, and pagination are synchronized with the URL query string, so views
 // are deep-linkable and back/forward navigation works. Selection is transient (not in the URL).
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { type ApplicantDto, type ApplicantSourceDto } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
@@ -11,7 +11,8 @@ import { Can } from '../../../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../../../shared/ui/DataTable';
 import { Pagination } from '../../../../../shared/ui/Pagination';
-import { BulkActions } from '../../../../../shared/ui/BulkActions';
+import { BulkActionBar } from '../../../../../shared/ui/BulkActionBar';
+import { useTableSelection } from '../../../../../shared/ui/useTableSelection';
 import { Button } from '../../../../../shared/ui/Button';
 import { Dialog } from '../../../../../shared/ui/Dialog';
 import { Field, Textarea } from '../../../../../shared/ui/form';
@@ -19,6 +20,8 @@ import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { PlusIcon, DownloadIcon } from '../../../../../shared/ui/icons';
 import { formatDate, formatNumber, localized } from '../../../../../shared/lib/format';
 import { ApplicantStatusBadge } from '../components/ApplicantStatusBadge';
+import { type PlacementDto } from '@ecms/contracts';
+import { BulkReassignDialog } from '../components/BulkReassignDialog';
 import { ApplicantFilters, type ApplicantFiltersState } from '../components/ApplicantFilters';
 import { useApplicants, useApplicantSources, useBulkApplicants } from '../api/applicant-queries';
 import { exportApplicantsCsv, type ApplicantListParams } from '../api/applicant-api';
@@ -76,12 +79,9 @@ export const ApplicantsListPage = (): JSX.Element => {
   };
 
   // ── Transient (non-URL) state ──────────────────────────────────────────────
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [bulkReassignOpen, setBulkReassignOpen] = useState(false);
   const [withdrawReason, setWithdrawReason] = useState('');
-  useEffect(() => {
-    setSelected(new Set());
-  }, [paramsKey]);
 
   const { data: sources = [] } = useApplicantSources();
   const sourceName = (id: string): string => {
@@ -108,36 +108,38 @@ export const ApplicantsListPage = (): JSX.Element => {
   );
 
   const { data, isLoading, isError, error, refetch } = useApplicants(params);
-  const bulk = useBulkApplicants();
+  // I7 — the shared bulk hook: it reports the partial-success envelope the same way every other
+  // recruitment table does, and clears the selection when at least one item applied.
+  const bulk = useBulkApplicants(() => selection.clear());
   const rows = data?.items ?? [];
 
-  const toggleRow = (id: string): void => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-  const toggleAll = (checked: boolean): void => {
-    setSelected(checked ? new Set(rows.map((r) => r.id)) : new Set());
-  };
+  // The shared selection model (RW17): always the intersection with the rows on screen, so a
+  // filter or page change can never leave a selection meaning something the user did not see.
+  const rowIds = useMemo(() => rows.map((a) => a.id), [rows]);
+  const selection = useTableSelection(rowIds);
 
   const submitWithdraw = async (): Promise<void> => {
     try {
-      const result = await bulk.mutateAsync({ action: 'withdraw', ids: [...selected], reason: withdrawReason });
-      toast.success(
-        t('applicants.bulk.withdrawDone', {
-          ok: formatNumber(result.succeeded, locale),
-          total: formatNumber(result.requested, locale),
-        }),
-      );
+      await bulk.mutateAsync({ action: 'withdraw', ids: selection.ids, reason: withdrawReason });
       setWithdrawOpen(false);
       setWithdrawReason('');
-      setSelected(new Set());
     } catch {
       // surfaced by the global error handler
     }
+  };
+
+  /** The actions that need nothing but the selection — the hook reports the envelope. */
+  const runBulk = async (action: 'moveToOffer' | 'moveToScreening'): Promise<void> => {
+    try {
+      await bulk.mutateAsync({ action, ids: selection.ids });
+    } catch {
+      // surfaced by the global error handler
+    }
+  };
+
+  const submitBulkReassign = async (placement: PlacementDto, reason: string): Promise<void> => {
+    await bulk.mutateAsync({ action: 'reassign', ids: selection.ids, placement, reason });
+    setBulkReassignOpen(false);
   };
 
   const runExport = (): void => {
@@ -201,13 +203,40 @@ export const ApplicantsListPage = (): JSX.Element => {
       <div className="space-y-4">
         <ApplicantFilters value={filters} onChange={changeFilters} sources={sources} />
 
-        <Can permission="applicant.edit">
-          <BulkActions count={selected.size} onClear={() => setSelected(new Set())}>
+        <BulkActionBar count={selection.count} onClear={selection.clear}>
+          {/* RW17 — one placement over the whole selection; each candidate is still checked
+              against the editing window on its own. */}
+          <Can permission="applicant.reassign">
+            <Button size="sm" variant="secondary" onClick={() => setBulkReassignOpen(true)}>
+              {t('applicants.reassign.selected')}
+            </Button>
+          </Can>
+          <Can permission="applicant.moveToOffer">
+            <Button
+              size="sm"
+              variant="secondary"
+              loading={bulk.isPending}
+              onClick={() => void runBulk('moveToOffer')}
+            >
+              {t('applicants.bulk.moveToOffer')}
+            </Button>
+          </Can>
+          <Can permission="applicant.edit">
+            <Button
+              size="sm"
+              variant="secondary"
+              loading={bulk.isPending}
+              onClick={() => void runBulk('moveToScreening')}
+            >
+              {t('applicants.bulk.moveToScreening')}
+            </Button>
+          </Can>
+          <Can permission="applicant.edit">
             <Button size="sm" variant="danger" onClick={() => setWithdrawOpen(true)}>
               {t('applicants.actions.withdraw')}
             </Button>
-          </BulkActions>
-        </Can>
+          </Can>
+        </BulkActionBar>
 
         <DataTable
           columns={columns}
@@ -219,10 +248,7 @@ export const ApplicantsListPage = (): JSX.Element => {
           sort={sort}
           onSortChange={changeSort}
           onRowClick={(a) => navigate(a.id)}
-          selectable
-          selectedIds={selected}
-          onToggleRow={toggleRow}
-          onToggleAll={toggleAll}
+          selection={selection}
         />
 
         {data !== undefined && data.meta.totalItems > 0 && (
@@ -238,7 +264,7 @@ export const ApplicantsListPage = (): JSX.Element => {
         open={withdrawOpen}
         onClose={() => setWithdrawOpen(false)}
         title={t('applicants.withdraw.title')}
-        description={t('applicants.withdraw.bulkBody', { count: formatNumber(selected.size, locale) })}
+        description={t('applicants.withdraw.bulkBody', { count: formatNumber(selection.count, locale) })}
         footer={
           <>
             <Button variant="secondary" onClick={() => setWithdrawOpen(false)}>{t('common.cancel')}</Button>
@@ -252,6 +278,14 @@ export const ApplicantsListPage = (): JSX.Element => {
           <Textarea value={withdrawReason} onChange={(e) => setWithdrawReason(e.target.value)} rows={3} />
         </Field>
       </Dialog>
+      <BulkReassignDialog
+        open={bulkReassignOpen}
+        count={selection.count}
+        pending={bulk.isPending}
+        onClose={() => setBulkReassignOpen(false)}
+        onSubmit={submitBulkReassign}
+      />
+
     </PageContainer>
   );
 };

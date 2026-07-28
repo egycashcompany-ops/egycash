@@ -6,7 +6,7 @@
 // (Stage 5) or later — the only forward hook is "the latest offer must be Accepted before
 // Employee Creation", enforced by that later stage against this aggregate.
 import { z } from 'zod';
-import { objectId, PaginationQuerySchema } from '../common/index.js';
+import { booleanQuery, objectId, PaginationQuerySchema } from '../common/index.js';
 import {
   type AttemptMarkerDto,
   type PlacementDto,
@@ -144,6 +144,12 @@ export const ListJobOffersQuerySchema = PaginationQuerySchema.extend({
   branchId: objectId().optional(),
   /** Free-text over the offer number (`code`) and applicant code (partial, case-insensitive). */
   search: z.string().max(100).optional(),
+  /**
+   * Whether the offer has already produced an Employee. `false` is what the Employees Ready
+   * queue asks for (A6/RW15) — an accepted offer nobody has hired yet — so the page and the
+   * stage counter run the SAME server-side predicate and their totals cannot drift.
+   */
+  hired: booleanQuery().optional(),
 }).strict();
 export type ListJobOffersQuery = z.infer<typeof ListJobOffersQuerySchema>;
 
@@ -165,27 +171,6 @@ export const BulkJobOffersSchema = z
     message: 'a reason is required to withdraw offers',
   });
 export type BulkJobOffers = z.infer<typeof BulkJobOffersSchema>;
-
-// ── Awaiting offer (DEPRECATED — superseded by explicit `waiting` records, I11) ──────────────
-// The queue is now `GET /hr/job-offers?status=waiting` over REAL rows: the offer record is
-// materialized when HR moves the candidate to this stage, so nothing is derived from a missing
-// row. These two declarations are retained for one release while the stage services and web
-// screens migrate, and are removed with the awaiting endpoints.
-
-export const ListAwaitingOffersQuerySchema = z
-  .object({ branchId: objectId().optional(), limit: z.coerce.number().int().min(1).max(200).default(100) })
-  .strict();
-export type ListAwaitingOffersQuery = z.infer<typeof ListAwaitingOffersQuerySchema>;
-
-export interface AwaitingOfferDto {
-  applicantId: string;
-  applicantCode: string;
-  /** Denormalized applicant display name (Arabic full name). */
-  applicantName: string;
-  branchId: string | null;
-  /** When HR moved the applicant to the Job Offer stage (drives the queue order). */
-  movedToOfferAt: string;
-}
 
 // ── DTOs ─────────────────────────────────────────────────────────────────────
 

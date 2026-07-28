@@ -8,6 +8,7 @@
 export { recruitmentTimelineService, type RecordTimelineInput } from './recruitment-timeline.service';
 export { timelineEntryDto, timelineSummaryDto } from './recruitment-timeline.mapper';
 export { newCorrelationId, newEventId, timelineSourceKey } from './recruitment-timeline.keys';
+export { captureTimelineEntries, noteTimelineEntry } from './recruitment-timeline.capture';
 export {
   type RecruitmentTimelineDoc,
   type TimelinePlacement,

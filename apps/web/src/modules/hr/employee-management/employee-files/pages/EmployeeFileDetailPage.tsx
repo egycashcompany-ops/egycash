@@ -1,6 +1,10 @@
-// Electronic Employee File detail: the assembled recruitment history links and the Employee
-// Timeline (built from recruitment milestones + free-form notes). Adding a note appends to the
-// timeline (employeeFile.edit, version-checked). The file is a read/annotate handoff artifact.
+// Electronic Employee File detail: the linked recruitment records, the candidate's recruitment
+// history, and the file's own Employee Timeline. Adding a note appends to that timeline
+// (employeeFile.edit, version-checked). The file is a read/annotate handoff artifact.
+//
+// I5 — the recruitment history shown here is the CANONICAL one. It arrives on the file's own
+// response (`recruitmentTimeline`, read from `hr_recruitment_timeline`) and is drawn by the same
+// `RecruitmentTimelineList` the recruitment screens use. This page derives no history of its own.
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { type EmployeeTimelineEventType, type Locale } from '@ecms/contracts';
@@ -18,16 +22,13 @@ import { ErrorState } from '../../../../../shared/ui/states/ErrorState';
 import { EmptyState } from '../../../../../shared/ui/states/EmptyState';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { formatDateTime } from '../../../../../shared/lib/format';
+import { RecruitmentTimelineList } from '../../../recruitment/timeline/components/RecruitmentTimelineList';
 import { EmployeeFileStatusBadge } from '../components/EmployeeFileStatusBadge';
 import { EmployeeFileDocuments } from '../components/EmployeeFileDocuments';
 import { LinkedHistory } from '../components/LinkedHistory';
 import { useAddEmployeeFileNote, useEmployeeFile } from '../api/employee-file-queries';
 
 const EVENT_TONE: Record<EmployeeTimelineEventType, Tone> = {
-  applicantRegistered: 'info',
-  screeningAccepted: 'success',
-  interviewPassed: 'success',
-  offerAccepted: 'success',
   employeeCreated: 'brand',
   hiringDocumentsCompleted: 'success',
   fileOpened: 'brand',
@@ -100,7 +101,21 @@ export const EmployeeFileDetailPage = (): JSX.Element => {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
           <Card>
-            <CardHeader title={t('employeeFiles.detail.timeline')} />
+            <CardHeader
+              title={t('employeeFiles.detail.recruitmentTimeline')}
+              description={t('employeeFiles.detail.recruitmentTimelineHint')}
+            />
+            <CardBody>
+              {f.recruitmentTimeline.length === 0 ? (
+                <EmptyState title={t('employeeFiles.detail.recruitmentTimelineEmpty')} />
+              ) : (
+                <RecruitmentTimelineList entries={f.recruitmentTimeline} />
+              )}
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardHeader title={t('employeeFiles.detail.timeline')} description={t('employeeFiles.detail.timelineHint')} />
             <CardBody>
               {timeline.length === 0 ? <EmptyState title={t('employeeFiles.detail.timelineEmpty')} /> : <Timeline entries={timeline} />}
             </CardBody>

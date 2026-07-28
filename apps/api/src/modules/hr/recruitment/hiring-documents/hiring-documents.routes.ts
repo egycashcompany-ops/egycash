@@ -15,6 +15,7 @@ import { asyncHandler, validate } from '../../../../platform/web';
 import { authenticate } from '../../../../platform/auth';
 import { authorize } from '../../../../platform/rbac';
 import {
+  bulkHiringDocuments,
   completeHiringDocuments,
   createHiringDocumentType,
   createHiringDocuments,
@@ -27,6 +28,7 @@ import {
   uploadHiringDocument,
 } from './hiring-documents.controller';
 import {
+  BulkHiringDocumentsSchema,
   CompleteHiringDocumentsSchema,
   CreateHiringDocumentTypeSchema,
   CreateHiringDocumentsSchema,
@@ -78,6 +80,14 @@ export const buildHiringDocumentsRouter = (): Router => {
     authorize('hiringDocuments.create'),
     validate({ body: CreateHiringDocumentsSchema }),
     asyncHandler(createHiringDocuments),
+  );
+  // Bulk complete (RW17/I4) — declared before `/:id` so the literal wins over the parameter.
+  router.post(
+    '/bulk',
+    authenticate,
+    authorize('hiringDocuments.complete'),
+    validate({ body: BulkHiringDocumentsSchema }),
+    asyncHandler(bulkHiringDocuments),
   );
   router.get(
     '/:id',

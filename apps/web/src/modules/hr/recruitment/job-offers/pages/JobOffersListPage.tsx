@@ -19,7 +19,6 @@ import { PlusIcon } from '../../../../../shared/ui/icons';
 import { formatDate, formatMoney } from '../../../../../shared/lib/format';
 import { OfferStatusBadge } from '../components/OfferStatusBadge';
 import { OfferFilters, type OfferFiltersState } from '../components/OfferFilters';
-import { AwaitingOffersPanel } from '../components/AwaitingOffersPanel';
 import { useJobOffers, useBulkJobOffers } from '../api/job-offer-queries';
 import { type JobOfferListParams } from '../api/job-offer-api';
 
@@ -135,7 +134,6 @@ export const JobOffersListPage = (): JSX.Element => {
       />
 
       <div className="space-y-4">
-        <AwaitingOffersPanel />
         <OfferFilters value={filters} onChange={changeFilters} />
         <Can permission="jobOffer.edit">
           <BulkActionBar count={selection.count} onClear={selection.clear}>

@@ -1,6 +1,7 @@
 // One query key for the counters, shared by the sidebar, the stage rail and every queue badge —
-// so they always show the same number and one refetch updates all of them. Every recruitment
-// mutation invalidates it through `invalidateRecruitment()`.
+// so they always show the same number and one write updates all of them (I3). Recruitment
+// mutations do not refetch this: they WRITE it from the `counters` half of the response envelope
+// (I6), so the badges move in the same instant as the record they describe.
 import { useQuery } from '@tanstack/react-query';
 import { type StageCountDto } from '@ecms/contracts';
 import { getRecruitmentStageCounts } from './stage-counts-api';
@@ -8,7 +9,7 @@ import { getRecruitmentStageCounts } from './stage-counts-api';
 const MODULE = 'hr';
 const FEATURE = 'recruitmentStageCounts';
 
-/** Short, so a badge is never stale for long; mutations invalidate it anyway. */
+/** Short, so a badge left behind by someone else's write is never stale for long. */
 const STALE_TIME_MS = 30_000;
 
 export const stageCountsKey = (branchId?: string): readonly unknown[] => [MODULE, FEATURE, branchId ?? null];

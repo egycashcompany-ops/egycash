@@ -3,7 +3,11 @@
 import { Types, type FilterQuery } from 'mongoose';
 import { type Paginated } from '@ecms/contracts';
 import { BaseRepository } from '../../../../shared/base/base.repository';
-import { assertNotWorkflowManaged } from '../workflow/workflow-guard';
+import {
+  assertNotSuperseded,
+  assertNotWorkflowManaged,
+  LIVE_ATTEMPT_ONLY,
+} from '../workflow/workflow-guard';
 import { type ScopeSelector } from '../../../../shared/types';
 import { InterviewModel, type InterviewDoc } from './interview.model';
 
@@ -40,6 +44,19 @@ class InterviewRepository extends BaseRepository<InterviewDoc> {
     return super.updateById(id, set, meta);
   }
 
+  /**
+   * I1 — a retired attempt is history, and history is not edited. The condition rides inside the
+   * same atomic write as the change, so a return-to-stage landing mid-request cannot be overtaken
+   * by a caller that read the record a moment earlier.
+   */
+  protected override writeConditions(): FilterQuery<InterviewDoc> {
+    return LIVE_ATTEMPT_ONLY as FilterQuery<InterviewDoc>;
+  }
+
+  protected override assertWritable(current: InterviewDoc): void {
+    assertNotSuperseded(current, 'interview');
+  }
+
   /** A non-cancelled interview for this applicant at the given stage order, if any. */
   async findActiveAtStage(applicantId: string, stageOrder: number): Promise<InterviewDoc | null> {
     if (!Types.ObjectId.isValid(applicantId)) return null;
@@ -53,24 +70,6 @@ class InterviewRepository extends BaseRepository<InterviewDoc> {
       })
       .lean<InterviewDoc>()
       .exec();
-  }
-
-  /** Of the given applicant ids, those that already have any (non-cancelled) interview — used by
-   *  the "awaiting scheduling" eligibility view to exclude applicants already in the round. */
-  async applicantIdsWithInterview(ids: string[]): Promise<Set<string>> {
-    const objectIds = ids.filter((id) => Types.ObjectId.isValid(id)).map((id) => new Types.ObjectId(id));
-    if (objectIds.length === 0) return new Set();
-    const rows = await this.model
-      .find({
-        applicantId: { $in: objectIds },
-        isDeleted: false,
-        supersededAt: null,
-        status: { $in: ACTIVE_STATUSES },
-      })
-      .select('applicantId')
-      .lean<{ applicantId: Types.ObjectId }[]>()
-      .exec();
-    return new Set(rows.map((r) => String(r.applicantId)));
   }
 
   /** All of an applicant's interviews, oldest stage first (drives the Employee Timeline). */

@@ -22,9 +22,31 @@ const children = (kind: 'interview' | 'evaluation'): NavChildren => {
   };
 };
 
-const singleton = (kind: 'applicants' | 'screening' | 'jobOffer' | 'employeesReady'): NavChildren => {
+const singleton = (kind: 'applicants' | 'screening' | 'jobOffer'): NavChildren => {
   const stage = stageOfKind(useStages(), kind);
   return { count: stage?.count ?? null, children: [] };
+};
+
+/**
+ * Employees Ready (A6/RW15) is a recruitment queue that lives under the Employees app, so it needs
+ * a CHILD row: without one the page has no entry point anywhere in the shell and is reachable only
+ * by typing its URL. The counters endpoint omits the stage entirely when the caller cannot hire,
+ * so the row simply does not appear for them.
+ */
+const employees = (): NavChildren => {
+  const stage = stageOfKind(useStages(), 'employeesReady');
+  if (stage === undefined) return { count: null, children: [] };
+  return {
+    count: stage.count,
+    children: [
+      {
+        key: stage.key,
+        label: { en: 'Ready to hire', ar: 'جاهزون للتعيين' },
+        route: stage.route,
+        count: stage.count,
+      },
+    ],
+  };
 };
 
 let registered = false;
@@ -38,4 +60,5 @@ export const registerRecruitmentNavProviders = (): void => {
   registerNavChildrenProvider('/applicants', () => singleton('applicants'));
   registerNavChildrenProvider('/screening', () => singleton('screening'));
   registerNavChildrenProvider('/job-offers', () => singleton('jobOffer'));
+  registerNavChildrenProvider('/employees', employees);
 };

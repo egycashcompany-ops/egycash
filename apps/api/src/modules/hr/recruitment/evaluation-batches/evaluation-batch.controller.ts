@@ -1,6 +1,12 @@
 // Thin HTTP mapping only (ADR-003). Uses the platform web kit (module → platform →
 // infrastructure) rather than importing infrastructure directly.
 //
+// I6 — a batch action that names ONE candidate (decide/void an item) answers with the full
+// workflow envelope, because there is a candidate whose state to report. Batch-LEVEL actions
+// (create, issue, close, cancel, add items, upload results) span many candidates and therefore
+// have no single workflow state; they keep the plain response until the batch-history question is
+// decided, and are listed as the one open item in the I6 report rather than given an invented one.
+//
 // Authorization is phase-aware (RW7), so it cannot sit in a static `authorize()` on the route: the
 // permission resource is a property of the batch's phase. Every handler resolves it first.
 import { type Request, type Response } from 'express';
@@ -35,6 +41,7 @@ import {
   phaseViewScope,
   visibleBatchPhaseIds,
 } from './evaluation-batch.access';
+import { withBulkWorkflowEnvelope, withWorkflowEnvelope } from '../workflow';
 import { evaluationBatchService } from './evaluation-batch.service';
 import {
   toBatchCandidateDto,
@@ -163,23 +170,37 @@ export const decideEvaluationBatchItem = async (req: Request, res: Response): Pr
   const ctx = authContext(req);
   const { body, params } = validated<DecideBatchItem, never, ItemParam>(req);
   const scope = await batchManageScope(ctx, params.id);
-  const doc = await evaluationBatchService.decideItem(ctx, params.id, params.applicantId, body, scope);
-  ok(res, toEvaluationBatchDto(doc));
+  ok(
+    res,
+    await withWorkflowEnvelope(
+      ctx,
+      () => evaluationBatchService.decideItem(ctx, params.id, params.applicantId, body, scope),
+      toEvaluationBatchDto,
+      () => params.applicantId,
+    ),
+  );
 };
 
 export const voidEvaluationBatchItem = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { body, params } = validated<VoidBatchItem, never, ItemParam>(req);
   const scope = await batchManageScope(ctx, params.id);
-  const doc = await evaluationBatchService.voidItem(ctx, params.id, params.applicantId, body, scope);
-  ok(res, toEvaluationBatchDto(doc));
+  ok(
+    res,
+    await withWorkflowEnvelope(
+      ctx,
+      () => evaluationBatchService.voidItem(ctx, params.id, params.applicantId, body, scope),
+      toEvaluationBatchDto,
+      () => params.applicantId,
+    ),
+  );
 };
 
 export const bulkEvaluationBatchItems = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { body, params } = validated<BulkBatchItems, never, IdParam>(req);
   const scope = await batchManageScope(ctx, params.id);
-  ok(res, await evaluationBatchService.bulkItems(ctx, params.id, body, scope));
+  ok(res, await withBulkWorkflowEnvelope(ctx, () => evaluationBatchService.bulkItems(ctx, params.id, body, scope)));
 };
 
 // ── Terminal ────────────────────────────────────────────────────────────────
@@ -203,5 +224,5 @@ export const bulkEvaluationBatches = async (req: Request, res: Response): Promis
   const { body } = validated<BulkEvaluationBatches>(req);
   // A selection may span phases, so the permission is resolved per batch inside the runner; an id
   // the caller may not manage is reported as that one failed item.
-  ok(res, await evaluationBatchService.bulk(ctx, body));
+  ok(res, await withBulkWorkflowEnvelope(ctx, () => evaluationBatchService.bulk(ctx, body)));
 };

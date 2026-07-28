@@ -26,7 +26,13 @@ import {
  * `waiting` replaced the former `pending` (I10); stored values are rewritten by the boot
  * migration and `pending` is still accepted as a query alias for one release.
  */
-export const SCREENING_STATUSES = ['waiting', 'accepted', 'rejected'] as const;
+/**
+ * `cancelled` is the terminal state a still-`waiting` screening reaches when the CANDIDATE leaves
+ * the pipeline — withdrawn, rejected elsewhere, or hired (I14). It is never a decision: the two
+ * decisions stay `accepted` / `rejected`. It exists so a departed candidate stops matching the
+ * queue through the status itself, rather than through a mirrored lifecycle flag (I1/I10).
+ */
+export const SCREENING_STATUSES = ['waiting', 'accepted', 'rejected', 'cancelled'] as const;
 export const ScreeningStatusSchema = z.enum(SCREENING_STATUSES);
 export type ScreeningStatus = z.infer<typeof ScreeningStatusSchema>;
 
@@ -117,25 +123,6 @@ export const BulkScreeningsSchema = BulkRequestBaseSchema.extend({
     message: 'a reason is required when rejecting applicants',
   });
 export type BulkScreenings = z.infer<typeof BulkScreeningsSchema>;
-
-// ── Awaiting screening (DEPRECATED — superseded by explicit `waiting` records, I11) ──────────
-// The queue is now `GET /hr/screenings?status=waiting` over REAL rows: the screening record is
-// materialized when the applicant is registered. Retained for one release while the stage
-// services and web screens migrate.
-
-export const ListAwaitingScreeningsQuerySchema = z
-  .object({ branchId: objectId().optional(), limit: z.coerce.number().int().min(1).max(200).default(100) })
-  .strict();
-export type ListAwaitingScreeningsQuery = z.infer<typeof ListAwaitingScreeningsQuerySchema>;
-
-export interface AwaitingScreeningDto {
-  applicantId: string;
-  applicantCode: string;
-  fullNameAr: string;
-  branchId: string | null;
-  /** When the applicant was registered (drives the queue order). */
-  registeredAt: string;
-}
 
 // ── Screening DTO ─────────────────────────────────────────────────────────────
 

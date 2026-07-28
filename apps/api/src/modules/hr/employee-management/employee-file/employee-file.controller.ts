@@ -11,13 +11,22 @@ import {
 import { created, ok, okPage, validated } from '../../../../platform/web';
 import { authContext } from '../../../../platform/auth';
 import { ValidationError } from '../../../../shared/errors';
-import { scopeSelector } from '../../../../shared/types';
+import { scopeSelector, type AuthContext } from '../../../../shared/types';
 import { type UploadedBinary } from '../../../../platform/files';
 import { employeeFileService } from './employee-file.service';
 import { toEmployeeFileDto } from './employee-file.mapper';
+import { type EmployeeFileDoc } from './employee-file.model';
 
 type IdParam = { id: string };
 type DocumentParam = { id: string; documentId: string };
+
+/**
+ * I5 — a single-file response carries the canonical recruitment history, read from
+ * `hr_recruitment_timeline`. List rows deliberately do not: a row shows no history, so paying for
+ * one read per row would buy nothing.
+ */
+const fileDto = async (doc: EmployeeFileDoc, ctx: AuthContext) =>
+  toEmployeeFileDto(doc, await employeeFileService.recruitmentTimelineOf(doc, ctx));
 
 const binaryOf = (req: Request): UploadedBinary => {
   const file = req.file;
@@ -32,8 +41,9 @@ const binaryOf = (req: Request): UploadedBinary => {
 export const createEmployeeFile = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { body } = validated<CreateEmployeeFile>(req);
-  const doc = await employeeFileService.create(ctx, body, scopeSelector(ctx, 'employeeFile.create'));
-  created(res, toEmployeeFileDto(doc), `/api/v1/hr/employee-files/${String(doc._id)}`);
+  const scope = scopeSelector(ctx, 'employeeFile.create');
+  const doc = await employeeFileService.create(ctx, body, scope);
+  created(res, await fileDto(doc, ctx), `/api/v1/hr/employee-files/${String(doc._id)}`);
 };
 
 export const listEmployeeFiles = async (req: Request, res: Response): Promise<void> => {
@@ -45,38 +55,29 @@ export const listEmployeeFiles = async (req: Request, res: Response): Promise<vo
 export const getEmployeeFile = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { params } = validated<never, never, IdParam>(req);
-  ok(res, toEmployeeFileDto(await employeeFileService.getById(params.id, scopeSelector(ctx, 'employeeFile.view'))));
+  const scope = scopeSelector(ctx, 'employeeFile.view');
+  ok(res, await fileDto(await employeeFileService.getById(params.id, scope), ctx));
 };
 
 export const addEmployeeFileNote = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { body, params } = validated<AddEmployeeFileNote, never, IdParam>(req);
-  const doc = await employeeFileService.addNote(ctx, params.id, body, scopeSelector(ctx, 'employeeFile.edit'));
-  ok(res, toEmployeeFileDto(doc));
+  const scope = scopeSelector(ctx, 'employeeFile.edit');
+  ok(res, await fileDto(await employeeFileService.addNote(ctx, params.id, body, scope), ctx));
 };
 
 export const uploadEmployeeFileDocument = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { body, params } = validated<UploadEmployeeFileDocument, never, IdParam>(req);
-  const doc = await employeeFileService.uploadDocument(
-    ctx,
-    params.id,
-    body,
-    binaryOf(req),
-    scopeSelector(ctx, 'employeeFile.upload'),
-  );
-  ok(res, toEmployeeFileDto(doc));
+  const scope = scopeSelector(ctx, 'employeeFile.upload');
+  const doc = await employeeFileService.uploadDocument(ctx, params.id, body, binaryOf(req), scope);
+  ok(res, await fileDto(doc, ctx));
 };
 
 export const removeEmployeeFileDocument = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { body, params } = validated<RemoveEmployeeFileDocument, never, DocumentParam>(req);
-  const doc = await employeeFileService.removeDocument(
-    ctx,
-    params.id,
-    params.documentId,
-    body,
-    scopeSelector(ctx, 'employeeFile.upload'),
-  );
-  ok(res, toEmployeeFileDto(doc));
+  const scope = scopeSelector(ctx, 'employeeFile.upload');
+  const doc = await employeeFileService.removeDocument(ctx, params.id, params.documentId, body, scope);
+  ok(res, await fileDto(doc, ctx));
 };

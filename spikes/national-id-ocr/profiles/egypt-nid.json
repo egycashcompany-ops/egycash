@@ -1,0 +1,82 @@
+{
+  "_comment": [
+    "Field geometry measured from a real Egyptian National ID card, replacing the synthetic-derived",
+    "defaults in layout.py. Coordinates only — the card's print layout is the same on every card,",
+    "so nothing here is personal to the card it was measured from.",
+    "",
+    "Two structural corrections over the defaults:",
+    "  1. The card is RTL. Every field is right-aligned toward x=0.95, and the back's",
+    "     gender / religion / marital-status row runs right-to-left. The default maritalStatus box",
+    "     sat at x 0.06-0.36, which on a real card is blank laminate.",
+    "  2. Front text sits lower than the defaults assumed: the name box was catching the",
+    "     'بطاقة تحقيق الشخصية' header, and the address box's top edge was reaching into the",
+    "     second name line, which is why the address came back with name fragments spliced in.",
+    "",
+    "The expiry box previously extended to y=0.66, overlapping the 2D barcode that occupies the",
+    "bottom half of the back. Recognition over a barcode returns confident nonsense."
+  ],
+  "canonicalSize": [
+    1024,
+    646
+  ],
+  "front": [
+    {
+      "name": "fullNameAr",
+      "x": 0.52,
+      "y": 0.255,
+      "w": 0.45,
+      "h": 0.2,
+      "kind": "text"
+    },
+    {
+      "name": "address",
+      "x": 0.43,
+      "y": 0.465,
+      "w": 0.54,
+      "h": 0.195,
+      "kind": "text"
+    },
+    {
+      "name": "nationalId",
+      "x": 0.37,
+      "y": 0.745,
+      "w": 0.6,
+      "h": 0.135,
+      "kind": "digits"
+    }
+  ],
+  "back": [
+    {
+      "name": "occupation",
+      "x": 0.36,
+      "y": 0.135,
+      "w": 0.54,
+      "h": 0.115,
+      "kind": "text"
+    },
+    {
+      "name": "religion",
+      "x": 0.5,
+      "y": 0.295,
+      "w": 0.17,
+      "h": 0.115,
+      "kind": "text"
+    },
+    {
+      "name": "maritalStatus",
+      "x": 0.335,
+      "y": 0.295,
+      "w": 0.155,
+      "h": 0.115,
+      "kind": "text"
+    },
+    {
+      "name": "nationalIdExpiry",
+      "x": 0.23,
+      "y": 0.415,
+      "w": 0.47,
+      "h": 0.125,
+      "kind": "digits"
+    }
+  ]
+}

@@ -9,6 +9,26 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Recruitment: interview status labels rendered as raw translation keys.** `/interviews`,
+  `/interviews/:id` and `/interviews/stage/:stageId` showed `interviews.status.waiting` and
+  `interviews.status.inProgress` instead of localized text, in the table, the detail badge, the
+  status filter and the stage-queue tabs.
+
+  I11 added `waiting` and `inProgress` to `INTERVIEW_STATUSES`; the locale catalogs were never
+  extended, and `translate()` falls back to returning the key. Screening, evaluations, offers and
+  applicants were all complete — interviews was the only stage missing values, and the two it was
+  missing were exactly the two I11 introduced.
+
+  Nothing caught it because `InterviewStatusBadge` mapped status to tone with a ternary
+  (`cancelled ? neutral : info`) rather than the exhaustive `Record<Status, Tone>` every other
+  stage badge uses — so growing the enum was not a typecheck error. That map is now exhaustive
+  (`waiting` takes the same `warning` tone it has across the pipeline), and two suites make the
+  class of bug mechanical rather than noticed: one drives every stage's status enum from
+  `@ecms/contracts` and asserts each value resolves in **both** locales, the other renders the real
+  badge for every status and fails if a raw key reaches the markup.
+
 ## [0.24.0] - 2026-07-28
 
 Release v0.24.0 — **HR completed: Recruitment, Employee Management, Leave Management, Contracts,

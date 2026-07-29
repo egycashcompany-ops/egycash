@@ -33,7 +33,9 @@ const EnvSchema = z.object({
    */
   PLATFORM_ENCRYPTION_KEYS: z
     .string()
-    .default('dev1:ZGV2LW9ubHkta2V5LW5vdC1mb3ItcHJvZHVjdGlvbi0zMmI='),
+    // Exactly 32 bytes (AES-256) once base64-decoded — the previous default decoded to 35 and
+    // left `cryptoService.available()` false, which silently disabled the credential store in dev.
+    .default('dev1:ZGV2LW9ubHkta2V5LW5vdC1mb3ItcHJvZHVjdGlvbiE='),
   PLATFORM_ENCRYPTION_ACTIVE_KEY: z.string().default('dev1'),
 
   /**

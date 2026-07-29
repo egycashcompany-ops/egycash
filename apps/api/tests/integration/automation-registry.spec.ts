@@ -397,7 +397,9 @@ describe('variables', () => {
       .put('/api/v1/automation/variables/threshold')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ value: '10', scope: 'branch' });
-    expect(res.status).toBe(422);
+    // The "branch scope needs a branchId" rule lives in the request schema (superRefine), so a
+    // missing reference is a 400 validation failure — not a 422 business-rule violation.
+    expect(res.status).toBe(400);
   });
 
   it('refuses a caller without variable.edit', async () => {

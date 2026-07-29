@@ -31,7 +31,39 @@ import { rbacService } from '../../src/platform/rbac';
 import { settingsService } from '../../src/platform/settings';
 import { userService } from '../../src/platform/users';
 import { type AuthContext } from '../../src/shared/types';
+import { env } from '../../src/infrastructure/config/env';
+import {
+  resetAutomationProvider,
+  setAutomationProvider,
+} from '../../src/platform/automation/automation.registry';
+import { type AutomationProvider } from '../../src/platform/automation/automation.provider';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
+
+// A-6 brings the real n8n provider; here a minimal in-memory stand-in lets the bridge reach a real
+// dispatch. `isAutomationEnabled()` (which `automationService.trigger` gates on) is true only when
+// the flag is on AND a non-null provider is active — so a dispatch test MUST enable both, exactly
+// as the A-0 unit suite does. The fake accepts every dispatch and returns a running execution.
+const PROVIDER_ID = 'n8n';
+const settings = env as unknown as { AUTOMATION_ENABLED: boolean; AUTOMATION_PROVIDER: string };
+const fakeProvider: AutomationProvider = {
+  id: PROVIDER_ID,
+  capabilities: {
+    visualBuilder: false,
+    graphImportExport: false,
+    cancellation: false,
+    perNodeProgress: false,
+  },
+  createWorkflow: (spec) => Promise.resolve({ providerId: PROVIDER_ID, ref: spec.key }),
+  updateWorkflow: () => Promise.resolve(),
+  deleteWorkflow: () => Promise.resolve(),
+  setEnabled: () => Promise.resolve(),
+  dispatch: (_ref, input) => Promise.resolve({ providerId: PROVIDER_ID, ref: input.executionId }),
+  cancel: () => Promise.resolve(),
+  getExecution: (ref) => Promise.resolve({ ref, status: 'running' as const, nodes: [] }),
+  exportGraph: () => Promise.resolve({ providerId: PROVIDER_ID, formatVersion: '1', nodes: null }),
+  importGraph: () => Promise.resolve({ providerId: PROVIDER_ID, ref: 'imported' }),
+  health: () => Promise.resolve({ providerId: PROVIDER_ID, reachable: true }),
+};
 
 const PASSWORD = 'Str0ng#Pass!';
 let replSet: MongoMemoryReplSet | null = null;
@@ -126,7 +158,7 @@ const liveWorkflow = async (
     { _id: new Types.ObjectId(wf.id) },
     {
       $set: withProvider
-        ? { providerRef: { providerId: 'null', ref: `wf_${wf.id}` } }
+        ? { providerRef: { providerId: PROVIDER_ID, ref: `wf_${wf.id}` } }
         : { providerRef: null },
     },
   ).exec();
@@ -158,6 +190,13 @@ beforeAll(async () => {
   await rbacService.ensureAssignment(ownerId, String(superAdmin._id), 'organization');
   await disableTotpEnforcement(ownerId);
   adminToken = await login('admin@ecms.local');
+
+  // Turn automation on with a real (non-null) provider so `automationService.trigger` actually
+  // dispatches instead of short-circuiting to `skipped`. Order matters: `setAutomationProvider`
+  // refuses unless the flag is on and the id matches the configured provider.
+  settings.AUTOMATION_ENABLED = true;
+  settings.AUTOMATION_PROVIDER = PROVIDER_ID;
+  setAutomationProvider(fakeProvider);
 }, 120_000);
 
 beforeEach(async () => {
@@ -166,6 +205,9 @@ beforeEach(async () => {
 });
 
 afterAll(async () => {
+  resetAutomationProvider();
+  settings.AUTOMATION_ENABLED = false;
+  settings.AUTOMATION_PROVIDER = 'null';
   await disconnectMongo();
   await replSet?.stop();
 });
@@ -180,9 +222,9 @@ describe('dispatch', () => {
     expect(summary).toMatchObject({ matched: 1, dispatched: 1 });
     const rows = await AutomationExecutionModel.find({ workflowId: wf.id }).lean().exec();
     expect(rows).toHaveLength(1);
-    // The null provider accepted the dispatch, so the run is `running` with its provider ref.
+    // The provider accepted the dispatch, so the run is `running` with the provider's execution ref.
     expect(rows[0]?.status).toBe('running');
-    expect(rows[0]?.providerRef?.providerId).toBe('null');
+    expect(rows[0]?.providerRef?.providerId).toBe(PROVIDER_ID);
     expect(rows[0]?.actorUserId?.toString()).toBe(ownerId);
   });
 

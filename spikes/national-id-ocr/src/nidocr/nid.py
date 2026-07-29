@@ -201,7 +201,28 @@ def _neighbours(candidate: str) -> set[str]:
     the length is right. That ordering is what keeps a 13-digit read's search bounded.
     """
     if len(candidate) > 14:
-        return {candidate[:i] + candidate[i + 1 :] for i in range(len(candidate))}
+        # A doubled digit first, and only then anything else.
+        #
+        # An over-long read is almost always a glyph counted twice — the recognizer sees one wide
+        # ٠ as two — and treating that as the likely cause is what turns an over-long read from
+        # unrecoverable into unique. Blind deletion is close to useless here: for a 15-digit string
+        # whose first nine digits already form a valid prefix, EVERY deletion past position nine
+        # leaves the structure intact, so the search finds a handful of equally valid numbers and
+        # correctly refuses all of them. A real read demonstrated this exactly — five valid
+        # candidates from blind deletion, and exactly one once the search was restricted to
+        # removing a repeat.
+        #
+        # It is a restriction, not a preference: the general deletions are still offered when the
+        # read holds no repeat at all, and the uniqueness rule still decides. This only changes
+        # WHICH candidates are considered first, and the ones it prefers are the ones with a
+        # mechanism behind them.
+        repeats = {
+            candidate[:i] + candidate[i + 1 :]
+            for i in range(len(candidate))
+            if (i > 0 and candidate[i] == candidate[i - 1])
+            or (i + 1 < len(candidate) and candidate[i] == candidate[i + 1])
+        }
+        return repeats or {candidate[:i] + candidate[i + 1 :] for i in range(len(candidate))}
     if len(candidate) < 14:
         return {
             candidate[:i] + inserted + candidate[i:]

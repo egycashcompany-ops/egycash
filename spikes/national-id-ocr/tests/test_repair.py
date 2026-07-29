@@ -178,3 +178,38 @@ def test_gender_parity_is_checked_against_the_printed_word(printed, expected):
 def test_the_cross_check_returns_agreement_and_never_a_gender():
     """`parseNationalId` in TypeScript owns gender. This may only ever say yes, no, or don't know."""
     assert gender_agrees(VALID, "أنثى") in (True, False, None)
+
+
+# ── The over-long read ──
+
+
+def test_a_doubled_digit_is_recovered_from_any_position():
+    """An over-long read is almost always one glyph counted twice, and that is recoverable.
+
+    Blind deletion is close to useless here. When a 15-digit read's first nine digits already form
+    a valid prefix, EVERY deletion past position nine leaves the structure intact — so the search
+    finds a handful of equally valid numbers and correctly refuses all of them. A real card
+    demonstrated exactly that: five valid candidates from blind deletion, and the reviewer got a
+    fifteen-digit string with no derived birth date, gender or governorate.
+
+    Restricting the search to removing a REPEAT is what makes it unique, because a repeat is the
+    thing an insertion actually leaves behind. Every doubling position must come back.
+    """
+    for index in range(len(VALID)):
+        doubled = VALID[:index] + VALID[index] + VALID[index:]
+        assert len(doubled) == 15
+
+        fixed = _repair(doubled)
+        assert fixed.repaired, f"doubling digit {index} was not recovered"
+        assert fixed.value == VALID, f"doubling digit {index} recovered the wrong number"
+
+
+def test_an_over_long_read_with_no_repeat_still_refuses_when_ambiguous():
+    """The restriction narrows the search; it does not lower the bar.
+
+    With no repeat to remove, the general deletions are offered as before and the uniqueness rule
+    decides — which for a spurious digit that duplicates nothing is usually a refusal, because
+    nothing in the string says which digit was invented.
+    """
+    fixed = _repair("129503141234567")  # a leading digit that repeats nothing
+    assert fixed.value == VALID or not fixed.repaired

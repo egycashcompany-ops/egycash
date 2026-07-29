@@ -118,7 +118,12 @@ _RELIGIONS_RASM = _rasm_index(RELIGION_TERMS)
 _MARITAL_RASM = _rasm_index(MARITAL_TERMS)
 
 
-def _snap(raw: str, vocabulary: dict[str, str], rasm_index: dict[str, str]) -> tuple[str, bool]:
+def _snap(
+    raw: str,
+    vocabulary: dict[str, str],
+    rasm_index: dict[str, str],
+    terms: tuple[str, ...] = (),
+) -> tuple[str, bool]:
     """Snap to a vocabulary term when unambiguous; otherwise return the text unchanged.
 
     Three passes. Exact after the standard fold; then substring matching in both directions, which
@@ -147,7 +152,18 @@ def _snap(raw: str, vocabulary: dict[str, str], rasm_index: dict[str, str]) -> t
 
     hits = [term for folded, term in vocabulary.items() if folded in key or key in folded]
     if len(hits) == 1:
-        return hits[0], True
+        # A clean-looking hit can still be the wrong gender: a dropped ة turns متزوجة into متزوج,
+        # which is itself a vocabulary term and snaps silently. The sex on the same row corrects it.
+        return _agree_in_gender(text, hits[0], terms) or hits[0], True
+    if len(hits) == 2 and _COUNTERPART.get(hits[0]) == hits[1]:
+        # The word matched both its own spelling and its counterpart, which is what the whole
+        # sex/religion/marital row does: مسلم is a substring of مسلمة. The row states the sex, so
+        # take whichever of the two agrees with it.
+        feminine_line = _line_is_feminine(text)
+        if feminine_line is not None:
+            agreeing = [term for term in hits if (term in _IS_FEMININE) == feminine_line]
+            if len(agreeing) == 1:
+                return agreeing[0], True
 
     folded_key = rasm_fold(text)
     if folded_key in rasm_index:
@@ -158,12 +174,73 @@ def _snap(raw: str, vocabulary: dict[str, str], rasm_index: dict[str, str]) -> t
     return text, False
 
 
+#: The sex words, folded. Read to settle a masculine/feminine tie and for nothing else.
+_FEMININE = frozenset({rasm_fold("أنثى"), rasm_fold("انثى"), rasm_fold("أنثي"), rasm_fold("انثي")})
+_MASCULINE = frozenset({rasm_fold("ذكر")})
+
+
+#: (masculine, feminine) for every term that has both. Listed rather than derived, because the
+#: relationship is not a suffix rule: متزوج/متزوجة adds a ة, but أعزب/عزباء changes the word. Six
+#: pairs is a table, and a table cannot be wrong about Arabic morphology the way a rule can.
+_GENDER_PAIRS: tuple[tuple[str, str], ...] = (
+    ("مسلم", "مسلمة"),
+    ("مسيحي", "مسيحية"),
+    ("أعزب", "عزباء"),
+    ("متزوج", "متزوجة"),
+    ("مطلق", "مطلقة"),
+    ("أرمل", "أرملة"),
+)
+_COUNTERPART = {
+    **{masculine: feminine for masculine, feminine in _GENDER_PAIRS},
+    **{feminine: masculine for masculine, feminine in _GENDER_PAIRS},
+}
+_IS_FEMININE = {feminine for _, feminine in _GENDER_PAIRS}
+
+
+def _line_is_feminine(raw: str) -> bool | None:
+    """Which sex the row states, or None when it states neither."""
+    folded = rasm_fold(raw)
+    feminine = any(word in folded for word in _FEMININE)
+    masculine = any(word in folded for word in _MASCULINE)
+    return None if feminine == masculine else feminine
+
+
+def _agree_in_gender(raw: str, matched: str, terms: tuple[str, ...]) -> str | None:
+    """Correct a term to the gender the same printed line states, when it disagrees.
+
+    The card puts sex, religion and marital status on ONE row — `أنثى مسلمة متزوجة` — and Arabic
+    makes the last two agree with the first. The feminine marker is a single trailing ة, which is
+    also the first thing a recognizer drops, and dropping it turns متزوجة into متزوج: still a real
+    vocabulary term, so it snaps cleanly and silently records the wrong marital status. Nothing
+    downstream can tell, because the value looks entirely reasonable.
+
+    The row itself resolves it. If the line says أنثى and the matched term is masculine while its
+    feminine counterpart exists in the vocabulary, the counterpart is what was printed.
+
+    This is NOT a second source for gender and never reaches the output: it corrects the spelling
+    of a DIFFERENT field. `parseNationalId` remains the only thing that says whether a person is
+    male or female, and nothing here is returned as a sex.
+
+    Silent unless every part of the justification is present — a sex word on the line, a genuine
+    disagreement, and exactly one counterpart in the vocabulary. Anywhere else the evidence for
+    changing a value the model actually read does not exist.
+    """
+    feminine_line = _line_is_feminine(raw)
+    if feminine_line is None:
+        return None  # the row states no sex; there is nothing to agree with
+    if (matched in _IS_FEMININE) == feminine_line:
+        return None  # already agrees; nothing to correct
+
+    counterpart = _COUNTERPART.get(matched)
+    return counterpart if counterpart in terms else None
+
+
 def clean_religion(raw: str) -> tuple[str, bool]:
-    return _snap(raw, _RELIGIONS, _RELIGIONS_RASM)
+    return _snap(raw, _RELIGIONS, _RELIGIONS_RASM, RELIGION_TERMS)
 
 
 def clean_marital_status(raw: str) -> tuple[str, bool]:
-    return _snap(raw, _MARITAL, _MARITAL_RASM)
+    return _snap(raw, _MARITAL, _MARITAL_RASM, MARITAL_TERMS)
 
 
 def clean_text(raw: str) -> str:

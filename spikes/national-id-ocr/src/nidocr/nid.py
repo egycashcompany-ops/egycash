@@ -189,6 +189,22 @@ def _fold_glyphs(raw: str) -> str:
         GLYPH_CONFUSIONS[character][0] if character in GLYPH_CONFUSIONS else character
         for character in to_western_digits(raw)
     )
+
+    # A crop that also caught a neighbouring number must not defeat the read.
+    #
+    # On the back of the card the issue date and the national ID share one printed line —
+    # `٢٠١٥/٠٧    ٢٨٧٠٩٠١١٢٠٢٤٠٨` — so stripping every separator first yields twenty digits and
+    # nothing downstream can make sense of them. When the text holds exactly one unbroken run of
+    # fourteen digits, that run IS the number, whatever else is on the line: the length is the
+    # identifying property, and requiring the run to be bounded by non-digits is what keeps a
+    # fourteen-digit window inside a longer number from being mistaken for it.
+    #
+    # More than one such run means two candidate numbers in one crop, which is not something to
+    # resolve by picking the first — so it falls through to the general path and is refused there.
+    runs = [run for run in re.findall(r"\d+", folded) if len(run) == 14]
+    if len(runs) == 1:
+        return runs[0]
+
     return re.sub(r"\D", "", folded)
 
 

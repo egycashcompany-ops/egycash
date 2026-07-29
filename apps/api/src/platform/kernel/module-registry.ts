@@ -7,7 +7,7 @@ import { type EventHandler } from './event-bus';
 import { type ScheduledTaskDeclaration } from '../scheduler';
 
 /** Bumped by ADR-governed platform-contract changes (Review R25). */
-export const PLATFORM_VERSION = '2.1.0';
+export const PLATFORM_VERSION = '2.2.0';
 
 export interface RouteRegistration {
   /** Mounted under `/api/v1/<module-id>` — kernel enforces the prefix. */

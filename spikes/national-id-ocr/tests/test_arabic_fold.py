@@ -173,3 +173,42 @@ def test_the_governorate_table_matches_the_contract_codes():
     assert len(GOVERNORATES_AR) == 28
     assert set(GOVERNORATES_AR) >= {"01", "12", "21", "88"}
     assert all(normalize_arabic(name) for name in GOVERNORATES_AR.values())
+
+
+# ── The sex on the row settles the gender of the other two fields ──
+
+
+@pytest.mark.parametrize(
+    ("row", "religion", "marital"),
+    [
+        ("أنثى مسلمة متزوجة", "مسلمة", "متزوجة"),  # read cleanly
+        ("أنثى مسلمة متزوج", "مسلمة", "متزوجة"),  # the ة dropped from marital
+        ("أنثى مسلم متزوج", "مسلمة", "متزوجة"),  # dropped from both
+        ("ذكر مسلم متزوج", "مسلم", "متزوج"),
+        ("أنثى مسلمة أعزب", "مسلمة", "عزباء"),  # not a suffix rule — a different word
+    ],
+)
+def test_the_row_corrects_a_dropped_feminine_ending(row, religion, marital):
+    """The failure this catches is silent, which is what makes it worth catching.
+
+    The card prints sex, religion and marital status on one row and Arabic makes the last two agree
+    with the first. The feminine marker is a single trailing ة — the first thing a recognizer drops
+    — and dropping it turns متزوجة into متزوج: still a real vocabulary term, so it snaps cleanly and
+    records the wrong marital status with nothing downstream able to tell.
+
+    The row itself carries the answer, so it is used. This never returns a sex and never populates
+    one: `parseNationalId` remains the only source of gender.
+    """
+    assert clean_religion(row)[0] == religion
+    assert clean_marital_status(row)[0] == marital
+
+
+def test_without_a_sex_word_the_read_is_left_exactly_as_found():
+    """The correction is licensed by the row stating a sex. No sex, no licence.
+
+    A crop that caught only the marital word has no evidence about gender, and guessing from the
+    term's own ending would just re-assert what the recognizer already said.
+    """
+    assert clean_marital_status("متزوج") == ("متزوج", True)
+    assert clean_marital_status("مطلقة") == ("مطلقة", True)
+    assert clean_religion("مسلم") == ("مسلم", True)

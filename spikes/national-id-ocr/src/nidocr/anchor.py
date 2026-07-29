@@ -169,6 +169,30 @@ def _mentions(text: str, terms: tuple[str, ...]) -> bool:
     folded = rasm_fold(text)
     return any(rasm_fold(term) in folded for term in terms)
 
+
+def _carries_a_national_id(folded: str) -> bool:
+    """Does this line hold the fourteen-digit number — in either of the two forms it appears in?
+
+    The two sides print it differently, and a rule written for one misses the other:
+
+      * The FRONT spaces it into groups — `٢٨٧ ٠٩ ٠١ ١٢ ٠٢٤ ٠٨` — so the line has no unbroken run
+        of fourteen, but its digits total fourteen and nothing else is on the line.
+      * The BACK puts it beside the issue date — `٢٠١٥/٠٧    ٢٨٧٠٩٠١١٢٠٢٤٠٨` — which detection
+        returns as one region totalling twenty digits, but with the number intact as a single run.
+
+    So either signal counts. Requiring only the total missed the back, which is not a cosmetic
+    loss: the number is printed on BOTH sides, and reading it twice is the only check in this
+    pipeline that can catch a wrong digit in positions 10-14, where the structure constrains
+    nothing and a misread yields a different, valid-looking person. A real card came back with ٢
+    read as ٣ at position 11 — birth date, gender and governorate all decoded correctly, and the
+    number belonged to somebody else. The back would have disagreed, had it been read.
+
+    Runs are bounded by non-digits on purpose, so a fourteen-digit window inside a longer number
+    does not match.
+    """
+    runs = re.findall(r"\d+", folded)
+    return sum(len(run) for run in runs) == 14 or any(len(run) == 14 for run in runs)
+
 #: Fallback when detection found nothing to measure — roughly one printed line on an ID-1 card.
 DEFAULT_LINE_HEIGHT = 0.07
 
@@ -229,7 +253,7 @@ def structural(lines: list[Line], size: tuple[int, int], *, wanted: set[str]) ->
         if rect is None:
             continue
         folded = to_western_digits(text)
-        if "nationalId" in wanted and len(re.sub(r"\D", "", folded)) == 14:
+        if "nationalId" in wanted and _carries_a_national_id(folded):
             found.setdefault("nationalId", []).append(rect)
         if "nationalIdExpiry" in wanted and _FULL_DATE.search(folded):
             found.setdefault("nationalIdExpiry", []).append(rect)

@@ -213,3 +213,29 @@ def test_an_over_long_read_with_no_repeat_still_refuses_when_ambiguous():
     """
     fixed = _repair("129503141234567")  # a leading digit that repeats nothing
     assert fixed.value == VALID or not fixed.repaired
+
+
+def test_the_number_is_found_beside_the_issue_date_on_one_line():
+    """The back prints both on a single row, and detection returns it as a single region.
+
+    `٢٠١٥/٠٧    ٢٨٧٠٩٠١١٢٠٢٤٠٨` strips to twenty digits, which nothing downstream can use. The
+    number is identifiable anyway: it is the one unbroken run of fourteen. This matters more than
+    it looks, because the number is printed on BOTH sides and reading it twice is the only check
+    that reaches positions 10-14, where structure constrains nothing.
+    """
+    fixed = _repair("٢٠١٥/٠٧    ٢٩٥٠٣١٤١٢٣٤٥٦٧")
+    assert fixed.value == VALID
+    assert fixed.valid
+
+
+def test_the_spaced_groups_on_the_front_still_read():
+    """The front prints the number in groups, so it has no fourteen-digit run at all — the total
+    is what identifies it there. Both forms must work; a rule for one silently breaks the other."""
+    fixed = _repair("٢٩٥٠٣ ١٤١٢ ٣٤٥٦٧")
+    assert fixed.value == VALID and fixed.valid
+
+
+def test_two_fourteen_digit_runs_in_one_crop_are_refused():
+    """A crop holding two candidate numbers is not resolved by taking the first."""
+    fixed = _repair("29503141234567 28709011202408")
+    assert not fixed.valid and not fixed.repaired

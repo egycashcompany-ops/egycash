@@ -170,6 +170,35 @@ make measure    # the deliverable: accuracy, timing, image size, CPU/memory, fai
 `opencv-python-headless`, `Pillow`, `pytest`. `make build` needs Docker and — for the build only —
 network access to PyPI and the PaddleOCR model host; the resulting image needs neither.
 
+### Seeing where a card actually went wrong
+
+```bash
+curl -s -X POST https://<service>/trace \
+  -H 'content-type: application/json' \
+  -d "{\"frontImageBase64\":\"$(base64 -w0 front.jpg)\",\"backImageBase64\":\"$(base64 -w0 back.jpg)\"}" \
+  > trace.html && open trace.html
+```
+
+`POST /trace` takes the same body as `/extract` and returns **one self-contained HTML page** with
+every intermediate the pipeline produced, in order: the original image, the rectified card, the
+quality metrics, the detected lines, the anchored boxes drawn on the card, and then per field — the
+crop, the preprocessed variants, each line strip handed to the recognizer, the **raw text that came
+back before any post-processing**, the ensemble's per-variant readings and vote, and the final
+value. Locally: `python -m nidocr.trace --front a.jpg --back b.jpg --out trace.html`.
+
+It runs the real `extract()` with a collector attached rather than a re-implementation of it, so
+what the page shows is what production did.
+
+This is the tool for the question that repeatedly could not be answered from a final string: **if
+the raw read already misses a word, the recognizer is the problem; if the raw read is complete and
+the final value is not, the processing is.** Those have opposite fixes and look identical from
+outside.
+
+> ⚠️ **The trace contains the whole card** — photograph, name, address, number. Unlike `/diagnose`,
+> which is coordinates-only and safe to paste anywhere, this is for a card whose holder has
+> consented, and should not be attached to an issue or a chat. `OCR_TRACE_DISABLED=1` turns the
+> endpoint off.
+
 ---
 
 ## Wiring it to the API
@@ -310,6 +339,7 @@ src/nidocr/
   anchor.py       moving the boxes onto the text detection actually found
   boilerplate.py  the words printed on every card, which belong to nobody
   ensemble.py     combining several readings of the number into one answer
+  trace.py        every intermediate the pipeline produces, as one HTML page
   preprocess.py   deskew / denoise / enhance / sharpen / binarize, individually timed
   engine.py       Recognizer protocol; PaddleRecognizer (lazy import) + MockRecognizer
   postprocess.py  field-typed cleanup, vocabulary snapping, confidence bands

@@ -33,7 +33,7 @@ import numpy as np
 
 from .anchor import Anchoring, Line, anchor, structural
 from .arabic import rasm_fold
-from .engine import MockRecognizer, Recognizer
+from .engine import MockRecognizer, Recognition, Recognizer
 from .ensemble import ENOUGH_AGREEMENT, Candidate, Consensus, combine
 from .geometry import Rectification
 from .layout import BACK_FIELDS, FRONT_FIELDS, FieldBox
@@ -58,6 +58,7 @@ from .postprocess import (
     clean_text,
 )
 from .quality import QualityReport
+from .trace import NO_TRACE, Trace
 
 LOG = logging.getLogger("nidocr.extract")
 
@@ -125,6 +126,20 @@ class Read:
     candidates: tuple[Candidate, ...] = ()
 
 
+def _trace_lines(trace: Trace, label: str, out: Recognition) -> None:
+    """Record what the recognizer was shown and what it said, per printed line.
+
+    This is the observation the whole trace exists for. A field that comes back short is either a
+    line the recognizer never saw or a line it saw and misread, and those have opposite fixes —
+    but from the final string they are identical. Putting the strip image next to the raw text it
+    produced settles it by looking.
+    """
+    for index, line in enumerate(out.lines):
+        trace.image(f"{label} / line {index} (image)", line.image)
+        trace.text(f"{label} / line {index} (raw, score {line.score:.3f})", line.text)
+    trace.text(f"{label} / raw (joined, score {out.score:.3f})", out.text)
+
+
 def _crop(card: np.ndarray, box: FieldBox, margin: float) -> np.ndarray | None:
     """The field's pixels, with a little of the card around them.
 
@@ -145,8 +160,17 @@ def _crop(card: np.ndarray, box: FieldBox, margin: float) -> np.ndarray | None:
 
 
 def _recognize_box(
-    card: np.ndarray, box: FieldBox, recognizer: Recognizer
+    card: np.ndarray,
+    box: FieldBox,
+    recognizer: Recognizer,
+    trace: Trace = NO_TRACE,
+    side: str = "",
 ) -> Read:
+    label = f"{side} / {box.name}"
+    trace.data(
+        f"{label} / box",
+        {"x": box.x, "y": box.y, "w": box.w, "h": box.h, "kind": box.kind},
+    )
     # The mock replays by field name; real recognizers only ever see pixels.
     if isinstance(recognizer, MockRecognizer):
         recognizer.bind(box.name)
@@ -158,15 +182,20 @@ def _recognize_box(
         region = _crop(card, box, TEXT_MARGIN)
         if region is None:
             return Read("", 0.0)
-        return Read(*_read_text(recognizer, region))
+        trace.image(f"{label} / crop", region)
+        return Read(*_read_text(recognizer, region, trace, label))
     # The full ensemble is spent on the national ID alone. It is the field where a single wrong
     # digit yields a different, valid-looking person, and the only one whose fourteen-digit shape
     # makes several reads combinable at all — an expiry that comes back as two different dates
     # cannot be voted on position by position.
-    return _read_digits(card, box, recognizer, ensemble=box.name == "nationalId")
+    return _read_digits(
+        card, box, recognizer, ensemble=box.name == "nationalId", trace=trace, label=label
+    )
 
 
-def _read_text(recognizer: Recognizer, region: np.ndarray) -> tuple[str, float]:
+def _read_text(
+    recognizer: Recognizer, region: np.ndarray, trace: Trace = NO_TRACE, label: str = ""
+) -> tuple[str, float]:
     """A prose field, read once — and once more differently if the first read came back empty.
 
     The retry is not an ensemble. For free text there is nothing to vote on: two reads that
@@ -174,14 +203,24 @@ def _read_text(recognizer: Recognizer, region: np.ndarray) -> tuple[str, float]:
     a candidate against. But "nothing at all" is unambiguous, and it is worth one more attempt with
     the contrast raised before a field is reported empty.
     """
-    text, score = _read(recognizer, field_variant(region, "grey"), rtl=True)
-    if text.strip():
-        return text, score
-    return _read(recognizer, field_variant(region, "clahe"), rtl=True)
+    for variant in ("grey", "clahe"):
+        prepared = field_variant(region, variant)
+        trace.image(f"{label} / prepared ({variant})", prepared)
+        out = _read(recognizer, prepared, rtl=True)
+        _trace_lines(trace, f"{label} / {variant}", out)
+        if out.text.strip():
+            return out.text, out.score
+    return "", 0.0
 
 
 def _read_digits(
-    card: np.ndarray, box: FieldBox, recognizer: Recognizer, *, ensemble: bool
+    card: np.ndarray,
+    box: FieldBox,
+    recognizer: Recognizer,
+    *,
+    ensemble: bool,
+    trace: Trace = NO_TRACE,
+    label: str = "",
 ) -> Read:
     """Read a digits field under several preprocessing variants and combine what they say.
 
@@ -215,7 +254,12 @@ def _read_digits(
         region = _crop(card, box, VARIANT_MARGIN[variant])
         if region is None:
             continue
-        text, score = _read(recognizer, field_variant(region, variant), rtl=False)
+        prepared = field_variant(region, variant)
+        trace.image(f"{label} / crop ({variant}, margin {VARIANT_MARGIN[variant]})", region)
+        trace.image(f"{label} / prepared ({variant})", prepared)
+        out = _read(recognizer, prepared, rtl=False)
+        _trace_lines(trace, f"{label} / {variant}", out)
+        text, score = out.text, out.score
         # "More digits recovered" is a real quality signal on a field of known shape, not a
         # heuristic — so it orders the fallback, and the model's score only breaks ties.
         if (len(salvage_digits(text)), score) > (len(salvage_digits(best[0])), best[1]):
@@ -233,12 +277,31 @@ def _read_digits(
                 break
 
     settled = combine(candidates) if ensemble else None
+    if candidates:
+        trace.data(
+            f"{label} / ensemble",
+            {
+                "candidates": [
+                    {"variant": c.variant, "digits": c.digits, "score": round(c.score, 4)}
+                    for c in candidates
+                ],
+                "chosen": None
+                if settled is None
+                else {
+                    "value": settled.value,
+                    "agreement": settled.agreement,
+                    "support": settled.support,
+                    "reads": settled.total,
+                    "valid": settled.valid,
+                },
+            },
+        )
     if settled is None:
         return Read(*best, candidates=tuple(candidates))
     return Read(settled.value, settled.score, settled, tuple(candidates))
 
 
-def _read(recognizer: Recognizer, crop: np.ndarray, rtl: bool) -> tuple[str, float]:
+def _read(recognizer: Recognizer, crop: np.ndarray, rtl: bool) -> Recognition:
     """One recognizer call, with a failure costing the field rather than the card.
 
     The recognizer is native code and can raise from inside C++ with no Python-level cause. Letting
@@ -247,11 +310,10 @@ def _read(recognizer: Recognizer, crop: np.ndarray, rtl: bool) -> tuple[str, flo
     was being made here too.
     """
     try:
-        out = recognizer.recognize(crop, rtl=rtl)
+        return recognizer.recognize(crop, rtl=rtl)
     except Exception:  # noqa: BLE001 — anything can come out of the native predictor
         LOG.warning("recognition failed on a field crop; leaving it empty", exc_info=True)
-        return "", 0.0
-    return out.text, out.score
+        return Recognition(text="", score=0.0)
 
 
 def _finalize(
@@ -371,10 +433,26 @@ def _detect_lines(card: np.ndarray, recognizer: Recognizer, side: str) -> tuple[
 
 
 def _process_side(
-    image: np.ndarray, side: str, recognizer: Recognizer, timings: StageTimings
+    image: np.ndarray,
+    side: str,
+    recognizer: Recognizer,
+    timings: StageTimings,
+    trace: Trace = NO_TRACE,
 ) -> SideResult:
     """Prepare one face, anchor its boxes to the text found on it, and read every field."""
     prepared = prepare(image, timings, side=side)
+    trace.image(f"{side} / card / 00 original", image)
+    trace.image(f"{side} / card / 01 rectified and enhanced", prepared.image)
+    trace.data(
+        f"{side} / card / 02 quality",
+        {
+            "verdict": prepared.quality.verdict,
+            "reasons": list(prepared.quality.reasons),
+            "metrics": {k: round(v, 4) for k, v in prepared.quality.metrics.items()},
+            "rectification": prepared.rectification.method,
+            "dewarped": prepared.rectification.dewarped,
+        },
+    )
     result = SideResult(quality=prepared.quality, rectification=prepared.rectification)
     boxes = _side_boxes(side)
     size = (prepared.image.shape[1], prepared.image.shape[0])
@@ -382,6 +460,14 @@ def _process_side(
     started = time.perf_counter()
     result.lines, result.detection_failed = _detect_lines(prepared.image, recognizer, side)
     timings.record(f"{side}:detect", started)
+    trace.data(
+        f"{side} / card / 03 detected lines",
+        {
+            "failed": result.detection_failed,
+            "count": len(result.lines),
+            "lines": [text for _, text, _ in result.lines],
+        },
+    )
 
     wanted = {box.name for box in boxes} | set(_BACK_STRUCTURAL_EXTRA if side == "back" else ())
     result.anchoring = anchor(boxes, result.lines, size)
@@ -390,14 +476,33 @@ def _process_side(
             result.anchoring.boxes.setdefault(name, box)
             result.anchoring.sources.setdefault(name, "structural")
 
+    trace.data(
+        f"{side} / card / 04 anchored boxes",
+        {
+            name: {
+                "x": round(box.x, 4),
+                "y": round(box.y, 4),
+                "w": round(box.w, 4),
+                "h": round(box.h, 4),
+                "source": result.anchoring.sources.get(name, "nominal"),
+            }
+            for name, box in result.anchoring.boxes.items()
+        },
+    )
+    trace.image(f"{side} / card / 05 boxes drawn", _draw_boxes(prepared.image, result.anchoring))
+
     ceiling = prepared.quality.confidence_ceiling
     for name, box in result.anchoring.boxes.items():
         started = time.perf_counter()
-        read = _recognize_box(prepared.image, box, recognizer)
+        read = _recognize_box(prepared.image, box, recognizer, trace, side)
         timings.record(f"recognize:{side}:{name}", started)
         if name == "nationalId":
             result.nid_candidates = list(read.candidates)
         data = _finalize(name, read.text, read.score, read.consensus)
+        trace.data(
+            f"{side} / {name} / final",
+            {k: v for k, v in data.items() if k not in ("score",)},
+        )
         # The capture's own quality bounds every field it produced. A model score describes how
         # cleanly the recognizer read what it was given; it says nothing about whether the pixels
         # carried the information. On a blurred crop those come apart badly — fewer competing
@@ -580,6 +685,7 @@ def extract(
     front_path: str | None,
     back_path: str | None,
     recognizer: Recognizer,
+    trace: Trace = NO_TRACE,
 ) -> ExtractionResult:
     """Run the pipeline over one card. Either side may be absent."""
     result = ExtractionResult()
@@ -590,9 +696,11 @@ def extract(
         if path is None:
             continue
         image = load_bgr(path)
-        side_result = _process_side(image, side, recognizer, result.timings)
+        side_result = _process_side(image, side, recognizer, result.timings, trace)
         if _needs_retry(side, side_result):
-            inverted = _process_side(_rotate_180(image), side, recognizer, result.timings)
+            inverted = _process_side(
+                _rotate_180(image), side, recognizer, result.timings, trace
+            )
             chosen = _better(side_result, inverted)
             if chosen is inverted:
                 result.diagnostics.setdefault(side, {})["rotated180"] = True
@@ -648,5 +756,35 @@ def extract(
                 reconciled["confidence"] = "low"
                 result.diagnostics.setdefault("back", {})["genderMismatch"] = True
 
+    trace.data("result / fields", result.fields)
+    trace.data("result / diagnostics", result.diagnostics)
+    trace.data("result / payload sent to the API", result.as_raw_ocr_result())
+
     result.total_ms = (time.perf_counter() - started_all) * 1000.0
     return result
+
+
+def _draw_boxes(card: np.ndarray, anchoring: Anchoring) -> np.ndarray:
+    """The card with every field box drawn on it, labelled by where the box came from.
+
+    One picture answers the question that has been answered wrongly three times: is this field's
+    rectangle actually on the field's text? Green boxes were snapped onto detected lines, amber
+    ones kept the profile's geometry because detection found nothing near them.
+    """
+    canvas = card.copy()
+    for name, box in anchoring.boxes.items():
+        source = anchoring.sources.get(name, "nominal")
+        colour = (80, 200, 80) if source == "snapped" else (60, 170, 240)
+        left, top, right, bottom = box.to_pixels((canvas.shape[1], canvas.shape[0]))
+        cv2.rectangle(canvas, (left, top), (right, bottom), colour, 2)
+        cv2.putText(
+            canvas,
+            f"{name}:{source}",
+            (left + 4, max(14, top - 6)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.45,
+            colour,
+            1,
+            cv2.LINE_AA,
+        )
+    return canvas

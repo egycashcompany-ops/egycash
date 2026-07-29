@@ -66,11 +66,27 @@ def model_names() -> dict[str, str]:
 
 
 @dataclass(frozen=True)
+class LineRead:
+    """One printed line as the recognizer returned it, before anything touches the string.
+
+    `image` is the exact strip that was handed to the model, and is populated only when a trace is
+    being collected — it is the artefact that answers "did the recognizer even see this word?",
+    which is the question four rounds of inference could not settle.
+    """
+
+    text: str
+    score: float
+    image: np.ndarray | None = None
+
+
+@dataclass(frozen=True)
 class Recognition:
     """One recognizer output: the text and the model's own score in [0, 1]."""
 
     text: str
     score: float
+    #: The per-line reads the text was assembled from. Diagnostic; callers use `text`.
+    lines: tuple[LineRead, ...] = ()
 
 
 class Recognizer(Protocol):
@@ -133,6 +149,10 @@ class PaddleRecognizer:
     #: Letterboxing rather than stretching: the card's proportions have to survive, because the
     #: polygons that come back are scaled straight into field boxes.
     DETECT_CANVAS = (960, 640)
+
+    #: Keep the strip images handed to the recognizer, so a trace can show them. Off in production
+    #: — a card's worth of crops is memory spent on nobody's behalf when nobody is looking.
+    keep_line_images = False
 
     def __init__(self, model_dir: str | None = None, lang: str = "ar") -> None:
         self._model_dir = model_dir or os.environ.get("PADDLE_OCR_MODEL_DIR", "/models")
@@ -234,13 +254,19 @@ class PaddleRecognizer:
         if self._lines is None:
             return None
         strips = split_text_lines(crop)
-        reads: list[tuple[str, float]] = []
+        reads: list[LineRead] = []
         with self._lock:
             for strip in strips:
                 for entry in self._lines.predict(strip):
                     text = str(_field_of(entry, "rec_text", ""))
                     if text.strip():
-                        reads.append((text, float(_field_of(entry, "rec_score", 0.0))))
+                        reads.append(
+                            LineRead(
+                                text=text,
+                                score=float(_field_of(entry, "rec_score", 0.0)),
+                                image=strip if self.keep_line_images else None,
+                            )
+                        )
         if not reads:
             return None
         # Strips come out top to bottom, which is reading order for every field on this card. No
@@ -248,8 +274,9 @@ class PaddleRecognizer:
         # already emits Arabic in logical order, so there are no fragments to sequence and no
         # opportunity to sequence them wrongly.
         return Recognition(
-            text=" ".join(text for text, _ in reads),
-            score=float(np.mean([score for _, score in reads])),
+            text=" ".join(read.text for read in reads),
+            score=float(np.mean([read.score for read in reads])),
+            lines=tuple(reads),
         )
 
     def recognize(self, crop: np.ndarray, *, rtl: bool = True) -> Recognition:
@@ -263,7 +290,11 @@ class PaddleRecognizer:
         ordered = _in_reading_order(segments, rtl=rtl)
         text = " ".join(text for text, _ in ordered)
         score = float(np.mean([score for _, score in ordered]))
-        return Recognition(text=text, score=score)
+        return Recognition(
+            text=text,
+            score=score,
+            lines=tuple(LineRead(text=part, score=value) for part, value in ordered),
+        )
 
 
 def _field_of(entry: object, key: str, default: object) -> object:

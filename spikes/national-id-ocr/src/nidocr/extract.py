@@ -280,6 +280,37 @@ def _printed_gender(lines: list[Line]) -> str | None:
     return None
 
 
+#: Words that appear on the back of an Egyptian card and nowhere on the front. Rasm-folded, so a
+#: dropped dot does not turn a present marker into a missing one.
+_BACK_MARKERS = frozenset(
+    rasm_fold(word)
+    for word in ("ذكر", "أنثى", "مسلم", "مسلمة", "مسيحي", "مسيحية", "أعزب", "عزباء", "متزوج",
+                 "متزوجة", "مطلق", "مطلقة", "أرمل", "أرملة", "سارية", "الرقم")
+)
+
+
+def _looks_like_the_back(lines: list[Line]) -> bool | None:
+    """Does this image carry any of the words only the back of the card has? None if unreadable.
+
+    The commonest mistake anyone makes with a two-sided capture is photographing the same side
+    twice, and the pipeline's response to that is uniquely unhelpful: the back's field boxes are
+    applied to a front image, so they land on whatever happens to sit at those coordinates and
+    return confident fragments of the address as a religion. Nothing about that reads as "wrong
+    image" — it reads as bad OCR, and the next hour goes into the recognizer.
+
+    The back states sex, religion and marital status in words drawn from a tiny closed vocabulary.
+    If a whole side yielded text and none of those words is anywhere in it, the image is almost
+    certainly not a back. Reported, never acted on: the fields are still returned and the reviewer
+    still decides. A wrong guess here would suppress a legitimately odd card.
+    """
+    if not lines:
+        return None
+    folded = " ".join(rasm_fold(text) for _, text, _ in lines)
+    if not folded.strip():
+        return None
+    return any(marker in folded for marker in _BACK_MARKERS)
+
+
 def _rotate_180(image: np.ndarray) -> np.ndarray:
     return cv2.rotate(image, cv2.ROTATE_180)
 
@@ -384,6 +415,12 @@ def extract(
             notes["dewarped"] = side_result.rectification.dewarped
         if side_result.anchoring is not None:
             notes["boxSources"] = side_result.anchoring.source_counts()
+        if side == "back":
+            # See `_looks_like_the_back`. Surfaced so "you photographed the front twice" stops
+            # being indistinguishable from "the recognizer is bad at Arabic".
+            looks_right = _looks_like_the_back(side_result.lines)
+            if looks_right is False:
+                notes["sideMismatch"] = True
         for name, data in side_result.fields.items():
             if name != "nationalId":
                 result.fields[name] = data

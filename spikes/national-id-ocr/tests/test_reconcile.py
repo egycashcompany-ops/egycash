@@ -185,3 +185,36 @@ def test_a_detection_failure_falls_back_to_nominal_boxes(tmp_path):
     assert result.diagnostics["front"]["boxSources"] == {"nominal": 3}, (
         "boxes should fall back to the profile geometry, not vanish"
     )
+
+
+# ── Catching the front photographed twice ──
+
+
+def test_a_front_image_submitted_as_the_back_is_flagged():
+    """The commonest two-sided capture mistake, and the one with the least legible symptom.
+
+    Applying the back's boxes to a front image returns whatever sits at those coordinates —
+    a fragment of the address arrives as a religion, and nothing about that says "wrong image".
+    """
+    from nidocr.extract import _looks_like_the_back
+
+    front_lines = [
+        ([[0, 0], [10, 0], [10, 10], [0, 10]], "ندى محمد رضوان الحديدى عبده", 0.9),
+        ([[0, 20], [10, 20], [10, 30], [0, 30]], "برج الشروق ش أحمد ماهر المنصورة أول", 0.9),
+    ]
+    assert _looks_like_the_back(front_lines) is False
+
+    back_lines = [
+        ([[0, 0], [10, 0], [10, 10], [0, 10]], "معيدة بقسم الصحة العامة", 0.9),
+        ([[0, 20], [10, 20], [10, 30], [0, 30]], "أنثى مسلمة متزوجة", 0.9),
+    ]
+    assert _looks_like_the_back(back_lines) is True
+
+
+def test_an_unreadable_side_is_not_accused_of_being_the_wrong_side():
+    """No text is not evidence of a wrong image, and flagging it would send people to re-shoot a
+    side they photographed correctly."""
+    from nidocr.extract import _looks_like_the_back
+
+    assert _looks_like_the_back([]) is None
+    assert _looks_like_the_back([([[0, 0], [1, 0], [1, 1], [0, 1]], "   ", 0.1)]) is None

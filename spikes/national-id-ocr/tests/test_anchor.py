@@ -145,3 +145,49 @@ def test_structural_assignment_overrides_a_snapped_box():
     anchoring = anchor((box,), lines, SIZE)
     assert anchoring.sources["nationalId"] == "structural"
     assert anchoring.boxes["nationalId"].y > 0.7, "it followed the digits, not the profile"
+
+
+# ── The regression that reached production ──
+
+
+def test_a_tall_box_does_not_reach_a_line_beyond_itself():
+    """The exact misread reported from the deployed service.
+
+    The card prints 'بطاقة تحقيق الشخصية' above the name and the address below it. The name box
+    spans two lines — 0.20 of the card's height — and the original selection rule gave it a margin
+    of 35% OF ITS OWN HEIGHT, or 0.07, which on this card is one whole line of print. So the box
+    reached a full line up and a full line down, unioned all three, and the recognizer returned the
+    header, the name and the address as one field. The address box did the same thing one line
+    lower, which is why the address came back beginning with the name.
+
+    Anchoring is supposed to correct drift of a few percent. Tying its reach to a line of text
+    rather than to the box keeps a tall field from being able to travel to its neighbours at all.
+    """
+    header = _line(300, 90, 700, 145, "بطاقة تحقيق الشخصية")
+    name_one = _line(300, 160, 700, 215, "ندى")
+    name_two = _line(300, 225, 700, 280, "محمد رضوان الحديدى عبده")
+    address = _line(300, 300, 700, 355, "برج الشروق - ش أحمد ماهر")
+
+    # Nominal box covering the two name lines: y 0.26-0.46 of 600px = 156-276.
+    name_box = FieldBox("fullNameAr", x=0.28, y=0.26, w=0.45, h=0.20)
+
+    fitted, sources = snap((name_box,), [header, name_one, name_two, address], SIZE)
+    got = fitted["fullNameAr"]
+
+    assert sources["fullNameAr"] == "snapped"
+    assert got.y > 145 / 600, "the crop still reaches up into the card's printed header"
+    assert got.y + got.h < 300 / 600, "the crop still reaches down into the address"
+
+
+def test_drift_within_a_line_is_still_corrected():
+    """The tightened rule must not stop anchoring doing its job.
+
+    Half a line of slack is the point: a box that slipped less than that still belongs to its own
+    text and should follow it. Only a box that slipped further is pointing at a neighbour.
+    """
+    text = _line(300, 200, 700, 250)  # y 0.333-0.417
+    drifted = FieldBox("occupation", x=0.28, y=0.30, w=0.45, h=0.07)  # slipped up by ~half a line
+
+    fitted, sources = snap((drifted,), [text], SIZE)
+    assert sources["occupation"] == "snapped"
+    assert abs(fitted["occupation"].y - 200 / 600) < 0.03, "the box did not follow its own line"

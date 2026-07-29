@@ -39,12 +39,16 @@ from typing import Any
 import numpy as np
 
 from .arabic import rasm_fold, to_western_digits
+from .boilerplate import is_boilerplate
 from .layout import FieldBox
 from .postprocess import MARITAL_TERMS as _MARITAL_TERMS
 from .postprocess import RELIGION_TERMS as _RELIGION_TERMS
 
 #: A detected line as the recognizers report it: (polygon, text, score).
 Line = tuple[Any, str, float]
+
+#: A normalized (x, y, w, h).
+Rect = tuple[float, float, float, float]
 
 
 @dataclass(frozen=True)
@@ -78,6 +82,109 @@ def _rect(poly: Any, size: tuple[int, int]) -> tuple[float, float, float, float]
     if right <= left or bottom <= top:
         return None
     return left, top, right - left, bottom - top
+
+
+@dataclass(frozen=True)
+class _Region:
+    """One line of text as this module wants it: a rectangle and what is written in it."""
+
+    rect: Rect
+    text: str
+
+
+#: Two fragments closer than this many line-heights apart, horizontally, are words of one line.
+#: A word gap on printed text is a fraction of the line's height; the gap between two *fields* on
+#: one row is several times it. Anything in between is rare enough that erring toward merging is
+#: safe — a merged region is still one region, whereas a fragment left alone can be lost entirely.
+MERGE_GAP_LINES = 1.2
+
+
+def _merge_rows(regions: list[_Region], size: tuple[int, int]) -> list[_Region]:
+    """Join detection fragments that are words of the same printed line.
+
+    Detection returns text REGIONS; anchoring wants LINES, and on Arabic they are not the same
+    thing. A four-word name comes back as one region on one card and as two or three on the next,
+    depending on how wide the word gaps happen to be — and a fragment is not merely a smaller box,
+    it is a box in a different PLACE. `عبده` at the far left end of a name line has its centre
+    nowhere near the centre of the line it belongs to, so a field box that comfortably contains the
+    line rejects the fragment, and the name comes back with its last word missing. That is not a
+    recognition failure and no amount of confidence banding reveals it: every word returned is
+    correct, and the one that was dropped was never read.
+
+    Merging first makes the rest of the module see the line the way the card prints it. Fragments
+    are grouped into rows by vertical centre — within half a line, the same tolerance drift uses —
+    and then merged along the row while the gaps stay word-sized.
+    """
+    if len(regions) < 2:
+        return regions
+
+    line_height = _median_line_height([region.rect for region in regions])
+    # Heights are fractions of the card's HEIGHT and gaps are fractions of its WIDTH, so the
+    # threshold has to cross between the two axes or it means something different on every card.
+    gap_limit = line_height * MERGE_GAP_LINES * size[1] / max(size[0], 1)
+
+    rows: list[list[_Region]] = []
+    for region in sorted(regions, key=lambda item: item.rect[1]):
+        centre = region.rect[1] + region.rect[3] / 2.0
+        for row in rows:
+            row_centre = float(np.mean([r.rect[1] + r.rect[3] / 2.0 for r in row]))
+            if abs(centre - row_centre) <= line_height / 2.0:
+                row.append(region)
+                break
+        else:
+            rows.append([region])
+
+    merged: list[_Region] = []
+    for row in rows:
+        row.sort(key=lambda item: item.rect[0])
+        group = [row[0]]
+        for region in row[1:]:
+            previous = group[-1]
+            gap = region.rect[0] - (previous.rect[0] + previous.rect[2])
+            if gap <= gap_limit:
+                group.append(region)
+            else:
+                merged.append(_join(group))
+                group = [region]
+        merged.append(_join(group))
+    return merged
+
+
+def _join(group: list[_Region]) -> _Region:
+    """One region from several. Text runs right to left, as the card is printed.
+
+    The joined text is only ever read by predicates that do not care about word order — a digit
+    count, a date pattern, a vocabulary term — so the order is chosen for legibility in a log rather
+    than for correctness. Field VALUES never come from here: they are recognized again from the
+    crop, by `extract`.
+    """
+    if len(group) == 1:
+        return group[0]
+    return _Region(_union([region.rect for region in group]), " ".join(
+        region.text for region in sorted(group, key=lambda item: item.rect[0], reverse=True)
+    ))
+
+
+def _prepare(lines: list[Line], size: tuple[int, int]) -> list[_Region]:
+    """Detected lines → the regions anchoring reasons about.
+
+    Three steps, and the middle one is the one that changes behaviour: lines that hold nothing but
+    printed card furniture are DROPPED. 'بطاقة تحقيق الشخصية' sits directly above the name on every
+    Egyptian card, and a name box generous enough not to clip a long name is generous enough to
+    reach it. Since the phrase belongs to the card rather than to the holder, the cheapest correct
+    answer is to stop treating it as text at all — then the box can be as generous as the name
+    needs without the header ever being able to pull it upward.
+
+    A label that PRECEDES a value — 'البطاقة سارية حتى ٢٠٢٢/٠٧/٠٤' — is not furniture and stays,
+    because dropping it would take the expiry with it. `boilerplate.is_boilerplate` draws that line.
+    """
+    regions = [
+        _Region(rect, text)
+        for rect, text in ((_rect(poly, size), text) for poly, text, _ in lines)
+        if rect is not None
+    ]
+    regions = [region for region in regions if not is_boilerplate(region.text)]
+    return _merge_rows(regions, size)
 
 
 def _overlaps(
@@ -213,7 +320,7 @@ def snap(
     boxes: tuple[FieldBox, ...], lines: list[Line], size: tuple[int, int], *, margin: float = 0.35
 ) -> tuple[dict[str, FieldBox], dict[str, str]]:
     """Fit each nominal box to the detected lines around it."""
-    rects = [rect for rect in (_rect(poly, size) for poly, _, _ in lines) if rect is not None]
+    rects = [region.rect for region in _prepare(lines, size)]
     line_height = _median_line_height(rects)
 
     fitted: dict[str, FieldBox] = {}
@@ -248,10 +355,8 @@ def structural(lines: list[Line], size: tuple[int, int], *, wanted: set[str]) ->
     the geometric assumption this function exists to avoid.
     """
     found: dict[str, list[tuple[float, float, float, float]]] = {}
-    for poly, text, _ in lines:
-        rect = _rect(poly, size)
-        if rect is None:
-            continue
+    for region in _prepare(lines, size):
+        rect, text = region.rect, region.text
         folded = to_western_digits(text)
         if "nationalId" in wanted and _carries_a_national_id(folded):
             found.setdefault("nationalId", []).append(rect)

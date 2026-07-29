@@ -65,6 +65,17 @@ near it, then overrides that entirely for the two fields whose content identifie
 exactly fourteen digits is the national ID wherever it is printed, and a full year/month/day is the
 expiry.
 
+**The front text boxes are deliberately generous, and the card's own words are removed by content.**
+A box drawn tightly around one card's name is drawn tightly around *that* card's name: the next
+card's given name sat above the box's top edge and the last word of its family chain ran past its
+left edge, so the field came back missing a word at each end with every word it did return correct.
+The two errors are not worth the same — text the box lets in is removable, because everything
+printed around these fields is the card's own furniture and identical on every card ever issued,
+while text the box cuts off is gone and nothing downstream can tell. So the boxes span the printed
+text column and `boilerplate.py` strips the furniture by phrase, matching whole token sequences on
+the rasm-folded text so that a district like `مصر الجديدة` can never be confused with the
+`جمهورية مصر العربية` printed across the top.
+
 ### The national ID gets four independent checks
 
 It is the field where a single wrong digit is most expensive — it does not give a slightly wrong
@@ -143,9 +154,15 @@ them behaves exactly as before:
   "could not read the card", which is the difference between a good second attempt and the same bad
   photograph taken twice.
 * **`diagnostics`** — which detector located the card, whether it was dewarped or read upside down,
-  and how many boxes had to be moved onto the text. It answers "why was this read poor?" without
+  how many text lines detection found (`linesDetected`, plus `detectionFailed` when it raised) and
+  how many boxes had to be moved onto the text. It answers "why was this read poor?" without
   anyone having to send someone's identity document to a developer. Counts and method names only;
   like `/diagnose`, it carries no card content.
+
+  `linesDetected: 0` with every box reported as `nominal` is the one distinction worth knowing by
+  heart: it means the card was read purely on profile geometry, so a misplaced field is a geometry
+  problem. Lines found and boxes `snapped`, with a field still wrong, means the opposite. The two
+  look identical in the output, and telling them apart from a screenshot is impossible.
 
 The quality thresholds are reasoned priors, not measurements, and every one is settable —
 `OCR_QUALITY_MIN_CARD_WIDTH`, `OCR_QUALITY_MIN_SHARPNESS`, `OCR_QUALITY_MAX_GLARE`,
@@ -255,6 +272,7 @@ src/nidocr/
   geometry.py     locating the card in a photograph, and flattening it (incl. curl dewarp)
   quality.py      is this capture readable? reason codes + the confidence ceiling
   anchor.py       moving the boxes onto the text detection actually found
+  boilerplate.py  the words printed on every card, which belong to nobody
   preprocess.py   deskew / denoise / enhance / sharpen / binarize, individually timed
   engine.py       Recognizer protocol; PaddleRecognizer (lazy import) + MockRecognizer
   postprocess.py  field-typed cleanup, vocabulary snapping, confidence bands

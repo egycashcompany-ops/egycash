@@ -136,18 +136,79 @@ def test_the_image_default_profile_exists_and_loads(restore_layout):
     assert {box.name for box in layout.FRONT_FIELDS} == {"fullNameAr", "address", "nationalId"}
 
 
-def test_the_shipped_profile_puts_the_name_below_the_card_header(restore_layout):
-    """A regression guard on the specific misread the user reported.
+def test_the_shipped_profile_covers_the_whole_printed_text_column(restore_layout):
+    """The front text boxes are deliberately generous, and this pins that decision down.
 
-    The card prints 'بطاقة تحقيق الشخصية' across the top. A name box whose top edge reaches into
-    that band returns the header glued to the name — which is exactly what came back — and the
-    English transliteration then inherits it. Keeping the name box below the header band is the
-    property that stops it.
+    It replaces a guard that required the name box to start below the card's printed header. That
+    guard was answering the right complaint — 'بطاقة تحقيق الشخصية' came back glued to a name — with
+    the wrong instrument. A box drawn tightly enough to miss the header is drawn tightly around one
+    card's name, and the next card's name wrapped differently: its given name sat above the box's
+    top edge and the last word of its family chain ran past the box's left edge, so the field came
+    back missing a word at each end. Nothing downstream could tell, because every word it did return
+    was correct.
+
+    The two errors are not worth the same. Text the box lets in is removable — everything printed
+    around these fields is the card's own furniture, identical on every card, and `boilerplate`
+    strips it by phrase. Text the box cuts off is gone. So the boxes span the text column and the
+    header is excluded by what it says rather than by where it sits.
+
+    What still has to hold is that the boxes do not reach each OTHER: the name and the address are
+    both somebody's data, and neither can be removed from the other by vocabulary.
     """
     layout.load_profile(str(ROOT / "profiles" / "egypt-nid.json"))
     boxes = {box.name: box for box in layout.FRONT_FIELDS}
+    name, address, national_id = boxes["fullNameAr"], boxes["address"], boxes["nationalId"]
 
-    assert boxes["fullNameAr"].y > 0.20, "the name box reaches into the card's printed header"
-    assert boxes["address"].y >= boxes["fullNameAr"].y + boxes["fullNameAr"].h * 0.9, (
-        "the address box overlaps the name lines"
-    )
+    # Every field is right-aligned to the card's print margin, and reaches the left margin the
+    # national-ID line establishes — a name line cannot start further left than the card prints.
+    assert name.x <= national_id.x, "the name box stops short of the card's left print margin"
+    assert name.x + name.w >= 0.95, "the name box stops short of the right print margin"
+    assert address.x <= national_id.x
+
+    # Two lines of print, comfortably. A card whose name wraps onto a second line at a different
+    # height must still fall inside.
+    assert name.h >= 0.24, "the name box cannot hold two lines of print with any room to spare"
+
+    # ...but not into the next field. This is the boundary that vocabulary cannot rescue.
+    assert name.y + name.h <= address.y, "the name box reaches into the address"
+    assert address.y + address.h <= national_id.y, "the address box reaches into the number"
+
+
+def test_the_shipped_front_geometry_reads_a_two_line_name_end_to_end(restore_layout):
+    """The reported failure, end to end, against the geometry the container actually ships.
+
+    A name printed on two lines, the second detected as two fragments — the shape that produced
+    'إبراهيم عبد الرحمن' from a card printing 'سلمى' above 'إبراهيم عبد الرحمن السيد'. A word
+    missing from each end, every word returned correct, and nothing anywhere reporting a problem.
+
+    Asserted against the shipped profile rather than an invented box because the geometry is the
+    thing that was wrong: unit tests of `anchor` passed throughout, on boxes that were not the ones
+    in the image.
+    """
+    from nidocr.anchor import anchor  # noqa: PLC0415 — after the profile is loaded
+
+    layout.load_profile(str(ROOT / "profiles" / "egypt-nid.json"))
+    size = layout.CANONICAL_SIZE
+    width, height = size
+
+    def line(x0, y0, x1, y1, text):
+        box = [[x0 * width, y0 * height], [x1 * width, y0 * height],
+               [x1 * width, y1 * height], [x0 * width, y1 * height]]
+        return (box, text, 0.95)
+
+    lines = [
+        line(0.40, 0.09, 0.95, 0.155, "بطاقة تحقيق الشخصية"),  # the card's own words
+        line(0.80, 0.20, 0.95, 0.265, "سلمى"),                  # given name, short, right-aligned
+        line(0.52, 0.29, 0.95, 0.355, "إبراهيم عبد الرحمن"),    # family chain, detected as
+        line(0.37, 0.29, 0.50, 0.355, "السيد"),                 # ...two fragments
+        line(0.42, 0.50, 0.95, 0.565, "١٢ ش الثورة - الدقهلية"),
+        line(0.38, 0.78, 0.95, 0.845, "٢٩٥٠٣ ١٤١٢ ٣٤٥٦٧"),
+    ]
+
+    boxes = anchor(layout.FRONT_FIELDS, lines, size).boxes
+    name = boxes["fullNameAr"]
+
+    assert name.y < 0.20, "the crop starts below the given name — its first line is cut off"
+    assert name.x < 0.37, "the crop starts right of the family chain — its last word is cut off"
+    assert name.x + name.w > 0.94, "the crop stops short of where the name begins"
+    assert name.y + name.h < 0.50, "the crop reaches down into the address"

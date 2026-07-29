@@ -173,8 +173,14 @@ class Handler(BaseHTTPRequestHandler):
             # person, so they are as safe to log as the verdict was. The measured numbers ride
             # along because the thresholds are still untuned priors: seeing the values a real card
             # produces is the only way anyone will ever calibrate them.
+            # How many text lines detection found per side, and where the field boxes ended up,
+            # ride along for one reason: a card read entirely on profile geometry and a card read
+            # on geometry corrected by detection produce the same-shaped output, and every
+            # field-placement complaint so far has been impossible to attribute from a screenshot.
+            # `lines: 0` with every box 'nominal' says detection contributed nothing, which is a
+            # different bug from a box in the wrong place. Counts and box provenance only.
             LOG.info(
-                "extracted %d fields in %.0f ms (quality=%s)",
+                "extracted %d fields in %.0f ms (quality=%s, anchoring=%s)",
                 len(result.as_raw_ocr_result()),
                 elapsed,
                 {
@@ -188,6 +194,14 @@ class Handler(BaseHTTPRequestHandler):
                         },
                     }
                     for side, report in result.quality.items()
+                },
+                {
+                    side: {
+                        "lines": notes.get("linesDetected", 0),
+                        "boxes": notes.get("boxSources", {}),
+                        **({"detectionFailed": True} if notes.get("detectionFailed") else {}),
+                    }
+                    for side, notes in result.diagnostics.items()
                 },
             )
             self._send(

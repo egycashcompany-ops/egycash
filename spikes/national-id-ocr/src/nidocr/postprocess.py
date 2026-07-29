@@ -22,6 +22,7 @@ import datetime as _dt
 import re
 
 from .arabic import collapse_spaces, normalize_arabic, rasm_fold, to_western_digits
+from .boilerplate import strip_boilerplate
 from .governorates import snap_address_tail
 from .nid import repair as repair_national_id
 
@@ -244,12 +245,18 @@ def clean_marital_status(raw: str) -> tuple[str, bool]:
 
 
 def clean_text(raw: str) -> str:
-    """Free Arabic text (name, occupation): whitespace only.
+    """Free Arabic text (name, occupation): whitespace, and the card's own printed words.
 
     Deliberately does NOT apply `normalize_arabic`. That fold is for comparison; applying it to a
     stored value would strip the hamzas and taa marbuta out of a person's actual name.
+
+    Card furniture IS removed. 'بطاقة تحقيق الشخصية' is printed directly above the name on every
+    Egyptian card, so a name box generous enough not to clip a long name can catch it — and the
+    trade is not symmetric. A header glued onto a name is recoverable here, because the phrase is
+    identical on every card ever issued; a name whose first line was cropped away is not recoverable
+    anywhere. So the boxes are allowed to be generous and this removes what that lets in.
     """
-    return collapse_spaces(raw)
+    return collapse_spaces(strip_boilerplate(collapse_spaces(raw)))
 
 
 def clean_address(raw: str) -> tuple[str, bool]:
@@ -258,5 +265,9 @@ def clean_address(raw: str) -> tuple[str, bool]:
     Only the tail is corrected, because only the tail comes from a closed set. Building numbers,
     street names and districts are free text with nothing to check them against, and rewriting any
     of that would be invention rather than correction — see `governorates.snap_address_tail`.
+
+    Printed card furniture is removed first, for the same reason as in `clean_text`: the governorate
+    is matched against the END of the address, so a stray printed word left on the tail would stop
+    the match that repairs it.
     """
-    return snap_address_tail(collapse_spaces(raw))
+    return snap_address_tail(collapse_spaces(strip_boilerplate(collapse_spaces(raw))))

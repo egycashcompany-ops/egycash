@@ -22,6 +22,12 @@ from nidocr.layout import FieldBox  # noqa: E402
 
 SIZE = (1000, 600)
 
+#: An invented name in the shape a real card prints: a given name alone on the first line, then the
+#: father/grandfather/family chain on the second. The shape is what these tests are about; the words
+#: belong to nobody, which is the only acceptable way to keep card text in a repository.
+GIVEN_NAME = "سلمى"
+FAMILY_CHAIN = "إبراهيم عبد الرحمن السيد"
+
 
 def _line(left, top, right, bottom, text="نص", score=0.9):
     return ([[left, top], [right, top], [right, bottom], [left, bottom]], text, score)
@@ -164,8 +170,8 @@ def test_a_tall_box_does_not_reach_a_line_beyond_itself():
     rather than to the box keeps a tall field from being able to travel to its neighbours at all.
     """
     header = _line(300, 90, 700, 145, "بطاقة تحقيق الشخصية")
-    name_one = _line(300, 160, 700, 215, "ندى")
-    name_two = _line(300, 225, 700, 280, "محمد رضوان الحديدى عبده")
+    name_one = _line(300, 160, 700, 215, GIVEN_NAME)
+    name_two = _line(300, 225, 700, 280, FAMILY_CHAIN)
     address = _line(300, 300, 700, 355, "برج الشروق - ش أحمد ماهر")
 
     # Nominal box covering the two name lines: y 0.26-0.46 of 600px = 156-276.
@@ -222,6 +228,77 @@ def test_the_sex_religion_marital_row_is_found_by_its_words_not_its_position():
         assert 0.40 < found[name].y < 0.45, f"{name} did not land on the sex/religion/marital row"
         assert found[name].kind == "text", "these are words, not digits"
     assert found["nationalIdExpiry"].y > 0.60
+
+
+# ── The name that kept coming back incomplete ──
+
+
+def test_a_word_at_the_far_end_of_a_line_is_not_lost():
+    """A name's last word arrives as its own detection, and its centre is nowhere near the line's.
+
+    Detection returns text REGIONS, not lines, and how a line breaks into regions depends on how
+    wide its word gaps happen to be. When the family chain came back as two regions, the left one
+    held a single word whose centre sat outside the name box entirely — so the box took the right
+    region, the crop stopped where that region stopped, and the name lost its final word. Every
+    word the pipeline returned was correct, which is exactly why nothing flagged it.
+
+    Merging the fragments back into the line they were printed as is the fix, and it has to happen
+    before anything asks where a line's centre is.
+    """
+    box = FieldBox("fullNameAr", x=0.36, y=0.18, w=0.61, h=0.28)
+    # One printed line, detected as two regions with an ordinary word gap between them.
+    right = _line(560, 200, 950, 250, "إبراهيم عبد الرحمن")
+    left = _line(300, 200, 540, 250, "السيد")
+
+    fitted, sources = snap((box,), [right, left], SIZE)
+    got = fitted["fullNameAr"]
+
+    assert sources["fullNameAr"] == "snapped"
+    assert got.x < 0.31, "the crop stops short of the word at the far end of the line"
+    assert got.x + got.w > 0.94, "the crop no longer reaches the start of the line"
+
+
+def test_two_separate_fields_on_one_row_are_not_merged_into_each_other():
+    """The merge is bounded by the gap. A word gap joins; the gap between two fields does not.
+
+    The back prints the issue date and the national ID on one row with a wide space between them,
+    and they are two different fields. Merging on proximity alone would make every row a single
+    region and hand each box the whole row.
+    """
+    lines = [_line(120, 200, 300, 250, "٢٠١٥/٠٧"), _line(700, 200, 950, 250, "٢٩٥٠٣١٤١٢٣٤٥٦٧")]
+    box = FieldBox("nationalIdExpiry", x=0.08, y=0.30, w=0.25, h=0.10, kind="digits")
+
+    fitted, _ = snap((box,), lines, SIZE)
+    assert fitted["nationalIdExpiry"].x + fitted["nationalIdExpiry"].w < 0.6, (
+        "the expiry crop swallowed the national ID printed at the other end of the row"
+    )
+
+
+def test_the_cards_own_printed_words_cannot_pull_a_box_onto_them():
+    """'بطاقة تحقيق الشخصية' is printed above the name on every card and belongs to nobody.
+
+    A name box tight enough to exclude it is also tight enough to clip the first line of a name that
+    wraps differently, and clipping is the worse failure: a header glued to a name is removable
+    because the phrase is identical on every card, while a name line that was never cropped in
+    cannot be recovered anywhere. So the box is allowed to be generous and the header stops counting
+    as text.
+    """
+    box = FieldBox("fullNameAr", x=0.36, y=0.18, w=0.61, h=0.28)  # spans the header AND the name
+    header = _line(300, 100, 950, 150, "بطاقة تحقيق الشخصية")
+    name = _line(300, 200, 950, 250, FAMILY_CHAIN)
+
+    fitted, _ = snap((box,), [header, name], SIZE)
+    assert fitted["fullNameAr"].y > 150 / 600, "the box was still pulled up onto the printed header"
+
+
+def test_a_label_that_precedes_its_value_is_not_discarded():
+    """The distinction the boilerplate rule turns on, and the one it would be easy to get wrong.
+
+    'البطاقة سارية حتى ٢٠٢٢/٠٧/٠٤' is a printed label AND the expiry date. Dropping the line for
+    carrying card furniture would take the date with it — and the expiry is found by nothing else.
+    """
+    lines = [_line(100, 300, 700, 350, "البطاقة سارية حتى ٢٠٢٢/٠٧/٠٤")]
+    assert "nationalIdExpiry" in structural(lines, SIZE, wanted={"nationalIdExpiry"})
 
 
 def test_a_vocabulary_row_appearing_twice_is_refused():

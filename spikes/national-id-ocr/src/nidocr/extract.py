@@ -61,6 +61,8 @@ class SideResult:
     rectification: Rectification | None = None
     anchoring: Anchoring | None = None
     lines: list[Line] = _field(default_factory=list)
+    #: True when detection RAISED rather than returning nothing. See `_detect_lines`.
+    detection_failed: bool = False
 
     def filled(self) -> int:
         return sum(1 for data in self.fields.values() if data.get("value"))
@@ -206,7 +208,7 @@ def _side_boxes(side: str) -> tuple[FieldBox, ...]:
     return FRONT_FIELDS if side == "front" else BACK_FIELDS
 
 
-def _detect_lines(card: np.ndarray, recognizer: Recognizer, side: str) -> list[Line]:
+def _detect_lines(card: np.ndarray, recognizer: Recognizer, side: str) -> tuple[list[Line], bool]:
     """Full-page detection, downgraded to 'no lines' if it fails rather than losing the card.
 
     Detection feeds anchoring, and anchoring is an IMPROVEMENT on the nominal geometry — without it
@@ -220,12 +222,19 @@ def _detect_lines(card: np.ndarray, recognizer: Recognizer, side: str) -> list[L
 
     The exception is logged rather than swallowed silently — a run where every card loses its
     anchoring is a real problem, just not one that should reach the user as a failed scan.
+
+    Returns (lines, failed). The flag is reported in the diagnostics because the two ways of ending
+    up with no lines are indistinguishable in the output and have opposite fixes: detection raising
+    is a runtime problem in the recognizer, and detection returning nothing on a card that clearly
+    has text on it is a capture problem. Both present as "every field came from the nominal box",
+    and telling them apart from a screenshot is impossible — which cost several rounds of tuning
+    geometry that was never the thing at fault.
     """
     try:
-        return list(recognizer.detect_lines(card))
+        return list(recognizer.detect_lines(card)), False
     except Exception:  # noqa: BLE001 — the recognizer is native code; anything can come out of it
         LOG.warning("%s: line detection failed; falling back to nominal boxes", side, exc_info=True)
-        return []
+        return [], True
 
 
 def _process_side(
@@ -238,7 +247,7 @@ def _process_side(
     size = (prepared.image.shape[1], prepared.image.shape[0])
 
     started = time.perf_counter()
-    result.lines = _detect_lines(prepared.image, recognizer, side)
+    result.lines, result.detection_failed = _detect_lines(prepared.image, recognizer, side)
     timings.record(f"{side}:detect", started)
 
     wanted = {box.name for box in boxes} | set(_BACK_STRUCTURAL_EXTRA if side == "back" else ())
@@ -415,6 +424,12 @@ def extract(
             notes["dewarped"] = side_result.rectification.dewarped
         if side_result.anchoring is not None:
             notes["boxSources"] = side_result.anchoring.source_counts()
+        # How much the boxes had to work with. A side reporting zero lines but a full set of
+        # 'nominal' box sources is a card read entirely on profile geometry, which is the state
+        # every field-placement symptom traces back to — worth one integer in the diagnostics.
+        notes["linesDetected"] = len(side_result.lines)
+        if side_result.detection_failed:
+            notes["detectionFailed"] = True
         if side == "back":
             # See `_looks_like_the_back`. Surfaced so "you photographed the front twice" stops
             # being indistinguishable from "the recognizer is bad at Arabic".

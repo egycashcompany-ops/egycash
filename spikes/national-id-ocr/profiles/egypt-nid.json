@@ -13,7 +13,22 @@
     "     second name line, which is why the address came back with name fragments spliced in.",
     "",
     "The expiry box previously extended to y=0.66, overlapping the 2D barcode that occupies the",
-    "bottom half of the back. Recognition over a barcode returns confident nonsense."
+    "bottom half of the back. Recognition over a barcode returns confident nonsense.",
+    "",
+    "THE FRONT TEXT BOXES ARE DELIBERATELY GENEROUS, and that is a change of policy rather than a",
+    "re-measurement. The name box was drawn tightly around the two name lines of the card it was",
+    "calibrated on (x 0.52-0.97, y 0.255-0.455) and it clipped the next card in both directions at",
+    "once: the given name on line one sat above y=0.255, and the last word of the family chain ran",
+    "left of x=0.52. Names vary in length and in how they wrap; a box fitted to one card's name is",
+    "fitted to that card's name.",
+    "",
+    "The two errors are not symmetric. Text the box lets in is recoverable — everything printed",
+    "around these fields is the card's own furniture, identical on every card, and postprocess",
+    "strips it by phrase. Text the box cuts off is gone, and nothing downstream can tell that it is",
+    "missing. So the boxes now span the whole printed text column, from the card's left print margin",
+    "(established by the national-ID line at x=0.37) to the right margin every field aligns to, and",
+    "from below the top header band to just above the field beneath. Anchoring still narrows them",
+    "onto the lines detection actually finds; this is what they fall back to when it finds none."
   ],
   "canonicalSize": [
     1024,
@@ -22,17 +37,17 @@
   "front": [
     {
       "name": "fullNameAr",
-      "x": 0.52,
-      "y": 0.255,
-      "w": 0.45,
-      "h": 0.2,
+      "x": 0.36,
+      "y": 0.18,
+      "w": 0.61,
+      "h": 0.28,
       "kind": "text"
     },
     {
       "name": "address",
-      "x": 0.43,
+      "x": 0.36,
       "y": 0.465,
-      "w": 0.54,
+      "w": 0.61,
       "h": 0.195,
       "kind": "text"
     },

@@ -76,21 +76,34 @@ text column and `boilerplate.py` strips the furniture by phrase, matching whole 
 the rasm-folded text so that a district like `مصر الجديدة` can never be confused with the
 `جمهورية مصر العربية` printed across the top.
 
-### The national ID gets four independent checks
+### The national ID gets five independent checks
 
 It is the field where a single wrong digit is most expensive — it does not give a slightly wrong
 answer, it gives a different, valid-looking person — so it is the field with the most corroboration.
 
 | Check | Reaches | What it does |
 | --- | --- | --- |
+| Read ensemble | all 14 | The crop is read under several preprocessing variants chosen to **fail differently** — adaptive threshold, greyscale, Otsu, CLAHE, inverted. Identical readings corroborate each other; disagreeing ones are voted position by position. Reading stops as soon as three agree on a valid number, so an ordinary card pays for three reads and only a contested one pays for five. |
 | Structural repair | digits 1-9 | Century, calendar date and governorate constrain these. A read that cannot be a national ID is searched outward by edit distance over known Indic confusions; a **unique** valid result at the nearest distance is accepted at `medium`, a tie is refused as ambiguous. |
 | Both sides | all 14 | The number is printed on the front AND the back. Two crops sharing no pixels have independent errors, so agreement is stronger evidence than any model score → `high`. Two different valid numbers → `low`. |
 | Gender parity | digit 13 | The parity digit is otherwise unconstrained. The back states the same fact in words, and words and digits do not fail the same way. Disagreement demotes the number — it never populates a field, because `parseNationalId` owns gender. |
-| Length | — | 13 or 15 digits is refused rather than guessed. Nothing in the string says which digit was dropped. |
+| Length | — | 13 or 15 digits is refused rather than guessed, except where the extra digit is a repeat — an insertion leaves one behind, and removing it is unique where blind deletion is not. |
 
-Digits 10-12 are reachable by none of these, and the search deliberately never edits them: there,
-"repair" could only turn one valid-looking identity into another. That is what the review dialog is
-for.
+**Why the ensemble is not redundant with validation.** A card came back as `…203408` where it
+printed `…202408`: one digit, inside the sequence. *Both strings are valid national IDs* — same
+century, same birth date, same governorate — so `is_structurally_valid` accepts each and
+`parseNationalId` decodes each into a consistent person. Validation cannot separate them and no
+amount of tightening it will, because the information that would is not in the number. It is in the
+pixels, and the only way to use it is to look at them more than once.
+
+Digits 10-12 are reachable by no *structural* check, and the repair search deliberately never edits
+them: there, "repair" could only turn one valid-looking identity into another. The ensemble and the
+both-sides comparison are the only two things that reach them, which is why both exist.
+
+Confidence follows the evidence: a number several variants read identically keeps the model's own
+band; one assembled position-by-position out of reads that disagreed is capped at `medium`, because
+assembling is a deduction; and if no variant and no combination of them yields a valid number, the
+field is `low` and the best-effort string still goes to the reviewer rather than being dropped.
 
 ### Arabic is matched by letter skeleton, not by string
 
@@ -273,6 +286,7 @@ src/nidocr/
   quality.py      is this capture readable? reason codes + the confidence ceiling
   anchor.py       moving the boxes onto the text detection actually found
   boilerplate.py  the words printed on every card, which belong to nobody
+  ensemble.py     combining several readings of the number into one answer
   preprocess.py   deskew / denoise / enhance / sharpen / binarize, individually timed
   engine.py       Recognizer protocol; PaddleRecognizer (lazy import) + MockRecognizer
   postprocess.py  field-typed cleanup, vocabulary snapping, confidence bands

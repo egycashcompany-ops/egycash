@@ -230,8 +230,8 @@ def binarize(image: np.ndarray) -> np.ndarray:
 TARGET_FIELD_HEIGHT = 64
 
 
-def prepare_field(crop: np.ndarray, kind: str, *, max_upscale: float = 4.0) -> np.ndarray:
-    """Per-field finishing: upscale to the recognizer's working height, and binarize where it helps.
+def _upscaled(crop: np.ndarray, max_upscale: float) -> np.ndarray:
+    """Bring a crop up to the recognizer's working height.
 
     The scale factor is derived from the crop rather than fixed at 2x. A fixed factor is wrong at
     both ends: it leaves a short crop from a distant capture below the recognition input height,
@@ -240,11 +240,65 @@ def prepare_field(crop: np.ndarray, kind: str, *, max_upscale: float = 4.0) -> n
     """
     height = max(crop.shape[0], 1)
     scale = float(np.clip(TARGET_FIELD_HEIGHT / height, 1.0, max_upscale))
-    scaled = (
-        cv2.resize(crop, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
-        if scale > 1.0
-        else crop
-    )
-    # Digit rows are high-contrast and short — thresholding sharpens them. Arabic prose is left in
-    # greyscale, where the recognizer's own normalization does better than a hard cut.
-    return binarize(scaled) if kind == "digits" else scaled
+    if scale <= 1.0:
+        return crop
+    return cv2.resize(crop, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+
+
+def _otsu(image: np.ndarray) -> np.ndarray:
+    """Global threshold. The opposite failure mode to the adaptive one, which is the point.
+
+    Adaptive thresholding fragments glyphs printed over the card's pyramid watermark, because the
+    watermark moves the local mean. Otsu picks one cut for the whole crop, so it survives the
+    watermark and instead fails where the crop's own illumination shades across it. Two ways of
+    being wrong that do not coincide is exactly what an ensemble needs.
+    """
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+    return cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR)
+
+
+def _inverted(image: np.ndarray) -> np.ndarray:
+    """Otsu, inverted. Rescues a crop whose polarity the threshold got backwards.
+
+    A digit row sitting on a dark security tint, or a card photographed against strong backlight,
+    binarizes to white glyphs on black — which a recognizer trained on printed documents reads far
+    worse than the same image the right way round.
+    """
+    return cv2.bitwise_not(_otsu(image))
+
+
+#: Preprocessing variants for a digits field, cheapest and most-often-right first.
+#:
+#: The order matters because reading stops early once enough of them agree, so the common case
+#: costs the first two or three and only a contested field pays for all five. They are chosen to
+#: FAIL DIFFERENTLY rather than to be individually best: an ensemble whose members make the same
+#: mistake is one read wearing five hats, and the whole value here is that the variant which turns
+#: ٢ into ٣ against the watermark is not the variant that loses a digit to a shadow.
+DIGIT_VARIANTS: tuple[str, ...] = ("binary", "grey", "otsu", "clahe", "invert")
+
+_VARIANTS = {
+    "grey": lambda image: image,
+    "binary": binarize,
+    "otsu": _otsu,
+    "clahe": enhance,
+    "invert": _inverted,
+}
+
+
+def field_variant(crop: np.ndarray, variant: str, *, max_upscale: float = 4.0) -> np.ndarray:
+    """One preprocessing variant of a field crop, upscaled to the recognizer's working height."""
+    try:
+        transform = _VARIANTS[variant]
+    except KeyError:
+        raise ValueError(f"unknown field variant: {variant}") from None
+    return transform(_upscaled(crop, max_upscale))
+
+
+def prepare_field(crop: np.ndarray, kind: str, *, max_upscale: float = 4.0) -> np.ndarray:
+    """Per-field finishing: upscale to the recognizer's working height, and binarize where it helps.
+
+    Digit rows are high-contrast and short — thresholding sharpens them. Arabic prose is left in
+    greyscale, where the recognizer's own normalization does better than a hard cut.
+    """
+    return field_variant(crop, "binary" if kind == "digits" else "grey", max_upscale=max_upscale)

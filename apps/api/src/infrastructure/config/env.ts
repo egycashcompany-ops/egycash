@@ -22,6 +22,21 @@ const EnvSchema = z.object({
   NATIONAL_ID_OCR_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(20_000),
 
   /**
+   * Envelope-encryption key ring — `id:base64,id:base64`, 32-byte keys (A-1).
+   *
+   * More than one so rotation has an overlap window: the retired key still decrypts what has not
+   * been re-wrapped, while everything new is sealed under the active one. A single-key scheme
+   * forces a big-bang migration, which is how rotations get postponed indefinitely.
+   *
+   * The dev default is a published, worthless key. `assertProductionSecrets()` refuses to boot
+   * production with it — a dev key silently reaching production is the failure this guards.
+   */
+  PLATFORM_ENCRYPTION_KEYS: z
+    .string()
+    .default('dev1:ZGV2LW9ubHkta2V5LW5vdC1mb3ItcHJvZHVjdGlvbi0zMmI='),
+  PLATFORM_ENCRYPTION_ACTIVE_KEY: z.string().default('dev1'),
+
+  /**
    * Automation Service (ADR-018). OFF by default: the null provider stays registered, dispatches
    * are recorded as `skipped`, and the module's navigation entry is hidden — which is what lets
    * slices A-0..A-13 merge to `main` without a user ever seeing a half-built feature.
@@ -144,4 +159,9 @@ if (isProduction && env.JWT_ACCESS_SECRET === 'dev-only-access-secret-change-me'
 }
 if (isProduction && env.STORAGE_SIGNING_SECRET === 'dev-only-file-signing-secret') {
   throw new Error('STORAGE_SIGNING_SECRET must be set to a real secret in production');
+}
+// The dev key is published in this repository. Reaching production with it would mean every
+// stored credential is readable by anyone who can read the source — fail the boot instead.
+if (isProduction && env.PLATFORM_ENCRYPTION_KEYS.includes('dev1:')) {
+  throw new Error('PLATFORM_ENCRYPTION_KEYS must be set to real keys in production');
 }

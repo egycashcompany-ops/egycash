@@ -167,11 +167,28 @@ class Handler(BaseHTTPRequestHandler):
             # contents of someone's identity card. The quality verdict is a property of the
             # photograph rather than of its holder, so it is safe to log and worth logging: a
             # sudden run of rejected captures is an operational signal.
+            # The verdict alone says a capture was refused without saying what to change, which
+            # leaves an operator watching a run of rejections with nowhere to go. The reason codes
+            # answer it — and they describe the PHOTOGRAPH (too small, blurred, glare), never the
+            # person, so they are as safe to log as the verdict was. The measured numbers ride
+            # along because the thresholds are still untuned priors: seeing the values a real card
+            # produces is the only way anyone will ever calibrate them.
             LOG.info(
                 "extracted %d fields in %.0f ms (quality=%s)",
                 len(result.as_raw_ocr_result()),
                 elapsed,
-                {side: report.verdict for side, report in result.quality.items()},
+                {
+                    side: {
+                        "verdict": report.verdict,
+                        "reasons": list(report.reasons),
+                        **{
+                            name: round(value, 3)
+                            for name, value in report.metrics.items()
+                            if name in ("cardWidthPx", "sharpness", "glare", "contrast")
+                        },
+                    }
+                    for side, report in result.quality.items()
+                },
             )
             self._send(
                 200,

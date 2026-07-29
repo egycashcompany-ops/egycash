@@ -138,3 +138,50 @@ def test_the_printed_sex_is_found_among_detected_lines():
     ]
     assert _printed_gender(lines) == "أنثى"
     assert _printed_gender([lines[0]]) is None
+
+
+# ── A failing detector must not cost the card ──
+
+
+class _ExplodingDetector:
+    """Recognizes fields fine, but blows up on full-page detection — the observed production shape.
+
+    PaddleOCR's static predictor is native code with no Python-level failure mode: a concurrent
+    call came back as `RuntimeError: std::exception` from inside C++. Whatever the cause, the
+    question this asks is what the pipeline does about it.
+    """
+
+    id = "exploding"
+
+    def detect_lines(self, image):  # noqa: ARG002
+        raise RuntimeError("std::exception")
+
+    def recognize(self, crop, *, rtl=True):  # noqa: ARG002
+        from nidocr.engine import Recognition
+
+        return Recognition(text="محمد احمد", score=0.9)
+
+
+def test_a_detection_failure_falls_back_to_nominal_boxes(tmp_path):
+    """Anchoring is an improvement on the geometry, so losing it must cost the correction only.
+
+    It was costing the whole read: the exception left `extract`, the service turned it into a 500,
+    and a card that would have produced six usable fields produced none. Per-field recognition
+    failures were already tolerated one field at a time; detection was the single call that could
+    still take the request down with it.
+    """
+    import cv2
+    import numpy as np
+
+    from nidocr.extract import extract
+
+    card = np.full((646, 1024, 3), 220, np.uint8)
+    front = tmp_path / "front.jpg"
+    cv2.imwrite(str(front), card)
+
+    result = extract(str(front), None, _ExplodingDetector())
+
+    assert result.fields, "a detection failure emptied the whole read"
+    assert result.diagnostics["front"]["boxSources"] == {"nominal": 3}, (
+        "boxes should fall back to the profile geometry, not vanish"
+    )

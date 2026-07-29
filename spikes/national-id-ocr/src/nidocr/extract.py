@@ -22,6 +22,7 @@ being right for this particular card, which is the assumption real cards break m
 
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass, field as _field
 from typing import Any
@@ -47,6 +48,8 @@ from .postprocess import (
     clean_text,
 )
 from .quality import QualityReport
+
+LOG = logging.getLogger("nidocr.extract")
 
 
 @dataclass
@@ -203,6 +206,28 @@ def _side_boxes(side: str) -> tuple[FieldBox, ...]:
     return FRONT_FIELDS if side == "front" else BACK_FIELDS
 
 
+def _detect_lines(card: np.ndarray, recognizer: Recognizer, side: str) -> list[Line]:
+    """Full-page detection, downgraded to 'no lines' if it fails rather than losing the card.
+
+    Detection feeds anchoring, and anchoring is an IMPROVEMENT on the nominal geometry — without it
+    the boxes simply stay where the profile put them, which is where they were before anchoring
+    existed. So a detection failure should cost the correction, not the read.
+
+    It was costing the read. The exception propagated out of `extract`, the service caught it at the
+    top and returned 500, and a card that would have yielded six perfectly good fields yielded
+    nothing. Recognition failures are already tolerated field-by-field for exactly this reason;
+    detection was the one call that could still take the whole request down with it.
+
+    The exception is logged rather than swallowed silently — a run where every card loses its
+    anchoring is a real problem, just not one that should reach the user as a failed scan.
+    """
+    try:
+        return list(recognizer.detect_lines(card))
+    except Exception:  # noqa: BLE001 — the recognizer is native code; anything can come out of it
+        LOG.warning("%s: line detection failed; falling back to nominal boxes", side, exc_info=True)
+        return []
+
+
 def _process_side(
     image: np.ndarray, side: str, recognizer: Recognizer, timings: StageTimings
 ) -> SideResult:
@@ -213,7 +238,7 @@ def _process_side(
     size = (prepared.image.shape[1], prepared.image.shape[0])
 
     started = time.perf_counter()
-    result.lines = list(recognizer.detect_lines(prepared.image))
+    result.lines = _detect_lines(prepared.image, recognizer, side)
     timings.record(f"{side}:detect", started)
 
     wanted = {box.name for box in boxes} | set(_BACK_STRUCTURAL_EXTRA if side == "back" else ())

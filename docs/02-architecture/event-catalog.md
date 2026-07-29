@@ -200,6 +200,10 @@ Both are real and both are pre-existing. The catalogue records it rather than a 
 changing HR behaviour, and A-3's trigger validation turns the record into a warning on the
 workflow that would be affected.
 
+Unifying the two shapes is a **domain** change, deliberately out of scope for the Automation
+milestone. Recorded as [TD-001](../10-reviews/technical-debt.md#td-001--two-publishers-emit-ten-hr-event-names-with-different-payloads),
+with the containment measures and the triggers that would justify paying it down.
+
 ## Coverage today
 
 99 events: 22 platform, 77 HR. Every one has a declared payload schema; 97 are `stable` and 2 are

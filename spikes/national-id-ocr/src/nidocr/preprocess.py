@@ -230,8 +230,75 @@ def binarize(image: np.ndarray) -> np.ndarray:
 TARGET_FIELD_HEIGHT = 64
 
 
-def prepare_field(crop: np.ndarray, kind: str, *, max_upscale: float = 4.0) -> np.ndarray:
-    """Per-field finishing: upscale to the recognizer's working height, and binarize where it helps.
+#: A row carrying at least this fraction of the crop's width in ink counts as part of a text line.
+#: Low on purpose: the thinnest row of a line is where only the ascenders and the dots reach, and
+#: those are the rows that decide whether a line's true top edge is found or shaved off.
+_INK_ROW = 0.008
+
+#: Bands closer together than this fraction of the crop's height are one line. Arabic descenders
+#: (ج, ع, م) drop below the baseline and leave a gap between themselves and the body of the line.
+_SAME_LINE_GAP = 0.18
+
+
+def split_text_lines(crop: np.ndarray, *, max_lines: int = 6) -> list[np.ndarray]:
+    """Cut a field crop into one strip per printed line, by horizontal projection.
+
+    WHY THIS EXISTS RATHER THAN LETTING THE RECOGNIZER FIND THE LINES. Handing a crop to a full
+    OCR pipeline runs text DETECTION inside it, and detection returns the words it is confident
+    about — so a word it is not confident about is not returned, and the field comes back missing a
+    word from the MIDDLE of a line with everything around it correct. Nothing downstream can see
+    that: the words that arrived are all real, all correctly read and correctly ordered. A card
+    printing a six-part name came back with three of them, and the three it dropped were the first,
+    the third and the last.
+
+    Detection is the wrong tool here anyway. Its job is finding text on a page, and this crop was
+    already located — the field box says where the text is. What remains is deciding where one
+    printed line ends and the next begins, which a projection profile answers directly: sum the ink
+    per row, and the valleys between the peaks are the gaps between lines.
+
+    The recognizer then reads each strip whole. Every glyph on the line reaches it, in printed
+    order, with no per-word confidence threshold anywhere in the path to drop one.
+
+    Returns the crop unchanged as a single strip whenever the profile does not clearly resolve —
+    a crop full of guilloche, a strip of blank card — because one line read as one line is the
+    behaviour to fall back to, not zero lines.
+    """
+    height, width = crop.shape[:2]
+    if height < 8 or width < 8:
+        return [crop]
+
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+    _, ink = cv2.threshold(gray, 0, 1, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
+    rows = ink.sum(axis=1) >= max(1.0, _INK_ROW * width)
+
+    bands: list[list[int]] = []
+    for index, inked in enumerate(rows):
+        if not inked:
+            continue
+        if bands and index - bands[-1][1] <= max(1, int(_SAME_LINE_GAP * height)):
+            bands[-1][1] = index
+        else:
+            bands.append([index, index])
+
+    if len(bands) < 2 or len(bands) > max_lines:
+        return [crop]
+
+    # A band far thinner than its neighbours is a smudge or a piece of border, not a line of print.
+    tallest = max(bottom - top for top, bottom in bands)
+    kept = [(top, bottom) for top, bottom in bands if (bottom - top) >= tallest * 0.35]
+    if len(kept) < 2:
+        return [crop]
+
+    # Half the gap on each side, so a descender clipped by the profile still lands in its own strip.
+    pad = max(1, int(0.02 * height))
+    return [
+        crop[max(0, top - pad) : min(height, bottom + pad + 1)]
+        for top, bottom in kept
+    ]
+
+
+def _upscaled(crop: np.ndarray, max_upscale: float) -> np.ndarray:
+    """Bring a crop up to the recognizer's working height.
 
     The scale factor is derived from the crop rather than fixed at 2x. A fixed factor is wrong at
     both ends: it leaves a short crop from a distant capture below the recognition input height,
@@ -240,11 +307,88 @@ def prepare_field(crop: np.ndarray, kind: str, *, max_upscale: float = 4.0) -> n
     """
     height = max(crop.shape[0], 1)
     scale = float(np.clip(TARGET_FIELD_HEIGHT / height, 1.0, max_upscale))
-    scaled = (
-        cv2.resize(crop, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
-        if scale > 1.0
-        else crop
-    )
-    # Digit rows are high-contrast and short — thresholding sharpens them. Arabic prose is left in
-    # greyscale, where the recognizer's own normalization does better than a hard cut.
-    return binarize(scaled) if kind == "digits" else scaled
+    if scale <= 1.0:
+        return crop
+    return cv2.resize(crop, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+
+
+def _otsu(image: np.ndarray) -> np.ndarray:
+    """Global threshold. The opposite failure mode to the adaptive one, which is the point.
+
+    Adaptive thresholding fragments glyphs printed over the card's pyramid watermark, because the
+    watermark moves the local mean. Otsu picks one cut for the whole crop, so it survives the
+    watermark and instead fails where the crop's own illumination shades across it. Two ways of
+    being wrong that do not coincide is exactly what an ensemble needs.
+    """
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+    return cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR)
+
+
+def _inverted(image: np.ndarray) -> np.ndarray:
+    """Otsu, inverted. Rescues a crop whose polarity the threshold got backwards.
+
+    A digit row sitting on a dark security tint, or a card photographed against strong backlight,
+    binarizes to white glyphs on black — which a recognizer trained on printed documents reads far
+    worse than the same image the right way round.
+    """
+    return cv2.bitwise_not(_otsu(image))
+
+
+#: Preprocessing variants for a digits field, cheapest and most-often-right first.
+#:
+#: The order matters because reading stops early once enough of them agree, so the common case
+#: costs the first two or three and only a contested field pays for all five. They are chosen to
+#: FAIL DIFFERENTLY rather than to be individually best: an ensemble whose members make the same
+#: mistake is one read wearing five hats, and the whole value here is that the variant which turns
+#: ٢ into ٣ against the watermark is not the variant that loses a digit to a shadow.
+DIGIT_VARIANTS: tuple[str, ...] = ("binary", "grey", "otsu", "clahe", "invert")
+
+_VARIANTS = {
+    "grey": lambda image: image,
+    "binary": binarize,
+    "otsu": _otsu,
+    "clahe": enhance,
+    "invert": _inverted,
+}
+
+#: How much card to take around each variant's crop, as a fraction of the field box.
+#:
+#: Two jobs, and the second is the reason these differ from one another rather than being one
+#: constant. First, a glyph flush against the edge of an image is one a detector drops: the
+#: probability map it thresholds needs background on both sides to close a contour, and the last
+#: word of a right-aligned line is exactly what ends up against the border. Every crop therefore
+#: carries a little card around its text.
+#:
+#: Second, changing the margin changes the SEGMENTATION, not just the pixels. Detection inside a
+#: wider crop splits the row differently, so its errors are less correlated with the narrow crop's
+#: than another colour transform on identical pixels would be. An ensemble is worth exactly as much
+#: as its members' independence, and geometry is the cheapest independence available here.
+VARIANT_MARGIN: dict[str, float] = {
+    "grey": 0.03,
+    "binary": 0.03,
+    "otsu": 0.10,
+    "clahe": 0.10,
+    "invert": 0.03,
+}
+
+#: Prose fields get the margin and nothing else — see the first reason above.
+TEXT_MARGIN = 0.03
+
+
+def field_variant(crop: np.ndarray, variant: str, *, max_upscale: float = 4.0) -> np.ndarray:
+    """One preprocessing variant of a field crop, upscaled to the recognizer's working height."""
+    try:
+        transform = _VARIANTS[variant]
+    except KeyError:
+        raise ValueError(f"unknown field variant: {variant}") from None
+    return transform(_upscaled(crop, max_upscale))
+
+
+def prepare_field(crop: np.ndarray, kind: str, *, max_upscale: float = 4.0) -> np.ndarray:
+    """Per-field finishing: upscale to the recognizer's working height, and binarize where it helps.
+
+    Digit rows are high-contrast and short — thresholding sharpens them. Arabic prose is left in
+    greyscale, where the recognizer's own normalization does better than a hard cut.
+    """
+    return field_variant(crop, "binary" if kind == "digits" else "grey", max_upscale=max_upscale)

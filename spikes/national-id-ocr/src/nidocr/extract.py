@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections import Counter
 from dataclasses import dataclass, field as _field
 from typing import Any
 
@@ -32,11 +33,20 @@ import numpy as np
 
 from .anchor import Anchoring, Line, anchor, structural
 from .arabic import rasm_fold
-from .engine import MockRecognizer, Recognizer
+from .engine import MockRecognizer, Recognition, Recognizer
+from .ensemble import ENOUGH_AGREEMENT, Candidate, Consensus, combine
 from .geometry import Rectification
 from .layout import BACK_FIELDS, FRONT_FIELDS, FieldBox
 from .nid import Repair, gender_agrees, salvage_digits
-from .preprocess import StageTimings, load_bgr, prepare, prepare_field
+from .preprocess import (
+    DIGIT_VARIANTS,
+    TEXT_MARGIN,
+    VARIANT_MARGIN,
+    StageTimings,
+    field_variant,
+    load_bgr,
+    prepare,
+)
 from .postprocess import (
     band,
     cap,
@@ -48,6 +58,7 @@ from .postprocess import (
     clean_text,
 )
 from .quality import QualityReport
+from .trace import NO_TRACE, Trace
 
 LOG = logging.getLogger("nidocr.extract")
 
@@ -63,6 +74,8 @@ class SideResult:
     lines: list[Line] = _field(default_factory=list)
     #: True when detection RAISED rather than returning nothing. See `_detect_lines`.
     detection_failed: bool = False
+    #: Every reading this side produced of the national ID, kept for the cross-side vote.
+    nid_candidates: list[Candidate] = _field(default_factory=list)
 
     def filled(self) -> int:
         return sum(1 for data in self.fields.values() if data.get("value"))
@@ -99,11 +112,65 @@ class ExtractionResult:
         return not self.quality or any(report.readable for report in self.quality.values())
 
 
-def _recognize_box(card: np.ndarray, box: FieldBox, recognizer: Recognizer) -> tuple[str, float]:
-    left, top, right, bottom = box.to_pixels((card.shape[1], card.shape[0]))
+@dataclass(frozen=True)
+class Read:
+    """What one field's recognition produced, and the evidence behind it."""
+
+    text: str
+    score: float
+    #: Present for the national ID only — several readings combined into one answer.
+    consensus: Consensus | None = None
+    #: The individual readings. Kept so the two SIDES of the card can be pooled into one vote
+    #: rather than merely compared: the front and back crops share no pixels at all, which makes
+    #: their errors the most independent evidence anywhere in this pipeline.
+    candidates: tuple[Candidate, ...] = ()
+
+
+def _trace_lines(trace: Trace, label: str, out: Recognition) -> None:
+    """Record what the recognizer was shown and what it said, per printed line.
+
+    This is the observation the whole trace exists for. A field that comes back short is either a
+    line the recognizer never saw or a line it saw and misread, and those have opposite fixes —
+    but from the final string they are identical. Putting the strip image next to the raw text it
+    produced settles it by looking.
+    """
+    for index, line in enumerate(out.lines):
+        trace.image(f"{label} / line {index} (image)", line.image)
+        trace.text(f"{label} / line {index} (raw, score {line.score:.3f})", line.text)
+    trace.text(f"{label} / raw (joined, score {out.score:.3f})", out.text)
+
+
+def _crop(card: np.ndarray, box: FieldBox, margin: float) -> np.ndarray | None:
+    """The field's pixels, with a little of the card around them.
+
+    The margin is real card rather than synthetic padding, taken by widening the box before
+    cropping and clamping at the card's edge. That matters for the reason the margin exists at all:
+    a glyph flush against the edge of an image is one a detector drops, because the probability map
+    it thresholds needs background on both sides to close a contour — and on a right-aligned Arabic
+    line the glyph in that position is the last word of the name.
+    """
+    height, width = card.shape[0], card.shape[1]
+    left, top, right, bottom = box.to_pixels((width, height))
+    grow_x, grow_y = int(box.w * width * margin), int(box.h * height * margin)
+    left, top = max(0, left - grow_x), max(0, top - grow_y)
+    right, bottom = min(width, right + grow_x), min(height, bottom + grow_y)
     if right <= left or bottom <= top:
-        return "", 0.0
-    region = card[top:bottom, left:right]
+        return None
+    return card[top:bottom, left:right]
+
+
+def _recognize_box(
+    card: np.ndarray,
+    box: FieldBox,
+    recognizer: Recognizer,
+    trace: Trace = NO_TRACE,
+    side: str = "",
+) -> Read:
+    label = f"{side} / {box.name}"
+    trace.data(
+        f"{label} / box",
+        {"x": box.x, "y": box.y, "w": box.w, "h": box.h, "kind": box.kind},
+    )
     # The mock replays by field name; real recognizers only ever see pixels.
     if isinstance(recognizer, MockRecognizer):
         recognizer.bind(box.name)
@@ -111,54 +178,182 @@ def _recognize_box(card: np.ndarray, box: FieldBox, recognizer: Recognizer) -> t
     # The national ID and the expiry are numbers: their spaced groups read left to right even
     # on an otherwise right-to-left card. Ordering them as Arabic would reverse the value
     # while keeping every digit correct — a failure that looks entirely plausible.
-    rtl = box.kind != "digits"
     if box.kind != "digits":
-        return _read(recognizer, prepare_field(region, box.kind), rtl)
-
-    # Digits get read twice, thresholded and not, and the better read wins.
-    #
-    # Binarizing digit crops was a reasonable default derived from synthetic fixtures, where the
-    # number sits on clean card stock. On a real Egyptian ID it is printed over the pyramid
-    # watermark, and adaptive thresholding fragments the glyphs against it — which is how a
-    # 14-digit number came back as four digits. But the opposite is true on a clean scan, where
-    # thresholding genuinely sharpens the row.
-    #
-    # Rather than pick one and be wrong for half the inputs, run both and choose by the property
-    # that actually matters: how many digits survived. A digit field has a known shape, so "more
-    # digits recovered" is a real quality signal rather than a heuristic, and confidence only
-    # breaks ties.
-    candidates = [
-        _read(recognizer, prepare_field(region, "digits"), rtl),
-        _read(recognizer, prepare_field(region, "text"), rtl),
-    ]
-    return max(candidates, key=lambda out: (len(salvage_digits(out[0])), out[1]))
+        region = _crop(card, box, TEXT_MARGIN)
+        if region is None:
+            return Read("", 0.0)
+        trace.image(f"{label} / crop", region)
+        return Read(*_read_text(recognizer, region, trace, label))
+    # The full ensemble is spent on the national ID alone. It is the field where a single wrong
+    # digit yields a different, valid-looking person, and the only one whose fourteen-digit shape
+    # makes several reads combinable at all — an expiry that comes back as two different dates
+    # cannot be voted on position by position.
+    return _read_digits(
+        card, box, recognizer, ensemble=box.name == "nationalId", trace=trace, label=label
+    )
 
 
-def _read(recognizer: Recognizer, crop: np.ndarray, rtl: bool) -> tuple[str, float]:
-    out = recognizer.recognize(crop, rtl=rtl)
-    return out.text, out.score
+def _read_text(
+    recognizer: Recognizer, region: np.ndarray, trace: Trace = NO_TRACE, label: str = ""
+) -> tuple[str, float]:
+    """A prose field, read once — and once more differently if the first read came back empty.
+
+    The retry is not an ensemble. For free text there is nothing to vote on: two reads that
+    disagree cannot be adjudicated, because unlike the national ID a name has no structure to check
+    a candidate against. But "nothing at all" is unambiguous, and it is worth one more attempt with
+    the contrast raised before a field is reported empty.
+    """
+    for variant in ("grey", "clahe"):
+        prepared = field_variant(region, variant)
+        trace.image(f"{label} / prepared ({variant})", prepared)
+        out = _read(recognizer, prepared, rtl=True)
+        _trace_lines(trace, f"{label} / {variant}", out)
+        if out.text.strip():
+            return out.text, out.score
+    return "", 0.0
 
 
-def _finalize(name: str, raw: str, score: float) -> dict[str, Any]:
+def _read_digits(
+    card: np.ndarray,
+    box: FieldBox,
+    recognizer: Recognizer,
+    *,
+    ensemble: bool,
+    trace: Trace = NO_TRACE,
+    label: str = "",
+) -> Read:
+    """Read a digits field under several preprocessing variants and combine what they say.
+
+    ONE READ IS NOT ENOUGH FOR THIS FIELD, and the reason is specific rather than general caution.
+    A real card came back as 29208151202457 where it printed 29208151203457 — ٢ read as ٣ at
+    position eleven, inside the sequence. Both strings are valid national IDs, so no structural
+    check, no `parseNationalId` call and no confidence score can tell them apart: the evidence that
+    separates them exists only in the pixels, and the only way to use it is to look more than once.
+
+    The variants are chosen to fail differently (see `preprocess.DIGIT_VARIANTS`), so a digit that
+    survives all of them is corroborated rather than merely repeated. Reading stops as soon as
+    enough of them agree on a structurally valid number, which keeps the ordinary card at two or
+    three reads and spends the full set only where there is genuine disagreement to resolve.
+    """
+    #: Without the ensemble, the two variants this field has always used: thresholded and not.
+    #:
+    #: Binarizing digit crops was a reasonable default derived from synthetic fixtures, where the
+    #: number sits on clean card stock. On a real card it is printed over the pyramid watermark and
+    #: adaptive thresholding fragments the glyphs against it — which is how a fourteen-digit number
+    #: came back as four. But the opposite holds on a clean scan, where thresholding sharpens the
+    #: row. Running both and keeping whichever recovered more digits is the older, cheaper answer,
+    #: and it stays in place for the expiry.
+    variants = DIGIT_VARIANTS if ensemble else DIGIT_VARIANTS[:2]
+
+    best: tuple[str, float] = ("", 0.0)
+    candidates: list[Candidate] = []
+    for variant in variants:
+        # Each variant reads its OWN crop. Widening the margin changes how detection segments the
+        # row, so two variants disagree for reasons beyond a colour transform on identical pixels
+        # — and an ensemble is worth exactly as much as its members' independence.
+        region = _crop(card, box, VARIANT_MARGIN[variant])
+        if region is None:
+            continue
+        prepared = field_variant(region, variant)
+        trace.image(f"{label} / crop ({variant}, margin {VARIANT_MARGIN[variant]})", region)
+        trace.image(f"{label} / prepared ({variant})", prepared)
+        out = _read(recognizer, prepared, rtl=False)
+        _trace_lines(trace, f"{label} / {variant}", out)
+        text, score = out.text, out.score
+        # "More digits recovered" is a real quality signal on a field of known shape, not a
+        # heuristic — so it orders the fallback, and the model's score only breaks ties.
+        if (len(salvage_digits(text)), score) > (len(salvage_digits(best[0])), best[1]):
+            best = (text, score)
+        if not ensemble:
+            continue
+
+        candidates.append(
+            Candidate(variant=variant, digits=clean_national_id(text).value, score=score)
+        )
+        agreed = Counter(c.digits for c in candidates if len(c.digits) == 14)
+        if agreed and agreed.most_common(1)[0][1] >= ENOUGH_AGREEMENT:
+            settled = combine(candidates)
+            if settled is not None and settled.valid:
+                break
+
+    settled = combine(candidates) if ensemble else None
+    if candidates:
+        trace.data(
+            f"{label} / ensemble",
+            {
+                "candidates": [
+                    {"variant": c.variant, "digits": c.digits, "score": round(c.score, 4)}
+                    for c in candidates
+                ],
+                "chosen": None
+                if settled is None
+                else {
+                    "value": settled.value,
+                    "agreement": settled.agreement,
+                    "support": settled.support,
+                    "reads": settled.total,
+                    "valid": settled.valid,
+                },
+            },
+        )
+    if settled is None:
+        return Read(*best, candidates=tuple(candidates))
+    return Read(settled.value, settled.score, settled, tuple(candidates))
+
+
+def _read(recognizer: Recognizer, crop: np.ndarray, rtl: bool) -> Recognition:
+    """One recognizer call, with a failure costing the field rather than the card.
+
+    The recognizer is native code and can raise from inside C++ with no Python-level cause. Letting
+    that propagate turns one unreadable crop into a 500 for a card whose other five fields read
+    perfectly — the same trade `_detect_lines` already makes, which its docstring wrongly claimed
+    was being made here too.
+    """
+    try:
+        return recognizer.recognize(crop, rtl=rtl)
+    except Exception:  # noqa: BLE001 — anything can come out of the native predictor
+        LOG.warning("recognition failed on a field crop; leaving it empty", exc_info=True)
+        return Recognition(text="", score=0.0)
+
+
+def _finalize(
+    name: str, raw: str, score: float, consensus: Consensus | None = None
+) -> dict[str, Any]:
     """Apply the field's cleanup and decide its confidence band."""
     if name == "nationalId":
         fixed: Repair = clean_national_id(raw)
-        return {
-            "value": fixed.value,
-            # A repair is a deduction from structure, not the model having read the digits, so it
-            # can rescue a field but must never present it as certainly read. Ambiguity floors the
-            # band outright: several different people's numbers were equally close to this read.
-            "confidence": "low"
+        # A repair is a deduction from structure, not the model having read the digits, so it can
+        # rescue a field but must never present it as certainly read. Ambiguity floors the band
+        # outright: several different people's numbers were equally close to this read.
+        confidence = (
+            "low"
             if (fixed.ambiguous or not fixed.valid)
             else cap(band(score), "medium")
             if fixed.repaired
-            else band(score),
+            else band(score)
+        )
+        data = {
+            "value": fixed.value,
+            "confidence": confidence,
             "raw": raw,
             "score": score,
             "repaired": fixed.repaired,
             "ambiguous": fixed.ambiguous,
             "valid": fixed.valid,
         }
+        if consensus is not None:
+            data["agreement"] = consensus.agreement
+            data["reads"] = consensus.total
+            if not consensus.valid:
+                # Every variant, and every combination of them, produced something that cannot be
+                # a national ID. That is not a number to present as read.
+                data["confidence"] = "low"
+            elif consensus.deduced or consensus.agreement == "single":
+                # Assembled position-by-position out of reads that disagreed, or produced by one
+                # variant while the others produced nothing usable. Both are worth keeping and
+                # worth flagging, and the way to flag them is to refuse the top band.
+                data["confidence"] = cap(data["confidence"], "medium")
+        return data
     if name == "nationalIdExpiry":
         value, parsed = clean_expiry(raw)
         return {
@@ -238,10 +433,26 @@ def _detect_lines(card: np.ndarray, recognizer: Recognizer, side: str) -> tuple[
 
 
 def _process_side(
-    image: np.ndarray, side: str, recognizer: Recognizer, timings: StageTimings
+    image: np.ndarray,
+    side: str,
+    recognizer: Recognizer,
+    timings: StageTimings,
+    trace: Trace = NO_TRACE,
 ) -> SideResult:
     """Prepare one face, anchor its boxes to the text found on it, and read every field."""
     prepared = prepare(image, timings, side=side)
+    trace.image(f"{side} / card / 00 original", image)
+    trace.image(f"{side} / card / 01 rectified and enhanced", prepared.image)
+    trace.data(
+        f"{side} / card / 02 quality",
+        {
+            "verdict": prepared.quality.verdict,
+            "reasons": list(prepared.quality.reasons),
+            "metrics": {k: round(v, 4) for k, v in prepared.quality.metrics.items()},
+            "rectification": prepared.rectification.method,
+            "dewarped": prepared.rectification.dewarped,
+        },
+    )
     result = SideResult(quality=prepared.quality, rectification=prepared.rectification)
     boxes = _side_boxes(side)
     size = (prepared.image.shape[1], prepared.image.shape[0])
@@ -249,6 +460,14 @@ def _process_side(
     started = time.perf_counter()
     result.lines, result.detection_failed = _detect_lines(prepared.image, recognizer, side)
     timings.record(f"{side}:detect", started)
+    trace.data(
+        f"{side} / card / 03 detected lines",
+        {
+            "failed": result.detection_failed,
+            "count": len(result.lines),
+            "lines": [text for _, text, _ in result.lines],
+        },
+    )
 
     wanted = {box.name for box in boxes} | set(_BACK_STRUCTURAL_EXTRA if side == "back" else ())
     result.anchoring = anchor(boxes, result.lines, size)
@@ -257,12 +476,33 @@ def _process_side(
             result.anchoring.boxes.setdefault(name, box)
             result.anchoring.sources.setdefault(name, "structural")
 
+    trace.data(
+        f"{side} / card / 04 anchored boxes",
+        {
+            name: {
+                "x": round(box.x, 4),
+                "y": round(box.y, 4),
+                "w": round(box.w, 4),
+                "h": round(box.h, 4),
+                "source": result.anchoring.sources.get(name, "nominal"),
+            }
+            for name, box in result.anchoring.boxes.items()
+        },
+    )
+    trace.image(f"{side} / card / 05 boxes drawn", _draw_boxes(prepared.image, result.anchoring))
+
     ceiling = prepared.quality.confidence_ceiling
     for name, box in result.anchoring.boxes.items():
         started = time.perf_counter()
-        raw, score = _recognize_box(prepared.image, box, recognizer)
+        read = _recognize_box(prepared.image, box, recognizer, trace, side)
         timings.record(f"recognize:{side}:{name}", started)
-        data = _finalize(name, raw, score)
+        if name == "nationalId":
+            result.nid_candidates = list(read.candidates)
+        data = _finalize(name, read.text, read.score, read.consensus)
+        trace.data(
+            f"{side} / {name} / final",
+            {k: v for k, v in data.items() if k not in ("score",)},
+        )
         # The capture's own quality bounds every field it produced. A model score describes how
         # cleanly the recognizer read what it was given; it says nothing about whether the pixels
         # carried the information. On a blurred crop those come apart badly — fewer competing
@@ -351,13 +591,22 @@ def _better(first: SideResult, second: SideResult) -> SideResult:
 
 
 def _reconcile_national_id(sides: dict[str, SideResult]) -> dict[str, Any] | None:
-    """Combine the number read from the front with the one read from the back.
+    """Combine everything both sides read of the number into one answer.
 
-    Agreement between two independent reads is the strongest evidence available anywhere in this
-    pipeline — far stronger than either model score, because the two crops share no pixels and
-    their errors are uncorrelated. Disagreement is equally informative and is handled by refusing
-    to choose: the structurally valid one is preferred only when the other is not valid at all, and
-    two valid but different numbers drop to `low` so the reviewer resolves it against the card.
+    The two crops share no pixels at all, which makes their errors the most independent evidence
+    anywhere in this pipeline — far stronger than either model score. So the readings are POOLED
+    into a single vote rather than merely compared: five variants on the front and five on the back
+    give ten opinions on each of the fourteen digits, and a digit misread on the front has to be
+    misread identically on the back to survive.
+
+    Pooling strictly beats the comparison it replaces. Comparing two final values could only ever
+    report that they differed and drop the field to `low`, keeping the front's — which on a genuine
+    disagreement means presenting a number the pipeline has active reason to doubt. Voting resolves
+    the disagreement digit by digit instead, and reserves `low` for a number no combination of the
+    reads can make valid.
+
+    What does not change: two sides landing on the same fourteen digits is still the strongest
+    outcome there is, and still the only route to `high`.
     """
     readings = {
         side: result.fields["nationalId"]
@@ -366,6 +615,7 @@ def _reconcile_national_id(sides: dict[str, SideResult]) -> dict[str, Any] | Non
     }
     if not readings:
         return None
+
     if len(readings) == 1:
         return next(iter(readings.values()))
 
@@ -385,7 +635,47 @@ def _reconcile_national_id(sides: dict[str, SideResult]) -> dict[str, Any] | Non
         chosen["agreement"] = "one-side-invalid"
         return chosen
 
-    disputed = dict(front)
+    # Two different numbers, both of which could be real. Comparing the finished values can only
+    # report that they differ; the readings BEHIND them can do better, because the disagreement is
+    # usually confined to one or two positions and every other digit has ten reads backing it.
+    return _vote_across_sides(sides, front)
+
+
+def _vote_across_sides(sides: dict[str, SideResult], fallback: dict[str, Any]) -> dict[str, Any]:
+    """Resolve a front/back disagreement by pooling every reading of both crops into one vote.
+
+    Ten opinions on each of fourteen digits — five preprocessing variants per side — and the two
+    crops share no pixels at all, so a digit misread on the front has to be misread identically on
+    the back to survive. That is a far stronger position than the comparison this replaces, which
+    could only ever say "these differ" and hand the reviewer the front's number anyway.
+
+    It stops short of settling every disagreement, deliberately. A pool that splits evenly between
+    two valid numbers is not evidence for either — it is two numbers, and choosing by score would
+    hand a reviewer a plausible number for possibly the wrong person, which is the one outcome that
+    does not get re-read. So a clear majority resolves it at `medium`, and anything less is a
+    conflict at `low`.
+    """
+    pooled = [
+        Candidate(
+            variant=f"{side}:{candidate.variant}",
+            digits=candidate.digits,
+            score=candidate.score,
+        )
+        for side, result in sides.items()
+        for candidate in result.nid_candidates
+    ]
+    settled = combine(pooled)
+
+    disputed = dict(fallback)
+    if settled is not None and settled.valid and settled.support * 2 > settled.total:
+        disputed["value"] = settled.value
+        disputed["score"] = settled.score
+        disputed["valid"] = True
+        disputed["reads"] = settled.total
+        disputed["confidence"] = cap(band(settled.score), "medium")
+        disputed["agreement"] = "cross-side-majority"
+        return disputed
+
     disputed["confidence"] = "low"
     disputed["agreement"] = "conflict"
     return disputed
@@ -395,6 +685,7 @@ def extract(
     front_path: str | None,
     back_path: str | None,
     recognizer: Recognizer,
+    trace: Trace = NO_TRACE,
 ) -> ExtractionResult:
     """Run the pipeline over one card. Either side may be absent."""
     result = ExtractionResult()
@@ -405,9 +696,11 @@ def extract(
         if path is None:
             continue
         image = load_bgr(path)
-        side_result = _process_side(image, side, recognizer, result.timings)
+        side_result = _process_side(image, side, recognizer, result.timings, trace)
         if _needs_retry(side, side_result):
-            inverted = _process_side(_rotate_180(image), side, recognizer, result.timings)
+            inverted = _process_side(
+                _rotate_180(image), side, recognizer, result.timings, trace
+            )
             chosen = _better(side_result, inverted)
             if chosen is inverted:
                 result.diagnostics.setdefault(side, {})["rotated180"] = True
@@ -430,6 +723,13 @@ def extract(
         notes["linesDetected"] = len(side_result.lines)
         if side_result.detection_failed:
             notes["detectionFailed"] = True
+        # How much the number was corroborated on THIS side, before the two sides are compared.
+        # 'unanimous' over four reads and 'voted' over four disagreeing ones are very different
+        # states behind the same fourteen digits, and only one of them is worth trusting.
+        number = side_result.fields.get("nationalId", {})
+        if number.get("agreement"):
+            notes["nationalIdReads"] = number.get("reads", 0)
+            notes["nationalIdAgreement"] = number["agreement"]
         if side == "back":
             # See `_looks_like_the_back`. Surfaced so "you photographed the front twice" stops
             # being indistinguishable from "the recognizer is bad at Arabic".
@@ -456,5 +756,35 @@ def extract(
                 reconciled["confidence"] = "low"
                 result.diagnostics.setdefault("back", {})["genderMismatch"] = True
 
+    trace.data("result / fields", result.fields)
+    trace.data("result / diagnostics", result.diagnostics)
+    trace.data("result / payload sent to the API", result.as_raw_ocr_result())
+
     result.total_ms = (time.perf_counter() - started_all) * 1000.0
     return result
+
+
+def _draw_boxes(card: np.ndarray, anchoring: Anchoring) -> np.ndarray:
+    """The card with every field box drawn on it, labelled by where the box came from.
+
+    One picture answers the question that has been answered wrongly three times: is this field's
+    rectangle actually on the field's text? Green boxes were snapped onto detected lines, amber
+    ones kept the profile's geometry because detection found nothing near them.
+    """
+    canvas = card.copy()
+    for name, box in anchoring.boxes.items():
+        source = anchoring.sources.get(name, "nominal")
+        colour = (80, 200, 80) if source == "snapped" else (60, 170, 240)
+        left, top, right, bottom = box.to_pixels((canvas.shape[1], canvas.shape[0]))
+        cv2.rectangle(canvas, (left, top), (right, bottom), colour, 2)
+        cv2.putText(
+            canvas,
+            f"{name}:{source}",
+            (left + 4, max(14, top - 6)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.45,
+            colour,
+            1,
+            cv2.LINE_AA,
+        )
+    return canvas

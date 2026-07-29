@@ -65,6 +65,29 @@ near it, then overrides that entirely for the two fields whose content identifie
 exactly fourteen digits is the national ID wherever it is printed, and a full year/month/day is the
 expiry.
 
+**A field crop is never detected inside.** Handing a located crop to a full OCR pipeline runs text
+detection on it again, and detection returns the words it is *confident about* — so a word it is
+not confident about is simply absent, and the field arrives missing a word from the middle of a
+line with everything around it correct, correctly read and correctly ordered. Nothing downstream
+can see that: no low score, no gap in the string, no structural check. A card printing a six-part
+name came back with three, and the missing three were the first, the third and the last — a pattern
+no crop can produce. Detection is the wrong tool at that point anyway: its job is finding text on a
+page, and the field box has already done that. `preprocess.split_text_lines` cuts the crop into
+printed lines from its ink profile, and the recognition model reads each strip whole, so every
+glyph on the line reaches it with no per-word threshold anywhere in the path. Nothing re-orders
+anything either — one strip is one line, emitted by the model in logical order — which removes the
+last place RTL handling could drop or resequence part of a name.
+
+**Snapping tightens vertically and never horizontally**, and the asymmetry is load-bearing. Fields
+are stacked a line apart, so a crop that spans too many rows picks up its neighbour's text —
+vertical tightening is the whole point. Nothing is printed *beside* the name, the address or the
+number, so horizontal tightening excludes no neighbour and costs something real: any part of the
+line **detection itself missed**. A short word at the end of a right-aligned line is exactly what a
+detector drops, and snapping used to rewrite the generous nominal box into one that stopped where
+detection stopped — putting the word outside the pixels recognition was given, where no amount of
+re-reading could reach it. The horizontal extent is now the union with the nominal box: anchoring
+may move a crop and may grow one, but it may not trim one.
+
 **The front text boxes are deliberately generous, and the card's own words are removed by content.**
 A box drawn tightly around one card's name is drawn tightly around *that* card's name: the next
 card's given name sat above the box's top edge and the last word of its family chain ran past its
@@ -76,21 +99,34 @@ text column and `boilerplate.py` strips the furniture by phrase, matching whole 
 the rasm-folded text so that a district like `مصر الجديدة` can never be confused with the
 `جمهورية مصر العربية` printed across the top.
 
-### The national ID gets four independent checks
+### The national ID gets five independent checks
 
 It is the field where a single wrong digit is most expensive — it does not give a slightly wrong
 answer, it gives a different, valid-looking person — so it is the field with the most corroboration.
 
 | Check | Reaches | What it does |
 | --- | --- | --- |
+| Read ensemble | all 14 | The crop is read under several preprocessing variants chosen to **fail differently** — adaptive threshold, greyscale, Otsu, CLAHE, inverted. Identical readings corroborate each other; disagreeing ones are voted position by position. Reading stops as soon as three agree on a valid number, so an ordinary card pays for three reads and only a contested one pays for five. |
 | Structural repair | digits 1-9 | Century, calendar date and governorate constrain these. A read that cannot be a national ID is searched outward by edit distance over known Indic confusions; a **unique** valid result at the nearest distance is accepted at `medium`, a tie is refused as ambiguous. |
 | Both sides | all 14 | The number is printed on the front AND the back. Two crops sharing no pixels have independent errors, so agreement is stronger evidence than any model score → `high`. Two different valid numbers → `low`. |
 | Gender parity | digit 13 | The parity digit is otherwise unconstrained. The back states the same fact in words, and words and digits do not fail the same way. Disagreement demotes the number — it never populates a field, because `parseNationalId` owns gender. |
-| Length | — | 13 or 15 digits is refused rather than guessed. Nothing in the string says which digit was dropped. |
+| Length | — | 13 or 15 digits is refused rather than guessed, except where the extra digit is a repeat — an insertion leaves one behind, and removing it is unique where blind deletion is not. |
 
-Digits 10-12 are reachable by none of these, and the search deliberately never edits them: there,
-"repair" could only turn one valid-looking identity into another. That is what the review dialog is
-for.
+**Why the ensemble is not redundant with validation.** A card came back as `…203408` where it
+printed `…202408`: one digit, inside the sequence. *Both strings are valid national IDs* — same
+century, same birth date, same governorate — so `is_structurally_valid` accepts each and
+`parseNationalId` decodes each into a consistent person. Validation cannot separate them and no
+amount of tightening it will, because the information that would is not in the number. It is in the
+pixels, and the only way to use it is to look at them more than once.
+
+Digits 10-12 are reachable by no *structural* check, and the repair search deliberately never edits
+them: there, "repair" could only turn one valid-looking identity into another. The ensemble and the
+both-sides comparison are the only two things that reach them, which is why both exist.
+
+Confidence follows the evidence: a number several variants read identically keeps the model's own
+band; one assembled position-by-position out of reads that disagreed is capped at `medium`, because
+assembling is a deduction; and if no variant and no combination of them yields a valid number, the
+field is `low` and the best-effort string still goes to the reviewer rather than being dropped.
 
 ### Arabic is matched by letter skeleton, not by string
 
@@ -133,6 +169,35 @@ make measure    # the deliverable: accuracy, timing, image size, CPU/memory, fai
 `make serve` runs the sidecar. `make test` and `make check` need only `numpy`,
 `opencv-python-headless`, `Pillow`, `pytest`. `make build` needs Docker and — for the build only —
 network access to PyPI and the PaddleOCR model host; the resulting image needs neither.
+
+### Seeing where a card actually went wrong
+
+```bash
+curl -s -X POST https://<service>/trace \
+  -H 'content-type: application/json' \
+  -d "{\"frontImageBase64\":\"$(base64 -w0 front.jpg)\",\"backImageBase64\":\"$(base64 -w0 back.jpg)\"}" \
+  > trace.html && open trace.html
+```
+
+`POST /trace` takes the same body as `/extract` and returns **one self-contained HTML page** with
+every intermediate the pipeline produced, in order: the original image, the rectified card, the
+quality metrics, the detected lines, the anchored boxes drawn on the card, and then per field — the
+crop, the preprocessed variants, each line strip handed to the recognizer, the **raw text that came
+back before any post-processing**, the ensemble's per-variant readings and vote, and the final
+value. Locally: `python -m nidocr.trace --front a.jpg --back b.jpg --out trace.html`.
+
+It runs the real `extract()` with a collector attached rather than a re-implementation of it, so
+what the page shows is what production did.
+
+This is the tool for the question that repeatedly could not be answered from a final string: **if
+the raw read already misses a word, the recognizer is the problem; if the raw read is complete and
+the final value is not, the processing is.** Those have opposite fixes and look identical from
+outside.
+
+> ⚠️ **The trace contains the whole card** — photograph, name, address, number. Unlike `/diagnose`,
+> which is coordinates-only and safe to paste anywhere, this is for a card whose holder has
+> consented, and should not be attached to an issue or a chat. `OCR_TRACE_DISABLED=1` turns the
+> endpoint off.
 
 ---
 
@@ -273,6 +338,8 @@ src/nidocr/
   quality.py      is this capture readable? reason codes + the confidence ceiling
   anchor.py       moving the boxes onto the text detection actually found
   boilerplate.py  the words printed on every card, which belong to nobody
+  ensemble.py     combining several readings of the number into one answer
+  trace.py        every intermediate the pipeline produces, as one HTML page
   preprocess.py   deskew / denoise / enhance / sharpen / binarize, individually timed
   engine.py       Recognizer protocol; PaddleRecognizer (lazy import) + MockRecognizer
   postprocess.py  field-typed cleanup, vocabulary snapping, confidence bands

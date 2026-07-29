@@ -34,6 +34,7 @@ from pathlib import Path
 from .diagnose import diagnose
 from .extract import extract
 from .layout import active_profile_name
+from .trace import Trace, render_html
 
 LOG = logging.getLogger("nidocr.service")
 
@@ -101,6 +102,17 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _send_html(self, page: str) -> None:
+        """The trace comes back as a page rather than JSON, because the hard part of a diagnostic
+        is not producing it but getting it out of a container and in front of someone. Every image
+        is inlined, so it survives being saved and emailed."""
+        body = page.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_GET(self) -> None:  # noqa: N802 — BaseHTTPRequestHandler API
         if self.path.rstrip("/") != "/health":
             self._send(404, {"error": "not found"})
@@ -119,8 +131,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802 — BaseHTTPRequestHandler API
         route = self.path.rstrip("/")
-        if route not in ("/extract", "/diagnose"):
+        if route not in ("/extract", "/diagnose", "/trace"):
             self._send(404, {"error": "not found"})
+            return
+        if route == "/trace" and os.environ.get("OCR_TRACE_DISABLED") == "1":
+            self._send(403, {"error": "tracing is disabled on this deployment"})
             return
 
         length = int(self.headers.get("Content-Length") or 0)
@@ -158,6 +173,24 @@ class Handler(BaseHTTPRequestHandler):
                     {side: data["regionCount"] for side, data in report.items()},
                 )
                 self._send(200, report)
+                return
+
+            if route == "/trace":
+                # Runs the REAL extraction with a collector attached, rather than a re-implementation
+                # of it — a trace assembled by a parallel code path would show what the trace does,
+                # not what production does, and that distinction is the whole point of having one.
+                recognizer = get_recognizer()
+                keep = getattr(recognizer, "keep_line_images", None)
+                trace = Trace()
+                try:
+                    if keep is not None:
+                        recognizer.keep_line_images = True
+                    extract(front, back, recognizer, trace)
+                finally:
+                    if keep is not None:
+                        recognizer.keep_line_images = keep
+                LOG.info("traced a card: %d artefacts", len(trace.entries))
+                self._send_html(render_html(trace))
                 return
 
             started = time.perf_counter()

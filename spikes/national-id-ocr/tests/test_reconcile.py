@@ -20,10 +20,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from nidocr.ensemble import Candidate  # noqa: E402
 from nidocr.extract import SideResult, _better, _printed_gender, _reconcile_national_id  # noqa: E402
 
 VALID = "29503141234567"
-OTHER_VALID = "28709011202408"
+#: A second valid number, differing everywhere — for the case where the two sides disagree
+#: outright rather than by a digit. Invented, like every number in this repository.
+OTHER_VALID = "30105202143210"
 
 
 def _side(value: str, *, valid: bool, confidence: str = "medium") -> SideResult:
@@ -80,6 +83,63 @@ def test_two_different_valid_numbers_are_a_conflict_not_a_choice():
     )
     assert combined["confidence"] == "low"
     assert combined["agreement"] == "conflict"
+
+
+# ── Resolving a disagreement by pooling the readings behind it ──
+
+
+def _side_with_reads(value: str, *, valid: bool, reads: list[tuple[str, float]]) -> SideResult:
+    side = _side(value, valid=valid, confidence="high")
+    side.nid_candidates = [
+        Candidate(variant=f"v{index}", digits=digits, score=score)
+        for index, (digits, score) in enumerate(reads)
+    ]
+    return side
+
+
+def test_a_disagreement_is_resolved_by_the_readings_behind_the_two_values():
+    """Comparing two finished values can only report that they differ. The reads can do better.
+
+    Each side ran five preprocessing variants, so ten opinions exist on each of the fourteen
+    digits — and the front and back crops share no pixels at all, which makes their errors the most
+    independent evidence in this pipeline. A digit misread on the front has to be misread
+    identically on the back to survive the pool.
+
+    Here the front settled on a number only one of its variants read, while three of the four other
+    reads across both sides agree on another. The disagreement is not a coin flip; it has a
+    majority, and the majority is what the card says.
+    """
+    front = _side_with_reads(OTHER_VALID, valid=True, reads=[(OTHER_VALID, 0.99), (VALID, 0.7)])
+    back = _side_with_reads(VALID, valid=True, reads=[(VALID, 0.8), (VALID, 0.8)])
+
+    combined = _reconcile_national_id({"front": front, "back": back})
+    assert combined["value"] == VALID
+    assert combined["confidence"] == "medium", "a resolved conflict is not a clean read"
+    assert combined["agreement"] == "cross-side-majority"
+
+
+def test_an_evenly_split_pool_is_still_a_conflict():
+    """Resolution requires a majority, not a winner.
+
+    Two numbers with equal support is not evidence for either — it is two numbers. Choosing by
+    score would hand a reviewer a plausible number for possibly the wrong person, which is the one
+    outcome that does not get re-read against the card.
+    """
+    front = _side_with_reads(VALID, valid=True, reads=[(VALID, 0.9), (VALID, 0.9)])
+    back = _side_with_reads(OTHER_VALID, valid=True, reads=[(OTHER_VALID, 0.9), (OTHER_VALID, 0.9)])
+
+    combined = _reconcile_national_id({"front": front, "back": back})
+    assert combined["confidence"] == "low"
+    assert combined["agreement"] == "conflict"
+
+
+def test_the_sides_agreeing_outright_is_still_the_strongest_outcome():
+    """Pooling resolves disagreements; it does not replace agreement, which needs no resolving."""
+    front = _side_with_reads(VALID, valid=True, reads=[(VALID, 0.8)])
+    back = _side_with_reads(VALID, valid=True, reads=[(VALID, 0.8)])
+
+    combined = _reconcile_national_id({"front": front, "back": back})
+    assert combined["confidence"] == "high" and combined["agreement"] == "both-sides"
 
 
 def test_one_side_alone_passes_through_unchanged():

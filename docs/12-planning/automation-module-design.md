@@ -1,9 +1,16 @@
 # Automation Module — Architecture & Design
 
-**Status: DRAFT — awaiting approval.** Not frozen. No implementation until §14 blockers are
-resolved and the approver freezes this document. Later revisions supersede earlier text.
+**Status: FROZEN (Revision 1, 2026-07-29 — approved by the approver).**
+Approved for implementation, starting at A-0. Later sections supersede earlier ones wherever they
+conflict (§16 > §1–§15). Amendments after the freeze require a new recorded revision.
 
-**Companion ADR:** [ADR-018 — n8n as the Automation Engine](../03-decisions/ADR-018-automation-engine.md)
+**Companion ADR:** [ADR-018 — a provider-backed Automation Service](../03-decisions/ADR-018-automation-engine.md)
+
+> **What changed in Revision 1.** The approver resolved all four §14 blockers and added three
+> structural requirements: an **Automation Service** that business modules talk to instead of n8n;
+> an **`AutomationProvider` interface** so the engine is replaceable; and **templates as versioned,
+> importable packages** rather than compiled-in seeds. §16 records the decisions; §2.1, §11 and §13
+> are rewritten to match, and supersede their Draft text.
 
 ---
 
@@ -21,9 +28,10 @@ ECMS
 └── Automation    ← this module (/automation) — subscribes, orchestrates, calls back
 ```
 
-**In scope:** the Automation module (registry, executions, credentials, variables, templates,
-scheduling, monitoring), the event→trigger bridge, the callback API surface for n8n, credential
-encryption, the n8n deployment, and the template catalogue.
+**In scope:** the Automation Service and its provider seam (§2.1), the Automation module
+(registry, executions, credentials, variables, templates, scheduling, monitoring), the
+event→trigger bridge, the callback API surface, credential encryption, the n8n deployment, and the
+template catalogue.
 
 **Out of scope, recorded here so it is not assumed:** replacing the Workflow Engine (ADR-011);
 letting automations own entity state; exposing n8n's builder to anyone outside ECMS auth; automating
@@ -57,9 +65,16 @@ a rule, not a guideline, and §7 enforces it in the token scope.
    ┌───────────────────────────────────────────────────────────────────┐
    │  ECMS API  (Railway: ecms-api)                                    │
    │                                                                   │
-   │   modules/automation/                                             │
-   │     workflows/     executions/    credentials/                    │
-   │     variables/     templates/     triggers/                       │
+   │   modules/hr · fleet · treasury · …   ← depend ONLY on ▼          │
+   │                                                                   │
+   │   platform/automation/   ◀── the Automation Service (§2.1)        │
+   │     automation.service.ts      the only door for modules          │
+   │     automation.provider.ts     the AutomationProvider interface   │
+   │     providers/n8n · providers/null                                │
+   │                                                                   │
+   │   modules/automation/     ◀── the user-facing module (registry)   │
+   │     workflows/  executions/  credentials/                         │
+   │     variables/  templates/   triggers/                            │
    │                                                                   │
    │   platform/kernel/event-bus.ts  ← already exists (ADR-008)        │
    │   platform/rbac, audit, notifications, files, pdf, scheduler      │
@@ -85,7 +100,81 @@ volume cannot survive a replica change and makes backups a file-copy problem; Po
 own recommendation for production and Railway provisions it natively. ECMS's own data stays on
 Mongo (ADR-005) — this is n8n's private store, not an ECMS datastore, and no ECMS code reads it.
 
-### 2.1 The two directions, and how each is secured
+### 2.1 The Automation Service and the provider seam (Revision 1)
+
+Two components with deliberately different jobs. Collapsing them is the mistake this section
+exists to prevent.
+
+**`platform/automation/` — the Automation Service.** A platform service, peer to Files,
+Notifications and PDF. It is *the only thing in ECMS that knows an automation runtime exists*.
+
+```
+apps/api/src/platform/automation/
+  automation.provider.ts     the AutomationProvider interface + capability flags
+  automation.service.ts      the facade every caller uses
+  automation.registry.ts     provider selection + DI wiring
+  providers/
+    n8n/n8n.provider.ts      N8nAutomationProvider   (REST client, webhook dispatch)
+    null/null.provider.ts    NullAutomationProvider  (feature flag off)
+  index.ts                   the barrel — nothing else may be imported (ADR-003)
+```
+
+**`modules/automation/` — the Automation module.** The user-facing feature: registry collections,
+REST surface, permissions, UI. It depends on `platform/automation`'s barrel exactly like any other
+consumer. It has no privileged path to a provider either.
+
+**The interface.** Shaped by what a runtime must do, not by what n8n happens to offer:
+
+```ts
+export interface AutomationProvider {
+  readonly id: string;                        // 'n8n' | 'native' | 'null'
+  readonly capabilities: AutomationCapabilities;
+
+  createWorkflow(spec: WorkflowSpec): Promise<ProviderWorkflowRef>;
+  updateWorkflow(ref: ProviderWorkflowRef, spec: WorkflowSpec): Promise<void>;
+  deleteWorkflow(ref: ProviderWorkflowRef): Promise<void>;
+  setEnabled(ref: ProviderWorkflowRef, enabled: boolean): Promise<void>;
+
+  dispatch(ref: ProviderWorkflowRef, input: DispatchInput): Promise<ProviderExecutionRef>;
+  cancel(exec: ProviderExecutionRef): Promise<void>;
+  getExecution(exec: ProviderExecutionRef): Promise<ProviderExecutionState>;
+
+  exportGraph(ref: ProviderWorkflowRef): Promise<WorkflowGraph>;
+  importGraph(graph: WorkflowGraph): Promise<ProviderWorkflowRef>;
+
+  builderUrl?(ref: ProviderWorkflowRef): Promise<string>;   // capability-gated
+  health(): Promise<ProviderHealth>;
+}
+
+export interface AutomationCapabilities {
+  visualBuilder: boolean;      // n8n true, a native runner false
+  graphImportExport: boolean;
+  cancellation: boolean;
+  perNodeProgress: boolean;    // drives whether the execution timeline is available
+}
+```
+
+**Capabilities are declared, not assumed.** A provider without a visual builder reports
+`visualBuilder: false` and the UI hides the "Open builder" affordance rather than rendering a
+broken iframe. Hard-coding "there is always a builder" is precisely the coupling this seam removes.
+
+**What a business module is allowed to touch.** One function:
+
+```ts
+import { automationService } from '../../platform/automation';
+await automationService.trigger('hr.employee.created', payload);   // that is the whole surface
+```
+
+In practice modules will rarely call even that — the event bus already carries everything, and
+`trigger()` exists for the explicit-hook case in §4. **A module importing anything from
+`providers/` is a lint failure**, enforced the same way ADR-003's other seam rules are.
+
+**Feature flags.** `AUTOMATION_ENABLED` (default `false`) and `AUTOMATION_PROVIDER`
+(`n8n` | `null`). With the flag off, `NullAutomationProvider` accepts and drops dispatches, records
+them as `skipped` executions for visibility, and the module's navigation entry is hidden. This is
+what lets A-0 through A-8 merge to `main` without any user seeing a half-built feature.
+
+### 2.2 The two directions, and how each is secured
 
 **Inbound (ECMS → n8n): an event fires an automation.**
 
@@ -439,11 +528,91 @@ Arabic/RTL throughout, matching the rest of the platform.
 
 ---
 
-## 11. Workflow templates (50)
+## 11. Workflow templates (Revision 1 — packages, not seeds)
 
-Ships as `automation_templates` seeds. Each is an n8n graph plus prerequisites. Templates whose
-events belong to unbuilt modules install as `draft` and cannot be enabled until the event exists —
-the installer checks the catalogue, so a template can never silently listen to nothing.
+**Templates are never compiled into the application.** They are versioned packages that are
+imported, exported and updated at runtime, so the catalogue evolves without a deployment. This
+supersedes the Draft text, which seeded them from application code.
+
+### 11.1 The package format
+
+A template package is a signed JSON document:
+
+```jsonc
+{
+  "key": "hr.welcome-email",
+  "version": "1.2.0",                       // semver — the catalogue keeps every version
+  "name":  { "en": "Welcome email on hire", "ar": "بريد ترحيبي عند التعيين" },
+  "category": "hr",
+  "description": { "en": "…", "ar": "…" },
+  "requires": {
+    "events":       ["hr.employee.created"],
+    "credentials":  [{ "type": "smtp", "label": "Outbound mail" }],
+    "capabilities": ["graphImportExport"],
+    "platform":     "^2.2"
+  },
+  "provider": { "id": "n8n", "minVersion": "1.40.0" },
+  "graph": { /* provider-native workflow graph */ },
+  "changelog": { "en": "Adds Arabic body", "ar": "…" },
+  "signature": "…"                          // §11.4
+}
+```
+
+`requires` is what makes installation safe: the installer resolves it against the live event
+catalogue (§3.3), the provider's declared capabilities (§2.1) and the platform version. A template
+whose event does not exist yet **installs as `draft` and cannot be enabled** — so a template can
+never silently listen to nothing, and the eight not-yet-built modules (§3.2) are handled by data
+rather than by branching in code.
+
+### 11.2 Lifecycle
+
+```
+import ──▶ available ──▶ install ──▶ draft workflow ──▶ (author edits) ──▶ enabled
+   ▲                        │
+   └── update (new version) ┘   installed workflows are NOT auto-upgraded
+```
+
+**An installed workflow is a copy, not a live link.** Publishing v1.3.0 of a template never changes
+a workflow already running in production — it surfaces "an update is available" on the workflow,
+with a diff, and a human chooses. Silent upgrades of running automations would mean a catalogue
+edit could change what happens to payroll on a Friday night.
+
+`automation_templates` stores every version; `automation_workflows.templateKey` +
+`templateVersion` records what a workflow was installed from, so the fleet is auditable ("which
+workflows are still on the version with the bug").
+
+### 11.3 Import and export
+
+| Path | Mechanism |
+|---|---|
+| Export a workflow → package | `GET /workflows/:id/export` — provider `exportGraph` + registry metadata |
+| Import a package | `POST /templates/import` (upload, or fetch from a catalogue URL) |
+| Bulk sync from a source | `POST /templates/sync` against a configured catalogue source |
+| Promote dev → staging → prod | export from one environment, import into the next |
+
+A **catalogue source** is a URL or git reference in settings, holding an index plus packages. The
+future internal marketplace is that source with a UI in front of it — the format and the installer
+do not change, which is the point of designing it now rather than retrofitting.
+
+### 11.4 Signing — the part that must not be skipped
+
+**A template is an executable graph. Importing an untrusted one is remote code execution**, and it
+would run with the importer's permissions and credentials. So:
+
+1. Packages are signed; the platform verifies against configured public keys before storing.
+2. Unsigned or unverifiable packages import only with `automation.admin`, land as `untrusted`, and
+   must be reviewed and explicitly trusted before they can be installed.
+3. Function/Code nodes are refused at import (§15) — the graph is checked, not just trusted.
+4. Every import records who, what key/version, and the package digest.
+
+Skipping this would make the marketplace a supply-chain hole into a system that holds payroll and
+national IDs.
+
+### 11.5 The 50-template catalogue
+
+Delivered as packages in PR **A-9**, published to the catalogue source rather than embedded in the
+image. Templates whose modules do not exist yet are shipped anyway and stay `draft` until their
+events appear.
 
 **HR (10)** — welcome email on hire · probation-end reminder (T-14) · contract-expiry escalation
 (90/30/7) · leave-approved calendar entry + team notice · leave-balance monthly digest · CV
@@ -518,57 +687,91 @@ after A-1 changes behaviour for a user who never opens `/automation`.
 
 | PR | Goal | Key files | Tests | Migration |
 |---|---|---|---|---|
-| **A-0** | This design + ADR-018 frozen | `docs/` | — | — |
+| *(this PR)* | Architecture: this design + ADR-018, frozen | `docs/` | — | — |
+| **A-0** | **Provider abstraction** (Revision 1): `AutomationProvider` + capabilities, `automationService` facade, provider registry/DI, `NullAutomationProvider`, feature flags, contracts, the ADR-003 seam rule, docs | `platform/automation/**`, `packages/contracts/src/platform/automation.ts`, `.eslintrc` seam rule | interface conformance suite runnable against ANY provider; null-provider behaviour; flag off ⇒ no dispatch; lint rule rejects a module importing `providers/` | none |
 | **A-1** | Platform: `automation` queue, `PLATFORM_VERSION` 2.2.0, crypto helper (AES-256-GCM envelope) | `infrastructure/queue/jobs.ts`, `platform/crypto/` | crypto round-trip, rotation, tamper-detect | none |
 | **A-2** | Contracts: DTOs, schemas, permissions, event catalogue generator | `packages/contracts/src/modules/automation.ts`, `events/catalog.ts` | schema + catalogue-vs-Zod drift | none |
 | **A-3** | Registry: workflows + variables (model, repo, service, routes) | `modules/automation/workflows/` | CRUD, ownership, branch filter | new collections |
 | **A-4** | Credentials: write-only store + injection | `modules/automation/credentials/` | no read path, redaction, rotation | new collection |
 | **A-5** | Trigger bridge: event subscription → dispatch → execution rows | `modules/automation/triggers/` | idempotency, filter eval, depth guard | none |
-| **A-6** | n8n client + service tokens + callback action surface | `modules/automation/n8n/`, `actions/` | token scope = owner scope, no escalation | none |
+| **A-6** | `N8nAutomationProvider` (implements A-0's interface) + service tokens + callback action surface | `platform/automation/providers/n8n/`, `modules/automation/actions/` | the A-0 conformance suite run against n8n; token scope = owner scope, no escalation | none |
 | **A-7** | Executions: history, retry, cancel, progress callback, sweep | `modules/automation/executions/` | retry idempotency, stuck-execution sweep | new collection |
 | **A-8** | Scheduling: cron/one-shot via the platform scheduler | `modules/automation/schedules/` | Cairo tz, pause/resume | new collection |
-| **A-9** | Templates: model, installer, the 50 seeds | `modules/automation/templates/`, `seeds/` | prerequisite gate, install→draft | seed |
+| **A-9** | Templates: package format, signing + verification, import/export/sync, installer, the 50 packages | `modules/automation/templates/`, `templates/packages/` | signature verification, unsigned ⇒ untrusted, prerequisite gate, install→draft, no auto-upgrade, code-node refusal | none (packages are data) |
 | **A-10** | AI seam + redaction + egress policy gate | `platform/ai/`, `actions/ai.ts` | redaction, opt-in enforcement, audit shape | none |
 | **A-11** | Web: dashboard, workflows, detail, builder proxy | `apps/web/src/modules/automation/` | render + permission gating | nav seed |
 | **A-12** | Web: executions monitor, credentials, variables, templates, logs, settings | as above | as above | none |
 | **A-13** | Deployment: `railway.n8n.json`, compose, runbook, env docs | root, `docs/08-operations/` | smoke | infra |
 | **A-14** | Module publishers: `hr.employee.*`, `hr.leave.approved`, `hr.contract.*`, `platform.auth.passwordReset` | HR + platform services | event emission in txn | none |
 
-Sequencing: A-1→A-2 unblock everything. A-3..A-8 are the engine and can be reviewed in order.
-A-11/A-12 can start once A-3 lands (against the real API). A-14 is independent and can go any time.
+Sequencing: **A-0 first — it is the contract everything else is written against**, and reviewing
+it before any n8n code exists is what keeps the seam honest. A-1→A-2 then unblock the rest.
+A-3..A-8 are the engine and can be reviewed in order; A-6 is where n8n first appears in the
+codebase, behind A-0's interface. A-11/A-12 can start once A-3 lands (against the real API). A-14
+is independent and can go any time.
+
+**Every PR from A-0 to A-13 ships behind `AUTOMATION_ENABLED=false`.** `main` stays releasable and
+no user sees a partial feature; the flag flips once A-9 has templates and A-13 has the runtime.
 
 **Each PR carries:** goal, files changed, tests, docs delta, migration steps — the format already
 used by this repository.
 
 ---
 
-## 14. Blockers for the approver — must be resolved before A-1
+## 14. Blockers — RESOLVED (Revision 1)
 
-1. **n8n licensing.** Sustainable Use License, not OSI open source. Internal use inside ECMS is
-   permitted; re-offering the builder to third parties is not. **If ECMS is or becomes a
-   multi-customer product where customers author their own automations, this needs legal sign-off
-   or an n8n Embed licence.** The fallback is a native action runner (ADR-018 §Alternatives), which
-   costs the visual builder and the connector library. This is a business decision and I should not
-   make it.
-2. **AI data egress.** Sending employee records, national IDs and contract terms to OpenAI /
-   Anthropic / Google is a data-protection decision under Egyptian PDPL. §6 designs the controls;
-   someone still has to accept the residual risk, per provider.
-3. **Scope reality.** Eight of the eighteen requested events belong to modules that do not exist
-   (Fleet, Treasury, Accounting, Purchasing, Administration). Confirm the intent is "build the
-   engine now, modules subscribe as they land" rather than "these modules exist" — the template
-   catalogue is sized for the former.
-4. **Two runtimes.** n8n + its Postgres is a second system to operate, patch and back up. Confirm
-   the operational appetite.
+| # | Blocker | Resolution |
+|---|---|---|
+| 1 | **n8n licensing** | **Resolved.** ECMS is an internal enterprise system for a single company, not a multi-tenant SaaS, and is not being built as a workflow platform for external customers. Community edition is used within the Sustainable Use License. Recorded in ADR-018 §Licensing as a *scope condition*: if ECMS is later sold as a product where customers author their own automations, ADR-018 is revisited — and A-0's seam is what makes that revisit cheap. |
+| 2 | **AI data egress** | **Accepted to proceed**, with §6's controls binding: AI off by default, per-field redaction, explicit per-field opt-in recorded on the workflow, prompt *hashes* in the audit rather than prompts, and no auto-approval. **Per-provider acceptance is still recorded at A-10**, when a provider is actually switched on — that is the point at which real data would first leave the deployment. |
+| 3 | **Scope reality** | **Confirmed.** Build the engine now; modules subscribe as they land. Templates for unbuilt modules ship and stay `draft` until their events exist (§11.1). |
+| 4 | **Two runtimes** | **Accepted.** n8n + Postgres on Railway, with the backup/restore runbook in A-13. |
 
 ## 15. Non-goals (this phase)
 
 Multi-organization automation (ADR-015: single organization) · customer-facing workflow authoring ·
 replacing the Workflow Engine · n8n's own user management (ECMS is the only identity) · arbitrary
-code nodes in workflows (`N8N_BLOCK_ENV_ACCESS_IN_NODE`, Function nodes disabled — code execution
-from stored graphs is the hazard ADR-011 already rejected).
+code nodes in workflows (`N8N_BLOCK_ENV_ACCESS_IN_NODE`, Function nodes disabled and refused at
+template import — code execution from stored graphs is the hazard ADR-011 already rejected) ·
+**cross-provider graph portability** (see ADR-018 §Honest limit: the platform is
+provider-independent, the graphs are not).
+
+---
+
+## 16. Revision 1 — approver decisions (D-A1 … D-A4)
+
+These supersede any conflicting Draft text.
+
+### D-A1 — Licensing scope
+ECMS is an internal enterprise system for a single company, not a multi-tenant SaaS product, and is
+not being built as a workflow platform for external customers. n8n Community is used on that basis.
+Recorded in ADR-018 §Licensing, including the condition under which it must be revisited.
+
+### D-A2 — The Automation Service is the only door
+Business modules must never communicate with n8n, or any provider, directly:
+
+```
+ECMS modules → Automation Service → n8n / AI providers / email / WhatsApp / other integrations
+```
+
+The service exposes stable internal contracts so the provider can be replaced without affecting
+business modules. Designed in §2.1; the import restriction is enforced by lint in A-0, not left to
+convention.
+
+### D-A3 — Templates are data
+Versioned, importable, exportable, independently updatable, and ready for a future internal
+catalogue/marketplace. **Not hardcoded into the application**, and changeable without a deployment.
+Designed in §11 — including the signing requirement, which is not optional given that a template is
+an executable graph.
+
+### D-A4 — Provider abstraction before the engine
+`AutomationProvider` / `N8nAutomationProvider`, with future providers (native, Temporal, Camunda)
+addable without changing business modules. Delivered as **A-0, before A-1**, so every later slice is
+written against a reviewed contract rather than against n8n.
 
 ## Review trail
 
 | Date | Revision | Change |
 |---|---|---|
 | 2026-07-29 | Draft | Initial design + ADR-018. Awaiting approval; §14 blockers open. |
+| 2026-07-29 | **1 — FROZEN** | Approver resolved all four blockers (§14) and added D-A1…D-A4 (§16). Added the Automation Service + provider seam (§2.1), reworked templates into signed versioned packages (§11), inserted **A-0 Provider Abstraction** ahead of A-1 and moved n8n behind it at A-6 (§13). ADR-018 → Accepted. |

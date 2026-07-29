@@ -209,3 +209,82 @@ def test_both_models_are_always_named_together():
     assert "arabic" in names["text_recognition_model_name"].lower(), (
         "the recognition model must be the Arabic one — the card is in Arabic"
     )
+
+
+# ── Reading a field crop without detecting inside it ──
+
+
+class _FakeLineRecognizer:
+    """Stands in for `paddleocr.TextRecognition`: one text per strip, no detection anywhere."""
+
+    def __init__(self, *texts: str) -> None:
+        self.texts = list(texts)
+        self.calls = 0
+
+    def predict(self, strip):  # noqa: ANN001, ARG002
+        text = self.texts[self.calls] if self.calls < len(self.texts) else ""
+        self.calls += 1
+        return [{"rec_text": text, "rec_score": 0.9}]
+
+
+def _crop_with_two_printed_lines():
+    import cv2
+    import numpy as np
+
+    image = np.full((200, 600, 3), 235, np.uint8)
+    cv2.rectangle(image, (20, 30), (580, 60), (40, 40, 40), thickness=-1)
+    cv2.rectangle(image, (20, 120), (580, 150), (40, 40, 40), thickness=-1)
+    return image
+
+
+def _recognizer_with(lines):
+    import threading
+
+    from nidocr.engine import PaddleRecognizer
+
+    class _Direct(PaddleRecognizer):
+        def __init__(self):  # noqa: D107 — deliberately skips PaddleOCR construction
+            self._lines = lines
+            self._lock = threading.Lock()
+            self.detection_calls = 0
+
+        def _run(self, image):  # noqa: ANN001
+            self.detection_calls += 1
+            return [([[0, 0], [1, 0], [1, 1], [0, 1]], "من الكشف", 0.5)]
+
+    return _Direct()
+
+
+def test_a_field_crop_is_read_line_by_line_and_never_detected_inside():
+    """The failure this closes is invisible, which is what makes it worth a test.
+
+    Running detection inside a crop returns the words the detector is confident about — so a word
+    it is not confident about is absent from the field, with every word around it correct and
+    correctly ordered. A card printing a six-part name came back with three: the first, the third
+    and the last were gone, which no crop can produce and no confidence score reveals.
+
+    The field box already located this text. All that is left is cutting it into printed lines and
+    reading each one whole, and detection must not be involved at all.
+    """
+    recognizer = _recognizer_with(_FakeLineRecognizer("هدى محمد رمضان", "رضوان الحديدي عبده"))
+    out = recognizer.recognize(_crop_with_two_printed_lines())
+
+    assert out.text == "هدى محمد رمضان رضوان الحديدي عبده"
+    assert recognizer.detection_calls == 0, "detection ran on a crop the field box already located"
+    assert recognizer._lines.calls == 2, "each printed line must be read whole"
+
+
+def test_the_pipeline_is_still_used_when_the_line_recognizer_is_unavailable():
+    """The standalone module classes are newer than `PaddleOCR` itself. A version without them
+    degrades to the old path rather than failing to start."""
+    recognizer = _recognizer_with(None)
+    out = recognizer.recognize(_crop_with_two_printed_lines())
+
+    assert recognizer.detection_calls == 1
+    assert out.text == "من الكشف"
+
+
+def test_a_line_recognizer_that_returns_nothing_falls_back_rather_than_reporting_empty():
+    """An empty field and a field the direct path could not read are different states."""
+    recognizer = _recognizer_with(_FakeLineRecognizer("", ""))
+    assert recognizer.recognize(_crop_with_two_printed_lines()).text == "من الكشف"

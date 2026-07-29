@@ -65,6 +65,19 @@ near it, then overrides that entirely for the two fields whose content identifie
 exactly fourteen digits is the national ID wherever it is printed, and a full year/month/day is the
 expiry.
 
+**A field crop is never detected inside.** Handing a located crop to a full OCR pipeline runs text
+detection on it again, and detection returns the words it is *confident about* — so a word it is
+not confident about is simply absent, and the field arrives missing a word from the middle of a
+line with everything around it correct, correctly read and correctly ordered. Nothing downstream
+can see that: no low score, no gap in the string, no structural check. A card printing a six-part
+name came back with three, and the missing three were the first, the third and the last — a pattern
+no crop can produce. Detection is the wrong tool at that point anyway: its job is finding text on a
+page, and the field box has already done that. `preprocess.split_text_lines` cuts the crop into
+printed lines from its ink profile, and the recognition model reads each strip whole, so every
+glyph on the line reaches it with no per-word threshold anywhere in the path. Nothing re-orders
+anything either — one strip is one line, emitted by the model in logical order — which removes the
+last place RTL handling could drop or resequence part of a name.
+
 **Snapping tightens vertically and never horizontally**, and the asymmetry is load-bearing. Fields
 are stacked a line apart, so a crop that spans too many rows picks up its neighbour's text —
 vertical tightening is the whole point. Nothing is printed *beside* the name, the address or the

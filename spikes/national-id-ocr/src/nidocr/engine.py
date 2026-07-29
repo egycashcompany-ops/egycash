@@ -22,6 +22,8 @@ from typing import Protocol
 import cv2
 import numpy as np
 
+from .preprocess import split_text_lines
+
 LOG = logging.getLogger("nidocr.engine")
 
 #: Text-detection model. Deliberately the MOBILE one.
@@ -156,6 +158,28 @@ class PaddleRecognizer:
         )
         self._lock = threading.Lock()
 
+        # The recognition model on its own, for reading a field crop line by line. See
+        # `_read_lines`: running detection inside a crop that a field box already located is how a
+        # name lost three of its six words, so the field path skips detection entirely.
+        #
+        # Constructed defensively. It is the same weights the pipeline above already resolved, so
+        # nothing extra is downloaded — but the standalone module classes are a newer part of
+        # PaddleOCR's API than `PaddleOCR` itself, and a version that lacks them must degrade to
+        # the pipeline rather than fail to start.
+        self._lines = None
+        try:
+            from paddleocr import TextRecognition  # noqa: PLC0415 — optional, guarded
+
+            self._lines = TextRecognition(
+                model_name=model_names()["text_recognition_model_name"]
+            )
+        except Exception:  # noqa: BLE001 — any failure here is a downgrade, not an outage
+            LOG.warning(
+                "standalone text recognition unavailable; field crops will go through detection, "
+                "which can silently drop a word from the middle of a line",
+                exc_info=True,
+            )
+
     def _run(self, image: np.ndarray) -> list[tuple[object, str, float]]:
         """The one place the predictor is touched, under the one lock. See the class docstring."""
         with self._lock:
@@ -187,7 +211,52 @@ class PaddleRecognizer:
             for poly, text, score in self._run(canvas)
         ]
 
+    def _read_lines(self, crop: np.ndarray) -> Recognition | None:
+        """Recognize a field crop line by line, WITHOUT running detection inside it.
+
+        This is the path that matters for a field box, and the reason is a failure that hides
+        completely. Handing a crop to the full pipeline runs text detection on it, and detection
+        returns the words it is confident about — so a word it is not confident about simply is not
+        in the result. The field then arrives missing a word from the MIDDLE of a line, with every
+        word around it correct, correctly read and correctly ordered. Nothing downstream can tell:
+        there is no low score to notice, no gap in the string, no structural check that fires. A
+        card printing a six-part name came back with three of them — the first, the third and the
+        last were gone.
+
+        Detection is the wrong tool at this point anyway. Its job is to find text on a page; this
+        crop was already located, because the field box is where the text is. All that remains is
+        cutting the crop into printed lines, which `preprocess.split_text_lines` does from the ink
+        profile, and then reading each line whole.
+
+        Returns None when the recognition model could not be constructed, so the caller can fall
+        back to the pipeline rather than lose the field.
+        """
+        if self._lines is None:
+            return None
+        strips = split_text_lines(crop)
+        reads: list[tuple[str, float]] = []
+        with self._lock:
+            for strip in strips:
+                for entry in self._lines.predict(strip):
+                    text = str(_field_of(entry, "rec_text", ""))
+                    if text.strip():
+                        reads.append((text, float(_field_of(entry, "rec_score", 0.0))))
+        if not reads:
+            return None
+        # Strips come out top to bottom, which is reading order for every field on this card. No
+        # re-ordering happens here at all: each strip is one line, read whole by a model that
+        # already emits Arabic in logical order, so there are no fragments to sequence and no
+        # opportunity to sequence them wrongly.
+        return Recognition(
+            text=" ".join(text for text, _ in reads),
+            score=float(np.mean([score for _, score in reads])),
+        )
+
     def recognize(self, crop: np.ndarray, *, rtl: bool = True) -> Recognition:
+        direct = self._read_lines(crop)
+        if direct is not None:
+            return direct
+
         segments = self._run(crop)
         if not segments:
             return Recognition(text="", score=0.0)
@@ -195,6 +264,16 @@ class PaddleRecognizer:
         text = " ".join(text for text, _ in ordered)
         score = float(np.mean([score for _, score in ordered]))
         return Recognition(text=text, score=score)
+
+
+def _field_of(entry: object, key: str, default: object) -> object:
+    """Read a key from a PaddleX result, which is dict-like but not always a dict."""
+    if isinstance(entry, dict):
+        return entry.get(key, default)
+    try:
+        return entry[key]  # type: ignore[index]
+    except (TypeError, KeyError, IndexError):
+        return getattr(entry, key, default)
 
 
 def _flatten_paddle_result(result: object) -> list[tuple[str, float]]:

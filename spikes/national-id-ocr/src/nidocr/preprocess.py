@@ -230,6 +230,73 @@ def binarize(image: np.ndarray) -> np.ndarray:
 TARGET_FIELD_HEIGHT = 64
 
 
+#: A row carrying at least this fraction of the crop's width in ink counts as part of a text line.
+#: Low on purpose: the thinnest row of a line is where only the ascenders and the dots reach, and
+#: those are the rows that decide whether a line's true top edge is found or shaved off.
+_INK_ROW = 0.008
+
+#: Bands closer together than this fraction of the crop's height are one line. Arabic descenders
+#: (ج, ع, م) drop below the baseline and leave a gap between themselves and the body of the line.
+_SAME_LINE_GAP = 0.18
+
+
+def split_text_lines(crop: np.ndarray, *, max_lines: int = 6) -> list[np.ndarray]:
+    """Cut a field crop into one strip per printed line, by horizontal projection.
+
+    WHY THIS EXISTS RATHER THAN LETTING THE RECOGNIZER FIND THE LINES. Handing a crop to a full
+    OCR pipeline runs text DETECTION inside it, and detection returns the words it is confident
+    about — so a word it is not confident about is not returned, and the field comes back missing a
+    word from the MIDDLE of a line with everything around it correct. Nothing downstream can see
+    that: the words that arrived are all real, all correctly read and correctly ordered. A card
+    printing a six-part name came back with three of them, and the three it dropped were the first,
+    the third and the last.
+
+    Detection is the wrong tool here anyway. Its job is finding text on a page, and this crop was
+    already located — the field box says where the text is. What remains is deciding where one
+    printed line ends and the next begins, which a projection profile answers directly: sum the ink
+    per row, and the valleys between the peaks are the gaps between lines.
+
+    The recognizer then reads each strip whole. Every glyph on the line reaches it, in printed
+    order, with no per-word confidence threshold anywhere in the path to drop one.
+
+    Returns the crop unchanged as a single strip whenever the profile does not clearly resolve —
+    a crop full of guilloche, a strip of blank card — because one line read as one line is the
+    behaviour to fall back to, not zero lines.
+    """
+    height, width = crop.shape[:2]
+    if height < 8 or width < 8:
+        return [crop]
+
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+    _, ink = cv2.threshold(gray, 0, 1, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
+    rows = ink.sum(axis=1) >= max(1.0, _INK_ROW * width)
+
+    bands: list[list[int]] = []
+    for index, inked in enumerate(rows):
+        if not inked:
+            continue
+        if bands and index - bands[-1][1] <= max(1, int(_SAME_LINE_GAP * height)):
+            bands[-1][1] = index
+        else:
+            bands.append([index, index])
+
+    if len(bands) < 2 or len(bands) > max_lines:
+        return [crop]
+
+    # A band far thinner than its neighbours is a smudge or a piece of border, not a line of print.
+    tallest = max(bottom - top for top, bottom in bands)
+    kept = [(top, bottom) for top, bottom in bands if (bottom - top) >= tallest * 0.35]
+    if len(kept) < 2:
+        return [crop]
+
+    # Half the gap on each side, so a descender clipped by the profile still lands in its own strip.
+    pad = max(1, int(0.02 * height))
+    return [
+        crop[max(0, top - pad) : min(height, bottom + pad + 1)]
+        for top, bottom in kept
+    ]
+
+
 def _upscaled(crop: np.ndarray, max_upscale: float) -> np.ndarray:
     """Bring a crop up to the recognizer's working height.
 

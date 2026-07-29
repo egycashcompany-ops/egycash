@@ -309,6 +309,8 @@ export const AutomationCredentialDtoSchema = z.object({
   key: z.string(),
   name: LocalizedStringSchema,
   type: AutomationCredentialTypeSchema,
+  /** Which secret store holds it, e.g. `platformCrypto` or a KMS. Metadata, never the secret. */
+  provider: z.string(),
   /** What the UI shows in place of the secret. A fixed mask, never a prefix of the real value. */
   masked: z.literal('••••••••'),
   branchScope: DataScopeSchema,

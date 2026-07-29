@@ -12,6 +12,7 @@ import {
 import { type ModuleManifest } from '../../platform/kernel/module-registry';
 import { logger } from '../../infrastructure/logging/logger';
 import { buildAutomationEventsRouter } from './events/event-catalog.routes';
+import { automationCredentialService, buildAutomationCredentialsRouter } from './credentials';
 import { automationWorkflowService, buildAutomationWorkflowsRouter } from './workflows';
 import { buildAutomationVariablesRouter } from './variables';
 
@@ -48,9 +49,26 @@ export const automationModule: ModuleManifest = {
   routes: [
     { prefix: '/automation/workflows', router: buildAutomationWorkflowsRouter() },
     { prefix: '/automation/variables', router: buildAutomationVariablesRouter() },
+    { prefix: '/automation/credentials', router: buildAutomationCredentialsRouter() },
     { prefix: '/automation/events', router: buildAutomationEventsRouter() },
   ],
-  collections: ['automation_workflows', 'automation_variables'],
+  collections: ['automation_workflows', 'automation_variables', 'automation_credentials'],
+  scheduledTasks: [
+    {
+      key: 'automation.rotateCredentialKeys',
+      description:
+        'Re-wrap automation credentials still sealed under a retired key. Touches the data key ' +
+        'only — no plaintext exists at any point, which is what lets rotation run unattended ' +
+        'instead of asking people to re-enter secrets.',
+      // Nightly, off-peak. Rotation is not urgent: the retired key keeps decrypting during the
+      // overlap window, so the cost of a slow sweep is a longer window, not a broken workflow.
+      cron: '30 2 * * *',
+      ownerService: 'automation',
+      handler: async () => {
+        await automationCredentialService.rotateKeys();
+      },
+    },
+  ],
   eventSubscriptions: [
     {
       event: PlatformEvents.UserStatusChanged,

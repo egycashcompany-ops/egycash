@@ -17,6 +17,7 @@ export * from './platform/files.js';
 export * from './platform/notifications.js';
 export * from './platform/automation.js';
 export * from './platform/crypto.js';
+export * from './platform/secrets.js';
 export * from './modules/automation.js';
 export * from './modules/hr-recruitment-workflow.js';
 export * from './modules/hr-recruitment.js';

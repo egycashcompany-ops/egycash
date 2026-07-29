@@ -478,3 +478,47 @@ export const ApplicantHiredPayloadV1 = z.object({
   jobOfferId: objectId(),
   placement: placementPayload,
 });
+
+// ── The recruitment workflow ENGINE's own event surface (declared at A-2.1) ──
+//
+// The engine (`apps/api/src/modules/hr/recruitment/workflow/`) publishes one event per validated
+// transition and mirrors every one onto the platform bus. Those names were never declared in
+// `@ecms/contracts`, so the event catalogue could not see them and an automation could not
+// subscribe to a recruitment transition at all. They are declared here for the same reason every
+// other event is: the catalogue is only canonical if it is complete.
+//
+// The payload is the TRANSITION, not the entity: which candidate, which record, and the states it
+// moved between. Transition-specific extras ride along and vary by event, which is why this schema
+// is read non-strict like every other payload.
+
+export const HrWorkflowEngineEvents = {
+  StageEntered: 'hr.recruitment.stageEntered',
+  StageLeft: 'hr.recruitment.stageLeft',
+
+  ScreeningAccepted: 'hr.screening.accepted',
+  ScreeningRejected: 'hr.screening.rejected',
+  ScreeningCancelled: 'hr.screening.cancelled',
+  ScreeningRedecided: 'hr.screening.redecided',
+
+  InterviewRedecided: 'hr.interview.redecided',
+
+  EvaluationCancelled: 'hr.evaluation.cancelled',
+  EvaluationRedecided: 'hr.evaluation.redecided',
+  EvaluationReopened: 'hr.evaluation.reopened',
+
+  OfferSuperseded: 'hr.jobOffer.superseded',
+
+  ApplicantReactivated: 'hr.applicant.reactivated',
+} as const;
+export type HrWorkflowEngineEventName =
+  (typeof HrWorkflowEngineEvents)[keyof typeof HrWorkflowEngineEvents];
+
+export const WorkflowTransitionPayloadV1 = z.object({
+  applicantId: objectId(),
+  applicantCode: z.string(),
+  /** The stage record the transition happened on; absent for applicant-level transitions. */
+  entityId: objectId().optional(),
+  /** `null` when the record is being materialized — there is no state to have come from. */
+  from: z.string().nullable(),
+  to: z.string(),
+});

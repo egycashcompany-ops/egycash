@@ -52,6 +52,13 @@ export const AUDIT_ACTIONS = [
   'contractRenewed',
   'templateCloned',
   'templatePublished',
+  // Automation (A-3). Enabling is recorded separately from editing because it is the moment a
+  // workflow starts acting in production, and ownership transfer separately again because it
+  // changes the principal a workflow runs as.
+  'automationEnabled',
+  'automationDisabled',
+  'automationSuspended',
+  'automationTransferred',
 ] as const;
 export const AuditActionSchema = z.enum(AUDIT_ACTIONS);
 export type AuditAction = z.infer<typeof AuditActionSchema>;

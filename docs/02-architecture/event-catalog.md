@@ -89,9 +89,10 @@ source — not by touching the automation engine.
 ## Who uses it
 
 - **Trigger picker** (A-11): the list a user chooses from, with field paths for filters.
-- **Trigger validation** (A-5): `isCatalogedEventName()` refuses a subscription to a name nobody
-  publishes. Without it a workflow sits enabled and silent forever, which is the worst failure an
-  automation can have — indistinguishable from "no work to do".
+- **Trigger validation** (A-3, `modules/automation/workflows/trigger-validation.ts`): refuses a
+  subscription to a name nobody publishes, and a filter on a field the payload does not carry.
+  Without it a workflow sits enabled and silent forever, which is the worst failure an automation
+  can have — indistinguishable from "no work to do".
 - **Template prerequisites** (A-9): `requires.events` resolves against the catalogue, so a package
   for a module that does not exist yet installs as `draft` and cannot be enabled.
 
@@ -196,8 +197,8 @@ ways: `hr.applicant.withdrawn`, `hr.interview.scheduled` / `started` / `cancelle
 `hr.jobOffer.*` events.
 
 Both are real and both are pre-existing. The catalogue records it rather than a contracts slice
-changing HR behaviour; A-5 will refuse a trigger filter on a field that is not present in every
-variant, which is where the consequence actually bites.
+changing HR behaviour, and A-3's trigger validation turns the record into a warning on the
+workflow that would be affected.
 
 ## Coverage today
 

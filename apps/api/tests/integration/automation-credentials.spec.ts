@@ -345,11 +345,13 @@ describe('key rotation', () => {
     await createCredential(key);
     const before = await AutomationCredentialModel.findOne({ key }).lean().exec();
 
-    // Simulate a value left behind on a retired key: rotation finds it by `sealed.keyId`, which is
-    // stored in the clear precisely so this query needs no decryption.
+    // Simulate a value left behind on a retired key. Both keyIds must move: the DENORMALISED
+    // `secretRef.keyId` is what the rotation sweep queries on to FIND the row, and the SEALED
+    // value's own `keyId` is what `rewrap` decrypts against — a real credential on a retired key
+    // has both, so forging only the outer one would let rewrap succeed via the intact inner key.
     await AutomationCredentialModel.updateOne(
       { key },
-      { $set: { 'secretRef.keyId': 'retired-key-id' } },
+      { $set: { 'secretRef.keyId': 'retired-key-id', 'secretRef.ref.keyId': 'retired-key-id' } },
     ).exec();
 
     const outcome = await automationCredentialService.rotateKeys();
@@ -357,10 +359,16 @@ describe('key rotation', () => {
     // it rather than throwing, because one bad row must not stop the rest.
     expect(outcome.failed).toBeGreaterThan(0);
 
-    // Restore and confirm a genuine rotation is a no-op on already-active values.
+    // Restore BOTH keyids (the sealed value was never actually re-wrapped, so its ciphertext is
+    // intact under the original key) and confirm a genuine rotation is a no-op on active values.
     await AutomationCredentialModel.updateOne(
       { key },
-      { $set: { 'secretRef.keyId': before?.secretRef.keyId } },
+      {
+        $set: {
+          'secretRef.keyId': before?.secretRef.keyId,
+          'secretRef.ref.keyId': before?.secretRef.keyId,
+        },
+      },
     ).exec();
     const clean = await automationCredentialService.rotateKeys();
     expect(clean.failed).toBe(0);

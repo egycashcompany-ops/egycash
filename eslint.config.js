@@ -77,6 +77,34 @@ export default tseslint.config(
     },
   },
 
+  // Automation seam (ADR-018 decision 1, design D-A2). Business modules — and the Automation
+  // module itself — reach an automation runtime through `platform/automation`'s barrel and no
+  // other path. Deep imports would let a module take a dependency on a provider, which is the one
+  // coupling the whole seam exists to prevent; ADR-018 permits n8n on a scope condition, and a
+  // condition that can change must not be load-bearing in twenty modules.
+  //
+  // Scoped to files OUTSIDE platform/automation, so the seam's own internals import each other
+  // freely. This is a rule rather than a convention because a seam everyone has to remember is a
+  // seam that lasts until the first deadline.
+  {
+    files: ['apps/api/src/**/*.ts'],
+    ignores: ['apps/api/src/platform/automation/**'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['**/platform/automation/*', '**/platform/automation/*/**'],
+              message:
+                "Import from 'platform/automation' (the barrel) — never a provider or internal. See ADR-018 and docs/02-architecture/automation-service.md.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+
   // Scripts and config files run under Node without the app logger.
   {
     files: ['scripts/**', '*.config.{js,ts}', '**/*.config.{js,ts}', '**/vite.config.ts'],

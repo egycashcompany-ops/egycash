@@ -11,7 +11,7 @@ import { type ScopeSelector } from '../../../shared/types';
 import { BusinessRuleError, NotFoundError } from '../../../shared/errors';
 import { diffChanges } from '../../../shared/utils/diff';
 import { auditService } from '../../../platform/audit';
-import { cryptoService, CryptoUnavailableError } from '../../../platform/crypto';
+import { getSecretStore, SecretStoreMismatchError } from '../../../platform/secrets';
 import { logger } from '../../../infrastructure/logging/logger';
 import { automationCredentialRepository } from './credential.repository';
 import { type AutomationCredentialDoc } from './credential.model';
@@ -23,14 +23,14 @@ const entityRef = (id: string) => ({
 });
 
 /**
- * The AAD a value is sealed under. Includes the record id, so a ciphertext moved to another row
- * fails authentication instead of decrypting into the wrong credential (see platform-crypto.md).
+ * The context a value is sealed under. Includes the record id, so a ref moved to another row fails
+ * to open instead of resolving into the wrong credential (see platform-crypto.md / secret-store).
  */
 const contextFor = (id: string): string => `automation_credentials:${id}:value`;
 
 /**
- * Everything about a credential EXCEPT its value. Used for audit diffs, so that an audit row can
- * never carry what the API refuses to return.
+ * Everything about a credential EXCEPT its value. Used for audit diffs, so an audit row can never
+ * carry what the API refuses to return.
  */
 const snapshot = (doc: AutomationCredentialDoc) => ({
   key: doc.key,
@@ -38,7 +38,8 @@ const snapshot = (doc: AutomationCredentialDoc) => ({
   type: doc.type,
   branchScope: doc.branchScope,
   branchId: doc.branchId === null ? null : String(doc.branchId),
-  keyId: doc.sealed.keyId,
+  provider: doc.secretRef.provider,
+  keyId: doc.secretRef.keyId,
   valueVersion: doc.valueVersion,
 });
 
@@ -48,28 +49,42 @@ export interface ResolvedSecret {
   value: string;
 }
 
+/**
+ * Who and what is opening a credential, for the usage audit (§7.4 · approver request 2026-07-29).
+ * Carries no secret — it exists precisely so usage can be traced WITHOUT exposing the value. The
+ * dispatcher (A-5/A-6) supplies it; every field is nullable so an early caller can pass what it
+ * knows and the audit degrades to "less context" rather than "no audit".
+ */
+export interface CredentialUsageContext {
+  workflowId: string | null;
+  executionId: string | null;
+  /** The automation provider running the workflow, e.g. `n8n` or `null`. */
+  provider: string;
+  principal: { userId: string | null; kind: 'user' | 'system' | 'automation' };
+  branchId: string | null;
+}
+
 class AutomationCredentialService {
-  private assertCryptoAvailable(): void {
-    if (cryptoService.available()) return;
+  private assertStoreAvailable(): void {
+    if (getSecretStore().available()) return;
     // Better to refuse the write than to store a secret in the clear or silently drop it.
     throw new BusinessRuleError(
-      'credential storage is unavailable: no encryption key is configured on this deployment',
+      'credential storage is unavailable: the secret store has no usable key on this deployment',
     );
   }
 
   async create(input: CreateAutomationCredential, by: string): Promise<AutomationCredentialDoc> {
-    this.assertCryptoAvailable();
+    this.assertStoreAvailable();
 
     const existing = await automationCredentialRepository.findByKey(input.key);
     if (existing !== null) {
       throw new BusinessRuleError(`a credential with the key '${input.key}' already exists`);
     }
 
-    // The id is minted HERE rather than by the insert, because the AAD binds the ciphertext to the
-    // record id — and sealing after the insert would leave a window with a row and no value, or
-    // force a second write. One id, one seal, one insert.
+    // The id is minted HERE, not by the insert, because the sealing context binds the ref to the
+    // record id — sealing after the insert would leave a window with a row and no value.
     const id = new Types.ObjectId();
-    const sealed = cryptoService.seal(input.value, contextFor(String(id)));
+    const secretRef = await getSecretStore().seal(input.value, contextFor(String(id)));
 
     const doc = await automationCredentialRepository.create(
       {
@@ -77,7 +92,7 @@ class AutomationCredentialService {
         key: input.key,
         name: input.name,
         type: input.type,
-        sealed,
+        secretRef,
         ownerUserId: new Types.ObjectId(by),
         branchScope: input.branchScope,
         branchId: null,
@@ -105,13 +120,13 @@ class AutomationCredentialService {
     by: string,
     scope: ScopeSelector,
   ): Promise<AutomationCredentialDoc> {
-    this.assertCryptoAvailable();
+    this.assertStoreAvailable();
     const before = await automationCredentialRepository.getById(id, scope);
-    const sealed = cryptoService.seal(input.value, contextFor(id));
+    const secretRef = await getSecretStore().seal(input.value, contextFor(id));
 
     const doc = await automationCredentialRepository.updateById(
       id,
-      { sealed, valueVersion: before.valueVersion + 1 },
+      { secretRef, valueVersion: before.valueVersion + 1 },
       { by, version: input.version },
     );
     await auditService.record({
@@ -183,33 +198,44 @@ class AutomationCredentialService {
   }
 
   // ── Internal: the only place a plaintext secret exists ────────────────────
-  // Reachable from the dispatcher (A-5/A-6) and from nowhere on the HTTP surface. Not exported
-  // through the module barrel for the same reason.
+  // Reachable from the dispatcher (A-5/A-6) and from nowhere on the HTTP surface.
 
   /**
-   * Open the named credentials for one execution. The caller holds the values in memory for the
-   * duration of the run and must never persist, log or snapshot them — `redactSnapshot` is what
-   * keeps that promise on the way to `automation_executions`.
+   * Open the named credentials for one execution, and AUDIT each open (approver request). The
+   * audit records credential, workflow, execution, provider, principal, branch, time and
+   * success/failure — never the value, which is what makes usage traceable without exposing it.
+   *
+   * The caller holds the returned values in memory for the run and must never persist, log or
+   * snapshot them; `redactSnapshot` keeps that promise on the way to `automation_executions`.
    */
-  async resolveForExecution(keys: readonly string[]): Promise<ResolvedSecret[]> {
+  async resolveForExecution(
+    keys: readonly string[],
+    usage: CredentialUsageContext,
+  ): Promise<ResolvedSecret[]> {
     const resolved: ResolvedSecret[] = [];
     for (const key of keys) {
       const doc = await automationCredentialRepository.findByKey(key);
-      if (doc === null) throw new NotFoundError(`Credential '${key}' not found`);
+      if (doc === null) {
+        // Audit the failed attempt too: "a workflow tried to use a credential that is gone" is
+        // exactly the kind of thing a usage audit exists to surface.
+        await this.recordUsage(null, key, usage, 'failure', 'not-found');
+        throw new NotFoundError(`Credential '${key}' not found`);
+      }
 
       try {
-        const value = cryptoService.open(doc.sealed, contextFor(String(doc._id)));
+        const value = await getSecretStore().open(doc.secretRef, contextFor(String(doc._id)));
         resolved.push({ key: doc.key, type: doc.type, value });
         await automationCredentialRepository.touchLastUsed(String(doc._id));
+        await this.recordUsage(doc, key, usage, 'success');
       } catch (error) {
-        // Never include the sealed document or the error's own message in a log line: the message
-        // distinguishes tamper from wrong-key, which is operationally useful and is exactly the
-        // oracle an attacker probing the store would want.
+        await this.recordUsage(doc, key, usage, 'failure', this.failureReason(error));
+        // Never include the sealed ref or the error's own message in a log line: the message
+        // distinguishes tamper from wrong-key, which is the oracle an attacker would want.
         logger.error(
-          { credentialKey: doc.key, keyId: doc.sealed.keyId },
+          { credentialKey: doc.key, provider: doc.secretRef.provider, keyId: doc.secretRef.keyId },
           'automation: failed to open a credential',
         );
-        throw error instanceof CryptoUnavailableError
+        throw error instanceof BusinessRuleError
           ? error
           : new BusinessRuleError(`credential '${key}' could not be opened`);
       }
@@ -217,35 +243,79 @@ class AutomationCredentialService {
     return resolved;
   }
 
+  private failureReason(error: unknown): string {
+    if (error instanceof SecretStoreMismatchError) return 'store-mismatch';
+    return 'open-failed';
+  }
+
   /**
-   * Re-wrap everything not on the active key (§7.3). Unwraps and re-wraps the DATA KEY only — the
-   * ciphertext is untouched and no plaintext exists at any point, which is what lets this run
-   * unattended on a schedule instead of asking humans to re-enter secrets.
+   * One audit row per credential open. The traceability fields ride in `changes` (the audit
+   * contract's structured slot) as `null → value` entries, so they read naturally in the log
+   * without widening the platform audit schema.
+   */
+  private async recordUsage(
+    doc: AutomationCredentialDoc | null,
+    key: string,
+    usage: CredentialUsageContext,
+    outcome: 'success' | 'failure',
+    detail?: string,
+  ): Promise<void> {
+    const entry = (field: string, value: unknown) => ({ field, old: null, new: value });
+    await auditService.record({
+      // Anchored on the credential when we found it, else on its key so the row is still findable.
+      entityRef: entityRef(doc === null ? key : String(doc._id)),
+      action: 'automationCredentialUsed',
+      actor: { userId: usage.principal.userId, ip: null, userAgent: null },
+      changes: [
+        entry('credentialKey', key),
+        entry('outcome', outcome),
+        ...(detail === undefined ? [] : [entry('detail', detail)]),
+        entry('workflowId', usage.workflowId),
+        entry('executionId', usage.executionId),
+        entry('provider', usage.provider),
+        entry('principalKind', usage.principal.kind),
+        entry('branchId', usage.branchId),
+        ...(doc === null ? [] : [entry('credentialType', doc.type), entry('store', doc.secretRef.provider)]),
+      ],
+    });
+  }
+
+  /**
+   * Re-wrap everything not on the current key (§7.3), through the secret store so a KMS/vault
+   * backend rotates the same way. The store touches only the wrapping — no plaintext exists at any
+   * point — which is what lets this run unattended instead of asking humans to re-enter secrets.
    */
   async rotateKeys(batchSize = 200): Promise<{ rotated: number; failed: number }> {
-    if (!cryptoService.available()) return { rotated: 0, failed: 0 };
-    const activeKeyId = cryptoService.status().activeKeyId;
-    const stale = await automationCredentialRepository.listNotOnKey(activeKeyId, batchSize);
+    const store = getSecretStore();
+    const status = store.status();
+    // A backend that rotates itself (a KMS) or has no key configured has nothing for us to drive.
+    if (!status.available || !status.rotatable || status.currentKeyId === null) {
+      return { rotated: 0, failed: 0 };
+    }
+    const stale = await automationCredentialRepository.listNotOnKey(status.currentKeyId, batchSize);
 
     let rotated = 0;
     let failed = 0;
     for (const doc of stale) {
       try {
-        const sealed = cryptoService.rewrap(doc.sealed);
+        const secretRef = await store.rewrap(doc.secretRef);
         await automationCredentialRepository.updateById(
           String(doc._id),
-          { sealed },
+          { secretRef },
           { by: null, version: doc.__v },
         );
         rotated += 1;
       } catch {
-        // One credential on a key that has already left the ring must not stop the sweep for the
-        // rest — and it is recoverable by putting the key back, so it is a count, not a throw.
+        // One credential on a key that already left the ring must not stop the sweep — it is
+        // recoverable by restoring the key, so it is a count, not a throw.
         failed += 1;
       }
     }
     if (rotated > 0 || failed > 0) {
-      logger.info({ activeKeyId, rotated, failed }, 'automation: credential key rotation pass');
+      logger.info(
+        { provider: status.provider, currentKeyId: status.currentKeyId, rotated, failed },
+        'automation: credential key rotation pass',
+      );
     }
     return { rotated, failed };
   }
@@ -256,6 +326,8 @@ class AutomationCredentialService {
       key: doc.key,
       name: doc.name,
       type: doc.type,
+      // Where the secret lives — metadata an operator needs, never the secret itself.
+      provider: doc.secretRef.provider,
       // A fixed mask, never a prefix of the real value: a prefix leaks entropy and, for a short
       // secret, most of the secret.
       masked: '••••••••',
@@ -263,7 +335,7 @@ class AutomationCredentialService {
       branchId: doc.branchId === null ? null : String(doc.branchId),
       ownerUserId: doc.ownerUserId === null ? null : String(doc.ownerUserId),
       lastUsedAt: doc.lastUsedAt === null ? null : doc.lastUsedAt.toISOString(),
-      keyId: doc.sealed.keyId,
+      keyId: doc.secretRef.keyId,
       version: doc.__v,
       createdAt: doc.createdAt.toISOString(),
       updatedAt: doc.updatedAt.toISOString(),

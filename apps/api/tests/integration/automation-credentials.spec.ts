@@ -22,6 +22,7 @@ import { AutomationCredentialModel } from '../../src/modules/automation/credenti
 import { rbacService } from '../../src/platform/rbac';
 import { userService } from '../../src/platform/users';
 import { cryptoService } from '../../src/platform/crypto';
+import { AuditLogModel } from '../../src/platform/audit/audit.model';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 
 const PASSWORD = 'Str0ng#Pass!';
@@ -69,6 +70,14 @@ const login = async (email: string): Promise<string> => {
 
 const body = <T>(res: { body: unknown }): T => (res.body as { data: T }).data;
 const nextKey = (): string => `cred-${(keyCounter += 1)}-${Date.now() % 100000}`;
+
+const USAGE = {
+  workflowId: '66a1b2c3d4e5f60718293a4b',
+  executionId: 'ex_test_1',
+  provider: 'null',
+  principal: { userId: null, kind: 'automation' as const },
+  branchId: null,
+};
 
 const createCredential = (key: string, value = SECRET, token = adminToken) =>
   request(app)
@@ -172,7 +181,9 @@ describe('there is no read path', () => {
     await createCredential(key);
     const doc = await AutomationCredentialModel.findOne({ key }).lean().exec();
     expect(JSON.stringify(doc)).not.toContain(SECRET);
-    expect(doc?.sealed.ciphertext).toBeDefined();
+    expect(doc?.secretRef.provider).toBe('platformCrypto');
+    // The envelope lives inside the opaque ref, which the collection never interprets.
+    expect((doc?.secretRef.ref as { ciphertext?: string }).ciphertext).toBeDefined();
   });
 });
 
@@ -195,7 +206,7 @@ describe('writing', () => {
     expect(JSON.stringify(res.body)).not.toContain(SECRET);
     expect(JSON.stringify(res.body)).not.toContain('replacement-secret-value');
 
-    const [resolved] = await automationCredentialService.resolveForExecution([key]);
+    const [resolved] = await automationCredentialService.resolveForExecution([key], USAGE);
     expect(resolved?.value).toBe('replacement-secret-value');
   });
 
@@ -209,7 +220,7 @@ describe('opening a credential for an execution', () => {
   it('round-trips the secret for the dispatcher', async () => {
     const key = nextKey();
     await createCredential(key);
-    const [resolved] = await automationCredentialService.resolveForExecution([key]);
+    const [resolved] = await automationCredentialService.resolveForExecution([key], USAGE);
     expect(resolved?.value).toBe(SECRET);
     expect(resolved?.type).toBe('smtp');
   });
@@ -217,7 +228,7 @@ describe('opening a credential for an execution', () => {
   it('records that it was used', async () => {
     const key = nextKey();
     await createCredential(key);
-    await automationCredentialService.resolveForExecution([key]);
+    await automationCredentialService.resolveForExecution([key], USAGE);
     const doc = await AutomationCredentialModel.findOne({ key }).lean().exec();
     expect(doc?.lastUsedAt).not.toBeNull();
   });
@@ -233,16 +244,71 @@ describe('opening a credential for an execution', () => {
     const victim = await AutomationCredentialModel.findOne({ key: victimKey }).lean().exec();
     await AutomationCredentialModel.updateOne(
       { key: attackerKey },
-      { $set: { sealed: victim?.sealed } },
+      { $set: { secretRef: victim?.secretRef } },
     ).exec();
 
-    await expect(automationCredentialService.resolveForExecution([attackerKey])).rejects.toThrow();
+    await expect(automationCredentialService.resolveForExecution([attackerKey], USAGE)).rejects.toThrow();
   });
 
   it('fails loudly on an unknown key rather than running with nothing', async () => {
     await expect(
-      automationCredentialService.resolveForExecution(['no-such-credential']),
+      automationCredentialService.resolveForExecution(['no-such-credential'], USAGE),
     ).rejects.toThrow();
+  });
+});
+
+describe('credential usage is audited (approver request)', () => {
+  const usageRows = (credentialId: string) =>
+    AuditLogModel.find({
+      action: 'automationCredentialUsed',
+      'entityRef.entityId': credentialId,
+    })
+      .lean()
+      .exec();
+
+  it('writes a success audit with traceability metadata and NO secret', async () => {
+    const key = nextKey();
+    const id = body<AutomationCredentialDto>(await createCredential(key)).id;
+
+    await automationCredentialService.resolveForExecution([key], {
+      workflowId: '66a1b2c3d4e5f60718293a4b',
+      executionId: 'ex_audit_1',
+      provider: 'n8n',
+      principal: { userId: null, kind: 'automation' },
+      branchId: null,
+    });
+
+    const rows = await usageRows(id);
+    expect(rows).toHaveLength(1);
+    const fields = Object.fromEntries(
+      (rows[0]?.changes ?? []).map((change) => [change.field, change.new]),
+    );
+    // Everything the request enumerated is present…
+    expect(fields.outcome).toBe('success');
+    expect(fields.executionId).toBe('ex_audit_1');
+    expect(fields.provider).toBe('n8n');
+    expect(fields.credentialKey).toBe(key);
+    expect(fields.credentialType).toBe('smtp');
+    expect(fields.store).toBe('platformCrypto');
+    // …and the secret is in none of it.
+    expect(JSON.stringify(rows[0])).not.toContain(SECRET);
+  });
+
+  it('audits a FAILED resolution too, so a tampered or missing credential is visible', async () => {
+    // A workflow trying to use a credential that is gone is exactly what a usage audit is for.
+    await expect(
+      automationCredentialService.resolveForExecution(['ghost-credential'], USAGE),
+    ).rejects.toThrow();
+
+    const rows = await AuditLogModel.find({
+      action: 'automationCredentialUsed',
+      'entityRef.entityId': 'ghost-credential',
+    })
+      .lean()
+      .exec();
+    expect(rows).toHaveLength(1);
+    const outcome = rows[0]?.changes.find((change) => change.field === 'outcome')?.new;
+    expect(outcome).toBe('failure');
   });
 });
 
@@ -256,7 +322,7 @@ describe('key rotation', () => {
     // stored in the clear precisely so this query needs no decryption.
     await AutomationCredentialModel.updateOne(
       { key },
-      { $set: { 'sealed.keyId': 'retired-key-id' } },
+      { $set: { 'secretRef.keyId': 'retired-key-id' } },
     ).exec();
 
     const outcome = await automationCredentialService.rotateKeys();
@@ -267,14 +333,16 @@ describe('key rotation', () => {
     // Restore and confirm a genuine rotation is a no-op on already-active values.
     await AutomationCredentialModel.updateOne(
       { key },
-      { $set: { 'sealed.keyId': before?.sealed.keyId } },
+      { $set: { 'secretRef.keyId': before?.secretRef.keyId } },
     ).exec();
     const clean = await automationCredentialService.rotateKeys();
     expect(clean.failed).toBe(0);
 
     const after = await AutomationCredentialModel.findOne({ key }).lean().exec();
-    expect(after?.sealed.ciphertext).toBe(before?.sealed.ciphertext);
-    const [resolved] = await automationCredentialService.resolveForExecution([key]);
+    expect((after?.secretRef.ref as { ciphertext?: string }).ciphertext).toBe(
+      (before?.secretRef.ref as { ciphertext?: string }).ciphertext,
+    );
+    const [resolved] = await automationCredentialService.resolveForExecution([key], USAGE);
     expect(resolved?.value).toBe(SECRET);
   });
 

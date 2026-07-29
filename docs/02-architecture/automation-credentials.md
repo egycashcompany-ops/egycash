@@ -17,27 +17,43 @@ integration suite is written adversarially — it enumerates every response the 
 credential, asserts the plaintext is in none of them, then probes the paths an attacker would
 guess. A test that only checked the happy path would pass against an API with a reveal flag.
 
-`credential.view` returns metadata: key, name, type, owner, branch, last use, and `keyId`. Enough
-to administer the store, nothing to steal.
+`credential.view` returns metadata: key, name, type, owner, branch, last use, `keyId`, and the
+`provider` (which store holds it). Enough to administer the store, nothing to steal.
 
-## What is stored
+## Storage is behind a seam
 
-A `SealedValue` (envelope encryption, A-1), bound by AAD to `automation_credentials:<id>:value`.
+A credential stores a **`SecretRef`** produced by the platform **secret store**
+([`platform/secrets/`](../../apps/api/src/platform/secrets/)) — not a `SealedValue` directly. The
+ref is `{ provider, keyId, ref }`, and `ref` is **opaque**: only the store that produced it may
+read it. The default store, `platformCrypto`, puts an envelope-encrypted `SealedValue` (A-1) inside
+`ref`, bound by AAD to `automation_credentials:<id>:value`.
+
+This is the decoupling the platform asked for: **the credential collection, service and rotation
+sweep never mention AES, a key ring, or any backend.** Introducing an AWS KMS, Azure Key Vault or
+HashiCorp Vault store is a new `SecretStore` implementation plus one line at boot
+(`setSecretStore(...)`) — the automation module contracts do not change. The `SecretStore`
+interface is async precisely so a KMS/vault round-trip fits without breaking a signature (the A-0
+lesson), and the store's methods are `async` so a synchronous crypto throw surfaces as a rejection
+rather than escaping `.catch()`.
+
+A `SecretStore` reports `rotatable`: `platformCrypto` drives its own rotation (below), while a
+backend that rotates itself reports `false` and the sweep leaves it alone.
 
 The record id is minted **before** the seal rather than by the insert:
 
 ```ts
 const id = new Types.ObjectId();
-const sealed = cryptoService.seal(input.value, `automation_credentials:${id}:value`);
-await repository.create({ _id: id, sealed, … });
+const secretRef = await getSecretStore().seal(input.value, `automation_credentials:${id}:value`);
+await repository.create({ _id: id, secretRef, … });
 ```
 
 Sealing after the insert would mean either a window where a row exists with no value, or a second
 write. One id, one seal, one insert.
 
-The AAD is what makes a **ciphertext swap** fail. Someone with write access to the collection
-copying credential A's blob into credential B's row does not get a system authenticating as A — it
-gets a decryption failure, and there is a test that performs exactly that attack.
+The sealing **context** is what makes a **ref swap** fail. Someone with write access to the
+collection copying credential A's ref into credential B's row does not get a system authenticating
+as A — the store rejects the mismatched context, and there is a test that performs exactly that
+attack.
 
 ## Replace, never edit
 
@@ -51,13 +67,14 @@ audit diffs are built from a snapshot function that has no access to the plainte
 
 ## Rotation runs unattended
 
-`automation.rotateCredentialKeys`, nightly at 02:30. It re-wraps the **data key** of anything not
-sealed under the active master key; the ciphertext is untouched and no plaintext exists at any
-point in the operation. That is what makes rotation a scheduled job rather than a project where
-people re-enter secrets.
+`automation.rotateCredentialKeys`, nightly at 02:30. It asks the store to `rewrap` anything not on
+the current key; for `platformCrypto` that re-wraps the **data key** with the ciphertext untouched,
+and no plaintext exists at any point. That is what makes rotation a scheduled job rather than a
+project where people re-enter secrets — and a self-rotating backend (`rotatable: false`) is skipped
+entirely.
 
-`sealed.keyId` is stored in the clear precisely so "find everything on a retired key" is an indexed
-query rather than a decrypt-everything scan.
+`secretRef.keyId` is stored in the clear precisely so "find everything not on the current key" is an
+indexed query rather than a decrypt-everything scan.
 
 One credential on a key that has already left the ring counts as a failure and the sweep continues:
 that state is recoverable (put the key back), and it must not stop rotation for everything else.
@@ -95,6 +112,23 @@ inside ordinary words and would shred the snapshot's diagnostic value.
 | No encryption key configured | Writes are **refused** with a clear message. Better than storing a secret in the clear or dropping it silently. |
 | Ciphertext tampered or moved | `resolveForExecution` throws. The log line carries the key id and credential key — never the sealed document, and never the underlying error message, which distinguishes tamper from wrong-key and is exactly the oracle an attacker probing the store would want. |
 | Credential missing at run time | Throws. A workflow that authenticates with nothing is worse than one that fails. |
+
+## Every use is audited
+
+`resolveForExecution()` writes an audit row for **every** credential open — success and failure —
+with the traceability the platform asked for: credential id, workflow id, execution id, the
+automation provider, the principal, branch context, timestamp and outcome. The row **never carries
+the secret**; that is the entire point — usage becomes fully traceable *without* increasing
+exposure.
+
+A failed open is audited too. "A workflow tried to use a credential that is gone / tampered" is
+exactly the event a usage audit exists to surface, and dropping it would blind the audit to the
+cases that matter most. The failure reason recorded is coarse (`not-found`, `store-mismatch`,
+`open-failed`) — enough to triage, without becoming the tamper-vs-wrong-key oracle the log line
+also withholds.
+
+The metadata rides in the audit record's `changes` slot as `null → value` entries, so it reads
+naturally in the audit log without widening the platform audit schema.
 
 ## Not here yet
 

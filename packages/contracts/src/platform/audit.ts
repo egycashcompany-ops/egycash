@@ -59,6 +59,9 @@ export const AUDIT_ACTIONS = [
   'automationDisabled',
   'automationSuspended',
   'automationTransferred',
+  /** A credential was opened for an execution (A-4.1). The row carries traceability metadata,
+   *  never the secret — which is the whole point of auditing usage rather than exposing it. */
+  'automationCredentialUsed',
 ] as const;
 export const AuditActionSchema = z.enum(AUDIT_ACTIONS);
 export type AuditAction = z.infer<typeof AuditActionSchema>;

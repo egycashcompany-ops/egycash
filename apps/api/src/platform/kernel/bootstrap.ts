@@ -20,6 +20,7 @@ import { declareFeatureFlagSettings } from '../settings';
 import { rbacService } from '../rbac';
 import { organizationService } from '../organization';
 import { registerPlatformScheduledTasks, schedulerService } from '../scheduler';
+import { setSecretStore, platformCryptoStore } from '../secrets';
 import { registerOutboxJobHandlers } from './event-bus';
 import { getRegisteredModules, registerModule, type ModuleManifest } from './module-registry';
 
@@ -37,6 +38,9 @@ export const bootPlatform = async (options: BootOptions = {}): Promise<void> => 
   await connectMongo(options.mongoUri);
 
   // Tier 0 — foundations: setting declarations, job handlers.
+  // The default secret store (platform crypto). Set before any module that stores a secret loads,
+  // and swappable here for a KMS/vault store without touching a single credential caller.
+  setSecretStore(platformCryptoStore);
   registerAuthSettings();
   registerAuditSettings();
   registerNotificationSettings();

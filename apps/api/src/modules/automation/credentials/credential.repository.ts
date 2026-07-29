@@ -10,10 +10,10 @@ class AutomationCredentialRepository extends BaseRepository<AutomationCredential
     return this.model.findOne({ key, isDeleted: false }).exec();
   }
 
-  /** Rotation input: everything sealed under a key that is no longer the active one. */
-  async listNotOnKey(activeKeyId: string, limit: number): Promise<AutomationCredentialDoc[]> {
+  /** Rotation input: everything sealed under a key that is no longer the current one. */
+  async listNotOnKey(currentKeyId: string, limit: number): Promise<AutomationCredentialDoc[]> {
     return this.model
-      .find({ 'sealed.keyId': { $ne: activeKeyId }, isDeleted: false })
+      .find({ 'secretRef.keyId': { $ne: currentKeyId }, isDeleted: false })
       .limit(limit)
       .exec();
   }

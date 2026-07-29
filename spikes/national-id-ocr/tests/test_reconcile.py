@@ -138,3 +138,83 @@ def test_the_printed_sex_is_found_among_detected_lines():
     ]
     assert _printed_gender(lines) == "أنثى"
     assert _printed_gender([lines[0]]) is None
+
+
+# ── A failing detector must not cost the card ──
+
+
+class _ExplodingDetector:
+    """Recognizes fields fine, but blows up on full-page detection — the observed production shape.
+
+    PaddleOCR's static predictor is native code with no Python-level failure mode: a concurrent
+    call came back as `RuntimeError: std::exception` from inside C++. Whatever the cause, the
+    question this asks is what the pipeline does about it.
+    """
+
+    id = "exploding"
+
+    def detect_lines(self, image):  # noqa: ARG002
+        raise RuntimeError("std::exception")
+
+    def recognize(self, crop, *, rtl=True):  # noqa: ARG002
+        from nidocr.engine import Recognition
+
+        return Recognition(text="محمد احمد", score=0.9)
+
+
+def test_a_detection_failure_falls_back_to_nominal_boxes(tmp_path):
+    """Anchoring is an improvement on the geometry, so losing it must cost the correction only.
+
+    It was costing the whole read: the exception left `extract`, the service turned it into a 500,
+    and a card that would have produced six usable fields produced none. Per-field recognition
+    failures were already tolerated one field at a time; detection was the single call that could
+    still take the request down with it.
+    """
+    import cv2
+    import numpy as np
+
+    from nidocr.extract import extract
+
+    card = np.full((646, 1024, 3), 220, np.uint8)
+    front = tmp_path / "front.jpg"
+    cv2.imwrite(str(front), card)
+
+    result = extract(str(front), None, _ExplodingDetector())
+
+    assert result.fields, "a detection failure emptied the whole read"
+    assert result.diagnostics["front"]["boxSources"] == {"nominal": 3}, (
+        "boxes should fall back to the profile geometry, not vanish"
+    )
+
+
+# ── Catching the front photographed twice ──
+
+
+def test_a_front_image_submitted_as_the_back_is_flagged():
+    """The commonest two-sided capture mistake, and the one with the least legible symptom.
+
+    Applying the back's boxes to a front image returns whatever sits at those coordinates —
+    a fragment of the address arrives as a religion, and nothing about that says "wrong image".
+    """
+    from nidocr.extract import _looks_like_the_back
+
+    front_lines = [
+        ([[0, 0], [10, 0], [10, 10], [0, 10]], "ندى محمد رضوان الحديدى عبده", 0.9),
+        ([[0, 20], [10, 20], [10, 30], [0, 30]], "برج الشروق ش أحمد ماهر المنصورة أول", 0.9),
+    ]
+    assert _looks_like_the_back(front_lines) is False
+
+    back_lines = [
+        ([[0, 0], [10, 0], [10, 10], [0, 10]], "معيدة بقسم الصحة العامة", 0.9),
+        ([[0, 20], [10, 20], [10, 30], [0, 30]], "أنثى مسلمة متزوجة", 0.9),
+    ]
+    assert _looks_like_the_back(back_lines) is True
+
+
+def test_an_unreadable_side_is_not_accused_of_being_the_wrong_side():
+    """No text is not evidence of a wrong image, and flagging it would send people to re-shoot a
+    side they photographed correctly."""
+    from nidocr.extract import _looks_like_the_back
+
+    assert _looks_like_the_back([]) is None
+    assert _looks_like_the_back([([[0, 0], [1, 0], [1, 1], [0, 1]], "   ", 0.1)]) is None

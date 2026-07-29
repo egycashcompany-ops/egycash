@@ -39,6 +39,21 @@ def profile(request):
      layout.CANONICAL_SIZE, layout._ACTIVE_PROFILE) = saved
 
 
+@pytest.fixture
+def restore_layout():
+    """Save and restore the layout globals for a test that loads a profile by hand.
+
+    `load_profile` mutates module state, and `test_profile.py` runs before several other files
+    alphabetically — so a test that loads a profile and does not put it back would hand the rest of
+    the suite geometry it never asked for, and the resulting failures would point anywhere but here.
+    """
+    saved = (layout.FRONT_FIELDS, layout.BACK_FIELDS, layout.ALL_FIELD_NAMES,
+             layout.CANONICAL_SIZE, layout._ACTIVE_PROFILE)
+    yield
+    (layout.FRONT_FIELDS, layout.BACK_FIELDS, layout.ALL_FIELD_NAMES,
+     layout.CANONICAL_SIZE, layout._ACTIVE_PROFILE) = saved
+
+
 def _overlap(a, b) -> bool:
     return (a.x < b.x + b.w and b.x < a.x + a.w) and (a.y < b.y + b.h and b.y < a.y + a.h)
 
@@ -89,3 +104,50 @@ def test_profile_is_valid_json_with_the_expected_shape(profile):
     data = json.loads(profile.read_text(encoding="utf-8"))
     assert set(data) >= {"front", "back"}
     assert len(data["canonicalSize"]) == 2
+
+
+# ── The shipped default ──
+
+
+def test_the_image_default_profile_exists_and_loads(restore_layout):
+    """The geometry the Dockerfile names must be real, and must parse.
+
+    This exists because the opposite went unnoticed for a whole deployment cycle. `egypt-nid.json`
+    was measured from a real card specifically to stop the name box catching the card's header and
+    the address box catching the name — then `OCR_LAYOUT_PROFILE` was documented as optional, left
+    unset, and every deployment ran the synthetic geometry instead. Nothing failed; the fields just
+    came back wrong, and the recognizer got the blame.
+
+    `load_profile` raises rather than falling back, so a broken path fails the container at start —
+    loud, but only once it is deployed. Asserting it here moves that discovery into CI.
+    """
+    import re
+
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    declared = re.search(r"^ENV\s+OCR_LAYOUT_PROFILE=(\S+)", dockerfile, re.MULTILINE)
+    assert declared, "the image must declare a default geometry profile"
+
+    # /app is the image's WORKDIR and mirrors the repository root.
+    path = ROOT / declared.group(1).replace("/app/", "")
+    assert path.is_file(), f"Dockerfile points OCR_LAYOUT_PROFILE at a missing file: {path}"
+
+    layout.load_profile(str(path))
+    assert layout.active_profile_name() == path.name
+    assert {box.name for box in layout.FRONT_FIELDS} == {"fullNameAr", "address", "nationalId"}
+
+
+def test_the_shipped_profile_puts_the_name_below_the_card_header(restore_layout):
+    """A regression guard on the specific misread the user reported.
+
+    The card prints 'بطاقة تحقيق الشخصية' across the top. A name box whose top edge reaches into
+    that band returns the header glued to the name — which is exactly what came back — and the
+    English transliteration then inherits it. Keeping the name box below the header band is the
+    property that stops it.
+    """
+    layout.load_profile(str(ROOT / "profiles" / "egypt-nid.json"))
+    boxes = {box.name: box for box in layout.FRONT_FIELDS}
+
+    assert boxes["fullNameAr"].y > 0.20, "the name box reaches into the card's printed header"
+    assert boxes["address"].y >= boxes["fullNameAr"].y + boxes["fullNameAr"].h * 0.9, (
+        "the address box overlaps the name lines"
+    )

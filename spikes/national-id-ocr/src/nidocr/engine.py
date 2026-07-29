@@ -13,11 +13,16 @@ recognition step itself needs the real model.
 
 from __future__ import annotations
 
+import logging
 import os
+import threading
 from dataclasses import dataclass
 from typing import Protocol
 
+import cv2
 import numpy as np
+
+LOG = logging.getLogger("nidocr.engine")
 
 
 @dataclass(frozen=True)
@@ -55,9 +60,30 @@ class PaddleRecognizer:
 
     Import is lazy so that the rest of the package — preprocessing, layout, scoring, the whole
     Mock path — imports and runs without paddle installed.
+
+    **Every call into the predictor is serialized.** PaddleOCR's static predictor holds native
+    inference state and is not safe to call from two threads at once; the service is a
+    `ThreadingHTTPServer` sharing one recognizer across every request. Two overlapping scans
+    therefore entered `predictor.run()` together and the process raised `RuntimeError:
+    std::exception` from inside C++ — a crash with no Python-level cause to find, which is why the
+    tracebacks pointed at paddle and told you nothing.
+
+    That is not a hypothetical read of the logs. The tracebacks themselves came out interleaved,
+    two threads writing stderr line-by-line into each other, which is direct evidence that two
+    requests were inside the recognizer simultaneously.
+
+    Serializing costs throughput and nothing else here: `OMP_NUM_THREADS=1` already pins the model
+    to one core, so concurrent requests were never actually computing in parallel — they were
+    contending for one core AND corrupting each other's inference state.
     """
 
     id = "paddleocr-3.x"
+
+    #: Longest side handed to full-page detection. Anchoring needs polygons, not legible glyphs,
+    #: and the polygons are normalized by the caller anyway — so detection runs on a smaller copy
+    #: and the results are scaled back. Per-field recognition still gets full resolution, because
+    #: there the pixels are the answer rather than a coordinate.
+    DETECT_MAX_SIDE = 960
 
     def __init__(self, model_dir: str | None = None, lang: str = "ar") -> None:
         self._model_dir = model_dir or os.environ.get("PADDLE_OCR_MODEL_DIR", "/models")
@@ -80,13 +106,35 @@ class PaddleRecognizer:
             use_doc_unwarping=False,
             use_textline_orientation=False,
         )
+        self._lock = threading.Lock()
+
+    def _run(self, image: np.ndarray) -> list[tuple[object, str, float]]:
+        """The one place the predictor is touched, under the one lock. See the class docstring."""
+        with self._lock:
+            return _flatten_paddle_polys(self._ocr.ocr(image))
 
     def detect_lines(self, image: np.ndarray) -> list[tuple[object, str, float]]:
-        """Full-page detection + recognition, keeping each line's polygon."""
-        return _flatten_paddle_polys(self._ocr.ocr(image))
+        """Full-page detection + recognition, keeping each line's polygon.
+
+        Runs on a downscaled copy and scales the polygons back, so the contract is unchanged:
+        coordinates come back in the caller's pixel space. Callers use these to place crops, and a
+        box is a coordinate rather than a glyph — halving the linear size costs a couple of pixels
+        of box precision, which `anchor._pad` already absorbs, and quarters the pixels the
+        detection model has to allocate for.
+        """
+        height, width = image.shape[:2]
+        scale = min(1.0, self.DETECT_MAX_SIDE / max(height, width))
+        if scale >= 1.0:
+            return self._run(image)
+
+        smaller = cv2.resize(image, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+        return [
+            (np.asarray(poly, dtype=float) / scale, text, score)
+            for poly, text, score in self._run(smaller)
+        ]
 
     def recognize(self, crop: np.ndarray, *, rtl: bool = True) -> Recognition:
-        segments = _flatten_paddle_polys(self._ocr.ocr(crop))
+        segments = self._run(crop)
         if not segments:
             return Recognition(text="", score=0.0)
         ordered = _in_reading_order(segments, rtl=rtl)

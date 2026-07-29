@@ -22,6 +22,7 @@ being right for this particular card, which is the assumption real cards break m
 
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass, field as _field
 from typing import Any
@@ -47,6 +48,8 @@ from .postprocess import (
     clean_text,
 )
 from .quality import QualityReport
+
+LOG = logging.getLogger("nidocr.extract")
 
 
 @dataclass
@@ -203,6 +206,28 @@ def _side_boxes(side: str) -> tuple[FieldBox, ...]:
     return FRONT_FIELDS if side == "front" else BACK_FIELDS
 
 
+def _detect_lines(card: np.ndarray, recognizer: Recognizer, side: str) -> list[Line]:
+    """Full-page detection, downgraded to 'no lines' if it fails rather than losing the card.
+
+    Detection feeds anchoring, and anchoring is an IMPROVEMENT on the nominal geometry — without it
+    the boxes simply stay where the profile put them, which is where they were before anchoring
+    existed. So a detection failure should cost the correction, not the read.
+
+    It was costing the read. The exception propagated out of `extract`, the service caught it at the
+    top and returned 500, and a card that would have yielded six perfectly good fields yielded
+    nothing. Recognition failures are already tolerated field-by-field for exactly this reason;
+    detection was the one call that could still take the whole request down with it.
+
+    The exception is logged rather than swallowed silently — a run where every card loses its
+    anchoring is a real problem, just not one that should reach the user as a failed scan.
+    """
+    try:
+        return list(recognizer.detect_lines(card))
+    except Exception:  # noqa: BLE001 — the recognizer is native code; anything can come out of it
+        LOG.warning("%s: line detection failed; falling back to nominal boxes", side, exc_info=True)
+        return []
+
+
 def _process_side(
     image: np.ndarray, side: str, recognizer: Recognizer, timings: StageTimings
 ) -> SideResult:
@@ -213,7 +238,7 @@ def _process_side(
     size = (prepared.image.shape[1], prepared.image.shape[0])
 
     started = time.perf_counter()
-    result.lines = list(recognizer.detect_lines(prepared.image))
+    result.lines = _detect_lines(prepared.image, recognizer, side)
     timings.record(f"{side}:detect", started)
 
     wanted = {box.name for box in boxes} | set(_BACK_STRUCTURAL_EXTRA if side == "back" else ())
@@ -253,6 +278,37 @@ def _printed_gender(lines: list[Line]) -> str | None:
             if rasm_fold(token) in targets:
                 return token
     return None
+
+
+#: Words that appear on the back of an Egyptian card and nowhere on the front. Rasm-folded, so a
+#: dropped dot does not turn a present marker into a missing one.
+_BACK_MARKERS = frozenset(
+    rasm_fold(word)
+    for word in ("ذكر", "أنثى", "مسلم", "مسلمة", "مسيحي", "مسيحية", "أعزب", "عزباء", "متزوج",
+                 "متزوجة", "مطلق", "مطلقة", "أرمل", "أرملة", "سارية", "الرقم")
+)
+
+
+def _looks_like_the_back(lines: list[Line]) -> bool | None:
+    """Does this image carry any of the words only the back of the card has? None if unreadable.
+
+    The commonest mistake anyone makes with a two-sided capture is photographing the same side
+    twice, and the pipeline's response to that is uniquely unhelpful: the back's field boxes are
+    applied to a front image, so they land on whatever happens to sit at those coordinates and
+    return confident fragments of the address as a religion. Nothing about that reads as "wrong
+    image" — it reads as bad OCR, and the next hour goes into the recognizer.
+
+    The back states sex, religion and marital status in words drawn from a tiny closed vocabulary.
+    If a whole side yielded text and none of those words is anywhere in it, the image is almost
+    certainly not a back. Reported, never acted on: the fields are still returned and the reviewer
+    still decides. A wrong guess here would suppress a legitimately odd card.
+    """
+    if not lines:
+        return None
+    folded = " ".join(rasm_fold(text) for _, text, _ in lines)
+    if not folded.strip():
+        return None
+    return any(marker in folded for marker in _BACK_MARKERS)
 
 
 def _rotate_180(image: np.ndarray) -> np.ndarray:
@@ -359,6 +415,12 @@ def extract(
             notes["dewarped"] = side_result.rectification.dewarped
         if side_result.anchoring is not None:
             notes["boxSources"] = side_result.anchoring.source_counts()
+        if side == "back":
+            # See `_looks_like_the_back`. Surfaced so "you photographed the front twice" stops
+            # being indistinguishable from "the recognizer is bad at Arabic".
+            looks_right = _looks_like_the_back(side_result.lines)
+            if looks_right is False:
+                notes["sideMismatch"] = True
         for name, data in side_result.fields.items():
             if name != "nationalId":
                 result.fields[name] = data

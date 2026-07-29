@@ -78,19 +78,53 @@ def _rect(poly: Any, size: tuple[int, int]) -> tuple[float, float, float, float]
     return left, top, right - left, bottom - top
 
 
-def _overlaps(rect: tuple[float, float, float, float], box: FieldBox, margin: float) -> bool:
-    """Is this line's centre inside the box, allowed to have drifted by `margin` of the box size?
+def _overlaps(
+    rect: tuple[float, float, float, float], box: FieldBox, margin: float, line_height: float
+) -> bool:
+    """Is this line's centre inside the box, allowing for a little drift?
 
     Centre containment rather than rectangle intersection: a long address line legitimately extends
     past a conservatively-drawn box, and intersection would then also catch the neighbouring line
     that merely grazes the box's edge. The centre is where the line *is*.
+
+    VERTICAL SLACK IS MEASURED IN TEXT LINES, NOT IN BOX HEIGHTS, and that distinction is the whole
+    correctness of this function. Scaling the slack to the box made the search area grow with the
+    box: the two-line name box is 0.20 of the card tall, so a 35% margin reached 0.07 beyond it —
+    and a line of print on this card is about 0.07 tall. The box was therefore reaching exactly one
+    full line too far in each direction, so it swallowed the 'بطاقة تحقيق الشخصية' header above it
+    and the address line below. Anchoring, added to correct small drift, was re-assigning whole
+    lines instead.
+
+    Half a line is the right unit because it is what "drift" means here: a box that has slipped by
+    less than half a line still belongs to its own text, and one that has slipped by more than that
+    is pointing at its neighbour's.
     """
     x, y, w, h = rect
     centre_x, centre_y = x + w / 2.0, y + h / 2.0
+    slack_y = min(box.h * margin, line_height * 0.5)
     return (
         box.x - box.w * margin <= centre_x <= box.x + box.w * (1.0 + margin)
-        and box.y - box.h * margin <= centre_y <= box.y + box.h * (1.0 + margin)
+        and box.y - slack_y <= centre_y <= box.y + box.h + slack_y
     )
+
+
+def _clamp_to(
+    rect: tuple[float, float, float, float], box: FieldBox, line_height: float
+) -> tuple[float, float, float, float]:
+    """Keep a snapped crop within one line of where the profile said the field is.
+
+    Belt and braces over the selection rule above. Even when the right lines are chosen, a
+    detection polygon that runs tall — a stray mark, a piece of the guilloche caught by the
+    detector — would drag the crop into the field above or below. Anchoring exists to correct
+    drift, so bounding the correction to the size of the thing that drifts keeps it honest: the
+    box may move, but it may not travel to a different line.
+    """
+    x, y, w, h = rect
+    top = max(y, box.y - line_height)
+    bottom = min(y + h, box.y + box.h + line_height)
+    if bottom <= top:
+        return rect
+    return x, top, w, bottom - top
 
 
 def _union(rects: list[tuple[float, float, float, float]]) -> tuple[float, float, float, float]:
@@ -124,21 +158,37 @@ MAX_GROWTH = 2.5
 
 _FULL_DATE = re.compile(r"\d{4}\s*[/\-.]\s*\d{1,2}\s*[/\-.]\s*\d{1,2}")
 
+#: Fallback when detection found nothing to measure — roughly one printed line on an ID-1 card.
+DEFAULT_LINE_HEIGHT = 0.07
+
+
+def _median_line_height(rects: list[tuple[float, float, float, float]]) -> float:
+    """How tall a line of print is on THIS card, as a fraction of its height.
+
+    Measured rather than assumed, because it is the unit every tolerance in this module is
+    expressed in, and it genuinely varies — between card generations, and with how much of the
+    frame the card occupies. The median ignores the outliers that matter here: a single detection
+    that merged two lines, or one that caught a stray mark.
+    """
+    heights = [h for _, _, _, h in rects if h > 0]
+    return float(np.median(heights)) if heights else DEFAULT_LINE_HEIGHT
+
 
 def snap(
     boxes: tuple[FieldBox, ...], lines: list[Line], size: tuple[int, int], *, margin: float = 0.35
 ) -> tuple[dict[str, FieldBox], dict[str, str]]:
     """Fit each nominal box to the detected lines around it."""
     rects = [rect for rect in (_rect(poly, size) for poly, _, _ in lines) if rect is not None]
+    line_height = _median_line_height(rects)
 
     fitted: dict[str, FieldBox] = {}
     sources: dict[str, str] = {}
     for box in boxes:
-        near = [rect for rect in rects if _overlaps(rect, box, margin)]
+        near = [rect for rect in rects if _overlaps(rect, box, margin, line_height)]
         if not near:
             fitted[box.name], sources[box.name] = box, "nominal"
             continue
-        x, y, w, h = _pad(_union(near))
+        x, y, w, h = _pad(_clamp_to(_union(near), box, line_height))
         if w * h > box.w * box.h * MAX_GROWTH:
             fitted[box.name], sources[box.name] = box, "nominal"
             continue

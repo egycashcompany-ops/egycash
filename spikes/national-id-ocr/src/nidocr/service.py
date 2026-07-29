@@ -164,14 +164,37 @@ class Handler(BaseHTTPRequestHandler):
             result = extract(front, back, get_recognizer())
             elapsed = (time.perf_counter() - started) * 1000.0
             # Field COUNT and timing only — never the values. Logs are not a place for the
-            # contents of someone's identity card.
-            LOG.info("extracted %d fields in %.0f ms", len(result.as_raw_ocr_result()), elapsed)
+            # contents of someone's identity card. The quality verdict is a property of the
+            # photograph rather than of its holder, so it is safe to log and worth logging: a
+            # sudden run of rejected captures is an operational signal.
+            LOG.info(
+                "extracted %d fields in %.0f ms (quality=%s)",
+                len(result.as_raw_ocr_result()),
+                elapsed,
+                {side: report.verdict for side, report in result.quality.items()},
+            )
             self._send(
                 200,
                 {
                     "fields": result.as_raw_ocr_result(),
                     "elapsedMs": round(elapsed, 1),
                     "layoutProfile": active_profile_name(),
+                    # Additive, so an older caller that ignores these keeps working unchanged.
+                    #
+                    # `quality` is the actionable half: it carries per-side reason codes ('too_small',
+                    # 'blurred', 'glare', …) that let the UI tell someone what to change about their
+                    # photograph. Without it the only available message is "could not read the card",
+                    # which sends people back to take the same bad photograph a second time.
+                    #
+                    # `diagnostics` is the explanatory half — which detector located the card,
+                    # whether it was dewarped or read upside down, how many boxes had to be moved
+                    # onto the text. It answers "why was this read poor?" without anyone needing to
+                    # send the card image to someone who can look at it. Coordinates and counts only:
+                    # like `/diagnose`, it carries no card content.
+                    "quality": {
+                        side: report.as_dict() for side, report in result.quality.items()
+                    },
+                    "diagnostics": result.diagnostics,
                 },
             )
         except ValueError as error:

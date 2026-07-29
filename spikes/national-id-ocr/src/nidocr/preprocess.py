@@ -2,17 +2,24 @@
 
 Order matters and is not arbitrary:
 
-  1. `rectify`      — find the card and warp it to a canonical rectangle. Everything downstream
-                      (the whole field-box approach) depends on this; without it the crops land
-                      on the wrong pixels and no amount of recognizer quality saves you.
-  2. `deskew`       — residual rotation after rectification. Text recognizers are markedly worse
+  1. `rectify`      — find the card and warp it flat. Lives in `geometry.py`, because locating a
+                      card in a photograph turned out to be a whole problem rather than a step.
+                      Everything downstream depends on it; without it the crops land on the wrong
+                      pixels and no amount of recognizer quality saves you.
+  2. `assess`       — decide whether the capture is worth reading at all, and record why not. See
+                      `quality.py`. Runs here rather than later so a hopeless image costs one
+                      measurement instead of a full recognition pass.
+  3. `deskew`       — residual rotation after rectification. Text recognizers are markedly worse
                       on lines that are even a few degrees off horizontal.
-  3. `denoise`      — phone captures carry sensor noise that adaptive thresholding will happily
+  4. `denoise`      — phone captures carry sensor noise that adaptive thresholding will happily
                       amplify into speckle that looks like diacritics.
-  4. `enhance`      — CLAHE on the luminance channel only. Global histogram equalisation wrecks
+  5. `enhance`      — CLAHE on the luminance channel only. Global histogram equalisation wrecks
                       cards with glare on one side; CLAHE is local, so a bright corner does not
                       drag the rest of the card down.
-  5. `binarize`     — OPTIONAL and applied per field, not to the page. See `prepare_field`.
+  6. `sharpen`      — CONDITIONAL. Applied only to captures the quality gate called soft. Unsharp
+                      masking a already-crisp scan manufactures halos around Arabic strokes, which
+                      costs accuracy rather than adding it.
+  7. `binarize`     — OPTIONAL and applied per field, not to the page. See `prepare_field`.
 
 Every step is individually callable and individually timed, because when a real card fails the
 first question is always "which stage lost it?" — and a monolithic `preprocess()` cannot answer.
@@ -26,7 +33,10 @@ from dataclasses import dataclass, field
 import cv2
 import numpy as np
 
+from .geometry import Rectification, locate_card
+from .geometry import rectify as _rectify_card
 from .layout import CANONICAL_SIZE
+from .quality import GOOD_SHARPNESS, QualityReport, assess
 
 
 @dataclass
@@ -43,6 +53,15 @@ class StageTimings:
         return sum(self.stages.values())
 
 
+@dataclass(frozen=True)
+class PreparedCard:
+    """A card ready for cropping, plus the evidence for how much to trust what comes off it."""
+
+    image: np.ndarray
+    rectification: Rectification
+    quality: QualityReport
+
+
 def load_bgr(path: str) -> np.ndarray:
     """Read an image as BGR. Raises rather than returning None — a missing fixture is a bug."""
     image = cv2.imread(path, cv2.IMREAD_COLOR)
@@ -51,94 +70,63 @@ def load_bgr(path: str) -> np.ndarray:
     return image
 
 
-def _order_quad(points: np.ndarray) -> np.ndarray:
-    """Order 4 points as top-left, top-right, bottom-right, bottom-left.
-
-    Uses coordinate sums/differences rather than angles: it is branch-free and stable when the
-    card is photographed at an angle steep enough that "topmost point" stops meaning "top-left".
-    """
-    ordered = np.zeros((4, 2), dtype=np.float32)
-    s = points.sum(axis=1)
-    d = np.diff(points, axis=1).ravel()
-    ordered[0] = points[np.argmin(s)]  # top-left  — smallest x+y
-    ordered[2] = points[np.argmax(s)]  # bottom-right — largest x+y
-    ordered[1] = points[np.argmin(d)]  # top-right — smallest y−x
-    ordered[3] = points[np.argmax(d)]  # bottom-left — largest y−x
-    return ordered
-
-
 def find_card_quad(image: np.ndarray) -> np.ndarray | None:
     """The card's four corners, or None when no plausible quadrilateral is found.
 
-    Returning None rather than a guess is deliberate: falling back to "use the whole frame" is
-    correct when the caller already cropped to the card, and a wrong quad is far worse than none
-    because it silently warps every field box off target.
+    Thin wrapper over `geometry.locate_card` for callers that only need the corners — `diagnose`
+    uses it to report whether the card was located at all.
     """
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    gray = cv2.GaussianBlur(gray, (5, 5), 0)
-    edges = cv2.Canny(gray, 40, 140)
-    # Close small gaps so a card edge broken by glare still forms a single contour.
-    edges = cv2.dilate(edges, np.ones((3, 3), np.uint8), iterations=1)
-
-    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if not contours:
-        return None
-
-    frame_area = image.shape[0] * image.shape[1]
-    for contour in sorted(contours, key=cv2.contourArea, reverse=True)[:8]:
-        area = cv2.contourArea(contour)
-        # A card that fills less than a fifth of the frame is more likely a label or a shadow.
-        if area < frame_area * 0.20:
-            break
-        approx = cv2.approxPolyDP(contour, 0.02 * cv2.arcLength(contour, True), True)
-        if len(approx) == 4 and cv2.isContourConvex(approx):
-            return _order_quad(approx.reshape(4, 2).astype(np.float32))
-    return None
+    located = locate_card(image)
+    return None if located is None else located[0]
 
 
 def rectify(image: np.ndarray, size: tuple[int, int] = CANONICAL_SIZE) -> np.ndarray:
-    """Perspective-correct the card to the canonical rectangle.
-
-    When no quad is found the frame is simply resized: many captures are already cropped to the
-    card, and resizing keeps those working instead of failing them.
-    """
-    width, height = size
-    quad = find_card_quad(image)
-    if quad is None:
-        return cv2.resize(image, (width, height), interpolation=cv2.INTER_CUBIC)
-
-    target = np.array(
-        [[0, 0], [width - 1, 0], [width - 1, height - 1], [0, height - 1]], dtype=np.float32
-    )
-    matrix = cv2.getPerspectiveTransform(quad, target)
-    return cv2.warpPerspective(image, matrix, (width, height), flags=cv2.INTER_CUBIC)
+    """Perspective-correct and flatten the card to the canonical rectangle."""
+    return _rectify_card(image, size).image
 
 
-def deskew(image: np.ndarray, *, max_angle: float = 15.0) -> np.ndarray:
-    """Rotate out residual skew, estimated from the dominant text-line angle.
+def deskew(image: np.ndarray, *, max_angle: float = 12.0, step: float = 0.25) -> np.ndarray:
+    """Rotate out residual skew, estimated by maximizing horizontal projection contrast.
 
-    `max_angle` guards against the pathological case where the estimator locks onto the card's
-    border or the dense printed block and proposes a 40° rotation that ruins a fine image.
+    The previous estimator took `minAreaRect` over every dark pixel. On a rectified card that
+    fills the frame, the dominant dark shape is the card's own printed border and the photograph
+    on the front — so it measured the border's angle, not the text's, and on a card whose text is
+    skewed relative to its edges (a genuinely common print tolerance) it corrected nothing.
+
+    Projection profiling measures the text directly. Rotate a small binarized copy through a range
+    of angles; when the lines are horizontal, each text row lands in one histogram bin and the
+    row-sum profile becomes spiky. Summing the squared differences between adjacent rows peaks at
+    exactly that angle. It is the standard document-deskew method for the same reason it is used
+    here: it keys on line structure, which is the thing being straightened.
     """
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    inverted = cv2.bitwise_not(gray)
-    _, mask = cv2.threshold(inverted, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
-    coords = cv2.findNonZero(mask)
-    if coords is None:
-        return image
+    scale = min(1.0, 480.0 / max(gray.shape))
+    if scale < 1.0:
+        gray = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+    _, mask = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
 
-    angle = cv2.minAreaRect(coords)[-1]
-    if angle < -45:
-        angle += 90
-    elif angle > 45:
-        angle -= 90
-    if abs(angle) < 0.25 or abs(angle) > max_angle:
-        return image  # already straight, or an implausible estimate — leave it alone
+    height, width = mask.shape
+    centre = (width / 2.0, height / 2.0)
+    best_angle, best_energy = 0.0, -1.0
+    for angle in np.arange(-max_angle, max_angle + step, step):
+        matrix = cv2.getRotationMatrix2D(centre, float(angle), 1.0)
+        rotated = cv2.warpAffine(mask, matrix, (width, height), flags=cv2.INTER_NEAREST)
+        profile = rotated.sum(axis=1, dtype=np.float64)
+        energy = float(np.sum(np.diff(profile) ** 2))
+        if energy > best_energy:
+            best_angle, best_energy = float(angle), energy
 
-    height, width = image.shape[:2]
-    matrix = cv2.getRotationMatrix2D((width / 2, height / 2), angle, 1.0)
+    if abs(best_angle) < step:
+        return image  # already straight — do not pay a resample for nothing
+
+    full_height, full_width = image.shape[:2]
+    matrix = cv2.getRotationMatrix2D((full_width / 2.0, full_height / 2.0), best_angle, 1.0)
     return cv2.warpAffine(
-        image, matrix, (width, height), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE
+        image,
+        matrix,
+        (full_width, full_height),
+        flags=cv2.INTER_CUBIC,
+        borderMode=cv2.BORDER_REPLICATE,
     )
 
 
@@ -160,6 +148,68 @@ def enhance(image: np.ndarray) -> np.ndarray:
     return cv2.cvtColor(merged, cv2.COLOR_LAB2BGR)
 
 
+def sharpen(image: np.ndarray, *, amount: float = 0.6) -> np.ndarray:
+    """Unsharp mask — recovers stroke definition on a soft capture.
+
+    Deliberately mild and deliberately conditional. Arabic script is dense with thin connecting
+    strokes and closely-spaced dots; oversharpening rings them into each other and turns ثـ into
+    something no recognizer has a class for. Applied only where the quality gate measured the
+    capture as soft, where the alternative is a read that fails anyway.
+    """
+    blurred = cv2.GaussianBlur(image, (0, 0), sigmaX=1.6)
+    return cv2.addWeighted(image, 1.0 + amount, blurred, -amount, 0)
+
+
+def prepare(
+    image: np.ndarray, timings: StageTimings | None = None, *, side: str = ""
+) -> PreparedCard:
+    """The full page-level chain, with the rectification and quality evidence kept.
+
+    Binarization is deliberately NOT here. It is destructive, and whether it helps depends on the
+    field: it lifts the digit rows nicely and can hollow out Arabic text. So it is applied per
+    field in `prepare_field`, where the decision can differ per box.
+    """
+    timings = timings or StageTimings()
+    prefix = f"{side}:" if side else ""
+
+    started = time.perf_counter()
+    rectification = _rectify_card(image, CANONICAL_SIZE)
+    timings.record(f"{prefix}rectify", started)
+
+    started = time.perf_counter()
+    report = assess(rectification)
+    timings.record(f"{prefix}quality", started)
+
+    out = rectification.image
+
+    started = time.perf_counter()
+    out = deskew(out)
+    timings.record(f"{prefix}deskew", started)
+
+    started = time.perf_counter()
+    out = denoise(out)
+    timings.record(f"{prefix}denoise", started)
+
+    started = time.perf_counter()
+    out = enhance(out)
+    timings.record(f"{prefix}enhance", started)
+
+    if report.metrics.get("sharpness", GOOD_SHARPNESS) < GOOD_SHARPNESS:
+        started = time.perf_counter()
+        out = sharpen(out)
+        timings.record(f"{prefix}sharpen", started)
+
+    return PreparedCard(image=out, rectification=rectification, quality=report)
+
+
+def prepare_card(image: np.ndarray, timings: StageTimings | None = None) -> np.ndarray:
+    """The prepared card image alone — for callers that do not need the evidence.
+
+    Kept because `tools/calibrate.py` and `diagnose` want pixels and nothing else.
+    """
+    return prepare(image, timings).image
+
+
 def binarize(image: np.ndarray) -> np.ndarray:
     """Adaptive threshold to a 3-channel image (recognizers expect BGR).
 
@@ -173,43 +223,28 @@ def binarize(image: np.ndarray) -> np.ndarray:
     return cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR)
 
 
-def prepare_card(image: np.ndarray, timings: StageTimings | None = None) -> np.ndarray:
-    """The full page-level chain: rectify → deskew → denoise → enhance.
+#: PP-OCR's recognition head resizes its input to a fixed 48 px height. Feeding it a crop shorter
+#: than that means it interpolates up from an image that has already lost the detail, so the upscale
+#: is done here, once, with a good kernel. Overshooting the target slightly is deliberate — a
+#: little headroom beats landing just under it.
+TARGET_FIELD_HEIGHT = 64
 
-    Binarization is deliberately NOT here. It is destructive, and whether it helps depends on the
-    field: it lifts the digit rows nicely and can hollow out Arabic text. So it is applied per
-    field in `prepare_field`, where the decision can differ per box.
+
+def prepare_field(crop: np.ndarray, kind: str, *, max_upscale: float = 4.0) -> np.ndarray:
+    """Per-field finishing: upscale to the recognizer's working height, and binarize where it helps.
+
+    The scale factor is derived from the crop rather than fixed at 2x. A fixed factor is wrong at
+    both ends: it leaves a short crop from a distant capture below the recognition input height,
+    and it needlessly quadruples the pixels of a crop that was already tall enough, which costs
+    latency on every single field of every single card.
     """
-    timings = timings or StageTimings()
-
-    started = time.perf_counter()
-    out = rectify(image)
-    timings.record("rectify", started)
-
-    started = time.perf_counter()
-    out = deskew(out)
-    timings.record("deskew", started)
-
-    started = time.perf_counter()
-    out = denoise(out)
-    timings.record("denoise", started)
-
-    started = time.perf_counter()
-    out = enhance(out)
-    timings.record("enhance", started)
-
-    return out
-
-
-def prepare_field(crop: np.ndarray, kind: str, *, upscale: int = 2) -> np.ndarray:
-    """Per-field finishing: upscale, and binarize only where it is known to help.
-
-    Upscaling matters more than it looks. PP-OCR recognition resizes its input to a fixed height;
-    feeding it a 40 px-tall crop means it interpolates UP internally from an image that already
-    lost detail. Doing the upscale here, with a good kernel, consistently beats letting the
-    recognizer do it.
-    """
-    scaled = cv2.resize(crop, None, fx=upscale, fy=upscale, interpolation=cv2.INTER_CUBIC)
+    height = max(crop.shape[0], 1)
+    scale = float(np.clip(TARGET_FIELD_HEIGHT / height, 1.0, max_upscale))
+    scaled = (
+        cv2.resize(crop, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+        if scale > 1.0
+        else crop
+    )
     # Digit rows are high-contrast and short — thresholding sharpens them. Arabic prose is left in
     # greyscale, where the recognizer's own normalization does better than a hard cut.
     return binarize(scaled) if kind == "digits" else scaled

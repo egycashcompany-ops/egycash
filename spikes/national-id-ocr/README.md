@@ -17,7 +17,8 @@ review dialog and its confidence model are unchanged.
 ## What it does
 
 ```
-capture → rectify → deskew → denoise → enhance → crop per field → recognize → post-process → band
+capture → locate → dewarp → assess → deskew/denoise/enhance
+        → detect lines → anchor boxes → crop per field → recognize → repair → reconcile → band
 ```
 
 * **Offline.** PP-OCR weights are baked into the image at build time. The runtime container makes
@@ -28,6 +29,75 @@ capture → rectify → deskew → denoise → enhance → crop per field → re
 * **Output matches the seam.** `extract()` returns the `RawOcrResult` shape from
   `apps/api/src/modules/hr/recruitment/applicants/national-id-ocr.ts`, field for field, so the
   production step is a thin call rather than a translation layer.
+
+### Why the pipeline grew
+
+The first version handled one case well — a card that fills the frame, flat and square — and failed
+in a way that looked random from outside: some cards read correctly, some came back as nonsense,
+and nothing in the output said which had happened or why. Four things caused that, and each has a
+stage now.
+
+**The card was often never found.** One fixed-threshold edge pass looked for a convex quadrilateral
+and, failing, resized the whole frame. For an already-cropped scan that fallback is correct. For a
+photograph of a card lying on a desk it is catastrophic — every field box lands on background — and
+both went down the same silent code path. `geometry.py` now runs four detectors (edges, brightness
+in both polarities, gradient, texture), scores their candidates against the ID-1 aspect ratio, and
+reports which one won or that none did. It also distinguishes *precropped* (the frame is itself
+card-shaped, nothing to find, all is well) from *frame* (a card was in there and we missed it).
+
+**A bent card is not a plane.** A homography maps a plane to a plane, so a card that bowed in
+someone's wallet stays bowed: its text lines curve, the boxes drift toward the middle, and the
+recognizer is handed curved baselines. `dewarp` traces where the card's top and bottom edges really
+run and remaps each column onto the canonical height. Flat cards skip it — resampling costs
+sharpness and buys nothing.
+
+**Nothing said when a capture was hopeless.** A 200 px-wide photo still produces fourteen confident
+digits; they are simply not the right fourteen, and a reviewer does not re-derive a plausible number
+from a blurred photograph. `quality.py` measures the card's real resolution, sharpness, glare and
+contrast, and returns reason codes — `too_small`, `blurred`, `glare` — that let the UI say what to
+change. It does not skip the read: fields still come back, capped at `low`, because some survive a
+poor capture and the thresholds are still untuned priors.
+
+**The geometry was calibrated from one card.** Print tolerance varies, rectification is good rather
+than exact, and Egypt has issued more than one layout — 2007-era cards are still in circulation.
+`anchor.py` uses the profile as a prior and snaps each box onto the text detection actually found
+near it, then overrides that entirely for the two fields whose content identifies them: a line of
+exactly fourteen digits is the national ID wherever it is printed, and a full year/month/day is the
+expiry.
+
+### The national ID gets four independent checks
+
+It is the field where a single wrong digit is most expensive — it does not give a slightly wrong
+answer, it gives a different, valid-looking person — so it is the field with the most corroboration.
+
+| Check | Reaches | What it does |
+| --- | --- | --- |
+| Structural repair | digits 1-9 | Century, calendar date and governorate constrain these. A read that cannot be a national ID is searched outward by edit distance over known Indic confusions; a **unique** valid result at the nearest distance is accepted at `medium`, a tie is refused as ambiguous. |
+| Both sides | all 14 | The number is printed on the front AND the back. Two crops sharing no pixels have independent errors, so agreement is stronger evidence than any model score → `high`. Two different valid numbers → `low`. |
+| Gender parity | digit 13 | The parity digit is otherwise unconstrained. The back states the same fact in words, and words and digits do not fail the same way. Disagreement demotes the number — it never populates a field, because `parseNationalId` owns gender. |
+| Length | — | 13 or 15 digits is refused rather than guessed. Nothing in the string says which digit was dropped. |
+
+Digits 10-12 are reachable by none of these, and the search deliberately never edits them: there,
+"repair" could only turn one valid-looking identity into another. That is what the review dialog is
+for.
+
+### Arabic is matched by letter skeleton, not by string
+
+Dots are the smallest marks on the card and the first thing a reflection or a JPEG artefact
+destroys. A recognizer that reads مسلمه for مسلمة got the shape exactly right and one dot wrong, and
+plain comparison scores that as a miss — so the reviewer retypes a field the model effectively got
+right. `arabic.rasm_fold` folds ب ت ث ن ي onto one skeleton, ج ح خ onto another, and so on, which
+ignores exactly the information that was lost.
+
+It is used only against closed vocabularies, because it deliberately conflates distinct words.
+`ة` folds onto `ه` rather than being dropped, so مسلم and مسلمة stay apart — the masculine/feminine
+distinction is the meaning, not the noise. `governorates.py` applies the same idea to the address's
+last token, and refuses approximate matching for البحيرة and الجيزة, which are one edit apart after
+folding and three hundred kilometres apart in fact.
+
+The governorate list is **not** cross-checked against the number. Digits 8-9 encode the governorate
+of birth *registration*; the address is *residence*. Those disagree for a large share of the
+population, so the check would fire constantly on correct reads.
 
 ### What it deliberately does not do
 
@@ -64,6 +134,23 @@ services:
     environment:
       NATIONAL_ID_OCR_URL: http://nid-ocr:8099
 ```
+
+`/extract` returns two additional keys alongside `fields`, both additive — a caller that ignores
+them behaves exactly as before:
+
+* **`quality`** — per side, the verdict (`ok` / `degraded` / `reject`), the reason codes, and the
+  raw metrics. This is the actionable half: it is what lets the UI say "move closer" instead of
+  "could not read the card", which is the difference between a good second attempt and the same bad
+  photograph taken twice.
+* **`diagnostics`** — which detector located the card, whether it was dewarped or read upside down,
+  and how many boxes had to be moved onto the text. It answers "why was this read poor?" without
+  anyone having to send someone's identity document to a developer. Counts and method names only;
+  like `/diagnose`, it carries no card content.
+
+The quality thresholds are reasoned priors, not measurements, and every one is settable —
+`OCR_QUALITY_MIN_CARD_WIDTH`, `OCR_QUALITY_MIN_SHARPNESS`, `OCR_QUALITY_MAX_GLARE`,
+`OCR_QUALITY_MIN_CONTRAST`, and their `GOOD_` counterparts — so the first person to run this against
+real cards can tune the gate without a rebuild.
 
 `NATIONAL_ID_OCR_URL` is the whole switch. Unset — the default everywhere today — the API keeps the
 null stub and `/hr/applicants/ocr/national-id` answers `available: false`, exactly as before. That
@@ -161,10 +248,14 @@ numbers look.
 
 ```
 src/nidocr/
-  arabic.py       Arabic fold (mirrors the API's) + Indic→ASCII digits
-  nid.py          structural ID validation — confidence banding ONLY, no derivation
-  layout.py       normalized field boxes; the single source of card geometry
-  preprocess.py   rectify / deskew / denoise / enhance / binarize, individually timed
+  arabic.py       Arabic fold (mirrors the API's) + Indic→ASCII digits + rasm fold
+  governorates.py Arabic governorate names — address repair only, never an ID cross-check
+  nid.py          structural validation + confusion-aware repair + gender parity check
+  layout.py       normalized field boxes; the nominal card geometry
+  geometry.py     locating the card in a photograph, and flattening it (incl. curl dewarp)
+  quality.py      is this capture readable? reason codes + the confidence ceiling
+  anchor.py       moving the boxes onto the text detection actually found
+  preprocess.py   deskew / denoise / enhance / sharpen / binarize, individually timed
   engine.py       Recognizer protocol; PaddleRecognizer (lazy import) + MockRecognizer
   postprocess.py  field-typed cleanup, vocabulary snapping, confidence bands
   extract.py      orchestration → RawOcrResult shape
@@ -172,8 +263,15 @@ src/nidocr/
   service.py      the offline HTTP surface the API's provider calls
 bench/            measure.py (the harness) + report.py (Markdown view of the JSON)
 tools/            generate_synthetic.py, calibrate.py
-tests/            39 model-free tests (pipeline + HTTP contract)
+tests/            150 model-free tests; scenes.py composes cards into photographed scenes
 ```
+
+`tests/scenes.py` is worth knowing about. The synthetic fixtures are pictures *of* a card — the one
+case that always worked. `scenes.py` pastes a card into a photographed scene at a known
+quadrilateral, on sand, wood, a dark desk or a pale one, at an angle, bent, with a shadow. Because
+the corners are known, the localizer's answer is checked against where the card actually is rather
+than eyeballed, which is the difference between "detection returned something" and "detection
+returned the card".
 
 `MockRecognizer` replays known text through the **real** preprocessing and geometry. That is what
 lets the whole pipeline be tested and regression-guarded without weights — and it is why an
@@ -204,14 +302,26 @@ model. `/health` reports the active profile, so what is live is always visible.
 
 Built and verified in a sandbox with no access to the PaddleOCR model host or Docker Hub:
 
-* **Verified by execution** — synthetic fixture generation (Arabic shapes and joins correctly), the
-  preprocessing chain on degraded images, field-box geometry across all 8 fixtures, the
-  post-processors, scoring, the harness end to end, the live HTTP contract the TypeScript provider
-  consumes, 39 Python tests, and 15 TypeScript tests covering the provider mapping and every
-  degradation path.
+* **Verified by execution** — synthetic fixture generation (Arabic shapes and joins correctly),
+  card localization against composed scenes on four surfaces at five angles including a bent card,
+  the curl dewarp, the quality gate's verdicts and reason codes, national-ID repair and its
+  refusals, rasm folding and governorate snapping, box anchoring, both-sides reconciliation, the
+  full preprocessing chain on degraded images, field geometry across all 8 fixtures, scoring, the
+  harness end to end, the live HTTP contract the TypeScript provider consumes — **150 Python
+  tests**, plus the 15 TypeScript tests covering the provider mapping and every degradation path.
 * **NOT executed** — PaddleOCR recognition itself, the Docker build, and therefore the real
   accuracy, latency and image-size numbers. Those need the model host, and no code change makes
   them reachable from here. Run `make build && make measure-real` in a normal environment.
 
+Two known limits, stated rather than buried:
+
+* A card that is **both curled and lying on a near-contrastless pale surface** can still be located
+  badly — the texture detector wins with a poor quadrilateral. It fails safe: the quality gate
+  rejects the result rather than passing wrong fields on. Worth revisiting with real captures.
+* Every threshold in `quality.py` and every weight in `nid.DIGIT_CONFUSIONS` is a prior derived from
+  the card's print geometry and the shapes of the numerals — **not** fitted to a corpus. They are
+  structured to be replaced: the thresholds are environment-settable, and the confusion weights only
+  affect search order, never which answer is accepted.
+
 Until `make measure-real` has run against real anonymized cards, the accuracy question is
-**unanswered**. The integration is complete and testable; "good enough" is still unmeasured.
+**unanswered**. The pipeline is complete and testable; "good enough" is still unmeasured.

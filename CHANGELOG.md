@@ -9,6 +9,61 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Changed
+
+- **National-ID OCR: the capture pipeline now handles cards that are angled, bent, or poorly
+  photographed — and says so when it cannot.** The previous pipeline read a card that filled the
+  frame, flat and square, and failed on anything else in a way that looked arbitrary from outside:
+  some cards read correctly, some returned nonsense, and nothing in the output distinguished them.
+
+  The cause was that card localization ran one fixed-threshold edge pass and, when it found nothing,
+  silently resized the whole frame. For an already-cropped scan that fallback is right; for a
+  photograph of a card on a desk it puts every field box on background. Both took the same code
+  path. Localization now runs four detectors (edges, brightness in both polarities, gradient,
+  texture), scores their candidates against the ID-1 aspect ratio with a measured floor, and reports
+  which one won — separating "already cropped, nothing to find" from "a card was there and we missed
+  it". A card bowed in a wallet is no longer treated as a plane: its top and bottom borders are
+  traced and each column remapped, which a perspective warp cannot do. Flat cards skip it.
+
+  A new capture-quality gate measures the card's real resolution, sharpness, glare and contrast, and
+  returns reason codes — `too_small`, `blurred`, `glare`, `low_contrast`, `card_not_located` — so the
+  UI can say what to change instead of "could not read the card". It does not discard the read:
+  fields still come back, with the capture's verdict capping their confidence. A blurred crop can
+  make recognition *more* confident, not less, so the photograph gets the final word and only ever
+  downward.
+
+  Field boxes are no longer trusted blindly. Detection runs once per side and each box is snapped
+  onto the text found near it, with a growth guard so a crop cannot swallow the neighbouring field;
+  the national ID and the expiry are then identified by content rather than position — a line of
+  exactly fourteen digits, and a full year/month/day — which is what lets an unfamiliar card layout
+  still yield its most important field.
+
+- **National-ID OCR: the number and the Arabic fields get real error correction.** Nine of the
+  fourteen digits are constrained by a century, a calendar date and the governorate list, so a read
+  that cannot be a national ID is now searched outward by edit distance over the shape collisions of
+  Arabic-Indic numerals (٧/٨ are mirrors, ٢/٣ differ by a tooth, ٠ is a dot and ٥ a loop). A unique
+  valid result at the nearest distance is accepted at `medium`; a tie is refused as ambiguous and
+  the raw read preserved. The five unconstrained digits are never edited — there, a "repair" could
+  only swap one valid-looking identity for another.
+
+  The number is also read from **both sides** of the card and reconciled: two crops sharing no pixels
+  have independent errors, so agreement raises confidence to `high`, while two different valid
+  numbers drop to `low` for the reviewer to settle. The sex printed on the back cross-checks the
+  parity digit — reaching a digit no structural check covers — as a validator only; `parseNationalId`
+  remains the sole source of gender, and nothing is populated from it.
+
+  Arabic matching now folds to the letter skeleton (rasm), so the dots a reflection or a JPEG
+  artefact destroys stop counting as misreads — مسلمه matches مسلمة — while the feminine ending
+  survives the fold, keeping masculine and feminine forms distinct. Address governorates snap
+  against the official Arabic list, with approximate matching disabled for البحيرة and الجيزة, which
+  are one edit apart after folding. The governorate is deliberately **not** cross-checked against
+  the number: digits 8-9 encode birth registration, the address is residence, and the two legitimately
+  differ for a large share of the population.
+
+  `/extract` gains additive `quality` and `diagnostics` keys; callers that ignore them are unaffected.
+  Quality thresholds are environment-settable (`OCR_QUALITY_*`) because they are reasoned priors
+  awaiting measurement against real cards.
+
 ### Added
 
 - **National-ID OCR now has a real, fully local provider (OQ-30).** The seam has carried a null

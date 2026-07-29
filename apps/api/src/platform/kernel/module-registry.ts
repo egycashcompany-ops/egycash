@@ -5,6 +5,7 @@ import { type Router } from 'express';
 import { PERMISSION_KEY_PATTERN, type LocalizedString, type PermissionDef } from '@ecms/contracts';
 import { type EventHandler } from './event-bus';
 import { type ScheduledTaskDeclaration } from '../scheduler';
+import { type JobHandler, type QueueName } from '../../infrastructure/queue/jobs';
 
 /** Bumped by ADR-governed platform-contract changes (Review R25). */
 export const PLATFORM_VERSION = '2.2.0';
@@ -21,6 +22,18 @@ export interface EventSubscription {
   handler: EventHandler;
 }
 
+/**
+ * A worker-side job handler a module owns (Review R3 pattern, extended). Declared in the manifest
+ * — visible, reviewable wiring — and registered generically at boot, the same way
+ * `eventSubscriptions` are. The queue must be one of the platform's declared `QUEUES`, and the job
+ * name must carry the module's prefix so two modules cannot collide on a handler key.
+ */
+export interface JobHandlerRegistration {
+  queue: QueueName;
+  jobName: string;
+  handler: JobHandler;
+}
+
 export interface ModuleManifest {
   id: string;
   name: LocalizedString;
@@ -34,6 +47,8 @@ export interface ModuleManifest {
   eventSubscriptions: EventSubscription[];
   /** Repeatable tasks the module owns — task keys must carry the `<id>.` prefix. */
   scheduledTasks?: ScheduledTaskDeclaration[];
+  /** Worker-side queue handlers the module owns — job names must carry the `<id>.` prefix. */
+  jobHandlers?: JobHandlerRegistration[];
   seed?: () => Promise<void>;
 }
 
@@ -110,6 +125,11 @@ export const validateManifest = (manifest: ModuleManifest): void => {
   for (const task of manifest.scheduledTasks ?? []) {
     if (!task.key.startsWith(`${id}.`)) {
       throw new ManifestValidationError(id, `scheduled task ${task.key} lacks the module prefix`);
+    }
+  }
+  for (const jobHandler of manifest.jobHandlers ?? []) {
+    if (!jobHandler.jobName.startsWith(`${id}.`)) {
+      throw new ManifestValidationError(id, `job handler ${jobHandler.jobName} lacks the module prefix`);
     }
   }
 };

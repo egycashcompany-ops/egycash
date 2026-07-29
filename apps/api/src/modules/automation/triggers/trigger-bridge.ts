@@ -10,13 +10,31 @@
 // is strictly downstream and degrades alone).
 import { type AutomationFilter, type EventEnvelope } from '@ecms/contracts';
 import { type Types } from 'mongoose';
+import { z } from 'zod';
 import { logger } from '../../../infrastructure/logging/logger';
+import { enqueue } from '../../../infrastructure/queue/jobs';
 import { automationService } from '../../../platform/automation';
 import { automationWorkflowRepository } from '../workflows';
 import { redactSnapshot } from '../credentials';
 import { automationExecutionRepository } from '../executions/execution.repository';
 import { type AutomationWorkflowDoc } from '../workflows/workflow.model';
 import { matchesFilters } from './filter-eval';
+
+/** The `automation`-queue job the bridge enqueues (A-1 added the queue for exactly this). */
+export const AUTOMATION_TRIGGER_JOB = 'automation.trigger';
+
+/**
+ * What the enqueued job carries — the slim subset of the envelope dispatch needs, plus depth. Only
+ * the fields dispatch reads travel; `occurredAt` and friends are dropped rather than serialised.
+ * Parsed on the way back in because Redis holds JSON and a malformed job must fail cleanly.
+ */
+const TriggerJobSchema = z.object({
+  eventId: z.string().min(1),
+  eventName: z.string().min(1),
+  payload: z.unknown(),
+  depth: z.number().int().min(0).default(0),
+});
+export type TriggerJob = z.infer<typeof TriggerJobSchema>;
 
 /**
  * Re-entrancy ceiling (§7.4). An automation action may emit an event that re-triggers the same
@@ -137,19 +155,63 @@ export const dispatchForEvent = async (
 
 /**
  * The event-bus handler. ONE handler, subscribed to every cataloged event name (design §3.1), so
- * automation is a plain consumer. It swallows its own errors: a failure here must degrade
- * automation, never the event's delivery to other modules.
+ * automation is a plain consumer. It does the MINIMUM synchronously — enqueue one job — and hands
+ * the real work to the worker, for two reasons:
+ *
+ *   1. **Asynchrony.** Resolving workflows, evaluating filters and dispatching to a provider must
+ *      not run on the thread that delivered a business event to its other consumers.
+ *   2. **Retry.** The event bus marks a reliable event processed BEFORE calling this handler, so a
+ *      failure here would never be retried by the bus. On the `automation` queue (A-1) the job
+ *      retries with backoff, and the execution collection's unique index makes those retries
+ *      idempotent.
+ *
+ * It swallows its own errors: a failure to even enqueue must degrade automation, never the event's
+ * delivery to other modules (ADR-018 decision 4).
  */
 export const handleTriggerEvent = async (envelope: EventEnvelope): Promise<void> => {
   try {
-    const summary = await dispatchForEvent(envelope, 0);
-    if (summary.matched > 0) {
-      logger.info({ event: envelope.name, eventId: envelope.id, ...summary }, 'automation: dispatched');
-    }
+    const job: TriggerJob = {
+      eventId: envelope.id,
+      eventName: envelope.name,
+      payload: envelope.payload,
+      depth: 0,
+    };
+    await enqueue(
+      'automation',
+      AUTOMATION_TRIGGER_JOB,
+      job,
+      // The event id is the idempotency anchor; BullMQ dedups a job id it has already seen, a
+      // second layer of protection beneath the execution index.
+      { jobId: `trigger_${envelope.id}` },
+      { eventId: envelope.id, ...(envelope.actorId === undefined ? {} : { principal: { userId: envelope.actorId, kind: 'system' } }) },
+    );
   } catch (error) {
     logger.error(
       { err: error, event: envelope.name, eventId: envelope.id },
-      'automation: trigger bridge failed; the business event is unaffected',
+      'automation: failed to enqueue a trigger; the business event is unaffected',
+    );
+  }
+};
+
+/**
+ * The worker-side job handler (registered on the `automation` queue via the manifest). This is
+ * where the dispatch actually happens, under BullMQ's retry policy. A throw here re-runs the job;
+ * idempotency keeps that safe.
+ */
+export const runAutomationTrigger = async (data: unknown): Promise<void> => {
+  const job = TriggerJobSchema.parse(data);
+  const envelope: EventEnvelope = {
+    id: job.eventId,
+    name: job.eventName,
+    schemaVersion: 1,
+    occurredAt: new Date(),
+    payload: job.payload,
+  };
+  const summary = await dispatchForEvent(envelope, job.depth);
+  if (summary.matched > 0) {
+    logger.info(
+      { event: job.eventName, eventId: job.eventId, ...summary },
+      'automation: trigger dispatched',
     );
   }
 };

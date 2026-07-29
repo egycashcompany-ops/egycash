@@ -23,7 +23,7 @@ import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { buildApp } from '../../src/app';
 import { automationModule } from '../../src/modules/automation/automation.module';
 import { moduleManifests } from '../../src/modules';
-import { dispatchForEvent } from '../../src/modules/automation/triggers';
+import { dispatchForEvent, handleTriggerEvent } from '../../src/modules/automation/triggers';
 import { AutomationWorkflowModel } from '../../src/modules/automation/workflows/workflow.model';
 import { AutomationExecutionModel } from '../../src/modules/automation/executions/execution.model';
 import { rbacService } from '../../src/platform/rbac';
@@ -235,6 +235,28 @@ describe('re-entrancy guard', () => {
     await dispatchForEvent(envelope('hr.employee.created', {}), 2);
     const row = await AutomationExecutionModel.findOne({ workflowId: wf.id }).lean().exec();
     expect(row?.depth).toBe(2);
+  });
+});
+
+describe('the async path (event handler → queue job → dispatch)', () => {
+  it('runs the dispatch through the automation queue, not on the event handler', async () => {
+    // `handleTriggerEvent` only enqueues; the job handler does the work. In tests `enqueue` runs
+    // the registered handler inline, so this proves the full wiring — subscription → enqueue →
+    // job handler → execution row — end to end.
+    const wf = await liveWorkflow('hr.employee.created');
+    await handleTriggerEvent(envelope('hr.employee.created', { employeeId: 'e-async' }));
+
+    const rows = await AutomationExecutionModel.find({ workflowId: wf.id }).lean().exec();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.status).toBe('running');
+  });
+
+  it('is idempotent across the queue: a redelivered event creates one run', async () => {
+    const wf = await liveWorkflow('hr.employee.created');
+    const env = envelope('hr.employee.created', { employeeId: 'e-dup' });
+    await handleTriggerEvent(env);
+    await handleTriggerEvent(env); // same event id — the execution index rejects the second run
+    expect(await AutomationExecutionModel.countDocuments({ workflowId: wf.id })).toBe(1);
   });
 });
 

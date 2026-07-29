@@ -15,7 +15,13 @@ import { buildAutomationEventsRouter } from './events/event-catalog.routes';
 import { automationCredentialService, buildAutomationCredentialsRouter } from './credentials';
 import { automationWorkflowService, buildAutomationWorkflowsRouter } from './workflows';
 import { buildAutomationVariablesRouter } from './variables';
-import { triggerEventSubscriptions } from './triggers';
+import { AUTOMATION_TRIGGER_JOB, runAutomationTrigger, triggerEventSubscriptions } from './triggers';
+import { registerN8nProvider } from '../../platform/automation';
+
+// The n8n provider registers ITSELF at module load (registry §2.1), the same way the OCR provider
+// does. Without N8N_BASE_URL, or with AUTOMATION_PROVIDER != 'n8n', it declines and the null
+// provider stays active — so importing the automation module never forces a runtime on anyone.
+registerN8nProvider();
 
 /**
  * A deactivated owner's workflows are SUSPENDED, not left running (§7.2).
@@ -83,7 +89,13 @@ export const automationModule: ModuleManifest = {
     },
     // The trigger bridge (A-5): one subscription per cataloged event, all routed to the same
     // handler. Automation is an ordinary event consumer (design §3.1) — no new bus, no new
-    // delivery guarantee, no change to any publisher.
+    // delivery guarantee, no change to any publisher. The handler only ENQUEUES; the real
+    // dispatch runs in the job handler below, under retry.
     ...triggerEventSubscriptions(),
+  ],
+  jobHandlers: [
+    // Where the dispatch actually happens — on the `automation` queue (A-1), off the event
+    // handler, with BullMQ retry and idempotent execution rows.
+    { queue: 'automation', jobName: AUTOMATION_TRIGGER_JOB, handler: runAutomationTrigger },
   ],
 };

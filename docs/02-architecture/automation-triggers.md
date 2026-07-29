@@ -19,6 +19,28 @@ Because it is a plain consumer, it inherits the platform's tiers for free: a `re
 `${eventId}:${handlerId}`; a best-effort event reaches it in-process. The bridge adds its own
 execution-level idempotency on top (below).
 
+## Asynchronous and retry-safe
+
+The event handler does the **minimum synchronously — it enqueues one job** onto the `automation`
+queue (added in A-1 for exactly this) and returns. The real work — resolve workflows, evaluate
+filters, create runs, dispatch — happens in the **worker**, off the thread that delivered the
+business event. Two reasons this matters:
+
+- **Asynchrony.** A slow provider or a large fan-out must never run on the event-delivery path.
+- **Retry.** The event bus marks a reliable event *processed before* calling the handler, so a
+  failure inside the handler would never be retried by the bus. On the queue, BullMQ retries the
+  job with exponential backoff (5 attempts), and the execution collection's unique index makes
+  those retries idempotent. The job also carries `jobId = trigger_<eventId>`, so BullMQ dedups a
+  redelivered event beneath the DB index — two layers.
+
+The handler swallows its own errors: a failure even to *enqueue* degrades automation, never the
+event's delivery to other consumers.
+
+Wiring is declarative: the automation manifest declares the queue handler
+(`jobHandlers: [{ queue: 'automation', jobName: 'automation.trigger', handler }]`), registered
+generically at boot the same way `eventSubscriptions` are — a small platform seam added here
+(`ModuleManifest.jobHandlers`) so a module can own a worker handler without the kernel importing it.
+
 ## It never throws into the bus
 
 `handleTriggerEvent` swallows its own errors. A provider outage, a bad filter, a full disk — none
@@ -45,6 +67,38 @@ For each active workflow subscribed to the event:
 A workflow with **no provider ref yet** — enabled before A-6 has pushed its graph — is recorded as
 `skipped` rather than dropped or invented. "Enabled but not yet runnable" is a real state and the
 execution list shows it.
+
+## The provider behind the seam — real n8n over HTTP
+
+`automationService.trigger()` reaches whichever provider the deployment registered. A-5 adds the
+**real n8n provider** next to the `null` one, so a dispatch can now leave the process as an
+authenticated HTTP request to a running n8n — while everything above this line stays provider-blind.
+
+Three pieces, each doing one job:
+
+- **`N8nClient`** (`platform/automation/providers/n8n/n8n.client.ts`) — the single place ECMS
+  speaks HTTP to n8n. Base URL from **`N8N_BASE_URL`** (never hardcoded; trailing slash trimmed),
+  API key from **`N8N_API_KEY`** sent as `X-N8N-API-KEY` (omitted when unset, never logged),
+  per-request timeout (`N8N_TIMEOUT_MS`), and bounded retry (`N8N_MAX_RETRIES`) on transport
+  failure and retryable statuses (`408/429/5xx`) — **never a 4xx**, which would fail identically.
+  It is n8n-*workflow*-unaware: it sends a request and reports what happened. Every future consumer
+  (HR, Fleet, Contracts, ATM — always *through* the provider seam, never importing the client) gets
+  this one hardened transport rather than its own `fetch`.
+- **`N8nAutomationProvider`** — implements the A-0 `AutomationProvider` interface. `dispatch()` POSTs
+  the run to the workflow's webhook (`/webhook/<ref>`); `health()` reports reachability via
+  `/healthz` without throwing. Its `capabilities` are declared **all-false**: workflow authoring,
+  graph import/export, cancellation and per-node progress light up at A-6, and until then those
+  methods reject with `N8nNotImplementedError` rather than pretending.
+- **`registerN8nProvider()`** — opt-in. It installs the provider only when
+  `AUTOMATION_PROVIDER=n8n` *and* `N8N_BASE_URL` is set; otherwise the `null` provider stays and
+  nothing about the deployment changes, which is what lets this slice merge ahead of anyone standing
+  up an n8n instance. It does **not** probe n8n at boot — a slow or restarting n8n must never block
+  or fail an ECMS deploy; the provider degrades per dispatch instead.
+
+**Best-effort is preserved end to end.** If n8n is unreachable the client times out, the dispatch
+propagates a failure into `automationService.trigger()` — which never throws — the execution row is
+recorded `skipped`/`failed` with the reason, and the originating business transaction (long since
+committed) is untouched. An n8n outage costs one logged trigger, never a business write.
 
 ## Filters are the run-time half of validation
 
@@ -92,7 +146,10 @@ Operational data: no soft-delete — an execution record is history, never "dele
 
 ## Known limit until A-6
 
-Workflows created through the API carry `providerRef: null` until A-6 pushes their graph to a
-provider, so on `main` today every dispatch records `skipped`. The bridge, filters, idempotency and
-depth guard are all exercisable now (the integration test stands in for A-6 by setting a provider
-ref directly); the actual provider run arrives with A-6.
+The HTTP path to n8n is real and tested; what A-6 still owns is **registering** a workflow in n8n
+so it has a webhook to hit. Workflows created through the API carry `providerRef: null` until then,
+so on `main` today every dispatch records `skipped` — the bridge reaches `dispatchOne`, sees no ref
+and stops before the n8n client. The bridge, filters, idempotency, depth guard and the n8n client
+itself are all exercisable now (the integration test stands in for A-6 by setting a provider ref
+directly; the client's unit tests exercise the transport against a stubbed `fetch`); the end-to-end
+provider run against a live n8n arrives with A-6, when the conformance suite runs against it.

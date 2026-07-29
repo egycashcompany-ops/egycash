@@ -21,6 +21,18 @@ const EnvSchema = z.object({
   NATIONAL_ID_OCR_URL: z.string().url().optional(),
   NATIONAL_ID_OCR_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(20_000),
 
+  /**
+   * Automation Service (ADR-018). OFF by default: the null provider stays registered, dispatches
+   * are recorded as `skipped`, and the module's navigation entry is hidden — which is what lets
+   * slices A-0..A-13 merge to `main` without a user ever seeing a half-built feature.
+   */
+  AUTOMATION_ENABLED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+  /** Which provider to construct when enabled. `n8n` arrives at A-6. */
+  AUTOMATION_PROVIDER: z.enum(['null', 'n8n']).default('null'),
+
   JWT_ACCESS_SECRET: z.string().min(16).default('dev-only-access-secret-change-me'),
   JWT_ACCESS_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(900),
   REFRESH_TTL_DAYS: z.coerce.number().int().min(1).max(90).default(7),

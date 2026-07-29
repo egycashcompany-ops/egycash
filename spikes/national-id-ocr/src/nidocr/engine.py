@@ -36,8 +36,31 @@ LOG = logging.getLogger("nidocr.engine")
 #: Settable so the pairing can be revisited against real measurements rather than by argument, and
 #: read in both places that construct PaddleOCR — the runtime and the build-time bake — because a
 #: model the image did not download is a model the offline container cannot load.
-def detection_model() -> str:
-    return os.environ.get("PADDLE_DET_MODEL", "PP-OCRv5_mobile_det")
+#:
+#: BOTH MODELS MUST BE NAMED TOGETHER. PaddleOCR treats `lang` and explicit model names as mutually
+#: exclusive: naming any one model discards `lang` entirely and every other model falls back to the
+#: global default. Naming only the detector therefore swapped the Arabic recognizer
+#: (`arabic_PP-OCRv5_mobile_rec`) for a generic one, which is a silent catastrophe — the pipeline
+#: would have kept running and stopped being able to read Arabic at all. It happened to also fail
+#: the build, which is the only reason it was caught before deployment:
+#:
+#:     UserWarning: `lang` and `ocr_version` will be ignored when model names ... are not `None`
+#:     Creating model: ('PP-OCRv6_medium_rec', None, None)
+#:
+#: So this returns the pair, and callers spread it. `lang` is still passed for readability and is
+#: ignored by PaddleOCR whenever these are set — which is exactly the behaviour being relied on.
+DEFAULT_DETECTION_MODEL = "PP-OCRv5_mobile_det"
+DEFAULT_RECOGNITION_MODEL = "arabic_PP-OCRv5_mobile_rec"
+
+
+def model_names() -> dict[str, str]:
+    """The detection/recognition pair PaddleOCR is constructed with, in both processes."""
+    return {
+        "text_detection_model_name": os.environ.get("PADDLE_DET_MODEL", DEFAULT_DETECTION_MODEL),
+        "text_recognition_model_name": os.environ.get(
+            "PADDLE_REC_MODEL", DEFAULT_RECOGNITION_MODEL
+        ),
+    }
 
 
 @dataclass(frozen=True)
@@ -126,7 +149,7 @@ class PaddleRecognizer:
         # layout, which is not a contract this spike should depend on.
         self._ocr = PaddleOCR(
             lang=lang,
-            text_detection_model_name=detection_model(),
+            **model_names(),
             use_doc_orientation_classify=False,
             use_doc_unwarping=False,
             use_textline_orientation=False,

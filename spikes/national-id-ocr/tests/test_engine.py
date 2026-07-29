@@ -162,3 +162,50 @@ def test_detection_letterboxes_to_a_constant_canvas_and_maps_polygons_back():
     polygons = recorder.detect_lines(np.full((646, 1024, 3), 220, np.uint8))
     scale = min(canvas_width / 1024, canvas_height / 646, 1.0)
     assert abs(polygons[0][0][2][0] - canvas_width / scale) < 1.0
+
+
+# ── The model pair ──
+
+
+def test_the_bake_script_and_the_runtime_name_the_same_models():
+    """A model the build never downloaded is one the offline container cannot load.
+
+    The two are separate processes and the builder stage deliberately copies only the bake script,
+    not `src/` — weights have no business being fetched by a layer that also carries application
+    code. So the defaults are duplicated, and this asserts they have not drifted, which is the
+    failure that would otherwise surface as a container starting cleanly and dying on the first
+    real request.
+    """
+    import re
+
+    from nidocr.engine import DEFAULT_DETECTION_MODEL, DEFAULT_RECOGNITION_MODEL
+
+    script = (ROOT / "scripts" / "bake_models.py").read_text(encoding="utf-8")
+    for variable, expected in (
+        ("PADDLE_DET_MODEL", DEFAULT_DETECTION_MODEL),
+        ("PADDLE_REC_MODEL", DEFAULT_RECOGNITION_MODEL),
+    ):
+        found = re.search(rf'os\.environ\.get\("{variable}",\s*"([^"]+)"\)', script)
+        assert found, f"{variable} is not read by the bake script"
+        assert found.group(1) == expected, (
+            f"{variable}: bake script says {found.group(1)!r}, runtime says {expected!r}"
+        )
+
+
+def test_both_models_are_always_named_together():
+    """Naming one model makes PaddleOCR discard `lang`, and the rest fall back to global defaults.
+
+    That is not a theoretical hazard. Naming only the detector silently swapped the Arabic
+    recognizer for `PP-OCRv6_medium_rec` — a pipeline that would have run and been unable to read
+    Arabic. It only failed loudly because that substitute could not build a predictor against the
+    installed paddle; a compatible one would have shipped.
+
+    So the pair is returned together and must stay that way, and the recognizer must stay Arabic.
+    """
+    from nidocr.engine import model_names
+
+    names = model_names()
+    assert set(names) == {"text_detection_model_name", "text_recognition_model_name"}
+    assert "arabic" in names["text_recognition_model_name"].lower(), (
+        "the recognition model must be the Arabic one — the card is in Arabic"
+    )

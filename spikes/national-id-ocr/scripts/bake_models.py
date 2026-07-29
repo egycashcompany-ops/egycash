@@ -45,15 +45,26 @@ def main() -> int:
     # pulled. Leaving them on downloads document-orientation and unwarping models as well, which
     # this pipeline never runs: crops come from a card that preprocess.py has already rectified
     # and deskewed.
-    # The detection model must match what the runtime asks for, or the offline container starts
-    # fine and then cannot load a model that was never downloaded — a failure that appears only on
-    # the first real request. Both sides read the same environment variable for that reason.
+    # These must match what the runtime asks for, or the offline container starts fine and then
+    # cannot load a model that was never downloaded — a failure that appears only on the first real
+    # request. Both sides read the same variables and the same defaults; `test_engine.py` asserts
+    # the two files agree, because this script cannot import from src/ (the builder stage copies
+    # only this file, by design — src/ has no business in the layer that fetches weights).
+    #
+    # BOTH must be named. PaddleOCR discards `lang` the moment any model name is given, so naming
+    # only the detector replaced the Arabic recognizer with a generic one — a change that would
+    # have shipped a pipeline unable to read Arabic at all. It failed the build instead, which is
+    # the only reason it was caught, and is why the assertion below now checks for the recognizer
+    # by name rather than trusting that some weights landed.
     detection = os.environ.get("PADDLE_DET_MODEL", "PP-OCRv5_mobile_det")
-    print(f"  detection model: {detection}", flush=True)
+    recognition = os.environ.get("PADDLE_REC_MODEL", "arabic_PP-OCRv5_mobile_rec")
+    print(f"  detection:   {detection}", flush=True)
+    print(f"  recognition: {recognition}", flush=True)
 
     PaddleOCR(
         lang=LANG,
         text_detection_model_name=detection,
+        text_recognition_model_name=recognition,
         use_doc_orientation_classify=False,
         use_doc_unwarping=False,
         use_textline_orientation=False,
@@ -67,6 +78,21 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
+
+    # Check the models by NAME, not just that some weights arrived. "Weights are present" was
+    # true while PaddleOCR was quietly substituting a generic recognizer for the Arabic one; the
+    # build only failed because that substitute happened to be incompatible with the installed
+    # paddle. Had it been compatible, the image would have shipped and simply stopped reading
+    # Arabic — with a full /models directory and nothing to point at.
+    for role, name in (("detection", detection), ("recognition", recognition)):
+        if not (MODEL_HOME / "official_models" / name).is_dir():
+            print(
+                f"FATAL: {role} model '{name}' is not under {MODEL_HOME}. PaddleOCR resolved "
+                f"something else — check the 'Creating model' lines above. Present: "
+                f"{sorted(p.name for p in (MODEL_HOME / 'official_models').glob('*'))}",
+                file=sys.stderr,
+            )
+            return 1
 
     total_mb = sum(p.stat().st_size for p in weights) / (1024 * 1024)
     print(f"baked {len(weights)} weight files, {total_mb:.1f} MB total")

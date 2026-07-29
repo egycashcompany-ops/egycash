@@ -11,6 +11,7 @@ import { type Express } from 'express';
 import {
   automationPermissions,
   platformPermissions,
+  SettingKeys,
   type AutomationCredentialDto,
 } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
@@ -20,7 +21,9 @@ import { moduleManifests } from '../../src/modules';
 import { automationCredentialService } from '../../src/modules/automation/credentials';
 import { AutomationCredentialModel } from '../../src/modules/automation/credentials/credential.model';
 import { rbacService } from '../../src/platform/rbac';
+import { settingsService } from '../../src/platform/settings';
 import { userService } from '../../src/platform/users';
+import { type AuthContext } from '../../src/shared/types';
 import { cryptoService } from '../../src/platform/crypto';
 import { AuditLogModel } from '../../src/platform/audit/audit.model';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
@@ -68,6 +71,29 @@ const login = async (email: string): Promise<string> => {
   return (res.body as { data: { accessToken: string } }).data.accessToken;
 };
 
+// Privileged accounts must enroll TOTP at login when `TotpEnforcedForPrivileged` is on (its
+// declared default). These tests grant a system role, so without turning it off the login returns
+// an enrollment challenge with no access token and every request 401s. The seed disables it;
+// bootPlatform does not run that seed, so the suite does it explicitly (mirrors platform.spec).
+const disableTotpEnforcement = async (userId: string): Promise<void> => {
+  const ctx: AuthContext = {
+    userId,
+    sessionId: 'test-setup',
+    branchId: null,
+    departmentId: null,
+    sectionId: null,
+    locale: 'en',
+    permissions: { 'setting.edit': 'organization' },
+    permissionVersion: 1,
+    isPrivileged: true,
+  };
+  await settingsService.set(ctx, {
+    key: SettingKeys.TotpEnforcedForPrivileged,
+    scope: 'organization',
+    value: false,
+  });
+};
+
 const body = <T>(res: { body: unknown }): T => (res.body as { data: T }).data;
 const nextKey = (): string => `cred-${(keyCounter += 1)}-${Date.now() % 100000}`;
 
@@ -104,6 +130,7 @@ beforeAll(async () => {
   );
   const adminId = await mkUser('admin@ecms.local');
   await rbacService.ensureAssignment(adminId, String(superAdmin._id), 'organization');
+  await disableTotpEnforcement(adminId);
   adminToken = await login('admin@ecms.local');
 
   const viewerRole = await rbacService.createRole(

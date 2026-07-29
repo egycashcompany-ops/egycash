@@ -16,6 +16,7 @@ import { Types } from 'mongoose';
 import {
   automationPermissions,
   platformPermissions,
+  SettingKeys,
   type AutomationWorkflowDto,
   type EventEnvelope,
 } from '@ecms/contracts';
@@ -27,7 +28,9 @@ import { dispatchForEvent, handleTriggerEvent } from '../../src/modules/automati
 import { AutomationWorkflowModel } from '../../src/modules/automation/workflows/workflow.model';
 import { AutomationExecutionModel } from '../../src/modules/automation/executions/execution.model';
 import { rbacService } from '../../src/platform/rbac';
+import { settingsService } from '../../src/platform/settings';
 import { userService } from '../../src/platform/users';
+import { type AuthContext } from '../../src/shared/types';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 
 const PASSWORD = 'Str0ng#Pass!';
@@ -69,6 +72,29 @@ const login = async (email: string): Promise<string> => {
   const res = await request(app).post('/api/v1/auth/login').send({ email, password: PASSWORD });
   expect(res.status).toBe(200);
   return (res.body as { data: { accessToken: string } }).data.accessToken;
+};
+
+// Privileged accounts must enroll TOTP at login when `TotpEnforcedForPrivileged` is on (its
+// declared default). This suite grants a system role, so without turning it off the login returns
+// an enrollment challenge with no access token and every request 401s. The seed disables it;
+// bootPlatform does not run that seed, so the suite does it explicitly (mirrors platform.spec).
+const disableTotpEnforcement = async (userId: string): Promise<void> => {
+  const ctx: AuthContext = {
+    userId,
+    sessionId: 'test-setup',
+    branchId: null,
+    departmentId: null,
+    sectionId: null,
+    locale: 'en',
+    permissions: { 'setting.edit': 'organization' },
+    permissionVersion: 1,
+    isPrivileged: true,
+  };
+  await settingsService.set(ctx, {
+    key: SettingKeys.TotpEnforcedForPrivileged,
+    scope: 'organization',
+    value: false,
+  });
 };
 
 const body = <T>(res: { body: unknown }): T => (res.body as { data: T }).data;
@@ -130,6 +156,7 @@ beforeAll(async () => {
   );
   ownerId = await mkUser('admin@ecms.local');
   await rbacService.ensureAssignment(ownerId, String(superAdmin._id), 'organization');
+  await disableTotpEnforcement(ownerId);
   adminToken = await login('admin@ecms.local');
 }, 120_000);
 

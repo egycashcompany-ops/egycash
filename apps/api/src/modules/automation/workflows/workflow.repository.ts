@@ -23,6 +23,22 @@ class AutomationWorkflowRepository extends BaseRepository<AutomationWorkflowDoc>
       .find({ ownerUserId, isDeleted: false } as FilterQuery<AutomationWorkflowDoc>)
       .exec();
   }
+
+  /**
+   * The dispatch lookup (design §8, `ix_dispatch`): active event-triggered workflows for one event
+   * name. Runs on every published event, so it must hit the index — and it does, on
+   * `{trigger.event, status}`.
+   */
+  async listActiveByEvent(eventName: string): Promise<AutomationWorkflowDoc[]> {
+    return this.model
+      .find({
+        'trigger.kind': 'event',
+        'trigger.event': eventName,
+        status: 'active',
+        isDeleted: false,
+      } as FilterQuery<AutomationWorkflowDoc>)
+      .exec();
+  }
 }
 
 export const automationWorkflowRepository = new AutomationWorkflowRepository();

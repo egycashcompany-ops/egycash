@@ -15,6 +15,7 @@ import { buildAutomationEventsRouter } from './events/event-catalog.routes';
 import { automationCredentialService, buildAutomationCredentialsRouter } from './credentials';
 import { automationWorkflowService, buildAutomationWorkflowsRouter } from './workflows';
 import { buildAutomationVariablesRouter } from './variables';
+import { triggerEventSubscriptions } from './triggers';
 
 /**
  * A deactivated owner's workflows are SUSPENDED, not left running (§7.2).
@@ -52,7 +53,12 @@ export const automationModule: ModuleManifest = {
     { prefix: '/automation/credentials', router: buildAutomationCredentialsRouter() },
     { prefix: '/automation/events', router: buildAutomationEventsRouter() },
   ],
-  collections: ['automation_workflows', 'automation_variables', 'automation_credentials'],
+  collections: [
+    'automation_workflows',
+    'automation_variables',
+    'automation_credentials',
+    'automation_executions',
+  ],
   scheduledTasks: [
     {
       key: 'automation.rotateCredentialKeys',
@@ -75,5 +81,9 @@ export const automationModule: ModuleManifest = {
       handlerId: 'workflows.suspendOnOwnerDeactivated',
       handler: suspendWorkflowsOfDeactivatedOwner,
     },
+    // The trigger bridge (A-5): one subscription per cataloged event, all routed to the same
+    // handler. Automation is an ordinary event consumer (design §3.1) — no new bus, no new
+    // delivery guarantee, no change to any publisher.
+    ...triggerEventSubscriptions(),
   ],
 };

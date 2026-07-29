@@ -572,11 +572,16 @@ export type HrContractEventName = (typeof HrContractEvents)[keyof typeof HrContr
 
 // Payload schemas (A-2). Contracts emitted these shapes from the start; declaring them is what
 // lets the event catalogue describe a contract trigger's fields instead of shrugging at it.
-// `amended` and `renewed` are declared but not yet published — they carry the base shape.
+// Each one is transcribed from its emit site in `contract.service.ts`.
 
 export const ContractEventPayloadV1 = z.object({
   contractId: objectId(),
   code: z.string(),
+});
+
+/** `amended` / `renewed` — a new contract SUPERSEDES an existing one, and names which. */
+export const ContractSupersededPayloadV1 = ContractEventPayloadV1.extend({
+  sourceContractId: objectId(),
 });
 
 export const ContractGeneratedPayloadV1 = ContractEventPayloadV1.extend({

@@ -1,7 +1,12 @@
 # Event Catalogue — what the platform emits, described by the schemas themselves
 
-**`packages/contracts/src/events/catalog.ts`** · delivered by **A-2** · served at
-`GET /api/v1/automation/events` (A-3)
+**`packages/contracts/src/events/catalog.ts`** · delivered by **A-2**, hardened into a platform API
+by **A-2.1** · served at `GET /api/v1/automation/events` (A-3)
+
+It is a **platform API**, not an automation implementation detail. Five things are meant to be
+buildable on it without any of them knowing what an automation provider is: trigger selection,
+workflow validation, event documentation, SDK generation, and the API reference. Everything below
+follows from treating it that way.
 
 A user building an automation has to pick something to trigger on. That means the platform needs a
 list of its own events — with, for each one, what it is called, what it means, what its payload
@@ -96,6 +101,105 @@ The catalogue describes what **ECMS emits**. It mentions no provider, no transpo
 automation concept, and a test asserts that. Automation is its first consumer, not its owner —
 the same list answers "what can I subscribe to?" for any future integration.
 
+## Stable identity
+
+| Field | Meaning |
+|---|---|
+| `name` | The permanent identity of the FACT. Names are added to, never renamed — a rename silently stops every workflow subscribed to the old name, with no error anywhere. |
+| `id` | `<name>@<schemaVersion>` — the fact in one shape. What a doc anchor, an SDK symbol and an external integration pin. |
+| `typeName` | `PlatformUserCreatedV1` — derived, unique, valid as an identifier in any generated client. |
+
+## Explicit versioning
+
+Three levels, deliberately separate:
+
+- **`schemaVersion`** — the payload's shape. Fields are added within a version (consumers are
+  tolerant readers, ADR-008); a removal or a retype needs a new version and a deprecation window.
+- **`EVENT_CATALOG_VERSION`** — the shape of a catalogue ENTRY. Minor when a field is added to
+  `EventCatalogEntry`, major when one is removed or retyped, because that breaks every generated
+  SDK. Independent of the events inside it.
+- **`digest`** — content hash of the whole catalogue, for `ETag` and for telling whether two
+  environments are running the same event surface. FNV-1a: it detects change, it does not
+  authenticate it. The document carries **no timestamp**, so two identical deployments serve
+  byte-identical bytes; otherwise the digest would change on every restart and be worthless.
+
+## Lifecycle
+
+| `status` | Meaning to a consumer |
+|---|---|
+| `stable` | Published today. Build on it. |
+| `planned` | Declared, nothing publishes it. A workflow on it would be enabled and silent forever, which is the failure mode with no error to find. A picker should refuse it. |
+| `deprecated` | Still published, going away; `supersededBy` names the replacement. This is why a rename is never necessary. |
+
+`alsoPublishedBy` marks a name that **more than one publisher emits with a different payload
+shape**. `fields` describes the shape the owning module declares; a filter on a field the other
+publisher does not send will silently fail to match it. Ten HR names are in this state today — see
+§Known divergence.
+
+## Machine-readable payloads
+
+Every entry carries the payload twice, from one source:
+
+- **`fields`** — flattened dot paths (`entityRef.moduleId`, `lines[].sku`) with type, optional,
+  nullable and enum values. What a filter builder and a validator want.
+- **`jsonSchema`** — JSON Schema 2020-12. What an SDK generator, an OpenAPI/AsyncAPI document or a
+  contract-testing tool wants.
+
+A test asserts the two agree about what is required, because two descriptions of one payload that
+can disagree means one of them is lying to whichever tool reads it. `additionalProperties` is
+`true` on purpose: the bus parses payloads non-strict, and emitting `false` would tell a generator
+the opposite of how delivery actually behaves.
+
+The converter is hand-written rather than `zod-to-json-schema`, because `@ecms/contracts` has
+exactly one dependency and is bundled for the browser. Covering the handful of Zod nodes payloads
+actually use costs ~80 lines and adds nothing to ship.
+
+## The published document
+
+```jsonc
+{
+  "catalogVersion": "1.0.0",
+  "generatedFrom": "zod",
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "digest": "3e441d3e",
+  "eventCount": 99,
+  "events": [ /* … */ ]
+}
+```
+
+`eventCatalogDocument()` returns exactly what the endpoint serves. Self-describing, so a consumer
+that has never seen this repository can tell what it is holding.
+
+## Checked against the code that publishes
+
+`apps/api/src/platform/kernel/event-publishers.spec.ts` reads the API source, resolves every
+`emit(...)` call back to an event name, and compares what it finds with what the catalogue claims:
+
+- every emitted name is catalogued (minus a documented internal-hop allowlist);
+- every name the recruitment workflow engine publishes is catalogued;
+- every `stable` event is backed by something in the running system;
+- every `planned` event really has no publisher — so one that gains a publisher fails the suite
+  until somebody promotes it;
+- every payload key visible at an emit site is a field the catalogue describes;
+- `EVENT_MULTI_PUBLISHER` equals exactly the set of names with two publishers.
+
+Source-scanning rather than runtime tracing: tracing only sees the events a test happens to
+trigger, which is a small and unrepresentative subset. This test is what found the three
+mis-mappings and the divergence below.
+
+## Known divergence
+
+The recruitment workflow engine mirrors every validated transition onto the platform bus carrying
+the TRANSITION (`applicantId`, `applicantCode`, `entityId`, `from`, `to`), while the feature
+service that owns the entity emits the same name carrying the ENTITY. Ten names are published both
+ways: `hr.applicant.withdrawn`, `hr.interview.scheduled` / `started` / `cancelled`, and the six
+`hr.jobOffer.*` events.
+
+Both are real and both are pre-existing. The catalogue records it rather than a contracts slice
+changing HR behaviour; A-5 will refuse a trigger filter on a field that is not present in every
+variant, which is where the consequence actually bites.
+
 ## Coverage today
 
-87 events: 22 platform, 65 HR. Every one has a declared payload schema.
+99 events: 22 platform, 77 HR. Every one has a declared payload schema; 97 are `stable` and 2 are
+`planned`.

@@ -9,13 +9,20 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import {
   EVENT_CATALOG,
+  EVENT_CATALOG_VERSION,
+  EVENT_MULTI_PUBLISHER,
   HR_EVENT_PAYLOAD_SCHEMAS,
+  JSON_SCHEMA_DIALECT,
   PLATFORM_EVENT_PAYLOAD_SCHEMAS,
   buildEventCatalog,
+  eventCatalogDigest,
+  eventCatalogDocument,
   eventCatalogEntry,
   eventCatalogNames,
+  eventTypeName,
   isCatalogedEventName,
   isFullyLocalized,
+  stableEventNames,
 } from './catalog.js';
 import { EVENT_SCHEMA_VERSIONS, PlatformEvents } from './index.js';
 import { HrEvents } from '../modules/hr-recruitment.js';
@@ -29,11 +36,15 @@ import { HrEvaluationEvents } from '../modules/hr-evaluation.js';
 import { HrEvaluationBatchEvents } from '../modules/hr-evaluation-batch.js';
 import { HrEmployeeFileEvents } from '../modules/hr-employee-file.js';
 import { HrHiringDocumentsEvents } from '../modules/hr-hiring-documents.js';
-import { HrRecruitmentWorkflowEvents } from '../modules/hr-recruitment-workflow.js';
+import {
+  HrRecruitmentWorkflowEvents,
+  HrWorkflowEngineEvents,
+} from '../modules/hr-recruitment-workflow.js';
 
 const HR_EVENT_CONSTANTS = [
   HrEvents,
   HrRecruitmentWorkflowEvents,
+  HrWorkflowEngineEvents,
   HrScreeningEvents,
   HrInterviewEvents,
   HrEvaluationEvents,
@@ -241,6 +252,152 @@ describe('buildEventCatalog', () => {
       },
     });
     expect(entry?.fields.map((f) => f.path)).toEqual(['lines', 'lines[].sku', 'lines[].qty']);
+  });
+});
+
+// ── The catalogue as a platform API ─────────────────────────────────────────
+// Identity, versioning and machine-readable payloads: what a trigger picker, a workflow
+// validator, an SDK generator, the API reference and an external integration each need before
+// they can depend on this.
+
+describe('identity', () => {
+  it('gives every event a versioned id and a stable code-generation symbol', () => {
+    const entry = eventCatalogEntry('platform.user.created');
+    expect(entry?.id).toBe('platform.user.created@1');
+    expect(entry?.typeName).toBe('PlatformUserCreatedV1');
+  });
+
+  it('keeps ids unique — an id is what an SDK symbol and a doc anchor pin', () => {
+    const ids = EVENT_CATALOG.map((entry) => entry.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('keeps generated type names unique and valid as identifiers', () => {
+    const names = EVENT_CATALOG.map((entry) => entry.typeName);
+    expect(new Set(names).size).toBe(names.length);
+    for (const name of names) expect(name).toMatch(/^[A-Z][A-Za-z0-9]*V\d+$/);
+  });
+
+  it('moves the id when the payload version moves, and not otherwise', () => {
+    expect(eventTypeName('platform.user.created', 2)).toBe('PlatformUserCreatedV2');
+  });
+});
+
+describe('lifecycle', () => {
+  it('defaults to stable and carries no superseding name', () => {
+    expect(eventCatalogEntry('platform.user.created')).toMatchObject({
+      status: 'stable',
+      supersededBy: null,
+    });
+  });
+
+  it('marks events nobody publishes as planned, so a picker can refuse them', () => {
+    // A workflow on an unpublished event is enabled and silent forever — the failure mode with no
+    // error anywhere. The publisher test in `apps/api` is what keeps this list true.
+    const planned = EVENT_CATALOG.filter((entry) => entry.status === 'planned');
+    expect(planned.map((entry) => entry.name).sort()).toEqual([
+      'hr.applicant.returnedToStage',
+      'hr.evaluation.opened',
+    ]);
+  });
+
+  it('excludes planned events from the stable list', () => {
+    expect(stableEventNames()).not.toContain('hr.evaluation.opened');
+    expect(stableEventNames().length).toBe(EVENT_CATALOG.length - 2);
+  });
+
+  it('flags the names with a second publisher and a different payload shape', () => {
+    // Filtering on a field only one publisher sends means the workflow fires for some causes and
+    // not others. Recording it is what lets the UI warn instead of the user guessing.
+    const divergent = EVENT_CATALOG.filter((entry) => entry.alsoPublishedBy !== null);
+    expect(divergent.length).toBe(Object.keys(EVENT_MULTI_PUBLISHER).length);
+    expect(eventCatalogEntry('hr.jobOffer.sent')?.alsoPublishedBy).toContain('workflow engine');
+    expect(eventCatalogEntry('platform.user.created')?.alsoPublishedBy).toBeNull();
+  });
+});
+
+describe('JSON Schema', () => {
+  it('emits a dialect-tagged, titled schema for every declared payload', () => {
+    for (const entry of EVENT_CATALOG) {
+      if (!entry.payloadDeclared) continue;
+      expect(entry.jsonSchema?.$schema, entry.name).toBe(JSON_SCHEMA_DIALECT);
+      expect(entry.jsonSchema?.title, entry.name).toBe(entry.typeName);
+      expect(entry.jsonSchema?.type, entry.name).toBe('object');
+    }
+  });
+
+  it('agrees with the field list about what is required', () => {
+    // Two descriptions of the same payload, generated from one schema. If they can disagree, one
+    // of them is lying to whichever tool reads it.
+    for (const entry of EVENT_CATALOG) {
+      if (!entry.payloadDeclared) continue;
+      const requiredFields = entry.fields
+        .filter((field) => !field.path.includes('.') && !field.optional)
+        .map((field) => field.path)
+        .sort();
+      expect([...(entry.jsonSchema?.required ?? [])].sort(), entry.name).toEqual(requiredFields);
+    }
+  });
+
+  it('describes a nullable field as a type union, not as optional', () => {
+    const applicantId = eventCatalogEntry('hr.employee.created')?.jsonSchema?.properties
+      ?.applicantId;
+    expect(applicantId?.type).toEqual(['string', 'null']);
+    expect(eventCatalogEntry('hr.employee.created')?.jsonSchema?.required).toContain('applicantId');
+  });
+
+  it('carries enums, formats and patterns a generator can act on', () => {
+    const origin = eventCatalogEntry('hr.employee.created')?.jsonSchema?.properties?.origin;
+    expect(origin?.enum).toEqual(['recruitment', 'direct']);
+
+    const contractId = eventCatalogEntry('hr.contract.expired')?.jsonSchema?.properties?.contractId;
+    expect(contractId?.pattern).toBe('^[0-9a-fA-F]{24}$');
+
+    const startDate = eventCatalogEntry('hr.leave.requested')?.jsonSchema?.properties?.startDate;
+    expect(startDate).toMatchObject({ type: 'string', format: 'date-time' });
+  });
+
+  it('allows unknown properties, because consumers are tolerant readers', () => {
+    // ADR-008: payload schemas are parsed non-strict, so a producer may add a field without
+    // breaking anyone. `additionalProperties: false` would tell an SDK the opposite.
+    expect(eventCatalogEntry('platform.user.created')?.jsonSchema?.additionalProperties).toBe(true);
+  });
+
+  it('nests object properties rather than flattening them', () => {
+    const entityRef = eventCatalogEntry('platform.file.uploaded')?.jsonSchema?.properties?.entityRef;
+    expect(entityRef?.type).toBe('object');
+    expect(Object.keys(entityRef?.properties ?? {})).toEqual([
+      'moduleId',
+      'entityType',
+      'entityId',
+    ]);
+  });
+});
+
+describe('the published document', () => {
+  it('is self-describing: version, provenance, dialect, digest, count', () => {
+    const document = eventCatalogDocument();
+    expect(document).toMatchObject({
+      catalogVersion: EVENT_CATALOG_VERSION,
+      generatedFrom: 'zod',
+      jsonSchemaDialect: JSON_SCHEMA_DIALECT,
+      eventCount: EVENT_CATALOG.length,
+    });
+    expect(document.digest).toMatch(/^[0-9a-f]{8}$/);
+  });
+
+  it('carries no timestamp — two identical deployments must serve identical bytes', () => {
+    // Otherwise the digest changes on every restart and is useless as an ETag.
+    expect(JSON.stringify(eventCatalogDocument())).toEqual(JSON.stringify(eventCatalogDocument()));
+  });
+
+  it('changes its digest when the surface changes, and only then', () => {
+    const baseline = eventCatalogDigest();
+    expect(eventCatalogDigest()).toBe(baseline);
+
+    const [first, ...rest] = EVENT_CATALOG;
+    expect(first).toBeDefined();
+    expect(eventCatalogDigest(rest)).not.toBe(baseline);
   });
 });
 

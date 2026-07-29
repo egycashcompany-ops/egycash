@@ -40,10 +40,13 @@ import {
 } from '../modules/hr-recruitment.js';
 import {
   HrRecruitmentWorkflowEvents,
+  HrWorkflowEngineEvents,
   type HrRecruitmentWorkflowEventName,
+  type HrWorkflowEngineEventName,
   ApplicantHiredPayloadV1,
   PlacementChangedPayloadV1,
   ReturnedToStagePayloadV1,
+  WorkflowTransitionPayloadV1,
 } from '../modules/hr-recruitment-workflow.js';
 import {
   HrScreeningEvents,
@@ -112,6 +115,7 @@ import {
   ContractApprovalDecidedPayloadV1,
   ContractEventPayloadV1,
   ContractGeneratedPayloadV1,
+  ContractSupersededPayloadV1,
   ContractTerminatedPayloadV1,
 } from '../modules/hr-contract.js';
 
@@ -141,7 +145,27 @@ export interface EventPayloadField {
   values?: readonly string[];
 }
 
+export const EVENT_STATUSES = [
+  /** Published today. Safe to build a workflow, an SDK client or a document on. */
+  'stable',
+  /** Declared, but nothing publishes it yet. A workflow triggering on it would never fire. */
+  'planned',
+  /** Still published, scheduled for removal. `supersededBy` names what to move to. */
+  'deprecated',
+] as const;
+export type EventStatus = (typeof EVENT_STATUSES)[number];
+
 export interface EventCatalogEntry {
+  /**
+   * The versioned identity: `<name>@<schemaVersion>`. This is what an SDK symbol, a
+   * documentation anchor or an external integration pins, and it is stable for as long as the
+   * payload shape is. `name` alone identifies the FACT; `id` identifies the fact in one shape.
+   */
+  id: string;
+  /**
+   * The permanent identity. Names are added to, never renamed — a rename would silently stop
+   * every workflow subscribed to the old one, with no error anywhere.
+   */
   name: string;
   moduleId: string;
   /** Second segment of the name (`platform.user.created` → `user`). */
@@ -149,14 +173,34 @@ export interface EventCatalogEntry {
   /** Third segment of the name (`platform.user.created` → `created`). */
   action: string;
   schemaVersion: number;
+  status: EventStatus;
+  /** Set only when `status === 'deprecated'` — the event name to migrate to. */
+  supersededBy: string | null;
+  /**
+   * Non-null when a second publisher emits this name with a DIFFERENT payload shape. `fields`
+   * describes the module-declared shape; a filter on a field the other publisher does not send
+   * will silently fail to match it.
+   */
+  alsoPublishedBy: string | null;
+  /** Stable code-generation symbol, e.g. `PlatformUserCreatedV1`. Derived, never hand-picked. */
+  typeName: string;
   label: LocalizedString;
+  /** Longer prose where the label is not enough. Optional by design — see §Descriptions. */
+  description: LocalizedString | null;
   moduleName: LocalizedString;
   /**
    * `false` when the owning module has not declared a payload schema. The event can still be
    * triggered on; it just cannot be FILTERED on, and saying so beats inventing a field list.
    */
   payloadDeclared: boolean;
+  /** Flattened, for filter builders and validation. */
   fields: EventPayloadField[];
+  /**
+   * The same payload as JSON Schema (2020-12), for SDK generation, OpenAPI/AsyncAPI components
+   * and any consumer that does not speak Zod. Generated from the same schema as `fields`, so the
+   * two cannot disagree.
+   */
+  jsonSchema: JsonSchemaNode | null;
   /** A JSON-shaped example, generated from the schema and verified to parse against it. */
   sample: unknown;
 }
@@ -174,12 +218,21 @@ export interface EventCatalogSource {
 // for it, and it is deliberately defensive — an unrecognised node degrades to `unknown` rather
 // than throwing, because a catalogue that fails to build takes the whole trigger picker down.
 
+interface ZodCheck {
+  kind: string;
+  value?: number;
+  regex?: RegExp;
+}
+
 interface ZodDefLike {
   typeName?: string;
   innerType?: z.ZodTypeAny;
   schema?: z.ZodTypeAny;
   type?: z.ZodTypeAny;
   values?: readonly string[];
+  checks?: readonly ZodCheck[];
+  valueType?: z.ZodTypeAny;
+  value?: unknown;
 }
 
 const defOf = (schema: z.ZodTypeAny): ZodDefLike => schema._def as unknown as ZodDefLike;
@@ -320,6 +373,128 @@ const sampleFor = (schema: z.ZodTypeAny): unknown => {
   }
 };
 
+// ── JSON Schema ─────────────────────────────────────────────────────────────
+// The interchange format every consumer outside this repository speaks: SDK generators, OpenAPI
+// and AsyncAPI components, documentation renderers, contract-testing tools. Emitted from the same
+// Zod schema the field list comes from, so the two descriptions of a payload cannot disagree.
+//
+// Written by hand rather than pulled from `zod-to-json-schema` on purpose: `@ecms/contracts` has
+// exactly one dependency, and it is imported by the browser bundle. A converter for the handful of
+// Zod nodes payloads actually use is ~80 lines and adds nothing to ship.
+
+export interface JsonSchemaNode {
+  $schema?: string;
+  title?: string;
+  type?: string | string[];
+  format?: string;
+  const?: unknown;
+  enum?: readonly string[];
+  properties?: Record<string, JsonSchemaNode>;
+  required?: string[];
+  additionalProperties?: boolean | JsonSchemaNode;
+  items?: JsonSchemaNode;
+  pattern?: string;
+  minLength?: number;
+  maxLength?: number;
+  minimum?: number;
+  maximum?: number;
+}
+
+export const JSON_SCHEMA_DIALECT = 'https://json-schema.org/draft/2020-12/schema';
+
+const checkOf = (def: ZodDefLike, kind: string): ZodCheck | undefined =>
+  def.checks?.find((c) => c.kind === kind);
+
+const stringNode = (def: ZodDefLike): JsonSchemaNode => {
+  const node: JsonSchemaNode = { type: 'string' };
+  const min = checkOf(def, 'min')?.value;
+  const max = checkOf(def, 'max')?.value;
+  const pattern = checkOf(def, 'regex')?.regex?.source;
+  if (min !== undefined) node.minLength = min;
+  if (max !== undefined) node.maxLength = max;
+  if (pattern !== undefined) node.pattern = pattern;
+  if (checkOf(def, 'email') !== undefined) node.format = 'email';
+  if (checkOf(def, 'uuid') !== undefined) node.format = 'uuid';
+  return node;
+};
+
+const numberNode = (def: ZodDefLike): JsonSchemaNode => {
+  const node: JsonSchemaNode = { type: checkOf(def, 'int') === undefined ? 'number' : 'integer' };
+  const min = checkOf(def, 'min')?.value;
+  const max = checkOf(def, 'max')?.value;
+  if (min !== undefined) node.minimum = min;
+  if (max !== undefined) node.maximum = max;
+  return node;
+};
+
+const withNull = (node: JsonSchemaNode, nullable: boolean): JsonSchemaNode => {
+  if (!nullable || node.type === undefined) return node;
+  return { ...node, type: Array.isArray(node.type) ? [...node.type, 'null'] : [node.type, 'null'] };
+};
+
+const toJsonSchemaNode = (schema: z.ZodTypeAny): JsonSchemaNode => {
+  const { inner, nullable } = unwrap(schema);
+  const def = defOf(inner);
+
+  switch (def.typeName) {
+    case 'ZodString':
+      return withNull(stringNode(def), nullable);
+    case 'ZodNumber':
+    case 'ZodBigInt':
+      return withNull(numberNode(def), nullable);
+    case 'ZodBoolean':
+      return withNull({ type: 'boolean' }, nullable);
+    case 'ZodDate':
+      // Payloads travel as JSON. A consumer generating a client sees the wire type, not `Date`.
+      return withNull({ type: 'string', format: 'date-time' }, nullable);
+    case 'ZodEnum':
+    case 'ZodNativeEnum':
+      return withNull({ type: 'string', enum: [...(def.values ?? [])] }, nullable);
+    case 'ZodLiteral':
+      return withNull({ const: def.value }, nullable);
+    case 'ZodObject': {
+      const shape = shapeOf(inner);
+      const properties: Record<string, JsonSchemaNode> = {};
+      const required: string[] = [];
+      for (const [key, child] of Object.entries(shape)) {
+        properties[key] = toJsonSchemaNode(child);
+        if (!unwrap(child).optional) required.push(key);
+      }
+      return withNull(
+        {
+          type: 'object',
+          properties,
+          ...(required.length === 0 ? {} : { required }),
+          // Consumers are tolerant readers (ADR-008): payload schemas are parsed non-strict, so a
+          // producer may add a field without breaking anyone. Emitting `false` here would tell an
+          // SDK generator the opposite of how the bus actually behaves.
+          additionalProperties: true,
+        },
+        nullable,
+      );
+    }
+    case 'ZodArray':
+      return withNull(
+        { type: 'array', ...(def.type === undefined ? {} : { items: toJsonSchemaNode(def.type) }) },
+        nullable,
+      );
+    case 'ZodRecord':
+    case 'ZodMap':
+      return withNull(
+        {
+          type: 'object',
+          additionalProperties:
+            def.valueType === undefined ? true : toJsonSchemaNode(def.valueType),
+        },
+        nullable,
+      );
+    default:
+      // `z.unknown()` / `z.any()` / an unrecognised node: an empty schema accepts anything, which
+      // is exactly what the Zod side does. Never emit a guess.
+      return {};
+  }
+};
+
 // ── Labels ──────────────────────────────────────────────────────────────────
 // The structure of the catalogue is generated; its WORDS cannot be, because Arabic does not fall
 // out of an English identifier. What is generated is the COMPOSITION: a lexicon of entities and a
@@ -350,6 +525,7 @@ export const EVENT_ENTITY_NAMES: Readonly<Record<string, LocalizedString>> = {
   notification: { en: 'Notification', ar: 'إشعار' },
   // hr
   applicant: { en: 'Applicant', ar: 'متقدم' },
+  recruitment: { en: 'Recruitment pipeline', ar: 'مسار التوظيف' },
   screening: { en: 'Screening', ar: 'الفرز' },
   interview: { en: 'Interview', ar: 'مقابلة' },
   evaluation: { en: 'Evaluation', ar: 'تقييم' },
@@ -383,6 +559,12 @@ export const EVENT_ACTION_NAMES: Readonly<Record<string, LocalizedString>> = {
   placementChanged: { en: 'placement changed', ar: 'تغيير التعيين' },
   returnedToStage: { en: 'returned to an earlier stage', ar: 'إرجاع إلى مرحلة سابقة' },
   hired: { en: 'hired', ar: 'تعيين' },
+  reactivated: { en: 'reactivated', ar: 'إعادة تنشيط' },
+  stageEntered: { en: 'stage entered', ar: 'دخول مرحلة' },
+  stageLeft: { en: 'stage left', ar: 'مغادرة مرحلة' },
+  redecided: { en: 'decision reversed', ar: 'عكس القرار' },
+  reopened: { en: 'reopened', ar: 'إعادة فتح' },
+  superseded: { en: 'superseded', ar: 'استبدال' },
   decided: { en: 'decided', ar: 'البت في' },
   opened: { en: 'opened', ar: 'فتح' },
   scheduled: { en: 'scheduled', ar: 'جدولة' },
@@ -482,6 +664,73 @@ export const isFullyLocalized = (name: string): boolean => {
   );
 };
 
+// ── Lifecycle and descriptions ──────────────────────────────────────────────
+
+const WORKFLOW_ENGINE_MIRROR =
+  'the recruitment workflow engine also publishes this name with the transition payload ' +
+  '(applicantId, applicantCode, entityId, from, to)';
+
+/**
+ * Events that are not plain `stable`. Empty today: every declared event is published, which the
+ * publisher test in `apps/api` asserts against the real source rather than trusting this table.
+ *
+ * A `planned` entry is how a module declares an event before it publishes one, without a workflow
+ * silently subscribing to nothing. A `deprecated` entry keeps firing while `supersededBy` tells
+ * every consumer — UI, SDK, docs — where to go, which is what makes a rename unnecessary.
+ */
+export const EVENT_LIFECYCLE: Readonly<
+  Record<string, { status: EventStatus; supersededBy?: string }>
+> = {
+  // Declared by their modules, published by nobody. Found by the publisher test in `apps/api`,
+  // which scans the real source rather than trusting this table — so an entry that gains a
+  // publisher fails the suite until it is promoted to `stable`.
+  'hr.applicant.returnedToStage': { status: 'planned' },
+  'hr.evaluation.opened': { status: 'planned' },
+};
+
+/**
+ * Names emitted by MORE THAN ONE publisher, with different payload shapes.
+ *
+ * The recruitment workflow engine mirrors every validated transition onto the platform bus
+ * (`workflow-dispatcher.ts`) carrying the TRANSITION — `applicantId`, `applicantCode`, `entityId`,
+ * `from`, `to` — while the feature service that owns the entity emits the same name carrying the
+ * ENTITY. Both are real; `fields` describes the entity shape, because that is what the module
+ * declares.
+ *
+ * This matters to anything filtering on the payload: a filter on a field only one publisher sends
+ * silently fails to match the other, and a workflow that "sometimes doesn't fire" is the hardest
+ * kind of automation bug to find. A trigger picker should warn; A-5 will refuse a filter on a
+ * field that is not in every variant. The divergence itself is pre-existing HR behaviour, recorded
+ * here rather than changed by a contracts slice.
+ */
+export const EVENT_MULTI_PUBLISHER: Readonly<Record<string, string>> = {
+  'hr.applicant.withdrawn': WORKFLOW_ENGINE_MIRROR,
+  'hr.interview.scheduled': WORKFLOW_ENGINE_MIRROR,
+  'hr.interview.started': WORKFLOW_ENGINE_MIRROR,
+  'hr.interview.cancelled': WORKFLOW_ENGINE_MIRROR,
+  'hr.jobOffer.created': WORKFLOW_ENGINE_MIRROR,
+  'hr.jobOffer.sent': WORKFLOW_ENGINE_MIRROR,
+  'hr.jobOffer.accepted': WORKFLOW_ENGINE_MIRROR,
+  'hr.jobOffer.rejected': WORKFLOW_ENGINE_MIRROR,
+  'hr.jobOffer.withdrawn': WORKFLOW_ENGINE_MIRROR,
+  'hr.jobOffer.expired': WORKFLOW_ENGINE_MIRROR,
+};
+
+/**
+ * Prose where the composed label is not enough. Optional on purpose: 87 hand-written bilingual
+ * sentences would be exactly the manual maintenance this catalogue exists to avoid, and a label
+ * plus a typed field list plus a sample already documents most events completely. A module owner
+ * adds an entry here when their event genuinely needs explaining.
+ */
+export const EVENT_DESCRIPTIONS: Readonly<Record<string, LocalizedString>> = {};
+
+/** `platform.user.created` + v1 → `PlatformUserCreatedV1`. Stable as long as name and version are. */
+export const eventTypeName = (name: string, schemaVersion: number): string =>
+  `${name
+    .split('.')
+    .map((segment) => capitalize(segment.replace(/[^A-Za-z0-9]/g, '')))
+    .join('')}V${schemaVersion}`;
+
 // ── Building ────────────────────────────────────────────────────────────────
 
 const entryFor = (
@@ -491,19 +740,34 @@ const entryFor = (
   schemaVersion: number,
 ): EventCatalogEntry => {
   const [, entity = '', action = ''] = name.split('.');
+  const lifecycle = EVENT_LIFECYCLE[name];
   return {
+    id: `${name}@${schemaVersion}`,
     name,
     moduleId,
     entity,
     action,
     schemaVersion,
+    status: lifecycle?.status ?? 'stable',
+    supersededBy: lifecycle?.supersededBy ?? null,
+    alsoPublishedBy: EVENT_MULTI_PUBLISHER[name] ?? null,
+    typeName: eventTypeName(name, schemaVersion),
     label: labelFor(name, entity, action),
+    description: EVENT_DESCRIPTIONS[name] ?? null,
     moduleName: EVENT_MODULE_NAMES[moduleId] ?? {
       en: capitalize(humanize(moduleId)),
       ar: capitalize(humanize(moduleId)),
     },
     payloadDeclared: schema !== null,
     fields: schema === null ? [] : describeField(schema, ''),
+    jsonSchema:
+      schema === null
+        ? null
+        : {
+            $schema: JSON_SCHEMA_DIALECT,
+            title: eventTypeName(name, schemaVersion),
+            ...toJsonSchemaNode(schema),
+          },
     sample: schema === null ? null : sampleFor(schema),
   };
 };
@@ -559,6 +823,7 @@ export const PLATFORM_EVENT_SOURCE: EventCatalogSource = {
 export type HrCatalogEventName =
   | HrEventName
   | HrRecruitmentWorkflowEventName
+  | HrWorkflowEngineEventName
   | HrScreeningEventName
   | HrInterviewEventName
   | HrEvaluationEventName
@@ -584,6 +849,20 @@ export const HR_EVENT_PAYLOAD_SCHEMAS: Readonly<
   [HrRecruitmentWorkflowEvents.PlacementChanged]: PlacementChangedPayloadV1,
   [HrRecruitmentWorkflowEvents.ReturnedToStage]: ReturnedToStagePayloadV1,
   [HrRecruitmentWorkflowEvents.ApplicantHired]: ApplicantHiredPayloadV1,
+
+  // The workflow engine's transition surface — one payload shape for all of them.
+  [HrWorkflowEngineEvents.StageEntered]: WorkflowTransitionPayloadV1,
+  [HrWorkflowEngineEvents.StageLeft]: WorkflowTransitionPayloadV1,
+  [HrWorkflowEngineEvents.ScreeningAccepted]: WorkflowTransitionPayloadV1,
+  [HrWorkflowEngineEvents.ScreeningRejected]: WorkflowTransitionPayloadV1,
+  [HrWorkflowEngineEvents.ScreeningCancelled]: WorkflowTransitionPayloadV1,
+  [HrWorkflowEngineEvents.ScreeningRedecided]: WorkflowTransitionPayloadV1,
+  [HrWorkflowEngineEvents.InterviewRedecided]: WorkflowTransitionPayloadV1,
+  [HrWorkflowEngineEvents.EvaluationCancelled]: WorkflowTransitionPayloadV1,
+  [HrWorkflowEngineEvents.EvaluationRedecided]: WorkflowTransitionPayloadV1,
+  [HrWorkflowEngineEvents.EvaluationReopened]: WorkflowTransitionPayloadV1,
+  [HrWorkflowEngineEvents.OfferSuperseded]: WorkflowTransitionPayloadV1,
+  [HrWorkflowEngineEvents.ApplicantReactivated]: WorkflowTransitionPayloadV1,
 
   [HrScreeningEvents.ScreeningCreated]: ScreeningCreatedPayloadV1,
   [HrScreeningEvents.ScreeningDecided]: ScreeningDecidedPayloadV1,
@@ -645,8 +924,8 @@ export const HR_EVENT_PAYLOAD_SCHEMAS: Readonly<
   [HrContractEvents.ApprovalRequested]: ContractEventPayloadV1,
   [HrContractEvents.ApprovalDecided]: ContractApprovalDecidedPayloadV1,
   [HrContractEvents.Signed]: ContractEventPayloadV1,
-  [HrContractEvents.Amended]: ContractEventPayloadV1,
-  [HrContractEvents.Renewed]: ContractEventPayloadV1,
+  [HrContractEvents.Amended]: ContractSupersededPayloadV1,
+  [HrContractEvents.Renewed]: ContractSupersededPayloadV1,
   [HrContractEvents.Terminated]: ContractTerminatedPayloadV1,
   [HrContractEvents.Expired]: ContractEventPayloadV1,
 };
@@ -678,3 +957,63 @@ export const eventCatalogEntry = (name: string): EventCatalogEntry | undefined =
 export const isCatalogedEventName = (name: string): boolean => CATALOG_BY_NAME.has(name);
 
 export const eventCatalogNames = (): string[] => EVENT_CATALOG.map((entry) => entry.name);
+
+/** Events safe to build on. `planned` and `deprecated` are still listed, and marked. */
+export const stableEventNames = (): string[] =>
+  EVENT_CATALOG.filter((entry) => entry.status === 'stable').map((entry) => entry.name);
+
+// ── The published document ──────────────────────────────────────────────────
+// The catalogue is a PLATFORM API, not an automation implementation detail: it is what a trigger
+// picker, a workflow validator, an SDK generator, the API reference and any future external
+// integration all read. That means it needs the things any API needs — a stable identity per
+// item, an explicit version, and a way for a consumer to tell whether anything changed.
+
+/**
+ * The version of the catalogue DOCUMENT — the shape of an entry, not the events inside it.
+ *
+ * Minor bump when a field is added to `EventCatalogEntry` (additive; existing consumers keep
+ * working). Major bump when one is removed or retyped, which is a breaking change for every
+ * generated SDK and needs a deprecation window like any other API break.
+ */
+export const EVENT_CATALOG_VERSION = '1.0.0';
+
+/**
+ * Content hash of the catalogue, for HTTP caching (`ETag`) and for telling at a glance whether two
+ * environments are running the same event surface. FNV-1a, not a cryptographic digest: this
+ * detects change, it does not authenticate it — and `@ecms/contracts` is bundled for the browser,
+ * so `node:crypto` is not available here.
+ */
+export const eventCatalogDigest = (entries: readonly EventCatalogEntry[] = EVENT_CATALOG): string => {
+  const text = JSON.stringify(entries);
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, '0');
+};
+
+export interface EventCatalogDocument {
+  catalogVersion: string;
+  /** How the payload descriptions were produced. Pinned so a consumer knows they are derived. */
+  generatedFrom: 'zod';
+  jsonSchemaDialect: string;
+  digest: string;
+  eventCount: number;
+  events: readonly EventCatalogEntry[];
+}
+
+/**
+ * The exact JSON `GET /api/v1/automation/events` returns. Deliberately carries no timestamp: two
+ * identical deployments must produce byte-identical documents, or the digest is worthless.
+ */
+export const eventCatalogDocument = (
+  entries: readonly EventCatalogEntry[] = EVENT_CATALOG,
+): EventCatalogDocument => ({
+  catalogVersion: EVENT_CATALOG_VERSION,
+  generatedFrom: 'zod',
+  jsonSchemaDialect: JSON_SCHEMA_DIALECT,
+  digest: eventCatalogDigest(entries),
+  eventCount: entries.length,
+  events: entries,
+});

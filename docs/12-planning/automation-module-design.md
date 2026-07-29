@@ -256,8 +256,8 @@ introducing a second casing — mixed conventions in one catalogue is a permanen
 | `Asset.Created` | `admin.asset.created` | module not built |
 | `Purchase.Request.Approved` | `purchasing.request.approved` | module not built |
 
-**Corrected at A-2.** The Draft recorded the HR rows as "to add"; building the catalogue against
-the real code showed that HR declares 65 events and publishes all but two of them, including every
+**Corrected at A-2 / A-2.1.** The Draft recorded the HR rows as "to add"; building the catalogue
+against the real code showed that HR declares 77 events and publishes 75 of them, including every
 one requested here. The Draft was written from the platform event file
 (`packages/contracts/src/events/index.ts`) without walking the module contract files, and it was
 wrong.
@@ -290,9 +290,21 @@ compose from two translated lexicons (entities, actions) the same way `declarePe
 composes an action with a resource; a drift test fails when an event introduces a word nobody has
 translated.
 
-Coverage today: 87 events — 22 platform, 65 HR, all with declared payload schemas. A module
-contributes a source (`buildEventCatalog(PLATFORM_EVENT_SOURCE, HR_EVENT_SOURCE, …)`); nothing in
-the automation engine changes when Fleet or Treasury lands.
+**A-2.1 makes it a platform API rather than an internal detail**, so trigger selection, workflow
+validation, event documentation, SDK generation and the API reference can all be built on it: a
+stable identity per event (`name` permanent, `id` = `name@version`, `typeName` for codegen), three
+levels of explicit versioning (payload `schemaVersion`, `EVENT_CATALOG_VERSION` for the entry
+shape, a content `digest` for `ETag`), a lifecycle (`stable` / `planned` / `deprecated` with
+`supersededBy`), and every payload emitted a second time as **JSON Schema 2020-12** beside the
+flattened field list.
+
+Coverage today: 99 events — 22 platform, 77 HR, all with declared payload schemas; 97 `stable`,
+2 `planned`. A module contributes a source (`buildEventCatalog(PLATFORM_EVENT_SOURCE,
+HR_EVENT_SOURCE, …)`); nothing in the automation engine changes when Fleet or Treasury lands.
+
+The catalogue is checked against the code that publishes:
+`apps/api/src/platform/kernel/event-publishers.spec.ts` resolves every `emit()` call site back to
+an event name and fails when the catalogue and the source disagree.
 
 Full write-up: [`docs/02-architecture/event-catalog.md`](../02-architecture/event-catalog.md).
 
@@ -724,7 +736,7 @@ after A-1 changes behaviour for a user who never opens `/automation`.
 | *(this PR)* | Architecture: this design + ADR-018, frozen | `docs/` | — | — |
 | **A-0** ✅ | **Provider abstraction** (Revision 1): `AutomationProvider` + capabilities, `automationService` facade, provider registry/DI, `NullAutomationProvider`, feature flags, contracts, the ADR-003 seam rule, docs | `platform/automation/**`, `packages/contracts/src/platform/automation.ts`, `.eslintrc` seam rule | interface conformance suite runnable against ANY provider; null-provider behaviour; flag off ⇒ no dispatch; lint rule rejects a module importing `providers/` | none |
 | **A-1** ✅ | Platform: `automation` queue (provider-agnostic), enriched job envelope (correlation/event/branch/principal/time/retry, all additive), `PLATFORM_VERSION` 2.2.0, envelope crypto as a **platform** service | `infrastructure/queue/jobs.ts`, `platform/crypto/`, `packages/contracts/src/platform/crypto.ts` | round-trip, tamper, context-move, rotation with overlap, retired key; envelope back/forward compatibility | none |
-| **A-2** ✅ | Contracts: DTOs, schemas, permissions, generated event catalogue (87 events) | `packages/contracts/src/modules/automation.ts`, `permissions/automation.ts`, `events/catalog.ts` | catalogue coverage + generated-sample-parses-its-schema + label drift; trigger completeness; credential DTO has no read path; permission-key collision | none |
+| **A-2** ✅ | Contracts: DTOs, schemas, permissions, generated event catalogue as a platform API (99 events; identity, versioning, JSON Schema, lifecycle) | `packages/contracts/src/modules/automation.ts`, `permissions/automation.ts`, `events/catalog.ts` | catalogue coverage + generated-sample-parses-its-schema + label drift; trigger completeness; credential DTO has no read path; permission-key collision | none |
 | **A-3** | Registry: workflows + variables (model, repo, service, routes) | `modules/automation/workflows/` | CRUD, ownership, branch filter | new collections |
 | **A-4** | Credentials: write-only store + injection | `modules/automation/credentials/` | no read path, redaction, rotation | new collection |
 | **A-5** | Trigger bridge: event subscription → dispatch → execution rows | `modules/automation/triggers/` | idempotency, filter eval, depth guard | none |
@@ -808,5 +820,6 @@ written against a reviewed contract rather than against n8n.
 | Date | Revision | Change |
 |---|---|---|
 | 2026-07-29 | Draft | Initial design + ADR-018. Awaiting approval; §14 blockers open. |
+| 2026-07-29 | 1.2 — A-2.1 delta | The event catalogue promoted to a platform API on the approver's instruction: stable identity (`id`, `typeName`), explicit versioning (`EVENT_CATALOG_VERSION`, content digest), lifecycle (`stable`/`planned`/`deprecated`), JSON Schema 2020-12 per payload, and a self-describing document. Adding the publisher test found three further contract errors, all corrected: `hr.contract.amended`/`renewed` carry `sourceContractId`; the recruitment workflow ENGINE publishes 17 event names that `@ecms/contracts` never declared (now declared, catalogue 87 → 99); and ten names have two publishers with different payload shapes, recorded as `alsoPublishedBy` rather than changed. Two events are `planned` — declared with no publisher. |
 | 2026-07-29 | 1.1 — A-2 delta | Corrections found by building against the real code, recorded rather than silently applied: §3.2 publisher statuses (HR already publishes 65 events, so ten of eighteen requested events exist today and A-14 shrinks to `platform.auth.passwordReset`); §8 `n8nWorkflowId` → opaque `providerRef` per D-A4, and workflow `status` gains `disabled` alongside `suspended`; §3.3 marked delivered with its coverage. No decision changed. |
 | 2026-07-29 | **1 — FROZEN** | Approver resolved all four blockers (§14) and added D-A1…D-A4 (§16). Added the Automation Service + provider seam (§2.1), reworked templates into signed versioned packages (§11), inserted **A-0 Provider Abstraction** ahead of A-1 and moved n8n behind it at A-6 (§13). ADR-018 → Accepted. |

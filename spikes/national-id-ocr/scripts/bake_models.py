@@ -45,8 +45,15 @@ def main() -> int:
     # pulled. Leaving them on downloads document-orientation and unwarping models as well, which
     # this pipeline never runs: crops come from a card that preprocess.py has already rectified
     # and deskewed.
+    # The detection model must match what the runtime asks for, or the offline container starts
+    # fine and then cannot load a model that was never downloaded — a failure that appears only on
+    # the first real request. Both sides read the same environment variable for that reason.
+    detection = os.environ.get("PADDLE_DET_MODEL", "PP-OCRv5_mobile_det")
+    print(f"  detection model: {detection}", flush=True)
+
     PaddleOCR(
         lang=LANG,
+        text_detection_model_name=detection,
         use_doc_orientation_classify=False,
         use_doc_unwarping=False,
         use_textline_orientation=False,

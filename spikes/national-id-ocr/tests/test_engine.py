@@ -116,3 +116,49 @@ def test_model_directories_are_left_to_cache_resolution(captured_kwargs):
     contract worth depending on — the previous code guessed `<dir>/det` and `<dir>/rec`."""
     captured, _ = captured_kwargs
     assert not [k for k in captured if k.endswith("_model_dir")]
+
+
+# ── Detection input shape ──
+
+
+def test_detection_letterboxes_to_a_constant_canvas_and_maps_polygons_back():
+    """Paddle re-allocates its workspace whenever the input shape changes.
+
+    Alternating a full card with differently-sized field crops made every call a new shape, and a
+    re-allocation that a container's memory ceiling cannot satisfy surfaces as `RuntimeError:
+    std::exception` from inside C++ — with no Python-level cause to find. Serializing the calls did
+    not stop it, which is what ruled out thread-safety as the explanation.
+
+    A constant canvas is the fix, so the two properties worth pinning are that the shape really is
+    constant whatever comes in, and that the polygons still come back in the CALLER's coordinates —
+    a scaling bug here would look exactly like a mis-calibrated profile.
+    """
+    import numpy as np
+
+    from nidocr.engine import PaddleRecognizer
+
+    seen: list[tuple[int, int]] = []
+
+    class _Recorder(PaddleRecognizer):
+        def __init__(self):  # noqa: D107 — deliberately skips PaddleOCR construction
+            pass
+
+        def _run(self, image):
+            seen.append(image.shape[:2])
+            # One box spanning the whole canvas, so the inverse mapping is checkable by eye.
+            width, height = self.DETECT_CANVAS
+            return [([[0, 0], [width, 0], [width, height], [0, height]], "نص", 0.9)]
+
+    recorder = _Recorder()
+    canvas_width, canvas_height = recorder.DETECT_CANVAS
+    assert canvas_width % 32 == 0 and canvas_height % 32 == 0, "the detector wants multiples of 32"
+
+    for shape in ((646, 1024, 3), (400, 400, 3), (200, 1600, 3)):
+        recorder.detect_lines(np.full(shape, 220, np.uint8))
+
+    assert seen == [(canvas_height, canvas_width)] * 3, "the detection input shape must not vary"
+
+    # A 1024-wide card is scaled by 960/1024; the returned polygon must undo exactly that.
+    polygons = recorder.detect_lines(np.full((646, 1024, 3), 220, np.uint8))
+    scale = min(canvas_width / 1024, canvas_height / 646, 1.0)
+    assert abs(polygons[0][0][2][0] - canvas_width / scale) < 1.0

@@ -24,6 +24,21 @@ import numpy as np
 
 LOG = logging.getLogger("nidocr.engine")
 
+#: Text-detection model. Deliberately the MOBILE one.
+#:
+#: PaddleOCR's default for this language pairs a *server*-grade detector (`PP-OCRv5_server_det`)
+#: with a *mobile* recognizer (`arabic_PP-OCRv5_mobile_rec`) — the heaviest half of the pipeline
+#: doing the easier half of the job. Detection here runs on a card that has already been located,
+#: flattened and deskewed, so it is looking for a handful of well-separated horizontal lines on a
+#: clean background. That is not what a server-grade detector is for, and its memory footprint is
+#: what a container's ceiling is spent on.
+#:
+#: Settable so the pairing can be revisited against real measurements rather than by argument, and
+#: read in both places that construct PaddleOCR — the runtime and the build-time bake — because a
+#: model the image did not download is a model the offline container cannot load.
+def detection_model() -> str:
+    return os.environ.get("PADDLE_DET_MODEL", "PP-OCRv5_mobile_det")
+
 
 @dataclass(frozen=True)
 class Recognition:
@@ -79,11 +94,20 @@ class PaddleRecognizer:
 
     id = "paddleocr-3.x"
 
-    #: Longest side handed to full-page detection. Anchoring needs polygons, not legible glyphs,
-    #: and the polygons are normalized by the caller anyway — so detection runs on a smaller copy
-    #: and the results are scaled back. Per-field recognition still gets full resolution, because
-    #: there the pixels are the answer rather than a coordinate.
-    DETECT_MAX_SIDE = 960
+    #: Detection always runs on a canvas of exactly this size, letterboxed. Both dimensions are
+    #: multiples of 32, which is what the detection model's own preprocessing wants.
+    #:
+    #: A CONSTANT shape is the point, not the size. Paddle's static predictor allocates its
+    #: inference workspace for the shape it is given, and re-allocates when that shape changes.
+    #: This pipeline alternates between a full card and a series of differently-sized field crops,
+    #: so every call was a new shape and every call re-allocated — and under a container's memory
+    #: ceiling a re-allocation that cannot be satisfied surfaces as `RuntimeError: std::exception`
+    #: from inside C++, with no Python-level cause to find. Serializing the calls did not fix it,
+    #: which is what ruled out the first (thread-safety) explanation.
+    #:
+    #: Letterboxing rather than stretching: the card's proportions have to survive, because the
+    #: polygons that come back are scaled straight into field boxes.
+    DETECT_CANVAS = (960, 640)
 
     def __init__(self, model_dir: str | None = None, lang: str = "ar") -> None:
         self._model_dir = model_dir or os.environ.get("PADDLE_OCR_MODEL_DIR", "/models")
@@ -102,6 +126,7 @@ class PaddleRecognizer:
         # layout, which is not a contract this spike should depend on.
         self._ocr = PaddleOCR(
             lang=lang,
+            text_detection_model_name=detection_model(),
             use_doc_orientation_classify=False,
             use_doc_unwarping=False,
             use_textline_orientation=False,
@@ -116,21 +141,27 @@ class PaddleRecognizer:
     def detect_lines(self, image: np.ndarray) -> list[tuple[object, str, float]]:
         """Full-page detection + recognition, keeping each line's polygon.
 
-        Runs on a downscaled copy and scales the polygons back, so the contract is unchanged:
-        coordinates come back in the caller's pixel space. Callers use these to place crops, and a
-        box is a coordinate rather than a glyph — halving the linear size costs a couple of pixels
-        of box precision, which `anchor._pad` already absorbs, and quarters the pixels the
-        detection model has to allocate for.
-        """
-        height, width = image.shape[:2]
-        scale = min(1.0, self.DETECT_MAX_SIDE / max(height, width))
-        if scale >= 1.0:
-            return self._run(image)
+        The card is letterboxed onto a fixed canvas and the polygons are scaled back, so the
+        contract is unchanged: coordinates come back in the caller's pixel space. Callers use these
+        to place crops, and a box is a coordinate rather than a glyph, so the precision lost to the
+        resize is absorbed by `anchor._pad`.
 
-        smaller = cv2.resize(image, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+        Placed at the origin so the inverse is a division and nothing else. An offset here would be
+        wrong in a way that looks exactly like a mis-calibrated profile.
+        """
+        canvas_width, canvas_height = self.DETECT_CANVAS
+        height, width = image.shape[:2]
+        scale = min(canvas_width / width, canvas_height / height, 1.0)
+
+        fitted_width = max(int(width * scale), 1)
+        fitted_height = max(int(height * scale), 1)
+        canvas = np.full((canvas_height, canvas_width, 3), 255, np.uint8)
+        canvas[:fitted_height, :fitted_width] = cv2.resize(
+            image, (fitted_width, fitted_height), interpolation=cv2.INTER_AREA
+        )
         return [
             (np.asarray(poly, dtype=float) / scale, text, score)
-            for poly, text, score in self._run(smaller)
+            for poly, text, score in self._run(canvas)
         ]
 
     def recognize(self, crop: np.ndarray, *, rtl: bool = True) -> Recognition:

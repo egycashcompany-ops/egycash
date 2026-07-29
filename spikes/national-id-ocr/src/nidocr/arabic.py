@@ -59,3 +59,70 @@ def normalize_arabic(value: str) -> str:
 def collapse_spaces(value: str) -> str:
     """Whitespace-only cleanup, preserving orthography — for values shown back to a human."""
     return re.sub(r"\s+", " ", value).strip()
+
+
+# ── Rasm folding ─────────────────────────────────────────────────────────────
+# Arabic letters are built from a small set of skeletons (the *rasm*) plus dots. ب ت ث ن ي share one
+# skeleton and differ only in how many dots sit above or below it; so do ج ح خ, and د ذ, and ر ز,
+# and س ش, and ص ض, and ط ظ, and ع غ, and ف ق.
+#
+# Dots are exactly what an OCR model loses first. They are the smallest marks on the card, they are
+# the first thing a JPEG artefact swallows, and on a laminated card they are the first thing a
+# reflection erases. A recogniser that reads مسلمة as مسلمه has read the *shape* perfectly and
+# guessed one dot wrong — but string comparison scores that as a miss, and the reviewer retypes a
+# field the model effectively got right.
+#
+# Folding to the skeleton makes the comparison ignore precisely the information that was destroyed,
+# and nothing else. That is why it is safe here and would not be safe as a general normalization:
+# it deliberately conflates real, distinct words, so it is only ever used to match against a small
+# CLOSED vocabulary where the members are known not to collide. `postprocess` checks that.
+_RASM = {
+    "ب": "ٮ", "ت": "ٮ", "ث": "ٮ", "ن": "ٮ", "ي": "ٮ", "ى": "ٮ", "ئ": "ٮ", "پ": "ٮ",
+    "ج": "ح", "خ": "ح", "چ": "ح",
+    "ذ": "د",
+    "ز": "ر", "ژ": "ر",
+    "ش": "س",
+    "ض": "ص",
+    "ظ": "ط",
+    "غ": "ع",
+    "ف": "ڡ", "ق": "ڡ", "ڤ": "ڡ",
+    "ة": "ه",
+    "أ": "ا", "إ": "ا", "آ": "ا", "ٱ": "ا",
+    "ؤ": "و",
+    "گ": "ك", "ک": "ك",
+}
+
+
+def rasm_fold(value: str) -> str:
+    """Strip Arabic dotting to the bare letter skeleton. Comparison only — never for storage."""
+    text = normalize_arabic(value)
+    return "".join(_RASM.get(character, character) for character in text)
+
+
+def levenshtein(left: str, right: str, *, limit: int = 2) -> int:
+    """Edit distance, abandoned once it provably exceeds `limit`.
+
+    The limit is not just an optimisation. Every caller here is asking "is this near-miss the same
+    word?", and beyond a couple of edits the answer is no regardless of the exact number — so
+    computing it precisely would be spending work to produce a value that is then thrown away.
+    """
+    if abs(len(left) - len(right)) > limit:
+        return limit + 1
+    if left == right:
+        return 0
+
+    previous = list(range(len(right) + 1))
+    for i, left_character in enumerate(left, start=1):
+        current = [i]
+        for j, right_character in enumerate(right, start=1):
+            current.append(
+                min(
+                    previous[j] + 1,
+                    current[j - 1] + 1,
+                    previous[j - 1] + (left_character != right_character),
+                )
+            )
+        if min(current) > limit:
+            return limit + 1
+        previous = current
+    return previous[-1]

@@ -95,14 +95,15 @@ def test_salvage_cannot_rescue_a_wrong_digit():
 
 
 def test_national_id_cleanup_reports_validity():
-    value, valid = clean_national_id("٢٨٧٠٩ ٠١١٢٠٢٤٠٨")
-    assert (value, valid) == ("28709011202408", True)
+    fixed = clean_national_id("٢٨٧٠٩ ٠١١٢٠٢٤٠٨")
+    assert (fixed.value, fixed.valid) == ("28709011202408", True)
+    assert not fixed.repaired, "a clean read must not be reported as corrected"
 
 
 def test_structural_failure_forces_low_confidence():
     """A confident model must not produce a 'high' band on an impossible value."""
-    _, valid = clean_national_id("٩٩٩٩٩٩٩٩٩٩٩٩٩٩")
-    assert band(0.99, structurally_valid=valid) == "low"
+    fixed = clean_national_id("٩٩٩٩٩٩٩٩٩٩٩٩٩٩")
+    assert band(0.99, structurally_valid=fixed.valid) == "low"
 
 
 def test_band_never_upgrades_on_structural_success():

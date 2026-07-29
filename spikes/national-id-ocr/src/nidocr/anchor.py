@@ -38,8 +38,10 @@ from typing import Any
 
 import numpy as np
 
-from .arabic import to_western_digits
+from .arabic import rasm_fold, to_western_digits
 from .layout import FieldBox
+from .postprocess import MARITAL_TERMS as _MARITAL_TERMS
+from .postprocess import RELIGION_TERMS as _RELIGION_TERMS
 
 #: A detected line as the recognizers report it: (polygon, text, score).
 Line = tuple[Any, str, float]
@@ -158,6 +160,15 @@ MAX_GROWTH = 2.5
 
 _FULL_DATE = re.compile(r"\d{4}\s*[/\-.]\s*\d{1,2}\s*[/\-.]\s*\d{1,2}")
 
+#: Structurally-found fields keep their nominal recognition kind; the two digit ones are digits.
+_KIND = {"nationalId": "digits", "nationalIdExpiry": "digits"}
+
+
+def _mentions(text: str, terms: tuple[str, ...]) -> bool:
+    """Does this line carry one of a closed vocabulary's terms, allowing for dropped dots?"""
+    folded = rasm_fold(text)
+    return any(rasm_fold(term) in folded for term in terms)
+
 #: Fallback when detection found nothing to measure — roughly one printed line on an ID-1 card.
 DEFAULT_LINE_HEIGHT = 0.07
 
@@ -222,9 +233,12 @@ def structural(lines: list[Line], size: tuple[int, int], *, wanted: set[str]) ->
             found.setdefault("nationalId", []).append(rect)
         if "nationalIdExpiry" in wanted and _FULL_DATE.search(folded):
             found.setdefault("nationalIdExpiry", []).append(rect)
+        for name, terms in (("religion", _RELIGION_TERMS), ("maritalStatus", _MARITAL_TERMS)):
+            if name in wanted and _mentions(text, terms):
+                found.setdefault(name, []).append(rect)
 
     return {
-        name: FieldBox(name, *_pad(rects[0]), kind="digits")
+        name: FieldBox(name, *_pad(rects[0]), kind=_KIND.get(name, "text"))
         for name, rects in found.items()
         if len(rects) == 1
     }

@@ -97,11 +97,11 @@ def clean_expiry(raw: str) -> tuple[str, bool]:
 
 # Closed vocabularies. Keys are the normalized (folded) forms so that orthographic variation in
 # the OCR output — which is the common case for Arabic — still matches.
-_RELIGION_TERMS = ("مسلم", "مسلمة", "مسيحي", "مسيحية")
-_MARITAL_TERMS = ("أعزب", "عزباء", "متزوج", "متزوجة", "مطلق", "مطلقة", "أرمل", "أرملة")
+RELIGION_TERMS = ("مسلم", "مسلمة", "مسيحي", "مسيحية")
+MARITAL_TERMS = ("أعزب", "عزباء", "متزوج", "متزوجة", "مطلق", "مطلقة", "أرمل", "أرملة")
 
-_RELIGIONS = {normalize_arabic(term): term for term in _RELIGION_TERMS}
-_MARITAL = {normalize_arabic(term): term for term in _MARITAL_TERMS}
+_RELIGIONS = {normalize_arabic(term): term for term in RELIGION_TERMS}
+_MARITAL = {normalize_arabic(term): term for term in MARITAL_TERMS}
 
 # Rasm indexes for the dot-tolerant pass. Built defensively: if two terms in a vocabulary ever
 # folded to the same skeleton, snapping between them would become a silent coin flip, so a
@@ -114,8 +114,8 @@ def _rasm_index(terms: tuple[str, ...]) -> dict[str, str]:
     return {folded: found[0] for folded, found in grouped.items() if len(found) == 1}
 
 
-_RELIGIONS_RASM = _rasm_index(_RELIGION_TERMS)
-_MARITAL_RASM = _rasm_index(_MARITAL_TERMS)
+_RELIGIONS_RASM = _rasm_index(RELIGION_TERMS)
+_MARITAL_RASM = _rasm_index(MARITAL_TERMS)
 
 
 def _snap(raw: str, vocabulary: dict[str, str], rasm_index: dict[str, str]) -> tuple[str, bool]:

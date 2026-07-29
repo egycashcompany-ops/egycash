@@ -191,3 +191,43 @@ def test_drift_within_a_line_is_still_corrected():
     fitted, sources = snap((drifted,), [text], SIZE)
     assert sources["occupation"] == "snapped"
     assert abs(fitted["occupation"].y - 200 / 600) < 0.03, "the box did not follow its own line"
+
+
+def test_the_sex_religion_marital_row_is_found_by_its_words_not_its_position():
+    """The back's layout is variable-height, so fixed geometry cannot address it.
+
+    Occupation is one line on some cards and two on others — Egyptian job titles run long
+    ('معيدة بقسم الصحة العامة وطب المجتمع' over 'كلية الطب - جامعة المنصورة'). Everything printed
+    below it therefore shifts by a line, and the profile, calibrated on a one-line card, put the
+    religion box straight onto the occupation's second line. That is how 'المنصور' — half of
+    'جامعة المنصورة' — arrived in production as somebody's religion.
+
+    Religion and marital status come from vocabularies of four and eight words, so they can be
+    found the same way the national ID and the expiry are: by content. Both share one printed row,
+    and both anchor to it — `clean_religion` and `clean_marital_status` then pull the right word
+    out of the row by vocabulary, which they already did.
+    """
+    lines = [
+        _line(100, 60, 900, 110, "٢٠١٥/٠٧    ٢٨٧٠٩٠١١٢٠٢٤٠٨"),
+        _line(100, 130, 900, 180, "معيدة بقسم الصحة العامة وطب المجتمع"),
+        _line(100, 190, 900, 240, "كلية الطب - جامعة المنصورة"),  # where the old box pointed
+        _line(300, 260, 700, 310, "أنثى مسلمة متزوجة"),
+        _line(100, 380, 700, 430, "البطاقة سارية حتى ٢٠٢٢/٠٧/٠٤"),
+    ]
+    found = structural(lines, SIZE, wanted={"religion", "maritalStatus", "nationalIdExpiry"})
+
+    assert set(found) == {"religion", "maritalStatus", "nationalIdExpiry"}
+    # Both land on the shared row, well clear of the occupation's second line at y 0.317-0.40.
+    for name in ("religion", "maritalStatus"):
+        assert 0.40 < found[name].y < 0.45, f"{name} did not land on the sex/religion/marital row"
+        assert found[name].kind == "text", "these are words, not digits"
+    assert found["nationalIdExpiry"].y > 0.60
+
+
+def test_a_vocabulary_row_appearing_twice_is_refused():
+    """Same uniqueness rule as everywhere else — two candidates means no evidence, not a coin flip."""
+    lines = [
+        _line(100, 100, 900, 150, "أنثى مسلمة متزوجة"),
+        _line(100, 300, 900, 350, "مسلمة"),
+    ]
+    assert structural(lines, SIZE, wanted={"religion"}) == {}

@@ -52,11 +52,22 @@ COPY src/ /app/src/
 COPY bench/ /app/bench/
 COPY tools/ /app/tools/
 COPY fixtures/ /app/fixtures/
-# Calibrated geometry, shipped with the image so OCR_LAYOUT_PROFILE can name a path that exists
-# without mounting anything. Omitting this directory does not degrade quietly — `load_profile`
-# raises and the container refuses to start, which is the intended failure but a confusing one
-# if the file was expected to be here.
+# Calibrated geometry, shipped with the image and — importantly — ACTIVE BY DEFAULT.
+#
+# Shipping it as opt-in was a mistake with a visible cost. The built-in boxes in `layout.py` are
+# derived from the synthetic fixtures, and on a real Egyptian card they sit too high: the name box
+# catches the 'بطاقة تحقيق الشخصية' header and the address box reaches into the second name line.
+# `egypt-nid.json` was measured from a real card precisely to fix that, then never switched on,
+# because `OCR_LAYOUT_PROFILE` was documented as optional and left unset. So every deployment quietly
+# ran geometry that was known not to fit the cards it was reading, and the resulting field soup got
+# blamed on the recognizer.
+#
+# A default that is wrong for every real input is not a default. The synthetic geometry stays as the
+# LIBRARY default — `make check` and the fixture harness are built around it — but the CONTAINER,
+# which only ever sees real cards, now starts with the real-card profile. Override the variable to
+# point at your own calibration; `tools/calibrate.py --emit-profile` writes one.
 COPY profiles/ /app/profiles/
+ENV OCR_LAYOUT_PROFILE=/app/profiles/egypt-nid.json
 
 # Record the image's own size so `measure.py` can report it as a real number rather than an
 # estimate. Approximated from the filesystem at build time — `docker images` remains the

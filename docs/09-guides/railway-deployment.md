@@ -172,7 +172,7 @@ which is the default everywhere.
    |---|---|
    | `OCR_PORT` | `8099` |
    | `OCR_PRELOAD` | `1` (loads the model at boot instead of on a recruiter's first scan) |
-   | `OCR_LAYOUT_PROFILE` | *(optional)* path to a calibrated geometry profile |
+   | `OCR_LAYOUT_PROFILE` | *leave unset.* The image already defaults to `/app/profiles/egypt-nid.json`, the geometry measured from a real card. Set it only to point at your own calibration — and note the file must exist in the container, because a profile that fails to load raises at start rather than falling back silently. |
 
 3. Point the **app** service at it — this is the only variable the platform itself needs:
 

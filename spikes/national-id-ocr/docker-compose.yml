@@ -15,8 +15,9 @@ services:
     environment:
       OCR_PORT: "8099"
       OCR_PRELOAD: "1" # pay the model load at start, not on a user's first request
-      # Calibration profile, once the built-in geometry has been tuned for real card stock.
-      # OCR_LAYOUT_PROFILE: /profiles/egypt-2026.json
+      # Geometry defaults to /app/profiles/egypt-nid.json, baked into the image — see the Dockerfile.
+      # Set this only to override it with your own calibration, and mount the file it names:
+      # OCR_LAYOUT_PROFILE: /profiles/egypt-2027.json
     # volumes:
     #   - ./profiles:/profiles:ro
     ports:

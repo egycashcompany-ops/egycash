@@ -285,11 +285,19 @@ plumbing.
 Real card stock will not share the synthetic geometry, and re-calibrating must not mean rebuilding
 the image — so geometry is data:
 
+The container already starts with `profiles/egypt-nid.json` — geometry measured from a real card —
+because the built-in boxes in `layout.py` come from the synthetic fixtures and sit too high on real
+stock: the name box catches the `بطاقة تحقيق الشخصية` header and the address box reaches into the
+second name line. Those defaults remain the LIBRARY default, since `make check` and the fixture
+harness are built around them; the image overrides them, because the image only ever sees real cards.
+
+To calibrate your own:
+
 ```bash
 python3 tools/calibrate.py --overlay real-001 --fixtures fixtures/real   # see where boxes fall
 make profile                                                             # → build/profile.json
-# tune the JSON, then point the sidecar at it:
-#   OCR_LAYOUT_PROFILE=/profiles/egypt-2026.json
+# mount it and point the sidecar at the path you mounted it to:
+#   OCR_LAYOUT_PROFILE=/profiles/egypt-2027.json
 ```
 
 A profile that fails to load raises at start rather than falling back silently — a service running

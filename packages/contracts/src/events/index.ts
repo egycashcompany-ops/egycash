@@ -66,11 +66,21 @@ export const AuthEventPayloadV1 = z.object({
   reason: z.string().optional(),
 });
 
+/** `platform.role.changed` — the ROLE itself, not who holds it. */
+export const RoleChangedPayloadV1 = z.object({
+  roleId: objectId(),
+  change: z.enum(['created', 'updated', 'deleted']),
+});
+
 export const RoleAssignmentChangedPayloadV1 = z.object({
   userId: objectId(),
   roleId: objectId(),
   scope: DataScopeSchema.optional(),
   change: z.enum(['granted', 'revoked', 'updated']),
+});
+
+export const OrganizationUpdatedPayloadV1 = z.object({
+  organizationId: objectId(),
 });
 
 export const OrgUnitChangedPayloadV1 = z.object({

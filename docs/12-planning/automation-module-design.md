@@ -237,17 +237,17 @@ introducing a second casing — mixed conventions in one catalogue is a permanen
 
 | Brief | ECMS event name | Publisher status |
 |---|---|---|
-| `HR.Employee.Created` | `hr.employee.created` | to add |
-| `HR.Employee.Updated` | `hr.employee.updated` | to add |
-| `HR.Leave.Approved` | `hr.leave.approved` | to add |
+| `HR.Employee.Created` | `hr.employee.created` | **exists** |
+| `HR.Employee.Updated` | `hr.employee.statusChanged` / `hr.employee.actionApplied` | **exists** |
+| `HR.Leave.Approved` | `hr.leave.decided` (filter `decision eq approved`) | **exists** |
 | `Fleet.Vehicle.Assigned` | `fleet.vehicle.assigned` | module not built |
 | `Fleet.Vehicle.Returned` | `fleet.vehicle.returned` | module not built |
 | `Treasury.Transaction.Created` | `treasury.transaction.created` | module not built |
 | `Treasury.Transaction.Approved` | `treasury.transaction.approved` | module not built |
 | `Accounting.Invoice.Created` | `accounting.invoice.created` | module not built |
 | `Accounting.Invoice.Paid` | `accounting.invoice.paid` | module not built |
-| `Contract.Created` | `hr.contract.created` | to add (module exists) |
-| `Contract.Expired` | `hr.contract.expired` | to add (module exists) |
+| `Contract.Created` | `hr.contract.generated` | **exists** |
+| `Contract.Expired` | `hr.contract.expired` | **exists** |
 | `Document.Uploaded` | `platform.file.uploaded` | **exists** |
 | `User.Created` | `platform.user.created` | **exists** |
 | `User.Deactivated` | `platform.user.statusChanged` | **exists** |
@@ -256,18 +256,45 @@ introducing a second casing — mixed conventions in one catalogue is a permanen
 | `Asset.Created` | `admin.asset.created` | module not built |
 | `Purchase.Request.Approved` | `purchasing.request.approved` | module not built |
 
-**This table is the honest scope statement.** Six of eighteen already publish. Four more are small
-additions to modules that exist. **Eight belong to modules that do not exist yet** — Fleet,
-Treasury, Accounting, Purchasing, Administrative assets. Automation cannot subscribe to events
-nobody emits, so those arrive with their modules. The engine is built once and each module gets
-automation for free when it lands, which is the right sequencing; it is not a reason to delay.
+**Corrected at A-2.** The Draft recorded the HR rows as "to add"; building the catalogue against
+the real code showed that HR declares 65 events and publishes all but two of them, including every
+one requested here. The Draft was written from the platform event file
+(`packages/contracts/src/events/index.ts`) without walking the module contract files, and it was
+wrong.
 
-### 3.3 The event catalogue as a first-class surface
+What follows from the correction: **nine of eighteen already publish** (against six in the Draft),
+one — `platform.auth.passwordReset` — remains a small addition, and **eight belong to modules that
+do not exist yet**: Fleet, Treasury, Accounting, Purchasing, Administrative assets. A-14 shrinks
+accordingly, to that single event. Automation still cannot subscribe to events nobody emits, so
+the unbuilt eight arrive with their modules — the engine is built once and each module gets
+automation for free when it lands.
 
-Automation needs to *show a user* what they can trigger on. A new
+Two of the requested names map onto an existing event plus a filter rather than onto a new event:
+"employee updated" is `hr.employee.statusChanged` / `hr.employee.actionApplied`, and "leave
+approved" is `hr.leave.decided` filtered on `decision eq approved`. Adding duplicate coarse events
+to match the brief's wording would mean publishing the same fact twice, and a workflow author
+would have no way to tell which one to subscribe to.
+
+### 3.3 The event catalogue as a first-class surface — delivered (A-2)
+
+Automation needs to *show a user* what they can trigger on.
 `packages/contracts/src/events/catalog.ts` exports, per event: the name, a localised label, the
-owning module, a JSON-schema-ish description of the payload, and a sample payload. The catalogue is
-generated from the existing Zod payload schemas, so it cannot drift from what is actually emitted.
+owning module, a description of the payload's fields, and a sample payload. Everything structural
+is derived by walking the Zod payload schemas the publishers already declare, so the catalogue
+cannot drift from what is actually emitted — and the generated sample is *verified* to parse
+against its own schema rather than assumed to.
+
+The one thing a human writes is the name → schema link, typed `Record<<EventName union>, …>` per
+module, so declaring a new event constant without cataloguing it **does not compile**. Labels
+compose from two translated lexicons (entities, actions) the same way `declarePermissions`
+composes an action with a resource; a drift test fails when an event introduces a word nobody has
+translated.
+
+Coverage today: 87 events — 22 platform, 65 HR, all with declared payload schemas. A module
+contributes a source (`buildEventCatalog(PLATFORM_EVENT_SOURCE, HR_EVENT_SOURCE, …)`); nothing in
+the automation engine changes when Fleet or Treasury lands.
+
+Full write-up: [`docs/02-architecture/event-catalog.md`](../02-architecture/event-catalog.md).
 
 `GET /api/v1/automation/events` serves it to the trigger picker.
 
@@ -422,7 +449,7 @@ All collections carry the `automation_` prefix (manifest rule).
 
 | Collection | Key fields |
 |---|---|
-| `automation_workflows` | `key`, `name{en,ar}`, `description`, `ownerUserId`, `branchScope`, `status` (draft/active/suspended), `trigger{type,event,filter,schedule,webhookTokenHash}`, `n8nWorkflowId`, `hmacSecretRef`, `aiOptIn[]`, `templateKey`, `version`, timestamps |
+| `automation_workflows` | `key`, `name{en,ar}`, `description`, `ownerUserId`, `branchScope`, `status` (draft/active/disabled/suspended), `trigger{kind,event,filters,cron,runAt,timezone,webhookTokenHash}`, `providerRef{providerId,ref}`, `hmacSecretRef`, `aiOptIn[]`, `templateKey`, `templateVersion`, `version`, timestamps |
 | `automation_executions` | `workflowId`, `executionId`, `trigger{type,eventId}`, `status` (pending/running/success/failed/cancelled), `startedAt`, `finishedAt`, `durationMs`, `nodes[]{name,status,ms,error}`, `inputSnapshot` (redacted), `outputSnapshot` (redacted), `error`, `actorUserId`, `branchId`, `depth` |
 | `automation_credentials` | `key`, `name`, `type` (http/smtp/whatsapp/slack/openai/…), `ciphertext`, `iv`, `authTag`, `wrappedDataKey`, `keyVersion`, `ownerUserId`, `branchScope`, `lastUsedAt` |
 | `automation_variables` | `key`, `value`, `scope` (global/branch/workflow), `branchId?`, `workflowId?`, `secret` (bool → stored as credential instead) |
@@ -433,6 +460,13 @@ All collections carry the `automation_` prefix (manifest rule).
 Indexes: `workflows{trigger.event, status, branchScope}` (the dispatch lookup — hot path),
 `executions{workflowId, startedAt:-1}`, `executions{status, startedAt}` (the sweep),
 `schedules{enabled, nextRunAt}`.
+
+**Revised at A-2.** The Draft's `n8nWorkflowId` column is replaced by an opaque
+`providerRef{providerId,ref}`, per D-A4: a vendor identifier in a persisted column and a DTO makes
+replacing the provider a data migration rather than a configuration change. `status` also gains
+`disabled` — the Draft's three values could not distinguish a workflow a human turned off from one
+the platform suspended because its owner was deactivated (§7.2), and re-enabling those two is not
+the same operation.
 
 **No migration is required for existing data.** Every collection is new; nothing is altered. The
 one platform-contract change is adding `'automation'` to the `QUEUES` tuple in
@@ -690,7 +724,7 @@ after A-1 changes behaviour for a user who never opens `/automation`.
 | *(this PR)* | Architecture: this design + ADR-018, frozen | `docs/` | — | — |
 | **A-0** ✅ | **Provider abstraction** (Revision 1): `AutomationProvider` + capabilities, `automationService` facade, provider registry/DI, `NullAutomationProvider`, feature flags, contracts, the ADR-003 seam rule, docs | `platform/automation/**`, `packages/contracts/src/platform/automation.ts`, `.eslintrc` seam rule | interface conformance suite runnable against ANY provider; null-provider behaviour; flag off ⇒ no dispatch; lint rule rejects a module importing `providers/` | none |
 | **A-1** ✅ | Platform: `automation` queue (provider-agnostic), enriched job envelope (correlation/event/branch/principal/time/retry, all additive), `PLATFORM_VERSION` 2.2.0, envelope crypto as a **platform** service | `infrastructure/queue/jobs.ts`, `platform/crypto/`, `packages/contracts/src/platform/crypto.ts` | round-trip, tamper, context-move, rotation with overlap, retired key; envelope back/forward compatibility | none |
-| **A-2** | Contracts: DTOs, schemas, permissions, event catalogue generator | `packages/contracts/src/modules/automation.ts`, `events/catalog.ts` | schema + catalogue-vs-Zod drift | none |
+| **A-2** ✅ | Contracts: DTOs, schemas, permissions, generated event catalogue (87 events) | `packages/contracts/src/modules/automation.ts`, `permissions/automation.ts`, `events/catalog.ts` | catalogue coverage + generated-sample-parses-its-schema + label drift; trigger completeness; credential DTO has no read path; permission-key collision | none |
 | **A-3** | Registry: workflows + variables (model, repo, service, routes) | `modules/automation/workflows/` | CRUD, ownership, branch filter | new collections |
 | **A-4** | Credentials: write-only store + injection | `modules/automation/credentials/` | no read path, redaction, rotation | new collection |
 | **A-5** | Trigger bridge: event subscription → dispatch → execution rows | `modules/automation/triggers/` | idempotency, filter eval, depth guard | none |
@@ -702,7 +736,7 @@ after A-1 changes behaviour for a user who never opens `/automation`.
 | **A-11** | Web: dashboard, workflows, detail, builder proxy | `apps/web/src/modules/automation/` | render + permission gating | nav seed |
 | **A-12** | Web: executions monitor, credentials, variables, templates, logs, settings | as above | as above | none |
 | **A-13** | Deployment: `railway.n8n.json`, compose, runbook, env docs | root, `docs/08-operations/` | smoke | infra |
-| **A-14** | Module publishers: `hr.employee.*`, `hr.leave.approved`, `hr.contract.*`, `platform.auth.passwordReset` | HR + platform services | event emission in txn | none |
+| **A-14** | Module publishers: `platform.auth.passwordReset` (the HR publishers already exist — §3.2, corrected at A-2) | platform auth service | event emission in txn | none |
 
 Sequencing: **A-0 first — it is the contract everything else is written against**, and reviewing
 it before any n8n code exists is what keeps the seam honest. A-1→A-2 then unblock the rest.
@@ -774,4 +808,5 @@ written against a reviewed contract rather than against n8n.
 | Date | Revision | Change |
 |---|---|---|
 | 2026-07-29 | Draft | Initial design + ADR-018. Awaiting approval; §14 blockers open. |
+| 2026-07-29 | 1.1 — A-2 delta | Corrections found by building against the real code, recorded rather than silently applied: §3.2 publisher statuses (HR already publishes 65 events, so ten of eighteen requested events exist today and A-14 shrinks to `platform.auth.passwordReset`); §8 `n8nWorkflowId` → opaque `providerRef` per D-A4, and workflow `status` gains `disabled` alongside `suspended`; §3.3 marked delivered with its coverage. No decision changed. |
 | 2026-07-29 | **1 — FROZEN** | Approver resolved all four blockers (§14) and added D-A1…D-A4 (§16). Added the Automation Service + provider seam (§2.1), reworked templates into signed versioned packages (§11), inserted **A-0 Provider Abstraction** ahead of A-1 and moved n8n behind it at A-6 (§13). ADR-018 → Accepted. |

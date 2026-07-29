@@ -568,6 +568,29 @@ export const HrContractEvents = {
   Terminated: 'hr.contract.terminated',
   Expired: 'hr.contract.expired',
 } as const;
+export type HrContractEventName = (typeof HrContractEvents)[keyof typeof HrContractEvents];
+
+// Payload schemas (A-2). Contracts emitted these shapes from the start; declaring them is what
+// lets the event catalogue describe a contract trigger's fields instead of shrugging at it.
+// `amended` and `renewed` are declared but not yet published — they carry the base shape.
+
+export const ContractEventPayloadV1 = z.object({
+  contractId: objectId(),
+  code: z.string(),
+});
+
+export const ContractGeneratedPayloadV1 = ContractEventPayloadV1.extend({
+  employeeId: objectId(),
+  contractVersion: z.number().int().min(1),
+});
+
+export const ContractApprovalDecidedPayloadV1 = ContractEventPayloadV1.extend({
+  decision: z.enum(['approved', 'rejected']),
+});
+
+export const ContractTerminatedPayloadV1 = ContractEventPayloadV1.extend({
+  reason: z.string(),
+});
 
 export const HrContractTemplates = {
   ExpiringSoon: 'hr.contract.expiringSoon',

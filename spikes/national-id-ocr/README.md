@@ -65,6 +65,16 @@ near it, then overrides that entirely for the two fields whose content identifie
 exactly fourteen digits is the national ID wherever it is printed, and a full year/month/day is the
 expiry.
 
+**Snapping tightens vertically and never horizontally**, and the asymmetry is load-bearing. Fields
+are stacked a line apart, so a crop that spans too many rows picks up its neighbour's text —
+vertical tightening is the whole point. Nothing is printed *beside* the name, the address or the
+number, so horizontal tightening excludes no neighbour and costs something real: any part of the
+line **detection itself missed**. A short word at the end of a right-aligned line is exactly what a
+detector drops, and snapping used to rewrite the generous nominal box into one that stopped where
+detection stopped — putting the word outside the pixels recognition was given, where no amount of
+re-reading could reach it. The horizontal extent is now the union with the nominal box: anchoring
+may move a crop and may grow one, but it may not trim one.
+
 **The front text boxes are deliberately generous, and the card's own words are removed by content.**
 A box drawn tightly around one card's name is drawn tightly around *that* card's name: the next
 card's given name sat above the box's top edge and the last word of its family chain ran past its

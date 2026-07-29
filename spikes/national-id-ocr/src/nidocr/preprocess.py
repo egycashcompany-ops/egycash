@@ -285,6 +285,29 @@ _VARIANTS = {
     "invert": _inverted,
 }
 
+#: How much card to take around each variant's crop, as a fraction of the field box.
+#:
+#: Two jobs, and the second is the reason these differ from one another rather than being one
+#: constant. First, a glyph flush against the edge of an image is one a detector drops: the
+#: probability map it thresholds needs background on both sides to close a contour, and the last
+#: word of a right-aligned line is exactly what ends up against the border. Every crop therefore
+#: carries a little card around its text.
+#:
+#: Second, changing the margin changes the SEGMENTATION, not just the pixels. Detection inside a
+#: wider crop splits the row differently, so its errors are less correlated with the narrow crop's
+#: than another colour transform on identical pixels would be. An ensemble is worth exactly as much
+#: as its members' independence, and geometry is the cheapest independence available here.
+VARIANT_MARGIN: dict[str, float] = {
+    "grey": 0.03,
+    "binary": 0.03,
+    "otsu": 0.10,
+    "clahe": 0.10,
+    "invert": 0.03,
+}
+
+#: Prose fields get the margin and nothing else — see the first reason above.
+TEXT_MARGIN = 0.03
+
 
 def field_variant(crop: np.ndarray, variant: str, *, max_upscale: float = 4.0) -> np.ndarray:
     """One preprocessing variant of a field crop, upscaled to the recognizer's working height."""

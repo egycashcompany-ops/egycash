@@ -38,7 +38,15 @@ from .ensemble import ENOUGH_AGREEMENT, Candidate, Consensus, combine
 from .geometry import Rectification
 from .layout import BACK_FIELDS, FRONT_FIELDS, FieldBox
 from .nid import Repair, gender_agrees, salvage_digits
-from .preprocess import DIGIT_VARIANTS, StageTimings, field_variant, load_bgr, prepare
+from .preprocess import (
+    DIGIT_VARIANTS,
+    TEXT_MARGIN,
+    VARIANT_MARGIN,
+    StageTimings,
+    field_variant,
+    load_bgr,
+    prepare,
+)
 from .postprocess import (
     band,
     cap,
@@ -65,6 +73,8 @@ class SideResult:
     lines: list[Line] = _field(default_factory=list)
     #: True when detection RAISED rather than returning nothing. See `_detect_lines`.
     detection_failed: bool = False
+    #: Every reading this side produced of the national ID, kept for the cross-side vote.
+    nid_candidates: list[Candidate] = _field(default_factory=list)
 
     def filled(self) -> int:
         return sum(1 for data in self.fields.values() if data.get("value"))
@@ -101,13 +111,42 @@ class ExtractionResult:
         return not self.quality or any(report.readable for report in self.quality.values())
 
 
+@dataclass(frozen=True)
+class Read:
+    """What one field's recognition produced, and the evidence behind it."""
+
+    text: str
+    score: float
+    #: Present for the national ID only — several readings combined into one answer.
+    consensus: Consensus | None = None
+    #: The individual readings. Kept so the two SIDES of the card can be pooled into one vote
+    #: rather than merely compared: the front and back crops share no pixels at all, which makes
+    #: their errors the most independent evidence anywhere in this pipeline.
+    candidates: tuple[Candidate, ...] = ()
+
+
+def _crop(card: np.ndarray, box: FieldBox, margin: float) -> np.ndarray | None:
+    """The field's pixels, with a little of the card around them.
+
+    The margin is real card rather than synthetic padding, taken by widening the box before
+    cropping and clamping at the card's edge. That matters for the reason the margin exists at all:
+    a glyph flush against the edge of an image is one a detector drops, because the probability map
+    it thresholds needs background on both sides to close a contour — and on a right-aligned Arabic
+    line the glyph in that position is the last word of the name.
+    """
+    height, width = card.shape[0], card.shape[1]
+    left, top, right, bottom = box.to_pixels((width, height))
+    grow_x, grow_y = int(box.w * width * margin), int(box.h * height * margin)
+    left, top = max(0, left - grow_x), max(0, top - grow_y)
+    right, bottom = min(width, right + grow_x), min(height, bottom + grow_y)
+    if right <= left or bottom <= top:
+        return None
+    return card[top:bottom, left:right]
+
+
 def _recognize_box(
     card: np.ndarray, box: FieldBox, recognizer: Recognizer
-) -> tuple[str, float, Consensus | None]:
-    left, top, right, bottom = box.to_pixels((card.shape[1], card.shape[0]))
-    if right <= left or bottom <= top:
-        return "", 0.0, None
-    region = card[top:bottom, left:right]
+) -> Read:
     # The mock replays by field name; real recognizers only ever see pixels.
     if isinstance(recognizer, MockRecognizer):
         recognizer.bind(box.name)
@@ -116,12 +155,15 @@ def _recognize_box(
     # on an otherwise right-to-left card. Ordering them as Arabic would reverse the value
     # while keeping every digit correct — a failure that looks entirely plausible.
     if box.kind != "digits":
-        return (*_read_text(recognizer, region), None)
+        region = _crop(card, box, TEXT_MARGIN)
+        if region is None:
+            return Read("", 0.0)
+        return Read(*_read_text(recognizer, region))
     # The full ensemble is spent on the national ID alone. It is the field where a single wrong
     # digit yields a different, valid-looking person, and the only one whose fourteen-digit shape
     # makes several reads combinable at all — an expiry that comes back as two different dates
     # cannot be voted on position by position.
-    return _read_digits(recognizer, region, ensemble=box.name == "nationalId")
+    return _read_digits(card, box, recognizer, ensemble=box.name == "nationalId")
 
 
 def _read_text(recognizer: Recognizer, region: np.ndarray) -> tuple[str, float]:
@@ -139,12 +181,12 @@ def _read_text(recognizer: Recognizer, region: np.ndarray) -> tuple[str, float]:
 
 
 def _read_digits(
-    recognizer: Recognizer, region: np.ndarray, *, ensemble: bool
-) -> tuple[str, float, Consensus | None]:
+    card: np.ndarray, box: FieldBox, recognizer: Recognizer, *, ensemble: bool
+) -> Read:
     """Read a digits field under several preprocessing variants and combine what they say.
 
     ONE READ IS NOT ENOUGH FOR THIS FIELD, and the reason is specific rather than general caution.
-    A real card came back as 28709011203408 where it printed 28709011202408 — ٢ read as ٣ at
+    A real card came back as 29208151202457 where it printed 29208151203457 — ٢ read as ٣ at
     position eleven, inside the sequence. Both strings are valid national IDs, so no structural
     check, no `parseNationalId` call and no confidence score can tell them apart: the evidence that
     separates them exists only in the pixels, and the only way to use it is to look more than once.
@@ -167,6 +209,12 @@ def _read_digits(
     best: tuple[str, float] = ("", 0.0)
     candidates: list[Candidate] = []
     for variant in variants:
+        # Each variant reads its OWN crop. Widening the margin changes how detection segments the
+        # row, so two variants disagree for reasons beyond a colour transform on identical pixels
+        # — and an ensemble is worth exactly as much as its members' independence.
+        region = _crop(card, box, VARIANT_MARGIN[variant])
+        if region is None:
+            continue
         text, score = _read(recognizer, field_variant(region, variant), rtl=False)
         # "More digits recovered" is a real quality signal on a field of known shape, not a
         # heuristic — so it orders the fallback, and the model's score only breaks ties.
@@ -175,17 +223,19 @@ def _read_digits(
         if not ensemble:
             continue
 
-        candidates.append(Candidate(variant=variant, digits=clean_national_id(text).value, score=score))
+        candidates.append(
+            Candidate(variant=variant, digits=clean_national_id(text).value, score=score)
+        )
         agreed = Counter(c.digits for c in candidates if len(c.digits) == 14)
         if agreed and agreed.most_common(1)[0][1] >= ENOUGH_AGREEMENT:
             settled = combine(candidates)
             if settled is not None and settled.valid:
-                return settled.value, settled.score, settled
+                break
 
     settled = combine(candidates) if ensemble else None
     if settled is None:
-        return (*best, None)
-    return settled.value, settled.score, settled
+        return Read(*best, candidates=tuple(candidates))
+    return Read(settled.value, settled.score, settled, tuple(candidates))
 
 
 def _read(recognizer: Recognizer, crop: np.ndarray, rtl: bool) -> tuple[str, float]:
@@ -343,9 +393,11 @@ def _process_side(
     ceiling = prepared.quality.confidence_ceiling
     for name, box in result.anchoring.boxes.items():
         started = time.perf_counter()
-        raw, score, consensus = _recognize_box(prepared.image, box, recognizer)
+        read = _recognize_box(prepared.image, box, recognizer)
         timings.record(f"recognize:{side}:{name}", started)
-        data = _finalize(name, raw, score, consensus)
+        if name == "nationalId":
+            result.nid_candidates = list(read.candidates)
+        data = _finalize(name, read.text, read.score, read.consensus)
         # The capture's own quality bounds every field it produced. A model score describes how
         # cleanly the recognizer read what it was given; it says nothing about whether the pixels
         # carried the information. On a blurred crop those come apart badly — fewer competing
@@ -434,13 +486,22 @@ def _better(first: SideResult, second: SideResult) -> SideResult:
 
 
 def _reconcile_national_id(sides: dict[str, SideResult]) -> dict[str, Any] | None:
-    """Combine the number read from the front with the one read from the back.
+    """Combine everything both sides read of the number into one answer.
 
-    Agreement between two independent reads is the strongest evidence available anywhere in this
-    pipeline — far stronger than either model score, because the two crops share no pixels and
-    their errors are uncorrelated. Disagreement is equally informative and is handled by refusing
-    to choose: the structurally valid one is preferred only when the other is not valid at all, and
-    two valid but different numbers drop to `low` so the reviewer resolves it against the card.
+    The two crops share no pixels at all, which makes their errors the most independent evidence
+    anywhere in this pipeline — far stronger than either model score. So the readings are POOLED
+    into a single vote rather than merely compared: five variants on the front and five on the back
+    give ten opinions on each of the fourteen digits, and a digit misread on the front has to be
+    misread identically on the back to survive.
+
+    Pooling strictly beats the comparison it replaces. Comparing two final values could only ever
+    report that they differed and drop the field to `low`, keeping the front's — which on a genuine
+    disagreement means presenting a number the pipeline has active reason to doubt. Voting resolves
+    the disagreement digit by digit instead, and reserves `low` for a number no combination of the
+    reads can make valid.
+
+    What does not change: two sides landing on the same fourteen digits is still the strongest
+    outcome there is, and still the only route to `high`.
     """
     readings = {
         side: result.fields["nationalId"]
@@ -449,6 +510,7 @@ def _reconcile_national_id(sides: dict[str, SideResult]) -> dict[str, Any] | Non
     }
     if not readings:
         return None
+
     if len(readings) == 1:
         return next(iter(readings.values()))
 
@@ -468,7 +530,47 @@ def _reconcile_national_id(sides: dict[str, SideResult]) -> dict[str, Any] | Non
         chosen["agreement"] = "one-side-invalid"
         return chosen
 
-    disputed = dict(front)
+    # Two different numbers, both of which could be real. Comparing the finished values can only
+    # report that they differ; the readings BEHIND them can do better, because the disagreement is
+    # usually confined to one or two positions and every other digit has ten reads backing it.
+    return _vote_across_sides(sides, front)
+
+
+def _vote_across_sides(sides: dict[str, SideResult], fallback: dict[str, Any]) -> dict[str, Any]:
+    """Resolve a front/back disagreement by pooling every reading of both crops into one vote.
+
+    Ten opinions on each of fourteen digits — five preprocessing variants per side — and the two
+    crops share no pixels at all, so a digit misread on the front has to be misread identically on
+    the back to survive. That is a far stronger position than the comparison this replaces, which
+    could only ever say "these differ" and hand the reviewer the front's number anyway.
+
+    It stops short of settling every disagreement, deliberately. A pool that splits evenly between
+    two valid numbers is not evidence for either — it is two numbers, and choosing by score would
+    hand a reviewer a plausible number for possibly the wrong person, which is the one outcome that
+    does not get re-read. So a clear majority resolves it at `medium`, and anything less is a
+    conflict at `low`.
+    """
+    pooled = [
+        Candidate(
+            variant=f"{side}:{candidate.variant}",
+            digits=candidate.digits,
+            score=candidate.score,
+        )
+        for side, result in sides.items()
+        for candidate in result.nid_candidates
+    ]
+    settled = combine(pooled)
+
+    disputed = dict(fallback)
+    if settled is not None and settled.valid and settled.support * 2 > settled.total:
+        disputed["value"] = settled.value
+        disputed["score"] = settled.score
+        disputed["valid"] = True
+        disputed["reads"] = settled.total
+        disputed["confidence"] = cap(band(settled.score), "medium")
+        disputed["agreement"] = "cross-side-majority"
+        return disputed
+
     disputed["confidence"] = "low"
     disputed["agreement"] = "conflict"
     return disputed

@@ -220,20 +220,34 @@ def _overlaps(
 def _clamp_to(
     rect: tuple[float, float, float, float], box: FieldBox, line_height: float
 ) -> tuple[float, float, float, float]:
-    """Keep a snapped crop within one line of where the profile said the field is.
+    """Fit the crop to the detected lines VERTICALLY, and never narrow it horizontally.
 
-    Belt and braces over the selection rule above. Even when the right lines are chosen, a
-    detection polygon that runs tall — a stray mark, a piece of the guilloche caught by the
-    detector — would drag the crop into the field above or below. Anchoring exists to correct
-    drift, so bounding the correction to the size of the thing that drifts keeps it honest: the
-    box may move, but it may not travel to a different line.
+    The two axes are not symmetric on this card, and treating them as if they were is what cost a
+    name its last word.
+
+    VERTICALLY, tightening is the entire point. Fields are stacked one above another a line apart,
+    so a crop that spans more rows than it should picks up the neighbouring field's text — and a
+    detection polygon that runs tall (a stray mark, a piece of the guilloche) would drag it there.
+    So the vertical extent comes from the detected lines, bounded to within one line of where the
+    profile said the field is: the box may move, but it may not travel to a different line.
+
+    HORIZONTALLY, tightening buys nothing and costs words. Nothing is printed beside the name, the
+    address or the number — the space to their left is blank card — so a narrower crop excludes no
+    neighbour. What it does exclude is any part of the line DETECTION ITSELF MISSED, and that is not
+    hypothetical: a short word at the end of a right-aligned line is exactly what a detector drops,
+    and snapping then rewrote the generous nominal box into a tight one that made the word
+    unrecoverable. The crop stopped where detection stopped, so recognition never saw the pixels
+    and no amount of re-reading could help. Anchoring exists to correct drift, not to trim, and a
+    horizontal union with the nominal box keeps it to that.
     """
     x, y, w, h = rect
     top = max(y, box.y - line_height)
     bottom = min(y + h, box.y + box.h + line_height)
     if bottom <= top:
-        return rect
-    return x, top, w, bottom - top
+        top, bottom = y, y + h
+    left = min(x, box.x)
+    right = max(x + w, box.x + box.w)
+    return left, top, right - left, bottom - top
 
 
 def _union(rects: list[tuple[float, float, float, float]]) -> tuple[float, float, float, float]:
@@ -282,9 +296,9 @@ def _carries_a_national_id(folded: str) -> bool:
 
     The two sides print it differently, and a rule written for one misses the other:
 
-      * The FRONT spaces it into groups — `٢٨٧ ٠٩ ٠١ ١٢ ٠٢٤ ٠٨` — so the line has no unbroken run
+      * The FRONT spaces it into groups — `٢٩٢ ٠٨ ١٥ ١٢ ٠٣٤ ٥٧` — so the line has no unbroken run
         of fourteen, but its digits total fourteen and nothing else is on the line.
-      * The BACK puts it beside the issue date — `٢٠١٥/٠٧    ٢٨٧٠٩٠١١٢٠٢٤٠٨` — which detection
+      * The BACK puts it beside the issue date — `٢٠١٥/٠٧    ٢٩٢٠٨١٥١٢٠٣٤٥٧` — which detection
         returns as one region totalling twenty digits, but with the number intact as a single run.
 
     So either signal counts. Requiring only the total missed the back, which is not a cosmetic

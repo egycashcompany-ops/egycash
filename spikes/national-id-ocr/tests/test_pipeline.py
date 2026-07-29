@@ -40,7 +40,7 @@ FIXTURES = ROOT / "fixtures" / "synthetic"
 
 
 def test_indic_digits_fold_to_ascii():
-    assert to_western_digits("٢٨٧٠٩٠١١٢٠٢٤٠٨") == "28709011202408"
+    assert to_western_digits("٢٩٢٠٨١٥١٢٠٣٤٥٧") == "29208151203457"
     assert to_western_digits("۲۰۲۶") == "2026"  # Persian/Extended set folds too
 
 
@@ -60,7 +60,7 @@ def test_normalize_matches_the_api_fold():
 
 @pytest.mark.parametrize(
     "value",
-    ["28709011202408", "30001011200015"],
+    ["29208151203457", "30001011200015"],
 )
 def test_valid_ids_accepted(value):
     assert is_structurally_valid(value, today=dt.date(2026, 7, 28))
@@ -69,12 +69,12 @@ def test_valid_ids_accepted(value):
 @pytest.mark.parametrize(
     ("value", "why"),
     [
-        ("1870901120240", "wrong length"),
-        ("48709011202408", "century digit is neither 2 nor 3"),
-        ("29913011202408", "month 13"),
-        ("29902301202408", "30 February"),
+        ("1920815120345", "wrong length"),
+        ("49208151203457", "century digit is neither 2 nor 3"),
+        ("29913011203457", "month 13"),
+        ("29902301203457", "30 February"),
         ("29801019934567", "unknown governorate code"),
-        ("39912011202408", "birth date in the future"),
+        ("39912011203457", "birth date in the future"),
     ],
 )
 def test_invalid_ids_rejected(value, why):
@@ -82,21 +82,21 @@ def test_invalid_ids_rejected(value, why):
 
 
 def test_salvage_strips_separators_and_folds_digits():
-    assert salvage_digits("٢٨٧٠٩ ٠١١٢٠٢٤٠٨") == "28709011202408"
-    assert salvage_digits("287-090 1120.2408") == "28709011202408"
+    assert salvage_digits("٢٩٢٠٨ ١٥١٢٠٣٤٥٧") == "29208151203457"
+    assert salvage_digits("292-081 5120.3457") == "29208151203457"
 
 
 def test_salvage_cannot_rescue_a_wrong_digit():
     """Cosmetic noise is removable; a misread digit is not. Guards against false comfort."""
-    assert salvage_digits("28709011202409") != "28709011202408"
+    assert salvage_digits("29208151203458") != "29208151203457"
 
 
 # ── Post-processing ──
 
 
 def test_national_id_cleanup_reports_validity():
-    fixed = clean_national_id("٢٨٧٠٩ ٠١١٢٠٢٤٠٨")
-    assert (fixed.value, fixed.valid) == ("28709011202408", True)
+    fixed = clean_national_id("٢٩٢٠٨ ١٥١٢٠٣٤٥٧")
+    assert (fixed.value, fixed.valid) == ("29208151203457", True)
     assert not fixed.repaired, "a clean read must not be reported as corrected"
 
 

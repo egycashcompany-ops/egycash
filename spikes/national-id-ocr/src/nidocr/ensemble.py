@@ -1,7 +1,7 @@
 """Reading the number more than once, and deciding what several disagreeing reads mean.
 
-THE PROBLEM THIS EXISTS FOR, STATED PRECISELY. A real card came back as 28709011203408 when it
-printed 28709011202408 — one digit, ٢ read as ٣, at position eleven. Both strings are perfectly
+THE PROBLEM THIS EXISTS FOR, STATED PRECISELY. A real card came back as 29208151202457 when it
+printed 29208151203457 — one digit, ٢ read as ٣, at position eleven. Both strings are perfectly
 valid national IDs: same century, same birth date, same governorate, differing only inside the
 sequence. `is_structurally_valid` returns True for each, `parseNationalId` decodes each into a
 consistent person, and every downstream check agrees. Validation cannot catch this error, and no

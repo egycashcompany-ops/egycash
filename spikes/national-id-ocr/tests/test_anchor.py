@@ -129,7 +129,7 @@ def test_two_candidate_lines_produce_no_assignment():
     """
     lines = [
         _line(100, 100, 900, 160, "٢٩٥٠٣١٤١٢٣٤٥٦٧"),
-        _line(100, 400, 900, 460, "٢٨٧٠٩٠١١٢٠٢٤٠٨"),
+        _line(100, 400, 900, 460, "٢٩٢٠٨١٥١٢٠٣٤٥٧"),
     ]
     assert structural(lines, SIZE, wanted={"nationalId"}) == {}
 
@@ -214,7 +214,7 @@ def test_the_sex_religion_marital_row_is_found_by_its_words_not_its_position():
     out of the row by vocabulary, which they already did.
     """
     lines = [
-        _line(100, 60, 900, 110, "٢٠١٥/٠٧    ٢٨٧٠٩٠١١٢٠٢٤٠٨"),
+        _line(100, 60, 900, 110, "٢٠١٥/٠٧    ٢٩٢٠٨١٥١٢٠٣٤٥٧"),
         _line(100, 130, 900, 180, "معيدة بقسم الصحة العامة وطب المجتمع"),
         _line(100, 190, 900, 240, "كلية الطب - جامعة المنصورة"),  # where the old box pointed
         _line(300, 260, 700, 310, "أنثى مسلمة متزوجة"),
@@ -256,6 +256,35 @@ def test_a_word_at_the_far_end_of_a_line_is_not_lost():
     assert sources["fullNameAr"] == "snapped"
     assert got.x < 0.31, "the crop stops short of the word at the far end of the line"
     assert got.x + got.w > 0.94, "the crop no longer reaches the start of the line"
+
+
+def test_snapping_never_narrows_a_box_onto_what_detection_happened_to_find():
+    """The failure that outlived two rounds of fixing the name, and the reason it survived them.
+
+    Snapping replaced the field box with the extent of the detected lines — so when detection
+    missed the last word of a right-aligned line, the crop was rewritten to stop where detection
+    stopped. That put the word OUTSIDE the pixels recognition was given, which is why no amount of
+    re-reading, re-thresholding or voting could ever recover it: it was never in the image.
+
+    The two axes are not symmetric. Tightening vertically is the whole point, because fields sit a
+    line apart and a tall crop picks up its neighbour. Tightening horizontally excludes no
+    neighbour — nothing is printed beside the name — and costs exactly this. So the horizontal
+    extent is the union with the nominal box: anchoring may move a crop, and it may grow one, but
+    it may not trim one.
+    """
+    box = FieldBox("fullNameAr", x=0.36, y=0.18, w=0.61, h=0.28)
+    # Detection found only the right-hand part of the line; the final word was missed.
+    found = _line(600, 200, 950, 250, "إبراهيم عبد الرحمن")
+
+    fitted, sources = snap((box,), [found], SIZE)
+    got = fitted["fullNameAr"]
+
+    assert sources["fullNameAr"] == "snapped"
+    assert got.x <= box.x, "the crop was trimmed to the text detection happened to find"
+    assert got.x + got.w >= box.x + box.w
+    # ...while still following the text vertically, which is what anchoring is for.
+    assert got.y > box.y, "the crop did not follow its line down"
+    assert got.y + got.h < 0.50
 
 
 def test_two_separate_fields_on_one_row_are_not_merged_into_each_other():

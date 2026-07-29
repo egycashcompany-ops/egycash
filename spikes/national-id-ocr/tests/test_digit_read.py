@@ -26,9 +26,14 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from nidocr.engine import Recognition  # noqa: E402
-from nidocr.extract import _recognize_box  # noqa: E402
+from nidocr.extract import _crop, _recognize_box  # noqa: E402
 from nidocr.layout import FieldBox  # noqa: E402
-from nidocr.preprocess import DIGIT_VARIANTS, binarize  # noqa: E402
+from nidocr.preprocess import (  # noqa: E402
+    DIGIT_VARIANTS,
+    TEXT_MARGIN,
+    VARIANT_MARGIN,
+    binarize,
+)
 
 VALID = "29503141234567"
 #: One digit different, at position eleven, where nothing constrains it. Both validate.
@@ -111,19 +116,19 @@ def test_the_number_several_variants_agree_on_beats_one_variant_s_confident_misr
     not break it the same way a plain greyscale read does.
     """
     recognizer = Replay(NEAR_MISS, VALID, VALID, VALID)
-    text, _, consensus = _recognize_box(card, NID_BOX, recognizer)
+    read = _recognize_box(card, NID_BOX, recognizer)
 
-    assert text == VALID
-    assert consensus is not None and consensus.valid
-    assert consensus.agreement == "majority"
+    assert read.text == VALID
+    assert read.consensus is not None and read.consensus.valid
+    assert read.consensus.agreement == "majority"
 
 
 def test_reading_stops_once_enough_variants_agree(card):
     """Robustness is not worth paying for on every card that was already read correctly."""
     recognizer = Replay(VALID, VALID, VALID, "this must never be read")
-    text, _, consensus = _recognize_box(card, NID_BOX, recognizer)
+    read = _recognize_box(card, NID_BOX, recognizer)
 
-    assert text == VALID and consensus.agreement == "unanimous"
+    assert read.text == VALID and read.consensus.agreement == "unanimous"
     assert recognizer.calls == 3, "a settled field kept reading"
 
 
@@ -137,10 +142,10 @@ def test_a_contested_field_pays_for_the_whole_ensemble(card):
 def test_no_valid_candidate_is_reported_rather_than_accepted(card):
     """A number that cannot be a national ID must not arrive looking like one that was read."""
     recognizer = Replay(*(["99999999999999"] * len(DIGIT_VARIANTS)))
-    text, _, consensus = _recognize_box(card, NID_BOX, recognizer)
+    read = _recognize_box(card, NID_BOX, recognizer)
 
-    assert consensus is not None and not consensus.valid
-    assert text == "99999999999999", "the reviewer still needs something to correct"
+    assert read.consensus is not None and not read.consensus.valid
+    assert read.text == "99999999999999", "the reviewer still needs something to correct"
 
 
 # ── Choosing per input, which the ensemble subsumes ──
@@ -149,25 +154,25 @@ def test_no_valid_candidate_is_reported_rather_than_accepted(card):
 def test_the_read_that_recovers_more_digits_still_wins(card):
     """Thresholding fragments glyphs printed over the watermark; greyscale keeps them."""
     recognizer = SplitByThreshold(thresholded="2964", plain=VALID)
-    text, _, _ = _recognize_box(card, NID_BOX, recognizer)
-    assert text == VALID
+    read = _recognize_box(card, NID_BOX, recognizer)
+    assert read.text == VALID
 
 
 def test_thresholding_still_wins_when_it_reads_better(card):
     """The point is choosing per input, not preferring one path."""
     recognizer = SplitByThreshold(thresholded=VALID, plain="296")
-    text, _, _ = _recognize_box(card, NID_BOX, recognizer)
-    assert text == VALID
+    read = _recognize_box(card, NID_BOX, recognizer)
+    assert read.text == VALID
 
 
 def test_the_expiry_is_not_put_through_the_ensemble(card):
     """It has no fourteen-digit shape, so several reads of it cannot be combined position by
     position — two dates that disagree cannot be voted on. It keeps the older, cheaper pair."""
     recognizer = SplitByThreshold(thresholded="٢٠٢٢/٠٧/٠٤", plain="٢٠٢٢")
-    _, _, consensus = _recognize_box(card, EXPIRY_BOX, recognizer)
+    read = _recognize_box(card, EXPIRY_BOX, recognizer)
 
     assert recognizer.calls == 2
-    assert consensus is None
+    assert read.consensus is None
 
 
 # ── Prose fields ──
@@ -186,9 +191,9 @@ def test_an_empty_prose_read_is_tried_once_more_with_more_contrast(card):
     """'Nothing at all' is the one prose outcome that is unambiguous, so it is worth a retry."""
     box = FieldBox("fullNameAr", x=0.36, y=0.18, w=0.61, h=0.28, kind="text")
     recognizer = Replay("", "سلمى إبراهيم")
-    text, _, _ = _recognize_box(card, box, recognizer)
+    read = _recognize_box(card, box, recognizer)
 
-    assert text == "سلمى إبراهيم"
+    assert read.text == "سلمى إبراهيم"
     assert recognizer.calls == 2
 
 
@@ -199,10 +204,48 @@ def test_a_recognizer_that_raises_costs_the_field_and_not_the_card(card):
     """The recognizer is native code and can raise with no Python-level cause. Letting that
     propagate turns one unreadable crop into a failed scan for a card whose other fields read."""
     box = FieldBox("fullNameAr", x=0.36, y=0.18, w=0.61, h=0.28, kind="text")
-    text, score, _ = _recognize_box(card, box, Broken())
-    assert (text, score) == ("", 0.0)
+    read = _recognize_box(card, box, Broken())
+    assert (read.text, read.score) == ("", 0.0)
 
 
 def test_binarize_really_does_produce_a_two_valued_image(card):
     """Guards the discriminator the threshold tests rely on."""
     assert set(np.unique(binarize(card))).issubset({0, 255})
+
+
+# ── The crop carries background ──
+
+
+def test_every_crop_takes_a_little_card_around_the_field(card):
+    """A glyph flush against the edge of an image is one a detector drops.
+
+    The probability map it thresholds needs background on both sides to close a contour, and on a
+    right-aligned Arabic line the glyph in that position is the last word of the name. The margin
+    is real card rather than synthetic padding, so nothing about the crop's own statistics changes.
+    """
+    box = FieldBox("fullNameAr", x=0.36, y=0.30, w=0.40, h=0.20, kind="text")
+    tight = card[
+        int(0.30 * card.shape[0]) : int(0.50 * card.shape[0]),
+        int(0.36 * card.shape[1]) : int(0.76 * card.shape[1]),
+    ]
+    padded = _crop(card, box, TEXT_MARGIN)
+
+    assert padded.shape[0] > tight.shape[0] and padded.shape[1] > tight.shape[1]
+
+
+def test_the_variants_do_not_all_read_the_same_crop(card):
+    """An ensemble is worth exactly as much as its members' independence.
+
+    Five colour transforms of one identical crop share a segmentation, so they tend to share a
+    mistake. Widening the margin changes how detection splits the row, which is the cheapest source
+    of genuine disagreement available here.
+    """
+    box = FieldBox("nationalId", x=0.37, y=0.745, w=0.60, h=0.135, kind="digits")
+    shapes = {_crop(card, box, VARIANT_MARGIN[name]).shape for name in DIGIT_VARIANTS}
+    assert len(shapes) > 1, "every variant was handed pixels of exactly the same extent"
+
+
+def test_a_box_running_off_the_card_still_yields_a_crop(card):
+    """The margin is clamped at the card's edge rather than failing or wrapping."""
+    box = FieldBox("nationalId", x=0.0, y=0.0, w=0.30, h=0.10, kind="digits")
+    assert _crop(card, box, 0.5) is not None

@@ -95,6 +95,7 @@ describe('trigger', () => {
   const request = {
     workflow: { providerId: 'n8n', ref: 'wf-1' },
     executionId: 'exec-1',
+    event: { id: 'evt-1', type: 'hr.employee.created', occurredAt: new Date(), version: 1 },
     payload: { employeeId: '1' },
     actor: { userId: 'u1', branchId: 'b1' },
   };

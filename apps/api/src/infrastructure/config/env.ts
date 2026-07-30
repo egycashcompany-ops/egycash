@@ -33,7 +33,9 @@ const EnvSchema = z.object({
    */
   PLATFORM_ENCRYPTION_KEYS: z
     .string()
-    .default('dev1:ZGV2LW9ubHkta2V5LW5vdC1mb3ItcHJvZHVjdGlvbi0zMmI='),
+    // Exactly 32 bytes (AES-256) once base64-decoded — the previous default decoded to 35 and
+    // left `cryptoService.available()` false, which silently disabled the credential store in dev.
+    .default('dev1:ZGV2LW9ubHkta2V5LW5vdC1mb3ItcHJvZHVjdGlvbiE='),
   PLATFORM_ENCRYPTION_ACTIVE_KEY: z.string().default('dev1'),
 
   /**
@@ -45,8 +47,21 @@ const EnvSchema = z.object({
     .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
-  /** Which provider to construct when enabled. `n8n` arrives at A-6. */
+  /** Which provider to construct when enabled. The trigger path to `n8n` lands at A-5. */
   AUTOMATION_PROVIDER: z.enum(['null', 'n8n']).default('null'),
+
+  // ── n8n provider (A-5 trigger path) ─────────────────────────────────────────
+  // All of these are configuration, never hardcoded. Without N8N_BASE_URL the n8n provider
+  // declines to register and the null provider stays active — so an environment that has not
+  // wired n8n behaves exactly as before.
+  /** Base URL of the n8n instance, e.g. `https://n8n.example.up.railway.app`. No trailing slash. */
+  N8N_BASE_URL: z.string().url().optional(),
+  /** API key sent as `X-N8N-API-KEY`. Absent = unauthenticated calls (dev / open webhooks only). */
+  N8N_API_KEY: z.string().min(1).optional(),
+  /** Per-request budget. A stuck n8n must not hold a worker; the dispatch degrades instead. */
+  N8N_TIMEOUT_MS: z.coerce.number().int().min(100).max(120_000).default(30_000),
+  /** Transport-failure retries INSIDE one dispatch (BullMQ retries the job on top of this). */
+  N8N_MAX_RETRIES: z.coerce.number().int().min(0).max(5).default(2),
 
   JWT_ACCESS_SECRET: z.string().min(16).default('dev-only-access-secret-change-me'),
   JWT_ACCESS_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(900),

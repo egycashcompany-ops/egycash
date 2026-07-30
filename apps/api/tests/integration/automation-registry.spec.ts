@@ -11,14 +11,44 @@ import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type Express } from 'express';
-import { automationPermissions, platformPermissions, type AutomationWorkflowDto } from '@ecms/contracts';
+import {
+  automationPermissions,
+  platformPermissions,
+  SettingKeys,
+  type AutomationWorkflowDto,
+} from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { buildApp } from '../../src/app';
 import { automationModule } from '../../src/modules/automation/automation.module';
 import { moduleManifests } from '../../src/modules';
 import { rbacService } from '../../src/platform/rbac';
+import { settingsService } from '../../src/platform/settings';
 import { userService } from '../../src/platform/users';
+import { type AuthContext } from '../../src/shared/types';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
+
+// Privileged accounts must enroll TOTP at login when `TotpEnforcedForPrivileged` is on (its
+// declared default). These tests grant a system role, so without turning it off the login
+// returns an enrollment challenge with no access token and every request 401s. The seed disables
+// it; bootPlatform does not run that seed, so the suite does it explicitly (mirrors platform.spec).
+const disableTotpEnforcement = async (userId: string): Promise<void> => {
+  const ctx: AuthContext = {
+    userId,
+    sessionId: 'test-setup',
+    branchId: null,
+    departmentId: null,
+    sectionId: null,
+    locale: 'en',
+    permissions: { 'setting.edit': 'organization' },
+    permissionVersion: 1,
+    isPrivileged: true,
+  };
+  await settingsService.set(ctx, {
+    key: SettingKeys.TotpEnforcedForPrivileged,
+    scope: 'organization',
+    value: false,
+  });
+};
 
 const PASSWORD = 'Str0ng#Pass!';
 let replSet: MongoMemoryReplSet | null = null;
@@ -94,6 +124,7 @@ beforeAll(async () => {
   superAdminId = String(superAdmin._id);
   const adminId = await mkUser('admin@ecms.local');
   await rbacService.ensureAssignment(adminId, superAdminId, 'organization');
+  await disableTotpEnforcement(adminId);
   adminToken = await login('admin@ecms.local');
 
   const branchRes = await request(app)
@@ -366,7 +397,9 @@ describe('variables', () => {
       .put('/api/v1/automation/variables/threshold')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ value: '10', scope: 'branch' });
-    expect(res.status).toBe(422);
+    // The "branch scope needs a branchId" rule lives in the request schema (superRefine), so a
+    // missing reference is a 400 validation failure — not a 422 business-rule violation.
+    expect(res.status).toBe(400);
   });
 
   it('refuses a caller without variable.edit', async () => {

@@ -11,6 +11,7 @@ import { type Express } from 'express';
 import {
   automationPermissions,
   platformPermissions,
+  SettingKeys,
   type AutomationCredentialDto,
 } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
@@ -20,7 +21,9 @@ import { moduleManifests } from '../../src/modules';
 import { automationCredentialService } from '../../src/modules/automation/credentials';
 import { AutomationCredentialModel } from '../../src/modules/automation/credentials/credential.model';
 import { rbacService } from '../../src/platform/rbac';
+import { settingsService } from '../../src/platform/settings';
 import { userService } from '../../src/platform/users';
+import { type AuthContext } from '../../src/shared/types';
 import { cryptoService } from '../../src/platform/crypto';
 import { AuditLogModel } from '../../src/platform/audit/audit.model';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
@@ -68,6 +71,29 @@ const login = async (email: string): Promise<string> => {
   return (res.body as { data: { accessToken: string } }).data.accessToken;
 };
 
+// Privileged accounts must enroll TOTP at login when `TotpEnforcedForPrivileged` is on (its
+// declared default). These tests grant a system role, so without turning it off the login returns
+// an enrollment challenge with no access token and every request 401s. The seed disables it;
+// bootPlatform does not run that seed, so the suite does it explicitly (mirrors platform.spec).
+const disableTotpEnforcement = async (userId: string): Promise<void> => {
+  const ctx: AuthContext = {
+    userId,
+    sessionId: 'test-setup',
+    branchId: null,
+    departmentId: null,
+    sectionId: null,
+    locale: 'en',
+    permissions: { 'setting.edit': 'organization' },
+    permissionVersion: 1,
+    isPrivileged: true,
+  };
+  await settingsService.set(ctx, {
+    key: SettingKeys.TotpEnforcedForPrivileged,
+    scope: 'organization',
+    value: false,
+  });
+};
+
 const body = <T>(res: { body: unknown }): T => (res.body as { data: T }).data;
 const nextKey = (): string => `cred-${(keyCounter += 1)}-${Date.now() % 100000}`;
 
@@ -104,6 +130,7 @@ beforeAll(async () => {
   );
   const adminId = await mkUser('admin@ecms.local');
   await rbacService.ensureAssignment(adminId, String(superAdmin._id), 'organization');
+  await disableTotpEnforcement(adminId);
   adminToken = await login('admin@ecms.local');
 
   const viewerRole = await rbacService.createRole(
@@ -318,11 +345,13 @@ describe('key rotation', () => {
     await createCredential(key);
     const before = await AutomationCredentialModel.findOne({ key }).lean().exec();
 
-    // Simulate a value left behind on a retired key: rotation finds it by `sealed.keyId`, which is
-    // stored in the clear precisely so this query needs no decryption.
+    // Simulate a value left behind on a retired key. Both keyIds must move: the DENORMALISED
+    // `secretRef.keyId` is what the rotation sweep queries on to FIND the row, and the SEALED
+    // value's own `keyId` is what `rewrap` decrypts against — a real credential on a retired key
+    // has both, so forging only the outer one would let rewrap succeed via the intact inner key.
     await AutomationCredentialModel.updateOne(
       { key },
-      { $set: { 'secretRef.keyId': 'retired-key-id' } },
+      { $set: { 'secretRef.keyId': 'retired-key-id', 'secretRef.ref.keyId': 'retired-key-id' } },
     ).exec();
 
     const outcome = await automationCredentialService.rotateKeys();
@@ -330,10 +359,16 @@ describe('key rotation', () => {
     // it rather than throwing, because one bad row must not stop the rest.
     expect(outcome.failed).toBeGreaterThan(0);
 
-    // Restore and confirm a genuine rotation is a no-op on already-active values.
+    // Restore BOTH keyids (the sealed value was never actually re-wrapped, so its ciphertext is
+    // intact under the original key) and confirm a genuine rotation is a no-op on active values.
     await AutomationCredentialModel.updateOne(
       { key },
-      { $set: { 'secretRef.keyId': before?.secretRef.keyId } },
+      {
+        $set: {
+          'secretRef.keyId': before?.secretRef.keyId,
+          'secretRef.ref.keyId': before?.secretRef.keyId,
+        },
+      },
     ).exec();
     const clean = await automationCredentialService.rotateKeys();
     expect(clean.failed).toBe(0);

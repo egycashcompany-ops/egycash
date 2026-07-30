@@ -17,4 +17,10 @@ export {
   resetAutomationProvider,
 } from './automation.registry';
 export { nullAutomationProvider } from './providers/null/null.provider';
+// The n8n provider registers itself; only the registration hook and its types are public. The
+// provider class and client stay behind `providers/**`, off-limits to modules by the lint rule.
+export {
+  registerN8nProvider,
+  resetN8nProviderRegistration,
+} from './providers/n8n/register-n8n-provider';
 export { runProviderConformance } from './provider-conformance';

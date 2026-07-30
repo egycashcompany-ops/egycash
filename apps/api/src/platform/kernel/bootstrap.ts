@@ -63,6 +63,13 @@ export const bootPlatform = async (options: BootOptions = {}): Promise<void> => 
         subscription.handler,
       );
     }
+    for (const jobHandler of manifest.jobHandlers ?? []) {
+      // Worker-side handlers, declared in the manifest and registered the same way subscriptions
+      // are. The worker process runs them; the API process registers them so `enqueue` finds them
+      // inline in tests.
+      const { registerJobHandler } = await import('../../infrastructure/queue/jobs');
+      registerJobHandler(jobHandler.queue, jobHandler.jobName, jobHandler.handler);
+    }
   }
 
   // Tier 1 — identity & authorization.

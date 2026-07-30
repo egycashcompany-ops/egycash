@@ -113,6 +113,9 @@ export default tseslint.config(
         process: 'readonly',
         console: 'readonly',
         URL: 'readonly',
+        // Node 18+ ships these as globals; scripts that talk HTTP use them directly.
+        fetch: 'readonly',
+        AbortSignal: 'readonly',
       },
     },
     rules: {

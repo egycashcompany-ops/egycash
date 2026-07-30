@@ -72,6 +72,15 @@ ECMS. To point the trigger bridge at an n8n instance:
 | `N8N_API_KEY` | **Railway secret** | **Required.** Sent as `X-N8N-API-KEY`, never logged. Missing it (like a missing URL) leaves the null provider active with a logged warning — the integration is off, not half-configured. |
 | `N8N_TIMEOUT_MS` | env group | per-request budget (default 30000). A stuck n8n degrades one trigger, not a worker. |
 | `N8N_MAX_RETRIES` | env group | transport-failure retries inside one dispatch (default 2); BullMQ retries the job on top. |
+| `N8N_WEBHOOK_SECRET` | **Railway secret** | Optional. Per-workflow trigger signatures (`X-ECMS-Signature`) are derived from it, so n8n can reject anything not from ECMS. Absent, triggers are sent unsigned — acceptable when n8n has no public ingress. |
+
+**Before pointing production at an instance**, check it satisfies the authoring contract A-6 relies
+on (create → read → activate/deactivate → idempotent delete). The script creates one throwaway
+workflow and removes it:
+
+```
+N8N_BASE_URL=https://… N8N_API_KEY=… npm run check:n8n
+```
 
 Every trigger carries an `X-Request-Id` (correlation id, threaded from the originating ECMS request)
 and an `Idempotency-Key` (the execution id, stable per event+workflow) so a run is traceable across

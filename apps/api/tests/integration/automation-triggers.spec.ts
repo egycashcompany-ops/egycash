@@ -138,7 +138,12 @@ const disableTotpEnforcement = async (userId: string): Promise<void> => {
 const body = <T>(res: { body: unknown }): T => (res.body as { data: T }).data;
 const nextKey = (): string => `wf-${(keyCounter += 1)}-${Date.now() % 100000}`;
 
-/** Create → enable → (stand in for A-6) give it a provider ref so dispatch has a target. */
+/**
+ * Create → enable. Enabling PUSHES the workflow to the provider and stores the ref (A-6), so the
+ * dispatch target is real rather than planted by the test — the stand-in this helper used before
+ * A-6 existed is gone. `withProvider: false` forces the ref back to null to exercise the
+ * "enabled but never pushed" skip path, which is still reachable when no runtime is installed.
+ */
 const liveWorkflow = async (
   event: string,
   filters: Record<string, unknown>[] = [],
@@ -160,14 +165,12 @@ const liveWorkflow = async (
     .set('Authorization', `Bearer ${adminToken}`)
     .send({ enabled: true, version: wf.version });
 
-  await AutomationWorkflowModel.updateOne(
-    { _id: new Types.ObjectId(wf.id) },
-    {
-      $set: withProvider
-        ? { providerRef: { providerId: PROVIDER_ID, ref: `wf_${wf.id}` } }
-        : { providerRef: null },
-    },
-  ).exec();
+  if (!withProvider) {
+    await AutomationWorkflowModel.updateOne(
+      { _id: new Types.ObjectId(wf.id) },
+      { $set: { providerRef: null } },
+    ).exec();
+  }
   return wf;
 };
 
@@ -259,6 +262,40 @@ describe('dispatch', () => {
     expect(summary.skipped).toBe(1);
     const row = await AutomationExecutionModel.findOne({ workflowId: wf.id }).lean().exec();
     expect(row?.status).toBe('skipped');
+  });
+});
+
+describe('enabling pushes the workflow to the provider (A-6)', () => {
+  it('stores the ref the provider returned, so dispatch has a real target', async () => {
+    // Before A-6 this ref stayed null and every dispatch recorded `skipped`. The whole point of
+    // the slice is that enabling now registers the workflow with the runtime.
+    const wf = await liveWorkflow('hr.employee.created');
+    const row = await AutomationWorkflowModel.findOne({ _id: new Types.ObjectId(wf.id) })
+      .lean()
+      .exec();
+
+    expect(row?.providerRef).toMatchObject({ providerId: PROVIDER_ID });
+    expect(row?.providerRef?.ref).toBeTruthy();
+  });
+
+  it('mirrors disabling onto the provider without dropping the ref', async () => {
+    // Disabled is not deleted: the provider keeps the workflow so re-enabling does not mint a
+    // second copy and strand the first.
+    const wf = await liveWorkflow('hr.employee.created');
+    const enabled = await AutomationWorkflowModel.findOne({ _id: new Types.ObjectId(wf.id) })
+      .lean()
+      .exec();
+
+    await request(app)
+      .post(`/api/v1/automation/workflows/${wf.id}/enabled`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ enabled: false, version: (enabled?.__v ?? 0) as number });
+
+    const row = await AutomationWorkflowModel.findOne({ _id: new Types.ObjectId(wf.id) })
+      .lean()
+      .exec();
+    expect(row?.status).toBe('disabled');
+    expect(row?.providerRef?.ref).toBe(enabled?.providerRef?.ref);
   });
 });
 

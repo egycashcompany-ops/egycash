@@ -41,6 +41,7 @@ export const registerN8nProvider = (): void => {
       apiKey: env.N8N_API_KEY,
       timeoutMs: env.N8N_TIMEOUT_MS,
       maxRetries: env.N8N_MAX_RETRIES,
+      webhookSecret: env.N8N_WEBHOOK_SECRET,
     }),
   );
 };

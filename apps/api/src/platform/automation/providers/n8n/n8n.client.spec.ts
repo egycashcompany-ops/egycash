@@ -48,6 +48,23 @@ describe('requests', () => {
     const res = await client().request('POST', '/webhook/a', {});
     expect(res.body).toEqual({ executionId: 'x' });
   });
+
+  it('propagates the correlation id and idempotency key as headers, dropping undefined ones', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(okResponse());
+    await client().request('POST', '/webhook/a', {}, {
+      'x-request-id': 'req-123',
+      'idempotency-key': 'ex-abc',
+    });
+    const withBoth = (fetchMock.mock.calls[0]?.[1] as RequestInit).headers as Record<string, string>;
+    expect(withBoth['x-request-id']).toBe('req-123');
+    expect(withBoth['idempotency-key']).toBe('ex-abc');
+
+    // A missing correlation id must not travel as the literal string "undefined".
+    await client().request('POST', '/webhook/a', {}, { 'x-request-id': undefined, 'idempotency-key': 'ex-def' });
+    const withoutReq = (fetchMock.mock.calls[1]?.[1] as RequestInit).headers as Record<string, string>;
+    expect(withoutReq['x-request-id']).toBeUndefined();
+    expect(withoutReq['idempotency-key']).toBe('ex-def');
+  });
 });
 
 describe('retry policy', () => {

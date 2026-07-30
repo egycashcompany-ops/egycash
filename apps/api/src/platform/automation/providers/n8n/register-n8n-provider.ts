@@ -19,10 +19,21 @@ let registered = false;
 export const registerN8nProvider = (): void => {
   if (registered) return;
   if (env.AUTOMATION_PROVIDER !== 'n8n') return; // not the configured provider — say nothing
-  if (env.N8N_BASE_URL === undefined || env.N8N_BASE_URL === '') {
-    logger.warn('automation: AUTOMATION_PROVIDER=n8n but N8N_BASE_URL is unset — staying on the null provider');
+
+  // Both the endpoint and a key are required to talk to n8n. Missing either, the integration is
+  // left OFF: log which one is absent, stay on the null provider (dispatches record `skipped`), and
+  // let the deployment run untouched. A trigger never fails a business transaction over config.
+  const missing: string[] = [];
+  if (env.N8N_BASE_URL === undefined || env.N8N_BASE_URL === '') missing.push('N8N_BASE_URL');
+  if (env.N8N_API_KEY === undefined || env.N8N_API_KEY === '') missing.push('N8N_API_KEY');
+  if (missing.length > 0 || env.N8N_BASE_URL === undefined) {
+    logger.warn(
+      { missing },
+      'automation: AUTOMATION_PROVIDER=n8n but required config is unset — staying on the null provider',
+    );
     return;
   }
+
   registered = true;
   setAutomationProvider(
     new N8nAutomationProvider({

@@ -27,6 +27,9 @@ export interface N8nResponse {
   body: unknown;
 }
 
+/** Per-request headers (correlation id, idempotency key). `undefined` values are dropped. */
+export type RequestHeaders = Record<string, string | undefined>;
+
 /** A transport or non-2xx failure. Carries a status when there was a response, `null` otherwise. */
 export class N8nRequestError extends Error {
   constructor(
@@ -49,16 +52,21 @@ export class N8nClient {
   constructor(options: N8nClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, '');
     this.apiKey = options.apiKey;
-    this.timeoutMs = options.timeoutMs ?? 10_000;
+    this.timeoutMs = options.timeoutMs ?? 30_000;
     this.maxRetries = options.maxRetries ?? 2;
   }
 
-  private headers(): Record<string, string> {
+  private headers(extra: RequestHeaders = {}): Record<string, string> {
     return {
       'content-type': 'application/json',
       accept: 'application/json',
       // n8n's REST API and header-auth webhooks both accept this header. Never logged.
       ...(this.apiKey === undefined ? {} : { 'x-n8n-api-key': this.apiKey }),
+      // Correlation + idempotency travel with the request so the run is traceable across ECMS and
+      // n8n, and a retried trigger is dedupable downstream. `undefined` entries are dropped.
+      ...Object.fromEntries(
+        Object.entries(extra).filter((entry): entry is [string, string] => entry[1] !== undefined),
+      ),
     };
   }
 
@@ -66,8 +74,16 @@ export class N8nClient {
    * One authenticated request, with bounded retry on transport failures and retryable statuses.
    * Throws `N8nRequestError` on final failure; callers decide whether that is fatal (the provider's
    * dispatch lets it propagate to `automationService`, which turns it into a best-effort skip).
+   *
+   * `extraHeaders` carries the correlation id (`x-request-id`) and idempotency key
+   * (`idempotency-key`) — kept identical across retries so n8n sees one logical trigger.
    */
-  async request(method: string, path: string, body?: unknown): Promise<N8nResponse> {
+  async request(
+    method: string,
+    path: string,
+    body?: unknown,
+    extraHeaders: RequestHeaders = {},
+  ): Promise<N8nResponse> {
     const url = `${this.baseUrl}/${path.replace(/^\/+/, '')}`;
     let lastError: unknown;
 
@@ -75,7 +91,7 @@ export class N8nClient {
       try {
         const response = await fetch(url, {
           method,
-          headers: this.headers(),
+          headers: this.headers(extraHeaders),
           ...(body === undefined ? {} : { body: JSON.stringify(body) }),
           signal: AbortSignal.timeout(this.timeoutMs),
         });

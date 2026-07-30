@@ -59,7 +59,7 @@ const EnvSchema = z.object({
   /** API key sent as `X-N8N-API-KEY`. Absent = unauthenticated calls (dev / open webhooks only). */
   N8N_API_KEY: z.string().min(1).optional(),
   /** Per-request budget. A stuck n8n must not hold a worker; the dispatch degrades instead. */
-  N8N_TIMEOUT_MS: z.coerce.number().int().min(100).max(120_000).default(10_000),
+  N8N_TIMEOUT_MS: z.coerce.number().int().min(100).max(120_000).default(30_000),
   /** Transport-failure retries INSIDE one dispatch (BullMQ retries the job on top of this). */
   N8N_MAX_RETRIES: z.coerce.number().int().min(0).max(5).default(2),
 

@@ -69,9 +69,13 @@ ECMS. To point the trigger bridge at an n8n instance:
 | `AUTOMATION_ENABLED` | env group | `true` to activate the module |
 | `AUTOMATION_PROVIDER` | env group | `n8n` |
 | `N8N_BASE_URL` | env group | e.g. `https://n8n-production-b24c.up.railway.app`, no trailing slash. **Never hardcoded** — the provider reads this variable and declines to register without it. |
-| `N8N_API_KEY` | **Railway secret** | sent as `X-N8N-API-KEY`; never logged. Omit for open webhooks. |
-| `N8N_TIMEOUT_MS` | env group | per-request budget (default 10000). A stuck n8n degrades one trigger, not a worker. |
+| `N8N_API_KEY` | **Railway secret** | **Required.** Sent as `X-N8N-API-KEY`, never logged. Missing it (like a missing URL) leaves the null provider active with a logged warning — the integration is off, not half-configured. |
+| `N8N_TIMEOUT_MS` | env group | per-request budget (default 30000). A stuck n8n degrades one trigger, not a worker. |
 | `N8N_MAX_RETRIES` | env group | transport-failure retries inside one dispatch (default 2); BullMQ retries the job on top. |
+
+Every trigger carries an `X-Request-Id` (correlation id, threaded from the originating ECMS request)
+and an `Idempotency-Key` (the execution id, stable per event+workflow) so a run is traceable across
+both systems and a re-delivered trigger is dedupable on the n8n side.
 
 **Set these on BOTH `ecms-api` and `ecms-worker`** — the worker runs the dispatch job, the API
 registers the provider and serves `/health`. Use a Railway env group shared by both services so

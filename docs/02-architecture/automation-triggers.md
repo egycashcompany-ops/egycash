@@ -78,22 +78,24 @@ Three pieces, each doing one job:
 
 - **`N8nClient`** (`platform/automation/providers/n8n/n8n.client.ts`) — the single place ECMS
   speaks HTTP to n8n. Base URL from **`N8N_BASE_URL`** (never hardcoded; trailing slash trimmed),
-  API key from **`N8N_API_KEY`** sent as `X-N8N-API-KEY` (omitted when unset, never logged),
-  per-request timeout (`N8N_TIMEOUT_MS`), and bounded retry (`N8N_MAX_RETRIES`) on transport
-  failure and retryable statuses (`408/429/5xx`) — **never a 4xx**, which would fail identically.
-  It is n8n-*workflow*-unaware: it sends a request and reports what happened. Every future consumer
-  (HR, Fleet, Contracts, ATM — always *through* the provider seam, never importing the client) gets
-  this one hardened transport rather than its own `fetch`.
+  API key from **`N8N_API_KEY`** sent as `X-N8N-API-KEY` (never logged), per-request timeout
+  (`N8N_TIMEOUT_MS`, default 30 s), and bounded retry (`N8N_MAX_RETRIES`) on transport failure and
+  retryable statuses (`408/429/5xx`) — **never a 4xx**, which would fail identically. Each request
+  also carries an `X-Request-Id` (correlation id) and an `Idempotency-Key` (the execution id, stable
+  across BullMQ retries), held identical across the client's own retries so n8n sees one logical
+  trigger. It is n8n-*workflow*-unaware: it sends a request and reports what happened. Every future
+  consumer (HR, Fleet, Contracts, ATM — always *through* the provider seam, never importing the
+  client) gets this one hardened transport rather than its own `fetch`.
 - **`N8nAutomationProvider`** — implements the A-0 `AutomationProvider` interface. `dispatch()` POSTs
   the run to the workflow's webhook (`/webhook/<ref>`); `health()` reports reachability via
   `/healthz` without throwing. Its `capabilities` are declared **all-false**: workflow authoring,
   graph import/export, cancellation and per-node progress light up at A-6, and until then those
   methods reject with `N8nNotImplementedError` rather than pretending.
 - **`registerN8nProvider()`** — opt-in. It installs the provider only when
-  `AUTOMATION_PROVIDER=n8n` *and* `N8N_BASE_URL` is set; otherwise the `null` provider stays and
-  nothing about the deployment changes, which is what lets this slice merge ahead of anyone standing
-  up an n8n instance. It does **not** probe n8n at boot — a slow or restarting n8n must never block
-  or fail an ECMS deploy; the provider degrades per dispatch instead.
+  `AUTOMATION_PROVIDER=n8n` *and* **both** `N8N_BASE_URL` and `N8N_API_KEY` are set; miss either and
+  it logs which is absent and leaves the `null` provider active, so nothing about the deployment
+  changes and no business transaction fails over config. It does **not** probe n8n at boot — a slow
+  or restarting n8n must never block or fail an ECMS deploy; the provider degrades per dispatch.
 
 **Best-effort is preserved end to end.** If n8n is unreachable the client times out, the dispatch
 propagates a failure into `automationService.trigger()` — which never throws — the execution row is

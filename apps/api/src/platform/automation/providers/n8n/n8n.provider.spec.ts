@@ -12,11 +12,12 @@ const ok = (): Response =>
 const provider = () =>
   new N8nAutomationProvider({ baseUrl: 'https://n8n.example', maxRetries: 0, timeoutMs: 2_000 });
 
-const dispatchInput = () => ({
+const dispatchInput = (over: Record<string, unknown> = {}) => ({
   executionId: 'ex_1',
   payload: { employeeId: 'e1' },
   actor: { userId: 'u1', branchId: 'b1' },
   depth: 0,
+  ...over,
 });
 
 afterEach(() => vi.restoreAllMocks());
@@ -31,6 +32,18 @@ describe('dispatch', () => {
       expect.objectContaining({ method: 'POST' }),
     );
     expect(ref).toEqual({ providerId: 'n8n', ref: 'ex_1' });
+  });
+
+  it('sends the execution id as the idempotency key and the request id for correlation', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(ok());
+    await provider().dispatch(
+      { providerId: 'n8n', ref: 'wh' },
+      dispatchInput({ requestId: 'req-77' }),
+    );
+    const headers = (fetchMock.mock.calls[0]?.[1] as RequestInit).headers as Record<string, string>;
+    // The execution id is stable per (event, workflow), so a BullMQ retry carries the same key.
+    expect(headers['idempotency-key']).toBe('ex_1');
+    expect(headers['x-request-id']).toBe('req-77');
   });
 
   it('propagates a transport failure (automationService turns it into a best-effort skip)', async () => {

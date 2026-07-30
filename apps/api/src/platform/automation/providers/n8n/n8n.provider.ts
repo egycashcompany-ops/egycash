@@ -69,16 +69,27 @@ export class N8nAutomationProvider implements AutomationProvider {
   async dispatch(ref: ProviderWorkflowRef, input: DispatchInput): Promise<ProviderExecutionRef> {
     // The ref is the n8n webhook path A-6 assigns; until then a workflow has none and the bridge
     // records `skipped` before reaching here. Posting the payload is the whole of "trigger n8n".
-    await this.client.request('POST', `/webhook/${ref.ref}`, {
-      executionId: input.executionId,
-      // The payload is already redacted upstream (A-4) before it becomes a snapshot; what n8n
-      // receives is the business event, which is what a workflow acts on.
-      payload: input.payload,
-      actor: input.actor,
-      depth: input.depth,
-    });
+    await this.client.request(
+      'POST',
+      `/webhook/${ref.ref}`,
+      {
+        executionId: input.executionId,
+        // The payload is already redacted upstream (A-4) before it becomes a snapshot; what n8n
+        // receives is the business event, which is what a workflow acts on.
+        payload: input.payload,
+        actor: input.actor,
+        depth: input.depth,
+      },
+      {
+        // Correlation id threads the ECMS request through to n8n's logs; the execution id is a
+        // stable idempotency key (same `(event, workflow)` → same key across BullMQ retries), so a
+        // re-delivered trigger is dedupable on the n8n side too.
+        'x-request-id': input.requestId,
+        'idempotency-key': input.executionId,
+      },
+    );
     logger.info(
-      { workflowRef: ref.ref, executionId: input.executionId },
+      { workflowRef: ref.ref, executionId: input.executionId, requestId: input.requestId ?? null },
       'n8n: dispatched trigger',
     );
     return { providerId: this.id, ref: input.executionId };

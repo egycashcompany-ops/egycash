@@ -45,6 +45,9 @@ import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 // as the A-0 unit suite does. The fake accepts every dispatch and returns a running execution.
 const PROVIDER_ID = 'n8n';
 const settings = env as unknown as { AUTOMATION_ENABLED: boolean; AUTOMATION_PROVIDER: string };
+// Captures what the provider actually received, so a test can assert the stable event envelope was
+// threaded end to end (through the queue) rather than a bare payload.
+let lastDispatch: Parameters<AutomationProvider['dispatch']>[1] | null = null;
 const fakeProvider: AutomationProvider = {
   id: PROVIDER_ID,
   capabilities: {
@@ -57,7 +60,10 @@ const fakeProvider: AutomationProvider = {
   updateWorkflow: () => Promise.resolve(),
   deleteWorkflow: () => Promise.resolve(),
   setEnabled: () => Promise.resolve(),
-  dispatch: (_ref, input) => Promise.resolve({ providerId: PROVIDER_ID, ref: input.executionId }),
+  dispatch: (_ref, input) => {
+    lastDispatch = input;
+    return Promise.resolve({ providerId: PROVIDER_ID, ref: input.executionId });
+  },
   cancel: () => Promise.resolve(),
   getExecution: (ref) => Promise.resolve({ ref, status: 'running' as const, nodes: [] }),
   exportGraph: () => Promise.resolve({ providerId: PROVIDER_ID, formatVersion: '1', nodes: null }),
@@ -326,6 +332,23 @@ describe('the async path (event handler → queue job → dispatch)', () => {
     await handleTriggerEvent(env);
     await handleTriggerEvent(env); // same event id — the execution index rejects the second run
     expect(await AutomationExecutionModel.countDocuments({ workflowId: wf.id })).toBe(1);
+  });
+
+  it('threads the stable event envelope through the queue to the provider', async () => {
+    // The event's identity — id, type and occurredAt — must survive the enqueue/dequeue hop and
+    // reach the provider intact, so a run dispatched off the queue still reports the EVENT's time.
+    await liveWorkflow('hr.employee.created');
+    const env = envelope('hr.employee.created', { employeeId: 'e-env' });
+    await handleTriggerEvent(env);
+
+    const captured = lastDispatch as Parameters<AutomationProvider['dispatch']>[1] | null;
+    expect(captured).not.toBeNull();
+    expect(captured?.event).toMatchObject({
+      id: env.id,
+      type: 'hr.employee.created',
+      version: env.schemaVersion,
+    });
+    expect(captured?.event.occurredAt.getTime()).toBe(env.occurredAt.getTime());
   });
 });
 

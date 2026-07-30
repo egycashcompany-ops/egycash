@@ -143,6 +143,17 @@ export type ProviderExecutionState = z.infer<typeof ProviderExecutionStateSchema
  */
 export const DispatchInputSchema = z.object({
   executionId: z.string().min(1).max(100),
+  /**
+   * The originating event's stable identity, carried so a provider receives a self-describing
+   * ENVELOPE, not a bare payload: id for dedup, type for routing, occurredAt for ordering, and the
+   * payload schema version for tolerant readers. Mirrors the platform `EventEnvelope` (ADR-008).
+   */
+  event: z.object({
+    id: z.string().min(1),
+    type: z.string().min(1),
+    occurredAt: z.coerce.date(),
+    version: z.number().int().min(1),
+  }),
   payload: z.unknown(),
   actor: z.object({
     userId: z.string().min(1),
@@ -153,7 +164,7 @@ export const DispatchInputSchema = z.object({
    * bound, `entity.updated → update entity` is an infinite loop writing to production.
    */
   depth: z.number().int().min(0).max(10).default(0),
-  /** Correlates provider logs with ECMS logs for one request. */
+  /** Correlates provider logs with ECMS logs for one request; also the envelope's correlationId. */
   requestId: z.string().optional(),
 });
 export type DispatchInput = z.infer<typeof DispatchInputSchema>;

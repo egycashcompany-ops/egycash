@@ -73,10 +73,20 @@ export class N8nAutomationProvider implements AutomationProvider {
       'POST',
       `/webhook/${ref.ref}`,
       {
-        executionId: input.executionId,
+        // A stable, self-describing event envelope — not a bare payload — so an n8n workflow can
+        // route on the type, dedup on the id, order on occurredAt, and read the payload under a
+        // known schema version (ADR-008). Kept identical in shape for every event ECMS emits.
+        eventId: input.event.id,
+        eventType: input.event.type,
+        occurredAt: input.event.occurredAt.toISOString(),
+        correlationId: input.requestId ?? null,
+        version: input.event.version,
         // The payload is already redacted upstream (A-4) before it becomes a snapshot; what n8n
         // receives is the business event, which is what a workflow acts on.
         payload: input.payload,
+        // ECMS run context, retained alongside the envelope so n8n can correlate the run and see
+        // the acting principal and re-entrancy depth without parsing headers.
+        executionId: input.executionId,
         actor: input.actor,
         depth: input.depth,
       },

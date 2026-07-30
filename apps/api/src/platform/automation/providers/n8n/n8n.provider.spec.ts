@@ -14,6 +14,12 @@ const provider = () =>
 
 const dispatchInput = (over: Record<string, unknown> = {}) => ({
   executionId: 'ex_1',
+  event: {
+    id: 'evt_9',
+    type: 'hr.employee.created',
+    occurredAt: new Date('2026-01-02T03:04:05.000Z'),
+    version: 1,
+  },
   payload: { employeeId: 'e1' },
   actor: { userId: 'u1', branchId: 'b1' },
   depth: 0,
@@ -32,6 +38,22 @@ describe('dispatch', () => {
       expect.objectContaining({ method: 'POST' }),
     );
     expect(ref).toEqual({ providerId: 'n8n', ref: 'ex_1' });
+  });
+
+  it('wraps the payload in a stable event envelope, not a bare payload', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(ok());
+    await provider().dispatch({ providerId: 'n8n', ref: 'wh' }, dispatchInput({ requestId: 'req-5' }));
+
+    const body = JSON.parse((fetchMock.mock.calls[0]?.[1] as RequestInit).body as string);
+    expect(body).toMatchObject({
+      eventId: 'evt_9',
+      eventType: 'hr.employee.created',
+      occurredAt: '2026-01-02T03:04:05.000Z',
+      correlationId: 'req-5',
+      version: 1,
+      payload: { employeeId: 'e1' },
+      executionId: 'ex_1',
+    });
   });
 
   it('sends the execution id as the idempotency key and the request id for correlation', async () => {

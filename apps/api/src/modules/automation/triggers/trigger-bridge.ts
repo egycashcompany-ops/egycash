@@ -24,13 +24,17 @@ import { matchesFilters } from './filter-eval';
 export const AUTOMATION_TRIGGER_JOB = 'automation.trigger';
 
 /**
- * What the enqueued job carries — the slim subset of the envelope dispatch needs, plus depth. Only
- * the fields dispatch reads travel; `occurredAt` and friends are dropped rather than serialised.
- * Parsed on the way back in because Redis holds JSON and a malformed job must fail cleanly.
+ * What the enqueued job carries — the envelope fields the dispatch reproduces downstream. The full
+ * identity travels (id/name/occurredAt/schemaVersion/requestId) so the worker rebuilds a faithful
+ * envelope for the provider rather than a bare payload. Parsed on the way back in because Redis
+ * holds JSON and a malformed job must fail cleanly.
  */
 const TriggerJobSchema = z.object({
   eventId: z.string().min(1),
   eventName: z.string().min(1),
+  schemaVersion: z.number().int().min(1).default(1),
+  occurredAt: z.coerce.date().default(() => new Date()),
+  requestId: z.string().optional(),
   payload: z.unknown(),
   depth: z.number().int().min(0).default(0),
 });
@@ -99,12 +103,20 @@ const dispatchOne = async (
   const outcome = await automationService.trigger({
     workflow: workflow.providerRef,
     executionId,
+    // The stable envelope identity the provider wraps the payload in (ADR-008).
+    event: {
+      id: envelope.id,
+      type: envelope.name,
+      occurredAt: envelope.occurredAt,
+      version: envelope.schemaVersion,
+    },
     payload: envelope.payload,
     actor: {
       userId: String(workflow.ownerUserId),
       ...(workflow.branchId === null ? {} : { branchId: String(workflow.branchId) }),
     },
     depth,
+    ...(envelope.requestId === undefined ? {} : { requestId: envelope.requestId }),
   });
 
   await automationExecutionRepository.setOutcome(doc._id, {
@@ -173,6 +185,9 @@ export const handleTriggerEvent = async (envelope: EventEnvelope): Promise<void>
     const job: TriggerJob = {
       eventId: envelope.id,
       eventName: envelope.name,
+      schemaVersion: envelope.schemaVersion,
+      occurredAt: envelope.occurredAt,
+      ...(envelope.requestId === undefined ? {} : { requestId: envelope.requestId }),
       payload: envelope.payload,
       depth: 0,
     };
@@ -203,8 +218,9 @@ export const runAutomationTrigger = async (data: unknown): Promise<void> => {
   const envelope: EventEnvelope = {
     id: job.eventId,
     name: job.eventName,
-    schemaVersion: 1,
-    occurredAt: new Date(),
+    schemaVersion: job.schemaVersion,
+    occurredAt: job.occurredAt,
+    ...(job.requestId === undefined ? {} : { requestId: job.requestId }),
     payload: job.payload,
   };
   const summary = await dispatchForEvent(envelope, job.depth);

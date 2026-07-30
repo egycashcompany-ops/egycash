@@ -91,6 +91,28 @@ Three pieces, each doing one job:
   `/healthz` without throwing. Its `capabilities` are declared **all-false**: workflow authoring,
   graph import/export, cancellation and per-node progress light up at A-6, and until then those
   methods reject with `N8nNotImplementedError` rather than pretending.
+
+  Every request carries a **stable event envelope**, never a bare payload, so an n8n workflow can
+  route on the type, dedup on the id, order on `occurredAt` and read the payload under a known
+  schema version (ADR-008) — the same shape for every event ECMS emits:
+
+  ```json
+  {
+    "eventId": "evt_…",
+    "eventType": "hr.employee.created",
+    "occurredAt": "2026-01-02T03:04:05.000Z",
+    "correlationId": "req_…",
+    "version": 1,
+    "payload": { "…": "redacted business data" },
+    "executionId": "ex_…",
+    "actor": { "userId": "…", "branchId": "…" },
+    "depth": 0
+  }
+  ```
+
+  The envelope identity is threaded end to end — the event handler enqueues `id`/`type`/`occurredAt`/
+  `schemaVersion`/`requestId`, and the worker rebuilds a faithful envelope for the provider, so a run
+  dispatched minutes later off the queue still reports the *event's* time, not the worker's.
 - **`registerN8nProvider()`** — opt-in. It installs the provider only when
   `AUTOMATION_PROVIDER=n8n` *and* **both** `N8N_BASE_URL` and `N8N_API_KEY` are set; miss either and
   it logs which is absent and leaves the `null` provider active, so nothing about the deployment

@@ -32,6 +32,12 @@ const spec = (): WorkflowSpec => ({
 
 const dispatchInput = (): DispatchInput => ({
   executionId: 'conformance-exec-1',
+  event: {
+    id: 'conformance-evt-1',
+    type: 'platform.user.created',
+    occurredAt: new Date('2026-01-01T00:00:00.000Z'),
+    version: 1,
+  },
   payload: { hello: 'world' },
   actor: { userId: 'user-1', branchId: 'branch-1' },
   depth: 0,

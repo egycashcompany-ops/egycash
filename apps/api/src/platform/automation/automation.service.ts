@@ -35,10 +35,14 @@ import {
 export interface TriggerRequest {
   workflow: ProviderWorkflowRef;
   executionId: string;
+  /** The originating event's identity — becomes the stable envelope the provider dispatches. */
+  event: { id: string; type: string; occurredAt: Date; version: number };
   payload: unknown;
   /** The subject the run executes as — never omitted, see §7.2: there is no automation superuser. */
   actor: { userId: string; branchId?: string | undefined };
   depth?: number | undefined;
+  /** Correlation id from the originating request; falls back to the ambient request id. */
+  requestId?: string | undefined;
 }
 
 export interface TriggerOutcome {
@@ -79,9 +83,12 @@ export const automationService = {
    */
   async trigger(request: TriggerRequest): Promise<TriggerOutcome> {
     const provider = getAutomationProvider();
-    const requestId = getRequestId();
+    // Prefer the correlation id carried with the event (survives the queue hop into the worker,
+    // where the ambient request id is a different, worker-local value or absent).
+    const requestId = request.requestId ?? getRequestId();
     const input: DispatchInput = {
       executionId: request.executionId,
+      event: request.event,
       payload: request.payload,
       actor: request.actor,
       depth: request.depth ?? 0,

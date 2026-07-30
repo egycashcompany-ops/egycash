@@ -62,6 +62,12 @@ const EnvSchema = z.object({
   N8N_TIMEOUT_MS: z.coerce.number().int().min(100).max(120_000).default(30_000),
   /** Transport-failure retries INSIDE one dispatch (BullMQ retries the job on top of this). */
   N8N_MAX_RETRIES: z.coerce.number().int().min(0).max(5).default(2),
+  /**
+   * Deployment secret the per-workflow webhook signature is derived from (design §2.2), letting n8n
+   * reject a trigger that did not come from ECMS. Optional: absent, triggers are sent unsigned,
+   * which is the A-5 behaviour and the right trade for a private-network n8n.
+   */
+  N8N_WEBHOOK_SECRET: z.string().min(16).optional(),
 
   JWT_ACCESS_SECRET: z.string().min(16).default('dev-only-access-secret-change-me'),
   JWT_ACCESS_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(900),

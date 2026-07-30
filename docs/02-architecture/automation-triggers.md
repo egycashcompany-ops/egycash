@@ -168,12 +168,50 @@ top — retry, cancel, per-node results, the stuck-execution sweep — on the sa
 
 Operational data: no soft-delete — an execution record is history, never "deleted".
 
-## Known limit until A-6
+## Registering the workflow — what makes a run real (A-6)
 
-The HTTP path to n8n is real and tested; what A-6 still owns is **registering** a workflow in n8n
-so it has a webhook to hit. Workflows created through the API carry `providerRef: null` until then,
-so on `main` today every dispatch records `skipped` — the bridge reaches `dispatchOne`, sees no ref
-and stops before the n8n client. The bridge, filters, idempotency, depth guard and the n8n client
-itself are all exercisable now (the integration test stands in for A-6 by setting a provider ref
-directly; the client's unit tests exercise the transport against a stubbed `fetch`); the end-to-end
-provider run against a live n8n arrives with A-6, when the conformance suite runs against it.
+A dispatch needs something to dispatch *to*. Until A-6 a workflow existed only in ECMS, carried
+`providerRef: null`, and every dispatch honestly recorded `skipped`. **Enabling a workflow now
+pushes it to the provider** and stores the ref the bridge dispatches against.
+
+`workflow-provider-sync.ts` owns that lifecycle, and talks only to `automationService` — the A-0
+seam — so nothing about it is n8n-specific:
+
+| ECMS action | Provider effect |
+|---|---|
+| enable | create in the provider if never pushed (storing the ref), then activate |
+| disable | deactivate — **not** delete, so re-enabling does not mint a second copy |
+| edit a live trigger | drops to `draft` (A-3); the next enable pushes the updated definition |
+| delete | delete the provider's copy, best-effort |
+
+Two error policies, deliberately different. **Enable propagates**: someone pressing "enable" is
+making a decision, and reporting success when the runtime refused would leave ECMS believing a
+workflow is live that n8n has never heard of. **Delete swallows**: the ECMS row is already gone and
+the user's intent is served, so a briefly unreachable provider must not resurrect a deleted
+workflow — the orphan is logged instead.
+
+With no runtime installed (`AUTOMATION_ENABLED=false`, or the null provider) all of this is a no-op
+and `providerRef` stays null, which is what lets the slice land without changing any deployment.
+
+### The n8n side of it
+
+`n8n.graph.ts` is the only file that speaks n8n's JSON dialect — pure, no I/O, so the decisions that
+are expensive to debug through a live instance are unit-tested directly:
+
+- **Every ECMS-owned workflow starts with a webhook trigger node** on an unguessable path (the URL
+  *is* the capability). With no graph yet the workflow is valid and does nothing, which is the
+  correct behaviour for enabled-but-empty until A-9 installs template packages.
+- **The ref binds two facts** — n8n's workflow id (to update/activate/delete) and the webhook path
+  (to trigger). `ProviderWorkflowRef.ref` is opaque to ECMS but not to the provider that minted it.
+  A pre-A-6 ref (bare path, no id) still *triggers*; editing it reports why it cannot.
+- **An update rewrites the same webhook path**, so editing a workflow never re-points its trigger
+  and strands dispatches already in flight.
+- **Signatures are derived, not stored**: `HMAC(deployment secret, webhook path)` gives a genuine
+  per-workflow secret with no new column, and the body is signed as `X-ECMS-Signature`.
+
+## Known limit until A-7
+
+Workflows run, but ECMS only knows a run was *accepted*: `getExecution` reports `running`, and
+`cancellation`/`perNodeProgress` are declared **false** because n8n's execution state is not wired
+back yet. A-7 adds the progress callback that closes the loop — and the capability flags flip on
+then, not before, because a capability is a promise.

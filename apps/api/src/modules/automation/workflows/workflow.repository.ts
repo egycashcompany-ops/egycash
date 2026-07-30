@@ -25,6 +25,23 @@ class AutomationWorkflowRepository extends BaseRepository<AutomationWorkflowDoc>
   }
 
   /**
+   * Record the handle the provider gave us for this workflow (A-6).
+   *
+   * Deliberately NOT a versioned update: this is bookkeeping about a push that already happened,
+   * not a user edit, and failing it on a version race would leave ECMS unable to dispatch a
+   * workflow the provider is already hosting.
+   */
+  async setProviderRef(
+    id: string,
+    providerRef: { providerId: string; ref: string },
+    by: string,
+  ): Promise<void> {
+    await this.model
+      .updateOne({ _id: id }, { $set: { providerRef, updatedBy: by } })
+      .exec();
+  }
+
+  /**
    * The dispatch lookup (design §8, `ix_dispatch`): active event-triggered workflows for one event
    * name. Runs on every published event, so it must hit the index — and it does, on
    * `{trigger.event, status}`.

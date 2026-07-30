@@ -16,6 +16,7 @@ import { auditService } from '../../../platform/audit';
 import { userService } from '../../../platform/users';
 import { automationWorkflowRepository } from './workflow.repository';
 import { canEnableTrigger, validateTrigger, type TriggerProblem } from './trigger-validation';
+import { removeFromProvider, syncEnabledToProvider } from './workflow-provider-sync';
 import { type AutomationWorkflowDoc, type WorkflowTriggerSubdoc } from './workflow.model';
 
 const entityRef = (id: string) => ({
@@ -180,6 +181,11 @@ class AutomationWorkflowService {
       if (!verdict.ok) throw new BusinessRuleError(verdict.reason ?? 'this trigger cannot be enabled');
     }
 
+    // Push to the provider BEFORE recording the state change (A-6). If the runtime refuses, the
+    // caller is told and ECMS never claims a workflow is live that the runtime has never heard of.
+    // With no real provider installed this is a no-op and the workflow keeps `providerRef: null`.
+    await syncEnabledToProvider(before, input.enabled, by);
+
     const doc = await automationWorkflowRepository.updateById(
       id,
       { status: input.enabled ? 'active' : 'disabled', suspendedReason: null },
@@ -234,6 +240,9 @@ class AutomationWorkflowService {
       throw new BusinessRuleError('disable the workflow before deleting it');
     }
     await automationWorkflowRepository.softDeleteById(id, { by });
+    // Best-effort, and after the fact: the user's intent is already served, and a provider that is
+    // briefly unreachable must not resurrect a deleted workflow.
+    await removeFromProvider(before);
     await auditService.record({ entityRef: entityRef(id), action: 'delete' });
   }
 

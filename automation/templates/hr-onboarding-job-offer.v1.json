@@ -1,0 +1,483 @@
+{
+  "key": "hr-onboarding-job-offer",
+  "version": "1.0.0",
+  "name": {
+    "en": "Onboarding — job offer to reporting date",
+    "ar": "التعيين — من العرض الوظيفي إلى تاريخ الحضور"
+  },
+  "category": "hr-recruitment",
+  "description": {
+    "en": "Drives the candidate side of onboarding from the job offer. It does NOT wait for the accept/reject decision: ECMS owns that state and publishes it, so each decision arrives as its own trigger and every branch is a pure function of one event (design W-3). Sent -> deliver the offer and remind once. Accepted -> send the required-documents list and the reporting date (the offer's startDate). Rejected/expired -> tell the HR owner. New onboarding steps are new nodes on the accepted branch and touch nothing else.",
+    "ar": "يقود الجانب الخاص بالمرشح في عملية التعيين ابتداءً من العرض الوظيفي. لا ينتظر قرار القبول/الرفض: ECMS هو من يملك هذه الحالة وينشرها، فيصل كل قرار كـ trigger مستقل، وكل مسار دالة خالصة لحدث واحد. عند الإرسال: تسليم العرض وتذكير واحد. عند القبول: إرسال قائمة المستندات المطلوبة وتاريخ الحضور (startDate الخاص بالعرض). عند الرفض أو انتهاء الصلاحية: إبلاغ مسؤول الموارد البشرية. أي خطوات تعيين جديدة تُضاف كعقد على مسار القبول دون المساس بأي شيء آخر."
+  },
+  "requires": {
+    "events": [
+      "hr.jobOffer.sent",
+      "hr.jobOffer.accepted",
+      "hr.jobOffer.rejected",
+      "hr.jobOffer.expired"
+    ],
+    "credentials": [],
+    "capabilities": ["visualBuilder"],
+    "platform": "^2.2"
+  },
+  "provider": { "id": "n8n", "minVersion": "1.60.0" },
+  "graph": {
+    "providerId": "n8n",
+    "formatVersion": "1",
+    "nodes": {
+      "nodes": [
+        {
+          "id": "cfg-03",
+          "name": "ECMS Config",
+          "type": "n8n-nodes-base.set",
+          "typeVersion": 3.4,
+          "position": [220, 0],
+          "parameters": {
+            "assignments": {
+              "assignments": [
+                {
+                  "id": "c1",
+                  "name": "ecmsApiBase",
+                  "value": "https://ecms-api.internal/api/v1",
+                  "type": "string"
+                },
+                { "id": "c2", "name": "requireSignature", "value": true, "type": "boolean" },
+                { "id": "c3", "name": "offerReminderHours", "value": 48, "type": "number" },
+                {
+                  "id": "c4",
+                  "name": "offerTemplateKey",
+                  "value": "hr.jobOfferSent",
+                  "type": "string"
+                },
+                {
+                  "id": "c5",
+                  "name": "documentsTemplateKey",
+                  "value": "hr.onboardingDocuments",
+                  "type": "string"
+                },
+                {
+                  "id": "c6",
+                  "name": "closedTemplateKey",
+                  "value": "hr.jobOfferClosed",
+                  "type": "string"
+                },
+                { "id": "c7", "name": "hrRoleKey", "value": "hr-admin", "type": "string" }
+              ]
+            },
+            "options": {}
+          }
+        },
+        {
+          "id": "guard-03",
+          "name": "Verify + Dedupe",
+          "type": "n8n-nodes-base.code",
+          "typeVersion": 2,
+          "position": [440, 0],
+          "notes": "Fail-closed: authenticity, envelope shape, idempotency. Needs NODE_FUNCTION_ALLOW_BUILTIN=crypto.",
+          "parameters": {
+            "mode": "runOnceForAllItems",
+            "jsCode": "const crypto = require('crypto');\nconst cfg = $('ECMS Config').first().json;\nconst hook = $('ECMS Trigger').first().json;\nconst body = hook.body || {};\nconst headers = hook.headers || {};\n\nif (cfg.requireSignature) {\n  const secret = $env.ECMS_WEBHOOK_SECRET;\n  const got = headers['x-ecms-signature'];\n  if (!secret) throw new Error('ECMS_WEBHOOK_SECRET is not set on this n8n instance');\n  if (!got) throw new Error('unsigned trigger refused - set N8N_WEBHOOK_SECRET on ECMS');\n  const path = $('ECMS Trigger').params.path;\n  const key = crypto.createHmac('sha256', secret).update(path).digest('hex');\n  const want = 'sha256=' + crypto.createHmac('sha256', key).update(JSON.stringify(body)).digest('hex');\n  const a = Buffer.from(want);\n  const b = Buffer.from(String(got));\n  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) throw new Error('bad ECMS signature');\n}\n\nfor (const f of ['eventId', 'eventType', 'occurredAt', 'version', 'executionId']) {\n  if (body[f] === undefined) throw new Error('not an ECMS event envelope: missing ' + f);\n}\n\n// The workflow engine mirrors these names with a TRANSITION payload (EVENT_MULTI_PUBLISHER);\n// only the entity variant carries offerId, so anything else is not ours to act on.\nif (!body.payload || !body.payload.offerId) return [];\n\nconst state = $getWorkflowStaticData('global');\nstate.seen = Array.isArray(state.seen) ? state.seen : [];\nif (state.seen.includes(body.eventId)) return [];\nstate.seen.push(body.eventId);\nif (state.seen.length > 500) state.seen = state.seen.slice(-500);\n\nreturn [{ json: body }];"
+          }
+        },
+        {
+          "id": "switch-03",
+          "name": "Route by event",
+          "type": "n8n-nodes-base.switch",
+          "typeVersion": 3.2,
+          "position": [660, 0],
+          "notes": "One graph, one branch per decision. Adding an onboarding stage is one more output here.",
+          "parameters": {
+            "rules": {
+              "values": [
+                {
+                  "conditions": {
+                    "options": {
+                      "caseSensitive": true,
+                      "leftValue": "",
+                      "typeValidation": "strict",
+                      "version": 2
+                    },
+                    "conditions": [
+                      {
+                        "id": "s1",
+                        "leftValue": "={{ $json.eventType }}",
+                        "rightValue": "hr.jobOffer.sent",
+                        "operator": { "type": "string", "operation": "equals" }
+                      }
+                    ],
+                    "combinator": "and"
+                  },
+                  "renameOutput": true,
+                  "outputKey": "sent"
+                },
+                {
+                  "conditions": {
+                    "options": {
+                      "caseSensitive": true,
+                      "leftValue": "",
+                      "typeValidation": "strict",
+                      "version": 2
+                    },
+                    "conditions": [
+                      {
+                        "id": "s2",
+                        "leftValue": "={{ $json.eventType }}",
+                        "rightValue": "hr.jobOffer.accepted",
+                        "operator": { "type": "string", "operation": "equals" }
+                      }
+                    ],
+                    "combinator": "and"
+                  },
+                  "renameOutput": true,
+                  "outputKey": "accepted"
+                },
+                {
+                  "conditions": {
+                    "options": {
+                      "caseSensitive": true,
+                      "leftValue": "",
+                      "typeValidation": "strict",
+                      "version": 2
+                    },
+                    "conditions": [
+                      {
+                        "id": "s3",
+                        "leftValue": "={{ $json.eventType }}",
+                        "rightValue": "hr.jobOffer.rejected",
+                        "operator": { "type": "string", "operation": "equals" }
+                      }
+                    ],
+                    "combinator": "and"
+                  },
+                  "renameOutput": true,
+                  "outputKey": "rejected"
+                },
+                {
+                  "conditions": {
+                    "options": {
+                      "caseSensitive": true,
+                      "leftValue": "",
+                      "typeValidation": "strict",
+                      "version": 2
+                    },
+                    "conditions": [
+                      {
+                        "id": "s4",
+                        "leftValue": "={{ $json.eventType }}",
+                        "rightValue": "hr.jobOffer.expired",
+                        "operator": { "type": "string", "operation": "equals" }
+                      }
+                    ],
+                    "combinator": "and"
+                  },
+                  "renameOutput": true,
+                  "outputKey": "expired"
+                }
+              ]
+            },
+            "options": {}
+          }
+        },
+        {
+          "id": "sent-read",
+          "name": "Read offer (sent)",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.2,
+          "position": [900, -320],
+          "retryOnFail": true,
+          "maxTries": 3,
+          "waitBetweenTries": 5000,
+          "credentials": { "httpHeaderAuth": { "name": "ECMS Service Token" } },
+          "parameters": {
+            "method": "GET",
+            "url": "={{ $('ECMS Config').first().json.ecmsApiBase }}/hr/job-offers/{{ $('Verify + Dedupe').first().json.payload.offerId }}",
+            "authentication": "genericCredentialType",
+            "genericAuthType": "httpHeaderAuth",
+            "options": {}
+          }
+        },
+        {
+          "id": "sent-notify",
+          "name": "Send offer to candidate [A-6b]",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.2,
+          "position": [1120, -320],
+          "retryOnFail": true,
+          "maxTries": 3,
+          "waitBetweenTries": 5000,
+          "notes": "ECMS renders the seeded hr.jobOfferSent template and sends over its own channels.",
+          "credentials": { "httpHeaderAuth": { "name": "ECMS Service Token" } },
+          "parameters": {
+            "method": "POST",
+            "url": "={{ $('ECMS Config').first().json.ecmsApiBase }}/automation/actions/notify",
+            "authentication": "genericCredentialType",
+            "genericAuthType": "httpHeaderAuth",
+            "sendBody": true,
+            "specifyBody": "json",
+            "jsonBody": "={{ JSON.stringify({ to: { applicantId: $('Verify + Dedupe').first().json.payload.applicantId }, templateKey: $('ECMS Config').first().json.offerTemplateKey, variables: { offerId: $('Verify + Dedupe').first().json.payload.offerId, applicantCode: $('Verify + Dedupe').first().json.payload.applicantCode } }) }}",
+            "options": {}
+          }
+        },
+        {
+          "id": "sent-wait",
+          "name": "Wait - offer reminder",
+          "type": "n8n-nodes-base.wait",
+          "typeVersion": 1.1,
+          "position": [1340, -320],
+          "webhookId": "ecms-offer-reminder",
+          "parameters": {
+            "resume": "timeInterval",
+            "amount": "={{ $('ECMS Config').first().json.offerReminderHours }}",
+            "unit": "hours"
+          }
+        },
+        {
+          "id": "sent-recheck",
+          "name": "Re-read offer",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.2,
+          "position": [1560, -320],
+          "retryOnFail": true,
+          "maxTries": 3,
+          "waitBetweenTries": 5000,
+          "notes": "Re-reading is what makes the reminder safe: a candidate who accepted is never nagged.",
+          "credentials": { "httpHeaderAuth": { "name": "ECMS Service Token" } },
+          "parameters": {
+            "method": "GET",
+            "url": "={{ $('ECMS Config').first().json.ecmsApiBase }}/hr/job-offers/{{ $('Verify + Dedupe').first().json.payload.offerId }}",
+            "authentication": "genericCredentialType",
+            "genericAuthType": "httpHeaderAuth",
+            "options": {}
+          }
+        },
+        {
+          "id": "sent-if",
+          "name": "Still awaiting reply?",
+          "type": "n8n-nodes-base.if",
+          "typeVersion": 2.2,
+          "position": [1780, -320],
+          "parameters": {
+            "conditions": {
+              "options": {
+                "caseSensitive": true,
+                "leftValue": "",
+                "typeValidation": "loose",
+                "version": 2
+              },
+              "conditions": [
+                {
+                  "id": "i1",
+                  "leftValue": "={{ $json.data ? $json.data.status : $json.status }}",
+                  "rightValue": "sent",
+                  "operator": { "type": "string", "operation": "equals" }
+                }
+              ],
+              "combinator": "and"
+            },
+            "options": {}
+          }
+        },
+        {
+          "id": "sent-remind",
+          "name": "Remind candidate [A-6b]",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.2,
+          "position": [2000, -400],
+          "retryOnFail": true,
+          "maxTries": 3,
+          "waitBetweenTries": 5000,
+          "credentials": { "httpHeaderAuth": { "name": "ECMS Service Token" } },
+          "parameters": {
+            "method": "POST",
+            "url": "={{ $('ECMS Config').first().json.ecmsApiBase }}/automation/actions/notify",
+            "authentication": "genericCredentialType",
+            "genericAuthType": "httpHeaderAuth",
+            "sendBody": true,
+            "specifyBody": "json",
+            "jsonBody": "={{ JSON.stringify({ to: { applicantId: $('Verify + Dedupe').first().json.payload.applicantId }, templateKey: $('ECMS Config').first().json.offerTemplateKey, variables: { offerId: $('Verify + Dedupe').first().json.payload.offerId, reminder: true } }) }}",
+            "options": {}
+          }
+        },
+        {
+          "id": "acc-offer",
+          "name": "Read offer (accepted)",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.2,
+          "position": [900, -80],
+          "retryOnFail": true,
+          "maxTries": 3,
+          "waitBetweenTries": 5000,
+          "notes": "startDate on the offer IS the reporting date - a required field, never absent.",
+          "credentials": { "httpHeaderAuth": { "name": "ECMS Service Token" } },
+          "parameters": {
+            "method": "GET",
+            "url": "={{ $('ECMS Config').first().json.ecmsApiBase }}/hr/job-offers/{{ $('Verify + Dedupe').first().json.payload.offerId }}",
+            "authentication": "genericCredentialType",
+            "genericAuthType": "httpHeaderAuth",
+            "options": {}
+          }
+        },
+        {
+          "id": "acc-doctypes",
+          "name": "Read required document types",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.2,
+          "position": [1120, -80],
+          "retryOnFail": true,
+          "maxTries": 3,
+          "waitBetweenTries": 5000,
+          "notes": "The HR-admin-maintained catalogue. Editing it changes the message with no workflow change.",
+          "credentials": { "httpHeaderAuth": { "name": "ECMS Service Token" } },
+          "parameters": {
+            "method": "GET",
+            "url": "={{ $('ECMS Config').first().json.ecmsApiBase }}/hr/hiring-document-types",
+            "authentication": "genericCredentialType",
+            "genericAuthType": "httpHeaderAuth",
+            "sendQuery": true,
+            "specifyQuery": "keypair",
+            "queryParameters": {
+              "parameters": [
+                { "name": "isActive", "value": "true" },
+                { "name": "limit", "value": "100" }
+              ]
+            },
+            "options": {}
+          }
+        },
+        {
+          "id": "acc-compose",
+          "name": "Compose onboarding pack",
+          "type": "n8n-nodes-base.code",
+          "typeVersion": 2,
+          "position": [1340, -80],
+          "notes": "Formatting only. No business decision is taken here - both inputs came from ECMS.",
+          "parameters": {
+            "mode": "runOnceForAllItems",
+            "jsCode": "const offerRes = $('Read offer (accepted)').first().json;\nconst offer = offerRes.data || offerRes;\nconst typesRes = $input.first().json;\nconst types = typesRes.data || typesRes.items || typesRes;\nconst list = Array.isArray(types) ? types : [];\n\nconst required = list.filter((t) => t && t.isRequired !== false);\nconst lines = required.map((t, i) => {\n  const label = t.name && (t.name.ar || t.name.en) ? (t.name.ar || t.name.en) : t.key;\n  return (i + 1) + '. ' + label;\n});\n\nreturn [{\n  json: {\n    offerId: offer.id,\n    applicantId: $('Verify + Dedupe').first().json.payload.applicantId,\n    applicantCode: $('Verify + Dedupe').first().json.payload.applicantCode,\n    // The offer's startDate is the reporting date. It is required on every offer.\n    reportingDate: offer.startDate,\n    documentCount: required.length,\n    documentList: lines.join('\\n'),\n  },\n}];"
+          }
+        },
+        {
+          "id": "acc-notify",
+          "name": "Send documents + reporting date [A-6b]",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.2,
+          "position": [1560, -80],
+          "retryOnFail": true,
+          "maxTries": 3,
+          "waitBetweenTries": 5000,
+          "credentials": { "httpHeaderAuth": { "name": "ECMS Service Token" } },
+          "parameters": {
+            "method": "POST",
+            "url": "={{ $('ECMS Config').first().json.ecmsApiBase }}/automation/actions/notify",
+            "authentication": "genericCredentialType",
+            "genericAuthType": "httpHeaderAuth",
+            "sendBody": true,
+            "specifyBody": "json",
+            "jsonBody": "={{ JSON.stringify({ to: { applicantId: $json.applicantId }, templateKey: $('ECMS Config').first().json.documentsTemplateKey, variables: { applicantCode: $json.applicantCode, reportingDate: $json.reportingDate, documentList: $json.documentList, documentCount: $json.documentCount } }) }}",
+            "options": {}
+          }
+        },
+        {
+          "id": "closed-notify",
+          "name": "Tell HR the offer closed [A-6b]",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.2,
+          "position": [900, 260],
+          "retryOnFail": true,
+          "maxTries": 3,
+          "waitBetweenTries": 5000,
+          "credentials": { "httpHeaderAuth": { "name": "ECMS Service Token" } },
+          "parameters": {
+            "method": "POST",
+            "url": "={{ $('ECMS Config').first().json.ecmsApiBase }}/automation/actions/notify",
+            "authentication": "genericCredentialType",
+            "genericAuthType": "httpHeaderAuth",
+            "sendBody": true,
+            "specifyBody": "json",
+            "jsonBody": "={{ JSON.stringify({ to: { roleKey: $('ECMS Config').first().json.hrRoleKey }, templateKey: $('ECMS Config').first().json.closedTemplateKey, variables: { offerId: $json.payload.offerId, applicantCode: $json.payload.applicantCode, outcome: $json.eventType } }) }}",
+            "options": {}
+          }
+        },
+        {
+          "id": "log-06",
+          "name": "Log step [A-6b]",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.2,
+          "position": [2260, -80],
+          "retryOnFail": true,
+          "maxTries": 3,
+          "waitBetweenTries": 5000,
+          "alwaysOutputData": true,
+          "notes": "The ECMS execution row is the record. n8n's execution list is a debugging convenience.",
+          "credentials": { "httpHeaderAuth": { "name": "ECMS Service Token" } },
+          "parameters": {
+            "method": "POST",
+            "url": "={{ $('ECMS Config').first().json.ecmsApiBase }}/automation/actions/log",
+            "authentication": "genericCredentialType",
+            "genericAuthType": "httpHeaderAuth",
+            "sendBody": true,
+            "specifyBody": "json",
+            "jsonBody": "={{ JSON.stringify({ executionId: $('Verify + Dedupe').first().json.executionId, step: $('Verify + Dedupe').first().json.eventType, status: 'ok' }) }}",
+            "options": {}
+          }
+        }
+      ],
+      "connections": {
+        "ECMS Trigger": { "main": [[{ "node": "ECMS Config", "type": "main", "index": 0 }]] },
+        "ECMS Config": { "main": [[{ "node": "Verify + Dedupe", "type": "main", "index": 0 }]] },
+        "Verify + Dedupe": { "main": [[{ "node": "Route by event", "type": "main", "index": 0 }]] },
+        "Route by event": {
+          "main": [
+            [{ "node": "Read offer (sent)", "type": "main", "index": 0 }],
+            [{ "node": "Read offer (accepted)", "type": "main", "index": 0 }],
+            [{ "node": "Tell HR the offer closed [A-6b]", "type": "main", "index": 0 }],
+            [{ "node": "Tell HR the offer closed [A-6b]", "type": "main", "index": 0 }]
+          ]
+        },
+        "Read offer (sent)": {
+          "main": [[{ "node": "Send offer to candidate [A-6b]", "type": "main", "index": 0 }]]
+        },
+        "Send offer to candidate [A-6b]": {
+          "main": [[{ "node": "Wait - offer reminder", "type": "main", "index": 0 }]]
+        },
+        "Wait - offer reminder": {
+          "main": [[{ "node": "Re-read offer", "type": "main", "index": 0 }]]
+        },
+        "Re-read offer": {
+          "main": [[{ "node": "Still awaiting reply?", "type": "main", "index": 0 }]]
+        },
+        "Still awaiting reply?": {
+          "main": [
+            [{ "node": "Remind candidate [A-6b]", "type": "main", "index": 0 }],
+            [{ "node": "Log step [A-6b]", "type": "main", "index": 0 }]
+          ]
+        },
+        "Remind candidate [A-6b]": {
+          "main": [[{ "node": "Log step [A-6b]", "type": "main", "index": 0 }]]
+        },
+        "Read offer (accepted)": {
+          "main": [[{ "node": "Read required document types", "type": "main", "index": 0 }]]
+        },
+        "Read required document types": {
+          "main": [[{ "node": "Compose onboarding pack", "type": "main", "index": 0 }]]
+        },
+        "Compose onboarding pack": {
+          "main": [
+            [{ "node": "Send documents + reporting date [A-6b]", "type": "main", "index": 0 }]
+          ]
+        },
+        "Send documents + reporting date [A-6b]": {
+          "main": [[{ "node": "Log step [A-6b]", "type": "main", "index": 0 }]]
+        },
+        "Tell HR the offer closed [A-6b]": {
+          "main": [[{ "node": "Log step [A-6b]", "type": "main", "index": 0 }]]
+        }
+      }
+    }
+  },
+  "changelog": {
+    "en": "1.0.0 - first release. Event-driven, four branches, no long-lived wait on the candidate's decision.",
+    "ar": "١.٠.٠ - الإصدار الأول. مدفوع بالأحداث، أربعة مسارات، وبدون انتظار طويل لقرار المرشح."
+  }
+}

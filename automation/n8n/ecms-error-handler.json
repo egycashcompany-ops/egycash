@@ -1,0 +1,141 @@
+{
+  "name": "ECMS — Error Handler",
+  "nodes": [
+    {
+      "id": "err-trigger",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [0, 0],
+      "parameters": {}
+    },
+    {
+      "id": "err-config",
+      "name": "Ops Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [220, 0],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e1",
+              "name": "ecmsApiBase",
+              "value": "https://ecms-api.internal/api/v1",
+              "type": "string"
+            },
+            { "id": "e2", "name": "opsEmail", "value": "ops@example.com", "type": "string" },
+            { "id": "e3", "name": "fromEmail", "value": "n8n@example.com", "type": "string" }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "err-normalize",
+      "name": "Normalize failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 0],
+      "notes": "One shape for every failure, whatever node raised it.",
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const e = $('Error Trigger').first().json || {};\nconst wf = e.workflow || {};\nconst ex = e.execution || {};\nconst err = ex.error || e.error || {};\n\n// The ECMS execution id travels on the envelope, so a failure can be joined back to the\n// ECMS row rather than living only in n8n's execution list.\nlet executionId = null;\nlet eventId = null;\nlet eventType = null;\ntry {\n  const data = ex.data && ex.data.resultData && ex.data.resultData.runData;\n  const guard = data && (data['Verify + Dedupe'] || data['ECMS Trigger']);\n  const first = guard && guard[0] && guard[0].data && guard[0].data.main && guard[0].data.main[0];\n  const json = first && first[0] && first[0].json;\n  const envelope = json && (json.body || json);\n  if (envelope) {\n    executionId = envelope.executionId || null;\n    eventId = envelope.eventId || null;\n    eventType = envelope.eventType || null;\n  }\n} catch (ignored) {\n  // A failure handler that can itself fail is not a failure handler.\n}\n\nreturn [{\n  json: {\n    workflowId: wf.id || null,\n    workflowName: wf.name || null,\n    n8nExecutionId: ex.id || null,\n    n8nExecutionUrl: ex.url || null,\n    failedNode: (err.node && err.node.name) || null,\n    message: err.message || 'unknown error',\n    lastNodeExecuted: ex.lastNodeExecuted || null,\n    executionId,\n    eventId,\n    eventType,\n    at: new Date().toISOString(),\n  },\n}];"
+      }
+    },
+    {
+      "id": "err-report",
+      "name": "Report to ECMS [A-6b]",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, 0],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "notes": "Continues on error on purpose — if ECMS is the thing that is down, the email below is the only channel left.",
+      "credentials": { "httpHeaderAuth": { "name": "ECMS Service Token" } },
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Ops Config').first().json.ecmsApiBase }}/automation/actions/log",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ executionId: $('Normalize failure').first().json.executionId, step: $('Normalize failure').first().json.failedNode || 'workflow', status: 'failed', detail: $('Normalize failure').first().json.message, data: $('Normalize failure').first().json }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "err-if",
+      "name": "ECMS unreachable?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [880, 0],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "e1",
+              "leftValue": "={{ $json.error !== undefined }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "err-mail",
+      "name": "Email ops",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1100, -80],
+      "onError": "continueRegularOutput",
+      "credentials": { "smtp": { "name": "ECMS Ops SMTP" } },
+      "parameters": {
+        "fromEmail": "={{ $('Ops Config').first().json.fromEmail }}",
+        "toEmail": "={{ $('Ops Config').first().json.opsEmail }}",
+        "subject": "=[ECMS automation] {{ $('Normalize failure').first().json.workflowName }} failed",
+        "emailFormat": "text",
+        "text": "={{ JSON.stringify($('Normalize failure').first().json, null, 2) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "err-done",
+      "name": "Done",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1100, 120],
+      "parameters": {}
+    }
+  ],
+  "connections": {
+    "Error Trigger": { "main": [[{ "node": "Ops Config", "type": "main", "index": 0 }]] },
+    "Ops Config": { "main": [[{ "node": "Normalize failure", "type": "main", "index": 0 }]] },
+    "Normalize failure": {
+      "main": [[{ "node": "Report to ECMS [A-6b]", "type": "main", "index": 0 }]]
+    },
+    "Report to ECMS [A-6b]": {
+      "main": [[{ "node": "ECMS unreachable?", "type": "main", "index": 0 }]]
+    },
+    "ECMS unreachable?": {
+      "main": [
+        [{ "node": "Email ops", "type": "main", "index": 0 }],
+        [{ "node": "Done", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": { "executionOrder": "v1", "saveDataErrorExecution": "all" },
+  "pinData": {}
+}

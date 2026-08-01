@@ -66,6 +66,32 @@ its entry here in the same PR.
 
 ### Added
 
+- **The first three automation workflows exist as data — account activation follow-up, password
+  reset follow-up, and job-offer onboarding (A-9a).** Each is an `AutomationTemplatePackage`
+  carrying an n8n graph, checked into `automation/templates/` and validated in CI against the real
+  contract schema, so a package that would install as nothing fails here rather than on a
+  production instance. A shared n8n error-handler workflow ships alongside them in
+  `automation/n8n/`, and `npm run automation:preview <key>` renders any package into a standalone
+  importable workflow for stepping through in the n8n UI.
+
+  Designing them against the code rather than against assumptions changed all three. **ECMS has no
+  temporary passwords to send** — AL-R4 replaced them with one-time activation links that
+  `credentials-delivery.ts` deliberately keeps out of the persisted notification pipeline, and n8n
+  persists execution data, so routing a link through n8n would write the credential into n8n's
+  Postgres. The secret therefore never leaves ECMS: where a message must be re-sent, the workflow
+  calls `credentials/resend` and ECMS composes and delivers it. What the workflows add is the thing
+  ECMS genuinely lacks — follow-up and escalation, so an invitation sent nine days ago and never
+  opened stops being invisible. **The onboarding workflow does not wait for the candidate's
+  decision**: ECMS owns that state and publishes `hr.jobOffer.accepted`/`.rejected`, so each
+  decision arrives as its own trigger and every branch is a pure function of one event, which keeps
+  the answer to "did they accept?" in exactly one place.
+
+  Every graph shares one skeleton — config, a fail-closed guard (constant-time signature check,
+  envelope-shape check, `eventId` idempotency), business nodes, then a write-back to the ECMS
+  execution row — so adding a fourth workflow is the business nodes and nothing else. Design,
+  including the honest list of what must exist before any of it runs, is in
+  [`docs/12-planning/automation-workflow-library-design.md`](docs/12-planning/automation-workflow-library-design.md).
+
 - **National-ID OCR now has a real, fully local provider (OQ-30).** The seam has carried a null
   stub since Sprint 4.1 — `available: false`, no extraction — because image-to-text was a deferred
   capability. It is now implemented: a PaddleOCR 3.x sidecar carrying the PP-OCR weights baked into

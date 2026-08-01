@@ -38,6 +38,9 @@ jobs:
       - name: Feature flags past expiry fail CI (Review R27)
         run: node scripts/check-flag-expiry.mjs
 
+      - name: Automation template packages parse against their contract (A-9a)
+        run: node scripts/automation-templates.mjs
+
       - name: Test
         run: npm run test --workspaces --if-present
 

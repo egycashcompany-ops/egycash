@@ -1,0 +1,357 @@
+{
+  "key": "account-activation-followup",
+  "version": "1.0.0",
+  "name": {
+    "en": "Account activation follow-up",
+    "ar": "متابعة تفعيل حساب الدخول"
+  },
+  "category": "identity",
+  "description": {
+    "en": "A new login was created and ECMS has already sent the one-time activation link. This workflow owns what ECMS does not: the schedule. It reminds after 48h, asks ECMS to re-issue the link, and escalates to HR/IT after 72h more. It never sees the activation token — re-sending is done BY ECMS via the credentials/resend endpoint.",
+    "ar": "تم إنشاء حساب دخول جديد، وقد أرسل ECMS بالفعل رابط التفعيل لمرة واحدة. هذا الـ workflow مسؤول عمّا لا يفعله ECMS: الجدولة. يذكّر بعد ٤٨ ساعة، ويطلب من ECMS إعادة إصدار الرابط، ثم يصعّد إلى الموارد البشرية/تقنية المعلومات بعد ٧٢ ساعة أخرى. لا يرى رمز التفعيل إطلاقًا — إعادة الإرسال تتم من ECMS نفسه."
+  },
+  "requires": {
+    "events": ["platform.user.created"],
+    "credentials": [],
+    "capabilities": ["visualBuilder"],
+    "platform": "^2.2"
+  },
+  "provider": { "id": "n8n", "minVersion": "1.60.0" },
+  "graph": {
+    "providerId": "n8n",
+    "formatVersion": "1",
+    "nodes": {
+      "nodes": [
+        {
+          "id": "cfg-01",
+          "name": "ECMS Config",
+          "type": "n8n-nodes-base.set",
+          "typeVersion": 3.4,
+          "position": [220, 0],
+          "notes": "Every operator-tunable knob lives here and nowhere else.",
+          "parameters": {
+            "assignments": {
+              "assignments": [
+                {
+                  "id": "c1",
+                  "name": "ecmsApiBase",
+                  "value": "https://ecms-api.internal/api/v1",
+                  "type": "string"
+                },
+                { "id": "c2", "name": "requireSignature", "value": true, "type": "boolean" },
+                { "id": "c3", "name": "firstReminderHours", "value": 48, "type": "number" },
+                { "id": "c4", "name": "escalationHours", "value": 72, "type": "number" },
+                {
+                  "id": "c5",
+                  "name": "escalationTemplateKey",
+                  "value": "platform.activationOverdue",
+                  "type": "string"
+                },
+                {
+                  "id": "c6",
+                  "name": "escalationRoleKey",
+                  "value": "hr-admin",
+                  "type": "string"
+                }
+              ]
+            },
+            "options": {}
+          }
+        },
+        {
+          "id": "guard-01",
+          "name": "Verify + Dedupe",
+          "type": "n8n-nodes-base.code",
+          "typeVersion": 2,
+          "position": [440, 0],
+          "notes": "Fail-closed: authenticity, envelope shape, idempotency. Needs NODE_FUNCTION_ALLOW_BUILTIN=crypto.",
+          "parameters": {
+            "mode": "runOnceForAllItems",
+            "jsCode": "const crypto = require('crypto');\nconst cfg = $('ECMS Config').first().json;\nconst hook = $('ECMS Trigger').first().json;\nconst body = hook.body || {};\nconst headers = hook.headers || {};\n\n// 1. Authenticity. ECMS signs with HMAC(HMAC(N8N_WEBHOOK_SECRET, webhookPath), body).\nif (cfg.requireSignature) {\n  const secret = $env.ECMS_WEBHOOK_SECRET;\n  const got = headers['x-ecms-signature'];\n  if (!secret) throw new Error('ECMS_WEBHOOK_SECRET is not set on this n8n instance');\n  if (!got) throw new Error('unsigned trigger refused - set N8N_WEBHOOK_SECRET on ECMS');\n  const path = $('ECMS Trigger').params.path;\n  const key = crypto.createHmac('sha256', secret).update(path).digest('hex');\n  const want = 'sha256=' + crypto.createHmac('sha256', key).update(JSON.stringify(body)).digest('hex');\n  const a = Buffer.from(want);\n  const b = Buffer.from(String(got));\n  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) throw new Error('bad ECMS signature');\n}\n\n// 2. Envelope shape - a mis-pointed webhook must fail loudly, not half-run.\nfor (const f of ['eventId', 'eventType', 'occurredAt', 'version', 'executionId']) {\n  if (body[f] === undefined) throw new Error('not an ECMS event envelope: missing ' + f);\n}\n\n// 3. Idempotency. The layer that survives a redelivery AFTER a successful dispatch.\nconst state = $getWorkflowStaticData('global');\nstate.seen = Array.isArray(state.seen) ? state.seen : [];\nif (state.seen.includes(body.eventId)) return [];\nstate.seen.push(body.eventId);\nif (state.seen.length > 500) state.seen = state.seen.slice(-500);\n\nreturn [{ json: body }];"
+          }
+        },
+        {
+          "id": "wait-01",
+          "name": "Wait - first reminder",
+          "type": "n8n-nodes-base.wait",
+          "typeVersion": 1.1,
+          "position": [660, 0],
+          "webhookId": "ecms-activation-wait-1",
+          "parameters": {
+            "resume": "timeInterval",
+            "amount": "={{ $('ECMS Config').first().json.firstReminderHours }}",
+            "unit": "hours"
+          }
+        },
+        {
+          "id": "read-01",
+          "name": "Read user",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.2,
+          "position": [880, 0],
+          "retryOnFail": true,
+          "maxTries": 3,
+          "waitBetweenTries": 5000,
+          "credentials": { "httpHeaderAuth": { "name": "ECMS Service Token" } },
+          "parameters": {
+            "method": "GET",
+            "url": "={{ $('ECMS Config').first().json.ecmsApiBase }}/platform/users/{{ $('Verify + Dedupe').first().json.payload.userId }}",
+            "authentication": "genericCredentialType",
+            "genericAuthType": "httpHeaderAuth",
+            "options": {}
+          }
+        },
+        {
+          "id": "if-01",
+          "name": "Activated?",
+          "type": "n8n-nodes-base.if",
+          "typeVersion": 2.2,
+          "position": [1100, 0],
+          "parameters": {
+            "conditions": {
+              "options": {
+                "caseSensitive": true,
+                "leftValue": "",
+                "typeValidation": "loose",
+                "version": 2
+              },
+              "conditions": [
+                {
+                  "id": "i1",
+                  "leftValue": "={{ $json.data ? $json.data.accountStatus : $json.accountStatus }}",
+                  "rightValue": "activated",
+                  "operator": { "type": "string", "operation": "equals" }
+                }
+              ],
+              "combinator": "and"
+            },
+            "options": {}
+          }
+        },
+        {
+          "id": "log-01",
+          "name": "Log activated [A-6b]",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.2,
+          "position": [1320, -140],
+          "retryOnFail": true,
+          "maxTries": 3,
+          "waitBetweenTries": 5000,
+          "credentials": { "httpHeaderAuth": { "name": "ECMS Service Token" } },
+          "parameters": {
+            "method": "POST",
+            "url": "={{ $('ECMS Config').first().json.ecmsApiBase }}/automation/actions/log",
+            "authentication": "genericCredentialType",
+            "genericAuthType": "httpHeaderAuth",
+            "sendBody": true,
+            "specifyBody": "json",
+            "jsonBody": "={{ JSON.stringify({ executionId: $('Verify + Dedupe').first().json.executionId, step: 'activation.check', status: 'ok', detail: 'account already activated' }) }}",
+            "options": {}
+          }
+        },
+        {
+          "id": "resend-01",
+          "name": "Resend credentials",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.2,
+          "position": [1320, 140],
+          "retryOnFail": true,
+          "maxTries": 3,
+          "waitBetweenTries": 5000,
+          "notes": "ECMS re-issues and re-sends. The activation token never enters n8n (design W-1).",
+          "credentials": { "httpHeaderAuth": { "name": "ECMS Service Token" } },
+          "parameters": {
+            "method": "POST",
+            "url": "={{ $('ECMS Config').first().json.ecmsApiBase }}/platform/users/{{ $('Verify + Dedupe').first().json.payload.userId }}/credentials/resend",
+            "authentication": "genericCredentialType",
+            "genericAuthType": "httpHeaderAuth",
+            "options": {}
+          }
+        },
+        {
+          "id": "log-02",
+          "name": "Log resend [A-6b]",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.2,
+          "position": [1540, 140],
+          "retryOnFail": true,
+          "maxTries": 3,
+          "waitBetweenTries": 5000,
+          "credentials": { "httpHeaderAuth": { "name": "ECMS Service Token" } },
+          "parameters": {
+            "method": "POST",
+            "url": "={{ $('ECMS Config').first().json.ecmsApiBase }}/automation/actions/log",
+            "authentication": "genericCredentialType",
+            "genericAuthType": "httpHeaderAuth",
+            "sendBody": true,
+            "specifyBody": "json",
+            "jsonBody": "={{ JSON.stringify({ executionId: $('Verify + Dedupe').first().json.executionId, step: 'activation.reminder', status: 'ok', detail: 'ECMS asked to re-issue the setup link' }) }}",
+            "options": {}
+          }
+        },
+        {
+          "id": "wait-02",
+          "name": "Wait - escalation",
+          "type": "n8n-nodes-base.wait",
+          "typeVersion": 1.1,
+          "position": [1760, 140],
+          "webhookId": "ecms-activation-wait-2",
+          "parameters": {
+            "resume": "timeInterval",
+            "amount": "={{ $('ECMS Config').first().json.escalationHours }}",
+            "unit": "hours"
+          }
+        },
+        {
+          "id": "read-02",
+          "name": "Re-read user",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.2,
+          "position": [1980, 140],
+          "retryOnFail": true,
+          "maxTries": 3,
+          "waitBetweenTries": 5000,
+          "credentials": { "httpHeaderAuth": { "name": "ECMS Service Token" } },
+          "parameters": {
+            "method": "GET",
+            "url": "={{ $('ECMS Config').first().json.ecmsApiBase }}/platform/users/{{ $('Verify + Dedupe').first().json.payload.userId }}",
+            "authentication": "genericCredentialType",
+            "genericAuthType": "httpHeaderAuth",
+            "options": {}
+          }
+        },
+        {
+          "id": "if-02",
+          "name": "Still not activated?",
+          "type": "n8n-nodes-base.if",
+          "typeVersion": 2.2,
+          "position": [2200, 140],
+          "parameters": {
+            "conditions": {
+              "options": {
+                "caseSensitive": true,
+                "leftValue": "",
+                "typeValidation": "loose",
+                "version": 2
+              },
+              "conditions": [
+                {
+                  "id": "i2",
+                  "leftValue": "={{ $json.data ? $json.data.accountStatus : $json.accountStatus }}",
+                  "rightValue": "activated",
+                  "operator": { "type": "string", "operation": "notEquals" }
+                }
+              ],
+              "combinator": "and"
+            },
+            "options": {}
+          }
+        },
+        {
+          "id": "notify-01",
+          "name": "Escalate to HR/IT [A-6b]",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.2,
+          "position": [2420, 60],
+          "retryOnFail": true,
+          "maxTries": 3,
+          "waitBetweenTries": 5000,
+          "notes": "ECMS renders and sends through its own channels; n8n composes no message.",
+          "credentials": { "httpHeaderAuth": { "name": "ECMS Service Token" } },
+          "parameters": {
+            "method": "POST",
+            "url": "={{ $('ECMS Config').first().json.ecmsApiBase }}/automation/actions/notify",
+            "authentication": "genericCredentialType",
+            "genericAuthType": "httpHeaderAuth",
+            "sendBody": true,
+            "specifyBody": "json",
+            "jsonBody": "={{ JSON.stringify({ to: { roleKey: $('ECMS Config').first().json.escalationRoleKey }, templateKey: $('ECMS Config').first().json.escalationTemplateKey, variables: { userId: $('Verify + Dedupe').first().json.payload.userId, email: $('Verify + Dedupe').first().json.payload.email, invitedAt: $('Verify + Dedupe').first().json.occurredAt } }) }}",
+            "options": {}
+          }
+        },
+        {
+          "id": "log-03",
+          "name": "Log escalation [A-6b]",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.2,
+          "position": [2640, 60],
+          "retryOnFail": true,
+          "maxTries": 3,
+          "waitBetweenTries": 5000,
+          "credentials": { "httpHeaderAuth": { "name": "ECMS Service Token" } },
+          "parameters": {
+            "method": "POST",
+            "url": "={{ $('ECMS Config').first().json.ecmsApiBase }}/automation/actions/log",
+            "authentication": "genericCredentialType",
+            "genericAuthType": "httpHeaderAuth",
+            "sendBody": true,
+            "specifyBody": "json",
+            "jsonBody": "={{ JSON.stringify({ executionId: $('Verify + Dedupe').first().json.executionId, step: 'activation.escalated', status: 'ok', detail: 'still not activated after the escalation window' }) }}",
+            "options": {}
+          }
+        },
+        {
+          "id": "log-04",
+          "name": "Log late activation [A-6b]",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.2,
+          "position": [2420, 240],
+          "retryOnFail": true,
+          "maxTries": 3,
+          "waitBetweenTries": 5000,
+          "credentials": { "httpHeaderAuth": { "name": "ECMS Service Token" } },
+          "parameters": {
+            "method": "POST",
+            "url": "={{ $('ECMS Config').first().json.ecmsApiBase }}/automation/actions/log",
+            "authentication": "genericCredentialType",
+            "genericAuthType": "httpHeaderAuth",
+            "sendBody": true,
+            "specifyBody": "json",
+            "jsonBody": "={{ JSON.stringify({ executionId: $('Verify + Dedupe').first().json.executionId, step: 'activation.check', status: 'ok', detail: 'activated after the reminder' }) }}",
+            "options": {}
+          }
+        }
+      ],
+      "connections": {
+        "ECMS Trigger": { "main": [[{ "node": "ECMS Config", "type": "main", "index": 0 }]] },
+        "ECMS Config": { "main": [[{ "node": "Verify + Dedupe", "type": "main", "index": 0 }]] },
+        "Verify + Dedupe": {
+          "main": [[{ "node": "Wait - first reminder", "type": "main", "index": 0 }]]
+        },
+        "Wait - first reminder": {
+          "main": [[{ "node": "Read user", "type": "main", "index": 0 }]]
+        },
+        "Read user": { "main": [[{ "node": "Activated?", "type": "main", "index": 0 }]] },
+        "Activated?": {
+          "main": [
+            [{ "node": "Log activated [A-6b]", "type": "main", "index": 0 }],
+            [{ "node": "Resend credentials", "type": "main", "index": 0 }]
+          ]
+        },
+        "Resend credentials": {
+          "main": [[{ "node": "Log resend [A-6b]", "type": "main", "index": 0 }]]
+        },
+        "Log resend [A-6b]": {
+          "main": [[{ "node": "Wait - escalation", "type": "main", "index": 0 }]]
+        },
+        "Wait - escalation": { "main": [[{ "node": "Re-read user", "type": "main", "index": 0 }]] },
+        "Re-read user": {
+          "main": [[{ "node": "Still not activated?", "type": "main", "index": 0 }]]
+        },
+        "Still not activated?": {
+          "main": [
+            [{ "node": "Escalate to HR/IT [A-6b]", "type": "main", "index": 0 }],
+            [{ "node": "Log late activation [A-6b]", "type": "main", "index": 0 }]
+          ]
+        },
+        "Escalate to HR/IT [A-6b]": {
+          "main": [[{ "node": "Log escalation [A-6b]", "type": "main", "index": 0 }]]
+        }
+      }
+    }
+  },
+  "changelog": {
+    "en": "1.0.0 - first release. Reminder at 48h, ECMS-side resend, escalation at +72h.",
+    "ar": "١.٠.٠ - الإصدار الأول. تذكير بعد ٤٨ ساعة، إعادة إرسال من ECMS، تصعيد بعد ٧٢ ساعة إضافية."
+  }
+}

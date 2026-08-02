@@ -429,17 +429,17 @@ Answers refine defaults/labels; none reopen structure.
 
 | # | Question | Frozen interim |
 |---|---|---|
-| Q1 | التمامات: read HR leave (+thin overlay) or fully separate? | seam + `FleetLeaveIntegration` setting; default **on** pending answer |
-| Q2 | Confirm split: fleet owns license/specialization/area, HR owns personal data | designed as stated (FR-11) |
+| Q1 | ~~التمامات~~ **ANSWERED (owner, 2026-08-02):** HR Leave is the base; fleet adds only the daily operational overlay | `fleet.availability.useHrLeave` default **true**; overlay = `fleet_driver_unavailability` |
+| Q2 | ~~Driver profile split~~ **ANSWERED:** profile is an extension of the HR employee, no personal-data duplication | as designed (FR-11) |
 | Q3 | Confirm OPS boundary: Fleet owns (vehicle, drivers, mission type)/day; OPS owns execution | designed as stated (§9.4) |
-| Q4 | Was assignable-fleet = `المهندسين` a rule or circumstance? | data scope replaces it either way |
+| Q4 | ~~`المهندسين` hardcode~~ **ANSWERED:** data scopes only | as designed (§4.5) |
 | Q5 | Driver violation → payroll deduction, or record only? | record + event only; Payroll subscribes later |
 | Q6 | Disposal reasons (sold/scrapped/…)? Branch transfer: does the code change? | `disposed` + free reason; code immutable pending answer |
 | Q7 | `licens` example values | free string `licenseClass` until then |
 | Q8 | Odometer corrections: who, and with approval? | `fleetOdometer.correct` permission, audited, no approval chain yet |
 | Q9 | Exact semantics of accident `companyCost`/`amountCollected`/`paid` formula | stored typed, no derived math until defined |
 | Q10 | driver2 = codriver/guard or mid-day handover? | second slot, no handover semantics |
-| Q11 | Fuel (التفويل) — wanted? | out of scope v1 |
+| Q11 | ~~Fuel (التفويل)~~ **ANSWERED:** deferred to a later phase | out of scope v1 |
 | Q12 | Reference numbers for accidents/violations (sequences)? | none in v1 |
 | Q13 | Driver enrollment: who creates profiles, and bulk-import from current data? | `fleetDriver.manage`; import in FL-10 |
 | Q14 | Migration cutover: parallel run or hard switch? which collections' history matters most? | FL-10 plans after answer |
@@ -454,3 +454,4 @@ The ten questions from revision 0.1 are carried into §13 (renumbered) — none 
 |---|---|
 | 2026-08-02 | 0.1 — legacy extraction, entity sketch, page plan, 10 owner questions (draft) |
 | 2026-08-02 | **1.0 — FROZEN.** Full design per the owner's instruction: field-level entities on platform conventions, relationships, lifecycles, 14 business rules, states, per-screen permissions, validations embedded in §2/§4/§5, 16-event automation surface, integration boundaries (HR/OPS/Accounting/platform), 15 pieces of hidden view/JS logic with their fates (incl. the misspelled-department roster bug H5 and the fake-date violation bug H8, neither carried), 10 slices FL-1…FL-10. Open questions narrowed to defaults/labels (§13); structure closed. |
+| 2026-08-02 | 1.1 — owner approval + Q1/Q2/Q4/Q11 answered (leave-based availability with operational overlay; profile as HR-employee extension; data scopes only; fuel deferred). Owner's seven implementation principles recorded — all already embodied by the frozen structure: no legacy workarounds, derived-not-stored, backend-only rules, settings/catalogs over hardcodes, domain events everywhere, event/service integration without coupling, full platform conventions. FL-1 (contracts) started on this basis. |

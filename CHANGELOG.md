@@ -29,7 +29,7 @@ its entry here in the same PR.
   returns reason codes — `too_small`, `blurred`, `glare`, `low_contrast`, `card_not_located` — so the
   UI can say what to change instead of "could not read the card". It does not discard the read:
   fields still come back, with the capture's verdict capping their confidence. A blurred crop can
-  make recognition *more* confident, not less, so the photograph gets the final word and only ever
+  make recognition _more_ confident, not less, so the photograph gets the final word and only ever
   downward.
 
   Field boxes are no longer trusted blindly. Detection runs once per side and each box is snapped
@@ -65,6 +65,29 @@ its entry here in the same PR.
   awaiting measurement against real cards.
 
 ### Added
+
+- **The Fleet module's contract surface exists (FL-1), built from a frozen design extracted out
+  of the legacy fleet system.** `packages/contracts/src/modules/fleet.ts` declares, at field
+  level, everything the module will be: vehicles and their types (the per-type maintenance
+  interval lives on the type), driver profiles as fleet-owned extensions of HR employees, driver
+  unavailability, the odometer log, maintenance visits, the daily duty roster, accidents,
+  two-shape violations with a once-per-(vehicle, year) grievance, and six catalogs. The schemas
+  encode the design's load-bearing rules where they cannot be forgotten: odometer recording
+  accepts one reading and no derived fields (km and the closing reading are server-derived),
+  vehicle violations carry no client-supplied amount (count × unit value is computed), a roster
+  plan refuses a driver holding two assignments in one day, and leaving active service requires a
+  reason.
+
+  All 22 `fleet.*` events are catalogued with v1 payloads and bilingual labels — visible to the
+  Automation Engine's trigger picker from day one — and declared **`planned`**, the lifecycle
+  state for a declared-but-unpublished event; the publisher test promotes each to `stable` only
+  when its real emit site lands in FL-2…FL-6, so the catalogue cannot claim an event nobody
+  fires. Settings keys (alarm thresholds, leave-integration toggle, license-warning windows) and
+  notification template keys ship alongside, so nothing threshold-like is ever hardcoded. The
+  design itself — entities, lifecycles, 14 business rules, permissions per screen, the hidden
+  view-logic inventory from the legacy system, and the two legacy bugs deliberately not carried —
+  is frozen in
+  [`docs/12-planning/fleet-module-design.md`](docs/12-planning/fleet-module-design.md).
 
 - **The first three automation workflows exist as data — account activation follow-up, password
   reset follow-up, and job-offer onboarding (A-9a).** Each is an `AutomationTemplatePackage`
@@ -118,7 +141,6 @@ its entry here in the same PR.
   Accuracy against real Egyptian cards is **not yet measured**; the measurement harness and its
   documented process ship alongside in `spikes/national-id-ocr/`.
 
-
 - **Recruitment: filter bars on every stage queue that was missing one.** The per-stage interview
   pages (First Interview, Second Interview, …), the per-phase evaluation pages (Security Check,
   Driving Test, Medical Examination, …) and Employees Ready now filter like the rest of the module:
@@ -140,7 +162,7 @@ its entry here in the same PR.
   offers a control for one.
 
   Branch and interviewer come from two new shared controls rather than three copies each, and both
-  render *nothing* when the caller lacks the permission that reads their catalog (`branch.view`,
+  render _nothing_ when the caller lacks the permission that reads their catalog (`branch.view`,
   `user.view`) — an empty dropdown would filter nothing while implying access nobody granted. The
   user picker is the one the offer form already used, generalized: `ManagerPicker` is now that
   control with the offer form's wording.
@@ -174,7 +196,7 @@ its entry here in the same PR.
 
 - **A deep link to page 2 of any searchable list bounced back to page 1.** `SearchInput`'s debounce
   effect listed `onChange` in its dependencies, and every caller passes an inline closure — so the
-  effect re-ran on each parent render and re-emitted the *unchanged* search term. On a list whose
+  effect re-ran on each parent render and re-emitted the _unchanged_ search term. On a list whose
   filter handler resets paging (the correct behaviour when a filter really changes), that discarded
   the page the user had linked to or refreshed on. The effect now emits only when the text differs
   from the value it was given, which also stops "clear filters" echoing back a change of its own.
@@ -257,7 +279,7 @@ gaps**. This release accumulates every change merged since v0.23.0; the Recruitm
   an attempt a return-to-stage had retired. `BaseRepository` gains two generic hooks,
   `writeConditions()` and `assertWritable()`; the four stage repositories narrow them to the live
   set. The condition rides inside the same atomic `findOneAndUpdate` as the write, so a return
-  landing mid-request cannot be overtaken, and the refusal says *why* (422, "superseded by a return
+  landing mid-request cannot be overtaken, and the refusal says _why_ (422, "superseded by a return
   to an earlier stage") rather than reporting a version conflict a retry could never resolve. Two
   writers still reach a retired row, both named by I1 itself: the supersede marker, and the
   denormalized branch scope a reassignment syncs across a candidate's whole history.
@@ -301,8 +323,8 @@ gaps**. This release accumulates every change merged since v0.23.0; the Recruitm
   obvious PARTIAL index over `{ supersededAt: null, isDeleted: false }` does not work and fails
   silently — MongoDB will not use a partial index for a `null`-equality predicate, because
   `$eq: null` also matches missing fields, so the plan is never generated and the query
-  collection-scans exactly as before. And for the same reason the scan is index-*served* but not
-  index-*only*: an index entry cannot tell a stored `null` from an absent field, so each matching
+  collection-scans exactly as before. And for the same reason the scan is index-_served_ but not
+  index-_only_: an index entry cannot tell a stored `null` from an absent field, so each matching
   document is still read. Both claims sound alike and only one is true.
   The same suite benchmarks the shipped counters shape (N grouped aggregations in parallel)
   against a single `$unionWith` pipeline, asserts both return identical numbers, and fails if the
@@ -336,7 +358,7 @@ gaps**. This release accumulates every change merged since v0.23.0; the Recruitm
 
 - **Recruitment: `timeline.produced` could never resolve.** The envelope's "what did this action
   write?" half joined the workflow event ids the engine reported against the timeline's `eventId`
-  column — but the projection minted a *fresh* id for the entry, so the two never matched and the
+  column — but the projection minted a _fresh_ id for the entry, so the two never matched and the
   slice would have shipped permanently empty. A projected entry now takes its event's id, which is
   also what makes the join idempotent across a redelivery, and entries written outside the engine
   report themselves at write time. Found before the contract had a single consumer.
@@ -427,7 +449,7 @@ gaps**. This release accumulates every change merged since v0.23.0; the Recruitm
   candidate whose round does not exist yet and "start" for one already scheduled; the
   server stamps who started it and when, and the screens render those moments on the
   Africa/Cairo business calendar rather than the viewer's timezone. **Placement
-  recommendations** (RW5) can finally be *recorded* — previously only displayed and
+  recommendations** (RW5) can finally be _recorded_ — previously only displayed and
   applied — on both interviews and evaluation phases, including clearing one. **Employees
   Ready** appears in the navigation with its live counter and filters server-side, so its
   pagination and its badge agree. **Bulk complete** arrives for Hiring Documents (new
@@ -515,7 +537,7 @@ gaps**. This release accumulates every change merged since v0.23.0; the Recruitm
   Revision 2 — D1–D12, A1–A22, Q1–Q3; architecture:
   `docs/02-architecture/contracts-module.md`).** First-class HR module:
   - **Templates** — admin-owned, ONE document per version in an append-only recoverable
-    chain (A19): drafts edit in place, editing a *published* version forks the next
+    chain (A19): drafts edit in place, editing a _published_ version forks the next
     draft, and only **published** versions generate (A17, one published per key). Rich
     sections (header/body/footer) pass an allow-list sanitizer on every save (A11 — no
     active content survives), placeholders are validated against the server-owned
@@ -604,7 +626,7 @@ gaps**. This release accumulates every change merged since v0.23.0; the Recruitm
   Sent / Activated / Expired / Locked) plus a full **Account panel** on the employee page
   (invitation sent/expires, activated at, last login, password last changed, MFA state,
   per-channel delivery outcomes); disabling an account, deleting it, or an **employee
-  exit** revokes any pending setup link *and every session* in the same operation (the
+  exit** revokes any pending setup link _and every session_ in the same operation (the
   status machine now allows suspending a never-activated login); an **hourly sweep**
   revokes expired links; the whole invitation lifecycle is audited (`invitationCreated` /
   `invitationResent` / `invitationExpired` / `invitationUsed` / `invitationAttemptInvalid`
@@ -629,30 +651,30 @@ gaps**. This release accumulates every change merged since v0.23.0; the Recruitm
 ### Fixed
 
 - **Upgrade compatibility + field-test fixes (post-Leave-merge QA round).**
-  - *Sidebar*: the navigation catalog now syncs at every api boot (`syncNavigationCatalog`),
+  - _Sidebar_: the navigation catalog now syncs at every api boot (`syncNavigationCatalog`),
     so installs upgraded from older releases receive newly shipped applications (e.g. `/leave`)
     and super-admins are granted them automatically — previously the catalog only seeded on
     fresh installs.
-  - *Permissions*: `syncPermissionRegistry` invalidates super-admin/platform-admin holders'
+  - _Permissions_: `syncPermissionRegistry` invalidates super-admin/platform-admin holders'
     cached permission snapshots when the catalog changes — new-module permissions apply
     immediately after deploy instead of 403ing until cache expiry.
-  - *Applicants list 500*: documents created by earlier releases lack later-added fields and
+  - _Applicants list 500_: documents created by earlier releases lack later-added fields and
     `.lean()` reads skip schema defaults (`undefined.toISOString()` crashed the list). The
     applicant mapper is now total over legacy shapes and a boot migration
     (`migrateRecruitmentLegacy`) backfills the stored documents.
-  - *Person names in tables*: Screening/Interview/Evaluation/Job-Offer rows now denormalize
+  - _Person names in tables_: Screening/Interview/Evaluation/Job-Offer rows now denormalize
     `applicantName` (backfilled for existing rows); queue tables, the workflow board and the
     awaiting panels show the display name next to the code, and job-offer search matches it.
-  - *Leave error reporting*: leave tables no longer mask API failures behind a generic
+  - _Leave error reporting_: leave tables no longer mask API failures behind a generic
     message — the real error (permission, validation, server) surfaces in the error state.
-  - *Reference lookups*: dropdown queries requested `pageSize: 200` against the API's
+  - _Reference lookups_: dropdown queries requested `pageSize: 200` against the API's
     `MAX_PAGE_SIZE = 100` and silently degraded to empty lists — the Department picker on the
     Section form (and four sibling lookups) now work.
-  - *Numeric org-unit codes*: `01`-style codes are accepted (min length 1), Arabic-Indic
+  - _Numeric org-unit codes_: `01`-style codes are accepted (min length 1), Arabic-Indic
     digits are folded to ASCII in the code input, and the hint copy no longer implies letters
     are required.
-  - *i18n*: added the missing `employees.tabs.leave` label (en + ar).
-  - *Job Titles vs Job Positions*: kept as two entities (WHAT vs WHERE — see
+  - _i18n_: added the missing `employees.tabs.leave` label (en + ar).
+  - _Job Titles vs Job Positions_: kept as two entities (WHAT vs WHERE — see
     `docs/02-architecture/organization-structure.md` §2); both pages now state the
     distinction explicitly in both languages.
 
@@ -684,10 +706,10 @@ gaps**. This release accumulates every change merged since v0.23.0; the Recruitm
   The employee becomes the post-hire system of record, moved out of Recruitment into
   `modules/hr/employee-management` (URLs and permission keys unchanged).
   - **Probation-first lifecycle.** Statuses are now `probation → active ⇄ onLeave ⇄ suspended →
-    exited`; every new hire starts in probation (0 months ⇒ straight to active) with explicit
+exited`; every new hire starts in probation (0 months ⇒ straight to active) with explicit
     confirm / extend / fail decisions and a scheduler reminder before the deadline. `exited` is the
-    single terminal status — the exit *type* (`resignation | termination | endOfContract |
-    retirement | death`), reason, effective date and an explicit **rehire-eligibility** decision are
+    single terminal status — the exit _type_ (`resignation | termination | endOfContract |
+retirement | death`), reason, effective date and an explicit **rehire-eligibility** decision are
     data on the exit record. Returning from suspension/leave lands on the BASE status (probation if
     never confirmed). The legacy `terminated` status is migrated to `exited` at boot.
   - **Personnel Actions engine** (`hr_employee_actions`) — the only writer of employment facts.
@@ -695,11 +717,11 @@ gaps**. This release accumulates every change merged since v0.23.0; the Recruitm
     `scheduled` and applied by a scheduler task in date order, with org referents re-validated at
     application time — failures are recorded + notified, never silent), cancellable while scheduled.
     Permission-grouped endpoints: `POST /hr/employees/:id/actions/{employment|compensation|exit|rehire}`
-    + cancel + list. The old `PATCH /:id/status` remains one release as a thin alias (exits refused
-    there). Propagation: a branch transfer recomputes the employee code and syncs the **linked user's
-    placement** and the Employee File's code/branch; an exit **auto-suspends the login**, settles
-    direct reports (bulk reassign or explicit unassigned) and closes the employment period;
-    self-actions are always rejected.
+    - cancel + list. The old `PATCH /:id/status` remains one release as a thin alias (exits refused
+      there). Propagation: a branch transfer recomputes the employee code and syncs the **linked user's
+      placement** and the Employee File's code/branch; an exit **auto-suspends the login**, settles
+      direct reports (bulk reassign or explicit unassigned) and closes the employment period;
+      self-actions are always rejected.
   - **Owned personal data.** The applicant's personal data is copied ONCE at hire (raw national id,
     masked in DTOs) and maintained on the employee via audited `PATCH /:id/personal` edits — the
     applicant record stays immutable pre-hire history.
@@ -707,7 +729,7 @@ gaps**. This release accumulates every change merged since v0.23.0; the Recruitm
     existing workforce or walk-in hires without a pipeline (recruitment references null), with the
     shared national-id OCR and duplicate guards against employees AND live applicants.
   - **Rehire on the SAME employee number** — reopens a new employment period (same number, same
-    Electronic File; a new completed hiring case *supplements* the existing file). Terms come from an
+    Electronic File; a new completed hiring case _supplements_ the existing file). Terms come from an
     accepted offer or direct entry; rehiring someone marked not-eligible needs the dedicated
     **`employee.rehireOverride`** permission. Hiring a returning person through recruitment or direct
     registration is refused and routed to Rehire (one person = one employee, forever).
@@ -720,7 +742,7 @@ gaps**. This release accumulates every change merged since v0.23.0; the Recruitm
     form with a live rehire-match check, and a composed timeline (recruitment milestones + personnel
     actions + audited personal edits). `/employee-files` moves alongside unchanged.
   - New permissions: `employee.{registerDirect, editPersonal, manageActions, manageCompensation,
-    viewCompensation, exit, rehire, rehireOverride, viewSensitive}`; new events
+viewCompensation, exit, rehire, rehireOverride, viewSensitive}`; new events
     `hr.employee.{actionApplied, transferred, exited, rehired}`; five notification templates; boot
     migration is idempotent (origin backfill, employment periods, personal copy, synthesized hire
     actions, frozen legacy status trail). Hiring-documents / employee-file applicant references are
@@ -728,11 +750,11 @@ gaps**. This release accumulates every change merged since v0.23.0; the Recruitm
 
 - **HR — Recruitment workflow completion (follow-up to the workflow redesign).**
   - **Interview Phases (Kanban) view.** `/interviews` gains a **List ⇄ Phases toggle** (URL-persisted).
-    The board's columns are *Waiting for Scheduling → each active interview stage → each active
-    evaluation phase → Job Offer*, composed from the existing per-stage endpoints; cards show the
+    The board's columns are _Waiting for Scheduling → each active interview stage → each active
+    evaluation phase → Job Offer_, composed from the existing per-stage endpoints; cards show the
     Application Number only. Waiting + interview columns support **multi-selection** with **bulk
-    actions**: *Schedule interviews* for all selected at once (one stage + time; every row still goes
-    through the normal endpoint so all workflow rules apply) and *Move to Job Offer*.
+    actions**: _Schedule interviews_ for all selected at once (one stage + time; every row still goes
+    through the normal endpoint so all workflow rules apply) and _Move to Job Offer_.
   - **Stage & phase management UIs.** New settings screens — `/interviews/stages`
     (`interviewStage.manage`) and `/evaluations/phases` (`evaluationPhase.manage`) — to add a 3rd/4th
     interview round or a new evaluation phase, rename, reorder (order number), toggle drivers-only,
@@ -761,7 +783,7 @@ gaps**. This release accumulates every change merged since v0.23.0; the Recruitm
     (+ `/hr/evaluation-phases`), gated by `evaluation.view` / `evaluation.manage` /
     `evaluationPhase.manage`; every mutation audited and `hr.evaluation.decided` published. A new web
     **Evaluations** module (queue + detail: open, upload files, decide) is wired into the navigation.
-  - **Job Offer is hard-gated** until the applicant has cleared **all required interviews *and* all
+  - **Job Offer is hard-gated** until the applicant has cleared **all required interviews _and_ all
     required evaluation phases** (driver-only phases gate only when opened).
   - **Rejection is not final (fully audited).** HR can **edit the decision** of any stage — Screening
     (`PATCH /hr/screenings/:id/decision`), Interviews (`PATCH /hr/interviews/:id/decision`), and
@@ -825,7 +847,7 @@ gaps**. This release accumulates every change merged since v0.23.0; the Recruitm
     **Edit**, **Activate/Deactivate** and **Delete** (soft, guarded against branches that still have
     departments). The **Branch Code** stays immutable after creation and is editable **only by a
     super-admin** through a dedicated correction dialog (`isPrivileged`, `PATCH
-    /platform/branches/:id/code`, ADR-017).
+/platform/branches/:id/code`, ADR-017).
   - **Duplicate protection.** Branch **names** join branch **codes** as unique (case-insensitive, ar
     or en); a collision surfaces as a `409` conflict. `GET /platform/auth/me` now returns
     `isPrivileged` so the web can gate the super-admin-only Branch-Code action. No new backend
@@ -850,15 +872,15 @@ gaps**. This release accumulates every change merged since v0.23.0; the Recruitm
 
 - **ADR-017** — Platform Identity & Organizational Access Control.
 - **`docs/02-architecture/platform-identity.md`** — the Phase-2 design.
-- **`docs/02-architecture/organization-structure.md` §6** — *Organization vs Navigation: two
-  independent hierarchies.* Records that the Company → Branch → Department → Section (→ Job Position/
+- **`docs/02-architecture/organization-structure.md` §6** — _Organization vs Navigation: two
+  independent hierarchies._ Records that the Company → Branch → Department → Section (→ Job Position/
   Employee) hierarchy governs **data scope, HR, reporting and approvals only** and **does NOT
   generate the sidebar**; that Departments are a **platform-wide** concept (never HR-only); and that
   the **Sidebar is generated from the Applications (Modules) assigned to the user** — a separate,
-  deferred track keyed off *Applications × Roles*, with the org tree supplying data scope only. The
+  deferred track keyed off _Applications × Roles_, with the org tree supplying data scope only. The
   Organization module stays free of any navigation logic (verified in the current code).
-- **`docs/02-architecture/organization-structure.md` §7** — *Access & Applications model (locked; not
-  implemented).* Locks three forward rules so Organization Management does not foreclose them:
+- **`docs/02-architecture/organization-structure.md` §7** — _Access & Applications model (locked; not
+  implemented)._ Locks three forward rules so Organization Management does not foreclose them:
   **Applications ↔ Departments is many-to-many** (Departments consume Applications; an Application
   serves many Departments); a user's Applications are **derived** via **User → Job Position →
   Department → Applications → Roles** (with an optional direct user assignment kept possible as an
@@ -955,7 +977,7 @@ existing Applicants intake.
 
 - **Reusable National-ID OCR flow (`apps/web/src/shared/national-id/`).** A module-agnostic
   capture → review flow, reusable by Employees / KYC / any future module by injecting an
-  *extractor* (no HR coupling): `NationalIdOcr` (two upload areas — **front + back** — read
+  _extractor_ (no HR coupling): `NationalIdOcr` (two upload areas — **front + back** — read
   together in one extraction pass), a **dedicated `NationalIdReviewDialog`** showing **every**
   extracted field editable (birth date / gender / governorate derived live from the number and
   read-only), plus pure `mapping` + `transliterate` helpers and typed `NationalIdReviewData` /
@@ -971,7 +993,7 @@ existing Applicants intake.
   requisition is supplied it is still validated (malformed ids rejected), and the reference can be
   attached later when the Job Requests module lands.
 - **National-ID capture flow.** Upload front → upload back → **Extract** → the dedicated review
-  dialog → edit → **Confirm** → *only then* the Applicant form is populated. Birth date / gender /
+  dialog → edit → **Confirm** → _only then_ the Applicant form is populated. Birth date / gender /
   governorate are **derived** from the number (`parseNationalId`), never OCR'd; the English name is
   seeded by transliterating the Arabic name (editable). Replaces the single-image OCR assist.
 
@@ -1079,11 +1101,11 @@ Offer reference infrastructure). **Employees only** — no later stage.
     date. The server enforces the full rule (accepted + snapshot + not already hired). The create
     write seeds the detail cache and invalidates only the list subtree.
   - **Detail** (`employee.view`) — the employee number, status, preserved references (applicant link
-    + accepted-offer link with its revision), and the copied **employment terms** read-out. The
-    employment view **reuses the Job Offer `UserName` + reference hooks** so org/manager names resolve
-    from the same cache. `ar` + `en` i18n. The employee record is **read-only in this stage** — no
-    lifecycle mutation is exposed (statuses exist in the DTO but transitions belong to a future
-    Employee module).
+    - accepted-offer link with its revision), and the copied **employment terms** read-out. The
+      employment view **reuses the Job Offer `UserName` + reference hooks** so org/manager names resolve
+      from the same cache. `ar` + `en` i18n. The employee record is **read-only in this stage** — no
+      lifecycle mutation is exposed (statuses exist in the DTO but transitions belong to a future
+      Employee module).
 
 ### Changed
 
@@ -1333,8 +1355,8 @@ findings, no Critical/High — all documented, no in-PR code change required).
 - **BD-008 — Hiring transforms Applicant to Employee; no separate Onboarding stage.** Recorded in
   the [Business Decisions log](docs/01-domain/business-decisions.md#bd-008--hiring-transforms-applicant-to-employee-no-separate-onboarding-stage):
   the recruitment workflow stands at **seven stages** (no eighth "Onboarding" stage), and the
-  post-hire employee lifecycle belongs to the future Employee module. Added the *Electronic
-  Employee File* entry to the [Ubiquitous Language](docs/01-domain/ubiquitous-language.md).
+  post-hire employee lifecycle belongs to the future Employee module. Added the _Electronic
+  Employee File_ entry to the [Ubiquitous Language](docs/01-domain/ubiquitous-language.md).
 
 ### Notes
 

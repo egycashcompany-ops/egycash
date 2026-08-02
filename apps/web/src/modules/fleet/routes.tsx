@@ -23,6 +23,9 @@ import { AppShell } from '../../platform/layout/AppShell';
 import { FleetDashboardPage } from './pages/FleetDashboardPage';
 import { VehiclesListPage } from './pages/VehiclesListPage';
 import { VehicleDetailPage } from './pages/VehicleDetailPage';
+import { DriversListPage } from './pages/DriversListPage';
+import { DriverProfilePage } from './pages/DriverProfilePage';
+import { AttendancePage } from './pages/AttendancePage';
 
 export default function FleetRoutes(): JSX.Element {
   return (
@@ -42,6 +45,30 @@ export default function FleetRoutes(): JSX.Element {
           element={
             <RequirePermission permission="fleetVehicle.view">
               <VehicleDetailPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="drivers"
+          element={
+            <RequirePermission permission="fleetDriver.view">
+              <DriversListPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="drivers/:id"
+          element={
+            <RequirePermission permission="fleetDriver.view">
+              <DriverProfilePage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="attendance"
+          element={
+            <RequirePermission permission="fleetAvailability.view">
+              <AttendancePage />
             </RequirePermission>
           }
         />

@@ -107,7 +107,20 @@ its entry here in the same PR.
   remaining or overdue kilometres, and the last closed workshop visit with its counter. Edit
   and status changes reuse the list's dialogs against the freshly loaded document, so every
   write stays version-checked. History links to the odometer, maintenance, accident, violation,
-  and roster screens are wired behind per-slice flags and appear as each of those pages ships.
+  and roster screens are wired behind per-slice flags and appear as each of those pages ships —
+  fully hidden until then, never disabled, which the owner confirmed as the ECMS-wide standard.
+
+  Drivers and attendance followed (FW-5). The drivers list shows the fleet-owned profiles over
+  HR employees with names resolved through the shared HR cache — one EmployeeName component
+  that degrades honestly to the raw id for callers without directory access — plus license
+  search, specialization and active filters, and expired licenses in red. The driver profile
+  gathers the fleet facts, links into the real HR employee profile for those who may open it,
+  and carries the driver's own operational-unavailability timeline with record, edit, and
+  cancel in place — recording there skips the employee picker because the driver is already
+  known. The attendance screen lists the whole overlay (covering-date filter, sortable spans)
+  and records through a directory search picker; edits and cancellations stay version-aware,
+  and the cancel confirm says what it means: the driver becomes assignable again, the history
+  stays in the audit log.
 
 - **Accidents, violations, and grievances complete the Fleet backend (FL-6) — every fleet
   event is now stable.** Accidents keep the legacy's freedom with none of its looseness: a file

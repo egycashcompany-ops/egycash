@@ -6,7 +6,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   type ChangeFleetVehicleStatus,
+  type CreateFleetDriverProfile,
+  type CreateFleetUnavailability,
   type CreateFleetVehicle,
+  type UpdateFleetDriverProfile,
+  type UpdateFleetUnavailability,
   type UpdateFleetVehicle,
 } from '@ecms/contracts';
 import { detailKey, featureKey, listKey } from '../../../shared/lib/query-keys';
@@ -89,6 +93,55 @@ export const useFleetCatalog = (kind: string) =>
   });
 
 // ── Drivers + availability ──────────────────────────────────────────────────
+// Driver-profile writes invalidate the drivers subtree; availability writes invalidate the
+// availability subtree — the roster/board consumers re-derive from the server when they land.
+export const useCreateDriverProfile = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateFleetDriverProfile) => api.createDriverProfile(body),
+    onSuccess: (doc) => {
+      qc.setQueryData(detailKey(MODULE, 'drivers', doc.id), doc);
+      void qc.invalidateQueries({ queryKey: fleetKeys.drivers });
+    },
+  });
+};
+
+export const useUpdateDriverProfile = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: UpdateFleetDriverProfile }) =>
+      api.updateDriverProfile(id, body),
+    onSuccess: (doc) => {
+      qc.setQueryData(detailKey(MODULE, 'drivers', doc.id), doc);
+      void qc.invalidateQueries({ queryKey: fleetKeys.drivers });
+    },
+  });
+};
+
+export const useRecordUnavailability = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateFleetUnavailability) => api.recordUnavailability(body),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: fleetKeys.availability }),
+  });
+};
+
+export const useUpdateUnavailability = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: UpdateFleetUnavailability }) =>
+      api.updateUnavailability(id, body),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: fleetKeys.availability }),
+  });
+};
+
+export const useCancelUnavailability = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.cancelUnavailability(id),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: fleetKeys.availability }),
+  });
+};
 export const useDrivers = (params: FleetListParams) =>
   useQuery({
     queryKey: listKey(MODULE, 'drivers', params),
@@ -103,11 +156,12 @@ export const useDriver = (id: string) =>
     enabled: id !== '',
   });
 
-export const useUnavailability = (params: FleetListParams) =>
+export const useUnavailability = (params: FleetListParams, enabled = true) =>
   useQuery({
     queryKey: listKey(MODULE, 'availability', params),
     queryFn: () => api.listUnavailability(params),
     placeholderData: (prev) => prev,
+    enabled,
   });
 
 // ── Odometer + maintenance ──────────────────────────────────────────────────

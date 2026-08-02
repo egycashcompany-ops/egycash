@@ -66,6 +66,8 @@ const CATALOG: CategoryDef[] = [
     apps: [
       { en: 'Fleet Home', ar: 'الرئيسية', route: '/fleet', icon: 'home' },
       { en: 'Vehicles', ar: 'السيارات', route: '/fleet/vehicles', icon: 'truck' },
+      { en: 'Drivers', ar: 'السائقون', route: '/fleet/drivers', icon: 'users' },
+      { en: 'Attendance', ar: 'التمامات', route: '/fleet/attendance', icon: 'calendar' },
     ],
   },
   {

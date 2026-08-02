@@ -437,10 +437,12 @@ FW-3 vehicles list · FW-4 vehicle details · FW-5 drivers + profiles + attendan
 FW-10 catalogs + settings + final integration. No mock data anywhere: every page reads the
 FL-2…FL-6 APIs only.
 
-**Navigation rule (owner, FW-1 review):** no placeholder surface is ever reachable by an end
-user. A screen joins the sidebar catalog AND the route table in the same slice that ships it;
-until then its URL falls through to the standard 404. Each FW slice appends its rows to the nav
-seed (the boot sync is additive).
+**Navigation rule (owner, FW-1 review; confirmed after FW-4 as the ECMS-wide standard):** no
+placeholder surface is ever reachable by an end user, and nothing unshipped is ever VISIBLE —
+links/menus/actions to unfinished screens are fully hidden (never rendered disabled) and appear
+automatically the moment their slice ships. A screen joins the sidebar catalog AND the route
+table in the same slice that ships it; until then its URL falls through to the standard 404.
+Each FW slice appends its rows to the nav seed (the boot sync is additive).
 
 | Slice | Delivers | Status |
 |---|---|---|
@@ -448,7 +450,8 @@ seed (the boot sync is additive).
 | **FW-2** | Dashboard at `/fleet`: live KPIs (active vehicles, in-workshop, alarms, open accidents) + alarm board + expiring licenses | ✅ |
 | **FW-3** | Vehicles list: URL-synced search/filters/sort/pagination + create/edit + §4.1 status dialog + delete, fully permission-gated | ✅ |
 | **FW-4** | Vehicle profile: identity/type/license/placement/audit cards + 4 live indicators (workshop, last reading, alarm, last service) + reused edit/status dialogs; explicit View action in the list (owner decision: no row-click) | ✅ |
-| FW-5…FW-10 | The pages, in the order above | pending owner approval per slice |
+| **FW-5** | Drivers list + driver profile (fleet facts + HR link + per-driver التمامات) + attendance screen with record/edit/cancel | ✅ |
+| FW-6…FW-10 | The pages, in the order above | pending owner approval per slice |
 
 ## 13. Open Questions
 
@@ -491,3 +494,4 @@ The ten questions from revision 0.1 are carried into §13 (renumbered) — none 
 | 2026-08-02 | 1.8 — FW-1 revised per owner review + FW-2 delivered. Review rule recorded in §12: NO placeholder is ever user-reachable — the nav seed now carries only shipped pages (Fleet Home after this revision) and each slice appends its rows; the planned-state page was deleted outright, unshipped URLs fall to the standard 404, and the IA + §7 permission map lives as a comment in the route module. FW-2: `/fleet` is a live dashboard — four KPIs (active vehicles, in-workshop via open visits, derived alarms with red count, open accidents) and two boards (maintenance alarms in triage order red-first/most-overdue-first; licenses expiring within 60 days, expired flagged) — every number a server fact through the FL-2…FL-6 APIs, each card gated by its own §7 permission so queries never fire for cards the user cannot see. |
 | 2026-08-02 | 1.9 — FW-3 delivered: the vehicles registry screen, in the HR list-page idiom exactly. URL-synchronized state (search over the four FR-1 identifiers server-side, status/type/branch filters, sortable code/license columns, pagination) — deep-linkable and back/forward-aware; the branch filter reuses the platform's `BranchFilterSelect` (renders only with `branch.view`). The DERIVED `inWorkshop` pill renders beside the §4.1 status badge, expired licenses show red in place. Create/edit share one dialog (cleared optional fields submit as null — an erased fact, not an untouched one); the status dialog offers only the transitions §4.1 allows, requires the reason whenever the vehicle leaves active, and spells out that disposal is terminal (edit/status actions are hidden for disposed rows); delete confirms with the audit-trail note. Every action behind its own §7 permission; rows do not navigate yet — the profile ships in FW-4 and adds the link then (navigation rule). Vehicles row added to the nav seed. |
 | 2026-08-02 | 1.10 — FW-4 delivered + owner UI decision recorded: NO whole-row navigation anywhere in the module — an explicit View action in the actions column instead (avoids accidental navigation, matches the other modules, leaves row selection free). The vehicle profile at `/fleet/vehicles/:id` (legacy `one_car`): identity + radio card, type/license/placement/audit card (the type's §2.2 interval shown from the catalog, expired license flagged in place, branch name resolved only under `branch.view`), the §4.1 status strip with its reason, and four live indicators each gating its own §7 permission — in-workshop (derived), the server's expected next reading (H2), the FR-3 alarm with remaining/overdue km, and the last CLOSED visit with its counter. Edit/status reuse the FW-3 dialogs against the freshly loaded document (version-aware); both hidden for a disposed vehicle. The five history links (odometer, maintenance, accidents, violations, roster) are wired to pre-filtered URLs behind a per-slice shipped flag — hidden until each target ships, per the navigation rule. |
+| 2026-08-02 | 1.11 — FW-5 delivered; hide-don't-disable confirmed by the owner as the ECMS-wide navigation standard. Drivers list (legacy `/drivers`): URL-synced license search + specialization/active filters, names resolved through the SHARED HR employees detail cache (one `EmployeeName` component; without `employee.view` it degrades honestly to the raw id), sortable expiry with expired-in-red, View/Edit actions per §7. Driver profile: the fleet-owned facts (FR-11) + a link INTO the shipped HR employee profile under `employee.view` + the driver's own التمامات timeline with record/edit/cancel in place — recording from the profile skips the employee picker because the driver is known. Attendance (legacy `/fleet_attendance`): the operational overlay as a URL-synced list (covers-date filter, sortable from/to), record through the directory picker (`EmployeeSearchPicker`, the ContractCreatePage idiom; degrades with a clear hint without `employee.view`), edit/cancel version-aware behind `fleetAvailability.edit` with the cancel confirm noting the audit trail. Drivers + Attendance rows joined the nav seed. Zero backend changes. |

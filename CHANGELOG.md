@@ -95,8 +95,19 @@ its entry here in the same PR.
   fact, not an untouched one; the status dialog offers only the transitions the lifecycle
   allows, demands a reason whenever a vehicle leaves active service, and says plainly that
   disposal cannot be undone; deletion confirms with the audit-trail note. Every action stands
-  behind its own permission, and rows don't navigate yet — the vehicle profile arrives in FW-4
-  and brings the link with it.
+  behind its own permission.
+
+  The vehicle profile (FW-4) completes the pair — reached through an explicit View action in
+  the list's actions column, never by clicking the row (the owner's module-wide rule: no
+  accidental navigation, and row selection stays free for later). The profile shows the whole
+  car as live server facts: identity and radio, the type with its maintenance interval from the
+  catalog, license with expiry flagged in place, placement, audit timestamps, the lifecycle
+  status with its reason, and four indicators each gating its own permission — the derived
+  workshop flag, the server's expected next odometer reading, the maintenance alarm with
+  remaining or overdue kilometres, and the last closed workshop visit with its counter. Edit
+  and status changes reuse the list's dialogs against the freshly loaded document, so every
+  write stays version-checked. History links to the odometer, maintenance, accident, violation,
+  and roster screens are wired behind per-slice flags and appear as each of those pages ships.
 
 - **Accidents, violations, and grievances complete the Fleet backend (FL-6) — every fleet
   event is now stable.** Accidents keep the legacy's freedom with none of its looseness: a file

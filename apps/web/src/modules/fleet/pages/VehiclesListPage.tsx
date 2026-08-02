@@ -4,7 +4,7 @@
 // enforces it. Rows don't navigate yet: the vehicle profile ships in FW-4 and adds the link
 // then (owner rule: nothing unshipped is reachable).
 import { useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { type FleetVehicleDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
@@ -18,7 +18,7 @@ import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { Select } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { EditIcon, PlusIcon, TrashIcon, WrenchIcon } from '../../../shared/ui/icons';
+import { EditIcon, EyeIcon, PlusIcon, TrashIcon, WrenchIcon } from '../../../shared/ui/icons';
 import { formatDate, localized } from '../../../shared/lib/format';
 import { cn } from '../../../shared/lib/cn';
 import { BranchFilterSelect } from '../../hr/recruitment/shared/BranchFilterSelect';
@@ -33,6 +33,7 @@ export const VehiclesListPage = (): JSX.Element => {
   const t = useT();
   const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
+  const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
 
   const search = sp.get('q') ?? '';
@@ -144,55 +145,63 @@ export const VehiclesListPage = (): JSX.Element => {
         );
       },
     },
-    ...(can('fleetVehicle.edit') || can('fleetVehicle.changeStatus') || can('fleetVehicle.delete')
-      ? [
-          {
-            key: 'actions',
-            header: t('fleet.vehicles.columns.actions'),
-            align: 'end',
-            render: (v: FleetVehicleDto) => (
-              <span className="flex items-center justify-end gap-1">
-                {can('fleetVehicle.edit') && v.status !== 'disposed' && (
-                  <button
-                    type="button"
-                    className={actionButton}
-                    aria-label={t('fleet.vehicles.edit')}
-                    title={t('fleet.vehicles.edit')}
-                    onClick={() => {
-                      setEditing(v);
-                      setFormOpen(true);
-                    }}
-                  >
-                    <EditIcon className="h-4 w-4" />
-                  </button>
-                )}
-                {can('fleetVehicle.changeStatus') && v.status !== 'disposed' && (
-                  <button
-                    type="button"
-                    className={actionButton}
-                    aria-label={t('fleet.vehicles.changeStatus')}
-                    title={t('fleet.vehicles.changeStatus')}
-                    onClick={() => setStatusFor(v)}
-                  >
-                    <WrenchIcon className="h-4 w-4" />
-                  </button>
-                )}
-                {can('fleetVehicle.delete') && (
-                  <button
-                    type="button"
-                    className={actionButton}
-                    aria-label={t('common.delete')}
-                    title={t('common.delete')}
-                    onClick={() => setDeleting(v)}
-                  >
-                    <TrashIcon className="h-4 w-4" />
-                  </button>
-                )}
-              </span>
-            ),
-          } satisfies Column<FleetVehicleDto>,
-        ]
-      : []),
+    // Owner UI decision (FW-4): no whole-row navigation — an explicit View action instead. It
+    // avoids accidental navigation, matches the other ECMS modules, and leaves row selection
+    // free for later. The column always renders: View needs only the page's own permission.
+    {
+      key: 'actions',
+      header: t('fleet.vehicles.columns.actions'),
+      align: 'end',
+      render: (v) => (
+        <span className="flex items-center justify-end gap-1">
+          <button
+            type="button"
+            className={actionButton}
+            aria-label={t('fleet.vehicles.view')}
+            title={t('fleet.vehicles.view')}
+            onClick={() => navigate(v.id)}
+          >
+            <EyeIcon className="h-4 w-4" />
+          </button>
+          {can('fleetVehicle.edit') && v.status !== 'disposed' && (
+            <button
+              type="button"
+              className={actionButton}
+              aria-label={t('fleet.vehicles.edit')}
+              title={t('fleet.vehicles.edit')}
+              onClick={() => {
+                setEditing(v);
+                setFormOpen(true);
+              }}
+            >
+              <EditIcon className="h-4 w-4" />
+            </button>
+          )}
+          {can('fleetVehicle.changeStatus') && v.status !== 'disposed' && (
+            <button
+              type="button"
+              className={actionButton}
+              aria-label={t('fleet.vehicles.changeStatus')}
+              title={t('fleet.vehicles.changeStatus')}
+              onClick={() => setStatusFor(v)}
+            >
+              <WrenchIcon className="h-4 w-4" />
+            </button>
+          )}
+          {can('fleetVehicle.delete') && (
+            <button
+              type="button"
+              className={actionButton}
+              aria-label={t('common.delete')}
+              title={t('common.delete')}
+              onClick={() => setDeleting(v)}
+            >
+              <TrashIcon className="h-4 w-4" />
+            </button>
+          )}
+        </span>
+      ),
+    },
   ];
 
   return (

@@ -4,14 +4,14 @@
 // filter the backend already exposes. Cards gate their own §7 permission — a query never fires
 // for a card the user cannot see, and a user with no fleet permissions gets one honest empty
 // state instead of a wall of errors.
-import { useMemo, type ComponentType, type SVGProps } from 'react';
+import { useMemo } from 'react';
 import { useAppSelector } from '../../../store';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { Badge } from '../../../shared/ui/Badge';
 import { Card, CardBody, CardHeader } from '../../../shared/ui/Card';
-import { StatCard } from '../../../shared/ui/StatCard';
+import { FleetKpi } from '../components/FleetKpi';
 import { Skeleton } from '../../../shared/ui/Skeleton';
 import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
@@ -30,27 +30,6 @@ const PanelSkeleton = (): JSX.Element => (
       <Skeleton key={i} className="h-5 w-full" />
     ))}
   </div>
-);
-
-// exactOptionalPropertyTypes: StatCard's `value`/`caption` are optional, so a pending metric
-// (undefined ⇒ StatCard's honest placeholder dash) is passed by omission, not as undefined.
-const Kpi = ({
-  label,
-  icon,
-  value,
-  caption,
-}: {
-  label: string;
-  icon: ComponentType<SVGProps<SVGSVGElement>>;
-  value: string | undefined;
-  caption: string | undefined;
-}): JSX.Element => (
-  <StatCard
-    label={label}
-    icon={icon}
-    {...(value === undefined ? {} : { value })}
-    {...(caption === undefined ? {} : { caption })}
-  />
 );
 
 export const FleetDashboardPage = (): JSX.Element => {
@@ -118,7 +97,7 @@ export const FleetDashboardPage = (): JSX.Element => {
         <div className="space-y-6">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {canVehicles && (
-              <Kpi
+              <FleetKpi
                 label={t('fleet.dashboard.activeVehicles')}
                 icon={TruckIcon}
                 value={total(activeVehicles)}
@@ -126,7 +105,7 @@ export const FleetDashboardPage = (): JSX.Element => {
               />
             )}
             {canMaintenance && (
-              <Kpi
+              <FleetKpi
                 label={t('fleet.dashboard.inWorkshop')}
                 icon={WrenchIcon}
                 value={total(openVisits)}
@@ -134,7 +113,7 @@ export const FleetDashboardPage = (): JSX.Element => {
               />
             )}
             {canAlarms && (
-              <Kpi
+              <FleetKpi
                 label={t('fleet.dashboard.alarms')}
                 icon={GaugeIcon}
                 value={
@@ -148,7 +127,7 @@ export const FleetDashboardPage = (): JSX.Element => {
               />
             )}
             {canAccidents && (
-              <Kpi
+              <FleetKpi
                 label={t('fleet.dashboard.openAccidents')}
                 icon={AlertIcon}
                 value={total(openAccidents)}

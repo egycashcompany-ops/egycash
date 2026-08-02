@@ -22,6 +22,7 @@ import { NotFoundPage } from '../../platform/app/pages/NotFoundPage';
 import { AppShell } from '../../platform/layout/AppShell';
 import { FleetDashboardPage } from './pages/FleetDashboardPage';
 import { VehiclesListPage } from './pages/VehiclesListPage';
+import { VehicleDetailPage } from './pages/VehicleDetailPage';
 
 export default function FleetRoutes(): JSX.Element {
   return (
@@ -33,6 +34,14 @@ export default function FleetRoutes(): JSX.Element {
           element={
             <RequirePermission permission="fleetVehicle.view">
               <VehiclesListPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="vehicles/:id"
+          element={
+            <RequirePermission permission="fleetVehicle.view">
+              <VehicleDetailPage />
             </RequirePermission>
           }
         />

@@ -118,11 +118,11 @@ export const useOdometerLogs = (params: FleetListParams) =>
     placeholderData: (prev) => prev,
   });
 
-export const useExpectedReading = (vehicleId: string) =>
+export const useExpectedReading = (vehicleId: string, enabled = true) =>
   useQuery({
     queryKey: [MODULE, 'odometer', 'expected', vehicleId],
     queryFn: () => api.expectedOdometerReading(vehicleId),
-    enabled: vehicleId !== '',
+    enabled: enabled && vehicleId !== '',
   });
 
 export const useMaintenanceAlarms = (enabled = true) =>

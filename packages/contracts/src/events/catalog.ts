@@ -727,9 +727,7 @@ export const EVENT_LIFECYCLE: Readonly<
   'hr.evaluation.opened': { status: 'planned' },
   // Fleet (FL-1): the whole surface is declared ahead of its publishers — FL-2..FL-6 promote
   // each name to `stable` as its emit site lands, and the publisher test enforces the promotion.
-  'fleet.vehicle.created': { status: 'planned' },
-  'fleet.vehicle.updated': { status: 'planned' },
-  'fleet.vehicle.statusChanged': { status: 'planned' },
+  // FL-2 promoted `fleet.vehicle.*` (vehicle.service.ts is the publisher).
   'fleet.odometer.recorded': { status: 'planned' },
   'fleet.odometer.corrected': { status: 'planned' },
   'fleet.maintenance.checkedIn': { status: 'planned' },

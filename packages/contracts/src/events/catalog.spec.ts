@@ -59,6 +59,13 @@ const HR_EVENT_CONSTANTS = [
 ].flatMap((group) => Object.values(group));
 
 const FLEET_EVENT_CONSTANTS = Object.values(FleetEvents);
+// Promoted to stable by the slice that added their emit sites (FL-2: the vehicle registry).
+const FLEET_STABLE = new Set<string>([
+  FleetEvents.VehicleCreated,
+  FleetEvents.VehicleUpdated,
+  FleetEvents.VehicleStatusChanged,
+]);
+const FLEET_PLANNED = FLEET_EVENT_CONSTANTS.filter((name) => !FLEET_STABLE.has(name));
 
 const ALL_SCHEMAS: Record<string, z.ZodTypeAny | null> = {
   ...PLATFORM_EVENT_PAYLOAD_SCHEMAS,
@@ -311,17 +318,17 @@ describe('lifecycle', () => {
     // A workflow on an unpublished event is enabled and silent forever — the failure mode with no
     // error anywhere. The publisher test in `apps/api` is what keeps this list true.
     const planned = EVENT_CATALOG.filter((entry) => entry.status === 'planned');
-    // FL-1 declares the whole fleet surface ahead of its publishers (FL-2..FL-6 promote each
-    // name to stable as its emit site lands), so 'planned' = the two HR stragglers + all fleet.
+    // FL-1 declared the whole fleet surface ahead of its publishers; FL-2.. promote each name
+    // to stable as its emit site lands, so 'planned' = the two HR stragglers + unshipped fleet.
     expect(planned.map((entry) => entry.name).sort()).toEqual(
-      ['hr.applicant.returnedToStage', 'hr.evaluation.opened', ...FLEET_EVENT_CONSTANTS].sort(),
+      ['hr.applicant.returnedToStage', 'hr.evaluation.opened', ...FLEET_PLANNED].sort(),
     );
   });
 
   it('excludes planned events from the stable list', () => {
     expect(stableEventNames()).not.toContain('hr.evaluation.opened');
     expect(stableEventNames()).not.toContain('fleet.odometer.recorded');
-    expect(stableEventNames().length).toBe(EVENT_CATALOG.length - 2 - FLEET_EVENT_CONSTANTS.length);
+    expect(stableEventNames().length).toBe(EVENT_CATALOG.length - 2 - FLEET_PLANNED.length);
   });
 
   it('flags the names with a second publisher and a different payload shape', () => {

@@ -101,10 +101,18 @@ describe('fleet contracts', () => {
     ).toBe(false);
   });
 
-  it('every fleet event is catalogued and declared planned until a publisher lands', () => {
+  it('every fleet event is catalogued; unpublished ones are planned, published ones stable', () => {
+    // Promoted by the slice that added their emit sites (FL-2: the vehicle registry). The
+    // apps/api publisher test enforces this from the real source; this only pins the intent.
+    const stable = new Set<string>([
+      FleetEvents.VehicleCreated,
+      FleetEvents.VehicleUpdated,
+      FleetEvents.VehicleStatusChanged,
+    ]);
     for (const name of Object.values(FleetEvents)) {
       expect(eventCatalogEntry(name), `${name} is not catalogued`).toBeDefined();
-      expect(EVENT_LIFECYCLE[name]?.status, `${name} must be planned in FL-1`).toBe('planned');
+      const expected = stable.has(name) ? undefined : 'planned';
+      expect(EVENT_LIFECYCLE[name]?.status, name).toBe(expected);
     }
   });
 });

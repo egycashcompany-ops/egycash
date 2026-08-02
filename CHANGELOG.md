@@ -66,6 +66,25 @@ its entry here in the same PR.
 
 ### Added
 
+- **The Fleet module is running (FL-2): vehicle types, catalogs, and the vehicle registry with
+  its lifecycle.** The `fleet` manifest registers alongside HR — permissions, routes,
+  collections, settings, seed — and the first three features follow the platform shape exactly:
+  Router → Zod validation → Service → BaseRepository, every write version-aware and audited,
+  RBAC + data scopes from the first endpoint (a branch-scoped operator sees their branch's fleet;
+  the legacy's hardcoded branch filter became scope, as the owner decided). The §4.1 lifecycle is
+  enforced: leaving active service requires a reason, `disposed` is terminal and refuses edits,
+  returning to service clears the reason. FR-1's four physical identifiers (code, plate, chassis,
+  motor) are unique among non-deleted vehicles via partial indexes, so a scrapped car's plate can
+  legitimately return. Nothing derived is stored: `inWorkshop` is computed through a service seam
+  that honestly answers `false` until FL-4 owns maintenance visits.
+
+  `fleet.vehicle.created/.updated/.statusChanged` are published at commit points and promoted
+  `planned → stable` in the catalogue — the publisher test now holds them to their emit sites.
+  Fleet settings are declared with defaults (alarm thresholds, leave-integration ON per the
+  owner's Q1 decision, license-warning windows), and the boot seed installs the catalog rows the
+  frozen design names: the alarm-counting «صيانة» work type, the roster's default mission type,
+  and the seven violation types the legacy had hardcoded in its views.
+
 - **The Fleet module's contract surface exists (FL-1), built from a frozen design extracted out
   of the legacy fleet system.** `packages/contracts/src/modules/fleet.ts` declares, at field
   level, everything the module will be: vehicles and their types (the per-type maintenance

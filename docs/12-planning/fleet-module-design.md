@@ -409,8 +409,8 @@ accidents · violations · settings.
 
 | Slice | Delivers | Depends on |
 |---|---|---|
-| **FL-1** | Contracts: DTOs/schemas/permissions/events/settings for everything above | — |
-| **FL-2** | API: vehicle types + catalogs + vehicle registry/lifecycle | FL-1 |
+| **FL-1** ✅ | Contracts: DTOs/schemas/permissions/events/settings for everything above | — |
+| **FL-2** ✅ | API: vehicle types + catalogs + vehicle registry/lifecycle | FL-1 |
 | **FL-3** | API: driver profiles + unavailability (+ HR event subscriptions, leave seam) | FL-1 |
 | **FL-4** | API: odometer + maintenance + alarm engine + the two sweeps | FL-2 |
 | **FL-5** | API: roster | FL-3, FL-4 |
@@ -455,3 +455,4 @@ The ten questions from revision 0.1 are carried into §13 (renumbered) — none 
 | 2026-08-02 | 0.1 — legacy extraction, entity sketch, page plan, 10 owner questions (draft) |
 | 2026-08-02 | **1.0 — FROZEN.** Full design per the owner's instruction: field-level entities on platform conventions, relationships, lifecycles, 14 business rules, states, per-screen permissions, validations embedded in §2/§4/§5, 16-event automation surface, integration boundaries (HR/OPS/Accounting/platform), 15 pieces of hidden view/JS logic with their fates (incl. the misspelled-department roster bug H5 and the fake-date violation bug H8, neither carried), 10 slices FL-1…FL-10. Open questions narrowed to defaults/labels (§13); structure closed. |
 | 2026-08-02 | 1.1 — owner approval + Q1/Q2/Q4/Q11 answered (leave-based availability with operational overlay; profile as HR-employee extension; data scopes only; fuel deferred). Owner's seven implementation principles recorded — all already embodied by the frozen structure: no legacy workarounds, derived-not-stored, backend-only rules, settings/catalogs over hardcodes, domain events everywhere, event/service integration without coupling, full platform conventions. FL-1 (contracts) started on this basis. |
+| 2026-08-02 | 1.2 — FL-2 delivered (no design change): fleet module manifest registered ungated like HR; vehicle types + catalogs + vehicle registry live with the §7 permissions, branch/department data scopes, version-aware audited writes, and the three `fleet.vehicle.*` events promoted planned → stable. Derived `inWorkshop` is a service seam returning false until FL-4 owns visits. Fleet settings declared with defaults (yellow 1000 km, red 300 km, leave integration ON, both license warn windows 30 days). Boot seed: work type «صيانة» (counts for alarm), mission type «نقل أموال (يومي)», the seven legacy violation types. |

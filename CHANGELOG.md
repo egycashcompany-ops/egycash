@@ -187,6 +187,24 @@ its entry here in the same PR.
   invalidated subtree. The vehicle profile's violations link lit up with this slice — all five
   history links now live — and the violations row joined the navigation seed.
 
+  Catalogs and settings complete the module (FW-10). The catalogs screen manages the six list
+  kinds every fleet form reads — workshops, work types, spare parts, mission types, violation
+  types, unavailability reasons — as URL-synchronized tabs over the live paginated list, with
+  archive instead of delete because history keeps referencing items, and the counts-for-alarm
+  fact offered only where the contract allows it. The settings screen carries the two rule
+  surfaces: the vehicle-type table, because the maintenance interval on the type is the
+  maintenance rule the alarm engine reads, and the five fleet platform settings edited through
+  the platform's own settings endpoints — a new thin platform settings client whose first
+  consumer this screen is — with every value arriving from the server's hierarchical
+  resolution and nothing hardcoded in the browser. Writes that move server-derived projections
+  invalidate them: interval and work-type changes refresh the alarm board, and the HR-leave
+  switch refreshes the roster's availability verdicts. With the catalogs and settings rows in
+  the sidebar the Fleet category carries all twelve applications, and the closing integration
+  review confirmed the whole: thirteen routes plus the 404 exactly matching the frozen
+  information architecture, every route behind its own permission, all five vehicle-profile
+  history links live, no placeholder or unreachable surface anywhere, and the module still one
+  lazy chunk. The Fleet module — backend and web — is complete.
+
 - **Accidents, violations, and grievances complete the Fleet backend (FL-6) — every fleet
   event is now stable.** Accidents keep the legacy's freedom with none of its looseness: a file
   opens on creation, closes and reopens as many times as the truth requires, but each flip is a

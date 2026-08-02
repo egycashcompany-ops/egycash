@@ -3,10 +3,10 @@
 //
 // OWNER RULE (FW-1 review): no placeholder surface is ever reachable by an end user. A screen
 // is routed here in the SAME slice that ships it, and joins the navigation catalog at the same
-// moment; until then its URL falls through to the standard 404. The frozen IA and its §7
-// permission per route, for the record:
+// moment; until then its URL falls through to the standard 404. With FW-10 the frozen IA is
+// COMPLETE — every route below is live, each behind its §7 permission:
 //   /fleet/vehicles (+/:id)   fleetVehicle.view            FW-3 / FW-4
-//   /fleet/drivers            fleetDriver.view             FW-5
+//   /fleet/drivers (+/:id)    fleetDriver.view             FW-5
 //   /fleet/attendance         fleetAvailability.view       FW-5
 //   /fleet/odometer           fleetOdometer.view           FW-6
 //   /fleet/maintenance        fleetMaintenance.view        FW-6
@@ -32,6 +32,8 @@ import { MaintenanceAlarmsPage } from './pages/MaintenanceAlarmsPage';
 import { RosterPage } from './pages/RosterPage';
 import { AccidentsPage } from './pages/AccidentsPage';
 import { ViolationsPage } from './pages/ViolationsPage';
+import { CatalogsPage } from './pages/CatalogsPage';
+import { FleetSettingsPage } from './pages/FleetSettingsPage';
 
 export default function FleetRoutes(): JSX.Element {
   return (
@@ -123,6 +125,22 @@ export default function FleetRoutes(): JSX.Element {
           element={
             <RequirePermission permission="fleetViolation.view">
               <ViolationsPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="catalogs"
+          element={
+            <RequirePermission permission="fleetCatalog.manage">
+              <CatalogsPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="settings"
+          element={
+            <RequirePermission permission="fleetMaintenanceRule.manage">
+              <FleetSettingsPage />
             </RequirePermission>
           }
         />

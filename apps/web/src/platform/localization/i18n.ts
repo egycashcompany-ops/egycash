@@ -2292,6 +2292,49 @@ const en: Record<string, string> = {
   'fleet.violations.grievanceHint':
     'The one stored figure per vehicle and year; setting it again replaces it in place.',
   'fleet.violations.grievanceSaved': 'Grievance saved',
+
+  // Fleet — catalogs + settings (FW-10)
+  'fleet.catalogs.subtitle':
+    'The lists every fleet form reads — items archive instead of delete, because history references them.',
+  'fleet.catalogs.kind.workshop': 'Workshops',
+  'fleet.catalogs.kind.workType': 'Work types',
+  'fleet.catalogs.kind.sparePart': 'Spare parts',
+  'fleet.catalogs.kind.missionType': 'Mission types',
+  'fleet.catalogs.kind.violationType': 'Violation types',
+  'fleet.catalogs.kind.unavailabilityReason': 'Unavailability reasons',
+  'fleet.catalogs.addItem': 'Add — {{kind}}',
+  'fleet.catalogs.editItem': 'Edit item',
+  'fleet.catalogs.saved': 'Catalog item saved',
+  'fleet.catalogs.archiveHint': 'Items archive instead of delete — history keeps referencing them.',
+  'fleet.catalogs.fields.nameAr': 'Name (Arabic)',
+  'fleet.catalogs.fields.nameEn': 'Name (English)',
+  'fleet.catalogs.fields.countsForAlarm': 'Counts for the maintenance alarm',
+  'fleet.catalogs.fields.isActive': 'Active',
+  'fleet.catalogs.countsBadge': 'Resets alarm baseline',
+  'fleet.catalogs.active': 'Active',
+  'fleet.catalogs.archived': 'Archived',
+  'fleet.catalogs.allStatuses': 'All statuses',
+  'fleet.settings.subtitle':
+    'Maintenance rules and the fleet platform settings — every value resolved by the server, nothing hardcoded.',
+  'fleet.settings.typesTitle': 'Vehicle types & maintenance rules',
+  'fleet.settings.typesHint':
+    'The service interval lives on the type — the alarm engine reads exactly this.',
+  'fleet.settings.addType': 'Add vehicle type',
+  'fleet.settings.editType': 'Edit vehicle type',
+  'fleet.settings.typeSaved': 'Vehicle type saved',
+  'fleet.settings.typeHint': 'Types archive instead of delete — vehicles reference them.',
+  'fleet.settings.fields.intervalKm': 'Maintenance interval (km)',
+  'fleet.settings.intervalHint': '0 = no periodic-maintenance rule for this type',
+  'fleet.settings.noRule': 'No rule',
+  'fleet.settings.valuesTitle': 'Fleet settings',
+  'fleet.settings.valuesHint': 'Organization-wide values; every change is audited by the platform.',
+  'fleet.settings.readOnlyHint': 'Read-only — editing requires the platform settings permission.',
+  'fleet.settings.saved': 'Fleet settings saved',
+  'fleet.settings.keys.alarmYellowKm': 'Alarm yellow threshold (remaining km)',
+  'fleet.settings.keys.alarmRedKm': 'Alarm red threshold (remaining km)',
+  'fleet.settings.keys.useHrLeave': 'Availability also consults HR leave',
+  'fleet.settings.keys.vehicleLicenseWarnDays': 'Vehicle-license warning (days before expiry)',
+  'fleet.settings.keys.driverLicenseWarnDays': 'Driver-license warning (days before expiry)',
 };
 
 const ar: Record<string, string> = {
@@ -4549,6 +4592,48 @@ const ar: Record<string, string> = {
   'fleet.violations.grievanceHint':
     'الرقم الواحد المخزن لكل (سيارة، سنة)؛ إعادة ضبطه تستبدله في مكانه.',
   'fleet.violations.grievanceSaved': 'تم حفظ التظلم',
+
+  // Fleet — catalogs + settings (FW-10)
+  'fleet.catalogs.subtitle':
+    'القوائم التي تقرأها كل نماذج الحركة — العناصر تُؤرشف ولا تُحذف لأن التاريخ يشير إليها.',
+  'fleet.catalogs.kind.workshop': 'الورش',
+  'fleet.catalogs.kind.workType': 'أنواع الأعمال',
+  'fleet.catalogs.kind.sparePart': 'قطع الغيار',
+  'fleet.catalogs.kind.missionType': 'أنواع المهمات',
+  'fleet.catalogs.kind.violationType': 'أنواع المخالفات',
+  'fleet.catalogs.kind.unavailabilityReason': 'أسباب عدم الإتاحة',
+  'fleet.catalogs.addItem': 'إضافة — {{kind}}',
+  'fleet.catalogs.editItem': 'تعديل العنصر',
+  'fleet.catalogs.saved': 'تم حفظ العنصر',
+  'fleet.catalogs.archiveHint': 'العناصر تُؤرشف ولا تُحذف — التاريخ يظل يشير إليها.',
+  'fleet.catalogs.fields.nameAr': 'الاسم (عربي)',
+  'fleet.catalogs.fields.nameEn': 'الاسم (إنجليزي)',
+  'fleet.catalogs.fields.countsForAlarm': 'تُحتسب لإنذار الصيانة',
+  'fleet.catalogs.fields.isActive': 'نشط',
+  'fleet.catalogs.countsBadge': 'يصفّر أساس الإنذار',
+  'fleet.catalogs.active': 'نشط',
+  'fleet.catalogs.archived': 'مؤرشف',
+  'fleet.catalogs.allStatuses': 'كل الحالات',
+  'fleet.settings.subtitle':
+    'قواعد الصيانة وإعدادات الحركة — كل قيمة يحسمها الخادم، لا شيء ثابت في الواجهة.',
+  'fleet.settings.typesTitle': 'أنواع السيارات وقواعد الصيانة',
+  'fleet.settings.typesHint': 'فترة الصيانة تعيش على النوع — محرك الإنذارات يقرأها بالضبط.',
+  'fleet.settings.addType': 'إضافة نوع سيارة',
+  'fleet.settings.editType': 'تعديل نوع السيارة',
+  'fleet.settings.typeSaved': 'تم حفظ نوع السيارة',
+  'fleet.settings.typeHint': 'الأنواع تُؤرشف ولا تُحذف — السيارات تشير إليها.',
+  'fleet.settings.fields.intervalKm': 'فترة الصيانة (كم)',
+  'fleet.settings.intervalHint': '٠ = لا قاعدة صيانة دورية لهذا النوع',
+  'fleet.settings.noRule': 'بلا قاعدة',
+  'fleet.settings.valuesTitle': 'إعدادات الحركة',
+  'fleet.settings.valuesHint': 'قيم على مستوى المنشأة؛ كل تغيير مسجَّل في تدقيق المنصة.',
+  'fleet.settings.readOnlyHint': 'للاطلاع فقط — التعديل يتطلب صلاحية إعدادات المنصة.',
+  'fleet.settings.saved': 'تم حفظ إعدادات الحركة',
+  'fleet.settings.keys.alarmYellowKm': 'حد الإنذار الأصفر (كم متبقية)',
+  'fleet.settings.keys.alarmRedKm': 'حد الإنذار الأحمر (كم متبقية)',
+  'fleet.settings.keys.useHrLeave': 'الإتاحة تراعي إجازات الموارد البشرية أيضاً',
+  'fleet.settings.keys.vehicleLicenseWarnDays': 'تنبيه رخصة السيارة (أيام قبل الانتهاء)',
+  'fleet.settings.keys.driverLicenseWarnDays': 'تنبيه رخصة السائق (أيام قبل الانتهاء)',
 };
 
 const catalogs: Record<Locale, Record<string, string>> = { en, ar };

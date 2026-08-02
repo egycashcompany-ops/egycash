@@ -58,11 +58,9 @@ const CATALOG: CategoryDef[] = [
     en: 'Fleet',
     ar: 'الحركة',
     sortOrder: 15,
-    // OWNER RULE (FW-1 review): only SHIPPED pages appear in navigation — each FW slice appends
-    // its rows here as it lands (the boot sync is additive, so existing installs pick them up).
-    // Planned rows, for reference: vehicles (FW-3), drivers + attendance (FW-5), odometer +
-    // maintenance + maintenance-alarms (FW-6), roster (FW-7), accidents (FW-8), violations
-    // (FW-9), catalogs + settings (FW-10).
+    // OWNER RULE (FW-1 review): only SHIPPED pages appear in navigation — each FW slice
+    // appended its rows here as it landed (the boot sync is additive, so existing installs
+    // pick them up). With FW-10 the module is COMPLETE: all twelve applications are live.
     apps: [
       { en: 'Fleet Home', ar: 'الرئيسية', route: '/fleet', icon: 'home' },
       { en: 'Vehicles', ar: 'السيارات', route: '/fleet/vehicles', icon: 'truck' },
@@ -79,6 +77,8 @@ const CATALOG: CategoryDef[] = [
       { en: 'Daily Roster', ar: 'تعيين السيارات', route: '/fleet/roster', icon: 'clipboard' },
       { en: 'Accidents', ar: 'حوادث السيارات', route: '/fleet/accidents', icon: 'shield' },
       { en: 'Violations', ar: 'مخالفات السيارات', route: '/fleet/violations', icon: 'tag' },
+      { en: 'Fleet Catalogs', ar: 'قوائم الحركة', route: '/fleet/catalogs', icon: 'folder' },
+      { en: 'Fleet Settings', ar: 'إعدادات الحركة', route: '/fleet/settings', icon: 'cog' },
     ],
   },
   {

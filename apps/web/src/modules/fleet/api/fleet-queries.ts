@@ -10,7 +10,11 @@ import {
   type CheckOutFleetMaintenance,
   type CorrectFleetOdometer,
   type CreateFleetAccident,
+  type CreateFleetCatalogItem,
   type CreateFleetDriverProfile,
+  type CreateFleetVehicleType,
+  type FleetCatalogItemDto,
+  type FleetVehicleTypeDto,
   type CreateFleetUnavailability,
   type CreateFleetVehicle,
   type FleetRosterDayDto,
@@ -21,13 +25,16 @@ import {
   type SetFleetAccidentStatus,
   type SetFleetGrievance,
   type UpdateFleetAccident,
+  type UpdateFleetCatalogItem,
   type UpdateFleetDriverProfile,
+  type UpdateFleetVehicleType,
   type UpdateFleetViolation,
   type UpdateFleetMaintenance,
   type UpdateFleetUnavailability,
   type UpdateFleetVehicle,
 } from '@ecms/contracts';
 import { detailKey, featureKey, listKey } from '../../../shared/lib/query-keys';
+import { useSetSetting } from '../../../platform/settings/settings-api';
 import * as api from './fleet-api';
 import { type FleetListParams } from './fleet-api';
 
@@ -105,6 +112,70 @@ export const useFleetCatalog = (kind: string) =>
     queryFn: () => api.listCatalogItems({ kind, pageSize: 100 }),
     staleTime: 60_000,
   });
+
+/** Admin list for the catalogs screen — same feature subtree as the selects' cached lists. */
+export const useCatalogItems = (params: FleetListParams) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'catalogs', params),
+    queryFn: () => api.listCatalogItems(params),
+    placeholderData: (prev) => prev,
+  });
+
+// Catalog + rules mutations (FW-10). The maintenance interval lives on the TYPE and a work
+// type's countsForAlarm resets the alarm baseline — both are inputs to the server's derived
+// alarm projection, so their writes invalidate the odometer subtree alongside their own lists.
+const useVehicleTypeMutation = <TInput>(
+  mutationFn: (input: TInput) => Promise<FleetVehicleTypeDto>,
+) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: fleetKeys.vehicleTypes });
+      void qc.invalidateQueries({ queryKey: fleetKeys.odometer });
+    },
+  });
+};
+
+export const useCreateVehicleType = () =>
+  useVehicleTypeMutation((body: CreateFleetVehicleType) => api.createVehicleType(body));
+export const useUpdateVehicleType = () =>
+  useVehicleTypeMutation(({ id, body }: { id: string; body: UpdateFleetVehicleType }) =>
+    api.updateVehicleType(id, body),
+  );
+
+const useCatalogItemMutation = <TInput>(
+  mutationFn: (input: TInput) => Promise<FleetCatalogItemDto>,
+) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: fleetKeys.catalogs });
+      void qc.invalidateQueries({ queryKey: fleetKeys.odometer });
+    },
+  });
+};
+
+export const useCreateCatalogItem = () =>
+  useCatalogItemMutation((body: CreateFleetCatalogItem) => api.createCatalogItem(body));
+export const useUpdateCatalogItem = () =>
+  useCatalogItemMutation(({ id, body }: { id: string; body: UpdateFleetCatalogItem }) =>
+    api.updateCatalogItem(id, body),
+  );
+
+/**
+ * Fleet settings write: the platform owns the endpoint; what FLEET knows is which of its
+ * server-derived caches a changed value moves — alarm thresholds re-colour the odometer
+ * projection, the HR-leave switch changes the roster's availability verdicts.
+ */
+export const useSetFleetSetting = () => {
+  const qc = useQueryClient();
+  return useSetSetting(() => {
+    void qc.invalidateQueries({ queryKey: fleetKeys.odometer });
+    void qc.invalidateQueries({ queryKey: fleetKeys.roster });
+  });
+};
 
 // ── Drivers + availability ──────────────────────────────────────────────────
 // Driver-profile writes invalidate the drivers subtree; availability writes invalidate the

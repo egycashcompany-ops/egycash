@@ -7,7 +7,12 @@
 // except through the document-versioning workflow. Scope is Stage 6 only: nothing here
 // describes the Electronic File (Stage 7) or later.
 import { z } from 'zod';
-import { objectId, LocalizedStringSchema, PaginationQuerySchema, type LocalizedString } from '../common/index.js';
+import {
+  objectId,
+  LocalizedStringSchema,
+  PaginationQuerySchema,
+  type LocalizedString,
+} from '../common/index.js';
 import { BulkRequestBaseSchema } from './hr-recruitment-workflow.js';
 
 // ── Closed vocabulary ───────────────────────────────────────────────────────

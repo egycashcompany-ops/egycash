@@ -6,7 +6,12 @@
 // and per-interviewer evaluations (domain model: an interviewer evaluates at most once per
 // round). Scope is Stage 3 only: nothing here describes Job Offer (Stage 4) or later.
 import { z } from 'zod';
-import { objectId, LocalizedStringSchema, PaginationQuerySchema, type LocalizedString } from '../common/index.js';
+import {
+  objectId,
+  LocalizedStringSchema,
+  PaginationQuerySchema,
+  type LocalizedString,
+} from '../common/index.js';
 import {
   BulkRequestBaseSchema,
   type AttemptMarkerDto,
@@ -258,7 +263,9 @@ export const BulkInterviewsSchema = BulkRequestBaseSchema.extend({
     message: 'a reason is required to cancel interviews',
   })
   .refine(
-    (v) => v.action !== 'reassignPanel' || (v.interviewerIds !== undefined && v.interviewerIds.length > 0),
+    (v) =>
+      v.action !== 'reassignPanel' ||
+      (v.interviewerIds !== undefined && v.interviewerIds.length > 0),
     { path: ['interviewerIds'], message: 'at least one interviewer is required' },
   );
 export type BulkInterviews = z.infer<typeof BulkInterviewsSchema>;

@@ -48,12 +48,23 @@ export type EmployeeActionType = z.infer<typeof EmployeeActionTypeSchema>;
  * `failed` marks a scheduled action whose application-time validation failed (org referent
  * deactivated, illegal transition by then, …) — recorded, notified, never silently applied.
  */
-export const EMPLOYEE_ACTION_STATUSES = ['scheduled', 'applied', 'cancelled', 'failed', 'pendingApproval'] as const;
+export const EMPLOYEE_ACTION_STATUSES = [
+  'scheduled',
+  'applied',
+  'cancelled',
+  'failed',
+  'pendingApproval',
+] as const;
 export const EmployeeActionStatusSchema = z.enum(EMPLOYEE_ACTION_STATUSES);
 export type EmployeeActionStatus = z.infer<typeof EmployeeActionStatusSchema>;
 
 /** Action types that carry salary data and therefore obey compensation redaction. */
-export const SALARY_BEARING_ACTION_TYPES: readonly EmployeeActionType[] = ['salaryChange', 'promotion', 'hire', 'rehire'];
+export const SALARY_BEARING_ACTION_TYPES: readonly EmployeeActionType[] = [
+  'salaryChange',
+  'promotion',
+  'hire',
+  'rehire',
+];
 
 // ── Create schemas (grouped by permission route) ────────────────────────────
 
@@ -216,10 +227,13 @@ export const ExitActionSchema = z
     ...base,
   })
   .strict()
-  .refine((v) => v.type !== 'termination' || (v.reason !== undefined && v.reason.trim().length > 0), {
-    path: ['reason'],
-    message: 'a reason is required when terminating an employee',
-  });
+  .refine(
+    (v) => v.type !== 'termination' || (v.reason !== undefined && v.reason.trim().length > 0),
+    {
+      path: ['reason'],
+      message: 'a reason is required when terminating an employee',
+    },
+  );
 export type ExitAction = z.infer<typeof ExitActionSchema>;
 
 // Rehire group — employee.rehire (+ employee.rehireOverride when exit said not eligible)

@@ -102,12 +102,14 @@ describe('fleet contracts', () => {
   });
 
   it('every fleet event is catalogued; unpublished ones are planned, published ones stable', () => {
-    // Promoted by the slice that added their emit sites (FL-2: the vehicle registry). The
-    // apps/api publisher test enforces this from the real source; this only pins the intent.
+    // Promoted by the slices that added their emit sites (FL-2 vehicles, FL-3 availability).
+    // The apps/api publisher test enforces this from the real source; this only pins the intent.
     const stable = new Set<string>([
       FleetEvents.VehicleCreated,
       FleetEvents.VehicleUpdated,
       FleetEvents.VehicleStatusChanged,
+      FleetEvents.UnavailabilityRecorded,
+      FleetEvents.UnavailabilityEnded,
     ]);
     for (const name of Object.values(FleetEvents)) {
       expect(eventCatalogEntry(name), `${name} is not catalogued`).toBeDefined();

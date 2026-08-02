@@ -123,7 +123,10 @@ const ListScreeningsQueryShape = PaginationQuerySchema.extend({
 }).strict();
 
 /** An inverted age range is a validation failure (400), not an empty result the user must decode. */
-const AGE_ORDER_ISSUE = { message: 'ageFrom must be less than or equal to ageTo', path: ['ageFrom'] };
+const AGE_ORDER_ISSUE = {
+  message: 'ageFrom must be less than or equal to ageTo',
+  path: ['ageFrom'],
+};
 
 export const ListScreeningsQuerySchema = ListScreeningsQueryShape.refine(
   (q) => q.ageFrom === undefined || q.ageTo === undefined || q.ageFrom <= q.ageTo,
@@ -136,7 +139,10 @@ export const ExportScreeningsQuerySchema = ListScreeningsQueryShape.omit({
   pageSize: true,
 })
   .strict()
-  .refine((q) => q.ageFrom === undefined || q.ageTo === undefined || q.ageFrom <= q.ageTo, AGE_ORDER_ISSUE);
+  .refine(
+    (q) => q.ageFrom === undefined || q.ageTo === undefined || q.ageFrom <= q.ageTo,
+    AGE_ORDER_ISSUE,
+  );
 export type ExportScreeningsQuery = z.infer<typeof ExportScreeningsQuerySchema>;
 
 // ── Bulk (RW17/I4 — per-item transaction, partial success) ──────────────────
@@ -197,8 +203,7 @@ export const HrScreeningEvents = {
   ScreeningCreated: 'hr.screening.created',
   ScreeningDecided: 'hr.screening.decided',
 } as const;
-export type HrScreeningEventName =
-  (typeof HrScreeningEvents)[keyof typeof HrScreeningEvents];
+export type HrScreeningEventName = (typeof HrScreeningEvents)[keyof typeof HrScreeningEvents];
 
 export const ScreeningCreatedPayloadV1 = z.object({
   screeningId: objectId(),

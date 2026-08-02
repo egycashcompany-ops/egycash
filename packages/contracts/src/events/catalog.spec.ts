@@ -59,11 +59,13 @@ const HR_EVENT_CONSTANTS = [
 ].flatMap((group) => Object.values(group));
 
 const FLEET_EVENT_CONSTANTS = Object.values(FleetEvents);
-// Promoted to stable by the slice that added their emit sites (FL-2: the vehicle registry).
+// Promoted to stable by the slices that added their emit sites (FL-2 vehicles, FL-3 availability).
 const FLEET_STABLE = new Set<string>([
   FleetEvents.VehicleCreated,
   FleetEvents.VehicleUpdated,
   FleetEvents.VehicleStatusChanged,
+  FleetEvents.UnavailabilityRecorded,
+  FleetEvents.UnavailabilityEnded,
 ]);
 const FLEET_PLANNED = FLEET_EVENT_CONSTANTS.filter((name) => !FLEET_STABLE.has(name));
 

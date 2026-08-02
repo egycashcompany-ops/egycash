@@ -1,7 +1,8 @@
-// FL-2 — Fleet: vehicle types, catalogs, and the vehicle registry/lifecycle. Exercises the
-// frozen design's §4.1 lifecycle (disposed is terminal, reasons required), FR-1 uniqueness,
-// RBAC + branch data scopes on the registry, version-aware updates, audit, and the three
-// promoted fleet.vehicle.* events reaching the bus.
+// Fleet integration suite (FL-2 + FL-3): vehicle types, catalogs, the vehicle registry and its
+// lifecycle, driver profiles as HR-employee extensions (directory seam), and the availability
+// overlay (التمامات) with its layered seam. Exercises §4.1 (disposed terminal, reasons required),
+// FR-1 uniqueness, FR-11 (no HR duplication), RBAC + data scopes, version-aware updates, and the
+// five promoted fleet.* events reaching the bus.
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -11,6 +12,8 @@ import {
   SettingKeys,
   platformPermissions,
   type FleetCatalogItemDto,
+  type FleetDriverProfileDto,
+  type FleetDriverUnavailabilityDto,
   type FleetVehicleDto,
   type FleetVehicleTypeDto,
 } from '@ecms/contracts';
@@ -18,7 +21,10 @@ import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { buildApp } from '../../src/app';
 import { moduleManifests } from '../../src/modules';
 import { fleetPermissions } from '../../src/modules/fleet/fleet.module';
-import { subscribe } from '../../src/platform/kernel/event-bus';
+import { hrPermissions } from '../../src/modules/hr/hr.module';
+import { driverAvailabilityOn } from '../../src/modules/fleet/availability/driver-availability';
+import { registerLeaveLookup } from '../../src/platform/directory';
+import { emit, subscribe } from '../../src/platform/kernel/event-bus';
 import { rbacService } from '../../src/platform/rbac';
 import { userService } from '../../src/platform/users';
 import { settingsService } from '../../src/platform/settings';
@@ -73,6 +79,53 @@ const login = async (email: string): Promise<string> => {
 
 const data = <T>(res: request.Response): T => (res.body as { data: T }).data;
 
+let nidCounter = 0;
+let phoneCounter = 40_000_000;
+const nextNid = (): string => `290010101${String(30_000 + nidCounter++).padStart(5, '0')}`;
+const nextPhone = (): string => `010${String(phoneCounter++).padStart(8, '0')}`;
+
+/** HR employee via the real direct-registration endpoint — Fleet never fabricates one. */
+const mkEmployee = async (): Promise<string> => {
+  const res = await request(app)
+    .post('/api/v1/hr/employees/direct')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({
+      personal: {
+        identity: { fullNameAr: 'سائق اختبار', nationalId: nextNid(), nationality: 'Egyptian' },
+        contact: { primaryPhone: nextPhone() },
+        experience: [],
+        drivingLicenses: [],
+        certifications: [],
+        references: [],
+      },
+      employment: {
+        jobTitleId: '64b1f0cccccccccccccccc01',
+        departmentId: '64b1f0cccccccccccccccc02',
+        branchId: branchAId,
+        employmentType: 'fullTime',
+        probationMonths: 0,
+        startDate: '2026-07-01T00:00:00.000Z',
+      },
+      entryStatus: 'active',
+    });
+  expect(res.status).toBe(201);
+  return (res.body as { data: { id: string } }).data.id;
+};
+
+const mkDriverProfile = async (employeeId: string): Promise<FleetDriverProfileDto> => {
+  const res = await request(app)
+    .post('/api/v1/fleet/drivers')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({
+      employeeId,
+      licenseNumber: `LIC-${nidCounter}`,
+      licenseExpiresAt: '2028-01-01T00:00:00.000Z',
+      specialization: 'cashTransport',
+    });
+  expect(res.status).toBe(201);
+  return data<FleetDriverProfileDto>(res);
+};
+
 const createVehicle = async (
   token: string,
   overrides: Record<string, unknown> = {},
@@ -102,7 +155,7 @@ beforeAll(async () => {
   const superAdmin = await rbacService.ensureSystemRole(
     'super-admin',
     { en: 'Super Admin', ar: 'مدير النظام الأعلى' },
-    [...platformPermissions, ...fleetPermissions].map((p) => p.key),
+    [...platformPermissions, ...hrPermissions, ...fleetPermissions].map((p) => p.key),
   );
   const adminId = await mkUser('admin@ecms.local');
   await rbacService.ensureAssignment(adminId, String(superAdmin._id), 'organization');
@@ -157,6 +210,8 @@ beforeAll(async () => {
     FleetEvents.VehicleCreated,
     FleetEvents.VehicleUpdated,
     FleetEvents.VehicleStatusChanged,
+    FleetEvents.UnavailabilityRecorded,
+    FleetEvents.UnavailabilityEnded,
   ]) {
     subscribe(name, `fleet-test-${name}`, (envelope) => {
       seenEvents.push({ name: envelope.name, payload: envelope.payload });
@@ -352,5 +407,135 @@ describe('data scopes (§7 — the roster branch hardcode became scope)', () => 
       .get('/api/v1/fleet/vehicles')
       .set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(403);
+  });
+});
+
+describe('driver profiles (FL-3 — FR-11, the HR extension)', () => {
+  it('refuses a profile for an unknown employee (directory seam, fail-closed)', async () => {
+    const res = await request(app)
+      .post('/api/v1/fleet/drivers')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        employeeId: '64b1f0dddddddddddddddd01',
+        licenseNumber: 'X-1',
+        licenseExpiresAt: '2028-01-01T00:00:00.000Z',
+        specialization: 'atm',
+      });
+    expect(res.status).toBe(400);
+  });
+
+  it('creates one profile per employee and refuses a second', async () => {
+    const employeeId = await mkEmployee();
+    const profile = await mkDriverProfile(employeeId);
+    expect(profile.employeeId).toBe(employeeId);
+    expect(profile.isActive).toBe(true);
+
+    const dup = await request(app)
+      .post('/api/v1/fleet/drivers')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        employeeId,
+        licenseNumber: 'X-2',
+        licenseExpiresAt: '2028-01-01T00:00:00.000Z',
+        specialization: 'atm',
+      });
+    expect(dup.status).toBe(409);
+  });
+
+  it('profile mutations need fleetDriver.manage — the branch operator lacks it', async () => {
+    const res = await request(app)
+      .post('/api/v1/fleet/drivers')
+      .set('Authorization', `Bearer ${branchAToken}`)
+      .send({
+        employeeId: '64b1f0dddddddddddddddd02',
+        licenseNumber: 'X-3',
+        licenseExpiresAt: '2028-01-01T00:00:00.000Z',
+        specialization: 'both',
+      });
+    expect(res.status).toBe(403);
+  });
+
+  it('hr.employee.exited deactivates the profile (event-driven, no HR import)', async () => {
+    const employeeId = await mkEmployee();
+    await mkDriverProfile(employeeId);
+    await emit('hr.employee.exited', { employeeId, code: '000999', exitType: 'resignation' });
+    const listed = await request(app)
+      .get('/api/v1/fleet/drivers')
+      .query({ pageSize: 100 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    const mine = data<FleetDriverProfileDto[]>(listed).find((d) => d.employeeId === employeeId);
+    expect(mine?.isActive).toBe(false);
+  });
+});
+
+describe('driver unavailability — التمامات (FL-3)', () => {
+  it('requires a driver profile, records with an event, and answers coversDate', async () => {
+    const employeeId = await mkEmployee();
+
+    const noProfile = await request(app)
+      .post('/api/v1/fleet/availability')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ employeeId, from: '2026-09-01', to: '2026-09-03', reason: 'مأمورية' });
+    expect(noProfile.status).toBe(400);
+
+    await mkDriverProfile(employeeId);
+    const created = await request(app)
+      .post('/api/v1/fleet/availability')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ employeeId, from: '2026-09-01', to: '2026-09-03', reason: 'مأمورية' });
+    expect(created.status).toBe(201);
+    expect(seenEvents.some((e) => e.name === FleetEvents.UnavailabilityRecorded)).toBe(true);
+
+    const covering = await request(app)
+      .get('/api/v1/fleet/availability')
+      .query({ coversDate: '2026-09-02', employeeId, pageSize: 10 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(data<FleetDriverUnavailabilityDto[]>(covering).length).toBe(1);
+    const outside = await request(app)
+      .get('/api/v1/fleet/availability')
+      .query({ coversDate: '2026-09-10', employeeId, pageSize: 10 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(data<FleetDriverUnavailabilityDto[]>(outside).length).toBe(0);
+  });
+
+  it('cancellation soft-deletes and publishes .ended', async () => {
+    const employeeId = await mkEmployee();
+    await mkDriverProfile(employeeId);
+    const created = await request(app)
+      .post('/api/v1/fleet/availability')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ employeeId, from: '2026-10-01', to: '2026-10-05', reason: 'عهدة خارجية' });
+    const id = data<FleetDriverUnavailabilityDto>(created).id;
+
+    const del = await request(app)
+      .delete(`/api/v1/fleet/availability/${id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(del.status).toBe(204);
+    expect(seenEvents.some((e) => e.name === FleetEvents.UnavailabilityEnded)).toBe(true);
+  });
+
+  it('the availability seam layers profile, overlay, and HR leave (owner Q1)', async () => {
+    const employeeId = await mkEmployee();
+    expect(await driverAvailabilityOn(employeeId, new Date('2026-09-02'))).toEqual({
+      available: false,
+      reason: 'noProfile',
+    });
+
+    await mkDriverProfile(employeeId);
+    await request(app)
+      .post('/api/v1/fleet/availability')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ employeeId, from: '2026-09-01', to: '2026-09-03', reason: 'مأمورية' });
+
+    expect((await driverAvailabilityOn(employeeId, new Date('2026-09-02'))).reason).toBe(
+      'fleetUnavailability',
+    );
+    expect((await driverAvailabilityOn(employeeId, new Date('2026-09-10'))).available).toBe(true);
+
+    // HR leave through the seam: the platform allows overriding the lookup (last wins), so the
+    // fleet-side layering is tested without fabricating HR leave rows.
+    registerLeaveLookup(async (id) => id === employeeId);
+    expect((await driverAvailabilityOn(employeeId, new Date('2026-09-10'))).reason).toBe('hrLeave');
+    registerLeaveLookup(async () => false);
   });
 });

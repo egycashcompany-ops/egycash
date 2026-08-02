@@ -7,7 +7,12 @@
 // decision stays EDITABLE. A rejection at any phase removes the applicant from the active
 // pipeline (mirrors a failed interview round).
 import { z } from 'zod';
-import { objectId, LocalizedStringSchema, PaginationQuerySchema, type LocalizedString } from '../common/index.js';
+import {
+  objectId,
+  LocalizedStringSchema,
+  PaginationQuerySchema,
+  type LocalizedString,
+} from '../common/index.js';
 import {
   BulkRequestBaseSchema,
   type AttemptMarkerDto,

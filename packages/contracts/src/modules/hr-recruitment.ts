@@ -440,10 +440,10 @@ export const BulkApplicantsSchema = z
     path: ['reason'],
     message: 'a reason is required to withdraw applicants',
   })
-  .refine(
-    (v) => v.action !== 'reassign' || (v.placement !== undefined && v.reason !== undefined),
-    { path: ['placement'], message: 'a placement and a reason are required to reassign applicants' },
-  );
+  .refine((v) => v.action !== 'reassign' || (v.placement !== undefined && v.reason !== undefined), {
+    path: ['placement'],
+    message: 'a placement and a reason are required to reassign applicants',
+  });
 export type BulkApplicants = z.infer<typeof BulkApplicantsSchema>;
 
 // ── Applicant DTO ───────────────────────────────────────────────────────────

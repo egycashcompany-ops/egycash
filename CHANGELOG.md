@@ -66,6 +66,25 @@ its entry here in the same PR.
 
 ### Added
 
+- **Fleet drivers exist as extensions of HR employees, never copies (FL-3).** A driver profile
+  holds only what Fleet is the authority on — license, specialization, area, an active switch —
+  keyed by `employeeId`; name, phone and employment state stay in HR and are read through a new
+  platform seam, `platform/directory`, which HR populates at module load the same way the auth
+  identity seams work. Neither module imports the other: creating a profile validates the
+  employee through the seam (an exited employee is refused), and the `hr.employee.exited` event
+  deactivates the profile with no coupling. Internally each profile carries a `kind`
+  discriminator with a (employeeId, kind) unique index, so a future second profile kind is an
+  additive value rather than a migration — deliberately absent from the DTO until it exists.
+
+  التمامات (driver unavailability) is the daily operational overlay the owner decided on:
+  official leave lives in HR and is consulted through the seam when
+  `fleet.availability.useHrLeave` is on, while this collection records only what the fleet floor
+  knows (مأمورية، عهدة خارجية). One seam function answers "may this driver be assigned on date
+  D", layering the profile switch, the HR employment gate, the fleet overlay, and HR leave — in
+  that order, cheapest first — and names which layer said no. `fleet.driverUnavailability
+.recorded/.ended` fire at commit points and are promoted planned → stable; an update publishes
+  nothing, because a date correction adjusts a fact rather than creating one.
+
 - **The Fleet module is running (FL-2): vehicle types, catalogs, and the vehicle registry with
   its lifecycle.** The `fleet` manifest registers alongside HR — permissions, routes,
   collections, settings, seed — and the first three features follow the platform shape exactly:

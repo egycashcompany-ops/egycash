@@ -7,6 +7,9 @@ import { type ModuleManifest } from '../../platform/kernel/module-registry';
 import { buildFleetVehicleTypesRouter } from './vehicle-types';
 import { buildFleetCatalogRouter } from './catalogs';
 import { buildFleetVehiclesRouter } from './vehicles';
+import { buildFleetDriversRouter } from './driver-profiles/driver-profile.routes';
+import { fleetDriverProfileService } from './driver-profiles/driver-profile.service';
+import { buildFleetAvailabilityRouter } from './availability/unavailability.routes';
 import { registerFleetSettings } from './fleet.settings';
 import { seedFleet } from './fleet.seed';
 
@@ -51,10 +54,39 @@ const maintenanceRulePermissions = declarePermissions(
   ],
 );
 
+const driverPermissions = declarePermissions(
+  'fleet',
+  'fleetDriver',
+  { en: 'drivers', ar: 'السائقين' },
+  ['view'],
+  [
+    {
+      action: 'manage',
+      name: { en: 'Manage driver profiles', ar: 'إدارة ملفات السائقين' },
+    },
+  ],
+);
+
+const availabilityPermissions = declarePermissions(
+  'fleet',
+  'fleetAvailability',
+  { en: 'driver availability', ar: 'تمامات السائقين' },
+  ['view'],
+  [
+    { action: 'record', name: { en: 'Record unavailability', ar: 'تسجيل عدم إتاحة' } },
+    {
+      action: 'edit',
+      name: { en: 'Edit or cancel unavailability', ar: 'تعديل أو إلغاء عدم إتاحة' },
+    },
+  ],
+);
+
 export const fleetPermissions: PermissionDef[] = [
   ...vehiclePermissions,
   ...catalogPermissions,
   ...maintenanceRulePermissions,
+  ...driverPermissions,
+  ...availabilityPermissions,
 ];
 
 export const fleetModule: ModuleManifest = {
@@ -67,8 +99,28 @@ export const fleetModule: ModuleManifest = {
     { prefix: '/fleet/vehicles', router: buildFleetVehiclesRouter() },
     { prefix: '/fleet/vehicle-types', router: buildFleetVehicleTypesRouter() },
     { prefix: '/fleet/catalog-items', router: buildFleetCatalogRouter() },
+    { prefix: '/fleet/drivers', router: buildFleetDriversRouter() },
+    { prefix: '/fleet/availability', router: buildFleetAvailabilityRouter() },
   ],
-  collections: ['fleet_vehicles', 'fleet_vehicle_types', 'fleet_catalog_items'],
-  eventSubscriptions: [],
+  collections: [
+    'fleet_vehicles',
+    'fleet_vehicle_types',
+    'fleet_catalog_items',
+    'fleet_driver_profiles',
+    'fleet_driver_unavailability',
+  ],
+  eventSubscriptions: [
+    {
+      // Design §9.1 — leaving the company leaves the driver pool. Event-driven, no HR import.
+      event: 'hr.employee.exited',
+      handlerId: 'fleet.deactivateExitedDriver',
+      handler: async (envelope) => {
+        const payload = envelope.payload as { employeeId?: string };
+        if (typeof payload.employeeId === 'string') {
+          await fleetDriverProfileService.deactivateForExitedEmployee(payload.employeeId);
+        }
+      },
+    },
+  ],
   seed: seedFleet,
 };

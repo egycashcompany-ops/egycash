@@ -45,7 +45,9 @@ describe('employeeBaseStatus (return from suspension/leave — frozen design F4)
   });
 
   it('returns active once probation was confirmed, failed, or never existed', () => {
-    expect(employeeBaseStatus({ confirmedAt: '2026-01-01T00:00:00Z', failed: false })).toBe('active');
+    expect(employeeBaseStatus({ confirmedAt: '2026-01-01T00:00:00Z', failed: false })).toBe(
+      'active',
+    );
     expect(employeeBaseStatus({ confirmedAt: null, failed: true })).toBe('active');
     expect(employeeBaseStatus(null)).toBe('active');
   });
@@ -53,15 +55,22 @@ describe('employeeBaseStatus (return from suspension/leave — frozen design F4)
 
 describe('ChangeEmployeeStatusSchema (deprecated alias)', () => {
   it('requires a reason to suspend', () => {
-    expect(ChangeEmployeeStatusSchema.safeParse({ status: 'suspended', version: 0 }).success).toBe(false);
+    expect(ChangeEmployeeStatusSchema.safeParse({ status: 'suspended', version: 0 }).success).toBe(
+      false,
+    );
     expect(
-      ChangeEmployeeStatusSchema.safeParse({ status: 'suspended', reason: 'inquiry', version: 0 }).success,
+      ChangeEmployeeStatusSchema.safeParse({ status: 'suspended', reason: 'inquiry', version: 0 })
+        .success,
     ).toBe(true);
   });
 
   it('does not require a reason for leave or reinstatement', () => {
-    expect(ChangeEmployeeStatusSchema.safeParse({ status: 'onLeave', version: 3 }).success).toBe(true);
-    expect(ChangeEmployeeStatusSchema.safeParse({ status: 'active', version: 3 }).success).toBe(true);
+    expect(ChangeEmployeeStatusSchema.safeParse({ status: 'onLeave', version: 3 }).success).toBe(
+      true,
+    );
+    expect(ChangeEmployeeStatusSchema.safeParse({ status: 'active', version: 3 }).success).toBe(
+      true,
+    );
   });
 
   it('rejects a missing version and unknown keys', () => {

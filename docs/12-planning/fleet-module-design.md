@@ -1,213 +1,456 @@
-# Fleet Module — design from the legacy system
+# Fleet Module — Frozen Design
 
-**Status:** DRAFT — legacy extraction done; awaiting the owner's walkthrough + answers to §6 ·
-**Source:** `egycashcompany-ops/fleet` @ `44654cd` (Express 4 + EJS + Mongoose 6, one 6,144-line
-`contad_app.js`) · **Scope:** the 11 Fleet pages only — OPS (`tashghela`, `mohsana`, ATM, vault,
-IT) is explicitly out of scope for this module and appears here only where Fleet touches it.
-
-Everything in §2–§4 was read from the legacy code, not assumed. §5 classifies what carries over
-verbatim, what gets replaced by platform services ECMS already has, and §6 lists the calls only
-the owner can make.
+**Status:** **FROZEN v1.0** (2026-08-02) — the single reference for Fleet implementation. §13's
+open questions refine *defaults and labels*; they do not reopen structure. Any structural change
+requires a new revision in §15.
+**Source of business logic:** legacy repo `egycashcompany-ops/fleet` @ `44654cd` — read in full
+(routes `contad_app.js:2444–6144`, all 10 fleet models, and the client-side JS inside every fleet
+EJS view). The legacy system is a *source of understanding*, *not* a target of re-implementation:
+§10 lists every piece of logic found hiding in views/JS, §11 lists what was deliberately left
+behind.
+**Scope:** Fleet only. OPS (money-transport operations — `tashghela`, `mohsana`, ATM, vault) is a
+separate future module; it appears here only at the §9.4 boundary.
 
 ---
 
-## 1. What the legacy system is
+## 0. Scope and non-goals
 
-A single Express app serving Fleet + OPS + ATM + vault + IT from one file. Views are EJS with the
-business logic split roughly 80/20 between route handlers and inline `<% %>` blocks (the
-maintenance-alarm math lives **in the view**, `cars_log.ejs:664-687`). Mongo collections are
-shared with the OPS half — `emp` is a full mirror of HR employee data, maintained by hand from
-this app's own `add_emp`/`hr_data_edit` pages.
+**In scope:** vehicle registry and lifecycle · driver profiles (fleet-owned extension of HR
+employees) · driver availability (التمامات) · odometer log · maintenance visits + derived
+maintenance alarms · daily duty roster (تعيين السيارات) · accidents · violations (vehicle + driver)
+· fleet catalogs · module dashboards · the events that make all of it automatable.
 
-Session auth is a hardcoded single-user check (`EventUserStatus.find({status:1, user:"pola"})` on
-every route). Auditing is `added_by`/`deleted_by`/`deleted_date` string fields per row, with one
-collection (`fleet_accident`) growing parallel `edited_by[]`/`edited_date[]` arrays. All numeric
-data (odometers, money) is stored as strings and coerced at query time.
+**Non-goals (this module, this phase):** OPS work orders and trip execution (OPS module) · fuel
+tracking (التفويل — evidence of a dropped feature in the legacy `one_car` view; §13-Q11) · GPS/
+telematics · tires/batteries part-lifetime tracking · insurance policies (Contracts module owns
+company contracts) · payroll deduction of driver violations (Payroll; Fleet only publishes the
+event, §9.3).
 
-None of that carries over — §5.2. What carries over is the **domain model**, which is genuinely
-good: nine entities with clear lifecycles and one clever odometer design.
+## 1. What the legacy system taught us (summary of extraction)
 
-## 2. The entities
+One Express file serves Fleet + OPS + ATM + vault + IT. Fleet's domain model underneath the mess
+is genuinely sound — nine entities with clear lifecycles and one clever odometer design — while
+everything *around* the domain (auth, audit, org data, typed data) is what ECMS's platform already
+does properly. The four load-bearing pieces of logic:
 
-| Legacy collection | Entity | Business key | Notes |
+1. **Odometer continuity** — one reading simultaneously closes the previous period and opens the
+   next (`POST /cars_log`: submitted reading → new row's `out_num` **and** previous row's
+   `in_num`, km = difference). Periods cannot gap or overlap because the odometer is treated as
+   the continuous physical sequence it is.
+2. **Derived maintenance alarm** — never stored: `remaining = interval(vehicleType) −
+   (currentReading − readingAtLastService)`; yellow/red when remaining crosses global thresholds;
+   evaluated only on each vehicle's newest reading and only when it postdates the last service
+   (`cars_log.ejs:664–687`). The rule list self-heals from the distinct types in the registry
+   (`GET /cars_alarm`).
+3. **Roster = availability − commitments** — defaults to **tomorrow** (planning, not diary);
+   excludes vehicles with an open workshop visit covering the date; excludes absent and
+   already-assigned drivers; saves as an **upsert per (vehicle, date)** so re-planning edits in
+   place (`GET/POST /taeen_drivers`).
+4. **Two-shape violations with annual rollup** — vehicle violations arrive as bulk yearly
+   statements (count × unit value, with a تظلم/grievance figure that reduces the payable), driver
+   violations are per-event (seatbelt/phone); the page aggregates both per (vehicle, year).
+
+## 2. Entities
+
+All collections `fleet_*` (identifier discipline, module-hierarchy §5). All rows carry the
+platform base: `createdAt/updatedAt`, `version`, soft-delete (`deletedAt/deletedBy`) unless noted.
+Auditing is the platform audit service — **no** per-row `added_by`/`edited_by[]` columns.
+
+### 2.1 `fleet_vehicles` — Vehicle
+
+| Field | Type | Notes |
+|---|---|---|
+| `code` | string, **unique among non-deleted** | business key (legacy `car_code`); shown everywhere |
+| `typeId` | ref → `fleet_vehicle_types` | replaces free-text `car_type` |
+| `plateNumber` | string, unique among non-deleted | |
+| `chassisNumber` | string, unique among non-deleted | |
+| `motorNumber` | string, unique among non-deleted | |
+| `joinedAt` | date | joined the fleet |
+| `licenseExpiresAt` | date | vehicle license (رخصة السيارة) renewal deadline |
+| `licenseClass` | string, nullable | legacy `licens`; values pending §13-Q8 — free string until then |
+| `branchId` / `departmentId` | org refs, nullable | replace free-text strings; drive data-scope filtering |
+| `radio` | `{ issi: string?, motorolaSn: string? }` | cash-transport radio gear — a security fact of the vehicle |
+| `status` | enum §6.1 | replaces legacy `deleted`+`status` numbers |
+| `statusReason` | string, nullable | required when leaving `active` |
+
+Legacy's denormalized `driver` field on the car is **dropped** — "current driver" is a roster
+fact, derived from today's assignment.
+
+### 2.2 `fleet_vehicle_types` — Vehicle Type (catalog + maintenance rule)
+
+| Field | Type | Notes |
+|---|---|---|
+| `name` | localized string, unique (normalized) | e.g. غزالة مصفحة |
+| `maintenanceIntervalKm` | int ≥ 0, 0 = no rule | legacy `fm_car_maint` |
+| `isActive` | bool | archive instead of delete — vehicles reference it |
+
+The legacy self-healing behaviour (rule rows appear/disappear with registry types) is replaced by
+referential integrity: a vehicle *must* reference a type, so the rules page simply lists types.
+Global thresholds `FleetAlarmYellowKm` / `FleetAlarmRedKm` are **platform settings** (settings
+service, organization scope) — they are scalars, not rows.
+
+### 2.3 `fleet_driver_profiles` — Driver Profile
+
+The fleet-owned extension of an HR employee. **Fleet does not own people** (the legacy `emp`
+mirror and its add/remove pages are gone): personal data, phone, employment state live in HR;
+this row holds only what Fleet is the authority on.
+
+| Field | Type | Notes |
+|---|---|---|
+| `employeeId` | ref → hr employee, **unique** | the join key |
+| `licenseNumber` | string | driving license |
+| `licenseExpiresAt` | date | |
+| `specialization` | enum `cashTransport \| atm \| both` | legacy free-text تخصص |
+| `area` | string, nullable | legacy المنطقة |
+| `isActive` | bool | leaving the driver pool without touching the HR record |
+
+**Design improvement over legacy:** driver eligibility = *has an active driver profile*, not
+`employee_title` matching regex `سائق` — a title rename can no longer silently empty the roster.
+(§13-Q13 confirms the enrollment path.)
+
+### 2.4 `fleet_driver_unavailability` — Unavailability (التمامات)
+
+| Field | Type | Notes |
+|---|---|---|
+| `employeeId` | ref | must hold a driver profile |
+| `from` / `to` | dates, `to ≥ from` | inclusive range |
+| `reason` | string (catalog-suggested, free allowed) | |
+| `notes` | string, nullable | |
+
+Availability on date *D* is a **seam**: unavailable if a row covers *D*, **or** (when setting
+`FleetLeaveIntegration=true`, default per §13-Q1) HR leave covers *D*. One source of truth for
+"why is he not here" once Q1 lands; the structure works either way.
+
+### 2.5 `fleet_odometer_logs` — Odometer Entry
+
+| Field | Type | Notes |
+|---|---|---|
+| `vehicleId` | ref | |
+| `date` | date | operating day |
+| `outReading` | int | odometer when leaving |
+| `inReading` | int, nullable | odometer when back; **null = open period** |
+| `km` | int, **server-derived** | `inReading − outReading`; never client-supplied |
+| `driver1EmployeeId` / `driver2EmployeeId` | refs, nullable | |
+| `notes` | string, nullable | |
+
+The continuity rule (§4.3) is enforced here; a correction is a permissioned, audited edit — not a
+free rewrite.
+
+### 2.6 `fleet_maintenance_visits` — Workshop Visit
+
+| Field | Type | Notes |
+|---|---|---|
+| `vehicleId` | ref | |
+| `inDate` | date | check-in |
+| `outDate` | date, nullable, `≥ inDate` | **null = in workshop** (the open state) |
+| `workshopId` | ref → catalog `workshop` | legacy `destination` |
+| `workTypeId` | ref → catalog `workType` | legacy `works`; the type flagged `countsForAlarm` (seeded: صيانة) resets the alarm baseline |
+| `spareParts` | array of catalog refs/labels | |
+| `odometerAtService` | int | legacy `counter`; the alarm baseline |
+| `takenInByEmployeeId` / `takenOutByEmployeeId` | refs, nullable | custody (legacy driver/driver2) |
+| `notes` | string, nullable | |
+
+### 2.7 `fleet_duty_assignments` — Daily Duty Assignment (تعيين)
+
+| Field | Type | Notes |
+|---|---|---|
+| `vehicleId` + `date` | **unique pair** | upsert target; re-planning edits in place |
+| `missionTypeId` | ref → catalog `missionType`, nullable | default seeded نقل أموال (يومي); `maintenance` is **derived**, never stored (§10-H5 fixes a legacy bug here) |
+| `driver1EmployeeId` / `driver2EmployeeId` | refs, nullable | driver2 role per §13-Q10 |
+| `notes` | string, nullable | |
+
+This row is the **OPS boundary**: OPS (future) attaches work orders to `assignmentId` and owns
+what the mission actually did; Fleet owns who/which/what-kind per day. No soft-delete — clearing
+a day's assignment empties the row's drivers/mission, preserving the planning audit trail.
+
+### 2.8 `fleet_accidents` — Accident
+
+| Field | Type | Notes |
+|---|---|---|
+| `vehicleId` | ref | |
+| `occurredAt` | date | |
+| `culprit` | string | driver name / third party / تحقيق pending — free text (legacy semantics; §13-Q9 may type it) |
+| `statement` | string | البيان |
+| `companyCost` | money (typed decimal) | legacy `company_account` — exact semantics §13-Q9 |
+| `amountCollected` | money | |
+| `paidAmount` | money | legacy client-computed `paid` — server-derived once Q9 defines the formula |
+| `status` | enum `open \| closed` | replaces the stored **color** |
+| `notes` | string, nullable | |
+| attachments | via platform Files | police report, photos — additive over legacy |
+
+### 2.9 `fleet_violations` — Violation (one collection, two shapes, discriminated)
+
+Common: `vehicleId`, `amount` (money), soft-delete.
+
+**`kind: 'vehicle'`** — bulk yearly statement rows: `year` (int, stored explicitly — legacy
+synthesized a fake date from it, §10-H8), `violationTypeId` (catalog; seeds from the hardcoded
+datalist §10-H7), `count` (int ≥ 1), `unitValue` (money), `amount = count × unitValue`
+(**server-computed**).
+
+**`kind: 'driver'`** — per-event: `date`, `driverEmployeeId`, `violationTypeId` (seeds: حزام،
+تليفون), `amount`.
+
+**`fleet_violation_grievances`** — one row per (vehicle, year): `totalBeforeGrievance` (money).
+Legacy stamped this redundantly onto every violation row via `updateMany` (§10-H9); ECMS stores
+it once. Annual rollup per (vehicle, year) = vehicle rows + driver rows + grievance figure, all
+derived at query time.
+
+### 2.10 `fleet_catalog_items` — Catalogs
+
+`{ kind: 'workshop' | 'workType' | 'sparePart' | 'missionType' | 'violationType' |
+'unavailabilityReason', name (localized, unique-per-kind normalized), isActive, meta }`.
+`workType.meta.countsForAlarm: bool`. Append + rename + archive (legacy was append-only with no
+rename — an admin typo lived forever).
+
+## 3. Relationships
+
+```
+hr employee 1──0..1 fleet_driver_profiles ──< fleet_driver_unavailability
+     │                        │
+     │                        ├──< fleet_duty_assignments (driver1/driver2)
+     │                        ├──< fleet_odometer_logs (driver1/driver2)
+     │                        └──< fleet_violations (kind=driver)
+fleet_vehicle_types 1──< fleet_vehicles 1──< fleet_odometer_logs
+     (interval km)            ├──< fleet_maintenance_visits >── catalogs (workshop/workType/parts)
+                              ├──< fleet_duty_assignments >── catalogs (missionType)   ← OPS attaches here (future)
+                              ├──< fleet_accidents
+                              └──< fleet_violations ──ᵍʳᵒᵘᵖᵉᵈ ᵇʸ ʸᵉᵃʳ── fleet_violation_grievances
+org branch/department ── fleet_vehicles (scoping)     settings: FleetAlarmYellowKm/RedKm, FleetLeaveIntegration
+```
+
+## 4. Workflows and lifecycles
+
+### 4.1 Vehicle lifecycle
+
+`active` ⇄ `outOfService` → `disposed` (terminal; §13-Q6 may add labels like sold/scrapped as
+*reasons* on `disposed`, not new states). "In workshop" is **derived** (an open maintenance visit
+exists), never a stored state — deriving it is what makes it impossible to forget to flip back.
+Every transition audited + published (§8).
+
+### 4.2 Maintenance visit
+
+`open` (checked in, `outDate` null) → `closed` (checked out: outDate + custody). `closed` →
+`open` (reopen — legacy `deleted_dock=5` — permissioned, audited). **New rule the legacy lacked:
+at most one open visit per vehicle** (legacy allowed duplicates by accident; nothing in the
+domain wants a car in two workshops).
+
+### 4.3 Odometer recording (the continuity workflow)
+
+Recording reading *R* for vehicle *V* on date *D*:
+1. Find *V*'s latest entry. If it is open (`inReading` null): set its `inReading = R`, derive its
+   `km` — **the same reading closes the previous period**.
+2. Create the new entry with `outReading = R`, `inReading = null` — **and opens the next**.
+3. Monotonic guard: `R ≥` latest known reading for *V* (hard 422; corrections only via
+   `fleet.odometer.correct`, §13-Q8 decides if a correction needs approval).
+4. Recompute the alarm projection (§4.4) and publish `fleet.odometer.recorded`.
+
+The legacy client conveniences become server behaviour: prefill "expected reading" from the
+latest entry (API exposes it), Arabic-Indic digit normalization at the API boundary (§10-H3).
+
+### 4.4 Maintenance alarm (derived + notified)
+
+For each vehicle with `type.maintenanceIntervalKm > 0`:
+`sinceService = latestReading − odometerAtService(latest closed alarm-counting visit)`,
+`remaining = interval − sinceService`; `remaining ≤ FleetAlarmRedKm` → red, `≤ FleetAlarmYellowKm`
+→ yellow. Guards preserved from legacy: newest entry only, entry date after last service date.
+Never stored — computed on read. **Additive over legacy:** a daily scheduler sweep publishes
+`fleet.maintenanceAlarm.raised` on first crossing into yellow/red (idempotent per vehicle+level+
+service-baseline), so the alarm reaches people instead of waiting to be looked at.
+
+### 4.5 Daily roster planning
+
+Page defaults to **tomorrow**. Board = vehicles in the user's data scope (no hardcoded branch —
+§13-Q4 confirms the legacy `المهندسين` filter was circumstance, and scope replaces it either way)
+minus open-maintenance vehicles (shown, flagged, unassignable). Driver pool = active driver
+profiles minus unavailable-on-D minus already-assigned-on-D. Save = upsert per (vehicle, date);
+**a driver may hold one assignment per date** (enforced server-side with a unique check, not just
+UI filtering — legacy enforced it only by hiding cards). Publishing: one `fleet.roster.planned`
+per save + `fleet.assignment.changed` per changed row.
+
+### 4.6 Accident
+
+`open` → `closed` (and back — legacy toggles freely; kept, both audited). Create requires the §7
+fields; amounts are typed money; attachments via Files.
+
+### 4.7 Violations
+
+Vehicle statement entry: pick (vehicle, year, type, count, unitValue) → server computes amount →
+rows accumulate under the year. Grievance: set/update the single per-(vehicle, year) figure.
+Driver events: single rows. All edits audited; deletes soft.
+
+## 5. Business rules (normative)
+
+| # | Rule | Origin |
+|---|---|---|
+| FR-1 | Vehicle `code`, `plateNumber`, `chassisNumber`, `motorNumber` unique among non-deleted | legacy intent, now enforced |
+| FR-2 | Odometer readings per vehicle are monotonically non-decreasing; one reading closes the previous period and opens the next; `km` is server-derived | legacy §4.3 |
+| FR-3 | Maintenance alarm is derived, never stored; interval per vehicle **type**; thresholds global settings; only alarm-counting work types reset the baseline | legacy §4.4 |
+| FR-4 | At most one open maintenance visit per vehicle; `outDate ≥ inDate`; check-out records custody | legacy + tightened |
+| FR-5 | A vehicle with an open visit covering date D is unassignable on D | legacy |
+| FR-6 | A driver unavailable on D (fleet record, and HR leave when integration on) is unassignable on D | legacy + Q1 |
+| FR-7 | One assignment per driver per date; one assignment row per (vehicle, date), upserted | legacy, now server-enforced |
+| FR-8 | Roster defaults to tomorrow (planning tool) | legacy |
+| FR-9 | Vehicle violations: `amount = count × unitValue`, server-computed; grievance stored once per (vehicle, year); annual rollup merges vehicle + driver shapes | legacy §2.9 |
+| FR-10 | Accident status is open/closed; both directions allowed, audited | legacy |
+| FR-11 | Fleet never edits HR-owned personal data; fleet-owned driver facts live in the driver profile | corrected boundary |
+| FR-12 | Vehicle "current driver" and "in workshop" are derived facts, never stored fields | corrected |
+| FR-13 | Every mutation is audited (platform audit) and scoped (data scopes); every lifecycle change publishes its §8 event | ECMS platform |
+| FR-14 | License expiry (vehicle + driver) is tracked and swept daily; expiring-soon windows configurable via settings | legacy columns + additive sweep |
+
+## 6. States catalog
+
+| Entity | States | Notes |
+|---|---|---|
+| Vehicle | `active`, `outOfService`, `disposed` (+ soft-deleted) | inWorkshop derived; §13-Q6 refines disposal *reasons* |
+| Maintenance visit | `open`, `closed` (+ soft-deleted) | reopen allowed |
+| Odometer entry | `open` (no inReading), `closed` | closed by the next reading |
+| Duty assignment | present/empty per (vehicle, date) | vehicle-side flag `maintenance` derived |
+| Accident | `open`, `closed` (+ soft-deleted) | |
+| Violation | live, soft-deleted | no further lifecycle |
+| Driver profile | `active`, `inactive` | independent of HR employment status, which gates it (inactive employee ⇒ ineligible regardless) |
+
+## 7. Permissions (resource.action — RBAC + data scopes)
+
+| Screen | View needs | Operations on it |
+|---|---|---|
+| `/fleet` (home) | any fleet view permission | — |
+| `/fleet/vehicles` | `fleetVehicle.view` | `fleetVehicle.create`, `.edit`, `.changeStatus`, `.delete` |
+| `/fleet/vehicles/:id` | `fleetVehicle.view` | tabs reuse their own view permissions |
+| `/fleet/drivers` | `fleetDriver.view` | `fleetDriver.manage` (profile create/edit/deactivate) |
+| `/fleet/availability` | `fleetAvailability.view` | `fleetAvailability.record`, `.edit` (covers delete) |
+| `/fleet/odometer` | `fleetOdometer.view` | `fleetOdometer.record`, `.correct` (monotonic override + past edits) |
+| `/fleet/maintenance` | `fleetMaintenance.view` | `fleetMaintenance.checkIn`, `.checkOut` (incl. reopen), `.edit`, `.delete` |
+| `/fleet/maintenance-rules` | `fleetMaintenance.view` | `fleetMaintenanceRule.manage` (intervals + thresholds) |
+| `/fleet/roster` | `fleetRoster.view` | `fleetRoster.plan` |
+| `/fleet/accidents` | `fleetAccident.view` | `fleetAccident.create`, `.edit`, `.close` (both directions), `.delete` |
+| `/fleet/violations` | `fleetViolation.view` | `fleetViolation.record`, `.edit`, `.grievance`, `.delete` |
+| `/fleet/settings` | `fleetCatalog.manage` | catalog CRUD (archive, rename) |
+
+Data scopes apply on every read/write through the standard base-repository path: a branch-scoped
+user sees that branch's vehicles and everything hanging off them. All fleet permissions are
+declared in `packages/contracts` and land in the generated permission matrix.
+
+## 8. Events (the Automation Engine surface)
+
+All envelope-carried per ADR-008, v1 payloads, catalogued so they appear in the automation
+trigger picker. Naming `fleet.<entity>.<pastTenseEvent>`.
+
+| Event | Payload v1 (beyond ids) | Fired when |
+|---|---|---|
+| `fleet.vehicle.created` / `.updated` | vehicleId, code, typeId | registry writes |
+| `fleet.vehicle.statusChanged` | vehicleId, code, from, to, reason | lifecycle |
+| `fleet.odometer.recorded` | vehicleId, code, logId, outReading, closedKm? | §4.3 step 4 |
+| `fleet.odometer.corrected` | vehicleId, logId, field, old, new | permissioned correction |
+| `fleet.maintenance.checkedIn` / `.checkedOut` / `.reopened` | visitId, vehicleId, workshopId, workTypeId, odometerAtService | §4.2 |
+| `fleet.maintenanceAlarm.raised` | vehicleId, code, level (`yellow`\|`red`), remainingKm | sweep, first crossing |
+| `fleet.vehicleLicense.expiring` / `.expired` | vehicleId, code, licenseExpiresAt | daily sweep, configurable window |
+| `fleet.driverLicense.expiring` / `.expired` | employeeId, licenseExpiresAt | daily sweep |
+| `fleet.roster.planned` | date, changedCount | per save |
+| `fleet.assignment.changed` | vehicleId, date, missionTypeId, driver1, driver2 | per changed row |
+| `fleet.driverUnavailability.recorded` / `.ended` | employeeId, from, to, reason | التمامات |
+| `fleet.accident.recorded` / `.closed` / `.reopened` | accidentId, vehicleId, amounts | §4.6 |
+| `fleet.violation.recorded` | violationId, kind, vehicleId, driverEmployeeId?, year?, amount | §4.7 |
+| `fleet.violation.grievanceApplied` | vehicleId, year, totalBeforeGrievance | grievance set |
+
+First automation candidates once A-6b ships: red alarm → escalate; license expiring → WhatsApp
+the responsible; roster planned → publish the day sheet.
+
+## 9. Integration points
+
+**9.1 HR (live):** driver = employee + fleet profile (FR-11); employee exit/suspension events
+(`hr.employee.statusChanged/.exited`) auto-deactivate roster eligibility; leave feeds availability
+behind the `FleetLeaveIntegration` setting (Q1).
+**9.2 Platform (live):** auth/RBAC/data scopes on everything; audit on every mutation; Files for
+vehicle/accident/violation attachments (additive); notifications templates (`fleet.maintenanceDue`,
+`fleet.licenseExpiring`, …) seeded by the module; settings for thresholds/windows/toggles;
+scheduler for the two daily sweeps; sequences not used in v1 (§13-Q12).
+**9.3 Accounting (future):** no coupling — accident and violation money is published in events and
+queryable; Accounting subscribes when it exists.
+**9.4 OPS (future):** OPS reads `fleet_duty_assignments` by date and attaches work orders to
+`assignmentId`; mission-type catalog is Fleet-owned, OPS-readable. Fleet never knows what the
+mission did.
+**9.5 Automation (live):** §8 is the contract; nothing else needed.
+
+## 10. Hidden logic found in views/controllers/JS (and its ECMS fate)
+
+| # | Found | Where | ECMS fate |
 |---|---|---|---|
-| `cars` | **Vehicle** | `car_code` | type, plate, chassis, motor, joining/`expiry_date` (license), `licens` (license class/state — values unclear, §6-Q8), branch, department, **ISSI + Motorola SN** (radio gear — a cash-transport security fact, not an accessory) |
-| `cars_log` | **Odometer entry** | (vehicle, date) | `out_num` / `in_num` / `km` + driver(s). See §3.1 — the reading model is the subtlest thing in the system |
-| `car_maintenance` | **Workshop visit** | — | `in_date` → `out_date` lifecycle; destination (workshop), works (type; the value `صيانة` is what the alarm counts from), spare_parts[], `counter` (odometer at service), who took it in / who took it out |
-| `data_lists.carTypes` + alarms | **Maintenance rule** | vehicle **type** | interval km per type (`fm_car_maint`) + **global** yellow/red thresholds |
-| `car_lock` | **Daily duty assignment** | (vehicle, date) | mission type (from catalog; default `نقل أموال (يومي)`), driver1, driver2, notes; upserted per day |
-| `absence` (dept `الحركة`) | **Driver unavailability** | — | from–to + reason; "التمامات" page |
-| `fleet_accident` | **Accident** | — | date, vehicle, culprit, statement, company cost, amount collected, paid, open/closed (stored as a **color**) |
-| `car_violations` | **Violation** | — | ONE collection, TWO shapes: per-vehicle bulk rows (year, count × unit value, `total_before_grievance`) and per-driver event rows (`ح` seatbelt / `ت` phone, date, amount). §3.4 |
-| `emp` (title ~ `سائق`) | **Driver** | `employee_id` | HR mirror + fleet-specific fields the fleet pages edit directly: license no./expiry, `specialization` (نقل أموال vs ATM), phone, branch |
+| H1 | Full alarm math in the view | `cars_log.ejs:664–687` | server-side, §4.4 |
+| H2 | Client-only monotonic check (خروج ≥ دخول) + auto-prefill of the new reading from the previous day's max | `cars_log.ejs:455–560` | server rule FR-2 + API-provided expected reading |
+| H3 | Arabic-Indic digit normalization before math | `cars_log.ejs toNumberHuman` | API-boundary normalization |
+| H4 | Roster save un-hides filtered rows then submits **all** rows | `taeen_drivers.ejs:1049` | save sends only changed rows |
+| H5 | Forced status `صيانة` only when `department === "نقل اموال"` — misspelled (missing hamza), so the branch never matches real data | `taeen_drivers.ejs:1023` | derived maintenance flag for **all** vehicles (§2.7); latent bug not carried |
+| H6 | Drag-and-drop driver cards between vehicles; card roles (`leader-card`) | `taeen_drivers.ejs` | roster UX kept (drag or pick); role flags are OPS concerns, not Fleet |
+| H7 | Vehicle violation types hardcoded in a datalist (الانتظار في الممنوع، تعمد تعطيل المرور، عدم اتباع تعليمات المرور، رسوم قضائية، رسوم خدمة) | `car_violations.ejs` | seeded `violationType` catalog |
+| H8 | Bulk violation date synthesized as (year, *current* month, day+1) — only the year is real | `POST /car_violations/cars` | explicit `year` field |
+| H9 | Grievance figure `updateMany`-stamped onto every row of the (car, year) | `POST /car_violations/edit/totalBeforeGrievance` | one grievance row per (vehicle, year) |
+| H10 | Accident `paid` computed client-side, saved "exactly as sent"; commas stripped pre-submit | `fleet_accident.ejs` + edit route comment | typed money, server-derived once Q9 defines the formula |
+| H11 | Accident list sorted open-first, then vehicle, then date desc | `GET /fleet_accident` | default sort kept |
+| H12 | Per-user roster department filter persisted in its own collection (`fleet_filter`); other pages use `localStorage` | routes + views | client-side URL/local state; no collection |
+| H13 | Commented-out fuel (التفويل) table | `one_car.ejs:703` | out of scope; §13-Q11 |
+| H14 | Edit forms default the date picker to **yesterday** | `cars_log.ejs` flatpickr | not carried; default today, explicit pick |
+| H15 | Unicode direction-mark scrubbing at read time (Excel paste residue) | `/fleet`, `/fleet_accident` | normalize at write time |
 
-Catalogs (`data_lists`): workshops (`fleet_destinations`), work types (`fleet_works`), spare
-parts, mission types (`fleet_ops_tybe`) — all admin-appendable from `fleet_data_edit`.
+## 11. Deliberately left behind
 
-## 3. The four pieces of real logic
+Single-user `pola` session check → auth/RBAC. The `emp` HR mirror and its `add_emp`/`remove_emp`/
+`hr_data_edit` pages → HR module. Free-text branch/department + hardcoded `المهندسين`/`الحركة` →
+org refs + data scopes. `added_by`/`edited_by[]` columns → audit service. Status-as-color
+(`finsh_status_color`) and magic `deleted_dock` codes 0–5 → enums + named endpoints. Numbers and
+money as strings → typed schema. Title-regex driver detection → driver profiles. Append-only
+catalogs → archive/rename. Duplicate `contad_app copy.js` — ignored (stale backup).
 
-### 3.1 One odometer reading closes the previous period and opens the next
+## 12. Pages (12) and delivery slices
 
-`POST /cars_log` (`contad_app.js:3240`): the submitted reading becomes the **new** entry's
-`out_num`, and the **same value** is written into the previous entry's `in_num`, with `km`
-computed as the difference. The odometer is treated as the continuous, authoritative sequence it
-physically is — periods cannot overlap or gap, because one reading is simultaneously "the car
-came back at X" and "the car left at X".
+Pages as approved in the extraction: home · vehicles · vehicle profile (tabs: details, odometer,
+maintenance, accidents, violations, assignments — three more histories than legacy `one_car`
+showed) · drivers · availability · odometer · maintenance · maintenance-rules · roster ·
+accidents · violations · settings.
 
-This is the best design decision in the legacy system and ECMS should keep it, upgraded: derive
-`km` server-side (legacy trusts a client-computed `kelo`) and **refuse a reading lower than the
-previous one** (legacy accepts it silently, corrupting every downstream alarm).
+| Slice | Delivers | Depends on |
+|---|---|---|
+| **FL-1** | Contracts: DTOs/schemas/permissions/events/settings for everything above | — |
+| **FL-2** | API: vehicle types + catalogs + vehicle registry/lifecycle | FL-1 |
+| **FL-3** | API: driver profiles + unavailability (+ HR event subscriptions, leave seam) | FL-1 |
+| **FL-4** | API: odometer + maintenance + alarm engine + the two sweeps | FL-2 |
+| **FL-5** | API: roster | FL-3, FL-4 |
+| **FL-6** | API: accidents + violations + grievances + rollups | FL-2 |
+| **FL-7** | Web: vehicles, vehicle profile, drivers, settings | FL-2, FL-3 |
+| **FL-8** | Web: odometer, maintenance, rules, roster | FL-4, FL-5 |
+| **FL-9** | Web: accidents, violations, availability, module home | FL-6 |
+| **FL-10** | Legacy data migration (one-off script: cars, logs, visits, accidents, violations, absence → typed collections; §13-Q14 cutover) | all |
 
-### 3.2 The maintenance alarm is derived, never stored
+Each slice carries its own tests, docs, and permission-matrix updates per ECMS norm; one PR per
+slice, approval-gated, exactly as HR/Contracts/Automation were built.
 
-For each vehicle's **latest** odometer entry only (`cars_log.ejs:664`):
+## 13. Open Questions
 
-```
-sinceService  = current out_num − counter of the latest works="صيانة" visit
-remaining     = interval(vehicle TYPE) − sinceService
-remaining ≤ red_alarm    → red cell
-remaining ≤ yellow_alarm → yellow cell
-```
+Answers refine defaults/labels; none reopen structure.
 
-Guards: only if the entry's date is after the last service date, and only on the newest row per
-vehicle. Interval is per **type**; yellow/red are **global**. `cars_alarm` (the settings page)
-also self-heals: it syncs the per-type rule list from the distinct types actually present in the
-vehicle registry — add a type, its rule row appears; retire a type, its rule disappears.
+| # | Question | Frozen interim |
+|---|---|---|
+| Q1 | التمامات: read HR leave (+thin overlay) or fully separate? | seam + `FleetLeaveIntegration` setting; default **on** pending answer |
+| Q2 | Confirm split: fleet owns license/specialization/area, HR owns personal data | designed as stated (FR-11) |
+| Q3 | Confirm OPS boundary: Fleet owns (vehicle, drivers, mission type)/day; OPS owns execution | designed as stated (§9.4) |
+| Q4 | Was assignable-fleet = `المهندسين` a rule or circumstance? | data scope replaces it either way |
+| Q5 | Driver violation → payroll deduction, or record only? | record + event only; Payroll subscribes later |
+| Q6 | Disposal reasons (sold/scrapped/…)? Branch transfer: does the code change? | `disposed` + free reason; code immutable pending answer |
+| Q7 | `licens` example values | free string `licenseClass` until then |
+| Q8 | Odometer corrections: who, and with approval? | `fleetOdometer.correct` permission, audited, no approval chain yet |
+| Q9 | Exact semantics of accident `companyCost`/`amountCollected`/`paid` formula | stored typed, no derived math until defined |
+| Q10 | driver2 = codriver/guard or mid-day handover? | second slot, no handover semantics |
+| Q11 | Fuel (التفويل) — wanted? | out of scope v1 |
+| Q12 | Reference numbers for accidents/violations (sequences)? | none in v1 |
+| Q13 | Driver enrollment: who creates profiles, and bulk-import from current data? | `fleetDriver.manage`; import in FL-10 |
+| Q14 | Migration cutover: parallel run or hard switch? which collections' history matters most? | FL-10 plans after answer |
 
-ECMS keeps derivation (a stored "due" flag would go stale the moment anyone backfills a reading)
-but computes it server-side, and the platform scheduler can additionally *notify* on threshold
-crossings instead of relying on someone opening the page.
+## 14. Answers to the extraction's §6 (superseded)
 
-### 3.3 The assignment board is availability minus commitments
+The ten questions from revision 0.1 are carried into §13 (renumbered) — none were answered yet.
 
-`GET /taeen_drivers` defaults to **tomorrow** (it is a planning page, not a diary) and builds, in
-order:
-
-1. vehicles of one branch (hardcoded `المهندسين` — §6-Q4);
-2. minus vehicles with an **open workshop visit** covering that date (they render flagged, and the
-   client forces their status to `صيانة`);
-3. drivers = active employees of dept `الحركة` with title ~ `سائق`, minus those with an
-   **unavailability record** covering the date, minus those **already assigned** to another
-   vehicle that day;
-4. each vehicle row gets mission type + up to two drivers; save **upserts per (vehicle, date)**, so
-   re-planning the same day edits in place and never duplicates.
-
-Real rules preserved: one driver → one vehicle per day; absent ⇒ unassignable; in-workshop ⇒
-unassignable; per-day idempotent upsert. (A per-user department filter is persisted in its own
-collection — that's UI preference state, ECMS handles it client-side.)
-
-### 3.4 Violations are two shapes with one annual rollup
-
-- **Vehicle violations** are entered in **bulk per year** — count × unit value per violation type,
-  matching how radar statements actually arrive from the authority — with a separate
-  `total_before_grievance`, because a تظلم (grievance) reduces the payable amount and the page
-  reports both.
-- **Driver violations** are per-event: date, driver, type (`حزام`/`تليفون`), amount.
-- The page aggregates both **per vehicle per year** and merges them into a combined total
-  (count + amounts, before/after grievance).
-
-Both entry modes are real workflow, not accident — the bulk mode mirrors the paper statement,
-the per-event mode assigns personal responsibility. Keep both (§6-Q5 confirms).
-
-### 3.5 Everything else per page
-
-| Legacy page | Behaviour found |
-|---|---|
-| `/fleet` | registry CRUD (soft delete), filter values derived from live data, license-expiry column with month filter |
-| `/one_car` | read-only join of registry + odometer history + workshop history for one `car_code` (accidents/violations **not** shown — gap worth closing) |
-| `/drivers` | HR-mirror list filtered by title; **edits license/phone/branch/specialization directly on the HR record** (§6-Q2) |
-| `/fleet_attendance` | unavailability CRUD (from–to, reason), dept hardcoded `الحركة` |
-| `/cars_maintenance` | two queues: in workshop (`out_date:null`) and history; check-in → (edit \| check-out \| reopen \| soft-delete) via magic form codes 0–5 |
-| `/fleet_accident` | CRUD + status toggle; sorted open-first; the "who reported" list comes from dept `الحركة`/`التشغيل` |
-| `/fleet_data_edit` | append-only catalog editor (dupes rejected, no rename/delete) |
-
-## 4. Where Fleet touches everything else (dependency map)
-
-```
-HR (built)          → drivers ARE employees (dept/title); unavailability ≈ leave (§6-Q1)
-Organization (built)→ branch/department on vehicles replace free-text strings
-Platform (built)    → auth/RBAC+data scopes, audit, files (photos, licenses, accident docs),
-                      notifications, settings, sequences, scheduler (expiry + alarm sweeps)
-Automation (built)  → fleet.* events become n8n-automatable for free (license-expiry reminders,
-                      red-alarm escalation) once the module publishes them
-OPS (future)        → consumes the daily assignment (mission type on car_lock is the OPS work
-                      order type); Accounting (future) ← violation/accident amounts
-```
-
-Fleet has **no dependency on any unbuilt module** — it needs HR + platform only, both live. It is
-buildable now, and it unblocks OPS later (OPS's `tashghela` references cars + assignments).
-
-## 5. Classification
-
-### 5.1 Real rules — carried over
-
-Odometer continuity + monotonic guard; derived alarm (interval per type, global thresholds,
-self-healing rule list); workshop visit lifecycle with in/out custody; open visit ⇒ unassignable;
-absent/double-booked driver ⇒ unassignable; per-(vehicle, date) upsert planning with tomorrow
-default; two violation entry modes + grievance + annual rollup; accident cost/collection/paid
-tracking with open/closed state; radio equipment (ISSI/SN) on the vehicle; license expiry
-tracking on both vehicle and driver; driver specialization (cash vs ATM); soft delete everywhere.
-
-### 5.2 Legacy workarounds — replaced by platform, not ported
-
-Hardcoded `user:"pola"` session check → auth/RBAC. `emp` HR mirror + `add_emp` pages → the real
-HR module (BIGGEST correction: fleet stops owning people). Free-text branch/department + hardcoded
-`المهندسين`/`الحركة` → organization units + data scopes. `added_by`/`edited_by[]` columns → audit
-service. Status-as-color (`finsh_status_color`) → status enum. Numbers-as-strings → typed schema.
-Magic `deleted_dock` codes 0–5 → named endpoints. Per-user filter collection → client state.
-Unicode direction-mark scrubbing at read time → normalize at write time. Client-computed `km` →
-server-derived.
-
-### 5.3 Page plan (ECMS)
-
-| # | ECMS page | Replaces | Notes |
-|---|---|---|---|
-| 1 | `/fleet` (module home) | — | ECMS pattern; alarm/expiry/open-visit KPIs |
-| 2 | `/fleet/vehicles` | `/fleet` | registry list + create |
-| 3 | `/fleet/vehicles/:id` | `/one_car` | profile hub: details, odometer, maintenance, **+ accidents, violations, assignments** (tabs) |
-| 4 | `/fleet/drivers` | `/drivers` | HR-sourced list + fleet-owned driver profile (§6-Q2) |
-| 5 | `/fleet/availability` | `/fleet_attendance` | unavailability CRUD (§6-Q1 decides the engine) |
-| 6 | `/fleet/odometer` | `/cars_log` | daily log + derived alarm column |
-| 7 | `/fleet/maintenance` | `/cars_maintenance` | open-visits queue + history |
-| 8 | `/fleet/maintenance-rules` | `/cars_alarm` | per-type interval + thresholds |
-| 9 | `/fleet/roster` | `/taeen_drivers` | daily assignment board, date-navigable |
-| 10 | `/fleet/accidents` | `/fleet_accident` | CRUD + open/closed |
-| 11 | `/fleet/violations` | `/car_violations` | vehicle tab (bulk/year) + driver tab (event) + annual rollup |
-| 12 | `/fleet/settings` | `/fleet_data_edit` | catalogs (workshops, works, spare parts, mission types) |
-
-Eleven legacy pages → 12 ECMS pages (the module home is additive; `one_car` absorbs three
-histories it didn't show).
-
-## 6. Questions only the owner can answer
-
-1. **التمامات vs الإجازات.** Legacy tracks driver absence separately from any leave system. ECMS
-   has a full leave module. Should fleet **read** HR leave (absence there ⇒ unavailable here) and
-   add only an operational overlay (e.g. مأمورية/عهدة خارجية), or stay a fully separate record?
-   Recommendation: read leave + thin overlay — one source of truth for "why is he not here".
-2. **Who owns the driving license?** Legacy edits license no./expiry/phone on the HR record from
-   the fleet page. Recommendation: fleet owns a **Driver Profile** (license, specialization,
-   area) keyed by employeeId; personal fields (phone) stay HR-owned and fleet links to them. OK?
-3. **Assignment ↔ OPS boundary.** The mission type on the daily assignment is where OPS will
-   later attach work orders. Confirm: fleet owns "which car + which drivers + which mission type
-   per day", OPS (later) owns what the mission actually did?
-4. **`المهندسين` hardcode.** Is "only this branch's cars are assignable" a business rule or just
-   where the fleet happened to live? Recommendation: the roster is branch-scoped by the user's
-   data scope, no hardcode.
-5. **Violations:** keep both entry modes (bulk-per-year for vehicles, per-event for drivers)? Does
-   a driver violation deduct from payroll (future hook) or is it record-keeping only?
-6. **Vehicle lifecycle end-states.** Legacy has only `deleted`. What are the real states — active,
-   out of service, sold, scrapped? Does a car ever transfer branches (and does its code change)?
-7. **`licens` field values** on the vehicle — license class? renewal state? Send 2–3 example
-   values from real data.
-8. **Odometer corrections.** When a wrong reading is discovered late, who may correct it and does
-   the correction need approval? (Affects whether the monotonic guard is hard or overridable.)
-9. **Accident amounts** (`company_account`, `amount_collected`) — exact meaning of each, and does
-   "paid" mean paid by the culprit, insurance, or the company?
-10. **Two drivers** on odometer/assignment rows — is driver2 a codriver/guard, or a mid-day
-    handover? (Affects whether an assignment row can change drivers mid-day.)
-
-## 7. Review trail
+## 15. Review trail
 
 | Date | Revision |
 |---|---|
-| 2026-08-02 | 0.1 — full legacy extraction (routes 2444–6144, all fleet models, view-embedded alarm math); entity model, four core logic pieces, workaround classification, 12-page plan, 10 owner questions. NOT frozen — awaiting owner walkthrough. |
+| 2026-08-02 | 0.1 — legacy extraction, entity sketch, page plan, 10 owner questions (draft) |
+| 2026-08-02 | **1.0 — FROZEN.** Full design per the owner's instruction: field-level entities on platform conventions, relationships, lifecycles, 14 business rules, states, per-screen permissions, validations embedded in §2/§4/§5, 16-event automation surface, integration boundaries (HR/OPS/Accounting/platform), 15 pieces of hidden view/JS logic with their fates (incl. the misspelled-department roster bug H5 and the fake-date violation bug H8, neither carried), 10 slices FL-1…FL-10. Open questions narrowed to defaults/labels (§13); structure closed. |

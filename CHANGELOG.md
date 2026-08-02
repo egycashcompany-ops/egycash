@@ -171,6 +171,22 @@ its entry here in the same PR.
   with the version. Deletion confirms with the audit-trail note. The vehicle profile's
   accidents link lit up with this slice and the accidents row joined the navigation seed.
 
+  Violations and grievances close the FL-6 surface (FW-9), with not one amount computed in the
+  browser. One screen carries two URL-synchronized views. The list shows both backend shapes
+  side by side: a vehicle row is a bulk yearly statement — the year is the fact, and the amount
+  column shows what the server derived from count times unit value — while a driver row is a
+  per-event fact with its date, the driver's name from the shared HR cache, and the amount as
+  entered. Recording matches: the vehicle-statement dialog sends count and unit value and never
+  an amount, saying plainly that the server computes it, and the driver dialog picks the person
+  through the directory while the server enforces that a driver profile exists. Editing opens
+  the dialog of the row's own shape — the backend refuses crossing shapes, so the form never
+  offers it — and sends only changed fields with the version. The annual rollup view renders
+  the server's per-vehicle-per-year assembly exactly as returned, every figure including the
+  grievance derived at query time; the grievance dialog sets the one stored figure per vehicle
+  and year, prefilled from the row it was opened on, and the board repaints from the
+  invalidated subtree. The vehicle profile's violations link lit up with this slice — all five
+  history links now live — and the violations row joined the navigation seed.
+
 - **Accidents, violations, and grievances complete the Fleet backend (FL-6) — every fleet
   event is now stable.** Accidents keep the legacy's freedom with none of its looseness: a file
   opens on creation, closes and reopens as many times as the truth requires, but each flip is a

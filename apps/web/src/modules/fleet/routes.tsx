@@ -31,6 +31,7 @@ import { MaintenancePage } from './pages/MaintenancePage';
 import { MaintenanceAlarmsPage } from './pages/MaintenanceAlarmsPage';
 import { RosterPage } from './pages/RosterPage';
 import { AccidentsPage } from './pages/AccidentsPage';
+import { ViolationsPage } from './pages/ViolationsPage';
 
 export default function FleetRoutes(): JSX.Element {
   return (
@@ -114,6 +115,14 @@ export default function FleetRoutes(): JSX.Element {
           element={
             <RequirePermission permission="fleetAccident.view">
               <AccidentsPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="violations"
+          element={
+            <RequirePermission permission="fleetViolation.view">
+              <ViolationsPage />
             </RequirePermission>
           }
         />

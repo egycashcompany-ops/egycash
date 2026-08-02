@@ -15,10 +15,14 @@ import {
   type CreateFleetVehicle,
   type FleetRosterDayDto,
   type PlanFleetRoster,
+  type RecordFleetDriverViolation,
   type RecordFleetOdometer,
+  type RecordFleetVehicleViolation,
   type SetFleetAccidentStatus,
+  type SetFleetGrievance,
   type UpdateFleetAccident,
   type UpdateFleetDriverProfile,
+  type UpdateFleetViolation,
   type UpdateFleetMaintenance,
   type UpdateFleetUnavailability,
   type UpdateFleetVehicle,
@@ -326,8 +330,33 @@ export const useViolations = (params: FleetListParams) =>
     placeholderData: (prev) => prev,
   });
 
-export const useViolationRollup = (year: number, vehicleId?: string) =>
+export const useViolationRollup = (year: number, vehicleId?: string, enabled = true) =>
   useQuery({
     queryKey: [MODULE, 'violations', 'rollup', { year, vehicleId }],
     queryFn: () => api.violationRollup(year, vehicleId),
+    placeholderData: (prev) => prev,
+    enabled,
   });
+
+// Violation mutations (FW-9). One subtree covers the list AND the derived annual rollup —
+// a grievance set moves only the rollup, a row write moves both, so they invalidate together.
+const useViolationMutation = <TInput, TResult>(mutationFn: (input: TInput) => Promise<TResult>) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => void qc.invalidateQueries({ queryKey: fleetKeys.violations }),
+  });
+};
+
+export const useRecordVehicleViolation = () =>
+  useViolationMutation((body: RecordFleetVehicleViolation) => api.recordVehicleViolation(body));
+export const useRecordDriverViolation = () =>
+  useViolationMutation((body: RecordFleetDriverViolation) => api.recordDriverViolation(body));
+export const useUpdateViolation = () =>
+  useViolationMutation(({ id, body }: { id: string; body: UpdateFleetViolation }) =>
+    api.updateViolation(id, body),
+  );
+export const useSetGrievance = () =>
+  useViolationMutation((body: SetFleetGrievance) => api.setGrievance(body));
+export const useDeleteViolation = () =>
+  useViolationMutation((id: string) => api.deleteViolation(id));

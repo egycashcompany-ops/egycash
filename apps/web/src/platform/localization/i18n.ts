@@ -2248,6 +2248,50 @@ const en: Record<string, string> = {
   'fleet.accidents.deleteBody':
     'The file is removed from the registry. The full change history stays in the audit log.',
   'fleet.accidents.deleted': 'Accident deleted',
+
+  // Fleet — violations + grievances (FW-9)
+  'fleet.violations.subtitle':
+    'Two backend shapes — yearly vehicle statements (server-computed amounts) and per-event driver rows — with the annual rollup derived at query time.',
+  'fleet.violations.view.list': 'Violations',
+  'fleet.violations.view.rollup': 'Annual rollup',
+  'fleet.violations.kind.vehicle': 'Vehicle',
+  'fleet.violations.kind.driver': 'Driver',
+  'fleet.violations.allKinds': 'All kinds',
+  'fleet.violations.recordVehicle': 'Record vehicle statement',
+  'fleet.violations.recordDriver': 'Record driver violation',
+  'fleet.violations.edit': 'Edit violation',
+  'fleet.violations.delete': 'Delete violation',
+  'fleet.violations.saved': 'Violation saved',
+  'fleet.violations.deleted': 'Violation deleted',
+  'fleet.violations.deleteTitle': 'Delete this violation?',
+  'fleet.violations.deleteBody':
+    'The row is removed from the registry. The full change history stays in the audit log.',
+  'fleet.violations.vehicleHint':
+    'A bulk yearly statement — the year is the fact. The amount is computed by the server: count × unit value.',
+  'fleet.violations.driverHint':
+    'A per-event fact with the amount as entered. The driver must hold a driver profile.',
+  'fleet.violations.amountHint': 'Amount = count × unit value, computed by the server',
+  'fleet.violations.fields.kind': 'Kind',
+  'fleet.violations.fields.type': 'Violation type',
+  'fleet.violations.fields.year': 'Year',
+  'fleet.violations.fields.date': 'Date',
+  'fleet.violations.fields.driver': 'Driver',
+  'fleet.violations.fields.count': 'Count',
+  'fleet.violations.fields.unitValue': 'Unit value',
+  'fleet.violations.fields.amount': 'Amount',
+  'fleet.violations.fields.totalBeforeGrievance': 'Total before grievance',
+  'fleet.violations.rollup.vehicleCount': 'Vehicle count',
+  'fleet.violations.rollup.vehicleAmount': 'Vehicle amount',
+  'fleet.violations.rollup.driverCount': 'Driver count',
+  'fleet.violations.rollup.driverAmount': 'Driver amount',
+  'fleet.violations.rollup.totalCount': 'Total count',
+  'fleet.violations.rollup.totalAmount': 'Total amount',
+  'fleet.violations.rollup.totalBeforeGrievance': 'Before grievance',
+  'fleet.violations.grievance': 'Grievance',
+  'fleet.violations.grievanceTitle': 'Grievance — {{code}} · {{year}}',
+  'fleet.violations.grievanceHint':
+    'The one stored figure per vehicle and year; setting it again replaces it in place.',
+  'fleet.violations.grievanceSaved': 'Grievance saved',
 };
 
 const ar: Record<string, string> = {
@@ -4462,6 +4506,49 @@ const ar: Record<string, string> = {
   'fleet.accidents.deleteBody':
     'يُزال الملف من السجل، ويبقى تاريخ التغييرات كاملاً في سجل التدقيق.',
   'fleet.accidents.deleted': 'تم حذف الحادث',
+
+  // Fleet — violations + grievances (FW-9)
+  'fleet.violations.subtitle':
+    'شكلان كما يحددهما الخادم — كشوف سنوية للسيارة (المبلغ يحسبه الخادم) ومخالفات سائق بالواقعة — والتجميع السنوي يُشتق عند الطلب.',
+  'fleet.violations.view.list': 'المخالفات',
+  'fleet.violations.view.rollup': 'التجميع السنوي',
+  'fleet.violations.kind.vehicle': 'سيارة',
+  'fleet.violations.kind.driver': 'سائق',
+  'fleet.violations.allKinds': 'كل الأنواع',
+  'fleet.violations.recordVehicle': 'تسجيل كشف سيارة',
+  'fleet.violations.recordDriver': 'تسجيل مخالفة سائق',
+  'fleet.violations.edit': 'تعديل المخالفة',
+  'fleet.violations.delete': 'حذف المخالفة',
+  'fleet.violations.saved': 'تم حفظ المخالفة',
+  'fleet.violations.deleted': 'تم حذف المخالفة',
+  'fleet.violations.deleteTitle': 'حذف المخالفة؟',
+  'fleet.violations.deleteBody':
+    'يُزال الصف من السجل، ويبقى تاريخ التغييرات كاملاً في سجل التدقيق.',
+  'fleet.violations.vehicleHint':
+    'كشف سنوي مجمّع — السنة هي الحقيقة. المبلغ يحسبه الخادم: العدد × قيمة الوحدة.',
+  'fleet.violations.driverHint': 'واقعة فردية بمبلغها كما أُدخل. يجب أن يكون للسائق ملف سائق.',
+  'fleet.violations.amountHint': 'المبلغ = العدد × قيمة الوحدة، يحسبه الخادم',
+  'fleet.violations.fields.kind': 'النوع',
+  'fleet.violations.fields.type': 'نوع المخالفة',
+  'fleet.violations.fields.year': 'السنة',
+  'fleet.violations.fields.date': 'التاريخ',
+  'fleet.violations.fields.driver': 'السائق',
+  'fleet.violations.fields.count': 'العدد',
+  'fleet.violations.fields.unitValue': 'قيمة الوحدة',
+  'fleet.violations.fields.amount': 'المبلغ',
+  'fleet.violations.fields.totalBeforeGrievance': 'الإجمالي قبل التظلم',
+  'fleet.violations.rollup.vehicleCount': 'عدد مخالفات السيارة',
+  'fleet.violations.rollup.vehicleAmount': 'مبلغ السيارة',
+  'fleet.violations.rollup.driverCount': 'عدد مخالفات السائقين',
+  'fleet.violations.rollup.driverAmount': 'مبلغ السائقين',
+  'fleet.violations.rollup.totalCount': 'إجمالي العدد',
+  'fleet.violations.rollup.totalAmount': 'إجمالي المبلغ',
+  'fleet.violations.rollup.totalBeforeGrievance': 'قبل التظلم',
+  'fleet.violations.grievance': 'تظلم',
+  'fleet.violations.grievanceTitle': 'تظلم — {{code}} · {{year}}',
+  'fleet.violations.grievanceHint':
+    'الرقم الواحد المخزن لكل (سيارة، سنة)؛ إعادة ضبطه تستبدله في مكانه.',
+  'fleet.violations.grievanceSaved': 'تم حفظ التظلم',
 };
 
 const catalogs: Record<Locale, Record<string, string>> = { en, ar };

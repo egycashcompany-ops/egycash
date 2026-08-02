@@ -78,6 +78,7 @@ const CATALOG: CategoryDef[] = [
       },
       { en: 'Daily Roster', ar: 'تعيين السيارات', route: '/fleet/roster', icon: 'clipboard' },
       { en: 'Accidents', ar: 'حوادث السيارات', route: '/fleet/accidents', icon: 'shield' },
+      { en: 'Violations', ar: 'مخالفات السيارات', route: '/fleet/violations', icon: 'tag' },
     ],
   },
   {

@@ -65,7 +65,7 @@ const HISTORY_LINKS: {
     key: 'violations',
     to: (v) => `/fleet/violations?vehicle=${v.id}`,
     permission: 'fleetViolation.view',
-    shipped: false,
+    shipped: true, // FW-9
   },
   {
     key: 'roster',

@@ -39,35 +39,41 @@ import { VehicleStatusDialog } from '../components/VehicleStatusDialog';
  */
 const HISTORY_LINKS: {
   key: string;
-  to: (id: string) => string;
+  to: (vehicle: FleetVehicleDto) => string;
   permission: string;
   shipped: boolean;
 }[] = [
   {
     key: 'odometer',
-    to: (id) => `/fleet/odometer?vehicle=${id}`,
+    to: (v) => `/fleet/odometer?vehicle=${v.id}`,
     permission: 'fleetOdometer.view',
     shipped: true, // FW-6
   },
   {
     key: 'maintenance',
-    to: (id) => `/fleet/maintenance?vehicle=${id}`,
+    to: (v) => `/fleet/maintenance?vehicle=${v.id}`,
     permission: 'fleetMaintenance.view',
     shipped: true, // FW-6
   },
   {
     key: 'accidents',
-    to: (id) => `/fleet/accidents?vehicle=${id}`,
+    to: (v) => `/fleet/accidents?vehicle=${v.id}`,
     permission: 'fleetAccident.view',
     shipped: false,
   },
   {
     key: 'violations',
-    to: (id) => `/fleet/violations?vehicle=${id}`,
+    to: (v) => `/fleet/violations?vehicle=${v.id}`,
     permission: 'fleetViolation.view',
     shipped: false,
   },
-  { key: 'roster', to: () => '/fleet/roster', permission: 'fleetRoster.view', shipped: false },
+  {
+    key: 'roster',
+    // The roster board is day-keyed, so the pre-filter is the vehicle's code in the search.
+    to: (v) => `/fleet/roster?q=${encodeURIComponent(v.code)}`,
+    permission: 'fleetRoster.view',
+    shipped: true, // FW-7
+  },
 ];
 
 const Row = ({
@@ -330,7 +336,7 @@ export const VehicleDetailPage = (): JSX.Element => {
               {historyLinks.map((link) => (
                 <li key={link.key}>
                   <Link
-                    to={link.to(vehicle.id)}
+                    to={link.to(vehicle)}
                     className="flex items-center justify-between gap-3 px-5 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-200 dark:hover:bg-slate-800/50"
                   >
                     {t(`fleet.nav.${link.key}`)}

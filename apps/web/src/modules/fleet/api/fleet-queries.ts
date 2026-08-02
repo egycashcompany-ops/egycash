@@ -12,6 +12,8 @@ import {
   type CreateFleetDriverProfile,
   type CreateFleetUnavailability,
   type CreateFleetVehicle,
+  type FleetRosterDayDto,
+  type PlanFleetRoster,
   type RecordFleetOdometer,
   type UpdateFleetDriverProfile,
   type UpdateFleetMaintenance,
@@ -255,13 +257,34 @@ export const useDeleteMaintenance = () =>
   useMaintenanceMutation((id: string) => api.deleteMaintenance(id));
 
 // ── Roster / accidents / violations ─────────────────────────────────────────
+const rosterDayKey = (date: string) => [MODULE, 'roster', 'day', date] as const;
+
 export const useRosterDay = (date: string) =>
   useQuery({
-    queryKey: [MODULE, 'roster', 'day', date],
+    queryKey: rosterDayKey(date),
     queryFn: () => api.getRosterDay(date),
     enabled: date !== '',
     placeholderData: (prev) => prev,
   });
+
+// A plan save answers with the refreshed board in the same round-trip (FL-5 point 7), so the
+// day's cache is replaced directly — no refetch between save and repaint. A failed save still
+// invalidates: the usual cause of a 409 is a board gone stale under the user.
+export const usePlanRoster = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { dateKey: string; body: PlanFleetRoster }) => api.planRoster(input.body),
+    onSuccess: (board, { dateKey }) => {
+      qc.setQueryData(rosterDayKey(dateKey), {
+        date: board.date,
+        rows: board.rows,
+        availableDrivers: board.availableDrivers,
+        unavailableDrivers: board.unavailableDrivers,
+      } satisfies FleetRosterDayDto);
+    },
+    onError: () => void qc.invalidateQueries({ queryKey: fleetKeys.roster }),
+  });
+};
 
 export const useAccidents = (params: FleetListParams, enabled = true) =>
   useQuery({

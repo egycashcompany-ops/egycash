@@ -2178,6 +2178,43 @@ const en: Record<string, string> = {
   'fleet.alarms.allLevels': 'All levels',
   'fleet.alarms.searchPlaceholder': 'Vehicle code',
   'fleet.alarms.refresh': 'Refresh',
+
+  // Fleet — daily roster (FW-7)
+  'fleet.roster.subtitle':
+    'Plan one day of duty assignments — availability, workshop and exclusivity rules are enforced by the server.',
+  'fleet.roster.date': 'Date',
+  'fleet.roster.prevDay': 'Previous day',
+  'fleet.roster.nextDay': 'Next day',
+  'fleet.roster.searchPlaceholder': 'Code or plate number',
+  'fleet.roster.summary': '{{total}} vehicles · {{assigned}} assigned · {{workshop}} in workshop',
+  'fleet.roster.fields.mission': 'Mission type',
+  'fleet.roster.assigned': 'Assigned',
+  'fleet.roster.unassigned': 'Unassigned',
+  'fleet.roster.editAssignment': 'Edit assignment',
+  'fleet.roster.clearAssignment': 'Clear assignment',
+  'fleet.roster.clearTitle': 'Clear assignment — {{code}}',
+  'fleet.roster.clearBody':
+    "This clears the day's mission and drivers for this vehicle. The planning history stays in the audit log.",
+  'fleet.roster.saved': 'Day plan saved',
+  'fleet.roster.cleared': 'Assignment cleared',
+  'fleet.roster.assignTitle': 'Assign vehicle {{code}}',
+  'fleet.roster.assignHint':
+    "Pick the day's mission and drivers; the server verifies availability and the one-assignment rules on save.",
+  'fleet.roster.pickDriver': 'Pick a driver',
+  'fleet.roster.availableTitle': 'Available drivers',
+  'fleet.roster.availableHint': "The availability seam's verdict for this date",
+  'fleet.roster.availableEmpty': 'No available drivers on this date',
+  'fleet.roster.unavailableTitle': 'Unavailable drivers',
+  'fleet.roster.unavailableHint': 'With the reason as the server returns it',
+  'fleet.roster.unavailableEmpty': 'Everyone is available on this date',
+  'fleet.roster.free': 'Free',
+  'fleet.roster.otherVehicle': 'Another vehicle',
+  'fleet.roster.transferHint': 'Will be moved off vehicle {{code}} when saved',
+  'fleet.roster.reason.noProfile': 'No driver profile',
+  'fleet.roster.reason.profileInactive': 'Profile inactive',
+  'fleet.roster.reason.notEmployed': 'Not employed',
+  'fleet.roster.reason.fleetUnavailability': 'Operational unavailability',
+  'fleet.roster.reason.hrLeave': 'On approved leave',
 };
 
 const ar: Record<string, string> = {
@@ -4322,6 +4359,42 @@ const ar: Record<string, string> = {
   'fleet.alarms.allLevels': 'كل المستويات',
   'fleet.alarms.searchPlaceholder': 'كود السيارة',
   'fleet.alarms.refresh': 'تحديث',
+
+  // Fleet — daily roster (FW-7)
+  'fleet.roster.subtitle': 'تخطيط تعيينات يوم واحد — قواعد الإتاحة والورشة والحصرية يفرضها الخادم.',
+  'fleet.roster.date': 'التاريخ',
+  'fleet.roster.prevDay': 'اليوم السابق',
+  'fleet.roster.nextDay': 'اليوم التالي',
+  'fleet.roster.searchPlaceholder': 'الكود أو رقم اللوحة',
+  'fleet.roster.summary': '{{total}} سيارة · {{assigned}} معيّنة · {{workshop}} بالورشة',
+  'fleet.roster.fields.mission': 'نوع المهمة',
+  'fleet.roster.assigned': 'معيّنة',
+  'fleet.roster.unassigned': 'غير معيّنة',
+  'fleet.roster.editAssignment': 'تعديل التعيين',
+  'fleet.roster.clearAssignment': 'إلغاء التعيين',
+  'fleet.roster.clearTitle': 'إلغاء التعيين — {{code}}',
+  'fleet.roster.clearBody':
+    'سيتم مسح مهمة اليوم وسائقي هذه السيارة لهذا التاريخ. يبقى تاريخ التخطيط محفوظاً في سجل التدقيق.',
+  'fleet.roster.saved': 'تم حفظ خطة اليوم',
+  'fleet.roster.cleared': 'تم إلغاء التعيين',
+  'fleet.roster.assignTitle': 'تعيين السيارة {{code}}',
+  'fleet.roster.assignHint':
+    'اختر مهمة اليوم والسائقين؛ يتحقق الخادم من الإتاحة وقواعد التعيين الواحد عند الحفظ.',
+  'fleet.roster.pickDriver': 'اختيار سائق',
+  'fleet.roster.availableTitle': 'السائقون المتاحون',
+  'fleet.roster.availableHint': 'وفق حكم الخادم للإتاحة في هذا التاريخ',
+  'fleet.roster.availableEmpty': 'لا يوجد سائقون متاحون في هذا التاريخ',
+  'fleet.roster.unavailableTitle': 'غير المتاحين',
+  'fleet.roster.unavailableHint': 'مع السبب كما يعيده الخادم',
+  'fleet.roster.unavailableEmpty': 'الجميع متاحون في هذا التاريخ',
+  'fleet.roster.free': 'متاح',
+  'fleet.roster.otherVehicle': 'سيارة أخرى',
+  'fleet.roster.transferHint': 'سيُنقل من السيارة {{code}} عند الحفظ',
+  'fleet.roster.reason.noProfile': 'بدون ملف سائق',
+  'fleet.roster.reason.profileInactive': 'الملف موقوف',
+  'fleet.roster.reason.notEmployed': 'خارج الخدمة الوظيفية',
+  'fleet.roster.reason.fleetUnavailability': 'تمام: غير متاح',
+  'fleet.roster.reason.hrLeave': 'إجازة معتمدة',
 };
 
 const catalogs: Record<Locale, Record<string, string>> = { en, ar };

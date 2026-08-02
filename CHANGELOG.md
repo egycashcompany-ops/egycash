@@ -139,6 +139,24 @@ its entry here in the same PR.
   pretending a number. The vehicle profile's odometer and maintenance links lit up with this
   slice, and three rows joined the navigation seed.
 
+  The daily roster board followed (FW-7), with the frontend as a pure viewer and executor of
+  FL-5. One call brings the whole day: the scoped vehicles with their assignments, the derived
+  in-workshop flag, and the driver pool already split by the availability seam — the unavailable
+  side carries the server's named reason, translated when it is one of the five known verdicts
+  and shown as sent otherwise. The date is URL-synced with previous/next-day stepping; searching
+  by code or plate filters the one live response. Assigning opens a dialog that edits the
+  complete desired state of that vehicle's day, and the driver slots offer only the board's own
+  available pool — never a directory search — each candidate labelled free or with the vehicle
+  currently holding them. Picking a held driver states plainly that saving will move them, and
+  the save sends both sides of the move in one call, which the backend runs as one transaction;
+  the server remains the authority on every rule, and a refused save refreshes the board because
+  refusal usually means it went stale. The plan response is the refreshed board itself, so the
+  screen repaints from the same round-trip with no second fetch. Clearing a day's assignment is
+  its own confirmed action, and an in-workshop vehicle offers clearing but never assigning —
+  the same asymmetry the backend enforces. The vehicle profile's roster link lit up with this
+  slice, arriving pre-filtered to the vehicle's code, and the roster row joined the navigation
+  seed.
+
 - **Accidents, violations, and grievances complete the Fleet backend (FL-6) — every fleet
   event is now stable.** Accidents keep the legacy's freedom with none of its looseness: a file
   opens on creation, closes and reopens as many times as the truth requires, but each flip is a

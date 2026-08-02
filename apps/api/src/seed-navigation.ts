@@ -76,6 +76,7 @@ const CATALOG: CategoryDef[] = [
         route: '/fleet/maintenance-alarms',
         icon: 'alert',
       },
+      { en: 'Daily Roster', ar: 'تعيين السيارات', route: '/fleet/roster', icon: 'clipboard' },
     ],
   },
   {

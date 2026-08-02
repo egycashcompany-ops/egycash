@@ -224,6 +224,8 @@ beforeAll(async () => {
     FleetEvents.MaintenanceAlarmRaised,
     FleetEvents.VehicleLicenseExpiring,
     FleetEvents.DriverLicenseExpired,
+    FleetEvents.RosterPlanned,
+    FleetEvents.AssignmentChanged,
   ]) {
     subscribe(name, `fleet-test-${name}`, (envelope) => {
       seenEvents.push({ name: envelope.name, payload: envelope.payload });
@@ -817,5 +819,198 @@ describe('maintenance visits + derived alarm + idempotent sweeps (FL-4)', () => 
     await licenseExpirySweep();
     expect(countFor(FleetEvents.VehicleLicenseExpiring, v.id)).toBe(1);
     expect(countFor(FleetEvents.DriverLicenseExpired, employeeId)).toBe(1);
+  });
+});
+
+describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
+  interface BoardDto {
+    changedCount?: number;
+    rows: {
+      vehicleId: string;
+      inMaintenance: boolean;
+      missionTypeId: string | null;
+      driver1EmployeeId: string | null;
+      driver2EmployeeId: string | null;
+    }[];
+    availableDrivers: { employeeId: string; assignedVehicleId: string | null }[];
+    unavailableDrivers: { employeeId: string; reason: string }[];
+  }
+
+  const missionTypeIdSeeded = async (): Promise<string> => {
+    const res = await request(app)
+      .get('/api/v1/fleet/catalog-items')
+      .query({ kind: 'missionType', pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    const item = data<FleetCatalogItemDto[]>(res).find((i) => i.name.ar === 'نقل أموال (يومي)');
+    if (item === undefined) throw new Error('seeded mission type not found');
+    return item.id;
+  };
+  const mkDriver = async (): Promise<string> => {
+    const employeeId = await mkEmployee();
+    await mkDriverProfile(employeeId);
+    return employeeId;
+  };
+  const savePlan = (date: string, rows: unknown[]) =>
+    request(app)
+      .post('/api/v1/fleet/roster')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date, rows });
+  const getBoard = (date: string) =>
+    request(app)
+      .get('/api/v1/fleet/roster')
+      .query({ date })
+      .set('Authorization', `Bearer ${adminToken}`);
+  const changedFor = (vehicleId: string): number =>
+    seenEvents.filter(
+      (e) =>
+        e.name === FleetEvents.AssignmentChanged &&
+        (e.payload as { vehicleId: string }).vehicleId === vehicleId,
+    ).length;
+
+  it('plans a day (upsert per vehicle+date), publishes both events, and a re-save is a no-op', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const driver = await mkDriver();
+    const missionTypeId = await missionTypeIdSeeded();
+    const date = '2026-11-01';
+
+    const save = await savePlan(date, [
+      { vehicleId: v.id, missionTypeId, driver1EmployeeId: driver },
+    ]);
+    expect(save.status).toBe(200);
+    const board = data<BoardDto>(save);
+    expect(board.changedCount).toBe(1);
+    expect(board.rows.find((r) => r.vehicleId === v.id)).toMatchObject({
+      missionTypeId,
+      driver1EmployeeId: driver,
+      inMaintenance: false,
+    });
+    expect(board.availableDrivers.find((d) => d.employeeId === driver)?.assignedVehicleId).toBe(
+      v.id,
+    );
+    expect(changedFor(v.id)).toBe(1);
+    expect(
+      seenEvents.some(
+        (e) =>
+          e.name === FleetEvents.RosterPlanned &&
+          (e.payload as { changedCount: number }).changedCount === 1,
+      ),
+    ).toBe(true);
+
+    // Same payload again: nothing changed, nothing written, nothing emitted per-row.
+    const again = await savePlan(date, [
+      { vehicleId: v.id, missionTypeId, driver1EmployeeId: driver },
+    ]);
+    expect(data<BoardDto>(again).changedCount).toBe(0);
+    expect(changedFor(v.id)).toBe(1);
+  });
+
+  it('FR-7 — one vehicle per driver per date; a move must carry the releasing row too', async () => {
+    const vA = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const vB = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const driver = await mkDriver();
+    const date = '2026-11-02';
+
+    expect((await savePlan(date, [{ vehicleId: vA.id, driver1EmployeeId: driver }])).status).toBe(
+      200,
+    );
+    // Taking the driver on B while A still holds them is refused…
+    const steal = await savePlan(date, [{ vehicleId: vB.id, driver1EmployeeId: driver }]);
+    expect(steal.status).toBe(409);
+    // …but the drag shape — both rows in one save — moves them atomically.
+    const move = await savePlan(date, [
+      { vehicleId: vA.id },
+      { vehicleId: vB.id, driver1EmployeeId: driver },
+    ]);
+    expect(move.status).toBe(200);
+    const rows = data<BoardDto>(move).rows;
+    expect(rows.find((r) => r.vehicleId === vA.id)?.driver1EmployeeId).toBeNull();
+    expect(rows.find((r) => r.vehicleId === vB.id)?.driver1EmployeeId).toBe(driver);
+  });
+
+  it('FR-5 — an in-workshop vehicle is flagged and unassignable; clearing it stays allowed', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const driver = await mkDriver();
+    const date = '2026-11-03';
+
+    const workshop = await request(app)
+      .post('/api/v1/fleet/catalog-items')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ kind: 'workshop', name: { ar: `ورشة التعيين`, en: `Roster shop` } });
+    const workTypes = await request(app)
+      .get('/api/v1/fleet/catalog-items')
+      .query({ kind: 'workType', pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    const checkIn = await request(app)
+      .post('/api/v1/fleet/maintenance')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        vehicleId: v.id,
+        inDate: '2026-10-30',
+        workshopId: data<FleetCatalogItemDto>(workshop).id,
+        workTypeId: data<FleetCatalogItemDto[]>(workTypes).find((i) => i.name.ar === 'صيانة')?.id,
+        odometerAtService: 50_000,
+      });
+    expect(checkIn.status).toBe(201);
+
+    const assign = await savePlan(date, [{ vehicleId: v.id, driver1EmployeeId: driver }]);
+    expect(assign.status).toBe(409);
+
+    const board = data<BoardDto>(await getBoard(date));
+    expect(board.rows.find((r) => r.vehicleId === v.id)?.inMaintenance).toBe(true);
+
+    // A row with nothing to assign is a clear, not an assignment — FR-5 does not block it.
+    const clear = await savePlan(date, [{ vehicleId: v.id }]);
+    expect(clear.status).toBe(200);
+    expect(data<BoardDto>(clear).changedCount).toBe(0);
+  });
+
+  it('FR-6 — the availability seam is the only authority, and the pool names the reason', async () => {
+    const driver = await mkDriver();
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const date = '2026-11-04';
+
+    await request(app)
+      .post('/api/v1/fleet/availability')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ employeeId: driver, from: date, to: date, reason: 'مأمورية' });
+
+    const refused = await savePlan(date, [{ vehicleId: v.id, driver1EmployeeId: driver }]);
+    expect(refused.status).toBe(409);
+
+    const board = data<BoardDto>(await getBoard(date));
+    expect(board.unavailableDrivers.find((d) => d.employeeId === driver)?.reason).toBe(
+      'fleetUnavailability',
+    );
+    expect(board.availableDrivers.some((d) => d.employeeId === driver)).toBe(false);
+  });
+
+  it('schema guards — the same person in both slots, or a vehicle twice, never reach the service', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const driver = await mkDriver();
+    const twoSlots = await savePlan('2026-11-05', [
+      { vehicleId: v.id, driver1EmployeeId: driver, driver2EmployeeId: driver },
+    ]);
+    expect(twoSlots.status).toBe(400);
+    const twice = await savePlan('2026-11-05', [{ vehicleId: v.id }, { vehicleId: v.id }]);
+    expect(twice.status).toBe(400);
+  });
+
+  it('planning is its own grant — the branch operator can neither view nor plan', async () => {
+    expect(
+      (
+        await request(app)
+          .get('/api/v1/fleet/roster')
+          .query({ date: '2026-11-06' })
+          .set('Authorization', `Bearer ${branchAToken}`)
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await request(app)
+          .post('/api/v1/fleet/roster')
+          .set('Authorization', `Bearer ${branchAToken}`)
+          .send({ date: '2026-11-06', rows: [{ vehicleId: '64b1f0cccccccccccccccc99' }] })
+      ).status,
+    ).toBe(403);
   });
 });

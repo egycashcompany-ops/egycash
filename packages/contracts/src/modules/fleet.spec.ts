@@ -120,6 +120,8 @@ describe('fleet contracts', () => {
       FleetEvents.VehicleLicenseExpired,
       FleetEvents.DriverLicenseExpiring,
       FleetEvents.DriverLicenseExpired,
+      FleetEvents.RosterPlanned,
+      FleetEvents.AssignmentChanged,
     ]);
     for (const name of Object.values(FleetEvents)) {
       expect(eventCatalogEntry(name), `${name} is not catalogued`).toBeDefined();

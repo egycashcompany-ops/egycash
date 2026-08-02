@@ -12,6 +12,7 @@ import { fleetDriverProfileService } from './driver-profiles/driver-profile.serv
 import { buildFleetAvailabilityRouter } from './availability/unavailability.routes';
 import { buildFleetOdometerRouter } from './odometer/odometer.routes';
 import { buildFleetMaintenanceRouter } from './maintenance/maintenance.routes';
+import { buildFleetRosterRouter } from './roster/roster.routes';
 import { licenseExpirySweep, maintenanceAlarmSweep } from './sweeps/fleet-sweeps';
 import { registerFleetSettings } from './fleet.settings';
 import { seedFleet } from './fleet.seed';
@@ -116,6 +117,18 @@ const maintenancePermissions = declarePermissions(
   ],
 );
 
+const rosterPermissions = declarePermissions(
+  'fleet',
+  'fleetRoster',
+  { en: 'duty roster', ar: 'تعيين السيارات' },
+  ['view'],
+  [
+    // One grant covers the whole planning surface: assigning, moving and clearing are the same
+    // operation on the same board (§4.5), not separately delegable decisions.
+    { action: 'plan', name: { en: 'Plan the daily roster', ar: 'تخطيط تعيين اليوم' } },
+  ],
+);
+
 export const fleetPermissions: PermissionDef[] = [
   ...vehiclePermissions,
   ...catalogPermissions,
@@ -124,6 +137,7 @@ export const fleetPermissions: PermissionDef[] = [
   ...availabilityPermissions,
   ...odometerPermissions,
   ...maintenancePermissions,
+  ...rosterPermissions,
 ];
 
 export const fleetModule: ModuleManifest = {
@@ -140,6 +154,7 @@ export const fleetModule: ModuleManifest = {
     { prefix: '/fleet/availability', router: buildFleetAvailabilityRouter() },
     { prefix: '/fleet/odometer', router: buildFleetOdometerRouter() },
     { prefix: '/fleet/maintenance', router: buildFleetMaintenanceRouter() },
+    { prefix: '/fleet/roster', router: buildFleetRosterRouter() },
   ],
   collections: [
     'fleet_vehicles',
@@ -150,6 +165,7 @@ export const fleetModule: ModuleManifest = {
     'fleet_odometer_logs',
     'fleet_maintenance_visits',
     'fleet_sweep_marks',
+    'fleet_duty_assignments',
   ],
   eventSubscriptions: [
     {

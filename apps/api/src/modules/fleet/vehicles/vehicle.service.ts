@@ -208,9 +208,16 @@ class FleetVehicleService {
     await auditService.record({ entityRef: entityRef(id), action: 'delete' });
   }
 
-  /** DERIVED `inWorkshop` (FR-12) — real since FL-4: vehicles with an open maintenance visit. */
-  async openVisitVehicleIds(vehicleIds: readonly string[]): Promise<ReadonlySet<string>> {
-    return fleetMaintenanceRepository.openVisitVehicleIds(vehicleIds);
+  /**
+   * DERIVED `inWorkshop` (FR-12) — real since FL-4: vehicles with an open maintenance visit.
+   * The single source of a vehicle's assignability (owner FL-5 point 2): FL-5's roster asks
+   * this seam with the plan date (FR-5) instead of re-deriving workshop state anywhere else.
+   */
+  async openVisitVehicleIds(
+    vehicleIds: readonly string[],
+    coveringDate?: Date,
+  ): Promise<ReadonlySet<string>> {
+    return fleetMaintenanceRepository.openVisitVehicleIds(vehicleIds, coveringDate);
   }
 }
 

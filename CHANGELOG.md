@@ -66,6 +66,29 @@ its entry here in the same PR.
 
 ### Added
 
+- **The daily duty roster is live (FL-5): one board, one save shape, the day's exclusivity
+  enforced where it can't be forgotten.** `GET /fleet/roster?date=` returns the whole planning
+  picture — the caller's in-scope active vehicles with their assignments and a derived
+  `inMaintenance` flag, plus the driver pool split into available (with the vehicle already
+  holding each driver, anywhere in the fleet) and unavailable (with the layer that said no).
+  The roster owns none of that logic: a driver's assignability is exactly what FL-3's
+  `driverAvailabilityOn` answers, and a vehicle's is exactly what the `openVisitVehicleIds`
+  seam answers — now accepting the plan date, so a car that enters the workshop after day D
+  doesn't block day D (FR-5), with no call-site changed.
+
+  `POST /fleet/roster` saves a plan as an upsert per (vehicle, date) — only the changed rows
+  are sent, and each row is the complete desired state of that vehicle-day. The whole save runs
+  in one transaction, every write version-checked against the row it read, and unchanged rows
+  are pure no-ops: no write, no audit entry, no event. FR-7 — one vehicle per driver per date —
+  is checked against the end state of the entire day, so taking a driver another vehicle still
+  holds is refused with the holder named; sending both rows of the move in one save transfers
+  the driver atomically. That is precisely the shape a drag produces, which is why a future
+  drag-and-drop scheduler needs no backend change. Assignment rows are never deleted: clearing
+  a day empties the row's facts in place, keeping the audit trail hanging on the row it
+  describes. `fleet.roster.planned` (one per save) and `fleet.assignment.changed` (per changed
+  row) fire after commit and are promoted planned → stable. Zero contract changes — the FL-1
+  roster surface shipped exactly as frozen.
+
 - **The odometer chain, maintenance visits, and the derived alarm engine are live (FL-4).** The
   odometer is one continuous chain per vehicle: recording a reading closes the open period
   (deriving its km) and opens the next inside a single transaction, a partial unique index

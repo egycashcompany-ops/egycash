@@ -21,18 +21,29 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
       .exec();
   }
 
-  /** Vehicles with an OPEN visit — FR-12's derived `inWorkshop`, FR-5's roster exclusion. */
-  async openVisitVehicleIds(vehicleIds: readonly string[]): Promise<ReadonlySet<string>> {
+  /**
+   * Vehicles with an OPEN visit — FR-12's derived `inWorkshop`, FR-5's roster exclusion. With
+   * `coveringDate`, only visits already open by the end of that day count: a car that enters
+   * the workshop AFTER day D was not in the workshop ON day D.
+   */
+  async openVisitVehicleIds(
+    vehicleIds: readonly string[],
+    coveringDate?: Date,
+  ): Promise<ReadonlySet<string>> {
     if (vehicleIds.length === 0) return new Set();
+    const filter: FilterQuery<FleetMaintenanceVisitDoc> = {
+      vehicleId: { $in: vehicleIds.map((id) => new Types.ObjectId(id)) },
+      outDate: null,
+      isDeleted: false,
+    };
+    if (coveringDate !== undefined) {
+      const d = coveringDate;
+      filter.inDate = {
+        $lt: new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) + 86_400_000),
+      };
+    }
     const rows = await this.model
-      .find(
-        {
-          vehicleId: { $in: vehicleIds.map((id) => new Types.ObjectId(id)) },
-          outDate: null,
-          isDeleted: false,
-        },
-        { vehicleId: 1 },
-      )
+      .find(filter, { vehicleId: 1 })
       .lean<{ vehicleId: Types.ObjectId }[]>()
       .exec();
     return new Set(rows.map((row) => String(row.vehicleId)));

@@ -24,7 +24,7 @@ const sweepMarkSchema = new Schema<FleetSweepMarkDoc>(
 
 sweepMarkSchema.index({ key: 1 }, { unique: true, name: 'ux_key' });
 
-export const FleetSweepMarkModel = model<FleetSweepMarkDoc>(
+const FleetSweepMarkModel = model<FleetSweepMarkDoc>(
   'FleetSweepMark',
   sweepMarkSchema,
   'fleet_sweep_marks',

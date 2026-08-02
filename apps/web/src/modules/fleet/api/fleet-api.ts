@@ -55,8 +55,6 @@ export const listVehicleTypes = (
   params: FleetListParams,
 ): Promise<Paginated<FleetVehicleTypeDto>> =>
   getPage<FleetVehicleTypeDto>(`/fleet/vehicle-types${buildQuery(params)}`);
-export const getVehicleType = (id: string): Promise<FleetVehicleTypeDto> =>
-  get<FleetVehicleTypeDto>(`/fleet/vehicle-types/${id}`);
 export const createVehicleType = (body: CreateFleetVehicleType): Promise<FleetVehicleTypeDto> =>
   post<FleetVehicleTypeDto>('/fleet/vehicle-types', body);
 export const updateVehicleType = (

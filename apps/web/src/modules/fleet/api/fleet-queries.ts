@@ -40,7 +40,9 @@ import { type FleetListParams } from './fleet-api';
 
 const MODULE = 'fleet';
 
-export const fleetKeys = {
+// Feature-subtree invalidation targets — internal: every consumer outside this file goes
+// through the hooks, never the keys.
+const fleetKeys = {
   vehicles: featureKey(MODULE, 'vehicles'),
   vehicleTypes: featureKey(MODULE, 'vehicleTypes'),
   catalogs: featureKey(MODULE, 'catalogs'),

@@ -17,15 +17,25 @@
 //   /fleet/catalogs           fleetCatalog.manage          FW-10
 //   /fleet/settings           fleetMaintenanceRule.manage  FW-10
 import { Route, Routes } from 'react-router-dom';
+import { RequirePermission } from '../../platform/router/RequirePermission';
 import { NotFoundPage } from '../../platform/app/pages/NotFoundPage';
 import { AppShell } from '../../platform/layout/AppShell';
 import { FleetDashboardPage } from './pages/FleetDashboardPage';
+import { VehiclesListPage } from './pages/VehiclesListPage';
 
 export default function FleetRoutes(): JSX.Element {
   return (
     <Routes>
       <Route element={<AppShell />}>
         <Route index element={<FleetDashboardPage />} />
+        <Route
+          path="vehicles"
+          element={
+            <RequirePermission permission="fleetVehicle.view">
+              <VehiclesListPage />
+            </RequirePermission>
+          }
+        />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>

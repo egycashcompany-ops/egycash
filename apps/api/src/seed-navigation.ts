@@ -63,7 +63,10 @@ const CATALOG: CategoryDef[] = [
     // Planned rows, for reference: vehicles (FW-3), drivers + attendance (FW-5), odometer +
     // maintenance + maintenance-alarms (FW-6), roster (FW-7), accidents (FW-8), violations
     // (FW-9), catalogs + settings (FW-10).
-    apps: [{ en: 'Fleet Home', ar: 'الرئيسية', route: '/fleet', icon: 'home' }],
+    apps: [
+      { en: 'Fleet Home', ar: 'الرئيسية', route: '/fleet', icon: 'home' },
+      { en: 'Vehicles', ar: 'السيارات', route: '/fleet/vehicles', icon: 'truck' },
+    ],
   },
   {
     en: 'Organization',

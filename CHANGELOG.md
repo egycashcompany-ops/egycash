@@ -87,6 +87,17 @@ its entry here in the same PR.
   joined the shared icon set and the sidebar registry — `calendar` also repairs the Leave app's
   icon, which had referenced a name the registry never knew.
 
+  The vehicles registry followed (FW-3) in the HR list-page idiom exactly: URL-synchronized
+  search (the four physical identifiers, matched server-side), status/type/branch filters,
+  sortable columns, and pagination — deep-linkable and back/forward-aware. The derived
+  in-workshop pill sits beside the lifecycle badge and expired licenses show red in place.
+  Create and edit share one dialog where a cleared optional field submits as null — an erased
+  fact, not an untouched one; the status dialog offers only the transitions the lifecycle
+  allows, demands a reason whenever a vehicle leaves active service, and says plainly that
+  disposal cannot be undone; deletion confirms with the audit-trail note. Every action stands
+  behind its own permission, and rows don't navigate yet — the vehicle profile arrives in FW-4
+  and brings the link with it.
+
 - **Accidents, violations, and grievances complete the Fleet backend (FL-6) — every fleet
   event is now stable.** Accidents keep the legacy's freedom with none of its looseness: a file
   opens on creation, closes and reopens as many times as the truth requires, but each flip is a

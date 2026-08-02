@@ -3,7 +3,12 @@
 // mutation moves alarms and the vehicle's derived facts, so both invalidate together; a roster
 // save replaces the whole day. Read hooks land here in FW-1 as the module's data foundation;
 // each later slice adds its mutation hooks beside them.
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  type ChangeFleetVehicleStatus,
+  type CreateFleetVehicle,
+  type UpdateFleetVehicle,
+} from '@ecms/contracts';
 import { detailKey, featureKey, listKey } from '../../../shared/lib/query-keys';
 import * as api from './fleet-api';
 import { type FleetListParams } from './fleet-api';
@@ -40,6 +45,34 @@ export const useVehicle = (id: string) =>
     queryFn: () => api.getVehicle(id),
     enabled: id !== '',
   });
+
+// Vehicle mutations (FW-3). Every write invalidates the vehicles subtree; a status change also
+// moves the dashboard's counts, which live under the same feature key. The detail cache is
+// seeded so FW-4's profile opens on fresh data.
+const useVehicleMutation = <TInput, TResult extends { id: string } | void>(
+  mutationFn: (input: TInput) => Promise<TResult>,
+) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: (doc) => {
+      if (doc !== undefined) qc.setQueryData(detailKey(MODULE, 'vehicles', doc.id), doc);
+      void qc.invalidateQueries({ queryKey: fleetKeys.vehicles });
+    },
+  });
+};
+
+export const useCreateVehicle = () =>
+  useVehicleMutation((body: CreateFleetVehicle) => api.createVehicle(body));
+export const useUpdateVehicle = () =>
+  useVehicleMutation(({ id, body }: { id: string; body: UpdateFleetVehicle }) =>
+    api.updateVehicle(id, body),
+  );
+export const useChangeVehicleStatus = () =>
+  useVehicleMutation(({ id, body }: { id: string; body: ChangeFleetVehicleStatus }) =>
+    api.changeVehicleStatus(id, body),
+  );
+export const useDeleteVehicle = () => useVehicleMutation((id: string) => api.deleteVehicle(id));
 
 export const useVehicleTypes = (params: FleetListParams = { pageSize: 100 }) =>
   useQuery({

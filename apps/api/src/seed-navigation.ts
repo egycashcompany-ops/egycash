@@ -58,25 +58,12 @@ const CATALOG: CategoryDef[] = [
     en: 'Fleet',
     ar: 'الحركة',
     sortOrder: 15,
-    apps: [
-      { en: 'Fleet Home', ar: 'الرئيسية', route: '/fleet', icon: 'home' },
-      { en: 'Vehicles', ar: 'السيارات', route: '/fleet/vehicles', icon: 'truck' },
-      { en: 'Drivers', ar: 'السائقون', route: '/fleet/drivers', icon: 'users' },
-      { en: 'Attendance', ar: 'التمامات', route: '/fleet/attendance', icon: 'calendar' },
-      { en: 'Odometer', ar: 'عدادات السيارات', route: '/fleet/odometer', icon: 'gauge' },
-      { en: 'Maintenance', ar: 'صيانة السيارات', route: '/fleet/maintenance', icon: 'wrench' },
-      {
-        en: 'Maintenance Alarms',
-        ar: 'إنذارات الصيانة',
-        route: '/fleet/maintenance-alarms',
-        icon: 'alert',
-      },
-      { en: 'Daily Roster', ar: 'تعيين السيارات', route: '/fleet/roster', icon: 'clipboard' },
-      { en: 'Accidents', ar: 'حوادث السيارات', route: '/fleet/accidents', icon: 'alert' },
-      { en: 'Violations', ar: 'مخالفات السيارات', route: '/fleet/violations', icon: 'shield' },
-      { en: 'Fleet Catalogs', ar: 'قوائم الحركة', route: '/fleet/catalogs', icon: 'folder' },
-      { en: 'Fleet Settings', ar: 'إعدادات الحركة', route: '/fleet/settings', icon: 'cog' },
-    ],
+    // OWNER RULE (FW-1 review): only SHIPPED pages appear in navigation — each FW slice appends
+    // its rows here as it lands (the boot sync is additive, so existing installs pick them up).
+    // Planned rows, for reference: vehicles (FW-3), drivers + attendance (FW-5), odometer +
+    // maintenance + maintenance-alarms (FW-6), roster (FW-7), accidents (FW-8), violations
+    // (FW-9), catalogs + settings (FW-10).
+    apps: [{ en: 'Fleet Home', ar: 'الرئيسية', route: '/fleet', icon: 'home' }],
   },
   {
     en: 'Organization',

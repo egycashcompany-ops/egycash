@@ -66,23 +66,26 @@ its entry here in the same PR.
 
 ### Added
 
-- **The Fleet web module exists (FW-1): full information architecture, routed, guarded, and in
-  the sidebar — built exactly like the HR modules.** `/fleet` and its twelve screens
-  (vehicles + vehicle detail, drivers, attendance, odometer, maintenance, maintenance alarms,
-  daily roster, accidents, violations, catalogs, settings) load as one lazy chunk behind the
-  platform shell, each route guarded by its §7 permission the same way the API enforces it.
-  The module home is the shared permission-aware ModuleHome; navigation stays data-driven — the
-  boot catalog sync gained a Fleet category with the twelve applications, strictly additive, so
-  existing installs receive it on next start with admin customizations untouched. All labels
-  ship in Arabic and English; RTL comes from the platform frame.
+- **The Fleet web module exists (FW-1) and opens on a live dashboard (FW-2) — built exactly
+  like the HR modules, with nothing unfinished ever shown to a user.** The module loads as one
+  lazy chunk behind the platform shell; navigation stays data-driven, and per the owner's
+  review rule a page joins the sidebar catalog and the route table only in the slice that ships
+  it — an unshipped URL is a plain 404, never a "coming soon". The boot catalog sync gained a
+  Fleet category carrying exactly the shipped surface (Fleet Home today), strictly additive, so
+  each slice's rows reach existing installs on next start with admin customizations untouched.
+  All labels ship in Arabic and English; RTL comes from the platform frame.
 
-  The data foundation for every coming slice landed with the skeleton: a typed API client
-  covering the whole FL-2…FL-6 surface plus TanStack Query hooks on the platform key factory —
-  no mock data exists anywhere in the module, and screens whose slice has not shipped yet render
-  an honest planned-state page behind their final route and permission until FW-2…FW-10 replace
-  them in place. Five glyphs (truck, gauge, wrench, calendar, cog) joined the shared icon set
-  and the sidebar registry — `calendar` also repairs the Leave app's icon, which had referenced
-  a name the registry never knew.
+  `/fleet` is a real dashboard, not a link grid: four KPIs — active vehicles, vehicles in the
+  workshop (open visits), derived maintenance alarms with the red count, open accident files —
+  and two boards: the alarm list in triage order (red first, most-overdue first) and vehicle
+  licenses expiring within 60 days with already-expired ones flagged. Every number is a server
+  fact from the FL-2…FL-6 APIs; each card gates its own §7 permission, so queries never fire
+  for cards the user cannot see, and an account with no fleet permissions gets one honest empty
+  state. The data foundation for every coming slice landed alongside: a typed API client
+  covering the whole backend surface plus TanStack Query hooks on the platform key factory —
+  no mock data exists anywhere in the module. Five glyphs (truck, gauge, wrench, calendar, cog)
+  joined the shared icon set and the sidebar registry — `calendar` also repairs the Leave app's
+  icon, which had referenced a name the registry never knew.
 
 - **Accidents, violations, and grievances complete the Fleet backend (FL-6) — every fleet
   event is now stable.** Accidents keep the legacy's freedom with none of its looseness: a file

@@ -24,11 +24,14 @@ export const fleetKeys = {
 } as const;
 
 // ── Registry + rules ────────────────────────────────────────────────────────
-export const useVehicles = (params: FleetListParams) =>
+// `enabled` mirrors the caller's §7 permission (dashboard cards fetch only what the user may
+// see); it defaults to true so list pages stay unchanged.
+export const useVehicles = (params: FleetListParams, enabled = true) =>
   useQuery({
     queryKey: listKey(MODULE, 'vehicles', params),
     queryFn: () => api.listVehicles(params),
     placeholderData: (prev) => prev,
+    enabled,
   });
 
 export const useVehicle = (id: string) =>
@@ -89,20 +92,22 @@ export const useExpectedReading = (vehicleId: string) =>
     enabled: vehicleId !== '',
   });
 
-export const useMaintenanceAlarms = () =>
+export const useMaintenanceAlarms = (enabled = true) =>
   useQuery({
     queryKey: [MODULE, 'odometer', 'alarms'],
     queryFn: api.listMaintenanceAlarms,
     // Derived on the server per request (FR-3); a short stale window keeps the board honest
     // without hammering the projection.
     staleTime: 30_000,
+    enabled,
   });
 
-export const useMaintenanceVisits = (params: FleetListParams) =>
+export const useMaintenanceVisits = (params: FleetListParams, enabled = true) =>
   useQuery({
     queryKey: listKey(MODULE, 'maintenance', params),
     queryFn: () => api.listMaintenanceVisits(params),
     placeholderData: (prev) => prev,
+    enabled,
   });
 
 // ── Roster / accidents / violations ─────────────────────────────────────────
@@ -114,11 +119,12 @@ export const useRosterDay = (date: string) =>
     placeholderData: (prev) => prev,
   });
 
-export const useAccidents = (params: FleetListParams) =>
+export const useAccidents = (params: FleetListParams, enabled = true) =>
   useQuery({
     queryKey: listKey(MODULE, 'accidents', params),
     queryFn: () => api.listAccidents(params),
     placeholderData: (prev) => prev,
+    enabled,
   });
 
 export const useViolations = (params: FleetListParams) =>

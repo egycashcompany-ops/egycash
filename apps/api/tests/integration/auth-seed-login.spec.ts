@@ -94,15 +94,17 @@ describe('seed → password login (regression)', () => {
     ).data;
 
     // Default categories are seeded and returned in sortOrder.
-    expect(groups.map((g) => g.name.en)).toEqual(['HR', 'Organization', 'Administration']);
+    expect(groups.map((g) => g.name.en)).toEqual(['HR', 'Fleet', 'Organization', 'Administration']);
     // Applications map to the app's real client routes, granted directly to the admin.
     const routes = groups.flatMap((g) => g.applications.map((a) => a.route));
     expect(routes).toContain('/applicants');
     expect(routes).toContain('/leave');
+    expect(routes).toContain('/fleet');
+    expect(routes).toContain('/fleet/vehicles');
     expect(routes).toContain('/organization/branches');
     expect(routes).toContain('/organization/applications');
     expect(routes).toContain('/contracts');
-    expect(routes).toHaveLength(18); // 10 (HR) + 6 (Organization) + 2 (Administration)
+    expect(routes).toHaveLength(30); // 10 (HR) + 12 (Fleet) + 6 (Organization) + 2 (Administration)
   });
 
   it('re-running the seed is idempotent — no duplicate categories/applications/grants', async () => {
@@ -113,8 +115,8 @@ describe('seed → password login (regression)', () => {
       .get('/api/v1/platform/me/applications')
       .set('Authorization', `Bearer ${token}`);
     const groups = (res.body as { data: { applications: unknown[] }[] }).data;
-    expect(groups).toHaveLength(3);
-    expect(groups.reduce((n, g) => n + g.applications.length, 0)).toBe(18);
+    expect(groups).toHaveLength(4);
+    expect(groups.reduce((n, g) => n + g.applications.length, 0)).toBe(30);
   });
 
   it('the seeded HR user also logs in with email/password', async () => {

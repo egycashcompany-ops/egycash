@@ -36,7 +36,7 @@ export const UpdateFleetVehicleTypeSchema = z
     name: LocalizedStringSchema.optional(),
     maintenanceIntervalKm: z.number().int().min(0).optional(),
     isActive: z.boolean().optional(),
-    version: z.number().int().min(1),
+    version: z.number().int().min(0),
   })
   .strict();
 export type UpdateFleetVehicleType = z.infer<typeof UpdateFleetVehicleTypeSchema>;
@@ -89,7 +89,7 @@ export const UpdateFleetCatalogItemSchema = z
     name: LocalizedStringSchema.optional(),
     countsForAlarm: z.boolean().optional(),
     isActive: z.boolean().optional(),
-    version: z.number().int().min(1),
+    version: z.number().int().min(0),
   })
   .strict();
 export type UpdateFleetCatalogItem = z.infer<typeof UpdateFleetCatalogItemSchema>;
@@ -155,7 +155,7 @@ export type CreateFleetVehicle = z.infer<typeof CreateFleetVehicleSchema>;
 export const UpdateFleetVehicleSchema = z
   .object(vehicleCore)
   .partial()
-  .extend({ version: z.number().int().min(1) })
+  .extend({ version: z.number().int().min(0) })
   .strict();
 export type UpdateFleetVehicle = z.infer<typeof UpdateFleetVehicleSchema>;
 
@@ -164,7 +164,7 @@ export const ChangeFleetVehicleStatusSchema = z
   .object({
     status: FleetVehicleStatusSchema,
     reason: z.string().trim().min(1).max(500).optional(),
-    version: z.number().int().min(1),
+    version: z.number().int().min(0),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -225,7 +225,7 @@ export const UpdateFleetDriverProfileSchema = z
     specialization: FleetDriverSpecializationSchema.optional(),
     area: z.string().trim().min(1).max(120).nullish().optional(),
     isActive: z.boolean().optional(),
-    version: z.number().int().min(1),
+    version: z.number().int().min(0),
   })
   .strict();
 export type UpdateFleetDriverProfile = z.infer<typeof UpdateFleetDriverProfileSchema>;
@@ -278,7 +278,7 @@ export const UpdateFleetUnavailabilitySchema = z
     to: z.coerce.date().optional(),
     reason: z.string().trim().min(1).max(200).optional(),
     notes: z.string().trim().min(1).max(1000).nullish().optional(),
-    version: z.number().int().min(1),
+    version: z.number().int().min(0),
   })
   .strict();
 export type UpdateFleetUnavailability = z.infer<typeof UpdateFleetUnavailabilitySchema>;
@@ -334,7 +334,7 @@ export const CorrectFleetOdometerSchema = z
     driver1EmployeeId: objectId().nullish().optional(),
     driver2EmployeeId: objectId().nullish().optional(),
     notes: z.string().trim().min(1).max(1000).nullish().optional(),
-    version: z.number().int().min(1),
+    version: z.number().int().min(0),
   })
   .strict();
 export type CorrectFleetOdometer = z.infer<typeof CorrectFleetOdometerSchema>;
@@ -411,13 +411,13 @@ export const CheckOutFleetMaintenanceSchema = z
   .object({
     outDate: z.coerce.date(),
     takenOutByEmployeeId: objectId().nullish(),
-    version: z.number().int().min(1),
+    version: z.number().int().min(0),
   })
   .strict();
 export type CheckOutFleetMaintenance = z.infer<typeof CheckOutFleetMaintenanceSchema>;
 
 /** Undo a mistaken check-out (legacy deleted_dock=5) — version-aware like every mutation. */
-export const ReopenFleetMaintenanceSchema = z.object({ version: z.number().int().min(1) }).strict();
+export const ReopenFleetMaintenanceSchema = z.object({ version: z.number().int().min(0) }).strict();
 export type ReopenFleetMaintenance = z.infer<typeof ReopenFleetMaintenanceSchema>;
 
 export const UpdateFleetMaintenanceSchema = z
@@ -429,7 +429,7 @@ export const UpdateFleetMaintenanceSchema = z
     odometerAtService: z.number().int().min(0).optional(),
     takenInByEmployeeId: objectId().nullish().optional(),
     notes: z.string().trim().min(1).max(1000).nullish().optional(),
-    version: z.number().int().min(1),
+    version: z.number().int().min(0),
   })
   .strict();
 export type UpdateFleetMaintenance = z.infer<typeof UpdateFleetMaintenanceSchema>;
@@ -582,13 +582,13 @@ export type CreateFleetAccident = z.infer<typeof CreateFleetAccidentSchema>;
 export const UpdateFleetAccidentSchema = z
   .object(accidentCore)
   .partial()
-  .extend({ version: z.number().int().min(1) })
+  .extend({ version: z.number().int().min(0) })
   .strict();
 export type UpdateFleetAccident = z.infer<typeof UpdateFleetAccidentSchema>;
 
 /** Open↔closed, both directions (legacy toggles; both audited + published). */
 export const SetFleetAccidentStatusSchema = z
-  .object({ status: FleetAccidentStatusSchema, version: z.number().int().min(1) })
+  .object({ status: FleetAccidentStatusSchema, version: z.number().int().min(0) })
   .strict();
 export type SetFleetAccidentStatus = z.infer<typeof SetFleetAccidentStatusSchema>;
 
@@ -657,7 +657,7 @@ export const UpdateFleetViolationSchema = z
     date: z.coerce.date().optional(),
     driverEmployeeId: objectId().optional(),
     amount: egp().optional(),
-    version: z.number().int().min(1),
+    version: z.number().int().min(0),
   })
   .strict();
 export type UpdateFleetViolation = z.infer<typeof UpdateFleetViolationSchema>;

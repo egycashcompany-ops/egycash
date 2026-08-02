@@ -43,6 +43,8 @@ let adminToken: string;
 let branchAToken: string; // fleetVehicle.* at BRANCH scope, placed in branch A
 let branchAId: string;
 let branchBId: string;
+let departmentAId: string; // real org rows — direct registration validates the referents
+let jobTitleAId: string;
 let typeId: string;
 const seenEvents: { name: string; payload: unknown }[] = [];
 let vehicleCounter = 100;
@@ -103,8 +105,8 @@ const mkEmployee = async (): Promise<string> => {
         references: [],
       },
       employment: {
-        jobTitleId: '64b1f0cccccccccccccccc01',
-        departmentId: '64b1f0cccccccccccccccc02',
+        jobTitleId: jobTitleAId,
+        departmentId: departmentAId,
         branchId: branchAId,
         employmentType: 'fullTime',
         probationMonths: 0,
@@ -192,6 +194,25 @@ beforeAll(async () => {
   };
   branchAId = await mkBranch('90', 'فرع أ', 'Branch A');
   branchBId = await mkBranch('91', 'فرع ب', 'Branch B');
+
+  // Direct registration verifies the department belongs to the branch and the title is active,
+  // so the drivers this suite hires need REAL org rows, not fabricated ids.
+  const dept = await request(app)
+    .post('/api/v1/platform/departments')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({
+      code: 'FL-OPS',
+      name: { ar: 'إدارة الحركة', en: 'Fleet Operations' },
+      branchId: branchAId,
+    });
+  expect(dept.status).toBe(201);
+  departmentAId = (dept.body as { data: { id: string } }).data.id;
+  const title = await request(app)
+    .post('/api/v1/platform/job-titles')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ code: 'FL-DRV', name: { ar: 'سائق', en: 'Driver' } });
+  expect(title.status).toBe(201);
+  jobTitleAId = (title.body as { data: { id: string } }).data.id;
 
   // Branch-scoped fleet operator: full vehicle actions, scope = branch, placed in branch A.
   const branchRole = await rbacService.createRole(

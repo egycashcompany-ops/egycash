@@ -210,7 +210,7 @@ beforeAll(async () => {
   const title = await request(app)
     .post('/api/v1/platform/job-titles')
     .set('Authorization', `Bearer ${adminToken}`)
-    .send({ code: 'FL-DRV', name: { ar: 'سائق', en: 'Driver' } });
+    .send({ code: 'FL-DRV', name: { ar: 'سائق', en: 'Driver' }, jobGrade: 'G1' });
   expect(title.status).toBe(201);
   jobTitleAId = (title.body as { data: { id: string } }).data.id;
 

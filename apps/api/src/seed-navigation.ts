@@ -68,6 +68,14 @@ const CATALOG: CategoryDef[] = [
       { en: 'Vehicles', ar: 'السيارات', route: '/fleet/vehicles', icon: 'truck' },
       { en: 'Drivers', ar: 'السائقون', route: '/fleet/drivers', icon: 'users' },
       { en: 'Attendance', ar: 'التمامات', route: '/fleet/attendance', icon: 'calendar' },
+      { en: 'Odometer', ar: 'عدادات السيارات', route: '/fleet/odometer', icon: 'gauge' },
+      { en: 'Maintenance', ar: 'صيانة السيارات', route: '/fleet/maintenance', icon: 'wrench' },
+      {
+        en: 'Maintenance Alarms',
+        ar: 'إنذارات الصيانة',
+        route: '/fleet/maintenance-alarms',
+        icon: 'alert',
+      },
     ],
   },
   {

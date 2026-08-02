@@ -47,13 +47,13 @@ const HISTORY_LINKS: {
     key: 'odometer',
     to: (id) => `/fleet/odometer?vehicle=${id}`,
     permission: 'fleetOdometer.view',
-    shipped: false,
+    shipped: true, // FW-6
   },
   {
     key: 'maintenance',
     to: (id) => `/fleet/maintenance?vehicle=${id}`,
     permission: 'fleetMaintenance.view',
-    shipped: false,
+    shipped: true, // FW-6
   },
   {
     key: 'accidents',

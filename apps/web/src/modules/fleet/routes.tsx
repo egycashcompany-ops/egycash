@@ -26,6 +26,9 @@ import { VehicleDetailPage } from './pages/VehicleDetailPage';
 import { DriversListPage } from './pages/DriversListPage';
 import { DriverProfilePage } from './pages/DriverProfilePage';
 import { AttendancePage } from './pages/AttendancePage';
+import { OdometerPage } from './pages/OdometerPage';
+import { MaintenancePage } from './pages/MaintenancePage';
+import { MaintenanceAlarmsPage } from './pages/MaintenanceAlarmsPage';
 
 export default function FleetRoutes(): JSX.Element {
   return (
@@ -69,6 +72,30 @@ export default function FleetRoutes(): JSX.Element {
           element={
             <RequirePermission permission="fleetAvailability.view">
               <AttendancePage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="odometer"
+          element={
+            <RequirePermission permission="fleetOdometer.view">
+              <OdometerPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="maintenance"
+          element={
+            <RequirePermission permission="fleetMaintenance.view">
+              <MaintenancePage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="maintenance-alarms"
+          element={
+            <RequirePermission permission="fleetOdometer.view">
+              <MaintenanceAlarmsPage />
             </RequirePermission>
           }
         />

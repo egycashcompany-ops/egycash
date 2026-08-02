@@ -122,6 +122,23 @@ its entry here in the same PR.
   and the cancel confirm says what it means: the driver becomes assignable again, the history
   stays in the audit log.
 
+  The FL-4 trio followed (FW-6): odometer, maintenance, and the alarms board — screens over
+  server facts, with none of the chain arithmetic reimplemented in the browser. The odometer
+  log filters by vehicle and date range; an open period shows an honest "open" badge with the
+  km column blank, because the server has not derived that distance yet. Recording offers the
+  expected next reading as a hint only — continuity is enforced where it lives, in the API —
+  and the correction dialog sends just the changed fields with the document version; it never
+  sends an empty in-reading, because the backend reads that as reopening the period and
+  refuses, and the UI does not offer what the server forbids. Maintenance lists visits with
+  open/closed filtering and catalog-resolved workshop and work-type names; check-in pre-trims
+  vehicles already in the workshop from the picker while the server remains the authority,
+  and check-out, reopen, edit, and delete are version-aware behind their own permissions with
+  plain-spoken confirms. The alarms board renders the derived projection exactly as served —
+  level filter and code search run client-side over the one live response, triage order red
+  first and most-overdue first, and a vehicle with no counting service yet says so instead of
+  pretending a number. The vehicle profile's odometer and maintenance links lit up with this
+  slice, and three rows joined the navigation seed.
+
 - **Accidents, violations, and grievances complete the Fleet backend (FL-6) — every fleet
   event is now stable.** Accidents keep the legacy's freedom with none of its looseness: a file
   opens on creation, closes and reopens as many times as the truth requires, but each flip is a

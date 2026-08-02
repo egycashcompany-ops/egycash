@@ -6,10 +6,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   type ChangeFleetVehicleStatus,
+  type CheckInFleetMaintenance,
+  type CheckOutFleetMaintenance,
+  type CorrectFleetOdometer,
   type CreateFleetDriverProfile,
   type CreateFleetUnavailability,
   type CreateFleetVehicle,
+  type RecordFleetOdometer,
   type UpdateFleetDriverProfile,
+  type UpdateFleetMaintenance,
   type UpdateFleetUnavailability,
   type UpdateFleetVehicle,
 } from '@ecms/contracts';
@@ -196,6 +201,58 @@ export const useMaintenanceVisits = (params: FleetListParams, enabled = true) =>
     placeholderData: (prev) => prev,
     enabled,
   });
+
+// ── Odometer + maintenance mutations (FW-6) ─────────────────────────────────
+// Odometer writes move every derived odometer surface (logs, expected reading, the alarm
+// projection) — one feature-key invalidation covers them all. Maintenance writes additionally
+// move the vehicles' derived inWorkshop flag and the alarm baseline.
+export const useRecordOdometer = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: RecordFleetOdometer) => api.recordOdometer(body),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: fleetKeys.odometer }),
+  });
+};
+
+export const useCorrectOdometer = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: CorrectFleetOdometer }) =>
+      api.correctOdometer(id, body),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: fleetKeys.odometer }),
+  });
+};
+
+const useMaintenanceMutation = <TInput, TResult>(
+  mutationFn: (input: TInput) => Promise<TResult>,
+) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: fleetKeys.maintenance });
+      void qc.invalidateQueries({ queryKey: fleetKeys.odometer });
+      void qc.invalidateQueries({ queryKey: fleetKeys.vehicles });
+    },
+  });
+};
+
+export const useCheckInMaintenance = () =>
+  useMaintenanceMutation((body: CheckInFleetMaintenance) => api.checkInMaintenance(body));
+export const useCheckOutMaintenance = () =>
+  useMaintenanceMutation(({ id, body }: { id: string; body: CheckOutFleetMaintenance }) =>
+    api.checkOutMaintenance(id, body),
+  );
+export const useReopenMaintenance = () =>
+  useMaintenanceMutation(({ id, version }: { id: string; version: number }) =>
+    api.reopenMaintenance(id, version),
+  );
+export const useUpdateMaintenance = () =>
+  useMaintenanceMutation(({ id, body }: { id: string; body: UpdateFleetMaintenance }) =>
+    api.updateMaintenance(id, body),
+  );
+export const useDeleteMaintenance = () =>
+  useMaintenanceMutation((id: string) => api.deleteMaintenance(id));
 
 // ── Roster / accidents / violations ─────────────────────────────────────────
 export const useRosterDay = (date: string) =>

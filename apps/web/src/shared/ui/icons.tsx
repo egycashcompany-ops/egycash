@@ -286,3 +286,46 @@ export const CornerDownIcon = (p: IconProps): JSX.Element => (
     <path d="M20 4v7a4 4 0 0 1-4 4H4" />
   </Base>
 );
+
+// ── Fleet glyphs (FW-1) — same stroke style, registered in the sidebar icon registry ─────────
+
+export const TruckIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <path d="M1 6a1 1 0 0 1 1-1h11v11H2a1 1 0 0 1-1-1V6z" />
+    <path d="M13 9h4l4 4v2a1 1 0 0 1-1 1h-1" />
+    <circle cx="6.5" cy="17.5" r="2" />
+    <circle cx="16.5" cy="17.5" r="2" />
+    <path d="M8.5 17.5H13M13 16v1.5" />
+  </Base>
+);
+
+export const GaugeIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <path d="M20.5 15.5a9 9 0 1 0-17 0" />
+    <path d="M12 13l4-4" />
+    <circle cx="12" cy="14" r="1.5" />
+    <path d="M5 19h14" />
+  </Base>
+);
+
+export const WrenchIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <path d="M14.7 6.3a4.5 4.5 0 0 0-6 5.4L3 17.4a2 2 0 0 0 0 2.9l.7.7a2 2 0 0 0 2.9 0l5.7-5.7a4.5 4.5 0 0 0 5.4-6l-3 3-2.8-.7-.7-2.8 3-3z" />
+  </Base>
+);
+
+export const CalendarIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <rect x="3" y="4" width="18" height="18" rx="2" />
+    <line x1="16" y1="2" x2="16" y2="6" />
+    <line x1="8" y1="2" x2="8" y2="6" />
+    <line x1="3" y1="10" x2="21" y2="10" />
+  </Base>
+);
+
+export const CogIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <circle cx="12" cy="12" r="3" />
+    <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.04-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.04H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.65 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.09A1.7 1.7 0 0 0 10.14 3V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.04 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.09a1.7 1.7 0 0 0 1.56 1.04H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.56 1.04z" />
+  </Base>
+);

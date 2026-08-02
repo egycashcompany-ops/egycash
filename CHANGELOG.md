@@ -66,6 +66,24 @@ its entry here in the same PR.
 
 ### Added
 
+- **The Fleet web module exists (FW-1): full information architecture, routed, guarded, and in
+  the sidebar — built exactly like the HR modules.** `/fleet` and its twelve screens
+  (vehicles + vehicle detail, drivers, attendance, odometer, maintenance, maintenance alarms,
+  daily roster, accidents, violations, catalogs, settings) load as one lazy chunk behind the
+  platform shell, each route guarded by its §7 permission the same way the API enforces it.
+  The module home is the shared permission-aware ModuleHome; navigation stays data-driven — the
+  boot catalog sync gained a Fleet category with the twelve applications, strictly additive, so
+  existing installs receive it on next start with admin customizations untouched. All labels
+  ship in Arabic and English; RTL comes from the platform frame.
+
+  The data foundation for every coming slice landed with the skeleton: a typed API client
+  covering the whole FL-2…FL-6 surface plus TanStack Query hooks on the platform key factory —
+  no mock data exists anywhere in the module, and screens whose slice has not shipped yet render
+  an honest planned-state page behind their final route and permission until FW-2…FW-10 replace
+  them in place. Five glyphs (truck, gauge, wrench, calendar, cog) joined the shared icon set
+  and the sidebar registry — `calendar` also repairs the Leave app's icon, which had referenced
+  a name the registry never knew.
+
 - **Accidents, violations, and grievances complete the Fleet backend (FL-6) — every fleet
   event is now stable.** Accidents keep the legacy's freedom with none of its looseness: a file
   opens on creation, closes and reopens as many times as the truth requires, but each flip is a

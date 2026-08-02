@@ -12,7 +12,10 @@
 // This is default platform configuration (the module catalog), not synthetic dev data: the icon
 // strings match the sidebar's icon registry, and the routes are the app's real routes.
 import { Types } from 'mongoose';
-import { applicationCategoryService, applicationCategoryRepository } from './platform/application-categories';
+import {
+  applicationCategoryService,
+  applicationCategoryRepository,
+} from './platform/application-categories';
 import { applicationService, applicationRepository } from './platform/applications';
 import { rbacService } from './platform/rbac';
 import { userApplicationService, userApplicationRepository } from './platform/user-applications';
@@ -52,6 +55,30 @@ const CATALOG: CategoryDef[] = [
     ],
   },
   {
+    en: 'Fleet',
+    ar: 'الحركة',
+    sortOrder: 15,
+    apps: [
+      { en: 'Fleet Home', ar: 'الرئيسية', route: '/fleet', icon: 'home' },
+      { en: 'Vehicles', ar: 'السيارات', route: '/fleet/vehicles', icon: 'truck' },
+      { en: 'Drivers', ar: 'السائقون', route: '/fleet/drivers', icon: 'users' },
+      { en: 'Attendance', ar: 'التمامات', route: '/fleet/attendance', icon: 'calendar' },
+      { en: 'Odometer', ar: 'عدادات السيارات', route: '/fleet/odometer', icon: 'gauge' },
+      { en: 'Maintenance', ar: 'صيانة السيارات', route: '/fleet/maintenance', icon: 'wrench' },
+      {
+        en: 'Maintenance Alarms',
+        ar: 'إنذارات الصيانة',
+        route: '/fleet/maintenance-alarms',
+        icon: 'alert',
+      },
+      { en: 'Daily Roster', ar: 'تعيين السيارات', route: '/fleet/roster', icon: 'clipboard' },
+      { en: 'Accidents', ar: 'حوادث السيارات', route: '/fleet/accidents', icon: 'alert' },
+      { en: 'Violations', ar: 'مخالفات السيارات', route: '/fleet/violations', icon: 'shield' },
+      { en: 'Fleet Catalogs', ar: 'قوائم الحركة', route: '/fleet/catalogs', icon: 'folder' },
+      { en: 'Fleet Settings', ar: 'إعدادات الحركة', route: '/fleet/settings', icon: 'cog' },
+    ],
+  },
+  {
     en: 'Organization',
     ar: 'الهيكل التنظيمي',
     sortOrder: 20,
@@ -70,7 +97,12 @@ const CATALOG: CategoryDef[] = [
     sortOrder: 30,
     apps: [
       { en: 'Applications', ar: 'التطبيقات', route: '/organization/applications', icon: 'folder' },
-      { en: 'Application Categories', ar: 'فئات التطبيقات', route: '/organization/application-categories', icon: 'tag' },
+      {
+        en: 'Application Categories',
+        ar: 'فئات التطبيقات',
+        route: '/organization/application-categories',
+        icon: 'tag',
+      },
     ],
   },
 ];
@@ -150,7 +182,13 @@ export const syncNavigationCatalog = async (): Promise<void> => {
       }
       categoryId ??= await ensureCategory(category, actor);
       const created = await applicationService.create(
-        { name: { ar: app.ar, en: app.en }, icon: app.icon, route: app.route, categoryId, sortOrder },
+        {
+          name: { ar: app.ar, en: app.en },
+          icon: app.icon,
+          route: app.route,
+          categoryId,
+          sortOrder,
+        },
         actor,
       );
       // Surface the NEW module to current super-admins; everyone else stays admin-assigned.

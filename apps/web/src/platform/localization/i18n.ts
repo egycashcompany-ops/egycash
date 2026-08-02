@@ -10,13 +10,15 @@ const en: Record<string, string> = {
   'platform.auth.login.identifier': 'Email / username / employee code',
   'platform.auth.login.identifierHint': 'e.g. 01-00001 or you@company.com',
   'platform.auth.gate.title': 'Set a new password',
-  'platform.auth.gate.subtitle': 'Your account uses a temporary password. Choose your own password to continue.',
+  'platform.auth.gate.subtitle':
+    'Your account uses a temporary password. Choose your own password to continue.',
   'platform.auth.gate.current': 'Current password',
   'platform.auth.gate.next': 'New password',
   'platform.auth.gate.confirm': 'Confirm new password',
   'platform.auth.gate.submit': 'Change password',
   'platform.auth.gate.mismatch': 'The new passwords do not match.',
-  'platform.auth.gate.failed': 'Could not change the password. Check the current password and the policy.',
+  'platform.auth.gate.failed':
+    'Could not change the password. Check the current password and the policy.',
   'platform.shell.security': 'Security',
   'account.security.title': 'Security',
   'account.security.subtitle': 'Password, authenticator app, and active sessions for your account.',
@@ -58,9 +60,11 @@ const en: Record<string, string> = {
   'employees.account.resetTotp': 'Reset authenticator',
   'employees.account.requireTotp': 'Require authenticator',
   'employees.account.unrequireTotp': 'Stop requiring authenticator',
-  'employees.account.passwordResetDone': 'Password reset — the account must set a new password at next sign-in.',
+  'employees.account.passwordResetDone':
+    'Password reset — the account must set a new password at next sign-in.',
   'employees.account.totpResetDone': 'Authenticator cleared — the user can enroll again.',
-  'employees.account.totpRequiredOn': 'Authenticator is now required — enrollment happens at next sign-in.',
+  'employees.account.totpRequiredOn':
+    'Authenticator is now required — enrollment happens at next sign-in.',
   'employees.account.totpRequiredOff': 'Authenticator is no longer required.',
   'employees.account.deliveryTitle': 'Credentials delivery',
   'employees.account.resendCredentials': 'Resend setup link',
@@ -69,9 +73,11 @@ const en: Record<string, string> = {
   'employees.account.channelEmail': 'Email',
   'employees.account.deliverySent': 'sent',
   'employees.account.deliveryFailed': 'not delivered',
-  'employees.account.resetHint': 'Reset locks the account (password cleared, signed out everywhere) and sends a fresh one-time setup link via WhatsApp and email. Resend issues a new link and invalidates the previous one.',
+  'employees.account.resetHint':
+    'Reset locks the account (password cleared, signed out everywhere) and sends a fresh one-time setup link via WhatsApp and email. Resend issues a new link and invalidates the previous one.',
   'employees.register.credentialsTitle': 'Login credentials created',
-  'employees.register.credentialsHint': 'A one-time account-setup link was sent to the employee via WhatsApp and email. They choose their own password when opening it; the link expires if unused.',
+  'employees.register.credentialsHint':
+    'A one-time account-setup link was sent to the employee via WhatsApp and email. They choose their own password when opening it; the link expires if unused.',
   'common.continue': 'Continue',
   'platform.auth.login.password': 'Password',
   'platform.auth.login.submit': 'Sign in',
@@ -82,17 +88,21 @@ const en: Record<string, string> = {
   'platform.auth.login.enrollQrAlt': 'Two-factor setup QR code',
   'platform.auth.login.enrollManual': "Can't scan? Enter this key manually",
   'platform.auth.login.failed': 'Sign-in failed',
-  'platform.auth.login.notActivated': 'This account is not activated yet. Open the setup link you received, or ask HR to resend it.',
+  'platform.auth.login.notActivated':
+    'This account is not activated yet. Open the setup link you received, or ask HR to resend it.',
   'platform.auth.activate.title': 'Activate your account',
   'platform.auth.activate.subtitle': 'Choose the password you will sign in with.',
   'platform.auth.activate.submit': 'Set password & activate',
   'platform.auth.activate.done': 'Your account is active — you can sign in now.',
-  'platform.auth.activate.invalid': 'This setup link is invalid or has expired. Ask HR to send a new one.',
-  'platform.auth.activate.missing': 'This page needs the setup link you received via WhatsApp or email.',
+  'platform.auth.activate.invalid':
+    'This setup link is invalid or has expired. Ask HR to send a new one.',
+  'platform.auth.activate.missing':
+    'This page needs the setup link you received via WhatsApp or email.',
   'platform.auth.login.welcome': 'Welcome back',
   'platform.auth.login.subtitle': 'Sign in to continue to your workspace.',
   'platform.auth.brand.tagline': 'The unified enterprise platform.',
-  'platform.auth.brand.subtitle': 'One system for HR, operations, and everything your organization runs on.',
+  'platform.auth.brand.subtitle':
+    'One system for HR, operations, and everything your organization runs on.',
   'platform.auth.brand.footer': 'ECMS · Enterprise Platform',
   'platform.shell.signOut': 'Sign out',
   'platform.shell.language': 'العربية',
@@ -222,7 +232,8 @@ const en: Record<string, string> = {
   'evaluations.decide.done': 'Decision recorded.',
   'evaluations.summary.title': 'Summary',
   'evaluations.phases.title': 'Evaluation phases',
-  'evaluations.phases.subtitle': 'Configure the sequential post-interview checks — add phases, rename, reorder, enable or disable. No code changes needed.',
+  'evaluations.phases.subtitle':
+    'Configure the sequential post-interview checks — add phases, rename, reorder, enable or disable. No code changes needed.',
   'evaluations.phases.add': 'Add phase',
   'evaluations.phases.edit': 'Edit phase',
   'evaluations.phases.dialogHint': 'Phases run sequentially by order for every applicant.',
@@ -239,10 +250,12 @@ const en: Record<string, string> = {
   'applicants.moveToOffer.action': 'Move to Job Offer',
   'applicants.moveToOffer.inStage': 'In Job Offer stage',
   'applicants.moveToOffer.title': 'Move to the Job Offer stage?',
-  'applicants.moveToOffer.body': 'Offer eligibility is never automatic — only applicants you explicitly move here can receive an offer.',
+  'applicants.moveToOffer.body':
+    'Offer eligibility is never automatic — only applicants you explicitly move here can receive an offer.',
   'applicants.moveToOffer.done': 'Applicant moved to the Job Offer stage.',
   'recruitment.placeholder.title': 'Screen not built yet',
-  'recruitment.placeholder.body': 'The foundation is ready; the screen for this stage will be added next.',
+  'recruitment.placeholder.body':
+    'The foundation is ready; the screen for this stage will be added next.',
   'recruitment.overview.title': 'Recruitment',
   'recruitment.overview.subtitle': 'Manage the hiring pipeline end to end.',
   'recruitment.overview.welcome': 'Welcome, {{name}} — manage the hiring pipeline end to end.',
@@ -273,7 +286,8 @@ const en: Record<string, string> = {
   'evaluations.columns.opened': 'Opened',
   'evaluations.actions.approveSelected': 'Approve selected',
   'evaluations.actions.rejectSelected': 'Reject selected',
-  'evaluations.bulk.samePhaseOnly': 'Select waiting records from a single phase to decide them together.',
+  'evaluations.bulk.samePhaseOnly':
+    'Select waiting records from a single phase to decide them together.',
   'offers.actions.sendSelected': 'Send selected',
   'offers.actions.withdrawSelected': 'Withdraw selected',
   'interviews.actions.cancelSelected': 'Cancel selected',
@@ -282,11 +296,13 @@ const en: Record<string, string> = {
   // Bulk actions (RW17) — a partial-success envelope is reported exactly, never as "done".
   // Stage placement recommendations (RW5) — advisory, never a move on their own.
   'recommendation.title': 'Suggested placement',
-  'recommendation.body': 'This stage suggested a different position or branch. It is advisory — applying it records a normal reassignment.',
+  'recommendation.body':
+    'This stage suggested a different position or branch. It is advisory — applying it records a normal reassignment.',
   'recommendation.apply': 'Apply',
   'recommendation.add': 'Suggest',
   'recommendation.edit': 'Edit suggestion',
-  'recommendation.editBody': 'Record where this stage thinks the candidate belongs. Saving changes nothing by itself — applying it is a separate, audited reassignment.',
+  'recommendation.editBody':
+    'Record where this stage thinks the candidate belongs. Saving changes nothing by itself — applying it is a separate, audited reassignment.',
   'recommendation.empty': 'No placement suggested at this stage yet.',
   'recommendation.note': 'Note',
   'recommendation.clear': 'Clear',
@@ -295,7 +311,8 @@ const en: Record<string, string> = {
   'recommendation.current': 'Currently: {current}',
   // Reassignment (RW2) — Position/Branch stay editable until the offer is accepted.
   'applicants.reassign.title': 'Reassign',
-  'applicants.reassign.body': 'Move this candidate to a different position or branch. Their history follows them; nothing already decided is rewritten.',
+  'applicants.reassign.body':
+    'Move this candidate to a different position or branch. Their history follows them; nothing already decided is rewritten.',
   'applicants.reassign.confirm': 'Reassign',
   'applicants.reassign.position': 'Position',
   'applicants.reassign.positionHint': 'Picking a seat fills in its department and branch.',
@@ -310,7 +327,8 @@ const en: Record<string, string> = {
   'applicants.reassign.selected': 'Reassign selected',
   // Return to an earlier stage (RW13) — supersedes, never deletes.
   'applicants.returnToStage.title': 'Return to a stage',
-  'applicants.returnToStage.body': 'Send this candidate back to an earlier stage. Nothing is deleted: later records are marked superseded and the target re-opens on a new attempt.',
+  'applicants.returnToStage.body':
+    'Send this candidate back to an earlier stage. Nothing is deleted: later records are marked superseded and the target re-opens on a new attempt.',
   'applicants.returnToStage.target': 'Return to',
   'applicants.returnToStage.confirm': 'Return candidate',
   'applicants.returnToStage.done': 'Candidate returned',
@@ -318,13 +336,16 @@ const en: Record<string, string> = {
   'applicants.returnToStage.supersedes': 'Will be superseded',
   'applicants.returnToStage.cancels': 'Will be closed first',
   'applicants.returnToStage.nothing': 'Nothing — this is the candidate’s current stage.',
-  'applicants.returnToStage.preserved': 'Superseded records stay readable forever; they are never edited or removed.',
-  'applicants.returnToStage.previewFailed': 'Could not work out what this would do. Nothing has changed.',
+  'applicants.returnToStage.preserved':
+    'Superseded records stay readable forever; they are never edited or removed.',
+  'applicants.returnToStage.previewFailed':
+    'Could not work out what this would do. Nothing has changed.',
   'applicants.returnToStage.reasonHint': 'Recorded on the timeline and the audit trail.',
   // Employees Ready (A6) — accepted offers not yet converted into an employee.
   'employees.title': 'Employees',
   'employees.ready.title': 'Ready to hire',
-  'employees.ready.subtitle': 'Candidates who accepted an offer and have not been created as employees yet.',
+  'employees.ready.subtitle':
+    'Candidates who accepted an offer and have not been created as employees yet.',
   'employees.ready.columns.applicant': 'Candidate',
   'employees.ready.columns.offer': 'Offer',
   'employees.ready.columns.acceptedAt': 'Accepted',
@@ -334,7 +355,8 @@ const en: Record<string, string> = {
   'interviews.actions.startSelected': 'Start now',
   // Evaluation batches (RW8) — Security Check / Driving Test worked as a group.
   'batches.title': 'Check batches',
-  'batches.subtitle': 'Security and driving checks sent out as a group, and the results that came back.',
+  'batches.subtitle':
+    'Security and driving checks sent out as a group, and the results that came back.',
   'batches.filter.all': 'All',
   'batches.status.draft': 'Draft',
   'batches.status.issued': 'Issued',
@@ -373,7 +395,8 @@ const en: Record<string, string> = {
   'batches.fields.title': 'Title',
   'batches.fields.scheduledFor': 'Scheduled for',
   'batches.summary.title': 'Batch',
-  'batches.summary.counts': '{total} in the batch \u2014 {pending} pending, {approved} approved, {rejected} rejected, {voided} voided.',
+  'batches.summary.counts':
+    '{total} in the batch \u2014 {pending} pending, {approved} approved, {rejected} rejected, {voided} voided.',
   'batches.items.empty': 'This batch has no members.',
   'batches.results.title': 'Returned results',
   'batches.results.upload': 'Upload result',
@@ -381,7 +404,8 @@ const en: Record<string, string> = {
   'batches.results.empty': 'No results have come back yet.',
   'batches.generate.open': 'Generate batch',
   'batches.generate.title': 'Generate a batch',
-  'batches.generate.subtitle': 'Pick the applicants to send out together. Only eligible ones are listed.',
+  'batches.generate.subtitle':
+    'Pick the applicants to send out together. Only eligible ones are listed.',
   'batches.generate.confirm': 'Create batch ({n})',
   'batches.generate.noCandidates': 'Nobody is waiting for this check right now.',
   'batches.created': 'Batch {code} created',
@@ -414,7 +438,8 @@ const en: Record<string, string> = {
   'timeline.notePlaceholder': 'What happened?',
   'timeline.noteAdded': 'Note added',
   'timeline.superseded': 'Superseded',
-  'timeline.supersededHint': 'This belongs to an attempt that a return to an earlier stage retired. It is kept in full.',
+  'timeline.supersededHint':
+    'This belongs to an attempt that a return to an earlier stage retired. It is kept in full.',
   'timeline.attempt': 'Attempt {n}',
   'timeline.filter.all': 'Everything',
   'timeline.filter.decisions': 'Decisions only',
@@ -517,12 +542,14 @@ const en: Record<string, string> = {
   'applicants.withdraw.reason': 'Reason',
   'applicants.withdraw.done': 'Applicant withdrawn',
   'applicants.restore.title': 'Restore applicant',
-  'applicants.restore.body': 'Return this applicant to the active pipeline. All prior history — screening, interviews, offers — is preserved, and they resume from the exact stage they left.',
+  'applicants.restore.body':
+    'Return this applicant to the active pipeline. All prior history — screening, interviews, offers — is preserved, and they resume from the exact stage they left.',
   'applicants.restore.reason': 'Reason (optional)',
   'applicants.restore.done': 'Applicant restored',
   'applicants.restore.hint': 'Withdrawn — restore to continue from this stage',
   'applicants.verify.title': 'Verify identity',
-  'applicants.verify.body': 'Confirm the applicant identity. Supplying a National ID re-derives birth date, gender and governorate.',
+  'applicants.verify.body':
+    'Confirm the applicant identity. Supplying a National ID re-derives birth date, gender and governorate.',
   'applicants.verify.nationalIdHint': 'Optional — supply to set/replace the National ID',
   'applicants.verify.done': 'Identity verified',
 
@@ -597,7 +624,8 @@ const en: Record<string, string> = {
   'applicants.form.editTitle': 'Edit applicant',
   'applicants.form.created': 'Applicant registered',
   'applicants.form.saved': 'Applicant updated',
-  'applicants.form.requisitionRequired': 'A requisition is required. Open this form from a requisition (Requisitions module coming soon).',
+  'applicants.form.requisitionRequired':
+    'A requisition is required. Open this form from a requisition (Requisitions module coming soon).',
   'applicants.ref.requisition': 'Requisition',
   'applicants.ref.branch': 'Branch',
   'applicants.ref.requisitionPending': 'Selectable when the Requisitions module ships',
@@ -605,19 +633,22 @@ const en: Record<string, string> = {
   'applicants.ref.fromContext': 'from context',
 
   // Applicants — OCR
-  'applicants.ocr.reviewBanner': 'The fields below were filled from the National-ID review — edit anything before saving the applicant.',
+  'applicants.ocr.reviewBanner':
+    'The fields below were filled from the National-ID review — edit anything before saving the applicant.',
   'applicants.ocr.noCategory': 'No image file category is configured.',
 
   // National-ID OCR (reusable across modules)
   'nationalIdOcr.title': 'National ID OCR',
-  'nationalIdOcr.subtitle': 'Upload the front and back of the card, then review the extracted data before it fills the form.',
+  'nationalIdOcr.subtitle':
+    'Upload the front and back of the card, then review the extracted data before it fills the form.',
   'nationalIdOcr.front': 'National ID — front',
   'nationalIdOcr.back': 'National ID — back',
   'nationalIdOcr.extract': 'Extract & review',
   'nationalIdOcr.reviewHint': 'Reads the front and back together, then opens a review step.',
   'nationalIdOcr.unavailable': 'OCR is not available — enter the values manually below.',
   'nationalIdOcr.review.title': 'Review extracted data',
-  'nationalIdOcr.review.subtitle': 'Verify and edit every field. Nothing is saved until you confirm.',
+  'nationalIdOcr.review.subtitle':
+    'Verify and edit every field. Nothing is saved until you confirm.',
   'nationalIdOcr.review.confirm': 'Confirm & fill form',
   'nationalIdOcr.review.cancel': 'Cancel',
   'nationalIdOcr.review.derived': 'Derived automatically from the National ID',
@@ -726,7 +757,8 @@ const en: Record<string, string> = {
   'interviews.recommendation.recommend': 'Recommend',
   'interviews.recommendation.neutral': 'Neutral',
   'interviews.recommendation.notRecommend': 'Do not recommend',
-  'interviews.queue.subtitle': 'Schedule interview rounds, collect panel evaluations, and decide pass or fail.',
+  'interviews.queue.subtitle':
+    'Schedule interview rounds, collect panel evaluations, and decide pass or fail.',
   'interviews.columns.applicant': 'Applicant',
   'interviews.columns.stage': 'Stage',
   'interviews.columns.status': 'Status',
@@ -763,11 +795,13 @@ const en: Record<string, string> = {
   'interviews.bulk.schedule': 'Schedule interviews',
   'interviews.bulk.moveToOffer': 'Move to Job Offer',
   'interviews.bulk.scheduleTitle': 'Schedule {count} interviews',
-  'interviews.bulk.scheduleBody': 'One stage and one time are applied to every selected applicant. The committee can be assigned later per interview.',
+  'interviews.bulk.scheduleBody':
+    'One stage and one time are applied to every selected applicant. The committee can be assigned later per interview.',
   'interviews.bulk.movedAll': '{count} applicants moved to the Job Offer stage.',
   'interviews.bulk.movedSome': '{ok} moved; {failed} failed.',
   'interviews.stages.title': 'Interview stages',
-  'interviews.stages.subtitle': 'Configure the interview rounds — add a third or fourth round, rename, reorder, enable or disable.',
+  'interviews.stages.subtitle':
+    'Configure the interview rounds — add a third or fourth round, rename, reorder, enable or disable.',
   'interviews.stages.add': 'Add stage',
   'interviews.stages.edit': 'Edit stage',
   'interviews.stages.dialogHint': 'The pipeline follows the active stages in order.',
@@ -810,15 +844,18 @@ const en: Record<string, string> = {
   'interviews.panel.skip': 'Skip',
   'interviews.panel.skipped': 'Interviewer skipped',
   'interviews.panel.skipTitle': 'Skip interviewer',
-  'interviews.panel.skipBody': 'Mark this interviewer as absent so a decision is no longer blocked on them.',
+  'interviews.panel.skipBody':
+    'Mark this interviewer as absent so a decision is no longer blocked on them.',
   'interviews.panel.skipReason': 'Reason',
   'interviews.panel.skipReasonHint': 'Optional — why they are being skipped.',
   'interviews.panel.reassignTitle': 'Reassign panel',
-  'interviews.panel.reassignBody': 'Replace the interviewers without changing the schedule. Retained members keep their evaluations.',
+  'interviews.panel.reassignBody':
+    'Replace the interviewers without changing the schedule. Retained members keep their evaluations.',
   'interviews.panel.reassignSubmit': 'Save panel',
   'interviews.panel.reassigned': 'Panel updated',
   'interviews.evaluate.title': 'Submit evaluation',
-  'interviews.evaluate.body': 'Record your recommendation for this round. Re-submitting replaces your previous one.',
+  'interviews.evaluate.body':
+    'Record your recommendation for this round. Re-submitting replaces your previous one.',
   'interviews.evaluate.submit': 'Submit',
   'interviews.evaluate.recommendation': 'Recommendation',
   'interviews.evaluate.pickRecommendation': 'Select a recommendation',
@@ -829,7 +866,8 @@ const en: Record<string, string> = {
   'interviews.evaluate.done': 'Evaluation submitted',
   'interviews.decide.title': 'Decision',
   'interviews.decide.passTitle': 'Pass interview',
-  'interviews.decide.passBody': 'The applicant advances to the next stage (or clears the interview phase).',
+  'interviews.decide.passBody':
+    'The applicant advances to the next stage (or clears the interview phase).',
   'interviews.decide.failTitle': 'Fail interview',
   'interviews.decide.failBody': 'The applicant is rejected and leaves the active pipeline.',
   'interviews.decide.notes': 'Notes',
@@ -953,7 +991,8 @@ const en: Record<string, string> = {
   'leave.types.name': 'Name',
   'leave.types.policy': 'Policy',
   'leave.types.active': 'Active',
-  'leave.types.legalNote': 'The seeded values are a starting point based on the Egyptian Labor Law. HR must verify them against the current law before production use.',
+  'leave.types.legalNote':
+    'The seeded values are a starting point based on the Egyptian Labor Law. HR must verify them against the current law before production use.',
   'leave.types.minNotice': 'Notice days',
   'leave.types.backdate': 'Backdate days',
   'leave.types.maxPerYear': 'Max days / year',
@@ -992,7 +1031,8 @@ const en: Record<string, string> = {
   'leave.profile.empty': 'No leave recorded',
   'leave.profile.fileOnBehalf': 'File leave for this employee',
   'leave.unreconciled.title': 'Unreconciled leave',
-  'leave.unreconciled.body': 'These employees are marked on-leave by manual actions with no leave request. Record a retroactive request from their profile, or end the leave.',
+  'leave.unreconciled.body':
+    'These employees are marked on-leave by manual actions with no leave request. Record a retroactive request from their profile, or end the leave.',
   'offers.employmentType.contract': 'Contract',
   'offers.employmentType.internship': 'Internship',
   'offers.list.subtitle': 'Draft, send and track job offers through to acceptance.',
@@ -1051,7 +1091,8 @@ const en: Record<string, string> = {
   'offers.terms.months': '{{n}} months',
   'offers.detail.title': 'Offer — {{code}}',
   'offers.detail.notDrafted': 'Not drafted yet',
-  'offers.detail.notDraftedHint': 'This candidate is queued for an offer. Use New Offer to draft the package.',
+  'offers.detail.notDraftedHint':
+    'This candidate is queued for an offer. Use New Offer to draft the package.',
   'offers.detail.revision': 'rev. {{n}}',
   'offers.detail.revisionN': 'Revision {{n}}',
   'offers.detail.summary': 'Summary',
@@ -1064,7 +1105,8 @@ const en: Record<string, string> = {
   'offers.detail.responseNote': 'Response note',
   'offers.send.title': 'Send offer',
   'offers.send.body': 'Issue this offer to the applicant.',
-  'offers.send.confirm': 'The applicant will be notified; the offer stays active until its validity date.',
+  'offers.send.confirm':
+    'The applicant will be notified; the offer stays active until its validity date.',
   'offers.send.done': 'Offer sent',
   'offers.accept.title': 'Accept offer',
   'offers.accept.body': "Record the applicant's acceptance.",
@@ -1129,9 +1171,11 @@ const en: Record<string, string> = {
   'employees.account.noLogin': 'No login account yet',
   'employees.account.createLogin': 'Create login',
   'employees.account.createTitle': 'Create login account',
-  'employees.account.createHint': 'The username defaults to the Employee Code ({{code}}); it can be changed later.',
+  'employees.account.createHint':
+    'The username defaults to the Employee Code ({{code}}); it can be changed later.',
   'employees.account.username': 'Username',
-  'employees.account.usernameHint': 'Defaults to the Employee Code. Login also works with the email.',
+  'employees.account.usernameHint':
+    'Defaults to the Employee Code. Login also works with the email.',
   'employees.account.email': 'Email',
   'employees.account.firstName': 'First name',
   'employees.account.lastName': 'Last name',
@@ -1176,7 +1220,8 @@ const en: Record<string, string> = {
   'employees.tabs.leave': 'Leave',
   'employees.probation.banner': 'In probation — confirm, extend or fail it before {{date}}.',
   'employees.exit.title': 'Exit',
-  'employees.exit.pendingBanner': 'An exit ({{type}}) is scheduled for {{date}}. Cancel it from the Employment tab to keep the employee.',
+  'employees.exit.pendingBanner':
+    'An exit ({{type}}) is scheduled for {{date}}. Cancel it from the Employment tab to keep the employee.',
   'employees.periods.title': 'Employment periods',
   'employees.periods.current': 'present',
   'employees.exitType.resignation': 'Resignation',
@@ -1189,7 +1234,8 @@ const en: Record<string, string> = {
   'employees.actions.cancelled': 'Scheduled action cancelled.',
   'employees.actions.registerDirect': 'Register employee',
   'employees.actions.effectiveDate': 'Effective date',
-  'employees.actions.effectiveDateHint': 'Leave empty for today. A future date schedules the action.',
+  'employees.actions.effectiveDateHint':
+    'Leave empty for today. A future date schedules the action.',
   'employees.actions.note': 'Note',
   'employees.actions.reason': 'Reason',
   'employees.actions.reasonRequired': 'A reason is required.',
@@ -1198,7 +1244,8 @@ const en: Record<string, string> = {
   'employees.actions.promotion.titleRequired': 'Choose the new job title.',
   'employees.actions.promotion.newSalary': 'New salary (EGP)',
   'employees.actions.transfer.title': 'Transfer',
-  'employees.actions.transfer.codeHint': 'A branch transfer changes the employee code prefix; the employee number never changes.',
+  'employees.actions.transfer.codeHint':
+    'A branch transfer changes the employee code prefix; the employee number never changes.',
   'employees.actions.transfer.section': 'Section',
   'employees.actions.transfer.noSection': 'No section',
   'employees.actions.transfer.nothingChanged': 'Change at least one placement field.',
@@ -1214,7 +1261,8 @@ const en: Record<string, string> = {
   'employees.actions.suspend.title': 'Suspend',
   'employees.actions.suspend.disableLogin': 'Disable the login account while suspended',
   'employees.actions.reinstate.title': 'Reinstate',
-  'employees.actions.reinstate.baseHint': 'Returns to probation if it was never confirmed, otherwise to active.',
+  'employees.actions.reinstate.baseHint':
+    'Returns to probation if it was never confirmed, otherwise to active.',
   'employees.actions.reinstate.enableLogin': 'Re-enable the login account',
   'employees.actions.leaveStart.title': 'Start leave',
   'employees.actions.leaveEnd.title': 'End leave',
@@ -1226,18 +1274,23 @@ const en: Record<string, string> = {
   'employees.actions.probationFail.title': 'Fail probation',
   'employees.actions.probationFail.body': 'Ends the employment (a termination-typed exit).',
   'employees.actions.exit.title': 'Record exit',
-  'employees.actions.exit.loginNote': 'The linked login account is suspended automatically on exit.',
+  'employees.actions.exit.loginNote':
+    'The linked login account is suspended automatically on exit.',
   'employees.actions.exit.type': 'Exit type',
   'employees.actions.exit.eligibleForRehire': 'Eligible for rehire',
-  'employees.actions.exit.reports': 'This employee manages {{count}} direct report(s) — decide their reassignment.',
+  'employees.actions.exit.reports':
+    'This employee manages {{count}} direct report(s) — decide their reassignment.',
   'employees.actions.exit.reassign': 'Reassign to…',
   'employees.actions.exit.unassign': 'Leave unassigned',
   'employees.actions.exit.reassignSearch': 'Search employees…',
   'employees.actions.exit.reassignTo': 'Reassign to:',
-  'employees.actions.exit.reassignRequired': 'Pick the new manager or choose to leave the reports unassigned.',
+  'employees.actions.exit.reassignRequired':
+    'Pick the new manager or choose to leave the reports unassigned.',
   'employees.actions.rehire.title': 'Rehire',
-  'employees.actions.rehire.body': 'Reopens employment on the SAME employee number ({{number}}) and file.',
-  'employees.actions.rehire.overrideWarning': 'This employee was marked NOT eligible for rehire — proceeding uses your override permission.',
+  'employees.actions.rehire.body':
+    'Reopens employment on the SAME employee number ({{number}}) and file.',
+  'employees.actions.rehire.overrideWarning':
+    'This employee was marked NOT eligible for rehire — proceeding uses your override permission.',
   'employees.actions.rehire.direct': 'Enter terms directly',
   'employees.actions.rehire.fromOffer': 'From an accepted offer',
   'employees.actions.rehire.offerRequired': 'Pick the accepted offer.',
@@ -1283,15 +1336,19 @@ const en: Record<string, string> = {
   'employees.timeline.hint': 'Hiring, personnel actions, leave, and audited personal-data edits',
   'employees.timeline.empty': 'No timeline entries yet.',
   'employees.documents.noFile': 'No electronic file yet',
-  'employees.documents.noFileHint': 'The file is assembled from Employee Files once the hiring documents are completed.',
+  'employees.documents.noFileHint':
+    'The file is assembled from Employee Files once the hiring documents are completed.',
   'employees.documents.openFile': 'Open the employee file',
   'employees.register.title': 'Register employee',
-  'employees.register.subtitle': 'Direct onboarding without a recruitment pipeline (existing workforce / walk-in hire).',
+  'employees.register.subtitle':
+    'Direct onboarding without a recruitment pipeline (existing workforce / walk-in hire).',
   'employees.register.ocrTitle': 'National ID capture (optional)',
   'employees.register.identityRequired': 'The Arabic full name and primary phone are required.',
-  'employees.register.employmentRequired': 'Branch, department, job title and start date are required.',
+  'employees.register.employmentRequired':
+    'Branch, department, job title and start date are required.',
   'employees.register.done': 'Employee {{code}} registered.',
-  'employees.register.rehireMatch': 'This national id belongs to exited employee {{code}} — use Rehire on their profile instead.',
+  'employees.register.rehireMatch':
+    'This national id belongs to exited employee {{code}} — use Rehire on their profile instead.',
   'employees.register.employedMatch': 'This national id already belongs to employee {{code}}.',
   'employees.register.openProfile': 'Open profile',
   'employees.register.hiringDate': 'Hiring date',
@@ -1299,7 +1356,6 @@ const en: Record<string, string> = {
   'employees.register.entryStatus': 'Entry status',
   'employees.register.entryStatusHint': 'Tenured staff may enter straight as Active.',
   'employees.register.submit': 'Register',
-
 
   // Hiring Documents (Stage 6)
   'hiringDocs.status.inProgress': 'In progress',
@@ -1349,13 +1405,15 @@ const en: Record<string, string> = {
   'hiringDocs.versions.empty': 'No versions',
   'hiringDocs.complete.title': 'Complete document set',
   'hiringDocs.complete.body': 'Mark the hiring-documents set as complete.',
-  'hiringDocs.complete.confirm': 'Once completed the set is immutable except through document versioning.',
+  'hiringDocs.complete.confirm':
+    'Once completed the set is immutable except through document versioning.',
   'hiringDocs.complete.done': 'Document set completed',
 
   // Electronic Employee File (Stage 7)
   'employeeFiles.status.active': 'Active',
   'employeeFiles.status.archived': 'Archived',
-  'employeeFiles.list.subtitle': 'The assembled recruitment history and timeline for each hired employee.',
+  'employeeFiles.list.subtitle':
+    'The assembled recruitment history and timeline for each hired employee.',
   'employeeFiles.columns.employee': 'Employee #',
   'employeeFiles.columns.status': 'Status',
   'employeeFiles.columns.milestones': 'Timeline',
@@ -1365,7 +1423,8 @@ const en: Record<string, string> = {
   'employeeFiles.filters.allStatuses': 'All statuses',
   'employeeFiles.actions.create': 'Assemble file',
   'employeeFiles.create.title': 'Assemble employee file',
-  'employeeFiles.create.body': 'Assemble the electronic file for an employee whose hiring documents are complete.',
+  'employeeFiles.create.body':
+    'Assemble the electronic file for an employee whose hiring documents are complete.',
   'employeeFiles.create.submit': 'Assemble',
   'employeeFiles.create.employee': 'Employee',
   'employeeFiles.create.employeeHint': 'The employee’s hiring documents must be completed first.',
@@ -1379,7 +1438,8 @@ const en: Record<string, string> = {
   'employeeFiles.detail.timelineHint': 'What has happened since the hire',
   'employeeFiles.detail.timelineEmpty': 'No timeline entries yet',
   'employeeFiles.detail.recruitmentTimeline': 'Recruitment history',
-  'employeeFiles.detail.recruitmentTimelineHint': "The candidate's history, as recorded during recruitment",
+  'employeeFiles.detail.recruitmentTimelineHint':
+    "The candidate's history, as recorded during recruitment",
   'employeeFiles.detail.recruitmentTimelineEmpty': 'No recruitment history (direct registration)',
   'employeeFiles.detail.links': 'Linked history',
   'employeeFiles.detail.linksHint': 'The recruitment record this file assembles.',
@@ -1395,7 +1455,8 @@ const en: Record<string, string> = {
   'employeeFiles.note.submit': 'Add note',
   'employeeFiles.note.added': 'Note added',
   'employeeFiles.documents.title': 'Documents',
-  'employeeFiles.documents.hint': 'Independent copies of the hiring documents plus any custom uploads. Editing these never changes the originals.',
+  'employeeFiles.documents.hint':
+    'Independent copies of the hiring documents plus any custom uploads. Editing these never changes the originals.',
   'employeeFiles.documents.upload': 'Upload document',
   'employeeFiles.documents.namePlaceholder': 'Document name (optional)',
   'employeeFiles.documents.empty': 'No documents yet.',
@@ -1431,7 +1492,8 @@ const en: Record<string, string> = {
   'organization.cards.branches': 'Physical/operational branches of the company.',
   'organization.cards.departments': 'Departments within each branch.',
   'organization.cards.sections': 'Sections within each department.',
-  'organization.cards.jobTitles': 'Organization-wide catalog of job titles and their grade/salary band.',
+  'organization.cards.jobTitles':
+    'Organization-wide catalog of job titles and their grade/salary band.',
   'organization.cards.jobPositions': 'Roles mapped to departments and sections.',
   'organization.cards.applications': 'Navigable modules grouped by category.',
   'organization.cards.applicationCategories': 'Groups that organize applications in the sidebar.',
@@ -1461,7 +1523,8 @@ const en: Record<string, string> = {
   'organization.delete.hasChildren': 'Cannot delete a unit that still has child units.',
   'organization.delete.failed': 'Delete failed.',
   'organization.delete.confirm': 'Delete “{{name}}”?',
-  'organization.delete.body': 'This soft-deletes the record. It can be restored by an administrator.',
+  'organization.delete.body':
+    'This soft-deletes the record. It can be restored by an administrator.',
   'organization.form.nameRequired': 'Both Arabic and English names are required.',
   'organization.form.codeRequired': 'A code is required.',
   'organization.form.branchRequired': 'Please select a branch.',
@@ -1471,7 +1534,8 @@ const en: Record<string, string> = {
   'organization.form.duplicateCode': 'That code is already in use.',
   'organization.form.editTitle': 'Edit {{name}}',
   'organization.form.newCrumb': 'New',
-  'organization.form.codeHint': 'Uppercase letters and/or digits, dashes allowed (e.g. 01 or BR-CAI-1). Immutable after creation.',
+  'organization.form.codeHint':
+    'Uppercase letters and/or digits, dashes allowed (e.g. 01 or BR-CAI-1). Immutable after creation.',
   'organization.form.selectBranch': 'Select a branch…',
   'organization.form.selectDepartment': 'Select a department…',
   'organization.form.managerHint': 'Optional. The user who manages this unit.',
@@ -1499,7 +1563,8 @@ const en: Record<string, string> = {
   'organization.branch.changeCodeHint':
     'The branch code is part of every employee’s identity and is normally immutable. Only a super-admin may correct it.',
   'organization.branch.codeChanged': 'Branch code changed',
-  'organization.department.subtitle': 'Departments within a branch (a platform-wide unit every module belongs to).',
+  'organization.department.subtitle':
+    'Departments within a branch (a platform-wide unit every module belongs to).',
   'organization.department.nameAr': 'Arabic name',
   'organization.department.nameEn': 'English name',
   'organization.department.create': 'New department',
@@ -1516,7 +1581,8 @@ const en: Record<string, string> = {
   'organization.departmentApplication.selectApplication': 'Select an application…',
   'organization.departmentApplication.assigned': 'Application assigned',
   'organization.departmentApplication.removed': 'Application removed',
-  'organization.departmentApplication.duplicate': 'This application is already assigned to the department.',
+  'organization.departmentApplication.duplicate':
+    'This application is already assigned to the department.',
   'organization.section.subtitle': 'Sections within a department (organizational subdivisions).',
   'organization.section.nameAr': 'Arabic name',
   'organization.section.nameEn': 'English name',
@@ -1547,8 +1613,10 @@ const en: Record<string, string> = {
   'organization.jobPosition.deleteTitle': 'Delete job position',
   'organization.jobPosition.activated': 'Job position activated',
   'organization.jobPosition.deactivated': 'Job position deactivated',
-  'organization.jobPosition.departmentFixed': 'The owning department is set at creation and cannot be changed.',
-  'organization.jobPosition.sectionHint': 'Optional. If set, the section must belong to the owning department.',
+  'organization.jobPosition.departmentFixed':
+    'The owning department is set at creation and cannot be changed.',
+  'organization.jobPosition.sectionHint':
+    'Optional. If set, the section must belong to the owning department.',
   'organization.jobPosition.noSection': 'No section',
   'organization.application.subtitle':
     'Applications (modules) available in the platform. Each has an icon and a route, is grouped by category and ordered by sort order. The source of navigation and module access.',
@@ -1626,7 +1694,8 @@ const en: Record<string, string> = {
   'common.reject': 'Reject',
   'employees.tabs.contracts': 'Contracts',
   'contracts.module.title': 'Contracts',
-  'contracts.list.subtitle': 'Employment contracts — drafts, generated documents and the amendment chains.',
+  'contracts.list.subtitle':
+    'Employment contracts — drafts, generated documents and the amendment chains.',
   'contracts.list.new': 'New contract',
   'contracts.list.empty': 'No contracts match the current filters.',
   'contracts.list.searchPlaceholder': 'Search number, employee, reference…',
@@ -1665,8 +1734,10 @@ const en: Record<string, string> = {
   'contracts.actions.terminate': 'Terminate',
   'contracts.actions.amendTitle': 'Amend contract {{code}}',
   'contracts.actions.renewTitle': 'Renew contract {{code}}',
-  'contracts.actions.amendHint': 'Amending creates the next version of this contract as a new draft; this document stays archived in the chain.',
-  'contracts.actions.renewHint': 'Renewal creates a NEW linked contract draft; this document stays archived in the chain.',
+  'contracts.actions.amendHint':
+    'Amending creates the next version of this contract as a new draft; this document stays archived in the chain.',
+  'contracts.actions.renewHint':
+    'Renewal creates a NEW linked contract draft; this document stays archived in the chain.',
   'contracts.actions.amendDone': 'Amendment draft created.',
   'contracts.actions.renewDone': 'Renewal draft created.',
   'contracts.actions.terminateTitle': 'Terminate contract {{code}}',
@@ -1677,7 +1748,8 @@ const en: Record<string, string> = {
   'contracts.actions.pdfNotReady': 'The PDF is not ready yet — use Print, or retry in a moment.',
   'contracts.actions.pdfFailed': 'Could not download the PDF.',
   'contracts.create.title': 'New contract',
-  'contracts.create.subtitle': 'Pick the employee and a published template — the preview on the right is the exact document generation will freeze.',
+  'contracts.create.subtitle':
+    'Pick the employee and a published template — the preview on the right is the exact document generation will freeze.',
   'contracts.create.details': 'Contract details',
   'contracts.create.employeeSearch': 'Search employees by name or code…',
   'contracts.create.noEmployees': 'No employees found.',
@@ -1685,13 +1757,15 @@ const en: Record<string, string> = {
   'contracts.create.template': 'Template',
   'contracts.create.templatePick': 'Choose a template…',
   'contracts.create.overrides': 'Variable overrides',
-  'contracts.create.overridesHint': 'Values resolve automatically from the employee record; type here only to override or fill a missing value.',
+  'contracts.create.overridesHint':
+    'Values resolve automatically from the employee record; type here only to override or fill a missing value.',
   'contracts.create.autoResolved': 'Automatic',
   'contracts.create.saveDraft': 'Save draft',
   'contracts.create.saveGenerate': 'Create & generate',
   'contracts.create.saved': 'Draft saved.',
   'contracts.create.generated': 'Generation started.',
-  'contracts.create.missingVariables': 'Draft saved — required variables are missing, fill them before generating.',
+  'contracts.create.missingVariables':
+    'Draft saved — required variables are missing, fill them before generating.',
   'contracts.create.generateBlocked': 'Draft saved — approval is required before generation.',
   'contracts.create.issuesTitle': 'Missing required variables',
   'contracts.create.preview': 'Live preview',
@@ -1759,7 +1833,8 @@ const en: Record<string, string> = {
   'contracts.variables.title': 'Variables',
   'contracts.variables.hint': 'Click to insert at the cursor.',
   'contracts.templates.title': 'Contract templates',
-  'contracts.templates.subtitle': 'Versioned templates — only published versions can generate contracts.',
+  'contracts.templates.subtitle':
+    'Versioned templates — only published versions can generate contracts.',
   'contracts.templates.new': 'New template',
   'contracts.templates.edit': 'Edit template',
   'contracts.templates.empty': 'No templates yet.',
@@ -1767,7 +1842,8 @@ const en: Record<string, string> = {
   'contracts.templates.nameAr': 'Name (Arabic)',
   'contracts.templates.nameEn': 'Name (English)',
   'contracts.templates.language': 'Language',
-  'contracts.templates.languageHint': 'One language per template — clone to create the other language.',
+  'contracts.templates.languageHint':
+    'One language per template — clone to create the other language.',
   'contracts.templates.version': 'Version',
   'contracts.templates.updatedAt': 'Updated',
   'contracts.templates.status.draft': 'Draft',
@@ -1776,14 +1852,16 @@ const en: Record<string, string> = {
   'contracts.templates.publishedShort': 'published v{{version}}',
   'contracts.templates.clone': 'Clone',
   'contracts.templates.cloneTitle': 'Clone template',
-  'contracts.templates.cloneHint': 'Creates a NEW independent template (v1 draft) with this content — the cross-language path.',
+  'contracts.templates.cloneHint':
+    'Creates a NEW independent template (v1 draft) with this content — the cross-language path.',
   'contracts.templates.cloned': 'Template cloned.',
   'contracts.templates.archive': 'Archive',
   'contracts.templates.archived': 'Template version archived.',
   'contracts.templates.settings': 'Template settings',
   'contracts.templates.sectionHeader': 'Header',
   'contracts.templates.sectionBody': 'Body',
-  'contracts.templates.bodyHint': 'The main contract text. Insert variables from the panel — they resolve per employee at generation.',
+  'contracts.templates.bodyHint':
+    'The main contract text. Insert variables from the panel — they resolve per employee at generation.',
   'contracts.templates.sectionFooter': 'Footer',
   'contracts.templates.signatures': 'Signature blocks',
   'contracts.templates.signaturesHint': 'Printed at the end of the document with signing lines.',
@@ -1796,15 +1874,19 @@ const en: Record<string, string> = {
   'contracts.templates.signatureLabels': 'Signature labels',
   'contracts.templates.untitled': '(untitled draft)',
   'contracts.templates.saved': 'Template saved.',
-  'contracts.templates.forked': 'Draft v{{version}} created — the published version stays unchanged.',
+  'contracts.templates.forked':
+    'Draft v{{version}} created — the published version stays unchanged.',
   'contracts.templates.publish': 'Publish',
   'contracts.templates.published': 'Template published.',
-  'contracts.templates.publishedBanner': 'This version is published. Saving your edits creates the NEXT draft version — contracts already generated keep this version forever.',
-  'contracts.templates.archivedBanner': 'This version is archived and read-only. Clone it to start a new template.',
+  'contracts.templates.publishedBanner':
+    'This version is published. Saving your edits creates the NEXT draft version — contracts already generated keep this version forever.',
+  'contracts.templates.archivedBanner':
+    'This version is archived and read-only. Clone it to start a new template.',
   'contracts.templates.preview': 'Preview',
   'contracts.templates.previewTitle': 'Sample preview',
   'contracts.templates.previewFailed': 'Preview failed.',
-  'contracts.templates.previewSampleHint': 'Rendered by the server with sample values — the same renderer used for real documents.',
+  'contracts.templates.previewSampleHint':
+    'Rendered by the server with sample values — the same renderer used for real documents.',
   'contracts.templates.focusFirst': 'Click inside a section first, then insert the variable.',
   'contracts.templates.versions': 'Version history',
   'contracts.templates.versionsHint': 'Every version is kept and recoverable.',
@@ -1815,7 +1897,8 @@ const en: Record<string, string> = {
   'contracts.types.empty': 'No contract types yet.',
   'contracts.types.saved': 'Contract type saved.',
   'contracts.types.allowsEndDate': 'Contracts of this type carry an end date',
-  'contracts.types.multipleActive': 'Allow multiple active contracts per employee (exception to the default rule)',
+  'contracts.types.multipleActive':
+    'Allow multiple active contracts per employee (exception to the default rule)',
   'contracts.types.multipleActiveShort': 'multiple active allowed',
   'contracts.types.openEndedOnly': 'open-ended',
   'contracts.editor.bold': 'Bold',
@@ -1838,12 +1921,15 @@ const en: Record<string, string> = {
   'contracts.verify.title': 'Contract verification',
   'contracts.verify.valid': 'Authentic document',
   'contracts.verify.invalid': 'Could not verify this document',
-  'contracts.verify.validHint': 'This document was issued by the ECMS platform and matches the stored original exactly.',
-  'contracts.verify.invalidHint': 'The number/key pair does not match any issued document. The document may have been altered.',
+  'contracts.verify.validHint':
+    'This document was issued by the ECMS platform and matches the stored original exactly.',
+  'contracts.verify.invalidHint':
+    'The number/key pair does not match any issued document. The document may have been altered.',
   'contracts.verify.generatedAt': 'Issued at',
   'contracts.verify.error': 'Verification is temporarily unavailable — try again shortly.',
   'contracts.branding.title': 'Company branding',
-  'contracts.branding.subtitle': 'Logo, header/footer lines, watermark and brand color — applied to every rendered document and frozen into each issued snapshot.',
+  'contracts.branding.subtitle':
+    'Logo, header/footer lines, watermark and brand color — applied to every rendered document and frozen into each issued snapshot.',
   'contracts.branding.headerAr': 'Header line (Arabic)',
   'contracts.branding.headerEn': 'Header line (English)',
   'contracts.branding.footerAr': 'Footer line (Arabic)',
@@ -1871,6 +1957,39 @@ const en: Record<string, string> = {
   'evaluations.filters.search': 'Applicant code or name',
   'recruitment.filters.branch': 'Branch',
   'recruitment.filters.allBranches': 'All branches',
+
+  // Fleet module (FW-1)
+  'fleet.module.title': 'Fleet',
+  'fleet.overview.title': 'Fleet',
+  'fleet.overview.subtitle': 'Vehicles, drivers, daily operations, maintenance, and incidents',
+  'fleet.overview.noAccessTitle': 'No fleet screens available',
+  'fleet.overview.noAccessBody':
+    'Your account has no fleet permissions. Ask an administrator for access.',
+  'fleet.nav.vehicles': 'Vehicles',
+  'fleet.nav.drivers': 'Drivers',
+  'fleet.nav.attendance': 'Attendance',
+  'fleet.nav.odometer': 'Odometer',
+  'fleet.nav.maintenance': 'Maintenance',
+  'fleet.nav.maintenanceAlarms': 'Maintenance Alarms',
+  'fleet.nav.roster': 'Daily Roster',
+  'fleet.nav.accidents': 'Accidents',
+  'fleet.nav.violations': 'Violations',
+  'fleet.nav.catalogs': 'Fleet Catalogs',
+  'fleet.nav.settings': 'Fleet Settings',
+  'fleet.cards.vehicles': 'The vehicle registry: identity, license, status, and workshop state',
+  'fleet.cards.drivers': 'Driver profiles as extensions of HR employees',
+  'fleet.cards.attendance': 'Daily operational unavailability (missions, external custody)',
+  'fleet.cards.odometer': 'The continuous odometer chain and reading corrections',
+  'fleet.cards.maintenance': 'Workshop visits: check-in, check-out, and custody',
+  'fleet.cards.maintenanceAlarms': 'Derived service alarms per vehicle — yellow and red',
+  'fleet.cards.roster': 'Plan which driver takes which vehicle, per day',
+  'fleet.cards.accidents': 'Accident files, amounts, and open/closed lifecycle',
+  'fleet.cards.violations': 'Vehicle statements, driver events, and yearly grievances',
+  'fleet.cards.catalogs': 'Workshops, work types, spare parts, mission and violation types',
+  'fleet.cards.settings': 'Vehicle types, maintenance intervals, and alarm thresholds',
+  'fleet.planned.title': 'This screen is on its way',
+  'fleet.planned.body':
+    'It arrives with slice {{slice}} of the Fleet frontend plan. The route, permissions, and navigation are already live.',
 };
 
 const ar: Record<string, string> = {
@@ -1886,7 +2005,8 @@ const ar: Record<string, string> = {
   'platform.auth.gate.confirm': 'تأكيد كلمة المرور الجديدة',
   'platform.auth.gate.submit': 'تغيير كلمة المرور',
   'platform.auth.gate.mismatch': 'كلمتا المرور الجديدتان غير متطابقتين.',
-  'platform.auth.gate.failed': 'تعذّر تغيير كلمة المرور. تحقق من كلمة المرور الحالية ومن سياسة كلمات المرور.',
+  'platform.auth.gate.failed':
+    'تعذّر تغيير كلمة المرور. تحقق من كلمة المرور الحالية ومن سياسة كلمات المرور.',
   'platform.shell.security': 'الأمان',
   'account.security.title': 'الأمان',
   'account.security.subtitle': 'كلمة المرور وتطبيق المصادقة والجلسات النشطة لحسابك.',
@@ -1928,9 +2048,11 @@ const ar: Record<string, string> = {
   'employees.account.resetTotp': 'إعادة تعيين المصادقة',
   'employees.account.requireTotp': 'إلزام المصادقة',
   'employees.account.unrequireTotp': 'إلغاء إلزام المصادقة',
-  'employees.account.passwordResetDone': 'تمت إعادة التعيين — سيُطلب تعيين كلمة مرور جديدة عند تسجيل الدخول التالي.',
+  'employees.account.passwordResetDone':
+    'تمت إعادة التعيين — سيُطلب تعيين كلمة مرور جديدة عند تسجيل الدخول التالي.',
   'employees.account.totpResetDone': 'تم مسح المصادقة — يمكن للمستخدم التسجيل مجددًا.',
-  'employees.account.totpRequiredOn': 'أصبحت المصادقة إلزامية — يتم التسجيل عند تسجيل الدخول التالي.',
+  'employees.account.totpRequiredOn':
+    'أصبحت المصادقة إلزامية — يتم التسجيل عند تسجيل الدخول التالي.',
   'employees.account.totpRequiredOff': 'لم تعد المصادقة إلزامية.',
   'employees.account.deliveryTitle': 'إرسال بيانات الدخول',
   'employees.account.resendCredentials': 'إعادة إرسال رابط التفعيل',
@@ -1939,9 +2061,11 @@ const ar: Record<string, string> = {
   'employees.account.channelEmail': 'البريد الإلكتروني',
   'employees.account.deliverySent': 'تم الإرسال',
   'employees.account.deliveryFailed': 'لم يتم الإرسال',
-  'employees.account.resetHint': 'إعادة التعيين تقفل الحساب (تُمسح كلمة المرور ويُسجَّل الخروج من كل الأجهزة) وتُرسل رابط تفعيل جديدًا عبر واتساب والبريد الإلكتروني. إعادة الإرسال تُصدر رابطًا جديدًا وتُلغي السابق.',
+  'employees.account.resetHint':
+    'إعادة التعيين تقفل الحساب (تُمسح كلمة المرور ويُسجَّل الخروج من كل الأجهزة) وتُرسل رابط تفعيل جديدًا عبر واتساب والبريد الإلكتروني. إعادة الإرسال تُصدر رابطًا جديدًا وتُلغي السابق.',
   'employees.register.credentialsTitle': 'تم إنشاء بيانات الدخول',
-  'employees.register.credentialsHint': 'أُرسل إلى الموظف رابط تفعيل يُستخدم مرة واحدة عبر واتساب والبريد الإلكتروني. يختار كلمة المرور بنفسه عند فتحه، وتنتهي صلاحية الرابط إذا لم يُستخدم.',
+  'employees.register.credentialsHint':
+    'أُرسل إلى الموظف رابط تفعيل يُستخدم مرة واحدة عبر واتساب والبريد الإلكتروني. يختار كلمة المرور بنفسه عند فتحه، وتنتهي صلاحية الرابط إذا لم يُستخدم.',
   'common.continue': 'متابعة',
   'platform.auth.login.password': 'كلمة المرور',
   'platform.auth.login.submit': 'دخول',
@@ -1952,13 +2076,16 @@ const ar: Record<string, string> = {
   'platform.auth.login.enrollQrAlt': 'رمز QR لإعداد المصادقة الثنائية',
   'platform.auth.login.enrollManual': 'لا يمكنك المسح؟ أدخل هذا المفتاح يدويًا',
   'platform.auth.login.failed': 'فشل تسجيل الدخول',
-  'platform.auth.login.notActivated': 'هذا الحساب غير مُفعّل بعد. افتح رابط التفعيل الذي وصلك، أو اطلب من الموارد البشرية إعادة إرساله.',
+  'platform.auth.login.notActivated':
+    'هذا الحساب غير مُفعّل بعد. افتح رابط التفعيل الذي وصلك، أو اطلب من الموارد البشرية إعادة إرساله.',
   'platform.auth.activate.title': 'تفعيل حسابك',
   'platform.auth.activate.subtitle': 'اختر كلمة المرور التي ستسجّل بها الدخول.',
   'platform.auth.activate.submit': 'تعيين كلمة المرور والتفعيل',
   'platform.auth.activate.done': 'تم تفعيل حسابك — يمكنك تسجيل الدخول الآن.',
-  'platform.auth.activate.invalid': 'رابط التفعيل غير صالح أو انتهت صلاحيته. اطلب من الموارد البشرية إرسال رابط جديد.',
-  'platform.auth.activate.missing': 'تحتاج هذه الصفحة إلى رابط التفعيل الذي وصلك عبر واتساب أو البريد الإلكتروني.',
+  'platform.auth.activate.invalid':
+    'رابط التفعيل غير صالح أو انتهت صلاحيته. اطلب من الموارد البشرية إرسال رابط جديد.',
+  'platform.auth.activate.missing':
+    'تحتاج هذه الصفحة إلى رابط التفعيل الذي وصلك عبر واتساب أو البريد الإلكتروني.',
   'platform.auth.login.welcome': 'مرحبًا بعودتك',
   'platform.auth.login.subtitle': 'سجّل الدخول للمتابعة إلى مساحة عملك.',
   'platform.auth.brand.tagline': 'المنصة المؤسسية الموحّدة.',
@@ -2092,7 +2219,8 @@ const ar: Record<string, string> = {
   'evaluations.decide.done': 'تم تسجيل القرار.',
   'evaluations.summary.title': 'ملخص',
   'evaluations.phases.title': 'مراحل التقييم',
-  'evaluations.phases.subtitle': 'إعداد فحوص ما بعد المقابلات المتسلسلة — أضف مراحل، أعد التسمية، أعد الترتيب، فعِّل أو عطِّل. دون أي تعديل برمجي.',
+  'evaluations.phases.subtitle':
+    'إعداد فحوص ما بعد المقابلات المتسلسلة — أضف مراحل، أعد التسمية، أعد الترتيب، فعِّل أو عطِّل. دون أي تعديل برمجي.',
   'evaluations.phases.add': 'إضافة مرحلة',
   'evaluations.phases.edit': 'تعديل المرحلة',
   'evaluations.phases.dialogHint': 'تُنفَّذ المراحل بالتسلسل حسب الترتيب لكل متقدِّم.',
@@ -2109,7 +2237,8 @@ const ar: Record<string, string> = {
   'applicants.moveToOffer.action': 'نقل لمرحلة عرض العمل',
   'applicants.moveToOffer.inStage': 'في مرحلة عرض العمل',
   'applicants.moveToOffer.title': 'نقل المتقدِّم لمرحلة عرض العمل؟',
-  'applicants.moveToOffer.body': 'أهلية العرض ليست تلقائية أبدًا — فقط المتقدمون الذين تنقلهم هنا صراحةً يمكنهم استلام عرض.',
+  'applicants.moveToOffer.body':
+    'أهلية العرض ليست تلقائية أبدًا — فقط المتقدمون الذين تنقلهم هنا صراحةً يمكنهم استلام عرض.',
   'applicants.moveToOffer.done': 'تم نقل المتقدِّم لمرحلة عرض العمل.',
   'recruitment.placeholder.title': 'لم يتم بناء الشاشة بعد',
   'recruitment.placeholder.body': 'الأساس جاهز؛ ستُضاف شاشة هذه المرحلة لاحقًا.',
@@ -2144,7 +2273,8 @@ const ar: Record<string, string> = {
   'evaluations.columns.opened': 'تاريخ الفتح',
   'evaluations.actions.approveSelected': 'اعتماد المحدد',
   'evaluations.actions.rejectSelected': 'رفض المحدد',
-  'evaluations.bulk.samePhaseOnly': 'اختر سجلات قيد الانتظار من مرحلة واحدة لاتخاذ القرار دفعة واحدة.',
+  'evaluations.bulk.samePhaseOnly':
+    'اختر سجلات قيد الانتظار من مرحلة واحدة لاتخاذ القرار دفعة واحدة.',
   'offers.actions.sendSelected': 'إرسال المحدد',
   'offers.actions.withdrawSelected': 'سحب المحدد',
   'interviews.actions.cancelSelected': 'إلغاء المحدد',
@@ -2153,11 +2283,13 @@ const ar: Record<string, string> = {
   // Bulk actions (RW17).
   // Stage placement recommendations (RW5).
   'recommendation.title': 'الوظيفة المقترحة',
-  'recommendation.body': 'اقترحت هذه المرحلة وظيفة أو فرعًا مختلفًا. الاقتراح استرشادي — وتطبيقه يُسجَّل كإعادة تعيين عادية.',
+  'recommendation.body':
+    'اقترحت هذه المرحلة وظيفة أو فرعًا مختلفًا. الاقتراح استرشادي — وتطبيقه يُسجَّل كإعادة تعيين عادية.',
   'recommendation.apply': 'تطبيق',
   'recommendation.add': 'اقتراح وظيفة',
   'recommendation.edit': 'تعديل الاقتراح',
-  'recommendation.editBody': 'سجِّل الوظيفة التي ترى هذه المرحلة أن المتقدم يناسبها. الحفظ لا يغيّر شيئًا بذاته — التطبيق إعادة تعيين مستقلة ومُوثَّقة.',
+  'recommendation.editBody':
+    'سجِّل الوظيفة التي ترى هذه المرحلة أن المتقدم يناسبها. الحفظ لا يغيّر شيئًا بذاته — التطبيق إعادة تعيين مستقلة ومُوثَّقة.',
   'recommendation.empty': 'لا يوجد اقتراح وظيفة في هذه المرحلة بعد.',
   'recommendation.note': 'ملاحظة',
   'recommendation.clear': 'إلغاء الاقتراح',
@@ -2166,7 +2298,8 @@ const ar: Record<string, string> = {
   'recommendation.current': 'الحالي: {current}',
   // Reassignment (RW2).
   'applicants.reassign.title': 'إعادة التعيين',
-  'applicants.reassign.body': 'نقل المتقدم إلى وظيفة أو فرع آخر. يتبعه سجله بالكامل، ولا يُعاد كتابة أي قرار سابق.',
+  'applicants.reassign.body':
+    'نقل المتقدم إلى وظيفة أو فرع آخر. يتبعه سجله بالكامل، ولا يُعاد كتابة أي قرار سابق.',
   'applicants.reassign.confirm': 'إعادة التعيين',
   'applicants.reassign.position': 'الوظيفة',
   'applicants.reassign.positionHint': 'اختيار الوظيفة يملأ الإدارة والفرع تلقائيًا.',
@@ -2181,7 +2314,8 @@ const ar: Record<string, string> = {
   'applicants.reassign.selected': 'إعادة تعيين المحدد',
   // Return to an earlier stage (RW13).
   'applicants.returnToStage.title': 'إرجاع إلى مرحلة سابقة',
-  'applicants.returnToStage.body': 'إرجاع المتقدم إلى مرحلة سابقة. لا يُحذف أي شيء: تُوسم السجلات اللاحقة بأنها متجاوَزة وتُفتح المرحلة المستهدفة بمحاولة جديدة.',
+  'applicants.returnToStage.body':
+    'إرجاع المتقدم إلى مرحلة سابقة. لا يُحذف أي شيء: تُوسم السجلات اللاحقة بأنها متجاوَزة وتُفتح المرحلة المستهدفة بمحاولة جديدة.',
   'applicants.returnToStage.target': 'الإرجاع إلى',
   'applicants.returnToStage.confirm': 'إرجاع المتقدم',
   'applicants.returnToStage.done': 'تم إرجاع المتقدم',
@@ -2189,7 +2323,8 @@ const ar: Record<string, string> = {
   'applicants.returnToStage.supersedes': 'ستُوسم بأنها متجاوَزة',
   'applicants.returnToStage.cancels': 'ستُغلق أولًا',
   'applicants.returnToStage.nothing': 'لا شيء — هذه هي المرحلة الحالية للمتقدم.',
-  'applicants.returnToStage.preserved': 'تبقى السجلات المتجاوَزة قابلة للقراءة دائمًا؛ ولا تُعدَّل ولا تُحذف أبدًا.',
+  'applicants.returnToStage.preserved':
+    'تبقى السجلات المتجاوَزة قابلة للقراءة دائمًا؛ ولا تُعدَّل ولا تُحذف أبدًا.',
   'applicants.returnToStage.previewFailed': 'تعذّر تحديد أثر هذا الإجراء. لم يتغيّر شيء.',
   'applicants.returnToStage.reasonHint': 'يُسجَّل في الخط الزمني وسجل التدقيق.',
   // Employees Ready (A6).
@@ -2244,7 +2379,8 @@ const ar: Record<string, string> = {
   'batches.fields.title': 'العنوان',
   'batches.fields.scheduledFor': 'موعد التنفيذ',
   'batches.summary.title': 'الدفعة',
-  'batches.summary.counts': '{total} في الدفعة — {pending} قيد الانتظار، {approved} مقبول، {rejected} مرفوض، {voided} مُلغى.',
+  'batches.summary.counts':
+    '{total} في الدفعة — {pending} قيد الانتظار، {approved} مقبول، {rejected} مرفوض، {voided} مُلغى.',
   'batches.items.empty': 'لا يوجد أعضاء في هذه الدفعة.',
   'batches.results.title': 'النتائج العائدة',
   'batches.results.upload': 'رفع نتيجة',
@@ -2387,12 +2523,14 @@ const ar: Record<string, string> = {
   'applicants.withdraw.reason': 'السبب',
   'applicants.withdraw.done': 'تم سحب المتقدِّم',
   'applicants.restore.title': 'استعادة المتقدِّم',
-  'applicants.restore.body': 'إعادة المتقدِّم إلى مسار التوظيف النشط. يُحتفظ بكل السجل السابق — الفرز والمقابلات والعروض — ويكمل من نفس المرحلة التي تركها.',
+  'applicants.restore.body':
+    'إعادة المتقدِّم إلى مسار التوظيف النشط. يُحتفظ بكل السجل السابق — الفرز والمقابلات والعروض — ويكمل من نفس المرحلة التي تركها.',
   'applicants.restore.reason': 'السبب (اختياري)',
   'applicants.restore.done': 'تمت استعادة المتقدِّم',
   'applicants.restore.hint': 'مسحوب — استعده ليكمل من هذه المرحلة',
   'applicants.verify.title': 'توثيق الهوية',
-  'applicants.verify.body': 'أكّد هوية المتقدِّم. إدخال رقم قومي يعيد اشتقاق تاريخ الميلاد والنوع والمحافظة.',
+  'applicants.verify.body':
+    'أكّد هوية المتقدِّم. إدخال رقم قومي يعيد اشتقاق تاريخ الميلاد والنوع والمحافظة.',
   'applicants.verify.nationalIdHint': 'اختياري — أدخله لتعيين/استبدال الرقم القومي',
   'applicants.verify.done': 'تم توثيق الهوية',
 
@@ -2467,7 +2605,8 @@ const ar: Record<string, string> = {
   'applicants.form.editTitle': 'تعديل المتقدِّم',
   'applicants.form.created': 'تم تسجيل المتقدِّم',
   'applicants.form.saved': 'تم تحديث المتقدِّم',
-  'applicants.form.requisitionRequired': 'يلزم وجود طلب وظيفة. افتح هذا النموذج من طلب وظيفة (وحدة طلبات الوظائف قادمة قريبًا).',
+  'applicants.form.requisitionRequired':
+    'يلزم وجود طلب وظيفة. افتح هذا النموذج من طلب وظيفة (وحدة طلبات الوظائف قادمة قريبًا).',
   'applicants.ref.requisition': 'طلب الوظيفة',
   'applicants.ref.branch': 'الفرع',
   'applicants.ref.requisitionPending': 'يمكن اختياره عند توفّر وحدة طلبات الوظائف',
@@ -2475,7 +2614,8 @@ const ar: Record<string, string> = {
   'applicants.ref.fromContext': 'من السياق',
 
   // Applicants — OCR
-  'applicants.ocr.reviewBanner': 'تم ملء الحقول بالأسفل من مراجعة الرقم القومي — عدّل ما يلزم قبل حفظ المتقدم.',
+  'applicants.ocr.reviewBanner':
+    'تم ملء الحقول بالأسفل من مراجعة الرقم القومي — عدّل ما يلزم قبل حفظ المتقدم.',
   'applicants.ocr.noCategory': 'لا توجد فئة ملفات للصور مُهيّأة.',
 
   // National-ID OCR (قابل لإعادة الاستخدام عبر الوحدات)
@@ -2596,7 +2736,8 @@ const ar: Record<string, string> = {
   'interviews.recommendation.recommend': 'يوصى به',
   'interviews.recommendation.neutral': 'محايد',
   'interviews.recommendation.notRecommend': 'لا يوصى به',
-  'interviews.queue.subtitle': 'جدوِل جولات المقابلات، واجمع تقييمات اللجنة، ثم قرِّر النجاح أو الرسوب.',
+  'interviews.queue.subtitle':
+    'جدوِل جولات المقابلات، واجمع تقييمات اللجنة، ثم قرِّر النجاح أو الرسوب.',
   'interviews.columns.applicant': 'المتقدِّم',
   'interviews.columns.stage': 'المرحلة',
   'interviews.columns.status': 'الحالة',
@@ -2633,11 +2774,13 @@ const ar: Record<string, string> = {
   'interviews.bulk.schedule': 'جدولة مقابلات',
   'interviews.bulk.moveToOffer': 'نقل لمرحلة عرض العمل',
   'interviews.bulk.scheduleTitle': 'جدولة {count} مقابلة',
-  'interviews.bulk.scheduleBody': 'تُطبَّق مرحلة واحدة وموعد واحد على كل المتقدمين المحددين. يمكن تعيين اللجنة لاحقًا لكل مقابلة.',
+  'interviews.bulk.scheduleBody':
+    'تُطبَّق مرحلة واحدة وموعد واحد على كل المتقدمين المحددين. يمكن تعيين اللجنة لاحقًا لكل مقابلة.',
   'interviews.bulk.movedAll': 'تم نقل {count} متقدمًا لمرحلة عرض العمل.',
   'interviews.bulk.movedSome': 'تم نقل {ok}؛ فشل {failed}.',
   'interviews.stages.title': 'مراحل المقابلات',
-  'interviews.stages.subtitle': 'إعداد جولات المقابلات — أضف جولة ثالثة أو رابعة، أعد التسمية، أعد الترتيب، فعِّل أو عطِّل.',
+  'interviews.stages.subtitle':
+    'إعداد جولات المقابلات — أضف جولة ثالثة أو رابعة، أعد التسمية، أعد الترتيب، فعِّل أو عطِّل.',
   'interviews.stages.add': 'إضافة مرحلة',
   'interviews.stages.edit': 'تعديل المرحلة',
   'interviews.stages.dialogHint': 'يتبع خط السير المراحل النشطة بالترتيب.',
@@ -2684,7 +2827,8 @@ const ar: Record<string, string> = {
   'interviews.panel.skipReason': 'السبب',
   'interviews.panel.skipReasonHint': 'اختياري — سبب التخطّي.',
   'interviews.panel.reassignTitle': 'تغيير اللجنة',
-  'interviews.panel.reassignBody': 'استبدل أعضاء اللجنة دون تغيير الموعد. يحتفظ الأعضاء الباقون بتقييماتهم.',
+  'interviews.panel.reassignBody':
+    'استبدل أعضاء اللجنة دون تغيير الموعد. يحتفظ الأعضاء الباقون بتقييماتهم.',
   'interviews.panel.reassignSubmit': 'حفظ اللجنة',
   'interviews.panel.reassigned': 'تم تحديث اللجنة',
   'interviews.evaluate.title': 'إرسال التقييم',
@@ -2823,7 +2967,8 @@ const ar: Record<string, string> = {
   'leave.types.name': 'الاسم',
   'leave.types.policy': 'السياسة',
   'leave.types.active': 'مفعّل',
-  'leave.types.legalNote': 'القيم المبدئية مبنية على قانون العمل المصري كنقطة بداية، ويجب على الموارد البشرية مراجعتها مقابل القانون الساري قبل الاستخدام الفعلي.',
+  'leave.types.legalNote':
+    'القيم المبدئية مبنية على قانون العمل المصري كنقطة بداية، ويجب على الموارد البشرية مراجعتها مقابل القانون الساري قبل الاستخدام الفعلي.',
   'leave.types.minNotice': 'أيام الإخطار',
   'leave.types.backdate': 'أيام الأثر الرجعي',
   'leave.types.maxPerYear': 'أقصى أيام في السنة',
@@ -2862,7 +3007,8 @@ const ar: Record<string, string> = {
   'leave.profile.empty': 'لا توجد إجازات مسجلة',
   'leave.profile.fileOnBehalf': 'تسجيل إجازة لهذا الموظف',
   'leave.unreconciled.title': 'إجازات غير مسوّاة',
-  'leave.unreconciled.body': 'هؤلاء الموظفون مسجلون في إجازة عبر إجراءات يدوية دون طلب إجازة. سجّل طلبًا بأثر رجعي من ملف الموظف أو أنهِ الإجازة.',
+  'leave.unreconciled.body':
+    'هؤلاء الموظفون مسجلون في إجازة عبر إجراءات يدوية دون طلب إجازة. سجّل طلبًا بأثر رجعي من ملف الموظف أو أنهِ الإجازة.',
   'offers.employmentType.contract': 'تعاقد',
   'offers.employmentType.internship': 'تدريب',
   'offers.list.subtitle': 'أنشئ العروض وأرسلها وتابعها حتى القبول.',
@@ -2921,7 +3067,8 @@ const ar: Record<string, string> = {
   'offers.terms.months': '{{n}} أشهر',
   'offers.detail.title': 'عرض — {{code}}',
   'offers.detail.notDrafted': 'لم يتم إعداده بعد',
-  'offers.detail.notDraftedHint': 'هذا المتقدم في انتظار عرض العمل. استخدم «عرض جديد» لإعداد التفاصيل.',
+  'offers.detail.notDraftedHint':
+    'هذا المتقدم في انتظار عرض العمل. استخدم «عرض جديد» لإعداد التفاصيل.',
   'offers.detail.revision': 'مراجعة {{n}}',
   'offers.detail.revisionN': 'المراجعة {{n}}',
   'offers.detail.summary': 'الملخّص',
@@ -2999,7 +3146,8 @@ const ar: Record<string, string> = {
   'employees.account.noLogin': 'لا يوجد حساب دخول بعد',
   'employees.account.createLogin': 'إنشاء حساب دخول',
   'employees.account.createTitle': 'إنشاء حساب دخول',
-  'employees.account.createHint': 'اسم المستخدم يكون افتراضيًا كود الموظف ({{code}})، ويمكن تغييره لاحقًا.',
+  'employees.account.createHint':
+    'اسم المستخدم يكون افتراضيًا كود الموظف ({{code}})، ويمكن تغييره لاحقًا.',
   'employees.account.username': 'اسم المستخدم',
   'employees.account.usernameHint': 'افتراضيًا كود الموظف. يمكن الدخول أيضًا بالبريد الإلكتروني.',
   'employees.account.email': 'البريد الإلكتروني',
@@ -3044,9 +3192,11 @@ const ar: Record<string, string> = {
   'employees.tabs.timeline': 'الخط الزمني',
   'employees.tabs.account': 'الحساب',
   'employees.tabs.leave': 'الإجازات',
-  'employees.probation.banner': 'في فترة الاختبار — يجب التثبيت أو التمديد أو الإنهاء قبل {{date}}.',
+  'employees.probation.banner':
+    'في فترة الاختبار — يجب التثبيت أو التمديد أو الإنهاء قبل {{date}}.',
   'employees.exit.title': 'انتهاء الخدمة',
-  'employees.exit.pendingBanner': 'يوجد انتهاء خدمة مجدول ({{type}}) بتاريخ {{date}}. ألغه من تبويب التوظيف للإبقاء على الموظف.',
+  'employees.exit.pendingBanner':
+    'يوجد انتهاء خدمة مجدول ({{type}}) بتاريخ {{date}}. ألغه من تبويب التوظيف للإبقاء على الموظف.',
   'employees.periods.title': 'فترات التوظيف',
   'employees.periods.current': 'حتى الآن',
   'employees.exitType.resignation': 'استقالة',
@@ -3068,7 +3218,8 @@ const ar: Record<string, string> = {
   'employees.actions.promotion.titleRequired': 'اختر المسمى الوظيفي الجديد.',
   'employees.actions.promotion.newSalary': 'الراتب الجديد (جنيه)',
   'employees.actions.transfer.title': 'نقل',
-  'employees.actions.transfer.codeHint': 'النقل بين الفروع يغيّر بادئة الكود الوظيفي؛ الرقم الوظيفي لا يتغير أبدًا.',
+  'employees.actions.transfer.codeHint':
+    'النقل بين الفروع يغيّر بادئة الكود الوظيفي؛ الرقم الوظيفي لا يتغير أبدًا.',
   'employees.actions.transfer.section': 'القسم',
   'employees.actions.transfer.noSection': 'بدون قسم',
   'employees.actions.transfer.nothingChanged': 'غيّر حقلًا واحدًا على الأقل.',
@@ -3099,7 +3250,8 @@ const ar: Record<string, string> = {
   'employees.actions.exit.loginNote': 'يتم تعليق حساب الدخول المرتبط تلقائيًا عند انتهاء الخدمة.',
   'employees.actions.exit.type': 'نوع انتهاء الخدمة',
   'employees.actions.exit.eligibleForRehire': 'مؤهل لإعادة التعيين',
-  'employees.actions.exit.reports': 'هذا الموظف يدير {{count}} مرؤوسًا مباشرًا — حدد إعادة إسنادهم.',
+  'employees.actions.exit.reports':
+    'هذا الموظف يدير {{count}} مرؤوسًا مباشرًا — حدد إعادة إسنادهم.',
   'employees.actions.exit.reassign': 'إسناد إلى…',
   'employees.actions.exit.unassign': 'ترك بدون مدير',
   'employees.actions.exit.reassignSearch': 'ابحث في الموظفين…',
@@ -3107,7 +3259,8 @@ const ar: Record<string, string> = {
   'employees.actions.exit.reassignRequired': 'اختر المدير الجديد أو اختر ترك المرؤوسين بدون مدير.',
   'employees.actions.rehire.title': 'إعادة تعيين',
   'employees.actions.rehire.body': 'يعيد فتح التوظيف بنفس الرقم الوظيفي ({{number}}) ونفس الملف.',
-  'employees.actions.rehire.overrideWarning': 'هذا الموظف غير مؤهل لإعادة التعيين — المتابعة تستخدم صلاحية التجاوز الخاصة بك.',
+  'employees.actions.rehire.overrideWarning':
+    'هذا الموظف غير مؤهل لإعادة التعيين — المتابعة تستخدم صلاحية التجاوز الخاصة بك.',
   'employees.actions.rehire.direct': 'إدخال الشروط مباشرة',
   'employees.actions.rehire.fromOffer': 'من عرض عمل مقبول',
   'employees.actions.rehire.offerRequired': 'اختر العرض المقبول.',
@@ -3150,18 +3303,22 @@ const ar: Record<string, string> = {
   'employees.personal.nameRequired': 'الاسم الكامل بالعربية مطلوب.',
   'employees.timeline.personalDataUpdated': 'تحديث بيانات شخصية',
   'employees.timeline.title': 'الخط الزمني للتوظيف',
-  'employees.timeline.hint': 'التعيين والإجراءات الوظيفية والإجازات وتعديلات البيانات الشخصية المُدقَّقة',
+  'employees.timeline.hint':
+    'التعيين والإجراءات الوظيفية والإجازات وتعديلات البيانات الشخصية المُدقَّقة',
   'employees.timeline.empty': 'لا توجد أحداث بعد.',
   'employees.documents.noFile': 'لا يوجد ملف إلكتروني بعد',
-  'employees.documents.noFileHint': 'يُجمَّع الملف من شاشة ملفات الموظفين بعد اكتمال مستندات التعيين.',
+  'employees.documents.noFileHint':
+    'يُجمَّع الملف من شاشة ملفات الموظفين بعد اكتمال مستندات التعيين.',
   'employees.documents.openFile': 'فتح ملف الموظف',
   'employees.register.title': 'تسجيل موظف',
-  'employees.register.subtitle': 'تسجيل مباشر دون المرور بمسار التوظيف (القوى العاملة الحالية / تعيين مباشر).',
+  'employees.register.subtitle':
+    'تسجيل مباشر دون المرور بمسار التوظيف (القوى العاملة الحالية / تعيين مباشر).',
   'employees.register.ocrTitle': 'التقاط بطاقة الرقم القومي (اختياري)',
   'employees.register.identityRequired': 'الاسم الكامل بالعربية ورقم الهاتف الأساسي مطلوبان.',
   'employees.register.employmentRequired': 'الفرع والإدارة والمسمى الوظيفي وتاريخ البدء مطلوبة.',
   'employees.register.done': 'تم تسجيل الموظف {{code}}.',
-  'employees.register.rehireMatch': 'هذا الرقم القومي يخص الموظف منتهي الخدمة {{code}} — استخدم إعادة التعيين من ملفه.',
+  'employees.register.rehireMatch':
+    'هذا الرقم القومي يخص الموظف منتهي الخدمة {{code}} — استخدم إعادة التعيين من ملفه.',
   'employees.register.employedMatch': 'هذا الرقم القومي يخص الموظف {{code}} بالفعل.',
   'employees.register.openProfile': 'فتح الملف',
   'employees.register.hiringDate': 'تاريخ التعيين',
@@ -3169,7 +3326,6 @@ const ar: Record<string, string> = {
   'employees.register.entryStatus': 'حالة الدخول',
   'employees.register.entryStatusHint': 'الموظفون القدامى يمكن إدخالهم مباشرة كنشطين.',
   'employees.register.submit': 'تسجيل',
-
 
   // Hiring Documents (Stage 6)
   'hiringDocs.status.inProgress': 'قيد التجهيز',
@@ -3219,7 +3375,8 @@ const ar: Record<string, string> = {
   'hiringDocs.versions.empty': 'لا توجد إصدارات',
   'hiringDocs.complete.title': 'إكمال ملف المستندات',
   'hiringDocs.complete.body': 'وضع علامة اكتمال على ملف مستندات التعيين.',
-  'hiringDocs.complete.confirm': 'بعد الإكمال يصبح الملف غير قابل للتعديل إلا عبر إصدارات المستندات.',
+  'hiringDocs.complete.confirm':
+    'بعد الإكمال يصبح الملف غير قابل للتعديل إلا عبر إصدارات المستندات.',
   'hiringDocs.complete.done': 'تم إكمال ملف المستندات',
 
   // Electronic Employee File (Stage 7)
@@ -3265,7 +3422,8 @@ const ar: Record<string, string> = {
   'employeeFiles.note.submit': 'إضافة الملاحظة',
   'employeeFiles.note.added': 'تمت إضافة الملاحظة',
   'employeeFiles.documents.title': 'المستندات',
-  'employeeFiles.documents.hint': 'نسخ مستقلة من مستندات التعيين بالإضافة إلى أي مرفقات مخصصة. تعديلها لا يغيّر الأصل.',
+  'employeeFiles.documents.hint':
+    'نسخ مستقلة من مستندات التعيين بالإضافة إلى أي مرفقات مخصصة. تعديلها لا يغيّر الأصل.',
   'employeeFiles.documents.upload': 'رفع مستند',
   'employeeFiles.documents.namePlaceholder': 'اسم المستند (اختياري)',
   'employeeFiles.documents.empty': 'لا توجد مستندات بعد.',
@@ -3301,7 +3459,8 @@ const ar: Record<string, string> = {
   'organization.cards.branches': 'فروع الشركة التشغيلية.',
   'organization.cards.departments': 'الإدارات داخل كل فرع.',
   'organization.cards.sections': 'الأقسام داخل كل إدارة.',
-  'organization.cards.jobTitles': 'كتالوج المسميات الوظيفية على مستوى المؤسسة ودرجاتها ونطاق الراتب.',
+  'organization.cards.jobTitles':
+    'كتالوج المسميات الوظيفية على مستوى المؤسسة ودرجاتها ونطاق الراتب.',
   'organization.cards.jobPositions': 'الأدوار الموزّعة على الإدارات والأقسام.',
   'organization.cards.applications': 'الوحدات القابلة للتصفح مجمّعة حسب الفئة.',
   'organization.cards.applicationCategories': 'المجموعات التي تنظّم التطبيقات في الشريط الجانبي.',
@@ -3336,12 +3495,14 @@ const ar: Record<string, string> = {
   'organization.form.codeRequired': 'الرمز مطلوب.',
   'organization.form.branchRequired': 'يرجى اختيار فرع.',
   'organization.form.departmentRequired': 'يرجى اختيار إدارة.',
-  'organization.form.addressIncomplete': 'العنوان يتطلب على الأقل العنوان الأول والمدينة والمحافظة.',
+  'organization.form.addressIncomplete':
+    'العنوان يتطلب على الأقل العنوان الأول والمدينة والمحافظة.',
   'organization.form.stale': 'تغيّر هذا السجل منذ فتحه. أعد التحميل وحاول مجددًا.',
   'organization.form.duplicateCode': 'هذا الرمز مستخدم بالفعل.',
   'organization.form.editTitle': 'تعديل {{name}}',
   'organization.form.newCrumb': 'جديد',
-  'organization.form.codeHint': 'أحرف كبيرة و/أو أرقام مع شرطات (مثل 01 أو BR-CAI-1). لا يمكن تغييره بعد الإنشاء.',
+  'organization.form.codeHint':
+    'أحرف كبيرة و/أو أرقام مع شرطات (مثل 01 أو BR-CAI-1). لا يمكن تغييره بعد الإنشاء.',
   'organization.form.selectBranch': 'اختر فرعًا…',
   'organization.form.selectDepartment': 'اختر إدارة…',
   'organization.form.managerHint': 'اختياري. المستخدم المسؤول عن هذه الوحدة.',
@@ -3369,7 +3530,8 @@ const ar: Record<string, string> = {
   'organization.branch.changeCodeHint':
     'رمز الفرع جزء من هوية كل موظف ولا يمكن تغييره عادةً. يمكن لمسؤول النظام الأعلى فقط تصحيحه.',
   'organization.branch.codeChanged': 'تم تغيير رمز الفرع',
-  'organization.department.subtitle': 'الإدارات داخل الفرع (وحدة على مستوى المنصة تنتمي إليها كل التطبيقات).',
+  'organization.department.subtitle':
+    'الإدارات داخل الفرع (وحدة على مستوى المنصة تنتمي إليها كل التطبيقات).',
   'organization.department.nameAr': 'الاسم بالعربية',
   'organization.department.nameEn': 'الاسم بالإنجليزية',
   'organization.department.create': 'إدارة جديدة',
@@ -3417,8 +3579,10 @@ const ar: Record<string, string> = {
   'organization.jobPosition.deleteTitle': 'حذف الوظيفة',
   'organization.jobPosition.activated': 'تم تفعيل الوظيفة',
   'organization.jobPosition.deactivated': 'تم إلغاء تفعيل الوظيفة',
-  'organization.jobPosition.departmentFixed': 'تُحدَّد الإدارة المالكة عند الإنشاء ولا يمكن تغييرها.',
-  'organization.jobPosition.sectionHint': 'اختياري. في حال تحديده يجب أن ينتمي القسم إلى الإدارة المالكة.',
+  'organization.jobPosition.departmentFixed':
+    'تُحدَّد الإدارة المالكة عند الإنشاء ولا يمكن تغييرها.',
+  'organization.jobPosition.sectionHint':
+    'اختياري. في حال تحديده يجب أن ينتمي القسم إلى الإدارة المالكة.',
   'organization.jobPosition.noSection': 'بدون قسم',
   'organization.application.subtitle':
     'التطبيقات (الوحدات) المتاحة في المنصة. لكل تطبيق أيقونة ومسار، ويُجمَّع حسب الفئة ويُرتَّب حسب ترتيب العرض. وهي مصدر التنقل والوصول إلى الوحدات.',
@@ -3429,7 +3593,8 @@ const ar: Record<string, string> = {
   'organization.application.route': 'المسار',
   'organization.application.routeHint': 'المسار الذي يفتح عليه التطبيق، مثل /hr/recruitment.',
   'organization.application.category': 'الفئة',
-  'organization.application.categoryHint': 'تسمية التجميع المستخدمة لتصنيف التطبيقات، مثل الموارد البشرية.',
+  'organization.application.categoryHint':
+    'تسمية التجميع المستخدمة لتصنيف التطبيقات، مثل الموارد البشرية.',
   'organization.application.sortOrder': 'الترتيب',
   'organization.application.sortOrderHint': 'ترتيب العرض التصاعدي داخل الفئة.',
   'organization.application.navigation': 'التنقل',
@@ -3535,8 +3700,10 @@ const ar: Record<string, string> = {
   'contracts.actions.terminate': 'فسخ',
   'contracts.actions.amendTitle': 'تعديل العقد {{code}}',
   'contracts.actions.renewTitle': 'تجديد العقد {{code}}',
-  'contracts.actions.amendHint': 'التعديل ينشئ الإصدار التالي من هذا العقد كمسودة جديدة، ويبقى هذا المستند محفوظًا في السلسلة.',
-  'contracts.actions.renewHint': 'التجديد ينشئ عقدًا جديدًا مرتبطًا كمسودة، ويبقى هذا المستند محفوظًا في السلسلة.',
+  'contracts.actions.amendHint':
+    'التعديل ينشئ الإصدار التالي من هذا العقد كمسودة جديدة، ويبقى هذا المستند محفوظًا في السلسلة.',
+  'contracts.actions.renewHint':
+    'التجديد ينشئ عقدًا جديدًا مرتبطًا كمسودة، ويبقى هذا المستند محفوظًا في السلسلة.',
   'contracts.actions.amendDone': 'تم إنشاء مسودة التعديل.',
   'contracts.actions.renewDone': 'تم إنشاء مسودة التجديد.',
   'contracts.actions.terminateTitle': 'فسخ العقد {{code}}',
@@ -3544,10 +3711,12 @@ const ar: Record<string, string> = {
   'contracts.actions.terminateReason': 'السبب',
   'contracts.actions.terminateDone': 'تم فسخ العقد.',
   'contracts.actions.printFailed': 'تعذّر فتح المستند.',
-  'contracts.actions.pdfNotReady': 'ملف PDF غير جاهز بعد — استخدم الطباعة أو أعد المحاولة بعد لحظات.',
+  'contracts.actions.pdfNotReady':
+    'ملف PDF غير جاهز بعد — استخدم الطباعة أو أعد المحاولة بعد لحظات.',
   'contracts.actions.pdfFailed': 'تعذّر تنزيل ملف PDF.',
   'contracts.create.title': 'عقد جديد',
-  'contracts.create.subtitle': 'اختر الموظف وقالبًا منشورًا — المعاينة على الجانب هي المستند النهائي نفسه الذي سيُجمَّد عند الإنشاء.',
+  'contracts.create.subtitle':
+    'اختر الموظف وقالبًا منشورًا — المعاينة على الجانب هي المستند النهائي نفسه الذي سيُجمَّد عند الإنشاء.',
   'contracts.create.details': 'بيانات العقد',
   'contracts.create.employeeSearch': 'ابحث عن الموظفين بالاسم أو الكود…',
   'contracts.create.noEmployees': 'لا يوجد موظفون مطابقون.',
@@ -3555,13 +3724,15 @@ const ar: Record<string, string> = {
   'contracts.create.template': 'القالب',
   'contracts.create.templatePick': 'اختر قالبًا…',
   'contracts.create.overrides': 'قيم المتغيرات',
-  'contracts.create.overridesHint': 'تُستخرج القيم تلقائيًا من ملف الموظف؛ اكتب هنا فقط للتجاوز أو لتعبئة قيمة ناقصة.',
+  'contracts.create.overridesHint':
+    'تُستخرج القيم تلقائيًا من ملف الموظف؛ اكتب هنا فقط للتجاوز أو لتعبئة قيمة ناقصة.',
   'contracts.create.autoResolved': 'تلقائي',
   'contracts.create.saveDraft': 'حفظ كمسودة',
   'contracts.create.saveGenerate': 'إنشاء وتوليد المستند',
   'contracts.create.saved': 'تم حفظ المسودة.',
   'contracts.create.generated': 'بدأ إنشاء المستند.',
-  'contracts.create.missingVariables': 'حُفظت المسودة — توجد متغيرات إلزامية ناقصة، أكملها قبل توليد المستند.',
+  'contracts.create.missingVariables':
+    'حُفظت المسودة — توجد متغيرات إلزامية ناقصة، أكملها قبل توليد المستند.',
   'contracts.create.generateBlocked': 'حُفظت المسودة — يلزم الاعتماد قبل توليد المستند.',
   'contracts.create.issuesTitle': 'متغيرات إلزامية ناقصة',
   'contracts.create.preview': 'معاينة حية',
@@ -3646,14 +3817,16 @@ const ar: Record<string, string> = {
   'contracts.templates.publishedShort': 'المنشور v{{version}}',
   'contracts.templates.clone': 'نسخ',
   'contracts.templates.cloneTitle': 'نسخ القالب',
-  'contracts.templates.cloneHint': 'ينشئ قالبًا جديدًا مستقلًا (مسودة v1) بهذا المحتوى — وهذا هو مسار إنشاء نسخة بلغة أخرى.',
+  'contracts.templates.cloneHint':
+    'ينشئ قالبًا جديدًا مستقلًا (مسودة v1) بهذا المحتوى — وهذا هو مسار إنشاء نسخة بلغة أخرى.',
   'contracts.templates.cloned': 'تم نسخ القالب.',
   'contracts.templates.archive': 'أرشفة',
   'contracts.templates.archived': 'أُرشف إصدار القالب.',
   'contracts.templates.settings': 'إعدادات القالب',
   'contracts.templates.sectionHeader': 'الترويسة',
   'contracts.templates.sectionBody': 'المتن',
-  'contracts.templates.bodyHint': 'نص العقد الأساسي. أدرج المتغيرات من اللوحة الجانبية — تُستبدل لكل موظف عند التوليد.',
+  'contracts.templates.bodyHint':
+    'نص العقد الأساسي. أدرج المتغيرات من اللوحة الجانبية — تُستبدل لكل موظف عند التوليد.',
   'contracts.templates.sectionFooter': 'التذييل',
   'contracts.templates.signatures': 'خانات التوقيع',
   'contracts.templates.signaturesHint': 'تُطبع في نهاية المستند مع سطور التوقيع.',
@@ -3669,12 +3842,14 @@ const ar: Record<string, string> = {
   'contracts.templates.forked': 'أُنشئت المسودة v{{version}} — يبقى الإصدار المنشور دون تغيير.',
   'contracts.templates.publish': 'نشر',
   'contracts.templates.published': 'تم نشر القالب.',
-  'contracts.templates.publishedBanner': 'هذا الإصدار منشور. حفظ تعديلاتك ينشئ الإصدار التالي كمسودة — والعقود المولَّدة سابقًا تحتفظ بهذا الإصدار للأبد.',
+  'contracts.templates.publishedBanner':
+    'هذا الإصدار منشور. حفظ تعديلاتك ينشئ الإصدار التالي كمسودة — والعقود المولَّدة سابقًا تحتفظ بهذا الإصدار للأبد.',
   'contracts.templates.archivedBanner': 'هذا الإصدار مؤرشف وللقراءة فقط. انسخه لبدء قالب جديد.',
   'contracts.templates.preview': 'معاينة',
   'contracts.templates.previewTitle': 'معاينة بعينات',
   'contracts.templates.previewFailed': 'تعذّرت المعاينة.',
-  'contracts.templates.previewSampleHint': 'تُعرض من الخادم بقيم تجريبية — بنفس المحرّك المستخدم للمستندات الفعلية.',
+  'contracts.templates.previewSampleHint':
+    'تُعرض من الخادم بقيم تجريبية — بنفس المحرّك المستخدم للمستندات الفعلية.',
   'contracts.templates.focusFirst': 'انقر داخل أحد الأقسام أولًا ثم أدرج المتغير.',
   'contracts.templates.versions': 'سجل الإصدارات',
   'contracts.templates.versionsHint': 'كل إصدار محفوظ وقابل للاسترجاع.',
@@ -3685,7 +3860,8 @@ const ar: Record<string, string> = {
   'contracts.types.empty': 'لا توجد أنواع عقود بعد.',
   'contracts.types.saved': 'تم حفظ نوع العقد.',
   'contracts.types.allowsEndDate': 'عقود هذا النوع لها تاريخ انتهاء',
-  'contracts.types.multipleActive': 'السماح بأكثر من عقد سارٍ للموظف الواحد (استثناء من القاعدة الافتراضية)',
+  'contracts.types.multipleActive':
+    'السماح بأكثر من عقد سارٍ للموظف الواحد (استثناء من القاعدة الافتراضية)',
   'contracts.types.multipleActiveShort': 'يسمح بالتعدد',
   'contracts.types.openEndedOnly': 'غير محدد المدة',
   'contracts.editor.bold': 'عريض',
@@ -3708,12 +3884,15 @@ const ar: Record<string, string> = {
   'contracts.verify.title': 'التحقق من العقد',
   'contracts.verify.valid': 'مستند أصلي',
   'contracts.verify.invalid': 'تعذّر التحقق من هذا المستند',
-  'contracts.verify.validHint': 'صدر هذا المستند من منصة ECMS ويطابق النسخة الأصلية المخزنة تمامًا.',
-  'contracts.verify.invalidHint': 'رقم المستند ومفتاح التحقق لا يطابقان أي مستند صادر. قد يكون المستند قد عُدِّل.',
+  'contracts.verify.validHint':
+    'صدر هذا المستند من منصة ECMS ويطابق النسخة الأصلية المخزنة تمامًا.',
+  'contracts.verify.invalidHint':
+    'رقم المستند ومفتاح التحقق لا يطابقان أي مستند صادر. قد يكون المستند قد عُدِّل.',
   'contracts.verify.generatedAt': 'تاريخ الإصدار',
   'contracts.verify.error': 'التحقق غير متاح مؤقتًا — أعد المحاولة بعد قليل.',
   'contracts.branding.title': 'الهوية البصرية للشركة',
-  'contracts.branding.subtitle': 'الشعار وسطرا الترويسة والتذييل والعلامة المائية ولون الهوية — تُطبَّق على كل مستند وتُجمَّد في كل نسخة صادرة.',
+  'contracts.branding.subtitle':
+    'الشعار وسطرا الترويسة والتذييل والعلامة المائية ولون الهوية — تُطبَّق على كل مستند وتُجمَّد في كل نسخة صادرة.',
   'contracts.branding.headerAr': 'سطر الترويسة (عربي)',
   'contracts.branding.headerEn': 'سطر الترويسة (إنجليزي)',
   'contracts.branding.footerAr': 'سطر التذييل (عربي)',
@@ -3741,6 +3920,38 @@ const ar: Record<string, string> = {
   'evaluations.filters.search': 'كود المتقدِّم أو الاسم',
   'recruitment.filters.branch': 'الفرع',
   'recruitment.filters.allBranches': 'كل الفروع',
+
+  // Fleet module (FW-1)
+  'fleet.module.title': 'الحركة',
+  'fleet.overview.title': 'الحركة',
+  'fleet.overview.subtitle': 'السيارات والسائقون والتشغيل اليومي والصيانة والحوادث',
+  'fleet.overview.noAccessTitle': 'لا توجد شاشات حركة متاحة',
+  'fleet.overview.noAccessBody': 'حسابك لا يحمل صلاحيات الحركة. اطلب الوصول من مدير النظام.',
+  'fleet.nav.vehicles': 'السيارات',
+  'fleet.nav.drivers': 'السائقون',
+  'fleet.nav.attendance': 'التمامات',
+  'fleet.nav.odometer': 'عدادات السيارات',
+  'fleet.nav.maintenance': 'صيانة السيارات',
+  'fleet.nav.maintenanceAlarms': 'إنذارات الصيانة',
+  'fleet.nav.roster': 'تعيين السيارات',
+  'fleet.nav.accidents': 'حوادث السيارات',
+  'fleet.nav.violations': 'مخالفات السيارات',
+  'fleet.nav.catalogs': 'قوائم الحركة',
+  'fleet.nav.settings': 'إعدادات الحركة',
+  'fleet.cards.vehicles': 'سجل السيارات: الهوية والترخيص والحالة وحالة الورشة',
+  'fleet.cards.drivers': 'ملفات السائقين كامتداد لموظفي الموارد البشرية',
+  'fleet.cards.attendance': 'عدم الإتاحة التشغيلية اليومية (مأمورية، عهدة خارجية)',
+  'fleet.cards.odometer': 'سلسلة العداد المتصلة وتصحيح القراءات',
+  'fleet.cards.maintenance': 'زيارات الورشة: الإدخال والإخراج والعهدة',
+  'fleet.cards.maintenanceAlarms': 'إنذارات الصيانة المشتقة لكل سيارة — أصفر وأحمر',
+  'fleet.cards.roster': 'تخطيط من يقود أي سيارة، يوماً بيوم',
+  'fleet.cards.accidents': 'ملفات الحوادث والمبالغ ودورة الفتح والإغلاق',
+  'fleet.cards.violations': 'كشوف السيارات ووقائع السائقين والتظلمات السنوية',
+  'fleet.cards.catalogs': 'الورش وأنواع الأعمال وقطع الغيار وأنواع المهام والمخالفات',
+  'fleet.cards.settings': 'أنواع السيارات وفترات الصيانة وعتبات الإنذار',
+  'fleet.planned.title': 'هذه الشاشة في الطريق',
+  'fleet.planned.body':
+    'تصل مع الشريحة {{slice}} من خطة واجهة الحركة. المسار والصلاحيات والتنقل تعمل بالفعل.',
 };
 
 const catalogs: Record<Locale, Record<string, string>> = { en, ar };

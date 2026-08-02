@@ -24,7 +24,10 @@ const EmployeeFilesRoutes = lazy(() => import('../../modules/hr/employee-managem
 const OrganizationRoutes = lazy(() => import('../../modules/organization/routes'));
 const LeaveManagementRoutes = lazy(() => import('../../modules/hr/leave-management/routes'));
 const ContractsRoutes = lazy(() => import('../../modules/hr/contracts/routes'));
-const VerifyContractPage = lazy(() => import('../../modules/hr/contracts/pages/VerifyContractPage'));
+const FleetRoutes = lazy(() => import('../../modules/fleet/routes'));
+const VerifyContractPage = lazy(
+  () => import('../../modules/hr/contracts/pages/VerifyContractPage'),
+);
 const AccountRoutes = lazy(() => import('../account/routes'));
 
 const useDirection = (): void => {
@@ -67,7 +70,13 @@ export const App = (): JSX.Element => {
         <Route
           path="/verify/contract"
           element={
-            <Suspense fallback={<div className="grid min-h-screen place-items-center"><LoadingState /></div>}>
+            <Suspense
+              fallback={
+                <div className="grid min-h-screen place-items-center">
+                  <LoadingState />
+                </div>
+              }
+            >
               <VerifyContractPage />
             </Suspense>
           }
@@ -76,7 +85,13 @@ export const App = (): JSX.Element => {
           path="/organization/*"
           element={
             <RequireAuth>
-              <Suspense fallback={<div className="grid min-h-screen place-items-center"><LoadingState /></div>}>
+              <Suspense
+                fallback={
+                  <div className="grid min-h-screen place-items-center">
+                    <LoadingState />
+                  </div>
+                }
+              >
                 <OrganizationRoutes />
               </Suspense>
             </RequireAuth>
@@ -86,7 +101,13 @@ export const App = (): JSX.Element => {
           path="/employees/*"
           element={
             <RequireAuth>
-              <Suspense fallback={<div className="grid min-h-screen place-items-center"><LoadingState /></div>}>
+              <Suspense
+                fallback={
+                  <div className="grid min-h-screen place-items-center">
+                    <LoadingState />
+                  </div>
+                }
+              >
                 <EmployeeManagementRoutes />
               </Suspense>
             </RequireAuth>
@@ -96,7 +117,13 @@ export const App = (): JSX.Element => {
           path="/leave/*"
           element={
             <RequireAuth>
-              <Suspense fallback={<div className="grid min-h-screen place-items-center"><LoadingState /></div>}>
+              <Suspense
+                fallback={
+                  <div className="grid min-h-screen place-items-center">
+                    <LoadingState />
+                  </div>
+                }
+              >
                 <LeaveManagementRoutes />
               </Suspense>
             </RequireAuth>
@@ -106,8 +133,30 @@ export const App = (): JSX.Element => {
           path="/contracts/*"
           element={
             <RequireAuth>
-              <Suspense fallback={<div className="grid min-h-screen place-items-center"><LoadingState /></div>}>
+              <Suspense
+                fallback={
+                  <div className="grid min-h-screen place-items-center">
+                    <LoadingState />
+                  </div>
+                }
+              >
                 <ContractsRoutes />
+              </Suspense>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/fleet/*"
+          element={
+            <RequireAuth>
+              <Suspense
+                fallback={
+                  <div className="grid min-h-screen place-items-center">
+                    <LoadingState />
+                  </div>
+                }
+              >
+                <FleetRoutes />
               </Suspense>
             </RequireAuth>
           }
@@ -116,7 +165,13 @@ export const App = (): JSX.Element => {
           path="/account/security"
           element={
             <RequireAuth>
-              <Suspense fallback={<div className="grid min-h-screen place-items-center"><LoadingState /></div>}>
+              <Suspense
+                fallback={
+                  <div className="grid min-h-screen place-items-center">
+                    <LoadingState />
+                  </div>
+                }
+              >
                 <AccountRoutes />
               </Suspense>
             </RequireAuth>
@@ -126,7 +181,13 @@ export const App = (): JSX.Element => {
           path="/employee-files/*"
           element={
             <RequireAuth>
-              <Suspense fallback={<div className="grid min-h-screen place-items-center"><LoadingState /></div>}>
+              <Suspense
+                fallback={
+                  <div className="grid min-h-screen place-items-center">
+                    <LoadingState />
+                  </div>
+                }
+              >
                 <EmployeeFilesRoutes />
               </Suspense>
             </RequireAuth>
@@ -136,7 +197,13 @@ export const App = (): JSX.Element => {
           path="/*"
           element={
             <RequireAuth>
-              <Suspense fallback={<div className="grid min-h-screen place-items-center"><LoadingState /></div>}>
+              <Suspense
+                fallback={
+                  <div className="grid min-h-screen place-items-center">
+                    <LoadingState />
+                  </div>
+                }
+              >
                 <RecruitmentRoutes />
               </Suspense>
             </RequireAuth>

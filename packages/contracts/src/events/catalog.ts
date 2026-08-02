@@ -725,16 +725,11 @@ export const EVENT_LIFECYCLE: Readonly<
   // publisher fails the suite until it is promoted to `stable`.
   'hr.applicant.returnedToStage': { status: 'planned' },
   'hr.evaluation.opened': { status: 'planned' },
-  // Fleet (FL-1): the whole surface is declared ahead of its publishers — FL-2..FL-6 promote
-  // each name to `stable` as its emit site lands, and the publisher test enforces the promotion.
-  // FL-2 promoted `fleet.vehicle.*`; FL-3 `fleet.driverUnavailability.*`; FL-4 odometer,
-  // maintenance, maintenanceAlarm and both license surfaces; FL-5 roster + assignment.
-  // Remaining: accident + violation (FL-6).
-  'fleet.accident.recorded': { status: 'planned' },
-  'fleet.accident.closed': { status: 'planned' },
-  'fleet.accident.reopened': { status: 'planned' },
-  'fleet.violation.recorded': { status: 'planned' },
-  'fleet.violation.grievanceApplied': { status: 'planned' },
+  // Fleet (FL-1): the whole surface was declared ahead of its publishers — FL-2..FL-6 promoted
+  // each name to `stable` as its emit site landed, and the publisher test enforces the promotion.
+  // FL-2 `fleet.vehicle.*`; FL-3 `fleet.driverUnavailability.*`; FL-4 odometer, maintenance,
+  // maintenanceAlarm and both license surfaces; FL-5 roster + assignment; FL-6 accident +
+  // violation. All 22 fleet events are stable — the module's automation surface is complete.
 };
 
 /**

@@ -59,7 +59,9 @@ const HR_EVENT_CONSTANTS = [
 ].flatMap((group) => Object.values(group));
 
 const FLEET_EVENT_CONSTANTS = Object.values(FleetEvents);
-// Promoted to stable by the slices that added their emit sites (FL-2..FL-5).
+// Promoted to stable by the slices that added their emit sites (FL-2..FL-6). All 22 are
+// stable — FLEET_PLANNED below derives to empty, which is the point: nothing fleet remains
+// declared-but-unpublished.
 const FLEET_STABLE = new Set<string>([
   FleetEvents.VehicleCreated,
   FleetEvents.VehicleUpdated,
@@ -78,6 +80,11 @@ const FLEET_STABLE = new Set<string>([
   FleetEvents.DriverLicenseExpired,
   FleetEvents.RosterPlanned,
   FleetEvents.AssignmentChanged,
+  FleetEvents.AccidentRecorded,
+  FleetEvents.AccidentClosed,
+  FleetEvents.AccidentReopened,
+  FleetEvents.ViolationRecorded,
+  FleetEvents.GrievanceApplied,
 ]);
 const FLEET_PLANNED = FLEET_EVENT_CONSTANTS.filter((name) => !FLEET_STABLE.has(name));
 
@@ -341,7 +348,7 @@ describe('lifecycle', () => {
 
   it('excludes planned events from the stable list', () => {
     expect(stableEventNames()).not.toContain('hr.evaluation.opened');
-    expect(stableEventNames()).not.toContain('fleet.accident.recorded');
+    expect(stableEventNames()).not.toContain('hr.applicant.returnedToStage');
     expect(stableEventNames().length).toBe(EVENT_CATALOG.length - 2 - FLEET_PLANNED.length);
   });
 

@@ -226,6 +226,11 @@ beforeAll(async () => {
     FleetEvents.DriverLicenseExpired,
     FleetEvents.RosterPlanned,
     FleetEvents.AssignmentChanged,
+    FleetEvents.AccidentRecorded,
+    FleetEvents.AccidentClosed,
+    FleetEvents.AccidentReopened,
+    FleetEvents.ViolationRecorded,
+    FleetEvents.GrievanceApplied,
   ]) {
     subscribe(name, `fleet-test-${name}`, (envelope) => {
       seenEvents.push({ name: envelope.name, payload: envelope.payload });
@@ -1012,5 +1017,234 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
           .send({ date: '2026-11-06', rows: [{ vehicleId: '64b1f0cccccccccccccccc99' }] })
       ).status,
     ).toBe(403);
+  });
+});
+
+describe('accidents + violations + grievances (§4.6/§4.7, FR-9/FR-10 — FL-6)', () => {
+  const violationTypeIdByName = async (name: string): Promise<string> => {
+    const res = await request(app)
+      .get('/api/v1/fleet/catalog-items')
+      .query({ kind: 'violationType', pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    const item = data<FleetCatalogItemDto[]>(res).find((i) => i.name.ar === name);
+    if (item === undefined) throw new Error(`violationType ${name} not found`);
+    return item.id;
+  };
+
+  it('walks the accident lifecycle: record → close → reopen, no-ops refused, all published', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const createRes = await request(app)
+      .post('/api/v1/fleet/accidents')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        vehicleId: v.id,
+        occurredAt: '2026-06-15',
+        culprit: 'طرف ثالث',
+        statement: 'اصطدام أثناء الانتظار أمام الفرع',
+        companyCost: 1500,
+        amountCollected: 0,
+        paidAmount: 0,
+      });
+    expect(createRes.status).toBe(201);
+    const accident = data<{ id: string; status: string; version: number }>(createRes);
+    expect(accident.status).toBe('open');
+    expect(seenEvents.some((e) => e.name === FleetEvents.AccidentRecorded)).toBe(true);
+
+    const close = await request(app)
+      .post(`/api/v1/fleet/accidents/${accident.id}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'closed', version: accident.version });
+    expect(close.status).toBe(200);
+    expect(seenEvents.some((e) => e.name === FleetEvents.AccidentClosed)).toBe(true);
+
+    // FR-10 refuses a no-op flip — every published event is a real change.
+    const noop = await request(app)
+      .post(`/api/v1/fleet/accidents/${accident.id}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'closed', version: data<{ version: number }>(close).version });
+    expect(noop.status).toBe(409);
+
+    const reopen = await request(app)
+      .post(`/api/v1/fleet/accidents/${accident.id}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'open', version: data<{ version: number }>(close).version });
+    expect(reopen.status).toBe(200);
+    expect(seenEvents.some((e) => e.name === FleetEvents.AccidentReopened)).toBe(true);
+
+    // Facts edit is version-aware and publishes nothing (§8 lists no accident.updated).
+    const edit = await request(app)
+      .patch(`/api/v1/fleet/accidents/${accident.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ amountCollected: 750, version: data<{ version: number }>(reopen).version });
+    expect(edit.status).toBe(200);
+    expect(data<{ amountCollected: number }>(edit).amountCollected).toBe(750);
+  });
+
+  it('FR-9 — a vehicle statement row derives its amount; the client cannot send one', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const typeId6 = await violationTypeIdByName('الانتظار في الممنوع');
+
+    const smuggled = await request(app)
+      .post('/api/v1/fleet/violations/vehicle')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        vehicleId: v.id,
+        year: 2026,
+        violationTypeId: typeId6,
+        count: 4,
+        unitValue: 200,
+        amount: 1,
+      });
+    expect(smuggled.status).toBe(400); // strict schema — no amount field exists to send
+
+    const res = await request(app)
+      .post('/api/v1/fleet/violations/vehicle')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ vehicleId: v.id, year: 2026, violationTypeId: typeId6, count: 4, unitValue: 200 });
+    expect(res.status).toBe(201);
+    const row = data<{ id: string; amount: number; version: number }>(res);
+    expect(row.amount).toBe(800);
+    expect(
+      seenEvents.some(
+        (e) =>
+          e.name === FleetEvents.ViolationRecorded &&
+          (e.payload as { kind: string; amount: number }).amount === 800,
+      ),
+    ).toBe(true);
+
+    // Editing a factor recomputes the amount; driver fields on a vehicle row are refused.
+    const edited = await request(app)
+      .patch(`/api/v1/fleet/violations/${row.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ count: 6, version: row.version });
+    expect(data<{ amount: number }>(edited).amount).toBe(1200);
+    const wrongShape = await request(app)
+      .patch(`/api/v1/fleet/violations/${row.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date: '2026-03-01', version: data<{ version: number }>(edited).version });
+    expect(wrongShape.status).toBe(400);
+  });
+
+  it('a driver violation needs a driver profile, records as entered, and edits stay in shape', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const typeId6 = await violationTypeIdByName('حزام');
+    const employeeId = await mkEmployee();
+
+    const noProfile = await request(app)
+      .post('/api/v1/fleet/violations/driver')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        vehicleId: v.id,
+        date: '2026-05-10',
+        driverEmployeeId: employeeId,
+        violationTypeId: typeId6,
+        amount: 250,
+      });
+    expect(noProfile.status).toBe(400);
+
+    await mkDriverProfile(employeeId);
+    const res = await request(app)
+      .post('/api/v1/fleet/violations/driver')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        vehicleId: v.id,
+        date: '2026-05-10',
+        driverEmployeeId: employeeId,
+        violationTypeId: typeId6,
+        amount: 250,
+      });
+    expect(res.status).toBe(201);
+    const row = data<{ id: string; kind: string; amount: number; version: number }>(res);
+    expect(row.kind).toBe('driver');
+    expect(row.amount).toBe(250);
+
+    // Statement fields on a driver row are refused (§2.9 — two shapes, one collection).
+    const wrongShape = await request(app)
+      .patch(`/api/v1/fleet/violations/${row.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ count: 2, version: row.version });
+    expect(wrongShape.status).toBe(400);
+  });
+
+  it('the grievance is ONE figure per (vehicle, year), and the rollup merges everything', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const vehicleType = await violationTypeIdByName('رسوم خدمة');
+    const driverType = await violationTypeIdByName('تليفون');
+    const employeeId = await mkEmployee();
+    await mkDriverProfile(employeeId);
+
+    // Vehicle statement: 3 × 100 in 2027; driver event: 150 dated inside 2027.
+    await request(app)
+      .post('/api/v1/fleet/violations/vehicle')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        vehicleId: v.id,
+        year: 2027,
+        violationTypeId: vehicleType,
+        count: 3,
+        unitValue: 100,
+      });
+    await request(app)
+      .post('/api/v1/fleet/violations/driver')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        vehicleId: v.id,
+        date: '2027-04-01',
+        driverEmployeeId: employeeId,
+        violationTypeId: driverType,
+        amount: 150,
+      });
+
+    // Set, then OVERWRITE the grievance — the second call updates the same single row.
+    const first = await request(app)
+      .put('/api/v1/fleet/violations/grievance')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ vehicleId: v.id, year: 2027, totalBeforeGrievance: 900 });
+    expect(first.status).toBe(200);
+    const second = await request(app)
+      .put('/api/v1/fleet/violations/grievance')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ vehicleId: v.id, year: 2027, totalBeforeGrievance: 600 });
+    expect(second.status).toBe(200);
+    expect(data<{ id: string }>(second).id).toBe(data<{ id: string }>(first).id);
+    expect(
+      seenEvents.filter(
+        (e) =>
+          e.name === FleetEvents.GrievanceApplied &&
+          (e.payload as { vehicleId: string }).vehicleId === v.id,
+      ).length,
+    ).toBe(2);
+
+    const rollup = await request(app)
+      .get('/api/v1/fleet/violations/rollup')
+      .query({ year: 2027, vehicleId: v.id })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(rollup.status).toBe(200);
+    expect(data<unknown[]>(rollup)).toEqual([
+      {
+        vehicleId: v.id,
+        code: v.code,
+        year: 2027,
+        vehicleCount: 3,
+        vehicleAmount: 300,
+        driverCount: 1,
+        driverAmount: 150,
+        totalCount: 4,
+        totalAmount: 450,
+        totalBeforeGrievance: 600,
+      },
+    ]);
+  });
+
+  it('accidents and violations are their own grants — the branch operator holds none', async () => {
+    const res = await request(app)
+      .get('/api/v1/fleet/accidents')
+      .set('Authorization', `Bearer ${branchAToken}`);
+    expect(res.status).toBe(403);
+    const res2 = await request(app)
+      .put('/api/v1/fleet/violations/grievance')
+      .set('Authorization', `Bearer ${branchAToken}`)
+      .send({ vehicleId: '64b1f0cccccccccccccccc99', year: 2026, totalBeforeGrievance: 1 });
+    expect(res2.status).toBe(403);
   });
 });

@@ -672,6 +672,17 @@ export const SetFleetGrievanceSchema = z
   .strict();
 export type SetFleetGrievance = z.infer<typeof SetFleetGrievanceSchema>;
 
+/** FL-6 additive: the stored grievance row, as the set/update endpoint answers. */
+export interface FleetGrievanceDto {
+  id: string;
+  vehicleId: string;
+  year: number;
+  totalBeforeGrievance: number;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export const ListFleetViolationsQuerySchema = PaginationQuerySchema.extend({
   kind: FleetViolationKindSchema.optional(),
   vehicleId: objectId().optional(),
@@ -679,6 +690,15 @@ export const ListFleetViolationsQuerySchema = PaginationQuerySchema.extend({
   year: z.coerce.number().int().min(2000).max(2100).optional(),
 }).strict();
 export type ListFleetViolationsQuery = z.infer<typeof ListFleetViolationsQuerySchema>;
+
+/** FL-6 additive: the rollup's axis is the YEAR; one vehicle optionally narrows it. */
+export const FleetViolationRollupQuerySchema = z
+  .object({
+    year: z.coerce.number().int().min(2000).max(2100),
+    vehicleId: objectId().optional(),
+  })
+  .strict();
+export type FleetViolationRollupQuery = z.infer<typeof FleetViolationRollupQuerySchema>;
 
 /** Annual rollup per (vehicle, year) — derived at query time (§2.9). */
 export interface FleetViolationRollupDto {

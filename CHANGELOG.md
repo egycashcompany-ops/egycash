@@ -66,6 +66,33 @@ its entry here in the same PR.
 
 ### Added
 
+- **Accidents, violations, and grievances complete the Fleet backend (FL-6) — every fleet
+  event is now stable.** Accidents keep the legacy's freedom with none of its looseness: a file
+  opens on creation, closes and reopens as many times as the truth requires, but each flip is a
+  distinct audited, published change — flipping to the state a file is already in is refused, so
+  automation never hears an event that changed nothing. Amounts are stored as the entered facts;
+  nothing is derived from them until the owner defines the formula (§13-Q9). An accident can be
+  recorded against a disposed vehicle deliberately: it is historical paperwork about the day it
+  happened, unlike an odometer reading, which stays refused.
+
+  Violations are one collection with two discriminated shapes, and the shape decides who
+  computes the money. A vehicle statement row has no amount field at all — the server derives
+  count × unitValue when the row is created and again on every edit that touches either factor
+  — while a driver event row records the amount as entered and requires a driver profile to
+  exist (active or not; history counts). Editing a row with the other shape's fields is refused
+  in the service, the one place both shapes meet. The grievance is a single figure per
+  (vehicle, year) under a unique index, set and overwritten in place — the legacy stamped it
+  redundantly onto every violation row. The annual rollup endpoint derives everything at query
+  time: vehicle rows by their stored year, driver rows by the year of their event date (the
+  legacy synthesized fake dates here, which is exactly how its reports went wrong), merged with
+  grievance figures and vehicle codes by a pure, unit-tested assembler.
+
+  `fleet.accident.recorded/.closed/.reopened` and
+  `fleet.violation.recorded/.grievanceApplied` fire post-commit and are promoted
+  planned → stable — with them, all 22 fleet events are stable and the module's automation
+  surface is complete. Contract deltas are additive only: a grievance DTO and a rollup query
+  schema.
+
 - **The daily duty roster is live (FL-5): one board, one save shape, the day's exclusivity
   enforced where it can't be forgotten.** `GET /fleet/roster?date=` returns the whole planning
   picture — the caller's in-scope active vehicles with their assignments and a derived

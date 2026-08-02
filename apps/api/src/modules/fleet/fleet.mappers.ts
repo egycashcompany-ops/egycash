@@ -1,13 +1,16 @@
 // Doc → DTO mapping for the FL-2 entities. `inWorkshop` is computed by the caller (FR-12) and
 // passed in — the mapper never invents a derived fact.
 import {
+  type FleetAccidentDto,
   type FleetCatalogItemDto,
   type FleetDriverProfileDto,
   type FleetDriverUnavailabilityDto,
+  type FleetGrievanceDto,
   type FleetMaintenanceVisitDto,
   type FleetOdometerLogDto,
   type FleetVehicleDto,
   type FleetVehicleTypeDto,
+  type FleetViolationDto,
 } from '@ecms/contracts';
 import { type FleetCatalogItemDoc } from './catalogs/catalog-item.model';
 import { type FleetVehicleTypeDoc } from './vehicle-types/vehicle-type.model';
@@ -16,6 +19,8 @@ import { type FleetDriverProfileDoc } from './driver-profiles/driver-profile.mod
 import { type FleetUnavailabilityDoc } from './availability/unavailability.model';
 import { type FleetOdometerLogDoc } from './odometer/odometer.model';
 import { type FleetMaintenanceVisitDoc } from './maintenance/maintenance.model';
+import { type FleetAccidentDoc } from './accidents/accident.model';
+import { type FleetGrievanceDoc, type FleetViolationDoc } from './violations/violation.model';
 
 const iso = (d: Date): string => d.toISOString();
 
@@ -96,6 +101,48 @@ export const toOdometerLogDto = (doc: FleetOdometerLogDoc): FleetOdometerLogDto 
   driver1EmployeeId: doc.driver1EmployeeId === null ? null : String(doc.driver1EmployeeId),
   driver2EmployeeId: doc.driver2EmployeeId === null ? null : String(doc.driver2EmployeeId),
   notes: doc.notes,
+  version: doc.__v,
+  createdAt: iso(doc.createdAt),
+  updatedAt: iso(doc.updatedAt),
+});
+
+export const toAccidentDto = (doc: FleetAccidentDoc): FleetAccidentDto => ({
+  id: String(doc._id),
+  vehicleId: String(doc.vehicleId),
+  occurredAt: iso(doc.occurredAt),
+  culprit: doc.culprit,
+  statement: doc.statement,
+  companyCost: doc.companyCost,
+  amountCollected: doc.amountCollected,
+  paidAmount: doc.paidAmount,
+  status: doc.status,
+  notes: doc.notes,
+  version: doc.__v,
+  createdAt: iso(doc.createdAt),
+  updatedAt: iso(doc.updatedAt),
+});
+
+export const toViolationDto = (doc: FleetViolationDoc): FleetViolationDto => ({
+  id: String(doc._id),
+  kind: doc.kind,
+  vehicleId: String(doc.vehicleId),
+  violationTypeId: String(doc.violationTypeId),
+  amount: doc.amount,
+  year: doc.year,
+  count: doc.count,
+  unitValue: doc.unitValue,
+  date: doc.date === null ? null : iso(doc.date),
+  driverEmployeeId: doc.driverEmployeeId === null ? null : String(doc.driverEmployeeId),
+  version: doc.__v,
+  createdAt: iso(doc.createdAt),
+  updatedAt: iso(doc.updatedAt),
+});
+
+export const toGrievanceDto = (doc: FleetGrievanceDoc): FleetGrievanceDto => ({
+  id: String(doc._id),
+  vehicleId: String(doc.vehicleId),
+  year: doc.year,
+  totalBeforeGrievance: doc.totalBeforeGrievance,
   version: doc.__v,
   createdAt: iso(doc.createdAt),
   updatedAt: iso(doc.updatedAt),

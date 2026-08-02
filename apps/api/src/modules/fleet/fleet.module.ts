@@ -13,6 +13,8 @@ import { buildFleetAvailabilityRouter } from './availability/unavailability.rout
 import { buildFleetOdometerRouter } from './odometer/odometer.routes';
 import { buildFleetMaintenanceRouter } from './maintenance/maintenance.routes';
 import { buildFleetRosterRouter } from './roster/roster.routes';
+import { buildFleetAccidentsRouter } from './accidents/accident.routes';
+import { buildFleetViolationsRouter } from './violations/violation.routes';
 import { licenseExpirySweep, maintenanceAlarmSweep } from './sweeps/fleet-sweeps';
 import { registerFleetSettings } from './fleet.settings';
 import { seedFleet } from './fleet.seed';
@@ -129,6 +131,35 @@ const rosterPermissions = declarePermissions(
   ],
 );
 
+const accidentPermissions = declarePermissions(
+  'fleet',
+  'fleetAccident',
+  { en: 'accidents', ar: 'حوادث السيارات' },
+  ['view', 'create', 'edit', 'delete'],
+  [
+    // FR-10 — one grant, both directions: whoever may close a file may reopen it.
+    {
+      action: 'close',
+      name: { en: 'Close or reopen an accident', ar: 'إغلاق أو إعادة فتح حادث' },
+    },
+  ],
+);
+
+const violationPermissions = declarePermissions(
+  'fleet',
+  'fleetViolation',
+  { en: 'violations', ar: 'مخالفات السيارات' },
+  ['view', 'edit', 'delete'],
+  [
+    { action: 'record', name: { en: 'Record violations', ar: 'تسجيل المخالفات' } },
+    // The grievance rewrites a year's money story — its own decision, its own grant (§7).
+    {
+      action: 'grievance',
+      name: { en: 'Set the yearly grievance figure', ar: 'تسجيل تظلم سنوي' },
+    },
+  ],
+);
+
 export const fleetPermissions: PermissionDef[] = [
   ...vehiclePermissions,
   ...catalogPermissions,
@@ -138,6 +169,8 @@ export const fleetPermissions: PermissionDef[] = [
   ...odometerPermissions,
   ...maintenancePermissions,
   ...rosterPermissions,
+  ...accidentPermissions,
+  ...violationPermissions,
 ];
 
 export const fleetModule: ModuleManifest = {
@@ -155,6 +188,8 @@ export const fleetModule: ModuleManifest = {
     { prefix: '/fleet/odometer', router: buildFleetOdometerRouter() },
     { prefix: '/fleet/maintenance', router: buildFleetMaintenanceRouter() },
     { prefix: '/fleet/roster', router: buildFleetRosterRouter() },
+    { prefix: '/fleet/accidents', router: buildFleetAccidentsRouter() },
+    { prefix: '/fleet/violations', router: buildFleetViolationsRouter() },
   ],
   collections: [
     'fleet_vehicles',
@@ -166,6 +201,9 @@ export const fleetModule: ModuleManifest = {
     'fleet_maintenance_visits',
     'fleet_sweep_marks',
     'fleet_duty_assignments',
+    'fleet_accidents',
+    'fleet_violations',
+    'fleet_violation_grievances',
   ],
   eventSubscriptions: [
     {

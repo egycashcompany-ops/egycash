@@ -66,6 +66,36 @@ its entry here in the same PR.
 
 ### Added
 
+- **The odometer chain, maintenance visits, and the derived alarm engine are live (FL-4).** The
+  odometer is one continuous chain per vehicle: recording a reading closes the open period
+  (deriving its km) and opens the next inside a single transaction, a partial unique index
+  guarantees at most one open period, and FR-2 refuses any reading below the vehicle's latest —
+  the odometer never runs backwards. The only way past that refusal is the correction flow
+  (`fleetOdometer.correct`, fully audited): because the closing reading of one period IS the
+  opening reading of the next, a correction rewrites the shared value on both neighbouring rows
+  atomically, and refuses outright anything that would break the chain's order — including
+  "reopening" a period that has periods after it. `GET /fleet/odometer/expected` tells the
+  client what reading the server expects next; the client computes nothing.
+
+  Maintenance visits are the cycle's only reset: check-in requires a vehicle not already in the
+  workshop (FR-4, doubly held by a partial unique index), check-out closes the visit with the
+  counter at service, and reopen undoes a mistaken check-out — each firing its event only after
+  commit. FL-2's `inWorkshop` seam now answers from the real open-visit query, with no call
+  site touched. The maintenance alarm is never stored: `computeAlarm` derives
+  remaining = interval − (latest reading − counter at last counting service) at query time, from
+  the vehicle TYPE's interval, the settings thresholds, and the latest closed «صيانة» visit,
+  preserving the legacy's two guards (no baseline / stale reading ⇒ no data, never a false
+  alarm). `GET /fleet/odometer/alarms` is the alarm board.
+
+  Two daily sweeps announce without changing state: license expiry (vehicles + drivers, warn
+  windows from settings) and maintenance-alarm crossings. Idempotency is structural — a
+  `fleet_sweep_marks` insert-if-new on a deterministic key means running a sweep twice emits
+  nothing the second time, while a renewed license or a fresh service baseline naturally re-arms
+  the announcement. Ten events promoted planned → stable: `fleet.odometer.recorded/.corrected`,
+  `fleet.maintenance.checkedIn/.checkedOut/.reopened`, `fleet.maintenanceAlarm.raised`, and the
+  four license-expiry surfaces. Contract deltas are additive only: an expected-reading DTO, a
+  vehicle-id query schema, a reopen schema, and audit actions `correct`/`checkOut`/`reopen`.
+
 - **Fleet drivers exist as extensions of HR employees, never copies (FL-3).** A driver profile
   holds only what Fleet is the authority on — license, specialization, area, an active switch —
   keyed by `employeeId`; name, phone and employment state stay in HR and are read through a new

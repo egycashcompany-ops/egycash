@@ -339,6 +339,16 @@ export const CorrectFleetOdometerSchema = z
   .strict();
 export type CorrectFleetOdometer = z.infer<typeof CorrectFleetOdometerSchema>;
 
+/** H2's fate — the server, not the client, computes the next expected reading. */
+export interface FleetExpectedReadingDto {
+  vehicleId: string;
+  /** null = the vehicle has no readings yet. */
+  expectedReading: number | null;
+}
+
+export const FleetVehicleIdQuerySchema = z.object({ vehicleId: objectId() }).strict();
+export type FleetVehicleIdQuery = z.infer<typeof FleetVehicleIdQuerySchema>;
+
 export const ListFleetOdometerQuerySchema = PaginationQuerySchema.extend({
   vehicleId: objectId().optional(),
   from: z.coerce.date().optional(),
@@ -405,6 +415,10 @@ export const CheckOutFleetMaintenanceSchema = z
   })
   .strict();
 export type CheckOutFleetMaintenance = z.infer<typeof CheckOutFleetMaintenanceSchema>;
+
+/** Undo a mistaken check-out (legacy deleted_dock=5) — version-aware like every mutation. */
+export const ReopenFleetMaintenanceSchema = z.object({ version: z.number().int().min(1) }).strict();
+export type ReopenFleetMaintenance = z.infer<typeof ReopenFleetMaintenanceSchema>;
 
 export const UpdateFleetMaintenanceSchema = z
   .object({

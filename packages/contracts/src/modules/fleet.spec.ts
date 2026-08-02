@@ -110,6 +110,16 @@ describe('fleet contracts', () => {
       FleetEvents.VehicleStatusChanged,
       FleetEvents.UnavailabilityRecorded,
       FleetEvents.UnavailabilityEnded,
+      FleetEvents.OdometerRecorded,
+      FleetEvents.OdometerCorrected,
+      FleetEvents.MaintenanceCheckedIn,
+      FleetEvents.MaintenanceCheckedOut,
+      FleetEvents.MaintenanceReopened,
+      FleetEvents.MaintenanceAlarmRaised,
+      FleetEvents.VehicleLicenseExpiring,
+      FleetEvents.VehicleLicenseExpired,
+      FleetEvents.DriverLicenseExpiring,
+      FleetEvents.DriverLicenseExpired,
     ]);
     for (const name of Object.values(FleetEvents)) {
       expect(eventCatalogEntry(name), `${name} is not catalogued`).toBeDefined();

@@ -15,6 +15,7 @@ import { auditService } from '../../../platform/audit';
 import { emit } from '../../../platform/kernel/event-bus';
 import { diffChanges } from '../../../shared/utils/diff';
 import { fleetVehicleTypeRepository } from '../vehicle-types/vehicle-type.repository';
+import { fleetMaintenanceRepository } from '../maintenance/maintenance.repository';
 import { fleetVehicleRepository, vehicleSearchFilter } from './vehicle.repository';
 import { canTransitionVehicle, isVehicleWritable } from './vehicle-status';
 import { FleetVehicleModel, type FleetVehicleDoc } from './vehicle.model';
@@ -207,11 +208,9 @@ class FleetVehicleService {
     await auditService.record({ entityRef: entityRef(id), action: 'delete' });
   }
 
-  /** DERIVED `inWorkshop` (FR-12). Until FL-4 introduces maintenance visits, no visit can be
-   * open, so the honest answer for every vehicle is `false` — the seam exists so FL-4 replaces
-   * one function body, not every call site. */
-  async openVisitVehicleIds(_vehicleIds: readonly string[]): Promise<ReadonlySet<string>> {
-    return new Set<string>();
+  /** DERIVED `inWorkshop` (FR-12) — real since FL-4: vehicles with an open maintenance visit. */
+  async openVisitVehicleIds(vehicleIds: readonly string[]): Promise<ReadonlySet<string>> {
+    return fleetMaintenanceRepository.openVisitVehicleIds(vehicleIds);
   }
 }
 

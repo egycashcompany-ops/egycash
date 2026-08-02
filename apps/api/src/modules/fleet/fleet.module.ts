@@ -10,6 +10,9 @@ import { buildFleetVehiclesRouter } from './vehicles';
 import { buildFleetDriversRouter } from './driver-profiles/driver-profile.routes';
 import { fleetDriverProfileService } from './driver-profiles/driver-profile.service';
 import { buildFleetAvailabilityRouter } from './availability/unavailability.routes';
+import { buildFleetOdometerRouter } from './odometer/odometer.routes';
+import { buildFleetMaintenanceRouter } from './maintenance/maintenance.routes';
+import { licenseExpirySweep, maintenanceAlarmSweep } from './sweeps/fleet-sweeps';
 import { registerFleetSettings } from './fleet.settings';
 import { seedFleet } from './fleet.seed';
 
@@ -81,12 +84,46 @@ const availabilityPermissions = declarePermissions(
   ],
 );
 
+const odometerPermissions = declarePermissions(
+  'fleet',
+  'fleetOdometer',
+  { en: 'odometer log', ar: 'عدادات السيارات' },
+  ['view'],
+  [
+    { action: 'record', name: { en: 'Record odometer reading', ar: 'تسجيل قراءة عداد' } },
+    // The ONLY way past the monotonic guard (FR-2) — a distinct, audited grant by design.
+    {
+      action: 'correct',
+      name: { en: 'Correct odometer readings', ar: 'تصحيح قراءات العداد' },
+    },
+  ],
+);
+
+const maintenancePermissions = declarePermissions(
+  'fleet',
+  'fleetMaintenance',
+  { en: 'maintenance visits', ar: 'صيانة السيارات' },
+  ['view', 'edit', 'delete'],
+  [
+    {
+      action: 'checkIn',
+      name: { en: 'Check a vehicle into a workshop', ar: 'إدخال سيارة للورشة' },
+    },
+    {
+      action: 'checkOut',
+      name: { en: 'Check a vehicle out (and undo)', ar: 'إخراج سيارة من الورشة (والتراجع)' },
+    },
+  ],
+);
+
 export const fleetPermissions: PermissionDef[] = [
   ...vehiclePermissions,
   ...catalogPermissions,
   ...maintenanceRulePermissions,
   ...driverPermissions,
   ...availabilityPermissions,
+  ...odometerPermissions,
+  ...maintenancePermissions,
 ];
 
 export const fleetModule: ModuleManifest = {
@@ -101,6 +138,8 @@ export const fleetModule: ModuleManifest = {
     { prefix: '/fleet/catalog-items', router: buildFleetCatalogRouter() },
     { prefix: '/fleet/drivers', router: buildFleetDriversRouter() },
     { prefix: '/fleet/availability', router: buildFleetAvailabilityRouter() },
+    { prefix: '/fleet/odometer', router: buildFleetOdometerRouter() },
+    { prefix: '/fleet/maintenance', router: buildFleetMaintenanceRouter() },
   ],
   collections: [
     'fleet_vehicles',
@@ -108,6 +147,9 @@ export const fleetModule: ModuleManifest = {
     'fleet_catalog_items',
     'fleet_driver_profiles',
     'fleet_driver_unavailability',
+    'fleet_odometer_logs',
+    'fleet_maintenance_visits',
+    'fleet_sweep_marks',
   ],
   eventSubscriptions: [
     {
@@ -119,6 +161,30 @@ export const fleetModule: ModuleManifest = {
         if (typeof payload.employeeId === 'string') {
           await fleetDriverProfileService.deactivateForExitedEmployee(payload.employeeId);
         }
+      },
+    },
+  ],
+  scheduledTasks: [
+    {
+      // FR-14 — license expiry becomes an announcement instead of a surprise. Idempotent via
+      // fleet_sweep_marks (owner FL-4 point 4): safe to run twice, to overlap, or to replay.
+      key: 'fleet.licenseExpirySweep',
+      description: 'Announce vehicle/driver licenses expiring within the warn windows (FR-14)',
+      cron: '15 4 * * *',
+      ownerService: 'fleet',
+      handler: async () => {
+        await licenseExpirySweep();
+      },
+    },
+    {
+      // §4.4's additive half — the alarm stays DERIVED (FR-3); this only announces a threshold
+      // crossing, once per (vehicle, level, baseline). A new service visit re-arms it.
+      key: 'fleet.maintenanceAlarmSweep',
+      description: 'Announce maintenance-alarm threshold crossings (yellow/red), once per baseline',
+      cron: '30 4 * * *',
+      ownerService: 'fleet',
+      handler: async () => {
+        await maintenanceAlarmSweep();
       },
     },
   ],

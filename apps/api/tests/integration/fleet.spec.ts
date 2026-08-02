@@ -21,6 +21,10 @@ import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { buildApp } from '../../src/app';
 import { moduleManifests } from '../../src/modules';
 import { fleetPermissions } from '../../src/modules/fleet/fleet.module';
+import {
+  licenseExpirySweep,
+  maintenanceAlarmSweep,
+} from '../../src/modules/fleet/sweeps/fleet-sweeps';
 import { hrPermissions } from '../../src/modules/hr/hr.module';
 import { driverAvailabilityOn } from '../../src/modules/fleet/availability/driver-availability';
 import { registerLeaveLookup } from '../../src/platform/directory';
@@ -212,6 +216,14 @@ beforeAll(async () => {
     FleetEvents.VehicleStatusChanged,
     FleetEvents.UnavailabilityRecorded,
     FleetEvents.UnavailabilityEnded,
+    FleetEvents.OdometerRecorded,
+    FleetEvents.OdometerCorrected,
+    FleetEvents.MaintenanceCheckedIn,
+    FleetEvents.MaintenanceCheckedOut,
+    FleetEvents.MaintenanceReopened,
+    FleetEvents.MaintenanceAlarmRaised,
+    FleetEvents.VehicleLicenseExpiring,
+    FleetEvents.DriverLicenseExpired,
   ]) {
     subscribe(name, `fleet-test-${name}`, (envelope) => {
       seenEvents.push({ name: envelope.name, payload: envelope.payload });
@@ -537,5 +549,273 @@ describe('driver unavailability — التمامات (FL-3)', () => {
     registerLeaveLookup(async (id) => id === employeeId);
     expect((await driverAvailabilityOn(employeeId, new Date('2026-09-10'))).reason).toBe('hrLeave');
     registerLeaveLookup(async () => false);
+  });
+});
+
+describe('odometer continuity (FR-2, §4.3 — FL-4)', () => {
+  const record = (vehicleId: string, reading: number, date: string) =>
+    request(app)
+      .post('/api/v1/fleet/odometer')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ vehicleId, reading, date });
+
+  it('one reading closes the previous period and opens the next, km server-derived', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    expect((await record(v.id, 1000, '2026-07-10')).status).toBe(201);
+    expect((await record(v.id, 1500, '2026-07-11')).status).toBe(201);
+
+    const logs = await request(app)
+      .get('/api/v1/fleet/odometer')
+      .query({ vehicleId: v.id, pageSize: 10, sortBy: 'outReading', sortDir: 'asc' })
+      .set('Authorization', `Bearer ${adminToken}`);
+    const rows = data<{ outReading: number; inReading: number | null; km: number | null }[]>(logs);
+    expect(rows.length).toBe(2);
+    expect(rows[0]).toMatchObject({ outReading: 1000, inReading: 1500, km: 500 });
+    expect(rows[1]).toMatchObject({ outReading: 1500, inReading: null, km: null });
+    expect(
+      seenEvents.some(
+        (e) =>
+          e.name === FleetEvents.OdometerRecorded &&
+          (e.payload as { closedKm: number | null }).closedKm === 500,
+      ),
+    ).toBe(true);
+
+    const expected = await request(app)
+      .get('/api/v1/fleet/odometer/expected')
+      .query({ vehicleId: v.id })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(data<{ expectedReading: number }>(expected).expectedReading).toBe(1500);
+  });
+
+  it('the odometer never runs backwards — a lower reading is refused (FR-2)', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 5000, '2026-07-10');
+    expect((await record(v.id, 4900, '2026-07-11')).status).toBe(409);
+  });
+
+  it('correcting a shared reading rewrites BOTH rows and keeps the chain whole', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 1000, '2026-07-10');
+    await record(v.id, 1500, '2026-07-11');
+    await record(v.id, 2200, '2026-07-12');
+
+    const logs = data<{ id: string; outReading: number; version: number }[]>(
+      await request(app)
+        .get('/api/v1/fleet/odometer')
+        .query({ vehicleId: v.id, pageSize: 10, sortBy: 'outReading', sortDir: 'asc' })
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+    const middle = logs.find((l) => l.outReading === 1500);
+
+    const corrected = await request(app)
+      .patch(`/api/v1/fleet/odometer/${middle?.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ outReading: 1400, version: middle?.version });
+    expect(corrected.status).toBe(200);
+
+    const after = data<
+      {
+        id: string;
+        outReading: number;
+        inReading: number | null;
+        km: number | null;
+        version: number;
+      }[]
+    >(
+      await request(app)
+        .get('/api/v1/fleet/odometer')
+        .query({ vehicleId: v.id, pageSize: 10, sortBy: 'outReading', sortDir: 'asc' })
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+    // The previous period's CLOSING reading moved with it — one physical fact, two rows.
+    expect(after[0]).toMatchObject({ outReading: 1000, inReading: 1400, km: 400 });
+    expect(after[1]).toMatchObject({ outReading: 1400, inReading: 2200, km: 800 });
+    expect(seenEvents.some((e) => e.name === FleetEvents.OdometerCorrected)).toBe(true);
+
+    // A correction that breaks the chain order is refused.
+    const bad = await request(app)
+      .patch(`/api/v1/fleet/odometer/${after[1]?.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ outReading: 900, version: after[1]?.version });
+    expect([400, 409]).toContain(bad.status);
+  });
+
+  it('recording and correcting are separate grants — the branch operator holds neither', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const res = await request(app)
+      .post('/api/v1/fleet/odometer')
+      .set('Authorization', `Bearer ${branchAToken}`)
+      .send({ vehicleId: v.id, reading: 10, date: '2026-07-10' });
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('maintenance visits + derived alarm + idempotent sweeps (FL-4)', () => {
+  const workTypeIdByName = async (name: string): Promise<string> => {
+    const res = await request(app)
+      .get('/api/v1/fleet/catalog-items')
+      .query({ kind: 'workType', pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    const item = data<FleetCatalogItemDto[]>(res).find((i) => i.name.ar === name);
+    if (item === undefined) throw new Error(`workType ${name} not found`);
+    return item.id;
+  };
+  const mkWorkshop = async (): Promise<string> => {
+    const res = await request(app)
+      .post('/api/v1/fleet/catalog-items')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        kind: 'workshop',
+        name: { ar: `ورشة ${vehicleCounter}`, en: `Shop ${vehicleCounter}` },
+      });
+    return data<FleetCatalogItemDto>(res).id;
+  };
+
+  it('walks check-in → derived inWorkshop → one-open-visit → check-out → reopen', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const workshopId = await mkWorkshop();
+    const workTypeId = await workTypeIdByName('صيانة');
+
+    const visit = await request(app)
+      .post('/api/v1/fleet/maintenance')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        vehicleId: v.id,
+        inDate: '2026-07-01',
+        workshopId,
+        workTypeId,
+        odometerAtService: 90_000,
+      });
+    expect(visit.status).toBe(201);
+    expect(seenEvents.some((e) => e.name === FleetEvents.MaintenanceCheckedIn)).toBe(true);
+
+    // FR-12 — inWorkshop is DERIVED, and now real.
+    const during = await request(app)
+      .get(`/api/v1/fleet/vehicles/${v.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(data<FleetVehicleDto>(during).inWorkshop).toBe(true);
+
+    // FR-4 — one open visit per vehicle.
+    const second = await request(app)
+      .post('/api/v1/fleet/maintenance')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        vehicleId: v.id,
+        inDate: '2026-07-02',
+        workshopId,
+        workTypeId,
+        odometerAtService: 90_001,
+      });
+    expect(second.status).toBe(409);
+
+    const visitDto = data<{ id: string; version: number }>(visit);
+    const out = await request(app)
+      .post(`/api/v1/fleet/maintenance/${visitDto.id}/check-out`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ outDate: '2026-07-03', version: visitDto.version });
+    expect(out.status).toBe(200);
+    expect(seenEvents.some((e) => e.name === FleetEvents.MaintenanceCheckedOut)).toBe(true);
+
+    const afterOut = await request(app)
+      .get(`/api/v1/fleet/vehicles/${v.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(data<FleetVehicleDto>(afterOut).inWorkshop).toBe(false);
+
+    const reopened = await request(app)
+      .post(`/api/v1/fleet/maintenance/${visitDto.id}/reopen`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: data<{ version: number }>(out).version });
+    expect(reopened.status).toBe(200);
+    expect(seenEvents.some((e) => e.name === FleetEvents.MaintenanceReopened)).toBe(true);
+  });
+
+  it('derives the alarm from readings vs the counting-service baseline (FR-3, owner point 5)', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const workshopId = await mkWorkshop();
+    const countingId = await workTypeIdByName('صيانة');
+
+    // Baseline: closed COUNTING visit at 95,000 km, out 2026-07-02. Interval on the type: 10,000.
+    const visit = data<{ id: string; version: number }>(
+      await request(app)
+        .post('/api/v1/fleet/maintenance')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          vehicleId: v.id,
+          inDate: '2026-07-01',
+          workshopId,
+          workTypeId: countingId,
+          odometerAtService: 95_000,
+        }),
+    );
+    await request(app)
+      .post(`/api/v1/fleet/maintenance/${visit.id}/check-out`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ outDate: '2026-07-02', version: visit.version });
+
+    const record = (reading: number, date: string) =>
+      request(app)
+        .post('/api/v1/fleet/odometer')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ vehicleId: v.id, reading, date });
+    await record(104_200, '2026-07-20'); // since 9,200 → remaining 800 → yellow (≤1000)
+
+    const alarms = data<{ code: string; level: string; remainingKm: number | null }[]>(
+      await request(app)
+        .get('/api/v1/fleet/odometer/alarms')
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+    expect(alarms.find((a) => a.code === v.code)).toMatchObject({
+      level: 'yellow',
+      remainingKm: 800,
+    });
+
+    await record(109_800, '2026-07-25'); // since 14,800 → overdue → red
+    const alarms2 = data<{ code: string; level: string }[]>(
+      await request(app)
+        .get('/api/v1/fleet/odometer/alarms')
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+    expect(alarms2.find((a) => a.code === v.code)?.level).toBe('red');
+
+    // The sweep announces the crossing ONCE per (vehicle, level, baseline) — owner point 4.
+    const countRaised = () =>
+      seenEvents.filter(
+        (e) =>
+          e.name === FleetEvents.MaintenanceAlarmRaised &&
+          (e.payload as { code: string }).code === v.code,
+      ).length;
+    await maintenanceAlarmSweep();
+    const afterFirst = countRaised();
+    expect(afterFirst).toBeGreaterThan(0);
+    await maintenanceAlarmSweep();
+    expect(countRaised()).toBe(afterFirst);
+  });
+
+  it('license sweep announces once per (subject, expiry date) — rerunnable (FR-14)', async () => {
+    const soon = new Date(Date.now() + 10 * 86_400_000).toISOString();
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken, { licenseExpiresAt: soon }));
+
+    const employeeId = await mkEmployee();
+    await request(app)
+      .post('/api/v1/fleet/drivers')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        employeeId,
+        licenseNumber: `EXP-${vehicleCounter}`,
+        licenseExpiresAt: '2026-01-01T00:00:00.000Z',
+        specialization: 'cashTransport',
+      });
+
+    const countFor = (name: string, subjectId: string) =>
+      seenEvents.filter(
+        (e) => e.name === name && (e.payload as { subjectId: string }).subjectId === subjectId,
+      ).length;
+
+    await licenseExpirySweep();
+    expect(countFor(FleetEvents.VehicleLicenseExpiring, v.id)).toBe(1);
+    expect(countFor(FleetEvents.DriverLicenseExpired, employeeId)).toBe(1);
+    await licenseExpirySweep();
+    expect(countFor(FleetEvents.VehicleLicenseExpiring, v.id)).toBe(1);
+    expect(countFor(FleetEvents.DriverLicenseExpired, employeeId)).toBe(1);
   });
 });

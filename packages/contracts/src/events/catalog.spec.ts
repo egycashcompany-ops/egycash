@@ -59,13 +59,23 @@ const HR_EVENT_CONSTANTS = [
 ].flatMap((group) => Object.values(group));
 
 const FLEET_EVENT_CONSTANTS = Object.values(FleetEvents);
-// Promoted to stable by the slices that added their emit sites (FL-2 vehicles, FL-3 availability).
+// Promoted to stable by the slices that added their emit sites (FL-2..FL-4).
 const FLEET_STABLE = new Set<string>([
   FleetEvents.VehicleCreated,
   FleetEvents.VehicleUpdated,
   FleetEvents.VehicleStatusChanged,
   FleetEvents.UnavailabilityRecorded,
   FleetEvents.UnavailabilityEnded,
+  FleetEvents.OdometerRecorded,
+  FleetEvents.OdometerCorrected,
+  FleetEvents.MaintenanceCheckedIn,
+  FleetEvents.MaintenanceCheckedOut,
+  FleetEvents.MaintenanceReopened,
+  FleetEvents.MaintenanceAlarmRaised,
+  FleetEvents.VehicleLicenseExpiring,
+  FleetEvents.VehicleLicenseExpired,
+  FleetEvents.DriverLicenseExpiring,
+  FleetEvents.DriverLicenseExpired,
 ]);
 const FLEET_PLANNED = FLEET_EVENT_CONSTANTS.filter((name) => !FLEET_STABLE.has(name));
 
@@ -329,7 +339,7 @@ describe('lifecycle', () => {
 
   it('excludes planned events from the stable list', () => {
     expect(stableEventNames()).not.toContain('hr.evaluation.opened');
-    expect(stableEventNames()).not.toContain('fleet.odometer.recorded');
+    expect(stableEventNames()).not.toContain('fleet.roster.planned');
     expect(stableEventNames().length).toBe(EVENT_CATALOG.length - 2 - FLEET_PLANNED.length);
   });
 

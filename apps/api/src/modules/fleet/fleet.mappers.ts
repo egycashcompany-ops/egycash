@@ -4,6 +4,8 @@ import {
   type FleetCatalogItemDto,
   type FleetDriverProfileDto,
   type FleetDriverUnavailabilityDto,
+  type FleetMaintenanceVisitDto,
+  type FleetOdometerLogDto,
   type FleetVehicleDto,
   type FleetVehicleTypeDto,
 } from '@ecms/contracts';
@@ -12,6 +14,8 @@ import { type FleetVehicleTypeDoc } from './vehicle-types/vehicle-type.model';
 import { type FleetVehicleDoc } from './vehicles/vehicle.model';
 import { type FleetDriverProfileDoc } from './driver-profiles/driver-profile.model';
 import { type FleetUnavailabilityDoc } from './availability/unavailability.model';
+import { type FleetOdometerLogDoc } from './odometer/odometer.model';
+import { type FleetMaintenanceVisitDoc } from './maintenance/maintenance.model';
 
 const iso = (d: Date): string => d.toISOString();
 
@@ -76,6 +80,38 @@ export const toUnavailabilityDto = (doc: FleetUnavailabilityDoc): FleetDriverUna
   from: iso(doc.from),
   to: iso(doc.to),
   reason: doc.reason,
+  notes: doc.notes,
+  version: doc.__v,
+  createdAt: iso(doc.createdAt),
+  updatedAt: iso(doc.updatedAt),
+});
+
+export const toOdometerLogDto = (doc: FleetOdometerLogDoc): FleetOdometerLogDto => ({
+  id: String(doc._id),
+  vehicleId: String(doc.vehicleId),
+  date: iso(doc.date),
+  outReading: doc.outReading,
+  inReading: doc.inReading,
+  km: doc.km,
+  driver1EmployeeId: doc.driver1EmployeeId === null ? null : String(doc.driver1EmployeeId),
+  driver2EmployeeId: doc.driver2EmployeeId === null ? null : String(doc.driver2EmployeeId),
+  notes: doc.notes,
+  version: doc.__v,
+  createdAt: iso(doc.createdAt),
+  updatedAt: iso(doc.updatedAt),
+});
+
+export const toMaintenanceVisitDto = (doc: FleetMaintenanceVisitDoc): FleetMaintenanceVisitDto => ({
+  id: String(doc._id),
+  vehicleId: String(doc.vehicleId),
+  inDate: iso(doc.inDate),
+  outDate: doc.outDate === null ? null : iso(doc.outDate),
+  workshopId: String(doc.workshopId),
+  workTypeId: String(doc.workTypeId),
+  spareParts: doc.spareParts,
+  odometerAtService: doc.odometerAtService,
+  takenInByEmployeeId: doc.takenInByEmployeeId === null ? null : String(doc.takenInByEmployeeId),
+  takenOutByEmployeeId: doc.takenOutByEmployeeId === null ? null : String(doc.takenOutByEmployeeId),
   notes: doc.notes,
   version: doc.__v,
   createdAt: iso(doc.createdAt),

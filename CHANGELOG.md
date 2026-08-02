@@ -157,6 +157,20 @@ its entry here in the same PR.
   slice, arriving pre-filtered to the vehicle's code, and the roster row joined the navigation
   seed.
 
+  Accidents followed (FW-8), with states and money exactly as the backend keeps them. The
+  registry lists the files with vehicle, status, and date-range filters synchronized to the URL,
+  a sortable accident date, and pagination; the three amounts render through the platform's
+  currency formatter and are never summed or combined — they are the entered facts, and no
+  derived money exists until the owner defines the formula. Recording and editing share one
+  dialog whose vehicle select offers the whole registry, because an accident is historical
+  paperwork about the day it happened and a disposed vehicle is a legal reference — the same
+  reasoning that makes the code column resolve retired vehicles instead of hiding them. The
+  open/closed state is purely the server's: each row offers exactly the one direction its
+  current state allows, closing and reopening are the same confirmed, version-aware call in
+  either direction, and edits diff against the loaded document so only changed fields travel
+  with the version. Deletion confirms with the audit-trail note. The vehicle profile's
+  accidents link lit up with this slice and the accidents row joined the navigation seed.
+
 - **Accidents, violations, and grievances complete the Fleet backend (FL-6) — every fleet
   event is now stable.** Accidents keep the legacy's freedom with none of its looseness: a file
   opens on creation, closes and reopens as many times as the truth requires, but each flip is a

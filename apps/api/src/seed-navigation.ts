@@ -77,6 +77,7 @@ const CATALOG: CategoryDef[] = [
         icon: 'alert',
       },
       { en: 'Daily Roster', ar: 'تعيين السيارات', route: '/fleet/roster', icon: 'clipboard' },
+      { en: 'Accidents', ar: 'حوادث السيارات', route: '/fleet/accidents', icon: 'shield' },
     ],
   },
   {

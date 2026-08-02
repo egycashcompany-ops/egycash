@@ -30,6 +30,7 @@ import { OdometerPage } from './pages/OdometerPage';
 import { MaintenancePage } from './pages/MaintenancePage';
 import { MaintenanceAlarmsPage } from './pages/MaintenanceAlarmsPage';
 import { RosterPage } from './pages/RosterPage';
+import { AccidentsPage } from './pages/AccidentsPage';
 
 export default function FleetRoutes(): JSX.Element {
   return (
@@ -105,6 +106,14 @@ export default function FleetRoutes(): JSX.Element {
           element={
             <RequirePermission permission="fleetRoster.view">
               <RosterPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="accidents"
+          element={
+            <RequirePermission permission="fleetAccident.view">
+              <AccidentsPage />
             </RequirePermission>
           }
         />

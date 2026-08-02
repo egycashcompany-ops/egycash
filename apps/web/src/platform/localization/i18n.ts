@@ -2215,6 +2215,39 @@ const en: Record<string, string> = {
   'fleet.roster.reason.notEmployed': 'Not employed',
   'fleet.roster.reason.fleetUnavailability': 'Operational unavailability',
   'fleet.roster.reason.hrLeave': 'On approved leave',
+
+  // Fleet — accidents (FW-8)
+  'fleet.accidents.subtitle':
+    'Accident files as recorded — amounts are the entered facts; opening and closing are the backend state.',
+  'fleet.accidents.record': 'Record accident',
+  'fleet.accidents.edit': 'Edit accident',
+  'fleet.accidents.formHint':
+    'The facts as they happened; the server stores amounts as entered and derives nothing from them.',
+  'fleet.accidents.created': 'Accident recorded',
+  'fleet.accidents.updated': 'Accident updated',
+  'fleet.accidents.fields.occurredAt': 'Accident date',
+  'fleet.accidents.fields.culprit': 'At fault',
+  'fleet.accidents.fields.statement': 'Statement',
+  'fleet.accidents.fields.companyCost': 'Company cost',
+  'fleet.accidents.fields.amountCollected': 'Amount collected',
+  'fleet.accidents.fields.paidAmount': 'Paid amount',
+  'fleet.accidents.status.open': 'Open',
+  'fleet.accidents.status.closed': 'Closed',
+  'fleet.accidents.allStatuses': 'All statuses',
+  'fleet.accidents.close': 'Close file',
+  'fleet.accidents.reopen': 'Reopen file',
+  'fleet.accidents.closeTitle': 'Close accident file — {{code}}',
+  'fleet.accidents.closeBody':
+    'The file flips to closed. The change is audited and published; it can be reopened later if the truth requires.',
+  'fleet.accidents.reopenTitle': 'Reopen accident file — {{code}}',
+  'fleet.accidents.reopenBody': 'The file flips back to open. The change is audited and published.',
+  'fleet.accidents.closed': 'Accident file closed',
+  'fleet.accidents.reopened': 'Accident file reopened',
+  'fleet.accidents.delete': 'Delete accident',
+  'fleet.accidents.deleteTitle': 'Delete this accident file?',
+  'fleet.accidents.deleteBody':
+    'The file is removed from the registry. The full change history stays in the audit log.',
+  'fleet.accidents.deleted': 'Accident deleted',
 };
 
 const ar: Record<string, string> = {
@@ -4395,6 +4428,40 @@ const ar: Record<string, string> = {
   'fleet.roster.reason.notEmployed': 'خارج الخدمة الوظيفية',
   'fleet.roster.reason.fleetUnavailability': 'تمام: غير متاح',
   'fleet.roster.reason.hrLeave': 'إجازة معتمدة',
+
+  // Fleet — accidents (FW-8)
+  'fleet.accidents.subtitle':
+    'ملفات الحوادث كما سُجلت — المبالغ حقائق مدخلة، والفتح والغلق حالة الخادم فقط.',
+  'fleet.accidents.record': 'تسجيل حادث',
+  'fleet.accidents.edit': 'تعديل الحادث',
+  'fleet.accidents.formHint':
+    'الوقائع كما حدثت؛ يخزن الخادم المبالغ كما أُدخلت ولا يشتق منها شيئاً.',
+  'fleet.accidents.created': 'تم تسجيل الحادث',
+  'fleet.accidents.updated': 'تم تعديل الحادث',
+  'fleet.accidents.fields.occurredAt': 'تاريخ الحادث',
+  'fleet.accidents.fields.culprit': 'المتسبب',
+  'fleet.accidents.fields.statement': 'بيان الحادث',
+  'fleet.accidents.fields.companyCost': 'تكلفة الشركة',
+  'fleet.accidents.fields.amountCollected': 'المبلغ المحصَّل',
+  'fleet.accidents.fields.paidAmount': 'المبلغ المدفوع',
+  'fleet.accidents.status.open': 'مفتوح',
+  'fleet.accidents.status.closed': 'مغلق',
+  'fleet.accidents.allStatuses': 'كل الحالات',
+  'fleet.accidents.close': 'غلق الملف',
+  'fleet.accidents.reopen': 'إعادة فتح الملف',
+  'fleet.accidents.closeTitle': 'غلق ملف الحادث — {{code}}',
+  'fleet.accidents.closeBody':
+    'يتحول الملف إلى مغلق. التغيير مسجَّل في التدقيق ومنشور كحدث، ويمكن إعادة فتحه لاحقاً إذا استدعت الحقيقة.',
+  'fleet.accidents.reopenTitle': 'إعادة فتح ملف الحادث — {{code}}',
+  'fleet.accidents.reopenBody':
+    'يعود الملف إلى الحالة المفتوحة. التغيير مسجَّل في التدقيق ومنشور كحدث.',
+  'fleet.accidents.closed': 'تم غلق ملف الحادث',
+  'fleet.accidents.reopened': 'تمت إعادة فتح ملف الحادث',
+  'fleet.accidents.delete': 'حذف الحادث',
+  'fleet.accidents.deleteTitle': 'حذف ملف الحادث؟',
+  'fleet.accidents.deleteBody':
+    'يُزال الملف من السجل، ويبقى تاريخ التغييرات كاملاً في سجل التدقيق.',
+  'fleet.accidents.deleted': 'تم حذف الحادث',
 };
 
 const catalogs: Record<Locale, Record<string, string>> = { en, ar };

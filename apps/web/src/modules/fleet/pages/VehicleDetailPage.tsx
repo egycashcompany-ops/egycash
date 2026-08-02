@@ -59,7 +59,7 @@ const HISTORY_LINKS: {
     key: 'accidents',
     to: (v) => `/fleet/accidents?vehicle=${v.id}`,
     permission: 'fleetAccident.view',
-    shipped: false,
+    shipped: true, // FW-8
   },
   {
     key: 'violations',

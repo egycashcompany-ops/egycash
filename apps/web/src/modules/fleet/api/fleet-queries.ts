@@ -9,12 +9,15 @@ import {
   type CheckInFleetMaintenance,
   type CheckOutFleetMaintenance,
   type CorrectFleetOdometer,
+  type CreateFleetAccident,
   type CreateFleetDriverProfile,
   type CreateFleetUnavailability,
   type CreateFleetVehicle,
   type FleetRosterDayDto,
   type PlanFleetRoster,
   type RecordFleetOdometer,
+  type SetFleetAccidentStatus,
+  type UpdateFleetAccident,
   type UpdateFleetDriverProfile,
   type UpdateFleetMaintenance,
   type UpdateFleetUnavailability,
@@ -293,6 +296,28 @@ export const useAccidents = (params: FleetListParams, enabled = true) =>
     placeholderData: (prev) => prev,
     enabled,
   });
+
+// Accident mutations (FW-8). One subtree covers the list AND the dashboard's open-files KPI;
+// nothing else derives from accidents (amounts stay stored facts until §13-Q9).
+const useAccidentMutation = <TInput, TResult>(mutationFn: (input: TInput) => Promise<TResult>) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => void qc.invalidateQueries({ queryKey: fleetKeys.accidents }),
+  });
+};
+
+export const useCreateAccident = () =>
+  useAccidentMutation((body: CreateFleetAccident) => api.createAccident(body));
+export const useUpdateAccident = () =>
+  useAccidentMutation(({ id, body }: { id: string; body: UpdateFleetAccident }) =>
+    api.updateAccident(id, body),
+  );
+export const useSetAccidentStatus = () =>
+  useAccidentMutation(({ id, body }: { id: string; body: SetFleetAccidentStatus }) =>
+    api.setAccidentStatus(id, body),
+  );
+export const useDeleteAccident = () => useAccidentMutation((id: string) => api.deleteAccident(id));
 
 export const useViolations = (params: FleetListParams) =>
   useQuery({

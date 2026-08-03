@@ -87,7 +87,7 @@ const CATALOG: CategoryDef[] = [
   {
     en: 'Organization',
     ar: 'الهيكل التنظيمي',
-    icon: 'sitemap',
+    icon: 'building',
     sortOrder: 20,
     apps: [
       { en: 'Company', ar: 'الشركة', route: '/organization/company', icon: 'building' },
@@ -101,7 +101,9 @@ const CATALOG: CategoryDef[] = [
   {
     en: 'Administration',
     ar: 'الإدارة',
-    icon: 'cog',
+    // A department is not its settings screen: the briefcase reads as "administration",
+    // the cog would read as "settings".
+    icon: 'briefcase',
     sortOrder: 30,
     apps: [
       { en: 'Applications', ar: 'التطبيقات', route: '/organization/applications', icon: 'folder' },

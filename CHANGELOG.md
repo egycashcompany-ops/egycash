@@ -17,7 +17,7 @@ its entry here in the same PR.
   icons already use; a department without a suitable icon falls back to the generic building tile.
   The icon is data, not code: it is the Application Category's existing admin-editable `icon`
   field — the navigation seed now sets defaults for the shipped categories (HR → users,
-  Fleet → truck, Organization → sitemap, Administration → cog), and the additive boot sync fills
+  Fleet → truck, Organization → building, Administration → briefcase), and the boot sync fills
   the icon in on existing installs only while it is still null, so an admin-chosen icon is never
   overwritten. Tile colors, sizes, alignment, RTL behavior, and accessible names are unchanged;
   the monogram helper is removed.

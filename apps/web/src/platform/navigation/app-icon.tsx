@@ -5,6 +5,7 @@ import { type ComponentType, type SVGProps } from 'react';
 import {
   AlertIcon,
   BadgeIcon,
+  BriefcaseIcon,
   BuildingIcon,
   CalendarIcon,
   ChatIcon,
@@ -60,6 +61,7 @@ const REGISTRY: Record<string, NavIcon> = {
   alert: AlertIcon,
   shield: ShieldIcon,
   // Department (category) tiles — categories resolve through this same registry.
+  briefcase: BriefcaseIcon,
   monitor: MonitorIcon,
 };
 

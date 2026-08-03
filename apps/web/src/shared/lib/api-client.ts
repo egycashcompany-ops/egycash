@@ -77,7 +77,14 @@ let refreshPromise: Promise<boolean> | null = null;
 const tryRefresh = (): Promise<boolean> => {
   refreshPromise ??= refreshOnce()
     .then((ok) => {
-      if (!ok) onAuthLost?.();
+      if (!ok) {
+        try {
+          onAuthLost?.();
+        } catch {
+          // A throwing auth-loss handler must never poison the shared promise: every waiter
+          // still settles with its ORIGINAL error and the slot still releases below.
+        }
+      }
       return ok;
     })
     .finally(() => {

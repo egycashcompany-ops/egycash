@@ -106,6 +106,49 @@ describe('single-flight silent refresh (refresh-race fix)', () => {
     expect(log.refreshCalls).toBe(2);
   });
 
+  it('an ABORTED refresh releases the slot — even with a throwing handler — and the next expiry refreshes anew', async () => {
+    // Scenario the release contract must survive: the in-flight refresh is killed mid-air
+    // (abort / network drop / offline — fetch REJECTS instead of resolving), AND the
+    // registered auth-loss handler itself throws. Neither may strand refreshPromise.
+    let refreshDies = true;
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = String(input);
+      if (url.includes('/auth/refresh')) {
+        log.refreshCalls += 1;
+        await settle(15);
+        if (refreshDies) throw new DOMException('The operation was aborted.', 'AbortError');
+        return okData({ accessToken: 'fresh-5' });
+      }
+      const auth = authOf(init);
+      log.dataCalls.push({ auth });
+      if (auth === 'Bearer fresh-5') return okData({ value: 42 });
+      if (auth === null) return errData(401, 'UNAUTHENTICATED', 'Authentication required');
+      return errData(401, 'AUTH_TOKEN_EXPIRED', 'Access token expired');
+    });
+    mod.setAccessToken('stale-5');
+    const authLost = vi.fn(() => {
+      throw new Error('handler exploded');
+    });
+    mod.setOnAuthLost(authLost);
+
+    const outcomes = await Promise.allSettled(Array.from({ length: 3 }, () => mod.api('/things')));
+    expect(log.refreshCalls).toBe(1);
+    expect(authLost).toHaveBeenCalledTimes(1);
+    // Waiters settle with their ORIGINAL errors — the abort and the handler explosion
+    // stay contained in the shared promise; nothing hangs, nothing leaks out.
+    for (const o of outcomes) {
+      expect(o.status).toBe('rejected');
+      expect((o as PromiseRejectedResult).reason).toMatchObject({ code: 'AUTH_TOKEN_EXPIRED' });
+    }
+
+    // The connection comes back; the token "expires" again — a FRESH refresh must start
+    // normally, proving the slot was released by the aborted cycle.
+    refreshDies = false;
+    mod.setAccessToken('stale-5');
+    await expect(mod.api('/things')).resolves.toEqual({ value: 42 });
+    expect(log.refreshCalls).toBe(2);
+  });
+
   it('after a failed refresh the token is cleared — the aftermath request carries no header', async () => {
     vi.stubGlobal('fetch', fakeServer(log, { refreshOutcome: 'revoked', freshToken: 'never' }));
     mod.setAccessToken('stale-4');

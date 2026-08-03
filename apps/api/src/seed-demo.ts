@@ -150,6 +150,7 @@ const HR_PERMISSIONS = [
   'applicant.create',
   'applicant.edit',
   'applicant.verifyIdentity',
+  'applicant.moveToOffer',
   'screening.view',
   'screening.create',
   'screening.edit',
@@ -274,6 +275,23 @@ interface OfferTargets {
   departmentId: string;
   branchId: string;
 }
+
+/**
+ * Move the candidate into the Job Offer stage. An offer refuses to be drafted before this — the
+ * move is its own explicit, audited act (`movedToOfferAt`), not a side effect of clearing the
+ * evaluations, and it is what puts the candidate in the New Job Offer picker. Idempotent server-side.
+ */
+const moveToOffer = async (deps: Deps, applicantId: string): Promise<void> => {
+  const { applicantService } = await import('./modules/hr/recruitment/applicants');
+  const current = await applicantService.findByIdSystem(applicantId);
+  if (current === null || current.movedToOfferAt !== null) return;
+  await applicantService.moveToOffer(
+    deps.ctx,
+    applicantId,
+    { version: current.__v },
+    orgScope(deps.ctx),
+  );
+};
 
 /** Draft + send an offer. Returns the offer id so the accepting cohort can carry on. */
 const sendOffer = async (
@@ -432,6 +450,7 @@ export const seedDemoPipeline = async (adminId: string): Promise<DemoSeedReport>
       if (stage === 'evaluation') continue; // rests at the open evaluations
 
       await passAllEvaluations(deps, applicantId);
+      await moveToOffer(deps, applicantId);
       const offerId = await sendOffer(deps, applicantId, targets);
       if (stage === 'jobOffer' || offerId === null) continue; // rests with a sent offer
 

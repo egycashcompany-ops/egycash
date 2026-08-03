@@ -108,11 +108,12 @@ describe('demo pipeline seed', () => {
 
   it('reset removes the demo cohorts and what they produced — and nothing else', async () => {
     // A real applicant, registered outside the demo key, must survive the reset untouched.
+    const anyDemo = await ApplicantModel.findOne(demoFilter).lean().exec();
     const real = await ApplicantModel.create({
       code: 'APP-REAL-0001',
       fullNameAr: 'مرشح حقيقي',
-      sourceId: (await ApplicantModel.findOne(demoFilter).lean().exec())?.sourceId,
-      primaryPhone: '01999888777',
+      sourceId: anyDemo?.sourceId,
+      contact: { primaryPhone: '01999888777' },
       status: 'new',
       identityVerification: 'unverified',
       intakeChannel: 'internal',

@@ -244,8 +244,17 @@ const passAllInterviews = async (deps: Deps, applicantId: string): Promise<void>
       { applicantId, stageId: String(stage._id), interviewerIds: [] },
       orgScope(deps.ctx),
     );
-    const decision: DecideInterview = { outcome: 'passed', version: started.__v };
-    await interviewService.decide(deps.ctx, String(started._id), decision, orgScope(deps.ctx));
+    // `start` puts the caller on the panel as `pending`, and a round cannot be decided while any
+    // panel member still is — the seeder submits its own evaluation first, exactly as the
+    // interviewer would on screen.
+    const evaluated = await interviewService.submitEvaluation(
+      deps.ctx,
+      String(started._id),
+      { recommendation: 'recommend', rating: 4, version: started.__v },
+      orgScope(deps.ctx),
+    );
+    const decision: DecideInterview = { outcome: 'passed', version: evaluated.__v };
+    await interviewService.decide(deps.ctx, String(evaluated._id), decision, orgScope(deps.ctx));
   }
 };
 

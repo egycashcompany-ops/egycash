@@ -17,6 +17,16 @@ export const setAccessToken = (token: string | null): void => {
   accessToken = token;
 };
 
+// Definitive auth loss (refresh failed mid-session): the app registers ONE handler here
+// (main.tsx) that signs Redux out and clears the query cache, so RequireAuth redirects to
+// /login instead of stranding the user on an error screen. Registered as a callback to keep
+// this module free of store/react imports.
+let onAuthLost: (() => void) | null = null;
+
+export const setOnAuthLost = (handler: (() => void) | null): void => {
+  onAuthLost = handler;
+};
+
 export class ApiError extends Error {
   constructor(
     readonly code: string,
@@ -45,7 +55,7 @@ const rawRequest = async <T>(path: string, init: RequestInit = {}): Promise<T> =
   throw new ApiError(body.error.code, body.error.message, response.status);
 };
 
-const tryRefresh = async (): Promise<boolean> => {
+const refreshOnce = async (): Promise<boolean> => {
   try {
     const data = await rawRequest<{ accessToken: string }>('/auth/refresh', { method: 'POST' });
     setAccessToken(data.accessToken);
@@ -54,6 +64,26 @@ const tryRefresh = async (): Promise<boolean> => {
     setAccessToken(null);
     return false;
   }
+};
+
+// SINGLE-FLIGHT (refresh-race fix): the refresh token is single-use and rotates server-side,
+// so N concurrent 401s firing N refreshes make the client race itself — one wins the rotation,
+// the rest are rejected and the session can be revoked as token reuse. All concurrent callers
+// therefore share ONE in-flight refresh; the slot is released the moment it settles (no lock
+// outlives the request), and a failed refresh reports auth loss exactly once — from the shared
+// promise, never from each waiter.
+let refreshPromise: Promise<boolean> | null = null;
+
+const tryRefresh = (): Promise<boolean> => {
+  refreshPromise ??= refreshOnce()
+    .then((ok) => {
+      if (!ok) onAuthLost?.();
+      return ok;
+    })
+    .finally(() => {
+      refreshPromise = null;
+    });
+  return refreshPromise;
 };
 
 /** Request with one silent-refresh retry on an expired/invalid access token. */

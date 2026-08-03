@@ -677,6 +677,22 @@ login, password reset, account disable and employee exit.
 
 ## Review trail
 
+**Refresh-race fix + known limitation recorded (2026-08-03):** production bug diagnosed and
+empirically traced: an idle tab's concurrent stale-token requests each fired their own
+`/auth/refresh` with the same single-use cookie; the rotation guard (§6) rejected the losers,
+the client nulled its token, and every later request left header-less → the raw
+`Authentication required`. Client fix (web only): single-flight refresh (one shared in-flight
+promise, released on settle), organized sign-out fired once per failed refresh (Redux
+`signedOut` + query-cache clear + `RequireAuth` redirect), and friendly `UNAUTHENTICATED` /
+`AUTH_SESSION_REVOKED` messages. **Known limitation:** two separate tabs refreshing in the
+same instant still race — the cookie jar is shared but each tab's JS memory is not, so
+client-side single-flight cannot span tabs; serialized cross-tab refreshes are safe (the jar
+always presents the current cookie). **Proposed server fix, not implemented:** a short
+post-rotation grace window in `authService.refresh` — a presented hash matching the LAST used
+hash within a few seconds of rotation answers with the CURRENT token instead of tripping
+reuse detection; true replay outside the window still revokes. Requires owner approval as a
+Design Review before implementation (rotation semantics are frozen §6 behavior).
+
 **Revision 6 approved (2026-07-26):** enterprise completeness (§16) — expiry deletes
 nothing (audit stream is the invitation history; metadata persists for the panel), session
 policy invariants (reset/disable/exit revoke all; activation never mints a session), device

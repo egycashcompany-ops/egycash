@@ -1,22 +1,14 @@
-// Standard page frame every screen reuses: a max-width, padded container plus a unified page header
+// Standard page frame every screen reuses: a padded, full-width container plus a unified page header
 // (breadcrumbs + title + subtitle + actions slot). Refining these two primitives standardizes the
 // header and spacing across every page at once — the single source of truth for page layout.
+//
+// Owner decision: every screen spans the full available width, the way the interviews board always
+// did. There is no max-width cap and therefore no per-page opt-out — padding is unchanged.
 import { type ReactNode } from 'react';
 import { Breadcrumbs, type Crumb } from './Breadcrumbs';
 
-export const PageContainer = ({
-  children,
-  wide = false,
-}: {
-  children: ReactNode;
-  /** Full available width — board/kanban screens; default keeps the standard reading width. */
-  wide?: boolean;
-}): JSX.Element => (
-  <div
-    className={`mx-auto w-full px-4 py-6 sm:px-6 lg:px-8 lg:py-8 ${wide ? 'max-w-none' : 'max-w-7xl'}`}
-  >
-    {children}
-  </div>
+export const PageContainer = ({ children }: { children: ReactNode }): JSX.Element => (
+  <div className="mx-auto w-full px-4 py-6 sm:px-6 lg:px-8 lg:py-8">{children}</div>
 );
 
 export const PageHeader = ({

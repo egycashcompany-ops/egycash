@@ -208,7 +208,7 @@ export const ContractCreatePage = (): JSX.Element => {
   };
 
   return (
-    <PageContainer wide>
+    <PageContainer>
       <PageHeader
         title={t('contracts.create.title')}
         description={t('contracts.create.subtitle')}

@@ -185,7 +185,7 @@ export const TemplateEditorPage = (): JSX.Element => {
   if (!isNew && isLoading) return <PageContainer><LoadingState /></PageContainer>;
 
   return (
-    <PageContainer wide>
+    <PageContainer>
       <PageHeader
         title={isNew ? t('contracts.templates.new') : localized({ ar: nameAr, en: nameEn }, locale) || t('contracts.templates.edit')}
         description={existing === undefined ? '' : `v${existing.templateVersion}`}

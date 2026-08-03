@@ -11,6 +11,12 @@ its entry here in the same PR.
 
 ### Changed
 
+- **Every page now spans the full available width.** `PageContainer` capped content at `max-w-7xl`
+  (80rem) and let a page opt out with a `wide` prop, which only the interviews board and the
+  contracts screens used — so the same table rendered narrow on one screen and full-width on
+  another. The cap is removed; with no cap there is nothing to opt out of, so the `wide` prop is
+  gone too. Padding, headers, toolbars, cards, grids, filters, and spacing are untouched.
+
 - **Sidebar department tiles now show icons instead of two-letter initials.** The module rail, the
   module-panel header, and the ⌘K palette's module rows render each department's icon from the
   shared in-house icon set (no new dependency), resolved through the same registry application

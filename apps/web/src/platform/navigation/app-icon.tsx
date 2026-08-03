@@ -17,6 +17,7 @@ import {
   InboxIcon,
   LayersIcon,
   LinkIcon,
+  MonitorIcon,
   OfferIcon,
   ShieldIcon,
   SitemapIcon,
@@ -58,6 +59,8 @@ const REGISTRY: Record<string, NavIcon> = {
   settings: CogIcon,
   alert: AlertIcon,
   shield: ShieldIcon,
+  // Department (category) tiles — categories resolve through this same registry.
+  monitor: MonitorIcon,
 };
 
 export const resolveNavIcon = (name: string | null | undefined, fallback: NavIcon): NavIcon => {

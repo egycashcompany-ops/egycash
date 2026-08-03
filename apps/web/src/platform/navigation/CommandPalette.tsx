@@ -9,10 +9,10 @@ import { useAppSelector } from '../../store';
 import { useT } from '../localization/useT';
 import { cn } from '../../shared/lib/cn';
 import { localized } from '../../shared/lib/format';
-import { CornerDownIcon, FileIcon, SearchIcon } from '../../shared/ui/icons';
+import { BuildingIcon, CornerDownIcon, FileIcon, SearchIcon } from '../../shared/ui/icons';
 import { useMyApplications } from './me-applications-queries';
 import { resolveNavIcon } from './app-icon';
-import { flattenApps, moduleColor, monogram, toModules, type NavApp } from './nav-model';
+import { flattenApps, moduleColor, toModules, type NavApp } from './nav-model';
 import { useNavPrefs } from './NavPrefs';
 
 interface Item {
@@ -20,8 +20,9 @@ interface Item {
   group: 'recent' | 'apps' | 'modules';
   title: string;
   subtitle: string;
-  monogramColor?: string;
-  icon?: string;
+  /** Colored module-tile background; its presence marks a module row (icon in a colored tile). */
+  tileColor?: string;
+  icon?: string | null;
   run: () => void;
 }
 
@@ -70,7 +71,8 @@ export const CommandPalette = ({ open, onClose }: { open: boolean; onClose: () =
           group: 'modules',
           title: localized(m.name, locale),
           subtitle: t('nav.command.module'),
-          monogramColor: moduleColor(m.id),
+          tileColor: moduleColor(m.id),
+          icon: m.icon,
           run: () => go({ ...m.apps[0]!, moduleId: m.id, moduleName: m.name }),
         }));
       return [...recents, ...mods];
@@ -90,7 +92,8 @@ export const CommandPalette = ({ open, onClose }: { open: boolean; onClose: () =
         group: 'modules',
         title: localized(m.name, locale),
         subtitle: t('nav.command.module'),
-        monogramColor: moduleColor(m.id),
+        tileColor: moduleColor(m.id),
+        icon: m.icon,
         run: () => go({ ...m.apps[0]!, moduleId: m.id, moduleName: m.name }),
       }));
     return [...matchedApps, ...matchedMods];
@@ -181,7 +184,13 @@ export const CommandPalette = ({ open, onClose }: { open: boolean; onClose: () =
             items.map((item, i) => {
               const showHeader = i === 0 || items[i - 1]!.group !== item.group;
               const isActive = i === active;
-              const Icon = item.icon !== undefined ? resolveNavIcon(item.icon, FileIcon) : null;
+              // Module rows always resolve (generic building fallback); app rows keep FileIcon.
+              const Icon =
+                item.tileColor !== undefined
+                  ? resolveNavIcon(item.icon, BuildingIcon)
+                  : item.icon != null
+                    ? resolveNavIcon(item.icon, FileIcon)
+                    : null;
               return (
                 <div key={item.key}>
                   {showHeader && (
@@ -199,9 +208,9 @@ export const CommandPalette = ({ open, onClose }: { open: boolean; onClose: () =
                       isActive ? 'bg-brand-50 dark:bg-brand-500/10' : 'hover:bg-slate-50 dark:hover:bg-slate-800/60',
                     )}
                   >
-                    {item.monogramColor !== undefined ? (
-                      <span className={cn('grid h-7 w-7 shrink-0 place-items-center rounded-md text-[11px] font-bold text-white', item.monogramColor)}>
-                        {monogram(item.title)}
+                    {item.tileColor !== undefined && Icon !== null ? (
+                      <span className={cn('grid h-7 w-7 shrink-0 place-items-center rounded-md text-white', item.tileColor)}>
+                        <Icon className="h-[18px] w-[18px]" />
                       </span>
                     ) : Icon !== null ? (
                       <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">

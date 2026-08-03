@@ -30,6 +30,7 @@ interface AppDef {
 interface CategoryDef {
   en: string;
   ar: string;
+  icon: string;
   sortOrder: number;
   apps: AppDef[];
 }
@@ -40,6 +41,7 @@ const CATALOG: CategoryDef[] = [
   {
     en: 'HR',
     ar: 'الموارد البشرية',
+    icon: 'users',
     sortOrder: 10,
     apps: [
       { en: 'Applicants', ar: 'المتقدمون', route: '/applicants', icon: 'users' },
@@ -57,6 +59,7 @@ const CATALOG: CategoryDef[] = [
   {
     en: 'Fleet',
     ar: 'الحركة',
+    icon: 'truck',
     sortOrder: 15,
     // OWNER RULE (FW-1 review): only SHIPPED pages appear in navigation — each FW slice
     // appended its rows here as it landed (the boot sync is additive, so existing installs
@@ -84,6 +87,7 @@ const CATALOG: CategoryDef[] = [
   {
     en: 'Organization',
     ar: 'الهيكل التنظيمي',
+    icon: 'sitemap',
     sortOrder: 20,
     apps: [
       { en: 'Company', ar: 'الشركة', route: '/organization/company', icon: 'building' },
@@ -97,6 +101,7 @@ const CATALOG: CategoryDef[] = [
   {
     en: 'Administration',
     ar: 'الإدارة',
+    icon: 'cog',
     sortOrder: 30,
     apps: [
       { en: 'Applications', ar: 'التطبيقات', route: '/organization/applications', icon: 'folder' },
@@ -114,10 +119,25 @@ const ensureCategory = async (def: CategoryDef, by: string): Promise<string> => 
   const existing = await applicationCategoryRepository.findOne({ 'name.en': def.en });
   if (existing !== null) return String(existing._id);
   const created = await applicationCategoryService.create(
-    { name: { ar: def.ar, en: def.en }, sortOrder: def.sortOrder },
+    { name: { ar: def.ar, en: def.en }, icon: def.icon, sortOrder: def.sortOrder },
     by,
   );
   return String(created._id);
+};
+
+/**
+ * Category-icon backfill: categories created before icons were seeded carry `icon: null`, which
+ * the sidebar can only render as the generic fallback tile. Filling ONLY null icons keeps the
+ * additive contract — any icon an admin chose (any non-null value) is never overwritten.
+ */
+const backfillCategoryIcon = async (def: CategoryDef, by: string): Promise<void> => {
+  const existing = await applicationCategoryRepository.findOne({ 'name.en': def.en });
+  if (existing === null || existing.icon !== null) return;
+  await applicationCategoryService.update(
+    String(existing._id),
+    { icon: def.icon, version: existing.__v },
+    by,
+  );
 };
 
 const ensureApplication = async (
@@ -167,13 +187,16 @@ export const seedBootstrapNavigation = async (adminId: string): Promise<void> =>
  * - grants are created ONLY for applications this sync just created — a grant the admin
  *   revoked on an existing application stays revoked across restarts;
  * - a new application joins the category its group's existing apps live in TODAY (respecting
- *   admin re-grouping/renames); the seed category is created only when the whole group is new.
+ *   admin re-grouping/renames); the seed category is created only when the whole group is new;
+ * - a category icon is filled in ONLY while it is null (pre-icon installs); a non-null icon —
+ *   seeded or admin-chosen — is never overwritten.
  */
 export const syncNavigationCatalog = async (): Promise<void> => {
   const adminIds = await rbacService.userIdsWithSystemRole('super-admin');
   const actor = adminIds[0];
   if (actor === undefined) return; // pre-seed boot (no admin yet) — the dev seed covers it
   for (const category of CATALOG) {
+    await backfillCategoryIcon(category, actor);
     let categoryId: string | null = null;
     let sortOrder = 0;
     for (const app of category.apps) {

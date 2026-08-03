@@ -11,6 +11,17 @@ its entry here in the same PR.
 
 ### Changed
 
+- **Sidebar department tiles now show icons instead of two-letter initials.** The module rail, the
+  module-panel header, and the ⌘K palette's module rows render each department's icon from the
+  shared in-house icon set (no new dependency), resolved through the same registry application
+  icons already use; a department without a suitable icon falls back to the generic building tile.
+  The icon is data, not code: it is the Application Category's existing admin-editable `icon`
+  field — the navigation seed now sets defaults for the shipped categories (HR → users,
+  Fleet → truck, Organization → sitemap, Administration → cog), and the additive boot sync fills
+  the icon in on existing installs only while it is still null, so an admin-chosen icon is never
+  overwritten. Tile colors, sizes, alignment, RTL behavior, and accessible names are unchanged;
+  the monogram helper is removed.
+
 - **National-ID OCR: the capture pipeline now handles cards that are angled, bent, or poorly
   photographed — and says so when it cannot.** The previous pipeline read a card that filled the
   frame, flat and square, and failed on anything else in a way that looked arbitrary from outside:

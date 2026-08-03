@@ -1,7 +1,8 @@
 // The ECMS navigation shell: a two-part rail designed to stay clean at dozens of modules and
 // hundreds of pages.
-//   • ModuleRail — a slim vertical strip of colored module identities (monograms). Switching modules
-//     is one glance + one click; it scales far better than a long scrolling list.
+//   • ModuleRail — a slim vertical strip of colored module identities (department icons from the
+//     catalog). Switching modules is one glance + one click; it scales far better than a long
+//     scrolling list.
 //   • ModulePanel — the selected module's pages, plus the user's cross-module Pinned favorites.
 // Data is the dynamic GET /platform/me/applications (PR #64/#65); nothing here changes the backend,
 // routing, or permission model. Persistent on desktop (lg+); an off-canvas drawer on mobile.
@@ -14,6 +15,7 @@ import { useT } from '../localization/useT';
 import { cn } from '../../shared/lib/cn';
 import { localized } from '../../shared/lib/format';
 import {
+  BuildingIcon,
   ChevronStartIcon,
   CloseIcon,
   FileIcon,
@@ -29,7 +31,6 @@ import {
   flattenApps,
   moduleColor,
   moduleOfPathname,
-  monogram,
   toModules,
   type NavApp,
   type NavModule,
@@ -217,6 +218,7 @@ const ModuleRail = ({
       {modules.map((m) => {
         const name = localized(m.name, locale);
         const shown = m.id === shownId;
+        const Icon = resolveNavIcon(m.icon, BuildingIcon);
         return (
           <button
             key={m.id}
@@ -226,7 +228,7 @@ const ModuleRail = ({
             aria-label={name}
             aria-current={shown ? 'page' : undefined}
             className={cn(
-              'grid h-10 w-10 shrink-0 place-items-center rounded-xl text-[12px] font-bold text-white shadow-sm transition-all',
+              'grid h-10 w-10 shrink-0 place-items-center rounded-xl text-white shadow-sm transition-all',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50',
               moduleColor(m.id),
               shown
@@ -234,7 +236,7 @@ const ModuleRail = ({
                 : 'opacity-70 hover:opacity-100',
             )}
           >
-            {monogram(name)}
+            <Icon className="h-5 w-5" />
           </button>
         );
       })}
@@ -257,6 +259,7 @@ const ModulePanel = ({
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const { data = [] } = useMyApplications();
   const { pinned } = useNavPrefs();
+  const ModuleIcon = resolveNavIcon(module.icon, BuildingIcon);
 
   const pinnedApps = useMemo(() => {
     const all = flattenApps(data);
@@ -271,11 +274,11 @@ const ModulePanel = ({
         <div className="flex min-w-0 items-center gap-2">
           <span
             className={cn(
-              'grid h-6 w-6 shrink-0 place-items-center rounded-md text-[10px] font-bold text-white',
+              'grid h-6 w-6 shrink-0 place-items-center rounded-md text-white',
               moduleColor(module.id),
             )}
           >
-            {monogram(localized(module.name, locale))}
+            <ModuleIcon className="h-4 w-4" />
           </span>
           <span className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
             {localized(module.name, locale)}

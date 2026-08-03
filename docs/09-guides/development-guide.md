@@ -21,6 +21,7 @@ npm install                 # installs all workspaces
 cp .env.example .env        # fill in local values (defaults work with docker-compose)
 docker compose up -d        # mongo (replica set) + redis
 npm run seed                # platform reference data + dev users + demo module data
+npm run seed:demo           # optional: 10 candidates resting at each recruitment stage
 npm run dev                 # api + worker + web concurrently
 ```
 
@@ -28,6 +29,14 @@ Dev URLs: web `http://localhost:5173` · api `http://localhost:3000/api/v1` ·
 API docs `http://localhost:3000/api/docs`.
 Seeded logins (dev only): `admin@ecms.local` (Super Admin), `hr@ecms.local` (HR Manager) —
 passwords in `.env.example`.
+
+`seed:demo` fills the recruitment queues so the boards have something to show: sixty synthetic
+candidates, ten resting at each stage — at the ID gate, in screening, at the first interview, at
+the open evaluations, holding a sent offer, and accepted and awaiting the hire. They are driven
+through the REAL services, so the queues, counters and candidate timelines agree exactly as they
+would in production. Re-running it is a no-op (each registration carries a `demo:` intake key);
+`npm run seed:demo -- --reset` removes the demo candidates and everything they produced, and
+nothing else. It refuses to run when `NODE_ENV=production`.
 
 ## 3. Everyday scripts (workspace root)
 
@@ -39,6 +48,7 @@ passwords in `.env.example`.
 | `npm run test` / `test:integration` | Vitest suites |
 | `npm run build` | build all workspaces |
 | `npm run seed` | reseed local DB |
+| `npm run seed:demo` | 10 synthetic candidates at each recruitment stage (`-- --reset` removes them) |
 | `npm run scaffold:feature -- hr/recruitment/offers` | generate the canonical feature shape |
 | `npm run scaffold:module -- fleet` | generate a module skeleton + manifest |
 

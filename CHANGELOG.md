@@ -9,6 +9,20 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Added
+
+- **`npm run seed:demo` — sixty synthetic candidates, ten resting at each recruitment stage.** The
+  boards, queues and counters had nothing to show on a fresh database. The demo cohorts sit at the
+  ID gate, in screening, at the first interview, at the open evaluations, holding a sent offer, and
+  accepted awaiting the hire. They are driven through the REAL services — a candidate at the
+  interview stage got there by having their screening accepted, which is what materializes the
+  round — so the queues, the workflow state, the stage counters and the candidate timeline all
+  agree, instead of looking right on one screen and wrong on every other. Re-running is a no-op:
+  each registration carries a `demo:` intake key and the platform's own idempotent intake returns
+  the existing candidate. `npm run seed:demo -- --reset` removes the demo candidates and what they
+  produced, matched on that key alone so a real applicant can never be caught by it. Development
+  and staging only — it refuses to run when `NODE_ENV=production`.
+
 ### Fixed
 
 - **Opening a candidate crashed once their history held an entry with no metadata.** The timeline

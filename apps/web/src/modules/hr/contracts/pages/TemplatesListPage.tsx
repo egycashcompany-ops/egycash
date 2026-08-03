@@ -253,7 +253,7 @@ export const TemplatesListPage = (): JSX.Element => {
   ];
 
   return (
-    <PageContainer wide>
+    <PageContainer>
       <PageHeader
         title={t('contracts.templates.title')}
         description={t('contracts.templates.subtitle')}

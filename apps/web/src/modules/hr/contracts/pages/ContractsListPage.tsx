@@ -160,7 +160,7 @@ export const ContractsListPage = (): JSX.Element => {
   ];
 
   return (
-    <PageContainer wide>
+    <PageContainer>
       <PageHeader
         title={t('contracts.module.title')}
         description={t('contracts.list.subtitle')}

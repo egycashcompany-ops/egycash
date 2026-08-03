@@ -299,7 +299,7 @@ export const ContractDetailPage = (): JSX.Element => {
   };
 
   return (
-    <PageContainer wide>
+    <PageContainer>
       <PageHeader
         title={c.code}
         description={`${c.employeeName} · v${c.contractVersion}`}

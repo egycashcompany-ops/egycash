@@ -1,9 +1,12 @@
 // The ECMS navigation shell: a two-part rail designed to stay clean at dozens of modules and
 // hundreds of pages.
-//   • ModuleRail — a slim vertical strip of colored module identities (department icons from the
-//     catalog). Switching modules is one glance + one click; it scales far better than a long
-//     scrolling list.
+//   • ModuleRail — a slim vertical strip of module icons. Switching modules is one glance + one
+//     click; it scales far better than a long scrolling list.
 //   • ModulePanel — the selected module's pages, plus the user's cross-module Pinned favorites.
+// Visual language (minimal-enterprise, Linear/Notion-style): ONE quiet neutral surface; every
+// element is transparent with neutral icon/text, and ONLY the active item sits in a white
+// (dark: slate-800) rounded container with the brand color. No fills, no shadows, no per-module
+// colors; hover is a faint neutral tint via transition-colors only.
 // Data is the dynamic GET /platform/me/applications (PR #64/#65); nothing here changes the backend,
 // routing, or permission model. Persistent on desktop (lg+); an off-canvas drawer on mobile.
 import { useEffect, useMemo, useState } from 'react';
@@ -29,7 +32,6 @@ import { resolveNavIcon } from '../navigation/app-icon';
 import { useNavPrefs } from '../navigation/NavPrefs';
 import {
   flattenApps,
-  moduleColor,
   moduleOfPathname,
   toModules,
   type NavApp,
@@ -57,14 +59,15 @@ const persistCollapsed = (v: boolean): void => {
   }
 };
 
-// Active page = a filled brand pill; unmistakable at a glance.
+// Minimal nav language: every row is transparent and neutral; ONLY the active page sits in a
+// white rounded container with the brand color on its icon and label. No fills, no shadows.
 const rowClass = ({ isActive }: { isActive: boolean }): string =>
   cn(
-    'group/item flex items-center gap-2.5 rounded-md px-2 py-1.5 text-[13px] leading-5 transition-colors',
+    'group/item flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-[13px] leading-5 transition-colors',
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40',
     isActive
-      ? 'bg-brand-600 font-medium text-white shadow-sm'
-      : 'font-normal text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/70 dark:hover:text-slate-100',
+      ? 'bg-white font-medium text-brand-600 dark:bg-slate-800 dark:text-brand-400'
+      : 'font-normal text-slate-600 hover:bg-slate-200/60 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-100',
   );
 
 /**
@@ -78,8 +81,8 @@ const NavBadge = ({ count, active }: { count: number | null; active: boolean }):
       className={cn(
         'shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular-nums',
         active
-          ? 'bg-white/20 text-white'
-          : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+          ? 'bg-brand-600/10 text-brand-600 dark:bg-brand-400/10 dark:text-brand-400'
+          : 'bg-slate-200/70 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
       )}
     >
       {count > 99 ? '99+' : count}
@@ -128,7 +131,10 @@ const AppRow = ({
       {({ isActive }) => (
         <>
           <Icon
-            className={cn('h-[18px] w-[18px] shrink-0', isActive ? 'text-white' : 'text-slate-400 dark:text-slate-500')}
+            className={cn(
+              'h-[18px] w-[18px] shrink-0',
+              isActive ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400 dark:text-slate-500',
+            )}
           />
           <span className="min-w-0 flex-1 truncate">{localized(app.name, locale)}</span>
           <NavBadge count={count} active={isActive} />
@@ -141,12 +147,14 @@ const AppRow = ({
             }}
             aria-label={t(pinned ? 'nav.unpin' : 'nav.pin')}
             className={cn(
-              'grid h-5 w-5 shrink-0 place-items-center rounded transition',
-              isActive ? 'text-white/70 hover:text-white' : 'text-slate-300 hover:text-amber-500 dark:text-slate-600',
+              'grid h-5 w-5 shrink-0 place-items-center rounded transition-colors',
+              isActive
+                ? 'text-brand-600/50 hover:text-brand-600 dark:text-brand-400/50 dark:hover:text-brand-400'
+                : 'text-slate-300 hover:text-slate-600 dark:text-slate-600 dark:hover:text-slate-300',
               pinned ? 'opacity-100' : 'opacity-0 focus:opacity-100 group-hover/item:opacity-100',
             )}
           >
-            <StarIcon className={cn('h-3.5 w-3.5', pinned && 'fill-current text-amber-400')} />
+            <StarIcon className={cn('h-3.5 w-3.5', pinned && 'fill-current')} />
           </button>
         </>
       )}
@@ -214,7 +222,7 @@ const ModuleRail = ({
 }): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   return (
-    <div className="flex w-14 shrink-0 flex-col items-center gap-1.5 overflow-y-auto border-e border-slate-200 bg-slate-50 py-3 dark:border-slate-800 dark:bg-slate-950">
+    <div className="flex w-14 shrink-0 flex-col items-center gap-1 overflow-y-auto border-e border-slate-200 bg-slate-50 py-3 dark:border-slate-800 dark:bg-slate-900">
       {modules.map((m) => {
         const name = localized(m.name, locale);
         const shown = m.id === shownId;
@@ -228,12 +236,11 @@ const ModuleRail = ({
             aria-label={name}
             aria-current={shown ? 'page' : undefined}
             className={cn(
-              'grid h-10 w-10 shrink-0 place-items-center rounded-xl text-white shadow-sm transition-all',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50',
-              moduleColor(m.id),
+              'grid h-10 w-10 shrink-0 place-items-center rounded-lg transition-colors',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40',
               shown
-                ? 'ring-2 ring-slate-900/20 ring-offset-2 ring-offset-slate-50 dark:ring-white/30 dark:ring-offset-slate-950'
-                : 'opacity-70 hover:opacity-100',
+                ? 'bg-white text-brand-600 dark:bg-slate-800 dark:text-brand-400'
+                : 'text-slate-500 hover:bg-slate-200/60 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200',
             )}
           >
             <Icon className="h-5 w-5" />
@@ -269,17 +276,10 @@ const ModulePanel = ({
   }, [data, pinned]);
 
   return (
-    <div className="flex w-56 shrink-0 flex-col border-e border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-      <div className="flex h-12 items-center justify-between gap-2 border-b border-slate-100 px-3 dark:border-slate-800/70">
+    <div className="flex w-56 shrink-0 flex-col border-e border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900">
+      <div className="flex h-12 items-center justify-between gap-2 border-b border-slate-200/70 px-3 dark:border-slate-800/70">
         <div className="flex min-w-0 items-center gap-2">
-          <span
-            className={cn(
-              'grid h-6 w-6 shrink-0 place-items-center rounded-md text-white',
-              moduleColor(module.id),
-            )}
-          >
-            <ModuleIcon className="h-4 w-4" />
-          </span>
+          <ModuleIcon className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" />
           <span className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
             {localized(module.name, locale)}
           </span>
@@ -290,7 +290,7 @@ const ModulePanel = ({
             onClick={onCollapse}
             aria-label={t('nav.collapse')}
             title={t('nav.collapse')}
-            className="hidden shrink-0 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 lg:block"
+            className="hidden shrink-0 rounded p-1 text-slate-400 transition-colors hover:bg-slate-200/60 hover:text-slate-600 dark:hover:bg-slate-800/60 lg:block"
           >
             <ChevronStartIcon className="h-4 w-4 rtl:-scale-x-100" />
           </button>
@@ -322,7 +322,7 @@ const ModulePanel = ({
 };
 
 const StateShell = ({ children }: { children: JSX.Element }): JSX.Element => (
-  <div className="flex w-64 shrink-0 flex-col border-e border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+  <div className="flex w-64 shrink-0 flex-col border-e border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900">
     <div className="flex flex-1 items-center justify-center overflow-y-auto">{children}</div>
   </div>
 );
@@ -424,7 +424,7 @@ export const Sidebar = (): JSX.Element => {
         />
         <aside
           className={cn(
-            'absolute inset-y-0 start-0 flex max-w-[88%] bg-white shadow-elevated transition-transform dark:bg-slate-900',
+            'absolute inset-y-0 start-0 flex max-w-[88%] bg-slate-50 transition-transform dark:bg-slate-900',
             open ? 'translate-x-0' : '-translate-x-full rtl:translate-x-full',
           )}
           role="dialog"
@@ -436,7 +436,7 @@ export const Sidebar = (): JSX.Element => {
             type="button"
             onClick={close}
             aria-label={t('common.close')}
-            className="absolute end-2 top-2.5 z-10 rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+            className="absolute end-2 top-2.5 z-10 rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-200/60 dark:hover:bg-slate-800/60"
           >
             <CloseIcon />
           </button>

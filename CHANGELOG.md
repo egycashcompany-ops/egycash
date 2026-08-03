@@ -84,6 +84,16 @@ its entry here in the same PR.
 
 ### Changed
 
+- **Sidebar restyled to a minimal-enterprise language (UI only).** One quiet neutral surface for
+  the whole rail; per-module colors, shadows and filled pills are gone. Every item — module
+  buttons and page rows alike — is transparent with neutral icon/text; ONLY the active item sits
+  in a white (dark: `slate-800`) rounded container with the brand color on its icon and label,
+  and hover is a faint neutral tint with `transition-colors` alone. The pin star and queue
+  badges went neutral too (the badge picks up a faint brand tint inside the active row). No
+  behavior change of any kind: routing, permissions, active detection, module order, pinned
+  favorites, live counters, RTL and the mobile drawer all work exactly as before, and
+  `moduleColor` still serves the command palette.
+
 - **Every page now spans the full available width.** `PageContainer` capped content at `max-w-7xl`
   (80rem) and let a page opt out with a `wide` prop, which only the interviews board and the
   contracts screens used — so the same table rendered narrow on one screen and full-width on

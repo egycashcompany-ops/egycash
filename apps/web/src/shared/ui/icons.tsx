@@ -330,6 +330,13 @@ export const CalendarIcon = (p: IconProps): JSX.Element => (
   </Base>
 );
 
+export const BriefcaseIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <rect x="2" y="7" width="20" height="14" rx="2" />
+    <path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M2 13h20" />
+  </Base>
+);
+
 export const CogIcon = (p: IconProps): JSX.Element => (
   <Base {...p}>
     <circle cx="12" cy="12" r="3" />

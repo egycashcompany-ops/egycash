@@ -10,6 +10,8 @@ import { type LocalizedString, type MyApplicationCategoryDto, type MyApplication
 export interface NavModule {
   id: string;
   name: LocalizedString;
+  /** Category icon name from the catalog (admin-editable); null renders the generic fallback. */
+  icon: string | null;
   apps: MyApplicationDto[];
 }
 
@@ -19,7 +21,7 @@ export interface NavApp extends MyApplicationDto {
 }
 
 export const toModules = (data: MyApplicationCategoryDto[]): NavModule[] =>
-  data.map((c) => ({ id: c.id, name: c.name, apps: c.applications }));
+  data.map((c) => ({ id: c.id, name: c.name, icon: c.icon, apps: c.applications }));
 
 export const flattenApps = (data: MyApplicationCategoryDto[]): NavApp[] =>
   data.flatMap((c) =>
@@ -67,11 +69,3 @@ const hash = (s: string): number => {
 };
 
 export const moduleColor = (key: string): string => MODULE_COLORS[hash(key) % MODULE_COLORS.length]!;
-
-/** 1–2 letter monogram for a module's identity tile. */
-export const monogram = (name: string): string => {
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  if (words.length === 0) return '•';
-  if (words.length === 1) return words[0]!.slice(0, 2).toUpperCase();
-  return (words[0]![0]! + words[1]![0]!).toUpperCase();
-};

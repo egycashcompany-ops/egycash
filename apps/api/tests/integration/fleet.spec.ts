@@ -85,6 +85,19 @@ const login = async (email: string): Promise<string> => {
 
 const data = <T>(res: request.Response): T => (res.body as { data: T }).data;
 
+// In-process events fan out fire-and-forget (`dispatchInProcess`), so `await emit(...)` returns
+// before the subscriber has touched the database — asserting immediately is a race that only
+// loses under load. Poll instead, the same way files/audit/notifications specs do.
+const waitFor = async (
+  predicate: () => boolean | Promise<boolean>,
+  ms = 2000,
+): Promise<void> => {
+  const deadline = Date.now() + ms;
+  while (!(await predicate()) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+};
+
 let nidCounter = 0;
 let phoneCounter = 40_000_000;
 const nextNid = (): string => `290010101${String(30_000 + nidCounter++).padStart(5, '0')}`;
@@ -499,12 +512,15 @@ describe('driver profiles (FL-3 — FR-11, the HR extension)', () => {
     const employeeId = await mkEmployee();
     await mkDriverProfile(employeeId);
     await emit('hr.employee.exited', { employeeId, code: '000999', exitType: 'resignation' });
-    const listed = await request(app)
-      .get('/api/v1/fleet/drivers')
-      .query({ pageSize: 100 })
-      .set('Authorization', `Bearer ${adminToken}`);
-    const mine = data<FleetDriverProfileDto[]>(listed).find((d) => d.employeeId === employeeId);
-    expect(mine?.isActive).toBe(false);
+    const readProfile = async (): Promise<FleetDriverProfileDto | undefined> => {
+      const listed = await request(app)
+        .get('/api/v1/fleet/drivers')
+        .query({ pageSize: 100 })
+        .set('Authorization', `Bearer ${adminToken}`);
+      return data<FleetDriverProfileDto[]>(listed).find((d) => d.employeeId === employeeId);
+    };
+    await waitFor(async () => (await readProfile())?.isActive === false);
+    expect((await readProfile())?.isActive).toBe(false);
   });
 });
 

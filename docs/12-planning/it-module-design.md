@@ -1,9 +1,9 @@
 # IT Module — Architecture & Domain Design
 
-**Status:** **DRAFT v1.0 — for Architecture Review** (2026-08-03). Nothing in this document is
+**Status:** **DRAFT — for Architecture Review** (2026-08-03). Nothing in this document is
 implemented; no contracts, no collections, no routes, no frontend exist. Implementation starts
 only after the owner approves this design, and this document is then frozen exactly as the Fleet
-design was (revision trail in §16).
+design was (revision trail in §17).
 **Methodology:** same as HR and Fleet — design first, owner approval, then delivery in reviewed
 slices, each extending one module manifest.
 **MVP scope (owner-defined):** Asset Management · Help Desk · Maintenance · Software & Licenses ·
@@ -532,7 +532,26 @@ vendors, products, parts ship with `search` from day one, per ADR-019 rule 5).
 | IT-6 | dashboards, warranty report, asset export, notification templates, seed data |
 | ITW-1…6 | web app per area (skeleton/nav → assets → tickets → maintenance → software → dashboards), ar/en + RTL, ADR-019-compliant pickers |
 
-## 16. Review trail
+## 16. Deferred architectural debt — the post-IT roadmap
+
+The pre-freeze review named four platform-level gaps this module deliberately works around
+rather than fixes. None changes the MVP. They are recorded here so that "later" has a kind, a
+compatibility answer, a price and a trigger — not just a mention in a conversation. Cost unit:
+**one slice = one reviewed PR of IT-1…IT-6 size**.
+
+| P | Debt | Kind | Extraction compatibility | Cost after IT | Trigger |
+|---|---|---|---|---|---|
+| 1 | **Workflow/Approval engine (ADR-011)** | Platform Debt — the ADR is accepted (2026-07-08) and the service was never built; recruitment, fleet and now IT each re-implement lifecycles, and approval chains exist only inside Leave | **Non-breaking**: ships for *new* processes; existing code lifecycles keep running untouched; a module that later adopts it migrates internally with its API unchanged (ticket instances can be backfilled from `it_ticket_events` `statusChanged` rows — the event stream pays for itself here) | 5–7 slices (definitions + instances + versioning + guards + approval chains + admin UI + first consumer); +1–2 per module that adopts later | **Before the OPS design freezes.** OPS is the module ADR-011 was written for (cash-order lifecycle, vault operations, money-movement approvals) — designing OPS without it repeats this debt a fourth time at the highest-stakes domain |
+| 2 | **Timeline kit (platform)** | Platform Debt in the small — after IT the same append-only idiom exists 4× (recruitment, employee, asset, ticket; IT already ships its two on ONE internal implementation) | **Non-breaking**: collections stay module-owned and module-named (manifest rule untouched); only the model factory + service shape move to platform; no data migration, no API change | 1 slice (kit + IT adoption); recruitment/employee adopt opportunistically at ~½ slice each | Immediately after IT — extract while the second consumer is fresh; the kit also encodes the PR #117 rules (`minimize: false`, `metadata: {}` by type) exactly once |
+| 3 | **Expiry-watcher seam** | Platform Debt — the sweep + warn-window + set-once-mark pattern exists 4× (fleet vehicle/driver licenses, job-offer expiration, IT warranty, IT licenses) | **Non-breaking**: registration-based — each module keeps its event names, settings keys and collections; the seam owns only the loop and the window/mark semantics | 1–2 slices (seam + IT + fleet adoption; offers opportunistic) | Opportunistic — the next new "expiring thing" or the first warn-window bug; not before IT-5 exists |
+| 4 | **External-party registry** (vendors/workshops) | Platform Debt (shared reference data) — duplicated 2× (fleet workshop catalog rows, `it_vendors`) | The only one needing a **data migration**: merge rows into a platform registry, re-point `workshopId`/`vendorId`, alias module endpoints through a deprecation window — externally non-breaking **if staged**, but the most invasive of the four | 2–3 slices | **Procurement module design** — Procurement owns the concept; extracting earlier buys nothing and guesses at its shape |
+
+Priority is trigger order, not calendar order: P1 is gated on OPS timing, and if OPS slips, P2
+and P3 proceed anyway — they are cheap and non-breaking, and the engine is never blocked by
+them. P4 waits for its owner. Nothing in this table is scheduled by this document; each item
+starts only on an explicit owner GO.
+
+## 17. Review trail
 
 - **v1.0 DRAFT** (2026-08-03) — full architecture & domain design for review. Awaiting owner
   decisions on §13 and overall approval. No implementation exists or begins before approval.
@@ -547,3 +566,7 @@ vendors, products, parts ship with `search` from day one, per ADR-019 rule 5).
   events; one internal timeline implementation shared by assets and tickets; FR-14 added
   (requester ownership rules need no grants). Structure otherwise unchanged; still awaiting §13
   decisions and approval.
+- **v1.2 DRAFT** (2026-08-03) — §16 added on owner request: the four deferred platform debts
+  (workflow/approval engine, timeline kit, expiry-watcher seam, external-party registry) as a
+  prioritized roadmap with kind, extraction-compatibility answer, slice-cost and trigger for
+  each. No scope or structure change. This is the final pre-approval revision.

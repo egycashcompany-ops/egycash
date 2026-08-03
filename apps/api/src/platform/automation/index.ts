@@ -23,4 +23,8 @@ export {
   registerN8nProvider,
   resetN8nProviderRegistration,
 } from './providers/n8n/register-n8n-provider';
-export { runProviderConformance } from './provider-conformance';
+// `runProviderConformance` is deliberately NOT re-exported here. This barrel is in the runtime
+// graph (server, worker and both seed CLIs load `moduleManifests` → automation.module → here),
+// and the conformance suite imports `vitest`, which refuses to load outside a vitest run — so
+// re-exporting it took every entrypoint down at import time. Provider spec files live inside
+// this directory (exempt from the barrel lint rule) and import `./provider-conformance` directly.

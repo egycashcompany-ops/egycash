@@ -69,12 +69,17 @@ operator reading an execution list has to be able to tell them apart.
 
 1. Implement `AutomationProvider` under `providers/<id>/`.
 2. Declare capabilities honestly — the platform believes them.
-3. Run the shared contract against it:
+3. Run the shared contract against it, in the provider's own spec file:
 
    ```ts
-   import { runProviderConformance } from '../../index';
+   import { runProviderConformance } from '../../provider-conformance';
    runProviderConformance(() => myProvider, 'MyProvider');
    ```
+
+   Import the file directly — never via the barrel. The barrel is loaded by every runtime
+   entrypoint (server, worker, seeds), and the conformance suite imports `vitest`, which throws
+   at import time outside a vitest run. Spec files inside `platform/automation/**` are exempt
+   from the barrel-only lint rule, so the direct import is legal exactly where it is needed.
 
 4. Register it at boot from its own module (the provider registers *itself*; the registry never
    imports providers, so it never grows a `switch` over every provider that will exist).
@@ -84,7 +89,7 @@ operator reading an execution list has to be able to tell them apart.
 provider has the right method *names*; it proves nothing about behaviour, and behaviour is where a
 second provider actually diverges — a ref that does not round-trip, a throw on a capability already
 declared false, a status the platform has no case for. Those surface as "automation is broken"
-months later. Exporting the suite means A-6's n8n provider is proved by the same assertions the
+months later. Sharing the suite means A-6's n8n provider is proved by the same assertions the
 null provider is proved by today, and a provider added later cannot quietly hold a weaker contract
 than the one reviewed here.
 

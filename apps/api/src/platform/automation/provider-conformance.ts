@@ -6,9 +6,14 @@
 // a capability it already declared false, inventing a status the platform has no case for. Those
 // are the failures that would surface as "automation is broken" months later.
 //
-// So the contract is executable, and it is exported from the barrel so that A-6's
-// `N8nAutomationProvider` is proved by the SAME assertions the null provider is proved by today.
-// A provider added later cannot quietly hold a weaker contract than the one reviewed here.
+// So the contract is executable and shared: A-6's `N8nAutomationProvider` is proved by the SAME
+// assertions the null provider is proved by today, and a provider added later cannot quietly hold
+// a weaker contract than the one reviewed here.
+//
+// NEVER export this file from the barrel (`./index.ts`). The barrel is in the runtime graph —
+// server, worker and the seed CLIs all load it via `moduleManifests` — and this file imports
+// `vitest`, which throws at import time outside a vitest run. Provider spec files sit inside
+// `platform/automation/**` (exempt from the barrel-only lint rule) and import this file directly.
 //
 // It is deliberately behaviour-only: no network, no fixtures, no provider-specific setup. A
 // provider that needs a live runtime to pass conformance has made the runtime part of its

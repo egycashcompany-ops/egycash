@@ -30,7 +30,11 @@ its entry here in the same PR.
   contract schema and the base repository enforce, so the reassign, bulk-reassign and
   recommendation dialogs and four Fleet pages had their dropdown queries rejected by validation.
   They now request `MAX_PAGE_SIZE`, matching every other picker in the app; the cap is a documented
-  architectural decision, so the requests were what needed fixing.
+  architectural decision, so the requests were what needed fixing. This is a hotfix, not the end
+  state: a picker that renders one large page still truncates silently once a catalog passes 100
+  records. [ADR-019](docs/03-decisions/ADR-019-reference-pickers-search-not-load-all.md) records the
+  correct design — a picker searches the server the way `UserPicker` already does, using the
+  `search` parameter these endpoints already support — and lists the surfaces still to convert.
 
 ### Changed
 

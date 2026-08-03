@@ -12,6 +12,7 @@ import {
   type UpdateItAsset,
 } from '@ecms/contracts';
 import { BusinessRuleError, ConflictError, NotFoundError } from '../../../shared/errors';
+import { type ScopeSelector } from '../../../shared/types';
 import { auditService } from '../../../platform/audit';
 import { diffChanges } from '../../../shared/utils/diff';
 import { emit } from '../../../platform/kernel/event-bus';
@@ -127,7 +128,7 @@ class ItAssetService {
     return doc;
   }
 
-  async list(query: ListItAssetsQuery): Promise<Paginated<ItAssetDoc>> {
+  async list(query: ListItAssetsQuery, scope: ScopeSelector): Promise<Paginated<ItAssetDoc>> {
     const filter: Record<string, unknown> = {};
     if (query.categoryId !== undefined) filter.categoryId = new Types.ObjectId(query.categoryId);
     if (query.status !== undefined) filter.status = query.status;
@@ -148,21 +149,27 @@ class ItAssetService {
       sortBy: query.sortBy,
       sortDir: query.sortDir,
       sortableFields: ['createdAt', 'assetCode', 'name', 'status'],
+      scope,
     });
   }
 
-  async getById(id: string): Promise<ItAssetDoc> {
-    return itAssetRepository.getById(id);
+  async getById(id: string, scope: ScopeSelector): Promise<ItAssetDoc> {
+    return itAssetRepository.getById(id, scope);
   }
 
-  async getByCode(assetCode: string): Promise<ItAssetDoc> {
-    const doc = await itAssetRepository.findByCode(assetCode);
+  async getByCode(assetCode: string, scope: ScopeSelector): Promise<ItAssetDoc> {
+    const doc = await itAssetRepository.findByCode(assetCode, scope);
     if (doc === null) throw new NotFoundError(`asset "${assetCode}" not found`);
     return doc;
   }
 
-  async update(id: string, input: UpdateItAsset, by: string): Promise<ItAssetDoc> {
-    const before = await itAssetRepository.getById(id);
+  async update(
+    id: string,
+    input: UpdateItAsset,
+    by: string,
+    scope: ScopeSelector,
+  ): Promise<ItAssetDoc> {
+    const before = await itAssetRepository.getById(id, scope);
     await this.assertReferences({
       categoryId: input.categoryId,
       purchase: input.purchase ?? undefined,
@@ -205,8 +212,8 @@ class ItAssetService {
    * custody operation exists, so `inStock` is exactly that window; IT-2's history events tighten
    * this guard to "no event beyond `registered`" without changing the permission.
    */
-  async remove(id: string, by: string): Promise<void> {
-    const doc = await itAssetRepository.getById(id);
+  async remove(id: string, by: string, scope: ScopeSelector): Promise<void> {
+    const doc = await itAssetRepository.getById(id, scope);
     if (doc.status !== 'inStock') {
       throw new BusinessRuleError('only an in-stock asset with no history can be deleted (FR-5)');
     }
@@ -224,8 +231,9 @@ class ItAssetService {
    */
   async renderLabels(
     input: ItAssetLabels,
+    scope: ScopeSelector,
   ): Promise<{ kind: 'pdf'; body: Buffer } | { kind: 'html'; body: string }> {
-    const assets = await itAssetRepository.findManyByIds(input.assetIds);
+    const assets = await itAssetRepository.findManyByIds(input.assetIds, scope);
     if (assets.length === 0) throw new NotFoundError('none of the requested assets exist');
     const labels = await renderLabelQrs(
       assets.map((a) => ({ assetCode: a.assetCode, name: a.name })),

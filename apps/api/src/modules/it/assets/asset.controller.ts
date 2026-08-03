@@ -9,6 +9,7 @@ import {
 } from '@ecms/contracts';
 import { created, noContent, ok, okPage, validated } from '../../../platform/web';
 import { authContext } from '../../../platform/auth';
+import { scopeSelector } from '../../../shared/types';
 import { toItAssetDto } from '../it.mappers';
 import { itAssetService } from './asset.service';
 
@@ -17,17 +18,20 @@ type CodeParam = { code: string };
 
 export const listItAssets = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, ListItAssetsQuery>(req);
-  okPage(res, await itAssetService.list(query), toItAssetDto);
+  const scope = scopeSelector(authContext(req), 'itAsset.view');
+  okPage(res, await itAssetService.list(query, scope), toItAssetDto);
 };
 
 export const getItAsset = async (req: Request, res: Response): Promise<void> => {
   const { params } = validated<never, never, IdParam>(req);
-  ok(res, toItAssetDto(await itAssetService.getById(params.id)));
+  const scope = scopeSelector(authContext(req), 'itAsset.view');
+  ok(res, toItAssetDto(await itAssetService.getById(params.id, scope)));
 };
 
 export const getItAssetByCode = async (req: Request, res: Response): Promise<void> => {
   const { params } = validated<never, never, CodeParam>(req);
-  ok(res, toItAssetDto(await itAssetService.getByCode(params.code)));
+  const scope = scopeSelector(authContext(req), 'itAsset.view');
+  ok(res, toItAssetDto(await itAssetService.getByCode(params.code, scope)));
 };
 
 export const createItAsset = async (req: Request, res: Response): Promise<void> => {
@@ -38,19 +42,27 @@ export const createItAsset = async (req: Request, res: Response): Promise<void> 
 
 export const updateItAsset = async (req: Request, res: Response): Promise<void> => {
   const { body, params } = validated<UpdateItAsset, never, IdParam>(req);
-  const doc = await itAssetService.update(params.id, body, authContext(req).userId);
+  const ctx = authContext(req);
+  const doc = await itAssetService.update(
+    params.id,
+    body,
+    ctx.userId,
+    scopeSelector(ctx, 'itAsset.edit'),
+  );
   ok(res, toItAssetDto(doc));
 };
 
 export const deleteItAsset = async (req: Request, res: Response): Promise<void> => {
   const { params } = validated<never, never, IdParam>(req);
-  await itAssetService.remove(params.id, authContext(req).userId);
+  const ctx = authContext(req);
+  await itAssetService.remove(params.id, ctx.userId, scopeSelector(ctx, 'itAsset.delete'));
   noContent(res);
 };
 
 export const renderItAssetLabels = async (req: Request, res: Response): Promise<void> => {
   const { body } = validated<ItAssetLabels>(req);
-  const sheet = await itAssetService.renderLabels(body);
+  const scope = scopeSelector(authContext(req), 'itAsset.view');
+  const sheet = await itAssetService.renderLabels(body, scope);
   if (sheet.kind === 'pdf') {
     res
       .status(200)

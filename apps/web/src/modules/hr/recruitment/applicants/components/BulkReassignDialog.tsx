@@ -2,7 +2,7 @@
 // candidate dialog: this one carries no per-candidate context, and the server still checks the
 // editing window per candidate, so an ineligible one fails as that item alone.
 import { useState } from 'react';
-import { type Locale, type PlacementDto } from '@ecms/contracts';
+import { MAX_PAGE_SIZE, type Locale, type PlacementDto } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
 import { Button } from '../../../../../shared/ui/Button';
@@ -33,7 +33,7 @@ export const BulkReassignDialog = ({
   const [reason, setReason] = useState('');
 
   const { data: branches } = useBranchOptions(open);
-  const { data: positions } = useJobPositions({ pageSize: 200, status: 'active' });
+  const { data: positions } = useJobPositions({ pageSize: MAX_PAGE_SIZE, status: 'active' });
 
   const submit = async (): Promise<void> => {
     if (reason.trim() === '') {

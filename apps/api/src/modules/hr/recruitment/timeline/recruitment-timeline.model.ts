@@ -132,7 +132,13 @@ const timelineSchema = new Schema<RecruitmentTimelineDoc>(
     metadata: { type: Schema.Types.Mixed, required: true, default: {} },
     ...baseFields,
   },
-  baseSchemaOptions,
+  // `minimize: false` is load-bearing, not a preference. Mongoose minimization DELETES empty
+  // objects on the way to the database, so an entry written with no metadata — `applied`,
+  // `identityVerified`, `note`, every entry whose writer has nothing to add — was stored with no
+  // `metadata` field at all, while an interview entry carrying `{ attempt: n }` kept it. Reads are
+  // `.lean()`, which returns raw BSON and applies no schema default, so those entries came back
+  // with `metadata: undefined` and broke the DTO's `metadata: Record<string, unknown>` guarantee.
+  { ...baseSchemaOptions, minimize: false },
 );
 
 // The public identity is unique and immutable (I9).

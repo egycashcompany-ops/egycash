@@ -9,6 +9,25 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Opening a candidate crashed once their history held an entry with no metadata.** The timeline
+  schema declares `metadata` as required with a `{}` default, but Mongoose minimization deletes
+  empty objects on the way to the database — so every entry whose writer adds nothing (`applied`,
+  `identityVerified`, `note`, `rejected`, `withdrawn`) was stored with no `metadata` field, while an
+  interview entry carrying `{ attempt: n }` kept it. Reads are `.lean()`, which applies no schema
+  default, so those entries came back as `metadata: undefined`, breaking the DTO's
+  `Record<string, unknown>` guarantee: the renderer read `entry.metadata['attempt']` and every
+  candidate without an interview attempt threw `TypeError`. The schema now sets `minimize: false`
+  so the declared field is actually persisted, and the boot migration backfills `{}` onto rows
+  already stored without it. The renderer is unchanged — the contract it relied on now holds.
+
+- **Job-position, job-title and fleet-vehicle pickers returned 400.** Six call sites asked for
+  `pageSize: 200`, over the contract's `MAX_PAGE_SIZE` of 100, so the reassign, bulk-reassign and
+  recommendation dialogs and four Fleet pages had their dropdown queries rejected by validation.
+  They now request `MAX_PAGE_SIZE`, matching every other picker in the app; the API contract is
+  unchanged, because the cap was right and the requests were wrong.
+
 ### Changed
 
 - **Every page now spans the full available width.** `PageContainer` capped content at `max-w-7xl`

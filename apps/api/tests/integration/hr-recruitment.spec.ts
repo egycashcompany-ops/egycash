@@ -339,9 +339,19 @@ describe('lifecycle: verify, update, withdraw', () => {
     const afterVerify = await request(app)
       .get(`/api/v1/hr/applicants/${dto.id}/timeline`)
       .set('Authorization', `Bearer ${adminToken}`);
-    const types = (afterVerify.body as { data: { type: string }[] }).data.map((e) => e.type);
+    const entries = (afterVerify.body as { data: { type: string; metadata: unknown }[] }).data;
+    const types = entries.map((e) => e.type);
     expect(types).toContain('applied');
     expect(types).toContain('identityVerified');
+
+    // Regression: `metadata` is REQUIRED by the DTO, and an entry whose writer adds nothing to it
+    // is exactly the case Mongoose minimization used to delete on the way to the database. Read
+    // back — `.lean()` applies no schema default — every entry must still carry the object, or the
+    // timeline renderer reads `undefined.attempt` and the whole candidate page dies.
+    for (const entry of entries) {
+      expect(entry.metadata, `${entry.type} lost its metadata`).toBeTypeOf('object');
+      expect(entry.metadata).not.toBeNull();
+    }
   });
 
   it('withdraws an applicant (terminal)', async () => {

@@ -7,7 +7,7 @@
 // Clearing is a first-class outcome: a panel that changes its mind must be able to withdraw its
 // recommendation, so the form's "no position, no branch" state saves `null` rather than refusing.
 import { useEffect, useState } from 'react';
-import { type Locale, type PlacementDto } from '@ecms/contracts';
+import { MAX_PAGE_SIZE, type Locale, type PlacementDto } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../store';
 import { Button } from '../../../../shared/ui/Button';
@@ -60,8 +60,8 @@ export const RecommendationDialog = ({
   }, [open, current, currentNote]);
 
   const { data: branches } = useBranchOptions(open);
-  const { data: positions } = useJobPositions({ pageSize: 200, status: 'active' });
-  const { data: titles } = useJobTitles({ pageSize: 200 });
+  const { data: positions } = useJobPositions({ pageSize: MAX_PAGE_SIZE, status: 'active' });
+  const { data: titles } = useJobTitles({ pageSize: MAX_PAGE_SIZE });
 
   const empty = jobPositionId === '' && jobTitleId === '' && branchId === '';
 

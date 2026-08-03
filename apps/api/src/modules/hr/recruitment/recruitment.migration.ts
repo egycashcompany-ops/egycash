@@ -8,6 +8,9 @@
 // ② Stage collections (screenings, interviews, evaluations, job offers) predate the
 //    denormalized `applicantName` — tables showed bare codes. Backfilled from the applicant
 //    registry so every list shows the person's display name without a join.
+// ②b `hr_recruitment_timeline` — entries written before the schema stopped minimizing lost their
+//    empty `metadata` on the way to the database, so the timeline renderer read `undefined` where
+//    the DTO promises an object. Same `$exists: false` guard, same one-shot shape.
 // ③ Workflow-refactor backfills (§15): attempt markers, placement snapshots, the `pending` →
 //    `waiting` rename, evaluation phase typing, the business-order phase reorder, offer terms,
 //    and the one-shot unique indexes the attempt-based ones replace.
@@ -18,6 +21,7 @@ import { InterviewModel } from './interviews/interview.model';
 import { EvaluationModel } from './evaluations/evaluation.model';
 import { EvaluationPhaseModel } from './evaluations/evaluation-phase.model';
 import { JobOfferModel } from './job-offers/job-offer.model';
+import { RecruitmentTimelineModel } from './timeline/recruitment-timeline.model';
 
 const APPLICANT_FIELD_DEFAULTS: Record<string, unknown> = {
   jobRequisitionId: null,
@@ -420,6 +424,15 @@ export const migrateRecruitmentLegacy = async (): Promise<void> => {
       .exec();
   }
 
-  // ③ Workflow refactor.
+  // ③ Timeline entries stored before `minimize: false` — same class as ①, one collection further
+  //    on. Mongoose minimization dropped an empty `metadata` on the way to the database, so every
+  //    entry whose writer had nothing to add (`applied`, `identityVerified`, `note`) is stored
+  //    without the field the DTO promises. The schema now persists it; these rows still need it.
+  await RecruitmentTimelineModel.updateMany(
+    { metadata: { $exists: false } },
+    { $set: { metadata: {} } },
+  ).exec();
+
+  // ④ Workflow refactor.
   await migrateRecruitmentWorkflow();
 };

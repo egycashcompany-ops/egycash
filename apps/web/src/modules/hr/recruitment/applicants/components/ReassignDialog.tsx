@@ -5,7 +5,7 @@
 // Selecting a seat settles the rest (the server completes department/branch from the position), so
 // the form offers the seat first and the bare branch as the fallback for candidates with no seat yet.
 import { useEffect, useState } from 'react';
-import { type ApplicantDto, type Locale, type PlacementDto } from '@ecms/contracts';
+import { MAX_PAGE_SIZE, type ApplicantDto, type Locale, type PlacementDto } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
 import { Button } from '../../../../../shared/ui/Button';
@@ -54,8 +54,8 @@ export const ReassignDialog = ({
   }, [open, prefill, applicant.placement]);
 
   const { data: branches } = useBranchOptions(open);
-  const { data: positions } = useJobPositions({ pageSize: 200, status: 'active' });
-  const { data: titles } = useJobTitles({ pageSize: 200 });
+  const { data: positions } = useJobPositions({ pageSize: MAX_PAGE_SIZE, status: 'active' });
+  const { data: titles } = useJobTitles({ pageSize: MAX_PAGE_SIZE });
 
   const submit = async (): Promise<void> => {
     if (reason.trim() === '') {

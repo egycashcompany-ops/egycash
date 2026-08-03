@@ -4,7 +4,7 @@
 // cycle (owner point 5). URL-synced vehicle/state/workshop filters, sortable dates, pagination.
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { type FleetMaintenanceVisitDto, type Locale } from '@ecms/contracts';
+import { MAX_PAGE_SIZE, type FleetMaintenanceVisitDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { Can, useCan } from '../../../platform/rbac/Can';
@@ -90,7 +90,7 @@ export const MaintenancePage = (): JSX.Element => {
   const { data, isLoading, isError, error, refetch } = useMaintenanceVisits(params);
   const rows = data?.items ?? [];
 
-  const vehicles = useVehicles({ pageSize: 200, sortBy: 'code', sortDir: 'asc' });
+  const vehicles = useVehicles({ pageSize: MAX_PAGE_SIZE, sortBy: 'code', sortDir: 'asc' });
   const vehicleCode = useMemo(() => {
     const map = new Map<string, string>();
     for (const v of vehicles.data?.items ?? []) map.set(v.id, v.code);

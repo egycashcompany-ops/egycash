@@ -6,7 +6,7 @@
 // status/date-range filters + sortable occurredAt + pagination, per the module idiom.
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { type FleetAccidentDto, type Locale } from '@ecms/contracts';
+import { MAX_PAGE_SIZE, type FleetAccidentDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { Can, useCan } from '../../../platform/rbac/Can';
@@ -82,7 +82,7 @@ export const AccidentsPage = (): JSX.Element => {
   const rows = data?.items ?? [];
 
   // Unfiltered registry map so files of retired vehicles still resolve to their codes.
-  const vehiclesQuery = useVehicles({ pageSize: 200, sortBy: 'code', sortDir: 'asc' });
+  const vehiclesQuery = useVehicles({ pageSize: MAX_PAGE_SIZE, sortBy: 'code', sortDir: 'asc' });
   const codeOf = (vehicleId: string): string =>
     vehiclesQuery.data?.items.find((v) => v.id === vehicleId)?.code ?? vehicleId.slice(-8);
 

@@ -9,6 +9,33 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Opening a candidate crashed once their history held an entry with no metadata.** The timeline
+  schema declares `metadata` as required with a `{}` default, but Mongoose minimization deletes
+  empty objects on the way to the database — so the two writers that pass none (`identityVerified`
+  and `note`; every other type supplies its own, and the workflow projection stamps
+  `{ eventId, eventName, …payload }` on all 25 projected types) stored no `metadata` field at all,
+  while an interview entry carrying `{ attempt: n }` kept it. Reads are `.lean()`, which applies no
+  schema default, so those entries came back as `metadata: undefined`, breaking the DTO's
+  `Record<string, unknown>` guarantee: the renderer read `entry.metadata['attempt']` and every
+  candidate without an interview attempt threw `TypeError` — which is why verifying an identity was
+  what exposed it. The schema now sets `minimize: false` so the declared field is actually
+  persisted, and the boot migration backfills `{}` onto rows already stored without it, matching
+  only `{ metadata: { $exists: false } }` so a populated metadata is never reset. The renderer is
+  unchanged — the contract it relied on now holds.
+
+- **Job-position, job-title and fleet-vehicle pickers returned 400.** Six call sites asked for
+  `pageSize: 200`, over the `MAX_PAGE_SIZE` of 100 that API Standards §4 fixes and that both the
+  contract schema and the base repository enforce, so the reassign, bulk-reassign and
+  recommendation dialogs and four Fleet pages had their dropdown queries rejected by validation.
+  They now request `MAX_PAGE_SIZE`, matching every other picker in the app; the cap is a documented
+  architectural decision, so the requests were what needed fixing. This is a hotfix, not the end
+  state: a picker that renders one large page still truncates silently once a catalog passes 100
+  records. [ADR-019](docs/03-decisions/ADR-019-reference-pickers-search-not-load-all.md) records the
+  correct design — a picker searches the server the way `UserPicker` already does, using the
+  `search` parameter these endpoints already support — and lists the surfaces still to convert.
+
 ### Changed
 
 - **Every page now spans the full available width.** `PageContainer` capped content at `max-w-7xl`

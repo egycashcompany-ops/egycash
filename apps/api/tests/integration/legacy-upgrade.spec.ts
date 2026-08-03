@@ -2,7 +2,8 @@
 // release — the class of bug a fresh-DB suite can never catch. Covers:
 //   ① legacy applicant documents (late-added fields absent) list/export without a 500,
 //     and the boot backfill (`migrateRecruitmentLegacy`) normalizes them + denormalizes
-//     `applicantName` onto stage rows;
+//     `applicantName` onto stage rows, and repairs timeline entries whose empty `metadata`
+//     Mongoose minimization deleted — without touching rows that already carry theirs;
 //   ② the navigation-catalog boot sync (`syncNavigationCatalog`) adds newly shipped
 //     applications (e.g. `/leave`) to an existing install, grants them to super-admins,
 //     and stays idempotent;
@@ -30,6 +31,7 @@ import { ApplicantSourceModel } from '../../src/modules/hr/recruitment/applicant
 import { LeaveTypeModel } from '../../src/modules/hr/leave-management/leave-types/leave-type.model';
 import { ApplicantModel } from '../../src/modules/hr/recruitment/applicants/applicant.model';
 import { ScreeningModel } from '../../src/modules/hr/recruitment/screening/screening.model';
+import { RecruitmentTimelineModel } from '../../src/modules/hr/recruitment/timeline/recruitment-timeline.model';
 import { migrateRecruitmentLegacy } from '../../src/modules/hr/recruitment/recruitment.migration';
 import { getCache } from '../../src/infrastructure/redis/cache';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
@@ -167,6 +169,92 @@ describe('legacy applicant documents (pre-upgrade shape)', () => {
     await migrateRecruitmentLegacy();
     const again = await ScreeningModel.findOne({ applicantId: legacyId }).lean().exec();
     expect(again?.applicantName).toBe('محمد قديم');
+  });
+
+  /**
+   * Timeline entries stored before the schema stopped minimizing lost their empty `metadata` on
+   * the way to Mongo, so `.lean()` read back `undefined` and the renderer died. This proves the
+   * repair on the three axes that matter for running it against a live database: it fixes the
+   * broken rows, it never touches a row that is already correct, and a second run is a no-op.
+   */
+  it('backfills timeline entries whose empty metadata was minimized away — and only those', async () => {
+    const applicantId = new Types.ObjectId();
+    const base = {
+      applicantId,
+      applicantCode: 'APP-2026-990002',
+      at: new Date('2026-01-01T00:00:00.000Z'),
+      actorUserId: null,
+      actorName: 'مسؤول',
+      correlationType: 'applicant',
+      correlationId: 'corr-legacy',
+      stageKind: null,
+      stageRefId: null,
+      stageName: null,
+      fromStatus: null,
+      toStatus: null,
+      placement: null,
+      placementLabel: null,
+      entityType: 'applicant',
+      entityId: applicantId,
+      reason: null,
+      note: null,
+      supersededAt: null,
+      branchId: null,
+      isDeleted: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    // Written through the driver, not the model: this is exactly the shape minimization produced —
+    // the `metadata` key is absent, not empty.
+    await RecruitmentTimelineModel.collection.insertMany([
+      { ...base, eventId: 'evt-legacy-identity', sourceKey: 'legacy:identity', type: 'identityVerified' },
+      { ...base, eventId: 'evt-legacy-note', sourceKey: 'legacy:note', type: 'note' },
+      // A row that already carries real metadata — the migration must leave it exactly as it is.
+      {
+        ...base,
+        eventId: 'evt-legacy-interview',
+        sourceKey: 'legacy:interview',
+        type: 'interviewScheduled',
+        metadata: { attempt: 2, eventName: 'hr.interview.scheduled' },
+      },
+    ]);
+
+    const read = async (eventId: string) =>
+      RecruitmentTimelineModel.collection.findOne({ eventId });
+
+    // Before: the field is genuinely absent, which is what `undefined.attempt` was reading.
+    expect(await read('evt-legacy-identity')).not.toHaveProperty('metadata');
+
+    await migrateRecruitmentLegacy();
+
+    const identity = await read('evt-legacy-identity');
+    const note = await read('evt-legacy-note');
+    const interview = await read('evt-legacy-interview');
+    expect(identity?.metadata).toEqual({});
+    expect(note?.metadata).toEqual({});
+    // Untouched: a correct row keeps its real metadata rather than being reset to `{}`.
+    expect(interview?.metadata).toEqual({ attempt: 2, eventName: 'hr.interview.scheduled' });
+
+    // Nothing else on the repaired row moved — same identity, same history, same scope.
+    expect(identity?.eventId).toBe('evt-legacy-identity');
+    expect(identity?.sourceKey).toBe('legacy:identity');
+    expect(identity?.type).toBe('identityVerified');
+    expect(identity?.at).toEqual(base.at);
+
+    // Idempotent, measured rather than asserted by eye: the second pass matches zero documents.
+    const second = await RecruitmentTimelineModel.updateMany(
+      { metadata: { $exists: false } },
+      { $set: { metadata: {} } },
+    ).exec();
+    expect(second.matchedCount).toBe(0);
+    expect(second.modifiedCount).toBe(0);
+
+    await migrateRecruitmentLegacy();
+    expect((await read('evt-legacy-identity'))?.metadata).toEqual({});
+    expect((await read('evt-legacy-interview'))?.metadata).toEqual({
+      attempt: 2,
+      eventName: 'hr.interview.scheduled',
+    });
   });
 });
 

@@ -8,6 +8,9 @@
 // ② Stage collections (screenings, interviews, evaluations, job offers) predate the
 //    denormalized `applicantName` — tables showed bare codes. Backfilled from the applicant
 //    registry so every list shows the person's display name without a join.
+// ②b `hr_recruitment_timeline` — entries written before the schema stopped minimizing lost their
+//    empty `metadata` on the way to the database, so the timeline renderer read `undefined` where
+//    the DTO promises an object. Same `$exists: false` guard, same one-shot shape.
 // ③ Workflow-refactor backfills (§15): attempt markers, placement snapshots, the `pending` →
 //    `waiting` rename, evaluation phase typing, the business-order phase reorder, offer terms,
 //    and the one-shot unique indexes the attempt-based ones replace.
@@ -18,6 +21,7 @@ import { InterviewModel } from './interviews/interview.model';
 import { EvaluationModel } from './evaluations/evaluation.model';
 import { EvaluationPhaseModel } from './evaluations/evaluation-phase.model';
 import { JobOfferModel } from './job-offers/job-offer.model';
+import { RecruitmentTimelineModel } from './timeline/recruitment-timeline.model';
 
 const APPLICANT_FIELD_DEFAULTS: Record<string, unknown> = {
   jobRequisitionId: null,
@@ -420,6 +424,21 @@ export const migrateRecruitmentLegacy = async (): Promise<void> => {
       .exec();
   }
 
-  // ③ Workflow refactor.
+  // ③ Timeline entries stored before `minimize: false` — same class as ①, one collection further
+  //    on. Mongoose minimization dropped an empty `metadata` on the way to the database, so the
+  //    entries written with nothing to add (`identityVerified` and `note`; every other type
+  //    supplies metadata) lack the field the DTO promises. The schema now persists it going
+  //    forward; the rows already stored still need it.
+  //
+  //    `$exists: false` is the whole safety argument: a row that HAS metadata — real or empty —
+  //    does not match, so a populated `{ attempt: n }` can never be reset, and a second run
+  //    matches nothing. It touches one field, no index covers it, and the collection's identity
+  //    and idempotency keys (`eventId`, `sourceKey`) are not in the update.
+  await RecruitmentTimelineModel.updateMany(
+    { metadata: { $exists: false } },
+    { $set: { metadata: {} } },
+  ).exec();
+
+  // ④ Workflow refactor.
   await migrateRecruitmentWorkflow();
 };

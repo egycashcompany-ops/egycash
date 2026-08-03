@@ -25,6 +25,25 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **"Authentication required" after leaving a tab idle — the client raced its own silent
+  refresh.** Returning to an idle tab fired several stale-token requests at once; each ran its
+  own `POST /auth/refresh` with the same single-use cookie, so one rotation won and the rest
+  were rejected (`AUTH_SESSION_REVOKED` — the server's rotation guard doing its job), nulling
+  the in-memory token. Every later request then left **without** an Authorization header and
+  surfaced the middleware's raw `Authentication required`, with no way back but a manual
+  reload. Empirically traced end-to-end against the real auth stack before fixing. Three
+  changes, web only: (1) **single-flight refresh** — concurrent 401s share one in-flight
+  refresh promise, released the moment it settles (a regression spec proves ten concurrent
+  requests produce exactly one refresh and all complete); (2) **organized sign-out** — a
+  definitively failed refresh reports auth loss once (never once per waiter), signs Redux out,
+  clears the query cache and lets `RequireAuth` redirect to `/login` instead of stranding the
+  user on an error screen; (3) `UNAUTHENTICATED` and `AUTH_SESSION_REVOKED` join the bilingual
+  friendly-message table as defence in depth. **Known limitation** (recorded in the auth
+  design's review trail): two *separate tabs* refreshing in the same instant still race
+  cross-tab — single-flight cannot span JS memories; the proposed server-side fix (a short
+  post-rotation grace window answering the previous token with the current one) is documented,
+  deliberately not implemented here.
+
 - **Every api entrypoint crashed at startup — `npm run dev`, `seed` and `seed:demo` died before
   their first line of logic.** The automation barrel re-exported `runProviderConformance`, whose
   `vitest` import throws the moment it is loaded outside a vitest run, and the barrel sits in the

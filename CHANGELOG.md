@@ -11,6 +11,17 @@ its entry here in the same PR.
 
 ### Added
 
+- **IT module — Architecture & Domain Design (design only, no implementation).**
+  `docs/12-planning/it-module-design.md` covers the full MVP surface — asset management with QR
+  identification and custody lifecycle, help desk with SLA, preventive/corrective maintenance
+  with a minimal spare-parts ledger, software and license management, warranty and vendors, and
+  the module dashboards — as entities, relationships, workflows, permissions, events, APIs,
+  audit actions and the three ADRs implementation will record. Every capability rests on an
+  existing platform service (RBAC, data scopes, audit, files, notifications, event bus,
+  automation, scheduler, settings, sequences, PDF, QR, navigation, web kit); the document's §1
+  is the reuse contract that keeps it that way. Draft v1.0, awaiting owner review — nothing is
+  implemented before approval.
+
 - **`npm run seed:demo` — sixty synthetic candidates, ten resting at each recruitment stage.** The
   boards, queues and counters had nothing to show on a fresh database. The demo cohorts sit at the
   ID gate, in screening, at the first interview, at the open evaluations, holding a sent offer, and

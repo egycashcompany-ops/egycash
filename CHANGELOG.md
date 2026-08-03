@@ -25,6 +25,19 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **Every api entrypoint crashed at startup — `npm run dev`, `seed` and `seed:demo` died before
+  their first line of logic.** The automation barrel re-exported `runProviderConformance`, whose
+  `vitest` import throws the moment it is loaded outside a vitest run, and the barrel sits in the
+  runtime graph: server, worker and both seed CLIs load it through `moduleManifests` regardless of
+  the `AUTOMATION_ENABLED` flag (the flag withholds the manifest, not the module file). Nothing
+  consumed the re-export — both provider spec files already import `provider-conformance` directly
+  — so it is simply removed, and the docs snippet that recommended the barrel import for future
+  providers now shows the direct one. A new `runtime-import-safety.spec.ts` loads the shared
+  entrypoint graph in a clean subprocess (Node + tsx, exactly how the package scripts load it), so
+  any future test-only import reachable from the runtime graph fails the unit suite instead of
+  taking the platform down. In effect since the A-5 automation merge (#112); surfaced on the first
+  `npm run seed` after it.
+
 - **Opening a candidate crashed once their history held an entry with no metadata.** The timeline
   schema declares `metadata` as required with a `{}` default, but Mongoose minimization deletes
   empty objects on the way to the database — so the two writers that pass none (`identityVerified`

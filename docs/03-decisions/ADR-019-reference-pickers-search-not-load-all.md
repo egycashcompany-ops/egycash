@@ -85,6 +85,28 @@ catalog, not a rendering of it.**
    employees, vehicles and applicants all can. Where a bounded set is loaded, it must still be
    requested with `MAX_PAGE_SIZE` from `@ecms/contracts`, never a hand-written number.
 
+5. **NEW CODE MAY NOT USE "LOAD ALL + FILTER IN THE BROWSER". EVER.** This rule is forward-looking
+   and binds every module from here on, including ones not yet designed. A reference picker
+   introduced from this ADR onward ships with **server-side search from its first commit** — it is
+   not acceptable to start with a full fetch "because the catalog is small today" and convert it
+   later. The debt catalogued below is what that shortcut already cost once; it is not a precedent.
+
+   Concretely, in a new picker:
+
+   - **Forbidden:** fetching a list with a large `pageSize` and narrowing it with
+     `.filter(…)`/`.includes(…)` in the component, in a `useMemo`, or in a `select:` transform.
+   - **Required:** the term goes to the server as `search`, the response is a small page, and the
+     currently-selected record is resolved by id.
+   - **If a resource has no `search` parameter yet**, add it to that resource's list contract and
+     service as part of the work that needs the picker — that is the correct place for the cost,
+     and it is a smaller change than any of the alternatives rejected below. It is never a reason
+     to fall back to loading everything.
+
+   Reviewers: a new `pageSize` above the default in web code, or a client-side filter over a
+   fetched catalog, is a **blocking** review comment under Development Workflow §4, not a
+   suggestion. The only exemption is rule 4's bounded reference sets, and the PR must say which
+   business fact bounds the set.
+
 ## Consequences
 
 **Positive.** Correctness stops depending on catalog size; the operator gets typeahead over the
@@ -103,6 +125,9 @@ which will be hit by whichever customer grows first, and will present as "the sy
 titles" rather than as an error anyone can see.
 
 ## Scope of the debt today
+
+Everything in this section is **existing** code, grandfathered pending conversion. Rule 5 means
+nothing new joins this table.
 
 Twenty files request a full page of options. Most are bounded reference sets and are fine under
 rule 4. The ones that fail the growth test, in priority order:
@@ -156,7 +181,8 @@ functioning: the requests were being rejected outright, so the dropdowns were em
    permission gate + RTL + empty/no-access states), leaving `UserPicker` as a thin wrapper so its
    behaviour is the one implementation.
 2. Convert the position/title pickers, then `VehicleSelect` and the Fleet vehicle filters.
-3. Add a lint rule or a review check for `pageSize:` literals in web code, so the next picker
-   cannot reintroduce a hand-written page size.
+3. Add a lint rule for `pageSize:` literals in web code, so rule 5 is enforced by the toolchain
+   rather than by reviewer attention — the failure mode this ADR exists to prevent is precisely the
+   one that survives a busy review.
 4. Confirm every converted resource's `search` covers the fields an operator would actually type
    (code and both name locales), and that the fields are indexed.

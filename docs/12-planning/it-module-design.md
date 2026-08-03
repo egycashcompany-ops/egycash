@@ -1,9 +1,9 @@
 # IT Module — Architecture & Domain Design
 
-**Status:** **DRAFT — for Architecture Review** (2026-08-03). Nothing in this document is
-implemented; no contracts, no collections, no routes, no frontend exist. Implementation starts
-only after the owner approves this design, and this document is then frozen exactly as the Fleet
-design was (revision trail in §17).
+**Status:** **FROZEN v1.2** (2026-08-03) — owner-approved; the single reference for IT
+implementation. §13's defaults are adopted as decisions. Any deviation or discovery that needs
+an architectural change is raised as a Design Review or a new ADR **before** implementation,
+never during it, and lands as a new revision in §17.
 **Methodology:** same as HR and Fleet — design first, owner approval, then delivery in reviewed
 slices, each extending one module manifest.
 **MVP scope (owner-defined):** Asset Management · Help Desk · Maintenance · Software & Licenses ·
@@ -498,9 +498,9 @@ precedent; `itAsset.export`).
 Every list obeys API Standards §4 (pagination, `search` where a picker will need it — assets,
 vendors, products, parts ship with `search` from day one, per ADR-019 rule 5).
 
-## 13. Open questions (owner decisions — defaults apply unless changed at approval)
+## 13. Open questions — **decided at approval (2026-08-03): every default below is adopted as-is**
 
-| # | Question | Default in this design |
+| # | Question | Decision (was: default) |
 |---|---|---|
 | Q1 | Code formats — keep `AST-/TKT-/MO-` global? per-category prefixes? yearly ticket reset? | global, no reset (§2.1) |
 | Q2 | Asset categories flat or tree? | flat (§2.4) |
@@ -570,3 +570,6 @@ starts only on an explicit owner GO.
   (workflow/approval engine, timeline kit, expiry-watcher seam, external-party registry) as a
   prioritized roadmap with kind, extraction-compatibility answer, slice-cost and trigger for
   each. No scope or structure change. This is the final pre-approval revision.
+- **v1.2 FROZEN** (2026-08-03) — owner approval. §13's nine defaults adopted as decisions,
+  unchanged. Implementation begins with IT-1 and only IT-1; design changes from here require a
+  Design Review or new ADR before any code, recorded as a new revision here.

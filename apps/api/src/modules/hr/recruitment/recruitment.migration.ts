@@ -425,9 +425,15 @@ export const migrateRecruitmentLegacy = async (): Promise<void> => {
   }
 
   // ③ Timeline entries stored before `minimize: false` — same class as ①, one collection further
-  //    on. Mongoose minimization dropped an empty `metadata` on the way to the database, so every
-  //    entry whose writer had nothing to add (`applied`, `identityVerified`, `note`) is stored
-  //    without the field the DTO promises. The schema now persists it; these rows still need it.
+  //    on. Mongoose minimization dropped an empty `metadata` on the way to the database, so the
+  //    entries written with nothing to add (`identityVerified` and `note`; every other type
+  //    supplies metadata) lack the field the DTO promises. The schema now persists it going
+  //    forward; the rows already stored still need it.
+  //
+  //    `$exists: false` is the whole safety argument: a row that HAS metadata — real or empty —
+  //    does not match, so a populated `{ attempt: n }` can never be reset, and a second run
+  //    matches nothing. It touches one field, no index covers it, and the collection's identity
+  //    and idempotency keys (`eventId`, `sourceKey`) are not in the update.
   await RecruitmentTimelineModel.updateMany(
     { metadata: { $exists: false } },
     { $set: { metadata: {} } },

@@ -133,11 +133,15 @@ const timelineSchema = new Schema<RecruitmentTimelineDoc>(
     ...baseFields,
   },
   // `minimize: false` is load-bearing, not a preference. Mongoose minimization DELETES empty
-  // objects on the way to the database, so an entry written with no metadata — `applied`,
-  // `identityVerified`, `note`, every entry whose writer has nothing to add — was stored with no
-  // `metadata` field at all, while an interview entry carrying `{ attempt: n }` kept it. Reads are
-  // `.lean()`, which returns raw BSON and applies no schema default, so those entries came back
-  // with `metadata: undefined` and broke the DTO's `metadata: Record<string, unknown>` guarantee.
+  // objects on the way to the database, so an entry written with no metadata was stored with no
+  // `metadata` field at all. Reads are `.lean()`, which returns raw BSON and applies no schema
+  // default, so it came back `undefined` and broke the DTO's `Record<string, unknown>` guarantee.
+  //
+  // Two writers hit that today — `identityVerified` and `note` — because everything else supplies
+  // metadata: the workflow projection stamps `{ eventId, eventName, ...payload }` on all 25
+  // projected types, and `applied` / `placementChange` / `returnedToStage` each pass their own.
+  // The guarantee cannot rest on that: any future writer is entitled to add nothing, and the
+  // schema is what has to hold the promise the DTO makes.
   { ...baseSchemaOptions, minimize: false },
 );
 

@@ -40,6 +40,7 @@ import {
   HrRecruitmentWorkflowEvents,
   HrWorkflowEngineEvents,
 } from '../modules/hr-recruitment-workflow.js';
+import { FleetEvents } from '../modules/fleet.js';
 
 const HR_EVENT_CONSTANTS = [
   HrEvents,
@@ -56,6 +57,36 @@ const HR_EVENT_CONSTANTS = [
   HrLeaveEvents,
   HrContractEvents,
 ].flatMap((group) => Object.values(group));
+
+const FLEET_EVENT_CONSTANTS = Object.values(FleetEvents);
+// Promoted to stable by the slices that added their emit sites (FL-2..FL-6). All 22 are
+// stable — FLEET_PLANNED below derives to empty, which is the point: nothing fleet remains
+// declared-but-unpublished.
+const FLEET_STABLE = new Set<string>([
+  FleetEvents.VehicleCreated,
+  FleetEvents.VehicleUpdated,
+  FleetEvents.VehicleStatusChanged,
+  FleetEvents.UnavailabilityRecorded,
+  FleetEvents.UnavailabilityEnded,
+  FleetEvents.OdometerRecorded,
+  FleetEvents.OdometerCorrected,
+  FleetEvents.MaintenanceCheckedIn,
+  FleetEvents.MaintenanceCheckedOut,
+  FleetEvents.MaintenanceReopened,
+  FleetEvents.MaintenanceAlarmRaised,
+  FleetEvents.VehicleLicenseExpiring,
+  FleetEvents.VehicleLicenseExpired,
+  FleetEvents.DriverLicenseExpiring,
+  FleetEvents.DriverLicenseExpired,
+  FleetEvents.RosterPlanned,
+  FleetEvents.AssignmentChanged,
+  FleetEvents.AccidentRecorded,
+  FleetEvents.AccidentClosed,
+  FleetEvents.AccidentReopened,
+  FleetEvents.ViolationRecorded,
+  FleetEvents.GrievanceApplied,
+]);
+const FLEET_PLANNED = FLEET_EVENT_CONSTANTS.filter((name) => !FLEET_STABLE.has(name));
 
 const ALL_SCHEMAS: Record<string, z.ZodTypeAny | null> = {
   ...PLATFORM_EVENT_PAYLOAD_SCHEMAS,
@@ -79,11 +110,21 @@ describe('coverage', () => {
     }
   });
 
+  it('catalogues every Fleet event', () => {
+    for (const name of FLEET_EVENT_CONSTANTS) {
+      expect(isCatalogedEventName(name), `${name} is not catalogued`).toBe(true);
+    }
+  });
+
   it('invents nothing — every catalogued name is a declared event constant', () => {
     // An automation may only subscribe to what a publisher emits. A name in the catalogue that
     // no module declares would be a trigger that can never fire, and the workflow built on it
     // would sit enabled and silent forever.
-    const declared = new Set<string>([...Object.values(PlatformEvents), ...HR_EVENT_CONSTANTS]);
+    const declared = new Set<string>([
+      ...Object.values(PlatformEvents),
+      ...HR_EVENT_CONSTANTS,
+      ...FLEET_EVENT_CONSTANTS,
+    ]);
     for (const name of eventCatalogNames()) {
       expect(declared.has(name), `${name} is catalogued but declared nowhere`).toBe(true);
     }
@@ -212,7 +253,10 @@ describe('buildEventCatalog', () => {
     // A module can ship an event before it ships a payload contract. Saying "no fields declared"
     // is honest; inventing a field list would not be, and refusing to build would take the whole
     // trigger picker down over one module's omission.
-    const [entry] = buildEventCatalog({ moduleId: 'fleet', schemas: { 'fleet.vehicle.assigned': null } });
+    const [entry] = buildEventCatalog({
+      moduleId: 'fleet',
+      schemas: { 'fleet.vehicle.assigned': null },
+    });
     expect(entry?.payloadDeclared).toBe(false);
     expect(entry?.fields).toEqual([]);
     expect(entry?.sample).toBeNull();
@@ -295,15 +339,17 @@ describe('lifecycle', () => {
     // A workflow on an unpublished event is enabled and silent forever — the failure mode with no
     // error anywhere. The publisher test in `apps/api` is what keeps this list true.
     const planned = EVENT_CATALOG.filter((entry) => entry.status === 'planned');
-    expect(planned.map((entry) => entry.name).sort()).toEqual([
-      'hr.applicant.returnedToStage',
-      'hr.evaluation.opened',
-    ]);
+    // FL-1 declared the whole fleet surface ahead of its publishers; FL-2.. promote each name
+    // to stable as its emit site lands, so 'planned' = the two HR stragglers + unshipped fleet.
+    expect(planned.map((entry) => entry.name).sort()).toEqual(
+      ['hr.applicant.returnedToStage', 'hr.evaluation.opened', ...FLEET_PLANNED].sort(),
+    );
   });
 
   it('excludes planned events from the stable list', () => {
     expect(stableEventNames()).not.toContain('hr.evaluation.opened');
-    expect(stableEventNames().length).toBe(EVENT_CATALOG.length - 2);
+    expect(stableEventNames()).not.toContain('hr.applicant.returnedToStage');
+    expect(stableEventNames().length).toBe(EVENT_CATALOG.length - 2 - FLEET_PLANNED.length);
   });
 
   it('flags the names with a second publisher and a different payload shape', () => {
@@ -340,8 +386,8 @@ describe('JSON Schema', () => {
   });
 
   it('describes a nullable field as a type union, not as optional', () => {
-    const applicantId = eventCatalogEntry('hr.employee.created')?.jsonSchema?.properties
-      ?.applicantId;
+    const applicantId =
+      eventCatalogEntry('hr.employee.created')?.jsonSchema?.properties?.applicantId;
     expect(applicantId?.type).toEqual(['string', 'null']);
     expect(eventCatalogEntry('hr.employee.created')?.jsonSchema?.required).toContain('applicantId');
   });
@@ -364,7 +410,8 @@ describe('JSON Schema', () => {
   });
 
   it('nests object properties rather than flattening them', () => {
-    const entityRef = eventCatalogEntry('platform.file.uploaded')?.jsonSchema?.properties?.entityRef;
+    const entityRef =
+      eventCatalogEntry('platform.file.uploaded')?.jsonSchema?.properties?.entityRef;
     expect(entityRef?.type).toBe('object');
     expect(Object.keys(entityRef?.properties ?? {})).toEqual([
       'moduleId',

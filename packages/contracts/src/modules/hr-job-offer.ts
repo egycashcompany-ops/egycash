@@ -40,7 +40,13 @@ export const OFFER_STATUSES = [
 export const OfferStatusSchema = z.enum(OFFER_STATUSES);
 export type OfferStatus = z.infer<typeof OfferStatusSchema>;
 
-export const EMPLOYMENT_TYPES = ['fullTime', 'partTime', 'temporary', 'contract', 'internship'] as const;
+export const EMPLOYMENT_TYPES = [
+  'fullTime',
+  'partTime',
+  'temporary',
+  'contract',
+  'internship',
+] as const;
 export const EmploymentTypeSchema = z.enum(EMPLOYMENT_TYPES);
 export type EmploymentType = z.infer<typeof EmploymentTypeSchema>;
 

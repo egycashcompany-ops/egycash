@@ -14,24 +14,34 @@ describe('CreateEvaluationPhaseSchema', () => {
 
   it('rejects a malformed key and an out-of-range order', () => {
     expect(
-      CreateEvaluationPhaseSchema.safeParse({ key: '1bad', name: { en: 'x', ar: 'x' }, order: 1 }).success,
+      CreateEvaluationPhaseSchema.safeParse({ key: '1bad', name: { en: 'x', ar: 'x' }, order: 1 })
+        .success,
     ).toBe(false);
     expect(
-      CreateEvaluationPhaseSchema.safeParse({ key: 'ok', name: { en: 'x', ar: 'x' }, order: 0 }).success,
+      CreateEvaluationPhaseSchema.safeParse({ key: 'ok', name: { en: 'x', ar: 'x' }, order: 0 })
+        .success,
     ).toBe(false);
   });
 });
 
 describe('DecideEvaluationSchema', () => {
   it('requires a reason to reject', () => {
-    expect(DecideEvaluationSchema.safeParse({ decision: 'rejected', version: 0 }).success).toBe(false);
+    expect(DecideEvaluationSchema.safeParse({ decision: 'rejected', version: 0 }).success).toBe(
+      false,
+    );
     expect(
-      DecideEvaluationSchema.safeParse({ decision: 'rejected', reason: 'failed medical', version: 0 }).success,
+      DecideEvaluationSchema.safeParse({
+        decision: 'rejected',
+        reason: 'failed medical',
+        version: 0,
+      }).success,
     ).toBe(true);
   });
 
   it('does not require a reason to approve', () => {
-    expect(DecideEvaluationSchema.safeParse({ decision: 'approved', version: 2 }).success).toBe(true);
+    expect(DecideEvaluationSchema.safeParse({ decision: 'approved', version: 2 }).success).toBe(
+      true,
+    );
   });
 
   it('rejects unknown keys', () => {

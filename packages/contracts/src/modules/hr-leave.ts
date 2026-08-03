@@ -181,7 +181,11 @@ export const CreateHolidaySchema = z
 export type CreateHoliday = z.infer<typeof CreateHolidaySchema>;
 
 export const UpdateHolidaySchema = z
-  .object({ date: z.coerce.date().optional(), name: LocalizedStringSchema.optional(), version: z.number().int().min(0) })
+  .object({
+    date: z.coerce.date().optional(),
+    name: LocalizedStringSchema.optional(),
+    version: z.number().int().min(0),
+  })
   .strict();
 export type UpdateHoliday = z.infer<typeof UpdateHolidaySchema>;
 
@@ -221,7 +225,12 @@ export type LeaveRequestStatus = z.infer<typeof LeaveRequestStatusSchema>;
 
 export const LEAVE_PENDING_STATUSES = ['pendingManager', 'pendingHr'] as const;
 /** Requests that occupy days (overlap checks + reservation): everything not terminalized. */
-export const LEAVE_BLOCKING_STATUSES = ['pendingManager', 'pendingHr', 'approved', 'active'] as const;
+export const LEAVE_BLOCKING_STATUSES = [
+  'pendingManager',
+  'pendingHr',
+  'approved',
+  'active',
+] as const;
 
 export const CreateLeaveRequestSchema = z
   .object({
@@ -237,11 +246,17 @@ export const CreateLeaveRequestSchema = z
     reason: z.string().max(1000).optional(),
   })
   .strict()
-  .refine((v) => v.startDate <= v.endDate, { message: 'startDate must be ≤ endDate', path: ['endDate'] })
-  .refine((v) => !(v.halfDayStart && v.halfDayEnd && v.startDate.getTime() === v.endDate.getTime()), {
-    message: 'a single day cannot be two half-days',
-    path: ['halfDayEnd'],
-  });
+  .refine((v) => v.startDate <= v.endDate, {
+    message: 'startDate must be ≤ endDate',
+    path: ['endDate'],
+  })
+  .refine(
+    (v) => !(v.halfDayStart && v.halfDayEnd && v.startDate.getTime() === v.endDate.getTime()),
+    {
+      message: 'a single day cannot be two half-days',
+      path: ['halfDayEnd'],
+    },
+  );
 export type CreateLeaveRequest = z.infer<typeof CreateLeaveRequestSchema>;
 
 export const DecideLeaveRequestSchema = z
@@ -379,7 +394,9 @@ export const AdjustLeaveBalanceSchema = z
     /** Signed, half-day granularity. */
     days: z
       .number()
-      .refine((d) => d !== 0 && Number.isInteger(d * 2), { message: 'non-zero, in half-day steps' }),
+      .refine((d) => d !== 0 && Number.isInteger(d * 2), {
+        message: 'non-zero, in half-day steps',
+      }),
     reason: z.string().min(3).max(500),
   })
   .strict();

@@ -131,9 +131,7 @@ export const TransferAutomationWorkflowSchema = z
   .strict();
 export type TransferAutomationWorkflow = z.infer<typeof TransferAutomationWorkflowSchema>;
 
-export const RunAutomationWorkflowSchema = z
-  .object({ input: z.unknown().optional() })
-  .strict();
+export const RunAutomationWorkflowSchema = z.object({ input: z.unknown().optional() }).strict();
 export type RunAutomationWorkflow = z.infer<typeof RunAutomationWorkflowSchema>;
 
 export const ListAutomationWorkflowsQuerySchema = PaginationQuerySchema.extend({

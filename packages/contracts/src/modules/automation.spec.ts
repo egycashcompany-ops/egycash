@@ -214,9 +214,9 @@ describe('AutomationTemplatePackageSchema', () => {
   });
 
   it('requires a semantic version, because the catalogue keeps every version', () => {
-    expect(AutomationTemplatePackageSchema.safeParse(templatePackage({ version: '1.2' })).success).toBe(
-      false,
-    );
+    expect(
+      AutomationTemplatePackageSchema.safeParse(templatePackage({ version: '1.2' })).success,
+    ).toBe(false);
     expect(
       AutomationTemplatePackageSchema.safeParse(templatePackage({ version: '1.2.0-rc.1' })).success,
     ).toBe(true);

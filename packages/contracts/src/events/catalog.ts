@@ -118,6 +118,23 @@ import {
   ContractSupersededPayloadV1,
   ContractTerminatedPayloadV1,
 } from '../modules/hr-contract.js';
+import {
+  FleetEvents,
+  type FleetEventName,
+  FleetAccidentPayloadV1,
+  FleetAssignmentChangedPayloadV1,
+  FleetGrievanceAppliedPayloadV1,
+  FleetLicenseExpiryPayloadV1,
+  FleetMaintenanceAlarmPayloadV1,
+  FleetMaintenancePayloadV1,
+  FleetOdometerCorrectedPayloadV1,
+  FleetOdometerRecordedPayloadV1,
+  FleetRosterPlannedPayloadV1,
+  FleetUnavailabilityPayloadV1,
+  FleetVehicleEventPayloadV1,
+  FleetVehicleStatusChangedPayloadV1,
+  FleetViolationRecordedPayloadV1,
+} from '../modules/fleet.js';
 
 // ── The shape a consumer sees ───────────────────────────────────────────────
 
@@ -509,6 +526,7 @@ export const EVENT_MODULE_NAMES: Readonly<Record<string, LocalizedString>> = {
   platform: { en: 'Platform', ar: 'المنصة' },
   hr: { en: 'Human Resources', ar: 'الموارد البشرية' },
   automation: { en: 'Automation', ar: 'الأتمتة' },
+  fleet: { en: 'Fleet', ar: 'الحركة' },
 };
 
 export const EVENT_ENTITY_NAMES: Readonly<Record<string, LocalizedString>> = {
@@ -536,6 +554,18 @@ export const EVENT_ENTITY_NAMES: Readonly<Record<string, LocalizedString>> = {
   hiringDocuments: { en: 'Hiring documents', ar: 'مستندات التعيين' },
   leave: { en: 'Leave', ar: 'إجازة' },
   contract: { en: 'Contract', ar: 'عقد' },
+  // fleet
+  vehicle: { en: 'Vehicle', ar: 'سيارة' },
+  odometer: { en: 'Odometer', ar: 'عداد المسافة' },
+  maintenance: { en: 'Maintenance visit', ar: 'زيارة صيانة' },
+  maintenanceAlarm: { en: 'Maintenance alarm', ar: 'إنذار صيانة' },
+  vehicleLicense: { en: 'Vehicle license', ar: 'رخصة سيارة' },
+  driverLicense: { en: 'Driving license', ar: 'رخصة قيادة' },
+  roster: { en: 'Duty roster', ar: 'تعيين اليوم' },
+  assignment: { en: 'Duty assignment', ar: 'تكليف' },
+  driverUnavailability: { en: 'Driver unavailability', ar: 'عدم إتاحة سائق' },
+  accident: { en: 'Accident', ar: 'حادث' },
+  violation: { en: 'Violation', ar: 'مخالفة' },
 };
 
 export const EVENT_ACTION_NAMES: Readonly<Record<string, LocalizedString>> = {
@@ -602,6 +632,15 @@ export const EVENT_ACTION_NAMES: Readonly<Record<string, LocalizedString>> = {
   amended: { en: 'amended', ar: 'تعديل' },
   renewed: { en: 'renewed', ar: 'تجديد' },
   terminated: { en: 'terminated', ar: 'إنهاء' },
+  // fleet
+  recorded: { en: 'recorded', ar: 'تسجيل' },
+  corrected: { en: 'corrected', ar: 'تصحيح' },
+  checkedIn: { en: 'checked in', ar: 'دخول' },
+  checkedOut: { en: 'checked out', ar: 'خروج' },
+  raised: { en: 'raised', ar: 'رفع' },
+  expiring: { en: 'expiring soon', ar: 'قرب انتهاء' },
+  planned: { en: 'planned', ar: 'تخطيط' },
+  grievanceApplied: { en: 'grievance applied', ar: 'تطبيق تظلم' },
 };
 
 /**
@@ -686,6 +725,11 @@ export const EVENT_LIFECYCLE: Readonly<
   // publisher fails the suite until it is promoted to `stable`.
   'hr.applicant.returnedToStage': { status: 'planned' },
   'hr.evaluation.opened': { status: 'planned' },
+  // Fleet (FL-1): the whole surface was declared ahead of its publishers — FL-2..FL-6 promoted
+  // each name to `stable` as its emit site landed, and the publisher test enforces the promotion.
+  // FL-2 `fleet.vehicle.*`; FL-3 `fleet.driverUnavailability.*`; FL-4 odometer, maintenance,
+  // maintenanceAlarm and both license surfaces; FL-5 roster + assignment; FL-6 accident +
+  // violation. All 22 fleet events are stable — the module's automation surface is complete.
 };
 
 /**
@@ -835,9 +879,7 @@ export type HrCatalogEventName =
   | HrLeaveEventName
   | HrContractEventName;
 
-export const HR_EVENT_PAYLOAD_SCHEMAS: Readonly<
-  Record<HrCatalogEventName, z.ZodTypeAny | null>
-> = {
+export const HR_EVENT_PAYLOAD_SCHEMAS: Readonly<Record<HrCatalogEventName, z.ZodTypeAny | null>> = {
   [HrEvents.ApplicantCreated]: ApplicantEventPayloadV1,
   [HrEvents.ApplicantUpdated]: ApplicantEventPayloadV1,
   [HrEvents.ApplicantIdentityVerified]: ApplicantEventPayloadV1,
@@ -935,11 +977,42 @@ export const HR_EVENT_SOURCE: EventCatalogSource = {
   schemas: HR_EVENT_PAYLOAD_SCHEMAS,
 };
 
+export const FLEET_EVENT_PAYLOAD_SCHEMAS: Readonly<Record<FleetEventName, z.ZodTypeAny | null>> = {
+  [FleetEvents.VehicleCreated]: FleetVehicleEventPayloadV1,
+  [FleetEvents.VehicleUpdated]: FleetVehicleEventPayloadV1,
+  [FleetEvents.VehicleStatusChanged]: FleetVehicleStatusChangedPayloadV1,
+  [FleetEvents.OdometerRecorded]: FleetOdometerRecordedPayloadV1,
+  [FleetEvents.OdometerCorrected]: FleetOdometerCorrectedPayloadV1,
+  [FleetEvents.MaintenanceCheckedIn]: FleetMaintenancePayloadV1,
+  [FleetEvents.MaintenanceCheckedOut]: FleetMaintenancePayloadV1,
+  [FleetEvents.MaintenanceReopened]: FleetMaintenancePayloadV1,
+  [FleetEvents.MaintenanceAlarmRaised]: FleetMaintenanceAlarmPayloadV1,
+  [FleetEvents.VehicleLicenseExpiring]: FleetLicenseExpiryPayloadV1,
+  [FleetEvents.VehicleLicenseExpired]: FleetLicenseExpiryPayloadV1,
+  [FleetEvents.DriverLicenseExpiring]: FleetLicenseExpiryPayloadV1,
+  [FleetEvents.DriverLicenseExpired]: FleetLicenseExpiryPayloadV1,
+  [FleetEvents.RosterPlanned]: FleetRosterPlannedPayloadV1,
+  [FleetEvents.AssignmentChanged]: FleetAssignmentChangedPayloadV1,
+  [FleetEvents.UnavailabilityRecorded]: FleetUnavailabilityPayloadV1,
+  [FleetEvents.UnavailabilityEnded]: FleetUnavailabilityPayloadV1,
+  [FleetEvents.AccidentRecorded]: FleetAccidentPayloadV1,
+  [FleetEvents.AccidentClosed]: FleetAccidentPayloadV1,
+  [FleetEvents.AccidentReopened]: FleetAccidentPayloadV1,
+  [FleetEvents.ViolationRecorded]: FleetViolationRecordedPayloadV1,
+  [FleetEvents.GrievanceApplied]: FleetGrievanceAppliedPayloadV1,
+};
+
+export const FLEET_EVENT_SOURCE: EventCatalogSource = {
+  moduleId: 'fleet',
+  schemas: FLEET_EVENT_PAYLOAD_SCHEMAS,
+};
+
 // ── The catalogue ───────────────────────────────────────────────────────────
 
 export const EVENT_CATALOG: readonly EventCatalogEntry[] = buildEventCatalog(
   PLATFORM_EVENT_SOURCE,
   HR_EVENT_SOURCE,
+  FLEET_EVENT_SOURCE,
 );
 
 const CATALOG_BY_NAME: ReadonlyMap<string, EventCatalogEntry> = new Map(
@@ -983,7 +1056,9 @@ export const EVENT_CATALOG_VERSION = '1.0.0';
  * detects change, it does not authenticate it — and `@ecms/contracts` is bundled for the browser,
  * so `node:crypto` is not available here.
  */
-export const eventCatalogDigest = (entries: readonly EventCatalogEntry[] = EVENT_CATALOG): string => {
+export const eventCatalogDigest = (
+  entries: readonly EventCatalogEntry[] = EVENT_CATALOG,
+): string => {
   const text = JSON.stringify(entries);
   let hash = 0x811c9dc5;
   for (let i = 0; i < text.length; i += 1) {

@@ -96,10 +96,17 @@ export const canTransitionEmployeeStatus = (from: EmployeeStatus, to: EmployeeSt
 export const employeeBaseStatus = (
   probation: { confirmedAt: string | Date | null; failed: boolean } | null,
 ): 'probation' | 'active' =>
-  probation !== null && probation.confirmedAt === null && !probation.failed ? 'probation' : 'active';
+  probation !== null && probation.confirmedAt === null && !probation.failed
+    ? 'probation'
+    : 'active';
 
 /** Statuses that count as "employed" (the Employees list default view). */
-export const EMPLOYED_STATUSES: readonly EmployeeStatus[] = ['probation', 'active', 'onLeave', 'suspended'];
+export const EMPLOYED_STATUSES: readonly EmployeeStatus[] = [
+  'probation',
+  'active',
+  'onLeave',
+  'suspended',
+];
 
 // ── Personal data (owned by the employee AFTER hire) ────────────────────────
 // Copied ONCE from the applicant at hire (snapshot-then-own — the applicant record stays

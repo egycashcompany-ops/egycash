@@ -3,6 +3,7 @@
 import { env } from '../infrastructure/config/env';
 import { type ModuleManifest } from '../platform/kernel/module-registry';
 import { hrModule } from './hr/hr.module';
+import { fleetModule } from './fleet/fleet.module';
 import { automationModule } from './automation/automation.module';
 
 /**
@@ -13,5 +14,6 @@ import { automationModule } from './automation/automation.module';
  */
 export const moduleManifests: ModuleManifest[] = [
   hrModule,
+  fleetModule,
   ...(env.AUTOMATION_ENABLED ? [automationModule] : []),
 ];

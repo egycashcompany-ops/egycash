@@ -53,7 +53,9 @@ export const UploadEmployeeFileDocumentSchema = z
 export type UploadEmployeeFileDocument = z.infer<typeof UploadEmployeeFileDocumentSchema>;
 
 /** Remove a document from the Employee File (its independent copy — never the original). */
-export const RemoveEmployeeFileDocumentSchema = z.object({ version: z.number().int().min(0) }).strict();
+export const RemoveEmployeeFileDocumentSchema = z
+  .object({ version: z.number().int().min(0) })
+  .strict();
 export type RemoveEmployeeFileDocument = z.infer<typeof RemoveEmployeeFileDocumentSchema>;
 
 export const ListEmployeeFilesQuerySchema = PaginationQuerySchema.extend({
@@ -142,7 +144,8 @@ export const HrEmployeeFileEvents = {
   Created: 'hr.employeeFile.created',
   NoteAdded: 'hr.employeeFile.noteAdded',
 } as const;
-export type HrEmployeeFileEventName = (typeof HrEmployeeFileEvents)[keyof typeof HrEmployeeFileEvents];
+export type HrEmployeeFileEventName =
+  (typeof HrEmployeeFileEvents)[keyof typeof HrEmployeeFileEvents];
 
 export const EmployeeFileEventPayloadV1 = z.object({
   employeeFileId: objectId(),

@@ -29,7 +29,7 @@ its entry here in the same PR.
   returns reason codes — `too_small`, `blurred`, `glare`, `low_contrast`, `card_not_located` — so the
   UI can say what to change instead of "could not read the card". It does not discard the read:
   fields still come back, with the capture's verdict capping their confidence. A blurred crop can
-  make recognition *more* confident, not less, so the photograph gets the final word and only ever
+  make recognition _more_ confident, not less, so the photograph gets the final word and only ever
   downward.
 
   Field boxes are no longer trusted blindly. Detection runs once per side and each box is snapped
@@ -66,6 +66,312 @@ its entry here in the same PR.
 
 ### Added
 
+- **The Fleet web module exists (FW-1) and opens on a live dashboard (FW-2) — built exactly
+  like the HR modules, with nothing unfinished ever shown to a user.** The module loads as one
+  lazy chunk behind the platform shell; navigation stays data-driven, and per the owner's
+  review rule a page joins the sidebar catalog and the route table only in the slice that ships
+  it — an unshipped URL is a plain 404, never a "coming soon". The boot catalog sync gained a
+  Fleet category carrying exactly the shipped surface (Fleet Home today), strictly additive, so
+  each slice's rows reach existing installs on next start with admin customizations untouched.
+  All labels ship in Arabic and English; RTL comes from the platform frame.
+
+  `/fleet` is a real dashboard, not a link grid: four KPIs — active vehicles, vehicles in the
+  workshop (open visits), derived maintenance alarms with the red count, open accident files —
+  and two boards: the alarm list in triage order (red first, most-overdue first) and vehicle
+  licenses expiring within 60 days with already-expired ones flagged. Every number is a server
+  fact from the FL-2…FL-6 APIs; each card gates its own §7 permission, so queries never fire
+  for cards the user cannot see, and an account with no fleet permissions gets one honest empty
+  state. The data foundation for every coming slice landed alongside: a typed API client
+  covering the whole backend surface plus TanStack Query hooks on the platform key factory —
+  no mock data exists anywhere in the module. Five glyphs (truck, gauge, wrench, calendar, cog)
+  joined the shared icon set and the sidebar registry — `calendar` also repairs the Leave app's
+  icon, which had referenced a name the registry never knew.
+
+  The vehicles registry followed (FW-3) in the HR list-page idiom exactly: URL-synchronized
+  search (the four physical identifiers, matched server-side), status/type/branch filters,
+  sortable columns, and pagination — deep-linkable and back/forward-aware. The derived
+  in-workshop pill sits beside the lifecycle badge and expired licenses show red in place.
+  Create and edit share one dialog where a cleared optional field submits as null — an erased
+  fact, not an untouched one; the status dialog offers only the transitions the lifecycle
+  allows, demands a reason whenever a vehicle leaves active service, and says plainly that
+  disposal cannot be undone; deletion confirms with the audit-trail note. Every action stands
+  behind its own permission.
+
+  The vehicle profile (FW-4) completes the pair — reached through an explicit View action in
+  the list's actions column, never by clicking the row (the owner's module-wide rule: no
+  accidental navigation, and row selection stays free for later). The profile shows the whole
+  car as live server facts: identity and radio, the type with its maintenance interval from the
+  catalog, license with expiry flagged in place, placement, audit timestamps, the lifecycle
+  status with its reason, and four indicators each gating its own permission — the derived
+  workshop flag, the server's expected next odometer reading, the maintenance alarm with
+  remaining or overdue kilometres, and the last closed workshop visit with its counter. Edit
+  and status changes reuse the list's dialogs against the freshly loaded document, so every
+  write stays version-checked. History links to the odometer, maintenance, accident, violation,
+  and roster screens are wired behind per-slice flags and appear as each of those pages ships —
+  fully hidden until then, never disabled, which the owner confirmed as the ECMS-wide standard.
+
+  Drivers and attendance followed (FW-5). The drivers list shows the fleet-owned profiles over
+  HR employees with names resolved through the shared HR cache — one EmployeeName component
+  that degrades honestly to the raw id for callers without directory access — plus license
+  search, specialization and active filters, and expired licenses in red. The driver profile
+  gathers the fleet facts, links into the real HR employee profile for those who may open it,
+  and carries the driver's own operational-unavailability timeline with record, edit, and
+  cancel in place — recording there skips the employee picker because the driver is already
+  known. The attendance screen lists the whole overlay (covering-date filter, sortable spans)
+  and records through a directory search picker; edits and cancellations stay version-aware,
+  and the cancel confirm says what it means: the driver becomes assignable again, the history
+  stays in the audit log.
+
+  The FL-4 trio followed (FW-6): odometer, maintenance, and the alarms board — screens over
+  server facts, with none of the chain arithmetic reimplemented in the browser. The odometer
+  log filters by vehicle and date range; an open period shows an honest "open" badge with the
+  km column blank, because the server has not derived that distance yet. Recording offers the
+  expected next reading as a hint only — continuity is enforced where it lives, in the API —
+  and the correction dialog sends just the changed fields with the document version; it never
+  sends an empty in-reading, because the backend reads that as reopening the period and
+  refuses, and the UI does not offer what the server forbids. Maintenance lists visits with
+  open/closed filtering and catalog-resolved workshop and work-type names; check-in pre-trims
+  vehicles already in the workshop from the picker while the server remains the authority,
+  and check-out, reopen, edit, and delete are version-aware behind their own permissions with
+  plain-spoken confirms. The alarms board renders the derived projection exactly as served —
+  level filter and code search run client-side over the one live response, triage order red
+  first and most-overdue first, and a vehicle with no counting service yet says so instead of
+  pretending a number. The vehicle profile's odometer and maintenance links lit up with this
+  slice, and three rows joined the navigation seed.
+
+  The daily roster board followed (FW-7), with the frontend as a pure viewer and executor of
+  FL-5. One call brings the whole day: the scoped vehicles with their assignments, the derived
+  in-workshop flag, and the driver pool already split by the availability seam — the unavailable
+  side carries the server's named reason, translated when it is one of the five known verdicts
+  and shown as sent otherwise. The date is URL-synced with previous/next-day stepping; searching
+  by code or plate filters the one live response. Assigning opens a dialog that edits the
+  complete desired state of that vehicle's day, and the driver slots offer only the board's own
+  available pool — never a directory search — each candidate labelled free or with the vehicle
+  currently holding them. Picking a held driver states plainly that saving will move them, and
+  the save sends both sides of the move in one call, which the backend runs as one transaction;
+  the server remains the authority on every rule, and a refused save refreshes the board because
+  refusal usually means it went stale. The plan response is the refreshed board itself, so the
+  screen repaints from the same round-trip with no second fetch. Clearing a day's assignment is
+  its own confirmed action, and an in-workshop vehicle offers clearing but never assigning —
+  the same asymmetry the backend enforces. The vehicle profile's roster link lit up with this
+  slice, arriving pre-filtered to the vehicle's code, and the roster row joined the navigation
+  seed.
+
+  Accidents followed (FW-8), with states and money exactly as the backend keeps them. The
+  registry lists the files with vehicle, status, and date-range filters synchronized to the URL,
+  a sortable accident date, and pagination; the three amounts render through the platform's
+  currency formatter and are never summed or combined — they are the entered facts, and no
+  derived money exists until the owner defines the formula. Recording and editing share one
+  dialog whose vehicle select offers the whole registry, because an accident is historical
+  paperwork about the day it happened and a disposed vehicle is a legal reference — the same
+  reasoning that makes the code column resolve retired vehicles instead of hiding them. The
+  open/closed state is purely the server's: each row offers exactly the one direction its
+  current state allows, closing and reopening are the same confirmed, version-aware call in
+  either direction, and edits diff against the loaded document so only changed fields travel
+  with the version. Deletion confirms with the audit-trail note. The vehicle profile's
+  accidents link lit up with this slice and the accidents row joined the navigation seed.
+
+  Violations and grievances close the FL-6 surface (FW-9), with not one amount computed in the
+  browser. One screen carries two URL-synchronized views. The list shows both backend shapes
+  side by side: a vehicle row is a bulk yearly statement — the year is the fact, and the amount
+  column shows what the server derived from count times unit value — while a driver row is a
+  per-event fact with its date, the driver's name from the shared HR cache, and the amount as
+  entered. Recording matches: the vehicle-statement dialog sends count and unit value and never
+  an amount, saying plainly that the server computes it, and the driver dialog picks the person
+  through the directory while the server enforces that a driver profile exists. Editing opens
+  the dialog of the row's own shape — the backend refuses crossing shapes, so the form never
+  offers it — and sends only changed fields with the version. The annual rollup view renders
+  the server's per-vehicle-per-year assembly exactly as returned, every figure including the
+  grievance derived at query time; the grievance dialog sets the one stored figure per vehicle
+  and year, prefilled from the row it was opened on, and the board repaints from the
+  invalidated subtree. The vehicle profile's violations link lit up with this slice — all five
+  history links now live — and the violations row joined the navigation seed.
+
+  Catalogs and settings complete the module (FW-10). The catalogs screen manages the six list
+  kinds every fleet form reads — workshops, work types, spare parts, mission types, violation
+  types, unavailability reasons — as URL-synchronized tabs over the live paginated list, with
+  archive instead of delete because history keeps referencing items, and the counts-for-alarm
+  fact offered only where the contract allows it. The settings screen carries the two rule
+  surfaces: the vehicle-type table, because the maintenance interval on the type is the
+  maintenance rule the alarm engine reads, and the five fleet platform settings edited through
+  the platform's own settings endpoints — a new thin platform settings client whose first
+  consumer this screen is — with every value arriving from the server's hierarchical
+  resolution and nothing hardcoded in the browser. Writes that move server-derived projections
+  invalidate them: interval and work-type changes refresh the alarm board, and the HR-leave
+  switch refreshes the roster's availability verdicts. With the catalogs and settings rows in
+  the sidebar the Fleet category carries all twelve applications, and the closing integration
+  review confirmed the whole: thirteen routes plus the 404 exactly matching the frozen
+  information architecture, every route behind its own permission, all five vehicle-profile
+  history links live, no placeholder or unreachable surface anywhere, and the module still one
+  lazy chunk. The Fleet module — backend and web — is complete.
+
+- **Accidents, violations, and grievances complete the Fleet backend (FL-6) — every fleet
+  event is now stable.** Accidents keep the legacy's freedom with none of its looseness: a file
+  opens on creation, closes and reopens as many times as the truth requires, but each flip is a
+  distinct audited, published change — flipping to the state a file is already in is refused, so
+  automation never hears an event that changed nothing. Amounts are stored as the entered facts;
+  nothing is derived from them until the owner defines the formula (§13-Q9). An accident can be
+  recorded against a disposed vehicle deliberately: it is historical paperwork about the day it
+  happened, unlike an odometer reading, which stays refused.
+
+  Violations are one collection with two discriminated shapes, and the shape decides who
+  computes the money. A vehicle statement row has no amount field at all — the server derives
+  count × unitValue when the row is created and again on every edit that touches either factor
+  — while a driver event row records the amount as entered and requires a driver profile to
+  exist (active or not; history counts). Editing a row with the other shape's fields is refused
+  in the service, the one place both shapes meet. The grievance is a single figure per
+  (vehicle, year) under a unique index, set and overwritten in place — the legacy stamped it
+  redundantly onto every violation row. The annual rollup endpoint derives everything at query
+  time: vehicle rows by their stored year, driver rows by the year of their event date (the
+  legacy synthesized fake dates here, which is exactly how its reports went wrong), merged with
+  grievance figures and vehicle codes by a pure, unit-tested assembler.
+
+  `fleet.accident.recorded/.closed/.reopened` and
+  `fleet.violation.recorded/.grievanceApplied` fire post-commit and are promoted
+  planned → stable — with them, all 22 fleet events are stable and the module's automation
+  surface is complete. Contract deltas are additive only: a grievance DTO and a rollup query
+  schema.
+
+- **The daily duty roster is live (FL-5): one board, one save shape, the day's exclusivity
+  enforced where it can't be forgotten.** `GET /fleet/roster?date=` returns the whole planning
+  picture — the caller's in-scope active vehicles with their assignments and a derived
+  `inMaintenance` flag, plus the driver pool split into available (with the vehicle already
+  holding each driver, anywhere in the fleet) and unavailable (with the layer that said no).
+  The roster owns none of that logic: a driver's assignability is exactly what FL-3's
+  `driverAvailabilityOn` answers, and a vehicle's is exactly what the `openVisitVehicleIds`
+  seam answers — now accepting the plan date, so a car that enters the workshop after day D
+  doesn't block day D (FR-5), with no call-site changed.
+
+  `POST /fleet/roster` saves a plan as an upsert per (vehicle, date) — only the changed rows
+  are sent, and each row is the complete desired state of that vehicle-day. The whole save runs
+  in one transaction, every write version-checked against the row it read, and unchanged rows
+  are pure no-ops: no write, no audit entry, no event. FR-7 — one vehicle per driver per date —
+  is checked against the end state of the entire day, so taking a driver another vehicle still
+  holds is refused with the holder named; sending both rows of the move in one save transfers
+  the driver atomically. That is precisely the shape a drag produces, which is why a future
+  drag-and-drop scheduler needs no backend change. Assignment rows are never deleted: clearing
+  a day empties the row's facts in place, keeping the audit trail hanging on the row it
+  describes. `fleet.roster.planned` (one per save) and `fleet.assignment.changed` (per changed
+  row) fire after commit and are promoted planned → stable. Zero contract changes — the FL-1
+  roster surface shipped exactly as frozen.
+
+- **The odometer chain, maintenance visits, and the derived alarm engine are live (FL-4).** The
+  odometer is one continuous chain per vehicle: recording a reading closes the open period
+  (deriving its km) and opens the next inside a single transaction, a partial unique index
+  guarantees at most one open period, and FR-2 refuses any reading below the vehicle's latest —
+  the odometer never runs backwards. The only way past that refusal is the correction flow
+  (`fleetOdometer.correct`, fully audited): because the closing reading of one period IS the
+  opening reading of the next, a correction rewrites the shared value on both neighbouring rows
+  atomically, and refuses outright anything that would break the chain's order — including
+  "reopening" a period that has periods after it. `GET /fleet/odometer/expected` tells the
+  client what reading the server expects next; the client computes nothing.
+
+  Maintenance visits are the cycle's only reset: check-in requires a vehicle not already in the
+  workshop (FR-4, doubly held by a partial unique index), check-out closes the visit with the
+  counter at service, and reopen undoes a mistaken check-out — each firing its event only after
+  commit. FL-2's `inWorkshop` seam now answers from the real open-visit query, with no call
+  site touched. The maintenance alarm is never stored: `computeAlarm` derives
+  remaining = interval − (latest reading − counter at last counting service) at query time, from
+  the vehicle TYPE's interval, the settings thresholds, and the latest closed «صيانة» visit,
+  preserving the legacy's two guards (no baseline / stale reading ⇒ no data, never a false
+  alarm). `GET /fleet/odometer/alarms` is the alarm board.
+
+  Two daily sweeps announce without changing state: license expiry (vehicles + drivers, warn
+  windows from settings) and maintenance-alarm crossings. Idempotency is structural — a
+  `fleet_sweep_marks` insert-if-new on a deterministic key means running a sweep twice emits
+  nothing the second time, while a renewed license or a fresh service baseline naturally re-arms
+  the announcement. Ten events promoted planned → stable: `fleet.odometer.recorded/.corrected`,
+  `fleet.maintenance.checkedIn/.checkedOut/.reopened`, `fleet.maintenanceAlarm.raised`, and the
+  four license-expiry surfaces. Contract deltas are additive only: an expected-reading DTO, a
+  vehicle-id query schema, a reopen schema, and audit actions `correct`/`checkOut`/`reopen`.
+
+- **Fleet drivers exist as extensions of HR employees, never copies (FL-3).** A driver profile
+  holds only what Fleet is the authority on — license, specialization, area, an active switch —
+  keyed by `employeeId`; name, phone and employment state stay in HR and are read through a new
+  platform seam, `platform/directory`, which HR populates at module load the same way the auth
+  identity seams work. Neither module imports the other: creating a profile validates the
+  employee through the seam (an exited employee is refused), and the `hr.employee.exited` event
+  deactivates the profile with no coupling. Internally each profile carries a `kind`
+  discriminator with a (employeeId, kind) unique index, so a future second profile kind is an
+  additive value rather than a migration — deliberately absent from the DTO until it exists.
+
+  التمامات (driver unavailability) is the daily operational overlay the owner decided on:
+  official leave lives in HR and is consulted through the seam when
+  `fleet.availability.useHrLeave` is on, while this collection records only what the fleet floor
+  knows (مأمورية، عهدة خارجية). One seam function answers "may this driver be assigned on date
+  D", layering the profile switch, the HR employment gate, the fleet overlay, and HR leave — in
+  that order, cheapest first — and names which layer said no. `fleet.driverUnavailability
+.recorded/.ended` fire at commit points and are promoted planned → stable; an update publishes
+  nothing, because a date correction adjusts a fact rather than creating one.
+
+- **The Fleet module is running (FL-2): vehicle types, catalogs, and the vehicle registry with
+  its lifecycle.** The `fleet` manifest registers alongside HR — permissions, routes,
+  collections, settings, seed — and the first three features follow the platform shape exactly:
+  Router → Zod validation → Service → BaseRepository, every write version-aware and audited,
+  RBAC + data scopes from the first endpoint (a branch-scoped operator sees their branch's fleet;
+  the legacy's hardcoded branch filter became scope, as the owner decided). The §4.1 lifecycle is
+  enforced: leaving active service requires a reason, `disposed` is terminal and refuses edits,
+  returning to service clears the reason. FR-1's four physical identifiers (code, plate, chassis,
+  motor) are unique among non-deleted vehicles via partial indexes, so a scrapped car's plate can
+  legitimately return. Nothing derived is stored: `inWorkshop` is computed through a service seam
+  that honestly answers `false` until FL-4 owns maintenance visits.
+
+  `fleet.vehicle.created/.updated/.statusChanged` are published at commit points and promoted
+  `planned → stable` in the catalogue — the publisher test now holds them to their emit sites.
+  Fleet settings are declared with defaults (alarm thresholds, leave-integration ON per the
+  owner's Q1 decision, license-warning windows), and the boot seed installs the catalog rows the
+  frozen design names: the alarm-counting «صيانة» work type, the roster's default mission type,
+  and the seven violation types the legacy had hardcoded in its views.
+
+- **The Fleet module's contract surface exists (FL-1), built from a frozen design extracted out
+  of the legacy fleet system.** `packages/contracts/src/modules/fleet.ts` declares, at field
+  level, everything the module will be: vehicles and their types (the per-type maintenance
+  interval lives on the type), driver profiles as fleet-owned extensions of HR employees, driver
+  unavailability, the odometer log, maintenance visits, the daily duty roster, accidents,
+  two-shape violations with a once-per-(vehicle, year) grievance, and six catalogs. The schemas
+  encode the design's load-bearing rules where they cannot be forgotten: odometer recording
+  accepts one reading and no derived fields (km and the closing reading are server-derived),
+  vehicle violations carry no client-supplied amount (count × unit value is computed), a roster
+  plan refuses a driver holding two assignments in one day, and leaving active service requires a
+  reason.
+
+  All 22 `fleet.*` events are catalogued with v1 payloads and bilingual labels — visible to the
+  Automation Engine's trigger picker from day one — and declared **`planned`**, the lifecycle
+  state for a declared-but-unpublished event; the publisher test promotes each to `stable` only
+  when its real emit site lands in FL-2…FL-6, so the catalogue cannot claim an event nobody
+  fires. Settings keys (alarm thresholds, leave-integration toggle, license-warning windows) and
+  notification template keys ship alongside, so nothing threshold-like is ever hardcoded. The
+  design itself — entities, lifecycles, 14 business rules, permissions per screen, the hidden
+  view-logic inventory from the legacy system, and the two legacy bugs deliberately not carried —
+  is frozen in
+  [`docs/12-planning/fleet-module-design.md`](docs/12-planning/fleet-module-design.md).
+
+- **The first three automation workflows exist as data — account activation follow-up, password
+  reset follow-up, and job-offer onboarding (A-9a).** Each is an `AutomationTemplatePackage`
+  carrying an n8n graph, checked into `automation/templates/` and validated in CI against the real
+  contract schema, so a package that would install as nothing fails here rather than on a
+  production instance. A shared n8n error-handler workflow ships alongside them in
+  `automation/n8n/`, and `npm run automation:preview <key>` renders any package into a standalone
+  importable workflow for stepping through in the n8n UI.
+
+  Designing them against the code rather than against assumptions changed all three. **ECMS has no
+  temporary passwords to send** — AL-R4 replaced them with one-time activation links that
+  `credentials-delivery.ts` deliberately keeps out of the persisted notification pipeline, and n8n
+  persists execution data, so routing a link through n8n would write the credential into n8n's
+  Postgres. The secret therefore never leaves ECMS: where a message must be re-sent, the workflow
+  calls `credentials/resend` and ECMS composes and delivers it. What the workflows add is the thing
+  ECMS genuinely lacks — follow-up and escalation, so an invitation sent nine days ago and never
+  opened stops being invisible. **The onboarding workflow does not wait for the candidate's
+  decision**: ECMS owns that state and publishes `hr.jobOffer.accepted`/`.rejected`, so each
+  decision arrives as its own trigger and every branch is a pure function of one event, which keeps
+  the answer to "did they accept?" in exactly one place.
+
+  Every graph shares one skeleton — config, a fail-closed guard (constant-time signature check,
+  envelope-shape check, `eventId` idempotency), business nodes, then a write-back to the ECMS
+  execution row — so adding a fourth workflow is the business nodes and nothing else. Design,
+  including the honest list of what must exist before any of it runs, is in
+  [`docs/12-planning/automation-workflow-library-design.md`](docs/12-planning/automation-workflow-library-design.md).
+
 - **National-ID OCR now has a real, fully local provider (OQ-30).** The seam has carried a null
   stub since Sprint 4.1 — `available: false`, no extraction — because image-to-text was a deferred
   capability. It is now implemented: a PaddleOCR 3.x sidecar carrying the PP-OCR weights baked into
@@ -92,7 +398,6 @@ its entry here in the same PR.
   Accuracy against real Egyptian cards is **not yet measured**; the measurement harness and its
   documented process ship alongside in `spikes/national-id-ocr/`.
 
-
 - **Recruitment: filter bars on every stage queue that was missing one.** The per-stage interview
   pages (First Interview, Second Interview, …), the per-phase evaluation pages (Security Check,
   Driving Test, Medical Examination, …) and Employees Ready now filter like the rest of the module:
@@ -114,7 +419,7 @@ its entry here in the same PR.
   offers a control for one.
 
   Branch and interviewer come from two new shared controls rather than three copies each, and both
-  render *nothing* when the caller lacks the permission that reads their catalog (`branch.view`,
+  render _nothing_ when the caller lacks the permission that reads their catalog (`branch.view`,
   `user.view`) — an empty dropdown would filter nothing while implying access nobody granted. The
   user picker is the one the offer form already used, generalized: `ManagerPicker` is now that
   control with the offer form's wording.
@@ -148,7 +453,7 @@ its entry here in the same PR.
 
 - **A deep link to page 2 of any searchable list bounced back to page 1.** `SearchInput`'s debounce
   effect listed `onChange` in its dependencies, and every caller passes an inline closure — so the
-  effect re-ran on each parent render and re-emitted the *unchanged* search term. On a list whose
+  effect re-ran on each parent render and re-emitted the _unchanged_ search term. On a list whose
   filter handler resets paging (the correct behaviour when a filter really changes), that discarded
   the page the user had linked to or refreshed on. The effect now emits only when the text differs
   from the value it was given, which also stops "clear filters" echoing back a change of its own.
@@ -231,7 +536,7 @@ gaps**. This release accumulates every change merged since v0.23.0; the Recruitm
   an attempt a return-to-stage had retired. `BaseRepository` gains two generic hooks,
   `writeConditions()` and `assertWritable()`; the four stage repositories narrow them to the live
   set. The condition rides inside the same atomic `findOneAndUpdate` as the write, so a return
-  landing mid-request cannot be overtaken, and the refusal says *why* (422, "superseded by a return
+  landing mid-request cannot be overtaken, and the refusal says _why_ (422, "superseded by a return
   to an earlier stage") rather than reporting a version conflict a retry could never resolve. Two
   writers still reach a retired row, both named by I1 itself: the supersede marker, and the
   denormalized branch scope a reassignment syncs across a candidate's whole history.
@@ -275,8 +580,8 @@ gaps**. This release accumulates every change merged since v0.23.0; the Recruitm
   obvious PARTIAL index over `{ supersededAt: null, isDeleted: false }` does not work and fails
   silently — MongoDB will not use a partial index for a `null`-equality predicate, because
   `$eq: null` also matches missing fields, so the plan is never generated and the query
-  collection-scans exactly as before. And for the same reason the scan is index-*served* but not
-  index-*only*: an index entry cannot tell a stored `null` from an absent field, so each matching
+  collection-scans exactly as before. And for the same reason the scan is index-_served_ but not
+  index-_only_: an index entry cannot tell a stored `null` from an absent field, so each matching
   document is still read. Both claims sound alike and only one is true.
   The same suite benchmarks the shipped counters shape (N grouped aggregations in parallel)
   against a single `$unionWith` pipeline, asserts both return identical numbers, and fails if the
@@ -310,7 +615,7 @@ gaps**. This release accumulates every change merged since v0.23.0; the Recruitm
 
 - **Recruitment: `timeline.produced` could never resolve.** The envelope's "what did this action
   write?" half joined the workflow event ids the engine reported against the timeline's `eventId`
-  column — but the projection minted a *fresh* id for the entry, so the two never matched and the
+  column — but the projection minted a _fresh_ id for the entry, so the two never matched and the
   slice would have shipped permanently empty. A projected entry now takes its event's id, which is
   also what makes the join idempotent across a redelivery, and entries written outside the engine
   report themselves at write time. Found before the contract had a single consumer.
@@ -401,7 +706,7 @@ gaps**. This release accumulates every change merged since v0.23.0; the Recruitm
   candidate whose round does not exist yet and "start" for one already scheduled; the
   server stamps who started it and when, and the screens render those moments on the
   Africa/Cairo business calendar rather than the viewer's timezone. **Placement
-  recommendations** (RW5) can finally be *recorded* — previously only displayed and
+  recommendations** (RW5) can finally be _recorded_ — previously only displayed and
   applied — on both interviews and evaluation phases, including clearing one. **Employees
   Ready** appears in the navigation with its live counter and filters server-side, so its
   pagination and its badge agree. **Bulk complete** arrives for Hiring Documents (new
@@ -489,7 +794,7 @@ gaps**. This release accumulates every change merged since v0.23.0; the Recruitm
   Revision 2 — D1–D12, A1–A22, Q1–Q3; architecture:
   `docs/02-architecture/contracts-module.md`).** First-class HR module:
   - **Templates** — admin-owned, ONE document per version in an append-only recoverable
-    chain (A19): drafts edit in place, editing a *published* version forks the next
+    chain (A19): drafts edit in place, editing a _published_ version forks the next
     draft, and only **published** versions generate (A17, one published per key). Rich
     sections (header/body/footer) pass an allow-list sanitizer on every save (A11 — no
     active content survives), placeholders are validated against the server-owned
@@ -578,7 +883,7 @@ gaps**. This release accumulates every change merged since v0.23.0; the Recruitm
   Sent / Activated / Expired / Locked) plus a full **Account panel** on the employee page
   (invitation sent/expires, activated at, last login, password last changed, MFA state,
   per-channel delivery outcomes); disabling an account, deleting it, or an **employee
-  exit** revokes any pending setup link *and every session* in the same operation (the
+  exit** revokes any pending setup link _and every session_ in the same operation (the
   status machine now allows suspending a never-activated login); an **hourly sweep**
   revokes expired links; the whole invitation lifecycle is audited (`invitationCreated` /
   `invitationResent` / `invitationExpired` / `invitationUsed` / `invitationAttemptInvalid`
@@ -603,30 +908,30 @@ gaps**. This release accumulates every change merged since v0.23.0; the Recruitm
 ### Fixed
 
 - **Upgrade compatibility + field-test fixes (post-Leave-merge QA round).**
-  - *Sidebar*: the navigation catalog now syncs at every api boot (`syncNavigationCatalog`),
+  - _Sidebar_: the navigation catalog now syncs at every api boot (`syncNavigationCatalog`),
     so installs upgraded from older releases receive newly shipped applications (e.g. `/leave`)
     and super-admins are granted them automatically — previously the catalog only seeded on
     fresh installs.
-  - *Permissions*: `syncPermissionRegistry` invalidates super-admin/platform-admin holders'
+  - _Permissions_: `syncPermissionRegistry` invalidates super-admin/platform-admin holders'
     cached permission snapshots when the catalog changes — new-module permissions apply
     immediately after deploy instead of 403ing until cache expiry.
-  - *Applicants list 500*: documents created by earlier releases lack later-added fields and
+  - _Applicants list 500_: documents created by earlier releases lack later-added fields and
     `.lean()` reads skip schema defaults (`undefined.toISOString()` crashed the list). The
     applicant mapper is now total over legacy shapes and a boot migration
     (`migrateRecruitmentLegacy`) backfills the stored documents.
-  - *Person names in tables*: Screening/Interview/Evaluation/Job-Offer rows now denormalize
+  - _Person names in tables_: Screening/Interview/Evaluation/Job-Offer rows now denormalize
     `applicantName` (backfilled for existing rows); queue tables, the workflow board and the
     awaiting panels show the display name next to the code, and job-offer search matches it.
-  - *Leave error reporting*: leave tables no longer mask API failures behind a generic
+  - _Leave error reporting_: leave tables no longer mask API failures behind a generic
     message — the real error (permission, validation, server) surfaces in the error state.
-  - *Reference lookups*: dropdown queries requested `pageSize: 200` against the API's
+  - _Reference lookups_: dropdown queries requested `pageSize: 200` against the API's
     `MAX_PAGE_SIZE = 100` and silently degraded to empty lists — the Department picker on the
     Section form (and four sibling lookups) now work.
-  - *Numeric org-unit codes*: `01`-style codes are accepted (min length 1), Arabic-Indic
+  - _Numeric org-unit codes_: `01`-style codes are accepted (min length 1), Arabic-Indic
     digits are folded to ASCII in the code input, and the hint copy no longer implies letters
     are required.
-  - *i18n*: added the missing `employees.tabs.leave` label (en + ar).
-  - *Job Titles vs Job Positions*: kept as two entities (WHAT vs WHERE — see
+  - _i18n_: added the missing `employees.tabs.leave` label (en + ar).
+  - _Job Titles vs Job Positions_: kept as two entities (WHAT vs WHERE — see
     `docs/02-architecture/organization-structure.md` §2); both pages now state the
     distinction explicitly in both languages.
 
@@ -658,10 +963,10 @@ gaps**. This release accumulates every change merged since v0.23.0; the Recruitm
   The employee becomes the post-hire system of record, moved out of Recruitment into
   `modules/hr/employee-management` (URLs and permission keys unchanged).
   - **Probation-first lifecycle.** Statuses are now `probation → active ⇄ onLeave ⇄ suspended →
-    exited`; every new hire starts in probation (0 months ⇒ straight to active) with explicit
+exited`; every new hire starts in probation (0 months ⇒ straight to active) with explicit
     confirm / extend / fail decisions and a scheduler reminder before the deadline. `exited` is the
-    single terminal status — the exit *type* (`resignation | termination | endOfContract |
-    retirement | death`), reason, effective date and an explicit **rehire-eligibility** decision are
+    single terminal status — the exit _type_ (`resignation | termination | endOfContract |
+retirement | death`), reason, effective date and an explicit **rehire-eligibility** decision are
     data on the exit record. Returning from suspension/leave lands on the BASE status (probation if
     never confirmed). The legacy `terminated` status is migrated to `exited` at boot.
   - **Personnel Actions engine** (`hr_employee_actions`) — the only writer of employment facts.
@@ -669,11 +974,11 @@ gaps**. This release accumulates every change merged since v0.23.0; the Recruitm
     `scheduled` and applied by a scheduler task in date order, with org referents re-validated at
     application time — failures are recorded + notified, never silent), cancellable while scheduled.
     Permission-grouped endpoints: `POST /hr/employees/:id/actions/{employment|compensation|exit|rehire}`
-    + cancel + list. The old `PATCH /:id/status` remains one release as a thin alias (exits refused
-    there). Propagation: a branch transfer recomputes the employee code and syncs the **linked user's
-    placement** and the Employee File's code/branch; an exit **auto-suspends the login**, settles
-    direct reports (bulk reassign or explicit unassigned) and closes the employment period;
-    self-actions are always rejected.
+    - cancel + list. The old `PATCH /:id/status` remains one release as a thin alias (exits refused
+      there). Propagation: a branch transfer recomputes the employee code and syncs the **linked user's
+      placement** and the Employee File's code/branch; an exit **auto-suspends the login**, settles
+      direct reports (bulk reassign or explicit unassigned) and closes the employment period;
+      self-actions are always rejected.
   - **Owned personal data.** The applicant's personal data is copied ONCE at hire (raw national id,
     masked in DTOs) and maintained on the employee via audited `PATCH /:id/personal` edits — the
     applicant record stays immutable pre-hire history.
@@ -681,7 +986,7 @@ gaps**. This release accumulates every change merged since v0.23.0; the Recruitm
     existing workforce or walk-in hires without a pipeline (recruitment references null), with the
     shared national-id OCR and duplicate guards against employees AND live applicants.
   - **Rehire on the SAME employee number** — reopens a new employment period (same number, same
-    Electronic File; a new completed hiring case *supplements* the existing file). Terms come from an
+    Electronic File; a new completed hiring case _supplements_ the existing file). Terms come from an
     accepted offer or direct entry; rehiring someone marked not-eligible needs the dedicated
     **`employee.rehireOverride`** permission. Hiring a returning person through recruitment or direct
     registration is refused and routed to Rehire (one person = one employee, forever).
@@ -694,7 +999,7 @@ gaps**. This release accumulates every change merged since v0.23.0; the Recruitm
     form with a live rehire-match check, and a composed timeline (recruitment milestones + personnel
     actions + audited personal edits). `/employee-files` moves alongside unchanged.
   - New permissions: `employee.{registerDirect, editPersonal, manageActions, manageCompensation,
-    viewCompensation, exit, rehire, rehireOverride, viewSensitive}`; new events
+viewCompensation, exit, rehire, rehireOverride, viewSensitive}`; new events
     `hr.employee.{actionApplied, transferred, exited, rehired}`; five notification templates; boot
     migration is idempotent (origin backfill, employment periods, personal copy, synthesized hire
     actions, frozen legacy status trail). Hiring-documents / employee-file applicant references are
@@ -702,11 +1007,11 @@ gaps**. This release accumulates every change merged since v0.23.0; the Recruitm
 
 - **HR — Recruitment workflow completion (follow-up to the workflow redesign).**
   - **Interview Phases (Kanban) view.** `/interviews` gains a **List ⇄ Phases toggle** (URL-persisted).
-    The board's columns are *Waiting for Scheduling → each active interview stage → each active
-    evaluation phase → Job Offer*, composed from the existing per-stage endpoints; cards show the
+    The board's columns are _Waiting for Scheduling → each active interview stage → each active
+    evaluation phase → Job Offer_, composed from the existing per-stage endpoints; cards show the
     Application Number only. Waiting + interview columns support **multi-selection** with **bulk
-    actions**: *Schedule interviews* for all selected at once (one stage + time; every row still goes
-    through the normal endpoint so all workflow rules apply) and *Move to Job Offer*.
+    actions**: _Schedule interviews_ for all selected at once (one stage + time; every row still goes
+    through the normal endpoint so all workflow rules apply) and _Move to Job Offer_.
   - **Stage & phase management UIs.** New settings screens — `/interviews/stages`
     (`interviewStage.manage`) and `/evaluations/phases` (`evaluationPhase.manage`) — to add a 3rd/4th
     interview round or a new evaluation phase, rename, reorder (order number), toggle drivers-only,
@@ -735,7 +1040,7 @@ gaps**. This release accumulates every change merged since v0.23.0; the Recruitm
     (+ `/hr/evaluation-phases`), gated by `evaluation.view` / `evaluation.manage` /
     `evaluationPhase.manage`; every mutation audited and `hr.evaluation.decided` published. A new web
     **Evaluations** module (queue + detail: open, upload files, decide) is wired into the navigation.
-  - **Job Offer is hard-gated** until the applicant has cleared **all required interviews *and* all
+  - **Job Offer is hard-gated** until the applicant has cleared **all required interviews _and_ all
     required evaluation phases** (driver-only phases gate only when opened).
   - **Rejection is not final (fully audited).** HR can **edit the decision** of any stage — Screening
     (`PATCH /hr/screenings/:id/decision`), Interviews (`PATCH /hr/interviews/:id/decision`), and
@@ -799,7 +1104,7 @@ gaps**. This release accumulates every change merged since v0.23.0; the Recruitm
     **Edit**, **Activate/Deactivate** and **Delete** (soft, guarded against branches that still have
     departments). The **Branch Code** stays immutable after creation and is editable **only by a
     super-admin** through a dedicated correction dialog (`isPrivileged`, `PATCH
-    /platform/branches/:id/code`, ADR-017).
+/platform/branches/:id/code`, ADR-017).
   - **Duplicate protection.** Branch **names** join branch **codes** as unique (case-insensitive, ar
     or en); a collision surfaces as a `409` conflict. `GET /platform/auth/me` now returns
     `isPrivileged` so the web can gate the super-admin-only Branch-Code action. No new backend
@@ -824,15 +1129,15 @@ gaps**. This release accumulates every change merged since v0.23.0; the Recruitm
 
 - **ADR-017** — Platform Identity & Organizational Access Control.
 - **`docs/02-architecture/platform-identity.md`** — the Phase-2 design.
-- **`docs/02-architecture/organization-structure.md` §6** — *Organization vs Navigation: two
-  independent hierarchies.* Records that the Company → Branch → Department → Section (→ Job Position/
+- **`docs/02-architecture/organization-structure.md` §6** — _Organization vs Navigation: two
+  independent hierarchies._ Records that the Company → Branch → Department → Section (→ Job Position/
   Employee) hierarchy governs **data scope, HR, reporting and approvals only** and **does NOT
   generate the sidebar**; that Departments are a **platform-wide** concept (never HR-only); and that
   the **Sidebar is generated from the Applications (Modules) assigned to the user** — a separate,
-  deferred track keyed off *Applications × Roles*, with the org tree supplying data scope only. The
+  deferred track keyed off _Applications × Roles_, with the org tree supplying data scope only. The
   Organization module stays free of any navigation logic (verified in the current code).
-- **`docs/02-architecture/organization-structure.md` §7** — *Access & Applications model (locked; not
-  implemented).* Locks three forward rules so Organization Management does not foreclose them:
+- **`docs/02-architecture/organization-structure.md` §7** — _Access & Applications model (locked; not
+  implemented)._ Locks three forward rules so Organization Management does not foreclose them:
   **Applications ↔ Departments is many-to-many** (Departments consume Applications; an Application
   serves many Departments); a user's Applications are **derived** via **User → Job Position →
   Department → Applications → Roles** (with an optional direct user assignment kept possible as an
@@ -929,7 +1234,7 @@ existing Applicants intake.
 
 - **Reusable National-ID OCR flow (`apps/web/src/shared/national-id/`).** A module-agnostic
   capture → review flow, reusable by Employees / KYC / any future module by injecting an
-  *extractor* (no HR coupling): `NationalIdOcr` (two upload areas — **front + back** — read
+  _extractor_ (no HR coupling): `NationalIdOcr` (two upload areas — **front + back** — read
   together in one extraction pass), a **dedicated `NationalIdReviewDialog`** showing **every**
   extracted field editable (birth date / gender / governorate derived live from the number and
   read-only), plus pure `mapping` + `transliterate` helpers and typed `NationalIdReviewData` /
@@ -945,7 +1250,7 @@ existing Applicants intake.
   requisition is supplied it is still validated (malformed ids rejected), and the reference can be
   attached later when the Job Requests module lands.
 - **National-ID capture flow.** Upload front → upload back → **Extract** → the dedicated review
-  dialog → edit → **Confirm** → *only then* the Applicant form is populated. Birth date / gender /
+  dialog → edit → **Confirm** → _only then_ the Applicant form is populated. Birth date / gender /
   governorate are **derived** from the number (`parseNationalId`), never OCR'd; the English name is
   seeded by transliterating the Arabic name (editable). Replaces the single-image OCR assist.
 
@@ -1053,11 +1358,11 @@ Offer reference infrastructure). **Employees only** — no later stage.
     date. The server enforces the full rule (accepted + snapshot + not already hired). The create
     write seeds the detail cache and invalidates only the list subtree.
   - **Detail** (`employee.view`) — the employee number, status, preserved references (applicant link
-    + accepted-offer link with its revision), and the copied **employment terms** read-out. The
-    employment view **reuses the Job Offer `UserName` + reference hooks** so org/manager names resolve
-    from the same cache. `ar` + `en` i18n. The employee record is **read-only in this stage** — no
-    lifecycle mutation is exposed (statuses exist in the DTO but transitions belong to a future
-    Employee module).
+    - accepted-offer link with its revision), and the copied **employment terms** read-out. The
+      employment view **reuses the Job Offer `UserName` + reference hooks** so org/manager names resolve
+      from the same cache. `ar` + `en` i18n. The employee record is **read-only in this stage** — no
+      lifecycle mutation is exposed (statuses exist in the DTO but transitions belong to a future
+      Employee module).
 
 ### Changed
 
@@ -1307,8 +1612,8 @@ findings, no Critical/High — all documented, no in-PR code change required).
 - **BD-008 — Hiring transforms Applicant to Employee; no separate Onboarding stage.** Recorded in
   the [Business Decisions log](docs/01-domain/business-decisions.md#bd-008--hiring-transforms-applicant-to-employee-no-separate-onboarding-stage):
   the recruitment workflow stands at **seven stages** (no eighth "Onboarding" stage), and the
-  post-hire employee lifecycle belongs to the future Employee module. Added the *Electronic
-  Employee File* entry to the [Ubiquitous Language](docs/01-domain/ubiquitous-language.md).
+  post-hire employee lifecycle belongs to the future Employee module. Added the _Electronic
+  Employee File_ entry to the [Ubiquitous Language](docs/01-domain/ubiquitous-language.md).
 
 ### Notes
 

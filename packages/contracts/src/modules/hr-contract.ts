@@ -57,7 +57,11 @@ export type ContractTemplateStatus = z.infer<typeof ContractTemplateStatusSchema
 /** One labeled signature block (D4); labels are in the template's language. */
 export const SignatureBlockSchema = z
   .object({
-    key: z.string().min(1).max(50).regex(/^[a-z0-9-]+$/),
+    key: z
+      .string()
+      .min(1)
+      .max(50)
+      .regex(/^[a-z0-9-]+$/),
     label: z.string().min(1).max(120),
     name: z.string().max(120).optional(),
     title: z.string().max(120).optional(),
@@ -338,9 +342,7 @@ export const UpdateContractDraftSchema = z
   .strict();
 export type UpdateContractDraft = z.infer<typeof UpdateContractDraftSchema>;
 
-export const ContractVersionOnlySchema = z
-  .object({ version: z.number().int().min(0) })
-  .strict();
+export const ContractVersionOnlySchema = z.object({ version: z.number().int().min(0) }).strict();
 export type ContractVersionOnly = z.infer<typeof ContractVersionOnlySchema>;
 
 export const DecideContractApprovalSchema = z

@@ -25,6 +25,7 @@ import { buildHiringDocumentTypesRouter, buildHiringDocumentsRouter } from './re
 import { buildEmployeeFilesRouter } from './employee-management/employee-file';
 import { buildHolidaysRouter, buildWorkCalendarRouter, registerHrWorkCalendarSettings } from './work-calendar';
 import { registerHrIdentitySeams } from './employee-management/employees/identity-seams';
+import { registerHrDirectorySeams } from './directory-seams';
 import {
   dispatchPendingWorkflowEvents,
   registerRecruitmentWorkflowConsumers,
@@ -53,6 +54,7 @@ registerHrWorkCalendarSettings();
 registerHrContractSettings();
 // Auth design 4.3/4.4 — employee-code login + NID temp-password source (platform seams).
 registerHrIdentitySeams();
+registerHrDirectorySeams();
 // Workflow consumers (I15): the timeline projection and the audit trail react to published
 // workflow events; the engine itself performs no side effects.
 registerRecruitmentWorkflowConsumers();

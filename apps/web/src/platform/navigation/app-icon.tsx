@@ -3,20 +3,27 @@
 // icons are presentation-only, the navigation content itself always comes from the API.
 import { type ComponentType, type SVGProps } from 'react';
 import {
+  AlertIcon,
   BadgeIcon,
   BuildingIcon,
+  CalendarIcon,
   ChatIcon,
   ClipboardIcon,
+  CogIcon,
   FileIcon,
   FolderIcon,
+  GaugeIcon,
   HomeIcon,
   InboxIcon,
   LayersIcon,
   LinkIcon,
   OfferIcon,
+  ShieldIcon,
   SitemapIcon,
   TagIcon,
+  TruckIcon,
   UsersIcon,
+  WrenchIcon,
 } from '../../shared/ui/icons';
 
 export type NavIcon = ComponentType<SVGProps<SVGSVGElement>>;
@@ -41,6 +48,16 @@ const REGISTRY: Record<string, NavIcon> = {
   offer: OfferIcon,
   inbox: InboxIcon,
   link: LinkIcon,
+  // Fleet (FW-1) — plus names the seed already used that previously fell back.
+  truck: TruckIcon,
+  vehicle: TruckIcon,
+  gauge: GaugeIcon,
+  wrench: WrenchIcon,
+  calendar: CalendarIcon,
+  cog: CogIcon,
+  settings: CogIcon,
+  alert: AlertIcon,
+  shield: ShieldIcon,
 };
 
 export const resolveNavIcon = (name: string | null | undefined, fallback: NavIcon): NavIcon => {

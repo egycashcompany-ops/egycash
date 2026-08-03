@@ -92,7 +92,7 @@ The register row. One asset = one physical (or licensed-hardware) item.
 |---|---|
 | `assetCode` | `AST-…`, unique, permanent |
 | `name`, `description?` | what it is |
-| `categoryId` | → `it_asset_categories` |
+| `categoryId` | → `it_catalog_items` (`kind: assetCategory`, §2.4) |
 | `status` | **derived, never hand-set**: `inStock` \| `assigned` \| `underMaintenance` \| `disposed` (§6) |
 | `serialNumber?`, `model?`, `manufacturer?` | identity card; `serialNumber` sparse-unique |
 | `externalTag?` | a pre-existing printed tag/barcode number, searchable — legacy labels keep working without printing (D2) |
@@ -123,10 +123,18 @@ types: `registered · updated · assigned · returned · transferred · maintena
 maintenanceCompleted · warrantyUpdated · disposed`. Events without extra facts carry
 `metadata: {}` and are handled by type, never by probing metadata keys.
 
-### 2.4 `it_asset_categories` — Asset Category (catalog)
+Assets (§2.3) and tickets (§2.6) share **one internal timeline implementation** — one model
+factory and one service shape, parameterized by collection and type vocabulary. The idiom
+appears twice in the product but once in the code.
 
-Flat catalog: `{ code, name (ar/en), description?, active }`. Archive, never delete, once
-referenced (Fleet catalog rule). No category tree in MVP (§13-Q2).
+### 2.4 `it_catalog_items` — simple catalogs (kind-discriminated, the Fleet pattern)
+
+One collection for every plain name-list the module needs — exactly `fleet_catalog_items`:
+`{ kind: assetCategory | ticketCategory, code?, name (ar/en), description?, active, sortOrder }`.
+Asset categories and ticket categories are the two MVP kinds; a future simple list joins as a
+kind, not as a collection. Archive, never delete, once referenced (Fleet catalog rule). No
+category tree in MVP (§13-Q2). Catalogs that carry *behaviour* (priorities with their SLA
+targets, §2.6) stay their own collections — the `fleet_vehicle_types` precedent.
 
 ### 2.5 `it_asset_assignments` — Assignment (custody record)
 
@@ -147,18 +155,19 @@ expectedReturnAt?, returnedAt?, returnedToUserId?, conditionOnReturn?, notes? }`
 
 ### 2.6 Help Desk
 
-**`it_ticket_categories`** — `{ name (ar/en), active, sortOrder }`. Seeded defaults (hardware,
-software, network, access, other) — admin-editable catalog, not an enum.
+**Ticket categories** — §2.4 catalog rows (`kind: ticketCategory`), seeded defaults (hardware,
+software, network, access, other) — admin-editable, not an enum.
 
-**`it_ticket_priorities`** — `{ name (ar/en), rank, active }`. Seeded low/medium/high/critical.
-A catalog rather than an enum because the SLA policy attaches per priority and admins tune both
-together.
-
-**`it_sla_policies`** — `{ priorityId (unique), responseMinutes, resolutionMinutes, active }`.
-One active policy per priority; a ticket **snapshots** the policy at creation (`sla.policy`), so
-editing a policy never rewrites history or running clocks (same reasoning as contract-template
-versioning). Clock model: 24/7 in MVP; `onHold` **pauses** the resolution clock (accumulated in
-`sla.pausedMs`); the response clock never pauses. Business-hours calendars are §13-Q3.
+**`it_ticket_priorities`** — `{ name (ar/en), rank, responseMinutes, resolutionMinutes,
+active }`. Seeded low/medium/high/critical. **The priority IS the SLA policy.** v1.0 split them
+into two collections joined 1:1 by a unique key — normalization without a purpose: admins tune
+the name, the rank and the targets as one decision on one screen, and the module carries one
+collection and one permission less. A ticket **snapshots** `{ responseMinutes,
+resolutionMinutes }` at creation (`sla.policy`), so editing a priority never rewrites history or
+running clocks (the contract-template-versioning reasoning). Clock model: 24/7 in MVP; `onHold`
+**pauses** the resolution clock (accumulated in `sla.pausedMs`); the response clock never
+pauses. Business-hours calendars are §13-Q3. Per-category SLA overrides are deliberately absent
+until a real case demands them.
 
 **`it_tickets`**
 
@@ -175,14 +184,17 @@ versioning). Clock model: 24/7 in MVP; `onHold` **pauses** the resolution clock 
 | `resolution?` | `{ summary, resolvedByUserId, resolvedAt }` |
 | `closedAt?`, `reopenCount` | |
 
-**`it_ticket_events`** — append-only ticket history, same idiom and same `minimize: false` rule
-as §2.3: `opened · assigned · statusChanged · priorityChanged · commented · slaBreached ·
-resolved · closed · reopened · cancelled`. The ticket page renders one interleaved stream of
-events + comments.
-
-**`it_ticket_comments`** — `{ ticketId, authorUserId, body, visibility: public|internal, at }`.
-`internal` rows are visible only to holders of `itTicket.edit` (§7); the requester never sees
-them. Attachments: platform Files, additive, owner = ticket, optional `commentId` linkage.
+**`it_ticket_events`** — the ticket's history AND its conversation: one append-only stream, one
+collection — the recruitment-timeline precedent, where notes are timeline entries (`note` type),
+not a sibling collection. Same `minimize: false` rule as §2.3. Types: `opened · assigned ·
+statusChanged · priorityChanged · commented · slaBreached` — resolve, close, reopen and cancel
+are `statusChanged` rows (`from`/`to` are typed fields), not four more types. A comment is a
+`commented` event with two typed fields the other types leave null: `body` and `visibility:
+public | internal`. `internal` rows are visible only to holders of `itTicket.edit` (§7) —
+filtered in the query/mapper layer (FR-7); the requester never sees them. The ticket page
+renders this stream as-is: no interleaving of two collections, no ordering ambiguity.
+Attachments: platform Files, additive, owner = ticket, optional `eventId` linkage to the comment
+they arrived with.
 
 ### 2.7 Maintenance
 
@@ -195,7 +207,9 @@ them. Attachments: platform Files, additive, owner = ticket, optional `commentId
 violations precedent): `{ orderCode, kind: preventive|corrective, assetId, planId? (preventive),
 ticketId? (corrective, when born from a ticket), status: open → inProgress → completed |
 cancelled, scheduledFor?, startedAt?, completedAt?, performedByUserId?, vendorId? (external
-work), cost?, summary?, partsUsed: [{ partId, qty }] }`.
+work), cost?, summary? }`. An order's consumed parts are **not** stored on the order: they are
+its movement rows (§ below, keyed `orderId`) — one source of truth, no drift between an embedded
+list and the ledger.
 
 An order in `inProgress` puts its asset `underMaintenance`; completion returns the asset to its
 prior custody state (assigned assets stay assigned — a laptop being repaired is still that
@@ -241,20 +255,21 @@ if Procurement arrives later it takes ownership and IT re-points — the collect
 ## 3. Relationships
 
 ```
-it_asset_categories 1─n it_assets ──1─n it_asset_events            (history)
+it_catalog_items(assetCategory) 1─n it_assets ──1─n it_asset_events        (history)
                           │ ├──1─n it_asset_assignments ──n─1 hr employees (custody)
                           │ ├──1─n it_maintenance_orders ──n─1 it_maintenance_plans
-                          │ │        └── partsUsed ──n─n it_spare_parts (via movements)
+                          │ │        └──1─n it_spare_part_movements ──n─1 it_spare_parts
                           │ ├──1─n it_software_installations ──n─1 it_software_products
                           │ │                └──n─1 it_licenses ──n─1 it_software_products
                           │ ├── warranty ──n─1 it_vendors
                           │ └── purchase ──n─1 it_vendors
 it_tickets ──n─1 platform users (requester, technician)
-   ├──n─1 it_ticket_categories / it_ticket_priorities ──1─1 it_sla_policies
+   ├──n─1 it_catalog_items(ticketCategory)
+   ├──n─1 it_ticket_priorities                          (carry the SLA targets)
    ├──n─0..1 it_assets                                  (what it's about)
-   ├──1─n it_ticket_comments / it_ticket_events         (conversation + history)
+   ├──1─n it_ticket_events                              (history + conversation, one stream)
    └──0..n it_maintenance_orders (corrective, born from the ticket)
-platform files ── additive attachments on tickets, comments, assets
+platform files ── additive attachments on tickets, comment events, assets
 ```
 
 Cross-module references are **by id + event subscription only** — IT never imports HR or Fleet
@@ -268,7 +283,9 @@ audited update (+ `updated`/`warrantyUpdated` events when custody-relevant field
 
 ### 4.2 Labels
 Select assets → server renders QR PNGs (existing `qrcode` dep) → platform PDF service lays out
-the N-up A4 sheet → download/print (`itAsset.print`).
+the N-up A4 sheet → download/print. Printing needs only `itAsset.view` — a label shows nothing
+the viewer cannot already see; a dedicated `print` grant would be a permission with no decision
+behind it.
 
 ### 4.3 Custody: assign / return / transfer / dispose
 Exactly §2.5. All four are named service actions (never generic PATCH), each in a transaction:
@@ -290,7 +307,9 @@ open ──assign/start──▶ inProgress ──▶ resolved ──close──
 - **First response** = the first public technician comment or the move to `inProgress`, whichever
   comes first; stamps `sla.firstResponseAt` once.
 - `onHold` requires a reason (comment), pauses the resolution clock (§2.6).
-- `resolved` requires a resolution summary; fires `it.ticket.resolved` (notifies the requester).
+- `resolved` requires a resolution summary; the requester is notified via the module's own
+  filtered `it.ticket.statusChanged` subscription (§8.2) — resolution is a `to` value, not a
+  separate event name.
 - `closed` by a technician, or **auto-closed** by sweep after `TicketAutoCloseDays` in
   `resolved` (0 disables). Reopen within the same window reopens *this* ticket; after closure a
   new ticket links back (open question §13-Q7 sets the window).
@@ -351,6 +370,9 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
   app is server-side search + resolve-by-id from its first commit (ADR-019 rule 5).
 - **FR-13** `hr.employee.exited` never auto-returns assets — physical custody changes only when
   a human records the return (§9.1).
+- **FR-14** A requester may cancel their **own** ticket while it is still `open`, and may add
+  public comments to their own tickets — ownership rules riding the `own` scope, not grants; no
+  permission is minted for either.
 
 ## 6. States catalog
 
@@ -367,11 +389,11 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
 | Screen | View needs | Operations on it |
 |---|---|---|
 | `/it` (home/dashboards) | any `it*` view permission | — |
-| `/it/assets` (+ scan) | `itAsset.view` | `itAsset.create`, `.edit`, `.export`, `.print` (labels), `.delete` (FR-5 only) |
+| `/it/assets` (+ scan, + labels) | `itAsset.view` | `itAsset.create`, `.edit`, `.export`, `.delete` (FR-5 only) |
 | `/it/assets/:id` custody | `itAsset.view` | `itAsset.assign` (assign + return + transfer — one custody grant, the roster-precedent: one operational surface), `itAsset.dispose` (a write-off decision, its own grant) |
-| `/it/asset-categories` | — | `itAssetCategory.manage` |
+| `/it/catalogs` | — | `itCatalog.manage` (asset + ticket categories — one grant, the `fleetCatalog.manage` precedent) |
 | `/it/tickets` | `itTicket.view` (scoped; requesters see own) | `itTicket.create`, `.edit` (work the ticket: status, priority, internal comments), `.assign` (dispatch decision, its own grant), `.close` (close + reopen + cancel, both-directions precedent) |
-| `/it/helpdesk-settings` | — | `itTicketCatalog.manage` (categories + priorities), `itSlaPolicy.manage` |
+| `/it/helpdesk-settings` | — | `itSlaPolicy.manage` (priorities + their SLA targets — behaviour-carrying, its own grant: the `fleetMaintenanceRule.manage` precedent) |
 | `/it/maintenance` | `itMaintenance.view` | `itMaintenance.create`, `.edit`, `.complete` (complete + cancel) |
 | `/it/maintenance-plans` | `itMaintenance.view` | `itMaintenancePlan.manage` |
 | `/it/spare-parts` | `itSparePart.view` | `itSparePart.manage` (catalog + receipts; consumption flows through order completion under `itMaintenance` grants) |
@@ -397,8 +419,7 @@ employee their requester view. All permissions land in the generated matrix.
 | `it.asset.warrantyExpiring` / `.warrantyExpired` | assetCode, warrantyEnd, vendorId? | expiry sweep |
 | `it.ticket.opened` | ticketCode, categoryId, priorityId, requesterUserId, assetId? | creation |
 | `it.ticket.assigned` | ticketCode, technicianUserId | dispatch |
-| `it.ticket.statusChanged` | ticketCode, from, to | every transition |
-| `it.ticket.resolved` / `.closed` / `.reopened` | ticketCode (+summary on resolved) | §4.4 |
+| `it.ticket.statusChanged` | ticketCode, from, to, summary? | every transition — resolved/closed/reopened/cancelled are `to` values selected by automation **filters**, not four more event names |
 | `it.ticket.slaBreached` | ticketCode, phase: response\|resolution, dueAt | §4.5, once per phase |
 | `it.maintenance.orderCreated` | orderCode, kind, assetCode, planId?, ticketId? | direct + sweep |
 | `it.maintenance.orderCompleted` | orderCode, assetCode, cost?, partsCount | completion |
@@ -406,14 +427,16 @@ employee their requester view. All permissions land in the generated matrix.
 | `it.license.expiring` / `.expired` | productId, expiresAt, seats | expiry sweep |
 | `it.license.seatsExceeded` | licenseId, seats, seatsUsed | installation write |
 
-~20 events; all become automation triggers with zero extra work. First automation candidates:
-SLA breach → escalate to IT manager; license expiring → WhatsApp the responsible; asset assigned
-→ notify the holder.
+18 events; all become automation triggers with zero extra work. The vocabulary is deliberately
+one-name-per-fact: lifecycle transitions ride `statusChanged` + filters (trigger filters exist —
+ADR-018 workflow spec), and only facts a filter cannot express get their own name. First
+automation candidates: SLA breach → escalate to IT manager; license expiring → WhatsApp the
+responsible; asset assigned → notify the holder.
 
 ### 8.2 Notification templates (seeded via `notificationTemplateService.ensure`)
-`it.ticketAssigned` (technician) · `it.ticketResolved` (requester) · `it.ticketSlaBreached`
-(supervisors) · `it.assetAssigned` (holder) · `it.warrantyExpiring` · `it.licenseExpiring` ·
-`it.maintenanceDue`.
+`it.ticketAssigned` (technician) · `it.ticketResolved` (requester — sent by the module's own
+`statusChanged` subscription filtered on `to: resolved`) · `it.ticketSlaBreached` (supervisors) ·
+`it.assetAssigned` (holder) · `it.warrantyExpiring` · `it.licenseExpiring` · `it.maintenanceDue`.
 
 ### 8.3 Settings (`declareSetting`, organization scope)
 `it.warrantyWarnDays` (30) · `it.licenseWarnDays` (30) · `it.slaAtRiskPercent` (80) ·
@@ -440,7 +463,7 @@ The closed `AUDIT_ACTIONS` vocabulary gains six named actions (the Fleet FL-4 pr
 distinct audited acts, not generic updates, because disputes are settled by filtering on them):
 `assign` · `return` · `transfer` · `dispose` · `resolve` · `slaBreached` (system actor, the
 contract-generation precedent). Existing actions cover the rest (`create`, `update`,
-`statusChange`, `export`, `print`, `close`, `reopen`, `archive`).
+`statusChange`, `export`, `reopen`, `archive`).
 
 ## 11. Dashboards & reports (derived queries — no new collections)
 
@@ -450,8 +473,10 @@ warranty expiring 30/60/90 · recently registered/disposed.
 aging buckets · resolved-this-week.
 **Maintenance dashboard:** plans due within horizon · overdue orders · parts below min · cost
 this month (sum of order costs — a report figure, not accounting).
-**Warranty report:** filterable list (window, vendor, category, branch) — the §8.1 sweep's
-queryable twin. **Asset export:** CSV via the audited row-capped export path (the applicant-export
+**Warranty & license report:** filterable warranty list (window, vendor, category, branch) plus
+license compliance (over-seats, expiring) — the §8.1 sweeps' queryable twin, so FR-10's
+warn-only stance has a screen someone actually watches.
+**Asset export:** CSV via the audited row-capped export path (the applicant-export
 precedent; `itAsset.export`).
 
 ## 12. APIs (all under `/api/v1/it/…`, standard list/get/create/patch + named actions)
@@ -459,9 +484,9 @@ precedent; `itAsset.export`).
 | Prefix | Named actions beyond CRUD |
 |---|---|
 | `/it/assets` | `GET /by-code/:code` (scan) · `POST /:id/assign` · `/:id/return` · `/:id/transfer` · `/:id/dispose` · `GET /:id/history` · `GET /:id/assignments` · `POST /labels` (PDF) · `GET /export` |
-| `/it/asset-categories` | archive |
+| `/it/catalog-items` | archive (kinds: assetCategory, ticketCategory) |
 | `/it/tickets` | `POST /:id/assign` · `/:id/status` · `/:id/resolve` · `/:id/close` · `/:id/reopen` · `/:id/cancel` · `GET+POST /:id/comments` · attachments via platform files |
-| `/it/ticket-categories`, `/it/ticket-priorities`, `/it/sla-policies` | catalogs |
+| `/it/ticket-priorities` | carry the SLA targets (§2.6) |
 | `/it/maintenance-plans` | activate/deactivate |
 | `/it/maintenance-orders` | `POST /:id/start` · `/:id/complete` · `/:id/cancel` |
 | `/it/spare-parts` | `POST /:id/receipts` · `GET /:id/movements` |
@@ -492,16 +517,16 @@ vendors, products, parts ship with `search` from day one, per ADR-019 rule 5).
 | ADR | Records |
 |---|---|
 | **ADR-020 — IT asset custody & history** | append-only event chain as the business record; derived status; no hard delete (FR-2/FR-4/FR-5); why audit logs are not the custody chain (D3) |
-| **ADR-021 — Help-desk SLA & ticket lifecycle placement** | policy-as-data + snapshot-on-create; set-once breach stamps; sweep cadence; **and the recorded decision that ticket states are code-defined in the module, not the (unbuilt) ADR-011 platform engine** — with the migration note for the day the platform engine exists |
+| **ADR-021 — Help-desk SLA & ticket lifecycle placement** | SLA targets as priority data + snapshot-on-create; set-once breach stamps; sweep cadence; **and the recorded decision that ticket states are code-defined in the module, not the (unbuilt) ADR-011 platform engine** — with the migration note for the day the platform engine exists |
 | **ADR-022 — Minimal spare-parts ledger** | movements ledger + denormalized on-hand; explicitly *not* inventory accounting; the boundary Accounting will inherit |
 
 ## 15. Delivery slices (post-approval; each slice = contracts + api + tests, PR-reviewed; web follows)
 
 | Slice | Content |
 |---|---|
-| IT-1 | contracts (DTOs/schemas/permissions/events) · module skeleton + manifest + nav category · asset categories · vendors · asset register + sequences + QR/labels |
+| IT-1 | contracts (DTOs/schemas/permissions/events) · module skeleton + manifest + nav category · catalog items (asset + ticket categories) · vendors · asset register + sequences + QR/labels |
 | IT-2 | custody: assign/return/transfer/dispose · asset events/history · HR exit subscription · ADR-020 |
-| IT-3 | help desk: catalogs, SLA policies, tickets, comments, attachments, SLA + auto-close sweeps · ADR-021 |
+| IT-3 | help desk: priorities (with SLA targets), tickets, event/conversation stream, attachments, SLA + auto-close sweeps · ADR-021 |
 | IT-4 | maintenance: plans, orders, spare parts + movements, preventive sweep · ADR-022 |
 | IT-5 | software products, installations, licenses, expiry sweep |
 | IT-6 | dashboards, warranty report, asset export, notification templates, seed data |
@@ -511,3 +536,14 @@ vendors, products, parts ship with `search` from day one, per ADR-019 rule 5).
 
 - **v1.0 DRAFT** (2026-08-03) — full architecture & domain design for review. Awaiting owner
   decisions on §13 and overall approval. No implementation exists or begins before approval.
+- **v1.1 DRAFT** (2026-08-03) — owner-requested pre-freeze simplification review. Five merges,
+  each toward an existing precedent: priorities absorb the SLA policies (a 1:1 split had no
+  purpose); ticket comments become `commented` events in the single ticket stream (the
+  recruitment `note` precedent); asset + ticket categories collapse into kind-discriminated
+  `it_catalog_items` under one `itCatalog.manage` (the Fleet catalog precedent); orders stop
+  storing `partsUsed` (the movement ledger is the single source); `itAsset.print` dropped (a
+  label shows nothing `view` cannot) and `it.ticket.resolved/.closed/.reopened` folded into
+  `statusChanged` + automation filters. Net: 19 → 16 collections, 29 → 27 grants, 21 → 18
+  events; one internal timeline implementation shared by assets and tickets; FR-14 added
+  (requester ownership rules need no grants). Structure otherwise unchanged; still awaiting §13
+  decisions and approval.

@@ -7,7 +7,6 @@ import {
   type DecideEvaluation,
   type OpenEvaluation,
   type SetEvaluationAppointment,
-  type SetPlacementRecommendation,
   type UpdateEvaluationPhase,
   type BulkEvaluations,
 } from '@ecms/contracts';
@@ -82,10 +81,6 @@ export const useDecideEvaluation = (id: string) =>
 /** RW9 — book (or clear) the visit on a phase that schedules one. */
 export const useSetEvaluationAppointment = (id: string) =>
   useWorkflowMutation(FEATURE, (body: SetEvaluationAppointment) => api.setEvaluationAppointment(id, body));
-
-/** RW5 — record (or clear) this phase's advisory placement recommendation. */
-export const useSetEvaluationRecommendation = (id: string) =>
-  useWorkflowMutation(FEATURE, (body: SetPlacementRecommendation) => api.setEvaluationRecommendation(id, body));
 
 export const useUploadEvaluationFile = (id: string) =>
   useWorkflowMutation(FEATURE, (vars: { file: File; version: number; note?: string }) =>

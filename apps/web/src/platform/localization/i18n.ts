@@ -331,18 +331,7 @@ const en: Record<string, string> = {
   // Bulk actions (RW17) — a partial-success envelope is reported exactly, never as "done".
   // Stage placement recommendations (RW5) — advisory, never a move on their own.
   'recommendation.title': 'Suggested placement',
-  'recommendation.body':
-    'This stage suggested a different position or branch. It is advisory — applying it records a normal reassignment.',
-  'recommendation.apply': 'Apply',
-  'recommendation.add': 'Suggest',
-  'recommendation.edit': 'Edit suggestion',
-  'recommendation.editBody':
-    'Record where this stage thinks the candidate belongs. Saving changes nothing by itself — applying it is a separate, audited reassignment.',
   'recommendation.empty': 'No placement suggested at this stage yet.',
-  'recommendation.note': 'Note',
-  'recommendation.clear': 'Clear',
-  'recommendation.cleared': 'Suggestion cleared',
-  'recommendation.saved': 'Suggestion saved',
   'recommendation.current': 'Currently: {current}',
   'recommendation.suggest': 'Suggest job & branch',
   'recommendation.lastChanged': 'Last changed',
@@ -2778,18 +2767,7 @@ const ar: Record<string, string> = {
   // Bulk actions (RW17).
   // Stage placement recommendations (RW5).
   'recommendation.title': 'الوظيفة المقترحة',
-  'recommendation.body':
-    'اقترحت هذه المرحلة وظيفة أو فرعًا مختلفًا. الاقتراح استرشادي — وتطبيقه يُسجَّل كإعادة تعيين عادية.',
-  'recommendation.apply': 'تطبيق',
-  'recommendation.add': 'اقتراح وظيفة',
-  'recommendation.edit': 'تعديل الاقتراح',
-  'recommendation.editBody':
-    'سجِّل الوظيفة التي ترى هذه المرحلة أن المتقدم يناسبها. الحفظ لا يغيّر شيئًا بذاته — التطبيق إعادة تعيين مستقلة ومُوثَّقة.',
   'recommendation.empty': 'لا يوجد اقتراح وظيفة في هذه المرحلة بعد.',
-  'recommendation.note': 'ملاحظة',
-  'recommendation.clear': 'إلغاء الاقتراح',
-  'recommendation.cleared': 'تم إلغاء الاقتراح',
-  'recommendation.saved': 'تم حفظ الاقتراح',
   'recommendation.current': 'الحالي: {current}',
   'recommendation.suggest': 'اقتراح وظيفة وفرع',
   'recommendation.lastChanged': 'آخر تعديل',

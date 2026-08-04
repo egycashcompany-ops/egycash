@@ -10,7 +10,6 @@ import {
   type ApplicantDto,
   type Locale,
   type PlacementChangeSource,
-  type PlacementDto,
 } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
@@ -28,15 +27,13 @@ export const ReassignDialog = ({
   applicant,
   open,
   onClose,
-  /** RW5 — pre-fill from a stage recommendation, and record where the move came from. */
-  prefill,
+  /** RW5 — record where the move came from. */
   source,
   sourceRef,
 }: {
   applicant: ApplicantDto;
   open: boolean;
   onClose: () => void;
-  prefill?: PlacementDto | null;
   /**
    * Which stage made the call. Kept separate from `sourceRef.entityType` because the two are not
    * the same vocabulary — an offer's record is a `jobOffer` but its placement source is `offer` —
@@ -55,16 +52,17 @@ export const ReassignDialog = ({
   const [reason, setReason] = useState('');
   const [note, setNote] = useState('');
 
-  // Re-seed whenever the dialog opens, so a recommendation pre-fills and a manual open resets.
+  // Re-seed whenever the dialog opens, so the form starts from where the candidate actually
+  // stands — including a move made moments ago from another stage — and never from a stale draft.
   useEffect(() => {
     if (!open) return;
-    const from = prefill ?? applicant.placement;
+    const from = applicant.placement;
     setJobPositionId(from.jobPositionId ?? '');
     setJobTitleId(from.jobTitleId ?? '');
     setBranchId(from.branchId ?? '');
     setReason('');
     setNote('');
-  }, [open, prefill, applicant.placement]);
+  }, [open, applicant.placement]);
 
   const { data: branches } = useBranchOptions(open);
   const { data: positions } = useJobPositions({ pageSize: MAX_PAGE_SIZE, status: 'active' });

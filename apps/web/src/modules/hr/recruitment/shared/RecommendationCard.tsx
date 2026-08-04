@@ -1,47 +1,30 @@
-// RW5 — the placement a stage suggests for a candidate, the action that applies it, and the record
-// of every time it moved.
+// RW5 — where a candidate currently sits, the one action that moves them, and the record of every
+// time they moved.
 //
-// One card serves every stage, and the differences between them are props rather than copies:
+// One card serves every stage — screening, interview, evaluation, job offer and the applicant record
+// itself — and the only differences between them are props: which stage a move made here is filed
+// under, and which record it points back to.
 //
-//   • Interview and Evaluation STORE an advisory recommendation on their own record, so they pass
-//     `recommendation` and get the add/edit/clear controls.
-//   • Screening, Job Offer and the applicant record store nothing of their own. They omit it and
-//     get the suggest action alone — which is the whole feature there.
-//
-// Suggesting applies the move immediately: "Suggest" opens the ordinary reassign dialog, so it is
-// still an audited change with a mandatory reason, and it still lands in `placementHistory`. That
-// history is why nothing needs to be carried forward by hand — every later stage reads the
-// candidate's current placement, so the last suggestion IS what the next stage sees.
-import { useState } from 'react';
+// There is no stage-local recommendation any more. A stage used to be able to write an advisory
+// placement on its own record that moved nobody, which meant two answers to "where is this candidate
+// going" and — on the applicant screen — two buttons whose Arabic labels read the same. Suggesting
+// now applies the move: `SuggestPlacementButton` opens the ordinary reassign dialog, so it is an
+// audited change with a mandatory reason that lands in `placementHistory`. That history is also why
+// nothing needs carrying forward by hand — every later stage reads the candidate's current placement,
+// so the last suggestion IS what the next stage sees.
 import {
   type ApplicantDto,
   type Locale,
   type PlacementChangeDto,
   type PlacementChangeSource,
-  type PlacementDto,
   type PlacementLabelDto,
 } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../store';
-import { Can } from '../../../../platform/rbac/Can';
 import { ActorById, useDirectoryPage } from '../../../../platform/directory';
 import { Card, CardBody, CardHeader } from '../../../../shared/ui/Card';
-import { Button } from '../../../../shared/ui/Button';
 import { formatDateTime } from '../../../../shared/lib/format';
-import { ReassignDialog } from '../applicants/components/ReassignDialog';
-import { RecommendationDialog, type RecommendationInput } from './RecommendationDialog';
-
-/** A stage that keeps its own advisory recommendation (RW5). Omitted by stages that do not. */
-export interface StageRecommendation {
-  placement: PlacementDto | null;
-  note: string | null;
-  /** The stage record's version — the recommendation is written on that record. */
-  version: number;
-  /** Who may record one: the panel's grant on interviews, the phase's on evaluations (RW7). */
-  editPermission: string;
-  pending: boolean;
-  onSave: (input: RecommendationInput) => Promise<unknown>;
-}
+import { SuggestPlacementButton } from './SuggestPlacementButton';
 
 const describe = (label: PlacementLabelDto): string =>
   [label.position, label.branch].filter((v) => v !== null).join(' · ');
@@ -88,7 +71,6 @@ export const RecommendationCard = ({
   currentLabel,
   source,
   sourceRef,
-  recommendation,
 }: {
   /** Null while the candidate is still loading — the card simply waits. */
   applicant: ApplicantDto | null;
@@ -98,12 +80,9 @@ export const RecommendationCard = ({
   source: PlacementChangeSource;
   /** The stage record a move made here points back to. Absent on the applicant record. */
   sourceRef?: { entityType: string; entityId: string };
-  recommendation?: StageRecommendation;
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
-  const [applyOpen, setApplyOpen] = useState(false);
-  const [editOpen, setEditOpen] = useState(false);
 
   const history = applicant?.placementHistory ?? [];
   const last = history[history.length - 1];
@@ -111,31 +90,19 @@ export const RecommendationCard = ({
   useDirectoryPage(history.map((entry) => entry.by));
 
   const current = describe(currentLabel);
-  // The stage's stored recommendation pre-fills the dialog where there is one; elsewhere the
-  // candidate's own placement does, so suggesting starts from where they actually stand.
-  const prefill = recommendation?.placement ?? null;
 
   return (
     <Card>
       <CardHeader
         title={t('recommendation.title')}
         actions={
-          <div className="flex items-center gap-2">
-            {recommendation !== undefined && (
-              <Can permission={recommendation.editPermission}>
-                <Button size="sm" variant="ghost" onClick={() => setEditOpen(true)}>
-                  {recommendation.placement === null ? t('recommendation.add') : t('recommendation.edit')}
-                </Button>
-              </Can>
-            )}
-            {applicant !== null && (
-              <Can permission="applicant.reassign">
-                <Button size="sm" variant="secondary" onClick={() => setApplyOpen(true)}>
-                  {t('recommendation.suggest')}
-                </Button>
-              </Can>
-            )}
-          </div>
+          applicant !== null && (
+            <SuggestPlacementButton
+              applicant={applicant}
+              source={source}
+              {...(sourceRef === undefined ? {} : { sourceRef })}
+            />
+          )
         }
       />
       <CardBody>
@@ -159,13 +126,6 @@ export const RecommendationCard = ({
           </p>
         )}
 
-        {recommendation !== undefined && recommendation.placement !== null && (
-          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{t('recommendation.body')}</p>
-        )}
-        {recommendation?.note !== undefined && recommendation.note !== null && recommendation.note !== '' && (
-          <p className="mt-1 text-sm">{recommendation.note}</p>
-        )}
-
         <div className="mt-4 border-t border-slate-100 pt-3 dark:border-slate-800">
           <p className="mb-2 text-xs font-medium text-slate-500 dark:text-slate-400">
             {t('recommendation.history.title')}
@@ -173,29 +133,6 @@ export const RecommendationCard = ({
           <History entries={history} />
         </div>
       </CardBody>
-
-      {applicant !== null && (
-        <ReassignDialog
-          applicant={applicant}
-          open={applyOpen}
-          onClose={() => setApplyOpen(false)}
-          prefill={prefill}
-          source={source}
-          {...(sourceRef === undefined ? {} : { sourceRef })}
-        />
-      )}
-
-      {recommendation !== undefined && (
-        <RecommendationDialog
-          open={editOpen}
-          onClose={() => setEditOpen(false)}
-          current={recommendation.placement}
-          currentNote={recommendation.note}
-          version={recommendation.version}
-          pending={recommendation.pending}
-          onSubmit={recommendation.onSave}
-        />
-      )}
     </Card>
   );
 };

@@ -12,7 +12,6 @@ import {
   type ReassignInterviewPanel,
   type RescheduleInterview,
   type ScheduleInterview,
-  type SetPlacementRecommendation,
   type SkipInterviewer,
   type StartInterview,
   type StartScheduledInterview,
@@ -158,10 +157,6 @@ export const useStartScheduledInterviewRow = () =>
   useWorkflowMutation(FEATURE, (vars: { id: string; version: number }) =>
     api.startScheduledInterview(vars.id, { version: vars.version }),
   );
-
-/** RW5 — record (or clear) this round's advisory placement recommendation. */
-export const useSetInterviewRecommendation = (id: string) =>
-  useWorkflowMutation(FEATURE, (body: SetPlacementRecommendation) => api.setInterviewRecommendation(id, body));
 
 /** RW12 — bulk "Start now" over a stage's waiting queue. */
 export const useBulkStartInterviews = (onApplied?: () => void) =>

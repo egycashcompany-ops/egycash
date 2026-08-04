@@ -23,6 +23,8 @@ import {
 } from '../components/OfferDialogs';
 import { ApplicantLifecycleActions } from '../../applicants/components/ApplicantLifecycleActions';
 import { CandidateTimeline } from '../../timeline/components/CandidateTimeline';
+import { useApplicant } from '../../applicants/api/applicant-queries';
+import { RecommendationCard } from '../../shared/RecommendationCard';
 import { useJobOffer } from '../api/job-offer-queries';
 import { RecruitmentStepBar } from '../../shared/RecruitmentStepBar';
 
@@ -34,6 +36,9 @@ export const JobOfferDetailPage = (): JSX.Element => {
   const navigate = useNavigate();
   const { id = '' } = useParams();
   const { data: o, isLoading, isError, error, refetch } = useJobOffer(id);
+  // The candidate carries the placement and its history. Above the guards below — a hook runs on
+  // every render or on none.
+  const { data: candidate } = useApplicant(o?.applicantId ?? '');
   const [action, setAction] = useState<ActionKind>(null);
 
   if (isLoading) {
@@ -111,6 +116,14 @@ export const JobOfferDetailPage = (): JSX.Element => {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
+          {/* RW3 — once the offer is accepted the server refuses to move the candidate, so the
+              suggest action disappears here on its own and the history remains readable. */}
+          <RecommendationCard
+            applicant={candidate ?? null}
+            currentLabel={candidate?.placementLabel ?? o.placementLabel}
+            source="offer"
+            sourceRef={{ entityType: 'jobOffer', entityId: o.id }}
+          />
           <Card>
             <CardHeader title={t('offers.form.package')} />
             <CardBody>

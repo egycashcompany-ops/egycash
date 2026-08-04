@@ -5,7 +5,13 @@
 // Selecting a seat settles the rest (the server completes department/branch from the position), so
 // the form offers the seat first and the bare branch as the fallback for candidates with no seat yet.
 import { useEffect, useState } from 'react';
-import { MAX_PAGE_SIZE, type ApplicantDto, type Locale, type PlacementDto } from '@ecms/contracts';
+import {
+  MAX_PAGE_SIZE,
+  type ApplicantDto,
+  type Locale,
+  type PlacementChangeSource,
+  type PlacementDto,
+} from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
 import { Button } from '../../../../../shared/ui/Button';
@@ -24,12 +30,19 @@ export const ReassignDialog = ({
   onClose,
   /** RW5 — pre-fill from a stage recommendation, and record where the move came from. */
   prefill,
+  source,
   sourceRef,
 }: {
   applicant: ApplicantDto;
   open: boolean;
   onClose: () => void;
   prefill?: PlacementDto | null;
+  /**
+   * Which stage made the call. Kept separate from `sourceRef.entityType` because the two are not
+   * the same vocabulary — an offer's record is a `jobOffer` but its placement source is `offer` —
+   * and deriving one from the other by cast is how a move ends up filed under the wrong stage.
+   */
+  source?: PlacementChangeSource;
   sourceRef?: { entityType: string; entityId: string };
 }): JSX.Element => {
   const t = useT();
@@ -73,7 +86,7 @@ export const ReassignDialog = ({
           branchId: branchId === '' ? null : branchId,
         },
         reason: reason.trim(),
-        source: sourceRef === undefined ? 'manual' : (sourceRef.entityType as 'interview' | 'evaluation'),
+        source: source ?? 'manual',
         ...(sourceRef === undefined ? {} : { sourceRef }),
         ...(note.trim() === '' ? {} : { note: note.trim() }),
         version: applicant.version,

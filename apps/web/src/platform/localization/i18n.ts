@@ -343,6 +343,15 @@ const en: Record<string, string> = {
   'recommendation.cleared': 'Suggestion cleared',
   'recommendation.saved': 'Suggestion saved',
   'recommendation.current': 'Currently: {current}',
+  'recommendation.suggest': 'Suggest job & branch',
+  'recommendation.history.title': 'Placement history',
+  'recommendation.history.empty': 'This candidate has not been moved yet.',
+  'recommendation.history.unset': 'Not set',
+  'recommendation.source.manual': 'From the candidate record',
+  'recommendation.source.screening': 'From screening',
+  'recommendation.source.interview': 'From the interview',
+  'recommendation.source.evaluation': 'From the evaluation',
+  'recommendation.source.offer': 'From the job offer',
   // Reassignment (RW2) — Position/Branch stay editable until the offer is accepted.
   'applicants.reassign.title': 'Reassign',
   'applicants.reassign.body':
@@ -2779,6 +2788,15 @@ const ar: Record<string, string> = {
   'recommendation.cleared': 'تم إلغاء الاقتراح',
   'recommendation.saved': 'تم حفظ الاقتراح',
   'recommendation.current': 'الحالي: {current}',
+  'recommendation.suggest': 'اقتراح وظيفة وفرع',
+  'recommendation.history.title': 'سجل التنسيب',
+  'recommendation.history.empty': 'لم يتم نقل هذا المتقدّم بعد.',
+  'recommendation.history.unset': 'غير محدّد',
+  'recommendation.source.manual': 'من ملف المتقدّم',
+  'recommendation.source.screening': 'من الفرز المبدئي',
+  'recommendation.source.interview': 'من المقابلة',
+  'recommendation.source.evaluation': 'من التقييم',
+  'recommendation.source.offer': 'من عرض العمل',
   // Reassignment (RW2).
   'applicants.reassign.title': 'إعادة التعيين',
   'applicants.reassign.body':

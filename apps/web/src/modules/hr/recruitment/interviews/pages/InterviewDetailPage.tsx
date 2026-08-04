@@ -174,14 +174,17 @@ export const InterviewDetailPage = (): JSX.Element => {
         <div className="space-y-4 lg:col-span-2">
           <RecommendationCard
             applicant={candidate ?? null}
-            recommendedPlacement={iv.recommendedPlacement}
-            recommendationNote={iv.recommendationNote}
             currentLabel={candidate?.placementLabel ?? iv.placementLabel}
+            source="interview"
             sourceRef={{ entityType: 'interview', entityId: iv.id }}
-            version={iv.version}
-            editPermission="interview.evaluate"
-            pending={setRecommendation.isPending}
-            onSave={(input) => setRecommendation.mutateAsync(input)}
+            recommendation={{
+              placement: iv.recommendedPlacement,
+              note: iv.recommendationNote,
+              version: iv.version,
+              editPermission: 'interview.evaluate',
+              pending: setRecommendation.isPending,
+              onSave: (input) => setRecommendation.mutateAsync(input),
+            }}
           />
           <Card>
             <CardHeader title={t('interviews.panel.title')} />

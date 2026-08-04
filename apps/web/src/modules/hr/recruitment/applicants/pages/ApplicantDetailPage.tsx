@@ -30,6 +30,7 @@ import { ReturnToStageDialog } from '../components/ReturnToStageDialog';
 import { useApplicant, useVerifyApplicantIdentity } from '../api/applicant-queries';
 import { CandidateTimeline } from '../../timeline/components/CandidateTimeline';
 import { RecruitmentStepBar } from '../../shared/RecruitmentStepBar';
+import { RecommendationCard } from '../../shared/RecommendationCard';
 
 const Info = ({ label, children }: { label: string; children: ReactNode }): JSX.Element => (
   <div>
@@ -146,6 +147,9 @@ export const ApplicantDetailPage = (): JSX.Element => {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
+          {/* The record where a move is `manual` — no stage made the call. Same card as every
+              stage, so the history reads identically wherever you happen to be standing. */}
+          <RecommendationCard applicant={a} currentLabel={a.placementLabel} source="manual" />
           <Card>
             <CardHeader title={t('applicants.form.identity')} />
             <CardBody>

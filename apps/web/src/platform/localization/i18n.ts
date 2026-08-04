@@ -605,7 +605,9 @@ const en: Record<string, string> = {
   'apply.submit': 'Send application',
   'apply.thanks': 'Your application has been received.',
   'apply.reference': 'Keep this reference:',
-  'apply.linkGone': 'This application link is no longer available.',
+  'apply.linkGoneTitle': 'Link not available',
+  'apply.linkGone':
+    'This application link is no longer available. Ask whoever shared it for a current one.',
 
   // Applicants — form
   'applicants.form.required': 'Required',
@@ -631,6 +633,9 @@ const en: Record<string, string> = {
   'applicants.validation.dependents': 'A whole number between 0 and 50',
   'applicants.validation.amount': 'Enter a non-negative number',
   'applicants.validation.year': 'A year between 1950 and 2100',
+  'applicants.validation.number': 'Enter a number',
+  'applicants.validation.date': 'Enter a valid date',
+  'applicants.validation.choice': 'Choose one of the options',
   'applicants.form.serverErrors': 'Please correct the following:',
   'applicants.form.context': 'Application',
   'applicants.form.contextHint': 'A Job Request is optional — direct intake is allowed.',
@@ -3007,7 +3012,8 @@ const ar: Record<string, string> = {
   'apply.submit': 'إرسال الطلب',
   'apply.thanks': 'تم استلام طلبك.',
   'apply.reference': 'احتفظ بهذا الرقم المرجعي:',
-  'apply.linkGone': 'هذا الرابط لم يعد متاحًا.',
+  'apply.linkGoneTitle': 'الرابط غير متاح',
+  'apply.linkGone': 'هذا الرابط لم يعد متاحًا. اطلب رابطًا حاليًا ممن شاركه معك.',
   'applicants.form.required': 'مطلوب',
   'applicants.form.noInternalSource':
     'لم يُحدَّد بعد مصدر للتسجيل الداخلي. اضبطه من صفحة «نموذج التقديم».',
@@ -3031,6 +3037,9 @@ const ar: Record<string, string> = {
   'applicants.validation.dependents': 'رقم صحيح بين 0 و 50',
   'applicants.validation.amount': 'أدخل رقمًا غير سالب',
   'applicants.validation.year': 'سنة بين 1950 و 2100',
+  'applicants.validation.number': 'أدخل رقمًا',
+  'applicants.validation.date': 'أدخل تاريخًا صحيحًا',
+  'applicants.validation.choice': 'اختر أحد الخيارات المتاحة',
   'applicants.form.serverErrors': 'يُرجى تصحيح ما يلي:',
   'applicants.form.context': 'بيانات التقديم',
   'applicants.form.contextHint': 'طلب الوظيفة اختياري — يُسمح بالتسجيل المباشر.',

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { RegisterApplicantSchema, type RecruitmentFormField } from '@ecms/contracts';
-import { customAnswers, missingRequired, toRegistrationBody } from './apply-mapper';
+import { customAnswers, invalidCustom, missingRequired, toRegistrationBody } from './apply-mapper';
 
 const builtin = (key: string, required = false): RecruitmentFormField =>
   ({ type: 'builtin', key, required }) as RecruitmentFormField;
@@ -130,5 +130,44 @@ describe('customAnswers', () => {
       },
     ];
     expect(customAnswers(fields, { noticePeriod: '   ' })).toEqual([]);
+  });
+});
+
+describe('invalidCustom', () => {
+  const custom = (key: string, kind: string, options: { ar: string; en: string }[] = []) =>
+    ({
+      type: 'custom',
+      key,
+      kind,
+      label: { ar: key, en: key },
+      required: false,
+      options,
+    }) as unknown as RecruitmentFormField;
+
+  it("holds a custom answer to its question's kind", () => {
+    const fields = [
+      custom('salary', 'number'),
+      custom('start', 'date'),
+      custom('shift', 'select', [
+        { ar: 'صباحي', en: 'Morning' },
+        { ar: 'مسائي', en: 'Evening' },
+      ]),
+    ];
+    expect(invalidCustom(fields, { salary: '5000', start: '2026-01-31', shift: 'صباحي' })).toEqual([]);
+    expect(invalidCustom(fields, { salary: 'كتير' })).toEqual([
+      { field: 'salary', message: 'applicants.validation.number' },
+    ]);
+    expect(invalidCustom(fields, { start: '31/01/2026' })).toEqual([
+      { field: 'start', message: 'applicants.validation.date' },
+    ]);
+    // A choice nobody was offered cannot be smuggled in by a crafted payload.
+    expect(invalidCustom(fields, { shift: 'ليلي' })).toEqual([
+      { field: 'shift', message: 'applicants.validation.choice' },
+    ]);
+  });
+
+  it('leaves an unanswered optional question alone', () => {
+    expect(invalidCustom([custom('salary', 'number')], {})).toEqual([]);
+    expect(invalidCustom([custom('salary', 'number')], { salary: '  ' })).toEqual([]);
   });
 });

@@ -89,6 +89,39 @@ export const RecruitmentFormFieldSchema = z.discriminatedUnion('type', [
 ]);
 export type RecruitmentFormField = z.infer<typeof RecruitmentFormFieldSchema>;
 
+/**
+ * What a CUSTOM question accepts, decided by its kind. Built-in questions are judged by the
+ * applicant rules (`field-rules`, `value-objects`) — this covers only the ones the admin invented,
+ * which have no column and therefore no rule of their own until now.
+ *
+ * Shared, so the browser marks the field and the server refuses the value using one definition.
+ * Returns an i18n KEY, never a sentence.
+ */
+export const checkCustomAnswer = (
+  field: Extract<RecruitmentFormField, { type: 'custom' }>,
+  raw: string | boolean | undefined,
+): string | undefined => {
+  if (field.kind === 'checkbox') return undefined; // a tick is either there or it is not
+  const value = typeof raw === 'string' ? raw.trim() : '';
+  if (value === '') return undefined; // emptiness is the caller's business, not the kind's
+  switch (field.kind) {
+    case 'number':
+      return Number.isFinite(Number(value)) ? undefined : 'applicants.validation.number';
+    case 'date':
+      // ISO date only: what a date input posts, and what the record must keep.
+      return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value))
+        ? undefined
+        : 'applicants.validation.date';
+    case 'select':
+      // A choice must be one of the offered choices — a crafted payload cannot invent one.
+      return field.options.some((o) => o.ar === value || o.en === value)
+        ? undefined
+        : 'applicants.validation.choice';
+    default:
+      return undefined;
+  }
+};
+
 // ── The form ────────────────────────────────────────────────────────────────
 
 export interface RecruitmentFormLinkDto {
@@ -187,6 +220,25 @@ export interface RecruitmentFormSubmissionDto {
 export const RecruitmentFormTokenParamSchema = z
   .object({ token: z.string().min(16).max(64) })
   .strict();
+
+/**
+ * The form EXACTLY as it was published when a candidate filled it in.
+ *
+ * Editing the form later must not rewrite history: a question removed next month was still asked
+ * of the people who answered it, and a question that was optional then must not read as "left
+ * blank" when it becomes required. The snapshot is what makes an old application readable on its
+ * own terms rather than through today's form.
+ */
+export const RecruitmentFormSnapshotSchema = z
+  .object({
+    title: LocalizedStringSchema,
+    /** The form's version at submission time — which revision of the questions this was. */
+    formVersion: z.number().int().min(0),
+    fields: z.array(RecruitmentFormFieldSchema).max(60),
+    submittedAt: z.coerce.date(),
+  })
+  .strict();
+export type RecruitmentFormSnapshotDto = z.infer<typeof RecruitmentFormSnapshotSchema>;
 
 /**
  * An answer to a custom question. The LABEL travels with the answer: a question renamed — or

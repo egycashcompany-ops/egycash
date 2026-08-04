@@ -16,7 +16,12 @@ import {
   type Address,
   type LocalizedString,
 } from '../common/index.js';
-import { ApplicantFormAnswerSchema, type ApplicantFormAnswerDto } from './hr-recruitment-form.js';
+import {
+  ApplicantFormAnswerSchema,
+  RecruitmentFormSnapshotSchema,
+  type ApplicantFormAnswerDto,
+  type RecruitmentFormSnapshotDto,
+} from './hr-recruitment-form.js';
 import {
   PlacementSchema,
   type PlacementChangeDto,
@@ -272,6 +277,8 @@ export const RegisterApplicantSchema = z
       .optional(),
     /** Answers to the intake form's custom questions — see `hr-recruitment-form`. */
     formAnswers: z.array(ApplicantFormAnswerSchema).max(60).optional(),
+    /** The form as published at submission time; set by the public intake, never by a client. */
+    formSnapshot: RecruitmentFormSnapshotSchema.optional(),
     /**
      * Optional idempotency key so a retried intake (e.g. a re-submitted integration
      * payload) never creates a duplicate applicant.
@@ -539,6 +546,8 @@ export interface ApplicantDto {
   certifications: string[];
   /** Answers to the intake form's custom questions, each carrying the question it answers. */
   formAnswers: ApplicantFormAnswerDto[];
+  /** The form exactly as it was when this person applied. `null` for internal registrations. */
+  formSnapshot: RecruitmentFormSnapshotDto | null;
   references: { name: string; relationship?: string; phone?: string }[];
   expectedSalary: { amount: number; currency: string } | null;
   earliestStartDate: string | null;

@@ -1,11 +1,16 @@
 // Turns a public form submission into a registration payload.
 //
-// This file maps; it does NOT validate. Every value it produces is handed to
+// This file maps BUILT-IN answers and does not judge them: every value it produces is handed to
 // `RegisterApplicantSchema` — the same schema the internal form posts through — so a phone typed
-// on a public page is judged by exactly the rule a recruiter's phone is judged by. Adding a
-// second opinion here is how the two paths would drift.
+// on a public page is judged by exactly the rule a recruiter's phone is judged by. A second
+// opinion there is how the two paths would drift.
+//
+// CUSTOM answers are the exception, because they have no column and therefore no rule downstream.
+// Their kind IS their rule, and even that is not restated here: `checkCustomAnswer` lives in the
+// contracts package and is the same function the public page marks the field with.
 import {
   RECRUITMENT_FORM_MANDATORY,
+  checkCustomAnswer,
   type ApplicantFormAnswerDto,
   type RecruitmentFormBuiltin,
   type RecruitmentFormField,
@@ -44,6 +49,20 @@ export const missingRequired = (fields: RecruitmentFormField[], answers: Answers
       return text(answers, f.key) === undefined;
     })
     .map((f) => f.key);
+
+/**
+ * Custom questions have no column, so nothing downstream would ever judge them. Their kind is
+ * their rule, and it is enforced here with the SAME predicate the public page marks them with.
+ */
+export const invalidCustom = (fields: RecruitmentFormField[], answers: Answers): { field: string; message: string }[] =>
+  fields.flatMap((f) =>
+    f.type === 'custom'
+      ? (() => {
+          const problem = checkCustomAnswer(f, answers[f.key]);
+          return problem === undefined ? [] : [{ field: f.key, message: problem }];
+        })()
+      : [],
+  );
 
 /** The answers to custom questions, each carrying the question it answered. */
 export const customAnswers = (

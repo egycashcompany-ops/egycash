@@ -126,6 +126,12 @@ export interface ApplicantDoc extends BaseDocFields {
   drivingLicenses: { class: string; expiry: Date | null }[];
   certifications: string[];
   formAnswers: { key: string; label: { ar: string; en: string }; value: string }[];
+  formSnapshot: {
+    title: { ar: string; en: string };
+    formVersion: number;
+    fields: unknown[];
+    submittedAt: Date;
+  } | null;
   references: { name: string; relationship: string | null; phone: string | null }[];
   // Duplicate detection (§2.1 rule 5)
   duplicateFlag: boolean;

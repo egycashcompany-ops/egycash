@@ -6,6 +6,7 @@
 // the only rule it can carry is "required", which the builder set.
 import {
   RECRUITMENT_FORM_MANDATORY,
+  checkCustomAnswer,
   citiesOfGovernorate,
   EDUCATION_LEVELS,
   EGYPT_GOVERNORATES,
@@ -48,7 +49,10 @@ export const checkAnswer = (field: RecruitmentFormField, answers: Answers): stri
     const answered = field.type === 'custom' && field.kind === 'checkbox' ? raw === true : value !== '';
     if (!answered) return 'applicants.validation.required';
   }
-  if (value === '' || field.type !== 'builtin') return undefined;
+  // A custom question has no column, so its KIND is its rule — the same predicate the server
+  // enforces, not a second opinion written for the browser.
+  if (field.type === 'custom') return checkCustomAnswer(field, raw);
+  if (value === '') return undefined;
   const rule = RULE_FOR[field.key];
   return rule === undefined ? undefined : validateField(rule, value);
 };

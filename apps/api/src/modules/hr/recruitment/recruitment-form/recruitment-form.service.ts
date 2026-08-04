@@ -26,7 +26,7 @@ import { applicantSourceRepository } from '../applicants/applicant-source.reposi
 import { applicantService } from '../applicants/applicant.service';
 import { recruitmentFormRepository } from './recruitment-form.repository';
 import { type RecruitmentFormDoc } from './recruitment-form.model';
-import { missingRequired, toRegistrationBody, type Answers } from './apply-mapper';
+import { invalidCustom, missingRequired, toRegistrationBody, type Answers } from './apply-mapper';
 
 const entityRef = (id: string) => ({ moduleId: 'hr', entityType: 'recruitmentForm', entityId: id });
 
@@ -214,11 +214,27 @@ class RecruitmentFormService {
       );
     }
 
+    const badCustom = invalidCustom(doc.fields, answers);
+    if (badCustom.length > 0) {
+      throw new ValidationError(
+        badCustom.map((b) => ({ field: b.field, code: 'invalid', message: b.message })),
+        'Some answers are not valid',
+      );
+    }
+
     // One schema, one set of rules — the public path earns no exemptions.
     const parsed = RegisterApplicantSchema.safeParse({
       sourceId,
       intakeChannel: 'web',
       ...toRegistrationBody(doc.fields, answers),
+      // The questions as they stood at this moment. Editing the form later cannot rewrite what
+      // this person was actually asked.
+      formSnapshot: {
+        title: doc.title,
+        formVersion: doc.__v,
+        fields: doc.fields,
+        submittedAt: new Date(),
+      },
     });
     if (!parsed.success) {
       throw new ValidationError(

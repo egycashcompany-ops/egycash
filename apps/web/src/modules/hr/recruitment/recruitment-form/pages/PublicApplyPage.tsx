@@ -11,6 +11,7 @@ import { Button } from '../../../../../shared/ui/Button';
 import { Card, CardBody, CardHeader } from '../../../../../shared/ui/Card';
 import { Form, FormActions } from '../../../../../shared/ui/form';
 import { LoadingState } from '../../../../../shared/ui/states/LoadingState';
+import { AlertIcon, CheckIcon } from '../../../../../shared/ui/icons';
 import { getPublicApplyForm, submitPublicApplyForm } from '../api/recruitment-form-api';
 import { FormFieldInput, checkAnswer, type Answers } from '../components/FormFieldInput';
 
@@ -62,10 +63,18 @@ export const PublicApplyPage = (): JSX.Element => {
   );
 
   if (phase.kind === 'gone') {
+    // One outcome, not three. The page cannot tell a candidate whether the link is wrong, revoked
+    // or orphaned — and it must not tell someone probing tokens either.
     return shell(
       <Card>
-        <CardBody className="py-12 text-center text-slate-600 dark:text-slate-300">
-          {t('apply.linkGone')}
+        <CardBody className="space-y-3 py-16 text-center">
+          <AlertIcon className="mx-auto h-10 w-10 text-slate-300 dark:text-slate-600" />
+          <p className="text-lg font-medium text-slate-800 dark:text-slate-100">
+            {t('apply.linkGoneTitle')}
+          </p>
+          <p className="mx-auto max-w-sm text-sm text-slate-500 dark:text-slate-400">
+            {t('apply.linkGone')}
+          </p>
         </CardBody>
       </Card>,
     );
@@ -74,7 +83,8 @@ export const PublicApplyPage = (): JSX.Element => {
   if (phase.kind === 'done') {
     return shell(
       <Card>
-        <CardBody className="space-y-3 py-12 text-center">
+        <CardBody className="space-y-3 py-16 text-center">
+          <CheckIcon className="mx-auto h-10 w-10 text-emerald-500" />
           <p className="text-lg font-medium text-slate-800 dark:text-slate-100">{t('apply.thanks')}</p>
           <p className="text-sm text-slate-500 dark:text-slate-400">{t('apply.reference')}</p>
           <p className="text-xl font-semibold tracking-wide text-slate-900 dark:text-slate-50" dir="ltr">

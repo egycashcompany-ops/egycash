@@ -26,6 +26,13 @@ its entry here in the same PR.
   publish cannot reach a column. Answers to custom questions are stored on the applicant WITH the
   question they answered, so renaming or deleting a question later does not orphan them.
 
+  Every application keeps a **snapshot of the form as it stood when it was submitted** — the title,
+  the revision, and the questions themselves. Editing the form does not rewrite history: a question
+  removed next month was still asked of the people who answered it, and one that was optional then
+  does not read as "left blank" once it becomes required. Custom questions are also validated by
+  their kind (a number is a number, a date is a date, a choice is one of the offered choices), by
+  the same predicate on both sides.
+
   With the source now decided by the link (or, for internal registration, by one setting on the
   form page), the **"بيانات التقديم" card is gone from the applicant form** — a recruiter no longer
   re-picks the same channel on every walk-in.

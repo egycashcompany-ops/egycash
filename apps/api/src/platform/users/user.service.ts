@@ -11,6 +11,7 @@ import {
   type CredentialsDeliveryResultDto,
   type ListUsersQuery,
   type Paginated,
+  type UpdateMyPreferences,
   type UpdateUser,
   type UserDto,
   type UserStatus,
@@ -328,6 +329,19 @@ class UserService {
 
   async findByEmail(email: string): Promise<UserDoc | null> {
     return userRepository.findByEmail(email);
+  }
+
+  /**
+   * The user's own presentation preferences. Self-service by construction — the caller can only
+   * ever name themselves — so it carries no permission and no audit entry: which navigation shell
+   * someone prefers is not an act on the business record.
+   */
+  async updateMyPreferences(userId: string, input: UpdateMyPreferences): Promise<UserDoc> {
+    const updated = await userRepository.updateSecurity(userId, {
+      $set: { 'preferences.navLayout': input.navLayout },
+    });
+    if (updated === null) throw new NotFoundError('User');
+    return updated;
   }
 
   /** Login resolution: an identifier is matched against username first, then email (ADR-017). */

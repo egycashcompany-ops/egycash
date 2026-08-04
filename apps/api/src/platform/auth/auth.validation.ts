@@ -4,6 +4,7 @@ export {
   TotpVerifySchema,
   ChangePasswordSchema,
   ActivateAccountSchema,
+  UpdateMyPreferencesSchema,
 } from '@ecms/contracts';
 
 import { z } from 'zod';

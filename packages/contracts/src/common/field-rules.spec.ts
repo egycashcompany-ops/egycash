@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   EGYPT_GOVERNORATES,
+  NationalIdSchema,
+  PostalCodeSchema,
+  asciiDigits,
+  normalizeEgyptianPhone,
+  parseNationalId,
   EGYPT_GOVERNORATE_CODES,
   citiesOfGovernorate,
   findGovernorate,
@@ -45,7 +50,7 @@ describe('postal code rule', () => {
     expect(isPostalCode('11511')).toBe(true);
     expect(isPostalCode('1151')).toBe(false);
     expect(isPostalCode('11511a')).toBe(false);
-    expect(isPostalCode('١١٥١١')).toBe(false);
+    expect(isPostalCode('١١٥١١')).toBe(true); // Arabic digits are the same digits
   });
 });
 
@@ -89,5 +94,41 @@ describe('Egyptian geography', () => {
       expect(g.cities.length, g.ar).toBeGreaterThan(0);
       expect(new Set(g.cities).size, g.ar).toBe(g.cities.length);
     }
+  });
+});
+
+// Numbers arrive formatted, or typed on an Arabic keyboard. Everything numeric folds to ASCII and
+// drops its separators BEFORE the shape is judged — and what is stored is the folded form, so one
+// identity never ends up recorded in two encodings.
+describe('digit folding and separator cleaning', () => {
+  it('folds both Arabic-Indic digit ranges', () => {
+    expect(asciiDigits('٠١٢٣٤٥٦٧٨٩')).toBe('0123456789');
+    expect(asciiDigits('۰۱۲۳')).toBe('0123');
+    expect(asciiDigits('abc 12')).toBe('abc 12');
+  });
+
+  it('accepts a phone with separators, an international prefix, or Arabic digits', () => {
+    expect(normalizeEgyptianPhone('010 1234 5678')).toBe('01012345678');
+    expect(normalizeEgyptianPhone('010-1234-5678')).toBe('01012345678');
+    expect(normalizeEgyptianPhone('(010) 1234 5678')).toBe('01012345678');
+    expect(normalizeEgyptianPhone('+20 10 1234 5678')).toBe('01012345678');
+    expect(normalizeEgyptianPhone('0020 101 234 5678')).toBe('01012345678');
+    expect(normalizeEgyptianPhone('٠١٠١٢٣٤٥٦٧٨')).toBe('01012345678');
+    // Cleaning is not permission: a wrong network is still wrong however it is spaced.
+    expect(normalizeEgyptianPhone('013 1234 5678')).toBeNull();
+  });
+
+  it('reads a national ID typed in Arabic and stores it in ASCII', () => {
+    expect(parseNationalId('٢٩٠٠١٠١١٢٠١٢٣٤')?.governorate).toBe('Dakahlia'); // code 12
+    const parsed = NationalIdSchema.safeParse('٢٩٠٠١٠١١٢٠١٢٣٤');
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data).toBe('29001011201234');
+    expect(NationalIdSchema.safeParse(' 29001011201234 ').success).toBe(true);
+  });
+
+  it('reads a postal code typed in Arabic and stores it in ASCII', () => {
+    expect(isPostalCode('١١٥١١')).toBe(true);
+    const parsed = PostalCodeSchema.safeParse('١١٥١١');
+    expect(parsed.success && parsed.data).toBe('11511');
   });
 });

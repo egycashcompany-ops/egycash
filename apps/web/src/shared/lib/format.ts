@@ -8,6 +8,10 @@ import {
   type LocalizedString,
 } from '@ecms/contracts';
 
+// Re-exported so a call site that formats also gets the digit fold from one place; the
+// implementation lives in contracts, beside the rules that depend on it.
+export { asciiDigits } from '@ecms/contracts';
+
 const PLACEHOLDER = '—';
 
 /** The HR business calendar (Leave design R10) — see `formatBusinessDateTime`. */
@@ -74,16 +78,6 @@ export const fullName = (
   locale: Locale,
 ): string => `${name.firstName[locale]} ${name.lastName[locale]}`.trim();
 
-/**
- * Fold Arabic-Indic (٠-٩) and Extended Arabic-Indic (۰-۹) digits to ASCII — code inputs
- * accept only ASCII, and an Arabic keyboard produces ٠١٢ for what the user reads as 012.
- */
-export const asciiDigits = (value: string): string =>
-  value.replace(/[\u0660-\u0669\u06f0-\u06f9]/g, (ch) => {
-    const cp = ch.codePointAt(0) ?? 0;
-    const base = cp >= 0x06f0 ? 0x06f0 : 0x0660;
-    return String(cp - base);
-  });
 
 /**
  * Nationality and governorate are STORED canonically (English) so the National-ID decode, the OCR

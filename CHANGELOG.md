@@ -25,7 +25,12 @@ its entry here in the same PR.
   governorate scopes the city list, and changing it clears a city that no longer belongs. The
   search behind those pickers folds hamza forms, ta marbuta and diacritics, so "الاسماعيليه"
   finds "الإسماعيلية". Every predicate lives in `@ecms/contracts` and is what the API validates
-  with, so the form cannot accept something the server will reject.
+  with, so the form cannot accept something the server will reject. Numbers are cleaned before
+  they are judged and stored in the cleaned form: separators and international prefixes come off a
+  phone, and Arabic-Indic digits (٠-٩) fold to ASCII for phones, National IDs and postal codes —
+  an Arabic keyboard produces ٠١٠ for what its user reads as 010, which used to be rejected
+  outright. Create and edit run the identical rules; a record whose governorate or city predates
+  the catalog keeps them rather than being blanked by the act of being opened.
 
 - **Two navigation shells, and the choice belongs to the user.** The launchpad is no longer the
   only shape: the RAIL — a slim strip of module icons beside the module's page panel, the shell

@@ -19,8 +19,10 @@ import {
   NATIONALITY_EGYPTIAN,
   NATIONALITY_LABELS,
   RELIGIONS,
+  asciiDigits,
   citiesOfGovernorate,
   findGovernorate,
+  normalizeEgyptianPhone,
   normalizeReligion,
   parseNationalId,
   type Address,
@@ -62,8 +64,13 @@ const emptyAddress = (): AddressForm => ({
 
 const GOVERNORATE_NAMES = EGYPT_GOVERNORATES.map((g) => g.ar);
 
-/** A governorate spelled any way the data might carry it, rendered as the catalog spells it. */
+/** A governorate spelled any way the data might carry it, rendered as the catalog spells it.
+ *  Empty when the catalog does not know it — callers decide what an unknown place means. */
 const toCatalogGovernorate = (value: string): string => findGovernorate(value)?.ar ?? '';
+
+/** Reading a STORED address: an unrecognised governorate is kept verbatim. A record written
+ *  before the catalog existed must not be blanked by the act of opening it for editing. */
+const storedGovernorate = (value: string): string => toCatalogGovernorate(value) || value.trim();
 
 const fromDto = (a: ApplicantDto): FormState => ({
   sourceId: a.sourceId,
@@ -86,7 +93,7 @@ const fromDto = (a: ApplicantDto): FormState => ({
       : {
           ...emptyAddress(),
           ...a.officialAddress,
-          governorate: toCatalogGovernorate(a.officialAddress.governorate),
+          governorate: storedGovernorate(a.officialAddress.governorate),
           line2: a.officialAddress.line2 ?? '',
           postalCode: a.officialAddress.postalCode ?? '',
         },
@@ -96,7 +103,7 @@ const fromDto = (a: ApplicantDto): FormState => ({
       : {
           ...emptyAddress(),
           ...a.currentAddress,
-          governorate: toCatalogGovernorate(a.currentAddress.governorate),
+          governorate: storedGovernorate(a.currentAddress.governorate),
           line2: a.currentAddress.line2 ?? '',
           postalCode: a.currentAddress.postalCode ?? '',
         },
@@ -289,6 +296,17 @@ export const ApplicantForm = ({
   const setAddr = (which: 'officialAddress' | 'currentAddress', patch: Partial<AddressForm>): void =>
     setF((prev) => ({ ...prev, [which]: { ...prev[which], ...patch } }));
 
+  /**
+   * Tidy a phone the moment its field is left: "+20 10 1234-5678" and "٠١٠١٢٣٤٥٦٧٨" are the same
+   * number as "01012345678", and the server stores the tidy form either way — so the field should
+   * show what will actually be saved rather than leave the two disagreeing.
+   */
+  const tidyPhone = (which: 'primaryPhone' | 'secondaryPhone'): void =>
+    setF((prev) => {
+      const clean = normalizeEgyptianPhone(prev[which]);
+      return clean === null || clean === prev[which] ? prev : { ...prev, [which]: clean };
+    });
+
   /** Check one field and keep — or clear — its message. Called when the field loses focus. */
   const check = (name: FieldName, value: string): void =>
     setFieldErr((prev) => {
@@ -424,7 +442,11 @@ export const ApplicantForm = ({
               id={`${which}.governorate`}
               value={a.governorate}
               options={GOVERNORATE_NAMES}
-              onChange={(governorate) => setAddr(which, { governorate, city: '' })}
+              onChange={(governorate) =>
+                // Only a real change invalidates the city; re-picking the same governorate
+                // (or clearing the box and choosing it again) must not throw a valid city away.
+                setAddr(which, governorate === a.governorate ? { governorate } : { governorate, city: '' })
+              }
               onBlur={() => check(`${which}.governorate`, a.governorate)}
               error={fieldErr[`${which}.governorate`] !== undefined}
               placeholder={t('applicants.form.selectGovernorate')}
@@ -470,7 +492,9 @@ export const ApplicantForm = ({
               // Digits only, five of them: pasting a mixed string keeps its digits rather than
               // letting `maxLength` clip the letters first and swallow most of the number.
               onChange={(e) =>
-                setAddr(which, { postalCode: e.target.value.replace(/\D/g, '').slice(0, 5) })
+                setAddr(which, {
+                  postalCode: asciiDigits(e.target.value).replace(/\D/g, '').slice(0, 5),
+                })
               }
               dir="ltr"
               inputMode="numeric"
@@ -575,7 +599,7 @@ export const ApplicantForm = ({
               >
                 <Input
                   value={f.nationalId}
-                  onChange={(e) => set({ nationalId: e.target.value.replace(/\D/g, '') })}
+                  onChange={(e) => set({ nationalId: asciiDigits(e.target.value).replace(/\D/g, '') })}
                   dir="ltr"
                   inputMode="numeric"
                   maxLength={14}
@@ -666,6 +690,10 @@ export const ApplicantForm = ({
               dir="ltr"
               inputMode="tel"
               {...bind('primaryPhone', f.primaryPhone)}
+              onBlur={() => {
+                tidyPhone('primaryPhone');
+                check('primaryPhone', f.primaryPhone);
+              }}
             />
           </Field>
           <Field label={t('applicants.form.secondaryPhone')} error={msg('secondaryPhone')}>
@@ -675,6 +703,10 @@ export const ApplicantForm = ({
               dir="ltr"
               inputMode="tel"
               {...bind('secondaryPhone', f.secondaryPhone)}
+              onBlur={() => {
+                tidyPhone('secondaryPhone');
+                check('secondaryPhone', f.secondaryPhone);
+              }}
             />
           </Field>
           <Field label={t('applicants.form.email')} error={msg('email')}>

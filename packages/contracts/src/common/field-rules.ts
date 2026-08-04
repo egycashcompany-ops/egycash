@@ -5,6 +5,7 @@
 // Each rule is a plain predicate over a TRIMMED, non-empty string. Whether a field is required is
 // the schema's business, not the rule's, so an empty value is never this file's concern.
 import { z } from 'zod';
+import { asciiDigits } from './value-objects.js';
 
 // ── Names ───────────────────────────────────────────────────────────────────
 // The Arabic range is deliberately assembled from letter/diacritic blocks rather than the whole
@@ -28,9 +29,10 @@ export const EMAIL_RE = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-
 export const isEmail = (value: string): boolean => EMAIL_RE.test(value.trim());
 
 // ── Postal code ─────────────────────────────────────────────────────────────
-/** Egypt Post codes are exactly five digits. */
+/** Egypt Post codes are exactly five digits — typed in either script, stored in ASCII. */
 export const POSTAL_CODE_RE = /^\d{5}$/;
-export const isPostalCode = (value: string): boolean => POSTAL_CODE_RE.test(value.trim());
+export const isPostalCode = (value: string): boolean =>
+  POSTAL_CODE_RE.test(asciiDigits(value.trim()));
 
 // ── Religion ────────────────────────────────────────────────────────────────
 // Stored in Arabic, which is what the National-ID card carries and what the OCR reads back, so a
@@ -68,6 +70,7 @@ export const englishName = (schema: z.ZodString): z.ZodEffects<z.ZodString, stri
 
 export const PostalCodeSchema = z
   .string()
+  .transform((v) => asciiDigits(v.trim()))
   .refine((v) => isPostalCode(v), { message: 'must be a 5-digit Egyptian postal code' });
 
 export const EmailSchema = z.string().refine((v) => isEmail(v), { message: 'invalid email' });

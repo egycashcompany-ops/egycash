@@ -81,8 +81,23 @@ describe('validateField', () => {
     expect(validateField('primaryPhone', '01312345678', 'create')).toBe('applicants.validation.phone');
     expect(validateField('primaryPhone', '0101234567', 'create')).toBe('applicants.validation.phone');
     expect(validateField('primaryPhone', '010123456789', 'create')).toBe('applicants.validation.phone');
-    // The international forms an applicant writes on a CV still normalise to the local number.
-    expect(validateField('primaryPhone', '+201012345678', 'create')).toBeUndefined();
+    // Whatever formatting an applicant writes on a CV is cleaned BEFORE the shape is judged:
+    // international prefixes, separators, and digits typed on an Arabic keyboard.
+    for (const messy of [
+      '+201012345678',
+      '0020 101 234 5678',
+      '010 1234 5678',
+      '010-1234-5678',
+      '(010) 1234 5678',
+      '٠١٠١٢٣٤٥٦٧٨',
+    ]) {
+      expect(validateField('primaryPhone', messy, 'create'), messy).toBeUndefined();
+    }
+  });
+
+  it('reads numbers typed on an Arabic keyboard', () => {
+    expect(validateField('nationalId', '٢٩٠٠١٠١١٢٠١٢٣٤', 'create')).toBeUndefined();
+    expect(validateField('officialAddress.postalCode', '١١٥١١', 'create')).toBeUndefined();
   });
 
   it('checks the national ID structurally, not just its length', () => {

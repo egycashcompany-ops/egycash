@@ -56,16 +56,19 @@ export const Combobox = ({
   // While closed the box shows the committed value; while open it shows what you are typing.
   const text = open ? query : value;
 
+  // A stored value the catalog does not carry — a record written before the catalog existed, or
+  // imported from elsewhere — stays selectable instead of vanishing the moment the record is
+  // opened for editing. Silently blanking it would turn "open and save" into data loss.
+  const all = useMemo(
+    () => (value !== '' && !options.includes(value) ? [value, ...options] : options),
+    [options, value],
+  );
+
   const matches = useMemo(() => {
     const q = fold(query);
-    if (!open || q === '') return options;
-    return options.filter((o) => fold(o).includes(q));
-  }, [open, query, options]);
-
-  // A value that is no longer in the list (the governorate changed under it) must not look chosen.
-  useEffect(() => {
-    if (value !== '' && !options.includes(value)) onChange('');
-  }, [options, value, onChange]);
+    if (!open || q === '') return all;
+    return all.filter((o) => fold(o).includes(q));
+  }, [open, query, all]);
 
   useEffect(() => {
     if (!open) return;

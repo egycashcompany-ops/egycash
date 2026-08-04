@@ -35,10 +35,11 @@ import {
 import { LoadingState } from '../../shared/ui/states/LoadingState';
 import { ErrorState } from '../../shared/ui/states/ErrorState';
 import { useMyApplications } from '../navigation/me-applications-queries';
-import { resolveNavIcon } from '../navigation/app-icon';
+import { resolveNavIcon, type NavIcon } from '../navigation/app-icon';
 import { useNavPrefs } from '../navigation/NavPrefs';
 import {
   flattenApps,
+  moduleEntryRoute,
   moduleOfPathname,
   requiresExactMatch,
   toModules,
@@ -54,6 +55,7 @@ import {
 // ── Persisted chrome state ──────────────────────────────────────────────────
 const PANEL_KEY = 'ecms.nav.panelCollapsed';
 const LAST_MODULE_KEY = 'ecms.nav.lastModule';
+const LAST_PAGE_KEY = 'ecms.nav.lastPage';
 
 const loadCollapsed = (): boolean => {
   try {
@@ -86,6 +88,29 @@ const loadLastModule = (): string | null => {
 const persistLastModule = (id: string): void => {
   try {
     localStorage.setItem(LAST_MODULE_KEY, id);
+  } catch {
+    /* ignore */
+  }
+};
+
+/**
+ * moduleId → the last page open in it. Coming back to a module should return you to your desk,
+ * not to its lobby; every switcher worth the name does this. Validated against the live catalog
+ * before use (see `moduleEntryRoute`), so a revoked page can never be navigated into.
+ */
+const loadLastPages = (): Record<string, string> => {
+  try {
+    const raw = localStorage.getItem(LAST_PAGE_KEY);
+    if (raw === null) return {};
+    const parsed: unknown = JSON.parse(raw);
+    return typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, string>) : {};
+  } catch {
+    return {};
+  }
+};
+const persistLastPages = (v: Record<string, string>): void => {
+  try {
+    localStorage.setItem(LAST_PAGE_KEY, JSON.stringify(v));
   } catch {
     /* ignore */
   }
@@ -322,15 +347,25 @@ const ModuleSwitcher = ({
     const onKey = (e: KeyboardEvent): void => {
       if (e.altKey && (e.key === 'm' || e.key === 'M' || e.code === 'KeyM')) {
         e.preventDefault();
-        openMenu();
+        setOpen((wasOpen) => {
+          if (wasOpen) return false;
+          setQuery('');
+          setCursor(Math.max(0, modules.findIndex((m) => m.id === current.id)));
+          return true;
+        });
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [only, modules, current.id]);
 
+  // Opening from the keyboard must put focus INSIDE the control, or the arrow keys have
+  // nothing to talk to — the filter field when there is one, the trigger itself otherwise
+  // (the menu listens on the wrapper, so the trigger is a valid host for its keys).
   useEffect(() => {
-    if (open && showFilter) inputRef.current?.focus();
+    if (!open) return;
+    if (showFilter) inputRef.current?.focus();
+    else triggerRef.current?.focus();
   }, [open, showFilter]);
 
   const choose = (m: NavModule | undefined): void => {
@@ -360,7 +395,7 @@ const ModuleSwitcher = ({
     return (
       <div
         className={cn(
-          'flex h-8 items-center gap-2 text-[13px] font-medium text-slate-700 dark:text-slate-200',
+          'flex h-8 items-center gap-2.5 text-[13px] font-medium text-slate-700 dark:text-slate-200',
           collapsed ? 'w-8 justify-center' : 'px-2',
         )}
       >
@@ -378,10 +413,12 @@ const ModuleSwitcher = ({
         onClick={() => (open ? close(false) : openMenu())}
         aria-haspopup="menu"
         aria-expanded={open}
+        aria-controls={open ? 'module-switcher-menu' : undefined}
+        aria-activedescendant={open ? `module-opt-${shown[cursor]?.id ?? ''}` : undefined}
         aria-label={t('nav.switchModule')}
         title={`${localized(current.name, locale)} · ${t('nav.switchModuleHint')}`}
         className={cn(
-          'flex h-8 items-center gap-2 rounded-md text-[13px] font-medium transition-colors',
+          'flex h-8 items-center gap-2.5 rounded-md text-[13px] font-medium transition-colors',
           'text-slate-700 hover:bg-slate-900/[0.04] focus-visible:outline-none',
           'focus-visible:ring-2 focus-visible:ring-slate-400/40',
           'dark:text-slate-200 dark:hover:bg-white/[0.05]',
@@ -406,6 +443,7 @@ const ModuleSwitcher = ({
 
       {open && (
         <div
+          id="module-switcher-menu"
           role="menu"
           aria-label={t('nav.switchModule')}
           className={cn(
@@ -441,8 +479,11 @@ const ModuleSwitcher = ({
               return (
                 <button
                   key={m.id}
+                  id={`module-opt-${m.id}`}
                   type="button"
                   role="menuitem"
+                  aria-current={isCurrent}
+                  tabIndex={-1}
                   onMouseEnter={() => setCursor(i)}
                   onClick={() => choose(m)}
                   className={cn(
@@ -472,14 +513,52 @@ const ModuleSwitcher = ({
 };
 
 // ── Collapsed mode: the switcher, then THIS module's page icons ─────────────
+const StripLink = ({
+  route,
+  name,
+  Icon,
+  end,
+  onNavigate,
+}: {
+  route: string;
+  name: string;
+  Icon: NavIcon;
+  end: boolean;
+  onNavigate?: (() => void) | undefined;
+}): JSX.Element => (
+  <NavLink
+    to={route}
+    end={end}
+    onClick={onNavigate}
+    title={name}
+    aria-label={name}
+    className={({ isActive }) =>
+      cn(
+        'grid h-9 w-9 shrink-0 place-items-center rounded-md transition-colors',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/40',
+        isActive
+          ? 'bg-slate-900/[0.06] text-slate-800 dark:bg-white/[0.08] dark:text-slate-100'
+          : 'text-slate-400 hover:bg-slate-900/[0.04] hover:text-slate-700 dark:text-slate-500 dark:hover:bg-white/[0.05] dark:hover:text-slate-200',
+      )
+    }
+  >
+    <Icon className="h-4 w-4" />
+  </NavLink>
+);
+
 const IconStrip = ({
   modules,
   current,
+  pinnedApps,
+  allRoutes,
   onPickModule,
   onNavigate,
 }: {
   modules: NavModule[];
   current: NavModule;
+  /** Collapsed must not silently drop features the expanded column has. */
+  pinnedApps: NavApp[];
+  allRoutes: string[];
   onPickModule: (m: NavModule) => void;
   onNavigate?: (() => void) | undefined;
 }): JSX.Element => {
@@ -489,29 +568,31 @@ const IconStrip = ({
     <div className="flex flex-1 flex-col items-center gap-1 overflow-y-auto px-2 py-3">
       <ModuleSwitcher modules={modules} current={current} collapsed onPick={onPickModule} />
       <div className="my-1 h-px w-6 bg-slate-200 dark:bg-slate-700" />
+      {pinnedApps.length > 0 && (
+        <>
+          {pinnedApps.map((a) => (
+            <StripLink
+              key={`pin-${a.id}`}
+              route={a.route}
+              name={localized(a.name, locale)}
+              Icon={resolveNavIcon(a.icon, FileIcon)}
+              end={requiresExactMatch(a.route, allRoutes)}
+              onNavigate={onNavigate}
+            />
+          ))}
+          <div className="my-1 h-px w-6 bg-slate-200 dark:bg-slate-700" />
+        </>
+      )}
       {current.apps.map((a) => {
-        const name = localized(a.name, locale);
-        const Icon = resolveNavIcon(a.icon, FileIcon);
         return (
-          <NavLink
+          <StripLink
             key={a.id}
-            to={a.route}
+            route={a.route}
+            name={localized(a.name, locale)}
+            Icon={resolveNavIcon(a.icon, FileIcon)}
             end={requiresExactMatch(a.route, moduleRoutes)}
-            onClick={onNavigate}
-            title={name}
-            aria-label={name}
-            className={({ isActive }) =>
-              cn(
-                'grid h-9 w-9 shrink-0 place-items-center rounded-md transition-colors',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/40',
-                isActive
-                  ? 'bg-slate-900/[0.06] text-slate-800 dark:bg-white/[0.08] dark:text-slate-100'
-                  : 'text-slate-400 hover:bg-slate-900/[0.04] hover:text-slate-700 dark:text-slate-500 dark:hover:bg-white/[0.05] dark:hover:text-slate-200',
-              )
-            }
-          >
-            <Icon className="h-[18px] w-[18px]" />
-          </NavLink>
+            onNavigate={onNavigate}
+          />
         );
       })}
     </div>
@@ -549,12 +630,19 @@ const NavShell = ({
   // Remembered ONLY to answer "which module should the column show when the URL names none?"
   // (the landing page, /account/security, a 404). It never overrides a URL that does name one.
   const [lastModuleId, setLastModuleId] = useState<string | null>(loadLastModule);
+  const lastPages = useRef<Record<string, string>>(loadLastPages());
   useEffect(() => {
-    if (urlModuleId !== null && urlModuleId !== lastModuleId) {
+    if (urlModuleId === null) return;
+    if (urlModuleId !== lastModuleId) {
       setLastModuleId(urlModuleId);
       persistLastModule(urlModuleId);
     }
-  }, [urlModuleId, lastModuleId]);
+    // Remember the desk, not just the building: switching back should return here.
+    if (lastPages.current[urlModuleId] !== pathname) {
+      lastPages.current = { ...lastPages.current, [urlModuleId]: pathname };
+      persistLastPages(lastPages.current);
+    }
+  }, [urlModuleId, lastModuleId, pathname]);
 
   const [collapsed, setCollapsed] = useState<boolean>(() => collapsible && loadCollapsed());
 
@@ -609,9 +697,9 @@ const NavShell = ({
   // Switching modules NAVIGATES — it does not flip a local flag. The URL then re-scopes the
   // column, which is what keeps the two in step by construction.
   const pickModule = (m: NavModule): void => {
-    const first = m.apps[0];
-    if (first === undefined) return;
-    navigate(first.route);
+    const route = moduleEntryRoute(m, lastPages.current[m.id] ?? null);
+    if (route === null) return;
+    navigate(route);
     onNavigate?.();
   };
 
@@ -626,6 +714,8 @@ const NavShell = ({
         <IconStrip
           modules={modules}
           current={current}
+          pinnedApps={pinnedApps}
+          allRoutes={allRoutes}
           onPickModule={pickModule}
           onNavigate={onNavigate}
         />
@@ -677,11 +767,11 @@ const NavShell = ({
             aria-label={t(collapsed ? 'nav.expand' : 'nav.collapse')}
             title={t(collapsed ? 'nav.expand' : 'nav.collapse')}
             className={cn(
-              'flex h-8 items-center gap-2 rounded-md text-slate-400 transition-colors',
+              'flex h-8 items-center gap-2.5 rounded-md text-slate-400 transition-colors',
               'hover:bg-slate-900/[0.04] hover:text-slate-600 focus-visible:outline-none',
               'focus-visible:ring-2 focus-visible:ring-slate-400/40 dark:text-slate-500',
               'dark:hover:bg-white/[0.05] dark:hover:text-slate-300',
-              collapsed ? 'w-10 justify-center' : 'w-full px-2',
+              collapsed ? 'w-9 justify-center' : 'w-full px-2',
             )}
           >
             {collapsed ? (

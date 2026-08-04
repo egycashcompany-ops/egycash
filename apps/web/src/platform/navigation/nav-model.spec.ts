@@ -3,7 +3,7 @@
 // two rows read as "you are here" at once. The rule is derived from the catalog's own routes —
 // these cases pin that derivation down.
 import { describe, expect, it } from 'vitest';
-import { moduleOfPathname, requiresExactMatch, toModules } from './nav-model';
+import { moduleEntryRoute, moduleOfPathname, requiresExactMatch, toModules } from './nav-model';
 
 const ROUTES = [
   '/fleet',
@@ -72,5 +72,40 @@ describe('moduleOfPathname — the sidebar scope comes from the URL', () => {
   it('answers null for a system page so the caller can fall back', () => {
     expect(moduleOfPathname(modules, '/account/security')).toBeNull();
     expect(moduleOfPathname(modules, '/')).toBeNull();
+  });
+});
+
+describe('moduleEntryRoute — switching returns you to your desk', () => {
+  const fleet = toModules([
+    {
+      id: 'fleet',
+      name: { ar: 'المركبات', en: 'Fleet' },
+      icon: 'truck',
+      applications: [
+        { id: 'b1', name: { ar: 'اللوحة', en: 'Dashboard' }, icon: 'grid', route: '/fleet' },
+        { id: 'b2', name: { ar: 'المركبات', en: 'Vehicles' }, icon: 'truck', route: '/fleet/vehicles' },
+      ],
+    },
+  ])[0]!;
+
+  it('lands on the first page when nothing is remembered', () => {
+    expect(moduleEntryRoute(fleet, null)).toBe('/fleet');
+  });
+
+  it('returns to the remembered page', () => {
+    expect(moduleEntryRoute(fleet, '/fleet/vehicles')).toBe('/fleet/vehicles');
+  });
+
+  it('returns to a remembered DETAIL page under a module page', () => {
+    expect(moduleEntryRoute(fleet, '/fleet/vehicles/v-42')).toBe('/fleet/vehicles/v-42');
+  });
+
+  it('falls back when the remembered page is no longer in the catalog', () => {
+    // The page was revoked (or renamed) since it was stored: never navigate into nothing.
+    expect(moduleEntryRoute(fleet, '/fleet/roster')).toBe('/fleet');
+  });
+
+  it('ignores a remembered page belonging to another module', () => {
+    expect(moduleEntryRoute(fleet, '/applicants')).toBe('/fleet');
   });
 });

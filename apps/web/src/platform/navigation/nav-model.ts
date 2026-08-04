@@ -43,6 +43,30 @@ const matches = (route: string, pathname: string): boolean =>
 export const requiresExactMatch = (route: string, allRoutes: readonly string[]): boolean =>
   allRoutes.some((other) => other !== route && other.startsWith(`${route}/`));
 
+/**
+ * Where switching INTO a module should land: the page the user last had open there, when that
+ * page still exists for them, and the module's first page otherwise.
+ *
+ * Returning people to where they were is what makes a switcher feel like a workspace rather
+ * than a menu — leaving and coming back should not cost you your place. The stored path is
+ * re-validated against the live catalog on every use, so a page revoked since (or renamed)
+ * degrades quietly to the module's entry point instead of navigating into nothing.
+ */
+export const moduleEntryRoute = (module: NavModule, remembered: string | null): string | null => {
+  const first = module.apps[0]?.route ?? null;
+  if (remembered === null) return first;
+  const routes = module.apps.map((a) => a.route);
+  // A page's own route always counts. Deeper paths count only under a LEAF page — a detail
+  // screen lives under its list, whereas a module landing route like `/fleet` is a prefix of
+  // the whole module and would otherwise wave through any stale path beneath it.
+  const stillValid = module.apps.some(
+    (a) =>
+      remembered === a.route ||
+      (!requiresExactMatch(a.route, routes) && remembered.startsWith(`${a.route}/`)),
+  );
+  return stillValid ? remembered : first;
+};
+
 /** The id of the module owning the app that best (longest-prefix) matches the current path. */
 export const moduleOfPathname = (modules: NavModule[], pathname: string): string | null => {
   let bestId: string | null = null;

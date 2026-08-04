@@ -94,8 +94,11 @@ its entry here in the same PR.
   to another module, and Back/Forward all re-scope the column correctly by construction; the
   remembered module answers only the case the URL cannot — a path that names no module, such as
   the landing page or an account screen. `Alt+M` opens the switcher from the keyboard, arrows
-  and Enter work in it, and a filter field appears once there are seven or more modules. A user
-  with a single module sees no switcher at all, just a quiet label. Pinned favourites and the
+  and Enter work in it, and a filter field appears once there are seven or more modules.
+  Switching **returns you to the page you last had open** in that module (re-validated against
+  the live catalog, so a revoked page degrades to the module's entry point) — leaving and
+  coming back should not cost you your place. A user with a single module sees no switcher at
+  all, just a quiet label. Pinned favourites and the
   ⌘K palette are untouched — the palette still searches every permitted page across every
   module. Monochrome throughout: no colours, no badges, no shadows.
 

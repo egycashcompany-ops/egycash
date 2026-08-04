@@ -10,6 +10,7 @@ import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { Can, useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
+import { readList, writeList } from '../../../shared/lib/list-param';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { SearchInput } from '../../../shared/ui/SearchInput';
@@ -39,7 +40,7 @@ export const VehiclesListPage = (): JSX.Element => {
   const search = sp.get('q') ?? '';
   const status = sp.get('status') ?? '';
   const typeId = sp.get('type') ?? '';
-  const branchId = sp.get('branch') ?? '';
+  const branchIds = readList(sp, 'branch');
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
   const [sortByRaw, sortDirRaw] = (sp.get('sort') ?? 'code:asc').split(':');
@@ -62,7 +63,7 @@ export const VehiclesListPage = (): JSX.Element => {
     const dir = sort.by === by && sort.dir === 'asc' ? 'desc' : 'asc';
     patch({ sort: `${by}:${dir}` }, false);
   };
-  const hasActiveFilters = search !== '' || status !== '' || typeId !== '' || branchId !== '';
+  const hasActiveFilters = search !== '' || status !== '' || typeId !== '' || branchIds.length > 0;
 
   const params = useMemo(
     () => ({
@@ -73,7 +74,7 @@ export const VehiclesListPage = (): JSX.Element => {
       search: search || undefined,
       status: status || undefined,
       typeId: typeId || undefined,
-      branchId: branchId || undefined,
+      branchId: branchIds.length === 0 ? undefined : branchIds,
     }),
     [paramsKey],
   );
@@ -266,7 +267,10 @@ export const VehiclesListPage = (): JSX.Element => {
               </option>
             ))}
           </Select>
-          <BranchFilterSelect value={branchId} onChange={(id) => patch({ branch: id || null })} />
+          <BranchFilterSelect
+            value={branchIds}
+            onChange={(ids) => patch({ branch: writeList(ids) })}
+          />
         </FilterBar>
 
         <DataTable

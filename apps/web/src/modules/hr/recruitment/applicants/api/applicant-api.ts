@@ -39,9 +39,10 @@ import {
   post,
   postWorkflow,
   upload,
+  type QueryParams,
 } from '../../../../../shared/lib/api-client';
 
-export type ApplicantListParams = Record<string, string | number | boolean | undefined | null>;
+export type ApplicantListParams = QueryParams;
 
 type ApplicantEnvelope = Promise<WorkflowEnvelopeDto<ApplicantDto>>;
 

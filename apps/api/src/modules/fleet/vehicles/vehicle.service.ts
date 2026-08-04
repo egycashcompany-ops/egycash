@@ -97,7 +97,7 @@ class FleetVehicleService {
     if (query.status !== undefined) clauses.push({ status: query.status });
     if (query.typeId !== undefined) clauses.push({ typeId: new Types.ObjectId(query.typeId) });
     if (query.branchId !== undefined) {
-      clauses.push({ branchId: new Types.ObjectId(query.branchId) });
+      clauses.push({ branchId: { $in: query.branchId.map((id) => new Types.ObjectId(id)) } });
     }
     if (query.licenseExpiresBefore !== undefined) {
       clauses.push({ licenseExpiresAt: { $lte: query.licenseExpiresBefore } });

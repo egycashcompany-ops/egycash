@@ -18,7 +18,7 @@ export interface InterviewListFilter {
   applicantId?: string | undefined;
   stageId?: readonly string[] | undefined;
   interviewerId?: string | undefined;
-  branchId?: string | undefined;
+  branchId?: readonly string[] | undefined;
   scheduledFrom?: Date | undefined;
   scheduledTo?: Date | undefined;
   /** Free text over the denormalized applicant code and name — the queue's search box. */
@@ -111,7 +111,8 @@ class InterviewRepository extends BaseRepository<InterviewDoc> {
     if (f.interviewerId !== undefined) {
       clauses.push({ 'panel.interviewerId': new Types.ObjectId(f.interviewerId) } as FilterQuery<InterviewDoc>);
     }
-    if (f.branchId !== undefined) clauses.push({ branchId: new Types.ObjectId(f.branchId) });
+    if (f.branchId !== undefined)
+      clauses.push({ branchId: { $in: f.branchId.map((id) => new Types.ObjectId(id)) } });
     if (f.search !== undefined && f.search.trim() !== '') {
       // Escaped, so a user typing `.` or `[` searches for that character instead of injecting a
       // pattern. Matches the shape the offers queue already uses (minus `code`, which a round

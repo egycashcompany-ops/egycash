@@ -99,7 +99,7 @@ const ListScreeningsQueryShape = PaginationQuerySchema.extend({
   /** Doubles as the screening page's tab (I10): waiting | accepted | rejected. */
   status: listQuery(ScreeningStatusSchema),
   applicantId: objectId().optional(),
-  branchId: objectId().optional(),
+  branchId: listQuery(objectId()),
   decidedFrom: z.coerce.date().optional(),
   decidedTo: z.coerce.date().optional(),
   createdFrom: z.coerce.date().optional(),

@@ -8,6 +8,7 @@ import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
 import { Can } from '../../../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
+import { readList, writeList } from '../../../../../shared/lib/list-param';
 import { DataTable, type Column } from '../../../../../shared/ui/DataTable';
 import { BulkActionBar } from '../../../../../shared/ui/BulkActionBar';
 import { useTableSelection } from '../../../../../shared/ui/useTableSelection';
@@ -32,7 +33,7 @@ export const JobOffersListPage = (): JSX.Element => {
 
   const filters: OfferFiltersState = {
     search: sp.get('q') ?? '',
-    status: (sp.get('status') ?? '') as OfferFiltersState['status'],
+    status: readList(sp, 'status') as OfferFiltersState['status'],
     active: sp.get('active') === 'true',
   };
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
@@ -55,7 +56,7 @@ export const JobOffersListPage = (): JSX.Element => {
   };
 
   const changeFilters = (nf: OfferFiltersState): void =>
-    patch({ q: nf.search || null, status: nf.status || null, active: nf.active ? 'true' : null });
+    patch({ q: nf.search || null, status: writeList(nf.status), active: nf.active ? 'true' : null });
   const changeSort = (by: string): void => {
     const dir = sort.by === by && sort.dir === 'asc' ? 'desc' : 'asc';
     patch({ sort: `${by}:${dir}` }, false);

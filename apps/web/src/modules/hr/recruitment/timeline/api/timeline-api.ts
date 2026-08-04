@@ -4,9 +4,11 @@ import {
   type AddTimelineNote,
   type RecruitmentTimelineEntryDto,
 } from '@ecms/contracts';
-import { buildQuery, get, post } from '../../../../../shared/lib/api-client';
+import { buildQuery, get, post,
+  type QueryParams,
+} from '../../../../../shared/lib/api-client';
 
-export type TimelineParams = Record<string, string | number | boolean | undefined | null>;
+export type TimelineParams = QueryParams;
 
 export const listRecruitmentTimeline = (
   applicantId: string,

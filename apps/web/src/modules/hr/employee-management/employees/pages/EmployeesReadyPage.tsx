@@ -12,6 +12,7 @@ import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
 import { Can } from '../../../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
+import { readList, writeList } from '../../../../../shared/lib/list-param';
 import { DataTable, type Column } from '../../../../../shared/ui/DataTable';
 import { Pagination } from '../../../../../shared/ui/Pagination';
 import { Button } from '../../../../../shared/ui/Button';
@@ -33,7 +34,7 @@ export const EmployeesReadyPage = (): JSX.Element => {
   // Every filter round-trips through the URL: deep-linkable, and a refresh restores the view.
   const filters: EmployeesReadyFiltersState = {
     search: sp.get('q') ?? '',
-    branchId: sp.get('branch') ?? '',
+    branchId: readList(sp, 'branch'),
     acceptedFrom: sp.get('af') ?? '',
     acceptedTo: sp.get('at') ?? '',
   };
@@ -55,7 +56,7 @@ export const EmployeesReadyPage = (): JSX.Element => {
     patch(
       {
         q: nf.search || null,
-        branch: nf.branchId || null,
+        branch: writeList(nf.branchId),
         af: nf.acceptedFrom || null,
         at: nf.acceptedTo || null,
       },

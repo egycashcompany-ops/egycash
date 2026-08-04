@@ -25,9 +25,11 @@ import {
   type UpdateContractTemplate,
   type UpdateContractType,
 } from '@ecms/contracts';
-import { api, buildQuery, get, getPage, getText, patch, post, upload } from '../../../../shared/lib/api-client';
+import { api, buildQuery, get, getPage, getText, patch, post, upload,
+  type QueryParams,
+} from '../../../../shared/lib/api-client';
 
-export type ContractListParams = Record<string, string | number | boolean | undefined | null>;
+export type ContractListParams = QueryParams;
 
 /** UI state keeps overrides as a record; the wire carries PAIRS (dotted keys would be
  *  stripped from a keyed record by the server's mongo-sanitize middleware). */

@@ -8,12 +8,13 @@
 import { EDUCATION_LEVELS, SCREENING_STATUSES, type EducationLevel, type ScreeningStatus } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { FilterBar } from '../../../../../shared/ui/FilterBar';
-import { Select, Input } from '../../../../../shared/ui/form';
+import { MultiSelect } from '../../../../../shared/ui/MultiSelect';
+import { Input } from '../../../../../shared/ui/form';
 import { CloseIcon } from '../../../../../shared/ui/icons';
 import { ApplicantPicker } from './ApplicantPicker';
 
 export interface ScreeningFiltersState {
-  status: '' | ScreeningStatus;
+  status: ScreeningStatus[];
   applicantId: string;
   applicantLabel: string;
   createdFrom: string;
@@ -21,28 +22,28 @@ export interface ScreeningFiltersState {
   /** Whole years, as typed. Kept as strings so a half-entered bound stays in the box. */
   ageFrom: string;
   ageTo: string;
-  educationLevel: '' | EducationLevel;
+  educationLevel: EducationLevel[];
 }
 
 export const EMPTY_SCREENING_FILTERS: ScreeningFiltersState = {
-  status: '',
+  status: [],
   applicantId: '',
   applicantLabel: '',
   createdFrom: '',
   createdTo: '',
   ageFrom: '',
   ageTo: '',
-  educationLevel: '',
+  educationLevel: [],
 };
 
 const isActive = (f: ScreeningFiltersState): boolean =>
-  f.status !== '' ||
+  f.status.length > 0 ||
   f.applicantId !== '' ||
   f.createdFrom !== '' ||
   f.createdTo !== '' ||
   f.ageFrom !== '' ||
   f.ageTo !== '' ||
-  f.educationLevel !== '';
+  f.educationLevel.length > 0;
 
 export const ScreeningFilters = ({
   value,
@@ -56,17 +57,12 @@ export const ScreeningFilters = ({
 
   return (
     <FilterBar onClear={() => onChange(EMPTY_SCREENING_FILTERS)} hasActiveFilters={isActive(value)}>
-      <Select
-        aria-label={t('screening.filters.status')}
+      <MultiSelect
+        label={t('screening.filters.status')}
         value={value.status}
-        onChange={(e) => set({ status: e.target.value as ScreeningFiltersState['status'] })}
-        className="w-auto"
-      >
-        <option value="">{t('screening.filters.allStatuses')}</option>
-        {SCREENING_STATUSES.map((s) => (
-          <option key={s} value={s}>{t(`screening.status.${s}`)}</option>
-        ))}
-      </Select>
+        onChange={(status) => set({ status: status as ScreeningStatus[] })}
+        options={SCREENING_STATUSES.map((s) => ({ value: s, label: t(`screening.status.${s}`) }))}
+      />
 
       {value.applicantId === '' ? (
         <ApplicantPicker onSelect={(a) => set({ applicantId: a.id, applicantLabel: `${a.code} — ${a.fullNameAr}` })} />
@@ -122,17 +118,15 @@ export const ScreeningFilters = ({
         />
       </label>
 
-      <Select
-        aria-label={t('screening.filters.education')}
+      <MultiSelect
+        label={t('screening.filters.education')}
         value={value.educationLevel}
-        onChange={(e) => set({ educationLevel: e.target.value as ScreeningFiltersState['educationLevel'] })}
-        className="w-auto"
-      >
-        <option value="">{t('screening.filters.allEducation')}</option>
-        {EDUCATION_LEVELS.map((level) => (
-          <option key={level} value={level}>{t(`applicants.education.${level}`)}</option>
-        ))}
-      </Select>
+        onChange={(educationLevel) => set({ educationLevel: educationLevel as EducationLevel[] })}
+        options={EDUCATION_LEVELS.map((level) => ({
+          value: level,
+          label: t(`applicants.education.${level}`),
+        }))}
+      />
     </FilterBar>
   );
 };

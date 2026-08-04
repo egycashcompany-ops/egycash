@@ -230,7 +230,7 @@ export const ListInterviewsQuerySchema = PaginationQuerySchema.extend({
   applicantId: objectId().optional(),
   stageId: listQuery(objectId()),
   interviewerId: objectId().optional(),
-  branchId: objectId().optional(),
+  branchId: listQuery(objectId()),
   scheduledFrom: z.coerce.date().optional(),
   scheduledTo: z.coerce.date().optional(),
   /** Include rounds belonging to superseded attempts (default false for queues). */

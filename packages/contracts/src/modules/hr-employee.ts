@@ -16,6 +16,7 @@ import {
   PaginationQuerySchema,
   PhoneNumberSchema,
   type Address,
+  listQuery,
 } from '../common/index.js';
 import { UsernameSchema, type UserDto } from '../platform/users.js';
 import { type CredentialsDeliveryResultDto } from '../platform/auth.js';
@@ -253,7 +254,7 @@ export const ListEmployeesQuerySchema = PaginationQuerySchema.extend({
   origin: EmployeeOriginSchema.optional(),
   applicantId: objectId().optional(),
   jobOfferId: objectId().optional(),
-  branchId: objectId().optional(),
+  branchId: listQuery(objectId()),
   departmentId: objectId().optional(),
   sectionId: objectId().optional(),
   jobTitleId: objectId().optional(),

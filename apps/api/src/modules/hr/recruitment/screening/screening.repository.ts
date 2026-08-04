@@ -15,7 +15,7 @@ import { ScreeningModel, type ScreeningDoc } from './screening.model';
 export interface ScreeningListFilter {
   status?: readonly string[] | undefined;
   applicantId?: string | undefined;
-  branchId?: string | undefined;
+  branchId?: readonly string[] | undefined;
   decidedFrom?: Date | undefined;
   decidedTo?: Date | undefined;
   createdFrom?: Date | undefined;
@@ -98,7 +98,8 @@ class ScreeningRepository extends BaseRepository<ScreeningDoc> {
     if (f.status !== undefined) clauses.push({ status: { $in: f.status } });
     if (f.applicantId !== undefined) clauses.push({ applicantId: new Types.ObjectId(f.applicantId) });
     if (f.applicantIdIn !== undefined) clauses.push({ applicantId: { $in: f.applicantIdIn } });
-    if (f.branchId !== undefined) clauses.push({ branchId: new Types.ObjectId(f.branchId) });
+    if (f.branchId !== undefined)
+      clauses.push({ branchId: { $in: f.branchId.map((id) => new Types.ObjectId(id)) } });
     if (f.search !== undefined && f.search.trim() !== '') {
       // Escaped, so a user typing `.` or `[` searches for that character rather than injecting a
       // pattern. Same shape as the other recruitment queues.

@@ -20,9 +20,10 @@ import {
   patchWorkflow,
   post,
   postWorkflow,
+  type QueryParams,
 } from '../../../../../shared/lib/api-client';
 
-export type ScreeningListParams = Record<string, string | number | boolean | undefined | null>;
+export type ScreeningListParams = QueryParams;
 
 type ScreeningEnvelope = Promise<WorkflowEnvelopeDto<ScreeningDto>>;
 

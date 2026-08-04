@@ -25,7 +25,7 @@ export interface EvaluationFiltersState {
   search: string;
   applicantId: string;
   applicantLabel: string;
-  branchId: string;
+  branchId: string[];
   createdFrom: string;
   createdTo: string;
 }
@@ -34,7 +34,7 @@ export const EMPTY_EVALUATION_FILTERS: EvaluationFiltersState = {
   search: '',
   applicantId: '',
   applicantLabel: '',
-  branchId: '',
+  branchId: [],
   createdFrom: '',
   createdTo: '',
 };
@@ -42,7 +42,7 @@ export const EMPTY_EVALUATION_FILTERS: EvaluationFiltersState = {
 const isActive = (f: EvaluationFiltersState): boolean =>
   f.search !== '' ||
   f.applicantId !== '' ||
-  f.branchId !== '' ||
+  f.branchId.length > 0 ||
   f.createdFrom !== '' ||
   f.createdTo !== '';
 

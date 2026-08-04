@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { type ScreeningOutcome } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
+import { ActorById, useDirectoryPage } from '../../../../../platform/directory';
 import { useAppSelector } from '../../../../../store';
 import { Can, useCan } from '../../../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
@@ -36,6 +37,9 @@ export const ScreeningDetailPage = (): JSX.Element => {
   const [decide, setDecide] = useState<ScreeningOutcome | null>(null);
   const [editDecide, setEditDecide] = useState<ScreeningOutcome | null>(null);
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  // One request for everyone this page mentions. Above the guards below, because a hook runs on
+  // every render or on none — and the first render of this page has no data yet.
+  useDirectoryPage([...(s?.notes ?? []).map((n) => n.by), s?.decision?.decidedBy ?? null]);
 
   if (isLoading) {
     return (
@@ -70,6 +74,7 @@ export const ScreeningDetailPage = (): JSX.Element => {
     title: n.text,
     meta: formatDateTime(n.at, locale),
     tone: 'neutral',
+    actor: <ActorById userId={n.by} />,
   }));
   if (s.decision !== null) {
     const reason = s.decision.reason;

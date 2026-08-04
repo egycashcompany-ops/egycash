@@ -21,7 +21,7 @@ import {
 import { env } from '../../infrastructure/config/env';
 import { logger } from '../../infrastructure/logging/logger';
 import { getCache } from '../../infrastructure/redis/cache';
-import { getContext } from '../../infrastructure/http/request-context';
+import { getContext, type ActorIdentity } from '../../infrastructure/http/request-context';
 import { BusinessRuleError, NotFoundError, UnauthenticatedError } from '../../shared/errors';
 import { type AuthContext } from '../../shared/types';
 import { randomBackupCode, randomToken, sha256 } from '../../shared/utils/crypto';
@@ -30,6 +30,7 @@ import { auditService } from '../audit';
 import { rbacService } from '../rbac';
 import { settingsService } from '../settings';
 import { userService, type UserDoc } from '../users';
+import { directoryProfileService } from '../directory/directory-profile.service';
 import { emit, subscribe } from '../kernel/event-bus';
 import { SessionModel, type SessionDoc } from './session.model';
 
@@ -59,6 +60,11 @@ interface UserSnapshot {
   locale: 'ar' | 'en';
   totpEnabled: boolean;
   mustChangePassword: boolean;
+  /**
+   * Who this person is, in display terms. Resolved here — once per snapshot TTL — precisely so
+   * that audit and timeline writes never have to resolve it themselves.
+   */
+  identity: ActorIdentity | null;
 }
 
 const userEntityRef = (userId: string) => ({
@@ -595,6 +601,9 @@ class AuthService {
     if (cached !== null) return JSON.parse(cached) as UserSnapshot;
     const user = await userService.getById(userId);
     const org = user.organization;
+    // One directory read per TTL, not one per audited write. Never fatal: a caller who cannot be
+    // named can still act, and the row keeps their id.
+    const profile = await directoryProfileService.get(userId).catch(() => null);
     const snapshot: UserSnapshot = {
       status: user.status,
       permissionVersion: user.security.permissionVersion,
@@ -604,6 +613,14 @@ class AuthService {
       sectionId: org.sectionId === null ? null : String(org.sectionId),
       locale: user.locale,
       totpEnabled: user.security.totp.enabled,
+      identity:
+        profile === null
+          ? null
+          : {
+              displayName: profile.displayName,
+              jobTitle: profile.jobTitle,
+              avatarFileId: profile.avatarFileId,
+            },
     };
     await cache.set(key, JSON.stringify(snapshot), USER_SNAPSHOT_TTL_SECONDS);
     return snapshot;
@@ -639,6 +656,7 @@ class AuthService {
       permissions: effective.permissions,
       permissionVersion: snapshot.permissionVersion,
       isPrivileged: effective.isPrivileged,
+      identity: snapshot.identity,
     };
   }
 

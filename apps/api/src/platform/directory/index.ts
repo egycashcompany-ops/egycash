@@ -43,3 +43,6 @@ export const getDirectoryEmployee = async (
 /** True when an APPROVED or ACTIVE leave covers the date — pending requests are not yet facts. */
 export const isOnApprovedLeave = async (employeeId: string, date: Date): Promise<boolean> =>
   leaveLookup === null ? false : leaveLookup(employeeId, date);
+
+export { directoryProfileService } from './directory-profile.service';
+export { buildDirectoryRouter } from './directory.routes';

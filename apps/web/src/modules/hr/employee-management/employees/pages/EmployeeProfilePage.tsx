@@ -5,6 +5,7 @@
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { EMPLOYEE_EXIT_TYPES, type EmployeeDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
+import { ActorById, useDirectoryPage } from '../../../../../platform/directory';
 import { Can } from '../../../../../platform/rbac/Can';
 import { useAppSelector } from '../../../../../store';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
@@ -183,6 +184,9 @@ const TimelineTab = ({ e }: { e: EmployeeDto }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const { data, isLoading } = useEmployeeTimeline(e.id);
+  // One request for everyone this page mentions. Above the guard below, because a hook runs on
+  // every render or on none — and the first render of this tab has no data yet.
+  useDirectoryPage((data ?? []).map((item) => item.by));
   if (isLoading) return <LoadingState />;
   const label = (item: { source: string; type: string }): string => {
     if (item.source === 'action') return t(`employees.actionType.${item.type}`);
@@ -197,6 +201,8 @@ const TimelineTab = ({ e }: { e: EmployeeDto }): JSX.Element => {
     ...(item.detail === null ? {} : { description: item.detail }),
     tone:
       item.source === 'action' ? ('brand' as const) : item.source === 'personal' ? ('warning' as const) : ('neutral' as const),
+    // Same card as everywhere else; the page batched these ids above, so this is a cache hit.
+    actor: <ActorById userId={item.by} />,
   }));
   return (
     <div className="space-y-4">

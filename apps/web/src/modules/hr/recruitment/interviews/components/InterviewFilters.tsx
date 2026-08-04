@@ -27,7 +27,8 @@ import { CloseIcon } from '../../../../../shared/ui/icons';
 import { localized } from '../../../../../shared/lib/format';
 import { BranchFilterSelect } from '../../shared/BranchFilterSelect';
 import { UserPicker } from '../../shared/UserPicker';
-import { ApplicantPicker } from './ApplicantPicker';
+import { ApplicantPicker } from '../../shared/ApplicantPicker';
+import { useApplicantSearch } from '../api/interview-queries';
 import { useInterviewStages } from '../api/interview-queries';
 
 export interface InterviewFiltersState {
@@ -135,7 +136,12 @@ export const InterviewFilters = ({
       )}
 
       {value.applicantId === '' ? (
-        <ApplicantPicker onSelect={(a) => set({ applicantId: a.id, applicantLabel: a.fullNameAr })} />
+        <ApplicantPicker
+          onSelect={(a) => set({ applicantId: a.id, applicantLabel: a.fullNameAr })}
+          useSearch={useApplicantSearch}
+          placeholder={t('interviews.filters.applicantSearch')}
+          emptyLabel={t('interviews.filters.noApplicants')}
+        />
       ) : (
         <span className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
           <span className="truncate">{value.applicantLabel === '' ? value.applicantId : value.applicantLabel}</span>

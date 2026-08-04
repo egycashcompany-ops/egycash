@@ -11,7 +11,8 @@ import { Button } from '../../../../../shared/ui/Button';
 import { Field, Select } from '../../../../../shared/ui/form';
 import { localized } from '../../../../../shared/lib/format';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
-import { ApplicantPicker } from '../../interviews/components/ApplicantPicker';
+import { ApplicantPicker } from '../../shared/ApplicantPicker';
+import { useApplicantSearch } from '../../interviews/api/interview-queries';
 import { useEvaluationPhases, useOpenEvaluation } from '../api/evaluation-queries';
 
 export const OpenEvaluationDialog = ({
@@ -74,7 +75,12 @@ export const OpenEvaluationDialog = ({
       <div className="space-y-4">
         <Field label={t('evaluations.open.applicant')} required>
           {applicant === null ? (
-            <ApplicantPicker onSelect={setApplicant} placeholder={t('evaluations.open.applicantSearch')} />
+            <ApplicantPicker
+              onSelect={setApplicant}
+              useSearch={useApplicantSearch}
+              placeholder={t('evaluations.open.applicantSearch')}
+              emptyLabel={t('interviews.filters.noApplicants')}
+            />
           ) : (
             <span
               title={applicant.code}

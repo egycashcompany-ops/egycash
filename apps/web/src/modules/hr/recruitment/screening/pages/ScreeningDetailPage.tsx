@@ -23,6 +23,8 @@ import { DecideDialog } from '../components/DecideDialog';
 import { ApplicantLifecycleActions } from '../../applicants/components/ApplicantLifecycleActions';
 import { ScheduleInterviewDialog } from '../../interviews/components/ScheduleInterviewDialog';
 import { CandidateTimeline } from '../../timeline/components/CandidateTimeline';
+import { useApplicant } from '../../applicants/api/applicant-queries';
+import { RecommendationCard } from '../../shared/RecommendationCard';
 import { useAddScreeningNote, useScreening } from '../api/screening-queries';
 import { RecruitmentStepBar } from '../../shared/RecruitmentStepBar';
 
@@ -32,6 +34,9 @@ export const ScreeningDetailPage = (): JSX.Element => {
   const can = useCan();
   const { id = '' } = useParams();
   const { data: s, isLoading, isError, error, refetch } = useScreening(id);
+  // The candidate carries the placement and its history; the screening record carries neither.
+  // Above the guards, like every other hook on this page.
+  const { data: candidate } = useApplicant(s?.applicantId ?? '');
 
   const addNote = useAddScreeningNote(id);
   const [note, setNote] = useState('');
@@ -140,6 +145,14 @@ export const ScreeningDetailPage = (): JSX.Element => {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
+          {/* Screening keeps no recommendation of its own, so the card is the suggest action and
+              the history — which is exactly the feature here. */}
+          <RecommendationCard
+            applicant={candidate ?? null}
+            currentLabel={candidate?.placementLabel ?? s.placementLabel}
+            source="screening"
+            sourceRef={{ entityType: 'screening', entityId: s.id }}
+          />
           <Card>
             <CardHeader title={t('screening.notes.title')} />
             <CardBody>

@@ -57,8 +57,14 @@ export interface PlacementSnapshotDto {
   at: string;
 }
 
-/** Where a reassignment originated — e.g. accepting an interview panel's recommendation (RW5). */
-export const PLACEMENT_CHANGE_SOURCES = ['manual', 'interview', 'evaluation', 'offer'] as const;
+/**
+ * Where a reassignment originated — e.g. accepting an interview panel's recommendation (RW5).
+ *
+ * `screening` joined the list when the suggest-placement action was extended to every stage: a
+ * screener's move is not a `manual` correction from the applicant record, and recording it as one
+ * would erase the only evidence of which stage actually made the call.
+ */
+export const PLACEMENT_CHANGE_SOURCES = ['manual', 'screening', 'interview', 'evaluation', 'offer'] as const;
 export const PlacementChangeSourceSchema = z.enum(PLACEMENT_CHANGE_SOURCES);
 export type PlacementChangeSource = z.infer<typeof PlacementChangeSourceSchema>;
 

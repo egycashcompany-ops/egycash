@@ -116,14 +116,17 @@ export const EvaluationDetailPage = (): JSX.Element => {
         <div className="space-y-6 lg:col-span-2">
           <RecommendationCard
             applicant={candidate ?? null}
-            recommendedPlacement={ev.recommendedPlacement}
-            recommendationNote={ev.recommendationNote}
             currentLabel={candidate?.placementLabel ?? ev.placementLabel}
+            source="evaluation"
             sourceRef={{ entityType: 'evaluation', entityId: ev.id }}
-            version={ev.version}
-            editPermission="evaluation.manage"
-            pending={setRecommendation.isPending}
-            onSave={(input) => setRecommendation.mutateAsync(input)}
+            recommendation={{
+              placement: ev.recommendedPlacement,
+              note: ev.recommendationNote,
+              version: ev.version,
+              editPermission: 'evaluation.manage',
+              pending: setRecommendation.isPending,
+              onSave: (input) => setRecommendation.mutateAsync(input),
+            }}
           />
           {/* Files */}
           <Card>

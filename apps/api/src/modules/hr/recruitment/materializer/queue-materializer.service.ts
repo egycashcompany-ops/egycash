@@ -20,6 +20,7 @@ import { interviewService, interviewStageService } from '../interviews';
 import { evaluationService, evaluationPhaseService } from '../evaluations';
 import { jobOfferService } from '../job-offers';
 import { recruitmentWorkflowEngine } from '../workflow';
+import { jobTitleService } from '../../../../platform/organization/job-titles/job-title.service';
 
 const CATALOG_PAGE_SIZE = 100;
 
@@ -183,7 +184,16 @@ class QueueMaterializerService {
       sortDir: 'asc',
       active: true,
     });
-    const isDriver = applicant.drivingLicenses.length > 0;
+    // Driver-ness is a property of the ROLE, not of what the candidate has filled in yet. Keying
+    // it on `drivingLicenses.length` asked the wrong record: someone applying to drive who has not
+    // entered a licence number is still applying to drive, and would have silently skipped the
+    // driving test. The job title carries the flag, so the question is answered by the seat.
+    const jobTitleId = applicant.placement?.jobTitleId ?? null;
+    // `getById` throws on a title that was deleted out from under the applicant; a missing title
+    // means "no driving test", not a failed materialization.
+    const jobTitle =
+      jobTitleId === null ? null : await jobTitleService.getById(String(jobTitleId)).catch(() => null);
+    const isDriver = jobTitle?.requiresDrivingTest ?? false;
     const binding = evaluationService.workflowBinding as unknown as { model: never };
     let opened = false;
     for (const phase of phases.items) {

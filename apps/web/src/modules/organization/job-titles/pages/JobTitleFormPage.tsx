@@ -8,7 +8,7 @@ import { useT } from '../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../store';
 import { PageContainer, PageHeader } from '../../../../platform/layout/PageContainer';
 import { Card, CardBody, CardHeader } from '../../../../shared/ui/Card';
-import { Field, Input, Form, FormActions } from '../../../../shared/ui/form';
+import { Field, Input, Checkbox, Form, FormActions } from '../../../../shared/ui/form';
 import { Button } from '../../../../shared/ui/Button';
 import { LoadingState } from '../../../../shared/ui/states/LoadingState';
 import { ErrorState } from '../../../../shared/ui/states/ErrorState';
@@ -53,6 +53,7 @@ const JobTitleFormBody = ({ existing }: { existing: JobTitleDto | null }): JSX.E
       ? ''
       : String(existing.requiredExperienceYears),
   );
+  const [requiresDrivingTest, setRequiresDrivingTest] = useState(existing?.requiresDrivingTest ?? false);
 
   const submit = async (): Promise<void> => {
     if (name.ar.trim() === '' || name.en.trim() === '') {
@@ -88,6 +89,7 @@ const JobTitleFormBody = ({ existing }: { existing: JobTitleDto | null }): JSX.E
         if (min !== null) body.salaryMin = min;
         if (max !== null) body.salaryMax = max;
         if (experience.trim() !== '') body.requiredExperienceYears = numOrNull(experience) ?? undefined;
+        if (requiresDrivingTest) body.requiresDrivingTest = true;
         const doc = await create.mutateAsync(body);
         toast.success(t('organization.jobTitle.created'));
         navigate(`/organization/job-titles/${doc.id}`);
@@ -102,6 +104,7 @@ const JobTitleFormBody = ({ existing }: { existing: JobTitleDto | null }): JSX.E
           salaryMin: min,
           salaryMax: max,
           requiredExperienceYears: numOrNull(experience),
+          requiresDrivingTest,
         };
         const doc = await update.mutateAsync(body);
         toast.success(t('organization.jobTitle.updated'));
@@ -193,6 +196,13 @@ const JobTitleFormBody = ({ existing }: { existing: JobTitleDto | null }): JSX.E
                 />
               </Field>
             </div>
+            {/* The single place driver-ness is decided. Recruitment reads this flag, so a role
+                that needs a driving test says so here rather than being recognised by its name. */}
+            <Checkbox
+              checked={requiresDrivingTest}
+              onChange={(e) => setRequiresDrivingTest(e.target.checked)}
+              label={t('organization.jobTitle.requiresDrivingTest')}
+            />
             <LocalizedNameFields
               label={t('organization.jobTitle.qualifications')}
               value={qualifications}

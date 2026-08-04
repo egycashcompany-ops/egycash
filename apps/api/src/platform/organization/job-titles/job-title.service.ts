@@ -26,6 +26,7 @@ const snapshot = (doc: JobTitleDoc) => ({
   salaryMax: doc.salaryMax,
   requiredQualifications: doc.requiredQualifications,
   requiredExperienceYears: doc.requiredExperienceYears,
+  requiresDrivingTest: doc.requiresDrivingTest ?? false,
   status: doc.status,
 });
 
@@ -48,6 +49,7 @@ class JobTitleService {
         salaryMax: input.salaryMax ?? null,
         requiredQualifications: input.requiredQualifications ?? null,
         requiredExperienceYears: input.requiredExperienceYears ?? null,
+        requiresDrivingTest: input.requiresDrivingTest ?? false,
         status: 'active',
       },
       { by },
@@ -84,6 +86,7 @@ class JobTitleService {
       set.requiredQualifications = input.requiredQualifications;
     if (input.requiredExperienceYears !== undefined)
       set.requiredExperienceYears = input.requiredExperienceYears;
+    if (input.requiresDrivingTest !== undefined) set.requiresDrivingTest = input.requiresDrivingTest;
     const after = await jobTitleRepository.updateById(id, set, { by, version: input.version });
     await auditService.record({
       entityRef: entityRef(id),
@@ -141,6 +144,7 @@ class JobTitleService {
       salaryMax: doc.salaryMax,
       requiredQualifications: doc.requiredQualifications,
       requiredExperienceYears: doc.requiredExperienceYears,
+      requiresDrivingTest: doc.requiresDrivingTest ?? false,
       status: doc.status,
       version: doc.__v,
       createdAt: doc.createdAt.toISOString(),

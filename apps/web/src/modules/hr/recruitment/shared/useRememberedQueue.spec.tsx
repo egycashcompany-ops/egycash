@@ -6,7 +6,7 @@
 // state gets restored and which gets recorded, and both are decisions about the string.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { useRememberedQueue } from './useRememberedQueue';
+import { chooseInitialView, useRememberedQueue } from './useRememberedQueue';
 
 const store = new Map<string, string>();
 vi.stubGlobal('localStorage', {
@@ -25,6 +25,28 @@ const renderOnce = (search: string): { setSpCalls: URLSearchParams[] } => {
   renderToStaticMarkup(<Probe />);
   return { setSpCalls };
 };
+
+describe('chooseInitialView', () => {
+  // The precedence is the feature. Each of these three would look "helpful" if it won more often
+  // than it should, and each would break something real.
+  it('leaves a URL that says something alone — every shared link depends on it', () => {
+    expect(chooseInitialView('status=rejected', 'status=waiting', 'status=waiting')).toBe('');
+    // Even when the URL happens to match nothing anyone saved or defaulted to.
+    expect(chooseInitialView('page=3', '', 'status=waiting')).toBe('');
+  });
+
+  it('prefers the view this user left behind over the queue’s default', () => {
+    expect(chooseInitialView('', 'status=accepted', 'status=waiting')).toBe('status=accepted');
+  });
+
+  it('falls back to the default only when there is nothing else', () => {
+    expect(chooseInitialView('', '', 'status=waiting')).toBe('status=waiting');
+  });
+
+  it('does nothing at all when a queue has no default and nothing was saved', () => {
+    expect(chooseInitialView('', '', '')).toBe('');
+  });
+});
 
 describe('useRememberedQueue', () => {
   beforeEach(() => store.clear());

@@ -3,7 +3,7 @@
 // and pass/fail the round. Every action is permission-gated and version-checked; a decision is
 // blocked while any panel member is still pending (server rule, surfaced here).
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { type InterviewDecision, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
@@ -42,6 +42,7 @@ export const InterviewDetailPage = (): JSX.Element => {
   const me = useAppSelector((state) => state.auth.me);
   const can = useCan();
   const { id = '' } = useParams();
+  const [sp] = useSearchParams();
   const { data: iv, isLoading, isError, error, refetch } = useInterview(id);
   const setRecommendation = useSetInterviewRecommendation(id);
   const startScheduled = useStartScheduledInterview(id);
@@ -53,7 +54,9 @@ export const InterviewDetailPage = (): JSX.Element => {
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [reassignOpen, setReassignOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
-  const [evaluateOpen, setEvaluateOpen] = useState(false);
+  // A round started from the stage queue arrives here with the form meant to be open. Read once,
+  // as the initial state: an effect would fight the user the moment they closed it.
+  const [evaluateOpen, setEvaluateOpen] = useState(() => sp.get('evaluate') === '1');
   const [decideOutcome, setDecideOutcome] = useState<InterviewDecision | null>(null);
   const [editOutcome, setEditOutcome] = useState<InterviewDecision | null>(null);
   const [skipTarget, setSkipTarget] = useState<string | null>(null);
@@ -82,12 +85,15 @@ export const InterviewDetailPage = (): JSX.Element => {
   // RW12 — "Start now" from a waiting row opens the round; from a scheduled one it just begins it.
   const startable = iv.status === 'waiting' || iv.status === 'scheduled';
 
+  // The interviewer who just started the round is the one about to score it, so starting opens
+  // the form rather than returning them to a page that looks unchanged.
   const start = async (): Promise<void> => {
     if (iv.status === 'scheduled') {
       await startScheduled.mutateAsync({ version: iv.version });
-      return;
+    } else {
+      await startNow.mutateAsync({ applicantId: iv.applicantId, stageId: iv.stageId, interviewerIds: [] });
     }
-    await startNow.mutateAsync({ applicantId: iv.applicantId, stageId: iv.stageId, interviewerIds: [] });
+    if (canEvaluate) setEvaluateOpen(true);
   };
 
   return (
@@ -174,14 +180,17 @@ export const InterviewDetailPage = (): JSX.Element => {
         <div className="space-y-4 lg:col-span-2">
           <RecommendationCard
             applicant={candidate ?? null}
-            recommendedPlacement={iv.recommendedPlacement}
-            recommendationNote={iv.recommendationNote}
             currentLabel={candidate?.placementLabel ?? iv.placementLabel}
+            source="interview"
             sourceRef={{ entityType: 'interview', entityId: iv.id }}
-            version={iv.version}
-            editPermission="interview.evaluate"
-            pending={setRecommendation.isPending}
-            onSave={(input) => setRecommendation.mutateAsync(input)}
+            recommendation={{
+              placement: iv.recommendedPlacement,
+              note: iv.recommendationNote,
+              version: iv.version,
+              editPermission: 'interview.evaluate',
+              pending: setRecommendation.isPending,
+              onSave: (input) => setRecommendation.mutateAsync(input),
+            }}
           />
           <Card>
             <CardHeader title={t('interviews.panel.title')} />

@@ -92,6 +92,7 @@ const jobTitleRichFields = {
   salaryMax: z.number().min(0).max(100_000_000).nullable().optional(),
   requiredQualifications: LocalizedStringSchema.nullable().optional(),
   requiredExperienceYears: z.number().int().min(0).max(60).nullable().optional(),
+  requiresDrivingTest: z.boolean().optional(),
 };
 
 /** A salary band is coherent only when both ends are present and min ≤ max. */
@@ -147,6 +148,7 @@ export const UpdateJobTitleSchema = z
     salaryMax: z.number().min(0).max(100_000_000).nullable().optional(),
     requiredQualifications: LocalizedStringSchema.nullable().optional(),
     requiredExperienceYears: z.number().int().min(0).max(60).nullable().optional(),
+  requiresDrivingTest: z.boolean().optional(),
     version: z.number().int().min(0),
   })
   .strict()
@@ -249,6 +251,15 @@ export interface JobTitleDto {
   requiredQualifications: { ar: string; en: string } | null;
   /** Minimum years of experience expected for the role. */
   requiredExperienceYears: number | null;
+  /**
+   * Whether holding this title means sitting the driving test.
+   *
+   * A flag rather than a guess. The alternatives both break: matching the title's TEXT breaks the
+   * moment a title is renamed or read in the other language, and keying on whether the candidate
+   * happens to have entered a licence asks the question of the wrong record — a driver who has not
+   * filled that field in yet is still applying to drive.
+   */
+  requiresDrivingTest: boolean;
   status: 'active' | 'inactive';
   version: number;
   createdAt: string;

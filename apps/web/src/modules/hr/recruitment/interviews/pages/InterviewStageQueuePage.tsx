@@ -151,11 +151,17 @@ export const InterviewStageQueuePage = (): JSX.Element => {
   const startNow = useStartInterview();
   const startScheduled = useStartScheduledInterviewRow();
   const [startingId, setStartingId] = useState<string | null>(null);
+  // Starting a round and recording its outcome were two separate errands: start here, then find
+  // the same candidate again to write down what happened. The interviewer is in the room for both,
+  // so starting now lands on the round's own page with the evaluation form already open.
   const startRow = async (row: InterviewDto): Promise<void> => {
     setStartingId(row.id);
     try {
-      if (row.status === 'scheduled') await startScheduled.mutateAsync({ id: row.id, version: row.version });
-      else await startNow.mutateAsync({ applicantId: row.applicantId, stageId, interviewerIds: [] });
+      const started =
+        row.status === 'scheduled'
+          ? await startScheduled.mutateAsync({ id: row.id, version: row.version })
+          : await startNow.mutateAsync({ applicantId: row.applicantId, stageId, interviewerIds: [] });
+      navigate(`/interviews/${started.id}?evaluate=1`);
     } catch {
       // surfaced globally
     } finally {

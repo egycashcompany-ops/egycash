@@ -41,6 +41,8 @@ export const authenticate: RequestHandler = (
         userId: ctx.userId,
         ip: req.ip ?? null,
         userAgent: req.headers['user-agent'] ?? null,
+        // Carried so an audited write can name its actor without a lookup of its own.
+        identity: ctx.identity ?? null,
       });
       const path = req.originalUrl.split('?')[0] ?? '';
       if (!GATE_EXEMPT.test(path) && (await authService.passwordGateActive(ctx.userId))) {

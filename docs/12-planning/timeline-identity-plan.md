@@ -90,13 +90,33 @@ than a silent leak.
 or the endpoint answers 404: the timeline keeps showing the historical name exactly as recorded, and
 the drawer opens with "this user is no longer available". No error boundary, no toast, no broken row.
 
-*The gap this exposes, which the implementation must solve:* the recruitment timeline can do this
-today because it denormalizes `actorName` at write time — the history holds its own copy. The
-platform timeline and the activity log hold only an id, so for a deleted user there is no historical
-name to fall back to. Enriching them by joining at read time reintroduces exactly the problem the
-recruitment timeline already avoided. Decide this deliberately: either denormalize the name at write
-time on those streams too, or accept a neutral placeholder for actors who no longer exist — and say
-which, in the PR.
+### The actor snapshot — settled, not a PR discussion
+
+**Every event stream in the system stores a snapshot of its actor at write time.** Timeline,
+activity log, audit log: all of them. Not an id to be resolved later.
+
+Each event carries at least:
+
+| Field | Notes |
+| --- | --- |
+| `actorId` | kept, so the Directory can still be opened while the account exists |
+| `actorDisplayName` | required — this is what history shows, for ever |
+| `actorJobTitle` | when known at the time |
+| `actorAvatar` | optional |
+| `actorDeletedAt` | optional |
+
+**Reading a User to reconstruct history is prohibited.** An audit trail and a timeline state what was
+true when the event happened; they are not a view onto who that person is today. A join at read time
+would let a rename, a transfer, or a deletion silently rewrite the past — which is the one thing a
+history must never allow. The recruitment timeline already worked this way; the rest now follow it.
+
+When the account is gone the row still shows its recorded name and photo, and the drawer opens
+saying the account is no longer available — with the historical identity still on it.
+
+*The one thing this leaves the implementation:* rows written before this decision have no snapshot.
+The read path must tolerate that — an old row without `actorDisplayName` is a normal case, not a bug
+— and the PR should say what it does for them (backfill where the user still exists, neutral
+placeholder otherwise). That is a migration question, not a re-litigation of the decision above.
 
 ## Shape of the work
 

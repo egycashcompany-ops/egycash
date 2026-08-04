@@ -24,6 +24,7 @@ import { ApplicantLifecycleActions } from '../../applicants/components/Applicant
 import { ScheduleInterviewDialog } from '../../interviews/components/ScheduleInterviewDialog';
 import { CandidateTimeline } from '../../timeline/components/CandidateTimeline';
 import { useAddScreeningNote, useScreening } from '../api/screening-queries';
+import { RecruitmentStepBar } from '../../shared/RecruitmentStepBar';
 
 export const ScreeningDetailPage = (): JSX.Element => {
   const t = useT();
@@ -91,6 +92,7 @@ export const ScreeningDetailPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('screening.detail.title', { name: s.applicantName })}
+        aside={<RecruitmentStepBar current="screening" />}
         breadcrumbs={[
           { label: t('recruitment.title'), to: '/' },
           { label: t('recruitment.nav.screening'), to: '/screening' },

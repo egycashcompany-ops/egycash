@@ -28,6 +28,7 @@ import { ReassignDialog } from '../components/ReassignDialog';
 import { ReturnToStageDialog } from '../components/ReturnToStageDialog';
 import { useApplicant, useVerifyApplicantIdentity } from '../api/applicant-queries';
 import { CandidateTimeline } from '../../timeline/components/CandidateTimeline';
+import { RecruitmentStepBar } from '../../shared/RecruitmentStepBar';
 
 const Info = ({ label, children }: { label: string; children: ReactNode }): JSX.Element => (
   <div>
@@ -85,6 +86,7 @@ export const ApplicantDetailPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={a.fullNameAr}
+        aside={<RecruitmentStepBar current="applicants" />}
         breadcrumbs={[
           { label: t('recruitment.title'), to: '/' },
           { label: t('recruitment.nav.applicants'), to: '/applicants' },

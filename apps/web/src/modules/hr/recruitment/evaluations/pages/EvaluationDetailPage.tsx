@@ -25,6 +25,7 @@ import { useApplicant } from '../../applicants/api/applicant-queries';
 import { RecommendationCard } from '../../shared/RecommendationCard';
 import { MoveToOfferButton } from '../../applicants/components/MoveToOfferButton';
 import { CandidateTimeline } from '../../timeline/components/CandidateTimeline';
+import { RecruitmentStepBar } from '../../shared/RecruitmentStepBar';
 import {
   useDecideEvaluation,
   useEvaluation,
@@ -97,6 +98,7 @@ export const EvaluationDetailPage = (): JSX.Element => {
       <PageHeader
         title={localized(ev.phaseName, locale)}
         description={ev.applicantName}
+        aside={<RecruitmentStepBar current="evaluation" />}
         breadcrumbs={[
           { label: t('recruitment.title'), to: '/' },
           { label: t('recruitment.nav.evaluations'), to: '/evaluations' },

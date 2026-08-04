@@ -16,18 +16,25 @@ export const PageHeader = ({
   description,
   breadcrumbs,
   actions,
+  aside,
 }: {
   title: string;
   description?: string;
   breadcrumbs?: Crumb[];
   actions?: ReactNode;
+  /**
+   * Sits on the breadcrumb row, opposite the trail — for status about the record rather than about
+   * navigation. Wraps below on narrow screens rather than squeezing the breadcrumb.
+   */
+  aside?: ReactNode;
 }): JSX.Element => (
   <div className="mb-6 border-b border-slate-200/80 pb-5 dark:border-slate-800">
-    {breadcrumbs !== undefined && breadcrumbs.length > 0 && (
-      <div className="mb-3">
-        <Breadcrumbs items={breadcrumbs} />
+    {(breadcrumbs !== undefined && breadcrumbs.length > 0) || aside !== undefined ? (
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
+        {breadcrumbs !== undefined && breadcrumbs.length > 0 ? <Breadcrumbs items={breadcrumbs} /> : <span />}
+        {aside !== undefined && <div className="min-w-0">{aside}</div>}
       </div>
-    )}
+    ) : null}
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
         <h1 className="truncate text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">

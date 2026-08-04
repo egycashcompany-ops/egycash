@@ -194,6 +194,13 @@ const en: Record<string, string> = {
 
   // Recruitment module
   'recruitment.title': 'Recruitment',
+  'recruitment.step.aria': 'Recruitment progress',
+  'recruitment.step.applicants': 'Applicant',
+  'recruitment.step.screening': 'Screening',
+  'recruitment.step.interview': 'Interview',
+  'recruitment.step.evaluation': 'Evaluation',
+  'recruitment.step.jobOffer': 'Job offer',
+  'recruitment.step.employeesReady': 'Ready to hire',
   'recruitment.nav.overview': 'Overview',
   'recruitment.nav.organization': 'Organization',
   'recruitment.nav.pipeline': 'Pipeline',
@@ -2619,6 +2626,13 @@ const ar: Record<string, string> = {
 
   // Recruitment module
   'recruitment.title': 'التوظيف',
+  'recruitment.step.aria': 'مراحل التوظيف',
+  'recruitment.step.applicants': 'متقدّم',
+  'recruitment.step.screening': 'الفرز المبدئي',
+  'recruitment.step.interview': 'المقابلة',
+  'recruitment.step.evaluation': 'التقييم',
+  'recruitment.step.jobOffer': 'عرض العمل',
+  'recruitment.step.employeesReady': 'جاهز للتعيين',
   'recruitment.nav.overview': 'نظرة عامة',
   'recruitment.nav.organization': 'الهيكل التنظيمي',
   'recruitment.nav.pipeline': 'المسار',

@@ -24,6 +24,7 @@ import {
 import { ApplicantLifecycleActions } from '../../applicants/components/ApplicantLifecycleActions';
 import { CandidateTimeline } from '../../timeline/components/CandidateTimeline';
 import { useJobOffer } from '../api/job-offer-queries';
+import { RecruitmentStepBar } from '../../shared/RecruitmentStepBar';
 
 type ActionKind = 'send' | 'accept' | 'reject' | 'withdraw' | null;
 
@@ -60,6 +61,7 @@ export const JobOfferDetailPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('offers.detail.title', { name: o.applicantName })}
+        aside={<RecruitmentStepBar current="jobOffer" />}
         breadcrumbs={[
           { label: t('recruitment.title'), to: '/' },
           { label: t('recruitment.nav.offers'), to: '/job-offers' },

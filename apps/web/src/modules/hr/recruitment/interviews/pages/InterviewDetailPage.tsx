@@ -28,6 +28,7 @@ import { useApplicant } from '../../applicants/api/applicant-queries';
 import { RecommendationCard } from '../../shared/RecommendationCard';
 import { MoveToOfferButton } from '../../applicants/components/MoveToOfferButton';
 import { CandidateTimeline } from '../../timeline/components/CandidateTimeline';
+import { RecruitmentStepBar } from '../../shared/RecruitmentStepBar';
 import {
   useInterview,
   useSetInterviewRecommendation,
@@ -94,6 +95,7 @@ export const InterviewDetailPage = (): JSX.Element => {
       <PageHeader
         title={t('interviews.detail.title', { name: iv.applicantName })}
         description={localized(iv.stageName, locale)}
+        aside={<RecruitmentStepBar current="interview" />}
         breadcrumbs={[
           { label: t('recruitment.title'), to: '/' },
           { label: t('recruitment.nav.interviews'), to: '/interviews' },

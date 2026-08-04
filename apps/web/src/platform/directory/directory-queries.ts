@@ -4,6 +4,7 @@
 // shared by every surface that shows a name. Re-opening the same card inside `STALE_MS` costs no
 // request at all, and a page that already knows someone's name PRIMES the cache with it, so the
 // card opens instantly and the network is only used for the fields the row did not carry.
+import { useEffect, useRef } from 'react';
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { type ActorSnapshotDto, type DirectoryProfileDto } from '@ecms/contracts';
 import * as api from './directory-api';
@@ -56,4 +57,22 @@ export const useResolveDirectory = () => {
     const profiles = await api.resolveDirectoryProfiles(missing);
     for (const p of profiles) qc.setQueryData(directoryKey(p.userId), p);
   };
+};
+
+/**
+ * Fill the cache for a whole page of actor ids in ONE request, before the rows render. This is the
+ * sanctioned way to give a list identity: every `<ActorById />` under it is then a cache hit.
+ */
+export const useDirectoryPage = (userIds: (string | null)[]): void => {
+  const resolve = useResolveDirectory();
+  const ids = [...new Set(userIds.filter((id): id is string => id !== null && id !== ''))];
+  const key = ids.sort().join(',');
+  // Keyed on the id SET, not the array's identity: a fresh array every render would otherwise
+  // re-request the same people on every keystroke elsewhere on the page.
+  const resolveRef = useRef(resolve);
+  resolveRef.current = resolve;
+  useEffect(() => {
+    const set = key === '' ? [] : key.split(',');
+    if (set.length > 0) void resolveRef.current(set);
+  }, [key]);
 };

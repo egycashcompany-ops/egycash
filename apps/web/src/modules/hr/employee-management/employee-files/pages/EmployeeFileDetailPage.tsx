@@ -9,6 +9,7 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { type EmployeeTimelineEventType, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
+import { ActorById, useDirectoryPage } from '../../../../../platform/directory';
 import { useAppSelector } from '../../../../../store';
 import { useCan } from '../../../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
@@ -61,12 +62,14 @@ export const EmployeeFileDetailPage = (): JSX.Element => {
 
   const canAddNote = f.status === 'active' && can('employeeFile.edit');
 
+  useDirectoryPage(f.timeline.map((entry) => entry.by));
   const timeline: TimelineEntry[] = f.timeline.map((entry, i) => ({
     id: `${i}-${entry.type}`,
     title: entry.type === 'note' && entry.detail !== null ? entry.detail : t(`employeeFiles.event.${entry.type}`),
     meta: formatDateTime(entry.at, locale),
     tone: EVENT_TONE[entry.type],
     ...(entry.type !== 'note' && entry.detail !== null ? { description: entry.detail } : {}),
+    actor: <ActorById userId={entry.by} />,
   }));
 
   const submitNote = async (): Promise<void> => {

@@ -5,6 +5,7 @@
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { EMPLOYEE_EXIT_TYPES, type EmployeeDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
+import { ActorById, useDirectoryPage } from '../../../../../platform/directory';
 import { Can } from '../../../../../platform/rbac/Can';
 import { useAppSelector } from '../../../../../store';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
@@ -190,6 +191,8 @@ const TimelineTab = ({ e }: { e: EmployeeDto }): JSX.Element => {
     if (item.source === 'note') return t('employeeFiles.event.note');
     return t(`employeeFiles.event.${item.type}`);
   };
+  // One request for everyone this page mentions, before the rows render.
+  useDirectoryPage((data ?? []).map((item) => item.by));
   const entries: TimelineEntry[] = (data ?? []).map((item, i) => ({
     id: `${item.at}-${String(i)}`,
     title: label(item),
@@ -197,6 +200,8 @@ const TimelineTab = ({ e }: { e: EmployeeDto }): JSX.Element => {
     ...(item.detail === null ? {} : { description: item.detail }),
     tone:
       item.source === 'action' ? ('brand' as const) : item.source === 'personal' ? ('warning' as const) : ('neutral' as const),
+    // Same card as everywhere else; the page batched these ids above, so this is a cache hit.
+    actor: <ActorById userId={item.by} />,
   }));
   return (
     <div className="space-y-4">

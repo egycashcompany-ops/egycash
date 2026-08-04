@@ -17,8 +17,6 @@ const address = (patch: Partial<AddressForm> = {}): AddressForm => ({
 });
 
 const form = (patch: Partial<FormState> = {}): FormState => ({
-  sourceId: 'src-1',
-  intakeChannel: 'internal',
   fullNameAr: 'أحمد محمد',
   fullNameEn: '',
   nationalId: '',
@@ -55,32 +53,27 @@ const form = (patch: Partial<FormState> = {}): FormState => ({
 
 describe('validateField', () => {
   it('leaves an empty optional field alone but flags an empty required one', () => {
-    expect(validateField('email', '', 'create')).toBeUndefined();
-    expect(validateField('secondaryPhone', '   ', 'create')).toBeUndefined();
-    expect(validateField('fullNameAr', '', 'create')).toBe('applicants.validation.required');
-    expect(validateField('primaryPhone', '', 'create')).toBe('applicants.validation.required');
-  });
-
-  it('requires the source only when registering', () => {
-    expect(validateField('sourceId', '', 'create')).toBe('applicants.validation.required');
-    expect(validateField('sourceId', '', 'edit')).toBeUndefined();
+    expect(validateField('email', '')).toBeUndefined();
+    expect(validateField('secondaryPhone', '   ')).toBeUndefined();
+    expect(validateField('fullNameAr', '')).toBe('applicants.validation.required');
+    expect(validateField('primaryPhone', '')).toBe('applicants.validation.required');
   });
 
   it('holds the Arabic name to Arabic and the Latin name to Latin', () => {
-    expect(validateField('fullNameAr', 'أحمد محمد', 'create')).toBeUndefined();
-    expect(validateField('fullNameAr', 'Ahmed', 'create')).toBe('applicants.validation.arabicOnly');
-    expect(validateField('fullNameAr', 'أحمد 2', 'create')).toBe('applicants.validation.arabicOnly');
-    expect(validateField('fullNameEn', 'Ahmed Mohamed', 'create')).toBeUndefined();
-    expect(validateField('fullNameEn', 'أحمد', 'create')).toBe('applicants.validation.englishOnly');
+    expect(validateField('fullNameAr', 'أحمد محمد')).toBeUndefined();
+    expect(validateField('fullNameAr', 'Ahmed')).toBe('applicants.validation.arabicOnly');
+    expect(validateField('fullNameAr', 'أحمد 2')).toBe('applicants.validation.arabicOnly');
+    expect(validateField('fullNameEn', 'Ahmed Mohamed')).toBeUndefined();
+    expect(validateField('fullNameEn', 'أحمد')).toBe('applicants.validation.englishOnly');
   });
 
   it('accepts only the four Egyptian mobile prefixes, 11 digits', () => {
     for (const ok of ['01012345678', '01112345678', '01212345678', '01512345678']) {
-      expect(validateField('primaryPhone', ok, 'create'), ok).toBeUndefined();
+      expect(validateField('primaryPhone', ok), ok).toBeUndefined();
     }
-    expect(validateField('primaryPhone', '01312345678', 'create')).toBe('applicants.validation.phone');
-    expect(validateField('primaryPhone', '0101234567', 'create')).toBe('applicants.validation.phone');
-    expect(validateField('primaryPhone', '010123456789', 'create')).toBe('applicants.validation.phone');
+    expect(validateField('primaryPhone', '01312345678')).toBe('applicants.validation.phone');
+    expect(validateField('primaryPhone', '0101234567')).toBe('applicants.validation.phone');
+    expect(validateField('primaryPhone', '010123456789')).toBe('applicants.validation.phone');
     // Whatever formatting an applicant writes on a CV is cleaned BEFORE the shape is judged:
     // international prefixes, separators, and digits typed on an Arabic keyboard.
     for (const messy of [
@@ -91,35 +84,35 @@ describe('validateField', () => {
       '(010) 1234 5678',
       '٠١٠١٢٣٤٥٦٧٨',
     ]) {
-      expect(validateField('primaryPhone', messy, 'create'), messy).toBeUndefined();
+      expect(validateField('primaryPhone', messy), messy).toBeUndefined();
     }
   });
 
   it('reads numbers typed on an Arabic keyboard', () => {
-    expect(validateField('nationalId', '٢٩٠٠١٠١١٢٠١٢٣٤', 'create')).toBeUndefined();
-    expect(validateField('officialAddress.postalCode', '١١٥١١', 'create')).toBeUndefined();
+    expect(validateField('nationalId', '٢٩٠٠١٠١١٢٠١٢٣٤')).toBeUndefined();
+    expect(validateField('officialAddress.postalCode', '١١٥١١')).toBeUndefined();
   });
 
   it('checks the national ID structurally, not just its length', () => {
-    expect(validateField('nationalId', '29001011201234', 'create')).toBeUndefined();
-    expect(validateField('nationalId', '29013011201234', 'create')).toBe(
+    expect(validateField('nationalId', '29001011201234')).toBeUndefined();
+    expect(validateField('nationalId', '29013011201234')).toBe(
       'applicants.validation.nationalId', // month 30
     );
-    expect(validateField('nationalId', '2900101120123', 'create')).toBe('applicants.validation.nationalId');
+    expect(validateField('nationalId', '2900101120123')).toBe('applicants.validation.nationalId');
   });
 
   it('checks email, postal code and the numeric fields', () => {
-    expect(validateField('email', 'a@b.com', 'create')).toBeUndefined();
-    expect(validateField('email', 'a@b', 'create')).toBe('applicants.validation.email');
-    expect(validateField('officialAddress.postalCode', '11511', 'create')).toBeUndefined();
-    expect(validateField('officialAddress.postalCode', '115', 'create')).toBe(
+    expect(validateField('email', 'a@b.com')).toBeUndefined();
+    expect(validateField('email', 'a@b')).toBe('applicants.validation.email');
+    expect(validateField('officialAddress.postalCode', '11511')).toBeUndefined();
+    expect(validateField('officialAddress.postalCode', '115')).toBe(
       'applicants.validation.postalCode',
     );
-    expect(validateField('dependentsCount', '3', 'create')).toBeUndefined();
-    expect(validateField('dependentsCount', '51', 'create')).toBe('applicants.validation.dependents');
-    expect(validateField('educationGraduationYear', '2019', 'create')).toBeUndefined();
-    expect(validateField('educationGraduationYear', '1899', 'create')).toBe('applicants.validation.year');
-    expect(validateField('expectedSalaryAmount', '-1', 'create')).toBe('applicants.validation.amount');
+    expect(validateField('dependentsCount', '3')).toBeUndefined();
+    expect(validateField('dependentsCount', '51')).toBe('applicants.validation.dependents');
+    expect(validateField('educationGraduationYear', '2019')).toBeUndefined();
+    expect(validateField('educationGraduationYear', '1899')).toBe('applicants.validation.year');
+    expect(validateField('expectedSalaryAmount', '-1')).toBe('applicants.validation.amount');
   });
 });
 
@@ -129,7 +122,7 @@ describe('validateForm', () => {
   });
 
   it('does not demand identity fields when editing', () => {
-    expect(validateForm(form({ sourceId: '', nationalId: '' }), 'edit')).toEqual({});
+    expect(validateForm(form({ nationalId: '' }), 'edit')).toEqual({});
   });
 
   it('asks for the rest of a half-typed address instead of dropping it', () => {

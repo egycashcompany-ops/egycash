@@ -10,7 +10,6 @@
 // nationality are create-only (edits to the National ID go through the verify-identity flow).
 import { useState } from 'react';
 import {
-  APPLICANT_INTAKE_CHANNELS,
   CONTACT_CHANNELS,
   EDUCATION_LEVELS,
   EGYPT_GOVERNORATES,
@@ -27,14 +26,12 @@ import {
   parseNationalId,
   type Address,
   type ApplicantDto,
-  type ApplicantIntakeChannel,
-  type ApplicantSourceDto,
   type RegisterApplicant,
   type UpdateApplicant,
 } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
-import { localized, formatDate } from '../../../../../shared/lib/format';
+import { formatDate } from '../../../../../shared/lib/format';
 import { validationDetails } from '../../../../../shared/lib/errors';
 import { Card, CardBody, CardHeader } from '../../../../../shared/ui/Card';
 import { Button } from '../../../../../shared/ui/Button';
@@ -43,7 +40,6 @@ import { Field, Input, Select, Checkbox, Form, FormActions } from '../../../../.
 import { PlusIcon, TrashIcon } from '../../../../../shared/ui/icons';
 import { transliterateArabicName, type NationalIdReviewData } from '../../../../../shared/national-id';
 import { ApplicantNationalIdOcr } from './ApplicantNationalIdOcr';
-import { ReferenceField } from './RefPickers';
 import {
   firstErrorField,
   validateField,
@@ -73,8 +69,6 @@ const toCatalogGovernorate = (value: string): string => findGovernorate(value)?.
 const storedGovernorate = (value: string): string => toCatalogGovernorate(value) || value.trim();
 
 const fromDto = (a: ApplicantDto): FormState => ({
-  sourceId: a.sourceId,
-  intakeChannel: a.intakeChannel,
   fullNameAr: a.fullNameAr,
   fullNameEn: a.fullNameEn ?? '',
   nationalId: '',
@@ -141,8 +135,6 @@ const fromDto = (a: ApplicantDto): FormState => ({
 });
 
 const emptyForm = (): FormState => ({
-  sourceId: '',
-  intakeChannel: 'internal',
   fullNameAr: '',
   fullNameEn: '',
   nationalId: '',
@@ -267,7 +259,7 @@ const buildCommon = (f: FormState): Record<string, unknown> => {
 export const ApplicantForm = ({
   mode,
   initial,
-  sources,
+  internalSourceId,
   submitting,
   presetRequisitionId,
   presetBranchId,
@@ -276,7 +268,11 @@ export const ApplicantForm = ({
 }: {
   mode: 'create' | 'edit';
   initial?: ApplicantDto;
-  sources: ApplicantSourceDto[];
+  /**
+   * Where an internally-registered applicant is recorded as coming from. Configured once on the
+   * intake-form page instead of re-picked on every registration — see PR "recruitment form".
+   */
+  internalSourceId: string | null;
   submitting: boolean;
   /** Supplied by context (URL) for create — the future Requisitions screen deep-links here. */
   presetRequisitionId?: string | undefined;
@@ -310,7 +306,7 @@ export const ApplicantForm = ({
   /** Check one field and keep — or clear — its message. Called when the field loses focus. */
   const check = (name: FieldName, value: string): void =>
     setFieldErr((prev) => {
-      const problem = validateField(name, value, mode);
+      const problem = validateField(name, value);
       if (problem === prev[name]) return prev;
       const next = { ...prev };
       if (problem === undefined) delete next[name];
@@ -408,8 +404,8 @@ export const ApplicantForm = ({
           ? { jobRequisitionId: presetRequisitionId.trim() }
           : {}),
         ...(presetBranchId !== undefined && presetBranchId.trim() !== '' ? { branchId: presetBranchId.trim() } : {}),
-        sourceId: f.sourceId,
-        intakeChannel: f.intakeChannel,
+        sourceId: internalSourceId ?? '',
+        intakeChannel: 'internal',
         identity,
         ...rest,
       } as unknown as RegisterApplicant;
@@ -527,39 +523,11 @@ export const ApplicantForm = ({
               {t('applicants.ocr.reviewBanner')}
             </p>
           )}
-          <Card>
-            <CardHeader title={t('applicants.form.context')} description={t('applicants.form.contextHint')} />
-            <CardBody className="space-y-4">
-              <div className={sectionCls}>
-                <ReferenceField kind="requisition" value={presetRequisitionId} />
-                <ReferenceField kind="branch" value={presetBranchId} />
-                <Field label={t('applicants.form.source')} required error={msg('sourceId')}>
-                  <Select
-                    id="sourceId"
-                    value={f.sourceId}
-                    error={fieldErr.sourceId !== undefined}
-                    onChange={(e) => {
-                      set({ sourceId: e.target.value });
-                      check('sourceId', e.target.value);
-                    }}
-                    onBlur={() => check('sourceId', f.sourceId)}
-                  >
-                    <option value="">{t('applicants.form.selectSource')}</option>
-                    {sources.map((s) => (
-                      <option key={s.id} value={s.id}>{localized(s.name, locale)}</option>
-                    ))}
-                  </Select>
-                </Field>
-                <Field label={t('applicants.form.channel')}>
-                  <Select value={f.intakeChannel} onChange={(e) => set({ intakeChannel: e.target.value as ApplicantIntakeChannel })}>
-                    {APPLICANT_INTAKE_CHANNELS.map((c) => (
-                      <option key={c} value={c}>{t(`applicants.channel.${c}`)}</option>
-                    ))}
-                  </Select>
-                </Field>
-              </div>
-            </CardBody>
-          </Card>
+          {internalSourceId === null && (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+              {t('applicants.form.noInternalSource')}
+            </p>
+          )}
         </>
       )}
 
@@ -905,7 +873,7 @@ export const ApplicantForm = ({
 
       <FormActions>
         <Button variant="secondary" onClick={onCancel}>{t('common.cancel')}</Button>
-        <Button type="submit" loading={submitting}>
+        <Button type="submit" loading={submitting} disabled={mode === 'create' && internalSourceId === null}>
           {mode === 'create' ? t('applicants.actions.create') : t('common.save')}
         </Button>
       </FormActions>

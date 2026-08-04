@@ -12,7 +12,6 @@ import {
   isPostalCode,
   normalizeEgyptianPhone,
   parseNationalId,
-  type ApplicantIntakeChannel,
   type ContactChannel,
   type EducationLevel,
   type MaritalStatus,
@@ -45,8 +44,6 @@ export interface ReferenceRow {
 }
 
 export interface FormState {
-  sourceId: string;
-  intakeChannel: ApplicantIntakeChannel;
   fullNameAr: string;
   fullNameEn: string;
   nationalId: string;
@@ -82,7 +79,6 @@ export interface FormState {
 
 /** A form field's name — also its DOM id, which is how "jump to the first error" finds it. */
 export type FieldName =
-  | 'sourceId'
   | 'fullNameAr'
   | 'fullNameEn'
   | 'nationalId'
@@ -103,16 +99,9 @@ const required = KEY + 'required';
  * One field's verdict. An empty optional field is always fine — "required" is decided by the
  * caller (it depends on the mode), never by the rule, so the two never drift apart.
  */
-export const validateField = (
-  name: FieldName,
-  raw: string,
-  mode: 'create' | 'edit',
-): string | undefined => {
+export const validateField = (name: FieldName, raw: string): string | undefined => {
   const value = raw.trim();
-  const isRequired =
-    name === 'fullNameAr' ||
-    name === 'primaryPhone' ||
-    (name === 'sourceId' && mode === 'create');
+  const isRequired = name === 'fullNameAr' || name === 'primaryPhone';
   if (value === '') return isRequired ? required : undefined;
 
   switch (name) {
@@ -156,7 +145,6 @@ export const validateField = (
 const addressErrors = (
   which: 'officialAddress' | 'currentAddress',
   a: AddressForm,
-  mode: 'create' | 'edit',
 ): FieldErrors => {
   const errors: FieldErrors = {};
   const started = [a.line1, a.city, a.governorate, a.line2, a.postalCode].some(
@@ -167,7 +155,7 @@ const addressErrors = (
       if (a[part].trim() === '') errors[`${which}.${part}`] = required;
     }
   }
-  const postal = validateField(`${which}.postalCode`, a.postalCode, mode);
+  const postal = validateField(`${which}.postalCode`, a.postalCode);
   if (postal !== undefined) errors[`${which}.postalCode`] = postal;
   return errors;
 };
@@ -176,7 +164,6 @@ const addressErrors = (
 export const validateForm = (f: FormState, mode: 'create' | 'edit'): FieldErrors => {
   const errors: FieldErrors = {};
   const simple: FieldName[] = [
-    'sourceId',
     'fullNameAr',
     'fullNameEn',
     'nationalId',
@@ -188,7 +175,6 @@ export const validateForm = (f: FormState, mode: 'create' | 'edit'): FieldErrors
     'educationGraduationYear',
   ];
   const value: Record<string, string> = {
-    sourceId: f.sourceId,
     fullNameAr: f.fullNameAr,
     fullNameEn: f.fullNameEn,
     nationalId: f.nationalId,
@@ -201,23 +187,22 @@ export const validateForm = (f: FormState, mode: 'create' | 'edit'): FieldErrors
   };
   for (const name of simple) {
     // Identity fields only exist on the create form; the edit form must not demand them.
-    if (mode === 'edit' && (name === 'sourceId' || name === 'nationalId' || name === 'dependentsCount')) {
+    if (mode === 'edit' && (name === 'nationalId' || name === 'dependentsCount')) {
       continue;
     }
-    const problem = validateField(name, value[name] ?? '', mode);
+    const problem = validateField(name, value[name] ?? '');
     if (problem !== undefined) errors[name] = problem;
   }
   return {
     ...errors,
-    ...addressErrors('officialAddress', f.officialAddress, mode),
-    ...addressErrors('currentAddress', f.currentAddress, mode),
+    ...addressErrors('officialAddress', f.officialAddress),
+    ...addressErrors('currentAddress', f.currentAddress),
   };
 };
 
 /** The field a failed save should take you to: the first one on the page that is wrong. */
 export const firstErrorField = (errors: FieldErrors): FieldName | undefined => {
   const order: FieldName[] = [
-    'sourceId',
     'fullNameAr',
     'fullNameEn',
     'nationalId',

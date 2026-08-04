@@ -125,6 +125,7 @@ export interface ApplicantDoc extends BaseDocFields {
   }[];
   drivingLicenses: { class: string; expiry: Date | null }[];
   certifications: string[];
+  formAnswers: { key: string; label: { ar: string; en: string }; value: string }[];
   references: { name: string; relationship: string | null; phone: string | null }[];
   // Duplicate detection (§2.1 rule 5)
   duplicateFlag: boolean;
@@ -303,6 +304,19 @@ const applicantSchema = new Schema<ApplicantDoc>(
       default: [],
     },
     certifications: { type: [String], default: [] },
+    // Answers to the intake form's custom questions. The label is stored WITH the answer so a
+    // question that is later renamed or deleted does not orphan what candidates already said.
+    formAnswers: {
+      type: [
+        {
+          _id: false,
+          key: { type: String, required: true },
+          label: { ar: { type: String, required: true }, en: { type: String, required: true } },
+          value: { type: String, required: true },
+        },
+      ],
+      default: [],
+    },
     references: {
       type: [
         new Schema(

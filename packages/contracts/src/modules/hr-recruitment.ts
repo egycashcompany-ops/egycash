@@ -16,6 +16,7 @@ import {
   type Address,
   type LocalizedString,
 } from '../common/index.js';
+import { ApplicantFormAnswerSchema, type ApplicantFormAnswerDto } from './hr-recruitment-form.js';
 import {
   PlacementSchema,
   type PlacementChangeDto,
@@ -269,6 +270,8 @@ export const RegisterApplicantSchema = z
       .object({ platform: z.string().max(100), externalId: z.string().max(200) })
       .strict()
       .optional(),
+    /** Answers to the intake form's custom questions — see `hr-recruitment-form`. */
+    formAnswers: z.array(ApplicantFormAnswerSchema).max(60).optional(),
     /**
      * Optional idempotency key so a retried intake (e.g. a re-submitted integration
      * payload) never creates a duplicate applicant.
@@ -534,6 +537,8 @@ export interface ApplicantDto {
   }[];
   drivingLicenses: { class: string; expiry?: string }[];
   certifications: string[];
+  /** Answers to the intake form's custom questions, each carrying the question it answers. */
+  formAnswers: ApplicantFormAnswerDto[];
   references: { name: string; relationship?: string; phone?: string }[];
   expectedSalary: { amount: number; currency: string } | null;
   earliestStartDate: string | null;

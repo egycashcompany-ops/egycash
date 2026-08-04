@@ -126,6 +126,7 @@ export const toApplicantDto = (doc: ApplicantDoc): ApplicantDto => {
       ...(l.expiry == null ? {} : { expiry: l.expiry.toISOString() }),
     })),
     certifications: doc.certifications ?? [],
+    formAnswers: doc.formAnswers ?? [],
     references: (doc.references ?? []).map((r) => ({
       name: r.name,
       ...(r.relationship == null ? {} : { relationship: r.relationship }),

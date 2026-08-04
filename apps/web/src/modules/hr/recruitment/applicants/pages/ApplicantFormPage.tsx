@@ -11,10 +11,10 @@ import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { ApplicantForm } from '../components/ApplicantForm';
 import {
   useApplicant,
-  useApplicantSources,
   useRegisterApplicant,
   useUpdateApplicant,
 } from '../api/applicant-queries';
+import { useRecruitmentForm } from '../../recruitment-form/api/recruitment-form-queries';
 
 export const ApplicantFormPage = ({ mode }: { mode: 'create' | 'edit' }): JSX.Element => {
   const t = useT();
@@ -25,7 +25,8 @@ export const ApplicantFormPage = ({ mode }: { mode: 'create' | 'edit' }): JSX.El
   // never typed as raw IDs in the form.
   const presetRequisitionId = sp.get('requisitionId') ?? undefined;
   const presetBranchId = sp.get('branchId') ?? undefined;
-  const { data: sources = [] } = useApplicantSources();
+  // The source is configured once on the intake-form page, not re-picked per registration.
+  const { data: intakeForm } = useRecruitmentForm();
   const register = useRegisterApplicant();
   const update = useUpdateApplicant(id);
   const { data: applicant, isLoading, isError, error, refetch } = useApplicant(mode === 'edit' ? id : '');
@@ -62,7 +63,7 @@ export const ApplicantFormPage = ({ mode }: { mode: 'create' | 'edit' }): JSX.El
             mode={mode}
             {...(mode === 'edit' && applicant !== undefined ? { initial: applicant } : {})}
             {...(mode === 'create' ? { presetRequisitionId, presetBranchId } : {})}
-            sources={sources}
+            internalSourceId={intakeForm?.internalSourceId ?? null}
             submitting={register.isPending || update.isPending}
             onSubmit={onSubmit}
             onCancel={() => navigate(mode === 'edit' ? `/applicants/${id}` : '/applicants')}

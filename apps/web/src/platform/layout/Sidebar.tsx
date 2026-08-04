@@ -1,24 +1,30 @@
-// The ECMS navigation shell, third generation — designed as a product surface, not an admin
-// template. One white column (Linear/Notion/Vercel language):
-//   • Modules are quiet SECTIONS — a text-only uppercase label, collapsible, state persisted;
-//     the module owning the current page auto-expands so orientation is never lost.
-//   • Rows are monochrome. No per-module colors, no fills, no pills, no shadows: the ACTIVE row
-//     is a soft neutral tint with darker text — color is reserved for data and actions, which is
-//     precisely what makes the chrome feel designed rather than themed.
-//   • Live queue counts render as plain right-aligned numbers, not badges.
-//   • Collapsed mode is a slim icon strip (one icon per module); expanding restores the column.
+// The ECMS navigation shell, fourth generation — module SCOPE, not a module index.
+// Choosing a module and navigating inside it are two different questions, so they get two
+// different surfaces (Linear/Notion/Vercel language, kept monochrome):
+//   • A module SWITCHER chip sits at the top: current module + a small anchored popover listing
+//     the modules this user may see. One module ⇒ no popover, just a quiet label.
+//   • The column below shows ONLY the current module's pages. Nothing from other modules.
+//   • The current module is DERIVED FROM THE URL — never a second source of truth. A deep link,
+//     a ⌘K jump, a pinned favourite from elsewhere, or Back/Forward all re-scope the column
+//     automatically and correctly.
+//   • Rows are monochrome: the ACTIVE row is a soft neutral tint with darker text, counts are
+//     plain right-aligned numbers, and colour stays reserved for data and actions.
+//   • Collapsed mode is a slim icon strip: the switcher on top, then this module's page icons.
 // Data is the dynamic GET /platform/me/applications; nothing here changes the backend, routing,
 // or permission model. Persistent on desktop (lg+); an off-canvas drawer on mobile.
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { type Locale, type MyApplicationDto } from '@ecms/contracts';
 import { useAppDispatch, useAppSelector } from '../../store';
 import { setSidebarOpen } from '../../store/uiSlice';
 import { useT } from '../localization/useT';
 import { cn } from '../../shared/lib/cn';
 import { localized } from '../../shared/lib/format';
+import { useOnClickOutside } from '../../shared/lib/useOnClickOutside';
 import {
   BuildingIcon,
+  CheckIcon,
+  ChevronIcon,
   ChevronEndIcon,
   ChevronStartIcon,
   CloseIcon,
@@ -46,7 +52,7 @@ import {
 
 // ── Persisted chrome state ──────────────────────────────────────────────────
 const PANEL_KEY = 'ecms.nav.panelCollapsed';
-const SECTIONS_KEY = 'ecms.nav.sections';
+const LAST_MODULE_KEY = 'ecms.nav.lastModule';
 
 const loadCollapsed = (): boolean => {
   try {
@@ -63,20 +69,22 @@ const persistCollapsed = (v: boolean): void => {
   }
 };
 
-/** moduleId → false when the user collapsed that section; absent/true = expanded. */
-const loadSections = (): Record<string, boolean> => {
+/**
+ * The last module the user actually worked in. This is a FALLBACK, not a mode: it answers the
+ * column's question only when the URL names no module at all (the landing page, an account
+ * screen, a 404). A URL that does name one always wins, so a deep link can never open the
+ * "wrong" module.
+ */
+const loadLastModule = (): string | null => {
   try {
-    const raw = localStorage.getItem(SECTIONS_KEY);
-    if (raw === null) return {};
-    const parsed: unknown = JSON.parse(raw);
-    return typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, boolean>) : {};
+    return localStorage.getItem(LAST_MODULE_KEY);
   } catch {
-    return {};
+    return null;
   }
 };
-const persistSections = (v: Record<string, boolean>): void => {
+const persistLastModule = (id: string): void => {
   try {
-    localStorage.setItem(SECTIONS_KEY, JSON.stringify(v));
+    localStorage.setItem(LAST_MODULE_KEY, id);
   } catch {
     /* ignore */
   }
@@ -233,87 +241,175 @@ const AppWithChildren = ({
   return <DynamicAppRow app={app} provider={provider} onNavigate={onNavigate} />;
 };
 
-// ── Sections ────────────────────────────────────────────────────────────────
-/** A module as a quiet collapsible section: text-only uppercase label, chevron on hover. */
-const Section = ({
-  module,
-  expanded,
-  onToggle,
+// ── Module switcher ─────────────────────────────────────────────────────────
+/**
+ * The one place a module is chosen. A chip showing where you are; clicking it opens a small
+ * popover anchored right beneath — never a full-screen takeover, because switching modules is a
+ * frequent, lightweight act and blanking the screen for it costs more than it gives.
+ *
+ * With a single permitted module the chip degrades to a plain label: nothing to switch to, so
+ * nothing to click.
+ */
+const ModuleSwitcher = ({
+  modules,
+  current,
+  collapsed = false,
+  onPick,
+}: {
+  modules: NavModule[];
+  current: NavModule;
+  collapsed?: boolean;
+  onPick: (m: NavModule) => void;
+}): JSX.Element => {
+  const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useOnClickOutside(ref, () => setOpen(false), open);
+  const CurrentIcon = resolveNavIcon(current.icon, BuildingIcon);
+  const only = modules.length <= 1;
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
+
+  // One module: a quiet label, not a control.
+  if (only) {
+    return (
+      <div
+        className={cn(
+          'flex h-9 items-center gap-2 rounded-md text-[13px] font-medium text-slate-800 dark:text-slate-100',
+          collapsed ? 'w-9 justify-center' : 'px-2',
+        )}
+      >
+        <CurrentIcon className="h-[18px] w-[18px] shrink-0 text-slate-400 dark:text-slate-500" />
+        {!collapsed && <span className="min-w-0 truncate">{localized(current.name, locale)}</span>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={t('nav.switchModule')}
+        {...(collapsed ? { title: localized(current.name, locale) } : {})}
+        className={cn(
+          'flex h-9 items-center gap-2 rounded-md text-[13px] font-medium transition-colors',
+          'text-slate-800 hover:bg-slate-900/[0.04] focus-visible:outline-none',
+          'focus-visible:ring-2 focus-visible:ring-slate-400/40',
+          'dark:text-slate-100 dark:hover:bg-white/[0.05]',
+          collapsed ? 'w-9 justify-center' : 'w-full px-2',
+        )}
+      >
+        <CurrentIcon className="h-[18px] w-[18px] shrink-0 text-slate-400 dark:text-slate-500" />
+        {!collapsed && (
+          <>
+            <span className="min-w-0 flex-1 truncate text-start">
+              {localized(current.name, locale)}
+            </span>
+            <ChevronIcon
+              className={cn(
+                'h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform dark:text-slate-500',
+                open && 'rotate-180',
+              )}
+            />
+          </>
+        )}
+      </button>
+
+      {open && (
+        <div
+          role="menu"
+          className={cn(
+            'absolute z-30 mt-1 min-w-[13rem] origin-top rounded-lg border border-slate-200/80 bg-white p-1',
+            'animate-menu-in dark:border-slate-700 dark:bg-slate-800',
+            collapsed ? 'start-full ms-1 top-0 mt-0' : 'inset-x-0',
+          )}
+        >
+          {modules.map((m) => {
+            const Icon = resolveNavIcon(m.icon, BuildingIcon);
+            const isCurrent = m.id === current.id;
+            return (
+              <button
+                key={m.id}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setOpen(false);
+                  if (!isCurrent) onPick(m);
+                }}
+                className={cn(
+                  'flex h-8 w-full items-center gap-2.5 rounded-md px-2 text-[13px] transition-colors',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/40',
+                  isCurrent
+                    ? 'font-medium text-slate-900 dark:text-slate-100'
+                    : 'text-slate-600 hover:bg-slate-900/[0.04] dark:text-slate-300 dark:hover:bg-white/[0.05]',
+                )}
+              >
+                <Icon className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" />
+                <span className="min-w-0 flex-1 truncate text-start">
+                  {localized(m.name, locale)}
+                </span>
+                {isCurrent && (
+                  <CheckIcon className="h-3.5 w-3.5 shrink-0 text-slate-500 dark:text-slate-400" />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── Collapsed mode: the switcher, then THIS module's page icons ─────────────
+const IconStrip = ({
+  modules,
+  current,
+  onPickModule,
   onNavigate,
 }: {
-  module: NavModule;
-  expanded: boolean;
-  onToggle: () => void;
+  modules: NavModule[];
+  current: NavModule;
+  onPickModule: (m: NavModule) => void;
   onNavigate?: (() => void) | undefined;
 }): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   return (
-    <section className="mt-5 first:mt-0.5">
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={expanded}
-        className={cn(
-          'group/section flex h-7 w-full items-center gap-1.5 rounded-md px-2',
-          'text-[11px] font-medium uppercase tracking-[0.07em] text-slate-400 transition-colors',
-          'hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2',
-          'focus-visible:ring-slate-400/40 dark:text-slate-500 dark:hover:text-slate-300',
-        )}
-      >
-        <span className="min-w-0 truncate text-start">{localized(module.name, locale)}</span>
-        <ChevronEndIcon
-          className={cn(
-            'h-3 w-3 shrink-0 opacity-0 transition-transform group-hover/section:opacity-100 rtl:-scale-x-100',
-            expanded && 'rotate-90 rtl:rotate-90',
-          )}
-        />
-      </button>
-      {expanded && (
-        <ul className="mt-0.5 space-y-px">
-          {module.apps.map((a) => (
-            <AppWithChildren key={a.id} app={a} onNavigate={onNavigate} />
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-};
-
-// ── Collapsed mode: a slim icon strip, one icon per module ──────────────────
-const IconStrip = ({
-  modules,
-  activeId,
-  onPick,
-}: {
-  modules: NavModule[];
-  activeId: string | null;
-  onPick: (id: string) => void;
-}): JSX.Element => {
-  const locale = useAppSelector((state): Locale => state.locale.locale);
-  return (
     <div className="flex flex-1 flex-col items-center gap-1 overflow-y-auto px-2 py-3">
-      {modules.map((m) => {
-        const name = localized(m.name, locale);
-        const active = m.id === activeId;
-        const Icon = resolveNavIcon(m.icon, BuildingIcon);
+      <ModuleSwitcher modules={modules} current={current} collapsed onPick={onPickModule} />
+      <div className="my-1 h-px w-6 bg-slate-200 dark:bg-slate-700" />
+      {current.apps.map((a) => {
+        const name = localized(a.name, locale);
+        const Icon = resolveNavIcon(a.icon, FileIcon);
         return (
-          <button
-            key={m.id}
-            type="button"
-            onClick={() => onPick(m.id)}
+          <NavLink
+            key={a.id}
+            to={a.route}
+            onClick={onNavigate}
             title={name}
             aria-label={name}
-            aria-current={active ? 'page' : undefined}
-            className={cn(
-              'grid h-9 w-9 shrink-0 place-items-center rounded-md transition-colors',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/40',
-              active
-                ? 'bg-slate-900/[0.06] text-slate-800 dark:bg-white/[0.08] dark:text-slate-100'
-                : 'text-slate-400 hover:bg-slate-900/[0.04] hover:text-slate-700 dark:text-slate-500 dark:hover:bg-white/[0.05] dark:hover:text-slate-200',
-            )}
+            className={({ isActive }) =>
+              cn(
+                'grid h-9 w-9 shrink-0 place-items-center rounded-md transition-colors',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/40',
+                isActive
+                  ? 'bg-slate-900/[0.06] text-slate-800 dark:bg-white/[0.08] dark:text-slate-100'
+                  : 'text-slate-400 hover:bg-slate-900/[0.04] hover:text-slate-700 dark:text-slate-500 dark:hover:bg-white/[0.05] dark:hover:text-slate-200',
+              )
+            }
           >
             <Icon className="h-[18px] w-[18px]" />
-          </button>
+          </NavLink>
         );
       })}
     </div>
@@ -335,31 +431,30 @@ const NavShell = ({
   onNavigate?: (() => void) | undefined;
 }): JSX.Element => {
   const t = useT();
+  const navigate = useNavigate();
   const { data = [], isLoading, isError, error, refetch } = useMyApplications();
   const { pinned } = useNavPrefs();
   const { pathname } = useLocation();
 
   // A module with no pages yet (e.g. one seeded ahead of its screens) earns no chrome.
   const modules = useMemo(() => toModules(data).filter((m) => m.apps.length > 0), [data]);
-  const activeModuleId = useMemo(() => moduleOfPathname(modules, pathname), [modules, pathname]);
+
+  // THE source of truth: which module owns the page currently open. Deep links, ⌘K jumps,
+  // pinned favourites from another module and Back/Forward therefore all re-scope the column
+  // for free — there is no second state to fall out of sync.
+  const urlModuleId = useMemo(() => moduleOfPathname(modules, pathname), [modules, pathname]);
+
+  // Remembered ONLY to answer "which module should the column show when the URL names none?"
+  // (the landing page, /account/security, a 404). It never overrides a URL that does name one.
+  const [lastModuleId, setLastModuleId] = useState<string | null>(loadLastModule);
+  useEffect(() => {
+    if (urlModuleId !== null && urlModuleId !== lastModuleId) {
+      setLastModuleId(urlModuleId);
+      persistLastModule(urlModuleId);
+    }
+  }, [urlModuleId, lastModuleId]);
 
   const [collapsed, setCollapsed] = useState<boolean>(() => collapsible && loadCollapsed());
-  const [sections, setSections] = useState<Record<string, boolean>>(loadSections);
-  const isExpanded = useCallback((id: string): boolean => sections[id] !== false, [sections]);
-  const setSection = useCallback((id: string, value: boolean): void => {
-    setSections((prev) => {
-      const next = { ...prev, [id]: value };
-      persistSections(next);
-      return next;
-    });
-  }, []);
-
-  // The module owning the current page always shows its rows — orientation beats tidiness.
-  useEffect(() => {
-    if (activeModuleId !== null && sections[activeModuleId] === false) {
-      setSection(activeModuleId, true);
-    }
-  }, [activeModuleId, sections, setSection]);
 
   const pinnedApps = useMemo(() => {
     const all = flattenApps(data);
@@ -393,16 +488,26 @@ const NavShell = ({
     );
   }
 
+  // The module the column is scoped to: the URL's, else the one last visited, else the first.
+  const current =
+    modules.find((m) => m.id === urlModuleId) ??
+    modules.find((m) => m.id === lastModuleId) ??
+    modules[0]!;
+
   const toggleCollapsed = (): void => {
     setCollapsed((v) => {
       persistCollapsed(!v);
       return !v;
     });
   };
-  const pickFromStrip = (id: string): void => {
-    setCollapsed(false);
-    persistCollapsed(false);
-    setSection(id, true);
+
+  // Switching modules NAVIGATES — it does not flip a local flag. The URL then re-scopes the
+  // column, which is what keeps the two in step by construction.
+  const pickModule = (m: NavModule): void => {
+    const first = m.apps[0];
+    if (first === undefined) return;
+    navigate(first.route);
+    onNavigate?.();
   };
 
   return (
@@ -413,33 +518,40 @@ const NavShell = ({
       )}
     >
       {collapsed ? (
-        <IconStrip modules={modules} activeId={activeModuleId} onPick={pickFromStrip} />
+        <IconStrip
+          modules={modules}
+          current={current}
+          onPickModule={pickModule}
+          onNavigate={onNavigate}
+        />
       ) : (
-        <nav className="flex-1 overflow-y-auto px-3 pb-4 pt-4">
-          {pinnedApps.length > 0 && (
-            <section className="mb-5">
-              <p className="flex h-7 items-center px-2 text-[11px] font-medium uppercase tracking-[0.07em] text-slate-400 dark:text-slate-500">
-                {t('nav.pinned')}
-              </p>
-              <ul className="mt-0.5 space-y-px">
-                {pinnedApps.map((a) => (
-                  <li key={`pin-${a.id}`}>
-                    <AppRow app={a} onNavigate={onNavigate} showPinAtRest={false} />
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-          {modules.map((m) => (
-            <Section
-              key={m.id}
-              module={m}
-              expanded={isExpanded(m.id)}
-              onToggle={() => setSection(m.id, !isExpanded(m.id))}
-              onNavigate={onNavigate}
-            />
-          ))}
-        </nav>
+        <>
+          <div className="px-3 pt-3">
+            <ModuleSwitcher modules={modules} current={current} onPick={pickModule} />
+          </div>
+          <nav className="flex-1 overflow-y-auto px-3 pb-4 pt-3">
+            {pinnedApps.length > 0 && (
+              <section className="mb-5">
+                <p className="flex h-7 items-center px-2 text-[11px] font-medium uppercase tracking-[0.07em] text-slate-400 dark:text-slate-500">
+                  {t('nav.pinned')}
+                </p>
+                <ul className="mt-0.5 space-y-px">
+                  {pinnedApps.map((a) => (
+                    <li key={`pin-${a.id}`}>
+                      <AppRow app={a} onNavigate={onNavigate} showPinAtRest={false} />
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+            {/* This module's pages, and nothing else. */}
+            <ul className="space-y-px">
+              {current.apps.map((a) => (
+                <AppWithChildren key={a.id} app={a} onNavigate={onNavigate} />
+              ))}
+            </ul>
+          </nav>
+        </>
       )}
 
       {collapsible && (

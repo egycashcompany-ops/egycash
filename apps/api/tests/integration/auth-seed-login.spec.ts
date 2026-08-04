@@ -134,7 +134,7 @@ describe('seed → password login (regression)', () => {
   // The navigation shell is a personal preference: it must survive on the account, answer with a
   // default for accounts that predate it, and refuse anything outside the two known shells.
   describe('navigation preference (self-service)', () => {
-    const patch = async (token: string, body: unknown) =>
+    const patch = async (token: string, body: Record<string, unknown>) =>
       request(app)
         .patch('/api/v1/auth/me/preferences')
         .set('Authorization', `Bearer ${token}`)

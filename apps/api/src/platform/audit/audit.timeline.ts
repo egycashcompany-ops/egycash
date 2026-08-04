@@ -7,7 +7,44 @@ import { type PageMeta, type TimelineDto, type TimelineEntryDto, type TimelineQu
 import { ForbiddenError } from '../../shared/errors';
 import { hasPermission, type AuthContext } from '../../shared/types';
 import { auditService } from './audit.service';
-import { AuditLogModel, ActivityLogModel, type AuditLogDoc, type ActivityLogDoc } from './audit.model';
+import {
+  AuditLogModel,
+  ActivityLogModel,
+  type ActorSnapshotDoc,
+  type AuditLogDoc,
+  type ActivityLogDoc,
+} from './audit.model';
+import { type ActorSnapshotDto } from '@ecms/contracts';
+import { directoryProfileService } from '../directory/directory-profile.service';
+
+/**
+ * Rows written before actor snapshots existed carry only an id. Rather than leave them nameless,
+ * they are filled from the directory — in ONE batched lookup for the whole page, never per row.
+ * Live rows are untouched: their snapshot is the historical truth and must win.
+ */
+export const fillLegacyActors = async (entries: TimelineEntryDto[]): Promise<TimelineEntryDto[]> => {
+  const missing = [
+    ...new Set(entries.filter((e) => e.actor === null && e.actorId !== null).map((e) => e.actorId as string)),
+  ];
+  if (missing.length === 0) return entries;
+  const found = await directoryProfileService.resolve(missing);
+  return entries.map((e) => {
+    if (e.actor !== null || e.actorId === null) return e;
+    const profile = found.get(e.actorId);
+    return profile === undefined
+      ? e
+      : {
+          ...e,
+          actor: {
+            userId: profile.userId,
+            displayName: profile.displayName,
+            jobTitle: profile.jobTitle,
+            avatarFileId: profile.avatarFileId,
+            deletedAt: null,
+          },
+        };
+  });
+};
 
 /**
  * Per-entity histories are naturally bounded (a single record's trail, not a global
@@ -17,11 +54,26 @@ import { AuditLogModel, ActivityLogModel, type AuditLogDoc, type ActivityLogDoc 
  */
 const MAX_ROWS_PER_STREAM = 1_000;
 
+const snapshotDto = (
+  userId: string | null,
+  snap: ActorSnapshotDoc | null | undefined,
+): ActorSnapshotDto | null =>
+  snap == null
+    ? null
+    : {
+        userId,
+        displayName: snap.displayName,
+        jobTitle: snap.jobTitle ?? null,
+        avatarFileId: snap.avatarFileId ?? null,
+        deletedAt: snap.deletedAt === null || snap.deletedAt === undefined ? null : snap.deletedAt.toISOString(),
+      };
+
 const toAuditEntry = (doc: AuditLogDoc): TimelineEntryDto => ({
   source: 'audit',
   id: String(doc._id),
   at: doc.at.toISOString(),
   actorId: doc.actor.userId === null ? null : String(doc.actor.userId),
+  actor: snapshotDto(doc.actor.userId === null ? null : String(doc.actor.userId), doc.actorSnapshot),
   action: doc.action,
   changes: doc.changes,
 });
@@ -31,6 +83,7 @@ const toActivityEntry = (doc: ActivityLogDoc): TimelineEntryDto => ({
   id: String(doc._id),
   at: doc.at.toISOString(),
   actorId: doc.actorId === null ? null : String(doc.actorId),
+  actor: snapshotDto(doc.actorId === null ? null : String(doc.actorId), doc.actorSnapshot),
   messageKey: doc.messageKey,
   params: doc.params,
 });
@@ -90,7 +143,9 @@ export const getTimeline = async (
 
   const totalItems = merged.length;
   const start = (query.page - 1) * query.pageSize;
-  const items = merged.slice(start, start + query.pageSize);
+  // Fill only the PAGE, and only its legacy rows — one lookup, after slicing, so a 1000-row
+  // history never resolves names nobody is about to read.
+  const items = await fillLegacyActors(merged.slice(start, start + query.pageSize));
 
   return {
     items,

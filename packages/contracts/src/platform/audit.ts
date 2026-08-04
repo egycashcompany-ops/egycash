@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { objectId, PaginationQuerySchema } from '../common/index.js';
+import { type ActorSnapshotDto } from './directory.js';
 
 export const AUDIT_ACTIONS = [
   'create',
@@ -119,6 +120,8 @@ export interface ActivityLogDto {
   messageKey: string;
   params: Record<string, string>;
   actorId: string | null;
+  /** Who did it, as recorded at write time. `null` on rows written before actor snapshots. */
+  actor: ActorSnapshotDto | null;
   at: string;
 }
 
@@ -142,6 +145,8 @@ export interface TimelineEntryDto {
   id: string;
   at: string;
   actorId: string | null;
+  /** Who did it, as recorded at write time. `null` on rows written before actor snapshots. */
+  actor: ActorSnapshotDto | null;
   /** `source: 'audit'` only. */
   action?: AuditAction;
   changes?: AuditChange[];

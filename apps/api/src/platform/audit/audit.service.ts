@@ -22,6 +22,8 @@ import {
   type AuditLogDoc,
   type ActivityLogDoc,
 } from './audit.model';
+import { type ActorSnapshotDoc } from './audit.model';
+import { directoryProfileService } from '../directory/directory-profile.service';
 
 export interface AuditEntry {
   entityRef: EntityRef;
@@ -69,6 +71,23 @@ export const buildAuditFilter = (
   return filter;
 };
 
+/**
+ * Who the actor was, captured NOW so the row keeps its own copy. One lookup per write, and never
+ * one at read time — a rename or a deletion must not be able to rewrite what history says.
+ */
+const captureActor = async (userId: string | null | undefined): Promise<ActorSnapshotDoc | null> => {
+  if (userId === null || userId === undefined) return null;
+  const profile = await directoryProfileService.get(userId).catch(() => null);
+  return profile === null
+    ? null
+    : {
+        displayName: profile.displayName,
+        jobTitle: profile.jobTitle,
+        avatarFileId: profile.avatarFileId,
+        deletedAt: null,
+      };
+};
+
 const writeAuditRow = async (payload: AuditWritePayload): Promise<void> => {
   await AuditLogModel.create([
     {
@@ -80,6 +99,7 @@ const writeAuditRow = async (payload: AuditWritePayload): Promise<void> => {
         ip: payload.actor?.ip ?? null,
         userAgent: payload.actor?.userAgent ?? null,
       },
+      actorSnapshot: await captureActor(payload.actor?.userId),
       requestId: payload.requestId,
       at: new Date(payload.at),
     },
@@ -121,6 +141,7 @@ class AuditService {
             messageKey: payload.messageKey,
             params: payload.params ?? {},
             actorId: toObjectIdOrNull(payload.actorId),
+            actorSnapshot: await captureActor(payload.actorId),
             at: new Date(payload.at),
           },
         ]);
@@ -198,6 +219,16 @@ class AuditService {
       entityRef: doc.entityRef,
       messageKey: doc.messageKey,
       params: doc.params,
+      actor:
+        doc.actorSnapshot == null
+          ? null
+          : {
+              userId: doc.actorId === null ? null : String(doc.actorId),
+              displayName: doc.actorSnapshot.displayName,
+              jobTitle: doc.actorSnapshot.jobTitle ?? null,
+              avatarFileId: doc.actorSnapshot.avatarFileId ?? null,
+              deletedAt: doc.actorSnapshot.deletedAt?.toISOString() ?? null,
+            },
       actorId: doc.actorId === null ? null : String(doc.actorId),
       at: doc.at.toISOString(),
     };

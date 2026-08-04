@@ -6,6 +6,7 @@ export * from './events/catalog.js';
 export * from './flags/index.js';
 export * from './platform/auth.js';
 export * from './platform/users.js';
+export * from './platform/directory.js';
 export * from './platform/rbac.js';
 export * from './platform/organization.js';
 export * from './platform/application.js';

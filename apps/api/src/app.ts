@@ -37,6 +37,7 @@ import {
   buildAuditLogsRouter,
   buildTimelineRouter,
 } from './platform/audit';
+import { buildDirectoryRouter } from './platform/directory';
 import { buildScheduledTasksRouter } from './platform/scheduler';
 import { buildFileCategoriesRouter, buildFilesRouter } from './platform/files';
 import {
@@ -127,6 +128,8 @@ export const buildApp = (): Express => {
   api.use('/platform/settings', buildSettingsRouter());
   api.use('/platform/feature-flags', buildFeatureFlagsRouter());
   api.use('/platform/audit-logs', buildAuditLogsRouter());
+  // Display identity for anyone already signed in — not user administration (see the router).
+  api.use('/platform/directory', buildDirectoryRouter());
   api.use('/platform/activity-logs', buildActivityLogsRouter());
   api.use('/platform/timeline', buildTimelineRouter());
   api.use('/platform/scheduled-tasks', buildScheduledTasksRouter());

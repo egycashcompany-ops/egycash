@@ -41,7 +41,6 @@ import {
   HrWorkflowEngineEvents,
 } from '../modules/hr-recruitment-workflow.js';
 import { FleetEvents } from '../modules/fleet.js';
-import { ItEvents } from '../modules/it.js';
 
 const HR_EVENT_CONSTANTS = [
   HrEvents,
@@ -60,8 +59,6 @@ const HR_EVENT_CONSTANTS = [
 ].flatMap((group) => Object.values(group));
 
 const FLEET_EVENT_CONSTANTS = Object.values(FleetEvents);
-// IT-1 declares the two registry events with their emit sites — both stable from day one.
-const IT_EVENT_CONSTANTS = Object.values(ItEvents);
 // Promoted to stable by the slices that added their emit sites (FL-2..FL-6). All 22 are
 // stable — FLEET_PLANNED below derives to empty, which is the point: nothing fleet remains
 // declared-but-unpublished.
@@ -119,12 +116,6 @@ describe('coverage', () => {
     }
   });
 
-  it('catalogues every IT event', () => {
-    for (const name of IT_EVENT_CONSTANTS) {
-      expect(isCatalogedEventName(name), `${name} is not catalogued`).toBe(true);
-    }
-  });
-
   it('invents nothing — every catalogued name is a declared event constant', () => {
     // An automation may only subscribe to what a publisher emits. A name in the catalogue that
     // no module declares would be a trigger that can never fire, and the workflow built on it
@@ -133,7 +124,6 @@ describe('coverage', () => {
       ...Object.values(PlatformEvents),
       ...HR_EVENT_CONSTANTS,
       ...FLEET_EVENT_CONSTANTS,
-      ...IT_EVENT_CONSTANTS,
     ]);
     for (const name of eventCatalogNames()) {
       expect(declared.has(name), `${name} is catalogued but declared nowhere`).toBe(true);

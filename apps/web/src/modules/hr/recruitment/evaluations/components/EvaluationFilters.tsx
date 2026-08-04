@@ -19,7 +19,8 @@ import { SearchInput } from '../../../../../shared/ui/SearchInput';
 import { Input } from '../../../../../shared/ui/form';
 import { CloseIcon } from '../../../../../shared/ui/icons';
 import { BranchFilterSelect } from '../../shared/BranchFilterSelect';
-import { ApplicantPicker } from '../../screening/components/ApplicantPicker';
+import { ApplicantPicker } from '../../shared/ApplicantPicker';
+import { useApplicantSearch } from '../../screening/api/screening-queries';
 
 export interface EvaluationFiltersState {
   search: string;
@@ -67,7 +68,12 @@ export const EvaluationFilters = ({
       </div>
 
       {value.applicantId === '' ? (
-        <ApplicantPicker onSelect={(a) => set({ applicantId: a.id, applicantLabel: a.fullNameAr })} />
+        <ApplicantPicker
+          onSelect={(a) => set({ applicantId: a.id, applicantLabel: a.fullNameAr })}
+          useSearch={useApplicantSearch}
+          placeholder={t('screening.filters.applicantSearch')}
+          emptyLabel={t('screening.filters.noApplicants')}
+        />
       ) : (
         <span className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
           <span className="truncate">{value.applicantLabel === '' ? value.applicantId : value.applicantLabel}</span>

@@ -11,7 +11,8 @@ import { Button } from '../../../../../shared/ui/Button';
 import { Field, Input, Select, Textarea } from '../../../../../shared/ui/form';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { localized } from '../../../../../shared/lib/format';
-import { ApplicantPicker } from './ApplicantPicker';
+import { ApplicantPicker } from '../../shared/ApplicantPicker';
+import { useApplicantSearch } from '../api/interview-queries';
 import { UserPicker, type SelectedUser } from './UserPicker';
 import { useInterviewStages, useScheduleInterview } from '../api/interview-queries';
 
@@ -100,7 +101,12 @@ export const ScheduleInterviewDialog = ({
       <div className="space-y-4">
         <Field label={t('interviews.schedule.applicant')} required>
           {applicant === null ? (
-            <ApplicantPicker onSelect={setApplicant} />
+            <ApplicantPicker
+              onSelect={setApplicant}
+              useSearch={useApplicantSearch}
+              placeholder={t('interviews.filters.applicantSearch')}
+              emptyLabel={t('interviews.filters.noApplicants')}
+            />
           ) : (
             <span
               title={applicant.code}

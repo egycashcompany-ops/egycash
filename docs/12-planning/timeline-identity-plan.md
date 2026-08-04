@@ -59,14 +59,31 @@ client-side mistake (a request per row) and the quieter server-side one (a looku
 mapper). The batching belongs in the service that assembles the page, and there is a test that
 counts the lookups rather than trusting the shape of the code.
 
+**3. The directory is a platform DATA LAYER, not a drawer with a fetch in it.** The same person
+appears dozens of times across a session, and asking for them again each time is the failure mode
+this condition exists to prevent.
+
+*Server, within one request:* a user is looked up **once**. Batch resolution already implies it, but
+state it separately, because two collaborating services assembling one response can each batch
+correctly and still query the same person twice.
+
+*Client, across the session:* directory profiles live in the shared query cache keyed by user id,
+with a `staleTime` around five minutes, and can be invalidated when a user record changes. Clicking
+the same person again inside that window issues **no** request.
+
+The consequence worth designing for: a page whose rows already carry `actorName` should **prime**
+the cache with what it already knows. Then opening the card for a name you can already see on screen
+costs nothing, and the network is used only for the fields the row did not carry.
+
 ## Shape of the work
 
 1. **Contracts** — `DirectoryProfileDto` (closed) and the route's param schema. `actorName` added to
    `TimelineEntryDto` and `ActivityLogDto`.
 2. **API** — a `platform/directory` feature: one service that joins the user to its employee record
-   for title/department/branch, one `authenticate`-only route. The timeline and activity-log
-   services resolve actor names in **one batched lookup per page**, never per row.
-3. **Web** — one `UserProfileDrawer` under `platform/`, and one `ActorLink` that opens it. Used
+   for title/department/branch, one `authenticate`-only route, and a batch resolver the timeline and
+   activity-log services call **once per page**, never per row, and never twice for one person.
+3. **Web** — a platform directory data layer (query hooks, cache keys, `staleTime`, invalidation)
+   plus one `UserProfileDrawer` under `platform/`, and one `ActorLink` that opens it. Used
    wherever a user's name appears: timeline, activity log, audit log, comments, and anything later.
    `shared/ui/Timeline` grows an optional `actor` on its entry so every timeline gets this for free.
 4. **Wiring** — the four surfaces that render a timeline today: employee profile, employee file,
@@ -75,6 +92,7 @@ counts the lookups rather than trusting the shape of the code.
 ## The PR contains exactly this
 
 - the platform directory endpoint
+- the platform directory data layer (batching server-side, caching client-side)
 - the platform profile drawer
 - actor identity on the timeline and the activity log
 - the tests

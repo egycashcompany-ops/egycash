@@ -86,14 +86,16 @@ its entry here in the same PR.
 
 - **Modules are now chosen from a Launchpad — the app steps back and a launcher takes over.**
   The switcher's popover is replaced by a full-viewport launcher in the SAP Fiori / Azure /
-  Atlassian family: opening it scales the app to 0.965 behind a light blur and rounds its
-  corners, then the launcher arrives 70ms later into the space it left (closing reverses the
-  order), so switching reads as leaving one workspace for another rather than answering a
-  dialog. The launcher is a screen, not a panel — title near the top, a centred grid of
+  Atlassian family: opening it defocuses the app behind a 6px blur, then the launcher arrives
+  70ms later (closing reverses the order), so switching reads as leaving one workspace for
+  another rather than answering a dialog — depth comes from blur alone, since scaling the page
+  read as the background zooming out from under the launcher instead of the launcher taking
+  focus. The launcher is a screen, not a panel — title near the top, a centred grid of
   310×208 tiles through the middle, nothing with a dialog silhouette. Each tile carries the
   module's catalog icon at 40px, its name, and a hover that lifts, scales 1.5% and deepens its
-  shadow on one curve; the module you are already in is marked with a surface tint, a shade of
-  border and a small check. Everything else about switching is unchanged: the current module is
+  shadow on one curve; the module you are already in is filled with a darker tint and a darker
+  icon chip, the way the active row reads in the column. Everything else about switching is
+  unchanged: the current module is
   still derived from the URL, choosing still returns you to the page you last had open there,
   permissions still come from `/platform/me/applications`, a single-module user still sees no
   launcher at all, and the ⌘K palette and pinned favourites are untouched. It owns focus while

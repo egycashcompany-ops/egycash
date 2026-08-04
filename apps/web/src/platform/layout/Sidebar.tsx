@@ -23,7 +23,6 @@ import { cn } from '../../shared/lib/cn';
 import { localized } from '../../shared/lib/format';
 import {
   BuildingIcon,
-  CheckIcon,
   ChevronEndIcon,
   ChevronStartIcon,
   CloseIcon,
@@ -317,13 +316,13 @@ const STAGGER_MS = 30;
 const STAGGER_MAX_ROWS = 3;
 
 /**
- * The app itself steps back while the launcher is up — a slight zoom-out and a soft blur, exactly
- * the way an OS-level switcher sets the running workspace aside. This is what separates a launcher
- * from an overlay: the workspace you were in visibly recedes instead of merely being covered, so
- * choosing another one reads as leaving rather than as answering a dialog.
+ * The app itself steps back while the launcher is up — by DEFOCUSING, not by shrinking. An earlier
+ * pass scaled it too, which read as the page zooming out from under the launcher rather than the
+ * launcher taking focus; depth here comes from blur alone, which says "behind" without moving
+ * anything.
  *
- * The launchpad is portalled to <body>, never inside #root, so the transform below moves the app
- * without touching the launcher standing over it.
+ * The launchpad is portalled to <body>, never inside #root, so this blurs the app without touching
+ * the launcher standing over it.
  */
 const APP_RECEDE_MS = 220;
 /**
@@ -336,24 +335,14 @@ const HANDOVER_MS = 70;
 const recedeApp = (active: boolean): void => {
   const app = document.getElementById('root');
   if (app === null) return;
-  app.style.transformOrigin = '50% 42%';
-  app.style.transition = `transform ${APP_RECEDE_MS}ms cubic-bezier(0.16,1,0.3,1), filter ${APP_RECEDE_MS}ms cubic-bezier(0.16,1,0.3,1), border-radius ${APP_RECEDE_MS}ms ease-out`;
-  app.style.transform = active ? 'scale(0.975)' : 'scale(1)';
-  app.style.filter = active ? 'blur(2px)' : 'blur(0px)';
-  // Set back from the viewport edges, the app has edges of its own; square corners would give
-  // away that this is a page being scaled rather than a surface being put aside.
-  app.style.overflow = 'hidden';
-  app.style.borderRadius = active ? '12px' : '0px';
+  app.style.transition = `filter ${APP_RECEDE_MS}ms cubic-bezier(0.16,1,0.3,1)`;
+  app.style.filter = active ? 'blur(6px)' : 'blur(0px)';
 };
 const releaseApp = (): void => {
   const app = document.getElementById('root');
   if (app === null) return;
-  app.style.transformOrigin = '';
   app.style.transition = '';
-  app.style.transform = '';
   app.style.filter = '';
-  app.style.overflow = '';
-  app.style.borderRadius = '';
 };
 
 /**
@@ -442,9 +431,10 @@ const ModuleCard = ({
           'focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2',
           'focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-950',
           'dark:shadow-none',
-          // The workspace you are already in: a shade of surface and a shade of border, nothing loud.
+          // The workspace you are already in reads the way the active row in the column does:
+          // a filled tint against its neighbours. Same idea as the sidebar, one surface up.
           isCurrent
-            ? 'border-slate-300 bg-slate-50 dark:border-slate-600 dark:bg-slate-800/50'
+            ? 'border-slate-400/60 bg-slate-300/80 dark:border-slate-500/70 dark:bg-slate-700/70'
             : 'border-slate-200/70 bg-white dark:border-slate-700/60 dark:bg-slate-900',
           // The lift is the whole hover: a step up, a breath of scale and a deeper shadow. No
           // colour anywhere. Pressing settles it back down, so the tile answers the click.
@@ -455,21 +445,22 @@ const ModuleCard = ({
           'dark:hover:border-slate-600 dark:hover:shadow-[0_22px_48px_-24px_rgba(0,0,0,0.9)]',
         )}
       >
-        {isCurrent && (
-          <CheckIcon className="absolute end-4 top-4 h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
-        )}
         <span
           className={cn(
             'grid h-16 w-16 shrink-0 place-items-center rounded-2xl transition-colors sm:h-20 sm:w-20',
-            'bg-slate-100 group-hover/card:bg-slate-200/70',
-            'dark:bg-slate-800 dark:group-hover/card:bg-slate-700/70',
+            // On the tinted card the chip goes a step deeper too, or it would read as lighter
+            // than the surface holding it.
+            isCurrent
+              ? 'bg-slate-400/45 dark:bg-slate-600/60'
+              : 'bg-slate-100 group-hover/card:bg-slate-200/70 dark:bg-slate-800 dark:group-hover/card:bg-slate-700/70',
           )}
         >
           <Icon
             className={cn(
               'h-8 w-8 transition-colors sm:h-10 sm:w-10',
-              'text-slate-500 group-hover/card:text-slate-700',
-              'dark:text-slate-400 dark:group-hover/card:text-slate-200',
+              isCurrent
+                ? 'text-slate-700 dark:text-slate-200'
+                : 'text-slate-500 group-hover/card:text-slate-700 dark:text-slate-400 dark:group-hover/card:text-slate-200',
             )}
           />
         </span>

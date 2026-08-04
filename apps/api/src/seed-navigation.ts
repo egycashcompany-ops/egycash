@@ -44,26 +44,25 @@ const CATALOG: CategoryDef[] = [
     icon: 'users',
     sortOrder: 10,
     apps: [
+      // Three of these rows are catching up with pages that shipped without one. They were routed
+      // and permission-gated but absent from this catalog and unlinked from every screen, so the
+      // only way in was typing the URL — which made a hint unfollowable: registering an applicant
+      // from inside the system says "set the internal source on the Application Form page", and
+      // there was no such page to open. Each sits beside the stage it configures rather than in a
+      // settings group of its own: they are part of the recruitment cycle, not general setup.
       { en: 'Applicants', ar: 'المتقدمون', route: '/applicants', icon: 'users' },
+      { en: 'Application Form', ar: 'نموذج التقديم', route: '/recruitment-form', icon: 'inbox' },
       { en: 'Screening', ar: 'الفرز', route: '/screening', icon: 'clipboard' },
       { en: 'Interviews', ar: 'المقابلات', route: '/interviews', icon: 'chat' },
+      { en: 'Interview Stages', ar: 'مراحل المقابلات', route: '/interviews/stages', icon: 'layers' },
       { en: 'Evaluations', ar: 'التقييمات', route: '/evaluations', icon: 'clipboard' },
+      { en: 'Evaluation Phases', ar: 'مراحل التقييم', route: '/evaluations/phases', icon: 'layers' },
       { en: 'Job Offers', ar: 'عروض العمل', route: '/job-offers', icon: 'offer' },
       { en: 'Employees', ar: 'الموظفون', route: '/employees', icon: 'badge' },
       { en: 'Leave', ar: 'الإجازات', route: '/leave', icon: 'calendar' },
       { en: 'Contracts', ar: 'العقود', route: '/contracts', icon: 'file' },
       { en: 'Hiring Documents', ar: 'مستندات التعيين', route: '/hiring-documents', icon: 'file' },
       { en: 'Employee Files', ar: 'ملفات الموظفين', route: '/employee-files', icon: 'folder' },
-      // The intake form's admin page: which questions candidates answer, the per-source links,
-      // and the source that internal registrations are filed under. It shipped without a way in
-      // — no catalog row and no screen linking to it — so the "set it on the Application Form
-      // page" hint pointed at somewhere unreachable.
-      //
-      // APPENDED, not slotted next to Applicants where it reads best. On installs that already
-      // have this category, `sortOrder` here is derived from the position in this array while
-      // existing rows keep whatever is stored, so inserting mid-list would hand the new row a
-      // number an existing sibling already owns. Ordering is admin-editable; a collision is not.
-      { en: 'Application Form', ar: 'نموذج التقديم', route: '/recruitment-form', icon: 'inbox' },
     ],
   },
   {
@@ -201,7 +200,13 @@ export const seedBootstrapNavigation = async (adminId: string): Promise<void> =>
  * - a new application joins the category its group's existing apps live in TODAY (respecting
  *   admin re-grouping/renames); the seed category is created only when the whole group is new;
  * - a category icon is filled in ONLY while it is null (pre-icon installs); a non-null icon —
- *   seeded or admin-chosen — is never overwritten.
+ *   seeded or admin-chosen — is never overwritten;
+ * - a new application lands BETWEEN the neighbours it sits between in the catalog, at half the
+ *   gap in their STORED ordering. A counter derived from position in this array would hand an
+ *   inserted row a number an existing sibling already owns (nothing renumbers the old rows), and
+ *   ties sort arbitrarily — so a row added mid-list would land somewhere unpredictable.
+ *   Renumbering the siblings instead would be the other way to make room, and it would overwrite
+ *   an ordering the administrator may have set by hand.
  */
 export const syncNavigationCatalog = async (): Promise<void> => {
   const adminIds = await rbacService.userIdsWithSystemRole('super-admin');
@@ -209,21 +214,35 @@ export const syncNavigationCatalog = async (): Promise<void> => {
   if (actor === undefined) return; // pre-seed boot (no admin yet) — the dev seed covers it
   for (const category of CATALOG) {
     await backfillCategoryIcon(category, actor);
+    // Resolve the whole group up front: where a new row belongs depends on the stored order of
+    // the next EXISTING neighbour, which a forward-only walk cannot see yet.
+    const rows = await Promise.all(
+      category.apps.map(async (app) => ({
+        app,
+        existing: await applicationRepository.findOne({ route: app.route }),
+      })),
+    );
+
     let categoryId: string | null = null;
-    let sortOrder = 0;
-    for (const app of category.apps) {
-      const existing = await applicationRepository.findOne({ route: app.route });
-      if (existing !== null) {
-        categoryId ??= String(existing.categoryId);
-        sortOrder += 10;
+    // The order of the row we last placed or passed — the lower bound for the next new one.
+    // Starting at -10 makes a wholly-new group come out 0, 10, 20 … exactly as it always has.
+    let low = -10;
+    for (const [index, row] of rows.entries()) {
+      if (row.existing !== null) {
+        categoryId ??= String(row.existing.categoryId);
+        low = Number(row.existing.sortOrder);
         continue;
       }
+      const next = rows.slice(index + 1).find((r) => r.existing !== null);
+      const high = next === null || next === undefined ? low + 20 : Number(next.existing?.sortOrder);
+      const sortOrder = (low + high) / 2;
+
       categoryId ??= await ensureCategory(category, actor);
       const created = await applicationService.create(
         {
-          name: { ar: app.ar, en: app.en },
-          icon: app.icon,
-          route: app.route,
+          name: { ar: row.app.ar, en: row.app.en },
+          icon: row.app.icon,
+          route: row.app.route,
           categoryId,
           sortOrder,
         },
@@ -231,7 +250,7 @@ export const syncNavigationCatalog = async (): Promise<void> => {
       );
       // Surface the NEW module to current super-admins; everyone else stays admin-assigned.
       for (const adminId of adminIds) await ensureGrant(adminId, String(created._id));
-      sortOrder += 10;
+      low = sortOrder;
     }
   }
 };

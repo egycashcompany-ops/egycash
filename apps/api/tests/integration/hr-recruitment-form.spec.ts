@@ -11,7 +11,7 @@
 // in the context a candidate's submission runs under.
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { type Express } from 'express';
 import {
   platformPermissions,
@@ -118,8 +118,12 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await disconnectMongo();
-  await getCache().quit?.();
-  await replSet?.stop();
+  if (replSet !== null) await replSet.stop();
+});
+
+beforeEach(async () => {
+  // The public endpoints are rate-limited per IP; every test here shares one.
+  await getCache().delByPrefix('rl:');
 });
 
 describe('the application form page', () => {
@@ -173,9 +177,13 @@ describe('the public application link', () => {
     const submit = await request(app)
       .post(`/api/v1/hr/public/apply/${link?.token ?? ''}`)
       .send({
+        // Every question the default form asks, all four required — a partial answer is a 400
+        // about the missing ones, which is the form working, not the bug this suite guards.
         answers: {
           fullNameAr: 'أحمد محمد علي',
+          nationalId: '28805152101234',
           primaryPhone: '01012345678',
+          educationLevel: 'bachelor',
         },
       });
     expect(submit.status).toBe(200);

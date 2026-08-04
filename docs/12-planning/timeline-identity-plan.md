@@ -75,6 +75,29 @@ The consequence worth designing for: a page whose rows already carry `actorName`
 the cache with what it already knows. Then opening the card for a name you can already see on screen
 costs nothing, and the network is used only for the fields the row did not carry.
 
+**4. Progressive enrichment — the drawer never waits on the network to open.** A row that already
+knows the name opens the card with that name immediately, and skeletons the fields it does not have
+(photo, title, department, branch) until the cache or the API fills them. Opening is a local action;
+fetching is what happens next, not what happens first.
+
+**5. The directory DTO is its own type, permanently.** Not `UserEntity`, not the users-admin
+response, not a `Pick<>` of either. A field added to the user model must require an explicit decision
+to appear in the directory — which is only true if the two types have no structural relationship. A
+test asserts the response keys are exactly the allowed set, so widening it is a failing test rather
+than a silent leak.
+
+**6. Graceful degradation — a deleted user must not break a page.** If the account is gone, disabled,
+or the endpoint answers 404: the timeline keeps showing the historical name exactly as recorded, and
+the drawer opens with "this user is no longer available". No error boundary, no toast, no broken row.
+
+*The gap this exposes, which the implementation must solve:* the recruitment timeline can do this
+today because it denormalizes `actorName` at write time — the history holds its own copy. The
+platform timeline and the activity log hold only an id, so for a deleted user there is no historical
+name to fall back to. Enriching them by joining at read time reintroduces exactly the problem the
+recruitment timeline already avoided. Decide this deliberately: either denormalize the name at write
+time on those streams too, or accept a neutral placeholder for actors who no longer exist — and say
+which, in the PR.
+
 ## Shape of the work
 
 1. **Contracts** — `DirectoryProfileDto` (closed) and the route's param schema. `actorName` added to
@@ -97,6 +120,7 @@ costs nothing, and the network is used only for the fields the row did not carry
 - actor identity on the timeline and the activity log
 - the tests
 - the screenshots
+- performance notes: query count and network requests, before and after
 
 ## Explicitly out of scope
 

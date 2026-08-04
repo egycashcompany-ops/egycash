@@ -13,10 +13,10 @@ import { escapeRegExp } from '../../shared/arabic';
 import { InterviewModel, type InterviewDoc } from './interview.model';
 
 export interface InterviewListFilter {
-  status?: string | undefined;
-  outcome?: string | undefined;
+  status?: readonly string[] | undefined;
+  outcome?: readonly string[] | undefined;
   applicantId?: string | undefined;
-  stageId?: string | undefined;
+  stageId?: readonly string[] | undefined;
   interviewerId?: string | undefined;
   branchId?: string | undefined;
   scheduledFrom?: Date | undefined;
@@ -103,10 +103,11 @@ class InterviewRepository extends BaseRepository<InterviewDoc> {
 
   private buildFilter(f: InterviewListFilter): FilterQuery<InterviewDoc> {
     const clauses: FilterQuery<InterviewDoc>[] = [];
-    if (f.status !== undefined) clauses.push({ status: f.status });
-    if (f.outcome !== undefined) clauses.push({ outcome: f.outcome });
+    if (f.status !== undefined) clauses.push({ status: { $in: f.status } });
+    if (f.outcome !== undefined) clauses.push({ outcome: { $in: f.outcome } });
     if (f.applicantId !== undefined) clauses.push({ applicantId: new Types.ObjectId(f.applicantId) });
-    if (f.stageId !== undefined) clauses.push({ stageId: new Types.ObjectId(f.stageId) });
+    if (f.stageId !== undefined)
+      clauses.push({ stageId: { $in: f.stageId.map((id) => new Types.ObjectId(id)) } });
     if (f.interviewerId !== undefined) {
       clauses.push({ 'panel.interviewerId': new Types.ObjectId(f.interviewerId) } as FilterQuery<InterviewDoc>);
     }

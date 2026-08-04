@@ -387,12 +387,12 @@ class ApplicantService {
   async idsMatchingAttributesSystem(filter: {
     ageFrom?: number | undefined;
     ageTo?: number | undefined;
-    educationLevel?: EducationLevel | undefined;
+    educationLevel?: readonly EducationLevel[] | undefined;
   }): Promise<Types.ObjectId[] | null> {
     const conditions: FilterQuery<ApplicantDoc> = {};
     const birthDate = birthDateRangeForAges(filter.ageFrom, filter.ageTo);
     if (birthDate !== null) conditions.birthDate = birthDate;
-    if (filter.educationLevel !== undefined) conditions['education.level'] = filter.educationLevel;
+    if (filter.educationLevel !== undefined) conditions['education.level'] = { $in: filter.educationLevel };
     if (Object.keys(conditions).length === 0) return null;
 
     const rows = await ApplicantModel.find({ ...conditions, isDeleted: false }, { _id: 1 })

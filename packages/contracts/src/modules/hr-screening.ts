@@ -5,7 +5,9 @@
 // stays `waiting`. Screening notes and rejection reasons are first-class and stored.
 // Scope is Stage 2 only: nothing here describes Interviews (Stage 3) or later.
 import { z } from 'zod';
-import { objectId, PaginationQuerySchema } from '../common/index.js';
+import { objectId, PaginationQuerySchema,
+  listQuery,
+} from '../common/index.js';
 import { EducationLevelSchema } from './hr-recruitment.js';
 import {
   BulkRequestBaseSchema,
@@ -95,7 +97,7 @@ export type DecideScreening = z.infer<typeof DecideScreeningSchema>;
  */
 const ListScreeningsQueryShape = PaginationQuerySchema.extend({
   /** Doubles as the screening page's tab (I10): waiting | accepted | rejected. */
-  status: ScreeningStatusSchema.optional(),
+  status: listQuery(ScreeningStatusSchema),
   applicantId: objectId().optional(),
   branchId: objectId().optional(),
   decidedFrom: z.coerce.date().optional(),
@@ -119,7 +121,7 @@ const ListScreeningsQueryShape = PaginationQuerySchema.extend({
   ageFrom: z.coerce.number().int().min(0).max(120).optional(),
   ageTo: z.coerce.number().int().min(0).max(120).optional(),
   /** Highest completed education level. Applicants with no education record are excluded. */
-  educationLevel: EducationLevelSchema.optional(),
+  educationLevel: listQuery(EducationLevelSchema),
 }).strict();
 
 /** An inverted age range is a validation failure (400), not an empty result the user must decode. */

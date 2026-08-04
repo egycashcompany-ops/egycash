@@ -10,12 +10,12 @@ import { escapeRegExp, normalizeArabic } from '../../shared/arabic';
 import { ApplicantModel, type ApplicantDoc } from './applicant.model';
 
 export interface ApplicantListFilter {
-  status?: string | undefined;
-  sourceId?: string | undefined;
-  intakeChannel?: string | undefined;
+  status?: readonly string[] | undefined;
+  sourceId?: readonly string[] | undefined;
+  intakeChannel?: readonly string[] | undefined;
   jobRequisitionId?: string | undefined;
   branchId?: string | undefined;
-  identityVerification?: string | undefined;
+  identityVerification?: readonly string[] | undefined;
   duplicateOnly?: boolean | undefined;
   hasAttachments?: boolean | undefined;
   movedToOffer?: boolean | undefined;
@@ -39,15 +39,16 @@ class ApplicantRepository extends BaseRepository<ApplicantDoc> {
 
   private buildFilter(f: ApplicantListFilter): FilterQuery<ApplicantDoc> {
     const clauses: FilterQuery<ApplicantDoc>[] = [];
-    if (f.status !== undefined) clauses.push({ status: f.status });
-    if (f.sourceId !== undefined) clauses.push({ sourceId: new Types.ObjectId(f.sourceId) });
-    if (f.intakeChannel !== undefined) clauses.push({ intakeChannel: f.intakeChannel });
+    if (f.status !== undefined) clauses.push({ status: { $in: f.status } });
+    if (f.sourceId !== undefined)
+      clauses.push({ sourceId: { $in: f.sourceId.map((id) => new Types.ObjectId(id)) } });
+    if (f.intakeChannel !== undefined) clauses.push({ intakeChannel: { $in: f.intakeChannel } });
     if (f.jobRequisitionId !== undefined) {
       clauses.push({ jobRequisitionId: new Types.ObjectId(f.jobRequisitionId) });
     }
     if (f.branchId !== undefined) clauses.push({ branchId: new Types.ObjectId(f.branchId) });
     if (f.identityVerification !== undefined) {
-      clauses.push({ identityVerification: f.identityVerification });
+      clauses.push({ identityVerification: { $in: f.identityVerification } });
     }
     if (f.duplicateOnly === true) clauses.push({ duplicateFlag: true });
     if (f.hasAttachments !== undefined) {

@@ -7,7 +7,7 @@ import { type ScopeSelector } from '../../../../shared/types';
 import { HiringDocumentsModel, type HiringDocumentsDoc } from './hiring-documents.model';
 
 export interface HiringDocumentsListFilter {
-  status?: string | undefined;
+  status?: readonly string[] | undefined;
   employeeId?: string | undefined;
   branchId?: string | undefined;
   search?: string | undefined;
@@ -31,7 +31,7 @@ class HiringDocumentsRepository extends BaseRepository<HiringDocumentsDoc> {
 
   private buildFilter(f: HiringDocumentsListFilter): FilterQuery<HiringDocumentsDoc> {
     const clauses: FilterQuery<HiringDocumentsDoc>[] = [];
-    if (f.status !== undefined) clauses.push({ status: f.status });
+    if (f.status !== undefined) clauses.push({ status: { $in: f.status } });
     if (f.employeeId !== undefined) clauses.push({ employeeId: new Types.ObjectId(f.employeeId) });
     if (f.branchId !== undefined) clauses.push({ branchId: new Types.ObjectId(f.branchId) });
     if (f.search !== undefined && f.search.trim() !== '') {

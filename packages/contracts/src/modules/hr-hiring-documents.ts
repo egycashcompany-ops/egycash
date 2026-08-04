@@ -12,6 +12,7 @@ import {
   LocalizedStringSchema,
   PaginationQuerySchema,
   type LocalizedString,
+  listQuery,
 } from '../common/index.js';
 import { BulkRequestBaseSchema } from './hr-recruitment-workflow.js';
 
@@ -87,7 +88,7 @@ export const CompleteHiringDocumentsSchema = z
 export type CompleteHiringDocuments = z.infer<typeof CompleteHiringDocumentsSchema>;
 
 export const ListHiringDocumentsQuerySchema = PaginationQuerySchema.extend({
-  status: HiringDocumentsStatusSchema.optional(),
+  status: listQuery(HiringDocumentsStatusSchema),
   employeeId: objectId().optional(),
   branchId: objectId().optional(),
   search: z.string().max(100).optional(),

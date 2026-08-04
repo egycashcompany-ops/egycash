@@ -13,7 +13,7 @@ import { escapeRegExp } from '../../shared/arabic';
 import { ScreeningModel, type ScreeningDoc } from './screening.model';
 
 export interface ScreeningListFilter {
-  status?: string | undefined;
+  status?: readonly string[] | undefined;
   applicantId?: string | undefined;
   branchId?: string | undefined;
   decidedFrom?: Date | undefined;
@@ -95,7 +95,7 @@ class ScreeningRepository extends BaseRepository<ScreeningDoc> {
 
   private buildFilter(f: ScreeningListFilter): FilterQuery<ScreeningDoc> {
     const clauses: FilterQuery<ScreeningDoc>[] = [];
-    if (f.status !== undefined) clauses.push({ status: f.status });
+    if (f.status !== undefined) clauses.push({ status: { $in: f.status } });
     if (f.applicantId !== undefined) clauses.push({ applicantId: new Types.ObjectId(f.applicantId) });
     if (f.applicantIdIn !== undefined) clauses.push({ applicantId: { $in: f.applicantIdIn } });
     if (f.branchId !== undefined) clauses.push({ branchId: new Types.ObjectId(f.branchId) });

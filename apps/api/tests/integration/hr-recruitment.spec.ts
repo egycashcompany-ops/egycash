@@ -447,6 +447,25 @@ describe('list, search, export', () => {
     expect((res.body as { data: ApplicantDto[] }).data.some((a) => a.fullNameAr === 'إبراهيم')).toBe(true);
   });
 
+  // The applicant code is no longer displayed anywhere in the interface — it lives behind a copy
+  // control. That makes search the ONLY way a code someone was given over the phone gets back to a
+  // record, so this clause stopped being a convenience and became the code's only remaining door.
+  it('still finds an applicant by its code', async () => {
+    const sourceId = await sourceIdByKey('internalHr');
+    const created = await request(app)
+      .post('/api/v1/hr/applicants')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send(registerBody({ sourceId, identity: { fullNameAr: 'سلمى فؤاد', nationality: 'Egyptian' }, contact: { primaryPhone: '01040404040' } }));
+    const { code } = (created.body as { data: ApplicantDto }).data;
+
+    const res = await request(app)
+      .get('/api/v1/hr/applicants')
+      .query({ search: code, pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect((res.body as { data: ApplicantDto[] }).data.map((a) => a.code)).toContain(code);
+  });
+
   it('exports a masked, audited CSV', async () => {
     const res = await request(app)
       .get('/api/v1/hr/applicants/export')

@@ -30,9 +30,8 @@ import { BulkScheduleDialog } from './BulkScheduleDialog';
 
 interface BoardCard {
   applicantId: string;
-  applicantCode: string;
   applicantName: string;
-  /** Secondary line under the code (state / date). */
+  /** Secondary line under the name (state / date). */
   meta: string | null;
   badge: { tone: Tone; label: string } | null;
   /** Row link target (interview / evaluation detail; applicant for waiting/offer columns). */
@@ -91,7 +90,6 @@ export const PhaseBoard = (): JSX.Element => {
       assigned.add(a.id);
       return {
         applicantId: a.id,
-        applicantCode: a.code,
         applicantName: a.fullNameAr,
         meta: a.movedToOfferAt === null ? null : formatDate(a.movedToOfferAt, locale),
         badge: null,
@@ -116,7 +114,6 @@ export const PhaseBoard = (): JSX.Element => {
       assigned.add(ev.applicantId);
       const card: BoardCard = {
         applicantId: ev.applicantId,
-        applicantCode: ev.applicantCode,
         applicantName: ev.applicantName,
         meta: null,
         badge:
@@ -150,7 +147,6 @@ export const PhaseBoard = (): JSX.Element => {
       assigned.add(iv.applicantId);
       const card: BoardCard = {
         applicantId: iv.applicantId,
-        applicantCode: iv.applicantCode,
         applicantName: iv.applicantName,
         meta: iv.status === 'scheduled' ? formatDate(iv.scheduledAt, locale) : null,
         badge:

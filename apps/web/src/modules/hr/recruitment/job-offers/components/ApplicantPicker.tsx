@@ -50,9 +50,9 @@ export const ApplicantPicker = ({
                       setTerm('');
                       setOpen(false);
                     }}
+                    title={a.code}
                     className="flex w-full items-center gap-2 px-3 py-2 text-start text-sm hover:bg-slate-50 dark:hover:bg-slate-700"
                   >
-
                     <span className="truncate text-slate-700 dark:text-slate-200">{a.fullNameAr}</span>
                   </button>
                 </li>

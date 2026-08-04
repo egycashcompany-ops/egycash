@@ -183,6 +183,9 @@ const en: Record<string, string> = {
   'common.pagination.page': 'Page {{page}} of {{total}}',
   'common.filters.clear': 'Clear filters',
   'common.filters.clearOne': 'Clear selection',
+  'common.copyId': 'Copy reference number',
+  'common.copyId.done': 'Copied',
+  'common.copyId.failed': 'Could not copy — here is the number',
   'common.list.count': '{{count}} results',
   'common.upload.prompt': 'Drag a file here or click to browse',
   'common.upload.max': 'Up to {{size}} MB',
@@ -787,6 +790,7 @@ const en: Record<string, string> = {
 
   // Applicants — detail
   'applicants.detail.birthDate': 'Birth date',
+  'applicants.detail.code': 'Applicant reference number',
   'applicants.detail.gender': 'Gender',
   'applicants.detail.governorate': 'Governorate',
   'applicants.detail.willing': 'Willingness',
@@ -2615,6 +2619,9 @@ const ar: Record<string, string> = {
   'common.pagination.page': 'صفحة {{page}} من {{total}}',
   'common.filters.clear': 'مسح عوامل التصفية',
   'common.filters.clearOne': 'مسح التحديد',
+  'common.copyId': 'نسخ الرقم المرجعي',
+  'common.copyId.done': 'تم النسخ',
+  'common.copyId.failed': 'تعذّر النسخ — وهذا هو الرقم',
   'common.list.count': '{{count}} نتيجة',
   'common.upload.prompt': 'اسحب ملفًا هنا أو انقر للاختيار',
   'common.upload.max': 'حتى {{size}} ميجابايت',
@@ -3209,6 +3216,7 @@ const ar: Record<string, string> = {
 
   // Applicants — detail
   'applicants.detail.birthDate': 'تاريخ الميلاد',
+  'applicants.detail.code': 'الرقم المرجعي للمتقدّم',
   'applicants.detail.gender': 'النوع',
   'applicants.detail.governorate': 'المحافظة',
   'applicants.detail.willing': 'الاستعداد',

@@ -51,9 +51,12 @@ export const ApplicantPicker = ({
             <ul className="max-h-64 overflow-y-auto">
               {results.map((a) => (
                 <li key={a.id}>
+                  {/* Searching by code still finds the row; the row still answers with a person.
+                      The code stays reachable in the tooltip for whoever typed it. */}
                   <button
                     type="button"
                     onClick={() => pick(a)}
+                    title={a.code}
                     className="flex w-full items-center gap-2 px-3 py-2 text-start text-sm hover:bg-slate-50 dark:hover:bg-slate-700"
                   >
                     <span className="truncate text-slate-700 dark:text-slate-200">{a.fullNameAr}</span>

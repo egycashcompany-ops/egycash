@@ -14,10 +14,51 @@ const STALE_MS = 5 * 60 * 1000;
 
 export const directoryKey = (userId: string): readonly unknown[] => ['platform', 'directory', userId];
 
+// ── Request coalescing ──────────────────────────────────────────────────────
+//
+// A page of 100 events by 8 people must cost ONE request, and it must cost one whether or not the
+// page remembered to ask for its ids up front. Asking each row to fetch its own author is the N+1
+// this layer exists to prevent — and a page-level prefetch alone does not prevent it, because the
+// rows mount and start fetching before that prefetch lands.
+//
+// So the batching lives in the LOADER, not in the caller: every id wanted in the same tick joins
+// one pending request. Nothing above this line can reintroduce the N+1 by forgetting a step.
+let batch: { ids: Set<string>; promise: Promise<Map<string, DirectoryProfileDto>> } | null = null;
+
+const loadProfiles = (userIds: string[]): Promise<Map<string, DirectoryProfileDto>> => {
+  if (batch === null) {
+    const ids = new Set<string>();
+    batch = {
+      ids,
+      promise: new Promise((resolve) => {
+        // One turn of the event loop: long enough for every row in a commit to add its id,
+        // short enough to be invisible.
+        setTimeout(() => {
+          batch = null;
+          const wanted = [...ids];
+          resolve(
+            wanted.length === 0
+              ? Promise.resolve(new Map())
+              : api
+                  .resolveDirectoryProfiles(wanted)
+                  .then((profiles) => new Map(profiles.map((p) => [p.userId, p])))
+                  // A directory that is briefly unreachable must not break a page: the rows keep
+                  // whatever they already showed, and the next render tries again.
+                  .catch(() => new Map<string, DirectoryProfileDto>()),
+          );
+        }, 0);
+      }),
+    };
+  }
+  for (const id of userIds) batch.ids.add(id);
+  return batch.promise;
+};
+
 export const useDirectoryProfile = (userId: string | null, enabled = true) =>
   useQuery({
     queryKey: directoryKey(userId ?? ''),
-    queryFn: () => api.getDirectoryProfile(userId as string),
+    // Joins the tick's batch instead of fetching alone — see the note above.
+    queryFn: async () => (await loadProfiles([userId as string])).get(userId as string) ?? null,
     enabled: enabled && userId !== null && userId !== '',
     staleTime: STALE_MS,
     retry: false,
@@ -48,15 +89,21 @@ export const useInvalidateDirectory = () => {
   return (userId: string) => qc.invalidateQueries({ queryKey: directoryKey(userId) });
 };
 
+/**
+ * Fill the cache for these people, skipping anyone already known. Goes through the same coalescer
+ * as the rows themselves, so a page-level prefetch and the rows' own demand merge into one request
+ * rather than racing each other into two.
+ */
+export const resolveInto = async (qc: QueryClient, userIds: string[]): Promise<void> => {
+  const missing = userIds.filter((id) => qc.getQueryData(directoryKey(id)) === undefined);
+  if (missing.length === 0) return;
+  const found = await loadProfiles(missing);
+  for (const p of found.values()) qc.setQueryData(directoryKey(p.userId), p);
+};
+
 export const useResolveDirectory = () => {
   const qc = useQueryClient();
-  return async (userIds: string[]): Promise<void> => {
-    const missing = userIds.filter((id) => qc.getQueryData(directoryKey(id)) === undefined);
-    if (missing.length === 0) return;
-    // One request for everyone still unknown, then each lands under its own key.
-    const profiles = await api.resolveDirectoryProfiles(missing);
-    for (const p of profiles) qc.setQueryData(directoryKey(p.userId), p);
-  };
+  return async (userIds: string[]): Promise<void> => resolveInto(qc, userIds);
 };
 
 /**

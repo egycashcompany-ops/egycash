@@ -184,6 +184,9 @@ const TimelineTab = ({ e }: { e: EmployeeDto }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const { data, isLoading } = useEmployeeTimeline(e.id);
+  // One request for everyone this page mentions. Above the guard below, because a hook runs on
+  // every render or on none — and the first render of this tab has no data yet.
+  useDirectoryPage((data ?? []).map((item) => item.by));
   if (isLoading) return <LoadingState />;
   const label = (item: { source: string; type: string }): string => {
     if (item.source === 'action') return t(`employees.actionType.${item.type}`);
@@ -191,8 +194,6 @@ const TimelineTab = ({ e }: { e: EmployeeDto }): JSX.Element => {
     if (item.source === 'note') return t('employeeFiles.event.note');
     return t(`employeeFiles.event.${item.type}`);
   };
-  // One request for everyone this page mentions, before the rows render.
-  useDirectoryPage((data ?? []).map((item) => item.by));
   const entries: TimelineEntry[] = (data ?? []).map((item, i) => ({
     id: `${item.at}-${String(i)}`,
     title: label(item),

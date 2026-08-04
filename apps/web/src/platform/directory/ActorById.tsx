@@ -10,7 +10,9 @@ import { ActorLink } from './ActorLink';
 
 export const ActorById = ({ userId }: { userId: string | null }): JSX.Element | null => {
   const { data } = useDirectoryProfile(userId);
-  if (userId === null || data === undefined) return null;
+  // `null` is the deleted-account answer, `undefined` the not-yet-loaded one. Neither is an error:
+  // a row must never break because its author left or because the name has not arrived yet.
+  if (userId === null || data === undefined || data === null) return null;
   const actor: ActorSnapshotDto = {
     userId: data.userId,
     displayName: data.displayName,

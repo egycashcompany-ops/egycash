@@ -36,7 +36,9 @@ export const UserProfileDrawer = ({
 
   // The historical name always wins: it is what this person was called when they acted.
   const name = actor.displayName[locale];
-  const gone = actor.deletedAt !== null || isError;
+  // `data === null` is the directory answering "no such account" — the same outcome as a 404, and
+  // only ever set once the query has resolved. The card still shows the historical name above.
+  const gone = actor.deletedAt !== null || isError || data === null;
 
   return (
     <Dialog open={open} onClose={onClose} title={t('directory.title')}>
@@ -75,7 +77,7 @@ export const UserProfileDrawer = ({
             <Row label={t('directory.email')} value={data?.workEmail ?? null} />
             <Row
               label={t('directory.status')}
-              value={data === undefined ? null : t(data.active ? 'directory.active' : 'directory.inactive')}
+              value={data == null ? null : t(data.active ? 'directory.active' : 'directory.inactive')}
             />
           </dl>
         )}

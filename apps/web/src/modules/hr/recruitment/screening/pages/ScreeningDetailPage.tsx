@@ -37,6 +37,9 @@ export const ScreeningDetailPage = (): JSX.Element => {
   const [decide, setDecide] = useState<ScreeningOutcome | null>(null);
   const [editDecide, setEditDecide] = useState<ScreeningOutcome | null>(null);
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  // One request for everyone this page mentions. Above the guards below, because a hook runs on
+  // every render or on none — and the first render of this page has no data yet.
+  useDirectoryPage([...(s?.notes ?? []).map((n) => n.by), s?.decision?.decidedBy ?? null]);
 
   if (isLoading) {
     return (
@@ -66,7 +69,6 @@ export const ScreeningDetailPage = (): JSX.Element => {
     }
   };
 
-  useDirectoryPage([...s.notes.map((n) => n.by), s.decision?.decidedBy ?? null]);
   const timeline: TimelineEntry[] = s.notes.map((n, i) => ({
     id: `note-${i}`,
     title: n.text,

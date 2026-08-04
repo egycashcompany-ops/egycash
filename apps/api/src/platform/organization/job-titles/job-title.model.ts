@@ -15,6 +15,7 @@ export interface JobTitleDoc extends BaseDocFields {
   salaryMax: number | null;
   requiredQualifications: LocalizedString | null;
   requiredExperienceYears: number | null;
+  requiresDrivingTest: boolean;
   status: 'active' | 'inactive';
 }
 
@@ -30,6 +31,8 @@ const jobTitleSchema = new Schema<JobTitleDoc>(
     salaryMax: { type: Number, default: null, min: 0 },
     requiredQualifications: { type: localizedSubSchema, default: null },
     requiredExperienceYears: { type: Number, default: null, min: 0 },
+    // Defaults false so every title that predates the flag keeps today's behaviour.
+    requiresDrivingTest: { type: Boolean, default: false },
     status: { type: String, enum: ['active', 'inactive'], default: 'active' },
     ...baseFields,
   },

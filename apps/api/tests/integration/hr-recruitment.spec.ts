@@ -456,14 +456,20 @@ describe('list, search, export', () => {
       .post('/api/v1/hr/applicants')
       .set('Authorization', `Bearer ${adminToken}`)
       .send(registerBody({ sourceId, identity: { fullNameAr: 'سلمى فؤاد', nationality: 'Egyptian' }, contact: { primaryPhone: '01040404040' } }));
-    const { code } = (created.body as { data: ApplicantDto }).data;
+    expect(created.status).toBe(201);
+    // A mutation answers with the workflow envelope, so the DTO is a level in (I6).
+    const { code } = mutated<ApplicantDto>(created);
+    expect(code, 'the applicant must have a code to search for').toMatch(/^APP-\d{4}-\d{6}$/);
 
     const res = await request(app)
       .get('/api/v1/hr/applicants')
       .query({ search: code, pageSize: 50 })
       .set('Authorization', `Bearer ${adminToken}`);
     expect(res.status).toBe(200);
-    expect((res.body as { data: ApplicantDto[] }).data.map((a) => a.code)).toContain(code);
+    const found = (res.body as { data: ApplicantDto[] }).data;
+    // Searching a full code is a search for ONE person — not a filter that quietly matched nothing
+    // and fell back to listing everyone, which is how the first version of this test passed.
+    expect(found.map((a) => a.code)).toEqual([code]);
   });
 
   it('exports a masked, audited CSV', async () => {

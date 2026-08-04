@@ -302,7 +302,9 @@ class ApplicantService {
   }
 
   /** Heuristic duplicate detection (§2.1 rule 5) — flags, never blocks. */
-  private async flagDuplicates(doc: ApplicantDoc, by: string): Promise<ApplicantDoc> {
+  // `by` is nullable because a public application has no signed-in user — the repository already
+  // writes `updatedBy: null` for that case.
+  private async flagDuplicates(doc: ApplicantDoc, by: string | null): Promise<ApplicantDoc> {
     const candidates = await applicantRepository.findDuplicateCandidates({
       nationalId: doc.nationalId,
       primaryPhone: doc.contact.primaryPhone,

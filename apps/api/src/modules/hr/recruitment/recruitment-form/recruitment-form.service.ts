@@ -55,7 +55,13 @@ class RecruitmentFormService {
         internalSourceId: null,
         links: [],
       },
-      { by: 'system' },
+      // Nobody created this — the first reader did, on the system's behalf. `by` is written as an
+      // ObjectId, and the string 'system' is not one: `new Types.ObjectId('system')` throws, so
+      // this line turned every first visit to the page into a 500 and the document was never
+      // created, which made the failure permanent rather than one-off. `null` is what "no user"
+      // has always meant here — `createdBy` is nullable and the repository maps it straight
+      // through.
+      { by: null },
     );
   }
 
@@ -274,7 +280,10 @@ const builtinFor = (path: string[]): string => {
  */
 const publicContext = (): AuthContext =>
   ({
-    userId: 'system',
+    // Null, not the string 'system': `userId` is written straight into `createdBy`/`updatedBy`,
+    // which are ObjectId-or-null. A placeholder string throws on conversion, so this is the same
+    // defect as the one above — it turned every public submission into a 500.
+    userId: null,
     permissions: { 'applicant.create': 'organization' },
     branchId: null,
     departmentId: null,

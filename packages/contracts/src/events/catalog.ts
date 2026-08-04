@@ -135,6 +135,7 @@ import {
   FleetVehicleStatusChangedPayloadV1,
   FleetViolationRecordedPayloadV1,
 } from '../modules/fleet.js';
+import { ItEvents, type ItEventName, ItAssetEventPayloadV1 } from '../modules/it.js';
 
 // ── The shape a consumer sees ───────────────────────────────────────────────
 
@@ -527,6 +528,7 @@ export const EVENT_MODULE_NAMES: Readonly<Record<string, LocalizedString>> = {
   hr: { en: 'Human Resources', ar: 'الموارد البشرية' },
   automation: { en: 'Automation', ar: 'الأتمتة' },
   fleet: { en: 'Fleet', ar: 'الحركة' },
+  it: { en: 'IT', ar: 'تقنية المعلومات' },
 };
 
 export const EVENT_ENTITY_NAMES: Readonly<Record<string, LocalizedString>> = {
@@ -566,6 +568,8 @@ export const EVENT_ENTITY_NAMES: Readonly<Record<string, LocalizedString>> = {
   driverUnavailability: { en: 'Driver unavailability', ar: 'عدم إتاحة سائق' },
   accident: { en: 'Accident', ar: 'حادث' },
   violation: { en: 'Violation', ar: 'مخالفة' },
+  // it
+  asset: { en: 'Asset', ar: 'أصل' },
 };
 
 export const EVENT_ACTION_NAMES: Readonly<Record<string, LocalizedString>> = {
@@ -641,6 +645,8 @@ export const EVENT_ACTION_NAMES: Readonly<Record<string, LocalizedString>> = {
   expiring: { en: 'expiring soon', ar: 'قرب انتهاء' },
   planned: { en: 'planned', ar: 'تخطيط' },
   grievanceApplied: { en: 'grievance applied', ar: 'تطبيق تظلم' },
+  // it
+  registered: { en: 'registered', ar: 'تسجيل' },
 };
 
 /**
@@ -1007,12 +1013,24 @@ export const FLEET_EVENT_SOURCE: EventCatalogSource = {
   schemas: FLEET_EVENT_PAYLOAD_SCHEMAS,
 };
 
+// IT-1 registers the two registry events; IT-2…IT-6 extend this map with their slices.
+export const IT_EVENT_PAYLOAD_SCHEMAS: Readonly<Record<ItEventName, z.ZodTypeAny | null>> = {
+  [ItEvents.AssetRegistered]: ItAssetEventPayloadV1,
+  [ItEvents.AssetUpdated]: ItAssetEventPayloadV1,
+};
+
+export const IT_EVENT_SOURCE: EventCatalogSource = {
+  moduleId: 'it',
+  schemas: IT_EVENT_PAYLOAD_SCHEMAS,
+};
+
 // ── The catalogue ───────────────────────────────────────────────────────────
 
 export const EVENT_CATALOG: readonly EventCatalogEntry[] = buildEventCatalog(
   PLATFORM_EVENT_SOURCE,
   HR_EVENT_SOURCE,
   FLEET_EVENT_SOURCE,
+  IT_EVENT_SOURCE,
 );
 
 const CATALOG_BY_NAME: ReadonlyMap<string, EventCatalogEntry> = new Map(

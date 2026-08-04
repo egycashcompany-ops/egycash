@@ -84,6 +84,27 @@ its entry here in the same PR.
 
 ### Changed
 
+- **The sidebar now scopes itself to one module, and the module is chosen from a switcher.**
+  Choosing a module and navigating inside it are different questions, so they get different
+  surfaces: a small header at the top of the column names the current module and opens a light
+  popover listing the ones this user may see (instant, no dialog and no full-screen takeover —
+  switching is frequent, and blanking the screen for it costs more than it gives); the column
+  below shows that module's pages and nothing else. The current module is **derived from the
+  URL**, never a second piece of state, so a deep link, a ⌘K jump, a pinned favourite belonging
+  to another module, and Back/Forward all re-scope the column correctly by construction; the
+  remembered module answers only the case the URL cannot — a path that names no module, such as
+  the landing page or an account screen. `Alt+M` opens the switcher from the keyboard, arrows
+  and Enter work in it, and a filter field appears once there are seven or more modules. A user
+  with a single module sees no switcher at all, just a quiet label. Pinned favourites and the
+  ⌘K palette are untouched — the palette still searches every permitted page across every
+  module. Monochrome throughout: no colours, no badges, no shadows.
+
+- **Fixed: two sidebar rows could read as "you are here" at once.** `NavLink` highlights by
+  prefix, so a module landing page like `/fleet` stayed lit while the user was on
+  `/fleet/vehicles`. Rows whose route has another page nested under it now match exactly, and
+  which rows those are is derived from the catalog's own routes — nothing hardcoded, so it stays
+  true for whatever the catalog serves next.
+
 - **Sidebar restyled to a minimal-enterprise language (UI only).** One quiet neutral surface for
   the whole rail; per-module colors, shadows and filled pills are gone. Every item — module
   buttons and page rows alike — is transparent with neutral icon/text; ONLY the active item sits

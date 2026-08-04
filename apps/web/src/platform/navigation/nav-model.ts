@@ -32,6 +32,17 @@ export const flattenApps = (data: MyApplicationCategoryDto[]): NavApp[] =>
 const matches = (route: string, pathname: string): boolean =>
   pathname === route || pathname.startsWith(`${route}/`);
 
+/**
+ * Whether a nav row must match its route EXACTLY rather than by prefix.
+ *
+ * `NavLink` highlights by prefix, so a module landing page like `/fleet` lights up while the
+ * user is on `/fleet/vehicles` — two rows reading as "you are here" at once. A row needs the
+ * exact rule precisely when another row lives underneath it; deriving that from the routes
+ * themselves keeps it true for whatever the catalog serves next, with nothing hardcoded.
+ */
+export const requiresExactMatch = (route: string, allRoutes: readonly string[]): boolean =>
+  allRoutes.some((other) => other !== route && other.startsWith(`${route}/`));
+
 /** The id of the module owning the app that best (longest-prefix) matches the current path. */
 export const moduleOfPathname = (modules: NavModule[], pathname: string): string | null => {
   let bestId: string | null = null;

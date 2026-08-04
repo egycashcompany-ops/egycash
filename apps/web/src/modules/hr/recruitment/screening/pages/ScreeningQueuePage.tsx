@@ -15,11 +15,9 @@ import { Dialog } from '../../../../../shared/ui/Dialog';
 import { Field, Input } from '../../../../../shared/ui/form';
 import { Pagination } from '../../../../../shared/ui/Pagination';
 import { Button } from '../../../../../shared/ui/Button';
-import { PlusIcon } from '../../../../../shared/ui/icons';
 import { formatDate, formatNumber } from '../../../../../shared/lib/format';
 import { ScreeningStatusBadge } from '../components/ScreeningStatusBadge';
 import { ScreeningFilters, type ScreeningFiltersState } from '../components/ScreeningFilters';
-import { CreateScreeningDialog, type PickedApplicant } from '../components/CreateScreeningDialog';
 import { useBulkScreenings, useScreenings } from '../api/screening-queries';
 import { readList, writeList } from '../../../../../shared/lib/list-param';
 import { type ScreeningListParams } from '../api/screening-api';
@@ -32,9 +30,9 @@ export const ScreeningQueuePage = (): JSX.Element => {
   const locale = useAppSelector((state) => state.locale.locale);
   const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
-  useRememberedQueue('screening', [sp, setSp]);
-  const [createOpen, setCreateOpen] = useState(false);
-  const [createFor, setCreateFor] = useState<PickedApplicant | null>(null);
+  // A screening exists for every registered applicant already, so the queue's job is the work
+  // still waiting on someone — not a ledger of every screening ever decided.
+  useRememberedQueue('screening', [sp, setSp], 'status=waiting');
 
   const filters: ScreeningFiltersState = {
     status: readList(sp, 'status') as ScreeningFiltersState['status'],
@@ -139,13 +137,6 @@ export const ScreeningQueuePage = (): JSX.Element => {
         title={t('recruitment.nav.screening')}
         description={t('screening.queue.subtitle')}
         breadcrumbs={[{ label: t('recruitment.title'), to: '/' }, { label: t('recruitment.nav.screening') }]}
-        actions={
-          <Can permission="screening.create">
-            <Button size="sm" leftIcon={<PlusIcon className="h-4 w-4" />} onClick={() => { setCreateFor(null); setCreateOpen(true); }}>
-              {t('screening.actions.create')}
-            </Button>
-          </Can>
-        }
       />
 
       <div className="space-y-4">
@@ -218,12 +209,6 @@ export const ScreeningQueuePage = (): JSX.Element => {
           <Input value={reason} onChange={(e) => setReason(e.target.value)} />
         </Field>
       </Dialog>
-
-      <CreateScreeningDialog
-        open={createOpen}
-        onClose={() => { setCreateOpen(false); setCreateFor(null); }}
-        {...(createFor === null ? {} : { applicant: createFor })}
-      />
     </PageContainer>
   );
 };

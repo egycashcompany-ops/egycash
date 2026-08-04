@@ -33,9 +33,32 @@ const write = (screen: string, value: string): void => {
   }
 };
 
+/**
+ * Which view a queue opens on. Three inputs, one precedence, and it is the whole decision:
+ *
+ *   the URL  >  the view this user left behind  >  the queue's own default
+ *
+ * Pulled out of the effect because it is the part that can be wrong, and an effect that navigates
+ * is nearly impossible to assert on without a browser.
+ *
+ * @returns the query string to restore, or `''` to leave the URL alone.
+ */
+export const chooseInitialView = (current: string, saved: string, fallback: string): string => {
+  // Arriving with a query string means the address bar is the intent.
+  if (current !== '') return '';
+  return saved !== '' ? saved : fallback;
+};
+
 export const useRememberedQueue = (
   screen: string,
   [sp, setSp]: ReturnType<typeof useSearchParams>,
+  /**
+   * Where a queue starts when it has nothing else to go on — e.g. screening opens on the work
+   * that is actually waiting rather than on every screening ever done. It is the LAST fallback,
+   * never an override: a URL beats it, and so does the view this user left behind, because a
+   * default that reimposes itself over either would be a bug wearing a helpful face.
+   */
+  fallback = '',
 ): void => {
   const restored = useRef(false);
   const current = sp.toString();
@@ -43,11 +66,9 @@ export const useRememberedQueue = (
   useEffect(() => {
     if (restored.current) return;
     restored.current = true;
-    // Only a bare arrival gets yesterday's view back.
-    if (current !== '') return;
-    const saved = read(screen);
-    if (saved !== '') setSp(new URLSearchParams(saved), { replace: true });
-  }, [screen, current, setSp]);
+    const next = chooseInitialView(current, read(screen), fallback);
+    if (next !== '') setSp(new URLSearchParams(next), { replace: true });
+  }, [screen, current, fallback, setSp]);
 
   useEffect(() => {
     // Don't record the empty state produced by the restore effect's own first pass, or a reset

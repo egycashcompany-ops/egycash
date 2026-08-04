@@ -24,6 +24,7 @@ import {
 import { useT } from '../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../store';
 import { Can } from '../../../../platform/rbac/Can';
+import { ActorById, useDirectoryPage } from '../../../../platform/directory';
 import { Card, CardBody, CardHeader } from '../../../../shared/ui/Card';
 import { Button } from '../../../../shared/ui/Button';
 import { formatDateTime } from '../../../../shared/lib/format';
@@ -100,8 +101,14 @@ export const RecommendationCard = ({
   recommendation?: StageRecommendation;
 }): JSX.Element => {
   const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
   const [applyOpen, setApplyOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+
+  const history = applicant?.placementHistory ?? [];
+  const last = history[history.length - 1];
+  // The actor names for the attribution line AND every row of the history, resolved in one batch.
+  useDirectoryPage(history.map((entry) => entry.by));
 
   const current = describe(currentLabel);
   // The stage's stored recommendation pre-fills the dialog where there is one; elsewhere the
@@ -136,6 +143,22 @@ export const RecommendationCard = ({
           {current === '' ? t('recommendation.empty') : t('recommendation.current').replace('{current}', current)}
         </p>
 
+        {/* What is shown above is the RESULT of the last move, so the card says which move that
+            was. Without it a suggestion looks like a standing fact rather than someone's recent
+            decision, and there is no way to tell a fresh call from a stale one. */}
+        {last !== undefined && (
+          <p className="mt-1 flex flex-wrap items-center gap-x-1 text-xs text-slate-500 dark:text-slate-400">
+            <span>{t('recommendation.lastChanged')}</span>
+            <span>{formatDateTime(last.at, locale)}</span>
+            {last.by !== null && (
+              <>
+                <span>·</span>
+                <ActorById userId={last.by} />
+              </>
+            )}
+          </p>
+        )}
+
         {recommendation !== undefined && recommendation.placement !== null && (
           <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{t('recommendation.body')}</p>
         )}
@@ -147,7 +170,7 @@ export const RecommendationCard = ({
           <p className="mb-2 text-xs font-medium text-slate-500 dark:text-slate-400">
             {t('recommendation.history.title')}
           </p>
-          <History entries={applicant?.placementHistory ?? []} />
+          <History entries={history} />
         </div>
       </CardBody>
 

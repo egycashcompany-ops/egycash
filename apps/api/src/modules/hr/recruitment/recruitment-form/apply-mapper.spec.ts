@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { RegisterApplicantSchema, type RecruitmentFormField } from '@ecms/contracts';
+import {
+  RecruitmentFormSnapshotSchema,
+  RegisterApplicantSchema,
+  type RecruitmentFormField,
+} from '@ecms/contracts';
 import { customAnswers, invalidCustom, missingRequired, toRegistrationBody } from './apply-mapper';
 
 const builtin = (key: string, required = false): RecruitmentFormField =>
@@ -169,5 +173,70 @@ describe('invalidCustom', () => {
   it('leaves an unanswered optional question alone', () => {
     expect(invalidCustom([custom('salary', 'number')], {})).toEqual([]);
     expect(invalidCustom([custom('salary', 'number')], { salary: '  ' })).toEqual([]);
+  });
+});
+
+// The snapshot has to be enough to REDRAW the form a candidate saw, a year later, without the
+// live form. That means the order, the required flag, the kind, the label and a select's options
+// must all survive it — asserted here rather than assumed from the type.
+describe('form snapshot completeness', () => {
+  const published: RecruitmentFormField[] = [
+    { type: 'builtin', key: 'fullNameAr', required: true },
+    {
+      type: 'custom',
+      key: 'shift',
+      kind: 'select',
+      label: { ar: 'الوردية المفضلة', en: 'Preferred shift' },
+      required: true,
+      options: [
+        { ar: 'صباحي', en: 'Morning' },
+        { ar: 'مسائي', en: 'Evening' },
+      ],
+    },
+    { type: 'builtin', key: 'primaryPhone', required: true },
+  ];
+
+  it('carries order, required, kind, label and options through the schema unchanged', () => {
+    const parsed = RecruitmentFormSnapshotSchema.safeParse({
+      title: { ar: 'طلب توظيف', en: 'Job application' },
+      formVersion: 7,
+      fields: published,
+      submittedAt: '2026-08-04T12:00:00.000Z',
+    });
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) return;
+
+    // Order — the array IS the order the candidate saw.
+    expect(parsed.data.fields.map((f) => f.key)).toEqual(['fullNameAr', 'shift', 'primaryPhone']);
+    // Required as it stood then, not as it stands now.
+    expect(parsed.data.fields.map((f) => f.required)).toEqual([true, true, true]);
+    // Kind, label and the choices that were actually offered.
+    const shift = parsed.data.fields[1];
+    expect(shift?.type).toBe('custom');
+    if (shift?.type !== 'custom') return;
+    expect(shift.kind).toBe('select');
+    expect(shift.label).toEqual({ ar: 'الوردية المفضلة', en: 'Preferred shift' });
+    expect(shift.options).toEqual([
+      { ar: 'صباحي', en: 'Morning' },
+      { ar: 'مسائي', en: 'Evening' },
+    ]);
+    expect(parsed.data.formVersion).toBe(7);
+  });
+
+  it('is untouched by what the live form becomes afterwards', () => {
+    const snapshot = RecruitmentFormSnapshotSchema.parse({
+      title: { ar: 'طلب توظيف', en: 'Job application' },
+      formVersion: 7,
+      fields: published,
+      submittedAt: '2026-08-04T12:00:00.000Z',
+    });
+    // The form moves on: the question is dropped and the rest reordered.
+    const liveNow: RecruitmentFormField[] = [
+      { type: 'builtin', key: 'primaryPhone', required: true },
+      { type: 'builtin', key: 'fullNameAr', required: true },
+    ];
+    expect(liveNow.some((f) => f.key === 'shift')).toBe(false);
+    // The old application still knows what it was asked, and in what order.
+    expect(snapshot.fields.map((f) => f.key)).toEqual(['fullNameAr', 'shift', 'primaryPhone']);
   });
 });

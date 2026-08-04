@@ -99,6 +99,17 @@ const CATALOG: CategoryDef[] = [
     ],
   },
   {
+    en: 'IT',
+    ar: 'تقنية المعلومات',
+    icon: 'monitor',
+    sortOrder: 25,
+    // IT-1 ships the API only (frozen design §15) — application rows arrive with ITW-1, the
+    // module's web slice, so the sidebar never links to pages that do not exist yet. On a fresh
+    // seed the category is created empty (and hidden, having no apps); on existing installs the
+    // sync creates it lazily when the first app row appears, exactly the BF-1 path.
+    apps: [],
+  },
+  {
     en: 'Administration',
     ar: 'الإدارة',
     // A department is not its settings screen: the briefcase reads as "administration",

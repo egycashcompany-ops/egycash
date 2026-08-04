@@ -46,6 +46,19 @@ The response is a deliberately closed DTO, not a filtered user record: adding a 
 model must not silently widen what every employee can read. A test asserts the response shape is
 exactly the allowed keys.
 
+## Two conditions, binding
+
+**1. The drawer is a PLATFORM component, not an HR one.** It lives beside the other platform UI, not
+inside a module, and every surface that renders a user's name uses that one component against that
+one endpoint — timeline, activity log, audit log, comments, assignments, and anything added later.
+A module-local copy is a defect, not a shortcut: the moment there are two, they drift.
+
+**2. Names are resolved in BATCH, on the server. No N+1 anywhere.** A page of 100 events written by
+8 people issues ONE lookup for those 8 and maps them onto the rows. This rules out both the obvious
+client-side mistake (a request per row) and the quieter server-side one (a lookup inside the row
+mapper). The batching belongs in the service that assembles the page, and there is a test that
+counts the lookups rather than trusting the shape of the code.
+
 ## Shape of the work
 
 1. **Contracts** — `DirectoryProfileDto` (closed) and the route's param schema. `actorName` added to
@@ -53,11 +66,19 @@ exactly the allowed keys.
 2. **API** — a `platform/directory` feature: one service that joins the user to its employee record
    for title/department/branch, one `authenticate`-only route. The timeline and activity-log
    services resolve actor names in **one batched lookup per page**, never per row.
-3. **Web** — one `UserProfileDrawer`, platform-level, and one `ActorLink` that opens it. Used
+3. **Web** — one `UserProfileDrawer` under `platform/`, and one `ActorLink` that opens it. Used
    wherever a user's name appears: timeline, activity log, audit log, comments, and anything later.
    `shared/ui/Timeline` grows an optional `actor` on its entry so every timeline gets this for free.
 4. **Wiring** — the four surfaces that render a timeline today: employee profile, employee file,
    screening detail, recruitment timeline.
+
+## The PR contains exactly this
+
+- the platform directory endpoint
+- the platform profile drawer
+- actor identity on the timeline and the activity log
+- the tests
+- the screenshots
 
 ## Explicitly out of scope
 

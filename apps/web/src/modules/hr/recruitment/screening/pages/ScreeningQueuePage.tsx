@@ -23,6 +23,7 @@ import { CreateScreeningDialog, type PickedApplicant } from '../components/Creat
 import { useBulkScreenings, useScreenings } from '../api/screening-queries';
 import { readList, writeList } from '../../../../../shared/lib/list-param';
 import { type ScreeningListParams } from '../api/screening-api';
+import { useRememberedQueue } from '../../shared/useRememberedQueue';
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -31,6 +32,7 @@ export const ScreeningQueuePage = (): JSX.Element => {
   const locale = useAppSelector((state) => state.locale.locale);
   const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
+  useRememberedQueue('screening', [sp, setSp]);
   const [createOpen, setCreateOpen] = useState(false);
   const [createFor, setCreateFor] = useState<PickedApplicant | null>(null);
 

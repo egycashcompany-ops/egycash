@@ -24,6 +24,7 @@ import { ScheduleInterviewDialog, type PickedApplicant } from '../components/Sch
 import { PhaseBoard } from '../components/PhaseBoard';
 import { useBulkInterviews, useInterviews } from '../api/interview-queries';
 import { type InterviewListParams } from '../api/interview-api';
+import { useRememberedQueue } from '../../shared/useRememberedQueue';
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -32,6 +33,7 @@ export const InterviewQueuePage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
+  useRememberedQueue('interviews', [sp, setSp]);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [scheduleFor, setScheduleFor] = useState<PickedApplicant | null>(null);
   const view = sp.get('view') === 'board' ? 'board' : 'list';

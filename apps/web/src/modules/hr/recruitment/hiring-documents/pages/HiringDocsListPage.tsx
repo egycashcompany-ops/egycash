@@ -21,6 +21,7 @@ import { HiringDocsFilters, type HiringDocsFiltersState } from '../components/Hi
 import { CreateHiringDocsDialog } from '../components/CreateHiringDocsDialog';
 import { useBulkHiringDocs, useHiringDocsList } from '../api/hiring-documents-queries';
 import { type HiringDocsListParams } from '../api/hiring-documents-api';
+import { useRememberedQueue } from '../../shared/useRememberedQueue';
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -29,6 +30,7 @@ export const HiringDocsListPage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
+  useRememberedQueue('hiringDocs', [sp, setSp]);
   const [createOpen, setCreateOpen] = useState(false);
 
   const filters: HiringDocsFiltersState = {

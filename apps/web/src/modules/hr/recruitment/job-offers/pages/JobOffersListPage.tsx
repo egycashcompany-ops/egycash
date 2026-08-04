@@ -22,6 +22,7 @@ import { OfferStatusBadge } from '../components/OfferStatusBadge';
 import { OfferFilters, type OfferFiltersState } from '../components/OfferFilters';
 import { useJobOffers, useBulkJobOffers } from '../api/job-offer-queries';
 import { type JobOfferListParams } from '../api/job-offer-api';
+import { useRememberedQueue } from '../../shared/useRememberedQueue';
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -30,6 +31,7 @@ export const JobOffersListPage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
+  useRememberedQueue('jobOffers', [sp, setSp]);
 
   const filters: OfferFiltersState = {
     search: sp.get('q') ?? '',

@@ -26,6 +26,7 @@ import { BulkReassignDialog } from '../components/BulkReassignDialog';
 import { ApplicantFilters, type ApplicantFiltersState } from '../components/ApplicantFilters';
 import { useApplicants, useApplicantSources, useBulkApplicants } from '../api/applicant-queries';
 import { exportApplicantsCsv, type ApplicantListParams } from '../api/applicant-api';
+import { useRememberedQueue } from '../../shared/useRememberedQueue';
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -34,6 +35,7 @@ export const ApplicantsListPage = (): JSX.Element => {
   const locale = useAppSelector((state) => state.locale.locale);
   const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
+  useRememberedQueue('applicants', [sp, setSp]);
 
   // ── URL-derived state ──────────────────────────────────────────────────────
   const filters: ApplicantFiltersState = {

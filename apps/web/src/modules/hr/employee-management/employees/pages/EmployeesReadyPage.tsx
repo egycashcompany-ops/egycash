@@ -22,6 +22,7 @@ import {
   type EmployeesReadyFiltersState,
 } from '../components/EmployeesReadyFilters';
 import { useJobOffers } from '../../../recruitment/job-offers/api/job-offer-queries';
+import { useRememberedQueue } from '../../../recruitment/shared/useRememberedQueue';
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -30,6 +31,7 @@ export const EmployeesReadyPage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
+  useRememberedQueue('employeesReady', [sp, setSp]);
 
   // Every filter round-trips through the URL: deep-linkable, and a refresh restores the view.
   const filters: EmployeesReadyFiltersState = {

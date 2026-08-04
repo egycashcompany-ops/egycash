@@ -19,8 +19,9 @@ import { useOnClickOutside } from '../../../../shared/lib/useOnClickOutside';
 import { SearchInput } from '../../../../shared/ui/SearchInput';
 import { Spinner } from '../../../../shared/ui/Spinner';
 
-/** The shape every stage's `useApplicantSearch` already returns. */
-export type ApplicantSearchHook = (term: string) => {
+/** The shape every stage's `useApplicantSearch` already returns. Local until someone outside
+ *  this file needs to name it — an export nobody imports is surface without a caller. */
+type ApplicantSearchHook = (term: string) => {
   data?: ApplicantDto[] | undefined;
   isFetching: boolean;
 };

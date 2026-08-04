@@ -54,6 +54,16 @@ const CATALOG: CategoryDef[] = [
       { en: 'Contracts', ar: 'العقود', route: '/contracts', icon: 'file' },
       { en: 'Hiring Documents', ar: 'مستندات التعيين', route: '/hiring-documents', icon: 'file' },
       { en: 'Employee Files', ar: 'ملفات الموظفين', route: '/employee-files', icon: 'folder' },
+      // The intake form's admin page: which questions candidates answer, the per-source links,
+      // and the source that internal registrations are filed under. It shipped without a way in
+      // — no catalog row and no screen linking to it — so the "set it on the Application Form
+      // page" hint pointed at somewhere unreachable.
+      //
+      // APPENDED, not slotted next to Applicants where it reads best. On installs that already
+      // have this category, `sortOrder` here is derived from the position in this array while
+      // existing rows keep whatever is stored, so inserting mid-list would hand the new row a
+      // number an existing sibling already owns. Ordering is admin-editable; a collision is not.
+      { en: 'Application Form', ar: 'نموذج التقديم', route: '/recruitment-form', icon: 'inbox' },
     ],
   },
   {

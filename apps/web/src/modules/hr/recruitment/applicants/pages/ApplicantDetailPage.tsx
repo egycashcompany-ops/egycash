@@ -25,7 +25,6 @@ import { ApplicantStatusBadge } from '../components/ApplicantStatusBadge';
 import { ReferenceChip } from '../components/RefPickers';
 import { AttachmentsPanel } from '../components/AttachmentsPanel';
 import { ApplicantLifecycleActions } from '../components/ApplicantLifecycleActions';
-import { ReassignDialog } from '../components/ReassignDialog';
 import { ReturnToStageDialog } from '../components/ReturnToStageDialog';
 import { useApplicant, useVerifyApplicantIdentity } from '../api/applicant-queries';
 import { CandidateTimeline } from '../../timeline/components/CandidateTimeline';
@@ -49,7 +48,6 @@ export const ApplicantDetailPage = (): JSX.Element => {
 
   const verify = useVerifyApplicantIdentity(id);
   const [verifyOpen, setVerifyOpen] = useState(false);
-  const [reassignOpen, setReassignOpen] = useState(false);
   const [returnOpen, setReturnOpen] = useState(false);
   const [nationalId, setNationalId] = useState('');
 
@@ -100,14 +98,6 @@ export const ApplicantDetailPage = (): JSX.Element => {
               <Button size="sm" variant="secondary" onClick={() => setVerifyOpen(true)}>
                 {t('applicants.actions.verify')}
               </Button>
-            )}
-            {/* RW2 — reassignment is its own action with its own grant, never the edit form. */}
-            {a.status === 'new' && (
-              <Can permission="applicant.reassign">
-                <Button size="sm" variant="secondary" onClick={() => setReassignOpen(true)}>
-                  {t('applicants.reassign.title')}
-                </Button>
-              </Can>
             )}
             {/* RW13 — send the candidate back to an earlier stage; supersedes, never deletes. */}
             {a.status === 'new' && (
@@ -256,7 +246,6 @@ export const ApplicantDetailPage = (): JSX.Element => {
           <Input value={nationalId} onChange={(e) => setNationalId(e.target.value)} dir="ltr" inputMode="numeric" />
         </Field>
       </Dialog>
-      <ReassignDialog applicant={a} open={reassignOpen} onClose={() => setReassignOpen(false)} />
       <ReturnToStageDialog applicant={a} open={returnOpen} onClose={() => setReturnOpen(false)} />
 
     </PageContainer>

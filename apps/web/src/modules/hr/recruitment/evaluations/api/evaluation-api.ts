@@ -9,7 +9,6 @@ import {
   type EvaluationPhaseDto,
   type OpenEvaluation,
   type SetEvaluationAppointment,
-  type SetPlacementRecommendation,
   type Paginated,
   type UpdateEvaluationPhase,
   type WorkflowEnvelopeDto,
@@ -47,12 +46,6 @@ export const decideEvaluation = (id: string, body: DecideEvaluation): Evaluation
   patchWorkflow<EvaluationDto>(`/hr/evaluations/${id}/decision`, body);
 
 /** RW9 — book (or clear) the visit on an individual phase that schedules one. */
-/** RW5 — the phase's advisory placement recommendation; never moves the candidate by itself. */
-export const setEvaluationRecommendation = (
-  id: string,
-  body: SetPlacementRecommendation,
-): EvaluationEnvelope => patchWorkflow<EvaluationDto>(`/hr/evaluations/${id}/recommendation`, body);
-
 export const setEvaluationAppointment = (
   id: string,
   body: SetEvaluationAppointment,

@@ -31,7 +31,6 @@ import { CandidateTimeline } from '../../timeline/components/CandidateTimeline';
 import { RecruitmentStepBar } from '../../shared/RecruitmentStepBar';
 import {
   useInterview,
-  useSetInterviewRecommendation,
   useStartInterview,
   useStartScheduledInterview,
 } from '../api/interview-queries';
@@ -44,10 +43,9 @@ export const InterviewDetailPage = (): JSX.Element => {
   const { id = '' } = useParams();
   const [sp] = useSearchParams();
   const { data: iv, isLoading, isError, error, refetch } = useInterview(id);
-  const setRecommendation = useSetInterviewRecommendation(id);
   const startScheduled = useStartScheduledInterview(id);
   const startNow = useStartInterview();
-  // RW5 — applying a recommendation is an ordinary reassignment, so it needs the
+  // RW5 — suggesting a placement is an ordinary reassignment, so it needs the
   // candidate's own record (its version and current placement).
   const { data: candidate } = useApplicant(iv?.applicantId ?? '');
 
@@ -183,14 +181,6 @@ export const InterviewDetailPage = (): JSX.Element => {
             currentLabel={candidate?.placementLabel ?? iv.placementLabel}
             source="interview"
             sourceRef={{ entityType: 'interview', entityId: iv.id }}
-            recommendation={{
-              placement: iv.recommendedPlacement,
-              note: iv.recommendationNote,
-              version: iv.version,
-              editPermission: 'interview.evaluate',
-              pending: setRecommendation.isPending,
-              onSave: (input) => setRecommendation.mutateAsync(input),
-            }}
           />
           <Card>
             <CardHeader title={t('interviews.panel.title')} />

@@ -7,9 +7,11 @@ import {
   type EmployeeFileDto,
   type Paginated,
 } from '@ecms/contracts';
-import { api, buildQuery, get, getPage, post, upload } from '../../../../../shared/lib/api-client';
+import { api, buildQuery, get, getPage, post, upload,
+  type QueryParams,
+} from '../../../../../shared/lib/api-client';
 
-export type EmployeeFileListParams = Record<string, string | number | boolean | undefined | null>;
+export type EmployeeFileListParams = QueryParams;
 
 export const listEmployeeFiles = (params: EmployeeFileListParams): Promise<Paginated<EmployeeFileDto>> =>
   getPage<EmployeeFileDto>(`/hr/employee-files${buildQuery(params)}`);

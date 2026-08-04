@@ -21,7 +21,9 @@ import { ScreeningStatusBadge } from '../components/ScreeningStatusBadge';
 import { ScreeningFilters, type ScreeningFiltersState } from '../components/ScreeningFilters';
 import { CreateScreeningDialog, type PickedApplicant } from '../components/CreateScreeningDialog';
 import { useBulkScreenings, useScreenings } from '../api/screening-queries';
+import { readList, writeList } from '../../../../../shared/lib/list-param';
 import { type ScreeningListParams } from '../api/screening-api';
+import { useRememberedQueue } from '../../shared/useRememberedQueue';
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -30,18 +32,19 @@ export const ScreeningQueuePage = (): JSX.Element => {
   const locale = useAppSelector((state) => state.locale.locale);
   const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
+  useRememberedQueue('screening', [sp, setSp]);
   const [createOpen, setCreateOpen] = useState(false);
   const [createFor, setCreateFor] = useState<PickedApplicant | null>(null);
 
   const filters: ScreeningFiltersState = {
-    status: (sp.get('status') ?? '') as ScreeningFiltersState['status'],
+    status: readList(sp, 'status') as ScreeningFiltersState['status'],
     applicantId: sp.get('applicant') ?? '',
     applicantLabel: sp.get('al') ?? '',
     createdFrom: sp.get('cf') ?? '',
     createdTo: sp.get('ct') ?? '',
     ageFrom: sp.get('af') ?? '',
     ageTo: sp.get('at') ?? '',
-    educationLevel: (sp.get('edu') ?? '') as ScreeningFiltersState['educationLevel'],
+    educationLevel: readList(sp, 'edu') as ScreeningFiltersState['educationLevel'],
   };
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
@@ -64,14 +67,14 @@ export const ScreeningQueuePage = (): JSX.Element => {
 
   const changeFilters = (nf: ScreeningFiltersState): void =>
     patch({
-      status: nf.status || null,
+      status: writeList(nf.status),
       applicant: nf.applicantId || null,
       al: nf.applicantLabel || null,
       cf: nf.createdFrom || null,
       ct: nf.createdTo || null,
       af: nf.ageFrom || null,
       at: nf.ageTo || null,
-      edu: nf.educationLevel || null,
+      edu: writeList(nf.educationLevel),
     });
   const changeSort = (by: string): void => {
     const dir = sort.by === by && sort.dir === 'asc' ? 'desc' : 'asc';
@@ -117,7 +120,7 @@ export const ScreeningQueuePage = (): JSX.Element => {
     {
       key: 'applicant',
       header: t('screening.columns.applicant'),
-      render: (s) => <span>{s.applicantName} <span className="font-mono text-xs text-slate-500" dir="ltr">{s.applicantCode}</span></span>,
+      render: (s) => <span>{s.applicantName}</span>,
     },
     { key: 'status', header: t('screening.columns.status'), sortable: true, render: (s) => <ScreeningStatusBadge status={s.status} /> },
     { key: 'notes', header: t('screening.columns.notes'), align: 'center', render: (s) => formatNumber(s.notes.length, locale) },

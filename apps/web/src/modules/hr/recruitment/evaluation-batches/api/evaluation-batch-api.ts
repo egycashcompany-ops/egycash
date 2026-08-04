@@ -29,9 +29,10 @@ import {
   post,
   postWorkflow,
   upload,
+  type QueryParams,
 } from '../../../../../shared/lib/api-client';
 
-export type BatchListParams = Record<string, string | number | boolean | undefined | null>;
+export type BatchListParams = QueryParams;
 
 /**
  * I6 — the acts that name ONE candidate answer with the workflow envelope. The batch-LEVEL acts

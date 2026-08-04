@@ -76,8 +76,11 @@ export const OpenEvaluationDialog = ({
           {applicant === null ? (
             <ApplicantPicker onSelect={setApplicant} placeholder={t('evaluations.open.applicantSearch')} />
           ) : (
-            <span className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800/60">
-              <span className="font-mono text-xs text-slate-500" dir="ltr">{applicant.code}</span>
+            <span
+              title={applicant.code}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800/60"
+            >
+              <span className="text-slate-700 dark:text-slate-200">{applicant.fullNameAr}</span>
               <button
                 type="button"
                 onClick={() => setApplicant(null)}

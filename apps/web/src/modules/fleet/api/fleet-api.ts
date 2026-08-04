@@ -43,9 +43,11 @@ import {
   type UpdateFleetVehicleType,
   type UpdateFleetViolation,
 } from '@ecms/contracts';
-import { api, buildQuery, del, get, getPage, patch, post } from '../../../shared/lib/api-client';
+import { api, buildQuery, del, get, getPage, patch, post,
+  type QueryParams,
+} from '../../../shared/lib/api-client';
 
-export type FleetListParams = Record<string, string | number | boolean | undefined | null>;
+export type FleetListParams = QueryParams;
 
 const put = <T>(path: string, body: unknown): Promise<T> =>
   api<T>(path, { method: 'PUT', body: JSON.stringify(body) });

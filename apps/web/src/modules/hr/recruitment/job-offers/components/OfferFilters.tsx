@@ -4,17 +4,18 @@ import { OFFER_STATUSES, type OfferStatus } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { FilterBar } from '../../../../../shared/ui/FilterBar';
 import { SearchInput } from '../../../../../shared/ui/SearchInput';
-import { Select, Checkbox } from '../../../../../shared/ui/form';
+import { MultiSelect } from '../../../../../shared/ui/MultiSelect';
+import { Checkbox } from '../../../../../shared/ui/form';
 
 export interface OfferFiltersState {
   search: string;
-  status: '' | OfferStatus;
+  status: OfferStatus[];
   active: boolean;
 }
 
-export const EMPTY_OFFER_FILTERS: OfferFiltersState = { search: '', status: '', active: false };
+export const EMPTY_OFFER_FILTERS: OfferFiltersState = { search: '', status: [], active: false };
 
-const isActive = (f: OfferFiltersState): boolean => f.search !== '' || f.status !== '' || f.active;
+const isActive = (f: OfferFiltersState): boolean => f.search !== '' || f.status.length > 0 || f.active;
 
 export const OfferFilters = ({
   value,
@@ -35,17 +36,12 @@ export const OfferFilters = ({
           placeholder={t('offers.filters.search')}
         />
       </div>
-      <Select
-        aria-label={t('offers.filters.status')}
+      <MultiSelect
+        label={t('offers.filters.status')}
         value={value.status}
-        onChange={(e) => set({ status: e.target.value as OfferFiltersState['status'] })}
-        className="w-auto"
-      >
-        <option value="">{t('offers.filters.allStatuses')}</option>
-        {OFFER_STATUSES.map((s) => (
-          <option key={s} value={s}>{t(`offers.status.${s}`)}</option>
-        ))}
-      </Select>
+        onChange={(status) => set({ status: status as OfferStatus[] })}
+        options={OFFER_STATUSES.map((s) => ({ value: s, label: t(`offers.status.${s}`) }))}
+      />
       <Checkbox
         label={t('offers.filters.activeOnly')}
         checked={value.active}

@@ -6,7 +6,9 @@
 // (Stage 5) or later — the only forward hook is "the latest offer must be Accepted before
 // Employee Creation", enforced by that later stage against this aggregate.
 import { z } from 'zod';
-import { booleanQuery, objectId, PaginationQuerySchema } from '../common/index.js';
+import { booleanQuery, objectId, PaginationQuerySchema,
+  listQuery,
+} from '../common/index.js';
 import {
   type AttemptMarkerDto,
   type PlacementDto,
@@ -145,7 +147,7 @@ export type WithdrawJobOffer = z.infer<typeof WithdrawJobOfferSchema>;
 // ── List ─────────────────────────────────────────────────────────────────────
 
 export const ListJobOffersQuerySchema = PaginationQuerySchema.extend({
-  status: OfferStatusSchema.optional(),
+  status: listQuery(OfferStatusSchema),
   applicantId: objectId().optional(),
   branchId: objectId().optional(),
   /** Free-text over the offer number (`code`) and applicant code (partial, case-insensitive). */

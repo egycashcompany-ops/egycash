@@ -26,9 +26,10 @@ import {
   patchWorkflow,
   post,
   postWorkflow,
+  type QueryParams,
 } from '../../../../../shared/lib/api-client';
 
-export type JobOfferListParams = Record<string, string | number | boolean | undefined | null>;
+export type JobOfferListParams = QueryParams;
 
 type OfferEnvelope = Promise<WorkflowEnvelopeDto<JobOfferDto>>;
 

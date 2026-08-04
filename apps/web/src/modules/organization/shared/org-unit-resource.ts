@@ -5,7 +5,9 @@
 // cache from the response and invalidates the feature subtree (minimal invalidation).
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type Address, type OrgUnitDto, type Paginated } from '@ecms/contracts';
-import { buildQuery, del, get, getPage, patch, post } from '../../../shared/lib/api-client';
+import { buildQuery, del, get, getPage, patch, post,
+  type QueryParams,
+} from '../../../shared/lib/api-client';
 import { detailKey, featureKey, listKey } from '../../../shared/lib/query-keys';
 
 export const ORG_MODULE = 'organization';
@@ -18,7 +20,7 @@ export type AnyUnitDto = OrgUnitDto & {
   description?: { ar: string; en: string } | null;
 };
 
-export type UnitListParams = Record<string, string | number | boolean | undefined | null>;
+export type UnitListParams = QueryParams;
 
 /** Bodies are assembled dynamically by the generic form and validated server-side (Zod). */
 export type UnitBody = Record<string, unknown>;

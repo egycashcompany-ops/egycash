@@ -9,18 +9,8 @@
 //  • Filtering is diacritic- and alef-insensitive, so "الاسماعيليه" finds "الإسماعيلية".
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { cn } from '../lib/cn';
+import { fold } from '../lib/fold';
 import { ChevronIcon, CloseIcon } from './icons';
-
-/** Fold the spelling differences Arabic typists make: hamza forms, ta marbuta, diacritics. */
-const fold = (value: string): string =>
-  value
-    .trim()
-    .toLowerCase()
-    .replace(/[ً-ْٰ]/g, '')
-    .replace(/[أإآٱ]/g, 'ا')
-    .replace(/ى/g, 'ي')
-    .replace(/ة/g, 'ه')
-    .replace(/[^\p{L}\p{N} ]/gu, '');
 
 export const Combobox = ({
   value,

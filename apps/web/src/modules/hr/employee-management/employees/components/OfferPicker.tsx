@@ -53,7 +53,7 @@ export const OfferPicker = ({
                     className="flex w-full items-center gap-2 px-3 py-2 text-start text-sm hover:bg-slate-50 dark:hover:bg-slate-700"
                   >
                     <span className="font-mono text-xs text-slate-400" dir="ltr">{o.code}</span>
-                    <span className="font-mono text-xs text-slate-500" dir="ltr">{o.applicantCode}</span>
+                    <span className="text-sm">{o.applicantName}</span>
                   </button>
                 </li>
               ))}

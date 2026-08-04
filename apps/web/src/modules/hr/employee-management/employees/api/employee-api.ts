@@ -25,9 +25,11 @@ import {
   type UpdateUser,
   type UserDto,
 } from '@ecms/contracts';
-import { buildQuery, get, getPage, patch, post } from '../../../../../shared/lib/api-client';
+import { buildQuery, get, getPage, patch, post,
+  type QueryParams,
+} from '../../../../../shared/lib/api-client';
 
-export type EmployeeListParams = Record<string, string | number | boolean | undefined | null>;
+export type EmployeeListParams = QueryParams;
 
 export const listEmployees = (params: EmployeeListParams): Promise<Paginated<EmployeeDto>> =>
   getPage<EmployeeDto>(`/hr/employees${buildQuery(params)}`);

@@ -30,9 +30,8 @@ import { BulkScheduleDialog } from './BulkScheduleDialog';
 
 interface BoardCard {
   applicantId: string;
-  applicantCode: string;
   applicantName: string;
-  /** Secondary line under the code (state / date). */
+  /** Secondary line under the name (state / date). */
   meta: string | null;
   badge: { tone: Tone; label: string } | null;
   /** Row link target (interview / evaluation detail; applicant for waiting/offer columns). */
@@ -91,7 +90,6 @@ export const PhaseBoard = (): JSX.Element => {
       assigned.add(a.id);
       return {
         applicantId: a.id,
-        applicantCode: a.code,
         applicantName: a.fullNameAr,
         meta: a.movedToOfferAt === null ? null : formatDate(a.movedToOfferAt, locale),
         badge: null,
@@ -116,7 +114,6 @@ export const PhaseBoard = (): JSX.Element => {
       assigned.add(ev.applicantId);
       const card: BoardCard = {
         applicantId: ev.applicantId,
-        applicantCode: ev.applicantCode,
         applicantName: ev.applicantName,
         meta: null,
         badge:
@@ -150,7 +147,6 @@ export const PhaseBoard = (): JSX.Element => {
       assigned.add(iv.applicantId);
       const card: BoardCard = {
         applicantId: iv.applicantId,
-        applicantCode: iv.applicantCode,
         applicantName: iv.applicantName,
         meta: iv.status === 'scheduled' ? formatDate(iv.scheduledAt, locale) : null,
         badge:
@@ -266,7 +262,7 @@ export const PhaseBoard = (): JSX.Element => {
                           className="h-4 w-4 shrink-0 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
                           checked={selection.selectedIds.has(card.applicantId)}
                           onChange={() => selection.toggleRow(card.applicantId)}
-                          aria-label={card.applicantCode}
+                          aria-label={card.applicantName}
                         />
                       )}
                       <button
@@ -275,8 +271,7 @@ export const PhaseBoard = (): JSX.Element => {
                         className="min-w-0 flex-1 text-start"
                       >
                         <p className="truncate text-xs text-slate-700 dark:text-slate-200">
-                          {card.applicantName}{' '}
-                          <span className="font-mono text-slate-400" dir="ltr">{card.applicantCode}</span>
+                          {card.applicantName}
                         </p>
                         {card.meta !== null && <p className="truncate text-xs text-slate-400">{card.meta}</p>}
                       </button>

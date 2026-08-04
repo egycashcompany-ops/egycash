@@ -21,7 +21,8 @@ import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
 import { FilterBar } from '../../../../../shared/ui/FilterBar';
 import { SearchInput } from '../../../../../shared/ui/SearchInput';
-import { Select, Input } from '../../../../../shared/ui/form';
+import { Input } from '../../../../../shared/ui/form';
+import { MultiSelect } from '../../../../../shared/ui/MultiSelect';
 import { CloseIcon } from '../../../../../shared/ui/icons';
 import { localized } from '../../../../../shared/lib/format';
 import { BranchFilterSelect } from '../../shared/BranchFilterSelect';
@@ -31,41 +32,41 @@ import { useInterviewStages } from '../api/interview-queries';
 
 export interface InterviewFiltersState {
   search: string;
-  status: '' | InterviewStatus;
-  outcome: '' | InterviewOutcome;
-  stageId: string;
+  status: InterviewStatus[];
+  outcome: InterviewOutcome[];
+  stageId: string[];
   applicantId: string;
   applicantLabel: string;
   /** The panel member the round is assigned to. */
   interviewerId: string;
   interviewerLabel: string;
-  branchId: string;
+  branchId: string[];
   scheduledFrom: string;
   scheduledTo: string;
 }
 
 export const EMPTY_INTERVIEW_FILTERS: InterviewFiltersState = {
   search: '',
-  status: '',
-  outcome: '',
-  stageId: '',
+  status: [],
+  outcome: [],
+  stageId: [],
   applicantId: '',
   applicantLabel: '',
   interviewerId: '',
   interviewerLabel: '',
-  branchId: '',
+  branchId: [],
   scheduledFrom: '',
   scheduledTo: '',
 };
 
 const isActive = (f: InterviewFiltersState): boolean =>
   f.search !== '' ||
-  f.status !== '' ||
-  f.outcome !== '' ||
-  f.stageId !== '' ||
+  f.status.length > 0 ||
+  f.outcome.length > 0 ||
+  f.stageId.length > 0 ||
   f.applicantId !== '' ||
   f.interviewerId !== '' ||
-  f.branchId !== '' ||
+  f.branchId.length > 0 ||
   f.scheduledFrom !== '' ||
   f.scheduledTo !== '';
 
@@ -96,7 +97,7 @@ export const InterviewFilters = ({
   };
   // …and the "any filters active?" hint must ignore them too, or the Clear button never goes away.
   const active =
-    isActive({ ...value, ...(shows('stage') ? {} : { stageId: '' }), ...(shows('status') ? {} : { status: '' }) });
+    isActive({ ...value, ...(shows('stage') ? {} : { stageId: [] }), ...(shows('status') ? {} : { status: [] }) });
 
   return (
     <FilterBar onClear={() => onChange(cleared)} hasActiveFilters={active}>
@@ -109,47 +110,32 @@ export const InterviewFilters = ({
       </div>
 
       {shows('status') && (
-      <Select
-        aria-label={t('interviews.filters.status')}
-        value={value.status}
-        onChange={(e) => set({ status: e.target.value as InterviewFiltersState['status'] })}
-        className="w-auto"
-      >
-        <option value="">{t('interviews.filters.allStatuses')}</option>
-        {INTERVIEW_STATUSES.map((s) => (
-          <option key={s} value={s}>{t(`interviews.status.${s}`)}</option>
-        ))}
-      </Select>
+        <MultiSelect
+          label={t('interviews.filters.status')}
+          value={value.status}
+          onChange={(status) => set({ status: status as InterviewStatus[] })}
+          options={INTERVIEW_STATUSES.map((s) => ({ value: s, label: t(`interviews.status.${s}`) }))}
+        />
       )}
 
-      <Select
-        aria-label={t('interviews.filters.outcome')}
+      <MultiSelect
+        label={t('interviews.filters.outcome')}
         value={value.outcome}
-        onChange={(e) => set({ outcome: e.target.value as InterviewFiltersState['outcome'] })}
-        className="w-auto"
-      >
-        <option value="">{t('interviews.filters.allOutcomes')}</option>
-        {INTERVIEW_OUTCOMES.map((o) => (
-          <option key={o} value={o}>{t(`interviews.outcome.${o}`)}</option>
-        ))}
-      </Select>
+        onChange={(outcome) => set({ outcome: outcome as InterviewOutcome[] })}
+        options={INTERVIEW_OUTCOMES.map((o) => ({ value: o, label: t(`interviews.outcome.${o}`) }))}
+      />
 
       {shows('stage') && (
-      <Select
-        aria-label={t('interviews.filters.stage')}
-        value={value.stageId}
-        onChange={(e) => set({ stageId: e.target.value })}
-        className="w-auto"
-      >
-        <option value="">{t('interviews.filters.allStages')}</option>
-        {stages.map((s) => (
-          <option key={s.id} value={s.id}>{localized(s.name, locale)}</option>
-        ))}
-      </Select>
+        <MultiSelect
+          label={t('interviews.filters.stage')}
+          value={value.stageId}
+          onChange={(stageId) => set({ stageId })}
+          options={stages.map((s) => ({ value: s.id, label: localized(s.name, locale) }))}
+        />
       )}
 
       {value.applicantId === '' ? (
-        <ApplicantPicker onSelect={(a) => set({ applicantId: a.id, applicantLabel: `${a.code} — ${a.fullNameAr}` })} />
+        <ApplicantPicker onSelect={(a) => set({ applicantId: a.id, applicantLabel: a.fullNameAr })} />
       ) : (
         <span className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
           <span className="truncate">{value.applicantLabel === '' ? value.applicantId : value.applicantLabel}</span>

@@ -7,9 +7,11 @@ import {
   type Paginated,
   type UpdateJobTitle,
 } from '@ecms/contracts';
-import { buildQuery, del, get, getPage, patch, post } from '../../../shared/lib/api-client';
+import { buildQuery, del, get, getPage, patch, post,
+  type QueryParams,
+} from '../../../shared/lib/api-client';
 
-export type JobTitleListParams = Record<string, string | number | boolean | undefined | null>;
+export type JobTitleListParams = QueryParams;
 
 export const listJobTitles = (params: JobTitleListParams): Promise<Paginated<JobTitleDto>> =>
   getPage<JobTitleDto>(`/platform/job-titles${buildQuery(params)}`);

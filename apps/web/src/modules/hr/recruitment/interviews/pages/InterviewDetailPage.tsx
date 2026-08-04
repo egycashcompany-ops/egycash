@@ -28,6 +28,7 @@ import { useApplicant } from '../../applicants/api/applicant-queries';
 import { RecommendationCard } from '../../shared/RecommendationCard';
 import { MoveToOfferButton } from '../../applicants/components/MoveToOfferButton';
 import { CandidateTimeline } from '../../timeline/components/CandidateTimeline';
+import { RecruitmentStepBar } from '../../shared/RecruitmentStepBar';
 import {
   useInterview,
   useSetInterviewRecommendation,
@@ -92,12 +93,13 @@ export const InterviewDetailPage = (): JSX.Element => {
   return (
     <PageContainer>
       <PageHeader
-        title={t('interviews.detail.title', { code: iv.applicantCode })}
+        title={t('interviews.detail.title', { name: iv.applicantName })}
         description={localized(iv.stageName, locale)}
+        aside={<RecruitmentStepBar current="interview" />}
         breadcrumbs={[
           { label: t('recruitment.title'), to: '/' },
           { label: t('recruitment.nav.interviews'), to: '/interviews' },
-          { label: iv.applicantCode },
+          { label: iv.applicantName },
         ]}
         actions={
           isLive || startable ? (
@@ -152,8 +154,8 @@ export const InterviewDetailPage = (): JSX.Element => {
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <Link to={`/applicants/${iv.applicantId}`} className="font-mono text-sm text-brand-600 hover:underline" dir="ltr">
-          {iv.applicantCode}
+        <Link to={`/applicants/${iv.applicantId}`} className="text-sm font-medium text-brand-600 hover:underline">
+          {iv.applicantName}
         </Link>
         <InterviewStatusBadge status={iv.status} outcome={iv.outcome} />
         <span className="ms-auto flex items-center gap-2">

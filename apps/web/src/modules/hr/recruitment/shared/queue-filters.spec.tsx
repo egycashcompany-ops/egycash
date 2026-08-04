@@ -116,7 +116,7 @@ describe('recruitment queue filter bars render localized labels', () => {
     const en = render(screeningBar, 'en');
     expect(en).toContain('Age from');
     expect(en).toContain('Age to');
-    expect(en).toContain('All education levels');
+    expect(en).toContain('Education level');
 
     const ar = render(screeningBar, 'ar');
     expect(ar).toContain('السن من');
@@ -126,11 +126,13 @@ describe('recruitment queue filter bars render localized labels', () => {
   it('the stage bar drops the controls its page owns', () => {
     const full = render(interviewBar, 'en');
     const stage = render(stageBar, 'en');
-    expect(full).toContain('All statuses');
-    expect(stage).not.toContain('All statuses');
+    // The bar labels its own controls now, so "does this bar carry a status filter?" is asked of
+    // the control's label rather than of an "All statuses" placeholder option that no longer exists.
+    expect(full).toContain('aria-label="Status"');
+    expect(stage).not.toContain('aria-label="Status"');
     // What remains is still a working bar, not an empty shell.
-    expect(stage).toContain('All outcomes');
-    expect(stage).toContain('All branches');
+    expect(stage).toContain('aria-label="Outcome"');
+    expect(stage).toContain('aria-label="Branch"');
   });
 });
 
@@ -152,8 +154,8 @@ describe('recruitment queue filter bars offer the standard controls', () => {
       ['evaluations', evaluationBar],
       ['employees ready', readyBar],
     ] as [string, JSX.Element][]) {
-      expect(render(node, 'en'), `${name} is missing the branch filter`).toContain('All branches');
-      expect(render(node, 'ar'), `${name} is missing the branch filter in ar`).toContain('كل الفروع');
+      expect(render(node, 'en'), `${name} is missing the branch filter`).toContain('aria-label="Branch"');
+      expect(render(node, 'ar'), `${name} is missing the branch filter in ar`).toContain('aria-label="الفرع"');
     }
   });
 
@@ -171,7 +173,7 @@ describe('catalog-backed filters respect their own permissions', () => {
       ['employees ready', readyBar],
     ] as [string, JSX.Element][]) {
       const markup = render(node, 'en', ['user.view']);
-      expect(markup, `${name} still rendered a branch control`).not.toContain('All branches');
+      expect(markup, `${name} still rendered a branch control`).not.toContain('aria-label="Branch"');
     }
   });
 
@@ -179,13 +181,13 @@ describe('catalog-backed filters respect their own permissions', () => {
     const markup = render(interviewBar, 'en', ['branch.view']);
     expect(markup).not.toContain('placeholder="Interviewer"');
     // The bar still works; only the directory-backed control steps aside.
-    expect(markup).toContain('All branches');
+    expect(markup).toContain('aria-label="Branch"');
   });
 
   it('with neither permission the bar still renders its own controls', () => {
     const markup = render(interviewBar, 'en', []);
-    expect(markup).toContain('All statuses');
-    expect(markup).toContain('All outcomes');
+    expect(markup).toContain('aria-label="Status"');
+    expect(markup).toContain('aria-label="Outcome"');
     expect(markup).not.toContain('All branches');
   });
 });

@@ -15,6 +15,7 @@ import {
   objectId,
   type Address,
   type LocalizedString,
+  listQuery,
 } from '../common/index.js';
 import {
   ApplicantFormAnswerSchema,
@@ -416,12 +417,12 @@ export interface OcrExtractionDto {
 // ── List / search / export ──────────────────────────────────────────────────
 
 export const ListApplicantsQuerySchema = PaginationQuerySchema.extend({
-  status: ApplicantStatusSchema.optional(),
-  sourceId: objectId().optional(),
-  intakeChannel: ApplicantIntakeChannelSchema.optional(),
+  status: listQuery(ApplicantStatusSchema),
+  sourceId: listQuery(objectId()),
+  intakeChannel: listQuery(ApplicantIntakeChannelSchema),
   jobRequisitionId: objectId().optional(),
   branchId: objectId().optional(),
-  identityVerification: IdentityVerificationSchema.optional(),
+  identityVerification: listQuery(IdentityVerificationSchema),
   duplicateOnly: z.coerce.boolean().optional(),
   hasAttachments: z.coerce.boolean().optional(),
   /** True → only applicants explicitly moved to the Job Offer stage (the New Offer pool). */

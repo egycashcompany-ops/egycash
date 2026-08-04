@@ -12,7 +12,7 @@ import { type ScopeSelector } from '../../../../shared/types';
 import { JobOfferModel, type JobOfferDoc } from './job-offer.model';
 
 export interface JobOfferListFilter {
-  status?: string | undefined;
+  status?: readonly string[] | undefined;
   applicantId?: string | undefined;
   branchId?: string | undefined;
   /**
@@ -125,7 +125,7 @@ class JobOfferRepository extends BaseRepository<JobOfferDoc> {
 
   private buildFilter(f: JobOfferListFilter): FilterQuery<JobOfferDoc> {
     const clauses: FilterQuery<JobOfferDoc>[] = [];
-    if (f.status !== undefined) clauses.push({ status: f.status });
+    if (f.status !== undefined) clauses.push({ status: { $in: f.status } });
     if (f.applicantId !== undefined) clauses.push({ applicantId: new Types.ObjectId(f.applicantId) });
     if (f.branchId !== undefined) clauses.push({ branchId: new Types.ObjectId(f.branchId) });
     if (f.hired !== undefined) {

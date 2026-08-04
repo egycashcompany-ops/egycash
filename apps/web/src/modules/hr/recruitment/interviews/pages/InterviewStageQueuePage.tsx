@@ -12,6 +12,7 @@ import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
 import { Can } from '../../../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
+import { readList, writeList } from '../../../../../shared/lib/list-param';
 import { DataTable, type Column } from '../../../../../shared/ui/DataTable';
 import { BulkActionBar } from '../../../../../shared/ui/BulkActionBar';
 import { InterviewFilters, type InterviewFiltersState } from '../components/InterviewFilters';
@@ -51,15 +52,15 @@ export const InterviewStageQueuePage = (): JSX.Element => {
   // The stage comes from the route and the status from the tab strip, so the bar omits both and
   // carries the rest. Every value round-trips through the URL: deep-linkable, refresh-safe.
   const filters: InterviewFiltersState = {
-    status,
-    stageId,
-    outcome: (sp.get('outcome') ?? '') as InterviewFiltersState['outcome'],
+    status: [status],
+    stageId: [stageId],
+    outcome: readList(sp, 'outcome') as InterviewFiltersState['outcome'],
     applicantId: sp.get('applicant') ?? '',
     applicantLabel: sp.get('al') ?? '',
     search: sp.get('q') ?? '',
     interviewerId: sp.get('interviewer') ?? '',
     interviewerLabel: sp.get('il') ?? '',
-    branchId: sp.get('branch') ?? '',
+    branchId: readList(sp, 'branch'),
     scheduledFrom: sp.get('sf') ?? '',
     scheduledTo: sp.get('st') ?? '',
   };
@@ -85,13 +86,13 @@ export const InterviewStageQueuePage = (): JSX.Element => {
 
   const changeFilters = (nf: InterviewFiltersState): void =>
     patch({
-      outcome: nf.outcome || null,
+      outcome: writeList(nf.outcome),
       applicant: nf.applicantId || null,
       al: nf.applicantLabel || null,
       q: nf.search || null,
       interviewer: nf.interviewerId || null,
       il: nf.interviewerLabel || null,
-      branch: nf.branchId || null,
+      branch: writeList(nf.branchId),
       sf: nf.scheduledFrom || null,
       st: nf.scheduledTo || null,
     });
@@ -167,12 +168,7 @@ export const InterviewStageQueuePage = (): JSX.Element => {
       key: 'applicant',
       header: t('interviews.columns.applicant'),
       render: (i) => (
-        <span>
-          {i.applicantName}{' '}
-          <span className="font-mono text-xs text-slate-500" dir="ltr">
-            {i.applicantCode}
-          </span>
-        </span>
+        <span>{i.applicantName}</span>
       ),
     },
     { key: 'status', header: t('interviews.columns.status'), render: (i) => <InterviewStatusBadge status={i.status} outcome={i.outcome} /> },

@@ -7,9 +7,11 @@ import {
   type Paginated,
   type UpdateApplication,
 } from '@ecms/contracts';
-import { buildQuery, del, get, getPage, patch, post } from '../../../shared/lib/api-client';
+import { buildQuery, del, get, getPage, patch, post,
+  type QueryParams,
+} from '../../../shared/lib/api-client';
 
-export type ApplicationListParams = Record<string, string | number | boolean | undefined | null>;
+export type ApplicationListParams = QueryParams;
 
 export const listApplications = (params: ApplicationListParams): Promise<Paginated<ApplicationDto>> =>
   getPage<ApplicationDto>(`/platform/applications${buildQuery(params)}`);

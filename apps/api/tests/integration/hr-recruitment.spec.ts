@@ -447,6 +447,31 @@ describe('list, search, export', () => {
     expect((res.body as { data: ApplicantDto[] }).data.some((a) => a.fullNameAr === 'إبراهيم')).toBe(true);
   });
 
+  // The applicant code is no longer displayed anywhere in the interface — it lives behind a copy
+  // control. That makes search the ONLY way a code someone was given over the phone gets back to a
+  // record, so this clause stopped being a convenience and became the code's only remaining door.
+  it('still finds an applicant by its code', async () => {
+    const sourceId = await sourceIdByKey('internalHr');
+    const created = await request(app)
+      .post('/api/v1/hr/applicants')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send(registerBody({ sourceId, identity: { fullNameAr: 'سلمى فؤاد', nationality: 'Egyptian' }, contact: { primaryPhone: '01040404040' } }));
+    expect(created.status).toBe(201);
+    // A mutation answers with the workflow envelope, so the DTO is a level in (I6).
+    const { code } = mutated<ApplicantDto>(created);
+    expect(code, 'the applicant must have a code to search for').toMatch(/^APP-\d{4}-\d{6}$/);
+
+    const res = await request(app)
+      .get('/api/v1/hr/applicants')
+      .query({ search: code, pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const found = (res.body as { data: ApplicantDto[] }).data;
+    // Searching a full code is a search for ONE person — not a filter that quietly matched nothing
+    // and fell back to listing everyone, which is how the first version of this test passed.
+    expect(found.map((a) => a.code)).toEqual([code]);
+  });
+
   it('exports a masked, audited CSV', async () => {
     const res = await request(app)
       .get('/api/v1/hr/applicants/export')

@@ -14,6 +14,7 @@ import { LoadingState } from '../../../../../shared/ui/states/LoadingState';
 import { ErrorState } from '../../../../../shared/ui/states/ErrorState';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { EditIcon } from '../../../../../shared/ui/icons';
+import { CopyIdButton } from '../../../../../shared/ui/CopyIdButton';
 import {
   formatDate,
   formatMoney,
@@ -28,6 +29,7 @@ import { ReassignDialog } from '../components/ReassignDialog';
 import { ReturnToStageDialog } from '../components/ReturnToStageDialog';
 import { useApplicant, useVerifyApplicantIdentity } from '../api/applicant-queries';
 import { CandidateTimeline } from '../../timeline/components/CandidateTimeline';
+import { RecruitmentStepBar } from '../../shared/RecruitmentStepBar';
 
 const Info = ({ label, children }: { label: string; children: ReactNode }): JSX.Element => (
   <div>
@@ -85,10 +87,11 @@ export const ApplicantDetailPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={a.fullNameAr}
+        aside={<RecruitmentStepBar current="applicants" />}
         breadcrumbs={[
           { label: t('recruitment.title'), to: '/' },
           { label: t('recruitment.nav.applicants'), to: '/applicants' },
-          { label: a.code },
+          { label: a.fullNameAr },
         ]}
         actions={
           <div className="flex items-center gap-2">
@@ -126,7 +129,9 @@ export const ApplicantDetailPage = (): JSX.Element => {
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <span className="font-mono text-sm text-slate-500" dir="ltr">{a.code}</span>
+        {/* The code is searchable and quotable, but it is not this person's name — it lives in the
+            tooltip and on the clipboard, never on the page. */}
+        <CopyIdButton code={a.code} label={t('applicants.detail.code')} />
         <ApplicantStatusBadge status={a.status} />
         {/* RW4a — the board always shows where the candidate stands TODAY. */}
         {(a.placementLabel.position !== null || a.placementLabel.branch !== null) && (

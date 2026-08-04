@@ -22,6 +22,7 @@ import { EvaluationStatusBadge } from '../components/EvaluationStatusBadge';
 import { OpenEvaluationDialog } from '../components/OpenEvaluationDialog';
 import { useBulkEvaluations, useEvaluations } from '../api/evaluation-queries';
 import { type EvaluationListParams } from '../api/evaluation-api';
+import { useRememberedQueue } from '../../shared/useRememberedQueue';
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -30,6 +31,7 @@ export const EvaluationQueuePage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
+  useRememberedQueue('evaluations', [sp, setSp]);
   const [openDialog, setOpenDialog] = useState(false);
 
   const status = sp.get('status') ?? '';
@@ -87,7 +89,7 @@ export const EvaluationQueuePage = (): JSX.Element => {
     {
       key: 'applicantCode',
       header: t('evaluations.columns.applicant'),
-      render: (e) => <span>{e.applicantName} <span className="font-mono text-xs text-slate-500" dir="ltr">{e.applicantCode}</span></span>,
+      render: (e) => <span>{e.applicantName}</span>,
     },
     { key: 'phase', header: t('evaluations.columns.phase'), render: (e) => `${e.phaseOrder}. ${localized(e.phaseName, locale)}` },
     { key: 'status', header: t('evaluations.columns.status'), render: (e) => <EvaluationStatusBadge status={e.status} /> },

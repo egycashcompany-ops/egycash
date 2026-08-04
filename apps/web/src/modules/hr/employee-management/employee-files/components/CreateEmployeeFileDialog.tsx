@@ -93,7 +93,7 @@ export const CreateEmployeeFileDialog = ({ open, onClose }: { open: boolean; onC
                           className="flex w-full items-center gap-2 px-3 py-2 text-start text-sm hover:bg-slate-50 dark:hover:bg-slate-700"
                         >
                           <span className="font-mono text-xs text-slate-400" dir="ltr">{e.code}</span>
-                          <span className="font-mono text-xs text-slate-500" dir="ltr">{e.applicantCode}</span>
+                          <span className="text-sm">{e.personal.fullNameAr}</span>
                         </button>
                       </li>
                     ))}
@@ -105,7 +105,7 @@ export const CreateEmployeeFileDialog = ({ open, onClose }: { open: boolean; onC
         ) : (
           <span className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800/60">
             <span className="font-mono text-xs text-slate-400" dir="ltr">{employee.code}</span>
-            <span className="font-mono text-xs text-slate-500" dir="ltr">{employee.applicantCode}</span>
+            <span className="text-sm">{employee.personal.fullNameAr}</span>
             <button type="button" onClick={() => setEmployee(null)} className="ms-2 text-xs text-brand-600 hover:underline">
               {t('offers.form.change')}
             </button>

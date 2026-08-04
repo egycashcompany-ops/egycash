@@ -182,6 +182,10 @@ const en: Record<string, string> = {
   'common.pagination.next': 'Next',
   'common.pagination.page': 'Page {{page}} of {{total}}',
   'common.filters.clear': 'Clear filters',
+  'common.filters.clearOne': 'Clear selection',
+  'common.copyId': 'Copy reference number',
+  'common.copyId.done': 'Copied',
+  'common.copyId.failed': 'Could not copy — here is the number',
   'common.list.count': '{{count}} results',
   'common.upload.prompt': 'Drag a file here or click to browse',
   'common.upload.max': 'Up to {{size}} MB',
@@ -193,6 +197,13 @@ const en: Record<string, string> = {
 
   // Recruitment module
   'recruitment.title': 'Recruitment',
+  'recruitment.step.aria': 'Recruitment progress',
+  'recruitment.step.applicants': 'Applicant',
+  'recruitment.step.screening': 'Screening',
+  'recruitment.step.interview': 'Interview',
+  'recruitment.step.evaluation': 'Evaluation',
+  'recruitment.step.jobOffer': 'Job offer',
+  'recruitment.step.employeesReady': 'Ready to hire',
   'recruitment.nav.overview': 'Overview',
   'recruitment.nav.organization': 'Organization',
   'recruitment.nav.pipeline': 'Pipeline',
@@ -779,6 +790,7 @@ const en: Record<string, string> = {
 
   // Applicants — detail
   'applicants.detail.birthDate': 'Birth date',
+  'applicants.detail.code': 'Applicant reference number',
   'applicants.detail.gender': 'Gender',
   'applicants.detail.governorate': 'Governorate',
   'applicants.detail.willing': 'Willingness',
@@ -830,7 +842,7 @@ const en: Record<string, string> = {
   'screening.decide.reasonOptional': 'Optional — recorded as a decision note',
   'screening.decide.acceptedDone': 'Applicant accepted',
   'screening.decide.rejectedDone': 'Applicant rejected',
-  'screening.detail.title': 'Screening — {{code}}',
+  'screening.detail.title': 'Screening — {{name}}',
   'screening.detail.summary': 'Summary',
   'screening.detail.applicant': 'Applicant',
 
@@ -972,7 +984,7 @@ const en: Record<string, string> = {
   'interviews.cancel.submit': 'Cancel interview',
   'interviews.cancel.reason': 'Reason',
   'interviews.cancel.done': 'Interview cancelled',
-  'interviews.detail.title': 'Interview — {{code}}',
+  'interviews.detail.title': 'Interview — {{name}}',
   'interviews.detail.summary': 'Summary',
   'interviews.detail.location': 'Location',
   'interviews.detail.rescheduled': 'Rescheduled',
@@ -1181,7 +1193,7 @@ const en: Record<string, string> = {
   'offers.form.notes': 'Notes',
   'offers.form.validUntilAfterStart': 'The validity date must be after the start date.',
   'offers.terms.months': '{{n}} months',
-  'offers.detail.title': 'Offer — {{code}}',
+  'offers.detail.title': 'Offer — {{name}}',
   'offers.detail.notDrafted': 'Not drafted yet',
   'offers.detail.notDraftedHint':
     'This candidate is queued for an offer. Use New Offer to draft the package.',
@@ -2606,6 +2618,10 @@ const ar: Record<string, string> = {
   'common.pagination.next': 'التالي',
   'common.pagination.page': 'صفحة {{page}} من {{total}}',
   'common.filters.clear': 'مسح عوامل التصفية',
+  'common.filters.clearOne': 'مسح التحديد',
+  'common.copyId': 'نسخ الرقم المرجعي',
+  'common.copyId.done': 'تم النسخ',
+  'common.copyId.failed': 'تعذّر النسخ — وهذا هو الرقم',
   'common.list.count': '{{count}} نتيجة',
   'common.upload.prompt': 'اسحب ملفًا هنا أو انقر للاختيار',
   'common.upload.max': 'حتى {{size}} ميجابايت',
@@ -2617,6 +2633,13 @@ const ar: Record<string, string> = {
 
   // Recruitment module
   'recruitment.title': 'التوظيف',
+  'recruitment.step.aria': 'مراحل التوظيف',
+  'recruitment.step.applicants': 'متقدّم',
+  'recruitment.step.screening': 'الفرز المبدئي',
+  'recruitment.step.interview': 'المقابلة',
+  'recruitment.step.evaluation': 'التقييم',
+  'recruitment.step.jobOffer': 'عرض العمل',
+  'recruitment.step.employeesReady': 'جاهز للتعيين',
   'recruitment.nav.overview': 'نظرة عامة',
   'recruitment.nav.organization': 'الهيكل التنظيمي',
   'recruitment.nav.pipeline': 'المسار',
@@ -3193,6 +3216,7 @@ const ar: Record<string, string> = {
 
   // Applicants — detail
   'applicants.detail.birthDate': 'تاريخ الميلاد',
+  'applicants.detail.code': 'الرقم المرجعي للمتقدّم',
   'applicants.detail.gender': 'النوع',
   'applicants.detail.governorate': 'المحافظة',
   'applicants.detail.willing': 'الاستعداد',
@@ -3244,7 +3268,7 @@ const ar: Record<string, string> = {
   'screening.decide.reasonOptional': 'اختياري — يُسجَّل كملاحظة قرار',
   'screening.decide.acceptedDone': 'تم قبول المتقدِّم',
   'screening.decide.rejectedDone': 'تم رفض المتقدِّم',
-  'screening.detail.title': 'الفرز — {{code}}',
+  'screening.detail.title': 'الفرز — {{name}}',
   'screening.detail.summary': 'الملخّص',
   'screening.detail.applicant': 'المتقدِّم',
 
@@ -3383,7 +3407,7 @@ const ar: Record<string, string> = {
   'interviews.cancel.submit': 'إلغاء المقابلة',
   'interviews.cancel.reason': 'السبب',
   'interviews.cancel.done': 'تم إلغاء المقابلة',
-  'interviews.detail.title': 'مقابلة — {{code}}',
+  'interviews.detail.title': 'مقابلة — {{name}}',
   'interviews.detail.summary': 'الملخّص',
   'interviews.detail.location': 'المكان',
   'interviews.detail.rescheduled': 'أُعيد جدولتها',
@@ -3592,7 +3616,7 @@ const ar: Record<string, string> = {
   'offers.form.notes': 'ملاحظات',
   'offers.form.validUntilAfterStart': 'تاريخ الصلاحية يجب أن يكون بعد تاريخ المباشرة.',
   'offers.terms.months': '{{n}} أشهر',
-  'offers.detail.title': 'عرض — {{code}}',
+  'offers.detail.title': 'عرض — {{name}}',
   'offers.detail.notDrafted': 'لم يتم إعداده بعد',
   'offers.detail.notDraftedHint':
     'هذا المتقدم في انتظار عرض العمل. استخدم «عرض جديد» لإعداد التفاصيل.',

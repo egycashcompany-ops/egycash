@@ -17,9 +17,11 @@ import {
   type UpdateLeaveType,
   type WorkCalendarDto,
 } from '@ecms/contracts';
-import { buildQuery, del, get, getPage, patch, post, upload } from '../../../../shared/lib/api-client';
+import { buildQuery, del, get, getPage, patch, post, upload,
+  type QueryParams,
+} from '../../../../shared/lib/api-client';
 
-export type LeaveListParams = Record<string, string | number | boolean | undefined | null>;
+export type LeaveListParams = QueryParams;
 
 // ── Types catalog ───────────────────────────────────────────────────────────
 // (Type CREATION stays an API/seed concern for now — the admin UI edits the seeded catalog.)

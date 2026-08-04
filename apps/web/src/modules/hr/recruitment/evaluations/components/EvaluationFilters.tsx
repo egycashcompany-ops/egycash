@@ -25,7 +25,7 @@ export interface EvaluationFiltersState {
   search: string;
   applicantId: string;
   applicantLabel: string;
-  branchId: string;
+  branchId: string[];
   createdFrom: string;
   createdTo: string;
 }
@@ -34,7 +34,7 @@ export const EMPTY_EVALUATION_FILTERS: EvaluationFiltersState = {
   search: '',
   applicantId: '',
   applicantLabel: '',
-  branchId: '',
+  branchId: [],
   createdFrom: '',
   createdTo: '',
 };
@@ -42,7 +42,7 @@ export const EMPTY_EVALUATION_FILTERS: EvaluationFiltersState = {
 const isActive = (f: EvaluationFiltersState): boolean =>
   f.search !== '' ||
   f.applicantId !== '' ||
-  f.branchId !== '' ||
+  f.branchId.length > 0 ||
   f.createdFrom !== '' ||
   f.createdTo !== '';
 
@@ -67,7 +67,7 @@ export const EvaluationFilters = ({
       </div>
 
       {value.applicantId === '' ? (
-        <ApplicantPicker onSelect={(a) => set({ applicantId: a.id, applicantLabel: `${a.code} — ${a.fullNameAr}` })} />
+        <ApplicantPicker onSelect={(a) => set({ applicantId: a.id, applicantLabel: a.fullNameAr })} />
       ) : (
         <span className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
           <span className="truncate">{value.applicantLabel === '' ? value.applicantId : value.applicantLabel}</span>

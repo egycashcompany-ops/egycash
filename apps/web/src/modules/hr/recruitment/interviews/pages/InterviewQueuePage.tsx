@@ -8,6 +8,7 @@ import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
 import { Can } from '../../../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
+import { readList, writeList } from '../../../../../shared/lib/list-param';
 import { DataTable, type Column } from '../../../../../shared/ui/DataTable';
 import { BulkActionBar } from '../../../../../shared/ui/BulkActionBar';
 import { useTableSelection } from '../../../../../shared/ui/useTableSelection';
@@ -23,6 +24,7 @@ import { ScheduleInterviewDialog, type PickedApplicant } from '../components/Sch
 import { PhaseBoard } from '../components/PhaseBoard';
 import { useBulkInterviews, useInterviews } from '../api/interview-queries';
 import { type InterviewListParams } from '../api/interview-api';
+import { useRememberedQueue } from '../../shared/useRememberedQueue';
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -31,20 +33,21 @@ export const InterviewQueuePage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
+  useRememberedQueue('interviews', [sp, setSp]);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [scheduleFor, setScheduleFor] = useState<PickedApplicant | null>(null);
   const view = sp.get('view') === 'board' ? 'board' : 'list';
 
   const filters: InterviewFiltersState = {
-    status: (sp.get('status') ?? '') as InterviewFiltersState['status'],
-    outcome: (sp.get('outcome') ?? '') as InterviewFiltersState['outcome'],
-    stageId: sp.get('stage') ?? '',
+    status: readList(sp, 'status') as InterviewFiltersState['status'],
+    outcome: readList(sp, 'outcome') as InterviewFiltersState['outcome'],
+    stageId: readList(sp, 'stage'),
     applicantId: sp.get('applicant') ?? '',
     applicantLabel: sp.get('al') ?? '',
     search: sp.get('q') ?? '',
     interviewerId: sp.get('interviewer') ?? '',
     interviewerLabel: sp.get('il') ?? '',
-    branchId: sp.get('branch') ?? '',
+    branchId: readList(sp, 'branch'),
     scheduledFrom: sp.get('sf') ?? '',
     scheduledTo: sp.get('st') ?? '',
   };
@@ -69,15 +72,15 @@ export const InterviewQueuePage = (): JSX.Element => {
 
   const changeFilters = (nf: InterviewFiltersState): void =>
     patch({
-      status: nf.status || null,
-      outcome: nf.outcome || null,
-      stage: nf.stageId || null,
+      status: writeList(nf.status),
+      outcome: writeList(nf.outcome),
+      stage: writeList(nf.stageId),
       applicant: nf.applicantId || null,
       al: nf.applicantLabel || null,
       q: nf.search || null,
       interviewer: nf.interviewerId || null,
       il: nf.interviewerLabel || null,
-      branch: nf.branchId || null,
+      branch: writeList(nf.branchId),
       sf: nf.scheduledFrom || null,
       st: nf.scheduledTo || null,
     });
@@ -128,7 +131,7 @@ export const InterviewQueuePage = (): JSX.Element => {
     {
       key: 'applicant',
       header: t('interviews.columns.applicant'),
-      render: (i) => <span>{i.applicantName} <span className="font-mono text-xs text-slate-500" dir="ltr">{i.applicantCode}</span></span>,
+      render: (i) => <span>{i.applicantName}</span>,
     },
     {
       key: 'stageOrder',

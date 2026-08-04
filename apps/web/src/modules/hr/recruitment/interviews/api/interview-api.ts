@@ -34,9 +34,10 @@ import {
   patchWorkflow,
   post,
   postWorkflow,
+  type QueryParams,
 } from '../../../../../shared/lib/api-client';
 
-export type InterviewListParams = Record<string, string | number | boolean | undefined | null>;
+export type InterviewListParams = QueryParams;
 
 type InterviewEnvelope = Promise<WorkflowEnvelopeDto<InterviewDto>>;
 

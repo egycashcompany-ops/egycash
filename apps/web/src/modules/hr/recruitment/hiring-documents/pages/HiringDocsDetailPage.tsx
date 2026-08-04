@@ -20,6 +20,7 @@ import { DocumentsList } from '../components/DocumentsList';
 import { UploadDocumentDialog } from '../components/UploadDocumentDialog';
 import { DocumentVersionsDialog } from '../components/DocumentVersionsDialog';
 import { useCompleteHiringDocs, useHiringDocs, useHiringDocumentTypes } from '../api/hiring-documents-queries';
+import { RecruitmentStepBar } from '../../shared/RecruitmentStepBar';
 
 type Active =
   | { kind: 'upload' | 'replace' | 'versions'; typeId: string; typeName: LocalizedString }
@@ -80,6 +81,7 @@ export const HiringDocsDetailPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('hiringDocs.detail.title', { code: h.employeeCode })}
+        aside={<RecruitmentStepBar current="employeesReady" />}
         breadcrumbs={[
           { label: t('recruitment.title'), to: '/' },
           { label: t('recruitment.nav.hiringDocuments'), to: '/hiring-documents' },

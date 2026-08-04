@@ -11,6 +11,7 @@ import {
   LocalizedStringSchema,
   PaginationQuerySchema,
   type LocalizedString,
+  listQuery,
 } from '../common/index.js';
 import {
   BulkRequestBaseSchema,
@@ -224,12 +225,12 @@ export type DecideInterview = z.infer<typeof DecideInterviewSchema>;
 
 export const ListInterviewsQuerySchema = PaginationQuerySchema.extend({
   /** Doubles as the stage page's tab (I10): `waiting` lists applicants with no round yet. */
-  status: InterviewStatusSchema.optional(),
-  outcome: InterviewOutcomeSchema.optional(),
+  status: listQuery(InterviewStatusSchema),
+  outcome: listQuery(InterviewOutcomeSchema),
   applicantId: objectId().optional(),
-  stageId: objectId().optional(),
+  stageId: listQuery(objectId()),
   interviewerId: objectId().optional(),
-  branchId: objectId().optional(),
+  branchId: listQuery(objectId()),
   scheduledFrom: z.coerce.date().optional(),
   scheduledTo: z.coerce.date().optional(),
   /** Include rounds belonging to superseded attempts (default false for queues). */

@@ -11,6 +11,19 @@ its entry here in the same PR.
 
 ### Added
 
+- **Two navigation shells, and the choice belongs to the user.** The launchpad is no longer the
+  only shape: the RAIL — a slim strip of module icons beside the module's page panel, the shell
+  ECMS carried before the launcher — is back as an alternative, and a switch in the header moves
+  between them. The choice rides on the account (`MeDto.navLayout`, `PATCH
+  /api/v1/auth/me/preferences`), so it follows the user to any device rather than living in one
+  browser; accounts that predate it answer `launchpad` without a migration. It is
+  presentation-only by construction: the endpoint's subject is always the caller, so it carries
+  no permission, no scope and no audit entry — which navigation shape someone prefers is not an
+  act on the business record. Both shells read the same catalog, derive the current module from
+  the URL, remember the page you last had open in each module, and share their page rows
+  (`nav-rows`), so a row behaves identically wherever it is rendered and the ⌘K palette and
+  pinned favourites are untouched in either.
+
 - **`npm run seed:demo` — sixty synthetic candidates, ten resting at each recruitment stage.** The
   boards, queues and counters had nothing to show on a fresh database. The demo cohorts sit at the
   ID gate, in screening, at the first interview, at the open evaluations, holding a sent offer, and

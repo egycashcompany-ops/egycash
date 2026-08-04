@@ -271,6 +271,14 @@ export const StarIcon = (p: IconProps): JSX.Element => (
   </Base>
 );
 
+/** A page with a navigation column down its start edge — the rail shell, in one glyph. */
+export const SidebarIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <path d="M9 4v16" />
+  </Base>
+);
+
 export const GridIcon = (p: IconProps): JSX.Element => (
   <Base {...p}>
     <rect x="3" y="3" width="7" height="7" rx="1" />

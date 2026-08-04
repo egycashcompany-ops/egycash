@@ -16,6 +16,7 @@ import {
   type SessionDto,
   type TotpEnabledDto,
   type TotpEnrollmentDto,
+  type UpdateMyPreferences,
 } from '@ecms/contracts';
 import { env } from '../../infrastructure/config/env';
 import { logger } from '../../infrastructure/logging/logger';
@@ -657,6 +658,8 @@ class AuthService {
       mustChangePassword: user.security.mustChangePassword ?? false,
       name: { firstName: user.profile.firstName, lastName: user.profile.lastName },
       locale: user.locale,
+      // Accounts predating the preference have no stored value; the launcher is the default.
+      navLayout: user.preferences?.navLayout ?? 'launchpad',
       branchId: user.organization.branchId === null ? null : String(user.organization.branchId),
       employeeId: user.employeeId === null ? null : String(user.employeeId),
       permissions: effective.permissions,
@@ -668,6 +671,11 @@ class AuthService {
 
   async me(ctx: AuthContext): Promise<MeDto> {
     return this.buildMe(await userService.getById(ctx.userId));
+  }
+
+  /** Self-service presentation preferences; returns the whole `me` so the client stays in step. */
+  async updateMyPreferences(ctx: AuthContext, input: UpdateMyPreferences): Promise<MeDto> {
+    return this.buildMe(await userService.updateMyPreferences(ctx.userId, input));
   }
 
   /** First-login gate probe (design 4.2) — reads the cached snapshot the request already warmed. */

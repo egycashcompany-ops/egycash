@@ -1,6 +1,11 @@
 // TanStack Query owns server state (ADR-013); this is the auth feature's api/ surface.
-import { type LoginResponse, type MeDto, type SessionDto } from '@ecms/contracts';
-import { api, del, post, setAccessToken } from '../../shared/lib/api-client';
+import {
+  type LoginResponse,
+  type MeDto,
+  type NavLayout,
+  type SessionDto,
+} from '@ecms/contracts';
+import { api, del, patch, post, setAccessToken } from '../../shared/lib/api-client';
 
 /** Login by ANY enabled identifier — username, employee code, or email (auth design 4.3). */
 export const loginRequest = async (identifier: string, password: string): Promise<LoginResponse> => {
@@ -24,6 +29,13 @@ export const totpEnrollWithChallengeRequest = (
   post('/auth/totp/enroll-challenge', { challengeToken });
 
 export const fetchMe = (): Promise<MeDto> => api('/auth/me');
+
+/**
+ * The user's own presentation preferences. The response is the whole `me`, so the caller can put
+ * the session straight back into the store instead of patching a copy of it.
+ */
+export const updateMyPreferencesRequest = (navLayout: NavLayout): Promise<MeDto> =>
+  patch<MeDto>('/auth/me/preferences', { navLayout });
 
 export const logoutRequest = async (): Promise<void> => {
   await post<void>('/auth/logout', {});

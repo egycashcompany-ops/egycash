@@ -1,8 +1,8 @@
-// The ECMS navigation shell, fourth generation — module SCOPE, not a module index.
-// Choosing a module and navigating inside it are two different questions, so they get two
-// different surfaces (Linear/Notion/Vercel language, kept monochrome):
-//   • A module SWITCHER chip sits at the top: current module + a small anchored popover listing
-//     the modules this user may see. One module ⇒ no popover, just a quiet label.
+// The ECMS navigation shell. Two shells exist and the user picks between them from the header
+// (`me.navLayout`, stored on the account): this file is the LAUNCHPAD shell, `SidebarRail` is the
+// rail. Both read the same catalog, obey the same URL-derived scoping, and share their page rows.
+//   • A module SWITCHER chip sits at the top: current module + the full-screen launcher listing
+//     the modules this user may see. One module ⇒ no launcher, just a quiet label.
 //   • The column below shows ONLY the current module's pages. Nothing from other modules.
 //   • The current module is DERIVED FROM THE URL — never a second source of truth. A deep link,
 //     a ⌘K jump, a pinned favourite from elsewhere, or Back/Forward all re-scope the column
@@ -15,7 +15,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { type Locale, type MyApplicationDto } from '@ecms/contracts';
+import { type Locale } from '@ecms/contracts';
 import { useAppDispatch, useAppSelector } from '../../store';
 import { setSidebarOpen } from '../../store/uiSlice';
 import { useT } from '../localization/useT';
@@ -30,7 +30,6 @@ import {
   GridIcon,
   InboxIcon,
   SearchIcon,
-  StarIcon,
 } from '../../shared/ui/icons';
 import { LoadingState } from '../../shared/ui/states/LoadingState';
 import { ErrorState } from '../../shared/ui/states/ErrorState';
@@ -46,11 +45,8 @@ import {
   type NavApp,
   type NavModule,
 } from '../navigation/nav-model';
-import {
-  navChildrenProviderFor,
-  type NavChild,
-  type NavChildrenProvider,
-} from '../navigation/nav-children';
+import { AppRow, AppWithChildren, StateShell } from './nav-rows';
+import { RailShell } from './SidebarRail';
 
 // ── Persisted chrome state ──────────────────────────────────────────────────
 const PANEL_KEY = 'ecms.nav.panelCollapsed';
@@ -114,173 +110,6 @@ const persistLastPages = (v: Record<string, string>): void => {
   } catch {
     /* ignore */
   }
-};
-
-// ── Row language ────────────────────────────────────────────────────────────
-// Monochrome: transparent by default, a whisper of tint on hover, and the active row a soft
-// neutral tint + darker text. The eye finds "where am I" by weight, not by color.
-const rowClass = ({ isActive }: { isActive: boolean }): string =>
-  cn(
-    'group/item flex h-8 items-center gap-2.5 rounded-md px-2 text-[13px] leading-5 transition-colors',
-    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/40',
-    isActive
-      ? 'bg-slate-900/[0.06] font-medium text-slate-900 dark:bg-white/[0.08] dark:text-slate-100'
-      : 'font-normal text-slate-600 hover:bg-slate-900/[0.04] hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/[0.05] dark:hover:text-slate-100',
-  );
-
-/** A live queue count as a plain right-aligned number — quieter than any badge. Zero is silence. */
-const Count = ({ count, active }: { count: number | null; active: boolean }): JSX.Element | null => {
-  if (count === null || count === 0) return null;
-  return (
-    <span
-      className={cn(
-        'shrink-0 text-[11px] tabular-nums',
-        active ? 'text-slate-500 dark:text-slate-400' : 'text-slate-400 dark:text-slate-500',
-      )}
-    >
-      {count > 99 ? '99+' : count}
-    </span>
-  );
-};
-
-/** A dynamic stage under its family app (RW16) — its own route, its own live count. */
-const ChildRow = ({
-  child,
-  onNavigate,
-  end = false,
-}: {
-  child: NavChild;
-  onNavigate?: (() => void) | undefined;
-  end?: boolean;
-}): JSX.Element => {
-  const locale = useAppSelector((state): Locale => state.locale.locale);
-  return (
-    <NavLink to={child.route} onClick={onNavigate} end={end} className={rowClass}>
-      {({ isActive }) => (
-        <>
-          <span className="ms-[26px] min-w-0 flex-1 truncate">{localized(child.label, locale)}</span>
-          <Count count={child.count} active={isActive} />
-        </>
-      )}
-    </NavLink>
-  );
-};
-
-const AppRow = ({
-  app,
-  onNavigate,
-  count = null,
-  showPinAtRest = true,
-  end = false,
-}: {
-  app: MyApplicationDto;
-  onNavigate?: (() => void) | undefined;
-  /** Live queue count published by the module's nav provider, if it has one (RW16). */
-  count?: number | null;
-  /** False inside the Pinned section, where a filled star on every row states the obvious. */
-  showPinAtRest?: boolean;
-  /** Exact-match highlighting — set when another row lives under this row's route. */
-  end?: boolean;
-}): JSX.Element => {
-  const t = useT();
-  const locale = useAppSelector((state): Locale => state.locale.locale);
-  const { isPinned, togglePin } = useNavPrefs();
-  const Icon = resolveNavIcon(app.icon, FileIcon);
-  const pinned = isPinned(app.id);
-  return (
-    <NavLink to={app.route} onClick={onNavigate} end={end} className={rowClass}>
-      {({ isActive }) => (
-        <>
-          <Icon
-            className={cn(
-              'h-4 w-4 shrink-0',
-              isActive ? 'text-slate-700 dark:text-slate-200' : 'text-slate-400 dark:text-slate-500',
-            )}
-          />
-          <span className="min-w-0 flex-1 truncate">{localized(app.name, locale)}</span>
-          <Count count={count} active={isActive} />
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              togglePin(app.id);
-            }}
-            aria-label={t(pinned ? 'nav.unpin' : 'nav.pin')}
-            className={cn(
-              'grid h-5 w-5 shrink-0 place-items-center rounded transition-colors',
-              'text-slate-300 hover:text-slate-600 dark:text-slate-600 dark:hover:text-slate-300',
-              pinned && showPinAtRest
-                ? 'opacity-100'
-                : 'opacity-0 focus:opacity-100 group-hover/item:opacity-100',
-            )}
-          >
-            <StarIcon className={cn('h-3.5 w-3.5', pinned && 'fill-current')} />
-          </button>
-        </>
-      )}
-    </NavLink>
-  );
-};
-
-/**
- * An app whose module publishes dynamic children for its route (RW16). A provider is a hook, so
- * it lives in its OWN component that always calls it — never behind a condition.
- */
-const DynamicAppRow = ({
-  app,
-  provider,
-  onNavigate,
-  end,
-}: {
-  app: MyApplicationDto;
-  provider: NavChildrenProvider;
-  onNavigate?: (() => void) | undefined;
-  end: boolean;
-}): JSX.Element => {
-  const { count, children } = provider();
-  // A family app whose stages live under its own route must match exactly, or it stays lit
-  // while the user is inside one of its stages.
-  const childRoutes = children.map((c) => c.route);
-  return (
-    <li>
-      <AppRow app={app} onNavigate={onNavigate} count={count} end={end || children.length > 0} />
-      {children.length > 0 && (
-        <ul className="space-y-px">
-          {children.map((c) => (
-            <li key={c.key}>
-              <ChildRow
-                child={c}
-                onNavigate={onNavigate}
-                end={requiresExactMatch(c.route, childRoutes)}
-              />
-            </li>
-          ))}
-        </ul>
-      )}
-    </li>
-  );
-};
-
-/** Picks the dynamic or the plain row. The choice is stable for a given app, so hooks are too. */
-const AppWithChildren = ({
-  app,
-  onNavigate,
-  end,
-}: {
-  app: MyApplicationDto;
-  onNavigate?: (() => void) | undefined;
-  end: boolean;
-}): JSX.Element => {
-  const provider = navChildrenProviderFor(app.route);
-  if (provider === undefined) {
-    return (
-      <li>
-        <AppRow app={app} onNavigate={onNavigate} end={end} />
-      </li>
-    );
-  }
-  return <DynamicAppRow app={app} provider={provider} onNavigate={onNavigate} end={end} />;
 };
 
 // ── Module Launchpad ────────────────────────────────────────────────────────
@@ -977,12 +806,6 @@ const IconStrip = ({
   );
 };
 
-const StateShell = ({ children }: { children: JSX.Element }): JSX.Element => (
-  <div className="flex w-60 shrink-0 flex-col border-e border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900">
-    <div className="flex flex-1 items-center justify-center overflow-y-auto">{children}</div>
-  </div>
-);
-
 // ── The shell ───────────────────────────────────────────────────────────────
 const NavShell = ({
   collapsible = true,
@@ -1181,15 +1004,19 @@ export const Sidebar = (): JSX.Element => {
   const t = useT();
   const dispatch = useAppDispatch();
   const open = useAppSelector((state) => state.ui.sidebarOpen);
+  // The user's own choice of shell, carried on the account (`MeDto.navLayout`). Both shells are
+  // the same navigation over the same permissions — only the shape differs.
+  const layout = useAppSelector((state) => state.auth.me?.navLayout ?? 'launchpad');
   const close = (): void => {
     dispatch(setSidebarOpen(false));
   };
+  const Shell = layout === 'rail' ? RailShell : NavShell;
 
   return (
     <>
       {/* Desktop */}
       <div className="hidden h-full shrink-0 lg:flex">
-        <NavShell />
+        <Shell />
       </div>
 
       {/* Mobile drawer */}
@@ -1207,10 +1034,13 @@ export const Sidebar = (): JSX.Element => {
           aria-modal="true"
           aria-label={t('common.menu')}
         >
-          {/* The drawer's shell stays mounted while closed, so it must not also answer Alt+M —
-              one chord, one launchpad. Opening the launchpad closes the drawer behind it rather
-              than stacking two dimmed layers. */}
-          <NavShell collapsible={false} shortcuts={false} onNavigate={close} />
+          {layout === 'rail' ? (
+            <RailShell collapsible={false} onNavigate={close} />
+          ) : (
+            /* The drawer's shell stays mounted while closed, so it must not also answer Alt+M —
+               one chord, one launchpad. */
+            <NavShell collapsible={false} shortcuts={false} onNavigate={close} />
+          )}
           <button
             type="button"
             onClick={close}

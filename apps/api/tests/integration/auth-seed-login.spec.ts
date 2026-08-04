@@ -130,4 +130,47 @@ describe('seed → password login (regression)', () => {
     const result = await doLogin(env.SEED_ADMIN_EMAIL, 'Definitely#Wrong1');
     expect(result.status).toBe(401);
   });
+
+  // The navigation shell is a personal preference: it must survive on the account, answer with a
+  // default for accounts that predate it, and refuse anything outside the two known shells.
+  describe('navigation preference (self-service)', () => {
+    const patch = async (token: string, body: unknown) =>
+      request(app)
+        .patch('/api/v1/auth/me/preferences')
+        .set('Authorization', `Bearer ${token}`)
+        .send(body);
+
+    it('defaults to the launchpad, persists a change, and survives a fresh /me', async () => {
+      const token = (await doLogin(env.SEED_ADMIN_EMAIL, env.SEED_ADMIN_PASSWORD)).body.data
+        ?.accessToken;
+      expect(token).toBeTruthy();
+      const before = await request(app)
+        .get('/api/v1/auth/me')
+        .set('Authorization', `Bearer ${token ?? ''}`);
+      expect((before.body as { data: MeDto }).data.navLayout).toBe('launchpad');
+
+      const changed = await patch(token ?? '', { navLayout: 'rail' });
+      expect(changed.status).toBe(200);
+      // The response is the whole `me`, so the client never has to guess what else moved.
+      expect((changed.body as { data: MeDto }).data.navLayout).toBe('rail');
+
+      const after = await request(app)
+        .get('/api/v1/auth/me')
+        .set('Authorization', `Bearer ${token ?? ''}`);
+      expect((after.body as { data: MeDto }).data.navLayout).toBe('rail');
+
+      // Put it back so the rest of the suite sees the shipped default.
+      expect((await patch(token ?? '', { navLayout: 'launchpad' })).status).toBe(200);
+    });
+
+    it('rejects an unknown shell and refuses an unauthenticated caller', async () => {
+      const token = (await doLogin(env.SEED_ADMIN_EMAIL, env.SEED_ADMIN_PASSWORD)).body.data
+        ?.accessToken;
+      expect((await patch(token ?? '', { navLayout: 'metro' })).status).toBe(400);
+      expect((await patch(token ?? '', { navLayout: 'rail', isPrivileged: true })).status).toBe(400);
+      expect(
+        (await request(app).patch('/api/v1/auth/me/preferences').send({ navLayout: 'rail' })).status,
+      ).toBe(401);
+    });
+  });
 });

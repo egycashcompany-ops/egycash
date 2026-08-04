@@ -12,6 +12,7 @@ import {
   SessionIdParamSchema,
   TotpChallengeSchema,
   TotpVerifySchema,
+  UpdateMyPreferencesSchema,
 } from './auth.validation';
 import {
   activate,
@@ -27,6 +28,7 @@ import {
   totpEnroll,
   totpEnrollWithChallenge,
   totpVerify,
+  updateMyPreferences,
 } from './auth.controller';
 import { authenticate } from './auth.middleware';
 
@@ -67,6 +69,14 @@ export const buildAuthRouter = (): Router => {
 
   router.post('/logout', authenticate, asyncHandler(logout));
   router.get('/me', authenticate, asyncHandler(me));
+  // Self-service by construction: the subject is always the caller, so there is no
+  // permission to check and nothing to scope.
+  router.patch(
+    '/me/preferences',
+    authenticate,
+    validate({ body: UpdateMyPreferencesSchema }),
+    asyncHandler(updateMyPreferences),
+  );
   router.post(
     '/password/change',
     authenticate,

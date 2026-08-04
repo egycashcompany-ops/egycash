@@ -11,6 +11,21 @@ export const PersonNameSchema = z.object({
 });
 export type PersonName = z.infer<typeof PersonNameSchema>;
 
+// ── Digits ──────────────────────────────────────────────────────────────────
+/**
+ * Fold Arabic-Indic (٠-٩) and extended Arabic-Indic (۰-۹) digits to ASCII.
+ *
+ * An Arabic keyboard produces ٠١٠ for what its user reads as 010. Every numeric rule below
+ * folds first, so a number typed in Arabic is the same number as one typed in English rather
+ * than an invalid one — and what gets STORED is always ASCII, whichever was typed.
+ */
+export const asciiDigits = (value: string): string =>
+  value.replace(/[٠-٩۰-۹]/g, (ch) => {
+    const cp = ch.codePointAt(0) ?? 0;
+    const base = cp >= 0x06f0 ? 0x06f0 : 0x0660;
+    return String(cp - base);
+  });
+
 // ── PhoneNumber (Egyptian mobile) ───────────────────────────────────────────
 // Accepts local (01XXXXXXXXX) or international (+201XXXXXXXXX / 00201XXXXXXXXX)
 // and normalizes to the local 11-digit form.
@@ -18,7 +33,9 @@ export type PersonName = z.infer<typeof PersonNameSchema>;
 const EG_MOBILE_LOCAL = /^01[0125]\d{8}$/;
 
 export const normalizeEgyptianPhone = (raw: string): string | null => {
-  const digits = raw.replace(/[\s\-()]/g, '');
+  // Separators people actually type — spaces, dashes, brackets, dots — plus the Arabic comma-like
+  // marks a copied contact can carry. Cleaned BEFORE the shape is judged, never after.
+  const digits = asciiDigits(raw).replace(/[\s\-().،]/g, '');
   const local = digits.replace(/^(\+20|0020)/, '0');
   return EG_MOBILE_LOCAL.test(local) ? local : null;
 };
@@ -91,7 +108,8 @@ export interface NationalIdParts {
 }
 
 /** Structural validation + decoding of an Egyptian national ID. Returns null when invalid. */
-export const parseNationalId = (value: string): NationalIdParts | null => {
+export const parseNationalId = (raw: string): NationalIdParts | null => {
+  const value = asciiDigits(raw.trim());
   if (!/^\d{14}$/.test(value)) return null;
 
   const century = value[0];
@@ -124,9 +142,14 @@ export const parseNationalId = (value: string): NationalIdParts | null => {
   };
 };
 
-export const NationalIdSchema = z.string().refine((value) => parseNationalId(value) !== null, {
-  message: 'invalid Egyptian national ID',
-});
+// Folds to ASCII before judging AND before storing: a number typed on an Arabic keyboard is the
+// same number, and the record must never keep two encodings of one identity.
+export const NationalIdSchema = z
+  .string()
+  .transform((value) => asciiDigits(value.trim()))
+  .refine((value) => parseNationalId(value) !== null, {
+    message: 'invalid Egyptian national ID',
+  });
 export type NationalId = z.infer<typeof NationalIdSchema>;
 
 /** Default masking for list views (Security Architecture §3): 298*******4567 */

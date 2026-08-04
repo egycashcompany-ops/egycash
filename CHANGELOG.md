@@ -11,6 +11,27 @@ its entry here in the same PR.
 
 ### Added
 
+- **The applicant form checks its fields as you leave them, and knows Egyptian geography.** A
+  mistake used to be discovered by the server after a failed save and reported as a list at the
+  bottom of the page; now the field that is wrong says so, in the reader's language, the moment
+  focus leaves it — a red outline plus the reason underneath — and saving jumps to the first bad
+  field instead of scrolling you back to hunt for it. The rules are real ones: the Arabic name
+  takes Arabic letters only (the Arabic-Indic digits ٠-٩ are rejected too, which the obvious
+  `\u0600-\u06FF` range would have let through), the Latin name takes Latin letters only, a
+  National ID is decoded rather than counted, a mobile must be 11 digits on 010/011/012/015, an
+  email needs a dotted domain, and a postal code is five digits. Governorate and city are now
+  chosen, not typed: all 27 governorates with their cities, keyed to the National-ID governorate
+  code so a decoded number, an OCR read and a hand-picked value resolve to one record; picking the
+  governorate scopes the city list, and changing it clears a city that no longer belongs. The
+  search behind those pickers folds hamza forms, ta marbuta and diacritics, so "الاسماعيليه"
+  finds "الإسماعيلية". Every predicate lives in `@ecms/contracts` and is what the API validates
+  with, so the form cannot accept something the server will reject. Numbers are cleaned before
+  they are judged and stored in the cleaned form: separators and international prefixes come off a
+  phone, and Arabic-Indic digits (٠-٩) fold to ASCII for phones, National IDs and postal codes —
+  an Arabic keyboard produces ٠١٠ for what its user reads as 010, which used to be rejected
+  outright. Create and edit run the identical rules; a record whose governorate or city predates
+  the catalog keeps them rather than being blanked by the act of being opened.
+
 - **Two navigation shells, and the choice belongs to the user.** The launchpad is no longer the
   only shape: the RAIL — a slim strip of module icons beside the module's page panel, the shell
   ECMS carried before the launcher — is back as an alternative, and a switch in the header moves
@@ -96,6 +117,15 @@ its entry here in the same PR.
   `search` parameter these endpoints already support — and lists the surfaces still to convert.
 
 ### Changed
+
+- **Applicant identity fields say what they mean.** Religion is a two-value list (مسلم / مسيحي)
+  written in Arabic — the spelling the National-ID card carries and the OCR reads back, so a
+  scanned card and a hand-picked value are the same string rather than two encodings of it; a
+  legacy value the list does not carry stays selectable rather than silently becoming
+  "unspecified" on the next save. Nationality is stored canonically (`Egyptian`) and rendered
+  "مصري" to an Arabic reader, as are the governorates the National ID decodes to. The military
+  section no longer asks for a certificate reference. Driving licences and certificates left the
+  card they used to share, which read as though one were a kind of the other.
 
 - **Modules are now chosen from a Launchpad — the app steps back and a launcher takes over.**
   The switcher's popover is replaced by a full-viewport launcher in the SAP Fiori / Azure /

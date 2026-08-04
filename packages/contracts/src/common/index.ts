@@ -107,3 +107,5 @@ export const EntityRefSchema = z.object({
 export type EntityRef = z.infer<typeof EntityRefSchema>;
 
 export * from './value-objects.js';
+export * from './field-rules.js';
+export * from './egypt-geography.js';

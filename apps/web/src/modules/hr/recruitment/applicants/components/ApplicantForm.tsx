@@ -1,24 +1,34 @@
 // Applicant create/edit form (manual entry + OCR assist). Reuses the shared form primitives.
-// Client-side checks cover the always-required fields; the server remains the authoritative
-// validator and its field errors are surfaced in a summary. Builds a RegisterApplicant (create)
-// or UpdateApplicant (edit) payload; identity number / nationality are create-only (edits to the
-// National ID go through the dedicated verify-identity flow).
+//
+// Validation is LIVE: a field is checked when you leave it, so the mistake is named next to the
+// field that made it rather than in a list at the bottom after a failed save. Saving re-checks
+// everything and jumps to the first bad field. The rules live in `applicant-validation.ts` and
+// come from `@ecms/contracts` — the same predicates the API validates with, so the form never
+// accepts something the server will reject.
+//
+// Builds a RegisterApplicant (create) or UpdateApplicant (edit) payload; identity number /
+// nationality are create-only (edits to the National ID go through the verify-identity flow).
 import { useState } from 'react';
 import {
   APPLICANT_INTAKE_CHANNELS,
   CONTACT_CHANNELS,
   EDUCATION_LEVELS,
+  EGYPT_GOVERNORATES,
   MARITAL_STATUSES,
   MILITARY_STATUSES,
+  NATIONALITY_EGYPTIAN,
+  NATIONALITY_LABELS,
+  RELIGIONS,
+  asciiDigits,
+  citiesOfGovernorate,
+  findGovernorate,
+  normalizeEgyptianPhone,
+  normalizeReligion,
   parseNationalId,
   type Address,
   type ApplicantDto,
   type ApplicantIntakeChannel,
   type ApplicantSourceDto,
-  type ContactChannel,
-  type EducationLevel,
-  type MaritalStatus,
-  type MilitaryStatus,
   type RegisterApplicant,
   type UpdateApplicant,
 } from '@ecms/contracts';
@@ -28,74 +38,39 @@ import { localized, formatDate } from '../../../../../shared/lib/format';
 import { validationDetails } from '../../../../../shared/lib/errors';
 import { Card, CardBody, CardHeader } from '../../../../../shared/ui/Card';
 import { Button } from '../../../../../shared/ui/Button';
+import { Combobox } from '../../../../../shared/ui/Combobox';
 import { Field, Input, Select, Checkbox, Form, FormActions } from '../../../../../shared/ui/form';
 import { PlusIcon, TrashIcon } from '../../../../../shared/ui/icons';
 import { transliterateArabicName, type NationalIdReviewData } from '../../../../../shared/national-id';
 import { ApplicantNationalIdOcr } from './ApplicantNationalIdOcr';
 import { ReferenceField } from './RefPickers';
+import {
+  firstErrorField,
+  validateField,
+  validateForm,
+  type AddressForm,
+  type FieldErrors,
+  type FieldName,
+  type FormState,
+} from './applicant-validation';
 
-interface AddressForm {
-  line1: string;
-  line2: string;
-  city: string;
-  governorate: string;
-  postalCode: string;
-}
-const emptyAddress = (): AddressForm => ({ line1: '', line2: '', city: '', governorate: '', postalCode: '' });
+const emptyAddress = (): AddressForm => ({
+  line1: '',
+  line2: '',
+  city: '',
+  governorate: '',
+  postalCode: '',
+});
 
-interface ExperienceRow {
-  employer: string;
-  position: string;
-  from: string;
-  to: string;
-  leavingReason: string;
-}
-interface LicenseRow {
-  class: string;
-  expiry: string;
-}
-interface ReferenceRow {
-  name: string;
-  relationship: string;
-  phone: string;
-}
+const GOVERNORATE_NAMES = EGYPT_GOVERNORATES.map((g) => g.ar);
 
-interface FormState {
-  sourceId: string;
-  intakeChannel: ApplicantIntakeChannel;
-  fullNameAr: string;
-  fullNameEn: string;
-  nationalId: string;
-  nationality: string;
-  maritalStatus: '' | MaritalStatus;
-  religion: string;
-  nationalIdExpiry: string;
-  dependentsCount: string;
-  primaryPhone: string;
-  secondaryPhone: string;
-  email: string;
-  preferredContactChannel: '' | ContactChannel;
-  officialAddress: AddressForm;
-  currentAddress: AddressForm;
-  expectedSalaryAmount: string;
-  expectedSalaryCurrency: string;
-  earliestStartDate: string;
-  willingToRelocate: boolean;
-  willingToTravel: boolean;
-  willingToShiftWork: boolean;
-  educationLevel: '' | EducationLevel;
-  educationInstitution: string;
-  educationSpecialization: string;
-  educationGraduationYear: string;
-  educationGrade: string;
-  militaryStatus: '' | MilitaryStatus;
-  militaryCertificateRef: string;
-  militaryCompletedAt: string;
-  experience: ExperienceRow[];
-  drivingLicenses: LicenseRow[];
-  references: ReferenceRow[];
-  certifications: string;
-}
+/** A governorate spelled any way the data might carry it, rendered as the catalog spells it.
+ *  Empty when the catalog does not know it — callers decide what an unknown place means. */
+const toCatalogGovernorate = (value: string): string => findGovernorate(value)?.ar ?? '';
+
+/** Reading a STORED address: an unrecognised governorate is kept verbatim. A record written
+ *  before the catalog existed must not be blanked by the act of opening it for editing. */
+const storedGovernorate = (value: string): string => toCatalogGovernorate(value) || value.trim();
 
 const fromDto = (a: ApplicantDto): FormState => ({
   sourceId: a.sourceId,
@@ -112,8 +87,26 @@ const fromDto = (a: ApplicantDto): FormState => ({
   secondaryPhone: a.contact.secondaryPhone ?? '',
   email: a.contact.email ?? '',
   preferredContactChannel: a.contact.preferredContactChannel ?? '',
-  officialAddress: a.officialAddress === null ? emptyAddress() : { ...emptyAddress(), ...a.officialAddress, line2: a.officialAddress.line2 ?? '', postalCode: a.officialAddress.postalCode ?? '' },
-  currentAddress: a.currentAddress === null ? emptyAddress() : { ...emptyAddress(), ...a.currentAddress, line2: a.currentAddress.line2 ?? '', postalCode: a.currentAddress.postalCode ?? '' },
+  officialAddress:
+    a.officialAddress === null
+      ? emptyAddress()
+      : {
+          ...emptyAddress(),
+          ...a.officialAddress,
+          governorate: storedGovernorate(a.officialAddress.governorate),
+          line2: a.officialAddress.line2 ?? '',
+          postalCode: a.officialAddress.postalCode ?? '',
+        },
+  currentAddress:
+    a.currentAddress === null
+      ? emptyAddress()
+      : {
+          ...emptyAddress(),
+          ...a.currentAddress,
+          governorate: storedGovernorate(a.currentAddress.governorate),
+          line2: a.currentAddress.line2 ?? '',
+          postalCode: a.currentAddress.postalCode ?? '',
+        },
   expectedSalaryAmount: a.expectedSalary === null ? '' : String(a.expectedSalary.amount),
   expectedSalaryCurrency: a.expectedSalary?.currency ?? 'EGP',
   earliestStartDate: a.earliestStartDate === null ? '' : a.earliestStartDate.slice(0, 10),
@@ -123,10 +116,10 @@ const fromDto = (a: ApplicantDto): FormState => ({
   educationLevel: a.education?.level ?? '',
   educationInstitution: a.education?.institution ?? '',
   educationSpecialization: a.education?.specialization ?? '',
-  educationGraduationYear: a.education?.graduationYear === undefined ? '' : String(a.education.graduationYear),
+  educationGraduationYear:
+    a.education?.graduationYear === undefined ? '' : String(a.education.graduationYear),
   educationGrade: a.education?.grade ?? '',
   militaryStatus: a.military?.status ?? '',
-  militaryCertificateRef: a.military?.certificateRef ?? '',
   militaryCompletedAt: a.military?.completedAt === undefined ? '' : a.military.completedAt.slice(0, 10),
   experience: a.experience.map((e) => ({
     employer: e.employer,
@@ -135,8 +128,15 @@ const fromDto = (a: ApplicantDto): FormState => ({
     to: e.to === undefined ? '' : e.to.slice(0, 10),
     leavingReason: e.leavingReason ?? '',
   })),
-  drivingLicenses: a.drivingLicenses.map((l) => ({ class: l.class, expiry: l.expiry === undefined ? '' : l.expiry.slice(0, 10) })),
-  references: a.references.map((r) => ({ name: r.name, relationship: r.relationship ?? '', phone: r.phone ?? '' })),
+  drivingLicenses: a.drivingLicenses.map((l) => ({
+    class: l.class,
+    expiry: l.expiry === undefined ? '' : l.expiry.slice(0, 10),
+  })),
+  references: a.references.map((r) => ({
+    name: r.name,
+    relationship: r.relationship ?? '',
+    phone: r.phone ?? '',
+  })),
   certifications: a.certifications.join(', '),
 });
 
@@ -146,7 +146,7 @@ const emptyForm = (): FormState => ({
   fullNameAr: '',
   fullNameEn: '',
   nationalId: '',
-  nationality: 'Egyptian',
+  nationality: NATIONALITY_EGYPTIAN,
   maritalStatus: '',
   religion: '',
   nationalIdExpiry: '',
@@ -169,12 +169,11 @@ const emptyForm = (): FormState => ({
   educationGraduationYear: '',
   educationGrade: '',
   militaryStatus: '',
-  militaryCertificateRef: '',
   militaryCompletedAt: '',
   experience: [],
   drivingLicenses: [],
   references: [],
-  certifications: [].join(''),
+  certifications: '',
 });
 
 const str = (v: string): string | undefined => (v.trim() === '' ? undefined : v.trim());
@@ -196,14 +195,27 @@ const buildCommon = (f: FormState): Record<string, unknown> => {
   const current = buildAddress(f.currentAddress);
   const experience = f.experience
     .filter((e) => e.employer.trim() !== '')
-    .map((e) => ({ employer: e.employer.trim(), ...(str(e.position) ? { position: e.position.trim() } : {}), ...(str(e.from) ? { from: e.from } : {}), ...(str(e.to) ? { to: e.to } : {}), ...(str(e.leavingReason) ? { leavingReason: e.leavingReason.trim() } : {}) }));
+    .map((e) => ({
+      employer: e.employer.trim(),
+      ...(str(e.position) ? { position: e.position.trim() } : {}),
+      ...(str(e.from) ? { from: e.from } : {}),
+      ...(str(e.to) ? { to: e.to } : {}),
+      ...(str(e.leavingReason) ? { leavingReason: e.leavingReason.trim() } : {}),
+    }));
   const drivingLicenses = f.drivingLicenses
     .filter((l) => l.class.trim() !== '')
     .map((l) => ({ class: l.class.trim(), ...(str(l.expiry) ? { expiry: l.expiry } : {}) }));
   const references = f.references
     .filter((r) => r.name.trim() !== '')
-    .map((r) => ({ name: r.name.trim(), ...(str(r.relationship) ? { relationship: r.relationship.trim() } : {}), ...(str(r.phone) ? { phone: r.phone.trim() } : {}) }));
-  const certifications = f.certifications.split(',').map((c) => c.trim()).filter((c) => c !== '');
+    .map((r) => ({
+      name: r.name.trim(),
+      ...(str(r.relationship) ? { relationship: r.relationship.trim() } : {}),
+      ...(str(r.phone) ? { phone: r.phone.trim() } : {}),
+    }));
+  const certifications = f.certifications
+    .split(',')
+    .map((c) => c.trim())
+    .filter((c) => c !== '');
   return {
     fullNameAr: f.fullNameAr.trim(),
     ...(str(f.fullNameEn) ? { fullNameEn: f.fullNameEn.trim() } : {}),
@@ -215,13 +227,36 @@ const buildCommon = (f: FormState): Record<string, unknown> => {
     },
     ...(official === undefined ? {} : { officialAddress: official }),
     ...(current === undefined ? {} : { currentAddress: current }),
-    ...(num(f.expectedSalaryAmount) === undefined ? {} : { expectedSalary: { amount: num(f.expectedSalaryAmount), currency: f.expectedSalaryCurrency } }),
+    ...(num(f.expectedSalaryAmount) === undefined
+      ? {}
+      : { expectedSalary: { amount: num(f.expectedSalaryAmount), currency: f.expectedSalaryCurrency } }),
     ...(str(f.earliestStartDate) ? { earliestStartDate: f.earliestStartDate } : {}),
     willingToRelocate: f.willingToRelocate,
     willingToTravel: f.willingToTravel,
     willingToShiftWork: f.willingToShiftWork,
-    ...(f.educationLevel === '' ? {} : { education: { level: f.educationLevel, ...(str(f.educationInstitution) ? { institution: f.educationInstitution.trim() } : {}), ...(str(f.educationSpecialization) ? { specialization: f.educationSpecialization.trim() } : {}), ...(num(f.educationGraduationYear) === undefined ? {} : { graduationYear: num(f.educationGraduationYear) }), ...(str(f.educationGrade) ? { grade: f.educationGrade.trim() } : {}) } }),
-    ...(f.militaryStatus === '' ? {} : { military: { status: f.militaryStatus, ...(str(f.militaryCertificateRef) ? { certificateRef: f.militaryCertificateRef.trim() } : {}), ...(str(f.militaryCompletedAt) ? { completedAt: f.militaryCompletedAt } : {}) } }),
+    ...(f.educationLevel === ''
+      ? {}
+      : {
+          education: {
+            level: f.educationLevel,
+            ...(str(f.educationInstitution) ? { institution: f.educationInstitution.trim() } : {}),
+            ...(str(f.educationSpecialization)
+              ? { specialization: f.educationSpecialization.trim() }
+              : {}),
+            ...(num(f.educationGraduationYear) === undefined
+              ? {}
+              : { graduationYear: num(f.educationGraduationYear) }),
+            ...(str(f.educationGrade) ? { grade: f.educationGrade.trim() } : {}),
+          },
+        }),
+    ...(f.militaryStatus === ''
+      ? {}
+      : {
+          military: {
+            status: f.militaryStatus,
+            ...(str(f.militaryCompletedAt) ? { completedAt: f.militaryCompletedAt } : {}),
+          },
+        }),
     ...(experience.length > 0 ? { experience } : {}),
     ...(drivingLicenses.length > 0 ? { drivingLicenses } : {}),
     ...(references.length > 0 ? { references } : {}),
@@ -253,13 +288,49 @@ export const ApplicantForm = ({
   const locale = useAppSelector((state) => state.locale.locale);
   const [f, setF] = useState<FormState>(initial === undefined ? emptyForm() : fromDto(initial));
   const [errors, setErrors] = useState<{ field?: string; message: string }[]>([]);
-  const [clientErr, setClientErr] = useState<Record<string, string>>({});
+  const [fieldErr, setFieldErr] = useState<FieldErrors>({});
 
   const [extracted, setExtracted] = useState(false);
 
   const set = (patch: Partial<FormState>): void => setF((prev) => ({ ...prev, ...patch }));
   const setAddr = (which: 'officialAddress' | 'currentAddress', patch: Partial<AddressForm>): void =>
     setF((prev) => ({ ...prev, [which]: { ...prev[which], ...patch } }));
+
+  /**
+   * Tidy a phone the moment its field is left: "+20 10 1234-5678" and "٠١٠١٢٣٤٥٦٧٨" are the same
+   * number as "01012345678", and the server stores the tidy form either way — so the field should
+   * show what will actually be saved rather than leave the two disagreeing.
+   */
+  const tidyPhone = (which: 'primaryPhone' | 'secondaryPhone'): void =>
+    setF((prev) => {
+      const clean = normalizeEgyptianPhone(prev[which]);
+      return clean === null || clean === prev[which] ? prev : { ...prev, [which]: clean };
+    });
+
+  /** Check one field and keep — or clear — its message. Called when the field loses focus. */
+  const check = (name: FieldName, value: string): void =>
+    setFieldErr((prev) => {
+      const problem = validateField(name, value, mode);
+      if (problem === prev[name]) return prev;
+      const next = { ...prev };
+      if (problem === undefined) delete next[name];
+      else next[name] = problem;
+      return next;
+    });
+
+  /** Wire a text field: id for the jump-to-error scroll, red ring + message, on-blur check. */
+  const bind = (
+    name: FieldName,
+    value: string,
+  ): { id: string; error: boolean; onBlur: () => void } => ({
+    id: name,
+    error: fieldErr[name] !== undefined,
+    onBlur: () => check(name, value),
+  });
+  const msg = (name: FieldName): string | undefined => {
+    const key = fieldErr[name];
+    return key === undefined ? undefined : t(key);
+  };
 
   // Deterministic National-ID derivation (birth date / gender / governorate) — computed from the
   // number, never OCR'd. Recomputes live as the number is typed or extracted (§ value-objects).
@@ -278,33 +349,41 @@ export const ApplicantForm = ({
    *  Reviewed values win; empty fields leave the current form value untouched. */
   const applyReview = (r: NationalIdReviewData): void => {
     setExtracted(true);
-    setF((prev) => ({
-      ...prev,
-      fullNameAr: r.fullNameAr.trim() === '' ? prev.fullNameAr : r.fullNameAr.trim(),
-      fullNameEn: r.fullNameEn.trim() === '' ? prev.fullNameEn : r.fullNameEn.trim(),
-      nationalId: r.nationalId.trim() === '' ? prev.nationalId : r.nationalId.trim(),
-      ...(r.maritalStatus === '' ? {} : { maritalStatus: r.maritalStatus }),
-      religion: r.religion.trim() === '' ? prev.religion : r.religion.trim(),
-      nationalIdExpiry: r.nationalIdExpiry === '' ? prev.nationalIdExpiry : r.nationalIdExpiry,
-      officialAddress: {
-        ...prev.officialAddress,
-        line1: r.addressLine.trim() === '' ? prev.officialAddress.line1 : r.addressLine.trim(),
-        city: r.city.trim() === '' ? prev.officialAddress.city : r.city.trim(),
-        // Governorate is derived from the number (not OCR'd).
-        governorate: r.governorate === '' ? prev.officialAddress.governorate : r.governorate,
-      },
-    }));
+    setF((prev) => {
+      // The card's governorate arrives as free text (or as an English name derived from the
+      // number); resolve it to the catalog so the city list below it is the right one.
+      const governorate = toCatalogGovernorate(r.governorate) || prev.officialAddress.governorate;
+      const city = r.city.trim();
+      return {
+        ...prev,
+        fullNameAr: r.fullNameAr.trim() === '' ? prev.fullNameAr : r.fullNameAr.trim(),
+        fullNameEn: r.fullNameEn.trim() === '' ? prev.fullNameEn : r.fullNameEn.trim(),
+        nationalId: r.nationalId.trim() === '' ? prev.nationalId : r.nationalId.trim(),
+        ...(r.maritalStatus === '' ? {} : { maritalStatus: r.maritalStatus }),
+        religion: normalizeReligion(r.religion) ?? prev.religion,
+        nationalIdExpiry: r.nationalIdExpiry === '' ? prev.nationalIdExpiry : r.nationalIdExpiry,
+        officialAddress: {
+          ...prev.officialAddress,
+          line1: r.addressLine.trim() === '' ? prev.officialAddress.line1 : r.addressLine.trim(),
+          governorate,
+          // Only keep the read city when the catalog agrees it belongs to that governorate;
+          // otherwise leave the picker empty rather than store a place that does not exist.
+          city: citiesOfGovernorate(governorate).includes(city) ? city : prev.officialAddress.city,
+        },
+      };
+    });
   };
 
   const submit = async (): Promise<void> => {
-    const ce: Record<string, string> = {};
-    if (f.fullNameAr.trim().length < 2) ce.fullNameAr = t('applicants.form.required');
-    if (f.primaryPhone.trim() === '') ce.primaryPhone = t('applicants.form.required');
-    if (mode === 'create') {
-      if (f.sourceId === '') ce.sourceId = t('applicants.form.required');
+    const found = validateForm(f, mode);
+    setFieldErr(found);
+    const first = firstErrorField(found);
+    if (first !== undefined) {
+      const el = document.getElementById(first);
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      (el as HTMLElement | null)?.focus?.({ preventScroll: true });
+      return;
     }
-    setClientErr(ce);
-    if (Object.keys(ce).length > 0) return;
 
     const common = buildCommon(f);
     let body: RegisterApplicant | UpdateApplicant;
@@ -313,7 +392,7 @@ export const ApplicantForm = ({
         fullNameAr: f.fullNameAr.trim(),
         ...(str(f.fullNameEn) ? { fullNameEn: f.fullNameEn.trim() } : {}),
         ...(str(f.nationalId) ? { nationalId: f.nationalId.trim() } : {}),
-        nationality: f.nationality.trim() === '' ? 'Egyptian' : f.nationality.trim(),
+        nationality: f.nationality.trim() === '' ? NATIONALITY_EGYPTIAN : f.nationality.trim(),
         ...(f.maritalStatus === '' ? {} : { maritalStatus: f.maritalStatus }),
         ...(str(f.religion) ? { religion: f.religion.trim() } : {}),
         ...(str(f.nationalIdExpiry) ? { nationalIdExpiry: f.nationalIdExpiry } : {}),
@@ -348,6 +427,85 @@ export const ApplicantForm = ({
 
   const sectionCls = 'grid grid-cols-1 gap-4 sm:grid-cols-2';
 
+  /** Address block — governorate first, then the cities that belong to it (§ owner request). */
+  const addressBlock = (which: 'officialAddress' | 'currentAddress'): JSX.Element => {
+    const a = f[which];
+    const cities = citiesOfGovernorate(a.governorate);
+    return (
+      <div key={which}>
+        <p className="mb-2 text-sm font-medium text-slate-600 dark:text-slate-300">
+          {t(`applicants.form.${which}`)}
+        </p>
+        <div className={sectionCls}>
+          <Field label={t('applicants.form.governorate')} error={msg(`${which}.governorate`)}>
+            <Combobox
+              id={`${which}.governorate`}
+              value={a.governorate}
+              options={GOVERNORATE_NAMES}
+              onChange={(governorate) =>
+                // Only a real change invalidates the city; re-picking the same governorate
+                // (or clearing the box and choosing it again) must not throw a valid city away.
+                setAddr(which, governorate === a.governorate ? { governorate } : { governorate, city: '' })
+              }
+              onBlur={() => check(`${which}.governorate`, a.governorate)}
+              error={fieldErr[`${which}.governorate`] !== undefined}
+              placeholder={t('applicants.form.selectGovernorate')}
+              emptyText={t('common.noResults')}
+              clearLabel={t('common.clear')}
+            />
+          </Field>
+          <Field
+            label={t('applicants.form.city')}
+            error={msg(`${which}.city`)}
+            hint={a.governorate === '' ? t('applicants.form.cityNeedsGovernorate') : undefined}
+          >
+            <Combobox
+              id={`${which}.city`}
+              value={a.city}
+              options={cities}
+              onChange={(city) => setAddr(which, { city })}
+              onBlur={() => check(`${which}.city`, a.city)}
+              error={fieldErr[`${which}.city`] !== undefined}
+              disabled={a.governorate === ''}
+              placeholder={t('applicants.form.selectCity')}
+              emptyText={t('common.noResults')}
+              clearLabel={t('common.clear')}
+            />
+          </Field>
+          <Field label={t('applicants.form.line1')} error={msg(`${which}.line1`)}>
+            <Input
+              value={a.line1}
+              onChange={(e) => setAddr(which, { line1: e.target.value })}
+              {...bind(`${which}.line1`, a.line1)}
+            />
+          </Field>
+          <Field label={t('applicants.form.line2')}>
+            <Input value={a.line2} onChange={(e) => setAddr(which, { line2: e.target.value })} />
+          </Field>
+          <Field
+            label={t('applicants.form.postalCode')}
+            error={msg(`${which}.postalCode`)}
+            hint={t('applicants.form.postalCodeHint')}
+          >
+            <Input
+              value={a.postalCode}
+              // Digits only, five of them: pasting a mixed string keeps its digits rather than
+              // letting `maxLength` clip the letters first and swallow most of the number.
+              onChange={(e) =>
+                setAddr(which, {
+                  postalCode: asciiDigits(e.target.value).replace(/\D/g, '').slice(0, 5),
+                })
+              }
+              dir="ltr"
+              inputMode="numeric"
+              {...bind(`${which}.postalCode`, a.postalCode)}
+            />
+          </Field>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <Form onSubmit={() => void submit()}>
       {errors.length > 0 && (
@@ -375,8 +533,17 @@ export const ApplicantForm = ({
               <div className={sectionCls}>
                 <ReferenceField kind="requisition" value={presetRequisitionId} />
                 <ReferenceField kind="branch" value={presetBranchId} />
-                <Field label={t('applicants.form.source')} required error={clientErr.sourceId}>
-                  <Select value={f.sourceId} onChange={(e) => set({ sourceId: e.target.value })}>
+                <Field label={t('applicants.form.source')} required error={msg('sourceId')}>
+                  <Select
+                    id="sourceId"
+                    value={f.sourceId}
+                    error={fieldErr.sourceId !== undefined}
+                    onChange={(e) => {
+                      set({ sourceId: e.target.value });
+                      check('sourceId', e.target.value);
+                    }}
+                    onBlur={() => check('sourceId', f.sourceId)}
+                  >
                     <option value="">{t('applicants.form.selectSource')}</option>
                     {sources.map((s) => (
                       <option key={s.id} value={s.id}>{localized(s.name, locale)}</option>
@@ -399,19 +566,52 @@ export const ApplicantForm = ({
       <Card>
         <CardHeader title={t('applicants.form.identity')} />
         <CardBody className={sectionCls}>
-          <Field label={t('applicants.form.fullNameAr')} required error={clientErr.fullNameAr}>
-            <Input value={f.fullNameAr} onChange={(e) => (mode === 'create' ? setArabicName(e.target.value) : set({ fullNameAr: e.target.value }))} />
+          <Field
+            label={t('applicants.form.fullNameAr')}
+            required
+            error={msg('fullNameAr')}
+            hint={t('applicants.form.fullNameArHint')}
+          >
+            <Input
+              value={f.fullNameAr}
+              onChange={(e) => (mode === 'create' ? setArabicName(e.target.value) : set({ fullNameAr: e.target.value }))}
+              {...bind('fullNameAr', f.fullNameAr)}
+            />
           </Field>
-          <Field label={t('applicants.form.fullNameEn')} hint={mode === 'create' ? t('applicants.form.fullNameEnHint') : undefined}>
-            <Input value={f.fullNameEn} onChange={(e) => set({ fullNameEn: e.target.value })} dir="ltr" />
+          <Field
+            label={t('applicants.form.fullNameEn')}
+            error={msg('fullNameEn')}
+            hint={mode === 'create' ? t('applicants.form.fullNameEnHint') : undefined}
+          >
+            <Input
+              value={f.fullNameEn}
+              onChange={(e) => set({ fullNameEn: e.target.value })}
+              dir="ltr"
+              {...bind('fullNameEn', f.fullNameEn)}
+            />
           </Field>
           {mode === 'create' && (
             <>
-              <Field label={t('applicants.form.nationalId')} hint={t('applicants.form.nationalIdHint')}>
-                <Input value={f.nationalId} onChange={(e) => set({ nationalId: e.target.value })} dir="ltr" inputMode="numeric" />
+              <Field
+                label={t('applicants.form.nationalId')}
+                error={msg('nationalId')}
+                hint={t('applicants.form.nationalIdHint')}
+              >
+                <Input
+                  value={f.nationalId}
+                  onChange={(e) => set({ nationalId: asciiDigits(e.target.value).replace(/\D/g, '') })}
+                  dir="ltr"
+                  inputMode="numeric"
+                  maxLength={14}
+                  {...bind('nationalId', f.nationalId)}
+                />
               </Field>
               <Field label={t('applicants.form.nationality')}>
-                <Input value={f.nationality} onChange={(e) => set({ nationality: e.target.value })} />
+                <Select value={f.nationality} onChange={(e) => set({ nationality: e.target.value })}>
+                  {Object.entries(NATIONALITY_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>{locale === 'ar' ? label.ar : label.en}</option>
+                  ))}
+                </Select>
               </Field>
               <Field label={t('applicants.form.maritalStatus')}>
                 <Select value={f.maritalStatus} onChange={(e) => set({ maritalStatus: e.target.value as FormState['maritalStatus'] })}>
@@ -422,13 +622,30 @@ export const ApplicantForm = ({
                 </Select>
               </Field>
               <Field label={t('applicants.form.religion')}>
-                <Input value={f.religion} onChange={(e) => set({ religion: e.target.value })} />
+                <Select value={f.religion} onChange={(e) => set({ religion: e.target.value })}>
+                  <option value="">{t('applicants.form.unspecified')}</option>
+                  {RELIGIONS.map((r) => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
+                  {/* A legacy value the catalog does not carry stays selectable rather than
+                      silently turning into "unspecified" the next time the record is saved. */}
+                  {f.religion !== '' && !RELIGIONS.some((r) => r === f.religion) && (
+                    <option value={f.religion}>{f.religion}</option>
+                  )}
+                </Select>
               </Field>
               <Field label={t('applicants.form.nationalIdExpiry')}>
                 <Input type="date" value={f.nationalIdExpiry} onChange={(e) => set({ nationalIdExpiry: e.target.value })} dir="ltr" />
               </Field>
-              <Field label={t('applicants.form.dependents')}>
-                <Input type="number" min={0} value={f.dependentsCount} onChange={(e) => set({ dependentsCount: e.target.value })} />
+              <Field label={t('applicants.form.dependents')} error={msg('dependentsCount')}>
+                <Input
+                  type="number"
+                  min={0}
+                  max={50}
+                  value={f.dependentsCount}
+                  onChange={(e) => set({ dependentsCount: e.target.value })}
+                  {...bind('dependentsCount', f.dependentsCount)}
+                />
               </Field>
               {derived !== null && (
                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/40 sm:col-span-2">
@@ -446,7 +663,9 @@ export const ApplicantForm = ({
                     </div>
                     <div className="flex justify-between gap-2 sm:block">
                       <dt className="text-slate-500 dark:text-slate-400">{t('applicants.detail.governorate')}</dt>
-                      <dd className="font-medium text-slate-700 dark:text-slate-200">{derived.governorate}</dd>
+                      <dd className="font-medium text-slate-700 dark:text-slate-200">
+                        {findGovernorate(derived.governorate)?.ar ?? derived.governorate}
+                      </dd>
                     </div>
                   </dl>
                 </div>
@@ -459,14 +678,45 @@ export const ApplicantForm = ({
       <Card>
         <CardHeader title={t('applicants.form.contact')} />
         <CardBody className={sectionCls}>
-          <Field label={t('applicants.form.primaryPhone')} required error={clientErr.primaryPhone}>
-            <Input value={f.primaryPhone} onChange={(e) => set({ primaryPhone: e.target.value })} dir="ltr" inputMode="tel" />
+          <Field
+            label={t('applicants.form.primaryPhone')}
+            required
+            error={msg('primaryPhone')}
+            hint={t('applicants.form.phoneHint')}
+          >
+            <Input
+              value={f.primaryPhone}
+              onChange={(e) => set({ primaryPhone: e.target.value })}
+              dir="ltr"
+              inputMode="tel"
+              {...bind('primaryPhone', f.primaryPhone)}
+              onBlur={() => {
+                tidyPhone('primaryPhone');
+                check('primaryPhone', f.primaryPhone);
+              }}
+            />
           </Field>
-          <Field label={t('applicants.form.secondaryPhone')}>
-            <Input value={f.secondaryPhone} onChange={(e) => set({ secondaryPhone: e.target.value })} dir="ltr" inputMode="tel" />
+          <Field label={t('applicants.form.secondaryPhone')} error={msg('secondaryPhone')}>
+            <Input
+              value={f.secondaryPhone}
+              onChange={(e) => set({ secondaryPhone: e.target.value })}
+              dir="ltr"
+              inputMode="tel"
+              {...bind('secondaryPhone', f.secondaryPhone)}
+              onBlur={() => {
+                tidyPhone('secondaryPhone');
+                check('secondaryPhone', f.secondaryPhone);
+              }}
+            />
           </Field>
-          <Field label={t('applicants.form.email')}>
-            <Input type="email" value={f.email} onChange={(e) => set({ email: e.target.value })} dir="ltr" />
+          <Field label={t('applicants.form.email')} error={msg('email')}>
+            <Input
+              type="email"
+              value={f.email}
+              onChange={(e) => set({ email: e.target.value })}
+              dir="ltr"
+              {...bind('email', f.email)}
+            />
           </Field>
           <Field label={t('applicants.form.preferredChannel')}>
             <Select value={f.preferredContactChannel} onChange={(e) => set({ preferredContactChannel: e.target.value as FormState['preferredContactChannel'] })}>
@@ -482,30 +732,7 @@ export const ApplicantForm = ({
       <Card>
         <CardHeader title={t('applicants.form.addresses')} />
         <CardBody className="space-y-4">
-          {(['officialAddress', 'currentAddress'] as const).map((which) => (
-            <div key={which}>
-              <p className="mb-2 text-sm font-medium text-slate-600 dark:text-slate-300">
-                {t(`applicants.form.${which}`)}
-              </p>
-              <div className={sectionCls}>
-                <Field label={t('applicants.form.line1')}>
-                  <Input value={f[which].line1} onChange={(e) => setAddr(which, { line1: e.target.value })} />
-                </Field>
-                <Field label={t('applicants.form.line2')}>
-                  <Input value={f[which].line2} onChange={(e) => setAddr(which, { line2: e.target.value })} />
-                </Field>
-                <Field label={t('applicants.form.city')}>
-                  <Input value={f[which].city} onChange={(e) => setAddr(which, { city: e.target.value })} />
-                </Field>
-                <Field label={t('applicants.form.governorate')}>
-                  <Input value={f[which].governorate} onChange={(e) => setAddr(which, { governorate: e.target.value })} />
-                </Field>
-                <Field label={t('applicants.form.postalCode')}>
-                  <Input value={f[which].postalCode} onChange={(e) => setAddr(which, { postalCode: e.target.value })} dir="ltr" />
-                </Field>
-              </div>
-            </div>
-          ))}
+          {(['officialAddress', 'currentAddress'] as const).map(addressBlock)}
         </CardBody>
       </Card>
 
@@ -513,9 +740,15 @@ export const ApplicantForm = ({
         <CardHeader title={t('applicants.form.preferences')} />
         <CardBody className="space-y-4">
           <div className={sectionCls}>
-            <Field label={t('applicants.form.expectedSalary')}>
+            <Field label={t('applicants.form.expectedSalary')} error={msg('expectedSalaryAmount')}>
               <div className="flex gap-2">
-                <Input type="number" min={0} value={f.expectedSalaryAmount} onChange={(e) => set({ expectedSalaryAmount: e.target.value })} />
+                <Input
+                  type="number"
+                  min={0}
+                  value={f.expectedSalaryAmount}
+                  onChange={(e) => set({ expectedSalaryAmount: e.target.value })}
+                  {...bind('expectedSalaryAmount', f.expectedSalaryAmount)}
+                />
                 <Input className="w-24" value={f.expectedSalaryCurrency} onChange={(e) => set({ expectedSalaryCurrency: e.target.value })} dir="ltr" />
               </div>
             </Field>
@@ -548,8 +781,16 @@ export const ApplicantForm = ({
           <Field label={t('applicants.form.specialization')}>
             <Input value={f.educationSpecialization} onChange={(e) => set({ educationSpecialization: e.target.value })} />
           </Field>
-          <Field label={t('applicants.form.graduationYear')}>
-            <Input type="number" min={1950} max={2100} value={f.educationGraduationYear} onChange={(e) => set({ educationGraduationYear: e.target.value })} dir="ltr" />
+          <Field label={t('applicants.form.graduationYear')} error={msg('educationGraduationYear')}>
+            <Input
+              type="number"
+              min={1950}
+              max={2100}
+              value={f.educationGraduationYear}
+              onChange={(e) => set({ educationGraduationYear: e.target.value })}
+              dir="ltr"
+              {...bind('educationGraduationYear', f.educationGraduationYear)}
+            />
           </Field>
           <Field label={t('applicants.form.grade')}>
             <Input value={f.educationGrade} onChange={(e) => set({ educationGrade: e.target.value })} />
@@ -567,9 +808,6 @@ export const ApplicantForm = ({
                 <option key={m} value={m}>{t(`applicants.military.${m}`)}</option>
               ))}
             </Select>
-          </Field>
-          <Field label={t('applicants.form.certificateRef')}>
-            <Input value={f.militaryCertificateRef} onChange={(e) => set({ militaryCertificateRef: e.target.value })} />
           </Field>
           <Field label={t('applicants.form.completedAt')}>
             <Input type="date" value={f.militaryCompletedAt} onChange={(e) => set({ militaryCompletedAt: e.target.value })} dir="ltr" />
@@ -629,9 +867,13 @@ export const ApplicantForm = ({
         </CardBody>
       </Card>
 
+      {/* Driving licences and certificates are separate records of separate things — a licence has
+          a class and an expiry the Fleet module reads; a certificate is a line of prose. They used
+          to share a card, which read as though one were a kind of the other. */}
       <Card>
         <CardHeader
           title={t('applicants.form.licenses')}
+          description={t('applicants.form.licensesHint')}
           actions={
             <Button size="sm" variant="secondary" leftIcon={<PlusIcon className="h-4 w-4" />} onClick={() => set({ drivingLicenses: [...f.drivingLicenses, { class: '', expiry: '' }] })}>
               {t('applicants.form.addRow')}
@@ -649,6 +891,12 @@ export const ApplicantForm = ({
               </Button>
             </div>
           ))}
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader title={t('applicants.form.certifications')} />
+        <CardBody>
           <Field label={t('applicants.form.certifications')} hint={t('applicants.form.certificationsHint')}>
             <Input value={f.certifications} onChange={(e) => set({ certifications: e.target.value })} />
           </Field>

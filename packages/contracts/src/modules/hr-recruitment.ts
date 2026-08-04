@@ -4,10 +4,14 @@
 import { z } from 'zod';
 import {
   AddressSchema,
+  EmailSchema,
   LocalizedStringSchema,
   NationalIdSchema,
   PaginationQuerySchema,
   PhoneNumberSchema,
+  PostalCodeSchema,
+  arabicName,
+  englishName,
   objectId,
   type Address,
   type LocalizedString,
@@ -195,8 +199,8 @@ const SourceDetailSchema = z
  */
 export const IdentityInputSchema = z
   .object({
-    fullNameAr: z.string().min(2).max(200),
-    fullNameEn: z.string().max(200).optional(),
+    fullNameAr: arabicName(z.string().min(2).max(200)),
+    fullNameEn: englishName(z.string().max(200)).optional(),
     nationalId: NationalIdSchema.optional(),
     nationality: z.string().max(100).default('Egyptian'),
     photoFileId: objectId().optional(),
@@ -213,10 +217,20 @@ export const ContactInputSchema = z
   .object({
     primaryPhone: PhoneNumberSchema,
     secondaryPhone: PhoneNumberSchema.optional(),
-    email: z.string().email().optional(),
+    email: EmailSchema.optional(),
     preferredContactChannel: ContactChannelSchema.optional(),
   })
   .strict();
+
+/**
+ * An applicant's address. Egypt Post codes are five digits, and the governorate/city pair is
+ * chosen from the catalog rather than typed, so the same place is not spelled three ways across
+ * three records. Only the postal code is refined here: the catalog is a UI affordance, and a
+ * legacy record whose city predates the catalog must still be updatable.
+ */
+export const ApplicantAddressSchema = AddressSchema.extend({
+  postalCode: PostalCodeSchema.optional(),
+});
 
 export const RegisterApplicantSchema = z
   .object({
@@ -242,8 +256,8 @@ export const RegisterApplicantSchema = z
     // Identity + contact + address.
     identity: IdentityInputSchema,
     contact: ContactInputSchema,
-    officialAddress: AddressSchema.optional(),
-    currentAddress: AddressSchema.optional(),
+    officialAddress: ApplicantAddressSchema.optional(),
+    currentAddress: ApplicantAddressSchema.optional(),
     // Richer groups (optional at registration).
     military: MilitaryServiceSchema.optional(),
     education: EducationSchema.optional(),
@@ -273,11 +287,11 @@ export type RegisterApplicant = z.infer<typeof RegisterApplicantSchema>;
  */
 export const UpdateApplicantSchema = z
   .object({
-    fullNameAr: z.string().min(2).max(200).optional(),
-    fullNameEn: z.string().max(200).optional(),
+    fullNameAr: arabicName(z.string().min(2).max(200)).optional(),
+    fullNameEn: englishName(z.string().max(200)).optional(),
     contact: ContactInputSchema.partial().optional(),
-    officialAddress: AddressSchema.optional(),
-    currentAddress: AddressSchema.optional(),
+    officialAddress: ApplicantAddressSchema.optional(),
+    currentAddress: ApplicantAddressSchema.optional(),
     expectedSalary: ExpectedSalarySchema.optional(),
     earliestStartDate: z.coerce.date().optional(),
     willingToRelocate: z.boolean().optional(),

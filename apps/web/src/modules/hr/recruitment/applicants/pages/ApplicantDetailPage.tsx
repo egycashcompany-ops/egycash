@@ -14,7 +14,12 @@ import { LoadingState } from '../../../../../shared/ui/states/LoadingState';
 import { ErrorState } from '../../../../../shared/ui/states/ErrorState';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { EditIcon } from '../../../../../shared/ui/icons';
-import { formatDate, formatMoney } from '../../../../../shared/lib/format';
+import {
+  formatDate,
+  formatMoney,
+  governorateLabel,
+  nationalityLabel,
+} from '../../../../../shared/lib/format';
 import { ApplicantStatusBadge } from '../components/ApplicantStatusBadge';
 import { ReferenceChip } from '../components/RefPickers';
 import { AttachmentsPanel } from '../components/AttachmentsPanel';
@@ -144,11 +149,15 @@ export const ApplicantDetailPage = (): JSX.Element => {
                 <Info label={t('applicants.form.nationalId')}>
                   <span dir="ltr">{a.nationalIdMasked}</span>
                 </Info>
-                <Info label={t('applicants.form.nationality')}>{a.nationality}</Info>
+                <Info label={t('applicants.form.nationality')}>{nationalityLabel(a.nationality, locale)}</Info>
                 <Info label={t('applicants.detail.birthDate')}>{formatDate(a.birthDate, locale)}</Info>
                 <Info label={t('applicants.detail.gender')}>{a.gender === null ? '—' : t(`applicants.gender.${a.gender}`)}</Info>
                 <Info label={t('applicants.form.maritalStatus')}>{a.maritalStatus === null ? '—' : t(`applicants.marital.${a.maritalStatus}`)}</Info>
-                {a.placeOfBirth !== null && <Info label={t('applicants.detail.governorate')}>{a.placeOfBirth}</Info>}
+                {a.placeOfBirth !== null && (
+                  <Info label={t('applicants.detail.governorate')}>
+                    {governorateLabel(a.placeOfBirth, locale)}
+                  </Info>
+                )}
                 {a.religion !== null && <Info label={t('applicants.form.religion')}>{a.religion}</Info>}
                 {a.nationalIdExpiry !== null && <Info label={t('applicants.form.nationalIdExpiry')}>{formatDate(a.nationalIdExpiry, locale)}</Info>}
               </dl>

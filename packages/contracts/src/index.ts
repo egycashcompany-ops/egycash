@@ -33,4 +33,3 @@ export * from './modules/hr-employee-file.js';
 export * from './modules/hr-leave.js';
 export * from './modules/hr-contract.js';
 export * from './modules/fleet.js';
-export * from './modules/it.js';

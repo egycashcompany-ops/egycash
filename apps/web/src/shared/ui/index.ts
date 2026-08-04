@@ -29,6 +29,7 @@ export {
   type TextareaProps,
   type SelectProps,
 } from './form';
+export { Combobox } from './Combobox';
 export { LoadingState } from './states/LoadingState';
 export { EmptyState } from './states/EmptyState';
 export { ErrorState } from './states/ErrorState';

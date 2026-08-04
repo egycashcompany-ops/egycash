@@ -168,12 +168,7 @@ export const InterviewStageQueuePage = (): JSX.Element => {
       key: 'applicant',
       header: t('interviews.columns.applicant'),
       render: (i) => (
-        <span>
-          {i.applicantName}{' '}
-          <span className="font-mono text-xs text-slate-500" dir="ltr">
-            {i.applicantCode}
-          </span>
-        </span>
+        <span>{i.applicantName}</span>
       ),
     },
     { key: 'status', header: t('interviews.columns.status'), render: (i) => <InterviewStatusBadge status={i.status} outcome={i.outcome} /> },

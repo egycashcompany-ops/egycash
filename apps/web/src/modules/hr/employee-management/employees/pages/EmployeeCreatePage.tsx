@@ -54,7 +54,7 @@ export const EmployeeCreatePage = (): JSX.Element => {
               ) : (
                 <span className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800/60">
                   <span className="font-mono text-xs text-slate-400" dir="ltr">{offer.code}</span>
-                  <span className="font-mono text-xs text-slate-500" dir="ltr">{offer.applicantCode}</span>
+                  <span className="text-sm">{offer.applicantName}</span>
                   <button type="button" onClick={() => setOffer(null)} className="ms-2 text-xs text-brand-600 hover:underline">
                     {t('offers.form.change')}
                   </button>

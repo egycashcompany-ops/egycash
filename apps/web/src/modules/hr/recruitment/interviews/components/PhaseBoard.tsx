@@ -266,7 +266,7 @@ export const PhaseBoard = (): JSX.Element => {
                           className="h-4 w-4 shrink-0 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
                           checked={selection.selectedIds.has(card.applicantId)}
                           onChange={() => selection.toggleRow(card.applicantId)}
-                          aria-label={card.applicantCode}
+                          aria-label={card.applicantName}
                         />
                       )}
                       <button
@@ -275,8 +275,7 @@ export const PhaseBoard = (): JSX.Element => {
                         className="min-w-0 flex-1 text-start"
                       >
                         <p className="truncate text-xs text-slate-700 dark:text-slate-200">
-                          {card.applicantName}{' '}
-                          <span className="font-mono text-slate-400" dir="ltr">{card.applicantCode}</span>
+                          {card.applicantName}
                         </p>
                         {card.meta !== null && <p className="truncate text-xs text-slate-400">{card.meta}</p>}
                       </button>

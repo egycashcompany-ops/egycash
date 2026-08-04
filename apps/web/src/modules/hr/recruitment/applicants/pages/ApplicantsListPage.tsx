@@ -149,12 +149,6 @@ export const ApplicantsListPage = (): JSX.Element => {
 
   const columns: Column<ApplicantDto>[] = [
     {
-      key: 'code',
-      header: t('applicants.columns.code'),
-      sortable: true,
-      render: (a) => <span className="font-mono text-xs" dir="ltr">{a.code}</span>,
-    },
-    {
       key: 'name',
       header: t('applicants.columns.name'),
       render: (a) => (

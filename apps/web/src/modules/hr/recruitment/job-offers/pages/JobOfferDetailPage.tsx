@@ -59,11 +59,11 @@ export const JobOfferDetailPage = (): JSX.Element => {
   return (
     <PageContainer>
       <PageHeader
-        title={t('offers.detail.title', { code })}
+        title={t('offers.detail.title', { name: o.applicantName })}
         breadcrumbs={[
           { label: t('recruitment.title'), to: '/' },
           { label: t('recruitment.nav.offers'), to: '/job-offers' },
-          { label: code },
+          { label: o.applicantName },
         ]}
         actions={
           <div className="flex flex-wrap items-center gap-2">
@@ -93,9 +93,10 @@ export const JobOfferDetailPage = (): JSX.Element => {
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <span className="font-mono text-sm text-slate-500" dir="ltr">{o.code}</span>
-        <Link to={`/applicants/${o.applicantId}`} className="font-mono text-sm text-brand-600 hover:underline" dir="ltr">
-          {o.applicantCode}
+        {/* The OFFER's own number — not the applicant code — and it says so when there isn't one yet. */}
+        <span className="font-mono text-sm text-slate-500" dir="ltr">{code}</span>
+        <Link to={`/applicants/${o.applicantId}`} className="text-sm font-medium text-brand-600 hover:underline">
+          {o.applicantName}
         </Link>
         <OfferStatusBadge status={o.status} />
         {o.revisionNumber > 0 && (

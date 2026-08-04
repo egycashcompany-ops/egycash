@@ -92,12 +92,7 @@ export const EmployeesReadyPage = (): JSX.Element => {
       key: 'applicant',
       header: t('employees.ready.columns.applicant'),
       render: (o) => (
-        <span>
-          {o.applicantName}{' '}
-          <span className="font-mono text-xs text-slate-500" dir="ltr">
-            {o.applicantCode}
-          </span>
-        </span>
+        <span>{o.applicantName}</span>
       ),
     },
     {

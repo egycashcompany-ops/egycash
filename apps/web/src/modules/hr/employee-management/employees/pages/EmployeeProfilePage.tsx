@@ -113,8 +113,8 @@ const OverviewTab = ({ e }: { e: EmployeeDto }): JSX.Element => {
                 <div>
                   <dt className="text-xs text-slate-400">{t('employees.columns.applicant')}</dt>
                   <dd className="mt-1">
-                    <Link to={`/applicants/${e.applicantId}`} className="font-mono text-xs text-brand-600 hover:underline" dir="ltr">
-                      {e.applicantCode}
+                    <Link to={`/applicants/${e.applicantId}`} className="text-sm text-brand-600 hover:underline">
+                      {e.personal.fullNameAr}
                     </Link>
                   </dd>
                 </div>

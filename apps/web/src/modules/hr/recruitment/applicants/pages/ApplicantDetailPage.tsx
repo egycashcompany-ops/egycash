@@ -88,7 +88,7 @@ export const ApplicantDetailPage = (): JSX.Element => {
         breadcrumbs={[
           { label: t('recruitment.title'), to: '/' },
           { label: t('recruitment.nav.applicants'), to: '/applicants' },
-          { label: a.code },
+          { label: a.fullNameAr },
         ]}
         actions={
           <div className="flex items-center gap-2">

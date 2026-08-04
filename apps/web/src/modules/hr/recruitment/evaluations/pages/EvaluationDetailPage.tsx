@@ -96,11 +96,11 @@ export const EvaluationDetailPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={localized(ev.phaseName, locale)}
-        description={ev.applicantCode}
+        description={ev.applicantName}
         breadcrumbs={[
           { label: t('recruitment.title'), to: '/' },
           { label: t('recruitment.nav.evaluations'), to: '/evaluations' },
-          { label: ev.applicantCode },
+          { label: ev.applicantName },
         ]}
         actions={
           <div className="flex items-center gap-2">
@@ -214,8 +214,8 @@ export const EvaluationDetailPage = (): JSX.Element => {
               <dl className="space-y-3 text-sm">
                 <div>
                   <dt className="text-slate-400">{t('evaluations.columns.applicant')}</dt>
-                  <dd className="font-mono" dir="ltr">
-                    <Link to={`/applicants/${ev.applicantId}`} className="text-brand-600 hover:underline">{ev.applicantCode}</Link>
+                  <dd>
+                    <Link to={`/applicants/${ev.applicantId}`} className="text-brand-600 hover:underline">{ev.applicantName}</Link>
                   </dd>
                 </div>
                 <div>

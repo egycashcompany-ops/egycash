@@ -831,7 +831,7 @@ const en: Record<string, string> = {
   'screening.decide.reasonOptional': 'Optional — recorded as a decision note',
   'screening.decide.acceptedDone': 'Applicant accepted',
   'screening.decide.rejectedDone': 'Applicant rejected',
-  'screening.detail.title': 'Screening — {{code}}',
+  'screening.detail.title': 'Screening — {{name}}',
   'screening.detail.summary': 'Summary',
   'screening.detail.applicant': 'Applicant',
 
@@ -973,7 +973,7 @@ const en: Record<string, string> = {
   'interviews.cancel.submit': 'Cancel interview',
   'interviews.cancel.reason': 'Reason',
   'interviews.cancel.done': 'Interview cancelled',
-  'interviews.detail.title': 'Interview — {{code}}',
+  'interviews.detail.title': 'Interview — {{name}}',
   'interviews.detail.summary': 'Summary',
   'interviews.detail.location': 'Location',
   'interviews.detail.rescheduled': 'Rescheduled',
@@ -1182,7 +1182,7 @@ const en: Record<string, string> = {
   'offers.form.notes': 'Notes',
   'offers.form.validUntilAfterStart': 'The validity date must be after the start date.',
   'offers.terms.months': '{{n}} months',
-  'offers.detail.title': 'Offer — {{code}}',
+  'offers.detail.title': 'Offer — {{name}}',
   'offers.detail.notDrafted': 'Not drafted yet',
   'offers.detail.notDraftedHint':
     'This candidate is queued for an offer. Use New Offer to draft the package.',
@@ -3246,7 +3246,7 @@ const ar: Record<string, string> = {
   'screening.decide.reasonOptional': 'اختياري — يُسجَّل كملاحظة قرار',
   'screening.decide.acceptedDone': 'تم قبول المتقدِّم',
   'screening.decide.rejectedDone': 'تم رفض المتقدِّم',
-  'screening.detail.title': 'الفرز — {{code}}',
+  'screening.detail.title': 'الفرز — {{name}}',
   'screening.detail.summary': 'الملخّص',
   'screening.detail.applicant': 'المتقدِّم',
 
@@ -3385,7 +3385,7 @@ const ar: Record<string, string> = {
   'interviews.cancel.submit': 'إلغاء المقابلة',
   'interviews.cancel.reason': 'السبب',
   'interviews.cancel.done': 'تم إلغاء المقابلة',
-  'interviews.detail.title': 'مقابلة — {{code}}',
+  'interviews.detail.title': 'مقابلة — {{name}}',
   'interviews.detail.summary': 'الملخّص',
   'interviews.detail.location': 'المكان',
   'interviews.detail.rescheduled': 'أُعيد جدولتها',
@@ -3594,7 +3594,7 @@ const ar: Record<string, string> = {
   'offers.form.notes': 'ملاحظات',
   'offers.form.validUntilAfterStart': 'تاريخ الصلاحية يجب أن يكون بعد تاريخ المباشرة.',
   'offers.terms.months': '{{n}} أشهر',
-  'offers.detail.title': 'عرض — {{code}}',
+  'offers.detail.title': 'عرض — {{name}}',
   'offers.detail.notDrafted': 'لم يتم إعداده بعد',
   'offers.detail.notDraftedHint':
     'هذا المتقدم في انتظار عرض العمل. استخدم «عرض جديد» لإعداد التفاصيل.',

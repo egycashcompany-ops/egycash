@@ -104,7 +104,7 @@ export const JobOffersListPage = (): JSX.Element => {
     {
       key: 'applicant',
       header: t('offers.columns.applicant'),
-      render: (o) => <span>{o.applicantName} <span className="font-mono text-xs text-slate-500" dir="ltr">{o.applicantCode}</span></span>,
+      render: (o) => <span>{o.applicantName}</span>,
     },
     { key: 'status', header: t('offers.columns.status'), sortable: true, render: (o) => <OfferStatusBadge status={o.status} /> },
     {

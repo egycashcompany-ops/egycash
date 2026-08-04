@@ -65,7 +65,7 @@ export const ScreeningFilters = ({
       />
 
       {value.applicantId === '' ? (
-        <ApplicantPicker onSelect={(a) => set({ applicantId: a.id, applicantLabel: `${a.code} — ${a.fullNameAr}` })} />
+        <ApplicantPicker onSelect={(a) => set({ applicantId: a.id, applicantLabel: a.fullNameAr })} />
       ) : (
         <span className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
           <span className="truncate">{value.applicantLabel === '' ? value.applicantId : value.applicantLabel}</span>

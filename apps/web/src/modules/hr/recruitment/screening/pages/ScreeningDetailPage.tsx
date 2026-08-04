@@ -90,11 +90,11 @@ export const ScreeningDetailPage = (): JSX.Element => {
   return (
     <PageContainer>
       <PageHeader
-        title={t('screening.detail.title', { code: s.applicantCode })}
+        title={t('screening.detail.title', { name: s.applicantName })}
         breadcrumbs={[
           { label: t('recruitment.title'), to: '/' },
           { label: t('recruitment.nav.screening'), to: '/screening' },
-          { label: s.applicantCode },
+          { label: s.applicantName },
         ]}
         actions={
           isPending ? (
@@ -127,8 +127,8 @@ export const ScreeningDetailPage = (): JSX.Element => {
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <Link to={`/applicants/${s.applicantId}`} className="font-mono text-sm text-brand-600 hover:underline" dir="ltr">
-          {s.applicantCode}
+        <Link to={`/applicants/${s.applicantId}`} className="text-sm font-medium text-brand-600 hover:underline">
+          {s.applicantName}
         </Link>
         <ScreeningStatusBadge status={s.status} />
         <span className="ms-auto">
@@ -178,8 +178,8 @@ export const ScreeningDetailPage = (): JSX.Element => {
                 <div>
                   <dt className="text-xs text-slate-400">{t('screening.detail.applicant')}</dt>
                   <dd className="mt-1">
-                    <Link to={`/applicants/${s.applicantId}`} className="text-brand-600 hover:underline font-mono text-xs" dir="ltr">
-                      {s.applicantCode}
+                    <Link to={`/applicants/${s.applicantId}`} className="text-sm text-brand-600 hover:underline">
+                      {s.applicantName}
                     </Link>
                   </dd>
                 </div>

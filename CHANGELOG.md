@@ -11,6 +11,32 @@ its entry here in the same PR.
 
 ### Added
 
+- **A recruitment form you can edit, published as one link per source.** The questions candidates
+  answer are now configuration, not code: standard fields (name, National ID, phone, qualification
+  and eleven more) can be added, removed, marked required and reordered, and custom questions of
+  any type can be added beside them. Every active source gets its own public link; whoever applies
+  through it is recorded against that source automatically, so nobody types "where did you hear
+  about us" and nobody has to trust the answer. Regenerating a link replaces its token, which is
+  what makes it the remedy for one that leaked.
+
+  The public page shares the recruiter's rules rather than restating them: a submission is mapped
+  onto a registration payload and handed to the same `RegisterApplicantSchema` the internal form
+  posts through, and the browser checks it with the same predicates, so a phone means the same
+  thing in all three places. The form is the allow-list — an answer to a question the admin did not
+  publish cannot reach a column. Answers to custom questions are stored on the applicant WITH the
+  question they answered, so renaming or deleting a question later does not orphan them.
+
+  Every application keeps a **snapshot of the form as it stood when it was submitted** — the title,
+  the revision, and the questions themselves. Editing the form does not rewrite history: a question
+  removed next month was still asked of the people who answered it, and one that was optional then
+  does not read as "left blank" once it becomes required. Custom questions are also validated by
+  their kind (a number is a number, a date is a date, a choice is one of the offered choices), by
+  the same predicate on both sides.
+
+  With the source now decided by the link (or, for internal registration, by one setting on the
+  form page), the **"بيانات التقديم" card is gone from the applicant form** — a recruiter no longer
+  re-picks the same channel on every walk-in.
+
 - **The applicant form checks its fields as you leave them, and knows Egyptian geography.** A
   mistake used to be discovered by the server after a failed save and reported as a list at the
   bottom of the page; now the field that is wrong says so, in the reader's language, the moment

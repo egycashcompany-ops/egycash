@@ -8,6 +8,7 @@
 // migration (recruitment.migration.ts) backfills the stored documents; this keeps the mapper
 // total even if a future field is missed.
 import {
+  type RecruitmentFormField,
   maskNationalId,
   type ApplicantDto,
   type ApplicantSourceDto,
@@ -126,6 +127,16 @@ export const toApplicantDto = (doc: ApplicantDoc): ApplicantDto => {
       ...(l.expiry == null ? {} : { expiry: l.expiry.toISOString() }),
     })),
     certifications: doc.certifications ?? [],
+    formAnswers: doc.formAnswers ?? [],
+    formSnapshot:
+      doc.formSnapshot == null
+        ? null
+        : {
+            title: doc.formSnapshot.title,
+            formVersion: doc.formSnapshot.formVersion,
+            fields: doc.formSnapshot.fields as RecruitmentFormField[],
+            submittedAt: doc.formSnapshot.submittedAt,
+          },
     references: (doc.references ?? []).map((r) => ({
       name: r.name,
       ...(r.relationship == null ? {} : { relationship: r.relationship }),

@@ -244,6 +244,8 @@ class ApplicantService {
           expiry: l.expiry ?? null,
         })),
         certifications: input.certifications ?? [],
+        formAnswers: input.formAnswers ?? [],
+        formSnapshot: input.formSnapshot ?? null,
         references: (input.references ?? []).map((r) => ({
           name: r.name,
           relationship: r.relationship ?? null,

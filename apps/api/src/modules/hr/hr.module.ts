@@ -8,6 +8,10 @@
 import { declarePermissions, type PermissionDef } from '@ecms/contracts';
 import { type ModuleManifest } from '../../platform/kernel/module-registry';
 import { buildApplicantSourcesRouter, buildApplicantsRouter } from './recruitment/applicants';
+import {
+  buildPublicRecruitmentFormRouter,
+  buildRecruitmentFormRouter,
+} from './recruitment/recruitment-form';
 import { buildScreeningsRouter } from './recruitment/screening';
 import { buildInterviewStagesRouter, buildInterviewsRouter } from './recruitment/interviews';
 import { buildEvaluationPhasesRouter, buildEvaluationsRouter } from './recruitment/evaluations';
@@ -85,6 +89,19 @@ const applicantPermissions = declarePermissions(
     {
       action: 'returnToStage',
       name: { en: 'Return applicant to an earlier stage', ar: 'إعادة المتقدم لمرحلة سابقة' },
+    },
+  ],
+);
+
+const recruitmentFormPermissions = declarePermissions(
+  'hr',
+  'recruitmentForm',
+  { en: 'recruitment form', ar: 'نموذج التقديم' },
+  [],
+  [
+    {
+      action: 'manage',
+      name: { en: 'Manage the recruitment form and its links', ar: 'إدارة نموذج التقديم وروابطه' },
     },
   ],
 );
@@ -335,6 +352,7 @@ export const hrPermissions: PermissionDef[] = [
   ...contractTypePermissions,
   ...applicantPermissions,
   ...applicantSourcePermissions,
+  ...recruitmentFormPermissions,
   ...screeningPermissions,
   ...interviewPermissions,
   ...interviewStagePermissions,
@@ -363,6 +381,9 @@ export const hrModule: ModuleManifest = {
     { prefix: '/hr/applicants', router: buildReturnToStageRouter() },
     { prefix: '/hr/applicants', router: buildApplicantsRouter() },
     { prefix: '/hr/applicant-sources', router: buildApplicantSourcesRouter() },
+    { prefix: '/hr/recruitment-form', router: buildRecruitmentFormRouter() },
+    // Unauthenticated by design — the token in the path is the credential (see the router).
+    { prefix: '/hr/public/apply', router: buildPublicRecruitmentFormRouter() },
     { prefix: '/hr/screenings', router: buildScreeningsRouter() },
     { prefix: '/hr/interviews', router: buildInterviewsRouter() },
     { prefix: '/hr/interview-stages', router: buildInterviewStagesRouter() },

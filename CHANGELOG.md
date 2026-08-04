@@ -84,6 +84,29 @@ its entry here in the same PR.
 
 ### Changed
 
+- **Modules are now chosen from a Launchpad — the app steps back and a launcher takes over.**
+  The switcher's popover is replaced by a full-viewport launcher in the SAP Fiori / Azure /
+  Atlassian family: opening it scales the app to 0.965 behind a light blur and rounds its
+  corners, then the launcher arrives 70ms later into the space it left (closing reverses the
+  order), so switching reads as leaving one workspace for another rather than answering a
+  dialog. The launcher is a screen, not a panel — title near the top, a centred grid of
+  310×208 tiles through the middle, nothing with a dialog silhouette. Each tile carries the
+  module's catalog icon at 40px, its name, and a hover that lifts, scales 1.5% and deepens its
+  shadow on one curve; the module you are already in is marked with a surface tint, a shade of
+  border and a small check. Everything else about switching is unchanged: the current module is
+  still derived from the URL, choosing still returns you to the page you last had open there,
+  permissions still come from `/platform/me/applications`, a single-module user still sees no
+  launcher at all, and the ⌘K palette and pinned favourites are untouched. It owns focus while
+  open (trap, scroll lock that holds the scrollbar's space so the app cannot jump sideways),
+  moves under the arrow keys, filters past six modules, and with twenty modules keeps its title
+  and search pinned while only the grid scrolls — the grid centres only while everything fits,
+  because a centred flex child that overflows pushes its first row above the scroll origin
+  where nothing can reach it. Rendered through a portal to `<body>`: inside the shell, the
+  mobile drawer's own transform would trap a fixed overlay inside the drawer's width. `Alt+M`
+  still opens it — bound in exactly one of the two mounted shells, since both the desktop
+  column and the always-mounted drawer used to answer the chord and raise two launchers at
+  once.
+
 - **The sidebar now scopes itself to one module, and the module is chosen from a switcher.**
   Choosing a module and navigating inside it are different questions, so they get different
   surfaces: a small header at the top of the column names the current module and opens a light

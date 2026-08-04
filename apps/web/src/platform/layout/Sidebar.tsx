@@ -12,7 +12,8 @@
 //   • Collapsed mode is a slim icon strip: the switcher on top, then this module's page icons.
 // Data is the dynamic GET /platform/me/applications; nothing here changes the backend, routing,
 // or permission model. Persistent on desktop (lg+); an off-canvas drawer on mobile.
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { type Locale, type MyApplicationDto } from '@ecms/contracts';
 import { useAppDispatch, useAppSelector } from '../../store';
@@ -20,16 +21,16 @@ import { setSidebarOpen } from '../../store/uiSlice';
 import { useT } from '../localization/useT';
 import { cn } from '../../shared/lib/cn';
 import { localized } from '../../shared/lib/format';
-import { useOnClickOutside } from '../../shared/lib/useOnClickOutside';
 import {
   BuildingIcon,
   CheckIcon,
-  ChevronIcon,
   ChevronEndIcon,
   ChevronStartIcon,
   CloseIcon,
   FileIcon,
+  GridIcon,
   InboxIcon,
+  SearchIcon,
   StarIcon,
 } from '../../shared/ui/icons';
 import { LoadingState } from '../../shared/ui/states/LoadingState';
@@ -283,45 +284,242 @@ const AppWithChildren = ({
   return <DynamicAppRow app={app} provider={provider} onNavigate={onNavigate} end={end} />;
 };
 
-// ── Module switcher ─────────────────────────────────────────────────────────
-/** A filter field earns its space only once the list is too long to scan at a glance. */
-const FILTER_THRESHOLD = 7;
+// ── Module Launchpad ────────────────────────────────────────────────────────
+/**
+ * Where a module is chosen: a LAUNCHPAD over the whole product (the Azure / SAP Fiori / Atlassian
+ * switcher family, spoken in ECMS's monochrome dialect). Clicking the module header — its name in
+ * the column, its icon in the collapsed strip — lifts a full-viewport surface: the working page
+ * stays visible through a FROSTED VEIL, and one card per permitted module sits centred in a grid.
+ * Nothing navigates on open. Choosing a card returns you to the last page you had open in that
+ * module (its first page otherwise) and re-scopes the column to it.
+ *
+ * The veil is a light frost in light mode and a deep one in dark mode — never a black sheet that
+ * shuts the app off. That choice is what lets the surface stay bright and still carry ordinary
+ * dark text at full contrast: the type sits on frosted glass, not on a dim page.
+ *
+ * The intent is a WORKSPACE change, not a menu pick, so this behaves like a screen of its own: a
+ * titled header, cards with room to breathe, focus ownership while open (trap + scroll lock),
+ * arrow-key movement across the grid, a filter once the catalog outgrows a glance, and — with
+ * twenty modules — a header that stays put while only the grid scrolls. One 170ms fade-and-settle
+ * in, the same in reverse out. Monochrome throughout: slate, thin borders, no tile colours.
+ *
+ * With a single permitted module the header degrades to a plain label: no launchpad, no trigger,
+ * no affordance pretending otherwise.
+ */
+
+/** A catalog this size is scanned, not searched; past it, typing beats hunting. */
+const FILTER_THRESHOLD = 6;
+/** Entry/exit duration. Long enough to read as motion, short enough to feel like a state change. */
+const LAUNCHPAD_MS = 170;
+
+/** Per-row entry offset. Three rows in, the cascade stops: nobody should wait on a launcher. */
+const STAGGER_MS = 30;
+const STAGGER_MAX_ROWS = 3;
 
 /**
- * The one place a module is chosen: a small header at the top of the column that opens a light
- * popover right beneath it. Never a dialog, drawer, or full-screen takeover — switching modules
- * is frequent and lightweight, and blanking the screen for it costs far more than it gives.
- * The popover appears instantly (no transition): a switcher that animates is a switcher that
- * feels slow, and speed is the whole point of this control.
+ * The app itself steps back while the launcher is up — a slight zoom-out and a soft blur, exactly
+ * the way an OS-level switcher sets the running workspace aside. This is what separates a launcher
+ * from an overlay: the workspace you were in visibly recedes instead of merely being covered, so
+ * choosing another one reads as leaving rather than as answering a dialog.
  *
- * With a single permitted module the header degrades to a plain label — nothing to switch to,
- * so nothing to click, and no affordance pretending otherwise.
+ * The launchpad is portalled to <body>, never inside #root, so the transform below moves the app
+ * without touching the launcher standing over it.
  */
-const ModuleSwitcher = ({
-  modules,
-  current,
-  collapsed = false,
+const APP_RECEDE_MS = 220;
+/**
+ * The two halves of one movement. Opening, the app starts back first and the launcher arrives
+ * into the space it left; closing, the launcher goes first and the app comes forward behind it.
+ * Overlapping them by this much is what makes it read as a single gesture rather than two
+ * animations that happen to fire together.
+ */
+const HANDOVER_MS = 70;
+const recedeApp = (active: boolean): void => {
+  const app = document.getElementById('root');
+  if (app === null) return;
+  app.style.transformOrigin = '50% 42%';
+  app.style.transition = `transform ${APP_RECEDE_MS}ms cubic-bezier(0.16,1,0.3,1), filter ${APP_RECEDE_MS}ms cubic-bezier(0.16,1,0.3,1), border-radius ${APP_RECEDE_MS}ms ease-out`;
+  app.style.transform = active ? 'scale(0.975)' : 'scale(1)';
+  app.style.filter = active ? 'blur(2px)' : 'blur(0px)';
+  // Set back from the viewport edges, the app has edges of its own; square corners would give
+  // away that this is a page being scaled rather than a surface being put aside.
+  app.style.overflow = 'hidden';
+  app.style.borderRadius = active ? '12px' : '0px';
+};
+const releaseApp = (): void => {
+  const app = document.getElementById('root');
+  if (app === null) return;
+  app.style.transformOrigin = '';
+  app.style.transition = '';
+  app.style.transform = '';
+  app.style.filter = '';
+  app.style.overflow = '';
+  app.style.borderRadius = '';
+};
+
+/**
+ * The app's half of the movement, owned at module level: the styles must finish coming back even
+ * though the launchpad unmounts partway through the return trip.
+ */
+let appTimer: number | null = null;
+const appStepsBack = (): void => {
+  if (appTimer !== null) {
+    window.clearTimeout(appTimer);
+    appTimer = null;
+  }
+  recedeApp(true);
+};
+const appComesForward = (): void => {
+  if (appTimer !== null) window.clearTimeout(appTimer);
+  recedeApp(false);
+  // Inline styles are cleared only once the app has actually arrived; wiping them mid-transition
+  // would snap it the rest of the way.
+  appTimer = window.setTimeout(() => {
+    releaseApp();
+    appTimer = null;
+  }, APP_RECEDE_MS + 40);
+};
+
+/** How many cards the responsive grid put on a row — read from the DOM, never assumed. */
+const columnsOf = (cards: readonly HTMLElement[]): number => {
+  const top = cards[0]?.offsetTop;
+  if (top === undefined) return 1;
+  const n = cards.findIndex((c) => c.offsetTop !== top);
+  return n === -1 ? cards.length : Math.max(1, n);
+};
+
+const ModuleCard = ({
+  module,
+  isCurrent,
+  shown,
+  delayMs,
   onPick,
 }: {
-  modules: NavModule[];
-  current: NavModule;
-  collapsed?: boolean;
-  onPick: (m: NavModule) => void;
+  module: NavModule;
+  isCurrent: boolean;
+  /** Entry state, carried on a wrapper so the stagger delay never slows the hover. */
+  shown: boolean;
+  delayMs: number;
+  onPick: () => void;
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState('');
-  const [cursor, setCursor] = useState(0);
-  const ref = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  useOnClickOutside(ref, () => setOpen(false), open);
-  const CurrentIcon = resolveNavIcon(current.icon, BuildingIcon);
-  const only = modules.length <= 1;
-  const showFilter = modules.length >= FILTER_THRESHOLD;
+  const Icon = resolveNavIcon(module.icon, BuildingIcon);
+  return (
+    <div
+      // Exactly two columns on a phone, three on a tablet, four on a desktop — sized rather than
+      // placed in grid tracks, so a row that does not fill up stays centred instead of hugging
+      // the start edge.
+      className={cn(
+        'w-[calc((100%_-_1.25rem)/2)] sm:w-[calc((100%_-_2.5rem)/3)] lg:w-[calc((100%_-_3.75rem)/4)]',
+        'transition-[opacity,transform] duration-[170ms] ease-[cubic-bezier(0.16,1,0.3,1)]',
+        shown ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0',
+      )}
+      style={{ transitionDelay: shown ? `${delayMs}ms` : '0ms' }}
+    >
+      <button
+        type="button"
+        data-module-card
+        data-current={isCurrent}
+        onClick={onPick}
+        aria-current={isCurrent}
+        aria-label={
+          isCurrent
+            ? `${localized(module.name, locale)} — ${t('nav.currentWorkspace')}`
+            : localized(module.name, locale)
+        }
+        className={cn(
+          // 36 + 80 icon + 24 + 40 name box + 28 = 208, and 24 + 64 + 16 + 40 + 16 = 160 on a
+          // phone, where a desktop-scale tile would crowd a 160px column. Laid out from the top
+          // rather than centred, so every icon in the grid sits on exactly the same line whether
+          // its module's name takes one line or two.
+          'group/card relative flex h-40 w-full flex-col items-center gap-4 pb-4 pt-6',
+          'sm:h-[208px] sm:gap-6 sm:pb-7 sm:pt-9',
+          'rounded-2xl border px-6 text-center outline-none',
+          // The whole tile is one control, so it moves as one: shadow, lift and scale all ride
+          // the same curve, and the press releases them together.
+          'shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all duration-200',
+          'ease-[cubic-bezier(0.2,0.8,0.2,1)] will-change-transform',
+          'focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2',
+          'focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-950',
+          'dark:shadow-none',
+          // The workspace you are already in: a shade of surface and a shade of border, nothing loud.
+          isCurrent
+            ? 'border-slate-300 bg-slate-50 dark:border-slate-600 dark:bg-slate-800/50'
+            : 'border-slate-200/70 bg-white dark:border-slate-700/60 dark:bg-slate-900',
+          // The lift is the whole hover: a step up, a breath of scale and a deeper shadow. No
+          // colour anywhere. Pressing settles it back down, so the tile answers the click.
+          'hover:-translate-y-1 hover:scale-[1.015] hover:border-slate-300',
+          'hover:shadow-[0_22px_48px_-24px_rgba(15,23,42,0.45)]',
+          'active:-translate-y-0 active:scale-[0.995] active:duration-75',
+          'active:shadow-[0_6px_16px_-10px_rgba(15,23,42,0.35)]',
+          'dark:hover:border-slate-600 dark:hover:shadow-[0_22px_48px_-24px_rgba(0,0,0,0.9)]',
+        )}
+      >
+        {isCurrent && (
+          <CheckIcon className="absolute end-4 top-4 h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
+        )}
+        <span
+          className={cn(
+            'grid h-16 w-16 shrink-0 place-items-center rounded-2xl transition-colors sm:h-20 sm:w-20',
+            'bg-slate-100 group-hover/card:bg-slate-200/70',
+            'dark:bg-slate-800 dark:group-hover/card:bg-slate-700/70',
+          )}
+        >
+          <Icon
+            className={cn(
+              'h-8 w-8 transition-colors sm:h-10 sm:w-10',
+              'text-slate-500 group-hover/card:text-slate-700',
+              'dark:text-slate-400 dark:group-hover/card:text-slate-200',
+            )}
+          />
+        </span>
+        <span className="flex h-10 w-full items-center justify-center">
+          <span className="line-clamp-2 text-[16px] font-semibold leading-5 tracking-[-0.01em] text-slate-900 dark:text-slate-50">
+            {localized(module.name, locale)}
+          </span>
+        </span>
+        {/* The promise of the click, shown only while the pointer is on it — and never on the
+            card you are already in, which leads nowhere. */}
+        {!isCurrent && (
+          <ChevronEndIcon
+            className={cn(
+              'absolute bottom-3.5 end-3.5 h-4 w-4 text-slate-300 opacity-0 transition-opacity',
+              'rtl:-scale-x-100 group-hover/card:opacity-100 dark:text-slate-600',
+            )}
+          />
+        )}
+      </button>
+    </div>
+  );
+};
 
-  const shown = useMemo(() => {
+const Launchpad = ({
+  modules,
+  current,
+  onChoose,
+  onClose,
+}: {
+  modules: NavModule[];
+  current: NavModule;
+  onChoose: (m: NavModule) => void;
+  /** `focusTrigger` — true when the launchpad was dismissed rather than used. */
+  onClose: (focusTrigger: boolean) => void;
+}): JSX.Element => {
+  const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  const rtl = locale === 'ar';
+  const [shown, setShown] = useState(false);
+  const [query, setQuery] = useState('');
+  const [scrollable, setScrollable] = useState(false);
+  const [cols, setCols] = useState(4);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
+  const filterRef = useRef<HTMLInputElement>(null);
+  const exitTimer = useRef<number | null>(null);
+  const handoverTimer = useRef<number | null>(null);
+  const withFilter = modules.length > FILTER_THRESHOLD;
+
+  const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (q === '') return modules;
     return modules.filter((m) =>
@@ -329,66 +527,309 @@ const ModuleSwitcher = ({
     );
   }, [modules, query]);
 
-  // Opening starts on the module you are already in: Enter is then a safe no-op and ↓ steps on.
-  const openMenu = (): void => {
-    setQuery('');
-    setCursor(Math.max(0, modules.findIndex((m) => m.id === current.id)));
-    setOpen(true);
+  const cards = (): HTMLButtonElement[] =>
+    Array.from(gridRef.current?.querySelectorAll<HTMLButtonElement>('[data-module-card]') ?? []);
+
+  // Leave the way it arrived, in the same order reversed: the launcher goes first and the app
+  // follows it forward, so the whole thing reads as one movement rather than two.
+  const leave = (fn: () => void): void => {
+    setShown(false);
+    handoverTimer.current = window.setTimeout(appComesForward, HANDOVER_MS);
+    exitTimer.current = window.setTimeout(fn, LAUNCHPAD_MS);
   };
-  const close = (focusTrigger: boolean): void => {
-    setOpen(false);
-    if (focusTrigger) triggerRef.current?.focus();
+  const dismiss = (): void => leave(() => onClose(true));
+  const choose = (m: NavModule): void => {
+    if (m.id !== current.id) onChoose(m);
+    leave(() => onClose(false));
   };
 
-  // Alt+M — a dedicated chord, deliberately NOT ⌘K: the palette already owns that muscle memory
-  // for "go to a page", and overloading it would make both slower to think about.
   useEffect(() => {
-    if (only) return undefined;
+    // The app starts back first; the launcher arrives a beat later, into the space it left.
+    appStepsBack();
+    const enter = window.setTimeout(() => setShown(true), HANDOVER_MS);
+    // A launchpad is a screen while it is up: the page behind must not scroll under it. Taking
+    // the scrollbar away would let the app reflow wider by its width, so its space is held —
+    // inline-end covers both writing directions, since that is the side the scrollbar sits on.
+    const { overflow, paddingInlineEnd } = document.body.style;
+    const gutter = window.innerWidth - document.documentElement.clientWidth;
+    document.body.style.overflow = 'hidden';
+    if (gutter > 0) document.body.style.paddingInlineEnd = `${gutter}px`;
+    (filterRef.current ??
+      gridRef.current?.querySelector<HTMLButtonElement>('[data-current="true"]') ??
+      gridRef.current?.querySelector<HTMLButtonElement>('[data-module-card]'))?.focus();
+    return () => {
+      window.clearTimeout(enter);
+      document.body.style.overflow = overflow;
+      document.body.style.paddingInlineEnd = paddingInlineEnd;
+      if (exitTimer.current !== null) window.clearTimeout(exitTimer.current);
+      if (handoverTimer.current !== null) window.clearTimeout(handoverTimer.current);
+      // Unmounted without going through `leave` (a route change, say): the app must still return.
+      appComesForward();
+    };
+  }, []);
+
+  /**
+   * Two facts the layout has to be asked for rather than assumed: how many cards ended up on a
+   * row (the entry cascade goes row by row) and whether the grid actually overflows (only then
+   * does it get its soft top/bottom edge — with six cards the same mask would quietly fade the
+   * cards themselves). Both are read after layout and before the entry frame.
+   */
+  useEffect(() => {
+    const el = gridRef.current;
+    if (el === null) return undefined;
+    const measure = (): void => {
+      setScrollable(el.scrollHeight > el.clientHeight + 1);
+      setCols(columnsOf(cards()));
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [visible.length]);
+
+  // Escape and Alt+M both put it away — the chord that opened it also closes it.
+  useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (e.altKey && (e.key === 'm' || e.key === 'M' || e.code === 'KeyM')) {
+      if (e.key === 'Escape' || (e.altKey && (e.key === 'm' || e.key === 'M' || e.code === 'KeyM'))) {
         e.preventDefault();
-        setOpen((wasOpen) => {
-          if (wasOpen) return false;
-          setQuery('');
-          setCursor(Math.max(0, modules.findIndex((m) => m.id === current.id)));
-          return true;
-        });
+        dismiss();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [only, modules, current.id]);
+    // Bound once for the life of the overlay: `dismiss` only ever closes this instance.
+  }, []);
 
-  // Opening from the keyboard must put focus INSIDE the control, or the arrow keys have
-  // nothing to talk to — the filter field when there is one, the trigger itself otherwise
-  // (the menu listens on the wrapper, so the trigger is a valid host for its keys).
-  useEffect(() => {
-    if (!open) return;
-    if (showFilter) inputRef.current?.focus();
-    else triggerRef.current?.focus();
-  }, [open, showFilter]);
-
-  const choose = (m: NavModule | undefined): void => {
-    if (m === undefined) return;
-    close(false);
-    if (m.id !== current.id) onPick(m);
-  };
-
-  const onMenuKey = (e: React.KeyboardEvent): void => {
-    if (e.key === 'Escape') {
+  /** Tab stays inside: nothing behind the overlay is reachable while it is up. */
+  const onPanelKey = (e: ReactKeyboardEvent<HTMLDivElement>): void => {
+    if (e.key !== 'Tab') return;
+    const focusables = Array.from(
+      panelRef.current?.querySelectorAll<HTMLElement>('button, input') ?? [],
+    );
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    if (first === undefined || last === undefined) return;
+    if (e.shiftKey && document.activeElement === first) {
       e.preventDefault();
-      close(true);
-    } else if (e.key === 'ArrowDown') {
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
       e.preventDefault();
-      setCursor((c) => (shown.length === 0 ? 0 : (c + 1) % shown.length));
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setCursor((c) => (shown.length === 0 ? 0 : (c - 1 + shown.length) % shown.length));
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      choose(shown[Math.min(cursor, shown.length - 1)]);
+      first.focus();
     }
   };
+
+  /** The grid is driven like a grid: arrows move by row and column, mirrored for RTL. */
+  const onGridKey = (e: ReactKeyboardEvent<HTMLDivElement>): void => {
+    const all = cards();
+    const i = all.indexOf(document.activeElement as HTMLButtonElement);
+    if (i < 0) return;
+    const cols = columnsOf(all);
+    const step: Record<string, number | undefined> = {
+      ArrowRight: rtl ? -1 : 1,
+      ArrowLeft: rtl ? 1 : -1,
+      ArrowDown: cols,
+      ArrowUp: -cols,
+    };
+    let next: number;
+    if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = all.length - 1;
+    else {
+      const d = step[e.key];
+      if (d === undefined) return;
+      next = i + d;
+    }
+    e.preventDefault();
+    // Walking up off the top row lands in the filter, where typing is the faster path anyway.
+    if (next < 0 && filterRef.current !== null) {
+      filterRef.current.focus();
+      return;
+    }
+    all[Math.max(0, Math.min(all.length - 1, next))]?.focus();
+  };
+
+  const onFilterKey = (e: ReactKeyboardEvent<HTMLInputElement>): void => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      cards()[0]?.focus();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const only = visible[0];
+      if (only !== undefined) choose(only);
+    }
+  };
+
+  return createPortal(
+    <div
+      className={cn('fixed inset-0 z-[90]', shown ? '' : 'pointer-events-none')}
+      role="dialog"
+      aria-modal="true"
+      aria-label={t('nav.modules')}
+    >
+      {/* A wash rather than a wall. The blur now lives on the receding app itself, so this only
+          has to settle the contrast under the type — the workspace behind stays recognisable. */}
+      <div
+        aria-hidden="true"
+        onClick={dismiss}
+        className={cn(
+          'absolute inset-0 bg-slate-100/40 backdrop-blur-[2px] transition-opacity duration-[170ms]',
+          'dark:bg-slate-950/45',
+          shown ? 'opacity-100' : 'opacity-0',
+        )}
+      />
+
+      {/* Not a panel floating over the app but a SCREEN: the title sits near the top of the
+          viewport, the cards take the middle, the shortcut legend rests on the bottom edge.
+          There is no dialog silhouette anywhere, which is what makes it read as a place you
+          entered rather than a window that opened. */}
+      <div
+        ref={panelRef}
+        onKeyDown={onPanelKey}
+        className={cn(
+          'relative flex h-full flex-col px-6 pb-7 pt-14 transition-[opacity,transform]',
+          'duration-[170ms] ease-[cubic-bezier(0.16,1,0.3,1)] sm:px-10 sm:pb-8 sm:pt-20',
+          shown ? 'scale-100 opacity-100' : 'scale-[0.985] opacity-0',
+        )}
+      >
+        <div className="mx-auto flex min-h-0 w-full max-w-[1300px] flex-1 flex-col">
+          {/* Header and legend are pinned; only the grid scrolls, so twenty modules still open
+              on a title and a search field rather than on a wall of cards. */}
+          <div className="relative shrink-0 pb-8 text-center">
+            <p className="text-[17px] font-semibold tracking-[-0.01em] text-slate-900 dark:text-slate-50">
+              {t('nav.modules')}
+            </p>
+            <p className="mt-1 text-[13px] text-slate-500 dark:text-slate-400">
+              {t('nav.launchpadSubtitle')}
+            </p>
+            {/* Aligned with the title rather than jammed into the viewport corner, where it would
+                sit on the topbar's own controls and read as one of them. */}
+            <button
+              type="button"
+              onClick={dismiss}
+              aria-label={t('common.close')}
+              className={cn(
+                'absolute -top-1 end-0 rounded-lg p-2 text-slate-400 transition-colors',
+                'hover:bg-slate-900/[0.05] hover:text-slate-700 focus-visible:ring-2',
+                'focus-visible:ring-slate-500 focus-visible:ring-offset-2',
+                'focus-visible:ring-offset-white dark:hover:bg-white/[0.07]',
+                'dark:hover:text-slate-200 dark:focus-visible:ring-offset-slate-950',
+              )}
+            >
+              <CloseIcon className="h-4 w-4" />
+            </button>
+            {withFilter && (
+              <div className="relative mx-auto mt-5 w-full max-w-[320px]">
+                <SearchIcon className="pointer-events-none absolute inset-y-0 start-3.5 my-auto h-4 w-4 text-slate-400" />
+                <input
+                  ref={filterRef}
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onKeyDown={onFilterKey}
+                  placeholder={t('nav.filterModules')}
+                  aria-label={t('nav.filterModules')}
+                  className={cn(
+                    'h-10 w-full rounded-xl border border-slate-200 bg-white ps-10 pe-3.5 text-[13px]',
+                    'text-slate-800 shadow-[0_1px_2px_rgba(15,23,42,0.04)] placeholder:text-slate-400',
+                    'focus-visible:border-slate-300 focus-visible:ring-2 focus-visible:ring-slate-500',
+                    'focus-visible:ring-offset-2 focus-visible:ring-offset-white',
+                    'dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100',
+                    'dark:focus-visible:ring-offset-slate-950',
+                  )}
+                />
+              </div>
+            )}
+          </div>
+
+          {visible.length === 0 ? (
+            <div className="flex flex-1 flex-col items-center justify-center gap-2.5 pb-10">
+              <InboxIcon className="h-8 w-8 text-slate-300 dark:text-slate-600" />
+              <p className="text-[13px] text-slate-500 dark:text-slate-400">{t('nav.noModules')}</p>
+            </div>
+          ) : (
+            <div
+              ref={gridRef}
+              onKeyDown={onGridKey}
+              // The padding keeps hover shadows and focus rings from being clipped by the scroller.
+              className={cn(
+                '-mx-2 flex min-h-0 flex-1 flex-col overflow-y-auto px-2 py-2',
+                // Centred only while everything fits. A centred flex child that overflows pushes
+                // its first row above the scroll origin, where nothing can reach it — with twenty
+                // modules that row is the one holding the module you are in.
+                scrollable
+                  ? 'justify-start [mask-image:linear-gradient(to_bottom,transparent,black_24px,black_calc(100%_-_24px),transparent)]'
+                  : 'justify-center',
+              )}
+            >
+              <div className="flex flex-wrap justify-center gap-5">
+                {visible.map((m, i) => (
+                  <ModuleCard
+                    key={m.id}
+                    module={m}
+                    isCurrent={m.id === current.id}
+                    shown={shown}
+                    delayMs={Math.min(Math.floor(i / cols), STAGGER_MAX_ROWS) * STAGGER_MS}
+                    onPick={() => choose(m)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+};
+
+const ModuleSwitcher = ({
+  modules,
+  current,
+  collapsed = false,
+  shortcuts,
+  onOpen,
+  onPick,
+}: {
+  modules: NavModule[];
+  current: NavModule;
+  collapsed?: boolean;
+  /**
+   * Whether this switcher answers the Alt+M chord. The shell is mounted twice — the desktop
+   * column and the mobile drawer both live in the DOM at all times — so exactly one of them may
+   * listen, or one keystroke would raise two launchpads on top of each other.
+   */
+  shortcuts: boolean;
+  /** Fired as the launchpad opens, so the mobile drawer can step out from behind it. */
+  onOpen?: (() => void) | undefined;
+  onPick: (m: NavModule) => void;
+}): JSX.Element => {
+  const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const CurrentIcon = resolveNavIcon(current.icon, BuildingIcon);
+  const only = modules.length <= 1;
+
+  const raise = (): void => {
+    setOpen(true);
+    onOpen?.();
+  };
+
+  // Alt+M — a dedicated chord, deliberately NOT ⌘K: the palette already owns that muscle memory
+  // for "go to a page", and overloading it would make both slower to think about. While the
+  // launchpad is up it owns the chord itself, so the two never fight over one keystroke.
+  useEffect(() => {
+    if (only || open || !shortcuts) return undefined;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.altKey && (e.key === 'm' || e.key === 'M' || e.code === 'KeyM')) {
+        e.preventDefault();
+        raise();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // `raise` closes over props that do not change for a mounted shell.
+  }, [only, open, shortcuts]);
 
   // One module: a quiet label, not a control.
   if (only) {
@@ -406,15 +847,13 @@ const ModuleSwitcher = ({
   }
 
   return (
-    <div className="relative" ref={ref} onKeyDown={open ? onMenuKey : undefined}>
+    <>
       <button
         ref={triggerRef}
         type="button"
-        onClick={() => (open ? close(false) : openMenu())}
-        aria-haspopup="menu"
+        onClick={raise}
+        aria-haspopup="dialog"
         aria-expanded={open}
-        aria-controls={open ? 'module-switcher-menu' : undefined}
-        aria-activedescendant={open ? `module-opt-${shown[cursor]?.id ?? ''}` : undefined}
         aria-label={t('nav.switchModule')}
         title={`${localized(current.name, locale)} · ${t('nav.switchModuleHint')}`}
         className={cn(
@@ -431,84 +870,23 @@ const ModuleSwitcher = ({
             <span className="min-w-0 flex-1 truncate text-start">
               {localized(current.name, locale)}
             </span>
-            <ChevronIcon
-              className={cn(
-                'h-3 w-3 shrink-0 text-slate-400 dark:text-slate-500',
-                open && 'rotate-180',
-              )}
-            />
+            <GridIcon className="h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-slate-500" />
           </>
         )}
       </button>
 
       {open && (
-        <div
-          id="module-switcher-menu"
-          role="menu"
-          aria-label={t('nav.switchModule')}
-          className={cn(
-            'absolute z-30 min-w-[14rem] rounded-lg border border-slate-200/70 bg-white p-1.5',
-            'dark:border-slate-700/70 dark:bg-slate-800',
-            collapsed ? 'start-full top-0 ms-1' : 'inset-x-0 mt-1',
-          )}
-        >
-          {showFilter && (
-            <input
-              ref={inputRef}
-              value={query}
-              onChange={(e) => {
-                setQuery(e.target.value);
-                setCursor(0);
-              }}
-              placeholder={t('nav.filterModules')}
-              aria-label={t('nav.filterModules')}
-              className={cn(
-                'mb-1 h-8 w-full rounded-md bg-slate-900/[0.03] px-2 text-[13px] text-slate-700',
-                'placeholder:text-slate-400 focus:outline-none dark:bg-white/[0.06] dark:text-slate-200',
-              )}
-            />
-          )}
-          {shown.length === 0 ? (
-            <p className="px-2 py-2 text-[12px] text-slate-400 dark:text-slate-500">
-              {t('nav.noModules')}
-            </p>
-          ) : (
-            shown.map((m, i) => {
-              const Icon = resolveNavIcon(m.icon, BuildingIcon);
-              const isCurrent = m.id === current.id;
-              return (
-                <button
-                  key={m.id}
-                  id={`module-opt-${m.id}`}
-                  type="button"
-                  role="menuitem"
-                  aria-current={isCurrent}
-                  tabIndex={-1}
-                  onMouseEnter={() => setCursor(i)}
-                  onClick={() => choose(m)}
-                  className={cn(
-                    'flex h-8 w-full items-center gap-2.5 rounded-md px-2 text-[13px]',
-                    'focus-visible:outline-none',
-                    i === cursor ? 'bg-slate-900/[0.05] dark:bg-white/[0.07]' : '',
-                    isCurrent
-                      ? 'font-medium text-slate-900 dark:text-slate-100'
-                      : 'text-slate-600 dark:text-slate-300',
-                  )}
-                >
-                  <Icon className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" />
-                  <span className="min-w-0 flex-1 truncate text-start">
-                    {localized(m.name, locale)}
-                  </span>
-                  {isCurrent && (
-                    <CheckIcon className="h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-slate-500" />
-                  )}
-                </button>
-              );
-            })
-          )}
-        </div>
+        <Launchpad
+          modules={modules}
+          current={current}
+          onChoose={onPick}
+          onClose={(focusTrigger) => {
+            setOpen(false);
+            if (focusTrigger) triggerRef.current?.focus();
+          }}
+        />
       )}
-    </div>
+    </>
   );
 };
 
@@ -551,6 +929,7 @@ const IconStrip = ({
   current,
   pinnedApps,
   allRoutes,
+  shortcuts,
   onPickModule,
   onNavigate,
 }: {
@@ -559,6 +938,7 @@ const IconStrip = ({
   /** Collapsed must not silently drop features the expanded column has. */
   pinnedApps: NavApp[];
   allRoutes: string[];
+  shortcuts: boolean;
   onPickModule: (m: NavModule) => void;
   onNavigate?: (() => void) | undefined;
 }): JSX.Element => {
@@ -566,7 +946,14 @@ const IconStrip = ({
   const moduleRoutes = current.apps.map((a) => a.route);
   return (
     <div className="flex flex-1 flex-col items-center gap-1 overflow-y-auto px-2 py-3">
-      <ModuleSwitcher modules={modules} current={current} collapsed onPick={onPickModule} />
+      <ModuleSwitcher
+        modules={modules}
+        current={current}
+        collapsed
+        shortcuts={shortcuts}
+        onOpen={onNavigate}
+        onPick={onPickModule}
+      />
       <div className="my-1 h-px w-6 bg-slate-200 dark:bg-slate-700" />
       {pinnedApps.length > 0 && (
         <>
@@ -608,9 +995,12 @@ const StateShell = ({ children }: { children: JSX.Element }): JSX.Element => (
 // ── The shell ───────────────────────────────────────────────────────────────
 const NavShell = ({
   collapsible = true,
+  shortcuts = true,
   onNavigate,
 }: {
   collapsible?: boolean;
+  /** Only one mounted shell may answer the global chord — see `ModuleSwitcher.shortcuts`. */
+  shortcuts?: boolean;
   onNavigate?: (() => void) | undefined;
 }): JSX.Element => {
   const t = useT();
@@ -716,13 +1106,20 @@ const NavShell = ({
           current={current}
           pinnedApps={pinnedApps}
           allRoutes={allRoutes}
+          shortcuts={shortcuts}
           onPickModule={pickModule}
           onNavigate={onNavigate}
         />
       ) : (
         <>
           <div className="border-b border-slate-200/60 px-3 py-2 dark:border-slate-800/60">
-            <ModuleSwitcher modules={modules} current={current} onPick={pickModule} />
+            <ModuleSwitcher
+              modules={modules}
+              current={current}
+              shortcuts={shortcuts}
+              onOpen={onNavigate}
+              onPick={pickModule}
+            />
           </div>
           <nav className="flex-1 overflow-y-auto px-3 pb-4 pt-3">
             {pinnedApps.length > 0 && (
@@ -819,7 +1216,10 @@ export const Sidebar = (): JSX.Element => {
           aria-modal="true"
           aria-label={t('common.menu')}
         >
-          <NavShell collapsible={false} onNavigate={close} />
+          {/* The drawer's shell stays mounted while closed, so it must not also answer Alt+M —
+              one chord, one launchpad. Opening the launchpad closes the drawer behind it rather
+              than stacking two dimmed layers. */}
+          <NavShell collapsible={false} shortcuts={false} onNavigate={close} />
           <button
             type="button"
             onClick={close}

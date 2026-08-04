@@ -1,15 +1,15 @@
-// The ECMS navigation shell: a two-part rail designed to stay clean at dozens of modules and
-// hundreds of pages.
-//   • ModuleRail — a slim vertical strip of module icons. Switching modules is one glance + one
-//     click; it scales far better than a long scrolling list.
-//   • ModulePanel — the selected module's pages, plus the user's cross-module Pinned favorites.
-// Visual language (minimal-enterprise, Linear/Notion-style): ONE quiet neutral surface; every
-// element is transparent with neutral icon/text, and ONLY the active item sits in a white
-// (dark: slate-800) rounded container with the brand color. No fills, no shadows, no per-module
-// colors; hover is a faint neutral tint via transition-colors only.
-// Data is the dynamic GET /platform/me/applications (PR #64/#65); nothing here changes the backend,
-// routing, or permission model. Persistent on desktop (lg+); an off-canvas drawer on mobile.
-import { useEffect, useMemo, useState } from 'react';
+// The ECMS navigation shell, third generation — designed as a product surface, not an admin
+// template. One white column (Linear/Notion/Vercel language):
+//   • Modules are quiet SECTIONS — a text-only uppercase label, collapsible, state persisted;
+//     the module owning the current page auto-expands so orientation is never lost.
+//   • Rows are monochrome. No per-module colors, no fills, no pills, no shadows: the ACTIVE row
+//     is a soft neutral tint with darker text — color is reserved for data and actions, which is
+//     precisely what makes the chrome feel designed rather than themed.
+//   • Live queue counts render as plain right-aligned numbers, not badges.
+//   • Collapsed mode is a slim icon strip (one icon per module); expanding restores the column.
+// Data is the dynamic GET /platform/me/applications; nothing here changes the backend, routing,
+// or permission model. Persistent on desktop (lg+); an off-canvas drawer on mobile.
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { type Locale, type MyApplicationDto } from '@ecms/contracts';
 import { useAppDispatch, useAppSelector } from '../../store';
@@ -19,6 +19,7 @@ import { cn } from '../../shared/lib/cn';
 import { localized } from '../../shared/lib/format';
 import {
   BuildingIcon,
+  ChevronEndIcon,
   ChevronStartIcon,
   CloseIcon,
   FileIcon,
@@ -43,7 +44,10 @@ import {
   type NavChildrenProvider,
 } from '../navigation/nav-children';
 
+// ── Persisted chrome state ──────────────────────────────────────────────────
 const PANEL_KEY = 'ecms.nav.panelCollapsed';
+const SECTIONS_KEY = 'ecms.nav.sections';
+
 const loadCollapsed = (): boolean => {
   try {
     return localStorage.getItem(PANEL_KEY) === '1';
@@ -59,30 +63,45 @@ const persistCollapsed = (v: boolean): void => {
   }
 };
 
-// Minimal nav language: every row is transparent and neutral; ONLY the active page sits in a
-// white rounded container with the brand color on its icon and label. No fills, no shadows.
+/** moduleId → false when the user collapsed that section; absent/true = expanded. */
+const loadSections = (): Record<string, boolean> => {
+  try {
+    const raw = localStorage.getItem(SECTIONS_KEY);
+    if (raw === null) return {};
+    const parsed: unknown = JSON.parse(raw);
+    return typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, boolean>) : {};
+  } catch {
+    return {};
+  }
+};
+const persistSections = (v: Record<string, boolean>): void => {
+  try {
+    localStorage.setItem(SECTIONS_KEY, JSON.stringify(v));
+  } catch {
+    /* ignore */
+  }
+};
+
+// ── Row language ────────────────────────────────────────────────────────────
+// Monochrome: transparent by default, a whisper of tint on hover, and the active row a soft
+// neutral tint + darker text. The eye finds "where am I" by weight, not by color.
 const rowClass = ({ isActive }: { isActive: boolean }): string =>
   cn(
-    'group/item flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-[13px] leading-5 transition-colors',
-    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40',
+    'group/item flex h-8 items-center gap-2.5 rounded-md px-2 text-[13px] leading-5 transition-colors',
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/40',
     isActive
-      ? 'bg-white font-medium text-brand-600 dark:bg-slate-800 dark:text-brand-400'
-      : 'font-normal text-slate-600 hover:bg-slate-200/60 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-100',
+      ? 'bg-slate-900/[0.06] font-medium text-slate-900 dark:bg-white/[0.08] dark:text-slate-100'
+      : 'font-normal text-slate-600 hover:bg-slate-900/[0.04] hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/[0.05] dark:hover:text-slate-100',
   );
 
-/**
- * The live queue count on a nav row. Zero is deliberately NOT rendered: a badge means "there is
- * work here", so an empty queue is silence rather than a "0" the eye has to dismiss.
- */
-const NavBadge = ({ count, active }: { count: number | null; active: boolean }): JSX.Element | null => {
+/** A live queue count as a plain right-aligned number — quieter than any badge. Zero is silence. */
+const Count = ({ count, active }: { count: number | null; active: boolean }): JSX.Element | null => {
   if (count === null || count === 0) return null;
   return (
     <span
       className={cn(
-        'shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular-nums',
-        active
-          ? 'bg-brand-600/10 text-brand-600 dark:bg-brand-400/10 dark:text-brand-400'
-          : 'bg-slate-200/70 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+        'shrink-0 text-[11px] tabular-nums',
+        active ? 'text-slate-500 dark:text-slate-400' : 'text-slate-400 dark:text-slate-500',
       )}
     >
       {count > 99 ? '99+' : count}
@@ -103,8 +122,8 @@ const ChildRow = ({
     <NavLink to={child.route} onClick={onNavigate} className={rowClass}>
       {({ isActive }) => (
         <>
-          <span className="ms-6 min-w-0 flex-1 truncate">{localized(child.label, locale)}</span>
-          <NavBadge count={child.count} active={isActive} />
+          <span className="ms-[26px] min-w-0 flex-1 truncate">{localized(child.label, locale)}</span>
+          <Count count={child.count} active={isActive} />
         </>
       )}
     </NavLink>
@@ -115,11 +134,14 @@ const AppRow = ({
   app,
   onNavigate,
   count = null,
+  showPinAtRest = true,
 }: {
   app: MyApplicationDto;
   onNavigate?: (() => void) | undefined;
   /** Live queue count published by the module's nav provider, if it has one (RW16). */
   count?: number | null;
+  /** False inside the Pinned section, where a filled star on every row states the obvious. */
+  showPinAtRest?: boolean;
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
@@ -132,12 +154,12 @@ const AppRow = ({
         <>
           <Icon
             className={cn(
-              'h-[18px] w-[18px] shrink-0',
-              isActive ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400 dark:text-slate-500',
+              'h-4 w-4 shrink-0',
+              isActive ? 'text-slate-700 dark:text-slate-200' : 'text-slate-400 dark:text-slate-500',
             )}
           />
           <span className="min-w-0 flex-1 truncate">{localized(app.name, locale)}</span>
-          <NavBadge count={count} active={isActive} />
+          <Count count={count} active={isActive} />
           <button
             type="button"
             onClick={(e) => {
@@ -148,10 +170,10 @@ const AppRow = ({
             aria-label={t(pinned ? 'nav.unpin' : 'nav.pin')}
             className={cn(
               'grid h-5 w-5 shrink-0 place-items-center rounded transition-colors',
-              isActive
-                ? 'text-brand-600/50 hover:text-brand-600 dark:text-brand-400/50 dark:hover:text-brand-400'
-                : 'text-slate-300 hover:text-slate-600 dark:text-slate-600 dark:hover:text-slate-300',
-              pinned ? 'opacity-100' : 'opacity-0 focus:opacity-100 group-hover/item:opacity-100',
+              'text-slate-300 hover:text-slate-600 dark:text-slate-600 dark:hover:text-slate-300',
+              pinned && showPinAtRest
+                ? 'opacity-100'
+                : 'opacity-0 focus:opacity-100 group-hover/item:opacity-100',
             )}
           >
             <StarIcon className={cn('h-3.5 w-3.5', pinned && 'fill-current')} />
@@ -211,21 +233,68 @@ const AppWithChildren = ({
   return <DynamicAppRow app={app} provider={provider} onNavigate={onNavigate} />;
 };
 
-const ModuleRail = ({
+// ── Sections ────────────────────────────────────────────────────────────────
+/** A module as a quiet collapsible section: text-only uppercase label, chevron on hover. */
+const Section = ({
+  module,
+  expanded,
+  onToggle,
+  onNavigate,
+}: {
+  module: NavModule;
+  expanded: boolean;
+  onToggle: () => void;
+  onNavigate?: (() => void) | undefined;
+}): JSX.Element => {
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  return (
+    <section className="mt-5 first:mt-0.5">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={expanded}
+        className={cn(
+          'group/section flex h-7 w-full items-center gap-1.5 rounded-md px-2',
+          'text-[11px] font-medium uppercase tracking-[0.07em] text-slate-400 transition-colors',
+          'hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2',
+          'focus-visible:ring-slate-400/40 dark:text-slate-500 dark:hover:text-slate-300',
+        )}
+      >
+        <span className="min-w-0 truncate text-start">{localized(module.name, locale)}</span>
+        <ChevronEndIcon
+          className={cn(
+            'h-3 w-3 shrink-0 opacity-0 transition-transform group-hover/section:opacity-100 rtl:-scale-x-100',
+            expanded && 'rotate-90 rtl:rotate-90',
+          )}
+        />
+      </button>
+      {expanded && (
+        <ul className="mt-0.5 space-y-px">
+          {module.apps.map((a) => (
+            <AppWithChildren key={a.id} app={a} onNavigate={onNavigate} />
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+};
+
+// ── Collapsed mode: a slim icon strip, one icon per module ──────────────────
+const IconStrip = ({
   modules,
-  shownId,
+  activeId,
   onPick,
 }: {
   modules: NavModule[];
-  shownId: string;
+  activeId: string | null;
   onPick: (id: string) => void;
 }): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   return (
-    <div className="flex w-14 shrink-0 flex-col items-center gap-1 overflow-y-auto border-e border-slate-200 bg-slate-50 py-3 dark:border-slate-800 dark:bg-slate-900">
+    <div className="flex flex-1 flex-col items-center gap-1 overflow-y-auto px-2 py-3">
       {modules.map((m) => {
         const name = localized(m.name, locale);
-        const shown = m.id === shownId;
+        const active = m.id === activeId;
         const Icon = resolveNavIcon(m.icon, BuildingIcon);
         return (
           <button
@@ -234,16 +303,16 @@ const ModuleRail = ({
             onClick={() => onPick(m.id)}
             title={name}
             aria-label={name}
-            aria-current={shown ? 'page' : undefined}
+            aria-current={active ? 'page' : undefined}
             className={cn(
-              'grid h-10 w-10 shrink-0 place-items-center rounded-lg transition-colors',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40',
-              shown
-                ? 'bg-white text-brand-600 dark:bg-slate-800 dark:text-brand-400'
-                : 'text-slate-500 hover:bg-slate-200/60 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200',
+              'grid h-9 w-9 shrink-0 place-items-center rounded-md transition-colors',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/40',
+              active
+                ? 'bg-slate-900/[0.06] text-slate-800 dark:bg-white/[0.08] dark:text-slate-100'
+                : 'text-slate-400 hover:bg-slate-900/[0.04] hover:text-slate-700 dark:text-slate-500 dark:hover:bg-white/[0.05] dark:hover:text-slate-200',
             )}
           >
-            <Icon className="h-5 w-5" />
+            <Icon className="h-[18px] w-[18px]" />
           </button>
         );
       })}
@@ -251,82 +320,13 @@ const ModuleRail = ({
   );
 };
 
-const ModulePanel = ({
-  module,
-  collapsible,
-  onCollapse,
-  onNavigate,
-}: {
-  module: NavModule;
-  collapsible: boolean;
-  onCollapse: () => void;
-  onNavigate?: (() => void) | undefined;
-}): JSX.Element => {
-  const t = useT();
-  const locale = useAppSelector((state): Locale => state.locale.locale);
-  const { data = [] } = useMyApplications();
-  const { pinned } = useNavPrefs();
-  const ModuleIcon = resolveNavIcon(module.icon, BuildingIcon);
-
-  const pinnedApps = useMemo(() => {
-    const all = flattenApps(data);
-    return pinned
-      .map((id) => all.find((a) => a.id === id))
-      .filter((a): a is NavApp => a !== undefined);
-  }, [data, pinned]);
-
-  return (
-    <div className="flex w-56 shrink-0 flex-col border-e border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900">
-      <div className="flex h-12 items-center justify-between gap-2 border-b border-slate-200/70 px-3 dark:border-slate-800/70">
-        <div className="flex min-w-0 items-center gap-2">
-          <ModuleIcon className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" />
-          <span className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
-            {localized(module.name, locale)}
-          </span>
-        </div>
-        {collapsible && (
-          <button
-            type="button"
-            onClick={onCollapse}
-            aria-label={t('nav.collapse')}
-            title={t('nav.collapse')}
-            className="hidden shrink-0 rounded p-1 text-slate-400 transition-colors hover:bg-slate-200/60 hover:text-slate-600 dark:hover:bg-slate-800/60 lg:block"
-          >
-            <ChevronStartIcon className="h-4 w-4 rtl:-scale-x-100" />
-          </button>
-        )}
-      </div>
-      <div className="flex-1 overflow-y-auto px-2 pb-3 pt-2">
-        {pinnedApps.length > 0 && (
-          <div className="pb-1">
-            <p className="px-2 pb-1 text-[0.68rem] font-semibold uppercase tracking-[0.09em] text-slate-400 dark:text-slate-500">
-              {t('nav.pinned')}
-            </p>
-            <ul className="space-y-px">
-              {pinnedApps.map((a) => (
-                <li key={`pin-${a.id}`}>
-                  <AppRow app={a} onNavigate={onNavigate} />
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-        <ul className={cn('space-y-px', pinnedApps.length > 0 && 'pt-2')}>
-          {module.apps.map((a) => (
-            <AppWithChildren key={a.id} app={a} onNavigate={onNavigate} />
-          ))}
-        </ul>
-      </div>
-    </div>
-  );
-};
-
 const StateShell = ({ children }: { children: JSX.Element }): JSX.Element => (
-  <div className="flex w-64 shrink-0 flex-col border-e border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900">
+  <div className="flex w-60 shrink-0 flex-col border-e border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900">
     <div className="flex flex-1 items-center justify-center overflow-y-auto">{children}</div>
   </div>
 );
 
+// ── The shell ───────────────────────────────────────────────────────────────
 const NavShell = ({
   collapsible = true,
   onNavigate,
@@ -336,16 +336,37 @@ const NavShell = ({
 }): JSX.Element => {
   const t = useT();
   const { data = [], isLoading, isError, error, refetch } = useMyApplications();
-  const modules = useMemo(() => toModules(data), [data]);
+  const { pinned } = useNavPrefs();
   const { pathname } = useLocation();
-  const activeModuleId = useMemo(() => moduleOfPathname(modules, pathname), [modules, pathname]);
-  const [picked, setPicked] = useState<string | null>(null);
-  const [collapsed, setCollapsed] = useState<boolean>(() => collapsible && loadCollapsed());
 
-  // Navigating clears a manual module peek so the panel follows the current page's module.
+  // A module with no pages yet (e.g. one seeded ahead of its screens) earns no chrome.
+  const modules = useMemo(() => toModules(data).filter((m) => m.apps.length > 0), [data]);
+  const activeModuleId = useMemo(() => moduleOfPathname(modules, pathname), [modules, pathname]);
+
+  const [collapsed, setCollapsed] = useState<boolean>(() => collapsible && loadCollapsed());
+  const [sections, setSections] = useState<Record<string, boolean>>(loadSections);
+  const isExpanded = useCallback((id: string): boolean => sections[id] !== false, [sections]);
+  const setSection = useCallback((id: string, value: boolean): void => {
+    setSections((prev) => {
+      const next = { ...prev, [id]: value };
+      persistSections(next);
+      return next;
+    });
+  }, []);
+
+  // The module owning the current page always shows its rows — orientation beats tidiness.
   useEffect(() => {
-    setPicked(null);
-  }, [pathname]);
+    if (activeModuleId !== null && sections[activeModuleId] === false) {
+      setSection(activeModuleId, true);
+    }
+  }, [activeModuleId, sections, setSection]);
+
+  const pinnedApps = useMemo(() => {
+    const all = flattenApps(data);
+    return pinned
+      .map((id) => all.find((a) => a.id === id))
+      .filter((a): a is NavApp => a !== undefined);
+  }, [data, pinned]);
 
   if (isLoading) {
     return (
@@ -372,30 +393,80 @@ const NavShell = ({
     );
   }
 
-  const shownModule = modules.find((m) => m.id === (picked ?? activeModuleId)) ?? modules[0]!;
-  const showPanel = !collapsible || !collapsed;
-
-  const pick = (id: string): void => {
-    setPicked(id);
-    if (collapsed) {
-      setCollapsed(false);
-      persistCollapsed(false);
-    }
+  const toggleCollapsed = (): void => {
+    setCollapsed((v) => {
+      persistCollapsed(!v);
+      return !v;
+    });
+  };
+  const pickFromStrip = (id: string): void => {
+    setCollapsed(false);
+    persistCollapsed(false);
+    setSection(id, true);
   };
 
   return (
-    <div className="flex h-full">
-      <ModuleRail modules={modules} shownId={shownModule.id} onPick={pick} />
-      {showPanel && (
-        <ModulePanel
-          module={shownModule}
-          collapsible={collapsible}
-          onCollapse={() => {
-            setCollapsed(true);
-            persistCollapsed(true);
-          }}
-          onNavigate={onNavigate}
-        />
+    <div
+      className={cn(
+        'flex shrink-0 flex-col border-e border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900',
+        collapsed ? 'w-14' : 'w-60',
+      )}
+    >
+      {collapsed ? (
+        <IconStrip modules={modules} activeId={activeModuleId} onPick={pickFromStrip} />
+      ) : (
+        <nav className="flex-1 overflow-y-auto px-3 pb-4 pt-4">
+          {pinnedApps.length > 0 && (
+            <section className="mb-5">
+              <p className="flex h-7 items-center px-2 text-[11px] font-medium uppercase tracking-[0.07em] text-slate-400 dark:text-slate-500">
+                {t('nav.pinned')}
+              </p>
+              <ul className="mt-0.5 space-y-px">
+                {pinnedApps.map((a) => (
+                  <li key={`pin-${a.id}`}>
+                    <AppRow app={a} onNavigate={onNavigate} showPinAtRest={false} />
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+          {modules.map((m) => (
+            <Section
+              key={m.id}
+              module={m}
+              expanded={isExpanded(m.id)}
+              onToggle={() => setSection(m.id, !isExpanded(m.id))}
+              onNavigate={onNavigate}
+            />
+          ))}
+        </nav>
+      )}
+
+      {collapsible && (
+        <div className="border-t border-slate-200/60 px-2 py-2 dark:border-slate-800/60">
+          <button
+            type="button"
+            onClick={toggleCollapsed}
+            aria-label={t(collapsed ? 'nav.expand' : 'nav.collapse')}
+            title={t(collapsed ? 'nav.expand' : 'nav.collapse')}
+            className={cn(
+              'flex h-8 items-center gap-2 rounded-md text-slate-400 transition-colors',
+              'hover:bg-slate-900/[0.04] hover:text-slate-600 focus-visible:outline-none',
+              'focus-visible:ring-2 focus-visible:ring-slate-400/40 dark:text-slate-500',
+              'dark:hover:bg-white/[0.05] dark:hover:text-slate-300',
+              collapsed ? 'w-10 justify-center' : 'w-full px-2',
+            )}
+          >
+            {collapsed ? (
+              <ChevronEndIcon className="h-4 w-4 rtl:-scale-x-100" />
+            ) : (
+              <>
+                <ChevronStartIcon className="h-4 w-4 rtl:-scale-x-100" />
+                <span className="text-[12px]">{t('nav.collapse')}</span>
+              </>
+            )}
+          </button>
+        </div>
       )}
     </div>
   );
@@ -424,7 +495,7 @@ export const Sidebar = (): JSX.Element => {
         />
         <aside
           className={cn(
-            'absolute inset-y-0 start-0 flex max-w-[88%] bg-slate-50 transition-transform dark:bg-slate-900',
+            'absolute inset-y-0 start-0 flex max-w-[88%] bg-white transition-transform dark:bg-slate-900',
             open ? 'translate-x-0' : '-translate-x-full rtl:translate-x-full',
           )}
           role="dialog"
@@ -436,7 +507,7 @@ export const Sidebar = (): JSX.Element => {
             type="button"
             onClick={close}
             aria-label={t('common.close')}
-            className="absolute end-2 top-2.5 z-10 rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-200/60 dark:hover:bg-slate-800/60"
+            className="absolute end-2 top-2.5 z-10 rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-900/[0.04] dark:hover:bg-white/[0.05]"
           >
             <CloseIcon />
           </button>

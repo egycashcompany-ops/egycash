@@ -31,6 +31,7 @@ import { fileCategoryRepository } from './file-category.repository';
 import { enqueueFileProcessing, hasFileProcessor } from './file.processors';
 import { type FileDoc } from './file.model';
 import { type FileCategoryDoc } from './file-category.model';
+import { signedFileUrl } from './signed-url';
 
 export interface UploadedBinary {
   originalName: string;
@@ -467,8 +468,14 @@ class FileService {
   // ── Download (authorized + audited; signed-URL abstraction) ───────────────
 
   private appSignedUrl(fileId: string, expiresAtEpoch: number): string {
-    const signature = hmacSha256(env.STORAGE_SIGNING_SECRET, `${fileId}.${expiresAtEpoch}`);
-    return `${env.API_PUBLIC_URL}/api/v1/platform/files/signed/${fileId}?e=${expiresAtEpoch}&s=${signature}`;
+    return signedFileUrl({
+      fileId,
+      expiresAtEpoch,
+      signature: hmacSha256(env.STORAGE_SIGNING_SECRET, `${fileId}.${expiresAtEpoch}`),
+      basePath: env.BASE_PATH,
+      apiPublicUrl: env.API_PUBLIC_URL,
+      servesWebApp: env.WEB_STATIC_DIR !== '',
+    });
   }
 
   verifyAppSignature(fileId: string, expiresAtEpoch: number, signature: string): boolean {

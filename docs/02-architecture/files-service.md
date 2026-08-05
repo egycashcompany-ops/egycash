@@ -19,6 +19,14 @@ Binary data never enters MongoDB. Providers implement one interface
 | `minio` | MinIO / any S3-compatible store | native (SigV4) | `s3` adapter + `S3_ENDPOINT` + path-style addressing |
 | `azure` | Azure Blob Storage (`AZURE_STORAGE_*`) | native (SAS) when shared-key credentials are available | falls back to app signing otherwise |
 
+> **`local` and `railway` are single-process drivers.** Both root a filesystem inside one
+> container, and the store is **shared state**: the worker writes contract PDFs and evaluation-batch
+> packages that the app serves, and reads the company logo and applicant attachments the app
+> uploaded. A deployment that runs the worker alongside the api therefore needs an object store —
+> see [ADR-020](../03-decisions/ADR-020-shared-file-storage.md) and its
+> [migration design](../12-planning/shared-file-storage-design.md). Decision pending; the current
+> Railway topology is affected.
+
 **Signed-URL abstraction:** `GET /:id/download` always answers with a short-lived URL
 (TTL `SIGNED_URL_TTL_SECONDS`). Cloud providers presign natively; disk providers fall back
 to the platform's own HMAC-signed streaming endpoint — callers cannot tell the difference,

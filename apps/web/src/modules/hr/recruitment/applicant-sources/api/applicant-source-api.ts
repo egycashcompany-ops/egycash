@@ -9,11 +9,16 @@ import {
   type Paginated,
   type UpdateApplicantSource,
 } from '@ecms/contracts';
-import { get, patch, post } from '../../../../../shared/lib/api-client';
+import { getPage, patch, post } from '../../../../../shared/lib/api-client';
 
-/** No `active` filter: the management screen is the one place that must show disabled ones too. */
+/**
+ * No `active` filter: the management screen is the one place that must show disabled ones too.
+ *
+ * `getPage`, not `get` — a list answers with the items in `data` and the paging in `meta`, and
+ * `get` hands back only the former.
+ */
 export const listApplicantSources = (): Promise<Paginated<ApplicantSourceDto>> =>
-  get<Paginated<ApplicantSourceDto>>('/hr/applicant-sources?pageSize=100&sortBy=key&sortDir=asc');
+  getPage<ApplicantSourceDto>('/hr/applicant-sources?pageSize=100&sortBy=key&sortDir=asc');
 
 export const createApplicantSource = (body: CreateApplicantSource): Promise<ApplicantSourceDto> =>
   post<ApplicantSourceDto>('/hr/applicant-sources', body);

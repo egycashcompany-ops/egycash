@@ -10,6 +10,7 @@
 import { Router, type Request, type Response } from 'express';
 import {
   GenerateRecruitmentFormLinkSchema,
+  RecruitmentFormSourceParamSchema,
   RecruitmentFormTokenParamSchema,
   SubmitRecruitmentFormSchema,
   UpdateRecruitmentFormSchema,
@@ -61,10 +62,14 @@ export const buildRecruitmentFormRouter = (): Router => {
     validate({ body: GenerateRecruitmentFormLinkSchema }),
     asyncHandler(generateLink),
   );
+  // `validate` is not optional garnish here: `validated(req)` reads what this middleware puts on
+  // the request, so a route that skips it hands the handler `undefined` and destructuring it
+  // throws — a 500 on every call, which is exactly what revoking a link did.
   router.delete(
     '/links/:sourceId',
     authenticate,
     authorize('recruitmentForm.manage'),
+    validate({ params: RecruitmentFormSourceParamSchema }),
     asyncHandler(revokeLink),
   );
   return router;

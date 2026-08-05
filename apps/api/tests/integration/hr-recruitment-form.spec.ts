@@ -214,6 +214,55 @@ describe('the application form page', () => {
   });
 });
 
+// Publishing had tests from the first commit. Withdrawing had none, and it answered 500 every
+// time: its route was the one route in the app that read `validated(req)` without the `validate()`
+// middleware that puts `validated` on the request, so the handler destructured `undefined`. The
+// screen showed "Unexpected error". These four steps are the round trip an admin actually makes.
+describe('an admin withdraws a published link', () => {
+  let published = '';
+  let token = '';
+
+  it('publishes one to withdraw', async () => {
+    published = await sourceId('agency');
+    const res = await request(app)
+      .post('/api/v1/hr/recruitment-form/links')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ sourceId: published });
+    expect(res.status).toBe(200);
+    const link = (res.body as { data: RecruitmentFormDto }).data.links.find(
+      (l) => l.sourceId === published,
+    );
+    token = link?.token ?? '';
+    expect(link?.active).toBe(true);
+    expect(token).not.toBe('');
+  });
+
+  it('withdraws it — HTTP 200, not the 500 the page reported', async () => {
+    const revoked = await request(app)
+      .delete(`/api/v1/hr/recruitment-form/links/${published}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(revoked.status).toBe(200);
+    const link = (revoked.body as { data: RecruitmentFormDto }).data.links.find(
+      (l) => l.sourceId === published,
+    );
+    // The row stays — the platform is still a platform — but it carries no usable URL.
+    expect(link?.active).toBe(false);
+    expect(link?.url).toBeNull();
+  });
+
+  it('and the withdrawn URL stops working for candidates', async () => {
+    const gone = await request(app).get(`/api/v1/hr/public/apply/${token}`);
+    expect(gone.status).toBe(404);
+  });
+
+  it('rejects a sourceId that is not an id, instead of failing somewhere deeper', async () => {
+    const bad = await request(app)
+      .delete('/api/v1/hr/recruitment-form/links/not-an-object-id')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(bad.status).toBe(400);
+  });
+});
+
 // Every step a candidate's application goes through, each one its own assertion, so a green run
 // names what was proven rather than hiding it behind one tick. This suite runs on REAL MongoDB —
 // a downloaded server in CI, or MONGO_TEST_URI — which matters for the last step: the submission

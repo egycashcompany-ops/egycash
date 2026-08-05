@@ -42,6 +42,20 @@ export interface DataTableProps<T> {
   selection?: TableSelection;
   /** Drop the table's own border/rounding/background when it sits inside a ListView surface. */
   embedded?: boolean;
+  /**
+   * Highlight the row under the pointer even though it is not clickable. A row full of buttons is
+   * still a row you track with your eyes across eight columns; the highlight is for reading, not
+   * for promising navigation, which is why it is separate from `onRowClick`.
+   */
+  hoverable?: boolean;
+  /**
+   * More room ACROSS the row — for tables whose cells carry avatars, chips and inline controls
+   * rather than words, and where the default gutter runs them into each other.
+   *
+   * Deliberately not more room DOWN: a 40px avatar already sets such a row to ~64px, and adding
+   * vertical padding on top of it pushes past the height a dense list is supposed to keep.
+   */
+  spacious?: boolean;
 }
 
 const alignClass: Record<'start' | 'center' | 'end', string> = {
@@ -63,7 +77,10 @@ export const DataTable = <T,>({
   onRowClick,
   selection,
   embedded = false,
+  hoverable = false,
+  spacious = false,
 }: DataTableProps<T>): JSX.Element => {
+  const cellPadding = spacious ? 'px-5 py-3' : 'px-4 py-3';
   // One prop wins; the loose props remain as the deprecated form.
   const isSelectable = selection !== undefined;
   const selected = selection?.selectedIds ?? new Set<string>();
@@ -92,7 +109,7 @@ export const DataTable = <T,>({
             </td>
           )}
           {columns.map((c) => (
-            <td key={c.key} className="px-4 py-3">
+            <td key={c.key} className={cellPadding}>
               <Skeleton className="h-4 w-full max-w-[12rem]" />
             </td>
           ))}
@@ -114,8 +131,9 @@ export const DataTable = <T,>({
           key={id}
           onClick={onRowClick === undefined ? undefined : () => onRowClick(row)}
           className={cn(
-            'border-t border-slate-100 dark:border-slate-800',
-            onRowClick !== undefined && 'cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50',
+            'border-t border-slate-100 transition-colors dark:border-slate-800',
+            (onRowClick !== undefined || hoverable) && 'hover:bg-slate-50 dark:hover:bg-slate-800/50',
+            onRowClick !== undefined && 'cursor-pointer',
             isSelected && 'bg-brand-50/60 dark:bg-brand-950/40',
           )}
         >
@@ -134,7 +152,8 @@ export const DataTable = <T,>({
             <td
               key={c.key}
               className={cn(
-                'px-4 py-3 text-sm text-slate-700 dark:text-slate-200',
+                cellPadding,
+                'text-sm text-slate-700 dark:text-slate-200',
                 alignClass[c.align ?? 'start'],
                 // Numeric (end-aligned) columns line up cleanly with lining figures.
                 c.align === 'end' && 'tabular-nums',
@@ -179,7 +198,9 @@ export const DataTable = <T,>({
                 <th
                   key={c.key}
                   className={cn(
-                    'px-4 py-3 font-semibold',
+                    // Same gutter as the cells below it, or the header stops lining up with them.
+                    cellPadding,
+                    'font-semibold',
                     // Emphasize the column the table is currently sorted by.
                     active && 'text-slate-700 dark:text-slate-200',
                     alignClass[c.align ?? 'start'],

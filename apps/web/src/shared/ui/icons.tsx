@@ -368,3 +368,31 @@ export const MoreIcon = (p: IconProps): JSX.Element => (
     <circle cx="12" cy="19" r="1" />
   </Base>
 );
+
+/** A scannable code: three finder squares and a scatter of modules. Symmetric, so RTL leaves it. */
+export const QrIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <rect x="3" y="3" width="7" height="7" rx="1" />
+    <rect x="14" y="3" width="7" height="7" rx="1" />
+    <rect x="3" y="14" width="7" height="7" rx="1" />
+    <path d="M14 14h3v3h-3z" />
+    <path d="M21 14v3M14 21h3M20 20h1" />
+  </Base>
+);
+
+/** Leaves this console — an arrow out of its frame. Points "away", which is not a reading direction. */
+export const ExternalLinkIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+    <path d="M15 3h6v6" />
+    <path d="M10 14 21 3" />
+  </Base>
+);
+
+/** On/off — for a record that is taken out of use rather than deleted. */
+export const PowerIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <path d="M12 3v9" />
+    <path d="M18.4 7.6a9 9 0 1 1-12.8 0" />
+  </Base>
+);

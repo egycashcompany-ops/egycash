@@ -14,6 +14,7 @@ export const StatCard = ({
   onClick,
   active = false,
   loading = false,
+  dense = false,
 }: {
   label: string;
   icon: ComponentType<SVGProps<SVGSVGElement>>;
@@ -30,6 +31,12 @@ export const StatCard = ({
   /** Draw it as the view currently applied. */
   active?: boolean;
   /**
+   * A tighter tile for a screen that shows several above a table: the number leads, the icon steps
+   * back to a supporting mark, and the label reads as its caption. The default stays as it is for
+   * the module home pages already built on it.
+   */
+  dense?: boolean;
+  /**
    * While the metric is in flight, hold its space with a skeleton instead of a dash. Both avoid a
    * layout shift — the tile is the same height either way — but a skeleton says "coming" where a
    * dash says "nothing", and a number that arrives a moment later contradicts the dash.
@@ -45,23 +52,50 @@ export const StatCard = ({
         active && 'border-brand-400 ring-1 ring-brand-400/40 dark:border-brand-600',
       )}
     >
-      <CardBody className="flex items-center gap-4">
-        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-          <Icon className="h-6 w-6" />
+      <CardBody className={cn('flex items-center gap-4', dense && 'px-4 py-3.5')}>
+        <span
+          className={cn(
+            'grid shrink-0 place-items-center rounded-lg bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
+            dense ? 'h-9 w-9' : 'h-11 w-11',
+          )}
+        >
+          <Icon className={dense ? 'h-5 w-5' : 'h-6 w-6'} />
         </span>
         <div className="min-w-0">
-          <p className="truncate text-sm text-slate-500 dark:text-slate-400">{label}</p>
-          {loading ? (
-            <Skeleton className="mt-1.5 h-7 w-16" />
-          ) : (
-            <p
-              className={cn(
-                'mt-0.5 text-2xl font-semibold tabular-nums',
-                isPlaceholder ? 'text-slate-300 dark:text-slate-600' : 'text-slate-900 dark:text-white',
+          {/* Dense puts the NUMBER first: several tiles read as a row of metrics, and the eye should
+              land on the figures, not on four labels it has to read past. */}
+          {dense ? (
+            <>
+              {loading ? (
+                <Skeleton className="h-7 w-14" />
+              ) : (
+                <p
+                  className={cn(
+                    'text-2xl font-semibold leading-tight tabular-nums',
+                    isPlaceholder ? 'text-slate-300 dark:text-slate-600' : 'text-slate-900 dark:text-white',
+                  )}
+                >
+                  {value ?? '—'}
+                </p>
               )}
-            >
-              {value ?? '—'}
-            </p>
+              <p className="truncate text-xs text-slate-500 dark:text-slate-400">{label}</p>
+            </>
+          ) : (
+            <>
+              <p className="truncate text-sm text-slate-500 dark:text-slate-400">{label}</p>
+              {loading ? (
+                <Skeleton className="mt-1.5 h-7 w-16" />
+              ) : (
+                <p
+                  className={cn(
+                    'mt-0.5 text-2xl font-semibold tabular-nums',
+                    isPlaceholder ? 'text-slate-300 dark:text-slate-600' : 'text-slate-900 dark:text-white',
+                  )}
+                >
+                  {value ?? '—'}
+                </p>
+              )}
+            </>
           )}
           {caption !== undefined && (
             <p className="truncate text-xs text-slate-400 dark:text-slate-500">{caption}</p>
@@ -80,7 +114,9 @@ export const StatCard = ({
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className="block w-full rounded-lg text-start focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600/40"
+      // A press that is felt: the tile dips a hair on pointer-down, which is what makes a card
+      // read as a control rather than as a panel that happens to react.
+      className="block w-full rounded-lg text-start transition-transform focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600/40 active:scale-[0.99]"
     >
       {tile}
     </button>

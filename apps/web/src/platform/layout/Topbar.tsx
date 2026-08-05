@@ -16,6 +16,7 @@ import { BrandMark } from '../../shared/ui';
 import { LogOutIcon, ShieldIcon, MenuIcon, SearchIcon } from '../../shared/ui/icons';
 import { ThemeToggle } from './ThemeToggle';
 import { LanguageToggle } from './LanguageToggle';
+import { NavLayoutToggle } from './NavLayoutToggle';
 
 const UserMenu = (): JSX.Element => {
   const t = useT();
@@ -131,6 +132,7 @@ export const Topbar = ({ onOpenSearch }: { onOpenSearch: () => void }): JSX.Elem
 
       {/* Utilities */}
       <div className="flex shrink-0 items-center gap-0.5">
+        <NavLayoutToggle />
         <ThemeToggle />
         <LanguageToggle />
         <NotificationBell />

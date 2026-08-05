@@ -8,6 +8,7 @@ import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
 import { Can } from '../../../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
+import { readList, writeList } from '../../../../../shared/lib/list-param';
 import { DataTable, type Column } from '../../../../../shared/ui/DataTable';
 import { BulkActionBar } from '../../../../../shared/ui/BulkActionBar';
 import { useTableSelection } from '../../../../../shared/ui/useTableSelection';
@@ -20,6 +21,7 @@ import { HiringDocsFilters, type HiringDocsFiltersState } from '../components/Hi
 import { CreateHiringDocsDialog } from '../components/CreateHiringDocsDialog';
 import { useBulkHiringDocs, useHiringDocsList } from '../api/hiring-documents-queries';
 import { type HiringDocsListParams } from '../api/hiring-documents-api';
+import { useRememberedQueue } from '../../shared/useRememberedQueue';
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -28,11 +30,12 @@ export const HiringDocsListPage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
+  useRememberedQueue('hiringDocs', [sp, setSp]);
   const [createOpen, setCreateOpen] = useState(false);
 
   const filters: HiringDocsFiltersState = {
     search: sp.get('q') ?? '',
-    status: (sp.get('status') ?? '') as HiringDocsFiltersState['status'],
+    status: readList(sp, 'status') as HiringDocsFiltersState['status'],
   };
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
@@ -53,7 +56,7 @@ export const HiringDocsListPage = (): JSX.Element => {
     setSp(next);
   };
 
-  const changeFilters = (nf: HiringDocsFiltersState): void => patch({ q: nf.search || null, status: nf.status || null });
+  const changeFilters = (nf: HiringDocsFiltersState): void => patch({ q: nf.search || null, status: writeList(nf.status) });
   const changeSort = (by: string): void => {
     const dir = sort.by === by && sort.dir === 'asc' ? 'desc' : 'asc';
     patch({ sort: `${by}:${dir}` }, false);

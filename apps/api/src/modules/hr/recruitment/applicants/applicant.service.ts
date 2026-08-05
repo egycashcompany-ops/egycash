@@ -244,6 +244,8 @@ class ApplicantService {
           expiry: l.expiry ?? null,
         })),
         certifications: input.certifications ?? [],
+        formAnswers: input.formAnswers ?? [],
+        formSnapshot: input.formSnapshot ?? null,
         references: (input.references ?? []).map((r) => ({
           name: r.name,
           relationship: r.relationship ?? null,
@@ -300,7 +302,9 @@ class ApplicantService {
   }
 
   /** Heuristic duplicate detection (§2.1 rule 5) — flags, never blocks. */
-  private async flagDuplicates(doc: ApplicantDoc, by: string): Promise<ApplicantDoc> {
+  // `by` is nullable because a public application has no signed-in user — the repository already
+  // writes `updatedBy: null` for that case.
+  private async flagDuplicates(doc: ApplicantDoc, by: string | null): Promise<ApplicantDoc> {
     const candidates = await applicantRepository.findDuplicateCandidates({
       nationalId: doc.nationalId,
       primaryPhone: doc.contact.primaryPhone,
@@ -385,12 +389,12 @@ class ApplicantService {
   async idsMatchingAttributesSystem(filter: {
     ageFrom?: number | undefined;
     ageTo?: number | undefined;
-    educationLevel?: EducationLevel | undefined;
+    educationLevel?: readonly EducationLevel[] | undefined;
   }): Promise<Types.ObjectId[] | null> {
     const conditions: FilterQuery<ApplicantDoc> = {};
     const birthDate = birthDateRangeForAges(filter.ageFrom, filter.ageTo);
     if (birthDate !== null) conditions.birthDate = birthDate;
-    if (filter.educationLevel !== undefined) conditions['education.level'] = filter.educationLevel;
+    if (filter.educationLevel !== undefined) conditions['education.level'] = { $in: filter.educationLevel };
     if (Object.keys(conditions).length === 0) return null;
 
     const rows = await ApplicantModel.find({ ...conditions, isDeleted: false }, { _id: 1 })

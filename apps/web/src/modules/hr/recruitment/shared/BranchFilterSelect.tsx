@@ -9,7 +9,7 @@ import { type Locale } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { useCan } from '../../../../platform/rbac/Can';
 import { useAppSelector } from '../../../../store';
-import { Select } from '../../../../shared/ui/form';
+import { MultiSelect } from '../../../../shared/ui/MultiSelect';
 import { localized } from '../../../../shared/lib/format';
 import { useBranches } from '../job-offers/api/job-offer-queries';
 
@@ -17,8 +17,8 @@ export const BranchFilterSelect = ({
   value,
   onChange,
 }: {
-  value: string;
-  onChange: (branchId: string) => void;
+  value: readonly string[];
+  onChange: (branchIds: string[]) => void;
 }): JSX.Element | null => {
   const t = useT();
   const can = useCan();
@@ -29,18 +29,11 @@ export const BranchFilterSelect = ({
   if (!allowed) return null;
 
   return (
-    <Select
-      aria-label={t('recruitment.filters.branch')}
+    <MultiSelect
+      label={t('recruitment.filters.branch')}
       value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="w-auto"
-    >
-      <option value="">{t('recruitment.filters.allBranches')}</option>
-      {branches.map((b) => (
-        <option key={b.id} value={b.id}>
-          {localized(b.name, locale)}
-        </option>
-      ))}
-    </Select>
+      onChange={onChange}
+      options={branches.map((b) => ({ value: b.id, label: localized(b.name, locale) }))}
+    />
   );
 };

@@ -25,11 +25,11 @@ import { useApplicant } from '../../applicants/api/applicant-queries';
 import { RecommendationCard } from '../../shared/RecommendationCard';
 import { MoveToOfferButton } from '../../applicants/components/MoveToOfferButton';
 import { CandidateTimeline } from '../../timeline/components/CandidateTimeline';
+import { RecruitmentStepBar } from '../../shared/RecruitmentStepBar';
 import {
   useDecideEvaluation,
   useEvaluation,
   useRemoveEvaluationFile,
-  useSetEvaluationRecommendation,
   useUploadEvaluationFile,
 } from '../api/evaluation-queries';
 
@@ -38,8 +38,7 @@ export const EvaluationDetailPage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const { id = '' } = useParams();
   const { data: ev, isLoading, isError, error, refetch } = useEvaluation(id);
-  const setRecommendation = useSetEvaluationRecommendation(id);
-  // RW5 — applying a recommendation is an ordinary reassignment, so it needs the
+  // RW5 — suggesting a placement is an ordinary reassignment, so it needs the
   // candidate's own record (its version and current placement).
   const { data: candidate } = useApplicant(ev?.applicantId ?? '');
   const decide = useDecideEvaluation(id);
@@ -96,11 +95,12 @@ export const EvaluationDetailPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={localized(ev.phaseName, locale)}
-        description={ev.applicantCode}
+        description={ev.applicantName}
+        aside={<RecruitmentStepBar current="evaluation" />}
         breadcrumbs={[
           { label: t('recruitment.title'), to: '/' },
           { label: t('recruitment.nav.evaluations'), to: '/evaluations' },
-          { label: ev.applicantCode },
+          { label: ev.applicantName },
         ]}
         actions={
           <div className="flex items-center gap-2">
@@ -114,14 +114,9 @@ export const EvaluationDetailPage = (): JSX.Element => {
         <div className="space-y-6 lg:col-span-2">
           <RecommendationCard
             applicant={candidate ?? null}
-            recommendedPlacement={ev.recommendedPlacement}
-            recommendationNote={ev.recommendationNote}
             currentLabel={candidate?.placementLabel ?? ev.placementLabel}
+            source="evaluation"
             sourceRef={{ entityType: 'evaluation', entityId: ev.id }}
-            version={ev.version}
-            editPermission="evaluation.manage"
-            pending={setRecommendation.isPending}
-            onSave={(input) => setRecommendation.mutateAsync(input)}
           />
           {/* Files */}
           <Card>
@@ -214,8 +209,8 @@ export const EvaluationDetailPage = (): JSX.Element => {
               <dl className="space-y-3 text-sm">
                 <div>
                   <dt className="text-slate-400">{t('evaluations.columns.applicant')}</dt>
-                  <dd className="font-mono" dir="ltr">
-                    <Link to={`/applicants/${ev.applicantId}`} className="text-brand-600 hover:underline">{ev.applicantCode}</Link>
+                  <dd>
+                    <Link to={`/applicants/${ev.applicantId}`} className="text-brand-600 hover:underline">{ev.applicantName}</Link>
                   </dd>
                 </div>
                 <div>

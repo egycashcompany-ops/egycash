@@ -11,7 +11,8 @@ import { Button } from '../../../../../shared/ui/Button';
 import { Field, Select } from '../../../../../shared/ui/form';
 import { localized } from '../../../../../shared/lib/format';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
-import { ApplicantPicker } from '../../interviews/components/ApplicantPicker';
+import { ApplicantPicker } from '../../shared/ApplicantPicker';
+import { useApplicantSearch } from '../../interviews/api/interview-queries';
 import { useEvaluationPhases, useOpenEvaluation } from '../api/evaluation-queries';
 
 export const OpenEvaluationDialog = ({
@@ -74,10 +75,18 @@ export const OpenEvaluationDialog = ({
       <div className="space-y-4">
         <Field label={t('evaluations.open.applicant')} required>
           {applicant === null ? (
-            <ApplicantPicker onSelect={setApplicant} placeholder={t('evaluations.open.applicantSearch')} />
+            <ApplicantPicker
+              onSelect={setApplicant}
+              useSearch={useApplicantSearch}
+              placeholder={t('evaluations.open.applicantSearch')}
+              emptyLabel={t('interviews.filters.noApplicants')}
+            />
           ) : (
-            <span className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800/60">
-              <span className="font-mono text-xs text-slate-500" dir="ltr">{applicant.code}</span>
+            <span
+              title={applicant.code}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800/60"
+            >
+              <span className="text-slate-700 dark:text-slate-200">{applicant.fullNameAr}</span>
               <button
                 type="button"
                 onClick={() => setApplicant(null)}

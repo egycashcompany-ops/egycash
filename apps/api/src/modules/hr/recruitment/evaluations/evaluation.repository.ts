@@ -16,7 +16,7 @@ export interface EvaluationListFilter {
   applicantId?: string | undefined;
   phaseId?: string | undefined;
   status?: string | undefined;
-  branchId?: string | undefined;
+  branchId?: readonly string[] | undefined;
   createdFrom?: Date | undefined;
   createdTo?: Date | undefined;
   /** Free text over the denormalized applicant code and name — the queue's search box. */
@@ -84,7 +84,8 @@ class EvaluationRepository extends BaseRepository<EvaluationDoc> {
     if (f.applicantId !== undefined) clauses.push({ applicantId: new Types.ObjectId(f.applicantId) });
     if (f.phaseId !== undefined) clauses.push({ phaseId: new Types.ObjectId(f.phaseId) });
     if (f.status !== undefined) clauses.push({ status: f.status });
-    if (f.branchId !== undefined) clauses.push({ branchId: new Types.ObjectId(f.branchId) });
+    if (f.branchId !== undefined)
+      clauses.push({ branchId: { $in: f.branchId.map((id) => new Types.ObjectId(id)) } });
     if (f.search !== undefined && f.search.trim() !== '') {
       // Escaped, so a user typing `.` or `[` searches for that character rather than injecting a
       // pattern. Same shape as the other recruitment queues.

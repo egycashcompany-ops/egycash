@@ -15,13 +15,13 @@ import { Dialog } from '../../../../../shared/ui/Dialog';
 import { Field, Input } from '../../../../../shared/ui/form';
 import { Pagination } from '../../../../../shared/ui/Pagination';
 import { Button } from '../../../../../shared/ui/Button';
-import { PlusIcon } from '../../../../../shared/ui/icons';
 import { formatDate, formatNumber } from '../../../../../shared/lib/format';
 import { ScreeningStatusBadge } from '../components/ScreeningStatusBadge';
 import { ScreeningFilters, type ScreeningFiltersState } from '../components/ScreeningFilters';
-import { CreateScreeningDialog, type PickedApplicant } from '../components/CreateScreeningDialog';
 import { useBulkScreenings, useScreenings } from '../api/screening-queries';
+import { readList, writeList } from '../../../../../shared/lib/list-param';
 import { type ScreeningListParams } from '../api/screening-api';
+import { useRememberedQueue } from '../../shared/useRememberedQueue';
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -30,18 +30,19 @@ export const ScreeningQueuePage = (): JSX.Element => {
   const locale = useAppSelector((state) => state.locale.locale);
   const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
-  const [createOpen, setCreateOpen] = useState(false);
-  const [createFor, setCreateFor] = useState<PickedApplicant | null>(null);
+  // A screening exists for every registered applicant already, so the queue's job is the work
+  // still waiting on someone — not a ledger of every screening ever decided.
+  useRememberedQueue('screening', [sp, setSp], 'status=waiting');
 
   const filters: ScreeningFiltersState = {
-    status: (sp.get('status') ?? '') as ScreeningFiltersState['status'],
+    status: readList(sp, 'status') as ScreeningFiltersState['status'],
     applicantId: sp.get('applicant') ?? '',
     applicantLabel: sp.get('al') ?? '',
     createdFrom: sp.get('cf') ?? '',
     createdTo: sp.get('ct') ?? '',
     ageFrom: sp.get('af') ?? '',
     ageTo: sp.get('at') ?? '',
-    educationLevel: (sp.get('edu') ?? '') as ScreeningFiltersState['educationLevel'],
+    educationLevel: readList(sp, 'edu') as ScreeningFiltersState['educationLevel'],
   };
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
@@ -64,14 +65,14 @@ export const ScreeningQueuePage = (): JSX.Element => {
 
   const changeFilters = (nf: ScreeningFiltersState): void =>
     patch({
-      status: nf.status || null,
+      status: writeList(nf.status),
       applicant: nf.applicantId || null,
       al: nf.applicantLabel || null,
       cf: nf.createdFrom || null,
       ct: nf.createdTo || null,
       af: nf.ageFrom || null,
       at: nf.ageTo || null,
-      edu: nf.educationLevel || null,
+      edu: writeList(nf.educationLevel),
     });
   const changeSort = (by: string): void => {
     const dir = sort.by === by && sort.dir === 'asc' ? 'desc' : 'asc';
@@ -117,7 +118,7 @@ export const ScreeningQueuePage = (): JSX.Element => {
     {
       key: 'applicant',
       header: t('screening.columns.applicant'),
-      render: (s) => <span>{s.applicantName} <span className="font-mono text-xs text-slate-500" dir="ltr">{s.applicantCode}</span></span>,
+      render: (s) => <span>{s.applicantName}</span>,
     },
     { key: 'status', header: t('screening.columns.status'), sortable: true, render: (s) => <ScreeningStatusBadge status={s.status} /> },
     { key: 'notes', header: t('screening.columns.notes'), align: 'center', render: (s) => formatNumber(s.notes.length, locale) },
@@ -136,13 +137,6 @@ export const ScreeningQueuePage = (): JSX.Element => {
         title={t('recruitment.nav.screening')}
         description={t('screening.queue.subtitle')}
         breadcrumbs={[{ label: t('recruitment.title'), to: '/' }, { label: t('recruitment.nav.screening') }]}
-        actions={
-          <Can permission="screening.create">
-            <Button size="sm" leftIcon={<PlusIcon className="h-4 w-4" />} onClick={() => { setCreateFor(null); setCreateOpen(true); }}>
-              {t('screening.actions.create')}
-            </Button>
-          </Can>
-        }
       />
 
       <div className="space-y-4">
@@ -215,12 +209,6 @@ export const ScreeningQueuePage = (): JSX.Element => {
           <Input value={reason} onChange={(e) => setReason(e.target.value)} />
         </Field>
       </Dialog>
-
-      <CreateScreeningDialog
-        open={createOpen}
-        onClose={() => { setCreateOpen(false); setCreateFor(null); }}
-        {...(createFor === null ? {} : { applicant: createFor })}
-      />
     </PageContainer>
   );
 };

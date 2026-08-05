@@ -3,7 +3,7 @@
 // and pass/fail the round. Every action is permission-gated and version-checked; a decision is
 // blocked while any panel member is still pending (server rule, surfaced here).
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { type InterviewDecision, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
@@ -28,9 +28,9 @@ import { useApplicant } from '../../applicants/api/applicant-queries';
 import { RecommendationCard } from '../../shared/RecommendationCard';
 import { MoveToOfferButton } from '../../applicants/components/MoveToOfferButton';
 import { CandidateTimeline } from '../../timeline/components/CandidateTimeline';
+import { RecruitmentStepBar } from '../../shared/RecruitmentStepBar';
 import {
   useInterview,
-  useSetInterviewRecommendation,
   useStartInterview,
   useStartScheduledInterview,
 } from '../api/interview-queries';
@@ -41,18 +41,20 @@ export const InterviewDetailPage = (): JSX.Element => {
   const me = useAppSelector((state) => state.auth.me);
   const can = useCan();
   const { id = '' } = useParams();
+  const [sp] = useSearchParams();
   const { data: iv, isLoading, isError, error, refetch } = useInterview(id);
-  const setRecommendation = useSetInterviewRecommendation(id);
   const startScheduled = useStartScheduledInterview(id);
   const startNow = useStartInterview();
-  // RW5 — applying a recommendation is an ordinary reassignment, so it needs the
+  // RW5 — suggesting a placement is an ordinary reassignment, so it needs the
   // candidate's own record (its version and current placement).
   const { data: candidate } = useApplicant(iv?.applicantId ?? '');
 
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [reassignOpen, setReassignOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
-  const [evaluateOpen, setEvaluateOpen] = useState(false);
+  // A round started from the stage queue arrives here with the form meant to be open. Read once,
+  // as the initial state: an effect would fight the user the moment they closed it.
+  const [evaluateOpen, setEvaluateOpen] = useState(() => sp.get('evaluate') === '1');
   const [decideOutcome, setDecideOutcome] = useState<InterviewDecision | null>(null);
   const [editOutcome, setEditOutcome] = useState<InterviewDecision | null>(null);
   const [skipTarget, setSkipTarget] = useState<string | null>(null);
@@ -81,23 +83,27 @@ export const InterviewDetailPage = (): JSX.Element => {
   // RW12 — "Start now" from a waiting row opens the round; from a scheduled one it just begins it.
   const startable = iv.status === 'waiting' || iv.status === 'scheduled';
 
+  // The interviewer who just started the round is the one about to score it, so starting opens
+  // the form rather than returning them to a page that looks unchanged.
   const start = async (): Promise<void> => {
     if (iv.status === 'scheduled') {
       await startScheduled.mutateAsync({ version: iv.version });
-      return;
+    } else {
+      await startNow.mutateAsync({ applicantId: iv.applicantId, stageId: iv.stageId, interviewerIds: [] });
     }
-    await startNow.mutateAsync({ applicantId: iv.applicantId, stageId: iv.stageId, interviewerIds: [] });
+    if (canEvaluate) setEvaluateOpen(true);
   };
 
   return (
     <PageContainer>
       <PageHeader
-        title={t('interviews.detail.title', { code: iv.applicantCode })}
+        title={t('interviews.detail.title', { name: iv.applicantName })}
         description={localized(iv.stageName, locale)}
+        aside={<RecruitmentStepBar current="interview" />}
         breadcrumbs={[
           { label: t('recruitment.title'), to: '/' },
           { label: t('recruitment.nav.interviews'), to: '/interviews' },
-          { label: iv.applicantCode },
+          { label: iv.applicantName },
         ]}
         actions={
           isLive || startable ? (
@@ -152,8 +158,8 @@ export const InterviewDetailPage = (): JSX.Element => {
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <Link to={`/applicants/${iv.applicantId}`} className="font-mono text-sm text-brand-600 hover:underline" dir="ltr">
-          {iv.applicantCode}
+        <Link to={`/applicants/${iv.applicantId}`} className="text-sm font-medium text-brand-600 hover:underline">
+          {iv.applicantName}
         </Link>
         <InterviewStatusBadge status={iv.status} outcome={iv.outcome} />
         <span className="ms-auto flex items-center gap-2">
@@ -172,14 +178,9 @@ export const InterviewDetailPage = (): JSX.Element => {
         <div className="space-y-4 lg:col-span-2">
           <RecommendationCard
             applicant={candidate ?? null}
-            recommendedPlacement={iv.recommendedPlacement}
-            recommendationNote={iv.recommendationNote}
             currentLabel={candidate?.placementLabel ?? iv.placementLabel}
+            source="interview"
             sourceRef={{ entityType: 'interview', entityId: iv.id }}
-            version={iv.version}
-            editPermission="interview.evaluate"
-            pending={setRecommendation.isPending}
-            onSave={(input) => setRecommendation.mutateAsync(input)}
           />
           <Card>
             <CardHeader title={t('interviews.panel.title')} />

@@ -11,6 +11,66 @@ its entry here in the same PR.
 
 ### Added
 
+- **A recruitment form you can edit, published as one link per source.** The questions candidates
+  answer are now configuration, not code: standard fields (name, National ID, phone, qualification
+  and eleven more) can be added, removed, marked required and reordered, and custom questions of
+  any type can be added beside them. Every active source gets its own public link; whoever applies
+  through it is recorded against that source automatically, so nobody types "where did you hear
+  about us" and nobody has to trust the answer. Regenerating a link replaces its token, which is
+  what makes it the remedy for one that leaked.
+
+  The public page shares the recruiter's rules rather than restating them: a submission is mapped
+  onto a registration payload and handed to the same `RegisterApplicantSchema` the internal form
+  posts through, and the browser checks it with the same predicates, so a phone means the same
+  thing in all three places. The form is the allow-list — an answer to a question the admin did not
+  publish cannot reach a column. Answers to custom questions are stored on the applicant WITH the
+  question they answered, so renaming or deleting a question later does not orphan them.
+
+  Every application keeps a **snapshot of the form as it stood when it was submitted** — the title,
+  the revision, and the questions themselves. Editing the form does not rewrite history: a question
+  removed next month was still asked of the people who answered it, and one that was optional then
+  does not read as "left blank" once it becomes required. Custom questions are also validated by
+  their kind (a number is a number, a date is a date, a choice is one of the offered choices), by
+  the same predicate on both sides.
+
+  With the source now decided by the link (or, for internal registration, by one setting on the
+  form page), the **"بيانات التقديم" card is gone from the applicant form** — a recruiter no longer
+  re-picks the same channel on every walk-in.
+
+- **The applicant form checks its fields as you leave them, and knows Egyptian geography.** A
+  mistake used to be discovered by the server after a failed save and reported as a list at the
+  bottom of the page; now the field that is wrong says so, in the reader's language, the moment
+  focus leaves it — a red outline plus the reason underneath — and saving jumps to the first bad
+  field instead of scrolling you back to hunt for it. The rules are real ones: the Arabic name
+  takes Arabic letters only (the Arabic-Indic digits ٠-٩ are rejected too, which the obvious
+  `\u0600-\u06FF` range would have let through), the Latin name takes Latin letters only, a
+  National ID is decoded rather than counted, a mobile must be 11 digits on 010/011/012/015, an
+  email needs a dotted domain, and a postal code is five digits. Governorate and city are now
+  chosen, not typed: all 27 governorates with their cities, keyed to the National-ID governorate
+  code so a decoded number, an OCR read and a hand-picked value resolve to one record; picking the
+  governorate scopes the city list, and changing it clears a city that no longer belongs. The
+  search behind those pickers folds hamza forms, ta marbuta and diacritics, so "الاسماعيليه"
+  finds "الإسماعيلية". Every predicate lives in `@ecms/contracts` and is what the API validates
+  with, so the form cannot accept something the server will reject. Numbers are cleaned before
+  they are judged and stored in the cleaned form: separators and international prefixes come off a
+  phone, and Arabic-Indic digits (٠-٩) fold to ASCII for phones, National IDs and postal codes —
+  an Arabic keyboard produces ٠١٠ for what its user reads as 010, which used to be rejected
+  outright. Create and edit run the identical rules; a record whose governorate or city predates
+  the catalog keeps them rather than being blanked by the act of being opened.
+
+- **Two navigation shells, and the choice belongs to the user.** The launchpad is no longer the
+  only shape: the RAIL — a slim strip of module icons beside the module's page panel, the shell
+  ECMS carried before the launcher — is back as an alternative, and a switch in the header moves
+  between them. The choice rides on the account (`MeDto.navLayout`, `PATCH
+  /api/v1/auth/me/preferences`), so it follows the user to any device rather than living in one
+  browser; accounts that predate it answer `launchpad` without a migration. It is
+  presentation-only by construction: the endpoint's subject is always the caller, so it carries
+  no permission, no scope and no audit entry — which navigation shape someone prefers is not an
+  act on the business record. Both shells read the same catalog, derive the current module from
+  the URL, remember the page you last had open in each module, and share their page rows
+  (`nav-rows`), so a row behaves identically wherever it is rendered and the ⌘K palette and
+  pinned favourites are untouched in either.
+
 - **IT module, slice IT-1 — catalogs, vendors and the asset register** (frozen design v1.2,
   §15). New `it` module manifest with kind-discriminated `it_catalog_items` (asset + ticket
   categories, one `itCatalog.manage` grant), IT-owned vendors with embedded contacts and
@@ -106,6 +166,64 @@ its entry here in the same PR.
   `search` parameter these endpoints already support — and lists the surfaces still to convert.
 
 ### Changed
+
+- **Applicant identity fields say what they mean.** Religion is a two-value list (مسلم / مسيحي)
+  written in Arabic — the spelling the National-ID card carries and the OCR reads back, so a
+  scanned card and a hand-picked value are the same string rather than two encodings of it; a
+  legacy value the list does not carry stays selectable rather than silently becoming
+  "unspecified" on the next save. Nationality is stored canonically (`Egyptian`) and rendered
+  "مصري" to an Arabic reader, as are the governorates the National ID decodes to. The military
+  section no longer asks for a certificate reference. Driving licences and certificates left the
+  card they used to share, which read as though one were a kind of the other.
+
+- **Modules are now chosen from a Launchpad — the app steps back and a launcher takes over.**
+  The switcher's popover is replaced by a full-viewport launcher in the SAP Fiori / Azure /
+  Atlassian family: opening it defocuses the app behind a 6px blur, then the launcher arrives
+  70ms later (closing reverses the order), so switching reads as leaving one workspace for
+  another rather than answering a dialog — depth comes from blur alone, since scaling the page
+  read as the background zooming out from under the launcher instead of the launcher taking
+  focus. The launcher is a screen, not a panel — title near the top, a centred grid of
+  310×208 tiles through the middle, nothing with a dialog silhouette. Each tile carries the
+  module's catalog icon at 40px, its name, and a hover that lifts, scales 1.5% and deepens its
+  shadow on one curve; the module you are already in is filled with a darker tint and a darker
+  icon chip, the way the active row reads in the column. Everything else about switching is
+  unchanged: the current module is
+  still derived from the URL, choosing still returns you to the page you last had open there,
+  permissions still come from `/platform/me/applications`, a single-module user still sees no
+  launcher at all, and the ⌘K palette and pinned favourites are untouched. It owns focus while
+  open (trap, scroll lock that holds the scrollbar's space so the app cannot jump sideways),
+  moves under the arrow keys, filters past six modules, and with twenty modules keeps its title
+  and search pinned while only the grid scrolls — the grid centres only while everything fits,
+  because a centred flex child that overflows pushes its first row above the scroll origin
+  where nothing can reach it. Rendered through a portal to `<body>`: inside the shell, the
+  mobile drawer's own transform would trap a fixed overlay inside the drawer's width. `Alt+M`
+  still opens it — bound in exactly one of the two mounted shells, since both the desktop
+  column and the always-mounted drawer used to answer the chord and raise two launchers at
+  once.
+
+- **The sidebar now scopes itself to one module, and the module is chosen from a switcher.**
+  Choosing a module and navigating inside it are different questions, so they get different
+  surfaces: a small header at the top of the column names the current module and opens a light
+  popover listing the ones this user may see (instant, no dialog and no full-screen takeover —
+  switching is frequent, and blanking the screen for it costs more than it gives); the column
+  below shows that module's pages and nothing else. The current module is **derived from the
+  URL**, never a second piece of state, so a deep link, a ⌘K jump, a pinned favourite belonging
+  to another module, and Back/Forward all re-scope the column correctly by construction; the
+  remembered module answers only the case the URL cannot — a path that names no module, such as
+  the landing page or an account screen. `Alt+M` opens the switcher from the keyboard, arrows
+  and Enter work in it, and a filter field appears once there are seven or more modules.
+  Switching **returns you to the page you last had open** in that module (re-validated against
+  the live catalog, so a revoked page degrades to the module's entry point) — leaving and
+  coming back should not cost you your place. A user with a single module sees no switcher at
+  all, just a quiet label. Pinned favourites and the
+  ⌘K palette are untouched — the palette still searches every permitted page across every
+  module. Monochrome throughout: no colours, no badges, no shadows.
+
+- **Fixed: two sidebar rows could read as "you are here" at once.** `NavLink` highlights by
+  prefix, so a module landing page like `/fleet` stayed lit while the user was on
+  `/fleet/vehicles`. Rows whose route has another page nested under it now match exactly, and
+  which rows those are is derived from the catalog's own routes — nothing hardcoded, so it stays
+  true for whatever the catalog serves next.
 
 - **Sidebar restyled to a minimal-enterprise language (UI only).** One quiet neutral surface for
   the whole rail; per-module colors, shadows and filled pills are gone. Every item — module

@@ -11,6 +11,8 @@ export { DataTable, type Column, type DataTableProps, type SortState } from './D
 export { BulkActionBar } from './BulkActionBar';
 export { useTableSelection, type TableSelection } from './useTableSelection';
 export { Pagination } from './Pagination';
+export { StatStrip, type StatStripItem } from './StatStrip';
+export { RowActions } from './RowActions';
 export { SearchInput } from './SearchInput';
 export { FilterBar } from './FilterBar';
 export { ListView } from './ListView';
@@ -29,6 +31,7 @@ export {
   type TextareaProps,
   type SelectProps,
 } from './form';
+export { Combobox } from './Combobox';
 export { LoadingState } from './states/LoadingState';
 export { EmptyState } from './states/EmptyState';
 export { ErrorState } from './states/ErrorState';

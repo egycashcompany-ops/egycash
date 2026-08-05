@@ -18,7 +18,7 @@ import {
   type CreateInterviewStage,
 } from '@ecms/contracts';
 import { notificationTemplateService } from '../../platform/notifications';
-import { applicantSourceService } from './recruitment/applicants';
+import { applicantSourceService, ensureApplicantSourceIconCategory } from './recruitment/applicants';
 import { interviewStageService } from './recruitment/interviews';
 import { ensureEvaluationCategory, evaluationPhaseService } from './recruitment/evaluations';
 import { ensureEvaluationBatchCategory } from './recruitment/evaluation-batches';
@@ -29,6 +29,14 @@ import { migrateRecruitmentLegacy } from './recruitment/recruitment.migration';
 import { ensureLeaveAttachmentsCategory } from './leave-management/leave-requests';
 import { migrateLeaveModule } from './leave-management/leave.migration';
 
+// `kind` says what a platform IS — how applications from it normally arrive. It does not say
+// whether the platform has an application link: every active source can be published to, whatever
+// its kind, because publishing is the same operation for all of them (one form, one token per
+// source) and nothing in the API consults `kind` to decide it.
+//
+// So these classifications describe the domain and are left alone. Wuzzuf, LinkedIn and Forasna
+// are job boards we integrate with; Facebook is a channel a recruiter records from; the website and
+// the mobile app are our own public forms. All six can carry a link regardless.
 const SOURCES: CreateApplicantSource[] = [
   { key: 'internalHr', name: { en: 'Internal HR', ar: 'الموارد البشرية الداخلية' }, kind: 'manual', requiresDetail: false },
   { key: 'companyWebsite', name: { en: 'Company Website', ar: 'موقع الشركة' }, kind: 'publicForm', requiresDetail: false },
@@ -204,6 +212,9 @@ const ensureHiringDocumentsSeeds = async (): Promise<void> => {
     await hiringDocumentTypeService.ensure(type);
   }
   await ensureHiringDocsCategory();
+  // Source icons go up through the platform Files service; this is the category that holds the
+  // "PNG or SVG, and small" rule for them.
+  await ensureApplicantSourceIconCategory();
   await notificationTemplateService.ensure({
     key: HrHiringDocumentsTemplates.Completed,
     category: 'hr',

@@ -53,7 +53,7 @@ export const MoveToOfferButton = ({ applicantId }: { applicantId: string }): JSX
             </>
           }
         >
-          <p className="font-mono text-sm text-slate-600 dark:text-slate-300" dir="ltr">{applicant.code}</p>
+          <p className="text-sm text-slate-600 dark:text-slate-300">{applicant.fullNameAr}</p>
         </Dialog>
       )}
     </Can>

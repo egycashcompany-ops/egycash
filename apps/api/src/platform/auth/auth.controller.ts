@@ -6,6 +6,7 @@ import {
   type Login,
   type TotpChallenge,
   type TotpVerify,
+  type UpdateMyPreferences,
 } from '@ecms/contracts';
 import { env } from '../../infrastructure/config/env';
 import { ok, noContent } from '../../infrastructure/http/respond';
@@ -71,6 +72,11 @@ export const logout = async (req: Request, res: Response): Promise<void> => {
 
 export const me = async (req: Request, res: Response): Promise<void> => {
   ok(res, await authService.me(authContext(req)));
+};
+
+export const updateMyPreferences = async (req: Request, res: Response): Promise<void> => {
+  const { body } = validated<UpdateMyPreferences>(req);
+  ok(res, await authService.updateMyPreferences(authContext(req), body));
 };
 
 export const activate = async (req: Request, res: Response): Promise<void> => {

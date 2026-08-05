@@ -98,7 +98,7 @@ export const RecordResultDialog = ({
       title={t('evaluations.result.title')}
       {...(evaluation === null
         ? {}
-        : { description: `${evaluation.applicantName} · ${evaluation.applicantCode}` })}
+        : { description: evaluation.applicantName })}
       footer={
         <>
           <Button

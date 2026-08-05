@@ -28,6 +28,11 @@ const FleetRoutes = lazy(() => import('../../modules/fleet/routes'));
 const VerifyContractPage = lazy(
   () => import('../../modules/hr/contracts/pages/VerifyContractPage'),
 );
+const PublicApplyPage = lazy(() =>
+  import('../../modules/hr/recruitment/recruitment-form/pages/PublicApplyPage').then((m) => ({
+    default: m.PublicApplyPage,
+  })),
+);
 const AccountRoutes = lazy(() => import('../account/routes'));
 
 const useDirection = (): void => {
@@ -66,6 +71,21 @@ export const App = (): JSX.Element => {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/activate" element={<ActivationPage />} />
+        {/* The per-source application link's target. No session: the token is the credential. */}
+        <Route
+          path="/apply/:token"
+          element={
+            <Suspense
+              fallback={
+                <div className="grid min-h-screen place-items-center">
+                  <LoadingState />
+                </div>
+              }
+            >
+              <PublicApplyPage />
+            </Suspense>
+          }
+        />
         {/* A23 — public document verification (the PDF QR's target). */}
         <Route
           path="/verify/contract"

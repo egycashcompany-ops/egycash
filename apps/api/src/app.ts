@@ -37,6 +37,7 @@ import {
   buildAuditLogsRouter,
   buildTimelineRouter,
 } from './platform/audit';
+import { buildDirectoryRouter } from './platform/directory';
 import { buildScheduledTasksRouter } from './platform/scheduler';
 import { buildFileCategoriesRouter, buildFilesRouter } from './platform/files';
 import {
@@ -82,7 +83,27 @@ export const buildApp = (): Express => {
     );
   });
 
-  app.use(helmet());
+  // Helmet's defaults, with ONE directive widened.
+  //
+  // In a single-service deployment this process also serves the SPA, so this Content-Security-
+  // Policy governs the app itself — and the default `img-src 'self' data:` has no `blob:`. Every
+  // file picker in the console previews the chosen file before uploading it, and an object URL is
+  // the only way to show bytes that exist nowhere but in the tab. Without `blob:` that preview is
+  // a broken image, which is what the applicant-source icon picker showed.
+  //
+  // `blob:` widens nothing an attacker can reach: a blob URL is minted by this page's own script,
+  // is unguessable, and is readable only from the document that created it — it cannot name a
+  // remote host, which is what `img-src` exists to restrict.
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+          'img-src': ["'self'", 'data:', 'blob:'],
+        },
+      },
+    }),
+  );
   app.use(cors({ origin: env.CORS_ORIGINS, credentials: true }));
   app.use(express.json({ limit: '1mb' }));
   app.use(cookieParser());
@@ -127,6 +148,8 @@ export const buildApp = (): Express => {
   api.use('/platform/settings', buildSettingsRouter());
   api.use('/platform/feature-flags', buildFeatureFlagsRouter());
   api.use('/platform/audit-logs', buildAuditLogsRouter());
+  // Display identity for anyone already signed in — not user administration (see the router).
+  api.use('/platform/directory', buildDirectoryRouter());
   api.use('/platform/activity-logs', buildActivityLogsRouter());
   api.use('/platform/timeline', buildTimelineRouter());
   api.use('/platform/scheduled-tasks', buildScheduledTasksRouter());

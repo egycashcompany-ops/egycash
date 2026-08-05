@@ -5,7 +5,12 @@
 // Selecting a seat settles the rest (the server completes department/branch from the position), so
 // the form offers the seat first and the bare branch as the fallback for candidates with no seat yet.
 import { useEffect, useState } from 'react';
-import { MAX_PAGE_SIZE, type ApplicantDto, type Locale, type PlacementDto } from '@ecms/contracts';
+import {
+  MAX_PAGE_SIZE,
+  type ApplicantDto,
+  type Locale,
+  type PlacementChangeSource,
+} from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
 import { Button } from '../../../../../shared/ui/Button';
@@ -22,14 +27,19 @@ export const ReassignDialog = ({
   applicant,
   open,
   onClose,
-  /** RW5 — pre-fill from a stage recommendation, and record where the move came from. */
-  prefill,
+  /** RW5 — record where the move came from. */
+  source,
   sourceRef,
 }: {
   applicant: ApplicantDto;
   open: boolean;
   onClose: () => void;
-  prefill?: PlacementDto | null;
+  /**
+   * Which stage made the call. Kept separate from `sourceRef.entityType` because the two are not
+   * the same vocabulary — an offer's record is a `jobOffer` but its placement source is `offer` —
+   * and deriving one from the other by cast is how a move ends up filed under the wrong stage.
+   */
+  source?: PlacementChangeSource;
   sourceRef?: { entityType: string; entityId: string };
 }): JSX.Element => {
   const t = useT();
@@ -42,16 +52,17 @@ export const ReassignDialog = ({
   const [reason, setReason] = useState('');
   const [note, setNote] = useState('');
 
-  // Re-seed whenever the dialog opens, so a recommendation pre-fills and a manual open resets.
+  // Re-seed whenever the dialog opens, so the form starts from where the candidate actually
+  // stands — including a move made moments ago from another stage — and never from a stale draft.
   useEffect(() => {
     if (!open) return;
-    const from = prefill ?? applicant.placement;
+    const from = applicant.placement;
     setJobPositionId(from.jobPositionId ?? '');
     setJobTitleId(from.jobTitleId ?? '');
     setBranchId(from.branchId ?? '');
     setReason('');
     setNote('');
-  }, [open, prefill, applicant.placement]);
+  }, [open, applicant.placement]);
 
   const { data: branches } = useBranchOptions(open);
   const { data: positions } = useJobPositions({ pageSize: MAX_PAGE_SIZE, status: 'active' });
@@ -73,7 +84,7 @@ export const ReassignDialog = ({
           branchId: branchId === '' ? null : branchId,
         },
         reason: reason.trim(),
-        source: sourceRef === undefined ? 'manual' : (sourceRef.entityType as 'interview' | 'evaluation'),
+        source: source ?? 'manual',
         ...(sourceRef === undefined ? {} : { sourceRef }),
         ...(note.trim() === '' ? {} : { note: note.trim() }),
         version: applicant.version,

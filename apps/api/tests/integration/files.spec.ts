@@ -246,6 +246,12 @@ describe('upload with category-driven validation', () => {
     expect(download.status).toBe(200);
     expect(download.headers['content-type']).toContain('image/png');
     expect(download.headers['content-disposition']).toContain('attachment');
+    // The web app is served from its own origin, so every `<img src>` pointing at a stored file is
+    // a CROSS-ORIGIN load. Helmet's blanket `Cross-Origin-Resource-Policy: same-origin` made the
+    // browser refuse the response and paint a broken image over every uploaded logo. This asserts
+    // the one route that hands bytes to a browser overrides it — nothing else in the response
+    // shows the difference, so only the header can catch a regression.
+    expect(download.headers['cross-origin-resource-policy']).toBe('cross-origin');
 
     const tampered = signedPath.replace(/s=[0-9a-f]{10}/, 's=0000000000');
     const rejected = await request(app).get(tampered);

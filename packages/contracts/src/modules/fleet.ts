@@ -5,7 +5,9 @@
 // derived facts query-time facts, and a field that does not exist cannot go stale.
 import { z } from 'zod';
 import { LocalizedStringSchema } from '../common/localized.js';
-import { PaginationQuerySchema, booleanQuery, objectId } from '../common/index.js';
+import { PaginationQuerySchema, booleanQuery, objectId,
+  listQuery,
+} from '../common/index.js';
 
 /** Money in EGP. A plain nonnegative number — multi-currency is not a fleet fact. */
 const egp = () => z.number().nonnegative();
@@ -181,7 +183,7 @@ export type ChangeFleetVehicleStatus = z.infer<typeof ChangeFleetVehicleStatusSc
 export const ListFleetVehiclesQuerySchema = PaginationQuerySchema.extend({
   status: FleetVehicleStatusSchema.optional(),
   typeId: objectId().optional(),
-  branchId: objectId().optional(),
+  branchId: listQuery(objectId()),
   /** Substring match on code/plate/chassis/motor. */
   search: z.string().trim().min(1).max(100).optional(),
   licenseExpiresBefore: z.coerce.date().optional(),

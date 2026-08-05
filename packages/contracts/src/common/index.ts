@@ -15,6 +15,28 @@ export const objectId = () =>
 export const booleanQuery = () =>
   z.union([z.boolean(), z.enum(['true', 'false']).transform((v) => v === 'true')]);
 
+/**
+ * A filter that accepts SEVERAL answers, carried in one query parameter.
+ *
+ * "Which statuses am I looking at?" is usually answered with more than one, so the queue filters
+ * take a list. The wire format is comma-separated (`?status=waiting,accepted`) because it stays
+ * readable in a URL a recruiter might share, and because a bare `?status=waiting` — every link and
+ * bookmark that exists today, plus the status-as-tab usage — still parses, now as a one-item list.
+ * A repeated parameter works too, since that is what some clients send.
+ *
+ * Empty means absent, not "match nothing": `?status=` is a filter the user has cleared.
+ */
+export const listQuery = <T extends z.ZodTypeAny>(item: T) =>
+  z.preprocess(
+    (raw) => {
+      if (raw === undefined || raw === null) return undefined;
+      const parts = Array.isArray(raw) ? raw : String(raw).split(',');
+      const cleaned = parts.map((p) => String(p).trim()).filter((p) => p !== '');
+      return cleaned.length === 0 ? undefined : cleaned;
+    },
+    z.array(item).min(1).max(50).optional(),
+  );
+
 // ── Data scopes (ADR-004; ADR-015 org model; ADR-017 hierarchical scopes) ────
 // The organizational visibility ladder, narrowest → widest:
 //   own (Self) ⊂ section ⊂ department ⊂ branch ⊂ organization (Company).
@@ -107,3 +129,5 @@ export const EntityRefSchema = z.object({
 export type EntityRef = z.infer<typeof EntityRefSchema>;
 
 export * from './value-objects.js';
+export * from './field-rules.js';
+export * from './egypt-geography.js';

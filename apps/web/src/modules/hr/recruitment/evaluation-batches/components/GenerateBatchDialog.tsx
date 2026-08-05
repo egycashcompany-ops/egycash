@@ -41,12 +41,7 @@ export const GenerateBatchDialog = ({
       key: 'applicant',
       header: t('batches.columns.applicant'),
       render: (c) => (
-        <span>
-          {c.applicantName}{' '}
-          <span className="font-mono text-xs text-slate-500" dir="ltr">
-            {c.applicantCode}
-          </span>
-        </span>
+        <span>{c.applicantName}</span>
       ),
     },
     {

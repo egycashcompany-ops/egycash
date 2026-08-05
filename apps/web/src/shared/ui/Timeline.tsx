@@ -20,6 +20,12 @@ export interface TimelineEntry {
   description?: string;
   tone?: Tone;
   icon?: ReactNode;
+  /**
+   * Who did it. Rendered beside the timestamp by whatever the caller passes — the shared kit does
+   * not import the platform's directory, so the node stays a plain `ReactNode` and every timeline
+   * gets actor identity by handing it an `<ActorLink />`.
+   */
+  actor?: ReactNode;
 }
 
 export const Timeline = ({ entries }: { entries: TimelineEntry[] }): JSX.Element => (
@@ -38,6 +44,12 @@ export const Timeline = ({ entries }: { entries: TimelineEntry[] }): JSX.Element
           <p className="text-sm font-medium text-slate-800 dark:text-slate-100">{entry.title}</p>
           {entry.meta !== undefined && (
             <span className="text-xs text-slate-400 dark:text-slate-500">{entry.meta}</span>
+          )}
+          {entry.actor !== undefined && entry.actor !== null && (
+            <>
+              <span className="text-xs text-slate-300 dark:text-slate-600">·</span>
+              {entry.actor}
+            </>
           )}
         </div>
         {entry.description !== undefined && (

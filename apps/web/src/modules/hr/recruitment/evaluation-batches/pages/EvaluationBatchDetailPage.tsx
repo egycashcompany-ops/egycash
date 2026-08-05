@@ -119,10 +119,7 @@ export const EvaluationBatchDetailPage = (): JSX.Element => {
       header: t('batches.columns.applicant'),
       render: (i) => (
         <Link to={`/applicants/${i.applicantId}`} className="hover:underline">
-          {i.applicantName}{' '}
-          <span className="font-mono text-xs text-slate-500" dir="ltr">
-            {i.applicantCode}
-          </span>
+          {i.applicantName}
         </Link>
       ),
     },

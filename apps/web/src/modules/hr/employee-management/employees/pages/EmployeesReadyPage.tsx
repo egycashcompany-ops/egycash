@@ -12,6 +12,7 @@ import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
 import { Can } from '../../../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
+import { readList, writeList } from '../../../../../shared/lib/list-param';
 import { DataTable, type Column } from '../../../../../shared/ui/DataTable';
 import { Pagination } from '../../../../../shared/ui/Pagination';
 import { Button } from '../../../../../shared/ui/Button';
@@ -21,6 +22,7 @@ import {
   type EmployeesReadyFiltersState,
 } from '../components/EmployeesReadyFilters';
 import { useJobOffers } from '../../../recruitment/job-offers/api/job-offer-queries';
+import { useRememberedQueue } from '../../../recruitment/shared/useRememberedQueue';
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -29,11 +31,12 @@ export const EmployeesReadyPage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
+  useRememberedQueue('employeesReady', [sp, setSp]);
 
   // Every filter round-trips through the URL: deep-linkable, and a refresh restores the view.
   const filters: EmployeesReadyFiltersState = {
     search: sp.get('q') ?? '',
-    branchId: sp.get('branch') ?? '',
+    branchId: readList(sp, 'branch'),
     acceptedFrom: sp.get('af') ?? '',
     acceptedTo: sp.get('at') ?? '',
   };
@@ -55,7 +58,7 @@ export const EmployeesReadyPage = (): JSX.Element => {
     patch(
       {
         q: nf.search || null,
-        branch: nf.branchId || null,
+        branch: writeList(nf.branchId),
         af: nf.acceptedFrom || null,
         at: nf.acceptedTo || null,
       },
@@ -91,12 +94,7 @@ export const EmployeesReadyPage = (): JSX.Element => {
       key: 'applicant',
       header: t('employees.ready.columns.applicant'),
       render: (o) => (
-        <span>
-          {o.applicantName}{' '}
-          <span className="font-mono text-xs text-slate-500" dir="ltr">
-            {o.applicantCode}
-          </span>
-        </span>
+        <span>{o.applicantName}</span>
       ),
     },
     {

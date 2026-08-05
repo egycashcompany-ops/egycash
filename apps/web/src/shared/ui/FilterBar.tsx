@@ -1,8 +1,13 @@
 // Layout container for a screen's filter controls (search, selects, date ranges…). Presents a
-// consistent bar and an optional "clear filters" affordance shown only when filters are active.
+// consistent bar and a reset affordance shown only when filters are actually active.
+//
+// Reset is an ICON, and a coloured one. The old text button sat in a row of grey controls and read
+// as one more filter rather than the way out of them — and "clear" next to a list of filters is
+// ambiguous about which one it clears. An amber circular-arrow is unmistakably "undo all of this",
+// and it stays labelled for screen readers and on hover.
 import { type ReactNode } from 'react';
 import { useT } from '../../platform/localization/useT';
-import { CloseIcon } from './icons';
+import { ResetIcon } from './icons';
 
 export const FilterBar = ({
   children,
@@ -21,10 +26,11 @@ export const FilterBar = ({
         <button
           type="button"
           onClick={onClear}
-          className="ms-auto inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
+          aria-label={t('common.filters.clear')}
+          title={t('common.filters.clear')}
+          className="ms-auto inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-amber-300 bg-amber-50 text-amber-700 transition-colors hover:bg-amber-100 hover:text-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-400 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300 dark:hover:bg-amber-900"
         >
-          <CloseIcon className="h-4 w-4" />
-          {t('common.filters.clear')}
+          <ResetIcon className="h-4 w-4" />
         </button>
       )}
     </div>

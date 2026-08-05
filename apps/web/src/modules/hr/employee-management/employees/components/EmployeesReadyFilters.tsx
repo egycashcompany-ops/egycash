@@ -15,7 +15,7 @@ import { BranchFilterSelect } from '../../../recruitment/shared/BranchFilterSele
 
 export interface EmployeesReadyFiltersState {
   search: string;
-  branchId: string;
+  branchId: string[];
   /** `respondedAt` — the date the candidate ACCEPTED, which is what this queue sorts by. */
   acceptedFrom: string;
   acceptedTo: string;
@@ -23,13 +23,13 @@ export interface EmployeesReadyFiltersState {
 
 export const EMPTY_EMPLOYEES_READY_FILTERS: EmployeesReadyFiltersState = {
   search: '',
-  branchId: '',
+  branchId: [],
   acceptedFrom: '',
   acceptedTo: '',
 };
 
 const isActive = (f: EmployeesReadyFiltersState): boolean =>
-  f.search !== '' || f.branchId !== '' || f.acceptedFrom !== '' || f.acceptedTo !== '';
+  f.search !== '' || f.branchId.length > 0 || f.acceptedFrom !== '' || f.acceptedTo !== '';
 
 export const EmployeesReadyFilters = ({
   value,

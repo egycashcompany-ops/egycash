@@ -11,6 +11,7 @@ import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
 import { Can } from '../../../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
+import { readList, writeList } from '../../../../../shared/lib/list-param';
 import { DataTable, type Column } from '../../../../../shared/ui/DataTable';
 import { BulkActionBar } from '../../../../../shared/ui/BulkActionBar';
 import { EvaluationFilters, type EvaluationFiltersState } from '../components/EvaluationFilters';
@@ -49,7 +50,7 @@ export const EvaluationPhaseQueuePage = (): JSX.Element => {
     search: sp.get('q') ?? '',
     applicantId: sp.get('applicant') ?? '',
     applicantLabel: sp.get('al') ?? '',
-    branchId: sp.get('branch') ?? '',
+    branchId: readList(sp, 'branch'),
     createdFrom: sp.get('cf') ?? '',
     createdTo: sp.get('ct') ?? '',
   };
@@ -78,7 +79,7 @@ export const EvaluationPhaseQueuePage = (): JSX.Element => {
       applicant: nf.applicantId || null,
       al: nf.applicantLabel || null,
       q: nf.search || null,
-      branch: nf.branchId || null,
+      branch: writeList(nf.branchId),
       cf: nf.createdFrom || null,
       ct: nf.createdTo || null,
     });
@@ -126,12 +127,7 @@ export const EvaluationPhaseQueuePage = (): JSX.Element => {
       key: 'applicant',
       header: t('evaluations.columns.applicant'),
       render: (e) => (
-        <span>
-          {e.applicantName}{' '}
-          <span className="font-mono text-xs text-slate-500" dir="ltr">
-            {e.applicantCode}
-          </span>
-        </span>
+        <span>{e.applicantName}</span>
       ),
     },
     { key: 'status', header: t('evaluations.columns.status'), render: (e) => <EvaluationStatusBadge status={e.status} /> },

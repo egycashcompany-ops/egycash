@@ -8,7 +8,7 @@ const activity = (at: string, id: string): TimelineEntryDto => ({
   source: 'activity',
   id,
   at,
-  actorId: 'u1',
+  actorId: 'u1', actor: null,
   messageKey: 'file.uploaded',
   params: {},
 });
@@ -17,7 +17,7 @@ const audit = (at: string, id: string): TimelineEntryDto => ({
   source: 'audit',
   id,
   at,
-  actorId: 'u1',
+  actorId: 'u1', actor: null,
   action: 'update',
   changes: [],
 });

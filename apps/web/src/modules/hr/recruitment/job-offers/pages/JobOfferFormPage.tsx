@@ -12,7 +12,8 @@ import { Field } from '../../../../../shared/ui/form';
 import { LoadingState } from '../../../../../shared/ui/states/LoadingState';
 import { ErrorState } from '../../../../../shared/ui/states/ErrorState';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
-import { ApplicantPicker } from '../components/ApplicantPicker';
+import { ApplicantPicker } from '../../shared/ApplicantPicker';
+import { useApplicantSearch } from '../api/job-offer-queries';
 import { OfferTermsForm } from '../components/OfferTermsForm';
 import { useCreateJobOffer, useJobOffer, useReviseJobOffer } from '../api/job-offer-queries';
 
@@ -95,10 +96,16 @@ export const JobOfferFormPage = ({ mode }: { mode: 'create' | 'revise' }): JSX.E
             <div className="mb-6">
               <Field label={t('offers.form.applicant')} required>
                 {applicant === null ? (
-                  <ApplicantPicker onSelect={setApplicant} />
+                  <ApplicantPicker
+                    onSelect={setApplicant}
+                    useSearch={useApplicantSearch}
+                    placeholder={t('offers.form.applicantSearch')}
+                    emptyLabel={t('offers.form.noApplicants')}
+                    className="w-full sm:w-96"
+                  />
                 ) : (
                   <span className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800/60">
-                    <span className="font-mono text-xs text-slate-400" dir="ltr">{applicant.code}</span>
+
                     <span className="text-slate-700 dark:text-slate-200">{applicant.fullNameAr}</span>
                     {preset === null && (
                       <button type="button" onClick={() => setApplicant(null)} className="ms-2 text-xs text-brand-600 hover:underline">

@@ -8,6 +8,7 @@ import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
 import { Can } from '../../../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
+import { readList, writeList } from '../../../../../shared/lib/list-param';
 import { DataTable, type Column } from '../../../../../shared/ui/DataTable';
 import { BulkActionBar } from '../../../../../shared/ui/BulkActionBar';
 import { useTableSelection } from '../../../../../shared/ui/useTableSelection';
@@ -21,6 +22,7 @@ import { OfferStatusBadge } from '../components/OfferStatusBadge';
 import { OfferFilters, type OfferFiltersState } from '../components/OfferFilters';
 import { useJobOffers, useBulkJobOffers } from '../api/job-offer-queries';
 import { type JobOfferListParams } from '../api/job-offer-api';
+import { useRememberedQueue } from '../../shared/useRememberedQueue';
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -29,10 +31,11 @@ export const JobOffersListPage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
+  useRememberedQueue('jobOffers', [sp, setSp]);
 
   const filters: OfferFiltersState = {
     search: sp.get('q') ?? '',
-    status: (sp.get('status') ?? '') as OfferFiltersState['status'],
+    status: readList(sp, 'status') as OfferFiltersState['status'],
     active: sp.get('active') === 'true',
   };
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
@@ -55,7 +58,7 @@ export const JobOffersListPage = (): JSX.Element => {
   };
 
   const changeFilters = (nf: OfferFiltersState): void =>
-    patch({ q: nf.search || null, status: nf.status || null, active: nf.active ? 'true' : null });
+    patch({ q: nf.search || null, status: writeList(nf.status), active: nf.active ? 'true' : null });
   const changeSort = (by: string): void => {
     const dir = sort.by === by && sort.dir === 'asc' ? 'desc' : 'asc';
     patch({ sort: `${by}:${dir}` }, false);
@@ -103,7 +106,7 @@ export const JobOffersListPage = (): JSX.Element => {
     {
       key: 'applicant',
       header: t('offers.columns.applicant'),
-      render: (o) => <span>{o.applicantName} <span className="font-mono text-xs text-slate-500" dir="ltr">{o.applicantCode}</span></span>,
+      render: (o) => <span>{o.applicantName}</span>,
     },
     { key: 'status', header: t('offers.columns.status'), sortable: true, render: (o) => <OfferStatusBadge status={o.status} /> },
     {

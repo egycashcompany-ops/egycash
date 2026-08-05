@@ -23,7 +23,10 @@ import {
 } from '../components/OfferDialogs';
 import { ApplicantLifecycleActions } from '../../applicants/components/ApplicantLifecycleActions';
 import { CandidateTimeline } from '../../timeline/components/CandidateTimeline';
+import { useApplicant } from '../../applicants/api/applicant-queries';
+import { RecommendationCard } from '../../shared/RecommendationCard';
 import { useJobOffer } from '../api/job-offer-queries';
+import { RecruitmentStepBar } from '../../shared/RecruitmentStepBar';
 
 type ActionKind = 'send' | 'accept' | 'reject' | 'withdraw' | null;
 
@@ -33,6 +36,9 @@ export const JobOfferDetailPage = (): JSX.Element => {
   const navigate = useNavigate();
   const { id = '' } = useParams();
   const { data: o, isLoading, isError, error, refetch } = useJobOffer(id);
+  // The candidate carries the placement and its history. Above the guards below — a hook runs on
+  // every render or on none.
+  const { data: candidate } = useApplicant(o?.applicantId ?? '');
   const [action, setAction] = useState<ActionKind>(null);
 
   if (isLoading) {
@@ -59,11 +65,12 @@ export const JobOfferDetailPage = (): JSX.Element => {
   return (
     <PageContainer>
       <PageHeader
-        title={t('offers.detail.title', { code })}
+        title={t('offers.detail.title', { name: o.applicantName })}
+        aside={<RecruitmentStepBar current="jobOffer" />}
         breadcrumbs={[
           { label: t('recruitment.title'), to: '/' },
           { label: t('recruitment.nav.offers'), to: '/job-offers' },
-          { label: code },
+          { label: o.applicantName },
         ]}
         actions={
           <div className="flex flex-wrap items-center gap-2">
@@ -93,9 +100,10 @@ export const JobOfferDetailPage = (): JSX.Element => {
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <span className="font-mono text-sm text-slate-500" dir="ltr">{o.code}</span>
-        <Link to={`/applicants/${o.applicantId}`} className="font-mono text-sm text-brand-600 hover:underline" dir="ltr">
-          {o.applicantCode}
+        {/* The OFFER's own number — not the applicant code — and it says so when there isn't one yet. */}
+        <span className="font-mono text-sm text-slate-500" dir="ltr">{code}</span>
+        <Link to={`/applicants/${o.applicantId}`} className="text-sm font-medium text-brand-600 hover:underline">
+          {o.applicantName}
         </Link>
         <OfferStatusBadge status={o.status} />
         {o.revisionNumber > 0 && (
@@ -108,6 +116,14 @@ export const JobOfferDetailPage = (): JSX.Element => {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
+          {/* RW3 — once the offer is accepted the server refuses to move the candidate, so the
+              suggest action disappears here on its own and the history remains readable. */}
+          <RecommendationCard
+            applicant={candidate ?? null}
+            currentLabel={candidate?.placementLabel ?? o.placementLabel}
+            source="offer"
+            sourceRef={{ entityType: 'jobOffer', entityId: o.id }}
+          />
           <Card>
             <CardHeader title={t('offers.form.package')} />
             <CardBody>

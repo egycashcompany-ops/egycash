@@ -7,6 +7,7 @@
 // never erases it.
 import { type RecruitmentTimelineEntryDto } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
+import { ActorLink } from '../../../../../platform/directory';
 import { useAppSelector } from '../../../../../store';
 import { formatDateTime } from '../../../../../shared/lib/format';
 
@@ -59,9 +60,23 @@ export const RecruitmentTimelineList = ({
                   </span>
                 ) : null}
               </div>
-              <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                {formatDateTime(entry.at, locale)}
-                {entry.actorName === '' ? null : ` · ${entry.actorName}`}
+              <div className="mt-0.5 flex flex-wrap items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
+                <span>{formatDateTime(entry.at, locale)}</span>
+                {entry.actorName === '' ? null : (
+                  <>
+                    <span className="text-slate-300 dark:text-slate-600">·</span>
+                    {/* The name recorded at write time — the same platform card as everywhere else. */}
+                    <ActorLink
+                      actor={{
+                        userId: entry.actorUserId,
+                        displayName: { ar: entry.actorName, en: entry.actorName },
+                        jobTitle: null,
+                        avatarFileId: null,
+                        deletedAt: null,
+                      }}
+                    />
+                  </>
+                )}
               </div>
               {entry.note === null ? null : (
                 <p className="mt-1 text-sm text-slate-700 dark:text-slate-200">{entry.note}</p>

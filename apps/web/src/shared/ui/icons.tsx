@@ -271,6 +271,14 @@ export const StarIcon = (p: IconProps): JSX.Element => (
   </Base>
 );
 
+/** A page with a navigation column down its start edge — the rail shell, in one glyph. */
+export const SidebarIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <path d="M9 4v16" />
+  </Base>
+);
+
 export const GridIcon = (p: IconProps): JSX.Element => (
   <Base {...p}>
     <rect x="3" y="3" width="7" height="7" rx="1" />
@@ -341,5 +349,60 @@ export const CogIcon = (p: IconProps): JSX.Element => (
   <Base {...p}>
     <circle cx="12" cy="12" r="3" />
     <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.04-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.04H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.65 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.09A1.7 1.7 0 0 0 10.14 3V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.04 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.09a1.7 1.7 0 0 0 1.56 1.04H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.56 1.04z" />
+  </Base>
+);
+
+/** Circular arrow with a start tick — "put this back the way it was", for the filter reset. */
+export const ResetIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <path d="M3 12a9 9 0 1 0 3-6.7" />
+    <path d="M3 4v5h5" />
+  </Base>
+);
+
+/** The "more actions" affordance — three dots, no direction, so it does not flip under RTL. */
+export const MoreIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <circle cx="12" cy="5" r="1" />
+    <circle cx="12" cy="12" r="1" />
+    <circle cx="12" cy="19" r="1" />
+  </Base>
+);
+
+/** A scannable code: three finder squares and a scatter of modules. Symmetric, so RTL leaves it. */
+export const QrIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <rect x="3" y="3" width="7" height="7" rx="1" />
+    <rect x="14" y="3" width="7" height="7" rx="1" />
+    <rect x="3" y="14" width="7" height="7" rx="1" />
+    <path d="M14 14h3v3h-3z" />
+    <path d="M21 14v3M14 21h3M20 20h1" />
+  </Base>
+);
+
+/** Leaves this console — an arrow out of its frame. Points "away", which is not a reading direction. */
+export const ExternalLinkIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+    <path d="M15 3h6v6" />
+    <path d="M10 14 21 3" />
+  </Base>
+);
+
+/**
+ * Suspend / resume, for a record taken out of use rather than deleted. Two glyphs rather than one
+ * power symbol: the button shows what pressing it DOES, and "pause" and "play" say that where a
+ * single on/off mark only says what the record currently is.
+ */
+export const PauseIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <rect x="6" y="4" width="4" height="16" rx="1" />
+    <rect x="14" y="4" width="4" height="16" rx="1" />
+  </Base>
+);
+
+export const PlayIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <path d="M7 4.5v15l12-7.5z" />
   </Base>
 );

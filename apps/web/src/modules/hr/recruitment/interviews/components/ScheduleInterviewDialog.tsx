@@ -11,7 +11,8 @@ import { Button } from '../../../../../shared/ui/Button';
 import { Field, Input, Select, Textarea } from '../../../../../shared/ui/form';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { localized } from '../../../../../shared/lib/format';
-import { ApplicantPicker } from './ApplicantPicker';
+import { ApplicantPicker } from '../../shared/ApplicantPicker';
+import { useApplicantSearch } from '../api/interview-queries';
 import { UserPicker, type SelectedUser } from './UserPicker';
 import { useInterviewStages, useScheduleInterview } from '../api/interview-queries';
 
@@ -100,10 +101,17 @@ export const ScheduleInterviewDialog = ({
       <div className="space-y-4">
         <Field label={t('interviews.schedule.applicant')} required>
           {applicant === null ? (
-            <ApplicantPicker onSelect={setApplicant} />
+            <ApplicantPicker
+              onSelect={setApplicant}
+              useSearch={useApplicantSearch}
+              placeholder={t('interviews.filters.applicantSearch')}
+              emptyLabel={t('interviews.filters.noApplicants')}
+            />
           ) : (
-            <span className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800/60">
-              <span className="font-mono text-xs text-slate-400" dir="ltr">{applicant.code}</span>
+            <span
+              title={applicant.code}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800/60"
+            >
               <span className="text-slate-700 dark:text-slate-200">{applicant.fullNameAr}</span>
               {presetApplicant === undefined && (
                 <button type="button" onClick={() => setApplicant(null)} className="ms-2 text-xs text-brand-600 hover:underline">

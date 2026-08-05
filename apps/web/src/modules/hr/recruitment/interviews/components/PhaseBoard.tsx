@@ -30,9 +30,8 @@ import { BulkScheduleDialog } from './BulkScheduleDialog';
 
 interface BoardCard {
   applicantId: string;
-  applicantCode: string;
   applicantName: string;
-  /** Secondary line under the code (state / date). */
+  /** Secondary line under the name (state / date). */
   meta: string | null;
   badge: { tone: Tone; label: string } | null;
   /** Row link target (interview / evaluation detail; applicant for waiting/offer columns). */
@@ -57,22 +56,21 @@ export const PhaseBoard = (): JSX.Element => {
   const phases = useEvaluationPhases();
   const interviews = useInterviews({ page: 1, pageSize: 100, sortBy: 'createdAt', sortDir: 'desc' });
   const evaluations = useEvaluations({ page: 1, pageSize: 100 });
-  const moved = useQuery({
-    queryKey: ['hr', 'applicants', 'board', 'movedToOffer'],
-    queryFn: () => listApplicants({ movedToOffer: true, status: 'new', pageSize: 100 }),
-    staleTime: 30_000,
-    select: (page) => page.items,
-  });
-  // Rejected/withdrawn applicants must never surface on the board, even where the stage record
-  // itself doesn't carry the rejection (e.g. a screening re-decision after interviews were passed).
+  // Everyone who must NOT surface on the board, in one set.
+  //
+  // Rejected and withdrawn candidates left the pipeline, even where the stage record itself does
+  // not carry the rejection (e.g. a screening re-decision after interviews were passed). Those
+  // moved to Job Offer left the board's concern too: the board is about interviews and
+  // evaluations, and a column for the stage AFTER them only invited people to work there.
   const excluded = useQuery({
     queryKey: ['hr', 'applicants', 'board', 'excluded'],
     queryFn: async () => {
-      const [rejected, withdrawn] = await Promise.all([
+      const [rejected, withdrawn, moved] = await Promise.all([
         listApplicants({ status: 'rejected', pageSize: 100 }),
         listApplicants({ status: 'withdrawn', pageSize: 100 }),
+        listApplicants({ movedToOffer: true, status: 'new', pageSize: 100 }),
       ]);
-      return new Set([...rejected.items, ...withdrawn.items].map((a) => a.id));
+      return new Set([...rejected.items, ...withdrawn.items, ...moved.items].map((a) => a.id));
     },
     staleTime: 30_000,
   });
@@ -85,19 +83,6 @@ export const PhaseBoard = (): JSX.Element => {
     const phaseList = [...(phases.data ?? [])].sort((a, b) => a.order - b.order);
     const gone = excluded.data ?? new Set<string>();
     const assigned = new Set<string>();
-
-    // Job Offer column — applicants HR explicitly moved (eligibility is never automatic).
-    const offerCards: BoardCard[] = (moved.data ?? []).map((a) => {
-      assigned.add(a.id);
-      return {
-        applicantId: a.id,
-        applicantCode: a.code,
-        applicantName: a.fullNameAr,
-        meta: a.movedToOfferAt === null ? null : formatDate(a.movedToOfferAt, locale),
-        badge: null,
-        href: `/applicants/${a.id}`,
-      };
-    });
 
     // Evaluation columns — each applicant sits at their LATEST phase (rejected ones left the pipeline).
     const evalCards = new Map<string, BoardCard[]>();
@@ -116,7 +101,6 @@ export const PhaseBoard = (): JSX.Element => {
       assigned.add(ev.applicantId);
       const card: BoardCard = {
         applicantId: ev.applicantId,
-        applicantCode: ev.applicantCode,
         applicantName: ev.applicantName,
         meta: null,
         badge:
@@ -150,7 +134,6 @@ export const PhaseBoard = (): JSX.Element => {
       assigned.add(iv.applicantId);
       const card: BoardCard = {
         applicantId: iv.applicantId,
-        applicantCode: iv.applicantCode,
         applicantName: iv.applicantName,
         meta: iv.status === 'scheduled' ? formatDate(iv.scheduledAt, locale) : null,
         badge:
@@ -184,9 +167,8 @@ export const PhaseBoard = (): JSX.Element => {
         cards: evalCards.get(p.id) ?? [],
         selectable: false,
       })),
-      { id: 'offer', title: t('interviews.board.offer'), cards: offerCards, selectable: false },
     ];
-  }, [stages.data, phases.data, interviews.data, evaluations.data, moved.data, excluded.data, locale, t]);
+  }, [stages.data, phases.data, interviews.data, evaluations.data, excluded.data, locale, t]);
 
   // I7 — one selection model. Selectable columns are the board's "rows on screen", so a card that
   // leaves the board (scheduled, moved, rejected) drops out of the selection by itself.
@@ -245,9 +227,26 @@ export const PhaseBoard = (): JSX.Element => {
               key={col.id}
               className="w-64 shrink-0 rounded-xl border border-slate-200 bg-slate-50/60 dark:border-slate-700 dark:bg-slate-900/40"
             >
-              <header className="flex items-center justify-between border-b border-slate-200 px-3 py-2 dark:border-slate-700">
+              <header className="flex items-center gap-2 border-b border-slate-200 px-3 py-2 dark:border-slate-700">
+                {/* Select-all belongs per COLUMN, not per board: the bulk actions act on one stage
+                    at a time, and "everything on screen" spans stages that cannot be acted on
+                    together. */}
+                {col.selectable && (canSchedule || canMove) && col.cards.length > 0 && (
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 shrink-0 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                    checked={col.cards.every((card) => selection.selectedIds.has(card.applicantId))}
+                    onChange={(e) =>
+                      selection.toggleMany(
+                        col.cards.map((card) => card.applicantId),
+                        e.target.checked,
+                      )
+                    }
+                    aria-label={t('common.selectAllIn').replace('{column}', col.title)}
+                  />
+                )}
                 <h3 className="truncate text-sm font-semibold text-slate-700 dark:text-slate-200">{col.title}</h3>
-                <span className="ms-2 rounded-full bg-slate-200 px-2 py-0.5 text-xs text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+                <span className="ms-auto rounded-full bg-slate-200 px-2 py-0.5 text-xs text-slate-600 dark:bg-slate-700 dark:text-slate-300">
                   {col.cards.length}
                 </span>
               </header>
@@ -266,7 +265,7 @@ export const PhaseBoard = (): JSX.Element => {
                           className="h-4 w-4 shrink-0 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
                           checked={selection.selectedIds.has(card.applicantId)}
                           onChange={() => selection.toggleRow(card.applicantId)}
-                          aria-label={card.applicantCode}
+                          aria-label={card.applicantName}
                         />
                       )}
                       <button
@@ -275,8 +274,7 @@ export const PhaseBoard = (): JSX.Element => {
                         className="min-w-0 flex-1 text-start"
                       >
                         <p className="truncate text-xs text-slate-700 dark:text-slate-200">
-                          {card.applicantName}{' '}
-                          <span className="font-mono text-slate-400" dir="ltr">{card.applicantCode}</span>
+                          {card.applicantName}
                         </p>
                         {card.meta !== null && <p className="truncate text-xs text-slate-400">{card.meta}</p>}
                       </button>

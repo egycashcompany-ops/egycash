@@ -14,15 +14,22 @@ import { LoadingState } from '../../../../../shared/ui/states/LoadingState';
 import { ErrorState } from '../../../../../shared/ui/states/ErrorState';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { EditIcon } from '../../../../../shared/ui/icons';
-import { formatDate, formatMoney } from '../../../../../shared/lib/format';
+import { CopyIdButton } from '../../../../../shared/ui/CopyIdButton';
+import {
+  formatDate,
+  formatMoney,
+  governorateLabel,
+  nationalityLabel,
+} from '../../../../../shared/lib/format';
 import { ApplicantStatusBadge } from '../components/ApplicantStatusBadge';
 import { ReferenceChip } from '../components/RefPickers';
 import { AttachmentsPanel } from '../components/AttachmentsPanel';
 import { ApplicantLifecycleActions } from '../components/ApplicantLifecycleActions';
-import { ReassignDialog } from '../components/ReassignDialog';
 import { ReturnToStageDialog } from '../components/ReturnToStageDialog';
 import { useApplicant, useVerifyApplicantIdentity } from '../api/applicant-queries';
 import { CandidateTimeline } from '../../timeline/components/CandidateTimeline';
+import { RecruitmentStepBar } from '../../shared/RecruitmentStepBar';
+import { RecommendationCard } from '../../shared/RecommendationCard';
 
 const Info = ({ label, children }: { label: string; children: ReactNode }): JSX.Element => (
   <div>
@@ -41,7 +48,6 @@ export const ApplicantDetailPage = (): JSX.Element => {
 
   const verify = useVerifyApplicantIdentity(id);
   const [verifyOpen, setVerifyOpen] = useState(false);
-  const [reassignOpen, setReassignOpen] = useState(false);
   const [returnOpen, setReturnOpen] = useState(false);
   const [nationalId, setNationalId] = useState('');
 
@@ -80,10 +86,11 @@ export const ApplicantDetailPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={a.fullNameAr}
+        aside={<RecruitmentStepBar current="applicants" />}
         breadcrumbs={[
           { label: t('recruitment.title'), to: '/' },
           { label: t('recruitment.nav.applicants'), to: '/applicants' },
-          { label: a.code },
+          { label: a.fullNameAr },
         ]}
         actions={
           <div className="flex items-center gap-2">
@@ -91,14 +98,6 @@ export const ApplicantDetailPage = (): JSX.Element => {
               <Button size="sm" variant="secondary" onClick={() => setVerifyOpen(true)}>
                 {t('applicants.actions.verify')}
               </Button>
-            )}
-            {/* RW2 — reassignment is its own action with its own grant, never the edit form. */}
-            {a.status === 'new' && (
-              <Can permission="applicant.reassign">
-                <Button size="sm" variant="secondary" onClick={() => setReassignOpen(true)}>
-                  {t('applicants.reassign.title')}
-                </Button>
-              </Can>
             )}
             {/* RW13 — send the candidate back to an earlier stage; supersedes, never deletes. */}
             {a.status === 'new' && (
@@ -121,7 +120,9 @@ export const ApplicantDetailPage = (): JSX.Element => {
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <span className="font-mono text-sm text-slate-500" dir="ltr">{a.code}</span>
+        {/* The code is searchable and quotable, but it is not this person's name — it lives in the
+            tooltip and on the clipboard, never on the page. */}
+        <CopyIdButton code={a.code} label={t('applicants.detail.code')} />
         <ApplicantStatusBadge status={a.status} />
         {/* RW4a — the board always shows where the candidate stands TODAY. */}
         {(a.placementLabel.position !== null || a.placementLabel.branch !== null) && (
@@ -136,6 +137,9 @@ export const ApplicantDetailPage = (): JSX.Element => {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
+          {/* The record where a move is `manual` — no stage made the call. Same card as every
+              stage, so the history reads identically wherever you happen to be standing. */}
+          <RecommendationCard applicant={a} currentLabel={a.placementLabel} source="manual" />
           <Card>
             <CardHeader title={t('applicants.form.identity')} />
             <CardBody>
@@ -144,11 +148,15 @@ export const ApplicantDetailPage = (): JSX.Element => {
                 <Info label={t('applicants.form.nationalId')}>
                   <span dir="ltr">{a.nationalIdMasked}</span>
                 </Info>
-                <Info label={t('applicants.form.nationality')}>{a.nationality}</Info>
+                <Info label={t('applicants.form.nationality')}>{nationalityLabel(a.nationality, locale)}</Info>
                 <Info label={t('applicants.detail.birthDate')}>{formatDate(a.birthDate, locale)}</Info>
                 <Info label={t('applicants.detail.gender')}>{a.gender === null ? '—' : t(`applicants.gender.${a.gender}`)}</Info>
                 <Info label={t('applicants.form.maritalStatus')}>{a.maritalStatus === null ? '—' : t(`applicants.marital.${a.maritalStatus}`)}</Info>
-                {a.placeOfBirth !== null && <Info label={t('applicants.detail.governorate')}>{a.placeOfBirth}</Info>}
+                {a.placeOfBirth !== null && (
+                  <Info label={t('applicants.detail.governorate')}>
+                    {governorateLabel(a.placeOfBirth, locale)}
+                  </Info>
+                )}
                 {a.religion !== null && <Info label={t('applicants.form.religion')}>{a.religion}</Info>}
                 {a.nationalIdExpiry !== null && <Info label={t('applicants.form.nationalIdExpiry')}>{formatDate(a.nationalIdExpiry, locale)}</Info>}
               </dl>
@@ -238,7 +246,6 @@ export const ApplicantDetailPage = (): JSX.Element => {
           <Input value={nationalId} onChange={(e) => setNationalId(e.target.value)} dir="ltr" inputMode="numeric" />
         </Field>
       </Dialog>
-      <ReassignDialog applicant={a} open={reassignOpen} onClose={() => setReassignOpen(false)} />
       <ReturnToStageDialog applicant={a} open={returnOpen} onClose={() => setReturnOpen(false)} />
 
     </PageContainer>

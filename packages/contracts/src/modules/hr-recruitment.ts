@@ -4,14 +4,25 @@
 import { z } from 'zod';
 import {
   AddressSchema,
+  EmailSchema,
   LocalizedStringSchema,
   NationalIdSchema,
   PaginationQuerySchema,
   PhoneNumberSchema,
+  PostalCodeSchema,
+  arabicName,
+  englishName,
   objectId,
   type Address,
   type LocalizedString,
+  listQuery,
 } from '../common/index.js';
+import {
+  ApplicantFormAnswerSchema,
+  RecruitmentFormSnapshotSchema,
+  type ApplicantFormAnswerDto,
+  type RecruitmentFormSnapshotDto,
+} from './hr-recruitment-form.js';
 import {
   PlacementSchema,
   type PlacementChangeDto,
@@ -94,6 +105,13 @@ export const CreateApplicantSourceSchema = z
     kind: ApplicantSourceKindSchema.default('manual'),
     /** Whether recruiters must attach structured detail (referrer, agency, external ref). */
     requiresDetail: z.boolean().default(false),
+    /**
+     * The platform's logo for this source. A REFERENCE into the Files service — never the image
+     * itself. Bytes belong in storage, where they are versioned, scanned, retained and served
+     * through the same audited path as every other upload; a picture inlined into a catalog row
+     * would be none of those things.
+     */
+    iconFileId: objectId().nullish(),
   })
   .strict();
 export type CreateApplicantSource = z.infer<typeof CreateApplicantSourceSchema>;
@@ -104,6 +122,8 @@ export const UpdateApplicantSourceSchema = z
     kind: ApplicantSourceKindSchema.optional(),
     requiresDetail: z.boolean().optional(),
     active: z.boolean().optional(),
+    /** `null` clears the icon; omitting it leaves the current one alone. */
+    iconFileId: objectId().nullish(),
     version: z.number().int().min(0),
   })
   .strict();
@@ -122,6 +142,8 @@ export interface ApplicantSourceDto {
   kind: ApplicantSourceKind;
   requiresDetail: boolean;
   active: boolean;
+  /** Files-service id of the platform's logo, or `null` for the default mark. */
+  iconFileId: string | null;
   version: number;
 }
 
@@ -195,8 +217,8 @@ const SourceDetailSchema = z
  */
 export const IdentityInputSchema = z
   .object({
-    fullNameAr: z.string().min(2).max(200),
-    fullNameEn: z.string().max(200).optional(),
+    fullNameAr: arabicName(z.string().min(2).max(200)),
+    fullNameEn: englishName(z.string().max(200)).optional(),
     nationalId: NationalIdSchema.optional(),
     nationality: z.string().max(100).default('Egyptian'),
     photoFileId: objectId().optional(),
@@ -213,10 +235,20 @@ export const ContactInputSchema = z
   .object({
     primaryPhone: PhoneNumberSchema,
     secondaryPhone: PhoneNumberSchema.optional(),
-    email: z.string().email().optional(),
+    email: EmailSchema.optional(),
     preferredContactChannel: ContactChannelSchema.optional(),
   })
   .strict();
+
+/**
+ * An applicant's address. Egypt Post codes are five digits, and the governorate/city pair is
+ * chosen from the catalog rather than typed, so the same place is not spelled three ways across
+ * three records. Only the postal code is refined here: the catalog is a UI affordance, and a
+ * legacy record whose city predates the catalog must still be updatable.
+ */
+export const ApplicantAddressSchema = AddressSchema.extend({
+  postalCode: PostalCodeSchema.optional(),
+});
 
 export const RegisterApplicantSchema = z
   .object({
@@ -242,8 +274,8 @@ export const RegisterApplicantSchema = z
     // Identity + contact + address.
     identity: IdentityInputSchema,
     contact: ContactInputSchema,
-    officialAddress: AddressSchema.optional(),
-    currentAddress: AddressSchema.optional(),
+    officialAddress: ApplicantAddressSchema.optional(),
+    currentAddress: ApplicantAddressSchema.optional(),
     // Richer groups (optional at registration).
     military: MilitaryServiceSchema.optional(),
     education: EducationSchema.optional(),
@@ -255,6 +287,10 @@ export const RegisterApplicantSchema = z
       .object({ platform: z.string().max(100), externalId: z.string().max(200) })
       .strict()
       .optional(),
+    /** Answers to the intake form's custom questions — see `hr-recruitment-form`. */
+    formAnswers: z.array(ApplicantFormAnswerSchema).max(60).optional(),
+    /** The form as published at submission time; set by the public intake, never by a client. */
+    formSnapshot: RecruitmentFormSnapshotSchema.optional(),
     /**
      * Optional idempotency key so a retried intake (e.g. a re-submitted integration
      * payload) never creates a duplicate applicant.
@@ -273,11 +309,11 @@ export type RegisterApplicant = z.infer<typeof RegisterApplicantSchema>;
  */
 export const UpdateApplicantSchema = z
   .object({
-    fullNameAr: z.string().min(2).max(200).optional(),
-    fullNameEn: z.string().max(200).optional(),
+    fullNameAr: arabicName(z.string().min(2).max(200)).optional(),
+    fullNameEn: englishName(z.string().max(200)).optional(),
     contact: ContactInputSchema.partial().optional(),
-    officialAddress: AddressSchema.optional(),
-    currentAddress: AddressSchema.optional(),
+    officialAddress: ApplicantAddressSchema.optional(),
+    currentAddress: ApplicantAddressSchema.optional(),
     expectedSalary: ExpectedSalarySchema.optional(),
     earliestStartDate: z.coerce.date().optional(),
     willingToRelocate: z.boolean().optional(),
@@ -392,12 +428,12 @@ export interface OcrExtractionDto {
 // ── List / search / export ──────────────────────────────────────────────────
 
 export const ListApplicantsQuerySchema = PaginationQuerySchema.extend({
-  status: ApplicantStatusSchema.optional(),
-  sourceId: objectId().optional(),
-  intakeChannel: ApplicantIntakeChannelSchema.optional(),
+  status: listQuery(ApplicantStatusSchema),
+  sourceId: listQuery(objectId()),
+  intakeChannel: listQuery(ApplicantIntakeChannelSchema),
   jobRequisitionId: objectId().optional(),
   branchId: objectId().optional(),
-  identityVerification: IdentityVerificationSchema.optional(),
+  identityVerification: listQuery(IdentityVerificationSchema),
   duplicateOnly: z.coerce.boolean().optional(),
   hasAttachments: z.coerce.boolean().optional(),
   /** True → only applicants explicitly moved to the Job Offer stage (the New Offer pool). */
@@ -520,6 +556,10 @@ export interface ApplicantDto {
   }[];
   drivingLicenses: { class: string; expiry?: string }[];
   certifications: string[];
+  /** Answers to the intake form's custom questions, each carrying the question it answers. */
+  formAnswers: ApplicantFormAnswerDto[];
+  /** The form exactly as it was when this person applied. `null` for internal registrations. */
+  formSnapshot: RecruitmentFormSnapshotDto | null;
   references: { name: string; relationship?: string; phone?: string }[];
   expectedSalary: { amount: number; currency: string } | null;
   earliestStartDate: string | null;
@@ -598,3 +638,10 @@ export const ApplicantRejectedPayloadV1 = z.object({
   interviewId: objectId().optional(),
   evaluationId: objectId().optional(),
 });
+
+/**
+ * The Files-service category applicant-source icons live under. Small images only: a catalog logo
+ * is a 64px mark, not a document, and the category's own mime/size rules are what enforce that —
+ * the upload path is the platform's, unchanged.
+ */
+export const APPLICANT_SOURCE_ICON_FILE_CATEGORY = 'hr-applicant-source-icons';

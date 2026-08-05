@@ -12,6 +12,7 @@ import {
   LocalizedStringSchema,
   PaginationQuerySchema,
   type LocalizedString,
+  listQuery,
 } from '../common/index.js';
 import {
   BulkRequestBaseSchema,
@@ -216,7 +217,7 @@ export const ListEvaluationsQuerySchema = PaginationQuerySchema.extend({
   phaseId: objectId().optional(),
   /** Doubles as the phase page's tab (I10/RW6a): waiting | approved | rejected. */
   status: EvaluationStatusSchema.optional(),
-  branchId: objectId().optional(),
+  branchId: listQuery(objectId()),
   batchId: objectId().optional(),
   /** Include records belonging to superseded attempts (default false for queues). */
   includeSuperseded: z.coerce.boolean().default(false),

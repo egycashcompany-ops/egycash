@@ -4,16 +4,16 @@ import { HIRING_DOCUMENTS_STATUSES, type HiringDocumentsStatus } from '@ecms/con
 import { useT } from '../../../../../platform/localization/useT';
 import { FilterBar } from '../../../../../shared/ui/FilterBar';
 import { SearchInput } from '../../../../../shared/ui/SearchInput';
-import { Select } from '../../../../../shared/ui/form';
+import { MultiSelect } from '../../../../../shared/ui/MultiSelect';
 
 export interface HiringDocsFiltersState {
   search: string;
-  status: '' | HiringDocumentsStatus;
+  status: HiringDocumentsStatus[];
 }
 
-export const EMPTY_HIRING_DOCS_FILTERS: HiringDocsFiltersState = { search: '', status: '' };
+export const EMPTY_HIRING_DOCS_FILTERS: HiringDocsFiltersState = { search: '', status: [] };
 
-const isActive = (f: HiringDocsFiltersState): boolean => f.search !== '' || f.status !== '';
+const isActive = (f: HiringDocsFiltersState): boolean => f.search !== '' || f.status.length > 0;
 
 export const HiringDocsFilters = ({
   value,
@@ -34,17 +34,12 @@ export const HiringDocsFilters = ({
           placeholder={t('hiringDocs.filters.search')}
         />
       </div>
-      <Select
-        aria-label={t('hiringDocs.filters.status')}
+      <MultiSelect
+        label={t('hiringDocs.filters.status')}
         value={value.status}
-        onChange={(e) => set({ status: e.target.value as HiringDocsFiltersState['status'] })}
-        className="w-auto"
-      >
-        <option value="">{t('hiringDocs.filters.allStatuses')}</option>
-        {HIRING_DOCUMENTS_STATUSES.map((s) => (
-          <option key={s} value={s}>{t(`hiringDocs.status.${s}`)}</option>
-        ))}
-      </Select>
+        onChange={(status) => set({ status: status as HiringDocumentsStatus[] })}
+        options={HIRING_DOCUMENTS_STATUSES.map((s) => ({ value: s, label: t(`hiringDocs.status.${s}`) }))}
+      />
     </FilterBar>
   );
 };

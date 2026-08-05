@@ -37,6 +37,20 @@ export const ChangePasswordSchema = z
   .strict();
 export type ChangePassword = z.infer<typeof ChangePasswordSchema>;
 
+/**
+ * Which navigation shell the user works in. Both are the same navigation data and the same
+ * permissions — only the shape differs, so this is a personal preference and nothing more:
+ *   • `launchpad` — one column scoped to the current module, switched from the full-screen launcher;
+ *   • `rail` — the two-part shell: a slim strip of module icons beside the module's page panel.
+ */
+export const NAV_LAYOUTS = ['launchpad', 'rail'] as const;
+export type NavLayout = (typeof NAV_LAYOUTS)[number];
+
+export const UpdateMyPreferencesSchema = z
+  .object({ navLayout: z.enum(NAV_LAYOUTS) })
+  .strict();
+export type UpdateMyPreferences = z.infer<typeof UpdateMyPreferencesSchema>;
+
 export const ActivateAccountSchema = z
   .object({
     token: z.string().min(1),
@@ -56,6 +70,8 @@ export interface MeDto {
   mustChangePassword: boolean;
   name: { firstName: LocalizedString; lastName: LocalizedString };
   locale: 'ar' | 'en';
+  /** Personal choice of navigation shell — presentation only, never a permission boundary. */
+  navLayout: NavLayout;
   branchId: string | null;
   /** The Employee this login belongs to (ADR-017) — the self-service subject (leave C1-R). */
   employeeId: string | null;

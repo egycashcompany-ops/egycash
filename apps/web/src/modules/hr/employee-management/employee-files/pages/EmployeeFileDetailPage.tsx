@@ -9,6 +9,7 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { type EmployeeTimelineEventType, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
+import { ActorById, useDirectoryPage } from '../../../../../platform/directory';
 import { useAppSelector } from '../../../../../store';
 import { useCan } from '../../../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
@@ -43,6 +44,9 @@ export const EmployeeFileDetailPage = (): JSX.Element => {
   const { data: f, isLoading, isError, error, refetch } = useEmployeeFile(id);
   const addNote = useAddEmployeeFileNote(id);
   const [note, setNote] = useState('');
+  // One request for everyone this page mentions. Above the guards below, because a hook runs on
+  // every render or on none — and the first render of this page has no data yet.
+  useDirectoryPage((f?.timeline ?? []).map((entry) => entry.by));
 
   if (isLoading) {
     return (
@@ -67,6 +71,7 @@ export const EmployeeFileDetailPage = (): JSX.Element => {
     meta: formatDateTime(entry.at, locale),
     tone: EVENT_TONE[entry.type],
     ...(entry.type !== 'note' && entry.detail !== null ? { description: entry.detail } : {}),
+    actor: <ActorById userId={entry.by} />,
   }));
 
   const submitNote = async (): Promise<void> => {

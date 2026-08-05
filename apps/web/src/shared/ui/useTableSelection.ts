@@ -8,6 +8,11 @@ export interface TableSelection {
   selectedIds: Set<string>;
   toggleRow: (id: string) => void;
   toggleAll: (checked: boolean) => void;
+  /**
+   * Select or clear a SUBSET. A table has one "all"; a board has one per column, and expressing
+   * that as repeated `toggleRow` calls would queue one state update per card.
+   */
+  toggleMany: (ids: readonly string[], checked: boolean) => void;
   clear: () => void;
   /** The selected ids, in the order the rows appear — what a bulk request sends. */
   ids: string[];
@@ -30,6 +35,17 @@ export const useTableSelection = (rowIds: string[]): TableSelection => {
     });
   }, []);
 
+  const toggleMany = useCallback((group: readonly string[], checked: boolean) => {
+    setPicked((current) => {
+      const next = new Set(current);
+      for (const id of group) {
+        if (checked) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+  }, []);
+
   const toggleAll = useCallback(
     (checked: boolean) => setPicked(checked ? new Set(rowIds) : new Set()),
     [rowIds],
@@ -37,5 +53,5 @@ export const useTableSelection = (rowIds: string[]): TableSelection => {
 
   const clear = useCallback(() => setPicked(new Set()), []);
 
-  return { selectedIds, toggleRow, toggleAll, clear, ids, count: ids.length };
+  return { selectedIds, toggleRow, toggleAll, toggleMany, clear, ids, count: ids.length };
 };

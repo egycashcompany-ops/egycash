@@ -18,6 +18,7 @@ import { Dialog } from '../../../../../shared/ui/Dialog';
 import { Field, Textarea } from '../../../../../shared/ui/form';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { PlusIcon, DownloadIcon } from '../../../../../shared/ui/icons';
+import { readList, writeList } from '../../../../../shared/lib/list-param';
 import { formatDate, formatNumber, localized } from '../../../../../shared/lib/format';
 import { ApplicantStatusBadge } from '../components/ApplicantStatusBadge';
 import { type PlacementDto } from '@ecms/contracts';
@@ -25,6 +26,7 @@ import { BulkReassignDialog } from '../components/BulkReassignDialog';
 import { ApplicantFilters, type ApplicantFiltersState } from '../components/ApplicantFilters';
 import { useApplicants, useApplicantSources, useBulkApplicants } from '../api/applicant-queries';
 import { exportApplicantsCsv, type ApplicantListParams } from '../api/applicant-api';
+import { useRememberedQueue } from '../../shared/useRememberedQueue';
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -33,14 +35,15 @@ export const ApplicantsListPage = (): JSX.Element => {
   const locale = useAppSelector((state) => state.locale.locale);
   const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
+  useRememberedQueue('applicants', [sp, setSp]);
 
   // ── URL-derived state ──────────────────────────────────────────────────────
   const filters: ApplicantFiltersState = {
     search: sp.get('q') ?? '',
-    status: (sp.get('status') ?? '') as ApplicantFiltersState['status'],
-    sourceId: sp.get('source') ?? '',
-    intakeChannel: (sp.get('channel') ?? '') as ApplicantFiltersState['intakeChannel'],
-    identityVerification: (sp.get('identity') ?? '') as ApplicantFiltersState['identityVerification'],
+    status: readList(sp, 'status') as ApplicantFiltersState['status'],
+    sourceId: readList(sp, 'source'),
+    intakeChannel: readList(sp, 'channel') as ApplicantFiltersState['intakeChannel'],
+    identityVerification: readList(sp, 'identity') as ApplicantFiltersState['identityVerification'],
     duplicateOnly: sp.get('dup') === '1',
     hasAttachments: sp.get('files') === '1',
   };
@@ -66,10 +69,10 @@ export const ApplicantsListPage = (): JSX.Element => {
   const changeFilters = (nf: ApplicantFiltersState): void =>
     patch({
       q: nf.search || null,
-      status: nf.status || null,
-      source: nf.sourceId || null,
-      channel: nf.intakeChannel || null,
-      identity: nf.identityVerification || null,
+      status: writeList(nf.status),
+      source: writeList(nf.sourceId),
+      channel: writeList(nf.intakeChannel),
+      identity: writeList(nf.identityVerification),
       dup: nf.duplicateOnly ? '1' : null,
       files: nf.hasAttachments ? '1' : null,
     });
@@ -147,12 +150,6 @@ export const ApplicantsListPage = (): JSX.Element => {
   };
 
   const columns: Column<ApplicantDto>[] = [
-    {
-      key: 'code',
-      header: t('applicants.columns.code'),
-      sortable: true,
-      render: (a) => <span className="font-mono text-xs" dir="ltr">{a.code}</span>,
-    },
     {
       key: 'name',
       header: t('applicants.columns.name'),

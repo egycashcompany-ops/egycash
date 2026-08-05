@@ -167,12 +167,23 @@ export const del = <T>(path: string): Promise<T> => api<T>(path, { method: 'DELE
 
 
 /** Build a `?a=1&b=2` query string, dropping empty/undefined values (API Standards §4). */
-export const buildQuery = (
-  params: Record<string, string | number | boolean | undefined | null>,
-): string => {
+/** What a list endpoint's query may carry. Arrays are the multi-valued filters. */
+export type QueryParams = Record<
+  string,
+  string | number | boolean | readonly string[] | undefined | null
+>;
+
+export const buildQuery = (params: QueryParams): string => {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== null && value !== '') search.set(key, String(value));
+    if (value === undefined || value === null || value === '') continue;
+    // A multi-valued filter travels as ONE comma-separated parameter, which is what `listQuery`
+    // in the contracts parses. An empty list is an absent filter, not "match nothing".
+    if (Array.isArray(value)) {
+      if (value.length > 0) search.set(key, value.join(','));
+      continue;
+    }
+    search.set(key, String(value));
   }
   const query = search.toString();
   return query === '' ? '' : `?${query}`;

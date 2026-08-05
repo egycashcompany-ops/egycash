@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { type ScreeningOutcome } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
+import { ActorById, useDirectoryPage } from '../../../../../platform/directory';
 import { useAppSelector } from '../../../../../store';
 import { Can, useCan } from '../../../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
@@ -22,7 +23,10 @@ import { DecideDialog } from '../components/DecideDialog';
 import { ApplicantLifecycleActions } from '../../applicants/components/ApplicantLifecycleActions';
 import { ScheduleInterviewDialog } from '../../interviews/components/ScheduleInterviewDialog';
 import { CandidateTimeline } from '../../timeline/components/CandidateTimeline';
+import { useApplicant } from '../../applicants/api/applicant-queries';
+import { RecommendationCard } from '../../shared/RecommendationCard';
 import { useAddScreeningNote, useScreening } from '../api/screening-queries';
+import { RecruitmentStepBar } from '../../shared/RecruitmentStepBar';
 
 export const ScreeningDetailPage = (): JSX.Element => {
   const t = useT();
@@ -30,12 +34,18 @@ export const ScreeningDetailPage = (): JSX.Element => {
   const can = useCan();
   const { id = '' } = useParams();
   const { data: s, isLoading, isError, error, refetch } = useScreening(id);
+  // The candidate carries the placement and its history; the screening record carries neither.
+  // Above the guards, like every other hook on this page.
+  const { data: candidate } = useApplicant(s?.applicantId ?? '');
 
   const addNote = useAddScreeningNote(id);
   const [note, setNote] = useState('');
   const [decide, setDecide] = useState<ScreeningOutcome | null>(null);
   const [editDecide, setEditDecide] = useState<ScreeningOutcome | null>(null);
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  // One request for everyone this page mentions. Above the guards below, because a hook runs on
+  // every render or on none — and the first render of this page has no data yet.
+  useDirectoryPage([...(s?.notes ?? []).map((n) => n.by), s?.decision?.decidedBy ?? null]);
 
   if (isLoading) {
     return (
@@ -70,6 +80,7 @@ export const ScreeningDetailPage = (): JSX.Element => {
     title: n.text,
     meta: formatDateTime(n.at, locale),
     tone: 'neutral',
+    actor: <ActorById userId={n.by} />,
   }));
   if (s.decision !== null) {
     const reason = s.decision.reason;
@@ -85,11 +96,12 @@ export const ScreeningDetailPage = (): JSX.Element => {
   return (
     <PageContainer>
       <PageHeader
-        title={t('screening.detail.title', { code: s.applicantCode })}
+        title={t('screening.detail.title', { name: s.applicantName })}
+        aside={<RecruitmentStepBar current="screening" />}
         breadcrumbs={[
           { label: t('recruitment.title'), to: '/' },
           { label: t('recruitment.nav.screening'), to: '/screening' },
-          { label: s.applicantCode },
+          { label: s.applicantName },
         ]}
         actions={
           isPending ? (
@@ -122,8 +134,8 @@ export const ScreeningDetailPage = (): JSX.Element => {
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <Link to={`/applicants/${s.applicantId}`} className="font-mono text-sm text-brand-600 hover:underline" dir="ltr">
-          {s.applicantCode}
+        <Link to={`/applicants/${s.applicantId}`} className="text-sm font-medium text-brand-600 hover:underline">
+          {s.applicantName}
         </Link>
         <ScreeningStatusBadge status={s.status} />
         <span className="ms-auto">
@@ -133,6 +145,14 @@ export const ScreeningDetailPage = (): JSX.Element => {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
+          {/* Screening keeps no recommendation of its own, so the card is the suggest action and
+              the history — which is exactly the feature here. */}
+          <RecommendationCard
+            applicant={candidate ?? null}
+            currentLabel={candidate?.placementLabel ?? s.placementLabel}
+            source="screening"
+            sourceRef={{ entityType: 'screening', entityId: s.id }}
+          />
           <Card>
             <CardHeader title={t('screening.notes.title')} />
             <CardBody>
@@ -173,8 +193,8 @@ export const ScreeningDetailPage = (): JSX.Element => {
                 <div>
                   <dt className="text-xs text-slate-400">{t('screening.detail.applicant')}</dt>
                   <dd className="mt-1">
-                    <Link to={`/applicants/${s.applicantId}`} className="text-brand-600 hover:underline font-mono text-xs" dir="ltr">
-                      {s.applicantCode}
+                    <Link to={`/applicants/${s.applicantId}`} className="text-sm text-brand-600 hover:underline">
+                      {s.applicantName}
                     </Link>
                   </dd>
                 </div>

@@ -15,7 +15,6 @@ import {
   type ReassignInterviewPanel,
   type RescheduleInterview,
   type ScheduleInterview,
-  type SetPlacementRecommendation,
   type SkipInterviewer,
   type StartInterview,
   type StartScheduledInterview,
@@ -34,9 +33,10 @@ import {
   patchWorkflow,
   post,
   postWorkflow,
+  type QueryParams,
 } from '../../../../../shared/lib/api-client';
 
-export type InterviewListParams = Record<string, string | number | boolean | undefined | null>;
+export type InterviewListParams = QueryParams;
 
 type InterviewEnvelope = Promise<WorkflowEnvelopeDto<InterviewDto>>;
 
@@ -61,12 +61,6 @@ export const startScheduledInterview = (
   id: string,
   body: StartScheduledInterview,
 ): InterviewEnvelope => postWorkflow<InterviewDto>(`/hr/interviews/${id}/start`, body);
-
-/** RW5 — the panel's advisory placement recommendation; never moves the candidate by itself. */
-export const setInterviewRecommendation = (
-  id: string,
-  body: SetPlacementRecommendation,
-): InterviewEnvelope => patchWorkflow<InterviewDto>(`/hr/interviews/${id}/recommendation`, body);
 
 export const rescheduleInterview = (id: string, body: RescheduleInterview): InterviewEnvelope =>
   postWorkflow<InterviewDto>(`/hr/interviews/${id}/reschedule`, body);

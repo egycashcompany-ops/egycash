@@ -1,0 +1,101 @@
+// Publishing an application link happens in one place, and platform management in another.
+//
+// These two screens answer different questions — "what are candidates asked" and "which platforms
+// do they come from" — and the link belongs to the second. It spent a release inside the first,
+// where it made the form page do two unrelated jobs and left the owner unable to find any screen
+// for managing platforms at all.
+//
+// A copy would be invisible to typecheck, lint and every behavioural test, because a second
+// publish button works perfectly. Only counting the definitions catches it.
+import { readdirSync, readFileSync } from 'node:fs';
+import { dirname, join, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const SRC = resolve(HERE, '../../../../');
+const LINK_COMPONENT = join(HERE, 'components/SourceLink.tsx');
+const FORM_PAGE = resolve(HERE, '../recruitment-form/pages/RecruitmentFormPage.tsx');
+const rel = (path: string): string => relative(SRC, path);
+
+const sources = (dir: string): string[] =>
+  readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) return sources(full);
+    return entry.name.endsWith('.tsx') && !entry.name.endsWith('.spec.tsx') ? [full] : [];
+  });
+
+const files = sources(SRC).map((path) => ({ path, text: readFileSync(path, 'utf8') }));
+
+describe('application links are managed in exactly one place', () => {
+  it('only the source-link component publishes or revokes a link', () => {
+    const users = files
+      .filter((f) => f.text.includes('useGenerateFormLink') || f.text.includes('useRevokeFormLink'))
+      .map((f) => rel(f.path));
+    expect(users).toEqual([rel(LINK_COMPONENT)]);
+  });
+
+  it('the intake-form page manages fields only — no links, no QR, no copy', () => {
+    const page = readFileSync(FORM_PAGE, 'utf8');
+    for (const forbidden of [
+      'useGenerateFormLink',
+      'useRevokeFormLink',
+      'recruitmentForm.links',
+      'recruitmentForm.generate',
+      'recruitmentForm.copy',
+      'QRCode',
+      'clipboard',
+    ]) {
+      expect(page, `the form page took link management back (${forbidden})`).not.toContain(forbidden);
+    }
+    // And it still does its own job.
+    expect(page).toContain('recruitmentForm.fields');
+  });
+
+  it('the sources page is the screen that renders it', () => {
+    // The component exports two pieces — the link's state for its own column, the buttons for the
+    // row's action cell — because that is what a table needs. Both come out of the one file above,
+    // and only this page puts either on screen.
+    const renderers = files
+      .filter((f) => /<SourceLink(Cell|Actions)/.test(f.text) && f.path !== LINK_COMPONENT)
+      .map((f) => rel(f.path));
+    expect(renderers).toEqual([rel(join(HERE, 'pages/ApplicantSourcesPage.tsx'))]);
+  });
+
+  it('offers the link on every platform — the type is a label, not a gate', () => {
+    // The first version of this page showed the link only when `kind === 'publicForm'`, so getting
+    // a link for Wuzzuf meant first editing Wuzzuf to say it was a public platform: bookkeeping
+    // invented to satisfy a UI condition, with nothing behind it. `generateLink` asks only that the
+    // source be active. Whether a source shows link tools is decided by whether it HAS a link row —
+    // which the form builds for the active sources — and never by what its type is called.
+    const page = readFileSync(join(HERE, 'pages/ApplicantSourcesPage.tsx'), 'utf8');
+    // `.kind ===` — a comparison of a SOURCE's type, which is what the removed gate was. The
+    // screen's own `kind` filter variable is a URL parameter of the same name and is not that; the
+    // dot is what tells the two apart.
+    expect(page, 'the link came back under a type condition').not.toMatch(/\.kind\s*===/);
+    // The link column and the link actions are rendered for every row the table draws, with no
+    // condition between them and the row.
+    expect(page).toContain('<SourceLinkCell');
+    expect(page).toContain('<SourceLinkActions link={linkFor(s.id)} />');
+    expect(page).toContain('link={linkFor(s.id)}');
+  });
+
+  it('every platform shares one form — the link is the only difference', () => {
+    // A per-platform form would have to travel with the link: a form id, a template, a variant.
+    // What a link actually carries is a token, and the public page is addressed by that token
+    // alone — so there is one form, and the token only says who sent the candidate.
+    const contracts = readFileSync(
+      resolve(SRC, '../../../packages/contracts/src/modules/hr-recruitment-form.ts'),
+      'utf8',
+    );
+    const dto = /export interface RecruitmentFormLinkDto \{[\s\S]*?\n\}/.exec(contracts)?.[0] ?? '';
+    expect(dto, 'RecruitmentFormLinkDto not found').not.toBe('');
+    expect(dto).not.toMatch(/formId|templateId|formVariant/);
+
+    const publicApi = readFileSync(
+      resolve(HERE, '../recruitment-form/api/recruitment-form-api.ts'),
+      'utf8',
+    );
+    expect(publicApi).toContain('/hr/public/apply/${token}');
+  });
+});

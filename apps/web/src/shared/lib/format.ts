@@ -1,7 +1,16 @@
 // Locale-aware formatting helpers. Arabic uses the ar-EG locale (Arabic-Indic digits,
 // RTL-friendly); English uses en-GB dates / en-US numbers. All helpers are null-safe and
 // render an em-dash placeholder for missing values so tables/detail views stay tidy.
-import { type Locale, type LocalizedString } from '@ecms/contracts';
+import {
+  NATIONALITY_LABELS,
+  findGovernorate,
+  type Locale,
+  type LocalizedString,
+} from '@ecms/contracts';
+
+// Re-exported so a call site that formats also gets the digit fold from one place; the
+// implementation lives in contracts, beside the rules that depend on it.
+export { asciiDigits } from '@ecms/contracts';
 
 const PLACEHOLDER = '—';
 
@@ -69,13 +78,21 @@ export const fullName = (
   locale: Locale,
 ): string => `${name.firstName[locale]} ${name.lastName[locale]}`.trim();
 
+
 /**
- * Fold Arabic-Indic (٠-٩) and Extended Arabic-Indic (۰-۹) digits to ASCII — code inputs
- * accept only ASCII, and an Arabic keyboard produces ٠١٢ for what the user reads as 012.
+ * Nationality and governorate are STORED canonically (English) so the National-ID decode, the OCR
+ * read and a hand-picked value are one string — but an Arabic reader should never be shown
+ * "Egyptian" or "Cairo". These render the stored value in the reader's language, falling back to
+ * the raw value for anything the catalog does not know.
  */
-export const asciiDigits = (value: string): string =>
-  value.replace(/[\u0660-\u0669\u06f0-\u06f9]/g, (ch) => {
-    const cp = ch.codePointAt(0) ?? 0;
-    const base = cp >= 0x06f0 ? 0x06f0 : 0x0660;
-    return String(cp - base);
-  });
+export const nationalityLabel = (value: string | null | undefined, locale: Locale): string => {
+  if (value === null || value === undefined || value.trim() === '') return PLACEHOLDER;
+  const label = NATIONALITY_LABELS[value.trim()];
+  return label === undefined ? value : label[locale];
+};
+
+export const governorateLabel = (value: string | null | undefined, locale: Locale): string => {
+  if (value === null || value === undefined || value.trim() === '') return PLACEHOLDER;
+  const found = findGovernorate(value);
+  return found === undefined ? value : found[locale];
+};

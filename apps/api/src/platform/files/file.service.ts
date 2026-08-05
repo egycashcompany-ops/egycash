@@ -515,10 +515,18 @@ class FileService {
 
     const ttl = env.SIGNED_URL_TTL_SECONDS;
     const expiresAtEpoch = Math.floor(Date.now() / 1000) + ttl;
-    const presigned = await getStorageProvider().getSignedUrl(doc.storage.key, ttl, {
-      filename: `${doc.displayName}${doc.extension}`,
-      contentType: doc.mime,
-    });
+    // A ticket is what the BROWSER is handed, so it has to be a URL the app's own document is
+    // allowed to load. A provider's presigned URL is absolute and on the store's origin; the app's
+    // Content-Security-Policy names only `'self'`, so the browser refuses it before any request is
+    // made — server-side everything looks perfect. Unless a deployment has explicitly said its
+    // store's origin is allowed, the app signs the URL itself and streams the bytes, which is
+    // same-origin under every driver.
+    const presigned = env.STORAGE_PRESIGNED_URLS
+      ? await getStorageProvider().getSignedUrl(doc.storage.key, ttl, {
+          filename: `${doc.displayName}${doc.extension}`,
+          contentType: doc.mime,
+        })
+      : null;
     const url = presigned ?? this.appSignedUrl(String(doc._id), expiresAtEpoch);
 
     // Every download is individually audited (Security Architecture §5).

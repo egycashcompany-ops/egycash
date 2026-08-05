@@ -41,8 +41,9 @@ import {
   GridIcon,
   LayersIcon,
   LinkIcon,
+  PauseIcon,
+  PlayIcon,
   PlusIcon,
-  PowerIcon,
   SearchIcon,
   UserIcon,
   UsersIcon,
@@ -187,10 +188,14 @@ export const ApplicantSourcesPage = (): JSX.Element => {
         <div className="flex items-center gap-3">
           <SourceIcon source={s} locale={locale} size="md" />
           <div className="min-w-0">
-            <p className="truncate font-medium text-slate-800 dark:text-slate-100">
+            {/* The name is the heaviest thing in the row — it is what the row IS. */}
+            <p className="truncate font-semibold text-slate-900 dark:text-slate-50">
               {localized(s.name, locale)}
             </p>
-            <p className="truncate font-mono text-xs text-slate-400 dark:text-slate-500" dir="ltr">
+            <p
+              className="truncate font-mono text-[11px] leading-tight text-slate-400 dark:text-slate-500"
+              dir="ltr"
+            >
               {s.key}
             </p>
           </div>
@@ -203,9 +208,10 @@ export const ApplicantSourcesPage = (): JSX.Element => {
       render: (s) => {
         const { tone, icon: Icon } = KIND_STYLE[s.kind];
         return (
-          // A chip that wraps to two lines on a narrow screen stops being a chip.
-          <Badge tone={tone} className="whitespace-nowrap">
-            <Icon className="h-3.5 w-3.5 shrink-0" />
+          // Small: a type CLASSIFIES the row, it is not what you scan the table for — that is the
+          // status beside it, which stays full size. A chip that wraps stops being a chip.
+          <Badge size="sm" tone={tone} className="whitespace-nowrap">
+            <Icon className="h-3 w-3 shrink-0" />
             {t(`sources.kind.${s.kind}`)}
           </Badge>
         );
@@ -248,55 +254,52 @@ export const ApplicantSourcesPage = (): JSX.Element => {
       },
     },
     {
+      // The row's last cell carries BOTH the publish date and the row's actions. There is no
+      // actions column: a column of its own would reserve width on every row for controls that are
+      // four small squares, and an empty header above them says nothing. Ending the row with them
+      // is what GitHub, Linear and Stripe all do — the controls sit at the row's trailing edge,
+      // after the last thing you read.
+      //
+      // Always in this order, colour-coded by what each one does: edit is neutral, suspend warns
+      // before taking a platform out of use, publishing is constructive, withdrawing destructive.
       key: 'generatedAt',
       header: t('sources.publishedAt'),
+      align: 'end',
       render: (s) => {
         const at = linkFor(s.id)?.generatedAt ?? null;
-        return at === null ? (
-          <span className="text-slate-300 dark:text-slate-600">—</span>
-        ) : (
-          <span className="whitespace-nowrap text-slate-600 dark:text-slate-300">
-            {formatDate(at, locale)}
-          </span>
+        return (
+          <div className="flex items-center justify-end gap-3">
+            <span className="whitespace-nowrap text-xs text-slate-400 dark:text-slate-500">
+              {at === null ? '—' : formatDate(at, locale)}
+            </span>
+            <span className="flex items-center gap-1">
+              {canManage && (
+                <>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    title={t('common.edit')}
+                    aria-label={t('common.edit')}
+                    onClick={() => setEditing({ mode: 'edit', source: s })}
+                  >
+                    <EditIcon className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant={s.active ? 'ghost-warning' : 'ghost-brand'}
+                    title={t(s.active ? 'sources.disable' : 'sources.enable')}
+                    aria-label={t(s.active ? 'sources.disable' : 'sources.enable')}
+                    onClick={() => toggleActive(s)}
+                  >
+                    {s.active ? <PauseIcon className="h-4 w-4" /> : <PlayIcon className="h-4 w-4" />}
+                  </Button>
+                </>
+              )}
+              <SourceLinkActions link={linkFor(s.id)} />
+            </span>
+          </div>
         );
       },
-    },
-    {
-      // Inline, always in this order, colour-coded by what each one does: edit is neutral, the
-      // on/off switch warns when it is about to take a platform out of use, publishing is the
-      // constructive one, withdrawing is destructive. No menu — a row's actions should be visible
-      // and pressable in one movement.
-      key: 'actions',
-      header: '',
-      align: 'end',
-      className: 'w-px whitespace-nowrap',
-      render: (s) => (
-        <div className="flex items-center justify-end gap-2">
-          {canManage && (
-            <>
-              <Button
-                size="icon"
-                variant="ghost"
-                title={t('common.edit')}
-                aria-label={t('common.edit')}
-                onClick={() => setEditing({ mode: 'edit', source: s })}
-              >
-                <EditIcon className="h-4 w-4" />
-              </Button>
-              <Button
-                size="icon"
-                variant={s.active ? 'ghost-warning' : 'ghost-brand'}
-                title={t(s.active ? 'sources.disable' : 'sources.enable')}
-                aria-label={t(s.active ? 'sources.disable' : 'sources.enable')}
-                onClick={() => toggleActive(s)}
-              >
-                <PowerIcon className="h-4 w-4" />
-              </Button>
-            </>
-          )}
-          <SourceLinkActions link={linkFor(s.id)} />
-        </div>
-      ),
     },
   ];
 
@@ -323,7 +326,7 @@ export const ApplicantSourcesPage = (): JSX.Element => {
           the label is its caption. Three of the four are also views of the table below, so they are
           pressable — a number a recruiter reads and then wants to see the rows behind. The applicant
           total is not (those rows live on another screen), so it stays a plain readout. */}
-      <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           dense
           label={t('sources.stat.total')}
@@ -445,10 +448,10 @@ export const ApplicantSourcesPage = (): JSX.Element => {
             patch({ sort: `${by}:${sort.by === by && sort.dir === 'asc' ? 'desc' : 'asc'}` }, false)
           }
           embedded
-          // The row is not clickable — every action on it is a button — but it is eight columns
+          // The row is not clickable — every action on it is a button — but it is six columns
           // wide, and the highlight is what carries the eye from a platform's name to its link.
           hoverable
-          spacious
+          dense
         />
       </ListView>
 

@@ -23,18 +23,35 @@ const DOT: Record<Tone, string> = {
   info: 'bg-sky-500',
 };
 
+/**
+ * `sm` is for a chip that CLASSIFIES a row rather than flagging it — a type, a category — where
+ * several sit in a column and none of them is the thing you scan for. A size prop rather than a
+ * padding class from the caller: `cn` is a plain joiner, so a `px-2` handed in beside the default
+ * `px-2.5` would leave the winner to stylesheet order.
+ */
+const SIZE = {
+  // `leading-4` is not decoration: an arbitrary font size sets the size ONLY, so the chip would
+  // inherit the cell's 20px line height and end up TALLER than the `md` beside it — the opposite
+  // of what asking for a small badge means.
+  sm: 'gap-1 px-2 py-0.5 text-[11px] leading-4',
+  md: 'gap-1.5 px-2.5 py-0.5 text-xs',
+} as const;
+
 export const Badge = ({
   tone = 'neutral',
+  size = 'md',
   className,
   children,
 }: {
   tone?: Tone;
+  size?: keyof typeof SIZE;
   className?: string;
   children: ReactNode;
 }): JSX.Element => (
   <span
     className={cn(
-      'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium',
+      'inline-flex items-center rounded-full font-medium',
+      SIZE[size],
       TONE[tone],
       className,
     )}

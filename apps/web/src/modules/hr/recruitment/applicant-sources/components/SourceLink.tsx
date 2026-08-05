@@ -117,25 +117,31 @@ export const SourceLinkCell = ({
   const qrRef = useRef<HTMLDivElement>(null);
 
   if (link === undefined || link.url === null) {
-    return <Badge tone="neutral">{t('sources.link.none')}</Badge>;
+    // The quietest thing on the row: an absent link is the resting state of most platforms, not a
+    // warning. Small, grey, and it stops competing with the states that matter.
+    return (
+      <Badge size="sm" tone="neutral">
+        {t('sources.link.none')}
+      </Badge>
+    );
   }
   const url = link.url;
 
   return (
-    <div className="flex min-w-0 items-center gap-1.5">
-      {/* The address is a LINK, not decoration: pressing it opens the public form. New tab and
-          `noopener` — leaving the console to look at a form is not what they meant, and the opened
-          page must not get a handle on this one. */}
+    <div className="flex min-w-0 items-center gap-0.5">
+      {/* Styled as a LINK, because it is one: link colour at rest, underline on hover, an ellipsis
+          when it runs out of room and the full address in the tooltip. New tab and `noopener` —
+          leaving the console to look at a form is not what they meant, and the opened page must not
+          get a handle on this one. */}
       <a
         href={url}
         target="_blank"
         rel="noopener noreferrer"
         dir="ltr"
         title={url}
-        className="inline-flex min-w-0 max-w-[15rem] items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 font-mono text-xs text-slate-600 transition-colors hover:border-brand-300 hover:text-brand-700 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-300 dark:hover:border-brand-700 dark:hover:text-brand-300"
+        className="min-w-0 max-w-[18rem] truncate font-mono text-xs text-brand-600 underline-offset-2 hover:underline dark:text-brand-400"
       >
-        <LinkIcon className="h-3.5 w-3.5 shrink-0" />
-        <span className="truncate">{readable(url)}</span>
+        {readable(url)}
       </a>
       <Button
         size="icon"

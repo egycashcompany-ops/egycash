@@ -52,14 +52,17 @@ export const StatCard = ({
         active && 'border-brand-400 ring-1 ring-brand-400/40 dark:border-brand-600',
       )}
     >
-      <CardBody className={cn('flex items-center gap-4', dense && 'px-4 py-3.5')}>
+      <CardBody
+        padded={!dense}
+        className={cn('flex items-center', dense ? 'gap-3 px-3.5 py-2.5' : 'gap-4')}
+      >
         <span
           className={cn(
             'grid shrink-0 place-items-center rounded-lg bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
-            dense ? 'h-9 w-9' : 'h-11 w-11',
+            dense ? 'h-8 w-8' : 'h-11 w-11',
           )}
         >
-          <Icon className={dense ? 'h-5 w-5' : 'h-6 w-6'} />
+          <Icon className={dense ? 'h-4 w-4' : 'h-6 w-6'} />
         </span>
         <div className="min-w-0">
           {/* Dense puts the NUMBER first: several tiles read as a row of metrics, and the eye should
@@ -67,18 +70,20 @@ export const StatCard = ({
           {dense ? (
             <>
               {loading ? (
-                <Skeleton className="h-7 w-14" />
+                <Skeleton className="h-6 w-12" />
               ) : (
                 <p
                   className={cn(
-                    'text-2xl font-semibold leading-tight tabular-nums',
+                    'text-xl font-semibold leading-tight tabular-nums',
                     isPlaceholder ? 'text-slate-300 dark:text-slate-600' : 'text-slate-900 dark:text-white',
                   )}
                 >
                   {value ?? '—'}
                 </p>
               )}
-              <p className="truncate text-xs text-slate-500 dark:text-slate-400">{label}</p>
+              <p className="truncate text-[11px] leading-tight text-slate-500 dark:text-slate-400">
+                {label}
+              </p>
             </>
           ) : (
             <>

@@ -34,6 +34,18 @@ export const CardHeader = ({
   </div>
 );
 
-export const CardBody = ({ className, children }: { className?: string; children: ReactNode }): JSX.Element => (
-  <div className={cn('px-5 py-4', className)}>{children}</div>
-);
+export const CardBody = ({
+  className,
+  padded = true,
+  children,
+}: {
+  className?: string;
+  /**
+   * Turn off the default gutter to set your own. Needed, not cosmetic: `cn` joins classes without
+   * resolving Tailwind conflicts, so a `py-2.5` passed in `className` sits beside `py-4` and the
+   * winner is decided by stylesheet order — which a call site cannot see. This makes the intent
+   * explicit instead of hoping.
+   */
+  padded?: boolean;
+  children: ReactNode;
+}): JSX.Element => <div className={cn(padded && 'px-5 py-4', className)}>{children}</div>;

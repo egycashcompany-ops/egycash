@@ -49,13 +49,12 @@ export interface DataTableProps<T> {
    */
   hoverable?: boolean;
   /**
-   * More room ACROSS the row — for tables whose cells carry avatars, chips and inline controls
-   * rather than words, and where the default gutter runs them into each other.
-   *
-   * Deliberately not more room DOWN: a 40px avatar already sets such a row to ~64px, and adding
-   * vertical padding on top of it pushes past the height a dense list is supposed to keep.
+   * A tighter grid, for a table whose cells carry avatars, chips and inline controls: those set
+   * the row's height on their own, so the padding around them is doing nothing but pushing rows
+   * off the screen. Trims both gutters and lands a 40px-avatar row at about 60px — the height the
+   * rest of the system's tables sit at.
    */
-  spacious?: boolean;
+  dense?: boolean;
 }
 
 const alignClass: Record<'start' | 'center' | 'end', string> = {
@@ -78,9 +77,9 @@ export const DataTable = <T,>({
   selection,
   embedded = false,
   hoverable = false,
-  spacious = false,
+  dense = false,
 }: DataTableProps<T>): JSX.Element => {
-  const cellPadding = spacious ? 'px-5 py-3' : 'px-4 py-3';
+  const cellPadding = dense ? 'px-3 py-2.5' : 'px-4 py-3';
   // One prop wins; the loose props remain as the deprecated form.
   const isSelectable = selection !== undefined;
   const selected = selection?.selectedIds ?? new Set<string>();

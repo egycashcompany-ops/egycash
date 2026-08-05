@@ -389,10 +389,20 @@ export const ExternalLinkIcon = (p: IconProps): JSX.Element => (
   </Base>
 );
 
-/** On/off — for a record that is taken out of use rather than deleted. */
-export const PowerIcon = (p: IconProps): JSX.Element => (
+/**
+ * Suspend / resume, for a record taken out of use rather than deleted. Two glyphs rather than one
+ * power symbol: the button shows what pressing it DOES, and "pause" and "play" say that where a
+ * single on/off mark only says what the record currently is.
+ */
+export const PauseIcon = (p: IconProps): JSX.Element => (
   <Base {...p}>
-    <path d="M12 3v9" />
-    <path d="M18.4 7.6a9 9 0 1 1-12.8 0" />
+    <rect x="6" y="4" width="4" height="16" rx="1" />
+    <rect x="14" y="4" width="4" height="16" rx="1" />
+  </Base>
+);
+
+export const PlayIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <path d="M7 4.5v15l12-7.5z" />
   </Base>
 );

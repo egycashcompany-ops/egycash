@@ -10,6 +10,9 @@ import { localized } from '../../../../../shared/lib/format';
 import { Avatar } from '../../../../../shared/ui/Avatar';
 import { LinkIcon } from '../../../../../shared/ui/icons';
 
+/** The fallback glyph tracks the box, so a placeholder never looks like a shrunken logo. */
+const GLYPH = { sm: 'h-4 w-4', md: 'h-5 w-5', lg: 'h-6 w-6' } as const;
+
 export const SourceIcon = ({
   source,
   locale,
@@ -17,7 +20,7 @@ export const SourceIcon = ({
 }: {
   source: Pick<ApplicantSourceDto, 'iconFileId' | 'name'>;
   locale: Locale;
-  size?: 'sm' | 'lg';
+  size?: keyof typeof GLYPH;
 }): JSX.Element => {
   const ticket = useFileTicket(source.iconFileId);
   // No icon, or a ticket that could not be issued (deleted file, no download grant): the default
@@ -28,7 +31,7 @@ export const SourceIcon = ({
       src={src}
       alt={localized(source.name, locale)}
       size={size}
-      fallback={<LinkIcon className={size === 'lg' ? 'h-6 w-6' : 'h-4 w-4'} />}
+      fallback={<LinkIcon className={GLYPH[size]} />}
     />
   );
 };

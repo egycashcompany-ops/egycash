@@ -75,8 +75,8 @@ describe('application links are managed in exactly one place', () => {
     expect(page, 'the link came back under a type condition').not.toMatch(/\.kind\s*===/);
     // The link column and the link actions are rendered for every row the table draws, with no
     // condition between them and the row.
-    expect(page).toContain('<SourceLinkCell link={linkFor(s.id)} />');
-    expect(page).toContain('<SourceLinkActions');
+    expect(page).toContain('<SourceLinkCell');
+    expect(page).toContain('<SourceLinkActions link={linkFor(s.id)} />');
     expect(page).toContain('link={linkFor(s.id)}');
   });
 

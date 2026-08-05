@@ -9,13 +9,18 @@
 // IS, not whether it can be published to: `generateLink` asks only that the source be active, and
 // the form lists every active source with or without a link.
 //
-// Search, sort and paging run on the CLIENT. The catalog is one small list — a few dozen rows at
-// most — and it already arrives whole, because this screen is the one place that must show
-// disabled sources too. Filtering it in the browser is instant and, more to the point, needs no
-// new query parameters on an endpoint whose contract is already in use elsewhere.
-import { useMemo, useState } from 'react';
+// The row is built to be READ down a column rather than parsed cell by cell: one identity cell
+// (logo, name, key) instead of two, a coloured chip per type, a status dot, and the link as an
+// address you can act on. Everything that changes state sits in the last cell, in one order,
+// always.
+import { type ComponentType, type SVGProps, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { type ApplicantSourceDto, type Locale, type PageMeta } from '@ecms/contracts';
+import {
+  type ApplicantSourceDto,
+  type ApplicantSourceKind,
+  type Locale,
+  type PageMeta,
+} from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
 import { Can, useCan } from '../../../../../platform/rbac/Can';
@@ -24,13 +29,26 @@ import { DataTable, type Column } from '../../../../../shared/ui/DataTable';
 import { ListView } from '../../../../../shared/ui/ListView';
 import { Pagination } from '../../../../../shared/ui/Pagination';
 import { SearchInput } from '../../../../../shared/ui/SearchInput';
-import { StatCard } from '../../../../../shared/ui/StatCard';
+import { StatStrip, type StatStripItem } from '../../../../../shared/ui/StatStrip';
+import { RowActions } from '../../../../../shared/ui/RowActions';
 import { Select } from '../../../../../shared/ui/form';
 import { Button } from '../../../../../shared/ui/Button';
-import { StatusBadge } from '../../../../../shared/ui/Badge';
-import { type MenuAction } from '../../../../../shared/ui/ActionMenu';
+import { Badge, StatusBadge, type Tone } from '../../../../../shared/ui/Badge';
 import { EmptyState } from '../../../../../shared/ui/states/EmptyState';
-import { CheckIcon, GridIcon, LinkIcon, PlusIcon, UsersIcon } from '../../../../../shared/ui/icons';
+import {
+  CheckIcon,
+  EditIcon,
+  GlobeIcon,
+  GridIcon,
+  LayersIcon,
+  LinkIcon,
+  PauseIcon,
+  PlayIcon,
+  PlusIcon,
+  SearchIcon,
+  UserIcon,
+  UsersIcon,
+} from '../../../../../shared/ui/icons';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { formatDate, formatNumber, localized } from '../../../../../shared/lib/format';
 import { useRecruitmentForm } from '../../recruitment-form/api/recruitment-form-queries';
@@ -45,6 +63,23 @@ import { SourceIcon } from '../components/SourceIcon';
 import { SourceLinkActions, SourceLinkCell } from '../components/SourceLink';
 
 const DEFAULT_PAGE_SIZE = 25;
+
+/**
+ * A type is a CLASS of platform, so it gets a colour and a glyph rather than a grey word: a
+ * recruiter scanning the column sees three shapes, not three strings to read.
+ *
+ * Keyed by the contract's own union, so adding a kind to `APPLICANT_SOURCE_KINDS` fails to compile
+ * here until this screen says how it looks — the alternative is a new kind silently rendering as
+ * the default and nobody noticing.
+ */
+const KIND_STYLE: Record<
+  ApplicantSourceKind,
+  { tone: Tone; icon: ComponentType<SVGProps<SVGSVGElement>> }
+> = {
+  publicForm: { tone: 'brand', icon: GlobeIcon },
+  integration: { tone: 'info', icon: LayersIcon },
+  manual: { tone: 'neutral', icon: UserIcon },
+};
 
 export const ApplicantSourcesPage = (): JSX.Element => {
   const t = useT();
@@ -131,109 +166,179 @@ export const ApplicantSourcesPage = (): JSX.Element => {
   const rows = clientFiltering ? matched.slice((page - 1) * pageSize, page * pageSize) : matched;
   const hasFilters = search !== '' || kind !== '' || status !== '' || publishedOnly;
 
-  // The page's half of a row's menu. Handed to the link component so the row has ONE "…" rather
-  // than one per module that owns an action.
-  const rowActions = (source: ApplicantSourceDto): MenuAction[] => [
-    { key: 'edit', label: t('common.edit'), onSelect: () => setEditing({ mode: 'edit', source }) },
-    {
-      key: 'toggle',
-      label: t(source.active ? 'sources.disable' : 'sources.enable'),
-      onSelect: () =>
-        update.mutate(
-          { id: source.id, body: { active: !source.active, version: source.version } },
-          { onSuccess: () => toast.success(t(source.active ? 'sources.disabled' : 'sources.enabled')) },
-        ),
-    },
-  ];
+  const toggleActive = (source: ApplicantSourceDto): void => {
+    update.mutate(
+      { id: source.id, body: { active: !source.active, version: source.version } },
+      { onSuccess: () => toast.success(t(source.active ? 'sources.disabled' : 'sources.enabled')) },
+    );
+  };
 
   const columns: Column<ApplicantSourceDto>[] = [
     {
-      // A fixed 32px box in every row, filled or not, so the column never collapses and the names
-      // stay on one optical line.
-      key: 'icon',
-      header: '',
-      className: 'w-14',
-      render: (s) => <SourceIcon source={s} locale={locale} />,
-    },
-    {
-      // Sorted server-side by `key` — the identifier printed under the name, and one of the two
-      // fields the endpoint accepts in `sortBy`.
+      // The row's subject, in one cell: mark, name, type and identifier. The type used to have a
+      // column of its own, which spent a sixth of the table's width on one short word and split
+      // the platform's identity across two cells. Beside the name — the way a repository's
+      // visibility sits beside its name — it says the same thing and gives the width back.
+      //
+      // Sorted server-side by `key`, one of the two fields the endpoint accepts in `sortBy`.
       // TODO: ordering by the DISPLAYED name needs the API to sort on `name.ar` / `name.en` with a
       // collation; until it does, sorting here would only order the page in hand.
       key: 'key',
       header: t('sources.name'),
       sortable: true,
-      render: (s) => (
-        <div className="min-w-0">
-          <p className="truncate font-medium text-slate-800 dark:text-slate-100">
-            {localized(s.name, locale)}
-          </p>
-          <p className="truncate font-mono text-xs text-slate-400" dir="ltr">
-            {s.key}
-          </p>
-        </div>
-      ),
+      className: 'min-w-[18rem]',
+      render: (s) => {
+        const { tone, icon: KindIcon } = KIND_STYLE[s.kind];
+        return (
+          <div className="flex items-center gap-3">
+            {/* 48px: the screen lets each platform carry its own logo, and at 40 the mark was a
+                decoration beside the name rather than the thing you recognise the row by. */}
+            <SourceIcon source={s} locale={locale} size="lg" />
+            <div className="min-w-0">
+              <div className="flex min-w-0 items-center gap-2">
+                {/* The heaviest thing in the row — it is what the row IS. */}
+                <span className="truncate font-semibold text-slate-900 dark:text-slate-50">
+                  {localized(s.name, locale)}
+                </span>
+                <Badge size="sm" tone={tone} className="shrink-0 whitespace-nowrap">
+                  <KindIcon className="h-3 w-3 shrink-0" />
+                  {t(`sources.kind.${s.kind}`)}
+                </Badge>
+              </div>
+              <span
+                className="block truncate font-mono text-[11px] leading-tight text-slate-400 dark:text-slate-500"
+                dir="ltr"
+              >
+                {s.key}
+              </span>
+            </div>
+          </div>
+        );
+      },
     },
     {
-      key: 'kind',
-      header: t('sources.kind'),
-      render: (s) => <StatusBadge tone="neutral" label={t(`sources.kind.${s.kind}`)} />,
-    },
-    {
+      // Green dot / red dot. Disabled is not "neutral" — it is a platform that has been switched
+      // off, and the column exists so that is visible without reading.
       key: 'status',
       header: t('sources.status'),
       render: (s) => (
         <StatusBadge
-          tone={s.active ? 'success' : 'neutral'}
+          tone={s.active ? 'success' : 'danger'}
           label={t(s.active ? 'sources.active' : 'sources.inactive')}
         />
       ),
     },
     {
-      key: 'link',
-      header: t('sources.link'),
-      render: (s) => <SourceLinkCell link={linkFor(s.id)} />,
-    },
-    {
-      // Not sortable, and not a TODO: submissions and the publish date live on the intake-form
-      // document, not on a source, so no query against this catalog could order by them.
+      // Not sortable, and not a TODO: submissions live on the intake-form document, not on a
+      // source, so no query against this catalog could order by them.
       key: 'submissions',
       header: t('recruitmentForm.submissions'),
       align: 'end',
       render: (s) => {
-        // Zero is the resting state of most rows and should read as background; anything above it
-        // is the thing the column exists to surface, so it gets weight instead of the same grey.
+        // Zero is the resting state of most rows and should read as background — a dash, not a
+        // figure to compare. Anything above it is what the column exists to surface.
         const count = linkFor(s.id)?.submissions ?? 0;
         return count === 0 ? (
-          <span className="text-slate-300 dark:text-slate-600">{formatNumber(0, locale)}</span>
+          <span className="text-slate-300 dark:text-slate-600">—</span>
         ) : (
-          <span className="inline-flex min-w-8 items-center justify-center rounded-full bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-700 dark:bg-brand-950 dark:text-brand-300">
+          <Badge tone="brand" className="tabular-nums">
             {formatNumber(count, locale)}
-          </span>
+          </Badge>
         );
       },
     },
     {
-      key: 'generatedAt',
-      header: t('sources.publishedAt'),
+      // The link, when it was published, and everything you do with the row — all at the row's
+      // end, in the widest column. "Last published" used to be a column of its own and was a dash
+      // on every unpublished row: width spent on nothing. It is a fact about the LINK, so it now
+      // sits under the address, on the rows that actually have one.
+      //
+      // What is visible is decided by what the row NEEDS. Editing and suspending are things you
+      // come looking for, so they appear with the row rather than repeating down the page; a
+      // platform with no link exists to get one, so that row keeps a labelled button that is
+      // always there.
+      key: 'link',
+      header: t('sources.link'),
       render: (s) => {
         const at = linkFor(s.id)?.generatedAt ?? null;
-        return at === null ? <span className="text-slate-300">—</span> : formatDate(at, locale);
+        return (
+          <div className="flex items-center justify-between gap-3">
+            <SourceLinkCell
+              link={linkFor(s.id)}
+              sourceName={localized(s.name, locale)}
+              {...(at === null ? {} : { publishedAt: formatDate(at, locale) })}
+            />
+            <span className="flex shrink-0 items-center gap-1">
+              {canManage && (
+                <RowActions>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    title={t('common.edit')}
+                    aria-label={t('common.edit')}
+                    onClick={() => setEditing({ mode: 'edit', source: s })}
+                  >
+                    <EditIcon className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant={s.active ? 'ghost-warning' : 'ghost-brand'}
+                    title={t(s.active ? 'sources.disable' : 'sources.enable')}
+                    aria-label={t(s.active ? 'sources.disable' : 'sources.enable')}
+                    onClick={() => toggleActive(s)}
+                  >
+                    {s.active ? <PauseIcon className="h-4 w-4" /> : <PlayIcon className="h-4 w-4" />}
+                  </Button>
+                </RowActions>
+              )}
+              <SourceLinkActions link={linkFor(s.id)} />
+            </span>
+          </div>
+        );
       },
     },
+  ];
+
+  // Three of the four are also VIEWS of the list below, so they are pressable — a number a
+  // recruiter reads and then wants to see the rows behind. The applicant total is not: those rows
+  // live on another screen, so it stays a plain readout rather than a button that lies.
+  const stats: StatStripItem[] = [
     {
-      key: 'actions',
-      header: '',
-      align: 'end',
-      render: (s) => (
-        <div className="flex items-center justify-end gap-1">
-          <SourceLinkActions
-            link={linkFor(s.id)}
-            sourceName={localized(s.name, locale)}
-            extraActions={canManage ? rowActions(s) : []}
-          />
-        </div>
-      ),
+      key: 'total',
+      label: t('sources.stat.total'),
+      icon: GridIcon,
+      active: status === '' && kind === '' && !publishedOnly,
+      loading: counts.isLoading,
+      onClick: () => patch({ status: null, kind: null, published: null }),
+      ...(counts.data === undefined ? {} : { value: formatNumber(counts.data.total, locale) }),
+    },
+    {
+      key: 'active',
+      label: t('sources.stat.active'),
+      icon: CheckIcon,
+      active: status === 'active',
+      loading: counts.isLoading,
+      onClick: () => patch({ status: 'active' }),
+      ...(counts.data === undefined ? {} : { value: formatNumber(counts.data.active, locale) }),
+    },
+    {
+      key: 'published',
+      label: t('sources.stat.published'),
+      icon: LinkIcon,
+      active: publishedOnly,
+      loading: form.isLoading,
+      onClick: () => patch({ published: sp.get('published') === '1' ? null : '1' }),
+      ...(form.data === undefined ? {} : { value: formatNumber(published, locale) }),
+    },
+    {
+      key: 'applicants',
+      label: t('sources.stat.applicants'),
+      icon: UsersIcon,
+      loading: applicantTotal.isLoading,
+      // No number rather than a wrong one while the count is still in flight.
+      ...(applicantTotal.data === undefined
+        ? {}
+        : { value: formatNumber(applicantTotal.data, locale) }),
     },
   ];
 
@@ -256,46 +361,10 @@ export const ApplicantSourcesPage = (): JSX.Element => {
         }
       />
 
-      {/* Three of the four are also views of the table below, so they are pressable: a number a
-          recruiter reads and then wants to see the rows behind. The applicant total is not — those
-          rows live on another screen — so it stays a plain readout. */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          label={t('sources.stat.total')}
-          icon={GridIcon}
-          active={status === '' && kind === ''}
-          loading={counts.isLoading}
-          onClick={() => patch({ status: null, kind: null })}
-          {...(counts.data === undefined ? {} : { value: formatNumber(counts.data.total, locale) })}
-        />
-        <StatCard
-          label={t('sources.stat.active')}
-          icon={CheckIcon}
-          active={status === 'active'}
-          loading={counts.isLoading}
-          onClick={() => patch({ status: 'active' })}
-          {...(counts.data === undefined ? {} : { value: formatNumber(counts.data.active, locale) })}
-        />
-        <StatCard
-          label={t('sources.stat.published')}
-          icon={LinkIcon}
-          active={publishedOnly}
-          loading={form.isLoading}
-          onClick={() => patch({ published: sp.get('published') === '1' ? null : '1' })}
-          {...(form.data === undefined ? {} : { value: formatNumber(published, locale) })}
-        />
-        <StatCard
-          label={t('sources.stat.applicants')}
-          icon={UsersIcon}
-          loading={applicantTotal.isLoading}
-          // No number rather than a wrong one while the count is still in flight.
-          {...(applicantTotal.data === undefined
-            ? {}
-            : { value: formatNumber(applicantTotal.data, locale) })}
-        />
-      </div>
-
+      {/* The metrics summarise the list, so they live INSIDE it — one surface with a summary band,
+          a toolbar, the rows and their paging, instead of a dashboard floating above a table. */}
       <ListView
+        summary={<StatStrip items={stats} />}
         total={meta.totalItems}
         hasActiveFilters={hasFilters}
         onClear={() => setSp(new URLSearchParams())}
@@ -341,14 +410,21 @@ export const ApplicantSourcesPage = (): JSX.Element => {
           onRetry={() => void sources.refetch()}
           empty={
             // An empty CATALOG and an empty RESULT are different problems: one wants a first
-            // platform, the other wants a different search.
+            // platform, the other wants a different search — down to the glyph.
             hasFilters ? (
               <EmptyState
+                icon={<SearchIcon className="h-10 w-10" />}
                 title={t('sources.empty.noResults')}
                 description={t('sources.empty.noResultsBody')}
+                action={
+                  <Button size="sm" variant="secondary" onClick={() => setSp(new URLSearchParams())}>
+                    {t('common.filters.clear')}
+                  </Button>
+                }
               />
             ) : (
               <EmptyState
+                icon={<LinkIcon className="h-10 w-10" />}
                 title={t('sources.empty.title')}
                 description={t('sources.empty.body')}
                 action={
@@ -370,6 +446,10 @@ export const ApplicantSourcesPage = (): JSX.Element => {
             patch({ sort: `${by}:${sort.by === by && sort.dir === 'asc' ? 'desc' : 'asc'}` }, false)
           }
           embedded
+          // The row is not clickable — every action on it is a button — but it is six columns
+          // wide, and the highlight is what carries the eye from a platform's name to its link.
+          hoverable
+          dense
         />
       </ListView>
 

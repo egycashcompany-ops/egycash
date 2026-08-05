@@ -368,3 +368,41 @@ export const MoreIcon = (p: IconProps): JSX.Element => (
     <circle cx="12" cy="19" r="1" />
   </Base>
 );
+
+/** A scannable code: three finder squares and a scatter of modules. Symmetric, so RTL leaves it. */
+export const QrIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <rect x="3" y="3" width="7" height="7" rx="1" />
+    <rect x="14" y="3" width="7" height="7" rx="1" />
+    <rect x="3" y="14" width="7" height="7" rx="1" />
+    <path d="M14 14h3v3h-3z" />
+    <path d="M21 14v3M14 21h3M20 20h1" />
+  </Base>
+);
+
+/** Leaves this console — an arrow out of its frame. Points "away", which is not a reading direction. */
+export const ExternalLinkIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+    <path d="M15 3h6v6" />
+    <path d="M10 14 21 3" />
+  </Base>
+);
+
+/**
+ * Suspend / resume, for a record taken out of use rather than deleted. Two glyphs rather than one
+ * power symbol: the button shows what pressing it DOES, and "pause" and "play" say that where a
+ * single on/off mark only says what the record currently is.
+ */
+export const PauseIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <rect x="6" y="4" width="4" height="16" rx="1" />
+    <rect x="14" y="4" width="4" height="16" rx="1" />
+  </Base>
+);
+
+export const PlayIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <path d="M7 4.5v15l12-7.5z" />
+  </Base>
+);

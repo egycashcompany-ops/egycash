@@ -85,7 +85,19 @@ let provider: StorageProvider | null = null;
 export const getStorageProvider = (): StorageProvider => {
   if (provider === null) {
     provider = buildProvider();
-    logger.info({ driver: provider.driver }, 'storage provider ready');
+    // The resolved path, not the configuration that produced it. Where uploads land is the one
+    // thing about this subsystem that cannot be read off the environment — `railway` and `local`
+    // are the same provider at different roots, and a fallback looks identical to a choice. One
+    // line at boot means the question is answered by the deploy log rather than by a shell.
+    logger.info(
+      {
+        driver: provider.driver,
+        ...(provider instanceof LocalDiskProvider
+          ? { root: provider.root, fromVolume: env.RAILWAY_VOLUME_MOUNT_PATH !== '' }
+          : {}),
+      },
+      'storage provider ready',
+    );
   }
   return provider;
 };

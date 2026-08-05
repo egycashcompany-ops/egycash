@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { platformPermissions, type PermissionDef } from '@ecms/contracts';
 import { connectMongo } from '../../infrastructure/database/mongo';
 import { logger } from '../../infrastructure/logging/logger';
+import { getStorageProvider } from '../../infrastructure/storage';
 import { registerAuthEventHandlers, registerAuthSettings } from '../auth';
 import { registerAuditJobHandlers, registerAuditSettings } from '../audit';
 import { registerFileJobHandlers } from '../files';
@@ -36,6 +37,13 @@ export const bootPlatform = async (options: BootOptions = {}): Promise<void> => 
   booted = true;
 
   await connectMongo(options.mongoUri);
+
+  // Storage is settled HERE rather than at the first file operation. Building the provider is
+  // what runs its configuration rules, and it is a singleton — so doing it now means a driver
+  // that cannot keep what it is given stops the deploy, while the previous release is still
+  // serving, instead of accepting uploads for hours and losing them. Both processes reach this:
+  // the api stores what users send, the worker stores the contract PDFs it renders.
+  getStorageProvider();
 
   // Tier 0 — foundations: setting declarations, job handlers.
   // The default secret store (platform crypto). Set before any module that stores a secret loads,

@@ -9,7 +9,8 @@ import { assertSafeKey, type PutOptions, type StorageProvider } from './storage-
 
 export class LocalDiskProvider implements StorageProvider {
   constructor(
-    private readonly root: string,
+    /** Public so the boot log can state where files actually land — see `getStorageProvider`. */
+    readonly root: string,
     readonly driver: StorageDriver = 'local',
   ) {}
 

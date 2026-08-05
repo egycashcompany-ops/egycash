@@ -33,7 +33,11 @@ import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { formatDate, formatNumber, localized } from '../../../../../shared/lib/format';
 import { useRecruitmentForm } from '../../recruitment-form/api/recruitment-form-queries';
 import { useApplicantTotal } from '../api/applicant-total-query';
-import { useApplicantSources, useUpdateApplicantSource } from '../api/applicant-source-queries';
+import {
+  useApplicantSources,
+  useSourceCounts,
+  useUpdateApplicantSource,
+} from '../api/applicant-source-queries';
 import { SourceDialog, type Editing } from '../components/SourceDialog';
 import { SourceIcon } from '../components/SourceIcon';
 import { SourceLinkActions, SourceLinkCell } from '../components/SourceLink';
@@ -64,20 +68,14 @@ export const ApplicantSourcesPage = (): JSX.Element => {
   const [sp, setSp] = useSearchParams();
   const [editing, setEditing] = useState<Editing | null>(null);
 
-  const sources = useApplicantSources();
-  // The links live on the intake form; this page joins them to their sources by id rather than
-  // asking for a second copy of the same data.
-  const form = useRecruitmentForm();
-  const applicantTotal = useApplicantTotal();
-
   const search = sp.get('q') ?? '';
   const kind = sp.get('kind') ?? '';
   const status = sp.get('status') ?? '';
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
-  const [sortByRaw, sortDirRaw] = (sp.get('sort') ?? 'name:asc').split(':');
-  const sort = { by: sortByRaw ?? 'name', dir: sortDirRaw === 'desc' ? 'desc' : 'asc' } as {
-    by: string;
+  const [sortByRaw, sortDirRaw] = (sp.get('sort') ?? 'key:asc').split(':');
+  const sort = { by: sortByRaw === 'createdAt' ? 'createdAt' : 'key', dir: sortDirRaw === 'desc' ? 'desc' : 'asc' } as {
+    by: 'key' | 'createdAt';
     dir: 'asc' | 'desc';
   };
 
@@ -91,64 +89,76 @@ export const ApplicantSourcesPage = (): JSX.Element => {
     setSp(next);
   };
 
-  const all = sources.data ?? [];
+  const term = search.trim().toLowerCase();
+  const publishedOnly = sp.get('published') === '1';
+  // Two things the endpoint cannot express: a text search, and "has a published link" — the link
+  // lives on the intake-form document, not on the source. Either one puts the screen in the
+  // whole-catalog mode described below.
+  const clientFiltering = term !== '' || publishedOnly;
+  const activeFilter = status === '' ? undefined : status === 'active';
+
+  // Filtering and paging are the SERVER's, through the query parameters the endpoint already
+  // documents. The one exception is the text search, which the endpoint has no parameter for.
+  //
+  // TODO (temporary): while searching, the screen asks for the whole catalog and narrows it here.
+  // That is correct only because the catalog is small. The moment it is not, `/hr/applicant-sources`
+  // needs a `search` parameter and this branch collapses into the query above — and until then the
+  // two modes must NOT be mixed, because the server would page first and the browser would filter
+  // one page, hiding matches that live on another.
+  const sources = useApplicantSources(
+    clientFiltering
+      ? { pageSize: 100, sortBy: sort.by, sortDir: sort.dir, kind, ...(activeFilter === undefined ? {} : { active: activeFilter }) }
+      : { page, pageSize, sortBy: sort.by, sortDir: sort.dir, kind, ...(activeFilter === undefined ? {} : { active: activeFilter }) },
+  );
+  // The links live on the intake form; this page joins them to their sources by id rather than
+  // asking for a second copy of the same data.
+  const form = useRecruitmentForm();
+  const applicantTotal = useApplicantTotal();
+  const counts = useSourceCounts();
+
   const linkFor = (id: string) => (form.data?.links ?? []).find((l) => l.sourceId === id);
+  const published = (form.data?.links ?? []).filter((l) => l.url !== null).length;
 
-  // ── The four numbers above the table ───────────────────────────────────────
-  // Each is derived from data this page already holds, except the applicant total, which is the
-  // `meta.totalItems` of an applicants query asking for a single row.
-  const stats = useMemo(() => {
-    const active = all.filter((s) => s.active).length;
-    const published = (form.data?.links ?? []).filter((l) => l.url !== null).length;
-    return { total: all.length, active, published };
-  }, [all, form.data]);
-
-  // ── Search, filter, sort, paginate — in that order, all client-side ────────
-  const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    const matches = (s: ApplicantSourceDto): boolean => {
+  const matched = useMemo(() => {
+    const items = sources.data?.items ?? [];
+    if (!clientFiltering) return items;
+    const links = form.data?.links ?? [];
+    return items.filter((s: ApplicantSourceDto) => {
       if (term !== '' && !`${s.name.ar} ${s.name.en} ${s.key}`.toLowerCase().includes(term)) {
         return false;
       }
-      if (kind !== '' && s.kind !== kind) return false;
-      if (status === 'active' && !s.active) return false;
-      if (status === 'inactive' && s.active) return false;
+      if (publishedOnly && links.find((l) => l.sourceId === s.id)?.url == null) return false;
       return true;
-    };
-    const rows = all.filter(matches);
-    const direction = sort.dir === 'asc' ? 1 : -1;
-    const value = (s: ApplicantSourceDto): string | number => {
-      if (sort.by === 'key') return s.key;
-      if (sort.by === 'kind') return t(`sources.kind.${s.kind}`);
-      if (sort.by === 'status') return s.active ? 1 : 0;
-      if (sort.by === 'submissions') return linkFor(s.id)?.submissions ?? 0;
-      if (sort.by === 'generatedAt') return linkFor(s.id)?.generatedAt ?? '';
-      return localized(s.name, locale);
-    };
-    return [...rows].sort((a, b) => {
-      const [x, y] = [value(a), value(b)];
-      if (typeof x === 'number' && typeof y === 'number') return (x - y) * direction;
-      return String(x).localeCompare(String(y), locale === 'ar' ? 'ar' : 'en') * direction;
     });
-  }, [all, form.data, search, kind, status, sort.by, sort.dir, locale]);
+  }, [sources.data, form.data, clientFiltering, term, publishedOnly]);
 
-  const meta: PageMeta = {
-    page,
-    pageSize,
-    totalItems: filtered.length,
-    totalPages: Math.max(1, Math.ceil(filtered.length / pageSize)),
-  };
-  const rows = filtered.slice((page - 1) * pageSize, page * pageSize);
+  // While searching the whole (filtered) catalog is in hand, so the page is cut here; otherwise the
+  // server's own paging is what the footer reports.
+  const meta: PageMeta = clientFiltering
+    ? {
+        page,
+        pageSize,
+        totalItems: matched.length,
+        totalPages: Math.max(1, Math.ceil(matched.length / pageSize)),
+      }
+    : (sources.data?.meta ?? { page, pageSize, totalItems: 0, totalPages: 1 });
+  const rows = clientFiltering ? matched.slice((page - 1) * pageSize, page * pageSize) : matched;
 
   const columns: Column<ApplicantSourceDto>[] = [
     {
+      // A fixed 32px box in every row, filled or not, so the column never collapses and the names
+      // stay on one optical line.
       key: 'icon',
       header: '',
-      className: 'w-12',
+      className: 'w-14',
       render: (s) => <SourceIcon source={s} locale={locale} />,
     },
     {
-      key: 'name',
+      // Sorted server-side by `key` — the identifier printed under the name, and one of the two
+      // fields the endpoint accepts in `sortBy`.
+      // TODO: ordering by the DISPLAYED name needs the API to sort on `name.ar` / `name.en` with a
+      // collation; until it does, sorting here would only order the page in hand.
+      key: 'key',
       header: t('sources.name'),
       sortable: true,
       render: (s) => (
@@ -165,13 +175,11 @@ export const ApplicantSourcesPage = (): JSX.Element => {
     {
       key: 'kind',
       header: t('sources.kind'),
-      sortable: true,
       render: (s) => <StatusBadge tone="neutral" label={t(`sources.kind.${s.kind}`)} />,
     },
     {
       key: 'status',
       header: t('sources.status'),
-      sortable: true,
       render: (s) => (
         <StatusBadge
           tone={s.active ? 'success' : 'neutral'}
@@ -185,16 +193,16 @@ export const ApplicantSourcesPage = (): JSX.Element => {
       render: (s) => <SourceLinkCell link={linkFor(s.id)} />,
     },
     {
+      // Not sortable, and not a TODO: submissions and the publish date live on the intake-form
+      // document, not on a source, so no query against this catalog could order by them.
       key: 'submissions',
       header: t('recruitmentForm.submissions'),
-      sortable: true,
       align: 'end',
       render: (s) => formatNumber(linkFor(s.id)?.submissions ?? 0, locale),
     },
     {
       key: 'generatedAt',
       header: t('sources.publishedAt'),
-      sortable: true,
       render: (s) => {
         const at = linkFor(s.id)?.generatedAt ?? null;
         return at === null ? <span className="text-slate-300">—</span> : formatDate(at, locale);
@@ -239,10 +247,31 @@ export const ApplicantSourcesPage = (): JSX.Element => {
         }
       />
 
+      {/* Three of the four are also views of the table below, so they are pressable: a number a
+          recruiter reads and then wants to see the rows behind. The applicant total is not — those
+          rows live on another screen — so it stays a plain readout. */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label={t('sources.stat.total')} icon={GridIcon} value={formatNumber(stats.total, locale)} />
-        <StatCard label={t('sources.stat.active')} icon={CheckIcon} value={formatNumber(stats.active, locale)} />
-        <StatCard label={t('sources.stat.published')} icon={LinkIcon} value={formatNumber(stats.published, locale)} />
+        <StatCard
+          label={t('sources.stat.total')}
+          icon={GridIcon}
+          active={status === '' && kind === ''}
+          onClick={() => patch({ status: null, kind: null })}
+          {...(counts.data === undefined ? {} : { value: formatNumber(counts.data.total, locale) })}
+        />
+        <StatCard
+          label={t('sources.stat.active')}
+          icon={CheckIcon}
+          active={status === 'active'}
+          onClick={() => patch({ status: 'active' })}
+          {...(counts.data === undefined ? {} : { value: formatNumber(counts.data.active, locale) })}
+        />
+        <StatCard
+          label={t('sources.stat.published')}
+          icon={LinkIcon}
+          active={sp.get('published') === '1'}
+          onClick={() => patch({ published: sp.get('published') === '1' ? null : '1' })}
+          {...(form.data === undefined ? {} : { value: formatNumber(published, locale) })}
+        />
         <StatCard
           label={t('sources.stat.applicants')}
           icon={UsersIcon}
@@ -254,8 +283,8 @@ export const ApplicantSourcesPage = (): JSX.Element => {
       </div>
 
       <ListView
-        total={filtered.length}
-        hasActiveFilters={search !== '' || kind !== '' || status !== ''}
+        total={meta.totalItems}
+        hasActiveFilters={search !== '' || kind !== '' || status !== '' || publishedOnly}
         onClear={() => setSp(new URLSearchParams())}
         search={
           <SearchInput
@@ -281,7 +310,7 @@ export const ApplicantSourcesPage = (): JSX.Element => {
           </>
         }
         pagination={
-          filtered.length > 0 ? (
+          meta.totalItems > 0 ? (
             <Pagination
               meta={meta}
               onPageChange={(p) => patch({ page: String(p) }, false)}

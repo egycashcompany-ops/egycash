@@ -3,7 +3,7 @@
 // `key` is settable only at creation: it is what code and seeds refer to a source by, and what
 // already-registered applicants were filed under. Renaming the display name is free; renaming the
 // key would silently detach history from the platform it belongs to.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   APPLICANT_SOURCE_KINDS,
   type ApplicantSourceDto,
@@ -15,6 +15,7 @@ import { useAppSelector } from '../../../../../store';
 import { Button } from '../../../../../shared/ui/Button';
 import { Dialog } from '../../../../../shared/ui/Dialog';
 import { Checkbox, Field, Input, Select } from '../../../../../shared/ui/form';
+import { FileUpload } from '../../../../../shared/ui/FileUpload';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
 import {
   useCreateApplicantSource,
@@ -39,6 +40,19 @@ export const SourceDialog = ({
   const uploadIcon = useUploadSourceIcon();
   const source = editing.mode === 'edit' ? editing.source : null;
   const [icon, setIcon] = useState<File | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+
+  // A picked file has no URL until one is minted for it, and a minted URL holds the blob alive
+  // until it is revoked — so the object URL is created and released with the selection.
+  useEffect(() => {
+    if (icon === null) {
+      setPreview(null);
+      return;
+    }
+    const url = URL.createObjectURL(icon);
+    setPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [icon]);
 
   const [key, setKey] = useState(source?.key ?? '');
   const [nameAr, setNameAr] = useState(source?.name.ar ?? '');
@@ -133,18 +147,47 @@ export const SourceDialog = ({
           onChange={(e) => setRequiresDetail(e.target.checked)}
         />
         <Field label={t('sources.icon')} hint={t('sources.iconHint')}>
-          <div className="flex items-center gap-3">
-            {source !== null && <SourceIcon source={source} locale={locale} size="lg" />}
-            <Input
-              type="file"
+          <div className="space-y-3">
+            {/* The preview answers "what will this look like" BEFORE saving: the picked file if
+                there is one, the stored icon otherwise, and the default mark when there is
+                neither — so the empty state is shown as what it is rather than as a blank box. */}
+            <div className="flex items-center gap-3">
+              <span className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
+                {preview !== null ? (
+                  <img src={preview} alt={t('sources.icon.preview')} className="h-full w-full object-contain" />
+                ) : source !== null ? (
+                  <SourceIcon source={source} locale={locale} size="lg" />
+                ) : (
+                  <SourceIcon source={{ iconFileId: null, name: { ar: '', en: '' } }} locale={locale} size="lg" />
+                )}
+              </span>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {t(
+                  preview !== null
+                    ? 'sources.icon.pending'
+                    : source?.iconFileId != null
+                      ? 'sources.icon.current'
+                      : 'sources.icon.default',
+                )}
+              </p>
+              {icon !== null && (
+                <Button size="sm" variant="ghost" onClick={() => setIcon(null)}>
+                  {t('common.cancel')}
+                </Button>
+              )}
+              {source !== null && source.iconFileId !== null && icon === null && (
+                <Button size="sm" variant="ghost" loading={pending} onClick={() => void clearIcon()}>
+                  {t('sources.icon.remove')}
+                </Button>
+              )}
+            </div>
+            {/* The shared picker — same drag-and-drop, same size guard, same look as every other
+                upload in ECMS. */}
+            <FileUpload
               accept="image/png,image/svg+xml"
-              onChange={(e) => setIcon(e.target.files?.[0] ?? null)}
+              maxSizeMb={2}
+              onFiles={(files) => setIcon(files[0] ?? null)}
             />
-            {source !== null && source.iconFileId !== null && (
-              <Button size="sm" variant="ghost" loading={pending} onClick={() => void clearIcon()}>
-                {t('common.remove')}
-              </Button>
-            )}
           </div>
         </Field>
       </div>

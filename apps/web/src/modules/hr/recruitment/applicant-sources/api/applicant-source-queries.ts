@@ -5,8 +5,34 @@ import * as api from './applicant-source-api';
 
 const KEY = ['hr', 'applicant-sources'] as const;
 
-export const useApplicantSources = () =>
-  useQuery({ queryKey: KEY, queryFn: async () => (await api.listApplicantSources()).items });
+/**
+ * One page of the catalog, filtered by the server. The params are part of the query key, so paging
+ * and filtering are cached per view rather than refetched into the same slot.
+ */
+export const useApplicantSources = (params: api.SourceListParams = {}) =>
+  useQuery({
+    queryKey: [...KEY, 'list', params] as const,
+    queryFn: () => api.listApplicantSources(params),
+  });
+
+/**
+ * The two catalog-wide counts the header cards show, each read as a list's `meta.totalItems` with
+ * a page size of one — the count the endpoint computes anyway, without the rows. They are separate
+ * from the table's query on purpose: the cards describe the whole catalog, and must not change
+ * when the user filters the table under them.
+ */
+export const useSourceCounts = () =>
+  useQuery({
+    queryKey: [...KEY, 'counts'] as const,
+    queryFn: async () => {
+      const [all, active] = await Promise.all([
+        api.listApplicantSources({ pageSize: 1 }),
+        api.listApplicantSources({ pageSize: 1, active: true }),
+      ]);
+      return { total: all.meta.totalItems, active: active.meta.totalItems };
+    },
+    staleTime: 30_000,
+  });
 
 const useSourceWrite = <TInput>(fn: (input: TInput) => Promise<ApplicantSourceDto>) => {
   const qc = useQueryClient();

@@ -8,7 +8,7 @@
 // a table wants them in two places — the state of the link in the column you read, the buttons
 // with every other row action — but they are one unit: `useGenerateFormLink` and
 // `useRevokeFormLink` are called here and nowhere else, and a guard spec fails if that changes.
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { type RecruitmentFormLinkDto } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
@@ -16,13 +16,54 @@ import { Can } from '../../../../../platform/rbac/Can';
 import { Button } from '../../../../../shared/ui/Button';
 import { Dialog } from '../../../../../shared/ui/Dialog';
 import { StatusBadge } from '../../../../../shared/ui/Badge';
+import { DownloadIcon } from '../../../../../shared/ui/icons';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { useGenerateFormLink, useRevokeFormLink } from '../../recruitment-form/api/recruitment-form-queries';
 
-/** The tail of the URL — the token — is what tells one platform's link from another's. */
-const shorten = (url: string): string => {
-  const token = url.split('/apply/')[1] ?? '';
-  return token === '' ? url : `…/apply/${token.slice(0, 8)}…`;
+/**
+ * The address without its scheme — `ecms.example.com/apply/9f2c…`. The whole thing is rendered and
+ * the CELL truncates it with an ellipsis, so a short link is shown in full and a long one still
+ * reads as a URL rather than as a fragment of a token. The full address is in the `title` and in
+ * the QR dialog.
+ */
+const readable = (url: string): string => url.replace(/^https?:\/\//, '');
+
+/** Big enough to scan off a screen, and the size the PNG is exported at. */
+const QR_SIZE = 260;
+
+/**
+ * The QR as a file, so it can go into a poster or a WhatsApp message.
+ *
+ * The code on screen is an SVG, and there is no browser API that saves one as a raster. The route
+ * is: serialize the SVG → load it as an image → paint it on a canvas → export. The white fill is
+ * painted first because the SVG's background is transparent, and a transparent PNG dropped on a
+ * dark slide stops scanning.
+ */
+const downloadPng = async (host: HTMLElement | null): Promise<void> => {
+  const svg = host?.querySelector('svg');
+  if (svg === null || svg === undefined) return;
+  const scale = 2; // a crisp print, not a screen-resolution thumbnail
+  const source = new XMLSerializer().serializeToString(svg);
+  const image = new Image();
+  image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(source)}`;
+  await new Promise((resolve) => {
+    image.onload = resolve;
+    image.onerror = resolve;
+  });
+  const canvas = document.createElement('canvas');
+  canvas.width = QR_SIZE * scale;
+  canvas.height = QR_SIZE * scale;
+  const context = canvas.getContext('2d');
+  if (context === null) return;
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  const anchor = document.createElement('a');
+  anchor.href = canvas.toDataURL('image/png');
+  anchor.download = 'apply-qr.png';
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
 };
 
 const copyToClipboard = (url: string, label: string, copied: string): void => {
@@ -56,18 +97,19 @@ export const SourceLinkCell = ({
   }
   const url = link.url;
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex min-w-0 items-center gap-2">
       <StatusBadge tone="success" label={t('sources.link.published')} />
       <code
-        className="max-w-[12rem] truncate rounded bg-slate-50 px-2 py-0.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+        className="min-w-0 max-w-[16rem] flex-1 overflow-hidden text-ellipsis whitespace-nowrap rounded bg-slate-50 px-2 py-0.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300"
         dir="ltr"
         title={url}
       >
-        {shorten(url)}
+        {readable(url)}
       </code>
       <Button
         size="sm"
         variant="ghost"
+        aria-label={t('recruitmentForm.copy')}
         onClick={() => copyToClipboard(url, t('recruitmentForm.copy'), t('recruitmentForm.copied'))}
       >
         {t('recruitmentForm.copy')}
@@ -87,6 +129,7 @@ export const SourceLinkActions = ({
   const generate = useGenerateFormLink();
   const revoke = useRevokeFormLink();
   const [qrOpen, setQrOpen] = useState(false);
+  const qrRef = useRef<HTMLDivElement>(null);
   const url = link?.url ?? null;
 
   return (
@@ -127,15 +170,26 @@ export const SourceLinkActions = ({
           title={t('sources.qr.title')}
           description={t('sources.qr.body')}
           footer={
-            <Button variant="secondary" onClick={() => setQrOpen(false)}>
-              {t('common.close')}
-            </Button>
+            <>
+              <Button variant="secondary" onClick={() => setQrOpen(false)}>
+                {t('common.close')}
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => copyToClipboard(url, t('recruitmentForm.copy'), t('recruitmentForm.copied'))}
+              >
+                {t('recruitmentForm.copy')}
+              </Button>
+              <Button leftIcon={<DownloadIcon className="h-4 w-4" />} onClick={() => void downloadPng(qrRef.current)}>
+                {t('sources.qr.download')}
+              </Button>
+            </>
           }
         >
           <div className="flex flex-col items-center gap-4">
             {/* White quiet zone regardless of theme: a dark-mode QR on a dark card does not scan. */}
-            <div className="rounded-lg bg-white p-4">
-              <QRCodeSVG value={url} size={220} level="M" />
+            <div ref={qrRef} className="rounded-lg bg-white p-4">
+              <QRCodeSVG value={url} size={QR_SIZE} level="M" />
             </div>
             <code className="break-all text-center text-xs text-slate-500 dark:text-slate-400" dir="ltr">
               {url}

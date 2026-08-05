@@ -14,14 +14,51 @@ import {
 } from '@ecms/contracts';
 import { getPage, patch, post, upload } from '../../../../../shared/lib/api-client';
 
+export interface SourceListParams {
+  page?: number;
+  pageSize?: number;
+  /** Only `key` and `createdAt` are sortable server-side (`sortableFields` on the service). */
+  sortBy?: 'key' | 'createdAt';
+  sortDir?: 'asc' | 'desc';
+  kind?: string;
+  active?: boolean;
+  /**
+   * Client-side. The endpoint has no text filter, so a search asks for the whole catalog and the
+   * screen narrows it — see the note there.
+   *
+   * TODO: this is temporary. When the catalog outgrows one page, `/hr/applicant-sources` needs a
+   * `search` parameter (name + key) and this should become another query string entry like the
+   * two above. Until that exists, do NOT combine a term with server-side paging: the server would
+   * page first and the browser would filter one page, so a match on page 3 would simply not
+   * appear.
+   */
+  search?: string;
+}
+
 /**
- * No `active` filter: the management screen is the one place that must show disabled ones too.
+ * The catalog, filtered and paged by the SERVER wherever the endpoint supports it: `kind`,
+ * `active`, `page`, `pageSize`, `sortBy`, `sortDir` are all real query parameters
+ * (`ListApplicantSourcesQuerySchema`), so a growing catalog does not become a growing download.
+ *
+ * `active` is only sent when the screen asks for one state. Omitting it is what returns disabled
+ * sources alongside active ones, which this screen — unlike every other consumer — must show.
  *
  * `getPage`, not `get` — a list answers with the items in `data` and the paging in `meta`, and
  * `get` hands back only the former.
  */
-export const listApplicantSources = (): Promise<Paginated<ApplicantSourceDto>> =>
-  getPage<ApplicantSourceDto>('/hr/applicant-sources?pageSize=100&sortBy=key&sortDir=asc');
+export const listApplicantSources = (
+  params: SourceListParams = {},
+): Promise<Paginated<ApplicantSourceDto>> => {
+  const query = new URLSearchParams({
+    page: String(params.page ?? 1),
+    pageSize: String(params.pageSize ?? 25),
+    sortBy: params.sortBy ?? 'key',
+    sortDir: params.sortDir ?? 'asc',
+  });
+  if (params.kind !== undefined && params.kind !== '') query.set('kind', params.kind);
+  if (params.active !== undefined) query.set('active', String(params.active));
+  return getPage<ApplicantSourceDto>(`/hr/applicant-sources?${query.toString()}`);
+};
 
 export const createApplicantSource = (body: CreateApplicantSource): Promise<ApplicantSourceDto> =>
   post<ApplicantSourceDto>('/hr/applicant-sources', body);

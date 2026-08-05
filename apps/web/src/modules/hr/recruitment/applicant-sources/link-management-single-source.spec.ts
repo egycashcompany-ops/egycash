@@ -69,7 +69,10 @@ describe('application links are managed in exactly one place', () => {
     // source be active. Whether a source shows link tools is decided by whether it HAS a link row —
     // which the form builds for the active sources — and never by what its type is called.
     const page = readFileSync(join(HERE, 'pages/ApplicantSourcesPage.tsx'), 'utf8');
-    expect(page, 'the link came back under a type condition').not.toMatch(/kind\s*===/);
+    // `.kind ===` — a comparison of a SOURCE's type, which is what the removed gate was. The
+    // screen's own `kind` filter variable is a URL parameter of the same name and is not that; the
+    // dot is what tells the two apart.
+    expect(page, 'the link came back under a type condition').not.toMatch(/\.kind\s*===/);
     // The link column and the link actions are rendered for every row the table draws, with no
     // condition between them and the row.
     expect(page).toContain('<SourceLinkCell link={linkFor(s.id)} />');

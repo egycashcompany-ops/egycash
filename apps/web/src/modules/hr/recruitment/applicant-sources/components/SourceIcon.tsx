@@ -7,7 +7,7 @@
 import { type ApplicantSourceDto, type Locale } from '@ecms/contracts';
 import { useFileTicket } from '../../../../../shared/lib/file-ticket';
 import { localized } from '../../../../../shared/lib/format';
-import { cn } from '../../../../../shared/lib/cn';
+import { Avatar } from '../../../../../shared/ui/Avatar';
 import { LinkIcon } from '../../../../../shared/ui/icons';
 
 export const SourceIcon = ({
@@ -20,30 +20,15 @@ export const SourceIcon = ({
   size?: 'sm' | 'lg';
 }): JSX.Element => {
   const ticket = useFileTicket(source.iconFileId);
-  const box = size === 'lg' ? 'h-12 w-12' : 'h-8 w-8';
-  const shell = cn(
-    box,
-    'shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800',
-  );
-
   // No icon, or a ticket that could not be issued (deleted file, no download grant): the default
   // mark. Never a broken <img>.
-  if (source.iconFileId === null || ticket.data === undefined) {
-    return (
-      <span className={cn(shell, 'grid place-items-center text-slate-400')}>
-        <LinkIcon className={size === 'lg' ? 'h-6 w-6' : 'h-4 w-4'} />
-      </span>
-    );
-  }
-
+  const src = source.iconFileId === null ? null : (ticket.data?.url ?? null);
   return (
-    <span className={shell}>
-      <img
-        src={ticket.data.url}
-        alt={localized(source.name, locale)}
-        className="h-full w-full object-contain"
-        loading="lazy"
-      />
-    </span>
+    <Avatar
+      src={src}
+      alt={localized(source.name, locale)}
+      size={size}
+      fallback={<LinkIcon className={size === 'lg' ? 'h-6 w-6' : 'h-4 w-4'} />}
+    />
   );
 };

@@ -12,10 +12,11 @@ import { useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { type RecruitmentFormLinkDto } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
-import { Can } from '../../../../../platform/rbac/Can';
+import { useCan } from '../../../../../platform/rbac/Can';
 import { Button } from '../../../../../shared/ui/Button';
 import { Dialog } from '../../../../../shared/ui/Dialog';
 import { StatusBadge } from '../../../../../shared/ui/Badge';
+import { ActionMenu, type MenuAction } from '../../../../../shared/ui/ActionMenu';
 import { DownloadIcon } from '../../../../../shared/ui/icons';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { useGenerateFormLink, useRevokeFormLink } from '../../recruitment-form/api/recruitment-form-queries';
@@ -118,12 +119,28 @@ export const SourceLinkCell = ({
   );
 };
 
-/** The link half of a row's actions: publish or replace, show the QR, withdraw. */
+/**
+ * A row's actions: one visible button, everything else behind "…".
+ *
+ * Which one is visible follows what the row is FOR. A platform with no link exists to get one, so
+ * "publish" is the button; once it has one, the frequent act is copying it — and that already sits
+ * in the link column, next to the address it copies — so the row keeps only the menu. The rest
+ * (QR, replace, withdraw) are occasional and belong out of sight.
+ *
+ * The page's own actions arrive as `extraActions` so a row has ONE menu rather than two: editing a
+ * platform and withdrawing its link are the same kind of thing to the person doing them, whatever
+ * module owns the code.
+ */
 export const SourceLinkActions = ({
   link,
+  sourceName,
+  extraActions = [],
 }: {
   /** `undefined` for a disabled source — the form lists links for active ones only. */
   link: RecruitmentFormLinkDto | undefined;
+  /** Named on the QR dialog, so a downloaded code is never anonymous. */
+  sourceName: string;
+  extraActions?: MenuAction[];
 }): JSX.Element => {
   const t = useT();
   const generate = useGenerateFormLink();
@@ -131,43 +148,47 @@ export const SourceLinkActions = ({
   const [qrOpen, setQrOpen] = useState(false);
   const qrRef = useRef<HTMLDivElement>(null);
   const url = link?.url ?? null;
+  const can = useCan();
+  const canManageLinks = can('recruitmentForm.manage');
+
+  const linkActions: MenuAction[] = [];
+  if (url !== null) {
+    linkActions.push({ key: 'qr', label: t('sources.qr'), onSelect: () => setQrOpen(true) });
+  }
+  if (canManageLinks && link !== undefined && url !== null) {
+    linkActions.push({
+      key: 'regenerate',
+      label: t('recruitmentForm.regenerate'),
+      onSelect: () => generate.mutate(link.sourceId),
+    });
+    linkActions.push({
+      key: 'revoke',
+      label: t('recruitmentForm.revoke'),
+      tone: 'danger',
+      onSelect: () => revoke.mutate(link.sourceId),
+    });
+  }
 
   return (
     <>
-      {url !== null && (
-        <Button size="sm" variant="ghost" onClick={() => setQrOpen(true)}>
-          {t('sources.qr')}
+      {/* The one visible action, and only when it is the point of the row. */}
+      {canManageLinks && link !== undefined && url === null && (
+        <Button
+          size="sm"
+          variant="secondary"
+          loading={generate.isPending}
+          onClick={() => generate.mutate(link.sourceId)}
+        >
+          {t('recruitmentForm.generate')}
         </Button>
       )}
-      <Can permission="recruitmentForm.manage">
-        <>
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={link === undefined}
-            loading={generate.isPending}
-            onClick={() => link !== undefined && generate.mutate(link.sourceId)}
-          >
-            {t(url === null ? 'recruitmentForm.generate' : 'recruitmentForm.regenerate')}
-          </Button>
-          {url !== null && link !== undefined && (
-            <Button
-              size="sm"
-              variant="ghost"
-              loading={revoke.isPending}
-              onClick={() => revoke.mutate(link.sourceId)}
-            >
-              {t('recruitmentForm.revoke')}
-            </Button>
-          )}
-        </>
-      </Can>
+      <ActionMenu actions={[...extraActions, ...linkActions]} label={t('common.actions')} />
 
       {url !== null && (
         <Dialog
           open={qrOpen}
           onClose={() => setQrOpen(false)}
-          title={t('sources.qr.title')}
+          title={`${t('sources.qr.title')} — ${sourceName}`}
           description={t('sources.qr.body')}
           footer={
             <>
@@ -187,6 +208,9 @@ export const SourceLinkActions = ({
           }
         >
           <div className="flex flex-col items-center gap-4">
+            {/* Named above the code as well as in the title: a QR screenshotted or downloaded on
+                its own carries no other clue about which platform it belongs to. */}
+            <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{sourceName}</p>
             {/* White quiet zone regardless of theme: a dark-mode QR on a dark card does not scan. */}
             <div ref={qrRef} className="rounded-lg bg-white p-4">
               <QRCodeSVG value={url} size={QR_SIZE} level="M" />

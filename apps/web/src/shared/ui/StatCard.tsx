@@ -4,6 +4,7 @@
 import { type ComponentType, type SVGProps } from 'react';
 import { cn } from '../lib/cn';
 import { Card, CardBody } from './Card';
+import { Skeleton } from './Skeleton';
 
 export const StatCard = ({
   label,
@@ -12,6 +13,7 @@ export const StatCard = ({
   caption,
   onClick,
   active = false,
+  loading = false,
 }: {
   label: string;
   icon: ComponentType<SVGProps<SVGSVGElement>>;
@@ -27,6 +29,12 @@ export const StatCard = ({
   onClick?: () => void;
   /** Draw it as the view currently applied. */
   active?: boolean;
+  /**
+   * While the metric is in flight, hold its space with a skeleton instead of a dash. Both avoid a
+   * layout shift — the tile is the same height either way — but a skeleton says "coming" where a
+   * dash says "nothing", and a number that arrives a moment later contradicts the dash.
+   */
+  loading?: boolean;
 }): JSX.Element => {
   const isPlaceholder = value === undefined;
   const tile = (
@@ -43,14 +51,18 @@ export const StatCard = ({
         </span>
         <div className="min-w-0">
           <p className="truncate text-sm text-slate-500 dark:text-slate-400">{label}</p>
-          <p
-            className={cn(
-              'mt-0.5 text-2xl font-semibold tabular-nums',
-              isPlaceholder ? 'text-slate-300 dark:text-slate-600' : 'text-slate-900 dark:text-white',
-            )}
-          >
-            {value ?? '—'}
-          </p>
+          {loading ? (
+            <Skeleton className="mt-1.5 h-7 w-16" />
+          ) : (
+            <p
+              className={cn(
+                'mt-0.5 text-2xl font-semibold tabular-nums',
+                isPlaceholder ? 'text-slate-300 dark:text-slate-600' : 'text-slate-900 dark:text-white',
+              )}
+            >
+              {value ?? '—'}
+            </p>
+          )}
           {caption !== undefined && (
             <p className="truncate text-xs text-slate-400 dark:text-slate-500">{caption}</p>
           )}

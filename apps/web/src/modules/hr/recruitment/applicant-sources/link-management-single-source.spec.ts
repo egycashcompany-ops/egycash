@@ -76,7 +76,8 @@ describe('application links are managed in exactly one place', () => {
     // The link column and the link actions are rendered for every row the table draws, with no
     // condition between them and the row.
     expect(page).toContain('<SourceLinkCell link={linkFor(s.id)} />');
-    expect(page).toContain('<SourceLinkActions link={linkFor(s.id)} />');
+    expect(page).toContain('<SourceLinkActions');
+    expect(page).toContain('link={linkFor(s.id)}');
   });
 
   it('every platform shares one form — the link is the only difference', () => {

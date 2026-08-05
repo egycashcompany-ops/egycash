@@ -18,7 +18,7 @@ import { useSearchParams } from 'react-router-dom';
 import { type ApplicantSourceDto, type Locale, type PageMeta } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
-import { Can } from '../../../../../platform/rbac/Can';
+import { Can, useCan } from '../../../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../../../shared/ui/DataTable';
 import { ListView } from '../../../../../shared/ui/ListView';
@@ -28,6 +28,8 @@ import { StatCard } from '../../../../../shared/ui/StatCard';
 import { Select } from '../../../../../shared/ui/form';
 import { Button } from '../../../../../shared/ui/Button';
 import { StatusBadge } from '../../../../../shared/ui/Badge';
+import { type MenuAction } from '../../../../../shared/ui/ActionMenu';
+import { EmptyState } from '../../../../../shared/ui/states/EmptyState';
 import { CheckIcon, GridIcon, LinkIcon, PlusIcon, UsersIcon } from '../../../../../shared/ui/icons';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { formatDate, formatNumber, localized } from '../../../../../shared/lib/format';
@@ -43,24 +45,6 @@ import { SourceIcon } from '../components/SourceIcon';
 import { SourceLinkActions, SourceLinkCell } from '../components/SourceLink';
 
 const DEFAULT_PAGE_SIZE = 25;
-
-/** Enable/disable for one source. Disabling is how a platform is retired — never a delete, because
- *  applicants registered last year still point at it. */
-const StatusToggle = ({ source }: { source: ApplicantSourceDto }): JSX.Element => {
-  const t = useT();
-  const update = useUpdateApplicantSource();
-  const toggle = (): void => {
-    update.mutate(
-      { id: source.id, body: { active: !source.active, version: source.version } },
-      { onSuccess: () => toast.success(t(source.active ? 'sources.disabled' : 'sources.enabled')) },
-    );
-  };
-  return (
-    <Button size="sm" variant="ghost" loading={update.isPending} onClick={toggle}>
-      {t(source.active ? 'sources.disable' : 'sources.enable')}
-    </Button>
-  );
-};
 
 export const ApplicantSourcesPage = (): JSX.Element => {
   const t = useT();
@@ -115,6 +99,8 @@ export const ApplicantSourcesPage = (): JSX.Element => {
   const form = useRecruitmentForm();
   const applicantTotal = useApplicantTotal();
   const counts = useSourceCounts();
+  const update = useUpdateApplicantSource();
+  const canManage = useCan()('applicantSource.manage');
 
   const linkFor = (id: string) => (form.data?.links ?? []).find((l) => l.sourceId === id);
   const published = (form.data?.links ?? []).filter((l) => l.url !== null).length;
@@ -143,6 +129,22 @@ export const ApplicantSourcesPage = (): JSX.Element => {
       }
     : (sources.data?.meta ?? { page, pageSize, totalItems: 0, totalPages: 1 });
   const rows = clientFiltering ? matched.slice((page - 1) * pageSize, page * pageSize) : matched;
+  const hasFilters = search !== '' || kind !== '' || status !== '' || publishedOnly;
+
+  // The page's half of a row's menu. Handed to the link component so the row has ONE "…" rather
+  // than one per module that owns an action.
+  const rowActions = (source: ApplicantSourceDto): MenuAction[] => [
+    { key: 'edit', label: t('common.edit'), onSelect: () => setEditing({ mode: 'edit', source }) },
+    {
+      key: 'toggle',
+      label: t(source.active ? 'sources.disable' : 'sources.enable'),
+      onSelect: () =>
+        update.mutate(
+          { id: source.id, body: { active: !source.active, version: source.version } },
+          { onSuccess: () => toast.success(t(source.active ? 'sources.disabled' : 'sources.enabled')) },
+        ),
+    },
+  ];
 
   const columns: Column<ApplicantSourceDto>[] = [
     {
@@ -214,15 +216,11 @@ export const ApplicantSourcesPage = (): JSX.Element => {
       align: 'end',
       render: (s) => (
         <div className="flex items-center justify-end gap-1">
-          <Can permission="applicantSource.manage">
-            <>
-              <Button size="sm" variant="ghost" onClick={() => setEditing({ mode: 'edit', source: s })}>
-                {t('common.edit')}
-              </Button>
-              <StatusToggle source={s} />
-            </>
-          </Can>
-          <SourceLinkActions link={linkFor(s.id)} />
+          <SourceLinkActions
+            link={linkFor(s.id)}
+            sourceName={localized(s.name, locale)}
+            extraActions={canManage ? rowActions(s) : []}
+          />
         </div>
       ),
     },
@@ -255,6 +253,7 @@ export const ApplicantSourcesPage = (): JSX.Element => {
           label={t('sources.stat.total')}
           icon={GridIcon}
           active={status === '' && kind === ''}
+          loading={counts.isLoading}
           onClick={() => patch({ status: null, kind: null })}
           {...(counts.data === undefined ? {} : { value: formatNumber(counts.data.total, locale) })}
         />
@@ -262,19 +261,22 @@ export const ApplicantSourcesPage = (): JSX.Element => {
           label={t('sources.stat.active')}
           icon={CheckIcon}
           active={status === 'active'}
+          loading={counts.isLoading}
           onClick={() => patch({ status: 'active' })}
           {...(counts.data === undefined ? {} : { value: formatNumber(counts.data.active, locale) })}
         />
         <StatCard
           label={t('sources.stat.published')}
           icon={LinkIcon}
-          active={sp.get('published') === '1'}
+          active={publishedOnly}
+          loading={form.isLoading}
           onClick={() => patch({ published: sp.get('published') === '1' ? null : '1' })}
           {...(form.data === undefined ? {} : { value: formatNumber(published, locale) })}
         />
         <StatCard
           label={t('sources.stat.applicants')}
           icon={UsersIcon}
+          loading={applicantTotal.isLoading}
           // No number rather than a wrong one while the count is still in flight.
           {...(applicantTotal.data === undefined
             ? {}
@@ -284,7 +286,7 @@ export const ApplicantSourcesPage = (): JSX.Element => {
 
       <ListView
         total={meta.totalItems}
-        hasActiveFilters={search !== '' || kind !== '' || status !== '' || publishedOnly}
+        hasActiveFilters={hasFilters}
         onClear={() => setSp(new URLSearchParams())}
         search={
           <SearchInput
@@ -326,6 +328,32 @@ export const ApplicantSourcesPage = (): JSX.Element => {
           loading={sources.isLoading || form.isLoading}
           error={sources.isError ? sources.error : undefined}
           onRetry={() => void sources.refetch()}
+          empty={
+            // An empty CATALOG and an empty RESULT are different problems: one wants a first
+            // platform, the other wants a different search.
+            hasFilters ? (
+              <EmptyState
+                title={t('sources.empty.noResults')}
+                description={t('sources.empty.noResultsBody')}
+              />
+            ) : (
+              <EmptyState
+                title={t('sources.empty.title')}
+                description={t('sources.empty.body')}
+                action={
+                  <Can permission="applicantSource.manage">
+                    <Button
+                      size="sm"
+                      leftIcon={<PlusIcon className="h-4 w-4" />}
+                      onClick={() => setEditing({ mode: 'create' })}
+                    >
+                      {t('sources.add')}
+                    </Button>
+                  </Can>
+                }
+              />
+            )
+          }
           sort={sort}
           onSortChange={(by) =>
             patch({ sort: `${by}:${sort.by === by && sort.dir === 'asc' ? 'desc' : 'asc'}` }, false)

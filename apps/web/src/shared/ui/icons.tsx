@@ -359,3 +359,12 @@ export const ResetIcon = (p: IconProps): JSX.Element => (
     <path d="M3 4v5h5" />
   </Base>
 );
+
+/** The "more actions" affordance — three dots, no direction, so it does not flip under RTL. */
+export const MoreIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <circle cx="12" cy="5" r="1" />
+    <circle cx="12" cy="12" r="1" />
+    <circle cx="12" cy="19" r="1" />
+  </Base>
+);

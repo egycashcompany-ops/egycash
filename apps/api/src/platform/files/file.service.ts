@@ -277,7 +277,7 @@ class FileService {
   ): Promise<FileDoc> {
     const source = await fileRepository.getById(sourceFileId);
     const category = await this.loadActiveCategory(target.categoryId);
-    const buffer = await streamToBuffer(await getStorageProvider().getStream(source.storage.key));
+    const buffer = await streamToBuffer(await this.openStoredBytes(source));
     const binary: UploadedBinary = {
       originalName: source.originalName,
       mime: source.mime,
@@ -501,11 +501,44 @@ class FileService {
     }
   }
 
+  /**
+   * The bytes behind a record, or a clear statement that they are gone.
+   *
+   * A stored object can outlive its file record's expectations — a volume that was never attached,
+   * a container filesystem rebuilt by a deploy, an object deleted behind the service's back. The
+   * provider reports that as a plain I/O error, which became a 500 "Unexpected error"; and since
+   * every consumer of a stored image falls back to its empty state on failure, the whole chain read
+   * as "nothing was ever uploaded". So the miss is named here, once, for every reader: a 404 with
+   * its own code, and a log line carrying the driver and the key that is not there.
+   */
+  private async openStoredBytes(doc: FileDoc): Promise<NodeJS.ReadableStream> {
+    const provider = getStorageProvider();
+    try {
+      return await provider.getStream(doc.storage.key);
+    } catch (error) {
+      logger.error(
+        {
+          err: error,
+          fileId: String(doc._id),
+          driver: doc.storage.driver,
+          key: doc.storage.key,
+          activeDriver: provider.driver,
+        },
+        'stored object missing — the file record has no bytes behind it',
+      );
+      throw new AppError(
+        ErrorCodes.FILE_OBJECT_MISSING,
+        404,
+        'The stored file is no longer available',
+      );
+    }
+  }
+
   /** Authorized byte read for server-side embedding (e.g. branding logos in renders). */
   async readBuffer(ctx: AuthContext, id: string): Promise<{ doc: FileDoc; buffer: Buffer }> {
     const doc = await fileRepository.getById(id);
     await this.authorizeDownload(ctx, doc);
-    const buffer = await streamToBuffer(await getStorageProvider().getStream(doc.storage.key));
+    const buffer = await streamToBuffer(await this.openStoredBytes(doc));
     return { doc, buffer };
   }
 
@@ -540,8 +573,7 @@ class FileService {
     if (doc.scanStatus === 'blocked') {
       throw new BusinessRuleError('File is blocked by the virus scanner', ErrorCodes.FILE_BLOCKED);
     }
-    const stream = await getStorageProvider().getStream(doc.storage.key);
-    return { doc, stream };
+    return { doc, stream: await this.openStoredBytes(doc) };
   }
 
   // ── DTO ────────────────────────────────────────────────────────────────────

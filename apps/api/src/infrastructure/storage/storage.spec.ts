@@ -2,9 +2,45 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { railwayStorageRoot } from './index';
 import { LocalDiskProvider } from './local-disk.provider';
 import { S3Provider } from './s3.provider';
 import { assertSafeKey } from './storage-provider';
+
+describe('railwayStorageRoot', () => {
+  it('uses the volume Railway injected', () => {
+    expect(
+      railwayStorageRoot({
+        volumeMountPath: '/data',
+        localRoot: './storage',
+        localRootIsExplicit: false,
+      }),
+    ).toBe('/data');
+  });
+
+  it('honours an explicitly configured root when there is no volume', () => {
+    expect(
+      railwayStorageRoot({
+        volumeMountPath: '',
+        localRoot: '/mnt/files',
+        localRootIsExplicit: true,
+      }),
+    ).toBe('/mnt/files');
+  });
+
+  // The regression this whole change exists for: without a volume the driver used to fall back to
+  // `./storage` INSIDE the container. Uploads succeeded, their rows persisted, and the bytes were
+  // erased by the next deploy — the records outlived their files and nothing said so.
+  it('refuses the container filesystem — no volume and no configured root is a boot failure', () => {
+    expect(() =>
+      railwayStorageRoot({
+        volumeMountPath: '',
+        localRoot: './storage',
+        localRootIsExplicit: false,
+      }),
+    ).toThrow(/requires persistent storage/);
+  });
+});
 
 describe('assertSafeKey', () => {
   it.each([['../etc/passwd'], ['/abs/path'], ['a\\b'], ['a\0b'], ['files/../../x']])(

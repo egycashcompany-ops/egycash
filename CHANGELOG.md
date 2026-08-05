@@ -85,6 +85,29 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **Uploaded files were being written to a disk that every deploy erases.** With
+  `STORAGE_DRIVER=railway` and no Volume attached, `RAILWAY_VOLUME_MOUNT_PATH` is empty and the
+  provider silently fell back to `./storage` — a directory *inside* the container. Uploads
+  succeeded, their database rows persisted, and the bytes were gone at the next release: applicant
+  source icons, hiring documents, National-ID scans and generated contract PDFs all became records
+  with nothing behind them. Nothing anywhere reported it, because every step except the final byte
+  read is satisfied by the row alone — the list returns the file id, a download ticket is issued,
+  the signature verifies — and the surviving 500 rendered, in every screen that shows a stored
+  image, as that screen's ordinary "no image" state. That is why the applicant-source icon looked
+  like an icon that had never been saved. `STORAGE_DRIVER=railway` now **fails the boot** unless a
+  volume is mounted or `STORAGE_LOCAL_ROOT` names a path that survives a deploy, which is what this
+  module already promised ("misconfiguration fails the boot loudly, never at first upload").
+  Reproduced end-to-end before fixing: with the row intact and only the bytes removed,
+  `GET /hr/applicant-sources` still returns `iconFileId`, `…/download?mode=ticket` still answers
+  200, and the table shows the placeholder with no console error and no CSP violation.
+
+- **A stored file whose bytes are missing now says so.** The storage read failure surfaced as a
+  generic 500 `INTERNAL` "Unexpected error" naming nothing. It is now a 404 with its own code,
+  `FILE_OBJECT_MISSING`, and a server log line carrying the file id, the storage driver and the key
+  that is not there — so the next occurrence is one look at the network tab instead of three rounds
+  of guessing. Applies to every byte read: the signed download stream, server-side embedding
+  (branding logos in renders) and file-to-file copies.
+
 - **"Authentication required" after leaving a tab idle — the client raced its own silent
   refresh.** Returning to an idle tab fired several stale-token requests at once; each ran its
   own `POST /auth/refresh` with the same single-use cookie, so one rotation won and the rest

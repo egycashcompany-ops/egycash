@@ -31,7 +31,13 @@ has four packages; the config files above tell it what to build and run.
    (Settings → Networking).
 2. **Add a second service from the same repo** → name it **worker** → Settings → Build →
    **Config File Path** = `railway.worker.json`. No public domain.
-3. Attach a **Volume** to **app** (e.g. mount path `/data`) for uploaded files.
+3. Attach a **Volume** to **app** (e.g. mount path `/data`) for uploaded files. **This is not
+   optional.** A Railway container's own filesystem is rebuilt on every deploy, so without a volume
+   an upload succeeds, its database row persists, and the bytes are erased by the next release —
+   icons, hiring documents, national-ID scans and generated contract PDFs all become records with
+   nothing behind them. `STORAGE_DRIVER=railway` therefore **refuses to boot** unless Railway has
+   injected `RAILWAY_VOLUME_MOUNT_PATH` (i.e. a volume is attached) or `STORAGE_LOCAL_ROOT` names a
+   path that survives a deploy.
 
 ## 3. Environment variables
 
@@ -58,7 +64,7 @@ has four packages; the config files above tell it what to build and run.
 | `WEB_PUBLIC_URL` | `https://<app-domain>` (the setup/activation links in messages) |
 | `CORS_ORIGINS` | `https://<app-domain>` |
 | `COOKIE_SECURE` | `true` |
-| `STORAGE_DRIVER` | `railway` (local disk rooted at the volume; Railway injects `RAILWAY_VOLUME_MOUNT_PATH`) |
+| `STORAGE_DRIVER` | `railway` (local disk rooted at the volume; Railway injects `RAILWAY_VOLUME_MOUNT_PATH` — see §2.3: the boot fails without it rather than writing to a disk the next deploy erases) |
 
 `PORT` is injected by Railway and honored automatically. Changing `VITE_API_BASE_URL` or
 any `VITE_*` value requires a **redeploy** — it is a build-time value.

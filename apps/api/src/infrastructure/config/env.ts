@@ -175,6 +175,18 @@ export const env = parsed.data;
 export const isProduction = env.NODE_ENV === 'production';
 export const isTest = env.NODE_ENV === 'test';
 
+/**
+ * Whether the operator NAMED a storage directory, as opposed to taking the `./storage` default.
+ *
+ * The difference matters exactly once: `STORAGE_DRIVER=railway` without a volume. The schema
+ * default cannot tell "no volume, and nobody said where else" from "no volume, but the disk is
+ * mounted over there" — and one of those two silently throws every uploaded file away. Only
+ * `process.env` still knows which happened, so the answer is captured here rather than inferred
+ * from a value that looks the same either way.
+ */
+export const storageLocalRootIsExplicit =
+  process.env.STORAGE_LOCAL_ROOT !== undefined && process.env.STORAGE_LOCAL_ROOT.trim() !== '';
+
 if (isProduction && env.JWT_ACCESS_SECRET === 'dev-only-access-secret-change-me') {
   throw new Error('JWT_ACCESS_SECRET must be set to a real secret in production');
 }

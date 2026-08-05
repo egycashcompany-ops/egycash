@@ -60,6 +60,13 @@ export const ErrorCodes = {
   FILE_BLOCKED: 'FILE_BLOCKED',
   FILE_SIGNATURE_INVALID: 'FILE_SIGNATURE_INVALID',
   FILE_CATEGORY_INACTIVE: 'FILE_CATEGORY_INACTIVE',
+  /**
+   * The record exists, its bytes do not — storage was wiped, the volume is missing, or the object
+   * was removed behind the service's back. Its own code because it is neither "no such file" nor a
+   * server fault, and because the generic 500 it used to be told nobody anything: every screen that
+   * shows a stored image simply fell back to its empty state, which reads as "nothing was uploaded".
+   */
+  FILE_OBJECT_MISSING: 'FILE_OBJECT_MISSING',
 } as const;
 
 export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];

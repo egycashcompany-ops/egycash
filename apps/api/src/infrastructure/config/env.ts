@@ -117,6 +117,25 @@ const EnvSchema = z.object({
   /** Injected by Railway when a volume is attached; falls back to STORAGE_LOCAL_ROOT. */
   RAILWAY_VOLUME_MOUNT_PATH: z.string().default(''),
   STORAGE_SIGNING_SECRET: z.string().min(16).default('dev-only-file-signing-secret'),
+  /**
+   * Hand the browser the object store's OWN presigned URL instead of this app's signed endpoint.
+   *
+   * Off by default, and the default is the load-bearing part. A presigned URL is absolute and on
+   * the store's origin, so the app ends up telling the browser to load a resource its own
+   * Content-Security-Policy does not allow — `img-src 'self' data: blob:` refuses it, no request
+   * reaches any server, and every screen that shows a stored image falls back to its empty state.
+   * The policy and the URL are decided by the same process from the same configuration, and
+   * neither knew about the other.
+   *
+   * Serving the bytes through this app keeps the URL same-origin under every driver, so what works
+   * on a disk works on S3. It costs one hop of egress; for this platform's file sizes (capped by
+   * `MAX_UPLOAD_MB`) that is not a trade worth a broken image. Turn it on only where the store's
+   * origin is genuinely allowed by the deployed CSP.
+   */
+  STORAGE_PRESIGNED_URLS: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
   SIGNED_URL_TTL_SECONDS: z.coerce.number().int().min(30).max(3600).default(300),
   /** Absolute base URL of the api — used to build app-signed download URLs. */
   API_PUBLIC_URL: z.string().url().default('http://localhost:3000'),

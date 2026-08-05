@@ -85,6 +85,23 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **Stored images never appeared on an S3-backed deployment — the app handed the browser a URL its
+  own policy forbids.** `issueDownloadTicket` preferred the storage provider's presigned URL over
+  the app's own signed endpoint. On the disk drivers `getSignedUrl` returns `null`, so nothing
+  showed; on `s3`/`minio`/`azure` it returns an **absolute URL on the bucket's origin**, and the
+  app's `img-src 'self' data: blob:` refuses it — the browser issues no request, so the ticket is
+  200, the object is 200, and the only visible symptom is that every screen showing a stored image
+  falls back to its empty state. Applicant-source icons were the report; contract branding and every
+  other stored image share the path. Presigning is now behind `STORAGE_PRESIGNED_URLS`, **default
+  off**: the app signs the URL and streams the bytes, which is same-origin under every driver.
+  Turning it on remains available where the bucket's origin is genuinely in the deployed CSP.
+
+  This also explains why the two earlier attempts changed nothing: the `Cross-Origin-Resource-Policy`
+  header and the relative-vs-absolute URL logic both live on the app's streaming path, which a
+  presigning driver never reaches — `presigned ?? appSignedUrl` short-circuits. Only the `blob:`
+  widening applied, which is exactly why the pre-save preview started working while the table did
+  not.
+
 - **"Authentication required" after leaving a tab idle — the client raced its own silent
   refresh.** Returning to an idle tab fired several stale-token requests at once; each ran its
   own `POST /auth/refresh` with the same single-use cookie, so one rotation won and the rest

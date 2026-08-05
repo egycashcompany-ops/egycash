@@ -34,3 +34,10 @@ object storage later); access control and auditability of documents are business
 - ✅ Checksums enable dedup and integrity verification (chain-of-custody-grade for this industry).
 - ⚠️ Local volume ties file availability to a single service instance until the cloud adapter
   lands — accepted for the first deployments, and the adapter interface caps the cost of the fix.
+
+> **2026-08-05 — this last consequence stopped holding.** ECMS now runs two processes, and since
+> Sprint CT-5/RW8b the **worker writes files the app must serve** (contract PDFs, evaluation-batch
+> packages) while reading files the app uploaded. A disk local to one container cannot be shared
+> state between two. The accepted risk above is therefore now a live defect, revisited in
+> [ADR-020](ADR-020-shared-file-storage.md). This ADR is not amended — ADRs are immutable; this note
+> is a pointer only.

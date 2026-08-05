@@ -33,6 +33,16 @@ has four packages; the config files above tell it what to build and run.
    **Config File Path** = `railway.worker.json`. No public domain.
 3. Attach a **Volume** to **app** (e.g. mount path `/data`) for uploaded files.
 
+> ⚠️ **This topology has a known defect — see [ADR-020](../03-decisions/ADR-020-shared-file-storage.md).**
+> A Railway volume attaches to exactly one service, but the file store is shared between **both**:
+> the worker writes contract PDFs and evaluation-batch packages that the app must serve, and reads
+> the company logo and applicant attachments the app uploaded. With a volume on **app** only, those
+> worker-written files are unreachable from the app and the worker's own reads fail silently.
+> Separately, if the volume is missing altogether, `STORAGE_DRIVER=railway` falls back to a
+> directory *inside* the container, which every deploy erases. The fix is an object store shared by
+> both services — designed in
+> [shared-file-storage-design.md](../12-planning/shared-file-storage-design.md), pending a decision.
+
 ## 3. Environment variables
 
 **app** and **worker** share most values (use a shared variable group if you like):

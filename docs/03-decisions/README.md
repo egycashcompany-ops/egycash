@@ -28,6 +28,7 @@ decision, write a new ADR that supersedes the old one.
 | [ADR-017](ADR-017-platform-identity-and-access-control.md) | Platform Identity & Organizational Access Control (hierarchical scopes, employee-linked logins, branch-based employee code) | Accepted |
 | [ADR-018](ADR-018-automation-engine.md) | A provider-backed Automation Service, alongside (not replacing) the Workflow Engine | Accepted |
 | [ADR-019](ADR-019-reference-pickers-search-not-load-all.md) | Reference pickers search the server; they never load the whole catalog | Accepted |
+| [ADR-020](ADR-020-shared-file-storage.md) | Shared file storage for a multi-service deployment (object store, not a local disk) | **Proposed** |
 
 ADR-001…014 were accepted with Milestone 1 approval (2026-07-08). ADR-015 records the
 single-organization correction from [Architecture Review 01](../10-reviews/2026-07-architecture-review-01.md),
@@ -37,4 +38,8 @@ Platform-Identity foundation: hierarchical data scopes (Self→Company), employe
 (username-or-email), and the branch-based, globally-sequenced Employee Code. ADR-018 places the
 Automation Service beside the Workflow Engine rather than in place of it. ADR-019 settles how a
 picker reads a catalog — by searching it, never by loading it — and records the remaining
-convert-to-search debt that the `pageSize` hotfix in PR #117 does not discharge.
+convert-to-search debt that the `pageSize` hotfix in PR #117 does not discharge. **ADR-020 is
+Proposed, not Accepted**: it revisits the one consequence ADR-010 accepted knowingly — that a local
+volume ties files to a single service — which stopped holding when contract PDFs and evaluation-batch
+packages began being written by the worker. Its migration is designed in
+[shared-file-storage-design.md](../12-planning/shared-file-storage-design.md) and awaits a decision.

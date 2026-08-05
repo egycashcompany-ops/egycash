@@ -34,12 +34,25 @@ import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { useGenerateFormLink, useRevokeFormLink } from '../../recruitment-form/api/recruitment-form-queries';
 
 /**
- * The address without its scheme — `ecms.example.com/apply/9f2c…`. The whole thing is rendered and
- * the chip truncates it with an ellipsis, so a short link is shown in full and a long one still
- * reads as a URL rather than as a fragment of a token. The full address is in the `title` and in
- * the QR dialog.
+ * The address as a person reads it: `careers.example.com/apply/…`.
+ *
+ * The last segment is a 32-character token — the one part of the URL that carries no meaning to a
+ * human and, at this width, the part that would push everything else out. Dropping it to an
+ * ellipsis leaves the half that identifies the link (which site, which path) and is honest about
+ * there being more. The full address stays in the `title`, in the QR dialog, and in what Copy puts
+ * on the clipboard.
  */
-const readable = (url: string): string => url.replace(/^https?:\/\//, '');
+const readable = (url: string): string => {
+  try {
+    const parsed = new URL(url);
+    const segments = parsed.pathname.split('/').filter((s) => s !== '');
+    if (segments.length === 0) return parsed.host;
+    return [parsed.host, ...segments.slice(0, -1), '…'].join('/');
+  } catch {
+    // Not a URL we can parse — show it as it came rather than nothing at all.
+    return url.replace(/^https?:\/\//, '');
+  }
+};
 
 /** Big enough to scan off a screen, and the size the PNG is exported at. */
 const QR_SIZE = 260;
@@ -107,10 +120,19 @@ const copyToClipboard = (url: string, label: string, copied: string): void => {
 export const SourceLinkCell = ({
   link,
   sourceName,
+  publishedAt,
 }: {
   link: RecruitmentFormLinkDto | undefined;
   /** Named on the QR dialog, so a downloaded code is never anonymous. */
   sourceName: string;
+  /**
+   * When the link was last published, already formatted for the reader's locale.
+   *
+   * It lives HERE, under the address, rather than in a column of its own: it is a fact about the
+   * link, only published rows have one, and a column that is a dash on every unpublished row is
+   * width spent on nothing.
+   */
+  publishedAt?: string;
 }): JSX.Element => {
   const t = useT();
   const [qrOpen, setQrOpen] = useState(false);
@@ -133,20 +155,27 @@ export const SourceLinkCell = ({
         title={t('sources.link.published')}
         aria-label={t('sources.link.published')}
       />
-      {/* Styled as a LINK, because it is one: link colour at rest, underline on hover, an ellipsis
-          when it runs out of room and the full address in the tooltip. New tab and `noopener` —
-          leaving the console to look at a form is not what they meant, and the opened page must not
-          get a handle on this one. */}
-      <a
-        href={url}
-        target="_blank"
-        rel="noopener noreferrer"
-        dir="ltr"
-        title={url}
-        className="min-w-0 flex-1 truncate font-mono text-xs text-brand-600 underline-offset-2 hover:underline dark:text-brand-400"
-      >
-        {readable(url)}
-      </a>
+      <span className="min-w-0 flex-1">
+        {/* Styled as a LINK, because it is one: link colour at rest, underline on hover, an ellipsis
+            when it runs out of room and the full address in the tooltip. New tab and `noopener` —
+            leaving the console to look at a form is not what they meant, and the opened page must
+            not get a handle on this one. */}
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          dir="ltr"
+          title={url}
+          className="block truncate font-mono text-xs text-brand-600 underline-offset-2 hover:underline dark:text-brand-400"
+        >
+          {readable(url)}
+        </a>
+        {publishedAt !== undefined && (
+          <span className="block truncate text-[11px] leading-tight text-slate-400 dark:text-slate-500">
+            {t('sources.publishedAt')}: {publishedAt}
+          </span>
+        )}
+      </span>
       <Button
         size="icon"
         variant="ghost"
@@ -250,15 +279,13 @@ export const SourceLinkActions = ({
   if (!canManageLinks || link === undefined) return <></>;
 
   if (url === null) {
-    // Labelled, so the next step is readable — but a TEXT action, not a filled button. Most rows
-    // in a fresh catalog are unpublished, and a column of bordered buttons down the page is the
-    // crowding this screen is trying to avoid; brand-coloured words carry the same invitation at a
-    // fraction of the weight.
+    // The most important action on the screen, so it looks like an action: a small secondary
+    // button with a word on it. Copy / open / QR are the icon buttons — they act on an address
+    // that is already there, where this one is the step that creates it.
     return (
       <Button
         size="sm"
-        variant="ghost-brand"
-        className="px-2"
+        variant="secondary"
         loading={generate.isPending}
         leftIcon={<LinkIcon className="h-3.5 w-3.5" />}
         onClick={() => generate.mutate(link.sourceId)}

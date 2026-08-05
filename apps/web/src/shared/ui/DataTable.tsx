@@ -79,7 +79,7 @@ export const DataTable = <T,>({
   hoverable = false,
   dense = false,
 }: DataTableProps<T>): JSX.Element => {
-  const cellPadding = dense ? 'px-3 py-2.5' : 'px-4 py-3';
+  const cellPadding = dense ? 'px-3 py-2' : 'px-4 py-3';
   // One prop wins; the loose props remain as the deprecated form.
   const isSelectable = selection !== undefined;
   const selected = selection?.selectedIds ?? new Set<string>();
@@ -133,7 +133,10 @@ export const DataTable = <T,>({
             // `group` so a cell can reveal its secondary controls when the pointer is on the row —
             // see `RowActions`. Costs nothing on a row that does not use it.
             'group border-t border-slate-100 transition-colors dark:border-slate-800',
-            (onRowClick !== undefined || hoverable) && 'hover:bg-slate-50 dark:hover:bg-slate-800/50',
+            // Enough to feel which row you are on across a wide table, and no more: one step of
+            // the neutral ramp, not a tint that competes with the badges sitting in the row.
+            (onRowClick !== undefined || hoverable) &&
+              'hover:bg-slate-100/70 dark:hover:bg-slate-800/70',
             onRowClick !== undefined && 'cursor-pointer',
             isSelected && 'bg-brand-50/60 dark:bg-brand-950/40',
           )}

@@ -191,7 +191,9 @@ export const ApplicantSourcesPage = (): JSX.Element => {
         const { tone, icon: KindIcon } = KIND_STYLE[s.kind];
         return (
           <div className="flex items-center gap-3">
-            <SourceIcon source={s} locale={locale} size="md" />
+            {/* 48px: the screen lets each platform carry its own logo, and at 40 the mark was a
+                decoration beside the name rather than the thing you recognise the row by. */}
+            <SourceIcon source={s} locale={locale} size="lg" />
             <div className="min-w-0">
               <div className="flex min-w-0 items-center gap-2">
                 {/* The heaviest thing in the row — it is what the row IS. */}
@@ -227,13 +229,8 @@ export const ApplicantSourcesPage = (): JSX.Element => {
       ),
     },
     {
-      key: 'link',
-      header: t('sources.link'),
-      render: (s) => <SourceLinkCell link={linkFor(s.id)} sourceName={localized(s.name, locale)} />,
-    },
-    {
-      // Not sortable, and not a TODO: submissions and the publish date live on the intake-form
-      // document, not on a source, so no query against this catalog could order by them.
+      // Not sortable, and not a TODO: submissions live on the intake-form document, not on a
+      // source, so no query against this catalog could order by them.
       key: 'submissions',
       header: t('recruitmentForm.submissions'),
       align: 'end',
@@ -251,48 +248,51 @@ export const ApplicantSourcesPage = (): JSX.Element => {
       },
     },
     {
-      // The row ENDS with its date and its controls, in one cell. There is no actions column: a
-      // column of its own reserves width on every row for a few small squares and puts an empty
-      // header above them.
+      // The link, when it was published, and everything you do with the row — all at the row's
+      // end, in the widest column. "Last published" used to be a column of its own and was a dash
+      // on every unpublished row: width spent on nothing. It is a fact about the LINK, so it now
+      // sits under the address, on the rows that actually have one.
       //
       // What is visible is decided by what the row NEEDS. Editing and suspending are things you
       // come looking for, so they appear with the row rather than repeating down the page; a
-      // platform with no link, on the other hand, exists to get one, so that row keeps a labelled
-      // button that is always visible. Most rows therefore show a date and nothing else — which is
-      // what stops a table of records reading as a control panel.
-      key: 'generatedAt',
-      header: t('sources.publishedAt'),
-      align: 'end',
+      // platform with no link exists to get one, so that row keeps a labelled button that is
+      // always there.
+      key: 'link',
+      header: t('sources.link'),
       render: (s) => {
         const at = linkFor(s.id)?.generatedAt ?? null;
         return (
-          <div className="flex items-center justify-end gap-2">
-            <span className="whitespace-nowrap text-xs text-slate-400 dark:text-slate-500">
-              {at === null ? '—' : formatDate(at, locale)}
+          <div className="flex items-center justify-between gap-3">
+            <SourceLinkCell
+              link={linkFor(s.id)}
+              sourceName={localized(s.name, locale)}
+              {...(at === null ? {} : { publishedAt: formatDate(at, locale) })}
+            />
+            <span className="flex shrink-0 items-center gap-1">
+              {canManage && (
+                <RowActions>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    title={t('common.edit')}
+                    aria-label={t('common.edit')}
+                    onClick={() => setEditing({ mode: 'edit', source: s })}
+                  >
+                    <EditIcon className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant={s.active ? 'ghost-warning' : 'ghost-brand'}
+                    title={t(s.active ? 'sources.disable' : 'sources.enable')}
+                    aria-label={t(s.active ? 'sources.disable' : 'sources.enable')}
+                    onClick={() => toggleActive(s)}
+                  >
+                    {s.active ? <PauseIcon className="h-4 w-4" /> : <PlayIcon className="h-4 w-4" />}
+                  </Button>
+                </RowActions>
+              )}
+              <SourceLinkActions link={linkFor(s.id)} />
             </span>
-            {canManage && (
-              <RowActions>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  title={t('common.edit')}
-                  aria-label={t('common.edit')}
-                  onClick={() => setEditing({ mode: 'edit', source: s })}
-                >
-                  <EditIcon className="h-4 w-4" />
-                </Button>
-                <Button
-                  size="icon"
-                  variant={s.active ? 'ghost-warning' : 'ghost-brand'}
-                  title={t(s.active ? 'sources.disable' : 'sources.enable')}
-                  aria-label={t(s.active ? 'sources.disable' : 'sources.enable')}
-                  onClick={() => toggleActive(s)}
-                >
-                  {s.active ? <PauseIcon className="h-4 w-4" /> : <PlayIcon className="h-4 w-4" />}
-                </Button>
-              </RowActions>
-            )}
-            <SourceLinkActions link={linkFor(s.id)} />
           </div>
         );
       },

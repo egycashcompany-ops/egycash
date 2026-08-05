@@ -105,6 +105,13 @@ export const CreateApplicantSourceSchema = z
     kind: ApplicantSourceKindSchema.default('manual'),
     /** Whether recruiters must attach structured detail (referrer, agency, external ref). */
     requiresDetail: z.boolean().default(false),
+    /**
+     * The platform's logo for this source. A REFERENCE into the Files service — never the image
+     * itself. Bytes belong in storage, where they are versioned, scanned, retained and served
+     * through the same audited path as every other upload; a picture inlined into a catalog row
+     * would be none of those things.
+     */
+    iconFileId: objectId().nullish(),
   })
   .strict();
 export type CreateApplicantSource = z.infer<typeof CreateApplicantSourceSchema>;
@@ -115,6 +122,8 @@ export const UpdateApplicantSourceSchema = z
     kind: ApplicantSourceKindSchema.optional(),
     requiresDetail: z.boolean().optional(),
     active: z.boolean().optional(),
+    /** `null` clears the icon; omitting it leaves the current one alone. */
+    iconFileId: objectId().nullish(),
     version: z.number().int().min(0),
   })
   .strict();
@@ -133,6 +142,8 @@ export interface ApplicantSourceDto {
   kind: ApplicantSourceKind;
   requiresDetail: boolean;
   active: boolean;
+  /** Files-service id of the platform's logo, or `null` for the default mark. */
+  iconFileId: string | null;
   version: number;
 }
 
@@ -627,3 +638,10 @@ export const ApplicantRejectedPayloadV1 = z.object({
   interviewId: objectId().optional(),
   evaluationId: objectId().optional(),
 });
+
+/**
+ * The Files-service category applicant-source icons live under. Small images only: a catalog logo
+ * is a 64px mark, not a document, and the category's own mime/size rules are what enforce that —
+ * the upload path is the platform's, unchanged.
+ */
+export const APPLICANT_SOURCE_ICON_FILE_CATEGORY = 'hr-applicant-source-icons';

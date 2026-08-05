@@ -6,6 +6,7 @@ export { applicantService } from './applicant.service';
 // with exactly the same rules the applicant's own placement uses.
 export { resolvePlacement, changedDimensions, type PlacementInput } from './placement-resolver';
 export { applicantSourceService } from './applicant-source.service';
+export { ensureApplicantSourceIconCategory } from './applicant-source.files';
 export { type ApplicantDoc } from './applicant.model';
 export { type ApplicantSourceDoc } from './applicant-source.model';
 // Swappable seams (OQ-30) — exported so a real provider (or a test double) can be wired.

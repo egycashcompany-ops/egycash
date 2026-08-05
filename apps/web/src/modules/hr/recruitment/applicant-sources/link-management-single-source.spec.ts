@@ -53,8 +53,11 @@ describe('application links are managed in exactly one place', () => {
   });
 
   it('the sources page is the screen that renders it', () => {
+    // The component exports two pieces — the link's state for its own column, the buttons for the
+    // row's action cell — because that is what a table needs. Both come out of the one file above,
+    // and only this page puts either on screen.
     const renderers = files
-      .filter((f) => f.text.includes('<SourceLink') && f.path !== LINK_COMPONENT)
+      .filter((f) => /<SourceLink(Cell|Actions)/.test(f.text) && f.path !== LINK_COMPONENT)
       .map((f) => rel(f.path));
     expect(renderers).toEqual([rel(join(HERE, 'pages/ApplicantSourcesPage.tsx'))]);
   });
@@ -67,7 +70,10 @@ describe('application links are managed in exactly one place', () => {
     // which the form builds for the active sources — and never by what its type is called.
     const page = readFileSync(join(HERE, 'pages/ApplicantSourcesPage.tsx'), 'utf8');
     expect(page, 'the link came back under a type condition').not.toMatch(/kind\s*===/);
-    expect(page).toContain('<SourceLink link={link} />');
+    // The link column and the link actions are rendered for every row the table draws, with no
+    // condition between them and the row.
+    expect(page).toContain('<SourceLinkCell link={linkFor(s.id)} />');
+    expect(page).toContain('<SourceLinkActions link={linkFor(s.id)} />');
   });
 
   it('every platform shares one form — the link is the only difference', () => {

@@ -29,6 +29,30 @@ const useSourceWrite = <TInput>(fn: (input: TInput) => Promise<ApplicantSourceDt
 
 export const useCreateApplicantSource = () => useSourceWrite(api.createApplicantSource);
 
+/**
+ * Uploading an icon is two steps — put the file in the Files service, then point the source at it —
+ * and they are one mutation because a file nobody references is litter. The source write is the
+ * existing PATCH, so the list and the form are invalidated exactly as any other edit.
+ */
+export const useUploadSourceIcon = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (vars: { source: ApplicantSourceDto; file: File }) => {
+      const stored = await api.uploadApplicantSourceIcon(vars.source.id, vars.file);
+      return api.updateApplicantSource(vars.source.id, {
+        iconFileId: stored.id,
+        version: vars.source.version,
+      });
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: KEY }),
+        qc.invalidateQueries({ queryKey: RECRUITMENT_FORM_KEY }),
+      ]);
+    },
+  });
+};
+
 export const useUpdateApplicantSource = () =>
   useSourceWrite<{ id: string; body: UpdateApplicantSource }>((vars) =>
     api.updateApplicantSource(vars.id, vars.body),

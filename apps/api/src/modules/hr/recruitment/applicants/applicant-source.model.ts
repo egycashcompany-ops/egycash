@@ -1,6 +1,6 @@
 // Applicant source catalog (Sprint 4.1 plan §3) — the approved "Recruitment Source"
 // reference entity: localized, admin-extensible, deactivated (never hard-deleted).
-import { Schema, model } from 'mongoose';
+import { Schema, model, type Types } from 'mongoose';
 import {
   APPLICANT_SOURCE_KINDS,
   type ApplicantSourceKind,
@@ -14,6 +14,12 @@ export interface ApplicantSourceDoc extends BaseDocFields {
   kind: ApplicantSourceKind;
   requiresDetail: boolean;
   active: boolean;
+  /**
+   * The platform's logo, held as a Files-service reference. The bytes stay in storage — versioned,
+   * size- and type-checked, retained and served through the audited download path — and this
+   * document keeps only the pointer.
+   */
+  iconFileId: Types.ObjectId | null;
 }
 
 const applicantSourceSchema = new Schema<ApplicantSourceDoc>(
@@ -23,6 +29,7 @@ const applicantSourceSchema = new Schema<ApplicantSourceDoc>(
     kind: { type: String, enum: APPLICANT_SOURCE_KINDS, required: true, default: 'manual' },
     requiresDetail: { type: Boolean, required: true, default: false },
     active: { type: Boolean, required: true, default: true },
+    iconFileId: { type: Schema.Types.ObjectId, ref: 'File', default: null },
     ...baseFields,
   },
   baseSchemaOptions,

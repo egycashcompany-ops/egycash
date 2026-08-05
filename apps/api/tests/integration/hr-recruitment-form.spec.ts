@@ -214,6 +214,101 @@ describe('the application form page', () => {
   });
 });
 
+// A platform's icon, end to end, through endpoints that already existed.
+//
+// The point of this suite is the absence of a feature endpoint: the image goes up through
+// `POST /platform/files` like every other file — which is what applies the category's mime and
+// size rules, versions the object and puts it behind the audited download path — and the source
+// then just holds the id. If someone later adds `POST /hr/applicant-sources/:id/icon`, this suite
+// keeps passing while the reason for it disappears, so the comment is the guard here, not a test.
+describe('a platform carries an icon', () => {
+  const SVG = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"/>');
+  let wuzzufId = '';
+  let fileId = '';
+
+  it('has a seeded category for icons, with the image rules on it', async () => {
+    const res = await request(app)
+      .get('/api/v1/platform/file-categories')
+      .query({ pageSize: 100 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const category = (res.body as { data: { key: string; allowedMimeTypes: string[] }[] }).data.find(
+      (c) => c.key === 'hr-applicant-source-icons',
+    );
+    expect(category, 'the icon category was not seeded').toBeDefined();
+    expect(category?.allowedMimeTypes).toEqual(['image/png', 'image/svg+xml']);
+  });
+
+  it('uploads the image through the platform files endpoint', async () => {
+    const categories = await request(app)
+      .get('/api/v1/platform/file-categories')
+      .query({ pageSize: 100 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    const categoryId = (categories.body as { data: { id: string; key: string }[] }).data.find(
+      (c) => c.key === 'hr-applicant-source-icons',
+    )?.id;
+    wuzzufId = await sourceId('wuzzuf');
+
+    const uploaded = await request(app)
+      .post('/api/v1/platform/files')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .field('moduleId', 'hr')
+      .field('entityType', 'applicantSource')
+      .field('entityId', wuzzufId)
+      .field('categoryId', categoryId ?? '')
+      .attach('file', SVG, { filename: 'wuzzuf.svg', contentType: 'image/svg+xml' });
+    expect(uploaded.status).toBe(201);
+    fileId = (uploaded.body as { data: { id: string } }).data.id;
+    expect(fileId).not.toBe('');
+  });
+
+  it('points the source at it — the catalog stores a reference, never the bytes', async () => {
+    const before = await request(app)
+      .get('/api/v1/hr/applicant-sources')
+      .query({ pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    const version = (before.body as { data: { id: string; version: number }[] }).data.find(
+      (s) => s.id === wuzzufId,
+    )?.version;
+
+    const res = await request(app)
+      .patch(`/api/v1/hr/applicant-sources/${wuzzufId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ iconFileId: fileId, version });
+    expect(res.status).toBe(200);
+    expect((res.body as { data: { iconFileId: string | null } }).data.iconFileId).toBe(fileId);
+  });
+
+  it('and clearing it is sending null, not deleting the source', async () => {
+    const before = await request(app)
+      .get('/api/v1/hr/applicant-sources')
+      .query({ pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    const row = (before.body as { data: { id: string; version: number }[] }).data.find(
+      (s) => s.id === wuzzufId,
+    );
+    const res = await request(app)
+      .patch(`/api/v1/hr/applicant-sources/${wuzzufId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ iconFileId: null, version: row?.version });
+    expect(res.status).toBe(200);
+    const data = (res.body as { data: { iconFileId: string | null; active: boolean } }).data;
+    expect(data.iconFileId).toBeNull();
+    expect(data.active).toBe(true);
+  });
+
+  it('answers null for a source that never had one', async () => {
+    const res = await request(app)
+      .get('/api/v1/hr/applicant-sources')
+      .query({ pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    const walkIn = (res.body as { data: { key: string; iconFileId: string | null }[] }).data.find(
+      (s) => s.key === 'walkIn',
+    );
+    expect(walkIn?.iconFileId).toBeNull();
+  });
+});
+
 // Publishing had tests from the first commit. Withdrawing had none, and it answered 500 every
 // time: its route was the one route in the app that read `validated(req)` without the `validate()`
 // middleware that puts `validated` on the request, so the handler destructured `undefined`. The

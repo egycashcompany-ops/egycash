@@ -18,7 +18,7 @@ import {
   type CreateInterviewStage,
 } from '@ecms/contracts';
 import { notificationTemplateService } from '../../platform/notifications';
-import { applicantSourceService } from './recruitment/applicants';
+import { applicantSourceService, ensureApplicantSourceIconCategory } from './recruitment/applicants';
 import { interviewStageService } from './recruitment/interviews';
 import { ensureEvaluationCategory, evaluationPhaseService } from './recruitment/evaluations';
 import { ensureEvaluationBatchCategory } from './recruitment/evaluation-batches';
@@ -212,6 +212,9 @@ const ensureHiringDocumentsSeeds = async (): Promise<void> => {
     await hiringDocumentTypeService.ensure(type);
   }
   await ensureHiringDocsCategory();
+  // Source icons go up through the platform Files service; this is the category that holds the
+  // "PNG or SVG, and small" rule for them.
+  await ensureApplicantSourceIconCategory();
   await notificationTemplateService.ensure({
     key: HrHiringDocumentsTemplates.Completed,
     category: 'hr',

@@ -159,23 +159,42 @@ describe('the application form page', () => {
   });
 });
 
-describe('the public application link', () => {
-  it('takes a candidate submission from someone who is not signed in', async () => {
-    // The submission runs under a context with no user at all. That is the same place the admin
-    // read broke — an author has to be an id or nothing, never a word standing in for one.
-    const source = await sourceId('walkIn');
+// Every step a candidate's application goes through, each one its own assertion, so a green run
+// names what was proven rather than hiding it behind one tick. This suite runs on REAL MongoDB —
+// a downloaded server in CI, or MONGO_TEST_URI — which matters for the last step: the submission
+// counter uses the positional `$` operator, and the stand-in database used for local browser work
+// does not implement it.
+describe('a candidate applies through a published link, signed in to nothing', () => {
+  let token = '';
+  let submitStatus = 0;
+  let envelope: { success?: boolean; error?: unknown; data?: RecruitmentFormSubmissionDto } = {};
+  let code = '';
+  let publishedSource = '';
+
+  it('publishes a link with a fresh, uncounted token', async () => {
+    publishedSource = await sourceId('walkIn');
     const published = await request(app)
       .post('/api/v1/hr/recruitment-form/links')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ sourceId: source });
+      .send({ sourceId: publishedSource });
     expect(published.status).toBe(200);
     const link = (published.body as { data: RecruitmentFormDto }).data.links.find(
-      (l) => l.sourceId === source,
+      (l) => l.sourceId === publishedSource,
     );
     expect(link?.token).not.toBeNull();
+    expect(link?.submissions).toBe(0);
+    token = link?.token ?? '';
+  });
 
+  it('opens the public application page — HTTP 200, four questions', async () => {
+    const publicForm = await request(app).get(`/api/v1/hr/public/apply/${token}`);
+    expect(publicForm.status).toBe(200);
+    expect((publicForm.body as { data: { fields: unknown[] } }).data.fields.length).toBe(4);
+  });
+
+  it('accepts the submission — HTTP 200', async () => {
     const submit = await request(app)
-      .post(`/api/v1/hr/public/apply/${link?.token ?? ''}`)
+      .post(`/api/v1/hr/public/apply/${token}`)
       .send({
         // Every question the default form asks, all four required — a partial answer is a 400
         // about the missing ones, which is the form working, not the bug this suite guards.
@@ -186,7 +205,33 @@ describe('the public application link', () => {
           educationLevel: 'bachelor',
         },
       });
-    expect(submit.status).toBe(200);
-    expect((submit.body as { data: RecruitmentFormSubmissionDto }).data.code).toMatch(/^APP-/);
+    submitStatus = submit.status;
+    envelope = submit.body as typeof envelope;
+    expect(submitStatus).toBe(200);
+  });
+
+  it('answers with a success envelope, not the error the page showed as "Unexpected error"', () => {
+    expect(envelope.error).toBeUndefined();
+    expect(envelope.success).toBe(true);
+    code = envelope.data?.code ?? '';
+    expect(code).toMatch(/^APP-\d{4}-\d+$/);
+  });
+
+  it('creates the applicant, findable by the code the candidate was given', async () => {
+    const found = await request(app)
+      .get('/api/v1/hr/applicants')
+      .query({ search: code, pageSize: 10 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(found.status).toBe(200);
+    const rows = (found.body as { data: { code: string; fullNameAr: string; intakeChannel: string }[] }).data;
+    expect(rows.map((r) => r.code)).toEqual([code]);
+    expect(rows[0]?.fullNameAr).toBe('أحمد محمد علي');
+    expect(rows[0]?.intakeChannel).toBe('web');
+  });
+
+  it('increments the link submission counter from 0 to 1', async () => {
+    const after = await getForm();
+    const counted = after.body.data?.links.find((l) => l.sourceId === publishedSource);
+    expect(counted?.submissions).toBe(1);
   });
 });

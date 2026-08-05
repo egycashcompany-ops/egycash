@@ -100,13 +100,19 @@ export const SourceLinkCell = ({
   return (
     <div className="flex min-w-0 items-center gap-2">
       <StatusBadge tone="success" label={t('sources.link.published')} />
-      <code
-        className="min-w-0 max-w-[16rem] flex-1 overflow-hidden text-ellipsis whitespace-nowrap rounded bg-slate-50 px-2 py-0.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+      {/* The address is a LINK, not decoration: an admin checking their own work should be able
+          to press it. New tab and `noopener` — leaving the console to see a public form is not
+          what they meant, and the opened page must not get a handle on this one. */}
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
         dir="ltr"
         title={url}
+        className="min-w-0 max-w-[16rem] flex-1 overflow-hidden text-ellipsis whitespace-nowrap rounded bg-slate-50 px-2 py-0.5 font-mono text-xs text-slate-600 underline-offset-2 hover:text-brand-700 hover:underline dark:bg-slate-800 dark:text-slate-300 dark:hover:text-brand-300"
       >
         {readable(url)}
-      </code>
+      </a>
       <Button
         size="sm"
         variant="ghost"
@@ -118,6 +124,27 @@ export const SourceLinkCell = ({
     </div>
   );
 };
+
+/**
+ * The order a row's menu is ALWAYS in, whatever the row's state.
+ *
+ * A menu whose items shuffle depending on whether a link exists is a menu nobody learns: the
+ * position of "withdraw" would depend on whether "regenerate" happened to be there. Items that do
+ * not apply are left out, but the ones present keep these places — so the same action sits in the
+ * same spot in every row, and a caller cannot change that by passing its actions in another order.
+ */
+const MENU_ORDER = ['edit', 'toggle', 'generate', 'qr', 'copy', 'revoke'] as const;
+
+const inMenuOrder = (actions: MenuAction[]): MenuAction[] =>
+  [...actions].sort((a, b) => {
+    const rank = (key: string): number => {
+      const i = MENU_ORDER.indexOf(key as (typeof MENU_ORDER)[number]);
+      // Anything a future caller adds without declaring a place goes last, in its own order,
+      // rather than silently landing in the middle of the established list.
+      return i === -1 ? MENU_ORDER.length : i;
+    };
+    return rank(a.key) - rank(b.key);
+  });
 
 /**
  * A row's actions: one visible button, everything else behind "…".
@@ -152,15 +179,22 @@ export const SourceLinkActions = ({
   const canManageLinks = can('recruitmentForm.manage');
 
   const linkActions: MenuAction[] = [];
-  if (url !== null) {
-    linkActions.push({ key: 'qr', label: t('sources.qr'), onSelect: () => setQrOpen(true) });
-  }
-  if (canManageLinks && link !== undefined && url !== null) {
+  if (canManageLinks && link !== undefined) {
     linkActions.push({
-      key: 'regenerate',
-      label: t('recruitmentForm.regenerate'),
+      key: 'generate',
+      label: t(url === null ? 'recruitmentForm.generate' : 'recruitmentForm.regenerate'),
       onSelect: () => generate.mutate(link.sourceId),
     });
+  }
+  if (url !== null) {
+    linkActions.push({ key: 'qr', label: t('sources.qr'), onSelect: () => setQrOpen(true) });
+    linkActions.push({
+      key: 'copy',
+      label: t('recruitmentForm.copy'),
+      onSelect: () => copyToClipboard(url, t('recruitmentForm.copy'), t('recruitmentForm.copied')),
+    });
+  }
+  if (canManageLinks && link !== undefined && url !== null) {
     linkActions.push({
       key: 'revoke',
       label: t('recruitmentForm.revoke'),
@@ -182,7 +216,7 @@ export const SourceLinkActions = ({
           {t('recruitmentForm.generate')}
         </Button>
       )}
-      <ActionMenu actions={[...extraActions, ...linkActions]} label={t('common.actions')} />
+      <ActionMenu actions={inMenuOrder([...extraActions, ...linkActions])} label={t('common.actions')} />
 
       {url !== null && (
         <Dialog
@@ -194,6 +228,12 @@ export const SourceLinkActions = ({
             <>
               <Button variant="secondary" onClick={() => setQrOpen(false)}>
                 {t('common.close')}
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}
+              >
+                {t('sources.link.open')}
               </Button>
               <Button
                 variant="secondary"

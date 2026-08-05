@@ -200,7 +200,18 @@ export const ApplicantSourcesPage = (): JSX.Element => {
       key: 'submissions',
       header: t('recruitmentForm.submissions'),
       align: 'end',
-      render: (s) => formatNumber(linkFor(s.id)?.submissions ?? 0, locale),
+      render: (s) => {
+        // Zero is the resting state of most rows and should read as background; anything above it
+        // is the thing the column exists to surface, so it gets weight instead of the same grey.
+        const count = linkFor(s.id)?.submissions ?? 0;
+        return count === 0 ? (
+          <span className="text-slate-300 dark:text-slate-600">{formatNumber(0, locale)}</span>
+        ) : (
+          <span className="inline-flex min-w-8 items-center justify-center rounded-full bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-700 dark:bg-brand-950 dark:text-brand-300">
+            {formatNumber(count, locale)}
+          </span>
+        );
+      },
     },
     {
       key: 'generatedAt',

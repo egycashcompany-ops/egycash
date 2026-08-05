@@ -177,45 +177,29 @@ suits the layering better; the first is easier to flip per environment. Either i
 
 ## 5. File migration plan
 
-### 5.1 Inventory first — establish what is actually there
-
-Before moving anything, produce a report from the `files` collection (read-only, no writes):
-
-| Bucket | Meaning |
-|---|---|
-| **present** | `getStream(key)` succeeds and the sha-256 matches `checksum` |
-| **corrupt** | the object exists but the checksum differs — investigate individually, never overwrite |
-| **missing** | the row exists, the object does not — **already lost**, not recoverable by this migration |
-
-Group `missing` by `entityRef.moduleId` / `entityType` and by `uploadedAt`, so the loss can be
-reported as "which documents, belonging to whom, from which period" rather than a count. Expect
-worker-written contract PDFs and batch packages to be missing wholesale from the app's view even
-where nothing was ever erased — they were written to the worker's own filesystem.
-
-This report is the deliverable that closes the question "how much did we lose", and it is worth
-producing **before** the store changes, while the old disk is still mounted.
-
-### 5.2 Copy, verify, then cut over
+### 5.1 Copy, verify, then cut over
 
 1. **Provision** the bucket. Private, no public read; versioning on if the provider offers it.
 2. **Copy** every object at its existing key — keys are already store-agnostic
    (`files/{groupId}/{...}`), so nothing is rewritten and no database update is needed for the key.
 3. **Verify** each copy by sha-256 against `files.checksum`. This is free integrity checking that
-   the schema already pays for; the migration is not "done" until every `present` row verifies at
-   the destination.
+   the schema already pays for. Objects that cannot be read at the source, or whose checksum does
+   not match, are **recorded and skipped, never patched over** — they feed the validation report in
+   §9.2 rather than being resolved silently mid-copy.
 4. **Cut over** in one deploy: set the new variables on **both** services and redeploy together.
    They must not run split across two stores, or a file written in the gap lands in the old one.
-5. **Verify live** — the checklist in §9.
-6. **Retain** the old volume, read-only and unmounted from the write path, for a defined window
+5. **Verify live** — the checklist in §9.1.
+6. **Report** — the full validation pass, §9.2.
+7. **Retain** the old volume, read-only and unmounted from the write path, for a defined window
    (suggest 30 days) before releasing it.
 
-### 5.3 What about `files.storage.driver` on old rows?
+### 5.2 What about `files.storage.driver` on old rows?
 
 Leave it. It records where a file **was written**, which is history, not routing — `getStream` uses
 the active provider and the key. Rewriting it would erase the only in-database evidence of which
 files predate the migration, and that evidence is useful precisely while diagnosing a bad cutover.
 
-### 5.4 Worker-written files already lost
+### 5.3 Worker-written files already lost
 
 Contract PDFs and batch packages written by the worker are on the worker's container filesystem and
 are gone at its next redeploy. They are **regenerable**, unlike an uploaded document:
@@ -284,14 +268,14 @@ stronger reason to keep serving bytes through the app — the CSP is merely the 
 
 ## 8. Rollback plan
 
-The migration is **reversible for its entire duration**, because §5.2 copies rather than moves and
-the old volume is retained (§5.2 step 6).
+The migration is **reversible for its entire duration**, because §5.1 copies rather than moves and
+the old volume is retained (§5.1 step 7).
 
 | Failure | Detection | Rollback |
 |---|---|---|
-| Copy or verification incomplete | §5.1/§5.2 report before cutover | none needed — cutover has not happened |
+| Copy or verification incomplete | the copy pass itself (§5.1 steps 2–3), before cutover | none needed — cutover has not happened |
 | Cutover deploy is bad (bucket unreachable, credentials wrong) | `/health/ready`, boot log, first download 404/500 | set `STORAGE_DRIVER` back to `railway` on both services and redeploy; the volume still holds everything |
-| Downloads break for a subset | §9 checklist, `FILE_OBJECT_MISSING`-shaped errors | same rollback; investigate the subset against the §5.1 report |
+| Downloads break for a subset | §9.1 checklist, `FILE_OBJECT_MISSING`-shaped errors | same rollback; investigate the subset against the §9.2 report |
 | Problem found **after** new uploads have landed in the bucket | audit log / `files.uploadedAt` after cutover | rollback also needs those new objects copied **back** to the volume — which is why the retention window matters and why the rollback window should be declared explicitly (suggest 7 days) |
 
 Rollback is a **configuration change plus a redeploy**, not a data restore, for as long as both
@@ -301,7 +285,9 @@ decision rather than a cleanup task.
 
 ---
 
-## 9. Verification checklist (post-cutover, before releasing the volume)
+## 9. Verification
+
+### 9.1 Live checklist (post-cutover, before releasing the volume)
 
 Each line is a thing to observe, not to assume:
 
@@ -323,6 +309,31 @@ Each line is a thing to observe, not to assume:
 Items 4, 5 and 6 are the ones that prove the migration achieved its purpose; the rest prove it broke
 nothing.
 
+### 9.2 Post-migration validation report
+
+A read-only pass over the whole `files` collection against the **new** store, producing one report:
+
+| Bucket | Meaning |
+|---|---|
+| **existing** | the object is there and its sha-256 matches `files.checksum` |
+| **missing** | the row exists, the object does not — **already lost**, and not recoverable by this migration |
+| **corrupted / checksum mismatch** | the object is there and its bytes are not the ones recorded — investigate individually, never overwrite |
+| **summary by module** | the three buckets grouped by `entityRef.moduleId` / `entityType` and by `uploadedAt` period |
+
+Grouping matters more than the totals: the answer that is useful is "which documents, belonging to
+whom, from which period", not a count. Expect worker-written contract PDFs and evaluation-batch
+packages to appear as **missing** even where nothing was ever erased — they were written to the
+worker's own filesystem, which the app could never read (§3.6).
+
+**This runs after the migration, deliberately.** Run against the old topology it would be a snapshot
+of an architecture about to be replaced — and it could not distinguish "lost" from "written to the
+other container", because in that topology the two are indistinguishable from either process. Run
+against the finished shared store, every remaining miss is a real one, and the report doubles as the
+proof that the migration moved what it claimed to.
+
+The output is the input to the last decision: for each **missing** record, re-upload (documents), or
+re-generate (contract PDFs and batch packages, per §5.3), or accept the loss and record it.
+
 ---
 
 ## 10. Open questions for the owner
@@ -334,9 +345,12 @@ answered:
    residency: may applicant National-ID images, hiring documents and signed contracts leave Egypt?
    That is a legal/compliance question, and it is the only one that should decide this.
 2. **Presigning** — confirm the recommendation to keep serving bytes through the app (§6, §7).
-3. **The §5.1 loss report** — produce it before the migration? It is read-only and independent of
-   the storage decision, so it can run at any time and would answer "how much was lost" today.
-4. **Re-generating worker-written artefacts** (§5.4) — re-run contract PDFs and batch packages in
-   bulk after cutover, and for which period?
-5. **Rollback window** (§8) and **volume retention window** (§5.2) — the suggested 7 and 30 days
+3. **Re-generating worker-written artefacts** (§5.3) — re-run contract PDFs and batch packages in
+   bulk after cutover, and for which period? The §9.2 report is what turns this from a guess into a
+   list.
+4. **Rollback window** (§8) and **volume retention window** (§5.1) — the suggested 7 and 30 days
    are placeholders.
+
+*(Settled 2026-08-05: the loss report runs **after** the migration, not before — §9.2. Against the
+old topology it could not tell "lost" from "written to the other container", and it would be a
+snapshot of an architecture about to be replaced.)*

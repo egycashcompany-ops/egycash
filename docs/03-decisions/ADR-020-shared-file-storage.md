@@ -1,6 +1,6 @@
 # ADR-020: Shared file storage for a multi-service deployment
 
-**Status:** Proposed · **Date:** 2026-08-05 · **Supersedes the storage-topology consequence of**
+**Status:** Accepted · **Date:** 2026-08-05 · **Supersedes the storage-topology consequence of**
 [ADR-010](ADR-010-file-storage.md)
 
 ## Context
@@ -163,8 +163,10 @@ operational responsibility.
   platform (≤ 25 MB by `MAX_UPLOAD_MB`, contracts and IDs in the low megabytes) this is not a
   concern worth designing around, but it is no longer a local write.
 - ⚠️ Files already stored on a container filesystem must be moved, and files already lost to a
-  redeploy cannot be. The inventory of affected records is part of the migration
-  ([design document](../12-planning/shared-file-storage-design.md)).
+  redeploy cannot be. Which records are affected is answered by the **post-migration** validation
+  report ([design document §9.2](../12-planning/shared-file-storage-design.md)) — after the cutover,
+  not before it, because in the current topology "lost" and "written to the other container" are
+  indistinguishable from either process.
 - ⚠️ `railway` and `local` remain in `STORAGE_DRIVER`. They are not deprecated — they are correct
   for a single-process install — but the deployment guide must stop presenting `railway` as the
   production answer for a topology that includes the worker.

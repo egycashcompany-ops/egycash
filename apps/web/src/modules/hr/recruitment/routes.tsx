@@ -10,6 +10,7 @@ import { RecruitmentLayout } from './RecruitmentLayout';
 import { RecruitmentOverview } from './pages/RecruitmentOverview';
 import { ApplicantsListPage } from './applicants/pages/ApplicantsListPage';
 import { RecruitmentFormPage } from './recruitment-form/pages/RecruitmentFormPage';
+import { ApplicantSourcesPage } from './applicant-sources/pages/ApplicantSourcesPage';
 import { ApplicantDetailPage } from './applicants/pages/ApplicantDetailPage';
 import { ApplicantFormPage } from './applicants/pages/ApplicantFormPage';
 import { ScreeningQueuePage } from './screening/pages/ScreeningQueuePage';
@@ -40,6 +41,14 @@ export default function RecruitmentRoutes(): JSX.Element {
           element={
             <RequirePermission permission="recruitmentForm.manage">
               <RecruitmentFormPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="applicant-sources"
+          element={
+            <RequirePermission permission="applicant.view">
+              <ApplicantSourcesPage />
             </RequirePermission>
           }
         />

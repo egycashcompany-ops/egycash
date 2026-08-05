@@ -52,6 +52,7 @@ const CATALOG: CategoryDef[] = [
       // settings group of its own: they are part of the recruitment cycle, not general setup.
       { en: 'Applicants', ar: 'المتقدمون', route: '/applicants', icon: 'users' },
       { en: 'Application Form', ar: 'نموذج التقديم', route: '/recruitment-form', icon: 'inbox' },
+      { en: 'Applicant Sources', ar: 'مصادر التقديم', route: '/applicant-sources', icon: 'link' },
       { en: 'Screening', ar: 'الفرز', route: '/screening', icon: 'clipboard' },
       { en: 'Interviews', ar: 'المقابلات', route: '/interviews', icon: 'chat' },
       { en: 'Interview Stages', ar: 'مراحل المقابلات', route: '/interviews/stages', icon: 'layers' },

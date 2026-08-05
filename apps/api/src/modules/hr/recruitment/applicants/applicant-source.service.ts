@@ -1,5 +1,6 @@
 // Applicant source catalog admin (Sprint 4.1 plan §3). Localized, extensible, audited;
 // deactivation (never hard-delete) preserves source statistics.
+import { Types } from 'mongoose';
 import {
   type CreateApplicantSource,
   type ListApplicantSourcesQuery,
@@ -19,7 +20,16 @@ const snapshot = (doc: ApplicantSourceDoc) => ({
   kind: doc.kind,
   requiresDetail: doc.requiresDetail,
   active: doc.active,
+  icon: doc.iconFileId === null || doc.iconFileId === undefined ? null : String(doc.iconFileId),
 });
+
+/** `undefined` means "not sent"; `null` means "clear it". Only the second is a value to write. */
+const iconOf = (input: {
+  iconFileId?: string | null | undefined;
+}): Types.ObjectId | null | undefined => {
+  if (input.iconFileId === undefined) return undefined;
+  return input.iconFileId === null ? null : new Types.ObjectId(input.iconFileId);
+};
 
 class ApplicantSourceService {
   async create(input: CreateApplicantSource, by: string): Promise<ApplicantSourceDoc> {
@@ -32,6 +42,7 @@ class ApplicantSourceService {
         kind: input.kind,
         requiresDetail: input.requiresDetail,
         active: true,
+        iconFileId: iconOf(input) ?? null,
       },
       { by },
     );
@@ -54,6 +65,7 @@ class ApplicantSourceService {
         kind: input.kind,
         requiresDetail: input.requiresDetail,
         active: true,
+        iconFileId: iconOf(input) ?? null,
       },
       { by: null },
     );
@@ -85,6 +97,8 @@ class ApplicantSourceService {
     if (input.kind !== undefined) set.kind = input.kind;
     if (input.requiresDetail !== undefined) set.requiresDetail = input.requiresDetail;
     if (input.active !== undefined) set.active = input.active;
+    const icon = iconOf(input);
+    if (icon !== undefined) set.iconFileId = icon;
     const updated = await applicantSourceRepository.updateById(id, set, {
       by,
       version: input.version,

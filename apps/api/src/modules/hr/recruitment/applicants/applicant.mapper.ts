@@ -28,6 +28,9 @@ export const toApplicantSourceDto = (doc: ApplicantSourceDoc): ApplicantSourceDt
   kind: doc.kind,
   requiresDetail: doc.requiresDetail,
   active: doc.active,
+  // Rows written before the field existed have no key at all, so read it defensively rather than
+  // letting `undefined` reach a DTO the client types as `string | null`.
+  iconFileId: doc.iconFileId === null || doc.iconFileId === undefined ? null : String(doc.iconFileId),
   version: doc.__v,
 });
 

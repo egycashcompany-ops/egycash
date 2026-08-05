@@ -5,71 +5,244 @@
 // form. The link is the only thing that differs, and its token is what tells the system where an
 // application came from.
 //
-// EVERY active source gets link tools, whatever its `kind` says. This screen used to show them for
-// `publicForm` sources only, which meant a recruiter who wanted a link for Wuzzuf first had to go
-// and change Wuzzuf's type — a piece of bookkeeping invented purely to satisfy a condition on this
-// line. Nothing behind it ever agreed: `generateLink` asks only that the source be active, and the
-// form lists every active source with or without a link. So the type went back to being what it
-// reads as — a label — and the link is offered wherever it can actually be published.
-import { useState } from 'react';
-import { type ApplicantSourceDto, type Locale } from '@ecms/contracts';
+// EVERY active source gets link tools, whatever its `kind` says. `kind` describes what a platform
+// IS, not whether it can be published to: `generateLink` asks only that the source be active, and
+// the form lists every active source with or without a link.
+//
+// Search, sort and paging run on the CLIENT. The catalog is one small list — a few dozen rows at
+// most — and it already arrives whole, because this screen is the one place that must show
+// disabled sources too. Filtering it in the browser is instant and, more to the point, needs no
+// new query parameters on an endpoint whose contract is already in use elsewhere.
+import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { type ApplicantSourceDto, type Locale, type PageMeta } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
-import { Can } from '../../../../../platform/rbac/Can';
+import { Can, useCan } from '../../../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
-import { Card, CardBody } from '../../../../../shared/ui/Card';
+import { DataTable, type Column } from '../../../../../shared/ui/DataTable';
+import { ListView } from '../../../../../shared/ui/ListView';
+import { Pagination } from '../../../../../shared/ui/Pagination';
+import { SearchInput } from '../../../../../shared/ui/SearchInput';
+import { StatCard } from '../../../../../shared/ui/StatCard';
+import { Select } from '../../../../../shared/ui/form';
 import { Button } from '../../../../../shared/ui/Button';
 import { StatusBadge } from '../../../../../shared/ui/Badge';
-import { LoadingState } from '../../../../../shared/ui/states/LoadingState';
-import { ErrorState } from '../../../../../shared/ui/states/ErrorState';
+import { type MenuAction } from '../../../../../shared/ui/ActionMenu';
 import { EmptyState } from '../../../../../shared/ui/states/EmptyState';
-import { PlusIcon } from '../../../../../shared/ui/icons';
+import { CheckIcon, GridIcon, LinkIcon, PlusIcon, UsersIcon } from '../../../../../shared/ui/icons';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
-import { localized } from '../../../../../shared/lib/format';
+import { formatDate, formatNumber, localized } from '../../../../../shared/lib/format';
 import { useRecruitmentForm } from '../../recruitment-form/api/recruitment-form-queries';
-import { useApplicantSources, useUpdateApplicantSource } from '../api/applicant-source-queries';
+import { useApplicantTotal } from '../api/applicant-total-query';
+import {
+  useApplicantSources,
+  useSourceCounts,
+  useUpdateApplicantSource,
+} from '../api/applicant-source-queries';
 import { SourceDialog, type Editing } from '../components/SourceDialog';
-import { SourceLink } from '../components/SourceLink';
+import { SourceIcon } from '../components/SourceIcon';
+import { SourceLinkActions, SourceLinkCell } from '../components/SourceLink';
+
+const DEFAULT_PAGE_SIZE = 25;
 
 export const ApplicantSourcesPage = (): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
-  const sources = useApplicantSources();
+  const [sp, setSp] = useSearchParams();
+  const [editing, setEditing] = useState<Editing | null>(null);
+
+  const search = sp.get('q') ?? '';
+  const kind = sp.get('kind') ?? '';
+  const status = sp.get('status') ?? '';
+  const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
+  const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
+  const [sortByRaw, sortDirRaw] = (sp.get('sort') ?? 'key:asc').split(':');
+  const sort = { by: sortByRaw === 'createdAt' ? 'createdAt' : 'key', dir: sortDirRaw === 'desc' ? 'desc' : 'asc' } as {
+    by: 'key' | 'createdAt';
+    dir: 'asc' | 'desc';
+  };
+
+  const patch = (updates: Record<string, string | null>, resetPage = true): void => {
+    const next = new URLSearchParams(sp);
+    for (const [key, value] of Object.entries(updates)) {
+      if (value === null || value === '') next.delete(key);
+      else next.set(key, value);
+    }
+    if (resetPage && !('page' in updates)) next.delete('page');
+    setSp(next);
+  };
+
+  const term = search.trim().toLowerCase();
+  const publishedOnly = sp.get('published') === '1';
+  // Two things the endpoint cannot express: a text search, and "has a published link" — the link
+  // lives on the intake-form document, not on the source. Either one puts the screen in the
+  // whole-catalog mode described below.
+  const clientFiltering = term !== '' || publishedOnly;
+  const activeFilter = status === '' ? undefined : status === 'active';
+
+  // Filtering and paging are the SERVER's, through the query parameters the endpoint already
+  // documents. The one exception is the text search, which the endpoint has no parameter for.
+  //
+  // TODO (temporary): while searching, the screen asks for the whole catalog and narrows it here.
+  // That is correct only because the catalog is small. The moment it is not, `/hr/applicant-sources`
+  // needs a `search` parameter and this branch collapses into the query above — and until then the
+  // two modes must NOT be mixed, because the server would page first and the browser would filter
+  // one page, hiding matches that live on another.
+  const sources = useApplicantSources(
+    clientFiltering
+      ? { pageSize: 100, sortBy: sort.by, sortDir: sort.dir, kind, ...(activeFilter === undefined ? {} : { active: activeFilter }) }
+      : { page, pageSize, sortBy: sort.by, sortDir: sort.dir, kind, ...(activeFilter === undefined ? {} : { active: activeFilter }) },
+  );
   // The links live on the intake form; this page joins them to their sources by id rather than
   // asking for a second copy of the same data.
   const form = useRecruitmentForm();
+  const applicantTotal = useApplicantTotal();
+  const counts = useSourceCounts();
   const update = useUpdateApplicantSource();
-  const [editing, setEditing] = useState<Editing | null>(null);
-
-  if (sources.isLoading || form.isLoading) {
-    return <PageContainer><LoadingState /></PageContainer>;
-  }
-  if (sources.isError || sources.data === undefined) {
-    return (
-      <PageContainer>
-        <ErrorState error={sources.error} onRetry={() => void sources.refetch()} />
-      </PageContainer>
-    );
-  }
+  const canManage = useCan()('applicantSource.manage');
 
   const linkFor = (id: string) => (form.data?.links ?? []).find((l) => l.sourceId === id);
+  const published = (form.data?.links ?? []).filter((l) => l.url !== null).length;
 
-  const toggle = (source: ApplicantSourceDto): void => {
-    update.mutate(
-      { id: source.id, body: { active: !source.active, version: source.version } },
-      { onSuccess: () => toast.success(t(source.active ? 'sources.disabled' : 'sources.enabled')) },
-    );
-  };
+  const matched = useMemo(() => {
+    const items = sources.data?.items ?? [];
+    if (!clientFiltering) return items;
+    const links = form.data?.links ?? [];
+    return items.filter((s: ApplicantSourceDto) => {
+      if (term !== '' && !`${s.name.ar} ${s.name.en} ${s.key}`.toLowerCase().includes(term)) {
+        return false;
+      }
+      if (publishedOnly && links.find((l) => l.sourceId === s.id)?.url == null) return false;
+      return true;
+    });
+  }, [sources.data, form.data, clientFiltering, term, publishedOnly]);
+
+  // While searching the whole (filtered) catalog is in hand, so the page is cut here; otherwise the
+  // server's own paging is what the footer reports.
+  const meta: PageMeta = clientFiltering
+    ? {
+        page,
+        pageSize,
+        totalItems: matched.length,
+        totalPages: Math.max(1, Math.ceil(matched.length / pageSize)),
+      }
+    : (sources.data?.meta ?? { page, pageSize, totalItems: 0, totalPages: 1 });
+  const rows = clientFiltering ? matched.slice((page - 1) * pageSize, page * pageSize) : matched;
+  const hasFilters = search !== '' || kind !== '' || status !== '' || publishedOnly;
+
+  // The page's half of a row's menu. Handed to the link component so the row has ONE "…" rather
+  // than one per module that owns an action.
+  const rowActions = (source: ApplicantSourceDto): MenuAction[] => [
+    { key: 'edit', label: t('common.edit'), onSelect: () => setEditing({ mode: 'edit', source }) },
+    {
+      key: 'toggle',
+      label: t(source.active ? 'sources.disable' : 'sources.enable'),
+      onSelect: () =>
+        update.mutate(
+          { id: source.id, body: { active: !source.active, version: source.version } },
+          { onSuccess: () => toast.success(t(source.active ? 'sources.disabled' : 'sources.enabled')) },
+        ),
+    },
+  ];
+
+  const columns: Column<ApplicantSourceDto>[] = [
+    {
+      // A fixed 32px box in every row, filled or not, so the column never collapses and the names
+      // stay on one optical line.
+      key: 'icon',
+      header: '',
+      className: 'w-14',
+      render: (s) => <SourceIcon source={s} locale={locale} />,
+    },
+    {
+      // Sorted server-side by `key` — the identifier printed under the name, and one of the two
+      // fields the endpoint accepts in `sortBy`.
+      // TODO: ordering by the DISPLAYED name needs the API to sort on `name.ar` / `name.en` with a
+      // collation; until it does, sorting here would only order the page in hand.
+      key: 'key',
+      header: t('sources.name'),
+      sortable: true,
+      render: (s) => (
+        <div className="min-w-0">
+          <p className="truncate font-medium text-slate-800 dark:text-slate-100">
+            {localized(s.name, locale)}
+          </p>
+          <p className="truncate font-mono text-xs text-slate-400" dir="ltr">
+            {s.key}
+          </p>
+        </div>
+      ),
+    },
+    {
+      key: 'kind',
+      header: t('sources.kind'),
+      render: (s) => <StatusBadge tone="neutral" label={t(`sources.kind.${s.kind}`)} />,
+    },
+    {
+      key: 'status',
+      header: t('sources.status'),
+      render: (s) => (
+        <StatusBadge
+          tone={s.active ? 'success' : 'neutral'}
+          label={t(s.active ? 'sources.active' : 'sources.inactive')}
+        />
+      ),
+    },
+    {
+      key: 'link',
+      header: t('sources.link'),
+      render: (s) => <SourceLinkCell link={linkFor(s.id)} />,
+    },
+    {
+      // Not sortable, and not a TODO: submissions and the publish date live on the intake-form
+      // document, not on a source, so no query against this catalog could order by them.
+      key: 'submissions',
+      header: t('recruitmentForm.submissions'),
+      align: 'end',
+      render: (s) => {
+        // Zero is the resting state of most rows and should read as background; anything above it
+        // is the thing the column exists to surface, so it gets weight instead of the same grey.
+        const count = linkFor(s.id)?.submissions ?? 0;
+        return count === 0 ? (
+          <span className="text-slate-300 dark:text-slate-600">{formatNumber(0, locale)}</span>
+        ) : (
+          <span className="inline-flex min-w-8 items-center justify-center rounded-full bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-700 dark:bg-brand-950 dark:text-brand-300">
+            {formatNumber(count, locale)}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'generatedAt',
+      header: t('sources.publishedAt'),
+      render: (s) => {
+        const at = linkFor(s.id)?.generatedAt ?? null;
+        return at === null ? <span className="text-slate-300">—</span> : formatDate(at, locale);
+      },
+    },
+    {
+      key: 'actions',
+      header: '',
+      align: 'end',
+      render: (s) => (
+        <div className="flex items-center justify-end gap-1">
+          <SourceLinkActions
+            link={linkFor(s.id)}
+            sourceName={localized(s.name, locale)}
+            extraActions={canManage ? rowActions(s) : []}
+          />
+        </div>
+      ),
+    },
+  ];
 
   return (
     <PageContainer>
       <PageHeader
         title={t('sources.title')}
         description={t('sources.subtitle')}
-        breadcrumbs={[
-          { label: t('recruitment.title'), to: '/' },
-          { label: t('sources.title') },
-        ]}
+        breadcrumbs={[{ label: t('recruitment.title'), to: '/' }, { label: t('sources.title') }]}
         actions={
           <Can permission="applicantSource.manage">
             <Button
@@ -83,70 +256,122 @@ export const ApplicantSourcesPage = (): JSX.Element => {
         }
       />
 
-      <Card>
-        <CardBody>
-          {sources.data.length === 0 ? (
-            <EmptyState title={t('sources.empty')} />
-          ) : (
-            <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-              {sources.data.map((s) => {
-                const link = linkFor(s.id);
-                return (
-                  <li key={s.id} className="space-y-2 py-4">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">
-                          {localized(s.name, locale)}
-                        </p>
-                        <p className="truncate font-mono text-xs text-slate-400" dir="ltr">{s.key}</p>
-                      </div>
-                      <StatusBadge tone="neutral" label={t(`sources.kind.${s.kind}`)} />
-                      <StatusBadge
-                        tone={s.active ? 'success' : 'neutral'}
-                        label={t(s.active ? 'sources.active' : 'sources.inactive')}
-                      />
-                      {link !== undefined && link.url !== null && (
-                        <span className="text-xs text-slate-500 dark:text-slate-400">
-                          {t('recruitmentForm.submissions')}: {link.submissions}
-                        </span>
-                      )}
-                      <div className="ms-auto flex items-center gap-2">
-                        <Can permission="applicantSource.manage">
-                          <>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => setEditing({ mode: 'edit', source: s })}
-                            >
-                              {t('common.edit')}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              loading={update.isPending}
-                              onClick={() => toggle(s)}
-                            >
-                              {t(s.active ? 'sources.disable' : 'sources.enable')}
-                            </Button>
-                          </>
-                        </Can>
-                      </div>
-                    </div>
+      {/* Three of the four are also views of the table below, so they are pressable: a number a
+          recruiter reads and then wants to see the rows behind. The applicant total is not — those
+          rows live on another screen — so it stays a plain readout. */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label={t('sources.stat.total')}
+          icon={GridIcon}
+          active={status === '' && kind === ''}
+          loading={counts.isLoading}
+          onClick={() => patch({ status: null, kind: null })}
+          {...(counts.data === undefined ? {} : { value: formatNumber(counts.data.total, locale) })}
+        />
+        <StatCard
+          label={t('sources.stat.active')}
+          icon={CheckIcon}
+          active={status === 'active'}
+          loading={counts.isLoading}
+          onClick={() => patch({ status: 'active' })}
+          {...(counts.data === undefined ? {} : { value: formatNumber(counts.data.active, locale) })}
+        />
+        <StatCard
+          label={t('sources.stat.published')}
+          icon={LinkIcon}
+          active={publishedOnly}
+          loading={form.isLoading}
+          onClick={() => patch({ published: sp.get('published') === '1' ? null : '1' })}
+          {...(form.data === undefined ? {} : { value: formatNumber(published, locale) })}
+        />
+        <StatCard
+          label={t('sources.stat.applicants')}
+          icon={UsersIcon}
+          loading={applicantTotal.isLoading}
+          // No number rather than a wrong one while the count is still in flight.
+          {...(applicantTotal.data === undefined
+            ? {}
+            : { value: formatNumber(applicantTotal.data, locale) })}
+        />
+      </div>
 
-                    {/* No `link` row means the source is disabled: the form lists the active ones,
-                        and a link on a disabled platform would keep accepting applications. */}
-                    {link === undefined ? (
-                      <p className="text-xs text-slate-400">{t('sources.linkAfterActivation')}</p>
-                    ) : (
-                      <SourceLink link={link} />
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </CardBody>
-      </Card>
+      <ListView
+        total={meta.totalItems}
+        hasActiveFilters={hasFilters}
+        onClear={() => setSp(new URLSearchParams())}
+        search={
+          <SearchInput
+            className="w-full sm:w-64"
+            value={search}
+            onChange={(v) => patch({ q: v || null })}
+            placeholder={t('sources.searchPlaceholder')}
+          />
+        }
+        filters={
+          <>
+            <Select className="w-44" value={kind} onChange={(e) => patch({ kind: e.target.value || null })}>
+              <option value="">{t('sources.filter.allKinds')}</option>
+              <option value="publicForm">{t('sources.kind.publicForm')}</option>
+              <option value="integration">{t('sources.kind.integration')}</option>
+              <option value="manual">{t('sources.kind.manual')}</option>
+            </Select>
+            <Select className="w-40" value={status} onChange={(e) => patch({ status: e.target.value || null })}>
+              <option value="">{t('sources.filter.allStatuses')}</option>
+              <option value="active">{t('sources.active')}</option>
+              <option value="inactive">{t('sources.inactive')}</option>
+            </Select>
+          </>
+        }
+        pagination={
+          meta.totalItems > 0 ? (
+            <Pagination
+              meta={meta}
+              onPageChange={(p) => patch({ page: String(p) }, false)}
+              onPageSizeChange={(size) => patch({ size: String(size), page: null }, false)}
+            />
+          ) : undefined
+        }
+      >
+        <DataTable
+          columns={columns}
+          rows={rows}
+          rowKey={(s) => s.id}
+          loading={sources.isLoading || form.isLoading}
+          error={sources.isError ? sources.error : undefined}
+          onRetry={() => void sources.refetch()}
+          empty={
+            // An empty CATALOG and an empty RESULT are different problems: one wants a first
+            // platform, the other wants a different search.
+            hasFilters ? (
+              <EmptyState
+                title={t('sources.empty.noResults')}
+                description={t('sources.empty.noResultsBody')}
+              />
+            ) : (
+              <EmptyState
+                title={t('sources.empty.title')}
+                description={t('sources.empty.body')}
+                action={
+                  <Can permission="applicantSource.manage">
+                    <Button
+                      size="sm"
+                      leftIcon={<PlusIcon className="h-4 w-4" />}
+                      onClick={() => setEditing({ mode: 'create' })}
+                    >
+                      {t('sources.add')}
+                    </Button>
+                  </Can>
+                }
+              />
+            )
+          }
+          sort={sort}
+          onSortChange={(by) =>
+            patch({ sort: `${by}:${sort.by === by && sort.dir === 'asc' ? 'desc' : 'asc'}` }, false)
+          }
+          embedded
+        />
+      </ListView>
 
       {editing !== null && <SourceDialog editing={editing} onClose={() => setEditing(null)} />}
     </PageContainer>

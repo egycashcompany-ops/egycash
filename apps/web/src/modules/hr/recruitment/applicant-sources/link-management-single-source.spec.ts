@@ -53,8 +53,11 @@ describe('application links are managed in exactly one place', () => {
   });
 
   it('the sources page is the screen that renders it', () => {
+    // The component exports two pieces — the link's state for its own column, the buttons for the
+    // row's action cell — because that is what a table needs. Both come out of the one file above,
+    // and only this page puts either on screen.
     const renderers = files
-      .filter((f) => f.text.includes('<SourceLink') && f.path !== LINK_COMPONENT)
+      .filter((f) => /<SourceLink(Cell|Actions)/.test(f.text) && f.path !== LINK_COMPONENT)
       .map((f) => rel(f.path));
     expect(renderers).toEqual([rel(join(HERE, 'pages/ApplicantSourcesPage.tsx'))]);
   });
@@ -66,8 +69,15 @@ describe('application links are managed in exactly one place', () => {
     // source be active. Whether a source shows link tools is decided by whether it HAS a link row —
     // which the form builds for the active sources — and never by what its type is called.
     const page = readFileSync(join(HERE, 'pages/ApplicantSourcesPage.tsx'), 'utf8');
-    expect(page, 'the link came back under a type condition').not.toMatch(/kind\s*===/);
-    expect(page).toContain('<SourceLink link={link} />');
+    // `.kind ===` — a comparison of a SOURCE's type, which is what the removed gate was. The
+    // screen's own `kind` filter variable is a URL parameter of the same name and is not that; the
+    // dot is what tells the two apart.
+    expect(page, 'the link came back under a type condition').not.toMatch(/\.kind\s*===/);
+    // The link column and the link actions are rendered for every row the table draws, with no
+    // condition between them and the row.
+    expect(page).toContain('<SourceLinkCell link={linkFor(s.id)} />');
+    expect(page).toContain('<SourceLinkActions');
+    expect(page).toContain('link={linkFor(s.id)}');
   });
 
   it('every platform shares one form — the link is the only difference', () => {

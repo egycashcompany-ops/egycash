@@ -198,6 +198,9 @@ export type UpdateRecruitmentForm = z.infer<typeof UpdateRecruitmentFormSchema>;
 export const GenerateRecruitmentFormLinkSchema = z.object({ sourceId: objectId() }).strict();
 export type GenerateRecruitmentFormLink = z.infer<typeof GenerateRecruitmentFormLinkSchema>;
 
+/** Revoking names its source in the path, so the path is what gets validated. */
+export const RecruitmentFormSourceParamSchema = z.object({ sourceId: objectId() }).strict();
+
 // ── Public submission ───────────────────────────────────────────────────────
 
 /**

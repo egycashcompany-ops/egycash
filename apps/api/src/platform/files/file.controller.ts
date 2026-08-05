@@ -109,6 +109,17 @@ export const downloadFile = async (req: Request, res: Response): Promise<void> =
 export const streamSignedFile = async (req: Request, res: Response): Promise<void> => {
   const { params, query } = validated<never, { e: number; s: string }, IdParam>(req);
   const { doc, stream } = await fileService.openSignedStream(params.id, query.e, query.s);
+  // The one place the app hands bytes to a browser that is very likely on ANOTHER origin: the web
+  // app is served from its own host, so an `<img src>` pointing here is a cross-origin load.
+  // Helmet's default `Cross-Origin-Resource-Policy: same-origin` blocks precisely that — Chrome
+  // refuses the response (ERR_BLOCKED_BY_RESPONSE.NotSameOrigin) and paints its broken-image
+  // glyph, which is what every uploaded logo looked like.
+  //
+  // Declaring `cross-origin` gives away nothing: this route is unauthenticated BY DESIGN and what
+  // protects it is the capability in the URL — an HMAC over the file id and an expiry, checked
+  // before a single byte is read. CORP would only decide which page may embed a URL that anyone
+  // holding it can already fetch.
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   res.setHeader('Content-Type', doc.mime);
   res.setHeader('Content-Length', String(doc.size));
   res.setHeader(

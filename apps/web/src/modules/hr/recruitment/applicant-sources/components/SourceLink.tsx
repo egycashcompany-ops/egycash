@@ -20,7 +20,7 @@ import { useT } from '../../../../../platform/localization/useT';
 import { useCan } from '../../../../../platform/rbac/Can';
 import { Button } from '../../../../../shared/ui/Button';
 import { Dialog } from '../../../../../shared/ui/Dialog';
-import { Badge } from '../../../../../shared/ui/Badge';
+import { RowActions } from '../../../../../shared/ui/RowActions';
 import {
   ClipboardIcon,
   DownloadIcon,
@@ -94,15 +94,15 @@ const copyToClipboard = (url: string, label: string, copied: string): void => {
 };
 
 /**
- * The link column: the address, and the three things done with an address.
+ * The link column: whether this platform is published, and where to.
  *
- * Unpublished is a grey chip, not a sentence — "no link" is a STATE of the row, and a column of
- * chips is read at a glance where a column of prose has to be read word by word. Published shows
- * the address itself, because an admin checking their own work wants to see where it points.
+ * Unpublished is a hollow ring and a muted word — the quietest thing on the row, because an absent
+ * link is the resting state of most platforms and not a warning. Published is a filled dot and the
+ * ADDRESS itself: with the URL on screen there is nothing for the word "published" to add, and the
+ * dot carries the state for anyone scanning the column rather than reading it.
  *
- * Copy / open / QR sit next to the link rather than in the row's action cell: they act on the
- * address, they never change anything, and putting them here keeps the actions cell to the four
- * controls that do.
+ * Copy stays visible — it is what this column is FOR. Open and QR are occasional, so they appear
+ * with the row (see `RowActions`) instead of repeating down the page.
  */
 export const SourceLinkCell = ({
   link,
@@ -117,18 +117,22 @@ export const SourceLinkCell = ({
   const qrRef = useRef<HTMLDivElement>(null);
 
   if (link === undefined || link.url === null) {
-    // The quietest thing on the row: an absent link is the resting state of most platforms, not a
-    // warning. Small, grey, and it stops competing with the states that matter.
     return (
-      <Badge size="sm" tone="neutral">
+      <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs text-slate-400 dark:text-slate-500">
+        <span className="h-1.5 w-1.5 shrink-0 rounded-full border border-current" />
         {t('sources.link.none')}
-      </Badge>
+      </span>
     );
   }
   const url = link.url;
 
   return (
-    <div className="flex min-w-0 items-center gap-0.5">
+    <div className="flex min-w-0 items-center gap-2">
+      <span
+        className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500"
+        title={t('sources.link.published')}
+        aria-label={t('sources.link.published')}
+      />
       {/* Styled as a LINK, because it is one: link colour at rest, underline on hover, an ellipsis
           when it runs out of room and the full address in the tooltip. New tab and `noopener` —
           leaving the console to look at a form is not what they meant, and the opened page must not
@@ -139,37 +143,40 @@ export const SourceLinkCell = ({
         rel="noopener noreferrer"
         dir="ltr"
         title={url}
-        className="min-w-0 max-w-[18rem] truncate font-mono text-xs text-brand-600 underline-offset-2 hover:underline dark:text-brand-400"
+        className="min-w-0 flex-1 truncate font-mono text-xs text-brand-600 underline-offset-2 hover:underline dark:text-brand-400"
       >
         {readable(url)}
       </a>
       <Button
         size="icon"
         variant="ghost"
+        className="shrink-0"
         title={t('recruitmentForm.copy')}
         aria-label={t('recruitmentForm.copy')}
         onClick={() => copyToClipboard(url, t('recruitmentForm.copy'), t('recruitmentForm.copied'))}
       >
         <ClipboardIcon className="h-4 w-4" />
       </Button>
-      <Button
-        size="icon"
-        variant="ghost"
-        title={t('sources.link.open')}
-        aria-label={t('sources.link.open')}
-        onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}
-      >
-        <ExternalLinkIcon className="h-4 w-4" />
-      </Button>
-      <Button
-        size="icon"
-        variant="ghost"
-        title={t('sources.qr')}
-        aria-label={t('sources.qr')}
-        onClick={() => setQrOpen(true)}
-      >
-        <QrIcon className="h-4 w-4" />
-      </Button>
+      <RowActions className="shrink-0">
+        <Button
+          size="icon"
+          variant="ghost"
+          title={t('sources.link.open')}
+          aria-label={t('sources.link.open')}
+          onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}
+        >
+          <ExternalLinkIcon className="h-4 w-4" />
+        </Button>
+        <Button
+          size="icon"
+          variant="ghost"
+          title={t('sources.qr')}
+          aria-label={t('sources.qr')}
+          onClick={() => setQrOpen(true)}
+        >
+          <QrIcon className="h-4 w-4" />
+        </Button>
+      </RowActions>
 
       <Dialog
         open={qrOpen}
@@ -219,13 +226,14 @@ export const SourceLinkCell = ({
 };
 
 /**
- * The two link actions that change something, as inline icon buttons.
+ * The two link actions that change something — with a hierarchy, not a row of equals.
  *
- * Publish is brand-coloured and withdraw is red because in a row of small square buttons the
- * COLOUR is what separates them — an icon at 16px is read after the colour, not before it. Both
- * carry a `title`, so the icon is never the only label.
+ * A platform with no link EXISTS to get one, so that row gets a labelled button: it is the next
+ * thing to do and it says so in words. Once published there is no next thing, so replacing and
+ * withdrawing the link become secondary and appear with the row.
  *
- * The order is fixed by construction: publish, then withdraw. There is no menu to shuffle.
+ * That is what stops the table looking like a control panel: most rows show one action or none,
+ * and the rest arrive when you reach for them.
  */
 export const SourceLinkActions = ({
   link,
@@ -240,32 +248,48 @@ export const SourceLinkActions = ({
   const canManageLinks = useCan()('recruitmentForm.manage');
 
   if (!canManageLinks || link === undefined) return <></>;
-  const publishLabel = t(url === null ? 'recruitmentForm.generate' : 'recruitmentForm.regenerate');
+
+  if (url === null) {
+    // Labelled, so the next step is readable — but a TEXT action, not a filled button. Most rows
+    // in a fresh catalog are unpublished, and a column of bordered buttons down the page is the
+    // crowding this screen is trying to avoid; brand-coloured words carry the same invitation at a
+    // fraction of the weight.
+    return (
+      <Button
+        size="sm"
+        variant="ghost-brand"
+        className="px-2"
+        loading={generate.isPending}
+        leftIcon={<LinkIcon className="h-3.5 w-3.5" />}
+        onClick={() => generate.mutate(link.sourceId)}
+      >
+        {t('recruitmentForm.generate')}
+      </Button>
+    );
+  }
 
   return (
-    <>
+    <RowActions>
       <Button
         size="icon"
         variant="ghost-brand"
         loading={generate.isPending}
-        title={publishLabel}
-        aria-label={publishLabel}
+        title={t('recruitmentForm.regenerate')}
+        aria-label={t('recruitmentForm.regenerate')}
         onClick={() => generate.mutate(link.sourceId)}
       >
-        {url === null ? <LinkIcon className="h-4 w-4" /> : <ResetIcon className="h-4 w-4" />}
+        <ResetIcon className="h-4 w-4" />
       </Button>
-      {url !== null && (
-        <Button
-          size="icon"
-          variant="ghost-danger"
-          loading={revoke.isPending}
-          title={t('recruitmentForm.revoke')}
-          aria-label={t('recruitmentForm.revoke')}
-          onClick={() => revoke.mutate(link.sourceId)}
-        >
-          <TrashIcon className="h-4 w-4" />
-        </Button>
-      )}
-    </>
+      <Button
+        size="icon"
+        variant="ghost-danger"
+        loading={revoke.isPending}
+        title={t('recruitmentForm.revoke')}
+        aria-label={t('recruitmentForm.revoke')}
+        onClick={() => revoke.mutate(link.sourceId)}
+      >
+        <TrashIcon className="h-4 w-4" />
+      </Button>
+    </RowActions>
   );
 };

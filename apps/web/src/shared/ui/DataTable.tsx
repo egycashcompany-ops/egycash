@@ -130,7 +130,9 @@ export const DataTable = <T,>({
           key={id}
           onClick={onRowClick === undefined ? undefined : () => onRowClick(row)}
           className={cn(
-            'border-t border-slate-100 transition-colors dark:border-slate-800',
+            // `group` so a cell can reveal its secondary controls when the pointer is on the row —
+            // see `RowActions`. Costs nothing on a row that does not use it.
+            'group border-t border-slate-100 transition-colors dark:border-slate-800',
             (onRowClick !== undefined || hoverable) && 'hover:bg-slate-50 dark:hover:bg-slate-800/50',
             onRowClick !== undefined && 'cursor-pointer',
             isSelected && 'bg-brand-50/60 dark:bg-brand-950/40',

@@ -29,7 +29,8 @@ import { DataTable, type Column } from '../../../../../shared/ui/DataTable';
 import { ListView } from '../../../../../shared/ui/ListView';
 import { Pagination } from '../../../../../shared/ui/Pagination';
 import { SearchInput } from '../../../../../shared/ui/SearchInput';
-import { StatCard } from '../../../../../shared/ui/StatCard';
+import { StatStrip, type StatStripItem } from '../../../../../shared/ui/StatStrip';
+import { RowActions } from '../../../../../shared/ui/RowActions';
 import { Select } from '../../../../../shared/ui/form';
 import { Button } from '../../../../../shared/ui/Button';
 import { Badge, StatusBadge, type Tone } from '../../../../../shared/ui/Badge';
@@ -174,46 +175,42 @@ export const ApplicantSourcesPage = (): JSX.Element => {
 
   const columns: Column<ApplicantSourceDto>[] = [
     {
-      // ONE identity cell, not a logo column beside a name column: the logo, the name and the key
-      // are three views of the same thing, and a 40px avatar is what makes a row scannable by shape
-      // before it is read. Sorted server-side by `key` — the identifier printed under the name, and
-      // one of the two fields the endpoint accepts in `sortBy`.
+      // The row's subject, in one cell: mark, name, type and identifier. The type used to have a
+      // column of its own, which spent a sixth of the table's width on one short word and split
+      // the platform's identity across two cells. Beside the name — the way a repository's
+      // visibility sits beside its name — it says the same thing and gives the width back.
+      //
+      // Sorted server-side by `key`, one of the two fields the endpoint accepts in `sortBy`.
       // TODO: ordering by the DISPLAYED name needs the API to sort on `name.ar` / `name.en` with a
       // collation; until it does, sorting here would only order the page in hand.
       key: 'key',
       header: t('sources.name'),
       sortable: true,
-      className: 'min-w-[16rem]',
-      render: (s) => (
-        <div className="flex items-center gap-3">
-          <SourceIcon source={s} locale={locale} size="md" />
-          <div className="min-w-0">
-            {/* The name is the heaviest thing in the row — it is what the row IS. */}
-            <p className="truncate font-semibold text-slate-900 dark:text-slate-50">
-              {localized(s.name, locale)}
-            </p>
-            <p
-              className="truncate font-mono text-[11px] leading-tight text-slate-400 dark:text-slate-500"
-              dir="ltr"
-            >
-              {s.key}
-            </p>
-          </div>
-        </div>
-      ),
-    },
-    {
-      key: 'kind',
-      header: t('sources.kind'),
+      className: 'min-w-[18rem]',
       render: (s) => {
-        const { tone, icon: Icon } = KIND_STYLE[s.kind];
+        const { tone, icon: KindIcon } = KIND_STYLE[s.kind];
         return (
-          // Small: a type CLASSIFIES the row, it is not what you scan the table for — that is the
-          // status beside it, which stays full size. A chip that wraps stops being a chip.
-          <Badge size="sm" tone={tone} className="whitespace-nowrap">
-            <Icon className="h-3 w-3 shrink-0" />
-            {t(`sources.kind.${s.kind}`)}
-          </Badge>
+          <div className="flex items-center gap-3">
+            <SourceIcon source={s} locale={locale} size="md" />
+            <div className="min-w-0">
+              <div className="flex min-w-0 items-center gap-2">
+                {/* The heaviest thing in the row — it is what the row IS. */}
+                <span className="truncate font-semibold text-slate-900 dark:text-slate-50">
+                  {localized(s.name, locale)}
+                </span>
+                <Badge size="sm" tone={tone} className="shrink-0 whitespace-nowrap">
+                  <KindIcon className="h-3 w-3 shrink-0" />
+                  {t(`sources.kind.${s.kind}`)}
+                </Badge>
+              </div>
+              <span
+                className="block truncate font-mono text-[11px] leading-tight text-slate-400 dark:text-slate-500"
+                dir="ltr"
+              >
+                {s.key}
+              </span>
+            </div>
+          </div>
         );
       },
     },
@@ -254,52 +251,94 @@ export const ApplicantSourcesPage = (): JSX.Element => {
       },
     },
     {
-      // The row's last cell carries BOTH the publish date and the row's actions. There is no
-      // actions column: a column of its own would reserve width on every row for controls that are
-      // four small squares, and an empty header above them says nothing. Ending the row with them
-      // is what GitHub, Linear and Stripe all do — the controls sit at the row's trailing edge,
-      // after the last thing you read.
+      // The row ENDS with its date and its controls, in one cell. There is no actions column: a
+      // column of its own reserves width on every row for a few small squares and puts an empty
+      // header above them.
       //
-      // Always in this order, colour-coded by what each one does: edit is neutral, suspend warns
-      // before taking a platform out of use, publishing is constructive, withdrawing destructive.
+      // What is visible is decided by what the row NEEDS. Editing and suspending are things you
+      // come looking for, so they appear with the row rather than repeating down the page; a
+      // platform with no link, on the other hand, exists to get one, so that row keeps a labelled
+      // button that is always visible. Most rows therefore show a date and nothing else — which is
+      // what stops a table of records reading as a control panel.
       key: 'generatedAt',
       header: t('sources.publishedAt'),
       align: 'end',
       render: (s) => {
         const at = linkFor(s.id)?.generatedAt ?? null;
         return (
-          <div className="flex items-center justify-end gap-3">
+          <div className="flex items-center justify-end gap-2">
             <span className="whitespace-nowrap text-xs text-slate-400 dark:text-slate-500">
               {at === null ? '—' : formatDate(at, locale)}
             </span>
-            <span className="flex items-center gap-1">
-              {canManage && (
-                <>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    title={t('common.edit')}
-                    aria-label={t('common.edit')}
-                    onClick={() => setEditing({ mode: 'edit', source: s })}
-                  >
-                    <EditIcon className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant={s.active ? 'ghost-warning' : 'ghost-brand'}
-                    title={t(s.active ? 'sources.disable' : 'sources.enable')}
-                    aria-label={t(s.active ? 'sources.disable' : 'sources.enable')}
-                    onClick={() => toggleActive(s)}
-                  >
-                    {s.active ? <PauseIcon className="h-4 w-4" /> : <PlayIcon className="h-4 w-4" />}
-                  </Button>
-                </>
-              )}
-              <SourceLinkActions link={linkFor(s.id)} />
-            </span>
+            {canManage && (
+              <RowActions>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  title={t('common.edit')}
+                  aria-label={t('common.edit')}
+                  onClick={() => setEditing({ mode: 'edit', source: s })}
+                >
+                  <EditIcon className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant={s.active ? 'ghost-warning' : 'ghost-brand'}
+                  title={t(s.active ? 'sources.disable' : 'sources.enable')}
+                  aria-label={t(s.active ? 'sources.disable' : 'sources.enable')}
+                  onClick={() => toggleActive(s)}
+                >
+                  {s.active ? <PauseIcon className="h-4 w-4" /> : <PlayIcon className="h-4 w-4" />}
+                </Button>
+              </RowActions>
+            )}
+            <SourceLinkActions link={linkFor(s.id)} />
           </div>
         );
       },
+    },
+  ];
+
+  // Three of the four are also VIEWS of the list below, so they are pressable — a number a
+  // recruiter reads and then wants to see the rows behind. The applicant total is not: those rows
+  // live on another screen, so it stays a plain readout rather than a button that lies.
+  const stats: StatStripItem[] = [
+    {
+      key: 'total',
+      label: t('sources.stat.total'),
+      icon: GridIcon,
+      active: status === '' && kind === '' && !publishedOnly,
+      loading: counts.isLoading,
+      onClick: () => patch({ status: null, kind: null, published: null }),
+      ...(counts.data === undefined ? {} : { value: formatNumber(counts.data.total, locale) }),
+    },
+    {
+      key: 'active',
+      label: t('sources.stat.active'),
+      icon: CheckIcon,
+      active: status === 'active',
+      loading: counts.isLoading,
+      onClick: () => patch({ status: 'active' }),
+      ...(counts.data === undefined ? {} : { value: formatNumber(counts.data.active, locale) }),
+    },
+    {
+      key: 'published',
+      label: t('sources.stat.published'),
+      icon: LinkIcon,
+      active: publishedOnly,
+      loading: form.isLoading,
+      onClick: () => patch({ published: sp.get('published') === '1' ? null : '1' }),
+      ...(form.data === undefined ? {} : { value: formatNumber(published, locale) }),
+    },
+    {
+      key: 'applicants',
+      label: t('sources.stat.applicants'),
+      icon: UsersIcon,
+      loading: applicantTotal.isLoading,
+      // No number rather than a wrong one while the count is still in flight.
+      ...(applicantTotal.data === undefined
+        ? {}
+        : { value: formatNumber(applicantTotal.data, locale) }),
     },
   ];
 
@@ -322,51 +361,10 @@ export const ApplicantSourcesPage = (): JSX.Element => {
         }
       />
 
-      {/* A strip of metrics above the list, not a dashboard: dense tiles where the FIGURE leads and
-          the label is its caption. Three of the four are also views of the table below, so they are
-          pressable — a number a recruiter reads and then wants to see the rows behind. The applicant
-          total is not (those rows live on another screen), so it stays a plain readout. */}
-      <div className="mb-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          dense
-          label={t('sources.stat.total')}
-          icon={GridIcon}
-          active={status === '' && kind === '' && !publishedOnly}
-          loading={counts.isLoading}
-          onClick={() => patch({ status: null, kind: null, published: null })}
-          {...(counts.data === undefined ? {} : { value: formatNumber(counts.data.total, locale) })}
-        />
-        <StatCard
-          dense
-          label={t('sources.stat.active')}
-          icon={CheckIcon}
-          active={status === 'active'}
-          loading={counts.isLoading}
-          onClick={() => patch({ status: 'active' })}
-          {...(counts.data === undefined ? {} : { value: formatNumber(counts.data.active, locale) })}
-        />
-        <StatCard
-          dense
-          label={t('sources.stat.published')}
-          icon={LinkIcon}
-          active={publishedOnly}
-          loading={form.isLoading}
-          onClick={() => patch({ published: sp.get('published') === '1' ? null : '1' })}
-          {...(form.data === undefined ? {} : { value: formatNumber(published, locale) })}
-        />
-        <StatCard
-          dense
-          label={t('sources.stat.applicants')}
-          icon={UsersIcon}
-          loading={applicantTotal.isLoading}
-          // No number rather than a wrong one while the count is still in flight.
-          {...(applicantTotal.data === undefined
-            ? {}
-            : { value: formatNumber(applicantTotal.data, locale) })}
-        />
-      </div>
-
+      {/* The metrics summarise the list, so they live INSIDE it — one surface with a summary band,
+          a toolbar, the rows and their paging, instead of a dashboard floating above a table. */}
       <ListView
+        summary={<StatStrip items={stats} />}
         total={meta.totalItems}
         hasActiveFilters={hasFilters}
         onClear={() => setSp(new URLSearchParams())}

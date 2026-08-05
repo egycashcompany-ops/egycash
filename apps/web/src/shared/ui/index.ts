@@ -11,6 +11,8 @@ export { DataTable, type Column, type DataTableProps, type SortState } from './D
 export { BulkActionBar } from './BulkActionBar';
 export { useTableSelection, type TableSelection } from './useTableSelection';
 export { Pagination } from './Pagination';
+export { StatStrip, type StatStripItem } from './StatStrip';
+export { RowActions } from './RowActions';
 export { SearchInput } from './SearchInput';
 export { FilterBar } from './FilterBar';
 export { ListView } from './ListView';

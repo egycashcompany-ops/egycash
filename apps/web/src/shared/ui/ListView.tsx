@@ -10,6 +10,7 @@ import { formatNumber } from '../lib/format';
 import { CloseIcon } from './icons';
 
 export const ListView = ({
+  summary,
   search,
   filters,
   actions,
@@ -19,6 +20,14 @@ export const ListView = ({
   pagination,
   children,
 }: {
+  /**
+   * A band above the toolbar, inside this surface — for a `StatStrip` summarising the rows below.
+   *
+   * Metrics belong TO the list, so they share its card instead of floating above it as separate
+   * panels: one border, one shadow, no gap, and the page reads as a single object rather than as
+   * a dashboard stacked on a table.
+   */
+  summary?: ReactNode;
   /** The search box (rendered at the reading start of the toolbar). */
   search?: ReactNode;
   /** Filter controls (selects, toggles) following the search box. */
@@ -41,6 +50,9 @@ export const ListView = ({
 
   return (
     <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-card dark:border-slate-800 dark:bg-slate-900">
+      {summary !== undefined && (
+        <div className="border-b border-slate-100 dark:border-slate-800">{summary}</div>
+      )}
       {showToolbar && (
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-3 py-3 dark:border-slate-800">
           {search}

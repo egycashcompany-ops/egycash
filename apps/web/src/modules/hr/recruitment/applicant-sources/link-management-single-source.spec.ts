@@ -59,6 +59,17 @@ describe('application links are managed in exactly one place', () => {
     expect(renderers).toEqual([rel(join(HERE, 'pages/ApplicantSourcesPage.tsx'))]);
   });
 
+  it('offers the link on every platform — the type is a label, not a gate', () => {
+    // The first version of this page showed the link only when `kind === 'publicForm'`, so getting
+    // a link for Wuzzuf meant first editing Wuzzuf to say it was a public platform: bookkeeping
+    // invented to satisfy a UI condition, with nothing behind it. `generateLink` asks only that the
+    // source be active. Whether a source shows link tools is decided by whether it HAS a link row —
+    // which the form builds for the active sources — and never by what its type is called.
+    const page = readFileSync(join(HERE, 'pages/ApplicantSourcesPage.tsx'), 'utf8');
+    expect(page, 'the link came back under a type condition').not.toMatch(/kind\s*===/);
+    expect(page).toContain('<SourceLink link={link} />');
+  });
+
   it('every platform shares one form — the link is the only difference', () => {
     // A per-platform form would have to travel with the link: a form id, a template, a variant.
     // What a link actually carries is a token, and the public page is addressed by that token

@@ -157,6 +157,39 @@ describe('the application form page', () => {
     expect(res.status).toBe(200);
     expect((res.body as { data: RecruitmentFormDto }).data.internalSourceId).toBe(internal);
   });
+
+  // Kept last in this block: publishing links changes what the listing test above asserts.
+  it('publishes a link for every recruiting platform straight off the seed', async () => {
+    // The seed's job here is that a fresh install can post an application link on the platforms it
+    // actually recruits through, with no preparation. Wuzzuf, LinkedIn and Forasna were seeded as
+    // `integration` and Facebook as `manual`, which meant an admin had to retype each one before a
+    // link would appear — a step invented by a UI condition, not by anything the server checks.
+    for (const key of ['companyWebsite', 'mobileApp', 'wuzzuf', 'linkedin', 'forasna', 'facebook']) {
+      const id = await sourceId(key);
+      const published = await request(app)
+        .post('/api/v1/hr/recruitment-form/links')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ sourceId: id });
+      expect(published.status, `${key} could not be published to`).toBe(200);
+      const link = (published.body as { data: RecruitmentFormDto }).data.links.find(
+        (l) => l.sourceId === id,
+      );
+      // One form, one token per platform: the URL differs, what it opens does not.
+      expect(link?.url, `${key} has no application URL`).toMatch(/\/apply\/[0-9a-f]{32}$/);
+    }
+  });
+
+  it('seeds those platforms as public ones, so the type reads true before anyone edits it', async () => {
+    const res = await request(app)
+      .get('/api/v1/hr/applicant-sources')
+      .query({ kind: 'publicForm', pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const keys = (res.body as { data: { key: string }[] }).data.map((s) => s.key).sort();
+    expect(keys).toEqual(
+      ['companyWebsite', 'facebook', 'forasna', 'linkedin', 'mobileApp', 'wuzzuf'].sort(),
+    );
+  });
 });
 
 // Every step a candidate's application goes through, each one its own assertion, so a green run

@@ -5,9 +5,12 @@
 // form. The link is the only thing that differs, and its token is what tells the system where an
 // application came from.
 //
-// A link belongs to a source that can actually be published to. `manual` sources (a walk-in, an
-// employee referral) are recorded by a recruiter from inside the system, so there is nothing to
-// publish and no link column for them.
+// EVERY active source gets link tools, whatever its `kind` says. This screen used to show them for
+// `publicForm` sources only, which meant a recruiter who wanted a link for Wuzzuf first had to go
+// and change Wuzzuf's type — a piece of bookkeeping invented purely to satisfy a condition on this
+// line. Nothing behind it ever agreed: `generateLink` asks only that the source be active, and the
+// form lists every active source with or without a link. So the type went back to being what it
+// reads as — a label — and the link is offered wherever it can actually be published.
 import { useState } from 'react';
 import { type ApplicantSourceDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
@@ -130,13 +133,13 @@ export const ApplicantSourcesPage = (): JSX.Element => {
                       </div>
                     </div>
 
-                    {/* Only a source candidates can be sent to has a link. */}
-                    {s.kind === 'publicForm' &&
-                      (link === undefined ? (
-                        <p className="text-xs text-slate-400">{t('sources.linkAfterActivation')}</p>
-                      ) : (
-                        <SourceLink link={link} />
-                      ))}
+                    {/* No `link` row means the source is disabled: the form lists the active ones,
+                        and a link on a disabled platform would keep accepting applications. */}
+                    {link === undefined ? (
+                      <p className="text-xs text-slate-400">{t('sources.linkAfterActivation')}</p>
+                    ) : (
+                      <SourceLink link={link} />
+                    )}
                   </li>
                 );
               })}

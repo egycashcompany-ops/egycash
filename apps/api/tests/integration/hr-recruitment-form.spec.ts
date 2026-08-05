@@ -70,15 +70,19 @@ const getForm = async (): Promise<{ status: number; body: { data?: RecruitmentFo
   return { status: res.status, body: res.body as { data?: RecruitmentFormDto } };
 };
 
-const sourceId = async (key: string): Promise<string> => {
+const getSource = async (key: string): Promise<{ id: string; kind: string }> => {
   const res = await request(app)
     .get('/api/v1/hr/applicant-sources')
     .query({ pageSize: 50 })
     .set('Authorization', `Bearer ${adminToken}`);
-  const found = (res.body as { data: { id: string; key: string }[] }).data.find((s) => s.key === key);
+  const found = (res.body as { data: { id: string; key: string; kind: string }[] }).data.find(
+    (s) => s.key === key,
+  );
   if (found === undefined) throw new Error(`${key} source not seeded`);
-  return found.id;
+  return { id: found.id, kind: found.kind };
 };
+
+const sourceId = async (key: string): Promise<string> => (await getSource(key)).id;
 
 beforeAll(async () => {
   await bootPlatform({ mongoUri: await resolveMongoUri(), modules: moduleManifests });
@@ -156,6 +160,57 @@ describe('the application form page', () => {
       .send({ internalSourceId: internal, version: before.body.data?.version });
     expect(res.status).toBe(200);
     expect((res.body as { data: RecruitmentFormDto }).data.internalSourceId).toBe(internal);
+  });
+
+  it('classifies a source by what it IS, and leaves that classification alone', async () => {
+    // `kind` describes the platform, not whether it has a link. Pinned here because the pressure to
+    // edit it comes from the wrong direction: a screen that wants to show something for one kind
+    // and not another. Nothing in this service reads it, so a reclassification would silently
+    // rewrite domain data to satisfy a UI condition.
+    const res = await request(app)
+      .get('/api/v1/hr/applicant-sources')
+      .query({ pageSize: 50, sortBy: 'key', sortDir: 'asc' })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const byKey = Object.fromEntries(
+      (res.body as { data: { key: string; kind: string }[] }).data.map((s) => [s.key, s.kind]),
+    );
+    expect(byKey).toMatchObject({
+      companyWebsite: 'publicForm',
+      mobileApp: 'publicForm',
+      linkedin: 'integration',
+      wuzzuf: 'integration',
+      forasna: 'integration',
+      facebook: 'manual',
+      internalHr: 'manual',
+      referral: 'manual',
+      walkIn: 'manual',
+      agency: 'manual',
+    });
+  });
+
+  // Kept last in this block: publishing links changes what the listing test above asserts.
+  it('publishes a link for any active platform, whatever its kind says', async () => {
+    // Three of these are `integration`, one is `manual`, two are `publicForm` — and all six get a
+    // link, which is the whole point. Publishing asks one question: is the source active. An admin
+    // never has to retype a platform to make its link appear.
+    const kinds = new Set<string>();
+    for (const key of ['companyWebsite', 'mobileApp', 'wuzzuf', 'linkedin', 'forasna', 'facebook']) {
+      const source = await getSource(key);
+      kinds.add(source.kind);
+      const published = await request(app)
+        .post('/api/v1/hr/recruitment-form/links')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ sourceId: source.id });
+      expect(published.status, `${key} (${source.kind}) could not be published to`).toBe(200);
+      const link = (published.body as { data: RecruitmentFormDto }).data.links.find(
+        (l) => l.sourceId === source.id,
+      );
+      // One form, one token per platform: the URL differs, what it opens does not.
+      expect(link?.url, `${key} has no application URL`).toMatch(/\/apply\/[0-9a-f]{32}$/);
+    }
+    // If a future seed made them all one kind, the loop above would stop proving anything.
+    expect([...kinds].sort()).toEqual(['integration', 'manual', 'publicForm']);
   });
 });
 

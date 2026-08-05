@@ -22,12 +22,7 @@ import { ErrorState } from '../../../../../shared/ui/states/ErrorState';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { PlusIcon, TrashIcon } from '../../../../../shared/ui/icons';
 import { fieldLabel } from '../components/FormFieldInput';
-import {
-  useGenerateFormLink,
-  useRecruitmentForm,
-  useRevokeFormLink,
-  useUpdateRecruitmentForm,
-} from '../api/recruitment-form-queries';
+import { useRecruitmentForm, useUpdateRecruitmentForm } from '../api/recruitment-form-queries';
 
 const isLocked = (field: RecruitmentFormField): boolean =>
   field.type === 'builtin' && RECRUITMENT_FORM_MANDATORY.includes(field.key);
@@ -37,8 +32,6 @@ export const RecruitmentFormPage = (): JSX.Element => {
   const locale = useAppSelector((state) => state.locale.locale);
   const { data: form, isLoading, isError, error, refetch } = useRecruitmentForm();
   const save = useUpdateRecruitmentForm();
-  const generate = useGenerateFormLink();
-  const revoke = useRevokeFormLink();
 
   const [fields, setFields] = useState<RecruitmentFormField[]>([]);
   const [internalSourceId, setInternalSourceId] = useState('');
@@ -107,10 +100,6 @@ export const RecruitmentFormPage = (): JSX.Element => {
         },
       },
     );
-  };
-
-  const copy = (url: string): void => {
-    void navigator.clipboard.writeText(url).then(() => toast.success(t('recruitmentForm.copied')));
   };
 
   return (
@@ -252,58 +241,6 @@ export const RecruitmentFormPage = (): JSX.Element => {
               {t('recruitmentForm.addCustom')}
             </Button>
           </div>
-        </CardBody>
-      </Card>
-
-      <Card>
-        <CardHeader title={t('recruitmentForm.links')} description={t('recruitmentForm.linksHint')} />
-        <CardBody className="space-y-3">
-          {form.links.map((link) => (
-            <div
-              key={link.sourceId}
-              className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 p-3 dark:border-slate-700"
-            >
-              <span className="min-w-40 text-sm font-medium text-slate-800 dark:text-slate-100">
-                {link.sourceName[locale]}
-              </span>
-              {link.url === null ? (
-                <span className="text-sm text-slate-400">{t('recruitmentForm.noLink')}</span>
-              ) : (
-                <>
-                  <code
-                    className="flex-1 truncate rounded bg-slate-50 px-2 py-1 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300"
-                    dir="ltr"
-                  >
-                    {link.url}
-                  </code>
-                  <span className="text-xs text-slate-500 dark:text-slate-400">
-                    {t('recruitmentForm.submissions')}: {link.submissions}
-                  </span>
-                  <Button size="sm" variant="secondary" onClick={() => copy(link.url ?? '')}>
-                    {t('recruitmentForm.copy')}
-                  </Button>
-                </>
-              )}
-              <Button
-                size="sm"
-                variant="secondary"
-                loading={generate.isPending}
-                onClick={() => generate.mutate(link.sourceId)}
-              >
-                {t(link.url === null ? 'recruitmentForm.generate' : 'recruitmentForm.regenerate')}
-              </Button>
-              {link.url !== null && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  loading={revoke.isPending}
-                  onClick={() => revoke.mutate(link.sourceId)}
-                >
-                  {t('recruitmentForm.revoke')}
-                </Button>
-              )}
-            </div>
-          ))}
         </CardBody>
       </Card>
 

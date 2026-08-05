@@ -4,7 +4,7 @@
 // image is a tall SVG, a wide PNG, or missing entirely — so a column of them lines up and a row's
 // height never depends on what someone uploaded. `object-contain` is what keeps a non-square logo
 // whole instead of cropping it to fit.
-import { type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { cn } from '../lib/cn';
 
 const SIZES = {
@@ -30,19 +30,39 @@ export const Avatar = ({
   /** `circle` for people, `rounded` for things — a squared-off logo reads as a logo. */
   shape?: 'circle' | 'rounded';
   className?: string;
-}): JSX.Element => (
-  <span
-    className={cn(
-      SIZES[size],
-      shape === 'circle' ? 'rounded-full' : 'rounded-lg',
-      'grid shrink-0 place-items-center overflow-hidden border border-slate-200 bg-white text-slate-400 dark:border-slate-700 dark:bg-slate-800',
-      className,
-    )}
-  >
-    {src === null || src === undefined ? (
-      fallback
-    ) : (
-      <img src={src} alt={alt} className="h-full w-full object-contain" loading="lazy" />
-    )}
-  </span>
-);
+}): JSX.Element => {
+  // A URL is not a guarantee of an image. A stored file can be deleted, a signed link can expire
+  // between being issued and being fetched, a storage bucket can be unreachable — and the browser
+  // answers all of them the same way: the broken-image glyph, in the middle of the table, next to
+  // the alt text. That is the worst possible rendering of "no icon", and the component already
+  // knows what the good one looks like. So a load failure falls back to the same glyph a missing
+  // icon gets.
+  const [failed, setFailed] = useState(false);
+  // A new URL deserves a fresh attempt — otherwise re-uploading a logo would keep showing the
+  // fallback until the page is reloaded.
+  useEffect(() => setFailed(false), [src]);
+  const showImage = src !== null && src !== undefined && !failed;
+
+  return (
+    <span
+      className={cn(
+        SIZES[size],
+        shape === 'circle' ? 'rounded-full' : 'rounded-lg',
+        'grid shrink-0 place-items-center overflow-hidden border border-slate-200 bg-white text-slate-400 dark:border-slate-700 dark:bg-slate-800',
+        className,
+      )}
+    >
+      {showImage ? (
+        <img
+          src={src}
+          alt={alt}
+          className="h-full w-full object-contain"
+          loading="lazy"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        fallback
+      )}
+    </span>
+  );
+};

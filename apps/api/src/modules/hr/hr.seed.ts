@@ -29,24 +29,22 @@ import { migrateRecruitmentLegacy } from './recruitment/recruitment.migration';
 import { ensureLeaveAttachmentsCategory } from './leave-management/leave-requests';
 import { migrateLeaveModule } from './leave-management/leave.migration';
 
-// `kind` is a LABEL, not a gate. Every active source can be published to, whatever its kind says,
-// because publishing is the same operation for all of them: one form, one token per source. What
-// the label does say is how applications normally arrive — recorded by a recruiter from inside the
-// system (`manual`), or sent to us by a candidate who followed a link we posted (`publicForm`).
+// `kind` says what a platform IS — how applications from it normally arrive. It does not say
+// whether the platform has an application link: every active source can be published to, whatever
+// its kind, because publishing is the same operation for all of them (one form, one token per
+// source) and nothing in the API consults `kind` to decide it.
 //
-// Which is why the four platforms below are `publicForm`. Facebook was `manual` and LinkedIn,
-// Wuzzuf and Forasna were `integration`, and both were wrong on the same point: we recruit through
-// all four by posting a link on them, and a fresh install should be able to post that link the
-// moment it boots. `integration` in particular promised an inbound API feed that does not exist —
-// nothing reads applications from those sites, we advertise on them.
+// So these classifications describe the domain and are left alone. Wuzzuf, LinkedIn and Forasna
+// are job boards we integrate with; Facebook is a channel a recruiter records from; the website and
+// the mobile app are our own public forms. All six can carry a link regardless.
 const SOURCES: CreateApplicantSource[] = [
   { key: 'internalHr', name: { en: 'Internal HR', ar: 'الموارد البشرية الداخلية' }, kind: 'manual', requiresDetail: false },
   { key: 'companyWebsite', name: { en: 'Company Website', ar: 'موقع الشركة' }, kind: 'publicForm', requiresDetail: false },
   { key: 'mobileApp', name: { en: 'Mobile Application', ar: 'تطبيق الهاتف' }, kind: 'publicForm', requiresDetail: false },
-  { key: 'linkedin', name: { en: 'LinkedIn', ar: 'لينكدإن' }, kind: 'publicForm', requiresDetail: false },
-  { key: 'wuzzuf', name: { en: 'Wuzzuf', ar: 'وظف' }, kind: 'publicForm', requiresDetail: false },
-  { key: 'forasna', name: { en: 'Forasna', ar: 'فرصنا' }, kind: 'publicForm', requiresDetail: false },
-  { key: 'facebook', name: { en: 'Facebook', ar: 'فيسبوك' }, kind: 'publicForm', requiresDetail: false },
+  { key: 'linkedin', name: { en: 'LinkedIn', ar: 'لينكدإن' }, kind: 'integration', requiresDetail: false },
+  { key: 'wuzzuf', name: { en: 'Wuzzuf', ar: 'وظف' }, kind: 'integration', requiresDetail: false },
+  { key: 'forasna', name: { en: 'Forasna', ar: 'فرصنا' }, kind: 'integration', requiresDetail: false },
+  { key: 'facebook', name: { en: 'Facebook', ar: 'فيسبوك' }, kind: 'manual', requiresDetail: false },
   { key: 'referral', name: { en: 'Referral', ar: 'ترشيح' }, kind: 'manual', requiresDetail: true },
   { key: 'walkIn', name: { en: 'Walk-in', ar: 'حضور شخصي' }, kind: 'manual', requiresDetail: false },
   { key: 'agency', name: { en: 'Recruitment Agency', ar: 'وكالة توظيف' }, kind: 'manual', requiresDetail: true },

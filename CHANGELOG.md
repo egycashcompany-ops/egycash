@@ -71,6 +71,29 @@ its entry here in the same PR.
   (`nav-rows`), so a row behaves identically wherever it is rendered and the ⌘K palette and
   pinned favourites are untouched in either.
 
+- **IT module, slice IT-1 — catalogs, vendors and the asset register** (frozen design v1.2,
+  §15). New `it` module manifest with kind-discriminated `it_catalog_items` (asset + ticket
+  categories, one `itCatalog.manage` grant), IT-owned vendors with embedded contacts and
+  server-side `search`, and the asset register: server-allocated permanent codes
+  (`AST-00001`, atomic `it_sequences` counter), derived status (`inStock` — no write path
+  accepts a status), reference guards against active categories and vendors, embedded purchase
+  and warranty facts, branch data-scoping, scan resolve by code, and QR label sheets (QR payload
+  is the plain asset code; PDF via the platform chromium driver, printable HTML fallback without
+  it — no new dependency). Events `it.asset.registered`/`.updated` join the generated catalog
+  and the automation trigger picker. The IT navigation category ships empty on purpose — app
+  rows arrive with the web slice so the sidebar never links to pages that do not exist.
+
+- **IT module — Architecture & Domain Design (design only, no implementation).**
+  `docs/12-planning/it-module-design.md` covers the full MVP surface — asset management with QR
+  identification and custody lifecycle, help desk with SLA, preventive/corrective maintenance
+  with a minimal spare-parts ledger, software and license management, warranty and vendors, and
+  the module dashboards — as entities, relationships, workflows, permissions, events, APIs,
+  audit actions and the three ADRs implementation will record. Every capability rests on an
+  existing platform service (RBAC, data scopes, audit, files, notifications, event bus,
+  automation, scheduler, settings, sequences, PDF, QR, navigation, web kit); the document's §1
+  is the reuse contract that keeps it that way. Draft v1.0, awaiting owner review — nothing is
+  implemented before approval.
+
 - **`npm run seed:demo` — sixty synthetic candidates, ten resting at each recruitment stage.** The
   boards, queues and counters had nothing to show on a fresh database. The demo cohorts sit at the
   ID gate, in screening, at the first interview, at the open evaluations, holding a sent offer, and

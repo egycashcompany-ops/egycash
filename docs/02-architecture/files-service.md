@@ -28,9 +28,18 @@ Binary data never enters MongoDB. Providers implement one interface
 > Railway topology is affected.
 
 **Signed-URL abstraction:** `GET /:id/download` always answers with a short-lived URL
-(TTL `SIGNED_URL_TTL_SECONDS`). Cloud providers presign natively; disk providers fall back
+(TTL `SIGNED_URL_TTL_SECONDS`). Cloud providers *can* presign natively; disk providers fall back
 to the platform's own HMAC-signed streaming endpoint — callers cannot tell the difference,
 and no file is ever served statically.
+
+**Whose origin the URL is on** is decided by `STORAGE_PRESIGNED_URLS`, and it defaults to **off**.
+A ticket is handed to the browser, so it must be a URL the app's own document is allowed to load —
+and the app's Content-Security-Policy names `'self'`, not the store. With presigning on, a cloud
+driver returns an absolute URL on the bucket's origin, the browser refuses it before issuing any
+request, and **the server sees nothing at all**: the ticket is 200, the object is 200, and every
+screen showing a stored image falls back to its "no image" state. Off, the app signs the URL itself
+and streams the bytes, which is same-origin under every driver — so what works on a disk works on
+S3. Turn it on only where the store's origin is genuinely in the deployed CSP.
 
 ## 2. Metadata
 

@@ -206,7 +206,15 @@ beforeAll(async () => {
   const techRole = await rbacService.createRole(
     {
       name: { en: 'IT technician', ar: 'فني دعم' },
-      permissionKeys: ['itTicket.view', 'itTicket.edit', 'itTicket.assign', 'itTicket.close'],
+      permissionKeys: [
+        'itTicket.view',
+        'itTicket.edit',
+        'itTicket.assign',
+        'itTicket.close',
+        // Attachments ride the platform's own file grants (ADR-023) — no IT file permission
+        // exists. Held by both principals below so a refusal can only be the ENTITY check.
+        'file.view', 'file.create', 'file.download',
+      ],
     },
     adminId,
   );
@@ -219,7 +227,7 @@ beforeAll(async () => {
   const requesterRole = await rbacService.createRole(
     {
       name: { en: 'Staff', ar: 'موظف' },
-      permissionKeys: ['itTicket.view', 'itTicket.create'],
+      permissionKeys: ['itTicket.view', 'itTicket.create', 'file.view', 'file.create', 'file.download'],
     },
     adminId,
   );

@@ -13,6 +13,7 @@ export { buildFilesRouter, buildFileCategoriesRouter } from './file.routes';
 export { type FileDoc } from './file.model';
 export {
   registerFileEntityAuthorizer,
+  registerFileEntityAuthorizers,
   hasFileEntityAuthorizer,
   clearFileEntityAuthorizers,
   authorizeFileEntity,

@@ -70,11 +70,11 @@ export const bootPlatform = async (options: BootOptions = {}): Promise<void> => 
       const { registerJobHandler } = await import('../../infrastructure/queue/jobs');
       registerJobHandler(jobHandler.queue, jobHandler.jobName, jobHandler.handler);
     }
-    for (const authorizer of manifest.fileEntityAuthorizers ?? []) {
+    if (manifest.fileEntityAuthorizers !== undefined) {
       // ADR-023 — the module answers "may this caller see the thing this file belongs to?".
       // Registered with the id from the MANIFEST, so a module cannot claim another's namespace.
-      const { registerFileEntityAuthorizer } = await import('../files/file-authorizers');
-      registerFileEntityAuthorizer(manifest.id, authorizer);
+      const { registerFileEntityAuthorizers } = await import('../files/file-authorizers');
+      registerFileEntityAuthorizers(manifest.id, manifest.fileEntityAuthorizers);
     }
   }
 

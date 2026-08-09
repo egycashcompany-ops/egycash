@@ -11,6 +11,7 @@ import {
   clearFileEntityAuthorizers,
   hasFileEntityAuthorizer,
   registerFileEntityAuthorizer,
+  registerFileEntityAuthorizers,
 } from './file-authorizers';
 import { type AuthContext } from '../../shared/types';
 
@@ -72,11 +73,36 @@ describe('the file entity authorizer registry', () => {
     await expect(authorizeFileEntity(ctx, ref('hr', 'ticket'), 'read')).resolves.toBe(true);
   });
 
-  it('refuses a duplicate registration at BOOT rather than silently picking one', () => {
-    registerFileEntityAuthorizer('it', { entityType: 'ticket', authorize: async () => true });
+  it('refuses a manifest that names the same entity type twice — a real declaration mistake', () => {
     expect(() =>
-      registerFileEntityAuthorizer('it', { entityType: 'ticket', authorize: async () => false }),
+      registerFileEntityAuthorizers('it', [
+        { entityType: 'ticket', authorize: async () => true },
+        { entityType: 'ticket', authorize: async () => false },
+      ]),
     ).toThrow(/duplicate/i);
+  });
+
+  // A test harness boots the platform more than once in a process. Throwing there would turn a
+  // legitimate re-boot into a failure, so re-registering a module REPLACES its claims — the same
+  // last-wins behaviour `registerModule` itself has.
+  it('replaces a module’s own claims on re-registration instead of throwing', async () => {
+    registerFileEntityAuthorizers('it', [{ entityType: 'ticket', authorize: async () => true }]);
+    await expect(authorizeFileEntity(ctx, ref('it', 'ticket'), 'read')).resolves.toBe(true);
+    registerFileEntityAuthorizers('it', [{ entityType: 'ticket', authorize: async () => false }]);
+    await expect(authorizeFileEntity(ctx, ref('it', 'ticket'), 'read')).resolves.toBe(false);
+  });
+
+  it('a re-registration drops types the module no longer claims, and leaves others alone', async () => {
+    registerFileEntityAuthorizers('it', [
+      { entityType: 'ticket', authorize: async () => false },
+      { entityType: 'ticketComment', authorize: async () => false },
+    ]);
+    registerFileEntityAuthorizer('hr', { entityType: 'employeeFile', authorize: async () => false });
+    registerFileEntityAuthorizers('it', [{ entityType: 'ticket', authorize: async () => false }]);
+    expect(hasFileEntityAuthorizer('it', 'ticket')).toBe(true);
+    expect(hasFileEntityAuthorizer('it', 'ticketComment')).toBe(false);
+    // Another module's registration survives — the key is namespaced.
+    expect(hasFileEntityAuthorizer('hr', 'employeeFile')).toBe(true);
   });
 
   it('never caches a decision — a revoked grant takes effect on the next question', async () => {

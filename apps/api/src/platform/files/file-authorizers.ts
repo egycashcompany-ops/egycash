@@ -46,22 +46,45 @@ const key = (moduleId: string, entityType: string): string => `${moduleId}/${ent
 const registry = new Map<string, FileEntityAuthorizer>();
 
 /**
- * Register one module's authorizer. Called from the boot sequence with the module id taken from
- * the MANIFEST, so a module cannot claim another module's namespace.
+ * Register one module's authorizers, as a SET — the shape a manifest declares them in.
  *
- * A duplicate registration is a boot error rather than a silent last-wins: two authorizers for one
- * entity type means one of them is being ignored, and which one would depend on import order.
+ * Called from the boot sequence with the module id taken from the MANIFEST, so a module cannot
+ * claim another module's namespace.
+ *
+ * Two properties, and taking the whole list is what gives both:
+ *
+ *   * a manifest that names the same entity type twice is a BOOT ERROR — one of the two would be
+ *     silently ignored, and which one would depend on array order;
+ *   * re-registering the same module REPLACES its previous entries, so booting the platform twice
+ *     in one process (a test harness does this) behaves like `registerModule` itself rather than
+ *     throwing on the second call.
  */
+export const registerFileEntityAuthorizers = (
+  moduleId: string,
+  authorizers: readonly FileEntityAuthorizer[],
+): void => {
+  const seen = new Set<string>();
+  for (const authorizer of authorizers) {
+    if (seen.has(authorizer.entityType)) {
+      throw new Error(`duplicate file entity authorizer for ${key(moduleId, authorizer.entityType)}`);
+    }
+    seen.add(authorizer.entityType);
+  }
+  // Drop this module's previous claims before re-asserting them, so a re-boot replaces rather
+  // than accumulates. Another module's entries are untouched — the key is namespaced.
+  for (const id of [...registry.keys()]) {
+    if (id.startsWith(`${moduleId}/`)) registry.delete(id);
+  }
+  for (const authorizer of authorizers) {
+    registry.set(key(moduleId, authorizer.entityType), authorizer);
+  }
+};
+
+/** Single-authorizer convenience, for tests and for a module with exactly one type. */
 export const registerFileEntityAuthorizer = (
   moduleId: string,
   authorizer: FileEntityAuthorizer,
-): void => {
-  const id = key(moduleId, authorizer.entityType);
-  if (registry.has(id)) {
-    throw new Error(`duplicate file entity authorizer for ${id}`);
-  }
-  registry.set(id, authorizer);
-};
+): void => registerFileEntityAuthorizers(moduleId, [authorizer]);
 
 /** Whether an entity type is GUARDED — the switch between the new rules and the previous ones. */
 export const hasFileEntityAuthorizer = (moduleId: string, entityType: string): boolean =>

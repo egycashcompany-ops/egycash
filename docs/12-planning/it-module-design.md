@@ -220,7 +220,7 @@ person's laptop). Maintenance history = the asset's orders + §2.3 events.
 orderId? (consumption is always order-tied), at, byUserId, note? }`. `onHandQty` is denormalized
 with the same atomic `$inc` write that inserts the movement; consumption below zero is a
 `BusinessRuleError`. This is a **minimal store ledger, deliberately not inventory accounting**
-(no valuation, no locations, no reservations) — ADR-023 records the boundary.
+(no valuation, no locations, no reservations) — ADR-024 records the boundary.
 
 ### 2.8 Software & Licenses
 
@@ -517,15 +517,29 @@ vendors, products, parts ship with `search` from day one, per ADR-019 rule 5).
 | ADR | Records |
 |---|---|
 | **ADR-021 — IT asset custody & history** | append-only event chain as the business record; derived status; no hard delete (FR-2/FR-4/FR-5); why audit logs are not the custody chain (D3) |
-| **ADR-022 — Help-desk SLA & ticket lifecycle placement** | SLA targets as priority data + snapshot-on-create; set-once breach stamps; sweep cadence; **and the recorded decision that ticket states are code-defined in the module, not the (unbuilt) ADR-011 platform engine** — with the migration note for the day the platform engine exists |
-| **ADR-023 — Minimal spare-parts ledger** | movements ledger + denormalized on-hand; explicitly *not* inventory accounting; the boundary Accounting will inherit |
+| **ADR-022 — Help-desk SLA & ticket lifecycle placement** | SLA targets as priority data + snapshot-on-create; set-once breach stamps; sweep cadence; **and the recorded decision that ticket states are code-defined in the module, not the (unbuilt) ADR-011 platform engine** — with the migration note for the day the platform engine exists · **STILL UNWRITTEN — see the note below** |
+| **ADR-024 — Minimal spare-parts ledger** | movements ledger + denormalized on-hand; explicitly *not* inventory accounting; the boundary Procurement and Warehouses will inherit · [written](../03-decisions/ADR-024-minimal-spare-parts-ledger.md) with IT-4 |
 
-> **Renumbered 2026-08-09 (IT-2) — numbering only.** This table reserved 020/021/022 when the
-> design froze on 2026-08-03. **ADR-020** was then taken by
-> [Shared file storage](../03-decisions/ADR-020-shared-file-storage.md) (Accepted 2026-08-05), and
-> ADR numbers are sequential and never reused. The three IT ADRs therefore shift to **021/022/023**,
-> and every in-document reference moved with them. No decision content changed on either side, and
-> nothing already delivered depends on the old numbers.
+> **ADR-022 is a deliberate debt, not an omission.** IT-3 shipped and merged (PR #153) without it:
+> the decision it records — ticket states are code-defined in the module rather than in the unbuilt
+> ADR-011 engine — was taken and implemented, but the owner has not yet approved a text for it.
+> It is left listed here, unwritten and visible, rather than dropped or back-filled with a
+> reconstructed decision. Whoever writes it should read `ticket-lifecycle.ts` and the IT-3 PR
+> discussion, not invent a rationale.
+
+> **Renumbered twice — numbering only, no decision content changed either time.**
+>
+> 1. **2026-08-09 (IT-2).** This table reserved 020/021/022 when the design froze on 2026-08-03.
+>    **ADR-020** was taken by
+>    [Shared file storage](../03-decisions/ADR-020-shared-file-storage.md) (Accepted 2026-08-05),
+>    so the three IT ADRs shifted to **021/022/023**.
+> 2. **2026-08-09 (IT-4).** **ADR-023** was then taken by
+>    [entity-derived file authorization](../03-decisions/ADR-023-entity-derived-file-authorization.md)
+>    (Accepted 2026-08-09) — a platform decision that had to land before IT-3's ticket attachments
+>    were safe. The spare-parts ledger therefore moves to **ADR-024**, matching §15.
+>
+> ADR numbers follow the order decisions are TAKEN, never the order slices ship. Nothing already
+> delivered depends on an old number.
 
 ## 15. Delivery slices (post-approval; each slice = contracts + api + tests, PR-reviewed; web follows)
 

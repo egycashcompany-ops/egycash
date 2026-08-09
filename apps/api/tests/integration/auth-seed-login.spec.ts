@@ -10,6 +10,7 @@ import { SettingKeys, type MeDto } from '@ecms/contracts';
 import { type Express } from 'express';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { buildApp } from '../../src/app';
+import { moduleManifests } from '../../src/modules';
 import { env } from '../../src/infrastructure/config/env';
 import { seedDevData } from '../../src/seed-data';
 import { settingsService } from '../../src/platform/settings';
@@ -48,7 +49,15 @@ const doLogin = async (email: string, password: string) => {
 };
 
 beforeAll(async () => {
-  await bootPlatform({ mongoUri: await resolveMongoUri() });
+  // WITH THE MODULE MANIFESTS, exactly as `seed.ts` boots before calling `seedDevData` — this
+  // suite's whole claim is that it exercises the real seed path, and the boot is half of it.
+  //
+  // Booting without them used to look equivalent because navigation was not permission-filtered:
+  // the sidebar came back complete whether or not the caller could open anything in it. It is
+  // filtered now, and a module-less boot registers only the platform permissions — so `super-admin`
+  // (whose grants track the registry) genuinely held nothing in HR, Fleet or IT, and the assertion
+  // below started failing on a sidebar that was correct for that boot and wrong for a real seed.
+  await bootPlatform({ mongoUri: await resolveMongoUri(), modules: moduleManifests });
   app = buildApp();
   await seedDevData(); // the real seed — no external enforcement toggle
 }, 180_000);

@@ -5,7 +5,7 @@ import { created, noContent, ok, okPage } from '../../infrastructure/http/respon
 import { validated } from '../../infrastructure/http/validate';
 import { ValidationError } from '../../shared/errors';
 import { scopeSelector } from '../../shared/types';
-import { authContext } from '../auth';
+import { authContext, authContextOrNull } from '../auth';
 import { fileService, type UploadedBinary } from './file.service';
 
 type IdParam = { id: string };
@@ -42,20 +42,25 @@ export const replaceFile = async (req: Request, res: Response): Promise<void> =>
 export const listFiles = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { query } = validated<never, ListFilesQuery>(req);
-  const page = await fileService.list(query, scopeSelector(ctx, 'file.view'));
+  const page = await fileService.list(query, scopeSelector(ctx, 'file.view'), ctx);
   okPage(res, page, (doc) => fileService.toDto(doc));
 };
 
 export const getFile = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { params } = validated<never, never, IdParam>(req);
-  ok(res, fileService.toDto(await fileService.getById(params.id, scopeSelector(ctx, 'file.view'))));
+  ok(
+    res,
+    fileService.toDto(
+      await fileService.getById(params.id, scopeSelector(ctx, 'file.view'), ctx),
+    ),
+  );
 };
 
 export const listFileVersions = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { params } = validated<never, never, IdParam>(req);
-  const versions = await fileService.listVersions(params.id, scopeSelector(ctx, 'file.view'));
+  const versions = await fileService.listVersions(params.id, scopeSelector(ctx, 'file.view'), ctx);
   ok(
     res,
     versions.map((doc) => fileService.toDto(doc)),
@@ -108,7 +113,14 @@ export const downloadFile = async (req: Request, res: Response): Promise<void> =
 
 export const streamSignedFile = async (req: Request, res: Response): Promise<void> => {
   const { params, query } = validated<never, { e: number; s: string }, IdParam>(req);
-  const { doc, stream } = await fileService.openSignedStream(params.id, query.e, query.s);
+  // Null for an anonymous caller — the ordinary capability-URL case. A guarded file (ADR-023)
+  // refuses that and requires the session the ticket was minted for.
+  const { doc, stream } = await fileService.openSignedStream(
+    params.id,
+    query.e,
+    query.s,
+    authContextOrNull(req),
+  );
   // The one place the app hands bytes to a browser that is very likely on ANOTHER origin: the web
   // app is served from its own host, so an `<img src>` pointing here is a cross-origin load.
   // Helmet's default `Cross-Origin-Resource-Policy: same-origin` blocks precisely that — Chrome

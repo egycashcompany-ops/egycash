@@ -70,6 +70,12 @@ export const bootPlatform = async (options: BootOptions = {}): Promise<void> => 
       const { registerJobHandler } = await import('../../infrastructure/queue/jobs');
       registerJobHandler(jobHandler.queue, jobHandler.jobName, jobHandler.handler);
     }
+    if (manifest.fileEntityAuthorizers !== undefined) {
+      // ADR-023 — the module answers "may this caller see the thing this file belongs to?".
+      // Registered with the id from the MANIFEST, so a module cannot claim another's namespace.
+      const { registerFileEntityAuthorizers } = await import('../files/file-authorizers');
+      registerFileEntityAuthorizers(manifest.id, manifest.fileEntityAuthorizers);
+    }
   }
 
   // Tier 1 — identity & authorization.

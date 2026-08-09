@@ -5,6 +5,7 @@ import { type Router } from 'express';
 import { PERMISSION_KEY_PATTERN, type LocalizedString, type PermissionDef } from '@ecms/contracts';
 import { type EventHandler } from './event-bus';
 import { type ScheduledTaskDeclaration } from '../scheduler';
+import { type FileEntityAuthorizer } from '../files/file-authorizers';
 import { type JobHandler, type QueueName } from '../../infrastructure/queue/jobs';
 
 /** Bumped by ADR-governed platform-contract changes (Review R25). */
@@ -49,6 +50,14 @@ export interface ModuleManifest {
   scheduledTasks?: ScheduledTaskDeclaration[];
   /** Worker-side queue handlers the module owns — job names must carry the `<id>.` prefix. */
   jobHandlers?: JobHandlerRegistration[];
+  /**
+   * Entity types whose files this module authorizes (ADR-023).
+   *
+   * Declaring one makes that entity type GUARDED: the Files service asks this module before
+   * returning metadata or bytes, on every path, and denies on any failure. Declaring none leaves
+   * the module's files under the pre-ADR-023 rules exactly as they were.
+   */
+  fileEntityAuthorizers?: FileEntityAuthorizer[];
   seed?: () => Promise<void>;
 }
 

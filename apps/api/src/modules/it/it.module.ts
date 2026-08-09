@@ -13,6 +13,7 @@ import { registerItSettings } from './it.settings';
 import {
   buildItTicketPrioritiesRouter,
   buildItTicketsRouter,
+  itFileEntityAuthorizers,
   slaBreachSweep,
   ticketAutoCloseSweep,
 } from './tickets';
@@ -159,6 +160,10 @@ export const itModule: ModuleManifest = {
       },
     },
   ],
+  // ADR-023 — IT answers the Files service's "may this caller see the owning entity?" for its two
+  // file-carrying types. Declaring them is what makes ticket and comment attachments safe on EVERY
+  // path, including a direct file id and a download ticket.
+  fileEntityAuthorizers: itFileEntityAuthorizers,
   eventSubscriptions: [
     {
       // Design §9.1 / FR-13 — leaving the company does NOT return the assets. The leaver's open

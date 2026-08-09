@@ -15,6 +15,7 @@ import { Skeleton } from '../../../shared/ui/Skeleton';
 import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
 import { formatDateTime } from '../../../shared/lib/format';
+import { CommentAttachments } from './TicketAttachments';
 
 const TONE: Record<string, 'neutral' | 'brand' | 'success' | 'warning' | 'danger' | 'info'> = {
   opened: 'info',
@@ -100,6 +101,8 @@ export const TicketStream = ({
                 {entry.notes}
               </p>
             )}
+            {/* Only a comment can carry files; a status change has nothing to attach. */}
+            {entry.type === 'commented' && <CommentAttachments commentId={entry.id} />}
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
               {entry.actorName === ''
                 ? t('it.custody.systemActor')

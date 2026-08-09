@@ -235,7 +235,12 @@ class HiringDocumentsService {
   }
 
   /** All versions of a type's document (original + replacements), newest handling by the Files service. */
-  async listDocumentVersions(id: string, typeId: string, scope: ScopeSelector): Promise<FileDto[]> {
+  async listDocumentVersions(
+    id: string,
+    typeId: string,
+    scope: ScopeSelector,
+    ctx: AuthContext,
+  ): Promise<FileDto[]> {
     const before = await hiringDocumentsRepository.getById(id, scope);
     const current = before.documents.find((d) => String(d.typeId) === typeId);
     if (current === undefined) {
@@ -243,7 +248,9 @@ class HiringDocumentsService {
         { field: 'typeId', code: 'INVALID', message: 'no document of this type' },
       ]);
     }
-    const versions = await fileService.listVersions(String(current.fileId));
+    // `ctx` threaded for ADR-023: the Files service asks the owning module before returning
+    // versions. Hiring documents register no authorizer, so this behaves exactly as before.
+    const versions = await fileService.listVersions(String(current.fileId), undefined, ctx);
     return versions.map((f) => fileService.toDto(f));
   }
 

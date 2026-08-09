@@ -534,10 +534,19 @@ vendors, products, parts ship with `search` from day one, per ADR-019 rule 5).
 | IT-1 | contracts (DTOs/schemas/permissions/events) · module skeleton + manifest + nav category · catalog items (asset + ticket categories) · vendors · asset register + sequences + QR/labels |
 | IT-2 | custody: assign/return/transfer/dispose · asset events/history · HR exit subscription · ADR-021 |
 | IT-3 | help desk: priorities (with SLA targets), tickets, event/conversation stream, attachments, SLA + auto-close sweeps · ADR-022 |
-| IT-4 | maintenance: plans, orders, spare parts + movements, preventive sweep · ADR-023 |
+| IT-4 | maintenance: plans, orders, spare parts + movements, preventive sweep · ADR-024 |
 | IT-5 | software products, installations, licenses, expiry sweep |
 | IT-6 | dashboards, warranty report, asset export, notification templates, seed data |
 | ITW-1…6 | web app per area (skeleton/nav → assets → tickets → maintenance → software → dashboards), ar/en + RTL, ADR-019-compliant pickers |
+
+> **ADR numbering.** IT-4's ADR moved from 023 to **024**: the platform slice
+> [ADR-023 — entity-derived file authorization](../03-decisions/ADR-023-entity-derived-file-authorization.md)
+> landed first, and numbers follow the order decisions are taken, never the order slices ship.
+> IT-3 keeps ADR-022; later IT ADRs continue from 025. Numbering only — no slice content changes.
+>
+> That platform slice is also what makes IT-3's `attachments` deliverable above real: ticket and
+> comment attachments are only safe once file authorization derives from the owning entity, so
+> IT-3 is not complete until it registers its two authorizers.
 
 ## 16. Deferred architectural debt — the post-IT roadmap
 

@@ -60,6 +60,31 @@ export const authenticate: RequestHandler = (
     .catch(next);
 };
 
+/**
+ * Authenticate IF a token is offered, and continue anonymously if not (ADR-023).
+ *
+ * Exists for exactly one route: the signed file stream. That endpoint is unauthenticated by
+ * design — a capability URL is what lets a branding logo load in an `<img>` from another origin —
+ * but a file whose owning entity is guarded needs the caller's identity to check the ticket's
+ * subject and re-run the module's authorizer. Demanding a session outright would break every
+ * unguarded embed; ignoring one offered would make the guarded case impossible.
+ *
+ * A token that is present but INVALID still fails: silently downgrading a bad credential to
+ * anonymous would let a guarded file be probed with a junk header instead of none.
+ */
+export const authenticateOptional: RequestHandler = (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): void => {
+  const header = req.headers.authorization;
+  if (header === undefined || !header.startsWith('Bearer ')) {
+    next();
+    return;
+  }
+  authenticate(req, res, next);
+};
+
 // The gate must let the user change the password, see who they are, and leave.
 // Matched against the path only (query string stripped) so no query value can fake an exemption.
 const GATE_EXEMPT = /\/auth\/(password\/change|me|logout|refresh)$/;

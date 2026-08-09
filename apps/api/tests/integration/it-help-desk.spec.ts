@@ -30,6 +30,7 @@ import {
   type ItTicketDto,
   type ItTicketEventDto,
   type ItTicketPriorityDto,
+  type FileDto,
 } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { buildApp } from '../../src/app';
@@ -205,7 +206,15 @@ beforeAll(async () => {
   const techRole = await rbacService.createRole(
     {
       name: { en: 'IT technician', ar: 'فني دعم' },
-      permissionKeys: ['itTicket.view', 'itTicket.edit', 'itTicket.assign', 'itTicket.close'],
+      permissionKeys: [
+        'itTicket.view',
+        'itTicket.edit',
+        'itTicket.assign',
+        'itTicket.close',
+        // Attachments ride the platform's own file grants (ADR-023) — no IT file permission
+        // exists. Held by both principals below so a refusal can only be the ENTITY check.
+        'file.view', 'file.create', 'file.download',
+      ],
     },
     adminId,
   );
@@ -222,12 +231,30 @@ beforeAll(async () => {
     },
     adminId,
   );
+  // File grants ride a SEPARATE, organization-scoped assignment, and the split is the point.
+  // `own` scope on files means "files you uploaded" (`createdBy`) — nothing to do with tickets —
+  // so putting `file.view` on the own-scoped ticket role would hide a technician's attachment from
+  // the requester for a reason ADR-023 has no part in. Widening the file grant is safe precisely
+  // BECAUSE the entity authorizer now decides; that is the seam earning its keep.
+  const fileRole = await rbacService.createRole(
+    {
+      name: { en: 'Help desk files', ar: 'ملفات الدعم' },
+      permissionKeys: ['file.view', 'file.create', 'file.download'],
+    },
+    adminId,
+  );
+  const grantFiles = async (userId: string): Promise<void> => {
+    await rbacService.ensureAssignment(userId, String(fileRole._id), 'organization');
+  };
+
   requesterUserId = await mkUser('hd-user@ecms.local');
   await rbacService.ensureAssignment(requesterUserId, String(requesterRole._id), 'own');
+  await grantFiles(requesterUserId);
   requesterToken = await login('hd-user@ecms.local');
 
   const otherId = await mkUser('hd-user2@ecms.local');
   await rbacService.ensureAssignment(otherId, String(requesterRole._id), 'own');
+  await grantFiles(otherId);
   otherRequesterToken = await login('hd-user2@ecms.local');
 
   const outsiderRole = await rbacService.createRole(
@@ -1138,5 +1165,138 @@ describe('the ticket queue', () => {
       .get('/api/v1/it/tickets')
       .set('Authorization', `Bearer ${outsiderToken}`);
     expect(res.status).toBe(403);
+  });
+});
+
+// ── FR-7 applied to BYTES (ADR-023) ─────────────────────────────────────────
+//
+// The stream already hides an internal note from the requester. These prove the same is true of a
+// file attached to that note — through the platform's own file endpoints, with the file id in
+// hand, holding every file permission there is. That combination is exactly what used to work.
+describe('ticket and comment attachments follow the entity, not the file (ADR-023)', () => {
+  let fileCategoryId = '';
+
+  const attach = (entityType: 'ticket' | 'ticketComment', entityId: string, token: string) =>
+    request(app)
+      .post('/api/v1/platform/files')
+      .set('Authorization', `Bearer ${token}`)
+      .field('moduleId', 'it')
+      .field('entityType', entityType)
+      .field('entityId', entityId)
+      .field('categoryId', fileCategoryId)
+      .attach('file', Buffer.from('screenshot-bytes'), {
+        filename: 'screen.png',
+        contentType: 'image/png',
+      });
+
+  beforeAll(async () => {
+    const category = await request(app)
+      .post('/api/v1/platform/file-categories')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        key: 'it-ticket-attachment',
+        name: { ar: 'مرفقات', en: 'Ticket attachments' },
+        allowedMimeTypes: ['image/*'],
+        maxSizeMb: 5,
+      });
+    expect(category.status).toBe(201);
+    fileCategoryId = data<{ id: string }>(category).id;
+  });
+
+  it('the requester reaches their OWN ticket’s attachment', async () => {
+    const ticket = await openTicket(requesterToken);
+    const uploaded = await attach('ticket', ticket.id, requesterToken);
+    expect(uploaded.status).toBe(201);
+    const file = data<FileDto>(uploaded);
+
+    const read = await request(app)
+      .get(`/api/v1/platform/files/${file.id}`)
+      .set('Authorization', `Bearer ${requesterToken}`);
+    expect(read.status).toBe(200);
+  });
+
+  it('another requester cannot — not even with the file id in hand', async () => {
+    const ticket = await openTicket(requesterToken);
+    const file = data<FileDto>(await attach('ticket', ticket.id, requesterToken));
+    const res = await request(app)
+      .get(`/api/v1/platform/files/${file.id}`)
+      .set('Authorization', `Bearer ${otherRequesterToken}`);
+    expect(res.status).toBe(404);
+    const download = await request(app)
+      .get(`/api/v1/platform/files/${file.id}/download?mode=ticket`)
+      .set('Authorization', `Bearer ${otherRequesterToken}`);
+    expect(download.status).toBe(404);
+  });
+
+  it('an INTERNAL note’s attachment is unreachable to the requester on every path (FR-7)', async () => {
+    const ticket = await openTicket(requesterToken);
+    await act(ticket.id, 'status', { to: 'inProgress' });
+    const note = await request(app)
+      .post(`/api/v1/it/tickets/${ticket.id}/comments`)
+      .set('Authorization', `Bearer ${techToken}`)
+      .send({ body: 'vendor RMA pending', visibility: 'internal' });
+    expect(note.status).toBe(201);
+    const commentId = data<ItTicketEventDto>(note).id;
+
+    const uploaded = await attach('ticketComment', commentId, techToken);
+    expect(uploaded.status).toBe(201);
+    const file = data<FileDto>(uploaded);
+
+    // The technician, who may read the note, reaches its file.
+    expect(
+      (
+        await request(app)
+          .get(`/api/v1/platform/files/${file.id}`)
+          .set('Authorization', `Bearer ${techToken}`)
+      ).status,
+    ).toBe(200);
+
+    // The requester — who owns the TICKET but may not read the note — cannot, on any path.
+    for (const path of [`/api/v1/platform/files/${file.id}`, `/api/v1/platform/files/${file.id}/versions`, `/api/v1/platform/files/${file.id}/download?mode=ticket`]) {
+      const res = await request(app).get(path).set('Authorization', `Bearer ${requesterToken}`);
+      expect(res.status, path).toBe(404);
+    }
+    // …and it is absent from the listing, rather than present-but-unreadable.
+    const listed = await request(app)
+      .get(`/api/v1/platform/files?moduleId=it&entityType=ticketComment&entityId=${commentId}`)
+      .set('Authorization', `Bearer ${requesterToken}`);
+    expect(listed.status).toBe(200);
+    expect(data<FileDto[]>(listed)).toHaveLength(0);
+  });
+
+  it('a PUBLIC comment’s attachment IS reachable by the ticket’s requester', async () => {
+    const ticket = await openTicket(requesterToken);
+    await act(ticket.id, 'status', { to: 'inProgress' });
+    const posted = await request(app)
+      .post(`/api/v1/it/tickets/${ticket.id}/comments`)
+      .set('Authorization', `Bearer ${techToken}`)
+      .send({ body: 'here is the fix', visibility: 'public' });
+    const commentId = data<ItTicketEventDto>(posted).id;
+    const file = data<FileDto>(await attach('ticketComment', commentId, techToken));
+
+    const res = await request(app)
+      .get(`/api/v1/platform/files/${file.id}`)
+      .set('Authorization', `Bearer ${requesterToken}`);
+    expect(res.status).toBe(200);
+  });
+
+  it('a download ticket for a ticket attachment is bound to the user it was minted for', async () => {
+    const ticket = await openTicket(requesterToken);
+    const file = data<FileDto>(await attach('ticket', ticket.id, requesterToken));
+    const issued = await request(app)
+      .get(`/api/v1/platform/files/${file.id}/download?mode=ticket`)
+      .set('Authorization', `Bearer ${requesterToken}`);
+    expect(issued.status).toBe(200);
+    const url = data<{ url: string }>(issued).url;
+    const path = url.slice(url.indexOf('/api/v1/'));
+
+    expect(
+      (await request(app).get(path).set('Authorization', `Bearer ${requesterToken}`)).status,
+    ).toBe(200);
+    // The same URL in someone else's hands, and anonymously.
+    expect(
+      (await request(app).get(path).set('Authorization', `Bearer ${otherRequesterToken}`)).status,
+    ).toBe(403);
+    expect((await request(app).get(path)).status).toBe(403);
   });
 });

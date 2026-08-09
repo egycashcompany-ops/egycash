@@ -3,9 +3,18 @@
 // categories they reference, it produces the grouped, ordered navigation the sidebar renders:
 //   • duplicates removed (first occurrence wins),
 //   • inactive applications dropped,
+//   • applications the caller lacks the permission for dropped,
 //   • grouped under their category, empty categories omitted,
 //   • categories ordered by sortOrder, applications ordered by sortOrder within each category.
-import { type MyApplicationCategoryDto } from '@ecms/contracts';
+//
+// The permission filter is what keeps navigation and authorization from disagreeing. A grant is an
+// administrator saying "this app is on offer to you"; the permission is RBAC saying whether you may
+// enter it. Before the filter, a user granted an application whose module they hold no permission in
+// saw the row and got a 403 on opening it — and a user restricted to one module still had every
+// other module advertised in their sidebar through their department's grants. Filtering here (not in
+// the client) means the answer is the same on every surface, and no per-user navigation data has to
+// be maintained to keep it true.
+import { type MyApplicationCategoryDto, type DataScope } from '@ecms/contracts';
 
 export interface EffectiveAppInput {
   id: string;
@@ -15,6 +24,8 @@ export interface EffectiveAppInput {
   sortOrder: number;
   status: 'active' | 'inactive';
   categoryId: string;
+  /** Permission needed to open it; null (or a pre-field catalog row) = no permission needed. */
+  permissionKey: string | null;
 }
 
 export interface EffectiveCategoryInput {
@@ -27,11 +38,16 @@ export interface EffectiveCategoryInput {
 export const assembleEffectiveApplications = (
   apps: EffectiveAppInput[],
   categories: EffectiveCategoryInput[],
+  permissions: Record<string, DataScope>,
 ): MyApplicationCategoryDto[] => {
-  // Dedupe by id (first wins) and keep only active applications.
+  // Dedupe by id (first wins), keep only active applications, and drop the ones the caller holds
+  // no permission for. `permissionKey === null` is the pre-field / open-page case and stays.
   const active = new Map<string, EffectiveAppInput>();
   for (const app of apps) {
-    if (app.status === 'active' && !active.has(app.id)) active.set(app.id, app);
+    if (app.status !== 'active' || active.has(app.id)) continue;
+    const key = app.permissionKey;
+    if (key !== null && permissions[key] === undefined) continue;
+    active.set(app.id, app);
   }
   const activeApps = [...active.values()];
 

@@ -175,6 +175,37 @@ const EnvSchema = z.object({
   /** Contracts D8/Q1 — chromium binary for worker-side PDF rendering; '' disables. */
   CHROMIUM_PATH: z.string().default(''),
 
+  /**
+   * Accounts confined to the HR module (see `hr-only-access.ts`): comma-separated EMAILS or
+   * USERNAMES — the two identifiers this system holds unique.
+   *
+   * The default names the four accounts this confinement was decided for, IN CODE rather than only
+   * in a deployment's environment. A restriction that has to be re-entered by hand to survive a new
+   * environment is a restriction that eventually is not there: the point of reconciling on every
+   * seed and every boot is that it cannot be forgotten, and a value only present in one `.env` can
+   * be. An email is exact and unique, so a default list reaches these four accounts and no others.
+   *
+   * Override it here (or set it empty) for a deployment these people do not belong to. An
+   * identifier matching no account is a logged warning rather than a boot failure — the same
+   * configuration reaches environments that legitimately do not have them (a fresh dev database has
+   * none), and failing there would be noise rather than a signal.
+   */
+  HR_ONLY_USER_IDENTIFIERS: z
+    .string()
+    .default(
+      'mohamed.mustafa@egycash.com.eg,samer.mohammed@egycash.com.eg,mohamed.essam@egycash.com.eg,saif.aldin@egycash.com.eg',
+    ),
+
+  /**
+   * Opt in to `name:<full English name>` identifiers in the list above — a FALLBACK for a database
+   * whose logins are not known yet, off by default (see `hr-only-policy.ts`). Even when enabled, a
+   * name matching more than one account is refused rather than guessed.
+   */
+  HR_ONLY_ALLOW_NAME_IDENTIFIERS: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+
   SEED_ADMIN_EMAIL: z.string().email().default('admin@ecms.local'),
   SEED_ADMIN_PASSWORD: z.string().min(8).default('Admin#2026!ecms'),
   SEED_HR_EMAIL: z.string().email().default('hr@ecms.local'),

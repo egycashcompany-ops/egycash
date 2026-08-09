@@ -11,6 +11,33 @@ its entry here in the same PR.
 
 ### Added
 
+- **Accounts can be confined to a single module, and navigation now tells the truth about what you
+  can open.** Four named accounts are restricted to HR: every permission outside `moduleId: 'hr'`
+  is removed, their sidebar shows HR alone, and TOTP is explicitly off for them. Each half of that
+  falls out of a mechanism the platform already had rather than a check on a user id — the API
+  refuses them because every module route is `authorize(...)`-gated, so a direct call is blocked
+  exactly as a click is.
+
+  The navigation half needed a real gap closed. An Application in the catalog now carries the
+  **permission opening it requires**, and the effective-applications resolver filters on it, so the
+  sidebar became a projection of RBAC instead of an independent list. That closes the case a
+  per-user fix cannot: a module offered by the user's DEPARTMENT rather than by a grant of their
+  own. The field is nullable and null means "no permission needed", so an Application catalogued
+  before it existed keeps behaving exactly as it did; the boot sync fills in keys only while they
+  are null, leaving anything an administrator chose alone. Administrators can set it per
+  Application on the Applications screen.
+
+  TOTP is a consequence, not an exception. A privileged account is one holding a system role or a
+  break-glass permission; HR declares no break-glass permission, so a confined user ends up on
+  ordinary roles and the mandatory-enrollment policy stops reaching them — with the organization's
+  `TotpEnforcedForPrivileged` setting untouched, so no other account changes behaviour.
+
+  A role granting only HR is kept as it is. Anything else is rewritten onto an HR-only derivative
+  of that same role — its HR subset, keyed on the source role, granted on the original assignment's
+  own scope and validity window. The result is exactly the old permission set narrowed to HR: no
+  permission is ever added. It re-applies on every seed and every API start, because boot itself
+  hands roles out.
+
 - **A recruitment form you can edit, published as one link per source.** The questions candidates
   answer are now configuration, not code: standard fields (name, National ID, phone, qualification
   and eleven more) can be added, removed, marked required and reordered, and custom questions of

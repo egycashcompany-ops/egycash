@@ -11,6 +11,8 @@ export interface ApplicationDoc extends BaseDocFields {
   route: string;
   categoryId: Types.ObjectId;
   sortOrder: number;
+  /** Permission required to open it — what the navigation resolver filters on. Null = open. */
+  permissionKey: string | null;
   status: 'active' | 'inactive';
 }
 
@@ -26,6 +28,7 @@ const applicationSchema = new Schema<ApplicationDoc>(
     route: { type: String, required: true, trim: true },
     categoryId: { type: Schema.Types.ObjectId, required: true },
     sortOrder: { type: Number, required: true, default: 0 },
+    permissionKey: { type: String, default: null, trim: true },
     status: { type: String, enum: ['active', 'inactive'], default: 'active' },
     ...baseFields,
   },

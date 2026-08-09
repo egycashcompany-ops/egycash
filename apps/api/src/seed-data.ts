@@ -10,6 +10,7 @@ import { fileCategoryService } from './platform/files';
 import { settingsService } from './platform/settings';
 import { userService } from './platform/users';
 import { seedBootstrapNavigation } from './seed-navigation';
+import { parseIdentifierList, reconcileHrOnlyUsers } from './hr-only-access';
 import { type AuthContext } from './shared/types';
 
 const ensureUser = async (
@@ -37,10 +38,20 @@ const ensureUser = async (
 };
 
 export const seedDevData = async (): Promise<{ adminId: string; hrId: string }> => {
+  // Super Admin holds THE WHOLE REGISTRY — platform plus every registered module — not just the
+  // platform catalog.
+  //
+  // The distinction only shows up on a fresh database, and it used to be invisible. The boot sync
+  // keeps this role equal to the catalog, but it can only update a role that already EXISTS, and on
+  // a first run the role is created here, moments later. Seeding it from `platformPermissions` left
+  // the administrator holding nothing in HR, Fleet or IT until the next API start re-ran the sync
+  // and widened it — every module screen 403ing in between, on the one account that is supposed to
+  // be able to open everything. Reading the registry instead closes that window: the seed grants
+  // what boot just registered, which is the same set the sync would converge on anyway.
   const superAdminRole = await rbacService.ensureSystemRole(
     'super-admin',
     { en: 'Super Admin', ar: 'مدير النظام الأعلى' },
-    platformPermissions.map((p) => p.key),
+    rbacService.registeredPermissionKeys(),
   );
   const platformAdminRole = await rbacService.ensureSystemRole(
     'platform-admin',
@@ -93,6 +104,16 @@ export const seedDevData = async (): Promise<{ adminId: string; hrId: string }> 
   // First-run navigation: default Application Categories + Applications, granted to the admin, so a
   // fresh install has a functional (fully data-driven) sidebar with no manual DB setup.
   await seedBootstrapNavigation(adminId);
+
+  // HR-only accounts (see hr-only-access.ts). Re-asserted on EVERY seed run, which is the point:
+  // the confinement is a state the platform maintains, not an edit somebody made once that the next
+  // `npm run seed` — or the next role assignment — could quietly undo. Idempotent; unconfigured
+  // (the default) it does nothing, and accounts the configuration names but this database does not
+  // have are skipped with a warning.
+  await reconcileHrOnlyUsers(parseIdentifierList(env.HR_ONLY_USER_IDENTIFIERS), {
+    actorId: adminId,
+    allowNameIdentifiers: env.HR_ONLY_ALLOW_NAME_IDENTIFIERS,
+  });
 
   return { adminId, hrId };
 };

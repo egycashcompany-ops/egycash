@@ -10,6 +10,7 @@ import { SettingKeys, type MeDto } from '@ecms/contracts';
 import { type Express } from 'express';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { buildApp } from '../../src/app';
+import { moduleManifests } from '../../src/modules';
 import { env } from '../../src/infrastructure/config/env';
 import { seedDevData } from '../../src/seed-data';
 import { settingsService } from '../../src/platform/settings';
@@ -48,7 +49,15 @@ const doLogin = async (email: string, password: string) => {
 };
 
 beforeAll(async () => {
-  await bootPlatform({ mongoUri: await resolveMongoUri() });
+  // WITH THE MODULE MANIFESTS, exactly as `seed.ts` boots before calling `seedDevData` — this
+  // suite's whole claim is that it exercises the real seed path, and the boot is half of it.
+  //
+  // Booting without them used to look equivalent because navigation was not permission-filtered:
+  // the sidebar came back complete whether or not the caller could open anything in it. It is
+  // filtered now, and a module-less boot registers only the platform permissions — so `super-admin`
+  // (whose grants track the registry) genuinely held nothing in HR, Fleet or IT, and the assertion
+  // below started failing on a sidebar that was correct for that boot and wrong for a real seed.
+  await bootPlatform({ mongoUri: await resolveMongoUri(), modules: moduleManifests });
   app = buildApp();
   await seedDevData(); // the real seed — no external enforcement toggle
 }, 180_000);
@@ -77,7 +86,15 @@ describe('seed → password login (regression)', () => {
 
     const me = await request(app).get('/api/v1/auth/me').set('Authorization', `Bearer ${token}`);
     expect(me.status).toBe(200);
-    expect((me.body as { data: MeDto }).data.permissions['user.view']).toBe('organization');
+    const permissions = (me.body as { data: MeDto }).data.permissions;
+    expect(permissions['user.view']).toBe('organization');
+    // MODULE permissions too, straight out of a first run. The seed used to grant this role the
+    // platform catalog alone, so on a fresh database the administrator could not open a single
+    // module screen until the next API start widened the role — invisible while navigation was
+    // unfiltered, and the reason the sidebar assertion below is worth having.
+    expect(permissions['applicant.view'], 'HR').toBe('organization');
+    expect(permissions['fleetVehicle.view'], 'Fleet').toBe('organization');
+    expect(permissions['itAsset.view'], 'IT').toBe('organization');
   });
 
   it('the seeded admin has a functional data-driven sidebar out of the box (first-run bootstrap)', async () => {

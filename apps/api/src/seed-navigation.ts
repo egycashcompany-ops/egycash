@@ -25,6 +25,11 @@ interface AppDef {
   ar: string;
   route: string;
   icon: string;
+  /**
+   * The permission opening this page requires — the SAME key the client route guard checks, so the
+   * sidebar advertises exactly what the user can enter. `null` marks a genuinely open page.
+   */
+  permission: string | null;
 }
 
 interface CategoryDef {
@@ -50,20 +55,98 @@ const CATALOG: CategoryDef[] = [
       // from inside the system says "set the internal source on the Application Form page", and
       // there was no such page to open. Each sits beside the stage it configures rather than in a
       // settings group of its own: they are part of the recruitment cycle, not general setup.
-      { en: 'Applicants', ar: 'المتقدمون', route: '/applicants', icon: 'users' },
-      { en: 'Application Form', ar: 'نموذج التقديم', route: '/recruitment-form', icon: 'inbox' },
-      { en: 'Applicant Sources', ar: 'مصادر التقديم', route: '/applicant-sources', icon: 'link' },
-      { en: 'Screening', ar: 'الفرز', route: '/screening', icon: 'clipboard' },
-      { en: 'Interviews', ar: 'المقابلات', route: '/interviews', icon: 'chat' },
-      { en: 'Interview Stages', ar: 'مراحل المقابلات', route: '/interviews/stages', icon: 'layers' },
-      { en: 'Evaluations', ar: 'التقييمات', route: '/evaluations', icon: 'clipboard' },
-      { en: 'Evaluation Phases', ar: 'مراحل التقييم', route: '/evaluations/phases', icon: 'layers' },
-      { en: 'Job Offers', ar: 'عروض العمل', route: '/job-offers', icon: 'offer' },
-      { en: 'Employees', ar: 'الموظفون', route: '/employees', icon: 'badge' },
-      { en: 'Leave', ar: 'الإجازات', route: '/leave', icon: 'calendar' },
-      { en: 'Contracts', ar: 'العقود', route: '/contracts', icon: 'file' },
-      { en: 'Hiring Documents', ar: 'مستندات التعيين', route: '/hiring-documents', icon: 'file' },
-      { en: 'Employee Files', ar: 'ملفات الموظفين', route: '/employee-files', icon: 'folder' },
+      {
+        en: 'Applicants',
+        ar: 'المتقدمون',
+        route: '/applicants',
+        icon: 'users',
+        permission: 'applicant.view',
+      },
+      {
+        en: 'Application Form',
+        ar: 'نموذج التقديم',
+        route: '/recruitment-form',
+        icon: 'inbox',
+        permission: 'recruitmentForm.manage',
+      },
+      {
+        en: 'Applicant Sources',
+        ar: 'مصادر التقديم',
+        route: '/applicant-sources',
+        icon: 'link',
+        permission: 'applicant.view',
+      },
+      {
+        en: 'Screening',
+        ar: 'الفرز',
+        route: '/screening',
+        icon: 'clipboard',
+        permission: 'screening.view',
+      },
+      {
+        en: 'Interviews',
+        ar: 'المقابلات',
+        route: '/interviews',
+        icon: 'chat',
+        permission: 'interview.view',
+      },
+      {
+        en: 'Interview Stages',
+        ar: 'مراحل المقابلات',
+        route: '/interviews/stages',
+        icon: 'layers',
+        permission: 'interviewStage.manage',
+      },
+      {
+        en: 'Evaluations',
+        ar: 'التقييمات',
+        route: '/evaluations',
+        icon: 'clipboard',
+        permission: 'evaluation.view',
+      },
+      {
+        en: 'Evaluation Phases',
+        ar: 'مراحل التقييم',
+        route: '/evaluations/phases',
+        icon: 'layers',
+        permission: 'evaluationPhase.manage',
+      },
+      {
+        en: 'Job Offers',
+        ar: 'عروض العمل',
+        route: '/job-offers',
+        icon: 'offer',
+        permission: 'jobOffer.view',
+      },
+      {
+        en: 'Employees',
+        ar: 'الموظفون',
+        route: '/employees',
+        icon: 'badge',
+        permission: 'employee.view',
+      },
+      { en: 'Leave', ar: 'الإجازات', route: '/leave', icon: 'calendar', permission: 'leave.view' },
+      {
+        en: 'Contracts',
+        ar: 'العقود',
+        route: '/contracts',
+        icon: 'file',
+        permission: 'contract.view',
+      },
+      {
+        en: 'Hiring Documents',
+        ar: 'مستندات التعيين',
+        route: '/hiring-documents',
+        icon: 'file',
+        permission: 'hiringDocuments.view',
+      },
+      {
+        en: 'Employee Files',
+        ar: 'ملفات الموظفين',
+        route: '/employee-files',
+        icon: 'folder',
+        permission: 'employeeFile.view',
+      },
     ],
   },
   {
@@ -75,23 +158,90 @@ const CATALOG: CategoryDef[] = [
     // appended its rows here as it landed (the boot sync is additive, so existing installs
     // pick them up). With FW-10 the module is COMPLETE: all twelve applications are live.
     apps: [
-      { en: 'Fleet Home', ar: 'الرئيسية', route: '/fleet', icon: 'home' },
-      { en: 'Vehicles', ar: 'السيارات', route: '/fleet/vehicles', icon: 'truck' },
-      { en: 'Drivers', ar: 'السائقون', route: '/fleet/drivers', icon: 'users' },
-      { en: 'Attendance', ar: 'التمامات', route: '/fleet/attendance', icon: 'calendar' },
-      { en: 'Odometer', ar: 'عدادات السيارات', route: '/fleet/odometer', icon: 'gauge' },
-      { en: 'Maintenance', ar: 'صيانة السيارات', route: '/fleet/maintenance', icon: 'wrench' },
+      {
+        en: 'Fleet Home',
+        ar: 'الرئيسية',
+        route: '/fleet',
+        icon: 'home',
+        permission: 'fleetVehicle.view',
+      },
+      {
+        en: 'Vehicles',
+        ar: 'السيارات',
+        route: '/fleet/vehicles',
+        icon: 'truck',
+        permission: 'fleetVehicle.view',
+      },
+      {
+        en: 'Drivers',
+        ar: 'السائقون',
+        route: '/fleet/drivers',
+        icon: 'users',
+        permission: 'fleetDriver.view',
+      },
+      {
+        en: 'Attendance',
+        ar: 'التمامات',
+        route: '/fleet/attendance',
+        icon: 'calendar',
+        permission: 'fleetAvailability.view',
+      },
+      {
+        en: 'Odometer',
+        ar: 'عدادات السيارات',
+        route: '/fleet/odometer',
+        icon: 'gauge',
+        permission: 'fleetOdometer.view',
+      },
+      {
+        en: 'Maintenance',
+        ar: 'صيانة السيارات',
+        route: '/fleet/maintenance',
+        icon: 'wrench',
+        permission: 'fleetMaintenance.view',
+      },
       {
         en: 'Maintenance Alarms',
         ar: 'إنذارات الصيانة',
         route: '/fleet/maintenance-alarms',
         icon: 'alert',
+        permission: 'fleetOdometer.view',
       },
-      { en: 'Daily Roster', ar: 'تعيين السيارات', route: '/fleet/roster', icon: 'clipboard' },
-      { en: 'Accidents', ar: 'حوادث السيارات', route: '/fleet/accidents', icon: 'shield' },
-      { en: 'Violations', ar: 'مخالفات السيارات', route: '/fleet/violations', icon: 'tag' },
-      { en: 'Fleet Catalogs', ar: 'قوائم الحركة', route: '/fleet/catalogs', icon: 'folder' },
-      { en: 'Fleet Settings', ar: 'إعدادات الحركة', route: '/fleet/settings', icon: 'cog' },
+      {
+        en: 'Daily Roster',
+        ar: 'تعيين السيارات',
+        route: '/fleet/roster',
+        icon: 'clipboard',
+        permission: 'fleetRoster.view',
+      },
+      {
+        en: 'Accidents',
+        ar: 'حوادث السيارات',
+        route: '/fleet/accidents',
+        icon: 'shield',
+        permission: 'fleetAccident.view',
+      },
+      {
+        en: 'Violations',
+        ar: 'مخالفات السيارات',
+        route: '/fleet/violations',
+        icon: 'tag',
+        permission: 'fleetViolation.view',
+      },
+      {
+        en: 'Fleet Catalogs',
+        ar: 'قوائم الحركة',
+        route: '/fleet/catalogs',
+        icon: 'folder',
+        permission: 'fleetCatalog.manage',
+      },
+      {
+        en: 'Fleet Settings',
+        ar: 'إعدادات الحركة',
+        route: '/fleet/settings',
+        icon: 'cog',
+        permission: 'fleetMaintenanceRule.manage',
+      },
     ],
   },
   {
@@ -100,12 +250,48 @@ const CATALOG: CategoryDef[] = [
     icon: 'building',
     sortOrder: 20,
     apps: [
-      { en: 'Company', ar: 'الشركة', route: '/organization/company', icon: 'building' },
-      { en: 'Branches', ar: 'الفروع', route: '/organization/branches', icon: 'building' },
-      { en: 'Departments', ar: 'الإدارات', route: '/organization/departments', icon: 'sitemap' },
-      { en: 'Sections', ar: 'الأقسام', route: '/organization/sections', icon: 'layers' },
-      { en: 'Job Positions', ar: 'الوظائف', route: '/organization/job-positions', icon: 'badge' },
-      { en: 'Job Titles', ar: 'المسميات الوظيفية', route: '/organization/job-titles', icon: 'tag' },
+      {
+        en: 'Company',
+        ar: 'الشركة',
+        route: '/organization/company',
+        icon: 'building',
+        permission: 'organization.view',
+      },
+      {
+        en: 'Branches',
+        ar: 'الفروع',
+        route: '/organization/branches',
+        icon: 'building',
+        permission: 'branch.view',
+      },
+      {
+        en: 'Departments',
+        ar: 'الإدارات',
+        route: '/organization/departments',
+        icon: 'sitemap',
+        permission: 'department.view',
+      },
+      {
+        en: 'Sections',
+        ar: 'الأقسام',
+        route: '/organization/sections',
+        icon: 'layers',
+        permission: 'section.view',
+      },
+      {
+        en: 'Job Positions',
+        ar: 'الوظائف',
+        route: '/organization/job-positions',
+        icon: 'badge',
+        permission: 'jobPosition.view',
+      },
+      {
+        en: 'Job Titles',
+        ar: 'المسميات الوظيفية',
+        route: '/organization/job-titles',
+        icon: 'tag',
+        permission: 'jobTitle.view',
+      },
     ],
   },
   {
@@ -118,19 +304,91 @@ const CATALOG: CategoryDef[] = [
     // the spare-parts store (the boot sync is additive — existing installs pick new rows up on the
     // next deploy) and IT-5 appends the software register. Dashboards append theirs with IT-6.
     apps: [
-      { en: 'IT Home', ar: 'الرئيسية', route: '/it', icon: 'home' },
-      { en: 'Assets', ar: 'الأصول', route: '/it/assets', icon: 'monitor' },
-      { en: 'Scan Asset', ar: 'مسح أصل', route: '/it/assets/scan', icon: 'qr' },
-      { en: 'Asset Custody', ar: 'عهدة الأصول', route: '/it/custody', icon: 'clipboard' },
-      { en: 'Help Desk', ar: 'الدعم الفني', route: '/it/tickets', icon: 'chat' },
-      { en: 'Help Desk Settings', ar: 'إعدادات الدعم الفني', route: '/it/helpdesk-settings', icon: 'cog' },
-      { en: 'Maintenance', ar: 'الصيانة', route: '/it/maintenance', icon: 'wrench' },
-      { en: 'Maintenance Plans', ar: 'خطط الصيانة', route: '/it/maintenance-plans', icon: 'calendar' },
-      { en: 'Spare Parts', ar: 'قطع الغيار', route: '/it/spare-parts', icon: 'layers' },
-      { en: 'Software', ar: 'البرمجيات', route: '/it/software', icon: 'grid' },
-      { en: 'Licences', ar: 'التراخيص', route: '/it/licenses', icon: 'badge' },
-      { en: 'IT Vendors', ar: 'موردو تقنية المعلومات', route: '/it/vendors', icon: 'folder' },
-      { en: 'IT Catalogs', ar: 'قوائم تقنية المعلومات', route: '/it/catalogs', icon: 'folder' },
+      { en: 'IT Home', ar: 'الرئيسية', route: '/it', icon: 'home', permission: 'itAsset.view' },
+      {
+        en: 'Assets',
+        ar: 'الأصول',
+        route: '/it/assets',
+        icon: 'monitor',
+        permission: 'itAsset.view',
+      },
+      {
+        en: 'Scan Asset',
+        ar: 'مسح أصل',
+        route: '/it/assets/scan',
+        icon: 'qr',
+        permission: 'itAsset.view',
+      },
+      {
+        en: 'Asset Custody',
+        ar: 'عهدة الأصول',
+        route: '/it/custody',
+        icon: 'clipboard',
+        permission: 'itAsset.view',
+      },
+      {
+        en: 'Help Desk',
+        ar: 'الدعم الفني',
+        route: '/it/tickets',
+        icon: 'chat',
+        permission: 'itTicket.view',
+      },
+      {
+        en: 'Help Desk Settings',
+        ar: 'إعدادات الدعم الفني',
+        route: '/it/helpdesk-settings',
+        icon: 'cog',
+        permission: 'itSlaPolicy.manage',
+      },
+      {
+        en: 'Maintenance',
+        ar: 'الصيانة',
+        route: '/it/maintenance',
+        icon: 'wrench',
+        permission: 'itMaintenance.view',
+      },
+      {
+        en: 'Maintenance Plans',
+        ar: 'خطط الصيانة',
+        route: '/it/maintenance-plans',
+        icon: 'calendar',
+        permission: 'itMaintenance.view',
+      },
+      {
+        en: 'Spare Parts',
+        ar: 'قطع الغيار',
+        route: '/it/spare-parts',
+        icon: 'layers',
+        permission: 'itSparePart.view',
+      },
+      {
+        en: 'Software',
+        ar: 'البرمجيات',
+        route: '/it/software',
+        icon: 'grid',
+        permission: 'itSoftware.view',
+      },
+      {
+        en: 'Licences',
+        ar: 'التراخيص',
+        route: '/it/licenses',
+        icon: 'badge',
+        permission: 'itLicense.view',
+      },
+      {
+        en: 'IT Vendors',
+        ar: 'موردو تقنية المعلومات',
+        route: '/it/vendors',
+        icon: 'folder',
+        permission: 'itVendor.view',
+      },
+      {
+        en: 'IT Catalogs',
+        ar: 'قوائم تقنية المعلومات',
+        route: '/it/catalogs',
+        icon: 'folder',
+        permission: 'itCatalog.manage',
+      },
     ],
   },
   {
@@ -141,12 +399,19 @@ const CATALOG: CategoryDef[] = [
     icon: 'briefcase',
     sortOrder: 30,
     apps: [
-      { en: 'Applications', ar: 'التطبيقات', route: '/organization/applications', icon: 'folder' },
+      {
+        en: 'Applications',
+        ar: 'التطبيقات',
+        route: '/organization/applications',
+        icon: 'folder',
+        permission: 'application.view',
+      },
       {
         en: 'Application Categories',
         ar: 'فئات التطبيقات',
         route: '/organization/application-categories',
         icon: 'tag',
+        permission: 'applicationCategory.view',
       },
     ],
   },
@@ -186,10 +451,39 @@ const ensureApplication = async (
   const existing = await applicationRepository.findOne({ route: def.route });
   if (existing !== null) return String(existing._id);
   const created = await applicationService.create(
-    { name: { ar: def.ar, en: def.en }, icon: def.icon, route: def.route, categoryId, sortOrder },
+    {
+      name: { ar: def.ar, en: def.en },
+      icon: def.icon,
+      route: def.route,
+      categoryId,
+      sortOrder,
+      permissionKey: def.permission,
+    },
     by,
   );
   return String(created._id);
+};
+
+/**
+ * Permission-key backfill for applications catalogued before the field existed.
+ *
+ * Navigation is filtered by `permissionKey`, and a null key means "no permission needed" — so on an
+ * existing install every catalogued row would stay null and the filter would do nothing at all. This
+ * fills in ONLY the null ones, from this catalog, matched by route.
+ *
+ * It follows the same additive contract as the icon backfill above: a row whose key an administrator
+ * already set (any non-null value) is never overwritten, and a route this catalog does not know is
+ * left entirely alone.
+ */
+const backfillApplicationPermission = async (def: AppDef, by: string): Promise<void> => {
+  if (def.permission === null) return;
+  const existing = await applicationRepository.findOne({ route: def.route });
+  if (existing === null || (existing.permissionKey ?? null) !== null) return;
+  await applicationService.update(
+    String(existing._id),
+    { permissionKey: def.permission, version: existing.__v },
+    by,
+  );
 };
 
 const ensureGrant = async (userId: string, applicationId: string): Promise<void> => {
@@ -226,7 +520,8 @@ export const seedBootstrapNavigation = async (adminId: string): Promise<void> =>
  * - a new application joins the category its group's existing apps live in TODAY (respecting
  *   admin re-grouping/renames); the seed category is created only when the whole group is new;
  * - a category icon is filled in ONLY while it is null (pre-icon installs); a non-null icon —
- *   seeded or admin-chosen — is never overwritten;
+ *   seeded or admin-chosen — is never overwritten; an application's permission key follows the
+ *   same rule (filled only while null, which is what teaches pre-field installs their keys);
  * - a new application lands BETWEEN the neighbours it sits between in the catalog, at half the
  *   gap in their STORED ordering. A counter derived from position in this array would hand an
  *   inserted row a number an existing sibling already owns (nothing renumbers the old rows), and
@@ -240,6 +535,7 @@ export const syncNavigationCatalog = async (): Promise<void> => {
   if (actor === undefined) return; // pre-seed boot (no admin yet) — the dev seed covers it
   for (const category of CATALOG) {
     await backfillCategoryIcon(category, actor);
+    for (const app of category.apps) await backfillApplicationPermission(app, actor);
     // Resolve the whole group up front: where a new row belongs depends on the stored order of
     // the next EXISTING neighbour, which a forward-only walk cannot see yet.
     const rows = await Promise.all(
@@ -271,6 +567,7 @@ export const syncNavigationCatalog = async (): Promise<void> => {
           route: row.app.route,
           categoryId,
           sortOrder,
+          permissionKey: row.app.permission,
         },
         actor,
       );

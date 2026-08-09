@@ -27,6 +27,7 @@ const snapshot = (doc: ApplicationDoc) => ({
   route: doc.route,
   categoryId: doc.categoryId,
   sortOrder: doc.sortOrder,
+  permissionKey: doc.permissionKey,
   status: doc.status,
 });
 
@@ -48,6 +49,7 @@ class ApplicationService {
         route: input.route,
         categoryId: new Types.ObjectId(input.categoryId),
         sortOrder: input.sortOrder ?? 0,
+        permissionKey: input.permissionKey ?? null,
         status: 'active',
       },
       { by },
@@ -69,6 +71,7 @@ class ApplicationService {
     if (input.route !== undefined) set.route = input.route;
     if (input.categoryId !== undefined) set.categoryId = new Types.ObjectId(input.categoryId);
     if (input.sortOrder !== undefined) set.sortOrder = input.sortOrder;
+    if (input.permissionKey !== undefined) set.permissionKey = input.permissionKey;
     if (input.status !== undefined) set.status = input.status;
     const after = await applicationRepository.updateById(id, set, { by, version: input.version });
     await auditService.record({
@@ -115,6 +118,7 @@ class ApplicationService {
       route: doc.route,
       categoryId: String(doc.categoryId),
       sortOrder: doc.sortOrder,
+      permissionKey: doc.permissionKey ?? null,
       status: doc.status,
       version: doc.__v,
       createdAt: doc.createdAt.toISOString(),

@@ -55,10 +55,24 @@ const applicationBase = {
   route: z.string().trim().min(1).max(200),
   categoryId: objectId(),
   sortOrder: z.number().int().min(0).max(100_000),
+  /**
+   * The permission that opening this application requires — the SAME key the page's route guard
+   * and its API endpoints check. Navigation is filtered by it, so the sidebar stops advertising
+   * modules the caller cannot open (grants say which apps an administrator offers a user; RBAC
+   * says which of them they may actually enter, and the answer must agree on both surfaces).
+   *
+   * Nullable, and null means "no permission needed" — an application catalogued before this field
+   * existed, or a genuinely open page, keeps behaving exactly as it did.
+   */
+  permissionKey: z.string().trim().min(1).max(120).nullable(),
 };
 
 export const CreateApplicationSchema = z
-  .object({ ...applicationBase, sortOrder: applicationBase.sortOrder.optional() })
+  .object({
+    ...applicationBase,
+    sortOrder: applicationBase.sortOrder.optional(),
+    permissionKey: applicationBase.permissionKey.optional(),
+  })
   .strict();
 export type CreateApplication = z.infer<typeof CreateApplicationSchema>;
 
@@ -69,6 +83,7 @@ export const UpdateApplicationSchema = z
     route: applicationBase.route.optional(),
     categoryId: objectId().optional(),
     sortOrder: applicationBase.sortOrder.optional(),
+    permissionKey: applicationBase.permissionKey.optional(),
     status: z.enum(['active', 'inactive']).optional(),
     version: z.number().int().min(0),
   })
@@ -93,6 +108,8 @@ export interface ApplicationDto {
   categoryId: string;
   /** Ascending display order within a category. */
   sortOrder: number;
+  /** Permission required to open the application; null = open to any authenticated caller. */
+  permissionKey: string | null;
   status: 'active' | 'inactive';
   version: number;
   createdAt: string;

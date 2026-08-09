@@ -29,6 +29,7 @@ decision, write a new ADR that supersedes the old one.
 | [ADR-018](ADR-018-automation-engine.md) | A provider-backed Automation Service, alongside (not replacing) the Workflow Engine | Accepted |
 | [ADR-019](ADR-019-reference-pickers-search-not-load-all.md) | Reference pickers search the server; they never load the whole catalog | Accepted |
 | [ADR-020](ADR-020-shared-file-storage.md) | Shared file storage for a multi-service deployment (object store, not a local disk) | Accepted |
+| [ADR-021](ADR-021-it-asset-custody-and-history.md) | IT asset custody is an append-only event chain, not a status field | Accepted |
 
 ADR-001…014 were accepted with Milestone 1 approval (2026-07-08). ADR-015 records the
 single-organization correction from [Architecture Review 01](../10-reviews/2026-07-architecture-review-01.md),
@@ -44,3 +45,8 @@ which stopped holding when contract PDFs and evaluation-batch packages began bei
 worker. **Accepted 2026-08-05**; the migration is designed in
 [shared-file-storage-design.md](../12-planning/shared-file-storage-design.md) and is scheduled as a
 platform sprint of its own, so the decision is settled while the implementation is still ahead.
+ADR-021 records the IT custody chain delivered with slice IT-2 — an append-only business history
+that is deliberately *not* the audit trail, because a record that settles a dispute must not inherit
+a security log's retention policy. It carries the number the
+[IT design](../12-planning/it-module-design.md) §14 reserved as 020 before that number was taken;
+the module's remaining two ADRs shift to 022 and 023 with it.

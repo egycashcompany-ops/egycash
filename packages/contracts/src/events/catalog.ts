@@ -135,7 +135,15 @@ import {
   FleetVehicleStatusChangedPayloadV1,
   FleetViolationRecordedPayloadV1,
 } from '../modules/fleet.js';
-import { ItEvents, type ItEventName, ItAssetEventPayloadV1 } from '../modules/it.js';
+import {
+  ItEvents,
+  type ItEventName,
+  ItAssetEventPayloadV1,
+  ItAssetAssignedPayloadV1,
+  ItAssetReturnedPayloadV1,
+  ItAssetTransferredPayloadV1,
+  ItAssetDisposedPayloadV1,
+} from '../modules/it.js';
 
 // ── The shape a consumer sees ───────────────────────────────────────────────
 
@@ -647,6 +655,8 @@ export const EVENT_ACTION_NAMES: Readonly<Record<string, LocalizedString>> = {
   grievanceApplied: { en: 'grievance applied', ar: 'تطبيق تظلم' },
   // it
   registered: { en: 'registered', ar: 'تسجيل' },
+  assigned: { en: 'assigned', ar: 'تسليم' },
+  disposed: { en: 'disposed', ar: 'استبعاد' },
 };
 
 /**
@@ -1013,10 +1023,15 @@ export const FLEET_EVENT_SOURCE: EventCatalogSource = {
   schemas: FLEET_EVENT_PAYLOAD_SCHEMAS,
 };
 
-// IT-1 registers the two registry events; IT-2…IT-6 extend this map with their slices.
+// IT-1 registered the two registry events; IT-2 adds the four custody facts. IT-3…IT-6 extend
+// this map with their slices. Each becomes an automation trigger with no extra work.
 export const IT_EVENT_PAYLOAD_SCHEMAS: Readonly<Record<ItEventName, z.ZodTypeAny | null>> = {
   [ItEvents.AssetRegistered]: ItAssetEventPayloadV1,
   [ItEvents.AssetUpdated]: ItAssetEventPayloadV1,
+  [ItEvents.AssetAssigned]: ItAssetAssignedPayloadV1,
+  [ItEvents.AssetReturned]: ItAssetReturnedPayloadV1,
+  [ItEvents.AssetTransferred]: ItAssetTransferredPayloadV1,
+  [ItEvents.AssetDisposed]: ItAssetDisposedPayloadV1,
 };
 
 export const IT_EVENT_SOURCE: EventCatalogSource = {

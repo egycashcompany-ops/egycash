@@ -61,7 +61,7 @@ consumes it as-is. This is the section that guarantees the module adds *domain*,
 | **QR** | `qrcode` (api) + `qrcode.react` (web) — already dependencies (Contracts A23) | asset QR generation and on-screen rendering; **no new dependency** |
 | **Navigation catalog** | `seed-navigation.ts` additive sync (BF-1) | new `IT` category, icon `monitor` (already in the icon registry); existing installs pick it up at boot |
 | **Web kit** | shared tables/CRUD/pages kit, `UserPicker`, i18n ar/en + RTL | all pages; **every reference picker is server-side search from its first commit (ADR-019 rule 5 — binding)** |
-| **Workflow engine (ADR-011)** | *accepted as ADR, not built as a platform service* | **not used.** Recruitment built its own module engine; Fleet used code-defined lifecycles in services. Tickets follow the Fleet precedent (§4.4, D4); the gap is recorded in ADR-021 (§13) |
+| **Workflow engine (ADR-011)** | *accepted as ADR, not built as a platform service* | **not used.** Recruitment built its own module engine; Fleet used code-defined lifecycles in services. Tickets follow the Fleet precedent (§4.4, D4); the gap is recorded in ADR-022 (§13) |
 
 Two hard lessons from production are carried in as design rules:
 **minimize-safety** — any collection whose rows carry a `metadata`/free-object field sets
@@ -220,7 +220,7 @@ person's laptop). Maintenance history = the asset's orders + §2.3 events.
 orderId? (consumption is always order-tied), at, byUserId, note? }`. `onHandQty` is denormalized
 with the same atomic `$inc` write that inserts the movement; consumption below zero is a
 `BusinessRuleError`. This is a **minimal store ledger, deliberately not inventory accounting**
-(no valuation, no locations, no reservations) — ADR-022 records the boundary.
+(no valuation, no locations, no reservations) — ADR-023 records the boundary.
 
 ### 2.8 Software & Licenses
 
@@ -314,7 +314,7 @@ open ──assign/start──▶ inProgress ──▶ resolved ──close──
   `resolved` (0 disables). Reopen within the same window reopens *this* ticket; after closure a
   new ticket links back (open question §13-Q7 sets the window).
 - The lifecycle is code, not the ADR-011 engine — that engine does not exist as a platform
-  service, and tickets must not be the hostage that forces building it (ADR-021 records this).
+  service, and tickets must not be the hostage that forces building it (ADR-022 records this).
 
 ### 4.5 SLA (policy-as-data, sweep-detected, set-once)
 At creation the active policy for the priority is snapshotted; `responseDueAt`/`resolutionDueAt`
@@ -516,18 +516,25 @@ vendors, products, parts ship with `search` from day one, per ADR-019 rule 5).
 
 | ADR | Records |
 |---|---|
-| **ADR-020 — IT asset custody & history** | append-only event chain as the business record; derived status; no hard delete (FR-2/FR-4/FR-5); why audit logs are not the custody chain (D3) |
-| **ADR-021 — Help-desk SLA & ticket lifecycle placement** | SLA targets as priority data + snapshot-on-create; set-once breach stamps; sweep cadence; **and the recorded decision that ticket states are code-defined in the module, not the (unbuilt) ADR-011 platform engine** — with the migration note for the day the platform engine exists |
-| **ADR-022 — Minimal spare-parts ledger** | movements ledger + denormalized on-hand; explicitly *not* inventory accounting; the boundary Accounting will inherit |
+| **ADR-021 — IT asset custody & history** | append-only event chain as the business record; derived status; no hard delete (FR-2/FR-4/FR-5); why audit logs are not the custody chain (D3) |
+| **ADR-022 — Help-desk SLA & ticket lifecycle placement** | SLA targets as priority data + snapshot-on-create; set-once breach stamps; sweep cadence; **and the recorded decision that ticket states are code-defined in the module, not the (unbuilt) ADR-011 platform engine** — with the migration note for the day the platform engine exists |
+| **ADR-023 — Minimal spare-parts ledger** | movements ledger + denormalized on-hand; explicitly *not* inventory accounting; the boundary Accounting will inherit |
+
+> **Renumbered 2026-08-09 (IT-2) — numbering only.** This table reserved 020/021/022 when the
+> design froze on 2026-08-03. **ADR-020** was then taken by
+> [Shared file storage](../03-decisions/ADR-020-shared-file-storage.md) (Accepted 2026-08-05), and
+> ADR numbers are sequential and never reused. The three IT ADRs therefore shift to **021/022/023**,
+> and every in-document reference moved with them. No decision content changed on either side, and
+> nothing already delivered depends on the old numbers.
 
 ## 15. Delivery slices (post-approval; each slice = contracts + api + tests, PR-reviewed; web follows)
 
 | Slice | Content |
 |---|---|
 | IT-1 | contracts (DTOs/schemas/permissions/events) · module skeleton + manifest + nav category · catalog items (asset + ticket categories) · vendors · asset register + sequences + QR/labels |
-| IT-2 | custody: assign/return/transfer/dispose · asset events/history · HR exit subscription · ADR-020 |
-| IT-3 | help desk: priorities (with SLA targets), tickets, event/conversation stream, attachments, SLA + auto-close sweeps · ADR-021 |
-| IT-4 | maintenance: plans, orders, spare parts + movements, preventive sweep · ADR-022 |
+| IT-2 | custody: assign/return/transfer/dispose · asset events/history · HR exit subscription · ADR-021 |
+| IT-3 | help desk: priorities (with SLA targets), tickets, event/conversation stream, attachments, SLA + auto-close sweeps · ADR-022 |
+| IT-4 | maintenance: plans, orders, spare parts + movements, preventive sweep · ADR-023 |
 | IT-5 | software products, installations, licenses, expiry sweep |
 | IT-6 | dashboards, warranty report, asset export, notification templates, seed data |
 | ITW-1…6 | web app per area (skeleton/nav → assets → tickets → maintenance → software → dashboards), ar/en + RTL, ADR-019-compliant pickers |

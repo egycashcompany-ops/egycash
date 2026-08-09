@@ -11,7 +11,9 @@
 //   /it/assets/:id         itAsset.view                                          ITW-1
 //   /it/catalogs           itCatalog.manage                                      ITW-1
 //   /it/vendors            itVendor.view                                         ITW-1
-// Custody, tickets, maintenance, software and dashboards get their routes with IT-2…IT-6.
+//   /it/custody            itAsset.view                                          IT-2
+// The custody ACTIONS are not routes — they are dialogs on the asset, which is where the decision
+// is actually taken. Tickets, maintenance, software and dashboards get their routes with IT-3…6.
 import { Route, Routes } from 'react-router-dom';
 import { RequirePermission } from '../../platform/router/RequirePermission';
 import { NotFoundPage } from '../../platform/app/pages/NotFoundPage';
@@ -22,6 +24,7 @@ import { AssetDetailPage } from './pages/AssetDetailPage';
 import { AssetScanPage } from './pages/AssetScanPage';
 import { ItCatalogsPage } from './pages/ItCatalogsPage';
 import { VendorsPage } from './pages/VendorsPage';
+import { CustodyPage } from './pages/CustodyPage';
 
 export default function ItRoutes(): JSX.Element {
   return (
@@ -50,6 +53,14 @@ export default function ItRoutes(): JSX.Element {
           element={
             <RequirePermission permission="itAsset.view">
               <AssetDetailPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="custody"
+          element={
+            <RequirePermission permission="itAsset.view">
+              <CustodyPage />
             </RequirePermission>
           }
         />

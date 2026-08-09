@@ -44,10 +44,11 @@ describe('every endpoint the IT client calls exists on the API', () => {
     }
   });
 
-  it('assets: list, get, by-code, create, update, delete, labels', () => {
+  it('assets: the IT-1 registry plus IT-2 custody', () => {
     const routes = declared(ASSET_ROUTES);
     expect(routes).toEqual(
       new Set([
+        // IT-1 — the registry
         'get /',
         'get /by-code/:code',
         'post /labels',
@@ -55,6 +56,13 @@ describe('every endpoint the IT client calls exists on the API', () => {
         'post /',
         'patch /:id',
         'delete /:id',
+        // IT-2 — custody: four NAMED actions, never a generic PATCH (design §4.3)
+        'post /:id/assign',
+        'post /:id/return',
+        'post /:id/transfer',
+        'post /:id/dispose',
+        'get /:id/history',
+        'get /:id/assignments',
       ]),
     );
     // …and the client calls exactly those.
@@ -63,6 +71,17 @@ describe('every endpoint the IT client calls exists on the API', () => {
     expect(CLIENT).toContain('`/it/assets/by-code/${encodeURIComponent(code)}`');
     expect(CLIENT).toContain("post<ItAssetDto>('/it/assets'");
     expect(CLIENT).toContain("postBinary('/it/assets/labels'");
+    // …and the client calls each custody action at the path the API serves it on.
+    for (const action of ['assign', 'return', 'transfer', 'dispose']) {
+      expect(CLIENT).toContain(`/it/assets/\${id}/${action}`);
+    }
+    expect(CLIENT).toContain('`/it/assets/${id}/history');
+    expect(CLIENT).toContain('`/it/assets/${id}/assignments');
+  });
+
+  it('mounts the cross-asset custody register', () => {
+    expect(MANIFEST).toContain("prefix: '/it/assignments'");
+    expect(CLIENT).toContain("getPage<ItAssetAssignmentDto>(`/it/assignments");
   });
 
   it('catalog items: list, create, update — and no delete, because rows archive (FR-11)', () => {
@@ -95,8 +114,36 @@ describe('the permissions the API enforces are the ones the UI gates on', () => 
 
   it('assets', () => {
     expect(enforced(ASSET_ROUTES)).toEqual(
-      new Set(['itAsset.view', 'itAsset.create', 'itAsset.edit', 'itAsset.delete']),
+      new Set([
+        'itAsset.view',
+        'itAsset.create',
+        'itAsset.edit',
+        'itAsset.delete',
+        'itAsset.assign',
+        'itAsset.dispose',
+      ]),
     );
+  });
+
+  // Design §7: ONE custody grant for assign + return + transfer — they are a single operational
+  // surface — and disposal keeps its own, because writing an asset off is a different, terminal
+  // decision. Pinned because collapsing them later would silently widen who can write assets off.
+  it('custody: assign/return/transfer share a grant; dispose has its own', () => {
+    for (const action of ['assign', 'return', 'transfer']) {
+      const route =
+        new RegExp(`router\\.post\\(\\s*'/:id/${action}'[\\s\\S]*?\\);`).exec(ASSET_ROUTES)?.[0] ?? '';
+      expect(route, `${action} must ride itAsset.assign`).toContain("authorize('itAsset.assign')");
+    }
+    const dispose = /router\.post\(\s*'\/:id\/dispose'[\s\S]*?\);/.exec(ASSET_ROUTES)?.[0] ?? '';
+    expect(dispose).toContain("authorize('itAsset.dispose')");
+  });
+
+  it('custody READS ride itAsset.view — history shows nothing the asset does not', () => {
+    for (const path of ['history', 'assignments']) {
+      const route =
+        new RegExp(`router\\.get\\(\\s*'/:id/${path}'[\\s\\S]*?\\);`).exec(ASSET_ROUTES)?.[0] ?? '';
+      expect(route).toContain("authorize('itAsset.view')");
+    }
   });
 
   it('label printing rides itAsset.view — a label shows nothing view cannot (§4.2)', () => {

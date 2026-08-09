@@ -30,10 +30,19 @@ const declaredPaths = (): string[] =>
 describe('IT routes', () => {
   const paths = declaredPaths();
 
-  it('declares the ITW-1 surface', () => {
+  it('declares the IT-1 + IT-2 surface', () => {
     expect(paths.sort()).toEqual(
-      ['assets', 'assets/:id', 'assets/scan', 'catalogs', 'vendors'].sort(),
+      ['assets', 'assets/:id', 'assets/scan', 'catalogs', 'custody', 'vendors'].sort(),
     );
+  });
+
+  // The four custody transitions are dialogs on the asset, not routes: the decision is taken
+  // while looking at the asset, and a URL that performs a state change is a URL someone can
+  // bookmark, share or reload into a second transition.
+  it('does not route the custody ACTIONS', () => {
+    for (const action of ['assign', 'return', 'transfer', 'dispose']) {
+      expect(paths, `${action} must not be a route`).not.toContain(`assets/:id/${action}`);
+    }
   });
 
   it('gates every one of them behind a permission', () => {

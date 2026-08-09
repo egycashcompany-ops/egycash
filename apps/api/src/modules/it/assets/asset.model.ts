@@ -2,7 +2,12 @@
 // (FR-2): in IT-1 the only operation is registration, so every asset is `inStock`; IT-2's custody
 // actions move it. `branchId` is the data-scope anchor and changes only via transfer (IT-2).
 import { Schema, model, type Types } from 'mongoose';
-import { IT_ASSET_STATUSES, type ItAssetStatus } from '@ecms/contracts';
+import {
+  IT_ASSET_STATUSES,
+  IT_DISPOSAL_METHODS,
+  type ItAssetStatus,
+  type ItDisposalMethod,
+} from '@ecms/contracts';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../shared/base/base.model';
 
 export interface ItAssetPurchaseSub {
@@ -19,6 +24,13 @@ export interface ItAssetWarrantySub {
   terms: string | null;
 }
 
+export interface ItAssetDisposalSub {
+  at: Date;
+  method: ItDisposalMethod;
+  reason: string;
+  notes: string | null;
+}
+
 export interface ItAssetDoc extends BaseDocFields {
   assetCode: string;
   name: string;
@@ -33,6 +45,14 @@ export interface ItAssetDoc extends BaseDocFields {
   location: string | null;
   purchase: ItAssetPurchaseSub | null;
   warranty: ItAssetWarrantySub | null;
+  /**
+   * Head of the OPEN custody interval, `null` when the asset is not out (design §2.2). A read
+   * convenience — `it_asset_assignments` is the truth, and the "one open per asset" invariant is
+   * that collection's partial unique index, not this field (ADR-021).
+   */
+  currentAssignmentId: Types.ObjectId | null;
+  /** Set once; `status: 'disposed'` is terminal and admits no further custody operation (FR-4). */
+  disposal: ItAssetDisposalSub | null;
   notes: string | null;
 }
 
@@ -56,6 +76,16 @@ const warrantySchema = new Schema<ItAssetWarrantySub>(
   { _id: false },
 );
 
+const disposalSchema = new Schema<ItAssetDisposalSub>(
+  {
+    at: { type: Date, required: true },
+    method: { type: String, enum: IT_DISPOSAL_METHODS, required: true },
+    reason: { type: String, required: true },
+    notes: { type: String, default: null },
+  },
+  { _id: false },
+);
+
 const assetSchema = new Schema<ItAssetDoc>(
   {
     assetCode: { type: String, required: true },
@@ -71,6 +101,8 @@ const assetSchema = new Schema<ItAssetDoc>(
     location: { type: String, default: null },
     purchase: { type: purchaseSchema, default: null },
     warranty: { type: warrantySchema, default: null },
+    currentAssignmentId: { type: Schema.Types.ObjectId, default: null },
+    disposal: { type: disposalSchema, default: null },
     notes: { type: String, default: null },
     ...baseFields,
   },

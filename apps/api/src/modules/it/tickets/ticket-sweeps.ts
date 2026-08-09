@@ -119,7 +119,8 @@ export const ticketAutoCloseSweep = async (now = new Date()): Promise<{ closed: 
         toStatus: 'closed',
         metadata: { autoClosed: true, afterDays: days },
       } as never,
-      { by: 'system' },
+      // `null`, not a sentinel — same reason as the breach stamp above.
+      { by: null },
     );
     await auditService.record({
       entityRef: entityRef(String(ticket._id)),

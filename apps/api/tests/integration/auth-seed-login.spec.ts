@@ -117,14 +117,15 @@ describe('seed → password login (regression)', () => {
     expect(routes).toContain('/interviews/stages');
     expect(routes).toContain('/evaluations/phases');
     expect(routes).toContain('/applicant-sources');
-    // ITW-1's five rows — the asset registry surface.
+    // ITW-1's five rows — the asset registry surface — plus IT-2's custody register.
     expect(routes).toContain('/it');
     expect(routes).toContain('/it/assets');
     expect(routes).toContain('/it/assets/scan');
     expect(routes).toContain('/it/vendors');
     expect(routes).toContain('/it/catalogs');
-    // 14 (HR) + 12 (Fleet) + 6 (Organization) + 5 (IT) + 2 (Administration)
-    expect(routes).toHaveLength(39);
+    expect(routes).toContain('/it/custody');
+    // 14 (HR) + 12 (Fleet) + 6 (Organization) + 6 (IT) + 2 (Administration)
+    expect(routes).toHaveLength(40);
   });
 
   it('re-running the seed is idempotent — no duplicate categories/applications/grants', async () => {
@@ -136,7 +137,7 @@ describe('seed → password login (regression)', () => {
       .set('Authorization', `Bearer ${token}`);
     const groups = (res.body as { data: { applications: unknown[] }[] }).data;
     expect(groups).toHaveLength(5);
-    expect(groups.reduce((n, g) => n + g.applications.length, 0)).toBe(39);
+    expect(groups.reduce((n, g) => n + g.applications.length, 0)).toBe(40);
   });
 
   it('the seeded HR user also logs in with email/password', async () => {

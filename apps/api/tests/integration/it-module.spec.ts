@@ -627,17 +627,22 @@ describe('asset custody', () => {
     expect(data<ItAssetDto>(moved).branchId).toBe(branchBId);
   });
 
-  it('refuses a transfer that moves neither the holder nor the branch', async () => {
+  it('refuses a transfer that moves neither the holder nor the branch — 422, a rule', async () => {
     const asset = await custodyAsset();
     await act(asset.id, 'assign', { employeeId: EMPLOYEE_A });
+    // Reads perfectly well — it names a destination. It is the DOMAIN that refuses it.
     const nowhere = await act(asset.id, 'transfer', { toEmployeeId: EMPLOYEE_A });
     expect(nowhere.status).toBe(422);
   });
 
-  it('refuses a transfer with no destination at all', async () => {
+  // Two different refusals, and the platform distinguishes them: a body that cannot be READ is a
+  // 400 (`ValidationError`, from the Zod schema), while a body that reads fine but asks for
+  // something the domain forbids is a 422 (`BusinessRuleError`). Both are asserted, because
+  // collapsing them would hide a schema that stopped validating.
+  it('refuses a transfer with no destination at all — 400, the body is unreadable', async () => {
     const asset = await custodyAsset();
     await act(asset.id, 'assign', { employeeId: EMPLOYEE_A });
-    expect((await act(asset.id, 'transfer', {})).status).toBe(422);
+    expect((await act(asset.id, 'transfer', {})).status).toBe(400);
   });
 
   it('refuses a transfer when the asset is not out', async () => {
@@ -675,8 +680,9 @@ describe('asset custody', () => {
 
   it('requires a disposal reason — the row IS the record', async () => {
     const asset = await custodyAsset();
-    expect((await act(asset.id, 'dispose', { method: 'sold' })).status).toBe(422);
-    expect((await act(asset.id, 'dispose', { method: 'sold', reason: '' })).status).toBe(422);
+    // Schema-level: a missing or empty reason never reaches the service.
+    expect((await act(asset.id, 'dispose', { method: 'sold' })).status).toBe(400);
+    expect((await act(asset.id, 'dispose', { method: 'sold', reason: '' })).status).toBe(400);
   });
 
   it('never accepts a status on a custody action (FR-2)', async () => {
@@ -685,7 +691,8 @@ describe('asset custody', () => {
       employeeId: EMPLOYEE_A,
       status: 'disposed',
     });
-    expect(sneaky.status).toBe(422); // `.strict()` — an unknown key is a rejected body
+    // `.strict()` — an unknown key is an unreadable body, refused before the service sees it.
+    expect(sneaky.status).toBe(400);
   });
 
   it('refuses custody without the grant, and disposal without ITS grant', async () => {

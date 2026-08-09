@@ -534,3 +534,47 @@ describe('the client sends only filters the API declares', () => {
     }
   });
 });
+
+// ADR-019 rule 5, pinned at the seam rather than left to reviewer attention. The failure this
+// guards is silent: a picker that loads a page of a growth catalog works perfectly until the
+// catalog passes MAX_PAGE_SIZE, then quietly stops showing some records.
+describe('growth catalogs are searched, never loaded', () => {
+  /**
+   * Strip comments before scanning. A doc comment that MENTIONS the forbidden pattern — as
+   * `SparePartPicker` does, explaining what it replaced — is not the forbidden pattern, and a
+   * scan that cannot tell the difference fails on prose while missing nothing real.
+   */
+  const code = (file: string): string =>
+    readFileSync(resolve(HERE, file), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\/\/.*$/gm, '');
+
+  const CLIENT_FILES = ['components/SparePartPicker.tsx', 'components/AssetPicker.tsx'].map(code);
+
+  it('the API offers `search` on every catalog a picker reads', () => {
+    for (const [name, source] of [
+      ['spare parts', PART_REPOSITORY],
+      ['assets', ASSET_SERVICE],
+    ] as const) {
+      expect(source, `${name} must accept a server-side search`).toContain('query.search');
+    }
+  });
+
+  it('the pickers send it, and hold no catalog of their own', () => {
+    for (const source of CLIENT_FILES) {
+      expect(source).toContain('pageSize: PAGE_SIZE');
+      expect(source, 'a picker must not load a page of the catalog').not.toContain('pageSize: 100');
+    }
+  });
+
+  // The parts dialog is where the regression would land: it needs each part's on-hand level, and
+  // loading the catalog to get it is exactly the shortcut ADR-019 forbids.
+  it('the completion dialog picks parts rather than listing them', () => {
+    const dialog = code('components/MaintenanceOrderDialogs.tsx');
+    expect(dialog).toContain('SparePartPicker');
+    expect(dialog).not.toContain('pageSize: 100');
+    expect(dialog, 'the dialog must not hold the catalog to name a part').not.toContain(
+      'useItSpareParts',
+    );
+  });
+});

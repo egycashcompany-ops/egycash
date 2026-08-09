@@ -3009,6 +3009,10 @@ const en: Record<string, string> = {
   'it.parts.emptyTitle': 'The store is empty',
   'it.parts.emptyBody': 'Add the parts your repairs consume, then receive stock against them.',
 
+  'it.parts.pickerPlaceholder': 'Search parts by code or name',
+  'it.parts.pickerNoResults': 'No parts match that search.',
+  'it.parts.pickedUnresolved': 'This part is no longer readable.',
+  'it.parts.clearPick': 'Clear the chosen part',
   'it.assets.pickerPlaceholder': 'Search assets by code, name or serial',
   'it.assets.pickerNoResults': 'No assets match that search.',
   'it.assets.pickerNoAccess': 'Choosing an asset needs the assets permission.',
@@ -5979,6 +5983,10 @@ const ar: Record<string, string> = {
   'it.parts.emptyTitle': 'المخزن فارغ',
   'it.parts.emptyBody': 'أضف القطع التي تستهلكها الإصلاحات ثم ورّد إليها رصيدًا.',
 
+  'it.parts.pickerPlaceholder': 'ابحث في القطع بالكود أو الاسم',
+  'it.parts.pickerNoResults': 'لا توجد قطع مطابقة.',
+  'it.parts.pickedUnresolved': 'هذه القطعة لم تعد متاحة للقراءة.',
+  'it.parts.clearPick': 'إلغاء اختيار القطعة',
   'it.assets.pickerPlaceholder': 'ابحث في الأصول بالكود أو الاسم أو الرقم التسلسلي',
   'it.assets.pickerNoResults': 'لا توجد أصول مطابقة.',
   'it.assets.pickerNoAccess': 'اختيار أصل يحتاج صلاحية الأصول.',

@@ -2,21 +2,27 @@ import { Types, type ClientSession } from 'mongoose';
 import { type ListItMaintenanceOrdersQuery, type Paginated } from '@ecms/contracts';
 import { BaseRepository } from '../../../shared/base/base.repository';
 import { NotFoundError } from '../../../shared/errors';
+import { type ScopeSelector } from '../../../shared/types';
 import { ACTIVE_ORDER_STATUSES } from './order-lifecycle';
 import { ItMaintenanceOrderModel, type ItMaintenanceOrderDoc } from './order.model';
 
 class ItMaintenanceOrderRepository extends BaseRepository<ItMaintenanceOrderDoc> {
   constructor() {
-    // Orders inherit the ASSET's scope anchor conceptually, but carry no branch of their own —
-    // the asset is the scoped thing, and the service reads it through the asset repository.
-    super(ItMaintenanceOrderModel, {});
+    // Branch-scoped through the asset's own anchor, denormalized onto the order at creation (§7,
+    // the `it_asset_assignments` precedent). Scoping the WRITE path through the asset was never
+    // enough: a branch-scoped technician could still LIST another branch's board.
+    super(ItMaintenanceOrderModel, { branchField: 'branchId' });
   }
 
   /** Transactional read — the version handed to `updateById` must come from inside the tx. */
-  async getByIdForUpdate(id: string, session: ClientSession): Promise<ItMaintenanceOrderDoc> {
+  async getByIdForUpdate(
+    id: string,
+    scope: ScopeSelector | undefined,
+    session: ClientSession,
+  ): Promise<ItMaintenanceOrderDoc> {
     if (!Types.ObjectId.isValid(id)) throw new NotFoundError();
     const doc = await this.model
-      .findOne({ _id: new Types.ObjectId(id), isDeleted: false })
+      .findOne(this.baseFilter(scope, { _id: new Types.ObjectId(id) }))
       .session(session)
       .lean<ItMaintenanceOrderDoc>()
       .exec();
@@ -26,6 +32,7 @@ class ItMaintenanceOrderRepository extends BaseRepository<ItMaintenanceOrderDoc>
 
   async listFiltered(
     query: ListItMaintenanceOrdersQuery,
+    scope?: ScopeSelector,
   ): Promise<Paginated<ItMaintenanceOrderDoc>> {
     const filter: Record<string, unknown> = {};
     if (query.kind !== undefined) filter.kind = query.kind;
@@ -47,6 +54,7 @@ class ItMaintenanceOrderRepository extends BaseRepository<ItMaintenanceOrderDoc>
       sortBy: query.sortBy,
       sortDir: query.sortDir,
       sortableFields: ['createdAt', 'orderCode', 'status', 'scheduledFor'],
+      ...(scope === undefined ? {} : { scope }),
     });
   }
 
@@ -68,7 +76,13 @@ class ItMaintenanceOrderRepository extends BaseRepository<ItMaintenanceOrderDoc>
     return (await query.select({ _id: 1 }).lean().exec()) !== null;
   }
 
-  /** §4.6's idempotency guard: a plan gets no second order while one is still unfinished. */
+  /**
+   * §4.6's idempotency guard: a plan gets no second order while one is still unfinished.
+   *
+   * Deliberately UNSCOPED — the sweep is the system acting for the organization, not a user
+   * reading (the `ticket.repository` sweep-read precedent). A scoped guard would let each branch
+   * generate its own duplicate.
+   */
   async hasUnfinishedForPlan(planId: Types.ObjectId): Promise<boolean> {
     const found = await this.model
       .findOne({ planId, status: { $in: ACTIVE_ORDER_STATUSES }, isDeleted: false })

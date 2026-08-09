@@ -20,6 +20,9 @@ import { pdfDriverEnabled, renderPdfFromHtml } from '../../../platform/pdf';
 import { itCatalogItemRepository } from '../catalog-items';
 import { itVendorRepository } from '../vendors';
 import { itAssetRepository } from './asset.repository';
+import { itAssetAssignmentRepository } from './assignment.repository';
+import { itAssetEventRepository } from './asset-event.repository';
+import { itMaintenanceOrderRepository } from '../maintenance/order.repository';
 import { nextAssetCode } from './asset-sequence';
 import { buildAssetLabelSheetHtml, renderLabelQrs } from './asset-labels';
 import { type ItAssetDoc, type ItAssetPurchaseSub, type ItAssetWarrantySub } from './asset.model';
@@ -208,15 +211,41 @@ class ItAssetService {
   }
 
   /**
-   * FR-5: an asset is deletable only while registered-in-error is still possible. In IT-1 no
-   * custody operation exists, so `inStock` is exactly that window; IT-2's history events tighten
-   * this guard to "no event beyond `registered`" without changing the permission.
+   * FR-5's real question: has this asset ever been USED?
+   *
+   * The status alone never answered it. An asset assigned and then returned is `inStock` again
+   * while carrying a full custody chain, so the old `status === 'inStock'` guard let it be deleted
+   * — the exact case FR-5 exists to forbid ("never hard-deleted once they carry any §2.3 event
+   * beyond `registered`"). The comment above this method said IT-2 would tighten it; that never
+   * happened, and it could not have, because nothing writes a `registered` event for the guard to
+   * measure "beyond" from.
+   *
+   * So the rule is stated directly instead: an asset is deletable only while it has no history and
+   * nothing operational points at it. Every consumer that starts referencing assets adds its check
+   * HERE, to this one list — never a private guard of its own, which is how the general rule drifts
+   * out of step with the module.
    */
+  private async assertRegisteredInError(doc: ItAssetDoc): Promise<void> {
+    const refuse = (reason: string): never => {
+      throw new BusinessRuleError(
+        `asset ${doc.assetCode} ${reason}; only a registered-in-error asset with no history can be deleted (FR-5)`,
+      );
+    };
+
+    if (doc.status !== 'inStock') refuse(`is ${doc.status}`);
+
+    const assetId = doc._id;
+    // Ordered cheapest-first, and each one is a different kind of "it was used": a history entry,
+    // a custody interval (open OR closed), a maintenance order (an open one writes no event yet).
+    if (await itAssetEventRepository.exists({ subjectId: assetId })) refuse('has history');
+    if (await itAssetAssignmentRepository.exists({ assetId })) refuse('has been in someone\'s custody');
+    if (await itMaintenanceOrderRepository.exists({ assetId })) refuse('carries a maintenance order');
+  }
+
+  /** FR-5: delete is the registered-in-error window, and nothing else. */
   async remove(id: string, by: string, scope: ScopeSelector): Promise<void> {
     const doc = await itAssetRepository.getById(id, scope);
-    if (doc.status !== 'inStock') {
-      throw new BusinessRuleError('only an in-stock asset with no history can be deleted (FR-5)');
-    }
+    await this.assertRegisteredInError(doc);
     await itAssetRepository.softDeleteById(id, { by });
     await auditService.record({
       entityRef: entityRef(id),

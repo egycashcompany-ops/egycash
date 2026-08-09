@@ -179,16 +179,22 @@ const EnvSchema = z.object({
    * Accounts confined to the HR module (see `hr-only-access.ts`): comma-separated EMAILS or
    * USERNAMES — the two identifiers this system holds unique.
    *
-   * EMPTY BY DEFAULT. A confinement is a restriction applied to specific people, and which people
-   * is a deployment's fact, not the code's: shipping a default list would apply it to whichever
-   * accounts happened to match in every database this ever runs against, including someone else's.
-   * Unset, the reconciliation does nothing at all.
+   * The default names the four accounts this confinement was decided for, IN CODE rather than only
+   * in a deployment's environment. A restriction that has to be re-entered by hand to survive a new
+   * environment is a restriction that eventually is not there: the point of reconciling on every
+   * seed and every boot is that it cannot be forgotten, and a value only present in one `.env` can
+   * be. An email is exact and unique, so a default list reaches these four accounts and no others.
    *
-   * An identifier matching no account is a logged warning rather than a boot failure — the same
-   * configuration reaches environments that legitimately do not have these people (a fresh dev
-   * database has none of them), and failing there would be noise rather than a signal.
+   * Override it here (or set it empty) for a deployment these people do not belong to. An
+   * identifier matching no account is a logged warning rather than a boot failure — the same
+   * configuration reaches environments that legitimately do not have them (a fresh dev database has
+   * none), and failing there would be noise rather than a signal.
    */
-  HR_ONLY_USER_IDENTIFIERS: z.string().default(''),
+  HR_ONLY_USER_IDENTIFIERS: z
+    .string()
+    .default(
+      'mohamed.mustafa@egycash.com.eg,samer.mohammed@egycash.com.eg,mohamed.essam@egycash.com.eg,saif.aldin@egycash.com.eg',
+    ),
 
   /**
    * Opt in to `name:<full English name>` identifiers in the list above — a FALLBACK for a database

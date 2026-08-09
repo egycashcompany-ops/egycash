@@ -130,12 +130,6 @@ describe('parseIdentifierList', () => {
     expect(parseIdentifierList('   ')).toEqual([]);
   });
 
-  it('leaves the shipped default configuring nothing', () => {
-    // The default is empty on purpose: WHICH accounts are confined is a deployment's fact, and a
-    // shipped list would apply itself to whatever matched in every database this runs against.
-    expect(parseIdentifierList(env.HR_ONLY_USER_IDENTIFIERS)).toEqual([]);
-  });
-
   it('parses a configured list of emails and usernames', () => {
     expect(parseIdentifierList('a@ecms.local, b@ecms.local\n m.essam')).toEqual([
       'a@ecms.local',
@@ -146,6 +140,23 @@ describe('parseIdentifierList', () => {
 });
 
 describe('the shipped configuration', () => {
+  it('names the four accounts, by email', () => {
+    // In code rather than only in a deployment's .env: a restriction that must be re-entered by
+    // hand to survive a new environment is one that eventually is not there.
+    expect(parseIdentifierList(env.HR_ONLY_USER_IDENTIFIERS)).toEqual([
+      'mohamed.mustafa@egycash.com.eg',
+      'samer.mohammed@egycash.com.eg',
+      'mohamed.essam@egycash.com.eg',
+      'saif.aldin@egycash.com.eg',
+    ]);
+  });
+
+  it('identifies every one of them by email, never by name', () => {
+    for (const identifier of parseIdentifierList(env.HR_ONLY_USER_IDENTIFIERS)) {
+      expect(classifyIdentifier(identifier)?.kind, identifier).toBe('email');
+    }
+  });
+
   it('does not enable name identifiers', () => {
     // Emails and usernames are unique in this system; a display name is not. Confining an account
     // through a field two people can share is the one way this goes wrong quietly, so the fallback

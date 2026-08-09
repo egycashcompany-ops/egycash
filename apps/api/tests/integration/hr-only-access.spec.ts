@@ -32,6 +32,7 @@ import { getCache } from '../../src/infrastructure/redis/cache';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import {
   derivedHrRoleKey,
+  parseIdentifierList,
   reconcileHrOnlyUsers,
   type HrOnlyUserReport,
 } from '../../src/hr-only-access';
@@ -40,18 +41,20 @@ import { type AuthContext } from '../../src/shared/types';
 const PASSWORD = 'Str0ng#Pass!';
 
 /**
- * The four accounts the confinement was requested for. Targeted by EMAIL — the identifier this
- * system holds unique — which is how the configuration is meant to name them.
+ * The four accounts the confinement was decided for — their REAL emails, so the suite exercises the
+ * shipped configuration rather than a stand-in. Email is the identifier this system holds unique,
+ * and `HR_ONLY_USER_IDENTIFIERS` is read from env below instead of being restated here: a test that
+ * writes out its own list proves the reconciler works, not that it is aimed at the right people.
  */
 const CONFINED = [
-  { first: 'Mohamed', last: 'Mustafa', email: 'mohamed.mustafa@ecms.local' },
-  { first: 'Samer', last: 'Mohammed', email: 'samer.mohammed@ecms.local' },
-  { first: 'Mohamed', last: 'Essam', email: 'mohamed.essam@ecms.local' },
-  { first: 'Saif', last: 'AlDin Muhammad', email: 'saif.aldin@ecms.local' },
+  { first: 'Mohamed', last: 'Mustafa', email: 'mohamed.mustafa@egycash.com.eg' },
+  { first: 'Samer', last: 'Mohammed', email: 'samer.mohammed@egycash.com.eg' },
+  { first: 'Mohamed', last: 'Essam', email: 'mohamed.essam@egycash.com.eg' },
+  { first: 'Saif', last: 'AlDin Muhammad', email: 'saif.aldin@egycash.com.eg' },
 ];
 
 /** Same department, same role, same grants — and deliberately not on the confinement list. */
-const CONTROL = { first: 'Karim', last: 'Unaffected', email: 'karim.unaffected@ecms.local' };
+const CONTROL = { first: 'Karim', last: 'Unaffected', email: 'karim.unaffected@egycash.com.eg' };
 
 let replSet: MongoMemoryReplSet | null = null;
 let app: Express;
@@ -230,10 +233,11 @@ beforeAll(async () => {
     permissionsBefore.set(person.email, effective.permissions);
   }
 
-  reports = await reconcileHrOnlyUsers(
-    CONFINED.map((p) => p.email),
-    { actorId: adminId },
-  );
+  // THE SHIPPED CONFIGURATION, not a list this test made up — so a default that stopped naming
+  // these four (a typo, a rename, a deleted entry) fails here instead of passing quietly.
+  reports = await reconcileHrOnlyUsers(parseIdentifierList(env.HR_ONLY_USER_IDENTIFIERS), {
+    actorId: adminId,
+  });
 }, 300_000);
 
 afterAll(async () => {
@@ -246,7 +250,10 @@ beforeEach(async () => {
 });
 
 describe('the four accounts are resolved and confined', () => {
-  it('resolves all four by email and reports each as reconciled', () => {
+  it('resolves all four by email from the shipped configuration', () => {
+    expect(parseIdentifierList(env.HR_ONLY_USER_IDENTIFIERS).sort()).toEqual(
+      CONFINED.map((p) => p.email).sort(),
+    );
     expect(reports).toHaveLength(4);
     expect(reports.every((r) => r.outcome === 'reconciled')).toBe(true);
     expect(new Set(reports.map((r) => r.userId))).toEqual(
@@ -260,7 +267,7 @@ describe('the four accounts are resolved and confined', () => {
     const outsider = await createUser({
       first: 'Mohamed',
       last: 'Untouched',
-      email: 'mohamed.untouched@ecms.local',
+      email: 'mohamed.untouched@egycash.com.eg',
     });
     await rbacService.ensureAssignment(outsider, mixedRoleId, 'organization');
 
@@ -291,7 +298,7 @@ describe('the four accounts are resolved and confined', () => {
       const id = await createUser({
         first: 'Ambiguous',
         last: 'Twin',
-        email: `ambiguous.twin.${suffix}@ecms.local`,
+        email: `ambiguous.twin.${suffix}@egycash.com.eg`,
       });
       await rbacService.ensureAssignment(id, mixedRoleId, 'organization');
     }
@@ -303,7 +310,7 @@ describe('the four accounts are resolved and confined', () => {
     expect(report?.userId).toBeNull();
 
     for (const suffix of ['one', 'two']) {
-      const doc = await userRepository.findByEmail(`ambiguous.twin.${suffix}@ecms.local`);
+      const doc = await userRepository.findByEmail(`ambiguous.twin.${suffix}@egycash.com.eg`);
       const effective = await rbacService.getEffectivePermissions(
         String(doc?._id),
         doc?.security.permissionVersion ?? 0,
@@ -424,10 +431,10 @@ describe('the four accounts are resolved and confined', () => {
     const narrowId = await createUser({
       first: 'Nadia',
       last: 'Narrow',
-      email: 'nadia.narrow@ecms.local',
+      email: 'nadia.narrow@egycash.com.eg',
     });
     await rbacService.ensureAssignment(narrowId, String(otherRole._id), 'organization');
-    await reconcileHrOnlyUsers(['nadia.narrow@ecms.local'], { actorId: adminId });
+    await reconcileHrOnlyUsers(['nadia.narrow@egycash.com.eg'], { actorId: adminId });
 
     const derived = await roleRepository.findByKey(derivedHrRoleKey(String(otherRole._id)));
     expect(derived?.permissionKeys.sort()).toEqual(['applicant.view']);

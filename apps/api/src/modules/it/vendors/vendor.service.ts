@@ -59,6 +59,21 @@ class ItVendorService {
     return doc;
   }
 
+  /**
+   * Single vendor by id — the resolve half of ADR-019 rule 5.
+   *
+   * A reference picker searches by text to CHOOSE, but a form that arrives already holding
+   * `purchase.vendorId` has an id and no text, and must still show a name. Without this the only
+   * options are showing the raw id or paging the list until the id turns up — and the second is
+   * exactly the "load and filter client-side" the rule exists to forbid.
+   *
+   * Deliberately NOT filtered to active vendors: the id being resolved is usually one an older
+   * asset already references, and an archived vendor (FR-11) must still render its name.
+   */
+  async getById(id: string): Promise<ItVendorDoc> {
+    return itVendorRepository.getById(id);
+  }
+
   async list(query: ListItVendorsQuery): Promise<Paginated<ItVendorDoc>> {
     const filter: Record<string, unknown> = {};
     if (query.isActive !== undefined) filter.isActive = query.isActive;

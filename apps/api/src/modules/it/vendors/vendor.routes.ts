@@ -11,7 +11,12 @@ import {
 import { authenticate } from '../../../platform/auth';
 import { authorize } from '../../../platform/rbac';
 import { asyncHandler, validate } from '../../../platform/web';
-import { createItVendor, listItVendors, updateItVendor } from './vendor.controller';
+import {
+  createItVendor,
+  getItVendor,
+  listItVendors,
+  updateItVendor,
+} from './vendor.controller';
 
 const IdParamSchema = z.object({ id: objectId() }).strict();
 
@@ -23,6 +28,17 @@ export const buildItVendorsRouter = (): Router => {
     authorize('itVendor.view'),
     validate({ query: ListItVendorsQuerySchema }),
     asyncHandler(listItVendors),
+  );
+  // Resolve-by-id, the other half of ADR-019 rule 5: a picker searches to choose, but a form
+  // holding a stored `vendorId` has only the id and still has to show a name. Same `itVendor.view`
+  // gate as the list — it returns one row of what the list already returns, so it grants nothing
+  // new.
+  router.get(
+    '/:id',
+    authenticate,
+    authorize('itVendor.view'),
+    validate({ params: IdParamSchema }),
+    asyncHandler(getItVendor),
   );
   router.post(
     '/',

@@ -20,6 +20,7 @@ import {
   LinkIcon,
   MonitorIcon,
   OfferIcon,
+  QrIcon,
   ShieldIcon,
   SitemapIcon,
   TagIcon,
@@ -63,6 +64,8 @@ const REGISTRY: Record<string, NavIcon> = {
   // Department (category) tiles — categories resolve through this same registry.
   briefcase: BriefcaseIcon,
   monitor: MonitorIcon,
+  // IT (ITW-1) — the scan surface; `monitor` and `folder` above already cover its other rows.
+  qr: QrIcon,
 };
 
 export const resolveNavIcon = (name: string | null | undefined, fallback: NavIcon): NavIcon => {

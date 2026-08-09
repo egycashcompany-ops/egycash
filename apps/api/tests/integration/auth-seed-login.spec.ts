@@ -93,8 +93,16 @@ describe('seed → password login (regression)', () => {
       }
     ).data;
 
-    // Default categories are seeded and returned in sortOrder.
-    expect(groups.map((g) => g.name.en)).toEqual(['HR', 'Fleet', 'Organization', 'Administration']);
+    // Default categories are seeded and returned in sortOrder. IT joins at 25 — between
+    // Organization (20) and Administration (30) — now that ITW-1 has given it application rows;
+    // IT-1 seeded the category deliberately empty, and an empty category is not returned.
+    expect(groups.map((g) => g.name.en)).toEqual([
+      'HR',
+      'Fleet',
+      'Organization',
+      'IT',
+      'Administration',
+    ]);
     // Applications map to the app's real client routes, granted directly to the admin.
     const routes = groups.flatMap((g) => g.applications.map((a) => a.route));
     expect(routes).toContain('/applicants');
@@ -109,7 +117,14 @@ describe('seed → password login (regression)', () => {
     expect(routes).toContain('/interviews/stages');
     expect(routes).toContain('/evaluations/phases');
     expect(routes).toContain('/applicant-sources');
-    expect(routes).toHaveLength(34); // 14 (HR) + 12 (Fleet) + 6 (Organization) + 2 (Administration)
+    // ITW-1's five rows — the asset registry surface.
+    expect(routes).toContain('/it');
+    expect(routes).toContain('/it/assets');
+    expect(routes).toContain('/it/assets/scan');
+    expect(routes).toContain('/it/vendors');
+    expect(routes).toContain('/it/catalogs');
+    // 14 (HR) + 12 (Fleet) + 6 (Organization) + 5 (IT) + 2 (Administration)
+    expect(routes).toHaveLength(39);
   });
 
   it('re-running the seed is idempotent — no duplicate categories/applications/grants', async () => {
@@ -120,8 +135,8 @@ describe('seed → password login (regression)', () => {
       .get('/api/v1/platform/me/applications')
       .set('Authorization', `Bearer ${token}`);
     const groups = (res.body as { data: { applications: unknown[] }[] }).data;
-    expect(groups).toHaveLength(4);
-    expect(groups.reduce((n, g) => n + g.applications.length, 0)).toBe(34);
+    expect(groups).toHaveLength(5);
+    expect(groups.reduce((n, g) => n + g.applications.length, 0)).toBe(39);
   });
 
   it('the seeded HR user also logs in with email/password', async () => {

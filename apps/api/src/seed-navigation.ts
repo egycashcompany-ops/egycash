@@ -542,8 +542,7 @@ export const syncNavigationCatalog = async (): Promise<void> => {
         continue;
       }
       const next = rows.slice(index + 1).find((r) => r.existing !== null);
-      const high =
-        next === null || next === undefined ? low + 20 : Number(next.existing?.sortOrder);
+      const high = next === null || next === undefined ? low + 20 : Number(next.existing?.sortOrder);
       const sortOrder = (low + high) / 2;
 
       categoryId ??= await ensureCategory(category, actor);

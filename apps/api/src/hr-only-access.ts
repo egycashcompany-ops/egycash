@@ -62,8 +62,11 @@ export {
 export interface HrOnlyUserReport {
   identifier: string;
   userId: string | null;
-  /** `reconciled`, `not-found`, or `ambiguous` (an identifier matching more than one account). */
-  outcome: 'reconciled' | 'not-found' | 'ambiguous';
+  /**
+   * `reconciled`; `not-found`; `ambiguous` (an identifier matching more than one account); or
+   * `name-matching-disabled` (a `name:` identifier while the fallback is off — the default).
+   */
+  outcome: 'reconciled' | 'not-found' | 'ambiguous' | 'name-matching-disabled';
   /** Role assignments revoked because they granted something outside HR. */
   revokedAssignments: number;
   /** HR permission keys the user ends up holding. */
@@ -74,16 +77,21 @@ export interface HrOnlyUserReport {
 }
 
 // ── Identifier resolution ───────────────────────────────────────────────────
-// A name matching MORE THAN ONE account is reported as ambiguous and skipped: guessing which
-// "Mohamed Mustafa" was meant is exactly the mistake that confines the wrong person's account.
-// (Which lookup an identifier calls for is decided in `hr-only-policy.ts`.)
+// Accounts are named by EMAIL or USERNAME, the two fields this system holds unique. `name:` is a
+// fallback for a database whose logins are not known yet and is refused unless explicitly enabled;
+// even then, a name matching MORE THAN ONE account is reported as ambiguous rather than resolved,
+// because guessing which "Mohamed Mustafa" was meant is what confines the wrong person's account.
+
+type Resolution = { id: string } | 'ambiguous' | 'name-disabled' | null;
 
 const resolveIdentifier = async (
   identifier: string,
-): Promise<{ id: string } | 'ambiguous' | null> => {
+  allowNameIdentifiers: boolean,
+): Promise<Resolution> => {
   const classified = classifyIdentifier(identifier);
   if (classified === null) return null;
   if (classified.kind === 'name') {
+    if (!allowNameIdentifiers) return 'name-disabled';
     const matches = await userRepository.findByFullNameEn(classified.value);
     if (matches.length === 0) return null;
     if (matches.length > 1) return 'ambiguous';
@@ -101,6 +109,8 @@ const resolveIdentifier = async (
 interface ReconcileDeps {
   /** Actor recorded on the audit entries the reconciliation writes. */
   actorId: string;
+  /** Opt in to `name:` identifiers (off by default — emails and usernames are the identity). */
+  allowNameIdentifiers?: boolean;
 }
 
 const reconcileRoles = async (
@@ -250,28 +260,44 @@ export const reconcileHrOnlyUser = async (
 /**
  * Confine every configured account. Idempotent — a second run finds nothing left to change.
  *
- * An identifier that matches no account is REPORTED, not thrown: the same configuration is applied
- * to environments that legitimately do not have all of these people (a fresh dev database has none
- * of them), and failing the seed there would be noise rather than a signal.
+ * Every identifier gets an entry in the report, whatever happened to it. An identifier that resolves
+ * to nothing is REPORTED rather than thrown: the same configuration is applied to environments that
+ * legitimately do not have all of these people (a fresh dev database has none of them), and failing
+ * the seed there would be noise rather than a signal. What must never happen quietly is the
+ * opposite — an account confined that was not meant to be — which is why every path that could not
+ * identify exactly one person declines instead of picking.
  */
 export const reconcileHrOnlyUsers = async (
   identifiers: string[],
   deps: ReconcileDeps,
 ): Promise<HrOnlyUserReport[]> => {
   const reports: HrOnlyUserReport[] = [];
+  const skipped = (
+    identifier: string,
+    outcome: Exclude<HrOnlyUserReport['outcome'], 'reconciled'>,
+  ): HrOnlyUserReport => ({
+    identifier,
+    userId: null,
+    outcome,
+    revokedAssignments: 0,
+    hrPermissionKeys: [],
+    revokedApplications: 0,
+    totpCleared: false,
+  });
+
   for (const identifier of identifiers) {
-    const resolved = await resolveIdentifier(identifier);
+    const resolved = await resolveIdentifier(identifier, deps.allowNameIdentifiers === true);
+    if (resolved === 'name-disabled') {
+      logger.error(
+        { identifier },
+        'hr-only: name identifiers are disabled — configure the email or username, or set HR_ONLY_ALLOW_NAME_IDENTIFIERS=true',
+      );
+      reports.push(skipped(identifier, 'name-matching-disabled'));
+      continue;
+    }
     if (resolved === null) {
       logger.warn({ identifier }, 'hr-only: no account matches this identifier — skipped');
-      reports.push({
-        identifier,
-        userId: null,
-        outcome: 'not-found',
-        revokedAssignments: 0,
-        hrPermissionKeys: [],
-        revokedApplications: 0,
-        totpCleared: false,
-      });
+      reports.push(skipped(identifier, 'not-found'));
       continue;
     }
     if (resolved === 'ambiguous') {
@@ -279,15 +305,7 @@ export const reconcileHrOnlyUsers = async (
         { identifier },
         'hr-only: identifier matches more than one account — skipped, use the email or username',
       );
-      reports.push({
-        identifier,
-        userId: null,
-        outcome: 'ambiguous',
-        revokedAssignments: 0,
-        hrPermissionKeys: [],
-        revokedApplications: 0,
-        totpCleared: false,
-      });
+      reports.push(skipped(identifier, 'ambiguous'));
       continue;
     }
     const result = await reconcileHrOnlyUser(resolved.id, deps);
@@ -313,7 +331,7 @@ export const reconcileHrOnlyUsers = async (
 export const syncHrOnlyAccounts = async (): Promise<HrOnlyUserReport[]> => {
   const { env } = await import('./infrastructure/config/env');
   const identifiers = parseIdentifierList(env.HR_ONLY_USER_IDENTIFIERS);
-  if (identifiers.length === 0) return [];
+  if (identifiers.length === 0) return []; // unconfigured — the default, and it does nothing
 
   // Audited under a super-admin, the way the navigation catalog sync attributes its own writes.
   const adminIds = await rbacService.userIdsWithSystemRole('super-admin');
@@ -321,7 +339,10 @@ export const syncHrOnlyAccounts = async (): Promise<HrOnlyUserReport[]> => {
   if (actorId === undefined) return []; // pre-seed boot — the seed covers it
 
   try {
-    return await reconcileHrOnlyUsers(identifiers, { actorId });
+    return await reconcileHrOnlyUsers(identifiers, {
+      actorId,
+      allowNameIdentifiers: env.HR_ONLY_ALLOW_NAME_IDENTIFIERS,
+    });
   } catch (error) {
     logger.error({ err: error }, 'hr-only: reconciliation failed — accounts may be unconfined');
     return [];

@@ -25,7 +25,17 @@ export const derivedHrRoleKey = (sourceRoleId: string): string =>
 export const isDerivedHrRoleKey = (key: string | null): boolean =>
   key !== null && key.startsWith(HR_ONLY_ROLE_KEY_PREFIX);
 
-/** Identifiers of this form are matched against `firstName.en lastName.en`. */
+/**
+ * Identifiers of this form are matched against `firstName.en lastName.en`.
+ *
+ * OFF BY DEFAULT, and deliberately so. A person's identity in this system is their email or their
+ * username — both unique and both enforced unique; a display name is neither. Confining an account
+ * is a restriction applied to a specific human being, and resolving "which human" through a field
+ * that two people can share is the one way this can go wrong quietly. The name form remains as a
+ * fallback for a database where the logins genuinely are not known yet, and enabling it is an
+ * explicit, deliberate act (`HR_ONLY_ALLOW_NAME_IDENTIFIERS`) rather than something you get by not
+ * thinking about it.
+ */
 export const NAME_IDENTIFIER_PREFIX = 'name:';
 
 export type RoleClassification = 'hr-only' | 'non-hr' | 'mixed' | 'empty';
@@ -74,8 +84,11 @@ export type IdentifierKind =
 
 /**
  * How an identifier should be looked up: `name:<full English name>`, anything containing `@` as an
- * email, everything else as a username. The `name:` form is what lets the confinement be declared
- * for people named in a request before anyone has looked their login up.
+ * email, everything else as a username.
+ *
+ * Classification only — whether a `name:` identifier is ALLOWED to be resolved is a separate
+ * decision (see `NAME_IDENTIFIER_PREFIX`), taken by the caller so that a refusal can be reported
+ * against the identifier that caused it instead of silently reading as "no such account".
  */
 export const classifyIdentifier = (identifier: string): IdentifierKind | null => {
   const value = identifier.trim();

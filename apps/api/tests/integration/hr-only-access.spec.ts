@@ -32,7 +32,6 @@ import { getCache } from '../../src/infrastructure/redis/cache';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import {
   derivedHrRoleKey,
-  parseIdentifierList,
   reconcileHrOnlyUsers,
   type HrOnlyUserReport,
 } from '../../src/hr-only-access';
@@ -40,7 +39,10 @@ import { type AuthContext } from '../../src/shared/types';
 
 const PASSWORD = 'Str0ng#Pass!';
 
-/** The four accounts the confinement was requested for, exactly as the env default names them. */
+/**
+ * The four accounts the confinement was requested for. Targeted by EMAIL — the identifier this
+ * system holds unique — which is how the configuration is meant to name them.
+ */
 const CONFINED = [
   { first: 'Mohamed', last: 'Mustafa', email: 'mohamed.mustafa@ecms.local' },
   { first: 'Samer', last: 'Mohammed', email: 'samer.mohammed@ecms.local' },
@@ -57,6 +59,8 @@ let adminId: string;
 let departmentId: string;
 let mixedRoleId: string;
 const userIds = new Map<string, string>();
+/** Each confined user's effective permissions BEFORE the reconciliation — the baseline to narrow. */
+const permissionsBefore = new Map<string, Record<string, string>>();
 let reports: HrOnlyUserReport[] = [];
 
 const resolveMongoUri = async (): Promise<string> => {
@@ -214,9 +218,22 @@ beforeAll(async () => {
     await userService.setTotpRequired(id, true);
   }
 
-  reports = await reconcileHrOnlyUsers(parseIdentifierList(env.HR_ONLY_USER_IDENTIFIERS), {
-    actorId: adminId,
-  });
+  // Snapshot what each of them held, so "only removed, never added" can be asserted against the
+  // real before-state rather than against a list written out by hand in the test.
+  for (const person of CONFINED) {
+    const id = userIds.get(person.email) ?? '';
+    const doc = await userRepository.findById(id);
+    const effective = await rbacService.getEffectivePermissions(
+      id,
+      doc?.security.permissionVersion ?? 0,
+    );
+    permissionsBefore.set(person.email, effective.permissions);
+  }
+
+  reports = await reconcileHrOnlyUsers(
+    CONFINED.map((p) => p.email),
+    { actorId: adminId },
+  );
 }, 300_000);
 
 afterAll(async () => {
@@ -229,12 +246,70 @@ beforeEach(async () => {
 });
 
 describe('the four accounts are resolved and confined', () => {
-  it('resolves all four by name and reports each as reconciled', () => {
+  it('resolves all four by email and reports each as reconciled', () => {
     expect(reports).toHaveLength(4);
     expect(reports.every((r) => r.outcome === 'reconciled')).toBe(true);
     expect(new Set(reports.map((r) => r.userId))).toEqual(
       new Set(CONFINED.map((p) => userIds.get(p.email))),
     );
+  });
+
+  it('refuses a name: identifier by default, and confines nobody through it', async () => {
+    // A display name is not unique, so it is not an identity. The fallback exists for a database
+    // whose logins are not known yet and has to be switched on deliberately.
+    const outsider = await createUser({
+      first: 'Mohamed',
+      last: 'Untouched',
+      email: 'mohamed.untouched@ecms.local',
+    });
+    await rbacService.ensureAssignment(outsider, mixedRoleId, 'organization');
+
+    const [report] = await reconcileHrOnlyUsers(['name:Mohamed Untouched'], { actorId: adminId });
+    expect(report?.outcome).toBe('name-matching-disabled');
+    expect(report?.userId).toBeNull();
+
+    const effective = await rbacService.getEffectivePermissions(
+      outsider,
+      (await userRepository.findById(outsider))?.security.permissionVersion ?? 0,
+    );
+    expect(effective.permissions['fleetVehicle.view']).toBe('organization');
+  });
+
+  it('resolves a name: identifier once the fallback is explicitly enabled', async () => {
+    const [report] = await reconcileHrOnlyUsers(['name:Mohamed Untouched'], {
+      actorId: adminId,
+      allowNameIdentifiers: true,
+    });
+    expect(report?.outcome).toBe('reconciled');
+    expect(report?.revokedAssignments).toBe(1);
+  });
+
+  it('refuses an ambiguous name rather than confining the wrong person', async () => {
+    // Two accounts sharing a display name: the answer is "this name is not an identifier", never
+    // whichever the query happened to return first.
+    for (const suffix of ['one', 'two']) {
+      const id = await createUser({
+        first: 'Ambiguous',
+        last: 'Twin',
+        email: `ambiguous.twin.${suffix}@ecms.local`,
+      });
+      await rbacService.ensureAssignment(id, mixedRoleId, 'organization');
+    }
+    const [report] = await reconcileHrOnlyUsers(['name:Ambiguous Twin'], {
+      actorId: adminId,
+      allowNameIdentifiers: true,
+    });
+    expect(report?.outcome).toBe('ambiguous');
+    expect(report?.userId).toBeNull();
+
+    for (const suffix of ['one', 'two']) {
+      const doc = await userRepository.findByEmail(`ambiguous.twin.${suffix}@ecms.local`);
+      const effective = await rbacService.getEffectivePermissions(
+        String(doc?._id),
+        doc?.security.permissionVersion ?? 0,
+      );
+      expect(effective.permissions['fleetVehicle.view']).toBe('organization');
+    }
   });
 
   it('leaves them holding HR permissions only — nothing outside the module', async () => {
@@ -263,6 +338,28 @@ describe('the four accounts are resolved and confined', () => {
         'applicant.view',
         'employee.view',
       ]);
+    }
+  });
+
+  it('is exactly the old permission set narrowed to HR — same keys, same scopes', async () => {
+    // The strongest form of "only removed, never added": what they hold afterwards must equal what
+    // they held before, minus everything outside HR, DOWN TO THE DATA SCOPE. A rewritten assignment
+    // that quietly widened `department` to `organization` would pass a key-only check and fail here.
+    for (const person of CONFINED) {
+      const before = permissionsBefore.get(person.email) ?? {};
+      const modules = await rbacService.moduleIdsForPermissions(Object.keys(before));
+      const expected = Object.fromEntries(
+        Object.entries(before).filter(([key]) => modules.get(key) === 'hr'),
+      );
+      expect(Object.keys(expected).length, 'the baseline should not be empty').toBeGreaterThan(0);
+
+      const id = userIds.get(person.email) ?? '';
+      const doc = await userRepository.findById(id);
+      const after = await rbacService.getEffectivePermissions(
+        id,
+        doc?.security.permissionVersion ?? 0,
+      );
+      expect(after.permissions).toEqual(expected);
     }
   });
 
@@ -345,9 +442,10 @@ describe('the four accounts are resolved and confined', () => {
   });
 
   it('is idempotent — a second run finds nothing left to change', async () => {
-    const second = await reconcileHrOnlyUsers(parseIdentifierList(env.HR_ONLY_USER_IDENTIFIERS), {
-      actorId: adminId,
-    });
+    const second = await reconcileHrOnlyUsers(
+      CONFINED.map((p) => p.email),
+      { actorId: adminId },
+    );
     expect(second.every((r) => r.outcome === 'reconciled')).toBe(true);
     expect(second.every((r) => r.revokedAssignments === 0)).toBe(true);
     expect(second.every((r) => r.revokedApplications === 0)).toBe(true);

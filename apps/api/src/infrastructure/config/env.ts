@@ -176,20 +176,29 @@ const EnvSchema = z.object({
   CHROMIUM_PATH: z.string().default(''),
 
   /**
-   * Accounts confined to the HR module (see `hr-only-access.ts`): comma-separated identifiers, each
-   * an email, a username, or `name:<full English name>`.
+   * Accounts confined to the HR module (see `hr-only-access.ts`): comma-separated EMAILS or
+   * USERNAMES — the two identifiers this system holds unique.
    *
-   * The default names the four accounts this confinement was requested for. Names are matched
-   * case-insensitively against `firstName.en lastName.en`, and a name matching more than one
-   * account is skipped rather than guessed — so set emails or usernames here for anything but a
-   * demonstration database. An identifier matching nothing is a logged warning, not a boot failure:
-   * the same configuration is deployed to environments that do not have these people at all.
+   * EMPTY BY DEFAULT. A confinement is a restriction applied to specific people, and which people
+   * is a deployment's fact, not the code's: shipping a default list would apply it to whichever
+   * accounts happened to match in every database this ever runs against, including someone else's.
+   * Unset, the reconciliation does nothing at all.
+   *
+   * An identifier matching no account is a logged warning rather than a boot failure — the same
+   * configuration reaches environments that legitimately do not have these people (a fresh dev
+   * database has none of them), and failing there would be noise rather than a signal.
    */
-  HR_ONLY_USER_IDENTIFIERS: z
-    .string()
-    .default(
-      'name:Mohamed Mustafa,name:Samer Mohammed,name:Mohamed Essam,name:Saif AlDin Muhammad',
-    ),
+  HR_ONLY_USER_IDENTIFIERS: z.string().default(''),
+
+  /**
+   * Opt in to `name:<full English name>` identifiers in the list above — a FALLBACK for a database
+   * whose logins are not known yet, off by default (see `hr-only-policy.ts`). Even when enabled, a
+   * name matching more than one account is refused rather than guessed.
+   */
+  HR_ONLY_ALLOW_NAME_IDENTIFIERS: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
 
   SEED_ADMIN_EMAIL: z.string().email().default('admin@ecms.local'),
   SEED_ADMIN_PASSWORD: z.string().min(8).default('Admin#2026!ecms'),

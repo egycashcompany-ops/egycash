@@ -97,10 +97,12 @@ export const seedDevData = async (): Promise<{ adminId: string; hrId: string }> 
 
   // HR-only accounts (see hr-only-access.ts). Re-asserted on EVERY seed run, which is the point:
   // the confinement is a state the platform maintains, not an edit somebody made once that the next
-  // `npm run seed` — or the next role assignment — could quietly undo. Idempotent, and accounts the
-  // configuration names but this database does not have are skipped with a warning.
+  // `npm run seed` — or the next role assignment — could quietly undo. Idempotent; unconfigured
+  // (the default) it does nothing, and accounts the configuration names but this database does not
+  // have are skipped with a warning.
   await reconcileHrOnlyUsers(parseIdentifierList(env.HR_ONLY_USER_IDENTIFIERS), {
     actorId: adminId,
+    allowNameIdentifiers: env.HR_ONLY_ALLOW_NAME_IDENTIFIERS,
   });
 
   return { adminId, hrId };

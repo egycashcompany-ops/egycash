@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { env } from './infrastructure/config/env';
 import {
   HR_ONLY_ROLE_KEY_PREFIX,
   classifyIdentifier,
@@ -129,16 +130,26 @@ describe('parseIdentifierList', () => {
     expect(parseIdentifierList('   ')).toEqual([]);
   });
 
-  it('parses the shipped default into the four accounts it names', () => {
-    expect(
-      parseIdentifierList(
-        'name:Mohamed Mustafa,name:Samer Mohammed,name:Mohamed Essam,name:Saif AlDin Muhammad',
-      ),
-    ).toEqual([
-      'name:Mohamed Mustafa',
-      'name:Samer Mohammed',
-      'name:Mohamed Essam',
-      'name:Saif AlDin Muhammad',
+  it('leaves the shipped default configuring nothing', () => {
+    // The default is empty on purpose: WHICH accounts are confined is a deployment's fact, and a
+    // shipped list would apply itself to whatever matched in every database this runs against.
+    expect(parseIdentifierList(env.HR_ONLY_USER_IDENTIFIERS)).toEqual([]);
+  });
+
+  it('parses a configured list of emails and usernames', () => {
+    expect(parseIdentifierList('a@ecms.local, b@ecms.local\n m.essam')).toEqual([
+      'a@ecms.local',
+      'b@ecms.local',
+      'm.essam',
     ]);
+  });
+});
+
+describe('the shipped configuration', () => {
+  it('does not enable name identifiers', () => {
+    // Emails and usernames are unique in this system; a display name is not. Confining an account
+    // through a field two people can share is the one way this goes wrong quietly, so the fallback
+    // has to be switched on deliberately.
+    expect(env.HR_ONLY_ALLOW_NAME_IDENTIFIERS).toBe(false);
   });
 });

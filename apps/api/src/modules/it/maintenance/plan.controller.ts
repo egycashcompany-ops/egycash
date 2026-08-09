@@ -6,19 +6,23 @@ import {
 } from '@ecms/contracts';
 import { created, ok, okPage, validated } from '../../../platform/web';
 import { authContext } from '../../../platform/auth';
+import { scopeSelector } from '../../../shared/types';
 import { toItMaintenancePlanDto } from '../it.mappers';
 import { itMaintenancePlanService } from './plan.service';
 
 type IdParam = { id: string };
 
+/** Plans are read by whoever reads the board — same grant, same scope. */
+const readScope = (req: Request) => scopeSelector(authContext(req), 'itMaintenance.view');
+
 export const listItMaintenancePlans = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, ListItMaintenancePlansQuery>(req);
-  okPage(res, await itMaintenancePlanService.list(query), toItMaintenancePlanDto);
+  okPage(res, await itMaintenancePlanService.list(query, readScope(req)), toItMaintenancePlanDto);
 };
 
 export const getItMaintenancePlan = async (req: Request, res: Response): Promise<void> => {
   const { params } = validated<never, never, IdParam>(req);
-  ok(res, toItMaintenancePlanDto(await itMaintenancePlanService.getById(params.id)));
+  ok(res, toItMaintenancePlanDto(await itMaintenancePlanService.getById(params.id, readScope(req))));
 };
 
 export const createItMaintenancePlan = async (req: Request, res: Response): Promise<void> => {

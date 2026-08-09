@@ -519,6 +519,7 @@ vendors, products, parts ship with `search` from day one, per ADR-019 rule 5).
 | **ADR-021 — IT asset custody & history** | append-only event chain as the business record; derived status; no hard delete (FR-2/FR-4/FR-5); why audit logs are not the custody chain (D3) |
 | **ADR-022 — Help-desk SLA & ticket lifecycle placement** | SLA targets as priority data + snapshot-on-create; set-once breach stamps; sweep cadence; **and the recorded decision that ticket states are code-defined in the module, not the (unbuilt) ADR-011 platform engine** — with the migration note for the day the platform engine exists · **STILL UNWRITTEN — see the note below** |
 | **ADR-024 — Minimal spare-parts ledger** | movements ledger + denormalized on-hand; explicitly *not* inventory accounting; the boundary Procurement and Warehouses will inherit · [written](../03-decisions/ADR-024-minimal-spare-parts-ledger.md) with IT-4 |
+| **ADR-025 — Sweep announcement marks** | why the expiry sweep's idempotency lives in `it_sweep_marks` and not on the business document; the date-keyed mark that re-arms on renewal · [written](../03-decisions/ADR-025-sweep-announcement-marks.md) with IT-5. **Not foreseen by this table** — §4.8 assumed doc-level marks, and the Fleet precedent it cites turned out to be a marks collection |
 
 > **ADR-022 is a deliberate debt, not an omission.** IT-3 shipped and merged (PR #153) without it:
 > the decision it records — ticket states are code-defined in the module rather than in the unbuilt
@@ -549,7 +550,7 @@ vendors, products, parts ship with `search` from day one, per ADR-019 rule 5).
 | IT-2 | custody: assign/return/transfer/dispose · asset events/history · HR exit subscription · ADR-021 |
 | IT-3 | help desk: priorities (with SLA targets), tickets, event/conversation stream, attachments, SLA + auto-close sweeps · ADR-022 |
 | IT-4 | maintenance: plans, orders, spare parts + movements, preventive sweep · ADR-024 |
-| IT-5 | software products, installations, licenses, expiry sweep |
+| IT-5 | software products, installations, licenses, expiry sweep · ADR-025 |
 | IT-6 | dashboards, warranty report, asset export, notification templates, seed data |
 | ITW-1…6 | web app per area (skeleton/nav → assets → tickets → maintenance → software → dashboards), ar/en + RTL, ADR-019-compliant pickers |
 
@@ -613,3 +614,29 @@ starts only on an explicit owner GO.
   the same word. `it.sparePart.belowMin` is unchanged. Payloads, firing conditions and the
   automation-trigger surface are exactly as §8.1 specifies — only the two names differ, and
   nothing consumed them before IT-4.
+- **IT-5 naming correction** (2026-08-09) — §8.1 named the warranty pair
+  `it.asset.warrantyExpiring` / `.warrantyExpired`. They ship as
+  **`it.assetWarranty.expiring`** and **`it.assetWarranty.expired`**, with the entity
+  `assetWarranty`. Same rule as IT-4's correction, and the same two reasons: the catalog's
+  entity/action split expects `<entity>.<pastTense>`, so `warrantyExpiring` would have registered
+  a new ACTION word that nothing else uses; and giving the warranty its own entity lets both
+  events reuse `expiring` / `expired`, which Fleet's licence events already put in the shared
+  vocabulary. `it.license.expiring` / `.expired` / `.seatsExceeded` are exactly as §8.1 names them
+  — the bare `license` entity was free, since Fleet's two are `vehicleLicense` and `driverLicense`.
+  Payloads and firing conditions are unchanged, and nothing consumed these names before IT-5.
+- **IT-5 corrections to delivered slices** (2026-08-09) — three findings from the IT-5 design
+  review, fixed as a prerequisite rather than carried:
+  1. **IT-4's list endpoints were not branch-scoped.** Writes were scoped through the asset;
+     reads were not, so any technician could list any branch's board. Orders and plans now
+     denormalize the asset's `branchId` exactly as `it_asset_assignments` does, and every read
+     carries the caller's scope. The spare-parts store stays company-wide — §7 gives it no branch
+     anchor.
+  2. **FR-5's delete guard asked the wrong question.** `status === 'inStock'` is answered "yes" by
+     an asset that has been assigned and returned, so it could be deleted with a full custody
+     chain. The guard now asks for history, custody intervals and maintenance orders, as one list
+     every future consumer extends.
+  3. **IT-4's parts picker loaded the catalogue.** Converted to a searching picker (ADR-019 rule
+     5), matching the one IT-5 ships for products.
+  Also recorded: `registered`, `updated` and `warrantyUpdated` are declared in
+  `IT_ASSET_EVENT_TYPES` and written by nothing (§4.1 says they should be). Left as a deliberate
+  debt — IT-5 does not widen its scope to fix an IT-1/IT-2 gap.

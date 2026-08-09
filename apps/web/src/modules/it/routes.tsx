@@ -19,9 +19,11 @@
 //   /it/maintenance/:id    itMaintenance.view                                    IT-4
 //   /it/maintenance-plans  itMaintenance.view                                    IT-4
 //   /it/spare-parts        itSparePart.view                                      IT-4
-// The custody, ticket and maintenance ACTIONS are not routes — they are dialogs on the record,
-// which is where the decision is actually taken. Software and dashboards get their routes with
-// IT-5 and IT-6.
+//   /it/software           itSoftware.view                                       IT-5
+//   /it/licenses           itLicense.view                                        IT-5
+//   /it/licenses/:id       itLicense.view                                        IT-5
+// The custody, ticket, maintenance and installation ACTIONS are not routes — they are dialogs on
+// the record, which is where the decision is actually taken. Dashboards get their routes with IT-6.
 import { Route, Routes } from 'react-router-dom';
 import { RequirePermission } from '../../platform/router/RequirePermission';
 import { NotFoundPage } from '../../platform/app/pages/NotFoundPage';
@@ -40,6 +42,9 @@ import { MaintenanceOrdersPage } from './pages/MaintenanceOrdersPage';
 import { MaintenanceOrderDetailPage } from './pages/MaintenanceOrderDetailPage';
 import { MaintenancePlansPage } from './pages/MaintenancePlansPage';
 import { SparePartsPage } from './pages/SparePartsPage';
+import { SoftwarePage } from './pages/SoftwarePage';
+import { LicensesPage } from './pages/LicensesPage';
+import { LicenseDetailPage } from './pages/LicenseDetailPage';
 
 export default function ItRoutes(): JSX.Element {
   return (
@@ -135,6 +140,30 @@ export default function ItRoutes(): JSX.Element {
           element={
             <RequirePermission permission="itSparePart.view">
               <SparePartsPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="software"
+          element={
+            <RequirePermission permission="itSoftware.view">
+              <SoftwarePage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="licenses"
+          element={
+            <RequirePermission permission="itLicense.view">
+              <LicensesPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="licenses/:id"
+          element={
+            <RequirePermission permission="itLicense.view">
+              <LicenseDetailPage />
             </RequirePermission>
           }
         />

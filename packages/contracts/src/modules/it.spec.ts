@@ -13,6 +13,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   AssignItTicketSchema,
+  CreateItLicenseSchema,
+  CreateItSoftwareInstallationSchema,
+  CreateItSoftwareProductSchema,
+  ListItLicensesQuerySchema,
+  ListItSoftwareInstallationsQuerySchema,
+  RemoveItSoftwareInstallationSchema,
+  UpdateItLicenseSchema,
+  UpdateItSoftwareInstallationSchema,
+  UpdateItSoftwareProductSchema,
   CancelItMaintenanceOrderSchema,
   CompleteItMaintenanceOrderSchema,
   CreateItMaintenanceOrderSchema,
@@ -380,6 +389,128 @@ describe('it maintenance contracts', () => {
       ListItSparePartMovementsQuerySchema.safeParse({ direction: 'out', orderId: oid(1) }).success,
     ).toBe(true);
     expect(ListItSparePartMovementsQuerySchema.safeParse({ direction: 'sideways' }).success).toBe(
+      false,
+    );
+  });
+});
+
+
+// ── IT-5: software, installations and licences ──────────────────────────────
+
+describe('it software and licence contracts', () => {
+  const oid = (n: number) => String(n).padStart(24, '0');
+
+  it('keeps every derived licence number off the write schemas (FR-10, §6)', () => {
+    expect(CreateItLicenseSchema.safeParse({ productId: oid(1) }).success).toBe(true);
+    for (const extra of [{ seatsUsed: 3 }, { state: 'active' }]) {
+      expect(
+        CreateItLicenseSchema.safeParse({ productId: oid(1), ...extra }).success,
+        JSON.stringify(extra),
+      ).toBe(false);
+      expect(
+        UpdateItLicenseSchema.safeParse({ version: 0, ...extra }).success,
+        JSON.stringify(extra),
+      ).toBe(false);
+    }
+  });
+
+  // Both nulls carry meaning: absent seats is UNLIMITED and absent expiry is PERPETUAL. A
+  // zero-seat licence is one nobody may use, which is not a licence.
+  it('reads absent seats and expiry as unlimited and perpetual, and refuses zero seats', () => {
+    expect(CreateItLicenseSchema.safeParse({ productId: oid(1), seats: 1 }).success).toBe(true);
+    expect(CreateItLicenseSchema.safeParse({ productId: oid(1), seats: 0 }).success).toBe(false);
+    expect(CreateItLicenseSchema.safeParse({ productId: oid(1), seats: -1 }).success).toBe(false);
+    expect(CreateItLicenseSchema.safeParse({ productId: oid(1), seats: 1.5 }).success).toBe(false);
+    // Update CAN clear them back to those meanings, which is what nullable is for here.
+    expect(UpdateItLicenseSchema.safeParse({ version: 0, seats: null }).success).toBe(true);
+    expect(UpdateItLicenseSchema.safeParse({ version: 0, expiresAt: null }).success).toBe(true);
+  });
+
+  // Re-pointing a licence would move every seat it has already issued to a product those
+  // installations never used.
+  it('fixes a licence to its product', () => {
+    expect(UpdateItLicenseSchema.safeParse({ version: 0, productId: oid(2) }).success).toBe(false);
+  });
+
+  it('keeps a product name a single field, and refuses stock-style extras', () => {
+    expect(CreateItSoftwareProductSchema.safeParse({ name: 'Microsoft Office' }).success).toBe(true);
+    expect(
+      CreateItSoftwareProductSchema.safeParse({ name: 'Office', publisher: 'Microsoft' }).success,
+    ).toBe(true);
+    // A LocalizedString would be the catalog-item shape; a product name is a proper noun.
+    expect(
+      CreateItSoftwareProductSchema.safeParse({ name: { ar: 'أوفيس', en: 'Office' } }).success,
+    ).toBe(false);
+    expect(CreateItSoftwareProductSchema.safeParse({ name: '  ' }).success).toBe(false);
+    expect(CreateItSoftwareProductSchema.safeParse({ name: 'Office', active: true }).success).toBe(
+      false,
+    );
+    expect(UpdateItSoftwareProductSchema.safeParse({ version: 0, active: false }).success).toBe(
+      true,
+    );
+  });
+
+  /**
+   * The collision that would corrupt data silently: `version` is the platform's optimistic lock on
+   * every DTO, and the software's own version string is `softwareVersion`. A generic client that
+   * assumed `version` was the lock would otherwise send a version STRING as a concurrency number.
+   */
+  it('separates the optimistic-lock version from the software version', () => {
+    expect(
+      CreateItSoftwareInstallationSchema.safeParse({
+        assetId: oid(1),
+        productId: oid(2),
+        softwareVersion: '2021 LTSC',
+      }).success,
+    ).toBe(true);
+    expect(
+      CreateItSoftwareInstallationSchema.safeParse({
+        assetId: oid(1),
+        productId: oid(2),
+        version: '2021',
+      }).success,
+    ).toBe(false);
+    const update = UpdateItSoftwareInstallationSchema.safeParse({
+      version: 3,
+      softwareVersion: '2024',
+    });
+    expect(update.success).toBe(true);
+    expect(update.success && typeof update.data.version).toBe('number');
+  });
+
+  // The pair is what the partial unique index is built on, and `removedAt` belongs to the named
+  // remove action — not to a PATCH that could un-remove a finished record.
+  it('fixes an installation to its asset and product, and keeps removedAt off the update', () => {
+    for (const extra of [{ assetId: oid(1) }, { productId: oid(2) }, { removedAt: null }]) {
+      expect(
+        UpdateItSoftwareInstallationSchema.safeParse({ version: 0, ...extra }).success,
+        JSON.stringify(extra),
+      ).toBe(false);
+    }
+    expect(RemoveItSoftwareInstallationSchema.safeParse({}).success).toBe(true);
+    expect(RemoveItSoftwareInstallationSchema.safeParse({ note: 'decommissioned' }).success).toBe(
+      true,
+    );
+  });
+
+  it('declares the filters the software and licence screens send, and refuses anything else', () => {
+    const licences = ListItLicensesQuerySchema.safeParse({
+      state: 'expiringSoon',
+      overSeats: 'true',
+      productId: oid(1),
+    });
+    expect(licences.success).toBe(true);
+    expect(licences.success && licences.data.overSeats).toBe(true);
+    expect(ListItLicensesQuerySchema.safeParse({ state: 'lapsed' }).success).toBe(false);
+    expect(ListItLicensesQuerySchema.safeParse({ seatsUsed: 3 }).success).toBe(false);
+
+    const installs = ListItSoftwareInstallationsQuerySchema.safeParse({
+      assetId: oid(1),
+      active: 'false',
+    });
+    expect(installs.success).toBe(true);
+    expect(installs.success && installs.data.active).toBe(false);
+    expect(ListItSoftwareInstallationsQuerySchema.safeParse({ removedAt: null }).success).toBe(
       false,
     );
   });

@@ -65,17 +65,25 @@ const maintenanceScope = (ctx: AuthContext): ScopeSelector =>
 class ItMaintenanceOrderService {
   // ── Reads ─────────────────────────────────────────────────────────────────
 
-  async list(query: ListItMaintenanceOrdersQuery): Promise<Paginated<ItMaintenanceOrderDoc>> {
-    return itMaintenanceOrderRepository.listFiltered(query);
+  async list(
+    query: ListItMaintenanceOrdersQuery,
+    scope: ScopeSelector,
+  ): Promise<Paginated<ItMaintenanceOrderDoc>> {
+    return itMaintenanceOrderRepository.listFiltered(query, scope);
   }
 
-  async getById(id: string): Promise<ItMaintenanceOrderDoc> {
-    return itMaintenanceOrderRepository.getById(id);
+  async getById(id: string, scope: ScopeSelector): Promise<ItMaintenanceOrderDoc> {
+    return itMaintenanceOrderRepository.getById(id, scope);
   }
 
-  /** The order detail's "parts used" panel — the movements ARE the list (ADR-024). */
-  async listParts(id: string): Promise<ItSparePartMovementDoc[]> {
-    const order = await itMaintenanceOrderRepository.getById(id);
+  /**
+   * The order detail's "parts used" panel — the movements ARE the list (ADR-024).
+   *
+   * The order is re-read UNDER SCOPE first: the movements carry no branch of their own, so the
+   * order is what decides whether this caller may see them at all.
+   */
+  async listParts(id: string, scope: ScopeSelector): Promise<ItSparePartMovementDoc[]> {
+    const order = await itMaintenanceOrderRepository.getById(id, scope);
     return itSparePartMovementRepository.listForOrder(order._id);
   }
 
@@ -132,6 +140,7 @@ class ItMaintenanceOrderService {
         cost: null,
         summary: input.summary ?? null,
         assetStatusBefore: null,
+        branchId: asset.branchId,
       },
       { by: ctx.userId },
     );
@@ -169,7 +178,8 @@ class ItMaintenanceOrderService {
     input: UpdateItMaintenanceOrder,
     ctx: AuthContext,
   ): Promise<ItMaintenanceOrderDoc> {
-    const before = await itMaintenanceOrderRepository.getById(id);
+    const scope = maintenanceScope(ctx);
+    const before = await itMaintenanceOrderRepository.getById(id, scope);
     if (before.status === 'completed' || before.status === 'cancelled') {
       throw new BusinessRuleError(
         `order ${before.orderCode} is ${before.status} and is a finished record`,
@@ -187,6 +197,7 @@ class ItMaintenanceOrderService {
     const updated = await itMaintenanceOrderRepository.updateById(id, set, {
       by: ctx.userId,
       version: input.version,
+      scope,
     });
     await auditService.record({
       entityRef: entityRef(id),
@@ -230,7 +241,7 @@ class ItMaintenanceOrderService {
     const scope = maintenanceScope(ctx);
     const at = new Date();
     const result = await unitOfWork(async (session) => {
-      const order = await itMaintenanceOrderRepository.getByIdForUpdate(id, session);
+      const order = await itMaintenanceOrderRepository.getByIdForUpdate(id, scope, session);
       this.assertTransition(order, 'inProgress');
 
       const asset = await itAssetRepository.getByIdForUpdate(String(order.assetId), scope, session);
@@ -248,7 +259,7 @@ class ItMaintenanceOrderService {
       const updated = await itMaintenanceOrderRepository.updateById(
         id,
         { status: 'inProgress', startedAt: at, assetStatusBefore: asset.status },
-        { by: ctx.userId, version: order.__v, session },
+        { by: ctx.userId, version: order.__v, session, scope },
       );
       await itAssetRepository.updateById(
         String(order.assetId),
@@ -292,7 +303,7 @@ class ItMaintenanceOrderService {
     const scope = maintenanceScope(ctx);
     const at = new Date();
     const result = await unitOfWork(async (session) => {
-      const order = await itMaintenanceOrderRepository.getByIdForUpdate(id, session);
+      const order = await itMaintenanceOrderRepository.getByIdForUpdate(id, scope, session);
       this.assertTransition(order, 'completed');
 
       const asset = await itAssetRepository.getByIdForUpdate(String(order.assetId), scope, session);
@@ -317,7 +328,7 @@ class ItMaintenanceOrderService {
           cost: input.cost ?? null,
           summary: input.summary,
         },
-        { by: ctx.userId, version: order.__v, session },
+        { by: ctx.userId, version: order.__v, session, scope },
       );
 
       if (asset.status !== restored) {
@@ -349,6 +360,8 @@ class ItMaintenanceOrderService {
 
       // §4.6 — the plan's clock. From the COMPLETION date, never the due date: advancing from the
       // due date compounds drift, so a plan serviced late would stay late forever.
+      // Unscoped on purpose: the caller already proved they may finish THIS order, and the plan's
+      // clock is a consequence of that, not a second thing to authorize.
       if (order.planId !== null) {
         const plan = await itMaintenancePlanRepository.findById(String(order.planId));
         if (plan !== null) {
@@ -396,13 +409,13 @@ class ItMaintenanceOrderService {
     const scope = maintenanceScope(ctx);
     const at = new Date();
     return unitOfWork(async (session) => {
-      const order = await itMaintenanceOrderRepository.getByIdForUpdate(id, session);
+      const order = await itMaintenanceOrderRepository.getByIdForUpdate(id, scope, session);
       this.assertTransition(order, 'cancelled');
 
       const updated = await itMaintenanceOrderRepository.updateById(
         id,
         { status: 'cancelled', completedAt: at, summary: input.reason },
-        { by: ctx.userId, version: order.__v, session },
+        { by: ctx.userId, version: order.__v, session, scope },
       );
 
       if (order.status === 'inProgress') {
@@ -464,6 +477,7 @@ class ItMaintenanceOrderService {
         cost: null,
         summary: plan.checklist,
         assetStatusBefore: null,
+        branchId: asset.branchId,
       },
       // `null`, not a 'system' sentinel: the base repository casts `by` to an ObjectId.
       { by: null },

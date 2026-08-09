@@ -1,6 +1,9 @@
 // Doc → DTO mapping for the IT-1 entities. Derived facts stay derived — the mapper never invents
 // one (the fleet FR-12 discipline).
 import {
+  type ItLicenseDto,
+  type ItSoftwareInstallationDto,
+  type ItSoftwareProductDto,
   type ItMaintenanceOrderDto,
   type ItMaintenancePlanDto,
   type ItSparePartDto,
@@ -26,6 +29,9 @@ import { type ItMaintenancePlanDoc } from './maintenance/plan.model';
 import { type ItMaintenanceOrderDoc } from './maintenance/order.model';
 import { type ItSparePartDoc } from './spare-parts/part.model';
 import { type ItSparePartMovementDoc } from './spare-parts/movement.model';
+import { type ItSoftwareProductDoc } from './software/product.model';
+import { type ItSoftwareInstallationDoc } from './software/installation.model';
+import { type ItLicenseView } from './licenses/license.service';
 
 const iso = (d: Date): string => d.toISOString();
 
@@ -298,4 +304,66 @@ export const toItSparePartMovementDto = (
   byUserId: doc.byUserId === null ? null : String(doc.byUserId),
   note: doc.note,
   createdAt: iso(doc.createdAt),
+});
+
+// ── Software and licences (IT-5) ────────────────────────────────────────────
+
+export const toItSoftwareProductDto = (doc: ItSoftwareProductDoc): ItSoftwareProductDto => ({
+  id: String(doc._id),
+  name: doc.name,
+  publisher: doc.publisher,
+  active: doc.active,
+  version: doc.__v,
+  createdAt: iso(doc.createdAt),
+  updatedAt: iso(doc.updatedAt),
+});
+
+/**
+ * `version` is the optimistic-concurrency number and `softwareVersion` is the software's own —
+ * two different things the design's §2.8 sketch gave one name. `branchId` is deliberately NOT on
+ * the wire: it is a scope anchor copied from the asset, and a client that read it might start
+ * trusting it instead of the asset.
+ */
+export const toItSoftwareInstallationDto = (
+  doc: ItSoftwareInstallationDoc,
+): ItSoftwareInstallationDto => ({
+  id: String(doc._id),
+  assetId: String(doc.assetId),
+  productId: String(doc.productId),
+  softwareVersion: doc.softwareVersion,
+  licenseId: doc.licenseId === null ? null : String(doc.licenseId),
+  installedAt: iso(doc.installedAt),
+  removedAt: doc.removedAt === null ? null : iso(doc.removedAt),
+  version: doc.__v,
+  createdAt: iso(doc.createdAt),
+  updatedAt: iso(doc.updatedAt),
+});
+
+/**
+ * A licence takes a VIEW, not a document: `seatsUsed` and `state` are derived (FR-10, §6) and the
+ * mapper is the wrong place to derive them — it would need a query per row. The service computes
+ * both for a whole page in one aggregation and hands them here already decided, which is the
+ * "derived facts stay derived, and the mapper never invents one" rule kept honestly.
+ */
+export const toItLicenseDto = (view: ItLicenseView): ItLicenseDto => ({
+  id: String(view.doc._id),
+  productId: String(view.doc.productId),
+  licenseKey: view.doc.licenseKey,
+  seats: view.doc.seats,
+  purchase:
+    view.doc.purchase === null
+      ? null
+      : {
+          vendorId: view.doc.purchase.vendorId === null ? null : String(view.doc.purchase.vendorId),
+          date: view.doc.purchase.date === null ? null : iso(view.doc.purchase.date),
+          cost: view.doc.purchase.cost,
+          invoiceRef: view.doc.purchase.invoiceRef,
+        },
+  expiresAt: view.doc.expiresAt === null ? null : iso(view.doc.expiresAt),
+  notes: view.doc.notes,
+  seatsUsed: view.seatsUsed,
+  state: view.state,
+  version: view.doc.__v,
+  createdAt: iso(view.doc.createdAt),
+  updatedAt: iso(view.doc.updatedAt),
 });

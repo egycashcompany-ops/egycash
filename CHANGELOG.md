@@ -71,6 +71,17 @@ its entry here in the same PR.
   (`nav-rows`), so a row behaves identically wherever it is rendered and the ⌘K palette and
   pinned favourites are untouched in either.
 
+- **IT module, slice ITW-1 — the asset registry, on screen.** IT-1's API gets its application:
+  the asset register as a searchable, filterable, sortable, URL-synced list; an asset detail card
+  showing the identity, purchase and warranty facts beside a QR rendered from the asset code
+  itself; create/edit behind `itAsset.create`/`.edit`; the FR-5 delete window offered only where
+  it can apply; printable QR label sheets from a row selection or from one asset; a scan surface
+  that resolves a typed or scanned code straight to its asset; the IT catalogs screen (asset +
+  ticket categories, archive-not-delete); and IT vendors with embedded contacts and server-side
+  search. Vendor selection searches the API rather than loading the catalog (ADR-019 rule 5), and
+  every screen is Arabic/English with full RTL. The IT navigation category — seeded empty by IT-1
+  precisely so nothing pointed at a missing page — now carries its five rows.
+
 - **IT module, slice IT-1 — catalogs, vendors and the asset register** (frozen design v1.2,
   §15). New `it` module manifest with kind-discriminated `it_catalog_items` (asset + ticket
   categories, one `itCatalog.manage` grant), IT-owned vendors with embedded contacts and

@@ -113,11 +113,17 @@ const CATALOG: CategoryDef[] = [
     ar: 'تقنية المعلومات',
     icon: 'monitor',
     sortOrder: 25,
-    // IT-1 ships the API only (frozen design §15) — application rows arrive with ITW-1, the
-    // module's web slice, so the sidebar never links to pages that do not exist yet. On a fresh
-    // seed the category is created empty (and hidden, having no apps); on existing installs the
-    // sync creates it lazily when the first app row appears, exactly the BF-1 path.
-    apps: [],
+    // OWNER RULE: only SHIPPED pages appear in navigation. ITW-1 ships the IT-1 surface, so its
+    // five rows join here now (the boot sync is additive — existing installs pick them up on the
+    // next deploy). Custody, tickets, maintenance, software and dashboards append theirs with
+    // IT-2…IT-6, as each slice lands.
+    apps: [
+      { en: 'IT Home', ar: 'الرئيسية', route: '/it', icon: 'home' },
+      { en: 'Assets', ar: 'الأصول', route: '/it/assets', icon: 'monitor' },
+      { en: 'Scan Asset', ar: 'مسح أصل', route: '/it/assets/scan', icon: 'qr' },
+      { en: 'IT Vendors', ar: 'موردو تقنية المعلومات', route: '/it/vendors', icon: 'folder' },
+      { en: 'IT Catalogs', ar: 'قوائم تقنية المعلومات', route: '/it/catalogs', icon: 'folder' },
+    ],
   },
   {
     en: 'Administration',

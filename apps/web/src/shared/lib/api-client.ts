@@ -205,6 +205,18 @@ const rawUpload = async <T>(path: string, form: FormData): Promise<T> => {
   throw new ApiError(body.error.code, body.error.message, response.status);
 };
 
+/** Hand a blob to the browser as a download. Shared by every binary path below. */
+export const saveBlob = (blob: Blob, filename: string): void => {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+};
+
 /** Fetch a binary response (e.g. a CSV export) and trigger a browser download. */
 export const downloadBlob = async (path: string, filename: string): Promise<void> => {
   const authHeaders = (): Headers => {
@@ -217,15 +229,47 @@ export const downloadBlob = async (path: string, filename: string): Promise<void
     response = await fetch(`${BASE_URL}${path}`, { headers: authHeaders(), credentials: 'include' });
   }
   if (!response.ok) throw new ApiError('EXPORT_FAILED', 'export failed', response.status);
-  const blob = await response.blob();
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
+  saveBlob(await response.blob(), filename);
+};
+
+/**
+ * POST that answers with a DOCUMENT rather than the JSON envelope, returning the body and the
+ * content type the server chose.
+ *
+ * `downloadBlob` cannot serve this: the request carries a body, and the caller has to branch on
+ * what came back. The IT label sheet is the first such endpoint — it renders a PDF when the
+ * chromium driver is configured and the identical HTML when it is not, and the two want different
+ * treatment (save vs. open-and-print). Deciding here, from `Content-Type`, keeps that branch out
+ * of the module.
+ */
+export const postBinary = async (
+  path: string,
+  body: unknown,
+): Promise<{ contentType: string; blob: Blob }> => {
+  const request = (): RequestInit => {
+    const headers = new Headers({ 'Content-Type': 'application/json' });
+    if (accessToken !== null) headers.set('Authorization', `Bearer ${accessToken}`);
+    return { method: 'POST', headers, body: JSON.stringify(body), credentials: 'include' };
+  };
+  let response = await fetch(`${BASE_URL}${path}`, request());
+  if (response.status === 401 && (await tryRefresh())) {
+    response = await fetch(`${BASE_URL}${path}`, request());
+  }
+  if (!response.ok) {
+    // The error path still speaks the JSON envelope, so the real message survives.
+    const message = await response
+      .clone()
+      .json()
+      .then((payload: ApiEnvelope<unknown>) =>
+        payload.success ? 'request failed' : payload.error.message,
+      )
+      .catch(() => 'request failed');
+    throw new ApiError('DOCUMENT_FAILED', message, response.status);
+  }
+  return {
+    contentType: response.headers.get('Content-Type') ?? '',
+    blob: await response.blob(),
+  };
 };
 
 /** Multipart upload with the same one-shot silent-refresh retry as `api`. */

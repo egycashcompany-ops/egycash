@@ -126,7 +126,7 @@ describe('seed → password login (regression)', () => {
     expect(routes).toContain('/it/catalogs');
     expect(routes).toContain('/it/custody');
     expect(routes).toContain('/it/tickets');
-    expect(routes).toContain('/it/help-desk');
+    expect(routes).toContain('/it/helpdesk-settings');
     // 14 (HR) + 12 (Fleet) + 6 (Organization) + 8 (IT) + 2 (Administration)
     expect(routes).toHaveLength(42);
   });

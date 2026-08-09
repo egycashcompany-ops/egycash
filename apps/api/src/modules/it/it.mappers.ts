@@ -1,6 +1,9 @@
 // Doc → DTO mapping for the IT-1 entities. Derived facts stay derived — the mapper never invents
 // one (the fleet FR-12 discipline).
 import {
+  type ItTicketDto,
+  type ItTicketEventDto,
+  type ItTicketPriorityDto,
   type ItAssetAssignmentDto,
   type ItAssetDto,
   type ItAssetHistoryEntryDto,
@@ -12,6 +15,9 @@ import { type ItVendorDoc } from './vendors/vendor.model';
 import { type ItAssetDoc } from './assets/asset.model';
 import { type ItAssetAssignmentDoc } from './assets/assignment.model';
 import { type ItAssetEventDoc } from './assets/asset-event.model';
+import { type ItTicketDoc } from './tickets/ticket.model';
+import { type ItTicketEventDoc } from './tickets/ticket-event.model';
+import { type ItTicketPriorityDoc } from './tickets/priority.model';
 
 const iso = (d: Date): string => d.toISOString();
 
@@ -131,3 +137,88 @@ export const toItAssetHistoryEntryDto = (doc: ItAssetEventDoc): ItAssetHistoryEn
   metadata: doc.metadata ?? {},
   notes: doc.notes,
 });
+
+// ── Help desk (IT-3) ────────────────────────────────────────────────────────
+
+export const toItTicketPriorityDto = (doc: ItTicketPriorityDoc): ItTicketPriorityDto => ({
+  id: String(doc._id),
+  name: doc.name,
+  rank: doc.rank,
+  responseMinutes: doc.responseMinutes,
+  resolutionMinutes: doc.resolutionMinutes,
+  isActive: doc.isActive,
+  version: doc.__v,
+  createdAt: iso(doc.createdAt),
+  updatedAt: iso(doc.updatedAt),
+});
+
+export const toItTicketDto = (doc: ItTicketDoc): ItTicketDto => ({
+  id: String(doc._id),
+  ticketCode: doc.ticketCode,
+  title: doc.title,
+  description: doc.description,
+  requesterUserId: String(doc.requesterUserId),
+  branchId: doc.branchId === null ? null : String(doc.branchId),
+  categoryId: String(doc.categoryId),
+  priorityId: String(doc.priorityId),
+  assetId: doc.assetId === null ? null : String(doc.assetId),
+  assignedTechnicianUserId:
+    doc.assignedTechnicianUserId === null ? null : String(doc.assignedTechnicianUserId),
+  status: doc.status,
+  sla: {
+    policy: {
+      responseMinutes: doc.sla.policy.responseMinutes,
+      resolutionMinutes: doc.sla.policy.resolutionMinutes,
+    },
+    responseDueAt: iso(doc.sla.responseDueAt),
+    resolutionDueAt: iso(doc.sla.resolutionDueAt),
+    firstResponseAt: doc.sla.firstResponseAt === null ? null : iso(doc.sla.firstResponseAt),
+    responseBreachedAt:
+      doc.sla.responseBreachedAt === null ? null : iso(doc.sla.responseBreachedAt),
+    resolutionBreachedAt:
+      doc.sla.resolutionBreachedAt === null ? null : iso(doc.sla.resolutionBreachedAt),
+    pausedMs: doc.sla.pausedMs,
+    holdStartedAt: doc.sla.holdStartedAt === null ? null : iso(doc.sla.holdStartedAt),
+  },
+  resolution:
+    doc.resolution === null
+      ? null
+      : {
+          summary: doc.resolution.summary,
+          resolvedByUserId: String(doc.resolution.resolvedByUserId),
+          resolvedAt: iso(doc.resolution.resolvedAt),
+        },
+  closedAt: doc.closedAt === null ? null : iso(doc.closedAt),
+  reopenCount: doc.reopenCount,
+  version: doc.__v,
+  createdAt: iso(doc.createdAt),
+  updatedAt: iso(doc.updatedAt),
+});
+
+/**
+ * A stream entry.
+ *
+ * @param includeInternal the caller's `itTicket.edit`. The repository already excludes internal
+ * rows from the QUERY for anyone without it (FR-7) — this redaction is the second belt: if such a
+ * row ever reached here through a future code path, the body still does not go over the wire.
+ */
+export const toItTicketEventDto = (
+  doc: ItTicketEventDoc,
+  includeInternal: boolean,
+): ItTicketEventDto => {
+  const redacted = doc.visibility === 'internal' && !includeInternal;
+  return {
+    id: String(doc._id),
+    ticketId: String(doc.subjectId),
+    type: doc.type,
+    at: iso(doc.at),
+    actorUserId: doc.actorUserId === null ? null : String(doc.actorUserId),
+    actorName: doc.actorName,
+    fromStatus: doc.fromStatus,
+    toStatus: doc.toStatus,
+    body: redacted ? null : doc.body,
+    visibility: doc.visibility,
+    metadata: doc.metadata ?? {},
+    notes: doc.notes,
+  };
+};

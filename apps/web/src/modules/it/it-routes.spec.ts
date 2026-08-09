@@ -30,9 +30,19 @@ const declaredPaths = (): string[] =>
 describe('IT routes', () => {
   const paths = declaredPaths();
 
-  it('declares the IT-1 + IT-2 surface', () => {
+  it('declares the IT-1 + IT-2 + IT-3 surface', () => {
     expect(paths.sort()).toEqual(
-      ['assets', 'assets/:id', 'assets/scan', 'catalogs', 'custody', 'vendors'].sort(),
+      [
+        'assets',
+        'assets/:id',
+        'assets/scan',
+        'catalogs',
+        'custody',
+        'helpdesk-settings',
+        'tickets',
+        'tickets/:id',
+        'vendors',
+      ].sort(),
     );
   });
 
@@ -45,10 +55,28 @@ describe('IT routes', () => {
     }
   });
 
+  // Same rule for the help desk: every ticket transition is a dialog on the ticket. A URL that
+  // performs a state change is a URL someone can bookmark, share or reload into a second
+  // transition — and `resolve`/`cancel` are precisely the two nobody wants to fire twice.
+  it('does not route the ticket TRANSITIONS', () => {
+    for (const action of ['assign', 'status', 'resolve', 'close', 'reopen', 'cancel']) {
+      expect(paths, `${action} must not be a route`).not.toContain(`tickets/:id/${action}`);
+    }
+  });
+
   it('gates every one of them behind a permission', () => {
     // One <Route> block per declared path, each carrying its own RequirePermission.
     const guarded = [...ROUTES.matchAll(/<RequirePermission permission="([^"]+)">/g)].length;
     expect(guarded).toBe(paths.length);
+  });
+
+  // The frozen design names this screen `/it/helpdesk-settings` in its §7 permission table. It
+  // shipped once as `/it/help-desk`, which worked perfectly and was still wrong: a route name is
+  // part of the design contract, and a nav row, a bookmark and a doc reference all encode it.
+  it('uses the design’s literal route name for the help-desk settings screen', () => {
+    expect(paths).toContain('helpdesk-settings');
+    expect(paths).not.toContain('help-desk');
+    expect(SEED).toContain("route: '/it/helpdesk-settings'");
   });
 
   it('resolves the literal scan segment before the :id matcher', () => {

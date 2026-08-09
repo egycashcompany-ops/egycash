@@ -13,7 +13,13 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { IT_ASSET_STATUSES, IT_CATALOG_KINDS, type Locale } from '@ecms/contracts';
+import {
+  IT_ASSET_STATUSES,
+  IT_CATALOG_KINDS,
+  IT_TICKET_EVENT_TYPES,
+  IT_TICKET_STATUSES,
+  type Locale,
+} from '@ecms/contracts';
 import { translate } from '../../platform/localization/i18n';
 
 const LOCALES: Locale[] = ['en', 'ar'];
@@ -22,6 +28,17 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const VOCABULARIES: { name: string; prefix: string; values: readonly string[] }[] = [
   { name: 'asset status', prefix: 'it.assets.status', values: IT_ASSET_STATUSES },
   { name: 'catalog kind', prefix: 'it.catalogs.kind', values: IT_CATALOG_KINDS },
+  // IT-3. Both are rendered through a TEMPLATE key, so the source scan below cannot see them —
+  // which is exactly why they are driven off the enum instead.
+  { name: 'ticket status', prefix: 'it.tickets.status', values: IT_TICKET_STATUSES },
+  { name: 'ticket event type', prefix: 'it.tickets.event', values: IT_TICKET_EVENT_TYPES },
+  // The SLA presentation states are DERIVED, not a contracts enum (breached is a stamp, at-risk is
+  // a live comparison), so the four the indicator can render are pinned by hand.
+  {
+    name: 'SLA state',
+    prefix: 'it.tickets.sla',
+    values: ['breached', 'atRisk', 'onTrack', 'done'] as const,
+  },
 ];
 
 const sources = (dir: string): string[] =>

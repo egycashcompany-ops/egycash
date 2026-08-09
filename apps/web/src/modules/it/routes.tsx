@@ -12,8 +12,12 @@
 //   /it/catalogs           itCatalog.manage                                      ITW-1
 //   /it/vendors            itVendor.view                                         ITW-1
 //   /it/custody            itAsset.view                                          IT-2
-// The custody ACTIONS are not routes — they are dialogs on the asset, which is where the decision
-// is actually taken. Tickets, maintenance, software and dashboards get their routes with IT-3…6.
+//   /it/tickets            itTicket.view                                         IT-3
+//   /it/tickets/:id        itTicket.view                                         IT-3
+//   /it/helpdesk-settings  itSlaPolicy.manage                                    IT-3
+// The custody and ticket ACTIONS are not routes — they are dialogs on the record, which is where
+// the decision is actually taken. Maintenance, software and dashboards get their routes with
+// IT-4…6.
 import { Route, Routes } from 'react-router-dom';
 import { RequirePermission } from '../../platform/router/RequirePermission';
 import { NotFoundPage } from '../../platform/app/pages/NotFoundPage';
@@ -25,6 +29,9 @@ import { AssetScanPage } from './pages/AssetScanPage';
 import { ItCatalogsPage } from './pages/ItCatalogsPage';
 import { VendorsPage } from './pages/VendorsPage';
 import { CustodyPage } from './pages/CustodyPage';
+import { TicketsListPage } from './pages/TicketsListPage';
+import { TicketDetailPage } from './pages/TicketDetailPage';
+import { HelpDeskSettingsPage } from './pages/HelpDeskSettingsPage';
 
 export default function ItRoutes(): JSX.Element {
   return (
@@ -61,6 +68,31 @@ export default function ItRoutes(): JSX.Element {
           element={
             <RequirePermission permission="itAsset.view">
               <CustodyPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="tickets"
+          element={
+            <RequirePermission permission="itTicket.view">
+              <TicketsListPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="tickets/:id"
+          element={
+            <RequirePermission permission="itTicket.view">
+              <TicketDetailPage />
+            </RequirePermission>
+          }
+        />
+        {/* The SLA policy is an admin surface, gated on its own grant rather than on ticket work. */}
+        <Route
+          path="helpdesk-settings"
+          element={
+            <RequirePermission permission="itSlaPolicy.manage">
+              <HelpDeskSettingsPage />
             </RequirePermission>
           }
         />

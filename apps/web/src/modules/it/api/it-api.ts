@@ -3,11 +3,27 @@
 // server fact: `assetCode` is server-allocated (design §2.1) and `status` is server-derived
 // (FR-2), so neither is ever computed here.
 //
-// IT-1 exposed catalogs, vendors and the asset register; IT-2 adds the custody lifecycle and its
-// history. Export arrives with IT-6 and gets its function then.
+// IT-1 exposed catalogs, vendors and the asset register; IT-2 added the custody lifecycle and its
+// history; IT-3 adds the help desk. Export arrives with IT-6 and gets its function then.
 import {
   type EmployeeDto,
+  type FileCategoryDto,
+  type FileDto,
   type AssignItAsset,
+  type AssignItTicket,
+  type CancelItTicket,
+  type ChangeItTicketStatus,
+  type CloseItTicket,
+  type CreateItTicket,
+  type CreateItTicketComment,
+  type CreateItTicketPriority,
+  type ItTicketDto,
+  type ItTicketEventDto,
+  type ItTicketPriorityDto,
+  type ReopenItTicket,
+  type ResolveItTicket,
+  type UpdateItTicket,
+  type UpdateItTicketPriority,
   type CreateItAsset,
   type CreateItCatalogItem,
   type CreateItVendor,
@@ -18,6 +34,7 @@ import {
   type ItCatalogItemDto,
   type ItVendorDto,
   type OrgUnitOptionDto,
+  type UserDto,
   type Paginated,
   type ReturnItAsset,
   type TransferItAsset,
@@ -33,6 +50,7 @@ import {
   patch,
   post,
   postBinary,
+  upload,
   type QueryParams,
 } from '../../../shared/lib/api-client';
 
@@ -141,3 +159,108 @@ export const listAssignments = (
   params: ItListParams,
 ): Promise<Paginated<ItAssetAssignmentDto>> =>
   getPage<ItAssetAssignmentDto>(`/it/assignments${buildQuery(params)}`);
+
+// ── Help desk: priorities (design §2.6 — the priority IS the SLA policy) ────
+export const listTicketPriorities = (
+  params: ItListParams,
+): Promise<Paginated<ItTicketPriorityDto>> =>
+  getPage<ItTicketPriorityDto>(`/it/ticket-priorities${buildQuery(params)}`);
+export const createTicketPriority = (
+  body: CreateItTicketPriority,
+): Promise<ItTicketPriorityDto> => post<ItTicketPriorityDto>('/it/ticket-priorities', body);
+export const updateTicketPriority = (
+  id: string,
+  body: UpdateItTicketPriority,
+): Promise<ItTicketPriorityDto> =>
+  patch<ItTicketPriorityDto>(`/it/ticket-priorities/${id}`, body);
+
+// ── Help desk: tickets (design §4.4) ────────────────────────────────────────
+export const listTickets = (params: ItListParams): Promise<Paginated<ItTicketDto>> =>
+  getPage<ItTicketDto>(`/it/tickets${buildQuery(params)}`);
+export const getTicket = (id: string): Promise<ItTicketDto> =>
+  get<ItTicketDto>(`/it/tickets/${id}`);
+export const createTicket = (body: CreateItTicket): Promise<ItTicketDto> =>
+  post<ItTicketDto>('/it/tickets', body);
+export const updateTicket = (id: string, body: UpdateItTicket): Promise<ItTicketDto> =>
+  patch<ItTicketDto>(`/it/tickets/${id}`, body);
+
+// Transitions. Each answers with the ticket in its new state, so nothing is re-derived here.
+export const assignTicket = (id: string, body: AssignItTicket): Promise<ItTicketDto> =>
+  post<ItTicketDto>(`/it/tickets/${id}/assign`, body);
+export const changeTicketStatus = (
+  id: string,
+  body: ChangeItTicketStatus,
+): Promise<ItTicketDto> => post<ItTicketDto>(`/it/tickets/${id}/status`, body);
+export const resolveTicket = (id: string, body: ResolveItTicket): Promise<ItTicketDto> =>
+  post<ItTicketDto>(`/it/tickets/${id}/resolve`, body);
+export const closeTicket = (id: string, body: CloseItTicket): Promise<ItTicketDto> =>
+  post<ItTicketDto>(`/it/tickets/${id}/close`, body);
+export const reopenTicket = (id: string, body: ReopenItTicket): Promise<ItTicketDto> =>
+  post<ItTicketDto>(`/it/tickets/${id}/reopen`, body);
+export const cancelTicket = (id: string, body: CancelItTicket): Promise<ItTicketDto> =>
+  post<ItTicketDto>(`/it/tickets/${id}/cancel`, body);
+
+/**
+ * The ticket's stream — history AND conversation in one list (design §2.6).
+ *
+ * Internal comments are filtered SERVER-side for callers without `itTicket.edit` (FR-7); this
+ * client never sees them, which is why there is no "hide internal" flag to pass.
+ */
+export const listTicketComments = (
+  id: string,
+  params: ItListParams,
+): Promise<Paginated<ItTicketEventDto>> =>
+  getPage<ItTicketEventDto>(`/it/tickets/${id}/comments${buildQuery(params)}`);
+export const createTicketComment = (
+  id: string,
+  body: CreateItTicketComment,
+): Promise<ItTicketEventDto> => post<ItTicketEventDto>(`/it/tickets/${id}/comments`, body);
+
+/** Technician picker — platform users, the same public surface the org screens read. */
+export const searchUsers = (search: string, pageSize = 8): Promise<Paginated<UserDto>> =>
+  getPage<UserDto>(`/platform/users${buildQuery({ search, status: 'active', pageSize })}`);
+
+/**
+ * Resolve one user by id — the other half of ADR-019 rule 5, and what turns a stored
+ * `requesterUserId` / `assignedTechnicianUserId` into a name. Gated by `user.view`; a caller
+ * without it sees a short reference instead, never an unexplained 403.
+ */
+export const getUser = (id: string): Promise<UserDto> => get<UserDto>(`/platform/users/${id}`);
+
+// ── Ticket attachments (design §2 files row, §15) ───────────────────────────
+//
+// "Additive attachments · NO NEW UPLOAD PATH". IT mints no upload endpoint of its own: the
+// platform Files service already takes the owning `entityRef` from the caller, so a ticket
+// attachment is an ordinary platform file tagged `it/ticket/<id>`. Gated by the platform's own
+// `file.view` / `file.create` — no IT permission is invented for it.
+//
+// Direct ticket attachments are PUBLIC to anyone who can see the ticket (design §13-Q9), which is
+// why they carry no visibility decision here.
+
+export const listTicketAttachments = (ticketId: string): Promise<Paginated<FileDto>> =>
+  getPage<FileDto>(
+    `/platform/files${buildQuery({
+      moduleId: 'it',
+      entityType: 'ticket',
+      entityId: ticketId,
+      pageSize: 50,
+    })}`,
+  );
+
+export const uploadTicketAttachment = (
+  ticketId: string,
+  file: File,
+  categoryId: string,
+): Promise<FileDto> => {
+  const form = new FormData();
+  form.append('file', file);
+  form.append('moduleId', 'it');
+  form.append('entityType', 'ticket');
+  form.append('entityId', ticketId);
+  form.append('categoryId', categoryId);
+  return upload<FileDto>('/platform/files', form);
+};
+
+/** The category the upload must name. Read once and cached — it is platform reference data. */
+export const listFileCategories = (): Promise<Paginated<FileCategoryDto>> =>
+  getPage<FileCategoryDto>(`/platform/file-categories${buildQuery({ pageSize: 100 })}`);

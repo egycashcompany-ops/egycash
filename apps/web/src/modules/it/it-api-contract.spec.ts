@@ -23,9 +23,13 @@ const CLIENT = readFileSync(resolve(HERE, 'api/it-api.ts'), 'utf8');
 const ASSET_ROUTES = read('assets/asset.routes.ts');
 const CATALOG_ROUTES = read('catalog-items/catalog-item.routes.ts');
 const VENDOR_ROUTES = read('vendors/vendor.routes.ts');
+const TICKET_ROUTES = read('tickets/ticket.routes.ts');
+const PRIORITY_ROUTES = read('tickets/priority.routes.ts');
 const ASSET_SERVICE = read('assets/asset.service.ts');
 const CATALOG_SERVICE = read('catalog-items/catalog-item.service.ts');
 const VENDOR_SERVICE = read('vendors/vendor.service.ts');
+const TICKET_REPOSITORY = read('tickets/ticket.repository.ts');
+const PRIORITY_REPOSITORY = read('tickets/priority.repository.ts');
 const MANIFEST = read('it.module.ts');
 
 /** The verb+path pairs a router declares, e.g. `get /by-code/:code`. */
@@ -101,6 +105,59 @@ describe('every endpoint the IT client calls exists on the API', () => {
     expect(declared(VENDOR_ROUTES)).toContain('get /:id');
     expect(CLIENT).toContain('`/it/vendors/${id}`');
   });
+
+  it('tickets: the read pair, the edit, and one endpoint per NAMED transition (§4.4)', () => {
+    const routes = declared(TICKET_ROUTES);
+    expect(routes).toEqual(
+      new Set([
+        'get /',
+        'post /',
+        'get /:id',
+        'patch /:id',
+        // Each transition carries a different required fact, so each has its own endpoint — and
+        // none of them is a generic PATCH of `status`, which would let a client invent a move.
+        'post /:id/assign',
+        'post /:id/status',
+        'post /:id/resolve',
+        'post /:id/close',
+        'post /:id/reopen',
+        'post /:id/cancel',
+        // The stream: history AND conversation, one collection, one route pair.
+        'get /:id/comments',
+        'post /:id/comments',
+      ]),
+    );
+    expect(MANIFEST).toContain("prefix: '/it/tickets'");
+    expect(CLIENT).toContain("getPage<ItTicketDto>(`/it/tickets${buildQuery(params)}`)");
+    expect(CLIENT).toContain('`/it/tickets/${id}`');
+    for (const action of ['assign', 'status', 'resolve', 'close', 'reopen', 'cancel', 'comments']) {
+      expect(CLIENT, `client never calls /${action}`).toContain(`/it/tickets/\${id}/${action}`);
+    }
+  });
+
+  // Design §2's files row is explicit: "additive attachments · NO NEW UPLOAD PATH". IT must not
+  // mint an upload endpoint of its own — a ticket attachment is an ordinary platform file carrying
+  // the owning `entityRef`. Pinned in both directions, because the tempting shortcut (an
+  // `/it/tickets/:id/attachments` proxy, as HR applicants have) is exactly what the design forbids
+  // here, and it would also mint a second permission surface over the same bytes.
+  it('attachments ride platform/files additively — IT declares no upload path of its own', () => {
+    const routes = declared(TICKET_ROUTES);
+    for (const route of routes) {
+      expect(route, 'IT must not serve its own attachment endpoint').not.toContain('attachment');
+    }
+    expect(CLIENT).toContain("upload<FileDto>('/platform/files'");
+    // …and it names the owning entity, which is what makes the file findable from the ticket.
+    expect(CLIENT).toContain("form.append('moduleId', 'it')");
+    expect(CLIENT).toContain("form.append('entityType', 'ticket')");
+  });
+
+  it('priorities: list, create, update — archived, never deleted, because tickets point at them', () => {
+    const routes = declared(PRIORITY_ROUTES);
+    expect(routes).toEqual(new Set(['get /', 'post /', 'patch /:id']));
+    expect([...routes].some((r) => r.startsWith('delete'))).toBe(false);
+    expect(MANIFEST).toContain("prefix: '/it/ticket-priorities'");
+    expect(CLIENT).toContain('/it/ticket-priorities');
+  });
 });
 
 describe('the permissions the API enforces are the ones the UI gates on', () => {
@@ -174,11 +231,68 @@ describe('the permissions the API enforces are the ones the UI gates on', () => 
     expect(byId).toContain("authorize('itVendor.view')");
   });
 
+  // §7's help-desk split, pinned in both directions. `view/create/edit` is the ordinary trio;
+  // `assign` and `close` are SEPARATE because deciding who does the work — and deciding a ticket
+  // is finished — are different authorities from doing the work.
+  it('tickets: five gates, and each transition rides the one the design gives it', () => {
+    expect(enforced(TICKET_ROUTES)).toEqual(
+      new Set([
+        'itTicket.view',
+        'itTicket.create',
+        'itTicket.edit',
+        'itTicket.assign',
+        'itTicket.close',
+      ]),
+    );
+    const route = (verb: string, path: string): string =>
+      new RegExp(`router\\.${verb}\\(\\s*'${path.replace(/[/:]/g, '\\$&')}'[\\s\\S]*?\\);`).exec(
+        TICKET_ROUTES,
+      )?.[0] ?? '';
+    expect(route('post', '/:id/assign')).toContain("authorize('itTicket.assign')");
+    for (const path of ['/:id/status', '/:id/resolve']) {
+      expect(route('post', path), `${path} must ride itTicket.edit`).toContain(
+        "authorize('itTicket.edit')",
+      );
+    }
+    for (const path of ['/:id/close', '/:id/reopen']) {
+      expect(route('post', path), `${path} must ride itTicket.close`).toContain(
+        "authorize('itTicket.close')",
+      );
+    }
+  });
+
+  // FR-14, and it is the one rule a reviewer would most likely "fix" by mistake. Cancelling your
+  // OWN open ticket and commenting on your OWN ticket are not privileges, so neither route mints a
+  // work grant — both ride `itTicket.view` and the ownership check lives in the service, where the
+  // ticket is actually in hand. Pinned so tightening either gate fails here rather than silently
+  // taking a requester's own ticket away from them.
+  it('the requester’s own cancel and own comment ride view, never a work grant (FR-14)', () => {
+    const cancel = /router\.post\(\s*'\/:id\/cancel'[\s\S]*?\);/.exec(TICKET_ROUTES)?.[0] ?? '';
+    expect(cancel).toContain("authorize('itTicket.view')");
+    expect(cancel).not.toContain('itTicket.close');
+    const comment = /router\.post\(\s*'\/:id\/comments'[\s\S]*?\);/.exec(TICKET_ROUTES)?.[0] ?? '';
+    expect(comment).toContain("authorize('itTicket.view')");
+    expect(comment).not.toContain('itTicket.edit');
+  });
+
+  // Same shape, same reason, as the catalog read gate: the ticket form's priority dropdown must
+  // populate for anyone who can open a ticket, while the settings screen is the admin's.
+  it('priorities: read takes EITHER grant, writes need itSlaPolicy.manage', () => {
+    const list = /router\.get\(\s*'\/'[\s\S]*?\);/.exec(PRIORITY_ROUTES)?.[0] ?? '';
+    expect(list).toContain("authorizeAny('itTicket.view', 'itSlaPolicy.manage')");
+    for (const verb of ['post', 'patch']) {
+      const write = new RegExp(`router\\.${verb}\\([\\s\\S]*?\\);`).exec(PRIORITY_ROUTES)?.[0] ?? '';
+      expect(write).toContain("authorize('itSlaPolicy.manage')");
+    }
+  });
+
   it('declares every gate the manifest knows about, and no invented one', () => {
     const used = new Set([
       ...enforced(ASSET_ROUTES),
       ...enforced(CATALOG_ROUTES),
       ...enforced(VENDOR_ROUTES),
+      ...enforced(TICKET_ROUTES),
+      ...enforced(PRIORITY_ROUTES),
     ]);
     for (const permission of used) {
       const [resource, action] = permission.split('.');
@@ -194,8 +308,9 @@ describe('the sort fields the tables offer are the ones the API accepts', () => 
     return [...raw.matchAll(/'([^']+)'/g)].flatMap((m) => (m[1] ? [m[1]] : []));
   };
 
-  // A `sortBy` the API does not allow comes back 400 — a column header that breaks the page when
-  // clicked. These are the defaults and the sortable columns the IT screens actually use.
+  // A `sortBy` the API does not declare does NOT error — `BaseRepository.list` falls back to
+  // `createdAt` — so an undeclared sort header is worse than a broken one: it looks like it
+  // worked and sorted by something else. These are the sortable columns the IT screens offer.
   it('assets list', () => {
     const allowed = sortable(ASSET_SERVICE);
     for (const field of ['assetCode', 'name', 'status']) expect(allowed).toContain(field);
@@ -208,20 +323,60 @@ describe('the sort fields the tables offer are the ones the API accepts', () => 
   it('vendors list', () => {
     expect(sortable(VENDOR_SERVICE)).toContain('name');
   });
+
+  // The ticket queue's sortable headers, and the settings table's. Both were trimmed to exactly
+  // what the repositories allow — `title` and the two SLA targets are deliberately NOT sortable
+  // headers, because the API would silently sort by `createdAt` instead.
+  it('tickets queue', () => {
+    const allowed = sortable(TICKET_REPOSITORY);
+    for (const field of ['createdAt', 'ticketCode', 'status', 'sla.resolutionDueAt']) {
+      expect(allowed).toContain(field);
+    }
+    expect(allowed).not.toContain('title');
+  });
+
+  it('priorities table', () => {
+    const allowed = sortable(PRIORITY_REPOSITORY);
+    expect(allowed).toContain('rank');
+    expect(allowed).not.toContain('responseMinutes');
+  });
 });
 
 describe('the client sends only filters the API declares', () => {
+  const CONTRACTS = readFileSync(
+    resolve(HERE, '../../../../../packages/contracts/src/modules/it.ts'),
+    'utf8',
+  );
+  const filters = (schemaName: string): string => {
+    const found = new RegExp(
+      `${schemaName} = PaginationQuerySchema.extend\\(\\{([\\s\\S]*?)\\}\\)`,
+    ).exec(CONTRACTS)?.[1];
+    expect(found, `${schemaName} not found`).toBeDefined();
+    return found ?? '';
+  };
+
   it('assets: search, categoryId, status, branchId', () => {
-    const query = readFileSync(
-      resolve(HERE, '../../../../../packages/contracts/src/modules/it.ts'),
-      'utf8',
-    );
-    const schema = /ListItAssetsQuerySchema = PaginationQuerySchema.extend\(\{([\s\S]*?)\}\)/.exec(
-      query,
-    )?.[1];
-    expect(schema).toBeDefined();
+    const schema = filters('ListItAssetsQuerySchema');
     for (const field of ['search', 'categoryId', 'status', 'branchId']) {
       expect(schema, `${field} is not a declared asset filter`).toContain(`${field}:`);
+    }
+  });
+
+  // Every filter the queue's FilterBar and its three saved views send. `mine` and `breached` are
+  // the two that matter most: `mine` is what makes the requester view a server answer rather than
+  // a client-side guess (FR-8), and `breached` reads the STAMPS rather than recomputing a clock.
+  it('tickets: the queue filters and the two saved views', () => {
+    const schema = filters('ListItTicketsQuerySchema');
+    for (const field of [
+      'search',
+      'status',
+      'categoryId',
+      'priorityId',
+      'mine',
+      'breached',
+      'active',
+    ]) {
+      expect(schema, `${field} is not a declared ticket filter`).toContain(`${field}:`);
     }
   });
 });

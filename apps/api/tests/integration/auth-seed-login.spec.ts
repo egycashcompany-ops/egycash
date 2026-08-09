@@ -117,15 +117,18 @@ describe('seed → password login (regression)', () => {
     expect(routes).toContain('/interviews/stages');
     expect(routes).toContain('/evaluations/phases');
     expect(routes).toContain('/applicant-sources');
-    // ITW-1's five rows — the asset registry surface — plus IT-2's custody register.
+    // ITW-1's five rows — the asset registry surface — plus IT-2's custody register and IT-3's
+    // help desk. The nav sync is additive, so each slice appends its own rows here as it lands.
     expect(routes).toContain('/it');
     expect(routes).toContain('/it/assets');
     expect(routes).toContain('/it/assets/scan');
     expect(routes).toContain('/it/vendors');
     expect(routes).toContain('/it/catalogs');
     expect(routes).toContain('/it/custody');
-    // 14 (HR) + 12 (Fleet) + 6 (Organization) + 6 (IT) + 2 (Administration)
-    expect(routes).toHaveLength(40);
+    expect(routes).toContain('/it/tickets');
+    expect(routes).toContain('/it/helpdesk-settings');
+    // 14 (HR) + 12 (Fleet) + 6 (Organization) + 8 (IT) + 2 (Administration)
+    expect(routes).toHaveLength(42);
   });
 
   it('re-running the seed is idempotent — no duplicate categories/applications/grants', async () => {
@@ -137,7 +140,7 @@ describe('seed → password login (regression)', () => {
       .set('Authorization', `Bearer ${token}`);
     const groups = (res.body as { data: { applications: unknown[] }[] }).data;
     expect(groups).toHaveLength(5);
-    expect(groups.reduce((n, g) => n + g.applications.length, 0)).toBe(40);
+    expect(groups.reduce((n, g) => n + g.applications.length, 0)).toBe(42);
   });
 
   it('the seeded HR user also logs in with email/password', async () => {

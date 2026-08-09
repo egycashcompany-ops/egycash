@@ -1,7 +1,8 @@
-// IT module contracts (docs/12-planning/it-module-design.md, FROZEN v1.2) — slices IT-1 and IT-2:
-// catalog items, vendors, the asset register with server-allocated codes, QR labels, and the
-// custody lifecycle (assign / return / transfer / dispose) with its append-only history.
-// Help desk, maintenance, software and dashboards arrive in IT-3…IT-6 by extending this file,
+// IT module contracts (docs/12-planning/it-module-design.md, FROZEN v1.2) — slices IT-1…IT-3:
+// catalog items, vendors, the asset register with server-allocated codes, QR labels, the custody
+// lifecycle (assign / return / transfer / dispose) with its append-only history, and the help desk
+// (priorities carrying their SLA targets, tickets, and one stream that is both history and
+// conversation). Maintenance, software and dashboards arrive in IT-4…IT-6 by extending this file,
 // never by adding a second one.
 //
 // Asset `status` is deliberately absent from every write schema: it is derived from operations
@@ -447,6 +448,13 @@ export const ItEvents = {
   AssetReturned: 'it.asset.returned',
   AssetTransferred: 'it.asset.transferred',
   AssetDisposed: 'it.asset.disposed',
+  TicketOpened: 'it.ticket.opened',
+  TicketAssigned: 'it.ticket.assigned',
+  // ONE event for every transition. resolved / closed / reopened / cancelled are `to` VALUES an
+  // automation filter selects, not four more event names (§8.1) — the vocabulary stays
+  // one-name-per-fact, and only facts a filter cannot express get their own name.
+  TicketStatusChanged: 'it.ticket.statusChanged',
+  TicketSlaBreached: 'it.ticket.slaBreached',
 } as const;
 export type ItEventName = (typeof ItEvents)[keyof typeof ItEvents];
 
@@ -490,3 +498,323 @@ export const ItAssetDisposedPayloadV1 = z.object({
   reason: z.string(),
 });
 export type ItAssetDisposedPayload = z.infer<typeof ItAssetDisposedPayloadV1>;
+
+// ── Help desk: priorities (design §2.6) ─────────────────────────────────────
+//
+// THE PRIORITY *IS* THE SLA POLICY. v1.0 of the design split them into two collections joined
+// 1:1; that is normalization without a purpose — an admin tunes the name, the rank and the targets
+// as one decision on one screen, and the module carries one collection and one grant less.
+
+export interface ItTicketPriorityDto {
+  id: string;
+  name: { ar: string; en: string };
+  /** Ordering and severity in one number; lower sorts first. */
+  rank: number;
+  responseMinutes: number;
+  resolutionMinutes: number;
+  isActive: boolean;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const priorityCore = {
+  name: LocalizedStringSchema,
+  rank: z.number().int().min(0).max(1000),
+  responseMinutes: z.number().int().min(1).max(60 * 24 * 365),
+  resolutionMinutes: z.number().int().min(1).max(60 * 24 * 365),
+};
+
+export const CreateItTicketPrioritySchema = z
+  .object(priorityCore)
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.resolutionMinutes < value.responseMinutes) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['resolutionMinutes'],
+        message: 'the resolution target cannot be shorter than the response target',
+      });
+    }
+  });
+export type CreateItTicketPriority = z.infer<typeof CreateItTicketPrioritySchema>;
+
+export const UpdateItTicketPrioritySchema = z
+  .object({
+    name: LocalizedStringSchema.optional(),
+    rank: priorityCore.rank.optional(),
+    responseMinutes: priorityCore.responseMinutes.optional(),
+    resolutionMinutes: priorityCore.resolutionMinutes.optional(),
+    isActive: z.boolean().optional(),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type UpdateItTicketPriority = z.infer<typeof UpdateItTicketPrioritySchema>;
+
+export const ListItTicketPrioritiesQuerySchema = PaginationQuerySchema.extend({
+  isActive: booleanQuery().optional(),
+}).strict();
+export type ListItTicketPrioritiesQuery = z.infer<typeof ListItTicketPrioritiesQuerySchema>;
+
+// ── Help desk: tickets (design §2.6, §4.4) ──────────────────────────────────
+
+export const IT_TICKET_STATUSES = [
+  'open',
+  'inProgress',
+  'onHold',
+  'resolved',
+  'closed',
+  'cancelled',
+] as const;
+export const ItTicketStatusSchema = z.enum(IT_TICKET_STATUSES);
+export type ItTicketStatus = z.infer<typeof ItTicketStatusSchema>;
+
+/** Which clock a breach belongs to (§4.5). Stamped once per phase, never cleared. */
+export const IT_SLA_PHASES = ['response', 'resolution'] as const;
+export const ItSlaPhaseSchema = z.enum(IT_SLA_PHASES);
+export type ItSlaPhase = z.infer<typeof ItSlaPhaseSchema>;
+
+/**
+ * The SLA state of one ticket.
+ *
+ * `policy` is a SNAPSHOT taken at creation, not a reference: editing a priority later must not
+ * rewrite history or move a running clock (the contract-template-versioning reasoning). Breach
+ * stamps are set once and never cleared — a late resolution does not un-breach the ticket, and
+ * reports read the stamps rather than recomputing a clock (FR-6).
+ */
+export interface ItTicketSlaDto {
+  policy: { responseMinutes: number; resolutionMinutes: number };
+  responseDueAt: string;
+  resolutionDueAt: string;
+  firstResponseAt: string | null;
+  responseBreachedAt: string | null;
+  resolutionBreachedAt: string | null;
+  /** Milliseconds the resolution clock spent paused in `onHold`. The response clock never pauses. */
+  pausedMs: number;
+  holdStartedAt: string | null;
+}
+
+export interface ItTicketResolutionDto {
+  summary: string;
+  resolvedByUserId: string;
+  resolvedAt: string;
+}
+
+export interface ItTicketDto {
+  id: string;
+  ticketCode: string;
+  title: string;
+  description: string;
+  requesterUserId: string;
+  branchId: string | null;
+  categoryId: string;
+  priorityId: string;
+  assetId: string | null;
+  assignedTechnicianUserId: string | null;
+  status: ItTicketStatus;
+  sla: ItTicketSlaDto;
+  resolution: ItTicketResolutionDto | null;
+  closedAt: string | null;
+  reopenCount: number;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * `ticketCode`, `status`, `sla`, `resolution`, `reopenCount` and `requesterUserId` are all
+ * SERVER-owned and appear on no write schema. The code comes from the sequence (FR-1), the status
+ * only from a named transition (§4.4), the SLA from the snapshot at creation (§4.5), and the
+ * requester from the authenticated caller — a client that could name a requester could open a
+ * ticket as someone else.
+ */
+const ticketCore = {
+  title: z.string().trim().min(1).max(200),
+  description: z.string().trim().min(1).max(5000),
+  categoryId: objectId(),
+  priorityId: objectId(),
+  assetId: objectId().optional(),
+};
+
+export const CreateItTicketSchema = z.object(ticketCore).strict();
+export type CreateItTicket = z.infer<typeof CreateItTicketSchema>;
+
+/** Editing the ticket's own fields. Status moves through its named actions, never through here. */
+export const UpdateItTicketSchema = z
+  .object({
+    title: ticketCore.title.optional(),
+    description: ticketCore.description.optional(),
+    categoryId: objectId().optional(),
+    priorityId: objectId().optional(),
+    assetId: objectId().nullable().optional(),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type UpdateItTicket = z.infer<typeof UpdateItTicketSchema>;
+
+export const AssignItTicketSchema = z
+  .object({ technicianUserId: objectId(), note: z.string().trim().max(2000).optional() })
+  .strict();
+export type AssignItTicket = z.infer<typeof AssignItTicketSchema>;
+
+/**
+ * The generic transition, for the moves that carry no extra payload: start work, put on hold,
+ * take off hold. `resolve`, `close`, `reopen` and `cancel` have their own endpoints because each
+ * carries a different required fact — but ALL of them emit one `statusChanged` event and write one
+ * `statusChanged` history row (§8.1: `to` is a filter, not four more event names).
+ */
+export const ChangeItTicketStatusSchema = z
+  .object({
+    to: z.enum(['inProgress', 'onHold']),
+    reason: z.string().trim().max(2000).optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    // §4.4: going on hold requires a reason — the pause has to be explainable later.
+    if (value.to === 'onHold' && (value.reason === undefined || value.reason.trim() === '')) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['reason'],
+        message: 'putting a ticket on hold requires a reason',
+      });
+    }
+  });
+export type ChangeItTicketStatus = z.infer<typeof ChangeItTicketStatusSchema>;
+
+export const ResolveItTicketSchema = z
+  .object({ summary: z.string().trim().min(1).max(5000) })
+  .strict();
+export type ResolveItTicket = z.infer<typeof ResolveItTicketSchema>;
+
+export const CloseItTicketSchema = z
+  .object({ note: z.string().trim().max(2000).optional() })
+  .strict();
+export type CloseItTicket = z.infer<typeof CloseItTicketSchema>;
+
+export const ReopenItTicketSchema = z
+  .object({ reason: z.string().trim().min(1).max(2000) })
+  .strict();
+export type ReopenItTicket = z.infer<typeof ReopenItTicketSchema>;
+
+export const CancelItTicketSchema = z
+  .object({ reason: z.string().trim().min(1).max(2000) })
+  .strict();
+export type CancelItTicket = z.infer<typeof CancelItTicketSchema>;
+
+export const ListItTicketsQuerySchema = PaginationQuerySchema.extend({
+  /** Matches the code, the title and the description — the strings a dispatcher has. */
+  search: z.string().trim().max(200).optional(),
+  status: ItTicketStatusSchema.optional(),
+  categoryId: objectId().optional(),
+  priorityId: objectId().optional(),
+  assetId: objectId().optional(),
+  branchId: objectId().optional(),
+  assignedTechnicianUserId: objectId().optional(),
+  /** `true` → only the caller's own tickets. The requester view (FR-8). */
+  mine: booleanQuery().optional(),
+  /** `true` → only tickets that have breached either clock. Reads the STAMPS, never a clock. */
+  breached: booleanQuery().optional(),
+  /** `true` → open/inProgress/onHold; `false` → resolved/closed/cancelled. */
+  active: booleanQuery().optional(),
+}).strict();
+export type ListItTicketsQuery = z.infer<typeof ListItTicketsQuerySchema>;
+
+// ── Help desk: the ticket stream (design §2.6) ──────────────────────────────
+//
+// ONE append-only collection that is both the history AND the conversation — the recruitment
+// timeline precedent, where notes are entries rather than a sibling collection. The ticket page
+// renders it as-is: no interleaving of two sources, no ordering ambiguity.
+
+export const IT_TICKET_EVENT_TYPES = [
+  'opened',
+  'assigned',
+  'statusChanged',
+  'priorityChanged',
+  'commented',
+  'slaBreached',
+] as const;
+export const ItTicketEventTypeSchema = z.enum(IT_TICKET_EVENT_TYPES);
+export type ItTicketEventType = z.infer<typeof ItTicketEventTypeSchema>;
+
+export const IT_COMMENT_VISIBILITIES = ['public', 'internal'] as const;
+export const ItCommentVisibilitySchema = z.enum(IT_COMMENT_VISIBILITIES);
+export type ItCommentVisibility = z.infer<typeof ItCommentVisibilitySchema>;
+
+export interface ItTicketEventDto {
+  id: string;
+  ticketId: string;
+  type: ItTicketEventType;
+  at: string;
+  actorUserId: string | null;
+  actorName: string;
+  /** Populated on `statusChanged` rows; null elsewhere. Typed fields, not metadata probing. */
+  fromStatus: ItTicketStatus | null;
+  toStatus: ItTicketStatus | null;
+  /** Populated on `commented` rows; null elsewhere. */
+  body: string | null;
+  visibility: ItCommentVisibility | null;
+  metadata: Record<string, unknown>;
+  notes: string | null;
+}
+
+/**
+ * Posting a comment. `visibility` defaults to `public` deliberately: the safe default is the one
+ * the requester can see, so an internal note is always a conscious choice rather than an accident
+ * of a missing field. Only holders of `itTicket.edit` may post `internal` (§7, FR-7).
+ */
+export const CreateItTicketCommentSchema = z
+  .object({
+    body: z.string().trim().min(1).max(5000),
+    visibility: ItCommentVisibilitySchema.default('public'),
+  })
+  .strict();
+export type CreateItTicketComment = z.infer<typeof CreateItTicketCommentSchema>;
+
+export const ListItTicketEventsQuerySchema = PaginationQuerySchema.extend({
+  type: ItTicketEventTypeSchema.optional(),
+}).strict();
+export type ListItTicketEventsQuery = z.infer<typeof ListItTicketEventsQuerySchema>;
+
+// ── Help desk: settings (design §8.3) ───────────────────────────────────────
+
+export const ItSettingKeys = {
+  /** Percentage of the SLA window after which a ticket counts as at risk (a dashboard query). */
+  SlaAtRiskPercent: 'it.sla.atRiskPercent',
+  /** Days a `resolved` ticket waits before the sweep closes it. 0 disables auto-close. */
+  TicketAutoCloseDays: 'it.ticket.autoCloseDays',
+} as const;
+export type ItSettingKey = (typeof ItSettingKeys)[keyof typeof ItSettingKeys];
+
+export const ItTicketOpenedPayloadV1 = z.object({
+  ticketId: objectId(),
+  ticketCode: z.string(),
+  categoryId: objectId(),
+  priorityId: objectId(),
+  requesterUserId: objectId(),
+  assetId: objectId().nullable(),
+});
+export type ItTicketOpenedPayload = z.infer<typeof ItTicketOpenedPayloadV1>;
+
+export const ItTicketAssignedPayloadV1 = z.object({
+  ticketId: objectId(),
+  ticketCode: z.string(),
+  technicianUserId: objectId(),
+});
+export type ItTicketAssignedPayload = z.infer<typeof ItTicketAssignedPayloadV1>;
+
+export const ItTicketStatusChangedPayloadV1 = z.object({
+  ticketId: objectId(),
+  ticketCode: z.string(),
+  from: ItTicketStatusSchema,
+  to: ItTicketStatusSchema,
+  summary: z.string().nullable(),
+});
+export type ItTicketStatusChangedPayload = z.infer<typeof ItTicketStatusChangedPayloadV1>;
+
+export const ItTicketSlaBreachedPayloadV1 = z.object({
+  ticketId: objectId(),
+  ticketCode: z.string(),
+  phase: ItSlaPhaseSchema,
+  dueAt: z.string(),
+});
+export type ItTicketSlaBreachedPayload = z.infer<typeof ItTicketSlaBreachedPayloadV1>;

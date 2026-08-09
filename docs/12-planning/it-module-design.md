@@ -603,3 +603,13 @@ starts only on an explicit owner GO.
 - **v1.2 FROZEN** (2026-08-03) — owner approval. §13's nine defaults adopted as decisions,
   unchanged. Implementation begins with IT-1 and only IT-1; design changes from here require a
   Design Review or new ADR before any code, recorded as a new revision here.
+- **IT-4 naming correction** (2026-08-09) — §8.1 named the maintenance events
+  `it.maintenance.orderCreated` / `.orderCompleted`. They ship as
+  **`it.maintenanceOrder.created`** and **`it.maintenanceOrder.completed`**, with the entity
+  `maintenanceOrder`. Two reasons, both about the shared event vocabulary rather than about IT:
+  the catalog's entity/action split expects `<entity>.<pastTense>`, so `maintenance.orderCreated`
+  would have registered `orderCreated` as an ACTION word used by nothing else; and the entity key
+  `maintenance` already belongs to Fleet's maintenance visit, which is a different thing wearing
+  the same word. `it.sparePart.belowMin` is unchanged. Payloads, firing conditions and the
+  automation-trigger surface are exactly as §8.1 specifies — only the two names differ, and
+  nothing consumed them before IT-4.

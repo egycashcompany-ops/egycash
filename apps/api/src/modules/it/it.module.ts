@@ -1,14 +1,21 @@
-// IT module manifest (frozen design docs/12-planning/it-module-design.md v1.2, slices IT-1…IT-3).
+// IT module manifest (frozen design docs/12-planning/it-module-design.md v1.2, slices IT-1…IT-4).
 // Delivered incrementally exactly as HR and Fleet were: IT-1 registered the catalogs, vendors and
 // the asset register; IT-2 added the custody lifecycle, its append-only history and the HR-exit
 // subscription; IT-3 adds the help desk — priorities carrying their SLA targets, tickets, the one
-// stream that is both history and conversation, and the SLA + auto-close sweeps. IT-4…IT-6 add
-// maintenance, software and dashboards — each extending THIS manifest, never adding a second one.
+// stream that is both history and conversation, and the SLA + auto-close sweeps; IT-4 adds
+// maintenance — preventive plans, work orders and the spare-parts ledger (ADR-024). IT-5 and IT-6
+// add software and dashboards — each extending THIS manifest, never adding a second one.
 import { declarePermissions, type PermissionDef } from '@ecms/contracts';
 import { type ModuleManifest } from '../../platform/kernel/module-registry';
 import { buildItCatalogRouter } from './catalog-items';
 import { buildItVendorsRouter } from './vendors';
 import { buildItAssetsRouter, buildItAssignmentsRouter, itAssetCustodyService } from './assets';
+import {
+  buildItMaintenanceOrdersRouter,
+  buildItMaintenancePlansRouter,
+  preventiveMaintenanceSweep,
+} from './maintenance';
+import { buildItSparePartsRouter } from './spare-parts';
 import { registerItSettings } from './it.settings';
 import {
   buildItTicketPrioritiesRouter,
@@ -104,12 +111,64 @@ const slaPolicyPermissions = declarePermissions(
   ],
 );
 
+const maintenancePermissions = declarePermissions(
+  'it',
+  'itMaintenance',
+  { en: 'IT maintenance', ar: 'صيانة تقنية المعلومات' },
+  // No `delete`: an order is a business record. It ends by completing or by cancelling, and both
+  // are below. `edit` covers the planning fields AND starting the work — scheduling a repair and
+  // beginning it are one operational surface (the `itAsset.assign` argument).
+  ['view', 'create', 'edit'],
+  [
+    {
+      // Complete + cancel — one grant for both ways an order ends (the `itTicket.close`
+      // both-directions precedent). Completing is what consumes stock and releases the asset;
+      // cancelling is the same decision reached the other way.
+      action: 'complete',
+      name: { en: 'Complete and cancel maintenance orders', ar: 'إنهاء وإلغاء أوامر الصيانة' },
+    },
+  ],
+);
+
+const maintenancePlanPermissions = declarePermissions(
+  'it',
+  'itMaintenancePlan',
+  { en: 'IT maintenance plans', ar: 'خطط الصيانة الوقائية' },
+  [],
+  [
+    {
+      // Behaviour-carrying data gets its own grant (the `itSlaPolicy.manage` precedent): a plan
+      // GENERATES work orders, so editing one changes what the module does on its own.
+      action: 'manage',
+      name: { en: 'Manage preventive maintenance plans', ar: 'إدارة خطط الصيانة الوقائية' },
+    },
+  ],
+);
+
+const sparePartPermissions = declarePermissions(
+  'it',
+  'itSparePart',
+  { en: 'IT spare parts', ar: 'قطع غيار تقنية المعلومات' },
+  ['view'],
+  [
+    {
+      // Catalog AND receipts (§7). Consumption is deliberately NOT here: stock leaves the store
+      // only through an order's completion, under `itMaintenance.complete` (FR-9).
+      action: 'manage',
+      name: { en: 'Manage spare parts and receipts', ar: 'إدارة قطع الغيار والتوريدات' },
+    },
+  ],
+);
+
 export const itPermissions: PermissionDef[] = [
   ...assetPermissions,
   ...catalogPermissions,
   ...vendorPermissions,
   ...ticketPermissions,
   ...slaPolicyPermissions,
+  ...maintenancePermissions,
+  ...maintenancePlanPermissions,
+  ...sparePartPermissions,
 ];
 
 export const itModule: ModuleManifest = {
@@ -125,6 +184,9 @@ export const itModule: ModuleManifest = {
     { prefix: '/it/vendors', router: buildItVendorsRouter() },
     { prefix: '/it/tickets', router: buildItTicketsRouter() },
     { prefix: '/it/ticket-priorities', router: buildItTicketPrioritiesRouter() },
+    { prefix: '/it/maintenance-orders', router: buildItMaintenanceOrdersRouter() },
+    { prefix: '/it/maintenance-plans', router: buildItMaintenancePlansRouter() },
+    { prefix: '/it/spare-parts', router: buildItSparePartsRouter() },
   ],
   collections: [
     'it_assets',
@@ -136,6 +198,10 @@ export const itModule: ModuleManifest = {
     'it_tickets',
     'it_ticket_events',
     'it_ticket_priorities',
+    'it_maintenance_plans',
+    'it_maintenance_orders',
+    'it_spare_parts',
+    'it_spare_part_movements',
   ],
   scheduledTasks: [
     {
@@ -157,6 +223,18 @@ export const itModule: ModuleManifest = {
       ownerService: 'it',
       handler: async () => {
         await ticketAutoCloseSweep();
+      },
+    },
+    {
+      // §4.6 — generate one open preventive order per plan due within the horizon. Idempotent by
+      // construction: a plan gets no second order while the one it generated is unfinished, so the
+      // guard IS the mark and no sweep-marks collection is needed.
+      key: 'it.preventiveSweep',
+      description: 'Generate preventive maintenance orders for plans due within the horizon (§4.6)',
+      cron: '25 4 * * *',
+      ownerService: 'it',
+      handler: async () => {
+        await preventiveMaintenanceSweep();
       },
     },
   ],

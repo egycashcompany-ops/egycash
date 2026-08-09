@@ -8,6 +8,16 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   type AssignItAsset,
   type AssignItTicket,
+  type CancelItMaintenanceOrder,
+  type CompleteItMaintenanceOrder,
+  type CreateItMaintenanceOrder,
+  type CreateItMaintenancePlan,
+  type CreateItSparePart,
+  type ReceiveItSparePart,
+  type StartItMaintenanceOrder,
+  type UpdateItMaintenanceOrder,
+  type UpdateItMaintenancePlan,
+  type UpdateItSparePart,
   type CancelItTicket,
   type ChangeItTicketStatus,
   type CloseItTicket,
@@ -47,6 +57,11 @@ const itKeys = {
   /** The ticket stream: comments AND history. Any ticket write can add to it. */
   ticketStream: featureKey(MODULE, 'ticketStream'),
   priorities: featureKey(MODULE, 'priorities'),
+  /** Orders and the plans whose clocks a completion advances. */
+  maintenance: featureKey(MODULE, 'maintenance'),
+  maintenancePlans: featureKey(MODULE, 'maintenancePlans'),
+  /** Parts, their levels and the ledger — one subtree, because a movement moves both. */
+  spareParts: featureKey(MODULE, 'spareParts'),
 } as const;
 
 // ── Platform references ─────────────────────────────────────────────────────
@@ -464,3 +479,165 @@ export const useCreateItTicketComment = () => {
     },
   });
 };
+
+// ── Maintenance (IT-4) ──────────────────────────────────────────────────────
+
+export const useItMaintenanceOrders = (params: ItListParams, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'maintenance', params),
+    queryFn: () => api.listMaintenanceOrders(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+export const useItMaintenanceOrder = (id: string) =>
+  useQuery({
+    queryKey: detailKey(MODULE, 'maintenance', id),
+    queryFn: () => api.getMaintenanceOrder(id),
+    enabled: id !== '',
+  });
+
+/**
+ * The parts an order consumed — read from the LEDGER, never from the order (ADR-024). Cached under
+ * the spare-parts subtree, so a movement anywhere invalidates it with the levels it changed.
+ */
+export const useItMaintenanceOrderParts = (id: string, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'spareParts', { orderId: id }),
+    queryFn: () => api.listMaintenanceOrderParts(id),
+    enabled: enabled && id !== '',
+  });
+
+/**
+ * An order write moves more than the order: `start` and `complete` change the ASSET's status
+ * (§2.7), a completion consumes STOCK and advances a preventive PLAN's clock (§4.6). Anything less
+ * than invalidating all four leaves a screen showing a fact the user's own action just changed.
+ */
+const useMaintenanceMutation = <TInput, TResult extends { id: string }>(
+  mutationFn: (input: TInput) => Promise<TResult>,
+) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: (order: TResult) => {
+      qc.setQueryData(detailKey(MODULE, 'maintenance', order.id), order);
+      void qc.invalidateQueries({ queryKey: itKeys.maintenance });
+      void qc.invalidateQueries({ queryKey: itKeys.maintenancePlans });
+      void qc.invalidateQueries({ queryKey: itKeys.spareParts });
+      // The asset's status and its history both move with the order.
+      void qc.invalidateQueries({ queryKey: itKeys.assets });
+      void qc.invalidateQueries({ queryKey: itKeys.custody });
+    },
+  });
+};
+
+export const useCreateItMaintenanceOrder = () =>
+  useMaintenanceMutation((body: CreateItMaintenanceOrder) => api.createMaintenanceOrder(body));
+export const useUpdateItMaintenanceOrder = () =>
+  useMaintenanceMutation(({ id, body }: { id: string; body: UpdateItMaintenanceOrder }) =>
+    api.updateMaintenanceOrder(id, body),
+  );
+export const useStartItMaintenanceOrder = () =>
+  useMaintenanceMutation(({ id, body }: { id: string; body: StartItMaintenanceOrder }) =>
+    api.startMaintenanceOrder(id, body),
+  );
+export const useCompleteItMaintenanceOrder = () =>
+  useMaintenanceMutation(({ id, body }: { id: string; body: CompleteItMaintenanceOrder }) =>
+    api.completeMaintenanceOrder(id, body),
+  );
+export const useCancelItMaintenanceOrder = () =>
+  useMaintenanceMutation(({ id, body }: { id: string; body: CancelItMaintenanceOrder }) =>
+    api.cancelMaintenanceOrder(id, body),
+  );
+
+// ── Preventive plans ────────────────────────────────────────────────────────
+
+export const useItMaintenancePlans = (params: ItListParams, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'maintenancePlans', params),
+    queryFn: () => api.listMaintenancePlans(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+export const useItMaintenancePlan = (id: string) =>
+  useQuery({
+    queryKey: detailKey(MODULE, 'maintenancePlans', id),
+    queryFn: () => api.getMaintenancePlan(id),
+    enabled: id !== '',
+  });
+
+const usePlanMutation = <TInput, TResult extends { id: string }>(
+  mutationFn: (input: TInput) => Promise<TResult>,
+) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: (plan: TResult) => {
+      qc.setQueryData(detailKey(MODULE, 'maintenancePlans', plan.id), plan);
+      void qc.invalidateQueries({ queryKey: itKeys.maintenancePlans });
+    },
+  });
+};
+
+export const useCreateItMaintenancePlan = () =>
+  usePlanMutation((body: CreateItMaintenancePlan) => api.createMaintenancePlan(body));
+export const useUpdateItMaintenancePlan = () =>
+  usePlanMutation(({ id, body }: { id: string; body: UpdateItMaintenancePlan }) =>
+    api.updateMaintenancePlan(id, body),
+  );
+export const useSetItMaintenancePlanActive = () =>
+  usePlanMutation(({ id, active }: { id: string; active: boolean }) =>
+    api.setMaintenancePlanActive(id, active),
+  );
+
+// ── Spare parts and the ledger ──────────────────────────────────────────────
+//
+// There is no consume hook, and its absence is the design (FR-9): stock leaves the store only
+// through `useCompleteItMaintenanceOrder`, which invalidates this subtree above.
+
+export const useItSpareParts = (params: ItListParams, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'spareParts', params),
+    queryFn: () => api.listSpareParts(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+export const useItSparePart = (id: string) =>
+  useQuery({
+    queryKey: detailKey(MODULE, 'spareParts', id),
+    queryFn: () => api.getSparePart(id),
+    enabled: id !== '',
+  });
+
+export const useItSparePartMovements = (id: string, params: ItListParams, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'spareParts', { movementsOf: id, ...params }),
+    queryFn: () => api.listSparePartMovements(id, params),
+    placeholderData: (prev) => prev,
+    enabled: enabled && id !== '',
+  });
+
+const useSparePartMutation = <TInput>(mutationFn: (input: TInput) => Promise<unknown>) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => {
+      // One subtree for levels, rows and the ledger: a receipt changes all three at once, and
+      // `onHandQty` is denormalized from the movements, so they can never be refreshed apart.
+      void qc.invalidateQueries({ queryKey: itKeys.spareParts });
+    },
+  });
+};
+
+export const useCreateItSparePart = () =>
+  useSparePartMutation((body: CreateItSparePart) => api.createSparePart(body));
+export const useUpdateItSparePart = () =>
+  useSparePartMutation(({ id, body }: { id: string; body: UpdateItSparePart }) =>
+    api.updateSparePart(id, body),
+  );
+export const useReceiveItSparePart = () =>
+  useSparePartMutation(({ id, body }: { id: string; body: ReceiveItSparePart }) =>
+    api.receiveSparePart(id, body),
+  );

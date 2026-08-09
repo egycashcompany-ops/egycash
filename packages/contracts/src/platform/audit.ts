@@ -81,6 +81,17 @@ export const AUDIT_ACTIONS = [
   // precedent for an audited act with no human behind it.
   'resolve',
   'slaBreached',
+  // IT-4 (design §10): the maintenance transitions and the store's one inbound movement. Same
+  // argument as the custody four — "when did this asset go under repair, and who released it" is
+  // answered by filtering on the act, not by reading a diff on a generic `update`. `receive` is
+  // audited because it is the only way stock enters the store without a maintenance order behind
+  // it (ADR-024), so the audit row is the only record of who put it there.
+  'start',
+  'complete',
+  'cancel',
+  'activate',
+  'deactivate',
+  'receive',
 ] as const;
 export const AuditActionSchema = z.enum(AUDIT_ACTIONS);
 export type AuditAction = z.infer<typeof AuditActionSchema>;

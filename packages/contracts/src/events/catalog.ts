@@ -147,6 +147,9 @@ import {
   ItTicketAssignedPayloadV1,
   ItTicketStatusChangedPayloadV1,
   ItTicketSlaBreachedPayloadV1,
+  ItMaintenanceOrderCreatedPayloadV1,
+  ItMaintenanceOrderCompletedPayloadV1,
+  ItSparePartBelowMinPayloadV1,
 } from '../modules/it.js';
 
 // ── The shape a consumer sees ───────────────────────────────────────────────
@@ -583,6 +586,10 @@ export const EVENT_ENTITY_NAMES: Readonly<Record<string, LocalizedString>> = {
   // it
   asset: { en: 'Asset', ar: 'أصل' },
   ticket: { en: 'Ticket', ar: 'تذكرة' },
+  // NOT `maintenance` — that key is Fleet's "Maintenance visit". An IT maintenance ORDER is a
+  // different thing, so it gets its own entity rather than borrowing a word (§17 naming note).
+  maintenanceOrder: { en: 'Maintenance order', ar: 'أمر صيانة' },
+  sparePart: { en: 'Spare part', ar: 'قطعة غيار' },
 };
 
 export const EVENT_ACTION_NAMES: Readonly<Record<string, LocalizedString>> = {
@@ -665,6 +672,9 @@ export const EVENT_ACTION_NAMES: Readonly<Record<string, LocalizedString>> = {
   // `opened` is already defined above (recruitment uses it) — one entry serves both modules,
   // which is the point of a shared action vocabulary.
   slaBreached: { en: 'SLA breached', ar: 'تجاوز زمن الاستجابة' },
+  // `created` and `completed` are already in this vocabulary and mean exactly what IT-4 means by
+  // them — reused, not duplicated. Only the stock warning needs a new word.
+  belowMin: { en: 'below minimum', ar: 'تحت الحد الأدنى' },
 };
 
 /**
@@ -1044,6 +1054,9 @@ export const IT_EVENT_PAYLOAD_SCHEMAS: Readonly<Record<ItEventName, z.ZodTypeAny
   [ItEvents.TicketAssigned]: ItTicketAssignedPayloadV1,
   [ItEvents.TicketStatusChanged]: ItTicketStatusChangedPayloadV1,
   [ItEvents.TicketSlaBreached]: ItTicketSlaBreachedPayloadV1,
+  [ItEvents.MaintenanceOrderCreated]: ItMaintenanceOrderCreatedPayloadV1,
+  [ItEvents.MaintenanceOrderCompleted]: ItMaintenanceOrderCompletedPayloadV1,
+  [ItEvents.SparePartBelowMin]: ItSparePartBelowMinPayloadV1,
 };
 
 export const IT_EVENT_SOURCE: EventCatalogSource = {

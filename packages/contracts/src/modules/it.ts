@@ -455,6 +455,14 @@ export const ItEvents = {
   // one-name-per-fact, and only facts a filter cannot express get their own name.
   TicketStatusChanged: 'it.ticket.statusChanged',
   TicketSlaBreached: 'it.ticket.slaBreached',
+  // §8.1 names these `it.maintenance.orderCreated` / `.orderCompleted`. Corrected to a
+  // `maintenanceOrder` ENTITY (§17): the shared `EVENT_ENTITY_NAMES.maintenance` key already means
+  // Fleet's "Maintenance visit", and reusing it would label an IT order with Fleet's word in the
+  // automation picker. Same semantics, same payloads — the entity/action split just lands where
+  // the vocabulary can express it, exactly as `fleet.maintenanceAlarm.raised` does.
+  MaintenanceOrderCreated: 'it.maintenanceOrder.created',
+  MaintenanceOrderCompleted: 'it.maintenanceOrder.completed',
+  SparePartBelowMin: 'it.sparePart.belowMin',
 } as const;
 export type ItEventName = (typeof ItEvents)[keyof typeof ItEvents];
 
@@ -782,6 +790,8 @@ export const ItSettingKeys = {
   SlaAtRiskPercent: 'it.sla.atRiskPercent',
   /** Days a `resolved` ticket waits before the sweep closes it. 0 disables auto-close. */
   TicketAutoCloseDays: 'it.ticket.autoCloseDays',
+  /** How far ahead the preventive sweep looks for due plans (§4.6, §8.3). */
+  PreventiveHorizonDays: 'it.maintenance.preventiveHorizonDays',
 } as const;
 export type ItSettingKey = (typeof ItSettingKeys)[keyof typeof ItSettingKeys];
 
@@ -818,3 +828,276 @@ export const ItTicketSlaBreachedPayloadV1 = z.object({
   dueAt: z.string(),
 });
 export type ItTicketSlaBreachedPayload = z.infer<typeof ItTicketSlaBreachedPayloadV1>;
+
+// ── Maintenance: plans (design §2.7, §4.6) ──────────────────────────────────
+//
+// A plan is a PREVENTIVE schedule for one asset. `nextDueAt` advances only when the generated
+// order COMPLETES, and from the completion date rather than the due date — the Fleet alarm-baseline
+// lesson: advancing from the due date compounds drift every time a service runs late.
+
+export interface ItMaintenancePlanDto {
+  id: string;
+  assetId: string;
+  name: string;
+  intervalDays: number;
+  checklist: string | null;
+  lastCompletedAt: string | null;
+  nextDueAt: string;
+  active: boolean;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const planCore = {
+  assetId: objectId(),
+  name: z.string().trim().min(1).max(200),
+  intervalDays: z.number().int().min(1).max(3650),
+  checklist: z.string().trim().max(5000).optional(),
+  /** Absent → the schedule starts one interval from today. */
+  nextDueAt: z.coerce.date().optional(),
+};
+
+export const CreateItMaintenancePlanSchema = z.object(planCore).strict();
+export type CreateItMaintenancePlan = z.infer<typeof CreateItMaintenancePlanSchema>;
+
+/**
+ * `lastCompletedAt` and `active` appear on no write schema: the first is stamped by a completing
+ * order and the second moves through the named activate/deactivate actions, so neither is a field
+ * a client can set.
+ */
+export const UpdateItMaintenancePlanSchema = z
+  .object({
+    name: planCore.name.optional(),
+    intervalDays: planCore.intervalDays.optional(),
+    checklist: z.string().trim().max(5000).nullable().optional(),
+    nextDueAt: z.coerce.date().optional(),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type UpdateItMaintenancePlan = z.infer<typeof UpdateItMaintenancePlanSchema>;
+
+export const ListItMaintenancePlansQuerySchema = PaginationQuerySchema.extend({
+  assetId: objectId().optional(),
+  active: booleanQuery().optional(),
+  /** `true` → plans already due. Reads `nextDueAt`, never a recomputed schedule. */
+  due: booleanQuery().optional(),
+}).strict();
+export type ListItMaintenancePlansQuery = z.infer<typeof ListItMaintenancePlansQuerySchema>;
+
+// ── Maintenance: orders (design §2.7, §4.7) ─────────────────────────────────
+
+export const IT_MAINTENANCE_KINDS = ['preventive', 'corrective'] as const;
+export const ItMaintenanceKindSchema = z.enum(IT_MAINTENANCE_KINDS);
+export type ItMaintenanceKind = z.infer<typeof ItMaintenanceKindSchema>;
+
+export const IT_MAINTENANCE_ORDER_STATUSES = [
+  'open',
+  'inProgress',
+  'completed',
+  'cancelled',
+] as const;
+export const ItMaintenanceOrderStatusSchema = z.enum(IT_MAINTENANCE_ORDER_STATUSES);
+export type ItMaintenanceOrderStatus = z.infer<typeof ItMaintenanceOrderStatusSchema>;
+
+/**
+ * One order, two shapes discriminated by `kind` (the Fleet violations precedent).
+ *
+ * The consumed parts are NOT here: they are movement rows keyed by `orderId` (ADR-024). One source
+ * of truth — an embedded list would drift from the ledger the first time either was edited.
+ */
+export interface ItMaintenanceOrderDto {
+  id: string;
+  orderCode: string;
+  kind: ItMaintenanceKind;
+  assetId: string;
+  planId: string | null;
+  ticketId: string | null;
+  status: ItMaintenanceOrderStatus;
+  scheduledFor: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  performedByUserId: string | null;
+  vendorId: string | null;
+  cost: number | null;
+  summary: string | null;
+  /** The custody status the asset held before `start` — what `complete` restores it to. */
+  assetStatusBefore: ItAssetStatus | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * `orderCode`, `status`, the timestamps and `assetStatusBefore` are SERVER facts and appear on no
+ * write schema. `kind` is `corrective` here because a preventive order is born from the sweep, not
+ * from a caller.
+ */
+export const CreateItMaintenanceOrderSchema = z
+  .object({
+    assetId: objectId(),
+    ticketId: objectId().optional(),
+    scheduledFor: z.coerce.date().optional(),
+    vendorId: objectId().optional(),
+    summary: z.string().trim().max(5000).optional(),
+  })
+  .strict();
+export type CreateItMaintenanceOrder = z.infer<typeof CreateItMaintenanceOrderSchema>;
+
+export const UpdateItMaintenanceOrderSchema = z
+  .object({
+    scheduledFor: z.coerce.date().nullable().optional(),
+    vendorId: objectId().nullable().optional(),
+    summary: z.string().trim().max(5000).nullable().optional(),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type UpdateItMaintenanceOrder = z.infer<typeof UpdateItMaintenanceOrderSchema>;
+
+/** One consumed part, named at completion. The movement rows are written from this list. */
+export const ItMaintenancePartUsageSchema = z
+  .object({ partId: objectId(), qty: z.number().int().min(1).max(100_000) })
+  .strict();
+export type ItMaintenancePartUsage = z.infer<typeof ItMaintenancePartUsageSchema>;
+
+export const CompleteItMaintenanceOrderSchema = z
+  .object({
+    summary: z.string().trim().min(1).max(5000),
+    cost: z.number().min(0).max(100_000_000).optional(),
+    /** Consumption is always order-tied (FR-9); this is the only way to write a negative movement. */
+    parts: z.array(ItMaintenancePartUsageSchema).max(100).optional(),
+  })
+  .strict();
+export type CompleteItMaintenanceOrder = z.infer<typeof CompleteItMaintenanceOrderSchema>;
+
+export const CancelItMaintenanceOrderSchema = z
+  .object({ reason: z.string().trim().min(1).max(2000) })
+  .strict();
+export type CancelItMaintenanceOrder = z.infer<typeof CancelItMaintenanceOrderSchema>;
+
+export const StartItMaintenanceOrderSchema = z
+  .object({ note: z.string().trim().max(2000).optional() })
+  .strict();
+export type StartItMaintenanceOrder = z.infer<typeof StartItMaintenanceOrderSchema>;
+
+export const ListItMaintenanceOrdersQuerySchema = PaginationQuerySchema.extend({
+  search: z.string().trim().max(200).optional(),
+  kind: ItMaintenanceKindSchema.optional(),
+  status: ItMaintenanceOrderStatusSchema.optional(),
+  assetId: objectId().optional(),
+  planId: objectId().optional(),
+  ticketId: objectId().optional(),
+  vendorId: objectId().optional(),
+  /** `true` → open/inProgress; `false` → completed/cancelled. */
+  active: booleanQuery().optional(),
+}).strict();
+export type ListItMaintenanceOrdersQuery = z.infer<typeof ListItMaintenanceOrdersQuerySchema>;
+
+// ── Spare parts and the movement ledger (design §2.7, ADR-024) ──────────────
+//
+// A minimal STORE record, deliberately not inventory accounting: no valuation, no locations, no
+// reservations. `onHandQty` is derived from the ledger and denormalized by the same atomic write.
+
+export interface ItSparePartDto {
+  id: string;
+  partCode: string;
+  name: string;
+  unit: string;
+  onHandQty: number;
+  minQty: number | null;
+  active: boolean;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const partCore = {
+  partCode: z.string().trim().min(1).max(50),
+  name: z.string().trim().min(1).max(200),
+  unit: z.string().trim().min(1).max(20),
+  minQty: z.number().int().min(0).max(1_000_000).optional(),
+};
+
+/** `onHandQty` is absent by design: stock arrives through a receipt movement, never as a field. */
+export const CreateItSparePartSchema = z.object(partCore).strict();
+export type CreateItSparePart = z.infer<typeof CreateItSparePartSchema>;
+
+export const UpdateItSparePartSchema = z
+  .object({
+    name: partCore.name.optional(),
+    unit: partCore.unit.optional(),
+    minQty: z.number().int().min(0).max(1_000_000).nullable().optional(),
+    active: z.boolean().optional(),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type UpdateItSparePart = z.infer<typeof UpdateItSparePartSchema>;
+
+export const ReceiveItSparePartSchema = z
+  .object({
+    qty: z.number().int().min(1).max(1_000_000),
+    note: z.string().trim().max(2000).optional(),
+  })
+  .strict();
+export type ReceiveItSparePart = z.infer<typeof ReceiveItSparePartSchema>;
+
+export const ListItSparePartsQuerySchema = PaginationQuerySchema.extend({
+  search: z.string().trim().max(200).optional(),
+  active: booleanQuery().optional(),
+  /** `true` → on-hand at or below the part's own minimum. A reorder view, not a stored state. */
+  belowMin: booleanQuery().optional(),
+}).strict();
+export type ListItSparePartsQuery = z.infer<typeof ListItSparePartsQuerySchema>;
+
+export interface ItSparePartMovementDto {
+  id: string;
+  partId: string;
+  /** Positive on receipt, negative on consumption. */
+  qty: number;
+  orderId: string | null;
+  at: string;
+  byUserId: string | null;
+  note: string | null;
+  createdAt: string;
+}
+
+export const ListItSparePartMovementsQuerySchema = PaginationQuerySchema.extend({
+  partId: objectId().optional(),
+  orderId: objectId().optional(),
+  /** `in` → receipts, `out` → consumption. The sign of `qty`, named so a filter reads. */
+  direction: z.enum(['in', 'out']).optional(),
+}).strict();
+export type ListItSparePartMovementsQuery = z.infer<typeof ListItSparePartMovementsQuerySchema>;
+
+// ── Maintenance events (§8.1, renamed per §17) ──────────────────────────────
+
+export const ItMaintenanceOrderCreatedPayloadV1 = z.object({
+  orderId: objectId(),
+  orderCode: z.string(),
+  kind: ItMaintenanceKindSchema,
+  assetId: objectId(),
+  assetCode: z.string(),
+  planId: objectId().nullable(),
+  ticketId: objectId().nullable(),
+});
+export type ItMaintenanceOrderCreatedPayload = z.infer<typeof ItMaintenanceOrderCreatedPayloadV1>;
+
+export const ItMaintenanceOrderCompletedPayloadV1 = z.object({
+  orderId: objectId(),
+  orderCode: z.string(),
+  assetId: objectId(),
+  assetCode: z.string(),
+  cost: z.number().nullable(),
+  partsCount: z.number().int().min(0),
+});
+export type ItMaintenanceOrderCompletedPayload = z.infer<
+  typeof ItMaintenanceOrderCompletedPayloadV1
+>;
+
+export const ItSparePartBelowMinPayloadV1 = z.object({
+  partId: objectId(),
+  partCode: z.string(),
+  onHandQty: z.number().int(),
+  minQty: z.number().int(),
+});
+export type ItSparePartBelowMinPayload = z.infer<typeof ItSparePartBelowMinPayloadV1>;

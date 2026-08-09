@@ -32,6 +32,7 @@ import { logger } from '../../../infrastructure/logging/logger';
 import { itAssetRepository } from './asset.repository';
 import { itAssetAssignmentRepository } from './assignment.repository';
 import { itAssetEventRepository } from './asset-event.repository';
+import { itMaintenanceOrderRepository } from '../maintenance/order.repository';
 import { type ItAssetEventDoc } from './asset-event.model';
 import { type ItAssetAssignmentDoc } from './assignment.model';
 import { type ItAssetDoc } from './asset.model';
@@ -72,6 +73,35 @@ class ItAssetCustodyService {
       );
     }
     return asset;
+  }
+
+  /**
+   * IT-4: an asset under an ACTIVE maintenance order does not move (design §2.7).
+   *
+   * `return`, `transfer` and `dispose` each write a custody fact that contradicts an order still in
+   * hand — the technician holds the machine, so it cannot also be handed back, handed on, or
+   * written off. `assign` is deliberately NOT guarded: an in-stock asset with an open order is a
+   * machine waiting for a repair, and issuing it to its user is a decision this guard has no
+   * business refusing. Starting the work is what actually takes it out of service, and the order
+   * service guards that direction itself.
+   *
+   * The check runs INSIDE the caller's transaction. Outside it, a concurrent `start` could commit
+   * between the check and the write, and the guard would pass on a fact that had already changed.
+   */
+  private async assertNoActiveMaintenance(
+    asset: ItAssetDoc,
+    action: string,
+    session: Parameters<Parameters<typeof unitOfWork>[0]>[0],
+  ): Promise<void> {
+    const blocked = await itMaintenanceOrderRepository.hasActiveForAsset(
+      String(asset._id),
+      session,
+    );
+    if (blocked) {
+      throw new ConflictError(
+        `asset ${asset.assetCode} is under an open maintenance order; complete or cancel it before you ${action} the asset`,
+      );
+    }
   }
 
   private async writeHistory(
@@ -187,6 +217,7 @@ class ItAssetCustodyService {
     const at = input.returnedAt ?? new Date();
     const result = await unitOfWork(async (session) => {
       const asset = await this.loadForTransition(assetId, scope, session);
+      await this.assertNoActiveMaintenance(asset, 'return', session);
       const open = await itAssetAssignmentRepository.findOpenForAsset(assetId, session);
       if (open === null) {
         throw new ConflictError(`asset ${asset.assetCode} is not currently assigned to anyone`);
@@ -267,6 +298,7 @@ class ItAssetCustodyService {
     const at = input.at ?? new Date();
     const result = await unitOfWork(async (session) => {
       const asset = await this.loadForTransition(assetId, scope, session);
+      await this.assertNoActiveMaintenance(asset, 'transfer', session);
       const open = await itAssetAssignmentRepository.findOpenForAsset(assetId, session);
       if (open === null) {
         throw new ConflictError(
@@ -390,6 +422,7 @@ class ItAssetCustodyService {
     const at = input.at ?? new Date();
     const asset = await unitOfWork(async (session) => {
       const current = await this.loadForTransition(assetId, scope, session);
+      await this.assertNoActiveMaintenance(current, 'dispose', session);
       const open = await itAssetAssignmentRepository.findOpenForAsset(assetId, session);
       if (open !== null) {
         throw new ConflictError(

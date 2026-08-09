@@ -6,9 +6,25 @@
 // owns (the ticket code, the status, the SLA snapshot, the requester) must be unwritable, and the
 // two cross-field rules (a hold needs a reason, a resolution target cannot undercut a response
 // target) must fail in the schema rather than deep in a service.
+//
+// IT-4 adds maintenance and the store, and the guards there are the same shape: the order code, its
+// status, its timestamps and `assetStatusBefore` are server facts; `kind` is not a caller's choice;
+// and `onHandQty` is not a field at all — stock moves only through the ledger (ADR-024).
 import { describe, expect, it } from 'vitest';
 import {
   AssignItTicketSchema,
+  CancelItMaintenanceOrderSchema,
+  CompleteItMaintenanceOrderSchema,
+  CreateItMaintenanceOrderSchema,
+  CreateItMaintenancePlanSchema,
+  CreateItSparePartSchema,
+  ListItMaintenanceOrdersQuerySchema,
+  ListItSparePartMovementsQuerySchema,
+  ListItSparePartsQuerySchema,
+  ReceiveItSparePartSchema,
+  UpdateItMaintenanceOrderSchema,
+  UpdateItMaintenancePlanSchema,
+  UpdateItSparePartSchema,
   CancelItTicketSchema,
   ChangeItTicketStatusSchema,
   CloseItTicketSchema,
@@ -215,5 +231,156 @@ describe('it help-desk contracts (IT-3)', () => {
     expect(parsed.success && parsed.data.breached).toBe(false);
     expect(ListItTicketsQuerySchema.safeParse({ status: 'archived' }).success).toBe(false);
     expect(ListItTicketsQuerySchema.safeParse({ requesterUserId: oid(1) }).success).toBe(false);
+  });
+});
+
+// ── IT-4: maintenance and the store ─────────────────────────────────────────
+
+describe('it maintenance contracts', () => {
+  const oid = (n: number) => String(n).padStart(24, '0');
+
+  it('keeps the order code, status, timestamps and kind out of a caller\'s hands', () => {
+    expect(CreateItMaintenanceOrderSchema.safeParse({ assetId: oid(1) }).success).toBe(true);
+    for (const extra of [
+      { orderCode: 'MO-00001' },
+      { status: 'completed' },
+      { kind: 'preventive' },
+      { startedAt: new Date().toISOString() },
+      { completedAt: new Date().toISOString() },
+      { assetStatusBefore: 'assigned' },
+      { cost: 100 },
+      { planId: oid(2) },
+    ]) {
+      expect(
+        CreateItMaintenanceOrderSchema.safeParse({ assetId: oid(1), ...extra }).success,
+        JSON.stringify(extra),
+      ).toBe(false);
+    }
+  });
+
+  it('lets an update touch the planning fields and nothing the server owns', () => {
+    expect(UpdateItMaintenanceOrderSchema.safeParse({ version: 0, summary: 'later' }).success).toBe(
+      true,
+    );
+    expect(UpdateItMaintenanceOrderSchema.safeParse({ version: 0, vendorId: null }).success).toBe(
+      true,
+    );
+    // No version = no optimistic check; the platform never allows that on an update.
+    expect(UpdateItMaintenanceOrderSchema.safeParse({ summary: 'x' }).success).toBe(false);
+    expect(UpdateItMaintenanceOrderSchema.safeParse({ version: 0, status: 'open' }).success).toBe(
+      false,
+    );
+    expect(UpdateItMaintenanceOrderSchema.safeParse({ version: 0, cost: 5 }).success).toBe(false);
+  });
+
+  it('requires a summary to complete and a reason to cancel', () => {
+    expect(CompleteItMaintenanceOrderSchema.safeParse({ summary: 'Fan replaced' }).success).toBe(
+      true,
+    );
+    expect(CompleteItMaintenanceOrderSchema.safeParse({}).success).toBe(false);
+    expect(CompleteItMaintenanceOrderSchema.safeParse({ summary: '  ' }).success).toBe(false);
+    expect(CancelItMaintenanceOrderSchema.safeParse({ reason: 'Parts unavailable' }).success).toBe(
+      true,
+    );
+    expect(CancelItMaintenanceOrderSchema.safeParse({}).success).toBe(false);
+  });
+
+  // FR-9: a part usage is a POSITIVE whole number. A negative one would be a receipt smuggled in
+  // through the completion path, and the ledger would stop being able to say what a repair used.
+  it('accepts only positive whole part quantities on a completion', () => {
+    const base = { summary: 'Done' };
+    expect(
+      CompleteItMaintenanceOrderSchema.safeParse({
+        ...base,
+        parts: [{ partId: oid(1), qty: 2 }],
+      }).success,
+    ).toBe(true);
+    for (const qty of [0, -1, 1.5]) {
+      expect(
+        CompleteItMaintenanceOrderSchema.safeParse({ ...base, parts: [{ partId: oid(1), qty }] })
+          .success,
+        String(qty),
+      ).toBe(false);
+    }
+  });
+
+  it('keeps a plan\'s clock and its active flag off the write schemas', () => {
+    expect(
+      CreateItMaintenancePlanSchema.safeParse({ assetId: oid(1), name: 'Q', intervalDays: 90 })
+        .success,
+    ).toBe(true);
+    // An interval of zero days is a schedule that never advances.
+    expect(
+      CreateItMaintenancePlanSchema.safeParse({ assetId: oid(1), name: 'Q', intervalDays: 0 })
+        .success,
+    ).toBe(false);
+    for (const extra of [{ active: true }, { lastCompletedAt: new Date().toISOString() }]) {
+      expect(
+        CreateItMaintenancePlanSchema.safeParse({
+          assetId: oid(1),
+          name: 'Q',
+          intervalDays: 90,
+          ...extra,
+        }).success,
+        JSON.stringify(extra),
+      ).toBe(false);
+      expect(
+        UpdateItMaintenancePlanSchema.safeParse({ version: 0, ...extra }).success,
+        JSON.stringify(extra),
+      ).toBe(false);
+    }
+    // `assetId` is fixed at creation: re-parenting a schedule would rewrite another asset's history.
+    expect(UpdateItMaintenancePlanSchema.safeParse({ version: 0, assetId: oid(2) }).success).toBe(
+      false,
+    );
+  });
+
+  it('never lets on-hand stock be set as a field (ADR-024)', () => {
+    expect(
+      CreateItSparePartSchema.safeParse({ partCode: 'SP-1', name: 'RAM', unit: 'pc' }).success,
+    ).toBe(true);
+    expect(
+      CreateItSparePartSchema.safeParse({
+        partCode: 'SP-1',
+        name: 'RAM',
+        unit: 'pc',
+        onHandQty: 5,
+      }).success,
+    ).toBe(false);
+    expect(UpdateItSparePartSchema.safeParse({ version: 0, onHandQty: 5 }).success).toBe(false);
+    // The code is the shelf label and is not editable once movements point at it.
+    expect(UpdateItSparePartSchema.safeParse({ version: 0, partCode: 'SP-2' }).success).toBe(false);
+    expect(UpdateItSparePartSchema.safeParse({ version: 0, minQty: null }).success).toBe(true);
+  });
+
+  it('makes a receipt a positive whole quantity, never a disguised consumption', () => {
+    expect(ReceiveItSparePartSchema.safeParse({ qty: 10 }).success).toBe(true);
+    for (const qty of [0, -3, 2.5]) {
+      expect(ReceiveItSparePartSchema.safeParse({ qty }).success, String(qty)).toBe(false);
+    }
+  });
+
+  it('declares the filters the maintenance and store screens send, and refuses anything else', () => {
+    const orders = ListItMaintenanceOrdersQuerySchema.safeParse({
+      status: 'inProgress',
+      kind: 'corrective',
+      active: 'true',
+      assetId: oid(1),
+    });
+    expect(orders.success).toBe(true);
+    expect(orders.success && orders.data.active).toBe(true);
+    expect(ListItMaintenanceOrdersQuerySchema.safeParse({ status: 'archived' }).success).toBe(false);
+
+    const parts = ListItSparePartsQuerySchema.safeParse({ belowMin: 'true', search: 'ram' });
+    expect(parts.success).toBe(true);
+    expect(parts.success && parts.data.belowMin).toBe(true);
+    expect(ListItSparePartsQuerySchema.safeParse({ onHandQty: 1 }).success).toBe(false);
+
+    expect(
+      ListItSparePartMovementsQuerySchema.safeParse({ direction: 'out', orderId: oid(1) }).success,
+    ).toBe(true);
+    expect(ListItSparePartMovementsQuerySchema.safeParse({ direction: 'sideways' }).success).toBe(
+      false,
+    );
   });
 });

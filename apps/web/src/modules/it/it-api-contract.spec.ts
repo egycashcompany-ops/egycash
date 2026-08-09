@@ -25,11 +25,17 @@ const CATALOG_ROUTES = read('catalog-items/catalog-item.routes.ts');
 const VENDOR_ROUTES = read('vendors/vendor.routes.ts');
 const TICKET_ROUTES = read('tickets/ticket.routes.ts');
 const PRIORITY_ROUTES = read('tickets/priority.routes.ts');
+const ORDER_ROUTES = read('maintenance/order.routes.ts');
+const PLAN_ROUTES = read('maintenance/plan.routes.ts');
+const PART_ROUTES = read('spare-parts/part.routes.ts');
 const ASSET_SERVICE = read('assets/asset.service.ts');
 const CATALOG_SERVICE = read('catalog-items/catalog-item.service.ts');
 const VENDOR_SERVICE = read('vendors/vendor.service.ts');
 const TICKET_REPOSITORY = read('tickets/ticket.repository.ts');
 const PRIORITY_REPOSITORY = read('tickets/priority.repository.ts');
+const ORDER_REPOSITORY = read('maintenance/order.repository.ts');
+const PLAN_REPOSITORY = read('maintenance/plan.repository.ts');
+const PART_REPOSITORY = read('spare-parts/part.repository.ts');
 const MANIFEST = read('it.module.ts');
 
 /** The verb+path pairs a router declares, e.g. `get /by-code/:code`. */
@@ -149,6 +155,72 @@ describe('every endpoint the IT client calls exists on the API', () => {
     // …and it names the owning entity, which is what makes the file findable from the ticket.
     expect(CLIENT).toContain("form.append('moduleId', 'it')");
     expect(CLIENT).toContain("form.append('entityType', 'ticket')");
+  });
+
+  it('maintenance orders: the read pair, the edit, and one endpoint per NAMED transition (§4.7)', () => {
+    const routes = declared(ORDER_ROUTES);
+    expect(routes).toEqual(
+      new Set([
+        'get /',
+        'post /',
+        'get /:id',
+        'patch /:id',
+        // The consumed parts are a SEPARATE read, because they live in the ledger and not on the
+        // order (ADR-024). An embedded list would be a second copy to drift.
+        'get /:id/parts',
+        'post /:id/start',
+        'post /:id/complete',
+        'post /:id/cancel',
+      ]),
+    );
+    // No delete: an order is a business record. It ends by completing or by cancelling.
+    expect([...routes].some((r) => r.startsWith('delete'))).toBe(false);
+    expect(MANIFEST).toContain("prefix: '/it/maintenance-orders'");
+    expect(CLIENT).toContain("getPage<ItMaintenanceOrderDto>(`/it/maintenance-orders");
+    for (const action of ['start', 'complete', 'cancel', 'parts']) {
+      expect(CLIENT, `client never calls /${action}`).toContain(
+        `/it/maintenance-orders/\${id}/${action}`,
+      );
+    }
+  });
+
+  it('maintenance plans: CRUD plus the two named state actions — never a delete (FR-11)', () => {
+    const routes = declared(PLAN_ROUTES);
+    expect(routes).toEqual(
+      new Set([
+        'get /',
+        'post /',
+        'get /:id',
+        'patch /:id',
+        'post /:id/activate',
+        'post /:id/deactivate',
+      ]),
+    );
+    expect([...routes].some((r) => r.startsWith('delete'))).toBe(false);
+    expect(MANIFEST).toContain("prefix: '/it/maintenance-plans'");
+    expect(CLIENT).toContain("getPage<ItMaintenancePlanDto>(`/it/maintenance-plans");
+    expect(CLIENT).toContain("active ? 'activate' : 'deactivate'");
+  });
+
+  // FR-9, pinned as an ABSENCE. Stock leaves the store only through an order's completion, so a
+  // consumption endpoint must not exist — not on the store's router, and not in the client. This
+  // is the single most tempting thing for a later change to add, and adding it would break the one
+  // question the ledger exists to answer: which repair used the part.
+  it('spare parts: receipts and movements — and NO consumption endpoint anywhere (FR-9)', () => {
+    const routes = declared(PART_ROUTES);
+    expect(routes).toEqual(
+      new Set(['get /', 'post /', 'get /:id', 'patch /:id', 'post /:id/receipts', 'get /:id/movements']),
+    );
+    expect([...routes].some((r) => r.startsWith('delete'))).toBe(false);
+    for (const route of routes) {
+      expect(route, 'stock must never leave the store outside an order').not.toMatch(
+        /consume|issue|withdraw/i,
+      );
+    }
+    expect(CLIENT).not.toMatch(/consumeSparePart|issueSparePart/);
+    expect(MANIFEST).toContain("prefix: '/it/spare-parts'");
+    expect(CLIENT).toContain('`/it/spare-parts/${id}/receipts`');
+    expect(CLIENT).toContain('`/it/spare-parts/${id}/movements');
   });
 
   it('priorities: list, create, update — archived, never deleted, because tickets point at them', () => {
@@ -286,6 +358,64 @@ describe('the permissions the API enforces are the ones the UI gates on', () => 
     }
   });
 
+  // §7's maintenance split. `edit` covers the planning fields AND starting the work; `complete`
+  // covers BOTH ways an order ends. Pinned because collapsing `complete` into `edit` would let
+  // anyone who can schedule a repair also consume stock, which is the whole point of the split.
+  it('maintenance orders: four gates, each transition on the one the design gives it', () => {
+    expect(enforced(ORDER_ROUTES)).toEqual(
+      new Set([
+        'itMaintenance.view',
+        'itMaintenance.create',
+        'itMaintenance.edit',
+        'itMaintenance.complete',
+      ]),
+    );
+    const route = (verb: string, path: string): string =>
+      new RegExp(`router\\.${verb}\\(\\s*'${path.replace(/[/:]/g, '\\$&')}'[\\s\\S]*?\\);`).exec(
+        ORDER_ROUTES,
+      )?.[0] ?? '';
+    expect(route('post', '/:id/start')).toContain("authorize('itMaintenance.edit')");
+    for (const path of ['/:id/complete', '/:id/cancel']) {
+      expect(route('post', path), `${path} must ride itMaintenance.complete`).toContain(
+        "authorize('itMaintenance.complete')",
+      );
+    }
+    expect(route('get', '/:id/parts')).toContain("authorize('itMaintenance.view')");
+  });
+
+  // A plan GENERATES work orders, so editing one changes what the module does on its own — the
+  // `itSlaPolicy.manage` argument, applied to the other clock in this module. Reading rides the
+  // ordinary maintenance view, because a schedule nobody can see is a schedule nobody can plan by.
+  it('maintenance plans: read on itMaintenance.view, writes on itMaintenancePlan.manage', () => {
+    expect(enforced(PLAN_ROUTES)).toEqual(
+      new Set(['itMaintenance.view', 'itMaintenancePlan.manage']),
+    );
+    for (const path of ['/', '/:id']) {
+      const read =
+        new RegExp(`router\\.get\\(\\s*'${path.replace(/[/:]/g, '\\$&')}'[\\s\\S]*?\\);`).exec(
+          PLAN_ROUTES,
+        )?.[0] ?? '';
+      expect(read).toContain("authorize('itMaintenance.view')");
+    }
+    for (const path of ['/:id/activate', '/:id/deactivate']) {
+      const action =
+        new RegExp(`router\\.post\\(\\s*'${path.replace(/[/:]/g, '\\$&')}'[\\s\\S]*?\\);`).exec(
+          PLAN_ROUTES,
+        )?.[0] ?? '';
+      expect(action).toContain("authorize('itMaintenancePlan.manage')");
+    }
+  });
+
+  // §7: the store grant covers the catalogue AND receipts. It must NOT reach a maintenance order,
+  // which is the only path stock leaves by — so the storekeeper cannot issue their own parts.
+  it('spare parts: two gates, and neither one is a maintenance grant', () => {
+    expect(enforced(PART_ROUTES)).toEqual(new Set(['itSparePart.view', 'itSparePart.manage']));
+    const receipt = /router\.post\(\s*'\/:id\/receipts'[\s\S]*?\);/.exec(PART_ROUTES)?.[0] ?? '';
+    expect(receipt).toContain("authorize('itSparePart.manage')");
+    const movements = /router\.get\(\s*'\/:id\/movements'[\s\S]*?\);/.exec(PART_ROUTES)?.[0] ?? '';
+    expect(movements).toContain("authorize('itSparePart.view')");
+  });
+
   it('declares every gate the manifest knows about, and no invented one', () => {
     const used = new Set([
       ...enforced(ASSET_ROUTES),
@@ -293,6 +423,9 @@ describe('the permissions the API enforces are the ones the UI gates on', () => 
       ...enforced(VENDOR_ROUTES),
       ...enforced(TICKET_ROUTES),
       ...enforced(PRIORITY_ROUTES),
+      ...enforced(ORDER_ROUTES),
+      ...enforced(PLAN_ROUTES),
+      ...enforced(PART_ROUTES),
     ]);
     for (const permission of used) {
       const [resource, action] = permission.split('.');
@@ -333,6 +466,27 @@ describe('the sort fields the tables offer are the ones the API accepts', () => 
       expect(allowed).toContain(field);
     }
     expect(allowed).not.toContain('title');
+  });
+
+  // The IT-4 tables. Same trap, same guard: `summary` and `kind` are deliberately NOT sortable
+  // headers on the maintenance board, because the API would silently sort by `createdAt` instead.
+  it('maintenance board', () => {
+    const allowed = sortable(ORDER_REPOSITORY);
+    for (const field of ['createdAt', 'orderCode', 'status', 'scheduledFor']) {
+      expect(allowed).toContain(field);
+    }
+    expect(allowed).not.toContain('summary');
+  });
+
+  it('maintenance plans table', () => {
+    const allowed = sortable(PLAN_REPOSITORY);
+    for (const field of ['nextDueAt', 'name']) expect(allowed).toContain(field);
+    expect(allowed).not.toContain('lastCompletedAt');
+  });
+
+  it('spare parts table', () => {
+    const allowed = sortable(PART_REPOSITORY);
+    for (const field of ['partCode', 'name', 'onHandQty']) expect(allowed).toContain(field);
   });
 
   it('priorities table', () => {

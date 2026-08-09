@@ -22,7 +22,7 @@ import { Skeleton } from '../../../shared/ui/Skeleton';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
 import { EditIcon, QrIcon } from '../../../shared/ui/icons';
 import { formatDate, formatNumber, localized } from '../../../shared/lib/format';
-import { useItAsset, useItBranchOptions, useItCatalog, useItVendors } from '../api/it-queries';
+import { useItAsset, useItBranchOptions, useItCatalog, useItVendor } from '../api/it-queries';
 import { AssetStatusBadge } from '../components/AssetStatusBadge';
 import { AssetFormDialog } from '../components/AssetFormDialog';
 import { useAssetLabels } from '../components/useAssetLabels';
@@ -61,9 +61,12 @@ export const AssetDetailPage = (): JSX.Element => {
 
   const categories = useItCatalog('assetCategory');
   const branches = useItBranchOptions();
-  // Vendor names for the two optional references. Bounded read — the same interim the picker
-  // carries until `GET /it/vendors/:id` exists (see VendorPicker's header note).
-  const vendors = useItVendors({ pageSize: 100 }, can('itVendor.view'));
+  // The two optional vendor references, each resolved by id (ADR-019 rule 5). Two small keyed
+  // reads rather than one scan of the catalog — and they resolve an ARCHIVED vendor too, which is
+  // the common case on an older asset (FR-11 archives rather than deletes for exactly this).
+  const canVendors = can('itVendor.view');
+  const purchaseVendor = useItVendor(asset?.purchase?.vendorId ?? '', canVendors);
+  const warrantyVendor = useItVendor(asset?.warranty?.vendorId ?? '', canVendors);
 
   if (isPending) {
     return (
@@ -86,10 +89,6 @@ export const AssetDetailPage = (): JSX.Element => {
   const categoryName =
     (categories.data?.items ?? []).find((c) => c.id === asset.categoryId)?.name ?? null;
   const branchName = (branches.data ?? []).find((b) => b.id === asset.branchId)?.name ?? null;
-  const vendorName = (vendorId: string | null): string | null => {
-    if (vendorId === null) return null;
-    return (vendors.data?.items ?? []).find((v) => v.id === vendorId)?.name ?? null;
-  };
 
   return (
     <PageContainer>
@@ -202,7 +201,7 @@ export const AssetDetailPage = (): JSX.Element => {
               />
               <Fact
                 label={t('it.assets.fields.purchaseVendor')}
-                value={vendorName(asset.purchase?.vendorId ?? null)}
+                value={purchaseVendor.data?.name ?? null}
               />
               <Fact
                 label={t('it.assets.fields.invoiceRef')}
@@ -227,7 +226,7 @@ export const AssetDetailPage = (): JSX.Element => {
               />
               <Fact
                 label={t('it.assets.fields.warrantyVendor')}
-                value={vendorName(asset.warranty?.vendorId ?? null)}
+                value={warrantyVendor.data?.name ?? null}
               />
               <Fact
                 label={t('it.assets.fields.warrantyTerms')}

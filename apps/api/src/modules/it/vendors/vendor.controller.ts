@@ -17,6 +17,11 @@ export const listItVendors = async (req: Request, res: Response): Promise<void> 
   okPage(res, await itVendorService.list(query), toItVendorDto);
 };
 
+export const getItVendor = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<never, never, IdParam>(req);
+  ok(res, toItVendorDto(await itVendorService.getById(params.id)));
+};
+
 export const createItVendor = async (req: Request, res: Response): Promise<void> => {
   const { body } = validated<CreateItVendor>(req);
   const doc = await itVendorService.create(body, authContext(req).userId);

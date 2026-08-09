@@ -72,16 +72,26 @@ describe('every endpoint the IT client calls exists on the API', () => {
     expect(CLIENT).not.toContain("del<void>('/it/catalog-items");
   });
 
-  it('vendors: list, create, update — archive, never delete (FR-11)', () => {
+  it('vendors: list, get, create, update — archive, never delete (FR-11)', () => {
     const routes = declared(VENDOR_ROUTES);
-    expect(routes).toEqual(new Set(['get /', 'post /', 'patch /:id']));
+    expect(routes).toEqual(new Set(['get /', 'get /:id', 'post /', 'patch /:id']));
     expect(CLIENT).not.toContain("del<void>('/it/vendors");
+  });
+
+  it('exposes resolve-by-id, the half of ADR-019 rule 5 a picker cannot fake', () => {
+    expect(declared(VENDOR_ROUTES)).toContain('get /:id');
+    expect(CLIENT).toContain('`/it/vendors/${id}`');
   });
 });
 
 describe('the permissions the API enforces are the ones the UI gates on', () => {
+  // Matches both `authorize('x')` and every key inside `authorizeAny('x', 'y')`.
   const enforced = (routes: string): Set<string> =>
-    new Set([...routes.matchAll(/authorize\('([^']+)'\)/g)].flatMap((m) => (m[1] ? [m[1]] : [])));
+    new Set(
+      [...routes.matchAll(/authorize(?:Any)?\(([^)]*)\)/g)].flatMap((m) =>
+        [...(m[1] ?? '').matchAll(/'([^']+)'/g)].flatMap((k) => (k[1] ? [k[1]] : [])),
+      ),
+    );
 
   it('assets', () => {
     expect(enforced(ASSET_ROUTES)).toEqual(
@@ -94,19 +104,27 @@ describe('the permissions the API enforces are the ones the UI gates on', () => 
     expect(labels).toContain("authorize('itAsset.view')");
   });
 
-  // Catalogs split their gates, and the split is load-bearing for the UI: READING the catalog
-  // rides `itAsset.view`, because the asset form's category dropdown has to populate for someone
-  // who can only view assets. WRITING needs `itCatalog.manage`, which is what the catalogs screen
-  // is routed behind (design §7). Pinning it here so a later tightening of the read gate fails
-  // this test instead of silently emptying every category dropdown in the module.
-  it('catalogs: read rides itAsset.view, writes need itCatalog.manage', () => {
-    expect(enforced(CATALOG_ROUTES)).toEqual(new Set(['itAsset.view', 'itCatalog.manage']));
+  // Catalogs split their gates, and the split is load-bearing in BOTH directions. Reading serves
+  // two callers: the asset form's category dropdown (`itAsset.view`) and the catalogs screen
+  // itself (`itCatalog.manage`, design §7) — gating the read on the first alone locked the catalog
+  // administrator out of the very list they manage. Writing stays `itCatalog.manage`. Pinned here
+  // so a later tightening fails this test instead of silently emptying every dropdown in the
+  // module, or re-breaking the admin.
+  it('catalogs: read takes EITHER grant, writes need itCatalog.manage', () => {
     const list = /router\.get\(\s*'\/'[\s\S]*?\);/.exec(CATALOG_ROUTES)?.[0] ?? '';
-    expect(list).toContain("authorize('itAsset.view')");
+    expect(list).toContain("authorizeAny('itAsset.view', 'itCatalog.manage')");
+    for (const verb of ['post', 'patch']) {
+      const write = new RegExp(`router\\.${verb}\\([\\s\\S]*?\\);`).exec(CATALOG_ROUTES)?.[0] ?? '';
+      expect(write).toContain("authorize('itCatalog.manage')");
+    }
   });
 
   it('vendors', () => {
     expect(enforced(VENDOR_ROUTES)).toEqual(new Set(['itVendor.view', 'itVendor.manage']));
+    // Resolve-by-id takes the SAME gate as the list — it returns one row of what the list already
+    // returns, so it must not become a quieter way in.
+    const byId = /router\.get\(\s*'\/:id'[\s\S]*?\);/.exec(VENDOR_ROUTES)?.[0] ?? '';
+    expect(byId).toContain("authorize('itVendor.view')");
   });
 
   it('declares every gate the manifest knows about, and no invented one', () => {

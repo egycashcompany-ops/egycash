@@ -32,11 +32,29 @@ export const ItHomePage = (): JSX.Element => {
   const assigned = useItAssets({ pageSize: 1, status: 'assigned' }, canAssets);
   const vendors = useItVendors({ pageSize: 1, isActive: true }, canVendors);
 
-  // `exactOptionalPropertyTypes` is on: an absent value must be an ABSENT prop, not `undefined`.
-  // StatCard renders its own placeholder dash when `value` is missing, which is exactly what a
-  // still-loading count should show.
-  const count = (value: number | undefined): { value?: string } =>
-    value === undefined ? {} : { value: formatNumber(value, locale) };
+  /**
+   * A count tile's props, from its query.
+   *
+   * StatCard renders a placeholder dash whenever `value` is absent — which is right while a count
+   * is loading and WRONG when it failed, because a dash then reads as "zero assets" rather than
+   * "this number could not be fetched". So a failed query keeps the dash and adds a caption
+   * saying so; a reader can tell the three states apart.
+   *
+   * (`exactOptionalPropertyTypes` is on, so an absent value must be an absent prop, never
+   * `undefined` — hence the spread rather than `value={…}`.)
+   */
+  const tile = (query: {
+    data?: { meta: { totalItems: number } } | undefined;
+    isPending: boolean;
+    isError: boolean;
+  }): { value?: string; caption?: string; loading: boolean } => {
+    if (query.isError) return { caption: t('it.overview.countUnavailable'), loading: false };
+    const total = query.data?.meta.totalItems;
+    return {
+      ...(total === undefined ? {} : { value: formatNumber(total, locale) }),
+      loading: query.isPending,
+    };
+  };
 
   return (
     <PageContainer>
@@ -53,27 +71,23 @@ export const ItHomePage = (): JSX.Element => {
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <StatCard
                 label={t('it.overview.totalAssets')}
-                {...count(total.data?.meta.totalItems)}
-                loading={total.isPending}
+                {...tile(total)}
                 icon={MonitorIcon}
               />
               <StatCard
                 label={t('it.assets.status.inStock')}
-                {...count(inStock.data?.meta.totalItems)}
-                loading={inStock.isPending}
+                {...tile(inStock)}
                 icon={CheckIcon}
               />
               <StatCard
                 label={t('it.assets.status.assigned')}
-                {...count(assigned.data?.meta.totalItems)}
-                loading={assigned.isPending}
+                {...tile(assigned)}
                 icon={UsersIcon}
               />
               {canVendors && (
                 <StatCard
                   label={t('it.overview.activeVendors')}
-                  {...count(vendors.data?.meta.totalItems)}
-                  loading={vendors.isPending}
+                  {...tile(vendors)}
                   icon={FolderIcon}
                 />
               )}

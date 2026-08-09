@@ -31,6 +31,8 @@ let replSet: MongoMemoryReplSet | null = null;
 let app: Express;
 let adminToken: string;
 let branchAToken: string; // itAsset.view at BRANCH scope, placed in branch A
+let catalogManagerToken: string; // itCatalog.manage ONLY — no asset grant at all
+let outsiderToken: string; // no IT grant at all
 let branchAId: string;
 let branchBId: string;
 let categoryId: string;
@@ -152,6 +154,28 @@ beforeAll(async () => {
   const viewerId = await mkUser('it-viewer@ecms.local', branchAId);
   await rbacService.ensureAssignment(viewerId, String(viewerRole._id), 'branch');
   branchAToken = await login('it-viewer@ecms.local');
+
+  // Catalog administrator: `itCatalog.manage` and NOTHING else. The point of this principal is
+  // that it holds no asset grant, which is exactly the combination the read gate used to lock out.
+  const catalogRole = await rbacService.createRole(
+    {
+      name: { en: 'IT catalog admin', ar: 'مدير قوائم' },
+      permissionKeys: ['itCatalog.manage'],
+    },
+    adminId,
+  );
+  const catalogAdminId = await mkUser('it-catalog@ecms.local');
+  await rbacService.ensureAssignment(catalogAdminId, String(catalogRole._id), 'organization');
+  catalogManagerToken = await login('it-catalog@ecms.local');
+
+  // A principal with no IT grant at all — the negative control for both gates below.
+  const outsiderRole = await rbacService.createRole(
+    { name: { en: 'IT outsider', ar: 'بلا صلاحية' }, permissionKeys: ['user.view'] },
+    adminId,
+  );
+  const outsiderId = await mkUser('it-outsider@ecms.local');
+  await rbacService.ensureAssignment(outsiderId, String(outsiderRole._id), 'organization');
+  outsiderToken = await login('it-outsider@ecms.local');
 }, 240_000);
 
 afterAll(async () => {
@@ -194,6 +218,51 @@ describe('it catalogs', () => {
     expect(archived.status).toBe(200);
     expect(data<ItCatalogItemDto>(archived).isActive).toBe(false);
   });
+
+  // The read gate serves two callers with different grants, and getting it wrong breaks one of
+  // them silently. `itAsset.view` alone locked the catalog ADMINISTRATOR out of the list on the
+  // very screen `itCatalog.manage` gates — managing rows you cannot read is a broken boundary,
+  // not a strict one. Both directions are pinned here so neither regresses.
+  describe('read authorization', () => {
+    it('an asset viewer can read the catalog — the form dropdown must populate', async () => {
+      const res = await request(app)
+        .get('/api/v1/it/catalog-items?kind=assetCategory')
+        .set('Authorization', `Bearer ${branchAToken}`);
+      expect(res.status).toBe(200);
+      expect(data<ItCatalogItemDto[]>(res).length).toBeGreaterThan(0);
+    });
+
+    it('a catalog manager WITHOUT any asset grant can read it too', async () => {
+      const res = await request(app)
+        .get('/api/v1/it/catalog-items?kind=assetCategory')
+        .set('Authorization', `Bearer ${catalogManagerToken}`);
+      expect(res.status).toBe(200);
+      expect(data<ItCatalogItemDto[]>(res).length).toBeGreaterThan(0);
+    });
+
+    it('and can still write, which is the grant it actually holds', async () => {
+      const res = await request(app)
+        .post('/api/v1/it/catalog-items')
+        .set('Authorization', `Bearer ${catalogManagerToken}`)
+        .send({ kind: 'ticketCategory', name: { ar: 'شبكات', en: 'Network' } });
+      expect(res.status).toBe(201);
+    });
+
+    it('an asset viewer may read but NOT write — the widened read grants nothing more', async () => {
+      const res = await request(app)
+        .post('/api/v1/it/catalog-items')
+        .set('Authorization', `Bearer ${branchAToken}`)
+        .send({ kind: 'assetCategory', name: { ar: 'طابعات', en: 'Printers' } });
+      expect(res.status).toBe(403);
+    });
+
+    it('someone holding neither grant is still refused', async () => {
+      const res = await request(app)
+        .get('/api/v1/it/catalog-items?kind=assetCategory')
+        .set('Authorization', `Bearer ${outsiderToken}`);
+      expect(res.status).toBe(403);
+    });
+  });
 });
 
 describe('it vendors', () => {
@@ -224,6 +293,74 @@ describe('it vendors', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ name: 'التقنية المتحدة' });
     expect(res.status).toBe(409);
+  });
+
+  // ADR-019 rule 5's other half. A picker searches by TEXT to choose; a form that arrives holding
+  // a stored `vendorId` has an id and no text, and still has to render a name. Without this route
+  // the only alternatives are showing a raw id or paging the list until the id appears — and the
+  // second is the client-side scan the rule exists to forbid.
+  describe('resolve by id', () => {
+    it('returns the single vendor behind an id', async () => {
+      const res = await request(app)
+        .get(`/api/v1/it/vendors/${vendorId}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status).toBe(200);
+      const vendor = data<ItVendorDto>(res);
+      expect(vendor.id).toBe(vendorId);
+      expect(vendor.name).toBe('التقنية المتحدة');
+      // The picker renders contacts nowhere, but the DTO is the list's DTO — one shape, one mapper.
+      expect(vendor.contacts).toHaveLength(1);
+    });
+
+    it('resolves an ARCHIVED vendor — the common case on an older asset (FR-11)', async () => {
+      const created = await request(app)
+        .post('/api/v1/it/vendors')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ name: 'مورد قديم', code: 'OLD' });
+      expect(created.status).toBe(201);
+      const archivedId = data<ItVendorDto>(created).id;
+
+      const archived = await request(app)
+        .patch(`/api/v1/it/vendors/${archivedId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ isActive: false, version: 0 });
+      expect(archived.status).toBe(200);
+      expect(data<ItVendorDto>(archived).isActive).toBe(false);
+
+      // Archived rows are hidden from the PICKER's search but must still resolve by id, or every
+      // asset referencing a retired supplier would render a blank field.
+      const search = await request(app)
+        .get('/api/v1/it/vendors?isActive=true&search=قديم')
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(data<ItVendorDto[]>(search).some((v) => v.id === archivedId)).toBe(false);
+
+      const resolved = await request(app)
+        .get(`/api/v1/it/vendors/${archivedId}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(resolved.status).toBe(200);
+      expect(data<ItVendorDto>(resolved).name).toBe('مورد قديم');
+    });
+
+    it('404s an id that does not exist', async () => {
+      const res = await request(app)
+        .get('/api/v1/it/vendors/000000000000000000000000')
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status).toBe(404);
+    });
+
+    it('422s a malformed id rather than reaching the database', async () => {
+      const res = await request(app)
+        .get('/api/v1/it/vendors/not-an-object-id')
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect([400, 422]).toContain(res.status);
+    });
+
+    it('needs itVendor.view — the same gate as the list, granting nothing new', async () => {
+      const res = await request(app)
+        .get(`/api/v1/it/vendors/${vendorId}`)
+        .set('Authorization', `Bearer ${outsiderToken}`);
+      expect(res.status).toBe(403);
+    });
   });
 });
 

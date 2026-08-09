@@ -55,6 +55,9 @@ export const updateCatalogItem = (
 // ── Vendors (design §2.9) ───────────────────────────────────────────────────
 export const listVendors = (params: ItListParams): Promise<Paginated<ItVendorDto>> =>
   getPage<ItVendorDto>(`/it/vendors${buildQuery(params)}`);
+/** Resolve-by-id for the picker — the other half of ADR-019 rule 5. */
+export const getVendor = (id: string): Promise<ItVendorDto> =>
+  get<ItVendorDto>(`/it/vendors/${id}`);
 export const createVendor = (body: CreateItVendor): Promise<ItVendorDto> =>
   post<ItVendorDto>('/it/vendors', body);
 export const updateVendor = (id: string, body: UpdateItVendor): Promise<ItVendorDto> =>

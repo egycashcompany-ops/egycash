@@ -89,6 +89,19 @@ export const useItVendors = (params: ItListParams, enabled = true) =>
     enabled,
   });
 
+/**
+ * One vendor by id — what a picker or a detail page needs to turn a stored `vendorId` into a
+ * name. Cached under the vendors subtree, so renaming a vendor invalidates it with everything
+ * else.
+ */
+export const useItVendor = (id: string, enabled = true) =>
+  useQuery({
+    queryKey: detailKey(MODULE, 'vendors', id),
+    queryFn: () => api.getVendor(id),
+    enabled: enabled && id !== '',
+    staleTime: 60_000,
+  });
+
 const useVendorMutation = <TInput>(mutationFn: (input: TInput) => Promise<unknown>) => {
   const qc = useQueryClient();
   return useMutation({

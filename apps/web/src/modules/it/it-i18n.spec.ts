@@ -16,6 +16,8 @@ import { describe, expect, it } from 'vitest';
 import {
   IT_ASSET_STATUSES,
   IT_CATALOG_KINDS,
+  IT_MAINTENANCE_KINDS,
+  IT_MAINTENANCE_ORDER_STATUSES,
   IT_TICKET_EVENT_TYPES,
   IT_TICKET_STATUSES,
   type Locale,
@@ -39,6 +41,13 @@ const VOCABULARIES: { name: string; prefix: string; values: readonly string[] }[
     prefix: 'it.tickets.sla',
     values: ['breached', 'atRisk', 'onTrack', 'done'] as const,
   },
+  // IT-4. Both rendered through TEMPLATE keys, so the source scan below cannot see them.
+  {
+    name: 'maintenance order status',
+    prefix: 'it.maintenance.status',
+    values: IT_MAINTENANCE_ORDER_STATUSES,
+  },
+  { name: 'maintenance kind', prefix: 'it.maintenance.kind', values: IT_MAINTENANCE_KINDS },
 ];
 
 const sources = (dir: string): string[] =>

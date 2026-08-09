@@ -1,6 +1,10 @@
 // Doc → DTO mapping for the IT-1 entities. Derived facts stay derived — the mapper never invents
 // one (the fleet FR-12 discipline).
 import {
+  type ItMaintenanceOrderDto,
+  type ItMaintenancePlanDto,
+  type ItSparePartDto,
+  type ItSparePartMovementDto,
   type ItTicketDto,
   type ItTicketEventDto,
   type ItTicketPriorityDto,
@@ -18,6 +22,10 @@ import { type ItAssetEventDoc } from './assets/asset-event.model';
 import { type ItTicketDoc } from './tickets/ticket.model';
 import { type ItTicketEventDoc } from './tickets/ticket-event.model';
 import { type ItTicketPriorityDoc } from './tickets/priority.model';
+import { type ItMaintenancePlanDoc } from './maintenance/plan.model';
+import { type ItMaintenanceOrderDoc } from './maintenance/order.model';
+import { type ItSparePartDoc } from './spare-parts/part.model';
+import { type ItSparePartMovementDoc } from './spare-parts/movement.model';
 
 const iso = (d: Date): string => d.toISOString();
 
@@ -222,3 +230,72 @@ export const toItTicketEventDto = (
     notes: doc.notes,
   };
 };
+
+// ── Maintenance and the spare-parts store (IT-4) ────────────────────────────
+
+export const toItMaintenancePlanDto = (doc: ItMaintenancePlanDoc): ItMaintenancePlanDto => ({
+  id: String(doc._id),
+  assetId: String(doc.assetId),
+  name: doc.name,
+  intervalDays: doc.intervalDays,
+  checklist: doc.checklist,
+  lastCompletedAt: doc.lastCompletedAt === null ? null : iso(doc.lastCompletedAt),
+  nextDueAt: iso(doc.nextDueAt),
+  active: doc.active,
+  version: doc.__v,
+  createdAt: iso(doc.createdAt),
+  updatedAt: iso(doc.updatedAt),
+});
+
+/**
+ * An order. Its consumed parts are deliberately NOT here: they are movement rows keyed by `orderId`
+ * (ADR-024), read through `GET /it/maintenance-orders/:id/parts`. Embedding them would put a second
+ * copy of the ledger on the wire, and a mapper that assembled one would be inventing a fact.
+ */
+export const toItMaintenanceOrderDto = (doc: ItMaintenanceOrderDoc): ItMaintenanceOrderDto => ({
+  id: String(doc._id),
+  orderCode: doc.orderCode,
+  kind: doc.kind,
+  assetId: String(doc.assetId),
+  planId: doc.planId === null ? null : String(doc.planId),
+  ticketId: doc.ticketId === null ? null : String(doc.ticketId),
+  status: doc.status,
+  scheduledFor: doc.scheduledFor === null ? null : iso(doc.scheduledFor),
+  startedAt: doc.startedAt === null ? null : iso(doc.startedAt),
+  completedAt: doc.completedAt === null ? null : iso(doc.completedAt),
+  performedByUserId: doc.performedByUserId === null ? null : String(doc.performedByUserId),
+  vendorId: doc.vendorId === null ? null : String(doc.vendorId),
+  cost: doc.cost,
+  summary: doc.summary,
+  assetStatusBefore: doc.assetStatusBefore,
+  version: doc.__v,
+  createdAt: iso(doc.createdAt),
+  updatedAt: iso(doc.updatedAt),
+});
+
+export const toItSparePartDto = (doc: ItSparePartDoc): ItSparePartDto => ({
+  id: String(doc._id),
+  partCode: doc.partCode,
+  name: doc.name,
+  unit: doc.unit,
+  onHandQty: doc.onHandQty,
+  minQty: doc.minQty,
+  active: doc.active,
+  version: doc.__v,
+  createdAt: iso(doc.createdAt),
+  updatedAt: iso(doc.updatedAt),
+});
+
+/** A ledger row carries no `version`: it is append-only, so there is nothing to edit optimistically. */
+export const toItSparePartMovementDto = (
+  doc: ItSparePartMovementDoc,
+): ItSparePartMovementDto => ({
+  id: String(doc._id),
+  partId: String(doc.partId),
+  qty: doc.qty,
+  orderId: doc.orderId === null ? null : String(doc.orderId),
+  at: iso(doc.at),
+  byUserId: doc.byUserId === null ? null : String(doc.byUserId),
+  note: doc.note,
+  createdAt: iso(doc.createdAt),
+});

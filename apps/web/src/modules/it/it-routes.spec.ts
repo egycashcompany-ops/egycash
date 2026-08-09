@@ -30,7 +30,7 @@ const declaredPaths = (): string[] =>
 describe('IT routes', () => {
   const paths = declaredPaths();
 
-  it('declares the IT-1 + IT-2 + IT-3 surface', () => {
+  it('declares the IT-1 + IT-2 + IT-3 + IT-4 surface', () => {
     expect(paths.sort()).toEqual(
       [
         'assets',
@@ -39,6 +39,10 @@ describe('IT routes', () => {
         'catalogs',
         'custody',
         'helpdesk-settings',
+        'maintenance',
+        'maintenance-plans',
+        'maintenance/:id',
+        'spare-parts',
         'tickets',
         'tickets/:id',
         'vendors',
@@ -62,6 +66,21 @@ describe('IT routes', () => {
     for (const action of ['assign', 'status', 'resolve', 'close', 'reopen', 'cancel']) {
       expect(paths, `${action} must not be a route`).not.toContain(`tickets/:id/${action}`);
     }
+  });
+
+  // And for maintenance, where the argument is strongest: `complete` CONSUMES STOCK, so a URL that
+  // can be reloaded into a second completion would issue the parts twice.
+  it('does not route the maintenance TRANSITIONS', () => {
+    for (const action of ['start', 'complete', 'cancel']) {
+      expect(paths, `${action} must not be a route`).not.toContain(`maintenance/:id/${action}`);
+    }
+  });
+
+  // `maintenance-plans` is a SIBLING of `maintenance`, not a child: a plan is not a property of one
+  // order, and nesting it would make a plan's URL depend on an order that may not exist yet.
+  it('keeps the preventive schedule off the order subtree', () => {
+    expect(paths).toContain('maintenance-plans');
+    expect(paths).not.toContain('maintenance/plans');
   });
 
   it('gates every one of them behind a permission', () => {

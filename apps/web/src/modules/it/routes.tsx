@@ -15,9 +15,13 @@
 //   /it/tickets            itTicket.view                                         IT-3
 //   /it/tickets/:id        itTicket.view                                         IT-3
 //   /it/helpdesk-settings  itSlaPolicy.manage                                    IT-3
-// The custody and ticket ACTIONS are not routes — they are dialogs on the record, which is where
-// the decision is actually taken. Maintenance, software and dashboards get their routes with
-// IT-4…6.
+//   /it/maintenance        itMaintenance.view                                    IT-4
+//   /it/maintenance/:id    itMaintenance.view                                    IT-4
+//   /it/maintenance-plans  itMaintenance.view                                    IT-4
+//   /it/spare-parts        itSparePart.view                                      IT-4
+// The custody, ticket and maintenance ACTIONS are not routes — they are dialogs on the record,
+// which is where the decision is actually taken. Software and dashboards get their routes with
+// IT-5 and IT-6.
 import { Route, Routes } from 'react-router-dom';
 import { RequirePermission } from '../../platform/router/RequirePermission';
 import { NotFoundPage } from '../../platform/app/pages/NotFoundPage';
@@ -32,6 +36,10 @@ import { CustodyPage } from './pages/CustodyPage';
 import { TicketsListPage } from './pages/TicketsListPage';
 import { TicketDetailPage } from './pages/TicketDetailPage';
 import { HelpDeskSettingsPage } from './pages/HelpDeskSettingsPage';
+import { MaintenanceOrdersPage } from './pages/MaintenanceOrdersPage';
+import { MaintenanceOrderDetailPage } from './pages/MaintenanceOrderDetailPage';
+import { MaintenancePlansPage } from './pages/MaintenancePlansPage';
+import { SparePartsPage } from './pages/SparePartsPage';
 
 export default function ItRoutes(): JSX.Element {
   return (
@@ -93,6 +101,40 @@ export default function ItRoutes(): JSX.Element {
           element={
             <RequirePermission permission="itSlaPolicy.manage">
               <HelpDeskSettingsPage />
+            </RequirePermission>
+          }
+        />
+        {/* `maintenance-plans` is a sibling of `maintenance`, not a child: a plan is not a
+            property of one order, and nesting it would make its URL depend on one. */}
+        <Route
+          path="maintenance"
+          element={
+            <RequirePermission permission="itMaintenance.view">
+              <MaintenanceOrdersPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="maintenance/:id"
+          element={
+            <RequirePermission permission="itMaintenance.view">
+              <MaintenanceOrderDetailPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="maintenance-plans"
+          element={
+            <RequirePermission permission="itMaintenance.view">
+              <MaintenancePlansPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="spare-parts"
+          element={
+            <RequirePermission permission="itSparePart.view">
+              <SparePartsPage />
             </RequirePermission>
           }
         />

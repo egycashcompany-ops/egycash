@@ -4,13 +4,28 @@
 // (FR-2), so neither is ever computed here.
 //
 // IT-1 exposed catalogs, vendors and the asset register; IT-2 added the custody lifecycle and its
-// history; IT-3 adds the help desk. Export arrives with IT-6 and gets its function then.
+// history; IT-3 added the help desk; IT-4 adds maintenance and the spare-parts store. Export
+// arrives with IT-6 and gets its function then.
 import {
   type EmployeeDto,
   type FileCategoryDto,
   type FileDto,
   type AssignItAsset,
   type AssignItTicket,
+  type CancelItMaintenanceOrder,
+  type CompleteItMaintenanceOrder,
+  type CreateItMaintenanceOrder,
+  type CreateItMaintenancePlan,
+  type CreateItSparePart,
+  type ItMaintenanceOrderDto,
+  type ItMaintenancePlanDto,
+  type ItSparePartDto,
+  type ItSparePartMovementDto,
+  type ReceiveItSparePart,
+  type StartItMaintenanceOrder,
+  type UpdateItMaintenanceOrder,
+  type UpdateItMaintenancePlan,
+  type UpdateItSparePart,
   type CancelItTicket,
   type ChangeItTicketStatus,
   type CloseItTicket,
@@ -293,3 +308,106 @@ export const uploadCommentAttachment = (
 /** The category the upload must name. Read once and cached — it is platform reference data. */
 export const listFileCategories = (): Promise<Paginated<FileCategoryDto>> =>
   getPage<FileCategoryDto>(`/platform/file-categories${buildQuery({ pageSize: 100 })}`);
+
+// ── Maintenance plans (design §2.7, §4.6) ───────────────────────────────────
+//
+// Activate/deactivate are NAMED actions, matching the API: pausing a schedule is an operational
+// decision and the one thing that takes a plan out of the sweep's sight — not a PATCH field.
+
+export const listMaintenancePlans = (
+  params: ItListParams,
+): Promise<Paginated<ItMaintenancePlanDto>> =>
+  getPage<ItMaintenancePlanDto>(`/it/maintenance-plans${buildQuery(params)}`);
+export const getMaintenancePlan = (id: string): Promise<ItMaintenancePlanDto> =>
+  get<ItMaintenancePlanDto>(`/it/maintenance-plans/${id}`);
+export const createMaintenancePlan = (
+  body: CreateItMaintenancePlan,
+): Promise<ItMaintenancePlanDto> => post<ItMaintenancePlanDto>('/it/maintenance-plans', body);
+export const updateMaintenancePlan = (
+  id: string,
+  body: UpdateItMaintenancePlan,
+): Promise<ItMaintenancePlanDto> =>
+  patch<ItMaintenancePlanDto>(`/it/maintenance-plans/${id}`, body);
+export const setMaintenancePlanActive = (
+  id: string,
+  active: boolean,
+): Promise<ItMaintenancePlanDto> =>
+  post<ItMaintenancePlanDto>(
+    `/it/maintenance-plans/${id}/${active ? 'activate' : 'deactivate'}`,
+    {},
+  );
+
+// ── Maintenance orders (design §2.7, §4.7) ──────────────────────────────────
+//
+// Three NAMED transitions, each answering with the order in its new state — so the caller never
+// re-derives a status, and never guesses what its own action did.
+
+export const listMaintenanceOrders = (
+  params: ItListParams,
+): Promise<Paginated<ItMaintenanceOrderDto>> =>
+  getPage<ItMaintenanceOrderDto>(`/it/maintenance-orders${buildQuery(params)}`);
+export const getMaintenanceOrder = (id: string): Promise<ItMaintenanceOrderDto> =>
+  get<ItMaintenanceOrderDto>(`/it/maintenance-orders/${id}`);
+export const createMaintenanceOrder = (
+  body: CreateItMaintenanceOrder,
+): Promise<ItMaintenanceOrderDto> => post<ItMaintenanceOrderDto>('/it/maintenance-orders', body);
+export const updateMaintenanceOrder = (
+  id: string,
+  body: UpdateItMaintenanceOrder,
+): Promise<ItMaintenanceOrderDto> =>
+  patch<ItMaintenanceOrderDto>(`/it/maintenance-orders/${id}`, body);
+
+export const startMaintenanceOrder = (
+  id: string,
+  body: StartItMaintenanceOrder,
+): Promise<ItMaintenanceOrderDto> =>
+  post<ItMaintenanceOrderDto>(`/it/maintenance-orders/${id}/start`, body);
+export const completeMaintenanceOrder = (
+  id: string,
+  body: CompleteItMaintenanceOrder,
+): Promise<ItMaintenanceOrderDto> =>
+  post<ItMaintenanceOrderDto>(`/it/maintenance-orders/${id}/complete`, body);
+export const cancelMaintenanceOrder = (
+  id: string,
+  body: CancelItMaintenanceOrder,
+): Promise<ItMaintenanceOrderDto> =>
+  post<ItMaintenanceOrderDto>(`/it/maintenance-orders/${id}/cancel`, body);
+
+/**
+ * The parts an order consumed. They are movement ROWS keyed by `orderId` (ADR-024), not a list
+ * stored on the order — so this is a second read rather than a field, and that is deliberate: one
+ * source of truth, and no drift between an embedded copy and the ledger.
+ */
+export const listMaintenanceOrderParts = (id: string): Promise<ItSparePartMovementDto[]> =>
+  get<ItSparePartMovementDto[]>(`/it/maintenance-orders/${id}/parts`);
+
+// ── Spare parts and the ledger (ADR-024) ────────────────────────────────────
+//
+// There is NO consume function here, and its absence is the design: stock leaves the store only
+// through a maintenance order's completion (FR-9), so `completeMaintenanceOrder` above is the only
+// caller that ever writes a negative movement.
+
+export const listSpareParts = (params: ItListParams): Promise<Paginated<ItSparePartDto>> =>
+  getPage<ItSparePartDto>(`/it/spare-parts${buildQuery(params)}`);
+export const getSparePart = (id: string): Promise<ItSparePartDto> =>
+  get<ItSparePartDto>(`/it/spare-parts/${id}`);
+export const createSparePart = (body: CreateItSparePart): Promise<ItSparePartDto> =>
+  post<ItSparePartDto>('/it/spare-parts', body);
+export const updateSparePart = (id: string, body: UpdateItSparePart): Promise<ItSparePartDto> =>
+  patch<ItSparePartDto>(`/it/spare-parts/${id}`, body);
+
+/** A receipt answers with BOTH the new level and the row that moved it — the ledger is the point. */
+export const receiveSparePart = (
+  id: string,
+  body: ReceiveItSparePart,
+): Promise<{ part: ItSparePartDto; movement: ItSparePartMovementDto }> =>
+  post<{ part: ItSparePartDto; movement: ItSparePartMovementDto }>(
+    `/it/spare-parts/${id}/receipts`,
+    body,
+  );
+
+export const listSparePartMovements = (
+  id: string,
+  params: ItListParams,
+): Promise<Paginated<ItSparePartMovementDto>> =>
+  getPage<ItSparePartMovementDto>(`/it/spare-parts/${id}/movements${buildQuery(params)}`);

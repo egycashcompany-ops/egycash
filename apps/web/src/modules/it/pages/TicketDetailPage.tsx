@@ -46,6 +46,7 @@ import { TicketStatusBadge } from '../components/TicketStatusBadge';
 import { SlaIndicator } from '../components/SlaIndicator';
 import { TicketStream } from '../components/TicketStream';
 import { TicketCommentForm } from '../components/TicketCommentForm';
+import { TicketAttachments } from '../components/TicketAttachments';
 import { ItUserName } from '../components/ItUserName';
 import {
   AssignTicketDialog,
@@ -398,6 +399,16 @@ export const TicketDetailPage = (): JSX.Element => {
             </CardBody>
           </Card>
         )}
+
+        <Card className="lg:col-span-3">
+          <CardHeader
+            title={t('it.tickets.sections.files')}
+            description={t('it.tickets.filesHint')}
+          />
+          <CardBody>
+            <TicketAttachments ticketId={ticket.id} />
+          </CardBody>
+        </Card>
 
         <Card className="lg:col-span-3">
           <CardHeader

@@ -123,7 +123,7 @@ const CATALOG: CategoryDef[] = [
       { en: 'Scan Asset', ar: 'مسح أصل', route: '/it/assets/scan', icon: 'qr' },
       { en: 'Asset Custody', ar: 'عهدة الأصول', route: '/it/custody', icon: 'clipboard' },
       { en: 'Help Desk', ar: 'الدعم الفني', route: '/it/tickets', icon: 'chat' },
-      { en: 'Help Desk Settings', ar: 'إعدادات الدعم الفني', route: '/it/help-desk', icon: 'cog' },
+      { en: 'Help Desk Settings', ar: 'إعدادات الدعم الفني', route: '/it/helpdesk-settings', icon: 'cog' },
       { en: 'IT Vendors', ar: 'موردو تقنية المعلومات', route: '/it/vendors', icon: 'folder' },
       { en: 'IT Catalogs', ar: 'قوائم تقنية المعلومات', route: '/it/catalogs', icon: 'folder' },
     ],

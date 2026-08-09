@@ -7,6 +7,8 @@
 // history; IT-3 adds the help desk. Export arrives with IT-6 and gets its function then.
 import {
   type EmployeeDto,
+  type FileCategoryDto,
+  type FileDto,
   type AssignItAsset,
   type AssignItTicket,
   type CancelItTicket,
@@ -48,6 +50,7 @@ import {
   patch,
   post,
   postBinary,
+  upload,
   type QueryParams,
 } from '../../../shared/lib/api-client';
 
@@ -223,3 +226,41 @@ export const searchUsers = (search: string, pageSize = 8): Promise<Paginated<Use
  * without it sees a short reference instead, never an unexplained 403.
  */
 export const getUser = (id: string): Promise<UserDto> => get<UserDto>(`/platform/users/${id}`);
+
+// ── Ticket attachments (design §2 files row, §15) ───────────────────────────
+//
+// "Additive attachments · NO NEW UPLOAD PATH". IT mints no upload endpoint of its own: the
+// platform Files service already takes the owning `entityRef` from the caller, so a ticket
+// attachment is an ordinary platform file tagged `it/ticket/<id>`. Gated by the platform's own
+// `file.view` / `file.create` — no IT permission is invented for it.
+//
+// Direct ticket attachments are PUBLIC to anyone who can see the ticket (design §13-Q9), which is
+// why they carry no visibility decision here.
+
+export const listTicketAttachments = (ticketId: string): Promise<Paginated<FileDto>> =>
+  getPage<FileDto>(
+    `/platform/files${buildQuery({
+      moduleId: 'it',
+      entityType: 'ticket',
+      entityId: ticketId,
+      pageSize: 50,
+    })}`,
+  );
+
+export const uploadTicketAttachment = (
+  ticketId: string,
+  file: File,
+  categoryId: string,
+): Promise<FileDto> => {
+  const form = new FormData();
+  form.append('file', file);
+  form.append('moduleId', 'it');
+  form.append('entityType', 'ticket');
+  form.append('entityId', ticketId);
+  form.append('categoryId', categoryId);
+  return upload<FileDto>('/platform/files', form);
+};
+
+/** The category the upload must name. Read once and cached — it is platform reference data. */
+export const listFileCategories = (): Promise<Paginated<FileCategoryDto>> =>
+  getPage<FileCategoryDto>(`/platform/file-categories${buildQuery({ pageSize: 100 })}`);

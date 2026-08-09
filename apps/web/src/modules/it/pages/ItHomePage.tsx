@@ -169,7 +169,7 @@ export const ItHomePage = (): JSX.Element => {
             )}
             {canSla && (
               <ShortcutCard
-                to="/it/help-desk"
+                to="/it/helpdesk-settings"
                 title={t('it.nav.helpDeskSettings')}
                 description={t('it.priorities.subtitle')}
                 icon={CogIcon}

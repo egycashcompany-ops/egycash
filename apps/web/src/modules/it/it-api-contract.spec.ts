@@ -135,6 +135,22 @@ describe('every endpoint the IT client calls exists on the API', () => {
     }
   });
 
+  // Design §2's files row is explicit: "additive attachments · NO NEW UPLOAD PATH". IT must not
+  // mint an upload endpoint of its own — a ticket attachment is an ordinary platform file carrying
+  // the owning `entityRef`. Pinned in both directions, because the tempting shortcut (an
+  // `/it/tickets/:id/attachments` proxy, as HR applicants have) is exactly what the design forbids
+  // here, and it would also mint a second permission surface over the same bytes.
+  it('attachments ride platform/files additively — IT declares no upload path of its own', () => {
+    const routes = declared(TICKET_ROUTES);
+    for (const route of routes) {
+      expect(route, 'IT must not serve its own attachment endpoint').not.toContain('attachment');
+    }
+    expect(CLIENT).toContain("upload<FileDto>('/platform/files'");
+    // …and it names the owning entity, which is what makes the file findable from the ticket.
+    expect(CLIENT).toContain("form.append('moduleId', 'it')");
+    expect(CLIENT).toContain("form.append('entityType', 'ticket')");
+  });
+
   it('priorities: list, create, update — archived, never deleted, because tickets point at them', () => {
     const routes = declared(PRIORITY_ROUTES);
     expect(routes).toEqual(new Set(['get /', 'post /', 'patch /:id']));

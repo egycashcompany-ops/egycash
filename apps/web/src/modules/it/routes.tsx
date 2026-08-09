@@ -14,7 +14,7 @@
 //   /it/custody            itAsset.view                                          IT-2
 //   /it/tickets            itTicket.view                                         IT-3
 //   /it/tickets/:id        itTicket.view                                         IT-3
-//   /it/help-desk          itSlaPolicy.manage                                    IT-3
+//   /it/helpdesk-settings  itSlaPolicy.manage                                    IT-3
 // The custody and ticket ACTIONS are not routes — they are dialogs on the record, which is where
 // the decision is actually taken. Maintenance, software and dashboards get their routes with
 // IT-4…6.
@@ -89,7 +89,7 @@ export default function ItRoutes(): JSX.Element {
         />
         {/* The SLA policy is an admin surface, gated on its own grant rather than on ticket work. */}
         <Route
-          path="help-desk"
+          path="helpdesk-settings"
           element={
             <RequirePermission permission="itSlaPolicy.manage">
               <HelpDeskSettingsPage />

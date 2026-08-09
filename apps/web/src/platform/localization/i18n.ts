@@ -2839,6 +2839,14 @@ const en: Record<string, string> = {
   'it.priorities.activeLabel': 'Active',
   'it.priorities.archiveHint':
     'Archiving hides a priority from new tickets. Existing tickets keep theirs.',
+  'it.tickets.sections.files': 'Attachments',
+  'it.tickets.filesHint': 'Screenshots, logs and anything else that helps diagnose this ticket.',
+  'it.tickets.filesEmptyTitle': 'No attachments',
+  'it.tickets.filesEmptyBody': 'Attach a screenshot or a log to help whoever picks this up.',
+  'it.tickets.filesNoAccess': 'Viewing attachments needs the files permission.',
+  'it.tickets.addAttachment': 'Attach a file',
+  'it.tickets.attachmentAdded': 'Attachment added',
+  'it.tickets.noFileCategory': 'No file category is configured yet, so uploads are unavailable.',
   'it.priorities.minutesShort': '{{minutes}} min',
   'it.priorities.hoursShort': '{{hours}} h',
 };
@@ -5639,6 +5647,14 @@ const ar: Record<string, string> = {
   'it.priorities.activeLabel': 'نشطة',
   'it.priorities.archiveHint':
     'الأرشفة تُخفي الأولوية عن التذاكر الجديدة. التذاكر القائمة تحتفظ بأولويتها.',
+  'it.tickets.sections.files': 'المرفقات',
+  'it.tickets.filesHint': 'لقطات الشاشة والسجلات وأي شيء يساعد على تشخيص هذه التذكرة.',
+  'it.tickets.filesEmptyTitle': 'لا توجد مرفقات',
+  'it.tickets.filesEmptyBody': 'أرفق لقطة شاشة أو سجلًا لمساعدة من سيتولى التذكرة.',
+  'it.tickets.filesNoAccess': 'عرض المرفقات يحتاج صلاحية الملفات.',
+  'it.tickets.addAttachment': 'إرفاق ملف',
+  'it.tickets.attachmentAdded': 'تمت إضافة المرفق',
+  'it.tickets.noFileCategory': 'لا توجد فئة ملفات مُهيّأة بعد، لذلك الرفع غير متاح.',
   'it.priorities.minutesShort': '{{minutes}} دقيقة',
   'it.priorities.hoursShort': '{{hours}} ساعة',
 };

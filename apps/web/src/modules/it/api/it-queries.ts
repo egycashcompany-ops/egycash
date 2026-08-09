@@ -379,6 +379,46 @@ export const useCancelItTicket = () =>
     api.cancelTicket(id, body),
   );
 
+// ── Ticket attachments (design §2 files row) ────────────────────────────────
+
+/**
+ * A ticket's attachments, straight from the platform Files service. `enabled` mirrors the
+ * caller's `file.view`, so the panel never fetches what it may not read.
+ */
+export const useItTicketAttachments = (ticketId: string, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'attachments', ticketId),
+    queryFn: () => api.listTicketAttachments(ticketId),
+    enabled: enabled && ticketId !== '',
+  });
+
+/** Platform reference data — one small list, cached for the session. */
+export const useItFileCategories = (enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'fileCategories'),
+    queryFn: api.listFileCategories,
+    staleTime: 5 * 60_000,
+    enabled,
+  });
+
+export const useUploadItTicketAttachment = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      ticketId,
+      file,
+      categoryId,
+    }: {
+      ticketId: string;
+      file: File;
+      categoryId: string;
+    }) => api.uploadTicketAttachment(ticketId, file, categoryId),
+    onSuccess: (_file, variables) => {
+      void qc.invalidateQueries({ queryKey: listKey(MODULE, 'attachments', variables.ticketId) });
+    },
+  });
+};
+
 /** Posting a comment appends to the stream only — the ticket row itself does not change. */
 export const useCreateItTicketComment = () => {
   const qc = useQueryClient();

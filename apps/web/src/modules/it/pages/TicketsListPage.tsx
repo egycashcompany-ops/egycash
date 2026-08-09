@@ -203,7 +203,7 @@ export const TicketsListPage = (): JSX.Element => {
         actions={
           <div className="flex items-center gap-2">
             {can('itSlaPolicy.manage') && (
-              <Button size="sm" variant="secondary" onClick={() => navigate('/it/help-desk')}>
+              <Button size="sm" variant="secondary" onClick={() => navigate('/it/helpdesk-settings')}>
                 {t('it.nav.helpDeskSettings')}
               </Button>
             )}

@@ -27,6 +27,33 @@ class UserRepository extends BaseRepository<UserDoc> {
       .exec();
   }
 
+  /**
+   * Every live account whose English "first last" reads as `fullName` (compared case-insensitively
+   * and trimmed). Returns ALL matches rather than the first, because the only safe answer to a name
+   * shared by two people is "this name is not an identifier" — the caller decides, and cannot if
+   * the second match is hidden. Names are not unique in this system; email and username are.
+   */
+  async findByFullNameEn(fullName: string): Promise<UserDoc[]> {
+    return this.model
+      .find({
+        isDeleted: false,
+        $expr: {
+          $eq: [
+            {
+              $toLower: {
+                $trim: {
+                  input: { $concat: ['$profile.firstName.en', ' ', '$profile.lastName.en'] },
+                },
+              },
+            },
+            fullName.trim().toLowerCase(),
+          ],
+        },
+      })
+      .lean<UserDoc[]>()
+      .exec();
+  }
+
   async findByActivationTokenHash(tokenHash: string): Promise<UserDoc | null> {
     return this.model
       .findOne({ 'activation.tokenHash': tokenHash, isDeleted: false })

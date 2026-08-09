@@ -1782,6 +1782,9 @@ const en: Record<string, string> = {
   'organization.application.iconHint': 'Icon identifier used by the navigation.',
   'organization.application.route': 'Route',
   'organization.application.routeHint': 'The path the application opens at, e.g. /hr/recruitment.',
+  'organization.application.permissionKey': 'Required permission',
+  'organization.application.permissionKeyHint':
+    'The permission needed to open this application, e.g. applicant.view. Navigation is filtered by it: a user without it never sees the application. Leave empty for a page open to every signed-in user.',
   'organization.application.category': 'Category',
   'organization.application.categoryHint': 'Grouping label used to cluster applications, e.g. HR.',
   'organization.application.sortOrder': 'Order',
@@ -4770,6 +4773,9 @@ const ar: Record<string, string> = {
   'organization.application.iconHint': 'معرّف الأيقونة المستخدم في التنقل.',
   'organization.application.route': 'المسار',
   'organization.application.routeHint': 'المسار الذي يفتح عليه التطبيق، مثل /hr/recruitment.',
+  'organization.application.permissionKey': 'الصلاحية المطلوبة',
+  'organization.application.permissionKeyHint':
+    'الصلاحية اللازمة لفتح هذا التطبيق، مثل applicant.view. تُصفّى بها قائمة التنقل: من لا يملكها لا يرى التطبيق إطلاقًا. اتركها فارغة لصفحة متاحة لكل مستخدم مسجَّل.',
   'organization.application.category': 'الفئة',
   'organization.application.categoryHint':
     'تسمية التجميع المستخدمة لتصنيف التطبيقات، مثل الموارد البشرية.',

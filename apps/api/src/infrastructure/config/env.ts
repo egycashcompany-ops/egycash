@@ -175,6 +175,22 @@ const EnvSchema = z.object({
   /** Contracts D8/Q1 — chromium binary for worker-side PDF rendering; '' disables. */
   CHROMIUM_PATH: z.string().default(''),
 
+  /**
+   * Accounts confined to the HR module (see `hr-only-access.ts`): comma-separated identifiers, each
+   * an email, a username, or `name:<full English name>`.
+   *
+   * The default names the four accounts this confinement was requested for. Names are matched
+   * case-insensitively against `firstName.en lastName.en`, and a name matching more than one
+   * account is skipped rather than guessed — so set emails or usernames here for anything but a
+   * demonstration database. An identifier matching nothing is a logged warning, not a boot failure:
+   * the same configuration is deployed to environments that do not have these people at all.
+   */
+  HR_ONLY_USER_IDENTIFIERS: z
+    .string()
+    .default(
+      'name:Mohamed Mustafa,name:Samer Mohammed,name:Mohamed Essam,name:Saif AlDin Muhammad',
+    ),
+
   SEED_ADMIN_EMAIL: z.string().email().default('admin@ecms.local'),
   SEED_ADMIN_PASSWORD: z.string().min(8).default('Admin#2026!ecms'),
   SEED_HR_EMAIL: z.string().email().default('hr@ecms.local'),

@@ -10,6 +10,7 @@ import { fileCategoryService } from './platform/files';
 import { settingsService } from './platform/settings';
 import { userService } from './platform/users';
 import { seedBootstrapNavigation } from './seed-navigation';
+import { parseIdentifierList, reconcileHrOnlyUsers } from './hr-only-access';
 import { type AuthContext } from './shared/types';
 
 const ensureUser = async (
@@ -93,6 +94,14 @@ export const seedDevData = async (): Promise<{ adminId: string; hrId: string }> 
   // First-run navigation: default Application Categories + Applications, granted to the admin, so a
   // fresh install has a functional (fully data-driven) sidebar with no manual DB setup.
   await seedBootstrapNavigation(adminId);
+
+  // HR-only accounts (see hr-only-access.ts). Re-asserted on EVERY seed run, which is the point:
+  // the confinement is a state the platform maintains, not an edit somebody made once that the next
+  // `npm run seed` — or the next role assignment — could quietly undo. Idempotent, and accounts the
+  // configuration names but this database does not have are skipped with a warning.
+  await reconcileHrOnlyUsers(parseIdentifierList(env.HR_ONLY_USER_IDENTIFIERS), {
+    actorId: adminId,
+  });
 
   return { adminId, hrId };
 };

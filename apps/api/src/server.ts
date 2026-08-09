@@ -10,6 +10,7 @@ import { bootPlatform } from './platform/kernel/bootstrap';
 import { attachNotificationSocket } from './platform/notifications';
 import { moduleManifests } from './modules';
 import { syncNavigationCatalog } from './seed-navigation';
+import { syncHrOnlyAccounts } from './hr-only-access';
 import { buildApp } from './app';
 
 const main = async (): Promise<void> => {
@@ -17,6 +18,9 @@ const main = async (): Promise<void> => {
   await bootPlatform({ modules: moduleManifests });
   // Upgrades add navigation catalog entries — existing installs pick them up here (BF-1).
   await syncNavigationCatalog();
+  // Re-assert the HR-only confinement AFTER boot's own role grants (the Leave module re-grants
+  // `employee-self-service` on every start), so it cannot drift back open between seeds.
+  await syncHrOnlyAccounts();
 
   const app = buildApp();
   const server = app.listen(env.PORT, () => {

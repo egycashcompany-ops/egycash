@@ -1,10 +1,11 @@
 // Resolves the caller's *effective* applications: the union of the applications assigned to their
-// department and the applications granted to them directly. Assignments are read through the leaf
-// join repositories (already soft-delete filtered); the applications and their categories are loaded
-// through the catalog repositories (also soft-delete filtered), then handed to the pure assembler for
-// dedupe / active-only / grouping / ordering. Reading catalog repositories directly (not their
-// services) keeps this a leaf and avoids a service import cycle.
-import { type MyApplicationCategoryDto } from '@ecms/contracts';
+// department and the applications granted to them directly, INTERSECTED with the permissions they
+// actually hold. Assignments are read through the leaf join repositories (already soft-delete
+// filtered); the applications and their categories are loaded through the catalog repositories (also
+// soft-delete filtered), then handed to the pure assembler for dedupe / active-only / permission /
+// grouping / ordering. Reading catalog repositories directly (not their services) keeps this a leaf
+// and avoids a service import cycle.
+import { type MyApplicationCategoryDto, type DataScope } from '@ecms/contracts';
 import { applicationRepository } from '../applications/application.repository';
 import { applicationCategoryRepository } from '../application-categories/application-category.repository';
 import { departmentApplicationRepository } from '../department-applications/department-application.repository';
@@ -19,6 +20,7 @@ class MeApplicationsService {
   async listEffective(
     userId: string,
     departmentId: string | null,
+    permissions: Record<string, DataScope>,
   ): Promise<MyApplicationCategoryDto[]> {
     const [deptLinks, userLinks] = await Promise.all([
       departmentId === null
@@ -55,6 +57,7 @@ class MeApplicationsService {
       sortOrder: app.sortOrder,
       status: app.status,
       categoryId: String(app.categoryId),
+      permissionKey: app.permissionKey ?? null,
     }));
     const categoryInputs: EffectiveCategoryInput[] = categories.map((category) => ({
       id: String(category._id),
@@ -63,7 +66,7 @@ class MeApplicationsService {
       sortOrder: category.sortOrder,
     }));
 
-    return assembleEffectiveApplications(appInputs, categoryInputs);
+    return assembleEffectiveApplications(appInputs, categoryInputs, permissions);
   }
 }
 

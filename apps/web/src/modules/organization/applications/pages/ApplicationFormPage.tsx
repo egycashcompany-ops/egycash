@@ -1,6 +1,12 @@
 // Application create & edit. Name is required bilingual; icon and client route are required strings;
 // the owning Category is required (picked from the Application Categories catalog); sort order is a
 // non-negative integer (defaults to 0). Edits are version-checked; a stale save surfaces as a toast.
+//
+// The required permission is optional but consequential: navigation is filtered by it, so an
+// application left without one is offered to every user it is granted to, whether or not they can
+// open it. It is free text against the permission catalog's `<resource>.<action>` keys — nothing
+// validates it here, because an application may legitimately be catalogued ahead of the permission
+// the page will check.
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { type ApplicationDto, type CreateApplication, type Locale, type UpdateApplication } from '@ecms/contracts';
@@ -35,6 +41,7 @@ const ApplicationFormBody = ({ existing }: { existing: ApplicationDto | null }):
   const [route, setRoute] = useState(existing?.route ?? '');
   const [categoryId, setCategoryId] = useState(existing?.categoryId ?? '');
   const [sortOrder, setSortOrder] = useState(String(existing?.sortOrder ?? 0));
+  const [permissionKey, setPermissionKey] = useState(existing?.permissionKey ?? '');
   const [status, setStatus] = useState<'active' | 'inactive'>(existing?.status ?? 'active');
 
   const { data: categories = [] } = useApplicationCategoryOptions();
@@ -65,6 +72,7 @@ const ApplicationFormBody = ({ existing }: { existing: ApplicationDto | null }):
           route: route.trim(),
           categoryId,
           sortOrder: order,
+          permissionKey: permissionKey.trim() === '' ? null : permissionKey.trim(),
         };
         const doc = await create.mutateAsync(body);
         toast.success(t('organization.application.created'));
@@ -77,6 +85,7 @@ const ApplicationFormBody = ({ existing }: { existing: ApplicationDto | null }):
           route: route.trim(),
           categoryId,
           sortOrder: order,
+          permissionKey: permissionKey.trim() === '' ? null : permissionKey.trim(),
           status,
         };
         const doc = await update.mutateAsync(body);
@@ -142,6 +151,18 @@ const ApplicationFormBody = ({ existing }: { existing: ApplicationDto | null }):
                 />
               </Field>
             </div>
+
+            <Field
+              label={t('organization.application.permissionKey')}
+              hint={t('organization.application.permissionKeyHint')}
+            >
+              <Input
+                dir="ltr"
+                value={permissionKey}
+                onChange={(e) => setPermissionKey(e.target.value)}
+                placeholder="applicant.view"
+              />
+            </Field>
 
             {!isCreate && <StatusSelect value={status} onChange={setStatus} />}
 

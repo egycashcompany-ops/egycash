@@ -440,6 +440,105 @@ class RbacService {
     );
   }
 
+  /**
+   * A keyed role that is NOT a system role — seeded and kept in step with the code, but ordinary
+   * as far as authorization is concerned.
+   *
+   * The distinction is load-bearing rather than cosmetic: `isSystem` is one of the two things that
+   * make a holder PRIVILEGED (see `getEffectivePermissions`), and a privileged account is the one
+   * TOTP enrollment is forced on at login. A seeded bundle of ordinary module permissions has no
+   * business making its holders privileged, so it is created with `isSystem: false` and stays
+   * protected by its `key` alone (the admin UI's protection is `isSystem`, so such a role remains
+   * editable by administrators by design — the seed re-asserts its grants on every run).
+   *
+   * Idempotent: creates the role when the key is free, and otherwise brings its grants back to the
+   * declared set, invalidating the holders' cached permission snapshots when they actually changed.
+   */
+  async ensureManagedRole(
+    key: string,
+    name: { ar: string; en: string },
+    permissionKeys: string[],
+  ): Promise<RoleDoc> {
+    const keys = [...new Set(permissionKeys)];
+    const existing = await roleRepository.findByKey(key);
+    if (existing === null) {
+      return roleRepository.create(
+        { key, name, description: null, isSystem: false, permissionKeys: keys },
+        { by: null },
+      );
+    }
+    if (await roleRepository.setPermissionKeysByKey(key, keys)) {
+      await this.invalidateUsersOfRole(String(existing._id));
+    }
+    const refreshed = await roleRepository.findByKey(key);
+    return refreshed ?? existing;
+  }
+
+  /**
+   * `permissionKey -> moduleId` for the keys asked about, read from the DB registry the boot sync
+   * writes. Keys absent from the registry (a permission a retired module used to declare, still
+   * sitting in a role) are simply missing from the map — callers decide what an unknown grant
+   * means rather than having a default guessed for them here.
+   */
+  async moduleIdsForPermissions(permissionKeys: string[]): Promise<Map<string, string>> {
+    if (permissionKeys.length === 0) return new Map();
+    const docs = await PermissionModel.find(
+      { key: { $in: [...new Set(permissionKeys)] } },
+      { key: 1, moduleId: 1 },
+    )
+      .lean<{ key: string; moduleId: string }[]>()
+      .exec();
+    return new Map(docs.map((doc) => [doc.key, doc.moduleId]));
+  }
+
+  /**
+   * Re-grant an existing assignment's user a DIFFERENT role on exactly the same terms — same data
+   * scope, same branch/department/section placement, same validity window.
+   *
+   * `assignRole` cannot express this: it re-derives the placement from the user's home org and
+   * refuses anything the input does not match, which is right for an administrator granting a role
+   * and wrong for a rewrite that must preserve what was already granted. Silently widening a
+   * department-scoped grant to organization scope, or dropping a `validTo`, would turn a
+   * restriction into an escalation.
+   *
+   * Idempotent: an equivalent live assignment is left as it is.
+   */
+  async mirrorAssignment(
+    source: RoleAssignmentDoc,
+    roleId: string,
+    by: string,
+  ): Promise<RoleAssignmentDoc | null> {
+    const userId = String(source.userId);
+    const existing = await roleAssignmentRepository.findActiveForUser(userId);
+    if (existing.some((a) => String(a.roleId) === roleId && a.scope === source.scope)) return null;
+    const doc = await roleAssignmentRepository.create(
+      {
+        userId: source.userId,
+        roleId: new Types.ObjectId(roleId),
+        scope: source.scope,
+        branchId: source.branchId,
+        departmentId: source.departmentId,
+        sectionId: source.sectionId,
+        validFrom: source.validFrom,
+        validTo: source.validTo,
+      },
+      { by },
+    );
+    await this.invalidateUser(userId);
+    await auditService.record({
+      entityRef: { moduleId: 'platform', entityType: 'user', entityId: userId },
+      action: 'roleAssigned',
+      changes: [{ field: 'role', old: null, new: `${roleId} @ ${source.scope}` }],
+    });
+    await emit(PlatformEvents.RoleAssignmentChanged, {
+      userId,
+      roleId,
+      scope: source.scope,
+      change: 'granted',
+    });
+    return doc;
+  }
+
   async ensureAssignment(userId: string, roleId: string, scope: DataScope): Promise<void> {
     const existing = await roleAssignmentRepository.findActiveForUser(userId);
     if (existing.some((a) => String(a.roleId) === roleId && a.scope === scope)) return;

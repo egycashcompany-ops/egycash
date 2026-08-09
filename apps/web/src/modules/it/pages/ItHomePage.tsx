@@ -14,14 +14,19 @@ import { ShortcutCard } from '../../../shared/ui/ShortcutCard';
 import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import {
   AlertIcon,
+  BadgeIcon,
+  CalendarIcon,
   ChatIcon,
   CheckIcon,
   CogIcon,
   FolderIcon,
+  GridIcon,
   InboxIcon,
+  LayersIcon,
   MonitorIcon,
   QrIcon,
   UsersIcon,
+  WrenchIcon,
 } from '../../../shared/ui/icons';
 import { formatNumber } from '../../../shared/lib/format';
 import { useItAssets, useItTickets, useItVendors } from '../api/it-queries';
@@ -36,7 +41,23 @@ export const ItHomePage = (): JSX.Element => {
   const canCatalogs = can('itCatalog.manage');
   const canTickets = can('itTicket.view');
   const canSla = can('itSlaPolicy.manage');
-  const anything = canAssets || canVendors || canCatalogs || canTickets;
+  // IT-4 shipped its routes and nav rows without home cards; IT-5 adds them alongside its own, so
+  // the module index finally lists every screen a viewer's grants allow.
+  const canMaintenance = can('itMaintenance.view');
+  const canSpareParts = can('itSparePart.view');
+  const canSoftware = can('itSoftware.view');
+  const canLicenses = can('itLicense.view');
+  // Every grant that opens at least one card below. A viewer holding only `itSoftware.view` has a
+  // screen to reach, so leaving them on the "no access" state would be a lie about their access.
+  const anything =
+    canAssets ||
+    canVendors ||
+    canCatalogs ||
+    canTickets ||
+    canMaintenance ||
+    canSpareParts ||
+    canSoftware ||
+    canLicenses;
 
   // pageSize 1 — only `meta.totalItems` is wanted.
   const total = useItAssets({ pageSize: 1 }, canAssets);
@@ -157,6 +178,46 @@ export const ItHomePage = (): JSX.Element => {
                 title={t('it.nav.vendors')}
                 description={t('it.vendors.subtitle')}
                 icon={FolderIcon}
+              />
+            )}
+            {canMaintenance && (
+              <>
+                <ShortcutCard
+                  to="/it/maintenance"
+                  title={t('it.nav.maintenance')}
+                  description={t('it.maintenance.subtitle')}
+                  icon={WrenchIcon}
+                />
+                <ShortcutCard
+                  to="/it/maintenance-plans"
+                  title={t('it.nav.maintenancePlans')}
+                  description={t('it.plans.subtitle')}
+                  icon={CalendarIcon}
+                />
+              </>
+            )}
+            {canSpareParts && (
+              <ShortcutCard
+                to="/it/spare-parts"
+                title={t('it.nav.spareParts')}
+                description={t('it.parts.subtitle')}
+                icon={LayersIcon}
+              />
+            )}
+            {canSoftware && (
+              <ShortcutCard
+                to="/it/software"
+                title={t('it.nav.software')}
+                description={t('it.software.subtitle')}
+                icon={GridIcon}
+              />
+            )}
+            {canLicenses && (
+              <ShortcutCard
+                to="/it/licenses"
+                title={t('it.nav.licenses')}
+                description={t('it.licenses.subtitle')}
+                icon={BadgeIcon}
               />
             )}
             {canCatalogs && (

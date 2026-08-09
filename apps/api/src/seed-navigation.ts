@@ -116,7 +116,7 @@ const CATALOG: CategoryDef[] = [
     // OWNER RULE: only SHIPPED pages appear in navigation. ITW-1 shipped the IT-1 surface, IT-2
     // appended the custody register, IT-3 appended the help desk and IT-4 appends maintenance and
     // the spare-parts store (the boot sync is additive — existing installs pick new rows up on the
-    // next deploy). Software and dashboards append theirs with IT-5 and IT-6, as each slice lands.
+    // next deploy) and IT-5 appends the software register. Dashboards append theirs with IT-6.
     apps: [
       { en: 'IT Home', ar: 'الرئيسية', route: '/it', icon: 'home' },
       { en: 'Assets', ar: 'الأصول', route: '/it/assets', icon: 'monitor' },
@@ -127,6 +127,8 @@ const CATALOG: CategoryDef[] = [
       { en: 'Maintenance', ar: 'الصيانة', route: '/it/maintenance', icon: 'wrench' },
       { en: 'Maintenance Plans', ar: 'خطط الصيانة', route: '/it/maintenance-plans', icon: 'calendar' },
       { en: 'Spare Parts', ar: 'قطع الغيار', route: '/it/spare-parts', icon: 'layers' },
+      { en: 'Software', ar: 'البرمجيات', route: '/it/software', icon: 'grid' },
+      { en: 'Licences', ar: 'التراخيص', route: '/it/licenses', icon: 'badge' },
       { en: 'IT Vendors', ar: 'موردو تقنية المعلومات', route: '/it/vendors', icon: 'folder' },
       { en: 'IT Catalogs', ar: 'قوائم تقنية المعلومات', route: '/it/catalogs', icon: 'folder' },
     ],

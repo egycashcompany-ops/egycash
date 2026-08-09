@@ -28,6 +28,9 @@ const PRIORITY_ROUTES = read('tickets/priority.routes.ts');
 const ORDER_ROUTES = read('maintenance/order.routes.ts');
 const PLAN_ROUTES = read('maintenance/plan.routes.ts');
 const PART_ROUTES = read('spare-parts/part.routes.ts');
+const PRODUCT_ROUTES = read('software/product.routes.ts');
+const INSTALLATION_ROUTES = read('software/installation.routes.ts');
+const LICENSE_ROUTES = read('licenses/license.routes.ts');
 const ASSET_SERVICE = read('assets/asset.service.ts');
 const CATALOG_SERVICE = read('catalog-items/catalog-item.service.ts');
 const VENDOR_SERVICE = read('vendors/vendor.service.ts');
@@ -36,6 +39,9 @@ const PRIORITY_REPOSITORY = read('tickets/priority.repository.ts');
 const ORDER_REPOSITORY = read('maintenance/order.repository.ts');
 const PLAN_REPOSITORY = read('maintenance/plan.repository.ts');
 const PART_REPOSITORY = read('spare-parts/part.repository.ts');
+const PRODUCT_REPOSITORY = read('software/product.repository.ts');
+const INSTALLATION_REPOSITORY = read('software/installation.repository.ts');
+const LICENSE_REPOSITORY = read('licenses/license.repository.ts');
 const MANIFEST = read('it.module.ts');
 
 /** The verb+path pairs a router declares, e.g. `get /by-code/:code`. */
@@ -221,6 +227,41 @@ describe('every endpoint the IT client calls exists on the API', () => {
     expect(MANIFEST).toContain("prefix: '/it/spare-parts'");
     expect(CLIENT).toContain('`/it/spare-parts/${id}/receipts`');
     expect(CLIENT).toContain('`/it/spare-parts/${id}/movements');
+  });
+
+  it('software products: CRUD, archived never deleted (FR-11)', () => {
+    const routes = declared(PRODUCT_ROUTES);
+    expect(routes).toEqual(new Set(['get /', 'post /', 'get /:id', 'patch /:id']));
+    expect([...routes].some((r) => r.startsWith('delete'))).toBe(false);
+    expect(MANIFEST).toContain("prefix: '/it/software-products'");
+    expect(CLIENT).toContain("getPage<ItSoftwareProductDto>(`/it/software-products");
+    expect(CLIENT).toContain('`/it/software-products/${id}`');
+  });
+
+  it('installations: CRUD plus the named remove — and no delete', () => {
+    const routes = declared(INSTALLATION_ROUTES);
+    expect(routes).toEqual(
+      new Set(['get /', 'post /', 'get /:id', 'patch /:id', 'post /:id/remove']),
+    );
+    expect([...routes].some((r) => r.startsWith('delete'))).toBe(false);
+    expect(MANIFEST).toContain("prefix: '/it/software-installations'");
+    expect(CLIENT).toContain('`/it/software-installations/${id}/remove`');
+  });
+
+  it('licences: CRUD plus the seats panel — and NO reveal endpoint (§13-Q5)', () => {
+    const routes = declared(LICENSE_ROUTES);
+    expect(routes).toEqual(
+      new Set(['get /', 'post /', 'get /:id', 'patch /:id', 'get /:id/installations']),
+    );
+    expect([...routes].some((r) => r.startsWith('delete'))).toBe(false);
+    // §13-Q5 adopted plain text under the permission. A reveal route would imply a protection the
+    // design deliberately did not buy, and would need its own gate nobody specified.
+    for (const route of routes) {
+      expect(route, 'no reveal endpoint').not.toMatch(/reveal|key|secret/i);
+    }
+    expect(CLIENT).not.toMatch(/revealLicense|revealKey/);
+    expect(MANIFEST).toContain("prefix: '/it/licenses'");
+    expect(CLIENT).toContain('`/it/licenses/${id}/installations');
   });
 
   it('priorities: list, create, update — archived, never deleted, because tickets point at them', () => {
@@ -416,6 +457,33 @@ describe('the permissions the API enforces are the ones the UI gates on', () => 
     expect(movements).toContain("authorize('itSparePart.view')");
   });
 
+  // §7 gives products and installations ONE grant. Pinned in both directions: splitting it would
+  // add a permission the design does not have, and widening it to the licence surface would let a
+  // software administrator edit purchase records.
+  it('software: one grant for products and installations, and it does not reach licences', () => {
+    expect(enforced(INSTALLATION_ROUTES)).toEqual(
+      new Set(['itSoftware.view', 'itSoftware.manage']),
+    );
+    // The product READ takes either grant, so a licence form's product field populates.
+    const productList = /router\.get\(\s*'\/'[\s\S]*?\);/.exec(PRODUCT_ROUTES)?.[0] ?? '';
+    expect(productList).toContain("authorizeAny('itSoftware.view', 'itLicense.view')");
+    for (const verb of ['post', 'patch']) {
+      const write = new RegExp(`router\\.${verb}\\([\\s\\S]*?\\);`).exec(PRODUCT_ROUTES)?.[0] ?? '';
+      expect(write).toContain("authorize('itSoftware.manage')");
+    }
+  });
+
+  it('licences: their own two gates, and the seats panel rides the SOFTWARE view', () => {
+    expect(enforced(LICENSE_ROUTES)).toEqual(
+      new Set(['itLicense.view', 'itLicense.manage', 'itSoftware.view']),
+    );
+    // The rows are installations, so a licence viewer who cannot see installations gets the count
+    // and not the names.
+    const seats =
+      /router\.get\(\s*'\/:id\/installations'[\s\S]*?\);/.exec(LICENSE_ROUTES)?.[0] ?? '';
+    expect(seats).toContain("authorize('itSoftware.view')");
+  });
+
   it('declares every gate the manifest knows about, and no invented one', () => {
     const used = new Set([
       ...enforced(ASSET_ROUTES),
@@ -426,6 +494,9 @@ describe('the permissions the API enforces are the ones the UI gates on', () => 
       ...enforced(ORDER_ROUTES),
       ...enforced(PLAN_ROUTES),
       ...enforced(PART_ROUTES),
+      ...enforced(PRODUCT_ROUTES),
+      ...enforced(INSTALLATION_ROUTES),
+      ...enforced(LICENSE_ROUTES),
     ]);
     for (const permission of used) {
       const [resource, action] = permission.split('.');
@@ -487,6 +558,17 @@ describe('the sort fields the tables offer are the ones the API accepts', () => 
   it('spare parts table', () => {
     const allowed = sortable(PART_REPOSITORY);
     for (const field of ['partCode', 'name', 'onHandQty']) expect(allowed).toContain(field);
+  });
+
+  it('software and licence tables', () => {
+    expect(sortable(PRODUCT_REPOSITORY)).toContain('name');
+    expect(sortable(INSTALLATION_REPOSITORY)).toContain('installedAt');
+    const licences = sortable(LICENSE_REPOSITORY);
+    expect(licences).toContain('expiresAt');
+    // `seatsUsed` and `state` are DERIVED, so they cannot be sort keys — an undeclared `sortBy`
+    // silently falls back to `createdAt`, which would look like it worked.
+    expect(licences).not.toContain('seatsUsed');
+    expect(licences).not.toContain('state');
   });
 
   it('priorities table', () => {

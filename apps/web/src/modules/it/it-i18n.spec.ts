@@ -16,6 +16,7 @@ import { describe, expect, it } from 'vitest';
 import {
   IT_ASSET_STATUSES,
   IT_CATALOG_KINDS,
+  IT_LICENSE_STATES,
   IT_MAINTENANCE_KINDS,
   IT_MAINTENANCE_ORDER_STATUSES,
   IT_TICKET_EVENT_TYPES,
@@ -48,6 +49,9 @@ const VOCABULARIES: { name: string; prefix: string; values: readonly string[] }[
     values: IT_MAINTENANCE_ORDER_STATUSES,
   },
   { name: 'maintenance kind', prefix: 'it.maintenance.kind', values: IT_MAINTENANCE_KINDS },
+  // IT-5. Rendered through a TEMPLATE key by both the badge and the install dialog, so the source
+  // scan below cannot see them — which is exactly why they are driven off the enum instead.
+  { name: 'licence state', prefix: 'it.licenses.state', values: IT_LICENSE_STATES },
 ];
 
 const sources = (dir: string): string[] =>

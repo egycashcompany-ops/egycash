@@ -35,11 +35,19 @@ export interface FileEntityAuthorizer {
 }
 
 /**
- * The budget one authorizer gets (ADR-023). Generous for an indexed lookup, and short enough that
- * a hung module cannot turn every file read into a stalled request. Exceeding it DENIES — a slow
- * answer is not a yes.
+ * The budget one authorizer gets (ADR-023). Exceeding it DENIES — a slow answer is not a yes.
+ *
+ * Raised from the ADR's original 200 ms after CI proved that number wrong. 200 was chosen for "an
+ * indexed lookup", singular; the ticket-COMMENT authorizer legitimately needs two sequential ones
+ * (resolve the comment, then check the ticket's scope), and on a cold process that overran the
+ * budget — turning a perfectly authorized read into a 404. A timeout that fires on correct work is
+ * not a safety margin, it is an outage.
+ *
+ * What the budget is actually for is unchanged: stopping a HUNG module from stalling every file
+ * read in the system. That failure mode is seconds or forever, so a second still catches it with
+ * room to spare for honest work on a cold connection.
  */
-export const AUTHORIZER_TIMEOUT_MS = 200;
+export const AUTHORIZER_TIMEOUT_MS = 1000;
 
 const key = (moduleId: string, entityType: string): string => `${moduleId}/${entityType}`;
 
@@ -93,13 +101,20 @@ export const hasFileEntityAuthorizer = (moduleId: string, entityType: string): b
 /** Test-only reset; the boot sequence is the sole production caller of `register…`. */
 export const clearFileEntityAuthorizers = (): void => registry.clear();
 
+/** Marks a denial as "took too long" rather than "threw", so the log can tell them apart. */
+class AuthorizerTimeout extends Error {
+  constructor() {
+    super(`authorizer exceeded ${AUTHORIZER_TIMEOUT_MS}ms`);
+  }
+}
+
 const withTimeout = async (promise: Promise<boolean>): Promise<boolean> => {
   let timer: NodeJS.Timeout | undefined;
   try {
     return await Promise.race([
       promise,
       new Promise<boolean>((_resolve, reject) => {
-        timer = setTimeout(() => reject(new Error('authorizer timed out')), AUTHORIZER_TIMEOUT_MS);
+        timer = setTimeout(() => reject(new AuthorizerTimeout()), AUTHORIZER_TIMEOUT_MS);
       }),
     ]);
   } finally {
@@ -131,8 +146,15 @@ export const authorizeFileEntity = async (
   } catch (error) {
     // Deliberately not rethrown: the service turns a denial into the right status code, and a
     // module's internal failure must never surface to a caller as a 500 that leaks its existence.
+    // The two causes want different operator responses — a timeout is a performance problem, a
+    // throw is a bug — so the log says which. Both deny.
     logger.warn(
-      { err: error, entity: key(entityRef.moduleId, entityRef.entityType), intent },
+      {
+        err: error,
+        entity: key(entityRef.moduleId, entityRef.entityType),
+        intent,
+        cause: error instanceof AuthorizerTimeout ? 'timeout' : 'error',
+      },
       'file entity authorizer failed — denying (ADR-023 fail-closed)',
     );
     return false;

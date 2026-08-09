@@ -111,7 +111,7 @@ registry, exactly as it registers subscriptions today. Registration is:
 | No authorizer registered for the entity type | **Exactly the previous behaviour** — unchanged |
 | Authorizer returns `false` | Deny |
 | Authorizer throws | **Deny**, and audit `permissionDenied` |
-| Authorizer exceeds its 200 ms budget | **Deny**, and audit |
+| Authorizer exceeds its 1 s budget | **Deny**, and audit |
 | Authorizer registered, entity no longer exists | Deny |
 
 The asymmetry is the point: fail-closed applies **only** where a module has opted in. Files whose

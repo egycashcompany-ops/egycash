@@ -9,22 +9,22 @@
 //   * starting takes the asset OUT of service, and completing puts it back where it was;
 //   * consumption is order-tied and cannot go below zero (FR-9), so the parts rows show what is on
 //     hand and refuse to ask for more.
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { type ItMaintenanceOrderDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
-import { Field, Input, Select, Textarea } from '../../../shared/ui/form';
+import { Field, Input, Textarea } from '../../../shared/ui/form';
 import { CloseIcon, PlusIcon } from '../../../shared/ui/icons';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import {
   useCancelItMaintenanceOrder,
   useCompleteItMaintenanceOrder,
   useCreateItMaintenanceOrder,
-  useItSpareParts,
   useStartItMaintenanceOrder,
 } from '../api/it-queries';
 import { AssetPicker } from './AssetPicker';
+import { SparePartPicker } from './SparePartPicker';
 import { VendorPicker } from './VendorPicker';
 
 const errorText = (err: unknown, fallback: string): string =>
@@ -209,9 +209,16 @@ export const StartMaintenanceOrderDialog = ({
 
 // ── Complete (with parts) ───────────────────────────────────────────────────
 
+/**
+ * A chosen part carries its on-hand level with it. The dialog needs that number to warn before the
+ * server refuses (FR-9), and a searching picker is the only way to have it without holding the
+ * catalogue in the browser (ADR-019 rule 5).
+ */
 interface PartRow {
   partId: string;
   qty: string;
+  onHandQty: number | null;
+  unit: string;
 }
 
 export const CompleteMaintenanceOrderDialog = ({
@@ -230,18 +237,6 @@ export const CompleteMaintenanceOrderDialog = ({
   const [error, setError] = useState<string | null>(null);
   const complete = useCompleteItMaintenanceOrder();
 
-  // The catalogue is a small fixed list here, and the dialog needs each part's ON-HAND level to
-  // stop a technician asking for stock that is not there — so it loads the active parts rather
-  // than searching. `pageSize: 100` is the API's own bound.
-  const parts = useItSpareParts({ active: true, pageSize: 100, sortBy: 'name', sortDir: 'asc' });
-  const byId = useMemo(() => {
-    const map = new Map<string, { name: string; unit: string; onHandQty: number }>();
-    for (const p of parts.data?.items ?? []) {
-      map.set(p.id, { name: p.name, unit: p.unit, onHandQty: p.onHandQty });
-    }
-    return map;
-  }, [parts.data]);
-
   useEffect(() => {
     if (open) {
       setSummary(order.summary ?? '');
@@ -257,8 +252,7 @@ export const CompleteMaintenanceOrderDialog = ({
   // Mirrors the server's rule so the reader sees it first; the server still decides.
   const overdrawn = rows.some((row) => {
     const qty = Number(row.qty);
-    const onHand = byId.get(row.partId)?.onHandQty;
-    return row.partId !== '' && onHand !== undefined && Number.isFinite(qty) && qty > onHand;
+    return row.onHandQty !== null && Number.isFinite(qty) && qty > row.onHandQty;
   });
   const rowsValid = rows.every((row) => row.partId !== '' && Number(row.qty) >= 1);
   const complete_ = summary.trim() !== '' && rowsValid && !overdrawn;
@@ -330,7 +324,9 @@ export const CompleteMaintenanceOrderDialog = ({
               size="sm"
               variant="secondary"
               leftIcon={<PlusIcon className="h-4 w-4" />}
-              onClick={() => setRows((prev) => [...prev, { partId: '', qty: '1' }])}
+              onClick={() =>
+                setRows((prev) => [...prev, { partId: '', qty: '1', onHandQty: null, unit: '' }])
+              }
             >
               {t('it.maintenance.addPart')}
             </Button>
@@ -342,25 +338,23 @@ export const CompleteMaintenanceOrderDialog = ({
           ) : (
             <ul className="space-y-2">
               {rows.map((row, index) => {
-                const part = byId.get(row.partId);
                 const qty = Number(row.qty);
                 const tooMany =
-                  part !== undefined && Number.isFinite(qty) && qty > part.onHandQty;
+                  row.onHandQty !== null && Number.isFinite(qty) && qty > row.onHandQty;
                 return (
                   <li key={index} className="flex items-end gap-2">
                     <div className="flex-1">
-                      <Select
-                        aria-label={t('it.maintenance.fields.part')}
+                      <SparePartPicker
+                        ariaLabel={t('it.maintenance.fields.part')}
                         value={row.partId}
-                        onChange={(e) => setRow(index, { partId: e.target.value })}
-                      >
-                        <option value="">{t('it.maintenance.choosePart')}</option>
-                        {(parts.data?.items ?? []).map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {`${p.name} (${String(p.onHandQty)} ${p.unit})`}
-                          </option>
-                        ))}
-                      </Select>
+                        onChange={(partId, part) =>
+                          setRow(index, {
+                            partId,
+                            onHandQty: part === null ? null : part.onHandQty,
+                            unit: part === null ? '' : part.unit,
+                          })
+                        }
+                      />
                     </div>
                     <div className="w-24">
                       <Input

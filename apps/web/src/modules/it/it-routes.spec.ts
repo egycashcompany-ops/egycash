@@ -30,7 +30,7 @@ const declaredPaths = (): string[] =>
 describe('IT routes', () => {
   const paths = declaredPaths();
 
-  it('declares the IT-1 + IT-2 + IT-3 + IT-4 surface', () => {
+  it('declares the IT-1 + IT-2 + IT-3 + IT-4 + IT-5 surface', () => {
     expect(paths.sort()).toEqual(
       [
         'assets',
@@ -39,9 +39,12 @@ describe('IT routes', () => {
         'catalogs',
         'custody',
         'helpdesk-settings',
+        'licenses',
+        'licenses/:id',
         'maintenance',
         'maintenance-plans',
         'maintenance/:id',
+        'software',
         'spare-parts',
         'tickets',
         'tickets/:id',
@@ -73,6 +76,14 @@ describe('IT routes', () => {
   it('does not route the maintenance TRANSITIONS', () => {
     for (const action of ['start', 'complete', 'cancel']) {
       expect(paths, `${action} must not be a route`).not.toContain(`maintenance/:id/${action}`);
+    }
+  });
+
+  // Installing and removing software are dialogs on the record, like every other IT transition.
+  // `remove` in particular ends a business record, and a reloadable URL would try to end it twice.
+  it('does not route the installation ACTIONS', () => {
+    for (const action of ['install', 'remove', 'uninstall']) {
+      expect(paths, `${action} must not be a route`).not.toContain(`software/${action}`);
     }
   });
 

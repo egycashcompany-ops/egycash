@@ -61,9 +61,11 @@ let techToken: string; // itMaintenance.view/create/edit/complete + itSparePart.
 let plannerToken: string; // itMaintenance.view + itMaintenancePlan.manage — schedules, does not work
 let storeToken: string; // itSparePart.view/manage — the storekeeper
 let readerToken: string; // itMaintenance.view + itSparePart.view only — reads everything, writes nothing
+let branchTechToken: string; // itMaintenance.* at BRANCH scope, placed in branch B
 let outsiderToken: string; // no IT grant at all
 
 let branchAId: string;
+let branchBId: string;
 let categoryId: string;
 let vendorId: string;
 const seenEvents: { name: string; payload: unknown }[] = [];
@@ -322,12 +324,29 @@ beforeAll(async () => {
   );
   outsiderToken = await mkRole('Outsider', 'بلا صلاحية', ['user.view'], 'mnt-outsider@ecms.local');
 
-  const branch = await request(app)
-    .post('/api/v1/platform/branches')
-    .set('Authorization', `Bearer ${adminToken}`)
-    .send({ code: '84', name: { ar: 'فرع الصيانة', en: 'Maintenance branch' } });
-  expect(branch.status).toBe(201);
-  branchAId = (branch.body as { data: { id: string } }).data.id;
+  const mkBranch = async (code: string, ar: string, en: string): Promise<string> => {
+    const res = await request(app)
+      .post('/api/v1/platform/branches')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code, name: { ar, en } });
+    expect(res.status).toBe(201);
+    return (res.body as { data: { id: string } }).data.id;
+  };
+  branchAId = await mkBranch('84', 'فرع الصيانة أ', 'Maintenance branch A');
+  branchBId = await mkBranch('85', 'فرع الصيانة ب', 'Maintenance branch B');
+
+  // The whole point of the scope fix: a technician placed in branch B, holding the SAME grants as
+  // the organization-wide technician, must not read branch A's board.
+  const branchRole = await rbacService.createRole(
+    {
+      name: { en: 'Branch technician', ar: 'فني فرع' },
+      permissionKeys: ['itMaintenance.view', 'itMaintenance.create', 'itMaintenance.edit'],
+    },
+    adminUserId,
+  );
+  const branchTechId = await mkUser('mnt-branch-tech@ecms.local', branchBId);
+  await rbacService.ensureAssignment(branchTechId, String(branchRole._id), 'branch');
+  branchTechToken = await login('mnt-branch-tech@ecms.local');
 
   const category = await request(app)
     .post('/api/v1/it/catalog-items')
@@ -1072,5 +1091,92 @@ describe('maintenance permissions', () => {
       ).status,
     ).toBe(403);
     expect((await orderAct(order.id, 'complete', { summary: 'x' }, storeToken)).status).toBe(403);
+  });
+});
+
+// ── Data scope (§7) — the IT-4 fix this slice carries ───────────────────────
+//
+// Orders and plans denormalize the ASSET's `branchId` at creation, exactly as
+// `it_asset_assignments` does, so "a branch-scoped technician sees that branch's world" is a scope
+// filter and not a promise. Before the fix the write path was scoped and the READ path was not:
+// every technician could list every branch's board.
+
+describe('branch scoping', () => {
+  it('hides another branch\'s orders from a branch-scoped technician', async () => {
+    const assetA = await mkAsset({ branchId: branchAId });
+    const assetB = await mkAsset({ branchId: branchBId });
+    const orderA = await mkOrder(assetA.id);
+    const orderB = await mkOrder(assetB.id, {}, branchTechToken);
+
+    const res = await request(app)
+      .get('/api/v1/it/maintenance-orders?pageSize=100')
+      .set('Authorization', `Bearer ${branchTechToken}`);
+    expect(res.status).toBe(200);
+    const ids = data<ItMaintenanceOrderDto[]>(res).map((o) => o.id);
+    expect(ids).toContain(orderB.id);
+    expect(ids).not.toContain(orderA.id);
+
+    // …and the organization-scoped technician still sees both, so the fix narrowed nothing it
+    // should not have.
+    const all = await request(app)
+      .get('/api/v1/it/maintenance-orders?pageSize=100')
+      .set('Authorization', `Bearer ${techToken}`);
+    const allIds = data<ItMaintenanceOrderDto[]>(all).map((o) => o.id);
+    expect(allIds).toEqual(expect.arrayContaining([orderA.id, orderB.id]));
+  });
+
+  it('answers 404 — not 403 — for another branch\'s order by id', async () => {
+    const order = await mkOrder((await mkAsset({ branchId: branchAId })).id);
+    const res = await request(app)
+      .get(`/api/v1/it/maintenance-orders/${order.id}`)
+      .set('Authorization', `Bearer ${branchTechToken}`);
+    // Out of scope reads as absent: the existence of another branch's order is not this caller's
+    // information, and 403 would leak it.
+    expect(res.status).toBe(404);
+  });
+
+  it('refuses to transition another branch\'s order', async () => {
+    const order = await mkOrder((await mkAsset({ branchId: branchAId })).id);
+    expect((await orderAct(order.id, 'start', {}, branchTechToken)).status).toBe(404);
+  });
+
+  it('scopes the parts panel through its order', async () => {
+    const order = await mkOrder((await mkAsset({ branchId: branchAId })).id);
+    const res = await request(app)
+      .get(`/api/v1/it/maintenance-orders/${order.id}/parts`)
+      .set('Authorization', `Bearer ${branchTechToken}`);
+    expect(res.status).toBe(404);
+  });
+
+  it('hides another branch\'s plans too', async () => {
+    const planA = await mkPlan((await mkAsset({ branchId: branchAId })).id);
+    const res = await request(app)
+      .get('/api/v1/it/maintenance-plans?pageSize=100')
+      .set('Authorization', `Bearer ${branchTechToken}`);
+    expect(res.status).toBe(200);
+    expect(data<ItMaintenancePlanDto[]>(res).map((p) => p.id)).not.toContain(planA.id);
+  });
+
+  // The store is company-wide (§2.7, §7 gives `/it/spare-parts` no branch anchor), so scoping it
+  // by branch would invent a business fact. Pinned so a later "consistency" change fails here.
+  it('keeps the spare-parts store company-wide', async () => {
+    const part = await stockedPart(5);
+    const res = await request(app)
+      .get('/api/v1/it/spare-parts?pageSize=100')
+      .set('Authorization', `Bearer ${storeToken}`);
+    expect(res.status).toBe(200);
+    expect(data<ItSparePartDto[]>(res).map((p) => p.id)).toContain(part.id);
+  });
+
+  // The sweep is the system acting for the organization, not a user reading — so it must generate
+  // for every branch regardless of who happens to hold which scope.
+  it('lets the preventive sweep cross branches', async () => {
+    const plan = await mkPlan((await mkAsset({ branchId: branchBId })).id);
+    await ItMaintenancePlanModel.updateOne(
+      { _id: plan.id },
+      { $set: { nextDueAt: new Date(Date.now() - 86_400_000) } },
+    ).exec();
+    await preventiveMaintenanceSweep();
+    expect(await ordersForPlan(plan.id)).toHaveLength(1);
   });
 });

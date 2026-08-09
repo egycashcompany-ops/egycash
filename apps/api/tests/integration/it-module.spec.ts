@@ -477,6 +477,37 @@ describe('asset register', () => {
       .set('Authorization', `Bearer ${adminToken}`);
     expect(gone.status).toBe(404);
   });
+
+  // The case the old `status === 'inStock'` guard let through, and the reason FR-5 exists: an
+  // asset that has been out and come back is `inStock` again while carrying a full custody chain.
+  // Deleting it would erase the register row the history points at.
+  it('refuses to delete an asset that has been in custody, even once it is back in stock', async () => {
+    const asset = data<ItAssetDto>(await createAsset(adminToken, { name: 'used asset' }));
+    const employeeId = '000000000000000000000c03';
+
+    const assign = await request(app)
+      .post(`/api/v1/it/assets/${asset.id}/assign`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ employeeId });
+    expect(assign.status).toBe(200);
+    const returned = await request(app)
+      .post(`/api/v1/it/assets/${asset.id}/return`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({});
+    expect(returned.status).toBe(200);
+    // Back in stock — the old guard's entire test — and still undeletable.
+    expect(data<ItAssetDto>(returned).status).toBe('inStock');
+
+    const del = await request(app)
+      .delete(`/api/v1/it/assets/${asset.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(del.status).toBe(422);
+
+    const alive = await request(app)
+      .get(`/api/v1/it/assets/${asset.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(alive.status).toBe(200);
+  });
 });
 
 describe('asset labels', () => {
@@ -732,11 +763,19 @@ describe('asset custody', () => {
     expect(rows.every((a) => a.returnedAt === null)).toBe(true);
   });
 
+  // Matched on THIS asset, not on the first assign event in the file. `seenEvents` is shared by
+  // every test here, so `find(name === …)` answered with whichever test assigned first — a pass
+  // that depended on ordering rather than on the event being correct.
   it('emits the custody events, so automation can trigger on them (§8.1)', async () => {
     const asset = await custodyAsset();
     await act(asset.id, 'assign', { employeeId: EMPLOYEE_A });
-    await waitFor(() => seenEvents.some((e) => e.name === ItEvents.AssetAssigned));
-    const assigned = seenEvents.find((e) => e.name === ItEvents.AssetAssigned);
-    expect((assigned?.payload as { employeeId?: string }).employeeId).toBe(EMPLOYEE_A);
+    const mine = (): { name: string; payload: unknown } | undefined =>
+      seenEvents.find(
+        (e) =>
+          e.name === ItEvents.AssetAssigned &&
+          (e.payload as { assetId?: string }).assetId === asset.id,
+      );
+    await waitFor(() => mine() !== undefined);
+    expect((mine()?.payload as { employeeId?: string }).employeeId).toBe(EMPLOYEE_A);
   });
 });

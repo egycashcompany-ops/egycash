@@ -8,6 +8,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   type AssignItAsset,
   type AssignItTicket,
+  type CreateItLicense,
+  type CreateItSoftwareInstallation,
+  type CreateItSoftwareProduct,
+  type RemoveItSoftwareInstallation,
+  type UpdateItLicense,
+  type UpdateItSoftwareInstallation,
+  type UpdateItSoftwareProduct,
   type CancelItMaintenanceOrder,
   type CompleteItMaintenanceOrder,
   type CreateItMaintenanceOrder,
@@ -62,6 +69,9 @@ const itKeys = {
   maintenancePlans: featureKey(MODULE, 'maintenancePlans'),
   /** Parts, their levels and the ledger — one subtree, because a movement moves both. */
   spareParts: featureKey(MODULE, 'spareParts'),
+  software: featureKey(MODULE, 'software'),
+  /** Licences and the installations that consume their seats: one write moves both numbers. */
+  licenses: featureKey(MODULE, 'licenses'),
 } as const;
 
 // ── Platform references ─────────────────────────────────────────────────────
@@ -640,4 +650,125 @@ export const useUpdateItSparePart = () =>
 export const useReceiveItSparePart = () =>
   useSparePartMutation(({ id, body }: { id: string; body: ReceiveItSparePart }) =>
     api.receiveSparePart(id, body),
+  );
+
+// ── Software register (IT-5) ────────────────────────────────────────────────
+
+export const useItSoftwareProducts = (params: ItListParams, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'software', { products: true, ...params }),
+    queryFn: () => api.listSoftwareProducts(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+export const useItSoftwareProduct = (id: string, enabled = true) =>
+  useQuery({
+    queryKey: detailKey(MODULE, 'software', id),
+    queryFn: () => api.getSoftwareProduct(id),
+    enabled: enabled && id !== '',
+    staleTime: 60_000,
+  });
+
+const useProductMutation = <TInput>(mutationFn: (input: TInput) => Promise<unknown>) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: itKeys.software });
+      // A renamed or archived product changes what licence and installation rows display.
+      void qc.invalidateQueries({ queryKey: itKeys.licenses });
+    },
+  });
+};
+
+export const useCreateItSoftwareProduct = () =>
+  useProductMutation((body: CreateItSoftwareProduct) => api.createSoftwareProduct(body));
+export const useUpdateItSoftwareProduct = () =>
+  useProductMutation(({ id, body }: { id: string; body: UpdateItSoftwareProduct }) =>
+    api.updateSoftwareProduct(id, body),
+  );
+
+export const useItSoftwareInstallations = (params: ItListParams, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'software', { installations: true, ...params }),
+    queryFn: () => api.listSoftwareInstallations(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+/**
+ * An installation write moves the licence's SEAT COUNT as well as the row — `seatsUsed` is derived
+ * server-side, so the licence screen is stale the moment an install lands unless both subtrees go.
+ */
+const useInstallationMutation = <TInput, TResult extends { id: string }>(
+  mutationFn: (input: TInput) => Promise<TResult>,
+) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: itKeys.software });
+      void qc.invalidateQueries({ queryKey: itKeys.licenses });
+    },
+  });
+};
+
+export const useCreateItSoftwareInstallation = () =>
+  useInstallationMutation((body: CreateItSoftwareInstallation) =>
+    api.createSoftwareInstallation(body),
+  );
+export const useUpdateItSoftwareInstallation = () =>
+  useInstallationMutation(({ id, body }: { id: string; body: UpdateItSoftwareInstallation }) =>
+    api.updateSoftwareInstallation(id, body),
+  );
+export const useRemoveItSoftwareInstallation = () =>
+  useInstallationMutation(({ id, body }: { id: string; body: RemoveItSoftwareInstallation }) =>
+    api.removeSoftwareInstallation(id, body),
+  );
+
+// ── Licences ────────────────────────────────────────────────────────────────
+
+export const useItLicenses = (params: ItListParams, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'licenses', params),
+    queryFn: () => api.listLicenses(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+export const useItLicense = (id: string) =>
+  useQuery({
+    queryKey: detailKey(MODULE, 'licenses', id),
+    queryFn: () => api.getLicense(id),
+    enabled: id !== '',
+  });
+
+/** The rows behind `seatsUsed`, under the licences subtree so an install refreshes them together. */
+export const useItLicenseInstallations = (id: string, params: ItListParams, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'licenses', { seatsOf: id, ...params }),
+    queryFn: () => api.listLicenseInstallations(id, params),
+    placeholderData: (prev) => prev,
+    enabled: enabled && id !== '',
+  });
+
+const useLicenseMutation = <TInput, TResult extends { id: string }>(
+  mutationFn: (input: TInput) => Promise<TResult>,
+) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: (license: TResult) => {
+      qc.setQueryData(detailKey(MODULE, 'licenses', license.id), license);
+      void qc.invalidateQueries({ queryKey: itKeys.licenses });
+    },
+  });
+};
+
+export const useCreateItLicense = () =>
+  useLicenseMutation((body: CreateItLicense) => api.createLicense(body));
+export const useUpdateItLicense = () =>
+  useLicenseMutation(({ id, body }: { id: string; body: UpdateItLicense }) =>
+    api.updateLicense(id, body),
   );

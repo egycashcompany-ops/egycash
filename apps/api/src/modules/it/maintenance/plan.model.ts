@@ -14,6 +14,11 @@ export interface ItMaintenancePlanDoc extends BaseDocFields {
   lastCompletedAt: Date | null;
   nextDueAt: Date;
   active: boolean;
+  /**
+   * Denormalized from the asset at creation — same anchor, same reason, same precedent as the
+   * order's. A plan is a schedule for one asset, and it is read by that asset's branch.
+   */
+  branchId: Types.ObjectId;
 }
 
 const planSchema = new Schema<ItMaintenancePlanDoc>(
@@ -25,12 +30,14 @@ const planSchema = new Schema<ItMaintenancePlanDoc>(
     lastCompletedAt: { type: Date, default: null },
     nextDueAt: { type: Date, required: true },
     active: { type: Boolean, required: true, default: true },
+    branchId: { type: Schema.Types.ObjectId, required: true },
     ...baseFields,
   },
   baseSchemaOptions,
 );
 
 planSchema.index({ assetId: 1, active: 1 }, { name: 'ix_asset_active' });
+planSchema.index({ branchId: 1, active: 1 }, { name: 'ix_branch_active' });
 // THE SWEEP INDEX (§4.6): "active plans due within the horizon", the only question it asks.
 planSchema.index(
   { nextDueAt: 1 },

@@ -33,6 +33,15 @@ export interface ItMaintenanceOrderDoc extends BaseDocFields {
   cost: number | null;
   summary: string | null;
   assetStatusBefore: ItAssetStatus | null;
+  /**
+   * Denormalized from the asset at creation, so "this branch's maintenance board" needs no join —
+   * the `it_asset_assignments.branchId` precedent, and for the same reason (§7: `branchId` on the
+   * asset is the anchor a branch-scoped technician reads through).
+   *
+   * NOT re-synced when the asset later transfers branches. Like an assignment row, an order records
+   * where the work was RAISED; retro-stamping it would rewrite which branch did the repair.
+   */
+  branchId: Types.ObjectId;
 }
 
 const orderSchema = new Schema<ItMaintenanceOrderDoc>(
@@ -56,6 +65,7 @@ const orderSchema = new Schema<ItMaintenanceOrderDoc>(
     cost: { type: Number, default: null },
     summary: { type: String, default: null },
     assetStatusBefore: { type: String, enum: [...IT_ASSET_STATUSES, null], default: null },
+    branchId: { type: Schema.Types.ObjectId, required: true },
     ...baseFields,
   },
   baseSchemaOptions,
@@ -64,6 +74,8 @@ const orderSchema = new Schema<ItMaintenanceOrderDoc>(
 // The code is permanent and never reused (FR-1) — unique across deleted rows too.
 orderSchema.index({ orderCode: 1 }, { unique: true, name: 'ux_order_code' });
 orderSchema.index({ assetId: 1, status: 1 }, { name: 'ix_asset_status' });
+// The branch board: "what is open in my branch", the scoped list's own index.
+orderSchema.index({ branchId: 1, status: 1 }, { name: 'ix_branch_status' });
 orderSchema.index({ ticketId: 1 }, { name: 'ix_ticket', sparse: true });
 // §4.6's idempotency question: "does this plan already have an order that is not finished?".
 orderSchema.index(

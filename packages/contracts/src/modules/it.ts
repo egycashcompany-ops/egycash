@@ -463,6 +463,15 @@ export const ItEvents = {
   MaintenanceOrderCreated: 'it.maintenanceOrder.created',
   MaintenanceOrderCompleted: 'it.maintenanceOrder.completed',
   SparePartBelowMin: 'it.sparePart.belowMin',
+  // §8.1 names the warranty pair `it.asset.warrantyExpiring` / `.warrantyExpired`. Corrected to an
+  // `assetWarranty` ENTITY (§17), the same rule IT-4 applied: the noun belongs to the entity, not
+  // to the action — and this way both reuse the `expiring` / `expired` action words the catalog
+  // already has instead of inventing two more that nothing else would ever use.
+  AssetWarrantyExpiring: 'it.assetWarranty.expiring',
+  AssetWarrantyExpired: 'it.assetWarranty.expired',
+  LicenseExpiring: 'it.license.expiring',
+  LicenseExpired: 'it.license.expired',
+  LicenseSeatsExceeded: 'it.license.seatsExceeded',
 } as const;
 export type ItEventName = (typeof ItEvents)[keyof typeof ItEvents];
 
@@ -792,6 +801,10 @@ export const ItSettingKeys = {
   TicketAutoCloseDays: 'it.ticket.autoCloseDays',
   /** How far ahead the preventive sweep looks for due plans (§4.6, §8.3). */
   PreventiveHorizonDays: 'it.maintenance.preventiveHorizonDays',
+  /** Days before a warranty ends that `it.assetWarranty.expiring` fires. 0 disables it. */
+  WarrantyWarnDays: 'it.warranty.warnDays',
+  /** Days before a license expires that `it.license.expiring` fires. 0 disables it. */
+  LicenseWarnDays: 'it.license.warnDays',
 } as const;
 export type ItSettingKey = (typeof ItSettingKeys)[keyof typeof ItSettingKeys];
 
@@ -1101,3 +1114,235 @@ export const ItSparePartBelowMinPayloadV1 = z.object({
   minQty: z.number().int(),
 });
 export type ItSparePartBelowMinPayload = z.infer<typeof ItSparePartBelowMinPayloadV1>;
+
+// ── IT-5: software products, installations and licenses (design §2.8) ───────
+//
+// A product NAME is a plain string, not a LocalizedString: "Microsoft Office" is a proper noun
+// that no locale translates. Same reasoning as the vendor's name above, and the reason products
+// are their own collection rather than a third `it_catalog_items` kind — that collection's names
+// are localized and its rows carry no publisher.
+
+export interface ItSoftwareProductDto {
+  id: string;
+  name: string;
+  publisher: string | null;
+  active: boolean;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const softwareProductCore = {
+  name: z.string().trim().min(1).max(200),
+  publisher: z.string().trim().max(200).optional(),
+};
+
+export const CreateItSoftwareProductSchema = z.object(softwareProductCore).strict();
+export type CreateItSoftwareProduct = z.infer<typeof CreateItSoftwareProductSchema>;
+
+export const UpdateItSoftwareProductSchema = z
+  .object({
+    name: softwareProductCore.name.optional(),
+    publisher: z.string().trim().max(200).nullable().optional(),
+    active: z.boolean().optional(),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type UpdateItSoftwareProduct = z.infer<typeof UpdateItSoftwareProductSchema>;
+
+export const ListItSoftwareProductsQuerySchema = PaginationQuerySchema.extend({
+  /** Present from day one — a product picker searches the server (ADR-019 rule 5, §12). */
+  search: z.string().trim().max(200).optional(),
+  active: booleanQuery().optional(),
+}).strict();
+export type ListItSoftwareProductsQuery = z.infer<typeof ListItSoftwareProductsQuerySchema>;
+
+// ── Licenses ────────────────────────────────────────────────────────────────
+
+/**
+ * The four states a license can read as. DERIVED from `expiresAt` and the warn window (design §6:
+ * "no stored state") — there is no status field, no transition and no named action, because a date
+ * passing is not something anyone does.
+ */
+export const IT_LICENSE_STATES = ['perpetual', 'active', 'expiringSoon', 'expired'] as const;
+export const ItLicenseStateSchema = z.enum(IT_LICENSE_STATES);
+export type ItLicenseState = z.infer<typeof ItLicenseStateSchema>;
+
+export interface ItLicensePurchaseDto {
+  vendorId: string | null;
+  date: string | null;
+  cost: number | null;
+  invoiceRef: string | null;
+}
+
+export interface ItLicenseDto {
+  id: string;
+  productId: string;
+  licenseKey: string | null;
+  /** `null` = unlimited seats. */
+  seats: number | null;
+  purchase: ItLicensePurchaseDto | null;
+  /** `null` = perpetual. */
+  expiresAt: string | null;
+  notes: string | null;
+  /**
+   * COMPUTED, never stored (FR-10): the count of installations that reference this license and
+   * have not been removed. A stored copy would drift the first time an installation was removed
+   * by any path that forgot to decrement it.
+   */
+  seatsUsed: number;
+  /** Derived from `expiresAt` at read time — see `IT_LICENSE_STATES`. */
+  state: ItLicenseState;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const ItLicensePurchaseSchema = z
+  .object({
+    vendorId: objectId().nullable().optional(),
+    date: z.coerce.date().nullable().optional(),
+    cost: z.number().min(0).max(1_000_000_000).nullable().optional(),
+    invoiceRef: z.string().trim().max(100).nullable().optional(),
+  })
+  .strict();
+
+const licenseCore = {
+  productId: objectId(),
+  licenseKey: z.string().trim().max(500).optional(),
+  /** Absent → unlimited. A zero-seat license is a license nobody may use, which is not a license. */
+  seats: z.number().int().min(1).max(1_000_000).optional(),
+  purchase: ItLicensePurchaseSchema.optional(),
+  /** Absent → perpetual. */
+  expiresAt: z.coerce.date().optional(),
+  notes: z.string().trim().max(2000).optional(),
+};
+
+export const CreateItLicenseSchema = z.object(licenseCore).strict();
+export type CreateItLicense = z.infer<typeof CreateItLicenseSchema>;
+
+/**
+ * `productId` is fixed at creation: re-pointing a license would move every seat it has already
+ * issued to a product those installations never used. `seatsUsed` and `state` are derived and
+ * appear on no write schema at all.
+ */
+export const UpdateItLicenseSchema = z
+  .object({
+    licenseKey: z.string().trim().max(500).nullable().optional(),
+    seats: z.number().int().min(1).max(1_000_000).nullable().optional(),
+    purchase: ItLicensePurchaseSchema.nullable().optional(),
+    expiresAt: z.coerce.date().nullable().optional(),
+    notes: z.string().trim().max(2000).nullable().optional(),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type UpdateItLicense = z.infer<typeof UpdateItLicenseSchema>;
+
+export const ListItLicensesQuerySchema = PaginationQuerySchema.extend({
+  search: z.string().trim().max(200).optional(),
+  productId: objectId().optional(),
+  vendorId: objectId().optional(),
+  /** Filter on the DERIVED state — the sweep's queryable twin (§11). */
+  state: ItLicenseStateSchema.optional(),
+  /** `true` → seats issued beyond the licensed count. A report, never a block (FR-10). */
+  overSeats: booleanQuery().optional(),
+}).strict();
+export type ListItLicensesQuery = z.infer<typeof ListItLicensesQuerySchema>;
+
+// ── Installations ───────────────────────────────────────────────────────────
+
+/**
+ * The design (§2.8) calls the software's version string `version`. On the wire it is
+ * `softwareVersion`, because `version` is the platform's optimistic-concurrency field on EVERY
+ * DTO and every update schema — the `FileDto` precedent, which documents its `version` as "the
+ * METADATA document, not the content version" for exactly this reason. Two different numbers
+ * under one name is the kind of collision a generic client resolves by corrupting data.
+ */
+export interface ItSoftwareInstallationDto {
+  id: string;
+  assetId: string;
+  productId: string;
+  softwareVersion: string | null;
+  licenseId: string | null;
+  installedAt: string;
+  /** `null` while the software is still on the machine. The row survives removal (history). */
+  removedAt: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const CreateItSoftwareInstallationSchema = z
+  .object({
+    assetId: objectId(),
+    productId: objectId(),
+    softwareVersion: z.string().trim().max(50).optional(),
+    licenseId: objectId().optional(),
+    installedAt: z.coerce.date().optional(),
+  })
+  .strict();
+export type CreateItSoftwareInstallation = z.infer<typeof CreateItSoftwareInstallationSchema>;
+
+/**
+ * `assetId` and `productId` are fixed at creation — moving an installation to another machine is
+ * a removal and a new install, not an edit, and the partial unique index depends on the pair
+ * being stable. `removedAt` is absent because `POST /:id/remove` owns it.
+ */
+export const UpdateItSoftwareInstallationSchema = z
+  .object({
+    softwareVersion: z.string().trim().max(50).nullable().optional(),
+    licenseId: objectId().nullable().optional(),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type UpdateItSoftwareInstallation = z.infer<typeof UpdateItSoftwareInstallationSchema>;
+
+export const RemoveItSoftwareInstallationSchema = z
+  .object({ removedAt: z.coerce.date().optional(), note: z.string().trim().max(2000).optional() })
+  .strict();
+export type RemoveItSoftwareInstallation = z.infer<typeof RemoveItSoftwareInstallationSchema>;
+
+export const ListItSoftwareInstallationsQuerySchema = PaginationQuerySchema.extend({
+  assetId: objectId().optional(),
+  productId: objectId().optional(),
+  licenseId: objectId().optional(),
+  /** `true` → still installed; `false` → removed. Reads `removedAt`, never a stored status. */
+  active: booleanQuery().optional(),
+}).strict();
+export type ListItSoftwareInstallationsQuery = z.infer<
+  typeof ListItSoftwareInstallationsQuerySchema
+>;
+
+// ── IT-5 events (§8.1, entity naming per §17) ───────────────────────────────
+
+export const ItLicenseExpiringPayloadV1 = z.object({
+  licenseId: objectId(),
+  productId: objectId(),
+  productName: z.string(),
+  expiresAt: z.string(),
+  seats: z.number().int().nullable(),
+});
+export type ItLicenseExpiringPayload = z.infer<typeof ItLicenseExpiringPayloadV1>;
+
+export const ItLicenseExpiredPayloadV1 = ItLicenseExpiringPayloadV1;
+export type ItLicenseExpiredPayload = z.infer<typeof ItLicenseExpiredPayloadV1>;
+
+export const ItLicenseSeatsExceededPayloadV1 = z.object({
+  licenseId: objectId(),
+  productId: objectId(),
+  productName: z.string(),
+  seats: z.number().int(),
+  seatsUsed: z.number().int(),
+});
+export type ItLicenseSeatsExceededPayload = z.infer<typeof ItLicenseSeatsExceededPayloadV1>;
+
+export const ItAssetWarrantyExpiringPayloadV1 = z.object({
+  assetId: objectId(),
+  assetCode: z.string(),
+  warrantyEnd: z.string(),
+  vendorId: objectId().nullable(),
+});
+export type ItAssetWarrantyExpiringPayload = z.infer<typeof ItAssetWarrantyExpiringPayloadV1>;
+
+export const ItAssetWarrantyExpiredPayloadV1 = ItAssetWarrantyExpiringPayloadV1;
+export type ItAssetWarrantyExpiredPayload = z.infer<typeof ItAssetWarrantyExpiredPayloadV1>;

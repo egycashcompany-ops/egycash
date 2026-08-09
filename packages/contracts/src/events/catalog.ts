@@ -150,6 +150,11 @@ import {
   ItMaintenanceOrderCreatedPayloadV1,
   ItMaintenanceOrderCompletedPayloadV1,
   ItSparePartBelowMinPayloadV1,
+  ItAssetWarrantyExpiringPayloadV1,
+  ItAssetWarrantyExpiredPayloadV1,
+  ItLicenseExpiringPayloadV1,
+  ItLicenseExpiredPayloadV1,
+  ItLicenseSeatsExceededPayloadV1,
 } from '../modules/it.js';
 
 // ── The shape a consumer sees ───────────────────────────────────────────────
@@ -590,6 +595,12 @@ export const EVENT_ENTITY_NAMES: Readonly<Record<string, LocalizedString>> = {
   // different thing, so it gets its own entity rather than borrowing a word (§17 naming note).
   maintenanceOrder: { en: 'Maintenance order', ar: 'أمر صيانة' },
   sparePart: { en: 'Spare part', ar: 'قطعة غيار' },
+  // The warranty is its own subject, not an action on the asset (§17). Giving it an entity is
+  // what lets both of its events reuse `expiring` / `expired` below.
+  assetWarranty: { en: 'Asset warranty', ar: 'ضمان أصل' },
+  // Bare `license` is free: Fleet's two are `vehicleLicense` and `driverLicense`, and neither
+  // means a software entitlement.
+  license: { en: 'Software license', ar: 'ترخيص برمجي' },
 };
 
 export const EVENT_ACTION_NAMES: Readonly<Record<string, LocalizedString>> = {
@@ -675,6 +686,9 @@ export const EVENT_ACTION_NAMES: Readonly<Record<string, LocalizedString>> = {
   // `created` and `completed` are already in this vocabulary and mean exactly what IT-4 means by
   // them — reused, not duplicated. Only the stock warning needs a new word.
   belowMin: { en: 'below minimum', ar: 'تحت الحد الأدنى' },
+  // `expiring` and `expired` are already in this vocabulary — Fleet's licenses use both, and they
+  // mean exactly what IT-5 means. Only the seat warning needs a word of its own.
+  seatsExceeded: { en: 'seats exceeded', ar: 'تجاوز عدد المقاعد' },
 };
 
 /**
@@ -1057,6 +1071,11 @@ export const IT_EVENT_PAYLOAD_SCHEMAS: Readonly<Record<ItEventName, z.ZodTypeAny
   [ItEvents.MaintenanceOrderCreated]: ItMaintenanceOrderCreatedPayloadV1,
   [ItEvents.MaintenanceOrderCompleted]: ItMaintenanceOrderCompletedPayloadV1,
   [ItEvents.SparePartBelowMin]: ItSparePartBelowMinPayloadV1,
+  [ItEvents.AssetWarrantyExpiring]: ItAssetWarrantyExpiringPayloadV1,
+  [ItEvents.AssetWarrantyExpired]: ItAssetWarrantyExpiredPayloadV1,
+  [ItEvents.LicenseExpiring]: ItLicenseExpiringPayloadV1,
+  [ItEvents.LicenseExpired]: ItLicenseExpiredPayloadV1,
+  [ItEvents.LicenseSeatsExceeded]: ItLicenseSeatsExceededPayloadV1,
 };
 
 export const IT_EVENT_SOURCE: EventCatalogSource = {

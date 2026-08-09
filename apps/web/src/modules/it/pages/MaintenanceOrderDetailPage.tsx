@@ -21,15 +21,11 @@ import { Skeleton } from '../../../shared/ui/Skeleton';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
 import { CheckIcon, CloseIcon, PlayIcon } from '../../../shared/ui/icons';
 import { formatDate, formatDateTime, formatNumber } from '../../../shared/lib/format';
-import {
-  useItAsset,
-  useItMaintenanceOrder,
-  useItMaintenanceOrderParts,
-  useItSpareParts,
-} from '../api/it-queries';
+import { useItAsset, useItMaintenanceOrder, useItMaintenanceOrderParts } from '../api/it-queries';
 import { MaintenanceStatusBadge } from '../components/MaintenanceStatusBadge';
 import { AssetStatusBadge } from '../components/AssetStatusBadge';
 import { ItUserName } from '../components/ItUserName';
+import { ItSparePartName } from '../components/ItSparePartName';
 import {
   CancelMaintenanceOrderDialog,
   CompleteMaintenanceOrderDialog,
@@ -69,15 +65,6 @@ export const MaintenanceOrderDetailPage = (): JSX.Element => {
   const { data: order, isLoading, isError, error, refetch } = useItMaintenanceOrder(id);
   const asset = useItAsset(order?.assetId ?? '');
   const parts = useItMaintenanceOrderParts(id, order !== undefined);
-  // Names for the ledger rows. The store is a small fixed list, and the alternative — one lookup
-  // per movement — would be several requests to render one panel.
-  const catalogue = useItSpareParts(
-    { pageSize: 100, sortBy: 'name', sortDir: 'asc' },
-    can('itSparePart.view'),
-  );
-  const partName = new Map(
-    (catalogue.data?.items ?? []).map((p) => [p.id, `${p.name} (${p.unit})`]),
-  );
 
   if (isLoading) return <Skeleton className="h-64 w-full" />;
   if (isError || order === undefined) {
@@ -270,9 +257,7 @@ export const MaintenanceOrderDetailPage = (): JSX.Element => {
               <ul className="divide-y divide-slate-100 dark:divide-slate-800">
                 {(parts.data ?? []).map((movement) => (
                   <li key={movement.id} className="flex items-center justify-between gap-3 py-2">
-                    <span className="text-sm text-slate-800 dark:text-slate-100">
-                      {partName.get(movement.partId) ?? movement.partId}
-                    </span>
+                    <ItSparePartName id={movement.partId} />
                     <span className="flex items-center gap-3">
                       <span className="font-mono text-sm text-slate-700 dark:text-slate-200" dir="ltr">
                         {formatNumber(Math.abs(movement.qty), locale)}

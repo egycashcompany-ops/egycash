@@ -4,14 +4,24 @@
 // (FR-2), so neither is ever computed here.
 //
 // IT-1 exposed catalogs, vendors and the asset register; IT-2 added the custody lifecycle and its
-// history; IT-3 added the help desk; IT-4 adds maintenance and the spare-parts store. Export
-// arrives with IT-6 and gets its function then.
+// history; IT-3 added the help desk; IT-4 added maintenance and the spare-parts store; IT-5 adds
+// the software register. Export arrives with IT-6 and gets its function then.
 import {
   type EmployeeDto,
   type FileCategoryDto,
   type FileDto,
   type AssignItAsset,
   type AssignItTicket,
+  type CreateItLicense,
+  type CreateItSoftwareInstallation,
+  type CreateItSoftwareProduct,
+  type ItLicenseDto,
+  type ItSoftwareInstallationDto,
+  type ItSoftwareProductDto,
+  type RemoveItSoftwareInstallation,
+  type UpdateItLicense,
+  type UpdateItSoftwareInstallation,
+  type UpdateItSoftwareProduct,
   type CancelItMaintenanceOrder,
   type CompleteItMaintenanceOrder,
   type CreateItMaintenanceOrder,
@@ -411,3 +421,68 @@ export const listSparePartMovements = (
   params: ItListParams,
 ): Promise<Paginated<ItSparePartMovementDto>> =>
   getPage<ItSparePartMovementDto>(`/it/spare-parts/${id}/movements${buildQuery(params)}`);
+
+// ── Software products (design §2.8) ─────────────────────────────────────────
+export const listSoftwareProducts = (
+  params: ItListParams,
+): Promise<Paginated<ItSoftwareProductDto>> =>
+  getPage<ItSoftwareProductDto>(`/it/software-products${buildQuery(params)}`);
+/** Resolve-by-id for the picker — the other half of ADR-019 rule 5. */
+export const getSoftwareProduct = (id: string): Promise<ItSoftwareProductDto> =>
+  get<ItSoftwareProductDto>(`/it/software-products/${id}`);
+export const createSoftwareProduct = (
+  body: CreateItSoftwareProduct,
+): Promise<ItSoftwareProductDto> => post<ItSoftwareProductDto>('/it/software-products', body);
+export const updateSoftwareProduct = (
+  id: string,
+  body: UpdateItSoftwareProduct,
+): Promise<ItSoftwareProductDto> =>
+  patch<ItSoftwareProductDto>(`/it/software-products/${id}`, body);
+
+// ── Installations ───────────────────────────────────────────────────────────
+//
+// `remove` is a NAMED action, matching the API: uninstalling ends a business record, and a URL
+// that performs it must not be reloadable into a second one.
+
+export const listSoftwareInstallations = (
+  params: ItListParams,
+): Promise<Paginated<ItSoftwareInstallationDto>> =>
+  getPage<ItSoftwareInstallationDto>(`/it/software-installations${buildQuery(params)}`);
+export const getSoftwareInstallation = (id: string): Promise<ItSoftwareInstallationDto> =>
+  get<ItSoftwareInstallationDto>(`/it/software-installations/${id}`);
+export const createSoftwareInstallation = (
+  body: CreateItSoftwareInstallation,
+): Promise<ItSoftwareInstallationDto> =>
+  post<ItSoftwareInstallationDto>('/it/software-installations', body);
+export const updateSoftwareInstallation = (
+  id: string,
+  body: UpdateItSoftwareInstallation,
+): Promise<ItSoftwareInstallationDto> =>
+  patch<ItSoftwareInstallationDto>(`/it/software-installations/${id}`, body);
+export const removeSoftwareInstallation = (
+  id: string,
+  body: RemoveItSoftwareInstallation,
+): Promise<ItSoftwareInstallationDto> =>
+  post<ItSoftwareInstallationDto>(`/it/software-installations/${id}/remove`, body);
+
+// ── Licences ────────────────────────────────────────────────────────────────
+//
+// `seatsUsed` and `state` arrive ON the DTO, derived server-side (FR-10, §6). Nothing here
+// recomputes either — a client that counted its own seats would disagree with the compliance
+// screen the moment a page boundary fell between two installations.
+
+export const listLicenses = (params: ItListParams): Promise<Paginated<ItLicenseDto>> =>
+  getPage<ItLicenseDto>(`/it/licenses${buildQuery(params)}`);
+export const getLicense = (id: string): Promise<ItLicenseDto> =>
+  get<ItLicenseDto>(`/it/licenses/${id}`);
+export const createLicense = (body: CreateItLicense): Promise<ItLicenseDto> =>
+  post<ItLicenseDto>('/it/licenses', body);
+export const updateLicense = (id: string, body: UpdateItLicense): Promise<ItLicenseDto> =>
+  patch<ItLicenseDto>(`/it/licenses/${id}`, body);
+
+/** The rows behind `seatsUsed` — without them an over-seats warning names a problem nobody can act on. */
+export const listLicenseInstallations = (
+  id: string,
+  params: ItListParams,
+): Promise<Paginated<ItSoftwareInstallationDto>> =>
+  getPage<ItSoftwareInstallationDto>(`/it/licenses/${id}/installations${buildQuery(params)}`);

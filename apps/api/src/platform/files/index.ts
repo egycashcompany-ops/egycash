@@ -11,3 +11,12 @@ export {
 } from './file.processors';
 export { buildFilesRouter, buildFileCategoriesRouter } from './file.routes';
 export { type FileDoc } from './file.model';
+export {
+  registerFileEntityAuthorizer,
+  hasFileEntityAuthorizer,
+  clearFileEntityAuthorizers,
+  authorizeFileEntity,
+  AUTHORIZER_TIMEOUT_MS,
+  type FileEntityAuthorizer,
+  type FileAccessIntent,
+} from './file-authorizers';

@@ -29,6 +29,11 @@ import { unitOfWork } from '../kernel/unit-of-work';
 import { fileRepository } from './file.repository';
 import { fileCategoryRepository } from './file-category.repository';
 import { enqueueFileProcessing, hasFileProcessor } from './file.processors';
+import {
+  authorizeFileEntity,
+  hasFileEntityAuthorizer,
+  type FileAccessIntent,
+} from './file-authorizers';
 import { type FileDoc } from './file.model';
 import { type FileCategoryDoc } from './file-category.model';
 import { signedFileUrl } from './signed-url';
@@ -180,6 +185,10 @@ class FileService {
       entityType: fields.entityType,
       entityId: fields.entityId,
     };
+    // ADR-023 — attaching a file to an entity IS a write to that entity. Not in the ADR's table
+    // (which enumerates the paths that read or mutate an EXISTING file), but the same rule: a
+    // caller who may not touch a ticket must not be able to plant a file on it.
+    if (!(await authorizeFileEntity(ctx, entityRef, 'write'))) throw new ForbiddenError();
     const group = await fileRepository.createGroup(entityRef);
     const doc = await this.storeVersion({
       binary,
@@ -218,6 +227,7 @@ class FileService {
   /** Replace = version n+1 in the same group; previous versions stay retrievable. */
   async replace(ctx: AuthContext, fileId: string, binary: UploadedBinary): Promise<FileDoc> {
     const current = await fileRepository.getById(fileId);
+    await this.assertEntityAccess(ctx, current, 'write');
     if (!current.isLatest) {
       throw new BusinessRuleError('Only the latest version of a file can be replaced');
     }
@@ -276,6 +286,9 @@ class FileService {
     },
   ): Promise<FileDoc> {
     const source = await fileRepository.getById(sourceFileId);
+    // ADR-023 — copying READS the source's bytes. Before this, `copy` was the quietest way to get
+    // them: no authorization call at all, and the copy lands under an entityRef the caller chooses.
+    await this.assertEntityAccess(ctx, source, 'read');
     const category = await this.loadActiveCategory(target.categoryId);
     const buffer = await streamToBuffer(await getStorageProvider().getStream(source.storage.key));
     const binary: UploadedBinary = {
@@ -314,16 +327,28 @@ class FileService {
 
   // ── Reads ──────────────────────────────────────────────────────────────────
 
-  async getById(id: string, scope?: ScopeSelector): Promise<FileDoc> {
-    return fileRepository.getById(id, scope);
+  /**
+   * `ctx` is optional ONLY for the internal callers that have already authorized (upload returning
+   * its own row). Every request-driven read passes it, and without it a guarded file is refused —
+   * the safe default for a signature that could otherwise be used to skip the check.
+   */
+  async getById(id: string, scope?: ScopeSelector, ctx?: AuthContext): Promise<FileDoc> {
+    const doc = await fileRepository.getById(id, scope);
+    if (ctx !== undefined) await this.assertEntityAccess(ctx, doc, 'read');
+    else if (this.isGuarded(doc)) throw new NotFoundError();
+    return doc;
   }
 
-  async listVersions(id: string, scope?: ScopeSelector): Promise<FileDoc[]> {
-    const doc = await fileRepository.getById(id, scope);
+  async listVersions(id: string, scope: ScopeSelector | undefined, ctx: AuthContext): Promise<FileDoc[]> {
+    const doc = await this.getById(id, scope, ctx);
     return fileRepository.listVersions(doc.groupId);
   }
 
-  async list(query: ListFilesQuery, scope: ScopeSelector): Promise<Paginated<FileDoc>> {
+  async list(
+    query: ListFilesQuery,
+    scope: ScopeSelector,
+    ctx?: AuthContext,
+  ): Promise<Paginated<FileDoc>> {
     const filter: Record<string, unknown> = {
       isLatest: true,
       status: query.status ?? 'active',
@@ -337,7 +362,7 @@ class FileService {
       const pattern = new RegExp(query.search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
       filter.$or = [{ originalName: pattern }, { displayName: pattern }, { description: pattern }];
     }
-    return fileRepository.list({
+    const page = await fileRepository.list({
       filter: filter as FilterQuery<FileDoc>,
       page: query.page,
       pageSize: query.pageSize,
@@ -346,12 +371,39 @@ class FileService {
       sortableFields: ['uploadedAt', 'size', 'originalName', 'createdAt'],
       scope,
     });
+    // ADR-023 — a listing spans many entities, so guarded rows are FILTERED rather than throwing:
+    // one inaccessible row must not blank a legitimate page. Without a caller no guarded row is
+    // returned at all, which is the safe reading of "nobody asked".
+    if (ctx === undefined) {
+      return { ...page, items: page.items.filter((doc) => !this.isGuarded(doc)) };
+    }
+    // One question per distinct entity, not per row: a ticket with twelve attachments is one
+    // lookup, and the memo also bounds what a wide page can cost.
+    const decisions = new Map<string, Promise<boolean>>();
+    const allowed = await Promise.all(
+      page.items.map((doc) => {
+        const id = `${doc.entityRef.moduleId}/${doc.entityRef.entityType}/${doc.entityRef.entityId}`;
+        let decision = decisions.get(id);
+        if (decision === undefined) {
+          decision = authorizeFileEntity(ctx, doc.entityRef, 'read');
+          decisions.set(id, decision);
+        }
+        return decision;
+      }),
+    );
+    const items = page.items.filter((_doc, index) => allowed[index] === true);
+    // `meta.totalItems` stays the repository's count deliberately: recomputing it would need the
+    // authorizer run over every matching row in the collection, not just this page.
+    return { ...page, items };
   }
 
   // ── Metadata update ────────────────────────────────────────────────────────
 
   async update(ctx: AuthContext, id: string, input: UpdateFile): Promise<FileDoc> {
     const before = await fileRepository.getById(id);
+    // A `visibility` change is exactly why this is a WRITE check: without it, `file.edit` would be
+    // a way to flip a guarded file to `public` and widen what the owning module allows.
+    await this.assertEntityAccess(ctx, before, 'write');
     const set: Record<string, unknown> = {};
     if (input.displayName !== undefined) set.displayName = input.displayName;
     if (input.description !== undefined) set.description = input.description;
@@ -392,6 +444,7 @@ class FileService {
 
   async archive(ctx: AuthContext, id: string): Promise<FileDoc> {
     const before = await fileRepository.getById(id);
+    await this.assertEntityAccess(ctx, before, 'write');
     if (before.status === 'archived') return before;
     const after = await fileRepository.updateById(
       id,
@@ -406,6 +459,7 @@ class FileService {
 
   async restore(ctx: AuthContext, id: string): Promise<FileDoc> {
     const before = await fileRepository.getById(id);
+    await this.assertEntityAccess(ctx, before, 'write');
     if (before.status === 'active') return before;
     const after = await fileRepository.updateById(
       id,
@@ -421,6 +475,7 @@ class FileService {
   // ── Delete (soft by default; permanent is break-glass) ───────────────────
 
   async softDelete(ctx: AuthContext, id: string, scope?: ScopeSelector): Promise<void> {
+    await this.assertEntityAccess(ctx, await fileRepository.getById(id, scope), 'write');
     const doc = await fileRepository.softDeleteById(id, { by: ctx.userId, scope });
     await auditService.record({ entityRef: entityRefOf(id), action: 'delete' });
     await emit(PlatformEvents.FileDeleted, fileEventPayload(doc), { reliable: true });
@@ -435,6 +490,7 @@ class FileService {
   async permanentDelete(ctx: AuthContext, id: string): Promise<void> {
     const doc = await fileRepository.findAnyById(id);
     if (doc === null) throw new NotFoundError();
+    await this.assertEntityAccess(ctx, doc, 'write');
 
     await getStorageProvider().delete(doc.storage.key);
     await fileRepository.hardDelete(doc._id);
@@ -467,30 +523,95 @@ class FileService {
 
   // ── Download (authorized + audited; signed-URL abstraction) ───────────────
 
-  private appSignedUrl(fileId: string, expiresAtEpoch: number): string {
+  /**
+   * The signed payload. For a GUARDED file (ADR-023 · T2) the subject is part of it, which is what
+   * turns the URL from a bearer capability into one person's ticket: a link leaked to a colleague
+   * verifies against THEIR id and fails.
+   */
+  private signaturePayload(fileId: string, expiresAtEpoch: number, userId: string | null): string {
+    return userId === null
+      ? `${fileId}.${expiresAtEpoch}`
+      : `${fileId}.${expiresAtEpoch}.${userId}`;
+  }
+
+  private appSignedUrl(fileId: string, expiresAtEpoch: number, userId: string | null): string {
     return signedFileUrl({
       fileId,
       expiresAtEpoch,
-      signature: hmacSha256(env.STORAGE_SIGNING_SECRET, `${fileId}.${expiresAtEpoch}`),
+      signature: hmacSha256(
+        env.STORAGE_SIGNING_SECRET,
+        this.signaturePayload(fileId, expiresAtEpoch, userId),
+      ),
       basePath: env.BASE_PATH,
       apiPublicUrl: env.API_PUBLIC_URL,
       servesWebApp: env.WEB_STATIC_DIR !== '',
     });
   }
 
-  verifyAppSignature(fileId: string, expiresAtEpoch: number, signature: string): boolean {
+  verifyAppSignature(
+    fileId: string,
+    expiresAtEpoch: number,
+    signature: string,
+    userId: string | null = null,
+  ): boolean {
     if (Number.isNaN(expiresAtEpoch) || expiresAtEpoch * 1000 < Date.now()) return false;
     return safeEqualHex(
-      hmacSha256(env.STORAGE_SIGNING_SECRET, `${fileId}.${expiresAtEpoch}`),
+      hmacSha256(env.STORAGE_SIGNING_SECRET, this.signaturePayload(fileId, expiresAtEpoch, userId)),
       signature,
     );
   }
 
-  /** Authorization: public → any authenticated user; private → file.download. */
+  /** Whether this file's owning entity type is GUARDED by a module authorizer (ADR-023). */
+  private isGuarded(doc: FileDoc): boolean {
+    const ref = doc.entityRef as FileDoc['entityRef'] | undefined;
+    return ref !== undefined && hasFileEntityAuthorizer(ref.moduleId, ref.entityType);
+  }
+
+  /**
+   * ADR-023 — the owning entity decides. THE central gate: every path that can reach a file's
+   * metadata or its bytes calls this, not just download.
+   *
+   * Silent for entity types no module has claimed, so files outside the seam keep the rules they
+   * had. For a guarded entity the answer is final in one direction only: it can refuse a caller
+   * that `visibility` would have allowed, and it can never be overridden by a file-level grant.
+   *
+   * `notFound` is the right shape for reads: the existence of a file attached to an entity the
+   * caller cannot see is itself information. Writes answer 403, because reaching a write path at
+   * all means the caller already proved they can see the file.
+   */
+  private async assertEntityAccess(
+    ctx: AuthContext,
+    doc: FileDoc,
+    intent: FileAccessIntent,
+  ): Promise<void> {
+    if (await authorizeFileEntity(ctx, doc.entityRef, intent)) return;
+    await auditService.record({
+      entityRef: { moduleId: 'platform', entityType: 'user', entityId: ctx.userId },
+      action: 'permissionDenied',
+      changes: [
+        {
+          field: 'fileEntity',
+          old: null,
+          new: `${doc.entityRef.moduleId}/${doc.entityRef.entityType}:${intent}`,
+        },
+      ],
+    });
+    throw intent === 'read' ? new NotFoundError() : new ForbiddenError();
+  }
+
+  /**
+   * Authorization for the BYTES: scanner, then the owning entity (ADR-023), then the file-level
+   * rule (public → any authenticated user; private → `file.download`).
+   *
+   * Order matters. The entity check runs FIRST and independently, so a `public` file attached to a
+   * guarded entity is still refused — otherwise a `file.edit` holder flipping `visibility` would
+   * become a way to publish another module's confidential data.
+   */
   private async authorizeDownload(ctx: AuthContext, doc: FileDoc): Promise<void> {
     if (doc.scanStatus === 'blocked') {
       throw new BusinessRuleError('File is blocked by the virus scanner', ErrorCodes.FILE_BLOCKED);
     }
+    await this.assertEntityAccess(ctx, doc, 'read');
     if (doc.visibility === 'private' && !hasPermission(ctx, 'file.download')) {
       await auditService.record({
         entityRef: { moduleId: 'platform', entityType: 'user', entityId: ctx.userId },
@@ -504,6 +625,7 @@ class FileService {
   /** Authorized byte read for server-side embedding (e.g. branding logos in renders). */
   async readBuffer(ctx: AuthContext, id: string): Promise<{ doc: FileDoc; buffer: Buffer }> {
     const doc = await fileRepository.getById(id);
+    // `authorizeDownload` already asks the owning entity (ADR-023) before the file-level rule.
     await this.authorizeDownload(ctx, doc);
     const buffer = await streamToBuffer(await getStorageProvider().getStream(doc.storage.key));
     return { doc, buffer };
@@ -521,13 +643,19 @@ class FileService {
     // made — server-side everything looks perfect. Unless a deployment has explicitly said its
     // store's origin is allowed, the app signs the URL itself and streams the bytes, which is
     // same-origin under every driver.
-    const presigned = env.STORAGE_PRESIGNED_URLS
-      ? await getStorageProvider().getSignedUrl(doc.storage.key, ttl, {
-          filename: `${doc.displayName}${doc.extension}`,
-          contentType: doc.mime,
-        })
-      : null;
-    const url = presigned ?? this.appSignedUrl(String(doc._id), expiresAtEpoch);
+    // ADR-023 — a provider's presigned URL leaves the application entirely: no subject binding, no
+    // re-check, no revocation. For a guarded entity that would hand back exactly the capability
+    // this ADR exists to remove, so the flag is IGNORED for those files and the app signs instead.
+    const guarded = this.isGuarded(doc);
+    const presigned =
+      env.STORAGE_PRESIGNED_URLS && !guarded
+        ? await getStorageProvider().getSignedUrl(doc.storage.key, ttl, {
+            filename: `${doc.displayName}${doc.extension}`,
+            contentType: doc.mime,
+          })
+        : null;
+    const url =
+      presigned ?? this.appSignedUrl(String(doc._id), expiresAtEpoch, guarded ? ctx.userId : null);
 
     // Every download is individually audited (Security Architecture §5).
     await auditService.record({ entityRef: entityRefOf(id), action: 'download' });
@@ -535,19 +663,39 @@ class FileService {
   }
 
   /** Streaming behind an app-signed capability URL (local/railway drivers). */
+  /**
+   * Streaming behind the app-signed capability URL.
+   *
+   * Two regimes, and which one applies is a property of the FILE, not of the request (ADR-023):
+   *
+   *   * unguarded — unchanged: an unauthenticated capability URL, which is what lets a branding
+   *     logo load in an `<img>` from another origin;
+   *   * guarded   — the caller must be authenticated, must be the subject the ticket was minted
+   *     for, and the owning module is asked AGAIN here. That last part is what makes a revoked
+   *     grant take effect immediately instead of at ticket expiry.
+   */
   async openSignedStream(
     fileId: string,
     expiresAtEpoch: number,
     signature: string,
+    ctx: AuthContext | null = null,
   ): Promise<{ doc: FileDoc; stream: NodeJS.ReadableStream }> {
-    if (!this.verifyAppSignature(fileId, expiresAtEpoch, signature)) {
-      throw new AppError(ErrorCodes.FILE_SIGNATURE_INVALID, 403, 'Signed URL invalid or expired');
-    }
     const doc = await fileRepository.findById(fileId);
     if (doc === null) throw new NotFoundError();
+    const guarded = this.isGuarded(doc);
+    // A guarded file's ticket is only valid for its subject; an unguarded one keeps the bearer
+    // signature. Checking the file first is deliberate — the signature shape depends on it.
+    const subject = guarded ? (ctx?.userId ?? null) : null;
+    if (guarded && ctx === null) {
+      throw new AppError(ErrorCodes.FILE_SIGNATURE_INVALID, 403, 'Signed URL requires a session');
+    }
+    if (!this.verifyAppSignature(fileId, expiresAtEpoch, signature, subject)) {
+      throw new AppError(ErrorCodes.FILE_SIGNATURE_INVALID, 403, 'Signed URL invalid or expired');
+    }
     if (doc.scanStatus === 'blocked') {
       throw new BusinessRuleError('File is blocked by the virus scanner', ErrorCodes.FILE_BLOCKED);
     }
+    if (guarded && ctx !== null) await this.assertEntityAccess(ctx, doc, 'read');
     const stream = await getStorageProvider().getStream(doc.storage.key);
     return { doc, stream };
   }

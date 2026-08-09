@@ -75,8 +75,15 @@ Base: `/api/v1/platform/files` · standard envelope, pagination, error codes.
 
 ¹ Download authorization is **visibility-aware**: `private` requires `file.download`
 (denials audited); `public` allows any authenticated user. Files blocked by the virus
-scanner are not downloadable (`FILE_BLOCKED`). Per-owning-entity authorization deepens
-when the first module consumer lands (files currently scope `own` = uploader).
+scanner are not downloadable (`FILE_BLOCKED`).
+
+**Entity-derived authorization (ADR-023).** A module may register a `FileEntityAuthorizer` for its
+entity types in its manifest; the service then asks that module — on every read and write path, not
+just download — whether the caller may reach files owned by that entity. For such files the
+decision is final: `visibility` can narrow access but never widen it, download tickets are bound to
+the requesting user and re-checked when the bytes are streamed, and provider presigned URLs are not
+issued. Behaviour is **fail-closed** for registered entity types (a false answer, a throw or a
+200 ms timeout all deny) and **unchanged** for every entity type with no authorizer registered.
 
 Error codes: `FILE_TYPE_NOT_ALLOWED`, `FILE_TOO_LARGE`, `FILE_BLOCKED`,
 `FILE_SIGNATURE_INVALID`, `FILE_CATEGORY_INACTIVE` (+ standard codes).

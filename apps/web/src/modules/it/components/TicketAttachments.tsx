@@ -25,8 +25,10 @@ import { DownloadIcon, FileIcon, UploadIcon } from '../../../shared/ui/icons';
 import { formatDateTime } from '../../../shared/lib/format';
 import { get } from '../../../shared/lib/api-client';
 import {
+  useItCommentAttachments,
   useItFileCategories,
   useItTicketAttachments,
+  useUploadItCommentAttachment,
   useUploadItTicketAttachment,
 } from '../api/it-queries';
 
@@ -151,6 +153,94 @@ export const TicketAttachments = ({ ticketId }: { ticketId: string }): JSX.Eleme
             </li>
           ))}
         </ul>
+      )}
+    </div>
+  );
+};
+
+/**
+ * One comment's attachments, rendered inside its stream row.
+ *
+ * Compact by design — a note with a screenshot is still a note. It reads through the same platform
+ * surface with `entityType: 'ticketComment'`, and the SERVER refuses the whole list for anyone who
+ * may not read the parent comment (ADR-023 + FR-7). An internal note's file is therefore
+ * unreachable even to a caller who somehow learns its id — a guarantee this panel does not provide
+ * and must never be mistaken for.
+ */
+export const CommentAttachments = ({ commentId }: { commentId: string }): JSX.Element | null => {
+  const t = useT();
+  const can = useCan();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const canView = can('file.view');
+  const canUpload = can('file.create');
+
+  const files = useItCommentAttachments(commentId, canView);
+  const categories = useItFileCategories(canUpload);
+  const uploadFile = useUploadItCommentAttachment();
+  const categoryId = categories.data?.items[0]?.id ?? '';
+  const rows = files.data?.items ?? [];
+
+  const onPick = async (file: File | undefined): Promise<void> => {
+    if (file === undefined || categoryId === '') return;
+    setBusy(true);
+    try {
+      await uploadFile.mutateAsync({ commentId, file, categoryId });
+      toast.success(t('it.tickets.attachmentAdded'));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t('common.error'));
+    } finally {
+      setBusy(false);
+      if (inputRef.current !== null) inputRef.current.value = '';
+    }
+  };
+
+  const download = async (file: FileDto): Promise<void> => {
+    try {
+      const ticket = await get<{ url: string }>(`/platform/files/${file.id}/download?mode=ticket`);
+      window.open(ticket.url, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t('common.error'));
+    }
+  };
+
+  // Nothing to show and nothing to offer — stay out of the row entirely.
+  if (!canView || (rows.length === 0 && !canUpload)) return null;
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2">
+      {rows.map((file) => (
+        <button
+          key={file.id}
+          type="button"
+          onClick={() => void download(file)}
+          title={t('common.download')}
+          className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800/60"
+        >
+          <FileIcon className="h-3.5 w-3.5 shrink-0" />
+          <span className="truncate">{file.displayName}</span>
+        </button>
+      ))}
+      {canUpload && (
+        <>
+          <input
+            ref={inputRef}
+            type="file"
+            className="sr-only"
+            aria-label={t('it.tickets.addAttachment')}
+            onChange={(e) => void onPick(e.target.files?.[0])}
+          />
+          <Button
+            size="sm"
+            variant="ghost"
+            leftIcon={<UploadIcon className="h-3.5 w-3.5" />}
+            loading={busy}
+            disabled={categoryId === ''}
+            onClick={() => inputRef.current?.click()}
+          >
+            {t('it.tickets.addAttachment')}
+          </Button>
+        </>
       )}
     </div>
   );

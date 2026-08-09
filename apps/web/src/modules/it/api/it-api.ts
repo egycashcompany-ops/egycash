@@ -261,6 +261,35 @@ export const uploadTicketAttachment = (
   return upload<FileDto>('/platform/files', form);
 };
 
+/**
+ * One comment's attachments. Same platform surface, a different `entityType` — and the server now
+ * refuses these for anyone who may not read the parent comment (ADR-023 + FR-7), so an internal
+ * note's file is unreachable even with its id.
+ */
+export const listCommentAttachments = (commentId: string): Promise<Paginated<FileDto>> =>
+  getPage<FileDto>(
+    `/platform/files${buildQuery({
+      moduleId: 'it',
+      entityType: 'ticketComment',
+      entityId: commentId,
+      pageSize: 20,
+    })}`,
+  );
+
+export const uploadCommentAttachment = (
+  commentId: string,
+  file: File,
+  categoryId: string,
+): Promise<FileDto> => {
+  const form = new FormData();
+  form.append('file', file);
+  form.append('moduleId', 'it');
+  form.append('entityType', 'ticketComment');
+  form.append('entityId', commentId);
+  form.append('categoryId', categoryId);
+  return upload<FileDto>('/platform/files', form);
+};
+
 /** The category the upload must name. Read once and cached — it is platform reference data. */
 export const listFileCategories = (): Promise<Paginated<FileCategoryDto>> =>
   getPage<FileCategoryDto>(`/platform/file-categories${buildQuery({ pageSize: 100 })}`);

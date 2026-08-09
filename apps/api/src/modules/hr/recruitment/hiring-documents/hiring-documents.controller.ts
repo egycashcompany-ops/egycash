@@ -117,7 +117,15 @@ export const replaceHiringDocument = async (req: Request, res: Response): Promis
 export const listHiringDocumentVersions = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { params } = validated<never, never, TypeParam>(req);
-  ok(res, await hiringDocumentsService.listDocumentVersions(params.id, params.typeId, scopeSelector(ctx, 'hiringDocuments.view')));
+  ok(
+    res,
+    await hiringDocumentsService.listDocumentVersions(
+      params.id,
+      params.typeId,
+      scopeSelector(ctx, 'hiringDocuments.view'),
+      ctx,
+    ),
+  );
 };
 
 export const completeHiringDocuments = async (req: Request, res: Response): Promise<void> => {

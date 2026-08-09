@@ -14,7 +14,7 @@ import { env } from '../../infrastructure/config/env';
 import { asyncHandler } from '../../infrastructure/http/async-handler';
 import { validate } from '../../infrastructure/http/validate';
 import { AppError } from '../../shared/errors';
-import { authenticate } from '../auth';
+import { authenticate, authenticateOptional } from '../auth';
 import { authorize } from '../rbac';
 import {
   CreateFileCategorySchema,
@@ -78,8 +78,13 @@ export const buildFilesRouter = (): Router => {
   const router = Router();
 
   // Signed capability URL — must be declared before '/:id' routes.
+  // Unauthenticated BY DESIGN for ordinary files — the capability is in the URL. `Optional` auth
+  // is what lets a GUARDED file (ADR-023) additionally prove the caller is the ticket's subject
+  // and pass the owning module's re-check, without breaking the anonymous embed for everything
+  // else. A token that is offered must still be valid.
   router.get(
     '/signed/:id',
+    authenticateOptional,
     validate({ params: FileIdParamSchema, query: SignedQuerySchema }),
     asyncHandler(streamSignedFile),
   );

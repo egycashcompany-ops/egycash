@@ -401,6 +401,37 @@ export const useItFileCategories = (enabled = true) =>
     enabled,
   });
 
+/**
+ * One comment's attachments. Fetched only for comments the stream returned — and the server
+ * enforces the same rule again, so this is convenience, not the boundary.
+ */
+export const useItCommentAttachments = (commentId: string, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'attachments', { comment: commentId }),
+    queryFn: () => api.listCommentAttachments(commentId),
+    enabled: enabled && commentId !== '',
+  });
+
+export const useUploadItCommentAttachment = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      commentId,
+      file,
+      categoryId,
+    }: {
+      commentId: string;
+      file: File;
+      categoryId: string;
+    }) => api.uploadCommentAttachment(commentId, file, categoryId),
+    onSuccess: (_file, variables) => {
+      void qc.invalidateQueries({
+        queryKey: listKey(MODULE, 'attachments', { comment: variables.commentId }),
+      });
+    },
+  });
+};
+
 export const useUploadItTicketAttachment = () => {
   const qc = useQueryClient();
   return useMutation({

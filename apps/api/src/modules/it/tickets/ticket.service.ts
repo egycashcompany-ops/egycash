@@ -127,7 +127,9 @@ class ItTicketService {
         metadata: input.metadata ?? {},
         notes: input.notes ?? null,
       } as Partial<ItTicketEventDoc>,
-      { by: ctx === null ? 'system' : ctx.userId, session },
+      // Same rule as the sweeps: a system write is `by: null`, never a sentinel string — the base
+      // repository casts `by` to an ObjectId and would throw on anything else.
+      { by: ctx === null ? null : ctx.userId, session },
     );
   }
 

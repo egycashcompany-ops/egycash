@@ -995,7 +995,8 @@ describe('the auto-close sweep (§4.4)', () => {
         .patch('/api/v1/platform/settings/values')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({ key: ItSettingKeys.TicketAutoCloseDays, scope: 'organization', value });
-      expect(res.status).toBe(200);
+      // The settings write answers 204 — it returns no body.
+      expect(res.status).toBe(204);
     };
     const before = await settingsService.resolve<number>(ItSettingKeys.TicketAutoCloseDays, {
       userId: null,
@@ -1124,9 +1125,12 @@ describe('the ticket queue', () => {
     expect([...ascending].sort()).toEqual(ascending);
     const descending = await codes('sortBy=ticketCode&sortDir=desc');
     expect(descending).toEqual([...ascending].reverse());
-    // Undeclared → the default field, i.e. NOT the requested order.
-    const ignored = await codes('sortBy=title&sortDir=asc');
-    expect(ignored).not.toEqual(ascending);
+    // An undeclared field is IGNORED and `createdAt` is used instead — asserted by showing the
+    // two answers are identical. (Comparing it against the ticketCode order would prove nothing
+    // here: these tickets were created in code order, so the two orderings coincide.)
+    expect(await codes('sortBy=title&sortDir=asc')).toEqual(
+      await codes('sortBy=createdAt&sortDir=asc'),
+    );
   });
 
   it('refuses the queue to someone with no ticket grant', async () => {

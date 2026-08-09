@@ -15,9 +15,16 @@ class ItTicketEventRepository extends BaseRepository<ItTicketEventDoc> {
     super(ItTicketEventModel);
   }
 
+  /**
+   * @param options.by the acting user, or `null` for a SYSTEM write (the sweeps).
+   *
+   * `string | null` matches `WriteMeta` deliberately. Narrowing it to `string` is what made the
+   * sweeps reach for a `'system'` sentinel, which `BaseRepository.create` then tried to cast to an
+   * ObjectId and threw on — the type has to admit the case that actually exists.
+   */
   async append(
     entry: Partial<ItTicketEventDoc>,
-    options: { by: string; session?: ClientSession | undefined },
+    options: { by: string | null; session?: ClientSession | undefined },
   ): Promise<ItTicketEventDoc> {
     return this.create(entry, options);
   }

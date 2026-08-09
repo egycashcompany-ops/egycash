@@ -50,7 +50,10 @@ const stampBreach = async (ticket: ItTicketDoc, phase: ItSlaPhase, at: Date): Pr
       actorName: '',
       metadata: { phase, dueAt: dueAt.toISOString() },
     } as never,
-    { by: 'system' },
+    // `null`, not a 'system' sentinel: `BaseRepository.create` casts `by` to an ObjectId, so any
+    // non-id string throws. Null IS how the platform records "no human actor" — every other
+    // module's system write does the same, and `actorUserId: null` on the row says it again.
+    { by: null },
   );
   await auditService.record({
     entityRef: entityRef(String(ticket._id)),

@@ -38,10 +38,20 @@ const ensureUser = async (
 };
 
 export const seedDevData = async (): Promise<{ adminId: string; hrId: string }> => {
+  // Super Admin holds THE WHOLE REGISTRY — platform plus every registered module — not just the
+  // platform catalog.
+  //
+  // The distinction only shows up on a fresh database, and it used to be invisible. The boot sync
+  // keeps this role equal to the catalog, but it can only update a role that already EXISTS, and on
+  // a first run the role is created here, moments later. Seeding it from `platformPermissions` left
+  // the administrator holding nothing in HR, Fleet or IT until the next API start re-ran the sync
+  // and widened it — every module screen 403ing in between, on the one account that is supposed to
+  // be able to open everything. Reading the registry instead closes that window: the seed grants
+  // what boot just registered, which is the same set the sync would converge on anyway.
   const superAdminRole = await rbacService.ensureSystemRole(
     'super-admin',
     { en: 'Super Admin', ar: 'مدير النظام الأعلى' },
-    platformPermissions.map((p) => p.key),
+    rbacService.registeredPermissionKeys(),
   );
   const platformAdminRole = await rbacService.ensureSystemRole(
     'platform-admin',

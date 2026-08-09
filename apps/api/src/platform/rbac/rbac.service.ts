@@ -93,6 +93,17 @@ class RbacService {
     return this.registryKeys.has(key);
   }
 
+  /**
+   * Every permission key the boot sync put in the registry — the platform catalog plus each
+   * registered module's. Empty before `syncPermissionRegistry` has run.
+   *
+   * This is what "everything" means for a role that is supposed to hold everything, and it can only
+   * be known at runtime: the module catalog depends on which manifests this deployment registered.
+   */
+  registeredPermissionKeys(): string[] {
+    return [...this.registryKeys];
+  }
+
   async listPermissions(): Promise<PermissionDto[]> {
     const docs = await PermissionModel.find()
       .sort({ moduleId: 1, key: 1 })

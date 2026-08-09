@@ -86,7 +86,15 @@ describe('seed → password login (regression)', () => {
 
     const me = await request(app).get('/api/v1/auth/me').set('Authorization', `Bearer ${token}`);
     expect(me.status).toBe(200);
-    expect((me.body as { data: MeDto }).data.permissions['user.view']).toBe('organization');
+    const permissions = (me.body as { data: MeDto }).data.permissions;
+    expect(permissions['user.view']).toBe('organization');
+    // MODULE permissions too, straight out of a first run. The seed used to grant this role the
+    // platform catalog alone, so on a fresh database the administrator could not open a single
+    // module screen until the next API start widened the role — invisible while navigation was
+    // unfiltered, and the reason the sidebar assertion below is worth having.
+    expect(permissions['applicant.view'], 'HR').toBe('organization');
+    expect(permissions['fleetVehicle.view'], 'Fleet').toBe('organization');
+    expect(permissions['itAsset.view'], 'IT').toBe('organization');
   });
 
   it('the seeded admin has a functional data-driven sidebar out of the box (first-run bootstrap)', async () => {

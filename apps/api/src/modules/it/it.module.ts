@@ -1,10 +1,11 @@
-// IT module manifest (frozen design docs/12-planning/it-module-design.md v1.2, slices IT-1…IT-4).
+// IT module manifest (frozen design docs/12-planning/it-module-design.md v1.2, slices IT-1…IT-5).
 // Delivered incrementally exactly as HR and Fleet were: IT-1 registered the catalogs, vendors and
 // the asset register; IT-2 added the custody lifecycle, its append-only history and the HR-exit
 // subscription; IT-3 adds the help desk — priorities carrying their SLA targets, tickets, the one
 // stream that is both history and conversation, and the SLA + auto-close sweeps; IT-4 adds
-// maintenance — preventive plans, work orders and the spare-parts ledger (ADR-024). IT-5 and IT-6
-// add software and dashboards — each extending THIS manifest, never adding a second one.
+// maintenance — preventive plans, work orders and the spare-parts ledger (ADR-024); IT-5 adds the
+// software register — products, installations, licences and the expiry sweep (ADR-025). IT-6 adds
+// dashboards — extending THIS manifest, never adding a second one.
 import { declarePermissions, type PermissionDef } from '@ecms/contracts';
 import { type ModuleManifest } from '../../platform/kernel/module-registry';
 import { buildItCatalogRouter } from './catalog-items';
@@ -16,6 +17,9 @@ import {
   preventiveMaintenanceSweep,
 } from './maintenance';
 import { buildItSparePartsRouter } from './spare-parts';
+import { buildItSoftwareInstallationsRouter, buildItSoftwareProductsRouter } from './software';
+import { buildItLicensesRouter } from './licenses';
+import { expirySweep } from './shared/expiry-sweeps';
 import { registerItSettings } from './it.settings';
 import {
   buildItTicketPrioritiesRouter,
@@ -160,6 +164,37 @@ const sparePartPermissions = declarePermissions(
   ],
 );
 
+const softwarePermissions = declarePermissions(
+  'it',
+  'itSoftware',
+  { en: 'IT software', ar: 'برمجيات تقنية المعلومات' },
+  ['view'],
+  [
+    {
+      // ONE grant for products AND installations (§7). They are a single operational surface —
+      // whoever curates the catalogue is who records what runs where — and it deliberately does
+      // NOT widen asset access: the service loads the asset through this grant's own scope.
+      action: 'manage',
+      name: { en: 'Manage software products and installations', ar: 'إدارة البرمجيات والتنصيبات' },
+    },
+  ],
+);
+
+const licensePermissions = declarePermissions(
+  'it',
+  'itLicense',
+  { en: 'IT licences', ar: 'تراخيص البرمجيات' },
+  // `view` returns the licence KEY in plain text — §13-Q5's adopted decision. The grant IS the
+  // boundary, which is why no reveal endpoint exists to be gated separately.
+  ['view'],
+  [
+    {
+      action: 'manage',
+      name: { en: 'Manage software licences', ar: 'إدارة تراخيص البرمجيات' },
+    },
+  ],
+);
+
 export const itPermissions: PermissionDef[] = [
   ...assetPermissions,
   ...catalogPermissions,
@@ -169,6 +204,8 @@ export const itPermissions: PermissionDef[] = [
   ...maintenancePermissions,
   ...maintenancePlanPermissions,
   ...sparePartPermissions,
+  ...softwarePermissions,
+  ...licensePermissions,
 ];
 
 export const itModule: ModuleManifest = {
@@ -187,6 +224,9 @@ export const itModule: ModuleManifest = {
     { prefix: '/it/maintenance-orders', router: buildItMaintenanceOrdersRouter() },
     { prefix: '/it/maintenance-plans', router: buildItMaintenancePlansRouter() },
     { prefix: '/it/spare-parts', router: buildItSparePartsRouter() },
+    { prefix: '/it/software-products', router: buildItSoftwareProductsRouter() },
+    { prefix: '/it/software-installations', router: buildItSoftwareInstallationsRouter() },
+    { prefix: '/it/licenses', router: buildItLicensesRouter() },
   ],
   collections: [
     'it_assets',
@@ -202,6 +242,12 @@ export const itModule: ModuleManifest = {
     'it_maintenance_orders',
     'it_spare_parts',
     'it_spare_part_movements',
+    'it_software_products',
+    'it_software_installations',
+    'it_licenses',
+    // Operational bookkeeping, not business data (ADR-025) — declared because the manifest is the
+    // module's honest inventory of what it writes, whatever the rows mean.
+    'it_sweep_marks',
   ],
   scheduledTasks: [
     {
@@ -235,6 +281,19 @@ export const itModule: ModuleManifest = {
       ownerService: 'it',
       handler: async () => {
         await preventiveMaintenanceSweep();
+      },
+    },
+    {
+      // §4.8 — warranties and licences in one daily pass. A pure announcer: it changes no business
+      // state and writes only its own marks, so running it twice announces nothing twice
+      // (ADR-025). 04:20 sits before the two 04:2x/04:3x sweeps, as the design lays them out.
+      key: 'it.expirySweep',
+      description:
+        'Announce warranties and licences that have expired or fall inside their warn window (§4.8)',
+      cron: '20 4 * * *',
+      ownerService: 'it',
+      handler: async () => {
+        await expirySweep();
       },
     },
   ],

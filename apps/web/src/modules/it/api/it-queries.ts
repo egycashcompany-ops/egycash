@@ -6,10 +6,14 @@
 // kept its own copy would show a stale truth the moment either changed.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  type AssignItAsset,
   type CreateItAsset,
   type CreateItCatalogItem,
   type CreateItVendor,
+  type DisposeItAsset,
   type ItCatalogKind,
+  type ReturnItAsset,
+  type TransferItAsset,
   type UpdateItAsset,
   type UpdateItCatalogItem,
   type UpdateItVendor,
@@ -26,6 +30,8 @@ const itKeys = {
   assets: featureKey(MODULE, 'assets'),
   catalogs: featureKey(MODULE, 'catalogs'),
   vendors: featureKey(MODULE, 'vendors'),
+  /** Custody intervals and the asset history — both move on every custody action. */
+  custody: featureKey(MODULE, 'custody'),
 } as const;
 
 // ── Platform references ─────────────────────────────────────────────────────
@@ -173,3 +179,67 @@ export const useUpdateItAsset = () =>
     api.updateAsset(id, body),
   );
 export const useDeleteItAsset = () => useAssetMutation((id: string) => api.deleteAsset(id));
+
+// ── Custody (IT-2) ──────────────────────────────────────────────────────────
+
+export const useItAssetHistory = (assetId: string, params: ItListParams, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'custody', { history: assetId, ...params }),
+    queryFn: () => api.listAssetHistory(assetId, params),
+    placeholderData: (prev) => prev,
+    enabled: enabled && assetId !== '',
+  });
+
+export const useItAssetAssignments = (assetId: string, params: ItListParams, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'custody', { assignments: assetId, ...params }),
+    queryFn: () => api.listAssetAssignments(assetId, params),
+    placeholderData: (prev) => prev,
+    enabled: enabled && assetId !== '',
+  });
+
+/** The cross-asset register: what is out, and who has it. */
+export const useItAssignments = (params: ItListParams, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'custody', params),
+    queryFn: () => api.listAssignments(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+/**
+ * A custody action moves three things at once: the asset (its `status` and
+ * `currentAssignmentId`), the custody intervals, and the asset's history. Invalidating only the
+ * asset would leave the history tab showing a chain that is missing the entry the user just
+ * created — so both subtrees go, every time.
+ */
+const useCustodyMutation = <TInput extends { id: string }>(
+  mutationFn: (input: TInput) => Promise<{ id: string }>,
+) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: (asset) => {
+      qc.setQueryData(detailKey(MODULE, 'assets', asset.id), asset);
+      void qc.invalidateQueries({ queryKey: itKeys.assets });
+      void qc.invalidateQueries({ queryKey: itKeys.custody });
+    },
+  });
+};
+
+export const useAssignItAsset = () =>
+  useCustodyMutation(({ id, body }: { id: string; body: AssignItAsset }) =>
+    api.assignAsset(id, body),
+  );
+export const useReturnItAsset = () =>
+  useCustodyMutation(({ id, body }: { id: string; body: ReturnItAsset }) =>
+    api.returnAsset(id, body),
+  );
+export const useTransferItAsset = () =>
+  useCustodyMutation(({ id, body }: { id: string; body: TransferItAsset }) =>
+    api.transferAsset(id, body),
+  );
+export const useDisposeItAsset = () =>
+  useCustodyMutation(({ id, body }: { id: string; body: DisposeItAsset }) =>
+    api.disposeAsset(id, body),
+  );

@@ -68,6 +68,14 @@ export const AUDIT_ACTIONS = [
   'correct',
   'checkOut',
   'reopen',
+  // IT (design §10, ADR-021): the four custody transitions, for the same reason as Fleet's — a
+  // dispute about who held an asset is settled by filtering the trail on the act, not by reading
+  // change diffs on a generic `update`. The business record itself is `it_asset_events`; these
+  // rows answer "who performed it", which is a different question with a different retention.
+  'assign',
+  'return',
+  'transfer',
+  'dispose',
 ] as const;
 export const AuditActionSchema = z.enum(AUDIT_ACTIONS);
 export type AuditAction = z.infer<typeof AuditActionSchema>;

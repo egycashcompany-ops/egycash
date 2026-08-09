@@ -71,6 +71,24 @@ its entry here in the same PR.
   (`nav-rows`), so a row behaves identically wherever it is rendered and the ⌘K palette and
   pinned favourites are untouched in either.
 
+- **IT module, slice IT-2 — asset custody, full-stack.** Assets now have a life story. Four named
+  actions — assign, record return, transfer, dispose — each run as one transaction that writes the
+  custody interval, the asset's derived status, an append-only history entry, a platform event and
+  an audit row together, so a half-finished custody change is not a reachable state. Transfer is
+  recorded as ONE fact rather than a return followed by an assignment, because months later the
+  history has to show intent and not mechanics; it moves the holder, the branch, or both. Disposal
+  is terminal and refuses an asset someone still holds, and a disposed asset accepts nothing
+  further. "At most one open assignment per asset" is a database index, not a code check, so two
+  simultaneous assignments cannot both succeed.
+
+  On screen: the custody actions sit on the asset itself, each offered only when the state machine
+  could accept it and each behind its own permission; the asset page gains a current-custody panel
+  and its full history; and a new **Asset custody** register answers "what is out, who has it, and
+  what is overdue" across every asset. `hr.employee.exited` flags what a leaver still holds and
+  never auto-returns it — a physical return is something a human witnesses, and inventing one would
+  put a fact in the chain that never happened. Recorded in
+  [ADR-021](docs/03-decisions/ADR-021-it-asset-custody-and-history.md).
+
 - **IT module, slice ITW-1 — the asset registry, on screen.** IT-1's API gets its application:
   the asset register as a searchable, filterable, sortable, URL-synced list; an asset detail card
   showing the identity, purchase and warranty facts beside a QR rendered from the asset code

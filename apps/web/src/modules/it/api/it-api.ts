@@ -3,17 +3,24 @@
 // server fact: `assetCode` is server-allocated (design §2.1) and `status` is server-derived
 // (FR-2), so neither is ever computed here.
 //
-// IT-1 exposes catalogs, vendors and the asset register. Custody (assign/return/transfer/
-// dispose), history and export arrive with IT-2/IT-6 and get their functions then.
+// IT-1 exposed catalogs, vendors and the asset register; IT-2 adds the custody lifecycle and its
+// history. Export arrives with IT-6 and gets its function then.
 import {
+  type EmployeeDto,
+  type AssignItAsset,
   type CreateItAsset,
   type CreateItCatalogItem,
   type CreateItVendor,
+  type DisposeItAsset,
+  type ItAssetAssignmentDto,
   type ItAssetDto,
+  type ItAssetHistoryEntryDto,
   type ItCatalogItemDto,
   type ItVendorDto,
   type OrgUnitOptionDto,
   type Paginated,
+  type ReturnItAsset,
+  type TransferItAsset,
   type UpdateItAsset,
   type UpdateItCatalogItem,
   type UpdateItVendor,
@@ -41,6 +48,20 @@ export type ItListParams = QueryParams;
  */
 export const listBranchOptions = (): Promise<OrgUnitOptionDto[]> =>
   get<OrgUnitOptionDto[]>('/platform/branches/options');
+
+/**
+ * Employee search for the custody picker (ADR-019 rule 5 — searched, never loaded).
+ *
+ * Custody references employees, which the design establishes as a live HR integration (§9.1), so
+ * this depends on HR's PUBLIC HTTP surface — deliberately as a URL rather than by importing HR's
+ * api module, which would be the code-level cross-module coupling the review checklist forbids.
+ * Gated server-side by `employee.view`; the picker says so rather than searching into a 403.
+ */
+export const searchEmployees = (
+  search: string,
+  pageSize = 8,
+): Promise<Paginated<EmployeeDto>> =>
+  getPage<EmployeeDto>(`/hr/employees${buildQuery({ search, employed: true, pageSize })}`);
 
 // ── Catalog items (design §2.4 — kind-discriminated: assetCategory | ticketCategory) ─
 export const listCatalogItems = (params: ItListParams): Promise<Paginated<ItCatalogItemDto>> =>
@@ -86,3 +107,37 @@ export const renderAssetLabels = (
   assetIds: readonly string[],
 ): Promise<{ contentType: string; blob: Blob }> =>
   postBinary('/it/assets/labels', { assetIds });
+
+// ── Custody (design §4.3) ───────────────────────────────────────────────────
+// Four NAMED actions, matching the API exactly. Each answers with the ASSET in its new state, so
+// the caller never re-fetches to learn what its own action did — and never derives `status`
+// itself, which stays a server fact (FR-2).
+
+export const assignAsset = (id: string, body: AssignItAsset): Promise<ItAssetDto> =>
+  post<ItAssetDto>(`/it/assets/${id}/assign`, body);
+export const returnAsset = (id: string, body: ReturnItAsset): Promise<ItAssetDto> =>
+  post<ItAssetDto>(`/it/assets/${id}/return`, body);
+export const transferAsset = (id: string, body: TransferItAsset): Promise<ItAssetDto> =>
+  post<ItAssetDto>(`/it/assets/${id}/transfer`, body);
+export const disposeAsset = (id: string, body: DisposeItAsset): Promise<ItAssetDto> =>
+  post<ItAssetDto>(`/it/assets/${id}/dispose`, body);
+
+/** The asset's business history — rendered from `it_asset_events`, never from the audit trail. */
+export const listAssetHistory = (
+  id: string,
+  params: ItListParams,
+): Promise<Paginated<ItAssetHistoryEntryDto>> =>
+  getPage<ItAssetHistoryEntryDto>(`/it/assets/${id}/history${buildQuery(params)}`);
+
+/** One asset's custody intervals. */
+export const listAssetAssignments = (
+  id: string,
+  params: ItListParams,
+): Promise<Paginated<ItAssetAssignmentDto>> =>
+  getPage<ItAssetAssignmentDto>(`/it/assets/${id}/assignments${buildQuery(params)}`);
+
+/** The cross-asset custody register — "what is out, and who has it". */
+export const listAssignments = (
+  params: ItListParams,
+): Promise<Paginated<ItAssetAssignmentDto>> =>
+  getPage<ItAssetAssignmentDto>(`/it/assignments${buildQuery(params)}`);

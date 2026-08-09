@@ -6,8 +6,11 @@
 // survives redeployment and re-domaining). Scanning the screen and scanning the sticker resolve
 // to the same asset.
 //
-// Custody — who holds it, since when, the movement history — is IT-2. Nothing here hints at it:
-// an empty panel promising a feature is worse than no panel.
+// Custody (IT-2) lives here too: the four actions in the header, the current holder beside the
+// identity, and the asset's business history below. Each action is offered only when the state
+// machine could accept it — assign when in stock, return/transfer when out, dispose when free —
+// and each is gated by its own §7 grant. The server still decides; offering a button that can
+// only ever 409 is worse than not offering it.
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
@@ -20,11 +23,25 @@ import { Card, CardBody, CardHeader } from '../../../shared/ui/Card';
 import { Button } from '../../../shared/ui/Button';
 import { Skeleton } from '../../../shared/ui/Skeleton';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
-import { EditIcon, QrIcon } from '../../../shared/ui/icons';
+import { EditIcon, QrIcon, ResetIcon, UsersIcon, TrashIcon, LinkIcon } from '../../../shared/ui/icons';
 import { formatDate, formatNumber, localized } from '../../../shared/lib/format';
-import { useItAsset, useItBranchOptions, useItCatalog, useItVendor } from '../api/it-queries';
+import {
+  useItAsset,
+  useItAssetAssignments,
+  useItAssetHistory,
+  useItBranchOptions,
+  useItCatalog,
+  useItVendor,
+} from '../api/it-queries';
 import { AssetStatusBadge } from '../components/AssetStatusBadge';
 import { AssetFormDialog } from '../components/AssetFormDialog';
+import { AssetHistoryList } from '../components/AssetHistoryList';
+import {
+  AssignAssetDialog,
+  DisposeAssetDialog,
+  ReturnAssetDialog,
+  TransferAssetDialog,
+} from '../components/CustodyDialogs';
 import { useAssetLabels } from '../components/useAssetLabels';
 
 const QR_SIZE = 132;
@@ -58,6 +75,13 @@ export const AssetDetailPage = (): JSX.Element => {
   const { data: asset, isPending, isError, error, refetch } = useItAsset(id);
   const labels = useAssetLabels();
   const [editing, setEditing] = useState(false);
+  const [custodyAction, setCustodyAction] = useState<
+    'assign' | 'return' | 'transfer' | 'dispose' | null
+  >(null);
+
+  // Custody reads. Both are gated by `itAsset.view` server-side, which the page already required.
+  const assignments = useItAssetAssignments(id, { pageSize: 20 }, id !== '');
+  const history = useItAssetHistory(id, { pageSize: 50 }, id !== '');
 
   const categories = useItCatalog('assetCategory');
   const branches = useItBranchOptions();
@@ -90,6 +114,15 @@ export const AssetDetailPage = (): JSX.Element => {
     (categories.data?.items ?? []).find((c) => c.id === asset.categoryId)?.name ?? null;
   const branchName = (branches.data ?? []).find((b) => b.id === asset.branchId)?.name ?? null;
 
+  // The open interval is the one the asset points at; falling back to "the one with no return"
+  // keeps the panel honest if the denormalized pointer and the rows ever disagree.
+  const rows = assignments.data?.items ?? [];
+  const openAssignment =
+    rows.find((a) => a.id === asset.currentAssignmentId) ??
+    rows.find((a) => a.returnedAt === null) ??
+    null;
+  const holderLabel = openAssignment === null ? null : openAssignment.assignedToEmployeeId;
+
   return (
     <PageContainer>
       <PageHeader
@@ -114,10 +147,50 @@ export const AssetDetailPage = (): JSX.Element => {
             {can('itAsset.edit') && asset.status !== 'disposed' && (
               <Button
                 size="sm"
+                variant="secondary"
                 leftIcon={<EditIcon className="h-4 w-4" />}
                 onClick={() => setEditing(true)}
               >
                 {t('it.assets.edit')}
+              </Button>
+            )}
+            {/* The state machine, expressed as which action is even offered (design §6). */}
+            {can('itAsset.assign') && asset.status === 'inStock' && (
+              <Button
+                size="sm"
+                leftIcon={<UsersIcon className="h-4 w-4" />}
+                onClick={() => setCustodyAction('assign')}
+              >
+                {t('it.custody.assign')}
+              </Button>
+            )}
+            {can('itAsset.assign') && asset.status === 'assigned' && (
+              <>
+                <Button
+                  size="sm"
+                  leftIcon={<ResetIcon className="h-4 w-4" />}
+                  onClick={() => setCustodyAction('return')}
+                >
+                  {t('it.custody.return')}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  leftIcon={<LinkIcon className="h-4 w-4" />}
+                  onClick={() => setCustodyAction('transfer')}
+                >
+                  {t('it.custody.transfer')}
+                </Button>
+              </>
+            )}
+            {can('itAsset.dispose') && asset.status === 'inStock' && (
+              <Button
+                size="sm"
+                variant="ghost-danger"
+                leftIcon={<TrashIcon className="h-4 w-4" />}
+                onClick={() => setCustodyAction('dispose')}
+              >
+                {t('it.custody.dispose')}
               </Button>
             )}
           </div>
@@ -236,6 +309,81 @@ export const AssetDetailPage = (): JSX.Element => {
           </CardBody>
         </Card>
 
+        <Card className="lg:col-span-2">
+          <CardHeader
+            title={t('it.custody.sections.current')}
+            description={t('it.custody.currentHint')}
+          />
+          <CardBody>
+            {asset.status === 'disposed' ? (
+              <dl>
+                <Fact
+                  label={t('it.custody.disposalMethod')}
+                  value={
+                    asset.disposal === null
+                      ? null
+                      : t(`it.custody.method.${asset.disposal.method}`)
+                  }
+                />
+                <Fact
+                  label={t('it.custody.disposalReason')}
+                  value={asset.disposal?.reason ?? null}
+                />
+                <Fact
+                  label={t('it.custody.disposedAt')}
+                  value={
+                    asset.disposal === null ? null : formatDate(asset.disposal.at, locale)
+                  }
+                />
+              </dl>
+            ) : openAssignment === null ? (
+              <p className="py-2 text-sm text-slate-500 dark:text-slate-400">
+                {t('it.custody.notAssigned')}
+              </p>
+            ) : (
+              <dl className="grid gap-x-6 sm:grid-cols-2">
+                <Fact
+                  label={t('it.custody.holder')}
+                  value={openAssignment.assignedToEmployeeId}
+                  mono
+                />
+                <Fact
+                  label={t('it.custody.assignedAt')}
+                  value={formatDate(openAssignment.assignedAt, locale)}
+                />
+                <Fact
+                  label={t('it.custody.expectedReturnAt')}
+                  value={
+                    openAssignment.expectedReturnAt === null
+                      ? null
+                      : formatDate(openAssignment.expectedReturnAt, locale)
+                  }
+                />
+                <Fact
+                  label={t('it.custody.conditionOnIssue')}
+                  value={openAssignment.conditionOnIssue}
+                />
+              </dl>
+            )}
+          </CardBody>
+        </Card>
+
+        <Card className="lg:col-span-3">
+          <CardHeader
+            title={t('it.custody.sections.history')}
+            description={t('it.custody.historyHint')}
+          />
+          <CardBody>
+            <AssetHistoryList
+              entries={history.data?.items ?? []}
+              isPending={history.isPending}
+              isError={history.isError}
+              error={history.error}
+              onRetry={() => void history.refetch()}
+            />
+          </CardBody>
+        </Card>
+
         <Card>
           <CardHeader title={t('it.assets.sections.record')} />
           <CardBody>
@@ -260,6 +408,29 @@ export const AssetDetailPage = (): JSX.Element => {
       </div>
 
       <AssetFormDialog open={editing} onClose={() => setEditing(false)} asset={asset} />
+      <AssignAssetDialog
+        open={custodyAction === 'assign'}
+        onClose={() => setCustodyAction(null)}
+        asset={asset}
+      />
+      <ReturnAssetDialog
+        open={custodyAction === 'return'}
+        onClose={() => setCustodyAction(null)}
+        asset={asset}
+        holderLabel={holderLabel}
+      />
+      <TransferAssetDialog
+        open={custodyAction === 'transfer'}
+        onClose={() => setCustodyAction(null)}
+        asset={asset}
+        current={openAssignment}
+        holderLabel={holderLabel}
+      />
+      <DisposeAssetDialog
+        open={custodyAction === 'dispose'}
+        onClose={() => setCustodyAction(null)}
+        asset={asset}
+      />
     </PageContainer>
   );
 };

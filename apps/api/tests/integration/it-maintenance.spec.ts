@@ -56,6 +56,7 @@ let replSet: MongoMemoryReplSet | null = null;
 let app: Express;
 
 let adminToken: string; // everything
+let adminUserId: string; // the same principal, for the direct settings writes below
 let techToken: string; // itMaintenance.view/create/edit/complete + itSparePart.view — the technician
 let plannerToken: string; // itMaintenance.view + itMaintenancePlan.manage — schedules, does not work
 let storeToken: string; // itSparePart.view/manage — the storekeeper
@@ -251,6 +252,7 @@ beforeAll(async () => {
     [...platformPermissions, ...itPermissions].map((p) => p.key),
   );
   const adminId = await mkUser('mnt-admin@ecms.local');
+  adminUserId = adminId;
   await rbacService.ensureAssignment(adminId, String(superAdmin._id), 'organization');
 
   const ctx: AuthContext = {
@@ -337,7 +339,9 @@ beforeAll(async () => {
   const vendor = await request(app)
     .post('/api/v1/it/vendors')
     .set('Authorization', `Bearer ${adminToken}`)
-    .send({ name: { ar: 'مركز الصيانة', en: 'Service centre' } });
+    // A vendor's `name` is a PLAIN string (design §2.9), unlike a catalog item's — vendors are
+    // real-world parties whose names are not translated.
+    .send({ name: 'Service centre' });
   expect(vendor.status).toBe(201);
   vendorId = (vendor.body as { data: { id: string } }).data.id;
 }, 240_000);
@@ -796,7 +800,9 @@ describe('spare parts', () => {
   it('finds the parts at or below their minimum, and ignores parts with no minimum', async () => {
     const low = await stockedPart(1, { minQty: 5 });
     const fine = await stockedPart(50, { minQty: 5 });
-    const unset = await stockedPart(0);
+    // No `minQty` at all, and no stock either — the strongest case for "not set means no minimum",
+    // since a zero-valued minimum would have matched it.
+    const unset = await mkPart();
 
     const res = await request(app)
       .get('/api/v1/it/spare-parts?belowMin=true&pageSize=100')
@@ -928,8 +934,10 @@ describe('preventive maintenance', () => {
       { $set: { nextDueAt: new Date(Date.now() + 3 * 86_400_000) } },
     ).exec();
 
+    // A REAL user id: `settingsService.set` stamps `updatedBy` as an ObjectId, so a sentinel
+    // string throws rather than failing an assertion.
     const ctx: AuthContext = {
-      userId: 'seed',
+      userId: adminUserId,
       sessionId: 'seed',
       branchId: null,
       departmentId: null,

@@ -12,9 +12,19 @@ import { PageContainer, PageHeader } from '../../../platform/layout/PageContaine
 import { StatCard } from '../../../shared/ui/StatCard';
 import { ShortcutCard } from '../../../shared/ui/ShortcutCard';
 import { EmptyState } from '../../../shared/ui/states/EmptyState';
-import { CheckIcon, FolderIcon, MonitorIcon, QrIcon, UsersIcon } from '../../../shared/ui/icons';
+import {
+  AlertIcon,
+  ChatIcon,
+  CheckIcon,
+  CogIcon,
+  FolderIcon,
+  InboxIcon,
+  MonitorIcon,
+  QrIcon,
+  UsersIcon,
+} from '../../../shared/ui/icons';
 import { formatNumber } from '../../../shared/lib/format';
-import { useItAssets, useItVendors } from '../api/it-queries';
+import { useItAssets, useItTickets, useItVendors } from '../api/it-queries';
 
 export const ItHomePage = (): JSX.Element => {
   const t = useT();
@@ -24,13 +34,20 @@ export const ItHomePage = (): JSX.Element => {
   const canAssets = can('itAsset.view');
   const canVendors = can('itVendor.view');
   const canCatalogs = can('itCatalog.manage');
-  const anything = canAssets || canVendors || canCatalogs;
+  const canTickets = can('itTicket.view');
+  const canSla = can('itSlaPolicy.manage');
+  const anything = canAssets || canVendors || canCatalogs || canTickets;
 
   // pageSize 1 — only `meta.totalItems` is wanted.
   const total = useItAssets({ pageSize: 1 }, canAssets);
   const inStock = useItAssets({ pageSize: 1, status: 'inStock' }, canAssets);
   const assigned = useItAssets({ pageSize: 1, status: 'assigned' }, canAssets);
   const vendors = useItVendors({ pageSize: 1, isActive: true }, canVendors);
+  // Help-desk counts. Both ride the SERVER's own filters — `active` is the lifecycle split and
+  // `breached` reads the STAMPS, so neither number is a clock this page recomputed (FR-6). Under
+  // the `own` scope these are honestly the caller's own tickets, which is what a requester wants.
+  const activeTickets = useItTickets({ pageSize: 1, active: true }, canTickets);
+  const breachedTickets = useItTickets({ pageSize: 1, breached: true, active: true }, canTickets);
 
   /**
    * A count tile's props, from its query.
@@ -94,7 +111,30 @@ export const ItHomePage = (): JSX.Element => {
             </div>
           )}
 
+          {canTickets && (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <StatCard
+                label={t('it.overview.activeTickets')}
+                {...tile(activeTickets)}
+                icon={InboxIcon}
+              />
+              <StatCard
+                label={t('it.overview.breachedTickets')}
+                {...tile(breachedTickets)}
+                icon={AlertIcon}
+              />
+            </div>
+          )}
+
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {canTickets && (
+              <ShortcutCard
+                to="/it/tickets"
+                title={t('it.nav.tickets')}
+                description={t('it.tickets.subtitle')}
+                icon={ChatIcon}
+              />
+            )}
             {canAssets && (
               <>
                 <ShortcutCard
@@ -125,6 +165,14 @@ export const ItHomePage = (): JSX.Element => {
                 title={t('it.nav.catalogs')}
                 description={t('it.catalogs.subtitle')}
                 icon={FolderIcon}
+              />
+            )}
+            {canSla && (
+              <ShortcutCard
+                to="/it/help-desk"
+                title={t('it.nav.helpDeskSettings')}
+                description={t('it.priorities.subtitle')}
+                icon={CogIcon}
               />
             )}
           </div>

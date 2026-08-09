@@ -76,6 +76,11 @@ export const AUDIT_ACTIONS = [
   'return',
   'transfer',
   'dispose',
+  // IT-3 (design §10): resolving a ticket and a system-stamped SLA breach are distinct audited
+  // acts. `slaBreached` is written by the sweep under the SYSTEM actor — the contract-generation
+  // precedent for an audited act with no human behind it.
+  'resolve',
+  'slaBreached',
 ] as const;
 export const AuditActionSchema = z.enum(AUDIT_ACTIONS);
 export type AuditAction = z.infer<typeof AuditActionSchema>;

@@ -113,15 +113,17 @@ const CATALOG: CategoryDef[] = [
     ar: 'تقنية المعلومات',
     icon: 'monitor',
     sortOrder: 25,
-    // OWNER RULE: only SHIPPED pages appear in navigation. ITW-1 shipped the IT-1 surface and
-    // IT-2 appends the custody register (the boot sync is additive — existing installs pick new
-    // rows up on the next deploy). Tickets, maintenance, software and dashboards append theirs
-    // with IT-3…IT-6, as each slice lands.
+    // OWNER RULE: only SHIPPED pages appear in navigation. ITW-1 shipped the IT-1 surface, IT-2
+    // appended the custody register and IT-3 appends the help desk (the boot sync is additive —
+    // existing installs pick new rows up on the next deploy). Maintenance, software and dashboards
+    // append theirs with IT-4…IT-6, as each slice lands.
     apps: [
       { en: 'IT Home', ar: 'الرئيسية', route: '/it', icon: 'home' },
       { en: 'Assets', ar: 'الأصول', route: '/it/assets', icon: 'monitor' },
       { en: 'Scan Asset', ar: 'مسح أصل', route: '/it/assets/scan', icon: 'qr' },
       { en: 'Asset Custody', ar: 'عهدة الأصول', route: '/it/custody', icon: 'clipboard' },
+      { en: 'Help Desk', ar: 'الدعم الفني', route: '/it/tickets', icon: 'chat' },
+      { en: 'Help Desk Settings', ar: 'إعدادات الدعم الفني', route: '/it/help-desk', icon: 'cog' },
       { en: 'IT Vendors', ar: 'موردو تقنية المعلومات', route: '/it/vendors', icon: 'folder' },
       { en: 'IT Catalogs', ar: 'قوائم تقنية المعلومات', route: '/it/catalogs', icon: 'folder' },
     ],

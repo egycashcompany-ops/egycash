@@ -7,6 +7,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   type AssignItAsset,
+  type AssignItTicket,
+  type CancelItTicket,
+  type ChangeItTicketStatus,
+  type CloseItTicket,
+  type CreateItTicket,
+  type CreateItTicketComment,
+  type CreateItTicketPriority,
+  type ReopenItTicket,
+  type ResolveItTicket,
+  type UpdateItTicket,
+  type UpdateItTicketPriority,
   type CreateItAsset,
   type CreateItCatalogItem,
   type CreateItVendor,
@@ -32,6 +43,10 @@ const itKeys = {
   vendors: featureKey(MODULE, 'vendors'),
   /** Custody intervals and the asset history — both move on every custody action. */
   custody: featureKey(MODULE, 'custody'),
+  tickets: featureKey(MODULE, 'tickets'),
+  /** The ticket stream: comments AND history. Any ticket write can add to it. */
+  ticketStream: featureKey(MODULE, 'ticketStream'),
+  priorities: featureKey(MODULE, 'priorities'),
 } as const;
 
 // ── Platform references ─────────────────────────────────────────────────────
@@ -42,6 +57,19 @@ export const useItBranchOptions = () =>
     queryKey: listKey(MODULE, 'branchOptions'),
     queryFn: api.listBranchOptions,
     staleTime: 5 * 60_000,
+  });
+
+/**
+ * One platform user, resolved by id. Cached for the session under its own subtree: a name is
+ * stable and the ticket screens ask for the same handful of ids over and over.
+ */
+export const useItUser = (id: string, enabled = true) =>
+  useQuery({
+    queryKey: detailKey(MODULE, 'users', id),
+    queryFn: () => api.getUser(id),
+    enabled: enabled && id !== '',
+    staleTime: 5 * 60_000,
+    retry: false,
   });
 
 // ── Catalog items ───────────────────────────────────────────────────────────
@@ -243,3 +271,125 @@ export const useDisposeItAsset = () =>
   useCustodyMutation(({ id, body }: { id: string; body: DisposeItAsset }) =>
     api.disposeAsset(id, body),
   );
+
+// ── Help desk (IT-3) ────────────────────────────────────────────────────────
+
+/**
+ * Priorities. Read by the ticket form's dropdown and by the help-desk settings screen, which is
+ * why the API takes either grant — cached for the session, since they change rarely.
+ */
+export const useItTicketPriorities = (params: ItListParams = { pageSize: 100 }, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'priorities', params),
+    queryFn: () => api.listTicketPriorities(params),
+    staleTime: 60_000,
+    enabled,
+  });
+
+const usePriorityMutation = <TInput>(mutationFn: (input: TInput) => Promise<unknown>) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: itKeys.priorities });
+      // A renamed priority changes what ticket rows display — but NOT their SLA, which was
+      // snapshotted at creation and is never recomputed.
+      void qc.invalidateQueries({ queryKey: itKeys.tickets });
+    },
+  });
+};
+
+export const useCreateItTicketPriority = () =>
+  usePriorityMutation((body: CreateItTicketPriority) => api.createTicketPriority(body));
+export const useUpdateItTicketPriority = () =>
+  usePriorityMutation(({ id, body }: { id: string; body: UpdateItTicketPriority }) =>
+    api.updateTicketPriority(id, body),
+  );
+
+export const useItTickets = (params: ItListParams, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'tickets', params),
+    queryFn: () => api.listTickets(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+export const useItTicket = (id: string) =>
+  useQuery({
+    queryKey: detailKey(MODULE, 'tickets', id),
+    queryFn: () => api.getTicket(id),
+    enabled: id !== '',
+  });
+
+export const useItTicketComments = (id: string, params: ItListParams, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'ticketStream', { ticketId: id, ...params }),
+    queryFn: () => api.listTicketComments(id, params),
+    placeholderData: (prev) => prev,
+    enabled: enabled && id !== '',
+  });
+
+/**
+ * A ticket write moves the ticket AND its stream — every transition appends a `statusChanged` row,
+ * and an assignment appends two. Invalidating only the ticket would leave the timeline missing the
+ * entry the user just caused, which reads as the action having silently failed.
+ */
+const useTicketMutation = <TInput, TResult extends { id: string }>(
+  mutationFn: (input: TInput) => Promise<TResult>,
+) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: (ticket: TResult) => {
+      qc.setQueryData(detailKey(MODULE, 'tickets', ticket.id), ticket);
+      void qc.invalidateQueries({ queryKey: itKeys.tickets });
+      void qc.invalidateQueries({ queryKey: itKeys.ticketStream });
+    },
+  });
+};
+
+export const useCreateItTicket = () =>
+  useTicketMutation((body: CreateItTicket) => api.createTicket(body));
+export const useUpdateItTicket = () =>
+  useTicketMutation(({ id, body }: { id: string; body: UpdateItTicket }) =>
+    api.updateTicket(id, body),
+  );
+export const useAssignItTicket = () =>
+  useTicketMutation(({ id, body }: { id: string; body: AssignItTicket }) =>
+    api.assignTicket(id, body),
+  );
+export const useChangeItTicketStatus = () =>
+  useTicketMutation(({ id, body }: { id: string; body: ChangeItTicketStatus }) =>
+    api.changeTicketStatus(id, body),
+  );
+export const useResolveItTicket = () =>
+  useTicketMutation(({ id, body }: { id: string; body: ResolveItTicket }) =>
+    api.resolveTicket(id, body),
+  );
+export const useCloseItTicket = () =>
+  useTicketMutation(({ id, body }: { id: string; body: CloseItTicket }) =>
+    api.closeTicket(id, body),
+  );
+export const useReopenItTicket = () =>
+  useTicketMutation(({ id, body }: { id: string; body: ReopenItTicket }) =>
+    api.reopenTicket(id, body),
+  );
+export const useCancelItTicket = () =>
+  useTicketMutation(({ id, body }: { id: string; body: CancelItTicket }) =>
+    api.cancelTicket(id, body),
+  );
+
+/** Posting a comment appends to the stream only — the ticket row itself does not change. */
+export const useCreateItTicketComment = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: CreateItTicketComment }) =>
+      api.createTicketComment(id, body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: itKeys.ticketStream });
+      // A first public technician comment stamps `firstResponseAt` server-side, so the ticket's
+      // SLA panel moves too.
+      void qc.invalidateQueries({ queryKey: itKeys.tickets });
+    },
+  });
+};

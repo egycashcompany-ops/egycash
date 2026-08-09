@@ -143,6 +143,10 @@ import {
   ItAssetReturnedPayloadV1,
   ItAssetTransferredPayloadV1,
   ItAssetDisposedPayloadV1,
+  ItTicketOpenedPayloadV1,
+  ItTicketAssignedPayloadV1,
+  ItTicketStatusChangedPayloadV1,
+  ItTicketSlaBreachedPayloadV1,
 } from '../modules/it.js';
 
 // ── The shape a consumer sees ───────────────────────────────────────────────
@@ -578,6 +582,7 @@ export const EVENT_ENTITY_NAMES: Readonly<Record<string, LocalizedString>> = {
   violation: { en: 'Violation', ar: 'مخالفة' },
   // it
   asset: { en: 'Asset', ar: 'أصل' },
+  ticket: { en: 'Ticket', ar: 'تذكرة' },
 };
 
 export const EVENT_ACTION_NAMES: Readonly<Record<string, LocalizedString>> = {
@@ -657,6 +662,9 @@ export const EVENT_ACTION_NAMES: Readonly<Record<string, LocalizedString>> = {
   registered: { en: 'registered', ar: 'تسجيل' },
   assigned: { en: 'assigned', ar: 'تسليم' },
   disposed: { en: 'disposed', ar: 'استبعاد' },
+  // `opened` is already defined above (recruitment uses it) — one entry serves both modules,
+  // which is the point of a shared action vocabulary.
+  slaBreached: { en: 'SLA breached', ar: 'تجاوز زمن الاستجابة' },
 };
 
 /**
@@ -1032,6 +1040,10 @@ export const IT_EVENT_PAYLOAD_SCHEMAS: Readonly<Record<ItEventName, z.ZodTypeAny
   [ItEvents.AssetReturned]: ItAssetReturnedPayloadV1,
   [ItEvents.AssetTransferred]: ItAssetTransferredPayloadV1,
   [ItEvents.AssetDisposed]: ItAssetDisposedPayloadV1,
+  [ItEvents.TicketOpened]: ItTicketOpenedPayloadV1,
+  [ItEvents.TicketAssigned]: ItTicketAssignedPayloadV1,
+  [ItEvents.TicketStatusChanged]: ItTicketStatusChangedPayloadV1,
+  [ItEvents.TicketSlaBreached]: ItTicketSlaBreachedPayloadV1,
 };
 
 export const IT_EVENT_SOURCE: EventCatalogSource = {

@@ -30,9 +30,19 @@ const declaredPaths = (): string[] =>
 describe('IT routes', () => {
   const paths = declaredPaths();
 
-  it('declares the IT-1 + IT-2 surface', () => {
+  it('declares the IT-1 + IT-2 + IT-3 surface', () => {
     expect(paths.sort()).toEqual(
-      ['assets', 'assets/:id', 'assets/scan', 'catalogs', 'custody', 'vendors'].sort(),
+      [
+        'assets',
+        'assets/:id',
+        'assets/scan',
+        'catalogs',
+        'custody',
+        'help-desk',
+        'tickets',
+        'tickets/:id',
+        'vendors',
+      ].sort(),
     );
   });
 
@@ -42,6 +52,15 @@ describe('IT routes', () => {
   it('does not route the custody ACTIONS', () => {
     for (const action of ['assign', 'return', 'transfer', 'dispose']) {
       expect(paths, `${action} must not be a route`).not.toContain(`assets/:id/${action}`);
+    }
+  });
+
+  // Same rule for the help desk: every ticket transition is a dialog on the ticket. A URL that
+  // performs a state change is a URL someone can bookmark, share or reload into a second
+  // transition — and `resolve`/`cancel` are precisely the two nobody wants to fire twice.
+  it('does not route the ticket TRANSITIONS', () => {
+    for (const action of ['assign', 'status', 'resolve', 'close', 'reopen', 'cancel']) {
+      expect(paths, `${action} must not be a route`).not.toContain(`tickets/:id/${action}`);
     }
   });
 

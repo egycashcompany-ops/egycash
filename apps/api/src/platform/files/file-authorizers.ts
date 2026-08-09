@@ -35,19 +35,14 @@ export interface FileEntityAuthorizer {
 }
 
 /**
- * The budget one authorizer gets (ADR-023). Exceeding it DENIES — a slow answer is not a yes.
+ * The budget one authorizer gets (ADR-023). Exceeding it DENIES — a slow answer is not a yes, and
+ * what this exists to catch is a HUNG module stalling every file read in the system.
  *
- * Raised from the ADR's original 200 ms after CI proved that number wrong. 200 was chosen for "an
- * indexed lookup", singular; the ticket-COMMENT authorizer legitimately needs two sequential ones
- * (resolve the comment, then check the ticket's scope), and on a cold process that overran the
- * budget — turning a perfectly authorized read into a 404. A timeout that fires on correct work is
- * not a safety margin, it is an outage.
- *
- * What the budget is actually for is unchanged: stopping a HUNG module from stalling every file
- * read in the system. That failure mode is seconds or forever, so a second still catches it with
- * room to spare for honest work on a cold connection.
+ * The ticket-comment authorizer makes two sequential indexed lookups, so this is not enormous
+ * headroom. If a denial ever shows `cause: 'timeout'` in the logs, that is the signal to revisit
+ * the number — not a reason to raise it pre-emptively.
  */
-export const AUTHORIZER_TIMEOUT_MS = 1000;
+export const AUTHORIZER_TIMEOUT_MS = 200;
 
 const key = (moduleId: string, entityType: string): string => `${moduleId}/${entityType}`;
 

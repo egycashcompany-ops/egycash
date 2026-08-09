@@ -227,16 +227,34 @@ beforeAll(async () => {
   const requesterRole = await rbacService.createRole(
     {
       name: { en: 'Staff', ar: 'موظف' },
-      permissionKeys: ['itTicket.view', 'itTicket.create', 'file.view', 'file.create', 'file.download'],
+      permissionKeys: ['itTicket.view', 'itTicket.create'],
     },
     adminId,
   );
+  // File grants ride a SEPARATE, organization-scoped assignment, and the split is the point.
+  // `own` scope on files means "files you uploaded" (`createdBy`) — nothing to do with tickets —
+  // so putting `file.view` on the own-scoped ticket role would hide a technician's attachment from
+  // the requester for a reason ADR-023 has no part in. Widening the file grant is safe precisely
+  // BECAUSE the entity authorizer now decides; that is the seam earning its keep.
+  const fileRole = await rbacService.createRole(
+    {
+      name: { en: 'Help desk files', ar: 'ملفات الدعم' },
+      permissionKeys: ['file.view', 'file.create', 'file.download'],
+    },
+    adminId,
+  );
+  const grantFiles = async (userId: string): Promise<void> => {
+    await rbacService.ensureAssignment(userId, String(fileRole._id), 'organization');
+  };
+
   requesterUserId = await mkUser('hd-user@ecms.local');
   await rbacService.ensureAssignment(requesterUserId, String(requesterRole._id), 'own');
+  await grantFiles(requesterUserId);
   requesterToken = await login('hd-user@ecms.local');
 
   const otherId = await mkUser('hd-user2@ecms.local');
   await rbacService.ensureAssignment(otherId, String(requesterRole._id), 'own');
+  await grantFiles(otherId);
   otherRequesterToken = await login('hd-user2@ecms.local');
 
   const outsiderRole = await rbacService.createRole(

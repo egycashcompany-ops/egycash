@@ -400,6 +400,48 @@ describe('a failing authorizer denies', () => {
   });
 });
 
+// ── Composition with the file's own data scope ──────────────────────────────
+
+describe('entity authorization composes with the file’s own scope', () => {
+  // A property worth pinning because it is invisible and cost two CI cycles to find: the entity
+  // answer does NOT replace the file's data scope, it is checked alongside it. `own` on files means
+  // "files you uploaded" (`createdBy`), so an own-scoped `file.view` hides another user's upload
+  // even when the owning module would allow it. Anyone granting file permissions to an own-scoped
+  // role needs to know this — the seam is what makes a WIDER file grant safe.
+  it('an own-scoped file.view still hides another user’s upload, guard or no guard', async () => {
+    clearFileEntityAuthorizers();
+    const created = await uploadTo(adminToken, OPEN); // uploaded by the ADMIN
+    const file = data<FileDto>(created);
+
+    const ownRole = await rbacService.createRole(
+      { name: { en: 'Own files', ar: 'ملفاتي' }, permissionKeys: ['file.view', 'file.download'] },
+      adminId,
+    );
+    const { user } = await userService.create(
+      {
+        email: 'authz-own@ecms.local',
+        firstName: { ar: 'م', en: 'T' },
+        lastName: { ar: 'م', en: 'T' },
+        locale: 'en',
+        organization: { branchId: null, departmentId: null, sectionId: null, jobTitleId: null },
+      },
+      null,
+    );
+    await userService.setPassword(String(user._id), PASSWORD, 'passwordReset');
+    await userService.forceActivate(String(user._id));
+    await rbacService.ensureAssignment(String(user._id), String(ownRole._id), 'own');
+    const ownToken = await login('authz-own@ecms.local');
+
+    // `OPEN` is allowed by the authorizer for everyone — and this still 404s, because the file's
+    // own scope filtered it first.
+    guardSecret();
+    const res = await request(app)
+      .get(`/api/v1/platform/files/${file.id}`)
+      .set('Authorization', `Bearer ${ownToken}`);
+    expect(res.status).toBe(404);
+  });
+});
+
 // ── Regression: unguarded files are untouched ───────────────────────────────
 
 describe('files whose entity type has no authorizer behave exactly as before', () => {

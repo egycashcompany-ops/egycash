@@ -246,10 +246,12 @@ beforeAll(async () => {
   BRANCH_B = await mkBranch('002', 'Branch B');
   DEPT_A = await mkDepartment('OPS', 'Operations', BRANCH_A);
   DEPT_B = await mkDepartment('FIN', 'Finance', BRANCH_B);
+  // A section names only its DEPARTMENT — its branch is the department's, and `CreateSectionSchema`
+  // is `.strict()`, so naming the branch too is a 400.
   const section = await request(app)
     .post('/api/v1/platform/sections')
     .set('Authorization', `Bearer ${adminToken}`)
-    .send({ code: 'TILL', name: { ar: 'الخزينة', en: 'Till' }, branchId: BRANCH_A, departmentId: DEPT_A });
+    .send({ code: 'TILL', name: { ar: 'الخزينة', en: 'Till' }, departmentId: DEPT_A });
   expect(section.status).toBe(201);
   SECTION_A = data<{ id: string }>(section).id;
 
@@ -795,6 +797,35 @@ describe('T19 — an account cannot be placed in a department outside its branch
     expect(together.status).toBe(200);
     expect((await getUser(created.id)).organization.departmentId).toBe(DEPT_B);
   });
+
+  // The rule refuses a CONTRADICTION, not an incomplete path. HR provisions accounts this way —
+  // and the platform's own HR-only confinement fixtures do — so refusing it would reject placements
+  // that name no branch they do not belong to. It fails closed where it matters instead: T12 shows
+  // a branch-scoped grant to an account with no branch is refused rather than silently widened.
+  it('accepts a department with no branch, and a section with no department', async () => {
+    const partial = await request(app)
+      .post('/api/v1/platform/users')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        firstName: { ar: 'ت', en: 'T' },
+        lastName: { ar: 'ت', en: 'T' },
+        username: 't19.partial',
+        locale: 'en',
+        organization: { branchId: null, departmentId: DEPT_A, sectionId: null, jobTitleId: null },
+      });
+    expect(partial.status).toBe(201);
+    const created = data<UserDto>(partial);
+    expect(created.organization.branchId).toBeNull();
+    expect(created.organization.departmentId).toBe(DEPT_A);
+
+    // …but a section that belongs to a DIFFERENT branch than the one named is still a contradiction.
+    const contradiction = await patchUser(created.id, {
+      organization: { branchId: BRANCH_B, departmentId: null, sectionId: SECTION_A },
+      version: created.version,
+    });
+    expect(contradiction.status).toBe(422);
+    expect(errorOf(contradiction).message).toContain('does not belong to the selected branch');
+  });
 });
 
 // ── T20. The stored placement on a grant is not an authorization source ─────
@@ -926,6 +957,28 @@ describe('regressions', () => {
     expect(actions).toContain('roleRevoked');
   });
 
+  // The invariant is a partial unique index on (user, role, scope) over LIVE rows, not a check in
+  // the service — so it holds against a race, and it stops applying the moment the grant is revoked.
+  it('refuses a second identical grant, and allows the same role at a different reach', async () => {
+    const roleId = await seedRole('Granted once', ['user.view']);
+    const userId = await seedUser('reg-duplicate@ecms.local', { branchId: BRANCH_A });
+
+    const first = await postAssignment({ userId, roleId, scope: 'own' }, granterToken);
+    expect(first.status).toBe(201);
+
+    const duplicate = await postAssignment({ userId, roleId, scope: 'own' }, granterToken);
+    expect(duplicate.status).toBe(409);
+
+    // A different reach is a different grant, and permitted.
+    const wider = await postAssignment({ userId, roleId, scope: 'branch' }, granterToken);
+    expect(wider.status).toBe(201);
+
+    // …and once revoked, the same grant can be made again — the index covers live rows only.
+    expect((await revoke(data<RoleAssignmentDto>(first).id, granterToken)).status).toBe(204);
+    const again = await postAssignment({ userId, roleId, scope: 'own' }, granterToken);
+    expect(again.status).toBe(201);
+  });
+
   it('a role with assignments cannot be deleted out from under its holders', async () => {
     const roleId = await seedRole('Held', ['user.view']);
     const userId = await seedUser('reg-held@ecms.local');
@@ -936,35 +989,24 @@ describe('regressions', () => {
     expect(errorOf(res).message).toContain('revoke them first');
   });
 
-  it('a granted role takes effect, and revoking it takes it away', async () => {
+  // ONE token throughout, deliberately. Permissions are resolved per request against the account's
+  // CURRENT permission version — the token carries no grants — so a role must take effect and go
+  // away without signing in again. Re-logging in between the steps would have hidden a cache the
+  // grant failed to invalidate.
+  it('a granted role takes effect, and revoking it takes it away, on the same session', async () => {
     const roleId = await seedRole('Grants branch.view', ['branch.view']);
     const userId = await seedUser('reg-effect@ecms.local');
     const token = await tokenOf('reg-effect@ecms.local');
+    const readBranches = (): request.Test =>
+      request(app).get('/api/v1/platform/branches').set('Authorization', `Bearer ${token}`);
 
-    const before = await request(app)
-      .get('/api/v1/platform/branches')
-      .set('Authorization', `Bearer ${token}`);
-    expect(before.status).toBe(403);
+    expect((await readBranches()).status).toBe(403);
 
     const granted = await postAssignment({ userId, roleId, scope: 'organization' });
     expect(granted.status).toBe(201);
-    const withRole = await tokenOf('reg-effect@ecms.local');
-    expect(
-      (
-        await request(app)
-          .get('/api/v1/platform/branches')
-          .set('Authorization', `Bearer ${withRole}`)
-      ).status,
-    ).toBe(200);
+    expect((await readBranches()).status).toBe(200);
 
     expect((await revoke(data<RoleAssignmentDto>(granted).id)).status).toBe(204);
-    const withoutRole = await tokenOf('reg-effect@ecms.local');
-    expect(
-      (
-        await request(app)
-          .get('/api/v1/platform/branches')
-          .set('Authorization', `Bearer ${withoutRole}`)
-      ).status,
-    ).toBe(403);
+    expect((await readBranches()).status).toBe(403);
   });
 });

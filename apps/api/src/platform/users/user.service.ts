@@ -242,6 +242,13 @@ class UserService {
    * The org tree already carries the answer — `departments.branchId` and `sections.departmentId` are
    * both required columns — so this reads it rather than inventing a second source of truth.
    * Validated against the RESULTING placement, because a partial edit changes only some of it.
+   *
+   * What it refuses is a CONTRADICTION, not an incomplete path. An account placed in a department
+   * with no branch names no branch it does not belong to — and the platform already provisions such
+   * accounts (HR's confinement fixtures among them). It also fails closed where it matters: a
+   * branch-scoped grant to an account with no branch is refused by `assignRole`, not silently
+   * widened. Demanding the branch as well would be asking the caller to restate a fact the
+   * department already carries, and would reject placements that were never wrong.
    */
   private async assertPlacementConsistent(next: {
     branchId: Types.ObjectId | null;
@@ -249,23 +256,20 @@ class UserService {
     sectionId: Types.ObjectId | null;
   }): Promise<void> {
     if (next.departmentId !== null) {
-      if (next.branchId === null) {
-        throw new BusinessRuleError('a department placement requires a branch');
-      }
       const department = await departmentRepository.findById(String(next.departmentId));
       if (department === null) throw new BusinessRuleError('unknown department');
-      if (String(department.branchId) !== String(next.branchId)) {
+      if (next.branchId !== null && String(department.branchId) !== String(next.branchId)) {
         throw new BusinessRuleError('the department does not belong to the selected branch');
       }
     }
     if (next.sectionId !== null) {
-      if (next.departmentId === null) {
-        throw new BusinessRuleError('a section placement requires a department');
-      }
       const section = await sectionRepository.findById(String(next.sectionId));
       if (section === null) throw new BusinessRuleError('unknown section');
-      if (String(section.departmentId) !== String(next.departmentId)) {
+      if (next.departmentId !== null && String(section.departmentId) !== String(next.departmentId)) {
         throw new BusinessRuleError('the section does not belong to the selected department');
+      }
+      if (next.branchId !== null && String(section.branchId) !== String(next.branchId)) {
+        throw new BusinessRuleError('the section does not belong to the selected branch');
       }
     }
   }

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  booleanQuery,
   objectId,
   DataScopeSchema,
   LocalizedStringSchema,
@@ -66,8 +67,11 @@ export const ListRolesQuerySchema = PaginationQuerySchema.extend({
    * Roles nobody currently holds. "Disabling" a role IS revoking its assignments (there is no
    * status field and adding one would put a second switch inside the authorization path), so this
    * filter is how an administrator finds the roles that are effectively off.
+   *
+   * `booleanQuery()`, not `z.boolean()`: this arrives as the STRING `'true'` in a query string, and
+   * a plain boolean would reject every request the filter makes.
    */
-  unassigned: z.boolean().optional(),
+  unassigned: booleanQuery().optional(),
 }).strict();
 export type ListRolesQuery = z.infer<typeof ListRolesQuerySchema>;
 

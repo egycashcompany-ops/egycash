@@ -27,9 +27,10 @@ export const RolePicker = ({
   onChange,
   ariaLabel,
   /**
-   * Roles visible on the caller's current page of the account's grants, marked so they are not
-   * granted twice by accident. Not a guarantee: a duplicate grant is not refused by the server, and
-   * an account holding more roles than one page shows can still be granted one of them again.
+   * Roles visible on the caller's current page of the account's grants, marked so the administrator
+   * is not offered a grant that already exists. The RULE lives in the database — a partial unique
+   * index on (user, role, scope) over live rows — so an account holding more roles than one page
+   * shows is still protected: the second grant answers 409 rather than creating a duplicate.
    */
   alreadyHeld = [],
 }: {

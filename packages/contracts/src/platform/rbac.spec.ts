@@ -11,7 +11,11 @@
 // is not an edit to a grant — it is a different grant, which is a revocation and a new assignment
 // — and `.strict()` is what turns "not declared" into "rejected" rather than "silently ignored".
 import { describe, expect, it } from 'vitest';
-import { CreateRoleAssignmentSchema, UpdateRoleAssignmentSchema } from './rbac.js';
+import {
+  CreateRoleAssignmentSchema,
+  ListRolesQuerySchema,
+  UpdateRoleAssignmentSchema,
+} from './rbac.js';
 
 const OID = '507f1f77bcf86cd799439011';
 
@@ -49,6 +53,34 @@ describe('UpdateRoleAssignmentSchema — moving a window is version-checked', ()
       expect(UpdateRoleAssignmentSchema.safeParse(body).success).toBe(false);
     },
   );
+});
+
+describe('ListRolesQuerySchema — the filters survive the trip through a query string', () => {
+  // A query parameter is a STRING. `unassigned: z.boolean()` typechecks, reads correctly, and
+  // rejects every request the "held by nobody" filter makes — a 400 on a checkbox.
+  it('accepts unassigned=true as the string a URL carries', () => {
+    const parsed = ListRolesQuerySchema.safeParse({ page: 1, pageSize: 25, unassigned: 'true' });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.unassigned).toBe(true);
+  });
+
+  it('accepts a real boolean too, for callers that are not a URL', () => {
+    const parsed = ListRolesQuerySchema.safeParse({ page: 1, pageSize: 25, unassigned: false });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.unassigned).toBe(false);
+  });
+
+  it('rejects a management value that is not one of the three', () => {
+    expect(ListRolesQuerySchema.safeParse({ page: 1, pageSize: 25, managed: 'sort-of' }).success).toBe(
+      false,
+    );
+  });
+
+  it('rejects an undeclared filter rather than ignoring it', () => {
+    expect(ListRolesQuerySchema.safeParse({ page: 1, pageSize: 25, status: 'active' }).success).toBe(
+      false,
+    );
+  });
 });
 
 describe('CreateRoleAssignmentSchema — a grant’s window must be a window', () => {

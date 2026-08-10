@@ -891,6 +891,99 @@ describe('T20 — authorization reads the holder’s CURRENT placement, never th
 
 // ── Regressions the phase must not break ────────────────────────────────────
 
+// ── P7-C — duplicating a role is CREATING one, and is guarded as one ────────
+//
+// The UI copies a role by reading its `permissionKeys` and POSTing them as a new role. There is no
+// duplicate endpoint, deliberately: the copy is the one operation whose whole purpose is to
+// reproduce a set of authorities in a single click, so it is exactly where a dedicated path would
+// be most tempting to write and most dangerous to get wrong. These tests exercise that flow over
+// HTTP and assert the two server guards still refuse it — the screen refuses earlier and more
+// kindly, but the screen is not what makes it safe.
+
+describe('P7-C — the duplicate flow passes through createRole’s guards', () => {
+  it('copies a role the actor can fully grant, as an ordinary unmanaged role held by nobody', async () => {
+    const sourceId = await seedRole('Duplicable source', ['user.view', 'branch.view']);
+    const source = data<RoleDto>(
+      await request(app)
+        .get(`/api/v1/platform/roles/${sourceId}`)
+        .set('Authorization', `Bearer ${granterToken}`),
+    );
+
+    // Exactly what the dialog sends: the source's keys, a new name, the copied description.
+    const res = await postRole(
+      {
+        name: { ar: 'مصدر (نسخة)', en: 'Duplicable source (Copy)' },
+        permissionKeys: source.permissionKeys,
+      },
+      granterToken,
+    );
+    expect(res.status).toBe(201);
+    const copy = data<RoleDto>(res);
+    expect(copy.permissionKeys.sort()).toEqual([...source.permissionKeys].sort());
+    expect(copy.id).not.toBe(source.id);
+    // `managed: none` and no key — a duplicate of anything is an ordinary role.
+    expect(copy.managed).toBe('none');
+    expect(copy.key).toBeNull();
+    expect(copy.isSystem).toBe(false);
+  });
+
+  it('carries no assignments — the copy starts held by nobody', async () => {
+    const sourceId = await seedRole('Held source', ['user.view']);
+    const holder = await seedUser('dup-holder@ecms.local');
+    expect((await postAssignment({ userId: holder, roleId: sourceId, scope: 'own' })).status).toBe(
+      201,
+    );
+
+    const copyId = data<RoleDto>(
+      await postRole({ name: roleName(), permissionKeys: ['user.view'] }, granterToken),
+    ).id;
+
+    const sourceHolders = await listAssignments(`?roleId=${sourceId}`);
+    const copyHolders = await listAssignments(`?roleId=${copyId}`);
+    expect(pageMeta(sourceHolders).totalItems).toBe(1);
+    expect(pageMeta(copyHolders).totalItems).toBe(0);
+  });
+
+  // All-or-nothing. A partial copy would succeed, look right, and grant less than its name implies.
+  it('refuses the WHOLE copy when the source carries a key the actor does not hold', async () => {
+    const sourceId = await seedRole('Beyond the granter', ['user.view', 'user.manageSessions']);
+    const source = data<RoleDto>(
+      await request(app)
+        .get(`/api/v1/platform/roles/${sourceId}`)
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+
+    const res = await postRole(
+      { name: roleName(), permissionKeys: source.permissionKeys },
+      granterToken,
+    );
+    expect(res.status).toBe(422);
+    expect(errorOf(res).message).toContain('user.manageSessions');
+    // Nothing partial was created: the same call minus that key is what WOULD have worked.
+    const narrowed = await postRole(
+      { name: roleName(), permissionKeys: ['user.view'] },
+      granterToken,
+    );
+    expect(narrowed.status).toBe(201);
+  });
+
+  it('refuses a copy carrying a key the registry no longer declares', async () => {
+    const res = await postRole(
+      { name: roleName(), permissionKeys: ['user.view', 'retired.view'] },
+      granterToken,
+    );
+    expect(res.status).toBe(422);
+    expect(errorOf(res).code).toBe(ErrorCodes.PERMISSION_UNKNOWN);
+    expect(errorOf(res).message).toContain('retired.view');
+  });
+
+  it('still refuses a caller without role.create, whatever they are copying', async () => {
+    expect(
+      (await postRole({ name: roleName(), permissionKeys: ['user.view'] }, readerToken)).status,
+    ).toBe(403);
+  });
+});
+
 describe('regressions', () => {
   it('every mutating role path refuses a caller without the grant (403, not 404 or 422)', async () => {
     const roleId = await seedRole('Untouchable by the reader', ['user.view']);

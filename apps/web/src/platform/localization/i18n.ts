@@ -3410,6 +3410,17 @@ const en: Record<string, string> = {
   'systemAdmin.roles.users.title': 'Accounts holding this role',
   'systemAdmin.roles.users.hint':
     'Revoking the last grant is what disabling a role means — there is no status flag.',
+  'systemAdmin.roles.actions.duplicate': 'Duplicate',
+  'systemAdmin.roles.duplicated': 'Role duplicated.',
+  'systemAdmin.roles.form.duplicateTitle': 'Duplicate role',
+  'systemAdmin.roles.form.duplicate': 'Create copy',
+  'systemAdmin.roles.form.copySuffix': '(Copy)',
+  'systemAdmin.roles.form.duplicateHint':
+    'A new role with the same permissions. Nobody holds it until you grant it, and the name is yours to change.',
+  'systemAdmin.roles.duplicateBlockedUnknown':
+    'This role carries a permission the registry no longer defines, which cannot be copied: {{keys}}. Remove it from this role first.',
+  'systemAdmin.roles.duplicateBlockedNotHeld':
+    'You cannot copy this role because you do not hold all of its permissions: {{keys}}. A partial copy is not offered.',
   'systemAdmin.roles.users.holder': 'Account',
   'systemAdmin.roles.users.openAccount': 'Open account',
   'systemAdmin.roles.users.confirmRevoke':
@@ -6866,6 +6877,17 @@ const ar: Record<string, string> = {
   'systemAdmin.roles.backToList': 'العودة إلى الأدوار',
   'systemAdmin.roles.users.title': 'الحسابات التي تحمل هذا الدور',
   'systemAdmin.roles.users.hint': 'سحب آخر منحة هو ما يعنيه تعطيل الدور — لا توجد حالة تُضبط.',
+  'systemAdmin.roles.actions.duplicate': 'تكرار',
+  'systemAdmin.roles.duplicated': 'تم تكرار الدور.',
+  'systemAdmin.roles.form.duplicateTitle': 'تكرار دور',
+  'systemAdmin.roles.form.duplicate': 'إنشاء نسخة',
+  'systemAdmin.roles.form.copySuffix': '(نسخة)',
+  'systemAdmin.roles.form.duplicateHint':
+    'دور جديد بنفس الصلاحيات. لا يحمله أحد حتى تمنحه، والاسم لك أن تغيّره.',
+  'systemAdmin.roles.duplicateBlockedUnknown':
+    'يحمل هذا الدور صلاحية لم يعد السجل يعرّفها ولا يمكن نسخها: {{keys}}. أزلها من الدور أولًا.',
+  'systemAdmin.roles.duplicateBlockedNotHeld':
+    'لا يمكنك نسخ هذا الدور لأنك لا تملك كل صلاحياته: {{keys}}. النسخ الجزئي غير متاح.',
   'systemAdmin.roles.users.holder': 'الحساب',
   'systemAdmin.roles.users.openAccount': 'فتح الحساب',
   'systemAdmin.roles.users.confirmRevoke':

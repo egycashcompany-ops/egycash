@@ -1,4 +1,11 @@
-// Create and edit a role. The permission matrix is the form — a role IS its bundle of grants.
+// Create, edit and duplicate a role. The permission matrix is the form — a role IS its bundle of
+// grants.
+//
+// **Duplicating is CREATING, deliberately.** `duplicateOf` only pre-fills this form; the submit path
+// is `POST /platform/roles`, identical to a hand-built role, so the copy passes through
+// `assertKnownPermissionKeys` and `assertKeysHeld` on the server exactly as anything else does. A
+// dedicated duplicate endpoint would have had to re-implement both — on the one operation whose
+// entire purpose is reproducing a set of authorities in a single click.
 //
 // The matrix disables every permission the actor does not hold, because the server refuses those
 // anyway: nobody hands out an authority they lack. Showing them ticked-but-locked rather than
@@ -6,6 +13,7 @@
 // what it already carries, including the parts they cannot change.
 import { useState } from 'react';
 import { type CreateRole, type RoleDto, type UpdateRole } from '@ecms/contracts';
+import { duplicateName, duplicatePayload } from '../lib/role-duplication';
 import { useT } from '../../../../platform/localization/useT';
 import { Button, Dialog, Field, Form, Input, Textarea, toast } from '../../../../shared/ui';
 import { RolePermissionMatrix } from './RolePermissionMatrix';
@@ -20,21 +28,39 @@ export const RoleFormDialog = ({
   open,
   onClose,
   role,
+  duplicateOf = null,
   onCreated,
 }: {
   open: boolean;
   onClose: () => void;
   /** `null` creates; a role edits it. */
   role: RoleDto | null;
+  /**
+   * Pre-fill from this role and CREATE a new one. Mutually exclusive with `role` in practice — the
+   * caller passes one or the other — and it changes nothing about the submit path.
+   */
+  duplicateOf?: RoleDto | null;
   onCreated?: (created: RoleDto) => void;
 }): JSX.Element => {
   const t = useT();
-  const [nameAr, setNameAr] = useState(role?.name.ar ?? '');
-  const [nameEn, setNameEn] = useState(role?.name.en ?? '');
-  const [description, setDescription] = useState(role?.description ?? '');
-  const [keys, setKeys] = useState<string[]>(role?.permissionKeys ?? []);
-
   const isCreate = role === null;
+  const isDuplicate = isCreate && duplicateOf !== null;
+  const copied = duplicateOf === null ? null : duplicatePayload(duplicateOf);
+
+  // The suffix is a starting point, not a convention: the field stays editable, and a name the
+  // administrator types over is never reconstructed from the source.
+  const [nameAr, setNameAr] = useState(
+    duplicateOf !== null
+      ? duplicateName(duplicateOf.name.ar, t('systemAdmin.roles.form.copySuffix'))
+      : (role?.name.ar ?? ''),
+  );
+  const [nameEn, setNameEn] = useState(
+    duplicateOf !== null
+      ? duplicateName(duplicateOf.name.en, t('systemAdmin.roles.form.copySuffix'))
+      : (role?.name.en ?? ''),
+  );
+  const [description, setDescription] = useState(copied?.description ?? role?.description ?? '');
+  const [keys, setKeys] = useState<string[]>(copied?.permissionKeys ?? role?.permissionKeys ?? []);
   const create = useCreateRole();
   const update = useUpdateRole(role?.id ?? '');
   // The registry is gated by `permission.view`, which `role.create` does not imply. Without it the
@@ -71,7 +97,9 @@ export const RoleFormDialog = ({
       };
       create.mutate(body, {
         onSuccess: (created) => {
-          toast.success(t('systemAdmin.roles.created'));
+          toast.success(
+            t(isDuplicate ? 'systemAdmin.roles.duplicated' : 'systemAdmin.roles.created'),
+          );
           onClose();
           onCreated?.(created);
         },
@@ -98,16 +126,28 @@ export const RoleFormDialog = ({
       onClose={onClose}
       size="lg"
       title={t(
-        isCreate ? 'systemAdmin.roles.form.createTitle' : 'systemAdmin.roles.form.editTitle',
+        isDuplicate
+          ? 'systemAdmin.roles.form.duplicateTitle'
+          : isCreate
+            ? 'systemAdmin.roles.form.createTitle'
+            : 'systemAdmin.roles.form.editTitle',
       )}
-      description={t('systemAdmin.roles.form.hint')}
+      description={t(
+        isDuplicate ? 'systemAdmin.roles.form.duplicateHint' : 'systemAdmin.roles.form.hint',
+      )}
       footer={
         <div className="flex justify-end gap-2">
           <Button variant="ghost" size="sm" onClick={onClose}>
             {t('common.cancel')}
           </Button>
           <Button size="sm" loading={busy} onClick={submit}>
-            {t(isCreate ? 'systemAdmin.roles.form.create' : 'systemAdmin.roles.form.save')}
+            {t(
+              isDuplicate
+                ? 'systemAdmin.roles.form.duplicate'
+                : isCreate
+                  ? 'systemAdmin.roles.form.create'
+                  : 'systemAdmin.roles.form.save',
+            )}
           </Button>
         </div>
       }

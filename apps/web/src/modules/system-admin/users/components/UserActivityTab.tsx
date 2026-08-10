@@ -51,6 +51,8 @@ const TRANSLATED_ACTIONS = new Set([
   'sessionRevoked',
   'roleAssigned',
   'roleRevoked',
+  // Moving a grant's validity window — neither a new grant nor a revocation (SA-3).
+  'roleAssignmentUpdated',
   'accountAutoCreated',
   'credentialsDelivered',
   'firstLogin',

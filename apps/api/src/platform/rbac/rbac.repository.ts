@@ -72,6 +72,10 @@ class RoleAssignmentRepository extends BaseRepository<RoleAssignmentDoc> {
    *
    * `$facet` returns the page and its total from ONE round trip, so the count cannot disagree with
    * the rows — a second query would count a set the page never saw.
+   *
+   * The order is fixed at newest-first rather than taken from the query: a grant has no field worth
+   * sorting by that the screens expose, and accepting a `sortBy` here would mean honouring it on a
+   * joined document where an unrecognised field silently sorts by nothing at all.
    */
   async listVisible(
     filter: FilterQuery<RoleAssignmentDoc>,
@@ -108,7 +112,10 @@ class RoleAssignmentRepository extends BaseRepository<RoleAssignmentDoc> {
     };
   }
 
-  /** Live assignments of a role, oldest first — the input to "revoke every holder". */
+  /**
+   * Every live assignment of a role. Read to COUNT holders — "is this the last Super Admin?" — so
+   * no order is imposed; there is nothing here for one to mean.
+   */
   async findActiveForRole(roleId: string): Promise<RoleAssignmentDoc[]> {
     return this.model
       .find({ roleId: new Types.ObjectId(roleId), isDeleted: false })

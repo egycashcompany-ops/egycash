@@ -42,6 +42,7 @@ import {
   useRole,
 } from '../api/role-queries';
 import { listAssignments, revokeAssignment } from '../api/role-api';
+import { revokeAllAssignments } from '../lib/revoke-all';
 
 const TABS = ['permissions', 'users'] as const;
 type Tab = (typeof TABS)[number];
@@ -99,31 +100,17 @@ export const RoleDetailPage = (): JSX.Element => {
   /**
    * Revoke every grant of this role, one call at a time. Each refusal is reported rather than
    * swallowed: "revoked 6 of 7" is the honest answer when the seventh is the last Super Admin.
+   * The loop itself lives in `lib/revoke-all` — its termination is the whole of it, and a hang is
+   * not something a render test would catch.
    */
   const revokeAll = async (): Promise<void> => {
     setRevokingAll(true);
-    let removed = 0;
-    let refused = 0;
     try {
       // Re-read rather than trusting the page on screen — the list may be paginated.
-      let cursor = 1;
-      for (;;) {
-        const batch = await listAssignments({ roleId: id, page: cursor, pageSize: DEFAULT_PAGE_SIZE });
-        if (batch.items.length === 0) break;
-        for (const assignment of batch.items) {
-          try {
-            await revokeAssignment(assignment.id);
-            removed += 1;
-          } catch {
-            // Self-assignment and the last Super Admin are both legitimate refusals.
-            refused += 1;
-          }
-        }
-        // Revoked rows leave the list, so the same page number yields the next batch; a page that
-        // produced nothing but refusals would otherwise loop forever.
-        if (removed === 0) cursor += 1;
-        if (cursor > batch.meta.totalPages + 1) break;
-      }
+      const { removed, refused } = await revokeAllAssignments(
+        (page) => listAssignments({ roleId: id, page, pageSize: DEFAULT_PAGE_SIZE }),
+        revokeAssignment,
+      );
       toast.success(t('systemAdmin.roles.revokedAll', { removed, refused }));
     } finally {
       setRevokingAll(false);

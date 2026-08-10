@@ -208,8 +208,11 @@ describe('the roles client calls endpoints the RBAC routers declare', () => {
     for (const source of [ROLE_CLIENT, RBAC_ROUTES]) {
       expect(source).not.toMatch(/revoke-all|revokeAll\(|\/assignments['`]/);
     }
-    // …and the screen that offers "revoke from everyone" reaches the SINGLE revoke, in a loop.
-    expect(ROLE_DETAIL_PAGE).toContain('revokeAssignment(assignment.id)');
+    // …and the screen that offers "revoke from everyone" drives the SINGLE revoke, in a loop.
+    expect(ROLE_DETAIL_PAGE).toContain('revokeAllAssignments(');
+    expect(ROLE_DETAIL_PAGE).toContain('revokeAssignment,');
+    const loop = readFileSync(resolve(HERE, 'roles/lib/revoke-all.ts'), 'utf8');
+    expect(loop).toContain('revokeOne(assignment.id)');
   });
 });
 

@@ -1,11 +1,12 @@
 // System Administration → Roles & Permissions: the api/ surface (ADR-013).
 //
-// Every call targets an endpoint the platform already serves. The two additions this slice makes to
-// the platform — the roles list's filters and the assignment validity-window PATCH — are extensions
-// of existing routers, not a new surface.
+// Every call targets an endpoint the platform already serves. The three additions these slices make
+// to the platform — the roles list's filters, the assignment validity-window PATCH (SA-3) and the
+// effective-permissions read (SA-4) — are extensions of existing routers, not a new surface.
 import {
   type CreateRole,
   type CreateRoleAssignment,
+  type EffectivePermissionsDto,
   type Paginated,
   type PermissionDto,
   type RoleAssignmentDto,
@@ -67,3 +68,16 @@ export const updateAssignment = (
 
 export const revokeAssignment = (id: string): Promise<void> =>
   del<void>(`/platform/role-assignments/${id}`);
+
+// ── Effective permissions (SA-4) ────────────────────────────────────────────
+
+/**
+ * What an account may actually do, and where each permission came from.
+ *
+ * A sub-resource of the ACCOUNT, not of the roles collection, because that is what it describes —
+ * and because the endpoint is scoped by `user.view`, which is what decides whether this caller may
+ * look at this person at all. Unpaginated on purpose: the row count is bounded by the permission
+ * registry that ships with the deployment, not by anything a user can grow.
+ */
+export const getEffectivePermissions = (userId: string): Promise<EffectivePermissionsDto> =>
+  get<EffectivePermissionsDto>(`/platform/users/${userId}/effective-permissions`);

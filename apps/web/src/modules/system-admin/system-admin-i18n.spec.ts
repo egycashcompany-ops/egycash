@@ -16,6 +16,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ACCOUNT_STATUSES,
   DATA_SCOPES,
+  PERMISSION_STATES,
   ROLE_MANAGEMENT,
   TIMELINE_SOURCES,
   USER_STATUSES,
@@ -34,12 +35,14 @@ const VOCABULARIES: { name: string; prefix: string; values: readonly string[] }[
   {
     name: 'detail tab',
     prefix: 'systemAdmin.users.tabs',
-    values: ['overview', 'roles', 'security', 'activity'],
+    values: ['overview', 'roles', 'permissions', 'security', 'activity'],
   },
   { name: 'role tab', prefix: 'systemAdmin.roles.tabs', values: ['permissions', 'users'] },
   { name: 'role management', prefix: 'systemAdmin.roles.managed', values: ROLE_MANAGEMENT },
   // The reach of a grant. Driven by the contracts enum, so a new scope cannot ship unlabelled.
   { name: 'assignment scope', prefix: 'systemAdmin.assignments.scopes', values: DATA_SCOPES },
+  // Whether a grant applies right now. Driven by the contracts enum (SA-4).
+  { name: 'permission state', prefix: 'systemAdmin.effective.state', values: PERMISSION_STATES },
   { name: 'locale', prefix: 'systemAdmin.users.locale', values: ['ar', 'en'] },
   { name: 'delivery channel', prefix: 'systemAdmin.users.channel', values: ['whatsapp', 'email'] },
   { name: 'timeline stream', prefix: 'systemAdmin.users.activity.stream', values: TIMELINE_SOURCES },

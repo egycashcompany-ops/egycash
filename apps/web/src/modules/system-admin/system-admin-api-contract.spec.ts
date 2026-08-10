@@ -28,6 +28,7 @@ const ROLES_LIST_PAGE = readFileSync(resolve(HERE, 'roles/pages/RolesListPage.ts
 const ROLE_DETAIL_PAGE = readFileSync(resolve(HERE, 'roles/pages/RoleDetailPage.tsx'), 'utf8');
 const USER_ROLES_TAB = readFileSync(resolve(HERE, 'roles/components/UserRolesTab.tsx'), 'utf8');
 const RBAC_ROUTES = read('platform/rbac/rbac.routes.ts');
+const QUERIES_ROLES = readFileSync(resolve(HERE, 'roles/api/role-queries.ts'), 'utf8');
 const RBAC_SERVICE = read('platform/rbac/rbac.service.ts');
 const RBAC_CONTRACT = readFileSync(
   resolve(HERE, '../../../../../packages/contracts/src/platform/rbac.ts'),
@@ -272,9 +273,10 @@ describe('the module talks only to the surfaces it is allowed to', () => {
     expect(hrEndpoints).toContain('delete /:id/user-link');
   });
 
-  // Roles, sessions and effective permissions are later phases with their own endpoints; calling
-  // them here would ship the phase early through the back door.
-  it('does not reach for a later phase’s endpoints', () => {
+  // Roles, assignments and the permission registry ship now (SA-3/SA-4), but they belong to the
+  // ROLES feature's client. One resource, one api/ file (ADR-013) — a second caller here would be a
+  // second place to change when the endpoint moves. Settings remains a later phase outright.
+  it('leaves the roles surface to the roles client, and later phases alone', () => {
     for (const path of [
       '/platform/roles',
       '/platform/role-assignments',
@@ -282,8 +284,51 @@ describe('the module talks only to the surfaces it is allowed to', () => {
       '/platform/settings',
       'effective-permissions',
     ]) {
-      expect(CLIENT, `${path} belongs to a later phase`).not.toContain(path);
+      expect(CLIENT, `${path} does not belong in the users client`).not.toContain(path);
     }
+  });
+});
+
+describe('SA-4 — the effective-permissions read', () => {
+  // The path is a USERS sub-resource while the client lives beside the roles screens, so neither of
+  // the two scans above covers it. This is the one that does.
+  it('calls a path the users router actually declares', () => {
+    expect(ROLE_CLIENT).toContain('/effective-permissions');
+    expect(declared(USER_ROUTES)).toContain('get /:id/effective-permissions');
+  });
+
+  // The decision this endpoint turns on. `user.view` because the subject is an account, `role.view`
+  // because the answer is made of roles — and NEITHER implies the other. `authorizeAny` would let
+  // one of them through, which is the opposite of what is meant, so the chaining is pinned here.
+  it('is gated by user.view AND role.view, chained', () => {
+    const block =
+      /router\.get\(\s*'\/:id\/effective-permissions',[\s\S]*?asyncHandler/.exec(USER_ROUTES)?.[0];
+    expect(block, 'the route was not found').toBeDefined();
+    expect(block).toContain('authenticate');
+    expect(block).toContain("authorize('user.view')");
+    expect(block).toContain("authorize('role.view')");
+    expect(block, 'either-or is not the rule here').not.toContain('authorizeAny');
+  });
+
+  // A GET that wrote something would be a GET nobody expects to write.
+  it('is read-only — no mutation and no bespoke audit action', () => {
+    const controller = read('platform/users/user.controller.ts');
+    const handler =
+      /export const getUserEffectivePermissions[\s\S]*?\n};/.exec(controller)?.[0] ?? '';
+    expect(handler, 'the handler was not found').not.toBe('');
+    expect(handler).toContain("scopeSelector(ctx, 'user.view')");
+    for (const forbidden of ['auditService', 'emit(', 'created(', 'noContent(']) {
+      expect(handler, `${forbidden} has no place in a read`).not.toContain(forbidden);
+    }
+  });
+
+  // SA-4 adds no cache. The projection is computed fresh precisely so there is no second thing to
+  // invalidate, and a `staleTime` here would quietly reintroduce one in the browser instead.
+  it('does not cache the projection in the client either', () => {
+    const hook =
+      /export const useEffectivePermissions[\s\S]*?\n {2}\}\);/.exec(QUERIES_ROLES)?.[0] ?? '';
+    expect(hook, 'the hook was not found').not.toBe('');
+    expect(hook).toContain('staleTime: 0');
   });
 });
 

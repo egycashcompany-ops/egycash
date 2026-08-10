@@ -12,6 +12,7 @@ import { created, noContent, ok, okPage } from '../../infrastructure/http/respon
 import { validated } from '../../infrastructure/http/validate';
 import { scopeSelector } from '../../shared/types';
 import { authContext, authService } from '../auth';
+import { rbacService } from '../rbac';
 import { userService } from './user.service';
 
 type IdParam = { id: string };
@@ -108,4 +109,17 @@ export const adminRevokeSessions = async (req: Request, res: Response): Promise<
   const { params } = validated<never, never, IdParam>(req);
   await authService.revokeAllSessionsForUser(params.id, 'admin-force-logout');
   noContent(res);
+};
+
+/**
+ * SA-4 — the account's effective permissions, with their sources (read-only).
+ *
+ * The route requires `user.view` AND `role.view`; the SCOPE comes from `user.view`, because the
+ * subject here is the account. An account outside that scope answers 404 from the service's own
+ * read — this handler never learns whether it exists.
+ */
+export const getUserEffectivePermissions = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { params } = validated<never, never, IdParam>(req);
+  ok(res, await rbacService.explainEffectivePermissions(params.id, scopeSelector(ctx, 'user.view')));
 };

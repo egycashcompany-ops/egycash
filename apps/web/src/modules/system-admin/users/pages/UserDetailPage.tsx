@@ -1,9 +1,10 @@
 // One account, everything an administrator needs to see and the actions this slice exposes.
 //
 // Tabs rather than one long page, because they answer different questions and are read at different
-// moments: WHO this is (overview), WHAT IT MAY DO (roles), WHAT its credential state is and what
-// can be done about it (security), and WHAT HAS HAPPENED to it (activity). The tab lives in the URL
-// so a support conversation can link to the security panel of a specific account.
+// moments: WHO this is (overview), WHAT IT HOLDS (roles), WHAT THAT ADDS UP TO (permissions),
+// WHAT its credential state is and what can be done about it (security), and WHAT HAS HAPPENED to
+// it (activity). The tab lives in the URL so a support conversation can link to the security panel
+// — or to the one permission somebody is arguing about — on a specific account.
 //
 // The employee link is INDICATION, not administration: it renders whether this login belongs to an
 // employee and offers a way through to the HR record, and it never writes. HR owns that linkage
@@ -31,9 +32,10 @@ import { UserFormDialog } from '../components/UserFormDialog';
 // The grants an account holds are role-assignment records, so the screen that edits them belongs to
 // the roles feature — this page renders it rather than owning a second client for the same resource.
 import { UserRolesTab } from '../../roles/components/UserRolesTab';
+import { UserEffectivePermissionsTab } from '../../roles/components/UserEffectivePermissionsTab';
 import { useSystemUser } from '../api/user-queries';
 
-const TABS = ['overview', 'roles', 'security', 'activity'] as const;
+const TABS = ['overview', 'roles', 'permissions', 'security', 'activity'] as const;
 type Tab = (typeof TABS)[number];
 
 export const UserDetailPage = (): JSX.Element => {
@@ -149,6 +151,8 @@ export const UserDetailPage = (): JSX.Element => {
       )}
 
       {tab === 'roles' && <UserRolesTab user={user} />}
+
+      {tab === 'permissions' && <UserEffectivePermissionsTab user={user} />}
 
       {tab === 'security' && (
         <div className="space-y-4">

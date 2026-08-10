@@ -163,3 +163,72 @@ export interface PermissionDto {
   name: { ar: string; en: string };
   breakGlass: boolean;
 }
+
+// ── Effective permissions, explained (SA-4) ─────────────────────────────────
+//
+// The authorization path computes an account's permissions as `Record<key, DataScope>` and caches
+// it. That answer is the right one to ENFORCE with and the wrong one to SHOW: the merge is lossy
+// three times over — it discards which role carried the key, which assignment set the scope, and it
+// drops every grant that is not valid right now before the merge even begins.
+//
+// So an administrator asking "why can this person do X?" — or, far more often, "why CAN'T they?" —
+// has nothing to read. These types are the same computation with nothing thrown away.
+
+/** Where a grant sits relative to the moment it was evaluated at. */
+export const PERMISSION_STATES = ['active', 'pending', 'expired'] as const;
+export const PermissionStateSchema = z.enum(PERMISSION_STATES);
+export type PermissionState = z.infer<typeof PermissionStateSchema>;
+
+/** One assignment's contribution of one permission key. */
+export interface EffectivePermissionSourceDto {
+  assignmentId: string;
+  roleId: string;
+  roleName: { ar: string; en: string };
+  roleKey: string | null;
+  roleManaged: RoleManagement;
+  /** The grant's own scope, exactly as stored — never re-interpreted. */
+  scope: DataScope;
+  validFrom: string | null;
+  validTo: string | null;
+  state: PermissionState;
+  /**
+   * This contribution is what gives the key its effective scope: it is active AND its scope is the
+   * widest among the active ones. Without the flag, two sources granting the same key at different
+   * scopes read as a duplicate rather than as one answer and one also-ran. Ties are real — two
+   * roles can both grant at the widest scope — and both are marked, because both are true.
+   */
+  decisive: boolean;
+}
+
+export interface EffectivePermissionRowDto {
+  key: string;
+  /** From the registry. `null` for a key no module declares any more — a role can outlive one. */
+  moduleId: string | null;
+  name: { ar: string; en: string } | null;
+  breakGlass: boolean;
+  /** The widest scope among the ACTIVE sources; `null` when nothing grants it right now. */
+  scope: DataScope | null;
+  /**
+   * `active` when something grants it now; otherwise `pending` if a source is still to open, and
+   * `expired` when every source has closed. A row is never dropped for being one of the latter two:
+   * "this grant ended last Tuesday" is the answer to the question, and a missing row is not.
+   */
+  state: PermissionState;
+  sources: EffectivePermissionSourceDto[];
+}
+
+export interface EffectivePermissionsDto {
+  userId: string;
+  /**
+   * When this projection was computed. The enforcement path reads a cached snapshot whose TTL is
+   * capped at the next validity boundary, so the two can differ for a bounded moment — this field
+   * is what lets the screen say so rather than imply an authority it does not have.
+   */
+  evaluatedAt: string;
+  /** The account's permission version — what the enforcement cache is keyed on. */
+  permissionVersion: number;
+  isPrivileged: boolean;
+  /** Why. A privileged account is one holding a system role or a break-glass key (Review R13). */
+  privilegedBecause: { systemRoles: string[]; breakGlassKeys: string[] };
+  rows: EffectivePermissionRowDto[];
+}

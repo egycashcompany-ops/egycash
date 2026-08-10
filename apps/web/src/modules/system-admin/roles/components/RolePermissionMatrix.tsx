@@ -6,9 +6,9 @@
 //   • **A grant the actor does not hold is DISABLED, with the reason on it.** The server refuses it
 //     anyway (nobody hands out an authority they lack), so a checkbox that looked available would
 //     be a promise the save breaks. Disabled-and-explained is the honest rendering.
-//   • **A key the registry does not know is shown as Unknown**, still ticked. Roles keep keys a
-//     retired module used to declare; pretending they are not there would leave an administrator
-//     unable to see them, and dropping them silently on save would be worse.
+//   • **A key the registry does not know is shown as Unknown**, still ticked, and still removable.
+//     Roles keep keys a retired module used to declare; pretending they are not there would make an
+//     administrator unable to clean them up, and dropping them silently on save would be worse.
 //   • **A managed role is read-only throughout.** Editing a `hr-only:*` derivative is not merely
 //     unwise — the next boot restores it — so the whole matrix is inert rather than lying.
 //

@@ -99,6 +99,51 @@ export const useBranchOptions = (enabled = true) =>
     retry: false,
   });
 
+/**
+ * The cascade below the branch field. Each level is enabled only once its parent is chosen, so a
+ * department search can never run unbranched and return units from elsewhere in the company.
+ *
+ * `retry: false` because the expected failure is a 403 — an administrator who may edit accounts
+ * without holding `department.view` — and retrying a refusal three times only delays the field's
+ * honest "you cannot pick this here" message.
+ */
+export const useDepartmentSearch = (branchId: string, term: string, enabled: boolean) =>
+  useQuery({
+    queryKey: [MODULE, 'department-search', branchId, term],
+    queryFn: () => api.searchDepartments(branchId, term),
+    enabled: enabled && branchId !== '',
+    retry: false,
+    select: (page) => page.items,
+  });
+
+export const useSectionSearch = (departmentId: string, term: string, enabled: boolean) =>
+  useQuery({
+    queryKey: [MODULE, 'section-search', departmentId, term],
+    queryFn: () => api.searchSections(departmentId, term),
+    enabled: enabled && departmentId !== '',
+    retry: false,
+    select: (page) => page.items,
+  });
+
+/** Resolve a stored placement for display — the form arrives with ids and no search text. */
+export const useDepartment = (id: string) =>
+  useQuery({
+    queryKey: [MODULE, 'department', id],
+    queryFn: () => api.getDepartment(id),
+    enabled: id !== '',
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+
+export const useSection = (id: string) =>
+  useQuery({
+    queryKey: [MODULE, 'section', id],
+    queryFn: () => api.getSection(id),
+    enabled: id !== '',
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+
 // ── Employee linkage (E1) ───────────────────────────────────────────────────
 // The link lives on the EMPLOYEE, so writing it invalidates the account (whose `employeeId` moved)
 // and the employee lookup that renders its name.

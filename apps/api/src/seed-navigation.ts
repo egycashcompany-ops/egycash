@@ -426,6 +426,23 @@ const CATALOG: CategoryDef[] = [
         icon: 'users',
         permission: 'user.view',
       },
+      // SA-3. Two rows, not one: an administrator may be allowed to read what a permission key
+      // MEANS without being allowed to see who holds it, and each row carries the permission its
+      // screen already enforces so the menu never offers a page that then refuses.
+      {
+        en: 'Roles',
+        ar: 'الأدوار',
+        route: '/system/roles',
+        icon: 'shield',
+        permission: 'role.view',
+      },
+      {
+        en: 'Permissions',
+        ar: 'الصلاحيات',
+        route: '/system/permissions',
+        icon: 'key',
+        permission: 'permission.view',
+      },
     ],
   },
 ];

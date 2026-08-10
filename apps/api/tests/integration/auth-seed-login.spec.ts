@@ -150,10 +150,13 @@ describe('seed → password login (regression)', () => {
     expect(routes).toContain('/it/spare-parts');
     expect(routes).toContain('/it/software');
     expect(routes).toContain('/it/licenses');
-    // SA-1 appends the System Administration users screen to the Administration group.
+    // SA-1 appends the System Administration users screen to the Administration group; SA-3 adds
+    // the roles and permission-registry screens beside it.
     expect(routes).toContain('/system/users');
-    // 14 (HR) + 12 (Fleet) + 6 (Organization) + 13 (IT) + 3 (Administration)
-    expect(routes).toHaveLength(48);
+    expect(routes).toContain('/system/roles');
+    expect(routes).toContain('/system/permissions');
+    // 14 (HR) + 12 (Fleet) + 6 (Organization) + 13 (IT) + 5 (Administration)
+    expect(routes).toHaveLength(50);
   });
 
   it('re-running the seed is idempotent — no duplicate categories/applications/grants', async () => {
@@ -165,7 +168,7 @@ describe('seed → password login (regression)', () => {
       .set('Authorization', `Bearer ${token}`);
     const groups = (res.body as { data: { applications: unknown[] }[] }).data;
     expect(groups).toHaveLength(5);
-    expect(groups.reduce((n, g) => n + g.applications.length, 0)).toBe(48);
+    expect(groups.reduce((n, g) => n + g.applications.length, 0)).toBe(50);
   });
 
   it('the seeded HR user also logs in with email/password', async () => {

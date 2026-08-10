@@ -9,7 +9,8 @@ import {
   CreateRoleAssignmentSchema,
   CreateRoleSchema,
   ListRoleAssignmentsQuerySchema,
-  PaginationQuerySchema,
+  ListRolesQuerySchema,
+  UpdateRoleAssignmentSchema,
   UpdateRoleSchema,
 } from './rbac.validation';
 import {
@@ -21,6 +22,7 @@ import {
   listPermissions,
   listRoles,
   revokeAssignment,
+  updateAssignment,
   updateRole,
 } from './rbac.controller';
 
@@ -38,7 +40,7 @@ export const buildRolesRouter = (): Router => {
     '/',
     authenticate,
     authorize('role.view'),
-    validate({ query: PaginationQuerySchema }),
+    validate({ query: ListRolesQuerySchema }),
     asyncHandler(listRoles),
   );
   router.get(
@@ -87,6 +89,16 @@ export const buildRoleAssignmentsRouter = (): Router => {
     authorize('role.assign'),
     validate({ body: CreateRoleAssignmentSchema }),
     asyncHandler(createAssignment),
+  );
+  // Moving a grant's validity window: the same permission as making one, because extending a grant
+  // that is about to lapse is the same authority as issuing it. Everything else about an assignment
+  // is immutable — changing the role, the user or the scope is a revocation and a new grant.
+  router.patch(
+    '/:id',
+    authenticate,
+    authorize('role.assign'),
+    validate({ body: UpdateRoleAssignmentSchema, params: IdParamSchema }),
+    asyncHandler(updateAssignment),
   );
   router.delete(
     '/:id',

@@ -28,45 +28,64 @@ const declaredPaths = (): string[] =>
 describe('System Administration routes', () => {
   const paths = declaredPaths();
 
-  it('declares exactly the SA-1 surface', () => {
-    expect(paths.sort()).toEqual(['users', ':id'].sort());
+  it('declares exactly the shipped surface', () => {
+    // `:id` is declared twice — once under users, once under roles — so the comparison is on the
+    // SET of segments; which parent each belongs to is checked by the guard tests below.
+    expect([...new Set(paths)].sort()).toEqual(['users', 'roles', 'permissions', ':id'].sort());
   });
 
   // Every later phase is named in the approved plan, which makes an early route a very easy
   // mistake to make and a very hard one to notice.
   it('ships no route belonging to a later phase', () => {
-    for (const path of ['roles', 'permissions', 'appearance', 'color-rules', 'settings', 'audit']) {
+    for (const path of ['appearance', 'color-rules', 'settings', 'audit']) {
       expect(paths, `${path} belongs to a later phase`).not.toContain(path);
     }
   });
 
-  // Creating and editing accounts is the next phase. A form route here would be reachable by URL
-  // even with nothing linking to it.
+  // Roles are created and edited in a dialog, accounts likewise. A form ROUTE would be reachable by
+  // URL even with nothing linking to it, and would need its own guard.
   it('routes no create or edit form', () => {
-    for (const path of ['new', ':id/edit', 'users/new']) {
-      expect(paths, `${path} is not part of this phase`).not.toContain(path);
+    for (const path of ['new', ':id/edit', 'users/new', 'roles/new']) {
+      expect(paths, `${path} is not routed`).not.toContain(path);
     }
   });
 
-  it('gates the users subtree behind user.view', () => {
-    expect(ROUTES).toContain('<RequirePermission permission="user.view">');
+  it('gates each subtree behind the permission its API enforces', () => {
+    for (const permission of ['user.view', 'role.view', 'permission.view']) {
+      expect(ROUTES).toContain(`<RequirePermission permission="${permission}">`);
+    }
   });
 
-  // The subtree guard is the ONLY guard, so a page component routed outside it would be
-  // unprotected. Both screens must sit under the one <Outlet/> the guard wraps.
+  // A page component routed before the first guard would be unprotected. Every screen must sit
+  // inside one of the three guards.
   it('routes no page component outside a permission guard', () => {
     const guardIndex = ROUTES.indexOf('<RequirePermission');
-    for (const page of ['<UsersListPage />', '<UserDetailPage />']) {
+    for (const page of [
+      '<UsersListPage />',
+      '<UserDetailPage />',
+      '<RolesListPage />',
+      '<RoleDetailPage />',
+      '<PermissionCatalogPage />',
+    ]) {
       expect(ROUTES.indexOf(page), `${page} is routed before the guard`).toBeGreaterThan(guardIndex);
     }
   });
 
-  it('uses only permissions the platform actually declares for users', () => {
+  // The registry is a separate gate on purpose: reading what a key MEANS and reading who HOLDS it
+  // are different authorities, and collapsing them here would hand out the wider one.
+  it('does not gate the permission registry on role.view', () => {
+    const block = /path="permissions"[\s\S]{0,200}?permission="([^"]+)"/.exec(ROUTES)?.[1];
+    expect(block).toBe('permission.view');
+  });
+
+  it('uses only permissions the platform actually declares', () => {
     const used = new Set(
       [...ROUTES.matchAll(/<RequirePermission permission="([^"]+)">/g)].map((m) => m[1]),
     );
     for (const permission of used) {
-      expect(permission, 'SA routes gate on the platform users resource').toMatch(/^user\./);
+      expect(permission, 'SA routes gate on a platform RBAC resource').toMatch(
+        /^(user|role|permission)\./,
+      );
     }
   });
 
@@ -84,8 +103,8 @@ describe('System Administration navigation matches the routes that exist', () =>
     m[1] === undefined ? [] : [m[1]],
   );
 
-  it('seeds the shipped row', () => {
-    expect(navRoutes).toEqual(['/system/users']);
+  it('seeds the shipped rows', () => {
+    expect(navRoutes).toEqual(['/system/users', '/system/roles', '/system/permissions']);
   });
 
   it('points every row at a declared route', () => {
@@ -94,9 +113,15 @@ describe('System Administration navigation matches the routes that exist', () =>
     expect(dangling, 'navigation links to a route that does not exist').toEqual([]);
   });
 
-  // Since #157 a row with no permission key is offered to EVERY user it is granted to.
-  it('gates the row on the same permission as the route', () => {
-    const row = /route: '\/system\/users',[\s\S]{0,200}?permission: '([^']+)'/.exec(SEED)?.[1];
-    expect(row).toBe('user.view');
+  // Since #157 a row with no permission key is offered to EVERY user it is granted to. A row keyed
+  // differently from its route either advertises a screen the caller cannot open, or hides one they
+  // can — both are silent.
+  it.each([
+    ['/system/users', 'user.view'],
+    ['/system/roles', 'role.view'],
+    ['/system/permissions', 'permission.view'],
+  ])('gates %s on the same permission as the route', (route, permission) => {
+    const row = new RegExp(`route: '${route}',[\\s\\S]{0,200}?permission: '([^']+)'`).exec(SEED)?.[1];
+    expect(row).toBe(permission);
   });
 });

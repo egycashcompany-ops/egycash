@@ -30,6 +30,11 @@ decision, write a new ADR that supersedes the old one.
 | [ADR-019](ADR-019-reference-pickers-search-not-load-all.md) | Reference pickers search the server; they never load the whole catalog | Accepted |
 | [ADR-020](ADR-020-shared-file-storage.md) | Shared file storage for a multi-service deployment (object store, not a local disk) | Accepted |
 | [ADR-021](ADR-021-it-asset-custody-and-history.md) | IT asset custody is an append-only event chain, not a status field | Accepted |
+| ADR-022 | Help-desk SLA & ticket lifecycle placement | **Reserved, unwritten** |
+| [ADR-023](ADR-023-entity-derived-file-authorization.md) | File authorization is derived from the owning entity, not from the file | Accepted |
+| [ADR-024](ADR-024-minimal-spare-parts-ledger.md) | The spare-parts ledger is a store record, not inventory accounting | Accepted |
+| [ADR-025](ADR-025-sweep-announcement-marks.md) | Sweep announcements are marked in their own collection, not on the record | Accepted |
+| [ADR-026](ADR-026-role-administration-guards.md) | Administering roles cannot exceed the administrator | Accepted |
 
 ADR-001…014 were accepted with Milestone 1 approval (2026-07-08). ADR-015 records the
 single-organization correction from [Architecture Review 01](../10-reviews/2026-07-architecture-review-01.md),
@@ -49,4 +54,14 @@ ADR-021 records the IT custody chain delivered with slice IT-2 — an append-onl
 that is deliberately *not* the audit trail, because a record that settles a dispute must not inherit
 a security log's retention policy. It carries the number the
 [IT design](../12-planning/it-module-design.md) §14 reserved as 020 before that number was taken;
-the module's remaining two ADRs shift to 022 and 023 with it.
+the module's remaining two ADRs shift to 022 and 023 with it. **ADR-022 is a deliberate, recorded
+debt** — IT-3 shipped without it ([IT design](../12-planning/it-module-design.md) §13) — and the
+number stays reserved rather than being reused, per the numbering rule above. ADR-023 settles that a
+file's authorization comes from the entity it hangs off rather than from the file row. ADR-024 keeps
+the spare-parts ledger a store record rather than inventory accounting. ADR-025 gives sweep
+announcements a mark collection of their own, so idempotency does not become a flag inside a
+business record. ADR-026 records the guards that had to exist before role administration could be
+handed to a human: an administrator can neither put a permission into a role nor grant one at a
+breadth they do not themselves hold, server-side and with no identity-based exemption. It also
+writes down the department/section widening that ADR-017 §1 chose knowingly, which the roles screens
+now warn about but do not change.

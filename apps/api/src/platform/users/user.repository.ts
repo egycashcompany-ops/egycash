@@ -1,6 +1,7 @@
 // Data access only (ADR-003) — the sole place Mongoose is queried for users.
 import { Types, type ClientSession, type FilterQuery, type UpdateQuery } from 'mongoose';
 import { BaseRepository } from '../../shared/base/base.repository';
+import { type ScopeSelector } from '../../shared/types';
 import { UserModel, type UserDoc } from './user.model';
 
 class UserRepository extends BaseRepository<UserDoc> {
@@ -11,6 +12,37 @@ class UserRepository extends BaseRepository<UserDoc> {
       departmentField: 'organization.departmentId',
       sectionField: 'organization.sectionId',
     });
+  }
+
+  /**
+   * The scope clause for a user document reached through a JOIN, e.g. `holder.organization.branchId`
+   * on an aggregation over another collection.
+   *
+   * It mirrors the fields declared in the constructor three lines above — deliberately kept in the
+   * same file so the two cannot drift apart unnoticed — and returns the SAME shape `scopeFilter`
+   * would, so a joined read narrows exactly as a direct one does. It exists because
+   * `role_assignments` carries no placement of its own: who may see an assignment is decided by the
+   * holder's placement, and the only correct way to filter on that is to join.
+   */
+  holderScopeMatch(
+    selector: ScopeSelector | undefined,
+    prefix: string,
+  ): Record<string, unknown> {
+    if (selector === undefined || selector.scope === 'organization') return {};
+    const on = (field: string, id: string | null): Record<string, unknown> =>
+      // A caller with no placement at the level they are scoped to sees nothing — the same
+      // fail-closed answer `orgScopeFilter` gives, rather than an accidental widening.
+      id === null
+        ? { _id: new Types.ObjectId('000000000000000000000000') }
+        : { [`${prefix}${field}`]: new Types.ObjectId(id) };
+    if (selector.scope === 'branch') return on('organization.branchId', selector.branchId);
+    if (selector.scope === 'department') {
+      return on('organization.departmentId', selector.departmentId);
+    }
+    if (selector.scope === 'section') return on('organization.sectionId', selector.sectionId);
+    // `own` on users has no owner field, so it means "accounts I created" — the same reading
+    // `scopeFilter` gives it here.
+    return { [`${prefix}createdBy`]: new Types.ObjectId(selector.userId) };
   }
 
   async findByEmail(email: string): Promise<UserDoc | null> {

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  booleanQuery,
   objectId,
   DataScopeSchema,
   LocalizedStringSchema,
@@ -26,16 +27,53 @@ export const UpdateRoleSchema = z
   .strict();
 export type UpdateRole = z.infer<typeof UpdateRoleSchema>;
 
+/**
+ * How a role is looked after, and therefore what an administrator may do to it.
+ *
+ * DERIVED from the stored role — no field is added to the model:
+ *   • `system`  — `isSystem`: seeded and protected (`super-admin`, `platform-admin`,
+ *                 `employee-self-service`). Holding one also makes an account PRIVILEGED, which is
+ *                 why the flag is not handed out casually.
+ *   • `derived` — keyed `hr-only:*`: minted and re-asserted by the HR-only reconciliation on every
+ *                 boot and seed. Deliberately NOT `isSystem` (that would make its holders
+ *                 privileged), so `isSystem` alone cannot tell an administrator that editing it is
+ *                 pointless — the next boot would put it back.
+ *   • `none`    — an ordinary administrator-managed role.
+ */
+export const ROLE_MANAGEMENT = ['system', 'derived', 'none'] as const;
+export const RoleManagementSchema = z.enum(ROLE_MANAGEMENT);
+export type RoleManagement = z.infer<typeof RoleManagementSchema>;
+
 export interface RoleDto {
   id: string;
+  /** Stable key for seeded and managed roles; null for administrator-created ones. */
+  key: string | null;
   name: { ar: string; en: string };
   description: string | null;
   isSystem: boolean;
+  /** Derived from `isSystem` + `key` — the single answer to "may I edit this?". */
+  managed: RoleManagement;
   permissionKeys: string[];
   version: number;
   createdAt: string;
   updatedAt: string;
 }
+
+export const ListRolesQuerySchema = PaginationQuerySchema.extend({
+  search: z.string().max(200).optional(),
+  /** Filter by how the role is looked after — the list's system / managed / ordinary tabs. */
+  managed: RoleManagementSchema.optional(),
+  /**
+   * Roles nobody currently holds. "Disabling" a role IS revoking its assignments (there is no
+   * status field and adding one would put a second switch inside the authorization path), so this
+   * filter is how an administrator finds the roles that are effectively off.
+   *
+   * `booleanQuery()`, not `z.boolean()`: this arrives as the STRING `'true'` in a query string, and
+   * a plain boolean would reject every request the filter makes.
+   */
+  unassigned: booleanQuery().optional(),
+}).strict();
+export type ListRolesQuery = z.infer<typeof ListRolesQuerySchema>;
 
 // Role assignments are time-boundable (Review R14): expiry is enforced at
 // permission-set computation, not by a cleanup job.
@@ -59,16 +97,55 @@ export const CreateRoleAssignmentSchema = z
   });
 export type CreateRoleAssignment = z.infer<typeof CreateRoleAssignmentSchema>;
 
+/**
+ * Move an existing grant's validity window — and nothing else.
+ *
+ * Extending a grant that is about to lapse is a real operation, and expressing it as revoke +
+ * re-grant would throw away when the grant was first made and split one decision into two rows in
+ * the trail. The role, the user and the scope are deliberately absent: changing any of those is a
+ * different grant, which is a revoke and a new assignment.
+ */
+export const UpdateRoleAssignmentSchema = z
+  .object({
+    validFrom: z.coerce.date().nullable().optional(),
+    validTo: z.coerce.date().nullable().optional(),
+    /**
+     * Optimistic concurrency, like every other update in the system. A window is exactly the kind
+     * of field two administrators reach for at the same moment — one extending a grant, the other
+     * ending it — and last-write-wins would let the second silently undo the first.
+     */
+    version: z.number().int().min(0),
+  })
+  .strict()
+  .refine((v) => v.validFrom !== undefined || v.validTo !== undefined, {
+    message: 'nothing to change — supply validFrom or validTo',
+    path: ['validTo'],
+  });
+export type UpdateRoleAssignment = z.infer<typeof UpdateRoleAssignmentSchema>;
+
 export interface RoleAssignmentDto {
   id: string;
   userId: string;
   roleId: string;
+  /**
+   * The granted role, resolved for the page in one batched read. Without it every screen listing
+   * assignments would have to load the whole roles catalog to render a name — the pattern ADR-019
+   * exists to prevent.
+   */
+  role: { id: string; name: { ar: string; en: string }; key: string | null; managed: RoleManagement } | null;
   scope: DataScope;
+  /**
+   * The placement this grant was resolved against WHEN IT WAS MADE. Recorded for the trail and read
+   * by permission-based notification fan-out; authorization reads the holder's CURRENT placement
+   * from the request context and never this row (`base.repository.ts` scopeFilter).
+   */
   branchId: string | null;
   departmentId: string | null;
   sectionId: string | null;
   validFrom: string | null;
   validTo: string | null;
+  /** Optimistic-concurrency version — sent back on a window change. */
+  version: number;
   createdAt: string;
 }
 

@@ -14,10 +14,12 @@ import {
   type AdminResetPasswordResultDto,
   type ChangeUserStatus,
   type CreateUser,
+  type DepartmentDto,
   type EmployeeDto,
   type InvitedUserDto,
   type OrgUnitOptionDto,
   type Paginated,
+  type SectionDto,
   type TimelineDto,
   type UpdateUser,
   type UserDto,
@@ -106,6 +108,38 @@ export const getUserTimeline = (id: string, pageSize: number): Promise<TimelineD
  */
 export const listBranchOptions = (): Promise<OrgUnitOptionDto[]> =>
   get<OrgUnitOptionDto[]>('/platform/branches/options');
+
+/**
+ * Departments of one branch, and sections of one department — the cascade below the branch field.
+ *
+ * NOT the `/options` reference endpoints the branch field uses: those return every active unit in
+ * the company with no parent filter, so a cascade built on them would offer departments that do not
+ * belong to the chosen branch and let an administrator save an inconsistent placement. These are
+ * the ordinary list endpoints, searched server-side (ADR-019 rule 5) and gated by
+ * `department.view` / `section.view` — which is why the field degrades to a note rather than an
+ * empty dropdown for an administrator who does not hold them.
+ */
+export const searchDepartments = (
+  branchId: string,
+  search: string,
+): Promise<Paginated<DepartmentDto>> =>
+  getPage<DepartmentDto>(
+    `/platform/departments${buildQuery({ branchId, search, status: 'active', pageSize: 8 })}`,
+  );
+
+export const searchSections = (
+  departmentId: string,
+  search: string,
+): Promise<Paginated<SectionDto>> =>
+  getPage<SectionDto>(
+    `/platform/sections${buildQuery({ departmentId, search, status: 'active', pageSize: 8 })}`,
+  );
+
+export const getDepartment = (id: string): Promise<DepartmentDto> =>
+  get<DepartmentDto>(`/platform/departments/${id}`);
+
+export const getSection = (id: string): Promise<SectionDto> =>
+  get<SectionDto>(`/platform/sections/${id}`);
 
 // ── Employee linkage (decision E1 — HR owns the relationship) ────────────────
 //

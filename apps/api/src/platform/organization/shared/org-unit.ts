@@ -16,7 +16,12 @@ import { type ScopeSelector } from '../../../shared/types';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../shared/base/base.model';
 import { type BaseRepository } from '../../../shared/base/base.repository';
 import { diffChanges } from '../../../shared/utils/diff';
-import { auditService } from '../../audit';
+// The SERVICE module, not the audit barrel. This file is imported by every org-unit MODEL, so it
+// runs at schema-definition time; the barrel additionally pulls in the audit ROUTES, which reach
+// auth → users → the department repository → back to a model whose schema helpers are still
+// mid-initialization. Nothing about the audit surface changes here — `auditService` is what the
+// barrel re-exports — but the edge that closed the cycle is gone.
+import { auditService } from '../../audit/audit.service';
 import { emit } from '../../kernel/event-bus';
 
 export interface OrgUnitDoc extends BaseDocFields {

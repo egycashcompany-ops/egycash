@@ -26,6 +26,7 @@ const definition = (key: string, moduleId = 'hr'): PermissionDto => ({
   moduleId,
   name: { ar: `صلاحية ${key}`, en: `Permission ${key}` },
   breakGlass: false,
+  pageId: null,
 });
 
 const row = (key: string, moduleId = 'hr'): MatrixRow => ({ key, definition: definition(key, moduleId) });

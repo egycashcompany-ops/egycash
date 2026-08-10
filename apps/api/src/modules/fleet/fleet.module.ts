@@ -2,7 +2,7 @@
 // Delivered incrementally exactly as HR was: this slice registers vehicles, vehicle types and
 // catalogs; FL-3..FL-6 add drivers, odometer/maintenance, roster, accidents/violations — each
 // extending THIS manifest, never adding a second one.
-import { declarePermissions, type PermissionDef } from '@ecms/contracts';
+import { declarePermissions, type PageDef, type PermissionDef } from '@ecms/contracts';
 import { type ModuleManifest } from '../../platform/kernel/module-registry';
 import { buildFleetVehicleTypesRouter } from './vehicle-types';
 import { buildFleetCatalogRouter } from './catalogs';
@@ -34,6 +34,7 @@ const vehiclePermissions = declarePermissions(
       name: { en: 'Change vehicle status', ar: 'تغيير حالة السيارة' },
     },
   ],
+  'fleet.vehicles',
 );
 
 const catalogPermissions = declarePermissions(
@@ -42,6 +43,7 @@ const catalogPermissions = declarePermissions(
   { en: 'fleet catalogs', ar: 'قوائم الحركة' },
   [],
   [{ action: 'manage', name: { en: 'Manage fleet catalogs', ar: 'إدارة قوائم الحركة' } }],
+  'fleet.catalogs',
 );
 
 const maintenanceRulePermissions = declarePermissions(
@@ -58,6 +60,7 @@ const maintenanceRulePermissions = declarePermissions(
       },
     },
   ],
+  'fleet.settings',
 );
 
 const driverPermissions = declarePermissions(
@@ -71,6 +74,7 @@ const driverPermissions = declarePermissions(
       name: { en: 'Manage driver profiles', ar: 'إدارة ملفات السائقين' },
     },
   ],
+  'fleet.drivers',
 );
 
 const availabilityPermissions = declarePermissions(
@@ -85,6 +89,7 @@ const availabilityPermissions = declarePermissions(
       name: { en: 'Edit or cancel unavailability', ar: 'تعديل أو إلغاء عدم إتاحة' },
     },
   ],
+  'fleet.attendance',
 );
 
 const odometerPermissions = declarePermissions(
@@ -100,6 +105,7 @@ const odometerPermissions = declarePermissions(
       name: { en: 'Correct odometer readings', ar: 'تصحيح قراءات العداد' },
     },
   ],
+  'fleet.odometer',
 );
 
 const maintenancePermissions = declarePermissions(
@@ -117,6 +123,7 @@ const maintenancePermissions = declarePermissions(
       name: { en: 'Check a vehicle out (and undo)', ar: 'إخراج سيارة من الورشة (والتراجع)' },
     },
   ],
+  'fleet.maintenance',
 );
 
 const rosterPermissions = declarePermissions(
@@ -129,6 +136,7 @@ const rosterPermissions = declarePermissions(
     // operation on the same board (§4.5), not separately delegable decisions.
     { action: 'plan', name: { en: 'Plan the daily roster', ar: 'تخطيط تعيين اليوم' } },
   ],
+  'fleet.roster',
 );
 
 const accidentPermissions = declarePermissions(
@@ -143,6 +151,7 @@ const accidentPermissions = declarePermissions(
       name: { en: 'Close or reopen an accident', ar: 'إغلاق أو إعادة فتح حادث' },
     },
   ],
+  'fleet.accidents',
 );
 
 const violationPermissions = declarePermissions(
@@ -158,6 +167,7 @@ const violationPermissions = declarePermissions(
       name: { en: 'Set the yearly grievance figure', ar: 'تسجيل تظلم سنوي' },
     },
   ],
+  'fleet.violations',
 );
 
 export const fleetPermissions: PermissionDef[] = [
@@ -173,12 +183,92 @@ export const fleetPermissions: PermissionDef[] = [
   ...violationPermissions,
 ];
 
+/**
+ * The administration surfaces this module owns — the middle layer of the role matrix.
+ * Organizational only: nothing authorizes on a page, and declaring one grants nobody anything.
+ * Declared here rather than derived from the navigation catalogue, which is runtime data an
+ * administrator can edit.
+ */
+export const fleetPages: PageDef[] = [
+  {
+    id: 'fleet.vehicles',
+    moduleId: 'fleet',
+    name: { en: 'Vehicles', ar: 'المركبات' },
+    route: '/fleet/vehicles',
+    sortOrder: 10,
+  },
+  {
+    id: 'fleet.drivers',
+    moduleId: 'fleet',
+    name: { en: 'Drivers', ar: 'السائقون' },
+    route: '/fleet/drivers',
+    sortOrder: 20,
+  },
+  {
+    id: 'fleet.attendance',
+    moduleId: 'fleet',
+    name: { en: 'Attendance', ar: 'الحضور' },
+    route: '/fleet/attendance',
+    sortOrder: 30,
+  },
+  {
+    id: 'fleet.roster',
+    moduleId: 'fleet',
+    name: { en: 'Daily roster', ar: 'الجدول اليومي' },
+    route: '/fleet/roster',
+    sortOrder: 40,
+  },
+  {
+    id: 'fleet.odometer',
+    moduleId: 'fleet',
+    name: { en: 'Odometer', ar: 'عداد المسافات' },
+    route: '/fleet/odometer',
+    sortOrder: 50,
+  },
+  {
+    id: 'fleet.maintenance',
+    moduleId: 'fleet',
+    name: { en: 'Maintenance', ar: 'الصيانة' },
+    route: '/fleet/maintenance',
+    sortOrder: 60,
+  },
+  {
+    id: 'fleet.accidents',
+    moduleId: 'fleet',
+    name: { en: 'Accidents', ar: 'الحوادث' },
+    route: '/fleet/accidents',
+    sortOrder: 70,
+  },
+  {
+    id: 'fleet.violations',
+    moduleId: 'fleet',
+    name: { en: 'Violations', ar: 'المخالفات' },
+    route: '/fleet/violations',
+    sortOrder: 80,
+  },
+  {
+    id: 'fleet.catalogs',
+    moduleId: 'fleet',
+    name: { en: 'Fleet catalogs', ar: 'قوائم الحركة' },
+    route: '/fleet/catalogs',
+    sortOrder: 90,
+  },
+  {
+    id: 'fleet.settings',
+    moduleId: 'fleet',
+    name: { en: 'Fleet settings', ar: 'إعدادات الحركة' },
+    route: '/fleet/settings',
+    sortOrder: 100,
+  },
+];
+
 export const fleetModule: ModuleManifest = {
   id: 'fleet',
   name: { en: 'Fleet', ar: 'الحركة' },
   version: '0.1.0',
   requiresPlatform: '^2.1',
   permissions: fleetPermissions,
+  pages: fleetPages,
   routes: [
     { prefix: '/fleet/vehicles', router: buildFleetVehiclesRouter() },
     { prefix: '/fleet/vehicle-types', router: buildFleetVehicleTypesRouter() },

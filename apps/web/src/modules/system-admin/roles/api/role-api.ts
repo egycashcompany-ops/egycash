@@ -8,7 +8,7 @@ import {
   type CreateRoleAssignment,
   type EffectivePermissionsDto,
   type Paginated,
-  type PermissionDto,
+  type PermissionCatalogDto,
   type RoleAssignmentDto,
   type RoleDto,
   type UpdateRole,
@@ -44,8 +44,8 @@ export const deleteRole = (id: string): Promise<void> => del<void>(`/platform/ro
  * enumerate the permission definitions, it is gated by `permission.view`, and the matrix is only
  * meaningful when it shows every grant a role could carry.
  */
-export const listPermissions = (): Promise<PermissionDto[]> =>
-  get<PermissionDto[]>('/platform/permissions');
+export const listPermissionCatalog = (): Promise<PermissionCatalogDto> =>
+  get<PermissionCatalogDto>('/platform/permissions');
 
 // ── Assignments ─────────────────────────────────────────────────────────────
 

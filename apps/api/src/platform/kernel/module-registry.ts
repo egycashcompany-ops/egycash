@@ -2,7 +2,12 @@
 // mounted at boot via a Module Manifest — the single integration point between
 // Layer 2 and Layer 1. A manifest that fails validation FAILS THE BOOT loudly.
 import { type Router } from 'express';
-import { PERMISSION_KEY_PATTERN, type LocalizedString, type PermissionDef } from '@ecms/contracts';
+import {
+  PERMISSION_KEY_PATTERN,
+  type LocalizedString,
+  type PageDef,
+  type PermissionDef,
+} from '@ecms/contracts';
 import { type EventHandler } from './event-bus';
 import { type ScheduledTaskDeclaration } from '../scheduler';
 import { type FileEntityAuthorizer } from '../files/file-authorizers';
@@ -42,6 +47,17 @@ export interface ModuleManifest {
   /** Semver range of the platform contract the module was built against (Review R25). */
   requiresPlatform: string;
   permissions: PermissionDef[];
+  /**
+   * The administration surfaces this module owns, referenced by its permissions' `pageId`.
+   *
+   * Organizational only — nothing authorizes on a page (ADR-026 is unchanged by this). It exists so
+   * a role's two hundred checkboxes read as a tree, and it is declared here rather than derived
+   * from the navigation catalogue because that catalogue is runtime data an administrator edits.
+   *
+   * Optional so a module that has not been through the exercise still boots; declaring one that no
+   * permission points at fails the boot instead, which is the point.
+   */
+  pages?: PageDef[];
   routes: RouteRegistration[];
   /** Mongoose collection names the module owns — must carry the `<id>_` prefix. */
   collections: string[];
@@ -138,7 +154,10 @@ export const validateManifest = (manifest: ModuleManifest): void => {
   }
   for (const jobHandler of manifest.jobHandlers ?? []) {
     if (!jobHandler.jobName.startsWith(`${id}.`)) {
-      throw new ManifestValidationError(id, `job handler ${jobHandler.jobName} lacks the module prefix`);
+      throw new ManifestValidationError(
+        id,
+        `job handler ${jobHandler.jobName} lacks the module prefix`,
+      );
     }
   }
 };

@@ -33,6 +33,7 @@ const permission = (key: string, moduleId: string): PermissionDto => ({
   moduleId,
   name: { ar: `صلاحية ${key}`, en: `Permission ${key}` },
   breakGlass: false,
+  pageId: null,
 });
 
 const CATALOG: PermissionDto[] = [

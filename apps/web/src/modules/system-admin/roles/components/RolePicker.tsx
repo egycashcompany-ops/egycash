@@ -26,7 +26,11 @@ export const RolePicker = ({
   value,
   onChange,
   ariaLabel,
-  /** Roles the account already holds — offered, but marked so they are not granted twice. */
+  /**
+   * Roles visible on the caller's current page of the account's grants, marked so they are not
+   * granted twice by accident. Not a guarantee: a duplicate grant is not refused by the server, and
+   * an account holding more roles than one page shows can still be granted one of them again.
+   */
   alreadyHeld = [],
 }: {
   value: string;

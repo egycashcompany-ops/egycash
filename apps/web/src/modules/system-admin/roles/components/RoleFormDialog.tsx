@@ -32,7 +32,10 @@ export const RoleFormDialog = ({
   const isCreate = role === null;
   const create = useCreateRole();
   const update = useUpdateRole(role?.id ?? '');
-  const { data: catalog = [] } = usePermissionCatalog(open);
+  // The registry is gated by `permission.view`, which `role.create` does not imply. Without it the
+  // matrix would simply be empty and the form would refuse to save with no explanation — so the
+  // dialog says why instead of looking broken.
+  const { data: catalog = [], isError: catalogUnavailable } = usePermissionCatalog(open);
   const busy = create.isPending || update.isPending;
 
   const toggle = (key: string, next: boolean): void => {
@@ -116,6 +119,11 @@ export const RoleFormDialog = ({
           <p className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-200">
             {t('systemAdmin.roles.form.permissions', { count: keys.length })}
           </p>
+          {catalogUnavailable && (
+            <p className="mb-2 text-xs text-amber-700 dark:text-amber-400">
+              {t('systemAdmin.permissions.noAccess')}
+            </p>
+          )}
           <RolePermissionMatrix
             catalog={catalog}
             selected={keys}

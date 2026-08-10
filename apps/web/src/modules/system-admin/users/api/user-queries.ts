@@ -5,9 +5,10 @@
 // cached DTO, because half of what the screen shows is DERIVED server-side: `accountStatus` is a
 // pure function of status, lock state and the pending setup link (`user.service.ts` §15.4), and a
 // client that recomputed it would drift from the server the first time one of those inputs moved.
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ChangeUserStatus, type CreateUser, type UpdateUser } from '@ecms/contracts';
 import { detailKey, featureKey, listKey } from '../../../../shared/lib/query-keys';
+import { nextTimelinePage } from '../lib/timeline-view';
 import * as api from './user-api';
 import { type SystemUserListParams } from './user-api';
 
@@ -31,10 +32,23 @@ export const useSystemUser = (id: string) =>
     queryFn: () => api.getUser(id),
   });
 
+/**
+ * The account's history, newest first, one page at a time.
+ *
+ * Infinite rather than paged because a trail is READ backwards: you arrive at the newest event and
+ * walk back until you find the one you came for, and a page control would make you choose a page
+ * number for a question you are answering by scrolling.
+ *
+ * Where the paging stops is `nextTimelinePage`'s decision — see `lib/timeline-view` for why the
+ * answer is inferred from the page size rather than read from a total.
+ */
 export const useUserTimeline = (id: string, enabled: boolean) =>
-  useQuery({
+  useInfiniteQuery({
     queryKey: [MODULE, FEATURE, 'timeline', id],
-    queryFn: () => api.getUserTimeline(id, TIMELINE_PAGE_SIZE),
+    queryFn: ({ pageParam }) => api.getUserTimeline(id, TIMELINE_PAGE_SIZE, pageParam),
+    initialPageParam: 1,
+    getNextPageParam: (last, pages) =>
+      nextTimelinePage(last.items.length, pages.length, TIMELINE_PAGE_SIZE),
     enabled,
   });
 

@@ -12,9 +12,16 @@
 //     Offering a sortable "last login" header would produce a column that looks interactive and
 //     changes nothing.
 //
-// Filters are search + lifecycle status, which is what `ListUsersQuery` accepts today. The branch
-// filter the query also supports is not offered yet: it needs a branch reference surface, and the
-// only one that exists lives inside the organization module, which this module may not import.
+// Filters are search, lifecycle status and branch — the three `ListUsersQuery` accepts. The branch
+// filter waited until SA-2, when this module gained its own branch reference surface
+// (`/platform/branches/options`): the only one that existed before lived inside the organization
+// module, which this module may not import.
+//
+// It NARROWS, it never widens. The rows are already scoped server-side, so picking a branch a
+// department-scoped administrator cannot see returns nothing rather than something new — the filter
+// is a reading aid over the caller's own slice, not a second authorization path. The field itself
+// disappears for an administrator whose account cannot read the branch catalog, because a dropdown
+// with nothing in it is a worse answer than no dropdown.
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { USER_STATUSES, type Locale, type UserDto } from '@ecms/contracts';
@@ -37,7 +44,7 @@ import { formatDate, fullName } from '../../../../shared/lib/format';
 import { PlusIcon } from '../../../../shared/ui/icons';
 import { AccountStatusBadge, UserStatusBadge } from '../components/UserStatusBadges';
 import { UserFormDialog } from '../components/UserFormDialog';
-import { useSystemUsers } from '../api/user-queries';
+import { useBranchOptions, useSystemUsers } from '../api/user-queries';
 import { type SystemUserListParams } from '../api/user-api';
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -51,6 +58,7 @@ export const UsersListPage = (): JSX.Element => {
 
   const search = sp.get('q') ?? '';
   const status = sp.get('status') ?? '';
+  const branchId = sp.get('branch') ?? '';
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
   const [sortByRaw, sortDirRaw] = (sp.get('sort') ?? 'createdAt:desc').split(':');
@@ -83,12 +91,16 @@ export const UsersListPage = (): JSX.Element => {
       sortDir: sort.dir,
       search,
       ...(status === '' ? {} : { status }),
+      ...(branchId === '' ? {} : { branchId }),
     }),
     [paramsKey],
   );
 
   const { data, isLoading, isError, error, refetch } = useSystemUsers(params);
   const rows = data?.items ?? [];
+  // `retry: false` on the query — the expected failure is a refusal, and the field's answer to that
+  // is to not be there. `?? []` covers both "failed" and "still loading" with the same absence.
+  const { data: branches = [] } = useBranchOptions();
 
   const columns: Column<UserDto>[] = [
     {
@@ -196,6 +208,20 @@ export const UsersListPage = (): JSX.Element => {
               </option>
             ))}
           </Select>
+          {branches.length > 0 && (
+            <Select
+              value={branchId}
+              onChange={(e) => patch({ branch: e.target.value || null })}
+              aria-label={t('systemAdmin.users.filters.branch')}
+            >
+              <option value="">{t('systemAdmin.users.filters.anyBranch')}</option>
+              {branches.map((branch) => (
+                <option key={branch.id} value={branch.id}>
+                  {branch.name[locale]}
+                </option>
+              ))}
+            </Select>
+          )}
         </FilterBar>
 
         <DataTable

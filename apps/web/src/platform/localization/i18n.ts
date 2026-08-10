@@ -3130,6 +3130,8 @@ const en: Record<string, string> = {
   'systemAdmin.users.empty': 'No accounts match this view.',
   'systemAdmin.users.never': 'Never',
   'systemAdmin.users.filters.anyStatus': 'Any status',
+  'systemAdmin.users.filters.branch': 'Branch',
+  'systemAdmin.users.filters.anyBranch': 'Any branch',
   'systemAdmin.users.columns.name': 'Name',
   'systemAdmin.users.columns.identifier': 'Sign-in identifier',
   'systemAdmin.users.columns.status': 'Status',
@@ -3233,7 +3235,10 @@ const en: Record<string, string> = {
     'Ends every session immediately. The account itself is untouched.',
   'systemAdmin.users.security.delivery': 'Delivery outcome',
   'systemAdmin.users.activity.title': 'Activity',
-  'systemAdmin.users.activity.hint': 'The {{count}} most recent entries for this account.',
+  'systemAdmin.users.activity.hint': 'Newest first, {{count}} at a time — load older to go further back.',
+  'systemAdmin.users.activity.loadOlder': 'Load older',
+  'systemAdmin.users.activity.allLoaded': 'the whole history is loaded',
+  'systemAdmin.users.activity.loadMoreFailed': 'Older entries could not be loaded. Press again to retry.',
   'systemAdmin.users.activity.empty': 'Nothing has been recorded for this account yet.',
   'systemAdmin.users.activity.noAccess': 'Reading an account’s history needs an audit or activity permission.',
   'systemAdmin.users.activity.included': 'Showing: {{streams}}.',
@@ -3320,6 +3325,8 @@ const en: Record<string, string> = {
     'This role is maintained by the HR-only confinement and is re-asserted on every start. Editing it here would be undone.',
   'systemAdmin.roles.moduleCount': '{{count}} permissions',
   'systemAdmin.roles.unknownKey': 'Unknown',
+  'systemAdmin.roles.unknownKeyHint':
+    'No module declares this permission any more. You can remove it; it cannot be added back.',
   'systemAdmin.roles.breakGlass': 'Break-glass',
   'systemAdmin.roles.notHeld': 'You do not hold this',
   'systemAdmin.roles.notHeldHint':
@@ -3385,6 +3392,9 @@ const en: Record<string, string> = {
   'systemAdmin.roles.users.hint':
     'Revoking the last grant is what disabling a role means — there is no status flag.',
   'systemAdmin.roles.users.holder': 'Account',
+  'systemAdmin.roles.users.openAccount': 'Open account',
+  'systemAdmin.roles.users.confirmRevoke':
+    'Revoke “{{role}}” at {{scope}} scope from this account? They lose everything the role grants, immediately.',
   'systemAdmin.roles.users.empty': 'Nobody holds this role.',
   'systemAdmin.roles.picker.placeholder': 'Search roles',
   'systemAdmin.roles.picker.noResults': 'No role matches this search.',
@@ -3424,6 +3434,8 @@ const en: Record<string, string> = {
   'systemAdmin.assignments.granted': 'Role granted.',
   'systemAdmin.assignments.revoke': 'Revoke',
   'systemAdmin.assignments.revoked': 'Grant revoked.',
+  'systemAdmin.assignments.confirmRevoke':
+    'Revoke “{{role}}” at {{scope}} scope from {{user}}? They lose everything the role grants, immediately.',
   'systemAdmin.assignments.editWindow': 'Change validity',
   'systemAdmin.assignments.editWindowHint':
     'The role, the account and the reach cannot change — that would be a different grant.',
@@ -6565,6 +6577,8 @@ const ar: Record<string, string> = {
   'systemAdmin.users.empty': 'لا توجد حسابات مطابقة.',
   'systemAdmin.users.never': 'لم يحدث',
   'systemAdmin.users.filters.anyStatus': 'كل الحالات',
+  'systemAdmin.users.filters.branch': 'الفرع',
+  'systemAdmin.users.filters.anyBranch': 'كل الفروع',
   'systemAdmin.users.columns.name': 'الاسم',
   'systemAdmin.users.columns.identifier': 'معرّف الدخول',
   'systemAdmin.users.columns.status': 'الحالة',
@@ -6665,7 +6679,10 @@ const ar: Record<string, string> = {
   'systemAdmin.users.security.revokeHint': 'ينهي كل الجلسات فورًا. الحساب نفسه لا يتغيّر.',
   'systemAdmin.users.security.delivery': 'نتيجة التسليم',
   'systemAdmin.users.activity.title': 'النشاط',
-  'systemAdmin.users.activity.hint': 'أحدث {{count}} سجلًّا لهذا الحساب.',
+  'systemAdmin.users.activity.hint': 'الأحدث أولًا، {{count}} في كل مرة — حمّل الأقدم للرجوع أبعد.',
+  'systemAdmin.users.activity.loadOlder': 'تحميل الأقدم',
+  'systemAdmin.users.activity.allLoaded': 'التاريخ كامل معروض',
+  'systemAdmin.users.activity.loadMoreFailed': 'تعذّر تحميل السجلات الأقدم. اضغط مرة أخرى للمحاولة.',
   'systemAdmin.users.activity.empty': 'لم يُسجَّل شيء لهذا الحساب بعد.',
   'systemAdmin.users.activity.noAccess': 'قراءة تاريخ الحساب تحتاج صلاحية التدقيق أو النشاط.',
   'systemAdmin.users.activity.included': 'المعروض: {{streams}}.',
@@ -6752,6 +6769,8 @@ const ar: Record<string, string> = {
     'هذا الدور تديره آلية حصر الموارد البشرية ويُعاد ضبطه عند كل إقلاع. أي تعديل هنا سيُلغى.',
   'systemAdmin.roles.moduleCount': '{{count}} صلاحية',
   'systemAdmin.roles.unknownKey': 'غير معروفة',
+  'systemAdmin.roles.unknownKeyHint':
+    'لم تعد أي وحدة تعرّف هذه الصلاحية. يمكنك إزالتها، ولا يمكن إعادة إضافتها.',
   'systemAdmin.roles.breakGlass': 'صلاحية استثنائية',
   'systemAdmin.roles.notHeld': 'لا تملكها',
   'systemAdmin.roles.notHeldHint':
@@ -6816,6 +6835,9 @@ const ar: Record<string, string> = {
   'systemAdmin.roles.users.title': 'الحسابات التي تحمل هذا الدور',
   'systemAdmin.roles.users.hint': 'سحب آخر منحة هو ما يعنيه تعطيل الدور — لا توجد حالة تُضبط.',
   'systemAdmin.roles.users.holder': 'الحساب',
+  'systemAdmin.roles.users.openAccount': 'فتح الحساب',
+  'systemAdmin.roles.users.confirmRevoke':
+    'سحب دور «{{role}}» بنطاق {{scope}} من هذا الحساب؟ يفقد فورًا كل ما يمنحه الدور.',
   'systemAdmin.roles.users.empty': 'لا أحد يحمل هذا الدور.',
   'systemAdmin.roles.picker.placeholder': 'ابحث عن دور',
   'systemAdmin.roles.picker.noResults': 'لا يوجد دور مطابق لهذا البحث.',
@@ -6855,6 +6877,8 @@ const ar: Record<string, string> = {
   'systemAdmin.assignments.granted': 'تم منح الدور.',
   'systemAdmin.assignments.revoke': 'سحب',
   'systemAdmin.assignments.revoked': 'تم سحب المنحة.',
+  'systemAdmin.assignments.confirmRevoke':
+    'سحب دور «{{role}}» بنطاق {{scope}} من {{user}}؟ يفقد فورًا كل ما يمنحه الدور.',
   'systemAdmin.assignments.editWindow': 'تعديل السريان',
   'systemAdmin.assignments.editWindowHint':
     'لا يمكن تغيير الدور ولا الحساب ولا النطاق — فذلك منحة أخرى.',

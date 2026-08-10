@@ -92,6 +92,17 @@ const checkboxes = (markup: string): string[] => [
   ...markup.matchAll(/<input[^>]*type="checkbox"[^>]*\/?>/g),
 ].map((m) => m[0]);
 
+/**
+ * One row's checkbox, found by the label it sits inside. `Checkbox` renders `<label><input …/>text`,
+ * so the label is what ties an input to the permission it controls — the input tag itself carries
+ * nothing identifying, and asserting by index would pass for the wrong row after any reordering.
+ */
+const checkboxLabelled = (markup: string, text: string): string | undefined =>
+  markup
+    .split('<label')
+    .find((chunk) => chunk.slice(0, chunk.indexOf('</label>')).includes(text))
+    ?.match(/<input[^>]*type="checkbox"[^>]*\/?>/)?.[0];
+
 describe('the matrix renders labels that exist in both locales', () => {
   for (const locale of ['en', 'ar'] as Locale[]) {
     it(`asks for no missing key — ${locale}`, () => {
@@ -125,6 +136,24 @@ describe('a permission the actor does not hold is locked in the DOM', () => {
 
   it('says why, in words rather than by shading alone', () => {
     expect(editable([])).toContain('You do not hold this');
+  });
+
+  // The rule the file header states — "still ticked, and still removable" — was not what the code
+  // did: `unknown` was folded into `disabled`, so the row rendered inert and the key could never be
+  // cleaned up. These two assertions are the difference, at the DOM.
+  it('renders an unknown key ticked and NOT disabled, so it can be removed', () => {
+    const markup = editable(['employee.view', 'retired.view']);
+    // select-all + 3 module boxes (hr, fleet, unknown) + 4 permissions + the orphan.
+    expect(checkboxes(markup)).toHaveLength(9);
+    const orphanBox = checkboxLabelled(markup, 'retired.view');
+    expect(orphanBox, 'the orphan checkbox was not rendered').toBeDefined();
+    expect(orphanBox).toContain('checked');
+    expect(orphanBox).not.toContain('disabled');
+  });
+
+  it('still locks the permission the actor does not hold, alongside it', () => {
+    const boxes = checkboxes(editable(['employee.view', 'retired.view']));
+    expect(boxes.filter((box) => box.includes('disabled'))).toHaveLength(1);
   });
 
   it('locks every box when the role is managed, bulk controls included', () => {

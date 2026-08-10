@@ -102,9 +102,9 @@ export const revokeUserSessions = (id: string): Promise<void> =>
  * caller holds, and refuses only when they hold neither. `included` reports which streams answered,
  * so the screen can say what it is showing instead of implying it is everything.
  */
-export const getUserTimeline = (id: string, pageSize: number): Promise<TimelineDto> =>
+export const getUserTimeline = (id: string, pageSize: number, page = 1): Promise<TimelineDto> =>
   get<TimelineDto>(
-    `/platform/timeline${buildQuery({ entityType: 'user', entityId: id, pageSize })}`,
+    `/platform/timeline${buildQuery({ entityType: 'user', entityId: id, pageSize, page })}`,
   );
 
 /**

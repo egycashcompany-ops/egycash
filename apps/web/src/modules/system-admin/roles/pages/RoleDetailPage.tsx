@@ -7,7 +7,7 @@
 // single bulk endpoint would have to re-implement all three, and a partial result here is not a
 // broken state — it is exactly the set of grants that could legitimately be removed.
 import { useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { type Locale, type RoleAssignmentDto } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../store';
@@ -60,6 +60,7 @@ export const RoleDetailPage = (): JSX.Element => {
   const [confirmRevokeAll, setConfirmRevokeAll] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [revokingAll, setRevokingAll] = useState(false);
+  const [revoking, setRevoking] = useState<RoleAssignmentDto | null>(null);
 
   const tabParam = sp.get('tab');
   const tab: Tab = TABS.includes(tabParam as Tab) ? (tabParam as Tab) : 'permissions';
@@ -126,7 +127,23 @@ export const RoleDetailPage = (): JSX.Element => {
     {
       key: 'userId',
       header: t('systemAdmin.roles.users.holder'),
-      render: (a) => <ActorById userId={a.userId} />,
+      // "Who holds this role" and "what else does that account hold" are the same investigation, and
+      // it used to end here: the name was rendered by `ActorById`, whose click opens the platform
+      // profile drawer — a read-only card that is not this module's to change. A real link to the
+      // administration screen sits beside it, so the trail continues without the drawer moving.
+      render: (a) => (
+        <div className="flex min-w-0 items-center gap-2">
+          <ActorById userId={a.userId} />
+          <Link
+            to={`/system/users/${a.userId}`}
+            title={t('systemAdmin.roles.users.openAccount')}
+            aria-label={t('systemAdmin.roles.users.openAccount')}
+            className="shrink-0 rounded text-xs font-medium text-brand-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-brand-300"
+          >
+            {t('systemAdmin.roles.users.openAccount')}
+          </Link>
+        </div>
+      ),
     },
     {
       key: 'scope',
@@ -156,11 +173,7 @@ export const RoleDetailPage = (): JSX.Element => {
             size="sm"
             variant="ghost-danger"
             disabled={revoke.isPending || revokingAll}
-            onClick={() =>
-              revoke.mutate(a.id, {
-                onSuccess: () => toast.success(t('systemAdmin.assignments.revoked')),
-              })
-            }
+            onClick={() => setRevoking(a)}
           >
             {t('systemAdmin.assignments.revoke')}
           </Button>
@@ -325,6 +338,53 @@ export const RoleDetailPage = (): JSX.Element => {
         <p className="text-sm text-slate-600 dark:text-slate-300">
           {t('systemAdmin.roles.confirmRevokeAll')}
         </p>
+      </Dialog>
+
+      {/* Same three facts the account-side dialog states — WHO, WHICH role, at WHAT reach — but the
+          holder is a row of ids here, not a loaded account, so the name comes from the directory
+          component the table already uses rather than from an interpolated string. */}
+      <Dialog
+        open={revoking !== null}
+        onClose={() => setRevoking(null)}
+        size="sm"
+        title={t('systemAdmin.assignments.revoke')}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setRevoking(null)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              size="sm"
+              variant="danger"
+              loading={revoke.isPending}
+              onClick={() => {
+                if (revoking === null) return;
+                revoke.mutate(revoking.id, {
+                  onSuccess: () => {
+                    setRevoking(null);
+                    toast.success(t('systemAdmin.assignments.revoked'));
+                  },
+                });
+              }}
+            >
+              {t('systemAdmin.assignments.revoke')}
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-sm text-slate-600 dark:text-slate-300">
+          {t('systemAdmin.roles.users.confirmRevoke', {
+            role: role.name[locale],
+            scope: t(`systemAdmin.assignments.scopes.${revoking?.scope ?? 'own'}`),
+          })}
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-slate-500 dark:text-slate-400">
+            {t('systemAdmin.roles.users.holder')}:
+          </span>
+          {revoking !== null && <ActorById userId={revoking.userId} />}
+          {revoking !== null && <AssignmentScopeBadge scope={revoking.scope} />}
+        </div>
       </Dialog>
 
       <Dialog

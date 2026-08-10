@@ -434,10 +434,17 @@ class UserService {
     // repositories are imported directly a few lines above — and the query is the one
     // `rbacService.userIdsWithSystemRole('super-admin')` runs, which is why it is safe to restate.
     const superAdminRole = await roleRepository.findByKey(SUPER_ADMIN_ROLE_KEY);
-    const superAdmins =
+    const holders =
       superAdminRole === null
         ? []
         : await roleAssignmentRepository.distinctUserIdsForRole(String(superAdminRole._id));
+    // Holding the grant is not the same as being able to USE it. `distinctUserIdsForRole` counts
+    // assignments, and an archived or suspended account keeps its assignments by design (archiving
+    // is not a revocation) — so counting holders would let the last USABLE Super Admin be retired
+    // as long as a retired one still carried the role. The question this guard asks is "would
+    // anybody be able to sign in and administer the system afterwards", so it counts accounts that
+    // can actually sign in.
+    const superAdmins = await userRepository.activeIdsAmong(holders);
     if (superAdmins.length <= 1 && superAdmins.includes(id)) {
       throw new BusinessRuleError(
         `This is the last Super Admin — grant the role to another account before you ${what} this one`,

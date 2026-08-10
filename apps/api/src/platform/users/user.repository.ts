@@ -45,6 +45,27 @@ class UserRepository extends BaseRepository<UserDoc> {
     return { [`${prefix}createdBy`]: new Types.ObjectId(selector.userId) };
   }
 
+  /**
+   * Which of these accounts could actually sign in right now — ACTIVE and not deleted.
+   *
+   * Used by the last-Super-Admin guard, where "who holds the role" is the wrong question: an
+   * archived account keeps its assignments (archiving is not a revocation) but can never sign in
+   * again, so counting it would let the last usable administrator be retired.
+   */
+  async activeIdsAmong(userIds: readonly string[]): Promise<string[]> {
+    if (userIds.length === 0) return [];
+    const docs = await this.model
+      .find({
+        _id: { $in: userIds.map((id) => new Types.ObjectId(id)) },
+        status: 'active',
+        isDeleted: false,
+      })
+      .select('_id')
+      .lean<{ _id: Types.ObjectId }[]>()
+      .exec();
+    return docs.map((doc) => String(doc._id));
+  }
+
   async findByEmail(email: string): Promise<UserDoc | null> {
     return this.model
       .findOne({ email: email.toLowerCase(), isDeleted: false })

@@ -10,25 +10,34 @@
 //   • Actors are ACTOR SNAPSHOTS taken when the event happened, not joins at read time. `ActorLink`
 //     renders them, so a renamed or deleted account still shows the name that was true then.
 //
-// The tab shows the most recent page and does not paginate. A single account's trail is naturally
-// bounded, and the full, filterable log is the Audit screen's job — building a second paging
-// surface for it here would be a worse copy of that screen.
+// The tab opens on the newest page and walks BACKWARDS on demand: each press appends the next page
+// beneath what is already on screen, so the reader never loses their place. It is deliberately not
+// a page control — a trail is read by scrolling back until you find the event you came for, not by
+// choosing a page number — and it is deliberately not the Audit screen, which is where filtering
+// across every entity belongs.
+//
+// A failed load says so and offers a retry. The one thing it must never do is render the empty
+// state: "this account has no history" and "we could not read this account's history" are opposite
+// claims, and the second one dressed as the first would end an investigation before it started.
 import { type Locale, type TimelineEntryDto } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../store';
 import { useCan } from '../../../../platform/rbac/Can';
 import { ActorLink } from '../../../../platform/directory';
 import {
+  Button,
   Card,
   CardBody,
   CardHeader,
   EmptyState,
+  ErrorState,
   LoadingState,
   Timeline,
   type TimelineEntry,
   type Tone,
 } from '../../../../shared/ui';
 import { formatDateTime } from '../../../../shared/lib/format';
+import { timelinePanel } from '../lib/timeline-view';
 import { TIMELINE_PAGE_SIZE, useUserTimeline } from '../api/user-queries';
 
 /**
@@ -101,7 +110,16 @@ export const UserActivityTab = ({ userId }: { userId: string }): JSX.Element => 
   const can = useCan();
 
   const mayRead = can('auditLog.view') || can('activityLog.view');
-  const { data, isLoading } = useUserTimeline(userId, mayRead);
+  const {
+    data,
+    isLoading,
+    isError,
+    error,
+    refetch,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useUserTimeline(userId, mayRead);
 
   if (!mayRead) {
     return (
@@ -116,7 +134,10 @@ export const UserActivityTab = ({ userId }: { userId: string }): JSX.Element => 
     );
   }
 
-  const entries: TimelineEntry[] = (data?.items ?? []).map((item, index) => {
+  // Every page fetched so far, oldest page last — the order the server already sorted them in.
+  const items = (data?.pages ?? []).flatMap((p) => p.items);
+
+  const entries: TimelineEntry[] = items.map((item, index) => {
     const action = item.action ?? '';
     const title =
       item.source === 'audit'
@@ -135,8 +156,11 @@ export const UserActivityTab = ({ userId }: { userId: string }): JSX.Element => 
     };
   });
 
-  const included = data?.included ?? [];
+  // `included` is a property of the caller's permissions, identical on every page — the first page
+  // that answered is as good as any, and there is no first page while the very first load fails.
+  const included = data?.pages[0]?.included ?? [];
   const separator = locale === 'ar' ? '، ' : ', ';
+  const panel = timelinePanel({ isLoading, isError, loaded: entries.length });
 
   return (
     <Card>
@@ -145,19 +169,44 @@ export const UserActivityTab = ({ userId }: { userId: string }): JSX.Element => 
         description={t('systemAdmin.users.activity.hint', { count: TIMELINE_PAGE_SIZE })}
       />
       <CardBody>
-        {isLoading ? (
+        {panel === 'loading' ? (
           <LoadingState />
-        ) : entries.length === 0 ? (
+        ) : panel === 'error' ? (
+          <ErrorState error={error} onRetry={() => void refetch()} />
+        ) : panel === 'empty' ? (
           <EmptyState title={t('systemAdmin.users.activity.empty')} />
         ) : (
           <>
             <Timeline entries={entries} />
+
+            {/* A page that failed AFTER some history is on screen must not wipe what is there —
+                the panel keeps the entries and reports the failure under them. */}
+            {isError && (
+              <p className="mt-4 text-xs text-red-600 dark:text-red-400">
+                {t('systemAdmin.users.activity.loadMoreFailed')}
+              </p>
+            )}
+
+            {hasNextPage && (
+              <div className="mt-4">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  loading={isFetchingNextPage}
+                  onClick={() => void fetchNextPage()}
+                >
+                  {t('systemAdmin.users.activity.loadOlder')}
+                </Button>
+              </div>
+            )}
+
             <p className="mt-6 text-xs text-slate-400 dark:text-slate-500">
               {t('systemAdmin.users.activity.included', {
                 streams: included
                   .map((source) => t(`systemAdmin.users.activity.stream.${source}`))
                   .join(separator),
               })}
+              {!hasNextPage && ` · ${t('systemAdmin.users.activity.allLoaded')}`}
             </p>
           </>
         )}

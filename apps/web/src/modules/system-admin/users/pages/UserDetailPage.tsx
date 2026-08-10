@@ -65,6 +65,10 @@ export const UserDetailPage = (): JSX.Element => {
     const params = new URLSearchParams(sp);
     if (next === 'overview') params.delete('tab');
     else params.set('tab', next);
+    // `page` belongs to whichever list the tab you are LEAVING was showing. Carrying it across
+    // would open the next tab on a page that means nothing there — the same reason `RoleDetailPage`
+    // drops it on every switch.
+    params.delete('page');
     setSp(params, { replace: true });
   };
 

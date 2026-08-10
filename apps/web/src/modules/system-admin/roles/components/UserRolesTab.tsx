@@ -9,6 +9,7 @@
 // a row in the database, and an administrator asking "why can they not do X" needs to see that the
 // grant exists and has ended, not an empty space.
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { type Locale, type RoleAssignmentDto, type UserDto } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../store';
@@ -20,12 +21,13 @@ import {
   CardBody,
   CardHeader,
   DataTable,
+  Dialog,
   EmptyState,
   Pagination,
   toast,
   type Column,
 } from '../../../../shared/ui';
-import { formatDate } from '../../../../shared/lib/format';
+import { formatDate, fullName } from '../../../../shared/lib/format';
 import { AssignRoleDialog } from './AssignRoleDialog';
 import { AssignmentWindowDialog } from './AssignmentWindowDialog';
 import { AssignmentScopeBadge } from './AssignmentScopeBadge';
@@ -43,9 +45,21 @@ export const UserRolesTab = ({ user }: { user: UserDto }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const can = useCan();
-  const [page, setPage] = useState(1);
+  const [sp, setSp] = useSearchParams();
   const [granting, setGranting] = useState(false);
   const [editing, setEditing] = useState<RoleAssignmentDto | null>(null);
+  const [revoking, setRevoking] = useState<RoleAssignmentDto | null>(null);
+
+  // The page lives in the URL for the same reason the tab does: an account with more grants than
+  // one page holds is exactly the account somebody is asking a question about, and "the second page
+  // of Fatma's roles" has to be a link. `RoleDetailPage` reads and clears it the same way, and the
+  // parent drops it on every tab switch so page 3 of this list never lands on another tab.
+  const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
+  const setPage = (next: number): void => {
+    const params = new URLSearchParams(sp);
+    params.set('page', String(next));
+    setSp(params);
+  };
 
   const mayView = can('role.view');
   const mayAssign = can('role.assign');
@@ -119,11 +133,7 @@ export const UserRolesTab = ({ user }: { user: UserDto }): JSX.Element => {
               size="sm"
               variant="ghost-danger"
               disabled={revoke.isPending}
-              onClick={() =>
-                revoke.mutate(a.id, {
-                  onSuccess: () => toast.success(t('systemAdmin.assignments.revoked')),
-                })
-              }
+              onClick={() => setRevoking(a)}
             >
               {t('systemAdmin.assignments.revoke')}
             </Button>
@@ -177,6 +187,48 @@ export const UserRolesTab = ({ user }: { user: UserDto }): JSX.Element => {
           onClose={() => setEditing(null)}
         />
       )}
+
+      {/* Revoking is one click away from an account losing access, and the row it acts on is one of
+          several that look alike. The dialog restates all three identifying facts — WHO, WHICH role,
+          and at WHAT reach — because a confirmation that only says "are you sure" confirms nothing
+          about the row the pointer happened to be over. */}
+      <Dialog
+        open={revoking !== null}
+        onClose={() => setRevoking(null)}
+        size="sm"
+        title={t('systemAdmin.assignments.revoke')}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setRevoking(null)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              size="sm"
+              variant="danger"
+              loading={revoke.isPending}
+              onClick={() => {
+                if (revoking === null) return;
+                revoke.mutate(revoking.id, {
+                  onSuccess: () => {
+                    setRevoking(null);
+                    toast.success(t('systemAdmin.assignments.revoked'));
+                  },
+                });
+              }}
+            >
+              {t('systemAdmin.assignments.revoke')}
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-sm text-slate-600 dark:text-slate-300">
+          {t('systemAdmin.assignments.confirmRevoke', {
+            user: fullName(user, locale),
+            role: revoking?.role?.name[locale] ?? revoking?.roleId ?? '',
+            scope: t(`systemAdmin.assignments.scopes.${revoking?.scope ?? 'own'}`),
+          })}
+        </p>
+      </Dialog>
     </Card>
   );
 };

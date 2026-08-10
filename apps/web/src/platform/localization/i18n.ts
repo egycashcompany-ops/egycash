@@ -3390,6 +3390,9 @@ const en: Record<string, string> = {
   'systemAdmin.roles.users.hint':
     'Revoking the last grant is what disabling a role means — there is no status flag.',
   'systemAdmin.roles.users.holder': 'Account',
+  'systemAdmin.roles.users.openAccount': 'Open account',
+  'systemAdmin.roles.users.confirmRevoke':
+    'Revoke “{{role}}” at {{scope}} scope from this account? They lose everything the role grants, immediately.',
   'systemAdmin.roles.users.empty': 'Nobody holds this role.',
   'systemAdmin.roles.picker.placeholder': 'Search roles',
   'systemAdmin.roles.picker.noResults': 'No role matches this search.',
@@ -3429,6 +3432,8 @@ const en: Record<string, string> = {
   'systemAdmin.assignments.granted': 'Role granted.',
   'systemAdmin.assignments.revoke': 'Revoke',
   'systemAdmin.assignments.revoked': 'Grant revoked.',
+  'systemAdmin.assignments.confirmRevoke':
+    'Revoke “{{role}}” at {{scope}} scope from {{user}}? They lose everything the role grants, immediately.',
   'systemAdmin.assignments.editWindow': 'Change validity',
   'systemAdmin.assignments.editWindowHint':
     'The role, the account and the reach cannot change — that would be a different grant.',
@@ -6826,6 +6831,9 @@ const ar: Record<string, string> = {
   'systemAdmin.roles.users.title': 'الحسابات التي تحمل هذا الدور',
   'systemAdmin.roles.users.hint': 'سحب آخر منحة هو ما يعنيه تعطيل الدور — لا توجد حالة تُضبط.',
   'systemAdmin.roles.users.holder': 'الحساب',
+  'systemAdmin.roles.users.openAccount': 'فتح الحساب',
+  'systemAdmin.roles.users.confirmRevoke':
+    'سحب دور «{{role}}» بنطاق {{scope}} من هذا الحساب؟ يفقد فورًا كل ما يمنحه الدور.',
   'systemAdmin.roles.users.empty': 'لا أحد يحمل هذا الدور.',
   'systemAdmin.roles.picker.placeholder': 'ابحث عن دور',
   'systemAdmin.roles.picker.noResults': 'لا يوجد دور مطابق لهذا البحث.',
@@ -6865,6 +6873,8 @@ const ar: Record<string, string> = {
   'systemAdmin.assignments.granted': 'تم منح الدور.',
   'systemAdmin.assignments.revoke': 'سحب',
   'systemAdmin.assignments.revoked': 'تم سحب المنحة.',
+  'systemAdmin.assignments.confirmRevoke':
+    'سحب دور «{{role}}» بنطاق {{scope}} من {{user}}؟ يفقد فورًا كل ما يمنحه الدور.',
   'systemAdmin.assignments.editWindow': 'تعديل السريان',
   'systemAdmin.assignments.editWindowHint':
     'لا يمكن تغيير الدور ولا الحساب ولا النطاق — فذلك منحة أخرى.',

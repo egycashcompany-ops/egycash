@@ -193,4 +193,47 @@ describe('a duplicate is a CREATE, and goes through every guard one does', () =>
   it('is gated on role.create, because creating is what it does', () => {
     expect(PAGE).toMatch(/<Can permission="role\.create">[\s\S]{0,900}?actions\.duplicate/);
   });
+
+  // ── The two defects this file did not catch the first time ────────────────
+  //
+  // Both were "the code is there and the button is unusable", which every assertion above was blind
+  // to: they proved a `<Can>` wrapper existed near the label and that the pure functions were right,
+  // never that the control was reachable or enabled in the states the page is actually in.
+
+  it('does not bury the duplicate button inside the unmanaged-only branch', () => {
+    // Edit and Delete belong to unmanaged roles; Duplicate does not, and a system role is the one
+    // an administrator most wants to copy. The old shape wrapped ALL THREE in one ternary, so a
+    // managed role rendered no actions at all.
+    expect(PAGE).not.toMatch(/actions=\{\s*role\.managed === 'none' \? \(/);
+    const actions = /actions=\{([\s\S]*?)\n {8}\}/.exec(PAGE)?.[1] ?? '';
+    expect(actions, 'the actions block was not found — this scan is stale').toContain(
+      'actions.duplicate',
+    );
+    // Edit and Delete each carry their OWN managed check now.
+    expect(actions).toMatch(/role\.managed === 'none' && \(\s*<Can permission="role\.edit">/);
+    expect(actions).toMatch(/role\.managed === 'none' && \(\s*<Can permission="role\.delete">/);
+  });
+});
+
+describe('the registry being unreadable is not the role’s fault', () => {
+  // `usePermissionCatalog` is gated on `permission.view` and starts empty while in flight, so this
+  // is the state the page is in on first paint AND permanently for an administrator who holds
+  // `role.create` without `permission.view`. Claiming "unknown keys" there disabled the button
+  // forever and blamed the role for it.
+  it('does not report unknown keys when the catalog could not be read', () => {
+    expect(duplicateBlocker(role(['user.view', 'user.create']), [], holdsAll)).toBeNull();
+  });
+
+  it('still refuses keys the actor does not hold, which needs no catalog', () => {
+    expect(duplicateBlocker(role(['user.view', 'user.delete']), [], holds('user.view'))).toEqual({
+      reason: 'keys-not-held',
+      keys: ['user.delete'],
+    });
+  });
+
+  it('resumes reporting unknown keys as soon as the catalog arrives', () => {
+    const carrying = role(['user.view', 'retired.view']);
+    expect(duplicateBlocker(carrying, [], holdsAll)).toBeNull();
+    expect(duplicateBlocker(carrying, CATALOG, holdsAll)?.reason).toBe('unknown-keys');
+  });
 });

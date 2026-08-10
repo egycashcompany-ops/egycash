@@ -79,9 +79,13 @@ export const buildMatrixTree = (
       byModule.set(permission.moduleId, new Map());
     }
     // `?? ''` is the Unassigned bucket's key inside this map — no page id can be empty.
-    const bucket = permission.pageId !== null && byId.has(permission.pageId) ? permission.pageId : '';
+    const bucket =
+      permission.pageId !== null && byId.has(permission.pageId) ? permission.pageId : '';
     const group = byModule.get(permission.moduleId) ?? new Map<string, MatrixRow[]>();
-    group.set(bucket, [...(group.get(bucket) ?? []), { key: permission.key, definition: permission }]);
+    group.set(bucket, [
+      ...(group.get(bucket) ?? []),
+      { key: permission.key, definition: permission },
+    ]);
     byModule.set(permission.moduleId, group);
   }
 
@@ -149,7 +153,10 @@ export const acceptsToggle = (editability: RowEditability, next: boolean): boole
  * `canGrant` is the caller's own permission check — the component passes `useCan()`, tests pass a
  * set — so this file never decides WHO holds what, only what follows from it.
  */
-export const grantableKeys = (rows: readonly MatrixRow[], canGrant: (key: string) => boolean): string[] =>
+export const grantableKeys = (
+  rows: readonly MatrixRow[],
+  canGrant: (key: string) => boolean,
+): string[] =>
   rows.filter((row) => row.definition !== undefined && canGrant(row.key)).map((row) => row.key);
 
 /**

@@ -9,7 +9,12 @@ import { type CreateRole, type RoleDto, type UpdateRole } from '@ecms/contracts'
 import { useT } from '../../../../platform/localization/useT';
 import { Button, Dialog, Field, Form, Input, Textarea, toast } from '../../../../shared/ui';
 import { RolePermissionMatrix } from './RolePermissionMatrix';
-import { useCreateRole, usePermissionCatalog, useUpdateRole } from '../api/role-queries';
+import {
+  useCreateRole,
+  usePermissionCatalog,
+  usePermissionPages,
+  useUpdateRole,
+} from '../api/role-queries';
 
 export const RoleFormDialog = ({
   open,
@@ -36,6 +41,8 @@ export const RoleFormDialog = ({
   // matrix would simply be empty and the form would refuse to save with no explanation — so the
   // dialog says why instead of looking broken.
   const { data: catalog = [], isError: catalogUnavailable } = usePermissionCatalog(open);
+  // Same request as the catalog — `select` splits one response, never a second fetch (P7-A).
+  const { data: pages = [] } = usePermissionPages(open);
   const busy = create.isPending || update.isPending;
 
   const toggle = (key: string, next: boolean): void => {
@@ -90,7 +97,9 @@ export const RoleFormDialog = ({
       open={open}
       onClose={onClose}
       size="lg"
-      title={t(isCreate ? 'systemAdmin.roles.form.createTitle' : 'systemAdmin.roles.form.editTitle')}
+      title={t(
+        isCreate ? 'systemAdmin.roles.form.createTitle' : 'systemAdmin.roles.form.editTitle',
+      )}
       description={t('systemAdmin.roles.form.hint')}
       footer={
         <div className="flex justify-end gap-2">
@@ -113,11 +122,7 @@ export const RoleFormDialog = ({
           </Field>
         </div>
         <Field label={t('systemAdmin.roles.form.description')}>
-          <Textarea
-            rows={2}
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-          />
+          <Textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
         </Field>
 
         <div className="max-h-[45vh] overflow-auto">
@@ -131,6 +136,7 @@ export const RoleFormDialog = ({
           )}
           <RolePermissionMatrix
             catalog={catalog}
+            pages={pages}
             selected={keys}
             managed={role?.managed ?? 'none'}
             onToggle={toggle}

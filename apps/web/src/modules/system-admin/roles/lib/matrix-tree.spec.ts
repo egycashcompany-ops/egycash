@@ -98,12 +98,20 @@ describe('buildMatrixTree — the shape', () => {
   });
 
   it('omits a page the registry declares but this role’s catalog has no permission for', () => {
-    const single = buildMatrixTree([permission('user.view', 'platform', 'platform.users')], PAGES, []);
+    const single = buildMatrixTree(
+      [permission('user.view', 'platform', 'platform.users')],
+      PAGES,
+      [],
+    );
     expect(moduleOf(single, 'platform').pages).toHaveLength(1);
   });
 
   it('drops a pageId the registry does not resolve into Other rather than a phantom page', () => {
-    const stray = buildMatrixTree([permission('user.view', 'platform', 'platform.ghost')], PAGES, []);
+    const stray = buildMatrixTree(
+      [permission('user.view', 'platform', 'platform.ghost')],
+      PAGES,
+      [],
+    );
     expect(moduleOf(stray, 'platform').pages.map((e) => e.page)).toEqual([null]);
   });
 });

@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
-import { type Locale, type MeDto, type PermissionDto } from '@ecms/contracts';
+import { type Locale, type MeDto, type PageDto, type PermissionDto } from '@ecms/contracts';
 import { localeSlice } from '../../../../store/localeSlice';
 import { authSlice } from '../../../../store/authSlice';
 import { RolePermissionMatrix } from './RolePermissionMatrix';
@@ -26,21 +26,48 @@ import { RolePermissionMatrix } from './RolePermissionMatrix';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SOURCE = readFileSync(resolve(HERE, 'RolePermissionMatrix.tsx'), 'utf8');
 
-const permission = (key: string, moduleId: string): PermissionDto => ({
+const permission = (
+  key: string,
+  moduleId: string,
+  pageId: string | null = null,
+): PermissionDto => ({
   key,
   resource: key.split('.')[0] ?? key,
   action: key.split('.')[1] ?? 'view',
   moduleId,
   name: { ar: `صلاحية ${key}`, en: `Permission ${key}` },
   breakGlass: false,
-  pageId: null,
+  pageId,
 });
 
+/**
+ * Two pages under HR and none under fleet, on purpose: the fleet permission has `pageId: null`, so
+ * its module renders an Other / Unassigned group — the D1 case — beside HR's real surfaces.
+ */
+const PAGES: PageDto[] = [
+  {
+    id: 'hr.employees',
+    moduleId: 'hr',
+    name: { en: 'Employees', ar: 'الموظفون' },
+    route: '/employees',
+    sortOrder: 10,
+  },
+  {
+    id: 'hr.contracts',
+    moduleId: 'hr',
+    name: { en: 'Contracts', ar: 'العقود' },
+    route: null,
+    sortOrder: 20,
+  },
+];
+
 const CATALOG: PermissionDto[] = [
-  permission('employee.view', 'hr'),
-  permission('employee.edit', 'hr'),
-  permission('employee.delete', 'hr'),
-  permission('fleetVehicle.view', 'fleet'),
+  permission('employee.view', 'hr', 'hr.employees'),
+  permission('employee.edit', 'hr', 'hr.employees'),
+  // The locked row every case turns on, deliberately on a DIFFERENT page from the two above.
+  permission('employee.delete', 'hr', 'hr.contracts'),
+  // Known to the registry and deliberately unplaced — fleet's Other / Unassigned group.
+  permission('fleetVehicle.view', 'fleet', null),
 ];
 
 /** The actor holds everything except `employee.delete` — the locked row every case turns on. */
@@ -80,6 +107,7 @@ const editable = (selected: string[], locale: Locale = 'en'): string =>
   render(
     <RolePermissionMatrix
       catalog={CATALOG}
+      pages={PAGES}
       selected={selected}
       managed="none"
       onToggle={() => undefined}
@@ -89,9 +117,8 @@ const editable = (selected: string[], locale: Locale = 'en'): string =>
   );
 
 /** Every checkbox `<input>` in render order, as raw tags. */
-const checkboxes = (markup: string): string[] => [
-  ...markup.matchAll(/<input[^>]*type="checkbox"[^>]*\/?>/g),
-].map((m) => m[0]);
+const checkboxes = (markup: string): string[] =>
+  [...markup.matchAll(/<input[^>]*type="checkbox"[^>]*\/?>/g)].map((m) => m[0]);
 
 /**
  * One row's checkbox, found by the label it sits inside. `Checkbox` renders `<label><input …/>text`,
@@ -130,8 +157,8 @@ describe('a permission the actor does not hold is locked in the DOM', () => {
   it('renders that checkbox disabled and every other one enabled', () => {
     const markup = editable([]);
     const boxes = checkboxes(markup);
-    // select-all + 2 module boxes + 4 permissions.
-    expect(boxes).toHaveLength(7);
+    // select-all + 2 modules + 3 pages (hr.employees, hr.contracts, fleet's Other) + 4 permissions.
+    expect(boxes).toHaveLength(10);
     expect(boxes.filter((box) => box.includes('disabled'))).toHaveLength(1);
   });
 
@@ -144,8 +171,8 @@ describe('a permission the actor does not hold is locked in the DOM', () => {
   // cleaned up. These two assertions are the difference, at the DOM.
   it('renders an unknown key ticked and NOT disabled, so it can be removed', () => {
     const markup = editable(['employee.view', 'retired.view']);
-    // select-all + 3 module boxes (hr, fleet, unknown) + 4 permissions + the orphan.
-    expect(checkboxes(markup)).toHaveLength(9);
+    // select-all + 3 modules (hr, fleet, unknown) + 4 pages + 4 permissions + the orphan.
+    expect(checkboxes(markup)).toHaveLength(13);
     const orphanBox = checkboxLabelled(markup, 'retired.view');
     expect(orphanBox, 'the orphan checkbox was not rendered').toBeDefined();
     expect(orphanBox).toContain('checked');
@@ -161,6 +188,7 @@ describe('a permission the actor does not hold is locked in the DOM', () => {
     const markup = render(
       <RolePermissionMatrix
         catalog={CATALOG}
+        pages={PAGES}
         selected={['employee.view']}
         managed="derived"
         onToggle={() => undefined}
@@ -206,7 +234,11 @@ describe('search and collapse are display state only', () => {
     expect(SOURCE).toContain('const [search, setSearch] = useState');
     expect(SOURCE).toContain('const [collapsed, setCollapsed] = useState');
     // The only two ways selection changes, and what each is given.
-    expect(SOURCE).toMatch(/onBulkChange\(applyBulk\(selected, rows, bulkIntent\([^)]*\), canGrant\)\)/);
+    expect(SOURCE).toMatch(
+      /onBulkChange\(applyBulk\(selected, rows, bulkIntent\([^)]*\), canGrant\)\)/,
+    );
+    // The search term reaches `visibleTree` and nothing else.
+    expect(SOURCE).toMatch(/visibleTree\(tree, search,/);
     expect(SOURCE).toContain('onToggle?.(row.key, e.target.checked)');
     // `search` appears only in filtering and in the note; never inside a bulk call.
     expect(SOURCE).not.toMatch(/applyBulk\([^)]*search/);
@@ -214,9 +246,11 @@ describe('search and collapse are display state only', () => {
     expect(SOURCE).not.toMatch(/(applyBulk|bulkIntent)\([^)]*collapsed/);
   });
 
-  it('feeds the bulk controls the module’s full row set, not the filtered one', () => {
-    // `rows` is the whole module; `shown` is what the search left. The bulk call takes `rows`.
-    expect(SOURCE).toContain('onChange={() => bulk(rows)}');
+  it('feeds every bulk control its group’s FULL row set, not the filtered one', () => {
+    // `module.rows` / `entry.rows` are the whole group; `shown` is what the search left. Each bulk
+    // call takes the full set, at all three levels.
+    expect(SOURCE).toContain('onChange={() => bulk(module.rows)}');
+    expect(SOURCE).toContain('onChange={() => bulk(entry.rows)}');
     expect(SOURCE).toContain('onChange={() => bulk(allRows)}');
     expect(SOURCE).toMatch(/shown\.map\(\(row\)/);
   });
@@ -230,5 +264,99 @@ describe('the payload shape is untouched', () => {
     const form = readFileSync(resolve(HERE, 'RoleFormDialog.tsx'), 'utf8');
     expect(form).toContain('const replaceKeys = (next: string[]): void => setKeys(next);');
     expect(form).toContain('permissionKeys: keys');
+  });
+});
+
+// ── The page layer (P7-B), at the DOM ───────────────────────────────────────
+//
+// The tree's arithmetic is proven in `../lib/matrix-tree.spec.ts` against the pure functions. What
+// a render can add is that the level actually reaches the markup: that a page is drawn with its own
+// control, that its third state is ANNOUNCED rather than merely drawn, that the Other bucket is
+// labelled in both locales, and that `route` renders as a link without becoming a decision.
+
+describe('the page layer reaches the DOM', () => {
+  it('draws a group for each page, and one for the deliberately unassigned', () => {
+    const markup = editable([]);
+    expect(markup).toContain('Employees');
+    expect(markup).toContain('Contracts');
+    expect(markup).toContain('Other / Unassigned');
+    // Each page panel is independently expandable, so each carries its own controls.
+    expect(markup).toContain('aria-controls="page-hr-hr-employees"');
+    expect(markup).toContain('aria-controls="page-hr-hr-contracts"');
+    expect(markup).toContain('aria-controls="page-fleet-"');
+  });
+
+  it('names the Other bucket in Arabic too, rather than falling back to a key', () => {
+    const markup = editable([], 'ar');
+    expect(markup).toContain('أخرى / غير مُسندة');
+    expect(markup).not.toContain('systemAdmin.roles.matrix.');
+  });
+
+  it('renders `route` as a link, in LTR, and nowhere near a decision', () => {
+    const markup = editable([]);
+    expect(markup).toContain('href="/employees"');
+    expect(markup).toContain('dir="ltr"');
+    // The page with `route: null` gets no link — an absent route is not an empty one.
+    expect(markup).not.toContain('href=""');
+  });
+
+  // The state a flat matrix could not express: one page complete, its module still partial.
+  it('announces a full page and a partial module at the same time', () => {
+    const markup = editable(['employee.view', 'employee.edit']);
+    const employeesPage = checkboxLabelled(markup, 'Employees');
+    const hrModule = checkboxLabelled(markup, 'HR');
+    expect(employeesPage).toContain('checked');
+    expect(employeesPage).not.toContain('aria-checked="mixed"');
+    expect(hrModule).toContain('aria-checked="mixed"');
+  });
+
+  it('marks a partially selected page mixed, not checked', () => {
+    const page = checkboxLabelled(editable(['employee.view']), 'Employees');
+    expect(page).toContain('aria-checked="mixed"');
+    expect(page).not.toContain('checked=""');
+  });
+
+  it('counts at both levels over the whole group, not the visible slice', () => {
+    const markup = editable(['employee.view']);
+    // hr: 1 of 3 across two pages · the Employees page alone: 1 of 2 · overall: 1 of 4.
+    expect(markup).toContain('Selected: 1 / 3');
+    expect(markup).toContain('Selected: 1 / 2');
+    expect(markup).toContain('Selected: 1 / 4');
+  });
+
+  it('keeps a locked permission locked inside its page', () => {
+    // `employee.delete` sits on hr.contracts and the actor does not hold it.
+    const locked = checkboxLabelled(editable([]), 'Permission employee.delete');
+    expect(locked).toContain('disabled');
+  });
+
+  it('offers no page checkbox at all on a managed role', () => {
+    const markup = render(
+      <RolePermissionMatrix
+        catalog={CATALOG}
+        pages={PAGES}
+        selected={['employee.view']}
+        managed="system"
+        onToggle={() => undefined}
+        onBulkChange={() => undefined}
+      />,
+    );
+    expect(checkboxes(markup).filter((box) => !box.includes('disabled'))).toHaveLength(0);
+    // …and the page is still NAMED, because a read-only tree must still be readable.
+    expect(markup).toContain('Employees');
+  });
+
+  it('falls back to one Other group per module when the registry sends no pages', () => {
+    const markup = render(
+      <RolePermissionMatrix
+        catalog={CATALOG}
+        selected={[]}
+        managed="none"
+        onToggle={() => undefined}
+        onBulkChange={() => undefined}
+      />,
+    );
+    expect(markup).toContain('Other / Unassigned');
+    expect(markup).not.toContain('Employees');
   });
 });

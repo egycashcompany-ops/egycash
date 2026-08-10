@@ -413,6 +413,19 @@ const CATALOG: CategoryDef[] = [
         icon: 'tag',
         permission: 'applicationCategory.view',
       },
+      // System Administration (SA-1). It joins the existing Administration group rather than
+      // opening a second administration category beside it — a category is a purpose, not a URL
+      // prefix, and two groups both called some form of "administration" would be a menu the
+      // reader has to guess at. The route prefix differs from its siblings on purpose: the two
+      // rows above are the pre-existing catalog screens, and whether they move under `/system`
+      // is a decision this slice deliberately does not take.
+      {
+        en: 'System Users',
+        ar: 'مستخدمو النظام',
+        route: '/system/users',
+        icon: 'users',
+        permission: 'user.view',
+      },
     ],
   },
 ];

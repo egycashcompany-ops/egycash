@@ -26,6 +26,7 @@ const LeaveManagementRoutes = lazy(() => import('../../modules/hr/leave-manageme
 const ContractsRoutes = lazy(() => import('../../modules/hr/contracts/routes'));
 const FleetRoutes = lazy(() => import('../../modules/fleet/routes'));
 const ItRoutes = lazy(() => import('../../modules/it/routes'));
+const SystemAdminRoutes = lazy(() => import('../../modules/system-admin/routes'));
 const VerifyContractPage = lazy(
   () => import('../../modules/hr/contracts/pages/VerifyContractPage'),
 );
@@ -194,6 +195,22 @@ export const App = (): JSX.Element => {
                 }
               >
                 <ItRoutes />
+              </Suspense>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/system/*"
+          element={
+            <RequireAuth>
+              <Suspense
+                fallback={
+                  <div className="grid min-h-screen place-items-center">
+                    <LoadingState />
+                  </div>
+                }
+              >
+                <SystemAdminRoutes />
               </Suspense>
             </RequireAuth>
           }

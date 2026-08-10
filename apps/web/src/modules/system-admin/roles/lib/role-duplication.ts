@@ -40,9 +40,19 @@ export const duplicateBlocker = (
   catalog: readonly PermissionDto[],
   canGrant: (key: string) => boolean,
 ): DuplicateBlocker | null => {
-  const known = new Set(catalog.map((permission) => permission.key));
-  const unknown = role.permissionKeys.filter((key) => !known.has(key));
-  if (unknown.length > 0) return { reason: 'unknown-keys', keys: [...unknown].sort() };
+  // An EMPTY catalog does not mean "the registry knows nothing" — it means this screen could not
+  // read it: the query is still in flight, or the administrator holds `role.create` without
+  // `permission.view`, which the platform allows. Treating that as "every key is unknown" is how
+  // this check turned into a permanent refusal for exactly those administrators, and a refusal that
+  // blamed the role for carrying permissions nobody defines. The unknown check simply cannot run
+  // without the registry, so it does not run, and `assertKnownPermissionKeys` on the server stays
+  // what actually decides.
+  if (catalog.length > 0) {
+    const known = new Set(catalog.map((permission) => permission.key));
+    const unknown = role.permissionKeys.filter((key) => !known.has(key));
+    if (unknown.length > 0) return { reason: 'unknown-keys', keys: [...unknown].sort() };
+  }
+  // This one always runs: it asks the actor's own permission set, which the screen always has.
   const missing = role.permissionKeys.filter((key) => !canGrant(key));
   if (missing.length > 0) return { reason: 'keys-not-held', keys: [...missing].sort() };
   return null;

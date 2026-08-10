@@ -212,39 +212,46 @@ export const RoleDetailPage = (): JSX.Element => {
           </div>
         }
         actions={
-          role.managed === 'none' ? (
-            <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Editing and deleting belong to UNMANAGED roles only: a system role is the platform's,
+                and an `hr-only:*` derivative is restored by the next boot. */}
+            {role.managed === 'none' && (
               <Can permission="role.edit">
                 <Button size="sm" variant="secondary" onClick={() => setEditing(true)}>
                   {t('systemAdmin.roles.actions.edit')}
                 </Button>
               </Can>
-              {/* Duplicating is creating, so it is gated on `role.create` rather than `role.edit` —
-                  and refused OUTRIGHT when the copy could not be made whole. A partial copy would
-                  succeed, look right, and quietly grant less than the role it is named after. */}
-              <Can permission="role.create">
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={blocker !== null}
-                  title={
-                    blocker === null
-                      ? undefined
-                      : t(
-                          blocker.reason === 'unknown-keys'
-                            ? 'systemAdmin.roles.duplicateBlockedUnknown'
-                            : 'systemAdmin.roles.duplicateBlockedNotHeld',
-                          { keys: blocker.keys.join(', ') },
-                        )
-                  }
-                  onClick={() => setDuplicating(true)}
-                >
-                  {t('systemAdmin.roles.actions.duplicate')}
-                </Button>
-              </Can>
-              {/* Offered only while nobody holds it. The server refuses a held role anyway
-                  ("revoke them first"), so a button that looked available would be a promise the
-                  click breaks — the same reasoning the permission matrix applies to a locked grant. */}
+            )}
+            {/* Duplicating is offered for EVERY role, managed ones included — and they are the ones
+                most worth copying, since a well-shaped system role is the obvious starting point for
+                a narrower one. Copying a managed role is safe precisely because the copy is not
+                managed: the server writes `key: null` and `isSystem: false` on every create, and the
+                key guard has already refused anything the actor could not grant. Gated on
+                `role.create` rather than `role.edit`, because creating is what it does. */}
+            <Can permission="role.create">
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={blocker !== null}
+                title={
+                  blocker === null
+                    ? undefined
+                    : t(
+                        blocker.reason === 'unknown-keys'
+                          ? 'systemAdmin.roles.duplicateBlockedUnknown'
+                          : 'systemAdmin.roles.duplicateBlockedNotHeld',
+                        { keys: blocker.keys.join(', ') },
+                      )
+                }
+                onClick={() => setDuplicating(true)}
+              >
+                {t('systemAdmin.roles.actions.duplicate')}
+              </Button>
+            </Can>
+            {/* Offered only while nobody holds it. The server refuses a held role anyway
+                ("revoke them first"), so a button that looked available would be a promise the
+                click breaks — the same reasoning the permission matrix applies to a locked grant. */}
+            {role.managed === 'none' && (
               <Can permission="role.delete">
                 <Button
                   size="sm"
@@ -256,8 +263,8 @@ export const RoleDetailPage = (): JSX.Element => {
                   {t('systemAdmin.roles.actions.delete')}
                 </Button>
               </Can>
-            </div>
-          ) : undefined
+            )}
+          </div>
         }
       />
 

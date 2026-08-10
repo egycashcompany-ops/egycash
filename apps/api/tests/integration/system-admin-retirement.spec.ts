@@ -444,21 +444,50 @@ describe('regressions — SA-5 changes nothing that came before it', () => {
     expect(errorOf(again).code).toBe(ErrorCodes.STALE_DOCUMENT);
   });
 
-  it('#160 — revoking the last Super Admin ASSIGNMENT is still refused', async () => {
-    const grants = (
+  /**
+   * #160's rule — the last Super Admin ASSIGNMENT cannot be revoked — held only as long as no
+   * Super Admin was ever retired: it counted assignment ROWS, and archiving keeps the grants
+   * (decision 1), so an archived Super Admin was accepted as cover and the live one could then be
+   * revoked, leaving a system with zero usable administrators. SA-5 made that reachable from the
+   * screen, so the guard now counts accounts that can still sign in. The middle assertion is the
+   * one that fails against the pre-SA-5 implementation.
+   */
+  it('#160 — revoking the last USABLE Super Admin assignment is refused', async () => {
+    const superAdminGrants = async (userId: string): Promise<string[]> =>
       (
-        await request(app)
-          .get(`/api/v1/platform/role-assignments?roleId=${superAdminRoleId}&pageSize=50`)
-          .set('Authorization', `Bearer ${adminToken}`)
-      ).body as { data: { id: string; userId: string }[] }
-    ).data.filter((a) => a.userId === adminId);
-    expect(grants).toHaveLength(1);
+        (
+          await request(app)
+            .get(`/api/v1/platform/role-assignments?roleId=${superAdminRoleId}&pageSize=50`)
+            .set('Authorization', `Bearer ${adminToken}`)
+        ).body as { data: { id: string; userId: string }[] }
+      ).data
+        .filter((a) => a.userId === userId)
+        .map((a) => a.id);
+    const revoke = (assignmentId: string): request.Test =>
+      request(app)
+        .delete(`/api/v1/platform/role-assignments/${assignmentId}`)
+        .set('Authorization', `Bearer ${retirerToken}`);
 
-    const res = await request(app)
-      .delete(`/api/v1/platform/role-assignments/${grants[0]?.id ?? ''}`)
-      .set('Authorization', `Bearer ${retirerToken}`);
-    expect(res.status).toBe(422);
-    expect(errorOf(res).message).toContain('last Super Admin');
+    const [adminGrant = ''] = await superAdminGrants(adminId);
+    const refused = await revoke(adminGrant);
+    expect(refused.status).toBe(422);
+    expect(errorOf(refused).message).toContain('last Super Admin');
+
+    // A RETIRED Super Admin is not cover for revoking the live one.
+    const retired = await seedUser('reg-160-retired@ecms.local');
+    await rbacService.ensureAssignment(retired, superAdminRoleId, 'organization');
+    expect((await setStatus(retired, 'archived', await versionOf(retired))).status).toBe(200);
+    const stillRefused = await revoke(adminGrant);
+    expect(stillRefused.status).toBe(422);
+    expect(errorOf(stillRefused).message).toContain('last Super Admin');
+
+    // …and the guard refuses the LAST one only: with a second usable Super Admin in place, the
+    // retired account's now-redundant grant comes off. Revoking that one rather than the admin's
+    // keeps the account the rest of this suite authenticates as intact.
+    const spare = await seedUser('reg-160-spare@ecms.local');
+    await rbacService.ensureAssignment(spare, superAdminRoleId, 'organization');
+    const [retiredGrant = ''] = await superAdminGrants(retired);
+    expect((await revoke(retiredGrant)).status).toBe(204);
   });
 
   it('#161 — the effective-permissions projection still answers', async () => {

@@ -3298,6 +3298,27 @@ const en: Record<string, string> = {
     'The account keeps its credentials, roles and history — it simply stops being this employee’s login.',
   'systemAdmin.users.employee.linkedToast': 'The account is now this employee’s login.',
   'systemAdmin.users.employee.unlinkedToast': 'The employee link was released.',
+
+  // SA-3 — roles, the permission registry and assignments
+  'systemAdmin.roles.managed.system': 'System',
+  'systemAdmin.roles.managed.derived': 'Managed',
+  'systemAdmin.roles.managed.none': 'Editable',
+  'systemAdmin.roles.readOnly.system':
+    'This is a seeded system role. It is protected: the platform depends on it, and holding it also makes an account privileged.',
+  'systemAdmin.roles.readOnly.derived':
+    'This role is maintained by the HR-only confinement and is re-asserted on every start. Editing it here would be undone.',
+  'systemAdmin.roles.moduleCount': '{{count}} permissions',
+  'systemAdmin.roles.unknownKey': 'Unknown',
+  'systemAdmin.roles.breakGlass': 'Break-glass',
+  'systemAdmin.roles.notHeld': 'You do not hold this',
+  'systemAdmin.roles.notHeldHint':
+    'You can only grant permissions you hold yourself — the rest are shown but cannot be ticked.',
+  'systemAdmin.roles.module.platform': 'Platform',
+  'systemAdmin.roles.module.hr': 'HR',
+  'systemAdmin.roles.module.fleet': 'Fleet',
+  'systemAdmin.roles.module.it': 'IT',
+  'systemAdmin.roles.module.automation': 'Automation',
+  'systemAdmin.roles.module.unknown': 'Unknown module',
 };
 
 const ar: Record<string, string> = {
@@ -6548,6 +6569,27 @@ const ar: Record<string, string> = {
     'يحتفظ الحساب ببياناته وأدواره وتاريخه — يتوقف فقط عن كونه حساب دخول هذا الموظف.',
   'systemAdmin.users.employee.linkedToast': 'صار الحساب حساب دخول هذا الموظف.',
   'systemAdmin.users.employee.unlinkedToast': 'فُكّ ربط الموظف.',
+
+  // SA-3 — الأدوار وسجل الصلاحيات والإسنادات
+  'systemAdmin.roles.managed.system': 'دور نظام',
+  'systemAdmin.roles.managed.derived': 'مُدار',
+  'systemAdmin.roles.managed.none': 'قابل للتعديل',
+  'systemAdmin.roles.readOnly.system':
+    'هذا دور نظام مبذور ومحميّ: المنصة تعتمد عليه، وحمله يجعل الحساب مميّزًا أيضًا.',
+  'systemAdmin.roles.readOnly.derived':
+    'هذا الدور تديره آلية حصر الموارد البشرية ويُعاد ضبطه عند كل إقلاع. أي تعديل هنا سيُلغى.',
+  'systemAdmin.roles.moduleCount': '{{count}} صلاحية',
+  'systemAdmin.roles.unknownKey': 'غير معروفة',
+  'systemAdmin.roles.breakGlass': 'صلاحية استثنائية',
+  'systemAdmin.roles.notHeld': 'لا تملكها',
+  'systemAdmin.roles.notHeldHint':
+    'لا يمكنك منح صلاحيات لا تملكها أنت — تظهر البقية لكن لا يمكن اختيارها.',
+  'systemAdmin.roles.module.platform': 'المنصة',
+  'systemAdmin.roles.module.hr': 'الموارد البشرية',
+  'systemAdmin.roles.module.fleet': 'الحركة',
+  'systemAdmin.roles.module.it': 'تقنية المعلومات',
+  'systemAdmin.roles.module.automation': 'الأتمتة',
+  'systemAdmin.roles.module.unknown': 'موديول غير معروف',
 };
 
 const catalogs: Record<Locale, Record<string, string>> = { en, ar };

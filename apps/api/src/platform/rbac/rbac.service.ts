@@ -4,6 +4,7 @@
 // a TTL capped at the next validity boundary — expiry needs no cleanup job.
 import { Types } from 'mongoose';
 import {
+  DATA_SCOPE_RANK,
   ErrorCodes,
   PlatformEvents,
   breakGlassPermissionKeys,
@@ -12,19 +13,25 @@ import {
   type CreateRoleAssignment,
   type DataScope,
   type ListRoleAssignmentsQuery,
+  type ListRolesQuery,
   type Paginated,
   type PermissionDef,
   type PermissionDto,
   type RoleAssignmentDto,
   type RoleDto,
+  type RoleManagement,
   type UpdateRole,
+  type UpdateRoleAssignment,
 } from '@ecms/contracts';
 import { BusinessRuleError, NotFoundError } from '../../shared/errors';
+import { scopeSelector, type AuthContext, type ScopeSelector } from '../../shared/types';
+import { HR_ONLY_ROLE_KEY_PREFIX, isDerivedHrRoleKey } from '../../hr-only-policy';
 import { getCache } from '../../infrastructure/redis/cache';
 import { logger } from '../../infrastructure/logging/logger';
 import { diffChanges } from '../../shared/utils/diff';
 import { auditService } from '../audit';
 import { userService } from '../users';
+import { userRepository } from '../users/user.repository';
 import { emit } from '../kernel/event-bus';
 import {
   PermissionModel,
@@ -44,8 +51,85 @@ export interface EffectivePermissions {
 
 const roleEntityRef = (id: string) => ({ moduleId: 'platform', entityType: 'role', entityId: id });
 
+/** The seeded role whose last holder must never be removed — the account that can fix everything. */
+const SUPER_ADMIN_KEY = 'super-admin';
+
 class RbacService {
   private registryKeys = new Set<string>();
+
+  // ── Management classification (SA-3) ───────────────────────────────────────
+
+  /**
+   * How a role is looked after. Derived, never stored: `isSystem` is the seeded-and-protected flag
+   * that also makes holders privileged, and the `hr-only:` prefix marks the derivatives the
+   * confinement reconciliation mints and re-asserts on every boot.
+   */
+  managementOf(doc: Pick<RoleDoc, 'isSystem' | 'key'>): RoleManagement {
+    if (doc.isSystem) return 'system';
+    return isDerivedHrRoleKey(doc.key) ? 'derived' : 'none';
+  }
+
+  /**
+   * Both kinds of managed role refuse edits, for different reasons.
+   *
+   * A SYSTEM role is protected because the platform seeds and depends on it. A DERIVED role is
+   * protected because it is not an administrator's to change: the HR-only reconciliation owns it
+   * and re-asserts its grants on every boot and every seed, so an edit here is not merely unwise —
+   * it is silently reverted, which is worse than being refused.
+   */
+  private assertEditable(doc: RoleDoc): void {
+    const management = this.managementOf(doc);
+    if (management === 'system') {
+      throw new BusinessRuleError('System roles are protected', ErrorCodes.ROLE_PROTECTED);
+    }
+    if (management === 'derived') {
+      throw new BusinessRuleError(
+        'This role is maintained by the HR-only confinement and cannot be edited here — the next boot would restore it',
+        ErrorCodes.ROLE_PROTECTED,
+      );
+    }
+  }
+
+  // ── Privilege-escalation guards (SA-3, decisions R2/R3) ────────────────────
+  //
+  // Applied to EVERY request: the controller passes the caller's context on all four mutating
+  // paths. The parameter is optional only because the confinement reconciliation and the seeds act
+  // as the SYSTEM — there is no request behind them and no human whose authority could be
+  // exceeded — which is the same distinction `by: null` already draws across this codebase. It is
+  // not an exemption keyed on a user id or a role: no principal can reach the unguarded path over
+  // HTTP.
+
+  /**
+   * Nobody may hand out an authority they do not hold. Without this, `role.create` is effectively
+   * `*`: an administrator could mint a role carrying every permission in the registry and assign
+   * it — to themselves.
+   */
+  private assertKeysHeld(actor: AuthContext, keys: string[], what: string): void {
+    const missing = keys.filter((key) => actor.permissions[key] === undefined);
+    if (missing.length > 0) {
+      throw new BusinessRuleError(
+        `You cannot ${what} permissions you do not hold: ${missing.sort().join(', ')}`,
+      );
+    }
+  }
+
+  /**
+   * …and nobody may hand out an authority WIDER than their own. A holder of `x @ branch` granting
+   * `x @ organization` would be creating access they cannot exercise, which is the same escalation
+   * one level down — the keys all check out and the reach does not.
+   */
+  private assertScopeNotWider(actor: AuthContext, keys: string[], scope: DataScope): void {
+    const wanted = DATA_SCOPE_RANK[scope];
+    const tooWide = keys.filter((key) => {
+      const held = actor.permissions[key];
+      return held !== undefined && DATA_SCOPE_RANK[held] < wanted;
+    });
+    if (tooWide.length > 0) {
+      throw new BusinessRuleError(
+        `You cannot grant ${scope} scope for permissions you hold more narrowly: ${tooWide.sort().join(', ')}`,
+      );
+    }
+  }
 
   // ── Registry (code → DB, boot-time) ───────────────────────────────────────
 
@@ -131,8 +215,9 @@ class RbacService {
     }
   }
 
-  async createRole(input: CreateRole, by: string): Promise<RoleDoc> {
+  async createRole(input: CreateRole, by: string, actor?: AuthContext): Promise<RoleDoc> {
     this.assertKnownPermissionKeys(input.permissionKeys);
+    if (actor !== undefined) this.assertKeysHeld(actor, input.permissionKeys, 'put into a role');
     const doc = await roleRepository.create(
       {
         key: null,
@@ -152,16 +237,25 @@ class RbacService {
     return doc;
   }
 
-  async updateRole(id: string, input: UpdateRole, by: string): Promise<RoleDoc> {
+  async updateRole(
+    id: string,
+    input: UpdateRole,
+    by: string,
+    actor?: AuthContext,
+  ): Promise<RoleDoc> {
     const before = await roleRepository.getById(id);
-    if (before.isSystem) {
-      throw new BusinessRuleError('System roles are protected', ErrorCodes.ROLE_PROTECTED);
-    }
+    this.assertEditable(before);
     const set: Record<string, unknown> = {};
     if (input.name !== undefined) set.name = input.name;
     if (input.description !== undefined) set.description = input.description;
     if (input.permissionKeys !== undefined) {
       this.assertKnownPermissionKeys(input.permissionKeys);
+      // Only what the edit ADDS is checked. Removing a grant is a narrowing and always allowed, and
+      // re-sending an untouched list must not refuse an administrator who is renaming a role that
+      // happens to carry a permission they do not hold — they gain nothing by leaving it there, and
+      // assigning that role to anyone still runs the full check.
+      const added = input.permissionKeys.filter((key) => !before.permissionKeys.includes(key));
+      if (actor !== undefined) this.assertKeysHeld(actor, added, 'add');
       set.permissionKeys = [...new Set(input.permissionKeys)];
     }
     const after = await roleRepository.updateById(id, set, { by, version: input.version });
@@ -184,9 +278,7 @@ class RbacService {
 
   async deleteRole(id: string, by: string): Promise<void> {
     const role = await roleRepository.getById(id);
-    if (role.isSystem) {
-      throw new BusinessRuleError('System roles are protected', ErrorCodes.ROLE_PROTECTED);
-    }
+    this.assertEditable(role);
     const assignedUserIds = await roleAssignmentRepository.distinctUserIdsForRole(id);
     if (assignedUserIds.length > 0) {
       throw new BusinessRuleError('Role still has assignments — revoke them first');
@@ -200,15 +292,58 @@ class RbacService {
     return roleRepository.getById(id);
   }
 
-  async listRoles(page: number, pageSize: number): Promise<Paginated<RoleDoc>> {
-    return roleRepository.list({ page, pageSize, sortableFields: ['createdAt'] });
+  /**
+   * The roles list, with the three filters the administration screen needs.
+   *
+   * `unassigned` is the one that carries meaning: "disabling" a role IS revoking its assignments —
+   * there is no status field and adding one would put a second switch inside the authorization path
+   * — so this is how an administrator finds the roles that are currently off. It is computed from
+   * the assignments rather than stored, which is why it cannot go stale.
+   */
+  async listRoles(query: ListRolesQuery): Promise<Paginated<RoleDoc>> {
+    const filter: Record<string, unknown> = {};
+    if (query.search !== undefined) Object.assign(filter, roleRepository.searchFilter(query.search));
+    if (query.managed === 'system') filter.isSystem = true;
+    if (query.managed === 'derived') {
+      filter.isSystem = false;
+      filter.key = { $regex: `^${HR_ONLY_ROLE_KEY_PREFIX}` };
+    }
+    if (query.managed === 'none') {
+      filter.isSystem = false;
+      filter.$nor = [{ key: { $regex: `^${HR_ONLY_ROLE_KEY_PREFIX}` } }];
+    }
+    if (query.unassigned === true) {
+      const held = await roleAssignmentRepository.roleIdsWithAssignments();
+      filter._id = { $nin: held.map((id) => new Types.ObjectId(id)) };
+    }
+    return roleRepository.list({
+      filter,
+      page: query.page,
+      pageSize: query.pageSize,
+      sortBy: query.sortBy,
+      sortDir: query.sortDir,
+      sortableFields: ['createdAt', 'name.en'],
+    });
   }
 
   // ── Assignments ───────────────────────────────────────────────────────────
 
-  async assignRole(input: CreateRoleAssignment, by: string): Promise<RoleAssignmentDoc> {
-    const user = await userService.getById(input.userId);
+  async assignRole(
+    input: CreateRoleAssignment,
+    by: string,
+    actor?: AuthContext,
+  ): Promise<RoleAssignmentDoc> {
+    // The target account is read through the CALLER'S scope, so an administrator who cannot see a
+    // user cannot grant to them either — 404, not a hint that the account exists.
+    const user = await userService.getById(
+      input.userId,
+      actor === undefined ? undefined : scopeSelector(actor, 'role.assign'),
+    );
     const role = await roleRepository.getById(input.roleId);
+    if (actor !== undefined) {
+      this.assertKeysHeld(actor, role.permissionKeys, 'grant');
+      this.assertScopeNotWider(actor, role.permissionKeys, input.scope);
+    }
 
     // A hierarchical scope always resolves to the user's HOME placement at that level (ADR-015/017);
     // multi-placement grants arrive with a real consumer. The optional *Id inputs, when present,
@@ -274,8 +409,46 @@ class RbacService {
     return doc;
   }
 
-  async revokeAssignment(id: string, by: string): Promise<void> {
+  /**
+   * Every active assignment of the seeded `super-admin` role. The last one is the account that can
+   * repair any other mistake, so removing it is refused — a system nobody can administer is not a
+   * state an administrative screen should be able to reach.
+   */
+  private async isLastSuperAdminAssignment(doc: RoleAssignmentDoc): Promise<boolean> {
+    const superAdmin = await roleRepository.findByKey(SUPER_ADMIN_KEY);
+    if (superAdmin === null || String(superAdmin._id) !== String(doc.roleId)) return false;
+    const holders = await roleAssignmentRepository.findActiveForRole(String(doc.roleId));
+    return holders.length <= 1;
+  }
+
+  /**
+   * The two guards every change to an existing assignment shares.
+   *
+   * Self-protection is not paternalism: revoking your own grant is how an administrator locks
+   * themselves out of the screen they would need to undo it, and the account menu offers no way
+   * back. Another administrator can always do it.
+   */
+  private async assertMayChangeAssignment(
+    actor: AuthContext,
+    doc: RoleAssignmentDoc,
+  ): Promise<void> {
+    if (String(doc.userId) === actor.userId) {
+      throw new BusinessRuleError('You cannot change your own role assignment');
+    }
+    // Reading the holder through the caller's scope is what makes an out-of-scope assignment a 404.
+    await userService.getById(String(doc.userId), scopeSelector(actor, 'role.assign'));
+  }
+
+  async revokeAssignment(id: string, by: string, actor?: AuthContext): Promise<void> {
     const doc = await roleAssignmentRepository.getById(id);
+    if (actor !== undefined) {
+      await this.assertMayChangeAssignment(actor, doc);
+      if (await this.isLastSuperAdminAssignment(doc)) {
+        throw new BusinessRuleError(
+          'This is the last Super Admin assignment — grant the role to another account first',
+        );
+      }
+    }
     await roleAssignmentRepository.softDeleteById(id, { by });
     await this.invalidateUser(String(doc.userId));
     await auditService.record({
@@ -290,16 +463,80 @@ class RbacService {
     });
   }
 
-  async listAssignments(query: ListRoleAssignmentsQuery): Promise<Paginated<RoleAssignmentDoc>> {
+  /**
+   * Assignments the caller may see. `role_assignments` carries no placement of its own, so the
+   * filtering happens through the HOLDER — the same clause a direct read of `users` would apply.
+   */
+  async listAssignments(
+    query: ListRoleAssignmentsQuery,
+    scope?: ScopeSelector,
+  ): Promise<Paginated<RoleAssignmentDoc>> {
     const filter: Record<string, unknown> = {};
     if (query.userId !== undefined) filter.userId = new Types.ObjectId(query.userId);
     if (query.roleId !== undefined) filter.roleId = new Types.ObjectId(query.roleId);
-    return roleAssignmentRepository.list({
+    const { items, totalItems } = await roleAssignmentRepository.listVisible(
       filter,
-      page: query.page,
-      pageSize: query.pageSize,
-      sortableFields: ['createdAt'],
+      query.page,
+      query.pageSize,
+      userRepository.holderScopeMatch(scope, 'holder.'),
+    );
+    return {
+      items,
+      meta: {
+        page: query.page,
+        pageSize: query.pageSize,
+        totalItems,
+        totalPages: Math.max(1, Math.ceil(totalItems / query.pageSize)),
+      },
+    };
+  }
+
+  /**
+   * Move an existing grant's validity window. The role, the user and the scope are untouched — a
+   * change to any of those is a different grant, which is a revocation and a new assignment.
+   *
+   * The holders' cached permission snapshots are invalidated because a window that just opened or
+   * closed changes what the account may do right now, and the cache TTL is capped at the NEXT
+   * boundary — which this call may have just moved.
+   */
+  async updateAssignment(
+    id: string,
+    input: UpdateRoleAssignment,
+    by: string,
+    actor: AuthContext,
+  ): Promise<RoleAssignmentDoc> {
+    const before = await roleAssignmentRepository.getById(id);
+    await this.assertMayChangeAssignment(actor, before);
+
+    const set: Record<string, unknown> = {};
+    if (input.validFrom !== undefined) set.validFrom = input.validFrom;
+    if (input.validTo !== undefined) set.validTo = input.validTo;
+    const from = (set.validFrom ?? before.validFrom) as Date | null;
+    const to = (set.validTo ?? before.validTo) as Date | null;
+    if (from !== null && to !== null && from >= to) {
+      throw new BusinessRuleError('validFrom must be before validTo');
+    }
+
+    // The window carries no `version` on the wire — the request shape is deliberately just the two
+    // dates — so the stored one is re-used. Two administrators moving the same window at the same
+    // moment is a last-write-wins race, and both outcomes are a window somebody asked for.
+    const after = await roleAssignmentRepository.updateById(id, set, { by, version: before.__v });
+    await this.invalidateUser(String(before.userId));
+    await auditService.record({
+      entityRef: { moduleId: 'platform', entityType: 'user', entityId: String(before.userId) },
+      action: 'roleAssignmentUpdated',
+      changes: diffChanges(
+        {
+          validFrom: before.validFrom?.toISOString() ?? null,
+          validTo: before.validTo?.toISOString() ?? null,
+        },
+        {
+          validFrom: after.validFrom?.toISOString() ?? null,
+          validTo: after.validTo?.toISOString() ?? null,
+        },
+      ),
     });
+    return after;
   }
 
   // ── Evaluation & cache (ADR-004) ──────────────────────────────────────────
@@ -402,9 +639,11 @@ class RbacService {
   toRoleDto(doc: RoleDoc): RoleDto {
     return {
       id: String(doc._id),
+      key: doc.key,
       name: doc.name,
       description: doc.description,
       isSystem: doc.isSystem,
+      managed: this.managementOf(doc),
       permissionKeys: doc.permissionKeys,
       version: doc.__v,
       createdAt: doc.createdAt.toISOString(),
@@ -412,11 +651,33 @@ class RbacService {
     };
   }
 
-  toAssignmentDto(doc: RoleAssignmentDoc): RoleAssignmentDto {
+  /**
+   * The roles referenced by a page of assignments, in ONE read. Without it every screen listing
+   * assignments would have to load the whole catalog to render a name — the pattern ADR-019 exists
+   * to prevent.
+   */
+  async rolesForAssignments(docs: RoleAssignmentDoc[]): Promise<Map<string, RoleDoc>> {
+    if (docs.length === 0) return new Map();
+    const roles = await roleRepository.findByIds([...new Set(docs.map((d) => d.roleId))]);
+    return new Map(roles.map((role) => [String(role._id), role]));
+  }
+
+  toAssignmentDto(doc: RoleAssignmentDoc, role?: RoleDoc | undefined): RoleAssignmentDto {
     return {
       id: String(doc._id),
       userId: String(doc.userId),
       roleId: String(doc.roleId),
+      // Null when the role is gone (soft-deleted after the grant): the screen says so rather than
+      // rendering a blank, and the grant itself is still visible so it can be cleaned up.
+      role:
+        role === undefined
+          ? null
+          : {
+              id: String(role._id),
+              name: role.name,
+              key: role.key,
+              managed: this.managementOf(role),
+            },
       scope: doc.scope,
       branchId: doc.branchId === null ? null : String(doc.branchId),
       departmentId: doc.departmentId === null ? null : String(doc.departmentId),

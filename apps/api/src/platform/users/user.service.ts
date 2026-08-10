@@ -28,6 +28,8 @@ import { auditService } from '../audit';
 import { settingsService } from '../settings';
 import { emit, nudgeOutboxRelay } from '../kernel/event-bus';
 import { unitOfWork } from '../kernel/unit-of-work';
+import { departmentRepository } from '../organization/departments/department.repository';
+import { sectionRepository } from '../organization/sections/section.repository';
 import { userRepository } from './user.repository';
 import { type UserDoc } from './user.model';
 
@@ -79,6 +81,14 @@ class UserService {
         'an account needs at least one login identifier — an email or a username',
       );
     }
+
+    const oid = (value: string | null): Types.ObjectId | null =>
+      value === null ? null : new Types.ObjectId(value);
+    await this.assertPlacementConsistent({
+      branchId: oid(input.organization.branchId),
+      departmentId: oid(input.organization.departmentId),
+      sectionId: oid(input.organization.sectionId),
+    });
 
     const activationToken = randomToken();
     const user = await unitOfWork(async (session) => {
@@ -220,6 +230,46 @@ class UserService {
     return user;
   }
 
+  /**
+   * A placement must be a real path down the organization tree (SA-3 / decision R6).
+   *
+   * The four fields are independent nullable ids with no derivation, so nothing stopped an account
+   * from carrying a department belonging to another branch, or a section belonging to another
+   * department. That is not a cosmetic inconsistency: a `department`-scoped grant resolves against
+   * `user.organization.departmentId` and the repository filters other collections by the same id,
+   * so a mismatched placement silently grants reach into a branch the account does not belong to.
+   *
+   * The org tree already carries the answer — `departments.branchId` and `sections.departmentId` are
+   * both required columns — so this reads it rather than inventing a second source of truth.
+   * Validated against the RESULTING placement, because a partial edit changes only some of it.
+   */
+  private async assertPlacementConsistent(next: {
+    branchId: Types.ObjectId | null;
+    departmentId: Types.ObjectId | null;
+    sectionId: Types.ObjectId | null;
+  }): Promise<void> {
+    if (next.departmentId !== null) {
+      if (next.branchId === null) {
+        throw new BusinessRuleError('a department placement requires a branch');
+      }
+      const department = await departmentRepository.findById(String(next.departmentId));
+      if (department === null) throw new BusinessRuleError('unknown department');
+      if (String(department.branchId) !== String(next.branchId)) {
+        throw new BusinessRuleError('the department does not belong to the selected branch');
+      }
+    }
+    if (next.sectionId !== null) {
+      if (next.departmentId === null) {
+        throw new BusinessRuleError('a section placement requires a department');
+      }
+      const section = await sectionRepository.findById(String(next.sectionId));
+      if (section === null) throw new BusinessRuleError('unknown section');
+      if (String(section.departmentId) !== String(next.departmentId)) {
+        throw new BusinessRuleError('the section does not belong to the selected department');
+      }
+    }
+  }
+
   async update(id: string, input: UpdateUser, by: string, scope?: ScopeSelector): Promise<UserDoc> {
     const before = await userRepository.getById(id, scope);
     const set: Record<string, unknown> = {};
@@ -262,6 +312,17 @@ class UserService {
           set[`organization.${field}`] = value === null ? null : new Types.ObjectId(value);
         }
       }
+      const resulting = <K extends 'branchId' | 'departmentId' | 'sectionId'>(
+        field: K,
+      ): Types.ObjectId | null =>
+        `organization.${field}` in set
+          ? (set[`organization.${field}`] as Types.ObjectId | null)
+          : before.organization[field];
+      await this.assertPlacementConsistent({
+        branchId: resulting('branchId'),
+        departmentId: resulting('departmentId'),
+        sectionId: resulting('sectionId'),
+      });
     }
     const after = await userRepository.updateById(id, set, { by, version: input.version, scope });
 

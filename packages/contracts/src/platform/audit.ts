@@ -104,6 +104,10 @@ export const AUDIT_ACTIONS = [
   'unlock',
   'employeeLinked',
   'employeeUnlinked',
+  // SA-3. Moving a grant's validity window is neither a new grant nor a revocation: the role, the
+  // user and the scope are unchanged, and expressing it as `roleRevoked` + `roleAssigned` would
+  // split one decision into two rows and lose when the grant was first made.
+  'roleAssignmentUpdated',
 ] as const;
 export const AuditActionSchema = z.enum(AUDIT_ACTIONS);
 export type AuditAction = z.infer<typeof AuditActionSchema>;

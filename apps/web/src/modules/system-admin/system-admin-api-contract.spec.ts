@@ -116,6 +116,40 @@ describe('the client stays inside what the API accepts', () => {
     }
   });
 
+  // `ListUsersQuerySchema` is `.strict()`, so a filter the client invents is a 400 at the boundary
+  // rather than an ignored parameter. This scans what the page actually sends.
+  it('sends only query keys the users list schema accepts', () => {
+    const block = /useMemo<SystemUserListParams>\(([\s\S]*?)\n {4}\[paramsKey\],/.exec(LIST_PAGE)?.[1] ?? '';
+    // Three ways a key reaches the object: `k,` · `k: v` · `...(cond ? {} : { k })`.
+    const sent = [/^ {6}([a-zA-Z]+),$/gm, /^ {6}([a-zA-Z]+):/gm, /\{ ([a-zA-Z]+) \}\)/g].flatMap(
+      (pattern) => [...block.matchAll(pattern)].flatMap((m) => (m[1] === undefined ? [] : [m[1]])),
+    );
+    expect(sent, 'the scan itself must not match nothing').toContain('branchId');
+    const schema = /ListUsersQuerySchema = PaginationQuerySchema\.extend\(\{([\s\S]*?)\}\)/.exec(
+      USERS_CONTRACT,
+    )?.[1];
+    for (const key of new Set(sent)) {
+      // The four pagination keys come from the shared envelope every list query extends.
+      if (['page', 'pageSize', 'sortBy', 'sortDir'].includes(key)) continue;
+      expect(schema, `${key} is not accepted by ListUsersQuery`).toContain(`${key}:`);
+    }
+  });
+
+  // Every filter belongs in the URL, so a support conversation can link to the exact view — and so
+  // the back button works. A filter held in component state alone would be invisible to both.
+  it('reads all three filters from the URL, and resets the page when one changes', () => {
+    for (const [param, reader] of [
+      ['search', "sp.get('q')"],
+      ['status', "sp.get('status')"],
+      ['branch', "sp.get('branch')"],
+    ] as const) {
+      expect(LIST_PAGE, `${param} is not URL-synced`).toContain(reader);
+    }
+    // `patch` clears `page` unless the caller is paging; each filter goes through it.
+    expect(LIST_PAGE).toContain("patch({ branch: e.target.value || null })");
+    expect(LIST_PAGE).toMatch(/if \(resetPage && !\('page' in updates\)\) next\.delete\('page'\);/);
+  });
+
   // ADR-019 rule 5. The list is paginated by the server; a client that asked for a bigger page to
   // avoid paging is the exact pattern the ADR forbids, and MAX_PAGE_SIZE is 100 anyway.
   it('never raises the page size above the shared default', () => {

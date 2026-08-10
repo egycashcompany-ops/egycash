@@ -481,15 +481,25 @@ class RbacService {
   }
 
   /**
-   * Every active assignment of the seeded `super-admin` role. The last one is the account that can
-   * repair any other mistake, so removing it is refused — a system nobody can administer is not a
-   * state an administrative screen should be able to reach.
+   * Would revoking this grant leave nobody able to administer the system? The last Super Admin is
+   * the account that can repair any other mistake, so removing it is refused — a system nobody can
+   * administer is not a state an administrative screen should be able to reach.
+   *
+   * The question is asked about the grants that SURVIVE the revoke, and about the accounts behind
+   * them rather than the assignment rows: archiving does not revoke (SA-5 decision 1), so a
+   * retired account keeps its super-admin grant, and counting rows would accept that dead grant as
+   * cover — letting the rule be defeated by archiving a spare Super Admin first. Only an account
+   * that can still sign in counts. Two grants held by the SAME account (one per scope) are cover
+   * for each other, which is why the surviving rows are resolved to accounts before counting.
    */
   private async isLastSuperAdminAssignment(doc: RoleAssignmentDoc): Promise<boolean> {
     const superAdmin = await roleRepository.findByKey(SUPER_ADMIN_KEY);
     if (superAdmin === null || String(superAdmin._id) !== String(doc.roleId)) return false;
     const holders = await roleAssignmentRepository.findActiveForRole(String(doc.roleId));
-    return holders.length <= 1;
+    const survivors = holders
+      .filter((held) => String(held._id) !== String(doc._id))
+      .map((held) => String(held.userId));
+    return (await userRepository.activeIdsAmong(survivors)).length === 0;
   }
 
   /**

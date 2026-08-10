@@ -29,9 +29,13 @@ import { settingsService } from '../settings';
 import { emit, nudgeOutboxRelay } from '../kernel/event-bus';
 import { unitOfWork } from '../kernel/unit-of-work';
 import { departmentRepository } from '../organization/departments/department.repository';
+import { roleAssignmentRepository, roleRepository } from '../rbac/rbac.repository';
 import { sectionRepository } from '../organization/sections/section.repository';
 import { userRepository } from './user.repository';
 import { type UserDoc } from './user.model';
+
+/** The seeded role whose last holder must never be retired — the account that can fix everything. */
+const SUPER_ADMIN_ROLE_KEY = 'super-admin';
 
 const ACTIVATION_TTL_DAYS = 7;
 
@@ -370,6 +374,11 @@ class UserService {
         `Status change ${before.status} → ${input.status} is not allowed`,
       );
     }
+    // Archiving is terminal — `archived: []` above — so it is the MORE final of the two retirements,
+    // not the softer one. Deleting is at least reversible by someone with database access;
+    // archiving an account is reversible by nobody through any API this platform offers. Both doors
+    // therefore carry the same two refusals.
+    if (input.status === 'archived') await this.assertRetirable(id, by, 'archive');
     // §15.5 — disabling an account kills any pending setup link in the same operation.
     const revokeInvitation =
       (input.status === 'suspended' || input.status === 'archived') &&
@@ -403,8 +412,58 @@ class UserService {
     return after;
   }
 
+  /**
+   * The two accounts an administrator must not be able to retire, whichever door they use.
+   *
+   * Both mirror the rules SA-3 already applies to a role ASSIGNMENT (ADR-026 §5), for the same
+   * reason and with the same shape: retiring your own account locks you out of the screen you would
+   * need to undo it, and retiring the last Super Admin leaves a system nobody can administer. The
+   * difference is that these are worse — a revoked grant can be re-granted by anyone with
+   * `role.assign`, while `archived` is a terminal status with no transition out of it, and a
+   * soft-deleted account is invisible to every read the API offers.
+   *
+   * `by` is the ACTOR, not the subject — the same argument every write in this service already
+   * carries, so the check needs nothing new plumbed through.
+   */
+  private async assertRetirable(id: string, by: string, what: string): Promise<void> {
+    if (id === by) {
+      throw new BusinessRuleError(`You cannot ${what} your own account`);
+    }
+    // The REPOSITORIES, not `rbacService`: that service imports this one, so reaching for it here
+    // would close a module cycle. These two are leaves — the same reason the department and section
+    // repositories are imported directly a few lines above — and the query is the one
+    // `rbacService.userIdsWithSystemRole('super-admin')` runs, which is why it is safe to restate.
+    const superAdminRole = await roleRepository.findByKey(SUPER_ADMIN_ROLE_KEY);
+    const holders =
+      superAdminRole === null
+        ? []
+        : await roleAssignmentRepository.distinctUserIdsForRole(String(superAdminRole._id));
+    // Holding the grant is not the same as being able to USE it. `distinctUserIdsForRole` counts
+    // assignments, and an archived or suspended account keeps its assignments by design (archiving
+    // is not a revocation) — so counting holders would let the last USABLE Super Admin be retired
+    // as long as a retired one still carried the role. The question this guard asks is "would
+    // anybody be able to sign in and administer the system afterwards", so it counts accounts that
+    // can actually sign in.
+    const superAdmins = await userRepository.activeIdsAmong(holders);
+    if (superAdmins.length <= 1 && superAdmins.includes(id)) {
+      throw new BusinessRuleError(
+        `This is the last Super Admin — grant the role to another account before you ${what} this one`,
+      );
+    }
+  }
+
+  /**
+   * A soft delete, deliberately: `isDeleted` is set and the row stays. Every read in the system
+   * goes through `BaseRepository.baseFilter`, which adds `isDeleted: false`, so the account
+   * disappears from lists and answers 404 — while the audit trail, which lives in its own
+   * collection and joins on nothing, survives intact. That is what makes deletion reviewable after
+   * the fact, and it is why SA-5 exposes this call rather than replacing it.
+   */
   async softDelete(id: string, by: string, scope?: ScopeSelector): Promise<void> {
+    // Scoped read FIRST: an account the caller cannot see answers 404, never a rule violation that
+    // would confirm it exists.
     const before = await userRepository.getById(id, scope);
+    await this.assertRetirable(id, by, 'delete');
     // §15.5 — a pending setup link dies with the account.
     if (before.activation.tokenHash !== null) {
       await userRepository.updateSecurity(id, {

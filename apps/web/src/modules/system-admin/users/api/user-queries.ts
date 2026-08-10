@@ -79,6 +79,9 @@ export const useUnlockUser = (id: string) => useUserAction(() => api.unlockUser(
 export const useUpdateUser = (id: string) =>
   useUserAction((body: UpdateUser) => api.updateUser(id, body), id);
 
+/** The account is gone from every list afterwards, so the caller navigates away on success. */
+export const useDeleteUser = (id: string) => useUserAction(() => api.deleteUser(id), id);
+
 /** Creation has no account to invalidate the history of — only the list it will appear in. */
 export const useCreateUser = () => {
   const qc = useQueryClient();

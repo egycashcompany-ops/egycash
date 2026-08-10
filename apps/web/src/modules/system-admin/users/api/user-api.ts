@@ -54,6 +54,13 @@ export const createUser = (body: CreateUser): Promise<InvitedUserDto> =>
 export const updateUser = (id: string, body: UpdateUser): Promise<UserDto> =>
   patch<UserDto>(`/platform/users/${id}`, body);
 
+/**
+ * Retire an account (SA-5). A SOFT delete: the row is kept with `isDeleted` set, so it vanishes
+ * from every read the API offers while the audit trail — which lives in its own collection —
+ * survives intact. The server refuses your own account and the last Super Admin.
+ */
+export const deleteUser = (id: string): Promise<void> => del<void>(`/platform/users/${id}`);
+
 /** Clear the automatic lockout the failed-login counter armed. Does not change the status. */
 export const unlockUser = (id: string): Promise<UserDto> =>
   post<UserDto>(`/platform/users/${id}/unlock`, {});

@@ -12,13 +12,103 @@
 // either, in EITHER direction. It cannot be added, and — the half that is easy to miss — it cannot
 // be REMOVED: a role may carry a key its editor lacks, that key's own checkbox is locked, and a
 // bulk clear that stripped it would be a way around the lock rather than a shortcut through it.
-import { type PermissionDto } from '@ecms/contracts';
+import { type PageDto, type PermissionDto } from '@ecms/contracts';
 
 export interface MatrixRow {
   key: string;
   /** Absent for a key the registry no longer knows. */
   definition: PermissionDto | undefined;
 }
+
+/**
+ * One administration surface inside a module, with the permissions that belong to it.
+ *
+ * `page: null` is the module's **Other / Unassigned** bucket — the permissions the registry
+ * deliberately placed nowhere (P7-A, decision D1). It is a real group with real rows, not an error
+ * state, and it renders last so a module reads as "its surfaces, then the leftovers".
+ */
+export interface MatrixPage {
+  page: PageDto | null;
+  rows: MatrixRow[];
+}
+
+/**
+ * One module's branch of the tree.
+ *
+ * `rows` is **exactly** the concatenation of `pages[].rows`, and that is the whole reason this
+ * shape exists rather than the component flattening on the fly. Every module-level control —
+ * select-all, the tri-state, the counter — takes `rows`, and every page-level control takes that
+ * page's `rows`, so "the module is the union of its pages" is true by CONSTRUCTION rather than by
+ * two code paths agreeing. A test pins it anyway, because the property is the point.
+ */
+export interface MatrixModule {
+  moduleId: string;
+  pages: MatrixPage[];
+  rows: MatrixRow[];
+}
+
+/** The pseudo-module holding keys the registry no longer declares (distinct from Unassigned). */
+export const UNKNOWN_MODULE = 'unknown';
+
+/**
+ * Build the Module → Page → Permission tree from the registry and a role's current keys.
+ *
+ * Two different kinds of "has no page" meet here and must not be conflated:
+ *
+ *   • A permission the registry KNOWS and deliberately did not place (`pageId: null`) belongs to
+ *     its own module, in that module's Other / Unassigned group. It is grantable like any other.
+ *   • A key the registry does NOT know — carried by the role because some retired module declared
+ *     it — belongs to no module at all. It goes under `UNKNOWN_MODULE`, is never a bulk target, and
+ *     is removable but never re-addable (`rowEditability`).
+ *
+ * Module order follows the catalog; page order follows the registry's own ordering (the server
+ * sorts by module, `sortOrder`, then id) with Unassigned last; the unknown module sorts last of all.
+ */
+export const buildMatrixTree = (
+  catalog: readonly PermissionDto[],
+  pages: readonly PageDto[],
+  roleKeys: readonly string[],
+): MatrixModule[] => {
+  const byId = new Map(pages.map((page) => [page.id, page]));
+  const modules: string[] = [];
+  const byModule = new Map<string, Map<string, MatrixRow[]>>();
+
+  for (const permission of catalog) {
+    if (!byModule.has(permission.moduleId)) {
+      modules.push(permission.moduleId);
+      byModule.set(permission.moduleId, new Map());
+    }
+    // `?? ''` is the Unassigned bucket's key inside this map — no page id can be empty.
+    const bucket = permission.pageId !== null && byId.has(permission.pageId) ? permission.pageId : '';
+    const group = byModule.get(permission.moduleId) ?? new Map<string, MatrixRow[]>();
+    group.set(bucket, [...(group.get(bucket) ?? []), { key: permission.key, definition: permission }]);
+    byModule.set(permission.moduleId, group);
+  }
+
+  const tree: MatrixModule[] = modules.map((moduleId) => {
+    const group = byModule.get(moduleId) ?? new Map<string, MatrixRow[]>();
+    const ordered: MatrixPage[] = pages
+      .filter((page) => page.moduleId === moduleId && group.has(page.id))
+      .map((page) => ({ page, rows: group.get(page.id) ?? [] }));
+    const unassigned = group.get('');
+    if (unassigned !== undefined && unassigned.length > 0) {
+      ordered.push({ page: null, rows: unassigned });
+    }
+    return { moduleId, pages: ordered, rows: ordered.flatMap((entry) => entry.rows) };
+  });
+
+  const orphans = roleKeys
+    .filter((key) => !catalog.some((permission) => permission.key === key))
+    .map((key): MatrixRow => ({ key, definition: undefined }));
+  if (orphans.length > 0) {
+    tree.push({
+      moduleId: UNKNOWN_MODULE,
+      pages: [{ page: null, rows: orphans }],
+      rows: orphans,
+    });
+  }
+  return tree;
+};
 
 /** A group's selection, as a checkbox can express it. */
 export type TriState = 'none' | 'some' | 'all';
@@ -122,4 +212,55 @@ export const matchesSearch = (row: MatrixRow, search: string): boolean => {
     (row.definition?.name.ar.toLowerCase().includes(term) ?? false) ||
     (row.definition?.name.en.toLowerCase().includes(term) ?? false)
   );
+};
+
+/** What a search leaves on screen. `entry`/`module` keep their FULL rows; `shown` is the drawing. */
+export interface VisiblePage {
+  entry: MatrixPage;
+  shown: MatrixRow[];
+}
+export interface VisibleModule {
+  module: MatrixModule;
+  pages: VisiblePage[];
+}
+
+/**
+ * Filter the tree for display, **without ever losing a level's context**.
+ *
+ * Searching "employees" should show the Employees page with its permissions under the HR module,
+ * not a flat list of matching keys — a permission shown outside the surface that administers it is
+ * harder to judge, not easier. So a match at a HIGHER level keeps everything below it: a module
+ * whose name matches shows all its pages, and a page whose name matches shows all its permissions.
+ *
+ * Names are resolved by the caller, because a module's label is an i18n key in the web app while a
+ * page's travels with the registry. This function is given strings and decides nothing about where
+ * they came from.
+ *
+ * Crucially the returned `entry` and `module` still carry their COMPLETE row sets. Every checkbox,
+ * counter and tri-state reads those, so search changes what is drawn and never what a control does
+ * or reports — the P6 rule, now at two levels instead of one.
+ */
+export const visibleTree = (
+  tree: readonly MatrixModule[],
+  search: string,
+  label: { module: (moduleId: string) => string; page: (page: PageDto | null) => string },
+): VisibleModule[] => {
+  const term = search.trim().toLowerCase();
+  if (term === '') {
+    return tree.map((module) => ({
+      module,
+      pages: module.pages.map((entry) => ({ entry, shown: entry.rows })),
+    }));
+  }
+  return tree.flatMap((module): VisibleModule[] => {
+    const moduleHit = label.module(module.moduleId).toLowerCase().includes(term);
+    const pages = module.pages.flatMap((entry): VisiblePage[] => {
+      const pageHit = label.page(entry.page).toLowerCase().includes(term);
+      // A hit on the module or the page keeps every row beneath it; otherwise the rows filter.
+      const shown =
+        moduleHit || pageHit ? entry.rows : entry.rows.filter((row) => matchesSearch(row, search));
+      return shown.length === 0 ? [] : [{ entry, shown }];
+    });
+    return pages.length === 0 ? [] : [{ module, pages }];
+  });
 };

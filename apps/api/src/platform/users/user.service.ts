@@ -326,6 +326,12 @@ class UserService {
     }
     const after = await userRepository.updateById(id, set, { by, version: input.version, scope });
 
+    // A placement is not a display field: `AuthContext.branchId/departmentId/sectionId` come from
+    // the cached auth snapshot, and `scopeFilter` builds every scoped query out of them. Left
+    // cached, an account moved out of a branch would keep reading that branch for the rest of the
+    // snapshot's TTL. Dropped here, the next request rebuilds it from the record.
+    if (input.organization !== undefined) await getCache().del(`auth:user:${id}`);
+
     await auditService.record({
       entityRef: entityRef(id),
       action: 'update',

@@ -4,6 +4,8 @@
 // `error` on a control flips its ring red.
 import {
   forwardRef,
+  useEffect,
+  useRef,
   type InputHTMLAttributes,
   type ReactNode,
   type SelectHTMLAttributes,
@@ -85,20 +87,42 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
 );
 Select.displayName = 'Select';
 
+/**
+ * `indeterminate` is a DOM PROPERTY, not an attribute — React cannot set it through JSX, so it has
+ * to be written onto the element after every render. Without it a "select all" over a partly
+ * selected group has only two states to say three things, and would have to claim either "all" or
+ * "none" when neither is true.
+ *
+ * It drives `aria-checked="mixed"` as well as the visual state, so the third state is announced
+ * rather than merely drawn.
+ */
 export const Checkbox = ({
   label,
   className,
+  indeterminate = false,
   ...rest
-}: InputHTMLAttributes<HTMLInputElement> & { label: string }): JSX.Element => (
-  <label className={cn('flex cursor-pointer items-center gap-2 text-sm text-slate-700 dark:text-slate-200', className)}>
-    <input
-      type="checkbox"
-      className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
-      {...rest}
-    />
-    {label}
-  </label>
-);
+}: InputHTMLAttributes<HTMLInputElement> & {
+  label: string;
+  indeterminate?: boolean;
+}): JSX.Element => {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (ref.current !== null) ref.current.indeterminate = indeterminate;
+  }, [indeterminate]);
+
+  return (
+    <label className={cn('flex cursor-pointer items-center gap-2 text-sm text-slate-700 dark:text-slate-200', className)}>
+      <input
+        ref={ref}
+        type="checkbox"
+        className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+        {...(indeterminate ? { 'aria-checked': 'mixed' as const } : {})}
+        {...rest}
+      />
+      {label}
+    </label>
+  );
+};
 
 export const Form = ({
   onSubmit,

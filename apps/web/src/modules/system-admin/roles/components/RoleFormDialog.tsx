@@ -44,6 +44,11 @@ export const RoleFormDialog = ({
     );
   };
 
+  // The matrix's bulk controls hand back the whole next list, already filtered to what this actor
+  // may grant. Nothing here re-derives it: the payload is the same `permissionKeys[]` the API has
+  // always taken, and the server's guards are still what decide.
+  const replaceKeys = (next: string[]): void => setKeys(next);
+
   const submit = (): void => {
     const name = { ar: nameAr.trim(), en: nameEn.trim() };
     const trimmedDescription = description.trim();
@@ -129,6 +134,7 @@ export const RoleFormDialog = ({
             selected={keys}
             managed={role?.managed ?? 'none'}
             onToggle={toggle}
+            onBulkChange={replaceKeys}
           />
         </div>
       </Form>

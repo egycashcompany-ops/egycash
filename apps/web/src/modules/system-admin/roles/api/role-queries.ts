@@ -33,10 +33,24 @@ export const useRole = (id: string) =>
 export const usePermissionCatalog = (enabled = true) =>
   useQuery({
     queryKey: [MODULE, 'permission-catalog'],
-    queryFn: api.listPermissions,
+    queryFn: api.listPermissionCatalog,
     enabled,
     staleTime: 10 * 60_000,
     retry: false,
+    // P7-A carries the page registry over the wire; every current caller still wants the flat
+    // permission list, so the shape they see is unchanged. P7-B reads the pages.
+    select: (catalog) => catalog.permissions,
+  });
+
+/** The administration surfaces, from the same request the catalog came in — never a second fetch. */
+export const usePermissionPages = (enabled = true) =>
+  useQuery({
+    queryKey: [MODULE, 'permission-catalog'],
+    queryFn: api.listPermissionCatalog,
+    enabled,
+    staleTime: 10 * 60_000,
+    retry: false,
+    select: (catalog) => catalog.pages,
   });
 
 const useRoleWrite = <TArgs, TResult>(mutationFn: (args: TArgs) => Promise<TResult>) => {

@@ -56,6 +56,7 @@ describe('manifest validation (fails the boot loudly)', () => {
           action: 'create',
           moduleId: 'fleet',
           name: { en: 'x', ar: 'x' },
+          pageId: null,
         },
       ],
     });

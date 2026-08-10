@@ -285,6 +285,7 @@ describe('permission registry sync invalidates system-role holders', () => {
       action: 'view',
       moduleId: 'hr',
       name: { en: 'upgrade probe', ar: 'فحص الترقية' },
+      pageId: null,
     };
 
     const before = await userService.findByEmail('admin@ecms.local');

@@ -132,7 +132,12 @@ export interface RoleAssignmentDto {
    * assignments would have to load the whole roles catalog to render a name — the pattern ADR-019
    * exists to prevent.
    */
-  role: { id: string; name: { ar: string; en: string }; key: string | null; managed: RoleManagement } | null;
+  role: {
+    id: string;
+    name: { ar: string; en: string };
+    key: string | null;
+    managed: RoleManagement;
+  } | null;
   scope: DataScope;
   /**
    * The placement this grant was resolved against WHEN IT WAS MADE. Recorded for the trail and read
@@ -162,6 +167,33 @@ export interface PermissionDto {
   moduleId: string;
   name: { ar: string; en: string };
   breakGlass: boolean;
+  /**
+   * The administration surface this permission belongs to (P7-A), or `null` when none administers
+   * it. Purely organizational — the role matrix groups on it; nothing authorizes on it.
+   */
+  pageId: string | null;
+}
+
+/** One administration surface, as the registry serves it alongside the permissions. */
+export interface PageDto {
+  id: string;
+  moduleId: string;
+  name: { ar: string; en: string };
+  route: string | null;
+  sortOrder: number | null;
+}
+
+/**
+ * What `GET /platform/permissions` answers: the catalog, and the surfaces it groups into.
+ *
+ * The two travel together because they are one fact — a `pageId` with no page to resolve it is not
+ * useful to a client, and fetching them separately would let a screen render a tree from two
+ * responses that disagree. Page NAMES live here rather than being repeated on every permission,
+ * which would put 202 copies of the same localized string on the wire.
+ */
+export interface PermissionCatalogDto {
+  permissions: PermissionDto[];
+  pages: PageDto[];
 }
 
 // ── Effective permissions, explained (SA-4) ─────────────────────────────────

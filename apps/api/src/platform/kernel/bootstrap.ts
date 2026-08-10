@@ -3,7 +3,7 @@
 //   module manifests (validate → register) → routes mount → traffic.
 // A module that fails validation FAILS THE BOOT loudly.
 import { z } from 'zod';
-import { platformPermissions, type PermissionDef } from '@ecms/contracts';
+import { platformPages, platformPermissions, type PermissionDef } from '@ecms/contracts';
 import { connectMongo } from '../../infrastructure/database/mongo';
 import { logger } from '../../infrastructure/logging/logger';
 import { registerAuthEventHandlers, registerAuthSettings } from '../auth';
@@ -80,7 +80,15 @@ export const bootPlatform = async (options: BootOptions = {}): Promise<void> => 
 
   // Tier 1 — identity & authorization.
   const modulePermissions: PermissionDef[] = getRegisteredModules().flatMap((m) => m.permissions);
-  await rbacService.syncPermissionRegistry([...platformPermissions, ...modulePermissions]);
+  const allPermissions = [...platformPermissions, ...modulePermissions];
+  await rbacService.syncPermissionRegistry(allPermissions);
+  // P7-A: the page registry is assembled from whichever modules THIS deployment enabled, so it is
+  // validated here rather than only in CI — and a broken one stops the boot (D6) instead of
+  // rendering a role matrix with a branch that describes a surface nobody declared.
+  rbacService.syncPageRegistry(
+    [...platformPages, ...getRegisteredModules().flatMap((m) => m.pages ?? [])],
+    allPermissions,
+  );
   registerAuthEventHandlers();
   registerNotificationEventHandlers();
 

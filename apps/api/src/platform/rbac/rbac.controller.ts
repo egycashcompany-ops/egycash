@@ -22,7 +22,9 @@ import { rbacService } from './rbac.service';
 type IdParam = { id: string };
 
 export const listPermissions = async (_req: Request, res: Response): Promise<void> => {
-  ok(res, await rbacService.listPermissions());
+  // Catalog + pages in one answer (P7-A): a `pageId` the client cannot resolve is not useful, and
+  // two responses could disagree about a tree that has to be rendered from both.
+  ok(res, await rbacService.listPermissionCatalog());
 };
 
 export const listRoles = async (req: Request, res: Response): Promise<void> => {

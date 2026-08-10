@@ -11,6 +11,14 @@ export interface PermissionDoc {
   moduleId: string;
   name: LocalizedString;
   breakGlass: boolean;
+  /**
+   * The administration surface this permission belongs to, or `null` when none administers it.
+   *
+   * Mirrors the code catalog like every other field here — the DB never invents one, and no query
+   * authorizes on it. It is stored so the role screen can read the tree from `/platform/permissions`
+   * instead of the client re-deriving a relationship the registry already knows.
+   */
+  pageId: string | null;
 }
 
 const permissionSchema = new Schema<PermissionDoc>(
@@ -21,6 +29,7 @@ const permissionSchema = new Schema<PermissionDoc>(
     moduleId: { type: String, required: true },
     name: { ar: { type: String, required: true }, en: { type: String, required: true } },
     breakGlass: { type: Boolean, default: false },
+    pageId: { type: String, default: null },
   },
   { strict: true, versionKey: false },
 );

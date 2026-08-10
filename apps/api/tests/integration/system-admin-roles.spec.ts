@@ -22,7 +22,7 @@ import {
   ErrorCodes,
   SettingKeys,
   platformPermissions,
-  type PermissionDto,
+  type PermissionCatalogDto,
   type RoleAssignmentDto,
   type RoleDto,
   type UserDto,
@@ -91,7 +91,11 @@ const login = (identifier: string): request.Test =>
 let seq = 0;
 const seedUser = async (
   email: string,
-  placement: { branchId?: string | null; departmentId?: string | null; sectionId?: string | null } = {},
+  placement: {
+    branchId?: string | null;
+    departmentId?: string | null;
+    sectionId?: string | null;
+  } = {},
 ): Promise<string> => {
   seq += 1;
   const { user } = await userService.create(
@@ -125,11 +129,7 @@ const tokenOf = async (email: string): Promise<string> => {
 const postRole = (body: Record<string, unknown>, token = adminToken): request.Test =>
   request(app).post('/api/v1/platform/roles').set('Authorization', `Bearer ${token}`).send(body);
 
-const patchRole = (
-  id: string,
-  body: Record<string, unknown>,
-  token = adminToken,
-): request.Test =>
+const patchRole = (id: string, body: Record<string, unknown>, token = adminToken): request.Test =>
   request(app)
     .patch(`/api/v1/platform/roles/${id}`)
     .set('Authorization', `Bearer ${token}`)
@@ -498,10 +498,7 @@ describe('T8–T13 — a grant can never exceed the granter', () => {
     const roleId = await seedRole('Holds user.delete', ['user.delete']);
     const target = await seedUser('t8-target@ecms.local');
 
-    const res = await postAssignment(
-      { userId: target, roleId, scope: 'own' },
-      granterToken,
-    );
+    const res = await postAssignment({ userId: target, roleId, scope: 'own' }, granterToken);
     expect(res.status).toBe(422);
     expect(errorOf(res).message).toContain('user.delete');
     expect(errorOf(res).message).toContain('do not hold');
@@ -683,7 +680,11 @@ describe('T16–T17 — moving a grant’s window is an edit; everything else is
     expect(after.createdAt).toBe(assignment.createdAt);
 
     // `.strict()` is what turns "not declared" into "rejected" rather than "ignored".
-    for (const forbidden of [{ scope: 'organization' }, { roleId: assignment.roleId }, { userId: assignment.userId }]) {
+    for (const forbidden of [
+      { scope: 'organization' },
+      { roleId: assignment.roleId },
+      { userId: assignment.userId },
+    ]) {
       const res = await patchAssignment(
         assignment.id,
         { ...forbidden, validTo: '2032-01-01T00:00:00.000Z', version: after.version },
@@ -761,7 +762,12 @@ describe('T19 — an account cannot be placed in a department outside its branch
         lastName: { ar: 'ت', en: 'T' },
         username: 't19.mismatch',
         locale: 'en',
-        organization: { branchId: BRANCH_A, departmentId: DEPT_B, sectionId: null, jobTitleId: null },
+        organization: {
+          branchId: BRANCH_A,
+          departmentId: DEPT_B,
+          sectionId: null,
+          jobTitleId: null,
+        },
       });
     expect(bad.status).toBe(422);
     expect(errorOf(bad).message).toContain('does not belong to the selected branch');
@@ -876,24 +882,123 @@ describe('T20 — authorization reads the holder’s CURRENT placement, never th
     expect(afterMove).toContain(neighbourB);
     expect(afterMove).not.toContain(neighbourA);
 
-    const stored = rows<RoleAssignmentDto>(
-      await listAssignments(`?userId=${holderId}`),
-    ).find((a) => a.id === assignment.id);
+    const stored = rows<RoleAssignmentDto>(await listAssignments(`?userId=${holderId}`)).find(
+      (a) => a.id === assignment.id,
+    );
     expect(stored?.branchId, 'the grant still records where it was made').toBe(BRANCH_A);
   });
 });
 
 // ── Regressions the phase must not break ────────────────────────────────────
 
+// ── P7-C — duplicating a role is CREATING one, and is guarded as one ────────
+//
+// The UI copies a role by reading its `permissionKeys` and POSTing them as a new role. There is no
+// duplicate endpoint, deliberately: the copy is the one operation whose whole purpose is to
+// reproduce a set of authorities in a single click, so it is exactly where a dedicated path would
+// be most tempting to write and most dangerous to get wrong. These tests exercise that flow over
+// HTTP and assert the two server guards still refuse it — the screen refuses earlier and more
+// kindly, but the screen is not what makes it safe.
+
+describe('P7-C — the duplicate flow passes through createRole’s guards', () => {
+  it('copies a role the actor can fully grant, as an ordinary unmanaged role held by nobody', async () => {
+    const sourceId = await seedRole('Duplicable source', ['user.view', 'branch.view']);
+    const source = data<RoleDto>(
+      await request(app)
+        .get(`/api/v1/platform/roles/${sourceId}`)
+        .set('Authorization', `Bearer ${granterToken}`),
+    );
+
+    // Exactly what the dialog sends: the source's keys, a new name, the copied description.
+    const res = await postRole(
+      {
+        name: { ar: 'مصدر (نسخة)', en: 'Duplicable source (Copy)' },
+        permissionKeys: source.permissionKeys,
+      },
+      granterToken,
+    );
+    expect(res.status).toBe(201);
+    const copy = data<RoleDto>(res);
+    expect(copy.permissionKeys.sort()).toEqual([...source.permissionKeys].sort());
+    expect(copy.id).not.toBe(source.id);
+    // `managed: none` and no key — a duplicate of anything is an ordinary role.
+    expect(copy.managed).toBe('none');
+    expect(copy.key).toBeNull();
+    expect(copy.isSystem).toBe(false);
+  });
+
+  it('carries no assignments — the copy starts held by nobody', async () => {
+    const sourceId = await seedRole('Held source', ['user.view']);
+    const holder = await seedUser('dup-holder@ecms.local');
+    expect((await postAssignment({ userId: holder, roleId: sourceId, scope: 'own' })).status).toBe(
+      201,
+    );
+
+    const copyId = data<RoleDto>(
+      await postRole({ name: roleName(), permissionKeys: ['user.view'] }, granterToken),
+    ).id;
+
+    const sourceHolders = await listAssignments(`?roleId=${sourceId}`);
+    const copyHolders = await listAssignments(`?roleId=${copyId}`);
+    expect(pageMeta(sourceHolders).totalItems).toBe(1);
+    expect(pageMeta(copyHolders).totalItems).toBe(0);
+  });
+
+  // All-or-nothing. A partial copy would succeed, look right, and grant less than its name implies.
+  it('refuses the WHOLE copy when the source carries a key the actor does not hold', async () => {
+    const sourceId = await seedRole('Beyond the granter', ['user.view', 'user.manageSessions']);
+    const source = data<RoleDto>(
+      await request(app)
+        .get(`/api/v1/platform/roles/${sourceId}`)
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+
+    const res = await postRole(
+      { name: roleName(), permissionKeys: source.permissionKeys },
+      granterToken,
+    );
+    expect(res.status).toBe(422);
+    expect(errorOf(res).message).toContain('user.manageSessions');
+    // Nothing partial was created: the same call minus that key is what WOULD have worked.
+    const narrowed = await postRole(
+      { name: roleName(), permissionKeys: ['user.view'] },
+      granterToken,
+    );
+    expect(narrowed.status).toBe(201);
+  });
+
+  it('refuses a copy carrying a key the registry no longer declares', async () => {
+    const res = await postRole(
+      { name: roleName(), permissionKeys: ['user.view', 'retired.view'] },
+      granterToken,
+    );
+    expect(res.status).toBe(422);
+    expect(errorOf(res).code).toBe(ErrorCodes.PERMISSION_UNKNOWN);
+    expect(errorOf(res).message).toContain('retired.view');
+  });
+
+  it('still refuses a caller without role.create, whatever they are copying', async () => {
+    expect(
+      (await postRole({ name: roleName(), permissionKeys: ['user.view'] }, readerToken)).status,
+    ).toBe(403);
+  });
+});
+
 describe('regressions', () => {
   it('every mutating role path refuses a caller without the grant (403, not 404 or 422)', async () => {
     const roleId = await seedRole('Untouchable by the reader', ['user.view']);
     const target = await seedUser('reg-target@ecms.local');
 
-    expect((await postRole({ name: roleName(), permissionKeys: ['user.view'] }, readerToken)).status).toBe(403);
-    expect((await patchRole(roleId, { name: roleName(), version: 0 }, readerToken)).status).toBe(403);
+    expect(
+      (await postRole({ name: roleName(), permissionKeys: ['user.view'] }, readerToken)).status,
+    ).toBe(403);
+    expect((await patchRole(roleId, { name: roleName(), version: 0 }, readerToken)).status).toBe(
+      403,
+    );
     expect((await deleteRole(roleId, readerToken)).status).toBe(403);
-    expect((await postAssignment({ userId: target, roleId, scope: 'own' }, readerToken)).status).toBe(403);
+    expect(
+      (await postAssignment({ userId: target, roleId, scope: 'own' }, readerToken)).status,
+    ).toBe(403);
   });
 
   it('the permission registry is readable with permission.view and refused without it', async () => {
@@ -901,9 +1006,23 @@ describe('regressions', () => {
       .get('/api/v1/platform/permissions')
       .set('Authorization', `Bearer ${granterToken}`);
     expect(allowed.status).toBe(200);
-    const registry = data<PermissionDto[]>(allowed);
+    // P7-A: the endpoint answers the catalog AND the pages it groups into. They travel together
+    // because a `pageId` the client cannot resolve is not useful, and two requests could disagree
+    // about a tree that has to be rendered from both.
+    const { permissions: registry, pages } = data<PermissionCatalogDto>(allowed);
     expect(registry.some((p) => p.key === 'role.assign')).toBe(true);
     expect(registry.some((p) => p.breakGlass)).toBe(true);
+
+    // Every page a permission names resolves, and nothing authorizes on one — a page is
+    // organizational only (ADR-026 is unchanged by P7-A).
+    const pageIds = new Set(pages.map((page) => page.id));
+    for (const permission of registry) {
+      if (permission.pageId === null) continue;
+      expect(pageIds, permission.key).toContain(permission.pageId);
+    }
+    expect(pages.length).toBeGreaterThan(0);
+    // The unassigned set is a deliberate answer (D1), not an empty registry.
+    expect(registry.some((p) => p.pageId === null)).toBe(true);
 
     const refused = await request(app)
       .get('/api/v1/platform/permissions')
@@ -913,13 +1032,14 @@ describe('regressions', () => {
 
   it('the roles list searches names AND permission keys, and finds the unassigned ones', async () => {
     const id = await seedRole('Findable by its key', ['fleetVehicle.view']);
-    const byKey = rows<RoleDto>(
-      await listRoles('?search=fleetVehicle.view&pageSize=50'),
-    );
+    const byKey = rows<RoleDto>(await listRoles('?search=fleetVehicle.view&pageSize=50'));
     expect(byKey.map((r) => r.id)).toContain(id);
 
     const unassigned = rows<RoleDto>(await listRoles('?unassigned=true&pageSize=50'));
-    expect(unassigned.map((r) => r.id), 'a role nobody holds is unassigned').toContain(id);
+    expect(
+      unassigned.map((r) => r.id),
+      'a role nobody holds is unassigned',
+    ).toContain(id);
     expect(
       unassigned.map((r) => r.id),
       'super-admin is held, so it is not unassigned',

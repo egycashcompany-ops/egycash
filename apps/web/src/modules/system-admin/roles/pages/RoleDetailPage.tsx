@@ -39,11 +39,13 @@ import {
   useAssignments,
   useDeleteRole,
   usePermissionCatalog,
+  usePermissionPages,
   useRevokeAssignment,
   useRole,
 } from '../api/role-queries';
 import { listAssignments, revokeAssignment } from '../api/role-api';
 import { revokeAllAssignments } from '../lib/revoke-all';
+import { duplicateBlocker } from '../lib/role-duplication';
 
 const TABS = ['permissions', 'users'] as const;
 type Tab = (typeof TABS)[number];
@@ -57,6 +59,7 @@ export const RoleDetailPage = (): JSX.Element => {
   const { id = '' } = useParams<{ id: string }>();
   const [sp, setSp] = useSearchParams();
   const [editing, setEditing] = useState(false);
+  const [duplicating, setDuplicating] = useState(false);
   const [confirmRevokeAll, setConfirmRevokeAll] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [revokingAll, setRevokingAll] = useState(false);
@@ -68,6 +71,7 @@ export const RoleDetailPage = (): JSX.Element => {
 
   const { data: role, isLoading, isError, error, refetch } = useRole(id);
   const { data: catalog = [] } = usePermissionCatalog(can('permission.view'));
+  const { data: pages = [] } = usePermissionPages(can('permission.view'));
   const assignments = useAssignments({ roleId: id, page, pageSize: DEFAULT_PAGE_SIZE }, id !== '');
   const revoke = useRevokeAssignment();
   const removeRole = useDeleteRole(id);
@@ -185,6 +189,9 @@ export const RoleDetailPage = (): JSX.Element => {
   // The TOTAL, not the page: a role held by 30 accounts shows 25 rows, and deleting it must still
   // be refused. `meta.totalItems` is the count the server computed for the same filter.
   const holderCount = assignments.data?.meta.totalItems ?? 0;
+  // Whether this role can be copied AT ALL, and by THIS actor. Computed here rather than inside the
+  // dialog so the answer is visible before the dialog opens — the server refuses either way.
+  const blocker = duplicateBlocker(role, catalog, can);
 
   return (
     <PageContainer>
@@ -205,16 +212,46 @@ export const RoleDetailPage = (): JSX.Element => {
           </div>
         }
         actions={
-          role.managed === 'none' ? (
-            <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Editing and deleting belong to UNMANAGED roles only: a system role is the platform's,
+                and an `hr-only:*` derivative is restored by the next boot. */}
+            {role.managed === 'none' && (
               <Can permission="role.edit">
                 <Button size="sm" variant="secondary" onClick={() => setEditing(true)}>
                   {t('systemAdmin.roles.actions.edit')}
                 </Button>
               </Can>
-              {/* Offered only while nobody holds it. The server refuses a held role anyway
-                  ("revoke them first"), so a button that looked available would be a promise the
-                  click breaks — the same reasoning the permission matrix applies to a locked grant. */}
+            )}
+            {/* Duplicating is offered for EVERY role, managed ones included — and they are the ones
+                most worth copying, since a well-shaped system role is the obvious starting point for
+                a narrower one. Copying a managed role is safe precisely because the copy is not
+                managed: the server writes `key: null` and `isSystem: false` on every create, and the
+                key guard has already refused anything the actor could not grant. Gated on
+                `role.create` rather than `role.edit`, because creating is what it does. */}
+            <Can permission="role.create">
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={blocker !== null}
+                title={
+                  blocker === null
+                    ? undefined
+                    : t(
+                        blocker.reason === 'unknown-keys'
+                          ? 'systemAdmin.roles.duplicateBlockedUnknown'
+                          : 'systemAdmin.roles.duplicateBlockedNotHeld',
+                        { keys: blocker.keys.join(', ') },
+                      )
+                }
+                onClick={() => setDuplicating(true)}
+              >
+                {t('systemAdmin.roles.actions.duplicate')}
+              </Button>
+            </Can>
+            {/* Offered only while nobody holds it. The server refuses a held role anyway
+                ("revoke them first"), so a button that looked available would be a promise the
+                click breaks — the same reasoning the permission matrix applies to a locked grant. */}
+            {role.managed === 'none' && (
               <Can permission="role.delete">
                 <Button
                   size="sm"
@@ -226,8 +263,8 @@ export const RoleDetailPage = (): JSX.Element => {
                   {t('systemAdmin.roles.actions.delete')}
                 </Button>
               </Can>
-            </div>
-          ) : undefined
+            )}
+          </div>
         }
       />
 
@@ -237,6 +274,19 @@ export const RoleDetailPage = (): JSX.Element => {
           open
           role={role}
           onClose={() => setEditing(false)}
+        />
+      )}
+
+      {/* `role={null}` is the whole point: this is a CREATE, pre-filled. It goes to `createRole`
+          and through every guard a hand-built role passes. */}
+      {duplicating && (
+        <RoleFormDialog
+          key={`duplicate:${role.id}:${String(role.version)}`}
+          open
+          role={null}
+          duplicateOf={role}
+          onClose={() => setDuplicating(false)}
+          onCreated={(created) => navigate(`/system/roles/${created.id}`)}
         />
       )}
 
@@ -268,6 +318,7 @@ export const RoleDetailPage = (): JSX.Element => {
         (can('permission.view') ? (
           <RolePermissionMatrix
             catalog={catalog}
+            pages={pages}
             selected={role.permissionKeys}
             managed={role.managed}
           />
@@ -329,7 +380,12 @@ export const RoleDetailPage = (): JSX.Element => {
             <Button variant="ghost" size="sm" onClick={() => setConfirmRevokeAll(false)}>
               {t('common.cancel')}
             </Button>
-            <Button size="sm" variant="danger" loading={revokingAll} onClick={() => void revokeAll()}>
+            <Button
+              size="sm"
+              variant="danger"
+              loading={revokingAll}
+              onClick={() => void revokeAll()}
+            >
               {t('common.confirm')}
             </Button>
           </div>

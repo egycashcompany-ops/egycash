@@ -39,6 +39,7 @@ import {
   useAssignments,
   useDeleteRole,
   usePermissionCatalog,
+  usePermissionPages,
   useRevokeAssignment,
   useRole,
 } from '../api/role-queries';
@@ -68,6 +69,7 @@ export const RoleDetailPage = (): JSX.Element => {
 
   const { data: role, isLoading, isError, error, refetch } = useRole(id);
   const { data: catalog = [] } = usePermissionCatalog(can('permission.view'));
+  const { data: pages = [] } = usePermissionPages(can('permission.view'));
   const assignments = useAssignments({ roleId: id, page, pageSize: DEFAULT_PAGE_SIZE }, id !== '');
   const revoke = useRevokeAssignment();
   const removeRole = useDeleteRole(id);
@@ -268,6 +270,7 @@ export const RoleDetailPage = (): JSX.Element => {
         (can('permission.view') ? (
           <RolePermissionMatrix
             catalog={catalog}
+            pages={pages}
             selected={role.permissionKeys}
             managed={role.managed}
           />
@@ -329,7 +332,12 @@ export const RoleDetailPage = (): JSX.Element => {
             <Button variant="ghost" size="sm" onClick={() => setConfirmRevokeAll(false)}>
               {t('common.cancel')}
             </Button>
-            <Button size="sm" variant="danger" loading={revokingAll} onClick={() => void revokeAll()}>
+            <Button
+              size="sm"
+              variant="danger"
+              loading={revokingAll}
+              onClick={() => void revokeAll()}
+            >
               {t('common.confirm')}
             </Button>
           </div>

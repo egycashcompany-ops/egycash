@@ -623,15 +623,18 @@ const en: Record<string, string> = {
   'recruitmentForm.submissions': 'Applications',
   // Applicant sources — the platforms candidates come from, and the link each one gets.
   'sources.title': 'Applicant sources',
-  'sources.subtitle': 'The platforms candidates apply through, and the link that identifies each one.',
+  'sources.subtitle':
+    'The platforms candidates apply through, and the link that identifies each one.',
   'sources.add': 'Add source',
   'sources.edit': 'Edit source',
   'sources.empty': 'No sources yet.',
   'sources.key': 'Key',
-  'sources.keyHint': 'Latin letters and digits, set once — code and existing applicants refer to it.',
+  'sources.keyHint':
+    'Latin letters and digits, set once — code and existing applicants refer to it.',
   'sources.name': 'Name',
   'sources.kind': 'Type',
-  'sources.kindHint': 'How applications usually arrive. Every active source gets its own link regardless.',
+  'sources.kindHint':
+    'How applications usually arrive. Every active source gets its own link regardless.',
   'sources.kind.manual': 'Recorded internally',
   'sources.kind.publicForm': 'Public platform',
   'sources.kind.integration': 'Integration',
@@ -667,7 +670,8 @@ const en: Record<string, string> = {
   'sources.qr.download': 'Download PNG',
   'sources.link.open': 'Open link',
   'sources.empty.title': 'No application sources yet',
-  'sources.empty.body': 'Add the platforms you recruit through, and each one gets its own link to the same form.',
+  'sources.empty.body':
+    'Add the platforms you recruit through, and each one gets its own link to the same form.',
   'sources.empty.noResults': 'No source matches this search',
   'sources.empty.noResultsBody': 'Try a different name or key, or clear the filters.',
   'sources.stat.total': 'Sources',
@@ -2737,8 +2741,7 @@ const en: Record<string, string> = {
   'it.tickets.fields.description': 'Description',
   'it.tickets.fields.category': 'Category',
   'it.tickets.fields.priority': 'Priority',
-  'it.tickets.descriptionHint':
-    'What happened, what you expected, and anything you already tried.',
+  'it.tickets.descriptionHint': 'What happened, what you expected, and anything you already tried.',
   'it.tickets.priorityHint': 'Sets the response and resolution times promised for this ticket.',
   'it.tickets.priorityEditHint':
     'Changes the priority from now on. The times already promised on this ticket do not move.',
@@ -2858,7 +2861,8 @@ const en: Record<string, string> = {
   'it.nav.maintenancePlans': 'Maintenance plans',
   'it.nav.spareParts': 'Spare parts',
 
-  'it.maintenance.subtitle': 'Work orders for IT assets — corrective repairs and preventive services',
+  'it.maintenance.subtitle':
+    'Work orders for IT assets — corrective repairs and preventive services',
   'it.maintenance.status.open': 'Open',
   'it.maintenance.status.inProgress': 'In progress',
   'it.maintenance.status.completed': 'Completed',
@@ -2892,8 +2896,7 @@ const en: Record<string, string> = {
   'it.maintenance.complete': 'Complete',
   'it.maintenance.completeHint': 'Record what was done, what it cost, and which parts it used.',
   'it.maintenance.completed': 'Order completed',
-  'it.maintenance.completeAssetNote':
-    'Completing releases the asset back into service.',
+  'it.maintenance.completeAssetNote': 'Completing releases the asset back into service.',
   'it.maintenance.completeRestores': 'Completing returns the asset to “{{status}}”.',
   'it.maintenance.cancel': 'Cancel order',
   'it.maintenance.cancelHint': 'Close this order without a repair, and say why.',
@@ -2928,7 +2931,8 @@ const en: Record<string, string> = {
   'it.maintenance.noPartsUsed': 'No parts were used.',
   'it.maintenance.overdrawn': 'One of these quantities is more than the store has on hand.',
   'it.maintenance.emptyTitle': 'No maintenance orders',
-  'it.maintenance.emptyBody': 'Raise one when an asset needs work, or let the schedule generate it.',
+  'it.maintenance.emptyBody':
+    'Raise one when an asset needs work, or let the schedule generate it.',
   'it.maintenance.emptyFilteredTitle': 'No orders match these filters',
   'it.maintenance.emptyFilteredBody': 'Clear the filters to see the whole board.',
 
@@ -3036,7 +3040,8 @@ const en: Record<string, string> = {
   'it.software.seatWarning':
     'This licence has no seats left. The install is still recorded — a seat overrun is reported, never blocked.',
   'it.software.noLicences': 'No licence exists for this product yet.',
-  'it.software.licenseHint': 'Optional. Free software needs none, and forcing one would make the register lie.',
+  'it.software.licenseHint':
+    'Optional. Free software needs none, and forcing one would make the register lie.',
   'it.software.columns.name': 'Product',
   'it.software.columns.publisher': 'Publisher',
   'it.software.columns.product': 'Product',
@@ -3065,7 +3070,8 @@ const en: Record<string, string> = {
   'it.software.pickedUnresolved': 'This product is no longer readable.',
   'it.software.clearPick': 'Clear the chosen product',
   'it.software.emptyProductsTitle': 'No software yet',
-  'it.software.emptyProductsBody': 'Add the software the company runs, then record where it is installed.',
+  'it.software.emptyProductsBody':
+    'Add the software the company runs, then record where it is installed.',
   'it.software.emptyInstallsTitle': 'Nothing installed yet',
   'it.software.emptyInstallsBody': 'Record an install to start tracking what runs where.',
 
@@ -3107,7 +3113,8 @@ const en: Record<string, string> = {
     'More seats are in use than this licence covers. Installs are recorded and never blocked — this is a compliance report, not a gate.',
   'it.licenses.sections.licence': 'Licence',
   'it.licenses.sections.seats': 'Seats in use',
-  'it.licenses.seatsPanelHint': 'The live installations consuming this licence. Removed ones free their seat.',
+  'it.licenses.seatsPanelHint':
+    'The live installations consuming this licence. Removed ones free their seat.',
   'it.licenses.noSeatsUsed': 'No installation is using this licence.',
   'it.licenses.emptyTitle': 'No licences',
   'it.licenses.emptyBody': 'Add a licence to track seats and expiry for a product.',
@@ -3184,7 +3191,8 @@ const en: Record<string, string> = {
   'systemAdmin.users.lifecycle.title': 'Enable / disable',
   'systemAdmin.users.lifecycle.hint':
     'Disabling ends the account’s sessions and cancels any pending setup link. It is reversible.',
-  'systemAdmin.users.lifecycle.noAccess': 'Changing an account’s state needs the users-edit permission.',
+  'systemAdmin.users.lifecycle.noAccess':
+    'Changing an account’s state needs the users-edit permission.',
   'systemAdmin.users.lifecycle.selfBlocked': 'You cannot disable your own account.',
   'systemAdmin.users.actions.archive': 'Archive',
   'systemAdmin.users.actions.delete': 'Delete account',
@@ -3215,7 +3223,8 @@ const en: Record<string, string> = {
     'A new setup link replaces the pending one, which stops working immediately.',
   'systemAdmin.users.confirm.resetTotp':
     'Their authenticator enrolment is wiped and their backup codes stop working. They enrol again at the next sign-in.',
-  'systemAdmin.users.confirm.revokeSessions': 'Every device signed in as this account is signed out.',
+  'systemAdmin.users.confirm.revokeSessions':
+    'Every device signed in as this account is signed out.',
   'systemAdmin.users.enabled': 'Account enabled.',
   'systemAdmin.users.disabled': 'Account disabled.',
   'systemAdmin.users.resetSent': 'A setup link was issued.',
@@ -3235,12 +3244,15 @@ const en: Record<string, string> = {
     'Ends every session immediately. The account itself is untouched.',
   'systemAdmin.users.security.delivery': 'Delivery outcome',
   'systemAdmin.users.activity.title': 'Activity',
-  'systemAdmin.users.activity.hint': 'Newest first, {{count}} at a time — load older to go further back.',
+  'systemAdmin.users.activity.hint':
+    'Newest first, {{count}} at a time — load older to go further back.',
   'systemAdmin.users.activity.loadOlder': 'Load older',
   'systemAdmin.users.activity.allLoaded': 'the whole history is loaded',
-  'systemAdmin.users.activity.loadMoreFailed': 'Older entries could not be loaded. Press again to retry.',
+  'systemAdmin.users.activity.loadMoreFailed':
+    'Older entries could not be loaded. Press again to retry.',
   'systemAdmin.users.activity.empty': 'Nothing has been recorded for this account yet.',
-  'systemAdmin.users.activity.noAccess': 'Reading an account’s history needs an audit or activity permission.',
+  'systemAdmin.users.activity.noAccess':
+    'Reading an account’s history needs an audit or activity permission.',
   'systemAdmin.users.activity.included': 'Showing: {{streams}}.',
   'systemAdmin.users.activity.stream.audit': 'audit trail',
   'systemAdmin.users.activity.stream.activity': 'activity log',
@@ -3285,14 +3297,16 @@ const en: Record<string, string> = {
   'systemAdmin.users.form.editTitle': 'Edit user',
   'systemAdmin.users.form.createHint':
     'The account starts as invited. A one-time setup link is delivered to it; you never choose or see a password.',
-  'systemAdmin.users.form.editHint': 'Profile and sign-in identifiers. Status and security live on their own panel.',
+  'systemAdmin.users.form.editHint':
+    'Profile and sign-in identifiers. Status and security live on their own panel.',
   'systemAdmin.users.form.create': 'Create',
   'systemAdmin.users.form.save': 'Save',
   'systemAdmin.users.form.firstNameAr': 'First name (Arabic)',
   'systemAdmin.users.form.firstNameEn': 'First name (English)',
   'systemAdmin.users.form.lastNameAr': 'Last name (Arabic)',
   'systemAdmin.users.form.lastNameEn': 'Last name (English)',
-  'systemAdmin.users.form.usernameHint': 'Letters, digits, dot, underscore or hyphen. Unique across live accounts.',
+  'systemAdmin.users.form.usernameHint':
+    'Letters, digits, dot, underscore or hyphen. Unique across live accounts.',
   'systemAdmin.users.form.emailHint': 'Unique across live accounts.',
   'systemAdmin.users.form.identifierRequired':
     'Fill in a username or an email — an account with neither can never sign in.',
@@ -3308,7 +3322,8 @@ const en: Record<string, string> = {
   'systemAdmin.users.employee.noResults': 'No employees match that search.',
   'systemAdmin.users.employee.alreadyLinked': 'Has a login',
   'systemAdmin.users.employee.linkHint': 'An employee can have only one login account.',
-  'systemAdmin.users.employee.noAccess': 'Attaching an employee needs the users-edit and employees-view permissions.',
+  'systemAdmin.users.employee.noAccess':
+    'Attaching an employee needs the users-edit and employees-view permissions.',
   'systemAdmin.users.employee.unlink': 'Release the employee link',
   'systemAdmin.users.employee.unlinkConfirm':
     'The account keeps its credentials, roles and history — it simply stops being this employee’s login.',
@@ -3378,6 +3393,10 @@ const en: Record<string, string> = {
   'systemAdmin.roles.matrix.collapseAll': 'Collapse all',
   'systemAdmin.roles.matrix.expandModule': 'Show this module’s permissions',
   'systemAdmin.roles.matrix.collapseModule': 'Hide this module’s permissions',
+  'systemAdmin.roles.matrix.expandPage': 'Show this page’s permissions',
+  'systemAdmin.roles.matrix.collapsePage': 'Hide this page’s permissions',
+  'systemAdmin.roles.matrix.unassigned': 'Other / Unassigned',
+  'systemAdmin.roles.matrix.unassignedHint': 'No screen administers these yet',
   'systemAdmin.roles.matrix.searchScopeNote':
     'The tick-all boxes cover every permission in a module, not only the ones this search is showing.',
   'systemAdmin.roles.tabs.permissions': 'Permissions',
@@ -3410,7 +3429,8 @@ const en: Record<string, string> = {
   'systemAdmin.assignments.noAccess': 'You are not allowed to read role assignments.',
   'systemAdmin.assignments.role': 'Role',
   'systemAdmin.assignments.scope': 'Reach',
-  'systemAdmin.assignments.scopeHint': "A hierarchical reach resolves to the account's own placement.",
+  'systemAdmin.assignments.scopeHint':
+    "A hierarchical reach resolves to the account's own placement.",
   'systemAdmin.assignments.scopeWidens':
     'Only users, employees, leave requests and vehicles record a department and a section. On every other kind of record this grant reaches as far as the branch.',
   'systemAdmin.assignments.scopes.own': 'Own records',
@@ -4112,10 +4132,12 @@ const ar: Record<string, string> = {
   'sources.edit': 'تعديل المصدر',
   'sources.empty': 'لا توجد مصادر بعد.',
   'sources.key': 'المعرّف',
-  'sources.keyHint': 'حروف وأرقام لاتينية، يُحدَّد مرة واحدة — الكود والمتقدّمون الحاليون يشيرون إليه.',
+  'sources.keyHint':
+    'حروف وأرقام لاتينية، يُحدَّد مرة واحدة — الكود والمتقدّمون الحاليون يشيرون إليه.',
   'sources.name': 'الاسم',
   'sources.kind': 'النوع',
-  'sources.kindHint': 'وصف لطريقة وصول الطلبات عادةً. كل مصدر مفعّل له رابطه الخاص أيًّا كان النوع.',
+  'sources.kindHint':
+    'وصف لطريقة وصول الطلبات عادةً. كل مصدر مفعّل له رابطه الخاص أيًّا كان النوع.',
   'sources.kind.manual': 'تسجيل داخلي',
   'sources.kind.publicForm': 'منصة عامة',
   'sources.kind.integration': 'تكامل',
@@ -4151,7 +4173,8 @@ const ar: Record<string, string> = {
   'sources.qr.download': 'تنزيل PNG',
   'sources.link.open': 'فتح الرابط',
   'sources.empty.title': 'لا توجد مصادر تقديم بعد',
-  'sources.empty.body': 'أضف المنصات التي توظّف من خلالها، وكل منصة تحصل على رابطها الخاص لنفس النموذج.',
+  'sources.empty.body':
+    'أضف المنصات التي توظّف من خلالها، وكل منصة تحصل على رابطها الخاص لنفس النموذج.',
   'sources.empty.noResults': 'لا توجد نتائج مطابقة',
   'sources.empty.noResultsBody': 'جرّب اسمًا أو معرّفًا آخر، أو امسح الفلاتر.',
   'sources.stat.total': 'إجمالي المصادر',
@@ -6108,7 +6131,8 @@ const ar: Record<string, string> = {
   'it.custody.conditionHint': 'تُسجَّل في سلسلة العهدة — وهي التفصيلة التي يُحسم بها أي نزاع.',
   'it.custody.conditionNoted': 'الحالة',
   'it.custody.returnBeforeAssign': 'موعد الإعادة لا يسبق تاريخ التسليم.',
-  'it.custody.transferHint': 'النقل حركة واحدة تُسجَّل كواقعة واحدة: غيّر المستلِم أو الفرع أو كليهما.',
+  'it.custody.transferHint':
+    'النقل حركة واحدة تُسجَّل كواقعة واحدة: غيّر المستلِم أو الفرع أو كليهما.',
   'it.custody.disposalMethod': 'الطريقة',
   'it.custody.disposalReason': 'السبب',
   'it.custody.reasonHint': 'هذا هو السجل. اكتب ما يحتاجه قارئ بعد سنتين.',
@@ -6209,8 +6233,7 @@ const ar: Record<string, string> = {
   'it.tickets.resume': 'استئناف',
   'it.tickets.assign': 'إسناد',
   'it.tickets.assigned': 'تم إسناد التذكرة',
-  'it.tickets.assignStartsWork':
-    'إسناد تذكرة مفتوحة يبدأ العمل عليها أيضًا ويوقف مؤقّت الاستجابة.',
+  'it.tickets.assignStartsWork': 'إسناد تذكرة مفتوحة يبدأ العمل عليها أيضًا ويوقف مؤقّت الاستجابة.',
   'it.tickets.technician': 'الفني',
   'it.tickets.hold': 'تعليق مؤقت',
   'it.tickets.held': 'تم تعليق التذكرة',
@@ -6347,7 +6370,8 @@ const ar: Record<string, string> = {
   'it.maintenance.completeRestores': 'الإنهاء يعيد الأصل إلى «{{status}}».',
   'it.maintenance.cancel': 'إلغاء الأمر',
   'it.maintenance.cancelHint': 'أغلق هذا الأمر دون إصلاح، مع ذكر السبب.',
-  'it.maintenance.cancelTerminal': 'الأمر الملغى نهائي. إن كان العمل ما زال مطلوبًا فأنشئ أمرًا جديدًا.',
+  'it.maintenance.cancelTerminal':
+    'الأمر الملغى نهائي. إن كان العمل ما زال مطلوبًا فأنشئ أمرًا جديدًا.',
   'it.maintenance.cancelled': 'تم إلغاء الأمر',
   'it.maintenance.fields.asset': 'الأصل',
   'it.maintenance.fields.scheduledFor': 'مجدول في',
@@ -6555,7 +6579,8 @@ const ar: Record<string, string> = {
     'المقاعد المستخدمة أكثر مما يغطّيه هذا الترخيص. التنصيبات تُسجَّل ولا تُمنَع — هذه شاشة امتثال لا بوابة.',
   'it.licenses.sections.licence': 'الترخيص',
   'it.licenses.sections.seats': 'المقاعد المستخدمة',
-  'it.licenses.seatsPanelHint': 'التنصيبات القائمة التي تستهلك هذا الترخيص. المُزالة تحرّر مقاعدها.',
+  'it.licenses.seatsPanelHint':
+    'التنصيبات القائمة التي تستهلك هذا الترخيص. المُزالة تحرّر مقاعدها.',
   'it.licenses.noSeatsUsed': 'لا يوجد تنصيب يستخدم هذا الترخيص.',
   'it.licenses.emptyTitle': 'لا توجد تراخيص',
   'it.licenses.emptyBody': 'أضف ترخيصًا لتتبّع المقاعد وموعد الانتهاء لبرنامج ما.',
@@ -6572,7 +6597,8 @@ const ar: Record<string, string> = {
   // ── إدارة النظام ← المستخدمون (SA-1) ──────────────────────────────────────
   'systemAdmin.module.title': 'إدارة النظام',
   'systemAdmin.users.title': 'مستخدمو النظام',
-  'systemAdmin.users.subtitle': 'كل حسابات الدخول في النظام — الموظفون ومن ليس له ملف موظف على السواء.',
+  'systemAdmin.users.subtitle':
+    'كل حسابات الدخول في النظام — الموظفون ومن ليس له ملف موظف على السواء.',
   'systemAdmin.users.searchPlaceholder': 'ابحث بالاسم أو اسم المستخدم أو البريد',
   'systemAdmin.users.empty': 'لا توجد حسابات مطابقة.',
   'systemAdmin.users.never': 'لم يحدث',
@@ -6602,7 +6628,8 @@ const ar: Record<string, string> = {
   'systemAdmin.users.employee.none': 'لا يوجد ملف موظف لهذا الحساب.',
   'systemAdmin.users.employee.open': 'فتح ملف الموظف',
   'systemAdmin.users.identity.title': 'الهوية',
-  'systemAdmin.users.identity.hint': 'معرّفات الدخول والموقع التنظيمي. الموقع مقروء من دليل المستخدمين.',
+  'systemAdmin.users.identity.hint':
+    'معرّفات الدخول والموقع التنظيمي. الموقع مقروء من دليل المستخدمين.',
   'systemAdmin.users.fields.username': 'اسم المستخدم',
   'systemAdmin.users.fields.email': 'البريد الإلكتروني',
   'systemAdmin.users.fields.phone': 'الهاتف',
@@ -6636,8 +6663,7 @@ const ar: Record<string, string> = {
   'systemAdmin.users.actions.delete': 'حذف الحساب',
   'systemAdmin.users.archived': 'تمت أرشفة الحساب.',
   'systemAdmin.users.deleted': 'تم حذف الحساب.',
-  'systemAdmin.users.lifecycle.deleteHint':
-    'يزيل الحساب من كل الشاشات. ويبقى سجل التدقيق كما هو.',
+  'systemAdmin.users.lifecycle.deleteHint': 'يزيل الحساب من كل الشاشات. ويبقى سجل التدقيق كما هو.',
   'systemAdmin.users.confirm.archive': 'الأرشفة لا يمكن التراجع عنها.',
   'systemAdmin.users.confirm.archiveDetail':
     'لن يستطيع الحساب تسجيل الدخول مرة أخرى، ولا يمكن إعادة تفعيله — لا طريق للعودة من الأرشفة. تبقى أدواره كما هي للسجل. استخدم «تعطيل» بدلًا منها إن كان الأمر مؤقتًا.',
@@ -6682,7 +6708,8 @@ const ar: Record<string, string> = {
   'systemAdmin.users.activity.hint': 'الأحدث أولًا، {{count}} في كل مرة — حمّل الأقدم للرجوع أبعد.',
   'systemAdmin.users.activity.loadOlder': 'تحميل الأقدم',
   'systemAdmin.users.activity.allLoaded': 'التاريخ كامل معروض',
-  'systemAdmin.users.activity.loadMoreFailed': 'تعذّر تحميل السجلات الأقدم. اضغط مرة أخرى للمحاولة.',
+  'systemAdmin.users.activity.loadMoreFailed':
+    'تعذّر تحميل السجلات الأقدم. اضغط مرة أخرى للمحاولة.',
   'systemAdmin.users.activity.empty': 'لم يُسجَّل شيء لهذا الحساب بعد.',
   'systemAdmin.users.activity.noAccess': 'قراءة تاريخ الحساب تحتاج صلاحية التدقيق أو النشاط.',
   'systemAdmin.users.activity.included': 'المعروض: {{streams}}.',
@@ -6736,7 +6763,8 @@ const ar: Record<string, string> = {
   'systemAdmin.users.form.firstNameEn': 'الاسم الأول (إنجليزي)',
   'systemAdmin.users.form.lastNameAr': 'اسم العائلة (عربي)',
   'systemAdmin.users.form.lastNameEn': 'اسم العائلة (إنجليزي)',
-  'systemAdmin.users.form.usernameHint': 'حروف وأرقام ونقطة وشرطة سفلية أو شرطة. فريد بين الحسابات الحيّة.',
+  'systemAdmin.users.form.usernameHint':
+    'حروف وأرقام ونقطة وشرطة سفلية أو شرطة. فريد بين الحسابات الحيّة.',
   'systemAdmin.users.form.emailHint': 'فريد بين الحسابات الحيّة.',
   'systemAdmin.users.form.identifierRequired':
     'أدخل اسم مستخدم أو بريدًا إلكترونيًا — حساب بلا أيٍّ منهما لا يستطيع الدخول أبدًا.',
@@ -6822,6 +6850,10 @@ const ar: Record<string, string> = {
   'systemAdmin.roles.matrix.collapseAll': 'طيّ الكل',
   'systemAdmin.roles.matrix.expandModule': 'إظهار صلاحيات هذا الموديول',
   'systemAdmin.roles.matrix.collapseModule': 'إخفاء صلاحيات هذا الموديول',
+  'systemAdmin.roles.matrix.expandPage': 'إظهار صلاحيات هذه الصفحة',
+  'systemAdmin.roles.matrix.collapsePage': 'إخفاء صلاحيات هذه الصفحة',
+  'systemAdmin.roles.matrix.unassigned': 'أخرى / غير مُسندة',
+  'systemAdmin.roles.matrix.unassignedHint': 'لا تديرها شاشة بعد',
   'systemAdmin.roles.matrix.searchScopeNote':
     'مربّعات التحديد الجماعي تشمل كل صلاحيات الموديول، لا ما يعرضه هذا البحث فقط.',
   'systemAdmin.roles.tabs.permissions': 'الصلاحيات',

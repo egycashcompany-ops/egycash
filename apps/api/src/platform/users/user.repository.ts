@@ -1,5 +1,5 @@
 // Data access only (ADR-003) — the sole place Mongoose is queried for users.
-import { type FilterQuery, type UpdateQuery } from 'mongoose';
+import { Types, type ClientSession, type FilterQuery, type UpdateQuery } from 'mongoose';
 import { BaseRepository } from '../../shared/base/base.repository';
 import { UserModel, type UserDoc } from './user.model';
 
@@ -52,6 +52,45 @@ class UserRepository extends BaseRepository<UserDoc> {
       })
       .lean<UserDoc[]>()
       .exec();
+  }
+
+  /**
+   * Point this login at an employee — but only while it points at nobody.
+   *
+   * The filter carries the precondition, so two administrators linking the same login at the same
+   * moment cannot both succeed: the second matches nothing and is told so, instead of overwriting
+   * the first and leaving one employee's `userId` dangling. Same shape as `clearActivationByHash`,
+   * for the same reason.
+   */
+  async linkEmployee(
+    userId: string,
+    employeeId: string,
+    session?: ClientSession,
+  ): Promise<boolean> {
+    const result = await this.model
+      .updateOne(
+        { _id: userId, isDeleted: false, employeeId: null },
+        { $set: { employeeId: new Types.ObjectId(employeeId) } },
+        session === undefined ? {} : { session },
+      )
+      .exec();
+    return result.modifiedCount === 1;
+  }
+
+  /** The mirror: unlink only while the link is the one the caller believes it is. */
+  async unlinkEmployee(
+    userId: string,
+    employeeId: string,
+    session?: ClientSession,
+  ): Promise<boolean> {
+    const result = await this.model
+      .updateOne(
+        { _id: userId, isDeleted: false, employeeId: new Types.ObjectId(employeeId) },
+        { $set: { employeeId: null } },
+        session === undefined ? {} : { session },
+      )
+      .exec();
+    return result.modifiedCount === 1;
   }
 
   async findByActivationTokenHash(tokenHash: string): Promise<UserDoc | null> {

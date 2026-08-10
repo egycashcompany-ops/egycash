@@ -6,7 +6,7 @@
 // pure function of status, lock state and the pending setup link (`user.service.ts` §15.4), and a
 // client that recomputed it would drift from the server the first time one of those inputs moved.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { type ChangeUserStatus } from '@ecms/contracts';
+import { type ChangeUserStatus, type CreateUser, type UpdateUser } from '@ecms/contracts';
 import { detailKey, featureKey, listKey } from '../../../../shared/lib/query-keys';
 import * as api from './user-api';
 import { type SystemUserListParams } from './user-api';
@@ -73,3 +73,54 @@ export const useSetUserTotpRequired = (id: string) =>
 
 export const useRevokeUserSessions = (id: string) =>
   useUserAction(() => api.revokeUserSessions(id), id);
+
+export const useUnlockUser = (id: string) => useUserAction(() => api.unlockUser(id), id);
+
+export const useUpdateUser = (id: string) =>
+  useUserAction((body: UpdateUser) => api.updateUser(id, body), id);
+
+/** Creation has no account to invalidate the history of — only the list it will appear in. */
+export const useCreateUser = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateUser) => api.createUser(body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: usersKey });
+    },
+  });
+};
+
+export const useBranchOptions = (enabled = true) =>
+  useQuery({
+    queryKey: [MODULE, 'branch-options'],
+    queryFn: api.listBranchOptions,
+    enabled,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+
+// ── Employee linkage (E1) ───────────────────────────────────────────────────
+// The link lives on the EMPLOYEE, so writing it invalidates the account (whose `employeeId` moved)
+// and the employee lookup that renders its name.
+
+export const useEmployeeSearch = (term: string, enabled: boolean) =>
+  useQuery({
+    queryKey: [MODULE, 'employee-search', term],
+    queryFn: () => api.searchEmployees(term),
+    enabled: enabled && term.trim().length > 1,
+    select: (page) => page.items,
+  });
+
+export const useLinkedEmployee = (employeeId: string | null, enabled: boolean) =>
+  useQuery({
+    queryKey: [MODULE, 'employee', employeeId ?? '-'],
+    queryFn: () => api.getEmployee(employeeId ?? ''),
+    enabled: enabled && employeeId !== null,
+    retry: false,
+  });
+
+export const useLinkUserToEmployee = (userId: string) =>
+  useUserAction((employeeId: string) => api.linkUserToEmployee(employeeId, userId), userId);
+
+export const useUnlinkUserFromEmployee = (userId: string) =>
+  useUserAction((employeeId: string) => api.unlinkUserFromEmployee(employeeId), userId);

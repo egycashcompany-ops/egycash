@@ -15,14 +15,16 @@
 // Filters are search + lifecycle status, which is what `ListUsersQuery` accepts today. The branch
 // filter the query also supports is not offered yet: it needs a branch reference surface, and the
 // only one that exists lives inside the organization module, which this module may not import.
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { USER_STATUSES, type Locale, type UserDto } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../store';
 import { PageContainer, PageHeader } from '../../../../platform/layout/PageContainer';
+import { Can } from '../../../../platform/rbac/Can';
 import {
   Badge,
+  Button,
   DataTable,
   EmptyState,
   FilterBar,
@@ -32,7 +34,9 @@ import {
   type Column,
 } from '../../../../shared/ui';
 import { formatDate, fullName } from '../../../../shared/lib/format';
+import { PlusIcon } from '../../../../shared/ui/icons';
 import { AccountStatusBadge, UserStatusBadge } from '../components/UserStatusBadges';
+import { UserFormDialog } from '../components/UserFormDialog';
 import { useSystemUsers } from '../api/user-queries';
 import { type SystemUserListParams } from '../api/user-api';
 
@@ -43,6 +47,7 @@ export const UsersListPage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
+  const [creating, setCreating] = useState(false);
 
   const search = sp.get('q') ?? '';
   const status = sp.get('status') ?? '';
@@ -150,7 +155,27 @@ export const UsersListPage = (): JSX.Element => {
         title={t('systemAdmin.users.title')}
         description={t('systemAdmin.users.subtitle')}
         breadcrumbs={[{ label: t('systemAdmin.module.title') }, { label: t('systemAdmin.users.title') }]}
+        actions={
+          <Can permission="user.create">
+            <Button
+              size="sm"
+              leftIcon={<PlusIcon className="h-4 w-4" />}
+              onClick={() => setCreating(true)}
+            >
+              {t('systemAdmin.users.actions.create')}
+            </Button>
+          </Can>
+        }
       />
+
+      {creating && (
+        <UserFormDialog
+          open
+          user={null}
+          onClose={() => setCreating(false)}
+          onCreated={(created) => navigate(created.id)}
+        />
+      )}
 
       <div className="space-y-4">
         <FilterBar>

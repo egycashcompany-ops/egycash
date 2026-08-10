@@ -17,7 +17,7 @@ import { useT } from '../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../store';
 import { Can } from '../../../../platform/rbac/Can';
 import { Button, Card, CardBody, CardHeader, Dialog, toast } from '../../../../shared/ui';
-import { useChangeUserStatus } from '../api/user-queries';
+import { useChangeUserStatus, useUnlockUser } from '../api/user-queries';
 
 /** The server's own map, narrowed to the targets this slice offers. */
 const ENABLE_FROM: readonly UserStatus[] = ['suspended'];
@@ -28,6 +28,8 @@ export const UserLifecycleActions = ({ user }: { user: UserDto }): JSX.Element =
   const myUserId = useAppSelector((state) => state.auth.me?.id ?? null);
   const [confirmDisable, setConfirmDisable] = useState(false);
   const changeStatus = useChangeUserStatus(user.id);
+  const unlock = useUnlockUser(user.id);
+  const busy = changeStatus.isPending || unlock.isPending;
 
   // Suspending your own account revokes your own sessions the moment it succeeds. The server has
   // no guard against it yet, so the screen does not offer the door.
@@ -67,7 +69,7 @@ export const UserLifecycleActions = ({ user }: { user: UserDto }): JSX.Element =
           <div className="flex flex-wrap items-center gap-2">
             <Button
               size="sm"
-              disabled={!canEnable || changeStatus.isPending}
+              disabled={!canEnable || busy}
               onClick={() => apply('active')}
             >
               {t('systemAdmin.users.actions.enable')}
@@ -75,11 +77,29 @@ export const UserLifecycleActions = ({ user }: { user: UserDto }): JSX.Element =
             <Button
               size="sm"
               variant="secondary"
-              disabled={!canDisable || changeStatus.isPending}
+              disabled={!canDisable || busy}
               onClick={() => setConfirmDisable(true)}
             >
               {t('systemAdmin.users.actions.disable')}
             </Button>
+            {/* Offered only while there is a lockout to clear. The account's derived state is the
+                only thing that says so — `accountStatus` reports `locked` for a suspended account
+                too, and unlocking that one would do nothing, so the lifecycle state is checked as
+                well as the derived one. */}
+            {user.accountStatus === 'locked' && user.status !== 'suspended' && user.status !== 'archived' && (
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={busy}
+                onClick={() =>
+                  unlock.mutate(undefined, {
+                    onSuccess: () => toast.success(t('systemAdmin.users.unlocked')),
+                  })
+                }
+              >
+                {t('systemAdmin.users.actions.unlock')}
+              </Button>
+            )}
           </div>
           {isSelf && (
             <p className="text-xs text-amber-700 dark:text-amber-400">
@@ -106,7 +126,7 @@ export const UserLifecycleActions = ({ user }: { user: UserDto }): JSX.Element =
             <Button
               size="sm"
               variant="danger"
-              disabled={changeStatus.isPending}
+              disabled={busy}
               onClick={() => apply('suspended')}
             >
               {t('systemAdmin.users.actions.disable')}

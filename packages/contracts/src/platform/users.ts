@@ -36,9 +36,34 @@ const UserOrganizationSchema = z
   })
   .strict();
 
+/**
+ * An account must be reachable by at least one login identifier.
+ *
+ * Both fields are individually optional — an account may sign in by username, by email, or by
+ * either — but an account with NEITHER can never sign in at all: `findByIdentifier` matches on
+ * username, email or employee code, and a platform account has no employee code. Such a record
+ * used to be creatable and looked completely normal in every list; the invariant is stated here,
+ * at the boundary, so no caller can produce one.
+ *
+ * The same rule holds on UPDATE, but it cannot live in a schema there: whether clearing the email
+ * leaves the account reachable depends on the username it already has, which only the service can
+ * see.
+ */
+const hasLoginIdentifier = (value: {
+  email?: string | undefined;
+  username?: string | undefined;
+}): boolean => value.email !== undefined || value.username !== undefined;
+
+const LOGIN_IDENTIFIER_REQUIRED = {
+  message: 'an account needs at least one login identifier — an email or a username',
+  path: ['username'],
+};
+
 export const CreateUserSchema = z
   .object({
     email: z.string().email().optional(),
+    /** Second login identifier. Admin-supplied here; HR defaults it to the Employee Code. */
+    username: UsernameSchema.optional(),
     firstName: LocalizedStringSchema,
     lastName: LocalizedStringSchema,
     phone: PhoneNumberSchema.optional(),
@@ -50,13 +75,20 @@ export const CreateUserSchema = z
       jobTitleId: null,
     }),
   })
-  .strict();
+  .strict()
+  .refine(hasLoginIdentifier, LOGIN_IDENTIFIER_REQUIRED);
 export type CreateUser = z.infer<typeof CreateUserSchema>;
 
 export const UpdateUserSchema = z
   .object({
     firstName: LocalizedStringSchema.optional(),
     lastName: LocalizedStringSchema.optional(),
+    /**
+     * Nullable: an account that signs in by username may drop its email. The service refuses the
+     * change when it would leave the account with no identifier at all — a rule that needs the
+     * STORED username to decide, which is why it is not expressed here.
+     */
+    email: z.string().email().nullable().optional(),
     phone: PhoneNumberSchema.nullable().optional(),
     locale: LocaleSchema.optional(),
     /** Administrators may change the username later (the Employee Code is never editable). */
@@ -64,6 +96,9 @@ export const UpdateUserSchema = z
     organization: UserOrganizationSchema.partial().optional(),
     version: z.number().int().min(0),
   })
+  // `.strict()` is the guard that keeps `employeeId` out: the employee ↔ login link is owned by HR
+  // (ADR-017) and is written only through its service, so an update that named it would be a
+  // second, unowned writer of the same fact. A test pins this.
   .strict();
 export type UpdateUser = z.infer<typeof UpdateUserSchema>;
 

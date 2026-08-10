@@ -22,7 +22,13 @@ const read = (path: string): string => readFileSync(resolve(API_SRC, path), 'utf
 const CLIENT = readFileSync(resolve(HERE, 'users/api/user-api.ts'), 'utf8');
 const QUERIES = readFileSync(resolve(HERE, 'users/api/user-queries.ts'), 'utf8');
 const LIST_PAGE = readFileSync(resolve(HERE, 'users/pages/UsersListPage.tsx'), 'utf8');
+const FORM = readFileSync(resolve(HERE, 'users/components/UserFormDialog.tsx'), 'utf8');
+const USERS_CONTRACT = readFileSync(
+  resolve(HERE, '../../../../../packages/contracts/src/platform/users.ts'),
+  'utf8',
+);
 const USER_ROUTES = read('platform/users/user.routes.ts');
+const EMPLOYEE_ROUTES = read('modules/hr/employee-management/employees/employee.routes.ts');
 const AUDIT_ROUTES = read('platform/audit/audit.routes.ts');
 const USER_SERVICE = read('platform/users/user.service.ts');
 const APP = read('app.ts');
@@ -55,6 +61,9 @@ describe('every endpoint the System Administration client calls exists on the AP
     ['post', '/:id/totp/reset'],
     ['post', '/:id/totp/require'],
     ['delete', '/:id/sessions'],
+    ['post', '/'],
+    ['patch', '/:id'],
+    ['post', '/:id/unlock'],
   ])('serves %s /platform/users%s', (verb, path) => {
     expect(userEndpoints).toContain(`${verb} ${path}`);
   });
@@ -105,14 +114,37 @@ describe('the client stays inside what the API accepts', () => {
   });
 });
 
-describe('this slice adds no server surface', () => {
-  // The whole premise of the phase: a UI over endpoints that already exist. If a later edit needs
-  // a new endpoint, that is a decision to take deliberately, not one to discover in review.
-  it('calls only platform endpoints that predate this module', () => {
-    const paths = [...CLIENT.matchAll(/`(\/[a-z-]+)\//g)].flatMap((m) =>
+describe('the module talks only to the surfaces it is allowed to', () => {
+  // Two prefixes, and the second one is a decision rather than a convenience. Decision E1 puts the
+  // employee ↔ login relationship in HR's hands, so System Administration ASKS HR to write it. Any
+  // other `/hr` path appearing here would be this module reaching into someone else's business
+  // logic, which is exactly what E1 exists to prevent.
+  it('calls the platform, plus HR for the employee link and nothing else', () => {
+    const prefixes = [...CLIENT.matchAll(/`(\/[a-z-]+)\//g)].flatMap((m) =>
       m[1] === undefined ? [] : [m[1]],
     );
-    expect(new Set(paths)).toEqual(new Set(['/platform']));
+    expect(new Set(prefixes)).toEqual(new Set(['/platform', '/hr']));
+  });
+
+  it('uses HR only for the employee register, and only its link sub-resource', () => {
+    const hrResources = new Set(
+      [...CLIENT.matchAll(/`\/hr\/([a-z-]+)/g)].flatMap((m) => (m[1] === undefined ? [] : [m[1]])),
+    );
+    expect(hrResources, 'the scan itself must not match nothing').not.toEqual(new Set());
+    expect(hrResources).toEqual(new Set(['employees']));
+    // The only sub-resource: nothing here touches hiring, contracts, leave or personnel actions.
+    const subResources = new Set(
+      [...CLIENT.matchAll(/`\/hr\/employees\/\$\{[a-zA-Z]+\}\/([a-z-]+)/g)].flatMap((m) =>
+        m[1] === undefined ? [] : [m[1]],
+      ),
+    );
+    expect(subResources).toEqual(new Set(['user-link']));
+  });
+
+  it('serves the HR link pair the client calls', () => {
+    const hrEndpoints = declared(EMPLOYEE_ROUTES);
+    expect(hrEndpoints).toContain('post /:id/user-link');
+    expect(hrEndpoints).toContain('delete /:id/user-link');
   });
 
   // Roles, sessions and effective permissions are later phases with their own endpoints; calling
@@ -127,5 +159,49 @@ describe('this slice adds no server surface', () => {
     ]) {
       expect(CLIENT, `${path} belongs to a later phase`).not.toContain(path);
     }
+  });
+});
+
+describe('the employee link is HR-owned and unwritable from here', () => {
+  // The invariant decision E1 turns on. `user.employeeId` is the AUTHORITY for the link and carries
+  // the unique index; if the update schema accepted it, System Administration would become a second
+  // writer that knows about only one side of a two-sided fact.
+  it('keeps employeeId out of the user update schema', () => {
+    const schema = /export const UpdateUserSchema = z[\s\S]*?\.strict\(\)/.exec(USERS_CONTRACT)?.[0];
+    expect(schema, 'UpdateUserSchema not found').toBeDefined();
+    expect(schema).not.toContain('employeeId');
+    // `.strict()` is what turns "not declared" into "rejected" rather than "ignored".
+    expect(schema).toContain('.strict()');
+  });
+
+  it('never sends employeeId in a request body', () => {
+    // Bodies are object literals. `employeeId` may appear as a parameter name and as a PATH segment
+    // of the HR call — what it must never be is a key the client hands to an endpoint, because the
+    // only writer of that field is HR's service.
+    // The lookbehind excludes `${employeeId}` — a path interpolation, not an object key.
+    const code = CLIENT.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, '');
+    expect(code).not.toMatch(/(?<!\$)\{\s*employeeId/);
+  });
+
+  // The two writers of `user.employeeId` are the creation path (HR provisioning passes it) and the
+  // link pair. Both live in the users service, called by HR — never by a route.
+  it('exposes no platform route that writes the link', () => {
+    expect(USER_ROUTES).not.toContain('employee');
+  });
+});
+
+describe('an account cannot be created without a way to sign in', () => {
+  // The P1 review found this reachable: `CreateUserSchema` required neither identifier, so a record
+  // that no `findByIdentifier` branch can ever match was creatable and looked entirely normal.
+  it('requires an email or a username at the contract boundary', () => {
+    const schema = /export const CreateUserSchema = z[\s\S]*?export type CreateUser/.exec(
+      USERS_CONTRACT,
+    )?.[0];
+    expect(schema).toContain('username');
+    expect(schema).toContain('.refine(hasLoginIdentifier');
+  });
+
+  it('states the same rule in the form before the round-trip', () => {
+    expect(FORM).toContain('identifierRequired');
   });
 });

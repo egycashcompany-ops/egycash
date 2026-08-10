@@ -13,11 +13,24 @@
 import {
   type AdminResetPasswordResultDto,
   type ChangeUserStatus,
+  type CreateUser,
+  type EmployeeDto,
+  type InvitedUserDto,
+  type OrgUnitOptionDto,
   type Paginated,
   type TimelineDto,
+  type UpdateUser,
   type UserDto,
 } from '@ecms/contracts';
-import { buildQuery, del, get, getPage, post, type QueryParams } from '../../../../shared/lib/api-client';
+import {
+  buildQuery,
+  del,
+  get,
+  getPage,
+  patch,
+  post,
+  type QueryParams,
+} from '../../../../shared/lib/api-client';
 
 export type SystemUserListParams = QueryParams;
 
@@ -26,6 +39,22 @@ export const listUsers = (params: SystemUserListParams): Promise<Paginated<UserD
   getPage<UserDto>(`/platform/users${buildQuery(params)}`);
 
 export const getUser = (id: string): Promise<UserDto> => get<UserDto>(`/platform/users/${id}`);
+
+/**
+ * Create an account. The response carries `activationToken` — the setup link's secret, returned
+ * once so the caller can hand it over out of band when delivery fails. The screen never displays
+ * it: an administrator who can read a setup token can set someone else's password, which is the
+ * one thing this whole flow exists to prevent.
+ */
+export const createUser = (body: CreateUser): Promise<InvitedUserDto> =>
+  post<InvitedUserDto>('/platform/users', body);
+
+export const updateUser = (id: string, body: UpdateUser): Promise<UserDto> =>
+  patch<UserDto>(`/platform/users/${id}`, body);
+
+/** Clear the automatic lockout the failed-login counter armed. Does not change the status. */
+export const unlockUser = (id: string): Promise<UserDto> =>
+  post<UserDto>(`/platform/users/${id}/unlock`, {});
 
 /**
  * Lifecycle transition. `version` rides along, so a concurrent edit answers 409 rather than
@@ -68,3 +97,31 @@ export const getUserTimeline = (id: string, pageSize: number): Promise<TimelineD
   get<TimelineDto>(
     `/platform/timeline${buildQuery({ entityType: 'user', entityId: id, pageSize })}`,
   );
+
+/**
+ * Branch options for the placement field. A purpose-built reference endpoint that returns the
+ * ACTIVE units only as `{id, code, name}` and is authenticated rather than `branch.view`-gated —
+ * so the field is populated for an administrator who may edit accounts without also administering
+ * the org tree. Not a catalog read: there is no page to raise (ADR-019).
+ */
+export const listBranchOptions = (): Promise<OrgUnitOptionDto[]> =>
+  get<OrgUnitOptionDto[]>('/platform/branches/options');
+
+// ── Employee linkage (decision E1 — HR owns the relationship) ────────────────
+//
+// These two calls are the ONLY reason this module talks to `/hr`. The link is HR's to write, so
+// System Administration asks HR to write it rather than setting `user.employeeId` itself — which it
+// could not do anyway: the field is not in the update schema, and nothing else exposes it.
+
+/** Employees to offer when attaching an account. Searched, never loaded (ADR-019). */
+export const searchEmployees = (search: string): Promise<Paginated<EmployeeDto>> =>
+  getPage<EmployeeDto>(`/hr/employees${buildQuery({ search, employed: true, pageSize: 8 })}`);
+
+export const getEmployee = (id: string): Promise<EmployeeDto> =>
+  get<EmployeeDto>(`/hr/employees/${id}`);
+
+export const linkUserToEmployee = (employeeId: string, userId: string): Promise<EmployeeDto> =>
+  post<EmployeeDto>(`/hr/employees/${employeeId}/user-link`, { userId });
+
+export const unlinkUserFromEmployee = (employeeId: string): Promise<EmployeeDto> =>
+  del<EmployeeDto>(`/hr/employees/${employeeId}/user-link`);

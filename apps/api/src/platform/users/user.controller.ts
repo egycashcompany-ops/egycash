@@ -50,6 +50,17 @@ export const updateUser = async (req: Request, res: Response): Promise<void> => 
   ok(res, userService.toDto(doc));
 };
 
+/**
+ * Clear the automatic lockout. Scoped like every other write on this account, so an administrator
+ * who cannot see it cannot unlock it.
+ */
+export const unlockUser = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { params } = validated<never, never, IdParam>(req);
+  const doc = await userService.unlock(params.id, ctx.userId, scopeSelector(ctx, 'user.edit'));
+  ok(res, userService.toDto(doc));
+};
+
 export const changeUserStatus = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { body, params } = validated<ChangeUserStatus, never, IdParam>(req);

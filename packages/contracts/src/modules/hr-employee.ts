@@ -245,6 +245,18 @@ export interface EmployeeLoginDto {
   employeeCode: string;
 }
 
+/**
+ * Attach an EXISTING login to this employee (SA-2 / decision E1).
+ *
+ * The sibling of `CreateEmployeeLoginSchema`: that one makes a new account for an employee who has
+ * none, this one adopts an account that already exists — the case of someone who was a
+ * non-employee user first and has now been hired. Both live in HR because HR owns the employee ↔
+ * login relationship (ADR-017); System Administration invokes this endpoint rather than writing
+ * `user.employeeId`, which would make it a second, unowned writer of the same fact.
+ */
+export const LinkEmployeeUserSchema = z.object({ userId: objectId() }).strict();
+export type LinkEmployeeUser = z.infer<typeof LinkEmployeeUserSchema>;
+
 // ── List ─────────────────────────────────────────────────────────────────────
 
 export const ListEmployeesQuerySchema = PaginationQuerySchema.extend({

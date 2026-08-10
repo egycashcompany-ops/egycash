@@ -23,6 +23,7 @@ import {
   deleteUser,
   getUser,
   listUsers,
+  unlockUser,
   updateUser,
 } from './user.controller';
 
@@ -63,6 +64,15 @@ export const buildUsersRouter = (): Router => {
     authorize('user.edit'),
     validate({ body: ChangeUserStatusSchema, params: UserIdParamSchema }),
     asyncHandler(changeUserStatus),
+  );
+  // Clearing an automatic lockout is an edit to the account, not a credential operation: it hands
+  // out nothing and reveals nothing, so it sits with `user.edit` rather than `user.resetPassword`.
+  router.post(
+    '/:id/unlock',
+    authenticate,
+    authorize('user.edit'),
+    validate({ params: UserIdParamSchema }),
+    asyncHandler(unlockUser),
   );
   router.delete(
     '/:id',

@@ -92,6 +92,18 @@ export const AUDIT_ACTIONS = [
   'activate',
   'deactivate',
   'receive',
+  // System Administration (SA-2). Three administrative acts that had no name of their own.
+  //
+  // `unlock` is not a `statusChange`: the account's lifecycle status never moved. What changed is
+  // the automatic lockout the failed-login counter armed, and "who cleared it, and when" is the
+  // question an incident asks — a generic `update` diff cannot answer it.
+  //
+  // The link pair is recorded against BOTH entities, which is deliberate rather than duplication:
+  // HR reads the employee's trail and an administrator reads the account's, neither can see the
+  // other's, and "when did this login become this person's" is a question both are asked.
+  'unlock',
+  'employeeLinked',
+  'employeeUnlinked',
 ] as const;
 export const AuditActionSchema = z.enum(AUDIT_ACTIONS);
 export type AuditAction = z.infer<typeof AuditActionSchema>;

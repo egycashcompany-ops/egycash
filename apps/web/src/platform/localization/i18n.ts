@@ -3417,6 +3417,7 @@ const en: Record<string, string> = {
 
   // Organization placement on an account
   'systemAdmin.users.tabs.roles': 'Roles',
+  'systemAdmin.users.tabs.permissions': 'Permissions',
   'systemAdmin.users.fields.section': 'Section',
   'systemAdmin.users.placement.searchDepartment': 'Search departments',
   'systemAdmin.users.placement.searchSection': 'Search sections',
@@ -3429,6 +3430,29 @@ const en: Record<string, string> = {
   'systemAdmin.users.placement.noSectionAccess':
     'You are not allowed to read sections, so this placement is left as it is.',
   'systemAdmin.users.placement.inactiveBranch': 'Current branch (no longer active)',
+
+  // SA-4 — effective permissions, explained
+  'systemAdmin.effective.title': 'Effective permissions',
+  'systemAdmin.effective.hint':
+    'Everything this account may do, and where each permission comes from. Grants that have lapsed or not yet started are kept — that is usually the answer.',
+  'systemAdmin.effective.count': '{{count}} permissions',
+  'systemAdmin.effective.sourceCount': '{{count}} sources',
+  'systemAdmin.effective.empty': 'No permission matches this view.',
+  'systemAdmin.effective.noAccess':
+    'Reading an account’s permissions needs both “view users” and “view roles”.',
+  'systemAdmin.effective.searchPlaceholder': 'Search by permission, key or role',
+  'systemAdmin.effective.stateFilter': 'Validity',
+  'systemAdmin.effective.anyState': 'Any state',
+  'systemAdmin.effective.state.active': 'In force',
+  'systemAdmin.effective.state.pending': 'Not started',
+  'systemAdmin.effective.state.expired': 'Lapsed',
+  'systemAdmin.effective.decisive': 'Sets the reach',
+  'systemAdmin.effective.evaluatedAt':
+    'Worked out at {{at}}. Sign-in checks read a short-lived snapshot, so a change made in the last few moments may not have reached every open session yet.',
+  'systemAdmin.effective.privileged': 'Privileged account',
+  'systemAdmin.effective.privilegedBecause':
+    'Privileged, so two-factor authentication is compulsory. System roles: {{roles}}. Break-glass permissions: {{keys}}.',
+  'systemAdmin.effective.none': 'none',
 };
 
 const ar: Record<string, string> = {
@@ -6797,6 +6821,7 @@ const ar: Record<string, string> = {
 
   // موقع الحساب في الهيكل التنظيمي
   'systemAdmin.users.tabs.roles': 'الأدوار',
+  'systemAdmin.users.tabs.permissions': 'الصلاحيات',
   'systemAdmin.users.fields.section': 'القسم',
   'systemAdmin.users.placement.searchDepartment': 'ابحث في الإدارات',
   'systemAdmin.users.placement.searchSection': 'ابحث في الأقسام',
@@ -6809,6 +6834,29 @@ const ar: Record<string, string> = {
   'systemAdmin.users.placement.noSectionAccess':
     'غير مسموح لك بقراءة الأقسام، لذلك يبقى هذا الموقع كما هو.',
   'systemAdmin.users.placement.inactiveBranch': 'الفرع الحالي (لم يعد نشطًا)',
+
+  // SA-4 — الصلاحيات الفعلية وتفسيرها
+  'systemAdmin.effective.title': 'الصلاحيات الفعلية',
+  'systemAdmin.effective.hint':
+    'كل ما يستطيع هذا الحساب فعله، ومن أين تأتي كل صلاحية. المنح المنتهية أو التي لم تبدأ بعد تبقى ظاهرة — وهي غالبًا الإجابة.',
+  'systemAdmin.effective.count': '{{count}} صلاحية',
+  'systemAdmin.effective.sourceCount': '{{count}} مصدر',
+  'systemAdmin.effective.empty': 'لا توجد صلاحية مطابقة لهذا العرض.',
+  'systemAdmin.effective.noAccess':
+    'قراءة صلاحيات حساب تتطلب «عرض المستخدمين» و«عرض الأدوار» معًا.',
+  'systemAdmin.effective.searchPlaceholder': 'ابحث بالصلاحية أو المفتاح أو الدور',
+  'systemAdmin.effective.stateFilter': 'السريان',
+  'systemAdmin.effective.anyState': 'كل الحالات',
+  'systemAdmin.effective.state.active': 'سارية',
+  'systemAdmin.effective.state.pending': 'لم تبدأ',
+  'systemAdmin.effective.state.expired': 'منتهية',
+  'systemAdmin.effective.decisive': 'تحدّد النطاق',
+  'systemAdmin.effective.evaluatedAt':
+    'حُسبت في {{at}}. فحص تسجيل الدخول يقرأ لقطة قصيرة العمر، فقد لا يكون تغيير أُجري قبل لحظات قد وصل إلى كل الجلسات المفتوحة بعد.',
+  'systemAdmin.effective.privileged': 'حساب ذو امتياز',
+  'systemAdmin.effective.privilegedBecause':
+    'حساب ذو امتياز، فالتحقق بخطوتين إلزامي عليه. أدوار النظام: {{roles}}. صلاحيات استثنائية: {{keys}}.',
+  'systemAdmin.effective.none': 'لا شيء',
 };
 
 const catalogs: Record<Locale, Record<string, string>> = { en, ar };

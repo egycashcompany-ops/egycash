@@ -87,3 +87,22 @@ export const useUpdateAssignment = () =>
 
 export const useRevokeAssignment = () =>
   useAssignmentWrite((id: string) => api.revokeAssignment(id));
+
+// ── Effective permissions (SA-4) ────────────────────────────────────────────
+
+/**
+ * Computed fresh by the server on every read — there is no cache behind it, by design — so this
+ * query does not hold it either: `staleTime: 0` means reopening the tab asks again. The point of
+ * the screen is to answer "what does this account hold RIGHT NOW", and a cached answer to that is
+ * the wrong kind of answer.
+ *
+ * It lives under the assignments key so that granting or revoking a role invalidates it too: those
+ * writes are exactly what changes it.
+ */
+export const useEffectivePermissions = (userId: string, enabled = true) =>
+  useQuery({
+    queryKey: [MODULE, ASSIGNMENTS, 'effective', userId],
+    queryFn: () => api.getEffectivePermissions(userId),
+    enabled: enabled && userId !== '',
+    staleTime: 0,
+  });

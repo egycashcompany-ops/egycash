@@ -13,7 +13,14 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { ACCOUNT_STATUSES, TIMELINE_SOURCES, USER_STATUSES, type Locale } from '@ecms/contracts';
+import {
+  ACCOUNT_STATUSES,
+  DATA_SCOPES,
+  ROLE_MANAGEMENT,
+  TIMELINE_SOURCES,
+  USER_STATUSES,
+  type Locale,
+} from '@ecms/contracts';
 import { translate } from '../../platform/localization/i18n';
 
 const LOCALES: Locale[] = ['en', 'ar'];
@@ -24,7 +31,15 @@ const VOCABULARIES: { name: string; prefix: string; values: readonly string[] }[
   { name: 'lifecycle status', prefix: 'systemAdmin.users.status', values: USER_STATUSES },
   { name: 'account status', prefix: 'systemAdmin.users.accountStatus', values: ACCOUNT_STATUSES },
   { name: 'account kind', prefix: 'systemAdmin.users.kind', values: ['employee', 'system'] },
-  { name: 'detail tab', prefix: 'systemAdmin.users.tabs', values: ['overview', 'security', 'activity'] },
+  {
+    name: 'detail tab',
+    prefix: 'systemAdmin.users.tabs',
+    values: ['overview', 'roles', 'security', 'activity'],
+  },
+  { name: 'role tab', prefix: 'systemAdmin.roles.tabs', values: ['permissions', 'users'] },
+  { name: 'role management', prefix: 'systemAdmin.roles.managed', values: ROLE_MANAGEMENT },
+  // The reach of a grant. Driven by the contracts enum, so a new scope cannot ship unlabelled.
+  { name: 'assignment scope', prefix: 'systemAdmin.assignments.scopes', values: DATA_SCOPES },
   { name: 'locale', prefix: 'systemAdmin.users.locale', values: ['ar', 'en'] },
   { name: 'delivery channel', prefix: 'systemAdmin.users.channel', values: ['whatsapp', 'email'] },
   { name: 'timeline stream', prefix: 'systemAdmin.users.activity.stream', values: TIMELINE_SOURCES },

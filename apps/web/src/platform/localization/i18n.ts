@@ -3345,6 +3345,89 @@ const en: Record<string, string> = {
   'systemAdmin.roles.form.description': 'Description',
   'systemAdmin.roles.form.permissions': 'Permissions — {{count}} selected',
   'systemAdmin.roles.form.needPermission': 'A role must carry at least one permission.',
+  'systemAdmin.roles.tabs.permissions': 'Permissions',
+  'systemAdmin.roles.tabs.users': 'Who holds it',
+  'systemAdmin.roles.actions.edit': 'Edit role',
+  'systemAdmin.roles.actions.revokeAll': 'Revoke from everyone',
+  'systemAdmin.roles.confirmRevokeAll':
+    'Every grant of this role will be revoked, one at a time. Grants that may not be removed — your own, and the last Super Admin — are refused and reported.',
+  'systemAdmin.roles.revokedAll': 'Revoked {{removed}}; {{refused}} refused.',
+  'systemAdmin.roles.backToList': 'Back to roles',
+  'systemAdmin.roles.users.title': 'Accounts holding this role',
+  'systemAdmin.roles.users.hint':
+    'Revoking the last grant is what disabling a role means — there is no status flag.',
+  'systemAdmin.roles.users.holder': 'Account',
+  'systemAdmin.roles.users.empty': 'Nobody holds this role.',
+  'systemAdmin.roles.picker.placeholder': 'Search roles',
+  'systemAdmin.roles.picker.noResults': 'No role matches this search.',
+  'systemAdmin.roles.picker.alreadyHeld': 'Already held',
+  'systemAdmin.roles.picker.clear': 'Clear the chosen role',
+  'systemAdmin.roles.picker.unresolved': 'This role could not be read.',
+
+  // Role assignments — grants, their reach and their validity window
+  'systemAdmin.assignments.title': 'Roles held',
+  'systemAdmin.assignments.hint':
+    'What this account may do, and how far. A grant with a closed window is kept and shown as lapsed.',
+  'systemAdmin.assignments.empty': 'This account holds no roles.',
+  'systemAdmin.assignments.noAccess': 'You are not allowed to read role assignments.',
+  'systemAdmin.assignments.role': 'Role',
+  'systemAdmin.assignments.scope': 'Reach',
+  'systemAdmin.assignments.scopeHint': "A hierarchical reach resolves to the account's own placement.",
+  'systemAdmin.assignments.scopeWidens':
+    'Only users, employees, leave requests and vehicles record a department and a section. On every other kind of record this grant reaches as far as the branch.',
+  'systemAdmin.assignments.scopes.own': 'Own records',
+  'systemAdmin.assignments.scopes.section': 'Section',
+  'systemAdmin.assignments.scopes.department': 'Department',
+  'systemAdmin.assignments.scopes.branch': 'Branch',
+  'systemAdmin.assignments.scopes.organization': 'Whole company',
+  'systemAdmin.assignments.noPlacement':
+    'This account has no placement at that level, so the grant cannot be resolved. Set the placement first.',
+  'systemAdmin.assignments.validity': 'Valid',
+  'systemAdmin.assignments.always': 'No end date',
+  'systemAdmin.assignments.lapsed': 'Lapsed',
+  'systemAdmin.assignments.validFrom': 'From',
+  'systemAdmin.assignments.validTo': 'Until',
+  'systemAdmin.assignments.validToHint': 'Leave empty for a grant that does not expire.',
+  'systemAdmin.assignments.badWindow': 'The end date must come after the start date.',
+  'systemAdmin.assignments.grant': 'Grant a role',
+  'systemAdmin.assignments.grantTitle': 'Grant a role',
+  'systemAdmin.assignments.grantHint':
+    'You can only grant permissions you hold yourself, and never at a wider reach than your own.',
+  'systemAdmin.assignments.granted': 'Role granted.',
+  'systemAdmin.assignments.revoke': 'Revoke',
+  'systemAdmin.assignments.revoked': 'Grant revoked.',
+  'systemAdmin.assignments.editWindow': 'Change validity',
+  'systemAdmin.assignments.editWindowHint':
+    'The role, the account and the reach cannot change — that would be a different grant.',
+  'systemAdmin.assignments.windowSaved': 'Validity updated.',
+
+  // Permission registry (read-only)
+  'systemAdmin.permissions.title': 'Permissions',
+  'systemAdmin.permissions.subtitle':
+    'The registry every role is written in. Declared in code and shipped with the deployment — nothing here is editable.',
+  'systemAdmin.permissions.count': '{{count}} permissions',
+  'systemAdmin.permissions.searchPlaceholder': 'Search by name or key',
+  'systemAdmin.permissions.module': 'Module',
+  'systemAdmin.permissions.anyModule': 'Any module',
+  'systemAdmin.permissions.heldOnly': 'Only what I hold',
+  'systemAdmin.permissions.held': 'You hold this',
+  'systemAdmin.permissions.empty': 'No permission matches this view.',
+  'systemAdmin.permissions.noAccess': 'You are not allowed to read the permission registry.',
+
+  // Organization placement on an account
+  'systemAdmin.users.tabs.roles': 'Roles',
+  'systemAdmin.users.fields.section': 'Section',
+  'systemAdmin.users.placement.searchDepartment': 'Search departments',
+  'systemAdmin.users.placement.searchSection': 'Search sections',
+  'systemAdmin.users.placement.noResults': 'Nothing matches this search.',
+  'systemAdmin.users.placement.clear': 'Clear',
+  'systemAdmin.users.placement.pickBranchFirst': 'Choose a branch first.',
+  'systemAdmin.users.placement.pickDepartmentFirst': 'Choose a department first.',
+  'systemAdmin.users.placement.noDepartmentAccess':
+    'You are not allowed to read departments, so this placement is left as it is.',
+  'systemAdmin.users.placement.noSectionAccess':
+    'You are not allowed to read sections, so this placement is left as it is.',
+  'systemAdmin.users.placement.inactiveBranch': 'Current branch (no longer active)',
 };
 
 const ar: Record<string, string> = {
@@ -6642,6 +6725,88 @@ const ar: Record<string, string> = {
   'systemAdmin.roles.form.description': 'الوصف',
   'systemAdmin.roles.form.permissions': 'الصلاحيات — {{count}} مختارة',
   'systemAdmin.roles.form.needPermission': 'يجب أن يحمل الدور صلاحية واحدة على الأقل.',
+  'systemAdmin.roles.tabs.permissions': 'الصلاحيات',
+  'systemAdmin.roles.tabs.users': 'من يحمله',
+  'systemAdmin.roles.actions.edit': 'تعديل الدور',
+  'systemAdmin.roles.actions.revokeAll': 'سحب الدور من الجميع',
+  'systemAdmin.roles.confirmRevokeAll':
+    'سيتم سحب كل منح هذا الدور، واحدًا تلو الآخر. المنح التي لا يجوز سحبها — منحك أنت، وآخر مدير عام — تُرفض ويُبلَّغ عنها.',
+  'systemAdmin.roles.revokedAll': 'تم سحب {{removed}}، ورُفض {{refused}}.',
+  'systemAdmin.roles.backToList': 'العودة إلى الأدوار',
+  'systemAdmin.roles.users.title': 'الحسابات التي تحمل هذا الدور',
+  'systemAdmin.roles.users.hint': 'سحب آخر منحة هو ما يعنيه تعطيل الدور — لا توجد حالة تُضبط.',
+  'systemAdmin.roles.users.holder': 'الحساب',
+  'systemAdmin.roles.users.empty': 'لا أحد يحمل هذا الدور.',
+  'systemAdmin.roles.picker.placeholder': 'ابحث عن دور',
+  'systemAdmin.roles.picker.noResults': 'لا يوجد دور مطابق لهذا البحث.',
+  'systemAdmin.roles.picker.alreadyHeld': 'ممنوح بالفعل',
+  'systemAdmin.roles.picker.clear': 'إلغاء اختيار الدور',
+  'systemAdmin.roles.picker.unresolved': 'تعذّرت قراءة هذا الدور.',
+
+  // منح الأدوار — النطاق ونافذة الصلاحية
+  'systemAdmin.assignments.title': 'الأدوار الممنوحة',
+  'systemAdmin.assignments.hint':
+    'ما يستطيع هذا الحساب فعله، وإلى أي مدى. المنحة المنتهية تبقى ظاهرة موسومة بأنها انتهت.',
+  'systemAdmin.assignments.empty': 'هذا الحساب لا يحمل أي دور.',
+  'systemAdmin.assignments.noAccess': 'غير مسموح لك بقراءة منح الأدوار.',
+  'systemAdmin.assignments.role': 'الدور',
+  'systemAdmin.assignments.scope': 'النطاق',
+  'systemAdmin.assignments.scopeHint': 'النطاق الهرمي يُحسب من موقع الحساب نفسه في الهيكل.',
+  'systemAdmin.assignments.scopeWidens':
+    'المستخدمون والموظفون وطلبات الإجازات والمركبات وحدها هي التي تسجّل الإدارة والقسم. في بقية السجلات يتسع أثر هذه المنحة إلى الفرع.',
+  'systemAdmin.assignments.scopes.own': 'سجلاته فقط',
+  'systemAdmin.assignments.scopes.section': 'القسم',
+  'systemAdmin.assignments.scopes.department': 'الإدارة',
+  'systemAdmin.assignments.scopes.branch': 'الفرع',
+  'systemAdmin.assignments.scopes.organization': 'الشركة كلها',
+  'systemAdmin.assignments.noPlacement':
+    'هذا الحساب ليس له موقع عند هذا المستوى، فلا يمكن حساب المنحة. اضبط موقعه في الهيكل أولًا.',
+  'systemAdmin.assignments.validity': 'السريان',
+  'systemAdmin.assignments.always': 'بلا تاريخ انتهاء',
+  'systemAdmin.assignments.lapsed': 'منتهية',
+  'systemAdmin.assignments.validFrom': 'من',
+  'systemAdmin.assignments.validTo': 'حتى',
+  'systemAdmin.assignments.validToHint': 'اتركه فارغًا لمنحة لا تنتهي.',
+  'systemAdmin.assignments.badWindow': 'يجب أن يكون تاريخ الانتهاء بعد تاريخ البدء.',
+  'systemAdmin.assignments.grant': 'منح دور',
+  'systemAdmin.assignments.grantTitle': 'منح دور',
+  'systemAdmin.assignments.grantHint':
+    'لا يمكنك منح صلاحيات لا تملكها، ولا بنطاق أوسع من نطاقك أنت.',
+  'systemAdmin.assignments.granted': 'تم منح الدور.',
+  'systemAdmin.assignments.revoke': 'سحب',
+  'systemAdmin.assignments.revoked': 'تم سحب المنحة.',
+  'systemAdmin.assignments.editWindow': 'تعديل السريان',
+  'systemAdmin.assignments.editWindowHint':
+    'لا يمكن تغيير الدور ولا الحساب ولا النطاق — فذلك منحة أخرى.',
+  'systemAdmin.assignments.windowSaved': 'تم تحديث السريان.',
+
+  // سجل الصلاحيات (للقراءة فقط)
+  'systemAdmin.permissions.title': 'الصلاحيات',
+  'systemAdmin.permissions.subtitle':
+    'السجل الذي تُكتب به كل الأدوار. مُعرَّف في الكود ويُشحن مع الإصدار — لا شيء هنا قابل للتعديل.',
+  'systemAdmin.permissions.count': '{{count}} صلاحية',
+  'systemAdmin.permissions.searchPlaceholder': 'ابحث بالاسم أو بالمفتاح',
+  'systemAdmin.permissions.module': 'الموديول',
+  'systemAdmin.permissions.anyModule': 'كل الموديولات',
+  'systemAdmin.permissions.heldOnly': 'ما أملكه فقط',
+  'systemAdmin.permissions.held': 'تملكها',
+  'systemAdmin.permissions.empty': 'لا توجد صلاحية مطابقة لهذا العرض.',
+  'systemAdmin.permissions.noAccess': 'غير مسموح لك بقراءة سجل الصلاحيات.',
+
+  // موقع الحساب في الهيكل التنظيمي
+  'systemAdmin.users.tabs.roles': 'الأدوار',
+  'systemAdmin.users.fields.section': 'القسم',
+  'systemAdmin.users.placement.searchDepartment': 'ابحث في الإدارات',
+  'systemAdmin.users.placement.searchSection': 'ابحث في الأقسام',
+  'systemAdmin.users.placement.noResults': 'لا نتائج مطابقة لهذا البحث.',
+  'systemAdmin.users.placement.clear': 'مسح',
+  'systemAdmin.users.placement.pickBranchFirst': 'اختر الفرع أولًا.',
+  'systemAdmin.users.placement.pickDepartmentFirst': 'اختر الإدارة أولًا.',
+  'systemAdmin.users.placement.noDepartmentAccess':
+    'غير مسموح لك بقراءة الإدارات، لذلك يبقى هذا الموقع كما هو.',
+  'systemAdmin.users.placement.noSectionAccess':
+    'غير مسموح لك بقراءة الأقسام، لذلك يبقى هذا الموقع كما هو.',
+  'systemAdmin.users.placement.inactiveBranch': 'الفرع الحالي (لم يعد نشطًا)',
 };
 
 const catalogs: Record<Locale, Record<string, string>> = { en, ar };

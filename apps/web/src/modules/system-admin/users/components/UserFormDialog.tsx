@@ -12,14 +12,8 @@
 // account has; the administrator never chooses, sees or relays a credential. That is the existing
 // flow (§14) and this dialog does not add a way around it.
 import { useState } from 'react';
-import {
-  type CreateUser,
-  type Locale,
-  type UpdateUser,
-  type UserDto,
-} from '@ecms/contracts';
+import { type CreateUser, type UpdateUser, type UserDto } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
-import { useAppSelector } from '../../../../store';
 import {
   Button,
   Dialog,
@@ -29,6 +23,7 @@ import {
   Select,
   toast,
 } from '../../../../shared/ui';
+import { OrgPlacementFields, type Placement } from './OrgPlacementFields';
 import { useBranchOptions, useCreateUser, useUpdateUser } from '../api/user-queries';
 
 interface Draft {
@@ -40,7 +35,7 @@ interface Draft {
   username: string;
   phone: string;
   locale: 'ar' | 'en';
-  branchId: string;
+  placement: Placement;
 }
 
 const draftFrom = (user: UserDto | null): Draft => ({
@@ -52,7 +47,11 @@ const draftFrom = (user: UserDto | null): Draft => ({
   username: user?.username ?? '',
   phone: user?.phone ?? '',
   locale: user?.locale ?? 'ar',
-  branchId: user?.organization.branchId ?? '',
+  placement: {
+    branchId: user?.organization.branchId ?? '',
+    departmentId: user?.organization.departmentId ?? '',
+    sectionId: user?.organization.sectionId ?? '',
+  },
 });
 
 const trimmed = (value: string): string | null => {
@@ -73,7 +72,6 @@ export const UserFormDialog = ({
   onCreated?: (created: UserDto) => void;
 }): JSX.Element => {
   const t = useT();
-  const locale = useAppSelector((state): Locale => state.locale.locale);
   const [draft, setDraft] = useState<Draft>(() => draftFrom(user));
   const [identifierError, setIdentifierError] = useState(false);
 
@@ -100,7 +98,9 @@ export const UserFormDialog = ({
       lastName: { ar: draft.lastNameAr.trim(), en: draft.lastNameEn.trim() },
     };
     const phone = trimmed(draft.phone);
-    const branchId = trimmed(draft.branchId);
+    const branchId = trimmed(draft.placement.branchId);
+    const departmentId = trimmed(draft.placement.departmentId);
+    const sectionId = trimmed(draft.placement.sectionId);
 
     if (isCreate) {
       const body: CreateUser = {
@@ -109,7 +109,7 @@ export const UserFormDialog = ({
         ...(username === null ? {} : { username }),
         ...(phone === null ? {} : { phone }),
         locale: draft.locale,
-        organization: { branchId, departmentId: null, sectionId: null, jobTitleId: null },
+        organization: { branchId, departmentId, sectionId, jobTitleId: null },
       };
       create.mutate(body, {
         onSuccess: (created) => {
@@ -129,10 +129,14 @@ export const UserFormDialog = ({
       phone,
       locale: draft.locale,
       ...(username === null ? {} : { username }),
-      // Sent only when it MOVED. The select is populated from the active branches, so an account
-      // placed in a branch that has since been deactivated shows no selection — and an
-      // unconditional send would read that as "clear the placement" and quietly do it.
-      ...(branchId === (user.organization.branchId ?? null) ? {} : { organization: { branchId } }),
+      // Sent only when the placement MOVED, and then in full. The three levels are one fact — the
+      // server refuses a department outside the branch and a section outside the department — so
+      // sending a partial placement would ask it to validate a combination the form never showed.
+      ...(branchId === (user.organization.branchId ?? null) &&
+      departmentId === (user.organization.departmentId ?? null) &&
+      sectionId === (user.organization.sectionId ?? null)
+        ? {}
+        : { organization: { branchId, departmentId, sectionId } }),
       version: user.version,
     };
     update.mutate(body, {
@@ -227,7 +231,7 @@ export const UserFormDialog = ({
           </Field>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label={t('systemAdmin.users.fields.phone')}>
             <Input dir="ltr" value={draft.phone} onChange={(e) => set('phone', e.target.value)} />
           </Field>
@@ -240,20 +244,13 @@ export const UserFormDialog = ({
               <option value="en">{t('systemAdmin.users.locale.en')}</option>
             </Select>
           </Field>
-          <Field
-            label={t('systemAdmin.users.fields.branch')}
-            hint={t('systemAdmin.users.form.branchHint')}
-          >
-            <Select value={draft.branchId} onChange={(e) => set('branchId', e.target.value)}>
-              <option value="">{t('systemAdmin.users.form.noBranch')}</option>
-              {branches.map((branch) => (
-                <option key={branch.id} value={branch.id}>
-                  {branch.name[locale]}
-                </option>
-              ))}
-            </Select>
-          </Field>
         </div>
+
+        <OrgPlacementFields
+          value={draft.placement}
+          onChange={(placement) => set('placement', placement)}
+          branches={branches}
+        />
 
         {isCreate && (
           <p className="text-xs text-slate-500 dark:text-slate-400">

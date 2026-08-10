@@ -309,7 +309,9 @@ describe('an account is created only when it can be signed into', () => {
     const activated = await request(app)
       .post('/api/v1/auth/activate')
       .send({ token, password: PASSWORD });
-    expect(activated.status).toBe(200);
+    // Activation answers 204: it consumes the link and returns nothing, because the only thing it
+    // could return is the credential state the caller just set.
+    expect(activated.status).toBe(204);
     expect((await login('only.username')).status).toBe(200);
   });
 
@@ -321,7 +323,10 @@ describe('an account is created only when it can be signed into', () => {
     expect(created.username).toBeNull();
 
     const token = (res.body as { data: { activationToken: string } }).data.activationToken;
-    await request(app).post('/api/v1/auth/activate').send({ token, password: PASSWORD });
+    const activated = await request(app)
+      .post('/api/v1/auth/activate')
+      .send({ token, password: PASSWORD });
+    expect(activated.status).toBe(204);
     expect((await login('only.email@ecms.local')).status).toBe(200);
   });
 

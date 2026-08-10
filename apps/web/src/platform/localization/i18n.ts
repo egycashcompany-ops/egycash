@@ -3184,8 +3184,18 @@ const en: Record<string, string> = {
     'Disabling ends the account’s sessions and cancels any pending setup link. It is reversible.',
   'systemAdmin.users.lifecycle.noAccess': 'Changing an account’s state needs the users-edit permission.',
   'systemAdmin.users.lifecycle.selfBlocked': 'You cannot disable your own account.',
-  'systemAdmin.users.lifecycle.archiveDeferred':
-    'Archiving and deleting an account are not available yet — they arrive with the safeguards that make them safe.',
+  'systemAdmin.users.actions.archive': 'Archive',
+  'systemAdmin.users.actions.delete': 'Delete account',
+  'systemAdmin.users.archived': 'Account archived.',
+  'systemAdmin.users.deleted': 'Account deleted.',
+  'systemAdmin.users.lifecycle.deleteHint':
+    'Removes the account from every screen. The audit trail is kept.',
+  'systemAdmin.users.confirm.archive': 'Archiving cannot be undone.',
+  'systemAdmin.users.confirm.archiveDetail':
+    'The account can never sign in again and cannot be re-enabled — there is no way back from archived. Its roles are kept as they are, for the record. Use Disable instead if this may be temporary.',
+  'systemAdmin.users.confirm.delete': 'The account disappears from every screen.',
+  'systemAdmin.users.confirm.deleteDetail':
+    'Sessions end, the account stops appearing in any list, and it can no longer sign in. Its history stays in the audit trail. Your own account and the last Super Admin cannot be deleted.',
   'systemAdmin.users.actions.enable': 'Enable',
   'systemAdmin.users.actions.disable': 'Disable',
   'systemAdmin.users.actions.resetPassword': 'Reset password',
@@ -3346,6 +3356,13 @@ const en: Record<string, string> = {
   'systemAdmin.roles.form.description': 'Description',
   'systemAdmin.roles.form.permissions': 'Permissions — {{count}} selected',
   'systemAdmin.roles.form.needPermission': 'A role must carry at least one permission.',
+  // SA-5 — retirement
+  'systemAdmin.roles.actions.delete': 'Delete role',
+  'systemAdmin.roles.deleteBlocked': 'Accounts still hold this role. Revoke it from them first.',
+  'systemAdmin.roles.confirmDelete': 'Nobody currently holds this role.',
+  'systemAdmin.roles.confirmDeleteDetail':
+    'The role is removed and stops appearing anywhere. Its history stays in the audit trail. A role somebody holds cannot be deleted at all.',
+  'systemAdmin.roles.deleted': 'Role deleted.',
   'systemAdmin.roles.matrix.selectAll': 'Select all permissions',
   'systemAdmin.roles.matrix.counter': 'Selected: {{selected}} / {{total}}',
   'systemAdmin.roles.matrix.searchPlaceholder': 'Search permissions…',
@@ -6601,8 +6618,18 @@ const ar: Record<string, string> = {
     'التعطيل ينهي جلسات الحساب ويلغي أي رابط إعداد معلّق. وهو قابل للتراجع.',
   'systemAdmin.users.lifecycle.noAccess': 'تغيير حالة الحساب يحتاج صلاحية تعديل المستخدمين.',
   'systemAdmin.users.lifecycle.selfBlocked': 'لا يمكنك تعطيل حسابك أنت.',
-  'systemAdmin.users.lifecycle.archiveDeferred':
-    'الأرشفة والحذف غير متاحين بعد — يصلان مع الحواجز التي تجعلهما آمنين.',
+  'systemAdmin.users.actions.archive': 'أرشفة',
+  'systemAdmin.users.actions.delete': 'حذف الحساب',
+  'systemAdmin.users.archived': 'تمت أرشفة الحساب.',
+  'systemAdmin.users.deleted': 'تم حذف الحساب.',
+  'systemAdmin.users.lifecycle.deleteHint':
+    'يزيل الحساب من كل الشاشات. ويبقى سجل التدقيق كما هو.',
+  'systemAdmin.users.confirm.archive': 'الأرشفة لا يمكن التراجع عنها.',
+  'systemAdmin.users.confirm.archiveDetail':
+    'لن يستطيع الحساب تسجيل الدخول مرة أخرى، ولا يمكن إعادة تفعيله — لا طريق للعودة من الأرشفة. تبقى أدواره كما هي للسجل. استخدم «تعطيل» بدلًا منها إن كان الأمر مؤقتًا.',
+  'systemAdmin.users.confirm.delete': 'سيختفي الحساب من كل الشاشات.',
+  'systemAdmin.users.confirm.deleteDetail':
+    'تُنهى الجلسات، ويتوقف ظهور الحساب في أي قائمة، ولا يستطيع تسجيل الدخول. ويبقى تاريخه في سجل التدقيق. لا يمكنك حذف حسابك أنت ولا آخر مدير عام.',
   'systemAdmin.users.actions.enable': 'تفعيل',
   'systemAdmin.users.actions.disable': 'تعطيل',
   'systemAdmin.users.actions.resetPassword': 'إعادة تعيين كلمة المرور',
@@ -6761,6 +6788,13 @@ const ar: Record<string, string> = {
   'systemAdmin.roles.form.description': 'الوصف',
   'systemAdmin.roles.form.permissions': 'الصلاحيات — {{count}} مختارة',
   'systemAdmin.roles.form.needPermission': 'يجب أن يحمل الدور صلاحية واحدة على الأقل.',
+  // SA-5 — إنهاء الخدمة
+  'systemAdmin.roles.actions.delete': 'حذف الدور',
+  'systemAdmin.roles.deleteBlocked': 'ما زالت هناك حسابات تحمل هذا الدور. اسحبه منها أولًا.',
+  'systemAdmin.roles.confirmDelete': 'لا أحد يحمل هذا الدور حاليًا.',
+  'systemAdmin.roles.confirmDeleteDetail':
+    'سيُحذف الدور ويختفي من كل الشاشات. يبقى تاريخه في سجل التدقيق. والدور الذي يحمله أحد لا يمكن حذفه أصلًا.',
+  'systemAdmin.roles.deleted': 'تم حذف الدور.',
   'systemAdmin.roles.matrix.selectAll': 'تحديد كل الصلاحيات',
   'systemAdmin.roles.matrix.counter': 'المحدَّد: {{selected}} من {{total}}',
   'systemAdmin.roles.matrix.searchPlaceholder': 'ابحث في الصلاحيات…',

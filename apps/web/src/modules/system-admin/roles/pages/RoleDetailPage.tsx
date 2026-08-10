@@ -37,6 +37,7 @@ import { RolePermissionMatrix } from '../components/RolePermissionMatrix';
 import { AssignmentScopeBadge } from '../components/AssignmentScopeBadge';
 import {
   useAssignments,
+  useDeleteRole,
   usePermissionCatalog,
   useRevokeAssignment,
   useRole,
@@ -57,6 +58,7 @@ export const RoleDetailPage = (): JSX.Element => {
   const [sp, setSp] = useSearchParams();
   const [editing, setEditing] = useState(false);
   const [confirmRevokeAll, setConfirmRevokeAll] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [revokingAll, setRevokingAll] = useState(false);
 
   const tabParam = sp.get('tab');
@@ -67,6 +69,7 @@ export const RoleDetailPage = (): JSX.Element => {
   const { data: catalog = [] } = usePermissionCatalog(can('permission.view'));
   const assignments = useAssignments({ roleId: id, page, pageSize: DEFAULT_PAGE_SIZE }, id !== '');
   const revoke = useRevokeAssignment();
+  const removeRole = useDeleteRole(id);
 
   if (isLoading) {
     return (
@@ -166,6 +169,9 @@ export const RoleDetailPage = (): JSX.Element => {
   ];
 
   const holders = assignments.data?.items ?? [];
+  // The TOTAL, not the page: a role held by 30 accounts shows 25 rows, and deleting it must still
+  // be refused. `meta.totalItems` is the count the server computed for the same filter.
+  const holderCount = assignments.data?.meta.totalItems ?? 0;
 
   return (
     <PageContainer>
@@ -187,11 +193,27 @@ export const RoleDetailPage = (): JSX.Element => {
         }
         actions={
           role.managed === 'none' ? (
-            <Can permission="role.edit">
-              <Button size="sm" variant="secondary" onClick={() => setEditing(true)}>
-                {t('systemAdmin.roles.actions.edit')}
-              </Button>
-            </Can>
+            <div className="flex flex-wrap items-center gap-2">
+              <Can permission="role.edit">
+                <Button size="sm" variant="secondary" onClick={() => setEditing(true)}>
+                  {t('systemAdmin.roles.actions.edit')}
+                </Button>
+              </Can>
+              {/* Offered only while nobody holds it. The server refuses a held role anyway
+                  ("revoke them first"), so a button that looked available would be a promise the
+                  click breaks — the same reasoning the permission matrix applies to a locked grant. */}
+              <Can permission="role.delete">
+                <Button
+                  size="sm"
+                  variant="ghost-danger"
+                  disabled={holderCount > 0 || removeRole.isPending}
+                  title={holderCount > 0 ? t('systemAdmin.roles.deleteBlocked') : undefined}
+                  onClick={() => setConfirmDelete(true)}
+                >
+                  {t('systemAdmin.roles.actions.delete')}
+                </Button>
+              </Can>
+            </div>
           ) : undefined
         }
       />
@@ -302,6 +324,41 @@ export const RoleDetailPage = (): JSX.Element => {
       >
         <p className="text-sm text-slate-600 dark:text-slate-300">
           {t('systemAdmin.roles.confirmRevokeAll')}
+        </p>
+      </Dialog>
+
+      <Dialog
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        size="sm"
+        title={t('systemAdmin.roles.actions.delete')}
+        description={t('systemAdmin.roles.confirmDelete')}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              size="sm"
+              variant="danger"
+              loading={removeRole.isPending}
+              onClick={() =>
+                removeRole.mutate(undefined, {
+                  onSuccess: () => {
+                    setConfirmDelete(false);
+                    toast.success(t('systemAdmin.roles.deleted'));
+                    navigate('/system/roles');
+                  },
+                })
+              }
+            >
+              {t('systemAdmin.roles.actions.delete')}
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-sm text-slate-600 dark:text-slate-300">
+          {t('systemAdmin.roles.confirmDeleteDetail')}
         </p>
       </Dialog>
 

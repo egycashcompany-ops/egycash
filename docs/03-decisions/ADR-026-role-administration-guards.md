@@ -227,3 +227,47 @@ all?), not a role-administration one, and each answer is a migration.
 - ⚠️ The department/section widening above is now *documented* rather than fixed. Every screen that
   offers those scopes carries the warning; the platform behaviour is unchanged and still wrong for
   what the words suggest.
+
+---
+
+## Appendix — SA-4: effective permissions are a projection, not a second authority
+
+**Added 2026-08-10.** SA-4 ships a read-only screen answering "what may this account actually do,
+and why". It changes no decision above, and no decision anywhere else; it is recorded here because
+the shape of that answer is easy to get wrong in a way that would quietly matter.
+
+**The authorizer remains the only thing that decides.** `getEffectivePermissions` computes the set
+that is enforced and cached, exactly as before. SA-4 adds no rule, no override, no second opinion —
+its answer is the same computation with nothing thrown away.
+
+**Why "with nothing thrown away" needed a change at all.** The enforced answer is
+`Record<key, DataScope>`, and reaching it is lossy three times over: it discards which role carried
+the key, which assignment set the scope, and it drops every grant that is not valid right now before
+the merge begins. Those three are precisely what an administrator is asking about — the question is
+almost always the negative one, *why can't they* — so the screen needs what the authorizer throws
+away. The merge therefore moved into **one shared function**, and the two callers take different
+projections of its result: the authorization path reduces it to the compact set it caches, and the
+screen reads all of it. A separate implementation would have been a second definition of what a
+permission set IS, and the two would have drifted the first time either changed. The merge rules
+themselves are unchanged — only ACTIVE grants contribute, a key held at two scopes resolves to the
+wider, and `isPrivileged` is decided per assignment — and a test asserts the reduction equals
+`getEffectivePermissions` for the same account rather than trusting that it does.
+
+**`evaluatedAt`, and a difference that is deliberate.** The screen computes fresh and is not cached;
+the enforcement path keeps its cache, whose TTL is capped at the next validity boundary (Review
+R14). So the two can differ for a bounded moment — a grant revoked seconds ago is gone from the
+projection while an open session may still hold it until its snapshot lapses. That is R14 working as
+designed, not a defect, and the honest response is to say which moment is being described rather
+than to add a second cache to hide it. `evaluatedAt` is in the response and on the screen for
+exactly that reason. **SA-4 introduces no cache of its own** — a second one would be a second thing
+to invalidate everywhere the first one is.
+
+**Guarded by both grants, scoped by one.** The endpoint requires `user.view` *and* `role.view`,
+chained: the subject is an account, and the answer is made of roles, and neither permission implies
+the other. The scope comes from `user.view` and is applied by the same read that supplies the
+account's `permissionVersion`, so an account the caller may not see answers 404 — never a 403, which
+would confirm that it exists. No new permission key was added; nothing here is a new category of
+security information.
+
+Unchanged by SA-4, for the avoidance of doubt: everything in the table above, plus
+`getEffectivePermissions`'s output and TTL, the permission cache and its key, and the registry.

@@ -76,6 +76,15 @@ const data = <T>(res: request.Response): T => (res.body as { data: T }).data;
 const errorOf = (res: request.Response): { code: string; message: string } =>
   (res.body as { error: { code: string; message: string } }).error;
 
+/**
+ * A paginated body is `{ success, data: [...], meta }` — `okPage` puts the ROWS in `data` and the
+ * page metadata beside it, not inside it. Reading `data.items` yields `undefined`, which then fails
+ * on `.length` several lines later with a message about the wrong thing entirely.
+ */
+const rows = <T>(res: request.Response): T[] => (res.body as { data: T[] }).data;
+const pageMeta = (res: request.Response): { totalItems: number; totalPages: number } =>
+  (res.body as { meta: { totalItems: number; totalPages: number } }).meta;
+
 const login = (identifier: string): request.Test =>
   request(app).post('/api/v1/auth/login').send({ identifier, password: PASSWORD });
 
@@ -467,18 +476,18 @@ describe('T5–T7 — a managed role refuses edits, for the reason that applies 
   });
 
   it('T7 — `managed` is derived from the stored role, and the list filters on it', async () => {
-    const system = data<{ items: RoleDto[] }>(await listRoles('?managed=system&pageSize=50'));
-    expect(system.items.length).toBeGreaterThan(0);
-    expect(system.items.every((role) => role.isSystem && role.managed === 'system')).toBe(true);
+    const system = rows<RoleDto>(await listRoles('?managed=system&pageSize=50'));
+    expect(system.length).toBeGreaterThan(0);
+    expect(system.every((role) => role.isSystem && role.managed === 'system')).toBe(true);
 
-    const derived = data<{ items: RoleDto[] }>(await listRoles('?managed=derived&pageSize=50'));
-    expect(derived.items.every((role) => role.managed === 'derived')).toBe(true);
-    expect(derived.items.every((role) => role.key?.startsWith('hr-only:') === true)).toBe(true);
+    const derived = rows<RoleDto>(await listRoles('?managed=derived&pageSize=50'));
+    expect(derived.every((role) => role.managed === 'derived')).toBe(true);
+    expect(derived.every((role) => role.key?.startsWith('hr-only:') === true)).toBe(true);
 
-    const ordinary = data<{ items: RoleDto[] }>(await listRoles('?managed=none&pageSize=50'));
-    expect(ordinary.items.length).toBeGreaterThan(0);
-    expect(ordinary.items.every((role) => role.managed === 'none' && !role.isSystem)).toBe(true);
-    expect(ordinary.items.some((role) => role.key?.startsWith('hr-only:') === true)).toBe(false);
+    const ordinary = rows<RoleDto>(await listRoles('?managed=none&pageSize=50'));
+    expect(ordinary.length).toBeGreaterThan(0);
+    expect(ordinary.every((role) => role.managed === 'none' && !role.isSystem)).toBe(true);
+    expect(ordinary.some((role) => role.key?.startsWith('hr-only:') === true)).toBe(false);
   });
 });
 
@@ -580,9 +589,9 @@ describe('T8–T13 — a grant can never exceed the granter', () => {
 
 describe('T14–T15 — an administrator cannot lock the system (or themselves) out', () => {
   it('T14 — you cannot revoke or re-window your OWN assignment', async () => {
-    const mine = data<{ items: RoleAssignmentDto[] }>(
+    const mine = rows<RoleAssignmentDto>(
       await listAssignments(`?userId=${granterId}`, granterToken),
-    ).items;
+    );
     expect(mine.length).toBeGreaterThan(0);
     const own = mine[0];
     if (own === undefined) throw new Error('the granter holds no assignment to test with');
@@ -609,9 +618,9 @@ describe('T14–T15 — an administrator cannot lock the system (or themselves) 
   });
 
   it('T15 — the last Super Admin assignment cannot be revoked; a second holder unlocks it', async () => {
-    const holders = data<{ items: RoleAssignmentDto[] }>(
+    const holders = rows<RoleAssignmentDto>(
       await listAssignments(`?roleId=${superAdminRoleId}&pageSize=50`),
-    ).items;
+    );
     expect(holders, 'the fixture starts with exactly one Super Admin').toHaveLength(1);
     const only = holders[0];
     if (only === undefined) throw new Error('no super-admin assignment');
@@ -628,18 +637,18 @@ describe('T14–T15 — an administrator cannot lock the system (or themselves) 
     // the refusal above a rule about the LAST holder rather than about the role.
     const second = await seedUser('t15-second-admin@ecms.local');
     await rbacService.ensureAssignment(second, superAdminRoleId, 'organization');
-    const secondAssignment = data<{ items: RoleAssignmentDto[] }>(
+    const secondAssignment = rows<RoleAssignmentDto>(
       await listAssignments(`?roleId=${superAdminRoleId}&pageSize=50`),
-    ).items.find((a) => a.userId === second);
+    ).find((a) => a.userId === second);
     if (secondAssignment === undefined) throw new Error('the second grant was not created');
 
     const allowed = await revoke(secondAssignment.id, granterToken);
     expect(allowed.status).toBe(204);
 
     // The fixture is back to one Super Admin — the rest of the file depends on it.
-    const after = data<{ items: RoleAssignmentDto[] }>(
+    const after = rows<RoleAssignmentDto>(
       await listAssignments(`?roleId=${superAdminRoleId}&pageSize=50`),
-    ).items;
+    );
     expect(after).toHaveLength(1);
     expect(after[0]?.userId).toBe(adminId);
   });
@@ -709,9 +718,9 @@ describe('T16–T17 — moving a grant’s window is an edit; everything else is
     expect(errorOf(stale).code).toBe(ErrorCodes.STALE_DOCUMENT);
 
     // The first administrator's window survived — which is the whole point of the check.
-    const reread = data<{ items: RoleAssignmentDto[] }>(
+    const reread = rows<RoleAssignmentDto>(
       await listAssignments(`?userId=${assignment.userId}`, granterToken),
-    ).items.find((a) => a.id === assignment.id);
+    ).find((a) => a.id === assignment.id);
     expect(reread?.validTo?.slice(0, 10)).toBe('2030-01-01');
   });
 });
@@ -726,21 +735,17 @@ describe('T18 — who may see a grant is decided by where its HOLDER sits', () =
     expect((await postAssignment({ userId: inScope, roleId, scope: 'own' })).status).toBe(201);
     expect((await postAssignment({ userId: outOfScope, roleId, scope: 'own' })).status).toBe(201);
 
-    const seenByBranch = data<{ items: RoleAssignmentDto[]; meta: { totalItems: number } }>(
-      await listAssignments(`?roleId=${roleId}&pageSize=50`, branchGranterToken),
-    );
-    const holders = seenByBranch.items.map((a) => a.userId);
+    const branchView = await listAssignments(`?roleId=${roleId}&pageSize=50`, branchGranterToken);
+    const holders = rows<RoleAssignmentDto>(branchView).map((a) => a.userId);
     expect(holders).toContain(inScope);
     expect(holders).not.toContain(outOfScope);
     // `$facet` returns the page and its total from one pass, so the count cannot disagree.
-    expect(seenByBranch.meta.totalItems).toBe(seenByBranch.items.length);
+    expect(pageMeta(branchView).totalItems).toBe(rows<RoleAssignmentDto>(branchView).length);
 
-    const seenByAdmin = data<{ items: RoleAssignmentDto[]; meta: { totalItems: number } }>(
-      await listAssignments(`?roleId=${roleId}&pageSize=50`),
-    );
-    expect(seenByAdmin.meta.totalItems).toBe(2);
+    const adminView = await listAssignments(`?roleId=${roleId}&pageSize=50`);
+    expect(pageMeta(adminView).totalItems).toBe(2);
     // The role is resolved server-side for the page — one batched read, never one per row.
-    expect(seenByAdmin.items.every((a) => a.role !== null)).toBe(true);
+    expect(rows<RoleAssignmentDto>(adminView).every((a) => a.role !== null)).toBe(true);
   });
 });
 
@@ -844,11 +849,11 @@ describe('T20 — authorization reads the holder’s CURRENT placement, never th
     const neighbourB = await seedUser('t20-neighbour-b@ecms.local', { branchId: BRANCH_B });
 
     const holderToken = await tokenOf('t20-holder@ecms.local');
-    const beforeMove = data<{ items: UserDto[] }>(
+    const beforeMove = rows<UserDto>(
       await request(app)
         .get('/api/v1/platform/users?pageSize=50')
         .set('Authorization', `Bearer ${holderToken}`),
-    ).items.map((u) => u.id);
+    ).map((u) => u.id);
     expect(beforeMove).toContain(neighbourA);
     expect(beforeMove).not.toContain(neighbourB);
 
@@ -862,18 +867,18 @@ describe('T20 — authorization reads the holder’s CURRENT placement, never th
 
     // The SAME token: a placement lives on the cached auth snapshot, which `update` drops, so the
     // move takes effect on the next request rather than when the snapshot's TTL happens to lapse.
-    const afterMove = data<{ items: UserDto[] }>(
+    const afterMove = rows<UserDto>(
       await request(app)
         .get('/api/v1/platform/users?pageSize=50')
         .set('Authorization', `Bearer ${holderToken}`),
-    ).items.map((u) => u.id);
+    ).map((u) => u.id);
     // What the holder may read followed the ACCOUNT, not the snapshot on the grant.
     expect(afterMove).toContain(neighbourB);
     expect(afterMove).not.toContain(neighbourA);
 
-    const stored = data<{ items: RoleAssignmentDto[] }>(
+    const stored = rows<RoleAssignmentDto>(
       await listAssignments(`?userId=${holderId}`),
-    ).items.find((a) => a.id === assignment.id);
+    ).find((a) => a.id === assignment.id);
     expect(stored?.branchId, 'the grant still records where it was made').toBe(BRANCH_A);
   });
 });
@@ -907,13 +912,13 @@ describe('regressions', () => {
   });
 
   it('the roles list searches names AND permission keys, and finds the unassigned ones', async () => {
-    const id = await seedRole('Findable by its key', ['fleet.vehicle.view']);
-    const byKey = data<{ items: RoleDto[] }>(
-      await listRoles('?search=fleet.vehicle.view&pageSize=50'),
-    ).items;
+    const id = await seedRole('Findable by its key', ['fleetVehicle.view']);
+    const byKey = rows<RoleDto>(
+      await listRoles('?search=fleetVehicle.view&pageSize=50'),
+    );
     expect(byKey.map((r) => r.id)).toContain(id);
 
-    const unassigned = data<{ items: RoleDto[] }>(await listRoles('?unassigned=true&pageSize=50')).items;
+    const unassigned = rows<RoleDto>(await listRoles('?unassigned=true&pageSize=50'));
     expect(unassigned.map((r) => r.id), 'a role nobody holds is unassigned').toContain(id);
     expect(
       unassigned.map((r) => r.id),

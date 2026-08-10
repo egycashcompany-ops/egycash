@@ -3325,6 +3325,8 @@ const en: Record<string, string> = {
     'This role is maintained by the HR-only confinement and is re-asserted on every start. Editing it here would be undone.',
   'systemAdmin.roles.moduleCount': '{{count}} permissions',
   'systemAdmin.roles.unknownKey': 'Unknown',
+  'systemAdmin.roles.unknownKeyHint':
+    'No module declares this permission any more. You can remove it; it cannot be added back.',
   'systemAdmin.roles.breakGlass': 'Break-glass',
   'systemAdmin.roles.notHeld': 'You do not hold this',
   'systemAdmin.roles.notHeldHint':
@@ -6767,6 +6769,8 @@ const ar: Record<string, string> = {
     'هذا الدور تديره آلية حصر الموارد البشرية ويُعاد ضبطه عند كل إقلاع. أي تعديل هنا سيُلغى.',
   'systemAdmin.roles.moduleCount': '{{count}} صلاحية',
   'systemAdmin.roles.unknownKey': 'غير معروفة',
+  'systemAdmin.roles.unknownKeyHint':
+    'لم تعد أي وحدة تعرّف هذه الصلاحية. يمكنك إزالتها، ولا يمكن إعادة إضافتها.',
   'systemAdmin.roles.breakGlass': 'صلاحية استثنائية',
   'systemAdmin.roles.notHeld': 'لا تملكها',
   'systemAdmin.roles.notHeldHint':

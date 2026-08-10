@@ -8,11 +8,13 @@
 import { describe, expect, it } from 'vitest';
 import { type PermissionDto } from '@ecms/contracts';
 import {
+  acceptsToggle,
   applyBulk,
   bulkIntent,
   grantableKeys,
   groupState,
   matchesSearch,
+  rowEditability,
   selectedCount,
   type MatrixRow,
 } from './permission-selection';
@@ -161,5 +163,81 @@ describe('matchesSearch — a display filter and nothing more', () => {
 describe('selectedCount', () => {
   it('counts only rows in the group', () => {
     expect(selectedCount(HR, new Set(['employee.view', 'fleet.vehicle.view']))).toBe(1);
+  });
+});
+
+// ── A key the registry has forgotten ────────────────────────────────────────
+//
+// The role carries it because a retired module once declared it. Both obvious treatments are wrong:
+// locking it leaves an administrator unable to clean it up, and treating it as ordinary would let it
+// be handed back out — an authority nothing in the system defines any more. It comes off, and never
+// back on. The previous implementation chose the first of those by disabling the row outright.
+
+describe('rowEditability — an unknown key comes OFF, never back ON', () => {
+  const editableFor = (row: MatrixRow, isHeld: boolean): ReturnType<typeof rowEditability> =>
+    rowEditability(row, { held: isHeld, readOnly: false });
+
+  it('leaves an unknown key removable — its checkbox is not locked', () => {
+    expect(editableFor(orphan('retired.view'), false)).toBe('removeOnly');
+    expect(acceptsToggle('removeOnly', false)).toBe(true);
+  });
+
+  it('refuses to add an unknown key back', () => {
+    expect(acceptsToggle('removeOnly', true)).toBe(false);
+  });
+
+  // The actor never "holds" a key nothing declares, so holding must not be what decides this.
+  it('does not depend on the actor holding it, which they cannot', () => {
+    expect(editableFor(orphan('retired.view'), true)).toBe('removeOnly');
+  });
+
+  it('keeps a permission the actor does not hold locked in BOTH directions', () => {
+    expect(editableFor(row('employee.delete'), false)).toBe('locked');
+    expect(acceptsToggle('locked', true)).toBe(false);
+    expect(acceptsToggle('locked', false)).toBe(false);
+  });
+
+  it('leaves an ordinary held permission fully editable', () => {
+    expect(editableFor(row('employee.view'), true)).toBe('editable');
+    expect(acceptsToggle('editable', true)).toBe(true);
+    expect(acceptsToggle('editable', false)).toBe(true);
+  });
+
+  it('locks everything when the role is read-only, unknown keys included', () => {
+    for (const r of [row('employee.view'), orphan('retired.view')]) {
+      expect(rowEditability(r, { held: true, readOnly: true })).toBe('locked');
+    }
+  });
+});
+
+describe('bulk selection leaves unknown keys exactly where they were', () => {
+  const ROWS = [...HR, orphan('retired.view')];
+  const SELECTED = ['employee.view', 'retired.view'];
+
+  it('does not ADD one when selecting everything', () => {
+    const next = applyBulk([], ROWS, true, all);
+    expect(next).not.toContain('retired.view');
+    expect(next).toEqual(['employee.view', 'employee.edit', 'employee.delete']);
+  });
+
+  it('does not REMOVE one when clearing everything', () => {
+    expect(applyBulk(SELECTED, ROWS, false, all)).toEqual(['retired.view']);
+  });
+
+  // The round trip is what an administrator actually does: clear the module, change their mind,
+  // select it again. The unknown key must be in the same state at the end as at the start.
+  it('survives a clear-then-select round trip untouched', () => {
+    const cleared = applyBulk(SELECTED, ROWS, false, held);
+    const restored = applyBulk(cleared, ROWS, true, held);
+    expect(restored).toContain('retired.view');
+    expect(restored.filter((key) => key === 'retired.view')).toHaveLength(1);
+  });
+
+  // An unknown key is always selected — it is only rendered because the role carries it — so it can
+  // never be the reason a bulk press reads as "there is still something to add".
+  it('is never what makes a module look incomplete', () => {
+    expect(bulkIntent(ROWS, new Set(['employee.view', 'employee.edit', 'employee.delete']), all)).toBe(
+      false,
+    );
   });
 });

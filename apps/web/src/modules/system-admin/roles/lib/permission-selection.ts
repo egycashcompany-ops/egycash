@@ -23,6 +23,36 @@ export interface MatrixRow {
 /** A group's selection, as a checkbox can express it. */
 export type TriState = 'none' | 'some' | 'all';
 
+/** What one row's checkbox is allowed to do. */
+export type RowEditability = 'editable' | 'removeOnly' | 'locked';
+
+/**
+ * The three answers a single permission row can give, and why there are three rather than two.
+ *
+ * A key the registry no longer knows is the case that needs its own answer. It is carried by the
+ * role because some retired module once declared it, and the two obvious treatments are both wrong:
+ * locking it makes the administrator unable to clean it up — the row is visible, marked Unknown, and
+ * completely inert — while treating it as ordinary would let it be handed back out after removal,
+ * granting an authority nothing in the system defines any more. So it comes OFF and never back ON.
+ *
+ * `held` is the actor's own grant. A permission they do not hold is locked in both directions: the
+ * server refuses to hand out an authority the caller lacks, and a role may legitimately carry one
+ * its editor cannot grant — stripping that from this screen would be a way around the lock rather
+ * than a shortcut through it.
+ */
+export const rowEditability = (
+  row: MatrixRow,
+  { held, readOnly }: { held: boolean; readOnly: boolean },
+): RowEditability => {
+  if (readOnly) return 'locked';
+  if (row.definition === undefined) return 'removeOnly';
+  return held ? 'editable' : 'locked';
+};
+
+/** Does this row accept being toggled to `next`? The one call the checkbox makes before reporting. */
+export const acceptsToggle = (editability: RowEditability, next: boolean): boolean =>
+  editability === 'editable' || (editability === 'removeOnly' && !next);
+
 /**
  * The rows a bulk control may act on: known to the registry, and held by the actor.
  *

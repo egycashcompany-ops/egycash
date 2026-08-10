@@ -36,10 +36,12 @@ import { Badge, Button, Card, CardBody, Checkbox, SearchInput } from '../../../.
 import { ChevronIcon } from '../../../../shared/ui/icons';
 import { cn } from '../../../../shared/lib/cn';
 import {
+  acceptsToggle,
   applyBulk,
   bulkIntent,
   groupState,
   matchesSearch,
+  rowEditability,
   selectedCount,
   type MatrixRow,
 } from '../lib/permission-selection';
@@ -245,7 +247,10 @@ export const RolePermissionMatrix = ({
                     const held = can(row.key);
                     const unknown = row.definition === undefined;
                     // Grantable only when the actor holds it — the same rule the server applies.
-                    const disabled = readOnly || unknown || !held;
+                    // An unknown key is the exception in one direction only: removable, never
+                    // re-addable. `rowEditability` is where both rules live.
+                    const editability = rowEditability(row, { held, readOnly });
+                    const disabled = editability === 'locked';
                     return (
                       <li
                         key={row.key}
@@ -255,7 +260,10 @@ export const RolePermissionMatrix = ({
                           label={row.definition?.name[locale] ?? row.key}
                           checked={chosen.has(row.key)}
                           disabled={disabled}
-                          onChange={(e) => onToggle?.(row.key, e.target.checked)}
+                          onChange={(e) => {
+                            if (!acceptsToggle(editability, e.target.checked)) return;
+                            onToggle?.(row.key, e.target.checked);
+                          }}
                           className="items-start"
                         />
                         <p className="ms-6 truncate font-mono text-[11px] text-slate-400" dir="ltr">
@@ -263,9 +271,11 @@ export const RolePermissionMatrix = ({
                         </p>
                         <div className="ms-6 mt-0.5 flex flex-wrap gap-1">
                           {unknown && (
-                            <Badge size="sm" tone="warning">
-                              {t('systemAdmin.roles.unknownKey')}
-                            </Badge>
+                            <span title={t('systemAdmin.roles.unknownKeyHint')}>
+                              <Badge size="sm" tone="warning">
+                                {t('systemAdmin.roles.unknownKey')}
+                              </Badge>
+                            </span>
                           )}
                           {row.definition?.breakGlass === true && (
                             <Badge size="sm" tone="danger">

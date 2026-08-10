@@ -64,4 +64,10 @@ business record. ADR-026 records the guards that had to exist before role admini
 handed to a human: an administrator can neither put a permission into a role nor grant one at a
 breadth they do not themselves hold, server-side and with no identity-based exemption. It also
 writes down the department/section widening that ADR-017 §1 chose knowingly, which the roles screens
-now warn about but do not change.
+now warn about but do not change. ADR-026 carries **three appendices** rather than spawning further
+ADRs, because each refines a decision it already owns: SA-4 records that effective permissions are a
+projection of the enforced answer and never a second authority; SA-5/SA-6 record what "the last
+Super Admin" counts — accounts that can sign in, not assignment rows, a correction to the rule as
+first shipped — together with the permission matrix's third row state for a key the registry has
+forgotten; and SA-7 records the page layer, which groups permissions and **grants nothing**, and why
+duplicating a role is a create through the ordinary endpoint rather than an endpoint of its own.

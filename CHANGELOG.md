@@ -11,6 +11,81 @@ its entry here in the same PR.
 
 ### Added
 
+- **System Administration — the platform can now administer itself, on screen.** Authentication, the
+  user lifecycle, RBAC, the audit trail and the organization model all shipped with Sprint 2.1 and
+  had been running ever since with **no user interface at all**: creating an account, granting a
+  role or resetting a password was a database operation or a seed. Six phases built that surface
+  under one constraint — **add no backend**. Every endpoint it calls already existed, already
+  authorized and already audited. **No new endpoint, permission, model, migration, contract change
+  or dependency, across all six.** Where a phase found that a *rule* did not exist, the rule went
+  into the service, never into the screen. A seventh phase followed from use rather than from the
+  plan and is the single exception to the contract rule — see P7 below.
+
+  - **Users (P1, [PR #158](https://github.com/egycashcompany-ops/egycash/pull/158)).** List with
+    URL-synced search, lifecycle filter, sort and pagination; detail with identity, account &
+    security, and activity tabs. **Two badges, not one**, because an account answers two questions
+    that get conflated: `status` is the lifecycle an administrator drives, `accountStatus` is
+    derived server-side and says whether this person can sign in right now and why not. A suspended
+    account and one whose setup link expired both cannot sign in and need completely different
+    remedies. Sortable columns are exactly the three the API declares — a header that looked
+    interactive and changed nothing would be worse than a plain one.
+  - **Creating, editing and linking (P2,
+    [PR #159](https://github.com/egycashcompany-ops/egycash/pull/159)).** Account creation over the
+    one-time setup link, editing, unlock, organization placement pickers, and the employee link —
+    written by **HR**, because HR owns that relationship and writing `user.employeeId` from here
+    would leave the two sides disagreeing.
+  - **Roles and permissions (P3,
+    [PR #160](https://github.com/egycashcompany-ops/egycash/pull/160)).** Role list and detail, the
+    permission registry, scoped assignments with a validity window, and the account's roles tab —
+    together with the guards that had to exist before any of it could be handed to a human, recorded
+    as **[ADR-026](docs/03-decisions/ADR-026-role-administration-guards.md)**.
+  - **Effective permissions (P4,
+    [PR #161](https://github.com/egycashcompany-ops/egycash/pull/161)).** A read-only projection
+    answering "what may this account actually do, and why" — every contributing grant shown,
+    including the pending and the expired, which is what the question is usually about. The merge
+    moved into **one shared function** so the enforced answer and the explained one cannot drift; a
+    test asserts the reduction equals `getEffectivePermissions` rather than trusting that it does.
+  - **Bulk selection in the permission matrix
+    ([PR #162](https://github.com/egycashcompany-ops/egycash/pull/162)).** Two hundred checkboxes is
+    not a form, so there is a select-all, one checkbox per module, search and collapse. None of them
+    may do anything an administrator could not do by clicking each box in turn — a locked permission
+    is not selected by them and, the half that is easy to miss, **not cleared by them either**.
+  - **Retirement (P5, [PR #163](https://github.com/egycashcompany-ops/egycash/pull/163)).** Archive
+    an account, delete an account, delete a role nobody holds. Archiving is **terminal** and does
+    **not** revoke role assignments; deletion is the soft delete it always was, so the audit trail —
+    which lives in its own collection — survives intact.
+  - **UX & hardening (P6, [PR #164](https://github.com/egycashcompany-ops/egycash/pull/164)).** A
+    branch filter the API had always accepted, older history reachable a page at a time, the roles
+    page number in the URL, a link from a role's holder to that account, and a confirmation before
+    revoking a grant that names **who, which role, and at what reach**.
+  - **The page layer, and duplication (P7,
+    [PR #166](https://github.com/egycashcompany-ops/egycash/pull/166) ·
+    [PR #167](https://github.com/egycashcompany-ops/egycash/pull/167) ·
+    [PR #168](https://github.com/egycashcompany-ops/egycash/pull/168) ·
+    [PR #169](https://github.com/egycashcompany-ops/egycash/pull/169)).** A 202-key matrix grouped
+    only by module is still a wall, so permissions now sit under a **page**: `Modules → Pages →
+    Permissions`. Declared in code — a `PageDef` in the contracts and a `pageId` given **once per
+    resource** in the module manifests, not 202 times — with **46 pages, 172 of 202 permissions
+    assigned and 30 deliberately unassigned** because they are cross-cutting or backend-only, which
+    is a declaration rather than a gap. A malformed registry **fails at startup and in CI**, not at
+    render. A module's rows are the concatenation of its pages' rows, so the counters and the
+    tri-state select-all cannot drift from what is on screen. The layer is **organizational only** —
+    no authorization decision reads a `pageId`. Alongside it, a role can be **duplicated**: the copy
+    carries permissions and description, no assignments, and is created through the ordinary
+    `POST /platform/roles`, so it passes the same key guards a hand-built role does and comes out
+    unmanaged. Refusals are all-or-nothing — copying only the grantable subset would produce a role
+    sharing a name with the original that quietly grants less. This is the one part of System
+    Administration that changes the contract, and it adds **no endpoint, permission key, model,
+    migration or dependency**.
+
+  **The guards, all server-side.** Nobody hands out an authority they do not hold — every key put
+  into a role and every key carried by a role being assigned must be a key the actor holds, at a
+  scope no wider than their own, with **no identity-based exemption**; the only exemption is "no
+  actor at all", which is the system. A grant is scoped through its **holder**, so an administrator
+  who cannot see an account cannot grant to it and gets **404** rather than a 403 that would confirm
+  the account exists. You cannot retire yourself, and the **last Super Admin cannot be removed on
+  any of the three doors** — archive, delete, or revoking the assignment.
+
 - **Accounts can be confined to a single module, and navigation now tells the truth about what you
   can open.** Four named accounts are restricted to HR: every permission outside `moduleId: 'hr'`
   is removed, their sidebar shows HR alone, and TOTP is explicitly off for them. Each half of that
@@ -163,6 +238,55 @@ its entry here in the same PR.
   and staging only — it refuses to run when `NODE_ENV=production`.
 
 ### Fixed
+
+- **The last Super Admin could be stripped of the role by archiving a spare one first.** The rule
+  shipped in P3 — "the last Super Admin assignment cannot be revoked" — counted assignment **rows**.
+  Archiving keeps a user's grants by design, so an *archived* Super Admin was accepted as cover and
+  the live one's assignment could then be revoked, leaving a system with **zero administrators able
+  to sign in** and no API path back. P5 is what made the sequence reachable without touching the
+  database, because it put the Archive button on the screen; P5's own test suite is what exposed it.
+  The guard now asks the question it always meant to: after this revoke, would any account that can
+  still **sign in** hold the role? It excludes the row being revoked, resolves the survivors to
+  accounts, and keeps only the active ones — the same predicate `auth.service` applies at login, at
+  TOTP challenge completion and at refresh. The archive and delete guards added in P5 count the same
+  way. ([PR #163](https://github.com/egycashcompany-ops/egycash/pull/163))
+
+- **A permission key the registry no longer knows could not be removed from a role.** Roles keep
+  keys that a retired module used to declare, and the permission matrix has always *said* such a key
+  is "shown as Unknown, still ticked, and still removable" — but the code folded `unknown` into
+  `disabled` alongside "read-only" and "you do not hold this", so the row rendered inert and the one
+  thing left to do with it was the one thing that could not be done. The rule now has three states
+  rather than two: an unknown key comes **off**, and never back **on** — re-granting it would hand
+  out an authority nothing in the system defines any more, and no permission check can evaluate it.
+  Bulk selection never touched such a key in either direction and now says so in tests rather than
+  by implication. ([PR #164](https://github.com/egycashcompany-ops/egycash/pull/164))
+
+- **A failed read of an account's history was displayed as an account with no history.** The
+  activity tab fell through to its empty state on error, so "we could not read this account's
+  history" appeared as "nothing has been recorded for this account" — opposite claims, and an
+  administrator who believes the second one stops investigating. It now shows an error panel with a
+  retry, and a page that fails *after* history is already on screen keeps that history and reports
+  the failure beneath it. ([PR #164](https://github.com/egycashcompany-ops/egycash/pull/164))
+
+- **An account moved between branches kept reading its old branch until the cache lapsed.**
+  `AuthContext.branchId` / `departmentId` / `sectionId` come from the cached auth snapshot and
+  `scopeFilter` builds every scoped query out of them, but nothing dropped that snapshot when an
+  account's placement changed. The update now deletes it. No TTL, key or caching rule changed.
+  ([PR #160](https://github.com/egycashcompany-ops/egycash/pull/160))
+
+- **Duplicate Role shipped complete and could not be used.** Two defects of the same kind — the code
+  was there, the control was not reachable — and both were reported from the running screen rather
+  than caught by a green CI run. The button was placed inside the `managed === 'none'` branch that
+  hides **Edit** and **Delete** on a system or `hr-only:*` role, so it disappeared on exactly the
+  roles an administrator most wants to copy; and the blocker treated an **unread** permission
+  catalog as "the registry declares nothing", which disabled the button on first paint for everyone
+  and permanently for an administrator holding `role.create` without `permission.view` — showing a
+  message that blamed the role for carrying permissions nobody defines. Edit and Delete now carry
+  their own management checks and Duplicate stands outside them; the unknown-key check runs only
+  when there is a registry to check against, leaving `assertKnownPermissionKeys` on the server as
+  what actually decides. **Duplicating a managed role is now offered on purpose:** the copy is
+  unmanaged by construction and the key guards are untouched, so nobody can copy an authority they
+  could not have granted by hand. ([PR #169](https://github.com/egycashcompany-ops/egycash/pull/169))
 
 - **Stored images never appeared on an S3-backed deployment — the app handed the browser a URL its
   own policy forbids.** `issueDownloadTicket` preferred the storage provider's presigned URL over

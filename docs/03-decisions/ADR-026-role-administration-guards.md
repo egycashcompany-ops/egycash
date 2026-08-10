@@ -271,3 +271,151 @@ security information.
 
 Unchanged by SA-4, for the avoidance of doubt: everything in the table above, plus
 `getEffectivePermissions`'s output and TTL, the permission cache and its key, and the registry.
+
+---
+
+## Appendix — SA-5 / SA-6: what "the last Super Admin" counts, and what the matrix may promise
+
+**Added 2026-08-10.** Two later phases refined rules this ADR already owns. Neither is an
+independent architectural decision, so neither gets an ADR of its own; both are recorded here
+because §1 and §5 are incomplete without them.
+
+### A. Retiring an account is governed by the same two refusals as retiring a grant
+
+§5 states that revoke-all leaves "an administrator's own grant and the last Super Admin" refused.
+SA-5 opened two more doors onto the same outcome — **archiving** an account and **deleting** one —
+and both now carry the identical pair of refusals, in `user.service`, for the identical reason.
+
+Archiving matters more than deleting here. `archived` is **terminal** (`archived: []` in the
+transition map), so an archived last Super Admin is a system nobody can administer and nobody can
+repair through any API this platform offers. Deleting is at least soft.
+
+Two semantics are settled and deliberately unchanged: **archiving does not revoke role assignments**
+— a retired account keeps its grants, which is what makes the HR-only confinement report and the
+audit trail stay truthful about what an account held — and **deletion remains a soft delete**, the
+row kept with `isDeleted` set, invisible to every read, with the audit trail surviving in its own
+collection because that is what makes a deletion reviewable afterwards.
+
+### B. "The last Super Admin" means the last one who can SIGN IN
+
+This is the correction, and it is the reason this appendix exists.
+
+The rule shipped in P3 counted **assignment rows**. Because archiving keeps the grants (A above), an
+archived Super Admin was accepted as cover: archive a spare, then revoke the live one's assignment,
+and the system is left with **zero administrators able to sign in**. The two facts were each
+individually correct and jointly a hole, and SA-5 is what made the sequence reachable from a screen.
+
+The guard now asks the question it always meant to ask — *after this change, would anybody be able
+to sign in and administer the system?* — and answers it by resolving grants to **accounts**, keeping
+only those that are `active` and not deleted. That predicate is not a new definition: it is exactly
+what `auth.service` requires at login, at TOTP challenge completion, and at session refresh, so
+"counts as cover" and "can actually open a session" are the same set by construction.
+
+All three doors — archive, delete, revoke-assignment — count this way. Resolving to accounts also
+makes two grants held by one account (one per scope) cover for each other, which row-counting got
+right only by accident.
+
+### C. The matrix's third state: an unknown key comes off and never back on
+
+§1 says the UI is not a guard — it explains rules enforced in the service. SA-6 found the one row
+where that explanation had no server rule behind it to mirror, and where **both** obvious renderings
+are wrong.
+
+A role can carry a key the registry no longer declares, because some retired module once declared
+it. Locking that row leaves an administrator permanently unable to clean it up. Treating it as an
+ordinary row would let it be re-granted after removal — handing out an authority nothing in the
+system defines any more, and one no permission check can evaluate, since nobody can "hold" a key the
+registry does not know.
+
+So the row has a third state: **removable, never addable**. This is not a new authorization rule —
+an unknown key grants nothing either way — it is the screen refusing to offer an action whose
+meaning is undefined, which is the same principle as disabling a grant the actor does not hold. Bulk
+selection never reached such a key in either direction and continues not to.
+
+### What SA-5 and SA-6 do not change
+
+Everything in the table above still holds, plus: no permission key, endpoint, model, migration or
+contract was added by either phase; `getEffectivePermissions` and the permission cache are untouched;
+the HR-only reconciliation remains the sole owner of `hr-only:*`; and **G-2 remains open** — the
+fail-closed change described under "Known limitation" was excluded from both phases and is still the
+subject of its own ADR when someone owns it.
+
+---
+
+## Appendix — SA-7: the page layer, and what duplicating a role may reuse
+
+**Added 2026-08-10.** P7 introduced a level between module and permission, and a way to start a new
+role from an existing one. Both refine §1 and §3 rather than replacing anything, so both are recorded
+here.
+
+### A. A page groups permissions; it never grants them
+
+The role matrix presents **202 permission keys**. Grouped only by module, the largest module is a
+list nobody reads to the end, and the guard rails built in P3–P6 are worth less if the screen they
+sit on cannot be understood. P7 put a **page** between the two: `Modules → Pages → Permissions`.
+
+**The layer is organizational only. No authorization path reads `pageId`.** This was decided rather
+than assumed: granting "this page" would create a second authority beside the permission key, and the
+first question it raises — what happens when the page says yes and the key says no — has no answer
+worth having. §1 is unchanged; an actor still holds keys, and the guards still compare keys.
+
+**Pages are declared in code, not stored as data.** A page id is given **once per resource** in the
+module manifests (a sixth argument to `declarePermissions`), not per key, so the registry stays a
+statement of intent that reviewers can read in a diff. `Application.permissionKey` was considered as
+a source and rejected during the design audit: it covered about a fifth of the keys, it is
+runtime-mutable, and — decisively — the relationship it describes is not a function, which would have
+made the matrix's own counters and its tri-state select-all quietly wrong.
+
+**An invalid registry is a startup failure.** `validatePageRegistry` refuses a duplicate id, a
+malformed id, a page whose module does not own it, a permission naming a page that does not exist,
+and a page with no permissions at all; `bootstrap` throws on any of them and a CI step
+(`scripts/check-page-registry.mjs`) reports the same thing in review. **30 of 202 permissions carry
+`pageId: null` deliberately** — cross-cutting or backend-only — and the check counts them out loud
+rather than tolerating them silently, so the number cannot drift into a gap nobody notices.
+
+### B. A duplicate is a create, and that is the whole guarantee
+
+Duplication is the one operation whose stated purpose is to reproduce a set of authorities in one
+click, which makes it the one place where a dedicated endpoint would be most tempting and least
+safe: it would have to re-implement `assertKnownPermissionKeys` and `assertKeysHeld`, and a
+re-implementation that drifts here hands out permissions.
+
+So **there is no duplicate endpoint.** A duplicate is `POST /platform/roles` with a pre-filled form
+and passes exactly the guards of §1. Three consequences are deliberate:
+
+- **Assignments are not copied — there is no field for them.** A role and the grants of that role to
+  people are different records; copying "who holds it" would hand accounts an authority nobody
+  decided to give them. The copy starts held by nobody, which is also what keeps it deletable.
+- **The refusal is whole, never partial.** Copying only the subset the actor may grant would succeed,
+  look correct, and produce a role that shares a name with the original and grants less — a
+  difference discoverable only by diffing two permission sets. A role carrying anything the actor
+  cannot grant is not duplicable *by them*, and the screen says so before they start.
+- **A key the registry has forgotten blocks the copy entirely**, because it blocks every actor: the
+  create is refused server-side, and dropping it silently would turn "duplicate" into "duplicate,
+  minus the parts I could not carry". The original keeps such a key — removable, never addable, per
+  appendix C above — and the copy waits until the original is cleaned up.
+
+### C. Duplicating a **managed** role is allowed, and is not a loosened guard
+
+`hr-only:*` derivatives and system roles are inert to editing (§4), and a well-shaped system role is
+the obvious starting point for a narrower one. Copying one is safe for a structural reason, not a
+permissive one: the server writes `key: null` and `isSystem: false` on **every** create, so the copy
+is `managed: 'none'` — it is not the thing the platform seeds, and the reconciliation does not own
+it — and §1's key check has already refused anything the actor could not grant by hand. An
+administrator who cannot grant everything `super-admin` carries cannot copy `super-admin`.
+
+The screen's own refusals are advisory and deliberately weaker in one direction: when the permission
+catalog cannot be read — the actor holds `role.create` without `permission.view`, or the query is
+still in flight — the unknown-key check does not run, and the actor is refused by the server instead
+of locally. A local refusal that cannot be justified is worse than a server refusal that can.
+
+### What SA-7 does not change
+
+Everything in the table above, plus both appendices. Specifically: no permission key, endpoint,
+model, migration or dependency was added; `getEffectivePermissions`, the permission cache and its TTL
+are untouched; the HR-only reconciliation remains the sole owner of `hr-only:*`; `managed`,
+`isSystem`, `scopeFilter` and the data scopes are byte-identical; and **G-2 remains open**.
+
+The contract *did* change — `PageDef`, `pageId`, the page list on the permission-catalog response,
+and the sixth `declarePermissions` parameter — which makes P7 the only System Administration phase to
+do so. It is recorded here because it was an approved decision, not a drift.

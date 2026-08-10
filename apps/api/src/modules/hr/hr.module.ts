@@ -5,7 +5,7 @@
 // Screening), Stage 3 (Interviews), Stage 4 (Job Offer), Stage 5 (Employee Creation),
 // Stage 6 (Hiring Documents), and Stage 7 (Electronic Employee File) — the final stage of the
 // approved seven-stage workflow and the handoff artifact to the Employee module (BD-008).
-import { declarePermissions, type PermissionDef } from '@ecms/contracts';
+import { declarePermissions, type PageDef, type PermissionDef } from '@ecms/contracts';
 import { type ModuleManifest } from '../../platform/kernel/module-registry';
 import { buildApplicantSourcesRouter, buildApplicantsRouter } from './recruitment/applicants';
 import {
@@ -24,10 +24,20 @@ import { buildReturnToStageRouter } from './recruitment/return-to-stage';
 import { buildRecruitmentTimelineRouter } from './recruitment/timeline/recruitment-timeline.routes';
 import { buildJobOffersRouter, jobOfferService } from './recruitment/job-offers';
 import { buildEmployeesRouter, employeeService } from './employee-management/employees';
-import { buildEmployeeActionsRouter, employeeActionService } from './employee-management/employee-actions';
-import { buildHiringDocumentTypesRouter, buildHiringDocumentsRouter } from './recruitment/hiring-documents';
+import {
+  buildEmployeeActionsRouter,
+  employeeActionService,
+} from './employee-management/employee-actions';
+import {
+  buildHiringDocumentTypesRouter,
+  buildHiringDocumentsRouter,
+} from './recruitment/hiring-documents';
 import { buildEmployeeFilesRouter } from './employee-management/employee-file';
-import { buildHolidaysRouter, buildWorkCalendarRouter, registerHrWorkCalendarSettings } from './work-calendar';
+import {
+  buildHolidaysRouter,
+  buildWorkCalendarRouter,
+  registerHrWorkCalendarSettings,
+} from './work-calendar';
 import { registerHrIdentitySeams } from './employee-management/employees/identity-seams';
 import { registerHrDirectorySeams } from './directory-seams';
 import {
@@ -75,9 +85,15 @@ const applicantPermissions = declarePermissions(
   { en: 'applicants', ar: 'المتقدمين' },
   ['view', 'create', 'edit', 'delete', 'export'],
   [
-    { action: 'verifyIdentity', name: { en: 'Verify applicant identity', ar: 'توثيق هوية المتقدم' } },
+    {
+      action: 'verifyIdentity',
+      name: { en: 'Verify applicant identity', ar: 'توثيق هوية المتقدم' },
+    },
     // Offer eligibility is never automatic: HR explicitly moves an applicant to the Job Offer stage.
-    { action: 'moveToOffer', name: { en: 'Move applicant to job offer', ar: 'نقل المتقدم لمرحلة عرض العمل' } },
+    {
+      action: 'moveToOffer',
+      name: { en: 'Move applicant to job offer', ar: 'نقل المتقدم لمرحلة عرض العمل' },
+    },
     // RW13 — send a candidate back to an earlier stage. Nothing is deleted; forward records are
     // superseded and the target re-opens on a new attempt.
     // RW2 — Position/Branch stay editable until the offer is accepted, but only through this
@@ -91,6 +107,7 @@ const applicantPermissions = declarePermissions(
       name: { en: 'Return applicant to an earlier stage', ar: 'إعادة المتقدم لمرحلة سابقة' },
     },
   ],
+  'hr.applicants',
 );
 
 const recruitmentFormPermissions = declarePermissions(
@@ -104,6 +121,7 @@ const recruitmentFormPermissions = declarePermissions(
       name: { en: 'Manage the recruitment form and its links', ar: 'إدارة نموذج التقديم وروابطه' },
     },
   ],
+  'hr.application-form',
 );
 
 const applicantSourcePermissions = declarePermissions(
@@ -112,6 +130,7 @@ const applicantSourcePermissions = declarePermissions(
   { en: 'applicant sources', ar: 'مصادر التوظيف' },
   [],
   [{ action: 'manage', name: { en: 'Manage applicant sources', ar: 'إدارة مصادر التوظيف' } }],
+  'hr.applicant-sources',
 );
 
 // Stage 2 — Initial Screening. `decide` is the terminal accept/reject action (OQ-32),
@@ -121,7 +140,13 @@ const screeningPermissions = declarePermissions(
   'screening',
   { en: 'screenings', ar: 'الفرز المبدئي' },
   ['view', 'create', 'edit'],
-  [{ action: 'decide', name: { en: 'Decide applicant screening', ar: 'اتخاذ قرار الفرز المبدئي' } }],
+  [
+    {
+      action: 'decide',
+      name: { en: 'Decide applicant screening', ar: 'اتخاذ قرار الفرز المبدئي' },
+    },
+  ],
+  'hr.screening',
 );
 
 // Stage 3 — Interviews. `create` schedules a round; `edit` reschedules; `cancel`, `evaluate`
@@ -137,6 +162,7 @@ const interviewPermissions = declarePermissions(
     { action: 'evaluate', name: { en: 'Evaluate interview', ar: 'تقييم المقابلة' } },
     { action: 'decide', name: { en: 'Decide interview outcome', ar: 'اتخاذ قرار المقابلة' } },
   ],
+  'hr.interviews',
 );
 
 const interviewStagePermissions = declarePermissions(
@@ -145,6 +171,7 @@ const interviewStagePermissions = declarePermissions(
   { en: 'interview stages', ar: 'مراحل المقابلات' },
   [],
   [{ action: 'manage', name: { en: 'Manage interview stages', ar: 'إدارة مراحل المقابلات' } }],
+  'hr.interview-stages',
 );
 
 // Evaluation phases — the post-interview, file-based approval checks (Security Check, Medical
@@ -156,6 +183,7 @@ const evaluationPermissions = declarePermissions(
   { en: 'evaluations', ar: 'التقييمات' },
   ['view'],
   [{ action: 'manage', name: { en: 'Manage evaluations', ar: 'إدارة التقييمات' } }],
+  'hr.evaluations',
 );
 
 // RW7 — one concrete resource per business check, so a security officer, a driving examiner and
@@ -171,7 +199,10 @@ const securityCheckPermissions = declarePermissions(
   ['view'],
   [
     { action: 'manage', name: { en: 'Manage security checks', ar: 'إدارة التحريات الأمنية' } },
-    { action: 'manageBatch', name: { en: 'Manage security check batches', ar: 'إدارة دفعات التحريات الأمنية' } },
+    {
+      action: 'manageBatch',
+      name: { en: 'Manage security check batches', ar: 'إدارة دفعات التحريات الأمنية' },
+    },
     { action: 'export', name: { en: 'Export security checks', ar: 'تصدير التحريات الأمنية' } },
   ],
 );
@@ -183,7 +214,10 @@ const drivingTestPermissions = declarePermissions(
   ['view'],
   [
     { action: 'manage', name: { en: 'Manage driving tests', ar: 'إدارة اختبارات القيادة' } },
-    { action: 'manageBatch', name: { en: 'Manage driving test batches', ar: 'إدارة دفعات اختبارات القيادة' } },
+    {
+      action: 'manageBatch',
+      name: { en: 'Manage driving test batches', ar: 'إدارة دفعات اختبارات القيادة' },
+    },
     { action: 'export', name: { en: 'Export driving tests', ar: 'تصدير اختبارات القيادة' } },
   ],
 );
@@ -205,6 +239,7 @@ const evaluationPhasePermissions = declarePermissions(
   { en: 'evaluation phases', ar: 'مراحل التقييم' },
   [],
   [{ action: 'manage', name: { en: 'Manage evaluation phases', ar: 'إدارة مراحل التقييم' } }],
+  'hr.evaluation-phases',
 );
 
 // Stage 4 — Job Offer. `send` issues a draft; `respond` records the applicant's
@@ -220,6 +255,7 @@ const jobOfferPermissions = declarePermissions(
     { action: 'respond', name: { en: 'Record job offer response', ar: 'تسجيل رد عرض العمل' } },
     { action: 'withdraw', name: { en: 'Withdraw job offer', ar: 'سحب عرض العمل' } },
   ],
+  'hr.job-offers',
 );
 
 // Employee Management — the registry (frozen design docs/12-planning/employee-module-design.md).
@@ -236,17 +272,48 @@ const employeePermissions = declarePermissions(
   { en: 'employees', ar: 'الموظفين' },
   ['view', 'create'],
   [
-    { action: 'registerDirect', name: { en: 'Register employee directly', ar: 'تسجيل موظف مباشرة' } },
-    { action: 'editPersonal', name: { en: 'Edit employee personal data', ar: 'تعديل البيانات الشخصية للموظف' } },
-    { action: 'manageActions', name: { en: 'Manage personnel actions', ar: 'إدارة الإجراءات الوظيفية' } },
-    { action: 'manageCompensation', name: { en: 'Manage employee compensation', ar: 'إدارة أجر الموظف' } },
-    { action: 'viewCompensation', name: { en: 'View employee compensation', ar: 'عرض أجر الموظف' } },
+    {
+      action: 'registerDirect',
+      name: { en: 'Register employee directly', ar: 'تسجيل موظف مباشرة' },
+    },
+    {
+      action: 'editPersonal',
+      name: { en: 'Edit employee personal data', ar: 'تعديل البيانات الشخصية للموظف' },
+    },
+    {
+      action: 'manageActions',
+      name: { en: 'Manage personnel actions', ar: 'إدارة الإجراءات الوظيفية' },
+    },
+    {
+      action: 'manageCompensation',
+      name: { en: 'Manage employee compensation', ar: 'إدارة أجر الموظف' },
+    },
+    {
+      action: 'viewCompensation',
+      name: { en: 'View employee compensation', ar: 'عرض أجر الموظف' },
+    },
     { action: 'exit', name: { en: 'Record employee exit', ar: 'تسجيل انتهاء خدمة الموظف' } },
-    { action: 'rehire', name: { en: 'Rehire an exited employee', ar: 'إعادة تعيين موظف منتهي الخدمة' } },
-    { action: 'rehireOverride', name: { en: 'Override rehire ineligibility', ar: 'تجاوز عدم أهلية إعادة التعيين' } },
-    { action: 'viewSensitive', name: { en: 'View sensitive employee data', ar: 'عرض البيانات الحساسة للموظف' } },
-    { action: 'changeStatus', name: { en: 'Change employee status (deprecated alias)', ar: 'تغيير حالة الموظف (مسار قديم)' } },
+    {
+      action: 'rehire',
+      name: { en: 'Rehire an exited employee', ar: 'إعادة تعيين موظف منتهي الخدمة' },
+    },
+    {
+      action: 'rehireOverride',
+      name: { en: 'Override rehire ineligibility', ar: 'تجاوز عدم أهلية إعادة التعيين' },
+    },
+    {
+      action: 'viewSensitive',
+      name: { en: 'View sensitive employee data', ar: 'عرض البيانات الحساسة للموظف' },
+    },
+    {
+      action: 'changeStatus',
+      name: {
+        en: 'Change employee status (deprecated alias)',
+        ar: 'تغيير حالة الموظف (مسار قديم)',
+      },
+    },
   ],
+  'hr.employees',
 );
 
 // Stage 6 — Hiring Documents. `upload` covers first upload + versioned replacement; `complete`
@@ -261,6 +328,7 @@ const hiringDocumentsPermissions = declarePermissions(
     { action: 'upload', name: { en: 'Upload hiring document', ar: 'رفع مستند تعيين' } },
     { action: 'complete', name: { en: 'Complete hiring documents', ar: 'إكمال مستندات التعيين' } },
   ],
+  'hr.hiring-documents',
 );
 
 const hiringDocumentTypePermissions = declarePermissions(
@@ -268,7 +336,13 @@ const hiringDocumentTypePermissions = declarePermissions(
   'hiringDocumentType',
   { en: 'hiring document types', ar: 'أنواع مستندات التعيين' },
   [],
-  [{ action: 'manage', name: { en: 'Manage hiring document types', ar: 'إدارة أنواع مستندات التعيين' } }],
+  [
+    {
+      action: 'manage',
+      name: { en: 'Manage hiring document types', ar: 'إدارة أنواع مستندات التعيين' },
+    },
+  ],
+  'hr.hiring-documents',
 );
 
 // Stage 7 — Electronic Employee File. `create` assembles the file from a completed hiring case
@@ -282,6 +356,7 @@ const employeeFilePermissions = declarePermissions(
   { en: 'employee files', ar: 'ملفات الموظفين' },
   ['view', 'create', 'edit'],
   [{ action: 'upload', name: { en: 'Upload employee file document', ar: 'رفع مستند ملف الموظف' } }],
+  'hr.employee-files',
 );
 
 // Leave Management (frozen design docs/12-planning/leave-management-design.md §8). `view` +
@@ -295,13 +370,20 @@ const leavePermissions = declarePermissions(
   ['view'],
   [
     { action: 'request', name: { en: 'Request own leave', ar: 'طلب إجازة' } },
-    { action: 'requestForOthers', name: { en: 'File leave for others', ar: 'تسجيل إجازة لموظف آخر' } },
-    { action: 'approve', name: { en: 'Approve leave (HR step + override)', ar: 'اعتماد الإجازات' } },
+    {
+      action: 'requestForOthers',
+      name: { en: 'File leave for others', ar: 'تسجيل إجازة لموظف آخر' },
+    },
+    {
+      action: 'approve',
+      name: { en: 'Approve leave (HR step + override)', ar: 'اعتماد الإجازات' },
+    },
     { action: 'cancelApproved', name: { en: 'Cancel approved leave', ar: 'إلغاء إجازة معتمدة' } },
     { action: 'manageTypes', name: { en: 'Manage leave types', ar: 'إدارة أنواع الإجازات' } },
     { action: 'adjustBalances', name: { en: 'Adjust leave balances', ar: 'تعديل أرصدة الإجازات' } },
     { action: 'viewLedger', name: { en: 'View the leave ledger', ar: 'عرض سجل حركات الإجازات' } },
   ],
+  'hr.leave',
 );
 
 const workCalendarPermissions = declarePermissions(
@@ -310,6 +392,7 @@ const workCalendarPermissions = declarePermissions(
   { en: 'work calendar', ar: 'تقويم العمل' },
   [],
   [{ action: 'manage', name: { en: 'Manage the work calendar', ar: 'إدارة تقويم العمل' } }],
+  'hr.holidays',
 );
 
 // Contracts module (frozen design docs/12-planning/contracts-module-design.md §2 D10):
@@ -322,12 +405,16 @@ const contractPermissions = declarePermissions(
   ['view', 'create'],
   [
     { action: 'approve', name: { en: 'Approve contracts', ar: 'اعتماد العقود' } },
-    { action: 'generate', name: { en: 'Generate contracts & record signatures', ar: 'إصدار العقود وتسجيل التوقيعات' } },
+    {
+      action: 'generate',
+      name: { en: 'Generate contracts & record signatures', ar: 'إصدار العقود وتسجيل التوقيعات' },
+    },
     { action: 'amend', name: { en: 'Amend contracts', ar: 'تعديل العقود' } },
     { action: 'renew', name: { en: 'Renew contracts', ar: 'تجديد العقود' } },
     { action: 'terminate', name: { en: 'Terminate contracts', ar: 'إنهاء العقود' } },
     { action: 'print', name: { en: 'Print & download contracts', ar: 'طباعة وتنزيل العقود' } },
   ],
+  'hr.contracts',
 );
 
 const contractTemplatePermissions = declarePermissions(
@@ -336,6 +423,7 @@ const contractTemplatePermissions = declarePermissions(
   { en: 'contract templates', ar: 'قوالب العقود' },
   [],
   [{ action: 'manage', name: { en: 'Manage contract templates', ar: 'إدارة قوالب العقود' } }],
+  'hr.contract-templates',
 );
 
 const contractTypePermissions = declarePermissions(
@@ -344,6 +432,7 @@ const contractTypePermissions = declarePermissions(
   { en: 'contract types', ar: 'أنواع العقود' },
   [],
   [{ action: 'manage', name: { en: 'Manage contract types', ar: 'إدارة أنواع العقود' } }],
+  'hr.contracts',
 );
 
 export const hrPermissions: PermissionDef[] = [
@@ -370,12 +459,134 @@ export const hrPermissions: PermissionDef[] = [
   ...workCalendarPermissions,
 ];
 
+/**
+ * The administration surfaces this module owns — the middle layer of the role matrix.
+ * Organizational only: nothing authorizes on a page, and declaring one grants nobody anything.
+ * Declared here rather than derived from the navigation catalogue, which is runtime data an
+ * administrator can edit.
+ */
+export const hrPages: PageDef[] = [
+  {
+    id: 'hr.applicants',
+    moduleId: 'hr',
+    name: { en: 'Applicants', ar: 'المتقدمون' },
+    route: '/applicants',
+    sortOrder: 10,
+  },
+  {
+    id: 'hr.applicant-sources',
+    moduleId: 'hr',
+    name: { en: 'Applicant sources', ar: 'مصادر التقديم' },
+    route: '/applicant-sources',
+    sortOrder: 20,
+  },
+  {
+    id: 'hr.application-form',
+    moduleId: 'hr',
+    name: { en: 'Application form', ar: 'نموذج التقديم' },
+    route: '/recruitment-form',
+    sortOrder: 30,
+  },
+  {
+    id: 'hr.screening',
+    moduleId: 'hr',
+    name: { en: 'Initial screening', ar: 'الفرز المبدئي' },
+    route: '/screening',
+    sortOrder: 40,
+  },
+  {
+    id: 'hr.interviews',
+    moduleId: 'hr',
+    name: { en: 'Interviews', ar: 'المقابلات' },
+    route: '/interviews',
+    sortOrder: 50,
+  },
+  {
+    id: 'hr.interview-stages',
+    moduleId: 'hr',
+    name: { en: 'Interview stages', ar: 'مراحل المقابلات' },
+    route: '/interviews/stages',
+    sortOrder: 60,
+  },
+  {
+    id: 'hr.evaluations',
+    moduleId: 'hr',
+    name: { en: 'Evaluations', ar: 'التقييمات' },
+    route: '/evaluations',
+    sortOrder: 70,
+  },
+  {
+    id: 'hr.evaluation-phases',
+    moduleId: 'hr',
+    name: { en: 'Evaluation phases', ar: 'مراحل التقييم' },
+    route: '/evaluations/phases',
+    sortOrder: 80,
+  },
+  {
+    id: 'hr.job-offers',
+    moduleId: 'hr',
+    name: { en: 'Job offers', ar: 'عروض العمل' },
+    route: '/job-offers',
+    sortOrder: 90,
+  },
+  {
+    id: 'hr.employees',
+    moduleId: 'hr',
+    name: { en: 'Employees', ar: 'الموظفون' },
+    route: '/employees',
+    sortOrder: 100,
+  },
+  {
+    id: 'hr.employee-files',
+    moduleId: 'hr',
+    name: { en: 'Employee files', ar: 'ملفات الموظفين' },
+    route: '/employee-files',
+    sortOrder: 110,
+  },
+  {
+    id: 'hr.hiring-documents',
+    moduleId: 'hr',
+    name: { en: 'Hiring documents', ar: 'مستندات التعيين' },
+    route: '/hiring-documents',
+    sortOrder: 120,
+  },
+  {
+    id: 'hr.contracts',
+    moduleId: 'hr',
+    name: { en: 'Contracts', ar: 'العقود' },
+    route: '/contracts',
+    sortOrder: 130,
+  },
+  {
+    id: 'hr.contract-templates',
+    moduleId: 'hr',
+    name: { en: 'Contract templates', ar: 'قوالب العقود' },
+    route: '/contracts/templates',
+    sortOrder: 140,
+  },
+  {
+    id: 'hr.leave',
+    moduleId: 'hr',
+    name: { en: 'Leave', ar: 'الإجازات' },
+    route: '/leave',
+    sortOrder: 150,
+  },
+  {
+    id: 'hr.holidays',
+    moduleId: 'hr',
+    name: { en: 'Work calendar', ar: 'تقويم العمل' },
+    route: '/leave/holidays',
+    sortOrder: 160,
+  },
+];
+
 export const hrModule: ModuleManifest = {
   id: 'hr',
   name: { en: 'Human Resources', ar: 'الموارد البشرية' },
   version: '0.14.0',
   requiresPlatform: '^2.1',
   permissions: hrPermissions,
+  pages: hrPages,
   routes: [
     { prefix: '/hr/applicants', router: buildRecruitmentTimelineRouter() },
     { prefix: '/hr/applicants', router: buildReturnToStageRouter() },

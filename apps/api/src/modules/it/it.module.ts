@@ -6,7 +6,7 @@
 // maintenance — preventive plans, work orders and the spare-parts ledger (ADR-024); IT-5 adds the
 // software register — products, installations, licences and the expiry sweep (ADR-025). IT-6 adds
 // dashboards — extending THIS manifest, never adding a second one.
-import { declarePermissions, type PermissionDef } from '@ecms/contracts';
+import { declarePermissions, type PageDef, type PermissionDef } from '@ecms/contracts';
 import { type ModuleManifest } from '../../platform/kernel/module-registry';
 import { buildItCatalogRouter } from './catalog-items';
 import { buildItVendorsRouter } from './vendors';
@@ -55,6 +55,7 @@ const assetPermissions = declarePermissions(
       name: { en: 'Dispose of IT assets', ar: 'استبعاد الأصول' },
     },
   ],
+  'it.assets',
 );
 
 const catalogPermissions = declarePermissions(
@@ -66,6 +67,7 @@ const catalogPermissions = declarePermissions(
     // One grant for both kinds (asset + ticket categories) — the fleetCatalog.manage precedent.
     { action: 'manage', name: { en: 'Manage IT catalogs', ar: 'إدارة قوائم تقنية المعلومات' } },
   ],
+  'it.catalogs',
 );
 
 const vendorPermissions = declarePermissions(
@@ -74,6 +76,7 @@ const vendorPermissions = declarePermissions(
   { en: 'IT vendors', ar: 'موردو تقنية المعلومات' },
   ['view'],
   [{ action: 'manage', name: { en: 'Manage IT vendors', ar: 'إدارة موردي تقنية المعلومات' } }],
+  'it.vendors',
 );
 
 const ticketPermissions = declarePermissions(
@@ -97,6 +100,7 @@ const ticketPermissions = declarePermissions(
       name: { en: 'Close, reopen and cancel IT tickets', ar: 'إغلاق وإعادة فتح وإلغاء التذاكر' },
     },
   ],
+  'it.help-desk',
 );
 
 const slaPolicyPermissions = declarePermissions(
@@ -113,6 +117,7 @@ const slaPolicyPermissions = declarePermissions(
       name: { en: 'Manage priorities and SLA targets', ar: 'إدارة الأولويات وأزمنة الاستجابة' },
     },
   ],
+  'it.help-desk-settings',
 );
 
 const maintenancePermissions = declarePermissions(
@@ -132,6 +137,7 @@ const maintenancePermissions = declarePermissions(
       name: { en: 'Complete and cancel maintenance orders', ar: 'إنهاء وإلغاء أوامر الصيانة' },
     },
   ],
+  'it.maintenance',
 );
 
 const maintenancePlanPermissions = declarePermissions(
@@ -147,6 +153,7 @@ const maintenancePlanPermissions = declarePermissions(
       name: { en: 'Manage preventive maintenance plans', ar: 'إدارة خطط الصيانة الوقائية' },
     },
   ],
+  'it.maintenance',
 );
 
 const sparePartPermissions = declarePermissions(
@@ -162,6 +169,7 @@ const sparePartPermissions = declarePermissions(
       name: { en: 'Manage spare parts and receipts', ar: 'إدارة قطع الغيار والتوريدات' },
     },
   ],
+  'it.spare-parts',
 );
 
 const softwarePermissions = declarePermissions(
@@ -178,6 +186,7 @@ const softwarePermissions = declarePermissions(
       name: { en: 'Manage software products and installations', ar: 'إدارة البرمجيات والتنصيبات' },
     },
   ],
+  'it.software',
 );
 
 const licensePermissions = declarePermissions(
@@ -193,6 +202,7 @@ const licensePermissions = declarePermissions(
       name: { en: 'Manage software licences', ar: 'إدارة تراخيص البرمجيات' },
     },
   ],
+  'it.licences',
 );
 
 export const itPermissions: PermissionDef[] = [
@@ -208,12 +218,85 @@ export const itPermissions: PermissionDef[] = [
   ...licensePermissions,
 ];
 
+/**
+ * The administration surfaces this module owns — the middle layer of the role matrix.
+ * Organizational only: nothing authorizes on a page, and declaring one grants nobody anything.
+ * Declared here rather than derived from the navigation catalogue, which is runtime data an
+ * administrator can edit.
+ */
+export const itPages: PageDef[] = [
+  {
+    id: 'it.assets',
+    moduleId: 'it',
+    name: { en: 'Assets', ar: 'الأصول' },
+    route: '/it/assets',
+    sortOrder: 10,
+  },
+  {
+    id: 'it.help-desk',
+    moduleId: 'it',
+    name: { en: 'Help desk', ar: 'الدعم الفني' },
+    route: '/it/tickets',
+    sortOrder: 20,
+  },
+  {
+    id: 'it.help-desk-settings',
+    moduleId: 'it',
+    name: { en: 'Help desk settings', ar: 'إعدادات الدعم الفني' },
+    route: '/it/helpdesk-settings',
+    sortOrder: 30,
+  },
+  {
+    id: 'it.maintenance',
+    moduleId: 'it',
+    name: { en: 'Maintenance', ar: 'الصيانة' },
+    route: '/it/maintenance',
+    sortOrder: 40,
+  },
+  {
+    id: 'it.spare-parts',
+    moduleId: 'it',
+    name: { en: 'Spare parts', ar: 'قطع الغيار' },
+    route: '/it/spare-parts',
+    sortOrder: 50,
+  },
+  {
+    id: 'it.software',
+    moduleId: 'it',
+    name: { en: 'Software', ar: 'البرمجيات' },
+    route: '/it/software',
+    sortOrder: 60,
+  },
+  {
+    id: 'it.licences',
+    moduleId: 'it',
+    name: { en: 'Licences', ar: 'التراخيص' },
+    route: '/it/licenses',
+    sortOrder: 70,
+  },
+  {
+    id: 'it.vendors',
+    moduleId: 'it',
+    name: { en: 'Vendors', ar: 'الموردون' },
+    route: '/it/vendors',
+    sortOrder: 80,
+  },
+  {
+    id: 'it.catalogs',
+    moduleId: 'it',
+    name: { en: 'IT catalogs', ar: 'قوائم تقنية المعلومات' },
+    route: '/it/catalogs',
+    sortOrder: 90,
+  },
+];
+
 export const itModule: ModuleManifest = {
   id: 'it',
   name: { en: 'IT', ar: 'تقنية المعلومات' },
   version: '0.1.0',
   requiresPlatform: '^2.1',
   permissions: itPermissions,
+  pages: itPages,
   routes: [
     { prefix: '/it/assets', router: buildItAssetsRouter() },
     { prefix: '/it/assignments', router: buildItAssignmentsRouter() },

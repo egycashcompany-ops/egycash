@@ -25,6 +25,10 @@ import {
   type RoleManagement,
   type UpdateRole,
   type UpdateRoleAssignment,
+  type PageDef,
+  type PageDto,
+  type PermissionCatalogDto,
+  validatePageRegistry,
 } from '@ecms/contracts';
 import { BusinessRuleError, NotFoundError } from '../../shared/errors';
 import { scopeSelector, type AuthContext, type ScopeSelector } from '../../shared/types';
@@ -105,7 +109,9 @@ const computeEffective = (
     for (const key of grant.role.permissionKeys) {
       const existing = permissions[key];
       permissions[key] =
-        existing === undefined ? grant.assignment.scope : widerScope(existing, grant.assignment.scope);
+        existing === undefined
+          ? grant.assignment.scope
+          : widerScope(existing, grant.assignment.scope);
     }
   }
   const isPrivileged =
@@ -127,6 +133,16 @@ const rowState = (sources: { state: PermissionState }[]): PermissionState => {
 
 class RbacService {
   private registryKeys = new Set<string>();
+
+  /**
+   * The administration surfaces this deployment declares (P7-A).
+   *
+   * Held in memory rather than a collection because they are pure code, identical on every boot,
+   * and read by exactly one endpoint — persisting them would add a model and a migration to store
+   * a copy of something the process already has, and give it a way to disagree with the code.
+   * Which pages exist depends on which modules registered, so it can only be known at runtime.
+   */
+  private pageRegistry: PageDef[] = [];
 
   // ── Management classification (SA-3) ───────────────────────────────────────
 
@@ -218,6 +234,7 @@ class RbacService {
             moduleId: def.moduleId,
             name: def.name,
             breakGlass: def.breakGlass === true,
+            pageId: def.pageId,
           },
         },
         { upsert: true },
@@ -241,7 +258,10 @@ class RbacService {
       const role = await roleRepository.findByKey(key);
       if (role !== null) await this.invalidateUsersOfRole(String(role._id));
     }
-    logger.info({ count: seen.size, invalidatedRoles: changedRoleKeys }, 'permission registry synced');
+    logger.info(
+      { count: seen.size, invalidatedRoles: changedRoleKeys },
+      'permission registry synced',
+    );
   }
 
   isRegisteredPermission(key: string): boolean {
@@ -259,6 +279,44 @@ class RbacService {
     return [...this.registryKeys];
   }
 
+  /**
+   * Record the page registry for this deployment, and refuse to boot on a broken one.
+   *
+   * The validation is here rather than only in CI because the registry is ASSEMBLED per deployment:
+   * a page belonging to a module nobody enabled is not a problem, and a permission pointing at a
+   * page from a module somebody turned off is. Only the process that knows which modules are on can
+   * tell those apart, so the check runs where the assembly happens (D6).
+   */
+  syncPageRegistry(pages: PageDef[], permissions: PermissionDef[]): void {
+    const problems = validatePageRegistry(pages, permissions);
+    if (problems.length > 0) {
+      throw new Error(
+        `page registry is invalid:\n${problems.map((p) => `  [${p.kind}] ${p.detail}`).join('\n')}`,
+      );
+    }
+    this.pageRegistry = pages;
+  }
+
+  /** The catalog and the surfaces it groups into — one answer, because they are one fact. */
+  async listPermissionCatalog(): Promise<PermissionCatalogDto> {
+    const permissions = await this.listPermissions();
+    const pages: PageDto[] = [...this.pageRegistry]
+      .sort(
+        (a, b) =>
+          a.moduleId.localeCompare(b.moduleId) ||
+          (a.sortOrder ?? Number.MAX_SAFE_INTEGER) - (b.sortOrder ?? Number.MAX_SAFE_INTEGER) ||
+          a.id.localeCompare(b.id),
+      )
+      .map((page) => ({
+        id: page.id,
+        moduleId: page.moduleId,
+        name: page.name,
+        route: page.route ?? null,
+        sortOrder: page.sortOrder ?? null,
+      }));
+    return { permissions, pages };
+  }
+
   async listPermissions(): Promise<PermissionDto[]> {
     const docs = await PermissionModel.find()
       .sort({ moduleId: 1, key: 1 })
@@ -271,6 +329,9 @@ class RbacService {
       moduleId: doc.moduleId,
       name: doc.name,
       breakGlass: doc.breakGlass,
+      // `?? null` covers a registry row written before this field existed; the next boot's sync
+      // fills it in, and until then the key groups under Other / Unassigned rather than vanishing.
+      pageId: doc.pageId ?? null,
     }));
   }
 
@@ -373,7 +434,8 @@ class RbacService {
    */
   async listRoles(query: ListRolesQuery): Promise<Paginated<RoleDoc>> {
     const filter: Record<string, unknown> = {};
-    if (query.search !== undefined) Object.assign(filter, roleRepository.searchFilter(query.search));
+    if (query.search !== undefined)
+      Object.assign(filter, roleRepository.searchFilter(query.search));
     if (query.managed === 'system') filter.isSystem = true;
     if (query.managed === 'derived') {
       filter.isSystem = false;
@@ -425,7 +487,9 @@ class RbacService {
       supplied: string | undefined,
     ): Types.ObjectId | null => {
       if (home === null) {
-        throw new BusinessRuleError(`A ${level}-scoped assignment requires the user to have a ${level}`);
+        throw new BusinessRuleError(
+          `A ${level}-scoped assignment requires the user to have a ${level}`,
+        );
       }
       if (supplied !== undefined && supplied !== String(home)) {
         throw new BusinessRuleError(
@@ -600,7 +664,10 @@ class RbacService {
 
     // The caller's version, not the stored one: a stale edit answers 409 rather than silently
     // undoing the administrator who got there first.
-    const after = await roleAssignmentRepository.updateById(id, set, { by, version: input.version });
+    const after = await roleAssignmentRepository.updateById(id, set, {
+      by,
+      version: input.version,
+    });
     await this.invalidateUser(String(before.userId));
     await auditService.record({
       entityRef: { moduleId: 'platform', entityType: 'user', entityId: String(before.userId) },
@@ -748,7 +815,9 @@ class RbacService {
       privilegedBecause: {
         systemRoles: [
           ...new Set(
-            grants.filter((g) => g.state === 'active' && g.role.isSystem).map((g) => g.role.name.en),
+            grants
+              .filter((g) => g.state === 'active' && g.role.isSystem)
+              .map((g) => g.role.name.en),
           ),
         ].sort(),
         breakGlassKeys: breakGlassPermissionKeys.filter((key) => key in permissions).sort(),

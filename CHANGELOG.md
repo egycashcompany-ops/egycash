@@ -18,7 +18,8 @@ its entry here in the same PR.
   under one constraint — **add no backend**. Every endpoint it calls already existed, already
   authorized and already audited. **No new endpoint, permission, model, migration, contract change
   or dependency, across all six.** Where a phase found that a *rule* did not exist, the rule went
-  into the service, never into the screen.
+  into the service, never into the screen. A seventh phase followed from use rather than from the
+  plan and is the single exception to the contract rule — see P7 below.
 
   - **Users (P1, [PR #158](https://github.com/egycashcompany-ops/egycash/pull/158)).** List with
     URL-synced search, lifecycle filter, sort and pagination; detail with identity, account &
@@ -57,6 +58,25 @@ its entry here in the same PR.
     branch filter the API had always accepted, older history reachable a page at a time, the roles
     page number in the URL, a link from a role's holder to that account, and a confirmation before
     revoking a grant that names **who, which role, and at what reach**.
+  - **The page layer, and duplication (P7,
+    [PR #166](https://github.com/egycashcompany-ops/egycash/pull/166) ·
+    [PR #167](https://github.com/egycashcompany-ops/egycash/pull/167) ·
+    [PR #168](https://github.com/egycashcompany-ops/egycash/pull/168) ·
+    [PR #169](https://github.com/egycashcompany-ops/egycash/pull/169)).** A 202-key matrix grouped
+    only by module is still a wall, so permissions now sit under a **page**: `Modules → Pages →
+    Permissions`. Declared in code — a `PageDef` in the contracts and a `pageId` given **once per
+    resource** in the module manifests, not 202 times — with **46 pages, 172 of 202 permissions
+    assigned and 30 deliberately unassigned** because they are cross-cutting or backend-only, which
+    is a declaration rather than a gap. A malformed registry **fails at startup and in CI**, not at
+    render. A module's rows are the concatenation of its pages' rows, so the counters and the
+    tri-state select-all cannot drift from what is on screen. The layer is **organizational only** —
+    no authorization decision reads a `pageId`. Alongside it, a role can be **duplicated**: the copy
+    carries permissions and description, no assignments, and is created through the ordinary
+    `POST /platform/roles`, so it passes the same key guards a hand-built role does and comes out
+    unmanaged. Refusals are all-or-nothing — copying only the grantable subset would produce a role
+    sharing a name with the original that quietly grants less. This is the one part of System
+    Administration that changes the contract, and it adds **no endpoint, permission key, model,
+    migration or dependency**.
 
   **The guards, all server-side.** Nobody hands out an authority they do not hold — every key put
   into a role and every key carried by a role being assigned must be a key the actor holds, at a
@@ -253,6 +273,20 @@ its entry here in the same PR.
   `scopeFilter` builds every scoped query out of them, but nothing dropped that snapshot when an
   account's placement changed. The update now deletes it. No TTL, key or caching rule changed.
   ([PR #160](https://github.com/egycashcompany-ops/egycash/pull/160))
+
+- **Duplicate Role shipped complete and could not be used.** Two defects of the same kind — the code
+  was there, the control was not reachable — and both were reported from the running screen rather
+  than caught by a green CI run. The button was placed inside the `managed === 'none'` branch that
+  hides **Edit** and **Delete** on a system or `hr-only:*` role, so it disappeared on exactly the
+  roles an administrator most wants to copy; and the blocker treated an **unread** permission
+  catalog as "the registry declares nothing", which disabled the button on first paint for everyone
+  and permanently for an administrator holding `role.create` without `permission.view` — showing a
+  message that blamed the role for carrying permissions nobody defines. Edit and Delete now carry
+  their own management checks and Duplicate stands outside them; the unknown-key check runs only
+  when there is a registry to check against, leaving `assertKnownPermissionKeys` on the server as
+  what actually decides. **Duplicating a managed role is now offered on purpose:** the copy is
+  unmanaged by construction and the key guards are untouched, so nobody can copy an authority they
+  could not have granted by hand. ([PR #169](https://github.com/egycashcompany-ops/egycash/pull/169))
 
 - **Stored images never appeared on an S3-backed deployment — the app handed the browser a URL its
   own policy forbids.** `issueDownloadTicket` preferred the storage provider's presigned URL over

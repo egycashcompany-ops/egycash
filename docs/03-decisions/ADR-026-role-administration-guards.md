@@ -339,3 +339,83 @@ contract was added by either phase; `getEffectivePermissions` and the permission
 the HR-only reconciliation remains the sole owner of `hr-only:*`; and **G-2 remains open** — the
 fail-closed change described under "Known limitation" was excluded from both phases and is still the
 subject of its own ADR when someone owns it.
+
+---
+
+## Appendix — SA-7: the page layer, and what duplicating a role may reuse
+
+**Added 2026-08-10.** P7 introduced a level between module and permission, and a way to start a new
+role from an existing one. Both refine §1 and §3 rather than replacing anything, so both are recorded
+here.
+
+### A. A page groups permissions; it never grants them
+
+The role matrix presents **202 permission keys**. Grouped only by module, the largest module is a
+list nobody reads to the end, and the guard rails built in P3–P6 are worth less if the screen they
+sit on cannot be understood. P7 put a **page** between the two: `Modules → Pages → Permissions`.
+
+**The layer is organizational only. No authorization path reads `pageId`.** This was decided rather
+than assumed: granting "this page" would create a second authority beside the permission key, and the
+first question it raises — what happens when the page says yes and the key says no — has no answer
+worth having. §1 is unchanged; an actor still holds keys, and the guards still compare keys.
+
+**Pages are declared in code, not stored as data.** A page id is given **once per resource** in the
+module manifests (a sixth argument to `declarePermissions`), not per key, so the registry stays a
+statement of intent that reviewers can read in a diff. `Application.permissionKey` was considered as
+a source and rejected during the design audit: it covered about a fifth of the keys, it is
+runtime-mutable, and — decisively — the relationship it describes is not a function, which would have
+made the matrix's own counters and its tri-state select-all quietly wrong.
+
+**An invalid registry is a startup failure.** `validatePageRegistry` refuses a duplicate id, a
+malformed id, a page whose module does not own it, a permission naming a page that does not exist,
+and a page with no permissions at all; `bootstrap` throws on any of them and a CI step
+(`scripts/check-page-registry.mjs`) reports the same thing in review. **30 of 202 permissions carry
+`pageId: null` deliberately** — cross-cutting or backend-only — and the check counts them out loud
+rather than tolerating them silently, so the number cannot drift into a gap nobody notices.
+
+### B. A duplicate is a create, and that is the whole guarantee
+
+Duplication is the one operation whose stated purpose is to reproduce a set of authorities in one
+click, which makes it the one place where a dedicated endpoint would be most tempting and least
+safe: it would have to re-implement `assertKnownPermissionKeys` and `assertKeysHeld`, and a
+re-implementation that drifts here hands out permissions.
+
+So **there is no duplicate endpoint.** A duplicate is `POST /platform/roles` with a pre-filled form
+and passes exactly the guards of §1. Three consequences are deliberate:
+
+- **Assignments are not copied — there is no field for them.** A role and the grants of that role to
+  people are different records; copying "who holds it" would hand accounts an authority nobody
+  decided to give them. The copy starts held by nobody, which is also what keeps it deletable.
+- **The refusal is whole, never partial.** Copying only the subset the actor may grant would succeed,
+  look correct, and produce a role that shares a name with the original and grants less — a
+  difference discoverable only by diffing two permission sets. A role carrying anything the actor
+  cannot grant is not duplicable *by them*, and the screen says so before they start.
+- **A key the registry has forgotten blocks the copy entirely**, because it blocks every actor: the
+  create is refused server-side, and dropping it silently would turn "duplicate" into "duplicate,
+  minus the parts I could not carry". The original keeps such a key — removable, never addable, per
+  appendix C above — and the copy waits until the original is cleaned up.
+
+### C. Duplicating a **managed** role is allowed, and is not a loosened guard
+
+`hr-only:*` derivatives and system roles are inert to editing (§4), and a well-shaped system role is
+the obvious starting point for a narrower one. Copying one is safe for a structural reason, not a
+permissive one: the server writes `key: null` and `isSystem: false` on **every** create, so the copy
+is `managed: 'none'` — it is not the thing the platform seeds, and the reconciliation does not own
+it — and §1's key check has already refused anything the actor could not grant by hand. An
+administrator who cannot grant everything `super-admin` carries cannot copy `super-admin`.
+
+The screen's own refusals are advisory and deliberately weaker in one direction: when the permission
+catalog cannot be read — the actor holds `role.create` without `permission.view`, or the query is
+still in flight — the unknown-key check does not run, and the actor is refused by the server instead
+of locally. A local refusal that cannot be justified is worse than a server refusal that can.
+
+### What SA-7 does not change
+
+Everything in the table above, plus both appendices. Specifically: no permission key, endpoint,
+model, migration or dependency was added; `getEffectivePermissions`, the permission cache and its TTL
+are untouched; the HR-only reconciliation remains the sole owner of `hr-only:*`; `managed`,
+`isSystem`, `scopeFilter` and the data scopes are byte-identical; and **G-2 remains open**.
+
+The contract *did* change — `PageDef`, `pageId`, the page list on the permission-catalog response,
+and the sixth `declarePermissions` parameter — which makes P7 the only System Administration phase to
+do so. It is recorded here because it was an approved decision, not a drift.

@@ -1,6 +1,6 @@
-# Sprint Retrospective — System Administration P1–P6
+# Sprint Retrospective — System Administration P1–P7
 
-**Capability:** System Administration — users, roles, permissions ·
+**Capability:** System Administration — users, roles, permissions, pages ·
 **PRs:** [#158](https://github.com/egycashcompany-ops/egycash/pull/158) ·
 [#159](https://github.com/egycashcompany-ops/egycash/pull/159) ·
 [#160](https://github.com/egycashcompany-ops/egycash/pull/160) ·
@@ -8,8 +8,17 @@
 [#162](https://github.com/egycashcompany-ops/egycash/pull/162) ·
 [#163](https://github.com/egycashcompany-ops/egycash/pull/163) ·
 [#164](https://github.com/egycashcompany-ops/egycash/pull/164) ·
-**Merged:** 2026-08-10 · **Final merge commit:** `3286f6c` ·
+[#166](https://github.com/egycashcompany-ops/egycash/pull/166) ·
+[#167](https://github.com/egycashcompany-ops/egycash/pull/167) ·
+[#168](https://github.com/egycashcompany-ops/egycash/pull/168) ·
+[#169](https://github.com/egycashcompany-ops/egycash/pull/169) ·
+**Merged:** 2026-08-10 · **Final merge commit:** `f0463ab` ·
 **Outcome:** ✅ Delivered — each PR reviewed by EGYCASH and **approved** before merge.
+
+> **Scope note.** This document was written as a P1–P6 closeout and was extended before merge to
+> cover **P7 — the Page layer** (#166, #167, #168) and its follow-up fix (#169). P7 is the one part
+> of the module that **did** change the contract, deliberately and with the decision recorded; every
+> statement below that says "no contract change" is scoped to P1–P6 and says so.
 
 ## 1. Sprint goal
 
@@ -22,6 +31,11 @@ operation or a seed.
 The constraint that shaped all six phases: **build the surface, add no backend.** The endpoints
 exist, they are authorized, they are audited. Where a phase found that a rule did not exist — and
 two did — the rule was added to the **service**, never to the screen.
+
+**P7 was added after that goal was met**, from use rather than from the plan: a 202-key permission
+matrix grouped by module is still a wall, and there was no way to start a new role from one that
+already worked. It is the only phase permitted to change the contract, because the missing thing was
+a *concept* — the page — and a concept cannot be added from the screen.
 
 ## 2. Delivered features
 
@@ -54,9 +68,39 @@ two did — the rule was added to the **service**, never to the screen.
   for the activity tab, older history on demand, URL pagination, role → account navigation, revoke
   confirmations, and the unknown-key fix.
 
-**The shape of the whole module:** 5 routes, 7 tabs, **24 distinct endpoint paths consumed**
+- **P7-A — the page registry
+  ([#166](https://github.com/egycashcompany-ops/egycash/pull/166)).** A `PageDef` in
+  `@ecms/contracts` and a `pageId: string | null` on every permission, declared **once per resource**
+  in the module manifests rather than 202 times. **46 pages, 172 of 202 permissions assigned, 30
+  deliberately `null`** — the unassigned ones are cross-cutting or backend-only and saying `null` out
+  loud is the point. `validatePageRegistry()` refuses a duplicate id, a malformed id, a page whose
+  module does not own it, a permission naming a page that does not exist, and an empty page;
+  `bootstrap` calls `syncPageRegistry` and **throws at startup** on any of them, and
+  `scripts/check-page-registry.mjs` is a CI step so it fails in review instead of at boot.
+- **P7-B — Module → Page → Permission
+  ([#167](https://github.com/egycashcompany-ops/egycash/pull/167)).** The role matrix gained the
+  middle level. A module's rows **are** the concatenation of its pages' rows — one derivation, not
+  two agreeing code paths — so the counters and the tri-state select-all stay honest by construction
+  rather than by care. Permissions with no page fall into a labelled group instead of disappearing.
+- **P7-C — Role duplication
+  ([#168](https://github.com/egycashcompany-ops/egycash/pull/168),
+  [#169](https://github.com/egycashcompany-ops/egycash/pull/169)).** Start a new role from an
+  existing one. **There is no duplicate endpoint and there must not be one:** a duplicate is a
+  `POST /platform/roles` with a pre-filled form, so it passes `assertKnownPermissionKeys` and
+  `assertKeysHeld` exactly as a hand-built role does. The copy carries permissions and description
+  and nothing else — **no assignments**, by type, because `CreateRole` has no field for them — and
+  comes out `managed: 'none'` because the server writes `key: null` and `isSystem: false` on every
+  create. Refusals are **all-or-nothing**: copying only the grantable subset would succeed, look
+  right, and produce a role that shares a name with the original and quietly grants less.
+
+**The shape of the module after P6:** 5 routes, 7 tabs, **24 distinct endpoint paths consumed**
 (21 `platform`, 3 `hr`), **17 permission keys referenced** (12 belonging to the module). **Zero** new
 endpoints, permissions, models, migrations, contract changes or dependencies across all six phases.
+
+**What P7 changed on top of that:** contract additions only — `PageDef`, `pageId`, the page list on
+the permission-catalog response, and a sixth `declarePermissions()` parameter. Still **zero** new
+endpoints, permission keys, models, migrations or dependencies; the page layer is **organizational
+only** and no authorization decision reads a `pageId`.
 
 ## 3. Test results
 
@@ -70,6 +114,11 @@ endpoints, permissions, models, migrations, contract changes or dependencies acr
   forward from #157 to #161 in every later phase. 643 unit tests green throughout.
 - **Contracts** — 199 tests, untouched by this work.
 
+**At the end of P7:** web **512** tests across 38 files, API **652** unit tests across 82 files,
+contracts **214** across 13. P7 added the page-registry validation suite in contracts, a
+`page-registry` suite on the API service, and the matrix-tree and role-duplication suites on the web.
+Integration suites are unchanged in kind: still CI-only, for the reason in §7.
+
 ## 4. CI results
 
 Green on every merged commit. Three iterations were needed across the six phases, each for a real
@@ -82,6 +131,13 @@ defect rather than a flaky run:
   `{ data: [...], meta }`.
 - **P5** — three failures cascading from one, which turned out to be a genuine security defect in
   shipped P3 code. See §5.
+- **P7-A** — one failure, and the honest description of it is that the implementation had drifted
+  from its own approved design. The design said "no endpoint change"; the implementation widened
+  `GET /platform/permissions` to `{ permissions, pages }`, and an integration assertion that called
+  `registry.some(...)` on the response broke. The deviation was flagged as something the owner should
+  have decided rather than discovered.
+- **P7-C** — CI green on both PRs. The defects that mattered in this phase were not found by CI at
+  all; see §6.
 
 ## 5. Security decisions that became live
 
@@ -104,6 +160,15 @@ Recorded here because they are the substance of the module, not a side effect of
    nothing in the system defines it any more.
 8. **The UI is never the guard.** Every refusal above is in the service. The screens explain rules;
    they do not enforce them.
+9. **A duplicate is a create** (P7-C). The one operation whose entire purpose is to reproduce a set
+   of authorities in one click is also the one where re-implementing the guards would be most
+   tempting and most dangerous — so it has no endpoint of its own and reuses `POST /platform/roles`
+   whole. The screen refuses early and says why; the server is still what refuses. The copy is
+   unmanaged by construction, which is what makes duplicating a **managed** role safe rather than a
+   loosened guard: an administrator who cannot grant everything `super-admin` carries cannot copy it
+   either.
+10. **The page layer decides nothing** (P7-A). `pageId` groups permissions for humans. No
+    authorization path reads it, and adding one would need its own decision.
 
 ## 6. What the work discovered
 
@@ -130,6 +195,25 @@ schema still initializing), and a **stale auth snapshot** — an account moved o
 reading that branch until its cached snapshot lapsed, because nothing dropped it on a placement
 change.
 
+**And two more in P7-C, reported from the running UI rather than found by any test** — both of the
+same kind, "the code shipped and the control was unusable":
+
+- **Duplicate was hidden on every managed role.** The button went into `RoleDetailPage`'s `actions`
+  block, which is wrapped in a single `role.managed === 'none'` ternary so that Edit and Delete do
+  not appear on a system or `hr-only:*` role. Duplicate inherited that gate and should never have
+  had it: a well-shaped system role is the **obvious** thing to start a narrower one from. Edit and
+  Delete now carry their own checks and Duplicate stands outside them.
+- **Duplicate was disabled whenever the registry had not been read.** `duplicateBlocker` treated an
+  **empty** catalog as "the registry declares nothing", so every key the role carried looked unknown
+  and the blocker fired — on first paint for everyone, and **permanently** for an administrator
+  holding `role.create` without `permission.view`, which the platform allows. The message blamed the
+  role for carrying permissions nobody defines. The unknown check now runs only when there is a
+  registry to check against; `assertKnownPermissionKeys` on the server was always what decided.
+
+Fixed in [#169](https://github.com/egycashcompany-ops/egycash/pull/169). Both fixes were proven by
+restoring each defect in turn and watching the new tests fail — 3 failures for the blocker, 1 for the
+actions gate, 23 passing with both fixed.
+
 ## 7. Problems & limitations
 
 - **Integration tests cannot run in the development sandbox.** `mongodb-memory-server` fetches its
@@ -145,6 +229,14 @@ change.
 - **A web suite with no DOM shapes the design, for better and worse.** It forced the rules into pure
   functions, which is the right structure. It also means no test in this module clicks anything, and
   a rule that cannot be extracted cannot be properly proven.
+- **P7-C is what that limitation costs, stated concretely.** Every assertion covering duplication was
+  either a source scan or a pure-function test. They proved a `<Can permission="role.create">`
+  wrapper sat near the label and that `duplicateBlocker` computed correctly *for a populated
+  catalog*. Neither could see that the wrapper was nested inside a branch that removes it, or that
+  the function was being called with `[]` half the time. The regex that "covered" the gating —
+  `expect(PAGE).toMatch(/<Can permission="role\.create">[\s\S]{0,900}?actions\.duplicate/)` — passed
+  while the button was unreachable, and the owner found it by opening the screen. **This gap is still
+  open**: the new tests pin the two known shapes, they do not make reachability testable in general.
 
 ## 8. Deliberate deferrals, and why
 
@@ -156,6 +248,10 @@ change.
 | **A bulk assignment-revoke endpoint** | ADR-026 §5. It would re-implement three refusal rules and report one outcome for many decisions. Revoke-all stays a client loop of independently authorized single revocations. |
 | **Adding `meta` to `TimelineDto`** | P6 needed "is there more"; the endpoint is shared by every timeline consumer, and the scope forbade contract changes. Inferred from the page being full instead, at a cost of one empty request when the history is an exact multiple of the page size. |
 | **The duplicated user API calls between HR and System Administration** | The alternatives are a cross-module import (forbidden) or refactoring HR, which no phase was allowed to do. |
+| **Page-level authorization** (P7) | Decided against, explicitly. The page layer is **organizational only**: it groups permissions so a 202-key matrix can be read. Granting "this page" would be a second authority alongside the permission key and would have to answer what it means when the two disagree. Nothing in the authorization path reads `pageId`. |
+| **A page for the 30 unassigned permissions** (P7-A) | They are cross-cutting or backend-only, and inventing a page to reach 100% would have made the number look better and the grouping worse. `pageId: null` is a declaration, and the CI check counts it rather than tolerating it. |
+| **Deriving pages from `Application.permissionKey`** (P7-A) | Rejected during the design audit: it covered 21% of the keys, it is runtime-mutable data rather than code, and the relationship was not a function — which would have made the matrix counters and the tri-state select-all quietly wrong. |
+| **A duplicate-role endpoint** (P7-C) | It would have to re-implement `assertKnownPermissionKeys` and `assertKeysHeld` on the one path where re-implementing them is most dangerous. The copy is a create with a pre-filled form. |
 
 ## 9. Lessons learned
 
@@ -172,3 +268,11 @@ change.
 - **Documentation drifted for seven PRs.** This closeout exists because none of #158–#164 carried its
   CHANGELOG entry in the same PR, which is the rule stated at the top of that file. The entries are
   harder to write well weeks later than they would have been on the day.
+- **A test that reads the source proves the source, not the screen.** P7-C shipped with full green
+  CI and a feature nobody could use. Every assertion was true and the button was unreachable. When a
+  suite cannot render, "is this control reachable in the states the page is actually in" is a
+  question it is structurally unable to ask — so the answer has to come from opening the screen, and
+  the phase is not done until somebody has.
+- **A deviation from an approved design is a decision, and it belongs to the owner.** P7-A widened a
+  response the design said would not change. It was caught by CI as a broken assertion, which is the
+  wrong place to discover a scope change; it should have been raised when it was made.

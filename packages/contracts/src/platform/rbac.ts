@@ -105,6 +105,12 @@ export const UpdateRoleAssignmentSchema = z
   .object({
     validFrom: z.coerce.date().nullable().optional(),
     validTo: z.coerce.date().nullable().optional(),
+    /**
+     * Optimistic concurrency, like every other update in the system. A window is exactly the kind
+     * of field two administrators reach for at the same moment — one extending a grant, the other
+     * ending it — and last-write-wins would let the second silently undo the first.
+     */
+    version: z.number().int().min(0),
   })
   .strict()
   .refine((v) => v.validFrom !== undefined || v.validTo !== undefined, {
@@ -134,6 +140,8 @@ export interface RoleAssignmentDto {
   sectionId: string | null;
   validFrom: string | null;
   validTo: string | null;
+  /** Optimistic-concurrency version — sent back on a window change. */
+  version: number;
   createdAt: string;
 }
 

@@ -517,10 +517,9 @@ class RbacService {
       throw new BusinessRuleError('validFrom must be before validTo');
     }
 
-    // The window carries no `version` on the wire — the request shape is deliberately just the two
-    // dates — so the stored one is re-used. Two administrators moving the same window at the same
-    // moment is a last-write-wins race, and both outcomes are a window somebody asked for.
-    const after = await roleAssignmentRepository.updateById(id, set, { by, version: before.__v });
+    // The caller's version, not the stored one: a stale edit answers 409 rather than silently
+    // undoing the administrator who got there first.
+    const after = await roleAssignmentRepository.updateById(id, set, { by, version: input.version });
     await this.invalidateUser(String(before.userId));
     await auditService.record({
       entityRef: { moduleId: 'platform', entityType: 'user', entityId: String(before.userId) },
@@ -684,6 +683,7 @@ class RbacService {
       sectionId: doc.sectionId === null ? null : String(doc.sectionId),
       validFrom: doc.validFrom === null ? null : doc.validFrom.toISOString(),
       validTo: doc.validTo === null ? null : doc.validTo.toISOString(),
+      version: doc.__v,
       createdAt: doc.createdAt.toISOString(),
     };
   }

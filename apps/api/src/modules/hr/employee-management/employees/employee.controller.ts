@@ -8,6 +8,7 @@ import {
   type CreateEmployeeLogin,
   type DirectRegisterEmployee,
   type EmployeeLoginDto,
+  type LinkEmployeeUser,
   type ListEmployeesQuery,
   type RehireCheckQuery,
   type UpdateEmployeePersonal,
@@ -109,6 +110,35 @@ export const getEmployeeTimeline = async (req: Request, res: Response): Promise<
   const ctx = authContext(req);
   const { params } = validated<never, never, IdParam>(req);
   ok(res, await employeeService.timeline(params.id, scopeSelector(ctx, 'employee.view')));
+};
+
+/**
+ * E1 — attach an existing login to this employee. Two scopes are resolved because two records are
+ * being changed: the employee under `employee.view`, the account under `user.edit`.
+ */
+export const linkEmployeeUser = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<LinkEmployeeUser, never, IdParam>(req);
+  const doc = await employeeService.linkUser(
+    ctx,
+    params.id,
+    body.userId,
+    scopeSelector(ctx, 'employee.view'),
+    scopeSelector(ctx, 'user.edit'),
+  );
+  ok(res, toEmployeeDto(doc, { compensationVisible: compVisible(req) }));
+};
+
+export const unlinkEmployeeUser = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { params } = validated<never, never, IdParam>(req);
+  const doc = await employeeService.unlinkUser(
+    ctx,
+    params.id,
+    scopeSelector(ctx, 'employee.view'),
+    scopeSelector(ctx, 'user.edit'),
+  );
+  ok(res, toEmployeeDto(doc, { compensationVisible: compVisible(req) }));
 };
 
 /** Create the login account for an employee (Employee ← one User, ADR-017). Gated by `user.create`. */

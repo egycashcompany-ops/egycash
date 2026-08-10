@@ -3257,6 +3257,47 @@ const en: Record<string, string> = {
   'systemAdmin.users.audit.loginFailed': 'Sign-in failed',
   'systemAdmin.users.audit.logout': 'Signed out',
   'systemAdmin.users.audit.lockout': 'Account locked after failed sign-ins',
+
+  // SA-2 — create, edit, unlock, employee linkage
+  'systemAdmin.users.actions.create': 'New user',
+  'systemAdmin.users.actions.edit': 'Edit',
+  'systemAdmin.users.actions.unlock': 'Unlock',
+  'systemAdmin.users.created': 'Account created — a setup link was sent.',
+  'systemAdmin.users.updated': 'Account updated.',
+  'systemAdmin.users.unlocked': 'The lockout was cleared.',
+  'systemAdmin.users.form.createTitle': 'New user',
+  'systemAdmin.users.form.editTitle': 'Edit user',
+  'systemAdmin.users.form.createHint':
+    'The account starts as invited. A one-time setup link is delivered to it; you never choose or see a password.',
+  'systemAdmin.users.form.editHint': 'Profile and sign-in identifiers. Status and security live on their own panel.',
+  'systemAdmin.users.form.create': 'Create',
+  'systemAdmin.users.form.save': 'Save',
+  'systemAdmin.users.form.firstNameAr': 'First name (Arabic)',
+  'systemAdmin.users.form.firstNameEn': 'First name (English)',
+  'systemAdmin.users.form.lastNameAr': 'Last name (Arabic)',
+  'systemAdmin.users.form.lastNameEn': 'Last name (English)',
+  'systemAdmin.users.form.usernameHint': 'Letters, digits, dot, underscore or hyphen. Unique across live accounts.',
+  'systemAdmin.users.form.emailHint': 'Unique across live accounts.',
+  'systemAdmin.users.form.identifierRequired':
+    'Fill in a username or an email — an account with neither can never sign in.',
+  'systemAdmin.users.form.branchHint': 'Decides who can see and administer this account.',
+  'systemAdmin.users.form.noBranch': 'No branch',
+  'systemAdmin.users.form.setupLinkNote':
+    'A one-time setup link is delivered over the channels the account has. Passwords are never set here.',
+  'systemAdmin.users.employee.title': 'Employee record',
+  'systemAdmin.users.employee.hint':
+    'HR owns this link. Attaching or releasing it here calls the HR service — it is never written directly.',
+  'systemAdmin.users.employee.searchPlaceholder': 'Search employees by name or code',
+  'systemAdmin.users.employee.searching': 'Searching…',
+  'systemAdmin.users.employee.noResults': 'No employees match that search.',
+  'systemAdmin.users.employee.alreadyLinked': 'Has a login',
+  'systemAdmin.users.employee.linkHint': 'An employee can have only one login account.',
+  'systemAdmin.users.employee.noAccess': 'Attaching an employee needs the users-edit and employees-view permissions.',
+  'systemAdmin.users.employee.unlink': 'Release the employee link',
+  'systemAdmin.users.employee.unlinkConfirm':
+    'The account keeps its credentials, roles and history — it simply stops being this employee’s login.',
+  'systemAdmin.users.employee.linkedToast': 'The account is now this employee’s login.',
+  'systemAdmin.users.employee.unlinkedToast': 'The employee link was released.',
 };
 
 const ar: Record<string, string> = {
@@ -6466,6 +6507,47 @@ const ar: Record<string, string> = {
   'systemAdmin.users.audit.loginFailed': 'فشل تسجيل دخول',
   'systemAdmin.users.audit.logout': 'تسجيل خروج',
   'systemAdmin.users.audit.lockout': 'قُفل الحساب بعد محاولات فاشلة',
+
+  // SA-2 — الإنشاء والتعديل وفكّ القفل وربط الموظف
+  'systemAdmin.users.actions.create': 'مستخدم جديد',
+  'systemAdmin.users.actions.edit': 'تعديل',
+  'systemAdmin.users.actions.unlock': 'فكّ القفل',
+  'systemAdmin.users.created': 'أُنشئ الحساب — وأُرسل رابط الإعداد.',
+  'systemAdmin.users.updated': 'تم تحديث الحساب.',
+  'systemAdmin.users.unlocked': 'أُزيل القفل.',
+  'systemAdmin.users.form.createTitle': 'مستخدم جديد',
+  'systemAdmin.users.form.editTitle': 'تعديل المستخدم',
+  'systemAdmin.users.form.createHint':
+    'يبدأ الحساب مدعوًّا، ويُسلَّم له رابط إعداد لمرة واحدة. أنت لا تختار كلمة المرور ولا تراها.',
+  'systemAdmin.users.form.editHint': 'الملف ومعرّفات الدخول. الحالة والأمان في لوحتهما المستقلة.',
+  'systemAdmin.users.form.create': 'إنشاء',
+  'systemAdmin.users.form.save': 'حفظ',
+  'systemAdmin.users.form.firstNameAr': 'الاسم الأول (عربي)',
+  'systemAdmin.users.form.firstNameEn': 'الاسم الأول (إنجليزي)',
+  'systemAdmin.users.form.lastNameAr': 'اسم العائلة (عربي)',
+  'systemAdmin.users.form.lastNameEn': 'اسم العائلة (إنجليزي)',
+  'systemAdmin.users.form.usernameHint': 'حروف وأرقام ونقطة وشرطة سفلية أو شرطة. فريد بين الحسابات الحيّة.',
+  'systemAdmin.users.form.emailHint': 'فريد بين الحسابات الحيّة.',
+  'systemAdmin.users.form.identifierRequired':
+    'أدخل اسم مستخدم أو بريدًا إلكترونيًا — حساب بلا أيٍّ منهما لا يستطيع الدخول أبدًا.',
+  'systemAdmin.users.form.branchHint': 'يحدّد من يرى هذا الحساب ومن يديره.',
+  'systemAdmin.users.form.noBranch': 'بلا فرع',
+  'systemAdmin.users.form.setupLinkNote':
+    'يُسلَّم رابط إعداد لمرة واحدة عبر القنوات المتاحة للحساب. لا تُضبط كلمات المرور من هنا إطلاقًا.',
+  'systemAdmin.users.employee.title': 'ملف الموظف',
+  'systemAdmin.users.employee.hint':
+    'الموارد البشرية تملك هذا الربط. الربط أو فكّه هنا يستدعي خدمتها — ولا يُكتب مباشرة أبدًا.',
+  'systemAdmin.users.employee.searchPlaceholder': 'ابحث عن موظف بالاسم أو الكود',
+  'systemAdmin.users.employee.searching': 'جارٍ البحث…',
+  'systemAdmin.users.employee.noResults': 'لا يوجد موظف مطابق.',
+  'systemAdmin.users.employee.alreadyLinked': 'له حساب دخول',
+  'systemAdmin.users.employee.linkHint': 'لا يملك الموظف أكثر من حساب دخول واحد.',
+  'systemAdmin.users.employee.noAccess': 'ربط موظف يحتاج صلاحيتَي تعديل المستخدمين وعرض الموظفين.',
+  'systemAdmin.users.employee.unlink': 'فكّ ربط الموظف',
+  'systemAdmin.users.employee.unlinkConfirm':
+    'يحتفظ الحساب ببياناته وأدواره وتاريخه — يتوقف فقط عن كونه حساب دخول هذا الموظف.',
+  'systemAdmin.users.employee.linkedToast': 'صار الحساب حساب دخول هذا الموظف.',
+  'systemAdmin.users.employee.unlinkedToast': 'فُكّ ربط الموظف.',
 };
 
 const catalogs: Record<Locale, Record<string, string>> = { en, ar };

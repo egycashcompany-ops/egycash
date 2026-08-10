@@ -10,13 +10,15 @@
 // (`user.employeeId` is the authority, `employee.userId` its denormalized back-reference), and
 // linking/unlinking is HR service work in the next slice — writing the field from here would leave
 // the two sides disagreeing.
+import { useState } from 'react';
 import { useSearchParams, useNavigate, useParams } from 'react-router-dom';
 import { type Locale } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../store';
 import { useCan } from '../../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../../platform/layout/PageContainer';
-import { Badge, Button, Card, CardBody, ErrorState, LoadingState } from '../../../../shared/ui';
+import { Button, ErrorState, LoadingState } from '../../../../shared/ui';
+import { Can } from '../../../../platform/rbac/Can';
 import { fullName } from '../../../../shared/lib/format';
 import { cn } from '../../../../shared/lib/cn';
 import { AccountStatusBadge, UserStatusBadge } from '../components/UserStatusBadges';
@@ -24,6 +26,8 @@ import { UserAccountCard, UserIdentityCard } from '../components/UserFactCards';
 import { UserLifecycleActions } from '../components/UserLifecycleActions';
 import { UserSecurityActions } from '../components/UserSecurityActions';
 import { UserActivityTab } from '../components/UserActivityTab';
+import { UserEmployeeLinkCard } from '../components/UserEmployeeLinkCard';
+import { UserFormDialog } from '../components/UserFormDialog';
 import { useSystemUser } from '../api/user-queries';
 
 const TABS = ['overview', 'security', 'activity'] as const;
@@ -36,6 +40,7 @@ export const UserDetailPage = (): JSX.Element => {
   const can = useCan();
   const { id = '' } = useParams<{ id: string }>();
   const [sp, setSp] = useSearchParams();
+  const [editing, setEditing] = useState(false);
 
   const tabParam = sp.get('tab');
   const tab: Tab = TABS.includes(tabParam as Tab) ? (tabParam as Tab) : 'overview';
@@ -78,7 +83,25 @@ export const UserDetailPage = (): JSX.Element => {
             <AccountStatusBadge status={user.accountStatus} />
           </div>
         }
+        actions={
+          <Can permission="user.edit">
+            <Button size="sm" variant="secondary" onClick={() => setEditing(true)}>
+              {t('systemAdmin.users.actions.edit')}
+            </Button>
+          </Can>
+        }
       />
+
+      {/* Keyed on the account's version so a reopened dialog starts from the CURRENT record rather
+          than the draft the last edit left behind. */}
+      {editing && (
+        <UserFormDialog
+          key={`${user.id}:${String(user.version)}`}
+          open
+          user={user}
+          onClose={() => setEditing(false)}
+        />
+      )}
 
       <div
         className="mb-6 flex flex-wrap gap-1 border-b border-slate-200 dark:border-slate-800"
@@ -106,35 +129,18 @@ export const UserDetailPage = (): JSX.Element => {
 
       {tab === 'overview' && (
         <div className="space-y-4">
-          <Card>
-            <CardBody className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge tone={user.employeeId === null ? 'neutral' : 'brand'}>
-                  {t(
-                    user.employeeId === null
-                      ? 'systemAdmin.users.kind.system'
-                      : 'systemAdmin.users.kind.employee',
-                  )}
-                </Badge>
-                <span className="text-sm text-slate-500 dark:text-slate-400">
-                  {t(
-                    user.employeeId === null
-                      ? 'systemAdmin.users.employee.none'
-                      : 'systemAdmin.users.employee.linked',
-                  )}
-                </span>
-              </div>
-              {user.employeeId !== null && can('employee.view') && (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => navigate(`/employees/${user.employeeId ?? ''}`)}
-                >
-                  {t('systemAdmin.users.employee.open')}
-                </Button>
-              )}
-            </CardBody>
-          </Card>
+          <UserEmployeeLinkCard userId={user.id} employeeId={user.employeeId} />
+          {user.employeeId !== null && can('employee.view') && (
+            <div>
+              <Button
+                size="sm"
+                variant="ghost-brand"
+                onClick={() => navigate(`/employees/${user.employeeId ?? ''}`)}
+              >
+                {t('systemAdmin.users.employee.open')}
+              </Button>
+            </div>
+          )}
           <UserIdentityCard user={user} />
         </div>
       )}

@@ -12,10 +12,12 @@ import {
   createEmployeeLogin,
   getEmployee,
   getEmployeeTimeline,
+  linkEmployeeUser,
   listEmployees,
   listSubordinates,
   registerEmployeeDirect,
   rehireCheck,
+  unlinkEmployeeUser,
   updateEmployeePersonal,
 } from './employee.controller';
 import {
@@ -23,6 +25,7 @@ import {
   CreateEmployeeSchema,
   DirectRegisterEmployeeSchema,
   EmployeeIdParamSchema,
+  LinkEmployeeUserSchema,
   ListEmployeesQuerySchema,
   RehireCheckQuerySchema,
   UpdateEmployeePersonalSchema,
@@ -99,6 +102,24 @@ export const buildEmployeesRouter = (): Router => {
     authorize('user.create'),
     validate({ body: CreateEmployeeLoginSchema, params: EmployeeIdParamSchema }),
     asyncHandler(createEmployeeLogin),
+  );
+  // E1 — adopt an EXISTING login as this employee's, and release it again. Gated on `user.edit`,
+  // following the route above: both change which account belongs to an employee, so the gate is the
+  // permission that governs the account. The service additionally resolves the employee under the
+  // caller's `employee.view` scope, so neither side can be reached outside it.
+  router.post(
+    '/:id/user-link',
+    authenticate,
+    authorize('user.edit'),
+    validate({ body: LinkEmployeeUserSchema, params: EmployeeIdParamSchema }),
+    asyncHandler(linkEmployeeUser),
+  );
+  router.delete(
+    '/:id/user-link',
+    authenticate,
+    authorize('user.edit'),
+    validate({ params: EmployeeIdParamSchema }),
+    asyncHandler(unlinkEmployeeUser),
   );
 
   return router;

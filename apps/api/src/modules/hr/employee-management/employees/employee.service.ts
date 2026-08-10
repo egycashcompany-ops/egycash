@@ -942,6 +942,116 @@ class EmployeeService {
     return { user, activationToken, employeeCode: employee.code };
   }
 
+  /**
+   * Attach an EXISTING login to this employee (SA-2 / decision E1).
+   *
+   * `createLogin` above makes a new account for an employee who has none. This is the other case:
+   * an account that already exists — someone who was a non-employee user first and has now been
+   * hired — becoming that employee's login.
+   *
+   * It lives HERE, in HR, because HR owns the employee ↔ login relationship (ADR-017). System
+   * Administration calls this endpoint instead of writing `user.employeeId`, and the difference is
+   * not bookkeeping: the link has two sides, and a second writer that only knows about one of them
+   * is how they drift apart. Both sides move inside one transaction, and each is a CONDITIONAL
+   * update guarded by the value it expects, so a concurrent link cannot half-succeed.
+   *
+   * Both reads are scoped. The employee read uses the caller's employee scope and the account is
+   * loaded through the users service under `user.edit`, so an administrator who cannot see either
+   * side gets a 404 rather than a hint that it exists.
+   */
+  async linkUser(
+    ctx: AuthContext,
+    employeeId: string,
+    userId: string,
+    scope: ScopeSelector,
+    userScope: ScopeSelector,
+  ): Promise<EmployeeDoc> {
+    const employee = await employeeRepository.getById(employeeId, scope);
+    if (employee.userId !== null) {
+      throw new ConflictError('this employee already has a login account');
+    }
+    if (employee.status === 'exited') {
+      throw new BusinessRuleError('an exited employee cannot be given a login account');
+    }
+    const user = await userService.getById(userId, userScope);
+    if (user.employeeId !== null) {
+      throw new ConflictError('this login already belongs to an employee');
+    }
+
+    const linked = await unitOfWork(async (session) => {
+      await userService.linkEmployee(userId, employeeId, session);
+      return employeeRepository.updateById(
+        employeeId,
+        { userId: user._id },
+        { by: ctx.userId, version: employee.__v, scope, session },
+      );
+    });
+
+    // One act, two trails. HR reads the employee's and an administrator reads the account's;
+    // neither can see the other's, and both are asked when this link becomes a question.
+    await auditService.record({
+      entityRef: entityRef(employeeId),
+      action: 'employeeLinked',
+      changes: [{ field: 'userId', old: null, new: userId }],
+    });
+    await auditService.record({
+      entityRef: { moduleId: 'platform', entityType: 'user', entityId: userId },
+      action: 'employeeLinked',
+      changes: [{ field: 'employeeId', old: null, new: employeeId }],
+    });
+    // Same fact the provisioning path announces: this employee now has a login. Modules that
+    // backfill a denormalized owner field (C1-R) need it for an adopted account as much as a new one.
+    await emit(HrEmployeeEvents.EmployeeLoginLinked, {
+      employeeId,
+      userId,
+      code: employee.code,
+    });
+    return linked;
+  }
+
+  /**
+   * Detach the login from this employee. The account itself is untouched — it keeps its
+   * credentials, its roles and its history, and simply stops being this employee's login.
+   *
+   * No event: nothing consumes an unlink, and the catalogue has no name for it. Announcing a fact
+   * with no listener would be a knob that does nothing; the audit rows are the record.
+   */
+  async unlinkUser(
+    ctx: AuthContext,
+    employeeId: string,
+    scope: ScopeSelector,
+    userScope: ScopeSelector,
+  ): Promise<EmployeeDoc> {
+    const employee = await employeeRepository.getById(employeeId, scope);
+    if (employee.userId === null) {
+      throw new ConflictError('this employee has no login account to unlink');
+    }
+    const userId = String(employee.userId);
+    // Scoped read for the same reason as the link: the account is half of what is being changed.
+    await userService.getById(userId, userScope);
+
+    const unlinked = await unitOfWork(async (session) => {
+      await userService.unlinkEmployee(userId, employeeId, session);
+      return employeeRepository.updateById(
+        employeeId,
+        { userId: null },
+        { by: ctx.userId, version: employee.__v, scope, session },
+      );
+    });
+
+    await auditService.record({
+      entityRef: entityRef(employeeId),
+      action: 'employeeUnlinked',
+      changes: [{ field: 'userId', old: userId, new: null }],
+    });
+    await auditService.record({
+      entityRef: { moduleId: 'platform', entityType: 'user', entityId: userId },
+      action: 'employeeUnlinked',
+      changes: [{ field: 'employeeId', old: employeeId, new: null }],
+    });
+    return unlinked;
+  }
+
   /** Probation reminder task (D1): notify HR + the manager shortly before probation lapses. */
   async remindEndingProbations(daysAhead = 7): Promise<number> {
     const from = new Date();

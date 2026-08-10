@@ -1,6 +1,6 @@
 // Business rules for user accounts. Lifecycle: invite → activate → suspend → archive —
 // never hard-delete (audit integrity, Platform Core §2).
-import { Types } from 'mongoose';
+import { Types, type ClientSession } from 'mongoose';
 import {
   ErrorCodes,
   PlatformEvents,
@@ -64,9 +64,20 @@ class UserService {
       const existing = await userRepository.findByEmail(input.email);
       if (existing !== null) throw new ConflictError('A user with this email already exists');
     }
-    const username = extra.username?.toLowerCase();
+    // `extra.username` wins: HR's provisioning path derives it from the Employee Code and passes it
+    // out of band, while an administrator supplies it in the body. Both normalize the same way,
+    // because the uniqueness index is on the stored (lowercased) value.
+    const username = (extra.username ?? input.username)?.toLowerCase();
     if (username !== undefined && (await userRepository.findByUsername(username)) !== null) {
       throw new ConflictError('A user with this username already exists');
+    }
+    // The schema's own refinement covers the admin path. This catches the INTERNAL callers, which
+    // pass `Omit<CreateUser, 'email'>`-shaped objects the schema never validated — an account with
+    // no identifier can never sign in, and it is not a state worth being able to reach at all.
+    if (input.email === undefined && username === undefined) {
+      throw new BusinessRuleError(
+        'an account needs at least one login identifier — an email or a username',
+      );
     }
 
     const activationToken = randomToken();
@@ -216,6 +227,16 @@ class UserService {
     if (input.lastName !== undefined) set['profile.lastName'] = input.lastName;
     if (input.phone !== undefined) set.phone = input.phone;
     if (input.locale !== undefined) set.locale = input.locale;
+    if (input.email !== undefined) {
+      const email = input.email === null ? null : input.email.toLowerCase();
+      if (email !== null) {
+        const clash = await userRepository.findByEmail(email);
+        if (clash !== null && String(clash._id) !== id) {
+          throw new ConflictError('A user with this email already exists');
+        }
+      }
+      set.email = email;
+    }
     if (input.username !== undefined) {
       const username = input.username.toLowerCase();
       const clash = await userRepository.findByUsername(username);
@@ -223,6 +244,16 @@ class UserService {
         throw new ConflictError('A user with this username already exists');
       }
       set.username = username;
+    }
+    // The create-time invariant, applied to the RESULT of this edit rather than to its input:
+    // clearing the email is fine for an account that signs in by username, and locks out an account
+    // that does not. Only the stored state can tell the two apart.
+    const nextEmail = 'email' in set ? (set.email as string | null) : before.email;
+    const nextUsername = 'username' in set ? (set.username as string | null) : before.username;
+    if (nextEmail === null && nextUsername === null) {
+      throw new BusinessRuleError(
+        'an account needs at least one login identifier — an email or a username',
+      );
     }
     if (input.organization !== undefined) {
       for (const field of ['branchId', 'departmentId', 'sectionId', 'jobTitleId'] as const) {
@@ -709,6 +740,64 @@ class UserService {
     await userRepository.updateSecurity(userId, {
       $set: { 'security.failedLogins': 0, 'security.lockedUntil': null },
     });
+  }
+
+  /**
+   * Administrative unlock (SA-2): clear the automatic lockout the failed-login counter armed.
+   *
+   * It reuses `resetLoginFailures` — the same two fields a SUCCESSFUL login clears — rather than
+   * introducing a second notion of "unlocked", and it deliberately does NOT touch `status`: an
+   * account can be both suspended and locked out, and clearing the lockout must not quietly
+   * re-enable a disabled account.
+   *
+   * The scoped read is the authorization boundary, exactly as it is for update and delete: an
+   * administrator who cannot see the account cannot unlock it, and gets a 404 rather than a hint
+   * that it exists.
+   *
+   * Audited unconditionally, including when nothing was locked. The row records that an
+   * administrator took the action, and "it turned out to be unnecessary" is a fact about the
+   * account, not a reason to lose who did it.
+   */
+  async unlock(id: string, by: string, scope?: ScopeSelector): Promise<UserDoc> {
+    const before = await userRepository.getById(id, scope);
+    await this.resetLoginFailures(id);
+    await getCache().del(`auth:user:${id}`);
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'unlock',
+      changes: [
+        {
+          field: 'security.lockedUntil',
+          old: before.security.lockedUntil?.toISOString() ?? null,
+          new: null,
+        },
+        { field: 'security.failedLogins', old: before.security.failedLogins, new: 0 },
+      ],
+    });
+    return userRepository.getById(id, scope);
+  }
+
+  // ── Employee linkage (written by the HR module ONLY — ADR-017) ─────────────
+  //
+  // `user.employeeId` is the AUTHORITY for the link and carries the unique index that makes "one
+  // login per employee" true; `employee.userId` is its denormalized back-reference. HR owns the
+  // relationship, so these two writers exist for HR's service to call and are reachable from
+  // nowhere else: no route, no update schema field, no controller. Both are conditional updates
+  // guarded by the CURRENT value — the `clearActivationByHash` pattern — so two concurrent links
+  // cannot both believe they won.
+
+  async linkEmployee(userId: string, employeeId: string, session?: ClientSession): Promise<void> {
+    const linked = await userRepository.linkEmployee(userId, employeeId, session);
+    if (!linked) {
+      throw new ConflictError('this login is already linked to an employee');
+    }
+  }
+
+  async unlinkEmployee(userId: string, employeeId: string, session?: ClientSession): Promise<void> {
+    const unlinked = await userRepository.unlinkEmployee(userId, employeeId, session);
+    if (!unlinked) {
+      throw new ConflictError('this login is not linked to that employee');
+    }
   }
 
   async bumpPermissionVersion(userId: string): Promise<number> {

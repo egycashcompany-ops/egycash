@@ -12,11 +12,14 @@ import {
   type CreateRole,
   type CreateRoleAssignment,
   type DataScope,
+  type EffectivePermissionRowDto,
+  type EffectivePermissionsDto,
   type ListRoleAssignmentsQuery,
   type ListRolesQuery,
   type Paginated,
   type PermissionDef,
   type PermissionDto,
+  type PermissionState,
   type RoleAssignmentDto,
   type RoleDto,
   type RoleManagement,
@@ -53,6 +56,74 @@ const roleEntityRef = (id: string) => ({ moduleId: 'platform', entityType: 'role
 
 /** The seeded role whose last holder must never be removed — the account that can fix everything. */
 const SUPER_ADMIN_KEY = 'super-admin';
+
+/** One grant an account holds, placed relative to the moment being evaluated. */
+interface ResolvedGrant {
+  assignment: RoleAssignmentDoc;
+  role: RoleDoc;
+  state: PermissionState;
+}
+
+/** Where a validity window sits relative to `now` — the R14 rule, in one place. */
+const grantState = (assignment: RoleAssignmentDoc, now: Date): PermissionState => {
+  if (assignment.validFrom !== null && assignment.validFrom > now) return 'pending';
+  if (assignment.validTo !== null && now >= assignment.validTo) return 'expired';
+  return 'active';
+};
+
+/**
+ * **The one place an effective permission set is derived.** (ADR-004; SA-4 amendment to ADR-026.)
+ *
+ * Two callers need two different projections of the same answer: the authorization path enforces
+ * with `{ permissions, isPrivileged }` and caches it, while the administration screen has to
+ * explain it — which role, which assignment, which window, and whether it applies right now. A
+ * second implementation of the merge would be a second definition of what a permission set IS, and
+ * the two would drift the first time either changed. So this function computes everything once and
+ * each caller takes the part it needs.
+ *
+ * The merge rules are unchanged from before the extraction, deliberately and exactly: only ACTIVE
+ * grants contribute; a key held at two scopes resolves to the wider (`widerScope`); and
+ * `isPrivileged` is decided per ASSIGNMENT (a system role makes its holder privileged even if it
+ * happens to carry no keys), never per key.
+ */
+const computeEffective = (
+  assignments: RoleAssignmentDoc[],
+  rolesById: Map<string, RoleDoc>,
+  now: Date,
+): { grants: ResolvedGrant[]; permissions: Record<string, DataScope>; isPrivileged: boolean } => {
+  const grants = assignments.flatMap((assignment): ResolvedGrant[] => {
+    const role = rolesById.get(String(assignment.roleId));
+    // A grant whose role was deleted contributes nothing and explains nothing.
+    return role === undefined ? [] : [{ assignment, role, state: grantState(assignment, now) }];
+  });
+
+  const permissions: Record<string, DataScope> = {};
+  let holdsProtectedRole = false;
+  for (const grant of grants) {
+    if (grant.state !== 'active') continue;
+    if (grant.role.isSystem) holdsProtectedRole = true;
+    for (const key of grant.role.permissionKeys) {
+      const existing = permissions[key];
+      permissions[key] =
+        existing === undefined ? grant.assignment.scope : widerScope(existing, grant.assignment.scope);
+    }
+  }
+  const isPrivileged =
+    holdsProtectedRole || breakGlassPermissionKeys.some((key) => key in permissions);
+
+  return { grants, permissions, isPrivileged };
+};
+
+/**
+ * A row is `active` when something grants it now. Otherwise it reports the more useful of the two
+ * remaining answers: a window that has not opened yet is a different fact from one that has closed,
+ * and "pending" is the one an administrator can act on.
+ */
+const rowState = (sources: { state: PermissionState }[]): PermissionState => {
+  if (sources.some((s) => s.state === 'active')) return 'active';
+  if (sources.some((s) => s.state === 'pending')) return 'pending';
+  return 'expired';
+};
 
 class RbacService {
   private registryKeys = new Set<string>();
@@ -554,6 +625,22 @@ class RbacService {
     for (const userId of userIds) await this.invalidateUser(userId);
   }
 
+  /**
+   * Read every grant an account holds, valid or not, with its role resolved.
+   *
+   * Deliberately unfiltered by time: the enforcement path throws the invalid ones away immediately,
+   * but SA-4's explanation is mostly about them — "why can't they do X" is usually answered by a
+   * window that closed. One read serves both, so the two can never disagree about what exists.
+   */
+  private async loadGrants(userId: string): Promise<{
+    assignments: RoleAssignmentDoc[];
+    rolesById: Map<string, RoleDoc>;
+  }> {
+    const assignments = await roleAssignmentRepository.findActiveForUser(userId);
+    const roles = await roleRepository.findByIds(assignments.map((a) => a.roleId));
+    return { assignments, rolesById: new Map(roles.map((role) => [String(role._id), role])) };
+  }
+
   async getEffectivePermissions(
     userId: string,
     permissionVersion: number,
@@ -564,28 +651,8 @@ class RbacService {
     if (cached !== null) return JSON.parse(cached) as EffectivePermissions;
 
     const now = new Date();
-    const assignments = await roleAssignmentRepository.findActiveForUser(userId);
-    const active = assignments.filter(
-      (a) =>
-        (a.validFrom === null || a.validFrom <= now) && (a.validTo === null || now < a.validTo),
-    );
-    const roles = await roleRepository.findByIds(active.map((a) => a.roleId));
-    const rolesById = new Map(roles.map((role) => [String(role._id), role]));
-
-    const permissions: Record<string, DataScope> = {};
-    let holdsProtectedRole = false;
-    for (const assignment of active) {
-      const role = rolesById.get(String(assignment.roleId));
-      if (role === undefined) continue;
-      if (role.isSystem) holdsProtectedRole = true;
-      for (const key of role.permissionKeys) {
-        const existing = permissions[key];
-        permissions[key] =
-          existing === undefined ? assignment.scope : widerScope(existing, assignment.scope);
-      }
-    }
-    const isPrivileged =
-      holdsProtectedRole || breakGlassPermissionKeys.some((key) => key in permissions);
+    const { assignments, rolesById } = await this.loadGrants(userId);
+    const { permissions, isPrivileged } = computeEffective(assignments, rolesById, now);
 
     // Cache TTL never crosses a validity boundary (Review R14).
     const boundaries = assignments
@@ -597,6 +664,87 @@ class RbacService {
     const result: EffectivePermissions = { permissions, isPrivileged };
     await cache.set(cacheKey, JSON.stringify(result), ttl);
     return result;
+  }
+
+  /**
+   * The same computation as `getEffectivePermissions`, with nothing thrown away (SA-4).
+   *
+   * Read-only, uncached, and computed fresh: this is an administration screen, and a second cache
+   * would be a second thing to invalidate everywhere the first one is. The enforcement path keeps
+   * its cache; `evaluatedAt` rides along so the screen can say which moment it is describing rather
+   * than implying it speaks for the authorizer.
+   *
+   * It reduces to exactly what the authorizer enforces — the shared `computeEffective` is the only
+   * place either answer is derived — and a test asserts that agreement rather than trusting it.
+   */
+  async explainEffectivePermissions(
+    userId: string,
+    scope?: ScopeSelector,
+  ): Promise<EffectivePermissionsDto> {
+    const now = new Date();
+    // Scoped read FIRST, and it is the same read that supplies `permissionVersion` — so an account
+    // the caller may not see answers 404 before a single grant has been looked at, and there is no
+    // second, unscoped path to the same record.
+    const user = await userService.getById(userId, scope);
+    const { assignments, rolesById } = await this.loadGrants(userId);
+    const { grants, permissions, isPrivileged } = computeEffective(assignments, rolesById, now);
+
+    // The registry, for the module and the human name. A key it does not know still gets a row:
+    // a role outlives the module that declared its keys, and hiding it would hide the reason.
+    const keys = [...new Set(grants.flatMap((g) => g.role.permissionKeys))];
+    const definitions = new Map(
+      (
+        await PermissionModel.find({ key: { $in: keys } })
+          .lean<PermissionDoc[]>()
+          .exec()
+      ).map((doc) => [doc.key, doc]),
+    );
+
+    const rows = keys
+      .map((key): EffectivePermissionRowDto => {
+        const sources = grants
+          .filter((g) => g.role.permissionKeys.includes(key))
+          .map((g) => ({
+            assignmentId: String(g.assignment._id),
+            roleId: String(g.role._id),
+            roleName: g.role.name,
+            roleKey: g.role.key,
+            roleManaged: this.managementOf(g.role),
+            scope: g.assignment.scope,
+            validFrom: g.assignment.validFrom?.toISOString() ?? null,
+            validTo: g.assignment.validTo?.toISOString() ?? null,
+            state: g.state,
+            // Active, and as wide as the winning scope. Ties are marked on both, because both are.
+            decisive: g.state === 'active' && g.assignment.scope === permissions[key],
+          }));
+        const definition = definitions.get(key);
+        return {
+          key,
+          moduleId: definition?.moduleId ?? null,
+          name: definition?.name ?? null,
+          breakGlass: definition?.breakGlass ?? false,
+          scope: permissions[key] ?? null,
+          state: rowState(sources),
+          sources,
+        };
+      })
+      .sort((a, b) => a.key.localeCompare(b.key));
+
+    return {
+      userId,
+      evaluatedAt: now.toISOString(),
+      permissionVersion: user.security.permissionVersion,
+      isPrivileged,
+      privilegedBecause: {
+        systemRoles: [
+          ...new Set(
+            grants.filter((g) => g.state === 'active' && g.role.isSystem).map((g) => g.role.name.en),
+          ),
+        ].sort(),
+        breakGlassKeys: breakGlassPermissionKeys.filter((key) => key in permissions).sort(),
+      },
+      rows,
+    };
   }
 
   /**

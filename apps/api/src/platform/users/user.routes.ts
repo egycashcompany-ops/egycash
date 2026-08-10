@@ -22,6 +22,7 @@ import {
   createUser,
   deleteUser,
   getUser,
+  getUserEffectivePermissions,
   listUsers,
   unlockUser,
   updateUser,
@@ -115,6 +116,25 @@ export const buildUsersRouter = (): Router => {
     authorize('user.resetPassword'),
     validate({ body: TotpRequireSchema, params: UserIdParamSchema }),
     asyncHandler(adminRequireTotp),
+  );
+  /**
+   * SA-4 — what this account may actually do, and why (read-only).
+   *
+   * BOTH grants are required, chained. `user.view` because this is a fact about an account and
+   * someone who may not open the record may not read its authority either; `role.view` because the
+   * answer is made of roles and assignments, which is what that permission governs. Neither implies
+   * the other, and `authorizeAny` would accept either — the opposite of what is meant here.
+   *
+   * The target is then read through the caller's `user.view` scope inside the service, so an
+   * account they cannot see answers 404 rather than confirming it exists.
+   */
+  router.get(
+    '/:id/effective-permissions',
+    authenticate,
+    authorize('user.view'),
+    authorize('role.view'),
+    validate({ params: UserIdParamSchema }),
+    asyncHandler(getUserEffectivePermissions),
   );
   return router;
 };

@@ -3,6 +3,43 @@
 @tailwind utilities;
 
 @layer base {
+  /*
+   * The brand scale, as CSS custom properties (P12-A).
+   *
+   * These eleven values ARE the accent palette. Until now they were literals inside
+   * `tailwind.config.ts`, which meant the palette was decided at build time and could only be
+   * changed by shipping a new bundle. Declaring them here moves the single source of truth into
+   * the cascade, where a later phase can override it per document without recompiling anything —
+   * that is the whole of this change, and the only reason for it.
+   *
+   * **Channel triplets, not hex.** Tailwind substitutes `<alpha-value>` into the `rgb()` wrapper
+   * in the config, which is what keeps `bg-brand-500/40` working. A `#hex` in a variable cannot
+   * carry that placeholder, so every opacity modifier in the app — ninety-odd of them — would
+   * silently become fully opaque. The format is a contract between this block and the config, and
+   * a test holds both ends of it.
+   *
+   * **One scale, no dark variant — deliberately.** Components pick their own shade per theme
+   * (`bg-brand-50 dark:bg-brand-950`), so the scale itself is theme-independent. Redefining these
+   * under `.dark` would silently re-colour every one of those pairs. If a dark-specific accent is
+   * ever wanted, it is a decision to take on purpose, not a side effect of tokenising.
+   *
+   * The values are the exact indigo this app has always shipped. P12-A changes where the palette
+   * lives, not what it looks like.
+   */
+  :root {
+    --brand-50: 238 242 255;
+    --brand-100: 224 231 255;
+    --brand-200: 199 210 254;
+    --brand-300: 165 180 252;
+    --brand-400: 129 140 248;
+    --brand-500: 99 102 241;
+    --brand-600: 79 70 229;
+    --brand-700: 67 56 202;
+    --brand-800: 55 48 163;
+    --brand-900: 49 46 129;
+    --brand-950: 30 27 75;
+  }
+
   html {
     -webkit-tap-highlight-color: transparent;
   }

@@ -3602,6 +3602,26 @@ const en: Record<string, string> = {
   'systemAdmin.settings.keys.fleet.license.vehicleWarnDays':
     'Vehicle licence expiry warning (days)',
   'systemAdmin.settings.keys.fleet.license.driverWarnDays': 'Driver licence expiry warning (days)',
+
+  // P9-A — the setup link an administrator delivers by hand.
+  'systemAdmin.users.actions.setupLink': 'Copy setup link',
+  'systemAdmin.users.security.setupLinkHint':
+    'Issues a one-time link and shows it to you once, to send yourself over WhatsApp, email or any other channel. Nothing is sent by the system, and any previous link stops working.',
+  'systemAdmin.users.setupLink.title': 'Account setup link',
+  'systemAdmin.users.setupLink.intro':
+    'Send this link to {{name}}. Opening it lets them choose their own password and activate the account.',
+  'systemAdmin.users.setupLink.onceTitle': 'Shown once.',
+  'systemAdmin.users.setupLink.onceBody':
+    'The link is stored only as a hash, so it cannot be shown again. If you lose it, issue a new one — which makes this one stop working.',
+  'systemAdmin.users.setupLink.expires': 'Expires {{at}}.',
+  'systemAdmin.users.setupLink.singleUse': 'Works once — it stops working as soon as it is used.',
+  'systemAdmin.users.setupLink.supersedes': 'Any link issued for this account before now is now dead.',
+  'systemAdmin.users.setupLink.notSent': 'Nothing was sent by the system. Delivering it is up to you.',
+  'systemAdmin.users.setupLink.copy': 'Copy link',
+  'systemAdmin.users.setupLink.copied': 'Copied',
+  'systemAdmin.users.setupLink.copyUnavailable':
+    'This browser will not let a page copy for you — select the link and copy it yourself.',
+  'systemAdmin.users.setupLink.failed': 'Could not issue a setup link for this account.',
 };
 
 const ar: Record<string, string> = {
@@ -7149,6 +7169,26 @@ const ar: Record<string, string> = {
     'التنبيه قبل انتهاء رخصة المركبة (بالأيام)',
   'systemAdmin.settings.keys.fleet.license.driverWarnDays':
     'التنبيه قبل انتهاء رخصة السائق (بالأيام)',
+
+  // P9-A — رابط الإعداد الذي يسلّمه المشرف يدويًا
+  'systemAdmin.users.actions.setupLink': 'نسخ رابط الإعداد',
+  'systemAdmin.users.security.setupLinkHint':
+    'يولّد رابطًا لمرة واحدة ويعرضه عليك مرة واحدة فقط، لترسله بنفسك عبر واتساب أو البريد أو أي وسيلة أخرى. النظام لا يرسل شيئًا، وأي رابط سابق يتوقف عن العمل.',
+  'systemAdmin.users.setupLink.title': 'رابط إعداد الحساب',
+  'systemAdmin.users.setupLink.intro':
+    'أرسل هذا الرابط إلى {{name}}. فتحه يتيح له اختيار كلمة مروره وتفعيل الحساب.',
+  'systemAdmin.users.setupLink.onceTitle': 'يُعرض مرة واحدة.',
+  'systemAdmin.users.setupLink.onceBody':
+    'الرابط مخزَّن كتجزئة فقط، فلا يمكن عرضه مجددًا. إن فقدته فولّد رابطًا جديدًا — وهذا يُبطل الحالي.',
+  'systemAdmin.users.setupLink.expires': 'تنتهي صلاحيته في {{at}}.',
+  'systemAdmin.users.setupLink.singleUse': 'يعمل مرة واحدة — يتوقف بمجرد استخدامه.',
+  'systemAdmin.users.setupLink.supersedes': 'أي رابط صدر لهذا الحساب قبل الآن صار غير صالح.',
+  'systemAdmin.users.setupLink.notSent': 'لم يرسل النظام شيئًا. الإرسال مسؤوليتك أنت.',
+  'systemAdmin.users.setupLink.copy': 'نسخ الرابط',
+  'systemAdmin.users.setupLink.copied': 'تم النسخ',
+  'systemAdmin.users.setupLink.copyUnavailable':
+    'هذا المتصفح لا يسمح للصفحة بالنسخ نيابة عنك — حدّد الرابط وانسخه بنفسك.',
+  'systemAdmin.users.setupLink.failed': 'تعذّر توليد رابط إعداد لهذا الحساب.',
 };
 
 const catalogs: Record<Locale, Record<string, string>> = { en, ar };

@@ -1,6 +1,11 @@
 // System Administration → Users: the api/ surface (ADR-013). Every call targets an endpoint the
-// platform ALREADY serves — this slice adds no backend, so a path here that the API does not
-// declare is a bug the contract spec beside this folder catches at build time.
+// platform serves, and a path here that the API does not declare is a bug the contract spec beside
+// this folder catches at build time.
+//
+// One exception to "this module adds no backend", and it is deliberate: P9-A added
+// `POST /:id/setup-link`. Nothing else in this folder could have produced it — the raw setup token
+// exists only inside the call that mints it and is discarded when that call returns, so there was
+// no arrangement of existing endpoints that would hand it to an administrator. See `issueSetupLink`.
 //
 // Why this client lives in the module rather than in `platform/`: `platform/settings/settings-api.ts`
 // sits there because any module's settings screen reads it. Administering user accounts has exactly
@@ -18,6 +23,7 @@ import {
   type EmployeeDto,
   type InvitedUserDto,
   type OrgUnitOptionDto,
+  type SetupLinkDto,
   type Paginated,
   type SectionDto,
   type TimelineDto,
@@ -83,6 +89,20 @@ export const resetUserPassword = (id: string): Promise<AdminResetPasswordResultD
 /** Re-deliver a PENDING setup link (§14.3). The API refuses when none is outstanding. */
 export const resendUserCredentials = (id: string): Promise<AdminResetPasswordResultDto> =>
   post<AdminResetPasswordResultDto>(`/platform/users/${id}/credentials/resend`, {});
+
+/**
+ * P9-A — mint a setup link and read it back, for an administrator to deliver by hand.
+ *
+ * The ONE call in this folder that targets an endpoint System Administration itself added, and it
+ * had to be added: the raw token lives only inside the call that mints it, so no arrangement of
+ * existing endpoints could ever return it. Behind `user.setupLink` (break-glass) rather than
+ * `user.resetPassword`, because reading a link is account takeover and delivering one is not.
+ *
+ * Refused with 422 for an account that already has a password — that is a reset, and it has its
+ * own endpoint which delivers rather than reveals.
+ */
+export const issueSetupLink = (id: string): Promise<SetupLinkDto> =>
+  post<SetupLinkDto>(`/platform/users/${id}/setup-link`, {});
 
 /** Wipe TOTP enrollment; the `required` flag is left exactly as it was. */
 export const resetUserTotp = (id: string): Promise<void> =>

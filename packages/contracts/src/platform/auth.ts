@@ -127,6 +127,25 @@ export interface CredentialsDeliveryResultDto {
   detail: string | null;
 }
 
+/**
+ * A setup link handed to an administrator to deliver by hand (P9-A).
+ *
+ * **Returned once and never again.** The token behind `url` is stored as a SHA-256 hash and
+ * nothing else, exactly as every other setup link is, so there is no endpoint that can read it
+ * back — losing it means issuing a new one, which invalidates this one. That is what keeps the
+ * hash-only-at-rest invariant (auth design §14.6) intact while still letting an administrator
+ * onboard someone on a deployment where WhatsApp and SMTP are not wired up.
+ *
+ * `url` carries a single-use, time-boxed capability to CHOOSE a password — never a password, and
+ * never anything that can be exchanged for one.
+ */
+export interface SetupLinkDto {
+  /** `{WEB_PUBLIC_URL}/activate?token=…` — the same link the delivery channels would have sent. */
+  url: string;
+  /** End of the validity window, from `auth.activationLink.ttlHours`. */
+  expiresAt: string;
+}
+
 export interface AdminResetPasswordResultDto {
   delivery: CredentialsDeliveryResultDto[];
 }

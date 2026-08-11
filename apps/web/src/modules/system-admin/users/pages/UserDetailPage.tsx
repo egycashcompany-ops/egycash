@@ -32,6 +32,7 @@ import { UserFormDialog } from '../components/UserFormDialog';
 // The grants an account holds are role-assignment records, so the screen that edits them belongs to
 // the roles feature — this page renders it rather than owning a second client for the same resource.
 import { UserRolesTab } from '../../roles/components/UserRolesTab';
+import { UserApplicationsCard } from '../../../../platform/user-applications/UserApplicationsCard';
 import { UserEffectivePermissionsTab } from '../../roles/components/UserEffectivePermissionsTab';
 import { useSystemUser } from '../api/user-queries';
 
@@ -154,7 +155,17 @@ export const UserDetailPage = (): JSX.Element => {
         </div>
       )}
 
-      {tab === 'roles' && <UserRolesTab user={user} />}
+      {/* Roles and application grants sit together because the sidebar needs BOTH and neither
+          implies the other. A role carries permissions; a grant puts the row on offer; navigation
+          shows what has both. An administrator who assigns a role here and then hears "I see
+          nothing" is one card away from the answer instead of one module away — the grant surface
+          used to exist only on HR's employee profile, which platform accounts never reach. */}
+      {tab === 'roles' && (
+        <div className="space-y-4">
+          <UserRolesTab user={user} />
+          <UserApplicationsCard userId={user.id} />
+        </div>
+      )}
 
       {tab === 'permissions' && <UserEffectivePermissionsTab user={user} />}
 

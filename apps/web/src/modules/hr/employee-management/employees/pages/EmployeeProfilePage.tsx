@@ -20,7 +20,7 @@ import { lazy, Suspense, useState } from 'react';
 import { EmployeeStatusBadge } from '../components/EmployeeStatusBadge';
 import { EmploymentView } from '../components/EmploymentView';
 import { EmployeeAccountCard } from '../components/EmployeeAccountCard';
-import { UserApplicationsCard } from '../components/UserApplicationsCard';
+import { UserApplicationsCard } from '../../../../../platform/user-applications/UserApplicationsCard';
 import { ActionsMenu } from '../components/actions/ActionsMenu';
 import { ActionHistory } from '../components/ActionHistory';
 import { PersonalView } from '../components/PersonalView';

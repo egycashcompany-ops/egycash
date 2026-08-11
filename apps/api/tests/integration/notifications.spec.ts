@@ -440,13 +440,36 @@ describe('template guards (P10)', () => {
     expect(JSON.stringify(response.body)).toContain('name');
   });
 
-  it('accepts the same edit when the variable list is updated with it', async () => {
-    const created = await createTemplate(adminToken, { key: 'test.g2.merged.ok' });
+  /**
+   * The half of that case I got wrong myself, so it is pinned rather than left to be rediscovered.
+   *
+   * Dropping a variable from the BODY while the subject still uses it does not make the template
+   * consistent — the subject's placeholder is now undeclared, and would be delivered as literal
+   * text in the email's subject line. The merged check sees the whole template, including the
+   * subject carried forward from the previous version, and refuses.
+   */
+  it('refuses an edit that clears a variable the SUBJECT still uses', async () => {
+    const created = await createTemplate(adminToken, { key: 'test.g2.subject.orphan' });
     const id = (created.body.data as { id: string }).id;
     const response = await request(app)
       .patch(`/api/v1/platform/notification-templates/${id}`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ body: { ar: 'بلا متغيرات', en: 'no variables here' }, variables: [] });
+    expect(response.status).toBe(400);
+    expect(JSON.stringify(response.body)).toContain('subject');
+  });
+
+  it('accepts the same edit when the subject and the variable list are cleared with it', async () => {
+    const created = await createTemplate(adminToken, { key: 'test.g2.merged.ok' });
+    const id = (created.body.data as { id: string }).id;
+    const response = await request(app)
+      .patch(`/api/v1/platform/notification-templates/${id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        body: { ar: 'بلا متغيرات', en: 'no variables here' },
+        subject: { ar: 'موضوع ثابت', en: 'Fixed subject' },
+        variables: [],
+      });
     expect(response.status).toBe(200);
     expect((response.body.data as { variables: string[] }).variables).toEqual([]);
   });

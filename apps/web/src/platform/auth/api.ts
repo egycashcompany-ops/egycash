@@ -2,8 +2,8 @@
 import {
   type LoginResponse,
   type MeDto,
-  type NavLayout,
   type SessionDto,
+  type UpdateMyPreferences,
 } from '@ecms/contracts';
 import { api, del, patch, post, setAccessToken } from '../../shared/lib/api-client';
 
@@ -33,9 +33,14 @@ export const fetchMe = (): Promise<MeDto> => api('/auth/me');
 /**
  * The user's own presentation preferences. The response is the whole `me`, so the caller can put
  * the session straight back into the store instead of patching a copy of it.
+ *
+ * Every field is optional and only what is passed gets written, so a control saves itself without
+ * restating the other two — and without the race that restating them would create between two
+ * toggles pressed in quick succession.
  */
-export const updateMyPreferencesRequest = (navLayout: NavLayout): Promise<MeDto> =>
-  patch<MeDto>('/auth/me/preferences', { navLayout });
+export const updateMyPreferencesRequest = (
+  preferences: UpdateMyPreferences,
+): Promise<MeDto> => patch<MeDto>('/auth/me/preferences', preferences);
 
 export const logoutRequest = async (): Promise<void> => {
   await post<void>('/auth/logout', {});

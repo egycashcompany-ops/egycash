@@ -119,6 +119,8 @@ export const settingPermissions = declarePermissions(
   'setting',
   { en: 'settings', ar: 'الإعدادات' },
   ['view', 'edit'],
+  [],
+  'platform.settings',
 );
 
 export const auditLogPermissions = declarePermissions(
@@ -211,13 +213,17 @@ export const platformPermissions: PermissionDef[] = [
 /**
  * The platform's administration surfaces.
  *
- * Eleven, against eighteen resources — and the seven without a page are the point of the design
- * rather than an omission. `setting`, `auditLog` and `activityLog` are administered by screens that
- * are named in the System Administration plan and **not built yet**; `file`, `fileCategory`,
+ * Twelve, against eighteen resources — and the six without a page are the point of the design
+ * rather than an omission. `auditLog` and `activityLog` are administered by screens that are named
+ * in the System Administration plan and **not built yet**; `file`, `fileCategory`,
  * `notificationTemplate` and `scheduledTask` have no administration screen at all and never have.
  * Inventing a page for either group would put a claim in the registry that no screen honours, so
  * their permissions carry `pageId: null` and group under Other / Unassigned until a real surface
  * exists to name.
+ *
+ * `setting` left that list in P8, which is the rule working as intended in the other direction: the
+ * page is added by the change that builds the screen, not ahead of it. A page whose `route` nothing
+ * serves is the same lie as a missing page for a screen that exists.
  *
  * `route` is recorded where a screen is routed today. Nothing resolves it — it is here so the next
  * reader can check a page against the thing it claims to describe.
@@ -299,6 +305,13 @@ export const platformPages: PageDef[] = [
     name: { en: 'Application categories', ar: 'فئات التطبيقات' },
     route: '/organization/application-categories',
     sortOrder: 110,
+  },
+  {
+    id: 'platform.settings',
+    moduleId: P,
+    name: { en: 'System Settings', ar: 'إعدادات النظام' },
+    route: '/system/settings',
+    sortOrder: 120,
   },
 ];
 

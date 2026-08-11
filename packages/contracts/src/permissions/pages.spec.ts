@@ -138,14 +138,19 @@ describe('the platform registry as it actually stands', () => {
     expect(validatePageRegistry(platformPages, platformPermissions)).toEqual([]);
   });
 
-  it('declares 11 pages for 62 permissions', () => {
-    expect(platformPages).toHaveLength(11);
+  it('declares 12 pages for 62 permissions', () => {
+    expect(platformPages).toHaveLength(12);
     expect(platformPermissions).toHaveLength(62);
   });
 
   // The unassigned set is an explicit answer, not a gap, so it is pinned by name. Adding a
   // permission without placing it changes this list and fails here — which is the point.
-  it('leaves exactly the seven resources that have no administration screen unassigned', () => {
+  //
+  // `setting` left the list in P8, in the same change that routed `/system/settings`. That is the
+  // only direction this list may shrink: a page is added by the work that builds its screen, never
+  // ahead of it, because a page whose `route` nothing serves is the same lie as a missing page for
+  // a screen that exists.
+  it('leaves exactly the six resources that have no administration screen unassigned', () => {
     const unassigned = [
       ...new Set(platformPermissions.filter((p) => p.pageId === null).map((p) => p.resource)),
     ].sort();
@@ -156,9 +161,14 @@ describe('the platform registry as it actually stands', () => {
       'fileCategory',
       'notificationTemplate',
       'scheduledTask',
-      'setting',
     ]);
-    expect(platformPermissions.filter((p) => p.pageId === null)).toHaveLength(19);
+    expect(platformPermissions.filter((p) => p.pageId === null)).toHaveLength(17);
+  });
+
+  it('places both settings permissions on the settings page', () => {
+    const settings = platformPermissions.filter((p) => p.resource === 'setting');
+    expect(settings.map((p) => p.key).sort()).toEqual(['setting.edit', 'setting.view']);
+    for (const permission of settings) expect(permission.pageId).toBe('platform.settings');
   });
 
   it('every page a platform permission names is declared by the platform', () => {

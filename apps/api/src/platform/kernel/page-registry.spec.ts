@@ -22,21 +22,21 @@ describe('the assembled page registry', () => {
     expect(validatePageRegistry(pages, permissions)).toEqual([]);
   });
 
-  it('declares 46 pages over 202 permissions', () => {
-    expect(pages).toHaveLength(46);
+  it('declares 47 pages over 202 permissions', () => {
+    expect(pages).toHaveLength(47);
     expect(permissions).toHaveLength(202);
   });
 
-  it('assigns 172 permissions to a page and leaves 30 deliberately unassigned', () => {
+  it('assigns 174 permissions to a page and leaves 28 deliberately unassigned', () => {
     const assigned = permissions.filter((p) => p.pageId !== null);
-    expect(assigned).toHaveLength(172);
-    expect(permissions.length - assigned.length).toBe(30);
+    expect(assigned).toHaveLength(174);
+    expect(permissions.length - assigned.length).toBe(28);
   });
 
   it('splits the pages across the four modules as declared', () => {
     const byModule = new Map<string, number>();
     for (const page of pages) byModule.set(page.moduleId, (byModule.get(page.moduleId) ?? 0) + 1);
-    expect(Object.fromEntries(byModule)).toEqual({ platform: 11, hr: 16, fleet: 10, it: 9 });
+    expect(Object.fromEntries(byModule)).toEqual({ platform: 12, hr: 16, fleet: 10, it: 9 });
   });
 
   // Named rather than counted, because "which permissions have no home" is the question a reviewer
@@ -47,10 +47,10 @@ describe('the assembled page registry', () => {
     ].sort();
     expect(unassigned).toEqual(
       [
-        // Screens named in the System Administration plan and not built yet.
+        // Screens named in the System Administration plan and not built yet. `setting` left this
+        // list in P8, in the change that routed `/system/settings` — never before it.
         'activityLog',
         'auditLog',
-        'setting',
         // No administration screen at all, and never has been.
         'file',
         'fileCategory',

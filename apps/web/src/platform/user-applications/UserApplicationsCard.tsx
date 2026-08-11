@@ -1,26 +1,37 @@
-// The "Applications" section for a user account (rendered on the employee detail, next to the account
-// card — the app has no standalone user-detail page). Lists the applications directly granted to the
-// user and (for user.edit) lets an admin grant a new one or remove an existing link. Assigning or
-// removing only touches the link — never the user or the application.
+// Which applications an account has been GRANTED — and why that is not the same question as what it
+// may do.
+//
+// Navigation is a union of two grants (this one, and the account's department's) INTERSECTED with
+// the permissions RBAC gives it. A grant is an administrator saying "this is on offer to you"; the
+// permission is RBAC saying whether you may enter it. Neither implies the other, and the sidebar
+// shows only what has both — so an account holding a role full of permissions and no grant at all
+// sees an EMPTY sidebar, which is exactly the confusion this card is placed here to end.
+//
+// **It lives in `platform/` because that is what it is about**: platform users and the platform
+// application catalog, with no HR concept anywhere in it. It sat under HR's employee profile only
+// because that was the first screen in the product with a user detail on it — System Administration
+// now has one too, and both import it from here rather than one module reaching into another.
+//
+// Assigning or removing only touches the LINK — never the user, never the application.
 import { useMemo, useState } from 'react';
 import { type Locale } from '@ecms/contracts';
-import { useT } from '../../../../../platform/localization/useT';
-import { useAppSelector } from '../../../../../store';
-import { Can } from '../../../../../platform/rbac/Can';
-import { Card, CardBody, CardHeader } from '../../../../../shared/ui/Card';
-import { Button } from '../../../../../shared/ui/Button';
-import { Select } from '../../../../../shared/ui/form';
-import { StatusBadge } from '../../../../../shared/ui/Badge';
-import { LoadingState } from '../../../../../shared/ui/states/LoadingState';
-import { toast } from '../../../../../shared/ui/toast/toast-store';
-import { ApiError } from '../../../../../shared/lib/api-client';
-import { localized } from '../../../../../shared/lib/format';
+import { useT } from '../localization/useT';
+import { useAppSelector } from '../../store';
+import { Can } from '../rbac/Can';
+import { Card, CardBody, CardHeader } from '../../shared/ui/Card';
+import { Button } from '../../shared/ui/Button';
+import { Select } from '../../shared/ui/form';
+import { StatusBadge } from '../../shared/ui/Badge';
+import { LoadingState } from '../../shared/ui/states/LoadingState';
+import { toast } from '../../shared/ui/toast/toast-store';
+import { ApiError } from '../../shared/lib/api-client';
+import { localized } from '../../shared/lib/format';
 import {
   useActiveApplications,
   useAssignUserApplication,
   useRemoveUserApplication,
   useUserApplications,
-} from '../api/user-application-queries';
+} from './user-application-queries';
 
 export const UserApplicationsCard = ({ userId }: { userId: string }): JSX.Element => {
   const t = useT();

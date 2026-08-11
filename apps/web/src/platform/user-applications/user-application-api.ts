@@ -2,7 +2,7 @@
 // `/platform/users/:userId/applications`, gated by user.view/edit). `listActiveApplications` feeds
 // the assign picker with active applications to choose from.
 import { type ApplicationDto, type Paginated } from '@ecms/contracts';
-import { buildQuery, del, get, getPage, post } from '../../../../../shared/lib/api-client';
+import { buildQuery, del, get, getPage, post } from '../../shared/lib/api-client';
 
 export const listUserApplications = (userId: string): Promise<ApplicationDto[]> =>
   get<ApplicationDto[]>(`/platform/users/${userId}/applications`);

@@ -466,6 +466,22 @@ const CATALOG: CategoryDef[] = [
         icon: 'bell',
         permission: 'notificationTemplate.view',
       },
+      // P11. Two rows, not one: the streams are separate collections behind separate grants, and a
+      // single row would advertise both to whoever held either.
+      {
+        en: 'Audit log',
+        ar: 'سجل التدقيق',
+        route: '/system/audit',
+        icon: 'shield',
+        permission: 'auditLog.view',
+      },
+      {
+        en: 'Activity log',
+        ar: 'سجل النشاط',
+        route: '/system/activity',
+        icon: 'clipboard',
+        permission: 'activityLog.view',
+      },
     ],
   },
 ];

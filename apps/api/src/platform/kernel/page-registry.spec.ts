@@ -22,21 +22,21 @@ describe('the assembled page registry', () => {
     expect(validatePageRegistry(pages, permissions)).toEqual([]);
   });
 
-  it('declares 48 pages over 203 permissions', () => {
-    expect(pages).toHaveLength(48);
+  it('declares 50 pages over 203 permissions', () => {
+    expect(pages).toHaveLength(50);
     expect(permissions).toHaveLength(203);
   });
 
-  it('assigns 180 permissions to a page and leaves 23 deliberately unassigned', () => {
+  it('assigns 183 permissions to a page and leaves 20 deliberately unassigned', () => {
     const assigned = permissions.filter((p) => p.pageId !== null);
-    expect(assigned).toHaveLength(180);
-    expect(permissions.length - assigned.length).toBe(23);
+    expect(assigned).toHaveLength(183);
+    expect(permissions.length - assigned.length).toBe(20);
   });
 
   it('splits the pages across the four modules as declared', () => {
     const byModule = new Map<string, number>();
     for (const page of pages) byModule.set(page.moduleId, (byModule.get(page.moduleId) ?? 0) + 1);
-    expect(Object.fromEntries(byModule)).toEqual({ platform: 13, hr: 16, fleet: 10, it: 9 });
+    expect(Object.fromEntries(byModule)).toEqual({ platform: 15, hr: 16, fleet: 10, it: 9 });
   });
 
   // Named rather than counted, because "which permissions have no home" is the question a reviewer
@@ -47,12 +47,9 @@ describe('the assembled page registry', () => {
     ].sort();
     expect(unassigned).toEqual(
       [
-        // Screens named in the System Administration plan and not built yet. `setting` left this
-        // list in P8 and `notificationTemplate` in P10, each in the change that routed its screen
-        // — never before it.
-        'activityLog',
-        'auditLog',
-        // No administration screen at all, and never has been.
+        // No administration screen at all, and never has been. `setting` left this list in P8,
+        // `notificationTemplate` in P10 and the two log streams in P11, each in the change that
+        // routed its screen — never before it.
         'file',
         'fileCategory',
         'scheduledTask',

@@ -2,10 +2,11 @@
 // Plan §4 NFR); the export itself is audited (actor, filter, row count) after the
 // stream completes. Row-capped by the `audit.export.maxRows` setting.
 import { type Response } from 'express';
-import { maskNationalId, SettingKeys, type ExportAuditLogsQuery } from '@ecms/contracts';
+import { SettingKeys, type ExportAuditLogsQuery } from '@ecms/contracts';
 import { type AuthContext } from '../../shared/types';
 import { settingsService } from '../settings';
 import { auditService, buildAuditFilter } from './audit.service';
+import { maskChanges } from './audit.masking';
 import { AuditLogModel, type AuditLogDoc } from './audit.model';
 
 const CSV_COLUMNS = [
@@ -26,17 +27,14 @@ export const csvEscape = (value: unknown): string => {
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 
-/** Field-name-based masking — covers the one PII field named in Plan §13; not a general scanner. */
-const MASKED_FIELDS = new Set(['nationalId']);
-export const maskChangeValue = (field: string, value: unknown): unknown =>
-  MASKED_FIELDS.has(field) && typeof value === 'string' ? maskNationalId(value) : value;
+// The masking rule moved to `audit.masking` in P11 so the LIST endpoint applies it too — it used
+// to live here, which quietly made it the CSV's rule rather than the audit stream's, and left the
+// list returning raw values the export would have masked. Re-exported: `maskChangeValue` was
+// already part of this module's surface and its spec asserts on it directly.
+export { maskChangeValue } from './audit.masking';
 
 export const rowToCsv = (doc: AuditLogDoc): string => {
-  const maskedChanges = doc.changes.map((c) => ({
-    field: c.field,
-    old: maskChangeValue(c.field, c.old),
-    new: maskChangeValue(c.field, c.new),
-  }));
+  const maskedChanges = maskChanges(doc.changes);
   const fields = [
     String(doc._id),
     doc.entityRef.moduleId,

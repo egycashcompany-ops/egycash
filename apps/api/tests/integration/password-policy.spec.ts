@@ -213,11 +213,30 @@ describe('the server refuses a bad password however it arrives', () => {
     const res = await request(app)
       .post('/api/v1/auth/password/change')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ currentPassword: PASSWORD, newPassword: 'short' });
+      // Eight characters, so it clears the SCHEMA floor below and is judged by the policy.
+      .send({ currentPassword: PASSWORD, newPassword: 'nocomplex' });
     expect(res.status).toBe(422);
     expect((res.body as { error: { code: string } }).error.code).toBe(
       ErrorCodes.AUTH_PASSWORD_POLICY,
     );
+  });
+
+  /**
+   * There are TWO layers in front of a new password, and they answer differently.
+   *
+   * `ActivateAccountSchema` and `ChangePasswordSchema` both declare `z.string().min(8)`, which is a
+   * fixed floor enforced by validation — it answers **400**, before the configurable policy is ever
+   * consulted. The policy answers **422**. They cannot disagree in a way that matters, because
+   * `auth.password.minLength` itself declares `.min(8)`: the configurable minimum can never be set
+   * below the schema's.
+   *
+   * Worth pinning because a checklist showing "at least 8 characters" and a request refused with a
+   * validation error rather than a policy one would otherwise look like a bug in the policy.
+   */
+  it('rejects a password under the schema floor with 400, before the policy is reached', async () => {
+    const token = await invited('pp-floor@ecms.local');
+    const res = await activate(token, 'Ab1!efg'); // seven characters
+    expect(res.status).toBe(400);
   });
 });
 
@@ -249,7 +268,9 @@ describe('what the endpoint says is what the guard does', () => {
   it('still enforces the length when complexity is off', async () => {
     await setPolicy(12, false);
     const token = await invited('pp-nocomplexity-short@ecms.local');
-    expect((await activate(token, 'aaaaaaa')).status).toBe(422);
+    // Nine characters: past the schema's fixed floor of eight, short of the policy's twelve — so
+    // this is the POLICY refusing, not validation.
+    expect((await activate(token, 'aaaaaaaaa')).status).toBe(422);
   });
 
   /**

@@ -12,10 +12,9 @@
 //     `/fleet/*`, `/it/*` and the platform admin surfaces. Nothing here adds a per-user check to a
 //     route: the confinement IS the permission set, which is why a direct API call is blocked
 //     exactly as a click is.
-//   • Navigation — the Applications catalog's `permissionKey` filter (see `seed-navigation.ts` and
-//     `me/effective-applications.ts`). Their sidebar is the projection of the same permission set,
-//     so a non-HR module cannot appear even when their DEPARTMENT is granted it. Their own direct
-//     grants are pruned to HR here as well, so both inputs to the resolver agree.
+//   • Navigation — nothing here, and nothing needed. The sidebar IS the set of applications whose
+//     `permissionKey` the caller holds (see `me/effective-applications.ts`), so confining the
+//     permission set confines the sidebar with it. No application grant can add a row back.
 //   • TOTP — a consequence, not a special case. `isPrivileged` is "holds a system role OR holds a
 //     break-glass permission", and the R13 policy forces enrollment on privileged accounts only.
 //     HR declares no break-glass permission, and the role these users end up on is deliberately
@@ -179,13 +178,16 @@ const reconcileRoles = async (
 /**
  * Drop the user's direct application grants for applications outside HR.
  *
- * The permission filter already keeps such rows out of their sidebar, so this is the second layer
- * rather than the only one — but a grant that cannot render is still a grant, and leaving it in
- * place would make the account's stored state disagree with the access it actually has.
+ * NO LONGER LOAD-BEARING. Navigation is derived from effective permissions, so a grant cannot put a
+ * row in anybody's sidebar and this changes nothing about what the account can see or reach. It is
+ * kept as tidying — leaving a confined account holding grants that name Fleet and IT would make its
+ * stored state read as though it still had a claim on them — and it is the one place that already
+ * knows which grants are stale. The rows themselves are administrative leftovers platform-wide; a
+ * general cleanup of the two grant tables is a separate migration, not this function's job.
  *
  * "Outside HR" is decided by the application's own `permissionKey` through the permission registry,
  * so it follows the catalog instead of a hardcoded route list. An application with no permission key
- * is left alone: it is open to everyone by definition.
+ * is left alone: it is invisible to everyone anyway, so removing its grant would change nothing.
  */
 const reconcileApplicationGrants = async (userId: string, deps: ReconcileDeps): Promise<number> => {
   const links = await userApplicationRepository.findByUser(userId);

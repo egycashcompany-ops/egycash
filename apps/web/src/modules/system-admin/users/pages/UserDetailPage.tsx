@@ -32,7 +32,6 @@ import { UserFormDialog } from '../components/UserFormDialog';
 // The grants an account holds are role-assignment records, so the screen that edits them belongs to
 // the roles feature — this page renders it rather than owning a second client for the same resource.
 import { UserRolesTab } from '../../roles/components/UserRolesTab';
-import { UserApplicationsCard } from '../../../../platform/user-applications/UserApplicationsCard';
 import { UserEffectivePermissionsTab } from '../../roles/components/UserEffectivePermissionsTab';
 import { useSystemUser } from '../api/user-queries';
 
@@ -155,17 +154,11 @@ export const UserDetailPage = (): JSX.Element => {
         </div>
       )}
 
-      {/* Roles and application grants sit together because the sidebar needs BOTH and neither
-          implies the other. A role carries permissions; a grant puts the row on offer; navigation
-          shows what has both. An administrator who assigns a role here and then hears "I see
-          nothing" is one card away from the answer instead of one module away — the grant surface
-          used to exist only on HR's employee profile, which platform accounts never reach. */}
-      {tab === 'roles' && (
-        <div className="space-y-4">
-          <UserRolesTab user={user} />
-          <UserApplicationsCard userId={user.id} />
-        </div>
-      )}
+      {/* Roles alone. The application-grant card that briefly sat here is gone: navigation is now
+          derived from effective permissions, so assigning the role IS the whole action and a second
+          card would offer a control that changes nothing. What the account can reach is answered by
+          the permissions tab, which is the same set the sidebar is built from. */}
+      {tab === 'roles' && <UserRolesTab user={user} />}
 
       {tab === 'permissions' && <UserEffectivePermissionsTab user={user} />}
 

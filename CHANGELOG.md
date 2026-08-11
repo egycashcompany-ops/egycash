@@ -237,6 +237,33 @@ its entry here in the same PR.
   produced, matched on that key alone so a real applicant can never be caught by it. Development
   and staging only — it refuses to run when `NODE_ENV=production`.
 
+### Changed
+
+- **A role is now the whole action: applications appear in the sidebar because of the permissions
+  they carry.** Navigation used to be the union of two grant tables — the applications assigned to
+  an account's department and those granted to it directly — intersected with its permissions. A
+  role wrote only half of that, so assigning someone every permission a module has left their
+  sidebar **empty** until an administrator also granted them each application by hand, on a second
+  screen. Two records had to agree for a screen to appear, and nothing kept them in step: revoking
+  a role left the grant behind, and granting an application to somebody who could not open it
+  produced a row that answered 403 on click.
+
+  There is one source now. An application declares the permission that opens it, and the sidebar is
+  the set of applications whose permission the caller holds. It follows every RBAC change on its
+  own — assigning or revoking a role, adding or removing a permission from a role, a validity window
+  opening or closing — because those are exactly the events that change an effective permission set,
+  and navigation reads that set rather than a copy of it. Nothing outside RBAC can add a row or hold
+  one back, so an application grant can no longer contradict what the server will allow.
+
+  **An application with no declared permission is now visible to nobody**, where before it was
+  "no permission needed". That reading was safe only while a grant was also required; without one it
+  would have handed every undeclared application to every signed-in user. Declaring the permission
+  is therefore required when cataloguing an application and cannot be cleared afterwards.
+
+  The manual application-grant card is gone from both screens that carried it. The two grant tables
+  and their endpoints are untouched and their data is left in place — nothing reads them, and
+  clearing them is a separate migration.
+
 ### Fixed
 
 - **The last Super Admin could be stripped of the role by archiving a spare one first.** The rule

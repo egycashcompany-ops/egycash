@@ -1,19 +1,27 @@
 // The pure core of the effective-applications resolver — no I/O, so it is fully unit-testable. Given
-// the caller's candidate applications (already the union of department + direct grants) and the
-// categories they reference, it produces the grouped, ordered navigation the sidebar renders:
+// the candidate applications and the categories they reference, it produces the grouped, ordered
+// navigation the sidebar renders:
+//   • applications the caller holds no permission for dropped,
+//   • applications with NO declared permission dropped — entitled to nobody (see below),
 //   • duplicates removed (first occurrence wins),
 //   • inactive applications dropped,
-//   • applications the caller lacks the permission for dropped,
 //   • grouped under their category, empty categories omitted,
 //   • categories ordered by sortOrder, applications ordered by sortOrder within each category.
 //
-// The permission filter is what keeps navigation and authorization from disagreeing. A grant is an
-// administrator saying "this app is on offer to you"; the permission is RBAC saying whether you may
-// enter it. Before the filter, a user granted an application whose module they hold no permission in
-// saw the row and got a 403 on opening it — and a user restricted to one module still had every
-// other module advertised in their sidebar through their department's grants. Filtering here (not in
-// the client) means the answer is the same on every surface, and no per-user navigation data has to
-// be maintained to keep it true.
+// THE PERMISSION IS THE ONLY INPUT. Navigation is a projection of what the caller may do: an
+// application declares the permission that opens it, and holding that permission is what puts it in
+// the sidebar. Nothing else grants a row — no per-user list, no per-department list — so the sidebar
+// cannot disagree with the server, and it changes the moment RBAC does, with no second record to
+// keep in step.
+//
+// The permission check ignores SCOPE deliberately. Holding `leave.view` at `own` still opens the
+// Leave screen; scope narrows the rows the screen returns, it does not withhold the screen. That is
+// the same reading `authorize()` gives on the route, which is what keeps the two surfaces agreeing.
+//
+// A NULL `permissionKey` is entitled to nobody. It means no permission was declared for that screen,
+// and "nobody said who may open this" must not resolve to "everybody may". The caller loading the
+// candidates already excludes them; the check is repeated here so the rule holds for any caller of
+// this function, and so it is visible where the decision is made.
 import { type MyApplicationCategoryDto, type DataScope } from '@ecms/contracts';
 
 export interface EffectiveAppInput {
@@ -24,7 +32,7 @@ export interface EffectiveAppInput {
   sortOrder: number;
   status: 'active' | 'inactive';
   categoryId: string;
-  /** Permission needed to open it; null (or a pre-field catalog row) = no permission needed. */
+  /** Permission that opens it. Null = none declared, which entitles nobody. */
   permissionKey: string | null;
 }
 
@@ -40,13 +48,13 @@ export const assembleEffectiveApplications = (
   categories: EffectiveCategoryInput[],
   permissions: Record<string, DataScope>,
 ): MyApplicationCategoryDto[] => {
-  // Dedupe by id (first wins), keep only active applications, and drop the ones the caller holds
-  // no permission for. `permissionKey === null` is the pre-field / open-page case and stays.
+  // Dedupe by id (first wins), keep only active applications, and keep only the ones the caller is
+  // entitled to: a declared permission that they hold. No key declared → nobody is entitled.
   const active = new Map<string, EffectiveAppInput>();
   for (const app of apps) {
     if (app.status !== 'active' || active.has(app.id)) continue;
     const key = app.permissionKey;
-    if (key !== null && permissions[key] === undefined) continue;
+    if (key === null || permissions[key] === undefined) continue;
     active.set(app.id, app);
   }
   const activeApps = [...active.values()];

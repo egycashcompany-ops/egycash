@@ -3,10 +3,13 @@
 // so both templates exist unconditionally at boot — including in test suites — since
 // the plan's acceptance criteria requires both subscriptions to work end-to-end.
 import { notificationTemplateService } from './notification-template.service';
-import { CREDENTIALS_TEMPLATE_KEY } from '../users/credentials-delivery';
+import {
+  CREDENTIALS_TEMPLATE_KEY,
+  ROLE_ASSIGNMENT_CHANGED_TEMPLATE_KEY,
+  SECURITY_ALERT_TEMPLATE_KEY,
+} from './notification.template-rules';
 
-export const SECURITY_ALERT_TEMPLATE_KEY = 'platform.securityAlertRaised';
-export const ROLE_ASSIGNMENT_CHANGED_TEMPLATE_KEY = 'platform.roleAssignmentChanged';
+export { ROLE_ASSIGNMENT_CHANGED_TEMPLATE_KEY, SECURITY_ALERT_TEMPLATE_KEY };
 
 export const ensureBuiltinNotificationTemplates = async (): Promise<void> => {
   // Account-setup message (auth design §13 R15 + §14): ADMIN-EDITABLE wording; rendered in

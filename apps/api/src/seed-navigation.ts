@@ -456,6 +456,16 @@ const CATALOG: CategoryDef[] = [
         icon: 'settings',
         permission: 'setting.view',
       },
+      // P10. `notificationTemplate.view` is what every read on the screen enforces — the list, the
+      // one template, its versions and the preview all gate on it — so the row advertises exactly
+      // what the caller can open. Editing and test-sending are separate keys, checked inside.
+      {
+        en: 'Notification templates',
+        ar: 'قوالب الإشعارات',
+        route: '/system/notification-templates',
+        icon: 'bell',
+        permission: 'notificationTemplate.view',
+      },
       // P11. Two rows, not one: the streams are separate collections behind separate grants, and a
       // single row would advertise both to whoever held either.
       {

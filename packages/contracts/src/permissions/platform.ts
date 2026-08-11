@@ -210,6 +210,7 @@ export const notificationTemplatePermissions = declarePermissions(
       name: { en: 'Send a test notification', ar: 'إرسال إشعار تجريبي' },
     },
   ],
+  'platform.notification-templates',
 );
 
 export const platformPermissions: PermissionDef[] = [
@@ -236,16 +237,16 @@ export const platformPermissions: PermissionDef[] = [
 /**
  * The platform's administration surfaces.
  *
- * Fourteen, against eighteen resources — and the four without a page are the point of the design
- * rather than an omission: `file`, `fileCategory`, `notificationTemplate` and `scheduledTask` have
- * no administration screen at all and never have. Inventing a page for them would put a claim in
- * the registry that no screen honours, so their permissions carry `pageId: null` and group under
- * Other / Unassigned until a real surface exists to name.
+ * Fifteen, against eighteen resources — and the three without a page are the point of the design
+ * rather than an omission: `file`, `fileCategory` and `scheduledTask` have no administration screen
+ * at all and never have. Inventing a page for them would put a claim in the registry that no screen
+ * honours, so their permissions carry `pageId: null` and group under Other / Unassigned until a
+ * real surface exists to name.
  *
- * `setting` left that list in P8 and `auditLog`/`activityLog` in P11, which is the rule working as
- * intended in the other direction: the page is added by the change that builds the screen, not
- * ahead of it. A page whose `route` nothing serves is the same lie as a missing page for a screen
- * that exists.
+ * `setting` left that list in P8, `notificationTemplate` in P10 and `auditLog`/`activityLog` in
+ * P11, which is the rule working as intended in the other direction: the page is added by the
+ * change that builds the screen, not ahead of it. A page whose `route` nothing serves is the same
+ * lie as a missing page for a screen that exists.
  *
  * The two log streams get **two pages, not one**. They are separate collections with separate
  * permissions, separate filter vocabularies and separate retention — `auditLog.view` and
@@ -341,18 +342,25 @@ export const platformPages: PageDef[] = [
     sortOrder: 120,
   },
   {
+    id: 'platform.notification-templates',
+    moduleId: P,
+    name: { en: 'Notification templates', ar: 'قوالب الإشعارات' },
+    route: '/system/notification-templates',
+    sortOrder: 130,
+  },
+  {
     id: 'platform.audit',
     moduleId: P,
     name: { en: 'Audit log', ar: 'سجل التدقيق' },
     route: '/system/audit',
-    sortOrder: 130,
+    sortOrder: 140,
   },
   {
     id: 'platform.activity',
     moduleId: P,
     name: { en: 'Activity log', ar: 'سجل النشاط' },
     route: '/system/activity',
-    sortOrder: 140,
+    sortOrder: 150,
   },
 ];
 

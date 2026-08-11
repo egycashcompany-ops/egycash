@@ -3163,6 +3163,78 @@ const en: Record<string, string> = {
   'it.assets.clearPick': 'Clear the chosen asset',
 
   // ── System Administration → Users (SA-1) ──────────────────────────────────
+  // P10 — the notification-template catalog. The service has been complete since Sprint 3.3; this
+  // is the administration console its own design deferred.
+  'systemAdmin.templates.title': 'Notification templates',
+  'systemAdmin.templates.subtitle':
+    'The wording of every notification the platform sends. Each save publishes a new version; earlier ones are kept.',
+  'systemAdmin.templates.empty': 'No templates match this view.',
+  'systemAdmin.templates.create': 'New template',
+  'systemAdmin.templates.createdHint':
+    'Template created. It is sent only where code asks for its key — creating it here does not, on its own, send anything.',
+  'systemAdmin.templates.edit': 'Edit',
+  'systemAdmin.templates.deactivate': 'Deactivate',
+  'systemAdmin.templates.protected': 'Sent by the platform',
+  'systemAdmin.templates.protectedHint':
+    'The platform sends this template by name. Its wording can be edited, but it cannot be deactivated — switching it off would stop the notification it carries.',
+  'systemAdmin.templates.latest': 'Current',
+  'systemAdmin.templates.versionLabel': 'Version {{version}}',
+  'systemAdmin.templates.savedAsVersion': 'Saved as version {{version}}.',
+  'systemAdmin.templates.savePublishesVersion':
+    'Saving publishes a new version. The current one is kept and stays readable in the history.',
+  'systemAdmin.templates.versionsHint':
+    'Every edit, newest first. Notifications already sent keep the version they were rendered from.',
+  'systemAdmin.templates.previewHint':
+    'Renders the template against sample values. Preview sends nothing; a test sends a real message to you alone.',
+  'systemAdmin.templates.renderPreview': 'Render preview',
+  'systemAdmin.templates.testSend': 'Send a test to myself',
+  'systemAdmin.templates.testSent': 'Test message sent.',
+  'systemAdmin.templates.detectedVariables': 'Variables in this template',
+  'systemAdmin.templates.detectedVariablesHint':
+    'Taken from the placeholders your text uses — you do not maintain this list. A placeholder must appear in both languages.',
+  'systemAdmin.templates.noVariables': 'None',
+  'systemAdmin.templates.unbalanced':
+    '{{name}} is missing from the {{language}} text — a placeholder must appear in both languages, or that language is sent without it.',
+  'systemAdmin.templates.subjectUndeclared':
+    'The subject uses {{names}}, which the message body never uses — it would be delivered as literal text.',
+  'systemAdmin.templates.expiryHint': 'Hours, 1–8760. Leave empty for no expiry.',
+  'systemAdmin.templates.language.ar': 'Arabic',
+  'systemAdmin.templates.language.en': 'English',
+  'systemAdmin.templates.filters.allStatuses': 'Any status',
+  'systemAdmin.templates.filters.allCategories': 'Any category',
+  'systemAdmin.templates.fields.key': 'Key',
+  'systemAdmin.templates.fields.category': 'Category',
+  'systemAdmin.templates.fields.priority': 'Priority',
+  'systemAdmin.templates.fields.channels': 'Channels',
+  'systemAdmin.templates.fields.version': 'Version',
+  'systemAdmin.templates.fields.status': 'Status',
+  'systemAdmin.templates.fields.variables': 'Variables',
+  'systemAdmin.templates.fields.subjectAr': 'Subject (Arabic)',
+  'systemAdmin.templates.fields.subjectEn': 'Subject (English)',
+  'systemAdmin.templates.fields.bodyAr': 'Message (Arabic)',
+  'systemAdmin.templates.fields.bodyEn': 'Message (English)',
+  'systemAdmin.templates.fields.defaultExpiryHours': 'Expires after',
+  'systemAdmin.templates.tabs.content': 'Content',
+  'systemAdmin.templates.tabs.versions': 'Versions',
+  'systemAdmin.templates.tabs.preview': 'Preview & test',
+  'systemAdmin.templates.status.active': 'Active',
+  'systemAdmin.templates.status.inactive': 'Inactive',
+  'systemAdmin.templates.channel.inApp': 'In-app',
+  'systemAdmin.templates.channel.email': 'Email',
+  'systemAdmin.templates.priority.low': 'Low',
+  'systemAdmin.templates.priority.normal': 'Normal',
+  'systemAdmin.templates.priority.high': 'High',
+  'systemAdmin.templates.priority.critical': 'Critical',
+  'systemAdmin.templates.category.security': 'Security',
+  'systemAdmin.templates.category.hr': 'HR',
+  'systemAdmin.templates.category.workflow': 'Workflow',
+  'systemAdmin.templates.category.approval': 'Approval',
+  'systemAdmin.templates.category.system': 'System',
+  'systemAdmin.templates.category.contracts': 'Contracts',
+  'systemAdmin.templates.category.fleet': 'Fleet',
+  'systemAdmin.templates.category.vault': 'Vault',
+  'systemAdmin.templates.category.atm': 'ATM',
+  'systemAdmin.templates.category.finance': 'Finance',
   // P11 — the two log streams. The action labels below live in the `users.audit.*` namespace they
   // have always used: the account Activity tab depends on them, they are correct, and a rename
   // across two screens buys nothing. P11 completes the set rather than moving it.
@@ -6857,6 +6929,77 @@ const ar: Record<string, string> = {
   'it.assets.clearPick': 'إلغاء اختيار الأصل',
 
   // ── إدارة النظام ← المستخدمون (SA-1) ──────────────────────────────────────
+  // P10 — قوالب الإشعارات.
+  'systemAdmin.templates.title': 'قوالب الإشعارات',
+  'systemAdmin.templates.subtitle':
+    'نصوص كل إشعار يرسله النظام. كل حفظ ينشئ نسخة جديدة، والنسخ السابقة محفوظة.',
+  'systemAdmin.templates.empty': 'لا توجد قوالب مطابقة لهذا العرض.',
+  'systemAdmin.templates.create': 'قالب جديد',
+  'systemAdmin.templates.createdHint':
+    'تم إنشاء القالب. لا يُرسَل إلا حيث يطلبه الكود بمفتاحه — وإنشاؤه هنا وحده لا يُرسل شيئًا.',
+  'systemAdmin.templates.edit': 'تعديل',
+  'systemAdmin.templates.deactivate': 'تعطيل',
+  'systemAdmin.templates.protected': 'يرسله النظام',
+  'systemAdmin.templates.protectedHint':
+    'يرسل النظام هذا القالب بمفتاحه. يمكن تعديل نصّه، ولا يمكن تعطيله — لأن إيقافه يوقف الإشعار الذي يحمله.',
+  'systemAdmin.templates.latest': 'الحالية',
+  'systemAdmin.templates.versionLabel': 'النسخة {{version}}',
+  'systemAdmin.templates.savedAsVersion': 'حُفظ كنسخة {{version}}.',
+  'systemAdmin.templates.savePublishesVersion':
+    'الحفظ ينشئ نسخة جديدة. النسخة الحالية تبقى محفوظة وقابلة للقراءة في السجل.',
+  'systemAdmin.templates.versionsHint':
+    'كل تعديل، الأحدث أولًا. الإشعارات المُرسلة سابقًا تحتفظ بالنسخة التي عُرضت منها.',
+  'systemAdmin.templates.previewHint':
+    'يعرض القالب بقيم تجريبية. المعاينة لا تُرسل شيئًا؛ أما التجربة فترسل رسالة حقيقية إليك وحدك.',
+  'systemAdmin.templates.renderPreview': 'عرض المعاينة',
+  'systemAdmin.templates.testSend': 'إرسال تجربة إليّ',
+  'systemAdmin.templates.testSent': 'أُرسلت الرسالة التجريبية.',
+  'systemAdmin.templates.detectedVariables': 'المتغيّرات في هذا القالب',
+  'systemAdmin.templates.detectedVariablesHint':
+    'مأخوذة من العناصر النائبة في نصّك — لا تحتاج إلى إدارة هذه القائمة. ويجب أن يظهر العنصر في اللغتين.',
+  'systemAdmin.templates.noVariables': 'لا يوجد',
+  'systemAdmin.templates.unbalanced':
+    '{{name}} غير موجود في النصّ {{language}} — يجب أن يظهر العنصر النائب في اللغتين، وإلا أُرسلت تلك اللغة بدونه.',
+  'systemAdmin.templates.subjectUndeclared':
+    'الموضوع يستخدم {{names}} ولا يستخدمه نصّ الرسالة — سيصل كنصّ حرفي.',
+  'systemAdmin.templates.expiryHint': 'بالساعات، من 1 إلى 8760. اتركه فارغًا لبلا انتهاء.',
+  'systemAdmin.templates.language.ar': 'العربي',
+  'systemAdmin.templates.language.en': 'الإنجليزي',
+  'systemAdmin.templates.filters.allStatuses': 'كل الحالات',
+  'systemAdmin.templates.filters.allCategories': 'كل الفئات',
+  'systemAdmin.templates.fields.key': 'المفتاح',
+  'systemAdmin.templates.fields.category': 'الفئة',
+  'systemAdmin.templates.fields.priority': 'الأولوية',
+  'systemAdmin.templates.fields.channels': 'القنوات',
+  'systemAdmin.templates.fields.version': 'النسخة',
+  'systemAdmin.templates.fields.status': 'الحالة',
+  'systemAdmin.templates.fields.variables': 'المتغيّرات',
+  'systemAdmin.templates.fields.subjectAr': 'الموضوع (بالعربية)',
+  'systemAdmin.templates.fields.subjectEn': 'الموضوع (بالإنجليزية)',
+  'systemAdmin.templates.fields.bodyAr': 'الرسالة (بالعربية)',
+  'systemAdmin.templates.fields.bodyEn': 'الرسالة (بالإنجليزية)',
+  'systemAdmin.templates.fields.defaultExpiryHours': 'تنتهي بعد',
+  'systemAdmin.templates.tabs.content': 'المحتوى',
+  'systemAdmin.templates.tabs.versions': 'النسخ',
+  'systemAdmin.templates.tabs.preview': 'المعاينة والتجربة',
+  'systemAdmin.templates.status.active': 'نشط',
+  'systemAdmin.templates.status.inactive': 'غير نشط',
+  'systemAdmin.templates.channel.inApp': 'داخل التطبيق',
+  'systemAdmin.templates.channel.email': 'البريد الإلكتروني',
+  'systemAdmin.templates.priority.low': 'منخفضة',
+  'systemAdmin.templates.priority.normal': 'عادية',
+  'systemAdmin.templates.priority.high': 'مرتفعة',
+  'systemAdmin.templates.priority.critical': 'حرجة',
+  'systemAdmin.templates.category.security': 'الأمان',
+  'systemAdmin.templates.category.hr': 'الموارد البشرية',
+  'systemAdmin.templates.category.workflow': 'سير العمل',
+  'systemAdmin.templates.category.approval': 'الاعتمادات',
+  'systemAdmin.templates.category.system': 'النظام',
+  'systemAdmin.templates.category.contracts': 'العقود',
+  'systemAdmin.templates.category.fleet': 'الأسطول',
+  'systemAdmin.templates.category.vault': 'الخزينة',
+  'systemAdmin.templates.category.atm': 'الصرافات',
+  'systemAdmin.templates.category.finance': 'المالية',
   // P11 — سجلّا التدقيق والنشاط.
   'systemAdmin.audit.title': 'سجل التدقيق',
   'systemAdmin.audit.subtitle':

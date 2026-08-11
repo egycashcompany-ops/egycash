@@ -6,10 +6,10 @@
 // rendering a landing page: with one section there is nothing for a landing page to choose between,
 // and an index that lists exactly one link is a click that does nothing.
 //
-// This subtree ships users, roles, the permission registry, system settings (P8) and the two log
-// streams (P11). Appearance and colour rules are later phases, and the owner rule carried from the
-// Fleet FW-1 review holds for them: no unshipped surface is reachable, so nothing routes to them
-// and nothing links to them.
+// This subtree ships users, roles, the permission registry, system settings (P8), the
+// notification-template catalog (P10) and the two log streams (P11). Appearance and colour rules
+// are later phases, and the owner rule carried from the Fleet FW-1 review holds for them: no
+// unshipped surface is reachable, so nothing routes to them and nothing links to them.
 import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
 import { RequirePermission } from '../../platform/router/RequirePermission';
 import { NotFoundPage } from '../../platform/app/pages/NotFoundPage';
@@ -20,6 +20,8 @@ import { RolesListPage } from './roles/pages/RolesListPage';
 import { RoleDetailPage } from './roles/pages/RoleDetailPage';
 import { PermissionCatalogPage } from './roles/pages/PermissionCatalogPage';
 import { SettingsPage } from './settings/pages/SettingsPage';
+import { TemplatesListPage } from './notification-templates/pages/TemplatesListPage';
+import { TemplateDetailPage } from './notification-templates/pages/TemplateDetailPage';
 import { AuditLogPage } from './audit/pages/AuditLogPage';
 import { ActivityLogPage } from './audit/pages/ActivityLogPage';
 
@@ -75,6 +77,21 @@ export default function SystemAdminRoutes(): JSX.Element {
             </RequirePermission>
           }
         />
+
+        {/* P10. `notificationTemplate.view` is what every read on the screen enforces — the list,
+            the single template, its versions and the preview. Editing and test-sending are
+            separate keys, checked inside the screen and by the API. */}
+        <Route
+          path="notification-templates"
+          element={
+            <RequirePermission permission="notificationTemplate.view">
+              <Outlet />
+            </RequirePermission>
+          }
+        >
+          <Route index element={<TemplatesListPage />} />
+          <Route path=":id" element={<TemplateDetailPage />} />
+        </Route>
 
         {/* P11. Two routes, not one screen with tabs: the streams are separate collections behind
             separate grants, with different filter vocabularies and different retention. A shared

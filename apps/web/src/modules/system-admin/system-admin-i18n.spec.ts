@@ -17,6 +17,10 @@ import {
   ACCOUNT_STATUSES,
   AUDIT_ACTIONS,
   DATA_SCOPES,
+  NOTIFICATION_CATEGORIES,
+  NOTIFICATION_CHANNELS,
+  NOTIFICATION_PRIORITIES,
+  TEMPLATE_STATUSES,
   PERMISSION_STATES,
   ROLE_MANAGEMENT,
   TIMELINE_SOURCES,
@@ -47,6 +51,26 @@ const VOCABULARIES: { name: string; prefix: string; values: readonly string[] }[
   { name: 'locale', prefix: 'systemAdmin.users.locale', values: ['ar', 'en'] },
   { name: 'delivery channel', prefix: 'systemAdmin.users.channel', values: ['whatsapp', 'email'] },
   { name: 'timeline stream', prefix: 'systemAdmin.users.activity.stream', values: TIMELINE_SOURCES },
+  // P10 — all four rendered through TEMPLATE keys, so the source scan below cannot see them. Each
+  // is driven by a contracts enum: a value added there cannot ship without a label on both sides.
+  {
+    name: 'notification category',
+    prefix: 'systemAdmin.templates.category',
+    values: NOTIFICATION_CATEGORIES,
+  },
+  {
+    name: 'notification priority',
+    prefix: 'systemAdmin.templates.priority',
+    values: NOTIFICATION_PRIORITIES,
+  },
+  {
+    name: 'notification channel',
+    prefix: 'systemAdmin.templates.channel',
+    values: NOTIFICATION_CHANNELS,
+  },
+  { name: 'template status', prefix: 'systemAdmin.templates.status', values: TEMPLATE_STATUSES },
+  { name: 'template tab', prefix: 'systemAdmin.templates.tabs', values: ['content', 'versions', 'preview'] },
+  { name: 'template language', prefix: 'systemAdmin.templates.language', values: ['ar', 'en'] },
 ];
 
 const sources = (dir: string): string[] =>

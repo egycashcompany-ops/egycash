@@ -5,6 +5,7 @@ import { type ComponentType, type SVGProps } from 'react';
 import {
   AlertIcon,
   BadgeIcon,
+  BellIcon,
   BriefcaseIcon,
   BuildingIcon,
   CalendarIcon,
@@ -66,6 +67,9 @@ const REGISTRY: Record<string, NavIcon> = {
   monitor: MonitorIcon,
   // IT (ITW-1) — the scan surface; `monitor` and `folder` above already cover its other rows.
   qr: QrIcon,
+  // P10 — the notification-templates row. Registered with the row that uses it: an unregistered
+  // name falls back silently, which looks like a design choice rather than a missing entry.
+  bell: BellIcon,
 };
 
 export const resolveNavIcon = (name: string | null | undefined, fallback: NavIcon): NavIcon => {

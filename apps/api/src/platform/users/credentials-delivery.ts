@@ -11,9 +11,15 @@ import { sendWhatsApp } from '../../infrastructure/messaging/whatsapp';
 import { auditService } from '../audit';
 import { notificationTemplateRepository } from '../notifications/notification-template.repository';
 import { renderTemplate } from '../notifications/notification.rendering';
+import {
+  CREDENTIALS_TEMPLATE_KEY,
+  isSendableTemplate,
+} from '../notifications/notification.template-rules';
 
-/** Admin-editable message template (§13 R15) — seeded create-if-missing at boot. */
-export const CREDENTIALS_TEMPLATE_KEY = 'platform.credentialsDelivery';
+// Re-exported because this module has always been where callers looked for it. The value itself
+// now lives with the template rules, which import nothing — a constant both sides need cannot sit
+// on one side of a pair that imports each other.
+export { CREDENTIALS_TEMPLATE_KEY };
 
 export interface DeliverCredentialsInput {
   userId: string;
@@ -69,14 +75,14 @@ const composeMessage = async (
   const template = await notificationTemplateRepository
     .findLatestByKey(CREDENTIALS_TEMPLATE_KEY)
     .catch(() => null);
-  // `status` is checked here for the same reason `notify()` checks it: a deactivated template is a
-  // template an administrator has withdrawn, and honouring it on one path while ignoring it on
-  // another makes the same button mean two different things. This path differs from `notify()` in
-  // what it does about it — it falls back to the built-in wording rather than refusing, because an
-  // account being issued must not fail to reach its owner over an editorial decision.
-  const usable = template !== null && template.status === 'active' ? template : null;
-  const source =
-    usable === null ? FALLBACK : { subject: usable.subject ?? FALLBACK.subject, body: usable.body };
+  // Same question as `notify()` asks, from the same rule — this path used to skip it entirely, so
+  // deactivating the template withdrew it everywhere except the one place it was used. What each
+  // caller DOES about a `false` still differs: `notify()` refuses, and this falls back to the
+  // built-in wording, because an account being issued must not fail to reach its owner over an
+  // editorial decision.
+  const source = isSendableTemplate(template)
+    ? { subject: template?.subject ?? FALLBACK.subject, body: template?.body ?? FALLBACK.body }
+    : FALLBACK;
   const rendered = renderTemplate(source, {
     username: input.username,
     employeeCode: input.employeeCode ?? '—',

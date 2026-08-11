@@ -23,6 +23,7 @@ import { notificationRepository } from './notification.repository';
 import { notificationTemplateRepository } from './notification-template.repository';
 import { notificationPreferenceRepository } from './notification-preference.repository';
 import { renderTemplate, validateVariables } from './notification.rendering';
+import { isSendableTemplate } from './notification.template-rules';
 import { resolveExpiresAt, isExpired, computeScheduleDelayMs } from './notification.expiry';
 import { computeQuietHoursDeferralMs } from './notification.quiet-hours';
 import { emitNotificationRead, inAppChannelAdapter } from './channel-adapters/in-app.adapter';
@@ -106,7 +107,9 @@ class NotificationsService {
     }
 
     const template = await notificationTemplateRepository.findLatestByKey(input.template);
-    if (template === null || template.status !== 'active') {
+    // The shared rule (`notification.template-rules`), so this and the credentials-delivery path
+    // cannot disagree about what a deactivated template means — they did until P10.
+    if (!isSendableTemplate(template) || template === null) {
       throw new NotFoundError(`Unknown or inactive notification template "${input.template}"`);
     }
     validateVariables(template.variables, input.data);

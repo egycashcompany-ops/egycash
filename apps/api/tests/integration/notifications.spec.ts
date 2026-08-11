@@ -328,6 +328,152 @@ describe('template catalog (admin, permission-gated + audited)', () => {
   });
 });
 
+/**
+ * P10 — the guards the administration screen makes reachable.
+ *
+ * Every one of these was a click away the moment the catalog got a UI, and every one of them fails
+ * SILENTLY without a guard: nothing throws at the moment of the mistake, and the damage appears
+ * later, somewhere else, as a notification that never arrived.
+ */
+describe('template guards (P10)', () => {
+  const protectedKey = 'platform.securityAlertRaised';
+
+  const latestVersionId = async (key: string): Promise<string> => {
+    const list = await request(app)
+      .get('/api/v1/platform/notification-templates')
+      .query({ pageSize: 100 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    const found = (list.body as { data: { id: string; key: string }[] }).data.find(
+      (t) => t.key === key,
+    );
+    if (found === undefined) throw new Error(`template ${key} not in the catalog`);
+    return found.id;
+  };
+
+  // G-1. `notify()` refuses an inactive template, so deactivating one of these does not hide it —
+  // it stops the security alert. A 200 here would mean the screen shipped an off switch for the
+  // platform's own notifications.
+  it('refuses to deactivate a template the platform sends by name', async () => {
+    const id = await latestVersionId(protectedKey);
+    const response = await request(app)
+      .delete(`/api/v1/platform/notification-templates/${id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(response.status).toBe(422);
+    expect(JSON.stringify(response.body)).toContain('cannot be deactivated');
+  });
+
+  it('refuses the same thing through a status edit, not only through DELETE', async () => {
+    const id = await latestVersionId(protectedKey);
+    const response = await request(app)
+      .patch(`/api/v1/platform/notification-templates/${id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'inactive' });
+    expect(response.status).toBe(422);
+  });
+
+  it('leaves the protected template active and still sendable after both refusals', async () => {
+    const id = await latestVersionId(protectedKey);
+    const current = await request(app)
+      .get(`/api/v1/platform/notification-templates/${id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect((current.body.data as { status: string }).status).toBe('active');
+    expect((current.body.data as { isProtected: boolean }).isProtected).toBe(true);
+  });
+
+  it('still allows the WORDING of a protected template to be edited', async () => {
+    const id = await latestVersionId(protectedKey);
+    const response = await request(app)
+      .patch(`/api/v1/platform/notification-templates/${id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        body: {
+          ar: 'تنبيه: {{signal}} ({{count}} خلال {{windowMinutes}} دقيقة).',
+          en: 'Alert: {{signal}} ({{count}} in {{windowMinutes}} min).',
+        },
+      });
+    expect(response.status).toBe(200);
+    expect((response.body.data as { status: string }).status).toBe('active');
+  });
+
+  it('marks an ordinary template as unprotected and lets it be deactivated', async () => {
+    const created = await createTemplate(adminToken, { key: 'test.unprotected' });
+    const dto = created.body.data as { id: string; isProtected: boolean };
+    expect(dto.isProtected).toBe(false);
+    const response = await request(app)
+      .delete(`/api/v1/platform/notification-templates/${dto.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(response.status).toBe(200);
+  });
+
+  // G-2, on create. The failure this rule exists for: the setup link removed from the wording of
+  // the activation email. The send would succeed and the account would be stranded.
+  it('refuses a template whose body drops a declared variable', async () => {
+    const response = await createTemplate(adminToken, {
+      key: 'test.g2.create',
+      variables: ['name', 'setupLink'],
+      body: { ar: 'أهلًا {{name}}', en: 'Hi {{name}}' },
+    });
+    expect(response.status).toBe(400);
+    expect(JSON.stringify(response.body)).toContain('setupLink');
+  });
+
+  it('refuses a template whose body uses an undeclared placeholder', async () => {
+    const response = await createTemplate(adminToken, {
+      key: 'test.g2.undeclared',
+      variables: ['name'],
+      body: { ar: 'أهلًا {{name}} {{typo}}', en: 'Hi {{name}} {{typo}}' },
+    });
+    expect(response.status).toBe(400);
+  });
+
+  // G-2 on the MERGED version — the case the schema cannot see. The request names only `body`;
+  // `variables` is carried forward from the previous version, so only the server can tell that the
+  // result disagrees with itself.
+  it('refuses a one-sided edit that drops a variable carried forward from the previous version', async () => {
+    const created = await createTemplate(adminToken, { key: 'test.g2.merged' });
+    const id = (created.body.data as { id: string }).id;
+    const response = await request(app)
+      .patch(`/api/v1/platform/notification-templates/${id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ body: { ar: 'بلا متغيرات', en: 'no variables here' } });
+    expect(response.status).toBe(400);
+    expect(JSON.stringify(response.body)).toContain('name');
+  });
+
+  it('accepts the same edit when the variable list is updated with it', async () => {
+    const created = await createTemplate(adminToken, { key: 'test.g2.merged.ok' });
+    const id = (created.body.data as { id: string }).id;
+    const response = await request(app)
+      .patch(`/api/v1/platform/notification-templates/${id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ body: { ar: 'بلا متغيرات', en: 'no variables here' }, variables: [] });
+    expect(response.status).toBe(200);
+    expect((response.body.data as { variables: string[] }).variables).toEqual([]);
+  });
+
+  // G-4. A test send puts a real message through a real adapter; it was the only act on this
+  // service with an effect outside the database and no trace of it.
+  it('records a test send in the audit trail', async () => {
+    const created = await createTemplate(adminToken, { key: 'test.g4.audit' });
+    const id = (created.body.data as { id: string }).id;
+    const sent = await request(app)
+      .post(`/api/v1/platform/notification-templates/${id}/test`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ data: { name: 'X' }, channel: 'email' });
+    expect(sent.status).toBe(204);
+
+    const audit = await request(app)
+      .get('/api/v1/platform/audit-logs')
+      .query({ entityType: 'notificationTemplate', entityId: 'test.g4.audit', pageSize: 20 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    const fields = (audit.body as { data: { changes: { field: string }[] }[] }).data.flatMap((r) =>
+      r.changes.map((c) => c.field),
+    );
+    expect(fields).toContain('testSend.channel');
+    expect(fields).toContain('testSend.delivered');
+  });
+});
+
 describe('notify() → in-app inbox (self-scoped, no permission required)', () => {
   let notificationId: string;
 

@@ -138,31 +138,33 @@ describe('the platform registry as it actually stands', () => {
     expect(validatePageRegistry(platformPages, platformPermissions)).toEqual([]);
   });
 
-  it('declares 12 pages for 63 permissions', () => {
-    expect(platformPages).toHaveLength(12);
+  it('declares 14 pages for 63 permissions', () => {
+    expect(platformPages).toHaveLength(14);
     expect(platformPermissions).toHaveLength(63);
   });
 
   // The unassigned set is an explicit answer, not a gap, so it is pinned by name. Adding a
   // permission without placing it changes this list and fails here — which is the point.
   //
-  // `setting` left the list in P8, in the same change that routed `/system/settings`. That is the
-  // only direction this list may shrink: a page is added by the work that builds its screen, never
-  // ahead of it, because a page whose `route` nothing serves is the same lie as a missing page for
-  // a screen that exists.
-  it('leaves exactly the six resources that have no administration screen unassigned', () => {
+  // `setting` left the list in P8 and the two log streams in P11, each in the same change that
+  // routed its screen. That is the only direction this list may shrink: a page is added by the work
+  // that builds its screen, never ahead of it, because a page whose `route` nothing serves is the
+  // same lie as a missing page for a screen that exists.
+  it('leaves exactly the four resources that have no administration screen unassigned', () => {
     const unassigned = [
       ...new Set(platformPermissions.filter((p) => p.pageId === null).map((p) => p.resource)),
     ].sort();
-    expect(unassigned).toEqual([
-      'activityLog',
-      'auditLog',
-      'file',
-      'fileCategory',
-      'notificationTemplate',
-      'scheduledTask',
-    ]);
-    expect(platformPermissions.filter((p) => p.pageId === null)).toHaveLength(17);
+    expect(unassigned).toEqual(['file', 'fileCategory', 'notificationTemplate', 'scheduledTask']);
+    expect(platformPermissions.filter((p) => p.pageId === null)).toHaveLength(14);
+  });
+
+  // The two streams are separate grants; a single shared page would put both behind whichever one
+  // the reader happened to hold.
+  it('gives each log stream its own page', () => {
+    const on = (resource: string) =>
+      platformPermissions.filter((p) => p.resource === resource).map((p) => p.pageId);
+    expect(on('auditLog')).toEqual(['platform.audit', 'platform.audit']);
+    expect(on('activityLog')).toEqual(['platform.activity']);
   });
 
   it('places both settings permissions on the settings page', () => {

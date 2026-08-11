@@ -122,8 +122,24 @@ export interface AuditLogDto {
   id: string;
   entityRef: { moduleId: string; entityType: string; entityId: string };
   action: AuditAction;
+  /**
+   * Field-level diff. Values pass through the same masking the CSV export applies (G-1) — the two
+   * readers of this data must not disagree about what may be shown.
+   */
   changes: AuditChange[];
+  /**
+   * Where the act came from. `userId` is kept as the join key; `ip`/`userAgent` are here because
+   * an audit row is investigative data, and the screen shows them in the detail panel only.
+   */
   actor: { userId: string | null; ip: string | null; userAgent: string | null };
+  /**
+   * WHO they were at the time (G-2). The row has stored this since actor snapshots shipped, and
+   * `ActivityLogDto` and `TimelineEntryDto` have always returned it — this one did not, which left
+   * a reader with an id and no way to name it except by resolving the User at read time. That is
+   * precisely what the snapshot exists to prevent: a rename, a transfer or a deletion would
+   * silently rewrite the past. `null` on rows written before snapshots existed.
+   */
+  actorSnapshot: ActorSnapshotDto | null;
   requestId: string | null;
   at: string;
 }

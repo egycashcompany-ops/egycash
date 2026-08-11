@@ -12,6 +12,7 @@ import { buildApp } from '../../src/app';
 import { rbacService } from '../../src/platform/rbac';
 import { userService } from '../../src/platform/users';
 import { settingsService } from '../../src/platform/settings';
+import { type AuditLogDto } from '@ecms/contracts';
 import { auditService } from '../../src/platform/audit';
 import { AuditLogModel, ActivityLogModel } from '../../src/platform/audit/audit.model';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
@@ -361,5 +362,149 @@ describe('F5 — security-signal detection', () => {
       .lean()
       .exec();
     expect(alertsAfterRerun.length).toBe(1);
+  });
+});
+
+/**
+ * P11 — the two guards the screens make reachable.
+ *
+ * Both were invisible while nothing read `GET /platform/audit-logs`: the list endpoint existed and
+ * was authorized, but no surface called it. Putting a screen on it is what turns each of them from
+ * a latent inconsistency into something an administrator sees.
+ */
+describe('P11 — the audit read model (G-1, G-2)', () => {
+  const NATIONAL_ID = '29001010101234';
+
+  const seedRow = async (): Promise<void> => {
+    await auditService.record({
+      entityRef: { moduleId: 'hr', entityType: 'p11Subject', entityId: 'p11-1' },
+      action: 'update',
+      changes: [{ field: 'nationalId', old: NATIONAL_ID, new: '29001010109999' }],
+      actor: { userId: adminId, ip: '10.1.2.3', userAgent: 'Chrome' },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  };
+
+  const listRows = async (token: string, qs = ''): Promise<AuditLogDto[]> => {
+    const response = await request(app)
+      .get(`/api/v1/platform/audit-logs?entityType=p11Subject&pageSize=50${qs}`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(response.status).toBe(200);
+    return (response.body as { data: AuditLogDto[] }).data;
+  };
+
+  // G-1. The masking used to live in the export alone, so the list — the thing a screen reads —
+  // was the weaker of two readers of identical rows.
+  it('masks a national id in the LIST, not only in the export', async () => {
+    await seedRow();
+    const rows = await listRows(adminToken);
+    expect(rows.length).toBeGreaterThan(0);
+    const change = rows[0]?.changes[0];
+    expect(String(change?.old)).not.toBe(NATIONAL_ID);
+    expect(String(change?.old)).toContain('*');
+  });
+
+  it('gives the export and the list the same masked value', async () => {
+    const rows = await listRows(adminToken);
+    const masked = String(rows[0]?.changes[0]?.old);
+    const csv = await request(app)
+      .get('/api/v1/platform/audit-logs/export?entityType=p11Subject')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(csv.status).toBe(200);
+    expect(csv.text).toContain(masked);
+    expect(csv.text).not.toContain(NATIONAL_ID);
+  });
+
+  // G-2. The row has always stored the snapshot; only this DTO dropped it.
+  it('returns who the actor was AT THE TIME, not just an id', async () => {
+    const rows = await listRows(adminToken);
+    expect(rows[0]?.actorSnapshot).not.toBeNull();
+    expect(rows[0]?.actorSnapshot?.userId).toBe(adminId);
+    expect(rows[0]?.actorSnapshot?.displayName.en.trim()).not.toBe('');
+  });
+
+  it('carries ip and user agent — the screen shows them in the detail panel only', async () => {
+    const rows = await listRows(adminToken);
+    expect(rows[0]?.actor.ip).toBe('10.1.2.3');
+    expect(rows[0]?.actor.userAgent).toBe('Chrome');
+  });
+
+  describe('the filters the screens actually send', () => {
+    it('filters by entityId, action and moduleId', async () => {
+      expect((await listRows(adminToken, '&entityId=p11-1')).length).toBeGreaterThan(0);
+      expect((await listRows(adminToken, '&entityId=nope'))).toHaveLength(0);
+      expect((await listRows(adminToken, '&action=update')).length).toBeGreaterThan(0);
+      expect((await listRows(adminToken, '&action=delete'))).toHaveLength(0);
+      expect((await listRows(adminToken, '&moduleId=hr')).length).toBeGreaterThan(0);
+      expect((await listRows(adminToken, '&moduleId=fleet'))).toHaveLength(0);
+    });
+
+    it('filters by actor and by date window', async () => {
+      expect((await listRows(adminToken, `&actorUserId=${adminId}`)).length).toBeGreaterThan(0);
+      const tomorrow = new Date(Date.now() + 86_400_000).toISOString();
+      expect(await listRows(adminToken, `&from=${tomorrow}`)).toHaveLength(0);
+      const yesterday = new Date(Date.now() - 86_400_000).toISOString();
+      expect((await listRows(adminToken, `&from=${yesterday}`)).length).toBeGreaterThan(0);
+    });
+
+    it('refuses a filter it does not declare, rather than ignoring it', async () => {
+      const response = await request(app)
+        .get('/api/v1/platform/audit-logs?q=anything')
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(response.status).toBe(400);
+    });
+  });
+
+  describe('reading is not exporting', () => {
+    // The screen withholds the export control on this exact distinction; the server is what
+    // actually enforces it.
+    it('lets auditLog.view read the list', async () => {
+      const response = await request(app)
+        .get('/api/v1/platform/audit-logs?pageSize=1')
+        .set('Authorization', `Bearer ${auditOnlyToken}`);
+      expect(response.status).toBe(200);
+    });
+
+    it('refuses the export to the same caller — view does not grant export', async () => {
+      const response = await request(app)
+        .get('/api/v1/platform/audit-logs/export')
+        .set('Authorization', `Bearer ${auditOnlyToken}`);
+      expect(response.status).toBe(403);
+    });
+
+    it('refuses both to a caller holding neither', async () => {
+      expect(
+        (
+          await request(app)
+            .get('/api/v1/platform/audit-logs')
+            .set('Authorization', `Bearer ${neitherToken}`)
+        ).status,
+      ).toBe(403);
+      expect(
+        (
+          await request(app)
+            .get('/api/v1/platform/activity-logs')
+            .set('Authorization', `Bearer ${neitherToken}`)
+        ).status,
+      ).toBe(403);
+    });
+
+    // The two streams are independent grants — which is why they get two screens, not one.
+    it('does not let activityLog.view read the audit stream', async () => {
+      expect(
+        (
+          await request(app)
+            .get('/api/v1/platform/audit-logs')
+            .set('Authorization', `Bearer ${activityOnlyToken}`)
+        ).status,
+      ).toBe(403);
+      expect(
+        (
+          await request(app)
+            .get('/api/v1/platform/activity-logs')
+            .set('Authorization', `Bearer ${activityOnlyToken}`)
+        ).status,
+      ).toBe(200);
+    });
   });
 });

@@ -26,6 +26,8 @@ import {
   type AuditLogDoc,
   type ActivityLogDoc,
 } from './audit.model';
+import { maskChanges } from './audit.masking';
+import { toActorSnapshotDto } from './audit.actor-dto';
 import { type ActorSnapshotDoc } from './audit.model';
 import { directoryProfileService } from '../directory/directory-profile.service';
 
@@ -248,12 +250,19 @@ class AuditService {
       id: String(doc._id),
       entityRef: doc.entityRef,
       action: doc.action,
-      changes: doc.changes,
+      // G-1 — the same masking the CSV export applies. It used to apply only there, which made
+      // this endpoint the weaker of two readers of identical rows.
+      changes: maskChanges(doc.changes),
       actor: {
         userId: doc.actor.userId === null ? null : String(doc.actor.userId),
         ip: doc.actor.ip,
         userAgent: doc.actor.userAgent,
       },
+      // G-2 — who they were AT THE TIME, from the row itself. The document has carried this since
+      // actor snapshots shipped and both sibling DTOs already returned it; only this one dropped
+      // it, leaving a reader to resolve the User at read time — which is exactly what the stored
+      // snapshot exists to prevent.
+      actorSnapshot: toActorSnapshotDto(doc.actor.userId, doc.actorSnapshot),
       requestId: doc.requestId,
       at: doc.at.toISOString(),
     };
@@ -265,16 +274,7 @@ class AuditService {
       entityRef: doc.entityRef,
       messageKey: doc.messageKey,
       params: doc.params,
-      actor:
-        doc.actorSnapshot == null
-          ? null
-          : {
-              userId: doc.actorId === null ? null : String(doc.actorId),
-              displayName: doc.actorSnapshot.displayName,
-              jobTitle: doc.actorSnapshot.jobTitle ?? null,
-              avatarFileId: doc.actorSnapshot.avatarFileId ?? null,
-              deletedAt: doc.actorSnapshot.deletedAt?.toISOString() ?? null,
-            },
+      actor: toActorSnapshotDto(doc.actorId, doc.actorSnapshot),
       actorId: doc.actorId === null ? null : String(doc.actorId),
       at: doc.at.toISOString(),
     };

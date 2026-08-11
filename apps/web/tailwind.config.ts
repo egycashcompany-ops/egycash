@@ -4,24 +4,32 @@ import type { Config } from 'tailwindcss';
 // `dark` on <html>). `brand` is the primary accent scale; the rest of the palette uses Tailwind's
 // built-in slate/emerald/amber/red. RTL is handled with logical utilities (ps-/pe-/ms-/me-/start/
 // end) in components rather than config.
+//
+// The brand scale no longer holds its own values (P12-A). Each shade reads a CSS custom property
+// declared in `src/styles.css`, so the palette is decided by the cascade at runtime rather than
+// frozen into the bundle at build time. Nothing about the generated utilities changes: the class
+// names, the shades and the colours they produce are all identical.
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   darkMode: 'class',
   theme: {
     extend: {
       colors: {
+        // `<alpha-value>` is the placeholder Tailwind fills in for an opacity modifier, and it is
+        // the reason these are `rgb(channels)` rather than the hex they replaced — `bg-brand-500/40`
+        // has no way to reach into a `#rrggbb` variable. The channel triplets live in `styles.css`.
         brand: {
-          50: '#eef2ff',
-          100: '#e0e7ff',
-          200: '#c7d2fe',
-          300: '#a5b4fc',
-          400: '#818cf8',
-          500: '#6366f1',
-          600: '#4f46e5',
-          700: '#4338ca',
-          800: '#3730a3',
-          900: '#312e81',
-          950: '#1e1b4b',
+          50: 'rgb(var(--brand-50) / <alpha-value>)',
+          100: 'rgb(var(--brand-100) / <alpha-value>)',
+          200: 'rgb(var(--brand-200) / <alpha-value>)',
+          300: 'rgb(var(--brand-300) / <alpha-value>)',
+          400: 'rgb(var(--brand-400) / <alpha-value>)',
+          500: 'rgb(var(--brand-500) / <alpha-value>)',
+          600: 'rgb(var(--brand-600) / <alpha-value>)',
+          700: 'rgb(var(--brand-700) / <alpha-value>)',
+          800: 'rgb(var(--brand-800) / <alpha-value>)',
+          900: 'rgb(var(--brand-900) / <alpha-value>)',
+          950: 'rgb(var(--brand-950) / <alpha-value>)',
         },
       },
       fontFamily: {

@@ -815,20 +815,31 @@ describe('login → permission → scoped data → audit trail', () => {
       expect(res.status, `creating ${code}`).toBe(201);
       return (res.body as { data: { id: string } }).data.id;
     };
-    const hr1 = await mkApp('ME-HR-1', hrCat, 2, 'branch.view');
-    const hr2 = await mkApp('ME-HR-2', hrCat, 1, 'department.view');
+    // NOT `branch.view`. This suite shares one database across its cases, and the application CRUD
+    // cases above catalogue rows carrying that key — which, now that navigation is derived, would
+    // appear in this caller's sidebar too and make the ordering assertions below about the whole
+    // file rather than about this case. Under the old model their absence came from Dave holding
+    // no grant for them; the permission set has to do that work now, so these five sit behind
+    // permissions nothing else in the file uses.
+    const hr1 = await mkApp('ME-HR-1', hrCat, 2, 'department.view');
+    const hr2 = await mkApp('ME-HR-2', hrCat, 1, 'jobTitle.view');
     const ops1 = await mkApp('ME-OPS-1', opsCat, 0, 'section.view');
     // Two applications behind ONE permission — the case that used to arrive as a duplicate through
     // both grant tables, and now arrives as two distinct rows entitled by the same key.
     const opsShared = await mkApp('ME-OPS-2', opsCat, 5, 'section.view');
-    const willDeactivate = await mkApp('ME-OFF', hrCat, 0, 'jobTitle.view');
+    const willDeactivate = await mkApp('ME-OFF', hrCat, 0, 'jobPosition.view');
 
     const role = await request(app)
       .post('/api/v1/platform/roles')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         name: { ar: 'دور التنقل', en: 'Nav Role' },
-        permissionKeys: ['branch.view', 'department.view', 'section.view', 'jobTitle.view'],
+        permissionKeys: [
+          'department.view',
+          'jobTitle.view',
+          'section.view',
+          'jobPosition.view',
+        ],
       });
     expect(role.status).toBe(201);
     const assignment = await request(app)
@@ -856,7 +867,9 @@ describe('login → permission → scoped data → audit trail', () => {
       data: { id: string; applications: { id: string; name: unknown; icon: string; route: string }[] }[];
     }).data;
 
-    // Categories ordered by sortOrder (HR then Ops); applications ordered by sortOrder within each.
+    // Exactly these two categories: the role carries no permission any other application in this
+    // file declares, so nothing else can appear. Categories ordered by sortOrder (HR then Ops),
+    // applications ordered by sortOrder within each.
     expect(groups.map((g) => g.id)).toEqual([hrCat, opsCat]);
     expect(groups[0]?.applications.map((a) => a.id)).toEqual([hr2, hr1]);
     expect(groups[1]?.applications.map((a) => a.id)).toEqual([ops1, opsShared]);

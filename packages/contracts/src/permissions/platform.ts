@@ -206,6 +206,7 @@ export const notificationTemplatePermissions = declarePermissions(
       name: { en: 'Send a test notification', ar: 'إرسال إشعار تجريبي' },
     },
   ],
+  'platform.notification-templates',
 );
 
 export const platformPermissions: PermissionDef[] = [
@@ -232,17 +233,17 @@ export const platformPermissions: PermissionDef[] = [
 /**
  * The platform's administration surfaces.
  *
- * Twelve, against eighteen resources — and the six without a page are the point of the design
+ * Thirteen, against eighteen resources — and the five without a page are the point of the design
  * rather than an omission. `auditLog` and `activityLog` are administered by screens that are named
- * in the System Administration plan and **not built yet**; `file`, `fileCategory`,
- * `notificationTemplate` and `scheduledTask` have no administration screen at all and never have.
- * Inventing a page for either group would put a claim in the registry that no screen honours, so
- * their permissions carry `pageId: null` and group under Other / Unassigned until a real surface
- * exists to name.
+ * in the System Administration plan and **not built yet**; `file`, `fileCategory` and
+ * `scheduledTask` have no administration screen at all and never have. Inventing a page for either
+ * group would put a claim in the registry that no screen honours, so their permissions carry
+ * `pageId: null` and group under Other / Unassigned until a real surface exists to name.
  *
- * `setting` left that list in P8, which is the rule working as intended in the other direction: the
- * page is added by the change that builds the screen, not ahead of it. A page whose `route` nothing
- * serves is the same lie as a missing page for a screen that exists.
+ * `setting` left that list in P8 and `notificationTemplate` in P10, which is the rule working as
+ * intended in the other direction: the page is added by the change that builds the screen, not
+ * ahead of it. A page whose `route` nothing serves is the same lie as a missing page for a screen
+ * that exists.
  *
  * `route` is recorded where a screen is routed today. Nothing resolves it — it is here so the next
  * reader can check a page against the thing it claims to describe.
@@ -331,6 +332,13 @@ export const platformPages: PageDef[] = [
     name: { en: 'System Settings', ar: 'إعدادات النظام' },
     route: '/system/settings',
     sortOrder: 120,
+  },
+  {
+    id: 'platform.notification-templates',
+    moduleId: P,
+    name: { en: 'Notification templates', ar: 'قوالب الإشعارات' },
+    route: '/system/notification-templates',
+    sortOrder: 130,
   },
 ];
 

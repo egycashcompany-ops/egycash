@@ -49,38 +49,146 @@ export type TemplateStatus = z.infer<typeof TemplateStatusSchema>;
 
 const localizedBody = z.object({ ar: z.string().min(1), en: z.string().min(1) });
 
-export const CreateNotificationTemplateSchema = z
-  .object({
-    key: z.string().regex(/^[a-z][a-zA-Z0-9.]{1,99}$/),
-    category: NotificationCategorySchema,
-    priority: NotificationPrioritySchema.default('normal'),
-    subject: localizedBody.nullable().default(null),
-    body: localizedBody,
-    channels: z.array(NotificationChannelSchema).min(1),
-    variables: z.array(z.string().regex(/^[a-zA-Z_][a-zA-Z0-9_]*$/)).default([]),
-    defaultExpiryHours: z.number().int().min(1).max(8760).nullable().default(null),
-  })
-  .strict()
-  .refine((v) => !v.channels.includes('email') || v.subject !== null, {
-    message: 'subject is required when the email channel is declared',
-    path: ['subject'],
+/** The engine's placeholder syntax, in one place — `{{name}}` and nothing else (§2b). */
+const PLACEHOLDER = /\{\{([a-zA-Z_][a-zA-Z0-9_]*)\}\}/g;
+const placeholdersIn = (text: string): Set<string> =>
+  new Set([...text.matchAll(PLACEHOLDER)].map((m) => m[1] as string));
+
+interface TemplateContent {
+  subject?: { ar: string; en: string } | null | undefined;
+  body?: { ar: string; en: string } | undefined;
+  variables?: string[] | undefined;
+}
+
+/**
+ * `variables` and the text have to agree, in both directions — G-2.
+ *
+ * The renderer is find-and-replace and nothing more, so both kinds of disagreement fail SILENTLY,
+ * which is what makes this a schema rule rather than a lint:
+ *
+ *   • **A declared variable missing from the text** is data the message will never carry.
+ *     `validateVariables` still demands it from the caller, so nothing complains — the message is
+ *     simply sent without it. On `platform.credentialsDelivery` that is an activation email with no
+ *     activation link: the send succeeds, and the account is stranded.
+ *   • **A placeholder that is not declared** is never required of the caller, and `interpolate`
+ *     leaves an unmatched placeholder as literal text — so `{{setuplink}}`, mis-cased, ships to the
+ *     recipient exactly like that.
+ *
+ * The first check is per LANGUAGE: a variable present in `ar` but not `en` is the same silent loss
+ * for every English reader. The second is over all four texts at once, since any of them can carry
+ * a typo. `subject` is not required to carry every variable — a subject legitimately summarises —
+ * but anything it does use must be declared.
+ */
+const contentAgreesWithVariables = (
+  content: TemplateContent,
+): { ok: true } | { ok: false; message: string; path: (string | number)[] } => {
+  const { body, subject, variables } = content;
+  // A partial update that names neither side cannot disagree with itself; the service carries the
+  // absent half forward from the previous version, and that half was checked when it was written.
+  if (variables === undefined || body === undefined) return { ok: true };
+
+  for (const language of ['ar', 'en'] as const) {
+    const used = placeholdersIn(body[language]);
+    const absent = variables.filter((name) => !used.has(name));
+    if (absent.length > 0) {
+      return {
+        ok: false,
+        message: `body.${language} never uses the declared variable${absent.length > 1 ? 's' : ''} ${absent.map((n) => `"${n}"`).join(', ')} — the message would be sent without it`,
+        path: ['body', language],
+      };
+    }
+  }
+
+  const declared = new Set(variables);
+  const texts: [string, string][] = [
+    ['body.ar', body.ar],
+    ['body.en', body.en],
+    ...(subject === null || subject === undefined
+      ? []
+      : ([
+          ['subject.ar', subject.ar],
+          ['subject.en', subject.en],
+        ] as [string, string][])),
+  ];
+  for (const [where, text] of texts) {
+    const undeclared = [...placeholdersIn(text)].filter((name) => !declared.has(name));
+    if (undeclared.length > 0) {
+      return {
+        ok: false,
+        message: `${where} uses undeclared placeholder${undeclared.length > 1 ? 's' : ''} ${undeclared.map((n) => `"${n}"`).join(', ')} — it would be delivered as literal text`,
+        path: where.split('.'),
+      };
+    }
+  }
+  return { ok: true };
+};
+
+/** Shared by create and update, so one rule cannot drift into two. */
+const withVariableAgreement = <T extends z.ZodTypeAny>(schema: T): z.ZodEffects<T> =>
+  schema.superRefine((value, ctx) => {
+    const verdict = contentAgreesWithVariables(value as TemplateContent);
+    if (verdict.ok) return;
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: verdict.message, path: verdict.path });
   });
+
+export const CreateNotificationTemplateSchema = withVariableAgreement(
+  z
+    .object({
+      key: z.string().regex(/^[a-z][a-zA-Z0-9.]{1,99}$/),
+      category: NotificationCategorySchema,
+      priority: NotificationPrioritySchema.default('normal'),
+      subject: localizedBody.nullable().default(null),
+      body: localizedBody,
+      channels: z.array(NotificationChannelSchema).min(1),
+      variables: z.array(z.string().regex(/^[a-zA-Z_][a-zA-Z0-9_]*$/)).default([]),
+      defaultExpiryHours: z.number().int().min(1).max(8760).nullable().default(null),
+    })
+    .strict()
+    .refine((v) => !v.channels.includes('email') || v.subject !== null, {
+      message: 'subject is required when the email channel is declared',
+      path: ['subject'],
+    }),
+);
 export type CreateNotificationTemplate = z.infer<typeof CreateNotificationTemplateSchema>;
 
-/** Every edit creates a new version — this is the shape of that new version's content. */
-export const UpdateNotificationTemplateSchema = z
-  .object({
-    category: NotificationCategorySchema.optional(),
-    priority: NotificationPrioritySchema.optional(),
-    subject: localizedBody.nullable().optional(),
-    body: localizedBody.optional(),
-    channels: z.array(NotificationChannelSchema).min(1).optional(),
-    variables: z.array(z.string().regex(/^[a-zA-Z_][a-zA-Z0-9_]*$/)).optional(),
-    defaultExpiryHours: z.number().int().min(1).max(8760).nullable().optional(),
-    status: TemplateStatusSchema.optional(),
-  })
-  .strict();
+/**
+ * Every edit creates a new version — this is the shape of that new version's content.
+ *
+ * The variable agreement is checked only when the request names BOTH `body` and `variables`: a
+ * request that changes one of them alone is completed by the service from the previous version,
+ * and the schema cannot see that half. The screen therefore submits both together, and the
+ * remaining gap is closed on the server (`assertContentAgreesWithVariables`) where the merged
+ * version is known.
+ */
+export const UpdateNotificationTemplateSchema = withVariableAgreement(
+  z
+    .object({
+      category: NotificationCategorySchema.optional(),
+      priority: NotificationPrioritySchema.optional(),
+      subject: localizedBody.nullable().optional(),
+      body: localizedBody.optional(),
+      channels: z.array(NotificationChannelSchema).min(1).optional(),
+      variables: z.array(z.string().regex(/^[a-zA-Z_][a-zA-Z0-9_]*$/)).optional(),
+      defaultExpiryHours: z.number().int().min(1).max(8760).nullable().optional(),
+      status: TemplateStatusSchema.optional(),
+    })
+    .strict(),
+);
 export type UpdateNotificationTemplate = z.infer<typeof UpdateNotificationTemplateSchema>;
+
+/**
+ * The same rule, callable on a MERGED version — the shape the service holds after folding a partial
+ * update onto the previous version. Exported so the server can apply it to what it is about to
+ * store rather than to what it was sent, which is the only place the whole template is known.
+ */
+export const templateContentDisagreement = (content: {
+  subject: { ar: string; en: string } | null;
+  body: { ar: string; en: string };
+  variables: string[];
+}): string | null => {
+  const verdict = contentAgreesWithVariables(content);
+  return verdict.ok ? null : verdict.message;
+};
 
 export const ListNotificationTemplatesQuerySchema = PaginationQuerySchema.extend({
   status: TemplateStatusSchema.optional(),
@@ -114,6 +222,12 @@ export interface NotificationTemplateDto {
   variables: string[];
   defaultExpiryHours: number | null;
   status: TemplateStatus;
+  /**
+   * True for a template platform code sends by key. Derived on the server from that code's own
+   * constants — never stored, so it cannot drift from the list the guard enforces. The screen uses
+   * it to withhold the deactivate control; the server refuses regardless.
+   */
+  isProtected: boolean;
   createdBy: string | null;
   createdAt: string;
 }

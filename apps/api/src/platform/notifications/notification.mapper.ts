@@ -8,6 +8,7 @@ import {
   type NotificationTemplateDto,
   type RenderedTemplateDto,
 } from '@ecms/contracts';
+import { isProtectedTemplateKey } from './notification.template-rules';
 import { type NotificationDoc } from './notification.model';
 import { type NotificationTemplateDoc } from './notification-template.model';
 import { type NotificationPreferenceDoc } from './notification-preference.model';
@@ -52,6 +53,9 @@ export const toTemplateDto = (doc: NotificationTemplateDoc): NotificationTemplat
   variables: doc.variables,
   defaultExpiryHours: doc.defaultExpiryHours,
   status: doc.status,
+  // Derived from the platform's own list, never stored — so it cannot drift from the guard that
+  // enforces it, and an existing row does not need a migration to acquire it.
+  isProtected: isProtectedTemplateKey(doc.key),
   createdBy: doc.createdBy === null ? null : String(doc.createdBy),
   createdAt: doc.createdAt.toISOString(),
 });

@@ -32,16 +32,17 @@ describe('System Administration routes', () => {
     // `:id` is declared twice — once under users, once under roles — so the comparison is on the
     // SET of segments; which parent each belongs to is checked by the guard tests below.
     expect([...new Set(paths)].sort()).toEqual(
-      ['users', 'roles', 'permissions', 'settings', ':id'].sort(),
+      ['users', 'roles', 'permissions', 'settings', 'notification-templates', ':id'].sort(),
     );
   });
 
   // Every later phase is named in the approved plan, which makes an early route a very easy
   // mistake to make and a very hard one to notice.
   //
-  // `settings` left this list in P8 — deliberately, in the same change that routed the screen and
-  // added its page to the registry. That is the only way it may ever leave: the guard is not
-  // relaxed in advance to make room for work, it is relaxed by the work.
+  // `settings` left this list in P8 and `notification-templates` was never on it — but the rule is
+  // the same either way: a route arrives with the change that builds its screen and adds its page
+  // to the registry. The guard is not relaxed in advance to make room for work, it is relaxed by
+  // the work.
   it('ships no route belonging to a later phase', () => {
     for (const path of ['appearance', 'color-rules', 'audit']) {
       expect(paths, `${path} belongs to a later phase`).not.toContain(path);
@@ -57,7 +58,13 @@ describe('System Administration routes', () => {
   });
 
   it('gates each subtree behind the permission its API enforces', () => {
-    for (const permission of ['user.view', 'role.view', 'permission.view', 'setting.view']) {
+    for (const permission of [
+      'user.view',
+      'role.view',
+      'permission.view',
+      'setting.view',
+      'notificationTemplate.view',
+    ]) {
       expect(ROUTES).toContain(`<RequirePermission permission="${permission}">`);
     }
   });
@@ -73,6 +80,8 @@ describe('System Administration routes', () => {
       '<RoleDetailPage />',
       '<PermissionCatalogPage />',
       '<SettingsPage />',
+      '<TemplatesListPage />',
+      '<TemplateDetailPage />',
     ]) {
       expect(ROUTES.indexOf(page), `${page} is routed before the guard`).toBeGreaterThan(guardIndex);
     }
@@ -91,7 +100,7 @@ describe('System Administration routes', () => {
     );
     for (const permission of used) {
       expect(permission, 'SA routes gate on a platform RBAC resource').toMatch(
-        /^(user|role|permission|setting)\./,
+        /^(user|role|permission|setting|notificationTemplate)\./,
       );
     }
   });
@@ -116,6 +125,7 @@ describe('System Administration navigation matches the routes that exist', () =>
       '/system/roles',
       '/system/permissions',
       '/system/settings',
+      '/system/notification-templates',
     ]);
   });
 
@@ -133,6 +143,7 @@ describe('System Administration navigation matches the routes that exist', () =>
     ['/system/roles', 'role.view'],
     ['/system/permissions', 'permission.view'],
     ['/system/settings', 'setting.view'],
+    ['/system/notification-templates', 'notificationTemplate.view'],
   ])('gates %s on the same permission as the route', (route, permission) => {
     const row = new RegExp(`route: '${route}',[\\s\\S]{0,200}?permission: '([^']+)'`).exec(SEED)?.[1];
     expect(row).toBe(permission);

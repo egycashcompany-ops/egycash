@@ -22,21 +22,21 @@ describe('the assembled page registry', () => {
     expect(validatePageRegistry(pages, permissions)).toEqual([]);
   });
 
-  it('declares 47 pages over 203 permissions', () => {
-    expect(pages).toHaveLength(47);
+  it('declares 48 pages over 203 permissions', () => {
+    expect(pages).toHaveLength(48);
     expect(permissions).toHaveLength(203);
   });
 
-  it('assigns 175 permissions to a page and leaves 28 deliberately unassigned', () => {
+  it('assigns 180 permissions to a page and leaves 23 deliberately unassigned', () => {
     const assigned = permissions.filter((p) => p.pageId !== null);
-    expect(assigned).toHaveLength(175);
-    expect(permissions.length - assigned.length).toBe(28);
+    expect(assigned).toHaveLength(180);
+    expect(permissions.length - assigned.length).toBe(23);
   });
 
   it('splits the pages across the four modules as declared', () => {
     const byModule = new Map<string, number>();
     for (const page of pages) byModule.set(page.moduleId, (byModule.get(page.moduleId) ?? 0) + 1);
-    expect(Object.fromEntries(byModule)).toEqual({ platform: 12, hr: 16, fleet: 10, it: 9 });
+    expect(Object.fromEntries(byModule)).toEqual({ platform: 13, hr: 16, fleet: 10, it: 9 });
   });
 
   // Named rather than counted, because "which permissions have no home" is the question a reviewer
@@ -48,13 +48,13 @@ describe('the assembled page registry', () => {
     expect(unassigned).toEqual(
       [
         // Screens named in the System Administration plan and not built yet. `setting` left this
-        // list in P8, in the change that routed `/system/settings` — never before it.
+        // list in P8 and `notificationTemplate` in P10, each in the change that routed its screen
+        // — never before it.
         'activityLog',
         'auditLog',
         // No administration screen at all, and never has been.
         'file',
         'fileCategory',
-        'notificationTemplate',
         'scheduledTask',
         // Recruitment stages that live inside the pipeline rather than on a surface of their own.
         'drivingTest',

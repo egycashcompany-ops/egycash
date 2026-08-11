@@ -7,6 +7,7 @@ import { signedOut } from './store/authSlice';
 import { queryClient } from './shared/lib/query-client';
 import { setOnAuthLost } from './shared/lib/api-client';
 import { ThemeProvider } from './platform/theme/ThemeProvider';
+import { PreferenceSync } from './platform/preferences/PreferenceSync';
 import { ErrorBoundary } from './platform/app/ErrorBoundary';
 import { Toaster } from './shared/ui/toast/Toaster';
 import { App } from './platform/app/App';
@@ -26,14 +27,18 @@ if (container === null) throw new Error('missing #root');
 createRoot(container).render(
   <StrictMode>
     <Provider store={store}>
-      <ThemeProvider>
-        <QueryClientProvider client={queryClient}>
-          <ErrorBoundary>
-            <App />
-          </ErrorBoundary>
-          <Toaster />
-        </QueryClientProvider>
-      </ThemeProvider>
+      {/* Outside ThemeProvider on purpose: this decides WHICH theme and locale are in the store,
+          and ThemeProvider/useDirection then apply whatever it decided. */}
+      <PreferenceSync>
+        <ThemeProvider>
+          <QueryClientProvider client={queryClient}>
+            <ErrorBoundary>
+              <App />
+            </ErrorBoundary>
+            <Toaster />
+          </QueryClientProvider>
+        </ThemeProvider>
+      </PreferenceSync>
     </Provider>
   </StrictMode>,
 );

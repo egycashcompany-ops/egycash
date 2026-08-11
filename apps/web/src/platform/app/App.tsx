@@ -215,8 +215,10 @@ export const App = (): JSX.Element => {
             </RequireAuth>
           }
         />
+        {/* The account area gained a second page in P9-B, so this became a wildcard: the exact
+            `/account/security` it used to declare could never have matched a sibling. */}
         <Route
-          path="/account/security"
+          path="/account/*"
           element={
             <RequireAuth>
               <Suspense

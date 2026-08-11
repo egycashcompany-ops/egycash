@@ -76,8 +76,12 @@ export const buildAuthRouter = (): Router => {
   router.get('/me', authenticate, asyncHandler(me));
   // Self-service by construction: the subject is always the caller, so there is no
   // permission to check and nothing to scope.
+  // Generous rather than strict: a toggle in the shell bar is meant to be pressed, and the write
+  // is bounded to three enumerated fields on the caller's own row. This is a runaway-client guard,
+  // not a credential guard — hence the refresh limiter's shape rather than `strictLimit`'s.
   router.patch(
     '/me/preferences',
+    rateLimit({ name: 'auth-me-preferences', windowSeconds: 300, max: 60 }),
     authenticate,
     validate({ body: UpdateMyPreferencesSchema }),
     asyncHandler(updateMyPreferences),

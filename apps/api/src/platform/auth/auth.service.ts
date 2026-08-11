@@ -676,8 +676,11 @@ class AuthService {
       mustChangePassword: user.security.mustChangePassword ?? false,
       name: { firstName: user.profile.firstName, lastName: user.profile.lastName },
       locale: user.locale,
-      // Accounts predating the preference have no stored value; the launcher is the default.
+      // Accounts predating each preference have no stored value; the defaults answer for them.
+      // `system` is handed back unresolved on purpose — only the browser knows the device's
+      // colour scheme, so the server stores the intention and lets the client answer it.
       navLayout: user.preferences?.navLayout ?? 'launchpad',
+      theme: user.preferences?.theme ?? 'system',
       branchId: user.organization.branchId === null ? null : String(user.organization.branchId),
       employeeId: user.employeeId === null ? null : String(user.employeeId),
       permissions: effective.permissions,

@@ -5,9 +5,11 @@
 import { Schema, model, type Types } from 'mongoose';
 import {
   NAV_LAYOUTS,
+  THEME_MODES,
   USER_STATUSES,
   type LocalizedString,
   type NavLayout,
+  type ThemeMode,
   type UserStatus,
 } from '@ecms/contracts';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../shared/base/base.model';
@@ -29,6 +31,8 @@ export interface UserDoc extends BaseDocFields {
   /** Presentation-only choices the user makes about their own shell (ADR-013 is untouched). */
   preferences: {
     navLayout: NavLayout;
+    /** `system` means "follow the device" — resolved by the client, never by the server. */
+    theme: ThemeMode;
   };
   status: UserStatus;
   organization: {
@@ -82,9 +86,13 @@ const userSchema = new Schema<UserDoc>(
     },
     locale: { type: String, enum: ['ar', 'en'], default: 'ar' },
     // Accounts created before the launcher shipped have no stored choice; the default answers
-    // for them without a migration, since the field is read through `buildMe` only.
+    // for them without a migration, since the field is read through `buildMe` only. The same
+    // holds for `theme`, which every account predates: `buildMe` reads both through `?? `, and a
+    // Mongoose default does not apply to a `.lean()` read of a document written before the path
+    // existed — which is why the guard there is the thing that actually answers, not this line.
     preferences: {
       navLayout: { type: String, enum: NAV_LAYOUTS, default: 'launchpad' },
+      theme: { type: String, enum: THEME_MODES, default: 'system' },
     },
     status: { type: String, enum: USER_STATUSES, default: 'invited' },
     organization: {

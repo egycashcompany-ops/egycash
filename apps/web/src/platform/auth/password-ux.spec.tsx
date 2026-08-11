@@ -50,6 +50,7 @@ const me = (): MeDto => ({
   name: { firstName: { ar: 'أ', en: 'A' }, lastName: { ar: 'ب', en: 'B' } },
   locale: 'en',
   navLayout: 'rail',
+  theme: 'system',
   branchId: null,
   employeeId: null,
   permissions: {},

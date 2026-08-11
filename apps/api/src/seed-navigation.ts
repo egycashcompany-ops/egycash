@@ -1,24 +1,24 @@
 // First-run navigation bootstrap. The sidebar is fully data-driven (it renders only the applications
-// GET /platform/me/applications returns), so a fresh install — where nothing is assigned — shows an
-// empty sidebar even though everything works. This seeds the default Application Categories and
-// Applications (mapped to the real client routes) and grants them directly to the System
-// Administrator, so a fresh install immediately has a functional sidebar with no manual DB setup.
+// GET /platform/me/applications returns), so a fresh install needs this catalog to exist before
+// anybody has a sidebar at all. It seeds the default Application Categories and Applications, mapped
+// to the real client routes, each declaring the permission that opens it.
 //
-// The admin is created org-wide with no department, so department-based assignment can't reach them;
-// the effective-applications resolver unions department + direct grants, so we grant directly to the
-// admin here. Idempotent: categories are keyed by their English name, applications by route, and the
-// grant is created only when missing — re-running the seed neither duplicates nor errors.
+// NOTHING IS GRANTED HERE. Navigation is the set of applications whose `permissionKey` the caller
+// holds, so the System Administrator sees the whole catalog by holding the whole permission
+// registry — no per-user rows, and none to keep in step with the roles. Idempotent: categories are
+// keyed by their English name and applications by route, so re-running neither duplicates nor errors.
+//
+// Every row MUST declare a permission. One without a key is entitled to nobody and would simply be
+// invisible, which is why `AppDef.permission` is required rather than nullable.
 //
 // This is default platform configuration (the module catalog), not synthetic dev data: the icon
 // strings match the sidebar's icon registry, and the routes are the app's real routes.
-import { Types } from 'mongoose';
 import {
   applicationCategoryService,
   applicationCategoryRepository,
 } from './platform/application-categories';
 import { applicationService, applicationRepository } from './platform/applications';
 import { rbacService } from './platform/rbac';
-import { userApplicationService, userApplicationRepository } from './platform/user-applications';
 
 interface AppDef {
   en: string;
@@ -26,10 +26,12 @@ interface AppDef {
   route: string;
   icon: string;
   /**
-   * The permission opening this page requires — the SAME key the client route guard checks, so the
-   * sidebar advertises exactly what the user can enter. `null` marks a genuinely open page.
+   * The permission opening this page requires — the SAME key the client route guard checks.
+   *
+   * REQUIRED. Navigation is the set of applications whose key the caller holds, so a row without one
+   * is a row nobody can ever see. There is no "open page" case to express here.
    */
-  permission: string | null;
+  permission: string;
 }
 
 interface CategoryDef {
@@ -508,16 +510,17 @@ const ensureApplication = async (
 /**
  * Permission-key backfill for applications catalogued before the field existed.
  *
- * Navigation is filtered by `permissionKey`, and a null key means "no permission needed" — so on an
- * existing install every catalogued row would stay null and the filter would do nothing at all. This
- * fills in ONLY the null ones, from this catalog, matched by route.
+ * Navigation IS the set of applications whose `permissionKey` the caller holds, so a null key now
+ * means the row is invisible to everybody. On an existing install every catalogued row would stay
+ * null and the whole sidebar would vanish; this fills in ONLY the null ones, from this catalog,
+ * matched by route — which is what carries such a deployment across the change.
  *
  * It follows the same additive contract as the icon backfill above: a row whose key an administrator
  * already set (any non-null value) is never overwritten, and a route this catalog does not know is
- * left entirely alone.
+ * left entirely alone. A row outside this catalog and still null stays invisible until somebody
+ * gives it a key, which is the fail-closed half of the same rule.
  */
 const backfillApplicationPermission = async (def: AppDef, by: string): Promise<void> => {
-  if (def.permission === null) return;
   const existing = await applicationRepository.findOne({ route: def.route });
   if (existing === null || (existing.permissionKey ?? null) !== null) return;
   await applicationService.update(
@@ -527,22 +530,21 @@ const backfillApplicationPermission = async (def: AppDef, by: string): Promise<v
   );
 };
 
-const ensureGrant = async (userId: string, applicationId: string): Promise<void> => {
-  const existing = await userApplicationRepository.findOne({
-    userId: new Types.ObjectId(userId),
-    applicationId: new Types.ObjectId(applicationId),
-  });
-  if (existing === null) await userApplicationService.assign(userId, applicationId, userId);
-};
-
-/** Seed the default navigation catalog and grant every application to the System Administrator. */
+/**
+ * Seed the default navigation catalog.
+ *
+ * It no longer grants anything to anybody: navigation is the set of applications whose
+ * `permissionKey` the caller holds, so the System Administrator — who holds the whole registry —
+ * sees the catalog by being the System Administrator. The per-user grants this used to write are
+ * read by nothing now, and writing rows on every seed that nothing reads is how a retired mechanism
+ * gets mistaken for a live one.
+ */
 export const seedBootstrapNavigation = async (adminId: string): Promise<void> => {
   for (const category of CATALOG) {
     const categoryId = await ensureCategory(category, adminId);
     let sortOrder = 0;
     for (const app of category.apps) {
-      const applicationId = await ensureApplication(app, categoryId, sortOrder, adminId);
-      await ensureGrant(adminId, applicationId);
+      await ensureApplication(app, categoryId, sortOrder, adminId);
       sortOrder += 10;
     }
   }
@@ -556,8 +558,6 @@ export const seedBootstrapNavigation = async (adminId: string): Promise<void> =>
  * STRICTLY ADDITIVE — administrator customizations are never touched:
  * - existing applications are matched by route and left completely alone (name, icon,
  *   ordering, category, status all stay whatever the admin made them);
- * - grants are created ONLY for applications this sync just created — a grant the admin
- *   revoked on an existing application stays revoked across restarts;
  * - a new application joins the category its group's existing apps live in TODAY (respecting
  *   admin re-grouping/renames); the seed category is created only when the whole group is new;
  * - a category icon is filled in ONLY while it is null (pre-icon installs); a non-null icon —
@@ -601,7 +601,7 @@ export const syncNavigationCatalog = async (): Promise<void> => {
       const sortOrder = (low + high) / 2;
 
       categoryId ??= await ensureCategory(category, actor);
-      const created = await applicationService.create(
+      await applicationService.create(
         {
           name: { ar: row.app.ar, en: row.app.en },
           icon: row.app.icon,
@@ -612,8 +612,7 @@ export const syncNavigationCatalog = async (): Promise<void> => {
         },
         actor,
       );
-      // Surface the NEW module to current super-admins; everyone else stays admin-assigned.
-      for (const adminId of adminIds) await ensureGrant(adminId, String(created._id));
+      // No grant is written: whoever holds the new application's permission already has it.
       low = sortOrder;
     }
   }

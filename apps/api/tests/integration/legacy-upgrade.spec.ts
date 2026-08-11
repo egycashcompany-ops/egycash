@@ -24,7 +24,7 @@ import { userService } from '../../src/platform/users';
 import { settingsService } from '../../src/platform/settings';
 import { applicationRepository } from '../../src/platform/applications';
 import { applicationCategoryRepository } from '../../src/platform/application-categories';
-import { userApplicationRepository, userApplicationService } from '../../src/platform/user-applications';
+import { userApplicationRepository } from '../../src/platform/user-applications';
 import { syncNavigationCatalog } from '../../src/seed-navigation';
 import { seedHrRecruitment } from '../../src/modules/hr/hr.seed';
 import { ApplicantSourceModel } from '../../src/modules/hr/recruitment/applicants/applicant-source.model';
@@ -259,7 +259,7 @@ describe('legacy applicant documents (pre-upgrade shape)', () => {
 });
 
 describe('navigation catalog boot sync', () => {
-  it('adds new catalog applications to an existing install, granted to super-admins, idempotently', async () => {
+  it('adds new catalog applications to an existing install, idempotently and with no grant', async () => {
     await syncNavigationCatalog();
     await syncNavigationCatalog();
 
@@ -268,11 +268,14 @@ describe('navigation catalog boot sync', () => {
     const duplicates = await applicationRepository.count({ route: '/leave' });
     expect(duplicates).toBe(1);
 
+    // The row carries the permission that entitles it — which is the whole of how it reaches a
+    // sidebar now, and what makes the grant this sync used to write unnecessary.
+    expect(leaveApp?.permissionKey).toBe('leave.view');
     const grant = await userApplicationRepository.findOne({
       userId: new Types.ObjectId(adminId),
       applicationId: leaveApp?._id,
     });
-    expect(grant).not.toBeNull();
+    expect(grant, 'the boot sync must not write application grants any more').toBeNull();
   });
 });
 
@@ -310,18 +313,16 @@ describe('permission registry sync invalidates system-role holders', () => {
 });
 
 describe('administrator customizations survive the boot sync', () => {
-  it('a revoked super-admin grant stays revoked across restarts', async () => {
-    const leaveApp = await applicationRepository.findOne({ route: '/leave' });
-    expect(leaveApp).not.toBeNull();
-    await userApplicationService.remove(adminId, String(leaveApp?._id), adminId);
-
+  it('writes no application grants at all, however many times it runs', async () => {
+    // This case used to assert that a grant an administrator revoked stayed revoked across
+    // restarts — a real hazard while the sync handed grants out. It hands none out now, so the
+    // stronger statement is available: after any number of syncs the account that would have been
+    // granted everything holds nothing, and its sidebar is decided by its permissions alone.
+    await syncNavigationCatalog();
     await syncNavigationCatalog();
 
-    const grant = await userApplicationRepository.findOne({
-      userId: new Types.ObjectId(adminId),
-      applicationId: leaveApp?._id,
-    });
-    expect(grant).toBeNull();
+    const grants = await userApplicationRepository.findByUser(adminId);
+    expect(grants).toEqual([]);
   });
 
   it('a renamed category is not re-created and existing app metadata is untouched', async () => {

@@ -2,11 +2,11 @@
 // the owning Category is required (picked from the Application Categories catalog); sort order is a
 // non-negative integer (defaults to 0). Edits are version-checked; a stale save surfaces as a toast.
 //
-// The required permission is optional but consequential: navigation is filtered by it, so an
-// application left without one is offered to every user it is granted to, whether or not they can
-// open it. It is free text against the permission catalog's `<resource>.<action>` keys — nothing
-// validates it here, because an application may legitimately be catalogued ahead of the permission
-// the page will check.
+// The required permission is REQUIRED and load-bearing: navigation is the set of applications whose
+// permission the caller holds, so a row without one is a row nobody can ever see. It is free text
+// against the permission catalog's `<resource>.<action>` keys — the value is not validated against
+// the registry, because an application may legitimately be catalogued ahead of the permission the
+// page will check; only its presence is enforced.
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { type ApplicationDto, type CreateApplication, type Locale, type UpdateApplication } from '@ecms/contracts';
@@ -64,6 +64,12 @@ const ApplicationFormBody = ({ existing }: { existing: ApplicationDto | null }):
       toast.error(t('organization.application.sortOrderInvalid'));
       return;
     }
+    // Required, and refused here as well as by the server: an application without a permission is
+    // one nobody can ever see, so saving it would quietly produce a broken catalog row.
+    if (permissionKey.trim() === '') {
+      toast.error(t('organization.application.permissionKeyRequired'));
+      return;
+    }
     try {
       if (isCreate) {
         const body: CreateApplication = {
@@ -72,7 +78,7 @@ const ApplicationFormBody = ({ existing }: { existing: ApplicationDto | null }):
           route: route.trim(),
           categoryId,
           sortOrder: order,
-          permissionKey: permissionKey.trim() === '' ? null : permissionKey.trim(),
+          permissionKey: permissionKey.trim(),
         };
         const doc = await create.mutateAsync(body);
         toast.success(t('organization.application.created'));
@@ -85,7 +91,7 @@ const ApplicationFormBody = ({ existing }: { existing: ApplicationDto | null }):
           route: route.trim(),
           categoryId,
           sortOrder: order,
-          permissionKey: permissionKey.trim() === '' ? null : permissionKey.trim(),
+          permissionKey: permissionKey.trim(),
           status,
         };
         const doc = await update.mutateAsync(body);
@@ -154,6 +160,7 @@ const ApplicationFormBody = ({ existing }: { existing: ApplicationDto | null }):
 
             <Field
               label={t('organization.application.permissionKey')}
+              required
               hint={t('organization.application.permissionKeyHint')}
             >
               <Input

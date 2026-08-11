@@ -56,23 +56,23 @@ const applicationBase = {
   categoryId: objectId(),
   sortOrder: z.number().int().min(0).max(100_000),
   /**
-   * The permission that opening this application requires — the SAME key the page's route guard
-   * and its API endpoints check. Navigation is filtered by it, so the sidebar stops advertising
-   * modules the caller cannot open (grants say which apps an administrator offers a user; RBAC
-   * says which of them they may actually enter, and the answer must agree on both surfaces).
+   * The permission that opening this application requires — the SAME key the page's route guard and
+   * its API endpoints check.
    *
-   * Nullable, and null means "no permission needed" — an application catalogued before this field
-   * existed, or a genuinely open page, keeps behaving exactly as it did.
+   * It is the ONLY thing that puts the application in anybody's navigation: the sidebar is the set
+   * of applications whose key the caller holds. So it is REQUIRED on create and cannot be cleared on
+   * update — an application without one is entitled to nobody and would simply be invisible, which
+   * is a broken catalog row rather than a configuration choice.
+   *
+   * The stored field stays nullable for rows catalogued before it existed. Those are invisible until
+   * given a key, which is the fail-closed answer: "nobody declared who may open this" must not
+   * resolve to "everybody may".
    */
-  permissionKey: z.string().trim().min(1).max(120).nullable(),
+  permissionKey: z.string().trim().min(1).max(120),
 };
 
 export const CreateApplicationSchema = z
-  .object({
-    ...applicationBase,
-    sortOrder: applicationBase.sortOrder.optional(),
-    permissionKey: applicationBase.permissionKey.optional(),
-  })
+  .object({ ...applicationBase, sortOrder: applicationBase.sortOrder.optional() })
   .strict();
 export type CreateApplication = z.infer<typeof CreateApplicationSchema>;
 
@@ -83,6 +83,7 @@ export const UpdateApplicationSchema = z
     route: applicationBase.route.optional(),
     categoryId: objectId().optional(),
     sortOrder: applicationBase.sortOrder.optional(),
+    // Optional to OMIT, but not nullable: an existing key may be changed, never removed.
     permissionKey: applicationBase.permissionKey.optional(),
     status: z.enum(['active', 'inactive']).optional(),
     version: z.number().int().min(0),
@@ -108,7 +109,7 @@ export interface ApplicationDto {
   categoryId: string;
   /** Ascending display order within a category. */
   sortOrder: number;
-  /** Permission required to open the application; null = open to any authenticated caller. */
+  /** Permission that opens it. Null only on rows predating the field — those are invisible. */
   permissionKey: string | null;
   status: 'active' | 'inactive';
   version: number;
@@ -117,9 +118,10 @@ export interface ApplicationDto {
 }
 
 // ── Effective Applications (the caller's own navigation) ─────────────────────
-// The applications a signed-in user can actually open, grouped for the sidebar. The effective set is
-// the union of the department's applications and the user's direct grants — deduplicated, active-only,
-// ordered by category then application. Only the fields the navigation renderer needs are returned.
+// The applications a signed-in user can actually open, grouped for the sidebar: those whose
+// `permissionKey` is in their effective permission set — deduplicated, active-only, ordered by
+// category then application. Nothing else grants a row, so the sidebar follows every RBAC change on
+// its own. Only the fields the navigation renderer needs are returned.
 export interface MyApplicationDto {
   id: string;
   name: { ar: string; en: string };

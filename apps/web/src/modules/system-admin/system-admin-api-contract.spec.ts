@@ -39,13 +39,6 @@ const USERS_CONTRACT = readFileSync(
   'utf8',
 );
 const USER_ROUTES = read('platform/users/user.routes.ts');
-// FIX-1 — the grants card is now rendered by this module, so its endpoints are this module's
-// concern too even though the client for them lives in `platform/user-applications`.
-const USER_APP_ROUTES = read('platform/user-applications/user-application.routes.ts');
-const USER_APP_CLIENT = readFileSync(
-  resolve(HERE, '../../platform/user-applications/user-application-api.ts'),
-  'utf8',
-);
 const EMPLOYEE_ROUTES = read('modules/hr/employee-management/employees/employee.routes.ts');
 const AUDIT_ROUTES = read('platform/audit/audit.routes.ts');
 const USER_SERVICE = read('platform/users/user.service.ts');
@@ -86,26 +79,6 @@ describe('every endpoint the System Administration client calls exists on the AP
     ['post', '/:id/unlock'],
   ])('serves %s /platform/users%s', (verb, path) => {
     expect(userEndpoints).toContain(`${verb} ${path}`);
-  });
-
-  /**
-   * FIX-1. The roles tab renders the application-grants card, which is what turns a role into a
-   * visible sidebar — navigation is grants ∩ permissions, and the grant half had no surface on this
-   * screen at all. These three are the calls that card makes.
-   */
-  it.each([
-    ['get', '/'],
-    ['post', '/'],
-    ['delete', '/:applicationId'],
-  ])('serves %s /platform/users/:userId/applications%s', (verb, path) => {
-    expect(declared(USER_APP_ROUTES)).toContain(`${verb} ${path}`);
-  });
-
-  it('mounts the nested grants router and the catalog the picker reads', () => {
-    expect(APP).toContain("'/platform/users/:userId/applications'");
-    expect(APP).toContain("'/platform/applications'");
-    expect(USER_APP_CLIENT).toContain('/platform/users/');
-    expect(USER_APP_CLIENT).toContain('/platform/applications');
   });
 
   it('serves the timeline the activity tab reads', () => {

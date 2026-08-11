@@ -105,8 +105,21 @@ const issueLink = (userId: string, token: string): request.Test =>
     .set('Authorization', `Bearer ${token}`)
     .send({});
 
+/** `POST /auth/activate` answers **204** — it completes the activation and returns no body. */
+const ACTIVATED = 204;
 const activate = (setupToken: string, password = CHOSEN): request.Test =>
   request(app).post('/api/v1/auth/activate').send({ token: setupToken, password });
+
+/** Status changes are version-checked (optimistic concurrency), so the current one is read first. */
+const setStatus = async (userId: string, status: 'suspended' | 'archived'): Promise<number> => {
+  // Mongoose keeps the optimistic-concurrency counter in `__v`; `UserDto.version` is that field.
+  const current = await userRepository.getById(userId);
+  const res = await request(app)
+    .post(`/api/v1/platform/users/${userId}/status`)
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ status, version: current.__v });
+  return res.status;
+};
 
 const tokenFromUrl = (url: string): string => new URL(url).searchParams.get('token') ?? '';
 
@@ -290,10 +303,10 @@ describe('the link works once', () => {
     const raw = tokenFromUrl(link.url);
 
     const first = await activate(raw);
-    expect(first.status).toBe(200);
+    expect(first.status).toBe(ACTIVATED);
 
     const second = await activate(raw, 'An0ther#Pass!');
-    expect(second.status).not.toBe(200);
+    expect(second.status).not.toBe(ACTIVATED);
 
     // And the password that was chosen is the one that signs in.
     const signIn = await request(app)
@@ -308,8 +321,8 @@ describe('the link works once', () => {
     const second = tokenFromUrl(data<SetupLinkDto>(await issueLink(target, adminToken)).url);
     expect(second).not.toBe(first);
 
-    expect((await activate(first)).status).not.toBe(200);
-    expect((await activate(second)).status).toBe(200);
+    expect((await activate(first)).status).not.toBe(ACTIVATED);
+    expect((await activate(second)).status).toBe(ACTIVATED);
   });
 });
 
@@ -344,11 +357,7 @@ describe('an account that already has a password is refused', () => {
   it('refuses a suspended account and an archived one', async () => {
     for (const status of ['suspended', 'archived'] as const) {
       const target = await invitedAccount(`sl-retired-${status}@ecms.local`);
-      const changed = await request(app)
-        .post(`/api/v1/platform/users/${target}/status`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({ status });
-      expect(changed.status).toBe(200);
+      expect(await setStatus(target, status), status).toBe(200);
       const res = await issueLink(target, adminToken);
       expect(res.status, status).toBe(422);
     }
@@ -377,7 +386,7 @@ describe('it serves every account the platform can create', () => {
     expect((await userRepository.getById(target)).employeeId).toBeNull();
     const res = await issueLink(target, adminToken);
     expect(res.status).toBe(200);
-    expect((await activate(tokenFromUrl(data<SetupLinkDto>(res).url))).status).toBe(200);
+    expect((await activate(tokenFromUrl(data<SetupLinkDto>(res).url))).status).toBe(ACTIVATED);
   });
 
   it('records who took the link, distinguishable from a delivery', async () => {

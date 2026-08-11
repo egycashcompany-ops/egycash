@@ -21,16 +21,18 @@ import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { type Express } from 'express';
-import { platformPermissions, type MeDto } from '@ecms/contracts';
+import { SettingKeys, platformPermissions, type MeDto } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { buildApp } from '../../src/app';
 import { moduleManifests } from '../../src/modules';
 import { rbacService } from '../../src/platform/rbac';
 import { userService } from '../../src/platform/users';
 import { authService } from '../../src/platform/auth';
+import { settingsService } from '../../src/platform/settings';
 import { AuditLogModel } from '../../src/platform/audit/audit.model';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { getCache } from '../../src/infrastructure/redis/cache';
+import { type AuthContext } from '../../src/shared/types';
 
 const PASSWORD = 'Str0ng#Pass!';
 
@@ -109,11 +111,36 @@ beforeAll(async () => {
   await userService.forceActivate(adminId);
   await rbacService.ensureAssignment(adminId, String(superAdmin._id), 'organization');
 
+  // This account holds super-admin, and `auth.totp.enforcedForPrivileged` DEFAULTS TO TRUE — so
+  // without this, `/auth/login` answers `{ totpRequired: true, challengeToken }` at status **200**
+  // and hands back no access token at all. Every later request then carries `Bearer undefined`.
+  const ctx: AuthContext = {
+    userId: adminId,
+    sessionId: 'seed',
+    branchId: null,
+    departmentId: null,
+    sectionId: null,
+    locale: 'en',
+    permissions: { 'setting.edit': 'organization' },
+    permissionVersion: 1,
+    isPrivileged: true,
+  };
+  await settingsService.set(ctx, {
+    key: SettingKeys.TotpEnforcedForPrivileged,
+    scope: 'organization',
+    value: false,
+  });
+
   const login = await request(app)
     .post('/api/v1/auth/login')
     .send({ identifier: admin.email, password: PASSWORD });
   expect(login.status).toBe(200);
-  adminToken = data<{ accessToken: string }>(login).accessToken;
+  // Asserted, not assumed: a 200 that carries a TOTP challenge instead of a token is exactly how
+  // this suite failed the first time, as fifteen unexplained 401s rather than one clear message.
+  const session = data<{ totpRequired: boolean; accessToken?: string }>(login);
+  expect(session.totpRequired).toBe(false);
+  expect(typeof session.accessToken).toBe('string');
+  adminToken = session.accessToken ?? '';
 
   const subject = await account('prefs-subject');
   subjectId = subject.id;
@@ -201,7 +228,9 @@ describe('a language change reaches the server immediately', () => {
       .post('/api/v1/auth/login')
       .send({ identifier: subjectEmail, password: PASSWORD });
     expect(login.status).toBe(200);
-    const subjectToken = data<{ accessToken: string }>(login).accessToken;
+    const subjectSession = data<{ totpRequired: boolean; accessToken?: string }>(login);
+    expect(subjectSession.totpRequired).toBe(false);
+    const subjectToken = subjectSession.accessToken ?? '';
 
     await request(app).get('/api/v1/auth/me').set('Authorization', `Bearer ${subjectToken}`);
     expect(await contextLocale(subjectToken)).toBe('ar');

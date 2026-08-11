@@ -22,6 +22,8 @@ import { signedIn } from '../../store/authSlice';
 import { setLocale } from '../../store/localeSlice';
 import { setTheme } from '../../store/uiSlice';
 import { updateMyPreferencesRequest } from '../auth/api';
+import { errorMessage } from '../../shared/lib/errors';
+import { toast } from '../../shared/ui/toast/toast-store';
 
 export interface Preferences {
   locale: Locale;
@@ -59,11 +61,13 @@ export const usePreferences = (): PreferencesApi => {
       setSaving(true);
       void updateMyPreferencesRequest(next)
         .then((updated) => dispatch(signedIn(updated)))
-        .catch(() => {
+        .catch((error: unknown) => {
           // The account refused or the network did. Put the local value back rather than leave
-          // the screen claiming a preference that was never stored.
+          // the screen claiming a preference that was never stored — and SAY so: a control that
+          // moves and then silently moves back reads as a bug in the control.
           if (next.locale !== undefined) dispatch(setLocale(previous.locale));
           if (next.theme !== undefined) dispatch(setTheme(previous.theme));
+          toast.error(errorMessage(error, previous.locale));
         })
         .finally(() => setSaving(false));
     },

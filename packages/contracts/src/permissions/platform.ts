@@ -20,6 +20,25 @@ export const userPermissions = declarePermissions(
       name: { en: 'Manage user sessions (force logout)', ar: 'إدارة جلسات المستخدمين' },
       breakGlass: true,
     },
+    /**
+     * P9-A. Reading a setup link is a **stronger** capability than resetting a password, which is
+     * why it is its own key rather than riding `resetPassword`.
+     *
+     * An administrator who can reset can clear a password and have a fresh link delivered to the
+     * account's own phone and email — they never see it, so they cannot take the account over.
+     * An administrator who can READ the link can open it themselves, choose the password, and sign
+     * in as that person. Break-glass, therefore: holders get mandatory two-factor (Review R13) and
+     * appear in the quarterly review, which is the mitigation for a key that can reach any account
+     * awaiting activation — including a Super Admin's.
+     */
+    {
+      action: 'setupLink',
+      name: {
+        en: 'Read an account setup link (manual delivery)',
+        ar: 'قراءة رابط إعداد الحساب (إرسال يدوي)',
+      },
+      breakGlass: true,
+    },
   ],
   'platform.users',
 );

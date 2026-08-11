@@ -14,6 +14,7 @@ import {
 } from './user.validation';
 import {
   adminRequireTotp,
+  adminIssueSetupLink,
   adminResendCredentials,
   adminResetPassword,
   adminResetTotp,
@@ -95,6 +96,16 @@ export const buildUsersRouter = (): Router => {
     authorize('user.resetPassword'),
     validate({ params: UserIdParamSchema }),
     asyncHandler(adminResendCredentials),
+  );
+  // P9-A. Its own key, not `user.resetPassword`: resetting delivers a link the actor never sees,
+  // while this one hands it to them — which is the difference between resetting an account and
+  // being able to take it over. Break-glass, so holders carry mandatory 2FA (Review R13).
+  router.post(
+    '/:id/setup-link',
+    authenticate,
+    authorize('user.setupLink'),
+    validate({ params: UserIdParamSchema }),
+    asyncHandler(adminIssueSetupLink),
   );
   router.delete(
     '/:id/sessions',

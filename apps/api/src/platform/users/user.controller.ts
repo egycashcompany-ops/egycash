@@ -91,6 +91,18 @@ export const adminResendCredentials = async (req: Request, res: Response): Promi
   ok(res, { delivery });
 };
 
+/**
+ * P9-A — mint a setup link and return it for manual delivery. Nothing is sent.
+ *
+ * Sessions are NOT revoked here, unlike the reset path: this only reaches accounts that have no
+ * password yet, so there is no session to end and nothing to lock anybody out of.
+ */
+export const adminIssueSetupLink = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<never, never, IdParam>(req);
+  const link = await userService.issueSetupLinkForCopy(params.id);
+  ok(res, { url: link.url, expiresAt: link.expiresAt.toISOString() });
+};
+
 export const adminResetTotp = async (req: Request, res: Response): Promise<void> => {
   const { params } = validated<never, never, IdParam>(req);
   await userService.resetTotp(params.id);

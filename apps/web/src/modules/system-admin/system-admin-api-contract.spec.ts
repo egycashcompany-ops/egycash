@@ -69,6 +69,8 @@ describe('every endpoint the System Administration client calls exists on the AP
     ['post', '/:id/status'],
     ['post', '/:id/reset-password'],
     ['post', '/:id/credentials/resend'],
+    // P9-A — the one endpoint this module added, pinned like every endpoint it borrows.
+    ['post', '/:id/setup-link'],
     ['post', '/:id/totp/reset'],
     ['post', '/:id/totp/require'],
     ['delete', '/:id/sessions'],

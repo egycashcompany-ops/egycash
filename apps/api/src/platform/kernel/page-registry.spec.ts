@@ -22,14 +22,14 @@ describe('the assembled page registry', () => {
     expect(validatePageRegistry(pages, permissions)).toEqual([]);
   });
 
-  it('declares 47 pages over 202 permissions', () => {
+  it('declares 47 pages over 203 permissions', () => {
     expect(pages).toHaveLength(47);
-    expect(permissions).toHaveLength(202);
+    expect(permissions).toHaveLength(203);
   });
 
-  it('assigns 174 permissions to a page and leaves 28 deliberately unassigned', () => {
+  it('assigns 175 permissions to a page and leaves 28 deliberately unassigned', () => {
     const assigned = permissions.filter((p) => p.pageId !== null);
-    expect(assigned).toHaveLength(174);
+    expect(assigned).toHaveLength(175);
     expect(permissions.length - assigned.length).toBe(28);
   });
 

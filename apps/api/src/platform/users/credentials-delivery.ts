@@ -31,6 +31,16 @@ export interface DeliverCredentialsInput {
 const escapeHtml = (value: string): string =>
   value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+/**
+ * The one place the setup link's shape is written.
+ *
+ * P9-A added a second caller — the endpoint that hands the link to an administrator to deliver by
+ * hand — and two copies of this string would be two links that can drift apart, one of which the
+ * `/activate` page would silently fail to understand.
+ */
+export const setupLinkUrl = (setupToken: string): string =>
+  `${env.WEB_PUBLIC_URL}/activate?token=${setupToken}`;
+
 /** Built-in wording — the fallback when the seeded template has been deleted. */
 const FALLBACK = {
   subject: {
@@ -64,7 +74,7 @@ const composeMessage = async (
   const rendered = renderTemplate(source, {
     username: input.username,
     employeeCode: input.employeeCode ?? '—',
-    setupLink: `${env.WEB_PUBLIC_URL}/activate?token=${input.setupToken}`,
+    setupLink: setupLinkUrl(input.setupToken),
     expiresAt: `${input.expiresAt.toISOString().replace('T', ' ').slice(0, 16)} UTC`,
   });
   const subject = rendered.subject ?? rendered.body;

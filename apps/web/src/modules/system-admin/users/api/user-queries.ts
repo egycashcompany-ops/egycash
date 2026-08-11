@@ -80,6 +80,13 @@ export const useResetUserPassword = (id: string) =>
 export const useResendUserCredentials = (id: string) =>
   useUserAction(() => api.resendUserCredentials(id), id);
 
+/**
+ * P9-A. Invalidates the user caches like every other action here, because minting a link moves
+ * `invitationExpiresAt`, `invitationSentAt` and the delivery outcomes on the record — the panel
+ * would otherwise keep describing the link this one just replaced.
+ */
+export const useIssueSetupLink = (id: string) => useUserAction(() => api.issueSetupLink(id), id);
+
 export const useResetUserTotp = (id: string) => useUserAction(() => api.resetUserTotp(id), id);
 
 export const useSetUserTotpRequired = (id: string) =>

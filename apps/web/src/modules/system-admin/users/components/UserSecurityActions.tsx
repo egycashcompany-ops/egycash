@@ -18,18 +18,24 @@
 // (`auth.totp.enforcedForPrivileged`) is never touched from here — per-user enforcement is what
 // `totp/require` is for.
 import { useState } from 'react';
-import { type CredentialsDeliveryResultDto, type UserDto } from '@ecms/contracts';
+import {
+  type CredentialsDeliveryResultDto,
+  type SetupLinkDto,
+  type UserDto,
+} from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../store';
 import { Can } from '../../../../platform/rbac/Can';
 import { Badge, Button, Card, CardBody, CardHeader, Dialog, toast } from '../../../../shared/ui';
 import {
+  useIssueSetupLink,
   useResendUserCredentials,
   useResetUserPassword,
   useResetUserTotp,
   useRevokeUserSessions,
   useSetUserTotpRequired,
 } from '../api/user-queries';
+import { SetupLinkDialog } from './SetupLinkDialog';
 
 type Confirm = 'reset' | 'resend' | 'totpReset' | 'revokeSessions' | null;
 
@@ -54,11 +60,16 @@ const DeliveryOutcomes = ({
 export const UserSecurityActions = ({ user }: { user: UserDto }): JSX.Element => {
   const t = useT();
   const myUserId = useAppSelector((state) => state.auth.me?.id ?? null);
+  const locale = useAppSelector((state) => state.locale.locale);
   const [confirm, setConfirm] = useState<Confirm>(null);
   const [delivery, setDelivery] = useState<CredentialsDeliveryResultDto[] | null>(null);
+  // Held in component state and nowhere else: never in the query cache, never in a URL, and gone
+  // the moment the dialog closes or the screen unmounts.
+  const [setupLink, setSetupLink] = useState<SetupLinkDto | null>(null);
 
   const reset = useResetUserPassword(user.id);
   const resend = useResendUserCredentials(user.id);
+  const issueLink = useIssueSetupLink(user.id);
   const resetTotp = useResetUserTotp(user.id);
   const setRequired = useSetUserTotpRequired(user.id);
   const revokeSessions = useRevokeUserSessions(user.id);
@@ -67,9 +78,23 @@ export const UserSecurityActions = ({ user }: { user: UserDto }): JSX.Element =>
   const busy =
     reset.isPending ||
     resend.isPending ||
+    issueLink.isPending ||
     resetTotp.isPending ||
     setRequired.isPending ||
     revokeSessions.isPending;
+
+  /**
+   * The server refuses a link for an account that already has a password (P9-A / D3), so the button
+   * is offered only where it would succeed.
+   *
+   * `accountStatus` is the signal, not `activatedAt`: an admin reset clears the password hash and
+   * leaves `activatedAt` set, so an account that was reset and is now waiting for its owner to
+   * choose a new password would have been refused a link by this screen while the server was happy
+   * to issue one — the code present, the control unreachable, which is the exact shape of the P7-C
+   * defect. Both of these states mean "no password on file".
+   */
+  const awaitingActivation =
+    user.accountStatus === 'invitationSent' || user.accountStatus === 'expired';
 
   if (isSelf) {
     return (
@@ -203,6 +228,33 @@ export const UserSecurityActions = ({ user }: { user: UserDto }): JSX.Element =>
           </p>
         </Can>
 
+        {/* P9-A. Its own gate, because reading a link is a stronger act than delivering one — an
+            administrator may legitimately hold reset without holding this. Offered only while the
+            account has no password: for one that has, this would be a reset, and the server says so
+            with 422 rather than obliging. */}
+        <Can permission="user.setupLink">
+          {awaitingActivation && (
+            <div className="border-t border-slate-100 pt-4 dark:border-slate-800">
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={busy}
+                onClick={() =>
+                  issueLink.mutate(undefined, {
+                    onSuccess: (result) => setSetupLink(result),
+                    onError: () => toast.error(t('systemAdmin.users.setupLink.failed')),
+                  })
+                }
+              >
+                {t('systemAdmin.users.actions.setupLink')}
+              </Button>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                {t('systemAdmin.users.security.setupLinkHint')}
+              </p>
+            </div>
+          )}
+        </Can>
+
         <Can permission="user.manageSessions">
           <div className="border-t border-slate-100 pt-4 dark:border-slate-800">
             <Button
@@ -247,6 +299,12 @@ export const UserSecurityActions = ({ user }: { user: UserDto }): JSX.Element =>
       >
         <p className="text-sm text-slate-600 dark:text-slate-300">{active?.body ?? ''}</p>
       </Dialog>
+
+      <SetupLinkDialog
+        link={setupLink}
+        userName={`${user.firstName[locale]} ${user.lastName[locale]}`.trim()}
+        onClose={() => setSetupLink(null)}
+      />
     </Card>
   );
 };

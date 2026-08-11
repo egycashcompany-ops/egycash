@@ -27,6 +27,6 @@ synced to the DB registry at boot (Review R18).
 | `scheduledTask` | platform | ● |  |  |  |  |  |  |  | `scheduledTask.manage` |
 | `section` | platform | ● | ● | ● | ● |  |  |  |  |  |
 | `setting` | platform | ● |  | ● |  |  |  |  |  |  |
-| `user` | platform | ● | ● | ● | ● | ● |  |  |  | `user.resetPassword`, `user.manageSessions` ⚠️ break-glass |
+| `user` | platform | ● | ● | ● | ● | ● |  |  |  | `user.resetPassword`, `user.manageSessions` ⚠️ break-glass, `user.setupLink` ⚠️ break-glass |
 
-Total permissions: **62**
+Total permissions: **63**

@@ -23,7 +23,7 @@ import { randomToken, sha256 } from '../../shared/utils/crypto';
 import { hashPassword, passwordPolicyViolation } from '../../shared/utils/passwords';
 import { getCache } from '../../infrastructure/redis/cache';
 import { resolveEmployeeCode, resolveEmployeeCodeOfUser } from '../auth/identity-seams';
-import { deliverCredentials } from './credentials-delivery';
+import { deliverCredentials, setupLinkUrl } from './credentials-delivery';
 import { auditService } from '../audit';
 import { settingsService } from '../settings';
 import { emit, nudgeOutboxRelay } from '../kernel/event-bus';
@@ -728,6 +728,70 @@ class UserService {
       changes: [{ field: 'mode', old: null, new: 'reset' }],
     });
     return this.deliverLinkFor(user, token, expiresAt, 'reset');
+  }
+
+  /**
+   * P9-A — issue a setup link and RETURN it, so an administrator can deliver it by hand.
+   *
+   * **Why this exists.** `WHATSAPP_PROVIDER` defaults to `disabled` and `SMTP_HOST` to a local
+   * dev mailbox, and `deliverCredentials` never throws — it records `ok: false` and moves on. On a
+   * deployment where neither transport is wired, an account can therefore be created and never
+   * activated, because the link is generated, handed to the transports, and forgotten. This is the
+   * only path that lets a human carry it instead.
+   *
+   * **Why it is not `resendSetupLink` with a flag.** Sending a link to the account's own phone and
+   * email, and reading that link yourself, are different acts with different consequences: the
+   * second is account takeover. They are separate methods behind separate permissions so the audit
+   * trail can tell them apart, and so the stronger one can be withheld.
+   *
+   * **Why an activated account is refused.** For an account that already has a password, issuing a
+   * link would have to clear it — that is a reset, it is what `resetViaSetupLink` is for, and it
+   * delivers rather than reveals. Allowing it here would turn "help someone get started" into "lock
+   * this person out and take their account", which is not the capability that was approved. The
+   * refusal is a business rule (422), not a permission failure: the actor may hold the key and
+   * still be told no.
+   *
+   * Nothing is sent. `activation.delivery` is emptied rather than left holding the outcomes of a
+   * previous send, which would describe this link as having been emailed when it was not.
+   */
+  async issueSetupLinkForCopy(userId: string): Promise<{ url: string; expiresAt: Date }> {
+    const user = await userRepository.getById(userId);
+    // The test is "does this account already have a password", not the DERIVED `accountStatus`.
+    // `accountStatusOf` answers `locked` first for a temporary lockout, so an activated account
+    // that had just tripped the failed-login counter would not read as `activated` — and
+    // `POST /auth/activate` accepts an `active` account holding a valid token (§14.4), so the link
+    // would have let its holder choose a new password for somebody who already had one. That is
+    // precisely the takeover this refusal exists to prevent, reachable through a state nobody
+    // would have thought to try.
+    if (user.passwordHash !== null) {
+      throw new BusinessRuleError(
+        'this account is already activated — a setup link would let its holder replace the password, which is a reset',
+      );
+    }
+    if (user.status === 'suspended' || user.status === 'archived') {
+      throw new BusinessRuleError('a retired account cannot be given a setup link');
+    }
+
+    const token = this.generateActivationToken();
+    const expiresAt = await this.activationLinkExpiry();
+    const updated = await userRepository.updateSecurity(userId, {
+      $set: {
+        'activation.tokenHash': sha256(token),
+        'activation.expiresAt': expiresAt,
+        'activation.sentAt': new Date(),
+        'activation.delivery': [],
+      },
+    });
+    if (updated === null) throw new NotFoundError();
+
+    // Recorded as an invitation like any other, distinguished by mode so the trail can answer
+    // "who took this link into their own hands" without a new audit action.
+    await auditService.record({
+      entityRef: entityRef(userId),
+      action: 'invitationCreated',
+      changes: [{ field: 'mode', old: null, new: 'copied' }],
+    });
+    return { url: setupLinkUrl(token), expiresAt };
   }
 
   /**

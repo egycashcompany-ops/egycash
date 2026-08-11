@@ -77,6 +77,48 @@ its entry here in the same PR.
     sharing a name with the original that quietly grants less. This is the one part of System
     Administration that changes the contract, and it adds **no endpoint, permission key, model,
     migration or dependency**.
+  - **Central settings screen (P8,
+    [PR #170](https://github.com/egycashcompany-ops/egycash/pull/170)).** Twenty-nine configurable
+    values were declared in code across seven files and settable only through the API. They now
+    have a screen at `/system/settings`, grouped by owner, each row rendering from the **type the
+    registry declares** and nothing else — no invented `min`/`max`, no enum a `SettingDefinitionDto`
+    does not carry. Each setting saves independently, so one refusal cannot roll back the others.
+    Values come from `GET /platform/settings/me`, which resolves for the **caller**, and the screen
+    says so rather than implying it is showing the organization's. The one backend change is the
+    `PageDef` the screen needs (`platform.settings`) — no new setting, permission, model or
+    migration.
+  - **Account setup link (P9-A,
+    [PR #171](https://github.com/egycashcompany-ops/egycash/pull/171)).** On a deployment where
+    WhatsApp and SMTP are not wired up, an invited account could not be onboarded at all: the
+    activation link existed but only ever left through a delivery channel. `POST
+    /platform/users/:id/setup-link` now returns it **once** to an administrator to hand over in
+    person. The token is stored as a SHA-256 hash and nothing else, exactly as every other setup
+    link is, so it cannot be read back — losing it means issuing a new one, which invalidates the
+    old. New key `user.setupLink`, declared **break-glass**: someone who can read the link can open
+    it, choose the password and sign in as that person, so holders carry mandatory 2FA and appear in
+    the quarterly review. It is refused for an account that already has a password — that would be a
+    reset, not a setup — and for a suspended or archived one. The registry moves to **203 keys**.
+  - **User preferences — theme and locale on the account (P9-B,
+    [PR #175](https://github.com/egycashcompany-ops/egycash/pull/175)).** `MeDto.locale` had been
+    sent by the server since the first release and **read by nothing**: the language and the colour
+    scheme lived in `localStorage` and stayed there across sign-outs. So a preference did not follow
+    anyone to a second device, a shared machine handed the next person the last one's settings, and
+    the interface could be in English while the server still wrote that user's notification email in
+    Arabic — `email.adapter` reads `user.locale`, and nothing had ever written it from the UI. The
+    account is the source of truth now: `PATCH /auth/me/preferences` carries `navLayout`, `locale`
+    and `theme`, each optional so a control saves itself, and returns the whole `me`. `localStorage`
+    is demoted to a cache that paints the first frame and backs the screens that have no session
+    yet, where the toggles keep working exactly as before. `preferences.theme` is new on the model
+    with a `system` default read through a guard, so **no migration and no account sees a change it
+    did not ask for**; `system` is stored and never resolved, because only the browser can read
+    `prefers-color-scheme`. A **language** change — and only a language change — drops the auth
+    snapshot and is recorded in the audit trail: it is a field of the user record, already in
+    `auditSnapshot`, and it decides what the server writes. Theme and navigation shell stay
+    unaudited and uncached, presentation being no act on the business record. New page
+    `/account/preferences` beside Security, with **no permission and no page-registry entry** —
+    the registry describes administration screens, and the subject here is always the caller. No
+    new endpoint, permission, organization setting or migration; the access token and
+    `permissionVersion` are untouched, so nothing here needs a re-login.
 
   **The guards, all server-side.** Nobody hands out an authority they do not hold — every key put
   into a role and every key carried by a role being assigned must be a key the actor holds, at a
@@ -264,7 +306,44 @@ its entry here in the same PR.
   and their endpoints are untouched and their data is left in place — nothing reads them, and
   clearing them is a separate migration.
 
+  **This is the second answer to that report, and it replaces the first.**
+  [PR #172](https://github.com/egycashcompany-ops/egycash/pull/172) took the grant model as given
+  and fixed the reachability gap inside it: the card that grants applications to an account lived
+  only on HR's employee profile, behind `employeeId !== null`, so a **platform** account — one with
+  no employee record — had no screen on which anyone could grant it anything. That PR moved the card
+  to `platform/` and put it on the System Administration user screen, which made the model usable
+  but left it a model in which two records must agree. This change removes the model instead, and
+  with it every file #172 added on the web side. Read them as one correction, not as two phases:
+  #172 shipped and was superseded before release, so nothing it added is live.
+  ([PR #174](https://github.com/egycashcompany-ops/egycash/pull/174))
+
 ### Fixed
+
+- **A password could not be seen while it was typed, and the rules it had to satisfy were not
+  shown at all.** Nine password fields across four screens — sign-in, activation, the forced first
+  change and account security — were bare inputs: no way to check what had been typed, and no way to
+  learn the policy except by being refused. A shared `PasswordInput` now carries a reveal control on
+  every one of them; it is a `type="button"` (a `<button>` in a `<form>` defaults to submit, which
+  on the login screen would have attempted a sign-in with a half-typed password), it is named for a
+  screen reader, and it sits at the logical end of the field so Arabic needs no second rule. The
+  three screens where a password is **chosen** also list the requirements live, each line turning as
+  it is met. Those requirements are **derived from the server's own policy**, not from a list typed
+  into the client: the rules moved into `@ecms/contracts`, the server derives its refusal message
+  from them and the screen derives its checklist from the same code, and the values come from a
+  public `GET /auth/password-policy` — public because `/activate` has no session. With
+  `requireComplexity` off, the complexity lines are not shown at all, so nothing is advertised that
+  will not be enforced. The checklist is an **aid**: `assertPasswordPolicy` is still the only thing
+  that decides, on every path that sets a password, and the login screen lists nothing — it is not a
+  place to choose a password, and the rules there would describe the shape of the secret being
+  guessed. ([PR #173](https://github.com/egycashcompany-ops/egycash/pull/173))
+
+- **An administrator changing someone's language left the old one in force for up to a minute.**
+  `UserSnapshot` carries `locale` and is cached for sixty seconds; `AuthContext.locale` is read from
+  it, and it decides the language the **server** writes in — the notification email, the display
+  names IT renders. But the invalidation on the admin edit path was written for the placement
+  fields, before `locale` joined the snapshot, and was never widened, so the snapshot survived the
+  edit. Both writers of that field — the administrator and, since P9-B, the user themselves — now
+  drop it. ([PR #175](https://github.com/egycashcompany-ops/egycash/pull/175))
 
 - **The last Super Admin could be stripped of the role by archiving a spare one first.** The rule
   shipped in P3 — "the last Super Admin assignment cannot be revoked" — counted assignment **rows**.

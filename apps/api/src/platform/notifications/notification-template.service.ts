@@ -162,6 +162,20 @@ class NotificationTemplateService {
       createdAt: new Date(),
     };
     const result = await adapter.send(ephemeral, rendered);
+    // Recorded whether it succeeded or not, and BEFORE the failure is thrown, because the thing
+    // worth recording is that a message left the system — a failed send may still have reached a
+    // carrier. `create` and `update` are audited; this is the third act with an effect outside the
+    // database, and it was the only one leaving no trace. The rendered body is deliberately not in
+    // the entry: it is the caller's own preview, and a template may carry a one-time link.
+    await auditService.record({
+      entityRef: entityRef(template.key),
+      action: 'update',
+      changes: [
+        { field: 'testSend.channel', old: null, new: channel },
+        { field: 'testSend.version', old: null, new: template.version },
+        { field: 'testSend.delivered', old: null, new: result.ok },
+      ],
+    });
     if (!result.ok) throw new NotFoundError(result.error ?? 'test send failed');
   }
 }

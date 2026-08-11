@@ -6,10 +6,10 @@
 // rendering a landing page: with one section there is nothing for a landing page to choose between,
 // and an index that lists exactly one link is a click that does nothing.
 //
-// This subtree ships users, roles, the permission registry and — since P8 — system settings.
-// Appearance, colour rules and the audit surface are later phases, and the owner rule carried from
-// the Fleet FW-1 review holds for them: no unshipped surface is reachable, so nothing routes to
-// them and nothing links to them.
+// This subtree ships users, roles, the permission registry, system settings (P8) and the two log
+// streams (P11). Appearance and colour rules are later phases, and the owner rule carried from the
+// Fleet FW-1 review holds for them: no unshipped surface is reachable, so nothing routes to them
+// and nothing links to them.
 import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
 import { RequirePermission } from '../../platform/router/RequirePermission';
 import { NotFoundPage } from '../../platform/app/pages/NotFoundPage';
@@ -20,6 +20,8 @@ import { RolesListPage } from './roles/pages/RolesListPage';
 import { RoleDetailPage } from './roles/pages/RoleDetailPage';
 import { PermissionCatalogPage } from './roles/pages/PermissionCatalogPage';
 import { SettingsPage } from './settings/pages/SettingsPage';
+import { AuditLogPage } from './audit/pages/AuditLogPage';
+import { ActivityLogPage } from './audit/pages/ActivityLogPage';
 
 export default function SystemAdminRoutes(): JSX.Element {
   return (
@@ -70,6 +72,26 @@ export default function SystemAdminRoutes(): JSX.Element {
           element={
             <RequirePermission permission="setting.view">
               <SettingsPage />
+            </RequirePermission>
+          }
+        />
+
+        {/* P11. Two routes, not one screen with tabs: the streams are separate collections behind
+            separate grants, with different filter vocabularies and different retention. A shared
+            surface would put both behind whichever permission the reader happened to hold. */}
+        <Route
+          path="audit"
+          element={
+            <RequirePermission permission="auditLog.view">
+              <AuditLogPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="activity"
+          element={
+            <RequirePermission permission="activityLog.view">
+              <ActivityLogPage />
             </RequirePermission>
           }
         />

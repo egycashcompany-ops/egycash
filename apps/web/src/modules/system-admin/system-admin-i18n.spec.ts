@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   ACCOUNT_STATUSES,
+  AUDIT_ACTIONS,
   DATA_SCOPES,
   PERMISSION_STATES,
   ROLE_MANAGEMENT,
@@ -71,6 +72,10 @@ const usedKeys = (): string[] => {
  * The audited acts the activity tab translates. The component keeps this set precisely so an
  * unknown action renders its raw code rather than a broken-looking key — but every action IN the
  * set must actually have a label, which is what this checks.
+ *
+ * P11 added a SECOND consumer of the same namespace: the platform-wide audit screen, which renders
+ * whatever the stream contains rather than a curated subset. So the contract's full enum is checked
+ * below as well — this narrower scan stays because the tab's own set must not drift either.
  */
 const translatedActions = (): string[] => {
   const source = readFileSync(
@@ -80,6 +85,22 @@ const translatedActions = (): string[] => {
   const block = /TRANSLATED_ACTIONS = new Set\(\[([\s\S]*?)\]\)/.exec(source)?.[1] ?? '';
   return [...block.matchAll(/'([a-zA-Z]+)'/g)].flatMap((m) => (m[1] === undefined ? [] : [m[1]]));
 };
+
+// P11 — the audit screen shows any action the stream contains, so EVERY declared action needs a
+// label in both locales. The tab that owned this namespace labelled only the 29 an account
+// receives; the other 45 rendered as raw codes the moment a platform-wide log existed.
+describe('every audited action the contract declares has a label', () => {
+  for (const locale of LOCALES) {
+    it(`resolves all ${String(AUDIT_ACTIONS.length)} — ${locale}`, () => {
+      const missing = AUDIT_ACTIONS.filter(
+        (action) =>
+          translate(locale, `systemAdmin.users.audit.${action}`) ===
+          `systemAdmin.users.audit.${action}`,
+      );
+      expect(missing, `untranslated in ${locale}`).toEqual([]);
+    });
+  }
+});
 
 describe('System Administration vocabularies are translated in every locale', () => {
   for (const locale of LOCALES) {

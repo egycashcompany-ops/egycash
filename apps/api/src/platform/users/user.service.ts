@@ -503,15 +503,53 @@ class UserService {
 
   /**
    * The user's own presentation preferences. Self-service by construction — the caller can only
-   * ever name themselves — so it carries no permission and no audit entry: which navigation shell
-   * someone prefers is not an act on the business record.
+   * ever name themselves — so it carries no permission and no scope.
+   *
+   * **`locale` is not like the other two.** `navLayout` and `theme` are pure presentation and are
+   * neither audited nor cached, exactly as before: which shell or colour scheme someone prefers is
+   * not an act on the business record, and the same reasoning already governs
+   * `notification-preference.service` ("identity-owned … never audited").
+   *
+   * `locale` is a field of the user RECORD. It sits in `auditSnapshot`, so an administrator's edit
+   * of it is already recorded, and it decides things outside this screen — the language of the
+   * notification email (`email.adapter`) and `AuthContext.locale`. Writing it from a second path
+   * silently would leave a PARTIAL trail on an audited field, which reads as "never changed". So
+   * this path records it too, and drops the auth snapshot the value is cached in.
    */
   async updateMyPreferences(userId: string, input: UpdateMyPreferences): Promise<UserDoc> {
-    const updated = await userRepository.updateSecurity(userId, {
-      $set: { 'preferences.navLayout': input.navLayout },
-    });
+    const before = await userRepository.getById(userId);
+    const set: Record<string, unknown> = {};
+    if (input.navLayout !== undefined) set['preferences.navLayout'] = input.navLayout;
+    if (input.theme !== undefined) set['preferences.theme'] = input.theme;
+    if (input.locale !== undefined) set.locale = input.locale;
+    // Unreachable over HTTP — the schema refuses an empty body — but Mongo rejects an empty `$set`
+    // outright, so a direct caller would get a driver error instead of "nothing to do".
+    if (Object.keys(set).length === 0) return before;
+
+    const updated = await userRepository.updateSecurity(userId, { $set: set });
     if (updated === null) throw new NotFoundError('User');
+
+    if (before.locale !== updated.locale) {
+      await this.onLocaleChanged(userId, before, updated);
+    }
     return updated;
+  }
+
+  /**
+   * What a language change costs beyond the write, wherever it comes from.
+   *
+   * The auth snapshot carries `locale` for its 60-second TTL and hands it to every request as
+   * `AuthContext.locale`; left cached, an account that just switched language keeps being written
+   * to in the old one for up to a minute. `diffChanges`' field list keeps the entry to the one
+   * field that changed — the rest of the record is not this call's business.
+   */
+  private async onLocaleChanged(userId: string, before: UserDoc, after: UserDoc): Promise<void> {
+    await getCache().del(`auth:user:${userId}`);
+    await auditService.record({
+      entityRef: entityRef(userId),
+      action: 'update',
+      changes: diffChanges(auditSnapshot(before), auditSnapshot(after), ['locale']),
+    });
   }
 
   /** Login resolution: an identifier is matched against username first, then email (ADR-017). */

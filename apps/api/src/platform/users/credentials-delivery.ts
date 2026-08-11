@@ -69,8 +69,14 @@ const composeMessage = async (
   const template = await notificationTemplateRepository
     .findLatestByKey(CREDENTIALS_TEMPLATE_KEY)
     .catch(() => null);
+  // `status` is checked here for the same reason `notify()` checks it: a deactivated template is a
+  // template an administrator has withdrawn, and honouring it on one path while ignoring it on
+  // another makes the same button mean two different things. This path differs from `notify()` in
+  // what it does about it — it falls back to the built-in wording rather than refusing, because an
+  // account being issued must not fail to reach its owner over an editorial decision.
+  const usable = template !== null && template.status === 'active' ? template : null;
   const source =
-    template === null ? FALLBACK : { subject: template.subject ?? FALLBACK.subject, body: template.body };
+    usable === null ? FALLBACK : { subject: usable.subject ?? FALLBACK.subject, body: usable.body };
   const rendered = renderTemplate(source, {
     username: input.username,
     employeeCode: input.employeeCode ?? '—',

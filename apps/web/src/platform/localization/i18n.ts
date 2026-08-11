@@ -3523,6 +3523,85 @@ const en: Record<string, string> = {
   'systemAdmin.effective.privilegedBecause':
     'Privileged, so two-factor authentication is compulsory. System roles: {{roles}}. Break-glass permissions: {{keys}}.',
   'systemAdmin.effective.none': 'none',
+
+  // P8 — system settings. The registry declares an English `description` per key, which the row
+  // shows verbatim; these labels are the bilingual NAME beside it, not a translation of it.
+  'systemAdmin.settings.title': 'System settings',
+  'systemAdmin.settings.subtitle':
+    'Every configurable value in ECMS. Values are resolved for you (your own level, then your branch, then the organization, then the code default); changes here are written at the organization level.',
+  'systemAdmin.settings.searchPlaceholder': 'Search by name, key or description',
+  'systemAdmin.settings.ownerFilter': 'Owner',
+  'systemAdmin.settings.allOwners': 'All owners',
+  'systemAdmin.settings.count': 'Showing {{shown}} of {{total}}',
+  'systemAdmin.settings.groupCount': '{{count}} settings',
+  'systemAdmin.settings.empty': 'No setting matches this view.',
+  'systemAdmin.settings.readOnly':
+    'You may read these values but not change them — changing one needs the edit-settings permission.',
+  'systemAdmin.settings.saved': 'Setting saved.',
+  'systemAdmin.settings.shadowed':
+    'The value shown is your own, not the organization’s. Saving here changes the organization value, which will not change the value above.',
+  'systemAdmin.settings.listHint': 'Separate values with commas',
+  'systemAdmin.settings.defaultValue': 'Default: {{value}}',
+  'systemAdmin.settings.owners.auth': 'Sign-in & passwords',
+  'systemAdmin.settings.owners.audit': 'Audit & activity',
+  'systemAdmin.settings.owners.notifications': 'Notifications',
+  'systemAdmin.settings.owners.flag': 'Feature flags',
+  'systemAdmin.settings.owners.contracts': 'Contracts',
+  'systemAdmin.settings.owners.hr': 'HR',
+  'systemAdmin.settings.owners.fleet': 'Fleet',
+  'systemAdmin.settings.owners.it': 'IT',
+  'systemAdmin.settings.owners.other': 'Other',
+  'systemAdmin.settings.resolvedFrom.user': 'From your own level',
+  'systemAdmin.settings.resolvedFrom.branch': 'From your branch',
+  'systemAdmin.settings.resolvedFrom.organization': 'From the organization',
+  'systemAdmin.settings.resolvedFrom.default': 'Code default',
+  'systemAdmin.settings.scope.organization': 'Settable: organization',
+  'systemAdmin.settings.scope.branch': 'Settable: branch',
+  'systemAdmin.settings.scope.user': 'Settable: user',
+  'systemAdmin.settings.locked.no-permission': 'You do not hold the edit-settings permission.',
+  'systemAdmin.settings.locked.unsupported-type':
+    'This value has a shape this screen cannot edit yet, so it is shown as it is stored.',
+  'systemAdmin.settings.locked.not-organization-scoped':
+    'This value cannot be set at the organization level, and this screen writes nothing else.',
+  'systemAdmin.settings.parse.not-a-number': 'Enter a number.',
+  'systemAdmin.settings.parse.not-a-number-list': 'Enter numbers separated by commas.',
+  'systemAdmin.settings.parse.not-editable': 'This value cannot be edited here.',
+  'systemAdmin.settings.keys.auth.password.minLength': 'Minimum password length',
+  'systemAdmin.settings.keys.auth.password.requireComplexity': 'Require complex passwords',
+  'systemAdmin.settings.keys.auth.lockout.maxAttempts': 'Failed sign-ins before lockout',
+  'systemAdmin.settings.keys.auth.lockout.minutes': 'Lockout duration (minutes)',
+  'systemAdmin.settings.keys.auth.totp.enforcedForPrivileged':
+    'Compulsory two-factor for privileged accounts',
+  'systemAdmin.settings.keys.auth.loginIdentifiers': 'Accepted sign-in identifiers',
+  'systemAdmin.settings.keys.auth.activationLink.ttlHours': 'Setup-link validity (hours)',
+  'systemAdmin.settings.keys.audit.retention.activityDays': 'Activity-log retention (days)',
+  'systemAdmin.settings.keys.audit.export.maxRows': 'Maximum rows per audit export',
+  'systemAdmin.settings.keys.audit.signals.deniedThreshold':
+    'Denied requests per hour that raise a signal',
+  'systemAdmin.settings.keys.audit.signals.exportSpikeThreshold':
+    'Exports per day that raise a signal',
+  'systemAdmin.settings.keys.notifications.email.enabled': 'Email notifications enabled',
+  'systemAdmin.settings.keys.notifications.quietHours.enabledByDefault':
+    'Quiet hours on by default',
+  'systemAdmin.settings.keys.contracts.numberFormat': 'Contract number format',
+  'systemAdmin.settings.keys.contracts.requireApproval': 'Contracts need approval',
+  'systemAdmin.settings.keys.contracts.expiryNoticeDays': 'Contract expiry notice (days)',
+  'systemAdmin.settings.keys.hr.workCalendar.weekendDays': 'Weekend days',
+  'systemAdmin.settings.keys.hr.leave.approvalReminderDays': 'Leave approval reminder (days)',
+  'systemAdmin.settings.keys.hr.leave.serviceAcrossPeriods':
+    'Count service across employment periods',
+  'systemAdmin.settings.keys.it.sla.atRiskPercent': 'SLA at-risk threshold (%)',
+  'systemAdmin.settings.keys.it.ticket.autoCloseDays': 'Auto-close resolved tickets after (days)',
+  'systemAdmin.settings.keys.it.maintenance.preventiveHorizonDays':
+    'Preventive maintenance horizon (days)',
+  'systemAdmin.settings.keys.it.warranty.warnDays': 'Warranty expiry warning (days)',
+  'systemAdmin.settings.keys.it.license.warnDays': 'IT licence expiry warning (days)',
+  'systemAdmin.settings.keys.fleet.alarm.yellowKm': 'Maintenance alarm — amber (km)',
+  'systemAdmin.settings.keys.fleet.alarm.redKm': 'Maintenance alarm — red (km)',
+  'systemAdmin.settings.keys.fleet.availability.useHrLeave': 'Availability consults HR leave',
+  'systemAdmin.settings.keys.fleet.license.vehicleWarnDays':
+    'Vehicle licence expiry warning (days)',
+  'systemAdmin.settings.keys.fleet.license.driverWarnDays': 'Driver licence expiry warning (days)',
 };
 
 const ar: Record<string, string> = {
@@ -6989,6 +7068,87 @@ const ar: Record<string, string> = {
   'systemAdmin.effective.privilegedBecause':
     'حساب ذو امتياز، فالتحقق بخطوتين إلزامي عليه. أدوار النظام: {{roles}}. صلاحيات استثنائية: {{keys}}.',
   'systemAdmin.effective.none': 'لا شيء',
+
+  // P8 — إعدادات النظام
+  'systemAdmin.settings.title': 'إعدادات النظام',
+  'systemAdmin.settings.subtitle':
+    'كل قيمة قابلة للضبط في ECMS. القيم محسوبة من أجلك (مستواك، ثم فرعك، ثم المنظمة، ثم الافتراضي في الكود)، والتعديل من هنا يُكتب على مستوى المنظمة.',
+  'systemAdmin.settings.searchPlaceholder': 'ابحث بالاسم أو المفتاح أو الوصف',
+  'systemAdmin.settings.ownerFilter': 'الجهة المالكة',
+  'systemAdmin.settings.allOwners': 'كل الجهات',
+  'systemAdmin.settings.count': 'عرض {{shown}} من {{total}}',
+  'systemAdmin.settings.groupCount': '{{count}} إعداد',
+  'systemAdmin.settings.empty': 'لا يوجد إعداد مطابق لهذا العرض.',
+  'systemAdmin.settings.readOnly':
+    'يمكنك قراءة هذه القيم دون تغييرها — التعديل يتطلب صلاحية تحرير الإعدادات.',
+  'systemAdmin.settings.saved': 'تم حفظ الإعداد.',
+  'systemAdmin.settings.shadowed':
+    'القيمة المعروضة قيمتك أنت، لا قيمة المنظمة. الحفظ هنا يغيّر قيمة المنظمة، ولن يغيّر القيمة المعروضة أعلاه.',
+  'systemAdmin.settings.listHint': 'افصل بين القيم بفواصل',
+  'systemAdmin.settings.defaultValue': 'الافتراضي: {{value}}',
+  'systemAdmin.settings.owners.auth': 'الدخول وكلمات المرور',
+  'systemAdmin.settings.owners.audit': 'التدقيق والنشاط',
+  'systemAdmin.settings.owners.notifications': 'الإشعارات',
+  'systemAdmin.settings.owners.flag': 'مفاتيح الميزات',
+  'systemAdmin.settings.owners.contracts': 'العقود',
+  'systemAdmin.settings.owners.hr': 'الموارد البشرية',
+  'systemAdmin.settings.owners.fleet': 'الأسطول',
+  'systemAdmin.settings.owners.it': 'تقنية المعلومات',
+  'systemAdmin.settings.owners.other': 'أخرى',
+  'systemAdmin.settings.resolvedFrom.user': 'من مستواك الشخصي',
+  'systemAdmin.settings.resolvedFrom.branch': 'من فرعك',
+  'systemAdmin.settings.resolvedFrom.organization': 'من المنظمة',
+  'systemAdmin.settings.resolvedFrom.default': 'الافتراضي في الكود',
+  'systemAdmin.settings.scope.organization': 'يُضبط على: المنظمة',
+  'systemAdmin.settings.scope.branch': 'يُضبط على: الفرع',
+  'systemAdmin.settings.scope.user': 'يُضبط على: المستخدم',
+  'systemAdmin.settings.locked.no-permission': 'لا تملك صلاحية تحرير الإعدادات.',
+  'systemAdmin.settings.locked.unsupported-type':
+    'شكل هذه القيمة لا تستطيع هذه الشاشة تحريره بعد، لذا تُعرض كما هي مخزّنة.',
+  'systemAdmin.settings.locked.not-organization-scoped':
+    'لا يمكن ضبط هذه القيمة على مستوى المنظمة، وهذه الشاشة لا تكتب على أي مستوى آخر.',
+  'systemAdmin.settings.parse.not-a-number': 'أدخل رقمًا.',
+  'systemAdmin.settings.parse.not-a-number-list': 'أدخل أرقامًا مفصولة بفواصل.',
+  'systemAdmin.settings.parse.not-editable': 'لا يمكن تحرير هذه القيمة من هنا.',
+  'systemAdmin.settings.keys.auth.password.minLength': 'أقل طول لكلمة المرور',
+  'systemAdmin.settings.keys.auth.password.requireComplexity': 'اشتراط تعقيد كلمة المرور',
+  'systemAdmin.settings.keys.auth.lockout.maxAttempts': 'عدد محاولات الدخول الفاشلة قبل القفل',
+  'systemAdmin.settings.keys.auth.lockout.minutes': 'مدة القفل (بالدقائق)',
+  'systemAdmin.settings.keys.auth.totp.enforcedForPrivileged':
+    'فرض التحقق بخطوتين على الحسابات ذات الامتياز',
+  'systemAdmin.settings.keys.auth.loginIdentifiers': 'معرّفات الدخول المقبولة',
+  'systemAdmin.settings.keys.auth.activationLink.ttlHours': 'صلاحية رابط التفعيل (بالساعات)',
+  'systemAdmin.settings.keys.audit.retention.activityDays': 'مدة الاحتفاظ بسجل النشاط (بالأيام)',
+  'systemAdmin.settings.keys.audit.export.maxRows': 'أقصى عدد صفوف لتصدير التدقيق',
+  'systemAdmin.settings.keys.audit.signals.deniedThreshold':
+    'عدد الرفض في الساعة الذي يرفع إشارة أمنية',
+  'systemAdmin.settings.keys.audit.signals.exportSpikeThreshold':
+    'عدد التصديرات في اليوم الذي يرفع إشارة أمنية',
+  'systemAdmin.settings.keys.notifications.email.enabled': 'تفعيل إشعارات البريد',
+  'systemAdmin.settings.keys.notifications.quietHours.enabledByDefault':
+    'ساعات الهدوء مفعّلة افتراضيًا',
+  'systemAdmin.settings.keys.contracts.numberFormat': 'صيغة ترقيم العقود',
+  'systemAdmin.settings.keys.contracts.requireApproval': 'العقود تتطلب اعتمادًا',
+  'systemAdmin.settings.keys.contracts.expiryNoticeDays': 'التنبيه قبل انتهاء العقد (بالأيام)',
+  'systemAdmin.settings.keys.hr.workCalendar.weekendDays': 'أيام العطلة الأسبوعية',
+  'systemAdmin.settings.keys.hr.leave.approvalReminderDays':
+    'تذكير اعتماد طلب الإجازة (بالأيام)',
+  'systemAdmin.settings.keys.hr.leave.serviceAcrossPeriods':
+    'احتساب الخدمة عبر فترات التوظيف المتعددة',
+  'systemAdmin.settings.keys.it.sla.atRiskPercent': 'عتبة تعرّض اتفاقية الخدمة للخطر (%)',
+  'systemAdmin.settings.keys.it.ticket.autoCloseDays': 'الإغلاق التلقائي للتذاكر المحلولة (بالأيام)',
+  'systemAdmin.settings.keys.it.maintenance.preventiveHorizonDays':
+    'أفق الصيانة الوقائية (بالأيام)',
+  'systemAdmin.settings.keys.it.warranty.warnDays': 'التنبيه قبل انتهاء الضمان (بالأيام)',
+  'systemAdmin.settings.keys.it.license.warnDays': 'التنبيه قبل انتهاء رخصة البرمجيات (بالأيام)',
+  'systemAdmin.settings.keys.fleet.alarm.yellowKm': 'إنذار الصيانة — أصفر (كم)',
+  'systemAdmin.settings.keys.fleet.alarm.redKm': 'إنذار الصيانة — أحمر (كم)',
+  'systemAdmin.settings.keys.fleet.availability.useHrLeave':
+    'احتساب إجازات الموارد البشرية في التوافر',
+  'systemAdmin.settings.keys.fleet.license.vehicleWarnDays':
+    'التنبيه قبل انتهاء رخصة المركبة (بالأيام)',
+  'systemAdmin.settings.keys.fleet.license.driverWarnDays':
+    'التنبيه قبل انتهاء رخصة السائق (بالأيام)',
 };
 
 const catalogs: Record<Locale, Record<string, string>> = { en, ar };

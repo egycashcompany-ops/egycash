@@ -6,9 +6,10 @@
 // rendering a landing page: with one section there is nothing for a landing page to choose between,
 // and an index that lists exactly one link is a click that does nothing.
 //
-// This slice ships users, roles and the permission registry. Appearance and settings are later
-// phases, and the owner rule carried from the Fleet FW-1 review holds here too: no unshipped
-// surface is reachable, so nothing routes to them and nothing links to them.
+// This subtree ships users, roles, the permission registry and — since P8 — system settings.
+// Appearance, colour rules and the audit surface are later phases, and the owner rule carried from
+// the Fleet FW-1 review holds for them: no unshipped surface is reachable, so nothing routes to
+// them and nothing links to them.
 import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
 import { RequirePermission } from '../../platform/router/RequirePermission';
 import { NotFoundPage } from '../../platform/app/pages/NotFoundPage';
@@ -18,6 +19,7 @@ import { UserDetailPage } from './users/pages/UserDetailPage';
 import { RolesListPage } from './roles/pages/RolesListPage';
 import { RoleDetailPage } from './roles/pages/RoleDetailPage';
 import { PermissionCatalogPage } from './roles/pages/PermissionCatalogPage';
+import { SettingsPage } from './settings/pages/SettingsPage';
 
 export default function SystemAdminRoutes(): JSX.Element {
   return (
@@ -56,6 +58,18 @@ export default function SystemAdminRoutes(): JSX.Element {
           element={
             <RequirePermission permission="permission.view">
               <PermissionCatalogPage />
+            </RequirePermission>
+          }
+        />
+
+        {/* P8. Gated on `setting.view`, which is what `GET /settings/definitions` enforces — the
+            other half of the screen (`GET /settings/me`) needs only a session, so the stricter of
+            the two is the one that decides whether the screen may open at all. */}
+        <Route
+          path="settings"
+          element={
+            <RequirePermission permission="setting.view">
+              <SettingsPage />
             </RequirePermission>
           }
         />

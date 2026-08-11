@@ -443,6 +443,17 @@ const CATALOG: CategoryDef[] = [
         icon: 'key',
         permission: 'permission.view',
       },
+      // P8. `setting.view` is what `GET /settings/definitions` enforces and what the route guards
+      // on, so the row advertises exactly the screen the caller can open. The values half of the
+      // screen (`GET /settings/me`) is open to any session, which makes the definitions permission
+      // the only honest key for this row.
+      {
+        en: 'System Settings',
+        ar: 'إعدادات النظام',
+        route: '/system/settings',
+        icon: 'settings',
+        permission: 'setting.view',
+      },
     ],
   },
 ];

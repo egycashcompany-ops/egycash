@@ -7,10 +7,12 @@ import { useAppDispatch, useAppSelector } from '../../store';
 import { signedIn } from '../../store/authSlice';
 import { useT } from '../localization/useT';
 import { PageContainer, PageHeader } from '../layout/PageContainer';
-import { Badge, Button, Card, CardBody, CardHeader, Field, Form, FormActions, Input } from '../../shared/ui';
+import { Badge, Button, Card, CardBody, CardHeader, Field, Form, FormActions, Input, PasswordInput } from '../../shared/ui';
 import { toast } from '../../shared/ui/toast/toast-store';
 import { ApiError } from '../../shared/lib/api-client';
 import { formatDateTime } from '../../shared/lib/format';
+import { usePasswordPolicy } from '../auth/password-policy';
+import { PasswordRequirements } from '../auth/PasswordRequirements';
 import {
   changePasswordRequest,
   fetchMe,
@@ -27,6 +29,7 @@ const ChangePasswordCard = (): JSX.Element => {
   const [next, setNext] = useState('');
   const [confirm, setConfirm] = useState('');
   const [busy, setBusy] = useState(false);
+  const { data: policy } = usePasswordPolicy();
 
   const submit = async (): Promise<void> => {
     if (next !== confirm) {
@@ -53,16 +56,19 @@ const ChangePasswordCard = (): JSX.Element => {
       <CardBody>
         <Form onSubmit={() => void submit()}>
           <div className="grid gap-4 sm:grid-cols-3">
-            <Field label={t('platform.auth.gate.current')}>
-              <Input type="password" dir="ltr" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} required />
+            <Field label={t('platform.auth.gate.current')} htmlFor="security-current">
+              <PasswordInput id="security-current" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} required />
             </Field>
-            <Field label={t('platform.auth.gate.next')}>
-              <Input type="password" dir="ltr" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} required />
+            <Field label={t('platform.auth.gate.next')} htmlFor="security-next">
+              <PasswordInput id="security-next" autoComplete="new-password" aria-describedby="security-next-rules" value={next} onChange={(e) => setNext(e.target.value)} required />
             </Field>
-            <Field label={t('platform.auth.gate.confirm')}>
-              <Input type="password" dir="ltr" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required />
+            <Field label={t('platform.auth.gate.confirm')} htmlFor="security-confirm">
+              <PasswordInput id="security-confirm" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required />
             </Field>
           </div>
+          {/* Below the row rather than under the middle column: the checklist is a paragraph of
+              text and would squeeze the three-column grid into unreadable strips. */}
+          <PasswordRequirements id="security-next-rules" password={next} policy={policy} />
           <FormActions>
             <Button type="submit" loading={busy}>{t('platform.auth.gate.submit')}</Button>
           </FormActions>

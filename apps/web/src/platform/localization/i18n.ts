@@ -111,6 +111,18 @@ const en: Record<string, string> = {
   'common.loading': 'Loading…',
   'common.retry': 'Retry',
   'common.close': 'Close',
+
+  // FIX-2 — the reveal control and the live requirement checklist. The rule labels are driven by
+  // `PASSWORD_RULES` in the contracts, so a rule added there without a label fails a test here.
+  'common.password.show': 'Show password',
+  'common.password.hide': 'Hide password',
+  'common.password.ruleMet': 'requirement met',
+  'common.password.ruleUnmet': 'requirement not met',
+  'common.password.rule.minLength': 'At least {{count}} characters',
+  'common.password.rule.lowercase': 'A lower-case letter (a–z)',
+  'common.password.rule.uppercase': 'An upper-case letter (A–Z)',
+  'common.password.rule.digit': 'A digit (0–9)',
+  'common.password.rule.symbol': 'A symbol, such as !@#$',
   'common.menu': 'Menu',
   'common.search': 'Search',
   // Directory — the identity card behind any user name
@@ -3730,6 +3742,17 @@ const ar: Record<string, string> = {
   'common.loading': 'جارٍ التحميل…',
   'common.retry': 'إعادة المحاولة',
   'common.close': 'إغلاق',
+
+  // FIX-2 — زر الإظهار وقائمة المتطلبات الحيّة
+  'common.password.show': 'إظهار كلمة المرور',
+  'common.password.hide': 'إخفاء كلمة المرور',
+  'common.password.ruleMet': 'شرط متحقق',
+  'common.password.ruleUnmet': 'شرط غير متحقق',
+  'common.password.rule.minLength': 'ألا يقل الطول عن {{count}} حرفًا',
+  'common.password.rule.lowercase': 'حرف إنجليزي صغير (a–z)',
+  'common.password.rule.uppercase': 'حرف إنجليزي كبير (A–Z)',
+  'common.password.rule.digit': 'رقم (0–9)',
+  'common.password.rule.symbol': 'رمز خاص مثل !@#$',
   'common.menu': 'القائمة',
   'common.search': 'بحث',
   // الدليل — بطاقة التعريف خلف أي اسم مستخدم

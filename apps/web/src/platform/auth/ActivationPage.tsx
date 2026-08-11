@@ -6,10 +6,12 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useT } from '../localization/useT';
 import { ThemeToggle } from '../layout/ThemeToggle';
 import { LanguageToggle } from '../layout/LanguageToggle';
-import { BrandMark, Button, Field, Form, Input } from '../../shared/ui';
+import { BrandMark, Button, Field, Form, PasswordInput } from '../../shared/ui';
 import { AlertIcon } from '../../shared/ui/icons';
 import { ApiError } from '../../shared/lib/api-client';
 import { activateRequest } from './api';
+import { usePasswordPolicy } from './password-policy';
+import { PasswordRequirements } from './PasswordRequirements';
 
 export const ActivationPage = (): JSX.Element => {
   const t = useT();
@@ -20,6 +22,7 @@ export const ActivationPage = (): JSX.Element => {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const [busy, setBusy] = useState(false);
+  const { data: policy } = usePasswordPolicy();
 
   const submit = async (): Promise<void> => {
     if (password !== confirm) {
@@ -92,23 +95,27 @@ export const ActivationPage = (): JSX.Element => {
           <div className="mt-6">
             <Form onSubmit={() => void submit()}>
               <Field label={t('platform.auth.gate.next')} htmlFor="activate-password">
-                <Input
+                <PasswordInput
                   id="activate-password"
-                  type="password"
                   required
                   autoComplete="new-password"
-                  dir="ltr"
+                  aria-describedby="activate-password-rules"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
+                {/* The rules the server is about to apply, read from it — this page has no session,
+                    which is why the policy endpoint is public. */}
+                <PasswordRequirements
+                  id="activate-password-rules"
+                  password={password}
+                  policy={policy}
+                />
               </Field>
               <Field label={t('platform.auth.gate.confirm')} htmlFor="activate-confirm">
-                <Input
+                <PasswordInput
                   id="activate-confirm"
-                  type="password"
                   required
                   autoComplete="new-password"
-                  dir="ltr"
                   value={confirm}
                   onChange={(e) => setConfirm(e.target.value)}
                 />

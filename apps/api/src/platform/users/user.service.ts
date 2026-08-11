@@ -14,6 +14,7 @@ import {
   type UpdateMyPreferences,
   type UpdateUser,
   type UserDto,
+  type PasswordPolicyDto,
   type UserStatus,
 } from '@ecms/contracts';
 import { BusinessRuleError, ConflictError, NotFoundError } from '../../shared/errors';
@@ -855,14 +856,27 @@ class UserService {
     await auditService.record({ entityRef: entityRef(userId), action: 'totpReset' });
   }
 
-  async assertPasswordPolicy(password: string): Promise<void> {
+  /**
+   * The policy in force, resolved at the ORGANIZATION level — both keys declare
+   * `allowedScopes: ['organization']`, so there is no per-caller answer to give and no per-caller
+   * answer to leak. FIX-2 reads this from a public endpoint so the activation screen, which has no
+   * session, can list the rules the server is about to apply.
+   */
+  async passwordPolicy(): Promise<PasswordPolicyDto> {
     const subject = { userId: null, branchId: null };
-    const minLength = await settingsService.resolve<number>(SettingKeys.PasswordMinLength, subject);
-    const requireComplexity = await settingsService.resolve<boolean>(
-      SettingKeys.PasswordRequireComplexity,
-      subject,
-    );
-    const violation = passwordPolicyViolation(password, { minLength, requireComplexity });
+    return {
+      minLength: await settingsService.resolve<number>(SettingKeys.PasswordMinLength, subject),
+      requireComplexity: await settingsService.resolve<boolean>(
+        SettingKeys.PasswordRequireComplexity,
+        subject,
+      ),
+    };
+  }
+
+  async assertPasswordPolicy(password: string): Promise<void> {
+    // The same read the public endpoint serves, so the checklist a user was shown and the rule
+    // that refuses them cannot describe different policies.
+    const violation = passwordPolicyViolation(password, await this.passwordPolicy());
     if (violation !== null) {
       throw new BusinessRuleError(violation, ErrorCodes.AUTH_PASSWORD_POLICY);
     }

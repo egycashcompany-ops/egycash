@@ -14,6 +14,7 @@ export { Pagination } from './Pagination';
 export { StatStrip, type StatStripItem } from './StatStrip';
 export { RowActions } from './RowActions';
 export { SearchInput } from './SearchInput';
+export { PasswordInput, type PasswordInputProps } from './PasswordInput';
 export { FilterBar } from './FilterBar';
 export { ListView } from './ListView';
 export { Dialog } from './Dialog';

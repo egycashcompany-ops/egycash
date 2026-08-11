@@ -79,6 +79,18 @@ export const updateMyPreferences = async (req: Request, res: Response): Promise<
   ok(res, await authService.updateMyPreferences(authContext(req), body));
 };
 
+/**
+ * FIX-2 — the password rules, readable without a session.
+ *
+ * PUBLIC on purpose: `/activate` is a public page (its credential is the URL token) and it is the
+ * one screen where somebody chooses a password for the first time. It answers the two configurable
+ * values and nothing else — both are organization-level, so there is no per-account fact here to
+ * disclose, and knowing the minimum length is what lets a person satisfy it on the first try.
+ */
+export const getPasswordPolicy = async (_req: Request, res: Response): Promise<void> => {
+  ok(res, await userService.passwordPolicy());
+};
+
 export const activate = async (req: Request, res: Response): Promise<void> => {
   const { body } = validated<ActivateAccount>(req);
   await userService.activateWithToken(body.token, body.password);

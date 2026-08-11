@@ -7,10 +7,12 @@ import { signedIn } from '../../store/authSlice';
 import { useT } from '../localization/useT';
 import { ThemeToggle } from '../layout/ThemeToggle';
 import { LanguageToggle } from '../layout/LanguageToggle';
-import { BrandMark, Button, Field, Form, Input } from '../../shared/ui';
+import { BrandMark, Button, Field, Form, PasswordInput } from '../../shared/ui';
 import { AlertIcon } from '../../shared/ui/icons';
 import { ApiError } from '../../shared/lib/api-client';
 import { changePasswordRequest, fetchMe } from './api';
+import { usePasswordPolicy } from './password-policy';
+import { PasswordRequirements } from './PasswordRequirements';
 
 export const ForcePasswordChangePage = (): JSX.Element => {
   const t = useT();
@@ -20,6 +22,7 @@ export const ForcePasswordChangePage = (): JSX.Element => {
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const { data: policy } = usePasswordPolicy();
 
   const submit = async (): Promise<void> => {
     if (next !== confirm) {
@@ -72,34 +75,30 @@ export const ForcePasswordChangePage = (): JSX.Element => {
         <div className="mt-6">
           <Form onSubmit={() => void submit()}>
             <Field label={t('platform.auth.gate.current')} htmlFor="gate-current">
-              <Input
+              <PasswordInput
                 id="gate-current"
-                type="password"
                 required
                 autoComplete="current-password"
-                dir="ltr"
                 value={current}
                 onChange={(e) => setCurrent(e.target.value)}
               />
             </Field>
             <Field label={t('platform.auth.gate.next')} htmlFor="gate-next">
-              <Input
+              <PasswordInput
                 id="gate-next"
-                type="password"
                 required
                 autoComplete="new-password"
-                dir="ltr"
+                aria-describedby="gate-next-rules"
                 value={next}
                 onChange={(e) => setNext(e.target.value)}
               />
+              <PasswordRequirements id="gate-next-rules" password={next} policy={policy} />
             </Field>
             <Field label={t('platform.auth.gate.confirm')} htmlFor="gate-confirm">
-              <Input
+              <PasswordInput
                 id="gate-confirm"
-                type="password"
                 required
                 autoComplete="new-password"
-                dir="ltr"
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}
               />

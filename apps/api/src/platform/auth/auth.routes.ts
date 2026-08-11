@@ -27,6 +27,7 @@ import {
   totpDisable,
   totpEnroll,
   totpEnrollWithChallenge,
+  getPasswordPolicy,
   totpVerify,
   updateMyPreferences,
 } from './auth.controller';
@@ -36,6 +37,10 @@ const strictLimit = (name: string) => rateLimit({ name, windowSeconds: 300, max:
 
 export const buildAuthRouter = (): Router => {
   const router = Router();
+
+  // FIX-2. Unauthenticated by design — see the controller. Rate-limited like the other public auth
+  // routes so it cannot be used as a free-running probe.
+  router.get('/password-policy', strictLimit('auth-password-policy'), asyncHandler(getPasswordPolicy));
 
   router.post(
     '/login',

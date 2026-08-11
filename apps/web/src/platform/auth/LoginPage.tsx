@@ -10,7 +10,7 @@ import { signedIn } from '../../store/authSlice';
 import { useT } from '../localization/useT';
 import { ThemeToggle } from '../layout/ThemeToggle';
 import { LanguageToggle } from '../layout/LanguageToggle';
-import { BrandMark, Button, Field, Form, Input } from '../../shared/ui';
+import { BrandMark, Button, Field, Form, Input, PasswordInput } from '../../shared/ui';
 import { AlertIcon } from '../../shared/ui/icons';
 import { ApiError } from '../../shared/lib/api-client';
 import { loginRequest, totpChallengeRequest, totpEnrollWithChallengeRequest } from './api';
@@ -169,12 +169,13 @@ export const LoginPage = (): JSX.Element => {
                   />
                 </Field>
                 <Field label={t('platform.auth.login.password')} htmlFor="login-password">
-                  <Input
+                  {/* Sign-in only reveals; it never lists requirements. The rules govern
+                      CHOOSING a password, and printing them beside an existing one would tell an
+                      attacker the shape of what they are guessing. */}
+                  <PasswordInput
                     id="login-password"
-                    type="password"
                     required
                     autoComplete="current-password"
-                    dir="ltr"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                   />

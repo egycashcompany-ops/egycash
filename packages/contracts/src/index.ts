@@ -5,6 +5,7 @@ export * from './events/index.js';
 export * from './events/catalog.js';
 export * from './flags/index.js';
 export * from './platform/auth.js';
+export * from './platform/password-policy.js';
 export * from './platform/users.js';
 export * from './platform/directory.js';
 export * from './platform/rbac.js';

@@ -20,7 +20,6 @@ import { lazy, Suspense, useState } from 'react';
 import { EmployeeStatusBadge } from '../components/EmployeeStatusBadge';
 import { EmploymentView } from '../components/EmploymentView';
 import { EmployeeAccountCard } from '../components/EmployeeAccountCard';
-import { UserApplicationsCard } from '../../../../../platform/user-applications/UserApplicationsCard';
 import { ActionsMenu } from '../components/actions/ActionsMenu';
 import { ActionHistory } from '../components/ActionHistory';
 import { PersonalView } from '../components/PersonalView';
@@ -332,10 +331,7 @@ export const EmployeeProfilePage = (): JSX.Element => {
       {tab === 'documents' && <DocumentsTab e={e} />}
       {tab === 'timeline' && <TimelineTab e={e} />}
       {tab === 'account' && (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <EmployeeAccountCard employee={e} />
-          {e.userId !== null && <UserApplicationsCard userId={e.userId} />}
-        </div>
+        <EmployeeAccountCard employee={e} />
       )}
     </PageContainer>
   );

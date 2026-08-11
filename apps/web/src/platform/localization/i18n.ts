@@ -1799,8 +1799,10 @@ const en: Record<string, string> = {
   'organization.application.route': 'Route',
   'organization.application.routeHint': 'The path the application opens at, e.g. /hr/recruitment.',
   'organization.application.permissionKey': 'Required permission',
+  'organization.application.permissionKeyRequired':
+    'An application needs the permission that opens it — without one, nobody can see it.',
   'organization.application.permissionKeyHint':
-    'The permission needed to open this application, e.g. applicant.view. Navigation is filtered by it: a user without it never sees the application. Leave empty for a page open to every signed-in user.',
+    'The permission that opens this application, e.g. applicant.view. It is what puts the application in a sidebar: everyone holding it sees the application, and nobody else does. Assigning a role is all that is needed — applications are never granted by hand.',
   'organization.application.category': 'Category',
   'organization.application.categoryHint': 'Grouping label used to cluster applications, e.g. HR.',
   'organization.application.sortOrder': 'Order',
@@ -5405,8 +5407,10 @@ const ar: Record<string, string> = {
   'organization.application.route': 'المسار',
   'organization.application.routeHint': 'المسار الذي يفتح عليه التطبيق، مثل /hr/recruitment.',
   'organization.application.permissionKey': 'الصلاحية المطلوبة',
+  'organization.application.permissionKeyRequired':
+    'التطبيق يحتاج الصلاحية التي تفتحه — بدونها لن يراه أحد.',
   'organization.application.permissionKeyHint':
-    'الصلاحية اللازمة لفتح هذا التطبيق، مثل applicant.view. تُصفّى بها قائمة التنقل: من لا يملكها لا يرى التطبيق إطلاقًا. اتركها فارغة لصفحة متاحة لكل مستخدم مسجَّل.',
+    'الصلاحية التي تفتح هذا التطبيق، مثل applicant.view. هي ما يضع التطبيق في قائمة التنقل: كل من يملكها يراه، ولا يراه غيرهم. إسناد الدور وحده يكفي — التطبيقات لا تُمنح يدويًا.',
   'organization.application.category': 'الفئة',
   'organization.application.categoryHint':
     'تسمية التجميع المستخدمة لتصنيف التطبيقات، مثل الموارد البشرية.',

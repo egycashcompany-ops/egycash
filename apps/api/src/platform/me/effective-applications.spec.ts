@@ -18,6 +18,10 @@ const cat = (
   ...extra,
 });
 
+/**
+ * Every application declares a permission — `<id>.view` unless overridden — because an application
+ * without one is entitled to nobody, which would make every case below assert the same empty list.
+ */
 const app = (
   id: string,
   categoryId: string,
@@ -31,13 +35,17 @@ const app = (
   sortOrder,
   status: 'active',
   categoryId,
-  permissionKey: null,
+  permissionKey: `${id}.view`,
   ...extra,
 });
 
 /** The caller's effective permissions, in the shape the resolver receives them. */
 const holding = (...keys: string[]): Record<string, DataScope> =>
   Object.fromEntries(keys.map((key) => [key, 'organization' as const]));
+
+/** Holds the default key of every application named — for cases that are not about permissions. */
+const holdingAll = (...ids: string[]): Record<string, DataScope> =>
+  holding(...ids.map((id) => `${id}.view`));
 
 const NOTHING: Record<string, DataScope> = {};
 
@@ -50,7 +58,7 @@ describe('assembleEffectiveApplications', () => {
     const result = assembleEffectiveApplications(
       [app('a1', 'c1', 0), app('a2', 'c1', 1)],
       [cat('c1', 0)],
-      NOTHING,
+      holdingAll('a1', 'a2'),
     );
     expect(result).toHaveLength(1);
     expect(result[0]?.id).toBe('c1');
@@ -61,18 +69,19 @@ describe('assembleEffectiveApplications', () => {
     const result = assembleEffectiveApplications(
       [app('a2', 'c2', 5), app('a1', 'c2', 1), app('b1', 'c1', 0)],
       [cat('c2', 10), cat('c1', 1)],
-      NOTHING,
+      holdingAll('a1', 'a2', 'b1'),
     );
     expect(result.map((c) => c.id)).toEqual(['c1', 'c2']);
     expect(result[1]?.applications.map((a) => a.id)).toEqual(['a1', 'a2']);
   });
 
   it('removes duplicate applications, keeping the first occurrence', () => {
-    // Same application arriving from both the department and the direct grant.
+    // Defensive: the caller now loads each application once, so a repeat cannot arise from the
+    // resolver's own inputs. The rule is kept so any future caller cannot reintroduce one.
     const result = assembleEffectiveApplications(
       [app('a1', 'c1', 0), app('a1', 'c1', 0)],
       [cat('c1', 0)],
-      NOTHING,
+      holdingAll('a1'),
     );
     expect(result[0]?.applications.map((a) => a.id)).toEqual(['a1']);
   });
@@ -81,7 +90,7 @@ describe('assembleEffectiveApplications', () => {
     const result = assembleEffectiveApplications(
       [app('a1', 'c1', 0, { status: 'inactive' }), app('a2', 'c1', 1)],
       [cat('c1', 0)],
-      NOTHING,
+      holdingAll('a1', 'a2'),
     );
     expect(result[0]?.applications.map((a) => a.id)).toEqual(['a2']);
   });
@@ -90,7 +99,7 @@ describe('assembleEffectiveApplications', () => {
     const result = assembleEffectiveApplications(
       [app('a1', 'c1', 0), app('a2', 'c2', 0, { status: 'inactive' })],
       [cat('c1', 0), cat('c2', 1)],
-      NOTHING,
+      holdingAll('a1', 'a2'),
     );
     expect(result.map((c) => c.id)).toEqual(['c1']);
   });
@@ -99,7 +108,7 @@ describe('assembleEffectiveApplications', () => {
     const result = assembleEffectiveApplications(
       [app('a1', 'missing', 0)],
       [cat('c1', 0)],
-      NOTHING,
+      holdingAll('a1'),
     );
     expect(result).toEqual([]);
   });
@@ -144,15 +153,26 @@ describe('assembleEffectiveApplications', () => {
     expect(result.map((c) => c.id)).toEqual(['hr']);
   });
 
-  it('keeps applications with no permission key — they are open by definition', () => {
-    // Catalog rows created before the field existed carry null, and must not vanish from anyone's
-    // sidebar just because the filter arrived.
+  it('drops applications with no permission key — they are entitled to nobody', () => {
+    // Rows catalogued before the field existed carry null. Under the old model null meant "no
+    // permission needed" and was harmless, because a grant was still required to see the row at
+    // all. Grants are gone, so that reading would hand every undeclared application to every
+    // signed-in user. Fail closed: invisible until somebody declares a key.
+    const result = assembleEffectiveApplications(
+      [app('a1', 'c1', 0, { permissionKey: null }), app('a2', 'c1', 1)],
+      [cat('c1', 0)],
+      holdingAll('a1', 'a2'),
+    );
+    expect(result[0]?.applications.map((a) => a.id)).toEqual(['a2']);
+  });
+
+  it('drops a null-key application even for a caller holding every permission there is', () => {
     const result = assembleEffectiveApplications(
       [app('a1', 'c1', 0, { permissionKey: null })],
       [cat('c1', 0)],
-      NOTHING,
+      holding('a1.view', 'anything.else'),
     );
-    expect(result[0]?.applications.map((a) => a.id)).toEqual(['a1']);
+    expect(result).toEqual([]);
   });
 
   it('does not treat a narrower data scope as a missing permission', () => {
@@ -170,7 +190,7 @@ describe('assembleEffectiveApplications', () => {
     const result = assembleEffectiveApplications(
       [app('a1', 'c1', 0)],
       [cat('c1', 0, { icon: null })],
-      NOTHING,
+      holdingAll('a1'),
     );
     expect(result).toEqual([
       {

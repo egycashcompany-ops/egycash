@@ -536,6 +536,7 @@ describe('login → permission → scoped data → audit trail', () => {
         route: '/hr/recruitment',
         categoryId: hrId,
         sortOrder: 10,
+        permissionKey: 'branch.view',
       });
     expect(created.status).toBe(201);
     const appDoc = (
@@ -548,13 +549,25 @@ describe('login → permission → scoped data → audit trail', () => {
     await request(app)
       .post('/api/v1/platform/applications')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ name: { ar: 'الخزينة', en: 'Treasury' }, icon: 'building', route: '/treasury', categoryId: treasuryId });
+      .send({
+        name: { ar: 'الخزينة', en: 'Treasury' },
+        icon: 'building',
+        route: '/treasury',
+        categoryId: treasuryId,
+        permissionKey: 'branch.view',
+      });
 
     // An unknown / inactive category is a business-rule violation (422).
     const badCategory = await request(app)
       .post('/api/v1/platform/applications')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ name: { ar: 'س', en: 'X' }, icon: 'x', route: '/x', categoryId: '000000000000000000000009' });
+      .send({
+        name: { ar: 'س', en: 'X' },
+        icon: 'x',
+        route: '/x',
+        categoryId: '000000000000000000000009',
+        permissionKey: 'branch.view',
+      });
     expect(badCategory.status).toBe(422);
 
     // Filter by categoryId returns only the HR application.
@@ -599,7 +612,13 @@ describe('login → permission → scoped data → audit trail', () => {
     const appRes = await request(app)
       .post('/api/v1/platform/applications')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ name: { ar: 'تطبيق', en: 'App' }, icon: 'x', route: '/app', categoryId: catId });
+      .send({
+        name: { ar: 'تطبيق', en: 'App' },
+        icon: 'x',
+        route: '/app',
+        categoryId: catId,
+        permissionKey: 'branch.view',
+      });
     const appId = (appRes.body as { data: { id: string } }).data.id;
 
     // Assign → 201 and returns the assigned application.
@@ -666,7 +685,13 @@ describe('login → permission → scoped data → audit trail', () => {
     const appRes = await request(app)
       .post('/api/v1/platform/applications')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ name: { ar: 'تطبيق م', en: 'UA App' }, icon: 'x', route: '/ua', categoryId: catId });
+      .send({
+        name: { ar: 'تطبيق م', en: 'UA App' },
+        icon: 'x',
+        route: '/ua',
+        categoryId: catId,
+        permissionKey: 'branch.view',
+      });
     const appId = (appRes.body as { data: { id: string } }).data.id;
 
     // Assign the application directly to the (active) admin user → 201 with the application.
@@ -723,8 +748,12 @@ describe('login → permission → scoped data → audit trail', () => {
     expect(inactiveApp.status).toBe(422);
   });
 
-  it('resolves the caller\'s effective applications: union, dedupe, active-only, grouped, ordered (PR #64)', async () => {
-    // A department under branch A, with a user placed inside it.
+  it("resolves the caller's effective applications: derived from permissions, active-only, grouped, ordered (PR #64)", async () => {
+    // Rewritten with the FIX-1 redesign. This case used to assign applications to a department and
+    // to the user and assert the union of the two; navigation is now the set of applications whose
+    // `permissionKey` the caller holds, so the grants are gone from it. What it still owns — and
+    // what `navigation-derivation.spec.ts` deliberately does not repeat — is the SHAPE of the
+    // answer: category and application ordering, inactive rows dropped, and the exact DTO fields.
     const dept = await request(app)
       .post('/api/v1/platform/departments')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -746,16 +775,16 @@ describe('login → permission → scoped data → audit trail', () => {
     await request(app)
       .post('/api/v1/auth/activate')
       .send({ token: daveBody.activationToken, password: PASSWORD });
-    const daveToken = (await doLogin('dave@ecms.local', PASSWORD)).body.data?.accessToken ?? '';
+    let daveToken = (await doLogin('dave@ecms.local', PASSWORD)).body.data?.accessToken ?? '';
 
-    // With no assignments yet, the caller's navigation is empty.
+    // Holding no permission, the caller's navigation is empty — not everything.
     const empty = await request(app)
       .get('/api/v1/platform/me/applications')
       .set('Authorization', `Bearer ${daveToken}`);
     expect(empty.status).toBe(200);
     expect((empty.body as { data: unknown[] }).data).toEqual([]);
 
-    // Two categories (HR sorts before Ops) and five applications.
+    // Two categories (HR sorts before Ops) and five applications, each declaring its permission.
     const mkCat = async (en: string, ar: string, sortOrder: number): Promise<string> => {
       const res = await request(app)
         .post('/api/v1/platform/application-categories')
@@ -766,40 +795,70 @@ describe('login → permission → scoped data → audit trail', () => {
     const hrCat = await mkCat('ME HR', 'م أفراد', 1);
     const opsCat = await mkCat('ME Ops', 'م عمليات', 10);
 
-    const mkApp = async (code: string, categoryId: string, sortOrder: number): Promise<string> => {
+    const mkApp = async (
+      code: string,
+      categoryId: string,
+      sortOrder: number,
+      permissionKey: string,
+    ): Promise<string> => {
       const res = await request(app)
         .post('/api/v1/platform/applications')
         .set('Authorization', `Bearer ${adminToken}`)
-        .send({ name: { ar: code, en: code }, icon: 'x', route: `/${code}`, categoryId, sortOrder });
+        .send({
+          name: { ar: code, en: code },
+          icon: 'x',
+          route: `/${code}`,
+          categoryId,
+          sortOrder,
+          permissionKey,
+        });
+      expect(res.status, `creating ${code}`).toBe(201);
       return (res.body as { data: { id: string } }).data.id;
     };
-    const hr1 = await mkApp('ME-HR-1', hrCat, 2);
-    const hr2 = await mkApp('ME-HR-2', hrCat, 1);
-    const ops1 = await mkApp('ME-OPS-1', opsCat, 0);
-    const overlap = await mkApp('ME-OVERLAP', opsCat, 5);
-    const willDeactivate = await mkApp('ME-OFF', hrCat, 0);
+    // NOT `branch.view`. This suite shares one database across its cases, and the application CRUD
+    // cases above catalogue rows carrying that key — which, now that navigation is derived, would
+    // appear in this caller's sidebar too and make the ordering assertions below about the whole
+    // file rather than about this case. Under the old model their absence came from Dave holding
+    // no grant for them; the permission set has to do that work now, so these five sit behind
+    // permissions nothing else in the file uses.
+    const hr1 = await mkApp('ME-HR-1', hrCat, 2, 'department.view');
+    const hr2 = await mkApp('ME-HR-2', hrCat, 1, 'jobTitle.view');
+    const ops1 = await mkApp('ME-OPS-1', opsCat, 0, 'section.view');
+    // Two applications behind ONE permission — the case that used to arrive as a duplicate through
+    // both grant tables, and now arrives as two distinct rows entitled by the same key.
+    const opsShared = await mkApp('ME-OPS-2', opsCat, 5, 'section.view');
+    const willDeactivate = await mkApp('ME-OFF', hrCat, 0, 'jobPosition.view');
 
-    // Department gets hr1, ops1, overlap. Dave (direct) gets hr2, overlap (a duplicate), willDeactivate.
-    const assignDept = (applicationId: string) =>
-      request(app)
-        .post(`/api/v1/platform/departments/${deptId}/applications`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({ applicationId });
-    for (const id of [hr1, ops1, overlap]) expect((await assignDept(id)).status).toBe(201);
+    const role = await request(app)
+      .post('/api/v1/platform/roles')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: { ar: 'دور التنقل', en: 'Nav Role' },
+        permissionKeys: [
+          'department.view',
+          'jobTitle.view',
+          'section.view',
+          'jobPosition.view',
+        ],
+      });
+    expect(role.status).toBe(201);
+    const assignment = await request(app)
+      .post('/api/v1/platform/role-assignments')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        userId: daveId,
+        roleId: (role.body as { data: { id: string } }).data.id,
+        scope: 'organization',
+      });
+    expect(assignment.status).toBe(201);
 
-    const assignUser = (applicationId: string) =>
-      request(app)
-        .post(`/api/v1/platform/users/${daveId}/applications`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({ applicationId });
-    for (const id of [hr2, overlap, willDeactivate]) expect((await assignUser(id)).status).toBe(201);
-
-    // Deactivate one application *after* it was granted — the resolver must now drop it.
+    // Deactivate one application the caller IS entitled to — the resolver must still drop it.
     await request(app)
       .patch(`/api/v1/platform/applications/${willDeactivate}`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ status: 'inactive', version: 0 });
 
+    daveToken = (await doLogin('dave@ecms.local', PASSWORD)).body.data?.accessToken ?? '';
     const nav = await request(app)
       .get('/api/v1/platform/me/applications')
       .set('Authorization', `Bearer ${daveToken}`);
@@ -808,14 +867,16 @@ describe('login → permission → scoped data → audit trail', () => {
       data: { id: string; applications: { id: string; name: unknown; icon: string; route: string }[] }[];
     }).data;
 
-    // Categories ordered by sortOrder (HR then Ops); applications ordered by sortOrder within each.
+    // Exactly these two categories: the role carries no permission any other application in this
+    // file declares, so nothing else can appear. Categories ordered by sortOrder (HR then Ops),
+    // applications ordered by sortOrder within each.
     expect(groups.map((g) => g.id)).toEqual([hrCat, opsCat]);
     expect(groups[0]?.applications.map((a) => a.id)).toEqual([hr2, hr1]);
-    expect(groups[1]?.applications.map((a) => a.id)).toEqual([ops1, overlap]);
+    expect(groups[1]?.applications.map((a) => a.id)).toEqual([ops1, opsShared]);
 
-    // The overlapping application appears exactly once; the deactivated one is gone.
+    // Each application appears exactly once, and the deactivated one is gone despite the permission.
     const allIds = groups.flatMap((g) => g.applications.map((a) => a.id));
-    expect(allIds.filter((id) => id === overlap)).toHaveLength(1);
+    expect(allIds.length).toBe(new Set(allIds).size);
     expect(allIds).not.toContain(willDeactivate);
 
     // Only the fields the navigation renderer needs are returned.

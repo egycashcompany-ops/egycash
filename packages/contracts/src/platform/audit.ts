@@ -113,6 +113,15 @@ export const AUDIT_ACTIONS = [
   // own verb rather than hiding under `update`. Individual punches audit as plain `create`.
   'attendancePunchImport',
   'attendanceRecompute',
+  // AT-4: freezing a period makes a month's rows immutable — the single most consequential
+  // mutation of derived attendance data, so it audits under its own verb.
+  'attendanceFreeze',
+  // AT-5, the leave precedent (leaveRequest/leaveDecision): a correction request and each
+  // decision step are filterable acts, and the overtime release is the moment recorded minutes
+  // become payable quantity — three verbs a dispute filters on, not diffs on a generic update.
+  'attendanceRegularization',
+  'attendanceRegularizationDecision',
+  'attendanceOvertimeApproval',
 ] as const;
 export const AuditActionSchema = z.enum(AUDIT_ACTIONS);
 export type AuditAction = z.infer<typeof AuditActionSchema>;

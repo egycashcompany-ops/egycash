@@ -303,7 +303,123 @@ export interface AttendanceDayDto {
   branchId: string;
   computedAt: string;
   frozenAt: string | null;
+  /** Optimistic-concurrency token for the one client write the row accepts: overtime approval. */
+  version: number;
 }
+
+// ── Regularizations (§7, D7 as ruled: TWO approval steps) ───────────────────
+
+/**
+ * The Leave chain, deliberately: `pendingManager → pendingHr` is the same pair
+ * `LEAVE_REQUEST_STATUSES` runs, so the approval machinery and its tests carry over. `draft` is
+ * declared for the lifecycle's sake but the API creates SUBMITTED requests — the composing state
+ * lives in the client, exactly as it does for leave. An employee with no manager submits straight
+ * to `pendingHr` (the Leave precedent for the missing-manager deadlock).
+ */
+export const ATTENDANCE_REGULARIZATION_STATUSES = [
+  'draft',
+  'pendingManager',
+  'pendingHr',
+  'approved',
+  'rejected',
+  'cancelled',
+] as const;
+export const AttendanceRegularizationStatusSchema = z.enum(ATTENDANCE_REGULARIZATION_STATUSES);
+export type AttendanceRegularizationStatus = z.infer<typeof AttendanceRegularizationStatusSchema>;
+
+/**
+ * A regularization proposes the day's PUNCH TRUTH, not its derived numbers (ADR-027): on final
+ * approval the proposal becomes manual punches, the old punches are superseded, and the day is
+ * recomputed — never hand-edited. `employeeId` is for the D7 HR direct edit only: a caller
+ * holding `attendance.decideRegularization` files for someone else and the request applies
+ * immediately, with the mandatory reason audited.
+ */
+export const CreateAttendanceRegularizationSchema = z
+  .object({
+    workDate: z.coerce.date(),
+    proposedInAt: z.coerce.date(),
+    proposedOutAt: z.coerce.date(),
+    reason: z.string().trim().min(3).max(500),
+    /** HR direct edit (D7): omit to file for yourself. */
+    employeeId: objectId().optional(),
+  })
+  .strict()
+  .refine((v) => v.proposedOutAt > v.proposedInAt, {
+    path: ['proposedOutAt'],
+    message: 'the proposed out must be after the proposed in',
+  });
+export type CreateAttendanceRegularization = z.infer<typeof CreateAttendanceRegularizationSchema>;
+
+export const DecideAttendanceRegularizationSchema = z
+  .object({
+    verdict: z.enum(['approve', 'reject']),
+    comment: z.string().max(500).optional(),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type DecideAttendanceRegularization = z.infer<
+  typeof DecideAttendanceRegularizationSchema
+>;
+
+export const CancelAttendanceRegularizationSchema = z
+  .object({ version: z.number().int().min(0) })
+  .strict();
+export type CancelAttendanceRegularization = z.infer<
+  typeof CancelAttendanceRegularizationSchema
+>;
+
+export interface AttendanceRegularizationDto {
+  id: string;
+  employeeId: string;
+  workDate: string;
+  proposedInAt: string;
+  proposedOutAt: string;
+  reason: string;
+  status: AttendanceRegularizationStatus;
+  /**
+   * Stamped at FINAL approval when the day was already frozen (§7): the frozen row was not
+   * touched, and Payroll treats the approved correction as a forward adjustment — never a
+   * restatement.
+   */
+  postFreeze: boolean;
+  /** D7 HR direct edit — filed and applied by HR in one act, with the mandatory reason. */
+  direct: boolean;
+  managerDecidedBy: string | null;
+  managerDecidedAt: string | null;
+  managerComment: string | null;
+  hrDecidedBy: string | null;
+  hrDecidedAt: string | null;
+  hrComment: string | null;
+  branchId: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ── Overtime approval (D5) ──────────────────────────────────────────────────
+
+/**
+ * QUANTITY RELEASE ONLY. The ceiling — never above the derived `overtimeMinutes` — is enforced
+ * server-side against the day record; nothing here knows what a minute is worth (multipliers and
+ * pricing are Payroll's, P-HR-09).
+ */
+export const ApproveOvertimeSchema = z
+  .object({
+    approvedMinutes: z.number().int().min(0).max(1440),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type ApproveOvertime = z.infer<typeof ApproveOvertimeSchema>;
+
+// ── Notification templates (§9 — the three AT-5 sends) ─────────────────────
+
+export const HrAttendanceTemplates = {
+  RegularizationSubmitted: 'hr.attendance.regularizationSubmitted',
+  RegularizationDecided: 'hr.attendance.regularizationDecided',
+  OvertimeApproved: 'hr.attendance.overtimeApproved',
+} as const;
+export type HrAttendanceTemplateKey =
+  (typeof HrAttendanceTemplates)[keyof typeof HrAttendanceTemplates];
 
 // ── Events (§8) ─────────────────────────────────────────────────────────────
 
@@ -312,6 +428,10 @@ export const HrAttendanceEvents = {
   PunchesImported: 'hr.attendance.punchesImported',
   DayComputed: 'hr.attendance.dayComputed',
   DayAbsent: 'hr.attendance.dayAbsent',
+  PeriodFrozen: 'hr.attendance.periodFrozen',
+  RegularizationRequested: 'hr.attendance.regularizationRequested',
+  RegularizationDecided: 'hr.attendance.regularizationDecided',
+  OvertimeApproved: 'hr.attendance.overtimeApproved',
 } as const;
 export type HrAttendanceEventName = (typeof HrAttendanceEvents)[keyof typeof HrAttendanceEvents];
 
@@ -337,6 +457,91 @@ export const AttendanceDayPayloadV1 = z.object({
   branchId: objectId(),
 });
 
+export const AttendancePeriodFrozenPayloadV1 = z.object({
+  /**
+   * `YYYY-MM`, Cairo calendar month. A plain string here — the freeze seam is what validates
+   * the shape; the catalogue's sample generator only knows how to invent unconstrained strings.
+   */
+  period: z.string(),
+  from: z.string(),
+  to: z.string(),
+  /** Rows newly stamped by THIS freeze — 0 never publishes (an idempotent re-freeze is silent). */
+  frozenRows: z.number().int().min(0),
+});
+
+export const AttendanceRegularizationRequestedPayloadV1 = z.object({
+  regularizationId: objectId(),
+  employeeId: objectId(),
+  workDate: z.string(),
+  status: AttendanceRegularizationStatusSchema,
+});
+
+export const AttendanceRegularizationDecidedPayloadV1 = z.object({
+  regularizationId: objectId(),
+  employeeId: objectId(),
+  workDate: z.string(),
+  step: z.enum(['manager', 'hr']),
+  verdict: z.enum(['approve', 'reject']),
+  status: AttendanceRegularizationStatusSchema,
+  /** True when the correction landed on a frozen day and flows forward as an adjustment (§7). */
+  postFreeze: z.boolean(),
+});
+
+export const AttendanceOvertimeApprovedPayloadV1 = z.object({
+  employeeId: objectId(),
+  workDate: z.string(),
+  approvedMinutes: z.number().int().min(0),
+  branchId: objectId(),
+});
+
+// ── The Attendance → Payroll feed contract (§15.1, D10 — owner-approved, binding) ──
+
+/**
+ * The twelve fields, BY NAME AND IN ORDER. This tuple is the contract's spine: the feed rows
+ * carry exactly these keys — no id, no computedAt, no first/last punch instants, and above all
+ * no unapproved `overtimeMinutes` — and a test holds the row shape to this list.
+ */
+export const ATTENDANCE_FEED_FIELDS = [
+  'employeeId',
+  'workDate',
+  'status',
+  'shiftId',
+  'workedMinutes',
+  'lateMinutes',
+  'earlyLeaveMinutes',
+  'approvedOvertimeMinutes',
+  'leaveId',
+  'branchId',
+  'flags',
+  'frozenAt',
+] as const;
+
+/**
+ * One frozen daily row as Payroll reads it. Quantities and classification only: the paid split
+ * of an `onLeave` day stays in Leave's `paidBreakdown` (reached via `leaveId`), and every minute
+ * here is a fact, never a price.
+ */
+export const AttendanceFeedRowSchema = z
+  .object({
+    employeeId: objectId(),
+    /** `YYYY-MM-DD`, keyed by shift start (D3). */
+    workDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    status: AttendanceDayStatusSchema,
+    shiftId: objectId().nullable(),
+    workedMinutes: z.number().int().min(0),
+    lateMinutes: z.number().int().min(0),
+    earlyLeaveMinutes: z.number().int().min(0),
+    /** Only what the D5 approval released — the derived remainder never reaches this feed. */
+    approvedOvertimeMinutes: z.number().int().min(0),
+    leaveId: objectId().nullable(),
+    branchId: objectId(),
+    flags: z.array(AttendanceDayFlagSchema),
+    /** ISO instant — always set: an unfrozen row never leaves the module. */
+    frozenAt: z.string(),
+  })
+  .strict();
+export type AttendanceFeedRow = z.infer<typeof AttendanceFeedRowSchema>;
+
 // ── Setting keys (§9, `hr.attendance.*` per D-PR-01) ────────────────────────
 
 export const HrAttendanceSettingKeys = {
@@ -344,4 +549,10 @@ export const HrAttendanceSettingKeys = {
   SelfPunchEnabled: 'hr.attendance.selfPunchEnabled',
   /** Cairo hour (0–23) at which the nightly compute for the previous day runs. */
   AutoComputeHour: 'hr.attendance.autoComputeHour',
+  /**
+   * D5, default TRUE: derived overtime waits for an explicit approval. When switched off the
+   * engine releases the derived minutes automatically — a decision to spend money without a
+   * decision, which is why the default says no.
+   */
+  OvertimeRequiresApproval: 'hr.attendance.overtimeRequiresApproval',
 } as const;

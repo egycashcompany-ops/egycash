@@ -5,6 +5,7 @@
 // interview notification templates the interview service sends through. The OCR provider
 // and requisition validator default to their safe stubs at import time (OQ-30).
 import {
+  HrAttendanceTemplates,
   HrContractTemplates,
   HrEmployeeFileTemplates,
   HrEmployeeTemplates,
@@ -483,6 +484,47 @@ export const seedHrRecruitment = async (): Promise<void> => {
     },
     channels: ['inApp', 'email'],
     variables: ['code', 'employeeName', 'endDate'],
+    defaultExpiryHours: null,
+  });
+  // Attendance AT-5 (v1.1 §9): the three regularization/overtime sends. The absence and
+  // missing-checkout templates belong to the AT-7 sweeps and arrive with them.
+  await notificationTemplateService.ensure({
+    key: HrAttendanceTemplates.RegularizationSubmitted,
+    category: 'hr',
+    priority: 'normal',
+    subject: { ar: 'طلب تسوية حضور جديد', en: 'New attendance regularization' },
+    body: {
+      ar: 'الموظف {{code}} طلب تسوية حضور ليوم {{workDate}}.',
+      en: 'Employee {{code}} requested an attendance regularization for {{workDate}}.',
+    },
+    channels: ['inApp'],
+    variables: ['code', 'workDate'],
+    defaultExpiryHours: null,
+  });
+  await notificationTemplateService.ensure({
+    key: HrAttendanceTemplates.RegularizationDecided,
+    category: 'hr',
+    priority: 'normal',
+    subject: { ar: 'قرار في طلب تسوية الحضور', en: 'Attendance regularization decided' },
+    body: {
+      ar: 'طلب تسوية الحضور ليوم {{workDate}} أصبح: {{status}}.',
+      en: 'Your attendance regularization for {{workDate}} is now: {{status}}.',
+    },
+    channels: ['inApp'],
+    variables: ['workDate', 'status'],
+    defaultExpiryHours: null,
+  });
+  await notificationTemplateService.ensure({
+    key: HrAttendanceTemplates.OvertimeApproved,
+    category: 'hr',
+    priority: 'normal',
+    subject: { ar: 'اعتماد عمل إضافي', en: 'Overtime approved' },
+    body: {
+      ar: 'اعتُمد لك {{minutes}} دقيقة عمل إضافي عن يوم {{workDate}}.',
+      en: '{{minutes}} overtime minutes were approved for {{workDate}}.',
+    },
+    channels: ['inApp'],
+    variables: ['workDate', 'minutes'],
     defaultExpiryHours: null,
   });
 };

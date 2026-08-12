@@ -10,6 +10,8 @@ import { type Express } from 'express';
 import {
   platformPermissions,
   SettingKeys,
+  ATTENDANCE_FEED_FIELDS,
+  AttendanceFeedRowSchema,
   type AttendanceDayDto,
   type EmployeeDto,
   type ImportPunchesResultDto,
@@ -23,8 +25,10 @@ import { rbacService } from '../../src/platform/rbac';
 import { userService } from '../../src/platform/users';
 import { settingsService } from '../../src/platform/settings';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
+import { getCache } from '../../src/infrastructure/redis/cache';
 import { addDays, cairoToday, dateOnlyIso, isoWeekday } from '../../src/modules/hr/shared/business-date';
-import { cairoInstant, AttendanceDayModel } from '../../src/modules/hr/attendance';
+import { cairoInstant, dayRecordService, AttendanceDayModel } from '../../src/modules/hr/attendance';
+import { type AttendanceRegularizationDto } from '@ecms/contracts';
 import { type AuthContext } from '../../src/shared/types';
 
 const PASSWORD = 'Str0ng#Pass!';
@@ -68,6 +72,7 @@ const mkUser = async (email: string): Promise<string> => {
 };
 
 const login = async (identifier: string): Promise<string> => {
+  await getCache().delByPrefix('rl:'); // keep strict auth rate-limits out of the way
   const res = await request(app)
     .post('/api/v1/auth/login')
     .send({ identifier, password: PASSWORD });
@@ -477,5 +482,365 @@ describe('the derivation engine over HTTP', () => {
       .get('/api/v1/hr/attendance/days/me?from=2026-01-01&to=2026-01-02')
       .set('Authorization', `Bearer ${outsiderToken}`);
     expect(mine.status).toBe(404);
+  });
+});
+
+// ── AT-4 — the freeze + the §15.1 feed seam (D-PR-07 Option A) ──────────────
+//
+// `freezePeriod` and `readFrozenFeed` are INTERNAL: no route mounts them, so the suite calls the
+// service directly — exactly what the Payroll Run will do in P-HR-09. Everything runs against
+// the PREVIOUS Cairo month (the freeze refuses a period still being lived), which stays inside
+// the 90-day punch sanity window.
+describe('AT-4 — freeze + the payroll feed seam', () => {
+  /** The previous Cairo calendar month as `YYYY-MM`, plus a workday inside it. */
+  const previousMonth = (): { period: string; workday: Date } => {
+    const today = cairoToday();
+    const first = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - 1, 1));
+    const period = `${String(first.getUTCFullYear())}-${String(first.getUTCMonth() + 1).padStart(2, '0')}`;
+    let workday = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth(), 10));
+    while ([5, 6].includes(isoWeekday(workday)) || HOLIDAY_ISO.has(dateOnlyIso(workday))) {
+      workday = addDays(workday, 1);
+    }
+    return { period, workday };
+  };
+
+  it('refuses to freeze a period still being lived — no frozen rows for unlived days', async () => {
+    const today = cairoToday();
+    const current = `${String(today.getUTCFullYear())}-${String(today.getUTCMonth() + 1).padStart(2, '0')}`;
+    await expect(dayRecordService.freezePeriod(current)).rejects.toThrow('after its last day');
+  });
+
+  it('refuses a malformed period', async () => {
+    await expect(dayRecordService.freezePeriod('2026-7')).rejects.toThrow('not a period');
+  });
+
+  it('the feed refuses a period that is not fully frozen — complete or nothing', async () => {
+    const emp = await regEmployee();
+    await assign(emp.id, GENERAL.id);
+    const { period, workday } = previousMonth();
+    await recompute(emp.id, workday); // a fluid row now exists in the period
+    await expect(dayRecordService.readFrozenFeed(period)).rejects.toThrow('not frozen');
+  });
+
+  it('freeze derives, stamps, and is idempotent; frozen rows survive late punches and recomputes', async () => {
+    const emp = await regEmployee();
+    await assign(emp.id, GENERAL.id);
+    const { period, workday } = previousMonth();
+
+    // A worked day inside the period, derived by the FREEZE itself (nobody recomputed first).
+    await recordPunch({ employeeId: emp.id, at: cairoInstant(workday, '09:05').toISOString() });
+    await recordPunch({ employeeId: emp.id, at: cairoInstant(workday, '17:00').toISOString() });
+
+    const first = await dayRecordService.freezePeriod(period);
+    expect(first.frozen).toBeGreaterThan(0);
+    expect(first.alreadyFrozen).toBe(false);
+
+    const frozenRow = await dayRow(emp.id, workday);
+    expect(frozenRow.status).toBe('present');
+    expect(frozenRow.workedMinutes).toBe(475);
+    expect(frozenRow.frozenAt).not.toBeNull();
+
+    // Idempotent: the second freeze stamps nothing and reports the period already frozen.
+    const second = await dayRecordService.freezePeriod(period);
+    expect(second.frozen).toBe(0);
+    expect(second.alreadyFrozen).toBe(true);
+
+    // The truth "changes" after the freeze — a late punch lands, a recompute is demanded —
+    // and the frozen row must not move a byte.
+    await recordPunch({ employeeId: emp.id, at: cairoInstant(workday, '20:00').toISOString() });
+    const rec = await recompute(emp.id, workday);
+    expect(rec.skippedFrozen).toBe(1);
+    expect(rec.computed).toBe(0);
+    const after = await dayRow(emp.id, workday);
+    expect({ ...after }).toEqual({ ...frozenRow });
+  });
+
+  it('the feed returns EXACTLY the twelve §15.1 fields, schema-valid, frozen rows only', async () => {
+    const { period } = previousMonth();
+    const rows = await dayRecordService.readFrozenFeed(period);
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(Object.keys(row)).toEqual([...ATTENDANCE_FEED_FIELDS]);
+      expect(AttendanceFeedRowSchema.safeParse(row).success).toBe(true);
+      expect(row.frozenAt).toBeTruthy();
+      expect('overtimeMinutes' in row).toBe(false);
+      expect('computedAt' in row).toBe(false);
+    }
+  });
+
+  it('the feed narrows to one employee when asked', async () => {
+    const { period } = previousMonth();
+    const all = await dayRecordService.readFrozenFeed(period);
+    const someEmployee = all[0]?.employeeId as string;
+    const one = await dayRecordService.readFrozenFeed(period, someEmployee);
+    expect(one.length).toBeGreaterThan(0);
+    expect(one.every((r) => r.employeeId === someEmployee)).toBe(true);
+  });
+});
+
+// ── AT-5 — regularizations (two steps) + overtime approval ──────────────────
+describe('AT-5 — regularizations and overtime approval', () => {
+  /** ESS session for an auto-provisioned employee login (the leave-suite recipe). */
+  const activateEssLogin = async (emp: EmployeeDto): Promise<{ userId: string; token: string }> => {
+    const reread = await request(app)
+      .get(`/api/v1/hr/employees/${emp.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const userId = (reread.body.data as EmployeeDto).userId;
+    expect(userId).not.toBeNull();
+    await userService.setPassword(String(userId), PASSWORD, 'passwordReset');
+    await userService.forceActivate(String(userId));
+    return { userId: String(userId), token: await login(emp.code) };
+  };
+
+  const regManagedEmployee = async (
+    managerUserId: string,
+  ): Promise<{ emp: EmployeeDto; auth: { userId: string; token: string } }> => {
+    const res = await request(app)
+      .post('/api/v1/hr/employees/direct')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        personal: {
+          identity: { fullNameAr: 'موظف التسويات', nationalId: nextNid(), nationality: 'Egyptian' },
+          contact: { primaryPhone: nextPhone() },
+          experience: [],
+          drivingLicenses: [],
+          certifications: [],
+          references: [],
+        },
+        employment: {
+          jobTitleId: JOB_TITLE_ID,
+          departmentId: DEPARTMENT_ID,
+          branchId: BRANCH_ID,
+          managerId: managerUserId,
+          employmentType: 'fullTime',
+          probationMonths: 0,
+          startDate: '2024-01-01T00:00:00.000Z',
+        },
+        hiringDate: '2024-01-01T00:00:00.000Z',
+      });
+    expect(res.status).toBe(201);
+    const emp = res.body.data as EmployeeDto;
+    await assign(emp.id, GENERAL.id);
+    const auth = await activateEssLogin(emp);
+    const essExtra = await rbacService.ensureManagedRole(
+      'at5-attendance-ess',
+      { en: 'AT-5 test ESS extra', ar: 'صلاحيات اختبار' },
+      ['attendance.requestRegularization'],
+    );
+    await rbacService.ensureAssignment(auth.userId, String(essExtra._id), 'own');
+    // Role grants changed after login — refresh the session so the flags see the new key.
+    return { emp, auth: { userId: auth.userId, token: await login(emp.code) } };
+  };
+
+  const file = (token: string, body: Record<string, unknown>) =>
+    request(app)
+      .post('/api/v1/hr/attendance/regularizations')
+      .set('Authorization', `Bearer ${token}`)
+      .send(body);
+
+  const decide = (token: string, id: string, verdict: 'approve' | 'reject', version: number) =>
+    request(app)
+      .post(`/api/v1/hr/attendance/regularizations/${id}/decide`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ verdict, version });
+
+  let manager: EmployeeDto;
+  let managerAuth: { userId: string; token: string };
+
+  it('sets up a manager with an ESS login', async () => {
+    manager = await regEmployee();
+    managerAuth = await activateEssLogin(manager);
+    expect(managerAuth.token).toBeTruthy();
+  });
+
+  it('walks the full two-step chain — no skipped step, no self-decision, recompute on approval', async () => {
+    const { emp, auth } = await regManagedEmployee(managerAuth.userId);
+    const workday = recentWorkday();
+
+    // An incomplete day: one punch, no checkout (the D6 headline case).
+    await recordPunch({ employeeId: emp.id, at: cairoInstant(workday, '09:05').toISOString() });
+    await recompute(emp.id, workday);
+    expect((await dayRow(emp.id, workday)).status).toBe('incomplete');
+
+    const filed = await file(auth.token, {
+      workDate: dateOnlyIso(workday),
+      proposedInAt: cairoInstant(workday, '09:00').toISOString(),
+      proposedOutAt: cairoInstant(workday, '17:00').toISOString(),
+      reason: 'forgot to punch out',
+    });
+    expect(filed.status).toBe(201);
+    const reg = filed.body.data as AttendanceRegularizationDto;
+    expect(reg.status).toBe('pendingManager');
+
+    // A second open request for the same day is refused.
+    const dup = await file(auth.token, {
+      workDate: dateOnlyIso(workday),
+      proposedInAt: cairoInstant(workday, '09:00').toISOString(),
+      proposedOutAt: cairoInstant(workday, '17:00').toISOString(),
+      reason: 'duplicate',
+    });
+    expect(dup.status).toBe(422);
+
+    // The subject decides nothing; an outsider decides nothing.
+    expect((await decide(auth.token, reg.id, 'approve', reg.version)).status).toBe(403);
+    expect((await decide(outsiderToken, reg.id, 'approve', reg.version)).status).toBe(403);
+
+    // Step 1 — the manager, by relationship. Lands on pendingHr, never approved.
+    const step1 = await decide(managerAuth.token, reg.id, 'approve', reg.version);
+    expect(step1.status).toBe(200);
+    const afterStep1 = step1.body.data as AttendanceRegularizationDto;
+    expect(afterStep1.status).toBe('pendingHr');
+
+    // The manager does not reach step 2.
+    expect(
+      (await decide(managerAuth.token, reg.id, 'approve', afterStep1.version)).status,
+    ).toBe(403);
+
+    // Step 2 — HR by permission. Approval applies the proposal and recomputes the day.
+    const step2 = await decide(adminToken, reg.id, 'approve', afterStep1.version);
+    expect(step2.status).toBe(200);
+    const final = step2.body.data as AttendanceRegularizationDto;
+    expect(final.status).toBe('approved');
+    expect(final.postFreeze).toBe(false);
+
+    const day = await dayRow(emp.id, workday);
+    expect(day.status).toBe('present');
+    expect(day.workedMinutes).toBe(480);
+    expect(day.firstInAt).toBe(cairoInstant(workday, '09:00').toISOString());
+    expect(day.flags).toContain('manualPunch');
+  });
+
+  it('rejects at either step, finally; HR may substitute at step 1 without skipping step 2', async () => {
+    const { auth } = await regManagedEmployee(managerAuth.userId);
+    const workday = recentWorkday();
+
+    const filedA = await file(auth.token, {
+      workDate: dateOnlyIso(workday),
+      proposedInAt: cairoInstant(workday, '09:00').toISOString(),
+      proposedOutAt: cairoInstant(workday, '17:00').toISOString(),
+      reason: 'wrong device day A',
+    });
+    const regA = filedA.body.data as AttendanceRegularizationDto;
+    const rejected = await decide(managerAuth.token, regA.id, 'reject', regA.version);
+    expect((rejected.body.data as AttendanceRegularizationDto).status).toBe('rejected');
+
+    // A fresh request: HR acts at the MANAGER step (the R9 deadlock escape) — still two steps.
+    const filedB = await file(auth.token, {
+      workDate: dateOnlyIso(addDays(workday, -1)),
+      proposedInAt: cairoInstant(addDays(workday, -1), '09:00').toISOString(),
+      proposedOutAt: cairoInstant(addDays(workday, -1), '17:00').toISOString(),
+      reason: 'wrong device day B',
+    });
+    const regB = filedB.body.data as AttendanceRegularizationDto;
+    const hrStep1 = await decide(adminToken, regB.id, 'approve', regB.version);
+    expect((hrStep1.body.data as AttendanceRegularizationDto).status).toBe('pendingHr');
+  });
+
+  it('HR direct edit (D7): one act, mandatory reason, applied immediately', async () => {
+    const { emp } = await regManagedEmployee(managerAuth.userId);
+    const workday = recentWorkday();
+    const direct = await file(adminToken, {
+      employeeId: emp.id,
+      workDate: dateOnlyIso(workday),
+      proposedInAt: cairoInstant(workday, '09:00').toISOString(),
+      proposedOutAt: cairoInstant(workday, '17:00').toISOString(),
+      reason: 'device failure confirmed by branch manager',
+    });
+    expect(direct.status).toBe(201);
+    const reg = direct.body.data as AttendanceRegularizationDto;
+    expect(reg.direct).toBe(true);
+    expect(reg.status).toBe('approved');
+    expect((await dayRow(emp.id, workday)).status).toBe('present');
+  });
+
+  it('overtime approval: ceiling, idempotent assignment, authZ, and the recompute clamp', async () => {
+    const { emp } = await regManagedEmployee(managerAuth.userId);
+    const workday = recentWorkday();
+    await recordPunch({ employeeId: emp.id, at: cairoInstant(workday, '09:00').toISOString() });
+    const outPunch = await recordPunch({
+      employeeId: emp.id,
+      at: cairoInstant(workday, '19:00').toISOString(),
+    });
+    await recompute(emp.id, workday);
+    let day = await dayRow(emp.id, workday);
+    expect(day.overtimeMinutes).toBe(120);
+    expect(day.approvedOvertimeMinutes).toBe(0);
+
+    const approve = (minutes: number, version: number, token = adminToken) =>
+      request(app)
+        .post(`/api/v1/hr/attendance/overtime/${day.id}/approve`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ approvedMinutes: minutes, version });
+
+    expect((await approve(150, day.version)).status).toBe(422); // above the derived ceiling
+    expect((await approve(90, day.version, outsiderToken)).status).toBe(403);
+
+    const ok90 = await approve(90, day.version);
+    expect(ok90.status).toBe(200);
+    day = await dayRow(emp.id, workday);
+    expect(day.approvedOvertimeMinutes).toBe(90);
+
+    // Assignment, not accumulation: a re-approval sets, never adds.
+    const ok60 = await approve(60, day.version);
+    expect(ok60.status).toBe(200);
+    day = await dayRow(emp.id, workday);
+    expect(day.approvedOvertimeMinutes).toBe(60);
+
+    // The derivation drops (the out-punch is superseded to 17:30) — the approved value clamps.
+    await recordPunch({
+      employeeId: emp.id,
+      at: cairoInstant(workday, '17:30').toISOString(),
+      supersedesId: (outPunch.body.data as { id: string }).id,
+    });
+    await recompute(emp.id, workday);
+    day = await dayRow(emp.id, workday);
+    expect(day.overtimeMinutes).toBe(30);
+    expect(day.approvedOvertimeMinutes).toBe(30);
+  });
+
+  it('postFreeze: the frozen row is never touched; the correction is marked to flow forward', async () => {
+    const { emp, auth } = await regManagedEmployee(managerAuth.userId);
+    const today = cairoToday();
+    const first = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - 1, 1));
+    const period = `${String(first.getUTCFullYear())}-${String(first.getUTCMonth() + 1).padStart(2, '0')}`;
+    let workday = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth(), 12));
+    while ([5, 6].includes(isoWeekday(workday)) || HOLIDAY_ISO.has(dateOnlyIso(workday))) {
+      workday = addDays(workday, 1);
+    }
+
+    await recompute(emp.id, workday);
+    await dayRecordService.freezePeriod(period); // stamps this employee's fresh rows
+    const frozen = await dayRow(emp.id, workday);
+    expect(frozen.frozenAt).not.toBeNull();
+    expect(frozen.status).toBe('absent');
+
+    const filed = await file(auth.token, {
+      workDate: dateOnlyIso(workday),
+      proposedInAt: cairoInstant(workday, '09:00').toISOString(),
+      proposedOutAt: cairoInstant(workday, '17:00').toISOString(),
+      reason: 'worked that day, device was down',
+    });
+    const reg = filed.body.data as AttendanceRegularizationDto;
+    const step1 = await decide(managerAuth.token, reg.id, 'approve', reg.version);
+    const step2 = await decide(
+      adminToken,
+      reg.id,
+      'approve',
+      (step1.body.data as AttendanceRegularizationDto).version,
+    );
+    const final = step2.body.data as AttendanceRegularizationDto;
+    expect(final.status).toBe('approved');
+    expect(final.postFreeze).toBe(true);
+
+    // The frozen row did not move a byte — no restatement, ever.
+    const after = await dayRow(emp.id, workday);
+    expect({ ...after }).toEqual({ ...frozen });
+
+    // And overtime approval on a frozen day refuses outright.
+    const ot = await request(app)
+      .post(`/api/v1/hr/attendance/overtime/${after.id}/approve`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ approvedMinutes: 0, version: after.version });
+    expect(ot.status).toBe(422);
   });
 });

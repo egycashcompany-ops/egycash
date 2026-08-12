@@ -170,6 +170,13 @@ const CATALOG: CategoryDef[] = [
         permission: 'payItem.view',
       },
       {
+        en: 'Payroll Runs',
+        ar: 'دورات الرواتب',
+        route: '/payroll/runs',
+        icon: 'calendar',
+        permission: 'payrollRun.view',
+      },
+      {
         en: 'Contracts',
         ar: 'العقود',
         route: '/contracts',

@@ -54,6 +54,7 @@ import {
   buildCompensationRouter,
   buildEmployeePayItemsRouter,
   buildPayItemsRouter,
+  buildPayrollRunsRouter,
 } from './payroll';
 import { addDays, cairoToday } from './shared/business-date';
 import { registerHrIdentitySeams } from './employee-management/employees/identity-seams';
@@ -508,6 +509,28 @@ const payItemPermissions = declarePermissions(
   'hr.pay-items',
 );
 
+/**
+ * The payroll run (PY-6). TWO keys, and the split is a separation of duty rather than a habit.
+ *
+ * Seeing whether a month is frozen is an everyday question for anyone working on pay; freezing one
+ * is irreversible and covers the whole organization. And no existing key fits: the registry holds
+ * nothing at PERIOD level, so the alternative would be `employee.manageCompensation` — which would
+ * let anyone able to edit one employee's allowance freeze the entire company's month.
+ */
+const payrollRunPermissions = declarePermissions(
+  'hr',
+  'payrollRun',
+  { en: 'payroll runs', ar: 'دورات الرواتب' },
+  ['view'],
+  [
+    {
+      action: 'manage',
+      name: { en: 'Manage payroll runs', ar: 'إدارة دورات الرواتب' },
+    },
+  ],
+  'hr.payroll-runs',
+);
+
 const attendancePermissions = [
   ...attendanceShiftAdminPermissions,
   ...attendanceAssignPermissions,
@@ -580,6 +603,7 @@ export const hrPermissions: PermissionDef[] = [
   ...workCalendarPermissions,
   ...attendancePermissions,
   ...payItemPermissions,
+  ...payrollRunPermissions,
 ];
 
 /**
@@ -736,12 +760,19 @@ export const hrPages: PageDef[] = [
     route: '/payroll/pay-items',
     sortOrder: 210,
   },
+  {
+    id: 'hr.payroll-runs',
+    moduleId: 'hr',
+    name: { en: 'Payroll runs', ar: 'دورات الرواتب' },
+    route: '/payroll/runs',
+    sortOrder: 220,
+  },
 ];
 
 export const hrModule: ModuleManifest = {
   id: 'hr',
   name: { en: 'Human Resources', ar: 'الموارد البشرية' },
-  version: '0.21.0',
+  version: '0.22.0',
   requiresPlatform: '^2.1',
   permissions: hrPermissions,
   pages: hrPages,
@@ -785,6 +816,7 @@ export const hrModule: ModuleManifest = {
     { prefix: '/hr/attendance/overtime', router: buildAttendanceOvertimeRouter() },
     { prefix: '/hr/attendance/export', router: buildAttendanceExportRouter() },
     { prefix: '/hr/payroll/pay-items', router: buildPayItemsRouter() },
+    { prefix: '/hr/payroll/runs', router: buildPayrollRunsRouter() },
   ],
   collections: [
     'hr_applicants',
@@ -820,6 +852,8 @@ export const hrModule: ModuleManifest = {
     'hr_attendance_regularizations',
     'hr_pay_items',
     'hr_employee_pay_items',
+    'hr_payroll_runs',
+    'hr_payroll_leave_snapshots',
   ],
   eventSubscriptions: [
     {

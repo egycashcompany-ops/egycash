@@ -4,6 +4,8 @@
 import {
   type CompensationEffectsDto,
   type CreateEmployeePayItem,
+  type CreatePayrollRun,
+  type PayrollRunDto,
   type CreatePayItem,
   type EmployeePayItemDto,
   type Paginated,
@@ -66,3 +68,20 @@ export const getEmployeeCompensation = (
   get<CompensationEffectsDto>(
     `/hr/employees/${employeeId}/compensation${buildQuery({ period })}`,
   );
+
+// ── Payroll runs (PY-6) ─────────────────────────────────────────────────────
+// The period, and the moment its facts stopped moving. Freezing is irreversible.
+
+export const listPayrollRuns = (params: QueryParams): Promise<Paginated<PayrollRunDto>> =>
+  getPage<PayrollRunDto>(`/hr/payroll/runs${buildQuery(params)}`);
+
+export const createPayrollRun = (body: CreatePayrollRun): Promise<PayrollRunDto> =>
+  post<PayrollRunDto>('/hr/payroll/runs', body);
+
+export const freezePayrollRun = (id: string, version: number): Promise<PayrollRunDto> =>
+  post<PayrollRunDto>(`/hr/payroll/runs/${id}/freeze`, { version });
+
+export const cancelPayrollRun = (
+  id: string,
+  body: { reason: string; version: number },
+): Promise<PayrollRunDto> => post<PayrollRunDto>(`/hr/payroll/runs/${id}/cancel`, body);

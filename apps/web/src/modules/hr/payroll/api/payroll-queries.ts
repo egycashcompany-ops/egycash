@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   type CreateEmployeePayItem,
   type CreatePayItem,
+  type CreatePayrollRun,
   type UpdatePayItem,
 } from '@ecms/contracts';
 import { featureKey, listKey } from '../../../../shared/lib/query-keys';
@@ -87,3 +88,42 @@ export const useEmployeeCompensation = (employeeId: string, period: string, enab
     enabled,
     retry: false,
   });
+
+// ── Payroll runs (PY-6) ─────────────────────────────────────────────────────
+
+const RUNS_FEATURE = 'payrollRuns';
+
+export const usePayrollRuns = (params: Record<string, string | number>) =>
+  useQuery({
+    queryKey: listKey(MODULE, RUNS_FEATURE, params),
+    queryFn: () => api.listPayrollRuns(params),
+    placeholderData: (prev) => prev,
+  });
+
+/**
+ * Freezing changes what every compensation figure in that period reads from, so a run mutation
+ * invalidates the compensation cache as well as the run list.
+ */
+const useRunMutation = <TVars, TData>(fn: (vars: TVars) => Promise<TData>) => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: featureKey(MODULE, RUNS_FEATURE) });
+      void client.invalidateQueries({ queryKey: featureKey(MODULE, 'compensation') });
+    },
+  });
+};
+
+export const useCreatePayrollRun = () =>
+  useRunMutation((body: CreatePayrollRun) => api.createPayrollRun(body));
+
+export const useFreezePayrollRun = () =>
+  useRunMutation(({ id, version }: { id: string; version: number }) =>
+    api.freezePayrollRun(id, version),
+  );
+
+export const useCancelPayrollRun = () =>
+  useRunMutation(({ id, reason, version }: { id: string; reason: string; version: number }) =>
+    api.cancelPayrollRun(id, { reason, version }),
+  );

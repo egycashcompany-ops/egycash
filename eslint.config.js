@@ -115,7 +115,13 @@ export default tseslint.config(
   // to remember is a seam that lasts until the first deadline.
   {
     files: ['apps/api/src/modules/hr/payroll/**/*.ts'],
-    ignores: ['apps/api/src/modules/hr/payroll/compensation/attendance-quantity.port.ts'],
+    ignores: [
+      // Exactly two doors, and both are named here: the read port that prices a period (PY-4)
+      // and the freeze port the payroll run calls (PY-6). Nothing else in payroll may reach
+      // attendance at all.
+      'apps/api/src/modules/hr/payroll/compensation/attendance-quantity.port.ts',
+      'apps/api/src/modules/hr/payroll/runs/attendance-freeze.port.ts',
+    ],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -124,7 +130,7 @@ export default tseslint.config(
             {
               group: ['**/attendance', '**/attendance/**'],
               message:
-                "Payroll reads attendance ONLY through the frozen feed, via compensation/attendance-quantity.port.ts. See the attendance design §15.1 and PY-4.",
+                "Payroll reaches attendance through two ports only: compensation/attendance-quantity.port.ts (reads the frozen feed) and runs/attendance-freeze.port.ts (calls the freeze). See the attendance design §15.1, PY-4 and PY-6.",
             },
           ],
         },

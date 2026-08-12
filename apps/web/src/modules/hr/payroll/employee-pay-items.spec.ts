@@ -64,7 +64,8 @@ describe('the tab reuses the compensation keys and declares none of its own', ()
 
   it('reads and writes under the employee, where the compensation scope is spent', () => {
     expect(API).toContain('`/hr/employees/${employeeId}/pay-items');
-    expect(API).not.toMatch(/payroll\/(runs|payslips|tax)/);
+    // Runs ship with PY-6; payslips and tax rules still do not exist at all.
+    expect(API).not.toMatch(/payroll\/(payslips|tax)/);
   });
 });
 

@@ -113,9 +113,12 @@ import {
   HrAttendanceEvents,
   type HrAttendanceEventName,
   AttendanceDayPayloadV1,
+  AttendanceOvertimeApprovedPayloadV1,
   AttendancePeriodFrozenPayloadV1,
   AttendancePunchRecordedPayloadV1,
   AttendancePunchesImportedPayloadV1,
+  AttendanceRegularizationDecidedPayloadV1,
+  AttendanceRegularizationRequestedPayloadV1,
 } from '../modules/hr-attendance.js';
 import {
   HrContractEvents,
@@ -676,6 +679,9 @@ export const EVENT_ACTION_NAMES: Readonly<Record<string, LocalizedString>> = {
   dayComputed: { en: 'day computed', ar: 'احتساب يوم' },
   dayAbsent: { en: 'absence recorded', ar: 'تسجيل غياب' },
   periodFrozen: { en: 'period frozen', ar: 'تجميد فترة' },
+  regularizationRequested: { en: 'regularization requested', ar: 'طلب تسوية' },
+  regularizationDecided: { en: 'regularization decided', ar: 'البت في تسوية' },
+  overtimeApproved: { en: 'overtime approved', ar: 'اعتماد عمل إضافي' },
   approvalRequested: { en: 'approval requested', ar: 'طلب اعتماد' },
   approvalDecided: { en: 'approval decided', ar: 'البت في اعتماد' },
   signed: { en: 'signed', ar: 'توقيع' },
@@ -1031,6 +1037,9 @@ export const HR_EVENT_PAYLOAD_SCHEMAS: Readonly<Record<HrCatalogEventName, z.Zod
   [HrAttendanceEvents.DayComputed]: AttendanceDayPayloadV1,
   [HrAttendanceEvents.DayAbsent]: AttendanceDayPayloadV1,
   [HrAttendanceEvents.PeriodFrozen]: AttendancePeriodFrozenPayloadV1,
+  [HrAttendanceEvents.RegularizationRequested]: AttendanceRegularizationRequestedPayloadV1,
+  [HrAttendanceEvents.RegularizationDecided]: AttendanceRegularizationDecidedPayloadV1,
+  [HrAttendanceEvents.OvertimeApproved]: AttendanceOvertimeApprovedPayloadV1,
 
   [HrContractEvents.Generated]: ContractGeneratedPayloadV1,
   [HrContractEvents.ApprovalRequested]: ContractEventPayloadV1,

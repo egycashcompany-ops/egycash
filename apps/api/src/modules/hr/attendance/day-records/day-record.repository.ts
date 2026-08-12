@@ -1,11 +1,29 @@
 import { Types, type FilterQuery } from 'mongoose';
 import { type ListAttendanceDaysQuery, type Paginated } from '@ecms/contracts';
 import { BaseRepository } from '../../../../shared/base/base.repository';
+import { BusinessRuleError } from '../../../../shared/errors';
 import { AttendanceDayModel, type AttendanceDayDoc } from './day-record.model';
 
 class DayRecordRepository extends BaseRepository<AttendanceDayDoc> {
   constructor() {
     super(AttendanceDayModel, { branchField: 'branchId' });
+  }
+
+  /**
+   * The §4 freeze guard, on EVERY write through this seam (AT-5): the condition rides inside the
+   * same atomic update, so a freeze landing between a read and its write is never overtaken —
+   * the same discipline the engine's upsert has carried since AT-3.
+   */
+  protected override writeConditions(): FilterQuery<AttendanceDayDoc> {
+    return { frozenAt: null };
+  }
+
+  protected override assertWritable(current: AttendanceDayDoc): void {
+    if (current.frozenAt !== null) {
+      throw new BusinessRuleError(
+        'this day is frozen — corrections flow forward as adjustments, never as restatements',
+      );
+    }
   }
 
   async listDays(

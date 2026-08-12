@@ -45,10 +45,14 @@ describe('closed vocabularies', () => {
       'hr.attendance.dayComputed',
       'hr.attendance.dayAbsent',
       'hr.attendance.periodFrozen',
+      'hr.attendance.regularizationRequested',
+      'hr.attendance.regularizationDecided',
+      'hr.attendance.overtimeApproved',
     ]);
     expect(Object.values(HrAttendanceSettingKeys)).toEqual([
       'hr.attendance.selfPunchEnabled',
       'hr.attendance.autoComputeHour',
+      'hr.attendance.overtimeRequiresApproval',
     ]);
   });
 

@@ -22,4 +22,11 @@ export const registerHrAttendanceSettings = (): void => {
     defaultValue: 2,
     allowedScopes: ['organization'],
   });
+  declareSetting({
+    key: HrAttendanceSettingKeys.OvertimeRequiresApproval,
+    description: 'Derived overtime waits for explicit approval before reaching the payroll feed (D5)',
+    schema: z.boolean(),
+    defaultValue: true,
+    allowedScopes: ['organization'],
+  });
 };

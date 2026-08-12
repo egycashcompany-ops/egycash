@@ -41,7 +41,9 @@ import {
 import {
   buildAttendanceAssignmentsRouter,
   buildAttendanceDaysRouter,
+  buildAttendanceOvertimeRouter,
   buildAttendancePunchesRouter,
+  buildAttendanceRegularizationsRouter,
   buildAttendanceShiftsRouter,
   dayRecordService,
   registerHrAttendanceSettings,
@@ -659,7 +661,7 @@ export const hrPages: PageDef[] = [
 export const hrModule: ModuleManifest = {
   id: 'hr',
   name: { en: 'Human Resources', ar: 'الموارد البشرية' },
-  version: '0.15.0',
+  version: '0.16.0',
   requiresPlatform: '^2.1',
   permissions: hrPermissions,
   pages: hrPages,
@@ -697,6 +699,8 @@ export const hrModule: ModuleManifest = {
     { prefix: '/hr/attendance/assignments', router: buildAttendanceAssignmentsRouter() },
     { prefix: '/hr/attendance/punches', router: buildAttendancePunchesRouter() },
     { prefix: '/hr/attendance/days', router: buildAttendanceDaysRouter() },
+    { prefix: '/hr/attendance/regularizations', router: buildAttendanceRegularizationsRouter() },
+    { prefix: '/hr/attendance/overtime', router: buildAttendanceOvertimeRouter() },
   ],
   collections: [
     'hr_applicants',
@@ -729,6 +733,7 @@ export const hrModule: ModuleManifest = {
     'hr_shift_assignments',
     'hr_attendance_punches',
     'hr_attendance_days',
+    'hr_attendance_regularizations',
   ],
   eventSubscriptions: [
     {

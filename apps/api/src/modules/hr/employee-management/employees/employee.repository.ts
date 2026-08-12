@@ -109,6 +109,25 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
     return this.model.findOne({ code, isDeleted: false }).lean<EmployeeDoc>().exec();
   }
 
+  /**
+   * Employee by the PERMANENT Global Employee Number (attendance punch import): device exports
+   * outlive transfers, and the displayed `code` changes its branch prefix on transfer while
+   * `employeeNumber` never changes (ADR-017).
+   */
+  async findByEmployeeNumberSystem(employeeNumber: string): Promise<EmployeeDoc | null> {
+    return this.model.findOne({ employeeNumber, isDeleted: false }).lean<EmployeeDoc>().exec();
+  }
+
+  /**
+   * Ids of everyone the attendance engine may owe a day row. Everyone non-deleted, INCLUDING the
+   * exited — an exit yesterday still leaves yesterday's day derivable — and the engine's own
+   * employment-period check is what decides each date, so this list only bounds the sweep.
+   */
+  async listIdsForAttendance(): Promise<string[]> {
+    const rows = await this.model.find({ isDeleted: false }).select({ _id: 1 }).lean().exec();
+    return rows.map((r) => String(r._id));
+  }
+
   /** The employee a login belongs to (self-service own-resolution, leave design C1-R). */
   async findByUserIdSystem(userId: string): Promise<EmployeeDoc | null> {
     if (!Types.ObjectId.isValid(userId)) return null;

@@ -128,6 +128,24 @@ const CATALOG: CategoryDef[] = [
         permission: 'employee.view',
       },
       { en: 'Leave', ar: 'الإجازات', route: '/leave', icon: 'calendar', permission: 'leave.view' },
+      // Attendance AT-1 (frozen design v1.1). Two rows, not one: the shifts catalog and the
+      // assignment screen are separate grants (`attendance.manageShifts` / `attendance.assign`),
+      // and a shared row would advertise both to whoever held either. The daily sheet and the
+      // employee-month screens arrive with their own rows in AT-6.
+      {
+        en: 'Shifts',
+        ar: 'الورديات',
+        route: '/attendance/shifts',
+        icon: 'layers',
+        permission: 'attendance.manageShifts',
+      },
+      {
+        en: 'Shift Assignments',
+        ar: 'إسناد الورديات',
+        route: '/attendance/assignments',
+        icon: 'clipboard',
+        permission: 'attendance.assign',
+      },
       {
         en: 'Contracts',
         ar: 'العقود',

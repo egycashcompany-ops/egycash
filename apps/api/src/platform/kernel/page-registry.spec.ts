@@ -22,21 +22,21 @@ describe('the assembled page registry', () => {
     expect(validatePageRegistry(pages, permissions)).toEqual([]);
   });
 
-  it('declares 50 pages over 203 permissions', () => {
-    expect(pages).toHaveLength(50);
-    expect(permissions).toHaveLength(203);
+  it('declares 52 pages over 209 permissions', () => {
+    expect(pages).toHaveLength(52);
+    expect(permissions).toHaveLength(209);
   });
 
-  it('assigns 183 permissions to a page and leaves 20 deliberately unassigned', () => {
+  it('assigns 185 permissions to a page and leaves 24 deliberately unassigned', () => {
     const assigned = permissions.filter((p) => p.pageId !== null);
-    expect(assigned).toHaveLength(183);
-    expect(permissions.length - assigned.length).toBe(20);
+    expect(assigned).toHaveLength(185);
+    expect(permissions.length - assigned.length).toBe(24);
   });
 
   it('splits the pages across the four modules as declared', () => {
     const byModule = new Map<string, number>();
     for (const page of pages) byModule.set(page.moduleId, (byModule.get(page.moduleId) ?? 0) + 1);
-    expect(Object.fromEntries(byModule)).toEqual({ platform: 15, hr: 16, fleet: 10, it: 9 });
+    expect(Object.fromEntries(byModule)).toEqual({ platform: 15, hr: 18, fleet: 10, it: 9 });
   });
 
   // Named rather than counted, because "which permissions have no home" is the question a reviewer
@@ -47,6 +47,10 @@ describe('the assembled page registry', () => {
     ].sort();
     expect(unassigned).toEqual(
       [
+        // Attendance is PARTIALLY assigned by design: the shifts and assignments screens shipped
+        // in AT-1 and carry their keys; the punch and day-record keys wait for their AT-6
+        // screens, exactly as the audit keys waited for P11.
+        'attendance',
         // No administration screen at all, and never has been. `setting` left this list in P8,
         // `notificationTemplate` in P10 and the two log streams in P11, each in the change that
         // routed its screen — never before it.

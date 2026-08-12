@@ -28,6 +28,7 @@ import { EVENT_SCHEMA_VERSIONS, PlatformEvents } from './index.js';
 import { HrEvents } from '../modules/hr-recruitment.js';
 import { HrEmployeeEvents } from '../modules/hr-employee.js';
 import { HrLeaveEvents } from '../modules/hr-leave.js';
+import { HrAttendanceEvents } from '../modules/hr-attendance.js';
 import { HrContractEvents } from '../modules/hr-contract.js';
 import { HrOfferEvents } from '../modules/hr-job-offer.js';
 import { HrInterviewEvents } from '../modules/hr-interview.js';
@@ -56,6 +57,7 @@ const HR_EVENT_CONSTANTS = [
   HrEmployeeFileEvents,
   HrHiringDocumentsEvents,
   HrLeaveEvents,
+  HrAttendanceEvents,
   HrContractEvents,
 ].flatMap((group) => Object.values(group));
 

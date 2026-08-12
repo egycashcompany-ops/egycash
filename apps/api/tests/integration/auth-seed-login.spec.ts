@@ -152,7 +152,8 @@ describe('seed → password login (regression)', () => {
     expect(routes).toContain('/it/licenses');
     // SA-1 appends the System Administration users screen to the Administration group; SA-3 adds
     // the roles and permission-registry screens beside it; P8 adds system settings; P10 adds the
-    // notification-template catalog; P11 adds the two log streams.
+    // notification-template catalog; P11 adds the two log streams; Attendance AT-1 adds the two
+    // shift-administration screens to the HR group.
     expect(routes).toContain('/system/users');
     expect(routes).toContain('/system/roles');
     expect(routes).toContain('/system/permissions');
@@ -160,8 +161,10 @@ describe('seed → password login (regression)', () => {
     expect(routes).toContain('/system/notification-templates');
     expect(routes).toContain('/system/audit');
     expect(routes).toContain('/system/activity');
-    // 14 (HR) + 12 (Fleet) + 6 (Organization) + 13 (IT) + 9 (Administration)
-    expect(routes).toHaveLength(54);
+    expect(routes).toContain('/attendance/shifts');
+    expect(routes).toContain('/attendance/assignments');
+    // 16 (HR) + 12 (Fleet) + 6 (Organization) + 13 (IT) + 9 (Administration)
+    expect(routes).toHaveLength(56);
   });
 
   it('re-running the seed is idempotent — no duplicate categories/applications/grants', async () => {
@@ -173,7 +176,7 @@ describe('seed → password login (regression)', () => {
       .set('Authorization', `Bearer ${token}`);
     const groups = (res.body as { data: { applications: unknown[] }[] }).data;
     expect(groups).toHaveLength(5);
-    expect(groups.reduce((n, g) => n + g.applications.length, 0)).toBe(54);
+    expect(groups.reduce((n, g) => n + g.applications.length, 0)).toBe(56);
   });
 
   it('the seeded HR user also logs in with email/password', async () => {

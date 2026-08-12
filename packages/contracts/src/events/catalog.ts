@@ -110,6 +110,13 @@ import {
   LeaveSpanPayloadV1,
 } from '../modules/hr-leave.js';
 import {
+  HrAttendanceEvents,
+  type HrAttendanceEventName,
+  AttendanceDayPayloadV1,
+  AttendancePunchRecordedPayloadV1,
+  AttendancePunchesImportedPayloadV1,
+} from '../modules/hr-attendance.js';
+import {
   HrContractEvents,
   type HrContractEventName,
   ContractApprovalDecidedPayloadV1,
@@ -575,6 +582,7 @@ export const EVENT_ENTITY_NAMES: Readonly<Record<string, LocalizedString>> = {
   employeeFile: { en: 'Employee file', ar: 'ملف موظف' },
   hiringDocuments: { en: 'Hiring documents', ar: 'مستندات التعيين' },
   leave: { en: 'Leave', ar: 'إجازة' },
+  attendance: { en: 'Attendance', ar: 'حضور' },
   contract: { en: 'Contract', ar: 'عقد' },
   // fleet
   vehicle: { en: 'Vehicle', ar: 'سيارة' },
@@ -661,6 +669,11 @@ export const EVENT_ACTION_NAMES: Readonly<Record<string, LocalizedString>> = {
   requested: { en: 'requested', ar: 'طلب' },
   ended: { en: 'ended', ar: 'انتهاء' },
   balanceAdjusted: { en: 'balance adjusted', ar: 'تسوية رصيد' },
+  // attendance
+  punchRecorded: { en: 'punch recorded', ar: 'تسجيل بصمة' },
+  punchesImported: { en: 'punches imported', ar: 'استيراد بصمات' },
+  dayComputed: { en: 'day computed', ar: 'احتساب يوم' },
+  dayAbsent: { en: 'absence recorded', ar: 'تسجيل غياب' },
   approvalRequested: { en: 'approval requested', ar: 'طلب اعتماد' },
   approvalDecided: { en: 'approval decided', ar: 'البت في اعتماد' },
   signed: { en: 'signed', ar: 'توقيع' },
@@ -925,6 +938,7 @@ export type HrCatalogEventName =
   | HrEmployeeFileEventName
   | HrHiringDocumentsEventName
   | HrLeaveEventName
+  | HrAttendanceEventName
   | HrContractEventName;
 
 export const HR_EVENT_PAYLOAD_SCHEMAS: Readonly<Record<HrCatalogEventName, z.ZodTypeAny | null>> = {
@@ -1009,6 +1023,11 @@ export const HR_EVENT_PAYLOAD_SCHEMAS: Readonly<Record<HrCatalogEventName, z.Zod
   [HrLeaveEvents.Started]: LeaveSpanPayloadV1,
   [HrLeaveEvents.Ended]: LeaveSpanPayloadV1,
   [HrLeaveEvents.BalanceAdjusted]: LeaveBalanceAdjustedPayloadV1,
+
+  [HrAttendanceEvents.PunchRecorded]: AttendancePunchRecordedPayloadV1,
+  [HrAttendanceEvents.PunchesImported]: AttendancePunchesImportedPayloadV1,
+  [HrAttendanceEvents.DayComputed]: AttendanceDayPayloadV1,
+  [HrAttendanceEvents.DayAbsent]: AttendanceDayPayloadV1,
 
   [HrContractEvents.Generated]: ContractGeneratedPayloadV1,
   [HrContractEvents.ApprovalRequested]: ContractEventPayloadV1,

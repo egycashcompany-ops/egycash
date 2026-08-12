@@ -108,6 +108,11 @@ export const AUDIT_ACTIONS = [
   // user and the scope are unchanged, and expressing it as `roleRevoked` + `roleAssigned` would
   // split one decision into two rows and lose when the grant was first made.
   'roleAssignmentUpdated',
+  // Attendance (v1.1). The import is one decision over thousands of rows, so it audits as one
+  // record carrying the batch totals; a recompute rewrites derived data in bulk and deserves its
+  // own verb rather than hiding under `update`. Individual punches audit as plain `create`.
+  'attendancePunchImport',
+  'attendanceRecompute',
 ] as const;
 export const AuditActionSchema = z.enum(AUDIT_ACTIONS);
 export type AuditAction = z.infer<typeof AuditActionSchema>;

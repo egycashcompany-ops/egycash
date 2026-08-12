@@ -14,9 +14,11 @@ import {
   type AttendanceRegularizationDto,
   type CreateAttendanceRegularization,
   type DecideAttendanceRegularization,
+  type ListAttendanceRegularizationsQuery,
+  type Paginated,
 } from '@ecms/contracts';
 import { BusinessRuleError, ForbiddenError, NotFoundError } from '../../../../shared/errors';
-import { type AuthContext } from '../../../../shared/types';
+import { type AuthContext, type ScopeSelector } from '../../../../shared/types';
 import { auditService } from '../../../../platform/audit';
 import { emit } from '../../../../platform/kernel/event-bus';
 import { notificationsService } from '../../../../platform/notifications';
@@ -28,6 +30,7 @@ import {
   AttendanceRegularizationModel,
   type AttendanceRegularizationDoc,
 } from './regularization.model';
+import { regularizationRepository } from './regularization.repository';
 import { decisionProblem, nextStatus, stepOf } from './regularization-rules';
 
 const entityRef = (id: string) => ({
@@ -156,6 +159,63 @@ class RegularizationService {
       });
     }
     return doc.toObject() as AttendanceRegularizationDoc;
+  }
+
+  /**
+   * The scoped list behind the AT-6 queue screen. `attendance.decideRegularization` at branch
+   * scope sees its branch; at organization scope, everything. There is no `own` reading here —
+   * `listMine` is that read, resolved from the login link rather than from a filter.
+   */
+  async list(
+    query: ListAttendanceRegularizationsQuery,
+    scope: ScopeSelector,
+  ): Promise<Paginated<AttendanceRegularizationDoc>> {
+    return regularizationRepository.listRegularizations(query, scope);
+  }
+
+  /** ESS: my own requests — own by construction (the day-record `/me` posture). */
+  async listMine(
+    userId: string,
+    query: ListAttendanceRegularizationsQuery,
+  ): Promise<Paginated<AttendanceRegularizationDoc>> {
+    const own = await employeeRepository.findByUserIdSystem(userId);
+    if (own === null) throw new NotFoundError('no employee is linked to this login');
+    return regularizationRepository.listRegularizations({
+      ...query,
+      employeeId: String(own._id),
+    });
+  }
+
+  /**
+   * The decision worklist, unioned exactly the way Leave's approvals inbox unions it (R9): the
+   * caller's direct reports awaiting the MANAGER step, plus — for a decideRegularization holder —
+   * everything awaiting the HR step within their scope. A holder also sees the manager step
+   * (the deadlock escape), and deciding it still lands on `pendingHr`, never on `approved`.
+   */
+  async pendingDecisions(
+    ctx: AuthContext,
+    flags: RegularizationCallerFlags,
+    scope: ScopeSelector,
+  ): Promise<AttendanceRegularizationDoc[]> {
+    const reports = await employeeRepository.findDirectReports(ctx.userId);
+    const managerQueue =
+      reports.length === 0
+        ? []
+        : await regularizationRepository.findPendingManagerFor(
+            reports.map((employee) => String(employee._id)),
+          );
+    const hrQueue = flags.canDecide ? await regularizationRepository.findPendingScoped(scope) : [];
+
+    const seen = new Set<string>();
+    const merged: AttendanceRegularizationDoc[] = [];
+    for (const doc of [...managerQueue, ...hrQueue]) {
+      const key = String(doc._id);
+      // A caller never decides their own request (C7) — so it never sits in their worklist.
+      if (seen.has(key) || String(doc.createdBy) === ctx.userId) continue;
+      seen.add(key);
+      merged.push(doc);
+    }
+    return merged.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
   }
 
   async decide(

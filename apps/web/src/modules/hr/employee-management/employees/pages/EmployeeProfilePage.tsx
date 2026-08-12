@@ -29,11 +29,15 @@ import { useEmployeeFiles } from '../../employee-files/api/employee-file-queries
 import { CandidateTimeline } from '../../../recruitment/timeline/components/CandidateTimeline';
 import { useEmployee, useEmployeeActions, useEmployeeTimeline } from '../api/employee-queries';
 
-const TABS = ['overview', 'personal', 'employment', 'leave', 'contracts', 'documents', 'timeline', 'account'] as const;
+const TABS = ['overview', 'personal', 'employment', 'leave', 'attendance', 'contracts', 'documents', 'timeline', 'account'] as const;
 type Tab = (typeof TABS)[number];
 
-// The Leave and Contracts tabs are owned by their modules and lazy-loaded (additive tabs).
+// The Leave, Attendance and Contracts tabs are owned by their modules and lazy-loaded (additive
+// tabs) — the same dynamic import() seam, so each module's chunk loads only when its tab opens.
 const EmployeeLeaveTab = lazy(() => import('../../../leave-management/components/EmployeeLeaveTab'));
+const EmployeeAttendanceTab = lazy(
+  () => import('../../../attendance/components/EmployeeAttendanceTab'),
+);
 const EmployeeContractsTab = lazy(() => import('../../../contracts/components/EmployeeContractsTab'));
 
 const ProbationCard = ({ e }: { e: EmployeeDto }): JSX.Element | null => {
@@ -321,6 +325,11 @@ export const EmployeeProfilePage = (): JSX.Element => {
       {tab === 'leave' && (
         <Suspense fallback={<LoadingState />}>
           <EmployeeLeaveTab employee={e} />
+        </Suspense>
+      )}
+      {tab === 'attendance' && (
+        <Suspense fallback={<LoadingState />}>
+          <EmployeeAttendanceTab employee={e} />
         </Suspense>
       )}
       {tab === 'contracts' && (

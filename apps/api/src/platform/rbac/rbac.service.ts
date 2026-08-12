@@ -926,6 +926,29 @@ class RbacService {
     return roleAssignmentRepository.distinctUserIdsForRole(String(role._id));
   }
 
+  /**
+   * WIDEN a seeded system role with grants a later module owns.
+   *
+   * `ensureSystemRole` deliberately never touches a role that already exists — a re-seed must not
+   * silently revert an administrator's edit. But a role the PLATFORM owns still has to grow when a
+   * module ships the surface it is meant to open (Attendance's self-service keys, AT-6), and on
+   * every database that already ran the earlier seed there is no other moment to add them. So this
+   * is strictly additive — it only ever unions keys in, never removes — and idempotent: the second
+   * run finds nothing to add and writes nothing.
+   */
+  async addSystemRoleGrants(
+    key: 'super-admin' | 'platform-admin' | 'employee-self-service',
+    permissionKeys: string[],
+  ): Promise<number> {
+    const existing = await roleRepository.findByKey(key);
+    if (existing === null) return 0;
+    const missing = permissionKeys.filter((k) => !existing.permissionKeys.includes(k));
+    if (missing.length === 0) return 0;
+    await roleRepository.setPermissionKeysByKey(key, [...existing.permissionKeys, ...missing]);
+    await this.invalidateUsersOfRole(String(existing._id));
+    return missing.length;
+  }
+
   async ensureSystemRole(
     key: 'super-admin' | 'platform-admin' | 'employee-self-service',
     name: { ar: string; en: string },

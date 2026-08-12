@@ -16,7 +16,7 @@ import {
   type RecomputeAttendanceDays,
 } from '@ecms/contracts';
 import { BusinessRuleError, NotFoundError } from '../../../../shared/errors';
-import { type AuthContext } from '../../../../shared/types';
+import { type AuthContext, type ScopeSelector } from '../../../../shared/types';
 import { auditService } from '../../../../platform/audit';
 import { emit } from '../../../../platform/kernel/event-bus';
 import { settingsService } from '../../../../platform/settings';
@@ -84,8 +84,29 @@ const employedOn = (employee: EmployeeDoc, workDate: Date): boolean => {
 };
 
 class DayRecordService {
-  async list(query: ListAttendanceDaysQuery): Promise<Paginated<AttendanceDayDoc>> {
-    return dayRecordRepository.listDays(query);
+  /**
+   * Scoped list (AT-6): `own` resolves the caller's linked employee (rows are system-written, so
+   * BaseRepository's creator-based own-match can never see them — C1-R); the org scopes ride the
+   * repository's `branchId` filter. A section filter resolves the section's employees first,
+   * because day rows deliberately carry only the branch axis (D8).
+   */
+  async list(
+    query: ListAttendanceDaysQuery,
+    scope?: ScopeSelector,
+  ): Promise<Paginated<AttendanceDayDoc>> {
+    let employeeIds: string[] | undefined;
+    if (query.sectionId !== undefined) {
+      employeeIds = await employeeRepository.listIdsBySectionSystem(query.sectionId);
+    }
+    if (scope !== undefined && scope.scope === 'own') {
+      const own = await employeeRepository.findByUserIdSystem(scope.userId);
+      if (own === null) throw new NotFoundError('no employee is linked to this login');
+      return dayRecordRepository.listDays(
+        { ...query, employeeId: String(own._id) },
+        { employeeIds },
+      );
+    }
+    return dayRecordRepository.listDays(query, { employeeIds, scope });
   }
 
   /** ESS: the caller's own month — own by construction (resolved from the login link). */

@@ -128,10 +128,24 @@ const CATALOG: CategoryDef[] = [
         permission: 'employee.view',
       },
       { en: 'Leave', ar: 'الإجازات', route: '/leave', icon: 'calendar', permission: 'leave.view' },
-      // Attendance AT-1 (frozen design v1.1). Two rows, not one: the shifts catalog and the
-      // assignment screen are separate grants (`attendance.manageShifts` / `attendance.assign`),
-      // and a shared row would advertise both to whoever held either. The daily sheet and the
-      // employee-month screens arrive with their own rows in AT-6.
+      // Attendance (frozen design v1.1). One row per grant, never a shared row: a combined entry
+      // would advertise a screen to whoever held any of the four keys. My Attendance carries no
+      // row for the same reason My Leave does not — it is the self-service landing, reachable by
+      // every employee login rather than by a permission.
+      {
+        en: 'Daily Attendance',
+        ar: 'الحضور اليومي',
+        route: '/attendance/daily',
+        icon: 'clipboard',
+        permission: 'attendance.view',
+      },
+      {
+        en: 'Attendance Regularizations',
+        ar: 'تسويات الحضور',
+        route: '/attendance/regularizations',
+        icon: 'clipboard',
+        permission: 'attendance.decideRegularization',
+      },
       {
         en: 'Shifts',
         ar: 'الورديات',

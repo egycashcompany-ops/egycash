@@ -832,7 +832,7 @@ class EmployeeService {
       const essRole = await rbacService.ensureSystemRole(
         'employee-self-service',
         { en: 'Employee Self-Service', ar: 'الخدمة الذاتية للموظفين' },
-        ['leave.view', 'leave.request'],
+        ['leave.view', 'leave.request', 'attendance.view', 'attendance.requestRegularization'],
       );
       await rbacService.ensureAssignment(String(user._id), String(essRole._id), 'own');
       await auditService.record({

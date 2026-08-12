@@ -128,6 +128,27 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
     return rows.map((r) => String(r._id));
   }
 
+  /** Ids of a section's employees — the daily sheet's section filter (day rows carry no section). */
+  async listIdsBySectionSystem(sectionId: string): Promise<string[]> {
+    if (!Types.ObjectId.isValid(sectionId)) return [];
+    const rows = await this.model
+      .find({ sectionId: new Types.ObjectId(sectionId), isDeleted: false })
+      .select({ _id: 1 })
+      .lean()
+      .exec();
+    return rows.map((r) => String(r._id));
+  }
+
+  /** Batch fetch for display enrichment (AT-6 lists) — ids in, docs out, no scope (labels only). */
+  async findByIdsSystem(ids: string[]): Promise<EmployeeDoc[]> {
+    const valid = ids.filter((id) => Types.ObjectId.isValid(id));
+    if (valid.length === 0) return [];
+    return this.model
+      .find({ _id: { $in: valid.map((id) => new Types.ObjectId(id)) } })
+      .lean<EmployeeDoc[]>()
+      .exec();
+  }
+
   /** The employee a login belongs to (self-service own-resolution, leave design C1-R). */
   async findByUserIdSystem(userId: string): Promise<EmployeeDoc | null> {
     if (!Types.ObjectId.isValid(userId)) return null;

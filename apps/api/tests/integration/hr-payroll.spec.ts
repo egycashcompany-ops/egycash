@@ -641,22 +641,37 @@ describe('compensation effects', () => {
       .get(`/api/v1/hr/employees/${employeeId}/compensation?period=${period}`)
       .set('Authorization', `Bearer ${token}`);
 
+  /**
+   * Organizational fixtures are created with names of their OWN.
+   *
+   * Branch names are unique case-insensitively in both locales, so reusing the block above's
+   * `HQ` would 409 — and asserting the status here means a future collision fails saying so,
+   * instead of a TypeError on `.data.id` twenty lines later.
+   */
+  const mkOrgUnit = async (path: string, body: object): Promise<string> => {
+    const res = await request(app)
+      .post(`/api/v1/platform/${path}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send(body);
+    expect(res.status, `${path} ${JSON.stringify(res.body)}`).toBe(201);
+    return (res.body as { data: { id: string } }).data.id;
+  };
+
   beforeAll(async () => {
-    const branch = await request(app)
-      .post('/api/v1/platform/branches')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ code: 'PY3A', name: { ar: 'المركز', en: 'HQ' } });
-    BRANCH = (branch.body as { data: { id: string } }).data.id;
-    const dep = await request(app)
-      .post('/api/v1/platform/departments')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ code: 'DEP-PY3', name: { ar: 'إدارة', en: 'Ops' }, branchId: BRANCH });
-    DEPARTMENT_ID = (dep.body as { data: { id: string } }).data.id;
-    const title = await request(app)
-      .post('/api/v1/platform/job-titles')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ code: 'JT-PY3', name: { ar: 'أخصائي', en: 'Specialist' }, jobGrade: 'G6' });
-    JOB_TITLE_ID = (title.body as { data: { id: string } }).data.id;
+    BRANCH = await mkOrgUnit('branches', {
+      code: 'PY3A',
+      name: { ar: 'فرع الرواتب', en: 'Payroll Rules Branch' },
+    });
+    DEPARTMENT_ID = await mkOrgUnit('departments', {
+      code: 'DEP-PY3',
+      name: { ar: 'إدارة الرواتب', en: 'Payroll Rules Dept' },
+      branchId: BRANCH,
+    });
+    JOB_TITLE_ID = await mkOrgUnit('job-titles', {
+      code: 'JT-PY3',
+      name: { ar: 'محاسب رواتب', en: 'Payroll Accountant' },
+      jobGrade: 'G6',
+    });
 
     const mkItem = async (body: object): Promise<PayItemDto> =>
       (await post(body)).body.data as PayItemDto;

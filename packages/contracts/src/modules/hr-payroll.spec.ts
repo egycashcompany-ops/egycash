@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { ATTENDANCE_FEED_FIELDS } from './hr-attendance';
 import {
   CALC_BASIS_UNITS,
+  COMPENSATION_LINE_ORIGINS,
   COMPENSATION_LINE_STATES,
   CancelPayrollRunSchema,
   CreatePayrollRunSchema,
@@ -25,6 +26,8 @@ import {
   QUANTITY_SOURCE_UNITS,
   UpdatePayItemSchema,
   quantitySourceFits,
+  type CompensationLineDto,
+  type LeavePayFactsDto,
 } from './hr-payroll';
 
 describe('the pay-item vocabulary', () => {
@@ -185,12 +188,30 @@ describe('an employee pay-item assignment', () => {
 // ── Compensation effects (PY-3) ─────────────────────────────────────────────
 
 describe('the compensation vocabulary', () => {
-  it('pins the two line states by name', () => {
-    expect([...COMPENSATION_LINE_STATES]).toEqual(['computed', 'pendingQuantity']);
+  it('pins the line states by name', () => {
+    expect([...COMPENSATION_LINE_STATES]).toEqual([
+      'computed',
+      'pendingQuantity',
+      'pendingLeaveSnapshot',
+    ]);
   });
 
-  it('pins the two warnings by name', () => {
-    expect([...COMPENSATION_WARNINGS]).toEqual(['legacyAllowancesIgnored', 'netBelowZero']);
+  // The two unknowns stay two words. Collapsing them would leave a screen unable to say whether
+  // it is waiting for attendance to be frozen or for a payroll run to exist.
+  it('keeps the two pending states distinct', () => {
+    expect(COMPENSATION_LINE_STATES[1]).not.toBe(COMPENSATION_LINE_STATES[2]);
+  });
+
+  it('pins the warnings by name', () => {
+    expect([...COMPENSATION_WARNINGS]).toEqual([
+      'legacyAllowancesIgnored',
+      'netBelowZero',
+      'leaveDaysAlsoPriced',
+    ]);
+  });
+
+  it('pins the two line origins — assigned, or derived from a run', () => {
+    expect([...COMPENSATION_LINE_ORIGINS]).toEqual(['payItem', 'leaveSnapshot']);
   });
 
   it('accepts a period and refuses anything that is not YYYY-MM', () => {
@@ -367,5 +388,58 @@ describe('the payroll run vocabulary', () => {
         Object.keys(extra)[0],
       ).toBe(false);
     }
+  });
+});
+
+// ── Leave pay (PY-5) ────────────────────────────────────────────────────────
+//
+// There is no schema to parse here: nothing about leave pay is INPUT — it is read from a snapshot
+// the payroll run already wrote — so what these hold is the SHAPE of the answer. What the figures
+// come to is pinned where the arithmetic lives, in the api's `leave-pay.spec.ts`.
+
+describe('the leave-pay vocabulary', () => {
+  // Days and rates, never money: this is what the run pinned, before any of it was priced.
+  it('exposes the leave facts as day counts and rates, and nothing else', () => {
+    const facts: LeavePayFactsDto = {
+      runId: 'r1',
+      snapshotAt: '2026-04-01T00:00:00.000Z',
+      totalDays: 10,
+      paidDays: 8.5,
+      unpaidDays: 1.5,
+      byRate: [
+        { payRate: 100, days: 7 },
+        { payRate: 50, days: 3 },
+      ],
+    };
+    expect(facts.paidDays + facts.unpaidDays).toBe(facts.totalDays);
+    for (const money of ['amount', 'amountMinor', 'total', 'net', 'tax']) {
+      expect(Object.keys(facts), money).not.toContain(money);
+    }
+  });
+
+  // The first line in this system that no one assigned. The fields that name an assignment are
+  // nullable so it can honestly have none, and `origin` is what says so without inferring it.
+  it('lets a derived line carry no assignment and no catalog row', () => {
+    const line: Pick<
+      CompensationLineDto,
+      'origin' | 'sourceAssignmentId' | 'payItemId' | 'leavePayRate' | 'leaveTypeCode'
+    > = {
+      origin: 'leaveSnapshot',
+      sourceAssignmentId: null,
+      payItemId: null,
+      leavePayRate: 0,
+      leaveTypeCode: 'UNPAID',
+    };
+    expect(line.sourceAssignmentId).toBeNull();
+    expect(line.payItemId).toBeNull();
+    expect(line.origin).toBe('leaveSnapshot');
+  });
+
+  it('keeps the rate that was PAID on the line, so the charge can be read as its complement', () => {
+    const line: Pick<CompensationLineDto, 'leavePayRate' | 'baseAmount'> = {
+      leavePayRate: 75,
+      baseAmount: 25,
+    };
+    expect((line.leavePayRate ?? 0) + line.baseAmount).toBe(100);
   });
 });

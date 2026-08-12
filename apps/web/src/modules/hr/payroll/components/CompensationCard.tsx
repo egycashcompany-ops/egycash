@@ -12,9 +12,13 @@
 // approved minutes — and the stamp of the frozen period they came from. They carry no proration
 // fraction, because the count already is one.
 //
-// What this is NOT: a payslip. There is no tax here, no insurance, no payroll run and no payslip,
-// because none of those exist in this system yet. `net` is earnings minus deductions and is
-// labelled as exactly that.
+// Leave lines (PY-5) are the ones nobody assigned: they are derived from the run's leave snapshot
+// and charge the SHORTFALL — what the leave was not paid at. So they appear among the deductions
+// with the rate written on them, leave paid in full shows no line at all, and the days behind them
+// are summarised separately so a reader can see the leave even when it cost nothing.
+//
+// What this is NOT: a payslip. There is no tax here and no insurance, because neither exists in
+// this system. `net` is earnings minus deductions and is labelled as exactly that.
 import { useState } from 'react';
 import {
   type CompensationEffectsDto,
@@ -34,6 +38,16 @@ import { useEmployeeCompensation } from '../api/payroll-queries';
 
 /** `YYYY-MM` of the current Cairo month — the same period key the API speaks. */
 const thisPeriod = (): string => new Date().toISOString().slice(0, 7);
+
+/**
+ * A stable row key for a line that may have no assignment behind it (PY-5).
+ *
+ * A derived leave line is identified by what makes it unique — its type and the rate it was
+ * consumed at — which is exactly how the engine grouped it in the first place.
+ */
+const lineKey = (line: CompensationLineDto): string =>
+  line.sourceAssignmentId ??
+  `leave:${line.leaveTypeCode ?? ''}:${line.leavePayRate === null ? 'pending' : String(line.leavePayRate)}`;
 
 const Amount = ({ value, currency }: { value: number; currency: string }): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
@@ -93,8 +107,27 @@ export const CompensationCard = ({ employee }: { employee: EmployeeDto }): JSX.E
       // and NOT prorated, so showing the count is the only way the figure explains itself.
       key: 'quantity',
       header: t('payroll.compensation.quantity'),
-      render: (l) =>
-        l.quantitySource === null ? (
+      render: (l) => {
+        // A leave line counts days too, but of a different thing — so it names the leave type and
+        // the rate it was paid at rather than an attendance source it never read.
+        if (l.origin === 'leaveSnapshot') {
+          return l.quantity === null ? (
+            <span className="text-slate-300">—</span>
+          ) : (
+            <span className="flex flex-col">
+              <span dir="ltr" className="tabular-nums">
+                {`${String(l.quantity)} ${t('payroll.compensation.unit.days')}`}
+              </span>
+              <span className="text-xs text-slate-400">
+                {t('payroll.compensation.leaveAtRate', {
+                  type: l.leaveTypeCode ?? '',
+                  rate: String(l.leavePayRate ?? 0),
+                })}
+              </span>
+            </span>
+          );
+        }
+        return l.quantitySource === null ? (
           <span className="text-slate-300">—</span>
         ) : (
           <span className="flex flex-col">
@@ -107,7 +140,8 @@ export const CompensationCard = ({ employee }: { employee: EmployeeDto }): JSX.E
               {t(`payroll.quantitySource.${l.quantitySource}`)}
             </span>
           </span>
-        ),
+        );
+      },
     },
     {
       key: 'amount',
@@ -115,7 +149,15 @@ export const CompensationCard = ({ employee }: { employee: EmployeeDto }): JSX.E
       align: 'end',
       render: (l) =>
         l.amount === null ? (
-          <Badge tone="neutral">{t('payroll.compensation.pending')}</Badge>
+          // Two different unknowns, two different words: one waits for attendance to be frozen,
+          // the other for a payroll run to exist at all.
+          <Badge tone="neutral">
+            {t(
+              l.state === 'pendingLeaveSnapshot'
+                ? 'payroll.compensation.pendingLeave'
+                : 'payroll.compensation.pending',
+            )}
+          </Badge>
         ) : (
           <Amount value={l.amount} currency={l.currency} />
         ),
@@ -170,7 +212,8 @@ const Effects = ({
   const empty =
     effects.earnings.length === 0 &&
     effects.deductions.length === 0 &&
-    effects.deferred.length === 0;
+    effects.deferred.length === 0 &&
+    effects.leave === null;
 
   return (
     <div className="space-y-4">
@@ -195,7 +238,7 @@ const Effects = ({
 
       {effects.earnings.length > 0 && (
         <Section title={t('payroll.compensation.earnings')}>
-          <DataTable columns={columns} rows={effects.earnings} rowKey={(l) => l.sourceAssignmentId} />
+          <DataTable columns={columns} rows={effects.earnings} rowKey={lineKey} />
         </Section>
       )}
       {effects.deductions.length > 0 && (
@@ -203,7 +246,7 @@ const Effects = ({
           <DataTable
             columns={columns}
             rows={effects.deductions}
-            rowKey={(l) => l.sourceAssignmentId}
+            rowKey={lineKey}
           />
         </Section>
       )}
@@ -212,8 +255,27 @@ const Effects = ({
           title={t('payroll.compensation.deferred')}
           hint={t('payroll.compensation.deferredHint')}
         >
-          <DataTable columns={columns} rows={effects.deferred} rowKey={(l) => l.sourceAssignmentId} />
+          <DataTable columns={columns} rows={effects.deferred} rowKey={lineKey} />
         </Section>
+      )}
+
+      {/*
+        The leave BEHIND the lines. Shown whenever a run pinned any, including when it cost
+        nothing at all: leave paid in full produces no deduction, and a card that then said
+        nothing about it would look like a month with no leave in it.
+      */}
+      {effects.leave !== null && effects.leave.totalDays > 0 && (
+        <p className="rounded border border-slate-200 px-3 py-2 text-xs text-slate-500 dark:border-slate-700">
+          {t('payroll.compensation.leaveFacts', {
+            days: String(effects.leave.totalDays),
+            paid: String(effects.leave.paidDays),
+            unpaid: String(effects.leave.unpaidDays),
+          })}
+          {' · '}
+          {t('payroll.compensation.leaveSnapshotAt', {
+            at: formatDateTime(effects.leave.snapshotAt, locale),
+          })}
+        </p>
       )}
 
       {frozenAt !== null && (

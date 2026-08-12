@@ -288,6 +288,18 @@ export interface RemoveEmployeePayItemResultDto {
 // PY-4 adds the quantity lines: `perDay` and `perMinute` items priced from the FROZEN attendance
 // feed and nothing else. Until a period is frozen their figure is unknown rather than zero, and
 // the line says so (`pendingQuantity`) instead of guessing.
+//
+// PY-5 adds the leave lines, and they are the first lines here that NO ONE ASSIGNED. `payRate`
+// has been snapshotted on every leave consumption since Leave shipped and read by nothing; a
+// leave line is that number finally spent. The rule, granted rather than inferred:
+//
+//     amount = basicSalary × (100 − payRate)% × days ÷ daysInPeriod
+//
+// — a DEDUCTION of the shortfall, not an earning. Three consequences worth stating plainly:
+// leave paid at 100% produces no line at all (its shortfall is zero); leave at 0% costs exactly
+// one day of basic salary per day taken; and the base is the BASIC SALARY ALONE, never basic plus
+// allowances and never another item. The divisor is the period's own calendar length, which is
+// the same denominator every prorated line here already uses.
 
 /**
  * Whether a line carries a figure yet.
@@ -297,9 +309,30 @@ export interface RemoveEmployeePayItemResultDto {
  * arrives with PY-4. Such a line is SHOWN — hiding it would make an assigned item vanish without
  * explanation — and excluded from every total, because a total including a figure nobody computed
  * would be worse than no total at all.
+ *
+ * `pendingLeaveSnapshot` (PY-5) is a DIFFERENT unknown and deliberately not the same word: the
+ * period has no frozen payroll run, so its leave consumptions have never been pinned to a month
+ * and this calculation cannot know whether any leave happened at all. A screen has to be able to
+ * say which of the two is missing, because the fix differs — one waits for attendance to be
+ * frozen, the other for a run to exist.
  */
-export const COMPENSATION_LINE_STATES = ['computed', 'pendingQuantity'] as const;
+export const COMPENSATION_LINE_STATES = [
+  'computed',
+  'pendingQuantity',
+  'pendingLeaveSnapshot',
+] as const;
 export type CompensationLineState = (typeof COMPENSATION_LINE_STATES)[number];
+
+/**
+ * Where a line came from (PY-5).
+ *
+ * Every line until now was a pay item somebody assigned. A leave line is not: it is DERIVED from
+ * the run's leave snapshot, so it has no assignment and no catalog row behind it, and the fields
+ * that name those are null. This flag is what lets a reader tell the two apart without inferring
+ * it from a null.
+ */
+export const COMPENSATION_LINE_ORIGINS = ['payItem', 'leaveSnapshot'] as const;
+export type CompensationLineOrigin = (typeof COMPENSATION_LINE_ORIGINS)[number];
 
 /**
  * Things the reader has to know that are not wrong enough to refuse over.
@@ -309,8 +342,19 @@ export type CompensationLineState = (typeof COMPENSATION_LINE_STATES)[number];
  *     has already been re-recorded as a pay item, so this says so instead of guessing.
  *   • `netBelowZero` — deductions exceeded earnings. Reported exactly as computed: flooring pay at
  *     zero is a labour rule, and no such rule has been given to this system.
+ *   • `leaveDaysAlsoPriced` (PY-5) — this employee has a pay item priced on `leaveDays` AND the
+ *     leave snapshot produced a line, so one absence is being charged twice by two counts that
+ *     are not even equal: `leaveDays` counts every CALENDAR day an attendance row says `onLeave`
+ *     (weekends and holidays inside the span included, a half day counted as one), while the
+ *     snapshot counts the LEDGER's days by the leave type's own counting mode, halves included.
+ *     Neither is wrong and neither is "the" number, so this reports the collision rather than
+ *     silently dropping a line the organization deliberately assigned.
  */
-export const COMPENSATION_WARNINGS = ['legacyAllowancesIgnored', 'netBelowZero'] as const;
+export const COMPENSATION_WARNINGS = [
+  'legacyAllowancesIgnored',
+  'netBelowZero',
+  'leaveDaysAlsoPriced',
+] as const;
 export type CompensationWarning = (typeof COMPENSATION_WARNINGS)[number];
 
 export const CompensationQuerySchema = z
@@ -329,8 +373,11 @@ export type CompensationQuery = z.infer<typeof CompensationQuerySchema>;
  * has no place on something an employee will ask about.
  */
 export interface CompensationLineDto {
-  sourceAssignmentId: string;
-  payItemId: string;
+  /** `payItem` for an assigned line, `leaveSnapshot` for a line derived from a run (PY-5). */
+  origin: CompensationLineOrigin;
+  /** Null on a derived line — there is no assignment and no catalog row behind it. */
+  sourceAssignmentId: string | null;
+  payItemId: string | null;
   code: string;
   name: { ar: string; en: string };
   kind: PayItemKind;
@@ -358,10 +405,42 @@ export interface CompensationLineDto {
    * was priced. A frozen row never moves, so the same period always prices the same.
    */
   feedFrozenAt: string | null;
-  /** Integer minor units — the exact figure. Null while `state` is `pendingQuantity`. */
+  /**
+   * The pay rate the leave was consumed at, as the ledger snapshotted it (PY-5).
+   *
+   * Null on every pay-item line. On a leave line it is the percentage the employee WAS paid, so
+   * the line's own `baseAmount` — the percentage actually charged — is `100 - leavePayRate`.
+   * Carrying both makes the subtraction visible instead of asking the reader to trust it.
+   */
+  leavePayRate: number | null;
+  /** The leave type this line came from, so a figure names its own absence (PY-5). */
+  leaveTypeCode: string | null;
+  /** Integer minor units — the exact figure. Null while the line is in a pending state. */
   amountMinor: number | null;
   amount: number | null;
   state: CompensationLineState;
+}
+
+/**
+ * What the run's leave snapshot held for this employee in this period (PY-5).
+ *
+ * Facts, not money: the days and the rates they were consumed at, exactly as PY-6 pinned them.
+ * The lines above are what those come to; this is what they were. A figure nobody can trace back
+ * to a day count is not something an employee can be answered with.
+ */
+export interface LeavePayFactsDto {
+  /** The frozen run these facts were read from — the version of the truth being priced. */
+  runId: string;
+  /** When that run pinned them. */
+  snapshotAt: string;
+  /** Days as the LEDGER counted them (the leave type's counting mode), halves included. */
+  totalDays: number;
+  /** Σ days × payRate/100 — the days the employee was paid for. */
+  paidDays: number;
+  /** Σ days × (100 − payRate)/100 — the shortfall the deduction lines charge. */
+  unpaidDays: number;
+  /** Days grouped by the rate they were consumed at; never averaged into one rate. */
+  byRate: { payRate: number; days: number }[];
 }
 
 export interface CompensationEffectsDto {
@@ -380,6 +459,13 @@ export interface CompensationEffectsDto {
   deductions: CompensationLineDto[];
   /** Lines with no figure yet — shown, never totalled (see `pendingQuantity`). */
   deferred: CompensationLineDto[];
+  /**
+   * The leave facts behind any leave line, or null when the period has no frozen run (PY-5).
+   *
+   * Null is "not knowable yet", never "no leave was taken": without a run the consumptions have
+   * never been pinned to a month, and a `pendingLeaveSnapshot` line in `deferred` says so.
+   */
+  leave: LeavePayFactsDto | null;
   totalEarningsMinor: number;
   totalEarnings: number;
   totalDeductionsMinor: number;

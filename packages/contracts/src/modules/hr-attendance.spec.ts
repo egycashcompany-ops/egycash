@@ -12,6 +12,7 @@ import {
   CreateShiftAssignmentSchema,
   HrAttendanceEvents,
   HrAttendanceSettingKeys,
+  HrAttendanceTemplates,
   ImportPunchesSchema,
   RecomputeAttendanceDaysSchema,
 } from './hr-attendance.js';
@@ -53,6 +54,15 @@ describe('closed vocabularies', () => {
       'hr.attendance.selfPunchEnabled',
       'hr.attendance.autoComputeHour',
       'hr.attendance.overtimeRequiresApproval',
+      'hr.attendance.absenceNotify',
+    ]);
+    // §9 names five notification templates; these are the module's own five.
+    expect(Object.values(HrAttendanceTemplates)).toEqual([
+      'hr.attendance.regularizationSubmitted',
+      'hr.attendance.regularizationDecided',
+      'hr.attendance.overtimeApproved',
+      'hr.attendance.absenceRecorded',
+      'hr.attendance.missingCheckout',
     ]);
   });
 

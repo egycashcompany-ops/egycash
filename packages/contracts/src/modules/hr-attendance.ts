@@ -458,6 +458,13 @@ export const HrAttendanceTemplates = {
   RegularizationSubmitted: 'hr.attendance.regularizationSubmitted',
   RegularizationDecided: 'hr.attendance.regularizationDecided',
   OvertimeApproved: 'hr.attendance.overtimeApproved',
+  /**
+   * The two sweep notices (§9, AT-7). Both are INFORMATIVE: they tell the employee what the
+   * engine recorded and how to correct it. Neither carries a consequence — attendance records
+   * facts, and no disciplinary step follows from one automatically.
+   */
+  AbsenceRecorded: 'hr.attendance.absenceRecorded',
+  MissingCheckout: 'hr.attendance.missingCheckout',
 } as const;
 export type HrAttendanceTemplateKey =
   (typeof HrAttendanceTemplates)[keyof typeof HrAttendanceTemplates];
@@ -596,4 +603,10 @@ export const HrAttendanceSettingKeys = {
    * decision, which is why the default says no.
    */
   OvertimeRequiresApproval: 'hr.attendance.overtimeRequiresApproval',
+  /**
+   * §9, default TRUE: the daily sweep tells an employee their day was recorded as an absence, so
+   * a wrong one can be regularized while the facts are still fresh. Switching it off silences the
+   * notice only — the day record itself is unaffected either way.
+   */
+  AbsenceNotify: 'hr.attendance.absenceNotify',
 } as const;

@@ -1,5 +1,6 @@
 // Public surface of the Day Records feature (ADR-003 barrel).
 export { dayRecordService, toAttendanceDayDto } from './day-record.service';
+export { attendanceSweepService } from './attendance-sweeps';
 export { monthRange, toFeedRow } from './attendance-feed';
 export { dayRecordRepository } from './day-record.repository';
 export { buildAttendanceDaysRouter, buildAttendanceExportRouter } from './day-record.routes';

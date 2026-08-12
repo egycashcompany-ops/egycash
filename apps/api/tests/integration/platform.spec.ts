@@ -881,7 +881,15 @@ describe('login → permission → scoped data → audit trail', () => {
 
     // Only the fields the navigation renderer needs are returned.
     expect(Object.keys(groups[0]?.applications[0] ?? {}).sort()).toEqual(['icon', 'id', 'name', 'route']);
-    expect(Object.keys(groups[0] ?? {}).sort()).toEqual(['applications', 'icon', 'id', 'name']);
+    // `sections` joined the payload with the grouping feature; `applications` still carries the
+    // rows that belong to no section, which is what a pre-sections client reads.
+    expect(Object.keys(groups[0] ?? {}).sort()).toEqual([
+      'applications',
+      'icon',
+      'id',
+      'name',
+      'sections',
+    ]);
   });
 
   it('enforces DEPARTMENT scope: a department-scoped user sees only same-department users (ADR-017)', async () => {
@@ -1072,140 +1080,6 @@ describe('login → permission → scoped data → audit trail', () => {
       .catch(() => undefined); // branch scope requires home branch — expected rejection
     const future = await rbacService.getEffectivePermissions(tempId, 100);
     expect(Object.keys(future.permissions)).toHaveLength(0);
-  });
-});
-
-describe('refresh rotation with reuse detection (ADR-006)', () => {
-  it('rotates the refresh token and revokes the family on replay', async () => {
-    const login = await doLogin('admin@ecms.local', PASSWORD);
-    expect(login.cookie).not.toBeNull();
-    const firstCookie = (login.cookie ?? '').split(';')[0] ?? '';
-
-    // Legitimate refresh: new cookie issued.
-    const refresh1 = await request(app).post('/api/v1/auth/refresh').set('Cookie', firstCookie);
-    expect(refresh1.status).toBe(200);
-    const rotated = [refresh1.headers['set-cookie']]
-      .flat()
-      .find((c) => typeof c === 'string' && c.startsWith('ecms_refresh='));
-    const secondCookie = (rotated ?? '').split(';')[0] ?? '';
-    expect(secondCookie).not.toBe(firstCookie);
-
-    // Replaying the OLD token proves theft → whole family revoked.
-    const replay = await request(app).post('/api/v1/auth/refresh').set('Cookie', firstCookie);
-    expect(replay.status).toBe(401);
-    expect((replay.body as { error: { code: string } }).error.code).toBe('AUTH_SESSION_REVOKED');
-
-    // The rotated (newest) token is dead too.
-    const afterRevoke = await request(app).post('/api/v1/auth/refresh').set('Cookie', secondCookie);
-    expect(afterRevoke.status).toBe(401);
-  });
-});
-
-describe('account lockout (settings-driven policy)', () => {
-  it('locks the account after repeated failures', async () => {
-    // Fresh victim account so other tests keep their sessions.
-    const { user } = await userService.create(
-      {
-        email: 'victim@ecms.local',
-        firstName: { ar: 'ض', en: 'V' },
-        lastName: { ar: 'ض', en: 'V' },
-        locale: 'en',
-        organization: { branchId: null, departmentId: null, sectionId: null, jobTitleId: null },
-      },
-      adminId,
-    );
-    await userService.setPassword(String(user._id), PASSWORD, 'passwordReset');
-    await userService.forceActivate(String(user._id));
-
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      const failed = await doLogin('victim@ecms.local', 'Wrong#Pass1x');
-      expect(failed.status).toBe(401);
-      await getCache().delByPrefix('rl:');
-    }
-    const locked = await doLogin('victim@ecms.local', PASSWORD);
-    expect(locked.status).toBe(401);
-    expect(locked.body.error?.code).toBe('AUTH_ACCOUNT_LOCKED');
-  });
-});
-
-describe('TOTP 2FA enforced for privileged accounts (Review R13)', () => {
-  it('forces enrollment at login, completes it, then requires the code on the next login', async () => {
-    await setTotpEnforcement(true);
-
-    // 1. Privileged login → enrollment challenge (no tokens yet).
-    const first = await doLogin('admin@ecms.local', PASSWORD);
-    expect(first.status).toBe(200);
-    expect(first.body.data?.totpRequired).toBe(true);
-    expect(first.body.data?.enrollmentRequired).toBe(true);
-    expect(first.cookie).toBeNull();
-    const enrollToken = first.body.data?.challengeToken ?? '';
-
-    // 2. Fetch the secret via the enrollment challenge.
-    const enrollment = await request(app)
-      .post('/api/v1/auth/totp/enroll-challenge')
-      .send({ challengeToken: enrollToken });
-    expect(enrollment.status).toBe(200);
-    const secret = (enrollment.body as { data: { secret: string } }).data.secret;
-
-    // 3. Verify with a live code → login completes, backup codes issued once.
-    const verify = await request(app)
-      .post('/api/v1/auth/totp/challenge')
-      .send({ challengeToken: enrollToken, code: authenticator.generate(secret) });
-    expect(verify.status).toBe(200);
-    const verifyData = (
-      verify.body as {
-        data: { totpRequired: boolean; accessToken: string; backupCodes: string[] };
-      }
-    ).data;
-    expect(verifyData.totpRequired).toBe(false);
-    expect(verifyData.backupCodes).toHaveLength(10);
-
-    // 4. Next login: enrolled → code required (no enrollment).
-    const second = await doLogin('admin@ecms.local', PASSWORD);
-    expect(second.body.data?.totpRequired).toBe(true);
-    expect(second.body.data?.enrollmentRequired).toBe(false);
-    const challenge = second.body.data?.challengeToken ?? '';
-
-    const badCode = await request(app)
-      .post('/api/v1/auth/totp/challenge')
-      .send({ challengeToken: challenge, code: '000000' });
-    expect(badCode.status).toBe(401);
-
-    const goodCode = await request(app)
-      .post('/api/v1/auth/totp/challenge')
-      .send({ challengeToken: challenge, code: authenticator.generate(secret) });
-    expect(goodCode.status).toBe(200);
-
-    // 5. Backup codes are single-use.
-    const third = await doLogin('admin@ecms.local', PASSWORD);
-    const backupChallenge = third.body.data?.challengeToken ?? '';
-    const backupCode = verifyData.backupCodes[0] ?? '';
-    const backupOk = await request(app)
-      .post('/api/v1/auth/totp/challenge')
-      .send({ challengeToken: backupChallenge, code: backupCode });
-    expect(backupOk.status).toBe(200);
-
-    const fourth = await doLogin('admin@ecms.local', PASSWORD);
-    const reuseChallenge = fourth.body.data?.challengeToken ?? '';
-    const backupReuse = await request(app)
-      .post('/api/v1/auth/totp/challenge')
-      .send({ challengeToken: reuseChallenge, code: backupCode });
-    expect(backupReuse.status).toBe(401);
-
-    await setTotpEnforcement(false);
-  });
-});
-
-describe('rate limiting (API Standards §9)', () => {
-  it('throttles repeated login attempts per IP', async () => {
-    let lastStatus = 200;
-    for (let i = 0; i < 12; i += 1) {
-      const response = await request(app)
-        .post('/api/v1/auth/login')
-        .send({ email: 'nobody@ecms.local', password: 'Wrong#Pass1x' });
-      lastStatus = response.status;
-    }
-    expect(lastStatus).toBe(429);
   });
 });
 
@@ -1468,5 +1342,139 @@ describe('application sections group the sidebar without touching RBAC', () => {
       };
       expect(reread.data.sectionId).toBeNull();
     }
+  });
+});
+
+describe('refresh rotation with reuse detection (ADR-006)', () => {
+  it('rotates the refresh token and revokes the family on replay', async () => {
+    const login = await doLogin('admin@ecms.local', PASSWORD);
+    expect(login.cookie).not.toBeNull();
+    const firstCookie = (login.cookie ?? '').split(';')[0] ?? '';
+
+    // Legitimate refresh: new cookie issued.
+    const refresh1 = await request(app).post('/api/v1/auth/refresh').set('Cookie', firstCookie);
+    expect(refresh1.status).toBe(200);
+    const rotated = [refresh1.headers['set-cookie']]
+      .flat()
+      .find((c) => typeof c === 'string' && c.startsWith('ecms_refresh='));
+    const secondCookie = (rotated ?? '').split(';')[0] ?? '';
+    expect(secondCookie).not.toBe(firstCookie);
+
+    // Replaying the OLD token proves theft → whole family revoked.
+    const replay = await request(app).post('/api/v1/auth/refresh').set('Cookie', firstCookie);
+    expect(replay.status).toBe(401);
+    expect((replay.body as { error: { code: string } }).error.code).toBe('AUTH_SESSION_REVOKED');
+
+    // The rotated (newest) token is dead too.
+    const afterRevoke = await request(app).post('/api/v1/auth/refresh').set('Cookie', secondCookie);
+    expect(afterRevoke.status).toBe(401);
+  });
+});
+
+describe('account lockout (settings-driven policy)', () => {
+  it('locks the account after repeated failures', async () => {
+    // Fresh victim account so other tests keep their sessions.
+    const { user } = await userService.create(
+      {
+        email: 'victim@ecms.local',
+        firstName: { ar: 'ض', en: 'V' },
+        lastName: { ar: 'ض', en: 'V' },
+        locale: 'en',
+        organization: { branchId: null, departmentId: null, sectionId: null, jobTitleId: null },
+      },
+      adminId,
+    );
+    await userService.setPassword(String(user._id), PASSWORD, 'passwordReset');
+    await userService.forceActivate(String(user._id));
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const failed = await doLogin('victim@ecms.local', 'Wrong#Pass1x');
+      expect(failed.status).toBe(401);
+      await getCache().delByPrefix('rl:');
+    }
+    const locked = await doLogin('victim@ecms.local', PASSWORD);
+    expect(locked.status).toBe(401);
+    expect(locked.body.error?.code).toBe('AUTH_ACCOUNT_LOCKED');
+  });
+});
+
+describe('TOTP 2FA enforced for privileged accounts (Review R13)', () => {
+  it('forces enrollment at login, completes it, then requires the code on the next login', async () => {
+    await setTotpEnforcement(true);
+
+    // 1. Privileged login → enrollment challenge (no tokens yet).
+    const first = await doLogin('admin@ecms.local', PASSWORD);
+    expect(first.status).toBe(200);
+    expect(first.body.data?.totpRequired).toBe(true);
+    expect(first.body.data?.enrollmentRequired).toBe(true);
+    expect(first.cookie).toBeNull();
+    const enrollToken = first.body.data?.challengeToken ?? '';
+
+    // 2. Fetch the secret via the enrollment challenge.
+    const enrollment = await request(app)
+      .post('/api/v1/auth/totp/enroll-challenge')
+      .send({ challengeToken: enrollToken });
+    expect(enrollment.status).toBe(200);
+    const secret = (enrollment.body as { data: { secret: string } }).data.secret;
+
+    // 3. Verify with a live code → login completes, backup codes issued once.
+    const verify = await request(app)
+      .post('/api/v1/auth/totp/challenge')
+      .send({ challengeToken: enrollToken, code: authenticator.generate(secret) });
+    expect(verify.status).toBe(200);
+    const verifyData = (
+      verify.body as {
+        data: { totpRequired: boolean; accessToken: string; backupCodes: string[] };
+      }
+    ).data;
+    expect(verifyData.totpRequired).toBe(false);
+    expect(verifyData.backupCodes).toHaveLength(10);
+
+    // 4. Next login: enrolled → code required (no enrollment).
+    const second = await doLogin('admin@ecms.local', PASSWORD);
+    expect(second.body.data?.totpRequired).toBe(true);
+    expect(second.body.data?.enrollmentRequired).toBe(false);
+    const challenge = second.body.data?.challengeToken ?? '';
+
+    const badCode = await request(app)
+      .post('/api/v1/auth/totp/challenge')
+      .send({ challengeToken: challenge, code: '000000' });
+    expect(badCode.status).toBe(401);
+
+    const goodCode = await request(app)
+      .post('/api/v1/auth/totp/challenge')
+      .send({ challengeToken: challenge, code: authenticator.generate(secret) });
+    expect(goodCode.status).toBe(200);
+
+    // 5. Backup codes are single-use.
+    const third = await doLogin('admin@ecms.local', PASSWORD);
+    const backupChallenge = third.body.data?.challengeToken ?? '';
+    const backupCode = verifyData.backupCodes[0] ?? '';
+    const backupOk = await request(app)
+      .post('/api/v1/auth/totp/challenge')
+      .send({ challengeToken: backupChallenge, code: backupCode });
+    expect(backupOk.status).toBe(200);
+
+    const fourth = await doLogin('admin@ecms.local', PASSWORD);
+    const reuseChallenge = fourth.body.data?.challengeToken ?? '';
+    const backupReuse = await request(app)
+      .post('/api/v1/auth/totp/challenge')
+      .send({ challengeToken: reuseChallenge, code: backupCode });
+    expect(backupReuse.status).toBe(401);
+
+    await setTotpEnforcement(false);
+  });
+});
+
+describe('rate limiting (API Standards §9)', () => {
+  it('throttles repeated login attempts per IP', async () => {
+    let lastStatus = 200;
+    for (let i = 0; i < 12; i += 1) {
+      const response = await request(app)
+        .post('/api/v1/auth/login')
+        .send({ email: 'nobody@ecms.local', password: 'Wrong#Pass1x' });
+      lastStatus = response.status;
+    }
+    expect(lastStatus).toBe(429);
   });
 });

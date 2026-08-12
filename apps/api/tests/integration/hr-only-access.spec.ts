@@ -131,6 +131,18 @@ const navigationOf = async (token: string): Promise<MyApplicationCategoryDto[]> 
   return (res.body as { data: MyApplicationCategoryDto[] }).data;
 };
 
+/**
+ * Every route the sidebar shows this caller — grouped or not.
+ *
+ * The confinement question is "which pages can they reach", and a page inside a section is just
+ * as reachable as one directly under the module. Reading only `applications` would have made the
+ * confinement look tighter than it is the moment somebody grouped a module.
+ */
+const routesOf = (nav: MyApplicationCategoryDto[]): string[] =>
+  nav.flatMap((c) =>
+    [...c.applications, ...c.sections.flatMap((s) => s.applications)].map((a) => a.route),
+  );
+
 const applicationIdByRoute = async (route: string): Promise<string> => {
   const doc = await applicationRepository.findOne({ route });
   expect(doc, `no catalogued application at ${route}`).not.toBeNull();
@@ -486,7 +498,7 @@ describe('navigation shows them HR and nothing else', () => {
 
     for (const person of CONFINED) {
       const token = await tokenFor(person.email);
-      const routes = (await navigationOf(token)).flatMap((c) => c.applications.map((a) => a.route));
+      const routes = routesOf(await navigationOf(token));
       expect(routes).toContain('/applicants');
       expect(routes.some((route) => route.startsWith('/fleet'))).toBe(false);
     }
@@ -591,7 +603,7 @@ describe('the control account is untouched', () => {
 
     const token = await tokenFor(CONTROL.email);
     const nav = await navigationOf(token);
-    const routes = nav.flatMap((c) => c.applications.map((a) => a.route));
+    const routes = routesOf(nav);
     expect(routes).toContain('/fleet/drivers'); // their own grant
     expect(routes).toContain('/fleet/vehicles'); // their department's grant
     expect(nav.map((c) => c.name.en)).toContain('Fleet');

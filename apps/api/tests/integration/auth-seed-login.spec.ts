@@ -106,7 +106,11 @@ describe('seed → password login (regression)', () => {
     expect(res.status).toBe(200);
     const groups = (
       res.body as {
-        data: { name: { en: string }; applications: { route: string }[] }[];
+        data: {
+          name: { en: string };
+          applications: { route: string }[];
+          sections: { applications: { route: string }[] }[];
+        }[];
       }
     ).data;
 
@@ -121,7 +125,11 @@ describe('seed → password login (regression)', () => {
       'Administration',
     ]);
     // Applications map to the app's real client routes, granted directly to the admin.
-    const routes = groups.flatMap((g) => g.applications.map((a) => a.route));
+    // Every page of every module — grouped or not. The default sections moved most of HR into
+    // groups, and a page inside one is still a page the sidebar shows.
+    const routes = groups.flatMap((g) =>
+      [...g.applications, ...g.sections.flatMap((s) => s.applications)].map((a) => a.route),
+    );
     expect(routes).toContain('/applicants');
     expect(routes).toContain('/leave');
     expect(routes).toContain('/fleet');
@@ -176,9 +184,19 @@ describe('seed → password login (regression)', () => {
     const res = await request(app)
       .get('/api/v1/platform/me/applications')
       .set('Authorization', `Bearer ${token}`);
-    const groups = (res.body as { data: { applications: unknown[] }[] }).data;
+    const groups = (
+      res.body as {
+        data: { applications: unknown[]; sections: { applications: unknown[] }[] }[];
+      }
+    ).data;
     expect(groups).toHaveLength(5);
-    expect(groups.reduce((n, g) => n + g.applications.length, 0)).toBe(58);
+    // Counted across sections too: re-seeding must not duplicate a row, wherever it is grouped.
+    expect(
+      groups.reduce(
+        (n, g) => n + g.applications.length + g.sections.reduce((m, s) => m + s.applications.length, 0),
+        0,
+      ),
+    ).toBe(58);
   });
 
   it('the seeded HR user also logs in with email/password', async () => {

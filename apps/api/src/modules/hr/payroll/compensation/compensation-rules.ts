@@ -16,6 +16,12 @@
 // same triple intersection, and they carry NO proration factor: the count already is the
 // proration, and applying both would charge one absence twice.
 //
+// PY-5 adds the leave lines, and they are the first lines here NOBODY ASSIGNED — they come from
+// the run's leave snapshot, so they carry no assignment and no catalog row and say so through
+// `origin`. One deduction per (leave type, pay rate) of `basic × (100 − payRate)% × days ÷
+// daysInPeriod`; leave paid in full produces no line at all. The arithmetic lives in
+// `leave-pay.ts`, which is likewise pure.
+//
 // WHAT IS NOT HERE, AND WHY. No tax, no contribution, no minimum-pay floor, and no rule about
 // which days count as attendance — the pay item names its own quantity source, and the statuses
 // nobody has ruled on (`incomplete`, `weekend`, `holiday`, `dayOff`) belong to no group. `net` is
@@ -37,6 +43,14 @@ import {
 import { BusinessRuleError } from '../../../../shared/errors';
 import { calendarDaysInclusive, dateOnlyIso, toDateOnly } from '../../shared/business-date';
 import { quantityFor, unitOf, type FrozenAttendance } from './attendance-quantities';
+import {
+  isChargeable,
+  leaveFactsOf,
+  shortfallMinor,
+  shortfallsOf,
+  type FrozenLeave,
+  type LeaveShortfall,
+} from './leave-pay';
 
 const PERIOD_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -102,6 +116,15 @@ export interface CompensationInput {
    * happens at the port, and the answer arrives here as a value.
    */
   attendance: FrozenAttendance | null;
+  /**
+   * The period's pinned leave, or `null` when no run has pinned it (PY-5).
+   *
+   * The same distinction the attendance field makes, for a different reason: without a frozen run
+   * the leave ledger has never been cut to this month, so whether any leave happened is not a
+   * question this calculation can answer. It says so with a `pendingLeaveSnapshot` line rather
+   * than charging a confident nothing.
+   */
+  leave: FrozenLeave | null;
 }
 
 /**
@@ -202,6 +225,7 @@ const toLine = (
   attendance: FrozenAttendance | null,
 ): CompensationLineDto => {
   const shared = {
+    origin: 'payItem' as const,
     sourceAssignmentId: assignment.id,
     payItemId: assignment.payItemId,
     code: assignment.item.code,
@@ -212,6 +236,9 @@ const toLine = (
     baseAmount: assignment.amount,
     daysInForce: forceDays,
     daysInPeriod: periodDays,
+    // PY-5's fields, empty on every assigned line: a pay item has no pay rate of its own.
+    leavePayRate: null,
+    leaveTypeCode: null,
   };
   const flat = {
     ...shared,
@@ -258,6 +285,88 @@ const toLine = (
     state: COMPENSATION_LINE_STATES[0],
   };
 };
+
+/** The code every leave line carries. Not a catalog row — no such pay item exists or should. */
+const LEAVE_LINE_CODE = 'LEAVE_SHORTFALL';
+
+const LEAVE_LINE_NAME = {
+  ar: 'خصم إجازة غير مدفوعة',
+  en: 'Unpaid leave shortfall',
+};
+
+/**
+ * One leave deduction, derived rather than assigned (PY-5).
+ *
+ * It is shaped as a `percentOfBase` line because that is exactly what it is: a percentage of the
+ * basic salary, prorated over the period by the days it applies to. `baseAmount` is the percentage
+ * actually CHARGED (`100 − payRate`) while `leavePayRate` keeps the rate the employee was paid, so
+ * the subtraction is visible on the line instead of hidden inside it.
+ */
+const toLeaveLine = (
+  shortfall: LeaveShortfall,
+  basicMinor: number,
+  periodDays: number,
+  currency: string,
+): CompensationLineDto => {
+  const minor = shortfallMinor(shortfall, basicMinor, periodDays);
+  return {
+    origin: 'leaveSnapshot',
+    sourceAssignmentId: null,
+    payItemId: null,
+    code: LEAVE_LINE_CODE,
+    name: LEAVE_LINE_NAME,
+    kind: 'deduction',
+    calcBasis: 'percentOfBase',
+    currency,
+    baseAmount: MAX_PERCENT - shortfall.payRate,
+    prorationFactor: shortfall.days / periodDays,
+    daysInForce: shortfall.days,
+    daysInPeriod: periodDays,
+    quantity: shortfall.days,
+    quantitySource: null,
+    quantityUnit: 'days',
+    // Null on purpose: `feedFrozenAt` is the ATTENDANCE stamp, and this line never touched
+    // attendance. The stamp that matters here is the run's, and it is on `leave.snapshotAt`
+    // where one stamp covers every leave line at once.
+    feedFrozenAt: null,
+    leavePayRate: shortfall.payRate,
+    leaveTypeCode: shortfall.typeCode,
+    amountMinor: minor,
+    amount: fromMinorUnits(minor),
+    state: COMPENSATION_LINE_STATES[0],
+  };
+};
+
+/**
+ * The one line that stands in for leave nobody has pinned yet (PY-5).
+ *
+ * Emitted whenever the period has no frozen run — including for an employee who took no leave at
+ * all, because without a run that is not a fact anyone can state. It is deferred, never totalled,
+ * and it exists so a compensation figure cannot quietly omit a deduction while looking complete.
+ */
+const pendingLeaveLine = (periodDays: number, currency: string): CompensationLineDto => ({
+  origin: 'leaveSnapshot',
+  sourceAssignmentId: null,
+  payItemId: null,
+  code: LEAVE_LINE_CODE,
+  name: LEAVE_LINE_NAME,
+  kind: 'deduction',
+  calcBasis: 'percentOfBase',
+  currency,
+  baseAmount: 0,
+  prorationFactor: null,
+  daysInForce: 0,
+  daysInPeriod: periodDays,
+  quantity: null,
+  quantitySource: null,
+  quantityUnit: 'days',
+  feedFrozenAt: null,
+  leavePayRate: null,
+  leaveTypeCode: null,
+  amountMinor: null,
+  amount: null,
+  state: COMPENSATION_LINE_STATES[2],
+});
 
 /**
  * The whole calculation.
@@ -316,6 +425,23 @@ export const computeCompensation = (input: CompensationInput): CompensationEffec
     else deductions.push(line);
   }
 
+  // PY-5 — leave, after the assigned lines and never mixed into their sort: these lines have no
+  // catalog `sortOrder` to be ordered by, so they follow the items in their own stated order
+  // (rate descending, then type) at the end of the deductions.
+  const leaveFacts = input.leave === null ? null : leaveFactsOf(input.leave);
+  let leaveLines = 0;
+  if (input.leave === null) {
+    deferred.push(pendingLeaveLine(periodDays, currency));
+  } else {
+    for (const shortfall of shortfallsOf(input.leave)) {
+      // Leave paid in full costs nothing, so it produces NO LINE — not a zero one. A row of
+      // zeroes on every fully-paid annual leave would bury the ones that cost something.
+      if (!isChargeable(shortfall)) continue;
+      deductions.push(toLeaveLine(shortfall, basicMinor, periodDays, currency));
+      leaveLines += 1;
+    }
+  }
+
   // Integer arithmetic: the sum of the lines shown IS the total shown, with no stray piastre.
   const totalEarningsMinor = sumMinorUnits(earnings.map((l) => l.amountMinor ?? 0));
   const totalDeductionsMinor = sumMinorUnits(deductions.map((l) => l.amountMinor ?? 0));
@@ -324,6 +450,15 @@ export const computeCompensation = (input: CompensationInput): CompensationEffec
   const warnings: CompensationWarning[] = [];
   if (input.hasLegacyAllowances) warnings.push('legacyAllowancesIgnored');
   if (netMinor < 0) warnings.push('netBelowZero'); // D4 — reported, never floored
+  // PY-5 / D5 — the same absence charged twice, by two counts that are not even equal. Raised
+  // only when BOTH actually produced a line: a `leaveDays` item alongside leave paid in full is
+  // no collision at all, because the leave side charged nothing.
+  if (
+    leaveLines > 0 &&
+    [...earnings, ...deductions].some((line) => line.quantitySource === 'leaveDays')
+  ) {
+    warnings.push('leaveDaysAlsoPriced');
+  }
 
   return {
     employeeId: input.employeeId,
@@ -337,6 +472,7 @@ export const computeCompensation = (input: CompensationInput): CompensationEffec
     earnings,
     deductions,
     deferred,
+    leave: leaveFacts,
     totalEarningsMinor,
     totalEarnings: fromMinorUnits(totalEarningsMinor),
     totalDeductionsMinor,

@@ -94,6 +94,68 @@ describe('what the card shows', () => {
   });
 });
 
+// ── PY-5 — the leave lines ──────────────────────────────────────────────────
+//
+// The card gained the first rows nobody assigned. What they are worth is settled in the API's
+// pure specs; what this file holds is that the card can SHOW one — that it no longer keys rows by
+// a field that is now nullable, that it tells the two pending states apart, and that it reports
+// the leave even in the month where the leave cost nothing.
+
+describe('the card can render a line that has no assignment behind it', () => {
+  const code = stripComments(CARD);
+
+  it('never keys a row by a field that can be null', () => {
+    expect(code).not.toContain('rowKey={(l) => l.sourceAssignmentId}');
+    expect(code).toContain('rowKey={lineKey}');
+  });
+
+  it('builds that key from what makes a leave line unique', () => {
+    expect(code).toContain('line.leaveTypeCode');
+    expect(code).toContain('line.leavePayRate');
+  });
+
+  it('tells the two unknowns apart instead of calling both pending', () => {
+    expect(code).toContain("'pendingLeaveSnapshot'");
+    expect(code).toContain('payroll.compensation.pendingLeave');
+    expect(code).toContain('payroll.compensation.pending');
+  });
+
+  it('labels a leave line by its type and rate, not by an attendance source', () => {
+    expect(code).toContain('payroll.compensation.leaveAtRate');
+    expect(code).toContain("l.origin === 'leaveSnapshot'");
+  });
+
+  it('reports the leave days even when they produced no deduction', () => {
+    expect(code).toContain('payroll.compensation.leaveFacts');
+    expect(code).toContain('effects.leave');
+  });
+
+  it('shows the run stamp for leave and the freeze stamp for attendance separately', () => {
+    expect(code).toContain('payroll.compensation.leaveSnapshotAt');
+    expect(code).toContain('payroll.compensation.frozenAt');
+  });
+
+  // The card still computes nothing. Every figure on it arrives priced.
+  it('does no arithmetic of its own on a leave figure', () => {
+    for (const forbidden of ['payRate /', '/ 100', 'daysInPeriod *', '* basicSalary']) {
+      expect(code, forbidden).not.toContain(forbidden);
+    }
+  });
+});
+
+describe('the leave sentences carry their placeholders in both locales', () => {
+  for (const locale of ['en', 'ar'] as Locale[]) {
+    it(`keeps every one — ${locale}`, () => {
+      expect(translate(locale, 'payroll.compensation.leaveFacts')).toContain('{days}');
+      expect(translate(locale, 'payroll.compensation.leaveFacts')).toContain('{paid}');
+      expect(translate(locale, 'payroll.compensation.leaveFacts')).toContain('{unpaid}');
+      expect(translate(locale, 'payroll.compensation.leaveAtRate')).toContain('{rate}');
+      expect(translate(locale, 'payroll.compensation.leaveAtRate')).toContain('{type}');
+      expect(translate(locale, 'payroll.compensation.leaveSnapshotAt')).toContain('{at}');
+    });
+  }
+});
+
 describe('every label the card asks for resolves in both locales', () => {
   const literals = [
     ...new Set(

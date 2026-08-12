@@ -5,9 +5,10 @@
 // two spans. Each assertion below states the arithmetic it expects rather than recomputing it, so
 // a change in the rule fails with a number a reader can argue with.
 import { describe, expect, it } from 'vitest';
-import { type AttendanceFeedRow } from '@ecms/contracts';
+import { type AttendanceFeedRow, type CompensationLineDto } from '@ecms/contracts';
 import { BusinessRuleError } from '../../../../shared/errors';
 import { type FrozenAttendance } from './attendance-quantities';
+import { type FrozenLeave } from './leave-pay';
 import {
   computeCompensation,
   daysInForce,
@@ -50,8 +51,22 @@ const input = (over: Partial<CompensationInput> = {}): CompensationInput => ({
   assignments: [],
   hasLegacyAllowances: false,
   attendance: null,
+  // PY-5 — the default is "no run has pinned this period", which is what every PY-3 and PY-4 case
+  // below assumes: they predate leave pricing and must keep answering exactly as they did.
+  leave: null,
   ...over,
 });
+
+/**
+ * The deferred lines that came from an ASSIGNMENT.
+ *
+ * Every case in this file leaves `leave` null, which since PY-5 means the period has no frozen
+ * run and earns one `pendingLeaveSnapshot` line of its own. That line is correct and is asserted
+ * where it belongs; here it is simply not the subject, so these cases say which deferral they
+ * mean instead of counting the whole array.
+ */
+const deferredItems = (result: { deferred: CompensationLineDto[] }): CompensationLineDto[] =>
+  result.deferred.filter((line) => line.origin === 'payItem');
 
 describe('periodRange', () => {
   it('bounds each month by its real last day', () => {
@@ -236,7 +251,7 @@ describe('perDay and perMinute with no frozen attendance (D7 · PY-4 D2)', () =>
 
   it('shows the line but gives it no figure while the period is unfrozen', () => {
     const result = computeCompensation(input({ assignments: [perDay] }));
-    expect(result.deferred).toHaveLength(1);
+    expect(deferredItems(result)).toHaveLength(1);
     expect(result.deferred[0]?.state).toBe('pendingQuantity');
     expect(result.deferred[0]?.amount).toBeNull();
     expect(result.deferred[0]?.amountMinor).toBeNull();
@@ -467,7 +482,7 @@ describe('quantity lines price from the frozen feed', () => {
     expect(result.earnings).toHaveLength(1);
     expect(result.earnings[0]?.quantity).toBe(10);
     expect(result.earnings[0]?.amount).toBe(1000); // 100 × 10
-    expect(result.deferred).toEqual([]);
+    expect(deferredItems(result)).toEqual([]);
     expect(result.totalEarnings).toBe(1000);
   });
 
@@ -520,7 +535,7 @@ describe('quantity lines price from the frozen feed', () => {
     expect(result.earnings[0]?.state).toBe('computed');
     expect(result.earnings[0]?.quantity).toBe(0);
     expect(result.earnings[0]?.amount).toBe(0);
-    expect(result.deferred).toEqual([]);
+    expect(deferredItems(result)).toEqual([]);
   });
 
   it('leaves the line pending when the period is not frozen, and never guesses a zero', () => {
@@ -606,5 +621,218 @@ describe('quantity lines price from the frozen feed', () => {
       input({ assignments: [perDayItem()], attendance: frozen([...tenAttended].reverse()) }),
     );
     expect(twice).toEqual(once);
+  });
+});
+
+// ── PY-5 — the leave lines ──────────────────────────────────────────────────
+//
+// The first lines in this engine that nobody assigned. What they are worth is settled in
+// `leave-pay.spec.ts`; what matters here is where they land: in the deductions, out of the
+// earnings, inside the totals, and carrying the provenance that says they were derived.
+
+const pinned = (slices: FrozenLeave['slices']): FrozenLeave => ({
+  runId: 'run1',
+  snapshotAt: '2026-04-01T09:00:00.000Z',
+  slices,
+});
+
+const unpaidDay = pinned([{ typeCode: 'UNPAID', days: 1, breakdown: [{ days: 1, payRate: 0 }] }]);
+
+describe('leave lines (PY-5)', () => {
+  it('deducts the shortfall and says where it came from', () => {
+    const result = computeCompensation(input({ leave: unpaidDay }));
+    expect(result.deductions).toHaveLength(1);
+    const line = result.deductions[0];
+    expect(line?.origin).toBe('leaveSnapshot');
+    expect(line?.sourceAssignmentId).toBeNull();
+    expect(line?.payItemId).toBeNull();
+    expect(line?.leavePayRate).toBe(0);
+    expect(line?.leaveTypeCode).toBe('UNPAID');
+    expect(line?.baseAmount).toBe(100); // the percentage CHARGED, the complement of the rate
+    expect(line?.state).toBe('computed');
+    // 10,000 ÷ 31 = 322.58
+    expect(line?.amount).toBe(322.58);
+    expect(result.totalDeductions).toBe(322.58);
+    expect(result.net).toBe(-322.58);
+  });
+
+  it('produces NO line for leave paid in full — not a zero one', () => {
+    const result = computeCompensation(
+      input({
+        leave: pinned([{ typeCode: 'ANNUAL', days: 5, breakdown: [{ days: 5, payRate: 100 }] }]),
+      }),
+    );
+    expect(result.deductions).toEqual([]);
+    expect(result.deferred).toEqual([]);
+    expect(result.totalDeductions).toBe(0);
+    // …and the days are still REPORTED, so a reader is not left wondering where the leave went.
+    expect(result.leave?.totalDays).toBe(5);
+    expect(result.leave?.paidDays).toBe(5);
+    expect(result.leave?.unpaidDays).toBe(0);
+  });
+
+  it('splits a tiered consumption into one line per rate', () => {
+    const result = computeCompensation(
+      input({
+        leave: pinned([
+          { typeCode: 'SICK', days: 10, breakdown: [{ days: 7, payRate: 100 }, { days: 3, payRate: 50 }] },
+        ]),
+      }),
+    );
+    // Only the 50% tier costs anything; the 100% tier is not a line at all.
+    expect(result.deductions).toHaveLength(1);
+    expect(result.deductions[0]?.leavePayRate).toBe(50);
+    expect(result.deductions[0]?.daysInForce).toBe(3);
+    // 10,000 × 50% × 3 ÷ 31 = 483.87
+    expect(result.deductions[0]?.amount).toBe(483.87);
+  });
+
+  it('carries the run stamp so the figure names its own version of the truth', () => {
+    const result = computeCompensation(input({ leave: unpaidDay }));
+    expect(result.leave?.snapshotAt).toBe('2026-04-01T09:00:00.000Z');
+    expect(result.leave?.runId).toBe('run1');
+    // …and NOT on the attendance stamp, which this line never touched.
+    expect(result.deductions[0]?.feedFrozenAt).toBeNull();
+  });
+
+  it('nets a leave deduction against an assigned earning', () => {
+    const result = computeCompensation(input({ assignments: [assignment()], leave: unpaidDay }));
+    expect(result.totalEarnings).toBe(3000);
+    expect(result.totalDeductions).toBe(322.58);
+    expect(result.net).toBe(2677.42);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('keeps the assigned deductions before the derived ones', () => {
+    const result = computeCompensation(
+      input({
+        assignments: [
+          assignment({ item: item({ code: 'LOAN', kind: 'deduction', sortOrder: 5 }) }),
+        ],
+        leave: unpaidDay,
+      }),
+    );
+    expect(result.deductions.map((l) => l.code)).toEqual(['LOAN', 'LEAVE_SHORTFALL']);
+  });
+
+  it('prices half a day as half a day', () => {
+    const result = computeCompensation(
+      input({
+        leave: pinned([{ typeCode: 'UNPAID', days: 0.5, breakdown: [{ days: 0.5, payRate: 0 }] }]),
+      }),
+    );
+    expect(result.deductions[0]?.daysInForce).toBe(0.5);
+    // 10,000 × 0.5 ÷ 31 = 161.29
+    expect(result.deductions[0]?.amount).toBe(161.29);
+  });
+
+  it('answers a frozen period with no leave as a real zero, not a pending line', () => {
+    const result = computeCompensation(input({ leave: pinned([]) }));
+    expect(result.deductions).toEqual([]);
+    expect(result.deferred).toEqual([]);
+    expect(result.leave?.totalDays).toBe(0);
+  });
+});
+
+describe('leave with no frozen run (D4)', () => {
+  it('defers one line rather than charging a confident nothing', () => {
+    const result = computeCompensation(input({ leave: null }));
+    expect(result.deferred).toHaveLength(1);
+    const line = result.deferred[0];
+    expect(line?.state).toBe('pendingLeaveSnapshot');
+    expect(line?.origin).toBe('leaveSnapshot');
+    expect(line?.amount).toBeNull();
+    expect(line?.amountMinor).toBeNull();
+    expect(line?.quantity).toBeNull();
+    expect(result.leave).toBeNull();
+  });
+
+  it('keeps the deferred leave line out of every total', () => {
+    const result = computeCompensation(input({ assignments: [assignment()], leave: null }));
+    expect(result.totalEarnings).toBe(3000);
+    expect(result.totalDeductions).toBe(0);
+    expect(result.net).toBe(3000);
+  });
+
+  it('is a different word from an unfrozen quantity, because the fix is different', () => {
+    const result = computeCompensation(
+      input({
+        assignments: [
+          assignment({ item: item({ calcBasis: 'perDay', quantitySource: 'attendedDays' }) }),
+        ],
+        attendance: null,
+        leave: null,
+      }),
+    );
+    expect(result.deferred.map((l) => l.state)).toEqual([
+      'pendingQuantity',
+      'pendingLeaveSnapshot',
+    ]);
+  });
+});
+
+describe('the double-count warning (D5)', () => {
+  const leaveDaysItem = assignment({
+    id: 'a9',
+    amount: 200,
+    item: item({ code: 'LEAVE_PAY', calcBasis: 'perDay', quantitySource: 'leaveDays', sortOrder: 50 }),
+  });
+  const oneLeaveRow: AttendanceFeedRow[] = [
+    {
+      employeeId: 'e1',
+      workDate: '2026-03-10',
+      status: 'onLeave',
+      shiftId: null,
+      workedMinutes: 0,
+      lateMinutes: 0,
+      earlyLeaveMinutes: 0,
+      approvedOvertimeMinutes: 0,
+      leaveId: 'l1',
+      branchId: 'b1',
+      flags: [],
+      frozenAt: '2026-04-01T00:00:00.000Z',
+    },
+  ];
+
+  it('warns when the same absence is charged from both sides', () => {
+    const result = computeCompensation(
+      input({
+        assignments: [leaveDaysItem],
+        attendance: { rows: oneLeaveRow, frozenAt: '2026-04-01T00:00:00.000Z' },
+        leave: unpaidDay,
+      }),
+    );
+    expect(result.warnings).toContain('leaveDaysAlsoPriced');
+  });
+
+  it('stays quiet when the leave side charged nothing', () => {
+    const result = computeCompensation(
+      input({
+        assignments: [leaveDaysItem],
+        attendance: { rows: oneLeaveRow, frozenAt: '2026-04-01T00:00:00.000Z' },
+        leave: pinned([{ typeCode: 'ANNUAL', days: 1, breakdown: [{ days: 1, payRate: 100 }] }]),
+      }),
+    );
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('stays quiet when no item is priced on leaveDays', () => {
+    const result = computeCompensation(input({ assignments: [assignment()], leave: unpaidDay }));
+    expect(result.warnings).toEqual([]);
+  });
+
+  // It WARNS — it does not hide the item and it does not refuse. An organization may have a
+  // reason to pay for leave days as well, and a silently dropped line explains nothing.
+  it('still prices both lines', () => {
+    const result = computeCompensation(
+      input({
+        assignments: [leaveDaysItem],
+        attendance: { rows: oneLeaveRow, frozenAt: '2026-04-01T00:00:00.000Z' },
+        leave: unpaidDay,
+      }),
+    );
+    expect(result.earnings).toHaveLength(1);
+    expect(result.earnings[0]?.amount).toBe(200);
+    expect(result.deductions).toHaveLength(1);
   });
 });

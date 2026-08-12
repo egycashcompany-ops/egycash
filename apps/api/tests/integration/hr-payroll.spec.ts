@@ -792,9 +792,12 @@ describe('compensation effects', () => {
     const employeeId = await regEmployee();
     await assign(employeeId, { payItemId: perDayItem.id, amount: 250, effectiveFrom: '2026-03-01' });
     const data = (await effects(employeeId)).body.data as CompensationEffectsDto;
-    expect(data.deferred).toHaveLength(1);
-    expect(data.deferred[0]?.state).toBe('pendingQuantity');
-    expect(data.deferred[0]?.amount).toBeNull();
+    // The ASSIGNED deferrals. This period has no payroll run either, so PY-5 defers a leave line
+    // of its own beside this one; that case is asserted where it belongs, in the PY-6 block.
+    const items = data.deferred.filter((l) => l.origin === 'payItem');
+    expect(items).toHaveLength(1);
+    expect(items[0]?.state).toBe('pendingQuantity');
+    expect(items[0]?.amount).toBeNull();
     expect(data.earnings).toEqual([]);
     expect(data.totalEarnings).toBe(0);
   });
@@ -1103,7 +1106,10 @@ describe('attendance quantities', () => {
     expect(attended?.state).toBe('computed'); // KNOWN to be nothing, unlike an unfrozen month
     expect(attended?.quantity).toBe(0);
     expect(attended?.amount).toBe(0);
-    expect(data.deferred).toEqual([]);
+    // No ASSIGNED line is deferred. This block froze the attendance directly rather than through
+    // a payroll run — a state only a test can produce — so PY-5 still has no run to read leave
+    // from and defers a line of its own. That is the honest answer, and not this case's subject.
+    expect(data.deferred.filter((l) => l.origin === 'payItem')).toEqual([]);
   });
 
   it('counts only the days the employee was employed for', async () => {
@@ -1199,6 +1205,9 @@ describe('payroll runs', () => {
   const PERIOD = '2026-04'; // a different month from PY-4's, so the two blocks cannot collide
   let runId = '';
   let runVersion = 0;
+
+  /** Set by the pricing case below and reused by the two that follow it. */
+  let LEAVE_PRICED_EMPLOYEE = '';
 
   const runs = (query = '', token = adminToken) =>
     request(app).get(`/api/v1/hr/payroll/runs${query}`).set('Authorization', `Bearer ${token}`);
@@ -1316,7 +1325,37 @@ describe('payroll runs', () => {
       .set('Authorization', `Bearer ${adminToken}`);
     expect(effects.status).toBe(200);
     // Frozen, so the calculation answers rather than deferring — even with nothing assigned.
-    expect((effects.body.data as CompensationEffectsDto).period).toBe(PERIOD);
+    const priced = effects.body.data as CompensationEffectsDto;
+    expect(priced.period).toBe(PERIOD);
+
+    // PY-5 — and the leave side answers too. This employee took none, which in a FROZEN period is
+    // a real zero rather than an unasked question: `leave` is present, and nothing is deferred.
+    expect(priced.leave).not.toBeNull();
+    expect(priced.leave?.totalDays).toBe(0);
+    expect(priced.leave?.runId).toBe(runId);
+    expect(priced.deferred.filter((l) => l.state === 'pendingLeaveSnapshot')).toEqual([]);
+    // Nothing was charged for leave nobody took.
+    expect(priced.deductions.filter((l) => l.origin === 'leaveSnapshot')).toEqual([]);
+
+    LEAVE_PRICED_EMPLOYEE = employeeId;
+  });
+
+  // The other half of the same distinction, in the same shape: a month with no run at all.
+  it('defers leave for a period no run has frozen', async () => {
+    const effects = await request(app)
+      .get(`/api/v1/hr/employees/${LEAVE_PRICED_EMPLOYEE}/compensation?period=2025-11`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(effects.status).toBe(200);
+    const unpriced = effects.body.data as CompensationEffectsDto;
+    expect(unpriced.leave).toBeNull();
+    const pending = unpriced.deferred.filter((l) => l.state === 'pendingLeaveSnapshot');
+    expect(pending).toHaveLength(1);
+    // Derived, so it names no assignment — and it is kept out of every total.
+    expect(pending[0]?.origin).toBe('leaveSnapshot');
+    expect(pending[0]?.sourceAssignmentId).toBeNull();
+    expect(pending[0]?.payItemId).toBeNull();
+    expect(pending[0]?.amount).toBeNull();
+    expect(unpriced.totalDeductions).toBe(0);
   });
 
   // D4 — the cancel moves the RUN and nothing else.
@@ -1341,6 +1380,19 @@ describe('payroll runs', () => {
       .get(`/api/v1/hr/payroll/runs/${runId}/leave`)
       .set('Authorization', `Bearer ${adminToken}`);
     expect(snapshotAfter.body.data).toEqual(snapshotBefore.body.data);
+  });
+
+  // PY-5 follows the LIVE frozen run, so withdrawing it withdraws the answer — the attendance
+  // rows stay frozen forever, but the period no longer has a run that speaks for it, and pricing
+  // says so instead of quoting a cancelled one.
+  it('stops pricing leave from a run that was cancelled', async () => {
+    const effects = await request(app)
+      .get(`/api/v1/hr/employees/${LEAVE_PRICED_EMPLOYEE}/compensation?period=${PERIOD}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(effects.status).toBe(200);
+    const after = effects.body.data as CompensationEffectsDto;
+    expect(after.leave).toBeNull();
+    expect(after.deferred.filter((l) => l.state === 'pendingLeaveSnapshot')).toHaveLength(1);
   });
 
   // …and the period is free again, which is exactly what "recalculate with a new run" means.

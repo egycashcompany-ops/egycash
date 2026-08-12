@@ -2,10 +2,13 @@
 //
 // Every rule lives in `compensation-rules.ts`, which is pure. This file only assembles what that
 // engine needs: the employee (resolved inside the caller's compensation scope), the assignments
-// whose interval touches the period, the catalog rows they cite, and — when a quantity item is
-// among them — the period's FROZEN attendance, read through the one narrow port (PY-4). It stores
-// nothing: a calculation is a question asked of today's data, and archiving the answer starts with
-// the payroll run in PY-6.
+// whose interval touches the period, the catalog rows they cite, — when a quantity item is among
+// them — the period's FROZEN attendance (PY-4), and the leave that period's run pinned (PY-5).
+// Both of the last two arrive through their own narrow port and both answer `null` for "no run
+// has settled this yet", which is a different thing from zero.
+//
+// It stores nothing: a calculation is a question asked of today's data over yesterday's frozen
+// facts, and archiving the answer is not this endpoint's job.
 import { Types } from 'mongoose';
 import { type CompensationEffectsDto } from '@ecms/contracts';
 import { type ScopeSelector } from '../../../../shared/types';
@@ -19,6 +22,7 @@ import {
 } from './compensation-rules';
 import { employmentSpansOf } from './employment-spans';
 import { attendanceQuantityPort } from './attendance-quantity.port';
+import { leaveSnapshotPort } from './leave-snapshot.port';
 
 class CompensationService {
   /**
@@ -91,11 +95,18 @@ class CompensationService {
       ? await attendanceQuantityPort.frozenFor(period, employeeId)
       : null;
 
+    // PY-5 — the leave the period's run pinned, or null when no run has. Asked for UNCONDITIONALLY,
+    // unlike the attendance read above: a quantity line only exists when an item was assigned, but
+    // leave costs money whether or not anybody configured anything, so "nobody assigned an item"
+    // is not a reason to skip the question.
+    const leave = await leaveSnapshotPort.frozenFor(period, employeeId);
+
     return computeCompensation({
       employeeId,
       period,
       basicSalary: employee.employment.salary,
       attendance,
+      leave,
       employmentSpans: employmentSpansOf(employee),
       assignments,
       // D1 — the older list is not read. Saying so beats leaving the reader to wonder why a figure

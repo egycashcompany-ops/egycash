@@ -1,4 +1,5 @@
-// TanStack Query hooks for the pay-item catalog and the employee assignments (ADR-013).
+// TanStack Query hooks for the pay-item catalog, the employee assignments, and the compensation
+// each employee's assignments come to over a period (ADR-013).
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   type CreateEmployeePayItem,
@@ -72,3 +73,17 @@ export const useCreateEmployeePayItem = (employeeId: string) =>
 
 export const useRemoveEmployeePayItem = (employeeId: string) =>
   useEmployeePayItemMutation((id: string) => api.removeEmployeePayItem(employeeId, id));
+
+// ── Compensation effects (PY-3) ─────────────────────────────────────────────
+
+/**
+ * A calculation, not a record — so it is never cached across a write: assigning or ending a pay
+ * item changes the answer, and the mutations above already invalidate this feature's key.
+ */
+export const useEmployeeCompensation = (employeeId: string, period: string, enabled: boolean) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'compensation', { employeeId, period }),
+    queryFn: () => api.getEmployeeCompensation(employeeId, period),
+    enabled,
+    retry: false,
+  });

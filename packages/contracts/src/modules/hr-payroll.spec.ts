@@ -6,6 +6,9 @@
 // yet" is a decision this phase must keep rather than a gap somebody quietly fills.
 import { describe, expect, it } from 'vitest';
 import {
+  COMPENSATION_LINE_STATES,
+  COMPENSATION_WARNINGS,
+  CompensationQuerySchema,
   CreateEmployeePayItemSchema,
   CreatePayItemSchema,
   EMPLOYEE_PAY_ITEM_REMOVALS,
@@ -140,5 +143,50 @@ describe('an employee pay-item assignment', () => {
 
   it('pins the three things DELETE can mean', () => {
     expect([...EMPLOYEE_PAY_ITEM_REMOVALS]).toEqual(['removed', 'ended', 'alreadyEnded']);
+  });
+});
+
+// ── Compensation effects (PY-3) ─────────────────────────────────────────────
+
+describe('the compensation vocabulary', () => {
+  it('pins the two line states by name', () => {
+    expect([...COMPENSATION_LINE_STATES]).toEqual(['computed', 'pendingQuantity']);
+  });
+
+  it('pins the two warnings by name', () => {
+    expect([...COMPENSATION_WARNINGS]).toEqual(['legacyAllowancesIgnored', 'netBelowZero']);
+  });
+
+  it('accepts a period and refuses anything that is not YYYY-MM', () => {
+    expect(CompensationQuerySchema.safeParse({ period: '2026-03' }).success).toBe(true);
+    for (const period of ['2026-3', '2026-13', '2026-00', '2026', '2026-03-01', 'March', '']) {
+      expect(CompensationQuerySchema.safeParse({ period }).success, period).toBe(false);
+    }
+  });
+
+  // The query is the only place a caller could smuggle a rule in. It takes a period and nothing.
+  it('takes no filter, no flag and no statutory parameter', () => {
+    for (const extra of [
+      { taxable: true },
+      { applyTax: true },
+      { insurance: 'gosi' },
+      { includeAttendance: true },
+      { employeeId: '507f1f77bcf86cd799439011' },
+    ]) {
+      expect(
+        CompensationQuerySchema.safeParse({ period: '2026-03', ...extra }).success,
+        Object.keys(extra)[0],
+      ).toBe(false);
+    }
+  });
+
+  // Payroll v1 still has no statutory rule, and PY-3 is where one would first be tempting: the
+  // phase that finally produces a figure someone might want to tax.
+  it('exports no statutory surface from the payroll module', async () => {
+    const payroll = await import('./hr-payroll');
+    const exported = Object.keys(payroll).join(' ').toLowerCase();
+    for (const forbidden of ['tax', 'insurance', 'contribution', 'bracket', 'payslip', 'exempt']) {
+      expect(exported, forbidden).not.toContain(forbidden);
+    }
   });
 });

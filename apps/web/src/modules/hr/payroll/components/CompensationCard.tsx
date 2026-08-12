@@ -1,0 +1,236 @@
+// What this employee's pay items come to over one month (PY-3).
+//
+// It sits inside the Pay Items tab rather than on a screen of its own, because it answers a
+// question about the rows immediately above it: the table says what is assigned, this says what
+// that assignment is worth in March.
+//
+// Every line shows its DERIVATION, not just its figure — the base, the fraction of the month, and
+// the day counts on both sides of it. A number an employee will ask about has to be able to
+// answer.
+//
+// What this is NOT: a payslip. There is no tax here, no insurance, no attendance figure and no
+// payroll run, because none of those exist in this system yet. `net` is earnings minus deductions
+// and is labelled as exactly that.
+import { useState } from 'react';
+import {
+  type CompensationEffectsDto,
+  type CompensationLineDto,
+  type EmployeeDto,
+  type Locale,
+} from '@ecms/contracts';
+import { useT } from '../../../../platform/localization/useT';
+import { useAppSelector } from '../../../../store';
+import { Badge, DataTable, EmptyState, type Column } from '../../../../shared/ui';
+import { Card, CardBody, CardHeader } from '../../../../shared/ui/Card';
+import { Field, Input } from '../../../../shared/ui/form';
+import { ErrorState } from '../../../../shared/ui/states/ErrorState';
+import { LoadingState } from '../../../../shared/ui/states/LoadingState';
+import { formatMoney, localized } from '../../../../shared/lib/format';
+import { useEmployeeCompensation } from '../api/payroll-queries';
+
+/** `YYYY-MM` of the current Cairo month — the same period key the API speaks. */
+const thisPeriod = (): string => new Date().toISOString().slice(0, 7);
+
+const Amount = ({ value, currency }: { value: number; currency: string }): JSX.Element => {
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  return (
+    <span dir="ltr" className="tabular-nums">
+      {formatMoney(value, currency, locale)}
+    </span>
+  );
+};
+
+export const CompensationCard = ({ employee }: { employee: EmployeeDto }): JSX.Element => {
+  const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  const [period, setPeriod] = useState(thisPeriod);
+  const valid = /^\d{4}-(0[1-9]|1[0-2])$/.test(period);
+  const query = useEmployeeCompensation(employee.id, period, valid);
+
+  const columns: Column<CompensationLineDto>[] = [
+    {
+      key: 'item',
+      header: t('payroll.compensation.line'),
+      render: (l) => (
+        <span className="flex items-center gap-2">
+          <span>{localized(l.name, locale)}</span>
+          <span className="font-mono text-xs text-slate-400" dir="ltr">
+            {l.code}
+          </span>
+        </span>
+      ),
+    },
+    {
+      key: 'basis',
+      header: t('payroll.payItems.calcBasis'),
+      render: (l) => t(`payroll.payItems.basis.${l.calcBasis}`),
+    },
+    {
+      key: 'base',
+      header: t('payroll.compensation.base'),
+      render: (l) =>
+        l.calcBasis === 'percentOfBase' ? (
+          <span dir="ltr" className="tabular-nums">{`${String(l.baseAmount)}%`}</span>
+        ) : (
+          <Amount value={l.baseAmount} currency={l.currency} />
+        ),
+    },
+    {
+      key: 'proration',
+      header: t('payroll.compensation.inForce'),
+      render: (l) => (
+        <span dir="ltr" className="tabular-nums text-slate-500">
+          {`${String(l.daysInForce)} / ${String(l.daysInPeriod)}`}
+        </span>
+      ),
+    },
+    {
+      key: 'amount',
+      header: t('payroll.compensation.amount'),
+      align: 'end',
+      render: (l) =>
+        l.amount === null ? (
+          <Badge tone="neutral">{t('payroll.compensation.pending')}</Badge>
+        ) : (
+          <Amount value={l.amount} currency={l.currency} />
+        ),
+    },
+  ];
+
+  return (
+    <Card>
+      <CardHeader
+        title={t('payroll.compensation.title')}
+        actions={
+          <div className="w-40">
+            <Field label={t('payroll.compensation.period')}>
+              <Input
+                type="month"
+                value={period}
+                onChange={(e) => setPeriod(e.target.value)}
+                aria-label={t('payroll.compensation.period')}
+              />
+            </Field>
+          </div>
+        }
+      />
+      <CardBody>
+        {!valid && <EmptyState title={t('payroll.compensation.pickPeriod')} />}
+        {valid && query.isLoading && <LoadingState />}
+        {valid && query.isError && (
+          <ErrorState error={query.error} onRetry={() => void query.refetch()} />
+        )}
+        {valid && query.data !== undefined && (
+          <Effects effects={query.data} columns={columns} />
+        )}
+      </CardBody>
+    </Card>
+  );
+};
+
+const Effects = ({
+  effects,
+  columns,
+}: {
+  effects: CompensationEffectsDto;
+  columns: Column<CompensationLineDto>[];
+}): JSX.Element => {
+  const t = useT();
+  const empty =
+    effects.earnings.length === 0 &&
+    effects.deductions.length === 0 &&
+    effects.deferred.length === 0;
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-slate-500">
+        {t('payroll.compensation.employed', {
+          days: String(effects.employmentDaysInPeriod),
+          of: String(effects.daysInPeriod),
+        })}
+      </p>
+
+      {effects.warnings.map((warning) => (
+        <p
+          key={warning}
+          role="status"
+          className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+        >
+          {t(`payroll.compensation.warning.${warning}`)}
+        </p>
+      ))}
+
+      {empty && <EmptyState title={t('payroll.compensation.empty')} />}
+
+      {effects.earnings.length > 0 && (
+        <Section title={t('payroll.compensation.earnings')}>
+          <DataTable columns={columns} rows={effects.earnings} rowKey={(l) => l.sourceAssignmentId} />
+        </Section>
+      )}
+      {effects.deductions.length > 0 && (
+        <Section title={t('payroll.compensation.deductions')}>
+          <DataTable
+            columns={columns}
+            rows={effects.deductions}
+            rowKey={(l) => l.sourceAssignmentId}
+          />
+        </Section>
+      )}
+      {effects.deferred.length > 0 && (
+        <Section
+          title={t('payroll.compensation.deferred')}
+          hint={t('payroll.compensation.deferredHint')}
+        >
+          <DataTable columns={columns} rows={effects.deferred} rowKey={(l) => l.sourceAssignmentId} />
+        </Section>
+      )}
+
+      {!empty && (
+        <dl className="space-y-1 border-t border-slate-200 pt-3 text-sm dark:border-slate-700">
+          <Total label={t('payroll.compensation.totalEarnings')} value={effects.totalEarnings} currency={effects.currency} />
+          <Total label={t('payroll.compensation.totalDeductions')} value={effects.totalDeductions} currency={effects.currency} />
+          <Total label={t('payroll.compensation.net')} value={effects.net} currency={effects.currency} strong />
+          <p className="pt-1 text-xs text-slate-400">{t('payroll.compensation.netHint')}</p>
+        </dl>
+      )}
+    </div>
+  );
+};
+
+const Section = ({
+  title,
+  hint,
+  children,
+}: {
+  title: string;
+  hint?: string;
+  children: React.ReactNode;
+}): JSX.Element => (
+  <section className="space-y-1">
+    <h4 className="text-sm font-semibold">{title}</h4>
+    {hint !== undefined && <p className="text-xs text-slate-400">{hint}</p>}
+    {children}
+  </section>
+);
+
+const Total = ({
+  label,
+  value,
+  currency,
+  strong = false,
+}: {
+  label: string;
+  value: number;
+  currency: string;
+  strong?: boolean;
+}): JSX.Element => {
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  return (
+    <div className={`flex justify-between ${strong ? 'font-semibold' : ''}`}>
+      <dt>{label}</dt>
+      <dd dir="ltr" className="tabular-nums">
+        {formatMoney(value, currency, locale)}
+      </dd>
+    </div>
+  );
+};

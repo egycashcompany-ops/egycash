@@ -6,6 +6,8 @@
 // else: no tax, no insurance, no attendance figure, no payroll run and no payslip — none of those
 // exist in this system, and a column implying otherwise would be a claim, not a feature.
 //
+// Below the table sits the PY-3 compensation card: what these assignments come to over one month.
+//
 // Removing is deliberately not the same act twice: an assignment that has not started yet leaves,
 // and one that has started is CLOSED as of today, because payroll will have to explain what it
 // already paid. The server decides which happened from the dates; this screen reports it back.
@@ -31,6 +33,7 @@ import {
   usePayItems,
   useRemoveEmployeePayItem,
 } from '../api/payroll-queries';
+import { CompensationCard } from './CompensationCard';
 
 const PAGE_SIZE = 50;
 
@@ -142,6 +145,10 @@ const EmployeePayItemsTab = ({ employee }: { employee: EmployeeDto }): JSX.Eleme
           />
         }
       />
+
+      {/* PY-3 — what the rows above come to over a month. Same key, same tab: it answers a
+          question about the assignments, not a separate subject. */}
+      <CompensationCard employee={employee} />
 
       {adding && <AddPayItemDialog employee={employee} onClose={() => setAdding(false)} />}
     </div>

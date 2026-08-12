@@ -189,3 +189,99 @@ export interface RemoveEmployeePayItemResultDto {
   /** The closed row for `ended`/`alreadyEnded`; null when the row was removed outright. */
   item: EmployeePayItemDto | null;
 }
+
+// ── Compensation effects (PY-3) ─────────────────────────────────────────────
+//
+// WHAT THIS IS. The rules that turn assigned pay items into LINES for one employee over one
+// period: what each item is worth this month, given when it was in force and how long the person
+// was employed. A computed value, never a stored row — the storing starts with the payroll run
+// that has a reason to archive it.
+//
+// WHAT IT DELIBERATELY IS NOT. There is no tax, no insurance, no run, no payslip and no legal
+// rule of any kind. `net` here is earnings minus deductions and nothing else — it is not take-home
+// pay, and calling it that would be a claim about legislation this system has not been given.
+
+/**
+ * Whether a line carries a figure yet.
+ *
+ * `pendingQuantity` is the honest answer for a `perDay` or `perMinute` item: its price is known
+ * and its quantity is not, because quantities come from the frozen attendance feed and that
+ * arrives with PY-4. Such a line is SHOWN — hiding it would make an assigned item vanish without
+ * explanation — and excluded from every total, because a total including a figure nobody computed
+ * would be worse than no total at all.
+ */
+export const COMPENSATION_LINE_STATES = ['computed', 'pendingQuantity'] as const;
+export type CompensationLineState = (typeof COMPENSATION_LINE_STATES)[number];
+
+/**
+ * Things the reader has to know that are not wrong enough to refuse over.
+ *
+ *   • `legacyAllowancesIgnored` — the employee still carries the older `employment.allowances[]`
+ *     list, which these rules do not read. Counting both lists would double any allowance that
+ *     has already been re-recorded as a pay item, so this says so instead of guessing.
+ *   • `netBelowZero` — deductions exceeded earnings. Reported exactly as computed: flooring pay at
+ *     zero is a labour rule, and no such rule has been given to this system.
+ */
+export const COMPENSATION_WARNINGS = ['legacyAllowancesIgnored', 'netBelowZero'] as const;
+export type CompensationWarning = (typeof COMPENSATION_WARNINGS)[number];
+
+export const CompensationQuerySchema = z
+  .object({
+    /** `YYYY-MM`, Cairo calendar month — the same period key the attendance feed uses. */
+    period: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'a period is YYYY-MM'),
+  })
+  .strict();
+export type CompensationQuery = z.infer<typeof CompensationQuerySchema>;
+
+/**
+ * One priced line.
+ *
+ * It carries its DERIVATION, not just its result: the base it was taken from, the proration
+ * factor, and the day counts on both sides of that fraction. A figure that cannot explain itself
+ * has no place on something an employee will ask about.
+ */
+export interface CompensationLineDto {
+  sourceAssignmentId: string;
+  payItemId: string;
+  code: string;
+  name: { ar: string; en: string };
+  kind: PayItemKind;
+  calcBasis: PayItemCalcBasis;
+  currency: string;
+  /** The assignment's own figure: an amount for `fixed`, a percentage for `percentOfBase`. */
+  baseAmount: number;
+  /** `daysInForce / daysInPeriod`, or null when the line has no figure to prorate yet. */
+  prorationFactor: number | null;
+  daysInForce: number;
+  daysInPeriod: number;
+  /** Integer minor units — the exact figure. Null while `state` is `pendingQuantity`. */
+  amountMinor: number | null;
+  amount: number | null;
+  state: CompensationLineState;
+}
+
+export interface CompensationEffectsDto {
+  employeeId: string;
+  period: string;
+  /** `YYYY-MM-DD` bounds of the period, inclusive. */
+  from: string;
+  to: string;
+  /** The one currency the whole calculation is in — the basic salary's. */
+  currency: string;
+  basicSalary: number;
+  /** Calendar days of the period the employee was actually employed for (inclusive). */
+  employmentDaysInPeriod: number;
+  daysInPeriod: number;
+  earnings: CompensationLineDto[];
+  deductions: CompensationLineDto[];
+  /** Lines with no figure yet — shown, never totalled (see `pendingQuantity`). */
+  deferred: CompensationLineDto[];
+  totalEarningsMinor: number;
+  totalEarnings: number;
+  totalDeductionsMinor: number;
+  totalDeductions: number;
+  /** Earnings minus deductions. NOT take-home pay: no tax or contribution exists yet. */
+  netMinor: number;
+  net: number;
+  warnings: CompensationWarning[];
+}

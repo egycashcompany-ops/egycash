@@ -1,6 +1,8 @@
 // Payroll api/ surface (ADR-013). PY-1 is the pay-item catalog; PY-2 adds what an item is worth
-// to one employee over one dated interval. No run, no payslip, no calculation.
+// to one employee over one dated interval; PY-3 reads what those come to over a period. Still no
+// run and no payslip.
 import {
+  type CompensationEffectsDto,
   type CreateEmployeePayItem,
   type CreatePayItem,
   type EmployeePayItemDto,
@@ -9,7 +11,15 @@ import {
   type RemoveEmployeePayItemResultDto,
   type UpdatePayItem,
 } from '@ecms/contracts';
-import { buildQuery, del, patch, post, getPage, type QueryParams } from '../../../../shared/lib/api-client';
+import {
+  buildQuery,
+  del,
+  get,
+  patch,
+  post,
+  getPage,
+  type QueryParams,
+} from '../../../../shared/lib/api-client';
 
 export const listPayItems = (params: QueryParams): Promise<Paginated<PayItemDto>> =>
   getPage<PayItemDto>(`/hr/payroll/pay-items${buildQuery(params)}`);
@@ -45,3 +55,14 @@ export const removeEmployeePayItem = (
   id: string,
 ): Promise<RemoveEmployeePayItemResultDto> =>
   del<RemoveEmployeePayItemResultDto>(`/hr/employees/${employeeId}/pay-items/${id}`);
+
+// ── Compensation effects (PY-3) ─────────────────────────────────────────────
+// Read-only, and behind the same compensation key as the assignments themselves.
+
+export const getEmployeeCompensation = (
+  employeeId: string,
+  period: string,
+): Promise<CompensationEffectsDto> =>
+  get<CompensationEffectsDto>(
+    `/hr/employees/${employeeId}/compensation${buildQuery({ period })}`,
+  );

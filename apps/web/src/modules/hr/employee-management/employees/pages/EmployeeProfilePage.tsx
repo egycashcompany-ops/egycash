@@ -29,8 +29,14 @@ import { useEmployeeFiles } from '../../employee-files/api/employee-file-queries
 import { CandidateTimeline } from '../../../recruitment/timeline/components/CandidateTimeline';
 import { useEmployee, useEmployeeActions, useEmployeeTimeline } from '../api/employee-queries';
 
-const TABS = ['overview', 'personal', 'employment', 'leave', 'attendance', 'contracts', 'documents', 'timeline', 'account'] as const;
+const TABS = ['overview', 'personal', 'employment', 'leave', 'attendance', 'contracts', 'payItems', 'documents', 'timeline', 'account'] as const;
 type Tab = (typeof TABS)[number];
+
+// Pay Items is the employee's COMPENSATION, so it appears exactly where compensation appears —
+// behind the same `employee.viewCompensation` answer the server already gave for the salary on
+// the Overview tab. Hiding it is UX, not enforcement: the endpoints carry the same key.
+const visibleTabs = (compensationVisible: boolean): readonly Tab[] =>
+  compensationVisible ? TABS : TABS.filter((k) => k !== 'payItems');
 
 // The Leave, Attendance and Contracts tabs are owned by their modules and lazy-loaded (additive
 // tabs) — the same dynamic import() seam, so each module's chunk loads only when its tab opens.
@@ -39,6 +45,9 @@ const EmployeeAttendanceTab = lazy(
   () => import('../../../attendance/components/EmployeeAttendanceTab'),
 );
 const EmployeeContractsTab = lazy(() => import('../../../contracts/components/EmployeeContractsTab'));
+const EmployeePayItemsTab = lazy(
+  () => import('../../../payroll/components/EmployeePayItemsTab'),
+);
 
 const ProbationCard = ({ e }: { e: EmployeeDto }): JSX.Element | null => {
   const t = useT();
@@ -289,7 +298,7 @@ export const EmployeeProfilePage = (): JSX.Element => {
       )}
 
       <div className="mb-4 flex flex-wrap gap-1 border-b border-slate-200 dark:border-slate-800" role="tablist">
-        {TABS.map((k) => (
+        {visibleTabs(e.compensationVisible).map((k) => (
           <button
             key={k}
             role="tab"
@@ -335,6 +344,11 @@ export const EmployeeProfilePage = (): JSX.Element => {
       {tab === 'contracts' && (
         <Suspense fallback={<LoadingState />}>
           <EmployeeContractsTab employee={e} />
+        </Suspense>
+      )}
+      {tab === 'payItems' && e.compensationVisible && (
+        <Suspense fallback={<LoadingState />}>
+          <EmployeePayItemsTab employee={e} />
         </Suspense>
       )}
       {tab === 'documents' && <DocumentsTab e={e} />}

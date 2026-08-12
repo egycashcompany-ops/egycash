@@ -6,9 +6,9 @@
 //     and the update contract does not accept them — turning an earning into a deduction, or a
 //     flat allowance into a per-day one, would silently restate every payslip already citing it.
 //   • an item in use is ARCHIVED, not deleted. Archiving keeps it out of new selections while
-//     history keeps naming something real. Deletion stays available only while nothing uses it,
-//     which today means always — the first consumer arrives in PY-2, and the guard arrives with
-//     it rather than as a check against a collection that does not exist yet.
+//     history keeps naming something real. Deletion stays available only while nothing uses it —
+//     PY-1 left that guard to the phase that created the first consumer, and PY-2 (employee
+//     assignments) is it, so `softDelete` now refuses an item any employee is assigned.
 import { type FilterQuery } from 'mongoose';
 import {
   type CreatePayItem,
@@ -18,9 +18,11 @@ import {
   type UpdatePayItem,
 } from '@ecms/contracts';
 import { type ScopeSelector } from '../../../../shared/types';
-import { ConflictError } from '../../../../shared/errors';
+import { BusinessRuleError, ConflictError } from '../../../../shared/errors';
 import { diffChanges } from '../../../../shared/utils/diff';
 import { auditService } from '../../../../platform/audit';
+// Direct file import (not the feature barrel) so the two payroll features do not form a cycle.
+import { employeePayItemRepository } from '../employee-pay-items/employee-pay-item.repository';
 import { payItemRepository } from './pay-item.repository';
 import { PayItemModel, type PayItemDoc } from './pay-item.model';
 
@@ -77,7 +79,22 @@ class PayItemService {
     return after;
   }
 
+  /**
+   * Delete only while nothing cites the item — otherwise archive.
+   *
+   * PY-1 left this guard for the phase that created the first consumer, rather than checking a
+   * collection that did not exist yet. PY-2 is that phase: an employee assignment names the item
+   * it pays, so removing the row underneath it would leave a compensation record pointing at
+   * nothing. Archiving is the answer the caller is pointed at, and it is not a lesser one — it
+   * keeps the item out of every NEW assignment while history keeps naming something real.
+   */
   async softDelete(id: string, by: string): Promise<void> {
+    const doc = await payItemRepository.getById(id);
+    if (await employeePayItemRepository.isPayItemInUse(id)) {
+      throw new BusinessRuleError(
+        `pay item ${doc.code} is assigned to at least one employee — archive it instead`,
+      );
+    }
     await payItemRepository.softDeleteById(id, { by });
     await auditService.record({ entityRef: entityRef(id), action: 'delete' });
   }

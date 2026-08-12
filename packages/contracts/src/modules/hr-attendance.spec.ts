@@ -3,6 +3,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   ATTENDANCE_DAY_FLAGS,
+  ATTENDANCE_FEED_FIELDS,
+  AttendancePeriodFrozenPayloadV1,
   ATTENDANCE_DAY_STATUSES,
   ATTENDANCE_PUNCH_DIRECTIONS,
   ATTENDANCE_PUNCH_SOURCES,
@@ -42,11 +44,48 @@ describe('closed vocabularies', () => {
       'hr.attendance.punchesImported',
       'hr.attendance.dayComputed',
       'hr.attendance.dayAbsent',
+      'hr.attendance.periodFrozen',
     ]);
     expect(Object.values(HrAttendanceSettingKeys)).toEqual([
       'hr.attendance.selfPunchEnabled',
       'hr.attendance.autoComputeHour',
     ]);
+  });
+
+  it('pins the §15.1 feed contract — twelve fields, by name and in order (D10)', () => {
+    expect([...ATTENDANCE_FEED_FIELDS]).toEqual([
+      'employeeId',
+      'workDate',
+      'status',
+      'shiftId',
+      'workedMinutes',
+      'lateMinutes',
+      'earlyLeaveMinutes',
+      'approvedOvertimeMinutes',
+      'leaveId',
+      'branchId',
+      'flags',
+      'frozenAt',
+    ]);
+  });
+
+  it('the periodFrozen payload names a YYYY-MM period and counts the newly stamped rows', () => {
+    expect(
+      AttendancePeriodFrozenPayloadV1.safeParse({
+        period: '2026-07',
+        from: '2026-07-01',
+        to: '2026-07-31',
+        frozenRows: 310,
+      }).success,
+    ).toBe(true);
+    expect(
+      AttendancePeriodFrozenPayloadV1.safeParse({
+        period: '2026-07',
+        from: '2026-07-01',
+        to: '2026-07-31',
+        frozenRows: -1,
+      }).success,
+    ).toBe(false);
   });
 });
 

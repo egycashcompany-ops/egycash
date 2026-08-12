@@ -10,6 +10,8 @@ import { type Express } from 'express';
 import {
   platformPermissions,
   SettingKeys,
+  ATTENDANCE_FEED_FIELDS,
+  AttendanceFeedRowSchema,
   type AttendanceDayDto,
   type EmployeeDto,
   type ImportPunchesResultDto,
@@ -24,7 +26,7 @@ import { userService } from '../../src/platform/users';
 import { settingsService } from '../../src/platform/settings';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { addDays, cairoToday, dateOnlyIso, isoWeekday } from '../../src/modules/hr/shared/business-date';
-import { cairoInstant, AttendanceDayModel } from '../../src/modules/hr/attendance';
+import { cairoInstant, dayRecordService, AttendanceDayModel } from '../../src/modules/hr/attendance';
 import { type AuthContext } from '../../src/shared/types';
 
 const PASSWORD = 'Str0ng#Pass!';
@@ -477,5 +479,98 @@ describe('the derivation engine over HTTP', () => {
       .get('/api/v1/hr/attendance/days/me?from=2026-01-01&to=2026-01-02')
       .set('Authorization', `Bearer ${outsiderToken}`);
     expect(mine.status).toBe(404);
+  });
+});
+
+// ── AT-4 — the freeze + the §15.1 feed seam (D-PR-07 Option A) ──────────────
+//
+// `freezePeriod` and `readFrozenFeed` are INTERNAL: no route mounts them, so the suite calls the
+// service directly — exactly what the Payroll Run will do in P-HR-09. Everything runs against
+// the PREVIOUS Cairo month (the freeze refuses a period still being lived), which stays inside
+// the 90-day punch sanity window.
+describe('AT-4 — freeze + the payroll feed seam', () => {
+  /** The previous Cairo calendar month as `YYYY-MM`, plus a workday inside it. */
+  const previousMonth = (): { period: string; workday: Date } => {
+    const today = cairoToday();
+    const first = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - 1, 1));
+    const period = `${String(first.getUTCFullYear())}-${String(first.getUTCMonth() + 1).padStart(2, '0')}`;
+    let workday = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth(), 10));
+    while ([5, 6].includes(isoWeekday(workday)) || HOLIDAY_ISO.has(dateOnlyIso(workday))) {
+      workday = addDays(workday, 1);
+    }
+    return { period, workday };
+  };
+
+  it('refuses to freeze a period still being lived — no frozen rows for unlived days', async () => {
+    const today = cairoToday();
+    const current = `${String(today.getUTCFullYear())}-${String(today.getUTCMonth() + 1).padStart(2, '0')}`;
+    await expect(dayRecordService.freezePeriod(current)).rejects.toThrow('after its last day');
+  });
+
+  it('refuses a malformed period', async () => {
+    await expect(dayRecordService.freezePeriod('2026-7')).rejects.toThrow('not a period');
+  });
+
+  it('the feed refuses a period that is not fully frozen — complete or nothing', async () => {
+    const emp = await regEmployee();
+    await assign(emp.id, GENERAL.id);
+    const { period, workday } = previousMonth();
+    await recompute(emp.id, workday); // a fluid row now exists in the period
+    await expect(dayRecordService.readFrozenFeed(period)).rejects.toThrow('not frozen');
+  });
+
+  it('freeze derives, stamps, and is idempotent; frozen rows survive late punches and recomputes', async () => {
+    const emp = await regEmployee();
+    await assign(emp.id, GENERAL.id);
+    const { period, workday } = previousMonth();
+
+    // A worked day inside the period, derived by the FREEZE itself (nobody recomputed first).
+    await recordPunch({ employeeId: emp.id, at: cairoInstant(workday, '09:05').toISOString() });
+    await recordPunch({ employeeId: emp.id, at: cairoInstant(workday, '17:00').toISOString() });
+
+    const first = await dayRecordService.freezePeriod(period);
+    expect(first.frozen).toBeGreaterThan(0);
+    expect(first.alreadyFrozen).toBe(false);
+
+    const frozenRow = await dayRow(emp.id, workday);
+    expect(frozenRow.status).toBe('present');
+    expect(frozenRow.workedMinutes).toBe(475);
+    expect(frozenRow.frozenAt).not.toBeNull();
+
+    // Idempotent: the second freeze stamps nothing and reports the period already frozen.
+    const second = await dayRecordService.freezePeriod(period);
+    expect(second.frozen).toBe(0);
+    expect(second.alreadyFrozen).toBe(true);
+
+    // The truth "changes" after the freeze — a late punch lands, a recompute is demanded —
+    // and the frozen row must not move a byte.
+    await recordPunch({ employeeId: emp.id, at: cairoInstant(workday, '20:00').toISOString() });
+    const rec = await recompute(emp.id, workday);
+    expect(rec.skippedFrozen).toBe(1);
+    expect(rec.computed).toBe(0);
+    const after = await dayRow(emp.id, workday);
+    expect({ ...after }).toEqual({ ...frozenRow });
+  });
+
+  it('the feed returns EXACTLY the twelve §15.1 fields, schema-valid, frozen rows only', async () => {
+    const { period } = previousMonth();
+    const rows = await dayRecordService.readFrozenFeed(period);
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(Object.keys(row)).toEqual([...ATTENDANCE_FEED_FIELDS]);
+      expect(AttendanceFeedRowSchema.safeParse(row).success).toBe(true);
+      expect(row.frozenAt).toBeTruthy();
+      expect('overtimeMinutes' in row).toBe(false);
+      expect('computedAt' in row).toBe(false);
+    }
+  });
+
+  it('the feed narrows to one employee when asked', async () => {
+    const { period } = previousMonth();
+    const all = await dayRecordService.readFrozenFeed(period);
+    const someEmployee = all[0]?.employeeId as string;
+    const one = await dayRecordService.readFrozenFeed(period, someEmployee);
+    expect(one.length).toBeGreaterThan(0);
+    expect(one.every((r) => r.employeeId === someEmployee)).toBe(true);
   });
 });

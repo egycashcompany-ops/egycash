@@ -68,6 +68,7 @@ export const toAttendanceDayDto = (doc: AttendanceDayDoc): AttendanceDayDto => (
   branchId: String(doc.branchId),
   computedAt: doc.computedAt.toISOString(),
   frozenAt: doc.frozenAt === null ? null : doc.frozenAt.toISOString(),
+  version: doc.__v,
 });
 
 /** Employed on the date per the derived hire→exit periods; the hire date covers legacy rows. */
@@ -217,6 +218,25 @@ class DayRecordService {
     )
       .lean<AttendanceDayDoc>()
       .exec();
+
+    // D5 on recompute (AT-5). The released quantity follows the derivation from both sides:
+    // when approval is required, a re-derivation that LOWERED the overtime clamps a previously
+    // approved value down (the ceiling is absolute); when the setting says approval is not
+    // required, the derived minutes release themselves. Same freeze condition as everything else.
+    const requiresApproval = await settingsService.resolve<boolean>(
+      HrAttendanceSettingKeys.OvertimeRequiresApproval,
+      ORG_SUBJECT,
+    );
+    const releasable = requiresApproval
+      ? Math.min(updated.approvedOvertimeMinutes, updated.overtimeMinutes)
+      : updated.overtimeMinutes;
+    if (releasable !== updated.approvedOvertimeMinutes) {
+      await AttendanceDayModel.updateOne(
+        { _id: updated._id, frozenAt: null },
+        { $set: { approvedOvertimeMinutes: releasable } },
+      ).exec();
+      updated.approvedOvertimeMinutes = releasable;
+    }
 
     await emit(HrAttendanceEvents.DayComputed, {
       employeeId: String(employee._id),

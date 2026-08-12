@@ -10,11 +10,12 @@ import {
   HrAttendanceEvents,
   HrAttendanceSettingKeys,
   type AttendanceDayDto,
+  type AttendanceFeedRow,
   type ListAttendanceDaysQuery,
   type Paginated,
   type RecomputeAttendanceDays,
 } from '@ecms/contracts';
-import { NotFoundError } from '../../../../shared/errors';
+import { BusinessRuleError, NotFoundError } from '../../../../shared/errors';
 import { type AuthContext } from '../../../../shared/types';
 import { auditService } from '../../../../platform/audit';
 import { emit } from '../../../../platform/kernel/event-bus';
@@ -42,6 +43,7 @@ import {
 } from './derive-day';
 import { AttendanceDayModel, type AttendanceDayDoc } from './day-record.model';
 import { dayRecordRepository } from './day-record.repository';
+import { monthRange, toFeedRow } from './attendance-feed';
 
 const ORG_SUBJECT = { userId: null, branchId: null };
 
@@ -319,6 +321,95 @@ class DayRecordService {
   private async allComputableEmployeeIds(): Promise<string[]> {
     const rows = await employeeRepository.listIdsForAttendance();
     return rows;
+  }
+
+  // ── AT-4 — the freeze + the Payroll feed seam (D-PR-07 Option A) ──────────
+
+  /**
+   * Freeze one Cairo calendar month. INTERNAL SEAM ONLY: no route mounts this and no permission
+   * names it — the caller is the Payroll Run's transition to `calculating` (P-HR-09), and until
+   * that exists the only callers are tests. There is no unfreeze, here or anywhere.
+   *
+   * Order of operations, each deliberate:
+   *
+   *   1. **Refuse a period still being lived.** Freezing a month before its last day has passed
+   *      would mint frozen `absent` rows for days that have not happened.
+   *   2. **Derive first.** Every employee-day in the period is recomputed so a punch imported
+   *      after the nightly sweep is captured NOW, while the truth may still move — this is the
+   *      last derivation those rows will ever get. Already-frozen rows refuse inside `computeDay`
+   *      and cost one read each, which is what makes re-freezing cheap.
+   *   3. **Stamp once, filtered on `frozenAt: null`.** The filter is the idempotency: a second
+   *      freeze matches zero rows, publishes nothing and audits nothing.
+   */
+  async freezePeriod(
+    period: string,
+  ): Promise<{ period: string; computed: number; frozen: number; alreadyFrozen: boolean }> {
+    const { from, to } = monthRange(period);
+    if (to.getTime() >= cairoToday().getTime()) {
+      throw new BusinessRuleError('a period may only be frozen after its last day has passed');
+    }
+
+    let computed = 0;
+    for (const employeeId of await this.allComputableEmployeeIds()) {
+      for (let d = from; d.getTime() <= to.getTime(); d = addDays(d, 1)) {
+        const outcome = await this.computeDay(employeeId, d);
+        if (outcome !== null && outcome !== 'frozen') computed += 1;
+      }
+    }
+
+    const now = new Date();
+    const res = await AttendanceDayModel.updateMany(
+      { workDate: { $gte: from, $lte: to }, frozenAt: null, isDeleted: false },
+      { $set: { frozenAt: now } },
+    ).exec();
+    const frozen = res.modifiedCount;
+
+    if (frozen > 0) {
+      await auditService.record({
+        entityRef: { moduleId: 'hr', entityType: 'attendancePeriod', entityId: period },
+        action: 'attendanceFreeze',
+        changes: [
+          { field: 'period', old: null, new: period },
+          { field: 'frozenRows', old: null, new: String(frozen) },
+          { field: 'computed', old: null, new: String(computed) },
+        ],
+      });
+      await emit(HrAttendanceEvents.PeriodFrozen, {
+        period,
+        from: dateOnlyIso(from),
+        to: dateOnlyIso(to),
+        frozenRows: frozen,
+      });
+    }
+    return { period, computed, frozen, alreadyFrozen: frozen === 0 };
+  }
+
+  /**
+   * The §15.1 feed — the ONLY way attendance leaves this module. Complete-or-nothing: a period
+   * with even one unfrozen row is refused, because a partial feed would let Payroll price a
+   * month whose truth was still moving. Rows carry exactly the twelve contract fields.
+   */
+  async readFrozenFeed(period: string, employeeId?: string): Promise<AttendanceFeedRow[]> {
+    const { from, to } = monthRange(period);
+    const unfrozen = await AttendanceDayModel.countDocuments({
+      workDate: { $gte: from, $lte: to },
+      frozenAt: null,
+      isDeleted: false,
+    }).exec();
+    if (unfrozen > 0) {
+      throw new BusinessRuleError(
+        `period ${period} is not frozen (${String(unfrozen)} rows still fluid) — freeze it first`,
+      );
+    }
+    const rows = await AttendanceDayModel.find({
+      workDate: { $gte: from, $lte: to },
+      isDeleted: false,
+      ...(employeeId === undefined ? {} : { employeeId: new Types.ObjectId(employeeId) }),
+    })
+      .sort({ employeeId: 1, workDate: 1 })
+      .lean<AttendanceDayDoc[]>()
+      .exec();
+    return rows.map(toFeedRow);
   }
 }
 

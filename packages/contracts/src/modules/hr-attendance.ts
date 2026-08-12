@@ -312,6 +312,7 @@ export const HrAttendanceEvents = {
   PunchesImported: 'hr.attendance.punchesImported',
   DayComputed: 'hr.attendance.dayComputed',
   DayAbsent: 'hr.attendance.dayAbsent',
+  PeriodFrozen: 'hr.attendance.periodFrozen',
 } as const;
 export type HrAttendanceEventName = (typeof HrAttendanceEvents)[keyof typeof HrAttendanceEvents];
 
@@ -336,6 +337,66 @@ export const AttendanceDayPayloadV1 = z.object({
   status: AttendanceDayStatusSchema,
   branchId: objectId(),
 });
+
+export const AttendancePeriodFrozenPayloadV1 = z.object({
+  /**
+   * `YYYY-MM`, Cairo calendar month. A plain string here — the freeze seam is what validates
+   * the shape; the catalogue's sample generator only knows how to invent unconstrained strings.
+   */
+  period: z.string(),
+  from: z.string(),
+  to: z.string(),
+  /** Rows newly stamped by THIS freeze — 0 never publishes (an idempotent re-freeze is silent). */
+  frozenRows: z.number().int().min(0),
+});
+
+// ── The Attendance → Payroll feed contract (§15.1, D10 — owner-approved, binding) ──
+
+/**
+ * The twelve fields, BY NAME AND IN ORDER. This tuple is the contract's spine: the feed rows
+ * carry exactly these keys — no id, no computedAt, no first/last punch instants, and above all
+ * no unapproved `overtimeMinutes` — and a test holds the row shape to this list.
+ */
+export const ATTENDANCE_FEED_FIELDS = [
+  'employeeId',
+  'workDate',
+  'status',
+  'shiftId',
+  'workedMinutes',
+  'lateMinutes',
+  'earlyLeaveMinutes',
+  'approvedOvertimeMinutes',
+  'leaveId',
+  'branchId',
+  'flags',
+  'frozenAt',
+] as const;
+
+/**
+ * One frozen daily row as Payroll reads it. Quantities and classification only: the paid split
+ * of an `onLeave` day stays in Leave's `paidBreakdown` (reached via `leaveId`), and every minute
+ * here is a fact, never a price.
+ */
+export const AttendanceFeedRowSchema = z
+  .object({
+    employeeId: objectId(),
+    /** `YYYY-MM-DD`, keyed by shift start (D3). */
+    workDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    status: AttendanceDayStatusSchema,
+    shiftId: objectId().nullable(),
+    workedMinutes: z.number().int().min(0),
+    lateMinutes: z.number().int().min(0),
+    earlyLeaveMinutes: z.number().int().min(0),
+    /** Only what the D5 approval released — the derived remainder never reaches this feed. */
+    approvedOvertimeMinutes: z.number().int().min(0),
+    leaveId: objectId().nullable(),
+    branchId: objectId(),
+    flags: z.array(AttendanceDayFlagSchema),
+    /** ISO instant — always set: an unfrozen row never leaves the module. */
+    frozenAt: z.string(),
+  })
+  .strict();
+export type AttendanceFeedRow = z.infer<typeof AttendanceFeedRowSchema>;
 
 // ── Setting keys (§9, `hr.attendance.*` per D-PR-01) ────────────────────────
 

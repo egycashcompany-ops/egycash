@@ -909,11 +909,19 @@ describe('AT-6 — screens, self-service and export', () => {
     expect(forgedRows).toHaveLength(1);
     expect(forgedRows[0]?.employeeId).toBe(mine.emp.id);
 
-    // The scoped list under an `own` grant answers only for the caller — asking for somebody
-    // else's rows returns nothing rather than their data.
+    // The scoped list under an `own` grant answers only for the caller — and asking for somebody
+    // else returns NOTHING rather than their data, and rather than the caller's own rows dressed
+    // as an answer about them.
     const scoped = await get(`hr/attendance/days?${range}&employeeId=${other.id}`, mine.token);
     expect(scoped.status).toBe(200);
     expect(scoped.body.data as AttendanceDayDto[]).toHaveLength(0);
+
+    // Unfiltered, the same grant answers with the caller's own row.
+    const unfiltered = await get(`hr/attendance/days?${range}`, mine.token);
+    expect(unfiltered.status).toBe(200);
+    const ownRows = unfiltered.body.data as AttendanceDayDto[];
+    expect(ownRows).toHaveLength(1);
+    expect(ownRows[0]?.employeeId).toBe(mine.emp.id);
   });
 
   it('lists days for the daily sheet with the employee labels the screen renders', async () => {

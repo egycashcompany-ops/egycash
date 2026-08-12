@@ -83,6 +83,12 @@ const employedOn = (employee: EmployeeDoc, workDate: Date): boolean => {
   return toDateOnly(employee.employment.startDate).getTime() <= workDate.getTime();
 };
 
+/** The shape `BaseRepository.list` returns, for the reads that resolve to nothing without a query. */
+const emptyPage = (query: { page: number; pageSize: number }): Paginated<AttendanceDayDoc> => ({
+  items: [],
+  meta: { page: query.page, pageSize: query.pageSize, totalItems: 0, totalPages: 0 },
+});
+
 class DayRecordService {
   /**
    * Scoped list (AT-6): `own` resolves the caller's linked employee (rows are system-written, so
@@ -101,10 +107,14 @@ class DayRecordService {
     if (scope !== undefined && scope.scope === 'own') {
       const own = await employeeRepository.findByUserIdSystem(scope.userId);
       if (own === null) throw new NotFoundError('no employee is linked to this login');
-      return dayRecordRepository.listDays(
-        { ...query, employeeId: String(own._id) },
-        { employeeIds },
-      );
+      const ownId = String(own._id);
+      // A narrower question than the grant allows is answered with NOTHING, never by silently
+      // substituting the caller's own rows: "show me employee X" must not come back as "here is
+      // you", which reads as an answer about X and would be believed as one.
+      const asksForSomebodyElse = query.employeeId !== undefined && query.employeeId !== ownId;
+      const sectionExcludesMe = employeeIds !== undefined && !employeeIds.includes(ownId);
+      if (asksForSomebodyElse || sectionExcludesMe) return emptyPage(query);
+      return dayRecordRepository.listDays({ ...query, employeeId: ownId });
     }
     return dayRecordRepository.listDays(query, { employeeIds, scope });
   }

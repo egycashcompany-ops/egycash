@@ -62,11 +62,16 @@ const buildFilter = async (
         : (filter.employeeId ?? { $in: ids.map((id) => new Types.ObjectId(id)) });
   }
   // The caller's data scope, applied the way the list applies it: own = the caller's linked
-  // employee only; branch = the caller's branch; organization = everything.
+  // employee only; branch = the caller's branch; organization = everything. Asking for somebody
+  // else under an `own` grant exports NOTHING — never the caller's own rows under another
+  // employee's heading (the same rule the scoped list follows).
   if (scope.scope === 'own') {
     const own = await employeeRepository.findByUserIdSystem(scope.userId);
     if (own === null) throw new NotFoundError('no employee is linked to this login');
-    filter.employeeId = own._id;
+    filter.employeeId =
+      query.employeeId !== undefined && query.employeeId !== String(own._id)
+        ? { $in: [] }
+        : own._id;
   } else if (scope.scope !== 'organization') {
     filter.branchId =
       scope.branchId === null ? { $in: [] } : new Types.ObjectId(scope.branchId);

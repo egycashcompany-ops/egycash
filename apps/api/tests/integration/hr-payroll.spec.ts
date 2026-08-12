@@ -1561,24 +1561,41 @@ describe('payslips', () => {
     expect(result.existing).toBeGreaterThan(0);
   }, 240_000);
 
+  // THE case this phase exists for, so it is asserted end to end rather than approximated: the
+  // raise must really land, and the issued document must really not move.
   it('does not restate a payslip after the salary behind it changes', async () => {
     const before = (await slips(runId, `?employeeId=${employeeId}`)).body.data as PayslipDto[];
-    const changed = await request(app)
+    expect(before[0]?.basicSalary).toBe(12_000);
+
+    const employee = await request(app)
+      .get(`/api/v1/hr/employees/${employeeId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(employee.status).toBe(200);
+    const raise = await request(app)
       .post(`/api/v1/hr/employees/${employeeId}/actions/compensation`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         type: 'salaryChange',
-        effectiveDate: new Date().toISOString(),
         salary: { amount: 30_000, currency: 'EGP' },
         reason: 'raise after the payslip was issued',
+        version: (employee.body as { data: { version: number } }).data.version,
       });
-    // The action surface is not this phase's subject — what matters is that IF it applied, the
-    // payslip did not move. A refusal here is equally fine; the assertion below holds either way.
-    expect([200, 201, 422]).toContain(changed.status);
+    expect(raise.status, JSON.stringify(raise.body)).toBe(201);
 
+    // The employee really carries the new salary now…
+    const reread = await request(app)
+      .get(`/api/v1/hr/employees/${employeeId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(
+      (reread.body as { data: { employment: { salary: { amount: number } | null } } }).data
+        .employment.salary?.amount,
+    ).toBe(30_000);
+
+    // …and the payslip does not, even when issuing runs again over the same run.
     await issue(runId);
     const after = (await slips(runId, `?employeeId=${employeeId}`)).body.data as PayslipDto[];
-    expect(after[0]?.basicSalary).toBe(before[0]?.basicSalary);
+    expect(after).toHaveLength(1);
+    expect(after[0]?.basicSalary).toBe(12_000);
     expect(after[0]?.net).toBe(before[0]?.net);
   }, 240_000);
 

@@ -55,6 +55,8 @@ import {
   buildEmployeePayItemsRouter,
   buildPayItemsRouter,
   buildPayrollRunsRouter,
+  buildPayslipsRouter,
+  buildRunPayslipsRouter,
 } from './payroll';
 import { addDays, cairoToday } from './shared/business-date';
 import { registerHrIdentitySeams } from './employee-management/employees/identity-seams';
@@ -772,7 +774,7 @@ export const hrPages: PageDef[] = [
 export const hrModule: ModuleManifest = {
   id: 'hr',
   name: { en: 'Human Resources', ar: 'الموارد البشرية' },
-  version: '0.23.0',
+  version: '0.24.0',
   requiresPlatform: '^2.1',
   permissions: hrPermissions,
   pages: hrPages,
@@ -817,6 +819,11 @@ export const hrModule: ModuleManifest = {
     { prefix: '/hr/attendance/export', router: buildAttendanceExportRouter() },
     { prefix: '/hr/payroll/pay-items', router: buildPayItemsRouter() },
     { prefix: '/hr/payroll/runs', router: buildPayrollRunsRouter() },
+    // PY-7 — mounted at the same prefix, because a payslip has no existence apart from the run
+    // that issued it. Two routers rather than one so the run's own keys stay separate from the
+    // compensation key the payslip reads under.
+    { prefix: '/hr/payroll/runs', router: buildRunPayslipsRouter() },
+    { prefix: '/hr/payroll/payslips', router: buildPayslipsRouter() },
   ],
   collections: [
     'hr_applicants',
@@ -854,6 +861,7 @@ export const hrModule: ModuleManifest = {
     'hr_employee_pay_items',
     'hr_payroll_runs',
     'hr_payroll_leave_snapshots',
+    'hr_payslips',
   ],
   eventSubscriptions: [
     {

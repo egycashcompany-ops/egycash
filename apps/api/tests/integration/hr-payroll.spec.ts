@@ -15,7 +15,9 @@ import {
   type EmployeePayItemDto,
   type PayItemDto,
   type PayrollLeaveSnapshotDto,
+  type GeneratePayslipsResultDto,
   type PayrollRunDto,
+  type PayslipDto,
 } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { buildApp } from '../../src/app';
@@ -1417,5 +1419,186 @@ describe('payroll runs', () => {
     expect((await runs('', outsiderToken)).status).toBe(403);
     expect((await createRun({ period: '2026-01' }, outsiderToken)).status).toBe(403);
     expect((await act(runId, 'freeze', { version: 0 }, outsiderToken)).status).toBe(403);
+  });
+});
+
+// ── PY-7 — payslips ─────────────────────────────────────────────────────────
+//
+// The arithmetic is settled elsewhere; what has to hold HERE is the orchestration. A payslip is
+// only ever issued from a frozen run, issuing twice writes nothing the second time, and an
+// employee who cannot be priced is REPORTED rather than issued a document with a hole in it.
+//
+// This block runs its own period so it can freeze a run of its own without disturbing PY-6's,
+// which that block deliberately cancels at the end.
+describe('payslips', () => {
+  const PERIOD = '2026-05';
+  let runId = '';
+  let employeeId = '';
+
+  const createRun = (body: object, token = adminToken) =>
+    request(app).post('/api/v1/hr/payroll/runs').set('Authorization', `Bearer ${token}`).send(body);
+  const issue = (id: string, token = adminToken) =>
+    request(app)
+      .post(`/api/v1/hr/payroll/runs/${id}/payslips`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({});
+  const slips = (id: string, query = '', token = adminToken) =>
+    request(app)
+      .get(`/api/v1/hr/payroll/runs/${id}/payslips${query}`)
+      .set('Authorization', `Bearer ${token}`);
+
+  beforeAll(async () => {
+    const employee = await request(app)
+      .post('/api/v1/hr/employees/direct')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        personal: {
+          identity: {
+            fullNameAr: 'موظف القسيمة',
+            nationalId: '29001011290010',
+            nationality: 'Egyptian',
+          },
+          contact: { primaryPhone: '01174000001' },
+          experience: [],
+          drivingLicenses: [],
+          certifications: [],
+          references: [],
+        },
+        employment: {
+          jobTitleId: JOB_TITLE_ID_PY4,
+          departmentId: DEPARTMENT_ID_PY4,
+          branchId: BRANCH_PY4,
+          employmentType: 'fullTime',
+          probationMonths: 0,
+          startDate: '2024-01-01T00:00:00.000Z',
+          salary: { amount: 12_000, currency: 'EGP' },
+        },
+        hiringDate: '2024-01-01T00:00:00.000Z',
+        entryStatus: 'active',
+      });
+    expect(employee.status, JSON.stringify(employee.body)).toBe(201);
+    employeeId = (employee.body as { data: { id: string } }).data.id;
+
+    // A flat earning so this employee has a line that can actually be priced.
+    const item = await request(app)
+      .post('/api/v1/hr/payroll/pay-items')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        code: 'PY7_HOUSING',
+        name: { ar: 'بدل سكن ٧', en: 'Housing PY7' },
+        kind: 'earning',
+        calcBasis: 'fixed',
+      });
+    expect(item.status).toBe(201);
+    const assigned = await request(app)
+      .post(`/api/v1/hr/employees/${employeeId}/pay-items`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        payItemId: (item.body as { data: { id: string } }).data.id,
+        amount: 2000,
+        effectiveFrom: '2024-01-01',
+      });
+    expect(assigned.status).toBe(201);
+
+    const created = await createRun({ period: PERIOD });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    runId = (created.body.data as PayrollRunDto).id;
+  }, 120_000);
+
+  it('refuses to issue from a run that is not frozen', async () => {
+    const refused = await issue(runId);
+    expect(refused.status).toBe(422);
+    expect((await slips(runId)).body.data).toEqual([]);
+  });
+
+  it('issues once the run is frozen, and reports the whole pass', async () => {
+    const run = (await request(app)
+      .get(`/api/v1/hr/payroll/runs/${runId}`)
+      .set('Authorization', `Bearer ${adminToken}`)).body.data as PayrollRunDto;
+    const frozen = await request(app)
+      .post(`/api/v1/hr/payroll/runs/${runId}/freeze`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: run.version });
+    expect(frozen.status, JSON.stringify(frozen.body)).toBe(200);
+
+    const issued = await issue(runId);
+    expect(issued.status, JSON.stringify(issued.body)).toBe(201);
+    const result = issued.body.data as GeneratePayslipsResultDto;
+    expect(result.period).toBe(PERIOD);
+    expect(result.considered).toBeGreaterThan(0);
+    expect(result.created).toBeGreaterThan(0);
+    expect(result.existing).toBe(0);
+    // Everybody is accounted for — issued, already there, or named with a reason.
+    expect(result.created + result.existing + result.skipped.length).toBeLessThanOrEqual(
+      result.considered,
+    );
+  }, 240_000);
+
+  it('stores the lines rather than a promise to recompute them', async () => {
+    const listed = await slips(runId, `?employeeId=${employeeId}`);
+    expect(listed.status).toBe(200);
+    const rows = listed.body.data as PayslipDto[];
+    expect(rows).toHaveLength(1);
+    const slip = rows[0];
+    expect(slip?.runId).toBe(runId);
+    expect(slip?.period).toBe(PERIOD);
+    expect(slip?.employee.code).toBeTruthy();
+    expect(slip?.earnings.length).toBeGreaterThan(0);
+    expect(slip?.totalEarnings).toBe(2000);
+    expect(slip?.net).toBe(2000);
+    // No statutory field and no gross — the payslip carries what was priced and nothing more.
+    for (const forbidden of ['gross', 'tax', 'insurance', 'paidAt', 'deferred']) {
+      expect(slip, forbidden).not.toHaveProperty(forbidden);
+    }
+  });
+
+  // The property the whole phase turns on: a second pass must not restate a delivered document.
+  it('issues idempotently — a second pass writes nothing', async () => {
+    const again = await issue(runId);
+    expect(again.status).toBe(201);
+    const result = again.body.data as GeneratePayslipsResultDto;
+    expect(result.created).toBe(0);
+    expect(result.existing).toBeGreaterThan(0);
+  }, 240_000);
+
+  it('does not restate a payslip after the salary behind it changes', async () => {
+    const before = (await slips(runId, `?employeeId=${employeeId}`)).body.data as PayslipDto[];
+    const changed = await request(app)
+      .post(`/api/v1/hr/employees/${employeeId}/actions/compensation`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        type: 'salaryChange',
+        effectiveDate: new Date().toISOString(),
+        salary: { amount: 30_000, currency: 'EGP' },
+        reason: 'raise after the payslip was issued',
+      });
+    // The action surface is not this phase's subject — what matters is that IF it applied, the
+    // payslip did not move. A refusal here is equally fine; the assertion below holds either way.
+    expect([200, 201, 422]).toContain(changed.status);
+
+    await issue(runId);
+    const after = (await slips(runId, `?employeeId=${employeeId}`)).body.data as PayslipDto[];
+    expect(after[0]?.basicSalary).toBe(before[0]?.basicSalary);
+    expect(after[0]?.net).toBe(before[0]?.net);
+  }, 240_000);
+
+  it('separates issuing from reading', async () => {
+    // The outsider holds neither the run key nor the compensation key.
+    expect((await issue(runId, outsiderToken)).status).toBe(403);
+    expect((await slips(runId, '', outsiderToken)).status).toBe(403);
+  });
+
+  it('exposes no payslip surface that does not exist', async () => {
+    const anyId = '000000000000000000000001';
+    for (const path of [
+      '/hr/payroll/payslips',
+      `/hr/payroll/payslips/${anyId}/pdf`,
+      `/hr/payroll/runs/${anyId}/tax`,
+    ]) {
+      const res = await request(app)
+        .get(`/api/v1${path}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status, path).toBe(404);
+    }
   });
 });

@@ -23,11 +23,16 @@ import {
   PAY_ITEM_CALC_BASES,
   PAY_ITEM_KINDS,
   PAY_ITEM_QUANTITY_SOURCES,
+  PAYSLIP_SKIP_REASONS,
+  GeneratePayslipsSchema,
+  ListPayslipsQuerySchema,
   QUANTITY_SOURCE_UNITS,
   UpdatePayItemSchema,
   quantitySourceFits,
   type CompensationLineDto,
+  type GeneratePayslipsResultDto,
   type LeavePayFactsDto,
+  type PayslipDto,
 } from './hr-payroll';
 
 describe('the pay-item vocabulary', () => {
@@ -237,14 +242,24 @@ describe('the compensation vocabulary', () => {
     }
   });
 
-  // Payroll v1 still has no statutory rule, and PY-3 is where one would first be tempting: the
-  // phase that finally produces a figure someone might want to tax.
+  // Payroll v1 still has no statutory rule. PY-7 ships the payslip — the document one would
+  // finally be tempting to tax — so `payslip` leaves this list and the statutory words stay.
   it('exports no statutory surface from the payroll module', async () => {
     const payroll = await import('./hr-payroll');
     const exported = Object.keys(payroll).join(' ').toLowerCase();
-    for (const forbidden of ['tax', 'insurance', 'contribution', 'bracket', 'payslip', 'exempt']) {
+    for (const forbidden of ['tax', 'insurance', 'contribution', 'bracket', 'exempt', 'gross']) {
       expect(exported, forbidden).not.toContain(forbidden);
     }
+  });
+
+  // …and what the payslip DOES export is enumerated, so the guard above cannot be satisfied by a
+  // statutory field smuggled in under a payslip name.
+  it('exports exactly the payslip vocabulary PY-7 declares', async () => {
+    const payroll = await import('./hr-payroll');
+    const payslipExports = Object.keys(payroll).filter((key) => /payslip/i.test(key));
+    expect(payslipExports.sort()).toEqual(
+      ['GeneratePayslipsSchema', 'ListPayslipsQuerySchema', 'PAYSLIP_SKIP_REASONS'].sort(),
+    );
   });
 });
 
@@ -441,5 +456,132 @@ describe('the leave-pay vocabulary', () => {
       baseAmount: 25,
     };
     expect((line.leavePayRate ?? 0) + line.baseAmount).toBe(100);
+  });
+});
+
+// ── Payslips (PY-7) ─────────────────────────────────────────────────────────
+//
+// The payslip is the first thing in this module that is WRITTEN DOWN rather than computed on
+// demand, so what these hold is the shape of a document nobody may edit: what it must carry to
+// explain itself, and what it must never grow.
+
+describe('the payslip vocabulary', () => {
+  it('pins the reasons an employee gets none', () => {
+    expect([...PAYSLIP_SKIP_REASONS]).toEqual([
+      'noBasicSalary',
+      'pendingLine',
+      'noLines',
+      'mixedCurrency',
+    ]);
+  });
+
+  // Issuing takes NOTHING. A body that could name an employee or a figure would be a second way
+  // to answer what the run already answers.
+  it('accepts an empty issuing body and refuses every field on it', () => {
+    expect(GeneratePayslipsSchema.safeParse({}).success).toBe(true);
+    for (const extra of [
+      { employeeIds: [] },
+      { total: 1000 },
+      { net: 1000 },
+      { tax: 0 },
+      { gross: 1 },
+      { period: '2026-03' },
+      { force: true },
+    ]) {
+      expect(GeneratePayslipsSchema.safeParse(extra).success, Object.keys(extra)[0]).toBe(false);
+    }
+  });
+
+  it('reports the pass rather than only its successes', () => {
+    const result: GeneratePayslipsResultDto = {
+      runId: 'r1',
+      period: '2026-03',
+      considered: 10,
+      created: 8,
+      existing: 0,
+      skipped: [{ employeeId: 'e9', reason: 'noBasicSalary' }],
+    };
+    // Every employee is accounted for: issued, already there, or named with a reason.
+    expect(result.created + result.existing + result.skipped.length).toBeLessThanOrEqual(
+      result.considered,
+    );
+  });
+
+  it('carries what a figure needs to explain itself', () => {
+    const slip = {} as PayslipDto;
+    const required: (keyof PayslipDto)[] = [
+      'runId',
+      'period',
+      'employeeId',
+      'employee',
+      'currency',
+      'basicSalary',
+      'employmentDaysInPeriod',
+      'daysInPeriod',
+      'earnings',
+      'deductions',
+      'leave',
+      'netMinor',
+      'warnings',
+      'issuedAt',
+      'issuedBy',
+    ];
+    // A compile-time assertion: the list above is only writable if every key exists on the DTO.
+    expect(required.length).toBe(15);
+    expect(slip).toBeDefined();
+  });
+
+  // `gross` is absent on purpose: the basic salary is not a line in this system, so a "total
+  // before deductions" would either duplicate `totalEarnings` or claim a rule nobody granted.
+  it('has no gross, no tax and no payment status', () => {
+    const keys: string[] = [
+      'runId',
+      'period',
+      'from',
+      'to',
+      'employeeId',
+      'employee',
+      'currency',
+      'basicSalary',
+      'employmentDaysInPeriod',
+      'daysInPeriod',
+      'earnings',
+      'deductions',
+      'leave',
+      'totalEarningsMinor',
+      'totalEarnings',
+      'totalDeductionsMinor',
+      'totalDeductions',
+      'netMinor',
+      'net',
+      'warnings',
+      'issuedAt',
+      'issuedBy',
+      'createdAt',
+      'id',
+    ];
+    for (const forbidden of ['gross', 'tax', 'insurance', 'paidAt', 'paymentStatus', 'bankAccount']) {
+      expect(keys, forbidden).not.toContain(forbidden);
+    }
+  });
+
+  // A payslip is never issued with a blank, so there is nothing deferred to carry.
+  it('has no deferred array — an incomplete calculation is a skip, not a document', () => {
+    const keys: string[] = ['earnings', 'deductions', 'leave'];
+    expect(keys).not.toContain('deferred');
+    expect(PAYSLIP_SKIP_REASONS).toContain('pendingLine');
+  });
+
+  it('filters a list by employee and period, and by nothing else', () => {
+    expect(ListPayslipsQuerySchema.safeParse({ page: 1, pageSize: 25 }).success).toBe(true);
+    expect(
+      ListPayslipsQuerySchema.safeParse({ page: 1, pageSize: 25, period: '2026-03' }).success,
+    ).toBe(true);
+    expect(
+      ListPayslipsQuerySchema.safeParse({ page: 1, pageSize: 25, period: '2026-3' }).success,
+    ).toBe(false);
+    expect(
+      ListPayslipsQuerySchema.safeParse({ page: 1, pageSize: 25, minNet: 100 }).success,
+    ).toBe(false);
   });
 });

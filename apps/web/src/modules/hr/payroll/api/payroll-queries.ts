@@ -127,3 +127,28 @@ export const useCancelPayrollRun = () =>
   useRunMutation(({ id, reason, version }: { id: string; reason: string; version: number }) =>
     api.cancelPayrollRun(id, { reason, version }),
   );
+
+// ── Payslips (PY-7) ─────────────────────────────────────────────────────────
+
+const PAYSLIPS_FEATURE = 'payslips';
+
+export const useRunPayslips = (runId: string, params: Record<string, string | number>) =>
+  useQuery({
+    queryKey: listKey(MODULE, PAYSLIPS_FEATURE, { runId, ...params }),
+    queryFn: () => api.listRunPayslips(runId, params),
+    placeholderData: (prev) => prev,
+  });
+
+/**
+ * Issuing invalidates the payslip list and nothing else.
+ *
+ * Not the runs: issuing writes no figure onto the run and does not change its status — the run is
+ * frozen before and frozen after, and a list that refetched would report the same row.
+ */
+export const useGeneratePayslips = () => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (runId: string) => api.generatePayslips(runId),
+    onSuccess: () => void client.invalidateQueries({ queryKey: featureKey(MODULE, PAYSLIPS_FEATURE) }),
+  });
+};

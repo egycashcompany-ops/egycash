@@ -12,7 +12,7 @@
 import { Types } from 'mongoose';
 import { type CompensationEffectsDto } from '@ecms/contracts';
 import { type ScopeSelector } from '../../../../shared/types';
-import { employeeRepository } from '../../employee-management/employees';
+import { employeeRepository, type EmployeeDoc } from '../../employee-management/employees';
 import { payItemRepository } from '../pay-items/pay-item.repository';
 import { EmployeePayItemModel } from '../employee-pay-items/employee-pay-item.model';
 import {
@@ -36,7 +36,19 @@ class CompensationService {
     period: string,
     scope: ScopeSelector,
   ): Promise<CompensationEffectsDto> {
-    const employee = await employeeRepository.getById(employeeId, scope);
+    return this.effectsForEmployee(await employeeRepository.getById(employeeId, scope), period);
+  }
+
+  /**
+   * The same calculation for an employee already in hand — the batch path (PY-7).
+   *
+   * Split out rather than duplicated: issuing a run's payslips resolves its own population (every
+   * employee employed for any part of the period, which no caller's scope decides) and would
+   * otherwise re-read each employee one at a time through a scope it has no use for. The rules
+   * below are untouched; only the fetch above moved.
+   */
+  async effectsForEmployee(employee: EmployeeDoc, period: string): Promise<CompensationEffectsDto> {
+    const employeeId = String(employee._id);
     const { from, to } = periodRange(period);
 
     // Every assignment whose interval touches the period — the same intersection test the overlap

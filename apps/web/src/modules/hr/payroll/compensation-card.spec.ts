@@ -12,6 +12,7 @@ import {
   COMPENSATION_WARNINGS,
   PAY_ITEM_QUANTITY_SOURCES,
   PAYROLL_RUN_STATUSES,
+  PAYSLIP_SKIP_REASONS,
   type Locale,
 } from '@ecms/contracts';
 import { translate } from '../../../platform/localization/i18n';
@@ -42,8 +43,10 @@ describe('where the card lives', () => {
 
   it('reads compensation under the employee, and touches nothing unshipped', () => {
     expect(API).toContain('`/hr/employees/${employeeId}/compensation');
-    // Runs ship with PY-6; payslips and tax rules still do not exist at all.
-    expect(API).not.toMatch(/payroll\/(payslips|tax)/);
+    // Runs ship with PY-6 and payslips with PY-7. A tax or statutory rule still does not exist,
+    // and a payslip is only ever reached THROUGH its run — there is no standalone list of them.
+    expect(API).not.toMatch(/payroll\/(tax|statutory|contributions)/);
+    expect(API).not.toMatch(/'\/hr\/payroll\/payslips/);
   });
 });
 
@@ -276,9 +279,13 @@ describe('the payroll run screen', () => {
     expect(ROUTES).toContain('<RequirePermission permission="payrollRun.view">');
   });
 
-  it('gates every action behind the manage key, not the view one', () => {
+  // Two keys on this screen since PY-7, and the split is the point: ACTING on a run is
+  // `payrollRun.manage`, while READING the payslips it issued is reading somebody's pay, which
+  // the compensation key already governs. `payrollRun.view` gates the page itself and never a
+  // control inside it.
+  it('gates acting behind the manage key and reading pay behind the compensation key', () => {
     const gated = [...RUNS.matchAll(/permission="([^"]+)"/g)].map((m) => m[1]);
-    expect(new Set(gated)).toEqual(new Set(['payrollRun.manage']));
+    expect(new Set(gated)).toEqual(new Set(['payrollRun.manage', 'employee.viewCompensation']));
   });
 
   // Freezing cannot be undone anywhere in this system, so the screen has to say so before it
@@ -299,16 +306,69 @@ describe('the payroll run screen', () => {
     expect(translate('en', 'payroll.runs.cancelFrozenHint')).toMatch(/stays frozen/i);
   });
 
-  // A run pins facts; it prices nothing. No total, no payslip, no statutory control.
-  it('shows no figure, no payslip and no statutory control', () => {
-    expect(stripComments(RUNS)).not.toMatch(
-      /\btax\b|insurance|contribution|payslip|formatMoney|netPay|grossPay/i,
-    );
+  // The RUN still prices nothing — its own rows carry a period, a status and a receipt of counts.
+  // Money appears on this screen only inside the payslip dialog PY-7 added, which shows figures
+  // that were priced elsewhere and stored. And a statutory control still exists nowhere.
+  it('shows no statutory control anywhere, and no figure outside the payslips dialog', () => {
+    const code = stripComments(RUNS);
+    expect(code).not.toMatch(/\btax\b|insurance|contribution|netPay|grossPay|\bgross\b/i);
+
+    const dialogAt = code.indexOf('const PayslipsDialog');
+    expect(dialogAt).toBeGreaterThan(0);
+    // Everything above the dialog is the run list itself: still not a single money figure.
+    // The CALL is what matters, not the import at the top of the file.
+    expect(code.slice(0, dialogAt)).not.toMatch(/formatMoney\(/);
+    expect(code.slice(dialogAt)).toMatch(/formatMoney\(/);
   });
 
   it('renders the period LTR without forcing the page direction', () => {
     expect(RUNS).toMatch(/dir="ltr"/);
     expect(RUNS).not.toMatch(/dir="rtl"|direction:\s*rtl/);
+  });
+});
+
+// ── PY-7 — the payslips dialog ──────────────────────────────────────────────
+//
+// The screen gained the first thing in this system that shows a STORED figure. What has to hold
+// about it is not arithmetic — the api settles that — but honesty: it says a payslip keeps its own
+// copy, it names who got none and why, and it computes nothing of its own.
+
+describe('the payslips dialog', () => {
+  const code = stripComments(RUNS);
+
+  it('is reachable only from a frozen run', () => {
+    expect(code).toMatch(/r\.status === 'frozen'[\s\S]{0,200}setSlips/);
+  });
+
+  it('says that issuing again does not restate a payslip that exists', () => {
+    expect(code).toContain("'payroll.payslips.hint'");
+    expect(translate('en', 'payroll.payslips.hint')).toMatch(/writes nothing/i);
+    expect(translate('ar', 'payroll.payslips.hint')).toContain('لا تكتب شيئًا');
+  });
+
+  it('shows the receipt of the pass, not just a success toast', () => {
+    expect(code).toContain("'payroll.payslips.receipt'");
+    expect(code).toContain('result.skipped.map');
+  });
+
+  it('names every skip reason the contract declares', () => {
+    for (const reason of PAYSLIP_SKIP_REASONS) {
+      for (const locale of ['en', 'ar'] as Locale[]) {
+        const key = `payroll.payslips.skip.${reason}`;
+        expect(translate(locale, key), key).not.toBe(key);
+      }
+    }
+  });
+
+  it('computes nothing of its own — every figure arrives priced', () => {
+    for (const forbidden of ['totalEarnings -', 'netMinor /', '* 100', 'reduce(']) {
+      expect(code, forbidden).not.toContain(forbidden);
+    }
+  });
+
+  it('issues through the manage key and reads through the compensation key', () => {
+    const dialog = code.slice(code.indexOf('const PayslipsDialog'));
+    expect(dialog).toContain('permission="payrollRun.manage"');
   });
 });
 

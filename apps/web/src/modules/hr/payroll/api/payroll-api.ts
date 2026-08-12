@@ -5,7 +5,9 @@ import {
   type CompensationEffectsDto,
   type CreateEmployeePayItem,
   type CreatePayrollRun,
+  type GeneratePayslipsResultDto,
   type PayrollRunDto,
+  type PayslipDto,
   type CreatePayItem,
   type EmployeePayItemDto,
   type Paginated,
@@ -85,3 +87,16 @@ export const cancelPayrollRun = (
   id: string,
   body: { reason: string; version: number },
 ): Promise<PayrollRunDto> => post<PayrollRunDto>(`/hr/payroll/runs/${id}/cancel`, body);
+
+// ── Payslips (PY-7) ─────────────────────────────────────────────────────────
+// Issued from a frozen run, and issuing is idempotent: a second pass reports what was already
+// there rather than restating it with today's figures.
+
+export const listRunPayslips = (
+  runId: string,
+  params: QueryParams,
+): Promise<Paginated<PayslipDto>> =>
+  getPage<PayslipDto>(`/hr/payroll/runs/${runId}/payslips${buildQuery(params)}`);
+
+export const generatePayslips = (runId: string): Promise<GeneratePayslipsResultDto> =>
+  post<GeneratePayslipsResultDto>(`/hr/payroll/runs/${runId}/payslips`, {});

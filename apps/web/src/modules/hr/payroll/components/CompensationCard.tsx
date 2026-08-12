@@ -8,9 +8,13 @@
 // the day counts on both sides of it. A number an employee will ask about has to be able to
 // answer.
 //
-// What this is NOT: a payslip. There is no tax here, no insurance, no attendance figure and no
-// payroll run, because none of those exist in this system yet. `net` is earnings minus deductions
-// and is labelled as exactly that.
+// Quantity lines (PY-4) show WHAT was counted beside the figure — ten days attended, ninety
+// approved minutes — and the stamp of the frozen period they came from. They carry no proration
+// fraction, because the count already is one.
+//
+// What this is NOT: a payslip. There is no tax here, no insurance, no payroll run and no payslip,
+// because none of those exist in this system yet. `net` is earnings minus deductions and is
+// labelled as exactly that.
 import { useState } from 'react';
 import {
   type CompensationEffectsDto,
@@ -25,7 +29,7 @@ import { Card, CardBody, CardHeader } from '../../../../shared/ui/Card';
 import { Field, Input } from '../../../../shared/ui/form';
 import { ErrorState } from '../../../../shared/ui/states/ErrorState';
 import { LoadingState } from '../../../../shared/ui/states/LoadingState';
-import { formatMoney, localized } from '../../../../shared/lib/format';
+import { formatDateTime, formatMoney, localized } from '../../../../shared/lib/format';
 import { useEmployeeCompensation } from '../api/payroll-queries';
 
 /** `YYYY-MM` of the current Cairo month — the same period key the API speaks. */
@@ -85,6 +89,27 @@ export const CompensationCard = ({ employee }: { employee: EmployeeDto }): JSX.E
       ),
     },
     {
+      // PY-4 — what was counted, and what it was a count OF. A quantity line is priced from this
+      // and NOT prorated, so showing the count is the only way the figure explains itself.
+      key: 'quantity',
+      header: t('payroll.compensation.quantity'),
+      render: (l) =>
+        l.quantitySource === null ? (
+          <span className="text-slate-300">—</span>
+        ) : (
+          <span className="flex flex-col">
+            <span dir="ltr" className="tabular-nums">
+              {l.quantity === null
+                ? '—'
+                : `${String(l.quantity)} ${t(`payroll.compensation.unit.${l.quantityUnit ?? 'days'}`)}`}
+            </span>
+            <span className="text-xs text-slate-400">
+              {t(`payroll.quantitySource.${l.quantitySource}`)}
+            </span>
+          </span>
+        ),
+    },
+    {
       key: 'amount',
       header: t('payroll.compensation.amount'),
       align: 'end',
@@ -136,6 +161,12 @@ const Effects = ({
   columns: Column<CompensationLineDto>[];
 }): JSX.Element => {
   const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  // Which version of the attendance truth was priced — one stamp for the whole card, because
+  // every quantity line on it came from the same frozen period.
+  const frozenAt =
+    [...effects.earnings, ...effects.deductions].find((l) => l.feedFrozenAt !== null)
+      ?.feedFrozenAt ?? null;
   const empty =
     effects.earnings.length === 0 &&
     effects.deductions.length === 0 &&
@@ -183,6 +214,12 @@ const Effects = ({
         >
           <DataTable columns={columns} rows={effects.deferred} rowKey={(l) => l.sourceAssignmentId} />
         </Section>
+      )}
+
+      {frozenAt !== null && (
+        <p className="text-xs text-slate-400">
+          {t('payroll.compensation.frozenAt', { at: formatDateTime(frozenAt, locale) })}
+        </p>
       )}
 
       {!empty && (

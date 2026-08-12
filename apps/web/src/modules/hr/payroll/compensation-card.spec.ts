@@ -8,7 +8,11 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { COMPENSATION_WARNINGS, type Locale } from '@ecms/contracts';
+import {
+  COMPENSATION_WARNINGS,
+  PAY_ITEM_QUANTITY_SOURCES,
+  type Locale,
+} from '@ecms/contracts';
 import { translate } from '../../../platform/localization/i18n';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -115,6 +119,80 @@ describe('every label the card asks for resolves in both locales', () => {
       const sentence = translate(locale, 'payroll.compensation.employed');
       expect(sentence, locale).toContain('{days}');
       expect(sentence, locale).toContain('{of}');
+    }
+  });
+});
+
+// ── PY-4 — the quantity surface ─────────────────────────────────────────────
+
+const CATALOG = readFileSync(resolve(HERE, 'pages/PayItemsPage.tsx'), 'utf8');
+
+describe('the catalog asks what a quantity item counts', () => {
+  it('offers a source picker driven by the unit tables, not a hand-written list', () => {
+    expect(CATALOG).toContain('CALC_BASIS_UNITS[calcBasis]');
+    expect(CATALOG).toContain('QUANTITY_SOURCE_UNITS[source] === neededUnit');
+    expect(CATALOG).toContain("'payroll.payItems.quantitySource'");
+  });
+
+  it('will not let a per-day item be created without one', () => {
+    expect(CATALOG).toContain("neededUnit !== null && quantitySource === ''");
+  });
+
+  it('clears the source when the basis changes, so a stale unit cannot be submitted', () => {
+    expect(CATALOG).toMatch(/setCalcBasis\([^)]*\);\s*\n\s*setQuantitySource\(''\)/);
+  });
+
+  it('shows it read-only on an existing item — the meaning is set once', () => {
+    expect(CATALOG).toContain("t('payroll.payItems.immutable')");
+    expect(stripComments(CATALOG)).not.toMatch(/UpdatePayItem[^;]*quantitySource/);
+  });
+});
+
+describe('the card shows what was counted', () => {
+  it('renders the quantity, its unit and its source', () => {
+    expect(CARD).toContain("'payroll.compensation.quantity'");
+    expect(CARD).toContain('payroll.compensation.unit.');
+    expect(CARD).toContain('payroll.quantitySource.');
+  });
+
+  // The rule the phase turns on, asserted where a reader would look for it.
+  it('shows the frozen stamp, so a figure can name the truth it priced', () => {
+    expect(CARD).toContain('feedFrozenAt');
+    expect(CARD).toContain("'payroll.compensation.frozenAt'");
+  });
+
+  it('still shows nothing about a payroll run, a payslip or a statutory rule', () => {
+    expect(stripComments(CARD)).not.toMatch(
+      /\btax\b|taxable|insurance|contribution|payslip|payrollRun/i,
+    );
+  });
+});
+
+describe('every quantity label resolves in both locales', () => {
+  const keys = [
+    ...PAY_ITEM_QUANTITY_SOURCES.map((s) => `payroll.quantitySource.${s}`),
+    'payroll.compensation.quantity',
+    'payroll.compensation.unit.days',
+    'payroll.compensation.unit.minutes',
+    'payroll.compensation.frozenAt',
+    'payroll.payItems.quantitySource',
+    'payroll.payItems.quantitySourceHint',
+    'payroll.payItems.pickQuantitySource',
+  ];
+
+  for (const locale of ['en', 'ar'] as Locale[]) {
+    it(`resolves all of them — ${locale}`, () => {
+      expect(keys.filter((key) => translate(locale, key) === key)).toEqual([]);
+    });
+  }
+
+  it('does not ship English text as the Arabic label', () => {
+    expect(keys.filter((key) => translate('ar', key) === translate('en', key))).toEqual([]);
+  });
+
+  it('keeps the placeholder of the frozen-stamp sentence in both locales', () => {
+    for (const locale of ['en', 'ar'] as Locale[]) {
+      expect(translate(locale, 'payroll.compensation.frozenAt'), locale).toContain('{at}');
     }
   });
 });

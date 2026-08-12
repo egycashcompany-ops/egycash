@@ -25,6 +25,10 @@ import { settingsService } from '../../src/platform/settings';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { getCache } from '../../src/infrastructure/redis/cache';
 import { addDays, cairoToday, dateOnlyIso } from '../../src/modules/hr/shared/business-date';
+// The suite may reach into attendance directly; PAYROLL may not, and a lint rule plus
+// `attendance-seam.spec.ts` hold that line. Here it is how a period gets frozen at all, because
+// freezing has no endpoint and its real caller is the payroll run in PY-6.
+import { dayRecordService } from '../../src/modules/hr/attendance';
 import { type AuthContext } from '../../src/shared/types';
 
 const PASSWORD = 'Str0ng#Pass!';
@@ -180,12 +184,16 @@ describe('the pay-item catalog', () => {
   });
 
   it('filters by kind and searches by code or name', async () => {
-    await post({
+    const late = await post({
       code: 'LATE_DEDUCTION',
       name: { ar: 'خصم تأخير', en: 'Late deduction' },
       kind: 'deduction',
       calcBasis: 'perMinute',
+      // PY-4 made this mandatory for a per-minute item, and asserting the 201 here is what would
+      // have said so directly instead of leaving the search below to fail on an absence.
+      quantitySource: 'lateMinutes',
     });
+    expect(late.status, JSON.stringify(late.body)).toBe(201);
 
     const earnings = await get('?kind=earning&status=active');
     expect(earnings.status).toBe(200);
@@ -692,6 +700,8 @@ describe('compensation effects', () => {
       name: { ar: 'باليوم', en: 'Per day' },
       kind: 'earning',
       calcBasis: 'perDay',
+      // PY-4 made this mandatory: `calcBasis` says "per day", this says per day of WHAT.
+      quantitySource: 'attendedDays',
     });
     loan = await mkItem({
       code: 'PY3_LOAN',
@@ -886,5 +896,275 @@ describe('compensation effects', () => {
     const employeeId = await regEmployee();
     expect((await effects(employeeId, '2026-03', outsiderToken)).status).toBe(403);
     expect((await effects('507f1f77bcf86cd799439099')).status).toBe(404);
+  });
+});
+
+// ── PY-4 — attendance quantities ────────────────────────────────────────────
+//
+// The counting rules are exercised without a database in `attendance-quantities.spec.ts`. What
+// has to be proven HERE is the seam: that a real `freezePeriod` makes real rows readable through
+// the §15.1 feed, that the figure survives a post-freeze correction unchanged, and that an
+// unfrozen month leaves quantity lines pending instead of failing or guessing.
+describe('attendance quantities', () => {
+  const PERIOD = '2026-03';
+  const UNFROZEN = '2026-05';
+
+  let BRANCH = '';
+  let DEPARTMENT_ID = '';
+  let JOB_TITLE_ID = '';
+  let absenceItem: PayItemDto;
+  let attendanceItem: PayItemDto;
+  let employeeId = '';
+  let lateJoinerId = '';
+  let nid = 800;
+  let phone = 72_000_000;
+
+  const mkOrgUnit = async (path: string, body: object): Promise<string> => {
+    const res = await request(app)
+      .post(`/api/v1/platform/${path}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send(body);
+    expect(res.status, `${path} ${JSON.stringify(res.body)}`).toBe(201);
+    return (res.body as { data: { id: string } }).data.id;
+  };
+
+  const regEmployee = async (startDate: string): Promise<string> => {
+    const res = await request(app)
+      .post('/api/v1/hr/employees/direct')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        personal: {
+          identity: {
+            fullNameAr: 'موظف الكميات',
+            nationalId: `290010104${String(nid++)}10`,
+            nationality: 'Egyptian',
+          },
+          contact: { primaryPhone: `011${String(phone++)}` },
+          experience: [],
+          drivingLicenses: [],
+          certifications: [],
+          references: [],
+        },
+        employment: {
+          jobTitleId: JOB_TITLE_ID,
+          departmentId: DEPARTMENT_ID,
+          branchId: BRANCH,
+          employmentType: 'fullTime',
+          probationMonths: 0,
+          startDate,
+          salary: { amount: 10_000, currency: 'EGP' },
+        },
+        hiringDate: startDate,
+        entryStatus: 'active',
+      });
+    expect(res.status).toBe(201);
+    return (res.body as { data: { id: string } }).data.id;
+  };
+
+  const assign = (employee: string, body: object) =>
+    request(app)
+      .post(`/api/v1/hr/employees/${employee}/pay-items`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send(body);
+
+  const effects = async (employee: string, period = PERIOD): Promise<CompensationEffectsDto> => {
+    const res = await request(app)
+      .get(`/api/v1/hr/employees/${employee}/compensation?period=${period}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    return res.body.data as CompensationEffectsDto;
+  };
+
+  const lineFor = (data: CompensationEffectsDto, code: string) =>
+    [...data.earnings, ...data.deductions, ...data.deferred].find((l) => l.code === code);
+
+  beforeAll(async () => {
+    BRANCH = await mkOrgUnit('branches', {
+      code: 'PY4A',
+      name: { ar: 'فرع الكميات', en: 'Quantities Branch' },
+    });
+    DEPARTMENT_ID = await mkOrgUnit('departments', {
+      code: 'DEP-PY4',
+      name: { ar: 'إدارة الكميات', en: 'Quantities Dept' },
+      branchId: BRANCH,
+    });
+    JOB_TITLE_ID = await mkOrgUnit('job-titles', {
+      code: 'JT-PY4',
+      name: { ar: 'مشغّل', en: 'Operator' },
+      jobGrade: 'G7',
+    });
+
+    absenceItem = (
+      await post({
+        code: 'PY4_ABSENCE',
+        name: { ar: 'خصم غياب', en: 'Absence deduction' },
+        kind: 'deduction',
+        calcBasis: 'perDay',
+        quantitySource: 'absentDays',
+      })
+    ).body.data as PayItemDto;
+    attendanceItem = (
+      await post({
+        code: 'PY4_ATTENDED',
+        name: { ar: 'بدل حضور', en: 'Attendance allowance' },
+        kind: 'earning',
+        calcBasis: 'perDay',
+        quantitySource: 'attendedDays',
+      })
+    ).body.data as PayItemDto;
+
+    employeeId = await regEmployee('2024-01-01T00:00:00.000Z');
+    // Hired on the 20th: their assignment starts on their hire date, because D3 refuses an
+    // interval that reaches back before employment.
+    lateJoinerId = await regEmployee('2026-03-20T00:00:00.000Z');
+
+    // The derivation answers `dayOff` for an employee with no shift and `absent` only for one who
+    // had a shift and did not punch — so an absence quantity needs a shift assignment to exist at
+    // all. This is what makes the frozen March below contain real absences to count.
+    const shifts = await request(app)
+      .get('/api/v1/hr/attendance/shifts')
+      .set('Authorization', `Bearer ${adminToken}`);
+    const general = (shifts.body.data as { id: string; code: string }[]).find(
+      (sh) => sh.code === 'GENERAL',
+    );
+    expect(general, 'the seeded GENERAL shift').toBeDefined();
+    for (const [id, from] of [
+      [employeeId, '2024-01-01'],
+      [lateJoinerId, '2026-03-20'],
+    ] as const) {
+      const assigned = await request(app)
+        .post('/api/v1/hr/attendance/assignments')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ employeeId: id, shiftId: general?.id, fromDate: from });
+      expect(assigned.status, JSON.stringify(assigned.body)).toBe(201);
+    }
+
+    for (const [id, from] of [
+      [employeeId, '2026-03-01'],
+      [lateJoinerId, '2026-03-20'],
+    ] as const) {
+      const res = await assign(id, { payItemId: absenceItem.id, amount: 50, effectiveFrom: from });
+      expect(res.status, JSON.stringify(res.body)).toBe(201);
+    }
+    const attended = await assign(employeeId, {
+      payItemId: attendanceItem.id,
+      amount: 30,
+      effectiveFrom: '2026-03-01',
+    });
+    expect(attended.status, JSON.stringify(attended.body)).toBe(201);
+  }, 120_000);
+
+  it('leaves quantity lines pending while the period is not frozen, without failing', async () => {
+    const data = await effects(employeeId, UNFROZEN);
+    const line = lineFor(data, 'PY4_ABSENCE');
+    expect(line?.state).toBe('pendingQuantity');
+    expect(line?.quantity).toBeNull();
+    expect(line?.feedFrozenAt).toBeNull();
+    expect(data.deductions).toEqual([]);
+    expect(data.totalDeductions).toBe(0);
+  });
+
+  it('prices from the feed once the period is frozen', async () => {
+    const frozen = await dayRecordService.freezePeriod(PERIOD);
+    expect(frozen.frozen).toBeGreaterThan(0);
+
+    const data = await effects(employeeId);
+    const absence = lineFor(data, 'PY4_ABSENCE');
+    expect(absence?.state).toBe('computed');
+    expect(absence?.quantitySource).toBe('absentDays');
+    expect(absence?.quantityUnit).toBe('days');
+    expect(absence?.feedFrozenAt).not.toBeNull();
+    // Nobody punched, so the working days of March are absences — the count is what the frozen
+    // calendar says, and the figure is exactly rate × count.
+    expect(absence?.quantity ?? 0).toBeGreaterThan(0);
+    expect(absence?.amount).toBe((absence?.quantity ?? 0) * 50);
+    // …and NEVER a fraction of it: the count already is the proration.
+    expect(absence?.prorationFactor).toBeNull();
+  }, 180_000);
+
+  it('gives a frozen month with nothing to count a real zero, not a pending line', async () => {
+    const data = await effects(employeeId);
+    const attended = lineFor(data, 'PY4_ATTENDED');
+    expect(attended?.state).toBe('computed'); // KNOWN to be nothing, unlike an unfrozen month
+    expect(attended?.quantity).toBe(0);
+    expect(attended?.amount).toBe(0);
+    expect(data.deferred).toEqual([]);
+  });
+
+  it('counts only the days the employee was employed for', async () => {
+    const whole = await effects(employeeId);
+    const partial = await effects(lateJoinerId);
+    const wholeDays = lineFor(whole, 'PY4_ABSENCE')?.quantity ?? 0;
+    const partialDays = lineFor(partial, 'PY4_ABSENCE')?.quantity ?? 0;
+    expect(partialDays).toBeGreaterThan(0);
+    expect(partialDays).toBeLessThan(wholeDays);
+  });
+
+  it('prices the same period the same way twice', async () => {
+    const first = await effects(employeeId);
+    const second = await effects(employeeId);
+    expect(second).toEqual(first);
+  });
+
+  // The frozen row never moves (attendance §7): a correction filed after the freeze is recorded as
+  // evidence and reaches pay as a FORWARD adjustment in a later phase, never as a restatement.
+  it('does not restate the figure when a correction lands after the freeze', async () => {
+    const before = await effects(employeeId);
+    const quantityBefore = lineFor(before, 'PY4_ABSENCE')?.quantity;
+
+    const filed = await request(app)
+      .post('/api/v1/hr/attendance/regularizations')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        employeeId,
+        workDate: '2026-03-04',
+        proposedInAt: '2026-03-04T06:00:00.000Z',
+        proposedOutAt: '2026-03-04T14:00:00.000Z',
+        reason: 'device outage, corrected after the freeze',
+      });
+    expect(filed.status).toBe(201);
+    expect((filed.body.data as { postFreeze: boolean }).postFreeze).toBe(true);
+
+    const after = await effects(employeeId);
+    expect(lineFor(after, 'PY4_ABSENCE')?.quantity).toBe(quantityBefore);
+    expect(after).toEqual(before);
+  }, 60_000);
+
+  it('refuses a per-day item created without a quantity source', async () => {
+    const refused = await post({
+      code: 'PY4_NO_SOURCE',
+      name: { ar: 'بلا مصدر', en: 'No source' },
+      kind: 'earning',
+      calcBasis: 'perDay',
+    });
+    expect(refused.status).toBe(400);
+  });
+
+  it('refuses a source measured in the wrong unit, and one on an item that counts nothing', async () => {
+    const wrongUnit = await post({
+      code: 'PY4_WRONG_UNIT',
+      name: { ar: 'وحدة خاطئة', en: 'Wrong unit' },
+      kind: 'earning',
+      calcBasis: 'perDay',
+      quantitySource: 'lateMinutes',
+    });
+    expect(wrongUnit.status).toBe(400);
+
+    const onFixed = await post({
+      code: 'PY4_FIXED_SRC',
+      name: { ar: 'ثابت بمصدر', en: 'Fixed with a source' },
+      kind: 'earning',
+      calcBasis: 'fixed',
+      quantitySource: 'attendedDays',
+    });
+    expect(onFixed.status).toBe(400);
+  });
+
+  it('refuses to change what an existing item counts', async () => {
+    const refused = await patch(absenceItem.id, {
+      quantitySource: 'attendedDays',
+      version: absenceItem.version,
+    });
+    expect(refused.status).toBe(400);
   });
 });

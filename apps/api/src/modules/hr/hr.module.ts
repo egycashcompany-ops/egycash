@@ -741,7 +741,7 @@ export const hrPages: PageDef[] = [
 export const hrModule: ModuleManifest = {
   id: 'hr',
   name: { en: 'Human Resources', ar: 'الموارد البشرية' },
-  version: '0.20.0',
+  version: '0.21.0',
   requiresPlatform: '^2.1',
   permissions: hrPermissions,
   pages: hrPages,

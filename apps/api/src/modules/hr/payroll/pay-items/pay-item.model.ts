@@ -3,11 +3,20 @@
 // It carries no amount — an amount belongs to an employee or to a calculation, never to the
 // definition — and no tax or insurance field, because those rules are out of Payroll v1.
 //
+// `quantitySource` (PY-4) is the item's other half of its meaning: `calcBasis` says it is priced
+// per day, and this says per day of WHAT. Set once with the rest, and never editable.
+//
 // ARCHIVED, NEVER DELETED once used: a payslip line names the item that produced it, so removing
 // the row would leave history pointing at nothing. The delete route refuses a used item and the
 // screen archives instead.
 import { Schema, model } from 'mongoose';
-import { type LocalizedString, type PayItemCalcBasis, type PayItemKind } from '@ecms/contracts';
+import {
+  PAY_ITEM_QUANTITY_SOURCES,
+  type LocalizedString,
+  type PayItemCalcBasis,
+  type PayItemKind,
+  type PayItemQuantitySource,
+} from '@ecms/contracts';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../../shared/base/base.model';
 
 export interface PayItemDoc extends BaseDocFields {
@@ -15,6 +24,8 @@ export interface PayItemDoc extends BaseDocFields {
   name: LocalizedString;
   kind: PayItemKind;
   calcBasis: PayItemCalcBasis;
+  /** PY-4: which frozen-attendance quantity a `perDay`/`perMinute` item multiplies. */
+  quantitySource: PayItemQuantitySource | null;
   sortOrder: number;
   status: 'active' | 'archived';
 }
@@ -31,6 +42,7 @@ const payItemSchema = new Schema<PayItemDoc>(
       enum: ['fixed', 'perDay', 'perMinute', 'percentOfBase'],
       required: true,
     },
+    quantitySource: { type: String, enum: [...PAY_ITEM_QUANTITY_SOURCES], default: null },
     sortOrder: { type: Number, required: true, default: 0 },
     status: { type: String, enum: ['active', 'archived'], default: 'active' },
     ...baseFields,

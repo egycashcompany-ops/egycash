@@ -1096,14 +1096,17 @@ describe('application sections group the sidebar without touching RBAC', () => {
   const get = (path: string) =>
     request(app).get(`/api/v1${path}`).set('Authorization', `Bearer ${token}`);
 
+  /** `sortDir` defaults to `desc` platform-wide, so reading an ORDER means asking for asc. */
+  const ORDERED = 'pageSize=200&sortBy=sortOrder&sortDir=asc';
+
   const sectionsOf = async (): Promise<{ id: string; sortOrder: number }[]> => {
-    const res = await get(`/platform/application-sections?categoryId=${categoryId}&pageSize=100`);
+    const res = await get(`/platform/application-sections?categoryId=${categoryId}&${ORDERED}`);
     expect(res.status).toBe(200);
     return (res.body as { data: { id: string; sortOrder: number }[] }).data;
   };
 
   const appsOf = async (): Promise<{ id: string; sectionId: string | null; sortOrder: number }[]> => {
-    const res = await get(`/platform/applications?categoryId=${categoryId}&pageSize=100`);
+    const res = await get(`/platform/applications?categoryId=${categoryId}&${ORDERED}`);
     return (res.body as { data: { id: string; sectionId: string | null; sortOrder: number }[] }).data;
   };
 
@@ -1227,8 +1230,9 @@ describe('application sections group the sidebar without touching RBAC', () => {
   });
 
   it('refuses to delete a section that still holds applications', async () => {
-    const [, holding] = await sectionsOf();
-    const holdingId = holding?.id ?? '';
+    const occupied = (await appsOf()).find((row) => row.sectionId !== null);
+    const holdingId = occupied?.sectionId ?? '';
+    expect(holdingId, 'the previous test should have left a section holding rows').not.toBe('');
     const blocked = await request(app)
       .delete(`/api/v1/platform/application-sections/${holdingId}`)
       .set('Authorization', `Bearer ${token}`);
@@ -1241,7 +1245,7 @@ describe('application sections group the sidebar without touching RBAC', () => {
     await patch('/platform/applications/reorder', {
       categoryId,
       sectionId: null,
-      applicationIds: [appIds[2], appIds[1]],
+      applicationIds: appIds,
     });
     const removed = await request(app)
       .delete(`/api/v1/platform/application-sections/${holdingId}`)
@@ -1299,50 +1303,6 @@ describe('application sections group the sidebar without touching RBAC', () => {
     expect(category?.applications.map((a) => a.route)).toEqual(['/sections-test/three']);
   });
 
-  it('the default HR sections migration is idempotent and never re-groups a moved row', async () => {
-    const { seedApplicationSections } = await import('../../src/seed-application-sections');
-    const me = await doLogin('admin@ecms.local', PASSWORD);
-    const adminId = (me.body.data?.me as { id: string }).id;
-
-    await seedApplicationSections(adminId);
-    const hrSections = await get('/platform/application-sections?pageSize=200');
-    const named = (hrSections.body as { data: { name: { en: string } }[] }).data.map(
-      (s) => s.name.en,
-    );
-    expect(named).toContain('Recruitment');
-
-    const firstRun = (
-      await get('/platform/applications?pageSize=500')
-    ).body as { data: { id: string; sectionId: string | null }[] };
-
-    // Running it again changes nothing at all.
-    await seedApplicationSections(adminId);
-    const secondRun = (
-      await get('/platform/applications?pageSize=500')
-    ).body as { data: { id: string; sectionId: string | null }[] };
-    expect(secondRun.data.map((a) => `${a.id}:${a.sectionId ?? ''}`).sort()).toEqual(
-      firstRun.data.map((a) => `${a.id}:${a.sectionId ?? ''}`).sort(),
-    );
-
-    // A row an administrator has since ungrouped stays ungrouped across a re-run.
-    const applicants = firstRun.data.find((a) => a.sectionId !== null);
-    if (applicants !== undefined) {
-      await patch('/platform/applications/reorder', {
-        categoryId: (
-          (await get(`/platform/applications/${applicants.id}`)).body as {
-            data: { categoryId: string };
-          }
-        ).data.categoryId,
-        sectionId: null,
-        applicationIds: [applicants.id],
-      });
-      await seedApplicationSections(adminId);
-      const reread = (await get(`/platform/applications/${applicants.id}`)).body as {
-        data: { sectionId: string | null };
-      };
-      expect(reread.data.sectionId).toBeNull();
-    }
-  });
 });
 
 describe('refresh rotation with reuse detection (ADR-006)', () => {

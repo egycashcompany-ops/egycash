@@ -9,7 +9,12 @@
 // What this screen is NOT: a calculation. No line, no total, no payslip, no tax. A run makes the
 // facts stand still; pricing them belongs to the phases that are given those rules.
 import { useState } from 'react';
-import { type Locale, type PayrollRunDto } from '@ecms/contracts';
+import {
+  type GeneratePayslipsResultDto,
+  type Locale,
+  type PayrollRunDto,
+  type PayslipDto,
+} from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../store';
 import { Can } from '../../../../platform/rbac/Can';
@@ -19,12 +24,14 @@ import { Dialog } from '../../../../shared/ui/Dialog';
 import { Field, Input } from '../../../../shared/ui/form';
 import { PlusIcon } from '../../../../shared/ui/icons';
 import { toast } from '../../../../shared/ui/toast/toast-store';
-import { formatDate, formatDateTime, formatNumber } from '../../../../shared/lib/format';
+import { formatDate, formatDateTime, formatMoney, formatNumber } from '../../../../shared/lib/format';
 import {
   useCancelPayrollRun,
   useCreatePayrollRun,
   useFreezePayrollRun,
+  useGeneratePayslips,
   usePayrollRuns,
+  useRunPayslips,
 } from '../api/payroll-queries';
 
 const PAGE_SIZE = 25;
@@ -48,6 +55,7 @@ export const PayrollRunsPage = (): JSX.Element => {
   const [adding, setAdding] = useState(false);
   const [freezing, setFreezing] = useState<PayrollRunDto | null>(null);
   const [cancelling, setCancelling] = useState<PayrollRunDto | null>(null);
+  const [slips, setSlips] = useState<PayrollRunDto | null>(null);
 
   const runs = usePayrollRuns({ page, pageSize: PAGE_SIZE, sortBy: 'period', sortDir: 'desc' });
 
@@ -103,8 +111,17 @@ export const PayrollRunsPage = (): JSX.Element => {
       key: 'actions',
       header: t('payroll.runs.actions'),
       render: (r) => (
-        <Can permission="payrollRun.manage" fallback={<span className="text-slate-300">—</span>}>
-          <span className="flex gap-2">
+        <span className="flex gap-2">
+          {/* Reading payslips is reading pay, so it is gated by the compensation key rather than
+              the run's — the same split the API applies. */}
+          {r.status === 'frozen' && (
+            <Can permission="employee.viewCompensation">
+              <Button size="sm" variant="secondary" onClick={() => setSlips(r)}>
+                {t('payroll.payslips.title')}
+              </Button>
+            </Can>
+          )}
+          <Can permission="payrollRun.manage" fallback={<span className="text-slate-300">—</span>}>
             {r.status === 'draft' && (
               <Button size="sm" onClick={() => setFreezing(r)}>
                 {t('payroll.runs.freeze')}
@@ -115,8 +132,8 @@ export const PayrollRunsPage = (): JSX.Element => {
                 {t('payroll.runs.cancel')}
               </Button>
             )}
-          </span>
-        </Can>
+          </Can>
+        </span>
       ),
     },
   ];
@@ -152,7 +169,136 @@ export const PayrollRunsPage = (): JSX.Element => {
       {adding && <NewRunDialog onClose={() => setAdding(false)} />}
       {freezing !== null && <FreezeDialog run={freezing} onClose={() => setFreezing(null)} />}
       {cancelling !== null && <CancelDialog run={cancelling} onClose={() => setCancelling(null)} />}
+      {slips !== null && <PayslipsDialog run={slips} onClose={() => setSlips(null)} />}
     </PageContainer>
+  );
+};
+
+/**
+ * The run's payslips, and the button that issues them (PY-7).
+ *
+ * Issuing is idempotent, so the button never destroys anything and the receipt says exactly what
+ * happened: how many were written, how many were already there, and — the part worth reading —
+ * who got none and why. An employee skipped for a missing salary is a thing somebody has to fix,
+ * not a number to bury in a total.
+ */
+const PayslipsDialog = ({ run, onClose }: { run: PayrollRunDto; onClose: () => void }): JSX.Element => {
+  const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  const [page, setPage] = useState(1);
+  const slips = useRunPayslips(run.id, { page, pageSize: PAGE_SIZE, sortBy: 'createdAt', sortDir: 'asc' });
+  const issue = useGeneratePayslips();
+  const [result, setResult] = useState<GeneratePayslipsResultDto | null>(null);
+
+  const columns: Column<PayslipDto>[] = [
+    {
+      key: 'employee',
+      header: t('payroll.payslips.employee'),
+      render: (s) => (
+        <span className="flex flex-col">
+          <span>{s.employee.fullNameAr}</span>
+          <span className="font-mono text-xs text-slate-400" dir="ltr">
+            {s.employee.code}
+          </span>
+        </span>
+      ),
+    },
+    {
+      key: 'earnings',
+      header: t('payroll.compensation.totalEarnings'),
+      align: 'end',
+      render: (s) => (
+        <span dir="ltr" className="tabular-nums">
+          {formatMoney(s.totalEarnings, s.currency, locale)}
+        </span>
+      ),
+    },
+    {
+      key: 'deductions',
+      header: t('payroll.compensation.totalDeductions'),
+      align: 'end',
+      render: (s) => (
+        <span dir="ltr" className="tabular-nums">
+          {formatMoney(s.totalDeductions, s.currency, locale)}
+        </span>
+      ),
+    },
+    {
+      key: 'net',
+      header: t('payroll.compensation.net'),
+      align: 'end',
+      render: (s) => (
+        <span dir="ltr" className="tabular-nums font-semibold">
+          {formatMoney(s.net, s.currency, locale)}
+        </span>
+      ),
+    },
+  ];
+
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={t('payroll.payslips.forPeriod', { period: run.period })}
+      footer={
+        <div className="flex justify-between gap-2">
+          <Can permission="payrollRun.manage">
+            <Button
+              loading={issue.isPending}
+              onClick={() =>
+                issue.mutate(run.id, {
+                  onSuccess: (data) => {
+                    setResult(data);
+                    toast.success(t('payroll.payslips.issued', { count: formatNumber(data.created, locale) }));
+                  },
+                })
+              }
+            >
+              {t('payroll.payslips.issue')}
+            </Button>
+          </Can>
+          <Button variant="secondary" onClick={onClose}>
+            {t('common.close')}
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-3">
+        <p className="text-sm text-slate-500">{t('payroll.payslips.hint')}</p>
+
+        {result !== null && (
+          <div
+            role="status"
+            className="space-y-1 rounded border border-slate-200 px-3 py-2 text-xs text-slate-500 dark:border-slate-700"
+          >
+            <p>
+              {t('payroll.payslips.receipt', {
+                considered: formatNumber(result.considered, locale),
+                created: formatNumber(result.created, locale),
+                existing: formatNumber(result.existing, locale),
+              })}
+            </p>
+            {result.skipped.map((row) => (
+              <p key={row.employeeId} dir="ltr" className="font-mono">
+                {`${row.employeeId} — ${t(`payroll.payslips.skip.${row.reason}`)}`}
+              </p>
+            ))}
+          </div>
+        )}
+
+        <DataTable
+          columns={columns}
+          rows={slips.data?.items ?? []}
+          rowKey={(s) => s.id}
+          loading={slips.isLoading}
+          error={slips.isError ? slips.error : undefined}
+          onRetry={() => void slips.refetch()}
+          empty={<EmptyState title={t('payroll.payslips.empty')} />}
+        />
+        {slips.data !== undefined && <Pagination meta={slips.data.meta} onPageChange={setPage} />}
+        <MutationError error={issue.error} />
+      </div>
+    </Dialog>
   );
 };
 

@@ -158,6 +158,18 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
       .exec();
   }
 
+  /**
+   * Everyone non-deleted, INCLUDING the exited — the payroll batch's population (PY-7).
+   *
+   * Deliberately NOT `listEmployedSystem` below: that one means "employed right now", and someone
+   * who left on the 10th still worked ten days of the month and is owed for them. Who actually
+   * qualifies for a given period is decided by the caller from the employment spans, which is the
+   * same reading the calculation clips by — so the batch and the arithmetic cannot disagree.
+   */
+  async listAllSystem(): Promise<EmployeeDoc[]> {
+    return this.model.find({ isDeleted: false }).lean<EmployeeDoc[]>().exec();
+  }
+
   /** Every employed employee (probation/active/onLeave/suspended) — leave grants iterate this. */
   async listEmployedSystem(): Promise<EmployeeDoc[]> {
     return this.model

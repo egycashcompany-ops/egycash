@@ -590,3 +590,135 @@ export interface LeavePaidBreakdown {
   days: number;
   payRate: number;
 }
+
+// ── Payslips (PY-7) ─────────────────────────────────────────────────────────
+//
+// WHAT A PAYSLIP IS, AND WHY IT STORES RATHER THAN PROJECTS.
+//
+// A payslip is one employee's pay for one run, WRITTEN DOWN. Not a view of today's data — a copy
+// of the figures as they stood the moment it was issued. That is not a preference; it is forced
+// by what the compensation calculation actually reads. Two of its inputs are frozen by the run
+// (attendance rows, the leave snapshot) and three are NOT:
+//
+//   • `employment.salary` is a single current value that a `salaryChange` action OVERWRITES —
+//     there is no dated salary history on the employee, so a raise recorded in June silently
+//     restates what May's calculation returns.
+//   • a pay-item assignment may be created with a backdated `effectiveFrom`, including into a
+//     period whose run is already frozen; nothing refuses it.
+//   • a catalog item's display name is editable, and a line copies that name when it is priced.
+//
+// So re-reading a frozen period does NOT reliably reproduce the same figures, and a payslip that
+// recomputed on every view would restate a document somebody was already paid against. It stores
+// its lines instead, and the run it names is the version of the truth behind them.
+//
+// WHAT IT STILL IS NOT. No tax, no contribution, no bank file, no signature and no `gross`: the
+// basic salary is not a line in this system, so a "total pay before deductions" would be either
+// `totalEarnings` under another name or a figure combining basic and earnings that no rule here
+// grants. `net` is earnings minus deductions, exactly as everywhere else in this module.
+//
+// AND IT IS NEVER PARTIAL. A line with no figure — an unpriced quantity, an unsettled leave —
+// keeps the payslip from being issued at all rather than appearing on it as a blank. A payslip
+// with a hole is not a payslip, so `deferred` has no place on this DTO: an employee whose
+// calculation is not complete is REPORTED as skipped, with the reason.
+
+/**
+ * Why an employee in a run got no payslip.
+ *
+ * Every one of these is a state the calculation can legitimately be in, so a batch reports them
+ * and carries on rather than failing whole. What none of them is, is a payslip: an issued
+ * document with a missing figure would be worse than an absent one.
+ */
+export const PAYSLIP_SKIP_REASONS = [
+  /** No basic salary recorded — a percentage of nothing cannot be priced (PY-3 refuses it). */
+  'noBasicSalary',
+  /** A line has no figure yet: an unpriced quantity or unpinned leave (PY-4 / PY-5). */
+  'pendingLine',
+  /** Nothing was in force this period — no earning, no deduction, nothing to state. */
+  'noLines',
+  /** An assignment in another currency than the salary; PY-3 refuses to mix them. */
+  'mixedCurrency',
+] as const;
+export type PayslipSkipReason = (typeof PAYSLIP_SKIP_REASONS)[number];
+
+/**
+ * Who the payslip was for, as they were WHEN IT WAS ISSUED.
+ *
+ * Copied rather than joined, for the same reason the lines are: a payslip is handed to a person
+ * and kept, and a transfer next month must not silently retitle a document that was already
+ * delivered. Deliberately minimal — identity and role, nothing else.
+ */
+export interface PayslipEmployeeDto {
+  code: string;
+  fullNameAr: string;
+  fullNameEn: string | null;
+  jobTitle: { ar: string; en: string } | null;
+}
+
+export interface PayslipDto {
+  id: string;
+  /** The frozen run these figures were priced against — the version of the truth behind them. */
+  runId: string;
+  period: string;
+  /** `YYYY-MM-DD` bounds of the period, inclusive. */
+  from: string;
+  to: string;
+  employeeId: string;
+  employee: PayslipEmployeeDto;
+  /** The one currency the whole document is in — the basic salary's. */
+  currency: string;
+  basicSalary: number;
+  employmentDaysInPeriod: number;
+  daysInPeriod: number;
+  /** The lines exactly as they were priced, each still carrying its own derivation. */
+  earnings: CompensationLineDto[];
+  deductions: CompensationLineDto[];
+  /** The leave facts behind any leave line — days and rates, never money. */
+  leave: LeavePayFactsDto | null;
+  totalEarningsMinor: number;
+  totalEarnings: number;
+  totalDeductionsMinor: number;
+  totalDeductions: number;
+  /** Earnings minus deductions. NOT take-home pay: no tax or contribution exists yet. */
+  netMinor: number;
+  net: number;
+  warnings: CompensationWarning[];
+  issuedAt: string;
+  issuedBy: string;
+  createdAt: string;
+}
+
+/**
+ * Issuing a run's payslips takes NOTHING.
+ *
+ * Not a figure, not an employee list, not a rate: who is covered follows from the period (everyone
+ * employed for any part of it) and what each is owed follows from the run's frozen facts. A body
+ * that could name either would be a second way to answer a question the run already answers.
+ */
+export const GeneratePayslipsSchema = z.object({}).strict();
+export type GeneratePayslips = z.infer<typeof GeneratePayslipsSchema>;
+
+/**
+ * What one issuing pass did.
+ *
+ * `existing` is not an error and not a write: issuing is idempotent, so a repeated pass reports
+ * what was already there rather than restating it with today's numbers. That is the whole reason
+ * a payslip stores its lines, applied to its own re-run.
+ */
+export interface GeneratePayslipsResultDto {
+  runId: string;
+  period: string;
+  /** Employees employed for any part of the period — the batch's whole population. */
+  considered: number;
+  created: number;
+  existing: number;
+  skipped: { employeeId: string; reason: PayslipSkipReason }[];
+}
+
+export const ListPayslipsQuerySchema = PaginationQuerySchema.extend({
+  employeeId: objectId().optional(),
+  period: z
+    .string()
+    .regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'a period is YYYY-MM')
+    .optional(),
+}).strict();
+export type ListPayslipsQuery = z.infer<typeof ListPayslipsQuerySchema>;

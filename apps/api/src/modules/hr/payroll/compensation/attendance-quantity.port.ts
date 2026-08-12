@@ -29,7 +29,20 @@ export const attendanceQuantityPort: AttendanceQuantityPort = {
   async frozenFor(period, employeeId) {
     try {
       const rows = await dayRecordService.readFrozenFeed(period, employeeId);
-      return { rows, frozenAt: rows[0]?.frozenAt ?? null };
+      if (rows.length > 0) return { rows, frozenAt: rows[0]?.frozenAt ?? null };
+
+      // An empty result is AMBIGUOUS, and getting this wrong prices a month nobody has looked at.
+      //
+      // The reader's completeness test is "this period holds no UNFROZEN row", which a period
+      // nobody has ever computed passes vacuously — an untouched future month reads exactly like
+      // a frozen one. So before calling it frozen, ask whether the period holds any frozen row at
+      // all. Only then is an employee's empty set a real zero rather than an unasked question.
+      //
+      // The unfiltered read is the expensive branch and it runs only when this employee has no
+      // rows, which is either an unfrozen period (cheap — there is nothing to return) or the rare
+      // case of someone with no attendance in a frozen one.
+      const anyRow = await dayRecordService.readFrozenFeed(period);
+      return anyRow.length === 0 ? null : { rows: [], frozenAt: anyRow[0]?.frozenAt ?? null };
     } catch (error) {
       // ONLY the reader's own refusal means "not knowable yet" — a period still holding fluid
       // rows. Anything else (a dropped connection, a bug) must keep travelling: swallowing it

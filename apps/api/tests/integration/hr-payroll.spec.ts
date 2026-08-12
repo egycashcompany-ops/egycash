@@ -184,12 +184,16 @@ describe('the pay-item catalog', () => {
   });
 
   it('filters by kind and searches by code or name', async () => {
-    await post({
+    const late = await post({
       code: 'LATE_DEDUCTION',
       name: { ar: 'خصم تأخير', en: 'Late deduction' },
       kind: 'deduction',
       calcBasis: 'perMinute',
+      // PY-4 made this mandatory for a per-minute item, and asserting the 201 here is what would
+      // have said so directly instead of leaving the search below to fail on an absence.
+      quantitySource: 'lateMinutes',
     });
+    expect(late.status, JSON.stringify(late.body)).toBe(201);
 
     const earnings = await get('?kind=earning&status=active');
     expect(earnings.status).toBe(200);
@@ -1013,6 +1017,27 @@ describe('attendance quantities', () => {
     // Hired on the 20th: their assignment starts on their hire date, because D3 refuses an
     // interval that reaches back before employment.
     lateJoinerId = await regEmployee('2026-03-20T00:00:00.000Z');
+
+    // The derivation answers `dayOff` for an employee with no shift and `absent` only for one who
+    // had a shift and did not punch — so an absence quantity needs a shift assignment to exist at
+    // all. This is what makes the frozen March below contain real absences to count.
+    const shifts = await request(app)
+      .get('/api/v1/hr/attendance/shifts')
+      .set('Authorization', `Bearer ${adminToken}`);
+    const general = (shifts.body.data as { id: string; code: string }[]).find(
+      (sh) => sh.code === 'GENERAL',
+    );
+    expect(general, 'the seeded GENERAL shift').toBeDefined();
+    for (const [id, from] of [
+      [employeeId, '2024-01-01'],
+      [lateJoinerId, '2026-03-20'],
+    ] as const) {
+      const assigned = await request(app)
+        .post('/api/v1/hr/attendance/assignments')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ employeeId: id, shiftId: general?.id, fromDate: from });
+      expect(assigned.status, JSON.stringify(assigned.body)).toBe(201);
+    }
 
     for (const [id, from] of [
       [employeeId, '2026-03-01'],

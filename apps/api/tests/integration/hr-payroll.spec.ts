@@ -14,6 +14,8 @@ import {
   type CompensationEffectsDto,
   type EmployeePayItemDto,
   type PayItemDto,
+  type PayrollLeaveSnapshotDto,
+  type PayrollRunDto,
 } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { buildApp } from '../../src/app';
@@ -237,10 +239,19 @@ describe('the pay-item catalog', () => {
     }
   });
 
-  // PY-1 ships no run, no payslip and no statutory endpoint. Asserting the absence is what keeps
-  // "taxes are out of v1" a decision rather than an oversight somebody fills in quietly.
-  it('exposes no run, payslip or statutory surface yet', async () => {
-    for (const path of ['/hr/payroll/runs', '/hr/payroll/payslips', '/hr/payroll/tax-rules']) {
+  // PY-6 ships the run — the period and the moment its facts stopped moving — and nothing more.
+  // No payslip, no statutory endpoint, and no calculation hanging off a run. Asserting the
+  // absence is what keeps "taxes are out of v1" a decision rather than an oversight somebody
+  // fills in quietly. The run subpaths use a well-formed id so a 404 means "no such route",
+  // not "no such object".
+  it('exposes no payslip, statutory or run-calculation surface yet', async () => {
+    const anyId = '000000000000000000000001';
+    for (const path of [
+      '/hr/payroll/payslips',
+      '/hr/payroll/tax-rules',
+      `/hr/payroll/runs/${anyId}/lines`,
+      `/hr/payroll/runs/${anyId}/payslips`,
+    ]) {
       const res = await request(app)
         .get(`/api/v1${path}`)
         .set('Authorization', `Bearer ${adminToken}`);
@@ -912,6 +923,7 @@ describe('attendance quantities', () => {
   let BRANCH = '';
   let DEPARTMENT_ID = '';
   let JOB_TITLE_ID = '';
+  // Shared with the payroll-run block below, which needs an employee in a real branch.
   let absenceItem: PayItemDto;
   let attendanceItem: PayItemDto;
   let employeeId = '';
@@ -993,6 +1005,9 @@ describe('attendance quantities', () => {
       name: { ar: 'مشغّل', en: 'Operator' },
       jobGrade: 'G7',
     });
+    BRANCH_PY4 = BRANCH;
+    DEPARTMENT_ID_PY4 = DEPARTMENT_ID;
+    JOB_TITLE_ID_PY4 = JOB_TITLE_ID;
 
     absenceItem = (
       await post({
@@ -1166,5 +1181,189 @@ describe('attendance quantities', () => {
       version: absenceItem.version,
     });
     expect(refused.status).toBe(400);
+  });
+});
+
+// Org fixtures the quantities block creates, reused by the run block below rather than made twice.
+let BRANCH_PY4 = '';
+let DEPARTMENT_ID_PY4 = '';
+let JOB_TITLE_ID_PY4 = '';
+
+// ── PY-6 — the payroll run ──────────────────────────────────────────────────
+//
+// The allocation arithmetic is exercised without a database in `leave-allocation.spec.ts`. What
+// has to hold HERE is the orchestration: the three refusals before anything is written, the order
+// that makes the freeze atomic from the contract's point of view, and the fact that a cancel moves
+// the run and nothing else.
+describe('payroll runs', () => {
+  const PERIOD = '2026-04'; // a different month from PY-4's, so the two blocks cannot collide
+  let runId = '';
+  let runVersion = 0;
+
+  const runs = (query = '', token = adminToken) =>
+    request(app).get(`/api/v1/hr/payroll/runs${query}`).set('Authorization', `Bearer ${token}`);
+  const createRun = (body: object, token = adminToken) =>
+    request(app).post('/api/v1/hr/payroll/runs').set('Authorization', `Bearer ${token}`).send(body);
+  const act = (id: string, what: 'freeze' | 'cancel', body: object, token = adminToken) =>
+    request(app)
+      .post(`/api/v1/hr/payroll/runs/${id}/${what}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send(body);
+
+  it('starts a run for a period that has ended', async () => {
+    const created = await createRun({ period: PERIOD });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const run = created.body.data as PayrollRunDto;
+    runId = run.id;
+    runVersion = run.version;
+    expect(run.status).toBe('draft');
+    expect(run.from).toBe('2026-04-01');
+    expect(run.to).toBe('2026-04-30');
+    expect(run.frozenAt).toBeNull();
+    // A run pins facts and prices nothing — no figure may appear on it.
+    for (const forbidden of ['total', 'net', 'tax', 'insurance', 'lines']) {
+      expect(run, forbidden).not.toHaveProperty(forbidden);
+    }
+  });
+
+  it('refuses a second live run for the same period', async () => {
+    const clash = await createRun({ period: PERIOD });
+    expect(clash.status).toBe(409);
+  });
+
+  it('refuses to freeze a period that has not ended yet', async () => {
+    const future = `${String(new Date().getUTCFullYear() + 1)}-06`;
+    const created = await createRun({ period: future });
+    expect(created.status).toBe(201);
+    const run = created.body.data as PayrollRunDto;
+    const refused = await act(run.id, 'freeze', { version: run.version });
+    expect(refused.status).toBe(422);
+
+    // …and it is still a draft, because nothing is written until every check passes.
+    const reread = await request(app)
+      .get(`/api/v1/hr/payroll/runs/${run.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect((reread.body.data as PayrollRunDto).status).toBe('draft');
+  });
+
+  it('freezes the period, and reports what it pinned', async () => {
+    const frozen = await act(runId, 'freeze', { version: runVersion });
+    expect(frozen.status, JSON.stringify(frozen.body)).toBe(200);
+    const run = frozen.body.data as PayrollRunDto;
+    expect(run.status).toBe('frozen');
+    expect(run.frozenAt).not.toBeNull();
+    expect(run.frozenBy).not.toBeNull();
+    // The receipt: April had no frozen rows before this, so the freeze stamped some.
+    expect(run.attendanceFrozenRows).toBeGreaterThan(0);
+    runVersion = run.version;
+  }, 180_000);
+
+  // The step-4-is-the-commit-point property: a second freeze finds everything already frozen.
+  it('refuses to freeze an already frozen run', async () => {
+    const again = await act(runId, 'freeze', { version: runVersion });
+    expect(again.status).toBe(422);
+  });
+
+  it('exposes the leave snapshot the run pinned', async () => {
+    const snapshot = await request(app)
+      .get(`/api/v1/hr/payroll/runs/${runId}/leave`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(snapshot.status).toBe(200);
+    // Every row must name where it came from and how its split was derived.
+    for (const row of snapshot.body.data as PayrollLeaveSnapshotDto[]) {
+      expect(row.ledgerEntryId).toBeTruthy();
+      expect(['whole', 'chronological']).toContain(row.allocation);
+      expect(row.period).toBe(PERIOD);
+    }
+  });
+
+  // PY-4's quantities now read a really frozen month, through the run rather than by accident.
+  it('makes the frozen period priceable — the whole point of the phase', async () => {
+    const employee = await request(app)
+      .post('/api/v1/hr/employees/direct')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        personal: {
+          identity: {
+            fullNameAr: 'موظف الدورة',
+            // Governorate `11` (Damietta) — `05` is not an issued code and the API refuses it.
+            nationalId: '29001011190010',
+            nationality: 'Egyptian',
+          },
+          contact: { primaryPhone: '01173000001' },
+          experience: [],
+          drivingLicenses: [],
+          certifications: [],
+          references: [],
+        },
+        employment: {
+          jobTitleId: JOB_TITLE_ID_PY4,
+          departmentId: DEPARTMENT_ID_PY4,
+          branchId: BRANCH_PY4,
+          employmentType: 'fullTime',
+          probationMonths: 0,
+          startDate: '2024-01-01T00:00:00.000Z',
+          salary: { amount: 9000, currency: 'EGP' },
+        },
+        hiringDate: '2024-01-01T00:00:00.000Z',
+        entryStatus: 'active',
+      });
+    expect(employee.status).toBe(201);
+    const employeeId = (employee.body as { data: { id: string } }).data.id;
+
+    const effects = await request(app)
+      .get(`/api/v1/hr/employees/${employeeId}/compensation?period=${PERIOD}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(effects.status).toBe(200);
+    // Frozen, so the calculation answers rather than deferring — even with nothing assigned.
+    expect((effects.body.data as CompensationEffectsDto).period).toBe(PERIOD);
+  });
+
+  // D4 — the cancel moves the RUN and nothing else.
+  it('cancels a frozen run without unfreezing anything', async () => {
+    const snapshotBefore = await request(app)
+      .get(`/api/v1/hr/payroll/runs/${runId}/leave`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    const cancelled = await act(runId, 'cancel', {
+      reason: 'wrong month chosen',
+      version: runVersion,
+    });
+    expect(cancelled.status).toBe(200);
+    const run = cancelled.body.data as PayrollRunDto;
+    expect(run.status).toBe('cancelled');
+    expect(run.cancelReason).toBe('wrong month chosen');
+    // The freeze stamp and the receipt survive: the period IS still frozen.
+    expect(run.frozenAt).not.toBeNull();
+    expect(run.attendanceFrozenRows).toBeGreaterThan(0);
+
+    const snapshotAfter = await request(app)
+      .get(`/api/v1/hr/payroll/runs/${runId}/leave`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(snapshotAfter.body.data).toEqual(snapshotBefore.body.data);
+  });
+
+  // …and the period is free again, which is exactly what "recalculate with a new run" means.
+  it('lets a NEW run be started for a period whose run was cancelled', async () => {
+    const again = await createRun({ period: PERIOD });
+    expect(again.status).toBe(201);
+    expect((again.body.data as PayrollRunDto).status).toBe('draft');
+  });
+
+  it('filters the list by status and by period', async () => {
+    const byPeriod = await runs(`?period=${PERIOD}`);
+    expect(byPeriod.status).toBe(200);
+    expect((byPeriod.body.data as PayrollRunDto[]).every((r) => r.period === PERIOD)).toBe(true);
+    const cancelledOnly = await runs('?status=cancelled');
+    expect((cancelledOnly.body.data as PayrollRunDto[]).every((r) => r.status === 'cancelled')).toBe(
+      true,
+    );
+  });
+
+  it('separates seeing a run from freezing one', async () => {
+    // The outsider holds neither key.
+    expect((await runs('', outsiderToken)).status).toBe(403);
+    expect((await createRun({ period: '2026-01' }, outsiderToken)).status).toBe(403);
+    expect((await act(runId, 'freeze', { version: 0 }, outsiderToken)).status).toBe(403);
   });
 });

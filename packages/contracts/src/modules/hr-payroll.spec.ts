@@ -9,6 +9,11 @@ import { ATTENDANCE_FEED_FIELDS } from './hr-attendance';
 import {
   CALC_BASIS_UNITS,
   COMPENSATION_LINE_STATES,
+  CancelPayrollRunSchema,
+  CreatePayrollRunSchema,
+  FreezePayrollRunSchema,
+  PAYROLL_LEAVE_ALLOCATIONS,
+  PAYROLL_RUN_STATUSES,
   COMPENSATION_WARNINGS,
   CompensationQuerySchema,
   CreateEmployeePayItemSchema,
@@ -311,5 +316,56 @@ describe('creating a pay item with a quantity', () => {
     expect(
       UpdatePayItemSchema.safeParse({ quantitySource: 'absentDays', version: 0 }).success,
     ).toBe(false);
+  });
+});
+
+// ── Payroll runs (PY-6) ─────────────────────────────────────────────────────
+
+describe('the payroll run vocabulary', () => {
+  it('pins the three statuses by name — and there is no unfreeze among them', () => {
+    expect([...PAYROLL_RUN_STATUSES]).toEqual(['draft', 'frozen', 'cancelled']);
+    expect([...PAYROLL_RUN_STATUSES]).not.toContain('unfrozen');
+    expect([...PAYROLL_RUN_STATUSES]).not.toContain('freezing');
+  });
+
+  it('pins the two ways a snapshot slice can have been derived', () => {
+    expect([...PAYROLL_LEAVE_ALLOCATIONS]).toEqual(['whole', 'chronological']);
+  });
+
+  it('accepts a period and refuses anything that is not YYYY-MM', () => {
+    expect(CreatePayrollRunSchema.safeParse({ period: '2026-03' }).success).toBe(true);
+    for (const period of ['2026-3', '2026-13', '2026', '2026-03-01', 'March']) {
+      expect(CreatePayrollRunSchema.safeParse({ period }).success, period).toBe(false);
+    }
+  });
+
+  // Freezing is irreversible, so the request that triggers it carries a version: acting on a run
+  // somebody else already moved must fail rather than freeze a period twice over.
+  it('requires a version to freeze or cancel', () => {
+    expect(FreezePayrollRunSchema.safeParse({ version: 0 }).success).toBe(true);
+    expect(FreezePayrollRunSchema.safeParse({}).success).toBe(false);
+    expect(CancelPayrollRunSchema.safeParse({ reason: 'wrong month', version: 1 }).success).toBe(true);
+    expect(CancelPayrollRunSchema.safeParse({ version: 1 }).success).toBe(false);
+  });
+
+  it('requires a real reason to cancel', () => {
+    expect(CancelPayrollRunSchema.safeParse({ reason: 'x', version: 0 }).success).toBe(false);
+    expect(CancelPayrollRunSchema.safeParse({ reason: '   ', version: 0 }).success).toBe(false);
+  });
+
+  // A run pins facts; it prices nothing. The moment it grows a total it has become a payslip.
+  it('takes no figure, no rate and no statutory parameter', () => {
+    for (const extra of [
+      { total: 1000 },
+      { net: 1000 },
+      { tax: 0 },
+      { insurance: true },
+      { employeeIds: [] },
+    ]) {
+      expect(
+        CreatePayrollRunSchema.safeParse({ period: '2026-03', ...extra }).success,
+        Object.keys(extra)[0],
+      ).toBe(false);
+    }
   });
 });

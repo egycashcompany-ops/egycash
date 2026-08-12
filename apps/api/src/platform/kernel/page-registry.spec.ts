@@ -22,21 +22,21 @@ describe('the assembled page registry', () => {
     expect(validatePageRegistry(pages, permissions)).toEqual([]);
   });
 
-  it('declares 55 pages over 217 permissions', () => {
-    expect(pages).toHaveLength(55);
-    expect(permissions).toHaveLength(217);
+  it('declares 56 pages over 219 permissions', () => {
+    expect(pages).toHaveLength(56);
+    expect(permissions).toHaveLength(219);
   });
 
-  it('assigns 192 permissions to a page and leaves 25 deliberately unassigned', () => {
+  it('assigns 194 permissions to a page and leaves 25 deliberately unassigned', () => {
     const assigned = permissions.filter((p) => p.pageId !== null);
-    expect(assigned).toHaveLength(192);
+    expect(assigned).toHaveLength(194);
     expect(permissions.length - assigned.length).toBe(25);
   });
 
   it('splits the pages across the four modules as declared', () => {
     const byModule = new Map<string, number>();
     for (const page of pages) byModule.set(page.moduleId, (byModule.get(page.moduleId) ?? 0) + 1);
-    expect(Object.fromEntries(byModule)).toEqual({ platform: 15, hr: 21, fleet: 10, it: 9 });
+    expect(Object.fromEntries(byModule)).toEqual({ platform: 15, hr: 22, fleet: 10, it: 9 });
   });
 
   // Named rather than counted, because "which permissions have no home" is the question a reviewer

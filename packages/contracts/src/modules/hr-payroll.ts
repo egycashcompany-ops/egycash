@@ -389,3 +389,118 @@ export interface CompensationEffectsDto {
   net: number;
   warnings: CompensationWarning[];
 }
+
+// ── Payroll runs (PY-6) ─────────────────────────────────────────────────────
+//
+// WHAT A RUN IS. One payroll period, and the moment its facts stopped moving. It is the ONLY
+// thing in this system that calls the attendance freeze, and the only place a leave consumption
+// is pinned to a period. Everything downstream prices against a run's frozen facts rather than
+// against today's data.
+//
+// WHAT A RUN IS NOT. It calculates nothing and stores no figure. No line, no total, no payslip,
+// no tax, no contribution. Those arrive with the phases that are given them; a run's whole job is
+// to make sure the numbers they will use cannot change underneath them.
+//
+// THERE IS NO UNFREEZE, here or anywhere. Cancelling a run changes the RUN's status and nothing
+// else: frozen attendance rows stay frozen, the leave snapshot is left exactly as written, and a
+// later recalculation happens through a NEW run rather than by editing a cancelled one.
+
+export const PAYROLL_RUN_STATUSES = ['draft', 'frozen', 'cancelled'] as const;
+export const PayrollRunStatusSchema = z.enum(PAYROLL_RUN_STATUSES);
+export type PayrollRunStatus = z.infer<typeof PayrollRunStatusSchema>;
+
+/**
+ * How a snapshot row's pay split was arrived at — recorded per row so the derivation is visible
+ * rather than dissolved into a number.
+ *
+ *   • `whole`         — the ledger entry lies entirely inside the period, so its own breakdown was
+ *                       copied verbatim. No judgement was exercised at all, and this is the
+ *                       majority case.
+ *   • `chronological` — the entry straddles the period boundary, so the tiers were laid over the
+ *                       days in date order. That order is what the tier model already means (the
+ *                       first days consumed fill the first tier), but it is an inference, so every
+ *                       row that relied on it says so.
+ */
+export const PAYROLL_LEAVE_ALLOCATIONS = ['whole', 'chronological'] as const;
+export const PayrollLeaveAllocationSchema = z.enum(PAYROLL_LEAVE_ALLOCATIONS);
+export type PayrollLeaveAllocation = z.infer<typeof PayrollLeaveAllocationSchema>;
+
+export const CreatePayrollRunSchema = z
+  .object({
+    period: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'a period is YYYY-MM'),
+    note: z.string().max(500).optional(),
+  })
+  .strict();
+export type CreatePayrollRun = z.infer<typeof CreatePayrollRunSchema>;
+
+export const FreezePayrollRunSchema = z.object({ version: z.number().int().min(0) }).strict();
+export type FreezePayrollRun = z.infer<typeof FreezePayrollRunSchema>;
+
+export const CancelPayrollRunSchema = z
+  .object({ reason: z.string().trim().min(3).max(500), version: z.number().int().min(0) })
+  .strict();
+export type CancelPayrollRun = z.infer<typeof CancelPayrollRunSchema>;
+
+export const ListPayrollRunsQuerySchema = PaginationQuerySchema.extend({
+  status: PayrollRunStatusSchema.optional(),
+  period: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).optional(),
+}).strict();
+export type ListPayrollRunsQuery = z.infer<typeof ListPayrollRunsQuerySchema>;
+
+export interface PayrollRunDto {
+  id: string;
+  period: string;
+  /** `YYYY-MM-DD` bounds of the period, inclusive. */
+  from: string;
+  to: string;
+  status: PayrollRunStatus;
+  frozenAt: string | null;
+  frozenBy: string | null;
+  /** What the attendance freeze reported — which version of the truth this run pinned. */
+  attendanceFrozenRows: number;
+  attendanceComputedRows: number;
+  leaveSnapshotRows: number;
+  cancelledAt: string | null;
+  cancelledBy: string | null;
+  cancelReason: string | null;
+  note: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * One leave consumption as this run pinned it: the slice inside the period, and that slice's own
+ * pay split. Payroll reads THIS, never the live ledger — a request can complete, be cancelled or
+ * return early after a period is priced, and the ledger would answer differently tomorrow.
+ */
+export interface PayrollLeaveSnapshotDto {
+  id: string;
+  runId: string;
+  period: string;
+  employeeId: string;
+  /** Provenance: the ledger entry this row pinned, and the request and type behind it. */
+  ledgerEntryId: string;
+  requestId: string | null;
+  typeId: string;
+  typeCode: string;
+  /** The slice INSIDE this period, inclusive; `days` counts it in half-day steps. */
+  from: string;
+  to: string;
+  days: number;
+  breakdown: LeavePaidBreakdown[];
+  allocation: PayrollLeaveAllocation;
+  snapshotAt: string;
+}
+
+/**
+ * The pay split of consumed leave days, as Leave snapshotted it (R7): `payRate` is a percentage.
+ *
+ * Restated here rather than imported so the payroll contract can be read on its own — the shape is
+ * Leave's and this module never writes it. WHAT the percentage applies to is not decided here and
+ * is not decided by PY-6 at all: pricing a leave day arrives with PY-5.
+ */
+export interface LeavePaidBreakdown {
+  days: number;
+  payRate: number;
+}

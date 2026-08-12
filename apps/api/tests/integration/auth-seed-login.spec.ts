@@ -175,8 +175,9 @@ describe('seed → password login (regression)', () => {
     expect(routes).toContain('/attendance/daily');
     expect(routes).toContain('/attendance/regularizations');
     expect(routes).toContain('/payroll/pay-items');
+    expect(routes).toContain('/payroll/runs');
     // 19 (HR) + 12 (Fleet) + 6 (Organization) + 13 (IT) + 9 (Administration)
-    expect(routes).toHaveLength(59);
+    expect(routes).toHaveLength(60);
   });
 
   it('re-running the seed is idempotent — no duplicate categories/applications/grants', async () => {
@@ -198,7 +199,7 @@ describe('seed → password login (regression)', () => {
         (n, g) => n + g.applications.length + g.sections.reduce((m, s) => m + s.applications.length, 0),
         0,
       ),
-    ).toBe(59);
+    ).toBe(60);
   });
 
   it('the seeded HR user also logs in with email/password', async () => {

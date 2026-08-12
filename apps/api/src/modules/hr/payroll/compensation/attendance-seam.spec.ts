@@ -1,4 +1,4 @@
-// The wall between Payroll and Attendance, asserted over the source (PY-4).
+// The wall between Payroll and Attendance, asserted over the source (PY-4, widened once in PY-6).
 //
 // The lint rule makes crossing it a build error; this makes crossing it a FAILING TEST, with a
 // message that says why. Two guards rather than one because they fail differently: a lint rule
@@ -15,6 +15,15 @@ import { describe, expect, it } from 'vitest';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PAYROLL = resolve(HERE, '..');
 const PORT = 'attendance-quantity.port.ts';
+
+/**
+ * The wall has exactly TWO doors, and they are named here so adding a third fails.
+ *
+ *   • the read port (PY-4) — prices a period from the frozen feed;
+ *   • the freeze port (PY-6) — the payroll run's call to `freezePeriod()`, which the attendance
+ *     design named as its only production caller.
+ */
+const DOORS = [`compensation/${PORT}`, 'runs/attendance-freeze.port.ts'];
 
 const sources = (dir: string): string[] =>
   readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -41,13 +50,11 @@ describe('Payroll reaches Attendance through exactly one door', () => {
     expect(payrollFiles.length).toBeGreaterThan(10);
   });
 
-  it('imports attendance from the port file and nowhere else', () => {
+  it('imports attendance from the two port files and nowhere else', () => {
     const importers = payrollFiles.filter((file) =>
       /from '[^']*\/attendance(\/[^']*)?'/.test(code(file)),
     );
-    expect(importers.map((f) => f.slice(PAYROLL.length + 1))).toEqual([
-      `compensation/${PORT}`,
-    ]);
+    expect(importers.map((f) => f.slice(PAYROLL.length + 1)).sort()).toEqual([...DOORS].sort());
   });
 
   it('never names the day model, the collection or the punches', () => {
@@ -67,12 +74,11 @@ describe('Payroll reaches Attendance through exactly one door', () => {
     }
   });
 
-  // Freezing is a decision the payroll RUN makes when it starts calculating (PY-6). PY-4 reads a
-  // frozen period and never creates one — which is why it ships ready and dark.
-  it('never calls freezePeriod — PY-4 reads, PY-6 will freeze', () => {
-    for (const file of payrollFiles) {
-      expect(code(file), file).not.toMatch(/freezePeriod\s*\(/);
-    }
+  // Freezing is irreversible, so it keeps exactly one caller — the run's port. Pricing never
+  // freezes: a calculation that could stamp a month by accident would be a different program.
+  it('calls freezePeriod from the freeze port alone', () => {
+    const callers = payrollFiles.filter((file) => /freezePeriod\s*\(/.test(code(file)));
+    expect(callers.map((f) => f.slice(PAYROLL.length + 1))).toEqual(['runs/attendance-freeze.port.ts']);
   });
 
   it('uses only the one reader, and only inside the port', () => {
@@ -83,8 +89,10 @@ describe('Payroll reaches Attendance through exactly one door', () => {
     expect(others).toEqual([]);
   });
 
-  it('keeps the port small enough to review in one sitting', () => {
-    const lines = readFileSync(resolve(HERE, PORT), 'utf8').split('\n').length;
-    expect(lines).toBeLessThan(60);
+  it('keeps both doors small enough to review in one sitting', () => {
+    for (const door of DOORS) {
+      const lines = readFileSync(resolve(PAYROLL, door), 'utf8').split('\n').length;
+      expect(lines, door).toBeLessThan(60);
+    }
   });
 });

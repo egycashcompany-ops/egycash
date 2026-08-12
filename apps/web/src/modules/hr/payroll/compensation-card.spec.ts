@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest';
 import {
   COMPENSATION_WARNINGS,
   PAY_ITEM_QUANTITY_SOURCES,
+  PAYROLL_RUN_STATUSES,
   type Locale,
 } from '@ecms/contracts';
 import { translate } from '../../../platform/localization/i18n';
@@ -29,15 +30,20 @@ describe('where the card lives', () => {
     expect(TAB).toContain("import { CompensationCard } from './CompensationCard'");
   });
 
-  // PY-3 added no route and no navigation row: the counters must not move.
+  // PY-3 added no route and no navigation row of its own — the card lives inside a tab. The two
+  // routes below belong to PY-1 and PY-6; a third would mean a surface shipped without a phase.
   it('adds no route of its own to the payroll surface', () => {
     const routes = readFileSync(resolve(HERE, 'routes.tsx'), 'utf8');
-    expect([...routes.matchAll(/path="([^"*]+)"/g)].map((m) => m[1])).toEqual(['pay-items']);
+    expect([...routes.matchAll(/path="([^"*]+)"/g)].map((m) => m[1])).toEqual([
+      'pay-items',
+      'runs',
+    ]);
   });
 
-  it('reads a single endpoint, under the employee', () => {
+  it('reads compensation under the employee, and touches nothing unshipped', () => {
     expect(API).toContain('`/hr/employees/${employeeId}/compensation');
-    expect(API).not.toMatch(/payroll\/(runs|payslips|tax)/);
+    // Runs ship with PY-6; payslips and tax rules still do not exist at all.
+    expect(API).not.toMatch(/payroll\/(payslips|tax)/);
   });
 });
 
@@ -193,6 +199,87 @@ describe('every quantity label resolves in both locales', () => {
   it('keeps the placeholder of the frozen-stamp sentence in both locales', () => {
     for (const locale of ['en', 'ar'] as Locale[]) {
       expect(translate(locale, 'payroll.compensation.frozenAt'), locale).toContain('{at}');
+    }
+  });
+});
+
+// ── PY-6 — the payroll run screen ───────────────────────────────────────────
+
+const RUNS = readFileSync(resolve(HERE, 'pages/PayrollRunsPage.tsx'), 'utf8');
+const ROUTES = readFileSync(resolve(HERE, 'routes.tsx'), 'utf8');
+
+describe('the payroll run screen', () => {
+  it('is routed, and behind the view key', () => {
+    expect([...ROUTES.matchAll(/path="([^"*]+)"/g)].map((m) => m[1])).toEqual(['pay-items', 'runs']);
+    expect(ROUTES).toContain('<RequirePermission permission="payrollRun.view">');
+  });
+
+  it('gates every action behind the manage key, not the view one', () => {
+    const gated = [...RUNS.matchAll(/permission="([^"]+)"/g)].map((m) => m[1]);
+    expect(new Set(gated)).toEqual(new Set(['payrollRun.manage']));
+  });
+
+  // Freezing cannot be undone anywhere in this system, so the screen has to say so before it
+  // happens — not after, and not only in a tooltip.
+  it('warns in words before the irreversible act', () => {
+    expect(RUNS).toContain("'payroll.runs.freezeWarning'");
+    expect(translate('en', 'payroll.runs.freezeWarning')).toMatch(/cannot be undone/i);
+    expect(translate('ar', 'payroll.runs.freezeWarning')).toContain('لا رجعة');
+  });
+
+  it('shows the receipt — a "frozen" with no numbers behind it is just a word', () => {
+    expect(RUNS).toContain('r.attendanceFrozenRows');
+    expect(RUNS).toContain('r.leaveSnapshotRows');
+  });
+
+  it('says that cancelling does not unfreeze', () => {
+    expect(RUNS).toContain("'payroll.runs.cancelFrozenHint'");
+    expect(translate('en', 'payroll.runs.cancelFrozenHint')).toMatch(/stays frozen/i);
+  });
+
+  // A run pins facts; it prices nothing. No total, no payslip, no statutory control.
+  it('shows no figure, no payslip and no statutory control', () => {
+    expect(stripComments(RUNS)).not.toMatch(
+      /\btax\b|insurance|contribution|payslip|formatMoney|netPay|grossPay/i,
+    );
+  });
+
+  it('renders the period LTR without forcing the page direction', () => {
+    expect(RUNS).toMatch(/dir="ltr"/);
+    expect(RUNS).not.toMatch(/dir="rtl"|direction:\s*rtl/);
+  });
+});
+
+describe('every run label resolves in both locales', () => {
+  const keys = [
+    ...new Set(
+      [...RUNS.matchAll(/\bt\(\s*'((?:payroll|common)\.[a-zA-Z0-9_.]+)'/g)].flatMap((m) =>
+        m[1] === undefined ? [] : [m[1]],
+      ),
+    ),
+    ...PAYROLL_RUN_STATUSES.map((s) => `payroll.runs.status.${s}`),
+  ];
+
+  it('finds the keys to check', () => {
+    expect(keys.length).toBeGreaterThan(15);
+  });
+
+  for (const locale of ['en', 'ar'] as Locale[]) {
+    it(`resolves all of them — ${locale}`, () => {
+      expect(keys.filter((key) => translate(locale, key) === key)).toEqual([]);
+    });
+  }
+
+  it('does not ship English text as the Arabic label', () => {
+    expect(keys.filter((key) => translate('ar', key) === translate('en', key))).toEqual([]);
+  });
+
+  it('keeps the placeholders of the templated sentences in both locales', () => {
+    for (const locale of ['en', 'ar'] as Locale[]) {
+      expect(translate(locale, 'payroll.runs.freezeTitle'), locale).toContain('{period}');
+      expect(translate(locale, 'payroll.runs.cancelTitle'), locale).toContain('{period}');
+      expect(translate(locale, 'payroll.runs.attendanceRows'), locale).toContain('{rows}');
+      expect(translate(locale, 'payroll.runs.leaveRows'), locale).toContain('{rows}');
     }
   });
 });

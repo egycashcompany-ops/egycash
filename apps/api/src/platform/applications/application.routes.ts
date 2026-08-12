@@ -8,6 +8,7 @@ import { authorize } from '../rbac';
 import {
   CreateApplicationSchema,
   ListApplicationsQuerySchema,
+  ReorderApplicationsSchema,
   UpdateApplicationSchema,
 } from './application.validation';
 import {
@@ -15,6 +16,7 @@ import {
   deleteApplication,
   getApplication,
   listApplications,
+  reorderApplications,
   updateApplication,
 } from './application.controller';
 
@@ -29,6 +31,15 @@ export const buildApplicationsRouter = (): Router => {
     authorize('application.view'),
     validate({ query: ListApplicationsQuerySchema }),
     asyncHandler(listApplications),
+  );
+  // Before `/:id`, so the literal segment is not swallowed by the id matcher. Moving a row
+  // between sections is an ordinary application edit — same grant, no new key.
+  router.patch(
+    '/reorder',
+    authenticate,
+    authorize('application.edit'),
+    validate({ body: ReorderApplicationsSchema }),
+    asyncHandler(reorderApplications),
   );
   router.get(
     '/:id',

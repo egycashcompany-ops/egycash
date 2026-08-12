@@ -13,6 +13,7 @@ import { buildApp } from '../../src/app';
 import { moduleManifests } from '../../src/modules';
 import { env } from '../../src/infrastructure/config/env';
 import { seedDevData } from '../../src/seed-data';
+import { seedApplicationSections } from '../../src/seed-application-sections';
 import { settingsService } from '../../src/platform/settings';
 import { getCache } from '../../src/infrastructure/redis/cache';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
@@ -106,7 +107,11 @@ describe('seed → password login (regression)', () => {
     expect(res.status).toBe(200);
     const groups = (
       res.body as {
-        data: { name: { en: string }; applications: { route: string }[] }[];
+        data: {
+          name: { en: string };
+          applications: { route: string }[];
+          sections: { applications: { route: string }[] }[];
+        }[];
       }
     ).data;
 
@@ -121,7 +126,11 @@ describe('seed → password login (regression)', () => {
       'Administration',
     ]);
     // Applications map to the app's real client routes, granted directly to the admin.
-    const routes = groups.flatMap((g) => g.applications.map((a) => a.route));
+    // Every page of every module — grouped or not. The default sections moved most of HR into
+    // groups, and a page inside one is still a page the sidebar shows.
+    const routes = groups.flatMap((g) =>
+      [...g.applications, ...g.sections.flatMap((s) => s.applications)].map((a) => a.route),
+    );
     expect(routes).toContain('/applicants');
     expect(routes).toContain('/leave');
     expect(routes).toContain('/fleet');
@@ -176,9 +185,19 @@ describe('seed → password login (regression)', () => {
     const res = await request(app)
       .get('/api/v1/platform/me/applications')
       .set('Authorization', `Bearer ${token}`);
-    const groups = (res.body as { data: { applications: unknown[] }[] }).data;
+    const groups = (
+      res.body as {
+        data: { applications: unknown[]; sections: { applications: unknown[] }[] }[];
+      }
+    ).data;
     expect(groups).toHaveLength(5);
-    expect(groups.reduce((n, g) => n + g.applications.length, 0)).toBe(58);
+    // Counted across sections too: re-seeding must not duplicate a row, wherever it is grouped.
+    expect(
+      groups.reduce(
+        (n, g) => n + g.applications.length + g.sections.reduce((m, s) => m + s.applications.length, 0),
+        0,
+      ),
+    ).toBe(58);
   });
 
   it('the seeded HR user also logs in with email/password', async () => {
@@ -235,4 +254,101 @@ describe('seed → password login (regression)', () => {
       ).toBe(401);
     });
   });
+});
+
+// ── Default application sections: additive, idempotent, never re-imposing ────
+describe('the default sections migration', () => {
+  const tokenOf = async (): Promise<string> => {
+    const login = await doLogin(env.SEED_ADMIN_EMAIL, env.SEED_ADMIN_PASSWORD);
+    return login.body.data?.accessToken ?? '';
+  };
+  const get = async (path: string, token: string) =>
+    request(app).get(`/api/v1${path}`).set('Authorization', `Bearer ${token}`);
+
+  const snapshot = async (token: string): Promise<string[]> => {
+    const res = await get('/platform/applications?pageSize=100', token);
+    return (res.body as { data: { id: string; sectionId: string | null }[] }).data
+      .map((a) => `${a.id}:${a.sectionId ?? ''}`)
+      .sort();
+  };
+
+  it('groups the seeded HR catalog, and re-running it changes nothing', async () => {
+    const token = await tokenOf();
+
+    // The seed already ran it once (seedDevData). The sections it names are there…
+    const sections = await get('/platform/application-sections?pageSize=100', token);
+    expect(sections.status).toBe(200);
+    const named = (sections.body as { data: { name: { ar: string; en: string } }[] }).data;
+    expect(named.map((s) => s.name.en)).toEqual(
+      expect.arrayContaining(['Recruitment', 'Employee Management', 'Attendance & Leave']),
+    );
+    // …in both locales, like every other catalog row.
+    expect(named.every((s) => s.name.ar.trim() !== '')).toBe(true);
+
+    // …and the HR pages sit inside them rather than in a flat list.
+    const grouped = (
+      (await get('/platform/applications?pageSize=100', token)).body as {
+        data: { route: string; sectionId: string | null }[];
+      }
+    ).data;
+    expect(grouped.find((a) => a.route === '/applicants')?.sectionId).not.toBeNull();
+
+    // Re-running is a no-op, to the id.
+    const before = await snapshot(token);
+    await seedApplicationSections(
+      (await doLogin(env.SEED_ADMIN_EMAIL, env.SEED_ADMIN_PASSWORD)).body.data?.me?.id ?? '',
+    );
+    expect(await snapshot(token)).toEqual(before);
+  });
+
+  it('never re-groups a row an administrator has since taken out of a section', async () => {
+    const token = await tokenOf();
+    const adminId = (await doLogin(env.SEED_ADMIN_EMAIL, env.SEED_ADMIN_PASSWORD)).body.data?.me?.id ?? '';
+
+    const applicants = (
+      (await get('/platform/applications?pageSize=100', token)).body as {
+        data: { id: string; route: string; categoryId: string; sectionId: string | null }[];
+      }
+    ).data.find((a) => a.route === '/applicants');
+    expect(applicants?.sectionId).not.toBeNull();
+
+    // Take it out of every section — a supported, ordinary end state.
+    const ungrouped = await request(app)
+      .patch('/api/v1/platform/applications/reorder')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        categoryId: applicants?.categoryId,
+        sectionId: null,
+        applicationIds: [applicants?.id],
+      });
+    expect(ungrouped.status).toBe(200);
+
+    await seedApplicationSections(adminId);
+
+    const reread = (
+      (await get('/platform/applications?pageSize=100', token)).body as {
+        data: { route: string; sectionId: string | null }[];
+      }
+    ).data.find((a) => a.route === '/applicants');
+    // The migration fills a blank; it does not overrule a decision.
+    expect(reread?.sectionId).toBeNull();
+
+    // And the ungrouped row is still perfectly visible — directly under its module, which is
+    // where a page with no section has always rendered.
+    const nav = (
+      (await get('/platform/me/applications', token)).body as {
+        data: {
+          applications: { route: string }[];
+          sections: { applications: { route: string }[] }[];
+        }[];
+      }
+    ).data;
+    const routes = nav.flatMap((c) => [
+      ...c.applications.map((a) => a.route),
+      ...c.sections.flatMap((sec) => sec.applications.map((a) => a.route)),
+    ]);
+    expect(routes).toContain('/applicants');
+    expect(nav.some((c) => c.applications.some((a) => a.route === '/applicants'))).toBe(true);
+  });
+
 });

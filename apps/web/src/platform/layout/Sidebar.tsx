@@ -24,6 +24,7 @@ import { localized } from '../../shared/lib/format';
 import {
   BuildingIcon,
   ChevronEndIcon,
+  ChevronIcon,
   ChevronStartIcon,
   CloseIcon,
   FileIcon,
@@ -38,12 +39,14 @@ import { resolveNavIcon, type NavIcon } from '../navigation/app-icon';
 import { useNavPrefs } from '../navigation/NavPrefs';
 import {
   flattenApps,
+  moduleApps,
   moduleEntryRoute,
   moduleOfPathname,
   requiresExactMatch,
   toModules,
   type NavApp,
   type NavModule,
+  type NavSection,
 } from '../navigation/nav-model';
 import { AppRow, AppWithChildren, StateShell } from './nav-rows';
 import { RailShell } from './SidebarRail';
@@ -763,7 +766,10 @@ const IconStrip = ({
   onNavigate?: (() => void) | undefined;
 }): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
-  const moduleRoutes = current.apps.map((a) => a.route);
+  // Flattened on purpose: the collapsed strip is icons only, so a section heading has nowhere to
+  // render — and a page must never become unreachable because of how it is grouped.
+  const stripApps = moduleApps(current);
+  const moduleRoutes = stripApps.map((a) => a.route);
   return (
     <div className="flex flex-1 flex-col items-center gap-1 overflow-y-auto px-2 py-3">
       <ModuleSwitcher
@@ -790,7 +796,7 @@ const IconStrip = ({
           <div className="my-1 h-px w-6 bg-slate-200 dark:bg-slate-700" />
         </>
       )}
-      {current.apps.map((a) => {
+      {stripApps.map((a) => {
         return (
           <StripLink
             key={a.id}
@@ -803,6 +809,65 @@ const IconStrip = ({
         );
       })}
     </div>
+  );
+};
+
+/**
+ * A collapsible group of pages inside a module.
+ *
+ * Open by default: a heading that hides its rows on first sight would make the sidebar shorter and
+ * the pages harder to find, which is the opposite of why sections exist. The open/closed state is
+ * remembered per section for the session, so a user who folds a group away keeps it folded while
+ * they work — and a group holding the page they are ON is never rendered closed, because a
+ * collapsed heading must never be the reason somebody cannot see where they are.
+ */
+const NavSectionGroup = ({
+  section,
+  allRoutes,
+  onNavigate,
+}: {
+  section: NavSection;
+  allRoutes: string[];
+  onNavigate?: (() => void) | undefined;
+}): JSX.Element => {
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  const { pathname } = useLocation();
+  const holdsCurrent = section.apps.some(
+    (a) => pathname === a.route || pathname.startsWith(`${a.route}/`),
+  );
+  const [open, setOpen] = useState(true);
+  const expanded = open || holdsCurrent;
+  const label = localized(section.name, locale);
+
+  return (
+    <section className="mt-4">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={expanded}
+        className="flex h-7 w-full items-center gap-1 rounded-md px-2 text-[11px] font-medium uppercase tracking-[0.07em] text-slate-400 transition-colors hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
+      >
+        <ChevronIcon
+          className={cn(
+            'h-3 w-3 shrink-0 transition-transform',
+            expanded ? '' : '-rotate-90 rtl:rotate-90',
+          )}
+        />
+        <span className="truncate">{label}</span>
+      </button>
+      {expanded && (
+        <ul className="mt-0.5 space-y-px">
+          {section.apps.map((a) => (
+            <AppWithChildren
+              key={a.id}
+              app={a}
+              onNavigate={onNavigate}
+              end={requiresExactMatch(a.route, allRoutes)}
+            />
+          ))}
+        </ul>
+      )}
+    </section>
   );
 };
 
@@ -955,7 +1020,8 @@ const NavShell = ({
                 </ul>
               </section>
             )}
-            {/* This module's pages, and nothing else. */}
+            {/* This module's pages, and nothing else. Ungrouped rows first — they are the ones
+                that belong to no section, and they read as the module's own top level. */}
             <ul className="space-y-px">
               {current.apps.map((a) => (
                 <AppWithChildren
@@ -966,6 +1032,14 @@ const NavShell = ({
                 />
               ))}
             </ul>
+            {current.sections.map((section) => (
+              <NavSectionGroup
+                key={section.id}
+                section={section}
+                allRoutes={allRoutes}
+                onNavigate={onNavigate}
+              />
+            ))}
           </nav>
         </>
       )}

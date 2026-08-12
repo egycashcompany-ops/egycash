@@ -41,6 +41,8 @@ export const ErrorCodes = {
 
   // applications
   APPLICATION_CATEGORY_IN_USE: 'APPLICATION_CATEGORY_IN_USE',
+  /** A section still holding applications refuses deletion — nothing is orphaned silently. */
+  APPLICATION_SECTION_IN_USE: 'APPLICATION_SECTION_IN_USE',
 
   // rbac
   ROLE_PROTECTED: 'ROLE_PROTECTED',

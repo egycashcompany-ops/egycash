@@ -26,10 +26,12 @@
 import { type MyApplicationCategoryDto, type DataScope } from '@ecms/contracts';
 import { applicationRepository } from '../applications/application.repository';
 import { applicationCategoryRepository } from '../application-categories/application-category.repository';
+import { ApplicationSectionModel } from '../application-sections/application-section.model';
 import {
   assembleEffectiveApplications,
   type EffectiveAppInput,
   type EffectiveCategoryInput,
+  type EffectiveSectionInput,
 } from './effective-applications';
 
 class MeApplicationsService {
@@ -55,6 +57,7 @@ class MeApplicationsService {
       sortOrder: app.sortOrder,
       status: app.status,
       categoryId: String(app.categoryId),
+      sectionId: app.sectionId === null ? null : String(app.sectionId),
       permissionKey: app.permissionKey ?? null,
     }));
     const categoryInputs: EffectiveCategoryInput[] = categories.map((category) => ({
@@ -64,7 +67,23 @@ class MeApplicationsService {
       sortOrder: category.sortOrder,
     }));
 
-    return assembleEffectiveApplications(appInputs, categoryInputs, permissions);
+    // Sections of the categories in play. Read straight from the model (a leaf, like the two
+    // repositories above) and only for the categories that survived the permission filter.
+    const sections = await ApplicationSectionModel.find({
+      categoryId: { $in: [...categoryIds] },
+      isDeleted: false,
+    })
+      .lean<{ _id: unknown; name: { ar: string; en: string }; categoryId: unknown; sortOrder: number; status: 'active' | 'inactive' }[]>()
+      .exec();
+    const sectionInputs: EffectiveSectionInput[] = sections.map((section) => ({
+      id: String(section._id),
+      name: section.name,
+      categoryId: String(section.categoryId),
+      sortOrder: section.sortOrder,
+      status: section.status,
+    }));
+
+    return assembleEffectiveApplications(appInputs, categoryInputs, permissions, sectionInputs);
   }
 }
 

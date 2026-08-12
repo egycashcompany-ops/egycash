@@ -449,6 +449,19 @@ const attendanceUnassignedPermissions = declarePermissions(
       action: 'recompute',
       name: { en: 'Recompute attendance days', ar: 'إعادة احتساب أيام الحضور' },
     },
+    // AT-5 (§6/§7): the regularization chain and overtime release. Screens arrive with AT-6.
+    {
+      action: 'requestRegularization',
+      name: { en: 'Request an attendance regularization', ar: 'طلب تسوية حضور' },
+    },
+    {
+      action: 'decideRegularization',
+      name: { en: 'Decide attendance regularizations', ar: 'البت في تسويات الحضور' },
+    },
+    {
+      action: 'approveOvertime',
+      name: { en: 'Approve overtime minutes', ar: 'اعتماد دقائق العمل الإضافي' },
+    },
   ],
 );
 

@@ -25,6 +25,7 @@ import { rbacService } from '../../src/platform/rbac';
 import { userService } from '../../src/platform/users';
 import { settingsService } from '../../src/platform/settings';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
+import { getCache } from '../../src/infrastructure/redis/cache';
 import { addDays, cairoToday, dateOnlyIso, isoWeekday } from '../../src/modules/hr/shared/business-date';
 import { cairoInstant, dayRecordService, AttendanceDayModel } from '../../src/modules/hr/attendance';
 import { type AttendanceRegularizationDto } from '@ecms/contracts';
@@ -71,6 +72,7 @@ const mkUser = async (email: string): Promise<string> => {
 };
 
 const login = async (identifier: string): Promise<string> => {
+  await getCache().delByPrefix('rl:'); // keep strict auth rate-limits out of the way
   const res = await request(app)
     .post('/api/v1/auth/login')
     .send({ identifier, password: PASSWORD });

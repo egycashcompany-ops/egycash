@@ -22,15 +22,15 @@ describe('the assembled page registry', () => {
     expect(validatePageRegistry(pages, permissions)).toEqual([]);
   });
 
-  it('declares 52 pages over 209 permissions', () => {
+  it('declares 52 pages over 212 permissions', () => {
     expect(pages).toHaveLength(52);
-    expect(permissions).toHaveLength(209);
+    expect(permissions).toHaveLength(212);
   });
 
-  it('assigns 185 permissions to a page and leaves 24 deliberately unassigned', () => {
+  it('assigns 185 permissions to a page and leaves 27 deliberately unassigned', () => {
     const assigned = permissions.filter((p) => p.pageId !== null);
     expect(assigned).toHaveLength(185);
-    expect(permissions.length - assigned.length).toBe(24);
+    expect(permissions.length - assigned.length).toBe(27);
   });
 
   it('splits the pages across the four modules as declared', () => {
@@ -48,8 +48,8 @@ describe('the assembled page registry', () => {
     expect(unassigned).toEqual(
       [
         // Attendance is PARTIALLY assigned by design: the shifts and assignments screens shipped
-        // in AT-1 and carry their keys; the punch and day-record keys wait for their AT-6
-        // screens, exactly as the audit keys waited for P11.
+        // in AT-1 and carry their keys; the punch, day-record, regularization and overtime keys
+        // wait for their AT-6 screens, exactly as the audit keys waited for P11.
         'attendance',
         // No administration screen at all, and never has been. `setting` left this list in P8,
         // `notificationTemplate` in P10 and the two log streams in P11, each in the change that

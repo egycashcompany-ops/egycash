@@ -160,6 +160,15 @@ const CATALOG: CategoryDef[] = [
         icon: 'clipboard',
         permission: 'attendance.assign',
       },
+      // Payroll (P-HR-02). PY-1 catalogues the pay items; the run, the payslip and the export
+      // each bring their own row with the phase that ships them.
+      {
+        en: 'Pay Items',
+        ar: 'بنود الأجر',
+        route: '/payroll/pay-items',
+        icon: 'file',
+        permission: 'payItem.view',
+      },
       {
         en: 'Contracts',
         ar: 'العقود',

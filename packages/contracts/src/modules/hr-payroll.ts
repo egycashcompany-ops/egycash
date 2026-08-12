@@ -35,6 +35,73 @@ export const PAY_ITEM_CALC_BASES = ['fixed', 'perDay', 'perMinute', 'percentOfBa
 export const PayItemCalcBasisSchema = z.enum(PAY_ITEM_CALC_BASES);
 export type PayItemCalcBasis = z.infer<typeof PayItemCalcBasisSchema>;
 
+/**
+ * WHICH quantity a `perDay` or `perMinute` item multiplies (PY-4).
+ *
+ * `calcBasis` says the item is priced per day; it does not say per day of WHAT. A per-day earning
+ * might pay for days attended and a per-day deduction might charge for days absent, and nothing in
+ * `calcBasis`, in the item's `kind`, or anywhere else in this system decides between them. So the
+ * ITEM says it, once, at creation — and every value below is a direct derivation from a field the
+ * frozen attendance feed already carries. Nothing here is inferred from a name.
+ *
+ *   • `attendedDays`            — days whose status is present, late, earlyLeave or lateAndEarly
+ *   • `absentDays`              — days whose status is absent
+ *   • `leaveDays`               — days whose status is onLeave
+ *   • `workedMinutes`           — the sum of the feed's worked minutes
+ *   • `lateMinutes`             — the sum of minutes past the shift's grace
+ *   • `earlyLeaveMinutes`       — the sum of minutes left early
+ *   • `approvedOvertimeMinutes` — approved overtime only; derived-but-unapproved never crosses
+ *     the feed at all (attendance D5), so this cannot accidentally price an unapproved minute.
+ *
+ * `incomplete`, `weekend`, `holiday` and `dayOff` belong to NO group. Whether a day with a missing
+ * checkout counts as attendance, or a worked holiday counts twice, is a labour rule — and this
+ * system has not been given one.
+ */
+export const PAY_ITEM_QUANTITY_SOURCES = [
+  'attendedDays',
+  'absentDays',
+  'leaveDays',
+  'workedMinutes',
+  'lateMinutes',
+  'earlyLeaveMinutes',
+  'approvedOvertimeMinutes',
+] as const;
+export const PayItemQuantitySourceSchema = z.enum(PAY_ITEM_QUANTITY_SOURCES);
+export type PayItemQuantitySource = z.infer<typeof PayItemQuantitySourceSchema>;
+
+/** The unit each source counts in. Days go with `perDay`, minutes with `perMinute` — §2 coherence. */
+export const QUANTITY_SOURCE_UNITS: Record<PayItemQuantitySource, 'days' | 'minutes'> = {
+  attendedDays: 'days',
+  absentDays: 'days',
+  leaveDays: 'days',
+  workedMinutes: 'minutes',
+  lateMinutes: 'minutes',
+  earlyLeaveMinutes: 'minutes',
+  approvedOvertimeMinutes: 'minutes',
+};
+
+/** The unit a calculation basis needs, or null when it needs no quantity at all. */
+export const CALC_BASIS_UNITS: Record<PayItemCalcBasis, 'days' | 'minutes' | null> = {
+  fixed: null,
+  perDay: 'days',
+  perMinute: 'minutes',
+  percentOfBase: null,
+};
+
+/**
+ * The one coherence rule, and it comes from UNITS rather than from legislation: an item priced per
+ * day counts something measured in days, an item priced per minute counts minutes, and an item
+ * with a flat or percentage basis counts nothing and must name no source.
+ */
+export const quantitySourceFits = (
+  calcBasis: PayItemCalcBasis,
+  quantitySource: PayItemQuantitySource | null | undefined,
+): boolean => {
+  const needed = CALC_BASIS_UNITS[calcBasis];
+  if (needed === null) return quantitySource == null;
+  return quantitySource != null && QUANTITY_SOURCE_UNITS[quantitySource] === needed;
+};
+
 /** Uppercase, no spaces — the stable handle a later phase refers an item by. */
 export const PayItemCodeSchema = z
   .string()
@@ -52,8 +119,18 @@ const payItemBase = {
 };
 
 export const CreatePayItemSchema = z
-  .object({ ...payItemBase, sortOrder: payItemBase.sortOrder.optional() })
-  .strict();
+  .object({
+    ...payItemBase,
+    sortOrder: payItemBase.sortOrder.optional(),
+    /** Required for `perDay`/`perMinute`, refused for the rest — see `quantitySourceFits`. */
+    quantitySource: PayItemQuantitySourceSchema.nullish(),
+  })
+  .strict()
+  .refine((v) => quantitySourceFits(v.calcBasis, v.quantitySource), {
+    path: ['quantitySource'],
+    message:
+      'a per-day item counts days and a per-minute item counts minutes; a fixed or percentage item counts nothing',
+  });
 export type CreatePayItem = z.infer<typeof CreatePayItemSchema>;
 
 /**
@@ -63,6 +140,10 @@ export type CreatePayItem = z.infer<typeof CreatePayItemSchema>;
  * silently restate every payslip that already cites it — a deduction that becomes an earning, or
  * a flat allowance that becomes per-day. Renaming is safe and re-ordering is cosmetic; changing
  * the arithmetic is a different item, and creating one is how you say that.
+ *
+ * `quantitySource` (PY-4) is absent for exactly the same reason and is the sharpest case of it:
+ * switching an item from days-attended to days-absent would turn a payment into a charge over
+ * every period already priced with it.
  */
 export const UpdatePayItemSchema = z
   .object({
@@ -87,6 +168,8 @@ export interface PayItemDto {
   name: { ar: string; en: string };
   kind: PayItemKind;
   calcBasis: PayItemCalcBasis;
+  /** Which attendance quantity this item multiplies; null unless the basis needs one (PY-4). */
+  quantitySource: PayItemQuantitySource | null;
   sortOrder: number;
   /** Archived, never deleted once used: a payslip line must keep naming a real item. */
   status: 'active' | 'archived';
@@ -152,6 +235,7 @@ export interface EmployeePayItemRefDto {
   name: { ar: string; en: string };
   kind: PayItemKind;
   calcBasis: PayItemCalcBasis;
+  quantitySource: PayItemQuantitySource | null;
   status: 'active' | 'archived';
 }
 
@@ -200,6 +284,10 @@ export interface RemoveEmployeePayItemResultDto {
 // WHAT IT DELIBERATELY IS NOT. There is no tax, no insurance, no run, no payslip and no legal
 // rule of any kind. `net` here is earnings minus deductions and nothing else — it is not take-home
 // pay, and calling it that would be a claim about legislation this system has not been given.
+//
+// PY-4 adds the quantity lines: `perDay` and `perMinute` items priced from the FROZEN attendance
+// feed and nothing else. Until a period is frozen their figure is unknown rather than zero, and
+// the line says so (`pendingQuantity`) instead of guessing.
 
 /**
  * Whether a line carries a figure yet.
@@ -250,10 +338,26 @@ export interface CompensationLineDto {
   currency: string;
   /** The assignment's own figure: an amount for `fixed`, a percentage for `percentOfBase`. */
   baseAmount: number;
-  /** `daysInForce / daysInPeriod`, or null when the line has no figure to prorate yet. */
+  /**
+   * `daysInForce / daysInPeriod` for a flat or percentage line.
+   *
+   * ALWAYS null for a quantity line (PY-4), and that is arithmetic rather than an omission: the
+   * quantity was already counted over the days the item was in force, so multiplying by this
+   * fraction as well would charge the same absence twice.
+   */
   prorationFactor: number | null;
   daysInForce: number;
   daysInPeriod: number;
+  /** How many days or minutes this line priced; null when no quantity applies or none is known. */
+  quantity: number | null;
+  /** Which attendance quantity it was, so the figure can explain itself (PY-4). */
+  quantitySource: PayItemQuantitySource | null;
+  quantityUnit: 'days' | 'minutes' | null;
+  /**
+   * When the attendance period this quantity came from was frozen — which VERSION of the truth
+   * was priced. A frozen row never moves, so the same period always prices the same.
+   */
+  feedFrozenAt: string | null;
   /** Integer minor units — the exact figure. Null while `state` is `pendingQuantity`. */
   amountMinor: number | null;
   amount: number | null;

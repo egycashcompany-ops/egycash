@@ -11,9 +11,16 @@
 //   4. one priced line per slice, with EXACTLY ONE rounding step at its end;
 //   5. a deterministic sort, then integer totals.
 //
-// WHAT IS NOT HERE, AND WHY. No tax, no contribution, no attendance quantity, no minimum-pay
-// floor. `net` is earnings minus deductions — not take-home pay. Each of those is a rule somebody
-// has to grant this system, and none has been granted.
+// PY-4 adds the quantity lines. `perDay` and `perMinute` items are priced from FROZEN attendance
+// rows handed in as a value — the engine still reads nothing. Their quantity is counted over the
+// same triple intersection, and they carry NO proration factor: the count already is the
+// proration, and applying both would charge one absence twice.
+//
+// WHAT IS NOT HERE, AND WHY. No tax, no contribution, no minimum-pay floor, and no rule about
+// which days count as attendance — the pay item names its own quantity source, and the statuses
+// nobody has ruled on (`incomplete`, `weekend`, `holiday`, `dayOff`) belong to no group. `net` is
+// earnings minus deductions, not take-home pay. Each of those is a rule somebody has to grant
+// this system, and none has been granted.
 import {
   COMPENSATION_LINE_STATES,
   fromMinorUnits,
@@ -25,9 +32,11 @@ import {
   type CompensationWarning,
   type PayItemCalcBasis,
   type PayItemKind,
+  type PayItemQuantitySource,
 } from '@ecms/contracts';
 import { BusinessRuleError } from '../../../../shared/errors';
 import { calendarDaysInclusive, dateOnlyIso, toDateOnly } from '../../shared/business-date';
+import { quantityFor, unitOf, type FrozenAttendance } from './attendance-quantities';
 
 const PERIOD_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -69,6 +78,8 @@ export interface AssignmentInput {
     name: { ar: string; en: string };
     kind: PayItemKind;
     calcBasis: PayItemCalcBasis;
+    /** PY-4: which attendance quantity a `perDay`/`perMinute` item multiplies. */
+    quantitySource: PayItemQuantitySource | null;
     sortOrder: number;
   };
 }
@@ -83,6 +94,14 @@ export interface CompensationInput {
   assignments: readonly AssignmentInput[];
   /** Whether the employee still carries the older `employment.allowances[]` list (D1). */
   hasLegacyAllowances: boolean;
+  /**
+   * The period's frozen attendance, or `null` when it is not frozen (PY-4).
+   *
+   * Null is "not knowable yet", never "nothing happened": it leaves every quantity line pending,
+   * while a frozen period with no rows produces a real zero. The engine stays pure — the reading
+   * happens at the port, and the answer arrives here as a value.
+   */
+  attendance: FrozenAttendance | null;
 }
 
 /**
@@ -175,9 +194,12 @@ const priceLine = (
 
 const toLine = (
   assignment: AssignmentInput,
+  slice: { from: Date; to: Date },
   forceDays: number,
   periodDays: number,
   basicMinor: number | null,
+  spans: readonly DateSpan[],
+  attendance: FrozenAttendance | null,
 ): CompensationLineDto => {
   const shared = {
     sourceAssignmentId: assignment.id,
@@ -191,23 +213,45 @@ const toLine = (
     daysInForce: forceDays,
     daysInPeriod: periodDays,
   };
+  const flat = {
+    ...shared,
+    quantity: null,
+    quantitySource: null,
+    quantityUnit: null,
+    feedFrozenAt: null,
+  };
 
-  // D7 — the price is known, the quantity is not, and the quantity comes from a feed PY-4 opens.
-  // Saying "pending" is the only answer here that is neither a guess nor a disappearance.
   if (assignment.item.calcBasis === 'perDay' || assignment.item.calcBasis === 'perMinute') {
+    const source = assignment.item.quantitySource;
+    // The catalog guarantees a source for these two bases; an item that lost it cannot be priced,
+    // and guessing one would be inventing what the organization meant.
+    if (source === null || attendance === null) {
+      // PY-4 / D2 — unknown, not zero. The line is SHOWN (hiding an assigned item explains
+      // nothing) and excluded from every total (a total containing a guess is worse than none).
+      return { ...flat, prorationFactor: null, amountMinor: null, amount: null, state: COMPENSATION_LINE_STATES[1] };
+    }
+
+    const quantity = quantityFor(attendance.rows, source, slice, spans);
+    // NO proration factor, deliberately: the quantity was counted over the slice already, so
+    // multiplying by daysInForce/daysInPeriod would charge the same absence a second time.
+    const minor = scaleMinorUnits(toMinorUnits(assignment.amount), quantity);
     return {
       ...shared,
       prorationFactor: null,
-      amountMinor: null,
-      amount: null,
-      state: COMPENSATION_LINE_STATES[1],
+      quantity,
+      quantitySource: source,
+      quantityUnit: unitOf(source),
+      feedFrozenAt: attendance.frozenAt,
+      amountMinor: minor,
+      amount: fromMinorUnits(minor),
+      state: COMPENSATION_LINE_STATES[0],
     };
   }
 
   const factor = forceDays / periodDays;
   const minor = priceLine(assignment, factor, basicMinor);
   return {
-    ...shared,
+    ...flat,
     prorationFactor: factor,
     amountMinor: minor,
     amount: fromMinorUnits(minor),
@@ -257,7 +301,16 @@ export const computeCompensation = (input: CompensationInput): CompensationEffec
   for (const assignment of [...input.assignments].sort(byPresentation)) {
     const forceDays = daysInForce(assignment, window, spans);
     if (forceDays === 0) continue; // not in force this period — no line at all, not a zero line
-    const line = toLine(assignment, forceDays, periodDays, basicMinor);
+    // The slice a quantity is counted over: the assignment's own interval clipped to the period.
+    // The employment leg is applied inside the count, span by span, so a rehire's gap drops out.
+    const slice = intersect(
+      {
+        from: toDateOnly(assignment.effectiveFrom),
+        to: assignment.effectiveTo === null ? null : toDateOnly(assignment.effectiveTo),
+      },
+      window,
+    ) as { from: Date; to: Date };
+    const line = toLine(assignment, slice, forceDays, periodDays, basicMinor, spans, input.attendance);
     if (line.state === 'pendingQuantity') deferred.push(line);
     else if (line.kind === 'earning') earnings.push(line);
     else deductions.push(line);

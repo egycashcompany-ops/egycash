@@ -2,9 +2,10 @@
 //
 // Every rule lives in `compensation-rules.ts`, which is pure. This file only assembles what that
 // engine needs: the employee (resolved inside the caller's compensation scope), the assignments
-// whose interval touches the period, and the catalog rows they cite. It stores nothing — a
-// calculation is a question asked of today's data, and archiving the answer starts with the
-// payroll run in PY-6.
+// whose interval touches the period, the catalog rows they cite, and — when a quantity item is
+// among them — the period's FROZEN attendance, read through the one narrow port (PY-4). It stores
+// nothing: a calculation is a question asked of today's data, and archiving the answer starts with
+// the payroll run in PY-6.
 import { Types } from 'mongoose';
 import { type CompensationEffectsDto } from '@ecms/contracts';
 import { type ScopeSelector } from '../../../../shared/types';
@@ -17,6 +18,7 @@ import {
   type AssignmentInput,
 } from './compensation-rules';
 import { employmentSpansOf } from './employment-spans';
+import { attendanceQuantityPort } from './attendance-quantity.port';
 
 class CompensationService {
   /**
@@ -71,16 +73,29 @@ class CompensationService {
             name: item.name,
             kind: item.kind,
             calcBasis: item.calcBasis,
+            quantitySource: item.quantitySource,
             sortOrder: item.sortOrder,
           },
         });
       }
     }
 
+    // PY-4 — the frozen attendance for this period, or null when it is not frozen. Asked for
+    // ONLY when something actually needs it: a month with no quantity item should not pay for a
+    // feed read, and an unfrozen month should not look like a failure on a screen that has
+    // nothing to do with attendance.
+    const needsQuantities = assignments.some(
+      (a) => a.item.calcBasis === 'perDay' || a.item.calcBasis === 'perMinute',
+    );
+    const attendance = needsQuantities
+      ? await attendanceQuantityPort.frozenFor(period, employeeId)
+      : null;
+
     return computeCompensation({
       employeeId,
       period,
       basicSalary: employee.employment.salary,
+      attendance,
       employmentSpans: employmentSpansOf(employee),
       assignments,
       // D1 — the older list is not read. Saying so beats leaving the reader to wonder why a figure

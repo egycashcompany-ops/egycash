@@ -5,7 +5,9 @@
 // two spans. Each assertion below states the arithmetic it expects rather than recomputing it, so
 // a change in the rule fails with a number a reader can argue with.
 import { describe, expect, it } from 'vitest';
+import { type AttendanceFeedRow } from '@ecms/contracts';
 import { BusinessRuleError } from '../../../../shared/errors';
+import { type FrozenAttendance } from './attendance-quantities';
 import {
   computeCompensation,
   daysInForce,
@@ -24,6 +26,7 @@ const item = (
   name: { ar: 'بدل سكن', en: 'Housing' },
   kind: 'earning',
   calcBasis: 'fixed',
+  quantitySource: null,
   sortOrder: 10,
   ...over,
 });
@@ -46,6 +49,7 @@ const input = (over: Partial<CompensationInput> = {}): CompensationInput => ({
   employmentSpans: [{ from: d('2020-01-01'), to: null }],
   assignments: [],
   hasLegacyAllowances: false,
+  attendance: null,
   ...over,
 });
 
@@ -223,14 +227,14 @@ describe('percentOfBase', () => {
   });
 });
 
-describe('perDay and perMinute (D7)', () => {
+describe('perDay and perMinute with no frozen attendance (D7 · PY-4 D2)', () => {
   const perDay = assignment({
     id: 'a2',
     amount: 250,
-    item: item({ code: 'PER_DAY', calcBasis: 'perDay', sortOrder: 30 }),
+    item: item({ code: 'PER_DAY', calcBasis: 'perDay', quantitySource: 'attendedDays', sortOrder: 30 }),
   });
 
-  it('shows the line but gives it no figure — the quantity arrives in PY-4', () => {
+  it('shows the line but gives it no figure while the period is unfrozen', () => {
     const result = computeCompensation(input({ assignments: [perDay] }));
     expect(result.deferred).toHaveLength(1);
     expect(result.deferred[0]?.state).toBe('pendingQuantity');
@@ -247,7 +251,14 @@ describe('perDay and perMinute (D7)', () => {
     const result = computeCompensation(
       input({
         assignments: [
-          assignment({ item: item({ code: 'OT_RATE', calcBasis: 'perMinute', sortOrder: 40 }) }),
+          assignment({
+            item: item({
+              code: 'OT_RATE',
+              calcBasis: 'perMinute',
+              quantitySource: 'approvedOvertimeMinutes',
+              sortOrder: 40,
+            }),
+          }),
         ],
       }),
     );
@@ -405,5 +416,195 @@ describe('what the result refuses to claim', () => {
     for (const forbidden of ['taxable', 'insurable', 'grossPay', 'netPay']) {
       expect(result, forbidden).not.toHaveProperty(forbidden);
     }
+  });
+});
+
+// ── PY-4 — pricing from frozen attendance ───────────────────────────────────
+
+const feedRow = (
+  workDate: string,
+  status: string,
+  over: Record<string, unknown> = {},
+): AttendanceFeedRow =>
+  ({
+    employeeId: 'e1',
+    workDate,
+    status,
+    shiftId: 's1',
+    workedMinutes: 0,
+    lateMinutes: 0,
+    earlyLeaveMinutes: 0,
+    approvedOvertimeMinutes: 0,
+    leaveId: null,
+    branchId: 'b1',
+    flags: [],
+    frozenAt: '2026-04-01T03:00:00.000Z',
+    ...over,
+  }) as AttendanceFeedRow;
+
+const frozen = (rows: AttendanceFeedRow[]): FrozenAttendance => ({
+  rows,
+  frozenAt: '2026-04-01T03:00:00.000Z',
+});
+
+const perDayItem = (over: Partial<AssignmentInput> = {}): AssignmentInput =>
+  assignment({
+    id: 'q1',
+    amount: 100,
+    item: item({ code: 'DAILY', calcBasis: 'perDay', quantitySource: 'attendedDays', sortOrder: 30 }),
+    ...over,
+  });
+
+describe('quantity lines price from the frozen feed', () => {
+  const tenAttended = Array.from({ length: 10 }, (_, i) =>
+    feedRow(`2026-03-${String(i + 2).padStart(2, '0')}`, 'present'),
+  );
+
+  it('multiplies the rate by the counted quantity', () => {
+    const result = computeCompensation(
+      input({ assignments: [perDayItem()], attendance: frozen(tenAttended) }),
+    );
+    expect(result.earnings).toHaveLength(1);
+    expect(result.earnings[0]?.quantity).toBe(10);
+    expect(result.earnings[0]?.amount).toBe(1000); // 100 × 10
+    expect(result.deferred).toEqual([]);
+    expect(result.totalEarnings).toBe(1000);
+  });
+
+  it('records the provenance the figure needs to explain itself', () => {
+    const line = computeCompensation(
+      input({ assignments: [perDayItem()], attendance: frozen(tenAttended) }),
+    ).earnings[0];
+    expect(line?.quantitySource).toBe('attendedDays');
+    expect(line?.quantityUnit).toBe('days');
+    expect(line?.feedFrozenAt).toBe('2026-04-01T03:00:00.000Z');
+    expect(line?.baseAmount).toBe(100);
+  });
+
+  /**
+   * The rule the whole phase turns on. The quantity was counted over the slice already, so
+   * applying `daysInForce / daysInPeriod` on top would charge the same absence twice.
+   */
+  it('NEVER prorates a quantity line, even when the item ran for part of the month', () => {
+    const halfMonth = computeCompensation(
+      input({
+        assignments: [perDayItem({ effectiveFrom: d('2026-03-16') })],
+        attendance: frozen(tenAttended),
+      }),
+    );
+    const line = halfMonth.earnings[0];
+    expect(line?.prorationFactor).toBeNull();
+    // Only the attendance inside the slice counts — the 16th onwards, so none of the first ten.
+    expect(line?.quantity).toBe(0);
+    expect(line?.amount).toBe(0);
+
+    // …and with attendance inside the slice, the figure is the raw product, not a fraction of it.
+    const inSlice = computeCompensation(
+      input({
+        assignments: [perDayItem({ effectiveFrom: d('2026-03-16') })],
+        attendance: frozen([feedRow('2026-03-20', 'present'), feedRow('2026-03-21', 'present')]),
+      }),
+    );
+    expect(inSlice.earnings[0]?.quantity).toBe(2);
+    expect(inSlice.earnings[0]?.amount).toBe(200); // 100 × 2, NOT 100 × 2 × 16/31
+  });
+
+  it('shows a real zero when the period is frozen and nothing was counted', () => {
+    const result = computeCompensation(
+      input({
+        assignments: [perDayItem()],
+        attendance: frozen([feedRow('2026-03-07', 'weekend'), feedRow('2026-03-08', 'holiday')]),
+      }),
+    );
+    // A KNOWN zero, unlike the unfrozen case: computed, in the earnings, in the totals.
+    expect(result.earnings[0]?.state).toBe('computed');
+    expect(result.earnings[0]?.quantity).toBe(0);
+    expect(result.earnings[0]?.amount).toBe(0);
+    expect(result.deferred).toEqual([]);
+  });
+
+  it('leaves the line pending when the period is not frozen, and never guesses a zero', () => {
+    const result = computeCompensation(input({ assignments: [perDayItem()], attendance: null }));
+    expect(result.deferred[0]?.state).toBe('pendingQuantity');
+    expect(result.deferred[0]?.quantity).toBeNull();
+    expect(result.deferred[0]?.feedFrozenAt).toBeNull();
+    expect(result.earnings).toEqual([]);
+    expect(result.totalEarnings).toBe(0);
+  });
+
+  it('leaves it pending when the item somehow carries no source', () => {
+    const result = computeCompensation(
+      input({
+        assignments: [
+          assignment({ item: item({ code: 'NO_SRC', calcBasis: 'perDay', quantitySource: null }) }),
+        ],
+        attendance: frozen(tenAttended),
+      }),
+    );
+    expect(result.deferred[0]?.state).toBe('pendingQuantity');
+  });
+
+  it('nets a per-minute deduction against a per-day earning', () => {
+    const result = computeCompensation(
+      input({
+        assignments: [
+          perDayItem(),
+          assignment({
+            id: 'q2',
+            amount: 2,
+            item: item({
+              code: 'LATE_FEE',
+              kind: 'deduction',
+              calcBasis: 'perMinute',
+              quantitySource: 'lateMinutes',
+              sortOrder: 40,
+            }),
+          }),
+        ],
+        attendance: frozen([
+          ...tenAttended,
+          feedRow('2026-03-13', 'late', { lateMinutes: 25 }),
+        ]),
+      }),
+    );
+    expect(result.earnings[0]?.amount).toBe(1100); // 11 attended days × 100
+    expect(result.deductions[0]?.amount).toBe(50); // 25 late minutes × 2
+    expect(result.net).toBe(1050);
+  });
+
+  it('counts only the days the employee was employed for', () => {
+    const result = computeCompensation(
+      input({
+        assignments: [perDayItem()],
+        employmentSpans: [{ from: d('2026-03-06'), to: null }],
+        attendance: frozen(tenAttended),
+      }),
+    );
+    expect(result.earnings[0]?.quantity).toBe(6); // the 6th to the 11th
+    expect(result.earnings[0]?.amount).toBe(600);
+  });
+
+  it('leaves flat and percentage lines exactly as PY-3 priced them', () => {
+    const result = computeCompensation(
+      input({
+        assignments: [assignment()],
+        attendance: frozen(tenAttended),
+      }),
+    );
+    expect(result.earnings[0]?.prorationFactor).toBe(1);
+    expect(result.earnings[0]?.quantity).toBeNull();
+    expect(result.earnings[0]?.quantitySource).toBeNull();
+    expect(result.earnings[0]?.feedFrozenAt).toBeNull();
+    expect(result.earnings[0]?.amount).toBe(3000);
+  });
+
+  it('is deterministic — the same frozen input prices the same twice', () => {
+    const once = computeCompensation(
+      input({ assignments: [perDayItem()], attendance: frozen(tenAttended) }),
+    );
+    const twice = computeCompensation(
+      input({ assignments: [perDayItem()], attendance: frozen([...tenAttended].reverse()) }),
+    );
+    expect(twice).toEqual(once);
   });
 });

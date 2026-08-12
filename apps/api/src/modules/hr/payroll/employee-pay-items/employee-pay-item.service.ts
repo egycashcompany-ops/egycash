@@ -53,6 +53,7 @@ const payItemRef = (doc: PayItemDoc): EmployeePayItemRefDto => ({
   name: doc.name,
   kind: doc.kind,
   calcBasis: doc.calcBasis,
+  quantitySource: doc.quantitySource,
   status: doc.status,
 });
 

@@ -5,7 +5,9 @@
 // rather than counted — and the ABSENCE of statutory fields is asserted too, because "no tax rule
 // yet" is a decision this phase must keep rather than a gap somebody quietly fills.
 import { describe, expect, it } from 'vitest';
+import { ATTENDANCE_FEED_FIELDS } from './hr-attendance';
 import {
+  CALC_BASIS_UNITS,
   COMPENSATION_LINE_STATES,
   COMPENSATION_WARNINGS,
   CompensationQuerySchema,
@@ -14,7 +16,10 @@ import {
   EMPLOYEE_PAY_ITEM_REMOVALS,
   PAY_ITEM_CALC_BASES,
   PAY_ITEM_KINDS,
+  PAY_ITEM_QUANTITY_SOURCES,
+  QUANTITY_SOURCE_UNITS,
   UpdatePayItemSchema,
+  quantitySourceFits,
 } from './hr-payroll';
 
 describe('the pay-item vocabulary', () => {
@@ -67,12 +72,38 @@ describe('the pay-item vocabulary', () => {
 
   // Payroll v1 has no statutory rule. A field here would be a claim about legislation nobody has
   // given this system — and the place it would first appear is this schema.
+  //
+  // Asserted BEHAVIOURALLY rather than off `.shape`: PY-4's unit-coherence rule made this schema a
+  // refinement, and a test reading a Zod internal would have broken on a change that added no
+  // field at all. What the phase actually promises is that these keys are REFUSED, so that is what
+  // is checked — and `.strict()` is what refuses them.
   it('carries no tax or insurance field', () => {
-    const shape = Object.keys(CreatePayItemSchema.shape);
-    expect(shape.sort()).toEqual(['calcBasis', 'code', 'kind', 'name', 'sortOrder']);
+    const valid = {
+      code: 'HOUSING',
+      name: { ar: 'بدل سكن', en: 'Housing allowance' },
+      kind: 'earning',
+      calcBasis: 'fixed',
+    } as const;
+    expect(CreatePayItemSchema.safeParse(valid).success).toBe(true);
+
     for (const forbidden of ['taxable', 'tax', 'insurance', 'socialInsurance', 'exempt']) {
-      expect(shape, forbidden).not.toContain(forbidden);
+      expect(
+        CreatePayItemSchema.safeParse({ ...valid, [forbidden]: true }).success,
+        forbidden,
+      ).toBe(false);
     }
+
+    // …and the keys it DOES take are exactly the five the catalog declares.
+    expect(CreatePayItemSchema.safeParse({ ...valid, sortOrder: 10 }).success).toBe(true);
+    expect(
+      CreatePayItemSchema.safeParse({
+        code: 'DAILY',
+        name: { ar: 'يومي', en: 'Daily' },
+        kind: 'earning',
+        calcBasis: 'perDay',
+        quantitySource: 'attendedDays',
+      }).success,
+    ).toBe(true);
   });
 });
 
@@ -188,5 +219,97 @@ describe('the compensation vocabulary', () => {
     for (const forbidden of ['tax', 'insurance', 'contribution', 'bracket', 'payslip', 'exempt']) {
       expect(exported, forbidden).not.toContain(forbidden);
     }
+  });
+});
+
+// ── Attendance quantities (PY-4) ────────────────────────────────────────────
+
+describe('the quantity vocabulary', () => {
+  it('pins the seven sources by name', () => {
+    expect([...PAY_ITEM_QUANTITY_SOURCES]).toEqual([
+      'attendedDays',
+      'absentDays',
+      'leaveDays',
+      'workedMinutes',
+      'lateMinutes',
+      'earlyLeaveMinutes',
+      'approvedOvertimeMinutes',
+    ]);
+  });
+
+  // Every source must be derivable from a field the frozen feed actually carries, or PY-4 would
+  // be asking attendance for something it has no contract to give.
+  it('names only fields the attendance feed carries', () => {
+    const feed = [...ATTENDANCE_FEED_FIELDS, 'status'];
+    for (const source of PAY_ITEM_QUANTITY_SOURCES) {
+      const derivable = feed.includes(source) || source.endsWith('Days');
+      expect(derivable, source).toBe(true);
+    }
+  });
+
+  it('gives every source a unit, and every basis its requirement', () => {
+    expect(Object.keys(QUANTITY_SOURCE_UNITS).sort()).toEqual([...PAY_ITEM_QUANTITY_SOURCES].sort());
+    expect(CALC_BASIS_UNITS).toEqual({
+      fixed: null,
+      perDay: 'days',
+      perMinute: 'minutes',
+      percentOfBase: null,
+    });
+  });
+
+  it('matches a basis only to a source measured in its own unit', () => {
+    expect(quantitySourceFits('perDay', 'attendedDays')).toBe(true);
+    expect(quantitySourceFits('perDay', 'workedMinutes')).toBe(false);
+    expect(quantitySourceFits('perMinute', 'approvedOvertimeMinutes')).toBe(true);
+    expect(quantitySourceFits('perMinute', 'absentDays')).toBe(false);
+    expect(quantitySourceFits('fixed', null)).toBe(true);
+    expect(quantitySourceFits('fixed', 'attendedDays')).toBe(false);
+    expect(quantitySourceFits('percentOfBase', undefined)).toBe(true);
+    expect(quantitySourceFits('perDay', null)).toBe(false);
+  });
+});
+
+describe('creating a pay item with a quantity', () => {
+  const base = { code: 'DAILY', name: { ar: 'يومي', en: 'Daily' }, kind: 'earning' } as const;
+
+  it('requires a source for perDay and perMinute', () => {
+    expect(CreatePayItemSchema.safeParse({ ...base, calcBasis: 'perDay' }).success).toBe(false);
+    expect(
+      CreatePayItemSchema.safeParse({ ...base, calcBasis: 'perDay', quantitySource: 'attendedDays' })
+        .success,
+    ).toBe(true);
+    expect(
+      CreatePayItemSchema.safeParse({
+        ...base,
+        calcBasis: 'perMinute',
+        quantitySource: 'approvedOvertimeMinutes',
+      }).success,
+    ).toBe(true);
+  });
+
+  it('refuses a source measured in the wrong unit', () => {
+    expect(
+      CreatePayItemSchema.safeParse({ ...base, calcBasis: 'perDay', quantitySource: 'lateMinutes' })
+        .success,
+    ).toBe(false);
+  });
+
+  it('refuses a source on an item that counts nothing', () => {
+    for (const calcBasis of ['fixed', 'percentOfBase'] as const) {
+      expect(
+        CreatePayItemSchema.safeParse({ ...base, calcBasis, quantitySource: 'attendedDays' })
+          .success,
+        calcBasis,
+      ).toBe(false);
+      expect(CreatePayItemSchema.safeParse({ ...base, calcBasis }).success, calcBasis).toBe(true);
+    }
+  });
+
+  // Switching a per-day item from days-attended to days-absent would turn a payment into a charge
+  // over every period already priced with it — the sharpest case of the immutability rule.
+  it('refuses to change what an existing item counts', () => {
+    expect(
+      UpdatePayItemSchema.safeParse({ quantitySource: 'absentDays', version: 0 }).success,
+    ).toBe(false);
   });
 });

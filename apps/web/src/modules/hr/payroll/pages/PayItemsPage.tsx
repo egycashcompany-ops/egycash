@@ -4,19 +4,24 @@
 // exists yet — so this screen is deliberately a vocabulary editor, not a pay screen. It also
 // shows no tax or statutory field, because Payroll v1 has no such rule to show.
 //
-// `code`, `kind` and `calcBasis` are set once at creation and never edited: a payslip line will
-// cite the item that produced it, so changing what an item MEANS would restate history. The row
-// offers rename, re-order and archive instead — and archive rather than delete, so a future
-// payslip keeps naming something real.
+// `code`, `kind`, `calcBasis` and `quantitySource` are set once at creation and never edited: a
+// payslip line will cite the item that produced it, so changing what an item MEANS would restate
+// history — and switching a per-day item from days-attended to days-absent would turn a payment
+// into a charge. The row offers rename, re-order and archive instead — and archive rather than
+// delete, so a future payslip keeps naming something real.
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
+  CALC_BASIS_UNITS,
   PAY_ITEM_CALC_BASES,
   PAY_ITEM_KINDS,
+  PAY_ITEM_QUANTITY_SOURCES,
+  QUANTITY_SOURCE_UNITS,
   type Locale,
   type PayItemCalcBasis,
   type PayItemDto,
   type PayItemKind,
+  type PayItemQuantitySource,
 } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../store';
@@ -101,7 +106,16 @@ export const PayItemsPage = (): JSX.Element => {
     {
       key: 'calcBasis',
       header: t('payroll.payItems.calcBasis'),
-      render: (r) => t(`payroll.payItems.basis.${r.calcBasis}`),
+      render: (r) => (
+        <span className="flex flex-col">
+          <span>{t(`payroll.payItems.basis.${r.calcBasis}`)}</span>
+          {r.quantitySource !== null && (
+            <span className="text-xs text-slate-400">
+              {t(`payroll.quantitySource.${r.quantitySource}`)}
+            </span>
+          )}
+        </span>
+      ),
     },
     {
       key: 'status',
@@ -230,16 +244,37 @@ const PayItemDialog = ({
   const [en, setEn] = useState(item?.name.en ?? '');
   const [kind, setKind] = useState<PayItemKind>(item?.kind ?? 'earning');
   const [calcBasis, setCalcBasis] = useState<PayItemCalcBasis>(item?.calcBasis ?? 'fixed');
+  const [quantitySource, setQuantitySource] = useState<PayItemQuantitySource | ''>(
+    item?.quantitySource ?? '',
+  );
+
+  // PY-4: a per-day item counts something measured in days, a per-minute item counts minutes, and
+  // a flat or percentage item counts nothing. The picker offers only what fits, so an incoherent
+  // pairing cannot be chosen — the server refuses it too, and this is not the enforcement.
+  const neededUnit = CALC_BASIS_UNITS[calcBasis];
+  const sourceOptions = PAY_ITEM_QUANTITY_SOURCES.filter(
+    (source) => QUANTITY_SOURCE_UNITS[source] === neededUnit,
+  );
 
   const codeValid = /^[A-Z][A-Z0-9_]{1,29}$/.test(code);
-  const invalid = ar.trim() === '' || en.trim() === '' || (item === null && !codeValid);
+  const invalid =
+    ar.trim() === '' ||
+    en.trim() === '' ||
+    (item === null && !codeValid) ||
+    (item === null && neededUnit !== null && quantitySource === '');
 
   const submit = (): void => {
     if (invalid) return;
     const name = { ar: ar.trim(), en: en.trim() };
     if (item === null) {
       create.mutate(
-        { code, name, kind, calcBasis },
+        {
+          code,
+          name,
+          kind,
+          calcBasis,
+          ...(neededUnit === null ? {} : { quantitySource: quantitySource as PayItemQuantitySource }),
+        },
         {
           onSuccess: () => {
             toast.success(t('payroll.payItems.created'));
@@ -324,7 +359,10 @@ const PayItemDialog = ({
           {item === null ? (
             <Select
               value={calcBasis}
-              onChange={(e) => setCalcBasis(e.target.value as PayItemCalcBasis)}
+              onChange={(e) => {
+                setCalcBasis(e.target.value as PayItemCalcBasis);
+                setQuantitySource(''); // a new basis needs a source measured in its own unit
+              }}
               aria-label={t('payroll.payItems.calcBasis')}
             >
               {PAY_ITEM_CALC_BASES.map((value) => (
@@ -337,6 +375,33 @@ const PayItemDialog = ({
             <p className="text-sm">{t(`payroll.payItems.basis.${item.calcBasis}`)}</p>
           )}
         </Field>
+        {(neededUnit !== null || item?.quantitySource != null) && (
+          <Field
+            label={t('payroll.payItems.quantitySource')}
+            hint={item === null ? t('payroll.payItems.quantitySourceHint') : t('payroll.payItems.immutable')}
+          >
+            {item === null ? (
+              <Select
+                value={quantitySource}
+                onChange={(e) => setQuantitySource(e.target.value as PayItemQuantitySource | '')}
+                aria-label={t('payroll.payItems.quantitySource')}
+              >
+                <option value="">{t('payroll.payItems.pickQuantitySource')}</option>
+                {sourceOptions.map((value) => (
+                  <option key={value} value={value}>
+                    {t(`payroll.quantitySource.${value}`)}
+                  </option>
+                ))}
+              </Select>
+            ) : (
+              <p className="text-sm">
+                {item.quantitySource === null
+                  ? '—'
+                  : t(`payroll.quantitySource.${item.quantitySource}`)}
+              </p>
+            )}
+          </Field>
+        )}
         {error !== null && error !== undefined && (
           <p role="alert" className="text-sm text-red-600">
             {(error as Error).message}

@@ -105,6 +105,33 @@ export default tseslint.config(
     },
   },
 
+  // The Attendance → Payroll seam (PY-4, attendance design §15.1 / D-PR-07 Option A). Payroll may
+  // read attendance ONLY through the frozen feed, and only from its one port file. Raw day rows,
+  // punches and the freeze call are all out of reach.
+  //
+  // This is a rule rather than a convention because the attendance barrel exports the day model
+  // itself: one convenient import inside a service, and Payroll would be pricing a month whose
+  // truth was still moving — the exact failure the freeze exists to prevent. A seam everyone has
+  // to remember is a seam that lasts until the first deadline.
+  {
+    files: ['apps/api/src/modules/hr/payroll/**/*.ts'],
+    ignores: ['apps/api/src/modules/hr/payroll/compensation/attendance-quantity.port.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['**/attendance', '**/attendance/**'],
+              message:
+                "Payroll reads attendance ONLY through the frozen feed, via compensation/attendance-quantity.port.ts. See the attendance design §15.1 and PY-4.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+
   // Scripts and config files run under Node without the app logger.
   {
     files: ['scripts/**', '*.config.{js,ts}', '**/*.config.{js,ts}', '**/vite.config.ts'],

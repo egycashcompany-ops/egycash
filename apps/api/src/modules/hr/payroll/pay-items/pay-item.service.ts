@@ -33,6 +33,7 @@ const snapshot = (doc: PayItemDoc) => ({
   name: doc.name,
   kind: doc.kind,
   calcBasis: doc.calcBasis,
+  quantitySource: doc.quantitySource,
   sortOrder: doc.sortOrder,
   status: doc.status,
 });
@@ -50,6 +51,8 @@ class PayItemService {
         name: input.name,
         kind: input.kind,
         calcBasis: input.calcBasis,
+        // The contract already refused an incoherent pairing; `?? null` is the storage shape.
+        quantitySource: input.quantitySource ?? null,
         sortOrder: input.sortOrder ?? (await this.nextSortOrder()),
         status: 'active',
       },
@@ -137,6 +140,7 @@ class PayItemService {
       name: doc.name,
       kind: doc.kind,
       calcBasis: doc.calcBasis,
+      quantitySource: doc.quantitySource,
       sortOrder: doc.sortOrder,
       status: doc.status,
       version: doc.__v,

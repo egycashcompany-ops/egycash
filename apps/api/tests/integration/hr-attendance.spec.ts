@@ -1179,7 +1179,8 @@ describe('AT-7 — absence and missing-checkout sweeps', () => {
 
   it('sends no absence notice while hr.attendance.absenceNotify is off', async () => {
     const ctx: AuthContext = {
-      userId: 'seed',
+      // `settingsService.set` stamps `updatedBy`, so this has to be a real ObjectId.
+      userId: new Types.ObjectId().toString(),
       sessionId: 'seed',
       branchId: null,
       departmentId: null,

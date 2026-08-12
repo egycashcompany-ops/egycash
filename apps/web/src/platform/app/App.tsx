@@ -23,6 +23,7 @@ const EmployeeManagementRoutes = lazy(() => import('../../modules/hr/employee-ma
 const EmployeeFilesRoutes = lazy(() => import('../../modules/hr/employee-management/files-routes'));
 const OrganizationRoutes = lazy(() => import('../../modules/organization/routes'));
 const LeaveManagementRoutes = lazy(() => import('../../modules/hr/leave-management/routes'));
+const AttendanceRoutes = lazy(() => import('../../modules/hr/attendance/routes'));
 const ContractsRoutes = lazy(() => import('../../modules/hr/contracts/routes'));
 const FleetRoutes = lazy(() => import('../../modules/fleet/routes'));
 const ItRoutes = lazy(() => import('../../modules/it/routes'));
@@ -147,6 +148,22 @@ export const App = (): JSX.Element => {
                 }
               >
                 <LeaveManagementRoutes />
+              </Suspense>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/attendance/*"
+          element={
+            <RequireAuth>
+              <Suspense
+                fallback={
+                  <div className="grid min-h-screen place-items-center">
+                    <LoadingState />
+                  </div>
+                }
+              >
+                <AttendanceRoutes />
               </Suspense>
             </RequireAuth>
           }

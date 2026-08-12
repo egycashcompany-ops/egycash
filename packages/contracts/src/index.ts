@@ -35,6 +35,7 @@ export * from './modules/hr-hiring-documents.js';
 export * from './modules/hr-employee-file.js';
 export * from './modules/hr-leave.js';
 export * from './modules/hr-attendance.js';
+export * from './modules/hr-payroll-money.js';
 export * from './modules/hr-payroll.js';
 export * from './modules/hr-contract.js';
 export * from './modules/fleet.js';

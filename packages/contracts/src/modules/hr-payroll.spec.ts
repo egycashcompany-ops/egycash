@@ -6,7 +6,9 @@
 // yet" is a decision this phase must keep rather than a gap somebody quietly fills.
 import { describe, expect, it } from 'vitest';
 import {
+  CreateEmployeePayItemSchema,
   CreatePayItemSchema,
+  EMPLOYEE_PAY_ITEM_REMOVALS,
   PAY_ITEM_CALC_BASES,
   PAY_ITEM_KINDS,
   UpdatePayItemSchema,
@@ -68,5 +70,75 @@ describe('the pay-item vocabulary', () => {
     for (const forbidden of ['taxable', 'tax', 'insurance', 'socialInsurance', 'exempt']) {
       expect(shape, forbidden).not.toContain(forbidden);
     }
+  });
+});
+
+// ── Employee pay items (PY-2) ───────────────────────────────────────────────
+
+const assignment = {
+  payItemId: '507f1f77bcf86cd799439011',
+  amount: 1500,
+  effectiveFrom: '2026-03-01',
+};
+
+describe('an employee pay-item assignment', () => {
+  it('accepts a well-formed one and defaults the currency to EGP', () => {
+    const parsed = CreateEmployeePayItemSchema.safeParse(assignment);
+    expect(parsed.success).toBe(true);
+    // The same three-letter default every other compensation figure carries — not a new system.
+    expect(parsed.success && parsed.data.currency).toBe('EGP');
+  });
+
+  it('treats an omitted end as open-ended rather than as an error', () => {
+    expect(CreateEmployeePayItemSchema.safeParse(assignment).success).toBe(true);
+    expect(
+      CreateEmployeePayItemSchema.safeParse({ ...assignment, effectiveTo: null }).success,
+    ).toBe(true);
+    expect(
+      CreateEmployeePayItemSchema.safeParse({ ...assignment, effectiveTo: '2026-12-31' }).success,
+    ).toBe(true);
+  });
+
+  it('refuses an interval that ends before it starts', () => {
+    const parsed = CreateEmployeePayItemSchema.safeParse({
+      ...assignment,
+      effectiveTo: '2026-02-28',
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  // A zero assignment says nothing, and a negative one says "deduction" in a place that already
+  // has a `kind` for that — the sign belongs to the catalog item, never to the amount.
+  it('refuses an amount that is not a positive figure at storage precision', () => {
+    for (const amount of [0, -1500, 1.005, Number.NaN]) {
+      expect(
+        CreateEmployeePayItemSchema.safeParse({ ...assignment, amount }).success,
+        String(amount),
+      ).toBe(false);
+    }
+    expect(CreateEmployeePayItemSchema.safeParse({ ...assignment, amount: 1500.25 }).success).toBe(
+      true,
+    );
+  });
+
+  // The subject is the ROUTE, not the body: a payload that could name its own employee would be a
+  // second way to answer "whose compensation is this?", and the scoped one is the route's.
+  it('takes no employeeId, and no statutory field, in the body', () => {
+    for (const extra of [
+      { employeeId: '507f1f77bcf86cd799439012' },
+      { taxable: true },
+      { tax: 0 },
+      { socialInsurance: true },
+      { grossUp: true },
+    ]) {
+      expect(
+        CreateEmployeePayItemSchema.safeParse({ ...assignment, ...extra }).success,
+        Object.keys(extra)[0],
+      ).toBe(false);
+    }
+  });
+
+  it('pins the three things DELETE can mean', () => {
+    expect([...EMPLOYEE_PAY_ITEM_REMOVALS]).toEqual(['removed', 'ended', 'alreadyEnded']);
   });
 });

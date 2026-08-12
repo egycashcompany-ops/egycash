@@ -41,6 +41,7 @@ import {
 import {
   buildAttendanceAssignmentsRouter,
   buildAttendanceDaysRouter,
+  buildAttendanceExportRouter,
   buildAttendanceOvertimeRouter,
   buildAttendancePunchesRouter,
   buildAttendanceRegularizationsRouter,
@@ -437,11 +438,37 @@ const attendanceAssignPermissions = declarePermissions(
   'hr.attendance-assignments',
 );
 
+// The daily sheet is the reading surface (AT-6): `attendance.view` opens it, and the CSV is its
+// own key beside it — the audit-screen shape, where reading and exporting are separate grants.
+const attendanceDailyPermissions = declarePermissions(
+  'hr',
+  'attendance',
+  { en: 'attendance', ar: 'الحضور والانصراف' },
+  ['view', 'export'],
+  [],
+  'hr.attendance-daily',
+);
+
+// The regularization queue's own screen (AT-6): the decision grant lives there.
+const attendanceQueuePermissions = declarePermissions(
+  'hr',
+  'attendance',
+  { en: 'attendance', ar: 'الحضور والانصراف' },
+  [],
+  [
+    {
+      action: 'decideRegularization',
+      name: { en: 'Decide attendance regularizations', ar: 'البت في تسويات الحضور' },
+    },
+  ],
+  'hr.attendance-regularizations',
+);
+
 const attendanceUnassignedPermissions = declarePermissions(
   'hr',
   'attendance',
   { en: 'attendance', ar: 'الحضور والانصراف' },
-  ['view'],
+  [],
   [
     { action: 'recordPunch', name: { en: 'Record a punch manually', ar: 'تسجيل بصمة يدويًا' } },
     { action: 'importPunches', name: { en: 'Import device punches', ar: 'استيراد بصمات الأجهزة' } },
@@ -449,14 +476,12 @@ const attendanceUnassignedPermissions = declarePermissions(
       action: 'recompute',
       name: { en: 'Recompute attendance days', ar: 'إعادة احتساب أيام الحضور' },
     },
-    // AT-5 (§6/§7): the regularization chain and overtime release. Screens arrive with AT-6.
+    // Self-service and the overtime release act on surfaces the employee already stands on (My
+    // Attendance, the day row inside the daily sheet) rather than on administration screens of
+    // their own — so they stay deliberately unassigned, like the punch and recompute keys.
     {
       action: 'requestRegularization',
       name: { en: 'Request an attendance regularization', ar: 'طلب تسوية حضور' },
-    },
-    {
-      action: 'decideRegularization',
-      name: { en: 'Decide attendance regularizations', ar: 'البت في تسويات الحضور' },
     },
     {
       action: 'approveOvertime',
@@ -468,6 +493,8 @@ const attendanceUnassignedPermissions = declarePermissions(
 const attendancePermissions = [
   ...attendanceShiftAdminPermissions,
   ...attendanceAssignPermissions,
+  ...attendanceDailyPermissions,
+  ...attendanceQueuePermissions,
   ...attendanceUnassignedPermissions,
 ];
 
@@ -669,6 +696,20 @@ export const hrPages: PageDef[] = [
     route: '/attendance/assignments',
     sortOrder: 180,
   },
+  {
+    id: 'hr.attendance-daily',
+    moduleId: 'hr',
+    name: { en: 'Daily attendance', ar: 'الحضور اليومي' },
+    route: '/attendance/daily',
+    sortOrder: 190,
+  },
+  {
+    id: 'hr.attendance-regularizations',
+    moduleId: 'hr',
+    name: { en: 'Attendance regularizations', ar: 'تسويات الحضور' },
+    route: '/attendance/regularizations',
+    sortOrder: 200,
+  },
 ];
 
 export const hrModule: ModuleManifest = {
@@ -714,6 +755,7 @@ export const hrModule: ModuleManifest = {
     { prefix: '/hr/attendance/days', router: buildAttendanceDaysRouter() },
     { prefix: '/hr/attendance/regularizations', router: buildAttendanceRegularizationsRouter() },
     { prefix: '/hr/attendance/overtime', router: buildAttendanceOvertimeRouter() },
+    { prefix: '/hr/attendance/export', router: buildAttendanceExportRouter() },
   ],
   collections: [
     'hr_applicants',

@@ -844,3 +844,251 @@ describe('AT-5 — regularizations and overtime approval', () => {
     expect(ot.status).toBe(422);
   });
 });
+
+// ── AT-6 — the reading surfaces: scoped lists, the ESS own-scope, the queue, the CSV ─────────
+describe('AT-6 — screens, self-service and export', () => {
+  /** An employee with an ESS login carrying exactly the two keys the ESS role grants. */
+  const essEmployee = async (): Promise<{ emp: EmployeeDto; token: string }> => {
+    const emp = await regEmployee();
+    await assign(emp.id, GENERAL.id);
+    const reread = await request(app)
+      .get(`/api/v1/hr/employees/${emp.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const userId = String((reread.body.data as EmployeeDto).userId);
+    await userService.setPassword(userId, PASSWORD, 'passwordReset');
+    await userService.forceActivate(userId);
+    // The attendance migration widens the seeded ESS role; a login provisioned before it ran
+    // still holds the leave-only set, so re-assert the grant the same way the migration does.
+    await rbacService.addSystemRoleGrants('employee-self-service', [
+      'attendance.view',
+      'attendance.requestRegularization',
+    ]);
+    return { emp, token: await login(emp.code) };
+  };
+
+  const get = (path: string, token: string) =>
+    request(app).get(`/api/v1/${path}`).set('Authorization', `Bearer ${token}`);
+
+  it('the ESS role carries attendance.view and requestRegularization, at own scope only', async () => {
+    const { token } = await essEmployee();
+    const me = await get('auth/me', token);
+    expect(me.status).toBe(200);
+    const permissions = (me.body.data as { permissions: Record<string, string> }).permissions;
+    expect(permissions['attendance.view']).toBe('own');
+    expect(permissions['attendance.requestRegularization']).toBe('own');
+    // Nothing wider, and no decision or export key — ESS decides and exports nothing.
+    expect(permissions['attendance.decideRegularization']).toBeUndefined();
+    expect(permissions['attendance.export']).toBeUndefined();
+    expect(permissions['attendance.approveOvertime']).toBeUndefined();
+  });
+
+  it('own scope answers for the caller and NEVER for another employee', async () => {
+    const mine = await essEmployee();
+    const other = await regEmployee();
+    await assign(other.id, GENERAL.id);
+    const workday = recentWorkday();
+    for (const employee of [mine.emp, other]) {
+      await recordPunch({ employeeId: employee.id, at: cairoInstant(workday, '09:00').toISOString() });
+      await recordPunch({ employeeId: employee.id, at: cairoInstant(workday, '17:00').toISOString() });
+      await recompute(employee.id, workday);
+    }
+    const range = `from=${dateOnlyIso(workday)}&to=${dateOnlyIso(workday)}`;
+
+    // /me: the caller's own row, whatever filters are attempted.
+    const me = await get(`hr/attendance/days/me?${range}`, mine.token);
+    expect(me.status).toBe(200);
+    const mineRows = me.body.data as AttendanceDayDto[];
+    expect(mineRows).toHaveLength(1);
+    expect(mineRows[0]?.employeeId).toBe(mine.emp.id);
+
+    // A forged employeeId on /me is DROPPED, never honoured: the controller rebuilds the query
+    // from the caller's own link, so the answer is still exactly the caller's row.
+    const forged = await get(`hr/attendance/days/me?${range}&employeeId=${other.id}`, mine.token);
+    expect(forged.status).toBe(200);
+    const forgedRows = forged.body.data as AttendanceDayDto[];
+    expect(forgedRows).toHaveLength(1);
+    expect(forgedRows[0]?.employeeId).toBe(mine.emp.id);
+
+    // The scoped list under an `own` grant answers only for the caller — and asking for somebody
+    // else returns NOTHING rather than their data, and rather than the caller's own rows dressed
+    // as an answer about them.
+    const scoped = await get(`hr/attendance/days?${range}&employeeId=${other.id}`, mine.token);
+    expect(scoped.status).toBe(200);
+    expect(scoped.body.data as AttendanceDayDto[]).toHaveLength(0);
+
+    // Unfiltered, the same grant answers with the caller's own row.
+    const unfiltered = await get(`hr/attendance/days?${range}`, mine.token);
+    expect(unfiltered.status).toBe(200);
+    const ownRows = unfiltered.body.data as AttendanceDayDto[];
+    expect(ownRows).toHaveLength(1);
+    expect(ownRows[0]?.employeeId).toBe(mine.emp.id);
+  });
+
+  it('lists days for the daily sheet with the employee labels the screen renders', async () => {
+    const emp = await regEmployee();
+    await assign(emp.id, GENERAL.id);
+    const workday = recentWorkday();
+    await recordPunch({ employeeId: emp.id, at: cairoInstant(workday, '09:00').toISOString() });
+    await recordPunch({ employeeId: emp.id, at: cairoInstant(workday, '17:00').toISOString() });
+    await recompute(emp.id, workday);
+
+    const res = await get(
+      `hr/attendance/days?from=${dateOnlyIso(workday)}&to=${dateOnlyIso(workday)}&employeeId=${emp.id}`,
+      adminToken,
+    );
+    expect(res.status).toBe(200);
+    const row = (res.body.data as AttendanceDayDto[])[0];
+    expect(row?.employeeCode).toBe(emp.code);
+    expect(row?.employeeName).toBe(emp.personal.fullNameAr);
+    // The row carries its concurrency token — the overtime approval rides it.
+    expect(typeof row?.version).toBe('number');
+  });
+
+  it('filters the sheet by section through the employees, since a day row carries only a branch', async () => {
+    const emp = await regEmployee();
+    await assign(emp.id, GENERAL.id);
+    const workday = recentWorkday();
+    await recompute(emp.id, workday);
+    const range = `from=${dateOnlyIso(workday)}&to=${dateOnlyIso(workday)}`;
+
+    // The employee sits in no section, so a section filter must exclude them rather than ignore it.
+    const filtered = await get(`hr/attendance/days?${range}&sectionId=${DEPARTMENT_ID}`, adminToken);
+    expect(filtered.status).toBe(200);
+    expect((filtered.body.data as AttendanceDayDto[]).some((r) => r.employeeId === emp.id)).toBe(false);
+    const unfiltered = await get(`hr/attendance/days?${range}&employeeId=${emp.id}`, adminToken);
+    expect((unfiltered.body.data as AttendanceDayDto[]).some((r) => r.employeeId === emp.id)).toBe(true);
+  });
+
+  it('the queue shows the manager step to the manager and the HR step to the key-holder', async () => {
+    const managerEmp = await regEmployee();
+    const managerReread = await request(app)
+      .get(`/api/v1/hr/employees/${managerEmp.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const managerUserId = String((managerReread.body.data as EmployeeDto).userId);
+    await userService.setPassword(managerUserId, PASSWORD, 'passwordReset');
+    await userService.forceActivate(managerUserId);
+    const managerToken = await login(managerEmp.code);
+
+    const subject = await request(app)
+      .post('/api/v1/hr/employees/direct')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        personal: {
+          identity: { fullNameAr: 'موظف الطابور', nationalId: nextNid(), nationality: 'Egyptian' },
+          contact: { primaryPhone: nextPhone() },
+          experience: [],
+          drivingLicenses: [],
+          certifications: [],
+          references: [],
+        },
+        employment: {
+          jobTitleId: JOB_TITLE_ID,
+          departmentId: DEPARTMENT_ID,
+          branchId: BRANCH_ID,
+          managerId: managerUserId,
+          employmentType: 'fullTime',
+          probationMonths: 0,
+          startDate: '2024-01-01T00:00:00.000Z',
+        },
+        hiringDate: '2024-01-01T00:00:00.000Z',
+      });
+    const subjectEmp = subject.body.data as EmployeeDto;
+    await assign(subjectEmp.id, GENERAL.id);
+    const subjectReread = await request(app)
+      .get(`/api/v1/hr/employees/${subjectEmp.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const subjectUserId = String((subjectReread.body.data as EmployeeDto).userId);
+    await userService.setPassword(subjectUserId, PASSWORD, 'passwordReset');
+    await userService.forceActivate(subjectUserId);
+    await rbacService.addSystemRoleGrants('employee-self-service', [
+      'attendance.view',
+      'attendance.requestRegularization',
+    ]);
+    const subjectToken = await login(subjectEmp.code);
+
+    const workday = recentWorkday();
+    const filed = await request(app)
+      .post('/api/v1/hr/attendance/regularizations')
+      .set('Authorization', `Bearer ${subjectToken}`)
+      .send({
+        workDate: dateOnlyIso(workday),
+        proposedInAt: cairoInstant(workday, '09:00').toISOString(),
+        proposedOutAt: cairoInstant(workday, '17:00').toISOString(),
+        reason: 'queue visibility case',
+      });
+    expect(filed.status).toBe(201);
+    const reg = filed.body.data as AttendanceRegularizationDto;
+    expect(reg.status).toBe('pendingManager');
+
+    // The manager sees it in their worklist, with the employee label the screen prints.
+    const managerQueue = await get('hr/attendance/regularizations/pending-decisions', managerToken);
+    expect(managerQueue.status).toBe(200);
+    const managerRows = managerQueue.body.data as AttendanceRegularizationDto[];
+    expect(managerRows.some((r) => r.id === reg.id)).toBe(true);
+    expect(managerRows.find((r) => r.id === reg.id)?.employeeCode).toBe(subjectEmp.code);
+
+    // The subject never sees their own request as something to decide (C7).
+    const subjectQueue = await get('hr/attendance/regularizations/pending-decisions', subjectToken);
+    expect((subjectQueue.body.data as AttendanceRegularizationDto[]).some((r) => r.id === reg.id)).toBe(false);
+
+    // An outsider with no relationship and no key sees nothing.
+    const outsiderQueue = await get('hr/attendance/regularizations/pending-decisions', outsiderToken);
+    expect(outsiderQueue.status).toBe(200);
+    expect((outsiderQueue.body.data as AttendanceRegularizationDto[]).some((r) => r.id === reg.id)).toBe(false);
+
+    // The administrative list needs the decision key; the subject's ESS login is refused.
+    expect((await get('hr/attendance/regularizations', subjectToken)).status).toBe(403);
+    const adminList = await get('hr/attendance/regularizations?status=pendingManager', adminToken);
+    expect(adminList.status).toBe(200);
+    expect((adminList.body.data as AttendanceRegularizationDto[]).some((r) => r.id === reg.id)).toBe(true);
+
+    // My own requests are readable by the subject — and only their own.
+    const mine = await get('hr/attendance/regularizations/me', subjectToken);
+    expect(mine.status).toBe(200);
+    const mineRows = mine.body.data as AttendanceRegularizationDto[];
+    expect(mineRows.every((r) => r.employeeId === subjectEmp.id)).toBe(true);
+  });
+
+  it('exports the §15.1 columns as CSV, behind attendance.export, audited', async () => {
+    const emp = await regEmployee();
+    await assign(emp.id, GENERAL.id);
+    const workday = recentWorkday();
+    await recordPunch({ employeeId: emp.id, at: cairoInstant(workday, '09:00').toISOString() });
+    await recordPunch({ employeeId: emp.id, at: cairoInstant(workday, '17:00').toISOString() });
+    await recompute(emp.id, workday);
+    const range = `from=${dateOnlyIso(workday)}&to=${dateOnlyIso(workday)}`;
+
+    // Reading is not exporting: the ESS login holds attendance.view and is still refused.
+    const ess = await essEmployee();
+    expect((await get(`hr/attendance/export?${range}`, ess.token)).status).toBe(403);
+    expect((await get(`hr/attendance/export?${range}`, outsiderToken)).status).toBe(403);
+
+    const res = await get(`hr/attendance/export?${range}&employeeId=${emp.id}`, adminToken);
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('text/csv');
+    expect(res.headers['content-disposition']).toContain('attendance-export-');
+
+    const lines = res.text.trim().split('\n');
+    // The header is the two labels plus the twelve feed fields, in the contract's order.
+    expect(lines[0]).toBe(['employeeCode', 'employeeName', ...ATTENDANCE_FEED_FIELDS].join(','));
+    const row = (lines.find((line) => line.includes(emp.code)) ?? '').split(',');
+    expect(row[0]).toBe(emp.code);
+    expect(row[2]).toBe(emp.id);
+    expect(row[3]).toBe(dateOnlyIso(workday));
+    expect(row[4]).toBe('present');
+    // Only the APPROVED overtime is exported — the derived surplus never leaves the module.
+    expect(row).toHaveLength(14);
+
+    // The window is capped like recompute: an export is a report, not a dump.
+    const wide = await get(
+      `hr/attendance/export?from=2024-01-01&to=2025-01-01`,
+      adminToken,
+    );
+    expect(wide.status).toBe(400);
+
+    // The export audits ITSELF.
+    const audit = await get('platform/audit-logs?entityType=attendanceDay&action=export', adminToken);
+    expect(audit.status).toBe(200);
+    expect((audit.body.data as { action: string }[]).length).toBeGreaterThan(0);
+  });
+});

@@ -255,9 +255,33 @@ export const ListAttendanceDaysQuerySchema = PaginationQuerySchema.extend({
   to: z.coerce.date(),
   employeeId: objectId().optional(),
   branchId: objectId().optional(),
+  /** Day rows carry no section; the server resolves the section's employees (AT-6 daily sheet). */
+  sectionId: objectId().optional(),
   status: AttendanceDayStatusSchema.optional(),
 }).strict();
 export type ListAttendanceDaysQuery = z.infer<typeof ListAttendanceDaysQuerySchema>;
+
+/**
+ * The AT-6 CSV export — the §15.1 columns plus the two display labels, read from the day rows
+ * (frozen and live alike), NEVER re-derived from punches. Range-capped like recompute: an export
+ * is a report, not a dump.
+ */
+export const ExportAttendanceQuerySchema = z
+  .object({
+    from: z.coerce.date(),
+    to: z.coerce.date(),
+    employeeId: objectId().optional(),
+    branchId: objectId().optional(),
+    sectionId: objectId().optional(),
+    status: AttendanceDayStatusSchema.optional(),
+  })
+  .strict()
+  .refine((v) => v.to >= v.from, { path: ['to'], message: 'to must be on or after from' })
+  .refine((v) => (v.to.getTime() - v.from.getTime()) / 86_400_000 <= 92, {
+    path: ['to'],
+    message: 'the export window is capped at 92 days',
+  });
+export type ExportAttendanceQuery = z.infer<typeof ExportAttendanceQuerySchema>;
 
 /** Range-capped: recomputation is a repair tool, not a batch job (the scheduler owns bulk). */
 export const RecomputeAttendanceDaysSchema = z
@@ -305,6 +329,9 @@ export interface AttendanceDayDto {
   frozenAt: string | null;
   /** Optimistic-concurrency token for the one client write the row accepts: overtime approval. */
   version: number;
+  /** Display labels, enriched on the scoped list reads (AT-6) — never stored on the row. */
+  employeeCode?: string;
+  employeeName?: string;
 }
 
 // ── Regularizations (§7, D7 as ruled: TWO approval steps) ───────────────────
@@ -368,6 +395,17 @@ export type CancelAttendanceRegularization = z.infer<
   typeof CancelAttendanceRegularizationSchema
 >;
 
+export const ListAttendanceRegularizationsQuerySchema = PaginationQuerySchema.extend({
+  status: AttendanceRegularizationStatusSchema.optional(),
+  employeeId: objectId().optional(),
+  branchId: objectId().optional(),
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
+}).strict();
+export type ListAttendanceRegularizationsQuery = z.infer<
+  typeof ListAttendanceRegularizationsQuerySchema
+>;
+
 export interface AttendanceRegularizationDto {
   id: string;
   employeeId: string;
@@ -394,6 +432,9 @@ export interface AttendanceRegularizationDto {
   version: number;
   createdAt: string;
   updatedAt: string;
+  /** Display labels, enriched on the list reads (AT-6) — never stored on the row. */
+  employeeCode?: string;
+  employeeName?: string;
 }
 
 // ── Overtime approval (D5) ──────────────────────────────────────────────────

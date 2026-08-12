@@ -3,12 +3,16 @@
 // authorizes without reaching into the request.
 import { type Request, type Response } from 'express';
 import {
+  type AttendanceRegularizationDto,
   type CancelAttendanceRegularization,
   type CreateAttendanceRegularization,
   type DecideAttendanceRegularization,
+  type ListAttendanceRegularizationsQuery,
 } from '@ecms/contracts';
-import { created, ok, validated } from '../../../../platform/web';
+import { created, ok, okPage, validated } from '../../../../platform/web';
 import { authContext } from '../../../../platform/auth';
+import { scopeSelector } from '../../../../shared/types';
+import { employeeLabelMap, labelFields } from '../employee-labels';
 import {
   regularizationService,
   toRegularizationDto,
@@ -23,6 +27,62 @@ const flagsOf = (req: Request): RegularizationCallerFlags => {
     canRequest: 'attendance.requestRegularization' in ctx.permissions,
     canDecide: 'attendance.decideRegularization' in ctx.permissions,
   };
+};
+
+export const listRegularizations = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { query } = validated<never, ListAttendanceRegularizationsQuery, never>(req);
+  const page = await regularizationService.list(
+    query,
+    scopeSelector(ctx, 'attendance.decideRegularization'),
+  );
+  const labels = await employeeLabelMap(page.items.map((doc) => String(doc.employeeId)));
+  okPage(
+    res,
+    page,
+    (doc): AttendanceRegularizationDto => ({
+      ...toRegularizationDto(doc),
+      ...labelFields(labels, String(doc.employeeId)),
+    }),
+  );
+};
+
+export const listMyRegularizations = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { query } = validated<never, ListAttendanceRegularizationsQuery, never>(req);
+  // Any employee/branch filter is dropped: /me answers for the caller's own record only.
+  const page = await regularizationService.listMine(String(ctx.userId), {
+    page: query.page,
+    pageSize: query.pageSize,
+    sortDir: query.sortDir,
+    ...(query.sortBy === undefined ? {} : { sortBy: query.sortBy }),
+    ...(query.status === undefined ? {} : { status: query.status }),
+    ...(query.from === undefined ? {} : { from: query.from }),
+    ...(query.to === undefined ? {} : { to: query.to }),
+  });
+  okPage(res, page, toRegularizationDto);
+};
+
+export const pendingRegularizationDecisions = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  const ctx = authContext(req);
+  const docs = await regularizationService.pendingDecisions(
+    ctx,
+    flagsOf(req),
+    scopeSelector(ctx, 'attendance.decideRegularization'),
+  );
+  const labels = await employeeLabelMap(docs.map((doc) => String(doc.employeeId)));
+  ok(
+    res,
+    docs.map(
+      (doc): AttendanceRegularizationDto => ({
+        ...toRegularizationDto(doc),
+        ...labelFields(labels, String(doc.employeeId)),
+      }),
+    ),
+  );
 };
 
 export const createRegularization = async (req: Request, res: Response): Promise<void> => {

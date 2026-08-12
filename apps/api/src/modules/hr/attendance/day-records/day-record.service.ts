@@ -16,7 +16,7 @@ import {
   type RecomputeAttendanceDays,
 } from '@ecms/contracts';
 import { BusinessRuleError, NotFoundError } from '../../../../shared/errors';
-import { type AuthContext } from '../../../../shared/types';
+import { type AuthContext, type ScopeSelector } from '../../../../shared/types';
 import { auditService } from '../../../../platform/audit';
 import { emit } from '../../../../platform/kernel/event-bus';
 import { settingsService } from '../../../../platform/settings';
@@ -83,9 +83,40 @@ const employedOn = (employee: EmployeeDoc, workDate: Date): boolean => {
   return toDateOnly(employee.employment.startDate).getTime() <= workDate.getTime();
 };
 
+/** The shape `BaseRepository.list` returns, for the reads that resolve to nothing without a query. */
+const emptyPage = (query: { page: number; pageSize: number }): Paginated<AttendanceDayDoc> => ({
+  items: [],
+  meta: { page: query.page, pageSize: query.pageSize, totalItems: 0, totalPages: 0 },
+});
+
 class DayRecordService {
-  async list(query: ListAttendanceDaysQuery): Promise<Paginated<AttendanceDayDoc>> {
-    return dayRecordRepository.listDays(query);
+  /**
+   * Scoped list (AT-6): `own` resolves the caller's linked employee (rows are system-written, so
+   * BaseRepository's creator-based own-match can never see them — C1-R); the org scopes ride the
+   * repository's `branchId` filter. A section filter resolves the section's employees first,
+   * because day rows deliberately carry only the branch axis (D8).
+   */
+  async list(
+    query: ListAttendanceDaysQuery,
+    scope?: ScopeSelector,
+  ): Promise<Paginated<AttendanceDayDoc>> {
+    let employeeIds: string[] | undefined;
+    if (query.sectionId !== undefined) {
+      employeeIds = await employeeRepository.listIdsBySectionSystem(query.sectionId);
+    }
+    if (scope !== undefined && scope.scope === 'own') {
+      const own = await employeeRepository.findByUserIdSystem(scope.userId);
+      if (own === null) throw new NotFoundError('no employee is linked to this login');
+      const ownId = String(own._id);
+      // A narrower question than the grant allows is answered with NOTHING, never by silently
+      // substituting the caller's own rows: "show me employee X" must not come back as "here is
+      // you", which reads as an answer about X and would be believed as one.
+      const asksForSomebodyElse = query.employeeId !== undefined && query.employeeId !== ownId;
+      const sectionExcludesMe = employeeIds !== undefined && !employeeIds.includes(ownId);
+      if (asksForSomebodyElse || sectionExcludesMe) return emptyPage(query);
+      return dayRecordRepository.listDays({ ...query, employeeId: ownId });
+    }
+    return dayRecordRepository.listDays(query, { employeeIds, scope });
   }
 
   /** ESS: the caller's own month — own by construction (resolved from the login link). */

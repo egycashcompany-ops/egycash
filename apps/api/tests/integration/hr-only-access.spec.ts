@@ -409,7 +409,14 @@ describe('the four accounts are resolved and confined', () => {
 
     const derived = await roleRepository.findByKey(derivedHrRoleKey(String(ess?._id)));
     expect(derived?.isSystem).toBe(false);
-    expect(derived?.permissionKeys.sort()).toEqual(['leave.request', 'leave.view']);
+    // The whole ESS grant set, copied verbatim — AT-6 added the two attendance self-service keys
+    // to that role, and the confinement's job is to drop the system-ness, never the access.
+    expect(derived?.permissionKeys.sort()).toEqual([
+      'attendance.requestRegularization',
+      'attendance.view',
+      'leave.request',
+      'leave.view',
+    ]);
 
     // And with enforcement on they still are not asked for TOTP.
     await setTotpEnforcement(true);

@@ -157,11 +157,13 @@ export const migrateLeaveModule = async (): Promise<void> => {
     logger.error({ err: error }, 'leave grant migration failed — rerun on next boot');
   }
 
-  // ④ Employee Self-Service role (L7): leave.view + leave.request at OWN scope.
+  // ④ Employee Self-Service role (L7): leave + attendance self-service, all at OWN scope. The
+  // attendance keys are listed here only for a role created FROM SCRATCH; a role that already
+  // exists is widened by the attendance migration, which never reverts an administrator's edit.
   const essRole = await rbacService.ensureSystemRole(
     'employee-self-service',
     { en: 'Employee Self-Service', ar: 'الخدمة الذاتية للموظفين' },
-    ['leave.view', 'leave.request'],
+    ['leave.view', 'leave.request', 'attendance.view', 'attendance.requestRegularization'],
   );
   const employed = await employeeRepository.listEmployedSystem();
   for (const employee of employed) {

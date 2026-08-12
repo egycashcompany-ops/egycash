@@ -5,6 +5,7 @@ export {
   type RegularizationCallerFlags,
 } from './regularization.service';
 export { buildAttendanceRegularizationsRouter } from './regularization.routes';
+export { regularizationRepository } from './regularization.repository';
 export {
   AttendanceRegularizationModel,
   type AttendanceRegularizationDoc,

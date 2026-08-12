@@ -38,6 +38,15 @@ import {
   buildWorkCalendarRouter,
   registerHrWorkCalendarSettings,
 } from './work-calendar';
+import {
+  buildAttendanceAssignmentsRouter,
+  buildAttendanceDaysRouter,
+  buildAttendancePunchesRouter,
+  buildAttendanceShiftsRouter,
+  dayRecordService,
+  registerHrAttendanceSettings,
+} from './attendance';
+import { addDays, cairoToday } from './shared/business-date';
 import { registerHrIdentitySeams } from './employee-management/employees/identity-seams';
 import { registerHrDirectorySeams } from './directory-seams';
 import {
@@ -64,6 +73,8 @@ import { seedHrRecruitment } from './hr.seed';
 // Business-calendar + leave settings enter the registry at module load, before boot resolves
 // any value (Leave design C2).
 registerHrWorkCalendarSettings();
+// Attendance settings (frozen attendance design v1.1 §9).
+registerHrAttendanceSettings();
 // Contracts settings (frozen contracts design A1/A7/D11).
 registerHrContractSettings();
 // Auth design 4.3/4.4 — employee-code login + NID temp-password source (platform seams).
@@ -395,6 +406,56 @@ const workCalendarPermissions = declarePermissions(
   'hr.holidays',
 );
 
+// Attendance (frozen design v1.1 §6 — keys settled in P-HR-01, two-segment per D-PR-01).
+// One resource whose actions genuinely split across surfaces, expressed as three declarations —
+// the call-site override the `declarePermissions` docstring names. The shifts catalog and the
+// assignments screen ship with AT-1, so their keys sit on those pages; the punch and day-record
+// keys have NO screen until AT-6 and stay deliberately unassigned — the page arrives with the
+// change that builds the screen, never ahead of it.
+const attendanceShiftAdminPermissions = declarePermissions(
+  'hr',
+  'attendance',
+  { en: 'attendance', ar: 'الحضور والانصراف' },
+  [],
+  [{ action: 'manageShifts', name: { en: 'Manage shifts', ar: 'إدارة الورديات' } }],
+  'hr.attendance-shifts',
+);
+
+const attendanceAssignPermissions = declarePermissions(
+  'hr',
+  'attendance',
+  { en: 'attendance', ar: 'الحضور والانصراف' },
+  [],
+  [
+    {
+      action: 'assign',
+      name: { en: 'Assign shifts to employees', ar: 'إسناد الورديات للموظفين' },
+    },
+  ],
+  'hr.attendance-assignments',
+);
+
+const attendanceUnassignedPermissions = declarePermissions(
+  'hr',
+  'attendance',
+  { en: 'attendance', ar: 'الحضور والانصراف' },
+  ['view'],
+  [
+    { action: 'recordPunch', name: { en: 'Record a punch manually', ar: 'تسجيل بصمة يدويًا' } },
+    { action: 'importPunches', name: { en: 'Import device punches', ar: 'استيراد بصمات الأجهزة' } },
+    {
+      action: 'recompute',
+      name: { en: 'Recompute attendance days', ar: 'إعادة احتساب أيام الحضور' },
+    },
+  ],
+);
+
+const attendancePermissions = [
+  ...attendanceShiftAdminPermissions,
+  ...attendanceAssignPermissions,
+  ...attendanceUnassignedPermissions,
+];
+
 // Contracts module (frozen design docs/12-planning/contracts-module-design.md §2 D10):
 // lifecycle actions are each their own grant; print/download is separately auditable;
 // templates and the type catalog are admin surfaces.
@@ -457,6 +518,7 @@ export const hrPermissions: PermissionDef[] = [
   ...employeeFilePermissions,
   ...leavePermissions,
   ...workCalendarPermissions,
+  ...attendancePermissions,
 ];
 
 /**
@@ -578,12 +640,26 @@ export const hrPages: PageDef[] = [
     route: '/leave/holidays',
     sortOrder: 160,
   },
+  {
+    id: 'hr.attendance-shifts',
+    moduleId: 'hr',
+    name: { en: 'Shifts', ar: 'الورديات' },
+    route: '/attendance/shifts',
+    sortOrder: 170,
+  },
+  {
+    id: 'hr.attendance-assignments',
+    moduleId: 'hr',
+    name: { en: 'Shift assignments', ar: 'إسناد الورديات' },
+    route: '/attendance/assignments',
+    sortOrder: 180,
+  },
 ];
 
 export const hrModule: ModuleManifest = {
   id: 'hr',
   name: { en: 'Human Resources', ar: 'الموارد البشرية' },
-  version: '0.14.0',
+  version: '0.15.0',
   requiresPlatform: '^2.1',
   permissions: hrPermissions,
   pages: hrPages,
@@ -617,6 +693,10 @@ export const hrModule: ModuleManifest = {
     { prefix: '/hr/contracts', router: buildContractsRouter() },
     { prefix: '/hr/contract-templates', router: buildContractTemplatesRouter() },
     { prefix: '/hr/contract-types', router: buildContractTypesRouter() },
+    { prefix: '/hr/attendance/shifts', router: buildAttendanceShiftsRouter() },
+    { prefix: '/hr/attendance/assignments', router: buildAttendanceAssignmentsRouter() },
+    { prefix: '/hr/attendance/punches', router: buildAttendancePunchesRouter() },
+    { prefix: '/hr/attendance/days', router: buildAttendanceDaysRouter() },
   ],
   collections: [
     'hr_applicants',
@@ -645,6 +725,10 @@ export const hrModule: ModuleManifest = {
     'hr_contract_templates',
     'hr_contract_types',
     'hr_contract_branding',
+    'hr_shifts',
+    'hr_shift_assignments',
+    'hr_attendance_punches',
+    'hr_attendance_days',
   ],
   eventSubscriptions: [
     {
@@ -713,6 +797,73 @@ export const hrModule: ModuleManifest = {
         const payload = envelope.payload as { employeeId?: string };
         if (typeof payload.employeeId === 'string') {
           await leaveBalanceService.regrantOnRehire(payload.employeeId);
+        }
+      },
+    },
+    {
+      // Attendance §1.4: a day covered by approved leave is `onLeave`, never `absent`. The span
+      // events Leave already publishes for this consumer drive a recompute of the covered days —
+      // frozen days refuse inside the engine, so a late-decided leave can never restate a paid
+      // month from here.
+      event: 'hr.leave.started',
+      handlerId: 'attendance.onLeaveStarted',
+      handler: async (envelope) => {
+        const payload = envelope.payload as {
+          employeeId?: string;
+          startDate?: string | Date;
+          endDate?: string | Date;
+        };
+        if (
+          typeof payload.employeeId === 'string' &&
+          payload.startDate !== undefined &&
+          payload.endDate !== undefined
+        ) {
+          await dayRecordService.recomputeSpanForEmployee(
+            payload.employeeId,
+            new Date(payload.startDate),
+            new Date(payload.endDate),
+          );
+        }
+      },
+    },
+    {
+      // The mirror of the above: an early return truncates the span, so the tail days flip back
+      // from `onLeave` to whatever the punches say they were.
+      event: 'hr.leave.ended',
+      handlerId: 'attendance.onLeaveEnded',
+      handler: async (envelope) => {
+        const payload = envelope.payload as {
+          employeeId?: string;
+          startDate?: string | Date;
+          endDate?: string | Date;
+        };
+        if (
+          typeof payload.employeeId === 'string' &&
+          payload.startDate !== undefined &&
+          payload.endDate !== undefined
+        ) {
+          await dayRecordService.recomputeSpanForEmployee(
+            payload.employeeId,
+            new Date(payload.startDate),
+            new Date(payload.endDate),
+          );
+        }
+      },
+    },
+    {
+      // Attendance §1.5: stop expecting attendance from the exit date — recomputing around today
+      // drops rows the employment-period check no longer supports.
+      event: 'hr.employee.exited',
+      handlerId: 'attendance.onEmployeeExited',
+      handler: async (envelope) => {
+        const payload = envelope.payload as { employeeId?: string };
+        if (typeof payload.employeeId === 'string') {
+          const today = cairoToday();
+          await dayRecordService.recomputeSpanForEmployee(
+            payload.employeeId,
+            addDays(today, -7),
+            today,
+          );
         }
       },
     },
@@ -846,6 +997,18 @@ export const hrModule: ModuleManifest = {
       ownerService: 'hr',
       handler: async () => {
         await leaveBalanceService.yearEndProcessing();
+      },
+    },
+    {
+      // Attendance (v1.1 §9): derive the previous Cairo day. Runs hourly and acts only when the
+      // Cairo hour matches `hr.attendance.autoComputeHour` — a fixed cron cannot follow a
+      // setting, so the task checks and the unique day key keeps double-runs harmless.
+      key: 'hr.attendance.computeDaily',
+      description: 'Derive attendance day records for the previous Cairo day',
+      cron: '15 * * * *',
+      ownerService: 'hr',
+      handler: async () => {
+        await dayRecordService.computePreviousDayIfDue();
       },
     },
   ],

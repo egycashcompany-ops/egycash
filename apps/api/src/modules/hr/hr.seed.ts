@@ -28,6 +28,7 @@ import { migrateEmployeeFiles } from './employee-management/employee-file';
 import { migrateRecruitmentLegacy } from './recruitment/recruitment.migration';
 import { ensureLeaveAttachmentsCategory } from './leave-management/leave-requests';
 import { migrateLeaveModule } from './leave-management/leave.migration';
+import { migrateAttendance } from './attendance/attendance.migration';
 
 // `kind` says what a platform IS — how applications from it normally arrive. It does not say
 // whether the platform has an application link: every active source can be published to, whatever
@@ -468,6 +469,8 @@ export const seedHrRecruitment = async (): Promise<void> => {
   await ensureLeaveTemplates();
   await ensureLeaveAttachmentsCategory();
   await migrateLeaveModule();
+  // Attendance (frozen attendance design v1.1 §12): the default GENERAL shift.
+  await migrateAttendance();
   // Contracts (frozen contracts design D11): the expiring-soon notice template.
   await notificationTemplateService.ensure({
     key: HrContractTemplates.ExpiringSoon,

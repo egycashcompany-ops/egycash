@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import {
   FleetSettingKeys,
+  HrAttendanceSettingKeys,
   HrContractSettingKeys,
   HrLeaveSettingKeys,
   ItSettingKeys,
@@ -32,6 +33,7 @@ import { registerAuditSettings } from '../audit/audit.settings';
 import { registerNotificationSettings } from '../notifications/notification.settings';
 import { registerHrContractSettings } from '../../modules/hr/contracts/contracts.settings';
 import { registerHrWorkCalendarSettings } from '../../modules/hr/work-calendar/work-calendar.settings';
+import { registerHrAttendanceSettings } from '../../modules/hr/attendance/attendance.settings';
 import { registerItSettings } from '../../modules/it/it.settings';
 import { registerFleetSettings } from '../../modules/fleet/fleet.settings';
 
@@ -42,6 +44,7 @@ const registerAll = (): void => {
   registerNotificationSettings();
   registerHrContractSettings();
   registerHrWorkCalendarSettings();
+  registerHrAttendanceSettings();
   registerItSettings();
   registerFleetSettings();
 };
@@ -67,7 +70,7 @@ const EXPECTED: Record<string, string[]> = {
     SettingKeys.NotificationsQuietHoursEnabledByDefault,
   ],
   contracts: Object.values(HrContractSettingKeys),
-  hr: Object.values(HrLeaveSettingKeys),
+  hr: [...Object.values(HrLeaveSettingKeys), ...Object.values(HrAttendanceSettingKeys)],
   it: Object.values(ItSettingKeys),
   fleet: Object.values(FleetSettingKeys),
 };
@@ -82,18 +85,18 @@ afterEach(() => {
 });
 
 describe('the settings inventory the screen renders', () => {
-  it('declares twenty-nine settings, and no key twice', () => {
+  it('declares thirty-one settings, and no key twice', () => {
     registerAll();
     const keys = listSettingDeclarations().map((declaration) => declaration.key);
-    expect(keys).toHaveLength(29);
-    expect(new Set(keys).size).toBe(29);
+    expect(keys).toHaveLength(31);
+    expect(new Set(keys).size).toBe(31);
   });
 
   it('declares exactly the keys the contracts name — no more, no fewer', () => {
     registerAll();
     const declared = listSettingDeclarations().map((d) => d.key).sort();
     const expected = Object.values(EXPECTED).flat().sort();
-    expect(expected).toHaveLength(29);
+    expect(expected).toHaveLength(31);
     expect(declared).toEqual(expected);
   });
 

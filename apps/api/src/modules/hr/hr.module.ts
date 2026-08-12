@@ -50,6 +50,7 @@ import {
   dayRecordService,
   registerHrAttendanceSettings,
 } from './attendance';
+import { buildPayItemsRouter } from './payroll';
 import { addDays, cairoToday } from './shared/business-date';
 import { registerHrIdentitySeams } from './employee-management/employees/identity-seams';
 import { registerHrDirectorySeams } from './directory-seams';
@@ -491,6 +492,18 @@ const attendanceUnassignedPermissions = declarePermissions(
   ],
 );
 
+// Payroll (P-HR-02 / PY-1): the pay-item catalog. Four keys, all of them used by the CRUD this
+// phase ships — nothing is declared here for a run, a payslip or a statutory rule that does not
+// exist yet.
+const payItemPermissions = declarePermissions(
+  'hr',
+  'payItem',
+  { en: 'pay items', ar: 'بنود الأجر' },
+  ['view', 'create', 'edit', 'delete'],
+  [],
+  'hr.pay-items',
+);
+
 const attendancePermissions = [
   ...attendanceShiftAdminPermissions,
   ...attendanceAssignPermissions,
@@ -562,6 +575,7 @@ export const hrPermissions: PermissionDef[] = [
   ...leavePermissions,
   ...workCalendarPermissions,
   ...attendancePermissions,
+  ...payItemPermissions,
 ];
 
 /**
@@ -711,12 +725,19 @@ export const hrPages: PageDef[] = [
     route: '/attendance/regularizations',
     sortOrder: 200,
   },
+  {
+    id: 'hr.pay-items',
+    moduleId: 'hr',
+    name: { en: 'Pay items', ar: 'بنود الأجر' },
+    route: '/payroll/pay-items',
+    sortOrder: 210,
+  },
 ];
 
 export const hrModule: ModuleManifest = {
   id: 'hr',
   name: { en: 'Human Resources', ar: 'الموارد البشرية' },
-  version: '0.17.0',
+  version: '0.18.0',
   requiresPlatform: '^2.1',
   permissions: hrPermissions,
   pages: hrPages,
@@ -757,6 +778,7 @@ export const hrModule: ModuleManifest = {
     { prefix: '/hr/attendance/regularizations', router: buildAttendanceRegularizationsRouter() },
     { prefix: '/hr/attendance/overtime', router: buildAttendanceOvertimeRouter() },
     { prefix: '/hr/attendance/export', router: buildAttendanceExportRouter() },
+    { prefix: '/hr/payroll/pay-items', router: buildPayItemsRouter() },
   ],
   collections: [
     'hr_applicants',
@@ -790,6 +812,7 @@ export const hrModule: ModuleManifest = {
     'hr_attendance_punches',
     'hr_attendance_days',
     'hr_attendance_regularizations',
+    'hr_pay_items',
   ],
   eventSubscriptions: [
     {

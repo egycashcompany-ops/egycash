@@ -68,6 +68,11 @@ const DEFAULTS: Record<string, SectionDef[]> = {
         '/attendance/assignments',
       ],
     },
+    {
+      en: 'Payroll',
+      ar: 'الرواتب',
+      routes: ['/payroll/pay-items'],
+    },
   ],
 };
 

@@ -332,10 +332,9 @@ describe('the default sections migration', () => {
     ).data.find((a) => a.route === '/applicants');
     // The migration fills a blank; it does not overrule a decision.
     expect(reread?.sectionId).toBeNull();
-  });
 
-  it('still shows an ungrouped page in the sidebar', async () => {
-    const token = await tokenOf();
+    // And the ungrouped row is still perfectly visible — directly under its module, which is
+    // where a page with no section has always rendered.
     const nav = (
       (await get('/platform/me/applications', token)).body as {
         data: {
@@ -346,10 +345,10 @@ describe('the default sections migration', () => {
     ).data;
     const routes = nav.flatMap((c) => [
       ...c.applications.map((a) => a.route),
-      ...c.sections.flatMap((s) => s.applications.map((a) => a.route)),
+      ...c.sections.flatMap((sec) => sec.applications.map((a) => a.route)),
     ]);
-    // Ungrouped by the previous test, and still perfectly visible.
     expect(routes).toContain('/applicants');
     expect(nav.some((c) => c.applications.some((a) => a.route === '/applicants'))).toBe(true);
   });
+
 });

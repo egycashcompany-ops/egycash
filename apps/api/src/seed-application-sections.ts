@@ -12,9 +12,11 @@
 // the idempotency rule below. The names are a starting point, not a schema.
 //
 // IDEMPOTENT, AND ONLY EVER ADDITIVE:
-//   • a section is created only when the category has NO section by that English name;
-//   • an application is assigned only while its `sectionId` is still null — a row an administrator
-//     has since moved, unsectioned, or re-grouped is never touched again;
+//   • a section is created only when the category has no section by that English name;
+//   • assignment happens ONLY on the run that creates the section. Once it exists, this file never
+//     moves another row into it — because a row an administrator deliberately took out of every
+//     section looks exactly like a row nobody ever grouped (both null), and a rule that read only
+//     the row would drag that decision back on the next boot;
 //   • an application this file does not name is left entirely alone.
 // Re-running it on a database that has already been organized changes nothing at all.
 import { logger } from './infrastructure/logging/logger';
@@ -91,25 +93,29 @@ export const seedApplicationSections = async (adminId: string): Promise<void> =>
       })
         .lean<{ _id: unknown }>()
         .exec();
-      const sectionId =
-        existing !== null
-          ? String(existing._id)
-          : String(
-              (
-                await applicationSectionService.create(
-                  { name: { ar: def.ar, en: def.en }, categoryId, sortOrder: index * 10 },
-                  adminId,
-                )
-              )._id,
-            );
+      // A section that is already there means this module has been organized once — by this file
+      // on an earlier boot, or by an administrator since. Either way the assignment step is SKIPPED
+      // entirely, and that is the whole idempotency rule.
+      //
+      // Skipping it because the row is already in a section would not be enough: a row an
+      // administrator deliberately took OUT of every section is null, exactly like a row nobody
+      // ever grouped, so a rule reading only the row would keep dragging that decision back. The
+      // question has to be asked once per section, not once per row.
+      if (existing !== null) continue;
 
-      // Assign only the still-unsectioned rows, in the order this file lists them.
+      const created = await applicationSectionService.create(
+        { name: { ar: def.ar, en: def.en }, categoryId, sortOrder: index * 10 },
+        adminId,
+      );
+      const sectionId = String(created._id);
+
+      // First run for this section: place the rows nobody has grouped yet, in the order listed.
       let position = 0;
       for (const route of def.routes) {
         const app = await applicationRepository.findOne({ route });
         if (app === null) continue;
         position += 10;
-        if (app.sectionId !== null) continue; // already organized — never re-grouped
+        if (app.sectionId !== null) continue; // already organized elsewhere — left alone
         await applicationService_updateSection(String(app._id), sectionId, position - 10);
       }
     }

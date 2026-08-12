@@ -46,6 +46,7 @@ import {
   buildAttendancePunchesRouter,
   buildAttendanceRegularizationsRouter,
   buildAttendanceShiftsRouter,
+  attendanceSweepService,
   dayRecordService,
   registerHrAttendanceSettings,
 } from './attendance';
@@ -715,7 +716,7 @@ export const hrPages: PageDef[] = [
 export const hrModule: ModuleManifest = {
   id: 'hr',
   name: { en: 'Human Resources', ar: 'الموارد البشرية' },
-  version: '0.16.0',
+  version: '0.17.0',
   requiresPlatform: '^2.1',
   permissions: hrPermissions,
   pages: hrPages,
@@ -1069,6 +1070,27 @@ export const hrModule: ModuleManifest = {
       ownerService: 'hr',
       handler: async () => {
         await dayRecordService.computePreviousDayIfDue();
+      },
+    },
+    {
+      // Attendance (§9, AT-7): the two morning notices, after the nightly compute has run. Both
+      // are idempotent through the notification's deterministic key rather than through a marker
+      // on the day, so a retry, a double tick or a manual re-run sends nothing twice.
+      key: 'hr.attendance.missingCheckoutSweep',
+      description: 'Notify employees whose previous day has a check-in and no check-out',
+      cron: '0 6 * * *',
+      ownerService: 'hr',
+      handler: async () => {
+        await attendanceSweepService.sweepMissingCheckouts();
+      },
+    },
+    {
+      key: 'hr.attendance.absenceNotifySweep',
+      description: 'Notify employees whose previous day was recorded as an absence',
+      cron: '10 6 * * *',
+      ownerService: 'hr',
+      handler: async () => {
+        await attendanceSweepService.sweepAbsenceNotices();
       },
     },
   ],

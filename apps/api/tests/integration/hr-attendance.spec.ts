@@ -12,7 +12,10 @@ import {
   SettingKeys,
   ATTENDANCE_FEED_FIELDS,
   AttendanceFeedRowSchema,
+  HrAttendanceSettingKeys,
+  HrAttendanceTemplates,
   type AttendanceDayDto,
+  type AttendanceRegularizationDto,
   type EmployeeDto,
   type ImportPunchesResultDto,
   type ShiftDto,
@@ -27,8 +30,14 @@ import { settingsService } from '../../src/platform/settings';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { getCache } from '../../src/infrastructure/redis/cache';
 import { addDays, cairoToday, dateOnlyIso, isoWeekday } from '../../src/modules/hr/shared/business-date';
-import { cairoInstant, dayRecordService, AttendanceDayModel } from '../../src/modules/hr/attendance';
-import { type AttendanceRegularizationDto } from '@ecms/contracts';
+import {
+  attendanceSweepService,
+  cairoInstant,
+  dayRecordService,
+  AttendanceDayModel,
+} from '../../src/modules/hr/attendance';
+import { Types } from 'mongoose';
+import { NotificationModel } from '../../src/platform/notifications/notification.model';
 import { type AuthContext } from '../../src/shared/types';
 
 const PASSWORD = 'Str0ng#Pass!';
@@ -1090,5 +1099,124 @@ describe('AT-6 — screens, self-service and export', () => {
     const audit = await get('platform/audit-logs?entityType=attendanceDay&action=export', adminToken);
     expect(audit.status).toBe(200);
     expect((audit.body.data as { action: string }[]).length).toBeGreaterThan(0);
+  });
+});
+
+// ── AT-7 — the two morning sweeps: notices that repeat safely and escalate nothing ───────────
+describe('AT-7 — absence and missing-checkout sweeps', () => {
+  /** Notices sent to one employee's login, by template key. */
+  const noticesFor = async (userId: string, template: string): Promise<number> =>
+    NotificationModel.countDocuments({
+      recipientUserId: new Types.ObjectId(userId),
+      templateKey: template,
+    }).exec();
+
+  /** An employee with a login, a shift, and yesterday derived into the status we want. */
+  const employeeWithYesterday = async (
+    punches: string[],
+  ): Promise<{ emp: EmployeeDto; userId: string; workDate: Date }> => {
+    const emp = await regEmployee();
+    await assign(emp.id, GENERAL.id);
+    const reread = await request(app)
+      .get(`/api/v1/hr/employees/${emp.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const userId = String((reread.body.data as EmployeeDto).userId);
+
+    const workDate = addDays(cairoToday(), -1);
+    for (const at of punches) {
+      await recordPunch({ employeeId: emp.id, at: cairoInstant(workDate, at).toISOString() });
+    }
+    await recompute(emp.id, workDate);
+    return { emp, userId, workDate };
+  };
+
+  it('notifies a missing check-out once, however many times the sweep runs', async () => {
+    // A check-in with no check-out is `incomplete` (D6) — the status that blocks payroll until
+    // it is regularized, which is why the employee hears about it the next morning.
+    const { emp, userId, workDate } = await employeeWithYesterday(['09:00']);
+    expect((await dayRow(emp.id, workDate)).status).toBe('incomplete');
+
+    const first = await attendanceSweepService.sweepMissingCheckouts();
+    expect(first).toBeGreaterThan(0);
+    expect(await noticesFor(userId, HrAttendanceTemplates.MissingCheckout)).toBe(1);
+
+    // The idempotency claim: run it again, and again — still exactly one notice.
+    await attendanceSweepService.sweepMissingCheckouts();
+    await attendanceSweepService.sweepMissingCheckouts();
+    expect(await noticesFor(userId, HrAttendanceTemplates.MissingCheckout)).toBe(1);
+  });
+
+  it('notifies a recorded absence once, and says nothing about consequences', async () => {
+    const { emp, userId, workDate } = await employeeWithYesterday([]);
+    expect((await dayRow(emp.id, workDate)).status).toBe('absent');
+
+    await attendanceSweepService.sweepAbsenceNotices();
+    await attendanceSweepService.sweepAbsenceNotices();
+    expect(await noticesFor(userId, HrAttendanceTemplates.AbsenceRecorded)).toBe(1);
+
+    // The notice states the fact and the remedy — nothing about a penalty, a warning or a count.
+    const notice = await NotificationModel.findOne({
+      recipientUserId: new Types.ObjectId(userId),
+      templateKey: HrAttendanceTemplates.AbsenceRecorded,
+    })
+      .lean<{ body: { ar: string; en: string }; data: Record<string, string> }>()
+      .exec();
+    expect(notice?.data.workDate).toBe(dateOnlyIso(workDate));
+    expect(`${notice?.body.ar ?? ''} ${notice?.body.en ?? ''}`).not.toMatch(
+      /warning|penalt|deduct|discipl|إنذار|خصم|جزاء/i,
+    );
+  });
+
+  it('records NOTHING on the day itself — a sweep notifies, it never escalates', async () => {
+    const { emp, workDate } = await employeeWithYesterday([]);
+    const before = await dayRow(emp.id, workDate);
+    await attendanceSweepService.sweepAbsenceNotices();
+    await attendanceSweepService.sweepMissingCheckouts();
+    const after = await dayRow(emp.id, workDate);
+    // Byte-identical: no flag, no counter, no status change, not even a new computedAt.
+    expect(after).toEqual(before);
+  });
+
+  it('sends no absence notice while hr.attendance.absenceNotify is off', async () => {
+    const ctx: AuthContext = {
+      userId: 'seed',
+      sessionId: 'seed',
+      branchId: null,
+      departmentId: null,
+      sectionId: null,
+      locale: 'en',
+      permissions: { 'setting.edit': 'organization' },
+      permissionVersion: 1,
+      isPrivileged: true,
+    };
+    await settingsService.set(ctx, {
+      key: HrAttendanceSettingKeys.AbsenceNotify,
+      scope: 'organization',
+      value: false,
+    });
+    const { userId } = await employeeWithYesterday([]);
+    expect(await attendanceSweepService.sweepAbsenceNotices()).toBe(0);
+    expect(await noticesFor(userId, HrAttendanceTemplates.AbsenceRecorded)).toBe(0);
+
+    // Back on, and the same day now notifies — the switch silences the notice, not the record.
+    await settingsService.set(ctx, {
+      key: HrAttendanceSettingKeys.AbsenceNotify,
+      scope: 'organization',
+      value: true,
+    });
+    await attendanceSweepService.sweepAbsenceNotices();
+    expect(await noticesFor(userId, HrAttendanceTemplates.AbsenceRecorded)).toBe(1);
+  });
+
+  it('leaves a frozen day alone — its correction can no longer land', async () => {
+    const { emp, userId } = await employeeWithYesterday([]);
+    const workDate = addDays(cairoToday(), -1);
+    await AttendanceDayModel.updateOne(
+      { employeeId: new Types.ObjectId(emp.id), workDate },
+      { $set: { frozenAt: new Date() } },
+    ).exec();
+
+    await attendanceSweepService.sweepAbsenceNotices();
+    expect(await noticesFor(userId, HrAttendanceTemplates.AbsenceRecorded)).toBe(0);
   });
 });

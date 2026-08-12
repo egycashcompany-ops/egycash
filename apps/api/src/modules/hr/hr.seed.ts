@@ -486,8 +486,8 @@ export const seedHrRecruitment = async (): Promise<void> => {
     variables: ['code', 'employeeName', 'endDate'],
     defaultExpiryHours: null,
   });
-  // Attendance AT-5 (v1.1 §9): the three regularization/overtime sends. The absence and
-  // missing-checkout templates belong to the AT-7 sweeps and arrive with them.
+  // Attendance (v1.1 §9): the three regularization/overtime sends (AT-5) and the two sweep
+  // notices (AT-7). Each template shipped with the code that sends it, never ahead of it.
   await notificationTemplateService.ensure({
     key: HrAttendanceTemplates.RegularizationSubmitted,
     category: 'hr',
@@ -525,6 +525,34 @@ export const seedHrRecruitment = async (): Promise<void> => {
     },
     channels: ['inApp'],
     variables: ['workDate', 'minutes'],
+    defaultExpiryHours: null,
+  });
+  // The two sweep notices. Both state what was RECORDED and how to correct it — neither carries
+  // a consequence, because none follows automatically from an attendance fact.
+  await notificationTemplateService.ensure({
+    key: HrAttendanceTemplates.AbsenceRecorded,
+    category: 'hr',
+    priority: 'normal',
+    subject: { ar: 'تسجيل غياب', en: 'Absence recorded' },
+    body: {
+      ar: 'سُجّل يوم {{workDate}} غيابًا. إن كان ذلك غير صحيح، قدّم طلب تسوية حضور.',
+      en: '{{workDate}} was recorded as an absence. If that is wrong, file an attendance regularization.',
+    },
+    channels: ['inApp'],
+    variables: ['workDate'],
+    defaultExpiryHours: null,
+  });
+  await notificationTemplateService.ensure({
+    key: HrAttendanceTemplates.MissingCheckout,
+    category: 'hr',
+    priority: 'normal',
+    subject: { ar: 'انصراف غير مسجّل', en: 'Missing check-out' },
+    body: {
+      ar: 'يوم {{workDate}} فيه حضور بلا انصراف مسجّل. قدّم طلب تسوية حضور لاستكماله.',
+      en: '{{workDate}} has a check-in with no check-out. File an attendance regularization to complete it.',
+    },
+    channels: ['inApp'],
+    variables: ['workDate'],
     defaultExpiryHours: null,
   });
 };

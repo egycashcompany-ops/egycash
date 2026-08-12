@@ -1,6 +1,6 @@
 // Employee pay-item service (PY-2) — assignment only. Nothing here calculates anything.
 //
-// FOUR RULES, AND WHY EACH ONE IS HERE:
+// FIVE RULES, AND WHY EACH ONE IS HERE:
 //
 //   1. the catalog item must exist. An amount attached to nothing is a payslip line that cannot
 //      be named.
@@ -12,6 +12,9 @@
 //   4. history is never removed. An assignment that has already started is CLOSED, not deleted:
 //      payroll will have to explain what it paid, and a row that vanished cannot. Only a future
 //      assignment — one nothing was ever priced with — leaves outright.
+//   5. it must sit inside ONE employment span (added by PY-3 / D3). Compensation outside
+//      employment is compensation for a stretch nobody worked, and a span is singular here on
+//      purpose: a rehire leaves a gap, and an interval must not step over it.
 //
 // Authorization is the caller's compensation scope, not a key of this feature's own: the employee
 // is resolved through `employeeRepository.getById(id, scope)` first, so a caller who cannot reach
@@ -34,6 +37,7 @@ import { employeeRepository } from '../../employee-management/employees';
 // feature whether an item is still in use, and going through both barrels would make that a cycle.
 import { payItemRepository } from '../pay-items/pay-item.repository';
 import { type PayItemDoc } from '../pay-items/pay-item.model';
+import { employmentSpansOf, spanContaining } from '../compensation/employment-spans';
 import { employeePayItemRepository } from './employee-pay-item.repository';
 import { type EmployeePayItemDoc } from './employee-pay-item.model';
 
@@ -105,6 +109,20 @@ class EmployeePayItemService {
 
     const effectiveFrom = toDateOnly(input.effectiveFrom);
     const effectiveTo = input.effectiveTo == null ? null : toDateOnly(input.effectiveTo);
+
+    // PY-3 / D3 — an assignment must sit inside ONE employment span. Both ends in the same span is
+    // what stops it stepping over the gap between an exit and a rehire, which would pay someone
+    // for a stretch they did not work here; and an open-ended assignment needs an open span,
+    // because compensation that never ends on employment that already has would be a contradiction
+    // the calculation would then be left to quietly clip away.
+    const spans = employmentSpansOf(employee);
+    if (spanContaining(spans, effectiveFrom, effectiveTo) === null) {
+      throw new BusinessRuleError(
+        effectiveTo === null
+          ? 'an open-ended pay item needs an open employment period — this employee has left, or the date falls outside their employment'
+          : 'a pay item must fall inside a single employment period of this employee',
+      );
+    }
 
     const clash = await employeePayItemRepository.findOverlapping(
       employeeId,

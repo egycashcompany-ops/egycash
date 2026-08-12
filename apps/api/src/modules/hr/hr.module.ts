@@ -50,7 +50,11 @@ import {
   dayRecordService,
   registerHrAttendanceSettings,
 } from './attendance';
-import { buildEmployeePayItemsRouter, buildPayItemsRouter } from './payroll';
+import {
+  buildCompensationRouter,
+  buildEmployeePayItemsRouter,
+  buildPayItemsRouter,
+} from './payroll';
 import { addDays, cairoToday } from './shared/business-date';
 import { registerHrIdentitySeams } from './employee-management/employees/identity-seams';
 import { registerHrDirectorySeams } from './directory-seams';
@@ -737,7 +741,7 @@ export const hrPages: PageDef[] = [
 export const hrModule: ModuleManifest = {
   id: 'hr',
   name: { en: 'Human Resources', ar: 'الموارد البشرية' },
-  version: '0.19.0',
+  version: '0.20.0',
   requiresPlatform: '^2.1',
   permissions: hrPermissions,
   pages: hrPages,
@@ -757,6 +761,7 @@ export const hrModule: ModuleManifest = {
     { prefix: '/hr/evaluation-batches', router: buildEvaluationBatchesRouter() },
     { prefix: '/hr/recruitment', router: buildRecruitmentCountersRouter() },
     { prefix: '/hr/job-offers', router: buildJobOffersRouter() },
+    { prefix: '/hr/employees', router: buildCompensationRouter() },
     { prefix: '/hr/employees', router: buildEmployeePayItemsRouter() },
     { prefix: '/hr/employees', router: buildEmployeeActionsRouter() },
     { prefix: '/hr/employees', router: buildLeaveBalancesRouter() },

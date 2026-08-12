@@ -239,10 +239,19 @@ describe('the pay-item catalog', () => {
     }
   });
 
-  // PY-1 ships no run, no payslip and no statutory endpoint. Asserting the absence is what keeps
-  // "taxes are out of v1" a decision rather than an oversight somebody fills in quietly.
-  it('exposes no run, payslip or statutory surface yet', async () => {
-    for (const path of ['/hr/payroll/runs', '/hr/payroll/payslips', '/hr/payroll/tax-rules']) {
+  // PY-6 ships the run — the period and the moment its facts stopped moving — and nothing more.
+  // No payslip, no statutory endpoint, and no calculation hanging off a run. Asserting the
+  // absence is what keeps "taxes are out of v1" a decision rather than an oversight somebody
+  // fills in quietly. The run subpaths use a well-formed id so a 404 means "no such route",
+  // not "no such object".
+  it('exposes no payslip, statutory or run-calculation surface yet', async () => {
+    const anyId = '000000000000000000000001';
+    for (const path of [
+      '/hr/payroll/payslips',
+      '/hr/payroll/tax-rules',
+      `/hr/payroll/runs/${anyId}/lines`,
+      `/hr/payroll/runs/${anyId}/payslips`,
+    ]) {
       const res = await request(app)
         .get(`/api/v1${path}`)
         .set('Authorization', `Bearer ${adminToken}`);
@@ -1277,7 +1286,8 @@ describe('payroll runs', () => {
         personal: {
           identity: {
             fullNameAr: 'موظف الدورة',
-            nationalId: '29001010590010',
+            // Governorate `11` (Damietta) — `05` is not an issued code and the API refuses it.
+            nationalId: '29001011190010',
             nationality: 'Egyptian',
           },
           contact: { primaryPhone: '01173000001' },

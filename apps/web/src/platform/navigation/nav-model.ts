@@ -7,12 +7,25 @@
 // No backend/permission change: the data already reflects exactly the apps the user may open.
 import { type LocalizedString, type MyApplicationCategoryDto, type MyApplicationDto } from '@ecms/contracts';
 
+/**
+ * A named group of pages inside a module. Purely organizational — the server has already decided
+ * WHICH pages the caller may see; a section only decides how those pages are grouped, and its
+ * names come from the catalog, never from this file.
+ */
+export interface NavSection {
+  id: string;
+  name: LocalizedString;
+  apps: MyApplicationDto[];
+}
+
 export interface NavModule {
   id: string;
   name: LocalizedString;
   /** Category icon name from the catalog (admin-editable); null renders the generic fallback. */
   icon: string | null;
+  /** Pages that belong to no section — rendered directly under the module, as they always were. */
   apps: MyApplicationDto[];
+  sections: NavSection[];
 }
 
 export interface NavApp extends MyApplicationDto {
@@ -21,11 +34,33 @@ export interface NavApp extends MyApplicationDto {
 }
 
 export const toModules = (data: MyApplicationCategoryDto[]): NavModule[] =>
-  data.map((c) => ({ id: c.id, name: c.name, icon: c.icon, apps: c.applications }));
+  data.map((c) => ({
+    id: c.id,
+    name: c.name,
+    icon: c.icon,
+    apps: c.applications,
+    // A server that predates sections sends none; an empty list is the same as no grouping.
+    sections: (c.sections ?? []).map((s) => ({ id: s.id, name: s.name, apps: s.applications })),
+  }));
 
+/** Every page of a module, section or not — the order the column reads top to bottom. */
+export const moduleApps = (module: NavModule): MyApplicationDto[] => [
+  ...module.apps,
+  ...module.sections.flatMap((s) => s.apps),
+];
+
+/**
+ * Every page the caller has, flattened. It must include the SECTIONED pages too: this feeds the
+ * ⌘K palette, the pinned-favourites lookup and the exact-match route set, none of which are about
+ * grouping — a page that a section holds is still a page the user can search for and pin.
+ */
 export const flattenApps = (data: MyApplicationCategoryDto[]): NavApp[] =>
   data.flatMap((c) =>
-    c.applications.map((a) => ({ ...a, moduleId: c.id, moduleName: c.name })),
+    [...c.applications, ...(c.sections ?? []).flatMap((s) => s.applications)].map((a) => ({
+      ...a,
+      moduleId: c.id,
+      moduleName: c.name,
+    })),
   );
 
 /** True when `pathname` is (or is nested under) an app's route. */
@@ -53,13 +88,15 @@ export const requiresExactMatch = (route: string, allRoutes: readonly string[]):
  * degrades quietly to the module's entry point instead of navigating into nothing.
  */
 export const moduleEntryRoute = (module: NavModule, remembered: string | null): string | null => {
-  const first = module.apps[0]?.route ?? null;
+  // Every page of the module, sectioned or not — grouping must not change where a module opens.
+  const apps = moduleApps(module);
+  const first = apps[0]?.route ?? null;
   if (remembered === null) return first;
-  const routes = module.apps.map((a) => a.route);
+  const routes = apps.map((a) => a.route);
   // A page's own route always counts. Deeper paths count only under a LEAF page — a detail
   // screen lives under its list, whereas a module landing route like `/fleet` is a prefix of
   // the whole module and would otherwise wave through any stale path beneath it.
-  const stillValid = module.apps.some(
+  const stillValid = apps.some(
     (a) =>
       remembered === a.route ||
       (!requiresExactMatch(a.route, routes) && remembered.startsWith(`${a.route}/`)),
@@ -72,7 +109,8 @@ export const moduleOfPathname = (modules: NavModule[], pathname: string): string
   let bestId: string | null = null;
   let bestLen = -1;
   for (const m of modules) {
-    for (const a of m.apps) {
+    // Sectioned pages scope the column exactly like unsectioned ones — grouping is not routing.
+    for (const a of moduleApps(m)) {
       if (matches(a.route, pathname) && a.route.length > bestLen) {
         bestLen = a.route.length;
         bestId = m.id;

@@ -2,6 +2,7 @@ import { type Request, type Response } from 'express';
 import {
   type CreateApplication,
   type ListApplicationsQuery,
+  type ReorderApplications,
   type UpdateApplication,
 } from '@ecms/contracts';
 import { created, noContent, ok, okPage } from '../../infrastructure/http/respond';
@@ -42,4 +43,11 @@ export const deleteApplication = async (req: Request, res: Response): Promise<vo
   const { params } = validated<never, never, IdParam>(req);
   await applicationService.softDelete(params.id, ctx.userId);
   noContent(res);
+};
+
+/** Reorder (and re-bucket) by position — the client sends the order it wants. */
+export const reorderApplications = async (req: Request, res: Response): Promise<void> => {
+  const { body } = validated<ReorderApplications>(req);
+  const docs = await applicationService.reorder(body);
+  ok(res, docs.map((doc) => applicationService.toDto(doc)));
 };

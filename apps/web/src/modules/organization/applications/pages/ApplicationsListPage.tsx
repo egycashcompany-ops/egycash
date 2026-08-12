@@ -148,11 +148,20 @@ export const ApplicationsListPage = (): JSX.Element => {
         description={t('organization.application.subtitle')}
         breadcrumbs={[{ label: t('organization.title'), to: '/organization' }, { label: t('organization.nav.applications') }]}
         actions={
-          <Can permission="application.create">
-            <Button size="sm" leftIcon={<PlusIcon className="h-4 w-4" />} onClick={() => navigate('new')}>
-              {t('organization.application.create')}
-            </Button>
-          </Can>
+          <div className="flex gap-2">
+            {/* The same catalog, seen the way the sidebar reads it — grouping and order live
+                there, because both are questions about position rather than about a field. */}
+            <Can permission="application.edit">
+              <Button size="sm" variant="secondary" onClick={() => navigate('organize')}>
+                {t('organization.sections.open')}
+              </Button>
+            </Can>
+            <Can permission="application.create">
+              <Button size="sm" leftIcon={<PlusIcon className="h-4 w-4" />} onClick={() => navigate('new')}>
+                {t('organization.application.create')}
+              </Button>
+            </Can>
+          </div>
         }
       />
 

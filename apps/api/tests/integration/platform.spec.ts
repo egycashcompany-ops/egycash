@@ -1208,3 +1208,265 @@ describe('rate limiting (API Standards §9)', () => {
     expect(lastStatus).toBe(429);
   });
 });
+
+// ── Application Sections: organization only, never entitlement ───────────────
+describe('application sections group the sidebar without touching RBAC', () => {
+  let token = '';
+  let categoryId = '';
+  const appIds: string[] = [];
+
+  const post = (path: string, body: object) =>
+    request(app).post(`/api/v1${path}`).set('Authorization', `Bearer ${token}`).send(body);
+  const patch = (path: string, body: object) =>
+    request(app).patch(`/api/v1${path}`).set('Authorization', `Bearer ${token}`).send(body);
+  const get = (path: string) =>
+    request(app).get(`/api/v1${path}`).set('Authorization', `Bearer ${token}`);
+
+  const sectionsOf = async (): Promise<{ id: string; sortOrder: number }[]> => {
+    const res = await get(`/platform/application-sections?categoryId=${categoryId}&pageSize=100`);
+    expect(res.status).toBe(200);
+    return (res.body as { data: { id: string; sortOrder: number }[] }).data;
+  };
+
+  const appsOf = async (): Promise<{ id: string; sectionId: string | null; sortOrder: number }[]> => {
+    const res = await get(`/platform/applications?categoryId=${categoryId}&pageSize=100`);
+    return (res.body as { data: { id: string; sectionId: string | null; sortOrder: number }[] }).data;
+  };
+
+  it('sets up a category with three applications', async () => {
+    const login = await doLogin('admin@ecms.local', PASSWORD);
+    token = login.body.data?.accessToken ?? '';
+
+    const category = await post('/platform/application-categories', {
+      name: { ar: 'قسم الاختبار', en: 'Sections Test' },
+      icon: 'grid',
+      sortOrder: 900,
+    });
+    expect(category.status).toBe(201);
+    categoryId = (category.body as { data: { id: string } }).data.id;
+
+    for (const suffix of ['one', 'two', 'three']) {
+      const created = await post('/platform/applications', {
+        name: { ar: `تطبيق-${suffix}`, en: `App ${suffix}` },
+        icon: 'grid',
+        route: `/sections-test/${suffix}`,
+        categoryId,
+        permissionKey: 'branch.view',
+      });
+      expect(created.status).toBe(201);
+      const doc = (created.body as { data: { id: string; sectionId: string | null } }).data;
+      // Nothing is grouped until somebody groups it — the pre-sections shape.
+      expect(doc.sectionId).toBeNull();
+      appIds.push(doc.id);
+    }
+  });
+
+  it('creates sections, renames one, and orders them by position', async () => {
+    const first = await post('/platform/application-sections', {
+      name: { ar: 'الأول', en: 'First' },
+      categoryId,
+    });
+    expect(first.status).toBe(201);
+    const second = await post('/platform/application-sections', {
+      name: { ar: 'الثاني', en: 'Second' },
+      categoryId,
+    });
+    const firstId = (first.body as { data: { id: string; version: number } }).data.id;
+    const secondId = (second.body as { data: { id: string } }).data.id;
+
+    // A rename is an ordinary edit, and both locales are carried.
+    const renamed = await patch(`/platform/application-sections/${firstId}`, {
+      name: { ar: 'المجموعة الأولى', en: 'Group One' },
+      version: (first.body as { data: { version: number } }).data.version,
+    });
+    expect(renamed.status).toBe(200);
+    const name = (renamed.body as { data: { name: { ar: string; en: string } } }).data.name;
+    expect(name).toEqual({ ar: 'المجموعة الأولى', en: 'Group One' });
+
+    // Reorder by POSITION — no number is ever typed.
+    const reordered = await patch('/platform/application-sections/reorder', {
+      categoryId,
+      sectionIds: [secondId, firstId],
+    });
+    expect(reordered.status).toBe(200);
+    expect((await sectionsOf()).map((s) => s.id)).toEqual([secondId, firstId]);
+
+    // Idempotent: the same list again is the same answer, not a drift.
+    await patch('/platform/application-sections/reorder', {
+      categoryId,
+      sectionIds: [secondId, firstId],
+    });
+    const twice = await sectionsOf();
+    expect(twice.map((s) => s.id)).toEqual([secondId, firstId]);
+    expect(twice.map((s) => s.sortOrder)).toEqual([0, 10]);
+  });
+
+  it('assigns applications to a section, reorders them, and moves one across', async () => {
+    const [target, other] = await sectionsOf();
+    const targetId = target?.id ?? '';
+    const otherId = other?.id ?? '';
+
+    // Three rows into one bucket, in a deliberate order.
+    const assigned = await patch('/platform/applications/reorder', {
+      categoryId,
+      sectionId: targetId,
+      applicationIds: [appIds[2], appIds[0], appIds[1]],
+    });
+    expect(assigned.status).toBe(200);
+    let rows = await appsOf();
+    expect(rows.filter((r) => r.sectionId === targetId).map((r) => r.id)).toEqual([
+      appIds[2],
+      appIds[0],
+      appIds[1],
+    ]);
+
+    // Running the identical reorder twice must not renumber or reshuffle anything.
+    await patch('/platform/applications/reorder', {
+      categoryId,
+      sectionId: targetId,
+      applicationIds: [appIds[2], appIds[0], appIds[1]],
+    });
+    rows = await appsOf();
+    expect(rows.filter((r) => r.sectionId === targetId).map((r) => r.sortOrder)).toEqual([0, 10, 20]);
+
+    // Move one row into the sibling section: it leaves the first bucket and joins the second.
+    await patch('/platform/applications/reorder', {
+      categoryId,
+      sectionId: otherId,
+      applicationIds: [appIds[0]],
+    });
+    rows = await appsOf();
+    expect(rows.find((r) => r.id === appIds[0])?.sectionId).toBe(otherId);
+    expect(rows.filter((r) => r.sectionId === targetId).map((r) => r.id)).toEqual([
+      appIds[2],
+      appIds[1],
+    ]);
+
+    // And back OUT of every section — unsectioned is a real destination, not an error state.
+    await patch('/platform/applications/reorder', {
+      categoryId,
+      sectionId: null,
+      applicationIds: [appIds[0]],
+    });
+    rows = await appsOf();
+    expect(rows.find((r) => r.id === appIds[0])?.sectionId).toBeNull();
+  });
+
+  it('refuses to delete a section that still holds applications', async () => {
+    const [, holding] = await sectionsOf();
+    const holdingId = holding?.id ?? '';
+    const blocked = await request(app)
+      .delete(`/api/v1/platform/application-sections/${holdingId}`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(blocked.status).toBe(422);
+    expect((blocked.body as { error: { code: string } }).error.code).toBe(
+      'APPLICATION_SECTION_IN_USE',
+    );
+
+    // Emptied first, it deletes — and its applications are still there, just ungrouped.
+    await patch('/platform/applications/reorder', {
+      categoryId,
+      sectionId: null,
+      applicationIds: [appIds[2], appIds[1]],
+    });
+    const removed = await request(app)
+      .delete(`/api/v1/platform/application-sections/${holdingId}`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(removed.status).toBe(204);
+    const rows = await appsOf();
+    expect(rows).toHaveLength(3);
+    expect(rows.every((r) => r.sectionId === null)).toBe(true);
+  });
+
+  it('groups my navigation without granting or withholding a single row', async () => {
+    // Baseline: what the sidebar shows before anything is grouped.
+    const before = await get('/platform/me/applications');
+    expect(before.status).toBe(200);
+    const routesOf = (body: unknown): string[] =>
+      (body as { data: { applications: { route: string }[]; sections: { applications: { route: string }[] }[] }[] }).data
+        .flatMap((c) => [...c.applications, ...c.sections.flatMap((s) => s.applications)])
+        .map((a) => a.route)
+        .sort();
+    const baseline = routesOf(before.body);
+    expect(baseline).toContain('/sections-test/one');
+
+    // Group two of them.
+    const section = await post('/platform/application-sections', {
+      name: { ar: 'مجموعة', en: 'Grouped' },
+      categoryId,
+    });
+    const sectionId = (section.body as { data: { id: string } }).data.id;
+    await patch('/platform/applications/reorder', {
+      categoryId,
+      sectionId,
+      applicationIds: [appIds[0], appIds[1]],
+    });
+
+    const after = await get('/platform/me/applications');
+    // EXACTLY the same set of pages — grouping moved rows, it did not add or remove one.
+    expect(routesOf(after.body)).toEqual(baseline);
+
+    const category = (
+      after.body as {
+        data: {
+          id: string;
+          applications: { route: string }[];
+          sections: { id: string; name: { ar: string; en: string }; applications: { route: string }[] }[];
+        }[];
+      }
+    ).data.find((c) => c.id === categoryId);
+    expect(category?.sections).toHaveLength(1);
+    expect(category?.sections[0]?.name).toEqual({ ar: 'مجموعة', en: 'Grouped' });
+    expect(category?.sections[0]?.applications.map((a) => a.route)).toEqual([
+      '/sections-test/one',
+      '/sections-test/two',
+    ]);
+    // The ungrouped one is still directly under the module — it did not disappear.
+    expect(category?.applications.map((a) => a.route)).toEqual(['/sections-test/three']);
+  });
+
+  it('the default HR sections migration is idempotent and never re-groups a moved row', async () => {
+    const { seedApplicationSections } = await import('../../src/seed-application-sections');
+    const me = await doLogin('admin@ecms.local', PASSWORD);
+    const adminId = (me.body.data?.me as { id: string }).id;
+
+    await seedApplicationSections(adminId);
+    const hrSections = await get('/platform/application-sections?pageSize=200');
+    const named = (hrSections.body as { data: { name: { en: string } }[] }).data.map(
+      (s) => s.name.en,
+    );
+    expect(named).toContain('Recruitment');
+
+    const firstRun = (
+      await get('/platform/applications?pageSize=500')
+    ).body as { data: { id: string; sectionId: string | null }[] };
+
+    // Running it again changes nothing at all.
+    await seedApplicationSections(adminId);
+    const secondRun = (
+      await get('/platform/applications?pageSize=500')
+    ).body as { data: { id: string; sectionId: string | null }[] };
+    expect(secondRun.data.map((a) => `${a.id}:${a.sectionId ?? ''}`).sort()).toEqual(
+      firstRun.data.map((a) => `${a.id}:${a.sectionId ?? ''}`).sort(),
+    );
+
+    // A row an administrator has since ungrouped stays ungrouped across a re-run.
+    const applicants = firstRun.data.find((a) => a.sectionId !== null);
+    if (applicants !== undefined) {
+      await patch('/platform/applications/reorder', {
+        categoryId: (
+          (await get(`/platform/applications/${applicants.id}`)).body as {
+            data: { categoryId: string };
+          }
+        ).data.categoryId,
+        sectionId: null,
+        applicationIds: [applicants.id],
+      });
+      await seedApplicationSections(adminId);
+      const reread = (await get(`/platform/applications/${applicants.id}`)).body as {
+        data: { sectionId: string | null };
+      };
+      expect(reread.data.sectionId).toBeNull();
+    }
+  });
+});

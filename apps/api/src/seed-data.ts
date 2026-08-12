@@ -10,6 +10,7 @@ import { fileCategoryService } from './platform/files';
 import { settingsService } from './platform/settings';
 import { userService } from './platform/users';
 import { seedBootstrapNavigation } from './seed-navigation';
+import { seedApplicationSections } from './seed-application-sections';
 import { parseIdentifierList, reconcileHrOnlyUsers } from './hr-only-access';
 import { type AuthContext } from './shared/types';
 
@@ -104,6 +105,9 @@ export const seedDevData = async (): Promise<{ adminId: string; hrId: string }> 
   // First-run navigation: default Application Categories + Applications, granted to the admin, so a
   // fresh install has a functional (fully data-driven) sidebar with no manual DB setup.
   await seedBootstrapNavigation(adminId);
+  // Default sections for the module that outgrew a flat list. Optional by design — an application
+  // with no section still renders — so this only saves the administrator an empty screen.
+  await seedApplicationSections(adminId);
 
   // HR-only accounts (see hr-only-access.ts). Re-asserted on EVERY seed run, which is the point:
   // the confinement is a state the platform maintains, not an edit somebody made once that the next

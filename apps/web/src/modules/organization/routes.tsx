@@ -21,6 +21,7 @@ import { JobPositionsListPage } from './job-positions/pages/JobPositionsListPage
 import { JobPositionDetailPage } from './job-positions/pages/JobPositionDetailPage';
 import { JobPositionFormPage } from './job-positions/pages/JobPositionFormPage';
 import { ApplicationsListPage } from './applications/pages/ApplicationsListPage';
+import { OrganizeApplicationsPage } from './application-sections/pages/OrganizeApplicationsPage';
 import { ApplicationDetailPage } from './applications/pages/ApplicationDetailPage';
 import { ApplicationFormPage } from './applications/pages/ApplicationFormPage';
 import { ApplicationCategoriesListPage } from './application-categories/pages/ApplicationCategoriesListPage';
@@ -194,6 +195,10 @@ export default function OrganizationRoutes(): JSX.Element {
           }
         >
           <Route index element={<ApplicationsListPage />} />
+          {/* The organize board — sections and the drag-ordering of the pages inside them. It
+              lives under the applications route because it IS the applications catalog, seen as
+              the sidebar reads it rather than as a table. */}
+          <Route path="organize" element={<OrganizeApplicationsPage />} />
           <Route
             path="new"
             element={

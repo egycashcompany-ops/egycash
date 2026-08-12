@@ -4,6 +4,7 @@ import {
   assembleEffectiveApplications,
   type EffectiveAppInput,
   type EffectiveCategoryInput,
+  type EffectiveSectionInput,
 } from './effective-applications';
 
 const cat = (
@@ -35,6 +36,7 @@ const app = (
   sortOrder,
   status: 'active',
   categoryId,
+  sectionId: null,
   permissionKey: `${id}.view`,
   ...extra,
 });
@@ -198,7 +200,120 @@ describe('assembleEffectiveApplications', () => {
         name: { ar: 'ar-c1', en: 'en-c1' },
         icon: null,
         applications: [{ id: 'a1', name: { ar: 'ar-a1', en: 'en-a1' }, icon: 'icon-a1', route: '/a1' }],
+        sections: [],
       },
     ]);
+  });
+});
+
+// ── Sections: grouping only, never entitlement ──────────────────────────────
+const sec = (
+  id: string,
+  categoryId: string,
+  sortOrder: number,
+  extra: Partial<EffectiveSectionInput> = {},
+): EffectiveSectionInput => ({
+  id,
+  name: { ar: `ar-${id}`, en: `en-${id}` },
+  categoryId,
+  sortOrder,
+  status: 'active',
+  ...extra,
+});
+
+describe('sections group what the caller may already see', () => {
+  it('puts each application under its section, in section then application order', () => {
+    const result = assembleEffectiveApplications(
+      [
+        app('a1', 'c1', 10, { sectionId: 's1' }),
+        app('a2', 'c1', 0, { sectionId: 's1' }),
+        app('b1', 'c1', 0, { sectionId: 's2' }),
+      ],
+      [cat('c1', 0)],
+      holdingAll('a1', 'a2', 'b1'),
+      [sec('s2', 'c1', 10), sec('s1', 'c1', 0)],
+    );
+    expect(result[0]?.sections.map((s) => s.id)).toEqual(['s1', 's2']);
+    expect(result[0]?.sections[0]?.applications.map((a) => a.id)).toEqual(['a2', 'a1']);
+    expect(result[0]?.applications).toEqual([]);
+  });
+
+  // The backward-compatibility contract: a row nobody has grouped is not a row that disappears.
+  it('leaves an unsectioned application directly under its module', () => {
+    const result = assembleEffectiveApplications(
+      [app('loose', 'c1', 0), app('a1', 'c1', 0, { sectionId: 's1' })],
+      [cat('c1', 0)],
+      holdingAll('loose', 'a1'),
+      [sec('s1', 'c1', 0)],
+    );
+    expect(result[0]?.applications.map((a) => a.id)).toEqual(['loose']);
+    expect(result[0]?.sections[0]?.applications.map((a) => a.id)).toEqual(['a1']);
+  });
+
+  // A heading over nothing is noise — and, since emptiness here usually means "you may open none
+  // of these", printing it would advertise exactly what the caller cannot have.
+  it('omits a section whose applications the caller may not open', () => {
+    const result = assembleEffectiveApplications(
+      [app('secret', 'c1', 0, { sectionId: 's1' }), app('mine', 'c1', 0, { sectionId: 's2' })],
+      [cat('c1', 0)],
+      holdingAll('mine'),
+      [sec('s1', 'c1', 0), sec('s2', 'c1', 10)],
+    );
+    expect(result[0]?.sections.map((s) => s.id)).toEqual(['s2']);
+  });
+
+  // Grouping must never become a way to hide a page: an inactive — or deleted — section drops its
+  // heading, and its applications fall back to the module's own list rather than vanishing.
+  it('falls back to the module for an inactive or unknown section', () => {
+    const inactive = assembleEffectiveApplications(
+      [app('a1', 'c1', 0, { sectionId: 's1' })],
+      [cat('c1', 0)],
+      holdingAll('a1'),
+      [sec('s1', 'c1', 0, { status: 'inactive' })],
+    );
+    expect(inactive[0]?.sections).toEqual([]);
+    expect(inactive[0]?.applications.map((a) => a.id)).toEqual(['a1']);
+
+    const dangling = assembleEffectiveApplications(
+      [app('a1', 'c1', 0, { sectionId: 'gone' })],
+      [cat('c1', 0)],
+      holdingAll('a1'),
+      [],
+    );
+    expect(dangling[0]?.applications.map((a) => a.id)).toEqual(['a1']);
+  });
+
+  // The permission filter is upstream of grouping and untouched by it.
+  it('grants nothing: a section never puts an unentitled application in the sidebar', () => {
+    const result = assembleEffectiveApplications(
+      [app('a1', 'c1', 0, { sectionId: 's1' })],
+      [cat('c1', 0)],
+      NOTHING,
+      [sec('s1', 'c1', 0)],
+    );
+    expect(result).toEqual([]);
+  });
+
+  it('keeps a module whose every visible page sits in a section', () => {
+    const result = assembleEffectiveApplications(
+      [app('a1', 'c1', 0, { sectionId: 's1' })],
+      [cat('c1', 0)],
+      holdingAll('a1'),
+      [sec('s1', 'c1', 0)],
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0]?.applications).toEqual([]);
+    expect(result[0]?.sections[0]?.applications).toHaveLength(1);
+  });
+
+  it('ignores a section belonging to another category', () => {
+    const result = assembleEffectiveApplications(
+      [app('a1', 'c1', 0, { sectionId: 's-other' })],
+      [cat('c1', 0)],
+      holdingAll('a1'),
+      [sec('s-other', 'c2', 0)],
+    );
+    expect(result[0]?.sections).toEqual([]);
+    expect(result[0]?.applications.map((a) => a.id)).toEqual(['a1']);
   });
 });

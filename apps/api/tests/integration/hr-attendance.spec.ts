@@ -901,8 +901,13 @@ describe('AT-6 — screens, self-service and export', () => {
     expect(mineRows).toHaveLength(1);
     expect(mineRows[0]?.employeeId).toBe(mine.emp.id);
 
-    // A forged employeeId on /me is REJECTED as unknown input, never honoured.
-    expect((await get(`hr/attendance/days/me?${range}&employeeId=${other.id}`, mine.token)).status).toBe(400);
+    // A forged employeeId on /me is DROPPED, never honoured: the controller rebuilds the query
+    // from the caller's own link, so the answer is still exactly the caller's row.
+    const forged = await get(`hr/attendance/days/me?${range}&employeeId=${other.id}`, mine.token);
+    expect(forged.status).toBe(200);
+    const forgedRows = forged.body.data as AttendanceDayDto[];
+    expect(forgedRows).toHaveLength(1);
+    expect(forgedRows[0]?.employeeId).toBe(mine.emp.id);
 
     // The scoped list under an `own` grant answers only for the caller — asking for somebody
     // else's rows returns nothing rather than their data.

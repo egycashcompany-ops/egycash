@@ -10,7 +10,12 @@
 // pointer gesture with no keyboard equivalent, so on its own it would put reordering out of reach
 // for anyone not using a mouse — the buttons are the same two writes through an accessible door.
 import { useMemo, useState } from 'react';
-import { type ApplicationDto, type ApplicationSectionDto, type Locale } from '@ecms/contracts';
+import {
+  MAX_PAGE_SIZE,
+  type ApplicationDto,
+  type ApplicationSectionDto,
+  type Locale,
+} from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../store';
 import { Can } from '../../../../platform/rbac/Can';
@@ -81,8 +86,10 @@ export const OrganizeApplicationsPage = (): JSX.Element => {
   // prompt to choose. `??` rather than a truthiness check: an id is never an empty string here.
   const activeCategoryId = categoryId === '' ? (categories.data?.[0]?.id ?? '') : categoryId;
 
-  const sections = useApplicationSections({ categoryId: activeCategoryId, pageSize: 200 });
-  const applications = useApplications({ categoryId: activeCategoryId, pageSize: 500 });
+  // MAX_PAGE_SIZE is the platform's cap; a module with more pages than this would need paging,
+  // and organizing a hundred rows by hand is a different screen than this one.
+  const sections = useApplicationSections({ categoryId: activeCategoryId, pageSize: MAX_PAGE_SIZE });
+  const applications = useApplications({ categoryId: activeCategoryId, pageSize: MAX_PAGE_SIZE });
   const reorderSections = useReorderApplicationSections();
   const reorderApps = useReorderApplications();
   const createSection = useCreateApplicationSection();

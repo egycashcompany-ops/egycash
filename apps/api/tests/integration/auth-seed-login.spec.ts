@@ -266,7 +266,7 @@ describe('the default sections migration', () => {
     request(app).get(`/api/v1${path}`).set('Authorization', `Bearer ${token}`);
 
   const snapshot = async (token: string): Promise<string[]> => {
-    const res = await get('/platform/applications?pageSize=500', token);
+    const res = await get('/platform/applications?pageSize=100', token);
     return (res.body as { data: { id: string; sectionId: string | null }[] }).data
       .map((a) => `${a.id}:${a.sectionId ?? ''}`)
       .sort();
@@ -276,7 +276,7 @@ describe('the default sections migration', () => {
     const token = await tokenOf();
 
     // The seed already ran it once (seedDevData). The sections it names are there…
-    const sections = await get('/platform/application-sections?pageSize=200', token);
+    const sections = await get('/platform/application-sections?pageSize=100', token);
     expect(sections.status).toBe(200);
     const named = (sections.body as { data: { name: { ar: string; en: string } }[] }).data;
     expect(named.map((s) => s.name.en)).toEqual(
@@ -287,7 +287,7 @@ describe('the default sections migration', () => {
 
     // …and the HR pages sit inside them rather than in a flat list.
     const grouped = (
-      (await get('/platform/applications?pageSize=500', token)).body as {
+      (await get('/platform/applications?pageSize=100', token)).body as {
         data: { route: string; sectionId: string | null }[];
       }
     ).data;
@@ -306,7 +306,7 @@ describe('the default sections migration', () => {
     const adminId = (await doLogin(env.SEED_ADMIN_EMAIL, env.SEED_ADMIN_PASSWORD)).body.data?.me?.id ?? '';
 
     const applicants = (
-      (await get('/platform/applications?pageSize=500', token)).body as {
+      (await get('/platform/applications?pageSize=100', token)).body as {
         data: { id: string; route: string; categoryId: string; sectionId: string | null }[];
       }
     ).data.find((a) => a.route === '/applicants');
@@ -326,7 +326,7 @@ describe('the default sections migration', () => {
     await seedApplicationSections(adminId);
 
     const reread = (
-      (await get('/platform/applications?pageSize=500', token)).body as {
+      (await get('/platform/applications?pageSize=100', token)).body as {
         data: { route: string; sectionId: string | null }[];
       }
     ).data.find((a) => a.route === '/applicants');

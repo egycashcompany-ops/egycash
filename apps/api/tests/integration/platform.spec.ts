@@ -1097,7 +1097,7 @@ describe('application sections group the sidebar without touching RBAC', () => {
     request(app).get(`/api/v1${path}`).set('Authorization', `Bearer ${token}`);
 
   /** `sortDir` defaults to `desc` platform-wide, so reading an ORDER means asking for asc. */
-  const ORDERED = 'pageSize=200&sortBy=sortOrder&sortDir=asc';
+  const ORDERED = 'pageSize=100&sortBy=sortOrder&sortDir=asc';
 
   const sectionsOf = async (): Promise<{ id: string; sortOrder: number }[]> => {
     const res = await get(`/platform/application-sections?categoryId=${categoryId}&${ORDERED}`);

@@ -138,6 +138,47 @@ export default tseslint.config(
     },
   },
 
+  // PY-10 — the legacy `employment.allowances[]` list may not re-enter the payroll CALCULATION.
+  //
+  // The decisions are frozen (docs/12-planning/payroll-legacy-allowances-migration.md): the list is
+  // historical/audit data, it is never a payroll source, and Pay Items are the operational single
+  // source of truth. Payroll has in fact never read these amounts — it reads only whether the list
+  // is non-empty, to raise `legacyAllowancesIgnored`.
+  //
+  // That distinction is one property access wide. `employee.employment.allowances.length > 0` is a
+  // fact about the record; `.reduce((sum, a) => sum + a.amount, 0)` is money nobody decided to pay.
+  // A rule rather than a convention, because the array sits on the same document the salary does
+  // and the tempting line is a short one.
+  {
+    files: ['apps/api/src/modules/hr/payroll/**/*.ts'],
+    ignores: [
+      // One door: the service that turns "is the list non-empty?" into the warning. What it may
+      // do there is pinned in compensation/legacy-allowances-seam.spec.ts.
+      'apps/api/src/modules/hr/payroll/compensation/compensation.service.ts',
+    ],
+    rules: {
+      // Flat config REPLACES a rule's options rather than merging them, so the base block's
+      // console ban is restated here — omitting it would quietly switch it off for payroll.
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "MemberExpression[object.name='console']",
+          message: 'console.* is banned — use the Pino logger (ADR-012).',
+        },
+        {
+          selector: "MemberExpression[property.name='allowances'][object.property.name='employment']",
+          message:
+            'PY-10: employment.allowances[] is historical data and never a payroll source. Pay Items are the operational SSoT; the only permitted read is the presence check in compensation.service.ts.',
+        },
+        {
+          selector: "MemberExpression[property.name='allowances'][object.name='employment']",
+          message:
+            'PY-10: employment.allowances[] is historical data and never a payroll source. Pay Items are the operational SSoT; the only permitted read is the presence check in compensation.service.ts.',
+        },
+      ],
+    },
+  },
+
   // Scripts and config files run under Node without the app logger.
   {
     files: ['scripts/**', '*.config.{js,ts}', '**/*.config.{js,ts}', '**/vite.config.ts'],

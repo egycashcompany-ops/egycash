@@ -1359,10 +1359,12 @@ describe('the decision notices (P-HR-07)', () => {
   }, 240_000);
 
   /**
-   * The transition is the guard, and this proves it from both sides: a stale version is refused by
-   * the optimistic-lock filter, and a fresh one by the status check. Neither can emit twice.
+   * The transition is the guard, and the STATUS check is its first line — it runs before the write
+   * and never looks at the version. So once the request has left `draft`, a repeat is refused at
+   * any version: 422 either way. Idempotency here does not depend on the caller sending a fresh
+   * version number, which is the stronger guarantee.
    */
-  it('and a refused repeat adds nothing to the inbox', async () => {
+  it('and a refused repeat adds nothing to the inbox, at any version', async () => {
     await clearLive();
     const created = await record({
       type: 'advance',
@@ -1377,10 +1379,39 @@ describe('the decision notices (P-HR-07)', () => {
     expect(sent.status).toBe(200);
     const after = await inboxCount(approverToken);
 
-    expect((await submit(row.id, row.version)).status).toBe(409);
+    expect((await submit(row.id, row.version)).status).toBe(422);
     expect((await submit(row.id, (sent.body.data as EmployeeLoanDto).version)).status).toBe(422);
 
     expect(await inboxCount(approverToken)).toBe(after);
+    await clearLive();
+  }, 240_000);
+
+  /**
+   * …and the optimistic lock is the second line, for what the first cannot see: a request still in
+   * `draft` that moved under the caller. Nothing transitions, so nothing is announced.
+   */
+  it('and a draft that moved under the caller is stopped before anything is announced', async () => {
+    await clearLive();
+    const created = await record({
+      type: 'loan',
+      principal: 750,
+      currency: 'EGP',
+      installmentCount: 3,
+      firstPeriod: '2026-04',
+      reason: 'the second line of defence',
+    });
+    const row = created.body.data as EmployeeLoanDto;
+
+    const edited = await request(app)
+      .patch(`/api/v1/hr/employees/${employeeId}/loans/${row.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ reason: 'edited before submitting', version: row.version });
+    expect(edited.status, JSON.stringify(edited.body)).toBe(200);
+
+    const before = await inboxCount(approverToken);
+    expect((await submit(row.id, row.version)).status).toBe(409);
+    expect(await inboxCount(approverToken)).toBe(before);
+
     await clearLive();
   }, 240_000);
 });

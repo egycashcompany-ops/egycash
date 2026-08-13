@@ -2173,11 +2173,13 @@ describe('payroll adjustments (P-HR-04)', () => {
     /**
      * IDEMPOTENCY, tested where it actually lives: in the state machine, not in the notifier.
      *
-     * The transition is what emits, and `submit` refuses anything that is not a draft. So a second
-     * submit — with the stale version a real retry would carry, and with the fresh one it would not
-     * — cannot produce a second notice, because it cannot produce a second transition.
+     * THE STATUS GUARD IS THE FIRST LINE, AND IT DOES NOT CONSULT THE VERSION. `submit` refuses
+     * anything that is not a draft before it reaches the write at all, so once the entry has moved
+     * on, a repeat is refused whether the caller's version is stale or fresh — both 422. That is
+     * the stronger property, and worth stating plainly: idempotency here does not depend on the
+     * client having sent the right version number.
      */
-    it('and a refused repeat adds nothing to the inbox', async () => {
+    it('and a refused repeat adds nothing to the inbox, at any version', async () => {
       const created = await record({
         period: '2026-10',
         kind: 'bonus',
@@ -2190,13 +2192,42 @@ describe('payroll adjustments (P-HR-04)', () => {
       expect(sent.status).toBe(200);
       const after = await inboxCount(approverToken);
 
-      // The stale version a retry would carry.
-      expect((await submit(row.id, row.version)).status).toBe(409);
-      // …and the fresh one, which gets past the version check and is stopped by the status guard.
-      const fresh = (sent.body.data as PayrollAdjustmentDto).version;
-      expect((await submit(row.id, fresh)).status).toBe(422);
+      // The stale version a real retry would carry…
+      expect((await submit(row.id, row.version)).status).toBe(422);
+      // …and the fresh one somebody would use deliberately. Same refusal, same reason.
+      expect((await submit(row.id, (sent.body.data as PayrollAdjustmentDto).version)).status).toBe(
+        422,
+      );
 
       expect(await inboxCount(approverToken)).toBe(after);
+    }, 120_000);
+
+    /**
+     * …and the optimistic lock is the SECOND line, for the case the first one cannot see: an entry
+     * that is still a draft, but has moved under the caller since they read it.
+     *
+     * Here the status guard passes and `__v` is what stops the write. Nothing transitions, so
+     * nothing is announced — which is the property being checked, not the status code.
+     */
+    it('and a draft that moved under the caller is stopped before anything is announced', async () => {
+      const created = await record({
+        period: '2026-10',
+        kind: 'penalty',
+        amount: 60,
+        currency: 'EGP',
+        reason: 'the second line of defence',
+      });
+      const row = created.body.data as PayrollAdjustmentDto;
+
+      const edited = await request(app)
+        .patch(`/api/v1/hr/employees/${employeeId}/adjustments/${row.id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ amount: 70, version: row.version });
+      expect(edited.status, JSON.stringify(edited.body)).toBe(200);
+
+      const before = await inboxCount(approverToken);
+      expect((await submit(row.id, row.version)).status).toBe(409);
+      expect(await inboxCount(approverToken)).toBe(before);
     }, 120_000);
   });
 });

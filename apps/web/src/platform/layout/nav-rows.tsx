@@ -2,16 +2,17 @@
 // launchpad's single column or in the rail's module panel, so the row language — monochrome
 // states, the live count, the pin affordance, and the dynamic stages a module may publish
 // (RW16) — lives here once and is imported by each shell rather than copied into it.
-import { NavLink } from 'react-router-dom';
+import { useState } from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
 import { type Locale, type MyApplicationDto } from '@ecms/contracts';
 import { useAppSelector } from '../../store';
 import { useT } from '../localization/useT';
 import { cn } from '../../shared/lib/cn';
 import { localized } from '../../shared/lib/format';
-import { FileIcon, StarIcon } from '../../shared/ui/icons';
+import { ChevronIcon, FileIcon, StarIcon } from '../../shared/ui/icons';
 import { resolveNavIcon } from '../navigation/app-icon';
 import { useNavPrefs } from '../navigation/NavPrefs';
-import { requiresExactMatch } from '../navigation/nav-model';
+import { requiresExactMatch, type NavSection } from '../navigation/nav-model';
 import {
   navChildrenProviderFor,
   type NavChild,
@@ -190,3 +191,62 @@ export const StateShell = ({ children }: { children: JSX.Element }): JSX.Element
     <div className="flex flex-1 items-center justify-center overflow-y-auto">{children}</div>
   </div>
 );
+
+/**
+ * A collapsible group of pages inside a module.
+ *
+ * Open by default: a heading that hides its rows on first sight would make the sidebar shorter and
+ * the pages harder to find, which is the opposite of why sections exist. The open/closed state is
+ * remembered per section for the session, so a user who folds a group away keeps it folded while
+ * they work — and a group holding the page they are ON is never rendered closed, because a
+ * collapsed heading must never be the reason somebody cannot see where they are.
+ */
+export const NavSectionGroup = ({
+  section,
+  allRoutes,
+  onNavigate,
+}: {
+  section: NavSection;
+  allRoutes: string[];
+  onNavigate?: (() => void) | undefined;
+}): JSX.Element => {
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  const { pathname } = useLocation();
+  const holdsCurrent = section.apps.some(
+    (a) => pathname === a.route || pathname.startsWith(`${a.route}/`),
+  );
+  const [open, setOpen] = useState(true);
+  const expanded = open || holdsCurrent;
+  const label = localized(section.name, locale);
+
+  return (
+    <section className="mt-4">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={expanded}
+        className="flex h-7 w-full items-center gap-1 rounded-md px-2 text-[11px] font-medium uppercase tracking-[0.07em] text-slate-400 transition-colors hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
+      >
+        <ChevronIcon
+          className={cn(
+            'h-3 w-3 shrink-0 transition-transform',
+            expanded ? '' : '-rotate-90 rtl:rotate-90',
+          )}
+        />
+        <span className="truncate">{label}</span>
+      </button>
+      {expanded && (
+        <ul className="mt-0.5 space-y-px">
+          {section.apps.map((a) => (
+            <AppWithChildren
+              key={a.id}
+              app={a}
+              onNavigate={onNavigate}
+              end={requiresExactMatch(a.route, allRoutes)}
+            />
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+};

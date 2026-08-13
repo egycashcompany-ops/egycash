@@ -441,8 +441,9 @@ export interface AttendanceRegularizationDto {
 
 /**
  * QUANTITY RELEASE ONLY. The ceiling — never above the derived `overtimeMinutes` — is enforced
- * server-side against the day record; nothing here knows what a minute is worth (multipliers and
- * pricing are Payroll's, P-HR-09).
+ * server-side against the day record; nothing here knows what a minute is worth. Pricing is
+ * Payroll's: the approved figure crosses as a QUANTITY for a `perMinute` pay item (PY-4), and no
+ * overtime premium or multiplier exists to apply to it.
  */
 export const ApproveOvertimeSchema = z
   .object({

@@ -8,8 +8,8 @@
 // WHAT IT MAY CALL, AND NOTHING ELSE. `readFrozenFeed(period, employeeId)` — the §15.1 reader,
 // which is complete-or-nothing by design and refuses a period with even one unfrozen row. Payroll
 // never touches the day model, never queries punches, and above all never calls `freezePeriod()`:
-// freezing is a decision the Payroll RUN makes when it starts calculating (PY-6), and until that
-// exists nothing in production freezes anything. PY-4 ships ready and dark, on purpose.
+// freezing is the Payroll RUN's decision and it goes through the OTHER door, `runs/attendance-
+// freeze.port.ts` (PY-6). Two doors, one each way, and neither may do the other's job.
 import { dayRecordService } from '../../attendance';
 import { BusinessRuleError } from '../../../../shared/errors';
 import { type FrozenAttendance } from './attendance-quantities';

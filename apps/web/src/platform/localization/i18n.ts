@@ -2201,6 +2201,16 @@ const en: Record<string, string> = {
   'payroll.adjustments.status.pendingApproval': 'Awaiting approval',
   'payroll.adjustments.status.approved': 'Approved',
   'payroll.adjustments.status.cancelled': 'Cancelled',
+  // The organization-wide queue (P-HR-06) — the same decision, asked of everybody at once.
+  'payroll.adjustments.queueTitle': 'Payroll adjustments',
+  'payroll.adjustments.queueSubtitle':
+    'Bonuses and penalties across everybody, and the ones still waiting for a decision.',
+  'payroll.adjustments.tab.queue': 'Awaiting decision',
+  'payroll.adjustments.tab.all': 'All adjustments',
+  'payroll.adjustments.employee': 'Employee',
+  'payroll.adjustments.queueEmpty': 'Nothing is waiting for a decision.',
+  'payroll.adjustments.allStatuses': 'All statuses',
+  'payroll.adjustments.allKinds': 'All types',
   // Employee loans and advances (P-HR-05, phase A).
   'employees.tabs.loans': 'Loans',
   'loans.hint': 'Loans and advances, and the months their instalments are scheduled for.',
@@ -6358,6 +6368,16 @@ const ar: Record<string, string> = {
   'payroll.adjustments.status.pendingApproval': 'بانتظار الاعتماد',
   'payroll.adjustments.status.approved': 'معتمد',
   'payroll.adjustments.status.cancelled': 'ملغى',
+  // الطابور على مستوى المنظمة (P-HR-06) — القرار نفسه، مطروحًا عن الجميع دفعة واحدة.
+  'payroll.adjustments.queueTitle': 'مؤثرات الرواتب',
+  'payroll.adjustments.queueSubtitle':
+    'المنح والجزاءات لجميع الموظفين، وما ينتظر منها قرارًا.',
+  'payroll.adjustments.tab.queue': 'بانتظار القرار',
+  'payroll.adjustments.tab.all': 'كل المؤثرات',
+  'payroll.adjustments.employee': 'الموظف',
+  'payroll.adjustments.queueEmpty': 'لا يوجد ما ينتظر قرارًا.',
+  'payroll.adjustments.allStatuses': 'كل الحالات',
+  'payroll.adjustments.allKinds': 'كل الأنواع',
   // Employee loans and advances (P-HR-05, phase A).
   'employees.tabs.loans': 'القروض والسلف',
   'loans.hint': 'القروض والسلف، والأشهر المجدولة لأقساطها.',

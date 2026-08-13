@@ -1,6 +1,9 @@
 // Overtime approval (D5) — QUANTITY RELEASE ONLY. The engine derives `overtimeMinutes`; this is
 // the decision that lets some of it reach the §15.1 feed as `approvedOvertimeMinutes`. Nothing
-// here knows what a minute costs: multipliers and pricing are Payroll's (P-HR-09).
+// here knows what a minute costs: pricing is Payroll's, where the approved figure is read as the
+// QUANTITY for a `perMinute` pay item (PY-3 sets the rate, PY-4 supplies the minutes). No overtime
+// premium or multiplier is built anywhere in this repository — an approved minute is worth the
+// item's own rate and nothing more.
 //
 // The ceiling is absolute — never above the derived minutes — and it is maintained from BOTH
 // sides: this service refuses to grant above the derivation, and the engine clamps a previously

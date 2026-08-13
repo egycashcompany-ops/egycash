@@ -301,6 +301,16 @@ export interface EmployeeLoanDto {
   createdAt: string;
   updatedAt: string;
   version: number;
+  /**
+   * Display labels, enriched on the ORGANIZATION-WIDE list read (P-HR-06 / D7) — never stored.
+   *
+   * Optional, and absent rather than empty when nothing enriched them: the Loans tab reads one
+   * employee's loans and already knows the name. Same shape as the adjustment DTO and the AT-6
+   * attendance lists — a debt is a decision about a person who still exists, so the name is looked
+   * up at read time instead of copied onto the row.
+   */
+  employeeCode?: string;
+  employeeName?: string;
 }
 
 /** One loan with its schedule and what payroll has taken — what the Loans tab reads. */

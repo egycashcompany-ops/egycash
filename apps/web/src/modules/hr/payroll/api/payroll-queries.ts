@@ -215,3 +215,43 @@ export const useCancelAdjustment = (employeeId: string) =>
   useAdjustmentMutation(employeeId, ({ id, body }: { id: string; body: CancelPayrollAdjustment }) =>
     api.cancelAdjustment(employeeId, id, body),
   );
+
+// ── The organization-wide queue (P-HR-06) ───────────────────────────────────
+//
+// A SECOND key, not a reshuffle of the one above. The tab's key is per employee because a bonus is
+// that person's money; this list crosses everybody, so caching it under any one employee would
+// make an approval invalidate the wrong page. `ORG_ADJUSTMENTS` is that list, and the write below
+// invalidates BOTH — the queue the approver is looking at and the profile tab they are not.
+const ORG_ADJUSTMENTS = 'payrollAdjustmentsAll';
+
+export const useAdjustments = (params: Record<string, string | number>, enabled = true) =>
+  useQuery({
+    queryKey: [MODULE, ORG_ADJUSTMENTS, params],
+    queryFn: () => api.listAdjustments(params),
+    enabled,
+    placeholderData: (prev) => prev,
+  });
+
+/**
+ * Decide from the queue. The employee comes from the ROW, because the endpoint is nested under the
+ * employee even when the list that found it was not — one API, reached from two screens.
+ */
+export const useDecideAdjustmentFromQueue = () => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      employeeId,
+      id,
+      body,
+    }: {
+      employeeId: string;
+      id: string;
+      body: DecidePayrollAdjustment;
+    }) => api.decideAdjustment(employeeId, id, body),
+    onSuccess: (_data, vars) => {
+      void client.invalidateQueries({ queryKey: [MODULE, ORG_ADJUSTMENTS] });
+      void client.invalidateQueries({ queryKey: [MODULE, ADJUSTMENTS, vars.employeeId] });
+      void client.invalidateQueries({ queryKey: [MODULE, 'compensation', vars.employeeId] });
+    },
+  });
+};

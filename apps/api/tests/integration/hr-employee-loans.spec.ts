@@ -1264,3 +1264,53 @@ describe('what payroll does, and refuses to do, with a debt (P-HR-05-B)', () => 
     expect(after?.remaining).toBe(0);
   }, 240_000);
 });
+
+/**
+ * The organization-wide list, and the labels on it (P-HR-06 / D7).
+ *
+ * `/hr/employee-loans` shipped with phase A and has had no caller since; the loans admin screen is
+ * P-HR-06-B. What lands here now is the READ half: the same helper the adjustments queue uses puts
+ * a name and a code on each row, so the list is legible to somebody who is not standing on one
+ * employee's file. Nothing is stored — a corrected name corrects every list at once.
+ */
+describe('the organization-wide loans list (P-HR-06)', () => {
+  it('carries the employee label, which the employee-scoped read deliberately does not', async () => {
+    // D3 lets one loan be live at a time, so start from a clean employee rather than from whatever
+    // the block above left behind.
+    await clearLive();
+    const loan = await approvedLoan({
+      type: 'loan',
+      principal: 1_200,
+      currency: 'EGP',
+      installmentCount: 2,
+      firstPeriod: '2026-02',
+      reason: 'the admin list reads this one',
+    });
+
+    const all = await request(app)
+      .get('/api/v1/hr/employee-loans?page=1&pageSize=100')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(all.status, JSON.stringify(all.body)).toBe(200);
+    const row = (all.body.data as EmployeeLoanDto[]).find((l) => l.id === loan.id);
+    expect(row?.employeeName).toBe('موظف القروض');
+    expect(row?.employeeCode).toBeTruthy();
+
+    // The tab is already on somebody's file, so it is not told again whose loans these are.
+    const scoped = await request(app)
+      .get(`/api/v1/hr/employees/${employeeId}/loans?page=1&pageSize=50`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(scoped.status).toBe(200);
+    for (const each of scoped.body.data as EmployeeLoanDto[]) {
+      expect(each.employeeName).toBeUndefined();
+      expect(each.employeeCode).toBeUndefined();
+    }
+
+    // No new key: the same `employeeLoan.view` the tab needs, and the outsider still holds none.
+    const refused = await request(app)
+      .get('/api/v1/hr/employee-loans')
+      .set('Authorization', `Bearer ${outsiderToken}`);
+    expect(refused.status).toBe(403);
+
+    await clearLive();
+  }, 240_000);
+});

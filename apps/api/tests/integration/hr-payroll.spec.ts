@@ -2063,4 +2063,71 @@ describe('payroll adjustments (P-HR-04)', () => {
         .status,
     ).toBe(403);
   }, 120_000);
+
+  /**
+   * The organization-wide read, and the labels on it (P-HR-06 / D7).
+   *
+   * This endpoint shipped with P-HR-04 and had no caller at all until the queue screen; these
+   * cases are what say it answers, that filtering it by status IS the queue, and that a row on it
+   * carries enough to be read by somebody who does not already know whose file it came from.
+   */
+  describe('the organization-wide list (P-HR-06)', () => {
+    const orgWide = (token = adminToken, query = '') =>
+      request(app)
+        .get(`/api/v1/hr/payroll/adjustments${query}`)
+        .set('Authorization', `Bearer ${token}`);
+
+    it('answers across everybody, filtered by status — which is the whole of the queue', async () => {
+      const created = await record({
+        period: '2026-09',
+        kind: 'bonus',
+        amount: 700,
+        currency: 'EGP',
+        reason: 'the queue reads this one',
+      });
+      expect(created.status, JSON.stringify(created.body)).toBe(201);
+      const row = created.body.data as PayrollAdjustmentDto;
+      const sent = await submit(row.id, row.version);
+      expect(sent.status, JSON.stringify(sent.body)).toBe(200);
+
+      const queue = await orgWide(adminToken, '?status=pendingApproval&pageSize=100');
+      expect(queue.status, JSON.stringify(queue.body)).toBe(200);
+      const rows = queue.body.data as PayrollAdjustmentDto[];
+      expect(rows.map((r) => r.id)).toContain(row.id);
+      // A queue that shows a draft is not a queue: every row on it is waiting for a decision.
+      expect(rows.every((r) => r.status === 'pendingApproval')).toBe(true);
+    }, 120_000);
+
+    /**
+     * D7 — the labels are on THIS read and not on the employee-scoped one.
+     *
+     * The asymmetry is the design rather than an oversight: a list crossing everybody has no
+     * profile to take a name from, while the tab on somebody's file already has one. And they are
+     * looked up per read, never stored, so a corrected name is corrected everywhere at once.
+     */
+    it('carries the employee label, which the employee-scoped read deliberately does not', async () => {
+      const all = await orgWide(adminToken, '?pageSize=100');
+      expect(all.status, JSON.stringify(all.body)).toBe(200);
+      const mine = (all.body.data as PayrollAdjustmentDto[]).filter(
+        (r) => r.employeeId === employeeId,
+      );
+      expect(mine.length).toBeGreaterThan(0);
+      for (const row of mine) {
+        expect(row.employeeName).toBe('موظف المؤثرات');
+        expect(row.employeeCode).toBeTruthy();
+      }
+
+      const scoped = await adjustments();
+      expect(scoped.status).toBe(200);
+      for (const row of scoped.body.data as PayrollAdjustmentDto[]) {
+        expect(row.employeeName).toBeUndefined();
+        expect(row.employeeCode).toBeUndefined();
+      }
+    }, 120_000);
+
+    // The same key the employee-scoped read wants. P-HR-06 added no permission of its own.
+    it('is behind payrollAdjustment.view, and no new key', async () => {
+      expect((await orgWide(outsiderToken)).status).toBe(403);
+    }, 120_000);
+  });
 });

@@ -31,14 +31,16 @@ describe('where the card lives', () => {
     expect(TAB).toContain("import { CompensationCard } from './CompensationCard'");
   });
 
-  // PY-3 added no route and no navigation row of its own — the card lives inside a tab. The two
-  // routes below belong to PY-1 and PY-6; a third would mean a surface shipped without a phase.
+  // PY-3 added no route and no navigation row of its own — the card lives inside a tab. Every
+  // route below belongs to another phase (PY-11, PY-1, PY-6, P-HR-06); one more would mean a
+  // surface shipped without a phase behind it.
   it('adds no route of its own to the payroll surface', () => {
     const routes = readFileSync(resolve(HERE, 'routes.tsx'), 'utf8');
     expect([...routes.matchAll(/path="([^"*]+)"/g)].map((m) => m[1])).toEqual([
       'payslips/me',
       'pay-items',
       'runs',
+      'adjustments',
     ]);
   });
 
@@ -283,6 +285,7 @@ describe('the payroll run screen', () => {
       'payslips/me',
       'pay-items',
       'runs',
+      'adjustments',
     ]);
     expect(ROUTES).toContain('<RequirePermission permission="payrollRun.view">');
   });

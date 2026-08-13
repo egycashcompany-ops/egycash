@@ -1,12 +1,14 @@
-// Payroll route subtree (lazy-loaded). The catalog (PY-1), the runs (PY-6) and the employee's own
-// payslips (PY-11) — and nothing else: no unshipped surface is reachable (the owner rule carried
-// from Fleet FW-1). There is no tax route and no run-calculation route, because neither exists.
+// Payroll route subtree (lazy-loaded). The catalog (PY-1), the runs (PY-6), the employee's own
+// payslips (PY-11) and the adjustments queue (P-HR-06) — and nothing else: no unshipped surface is
+// reachable (the owner rule carried from Fleet FW-1). There is no tax route and no run-calculation
+// route, because neither exists.
 import { Route, Routes } from 'react-router-dom';
 import { RequirePermission } from '../../../platform/router/RequirePermission';
 import { NotFoundPage } from '../../../platform/app/pages/NotFoundPage';
 import { AppShell } from '../../../platform/layout/AppShell';
 import { MyPayslipsPage } from './pages/MyPayslipsPage';
 import { PayItemsPage } from './pages/PayItemsPage';
+import { PayrollAdjustmentsPage } from './pages/PayrollAdjustmentsPage';
 import { PayrollRunsPage } from './pages/PayrollRunsPage';
 
 export default function PayrollRoutes(): JSX.Element {
@@ -33,6 +35,21 @@ export default function PayrollRoutes(): JSX.Element {
           element={
             <RequirePermission permission="payrollRun.view">
               <PayrollRunsPage />
+            </RequirePermission>
+          }
+        />
+        {/*
+          P-HR-06 — the queue for a decision P-HR-04 already defined. Gated on `view`, which is the
+          key the server requires for the list this screen reads; the approve/reject buttons and
+          the navigation row are narrower, on `payrollAdjustment.approve`. Gating the route itself
+          on `approve` would hand a `view` holder a screen the API answers, which is the one thing
+          a route guard exists to prevent.
+        */}
+        <Route
+          path="adjustments"
+          element={
+            <RequirePermission permission="payrollAdjustment.view">
+              <PayrollAdjustmentsPage />
             </RequirePermission>
           }
         />

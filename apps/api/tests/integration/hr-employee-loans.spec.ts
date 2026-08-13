@@ -633,9 +633,29 @@ describe('settling outside payroll closes it (D7-1)', () => {
   }, 120_000);
 });
 
-describe('what a loan does NOT do in phase A', () => {
-  it('changes no compensation figure at all', async () => {
-    const loan = await activeLoan({
+describe('a loan costs a month nothing until it costs it something', () => {
+  /**
+   * Written for phase A as "a loan changes no compensation figure at all", which stopped being
+   * true the moment P-HR-05-B shipped the port. What still needs guarding is the QUALIFIER: a
+   * figure moves only once the money has actually been handed over, and stops moving the moment
+   * nothing is owed.
+   *
+   * Both halves are cases the brief names — an inactive loan deducts nothing, and a cancelled
+   * instalment deducts nothing — and they are only observable end to end.
+   */
+  it('deducts nothing before disbursement, and nothing after settlement', async () => {
+    const deductionsIn = async (): Promise<CompensationEffectsDto['deductions']> => {
+      const res = await request(app)
+        .get(`/api/v1/hr/employees/${employeeId}/compensation?period=2026-02`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      return (res.body.data as CompensationEffectsDto).deductions.filter(
+        (l) => l.origin === 'loanInstallment',
+      );
+    };
+
+    // APPROVED is not paid out: there is no schedule yet, so there is nothing to deduct.
+    const approved = await approvedLoan({
       type: 'loan',
       principal: 1_200,
       currency: 'EGP',
@@ -643,23 +663,28 @@ describe('what a loan does NOT do in phase A', () => {
       firstPeriod: '2026-02',
       reason: 'the boundary',
     });
-    expect(loan.status).toBe('active');
+    expect(await deductionsIn()).toEqual([]);
 
-    const res = await request(app)
-      .get(`/api/v1/hr/employees/${employeeId}/compensation?period=2026-02`)
-      .set('Authorization', `Bearer ${adminToken}`);
-    expect(res.status, JSON.stringify(res.body)).toBe(200);
-    const effects = res.body.data as CompensationEffectsDto;
-    // No line of any kind carries this loan, under any origin — phase A adds no payroll input.
-    const origins = new Set(
-      [...effects.earnings, ...effects.deductions, ...effects.deferred].map((l) => l.origin),
-    );
-    for (const origin of origins) {
-      expect(['payItem', 'leaveSnapshot', 'adjustment']).toContain(origin);
-    }
-    expect(
-      [...effects.earnings, ...effects.deductions].some((l) => l.code.toUpperCase().includes('LOAN')),
-    ).toBe(false);
+    // …and the moment the money changes hands, the month costs something.
+    const paid = await disburse(approved.id, {
+      disbursedAt: '2026-01-15',
+      version: approved.version,
+    });
+    expect(paid.status, JSON.stringify(paid.body)).toBe(200);
+    const active = paid.body.data as EmployeeLoanDto;
+    const lines = await deductionsIn();
+    expect(lines).toHaveLength(1);
+    expect(lines[0]?.amount).toBe(100);
+    expect(lines[0]?.prorationFactor).toBeNull();
+
+    // A cancelled instalment deducts nothing: settling externally withdraws every planned row.
+    const settled = await settle(active.id, {
+      amount: active.remaining,
+      reason: 'paid in cash instead',
+      version: active.version,
+    });
+    expect(settled.status, JSON.stringify(settled.body)).toBe(200);
+    expect(await deductionsIn()).toEqual([]);
     await clearLive();
   }, 120_000);
 
@@ -752,7 +777,7 @@ describe('an instalment reaches a payslip (P-HR-05-B)', () => {
       .post(`/api/v1/hr/payroll/runs/${runId}/payslips`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({});
-    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
     return res.body.data as GeneratePayslipsResultDto;
   };
 
@@ -888,6 +913,19 @@ describe('an instalment reaches a payslip (P-HR-05-B)', () => {
     expect(after?.repayments).toHaveLength(1);
     expect(after?.repaid).toBe(100);
     expect(after?.remaining).toBe(200);
+
+    /**
+     * And the RECALCULATED payslip still shows the deduction.
+     *
+     * This is the half that is easy to get wrong: if the month's compensation only counted rows
+     * that were still `planned`, a re-priced month would quietly come out bigger than the one the
+     * employee was actually paid — the ledger saying 100 was taken while the new slip showed
+     * nothing. The month costs what the month cost.
+     */
+    const reissued = await slipOf(borrowerId);
+    const line = reissued?.deductions.find((l) => l.origin === 'loanInstallment');
+    expect(line, 'the re-priced month must still carry the instalment').toBeDefined();
+    expect(line?.amount).toBe(100);
   }, 240_000);
 
   // The instalment a payslip took is history: a reschedule may not move it.
@@ -958,7 +996,7 @@ describe('what payroll does, and refuses to do, with a debt (P-HR-05-B)', () => 
     poorId = await mkEmployee('موظف الصافي السالب', '29001011790010', '01174000023');
     externalId = await mkEmployee('موظف التسوية', '29001011890010', '01174000024');
     leaverId = await mkEmployee('موظف الخروج', '29001011990010', '01174000025');
-    acceleratorId = await mkEmployee('موظف التعجيل', '29001012090010', '01174000026');
+    acceleratorId = await mkEmployee('موظف التعجيل', '29001012190010', '01174000026');
 
     // An instalment far bigger than anything this month earns — D9's case, on purpose.
     await activeLoanFor(poorId, {
@@ -1025,7 +1063,7 @@ describe('what payroll does, and refuses to do, with a debt (P-HR-05-B)', () => 
       .post(`/api/v1/hr/payroll/runs/${runId}/payslips`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({});
-    expect(issued.status, JSON.stringify(issued.body)).toBe(200);
+    expect(issued.status, JSON.stringify(issued.body)).toBe(201);
     const result = issued.body.data as GeneratePayslipsResultDto;
     // Nobody was skipped for a pending line — an unpayable instalment is not a pending one.
     expect(result.skipped.filter((s) => s.reason === 'pendingLine')).toEqual([]);

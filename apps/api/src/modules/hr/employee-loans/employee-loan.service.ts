@@ -619,12 +619,17 @@ class EmployeeLoanService {
   // receipt, and the vocabulary on either side of it stays its own.
 
   /**
-   * What this employee owes THIS month, as amounts.
+   * What this employee's month costs in instalments.
    *
-   * The loan must be `active` — a draft, an approved-but-unpaid, a settled or a cancelled one owes
-   * nothing this month — and the instalment must still be `planned`. Both conditions live here
-   * rather than at the port, for the same reason P-HR-04 put its `approved` filter at the read: a
-   * future caller who forgets is exactly what this placement prevents.
+   * Two conditions, and both live here rather than at the port — the same reason P-HR-04 put its
+   * `approved` filter at the read: a future caller who forgets is exactly what this prevents.
+   *
+   *   1. the LOAN must be live — `active`, or `settled`/`outstandingAtExit` reached AFTER this
+   *      month, since a month already priced does not un-price itself when the debt later closes;
+   *   2. the INSTALMENT must be chargeable — `planned` or already `deducted`, never `cancelled`.
+   *
+   * The second condition is the subtle one: re-reading a past month must show what that month
+   * cost, which is PY-8's stance applied to a debt.
    */
   async deductionsDueFor(
     employeeId: string,
@@ -632,7 +637,7 @@ class EmployeeLoanService {
   ): Promise<
     { installmentId: string; loanId: string; amountMinor: number; currency: string; reference: string }[]
   > {
-    const rows = await loanInstallmentRepository.plannedForEmployeePeriod(employeeId, period);
+    const rows = await loanInstallmentRepository.chargeableForEmployeePeriod(employeeId, period);
     if (rows.length === 0) return [];
 
     const due: {
@@ -644,7 +649,11 @@ class EmployeeLoanService {
     }[] = [];
     for (const row of rows) {
       const loan = await employeeLoanRepository.findById(String(row.loanId));
-      if (loan === null || loan.status !== 'active') continue;
+      if (loan === null) continue;
+      // A closed loan still owes the months it was open for. `deducted` is the proof that this
+      // month was one of them — dropping it because the debt has since been settled would make an
+      // issued payslip and a re-read of the same month disagree.
+      if (loan.status !== 'active' && row.status !== 'deducted') continue;
       due.push({
         installmentId: String(row._id),
         loanId: String(loan._id),

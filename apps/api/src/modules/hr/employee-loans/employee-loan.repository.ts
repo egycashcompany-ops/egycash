@@ -116,20 +116,27 @@ class LoanInstallmentRepository {
   }
 
   /**
-   * The rows one employee still intends to pay in one month (P-HR-05-B).
+   * What one employee's month costs in instalments (P-HR-05-B).
    *
-   * `planned` only: a `deducted` row already happened and a `cancelled` one never will. Which of
-   * those rows actually reaches a payslip is decided one layer up, where the loan's status is
-   * known — this read is about the schedule, not about the debt.
+   * `planned` OR `deducted` — and the second one is the subtle half. A month's compensation is a
+   * function of that month's SCHEDULE, not of whether a payslip has happened to be issued yet:
+   * once a payslip takes an instalment the row becomes `deducted`, and if this read dropped it,
+   * re-opening that month afterwards would show a smaller deduction than the issued document
+   * does. PY-8's stance, applied here — a past month does not restate itself.
+   *
+   * Recording stays idempotent on the other side of the port, so a month whose instalment is
+   * already in the ledger prices the same and repays nothing twice.
+   *
+   * `cancelled` is excluded: it is an intention somebody withdrew, and no month ever owed it.
    */
-  async plannedForEmployeePeriod(
+  async chargeableForEmployeePeriod(
     employeeId: string,
     period: string,
   ): Promise<LoanInstallmentDoc[]> {
     return LoanInstallmentModel.find({
       employeeId: new Types.ObjectId(employeeId),
       period,
-      status: 'planned',
+      status: { $in: ['planned', 'deducted'] },
       isDeleted: false,
     })
       .sort({ seq: 1 })

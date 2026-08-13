@@ -805,3 +805,66 @@ describe('read APIs — subordinates & composed timeline', () => {
     expect([...times].sort((a, b) => (a < b ? 1 : -1))).toEqual(times);
   });
 });
+
+// ── HR3-A — a branch-code change reaches the codes derived from it ──────────
+//
+// The Employee Code is `<BranchCode><GlobalEmployeeNumber>` (ADR-017): derived, but STORED on the
+// employee and denormalized onto the Employee File. Correcting a branch's code used to leave every
+// employee in it carrying a code that derived from nothing.
+//
+// What must hold: the CURRENT value follows, the Global Employee Number never moves, and nothing
+// that was already issued is rewritten.
+describe('branch-code change propagation (HR3-A)', () => {
+  it('re-derives the codes of everyone in the branch, keeping the global number', async () => {
+    const employee = await hire();
+    const before = await reread(employee.id);
+    const branch = await request(app)
+      .get(`/api/v1/platform/branches/${BRANCH_ID}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(branch.status).toBe(200);
+    const version = (branch.body as { data: { version: number } }).data.version;
+
+    const changed = await request(app)
+      .patch(`/api/v1/platform/branches/${BRANCH_ID}/code`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: '009', version });
+    expect(changed.status, JSON.stringify(changed.body)).toBe(200);
+
+    const after = await reread(employee.id);
+    // The prefix moved…
+    expect(after.code.startsWith('009')).toBe(true);
+    expect(before.code.startsWith('009')).toBe(false);
+    // …and the permanent identity did not.
+    expect(after.code.slice(3)).toBe(before.code.slice(3));
+    expect(after.employeeNumber).toBe(before.employeeNumber);
+  }, 120_000);
+
+  // The action log records what the code WAS when each action happened — it is history, not a
+  // cache, so the propagation must leave it exactly where it stands.
+  it('leaves the personnel-action history carrying the old code', async () => {
+    const employee = await hire({ branchId: BRANCH2_ID });
+    const history = await request(app)
+      .get(`/api/v1/hr/employees/${employee.id}/actions`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(history.status).toBe(200);
+    const codes = (history.body as { data: { employeeCode: string }[] }).data.map((a) => a.employeeCode);
+    expect(codes.length).toBeGreaterThan(0);
+    // Hired into branch 002 — the hire action still says so whatever happens to branch 001.
+    expect(codes.every((c) => c.startsWith('002'))).toBe(true);
+  }, 120_000);
+
+  it('does not touch an employee of another branch', async () => {
+    const other = await hire({ branchId: BRANCH2_ID });
+    const before = await reread(other.id);
+    const branch = await request(app)
+      .get(`/api/v1/platform/branches/${BRANCH_ID}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const version = (branch.body as { data: { version: number } }).data.version;
+    const changed = await request(app)
+      .patch(`/api/v1/platform/branches/${BRANCH_ID}/code`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: '010', version });
+    expect(changed.status).toBe(200);
+    expect((await reread(other.id)).code).toBe(before.code);
+  }, 120_000);
+});

@@ -58,6 +58,25 @@ export const EMPLOYEE_ACTION_STATUSES = [
 export const EmployeeActionStatusSchema = z.enum(EMPLOYEE_ACTION_STATUSES);
 export type EmployeeActionStatus = z.infer<typeof EmployeeActionStatusSchema>;
 
+// ── Attachments (HR3-C) ──────────────────────────────────────────────────────
+//
+// The design lists `attachmentFileId` among an action's fields with "files category
+// `hr-employee-actions`". Both names are shared with the frontend, so both live here.
+
+/** The Files-service category personnel-action documents are uploaded into. */
+export const EMPLOYEE_ACTION_ATTACHMENTS_FILE_CATEGORY = 'hr-employee-actions';
+
+/**
+ * The entity type those files are OWNED by (ADR-023), and it is the EMPLOYEE they name, not the
+ * action.
+ *
+ * It has to be: the file is uploaded before the action it will belong to exists, so the action's
+ * id cannot be its owner. A type of its own — rather than reusing `employee` — is what keeps the
+ * authorizer this phase registers from silently changing the rules for any file already filed
+ * against an employee.
+ */
+export const EMPLOYEE_ACTION_ATTACHMENT_ENTITY_TYPE = 'employeeActionAttachment';
+
 /** Action types that carry salary data and therefore obey compensation redaction. */
 export const SALARY_BEARING_ACTION_TYPES: readonly EmployeeActionType[] = [
   'salaryChange',
@@ -72,6 +91,15 @@ const base = {
   /** The date the change takes business effect. Defaults to now; past applies immediately; future ⇒ scheduled. */
   effectiveDate: z.coerce.date().optional(),
   note: z.string().max(1000).optional(),
+  /**
+   * The supporting document — a resignation letter, a signed raise approval (HR3-C).
+   *
+   * Supplied at CREATION, never after, because an action is immutable once written (§3): a
+   * scheduled one can only be cancelled, and adding a document to a written record would restate
+   * it. Upload through `POST /hr/employees/:id/actions/attachment` FIRST — that endpoint owns the
+   * category and the entity reference — then pass the id it returns.
+   */
+  attachmentFileId: objectId().optional(),
   /** Optimistic concurrency on the EMPLOYEE aggregate (API Standards §6). */
   version: z.number().int().min(0),
 };

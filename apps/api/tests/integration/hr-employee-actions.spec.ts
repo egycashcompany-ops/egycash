@@ -977,3 +977,103 @@ describe('personnel actions — overlap warning (C1)', () => {
     expect(missing.status).toBe(400);
   }, 120_000);
 });
+
+// ── Supporting documents (HR3-C) ────────────────────────────────────────────
+//
+// The design lists `attachmentFileId` among an action's fields, with the files category
+// `hr-employee-actions`. It was on the model and in the DTO, permanently null — nothing could set
+// it.
+//
+// UPLOAD FIRST, CREATE SECOND, and that order is forced rather than chosen: an action is immutable
+// once written (§3), so its document cannot be added afterwards; and the file cannot name the
+// action as its owner, because the action does not exist yet. The EMPLOYEE owns it.
+describe('personnel actions — supporting documents (HR3-C)', () => {
+  const pdf = (): Buffer => Buffer.from('%PDF-1.4 personnel action document');
+
+  const uploadDocument = (employeeId: string, token = adminToken) =>
+    request(app)
+      .post(`/api/v1/hr/employees/${employeeId}/actions/attachment`)
+      .set('Authorization', `Bearer ${token}`)
+      .attach('file', pdf(), { filename: 'letter.pdf', contentType: 'application/pdf' });
+
+  it('uploads a document and records it on the action it is created with', async () => {
+    const emp = await hire();
+    const uploaded = await uploadDocument(emp.id);
+    expect(uploaded.status, JSON.stringify(uploaded.body)).toBe(201);
+    const fileId = (uploaded.body.data as { id: string }).id;
+
+    const created = await action(emp.id, 'employment', {
+      type: 'promotion',
+      jobTitleId: JOB_TITLE_ID,
+      attachmentFileId: fileId,
+      version: emp.version,
+    });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    expect((created.body.data as EmployeeActionDto).attachmentFileId).toBe(fileId);
+
+    // And it is on the history, not just on the create response.
+    const history = await request(app)
+      .get(`/api/v1/hr/employees/${emp.id}/actions?type=promotion`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(history.status).toBe(200);
+    const rows = history.body.data as EmployeeActionDto[];
+    expect(rows[0]?.attachmentFileId).toBe(fileId);
+  }, 120_000);
+
+  /**
+   * The check that matters most: one employee's document must not end up in another's history.
+   *
+   * The file id alone cannot say who it belongs to, which is why the service reads the row and
+   * compares the entity reference rather than trusting the shape of the input.
+   */
+  it('refuses a document uploaded for a different employee', async () => {
+    const mine = await hire();
+    const theirs = await hire();
+    const uploaded = await uploadDocument(theirs.id);
+    expect(uploaded.status).toBe(201);
+
+    const refused = await action(mine.id, 'employment', {
+      type: 'promotion',
+      jobTitleId: JOB_TITLE_ID,
+      attachmentFileId: (uploaded.body.data as { id: string }).id,
+      version: mine.version,
+    });
+    expect(refused.status).toBe(422);
+
+    // …and the refusal happened BEFORE the sequence was allocated, so the history is untouched.
+    const history = await request(app)
+      .get(`/api/v1/hr/employees/${mine.id}/actions`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect((history.body.data as EmployeeActionDto[]).map((a) => a.type)).toEqual(['hire']);
+  }, 120_000);
+
+  it('refuses a file id that names nothing', async () => {
+    const emp = await hire();
+    const refused = await action(emp.id, 'employment', {
+      type: 'promotion',
+      jobTitleId: JOB_TITLE_ID,
+      attachmentFileId: '64b1f0aaaaaaaaaaaaaaaabb',
+      version: emp.version,
+    });
+    expect(refused.status).toBe(404);
+  }, 120_000);
+
+  // Uploading a document IS proposing a personnel action. Reading the history is not enough for
+  // it — the viewer holds `employee.view` and nothing else.
+  it('takes an action-group permission to upload, not merely employee.view', async () => {
+    const emp = await hire();
+    const denied = await uploadDocument(emp.id, viewerToken);
+    expect(denied.status).toBe(403);
+  }, 120_000);
+
+  it('still creates an action with no document at all — it is optional', async () => {
+    const emp = await hire();
+    const created = await action(emp.id, 'employment', {
+      type: 'promotion',
+      jobTitleId: JOB_TITLE_ID,
+      version: emp.version,
+    });
+    expect(created.status).toBe(201);
+    expect((created.body.data as EmployeeActionDto).attachmentFileId).toBeNull();
+  }, 120_000);
+});

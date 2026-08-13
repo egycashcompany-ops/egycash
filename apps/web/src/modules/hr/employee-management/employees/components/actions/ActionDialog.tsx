@@ -1,7 +1,8 @@
 // Shared shell for Personnel Action dialogs (frozen design §8): every action dialog carries an
 // optional effective date (past = applies immediately with that date; future = scheduled and
-// applied by the server on the day) and an optional note, and submits against the employee's
-// current version. Failures surface through the global API error toast.
+// applied by the server on the day), an optional note and an optional supporting document
+// (HR3-C), and submits against the employee's current version. Failures surface through the
+// global API error toast.
 //
 // It also carries the OVERLAP WARNING (C1): a dialog that names the type it is about to create
 // gets, above its fields, the pending scheduled actions that already write the same employment
@@ -15,7 +16,7 @@ import { Dialog } from '../../../../../../shared/ui/Dialog';
 import { Button } from '../../../../../../shared/ui/Button';
 import { Field, Input, Textarea } from '../../../../../../shared/ui/form';
 import { formatDate } from '../../../../../../shared/lib/format';
-import { useActionOverlaps } from '../../api/employee-queries';
+import { useActionOverlaps, useAttachActionDocument } from '../../api/employee-queries';
 
 export interface ActionDialogProps {
   open: boolean;
@@ -107,16 +108,31 @@ export const ActionDialog = ({
   );
 };
 
-/** Effective date + note — shared tail fields of every action dialog. */
-export const useActionCommonFields = (): {
+/**
+ * Effective date + note + supporting document — shared tail fields of every action dialog.
+ *
+ * THE DOCUMENT UPLOADS ON PICK, not on submit, and that ordering is forced: an action is immutable
+ * once written (§3), so its document must already exist when the action is created. By the time
+ * anyone presses the button, `common` is carrying an id the server can verify.
+ *
+ * Which means a document can be uploaded for an action that is then abandoned. It stays filed
+ * against the employee, readable only by someone who could have read the action it was meant for —
+ * the same trade the leave module makes, and the alternative would be cleaning up on a dialog
+ * close the browser does not promise to tell us about.
+ */
+export const useActionCommonFields = (
+  employeeId: string,
+): {
   effectiveDate: string;
   note: string;
   fields: JSX.Element;
-  common: { effectiveDate?: Date; note?: string };
+  common: { effectiveDate?: Date; note?: string; attachmentFileId?: string };
 } => {
   const t = useT();
+  const attach = useAttachActionDocument(employeeId);
   const [effectiveDate, setEffectiveDate] = useState('');
   const [note, setNote] = useState('');
+  const [attachment, setAttachment] = useState<{ id: string; name: string } | null>(null);
   const fields = (
     <>
       <Field label={t('employees.actions.effectiveDate')} hint={t('employees.actions.effectiveDateHint')}>
@@ -124,6 +140,28 @@ export const useActionCommonFields = (): {
       </Field>
       <Field label={t('employees.actions.note')} hint={t('offers.form.optional')}>
         <Textarea rows={2} maxLength={1000} value={note} onChange={(e) => setNote(e.target.value)} />
+      </Field>
+      <Field label={t('employees.actions.attachment')} hint={t('offers.form.optional')}>
+        <div className="space-y-1">
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-brand-600">
+            <input
+              type="file"
+              className="hidden"
+              accept="application/pdf,image/*"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file === undefined) return;
+                attach.mutate(file, {
+                  onSuccess: (uploaded) => setAttachment({ id: uploaded.id, name: file.name }),
+                });
+              }}
+            />
+            {attach.isPending ? t('common.loading') : t('employees.actions.attachmentPick')}
+          </label>
+          {attachment !== null && (
+            <p className="text-xs text-slate-500">{attachment.name}</p>
+          )}
+        </div>
       </Field>
     </>
   );
@@ -134,6 +172,7 @@ export const useActionCommonFields = (): {
     common: {
       ...(effectiveDate === '' ? {} : { effectiveDate: new Date(effectiveDate) }),
       ...(note.trim() === '' ? {} : { note: note.trim() }),
+      ...(attachment === null ? {} : { attachmentFileId: attachment.id }),
     },
   };
 };

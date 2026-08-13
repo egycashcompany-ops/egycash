@@ -13,6 +13,8 @@ import {
   type RehireAction,
 } from '@ecms/contracts';
 import { created, ok, okPage, validated } from '../../../../platform/web';
+import { ValidationError } from '../../../../shared/errors';
+import { fileService } from '../../../../platform/files';
 import { authContext } from '../../../../platform/auth';
 import { hasPermission, scopeSelector } from '../../../../shared/types';
 import {
@@ -104,6 +106,33 @@ export const listEmployeeActions = async (req: Request, res: Response): Promise<
     await employeeActionService.list(params.id, query, scopeSelector(ctx, 'employee.view')),
     (d) => toEmployeeActionDto(d, { compensationVisible: visible }),
   );
+};
+
+/**
+ * Upload the document an action will be created WITH (HR3-C).
+ *
+ * Returns the file so the client has the id to pass to the create endpoint. The entity reference
+ * is set by the service, never by the caller — which is what makes the ADR-023 authorizer's answer
+ * mean something.
+ */
+export const attachActionDocument = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { params } = validated<never, never, IdParam>(req);
+  const file = req.file;
+  if (file === undefined) {
+    throw new ValidationError([
+      { field: 'body.file', code: 'REQUIRED', message: 'multipart field "file" is required' },
+    ]);
+  }
+  // Scoped by the group the caller actually holds — the route already proved they hold one.
+  const key = ACTION_GROUP_PERMISSIONS.find((k) => hasPermission(ctx, k));
+  const doc = await employeeActionService.attach(
+    ctx,
+    params.id,
+    { originalName: file.originalname, mime: file.mimetype, size: file.size, buffer: file.buffer },
+    scopeSelector(ctx, key ?? 'employee.manageActions'),
+  );
+  created(res, fileService.toDto(doc), `/api/v1/platform/files/${String(doc._id)}`);
 };
 
 /**

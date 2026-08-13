@@ -4,6 +4,7 @@
 // reuse the Job Offer feature's endpoints (no new API is introduced).
 import {
   type ActionOverlapDto,
+  type FileDto,
   type BranchDto,
   type CancelEmployeeAction,
   type CompensationAction,
@@ -27,7 +28,7 @@ import {
   type UpdateUser,
   type UserDto,
 } from '@ecms/contracts';
-import { buildQuery, get, getPage, patch, post,
+import { buildQuery, get, getPage, patch, post, upload,
   type QueryParams,
 } from '../../../../../shared/lib/api-client';
 
@@ -69,6 +70,18 @@ export const listEmployeeActions = (
   params: Record<string, string | number | undefined>,
 ): Promise<Paginated<EmployeeActionDto>> =>
   getPage<EmployeeActionDto>(`/hr/employees/${id}/actions${buildQuery(params)}`);
+
+/**
+ * The supporting document, uploaded BEFORE the action that will carry it (HR3-C).
+ *
+ * An action is immutable once written, so the file cannot be added afterwards — the id this
+ * returns goes into the create body.
+ */
+export const attachActionDocument = (id: string, file: File): Promise<FileDto> => {
+  const form = new FormData();
+  form.append('file', file);
+  return upload<FileDto>(`/hr/employees/${id}/actions/attachment`, form);
+};
 
 /** The overlap warning (C1) — what an action of this type would meet, before it is created. */
 export const listActionOverlaps = (id: string, type: EmployeeActionType): Promise<ActionOverlapDto[]> =>

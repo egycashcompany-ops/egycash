@@ -1691,6 +1691,10 @@ const en: Record<string, string> = {
   // The overlap warning (C1) — informational; it never stops the action.
   'employees.actions.overlap.title': 'Already scheduled on the same details:',
   'employees.actions.overlap.order': 'Both will apply, in effective-date order.',
+  // The supporting document (HR3-C) — uploaded when picked, since an action cannot be edited later.
+  'employees.actions.attachment': 'Supporting document',
+  'employees.actions.attachmentPick': 'Choose a file',
+  'employees.actions.attachmentPresent': 'Attached',
   'employees.actions.promotion.title': 'Promote',
   'employees.actions.promotion.newTitle': 'New job title',
   'employees.actions.promotion.titleRequired': 'Choose the new job title.',
@@ -5769,6 +5773,9 @@ const ar: Record<string, string> = {
   'employees.actions.reasonRequired': 'السبب مطلوب.',
   'employees.actions.overlap.title': 'يوجد إجراء مجدول يمسّ نفس البيانات:',
   'employees.actions.overlap.order': 'سيُطبّق الاثنان بترتيب تاريخ السريان.',
+  'employees.actions.attachment': 'المستند المؤيِّد',
+  'employees.actions.attachmentPick': 'اختر ملفًا',
+  'employees.actions.attachmentPresent': 'مرفق',
   'employees.actions.promotion.title': 'ترقية',
   'employees.actions.promotion.newTitle': 'المسمى الوظيفي الجديد',
   'employees.actions.promotion.titleRequired': 'اختر المسمى الوظيفي الجديد.',

@@ -34,7 +34,7 @@ export const PromotionDialog = ({ employee, open, onClose }: DialogProps): JSX.E
   const can = useCan();
   const jobTitles = useJobTitles(can('jobTitle.view'));
   const action = useEmploymentAction(employee.id);
-  const { fields, common } = useActionCommonFields();
+  const { fields, common } = useActionCommonFields(employee.id);
   const [jobTitleId, setJobTitleId] = useState('');
   const [salary, setSalary] = useState('');
   const [reason, setReason] = useState('');
@@ -101,7 +101,7 @@ export const TransferDialog = ({ employee, open, onClose }: DialogProps): JSX.El
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const action = useEmploymentAction(employee.id);
-  const { fields, common } = useActionCommonFields();
+  const { fields, common } = useActionCommonFields(employee.id);
   const [branchId, setBranchId] = useState(employee.employment.branchId);
   const [departmentId, setDepartmentId] = useState(employee.employment.departmentId);
   const [sectionId, setSectionId] = useState(employee.employment.sectionId ?? '');
@@ -200,7 +200,7 @@ export const TransferDialog = ({ employee, open, onClose }: DialogProps): JSX.El
 export const SalaryChangeDialog = ({ employee, open, onClose }: DialogProps): JSX.Element | null => {
   const t = useT();
   const action = useCompensationAction(employee.id);
-  const { fields, common } = useActionCommonFields();
+  const { fields, common } = useActionCommonFields(employee.id);
   const [salary, setSalary] = useState(String(employee.employment.salary?.amount ?? ''));
   const [reason, setReason] = useState('');
 
@@ -255,7 +255,7 @@ export const ManagerChangeDialog = ({ employee, open, onClose }: DialogProps): J
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const action = useEmploymentAction(employee.id);
-  const { fields, common } = useActionCommonFields();
+  const { fields, common } = useActionCommonFields(employee.id);
   const [term, setTerm] = useState('');
   const [managerId, setManagerId] = useState<string | null>(employee.employment.managerId);
   const results = useUserSearch(term, open);

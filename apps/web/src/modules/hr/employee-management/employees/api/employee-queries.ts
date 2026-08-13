@@ -178,6 +178,15 @@ export const useActionOverlaps = (id: string, type: EmployeeActionType) =>
     enabled: id !== '',
   });
 
+/**
+ * Upload an action's supporting document (HR3-C).
+ *
+ * Nothing to invalidate: the file belongs to no action yet — it is an input to the create call
+ * that follows, and THAT call refreshes the history.
+ */
+export const useAttachActionDocument = (id: string) =>
+  useMutation({ mutationFn: (file: File) => api.attachActionDocument(id, file) });
+
 /** Invalidate everything the actions engine may have touched (profile, actions, timeline, list). */
 const useInvalidateAfterAction = (id: string) => {
   const qc = useQueryClient();

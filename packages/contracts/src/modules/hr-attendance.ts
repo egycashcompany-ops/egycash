@@ -411,8 +411,16 @@ export const ListAttendanceRegularizationsQuerySchema = PaginationQuerySchema.ex
    *
    * A filter, not a new endpoint: the organization-wide read already exists and is already behind
    * `attendance.decideRegularization`.
+   *
+   * NOT `z.coerce.boolean()`, and the difference is not cosmetic: `Boolean('false')` is `true`, so
+   * a coerced query string makes `postFreeze=false` mean `postFreeze=true` — the filter would
+   * answer the opposite of the question. Both halves are real questions here ("what needs a human"
+   * and "what recomputed normally"), so the string is parsed rather than coerced. The boolean arm
+   * is for a caller that already has one.
    */
-  postFreeze: z.coerce.boolean().optional(),
+  postFreeze: z
+    .union([z.boolean(), z.enum(['true', 'false']).transform((value) => value === 'true')])
+    .optional(),
 }).strict();
 export type ListAttendanceRegularizationsQuery = z.infer<
   typeof ListAttendanceRegularizationsQuerySchema

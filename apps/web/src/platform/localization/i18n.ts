@@ -2248,7 +2248,16 @@ const en: Record<string, string> = {
   'loans.status.settled': 'Settled',
   'loans.status.cancelled': 'Cancelled',
   'loans.installment.planned': 'Scheduled',
+  'loans.installment.deducted': 'Deducted',
   'loans.installment.cancelled': 'Cancelled',
+  // The payroll side (P-HR-05-B).
+  'loans.repaid': 'Repaid so far',
+  'loans.accelerate': 'Pay extra this month',
+  'loans.accelerateHint':
+    'Takes an extra amount through payroll in one month, so the loan ends earlier. The total does not change.',
+  'loans.extraAmount': 'Extra amount',
+  'loans.accelerated': 'Schedule brought forward.',
+  'loans.status.outstandingAtExit': 'Outstanding at exit',
   'contracts.module.title': 'Contracts',
   'contracts.list.subtitle':
     'Employment contracts — drafts, generated documents and the amendment chains.',
@@ -6392,7 +6401,15 @@ const ar: Record<string, string> = {
   'loans.status.settled': 'مسدَّد',
   'loans.status.cancelled': 'ملغى',
   'loans.installment.planned': 'مجدول',
+  'loans.installment.deducted': 'مخصوم',
   'loans.installment.cancelled': 'ملغى',
+  // The payroll side (P-HR-05-B).
+  'loans.repaid': 'المسدَّد حتى الآن',
+  'loans.accelerate': 'دفع مبلغ إضافي',
+  'loans.accelerateHint': 'يخصم مبلغًا إضافيًا عبر الرواتب في شهر واحد فينتهي القرض أبكر. الإجمالي لا يتغيّر.',
+  'loans.extraAmount': 'المبلغ الإضافي',
+  'loans.accelerated': 'تم تقديم الجدول.',
+  'loans.status.outstandingAtExit': 'رصيد قائم عند الخروج',
   'contracts.module.title': 'العقود',
   'contracts.list.subtitle': 'عقود العمل — المسودات والمستندات المُنشأة وسلاسل التعديل.',
   'contracts.list.new': 'عقد جديد',

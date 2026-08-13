@@ -221,8 +221,20 @@ describe('the compensation vocabulary', () => {
    * `adjustment` — a one-off decision for this month alone (P-HR-04), the only one that is never
    * prorated. A payslip line that could not say which it was would be a number without a story.
    */
-  it('pins the three line origins — assigned, derived from a run, or decided', () => {
-    expect([...COMPENSATION_LINE_ORIGINS]).toEqual(['payItem', 'leaveSnapshot', 'adjustment']);
+  /**
+   * The four line origins — assigned, derived from a run, decided, or owed.
+   *
+   * `loanInstallment` (P-HR-05-B) is the fourth and the only one that is ALWAYS a deduction: the
+   * employee already has the money, and this is the month's share of giving it back. Named rather
+   * than counted, because each value is a different answer to "why is this line here?".
+   */
+  it('pins the four line origins', () => {
+    expect([...COMPENSATION_LINE_ORIGINS]).toEqual([
+      'payItem',
+      'leaveSnapshot',
+      'adjustment',
+      'loanInstallment',
+    ]);
   });
 
   it('accepts a period and refuses anything that is not YYYY-MM', () => {

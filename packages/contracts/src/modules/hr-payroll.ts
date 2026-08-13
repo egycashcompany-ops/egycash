@@ -334,7 +334,17 @@ export type CompensationLineState = (typeof COMPENSATION_LINE_STATES)[number];
 // `adjustment` is P-HR-04: a one-off bonus or penalty decided for one month. It is the third
 // source the engine takes, after the pay-item assignment and the leave snapshot, and it is the
 // only one that is NOT prorated — its amount is the amount somebody approved.
-export const COMPENSATION_LINE_ORIGINS = ['payItem', 'leaveSnapshot', 'adjustment'] as const;
+//
+// `loanInstallment` is P-HR-05-B: the month's instalment of a debt the employee already received
+// in cash. Like an adjustment it is never prorated, and unlike every other origin it is ALWAYS a
+// deduction. The engine learns nothing else about the loan behind it — not its balance, not its
+// schedule, not its status — because a repayment plan is not a payroll rule.
+export const COMPENSATION_LINE_ORIGINS = [
+  'payItem',
+  'leaveSnapshot',
+  'adjustment',
+  'loanInstallment',
+] as const;
 export type CompensationLineOrigin = (typeof COMPENSATION_LINE_ORIGINS)[number];
 
 /**

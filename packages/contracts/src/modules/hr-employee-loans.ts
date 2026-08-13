@@ -44,6 +44,9 @@ export type EmployeeLoanType = z.infer<typeof EmployeeLoanTypeSchema>;
  * `active` is where the obligation lives. It leaves only by being repaid: in phase A through
  * `externalSettlement` (D7-1), and in phase B through payroll.
  */
+// `outstandingAtExit` (D8, P-HR-05-B) is a STATEMENT OF FACT rather than a decision: the employee
+// left owing money. Nothing is deducted from a final salary and nothing is written off — the
+// balance stays readable, and what happens to it is a decision outside this system.
 export const EMPLOYEE_LOAN_STATUSES = [
   'draft',
   'pendingApproval',
@@ -51,6 +54,7 @@ export const EMPLOYEE_LOAN_STATUSES = [
   'active',
   'settled',
   'cancelled',
+  'outstandingAtExit',
 ] as const;
 export const EmployeeLoanStatusSchema = z.enum(EMPLOYEE_LOAN_STATUSES);
 export type EmployeeLoanStatus = z.infer<typeof EmployeeLoanStatusSchema>;
@@ -64,13 +68,17 @@ export type EmployeeLoanStatus = z.infer<typeof EmployeeLoanStatusSchema>;
 export const LIVE_EMPLOYEE_LOAN_STATUSES = ['pendingApproval', 'approved', 'active'] as const;
 
 /**
- * An installment's whole vocabulary in phase A.
+ * What an instalment is, and what became of it.
  *
- * `planned` is an intention and `cancelled` is one that was withdrawn — by a reschedule, by an
- * external settlement, or (phase B) by an exit. There is no third value here because there is no
- * payroll in this phase to produce one.
+ *   • `planned`   — an INTENTION. Rewritable while its month is open.
+ *   • `deducted`  — a FACT (P-HR-05-B). A payslip took it, and nothing may move it afterwards.
+ *   • `cancelled` — an intention that was withdrawn: by a reschedule, an external settlement, or
+ *                   an exit.
+ *
+ * The middle value arrived with the code that sets it, which is the whole reason phase A shipped
+ * without it.
  */
-export const LOAN_INSTALLMENT_STATUSES = ['planned', 'cancelled'] as const;
+export const LOAN_INSTALLMENT_STATUSES = ['planned', 'deducted', 'cancelled'] as const;
 export const LoanInstallmentStatusSchema = z.enum(LOAN_INSTALLMENT_STATUSES);
 export type LoanInstallmentStatus = z.infer<typeof LoanInstallmentStatusSchema>;
 
@@ -189,6 +197,27 @@ export const SettleEmployeeLoanExternallySchema = z
   .strict();
 export type SettleEmployeeLoanExternally = z.infer<typeof SettleEmployeeLoanExternallySchema>;
 
+/**
+ * D7-2 — pay MORE through payroll in one named month (P-HR-05-B).
+ *
+ * The extra comes out of the LAST instalments, so the loan finishes earlier and the total does not
+ * move: this is a decision to repay faster, not a decision to owe differently. It claims no cash
+ * collection — that is `settleExternally`, and conflating the two would put a deduction on a
+ * payslip for money that arrived in an envelope.
+ */
+export const AccelerateEmployeeLoanSchema = z
+  .object({
+    /** The month the extra is taken in. It must already carry a planned instalment. */
+    period: loanPeriod(),
+    extraAmount: MoneyAmountSchema.refine((value) => value > 0, {
+      message: 'an acceleration must be positive',
+    }),
+    reason: z.string().min(1).max(500),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type AccelerateEmployeeLoan = z.infer<typeof AccelerateEmployeeLoanSchema>;
+
 export const ListEmployeeLoansQuerySchema = PaginationQuerySchema.extend({
   type: EmployeeLoanTypeSchema.optional(),
   status: EmployeeLoanStatusSchema.optional(),
@@ -204,6 +233,25 @@ export interface LoanInstallmentDto {
   amount: number;
   amountMinor: number;
   status: LoanInstallmentStatus;
+}
+
+/**
+ * One repayment that ACTUALLY happened through payroll (P-HR-05-B).
+ *
+ * Append-only, and written at the moment a payslip is issued — the payslip is the receipt. It
+ * cites the run and the payslip that took it rather than an identity of its own, so "which
+ * document proves this?" has an answer that already existed.
+ */
+export interface LoanRepaymentDto {
+  id: string;
+  loanId: string;
+  installmentId: string;
+  period: string;
+  runId: string;
+  payslipId: string;
+  amount: number;
+  amountMinor: number;
+  recordedAt: string;
 }
 
 export interface EmployeeLoanDto {
@@ -222,12 +270,15 @@ export interface EmployeeLoanDto {
   /**
    * What is still owed, in minor units.
    *
-   * DERIVED, never stored: `principal − everything repaid`. In phase A the only repayment is an
-   * external settlement; phase B adds the payroll side to the same subtraction. Storing it as a
-   * field would let it drift from the rows it summarizes on a document nobody may edit.
+   * DERIVED, never stored: `principal − everything repaid`, where "everything repaid" is the sum
+   * of the payroll repayment ledger plus an external settlement if one was recorded. Storing it as
+   * a field would let it drift from the rows it summarizes.
    */
   remainingMinor: number;
   remaining: number;
+  /** What payroll has actually taken so far, in minor units — the ledger's sum. */
+  repaidMinor: number;
+  repaid: number;
   submittedBy: string | null;
   submittedAt: string | null;
   decidedBy: string | null;
@@ -252,7 +303,8 @@ export interface EmployeeLoanDto {
   version: number;
 }
 
-/** One loan with its schedule — what the employee's Loans tab reads. */
+/** One loan with its schedule and what payroll has taken — what the Loans tab reads. */
 export interface EmployeeLoanDetailDto extends EmployeeLoanDto {
   installments: LoanInstallmentDto[];
+  repayments: LoanRepaymentDto[];
 }

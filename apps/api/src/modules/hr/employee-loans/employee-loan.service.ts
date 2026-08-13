@@ -1,4 +1,4 @@
-// Employee loans and advances (P-HR-05, phase A) — the obligation and its schedule.
+// Employee loans and advances (P-HR-05) — the obligation, its schedule, and what payroll took.
 //
 // THE STATE MACHINE (D2): draft → pendingApproval → approved → active → settled, with `reject`
 // returning to draft and `cancel` reachable only BEFORE disbursement. It is the P-HR-04 shape
@@ -9,17 +9,21 @@
 // WHY CANCELLATION STOPS AT DISBURSEMENT. Before it, cancelling withdraws a proposal and costs
 // nothing. After it, "cancel" would mean forgiving a debt — a financial decision nobody has
 // granted this system (D10's reasoning, applied to the balance instead of to a rate). An active
-// loan leaves by being repaid: in this phase through an external settlement (D7-1), and in phase B
-// through payroll.
+// loan leaves by being repaid: through an external settlement (D7-1) or through payroll.
 //
-// WHAT IS NOT HERE. No payroll. No port into the compensation engine, no line, no `origin`, no
-// repayment ledger, no deduction — and therefore no vocabulary for one. No interest, no fee, no
-// penalty, no ceiling (D4/D10). ECMS has no treasury: `disburse` RECORDS that money changed hands
-// elsewhere; it moves none.
+// PHASE B ADDS THE PAYROLL SIDE, and it is deliberately small: two methods that payroll calls
+// through ONE port (`dueFor` and `recordDeducted`), plus acceleration and the exit handler. What
+// it does NOT add is any knowledge of payroll in this file — no run, no payslip, no compensation
+// line. The port hands over an amount and hands back a receipt; the vocabulary on either side of
+// it stays its own.
+//
+// WHAT IS STILL NOT HERE. No interest, no fee, no penalty, no ceiling (D4/D10). No treasury:
+// `disburse` RECORDS that money changed hands elsewhere; it moves none.
 import { Types } from 'mongoose';
 import {
   fromMinorUnits,
   toMinorUnits,
+  type AccelerateEmployeeLoan,
   type CancelEmployeeLoan,
   type CreateEmployeeLoan,
   type DecideEmployeeLoan,
@@ -40,8 +44,10 @@ import { employeeRepository, type EmployeeDoc } from '../employee-management/emp
 import { employmentSpansOf, spanContaining } from '../payroll/compensation/employment-spans';
 import { payrollPeriodPort } from './payroll-period.port';
 import {
+  accelerateTail,
   assertScheduleTotals,
   generateSchedule,
+  periodOfDate,
   periodsFrom,
   totalMinor,
   type ScheduledInstallment,
@@ -50,21 +56,26 @@ import {
   LOAN_ATTACHMENT_ENTITY_TYPE,
   resolveLoanAttachmentsCategoryId,
 } from './employee-loan.files';
-import { employeeLoanRepository, loanInstallmentRepository } from './employee-loan.repository';
+import {
+  employeeLoanRepository,
+  loanInstallmentRepository,
+  loanRepaymentRepository,
+} from './employee-loan.repository';
 import { EmployeeLoanModel, type EmployeeLoanDoc } from './employee-loan.model';
 import { LoanInstallmentModel, type LoanInstallmentDoc } from './loan-installment.model';
+import { LoanRepaymentModel, type LoanRepaymentDoc } from './loan-repayment.model';
 
 const entityRef = (id: string) => ({ moduleId: 'hr', entityType: 'employeeLoan', entityId: id });
 
 /**
  * What is still owed, in minor units — DERIVED, never stored.
  *
- * `principal − everything repaid`. In phase A the only repayment is an external settlement; phase
- * B adds the payroll side to the same subtraction. A stored copy would be a second chance for the
- * number to be wrong on a document nobody may edit.
+ * `principal − everything repaid`, and "everything repaid" has two sources: the payroll ledger
+ * (P-HR-05-B) and an external settlement if one was recorded (D7-1). A stored copy would be a
+ * second chance for the number to be wrong, on exactly the figure an employee will argue about.
  */
-export const remainingMinorOf = (loan: EmployeeLoanDoc): number =>
-  toMinorUnits(loan.principal) - (loan.externalSettlement?.amountMinor ?? 0);
+export const remainingMinorOf = (loan: EmployeeLoanDoc, repaidMinor: number): number =>
+  toMinorUnits(loan.principal) - repaidMinor - (loan.externalSettlement?.amountMinor ?? 0);
 
 class EmployeeLoanService {
   // ── Writes ────────────────────────────────────────────────────────────────
@@ -484,7 +495,7 @@ class EmployeeLoanService {
       throw new BusinessRuleError(`a ${doc.status} loan has no balance to settle`);
     }
     this.assertFresh(doc, input.version);
-    const remaining = remainingMinorOf(doc);
+    const remaining = remainingMinorOf(doc, await loanRepaymentRepository.repaidMinor(id));
     const paid = toMinorUnits(input.amount);
     if (paid !== remaining) {
       throw new BusinessRuleError(
@@ -518,6 +529,269 @@ class EmployeeLoanService {
     );
     await this.recordStatus(id, 'active', 'settled', input.reason);
     return after;
+  }
+
+  /**
+   * D7-2 — pay MORE through payroll in one named month, and finish earlier for it.
+   *
+   * Distinct from an external settlement in the one way that matters: this money will come out of
+   * a salary, so it produces a bigger deduction rather than a receipt. The extra is taken out of
+   * the LAST instalments — the debt does not change, the calendar does — and the arithmetic lives
+   * in the pure `accelerateTail`, where it can be argued with without a database.
+   */
+  async accelerate(
+    ctx: AuthContext,
+    employeeId: string,
+    id: string,
+    input: AccelerateEmployeeLoan,
+    scope: ScopeSelector,
+  ): Promise<EmployeeLoanDoc> {
+    const employee = await employeeRepository.getById(employeeId, scope);
+    const doc = await employeeLoanRepository.getForEmployee(employeeId, id);
+    if (doc.status !== 'active') {
+      throw new BusinessRuleError(`a ${doc.status} loan has no instalments to bring forward`);
+    }
+    this.assertFresh(doc, input.version);
+
+    const frozen = new Set(await payrollPeriodPort.frozen());
+    if (frozen.has(input.period)) {
+      throw new BusinessRuleError(
+        `${input.period} has a frozen payroll run — its deduction has already been priced`,
+      );
+    }
+    const planned = await loanInstallmentRepository.plannedForLoan(id);
+    const target = planned.find((row) => row.period === input.period);
+    if (target === undefined) {
+      throw new BusinessRuleError(
+        `${input.period} carries no planned instalment of this loan to add to`,
+      );
+    }
+    // Only the months nobody has closed may give the extra up. A frozen month's instalment is
+    // already somebody's payslip line.
+    const later = planned.filter((row) => row.period > input.period && !frozen.has(row.period));
+
+    const replacement = accelerateTail(
+      { period: target.period, amountMinor: target.amountMinor },
+      later.map((row) => ({ period: row.period, amountMinor: row.amountMinor })),
+      toMinorUnits(input.extraAmount),
+    );
+    assertScheduleTotals(target.amountMinor + totalMinor(later), replacement);
+    this.assertWithinEmployment(
+      employee,
+      replacement.map((row) => row.period),
+    );
+
+    const replaced = [target, ...later];
+    const nextSeq = Math.max(0, ...planned.map((row) => row.seq)) + 1;
+    await LoanInstallmentModel.updateMany(
+      { _id: { $in: replaced.map((row) => row._id) } },
+      { $set: { status: 'cancelled', updatedBy: new Types.ObjectId(ctx.userId) }, $inc: { __v: 1 } },
+    ).exec();
+    await this.writeSchedule(
+      doc,
+      replacement.map((row, index) => ({ ...row, seq: nextSeq + index })),
+      ctx.userId,
+    );
+
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'update',
+      changes: [
+        { field: 'schedule.acceleratedPeriod', old: null, new: input.period },
+        {
+          field: 'schedule.installment',
+          old: String(fromMinorUnits(target.amountMinor)),
+          new: String(fromMinorUnits(target.amountMinor + toMinorUnits(input.extraAmount))),
+        },
+        { field: 'reason', old: null, new: input.reason },
+      ],
+    });
+    return employeeLoanRepository.updateById(id, {} as never, {
+      by: ctx.userId,
+      version: input.version,
+    });
+  }
+
+  // ── The payroll seam (P-HR-05-B) ──────────────────────────────────────────
+  //
+  // Two methods, and payroll reaches both through ONE port file. Nothing about a run, a payslip or
+  // a compensation line appears in this class: the port hands over an amount and hands back a
+  // receipt, and the vocabulary on either side of it stays its own.
+
+  /**
+   * What this employee's month costs in instalments.
+   *
+   * Two conditions, and both live here rather than at the port — the same reason P-HR-04 put its
+   * `approved` filter at the read: a future caller who forgets is exactly what this prevents.
+   *
+   *   1. the LOAN must be live — `active`, or `settled`/`outstandingAtExit` reached AFTER this
+   *      month, since a month already priced does not un-price itself when the debt later closes;
+   *   2. the INSTALMENT must be chargeable — `planned` or already `deducted`, never `cancelled`.
+   *
+   * The second condition is the subtle one: re-reading a past month must show what that month
+   * cost, which is PY-8's stance applied to a debt.
+   */
+  async deductionsDueFor(
+    employeeId: string,
+    period: string,
+  ): Promise<
+    { installmentId: string; loanId: string; amountMinor: number; currency: string; reference: string }[]
+  > {
+    const rows = await loanInstallmentRepository.chargeableForEmployeePeriod(employeeId, period);
+    if (rows.length === 0) return [];
+
+    const due: {
+      installmentId: string;
+      loanId: string;
+      amountMinor: number;
+      currency: string;
+      reference: string;
+    }[] = [];
+    for (const row of rows) {
+      const loan = await employeeLoanRepository.findById(String(row.loanId));
+      if (loan === null) continue;
+      // A closed loan still owes the months it was open for. `deducted` is the proof that this
+      // month was one of them — dropping it because the debt has since been settled would make an
+      // issued payslip and a re-read of the same month disagree.
+      if (loan.status !== 'active' && row.status !== 'deducted') continue;
+      due.push({
+        installmentId: String(row._id),
+        loanId: String(loan._id),
+        amountMinor: row.amountMinor,
+        currency: loan.currency,
+        reference: loan.reason,
+      });
+    }
+    return due;
+  }
+
+  /**
+   * Record that a payslip took an instalment — the ONLY thing that turns an intention into a fact.
+   *
+   * IDEMPOTENT TWICE OVER. The ledger row is written with `$setOnInsert` under the unique
+   * `(loanId, period)` key, so a re-issued payslip, a second run over the same month or a retried
+   * batch all collide on a row that already exists; and the instalment is only marked `deducted`
+   * when this call was the one that inserted it. Re-running the batch is the normal case rather
+   * than the exception — PY-7 is built to be re-run — so it must cost the employee nothing.
+   */
+  async recordDeducted(input: {
+    installmentId: string;
+    employeeId: string;
+    period: string;
+    runId: string;
+    payslipId: string;
+    amountMinor: number;
+  }): Promise<boolean> {
+    // The instalment knows which loan it belongs to, so the caller does not have to: payroll hands
+    // over the row a line came from, and the debt behind it is this side's business.
+    const installment = await LoanInstallmentModel.findById(input.installmentId)
+      .lean<LoanInstallmentDoc>()
+      .exec();
+    if (installment === null) return false;
+    const loanId = String(installment.loanId);
+    const loan = await employeeLoanRepository.findById(loanId);
+    if (loan === null) return false;
+
+    const written = await LoanRepaymentModel.updateOne(
+      { loanId: new Types.ObjectId(loanId), period: input.period },
+      {
+        $setOnInsert: {
+          installmentId: new Types.ObjectId(input.installmentId),
+          employeeId: new Types.ObjectId(input.employeeId),
+          runId: new Types.ObjectId(input.runId),
+          payslipId: new Types.ObjectId(input.payslipId),
+          amountMinor: input.amountMinor,
+          branchId: loan.branchId,
+          recordedAt: new Date(),
+        },
+      },
+      { upsert: true },
+    ).exec();
+    if (written.upsertedCount === 0) return false; // already recorded — nothing to do, twice
+
+    await LoanInstallmentModel.updateOne(
+      { _id: new Types.ObjectId(input.installmentId), status: 'planned' },
+      { $set: { status: 'deducted' }, $inc: { __v: 1 } },
+    ).exec();
+
+    await auditService.record({
+      entityRef: entityRef(loanId),
+      action: 'update',
+      changes: [
+        { field: 'repayment.period', old: null, new: input.period },
+        { field: 'repayment.amount', old: null, new: String(fromMinorUnits(input.amountMinor)) },
+        { field: 'repayment.payslipId', old: null, new: input.payslipId },
+      ],
+    });
+    await this.settleIfCleared(loanId);
+    return true;
+  }
+
+  /**
+   * D8 — the employee left. State the fact; decide nothing.
+   *
+   * Instalments scheduled for months AFTER the exit are withdrawn, because the compensation
+   * calculation clips at the employment span and would never price them anyway. If a balance
+   * remains the loan says so — `outstandingAtExit` — and that is where this system stops: nothing
+   * is taken from a final salary, and nothing is written off. Both of those would be decisions
+   * nobody has granted it.
+   */
+  async onEmployeeExited(employeeId: string, effectiveDate: string): Promise<void> {
+    // The date comes from the EVENT, never from a re-read of the employee: this event is emitted
+    // from inside the exit's application, before the document is saved, so reading it back here
+    // would give the state from before the exit — and the schedule would be cut at the wrong month
+    // or not at all.
+    const exitPeriod = periodOfDate(toDateOnly(new Date(effectiveDate)));
+
+    const live = await employeeLoanRepository.findLive(employeeId);
+    if (live === null) return;
+    const loanId = String(live._id);
+
+    const doomed = await loanInstallmentRepository.plannedForEmployeeAfter(employeeId, exitPeriod);
+    if (doomed.length > 0) {
+      await LoanInstallmentModel.updateMany(
+        { _id: { $in: doomed.map((row) => row._id) } },
+        { $set: { status: 'cancelled' }, $inc: { __v: 1 } },
+      ).exec();
+    }
+
+    // A loan that was never paid out is simply cancelled: there is no debt behind it.
+    if (live.status !== 'active') {
+      await employeeLoanRepository.updateById(
+        loanId,
+        {
+          status: 'cancelled',
+          cancelledAt: new Date(),
+          cancelReason: 'the employee left before the loan was paid out',
+        } as never,
+        { by: null, version: live.__v },
+      );
+      await this.recordStatus(loanId, live.status, 'cancelled', 'employee exited');
+      return;
+    }
+
+    const repaidMinor = await loanRepaymentRepository.repaidMinor(loanId);
+    if (remainingMinorOf(live, repaidMinor) <= 0) return; // already clear — an exit changes nothing
+
+    await employeeLoanRepository.updateById(loanId, { status: 'outstandingAtExit' } as never, {
+      by: null,
+      version: live.__v,
+    });
+    await this.recordStatus(loanId, 'active', 'outstandingAtExit', 'employee exited');
+  }
+
+  /** The last instalment landed: the debt is clear, and the loan says so. */
+  private async settleIfCleared(loanId: string): Promise<void> {
+    const loan = await employeeLoanRepository.findById(loanId);
+    if (loan === null || loan.status !== 'active') return;
+    const repaidMinor = await loanRepaymentRepository.repaidMinor(loanId);
+    if (remainingMinorOf(loan, repaidMinor) > 0) return;
+
+    await employeeLoanRepository.updateById(loanId, { status: 'settled' } as never, {
+      by: null,
+      version: loan.__v,
+    });
+    await this.recordStatus(loanId, 'active', 'settled', 'repaid in full through payroll');
   }
 
   /** The supporting document, uploaded before the request that names it (the HR3-C pattern). */
@@ -561,21 +835,35 @@ class EmployeeLoanService {
     return employeeLoanRepository.listScoped(query, scope);
   }
 
-  /** One loan with its schedule — what the employee's Loans tab reads. */
+  /** One loan with its schedule and what payroll took — what the employee's Loans tab reads. */
   async detail(
     employeeId: string,
     id: string,
     scope: ScopeSelector,
-  ): Promise<{ loan: EmployeeLoanDoc; installments: LoanInstallmentDoc[] }> {
+  ): Promise<{
+    loan: EmployeeLoanDoc;
+    installments: LoanInstallmentDoc[];
+    repayments: LoanRepaymentDoc[];
+  }> {
     await employeeRepository.getById(employeeId, scope);
     const loan = await employeeLoanRepository.getForEmployee(employeeId, id);
-    return { loan, installments: await loanInstallmentRepository.forLoan(id) };
+    return {
+      loan,
+      installments: await loanInstallmentRepository.forLoan(id),
+      repayments: await loanRepaymentRepository.forLoan(id),
+    };
   }
 
-  async installmentsFor(
-    docs: readonly EmployeeLoanDoc[],
-  ): Promise<Map<string, LoanInstallmentDoc[]>> {
-    return loanInstallmentRepository.forLoans(docs.map((doc) => String(doc._id)));
+  /** Both children of a page of loans, in one query each rather than one per row. */
+  async childrenFor(docs: readonly EmployeeLoanDoc[]): Promise<{
+    installments: Map<string, LoanInstallmentDoc[]>;
+    repayments: Map<string, LoanRepaymentDoc[]>;
+  }> {
+    const ids = docs.map((doc) => String(doc._id));
+    return {
+      installments: await loanInstallmentRepository.forLoans(ids),
+      repayments: await loanRepaymentRepository.forLoans(ids),
+    };
   }
 
   // ── Rules ─────────────────────────────────────────────────────────────────

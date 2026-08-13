@@ -513,10 +513,19 @@ export const EmployeeLoginLinkedPayloadV1 = z.object({
   code: z.string(),
 });
 
+/**
+ * `effectiveDate` is the day the exit takes business effect, as a date-only ISO string.
+ *
+ * It is on the payload rather than left to a consumer to look up, and that is not a convenience:
+ * this event is emitted from inside the exit's application, BEFORE the employee document is saved,
+ * so a consumer that re-read the employee to find the date would read the state from before the
+ * exit. An event that announces somebody has left has to say when.
+ */
 export const EmployeeExitedPayloadV1 = z.object({
   employeeId: objectId(),
   code: z.string(),
   exitType: EmployeeExitTypeSchema,
+  effectiveDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'a date is YYYY-MM-DD'),
 });
 
 export const EmployeeRehiredPayloadV1 = z.object({

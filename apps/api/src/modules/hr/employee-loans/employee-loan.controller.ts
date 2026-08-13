@@ -1,6 +1,7 @@
 // Thin HTTP mapping only (ADR-003).
 import { type Request, type Response } from 'express';
 import {
+  type AccelerateEmployeeLoan,
   type CancelEmployeeLoan,
   type CreateEmployeeLoan,
   type DecideEmployeeLoan,
@@ -114,12 +115,32 @@ export const rescheduleLoan = async (req: Request, res: Response): Promise<void>
     body,
     scopeSelector(ctx, 'employeeLoan.approve'),
   );
+  await sendDetail(req, res, params);
+};
+
+/** D7-2 — pay more this month, and finish earlier for it (P-HR-05-B). */
+export const accelerateLoan = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<AccelerateEmployeeLoan, never, LoanParam>(req);
+  await employeeLoanService.accelerate(
+    ctx,
+    params.id,
+    params.loanId,
+    body,
+    scopeSelector(ctx, 'employeeLoan.approve'),
+  );
+  await sendDetail(req, res, params);
+};
+
+/** Both schedule-rewriting operations answer with the schedule they produced. */
+const sendDetail = async (req: Request, res: Response, params: LoanParam): Promise<void> => {
+  const ctx = authContext(req);
   const detail = await employeeLoanService.detail(
     params.id,
     params.loanId,
     scopeSelector(ctx, 'employeeLoan.view'),
   );
-  ok(res, toEmployeeLoanDetailDto(detail.loan, detail.installments));
+  ok(res, toEmployeeLoanDetailDto(detail.loan, detail.installments, detail.repayments));
 };
 
 export const settleLoanExternally = async (req: Request, res: Response): Promise<void> => {
@@ -136,14 +157,8 @@ export const settleLoanExternally = async (req: Request, res: Response): Promise
 };
 
 export const getLoan = async (req: Request, res: Response): Promise<void> => {
-  const ctx = authContext(req);
   const { params } = validated<never, never, LoanParam>(req);
-  const detail = await employeeLoanService.detail(
-    params.id,
-    params.loanId,
-    scopeSelector(ctx, 'employeeLoan.view'),
-  );
-  ok(res, toEmployeeLoanDetailDto(detail.loan, detail.installments));
+  await sendDetail(req, res, params);
 };
 
 /** The employee's own loans, each with its schedule — one query for the page, not one per row. */
@@ -155,9 +170,13 @@ export const listEmployeeLoans = async (req: Request, res: Response): Promise<vo
     query,
     scopeSelector(ctx, 'employeeLoan.view'),
   );
-  const schedules = await employeeLoanService.installmentsFor(page.items);
+  const children = await employeeLoanService.childrenFor(page.items);
   okPage(res, page, (doc) =>
-    toEmployeeLoanDetailDto(doc, schedules.get(String(doc._id)) ?? []),
+    toEmployeeLoanDetailDto(
+      doc,
+      children.installments.get(String(doc._id)) ?? [],
+      children.repayments.get(String(doc._id)) ?? [],
+    ),
   );
 };
 

@@ -29,7 +29,7 @@ import {
 } from '@ecms/contracts';
 import { BusinessRuleError, ConflictError, ForbiddenError } from '../../../../shared/errors';
 import { type AuthContext, type ScopeSelector } from '../../../../shared/types';
-import { cairoToday, toDateOnly } from '../../shared/business-date';
+import { cairoToday, dateOnlyIso, toDateOnly } from '../../shared/business-date';
 import { auditService } from '../../../../platform/audit';
 import { emit } from '../../../../platform/kernel/event-bus';
 import { notificationsService } from '../../../../platform/notifications';
@@ -717,10 +717,15 @@ class EmployeeActionService {
       await this.suspendLogin(String(employee.userId), exit.changes, actorId);
     }
 
+    // `effectiveDate` travels WITH the event, because this emit happens before the employee
+    // document is saved: a consumer that re-read the employee to find the date would read the
+    // state from before the exit. Adding the field changes nothing for the consumers that do not
+    // want it — Leave and Attendance both act on the fact rather than on the day.
     await emit(HrEmployeeEvents.EmployeeExited, {
       employeeId: String(employee._id),
       code: employee.code,
       exitType: exit.type,
+      effectiveDate: dateOnlyIso(toDateOnly(exit.effectiveDate)),
     });
     await notificationsService
       .notify({

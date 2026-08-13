@@ -35,6 +35,7 @@ const input = (over: Partial<CompensationInput> = {}): CompensationInput => ({
   attendance: null,
   leave: null,
   adjustments: [],
+  loanInstallments: [],
   ...over,
 });
 

@@ -17,6 +17,7 @@ import { AppError } from '../../../shared/errors';
 import { authenticate } from '../../../platform/auth';
 import { authorize } from '../../../platform/rbac';
 import {
+  accelerateLoan,
   attachLoanDocument,
   cancelLoan,
   createLoan,
@@ -31,6 +32,7 @@ import {
   updateLoan,
 } from './employee-loan.controller';
 import {
+  AccelerateEmployeeLoanSchema,
   CancelEmployeeLoanSchema,
   CreateEmployeeLoanSchema,
   DecideEmployeeLoanSchema,
@@ -135,6 +137,14 @@ export const buildEmployeeLoansRouter = (): Router => {
     authorize('employeeLoan.approve'),
     validate({ body: RescheduleEmployeeLoanSchema, params: LoanIdParamSchema }),
     asyncHandler(rescheduleLoan),
+  );
+  // D7-2 — the payroll path: an extra amount taken in a named month, so the loan finishes earlier.
+  router.post(
+    '/:id/loans/:loanId/accelerate',
+    authenticate,
+    authorize('employeeLoan.approve'),
+    validate({ body: AccelerateEmployeeLoanSchema, params: LoanIdParamSchema }),
+    asyncHandler(accelerateLoan),
   );
   router.post(
     '/:id/loans/:loanId/settle-external',

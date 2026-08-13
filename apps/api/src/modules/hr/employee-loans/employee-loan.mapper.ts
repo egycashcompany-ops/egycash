@@ -9,10 +9,12 @@ import {
   type EmployeeLoanDetailDto,
   type EmployeeLoanDto,
   type LoanInstallmentDto,
+  type LoanRepaymentDto,
 } from '@ecms/contracts';
 import { dateOnlyIso } from '../shared/business-date';
 import { type EmployeeLoanDoc } from './employee-loan.model';
 import { type LoanInstallmentDoc } from './loan-installment.model';
+import { type LoanRepaymentDoc } from './loan-repayment.model';
 import { remainingMinorOf } from './employee-loan.service';
 
 export const toLoanInstallmentDto = (doc: LoanInstallmentDoc): LoanInstallmentDto => ({
@@ -25,8 +27,28 @@ export const toLoanInstallmentDto = (doc: LoanInstallmentDoc): LoanInstallmentDt
   status: doc.status,
 });
 
-export const toEmployeeLoanDto = (doc: EmployeeLoanDoc): EmployeeLoanDto => {
-  const remainingMinor = remainingMinorOf(doc);
+export const toLoanRepaymentDto = (doc: LoanRepaymentDoc): LoanRepaymentDto => ({
+  id: String(doc._id),
+  loanId: String(doc.loanId),
+  installmentId: String(doc.installmentId),
+  period: doc.period,
+  runId: String(doc.runId),
+  payslipId: String(doc.payslipId),
+  amountMinor: doc.amountMinor,
+  amount: fromMinorUnits(doc.amountMinor),
+  recordedAt: doc.recordedAt.toISOString(),
+});
+
+/**
+ * The repayments are passed IN rather than read here: a page of loans resolves them in one query,
+ * the same shape the pay-item and adjustment mappers use for their catalog rows.
+ */
+export const toEmployeeLoanDto = (
+  doc: EmployeeLoanDoc,
+  repayments: readonly LoanRepaymentDoc[] = [],
+): EmployeeLoanDto => {
+  const repaidMinor = repayments.reduce((sum, row) => sum + row.amountMinor, 0);
+  const remainingMinor = remainingMinorOf(doc, repaidMinor);
   return {
     id: String(doc._id),
     employeeId: String(doc.employeeId),
@@ -42,6 +64,8 @@ export const toEmployeeLoanDto = (doc: EmployeeLoanDoc): EmployeeLoanDto => {
     status: doc.status,
     remainingMinor,
     remaining: fromMinorUnits(remainingMinor),
+    repaidMinor,
+    repaid: fromMinorUnits(repaidMinor),
     submittedBy: doc.submittedBy === null ? null : String(doc.submittedBy),
     submittedAt: doc.submittedAt === null ? null : doc.submittedAt.toISOString(),
     decidedBy: doc.decidedBy === null ? null : String(doc.decidedBy),
@@ -74,7 +98,9 @@ export const toEmployeeLoanDto = (doc: EmployeeLoanDoc): EmployeeLoanDto => {
 export const toEmployeeLoanDetailDto = (
   doc: EmployeeLoanDoc,
   installments: readonly LoanInstallmentDoc[],
+  repayments: readonly LoanRepaymentDoc[] = [],
 ): EmployeeLoanDetailDto => ({
-  ...toEmployeeLoanDto(doc),
+  ...toEmployeeLoanDto(doc, repayments),
   installments: installments.map(toLoanInstallmentDto),
+  repayments: repayments.map(toLoanRepaymentDto),
 });

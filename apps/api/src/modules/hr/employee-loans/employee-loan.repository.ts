@@ -15,6 +15,7 @@ import { NotFoundError } from '../../../shared/errors';
 import { type ScopeSelector } from '../../../shared/types';
 import { EmployeeLoanModel, type EmployeeLoanDoc } from './employee-loan.model';
 import { LoanInstallmentModel, type LoanInstallmentDoc } from './loan-installment.model';
+import { LoanRepaymentModel, type LoanRepaymentDoc } from './loan-repayment.model';
 
 class EmployeeLoanRepository extends BaseRepository<EmployeeLoanDoc> {
   constructor() {
@@ -114,6 +115,48 @@ class LoanInstallmentRepository {
       .exec();
   }
 
+  /**
+   * What one employee's month costs in instalments (P-HR-05-B).
+   *
+   * `planned` OR `deducted` — and the second one is the subtle half. A month's compensation is a
+   * function of that month's SCHEDULE, not of whether a payslip has happened to be issued yet:
+   * once a payslip takes an instalment the row becomes `deducted`, and if this read dropped it,
+   * re-opening that month afterwards would show a smaller deduction than the issued document
+   * does. PY-8's stance, applied here — a past month does not restate itself.
+   *
+   * Recording stays idempotent on the other side of the port, so a month whose instalment is
+   * already in the ledger prices the same and repays nothing twice.
+   *
+   * `cancelled` is excluded: it is an intention somebody withdrew, and no month ever owed it.
+   */
+  async chargeableForEmployeePeriod(
+    employeeId: string,
+    period: string,
+  ): Promise<LoanInstallmentDoc[]> {
+    return LoanInstallmentModel.find({
+      employeeId: new Types.ObjectId(employeeId),
+      period,
+      status: { $in: ['planned', 'deducted'] },
+      isDeleted: false,
+    })
+      .sort({ seq: 1 })
+      .lean<LoanInstallmentDoc[]>()
+      .exec();
+  }
+
+  /** The rows an exit withdraws: still intended, and in a month that starts after the last day. */
+  async plannedForEmployeeAfter(employeeId: string, period: string): Promise<LoanInstallmentDoc[]> {
+    return LoanInstallmentModel.find({
+      employeeId: new Types.ObjectId(employeeId),
+      period: { $gt: period },
+      status: 'planned',
+      isDeleted: false,
+    })
+      .sort({ period: 1 })
+      .lean<LoanInstallmentDoc[]>()
+      .exec();
+  }
+
   async forLoans(loanIds: readonly string[]): Promise<Map<string, LoanInstallmentDoc[]>> {
     const rows = await LoanInstallmentModel.find({
       loanId: { $in: loanIds.map((id) => new Types.ObjectId(id)) },
@@ -131,5 +174,37 @@ class LoanInstallmentRepository {
   }
 }
 
+/** The append-only side (P-HR-05-B). Reads and one insert; nothing here updates a row. */
+class LoanRepaymentRepository {
+  async forLoan(loanId: string): Promise<LoanRepaymentDoc[]> {
+    return LoanRepaymentModel.find({ loanId: new Types.ObjectId(loanId) })
+      .sort({ recordedAt: 1 })
+      .lean<LoanRepaymentDoc[]>()
+      .exec();
+  }
+
+  async forLoans(loanIds: readonly string[]): Promise<Map<string, LoanRepaymentDoc[]>> {
+    const rows = await LoanRepaymentModel.find({
+      loanId: { $in: loanIds.map((id) => new Types.ObjectId(id)) },
+    })
+      .sort({ recordedAt: 1 })
+      .lean<LoanRepaymentDoc[]>()
+      .exec();
+    const byLoan = new Map<string, LoanRepaymentDoc[]>();
+    for (const row of rows) {
+      const key = String(row.loanId);
+      byLoan.set(key, [...(byLoan.get(key) ?? []), row]);
+    }
+    return byLoan;
+  }
+
+  /** What payroll has taken from one loan so far, in minor units. */
+  async repaidMinor(loanId: string): Promise<number> {
+    const rows = await this.forLoan(loanId);
+    return rows.reduce((sum, row) => sum + row.amountMinor, 0);
+  }
+}
+
 export const employeeLoanRepository = new EmployeeLoanRepository();
 export const loanInstallmentRepository = new LoanInstallmentRepository();
+export const loanRepaymentRepository = new LoanRepaymentRepository();

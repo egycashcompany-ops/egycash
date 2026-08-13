@@ -6,6 +6,7 @@
 // leave the screen showing a plan that no longer exists.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  type AccelerateEmployeeLoan,
   type CancelEmployeeLoan,
   type CreateEmployeeLoan,
   type DecideEmployeeLoan,
@@ -57,6 +58,11 @@ export const useDisburseLoan = (employeeId: string) =>
 export const useRescheduleLoan = (employeeId: string) =>
   useLoanMutation(employeeId, ({ id, body }: { id: string; body: RescheduleEmployeeLoan }) =>
     api.rescheduleLoan(employeeId, id, body),
+  );
+
+export const useAccelerateLoan = (employeeId: string) =>
+  useLoanMutation(employeeId, ({ id, body }: { id: string; body: AccelerateEmployeeLoan }) =>
+    api.accelerateLoan(employeeId, id, body),
   );
 
 export const useSettleLoanExternally = (employeeId: string) =>

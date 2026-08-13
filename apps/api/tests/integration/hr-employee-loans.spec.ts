@@ -1,4 +1,4 @@
-// Employee loans and advances over HTTP (P-HR-05, phase A).
+// Employee loans and advances over HTTP (P-HR-05).
 //
 // What this phase has to prove is a short list, and every item on it is one of the owner's frozen
 // decisions made observable:
@@ -12,7 +12,8 @@
 //   D7  — an external settlement closes the balance and produces no payroll anything.
 //   D10 — no interest, no fee, no ceiling: a loan is its principal.
 //
-// And one absence, which is the whole of phase A's boundary: none of this touches a payslip.
+// P-HR-05-B adds the payroll side at the bottom of this file: a payslip takes an instalment, the
+// ledger records that it happened, and running the batch again costs the employee nothing.
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -23,6 +24,9 @@ import {
   type CompensationEffectsDto,
   type EmployeeLoanDetailDto,
   type EmployeeLoanDto,
+  type GeneratePayslipsResultDto,
+  type PayrollRunDto,
+  type PayslipDto,
 } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { buildApp } from '../../src/app';
@@ -42,6 +46,9 @@ let adminToken = '';
 let approverToken = '';
 let outsiderToken = '';
 let employeeId = '';
+let branchId = '';
+let departmentId = '';
+let jobTitleId = '';
 
 const resolveMongoUri = async (): Promise<string> => {
   const external = process.env.MONGO_TEST_URI;
@@ -85,6 +92,93 @@ const mkOrgUnit = async (path: string, body: object): Promise<string> => {
     .send(body);
   expect(res.status, `${path} ${JSON.stringify(res.body)}`).toBe(201);
   return (res.body as { data: { id: string } }).data.id;
+};
+
+/**
+ * Wait for an in-process event handler to have run.
+ *
+ * `dispatchInProcess` fires tier-1 consumers WITHOUT awaiting them (`Promise.resolve().then(...)`),
+ * so the HTTP response can return before a subscriber has reacted. Asserting the reaction the
+ * instant the request resolves is therefore a race, not a test — the same shape `files.spec.ts`
+ * and `audit.spec.ts` already use for the same reason.
+ */
+const waitFor = async (predicate: () => Promise<boolean>, ms = 5_000): Promise<void> => {
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline) {
+    if (await predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+};
+
+/** One more employee, for a block that needs a person of its own. */
+const mkEmployee = async (
+  fullNameAr: string,
+  nationalId: string,
+  phone: string,
+  salary = 10_000,
+): Promise<string> => {
+  const res = await request(app)
+    .post('/api/v1/hr/employees/direct')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({
+      personal: {
+        identity: { fullNameAr, nationalId, nationality: 'Egyptian' },
+        contact: { primaryPhone: phone },
+        experience: [],
+        drivingLicenses: [],
+        certifications: [],
+        references: [],
+      },
+      employment: {
+        jobTitleId,
+        departmentId,
+        branchId,
+        employmentType: 'fullTime',
+        probationMonths: 0,
+        startDate: '2024-01-01T00:00:00.000Z',
+        salary: { amount: salary, currency: 'EGP' },
+      },
+      hiringDate: '2024-01-01T00:00:00.000Z',
+      entryStatus: 'active',
+    });
+  expect(res.status, JSON.stringify(res.body)).toBe(201);
+  return (res.body as { data: { id: string } }).data.id;
+};
+
+// ── The endpoints, for any employee ─────────────────────────────────────────
+const loanRoute = (employee: string, id = '', suffix = ''): string =>
+  `/api/v1/hr/employees/${employee}/loans${id === '' ? '' : `/${id}`}${suffix}`;
+
+/** Record → submit → approve → disburse, for an employee that is not the default one. */
+const activeLoanFor = async (employee: string, body: object): Promise<EmployeeLoanDto> => {
+  const created = await request(app)
+    .post(loanRoute(employee))
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send(body);
+  expect(created.status, JSON.stringify(created.body)).toBe(201);
+  const row = created.body.data as EmployeeLoanDto;
+
+  const sent = await request(app)
+    .post(loanRoute(employee, row.id, '/submit'))
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ version: row.version });
+  expect(sent.status, JSON.stringify(sent.body)).toBe(200);
+
+  const decided = await request(app)
+    .post(loanRoute(employee, row.id, '/decide'))
+    .set('Authorization', `Bearer ${approverToken}`)
+    .send({ decision: 'approved', version: (sent.body.data as EmployeeLoanDto).version });
+  expect(decided.status, JSON.stringify(decided.body)).toBe(200);
+
+  const paid = await request(app)
+    .post(loanRoute(employee, row.id, '/disburse'))
+    .set('Authorization', `Bearer ${approverToken}`)
+    .send({
+      disbursedAt: '2024-06-01',
+      version: (decided.body.data as EmployeeLoanDto).version,
+    });
+  expect(paid.status, JSON.stringify(paid.body)).toBe(200);
+  return paid.body.data as EmployeeLoanDto;
 };
 
 // ── The endpoints, once ──────────────────────────────────────────────────────
@@ -217,16 +311,16 @@ beforeAll(async () => {
   await mkUser('outsider@ecms.local');
   outsiderToken = await login('outsider@ecms.local');
 
-  const branchId = await mkOrgUnit('branches', {
+  branchId = await mkOrgUnit('branches', {
     code: 'LN1',
     name: { ar: 'فرع القروض', en: 'Loans Branch' },
   });
-  const departmentId = await mkOrgUnit('departments', {
+  departmentId = await mkOrgUnit('departments', {
     code: 'DEP-LN',
     name: { ar: 'إدارة القروض', en: 'Loans Dept' },
     branchId,
   });
-  const jobTitleId = await mkOrgUnit('job-titles', {
+  jobTitleId = await mkOrgUnit('job-titles', {
     code: 'JT-LN',
     name: { ar: 'محاسب', en: 'Accountant' },
     jobGrade: 'G7',
@@ -555,9 +649,29 @@ describe('settling outside payroll closes it (D7-1)', () => {
   }, 120_000);
 });
 
-describe('what a loan does NOT do in phase A', () => {
-  it('changes no compensation figure at all', async () => {
-    const loan = await activeLoan({
+describe('a loan costs a month nothing until it costs it something', () => {
+  /**
+   * Written for phase A as "a loan changes no compensation figure at all", which stopped being
+   * true the moment P-HR-05-B shipped the port. What still needs guarding is the QUALIFIER: a
+   * figure moves only once the money has actually been handed over, and stops moving the moment
+   * nothing is owed.
+   *
+   * Both halves are cases the brief names — an inactive loan deducts nothing, and a cancelled
+   * instalment deducts nothing — and they are only observable end to end.
+   */
+  it('deducts nothing before disbursement, and nothing after settlement', async () => {
+    const deductionsIn = async (): Promise<CompensationEffectsDto['deductions']> => {
+      const res = await request(app)
+        .get(`/api/v1/hr/employees/${employeeId}/compensation?period=2026-02`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      return (res.body.data as CompensationEffectsDto).deductions.filter(
+        (l) => l.origin === 'loanInstallment',
+      );
+    };
+
+    // APPROVED is not paid out: there is no schedule yet, so there is nothing to deduct.
+    const approved = await approvedLoan({
       type: 'loan',
       principal: 1_200,
       currency: 'EGP',
@@ -565,23 +679,28 @@ describe('what a loan does NOT do in phase A', () => {
       firstPeriod: '2026-02',
       reason: 'the boundary',
     });
-    expect(loan.status).toBe('active');
+    expect(await deductionsIn()).toEqual([]);
 
-    const res = await request(app)
-      .get(`/api/v1/hr/employees/${employeeId}/compensation?period=2026-02`)
-      .set('Authorization', `Bearer ${adminToken}`);
-    expect(res.status, JSON.stringify(res.body)).toBe(200);
-    const effects = res.body.data as CompensationEffectsDto;
-    // No line of any kind carries this loan, under any origin — phase A adds no payroll input.
-    const origins = new Set(
-      [...effects.earnings, ...effects.deductions, ...effects.deferred].map((l) => l.origin),
-    );
-    for (const origin of origins) {
-      expect(['payItem', 'leaveSnapshot', 'adjustment']).toContain(origin);
-    }
-    expect(
-      [...effects.earnings, ...effects.deductions].some((l) => l.code.toUpperCase().includes('LOAN')),
-    ).toBe(false);
+    // …and the moment the money changes hands, the month costs something.
+    const paid = await disburse(approved.id, {
+      disbursedAt: '2026-01-15',
+      version: approved.version,
+    });
+    expect(paid.status, JSON.stringify(paid.body)).toBe(200);
+    const active = paid.body.data as EmployeeLoanDto;
+    const lines = await deductionsIn();
+    expect(lines).toHaveLength(1);
+    expect(lines[0]?.amount).toBe(100);
+    expect(lines[0]?.prorationFactor).toBeNull();
+
+    // A cancelled instalment deducts nothing: settling externally withdraws every planned row.
+    const settled = await settle(active.id, {
+      amount: active.remaining,
+      reason: 'paid in cash instead',
+      version: active.version,
+    });
+    expect(settled.status, JSON.stringify(settled.body)).toBe(200);
+    expect(await deductionsIn()).toEqual([]);
     await clearLive();
   }, 120_000);
 
@@ -638,4 +757,510 @@ describe('what a loan refuses', () => {
       expect(refused.status, JSON.stringify(extra)).toBe(400);
     }
   }, 120_000);
+});
+
+// ── P-HR-05-B: the payroll side ─────────────────────────────────────────────
+//
+// Everything above is a promise about a schedule. Everything below is the promise being kept: a
+// payslip takes an instalment, the ledger records that it happened, and nothing about running the
+// batch again costs the employee a second one.
+//
+// The month is a PAST one, because a run can only be frozen once its last day has passed — which
+// is also the only state a payslip may be issued from.
+describe('an instalment reaches a payslip (P-HR-05-B)', () => {
+  const PERIOD = '2025-06';
+  let borrowerId = '';
+  let runId = '';
+
+  const loansOf = async (employee: string): Promise<EmployeeLoanDetailDto[]> => {
+    const res = await request(app)
+      .get(`/api/v1/hr/employees/${employee}/loans?page=1&pageSize=20`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    return res.body.data as EmployeeLoanDetailDto[];
+  };
+
+  const effectsOf = async (employee: string, period = PERIOD): Promise<CompensationEffectsDto> => {
+    const res = await request(app)
+      .get(`/api/v1/hr/employees/${employee}/compensation?period=${period}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    return res.body.data as CompensationEffectsDto;
+  };
+
+  const issue = async (): Promise<GeneratePayslipsResultDto> => {
+    const res = await request(app)
+      .post(`/api/v1/hr/payroll/runs/${runId}/payslips`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({});
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    return res.body.data as GeneratePayslipsResultDto;
+  };
+
+  const slipOf = async (employee: string): Promise<PayslipDto | undefined> => {
+    const res = await request(app)
+      .get(`/api/v1/hr/payroll/runs/${runId}/payslips?employeeId=${employee}&page=1&pageSize=5`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    return (res.body.data as PayslipDto[])[0];
+  };
+
+  beforeAll(async () => {
+    borrowerId = await mkEmployee('موظف الخصم', '29001011690010', '01174000022');
+
+    // Disbursed BEFORE the month is frozen: a schedule may not be written into a priced month.
+    await activeLoanFor(borrowerId, {
+      type: 'loan',
+      principal: 300,
+      currency: 'EGP',
+      installmentCount: 3,
+      firstPeriod: PERIOD,
+      reason: 'the payroll side',
+    });
+
+    const created = await request(app)
+      .post('/api/v1/hr/payroll/runs')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ period: PERIOD });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const run = created.body.data as PayrollRunDto;
+    runId = run.id;
+    const frozen = await request(app)
+      .post(`/api/v1/hr/payroll/runs/${runId}/freeze`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: run.version });
+    expect(frozen.status, JSON.stringify(frozen.body)).toBe(200);
+  }, 240_000);
+
+  it('shows up as a deduction with its own origin, never prorated', async () => {
+    const effects = await effectsOf(borrowerId);
+    const line = effects.deductions.find((l) => l.origin === 'loanInstallment');
+    expect(line, JSON.stringify(effects.deductions)).toBeDefined();
+    expect(line?.kind).toBe('deduction');
+    expect(line?.amount).toBe(100);
+    // NOT prorated — a debt does not care which day of the month the payslip is cut on.
+    expect(line?.prorationFactor).toBeNull();
+    expect(line?.code).toBe('LOAN_INSTALLMENT');
+    // And no deferred line: the payslip must stay issuable.
+    expect(effects.deferred.filter((l) => l.origin === 'loanInstallment')).toEqual([]);
+  }, 120_000);
+
+  it('and only for ITS month — a later instalment does not leak into this one', async () => {
+    const lines = (await effectsOf(borrowerId)).deductions.filter(
+      (l) => l.origin === 'loanInstallment',
+    );
+    expect(lines).toHaveLength(1);
+    // The next month's instalment is priced against the next month, not against this one.
+    const next = (await effectsOf(borrowerId, '2025-07')).deductions.filter(
+      (l) => l.origin === 'loanInstallment',
+    );
+    expect(next).toHaveLength(1);
+  }, 120_000);
+
+  /**
+   * The payslip is the receipt, so issuing is what turns an intention into a fact — and issuing
+   * AGAIN must not turn it into two.
+   */
+  it('records the repayment once, however many times the batch runs', async () => {
+    const first = await issue();
+    expect(first.created).toBeGreaterThan(0);
+
+    const slip = await slipOf(borrowerId);
+    expect(slip?.deductions.some((l) => l.origin === 'loanInstallment')).toBe(true);
+    const netAfterIssue = slip?.net;
+
+    const [loan] = await loansOf(borrowerId);
+    expect(loan?.repayments).toHaveLength(1);
+    expect(loan?.repayments[0]?.period).toBe(PERIOD);
+    expect(loan?.repayments[0]?.amount).toBe(100);
+    // The ledger cites documents that already existed rather than an identity it minted.
+    expect(loan?.repayments[0]?.runId).toBe(runId);
+    expect(loan?.repayments[0]?.payslipId).toBe(slip?.id);
+    // The balance is DERIVED: 300 lent, 100 taken.
+    expect(loan?.repaid).toBe(100);
+    expect(loan?.remaining).toBe(200);
+    expect(loan?.installments.filter((i) => i.status === 'deducted')).toHaveLength(1);
+
+    // Run the whole pass again — the normal case, not the exception.
+    const again = await issue();
+    expect(again.created).toBe(0);
+    expect(again.existing).toBeGreaterThan(0);
+
+    const [reread] = await loansOf(borrowerId);
+    expect(reread?.repayments).toHaveLength(1);
+    expect(reread?.repaid).toBe(100);
+    expect(reread?.remaining).toBe(200);
+    // …and the issued document did not move either.
+    expect((await slipOf(borrowerId))?.net).toBe(netAfterIssue);
+  }, 240_000);
+
+  /**
+   * A SECOND run over the same month cannot take the instalment twice.
+   *
+   * The first run is cancelled so the period is free again — the same forward path PY-6 allows —
+   * and the new run issues its own payslips. The unique `(loanId, period)` key is what makes the
+   * second attempt free.
+   */
+  it('and a second run over the same month cannot take it again', async () => {
+    const before = (await loansOf(borrowerId))[0];
+    expect(before?.repaid).toBe(100);
+
+    const cancelled = await request(app)
+      .post(`/api/v1/hr/payroll/runs/${runId}/cancel`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ reason: 'recalculating the month', version: 1 });
+    expect(cancelled.status, JSON.stringify(cancelled.body)).toBe(200);
+
+    const created = await request(app)
+      .post('/api/v1/hr/payroll/runs')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ period: PERIOD });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const run = created.body.data as PayrollRunDto;
+    runId = run.id;
+    const frozen = await request(app)
+      .post(`/api/v1/hr/payroll/runs/${runId}/freeze`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: run.version });
+    expect(frozen.status, JSON.stringify(frozen.body)).toBe(200);
+    await issue();
+
+    const after = (await loansOf(borrowerId))[0];
+    expect(after?.repayments).toHaveLength(1);
+    expect(after?.repaid).toBe(100);
+    expect(after?.remaining).toBe(200);
+
+    /**
+     * And the RECALCULATED payslip still shows the deduction.
+     *
+     * This is the half that is easy to get wrong: if the month's compensation only counted rows
+     * that were still `planned`, a re-priced month would quietly come out bigger than the one the
+     * employee was actually paid — the ledger saying 100 was taken while the new slip showed
+     * nothing. The month costs what the month cost.
+     */
+    const reissued = await slipOf(borrowerId);
+    const line = reissued?.deductions.find((l) => l.origin === 'loanInstallment');
+    expect(line, 'the re-priced month must still carry the instalment').toBeDefined();
+    expect(line?.amount).toBe(100);
+  }, 240_000);
+
+  // The instalment a payslip took is history: a reschedule may not move it.
+  it('leaves a deducted instalment where it is', async () => {
+    const [loan] = await loansOf(borrowerId);
+    const deducted = loan?.installments.find((i) => i.status === 'deducted');
+    expect(deducted?.period).toBe(PERIOD);
+
+    const moved = await request(app)
+      .post(loanRoute(borrowerId, loan?.id ?? '', '/reschedule'))
+      .set('Authorization', `Bearer ${approverToken}`)
+      .send({
+        installmentCount: 4,
+        firstPeriod: '2026-09',
+        reason: 'spread what is left',
+        version: loan?.version ?? 0,
+      });
+    expect(moved.status, JSON.stringify(moved.body)).toBe(200);
+
+    const [after] = await loansOf(borrowerId);
+    // Still exactly one deducted row, still in its own month, still worth what it was.
+    const kept = after?.installments.filter((i) => i.status === 'deducted') ?? [];
+    expect(kept).toHaveLength(1);
+    expect(kept[0]?.period).toBe(PERIOD);
+    expect(kept[0]?.amount).toBe(100);
+    // And the reschedule moved only what was left.
+    expect(after?.remaining).toBe(200);
+    expect(
+      (after?.installments.filter((i) => i.status === 'planned') ?? []).reduce(
+        (sum, i) => sum + i.amountMinor,
+        0,
+      ),
+    ).toBe(20_000);
+  }, 120_000);
+});
+
+/**
+ * D9, D7 and D8 over HTTP — the three places where a wrong answer would show up on somebody's pay.
+ *
+ * A month of its own, so nothing here depends on the block above having left the world in a
+ * particular state.
+ */
+describe('what payroll does, and refuses to do, with a debt (P-HR-05-B)', () => {
+  const PERIOD = '2025-09';
+  let poorId = '';
+  let externalId = '';
+  let leaverId = '';
+  let acceleratorId = '';
+  let runId = '';
+
+  const loansOf = async (employee: string): Promise<EmployeeLoanDetailDto[]> => {
+    const res = await request(app)
+      .get(loanRoute(employee) + '?page=1&pageSize=20')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    return res.body.data as EmployeeLoanDetailDto[];
+  };
+
+  const effectsOf = async (employee: string): Promise<CompensationEffectsDto> => {
+    const res = await request(app)
+      .get(`/api/v1/hr/employees/${employee}/compensation?period=${PERIOD}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    return res.body.data as CompensationEffectsDto;
+  };
+
+  beforeAll(async () => {
+    poorId = await mkEmployee('موظف الصافي السالب', '29001011790010', '01174000023');
+    externalId = await mkEmployee('موظف التسوية', '29001011890010', '01174000024');
+    leaverId = await mkEmployee('موظف الخروج', '29001011990010', '01174000025');
+    acceleratorId = await mkEmployee('موظف التعجيل', '29001012190010', '01174000026');
+
+    // An instalment far bigger than anything this month earns — D9's case, on purpose.
+    await activeLoanFor(poorId, {
+      type: 'loan',
+      principal: 5_000,
+      currency: 'EGP',
+      installmentCount: 1,
+      firstPeriod: PERIOD,
+      reason: 'more than the month can pay',
+    });
+    await activeLoanFor(externalId, {
+      type: 'loan',
+      principal: 600,
+      currency: 'EGP',
+      installmentCount: 6,
+      firstPeriod: PERIOD,
+      reason: 'settled in cash instead',
+    });
+    await activeLoanFor(leaverId, {
+      type: 'loan',
+      principal: 1_200,
+      currency: 'EGP',
+      installmentCount: 12,
+      firstPeriod: PERIOD,
+      reason: 'still owing when they left',
+    });
+    await activeLoanFor(acceleratorId, {
+      type: 'loan',
+      principal: 1_200,
+      currency: 'EGP',
+      installmentCount: 12,
+      firstPeriod: PERIOD,
+      reason: 'wants to finish early',
+    });
+  }, 240_000);
+
+  /**
+   * D9 — the instalment is taken IN FULL, the net goes negative, the existing warning is raised,
+   * and THE PAYSLIP IS STILL ISSUED. No floor, no partial deduction, no carry-forward, and above
+   * all no deferred line: one would have stopped the document from existing at all.
+   */
+  it('takes the whole instalment, warns, and still issues the payslip', async () => {
+    const effects = await effectsOf(poorId);
+    const line = effects.deductions.find((l) => l.origin === 'loanInstallment');
+    expect(line?.amount).toBe(5_000);
+    expect(effects.netMinor).toBeLessThan(0);
+    expect(effects.warnings).toContain('netBelowZero');
+    expect(effects.deferred.filter((l) => l.origin === 'loanInstallment')).toEqual([]);
+
+    const created = await request(app)
+      .post('/api/v1/hr/payroll/runs')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ period: PERIOD });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const run = created.body.data as PayrollRunDto;
+    runId = run.id;
+    const frozen = await request(app)
+      .post(`/api/v1/hr/payroll/runs/${runId}/freeze`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: run.version });
+    expect(frozen.status, JSON.stringify(frozen.body)).toBe(200);
+
+    const issued = await request(app)
+      .post(`/api/v1/hr/payroll/runs/${runId}/payslips`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({});
+    expect(issued.status, JSON.stringify(issued.body)).toBe(201);
+    const result = issued.body.data as GeneratePayslipsResultDto;
+    // Nobody was skipped for a pending line — an unpayable instalment is not a pending one.
+    expect(result.skipped.filter((s) => s.reason === 'pendingLine')).toEqual([]);
+
+    const slips = await request(app)
+      .get(`/api/v1/hr/payroll/runs/${runId}/payslips?employeeId=${poorId}&page=1&pageSize=5`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const slip = (slips.body.data as PayslipDto[])[0];
+    expect(slip, 'a payslip must exist even with a negative net').toBeDefined();
+    expect(slip?.netMinor).toBeLessThan(0);
+    expect(slip?.warnings).toContain('netBelowZero');
+    // …and it was recorded as repaid, because it really was taken.
+    expect((await loansOf(poorId))[0]?.repaid).toBe(5_000);
+  }, 240_000);
+
+  // D7-1 — money that arrived some other way produces NO payroll line, in the month it happened
+  // or in any other.
+  it('an external settlement deducts nothing from any salary', async () => {
+    const [loan] = await loansOf(externalId);
+    expect(loan?.remaining).toBe(500); // 600 lent, 100 taken by the run above
+
+    const done = await request(app)
+      .post(loanRoute(externalId, loan?.id ?? '', '/settle-external'))
+      .set('Authorization', `Bearer ${approverToken}`)
+      .send({
+        amount: loan?.remaining ?? 0,
+        reason: 'paid in cash at the branch',
+        version: loan?.version ?? 0,
+      });
+    expect(done.status, JSON.stringify(done.body)).toBe(200);
+
+    const [after] = await loansOf(externalId);
+    expect(after?.status).toBe('settled');
+    expect(after?.remaining).toBe(0);
+    // The ledger holds ONLY what payroll took: the cash never pretends to be a deduction.
+    expect(after?.repayments).toHaveLength(1);
+    expect(after?.repaid).toBe(100);
+    expect(after?.installments.filter((i) => i.status === 'planned')).toEqual([]);
+
+    // And no future month carries a line for it.
+    const next = await request(app)
+      .get(`/api/v1/hr/employees/${externalId}/compensation?period=2025-10`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(next.status).toBe(200);
+    expect(
+      (next.body.data as CompensationEffectsDto).deductions.filter(
+        (l) => l.origin === 'loanInstallment',
+      ),
+    ).toEqual([]);
+  }, 240_000);
+
+  /**
+   * D7-2 — an extra amount through payroll, taken ONCE.
+   *
+   * The instalment for the named month grows, the last months disappear, and the total does not
+   * move: an acceleration repays faster, never more.
+   */
+  it('an acceleration takes the extra once and shortens the schedule', async () => {
+    const [loan] = await loansOf(acceleratorId);
+    const plannedBefore = loan?.installments.filter((i) => i.status === 'planned') ?? [];
+    const owedBefore = plannedBefore.reduce((sum, i) => sum + i.amountMinor, 0);
+
+    const target = plannedBefore[0]?.period ?? '';
+    const done = await request(app)
+      .post(loanRoute(acceleratorId, loan?.id ?? '', '/accelerate'))
+      .set('Authorization', `Bearer ${approverToken}`)
+      .send({
+        period: target,
+        extraAmount: 300,
+        reason: 'a bonus arrived, so pay it down',
+        version: loan?.version ?? 0,
+      });
+    expect(done.status, JSON.stringify(done.body)).toBe(200);
+
+    const [after] = await loansOf(acceleratorId);
+    const plannedAfter = after?.installments.filter((i) => i.status === 'planned') ?? [];
+    // The named month now carries its instalment plus the extra…
+    expect(plannedAfter[0]?.period).toBe(target);
+    expect(plannedAfter[0]?.amount).toBe(400);
+    // …the months at the end are gone…
+    expect(plannedAfter.length).toBeLessThan(plannedBefore.length);
+    // …and the debt did not move.
+    expect(plannedAfter.reduce((sum, i) => sum + i.amountMinor, 0)).toBe(owedBefore);
+    expect(after?.remaining).toBe(loan?.remaining);
+  }, 240_000);
+
+  it('and refuses an acceleration bigger than what is left after that month', async () => {
+    const [loan] = await loansOf(acceleratorId);
+    const target =
+      loan?.installments.find((i) => i.status === 'planned')?.period ?? '';
+    const refused = await request(app)
+      .post(loanRoute(acceleratorId, loan?.id ?? '', '/accelerate'))
+      .set('Authorization', `Bearer ${approverToken}`)
+      .send({
+        period: target,
+        extraAmount: 999_999,
+        reason: 'more than is owed',
+        version: loan?.version ?? 0,
+      });
+    expect(refused.status, JSON.stringify(refused.body)).toBe(422);
+  }, 120_000);
+
+  it('and keeps acceleration behind the approve key', async () => {
+    const [loan] = await loansOf(acceleratorId);
+    const target = loan?.installments.find((i) => i.status === 'planned')?.period ?? '';
+    const refused = await request(app)
+      .post(loanRoute(acceleratorId, loan?.id ?? '', '/accelerate'))
+      .set('Authorization', `Bearer ${outsiderToken}`)
+      .send({ period: target, extraAmount: 10, reason: 'no key', version: loan?.version ?? 0 });
+    expect(refused.status).toBe(403);
+  }, 120_000);
+
+  /**
+   * D8 — the employee left owing money.
+   *
+   * The instalments after the exit are withdrawn (payroll would never have priced them anyway),
+   * and the loan says `outstandingAtExit`. NOTHING is taken from a final salary, and nothing is
+   * written off: the balance stays exactly what it was, readable, for a decision made elsewhere.
+   */
+  it('an exit withdraws the future instalments and states the balance', async () => {
+    const before = (await loansOf(leaverId))[0];
+    expect(before?.status).toBe('active');
+    const owedBefore = before?.remaining;
+
+    const employee = await request(app)
+      .get(`/api/v1/hr/employees/${leaverId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(employee.status).toBe(200);
+    const exited = await request(app)
+      .post(`/api/v1/hr/employees/${leaverId}/actions/exit`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        // `type` on an exit action IS the exit type — resignation, termination — and a past
+        // `effectiveDate` applies immediately, which is what makes the cancelled months exact.
+        type: 'resignation',
+        effectiveDate: '2025-10-31',
+        reason: 'left with a loan outstanding',
+        eligibleForRehire: true,
+        version: (employee.body as { data: { version: number } }).data.version,
+      });
+    expect(exited.status, JSON.stringify(exited.body)).toBe(201);
+
+    await waitFor(async () => (await loansOf(leaverId))[0]?.status === 'outstandingAtExit');
+    const after = (await loansOf(leaverId))[0];
+    expect(after?.status).toBe('outstandingAtExit');
+    // The balance did not move: no final-salary deduction, and no write-off.
+    expect(after?.remaining).toBe(owedBefore);
+    // Every month after the exit was withdrawn…
+    expect(
+      (after?.installments ?? []).filter((i) => i.status === 'planned' && i.period > '2025-10'),
+    ).toEqual([]);
+    // …and what a payslip already took is untouched.
+    expect(after?.repaid).toBe(100);
+    expect((after?.installments ?? []).filter((i) => i.status === 'deducted')).toHaveLength(1);
+  }, 240_000);
+
+  // A loan that was already repaid is not something an exit has an opinion about.
+  it('and leaves a settled loan alone', async () => {
+    const settledBefore = (await loansOf(externalId))[0];
+    expect(settledBefore?.status).toBe('settled');
+
+    const employee = await request(app)
+      .get(`/api/v1/hr/employees/${externalId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const exited = await request(app)
+      .post(`/api/v1/hr/employees/${externalId}/actions/exit`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        type: 'resignation',
+        effectiveDate: '2025-10-31',
+        reason: 'left with nothing owing',
+        eligibleForRehire: true,
+        version: (employee.body as { data: { version: number } }).data.version,
+      });
+    expect(exited.status, JSON.stringify(exited.body)).toBe(201);
+
+    // Nothing should change, so there is no state to wait FOR — give the subscriber a moment to
+    // run and then assert it left the loan alone.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const after = (await loansOf(externalId))[0];
+    expect(after?.status).toBe('settled');
+    expect(after?.remaining).toBe(0);
+  }, 240_000);
 });

@@ -26,6 +26,7 @@ import { employmentSpansOf } from './employment-spans';
 import { attendanceQuantityPort } from './attendance-quantity.port';
 import { leaveSnapshotPort } from './leave-snapshot.port';
 import { adjustmentPort } from './adjustment.port';
+import { loanInstallmentPort } from './loan-installment.port';
 
 class CompensationService {
   /**
@@ -134,6 +135,10 @@ class CompensationService {
     // item, so "nothing is assigned" is not a reason to skip the question.
     const adjustments = await adjustmentPort.approvedFor(employeeId, period);
 
+    // P-HR-05-B — what a debt costs this month. Unconditional for the same reason: an instalment
+    // is owed whether or not anything else about this employee's pay was configured.
+    const loanInstallments = await loanInstallmentPort.dueFor(employeeId, period);
+
     return computeCompensation({
       employeeId,
       period,
@@ -146,6 +151,7 @@ class CompensationService {
       // they can see on the employment tab is missing from this one.
       hasLegacyAllowances: (employee.employment.allowances ?? []).length > 0,
       adjustments,
+      loanInstallments,
     });
   }
 }

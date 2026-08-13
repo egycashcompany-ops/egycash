@@ -116,6 +116,14 @@ export interface CompensationInput {
    */
   adjustments: readonly AdjustmentInput[];
   /**
+   * This month's loan instalments (P-HR-05-B).
+   *
+   * The engine is told an amount and a sentence, and nothing else: no balance, no schedule, no
+   * status, no idea how many months are left. A repayment plan is not a payroll rule — what
+   * reaches here is what this month costs, exactly as an approved adjustment does.
+   */
+  loanInstallments: readonly LoanInstallmentLine[];
+  /**
    * The period's frozen attendance, or `null` when it is not frozen (PY-4).
    *
    * Null is "not knowable yet", never "nothing happened": it leaves every quantity line pending,
@@ -443,6 +451,61 @@ const toAdjustmentLine = (
   };
 };
 
+/**
+ * One month's instalment of a debt the employee already has in hand (P-HR-05-B).
+ *
+ * Everything the engine is allowed to know about lending is in these four fields. Adding a fifth —
+ * a balance, a count, a status — would make this file the second place a repayment plan lives.
+ */
+export interface LoanInstallmentLine {
+  id: string;
+  amountMinor: number;
+  currency: string;
+  /** What the deduction is FOR, in the words somebody wrote when the money was lent. */
+  reference: string;
+}
+
+const LOAN_LINE_CODE = 'LOAN_INSTALLMENT';
+const LOAN_LINE_NAME = { ar: 'قسط قرض', en: 'Loan instalment' };
+
+/**
+ * The line an instalment produces.
+ *
+ * ALWAYS a deduction, and never prorated: somebody received a sum of money and agreed to give this
+ * much of it back this month, and which day of the month the payslip is cut on is not a discount.
+ * `prorationFactor` is null for the same reason it is null on an adjustment — "never prorated" and
+ * "prorated by a factor of one" are different statements, and only the first is true.
+ *
+ * `sourceAssignmentId` carries the row this came from, exactly as an adjustment carries its own
+ * id: it is what lets the issuing pass tell the loan side which instalment a payslip took.
+ */
+const toLoanLine = (
+  installment: LoanInstallmentLine,
+  periodDays: number,
+): CompensationLineDto => ({
+  origin: 'loanInstallment',
+  sourceAssignmentId: installment.id,
+  payItemId: null,
+  code: LOAN_LINE_CODE,
+  name: LOAN_LINE_NAME,
+  kind: 'deduction',
+  calcBasis: 'fixed',
+  currency: installment.currency,
+  baseAmount: fromMinorUnits(installment.amountMinor),
+  prorationFactor: null,
+  daysInForce: periodDays,
+  daysInPeriod: periodDays,
+  quantity: null,
+  quantitySource: null,
+  quantityUnit: null,
+  feedFrozenAt: null,
+  leavePayRate: null,
+  leaveTypeCode: null,
+  amountMinor: installment.amountMinor,
+  amount: fromMinorUnits(installment.amountMinor),
+  state: COMPENSATION_LINE_STATES[0],
+});
+
 export const computeCompensation = (input: CompensationInput): CompensationEffectsDto => {
   const window = periodRange(input.period);
   const periodDays = calendarDaysInclusive(window.from, window.to);
@@ -470,6 +533,15 @@ export const computeCompensation = (input: CompensationInput): CompensationEffec
     if (adjustment.currency !== currency) {
       throw new BusinessRuleError(
         `an adjustment is recorded in ${adjustment.currency} but this employee is paid in ${currency} — a single calculation cannot mix currencies`,
+      );
+    }
+  }
+
+  // P-HR-05-B — and to instalments. A debt in another currency cannot be subtracted from this pay.
+  for (const installment of input.loanInstallments) {
+    if (installment.currency !== currency) {
+      throw new BusinessRuleError(
+        `an instalment is recorded in ${installment.currency} but this employee is paid in ${currency} — a single calculation cannot mix currencies`,
       );
     }
   }
@@ -526,6 +598,13 @@ export const computeCompensation = (input: CompensationInput): CompensationEffec
     const line = toAdjustmentLine(adjustment, periodDays);
     if (line.kind === 'earning') earnings.push(line);
     else deductions.push(line);
+  }
+
+  // P-HR-05-B — instalments last, after the decisions. They are the only source that is always a
+  // deduction, and the only one whose money the employee already has: everything above is what
+  // this month EARNED, and this is what it gives back.
+  for (const installment of input.loanInstallments) {
+    deductions.push(toLoanLine(installment, periodDays));
   }
 
   // Integer arithmetic: the sum of the lines shown IS the total shown, with no stray piastre.

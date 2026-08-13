@@ -996,9 +996,11 @@ export const hrModule: ModuleManifest = {
       event: 'hr.employee.exited',
       handlerId: 'loans.exitSettlement',
       handler: async (envelope) => {
-        const payload = envelope.payload as { employeeId?: string };
-        if (typeof payload.employeeId === 'string') {
-          await employeeLoanService.onEmployeeExited(payload.employeeId);
+        const payload = envelope.payload as { employeeId?: string; effectiveDate?: string };
+        // The DATE is required here, unlike in the two consumers above: they act on the fact that
+        // somebody left, this one has to know which months to withdraw.
+        if (typeof payload.employeeId === 'string' && typeof payload.effectiveDate === 'string') {
+          await employeeLoanService.onEmployeeExited(payload.employeeId, payload.effectiveDate);
         }
       },
     },

@@ -39,7 +39,7 @@ import { BusinessRuleError, ConflictError, ForbiddenError } from '../../../share
 import { type AuthContext, type ScopeSelector } from '../../../shared/types';
 import { auditService } from '../../../platform/audit';
 import { fileService, type FileDoc, type UploadedBinary } from '../../../platform/files';
-import { cairoToday, toDateOnly } from '../shared/business-date';
+import { toDateOnly } from '../shared/business-date';
 import { employeeRepository, type EmployeeDoc } from '../employee-management/employees';
 import { employmentSpansOf, spanContaining } from '../payroll/compensation/employment-spans';
 import { payrollPeriodPort } from './payroll-period.port';
@@ -736,10 +736,12 @@ class EmployeeLoanService {
    * is taken from a final salary, and nothing is written off. Both of those would be decisions
    * nobody has granted it.
    */
-  async onEmployeeExited(employeeId: string): Promise<void> {
-    const employee = await employeeRepository.findById(employeeId);
-    if (employee === null) return;
-    const exitPeriod = periodOfDate(toDateOnly(employee.exit?.effectiveDate ?? cairoToday()));
+  async onEmployeeExited(employeeId: string, effectiveDate: string): Promise<void> {
+    // The date comes from the EVENT, never from a re-read of the employee: this event is emitted
+    // from inside the exit's application, before the document is saved, so reading it back here
+    // would give the state from before the exit — and the schedule would be cut at the wrong month
+    // or not at all.
+    const exitPeriod = periodOfDate(toDateOnly(new Date(effectiveDate)));
 
     const live = await employeeLoanRepository.findLive(employeeId);
     if (live === null) return;

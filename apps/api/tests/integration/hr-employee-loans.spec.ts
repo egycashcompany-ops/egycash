@@ -94,6 +94,22 @@ const mkOrgUnit = async (path: string, body: object): Promise<string> => {
   return (res.body as { data: { id: string } }).data.id;
 };
 
+/**
+ * Wait for an in-process event handler to have run.
+ *
+ * `dispatchInProcess` fires tier-1 consumers WITHOUT awaiting them (`Promise.resolve().then(...)`),
+ * so the HTTP response can return before a subscriber has reacted. Asserting the reaction the
+ * instant the request resolves is therefore a race, not a test — the same shape `files.spec.ts`
+ * and `audit.spec.ts` already use for the same reason.
+ */
+const waitFor = async (predicate: () => Promise<boolean>, ms = 5_000): Promise<void> => {
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline) {
+    if (await predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+};
+
 /** One more employee, for a block that needs a person of its own. */
 const mkEmployee = async (
   fullNameAr: string,
@@ -1206,6 +1222,7 @@ describe('what payroll does, and refuses to do, with a debt (P-HR-05-B)', () => 
       });
     expect(exited.status, JSON.stringify(exited.body)).toBe(201);
 
+    await waitFor(async () => (await loansOf(leaverId))[0]?.status === 'outstandingAtExit');
     const after = (await loansOf(leaverId))[0];
     expect(after?.status).toBe('outstandingAtExit');
     // The balance did not move: no final-salary deduction, and no write-off.
@@ -1239,6 +1256,9 @@ describe('what payroll does, and refuses to do, with a debt (P-HR-05-B)', () => 
       });
     expect(exited.status, JSON.stringify(exited.body)).toBe(201);
 
+    // Nothing should change, so there is no state to wait FOR — give the subscriber a moment to
+    // run and then assert it left the loan alone.
+    await new Promise((resolve) => setTimeout(resolve, 300));
     const after = (await loansOf(externalId))[0];
     expect(after?.status).toBe('settled');
     expect(after?.remaining).toBe(0);

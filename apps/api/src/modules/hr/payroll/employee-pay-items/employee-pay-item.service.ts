@@ -38,6 +38,9 @@ import { employeeRepository } from '../../employee-management/employees';
 import { payItemRepository } from '../pay-items/pay-item.repository';
 import { type PayItemDoc } from '../pay-items/pay-item.model';
 import { employmentSpansOf, spanContaining } from '../compensation/employment-spans';
+// Same reason as the catalog import above — the file, not the barrel, to keep the graph acyclic.
+import { payrollRunService } from '../runs/payroll-run.service';
+import { blockingFrozenPeriod } from './frozen-period-guard';
 import { employeePayItemRepository } from './employee-pay-item.repository';
 import { type EmployeePayItemDoc } from './employee-pay-item.model';
 
@@ -122,6 +125,24 @@ class EmployeePayItemService {
         effectiveTo === null
           ? 'an open-ended pay item needs an open employment period — this employee has left, or the date falls outside their employment'
           : 'a pay item must fall inside a single employment period of this employee',
+      );
+    }
+
+    // PY-9 — a period whose run is frozen has already been priced, and a row reaching back into
+    // it would change what that month comes to the next time anybody asks. Refused here rather
+    // than absorbed anywhere downstream: there is no unfreeze, and a calculation quietly
+    // disagreeing with an issued payslip is the failure the freeze exists to prevent.
+    //
+    // Checked BEFORE the overlap query because it is the more fundamental refusal — being told
+    // "March is frozen" is more use than being told which row it would have clashed with.
+    const frozen = blockingFrozenPeriod(
+      await payrollRunService.frozenPeriods(),
+      effectiveFrom,
+      effectiveTo,
+    );
+    if (frozen !== null) {
+      throw new BusinessRuleError(
+        `${payItem.code} would apply to ${frozen}, whose payroll run is frozen — cancel that run and start a new one to reprice the period`,
       );
     }
 

@@ -407,8 +407,23 @@ describe('the default sections migration', () => {
 
     // Now a release changes the module's grouping. Deleting a section is how this suite can make
     // the next run create one; in production it is a new section appearing in the defaults.
+    //
+    // A section that still holds pages cannot be deleted (APPLICATION_SECTION_IN_USE — moving
+    // somebody's rows as a side effect of a delete is exactly what that rule prevents), so its
+    // pages are taken out first, the same way an administrator would.
     const employeeFile = (await sectionsOf()).find((s) => s.name.en === 'Employee File');
     expect(employeeFile).toBeDefined();
+    const held = (await appsOf()).filter((a) => a.sectionId === employeeFile?.id);
+    expect(held.map((a) => a.route).sort()).toEqual(['/contracts', '/employee-files']);
+    const emptied = await request(app)
+      .patch('/api/v1/platform/applications/reorder')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        categoryId: held[0]?.categoryId,
+        sectionId: null,
+        applicationIds: held.map((a) => a.id),
+      });
+    expect(emptied.status).toBe(200);
     const removed = await request(app)
       .delete(`/api/v1/platform/application-sections/${String(employeeFile?.id)}`)
       .set('Authorization', `Bearer ${token}`);

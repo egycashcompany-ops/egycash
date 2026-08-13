@@ -401,6 +401,18 @@ export const ListAttendanceRegularizationsQuerySchema = PaginationQuerySchema.ex
   branchId: objectId().optional(),
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
+  /**
+   * The post-freeze corrections (P-HR-08) — approved after their month was closed.
+   *
+   * The stamp has existed since AT-5 and NOTHING could find it: no filter, no screen, no reader
+   * outside this module. So a correction that landed after a freeze was recorded, left the frozen
+   * row untouched exactly as designed, and then went nowhere — the one case where somebody has to
+   * act by hand was the one case nobody could list.
+   *
+   * A filter, not a new endpoint: the organization-wide read already exists and is already behind
+   * `attendance.decideRegularization`.
+   */
+  postFreeze: z.coerce.boolean().optional(),
 }).strict();
 export type ListAttendanceRegularizationsQuery = z.infer<
   typeof ListAttendanceRegularizationsQuerySchema

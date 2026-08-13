@@ -2230,4 +2230,78 @@ describe('payroll adjustments (P-HR-04)', () => {
       expect(await inboxCount(approverToken)).toBe(before);
     }, 120_000);
   });
+
+  /**
+   * The forward path for a post-freeze correction (P-HR-08).
+   *
+   * WHAT THIS PHASE DID NOT BUILD, AND WHY, is the important half. A correction approved after its
+   * month was frozen cannot be priced: there is no retro rule anywhere in this repository, and
+   * deriving one would mean deciding what a corrected month is worth — a financial rule nobody has
+   * given. So the amount stays a human decision, recorded as an ordinary adjustment in a LATER,
+   * open month, which is the path P-HR-04 already proved and PY-9 already guards.
+   *
+   * What these cases pin is that the path holds under the two ways it could go wrong: the closed
+   * month refusing to be reopened, and the same correction being paid twice.
+   */
+  describe('post-freeze corrections travel forward, once (P-HR-08)', () => {
+    const CORRECTION = 'retro: regularization approved after the freeze';
+
+    /**
+     * PY-9, restated for this use case: a closed month cannot gain a figure afterwards. That is
+     * what makes "forward" the only direction a correction can travel — not a convention.
+     */
+    it('cannot be recorded against the month that was already paid', async () => {
+      const period = '2026-11';
+      const run = await request(app)
+        .post('/api/v1/hr/payroll/runs')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ period });
+      expect(run.status, JSON.stringify(run.body)).toBe(201);
+      const created = run.body.data as PayrollRunDto;
+      const frozen = await request(app)
+        .post(`/api/v1/hr/payroll/runs/${created.id}/freeze`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ version: created.version });
+      expect(frozen.status, JSON.stringify(frozen.body)).toBe(200);
+
+      const refused = await record({
+        period,
+        kind: 'bonus',
+        amount: 200,
+        currency: 'EGP',
+        reason: CORRECTION,
+      });
+      expect(refused.status).toBe(422);
+    }, 240_000);
+
+    /**
+     * DOUBLE APPLICATION, prevented by a rule that already existed rather than a new one.
+     *
+     * P-HR-04's duplicate guard refuses a second LIVE adjustment with the same employee, month,
+     * kind and reason. A correction carries its own reason, so recording it twice is refused with
+     * 409 — and the other half of that guard matters as much: cancelling the first releases the
+     * reason, because cancelling and re-recording correctly is how a mistake is meant to be fixed.
+     */
+    it('and the same correction cannot be paid twice in the open month that follows', async () => {
+      const body = {
+        period: '2026-12',
+        kind: 'bonus' as const,
+        amount: 200,
+        currency: 'EGP',
+        reason: CORRECTION,
+      };
+      const first = await record(body);
+      expect(first.status, JSON.stringify(first.body)).toBe(201);
+
+      expect((await record(body)).status).toBe(409);
+
+      const row = first.body.data as PayrollAdjustmentDto;
+      const cancelled = await request(app)
+        .post(`/api/v1/hr/employees/${employeeId}/adjustments/${row.id}/cancel`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ reason: 'wrong amount', version: row.version });
+      expect(cancelled.status, JSON.stringify(cancelled.body)).toBe(200);
+      expect((await record(body)).status).toBe(201);
+    }, 240_000);
+  });
 });

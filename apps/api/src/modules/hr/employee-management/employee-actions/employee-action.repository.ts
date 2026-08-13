@@ -1,7 +1,12 @@
 // Personnel Actions data access. Actions inherit their visibility from the employee (callers
 // scope the employee first); the due-work scan is deliberately unscoped (scheduler flow).
 import { Types } from 'mongoose';
-import { EMPLOYEE_EXIT_TYPES, type ListEmployeeActionsQuery, type Paginated } from '@ecms/contracts';
+import {
+  EMPLOYEE_EXIT_TYPES,
+  SALARY_BEARING_ACTION_TYPES,
+  type ListEmployeeActionsQuery,
+  type Paginated,
+} from '@ecms/contracts';
 import { NotFoundError } from '../../../../shared/errors';
 import { EmployeeActionModel, type EmployeeActionDoc, type EmployeeActionEntity } from './employee-action.model';
 
@@ -105,6 +110,39 @@ class EmployeeActionRepository {
     })
       .sort({ effectiveDate: 1, seq: 1 })
       .exec();
+  }
+
+  /**
+   * Every APPLIED change this employee's basic salary has been through (PY-8).
+   *
+   * The action log is the only place a salary change is recorded with a date, and — since the
+   * engine is the only thing that writes `employment.salary` after hire — it is a complete
+   * history rather than a partial one. `from` is captured at APPLICATION time (see the model
+   * header), which is what makes walking it backwards give the value that really was in force.
+   *
+   * Scheduled actions are excluded on purpose: they have not happened, and a future raise must
+   * not change what a past month was worth. Cancelled and failed ones never touched the employee.
+   */
+  async listAppliedSalaryChanges(
+    employeeId: string,
+  ): Promise<{ effectiveDate: Date; from: unknown; to: unknown }[]> {
+    const rows = await EmployeeActionModel.find({
+      employeeId: new Types.ObjectId(employeeId),
+      type: { $in: [...SALARY_BEARING_ACTION_TYPES] },
+      status: 'applied',
+      isDeleted: false,
+      'changes.field': 'employment.salary',
+    })
+      .sort({ effectiveDate: 1, seq: 1 })
+      .lean<{ effectiveDate: Date; changes: { field: string; from: unknown; to: unknown }[] }[]>()
+      .exec();
+
+    return rows.flatMap((row) => {
+      const change = row.changes.find((c) => c.field === 'employment.salary');
+      return change === undefined
+        ? []
+        : [{ effectiveDate: row.effectiveDate, from: change.from, to: change.to }];
+    });
   }
 
   async listForEmployee(

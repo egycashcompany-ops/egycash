@@ -13,6 +13,8 @@ import { Types } from 'mongoose';
 import { type CompensationEffectsDto } from '@ecms/contracts';
 import { type ScopeSelector } from '../../../../shared/types';
 import { employeeRepository, type EmployeeDoc } from '../../employee-management/employees';
+import { employeeActionRepository } from '../../employee-management/employee-actions';
+import { readableChanges, salaryAsOf } from './salary-history';
 import { payItemRepository } from '../pay-items/pay-item.repository';
 import { EmployeePayItemModel } from '../employee-pay-items/employee-pay-item.model';
 import {
@@ -113,10 +115,23 @@ class CompensationService {
     // is not a reason to skip the question.
     const leave = await leaveSnapshotPort.frozenFor(period, employeeId);
 
+    // PY-8 — the basic salary AS IT WAS, not as it is. `employment.salary` is a single current
+    // value that a raise overwrites, so reading it directly let a completed month restate itself
+    // months later. The action log dates every change, and the engine is the only writer, so the
+    // value in force is recovered by walking backwards rather than by storing a second copy.
+    //
+    // The date asked about is the period's LAST DAY: the same answer the system would have given
+    // while the month was current, and stable forever afterwards.
+    const basicSalary = salaryAsOf(
+      employee.employment.salary,
+      readableChanges(await employeeActionRepository.listAppliedSalaryChanges(employeeId)),
+      to,
+    );
+
     return computeCompensation({
       employeeId,
       period,
-      basicSalary: employee.employment.salary,
+      basicSalary,
       attendance,
       leave,
       employmentSpans: employmentSpansOf(employee),

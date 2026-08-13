@@ -22,6 +22,21 @@ export const listEmployeeLoans = (
 ): Promise<Paginated<EmployeeLoanDetailDto>> =>
   getPage<EmployeeLoanDetailDto>(`/hr/employees/${employeeId}/loans${buildQuery(params)}`);
 
+/**
+ * The organization-wide read (P-HR-06-B) — every loan, across everybody.
+ *
+ * It came with phase A and had no caller until the administration screen; nothing was added on the
+ * server to make that screen possible. Note the SHAPE: `EmployeeLoanDto`, not the detail one. No
+ * instalments and no repayments, because a list crossing hundreds of people must not drag hundreds
+ * of schedules with it — and because the schedule is not editable from a list anyway. It lives one
+ * click away, on the employee's own file, which is the only place it can be changed.
+ *
+ * P-HR-06-A put `employeeName` / `employeeCode` on these rows, which is what makes the list legible
+ * to somebody who does not already know whose loan they are looking at.
+ */
+export const listAllLoans = (params: QueryParams): Promise<Paginated<EmployeeLoanDto>> =>
+  getPage<EmployeeLoanDto>(`/hr/employee-loans${buildQuery(params)}`);
+
 export const getEmployeeLoan = (employeeId: string, id: string): Promise<EmployeeLoanDetailDto> =>
   get<EmployeeLoanDetailDto>(`/hr/employees/${employeeId}/loans/${id}`);
 

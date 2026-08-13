@@ -76,3 +76,45 @@ export const useCancelLoan = (employeeId: string) =>
   useLoanMutation(employeeId, ({ id, body }: { id: string; body: CancelEmployeeLoan }) =>
     api.cancelLoan(employeeId, id, body),
   );
+
+// ── The organization-wide administration list (P-HR-06-B) ───────────────────
+//
+// A SECOND cache key, not a reshuffle of the one above. The tab's key is per employee because a
+// loan is that person's debt; this list crosses everybody, so filing it under any one employee
+// would make a disbursement refresh the wrong page. The two writes below invalidate BOTH — the
+// list the administrator is looking at, and the profile tab they are not.
+const ALL_LOANS = 'employeeLoansAll';
+
+export const useAllLoans = (params: Record<string, string | number>, enabled = true) =>
+  useQuery({
+    queryKey: [MODULE, ALL_LOANS, params],
+    queryFn: () => api.listAllLoans(params),
+    enabled,
+    placeholderData: (prev) => prev,
+  });
+
+/** The employee comes from the ROW: the acts are nested under them even when the list was not. */
+const useAdminLoanMutation = <TVars extends { employeeId: string }>(
+  fn: (vars: TVars) => Promise<unknown>,
+) => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: (_data, vars) => {
+      void client.invalidateQueries({ queryKey: [MODULE, ALL_LOANS] });
+      void client.invalidateQueries({ queryKey: [MODULE, FEATURE, vars.employeeId] });
+    },
+  });
+};
+
+export const useDecideLoanFromList = () =>
+  useAdminLoanMutation(
+    ({ employeeId, id, body }: { employeeId: string; id: string; body: DecideEmployeeLoan }) =>
+      api.decideLoan(employeeId, id, body),
+  );
+
+export const useDisburseLoanFromList = () =>
+  useAdminLoanMutation(
+    ({ employeeId, id, body }: { employeeId: string; id: string; body: DisburseEmployeeLoan }) =>
+      api.disburseLoan(employeeId, id, body),
+  );

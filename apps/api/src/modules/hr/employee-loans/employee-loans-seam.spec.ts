@@ -221,7 +221,15 @@ describe('no ceiling, no interest, no fee (D4, D10)', () => {
 describe('the permission split is declared, and nothing else is', () => {
   const manifest = code(HR_MODULE);
 
-  it('declares view, create and approve — and no page of its own', () => {
+  /**
+   * THREE keys — and this assertion is about the three, not about how many surfaces they have.
+   *
+   * Phase A pinned `null,` here, and that was the honest reading at the time: the only surface was
+   * a tab on the employee profile. P-HR-06-B built `/payroll/employee-loans`, so the page id is now
+   * that page — a change of ADDRESS, not of authority. What this guard exists to catch is unchanged
+   * and is asserted below: a fourth key appearing without a phase behind it.
+   */
+  it('declares view, create and approve — and names the page it is administered from', () => {
     const declaration = manifest.slice(
       manifest.indexOf("declarePermissions(\n  'hr',\n  'employeeLoan'"),
     );
@@ -229,9 +237,11 @@ describe('the permission split is declared, and nothing else is', () => {
     const block = declaration.slice(0, declaration.indexOf(');') + 2);
     expect(block).toContain("['view', 'create']");
     expect(block).toContain("action: 'approve'");
-    // Null on purpose: the surface is a profile tab, so there is no administration screen to name.
-    // The page registry's spec states the same fact from the other end.
-    expect(block).toContain('null,');
+    expect(block).toContain("'hr.employee-loans',");
+    // …and the page it names is really declared, so the id cannot point at nothing.
+    expect(manifest).toContain("id: 'hr.employee-loans'");
+    expect(manifest).toContain("route: '/payroll/employee-loans'");
+    // Still three. Deleting a loan, exporting one or printing one are not acts this feature has.
     for (const action of ["'delete'", "'export'", "'print'"]) {
       expect(block, action).not.toContain(action);
     }

@@ -179,8 +179,11 @@ describe('seed → password login (regression)', () => {
     // P-HR-06 adds the adjustments queue: the approval half of P-HR-04 had a permission, an
     // organization-wide endpoint and a declared page, but no row in anybody's sidebar.
     expect(routes).toContain('/payroll/adjustments');
-    // 20 (HR) + 12 (Fleet) + 6 (Organization) + 13 (IT) + 9 (Administration)
-    expect(routes).toHaveLength(61);
+    // P-HR-06-B adds the loans administration: phase A declared `employeeLoan.*` with no page at
+    // all, because the only surface was a tab on one employee's file.
+    expect(routes).toContain('/payroll/employee-loans');
+    // 21 (HR) + 12 (Fleet) + 6 (Organization) + 13 (IT) + 9 (Administration)
+    expect(routes).toHaveLength(62);
   });
 
   it('re-running the seed is idempotent — no duplicate categories/applications/grants', async () => {
@@ -202,7 +205,7 @@ describe('seed → password login (regression)', () => {
         (n, g) => n + g.applications.length + g.sections.reduce((m, s) => m + s.applications.length, 0),
         0,
       ),
-    ).toBe(61);
+    ).toBe(62);
   });
 
   it('the seeded HR user also logs in with email/password', async () => {

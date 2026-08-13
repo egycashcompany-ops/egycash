@@ -22,15 +22,15 @@ describe('the assembled page registry', () => {
     expect(validatePageRegistry(pages, permissions)).toEqual([]);
   });
 
-  it('declares 57 pages over 222 permissions', () => {
+  it('declares 57 pages over 225 permissions', () => {
     expect(pages).toHaveLength(57);
-    expect(permissions).toHaveLength(222);
+    expect(permissions).toHaveLength(225);
   });
 
-  it('assigns 197 permissions to a page and leaves 25 deliberately unassigned', () => {
+  it('assigns 197 permissions to a page and leaves 28 deliberately unassigned', () => {
     const assigned = permissions.filter((p) => p.pageId !== null);
     expect(assigned).toHaveLength(197);
-    expect(permissions.length - assigned.length).toBe(25);
+    expect(permissions.length - assigned.length).toBe(28);
   });
 
   it('splits the pages across the four modules as declared', () => {
@@ -53,6 +53,11 @@ describe('the assembled page registry', () => {
         // recompute repair tools, self-service filing, and the overtime release, each of which
         // acts from a surface the caller already stands on.
         'attendance',
+        // Employee loans (P-HR-05) live on a TAB of the employee profile, exactly where that
+        // employee's pay items and adjustments already are — so there is no administration screen
+        // of their own to point at, and the three keys carry no page. The same reading `attendance`
+        // gets above: a key that acts from a surface the caller already stands on.
+        'employeeLoan',
         // No administration screen at all, and never has been. `setting` left this list in P8,
         // `notificationTemplate` in P10 and the two log streams in P11, each in the change that
         // routed its screen — never before it.

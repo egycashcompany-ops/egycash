@@ -87,7 +87,13 @@ class EmployeeLoanService {
       );
     }
 
-    await this.assertSchedulable(employee, input.principal, input.currency, input.installmentCount, input.firstPeriod);
+    await this.assertSchedulable(
+      employee,
+      input.principal,
+      input.currency,
+      input.installmentCount,
+      input.firstPeriod,
+    );
 
     const doc = await EmployeeLoanModel.create({
       employeeId: new Types.ObjectId(employeeId),

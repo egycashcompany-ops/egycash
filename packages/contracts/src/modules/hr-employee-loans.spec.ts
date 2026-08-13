@@ -10,6 +10,10 @@ import {
   CreateEmployeeLoanSchema,
   DecideEmployeeLoanSchema,
   DisburseEmployeeLoanSchema,
+  EmployeeLoanDecidedPayloadV1,
+  EmployeeLoanDisbursedPayloadV1,
+  HrEmployeeLoanEvents,
+  HrEmployeeLoanTemplates,
   EMPLOYEE_LOAN_STATUSES,
   EMPLOYEE_LOAN_TYPES,
   LIVE_EMPLOYEE_LOAN_STATUSES,
@@ -252,5 +256,85 @@ describe('the operations on a live loan', () => {
         version: 2,
       }).success,
     ).toBe(false);
+  });
+});
+
+/**
+ * What a loan decision publishes (P-HR-07), pinned by name.
+ *
+ * Three events, and the ABSENCES are asserted with them: rescheduling, accelerating and settling
+ * all change a live plan, and none of them was shown to have an audience. An event with no consumer
+ * is a promise nobody asked for, and the cheapest way to make one is to add it "for completeness"
+ * while the file is open — which is what this stops.
+ */
+describe('the loan decisions that are published', () => {
+  it('is three moments, named', () => {
+    expect(Object.values(HrEmployeeLoanEvents).sort()).toEqual([
+      'hr.employeeLoan.decided',
+      'hr.employeeLoan.disbursed',
+      'hr.employeeLoan.submitted',
+    ]);
+  });
+
+  it('and the template keys are the same three', () => {
+    expect(Object.values(HrEmployeeLoanTemplates).sort()).toEqual(
+      Object.values(HrEmployeeLoanEvents).sort(),
+    );
+  });
+
+  it('publishes nothing for the acts that reshape a live plan', () => {
+    const names = Object.values(HrEmployeeLoanEvents).join(' ');
+    for (const absent of ['reschedul', 'accelerat', 'settle', 'cancel']) {
+      expect(names, absent).not.toContain(absent);
+    }
+  });
+
+  /**
+   * The disbursement payload carries the SCHEDULE, and that is the difference between it and the
+   * two before it: from this moment instalments come off a salary, so a consumer needs to know how
+   * many and starting when without re-reading the loan — by which time it may have moved.
+   */
+  it('carries the schedule on the one that changes what somebody is paid', () => {
+    const parsed = EmployeeLoanDisbursedPayloadV1.safeParse({
+      loanId: '000000000000000000000000',
+      employeeId: '000000000000000000000000',
+      type: 'loan',
+      principal: 6_000,
+      currency: 'EGP',
+      disbursedAt: '2026-01-15',
+      installmentCount: 6,
+      firstPeriod: '2026-02',
+    });
+    expect(parsed.success).toBe(true);
+    // An instant is not a date-only: the contract refuses one, as the disburse input does.
+    expect(
+      EmployeeLoanDisbursedPayloadV1.safeParse({
+        loanId: '000000000000000000000000',
+        employeeId: '000000000000000000000000',
+        type: 'loan',
+        principal: 6_000,
+        currency: 'EGP',
+        disbursedAt: '2026-01-15T00:00:00.000Z',
+        installmentCount: 6,
+        firstPeriod: '2026-02',
+      }).success,
+    ).toBe(false);
+  });
+
+  // `rejected` sends the request back to `draft`; a consumer treating it as terminal is wrong.
+  it('names a decision rather than an outcome', () => {
+    for (const decision of ['approved', 'rejected']) {
+      expect(
+        EmployeeLoanDecidedPayloadV1.safeParse({
+          loanId: '000000000000000000000000',
+          employeeId: '000000000000000000000000',
+          type: 'advance',
+          principal: 500,
+          currency: 'EGP',
+          decision,
+        }).success,
+        decision,
+      ).toBe(true);
+    }
   });
 });

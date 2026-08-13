@@ -121,6 +121,19 @@ import {
   AttendanceRegularizationRequestedPayloadV1,
 } from '../modules/hr-attendance.js';
 import {
+  HrPayrollEvents,
+  type HrPayrollEventName,
+  PayrollAdjustmentDecidedPayloadV1,
+  PayrollAdjustmentSubmittedPayloadV1,
+} from '../modules/hr-payroll.js';
+import {
+  HrEmployeeLoanEvents,
+  type HrEmployeeLoanEventName,
+  EmployeeLoanDecidedPayloadV1,
+  EmployeeLoanDisbursedPayloadV1,
+  EmployeeLoanSubmittedPayloadV1,
+} from '../modules/hr-employee-loans.js';
+import {
   HrContractEvents,
   type HrContractEventName,
   ContractApprovalDecidedPayloadV1,
@@ -381,9 +394,17 @@ const describeField = (schema: z.ZodTypeAny, path: string): EventPayloadField[] 
 // field NAME would be wrong the moment a field is renamed; asking the schema cannot be.
 const STRING_CANDIDATES = [
   'example',
+  // A three-letter currency (`MoneyCurrencySchema`), which no other candidate satisfies — `example`
+  // is seven characters and `a` is one. It sits here rather than being special-cased by field name
+  // for the reason above: the schema is asked, not the identifier. P-HR-07 was the first payload to
+  // carry money, and any later one gets a readable sample for free.
+  'EGP',
   '000000000000000000000000',
   'user@example.com',
   '2026-01-01',
+  // A payroll MONTH (`YYYY-MM`) — the period a payroll adjustment names and the month a loan's
+  // first instalment falls in. It goes after the full date so a date field still samples as one.
+  '2026-01',
   'a',
 ] as const;
 const SAMPLE_INSTANT = '2026-01-01T09:00:00.000Z';
@@ -587,6 +608,11 @@ export const EVENT_ENTITY_NAMES: Readonly<Record<string, LocalizedString>> = {
   hiringDocuments: { en: 'Hiring documents', ar: 'مستندات التعيين' },
   leave: { en: 'Leave', ar: 'إجازة' },
   attendance: { en: 'Attendance', ar: 'حضور' },
+  // P-HR-07. `payroll` is the subject of an adjustment decision, and `employeeLoan` is its own
+  // subject rather than an action on the employee — a debt outlives any one month, which is the
+  // same reasoning that gave `assetWarranty` an entity of its own below.
+  payroll: { en: 'Payroll', ar: 'الرواتب' },
+  employeeLoan: { en: 'Employee loan', ar: 'قرض موظف' },
   contract: { en: 'Contract', ar: 'عقد' },
   // fleet
   vehicle: { en: 'Vehicle', ar: 'سيارة' },
@@ -688,6 +714,13 @@ export const EVENT_ACTION_NAMES: Readonly<Record<string, LocalizedString>> = {
   amended: { en: 'amended', ar: 'تعديل' },
   renewed: { en: 'renewed', ar: 'تجديد' },
   terminated: { en: 'terminated', ar: 'إنهاء' },
+  // payroll decisions + employee loans (P-HR-07)
+  adjustmentSubmitted: { en: 'adjustment submitted', ar: 'إرسال مؤثر للاعتماد' },
+  adjustmentDecided: { en: 'adjustment decided', ar: 'البت في مؤثر' },
+  submitted: { en: 'submitted', ar: 'إرسال للاعتماد' },
+  // The word is deliberately about MONEY LEAVING, not about a status: ECMS pays nobody, and this
+  // records that a payment happened elsewhere — which is also the moment instalments begin.
+  disbursed: { en: 'paid out', ar: 'صرف' },
   // fleet
   recorded: { en: 'recorded', ar: 'تسجيل' },
   corrected: { en: 'corrected', ar: 'تصحيح' },
@@ -947,6 +980,8 @@ export type HrCatalogEventName =
   | HrHiringDocumentsEventName
   | HrLeaveEventName
   | HrAttendanceEventName
+  | HrPayrollEventName
+  | HrEmployeeLoanEventName
   | HrContractEventName;
 
 export const HR_EVENT_PAYLOAD_SCHEMAS: Readonly<Record<HrCatalogEventName, z.ZodTypeAny | null>> = {
@@ -1040,6 +1075,14 @@ export const HR_EVENT_PAYLOAD_SCHEMAS: Readonly<Record<HrCatalogEventName, z.Zod
   [HrAttendanceEvents.RegularizationRequested]: AttendanceRegularizationRequestedPayloadV1,
   [HrAttendanceEvents.RegularizationDecided]: AttendanceRegularizationDecidedPayloadV1,
   [HrAttendanceEvents.OvertimeApproved]: AttendanceOvertimeApprovedPayloadV1,
+
+  // P-HR-07 — the two payroll decisions somebody waits on, and the three a debt has.
+  [HrPayrollEvents.AdjustmentSubmitted]: PayrollAdjustmentSubmittedPayloadV1,
+  [HrPayrollEvents.AdjustmentDecided]: PayrollAdjustmentDecidedPayloadV1,
+
+  [HrEmployeeLoanEvents.Submitted]: EmployeeLoanSubmittedPayloadV1,
+  [HrEmployeeLoanEvents.Decided]: EmployeeLoanDecidedPayloadV1,
+  [HrEmployeeLoanEvents.Disbursed]: EmployeeLoanDisbursedPayloadV1,
 
   [HrContractEvents.Generated]: ContractGeneratedPayloadV1,
   [HrContractEvents.ApprovalRequested]: ContractEventPayloadV1,

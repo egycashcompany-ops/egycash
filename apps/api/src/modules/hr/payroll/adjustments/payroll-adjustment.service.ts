@@ -13,6 +13,8 @@
 // figure is the record of a decision, not a working note.
 import { Types } from 'mongoose';
 import {
+  HrPayrollEvents,
+  HrPayrollTemplates,
   type CancelPayrollAdjustment,
   type CreatePayrollAdjustment,
   type DecidePayrollAdjustment,
@@ -23,6 +25,8 @@ import {
 import { BusinessRuleError, ConflictError, ForbiddenError } from '../../../../shared/errors';
 import { type AuthContext, type ScopeSelector } from '../../../../shared/types';
 import { auditService } from '../../../../platform/audit';
+import { emit } from '../../../../platform/kernel/event-bus';
+import { notificationsService } from '../../../../platform/notifications';
 import { fileService, type FileDoc, type UploadedBinary } from '../../../../platform/files';
 import { employeeRepository } from '../../employee-management/employees';
 import { employmentSpansOf, spanContaining } from '../compensation/employment-spans';
@@ -192,6 +196,18 @@ class PayrollAdjustmentService {
       { by: ctx.userId, version },
     );
     await this.recordStatus(id, doc.status, 'pendingApproval', null);
+    // AFTER the write, and the write is what makes this happen once: `status !== 'draft'` refuses a
+    // second submit, and `updateById` filters on `__v`, so a repeat with a stale version is a 409
+    // before it reaches here. Neither the event nor the notice can be duplicated by retrying.
+    await emit(HrPayrollEvents.AdjustmentSubmitted, {
+      adjustmentId: id,
+      employeeId,
+      period: doc.period,
+      kind: doc.kind,
+      amount: doc.amount,
+      currency: doc.currency,
+    });
+    await this.notifySubmitted(employee, after);
     return after;
   }
 
@@ -234,6 +250,18 @@ class PayrollAdjustmentService {
       { by: ctx.userId, version: input.version },
     );
     await this.recordStatus(id, 'pendingApproval', status, input.note ?? null);
+    // Same guarantee as `submit`: the status guard above has already consumed `pendingApproval`, so
+    // a second decision on the same entry is refused before it reaches this line.
+    await emit(HrPayrollEvents.AdjustmentDecided, {
+      adjustmentId: id,
+      employeeId,
+      period: doc.period,
+      kind: doc.kind,
+      amount: doc.amount,
+      currency: doc.currency,
+      decision: input.decision,
+    });
+    await this.notifyDecided(employee, after, input.decision);
     return after;
   }
 
@@ -388,6 +416,48 @@ class PayrollAdjustmentService {
       );
     }
     return file._id as Types.ObjectId;
+  }
+
+  /**
+   * To whoever can end the wait (P-HR-07).
+   *
+   * Addressed by PERMISSION rather than to a manager, and that is the D1 shape showing through: a
+   * bonus is granted by HR, so there is no manager step and no single person who owns the decision.
+   * `payrollAdjustment.approve` at organization scope is exactly the set of people who can act, and
+   * the queue P-HR-06-A built is where they act.
+   *
+   * Best-effort by construction. A notification that fails must never undo a decision that was
+   * correctly recorded — the same `.catch()` posture Attendance and Leave already take.
+   */
+  private async notifySubmitted(
+    employee: { code: string },
+    doc: PayrollAdjustmentDoc,
+  ): Promise<void> {
+    await notificationsService
+      .notify({
+        template: HrPayrollTemplates.AdjustmentSubmitted,
+        to: { permission: 'payrollAdjustment.approve', scope: 'organization' },
+        data: { employeeCode: employee.code, kind: doc.kind, period: doc.period },
+        entityRef: entityRef(String(doc._id)),
+      })
+      .catch(() => undefined);
+  }
+
+  /** …and back to the person it is about, if they have a login to receive it. */
+  private async notifyDecided(
+    employee: { userId: unknown },
+    doc: PayrollAdjustmentDoc,
+    decision: 'approved' | 'rejected',
+  ): Promise<void> {
+    if (employee.userId === null || employee.userId === undefined) return;
+    await notificationsService
+      .notify({
+        template: HrPayrollTemplates.AdjustmentDecided,
+        to: { userIds: [String(employee.userId)] },
+        data: { period: doc.period, decision },
+        entityRef: entityRef(String(doc._id)),
+      })
+      .catch(() => undefined);
   }
 
   private async recordStatus(

@@ -2130,4 +2130,73 @@ describe('payroll adjustments (P-HR-04)', () => {
       expect((await orgWide(outsiderToken)).status).toBe(403);
     }, 120_000);
   });
+
+  /**
+   * The queue announces itself (P-HR-07).
+   *
+   * Until this phase the whole two-person decision was silent: an approver learned that a bonus was
+   * waiting by opening the screen and looking. These cases assert the notice reaches somebody who
+   * can ACT — addressed by permission, because a bonus is granted by HR and there is no manager step
+   * to address instead — and that a refused repeat adds nothing to their inbox.
+   */
+  describe('the decision notices (P-HR-07)', () => {
+    const inboxCount = async (token: string): Promise<number> => {
+      const res = await request(app)
+        .get('/api/v1/platform/notifications')
+        .query({ pageSize: 100 })
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      return (res.body as { data: unknown[] }).data.length;
+    };
+
+    it('tells whoever can decide that something is waiting', async () => {
+      const before = await inboxCount(approverToken);
+
+      const created = await record({
+        period: '2026-10',
+        kind: 'bonus',
+        amount: 400,
+        currency: 'EGP',
+        reason: 'the notice reads this one',
+      });
+      expect(created.status, JSON.stringify(created.body)).toBe(201);
+      const row = created.body.data as PayrollAdjustmentDto;
+
+      // Recording alone is not news: a draft is a private working note.
+      expect(await inboxCount(approverToken)).toBe(before);
+
+      const sent = await submit(row.id, row.version);
+      expect(sent.status, JSON.stringify(sent.body)).toBe(200);
+      expect(await inboxCount(approverToken)).toBeGreaterThan(before);
+    }, 120_000);
+
+    /**
+     * IDEMPOTENCY, tested where it actually lives: in the state machine, not in the notifier.
+     *
+     * The transition is what emits, and `submit` refuses anything that is not a draft. So a second
+     * submit — with the stale version a real retry would carry, and with the fresh one it would not
+     * — cannot produce a second notice, because it cannot produce a second transition.
+     */
+    it('and a refused repeat adds nothing to the inbox', async () => {
+      const created = await record({
+        period: '2026-10',
+        kind: 'bonus',
+        amount: 500,
+        currency: 'EGP',
+        reason: 'no duplicate notices',
+      });
+      const row = created.body.data as PayrollAdjustmentDto;
+      const sent = await submit(row.id, row.version);
+      expect(sent.status).toBe(200);
+      const after = await inboxCount(approverToken);
+
+      // The stale version a retry would carry.
+      expect((await submit(row.id, row.version)).status).toBe(409);
+      // …and the fresh one, which gets past the version check and is stopped by the status guard.
+      const fresh = (sent.body.data as PayrollAdjustmentDto).version;
+      expect((await submit(row.id, fresh)).status).toBe(422);
+
+      expect(await inboxCount(approverToken)).toBe(after);
+    }, 120_000);
+  });
 });

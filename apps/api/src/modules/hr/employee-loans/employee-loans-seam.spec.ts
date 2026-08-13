@@ -163,21 +163,38 @@ describe('an instalment becomes a fact only when a payslip takes it', () => {
   });
 
   /**
-   * D8 consumes the EXISTING exit event; no loan event was invented, and payroll emits none.
+   * D8 consumes the EXISTING exit event. That half is unchanged and still asserted here.
    *
-   * The handler is registered in the HR manifest rather than here, which is where every other
-   * module's subscription lives — so this asserts both halves: the feature emits nothing, and the
-   * manifest wires the one event it listens to.
+   * The other half was "this feature emits nothing", which was true through P-HR-05-B and stopped
+   * being true in P-HR-07 — the phase that exists to publish these decisions. What replaced it is
+   * not weaker: the emitted set is stated BY NAME, so a fourth loan event cannot appear without a
+   * phase behind it, and the emit sites are pinned to the service rather than scattered.
    */
-  it('emits no event, and subscribes only to the exit that already existed', () => {
-    for (const file of loanFiles) {
-      expect(code(file), rel(file)).not.toContain('emit(');
-    }
+  it('subscribes only to the exit that already existed', () => {
     const manifest = code(HR_MODULE);
     expect(manifest).toContain("handlerId: 'loans.exitSettlement'");
     expect(manifest).toContain('employeeLoanService.onEmployeeExited');
     // The event is the one Leave and Attendance already consume, not a new one beside it.
     expect(manifest).toContain("event: 'hr.employee.exited'");
+  });
+
+  it('and publishes exactly the three decisions P-HR-07 declared, from the service alone', () => {
+    const emitters = loanFiles.filter((file) => code(file).includes('emit('));
+    expect(emitters.map(rel)).toEqual(['employee-loan.service.ts']);
+
+    const service = code(resolve(HERE, 'employee-loan.service.ts'));
+    const emitted = [...service.matchAll(/emit\(\s*HrEmployeeLoanEvents\.(\w+)/g)].map((m) => m[1]);
+    expect(emitted.sort()).toEqual(['Decided', 'Disbursed', 'Submitted']);
+
+    /**
+     * The absences are the decision worth keeping. Rescheduling, accelerating and settling all
+     * change a live plan, and none of them was shown to have an audience — an event with no
+     * consumer is a promise nobody asked for. Cancelling is an act by whoever was already looking
+     * at the row.
+     */
+    for (const absent of ['Rescheduled', 'Accelerated', 'Settled', 'Cancelled']) {
+      expect(service, absent).not.toContain(`HrEmployeeLoanEvents.${absent}`);
+    }
   });
 
   // P-HR-04 is untouched: a bonus and a debt are different ledgers, and one phase may not quietly

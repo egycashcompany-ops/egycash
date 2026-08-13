@@ -1314,3 +1314,73 @@ describe('the organization-wide loans list (P-HR-06)', () => {
     await clearLive();
   }, 240_000);
 });
+
+/**
+ * A debt announces itself (P-HR-07).
+ *
+ * P-HR-05 built the whole obligation and told nobody about any of it: not the person who could
+ * approve it, and not the employee whose salary the instalments would come out of. These cases
+ * assert the three moments this phase publishes, and — the part that matters — that a refused
+ * repeat cannot produce a second notice, because it cannot produce a second transition.
+ */
+describe('the decision notices (P-HR-07)', () => {
+  const inboxCount = async (token: string): Promise<number> => {
+    const res = await request(app)
+      .get('/api/v1/platform/notifications')
+      .query({ pageSize: 100 })
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    return (res.body as { data: unknown[] }).data.length;
+  };
+
+  it('tells whoever can approve that a request is waiting, and only on submit', async () => {
+    await clearLive();
+    const before = await inboxCount(approverToken);
+
+    const created = await record({
+      type: 'loan',
+      principal: 900,
+      currency: 'EGP',
+      installmentCount: 3,
+      firstPeriod: '2026-02',
+      reason: 'the notice reads this one',
+    });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const row = created.body.data as EmployeeLoanDto;
+
+    // A draft is a proposal nobody is waiting on — it must not reach anybody's inbox.
+    expect(await inboxCount(approverToken)).toBe(before);
+
+    const sent = await submit(row.id, row.version);
+    expect(sent.status, JSON.stringify(sent.body)).toBe(200);
+    expect(await inboxCount(approverToken)).toBeGreaterThan(before);
+
+    await clearLive();
+  }, 240_000);
+
+  /**
+   * The transition is the guard, and this proves it from both sides: a stale version is refused by
+   * the optimistic-lock filter, and a fresh one by the status check. Neither can emit twice.
+   */
+  it('and a refused repeat adds nothing to the inbox', async () => {
+    await clearLive();
+    const created = await record({
+      type: 'advance',
+      principal: 600,
+      currency: 'EGP',
+      installmentCount: 1,
+      firstPeriod: '2026-03',
+      reason: 'no duplicate notices',
+    });
+    const row = created.body.data as EmployeeLoanDto;
+    const sent = await submit(row.id, row.version);
+    expect(sent.status).toBe(200);
+    const after = await inboxCount(approverToken);
+
+    expect((await submit(row.id, row.version)).status).toBe(409);
+    expect((await submit(row.id, (sent.body.data as EmployeeLoanDto).version)).status).toBe(422);
+
+    expect(await inboxCount(approverToken)).toBe(after);
+    await clearLive();
+  }, 240_000);
+});

@@ -864,3 +864,60 @@ export interface PayrollAdjustmentDto {
   employeeCode?: string;
   employeeName?: string;
 }
+
+// ── Adjustment decisions: events and notifications (P-HR-07) ────────────────
+//
+// P-HR-04 built the whole two-person decision and P-HR-06-A gave it a queue, and neither told
+// anybody anything. An approver learned that a bonus was waiting by opening the screen and looking;
+// the person who recorded it learned the answer the same way. That is a worklist nobody is invited
+// to — the gap this phase closes, using the shape Attendance and Leave already use rather than a
+// new one.
+//
+// TWO MOMENTS, NOT FIVE. A draft is a private working note and a cancellation is an act by somebody
+// who was already looking at the row; neither is news. What is news is that a decision is now
+// OWED (submitted), and that it was MADE (decided) — the two points where one person is waiting on
+// another. Adding more would be inventing an audience.
+
+export const HrPayrollTemplates = {
+  AdjustmentSubmitted: 'hr.payroll.adjustmentSubmitted',
+  AdjustmentDecided: 'hr.payroll.adjustmentDecided',
+} as const;
+export type HrPayrollTemplateKey = (typeof HrPayrollTemplates)[keyof typeof HrPayrollTemplates];
+
+export const HrPayrollEvents = {
+  AdjustmentSubmitted: 'hr.payroll.adjustmentSubmitted',
+  AdjustmentDecided: 'hr.payroll.adjustmentDecided',
+} as const;
+export type HrPayrollEventName = (typeof HrPayrollEvents)[keyof typeof HrPayrollEvents];
+
+/**
+ * The figure travels with the event, and that is deliberate.
+ *
+ * A consumer asking "how much?" would otherwise have to read the adjustment back, and by then it
+ * may have been decided again or cancelled. The payload is what was true at the moment the fact
+ * happened — the same stance the payslip takes about its own lines.
+ */
+export const PayrollAdjustmentSubmittedPayloadV1 = z.object({
+  adjustmentId: objectId(),
+  employeeId: objectId(),
+  period: adjustmentPeriod,
+  kind: PayrollAdjustmentKindSchema,
+  amount: MoneyAmountSchema,
+  currency: MoneyCurrencySchema,
+});
+
+/**
+ * `decision` is the contract's own word, and `rejected` does NOT mean the entry is dead: P-HR-04
+ * sends a rejected adjustment back to `draft` so it can be corrected and resubmitted. A consumer
+ * that treats this as terminal would be wrong about the state machine, so the name says `decision`
+ * rather than `outcome`.
+ */
+export const PayrollAdjustmentDecidedPayloadV1 = z.object({
+  adjustmentId: objectId(),
+  employeeId: objectId(),
+  period: adjustmentPeriod,
+  kind: PayrollAdjustmentKindSchema,
+  amount: MoneyAmountSchema,
+  currency: MoneyCurrencySchema,
+  decision: z.enum(['approved', 'rejected']),
+});

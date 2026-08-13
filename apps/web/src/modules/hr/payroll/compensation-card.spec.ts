@@ -41,6 +41,7 @@ describe('where the card lives', () => {
       'pay-items',
       'runs',
       'adjustments',
+      'employee-loans',
     ]);
   });
 
@@ -286,6 +287,7 @@ describe('the payroll run screen', () => {
       'pay-items',
       'runs',
       'adjustments',
+      'employee-loans',
     ]);
     expect(ROUTES).toContain('<RequirePermission permission="payrollRun.view">');
   });

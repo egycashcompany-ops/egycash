@@ -22,21 +22,28 @@ describe('the assembled page registry', () => {
     expect(validatePageRegistry(pages, permissions)).toEqual([]);
   });
 
-  it('declares 57 pages over 225 permissions', () => {
-    expect(pages).toHaveLength(57);
+  it('declares 58 pages over 225 permissions', () => {
+    expect(pages).toHaveLength(58);
     expect(permissions).toHaveLength(225);
   });
 
-  it('assigns 197 permissions to a page and leaves 28 deliberately unassigned', () => {
+  /**
+   * P-HR-06-B moved three keys off the unassigned list without adding a single permission.
+   *
+   * That is the shape this number is meant to catch working in the RIGHT direction: the total held
+   * at 225, and `employeeLoan.view / create / approve` found a home because a screen was built for
+   * them — not because anybody invented a key to fill a page.
+   */
+  it('assigns 200 permissions to a page and leaves 25 deliberately unassigned', () => {
     const assigned = permissions.filter((p) => p.pageId !== null);
-    expect(assigned).toHaveLength(197);
-    expect(permissions.length - assigned.length).toBe(28);
+    expect(assigned).toHaveLength(200);
+    expect(permissions.length - assigned.length).toBe(25);
   });
 
   it('splits the pages across the four modules as declared', () => {
     const byModule = new Map<string, number>();
     for (const page of pages) byModule.set(page.moduleId, (byModule.get(page.moduleId) ?? 0) + 1);
-    expect(Object.fromEntries(byModule)).toEqual({ platform: 15, hr: 23, fleet: 10, it: 9 });
+    expect(Object.fromEntries(byModule)).toEqual({ platform: 15, hr: 24, fleet: 10, it: 9 });
   });
 
   // Named rather than counted, because "which permissions have no home" is the question a reviewer
@@ -53,11 +60,11 @@ describe('the assembled page registry', () => {
         // recompute repair tools, self-service filing, and the overtime release, each of which
         // acts from a surface the caller already stands on.
         'attendance',
-        // Employee loans (P-HR-05) live on a TAB of the employee profile, exactly where that
-        // employee's pay items and adjustments already are — so there is no administration screen
-        // of their own to point at, and the three keys carry no page. The same reading `attendance`
-        // gets above: a key that acts from a surface the caller already stands on.
-        'employeeLoan',
+        // `employeeLoan` LEFT this list in P-HR-06-B, in the change that routed its screen — the
+        // same way `setting`, `notificationTemplate` and the log streams left it, and never before.
+        // Phase A's entry here was true when it was written: the only surface was a tab on the
+        // employee profile. It stopped being true the moment `/payroll/employee-loans` existed.
+        //
         // No administration screen at all, and never has been. `setting` left this list in P8,
         // `notificationTemplate` in P10 and the two log streams in P11, each in the change that
         // routed its screen — never before it.

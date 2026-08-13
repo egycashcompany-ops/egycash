@@ -578,9 +578,10 @@ const payrollAdjustmentPermissions = declarePermissions(
  * that agreeing to lend it already is. No existing key fits — `payrollAdjustment.*` governs a
  * decision about one month's pay, while this governs a debt that outlives any month.
  *
- * `pageId` is null on purpose: the surface is a tab on the employee profile, exactly where an
- * employee's pay items and adjustments already live, so there is no administration screen of its
- * own to point at. The page registry's named list of unassigned resources says so out loud.
+ * `pageId` WAS null, and P-HR-06-B is what changed that. Phase A shipped the tab on the employee
+ * profile and said so honestly: there was no administration screen to point at. There is one now —
+ * `/payroll/employee-loans`, the organization-wide list — so the keys name it. The tab stays
+ * exactly where it was; a page id records where a permission is ADMINISTERED, not its only surface.
  */
 const employeeLoanPermissions = declarePermissions(
   'hr',
@@ -593,7 +594,7 @@ const employeeLoanPermissions = declarePermissions(
       name: { en: 'Approve and disburse employee loans', ar: 'اعتماد وصرف قروض الموظفين' },
     },
   ],
-  null,
+  'hr.employee-loans',
 );
 
 const attendancePermissions = [
@@ -840,6 +841,15 @@ export const hrPages: PageDef[] = [
     name: { en: 'Payroll adjustments', ar: 'مؤثرات الرواتب' },
     route: '/payroll/adjustments',
     sortOrder: 230,
+  },
+  // P-HR-06-B. Sits under Payroll rather than beside the employee list because that is where the
+  // money is administered — the same reasoning that put the adjustments queue above it.
+  {
+    id: 'hr.employee-loans',
+    moduleId: 'hr',
+    name: { en: 'Employee loans', ar: 'قروض وسلف الموظفين' },
+    route: '/payroll/employee-loans',
+    sortOrder: 240,
   },
 ];
 

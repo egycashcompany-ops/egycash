@@ -187,6 +187,16 @@ const CATALOG: CategoryDef[] = [
         icon: 'clipboard',
         permission: 'payrollAdjustment.approve',
       },
+      // Employee loans (P-HR-06-B), on the APPROVE key for the same reason as the row above: this
+      // list is a worklist — what is waiting for a decision, and what was decided but not yet paid
+      // out. Whoever only reads a loan already sees it on the employee's file.
+      {
+        en: 'Employee Loans',
+        ar: 'قروض وسلف الموظفين',
+        route: '/payroll/employee-loans',
+        icon: 'file',
+        permission: 'employeeLoan.approve',
+      },
       {
         en: 'Contracts',
         ar: 'العقود',

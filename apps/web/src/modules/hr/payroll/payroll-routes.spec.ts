@@ -30,9 +30,16 @@ const declaredPaths = (): string[] =>
 
 describe('Payroll routes', () => {
   it('routes the shipped surface and nothing unshipped', () => {
-    // pay-items (PY-1), runs (PY-6), the employee's own payslips (PY-11) and the adjustments queue
-    // (P-HR-06). No tax and no run calculation — neither exists.
-    expect(declaredPaths()).toEqual(['payslips/me', 'pay-items', 'runs', 'adjustments']);
+    // pay-items (PY-1), runs (PY-6), the employee's own payslips (PY-11), the adjustments queue
+    // (P-HR-06-A) and the loans administration (P-HR-06-B). No tax and no run calculation —
+    // neither exists.
+    expect(declaredPaths()).toEqual([
+      'payslips/me',
+      'pay-items',
+      'runs',
+      'adjustments',
+      'employee-loans',
+    ]);
   });
 
   /**
@@ -46,7 +53,12 @@ describe('Payroll routes', () => {
    */
   it('gates every route except the one that is own-scope by construction', () => {
     const guarded = [...ROUTES.matchAll(/<RequirePermission permission="([^"]+)">/g)].map((m) => m[1]);
-    expect(guarded).toEqual(['payItem.view', 'payrollRun.view', 'payrollAdjustment.view']);
+    expect(guarded).toEqual([
+      'payItem.view',
+      'payrollRun.view',
+      'payrollAdjustment.view',
+      'employeeLoan.view',
+    ]);
     expect(guarded).toHaveLength(declaredPaths().length - 1);
     expect(declaredPaths().filter((p) => p.endsWith('/me'))).toEqual(['payslips/me']);
     // …and the index route renders that same self-service page, never a guarded one.
@@ -65,6 +77,7 @@ describe('Payroll routes', () => {
         'payItem.delete',
         'payrollRun.view',
         'payrollAdjustment.view',
+        'employeeLoan.view',
       ]).toContain(key);
     }
   });

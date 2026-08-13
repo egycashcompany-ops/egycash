@@ -1,7 +1,6 @@
 # P-HR-06 — Payroll Administrative Surfaces
 
-**Status:** decisions frozen by the owner before any code was written. Phase A is implemented; phase
-B is scoped here and not started.
+**Status:** decisions frozen by the owner before any code was written. Both phases are implemented.
 
 ---
 
@@ -157,13 +156,53 @@ financial rule, no migration.
 
 ---
 
-## 4. Phase B — scoped, not started
+## 4. Phase B — what shipped
 
-* The loans administration screen at `/payroll/loans` or equivalent (D4), keeping the profile tab.
-* The `hr.employee-loans` page declaration and its navigation row — today `employeeLoan.*` is
-  declared with `pageId: null`, which is honest only while the tab is the whole surface.
-* The read half is already in place: `GET /hr/employee-loans` returns rows carrying the employee
-  label, so the screen is a client, not a new endpoint.
+**Scope (D4):** the loans administration screen, keeping the profile tab exactly where it was.
+
+* `/payroll/employee-loans`, behind `RequirePermission permission="employeeLoan.view"` — the same
+  posture as the adjustments queue, and gated on the key the server requires for the list the screen
+  reads. The navigation row is narrower, on `employeeLoan.approve`.
+* **THREE tabs, and the middle one is the point.** *Awaiting decision* (`pendingApproval`) and *all
+  loans* mirror phase A. *Approved, not yet paid* (`approved`) exists because P-HR-05's design says
+  `approved` is the MIDDLE of this machine — the obligation begins at disbursement — so a row
+  sitting there is money promised and not handed over, and until this screen nothing told anybody it
+  was waiting. Each worklist tab is one status, FIXED, not a preselected dropdown.
+* **Two acts, both `employeeLoan.approve`:** decide, and record the disbursement (a date only — the
+  contract refuses an amount there, because a second figure at that point is a second principal).
+* **What it deliberately cannot do.** No recording, rescheduling, accelerating, settling or
+  cancelling. Every one of those acts is about a SCHEDULE, and the organization-wide read returns a
+  loan *without* its instalments on purpose — a list crossing hundreds of people must not drag
+  hundreds of schedules with it. Offering to reshape a plan the screen cannot display would be an
+  invitation to guess. Every row links to the employee's file, where the schedule is and where those
+  acts stay.
+* **`pageId` stopped being `null`.** Phase A declared `employeeLoan.*` with no page and said so out
+  loud, in the manifest and in the page registry's named list of unassigned resources. That was true
+  while the tab was the whole surface; it stopped being true the moment this route existed. Three
+  keys left the unassigned list *in the change that routed their screen* — never before it — which
+  is the same rule `setting` (P8), `notificationTemplate` (P10) and the log streams (P11) followed.
+
+### 4.1 No server change at all
+
+`GET /hr/employee-loans` was mounted in phase A and enriched with the employee label in P-HR-06-A;
+the acts post to the per-employee endpoints the tab already uses, with the employee taken from the
+row. Phase B adds **no API, no permission, no setting, no event, no financial rule, no migration** —
+only a page declaration, a navigation row, and a screen.
+
+### 4.2 Guards
+
+* `loans-admin.spec.ts` (new) — the declared page resolves to a routed screen; navigation is under
+  the approve key; the screen calls only the endpoints that existed; it offers no act that needs a
+  schedule it cannot show; it links to the file where those acts live; the profile tab is untouched;
+  the disbursement is a date and nothing else; both locales resolve.
+* `employee-loans-seam.spec.ts` — the `null,` pin became a `'hr.employee-loans',` pin, plus a new
+  assertion that the id points at a page that really exists. Still three keys.
+* `page-registry.spec.ts` — 57 → 58 pages, 197 → 200 assigned, 28 → 25 unassigned, HR 23 → 24, and
+  `employeeLoan` removed from the named unassigned list. **The permission total held at 225**, which
+  is the direction that matters: a screen found a home for keys that existed, rather than a key
+  being invented to fill a page.
+* `payroll-routes.spec.ts` / `compensation-card.spec.ts` — route list 4 → 5.
+* `auth-seed-login.spec.ts` — the sidebar counters 61 → 62, with the route asserted by name.
 
 ---
 

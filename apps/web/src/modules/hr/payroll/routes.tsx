@@ -1,11 +1,16 @@
 // Payroll route subtree (lazy-loaded). The catalog (PY-1), the runs (PY-6), the employee's own
-// payslips (PY-11) and the adjustments queue (P-HR-06) — and nothing else: no unshipped surface is
-// reachable (the owner rule carried from Fleet FW-1). There is no tax route and no run-calculation
-// route, because neither exists.
+// payslips (PY-11), the adjustments queue (P-HR-06-A) and the loans administration (P-HR-06-B) —
+// and nothing else: no unshipped surface is reachable (the owner rule carried from Fleet FW-1).
+// There is no tax route and no run-calculation route, because neither exists.
+//
+// The last one belongs to another feature's folder on purpose. Lending is its own module — its
+// contract, its cache keys and its profile tab all live under `employee-loans/` — but the SCREEN is
+// where the money is administered, which is here. So this file mounts it and owns nothing of it.
 import { Route, Routes } from 'react-router-dom';
 import { RequirePermission } from '../../../platform/router/RequirePermission';
 import { NotFoundPage } from '../../../platform/app/pages/NotFoundPage';
 import { AppShell } from '../../../platform/layout/AppShell';
+import { EmployeeLoansAdminPage } from '../employee-loans/pages/EmployeeLoansAdminPage';
 import { MyPayslipsPage } from './pages/MyPayslipsPage';
 import { PayItemsPage } from './pages/PayItemsPage';
 import { PayrollAdjustmentsPage } from './pages/PayrollAdjustmentsPage';
@@ -50,6 +55,20 @@ export default function PayrollRoutes(): JSX.Element {
           element={
             <RequirePermission permission="payrollAdjustment.view">
               <PayrollAdjustmentsPage />
+            </RequirePermission>
+          }
+        />
+        {/*
+          P-HR-06-B — the loans administration. Same posture as the queue above it, for the same
+          reason: gated on `view`, which is the key the server requires for the list this screen
+          reads, while the decide/disburse buttons and the navigation row are on
+          `employeeLoan.approve`.
+        */}
+        <Route
+          path="employee-loans"
+          element={
+            <RequirePermission permission="employeeLoan.view">
+              <EmployeeLoansAdminPage />
             </RequirePermission>
           }
         />

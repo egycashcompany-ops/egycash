@@ -11,30 +11,36 @@
 // deletable, every assignment is re-draggable, and nothing re-asserts them on a later boot — see
 // the idempotency rule below. The names are a starting point, not a schema.
 //
-// IDEMPOTENT, AND ONLY EVER ADDITIVE:
+// IDEMPOTENT, AND NEVER DESTRUCTIVE:
 //   • a section is created only when the category has no section by that English name;
-//   • assignment happens ONLY on the run that creates the section. Once it exists, this file never
-//     moves another row into it — because a row an administrator deliberately took out of every
-//     section looks exactly like a row nobody ever grouped (both null), and a rule that read only
-//     the row would drag that decision back on the next boot;
-//   • an application this file does not name is left entirely alone.
-// Re-running it on a database that has already been organized changes nothing at all.
+//   • each section then files the pages IT NAMES that are not already somewhere an administrator
+//     put them. A row already in the right group is not rewritten, so the order inside a group is
+//     the administrator's; a row in a group this file did not write is never moved;
+//   • an application this file does not name is left entirely alone;
+//   • no section is ever deleted, and a row can never be in two groups — `sectionId` holds one
+//     value, so filing is a move, not a copy.
+// Re-running it on a database already at this grouping writes nothing at all.
 //
-// THE ONE EXCEPTION, AND ITS EXACT SHAPE (`regroupFrom`). When a later release SPLITS a group this
-// file created — HR's "Employee Management" into "Employees" and "Employee File" — the new
-// sections do not exist yet, so they are created; but their rows are already sitting in the old
-// one, and the rule above would leave them there forever. An install would get two empty headings
-// and no reorganization at all.
+// WHY FILING IS NOT SKIPPED FOR A SECTION THAT ALREADY EXISTS. It used to be — `if (existing !==
+// null) continue` — and that is wrong in a way that took a release to show. `Payroll` shipped in
+// PY-1 (d42c559) holding `/payroll/pay-items`; PY-6 (b70e462) added `/payroll/runs` to the same
+// list. The section already existed, so the new row was never filed: it rendered flat, above the
+// groups, and every page added to an existing group since met the same fate. That is how a column
+// organized once drifts back into one long list, a phase at a time.
 //
-// So a section may name the earlier sections of its own lineage, and take rows back FROM THOSE
-// ONLY. Everything that made the rule worth having still holds:
-//   • it happens on the run that creates the new section, and never again;
-//   • the source must be a section THIS FILE wrote, matched by its seeded English name — a group
-//     an administrator created, or renamed, is not recognized and is never touched;
-//   • a row an administrator moved anywhere else, or took out of every section, still looks like
-//     what it is and is still left alone.
-// The emptied section is not deleted: nothing here destroys an administrator's row, and an empty
-// section is already omitted from the navigation payload, so it simply stops rendering.
+// THE PRICE, STATED PLAINLY. A row that is in NO group looks the same whether nobody ever filed it
+// or an administrator deliberately took it out, so adopting the first necessarily adopts the
+// second: a page this file names, dragged out of every group, comes back on the next boot. That
+// is a deliberate trade — a page silently missing from its group is a defect every release makes
+// worse, while a page returning to the group it is named in is visible, reversible, and can be
+// settled for good by moving it to a different group instead, which IS respected.
+//
+// `regroupFrom` — THE ONE PLACE A GROUPED ROW MOVES. When a later release SPLITS a group this file
+// created (HR's "Employee Management" into "Employees" and "Employee File"), the new sections may
+// take rows back from the earlier sections of their own lineage, named here and matched by their
+// seeded English name. A group an administrator created, or renamed, is not recognized and is
+// never raided. The emptied section is left in place: an empty section is already omitted from the
+// navigation payload, so it stops rendering without anything being destroyed.
 import { logger } from './infrastructure/logging/logger';
 import { applicationCategoryRepository } from './platform/application-categories';
 import { applicationRepository } from './platform/applications';
@@ -133,14 +139,15 @@ const findCategory = async (englishName: string): Promise<string | null> => {
 };
 
 export const seedApplicationSections = async (adminId: string): Promise<void> => {
-  for (const [categoryName, sections] of Object.entries(DEFAULTS)) {
+  for (const [categoryName, defs] of Object.entries(DEFAULTS)) {
     const categoryId = await findCategory(categoryName);
     if (categoryId === null) continue;
 
-    for (const [index, def] of sections.entries()) {
-      // Keyed by English name within the category: a rename by an administrator does not make
-      // this recreate the section, because the lookup misses and the assignment step below is
-      // skipped for rows that already carry a section anyway.
+    // ── Pass 1: the sections themselves ───────────────────────────────────
+    // Keyed by English name within the category: a rename by an administrator does not make this
+    // recreate the section — the lookup misses, and a renamed group is somebody else's anyway.
+    const sectionIdByName = new Map<string, string>();
+    for (const [index, def] of defs.entries()) {
       const existing = await ApplicationSectionModel.findOne({
         categoryId,
         'name.en': def.en,
@@ -148,33 +155,42 @@ export const seedApplicationSections = async (adminId: string): Promise<void> =>
       })
         .lean<{ _id: unknown }>()
         .exec();
-      // A section that is already there means this module has been organized once — by this file
-      // on an earlier boot, or by an administrator since. Either way the assignment step is SKIPPED
-      // entirely, and that is the whole idempotency rule.
-      //
-      // Skipping it because the row is already in a section would not be enough: a row an
-      // administrator deliberately took OUT of every section is null, exactly like a row nobody
-      // ever grouped, so a rule reading only the row would keep dragging that decision back. The
-      // question has to be asked once per section, not once per row.
-      if (existing !== null) continue;
-
+      if (existing !== null) {
+        sectionIdByName.set(def.en, String(existing._id));
+        continue;
+      }
       const created = await applicationSectionService.create(
         { name: { ar: def.ar, en: def.en }, categoryId, sortOrder: index * 10 },
         adminId,
       );
-      const sectionId = String(created._id);
-      // The sections a row may be TAKEN BACK from on this run — this file's own earlier defaults,
-      // resolved by name inside this category. Empty for a section that only fills blanks.
+      sectionIdByName.set(def.en, String(created._id));
+    }
+
+    // ── Pass 2: file the pages each section names ─────────────────────────
+    // Runs for EVERY section, existing or not. That is the fix: a section that was already there
+    // used to skip this step entirely, so a route added to its list by a later release was never
+    // filed at all.
+    for (const def of defs) {
+      const sectionId = sectionIdByName.get(def.en);
+      if (sectionId === undefined) continue;
+      // Sections of this section's own lineage, whose rows it may take back (see `regroupFrom`).
       const reclaimable = await sectionIdsByName(categoryId, def.regroupFrom ?? []);
 
-      // First run for this section: place the rows nobody has grouped yet, in the order listed.
       let position = 0;
       for (const route of def.routes) {
         const app = await applicationRepository.findOne({ route });
         if (app === null) continue;
+        // A route is unique, but the ROW it names must belong to the category being organized:
+        // filing another module's page into this module's section produces a row that renders in
+        // neither, because the navigation payload drops a section/category mismatch on purpose.
+        if (String(app.categoryId) !== categoryId) continue;
         position += 10;
+
         const from = app.sectionId === null ? null : String(app.sectionId);
-        // Already grouped, and not by a default this file wrote — an administrator's decision.
+        // Already here. No write — so an administrator's ORDER inside the group survives, and a
+        // row can never end up counted in two groups (`sectionId` holds one value by construction).
+        if (from === sectionId) continue;
+        // In a group this file did not write: an administrator put it there, and it stays there.
         if (from !== null && !reclaimable.has(from)) continue;
         await applicationService_updateSection(String(app._id), sectionId, position - 10, from);
       }

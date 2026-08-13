@@ -104,4 +104,14 @@ describe('what the shared component still guarantees', () => {
     expect(GROUP).toContain('rtl:rotate-90');
     expect(GROUP).not.toContain('badge');
   });
+
+  // Moved here when the component did (#205), rather than left behind in a second file asserting
+  // the same contract against the file it used to live in.
+  it('shows the group’s own name, in the reader’s locale', () => {
+    expect(GROUP).toContain('localized(section.name, locale)');
+  });
+
+  it('and renders its rows only while expanded', () => {
+    expect(GROUP).toContain('{expanded && (');
+  });
 });

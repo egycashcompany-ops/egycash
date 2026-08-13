@@ -312,27 +312,46 @@ describe('the default sections migration', () => {
     expect(await snapshot(token)).toEqual(before);
   });
 
-  it('never re-groups a row an administrator has since taken out of a section', async () => {
+  /**
+   * What "an administrator's decision" means now, and what it no longer means.
+   *
+   * A row in NO group looks identical whether nobody ever filed it or somebody took it out, so a
+   * rule that adopts the first necessarily adopts the second — and adopting the first is what
+   * stops a page from silently going missing every time a release adds one (see the case below).
+   *
+   * So the promise is narrower and sharper than it was: a page moved to a DIFFERENT group is left
+   * exactly where the administrator put it. That is a decision the data can actually express, and
+   * it is also the way to make an unwanted grouping stick.
+   */
+  it('leaves a row an administrator moved to another group exactly where they put it', async () => {
     const token = await tokenOf();
     const adminId = (await doLogin(env.SEED_ADMIN_EMAIL, env.SEED_ADMIN_PASSWORD)).body.data?.me?.id ?? '';
 
-    const applicants = (
+    const apps = (
       (await get('/platform/applications?pageSize=100', token)).body as {
         data: { id: string; route: string; categoryId: string; sectionId: string | null }[];
       }
-    ).data.find((a) => a.route === '/applicants');
-    expect(applicants?.sectionId).not.toBeNull();
+    ).data;
+    const sections = (
+      (await get('/platform/application-sections?pageSize=100', token)).body as {
+        data: { id: string; name: { en: string } }[];
+      }
+    ).data;
 
-    // Take it out of every section — a supported, ordinary end state.
-    const ungrouped = await request(app)
+    // `/applicants` belongs to Recruitment by default. Move it to Payroll — a deliberate,
+    // supported choice, and a grouping this file would never write.
+    const applicants = apps.find((a) => a.route === '/applicants');
+    const payroll = sections.find((x) => x.name.en === 'Payroll');
+    expect(applicants?.sectionId).not.toBe(payroll?.id);
+    const moved = await request(app)
       .patch('/api/v1/platform/applications/reorder')
       .set('Authorization', `Bearer ${token}`)
       .send({
         categoryId: applicants?.categoryId,
-        sectionId: null,
+        sectionId: payroll?.id,
         applicationIds: [applicants?.id],
       });
-    expect(ungrouped.status).toBe(200);
+    expect(moved.status).toBe(200);
 
     await seedApplicationSections(adminId);
 
@@ -341,25 +360,70 @@ describe('the default sections migration', () => {
         data: { route: string; sectionId: string | null }[];
       }
     ).data.find((a) => a.route === '/applicants');
-    // The migration fills a blank; it does not overrule a decision.
-    expect(reread?.sectionId).toBeNull();
+    // Recruitment names this page. It does not take it back.
+    expect(reread?.sectionId).toBe(payroll?.id);
+  });
 
-    // And the ungrouped row is still perfectly visible — directly under its module, which is
-    // where a page with no section has always rendered.
-    const nav = (
-      (await get('/platform/me/applications', token)).body as {
-        data: {
-          applications: { route: string }[];
-          sections: { applications: { route: string }[] }[];
-        }[];
-      }
-    ).data;
-    const routes = nav.flatMap((c) => [
-      ...c.applications.map((a) => a.route),
-      ...c.sections.flatMap((sec) => sec.applications.map((a) => a.route)),
-    ]);
-    expect(routes).toContain('/applicants');
-    expect(nav.some((c) => c.applications.some((a) => a.route === '/applicants'))).toBe(true);
+  /**
+   * THE REGRESSION THIS FIX EXISTS FOR — a page added to a group that already existed.
+   *
+   * `Payroll` shipped in PY-1 (d42c559) holding `/payroll/pay-items`. PY-6 (b70e462) added
+   * `/payroll/runs` to the same list, and the old rule skipped a section it had already created,
+   * so the new page was never filed: it rendered flat, above the groups, release after release.
+   *
+   * The state below is exactly that: the section is there with its first page in it, and the page
+   * added later is in no group at all.
+   */
+  it('files a page added later to a section that already existed', async () => {
+    const token = await tokenOf();
+    const adminId = (await doLogin(env.SEED_ADMIN_EMAIL, env.SEED_ADMIN_PASSWORD)).body.data?.me?.id ?? '';
+
+    const appsOf = async (): Promise<{ id: string; route: string; categoryId: string; sectionId: string | null }[]> =>
+      (
+        (await get('/platform/applications?pageSize=100', token)).body as {
+          data: { id: string; route: string; categoryId: string; sectionId: string | null }[];
+        }
+      ).data;
+    const sectionsOf = async (): Promise<{ id: string; name: { en: string } }[]> =>
+      (
+        (await get('/platform/application-sections?pageSize=100', token)).body as {
+          data: { id: string; name: { en: string } }[];
+        }
+      ).data;
+
+    const payroll = (await sectionsOf()).find((x) => x.name.en === 'Payroll');
+    expect(payroll, 'the Payroll section exists').toBeDefined();
+
+    // Put `/payroll/runs` back in the state PY-6 left it in — entitled, visible, ungrouped —
+    // while `/payroll/pay-items` stays where PY-1 filed it.
+    const runs = (await appsOf()).find((a) => a.route === '/payroll/runs');
+    const ungrouped = await request(app)
+      .patch('/api/v1/platform/applications/reorder')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ categoryId: runs?.categoryId, sectionId: null, applicationIds: [runs?.id] });
+    expect(ungrouped.status).toBe(200);
+
+    const before = await appsOf();
+    expect(before.find((a) => a.route === '/payroll/runs')?.sectionId).toBeNull();
+    expect(before.find((a) => a.route === '/payroll/pay-items')?.sectionId).toBe(payroll?.id);
+
+    await seedApplicationSections(adminId);
+
+    // The page the release added is now in the group that names it…
+    const after = await appsOf();
+    expect(after.find((a) => a.route === '/payroll/runs')?.sectionId).toBe(payroll?.id);
+    // …and the one that was already there was not disturbed on the way.
+    expect(after.find((a) => a.route === '/payroll/pay-items')?.sectionId).toBe(payroll?.id);
+
+    // No page is claimed by two groups: `sectionId` holds one value, so filing moves rather than
+    // copies — asserted over the whole catalog, not just the two rows above.
+    const grouped = after.filter((a) => a.sectionId !== null).map((a) => a.route);
+    expect(new Set(grouped).size).toBe(grouped.length);
+
+    // And running it again writes nothing further.
+    const settled = await appsOf();
+    await seedApplicationSections(adminId);
+    expect(await appsOf()).toEqual(settled);
   });
 
   /**

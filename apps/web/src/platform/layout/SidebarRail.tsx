@@ -24,6 +24,7 @@ import { resolveNavIcon } from '../navigation/app-icon';
 import { useNavPrefs } from '../navigation/NavPrefs';
 import {
   flattenApps,
+  moduleApps,
   moduleEntryRoute,
   moduleOfPathname,
   requiresExactMatch,
@@ -31,7 +32,7 @@ import {
   type NavApp,
   type NavModule,
 } from '../navigation/nav-model';
-import { AppRow, AppWithChildren, StateShell } from './nav-rows';
+import { AppRow, AppWithChildren, NavSectionGroup, StateShell } from './nav-rows';
 
 const PANEL_KEY = 'ecms.nav.panelCollapsed';
 const LAST_MODULE_KEY = 'ecms.nav.lastModule';
@@ -182,6 +183,8 @@ const ModulePanel = ({
             </ul>
           </section>
         )}
+        {/* Ungrouped rows first — the module's own top level, where a page with no section has
+            always rendered. */}
         <ul className="space-y-px">
           {module.apps.map((a) => (
             <AppWithChildren
@@ -192,6 +195,17 @@ const ModulePanel = ({
             />
           ))}
         </ul>
+        {/* …then the module's groups, through the SAME component the other shell uses. This panel
+            used to render `module.apps` alone, so a page in a section did not appear here at all —
+            a module that had organized every one of its pages showed an empty column. */}
+        {module.sections.map((section) => (
+          <NavSectionGroup
+            key={section.id}
+            section={section}
+            allRoutes={allRoutes}
+            onNavigate={onNavigate}
+          />
+        ))}
       </nav>
     </div>
   );
@@ -210,7 +224,12 @@ const RailShell = ({
   const { pinned } = useNavPrefs();
   const { pathname } = useLocation();
 
-  const modules = useMemo(() => toModules(data).filter((m) => m.apps.length > 0), [data]);
+  // A module counts as present when it has ANY page — grouped or not. Counting only `apps` meant
+  // a module whose pages were all in sections vanished from the rail entirely.
+  const modules = useMemo(
+    () => toModules(data).filter((m) => moduleApps(m).length > 0),
+    [data],
+  );
   const urlModuleId = useMemo(() => moduleOfPathname(modules, pathname), [modules, pathname]);
 
   const [lastModuleId, setLastModuleId] = useState<string | null>(loadLastModule);

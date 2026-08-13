@@ -1688,6 +1688,9 @@ const en: Record<string, string> = {
   'employees.actions.note': 'Note',
   'employees.actions.reason': 'Reason',
   'employees.actions.reasonRequired': 'A reason is required.',
+  // The overlap warning (C1) — informational; it never stops the action.
+  'employees.actions.overlap.title': 'Already scheduled on the same details:',
+  'employees.actions.overlap.order': 'Both will apply, in effective-date order.',
   'employees.actions.promotion.title': 'Promote',
   'employees.actions.promotion.newTitle': 'New job title',
   'employees.actions.promotion.titleRequired': 'Choose the new job title.',
@@ -5764,6 +5767,8 @@ const ar: Record<string, string> = {
   'employees.actions.note': 'ملاحظة',
   'employees.actions.reason': 'السبب',
   'employees.actions.reasonRequired': 'السبب مطلوب.',
+  'employees.actions.overlap.title': 'يوجد إجراء مجدول يمسّ نفس البيانات:',
+  'employees.actions.overlap.order': 'سيُطبّق الاثنان بترتيب تاريخ السريان.',
   'employees.actions.promotion.title': 'ترقية',
   'employees.actions.promotion.newTitle': 'المسمى الوظيفي الجديد',
   'employees.actions.promotion.titleRequired': 'اختر المسمى الوظيفي الجديد.',

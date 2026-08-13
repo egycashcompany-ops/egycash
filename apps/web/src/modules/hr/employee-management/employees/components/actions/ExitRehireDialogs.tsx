@@ -90,6 +90,9 @@ export const ExitDialog = ({ employee, open, onClose }: DialogProps): JSX.Elemen
       title={t('employees.actions.exit.title')}
       description={t('employees.actions.exit.loginNote')}
       submitting={action.isPending}
+      // The exit TYPE is chosen inside this dialog, so the warning follows the current pick —
+      // though every exit type writes the same fields, so in practice it never changes.
+      overlap={{ employeeId: employee.id, type }}
       danger
       onSubmit={() => void submit()}
     >
@@ -254,6 +257,7 @@ export const RehireDialog = ({ employee, open, onClose }: DialogProps): JSX.Elem
       title={t('employees.actions.rehire.title')}
       description={t('employees.actions.rehire.body', { number: employee.employeeNumber })}
       submitting={action.isPending}
+      overlap={{ employeeId: employee.id, type: 'rehire' }}
       onSubmit={() => void submit()}
     >
       {employee.exit !== null && !employee.exit.eligibleForRehire && (

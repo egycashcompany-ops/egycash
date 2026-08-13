@@ -868,3 +868,112 @@ describe('branch-code change propagation (HR3-A)', () => {
     expect((await reread(other.id)).code).toBe(before.code);
   }, 120_000);
 });
+
+// ── The overlap warning (C1) — HR3-B ────────────────────────────────────────
+//
+// The design's rule: *"creating an action touching fields a pending scheduled action also
+// touches surfaces a warning; application order remains strict effective-date order."*
+//
+// Two things must hold, and the second matters more than the first: the warning must SEE a real
+// collision, and it must never turn into a refusal. A scheduled raise and a promotion that also
+// raises are both legitimate; the engine applies them in effective-date order and always did.
+describe('personnel actions — overlap warning (C1)', () => {
+  const overlaps = (id: string, type: string, token = adminToken) =>
+    request(app)
+      .get(`/api/v1/hr/employees/${id}/actions/overlaps?type=${type}`)
+      .set('Authorization', `Bearer ${token}`);
+
+  it('sees a scheduled salary change from a promotion, and not from an unrelated action', async () => {
+    const emp = await hire();
+    const inTwoDays = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString();
+
+    // Nothing is scheduled yet — an employee with only its applied `hire` action collides with
+    // nothing, which is what proves the answer is about SCHEDULED work.
+    const quiet = await overlaps(emp.id, 'suspend');
+    expect(quiet.status).toBe(200);
+    expect(quiet.body.data).toEqual([]);
+
+    const scheduled = await action(emp.id, 'compensation', {
+      type: 'salaryChange',
+      salary: { amount: 12_345, currency: 'EGP' },
+      effectiveDate: inTwoDays,
+      version: emp.version,
+    });
+    expect(scheduled.status, JSON.stringify(scheduled.body)).toBe(201);
+    expect((scheduled.body.data as EmployeeActionDto).status).toBe('scheduled');
+
+    // A promotion may carry a salary, so it meets the scheduled change on exactly that field.
+    const seen = await overlaps(emp.id, 'promotion');
+    expect(seen.status).toBe(200);
+    const rows = seen.body.data as { actionId: string; type: string; fields: string[] }[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.actionId).toBe((scheduled.body.data as EmployeeActionDto).id);
+    expect(rows[0]?.type).toBe('salaryChange');
+    expect(rows[0]?.fields).toEqual(['employment.salary']);
+
+    // A manager change writes nothing a salary change writes.
+    const unrelated = await overlaps(emp.id, 'managerChange');
+    expect(unrelated.status).toBe(200);
+    expect(unrelated.body.data).toEqual([]);
+  }, 120_000);
+
+  // THE POINT OF THE PHASE. A warning that quietly became a gate would be a much bigger change
+  // than the one the design asked for, so it is asserted rather than assumed.
+  it('warns without refusing — the promotion still goes through', async () => {
+    const emp = await hire();
+    const inTwoDays = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString();
+    const scheduled = await action(emp.id, 'compensation', {
+      type: 'salaryChange',
+      salary: { amount: 9_000, currency: 'EGP' },
+      effectiveDate: inTwoDays,
+      version: emp.version,
+    });
+    expect(scheduled.status).toBe(201);
+    expect((await overlaps(emp.id, 'promotion')).body.data).toHaveLength(1);
+
+    const current = await reread(emp.id);
+    const promoted = await action(emp.id, 'employment', {
+      type: 'promotion',
+      jobTitleId: JOB_TITLE_ID,
+      version: current.version,
+    });
+    expect(promoted.status, JSON.stringify(promoted.body)).toBe(201);
+    expect((promoted.body.data as EmployeeActionDto).status).toBe('applied');
+    // And the scheduled one is untouched — still pending, still due on its own date.
+    expect((await overlaps(emp.id, 'promotion')).body.data).toHaveLength(1);
+  }, 120_000);
+
+  it('stops warning once the scheduled action is cancelled', async () => {
+    const emp = await hire();
+    const inTwoDays = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString();
+    const scheduled = await action(emp.id, 'compensation', {
+      type: 'salaryChange',
+      salary: { amount: 7_500, currency: 'EGP' },
+      effectiveDate: inTwoDays,
+      version: emp.version,
+    });
+    expect(scheduled.status).toBe(201);
+    const actionId = (scheduled.body.data as EmployeeActionDto).id;
+
+    const current = await reread(emp.id);
+    const cancelled = await request(app)
+      .post(`/api/v1/hr/employees/${emp.id}/actions/${actionId}/cancel`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: current.version });
+    expect(cancelled.status).toBe(200);
+
+    expect((await overlaps(emp.id, 'salaryChange')).body.data).toEqual([]);
+  }, 120_000);
+
+  // It reads the same scheduled actions the history endpoint already returns, so it follows the
+  // same key and adds no permission of its own.
+  it('is readable by a holder of employee.view, and validates the type', async () => {
+    const emp = await hire();
+    expect((await overlaps(emp.id, 'promotion', viewerToken)).status).toBe(200);
+    expect((await overlaps(emp.id, 'notAnActionType')).status).toBe(400);
+    const missing = await request(app)
+      .get(`/api/v1/hr/employees/${emp.id}/actions/overlaps`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(missing.status).toBe(400);
+  }, 120_000);
+});

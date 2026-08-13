@@ -3,6 +3,7 @@
 // override — D2) are enforced here/in the service from the caller's effective permissions.
 import { type Request, type Response } from 'express';
 import {
+  type ActionOverlapsQuery,
   type CancelEmployeeAction,
   type ChangeEmployeeStatus,
   type CompensationAction,
@@ -103,6 +104,17 @@ export const listEmployeeActions = async (req: Request, res: Response): Promise<
     await employeeActionService.list(params.id, query, scopeSelector(ctx, 'employee.view')),
     (d) => toEmployeeActionDto(d, { compensationVisible: visible }),
   );
+};
+
+/**
+ * The overlap warning (C1). Follows `employee.view` like the history it is drawn from — it
+ * returns a subset of the scheduled actions that endpoint already returns, with no payloads,
+ * so it can disclose nothing the caller could not already read.
+ */
+export const listActionOverlaps = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { query, params } = validated<never, ActionOverlapsQuery, IdParam>(req);
+  ok(res, await employeeActionService.overlapsFor(params.id, query.type, scopeSelector(ctx, 'employee.view')));
 };
 
 /**

@@ -308,3 +308,28 @@ export interface EmployeeActionDto {
   createdAt: string;
   updatedAt: string;
 }
+
+// ── Overlap warning (C1) ─────────────────────────────────────────────────────
+//
+// The design's rule: *"creating an action touching fields a pending scheduled action also
+// touches surfaces a WARNING; application order remains strict effective-date order."*
+//
+// A WARNING, never a refusal — and the distinction is the whole point. A raise scheduled for the
+// first and a promotion for the fifteenth both write `employment.salary` and are both perfectly
+// ordinary; what is not ordinary is scheduling the second without knowing the first is there.
+// The server answers "what would this collide with", the caller decides.
+//
+// This asks about an action that does NOT exist yet, so the query carries the intended TYPE
+// rather than an id.
+
+export const ActionOverlapsQuerySchema = z.object({ type: EmployeeActionTypeSchema }).strict();
+export type ActionOverlapsQuery = z.infer<typeof ActionOverlapsQuerySchema>;
+
+/** One pending scheduled action the intended one would meet, and where they meet. */
+export interface ActionOverlapDto {
+  actionId: string;
+  type: EmployeeActionType;
+  effectiveDate: string;
+  /** The employee fields BOTH write. Never empty — a row with nothing shared is not an overlap. */
+  fields: string[];
+}

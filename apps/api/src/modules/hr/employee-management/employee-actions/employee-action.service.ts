@@ -14,9 +14,11 @@ import {
   canTransitionEmployeeStatus,
   employeeBaseStatus,
   EMPLOYEE_EXIT_TYPES,
+  type ActionOverlapDto,
   type CancelEmployeeAction,
   type ChangeEmployeeStatus,
   type CompensationAction,
+  type EmployeeActionType,
   type EmployeeExitType,
   type EmploymentAction,
   type ExitAction,
@@ -46,6 +48,7 @@ import {
   type EmployeeEntity,
   type EmploymentDetails,
 } from '../employees';
+import { overlappingFields } from './action-fields';
 import { employeeActionRepository } from './employee-action.repository';
 import {
   EmployeeActionModel,
@@ -1017,6 +1020,39 @@ class EmployeeActionService {
     // Visibility follows the employee itself (branch/department scoping).
     await employeeRepository.getById(employeeId, scope);
     return employeeActionRepository.listForEmployee(employeeId, query);
+  }
+
+  /**
+   * The overlap warning (C1) — what an action of this type would meet if created now.
+   *
+   * READ-ONLY, AND DELIBERATELY NOT A GATE. `createAction` is unchanged: two actions writing one
+   * field is legal and stays legal, applied in strict effective-date order. This only lets the
+   * person about to add the second one see the first, which is the difference between a
+   * deliberate second raise and an accidental one.
+   *
+   * Nothing is disclosed that `list` does not already disclose to the same permission — these
+   * are the same scheduled actions, minus their payloads.
+   */
+  async overlapsFor(
+    employeeId: string,
+    type: EmployeeActionType,
+    scope: ScopeSelector,
+  ): Promise<ActionOverlapDto[]> {
+    await employeeRepository.getById(employeeId, scope);
+    const scheduled = await employeeActionRepository.findScheduled(employeeId);
+    return scheduled.flatMap((action) => {
+      const fields = overlappingFields(type, action.type);
+      return fields.length === 0
+        ? []
+        : [
+            {
+              actionId: String(action._id),
+              type: action.type,
+              effectiveDate: action.effectiveDate.toISOString(),
+              fields,
+            },
+          ];
+    });
   }
 
   /**

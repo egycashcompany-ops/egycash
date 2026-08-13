@@ -1,10 +1,10 @@
 # Payslip export / PDF (PY-12)
 
-**Status: investigation + design. No runtime code.** There is a complete architectural precedent
-for how a payslip PDF *would* be built, and **no requirement anywhere in the repository that one be
-built**. The brief's rule applies: do not invent a requirement the code or design does not prove.
+**Status: CLOSED as a documented design — no implementation, by decision.** There is a complete
+architectural precedent for how a payslip PDF *would* be built, and no requirement anywhere in the
+repository that one be built. The owner has now decided the same way (§5).
 
-**Base:** `main` at `cd785ca`.
+**Base:** `main` at `cd785ca`; closed on `main` after HR3-C.
 
 ---
 
@@ -77,24 +77,52 @@ So if this is ever built, the risky part is already done.
 | a worker job | rendering belongs off the request path, as Contracts does it |
 | an environment dependency | `CHROMIUM_PATH`, absent in dev/CI by design |
 
-## 5. Decisions required
+## 5. The frozen decisions (approved)
 
-- **D1 — is a payslip PDF wanted at all?** Nothing implies it. An employee can already read their
-  payslip (PY-11) and print the page from the browser, which is exactly the *"print-view fallback"*
-  the PDF driver's own comment names as sufficient for exports.
-- **D2 — if yes: a stored immutable file, or rendered on demand?** Contracts stores one file per
-  version because a contract is signed. A payslip is not signed; rendering on demand from an
-  immutable snapshot gives the same determinism with no storage and no lifecycle. **Recommend on
-  demand** if D1 = yes.
-- **D3 — who may print?** `payslip.print` for the administrative path. For `/me`, own-scope by
-  construction argues for no key — consistent with PY-11.
-- **D4 — is a print VIEW (HTML, no chromium) enough?** It needs no driver, no storage, no worker
-  and no environment variable. If the answer to D1 is "people want a piece of paper", this is the
-  cheaper half and could ship alone.
+| # | decision |
+|---|---|
+| **1** | **No PDF at this time.** |
+| **2** | The existing payslip screen plus **browser print** are sufficient for the current stage. |
+| **3** | **Add nothing on speculation** — no endpoint, no permission, no storage, no Chromium infrastructure for a future possibility. |
+| **4** | PDF is documented as a **future capability / a phase of its own**. |
+| **5** | When PDF is eventually built, it **must render from the payslip snapshot**, never from the employee's current data. |
 
-## 6. Recommendation
+### How they answer the open questions
 
-**Do not build it now.** PY-11 delivered the access; a browser prints it. If a requirement appears —
-a bank needs a signed file, an auditor needs an archive, an employee needs a stamped copy — D2's
-"render on demand from the snapshot" is a small, well-precedented phase, and PY-7 already removed
-the only hard part.
+- **D1 — is a PDF wanted at all?** → **Not now** (decision 1). §4's whole cost column is therefore
+  not incurred: no `payslip.print` key, no worker job, no `CHROMIUM_PATH` dependency, no Files
+  lifecycle (decision 3).
+- **D2 — stored file or rendered on demand?** → Deferred to the future phase (decision 4). The
+  recommendation stands: **on demand**, since a payslip is not signed and the snapshot already
+  makes rendering deterministic.
+- **D3 — who may print?** → Deferred with D2. Note that decision 2 makes it moot today: browser
+  print is available to whoever can already open the payslip, which PY-11 settled.
+- **D4 — is an HTML print view enough?** → **Yes** (decision 2), and it needs nothing built: the
+  PY-11 page prints.
+
+### Decision 5 is already satisfied
+
+This is worth stating plainly because it is the requirement that would be expensive to retrofit and
+is instead already paid for. `PayslipDto` is self-contained by construction (§3): the employee's
+identity as it stood at issue, the currency, the basic salary, the day counts, every line with its
+own derivation, the totals in minor units, the leave facts and the run id. A future renderer needs
+**one document read** and touches nothing live.
+
+So decision 5 is not a constraint on future work so much as a description of what PY-7 already
+built. Whoever picks the PDF phase up inherits the hard part finished.
+
+## 6. Outcome
+
+**Closed without implementation**, matching the recommendation this document opened with. PY-11
+delivered the access; a browser prints it.
+
+### The future capability, when a requirement appears
+
+A real trigger would be a bank needing a signed file, an auditor needing an archive, or an employee
+needing a stamped copy. At that point the phase is small and fully precedented:
+
+1. render on demand from the `PayslipDto` snapshot (decision 5 — and §3 says this already works);
+2. follow `contract.print` for the permission shape, and answer the ESS `/me` case explicitly;
+3. reuse `platform/pdf` — which stays disabled without `CHROMIUM_PATH`, so dev and CI stay hermetic.
+
+Nothing in the repository anticipates that work today, and by decision 3 nothing should.

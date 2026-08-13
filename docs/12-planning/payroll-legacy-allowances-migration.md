@@ -1,10 +1,11 @@
 # Legacy `employment.allowances[]` → Pay Items (PY-10)
 
-**Status:** investigation + convertibility tooling delivered. The conversion itself is **blocked on
-two decisions with money attached** (D1, D2 below). Nothing in this phase writes, deletes or
-migrates a single row.
+**Status: CLOSED.** The decisions below are **frozen and approved by the owner**; §5 records how each
+open question was answered. Nothing here writes, deletes or migrates a single row — under the
+approved decisions there is no data migration to run, and the phase closes as a rule that is now
+enforced in code.
 
-**Base:** `main` at `cd785ca`.
+**Base:** `main` at `cd785ca`; closed on `main` after HR3-C.
 
 ---
 
@@ -72,53 +73,62 @@ they are one allowance is a judgement about this organization's payroll that no 
 should make. `ambiguous` (several items carry the name) blocks convertibility exactly as
 `unmapped` does.
 
-## 5. Decisions required before any data moves
+## 5. The frozen decisions (approved)
 
-### D1 — Does converting mean these amounts start being **paid**?
+| # | decision |
+|---|---|
+| **1** | A legacy-allowance migration **is not a payment** and creates **no new financial entitlement**. |
+| **2** | **No automatic retroactivity.** Pay Items begin at an explicit transition/migration date. |
+| **3** | `employment.allowances[]` **does not become a payroll source** — not during the transition, not after it. |
+| **4** | Once migration is complete, **Pay Items are the operational Single Source of Truth** for payroll. |
+| **5** | The legacy `allowances[]` is **not deleted**. It stays as historical/audit data and enters no payroll calculation after the transition date. |
+| **6** | **No additional financial rule** beyond these is to be invented. |
 
-Payroll has never included them (§3.2).
+### How they answer the open questions
 
-- **(a) Yes** — the allowance was always real pay and payroll simply did not know about it. Then
-  conversion raises everyone's compensation total, and the first run after it prices differently.
-- **(b) No** — convert as `archived`/zero, or not at all. Then the migration is bookkeeping and
-  the `legacyAllowancesIgnored` warning could simply be retired instead.
+- **D1 — does converting mean these amounts start being paid?** → **No** (decision 1). This was the
+  question with money attached, and it is now settled in the direction that changes nobody's pay.
+- **D2 — from which date?** → Only from an **explicit transition date** (decision 2). No hire-date
+  backfill, and therefore no collision with PY-9's frozen-period guard.
+- **D3 — unmapped names?** → Unchanged: `readinessOf().convertible` stays false until HR creates the
+  missing catalog items. Because of decision 1 this is now a **readiness report**, not a gate on a
+  payment; `legacy-allowance-mapping.ts` produces the work list.
+- **D4 — do the producers stop?** → They do not need to. Decision 3 removes the reason: offers,
+  direct registration and `salaryChange` may keep writing the array because it is the **offer/HR
+  record**, and Pay Items are the **payroll record** (decision 4). Two sources with two distinct
+  meanings, deliberately, rather than one source achieved by breaking the offer contract.
+- **D5 — when may the array be deleted?** → **Never** (decision 5). It is history.
 
-**No recommendation.** This is a statement about what this organization owes people, and nothing in
-the code implies either answer.
+### What "closed" is enforced by
 
-### D2 — If (a): from which date?
+Decision 3 is the one that can be broken by accident — it is one property access wide, and the
+array sits on the same document as the salary. So it is enforced **twice**, the way every other
+seam in this repository is:
 
-There is no date in the data — the brief forbids inventing one.
+1. **eslint** — `no-restricted-syntax` over `apps/api/src/modules/hr/payroll/**`, forbidding any
+   `employment.allowances` member expression. One file is exempted: `compensation.service.ts`,
+   which raises the warning.
+2. **`compensation/legacy-allowances-seam.spec.ts`** — reads the payroll sources and asserts that
+   exactly one file mentions the array, that all it does there is `.length > 0` (never `.amount`,
+   `map(` or `reduce(`), that the pure engine receives a `boolean` and never the rows, and that
+   payslips and runs never mention it at all. Then it computes the same period twice, with and
+   without the list, and asserts the earnings, deductions, deferred lines and all three totals are
+   **identical** — the only difference being the `legacyAllowancesIgnored` warning.
 
-- **(a) The migration date** (or the first day of the first period with no frozen run). Invents
-  nothing, changes no historical figure, and is consistent with PY-9: the past is frozen and
-  backdating into it is refused. **This is the only option that asserts nothing false**, and is
-  what I would implement if D1 = yes.
-- **(b) The employee's hire date.** Asserts the current allowance applied since hire — false for
-  anyone whose allowances ever changed, and it would collide with PY-9's guard on every frozen
-  month.
-
-### D3 — What happens to unmapped names?
-
-`readinessOf().convertible` is false until every row maps. Either HR creates the missing catalog
-items first (the honest path), or the migration creates them from free text — which means
-generating codes from Arabic names and inventing a `kind`/`calcBasis` per item. **Recommend the
-first**; the tooling above produces the exact work list.
-
-### D4 — Do the producers stop? (§3.1)
-
-Without this there is no "single source", only a copy. Options: leave offers as they are and accept
-that `employment.allowances[]` remains the *offer record* while pay items are the *payroll record*
-(two sources, deliberately, with distinct meanings) — or change the offer contract in a Recruitment
-phase of its own.
-
-### D5 — When may the legacy array be deleted?
-
-Only after D1–D4 and a green `convertible`. Until then the array stays and stays readable; the web
-employment tab keeps showing it.
+The second half is stated as an identity between two runs rather than as expected numbers on
+purpose: it stays true when the pricing rules change, which is exactly when a regression would
+otherwise slip through.
 
 ## 6. What was NOT done, and why
 
-No migration script, no writes, no deletion, no change to the offer or registration surfaces, no
-change to what payroll pays. Every one of those depends on D1, and answering D1 inside an
-autonomous phase would be inventing a requirement about money.
+No migration script, no writes, no deletion, no change to the offer or registration surfaces, and
+**no change to what payroll pays** — decision 1 is precisely that payroll's figures do not move.
+
+The `legacyAllowancesIgnored` warning is **kept**, not retired. Under these decisions it says
+exactly the right thing: this employee carries allowances on the employment tab, and payroll does
+not price them. Retiring it would remove the only place the system admits to the two records.
+
+Converting an organization's existing allowance rows into pay-item assignments remains available as
+ordinary configuration work — create the catalog items `readinessOf()` reports as missing, then
+assign them from the agreed transition date (decision 2). That is data entry under decisions
+already made, not a phase.

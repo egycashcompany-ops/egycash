@@ -417,6 +417,34 @@ describe('one live loan at a time (D3)', () => {
   }, 120_000);
 });
 
+describe('a stale caller is refused before anything is written', () => {
+  /**
+   * The interesting half of a disbursement is the SCHEDULE, so a version check that only ran on
+   * the final status update would hand back a 409 with the instalments already created — the one
+   * outcome worse than either answer alone.
+   */
+  it('leaves no schedule behind when the version is stale', async () => {
+    const approved = await approvedLoan({
+      type: 'loan',
+      principal: 900,
+      currency: 'EGP',
+      installmentCount: 3,
+      firstPeriod: '2026-02',
+      reason: 'stale version',
+    });
+    const stale = await disburse(approved.id, {
+      disbursedAt: '2026-01-15',
+      version: approved.version + 5,
+    });
+    expect(stale.status, JSON.stringify(stale.body)).toBe(409);
+
+    const after = await getLoan(approved.id);
+    expect(after.installments).toEqual([]);
+    expect(after.status).toBe('approved');
+    await clearLive();
+  }, 120_000);
+});
+
 describe('disbursement creates the schedule (D5, D10)', () => {
   it('writes instalments that total the principal exactly', async () => {
     const loan = await activeLoan({

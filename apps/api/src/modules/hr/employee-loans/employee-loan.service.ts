@@ -289,6 +289,9 @@ class EmployeeLoanService {
     if (doc.status !== 'approved') {
       throw new BusinessRuleError(`a ${doc.status} loan cannot be disbursed — approve it first`);
     }
+    // Checked BEFORE the schedule is written, not only by the update below: a stale caller must be
+    // refused while nothing has happened yet, rather than after a set of instalments exists.
+    this.assertFresh(doc, input.version);
     // Re-checked at the last possible moment: a month can freeze between the approval and the
     // payment, and a schedule written into a priced month is the failure the freeze exists to stop.
     await this.assertSchedulable(
@@ -383,6 +386,9 @@ class EmployeeLoanService {
     if (doc.status !== 'active') {
       throw new BusinessRuleError(`a ${doc.status} loan has no schedule to reschedule`);
     }
+    // Before anything is cancelled or written: a stale caller is looking at a schedule that has
+    // already moved, and refusing them afterwards would leave the tail rewritten anyway.
+    this.assertFresh(doc, input.version);
 
     const frozen = new Set(await payrollPeriodPort.frozen());
     const planned = await loanInstallmentRepository.plannedForLoan(id);
@@ -471,6 +477,7 @@ class EmployeeLoanService {
     if (doc.status !== 'active') {
       throw new BusinessRuleError(`a ${doc.status} loan has no balance to settle`);
     }
+    this.assertFresh(doc, input.version);
     const remaining = remainingMinorOf(doc);
     const paid = toMinorUnits(input.amount);
     if (paid !== remaining) {
@@ -618,6 +625,21 @@ class EmployeeLoanService {
       throw new BusinessRuleError(
         `${first}…${last} does not fall inside a single employment period of this employee`,
       );
+    }
+  }
+
+  /**
+   * The optimistic version, checked BEFORE the writes rather than only by the final update.
+   *
+   * Three operations here write instalments before they touch the loan — disbursement creates a
+   * schedule, a reschedule rewrites its tail, a settlement cancels what is left — and each of
+   * those is the interesting half of the operation. Letting `updateById` be the only version check
+   * would mean a stale caller got their rows written and then a 409, which is the one outcome
+   * worse than either answer alone.
+   */
+  private assertFresh(doc: EmployeeLoanDoc, version: number): void {
+    if (version !== doc.__v) {
+      throw new ConflictError('this loan was modified — reload and retry');
     }
   }
 

@@ -29,6 +29,7 @@ import { migrateEmployeeFiles } from './employee-management/employee-file';
 import { migrateRecruitmentLegacy } from './recruitment/recruitment.migration';
 import { ensureLeaveAttachmentsCategory } from './leave-management/leave-requests';
 import { ensureEmployeeActionAttachmentsCategory } from './employee-management/employee-actions';
+import { ensureAdjustmentAttachmentsCategory } from './payroll/adjustments';
 import { migrateLeaveModule } from './leave-management/leave.migration';
 import { migrateAttendance } from './attendance/attendance.migration';
 
@@ -472,6 +473,9 @@ export const seedHrRecruitment = async (): Promise<void> => {
   await ensureLeaveAttachmentsCategory();
   // Personnel Actions (frozen employee design §3 / HR3-C): the supporting-document category.
   await ensureEmployeeActionAttachmentsCategory();
+  // Payroll adjustments (P-HR-04): the supporting-document category — the memo behind a bonus,
+  // the letter behind a penalty.
+  await ensureAdjustmentAttachmentsCategory();
   await migrateLeaveModule();
   // Attendance (frozen attendance design v1.1 §12): the default GENERAL shift.
   await migrateAttendance();

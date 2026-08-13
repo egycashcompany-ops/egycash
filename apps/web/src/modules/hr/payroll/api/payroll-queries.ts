@@ -2,6 +2,9 @@
 // each employee's assignments come to over a period (ADR-013).
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  type CancelPayrollAdjustment,
+  type CreatePayrollAdjustment,
+  type DecidePayrollAdjustment,
   type CreateEmployeePayItem,
   type CreatePayItem,
   type CreatePayrollRun,
@@ -165,3 +168,50 @@ export const useMyPayslips = (params: Record<string, string | number>) =>
     queryFn: () => api.listMyPayslips(params),
     placeholderData: (prev) => prev,
   });
+
+// ── Payroll adjustments (P-HR-04) ───────────────────────────────────────────
+// Keyed per employee: a bonus is that person's money, and the tab that shows it is on their file.
+const ADJUSTMENTS = 'payrollAdjustments';
+
+export const useEmployeeAdjustments = (
+  employeeId: string,
+  params: Record<string, string | number>,
+) =>
+  useQuery({
+    queryKey: [MODULE, ADJUSTMENTS, employeeId, params],
+    queryFn: () => api.listEmployeeAdjustments(employeeId, params),
+    enabled: employeeId !== '',
+    placeholderData: (prev) => prev,
+  });
+
+/** Every write refreshes the list AND the compensation figure the tab beside it shows. */
+const useAdjustmentMutation = <TVars>(employeeId: string, fn: (vars: TVars) => Promise<unknown>) => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: [MODULE, ADJUSTMENTS, employeeId] });
+      void client.invalidateQueries({ queryKey: [MODULE, 'compensation', employeeId] });
+    },
+  });
+};
+
+export const useCreateAdjustment = (employeeId: string) =>
+  useAdjustmentMutation(employeeId, (body: CreatePayrollAdjustment) =>
+    api.createAdjustment(employeeId, body),
+  );
+
+export const useSubmitAdjustment = (employeeId: string) =>
+  useAdjustmentMutation(employeeId, ({ id, version }: { id: string; version: number }) =>
+    api.submitAdjustment(employeeId, id, version),
+  );
+
+export const useDecideAdjustment = (employeeId: string) =>
+  useAdjustmentMutation(employeeId, ({ id, body }: { id: string; body: DecidePayrollAdjustment }) =>
+    api.decideAdjustment(employeeId, id, body),
+  );
+
+export const useCancelAdjustment = (employeeId: string) =>
+  useAdjustmentMutation(employeeId, ({ id, body }: { id: string; body: CancelPayrollAdjustment }) =>
+    api.cancelAdjustment(employeeId, id, body),
+  );

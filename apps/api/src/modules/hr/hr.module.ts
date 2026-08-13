@@ -58,6 +58,9 @@ import {
   buildPayrollRunsRouter,
   buildPayslipsRouter,
   buildRunPayslipsRouter,
+  buildEmployeeAdjustmentsRouter,
+  buildPayrollAdjustmentsRouter,
+  hrAdjustmentFileAuthorizers,
 } from './payroll';
 import { addDays, cairoToday } from './shared/business-date';
 import { registerHrIdentitySeams } from './employee-management/employees/identity-seams';
@@ -538,6 +541,28 @@ const payrollRunPermissions = declarePermissions(
   'hr.payroll-runs',
 );
 
+/**
+ * Payroll adjustments — bonuses and penalties (P-HR-04). THREE keys, and the split is the design.
+ *
+ * `create` records, edits a draft and cancels; `approve` decides. One key held by one person is
+ * not a two-person rule, which is the whole of D1 — and no existing key fits: `payItem.*` governs
+ * the CATALOG (what kinds of pay exist), while this governs a decision to pay one person once, and
+ * `employee.manageCompensation` would let whoever edits an allowance approve their own bonus.
+ */
+const payrollAdjustmentPermissions = declarePermissions(
+  'hr',
+  'payrollAdjustment',
+  { en: 'payroll adjustments', ar: 'مؤثرات الرواتب' },
+  ['view', 'create'],
+  [
+    {
+      action: 'approve',
+      name: { en: 'Approve payroll adjustments', ar: 'اعتماد مؤثرات الرواتب' },
+    },
+  ],
+  'hr.payroll-adjustments',
+);
+
 const attendancePermissions = [
   ...attendanceShiftAdminPermissions,
   ...attendanceAssignPermissions,
@@ -611,6 +636,7 @@ export const hrPermissions: PermissionDef[] = [
   ...attendancePermissions,
   ...payItemPermissions,
   ...payrollRunPermissions,
+  ...payrollAdjustmentPermissions,
 ];
 
 /**
@@ -774,6 +800,13 @@ export const hrPages: PageDef[] = [
     route: '/payroll/runs',
     sortOrder: 220,
   },
+  {
+    id: 'hr.payroll-adjustments',
+    moduleId: 'hr',
+    name: { en: 'Payroll adjustments', ar: 'مؤثرات الرواتب' },
+    route: '/payroll/adjustments',
+    sortOrder: 230,
+  },
 ];
 
 export const hrModule: ModuleManifest = {
@@ -802,6 +835,8 @@ export const hrModule: ModuleManifest = {
     { prefix: '/hr/employees', router: buildCompensationRouter() },
     { prefix: '/hr/employees', router: buildEmployeePayItemsRouter() },
     { prefix: '/hr/employees', router: buildEmployeeActionsRouter() },
+    // …and the per-employee surface, because a bonus is that person's money.
+    { prefix: '/hr/employees', router: buildEmployeeAdjustmentsRouter() },
     { prefix: '/hr/employees', router: buildLeaveBalancesRouter() },
     { prefix: '/hr/employees', router: buildEmployeesRouter() },
     { prefix: '/hr/hiring-documents', router: buildHiringDocumentsRouter() },
@@ -829,6 +864,8 @@ export const hrModule: ModuleManifest = {
     // compensation key the payslip reads under.
     { prefix: '/hr/payroll/runs', router: buildRunPayslipsRouter() },
     { prefix: '/hr/payroll/payslips', router: buildPayslipsRouter() },
+    // P-HR-04 — the organization-wide list the approval queue reads.
+    { prefix: '/hr/payroll/adjustments', router: buildPayrollAdjustmentsRouter() },
   ],
   collections: [
     'hr_applicants',
@@ -867,11 +904,12 @@ export const hrModule: ModuleManifest = {
     'hr_payroll_runs',
     'hr_payroll_leave_snapshots',
     'hr_payslips',
+    'hr_payroll_adjustments',
   ],
   // ADR-023 — HR answers the Files service's "may this caller see the owning entity?" for the
   // documents personnel actions are created with (HR3-C). One type, minted by this phase, so no
   // file already filed against an employee changes behaviour.
-  fileEntityAuthorizers: hrFileEntityAuthorizers,
+  fileEntityAuthorizers: [...hrFileEntityAuthorizers, ...hrAdjustmentFileAuthorizers],
   eventSubscriptions: [
     {
       // Contracts A13/D8 — the reliable tier executes in the WORKER: render the PDF

@@ -215,8 +215,14 @@ describe('the compensation vocabulary', () => {
     ]);
   });
 
-  it('pins the two line origins — assigned, or derived from a run', () => {
-    expect([...COMPENSATION_LINE_ORIGINS]).toEqual(['payItem', 'leaveSnapshot']);
+  /**
+   * Three origins, and each answers a different question about where a figure came from:
+   * `payItem` — a rate somebody assigned; `leaveSnapshot` — derived from what a run pinned;
+   * `adjustment` — a one-off decision for this month alone (P-HR-04), the only one that is never
+   * prorated. A payslip line that could not say which it was would be a number without a story.
+   */
+  it('pins the three line origins — assigned, derived from a run, or decided', () => {
+    expect([...COMPENSATION_LINE_ORIGINS]).toEqual(['payItem', 'leaveSnapshot', 'adjustment']);
   });
 
   it('accepts a period and refuses anything that is not YYYY-MM', () => {

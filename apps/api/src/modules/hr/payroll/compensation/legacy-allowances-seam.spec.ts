@@ -114,6 +114,7 @@ describe('carrying legacy allowances costs nothing', () => {
       },
     ],
     hasLegacyAllowances,
+    adjustments: [],
     attendance: null,
     leave: null,
   });

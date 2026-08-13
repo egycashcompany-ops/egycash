@@ -9,6 +9,7 @@ import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type Express } from 'express';
 import {
+  type PayrollAdjustmentDto,
   platformPermissions,
   SettingKeys,
   type CompensationEffectsDto,
@@ -1844,4 +1845,222 @@ describe('payslips: the self-service read', () => {
     const res = await me('', adminToken);
     expect(res.status).toBe(404);
   });
+});
+
+// ── P-HR-04 — bonuses and penalties ─────────────────────────────────────────
+//
+// A decision, not a rate: one amount, one month, and only once a second person has agreed to it.
+// The lifecycle is the test — draft, submit, decide, and what each state does to the figure the
+// compensation endpoint reports.
+describe('payroll adjustments (P-HR-04)', () => {
+  const PERIOD = '2026-07'; // a month of its own, so no other block's freeze can reach it
+  let employeeId = '';
+  let approverId = '';
+  let approverToken = '';
+
+  const adjustments = (token = adminToken, query = '') =>
+    request(app)
+      .get(`/api/v1/hr/employees/${employeeId}/adjustments${query}`)
+      .set('Authorization', `Bearer ${token}`);
+  const record = (body: object, token = adminToken) =>
+    request(app)
+      .post(`/api/v1/hr/employees/${employeeId}/adjustments`)
+      .set('Authorization', `Bearer ${token}`)
+      .send(body);
+  const submit = (id: string, version: number, token = adminToken) =>
+    request(app)
+      .post(`/api/v1/hr/employees/${employeeId}/adjustments/${id}/submit`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ version });
+  const decide = (id: string, body: object, token = approverToken) =>
+    request(app)
+      .post(`/api/v1/hr/employees/${employeeId}/adjustments/${id}/decide`)
+      .set('Authorization', `Bearer ${token}`)
+      .send(body);
+  const effectsOf = async (period = PERIOD): Promise<CompensationEffectsDto> => {
+    const res = await request(app)
+      .get(`/api/v1/hr/employees/${employeeId}/compensation?period=${period}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    return res.body.data as CompensationEffectsDto;
+  };
+  /** Record → submit → approve, the whole way through, returning the entry's id. */
+  const approved = async (body: object): Promise<string> => {
+    const created = await record(body);
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const row = created.body.data as PayrollAdjustmentDto;
+    const sent = await submit(row.id, row.version);
+    expect(sent.status, JSON.stringify(sent.body)).toBe(200);
+    const decided = await decide(row.id, {
+      decision: 'approved',
+      version: (sent.body.data as PayrollAdjustmentDto).version,
+    });
+    expect(decided.status, JSON.stringify(decided.body)).toBe(200);
+    return row.id;
+  };
+
+  beforeAll(async () => {
+    const employee = await request(app)
+      .post('/api/v1/hr/employees/direct')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        personal: {
+          identity: {
+            fullNameAr: 'موظف المؤثرات',
+            // Distinct from every other employee this suite creates — 1673 already uses …139….
+            nationalId: '29001011490010',
+            nationality: 'Egyptian',
+          },
+          contact: { primaryPhone: '01174000009' },
+          experience: [],
+          drivingLicenses: [],
+          certifications: [],
+          references: [],
+        },
+        employment: {
+          jobTitleId: JOB_TITLE_ID_PY4,
+          departmentId: DEPARTMENT_ID_PY4,
+          branchId: BRANCH_PY4,
+          employmentType: 'fullTime',
+          probationMonths: 0,
+          startDate: '2024-01-01T00:00:00.000Z',
+          salary: { amount: 10_000, currency: 'EGP' },
+        },
+        hiringDate: '2024-01-01T00:00:00.000Z',
+        entryStatus: 'active',
+      });
+    expect(employee.status, JSON.stringify(employee.body)).toBe(201);
+    employeeId = (employee.body as { data: { id: string } }).data.id;
+
+    // D1 needs a SECOND person: the admin records, this one decides. Both hold the keys; the rule
+    // is about who acted, not about who may.
+    approverId = await mkUser('approver@ecms.local');
+    const role = await rbacService.ensureSystemRole(
+      'super-admin',
+      { en: 'Super Admin', ar: 'مدير النظام الأعلى' },
+      [...platformPermissions, ...hrPermissions].map((p) => p.key),
+    );
+    await rbacService.ensureAssignment(approverId, String(role._id), 'organization');
+    approverToken = await login('approver@ecms.local');
+  }, 120_000);
+
+  it('records a draft, and a draft changes no figure', async () => {
+    const created = await record({
+      period: PERIOD,
+      kind: 'bonus',
+      amount: 5_000,
+      currency: 'EGP',
+      reason: 'project delivery',
+    });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const row = created.body.data as PayrollAdjustmentDto;
+    expect(row.status).toBe('draft');
+
+    // THE POINT OF D1: recorded is not approved, and payroll cannot see it.
+    const effects = await effectsOf();
+    expect(effects.earnings.filter((l) => l.origin === 'adjustment')).toEqual([]);
+
+    const sent = await submit(row.id, row.version);
+    expect(sent.status).toBe(200);
+    expect((sent.body.data as PayrollAdjustmentDto).status).toBe('pendingApproval');
+    // Still nothing — awaiting a decision is not a decision.
+    expect((await effectsOf()).earnings.filter((l) => l.origin === 'adjustment')).toEqual([]);
+
+    const decided = await decide(row.id, {
+      decision: 'approved',
+      version: (sent.body.data as PayrollAdjustmentDto).version,
+    });
+    expect(decided.status, JSON.stringify(decided.body)).toBe(200);
+    expect((decided.body.data as PayrollAdjustmentDto).status).toBe('approved');
+
+    const after = await effectsOf();
+    const line = after.earnings.find((l) => l.origin === 'adjustment');
+    expect(line?.amount).toBe(5_000);
+    // Not prorated: the full amount, whatever day of the month it was decided on.
+    expect(line?.prorationFactor).toBeNull();
+  }, 120_000);
+
+  // The two-person rule, and the reason a permission alone is not one.
+  it('refuses a decision by the person who submitted it', async () => {
+    const created = await record({
+      period: PERIOD,
+      kind: 'bonus',
+      amount: 100,
+      currency: 'EGP',
+      reason: 'self-approval attempt',
+    });
+    const row = created.body.data as PayrollAdjustmentDto;
+    const sent = await submit(row.id, row.version);
+    const denied = await decide(
+      row.id,
+      { decision: 'approved', version: (sent.body.data as PayrollAdjustmentDto).version },
+      adminToken, // the submitter — and a super admin, so the permission is not what stops them
+    );
+    expect(denied.status).toBe(403);
+  }, 120_000);
+
+  it('an approved entry can no longer be edited', async () => {
+    const id = await approved({
+      period: PERIOD,
+      kind: 'penalty',
+      amount: 250,
+      currency: 'EGP',
+      reason: 'equipment damage',
+    });
+    const list = await adjustments();
+    const row = (list.body.data as PayrollAdjustmentDto[]).find((r) => r.id === id);
+    const edited = await request(app)
+      .patch(`/api/v1/hr/employees/${employeeId}/adjustments/${id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ amount: 999, version: row?.version });
+    expect(edited.status).toBe(422);
+  }, 120_000);
+
+  it('refuses a second identical live entry, and allows a different reason', async () => {
+    const body = {
+      period: PERIOD,
+      kind: 'bonus',
+      amount: 300,
+      currency: 'EGP',
+      reason: 'ramadan',
+    };
+    expect((await record(body)).status).toBe(201);
+    expect((await record(body)).status).toBe(409);
+    expect((await record({ ...body, reason: 'ramadan (second half)' })).status).toBe(201);
+  }, 120_000);
+
+  it('refuses a currency the employee is not paid in', async () => {
+    const refused = await record({
+      period: PERIOD,
+      kind: 'bonus',
+      amount: 100,
+      currency: 'USD',
+      reason: 'foreign currency',
+    });
+    expect(refused.status).toBe(422);
+  }, 120_000);
+
+  // D2 — there is no cap, and this states it rather than leaving it to be assumed.
+  it('imposes no ceiling on a penalty, and reports the negative net', async () => {
+    const period = '2026-08';
+    await approved({
+      period,
+      kind: 'penalty',
+      amount: 1_000_000,
+      currency: 'EGP',
+      reason: 'no cap exists',
+    });
+    const effects = await effectsOf(period);
+    expect(effects.netMinor).toBeLessThan(0);
+    expect(effects.warnings).toContain('netBelowZero');
+  }, 120_000);
+
+  it('separates recording from approving', async () => {
+    // The outsider holds neither key.
+    expect((await adjustments(outsiderToken)).status).toBe(403);
+    expect(
+      (await record({ period: PERIOD, kind: 'bonus', amount: 1, currency: 'EGP', reason: 'x' }, outsiderToken))
+        .status,
+    ).toBe(403);
+  }, 120_000);
 });

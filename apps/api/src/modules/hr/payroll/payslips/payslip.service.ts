@@ -183,6 +183,43 @@ class PayslipService {
     });
   }
 
+  /**
+   * The caller's OWN payslips (PY-11) — own-scope by construction.
+   *
+   * The employee is resolved from the login link and nothing the caller sends can widen that, so
+   * this path carries no permission and no scope selector: there is no wider set to reach. It is
+   * the posture `/days/me` and My Leave already have, applied to the one document an employee is
+   * most entitled to see — their own pay.
+   */
+  async listMine(userId: string, query: ListPayslipsQuery): Promise<Paginated<PayslipDoc>> {
+    const employee = await employeeRepository.findByUserIdSystem(userId);
+    if (employee === null) throw new NotFoundError('no employee is linked to this login');
+    return payslipRepository.list({
+      filter: {
+        employeeId: employee._id as Types.ObjectId,
+        ...(query.period === undefined ? {} : { period: query.period }),
+      },
+      page: query.page,
+      pageSize: query.pageSize,
+      sortBy: query.sortBy ?? 'period',
+      sortDir: query.sortDir ?? 'desc',
+      sortableFields: ['createdAt', 'netMinor', 'period'],
+    });
+  }
+
+  /** One of the caller's OWN payslips. Same posture: the id is checked against their employee. */
+  async getMine(userId: string, id: string): Promise<PayslipDoc> {
+    const employee = await employeeRepository.findByUserIdSystem(userId);
+    if (employee === null) throw new NotFoundError('no employee is linked to this login');
+    const doc = await payslipRepository.findById(id);
+    // Not-found rather than forbidden: somebody else's payslip is not a thing this caller may
+    // learn the existence of.
+    if (doc === null || String(doc.employeeId) !== String(employee._id)) {
+      throw new NotFoundError('payslip not found');
+    }
+    return doc;
+  }
+
   async getById(id: string, scope: ScopeSelector): Promise<PayslipDoc> {
     const doc = await payslipRepository.findById(id, scope);
     if (doc === null) throw new NotFoundError('payslip not found');

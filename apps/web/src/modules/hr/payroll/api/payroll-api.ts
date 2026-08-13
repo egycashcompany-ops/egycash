@@ -100,3 +100,7 @@ export const listRunPayslips = (
 
 export const generatePayslips = (runId: string): Promise<GeneratePayslipsResultDto> =>
   post<GeneratePayslipsResultDto>(`/hr/payroll/runs/${runId}/payslips`, {});
+
+/** The caller's OWN payslips (PY-11) — own-scope by construction, so no employee id is sent. */
+export const listMyPayslips = (params: QueryParams): Promise<Paginated<PayslipDto>> =>
+  getPage<PayslipDto>(`/hr/payroll/payslips/me${buildQuery(params)}`);

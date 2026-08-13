@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { translate } from '../../../platform/localization/i18n';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROUTES = readFileSync(resolve(HERE, 'routes.tsx'), 'utf8');
@@ -23,14 +24,27 @@ const declaredPaths = (): string[] =>
 
 describe('Payroll routes', () => {
   it('routes the shipped surface and nothing unshipped', () => {
-    // pay-items (PY-1) and runs (PY-6). No payslip, no tax, no run calculation — none exist.
-    expect(declaredPaths()).toEqual(['pay-items', 'runs']);
+    // pay-items (PY-1), runs (PY-6) and the employee's own payslips (PY-11). No tax and no run
+    // calculation — neither exists.
+    expect(declaredPaths()).toEqual(['payslips/me', 'pay-items', 'runs']);
   });
 
-  it('gates every route behind a payroll permission', () => {
+  /**
+   * Everything an ADMINISTRATOR reaches is behind a key; the one self-service route is not, and
+   * that is the design rather than a gap.
+   *
+   * `/payslips/me` resolves its rows from the caller's own login link on the server, so there is
+   * no wider reach a permission could gate — the posture My Attendance has as its module's index.
+   * The count assertion is what keeps this honest: exactly ONE route may be unguarded, and it must
+   * be that one, so a future page cannot join it by accident.
+   */
+  it('gates every route except the one that is own-scope by construction', () => {
     const guarded = [...ROUTES.matchAll(/<RequirePermission permission="([^"]+)">/g)].map((m) => m[1]);
     expect(guarded).toEqual(['payItem.view', 'payrollRun.view']);
-    expect(guarded).toHaveLength(declaredPaths().length);
+    expect(guarded).toHaveLength(declaredPaths().length - 1);
+    expect(declaredPaths().filter((p) => p.endsWith('/me'))).toEqual(['payslips/me']);
+    // …and the index route renders that same self-service page, never a guarded one.
+    expect(ROUTES).toMatch(/<Route index element=\{<MyPayslipsPage \/>\} \/>/);
   });
 
   it('uses only the keys the payroll phases declare', () => {
@@ -64,5 +78,38 @@ describe('Payroll routes', () => {
     // Organized through the section system that landed with #186, not a payroll-specific one.
     expect(SECTIONS).toContain("en: 'Payroll'");
     expect(SECTIONS).toContain("'/payroll/pay-items'");
+  });
+});
+
+// ── PY-11 — my payslips ─────────────────────────────────────────────────────
+
+describe('the employee self-service payslip surface', () => {
+  // Code only — this page explains in prose that it carries no permission, and prose must not
+  // be what satisfies the assertion that it carries none.
+  const PAGE_ME = readFileSync(resolve(HERE, 'pages/MyPayslipsPage.tsx'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|\s)\/\/.*$/gm, '');
+
+  it('asks the server for the caller, never for an employee id', () => {
+    expect(PAGE_ME).not.toMatch(/employeeId/);
+    expect(PAGE_ME).toContain('useMyPayslips');
+  });
+
+  it('carries no permission of its own — a key would gate a reach that does not exist', () => {
+    expect(PAGE_ME).not.toContain('RequirePermission');
+    expect(PAGE_ME).not.toContain('<Can ');
+  });
+
+  it('shows the STORED document rather than recomputing one', () => {
+    for (const forbidden of ['toMinorUnits', 'scaleMinorUnits', '/ 100', '* 100', 'reduce(']) {
+      expect(PAGE_ME, forbidden).not.toContain(forbidden);
+    }
+    expect(PAGE_ME).toContain('slip.totalEarnings');
+    expect(PAGE_ME).toContain('slip.net');
+  });
+
+  it('says the figures do not change afterwards, in both locales', () => {
+    expect(translate('en', 'payroll.payslips.mineHint')).toMatch(/do not change/i);
+    expect(translate('ar', 'payroll.payslips.mineHint')).toContain('لا تتغيّر');
   });
 });

@@ -48,6 +48,7 @@ export const SuspendDialog = ({ employee, open, onClose }: DialogProps): JSX.Ele
       open={open}
       onClose={onClose}
       title={t('employees.actions.suspend.title')}
+      overlap={{ employeeId: employee.id, type: 'suspend' }}
       submitting={pending}
       danger
       onSubmit={() => {
@@ -90,6 +91,7 @@ export const ReinstateDialog = ({ employee, open, onClose }: DialogProps): JSX.E
       open={open}
       onClose={onClose}
       title={t('employees.actions.reinstate.title')}
+      overlap={{ employeeId: employee.id, type: 'reinstate' }}
       description={t('employees.actions.reinstate.baseHint')}
       submitting={pending}
       onSubmit={() =>
@@ -121,6 +123,7 @@ export const ProbationConfirmDialog = ({ employee, open, onClose }: DialogProps)
       open={open}
       onClose={onClose}
       title={t('employees.actions.probationConfirm.title')}
+      overlap={{ employeeId: employee.id, type: 'probationConfirm' }}
       description={t('employees.actions.probationConfirm.body')}
       submitting={pending}
       onSubmit={() => void run({ type: 'probationConfirm', version: employee.version, ...common })}
@@ -142,6 +145,7 @@ export const ProbationExtendDialog = ({ employee, open, onClose }: DialogProps):
       open={open}
       onClose={onClose}
       title={t('employees.actions.probationExtend.title')}
+      overlap={{ employeeId: employee.id, type: 'probationExtend' }}
       submitting={pending}
       onSubmit={() => {
         if (newEndDate === '') {
@@ -180,6 +184,7 @@ export const ProbationFailDialog = ({ employee, open, onClose }: DialogProps): J
       open={open}
       onClose={onClose}
       title={t('employees.actions.probationFail.title')}
+      overlap={{ employeeId: employee.id, type: 'probationFail' }}
       description={t('employees.actions.probationFail.body')}
       submitting={pending}
       danger

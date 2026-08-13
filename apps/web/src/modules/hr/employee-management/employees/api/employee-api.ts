@@ -3,6 +3,7 @@
 // create call only supplies the offer reference + an optional hiring date. Reference/offer lookups
 // reuse the Job Offer feature's endpoints (no new API is introduced).
 import {
+  type ActionOverlapDto,
   type BranchDto,
   type CancelEmployeeAction,
   type CompensationAction,
@@ -10,6 +11,7 @@ import {
   type CreateEmployeeLogin,
   type DirectRegisterEmployee,
   type EmployeeActionDto,
+  type EmployeeActionType,
   type AdminResetPasswordResultDto,
   type EmployeeDto,
   type EmployeeLoginProvisionDto,
@@ -67,6 +69,10 @@ export const listEmployeeActions = (
   params: Record<string, string | number | undefined>,
 ): Promise<Paginated<EmployeeActionDto>> =>
   getPage<EmployeeActionDto>(`/hr/employees/${id}/actions${buildQuery(params)}`);
+
+/** The overlap warning (C1) — what an action of this type would meet, before it is created. */
+export const listActionOverlaps = (id: string, type: EmployeeActionType): Promise<ActionOverlapDto[]> =>
+  get<ActionOverlapDto[]>(`/hr/employees/${id}/actions/overlaps${buildQuery({ type })}`);
 
 export const createEmploymentAction = (id: string, body: EmploymentAction): Promise<EmployeeActionDto> =>
   post<EmployeeActionDto>(`/hr/employees/${id}/actions/employment`, body);

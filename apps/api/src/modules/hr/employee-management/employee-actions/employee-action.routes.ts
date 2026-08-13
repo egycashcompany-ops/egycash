@@ -13,10 +13,12 @@ import {
   createEmploymentAction,
   createExitAction,
   createRehireAction,
+  listActionOverlaps,
   listEmployeeActions,
 } from './employee-action.controller';
 import { ChangeEmployeeStatusSchema } from '@ecms/contracts';
 import {
+  ActionOverlapsQuerySchema,
   CancelEmployeeActionSchema,
   CompensationActionSchema,
   EmployeeActionIdParamSchema,
@@ -37,6 +39,15 @@ export const buildEmployeeActionsRouter = (): Router => {
     authorize('employee.view'),
     validate({ query: ListEmployeeActionsQuerySchema, params: EmployeeIdParamSchema }),
     asyncHandler(listEmployeeActions),
+  );
+  // The overlap warning (C1) — a READ about an action that does not exist yet, so it carries the
+  // intended type in the query. Same key as the history it is drawn from.
+  router.get(
+    '/:id/actions/overlaps',
+    authenticate,
+    authorize('employee.view'),
+    validate({ query: ActionOverlapsQuerySchema, params: EmployeeIdParamSchema }),
+    asyncHandler(listActionOverlaps),
   );
   router.post(
     '/:id/actions/employment',

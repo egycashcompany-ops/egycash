@@ -9,6 +9,7 @@ import {
   type CreateEmployee,
   type CreateEmployeeLogin,
   type DirectRegisterEmployee,
+  type EmployeeActionType,
   type EmployeeDto,
   type EmploymentAction,
   type ExitAction,
@@ -161,6 +162,20 @@ export const useEmployeeActions = (id: string, params: Record<string, string | n
     queryFn: () => api.listEmployeeActions(id, params),
     enabled: id !== '',
     placeholderData: (prev) => prev,
+  });
+
+/**
+ * The overlap warning (C1). Asked by the dialog shell, which mounts it only while a dialog is
+ * actually open — a profile nobody is acting on asks nothing.
+ *
+ * The key sits UNDER the actions subtree on purpose: creating or cancelling an action is exactly
+ * what changes the answer, and `useInvalidateAfterAction` already invalidates that whole subtree.
+ */
+export const useActionOverlaps = (id: string, type: EmployeeActionType) =>
+  useQuery({
+    queryKey: [MODULE, FEATURE, 'actions', id, 'overlaps', type],
+    queryFn: () => api.listActionOverlaps(id, type),
+    enabled: id !== '',
   });
 
 /** Invalidate everything the actions engine may have touched (profile, actions, timeline, list). */

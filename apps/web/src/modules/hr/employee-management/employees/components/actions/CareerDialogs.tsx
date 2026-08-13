@@ -68,6 +68,7 @@ export const PromotionDialog = ({ employee, open, onClose }: DialogProps): JSX.E
       open={open}
       onClose={onClose}
       title={t('employees.actions.promotion.title')}
+      overlap={{ employeeId: employee.id, type: 'promotion' }}
       submitting={action.isPending}
       onSubmit={() => void submit()}
     >
@@ -141,6 +142,7 @@ export const TransferDialog = ({ employee, open, onClose }: DialogProps): JSX.El
       open={open}
       onClose={onClose}
       title={t('employees.actions.transfer.title')}
+      overlap={{ employeeId: employee.id, type: 'transfer' }}
       description={t('employees.actions.transfer.codeHint')}
       submitting={action.isPending}
       onSubmit={() => void submit()}
@@ -227,6 +229,7 @@ export const SalaryChangeDialog = ({ employee, open, onClose }: DialogProps): JS
       open={open}
       onClose={onClose}
       title={t('employees.actions.salary.title')}
+      overlap={{ employeeId: employee.id, type: 'salaryChange' }}
       submitting={action.isPending}
       onSubmit={() => void submit()}
     >
@@ -282,6 +285,7 @@ export const ManagerChangeDialog = ({ employee, open, onClose }: DialogProps): J
       open={open}
       onClose={onClose}
       title={t('employees.actions.manager.title')}
+      overlap={{ employeeId: employee.id, type: 'managerChange' }}
       submitting={action.isPending}
       onSubmit={() => void submit()}
     >

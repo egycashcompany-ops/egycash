@@ -31,6 +31,33 @@ export const listRunPayslips = async (req: Request, res: Response): Promise<void
   );
 };
 
+/**
+ * The caller's own payslips (PY-11).
+ *
+ * Whatever `employeeId` arrived is DROPPED — `/me` answers for the caller and nobody else, the
+ * same way `/days/me` does.
+ */
+export const listMyPayslips = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { query } = validated<never, ListPayslipsQuery, never>(req);
+  const own = {
+    page: query.page,
+    pageSize: query.pageSize,
+    sortDir: query.sortDir,
+    ...(query.sortBy === undefined ? {} : { sortBy: query.sortBy }),
+    ...(query.period === undefined ? {} : { period: query.period }),
+  };
+  okPage(res, await payslipService.listMine(String(ctx.userId), own), (doc) =>
+    payslipService.toDto(doc),
+  );
+};
+
+export const getMyPayslip = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { params } = validated<never, never, IdParam>(req);
+  ok(res, payslipService.toDto(await payslipService.getMine(String(ctx.userId), params.id)));
+};
+
 export const getPayslip = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { params } = validated<never, never, IdParam>(req);

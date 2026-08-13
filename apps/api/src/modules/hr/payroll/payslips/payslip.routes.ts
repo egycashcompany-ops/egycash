@@ -14,7 +14,13 @@ import { objectId, GeneratePayslipsSchema, ListPayslipsQuerySchema } from '@ecms
 import { asyncHandler, validate } from '../../../../platform/web';
 import { authenticate } from '../../../../platform/auth';
 import { authorize } from '../../../../platform/rbac';
-import { generatePayslips, getPayslip, listRunPayslips } from './payslip.controller';
+import {
+  generatePayslips,
+  getMyPayslip,
+  getPayslip,
+  listMyPayslips,
+  listRunPayslips,
+} from './payslip.controller';
 
 const IdParamSchema = z.object({ id: objectId() }).strict();
 
@@ -38,9 +44,28 @@ export const buildRunPayslipsRouter = (): Router => {
   return router;
 };
 
-/** One payslip by id — the document itself, wherever it is linked from. */
+/**
+ * One payslip by id — the document itself, wherever it is linked from.
+ *
+ * `/me` and `/me/:id` carry NO permission on purpose (PY-11): they are own-scope BY CONSTRUCTION —
+ * the employee is resolved from the caller's own login link and nothing the caller sends can widen
+ * that — the posture `/days/me` and My Leave already have. They are declared FIRST so `me` is
+ * never parsed as an object id.
+ */
 export const buildPayslipsRouter = (): Router => {
   const router = Router();
+  router.get(
+    '/me',
+    authenticate,
+    validate({ query: ListPayslipsQuerySchema }),
+    asyncHandler(listMyPayslips),
+  );
+  router.get(
+    '/me/:id',
+    authenticate,
+    validate({ params: IdParamSchema }),
+    asyncHandler(getMyPayslip),
+  );
   router.get(
     '/:id',
     authenticate,

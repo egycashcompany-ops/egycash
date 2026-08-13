@@ -1619,3 +1619,51 @@ describe('payslips', () => {
     }
   });
 });
+
+// ── PY-11 — my own payslips ─────────────────────────────────────────────────
+//
+// `/payslips/me` carries no permission because it carries no reach: the employee is resolved from
+// the caller's own login link, and nothing the caller sends widens that. So what has to hold here
+// is the OPPOSITE of an authorization test — that the route is open, and that being open buys the
+// caller exactly nothing beyond their own rows.
+describe('payslips: the self-service read', () => {
+  const me = (path: string, token: string) =>
+    request(app).get(`/api/v1/hr/payroll/payslips${path}`).set('Authorization', `Bearer ${token}`);
+
+  it('is reachable without any payroll permission at all', async () => {
+    // The outsider holds no payroll key and no compensation key — and is not refused, because
+    // there is nothing here to refuse them ACCESS to.
+    const res = await me('/me', outsiderToken);
+    expect(res.status).not.toBe(403);
+  });
+
+  it('answers 404 for a login with no employee behind it, never somebody else’s rows', async () => {
+    const res = await me('/me', outsiderToken);
+    expect(res.status).toBe(404);
+    expect(JSON.stringify(res.body)).not.toContain('data');
+  });
+
+  // The admin login is not linked to an employee either, so this is the same shape from the other
+  // direction: holding EVERY key still gets you your own payslips and no more.
+  it('gives a permission holder no wider reach through /me than anybody else', async () => {
+    const res = await me('/me', adminToken);
+    expect(res.status).toBe(404);
+  });
+
+  it('refuses to fetch one payslip by id through /me when it is not the caller’s', async () => {
+    const anyId = '000000000000000000000001';
+    const res = await me(`/me/${anyId}`, outsiderToken);
+    expect(res.status).toBe(404);
+  });
+
+  it('still requires the compensation key on the ADMIN read of the same document', async () => {
+    const anyId = '000000000000000000000001';
+    const denied = await me(`/${anyId}`, outsiderToken);
+    expect(denied.status).toBe(403);
+  });
+
+  it('exposes no organization-wide list of everybody’s payslips', async () => {
+    const res = await me('', adminToken);
+    expect(res.status).toBe(404);
+  });
+});

@@ -36,6 +36,7 @@ describe('where the card lives', () => {
   it('adds no route of its own to the payroll surface', () => {
     const routes = readFileSync(resolve(HERE, 'routes.tsx'), 'utf8');
     expect([...routes.matchAll(/path="([^"*]+)"/g)].map((m) => m[1])).toEqual([
+      'payslips/me',
       'pay-items',
       'runs',
     ]);
@@ -46,7 +47,10 @@ describe('where the card lives', () => {
     // Runs ship with PY-6 and payslips with PY-7. A tax or statutory rule still does not exist,
     // and a payslip is only ever reached THROUGH its run — there is no standalone list of them.
     expect(API).not.toMatch(/payroll\/(tax|statutory|contributions)/);
-    expect(API).not.toMatch(/'\/hr\/payroll\/payslips/);
+    // A payslip is reached THROUGH its run, or through `/me` for the caller's own (PY-11).
+    // What must not exist is an organization-wide list of everybody's payslips.
+    expect(API).not.toMatch(/payroll\/payslips(?!\/me)/);
+    expect(API).toContain('/hr/payroll/payslips/me');
   });
 });
 
@@ -275,7 +279,11 @@ const ROUTES = readFileSync(resolve(HERE, 'routes.tsx'), 'utf8');
 
 describe('the payroll run screen', () => {
   it('is routed, and behind the view key', () => {
-    expect([...ROUTES.matchAll(/path="([^"*]+)"/g)].map((m) => m[1])).toEqual(['pay-items', 'runs']);
+    expect([...ROUTES.matchAll(/path="([^"*]+)"/g)].map((m) => m[1])).toEqual([
+      'payslips/me',
+      'pay-items',
+      'runs',
+    ]);
     expect(ROUTES).toContain('<RequirePermission permission="payrollRun.view">');
   });
 

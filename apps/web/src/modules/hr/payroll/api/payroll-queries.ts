@@ -152,3 +152,16 @@ export const useGeneratePayslips = () => {
     onSuccess: () => void client.invalidateQueries({ queryKey: featureKey(MODULE, PAYSLIPS_FEATURE) }),
   });
 };
+
+/**
+ * My own payslips (PY-11).
+ *
+ * Its own key rather than a filter on the run list: this query answers for the caller and no
+ * parameter can widen it, so it must not share a cache entry with a list that CAN be widened.
+ */
+export const useMyPayslips = (params: Record<string, string | number>) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'myPayslips', params),
+    queryFn: () => api.listMyPayslips(params),
+    placeholderData: (prev) => prev,
+  });

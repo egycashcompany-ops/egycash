@@ -281,8 +281,17 @@ describe('the default sections migration', () => {
     const sections = await get('/platform/application-sections?pageSize=100', token);
     expect(sections.status).toBe(200);
     const named = (sections.body as { data: { name: { ar: string; en: string } }[] }).data;
+    // The HR groups follow the employee lifecycle: a candidate (Recruitment), the person once
+    // hired (Employees), the record that follows them (Employee File), and what that record
+    // produces month to month (Attendance & Leave, Payroll).
     expect(named.map((s) => s.name.en)).toEqual(
-      expect.arrayContaining(['Recruitment', 'Employee Management', 'Attendance & Leave']),
+      expect.arrayContaining([
+        'Recruitment',
+        'Employees',
+        'Employee File',
+        'Attendance & Leave',
+        'Payroll',
+      ]),
     );
     // …in both locales, like every other catalog row.
     expect(named.every((s) => s.name.ar.trim() !== '')).toBe(true);
@@ -353,4 +362,47 @@ describe('the default sections migration', () => {
     expect(nav.some((c) => c.applications.some((a) => a.route === '/applicants'))).toBe(true);
   });
 
+  /**
+   * The lifecycle split, over HTTP: the two halves land in the right groups and the pages the
+   * sidebar shows are exactly the pages that existed before.
+   *
+   * Read through `/platform/me/applications` rather than the raw rows, because that is what the
+   * sidebar renders — a row grouped in the database but dropped from this payload would be a page
+   * that vanished from the navigation, which is the failure this whole change must not cause.
+   */
+  it('files the employee pages by lifecycle, and loses none of them', async () => {
+    const token = await tokenOf();
+    const nav = (
+      (await get('/platform/me/applications', token)).body as {
+        data: {
+          name: { en: string };
+          applications: { route: string }[];
+          sections: { name: { en: string }; applications: { route: string }[] }[];
+        }[];
+      }
+    ).data;
+    const hr = nav.find((c) => c.name.en === 'HR');
+    expect(hr).toBeDefined();
+
+    const inSection = (en: string): string[] =>
+      hr?.sections.find((s) => s.name.en === en)?.applications.map((a) => a.route) ?? [];
+
+    // The person, and the last step of hiring them — its own service says the document set is
+    // collected AFTER the employee exists.
+    expect(inSection('Employees')).toEqual(['/employees', '/hiring-documents']);
+    // The record that follows them.
+    expect(inSection('Employee File')).toEqual(['/employee-files', '/contracts']);
+    // And the group they were all in before is gone from the payload — empty sections are
+    // omitted, so the split leaves no heading over nothing.
+    expect(hr?.sections.map((s) => s.name.en)).not.toContain('Employee Management');
+
+    // Nothing was dropped on the way: every page still appears exactly once, somewhere.
+    const shown = [
+      ...(hr?.applications.map((a) => a.route) ?? []),
+      ...(hr?.sections.flatMap((s) => s.applications.map((a) => a.route)) ?? []),
+    ];
+    for (const route of ['/applicants', '/employees', '/contracts', '/leave', '/payroll/runs']) {
+      expect(shown.filter((r) => r === route), route).toEqual([route]);
+    }
+  });
 });

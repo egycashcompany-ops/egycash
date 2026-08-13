@@ -1722,12 +1722,16 @@ describe('backdating into a frozen period', () => {
     expect(refused.status).toBe(422);
   });
 
-  it('accepts one that ends before the frozen month begins', async () => {
+  // January and February, and the choice matters: this suite freezes several months across its
+  // blocks (PY-7 leaves 2026-05 frozen, this one freezes 2026-06), and an interval reaching any
+  // of them would be refused by the very guard under test. The guard is global by nature — it
+  // knows nothing about which describe block froze what.
+  it('accepts one that ends before every frozen month begins', async () => {
     const ok = await assign({
       payItemId: itemId,
       amount: 500,
-      effectiveFrom: '2026-02-01',
-      effectiveTo: '2026-05-31',
+      effectiveFrom: '2026-01-01',
+      effectiveTo: '2026-02-28',
     });
     expect(ok.status, JSON.stringify(ok.body)).toBe(201);
   });

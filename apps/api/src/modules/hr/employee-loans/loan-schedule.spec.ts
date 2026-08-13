@@ -7,9 +7,11 @@
 import { describe, expect, it } from 'vitest';
 import { BusinessRuleError } from '../../../shared/errors';
 import {
+  accelerateTail,
   assertScheduleTotals,
   generateSchedule,
   nextPeriod,
+  periodOfDate,
   periodsFrom,
   totalMinor,
 } from './loan-schedule';
@@ -30,6 +32,13 @@ describe('the months a schedule occupies', () => {
   it('refuses something that is not a period', () => {
     expect(() => nextPeriod('2026-13')).toThrow(BusinessRuleError);
     expect(() => nextPeriod('2026')).toThrow(BusinessRuleError);
+  });
+
+  // The UTC parts of a business date, so no server timezone can name the month before it.
+  it('names the month a business date falls in', () => {
+    expect(periodOfDate(new Date('2026-03-17T00:00:00.000Z'))).toBe('2026-03');
+    expect(periodOfDate(new Date('2026-01-01T00:00:00.000Z'))).toBe('2026-01');
+    expect(periodOfDate(new Date('2026-12-31T00:00:00.000Z'))).toBe('2026-12');
   });
 });
 
@@ -111,6 +120,64 @@ describe('what the generator refuses', () => {
 
   it('a count below one', () => {
     expect(() => generateSchedule(100, 0, '2026-01')).toThrow(BusinessRuleError);
+  });
+});
+
+describe('paying more this month finishes it earlier (D7-2)', () => {
+  const later = [
+    { period: '2026-04', amountMinor: 10_000 },
+    { period: '2026-05', amountMinor: 10_000 },
+    { period: '2026-06', amountMinor: 10_000 },
+  ];
+  const target = { period: '2026-03', amountMinor: 10_000 };
+
+  // The extra comes off the END, so the loan ends sooner and the total never moves.
+  it('removes whole months from the end', () => {
+    const after = accelerateTail(target, later, 20_000);
+    expect(after).toEqual([
+      { period: '2026-03', amountMinor: 30_000 },
+      { period: '2026-04', amountMinor: 10_000 },
+    ]);
+    expect(totalMinor(after)).toBe(40_000);
+  });
+
+  it('and reduces the month the extra runs out inside', () => {
+    const after = accelerateTail(target, later, 15_000);
+    expect(after).toEqual([
+      { period: '2026-03', amountMinor: 25_000 },
+      { period: '2026-04', amountMinor: 10_000 },
+      { period: '2026-05', amountMinor: 5_000 },
+    ]);
+    expect(totalMinor(after)).toBe(40_000);
+  });
+
+  // Paying the whole remainder forward is legal, and it leaves exactly one month.
+  it('collapses to a single month when the extra is everything left', () => {
+    const after = accelerateTail(target, later, 30_000);
+    expect(after).toEqual([{ period: '2026-03', amountMinor: 40_000 }]);
+  });
+
+  /**
+   * THE assertion this operation exists to keep. Whatever the extra is, the schedule still totals
+   * what it did before — an acceleration repays FASTER, it does not repay MORE.
+   */
+  it('never changes the total, for any extra it accepts', () => {
+    for (let extra = 1; extra <= 30_000; extra += 137) {
+      const after = accelerateTail(target, later, extra);
+      expect(totalMinor(after), String(extra)).toBe(40_000);
+    }
+  });
+
+  it('refuses to take more than the later instalments hold', () => {
+    expect(() => accelerateTail(target, later, 30_001)).toThrow(BusinessRuleError);
+    // …and refuses on the last instalment, where there is nothing after it to bring forward.
+    expect(() => accelerateTail(target, [], 1)).toThrow(BusinessRuleError);
+  });
+
+  it('and refuses an extra that is not a positive amount', () => {
+    for (const extra of [0, -100, 10.5]) {
+      expect(() => accelerateTail(target, later, extra), String(extra)).toThrow(BusinessRuleError);
+    }
   });
 });
 

@@ -3,6 +3,7 @@
 // Every path is per-employee, because a loan belongs to a person rather than to a month. There is
 // no payroll call here and no payslip call: phase A touches no payroll at all.
 import {
+  type AccelerateEmployeeLoan,
   type CancelEmployeeLoan,
   type CreateEmployeeLoan,
   type DecideEmployeeLoan,
@@ -56,6 +57,14 @@ export const rescheduleLoan = (
   body: RescheduleEmployeeLoan,
 ): Promise<EmployeeLoanDetailDto> =>
   post<EmployeeLoanDetailDto>(`/hr/employees/${employeeId}/loans/${id}/reschedule`, body);
+
+/** D7-2 — an extra amount taken through payroll in a named month, so the loan ends earlier. */
+export const accelerateLoan = (
+  employeeId: string,
+  id: string,
+  body: AccelerateEmployeeLoan,
+): Promise<EmployeeLoanDetailDto> =>
+  post<EmployeeLoanDetailDto>(`/hr/employees/${employeeId}/loans/${id}/accelerate`, body);
 
 /** D7-1 — money collected outside ECMS. It closes the loan and deducts nothing. */
 export const settleLoanExternally = (

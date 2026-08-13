@@ -87,7 +87,10 @@ describe('an obligation and its schedule (D5, D6)', () => {
   // The reschedule dialog takes a COUNT and a MONTH and no amount at all — the server re-splits
   // what is left. An amount field here would be a second place the debt could change.
   it('reschedules without an amount field', () => {
-    const dialog = TAB.slice(TAB.indexOf('const RescheduleDialog'), TAB.indexOf('const SettleDialog'));
+    const dialog = TAB.slice(
+      TAB.indexOf('const RescheduleDialog'),
+      TAB.indexOf('const AccelerateDialog'),
+    );
     expect(dialog.length).toBeGreaterThan(0);
     expect(dialog).toContain('installmentCount');
     expect(dialog).toContain('firstPeriod');
@@ -101,6 +104,38 @@ describe('an obligation and its schedule (D5, D6)', () => {
     expect(dialog).toContain('amount: loan.remaining');
     expect(dialog).toContain('readOnly');
   });
+
+  /**
+   * D7-2 — the payroll path, and the screen keeps it distinct from D7-1's.
+   *
+   * One names a month and an extra amount to take out of a salary; the other records money that
+   * arrived some other way. Offering them as one button would be the conflation the whole decision
+   * exists to prevent.
+   */
+  it('offers acceleration as its own action, separate from settling', () => {
+    expect(TAB).toContain("t('loans.accelerate')");
+    expect(TAB).toContain("t('loans.settleExternal')");
+    const dialog = TAB.slice(
+      TAB.indexOf('const AccelerateDialog'),
+      TAB.indexOf('const SettleDialog'),
+    );
+    expect(dialog).toContain('extraAmount');
+    expect(dialog).toContain('period');
+    // It is not a cash receipt: nothing here says an amount was collected.
+    expect(dialog).not.toContain('loan.remaining');
+  });
+
+  // The ledger's sum, shown beside what is left — both derived, neither stored.
+  it('shows what payroll has taken so far', () => {
+    expect(TAB).toContain("t('loans.repaid')");
+    expect(TAB).toContain('loan.repaid');
+  });
+
+  // An instalment that a payslip took reads differently from one that is still an intention.
+  it('and tells a deducted instalment apart from a planned one', () => {
+    expect(TAB).toContain('INSTALLMENT_TONE');
+    expect(TAB).toContain('deducted:');
+  });
 });
 
 describe('it talks to the endpoints the server exposes, and to no payroll', () => {
@@ -110,11 +145,18 @@ describe('it talks to the endpoints the server exposes, and to no payroll', () =
     expect(API).toContain('/decide');
     expect(API).toContain('/disburse');
     expect(API).toContain('/reschedule');
+    expect(API).toContain('/accelerate');
     expect(API).toContain('/settle-external');
     expect(API).toContain('/cancel');
   });
 
-  // Phase A touches no payroll at all — not even to read one.
+  /**
+   * Even now that payroll deducts instalments, the SCREEN never calls payroll.
+   *
+   * The deduction happens server-side when a payslip is issued; this tab reads the loan and its
+   * ledger. A call to `/hr/payroll` from here would mean the browser had opinions about when a
+   * repayment counts.
+   */
   it('and calls nothing under /hr/payroll', () => {
     expect(API).not.toContain('/hr/payroll');
     expect(TAB).not.toContain('payslip');
@@ -134,6 +176,11 @@ describe('both locales can say it', () => {
     'loans.settleExternal',
     'loans.remaining',
     'loans.installment.planned',
+    'loans.installment.deducted',
+    'loans.repaid',
+    'loans.accelerate',
+    'loans.extraAmount',
+    'loans.status.outstandingAtExit',
   ];
 
   it('resolves in Arabic and English', () => {

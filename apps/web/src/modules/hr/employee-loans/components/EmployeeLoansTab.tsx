@@ -29,6 +29,7 @@ import { Field, Input, Textarea, Select } from '../../../../shared/ui/form';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { formatMoney } from '../../../../shared/lib/format';
 import {
+  useAccelerateLoan,
   useCancelLoan,
   useCreateLoan,
   useDecideLoan,
@@ -48,6 +49,15 @@ const STATUS_TONE = {
   active: 'success',
   settled: 'neutral',
   cancelled: 'neutral',
+  // Not a failure and not an error — a fact somebody has to act on outside this system (D8).
+  outstandingAtExit: 'danger',
+} as const;
+
+/** `deducted` is the only one of the three that is a fact rather than an intention. */
+const INSTALLMENT_TONE = {
+  planned: 'info',
+  deducted: 'success',
+  cancelled: 'neutral',
 } as const;
 
 const EmployeeLoansTab = ({ employee }: { employee: EmployeeDto }): JSX.Element => {
@@ -55,6 +65,7 @@ const EmployeeLoansTab = ({ employee }: { employee: EmployeeDto }): JSX.Element 
   const can = useCan();
   const [adding, setAdding] = useState(false);
   const [rescheduling, setRescheduling] = useState<EmployeeLoanDetailDto | null>(null);
+  const [accelerating, setAccelerating] = useState<EmployeeLoanDetailDto | null>(null);
   const [disbursing, setDisbursing] = useState<EmployeeLoanDetailDto | null>(null);
   const [settling, setSettling] = useState<EmployeeLoanDetailDto | null>(null);
 
@@ -119,6 +130,7 @@ const EmployeeLoansTab = ({ employee }: { employee: EmployeeDto }): JSX.Element 
             onCancel={() => onCancel(loan)}
             onDisburse={() => setDisbursing(loan)}
             onReschedule={() => setRescheduling(loan)}
+            onAccelerate={() => setAccelerating(loan)}
             onSettle={() => setSettling(loan)}
           />
         ))
@@ -139,6 +151,13 @@ const EmployeeLoansTab = ({ employee }: { employee: EmployeeDto }): JSX.Element 
           onClose={() => setRescheduling(null)}
         />
       )}
+      {accelerating !== null && (
+        <AccelerateDialog
+          employee={employee}
+          loan={accelerating}
+          onClose={() => setAccelerating(null)}
+        />
+      )}
       {settling !== null && (
         <SettleDialog employee={employee} loan={settling} onClose={() => setSettling(null)} />
       )}
@@ -156,6 +175,7 @@ const LoanCard = ({
   onCancel,
   onDisburse,
   onReschedule,
+  onAccelerate,
   onSettle,
 }: {
   loan: EmployeeLoanDetailDto;
@@ -166,6 +186,7 @@ const LoanCard = ({
   onCancel: () => void;
   onDisburse: () => void;
   onReschedule: () => void;
+  onAccelerate: () => void;
   onSettle: () => void;
 }): JSX.Element => {
   const t = useT();
@@ -185,9 +206,7 @@ const LoanCard = ({
       key: 'status',
       header: t('common.status'),
       render: (r) => (
-        <Badge tone={r.status === 'planned' ? 'info' : 'neutral'}>
-          {t(`loans.installment.${r.status}`)}
-        </Badge>
+        <Badge tone={INSTALLMENT_TONE[r.status]}>{t(`loans.installment.${r.status}`)}</Badge>
       ),
     },
   ];
@@ -224,6 +243,10 @@ const LoanCard = ({
                 <Button size="sm" variant="ghost" onClick={onReschedule}>
                   {t('loans.reschedule')}
                 </Button>
+                {/* D7-2 — pay more through payroll; D7-1 — money that arrived some other way. */}
+                <Button size="sm" variant="ghost" onClick={onAccelerate}>
+                  {t('loans.accelerate')}
+                </Button>
                 <Button size="sm" variant="ghost" onClick={onSettle}>
                   {t('loans.settleExternal')}
                 </Button>
@@ -242,6 +265,11 @@ const LoanCard = ({
           <div>
             <dt className="text-slate-500">{t('loans.remaining')}</dt>
             <dd>{formatMoney(loan.remaining, loan.currency, locale)}</dd>
+          </div>
+          {/* What payroll has actually taken — the ledger's sum, not a stored figure. */}
+          <div>
+            <dt className="text-slate-500">{t('loans.repaid')}</dt>
+            <dd>{formatMoney(loan.repaid, loan.currency, locale)}</dd>
           </div>
           <div>
             <dt className="text-slate-500">{t('loans.installmentCount')}</dt>
@@ -491,6 +519,86 @@ const RescheduleDialog = ({
         </Field>
         <Field label={t('loans.firstPeriod')} required>
           <Input type="month" value={firstPeriod} onChange={(e) => setFirstPeriod(e.target.value)} />
+        </Field>
+        <Field label={t('loans.reason')} required>
+          <Textarea rows={2} maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} />
+        </Field>
+      </div>
+    </Dialog>
+  );
+};
+
+/**
+ * D7-2 — the payroll path to finishing early.
+ *
+ * It names a MONTH and an extra amount, and nothing else: the server takes the extra out of the
+ * last instalments, so the loan ends sooner and the debt does not move. Distinct from the dialog
+ * below it in the one way that matters — this money will come out of a salary.
+ */
+const AccelerateDialog = ({
+  employee,
+  loan,
+  onClose,
+}: {
+  employee: EmployeeDto;
+  loan: EmployeeLoanDetailDto;
+  onClose: () => void;
+}): JSX.Element => {
+  const t = useT();
+  const accelerate = useAccelerateLoan(employee.id);
+  const [period, setPeriod] = useState('');
+  const [extraAmount, setExtraAmount] = useState('');
+  const [reason, setReason] = useState('');
+
+  const save = (): void => {
+    accelerate.mutate(
+      {
+        id: loan.id,
+        body: {
+          period,
+          extraAmount: Number(extraAmount),
+          reason: reason.trim(),
+          version: loan.version,
+        },
+      },
+      {
+        onSuccess: () => {
+          toast.success(t('loans.accelerated'));
+          onClose();
+        },
+      },
+    );
+  };
+
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={t('loans.accelerate')}
+      description={t('loans.accelerateHint')}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            {t('common.cancel')}
+          </Button>
+          <Button loading={accelerate.isPending} onClick={save}>
+            {t('common.save')}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <Field label={t('loans.period')} required>
+          <Input type="month" value={period} onChange={(e) => setPeriod(e.target.value)} />
+        </Field>
+        <Field label={t('loans.extraAmount')} required>
+          <Input
+            type="number"
+            min="0"
+            step="0.01"
+            value={extraAmount}
+            onChange={(e) => setExtraAmount(e.target.value)}
+          />
         </Field>
         <Field label={t('loans.reason')} required>
           <Textarea rows={2} maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} />

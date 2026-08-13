@@ -20,6 +20,7 @@
 import { Types } from 'mongoose';
 import {
   fromMinorUnits,
+  type CompensationLineDto,
   type GeneratePayslipsResultDto,
   type ListPayslipsQuery,
   type Paginated,
@@ -33,6 +34,7 @@ import { type ScopeSelector } from '../../../../shared/types';
 import { dateOnlyIso } from '../../shared/business-date';
 import { employeeRepository, type EmployeeDoc } from '../../employee-management/employees';
 import { compensationService } from '../compensation/compensation.service';
+import { loanInstallmentPort } from '../compensation/loan-installment.port';
 import { employmentSpansOf } from '../compensation/employment-spans';
 import { periodRange } from '../compensation/compensation-rules';
 import { payrollRunRepository } from '../runs/payroll-run.repository';
@@ -72,6 +74,7 @@ class PayslipService {
     const skipped: { employeeId: string; reason: PayslipSkipReason }[] = [];
     let created = 0;
     let existing = 0;
+    let repaid = 0;
 
     for (const employee of population) {
       const employeeId = String(employee._id);
@@ -92,6 +95,14 @@ class PayslipService {
         skipped.push({ employeeId, reason });
         continue;
       }
+
+      const existingSlip = await PayslipModel.findOne({
+        runId: new Types.ObjectId(runId),
+        employeeId: new Types.ObjectId(employeeId),
+      })
+        .select({ _id: 1 })
+        .lean<{ _id: Types.ObjectId }>()
+        .exec();
 
       const written = await PayslipModel.updateOne(
         { runId: new Types.ObjectId(runId), employeeId: new Types.ObjectId(employeeId) },
@@ -121,8 +132,19 @@ class PayslipService {
         { upsert: true },
       ).exec();
 
-      if (written.upsertedCount > 0) created += 1;
-      else existing += 1;
+      if (written.upsertedCount > 0) {
+        created += 1;
+        // P-HR-05-B — the payslip IS the receipt, so this is the moment a scheduled instalment
+        // becomes a repayment that happened. Only on a NEW slip: a pass that found the row already
+        // there took nothing, and the ledger's unique key holds the same line under a race.
+        repaid += await this.recordLoanRepayments(
+          runId,
+          run.period,
+          employeeId,
+          String(written.upsertedId ?? existingSlip?._id ?? ''),
+          effects.deductions,
+        );
+      } else existing += 1;
     }
 
     // One audit entry for the PASS, not one per slip: the act somebody performed was issuing a
@@ -135,6 +157,7 @@ class PayslipService {
         { field: 'created', old: null, new: String(created) },
         { field: 'existing', old: null, new: String(existing) },
         { field: 'skipped', old: null, new: String(skipped.length) },
+        { field: 'loanRepayments', old: null, new: String(repaid) },
       ],
     });
 
@@ -146,6 +169,37 @@ class PayslipService {
       existing,
       skipped,
     };
+  }
+
+  /**
+   * Tell the loan side what this payslip just took (P-HR-05-B).
+   *
+   * Payroll's whole knowledge of lending is the two lines below: which deduction lines came from a
+   * loan, and the row each of them cites. Everything else — which loan, what is left, whether it
+   * is now settled — happens on the far side of the port, where a repayment plan belongs.
+   *
+   * It runs AFTER the slip exists, deliberately: a ledger row claiming a payslip that was never
+   * written would be the one inconsistency this whole design exists to prevent. The reverse — a
+   * slip written and the recording interrupted — is recoverable, because re-running the pass is
+   * the normal case and the ledger's key makes it free.
+   */
+  private async recordLoanRepayments(
+    runId: string,
+    period: string,
+    employeeId: string,
+    payslipId: string,
+    deductions: readonly CompensationLineDto[],
+  ): Promise<number> {
+    if (payslipId === '') return 0;
+    const taken = deductions
+      .filter((line) => line.origin === 'loanInstallment' && line.sourceAssignmentId !== null)
+      .map((line) => ({
+        installmentId: line.sourceAssignmentId as string,
+        employeeId,
+        amountMinor: line.amountMinor ?? 0,
+      }));
+    if (taken.length === 0) return 0;
+    return loanInstallmentPort.recordTaken({ runId, payslipId, period }, taken);
   }
 
   /** Identity as it stands now — copied onto the slip so a later transfer cannot retitle it. */

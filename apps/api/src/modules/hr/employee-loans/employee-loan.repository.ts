@@ -15,6 +15,7 @@ import { NotFoundError } from '../../../shared/errors';
 import { type ScopeSelector } from '../../../shared/types';
 import { EmployeeLoanModel, type EmployeeLoanDoc } from './employee-loan.model';
 import { LoanInstallmentModel, type LoanInstallmentDoc } from './loan-installment.model';
+import { LoanRepaymentModel, type LoanRepaymentDoc } from './loan-repayment.model';
 
 class EmployeeLoanRepository extends BaseRepository<EmployeeLoanDoc> {
   constructor() {
@@ -114,6 +115,41 @@ class LoanInstallmentRepository {
       .exec();
   }
 
+  /**
+   * The rows one employee still intends to pay in one month (P-HR-05-B).
+   *
+   * `planned` only: a `deducted` row already happened and a `cancelled` one never will. Which of
+   * those rows actually reaches a payslip is decided one layer up, where the loan's status is
+   * known — this read is about the schedule, not about the debt.
+   */
+  async plannedForEmployeePeriod(
+    employeeId: string,
+    period: string,
+  ): Promise<LoanInstallmentDoc[]> {
+    return LoanInstallmentModel.find({
+      employeeId: new Types.ObjectId(employeeId),
+      period,
+      status: 'planned',
+      isDeleted: false,
+    })
+      .sort({ seq: 1 })
+      .lean<LoanInstallmentDoc[]>()
+      .exec();
+  }
+
+  /** The rows an exit withdraws: still intended, and in a month that starts after the last day. */
+  async plannedForEmployeeAfter(employeeId: string, period: string): Promise<LoanInstallmentDoc[]> {
+    return LoanInstallmentModel.find({
+      employeeId: new Types.ObjectId(employeeId),
+      period: { $gt: period },
+      status: 'planned',
+      isDeleted: false,
+    })
+      .sort({ period: 1 })
+      .lean<LoanInstallmentDoc[]>()
+      .exec();
+  }
+
   async forLoans(loanIds: readonly string[]): Promise<Map<string, LoanInstallmentDoc[]>> {
     const rows = await LoanInstallmentModel.find({
       loanId: { $in: loanIds.map((id) => new Types.ObjectId(id)) },
@@ -131,5 +167,37 @@ class LoanInstallmentRepository {
   }
 }
 
+/** The append-only side (P-HR-05-B). Reads and one insert; nothing here updates a row. */
+class LoanRepaymentRepository {
+  async forLoan(loanId: string): Promise<LoanRepaymentDoc[]> {
+    return LoanRepaymentModel.find({ loanId: new Types.ObjectId(loanId) })
+      .sort({ recordedAt: 1 })
+      .lean<LoanRepaymentDoc[]>()
+      .exec();
+  }
+
+  async forLoans(loanIds: readonly string[]): Promise<Map<string, LoanRepaymentDoc[]>> {
+    const rows = await LoanRepaymentModel.find({
+      loanId: { $in: loanIds.map((id) => new Types.ObjectId(id)) },
+    })
+      .sort({ recordedAt: 1 })
+      .lean<LoanRepaymentDoc[]>()
+      .exec();
+    const byLoan = new Map<string, LoanRepaymentDoc[]>();
+    for (const row of rows) {
+      const key = String(row.loanId);
+      byLoan.set(key, [...(byLoan.get(key) ?? []), row]);
+    }
+    return byLoan;
+  }
+
+  /** What payroll has taken from one loan so far, in minor units. */
+  async repaidMinor(loanId: string): Promise<number> {
+    const rows = await this.forLoan(loanId);
+    return rows.reduce((sum, row) => sum + row.amountMinor, 0);
+  }
+}
+
 export const employeeLoanRepository = new EmployeeLoanRepository();
 export const loanInstallmentRepository = new LoanInstallmentRepository();
+export const loanRepaymentRepository = new LoanRepaymentRepository();

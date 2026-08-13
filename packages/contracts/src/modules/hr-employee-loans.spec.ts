@@ -6,6 +6,7 @@
 // keep rather than a gap for somebody to quietly fill.
 import { describe, expect, it } from 'vitest';
 import {
+  AccelerateEmployeeLoanSchema,
   CreateEmployeeLoanSchema,
   DecideEmployeeLoanSchema,
   DisburseEmployeeLoanSchema,
@@ -32,7 +33,13 @@ describe('the loan vocabulary', () => {
     expect([...EMPLOYEE_LOAN_TYPES]).toEqual(['advance', 'loan']);
   });
 
-  // `approved` is the MIDDLE of this machine, not its end: the obligation begins at disbursement.
+  /**
+   * `approved` is the MIDDLE of this machine, not its end: the obligation begins at disbursement.
+   *
+   * `outstandingAtExit` (D8, P-HR-05-B) arrived with the handler that sets it. It is a statement
+   * of fact rather than a decision — the employee left owing money — and it is deliberately not a
+   * synonym for `cancelled`: nothing was forgiven.
+   */
   it('pins the lifecycle, with active between approved and settled', () => {
     expect([...EMPLOYEE_LOAN_STATUSES]).toEqual([
       'draft',
@@ -41,6 +48,7 @@ describe('the loan vocabulary', () => {
       'active',
       'settled',
       'cancelled',
+      'outstandingAtExit',
     ]);
   });
 
@@ -51,13 +59,14 @@ describe('the loan vocabulary', () => {
   });
 
   /**
-   * An instalment is an INTENTION or one that was withdrawn. There is no third value, because
-   * phase A has no payroll and therefore nothing that can deduct. `deducted` arrives in phase B
-   * with the code that sets it.
+   * An intention, a fact, and an intention that was withdrawn — in that order.
+   *
+   * `deducted` (P-HR-05-B) is the only one of the three that a payslip creates, and the only one
+   * nothing may move afterwards. Phase A shipped without it precisely because nothing then could
+   * set it; it arrived with the code that does.
    */
-  it('gives an instalment two states, and neither of them is a deduction', () => {
-    expect([...LOAN_INSTALLMENT_STATUSES]).toEqual(['planned', 'cancelled']);
-    expect([...LOAN_INSTALLMENT_STATUSES]).not.toContain('deducted');
+  it('gives an instalment three states, one of which is a fact', () => {
+    expect([...LOAN_INSTALLMENT_STATUSES]).toEqual(['planned', 'deducted', 'cancelled']);
   });
 });
 
@@ -181,6 +190,45 @@ describe('the operations on a live loan', () => {
         JSON.stringify(extra),
       ).toBe(false);
     }
+  });
+
+  /**
+   * D7-2 — the two early-repayment paths are different SHAPES, not one shape with a flag.
+   *
+   * An acceleration names a month, because the money will come out of that month's salary. A
+   * settlement does not, because no month is being charged. Conflating them is exactly how a
+   * payslip ends up claiming a deduction for cash that arrived in an envelope.
+   */
+  it('an acceleration names a month; a settlement never does', () => {
+    expect(
+      AccelerateEmployeeLoanSchema.safeParse({
+        period: '2026-06',
+        extraAmount: 500,
+        reason: 'a bonus arrived',
+        version: 3,
+      }).success,
+    ).toBe(true);
+    // Not positive, no month, or dressed up as a cash receipt — each is a different operation.
+    expect(
+      AccelerateEmployeeLoanSchema.safeParse({
+        period: '2026-06',
+        extraAmount: 0,
+        reason: 'nothing',
+        version: 3,
+      }).success,
+    ).toBe(false);
+    expect(
+      AccelerateEmployeeLoanSchema.safeParse({ extraAmount: 500, reason: 'x', version: 3 }).success,
+    ).toBe(false);
+    expect(
+      AccelerateEmployeeLoanSchema.safeParse({
+        period: '2026-06',
+        extraAmount: 500,
+        reason: 'x',
+        settlesExternally: true,
+        version: 3,
+      }).success,
+    ).toBe(false);
   });
 
   it('an external settlement carries an amount and a reason', () => {

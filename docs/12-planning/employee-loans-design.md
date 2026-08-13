@@ -1,8 +1,8 @@
 # Employee Loans / Advances (P-HR-05)
 
-**Status: decisions frozen (D1–D10, owner-approved). Phase A implemented here; phase B is payroll.**
+**Status: decisions frozen (D1–D10, owner-approved). Phase A and phase B both implemented.**
 
-**Base:** `main` at `1280b90`.
+**Base:** phase A on `main` at `1280b90`; phase B on `main` at `1fe7565`.
 
 A bonus is a decision that ends when it is paid. A loan is a decision that **begins** when it is
 paid: money leaves, and an obligation stays behind for months. That difference is why this is not
@@ -21,10 +21,9 @@ Mixing these is the usual way a loan system starts lying about its own numbers.
 | **installment** | "this month is meant to take Y" — an **intention**, not yet a fact | `hr_loan_installments`, one row per (loan, month) | yes, while `planned` and its month is open |
 | **payroll deduction** | "this month **took** Y" — a fact, on an issued payslip | phase B: a compensation line + `hr_loan_repayments` | **never** |
 
-Phase A ships the first two. It ships **no** payroll deduction, and therefore no vocabulary for
-one: the installment statuses here are `planned` and `cancelled`, and nothing else. `deducted`
-arrives in phase B with the code that sets it — the same stance PY-12 took about a PDF nobody had
-built yet.
+Phase A shipped the first two and no vocabulary for the third: an instalment was `planned` or
+`cancelled`, and nothing else. **Phase B added `deducted` together with the code that sets it** —
+the same stance PY-12 took about a PDF nobody had built yet.
 
 ## 2. The frozen decisions (D1–D10, owner-approved)
 
@@ -53,11 +52,10 @@ built yet.
 - **D5** is a **pure** generator (`loan-schedule.ts`), so the arithmetic is arguable without a
   database — the same posture `compensation-rules.ts` and `leave-pay.ts` already take.
 - **D6** is one operation that replaces the tail of the schedule and revalidates the invariant.
-- **D7-1** (`externalSettlement`) ships here. **D7-2** (`payrollAcceleration`) is a payroll
-  deduction by definition — the owner's own wording — and phase A touches no payroll, so it ships
-  in phase B beside the port that would carry it. Its schedule effect is already expressible
-  through D6, and shipping a second way to say that in phase A would be a promise with no consumer.
-- **D8** is a subscription to `EmployeeExited` — phase B, listed there by the owner.
+- **D7-1** (`externalSettlement`) shipped in phase A. **D7-2** (`payrollAcceleration`) is a payroll
+  deduction by definition — the owner's own wording — so it shipped in **phase B**, beside the port
+  that carries it.
+- **D8** is a subscription to the existing `EmployeeExited` — **phase B**.
 - **D9** and **D10** are constraints on what may NOT appear; both are guarded by seam specs.
 
 ## 3. The entity
@@ -93,9 +91,9 @@ begins at `disburse`, which is also when the schedule is generated.
 nothing. After it, "cancel" would mean forgiving a debt — a financial decision this system has not
 been granted (D10's reasoning, applied to the balance rather than to a rate).
 
-`outstandingAtExit` and `settled`-by-payroll arrive in phase B with the code that produces them.
-Phase A's terminal states are `settled` (via external settlement), `cancelled`, and the open
-`active`.
+`settled` is reached two ways: an external settlement (D7-1) or the last instalment landing on a
+payslip. `outstandingAtExit` is phase B's, and it leaves `active` only when somebody leaves owing
+money — see §8.
 
 ## 4. The schedule (D5) — and why it is stored, not derived
 
@@ -105,7 +103,7 @@ Phase A's terminal states are `settled` (via external settlement), `cancelled`, 
 - `seq` — 1…N, the order the generator produced
 - `period` — `YYYY-MM`, Cairo, as everywhere else in payroll
 - `amountMinor` — **minor units**, because this is the number the invariant is stated in
-- `status` — `planned | cancelled`
+- `status` — `planned | deducted | cancelled` (the middle value is phase B's; see §8)
 
 Indexes: **`ux_loan_seq`** and **`ux_loan_period`**, both unique. Two installments in one month for
 one loan is not a business rule to enforce later; it is a shape that must not exist.
@@ -171,11 +169,74 @@ parallel and disbursed a minute apart, which is the situation D3 exists to preve
 `draft` deliberately does **not** block: a draft is a proposal, and a forgotten one would otherwise
 lock an employee out of ever borrowing again.
 
-## 8. What this phase deliberately does not do
+## 8. The payroll side (phase B)
 
-- **No payroll integration at all.** No port, no `origin`, no line, no repayment ledger, no change
-  to `CompensationLineDto`, and no change to PY-1…PY-12 behaviour. The compensation engine does not
-  know this feature exists.
+### One door, two directions
+
+```
+compensation.service ──dueFor──▶ │        │ ──▶ engine line (origin: 'loanInstallment')
+                                 │  port  │
+payslip.service ──recordTaken──▶ │        │ ──▶ hr_loan_repayments + instalment 'deducted'
+```
+
+`compensation/loan-installment.port.ts` is the only file in payroll that names the loans feature,
+and a seam spec asserts it by reading the imports. The write-back is the **AT-4 shape** — a payroll
+run already reaches into attendance to freeze a period through a port — so no event was invented
+for it. Payroll emits none anyway.
+
+**What crosses is an amount, a currency and a sentence to print.** What does not cross is the loan:
+not its balance, not its schedule, not its status. The engine stamps the origin and totals the
+line like any other deduction.
+
+### The line
+
+`kind: 'deduction'`, always. `prorationFactor: null`, always — the day of the month a payslip is cut
+on is not a discount on a debt. It is added **after** the adjustments, because everything above it
+is what the month earned and this is what it gives back.
+
+### The ledger
+
+`hr_loan_repayments`, append-only in the shape `hr_leave_ledger` established: written once, never
+updated, never deleted, and the balance rebuilt **from** it. It cites `runId` and `payslipId` rather
+than minting an identity — **the payslip is the receipt**.
+
+**`(loanId, period)` is unique.** One loan owes at most one instalment in one month, so a re-issued
+payslip, a second run over the same period, or a retried batch all collide on a row that already
+exists and change nothing. The instalment flips to `deducted` only on the write that inserted it.
+
+`remaining = principal − Σ(ledger) − externalSettlement`. Nothing stores it.
+
+### D9, exactly as frozen
+
+The instalment is taken **in full**. A negative net raises the `netBelowZero` warning payroll
+already had — no floor, no partial deduction, no carry-forward, and **no deferred line**, because a
+deferred line would stop PY-7 from issuing the payslip at all. That last point is the reason the
+engine gained no dependency on "net available": there is nothing to decide.
+
+### D7-2 — acceleration
+
+An extra amount in a named month, taken out of the **last** instalments: months at the end
+disappear, and the one the extra runs out inside is reduced. `sum` does not move — an acceleration
+repays *faster*, never *more*. The arithmetic is pure (`accelerateTail`). It is deliberately not the
+same operation as an external settlement: this money comes out of a salary, that money did not.
+
+### D8 — the exit
+
+On `hr.employee.exited` (the event Leave and Attendance already consume): instalments scheduled
+**after** the exit month are cancelled — payroll would never have priced them, since the calculation
+clips at the employment span — and a loan with a balance left becomes `outstandingAtExit`. A loan
+approved but never paid out is simply `cancelled`; there is no debt behind it. **Nothing is taken
+from a final salary and nothing is written off.**
+
+### Freeze
+
+Unchanged from phase A and extended by one fact: a `deducted` instalment is history. Reschedule and
+acceleration read only `planned` rows in unfrozen months, so neither can move it; an external
+settlement cancels only `planned` rows. A mistake found after the freeze is corrected forward, the
+way the rest of payroll corrects a closed month.
+
+## 9. What this phase deliberately does not do
+
 - **No disbursement of money.** ECMS has no treasury module; `disburse` records that a payment was
   made elsewhere. If the money is to move through ECMS one day, that is a module, not a field.
 - **No interest, fee, penalty or ceiling** (D4, D10). No payroll setting — payroll declares none
@@ -187,7 +248,7 @@ lock an employee out of ever borrowing again.
 - **No end-of-service or legal settlement.** `outstandingAtExit` is the far edge of this phase's
   scope, and it is a statement of fact rather than a financial decision.
 
-## 9. Open questions this phase does not answer
+## 10. Open questions this phase does not answer
 
 - **Who may approve a loan** is an administration decision about the key, not a code one.
 - If the employee's salary currency changes mid-schedule, the loan and the salary disagree from

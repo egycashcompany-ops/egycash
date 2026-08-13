@@ -65,6 +65,7 @@ import {
 import {
   buildEmployeeLoansRouter,
   buildEmployeeLoansAdminRouter,
+  employeeLoanService,
   hrEmployeeLoanFileAuthorizers,
 } from './employee-loans';
 import { addDays, cairoToday } from './shared/business-date';
@@ -942,6 +943,7 @@ export const hrModule: ModuleManifest = {
     'hr_payroll_adjustments',
     'hr_employee_loans',
     'hr_loan_installments',
+    'hr_loan_repayments',
   ],
   // ADR-023 — HR answers the Files service's "may this caller see the owning entity?" for the
   // documents personnel actions are created with (HR3-C). One type, minted by this phase, so no
@@ -984,6 +986,19 @@ export const hrModule: ModuleManifest = {
         const payload = envelope.payload as { employeeId?: string };
         if (typeof payload.employeeId === 'string') {
           await leaveRequestService.onEmployeeExited(payload.employeeId);
+        }
+      },
+    },
+    {
+      // Loans D8 (P-HR-05-B): withdraw the instalments scheduled after the exit and say plainly
+      // whether a balance is left. Nothing is taken from a final salary and nothing is written
+      // off — both would be decisions this system has not been granted.
+      event: 'hr.employee.exited',
+      handlerId: 'loans.exitSettlement',
+      handler: async (envelope) => {
+        const payload = envelope.payload as { employeeId?: string };
+        if (typeof payload.employeeId === 'string') {
+          await employeeLoanService.onEmployeeExited(payload.employeeId);
         }
       },
     },

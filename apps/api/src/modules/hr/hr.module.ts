@@ -62,6 +62,11 @@ import {
   buildPayrollAdjustmentsRouter,
   hrAdjustmentFileAuthorizers,
 } from './payroll';
+import {
+  buildEmployeeLoansRouter,
+  buildEmployeeLoansAdminRouter,
+  hrEmployeeLoanFileAuthorizers,
+} from './employee-loans';
 import { addDays, cairoToday } from './shared/business-date';
 import { registerHrIdentitySeams } from './employee-management/employees/identity-seams';
 import { registerHrBranchCodeSeams } from './employee-management/employees/branch-code-seams';
@@ -563,6 +568,33 @@ const payrollAdjustmentPermissions = declarePermissions(
   'hr.payroll-adjustments',
 );
 
+/**
+ * Employee loans and advances (P-HR-05). THREE keys, and the split is the same one P-HR-04 made
+ * for the same reason — one key held by one person is not a two-person rule (D2).
+ *
+ * `create` proposes, edits a draft and withdraws it. `approve` decides, records the payment,
+ * reschedules and closes a balance: each of those moves real money, which is the seniority of act
+ * that agreeing to lend it already is. No existing key fits — `payrollAdjustment.*` governs a
+ * decision about one month's pay, while this governs a debt that outlives any month.
+ *
+ * `pageId` is null on purpose: the surface is a tab on the employee profile, exactly where an
+ * employee's pay items and adjustments already live, so there is no administration screen of its
+ * own to point at. The page registry's named list of unassigned resources says so out loud.
+ */
+const employeeLoanPermissions = declarePermissions(
+  'hr',
+  'employeeLoan',
+  { en: 'employee loans', ar: 'قروض وسلف الموظفين' },
+  ['view', 'create'],
+  [
+    {
+      action: 'approve',
+      name: { en: 'Approve and disburse employee loans', ar: 'اعتماد وصرف قروض الموظفين' },
+    },
+  ],
+  null,
+);
+
 const attendancePermissions = [
   ...attendanceShiftAdminPermissions,
   ...attendanceAssignPermissions,
@@ -637,6 +669,7 @@ export const hrPermissions: PermissionDef[] = [
   ...payItemPermissions,
   ...payrollRunPermissions,
   ...payrollAdjustmentPermissions,
+  ...employeeLoanPermissions,
 ];
 
 /**
@@ -837,6 +870,7 @@ export const hrModule: ModuleManifest = {
     { prefix: '/hr/employees', router: buildEmployeeActionsRouter() },
     // …and the per-employee surface, because a bonus is that person's money.
     { prefix: '/hr/employees', router: buildEmployeeAdjustmentsRouter() },
+    { prefix: '/hr/employees', router: buildEmployeeLoansRouter() },
     { prefix: '/hr/employees', router: buildLeaveBalancesRouter() },
     { prefix: '/hr/employees', router: buildEmployeesRouter() },
     { prefix: '/hr/hiring-documents', router: buildHiringDocumentsRouter() },
@@ -866,6 +900,7 @@ export const hrModule: ModuleManifest = {
     { prefix: '/hr/payroll/payslips', router: buildPayslipsRouter() },
     // P-HR-04 — the organization-wide list the approval queue reads.
     { prefix: '/hr/payroll/adjustments', router: buildPayrollAdjustmentsRouter() },
+    { prefix: '/hr/employee-loans', router: buildEmployeeLoansAdminRouter() },
   ],
   collections: [
     'hr_applicants',
@@ -905,11 +940,17 @@ export const hrModule: ModuleManifest = {
     'hr_payroll_leave_snapshots',
     'hr_payslips',
     'hr_payroll_adjustments',
+    'hr_employee_loans',
+    'hr_loan_installments',
   ],
   // ADR-023 — HR answers the Files service's "may this caller see the owning entity?" for the
   // documents personnel actions are created with (HR3-C). One type, minted by this phase, so no
   // file already filed against an employee changes behaviour.
-  fileEntityAuthorizers: [...hrFileEntityAuthorizers, ...hrAdjustmentFileAuthorizers],
+  fileEntityAuthorizers: [
+    ...hrFileEntityAuthorizers,
+    ...hrAdjustmentFileAuthorizers,
+    ...hrEmployeeLoanFileAuthorizers,
+  ],
   eventSubscriptions: [
     {
       // Contracts A13/D8 — the reliable tier executes in the WORKER: render the PDF

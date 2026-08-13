@@ -38,7 +38,7 @@ interface DialogProps {
 export const ExitDialog = ({ employee, open, onClose }: DialogProps): JSX.Element | null => {
   const t = useT();
   const action = useExitAction(employee.id);
-  const { fields, common } = useActionCommonFields();
+  const { fields, common } = useActionCommonFields(employee.id);
   const subordinates = useSubordinates(open ? employee.id : '');
   const [type, setType] = useState<EmployeeExitType>('resignation');
   const [reason, setReason] = useState('');
@@ -185,7 +185,7 @@ export const RehireDialog = ({ employee, open, onClose }: DialogProps): JSX.Elem
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const can = useCan();
   const action = useRehireAction(employee.id);
-  const { fields, common } = useActionCommonFields();
+  const { fields, common } = useActionCommonFields(employee.id);
   const [mode, setMode] = useState<'offer' | 'direct'>('direct');
   const [jobOfferId, setJobOfferId] = useState<{ id: string; code: string } | null>(null);
   const [reactivateLogin, setReactivateLogin] = useState(true);

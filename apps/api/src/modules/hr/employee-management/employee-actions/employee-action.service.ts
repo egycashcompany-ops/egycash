@@ -14,6 +14,7 @@ import {
   canTransitionEmployeeStatus,
   employeeBaseStatus,
   EMPLOYEE_EXIT_TYPES,
+  EMPLOYEE_ACTION_ATTACHMENT_ENTITY_TYPE,
   type ActionOverlapDto,
   type CancelEmployeeAction,
   type ChangeEmployeeStatus,
@@ -38,6 +39,7 @@ import {
   jobTitleService,
   sectionService,
 } from '../../../../platform/organization';
+import { fileService, type FileDoc, type UploadedBinary } from '../../../../platform/files';
 import { userService } from '../../../../platform/users';
 import { jobOfferService } from '../../recruitment/job-offers';
 import { employeeFileService } from '../employee-file';
@@ -49,6 +51,7 @@ import {
   type EmploymentDetails,
 } from '../employees';
 import { overlappingFields } from './action-fields';
+import { resolveEmployeeActionAttachmentsCategoryId } from './employee-action.files';
 import { employeeActionRepository } from './employee-action.repository';
 import {
   EmployeeActionModel,
@@ -190,6 +193,13 @@ class EmployeeActionService {
     // Fail fast on state that can never become valid (still re-validated at application time).
     this.assertCreatable(employee, input);
 
+    // Before the sequence is allocated, because that allocation is an atomic $inc — a rejected
+    // attachment must not burn a number out of the employment history's total order.
+    const attachmentFileId =
+      input.attachmentFileId === undefined
+        ? null
+        : await this.resolveAttachment(ctx, String(employee._id), input.attachmentFileId);
+
     // Allocate the per-employee sequence atomically — the total order of the history.
     const seq = await employeeRepository.allocateActionSeq(String(employee._id));
     if (seq === null) throw new ConflictError('employee vanished during action allocation');
@@ -199,6 +209,9 @@ class EmployeeActionService {
     delete raw['effectiveDate'];
     const note = typeof raw['note'] === 'string' ? raw['note'] : undefined;
     delete raw['note'];
+    // A column of its own, not payload — the payload is the action's INPUT, replayed at
+    // application time, and the document is not an input to anything.
+    delete raw['attachmentFileId'];
     const payload = raw;
     const reason = typeof (input as { reason?: unknown }).reason === 'string' ? (input as { reason: string }).reason : null;
 
@@ -214,7 +227,7 @@ class EmployeeActionService {
       payload,
       reason,
       note: note ?? null,
-      attachmentFileId: null,
+      attachmentFileId,
       failureReason: null,
       cancelledAt: null,
       cancelledBy: null,
@@ -1020,6 +1033,74 @@ class EmployeeActionService {
     // Visibility follows the employee itself (branch/department scoping).
     await employeeRepository.getById(employeeId, scope);
     return employeeActionRepository.listForEmployee(employeeId, query);
+  }
+
+  /**
+   * Upload the document an action will be created WITH (HR3-C).
+   *
+   * A separate step, and it has to be: an action is immutable once written (§3), so its document
+   * cannot be added afterwards — and the file cannot name the action as its owner either, because
+   * the action does not exist yet. So the EMPLOYEE owns it, the entity reference is set here
+   * rather than taken from the caller, and the returned id is passed to whichever create endpoint
+   * the action belongs to.
+   *
+   * A document uploaded for an action the caller then abandons is left filed against the employee,
+   * reachable only by someone who could read the action it was meant for. Same as the leave
+   * module's attach-then-submit, and the alternative — deleting on a dialog close we never hear
+   * about — would be a promise this cannot keep.
+   */
+  async attach(
+    ctx: AuthContext,
+    employeeId: string,
+    binary: UploadedBinary,
+    scope: ScopeSelector,
+  ): Promise<FileDoc> {
+    const employee = await employeeRepository.getById(employeeId, scope);
+    const categoryId = await resolveEmployeeActionAttachmentsCategoryId();
+    return fileService.upload(
+      ctx,
+      {
+        moduleId: 'hr',
+        entityType: EMPLOYEE_ACTION_ATTACHMENT_ENTITY_TYPE,
+        entityId: String(employee._id),
+        categoryId,
+        displayName: binary.originalName,
+        visibility: 'private',
+        tags: [],
+      },
+      binary,
+    );
+  }
+
+  /**
+   * The document must be one THIS employee's, filed for this purpose (HR3-C).
+   *
+   * Both halves matter. The category stops an arbitrary file id — a payslip, a contract scan —
+   * from being stapled to an action; the entity reference stops one employee's document from
+   * being filed under another's history. Neither is checkable from the id alone, which is why
+   * this reads the row rather than trusting the shape.
+   */
+  private async resolveAttachment(
+    ctx: AuthContext,
+    employeeId: string,
+    fileId: string,
+  ): Promise<Types.ObjectId> {
+    const file = await fileService.getById(fileId, undefined, ctx);
+    const ref = file.entityRef;
+    if (
+      ref.moduleId !== 'hr' ||
+      ref.entityType !== EMPLOYEE_ACTION_ATTACHMENT_ENTITY_TYPE ||
+      ref.entityId !== employeeId
+    ) {
+      throw new BusinessRuleError(
+        'the attachment must be uploaded for this employee through the actions attachment endpoint',
+      );
+    }
+    const categoryId = await resolveEmployeeActionAttachmentsCategoryId();
+    if (String(file.categoryId) !== categoryId) {
+      throw new BusinessRuleError('the attachment is not a personnel-action document');
+    }
+    return file._id as Types.ObjectId;
   }
 
   /**

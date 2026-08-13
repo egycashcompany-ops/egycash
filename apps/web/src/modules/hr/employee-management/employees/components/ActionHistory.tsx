@@ -72,6 +72,17 @@ export const ActionHistory = ({ employee }: { employee: EmployeeDto }): JSX.Elem
       header: t('employees.actions.reason'),
       render: (a) => <span className="text-xs text-slate-500">{a.reason ?? a.failureReason ?? '—'}</span>,
     },
+    // HR3-C — that a document backs this action is a fact about the record, so the history says
+    // so. Reaching the bytes is a Files-service concern and is not offered here.
+    {
+      key: 'attachment',
+      header: t('employees.actions.attachment'),
+      render: (a) => (
+        <span className="text-xs text-slate-500">
+          {a.attachmentFileId === null ? '—' : t('employees.actions.attachmentPresent')}
+        </span>
+      ),
+    },
     {
       key: 'cancel',
       header: '',

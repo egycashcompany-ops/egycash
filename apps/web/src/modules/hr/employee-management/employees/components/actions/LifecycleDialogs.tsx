@@ -38,7 +38,7 @@ const useSubmit = (
 
 export const SuspendDialog = ({ employee, open, onClose }: DialogProps): JSX.Element | null => {
   const t = useT();
-  const { fields, common } = useActionCommonFields();
+  const { fields, common } = useActionCommonFields(employee.id);
   const [reason, setReason] = useState('');
   const [disableLogin, setDisableLogin] = useState(true);
   const { pending, run } = useSubmit(employee, onClose);
@@ -82,7 +82,7 @@ export const SuspendDialog = ({ employee, open, onClose }: DialogProps): JSX.Ele
 
 export const ReinstateDialog = ({ employee, open, onClose }: DialogProps): JSX.Element | null => {
   const t = useT();
-  const { fields, common } = useActionCommonFields();
+  const { fields, common } = useActionCommonFields(employee.id);
   const [enableLogin, setEnableLogin] = useState(true);
   const { pending, run } = useSubmit(employee, onClose);
 
@@ -115,7 +115,7 @@ export const ReinstateDialog = ({ employee, open, onClose }: DialogProps): JSX.E
 
 export const ProbationConfirmDialog = ({ employee, open, onClose }: DialogProps): JSX.Element | null => {
   const t = useT();
-  const { fields, common } = useActionCommonFields();
+  const { fields, common } = useActionCommonFields(employee.id);
   const { pending, run } = useSubmit(employee, onClose);
 
   return (
@@ -135,7 +135,7 @@ export const ProbationConfirmDialog = ({ employee, open, onClose }: DialogProps)
 
 export const ProbationExtendDialog = ({ employee, open, onClose }: DialogProps): JSX.Element | null => {
   const t = useT();
-  const { fields, common } = useActionCommonFields();
+  const { fields, common } = useActionCommonFields(employee.id);
   const [newEndDate, setNewEndDate] = useState('');
   const [reason, setReason] = useState('');
   const { pending, run } = useSubmit(employee, onClose);
@@ -174,7 +174,7 @@ export const ProbationExtendDialog = ({ employee, open, onClose }: DialogProps):
 
 export const ProbationFailDialog = ({ employee, open, onClose }: DialogProps): JSX.Element | null => {
   const t = useT();
-  const { fields, common } = useActionCommonFields();
+  const { fields, common } = useActionCommonFields(employee.id);
   const [reason, setReason] = useState('');
   const [eligibleForRehire, setEligibleForRehire] = useState(false);
   const { pending, run } = useSubmit(employee, onClose);

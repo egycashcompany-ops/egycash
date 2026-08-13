@@ -26,6 +26,7 @@ import { buildJobOffersRouter, jobOfferService } from './recruitment/job-offers'
 import { buildEmployeesRouter, employeeService } from './employee-management/employees';
 import {
   buildEmployeeActionsRouter,
+  hrFileEntityAuthorizers,
   employeeActionService,
 } from './employee-management/employee-actions';
 import {
@@ -867,6 +868,10 @@ export const hrModule: ModuleManifest = {
     'hr_payroll_leave_snapshots',
     'hr_payslips',
   ],
+  // ADR-023 — HR answers the Files service's "may this caller see the owning entity?" for the
+  // documents personnel actions are created with (HR3-C). One type, minted by this phase, so no
+  // file already filed against an employee changes behaviour.
+  fileEntityAuthorizers: hrFileEntityAuthorizers,
   eventSubscriptions: [
     {
       // Contracts A13/D8 — the reliable tier executes in the WORKER: render the PDF

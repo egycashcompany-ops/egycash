@@ -1,7 +1,9 @@
 // The Attendance → Payroll feed seam (AT-4, v1.1 §15.1 + D-PR-07 Option A).
 //
-// Two internal functions and nothing else — no endpoint, no permission, no caller until the
-// Payroll Run exists (P-HR-09). `readFrozenFeed` is the ONLY way attendance leaves this module,
+// Two internal functions and nothing else — no endpoint and no permission. Payroll reaches them
+// through one file, `payroll/compensation/attendance-quantity.port.ts` (PY-4), and the freeze
+// through a second, `payroll/runs/attendance-freeze.port.ts` (PY-6); there is no third way in.
+// `readFrozenFeed` is the ONLY way attendance leaves this module,
 // and it refuses a period that is not fully frozen: a partial feed would let Payroll price a
 // month whose truth was still moving, which is the exact failure the freeze exists to prevent.
 //

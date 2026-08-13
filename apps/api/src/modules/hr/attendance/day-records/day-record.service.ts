@@ -378,8 +378,10 @@ class DayRecordService {
 
   /**
    * Freeze one Cairo calendar month. INTERNAL SEAM ONLY: no route mounts this and no permission
-   * names it — the caller is the Payroll Run's transition to `calculating` (P-HR-09), and until
-   * that exists the only callers are tests. There is no unfreeze, here or anywhere.
+   * names it — the caller is the Payroll Run's freeze step (PY-6), which reaches it through
+   * `payroll/runs/attendance-freeze.port.ts` and nowhere else. (An earlier note here named a run
+   * status `calculating`; a run's states are `draft`, `frozen` and `cancelled`.) There is no
+   * unfreeze, here or anywhere.
    *
    * Order of operations, each deliberate:
    *

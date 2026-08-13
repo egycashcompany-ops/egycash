@@ -5,8 +5,9 @@
 // Applying an approval is the ADR-027 move, never a row edit: the proposal becomes two manual
 // punches, every previously-active punch attributed to the day is superseded by the new in-punch,
 // and the day is recomputed. On a FROZEN day the evidence is still recorded and the request is
-// stamped `postFreeze` — but the row is not recomputed and not touched: the correction reaches
-// pay as a forward adjustment (P-HR-08), never as a restatement.
+// stamped `postFreeze` — but the row is not recomputed and not touched. The correction reaches pay
+// only as a forward payroll adjustment somebody records by hand for a later month (P-HR-04), never
+// as a restatement; no code reads the stamp and no code makes that hop automatically.
 import { Types } from 'mongoose';
 import {
   HrAttendanceEvents,

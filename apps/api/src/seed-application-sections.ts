@@ -127,7 +127,7 @@ const DEFAULTS: Record<string, SectionDef[]> = {
     {
       en: 'Payroll',
       ar: 'الرواتب',
-      routes: ['/payroll/pay-items', '/payroll/runs'],
+      routes: ['/payroll/pay-items', '/payroll/runs', '/payroll/adjustments'],
     },
   ],
 };

@@ -5,6 +5,7 @@ import {
   type CreatePayrollAdjustment,
   type DecidePayrollAdjustment,
   type ListPayrollAdjustmentsQuery,
+  type PayrollAdjustmentDto,
   type SubmitPayrollAdjustment,
   type UpdatePayrollAdjustment,
 } from '@ecms/contracts';
@@ -13,6 +14,7 @@ import { ValidationError } from '../../../../shared/errors';
 import { authContext } from '../../../../platform/auth';
 import { fileService } from '../../../../platform/files';
 import { scopeSelector } from '../../../../shared/types';
+import { employeeLabelMap, labelFields } from '../../shared/employee-labels';
 import { payrollAdjustmentService } from './payroll-adjustment.service';
 import { toPayrollAdjustmentDto } from './payroll-adjustment.mapper';
 import { type PayrollAdjustmentDoc } from './payroll-adjustment.model';
@@ -101,7 +103,14 @@ export const listEmployeeAdjustments = async (req: Request, res: Response): Prom
   okPage(res, page, (doc) => toPayrollAdjustmentDto(doc, items));
 };
 
-/** The organization-wide read — the approval queue lives on this one, filtered by status. */
+/**
+ * The organization-wide read — the approval queue lives on this one, filtered by status.
+ *
+ * This one enriches the employee's code and name (P-HR-06 / D7), because it is the ONLY adjustment
+ * read whose caller does not already know whose row it is looking at: a queue of decisions about
+ * many people is unusable as a list of ids. The employee-scoped read above deliberately does not,
+ * and neither stores the labels — a name corrected tomorrow must not leave a stale copy behind.
+ */
 export const listAdjustments = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { query } = validated<never, ListPayrollAdjustmentsQuery>(req);
@@ -110,7 +119,15 @@ export const listAdjustments = async (req: Request, res: Response): Promise<void
     scopeSelector(ctx, 'payrollAdjustment.view'),
   );
   const items = await payrollAdjustmentService.payItemsFor(page.items);
-  okPage(res, page, (doc) => toPayrollAdjustmentDto(doc, items));
+  const labels = await employeeLabelMap(page.items.map((doc) => String(doc.employeeId)));
+  okPage(
+    res,
+    page,
+    (doc): PayrollAdjustmentDto => ({
+      ...toPayrollAdjustmentDto(doc, items),
+      ...labelFields(labels, String(doc.employeeId)),
+    }),
+  );
 };
 
 /** The supporting document, uploaded before the entry that names it (the HR3-C pattern). */

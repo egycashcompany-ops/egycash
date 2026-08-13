@@ -116,6 +116,16 @@ export const listEmployeeAdjustments = (
 ): Promise<Paginated<PayrollAdjustmentDto>> =>
   getPage<PayrollAdjustmentDto>(`/hr/employees/${employeeId}/adjustments${buildQuery(params)}`);
 
+/**
+ * The organization-wide read (P-HR-06) — the queue's source, and it already existed.
+ *
+ * P-HR-04 mounted `GET /hr/payroll/adjustments` and then shipped only the profile tab, so this
+ * endpoint has had no caller at all until now. The queue is that endpoint asked with
+ * `status=pendingApproval`; nothing new was added on the server to make the screen possible.
+ */
+export const listAdjustments = (params: QueryParams): Promise<Paginated<PayrollAdjustmentDto>> =>
+  getPage<PayrollAdjustmentDto>(`/hr/payroll/adjustments${buildQuery(params)}`);
+
 export const createAdjustment = (
   employeeId: string,
   body: CreatePayrollAdjustment,

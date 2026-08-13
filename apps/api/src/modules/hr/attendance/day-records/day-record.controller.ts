@@ -10,7 +10,7 @@ import {
 import { ok, okPage, validated } from '../../../../platform/web';
 import { authContext } from '../../../../platform/auth';
 import { scopeSelector } from '../../../../shared/types';
-import { employeeLabelMap, labelFields } from '../employee-labels';
+import { employeeLabelMap, labelFields } from '../../shared/employee-labels';
 import { dayRecordService, toAttendanceDayDto } from './day-record.service';
 import { streamAttendanceExport } from './attendance-export';
 

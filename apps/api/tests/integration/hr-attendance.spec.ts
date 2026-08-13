@@ -497,7 +497,8 @@ describe('the derivation engine over HTTP', () => {
 // ── AT-4 — the freeze + the §15.1 feed seam (D-PR-07 Option A) ──────────────
 //
 // `freezePeriod` and `readFrozenFeed` are INTERNAL: no route mounts them, so the suite calls the
-// service directly — exactly what the Payroll Run will do in P-HR-09. Everything runs against
+// service directly — the same way payroll's two ports do (PY-4 reads the feed, PY-6 calls the
+// freeze). Everything runs against
 // the PREVIOUS Cairo month (the freeze refuses a period still being lived), which stays inside
 // the 90-day punch sanity window.
 describe('AT-4 — freeze + the payroll feed seam', () => {

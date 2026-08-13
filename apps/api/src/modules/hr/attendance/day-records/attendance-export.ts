@@ -10,7 +10,7 @@ import { auditService } from '../../../../platform/audit';
 import { csvEscape } from '../../../../platform/audit/audit.export';
 import { dateOnlyIso } from '../../shared/business-date';
 import { employeeRepository } from '../../employee-management/employees';
-import { employeeLabelMap, type EmployeeLabel } from '../employee-labels';
+import { employeeLabelMap, type EmployeeLabel } from '../../shared/employee-labels';
 import { AttendanceDayModel, type AttendanceDayDoc } from './day-record.model';
 
 /** The two display labels, then the twelve §15.1 feed columns — in the contract's own order. */

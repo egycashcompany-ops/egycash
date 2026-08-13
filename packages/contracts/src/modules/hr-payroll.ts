@@ -853,4 +853,14 @@ export interface PayrollAdjustmentDto {
   createdAt: string;
   updatedAt: string;
   version: number;
+  /**
+   * Display labels, enriched on the ORGANIZATION-WIDE list read (P-HR-06 / D7) — never stored.
+   *
+   * Optional because the employee-scoped read does not need them: that caller already knows whose
+   * profile it is looking at. They are absent, not empty, when nothing enriched them — the same
+   * shape AT-6 gave the attendance lists, and for the same reason: a corrected name must not leave
+   * a stale copy behind on a decision about somebody who still exists.
+   */
+  employeeCode?: string;
+  employeeName?: string;
 }

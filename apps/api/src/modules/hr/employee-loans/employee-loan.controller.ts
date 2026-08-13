@@ -6,6 +6,7 @@ import {
   type CreateEmployeeLoan,
   type DecideEmployeeLoan,
   type DisburseEmployeeLoan,
+  type EmployeeLoanDto,
   type ListEmployeeLoansQuery,
   type RescheduleEmployeeLoan,
   type SettleEmployeeLoanExternally,
@@ -17,6 +18,7 @@ import { ValidationError } from '../../../shared/errors';
 import { authContext } from '../../../platform/auth';
 import { fileService } from '../../../platform/files';
 import { scopeSelector } from '../../../shared/types';
+import { employeeLabelMap, labelFields } from '../shared/employee-labels';
 import { employeeLoanService } from './employee-loan.service';
 import {
   toEmployeeLoanDetailDto,
@@ -180,12 +182,27 @@ export const listEmployeeLoans = async (req: Request, res: Response): Promise<vo
   );
 };
 
-/** The organization-wide read — the approval queue lives on this one, filtered by status. */
+/**
+ * The organization-wide read — the approval queue lives on this one, filtered by status.
+ *
+ * It enriches the employee's code and name (P-HR-06 / D7): unlike the tab above, this caller is
+ * looking at many people at once and has no profile to take the name from. One batch fetch per
+ * page, and nothing is stored on the loan — a debt is a decision about somebody who still exists,
+ * so the label is looked up at read time rather than copied and left to go stale.
+ */
 export const listLoans = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { query } = validated<never, ListEmployeeLoansQuery>(req);
   const page = await employeeLoanService.list(query, scopeSelector(ctx, 'employeeLoan.view'));
-  okPage(res, page, toEmployeeLoanDto);
+  const labels = await employeeLabelMap(page.items.map((doc) => String(doc.employeeId)));
+  okPage(
+    res,
+    page,
+    (doc): EmployeeLoanDto => ({
+      ...toEmployeeLoanDto(doc),
+      ...labelFields(labels, String(doc.employeeId)),
+    }),
+  );
 };
 
 /** The supporting document, uploaded before the request that names it (the HR3-C pattern). */

@@ -176,6 +176,17 @@ const CATALOG: CategoryDef[] = [
         icon: 'calendar',
         permission: 'payrollRun.view',
       },
+      // The adjustments queue (P-HR-06). Gated on the APPROVE key rather than `view`, which is
+      // what makes it a worklist: this row is an invitation to decide, and it belongs in the
+      // sidebar of the people who can. Whoever only reads adjustments already sees them on the
+      // employee's file, and the route itself stays open to `payrollAdjustment.view`.
+      {
+        en: 'Payroll Adjustments',
+        ar: 'مؤثرات الرواتب',
+        route: '/payroll/adjustments',
+        icon: 'clipboard',
+        permission: 'payrollAdjustment.approve',
+      },
       {
         en: 'Contracts',
         ar: 'العقود',

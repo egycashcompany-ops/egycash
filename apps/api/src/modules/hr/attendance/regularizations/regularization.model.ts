@@ -1,7 +1,10 @@
 // Regularization requests (v1.1 §2/§7) — the ONLY channel that changes a day, and it changes it
 // the ADR-027 way: on final approval the proposal becomes manual punches, the old punches are
-// superseded, and the day is recomputed. The document itself is what Payroll's retro engine will
-// read for `postFreeze` corrections (P-HR-08) — the frozen row never moves.
+// superseded, and the day is recomputed. A request against a frozen day is still recorded and
+// stamped `postFreeze`, and the frozen row never moves. NOTHING outside attendance reads that
+// stamp today: there is no retro engine in this repository, and the only built way such a
+// correction reaches pay is a payroll adjustment somebody records by hand for a later month
+// (P-HR-04) — no code makes that hop.
 import { Schema, model, type Types } from 'mongoose';
 import { type AttendanceRegularizationStatus } from '@ecms/contracts';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../../shared/base/base.model';

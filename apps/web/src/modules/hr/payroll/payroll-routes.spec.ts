@@ -1,9 +1,15 @@
-// Structural invariants for the Payroll surface (PY-1, widened once in PY-6).
+// Structural invariants for the Payroll surface (PY-1, widened in PY-6 and again in P-HR-06).
 //
 // Two of them exist because PY-1 was the FIRST payroll phase, and the shape it set is the shape
 // the rest inherit: every route is permission-gated, and nothing statutory or monetary has crept
 // into a catalog screen that has neither. The route list is stated exactly rather than counted, so
 // a surface that ships without a phase behind it fails here by name.
+//
+// P-HR-06 widened it in the OTHER direction, which is worth naming: `hr.payroll-adjustments` was
+// declared as a page in P-HR-04 and pointed at `/payroll/adjustments`, a route that resolved to
+// nothing for two phases. `validatePageRegistry` cannot catch that — it checks a page's id, its
+// module and that it has a permission, never that its route reaches a screen — so the assertion
+// that the declared page and the routed screen agree lives here, next to the route list.
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,9 +30,9 @@ const declaredPaths = (): string[] =>
 
 describe('Payroll routes', () => {
   it('routes the shipped surface and nothing unshipped', () => {
-    // pay-items (PY-1), runs (PY-6) and the employee's own payslips (PY-11). No tax and no run
-    // calculation — neither exists.
-    expect(declaredPaths()).toEqual(['payslips/me', 'pay-items', 'runs']);
+    // pay-items (PY-1), runs (PY-6), the employee's own payslips (PY-11) and the adjustments queue
+    // (P-HR-06). No tax and no run calculation — neither exists.
+    expect(declaredPaths()).toEqual(['payslips/me', 'pay-items', 'runs', 'adjustments']);
   });
 
   /**
@@ -40,7 +46,7 @@ describe('Payroll routes', () => {
    */
   it('gates every route except the one that is own-scope by construction', () => {
     const guarded = [...ROUTES.matchAll(/<RequirePermission permission="([^"]+)">/g)].map((m) => m[1]);
-    expect(guarded).toEqual(['payItem.view', 'payrollRun.view']);
+    expect(guarded).toEqual(['payItem.view', 'payrollRun.view', 'payrollAdjustment.view']);
     expect(guarded).toHaveLength(declaredPaths().length - 1);
     expect(declaredPaths().filter((p) => p.endsWith('/me'))).toEqual(['payslips/me']);
     // …and the index route renders that same self-service page, never a guarded one.
@@ -58,6 +64,7 @@ describe('Payroll routes', () => {
         'payItem.edit',
         'payItem.delete',
         'payrollRun.view',
+        'payrollAdjustment.view',
       ]).toContain(key);
     }
   });
@@ -78,6 +85,68 @@ describe('Payroll routes', () => {
     // Organized through the section system that landed with #186, not a payroll-specific one.
     expect(SECTIONS).toContain("en: 'Payroll'");
     expect(SECTIONS).toContain("'/payroll/pay-items'");
+  });
+});
+
+// ── P-HR-06 — the adjustments queue ─────────────────────────────────────────
+
+describe('the payroll adjustments queue', () => {
+  const MANIFEST = readFileSync(
+    resolve(HERE, '../../../../../api/src/modules/hr/hr.module.ts'),
+    'utf8',
+  );
+  // Code only — this page explains its own restraint in prose, and prose must not be what
+  // satisfies an assertion that it exercises none.
+  const QUEUE = readFileSync(resolve(HERE, 'pages/PayrollAdjustmentsPage.tsx'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|\s)\/\/.*$/gm, '');
+
+  /**
+   * The defect this phase closed, stated so it cannot reopen.
+   *
+   * P-HR-04 declared `hr.payroll-adjustments` pointing at `/payroll/adjustments` and then routed
+   * nothing there: for two phases the page registry, the permission matrix and every gate passed
+   * while the route resolved to the module's 404. Nothing checks a page's route for a screen, so
+   * this does.
+   */
+  it('the page the module declares resolves to a routed screen', () => {
+    expect(MANIFEST).toContain("id: 'hr.payroll-adjustments'");
+    expect(MANIFEST).toContain("route: '/payroll/adjustments'");
+    expect(declaredPaths()).toContain('adjustments');
+  });
+
+  /**
+   * D5 — the worklist belongs to whoever can end the wait.
+   *
+   * The navigation row is deliberately NARROWER than the route: `approve` puts it in the sidebar
+   * of the people it is addressed to, while `view` still opens it for anyone the API answers.
+   */
+  it('is reachable from navigation under the approve key', () => {
+    expect(SEED).toContain("route: '/payroll/adjustments'");
+    expect(SEED).toContain("permission: 'payrollAdjustment.approve'");
+    expect(SECTIONS).toContain("'/payroll/adjustments'");
+  });
+
+  /**
+   * NO NEW API, and no second way to create money.
+   *
+   * The queue decides, through the same nested endpoint the profile tab posts to. Recording an
+   * adjustment stays on the employee's file, where the person and the currency are already known —
+   * a create form here would be a second entry point to the same decision with less context.
+   */
+  it('decides through the endpoint that already existed, and records nothing', () => {
+    expect(QUEUE).toContain('useDecideAdjustmentFromQueue');
+    for (const forbidden of ['useCreateAdjustment', 'useSubmitAdjustment', 'Dialog', 'toMinorUnits']) {
+      expect(QUEUE, forbidden).not.toContain(forbidden);
+    }
+  });
+
+  // D7 — the labels are enriched on the read, so the screen shows a name rather than an id. An id
+  // rendered as the employee column is the failure this replaced, not a fallback for it.
+  it('shows the employee from the enriched label, never from an id', () => {
+    expect(QUEUE).toContain('employeeName');
+    expect(QUEUE).toContain('employeeCode');
+    expect(QUEUE).not.toMatch(/\{r\.employeeId\}/);
   });
 });
 

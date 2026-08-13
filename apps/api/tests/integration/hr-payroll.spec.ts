@@ -1907,7 +1907,8 @@ describe('payroll adjustments (P-HR-04)', () => {
         personal: {
           identity: {
             fullNameAr: 'موظف المؤثرات',
-            nationalId: '29001011390010',
+            // Distinct from every other employee this suite creates — 1673 already uses …139….
+            nationalId: '29001011490010',
             nationality: 'Egyptian',
           },
           contact: { primaryPhone: '01174000009' },

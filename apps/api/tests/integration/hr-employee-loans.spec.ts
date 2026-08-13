@@ -1196,8 +1196,9 @@ describe('what payroll does, and refuses to do, with a debt (P-HR-05-B)', () => 
       .post(`/api/v1/hr/employees/${leaverId}/actions/exit`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
-        type: 'exit',
-        exitType: 'resignation',
+        // `type` on an exit action IS the exit type — resignation, termination — and a past
+        // `effectiveDate` applies immediately, which is what makes the cancelled months exact.
+        type: 'resignation',
         effectiveDate: '2025-10-31',
         reason: 'left with a loan outstanding',
         eligibleForRehire: true,
@@ -1230,8 +1231,7 @@ describe('what payroll does, and refuses to do, with a debt (P-HR-05-B)', () => 
       .post(`/api/v1/hr/employees/${externalId}/actions/exit`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
-        type: 'exit',
-        exitType: 'resignation',
+        type: 'resignation',
         effectiveDate: '2025-10-31',
         reason: 'left with nothing owing',
         eligibleForRehire: true,

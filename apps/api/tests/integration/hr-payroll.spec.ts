@@ -1599,6 +1599,29 @@ describe('payslips', () => {
     expect(after[0]?.net).toBe(before[0]?.net);
   }, 240_000);
 
+  // PY-8 — the other half of the same guarantee, and the one the payslip could not give.
+  //
+  // The stored document was already safe; the CALCULATION was not, because it read the salary
+  // field as it stands today. A raise recorded now must not change what a past month comes to
+  // when somebody opens the screen — and must change what the CURRENT month comes to, or the
+  // raise would never take effect at all.
+  it('does not restate a past month’s calculation after a raise (PY-8)', async () => {
+    const past = await request(app)
+      .get(`/api/v1/hr/employees/${employeeId}/compensation?period=${PERIOD}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(past.status).toBe(200);
+    // The raise above landed AFTER this period, so the period still reads the old salary.
+    expect((past.body.data as CompensationEffectsDto).basicSalary).toBe(12_000);
+
+    const now = new Date();
+    const current = `${String(now.getUTCFullYear())}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+    const today = await request(app)
+      .get(`/api/v1/hr/employees/${employeeId}/compensation?period=${current}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(today.status).toBe(200);
+    expect((today.body.data as CompensationEffectsDto).basicSalary).toBe(30_000);
+  });
+
   it('separates issuing from reading', async () => {
     // The outsider holds neither the run key nor the compensation key.
     expect((await issue(runId, outsiderToken)).status).toBe(403);

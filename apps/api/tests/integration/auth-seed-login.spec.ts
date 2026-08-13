@@ -363,6 +363,72 @@ describe('the default sections migration', () => {
   });
 
   /**
+   * THE REGRESSION THIS PHASE EXISTS FOR: a page added to a group that already existed.
+   *
+   * The old rule asked "was THIS section just created?" and skipped its rows otherwise. `Payroll`
+   * shipped in PY-1 holding `/payroll/pay-items`; PY-6 added `/payroll/runs` to the same list, and
+   * because the section already existed the new row was never filed — it rendered flat, above the
+   * groups, and every page added to an existing group since had the same fate.
+   *
+   * The rule is now "did the module's GROUPING change?", so this reproduces exactly that history:
+   * a row that never got filed, and a section appearing on a later boot.
+   */
+  it('files a page that was added to a group which already existed', async () => {
+    const token = await tokenOf();
+    const adminId = (await doLogin(env.SEED_ADMIN_EMAIL, env.SEED_ADMIN_PASSWORD)).body.data?.me?.id ?? '';
+
+    const appsOf = async (): Promise<{ id: string; route: string; categoryId: string; sectionId: string | null }[]> =>
+      (
+        (await get('/platform/applications?pageSize=100', token)).body as {
+          data: { id: string; route: string; categoryId: string; sectionId: string | null }[];
+        }
+      ).data;
+    const sectionsOf = async (): Promise<{ id: string; name: { en: string } }[]> =>
+      (
+        (await get('/platform/application-sections?pageSize=100', token)).body as {
+          data: { id: string; name: { en: string } }[];
+        }
+      ).data;
+
+    // Put `/payroll/runs` back in the state PY-6 left it in: entitled, visible, and in no group.
+    const runs = (await appsOf()).find((a) => a.route === '/payroll/runs');
+    expect(runs?.sectionId, 'the seed files it today').not.toBeNull();
+    const ungrouped = await request(app)
+      .patch('/api/v1/platform/applications/reorder')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ categoryId: runs?.categoryId, sectionId: null, applicationIds: [runs?.id] });
+    expect(ungrouped.status).toBe(200);
+    expect((await appsOf()).find((a) => a.route === '/payroll/runs')?.sectionId).toBeNull();
+
+    // A boot that changes nothing must not touch it — that is the administrator promise, and it
+    // is what made the old rule look reasonable.
+    await seedApplicationSections(adminId);
+    expect((await appsOf()).find((a) => a.route === '/payroll/runs')?.sectionId).toBeNull();
+
+    // Now a release changes the module's grouping. Deleting a section is how this suite can make
+    // the next run create one; in production it is a new section appearing in the defaults.
+    const employeeFile = (await sectionsOf()).find((s) => s.name.en === 'Employee File');
+    expect(employeeFile).toBeDefined();
+    const removed = await request(app)
+      .delete(`/api/v1/platform/application-sections/${String(employeeFile?.id)}`)
+      .set('Authorization', `Bearer ${token}`);
+    expect([200, 204]).toContain(removed.status);
+
+    await seedApplicationSections(adminId);
+
+    // The grouping changed, so the module was re-filed as a whole — and the page that PY-6 left
+    // behind is finally in its group.
+    const after = await appsOf();
+    const payroll = (await sectionsOf()).find((s) => s.name.en === 'Payroll');
+    expect(after.find((a) => a.route === '/payroll/runs')?.sectionId).toBe(payroll?.id);
+    // …along with the section that was re-created, holding its own pages again.
+    const rebuilt = (await sectionsOf()).find((s) => s.name.en === 'Employee File');
+    for (const route of ['/employee-files', '/contracts']) {
+      expect(after.find((a) => a.route === route)?.sectionId, route).toBe(rebuilt?.id);
+    }
+  });
+
+  /**
    * The lifecycle split, over HTTP: the two halves land in the right groups and the pages the
    * sidebar shows are exactly the pages that existed before.
    *

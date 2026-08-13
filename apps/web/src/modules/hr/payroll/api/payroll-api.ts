@@ -2,7 +2,11 @@
 // to one employee over one dated interval; PY-3 reads what those come to over a period. Still no
 // run and no payslip.
 import {
+  type CancelPayrollAdjustment,
   type CompensationEffectsDto,
+  type CreatePayrollAdjustment,
+  type DecidePayrollAdjustment,
+  type PayrollAdjustmentDto,
   type CreateEmployeePayItem,
   type CreatePayrollRun,
   type GeneratePayslipsResultDto,
@@ -104,3 +108,38 @@ export const generatePayslips = (runId: string): Promise<GeneratePayslipsResultD
 /** The caller's OWN payslips (PY-11) — own-scope by construction, so no employee id is sent. */
 export const listMyPayslips = (params: QueryParams): Promise<Paginated<PayslipDto>> =>
   getPage<PayslipDto>(`/hr/payroll/payslips/me${buildQuery(params)}`);
+
+// ── Payroll adjustments — bonuses and penalties (P-HR-04) ────────────────────
+export const listEmployeeAdjustments = (
+  employeeId: string,
+  params: QueryParams,
+): Promise<Paginated<PayrollAdjustmentDto>> =>
+  getPage<PayrollAdjustmentDto>(`/hr/employees/${employeeId}/adjustments${buildQuery(params)}`);
+
+export const createAdjustment = (
+  employeeId: string,
+  body: CreatePayrollAdjustment,
+): Promise<PayrollAdjustmentDto> =>
+  post<PayrollAdjustmentDto>(`/hr/employees/${employeeId}/adjustments`, body);
+
+export const submitAdjustment = (
+  employeeId: string,
+  id: string,
+  version: number,
+): Promise<PayrollAdjustmentDto> =>
+  post<PayrollAdjustmentDto>(`/hr/employees/${employeeId}/adjustments/${id}/submit`, { version });
+
+/** The second person's decision (D1) — behind its own permission server-side. */
+export const decideAdjustment = (
+  employeeId: string,
+  id: string,
+  body: DecidePayrollAdjustment,
+): Promise<PayrollAdjustmentDto> =>
+  post<PayrollAdjustmentDto>(`/hr/employees/${employeeId}/adjustments/${id}/decide`, body);
+
+export const cancelAdjustment = (
+  employeeId: string,
+  id: string,
+  body: CancelPayrollAdjustment,
+): Promise<PayrollAdjustmentDto> =>
+  post<PayrollAdjustmentDto>(`/hr/employees/${employeeId}/adjustments/${id}/cancel`, body);

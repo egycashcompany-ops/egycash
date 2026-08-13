@@ -42,7 +42,10 @@ describe('the Pay Items tab is wired into the profile the way every additive tab
   // Compensation is redacted server-side; the tab follows that same answer rather than inventing
   // a second rule for when a salary figure may be shown.
   it('appears only when the server says compensation is visible', () => {
-    expect(PROFILE).toContain("TABS.filter((k) => k !== 'payItems')");
+    // The filter grew when P-HR-04 added a second money tab beside this one; what it protects is
+    // unchanged — neither tab is offered to a caller the server redacts compensation from.
+    expect(PROFILE).toContain("k !== 'payItems'");
+    expect(PROFILE).toContain('compensationVisible ? TABS : TABS.filter(');
     expect(PROFILE).toContain("{tab === 'payItems' && e.compensationVisible && (");
   });
 });

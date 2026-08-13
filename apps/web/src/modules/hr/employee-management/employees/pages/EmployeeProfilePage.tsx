@@ -29,14 +29,14 @@ import { useEmployeeFiles } from '../../employee-files/api/employee-file-queries
 import { CandidateTimeline } from '../../../recruitment/timeline/components/CandidateTimeline';
 import { useEmployee, useEmployeeActions, useEmployeeTimeline } from '../api/employee-queries';
 
-const TABS = ['overview', 'personal', 'employment', 'leave', 'attendance', 'contracts', 'payItems', 'documents', 'timeline', 'account'] as const;
+const TABS = ['overview', 'personal', 'employment', 'leave', 'attendance', 'contracts', 'payItems', 'adjustments', 'documents', 'timeline', 'account'] as const;
 type Tab = (typeof TABS)[number];
 
 // Pay Items is the employee's COMPENSATION, so it appears exactly where compensation appears —
 // behind the same `employee.viewCompensation` answer the server already gave for the salary on
 // the Overview tab. Hiding it is UX, not enforcement: the endpoints carry the same key.
 const visibleTabs = (compensationVisible: boolean): readonly Tab[] =>
-  compensationVisible ? TABS : TABS.filter((k) => k !== 'payItems');
+  compensationVisible ? TABS : TABS.filter((k) => k !== 'payItems' && k !== 'adjustments');
 
 // The Leave, Attendance and Contracts tabs are owned by their modules and lazy-loaded (additive
 // tabs) — the same dynamic import() seam, so each module's chunk loads only when its tab opens.
@@ -47,6 +47,9 @@ const EmployeeAttendanceTab = lazy(
 const EmployeeContractsTab = lazy(() => import('../../../contracts/components/EmployeeContractsTab'));
 const EmployeePayItemsTab = lazy(
   () => import('../../../payroll/components/EmployeePayItemsTab'),
+);
+const EmployeeAdjustmentsTab = lazy(
+  () => import('../../../payroll/components/EmployeeAdjustmentsTab'),
 );
 
 const ProbationCard = ({ e }: { e: EmployeeDto }): JSX.Element | null => {
@@ -349,6 +352,11 @@ export const EmployeeProfilePage = (): JSX.Element => {
       {tab === 'payItems' && e.compensationVisible && (
         <Suspense fallback={<LoadingState />}>
           <EmployeePayItemsTab employee={e} />
+        </Suspense>
+      )}
+      {tab === 'adjustments' && e.compensationVisible && (
+        <Suspense fallback={<LoadingState />}>
+          <EmployeeAdjustmentsTab employee={e} />
         </Suspense>
       )}
       {tab === 'documents' && <DocumentsTab e={e} />}

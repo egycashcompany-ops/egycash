@@ -109,6 +109,13 @@ export interface CompensationInput {
   /** Whether the employee still carries the older `employment.allowances[]` list (D1). */
   hasLegacyAllowances: boolean;
   /**
+   * The APPROVED one-off bonuses and penalties for this month (P-HR-04).
+   *
+   * A decision, not a rate — so unlike an assignment these are NOT prorated and carry no interval.
+   * They arrive already filtered to `approved`: the port is what keeps a proposal out of a total.
+   */
+  adjustments: readonly AdjustmentInput[];
+  /**
    * The period's frozen attendance, or `null` when it is not frozen (PY-4).
    *
    * Null is "not knowable yet", never "nothing happened": it leaves every quantity line pending,
@@ -375,6 +382,67 @@ const pendingLeaveLine = (periodDays: number, currency: string): CompensationLin
  * looks right and is not: no basic salary (a percentage of nothing), a pay item in another
  * currency (a total in two currencies), and a percentage outside 0–100 (an input slip).
  */
+/** One approved bonus or penalty, as the port hands it over (P-HR-04). */
+export interface AdjustmentInput {
+  id: string;
+  kind: 'bonus' | 'penalty';
+  amount: number;
+  currency: string;
+  reason: string;
+  /** D4 — the catalog item lending the line its identity, when one was chosen. */
+  payItemId: string | null;
+  payItem: { code: string; name: { ar: string; en: string } } | null;
+}
+
+const ADJUSTMENT_CODE = { bonus: 'BONUS', penalty: 'PENALTY' } as const;
+const ADJUSTMENT_NAME = {
+  bonus: { ar: 'منحة', en: 'Bonus' },
+  penalty: { ar: 'جزاء', en: 'Penalty' },
+} as const;
+
+/**
+ * The line a decision produces (P-HR-04).
+ *
+ * NOT PRORATED, and that is the whole difference from an assigned pay item: `prorationFactor` is
+ * null and the amount is exactly what was approved. Somebody decided to pay 5,000 in March; the
+ * day of March they decided it on is not a discount.
+ *
+ * D4 — the identity comes from the chosen catalog item when there is one, and from a fixed code
+ * and name plus the reason when there is not. The same shape PY-5's leave line already uses: a
+ * money line that belongs to no assignment is not a new idea here.
+ */
+const toAdjustmentLine = (
+  adjustment: AdjustmentInput,
+  periodDays: number,
+): CompensationLineDto => {
+  const minor = toMinorUnits(adjustment.amount);
+  return {
+    origin: 'adjustment',
+    sourceAssignmentId: adjustment.id,
+    payItemId: adjustment.payItemId,
+    code: adjustment.payItem?.code ?? ADJUSTMENT_CODE[adjustment.kind],
+    name: adjustment.payItem?.name ?? ADJUSTMENT_NAME[adjustment.kind],
+    kind: adjustment.kind === 'bonus' ? 'earning' : 'deduction',
+    calcBasis: 'fixed',
+    currency: adjustment.currency,
+    baseAmount: adjustment.amount,
+    // Null, not 1 — "this was never prorated" and "this was prorated by a factor of one" are
+    // different statements, and only the first is true.
+    prorationFactor: null,
+    daysInForce: periodDays,
+    daysInPeriod: periodDays,
+    quantity: null,
+    quantitySource: null,
+    quantityUnit: null,
+    feedFrozenAt: null,
+    leavePayRate: null,
+    leaveTypeCode: null,
+    amountMinor: minor,
+    amount: fromMinorUnits(minor),
+    state: COMPENSATION_LINE_STATES[0],
+  };
+};
+
 export const computeCompensation = (input: CompensationInput): CompensationEffectsDto => {
   const window = periodRange(input.period);
   const periodDays = calendarDaysInclusive(window.from, window.to);
@@ -393,6 +461,15 @@ export const computeCompensation = (input: CompensationInput): CompensationEffec
     if (assignment.currency !== currency) {
       throw new BusinessRuleError(
         `${assignment.item.code} is assigned in ${assignment.currency} but this employee is paid in ${currency} — a single calculation cannot mix currencies`,
+      );
+    }
+  }
+
+  // P-HR-04 — the same single-currency rule, applied to decisions as well as to assignments.
+  for (const adjustment of input.adjustments) {
+    if (adjustment.currency !== currency) {
+      throw new BusinessRuleError(
+        `an adjustment is recorded in ${adjustment.currency} but this employee is paid in ${currency} — a single calculation cannot mix currencies`,
       );
     }
   }
@@ -440,6 +517,15 @@ export const computeCompensation = (input: CompensationInput): CompensationEffec
       deductions.push(toLeaveLine(shortfall, basicMinor, periodDays, currency));
       leaveLines += 1;
     }
+  }
+
+  // P-HR-04 — decisions last, after both the rates and the leave. They have no catalog sort order
+  // and no interval to be ordered by, so they read in the order they were approved: the sequence
+  // somebody granted them in is the only order that means anything.
+  for (const adjustment of input.adjustments) {
+    const line = toAdjustmentLine(adjustment, periodDays);
+    if (line.kind === 'earning') earnings.push(line);
+    else deductions.push(line);
   }
 
   // Integer arithmetic: the sum of the lines shown IS the total shown, with no stray piastre.

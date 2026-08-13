@@ -25,6 +25,7 @@ import {
 import { employmentSpansOf } from './employment-spans';
 import { attendanceQuantityPort } from './attendance-quantity.port';
 import { leaveSnapshotPort } from './leave-snapshot.port';
+import { adjustmentPort } from './adjustment.port';
 
 class CompensationService {
   /**
@@ -128,6 +129,11 @@ class CompensationService {
       to,
     );
 
+    // P-HR-04 — the approved one-off decisions for this month. Asked for unconditionally, like
+    // leave and unlike attendance: a bonus costs money whether or not anybody configured a pay
+    // item, so "nothing is assigned" is not a reason to skip the question.
+    const adjustments = await adjustmentPort.approvedFor(employeeId, period);
+
     return computeCompensation({
       employeeId,
       period,
@@ -139,6 +145,7 @@ class CompensationService {
       // D1 — the older list is not read. Saying so beats leaving the reader to wonder why a figure
       // they can see on the employment tab is missing from this one.
       hasLegacyAllowances: (employee.employment.allowances ?? []).length > 0,
+      adjustments,
     });
   }
 }

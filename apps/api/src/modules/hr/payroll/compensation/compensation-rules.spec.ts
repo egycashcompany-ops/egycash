@@ -50,6 +50,8 @@ const input = (over: Partial<CompensationInput> = {}): CompensationInput => ({
   employmentSpans: [{ from: d('2020-01-01'), to: null }],
   assignments: [],
   hasLegacyAllowances: false,
+  // P-HR-04 — no one-off decision, which is what every case below predates.
+  adjustments: [],
   attendance: null,
   // PY-5 — the default is "no run has pinned this period", which is what every PY-3 and PY-4 case
   // below assumes: they predate leave pricing and must keep answering exactly as they did.

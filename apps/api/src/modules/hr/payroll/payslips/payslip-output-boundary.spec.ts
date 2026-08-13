@@ -52,12 +52,31 @@ describe('nothing was built for a PDF that was not asked for', () => {
     }
   });
 
-  // Decision 3 — no storage. A payslip is computed and stored as a DOCUMENT (PY-7); it produces
-  // no file, so nothing in payroll uploads one.
-  it('payroll writes no files', () => {
-    for (const file of payrollFiles) {
+  /**
+   * Decision 3 — no storage FOR PAYSLIP OUTPUT. A payslip is computed and stored as a document
+   * (PY-7); it produces no file, so nothing on the pricing-and-issuing path uploads one.
+   *
+   * Narrowed when P-HR-04 arrived, not weakened. An adjustment's supporting document — the memo
+   * behind a bonus, the letter behind a penalty — is an INPUT a human attaches to a decision, and
+   * it is the opposite of what this guard exists to stop: a rendered artefact of the payslip
+   * quietly acquiring a storage lifecycle. So the assertion now names the path it protects.
+   */
+  it('nothing on the payslip pricing-and-issuing path writes a file', () => {
+    const pipeline = payrollFiles.filter((file) =>
+      ['payslips/', 'runs/', 'compensation/', 'pay-items/', 'employee-pay-items/'].some((dir) =>
+        rel(file).startsWith(dir),
+      ),
+    );
+    expect(pipeline.length).toBeGreaterThan(10);
+    for (const file of pipeline) {
       expect(code(file), rel(file)).not.toContain('fileService.upload');
     }
+  });
+
+  // …and the one upload payroll does have is exactly the adjustment attachment, nowhere else.
+  it('the only file payroll uploads is an adjustment’s supporting document', () => {
+    const uploaders = payrollFiles.filter((file) => code(file).includes('fileService.upload'));
+    expect(uploaders.map(rel)).toEqual(['adjustments/payroll-adjustment.service.ts']);
   });
 
   /**

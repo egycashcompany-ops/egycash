@@ -331,7 +331,10 @@ export type CompensationLineState = (typeof COMPENSATION_LINE_STATES)[number];
  * that name those are null. This flag is what lets a reader tell the two apart without inferring
  * it from a null.
  */
-export const COMPENSATION_LINE_ORIGINS = ['payItem', 'leaveSnapshot'] as const;
+// `adjustment` is P-HR-04: a one-off bonus or penalty decided for one month. It is the third
+// source the engine takes, after the pay-item assignment and the leave snapshot, and it is the
+// only one that is NOT prorated — its amount is the amount somebody approved.
+export const COMPENSATION_LINE_ORIGINS = ['payItem', 'leaveSnapshot', 'adjustment'] as const;
 export type CompensationLineOrigin = (typeof COMPENSATION_LINE_ORIGINS)[number];
 
 /**
@@ -722,3 +725,122 @@ export const ListPayslipsQuerySchema = PaginationQuerySchema.extend({
     .optional(),
 }).strict();
 export type ListPayslipsQuery = z.infer<typeof ListPayslipsQuerySchema>;
+
+// ── Payroll adjustments — bonuses and penalties (P-HR-04) ────────────────────
+//
+// One amount, for one person, for one month, because somebody decided so. That sentence is the
+// whole entity, and every field below is part of it.
+//
+// WHY THIS IS NOT A PAY ITEM. A pay item is a RATE — a `fixed` one prorates by the days it was in
+// force, two assignments of it may not overlap, an open-ended one pays every month forever, and it
+// carries no reason and no approver. None of that fits a decision to pay somebody 5,000 once, in
+// March, for finishing a project. So this is a source of its own, in the same shape the engine has
+// taken a new source twice already (PY-4 attendance, PY-5 leave): a port plus an `origin`.
+//
+// The frozen decisions are in docs/12-planning/payroll-adjustments-design.md.
+
+export const PAYROLL_ADJUSTMENT_KINDS = ['bonus', 'penalty'] as const;
+export const PayrollAdjustmentKindSchema = z.enum(PAYROLL_ADJUSTMENT_KINDS);
+export type PayrollAdjustmentKind = z.infer<typeof PayrollAdjustmentKindSchema>;
+
+/**
+ * D1 — one approval by a second person, in the shape Contracts already uses.
+ *
+ * `reject` returns the entry to `draft` rather than to a terminal state, so a mistake can be
+ * corrected and resubmitted; a rejection is a note on the way to a decision, not the decision.
+ * `cancelled` is reachable from any live state and is the ONLY thing that can happen to an entry
+ * once it is `approved` — an approved figure is the record of a decision, not a working note.
+ */
+export const PAYROLL_ADJUSTMENT_STATUSES = [
+  'draft',
+  'pendingApproval',
+  'approved',
+  'cancelled',
+] as const;
+export const PayrollAdjustmentStatusSchema = z.enum(PAYROLL_ADJUSTMENT_STATUSES);
+export type PayrollAdjustmentStatus = z.infer<typeof PayrollAdjustmentStatusSchema>;
+
+const adjustmentPeriod = z
+  .string()
+  .regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'a period is YYYY-MM');
+
+export const CreatePayrollAdjustmentSchema = z
+  .object({
+    /** The Cairo month this is paid or deducted in — the binding to payroll (D5: exactly one). */
+    period: adjustmentPeriod,
+    kind: PayrollAdjustmentKindSchema,
+    /** Always POSITIVE. Direction is `kind`'s job; a negative bonus is a penalty written unclearly. */
+    amount: MoneyAmountSchema.refine((value) => value > 0, { message: 'an amount must be positive' }),
+    /** Must equal the employee's basic-salary currency — PY-3 refuses to total two currencies. */
+    currency: MoneyCurrencySchema,
+    /** Required: a payment nobody can explain is not a payment anybody should make. */
+    reason: z.string().min(1).max(500),
+    /** D4 — optional. Lends the line its identity; never its arithmetic. */
+    payItemId: objectId().optional(),
+    note: z.string().max(1000).optional(),
+    /** Uploaded first through the adjustment attachment endpoint, as personnel actions do. */
+    attachmentFileId: objectId().optional(),
+  })
+  .strict();
+export type CreatePayrollAdjustment = z.infer<typeof CreatePayrollAdjustmentSchema>;
+
+/** Editing is a DRAFT-only act (D1) — every field of the decision, restated. */
+export const UpdatePayrollAdjustmentSchema = CreatePayrollAdjustmentSchema.partial()
+  .extend({ version: z.number().int().min(0) })
+  .strict();
+export type UpdatePayrollAdjustment = z.infer<typeof UpdatePayrollAdjustmentSchema>;
+
+export const SubmitPayrollAdjustmentSchema = z
+  .object({ version: z.number().int().min(0) })
+  .strict();
+export type SubmitPayrollAdjustment = z.infer<typeof SubmitPayrollAdjustmentSchema>;
+
+export const DecidePayrollAdjustmentSchema = z
+  .object({
+    decision: z.enum(['approved', 'rejected']),
+    note: z.string().max(500).optional(),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type DecidePayrollAdjustment = z.infer<typeof DecidePayrollAdjustmentSchema>;
+
+export const CancelPayrollAdjustmentSchema = z
+  .object({ reason: z.string().min(1).max(500), version: z.number().int().min(0) })
+  .strict();
+export type CancelPayrollAdjustment = z.infer<typeof CancelPayrollAdjustmentSchema>;
+
+export const ListPayrollAdjustmentsQuerySchema = PaginationQuerySchema.extend({
+  period: adjustmentPeriod.optional(),
+  kind: PayrollAdjustmentKindSchema.optional(),
+  status: PayrollAdjustmentStatusSchema.optional(),
+  employeeId: objectId().optional(),
+}).strict();
+export type ListPayrollAdjustmentsQuery = z.infer<typeof ListPayrollAdjustmentsQuerySchema>;
+
+export interface PayrollAdjustmentDto {
+  id: string;
+  employeeId: string;
+  period: string;
+  kind: PayrollAdjustmentKind;
+  amount: number;
+  currency: string;
+  reason: string;
+  /** The catalog item lending the line its name, when one was chosen (D4). */
+  payItemId: string | null;
+  payItem: { code: string; name: { ar: string; en: string } } | null;
+  note: string | null;
+  attachmentFileId: string | null;
+  status: PayrollAdjustmentStatus;
+  submittedBy: string | null;
+  submittedAt: string | null;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  decisionNote: string | null;
+  cancelledBy: string | null;
+  cancelledAt: string | null;
+  cancelReason: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  version: number;
+}

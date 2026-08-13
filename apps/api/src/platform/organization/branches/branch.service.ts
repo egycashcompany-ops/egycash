@@ -1,7 +1,9 @@
 import { type Types } from 'mongoose';
 import { type BranchDto, type CreateBranch } from '@ecms/contracts';
 import { ConflictError } from '../../../shared/errors';
+import { logger } from '../../../infrastructure/logging/logger';
 import { auditService } from '../../audit';
+import { runBranchCodeChangeHandlers } from './branch-code-seam';
 import { OrgUnitService } from '../shared/org-unit';
 import { assertManagerExists } from '../shared/managers';
 import { branchRepository } from './branch.repository';
@@ -49,6 +51,22 @@ export const changeBranchCode = async (
     action: 'update',
     changes: [{ field: 'code', old: before.code, new: after.code }],
   });
+
+  // HR3-A — the Employee Code is DERIVED from this code and STORED, so every employee in this
+  // branch is now carrying a stale one. The dependents repair themselves through the seam (the
+  // platform may not import a business module), and only the CURRENT value moves: contracts,
+  // hiring documents, payslips and leave requests keep the code they were made with.
+  if (before.code !== after.code) {
+    const repaired = await runBranchCodeChangeHandlers({
+      branchId: id,
+      oldCode: before.code,
+      newCode: after.code,
+      by,
+    });
+    if (repaired > 0) {
+      logger.info({ branchId: id, repaired }, 'branch code change propagated to dependents');
+    }
+  }
   return after;
 };
 

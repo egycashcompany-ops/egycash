@@ -60,6 +60,7 @@ import {
 } from './payroll';
 import { addDays, cairoToday } from './shared/business-date';
 import { registerHrIdentitySeams } from './employee-management/employees/identity-seams';
+import { registerHrBranchCodeSeams } from './employee-management/employees/branch-code-seams';
 import { registerHrDirectorySeams } from './directory-seams';
 import {
   dispatchPendingWorkflowEvents,
@@ -92,6 +93,9 @@ registerHrContractSettings();
 // Auth design 4.3/4.4 — employee-code login + NID temp-password source (platform seams).
 registerHrIdentitySeams();
 registerHrDirectorySeams();
+// HR3-A — the Employee Code derives from the branch code and is stored, so a branch-code
+// correction has to reach the employees that derived from it.
+registerHrBranchCodeSeams();
 // Workflow consumers (I15): the timeline projection and the audit trail react to published
 // workflow events; the engine itself performs no side effects.
 registerRecruitmentWorkflowConsumers();

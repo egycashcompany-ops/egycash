@@ -1642,3 +1642,158 @@ describe('payslips', () => {
     }
   });
 });
+
+// ── PY-9 — the freeze guard on backdated pay ────────────────────────────────
+//
+// The arithmetic is settled in `frozen-period-guard.spec.ts` and the no-bypass property is settled
+// by reading this module's sources. What has to hold HERE is that the refusal actually reaches the
+// endpoint, that it is the ONLY thing PY-9 changed about assignments, and that cancelling the run
+// re-opens the month exactly as PY-6 promised.
+describe('backdating into a frozen period', () => {
+  const PERIOD = '2026-06';
+  let runId = '';
+  let employeeId = '';
+  let itemId = '';
+
+  const assign = (body: object) =>
+    request(app)
+      .post(`/api/v1/hr/employees/${employeeId}/pay-items`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send(body);
+
+  beforeAll(async () => {
+    const employee = await request(app)
+      .post('/api/v1/hr/employees/direct')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        personal: {
+          identity: {
+            fullNameAr: 'موظف الحارس',
+            nationalId: '29001011390010',
+            nationality: 'Egyptian',
+          },
+          contact: { primaryPhone: '01175000001' },
+          experience: [],
+          drivingLicenses: [],
+          certifications: [],
+          references: [],
+        },
+        employment: {
+          jobTitleId: JOB_TITLE_ID_PY4,
+          departmentId: DEPARTMENT_ID_PY4,
+          branchId: BRANCH_PY4,
+          employmentType: 'fullTime',
+          probationMonths: 0,
+          startDate: '2024-01-01T00:00:00.000Z',
+          salary: { amount: 11_000, currency: 'EGP' },
+        },
+        hiringDate: '2024-01-01T00:00:00.000Z',
+        entryStatus: 'active',
+      });
+    expect(employee.status, JSON.stringify(employee.body)).toBe(201);
+    employeeId = (employee.body as { data: { id: string } }).data.id;
+
+    const item = await request(app)
+      .post('/api/v1/hr/payroll/pay-items')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        code: 'PY9_BONUS',
+        name: { ar: 'بدل ٩', en: 'Allowance PY9' },
+        kind: 'earning',
+        calcBasis: 'fixed',
+      });
+    expect(item.status).toBe(201);
+    itemId = (item.body as { data: { id: string } }).data.id;
+
+    const created = await request(app)
+      .post('/api/v1/hr/payroll/runs')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ period: PERIOD });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const run = created.body.data as PayrollRunDto;
+    runId = run.id;
+    const frozen = await request(app)
+      .post(`/api/v1/hr/payroll/runs/${runId}/freeze`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: run.version });
+    expect(frozen.status, JSON.stringify(frozen.body)).toBe(200);
+  }, 240_000);
+
+  it('accepts an assignment that starts after the frozen month', async () => {
+    const ok = await assign({ payItemId: itemId, amount: 500, effectiveFrom: '2026-07-01' });
+    expect(ok.status, JSON.stringify(ok.body)).toBe(201);
+  });
+
+  it('refuses one that starts inside the frozen month', async () => {
+    const refused = await assign({
+      payItemId: itemId,
+      amount: 500,
+      effectiveFrom: '2026-06-10',
+      effectiveTo: '2026-06-20',
+    });
+    expect(refused.status).toBe(422);
+    expect(JSON.stringify(refused.body)).toContain(PERIOD);
+  });
+
+  it('refuses one that merely SPANS it, without starting or ending inside', async () => {
+    const refused = await assign({
+      payItemId: itemId,
+      amount: 500,
+      effectiveFrom: '2026-01-01',
+      effectiveTo: '2026-12-31',
+    });
+    expect(refused.status).toBe(422);
+  });
+
+  // January and February, and the choice matters: this suite freezes several months across its
+  // blocks (PY-7 leaves 2026-05 frozen, this one freezes 2026-06), and an interval reaching any
+  // of them would be refused by the very guard under test. The guard is global by nature — it
+  // knows nothing about which describe block froze what.
+  it('accepts one that ends before every frozen month begins', async () => {
+    const ok = await assign({
+      payItemId: itemId,
+      amount: 500,
+      effectiveFrom: '2026-01-01',
+      effectiveTo: '2026-02-28',
+    });
+    expect(ok.status, JSON.stringify(ok.body)).toBe(201);
+  });
+
+  // The guard changed ONE rule. Everything else about an assignment answers exactly as before.
+  it('leaves the other refusals exactly as they were', async () => {
+    // Still refused for overlapping an existing row — a 409, not the freeze's 422.
+    const clash = await assign({ payItemId: itemId, amount: 900, effectiveFrom: '2026-08-01' });
+    expect(clash.status).toBe(409);
+    // Still refused outside employment.
+    const outside = await assign({
+      payItemId: itemId,
+      amount: 500,
+      effectiveFrom: '2019-01-01',
+      effectiveTo: '2019-12-31',
+    });
+    expect(outside.status).toBe(422);
+  });
+
+  // PY-6's promise, now load-bearing: cancelling releases the period, so the correction that was
+  // refused a moment ago becomes possible — through a NEW run, never through an unfreeze.
+  it('re-opens the month when the run is cancelled', async () => {
+    const run = (await request(app)
+      .get(`/api/v1/hr/payroll/runs/${runId}`)
+      .set('Authorization', `Bearer ${adminToken}`)).body.data as PayrollRunDto;
+    const cancelled = await request(app)
+      .post(`/api/v1/hr/payroll/runs/${runId}/cancel`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ reason: 'reprice June', version: run.version });
+    expect(cancelled.status).toBe(200);
+
+    const now = await assign({
+      payItemId: itemId,
+      amount: 500,
+      effectiveFrom: '2026-06-10',
+      effectiveTo: '2026-06-20',
+    });
+    expect(now.status, JSON.stringify(now.body)).toBe(201);
+    // …and the attendance rows the cancelled run froze are still frozen — there is no unfreeze.
+    expect((cancelled.body.data as PayrollRunDto).frozenAt).not.toBeNull();
+  });
+});

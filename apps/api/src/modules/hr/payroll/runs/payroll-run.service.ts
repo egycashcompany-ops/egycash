@@ -209,6 +209,22 @@ class PayrollRunService {
     });
   }
 
+  /**
+   * The periods that currently have a FROZEN run (PY-9).
+   *
+   * `frozen` and not `cancelled`, deliberately: a cancelled run no longer speaks for its period —
+   * PY-5 stops pricing leave from one and PY-7 refuses to issue from one — so the month is open
+   * again for the correction and the new run that will re-pin it. The list is short by nature
+   * (one entry per frozen month) and the decision it feeds is pure.
+   */
+  async frozenPeriods(): Promise<string[]> {
+    const rows = await PayrollRunModel.find({ status: 'frozen', isDeleted: false })
+      .select({ period: 1 })
+      .lean<{ period: string }[]>()
+      .exec();
+    return rows.map((row) => row.period);
+  }
+
   /** One run's leave snapshot — the frozen answer PY-5 will price against. */
   async snapshotFor(runId: string, employeeId?: string): Promise<PayrollLeaveSnapshotDoc[]> {
     await this.getById(runId);

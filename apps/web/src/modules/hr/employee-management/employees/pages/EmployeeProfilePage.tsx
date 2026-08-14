@@ -29,16 +29,23 @@ import { useEmployeeFiles } from '../../employee-files/api/employee-file-queries
 import { CandidateTimeline } from '../../../recruitment/timeline/components/CandidateTimeline';
 import { useEmployee, useEmployeeActions, useEmployeeTimeline } from '../api/employee-queries';
 
-const TABS = ['overview', 'personal', 'employment', 'leave', 'attendance', 'contracts', 'payItems', 'adjustments', 'loans', 'documents', 'timeline', 'account'] as const;
+const TABS = ['overview', 'personal', 'employment', 'leave', 'attendance', 'contracts', 'payItems', 'adjustments', 'loans', 'settlement', 'documents', 'timeline', 'account'] as const;
 type Tab = (typeof TABS)[number];
 
 // Pay Items is the employee's COMPENSATION, so it appears exactly where compensation appears —
 // behind the same `employee.viewCompensation` answer the server already gave for the salary on
 // the Overview tab. Hiding it is UX, not enforcement: the endpoints carry the same key.
-const visibleTabs = (compensationVisible: boolean): readonly Tab[] =>
-  compensationVisible
-    ? TABS
-    : TABS.filter((k) => k !== 'payItems' && k !== 'adjustments' && k !== 'loans');
+//
+// Settlement is compensation too, and one thing more: it only EXISTS once somebody has left. The
+// server refuses a summary for a serving employee as a matter of fact rather than permission —
+// there is no exit month to state — so the tab follows the same condition instead of offering a
+// screen that can only answer 422.
+const visibleTabs = (compensationVisible: boolean, exited: boolean): readonly Tab[] =>
+  TABS.filter((k) => {
+    if (k === 'settlement') return compensationVisible && exited;
+    if (k === 'payItems' || k === 'adjustments' || k === 'loans') return compensationVisible;
+    return true;
+  });
 
 // The Leave, Attendance and Contracts tabs are owned by their modules and lazy-loaded (additive
 // tabs) — the same dynamic import() seam, so each module's chunk loads only when its tab opens.
@@ -55,6 +62,9 @@ const EmployeeAdjustmentsTab = lazy(
 );
 const EmployeeLoansTab = lazy(
   () => import('../../../employee-loans/components/EmployeeLoansTab'),
+);
+const EmployeeSettlementTab = lazy(
+  () => import('../../../settlement/components/EmployeeSettlementTab'),
 );
 
 const ProbationCard = ({ e }: { e: EmployeeDto }): JSX.Element | null => {
@@ -306,7 +316,7 @@ export const EmployeeProfilePage = (): JSX.Element => {
       )}
 
       <div className="mb-4 flex flex-wrap gap-1 border-b border-slate-200 dark:border-slate-800" role="tablist">
-        {visibleTabs(e.compensationVisible).map((k) => (
+        {visibleTabs(e.compensationVisible, e.exit !== null).map((k) => (
           <button
             key={k}
             role="tab"
@@ -367,6 +377,12 @@ export const EmployeeProfilePage = (): JSX.Element => {
       {tab === 'loans' && e.compensationVisible && (
         <Suspense fallback={<LoadingState />}>
           <EmployeeLoansTab employee={e} />
+        </Suspense>
+      )}
+      {/* Both conditions, matching the tab strip: compensation may be read, and there is an exit. */}
+      {tab === 'settlement' && e.compensationVisible && e.exit !== null && (
+        <Suspense fallback={<LoadingState />}>
+          <EmployeeSettlementTab employee={e} />
         </Suspense>
       )}
       {tab === 'documents' && <DocumentsTab e={e} />}

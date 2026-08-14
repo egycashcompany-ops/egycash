@@ -9,6 +9,11 @@
 // registrations (go-live workforce onboarding).
 import { z } from 'zod';
 import {
+  type CompensationEffectsDto,
+  type PayrollAdjustmentKind,
+  type PayrollAdjustmentStatus,
+} from './hr-payroll.js';
+import {
   objectId,
   AddressSchema,
   LocaleSchema,
@@ -543,3 +548,96 @@ export const HrEmployeeTemplates = {
   Exited: 'hr.employeeExited',
   Rehired: 'hr.employeeRehired',
 } as const;
+
+// ── Final settlement (P-HR-11) ──────────────────────────────────────────────
+//
+// A SUMMARY, not a calculation. Every figure below is quoted from the service that already owns it:
+// the exit month's pay from the compensation engine, the loan balance from the loans feature, the
+// leave balances from the leave ledger. Nothing here computes, and nothing here is stored — so this
+// shape cannot disagree with its sources, because it has no opinion of its own to disagree with.
+//
+// WHAT IT DELIBERATELY DOES NOT CARRY. No end-of-service gratuity, no leave encashment, no notice
+// pay. Each needs a legal rule this repository has not been given, and a field with no rule behind
+// it is an invitation to fill it with a guess. `unresolved` names them instead, so an incomplete
+// settlement reads as incomplete rather than as a total.
+export const SETTLEMENT_UNRESOLVED_ITEMS = [
+  /** Service-length gratuity — the formula, the wage base and which exit types qualify. */
+  'endOfServiceGratuity',
+  /** Whether unused leave is paid out. Today the balances are EXPIRED at exit, not encashed. */
+  'leaveEncashment',
+  /** Length and pay-in-lieu. The only one whose data does not exist either — see the design note. */
+  'noticePeriod',
+] as const;
+export const SettlementUnresolvedItemSchema = z.enum(SETTLEMENT_UNRESOLVED_ITEMS);
+export type SettlementUnresolvedItem = z.infer<typeof SettlementUnresolvedItemSchema>;
+
+/** One loan still owing when the employee left — at most one, because D3 allows one live loan. */
+export interface SettlementLoanDto {
+  loanId: string;
+  type: string;
+  status: string;
+  /** DERIVED live by the loans feature, never snapshotted here. */
+  remaining: number;
+  remainingMinor: number;
+  repaid: number;
+  currency: string;
+}
+
+/**
+ * One `expire` entry the exit wrote into the leave ledger.
+ *
+ * Read from the LEDGER rather than from the balance, and that is not a detail: the exit zeroes the
+ * balance, so by the time anybody settles, the balance says nothing was lost. The ledger is where
+ * the days that were given up still exist.
+ */
+export interface SettlementLeaveBalanceDto {
+  typeId: string;
+  year: number;
+  /** Days that were available at the moment of exit — expired, not paid (see `unresolved`). */
+  expiredDays: number;
+}
+
+/**
+ * An adjustment on the exit month that NOBODY HAS DECIDED YET.
+ *
+ * Only the undecided ones, and that is the whole point of the field. An approved adjustment is
+ * already priced into `finalPeriod` as a line, so repeating it here would invite somebody to add
+ * the same money twice. An undecided one is the opposite problem: it is real, it is about this
+ * month, and it is in nobody's total — so a settlement computed today could be wrong tomorrow for
+ * a reason the screen never showed.
+ */
+export interface SettlementPendingAdjustmentDto {
+  adjustmentId: string;
+  kind: PayrollAdjustmentKind;
+  status: PayrollAdjustmentStatus;
+  amount: number;
+  currency: string;
+  reason: string;
+}
+
+export interface EmployeeSettlementDto {
+  employeeId: string;
+  employeeCode: string;
+  employeeName: string;
+  exitType: EmployeeExitType;
+  /** The last day of employment — what every span, batch and proration in the system clips to. */
+  effectiveDate: string;
+  /** The Cairo month the exit fell in; the period the final pay belongs to. */
+  exitPeriod: string;
+  /**
+   * The exit month's pay, exactly as the payroll engine reports it.
+   *
+   * NOT a separate final-pay calculation: `employedDuring` already puts a leaver in that month's
+   * batch and `employmentSpansOf` already prorates to the exit day, so a second answer here would
+   * be a second opinion about somebody's last salary.
+   */
+  finalPeriod: CompensationEffectsDto;
+  /** Whether that month's payroll run is frozen — a settled figure rather than a moving one. */
+  finalPeriodFrozen: boolean;
+  outstandingLoan: SettlementLoanDto | null;
+  expiredLeave: SettlementLeaveBalanceDto[];
+  /** Undecided adjustments on the exit month — NOT included in `finalPeriod`. */
+  pendingAdjustments: SettlementPendingAdjustmentDto[];
+  /** The amounts that need a policy decision before they can exist. Never zero — absent. */
+  unresolved: SettlementUnresolvedItem[];
+}

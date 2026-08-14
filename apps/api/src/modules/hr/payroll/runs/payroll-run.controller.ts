@@ -1,7 +1,10 @@
 // Thin HTTP mapping only (ADR-003).
 import { type Request, type Response } from 'express';
 import {
+  type ApprovePayrollRun,
   type CancelPayrollRun,
+  type ClosePayrollRun,
+  type PayPayrollRun,
   type CreatePayrollRun,
   type FreezePayrollRun,
   type ListPayrollRunsQuery,
@@ -34,6 +37,28 @@ export const freezePayrollRun = async (req: Request, res: Response): Promise<voi
   const ctx = authContext(req);
   const { body, params } = validated<FreezePayrollRun, never, IdParam>(req);
   ok(res, payrollRunService.toDto(await payrollRunService.freeze(params.id, body.version, ctx.userId)));
+};
+
+/**
+ * The three governance transitions (P-HR-10). Thin HTTP mapping only (ADR-003) — every rule about
+ * which state may follow which lives in the service, where the version check lives too.
+ */
+export const approvePayrollRun = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<ApprovePayrollRun, never, IdParam>(req);
+  ok(res, payrollRunService.toDto(await payrollRunService.approve(params.id, body, ctx.userId)));
+};
+
+export const payPayrollRun = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<PayPayrollRun, never, IdParam>(req);
+  ok(res, payrollRunService.toDto(await payrollRunService.pay(params.id, body, ctx.userId)));
+};
+
+export const closePayrollRun = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<ClosePayrollRun, never, IdParam>(req);
+  ok(res, payrollRunService.toDto(await payrollRunService.close(params.id, body, ctx.userId)));
 };
 
 export const cancelPayrollRun = async (req: Request, res: Response): Promise<void> => {

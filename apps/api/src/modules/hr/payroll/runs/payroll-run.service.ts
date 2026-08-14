@@ -19,13 +19,19 @@
 // THERE IS NO UNFREEZE. Cancelling changes the run's status and nothing else.
 import { Types } from 'mongoose';
 import {
+  CANCELLABLE_PAYROLL_RUN_STATUSES,
   type CreatePayrollRun,
   type ListPayrollRunsQuery,
   type Paginated,
   type PayrollLeaveSnapshotDto,
   type PayrollRunDto,
 } from '@ecms/contracts';
-import { BusinessRuleError, ConflictError, NotFoundError } from '../../../../shared/errors';
+import {
+  BusinessRuleError,
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+} from '../../../../shared/errors';
 import { auditService } from '../../../../platform/audit';
 import { cairoToday, dateOnlyIso, toDateOnly } from '../../shared/business-date';
 import { periodRange } from '../compensation/compensation-rules';
@@ -164,9 +170,145 @@ class PayrollRunService {
    * left exactly as written. A later recalculation is a NEW run over the same period, which the
    * partial unique index allows precisely because a cancelled run no longer occupies it.
    */
+  /**
+   * Approve the figures a frozen run produced (P-HR-10).
+   *
+   * ONLY FROM `frozen`, and the order is forced rather than chosen: a payslip is issued FROM a
+   * frozen run, so before the freeze there is nothing to approve. Approving a draft would be
+   * agreeing with figures that do not exist yet.
+   *
+   * TWO PEOPLE, the shape every money decision in this system uses (P-HR-04 D1, P-HR-05 D2):
+   * whoever froze the run may not approve it. The permission says what you MAY do; it does not say
+   * who you are.
+   */
+  async approve(
+    id: string,
+    input: { note?: string | undefined; version: number },
+    by: string,
+  ): Promise<PayrollRunDoc> {
+    const run = await payrollRunRepository.getById(id);
+    if (run.status !== 'frozen') {
+      throw new BusinessRuleError(
+        `a ${run.status} run cannot be approved — only a frozen run has figures to approve`,
+      );
+    }
+    if (run.frozenBy !== null && String(run.frozenBy) === by) {
+      throw new ForbiddenError('a payroll run cannot be approved by the person who froze it');
+    }
+
+    const updated = await payrollRunRepository.updateById(
+      id,
+      {
+        status: 'approved',
+        approvedAt: new Date(),
+        approvedBy: new Types.ObjectId(by),
+        approvalNote: input.note ?? null,
+      },
+      { by, version: input.version },
+    );
+    await this.recordTransition(id, 'frozen', 'approved', [
+      ...(input.note === undefined ? [] : [{ field: 'approvalNote', old: null, new: input.note }]),
+    ]);
+    return updated;
+  }
+
+  /**
+   * Record that the payroll was PAID — inside this system, and only that (P-HR-10 §1).
+   *
+   * ECMS pays nobody. This is the note that a payment happened elsewhere, exactly as a loan
+   * disbursement is. There is no bank file, no transfer and no integration behind it, and the
+   * payload carries no amount: the figures are the payslips', already frozen and already approved.
+   *
+   * ONLY FROM `approved`. That is the brief's hardest rule — no payment before approval — and it is
+   * a state check before the write rather than a convention.
+   */
+  async pay(
+    id: string,
+    input: { paidOn: string; reference?: string | undefined; version: number },
+    by: string,
+  ): Promise<PayrollRunDoc> {
+    const run = await payrollRunRepository.getById(id);
+    if (run.status !== 'approved') {
+      throw new BusinessRuleError(
+        `a ${run.status} run cannot be paid — approve it first`,
+      );
+    }
+
+    const updated = await payrollRunRepository.updateById(
+      id,
+      {
+        status: 'paid',
+        paidAt: new Date(),
+        paidBy: new Types.ObjectId(by),
+        paidOn: toDateOnly(new Date(input.paidOn)),
+        paymentReference: input.reference ?? null,
+      },
+      { by, version: input.version },
+    );
+    await this.recordTransition(id, 'approved', 'paid', [
+      { field: 'paidOn', old: null, new: input.paidOn },
+      ...(input.reference === undefined
+        ? []
+        : [{ field: 'paymentReference', old: null, new: input.reference }]),
+    ]);
+    return updated;
+  }
+
+  /**
+   * Close a paid run. It moves nothing and asserts nothing new — the month is simply finished.
+   *
+   * ONLY FROM `paid`: closing a month nobody was paid for would be a claim that the payroll is
+   * done when the people are still waiting.
+   */
+  async close(
+    id: string,
+    input: { note?: string | undefined; version: number },
+    by: string,
+  ): Promise<PayrollRunDoc> {
+    const run = await payrollRunRepository.getById(id);
+    if (run.status !== 'paid') {
+      throw new BusinessRuleError(`a ${run.status} run cannot be closed — record the payment first`);
+    }
+
+    const updated = await payrollRunRepository.updateById(
+      id,
+      { status: 'closed', closedAt: new Date(), closedBy: new Types.ObjectId(by), note: input.note ?? run.note },
+      { by, version: input.version },
+    );
+    await this.recordTransition(id, 'paid', 'closed', []);
+    return updated;
+  }
+
+  /** One shape for every governance transition, so none of them can forget to leave a trace. */
+  private async recordTransition(
+    id: string,
+    from: string,
+    to: string,
+    extra: { field: string; old: string | null; new: string }[],
+  ): Promise<void> {
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'statusChange',
+      changes: [{ field: 'status', old: from, new: to }, ...extra],
+    });
+  }
+
+  /**
+   * Withdrawing a run — and only while nothing has been paid.
+   *
+   * `paid` and `closed` are absent from the cancellable set on purpose: once money has left, a
+   * status flip cannot call it back, and pretending otherwise is the failure the freeze exists to
+   * prevent. A payment recorded in error is corrected in a later period, which is the same
+   * forward-only stance the rest of payroll takes about a month that is closed.
+   */
   async cancel(id: string, reason: string, version: number, by: string): Promise<PayrollRunDoc> {
     const run = await payrollRunRepository.getById(id);
     if (run.status === 'cancelled') throw new BusinessRuleError('this run is already cancelled');
+    if (!CANCELLABLE_PAYROLL_RUN_STATUSES.includes(run.status as 'draft')) {
+      throw new BusinessRuleError(
+        `a ${run.status} run cannot be cancelled — money has already been recorded as paid`,
+      );
+    }
 
     const updated = await payrollRunRepository.updateById(
       id,
@@ -251,6 +393,15 @@ class PayrollRunService {
       attendanceFrozenRows: doc.attendanceFrozenRows,
       attendanceComputedRows: doc.attendanceComputedRows,
       leaveSnapshotRows: doc.leaveSnapshotRows,
+      approvedAt: doc.approvedAt === null ? null : doc.approvedAt.toISOString(),
+      approvedBy: doc.approvedBy === null ? null : String(doc.approvedBy),
+      approvalNote: doc.approvalNote,
+      paidAt: doc.paidAt === null ? null : doc.paidAt.toISOString(),
+      paidBy: doc.paidBy === null ? null : String(doc.paidBy),
+      paidOn: doc.paidOn === null ? null : dateOnlyIso(doc.paidOn),
+      paymentReference: doc.paymentReference,
+      closedAt: doc.closedAt === null ? null : doc.closedAt.toISOString(),
+      closedBy: doc.closedBy === null ? null : String(doc.closedBy),
       cancelledAt: doc.cancelledAt === null ? null : doc.cancelledAt.toISOString(),
       cancelledBy: doc.cancelledBy === null ? null : String(doc.cancelledBy),
       cancelReason: doc.cancelReason,

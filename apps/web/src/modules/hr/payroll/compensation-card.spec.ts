@@ -296,9 +296,24 @@ describe('the payroll run screen', () => {
   // `payrollRun.manage`, while READING the payslips it issued is reading somebody's pay, which
   // the compensation key already governs. `payrollRun.view` gates the page itself and never a
   // control inside it.
+  /**
+   * Widened in P-HR-10, and the SHAPE of the widening is the point.
+   *
+   * The split PY-7 made still holds: acting on a period is `manage`, and reading the payslips it
+   * issued is reading somebody's pay, which the compensation key governs. What P-HR-10 added is a
+   * key per money decision — approving a company's figures and saying the money went out are not
+   * the same act as freezing a period, and not the same as each other.
+   */
   it('gates acting behind the manage key and reading pay behind the compensation key', () => {
     const gated = [...RUNS.matchAll(/permission="([^"]+)"/g)].map((m) => m[1]);
-    expect(new Set(gated)).toEqual(new Set(['payrollRun.manage', 'employee.viewCompensation']));
+    expect(new Set(gated)).toEqual(
+      new Set([
+        'payrollRun.manage',
+        'payrollRun.approve',
+        'payrollRun.pay',
+        'employee.viewCompensation',
+      ]),
+    );
   });
 
   // Freezing cannot be undone anywhere in this system, so the screen has to say so before it

@@ -7,7 +7,10 @@ import {
   type DecidePayrollAdjustment,
   type CreateEmployeePayItem,
   type CreatePayItem,
+  type ApprovePayrollRun,
+  type ClosePayrollRun,
   type CreatePayrollRun,
+  type PayPayrollRun,
   type UpdatePayItem,
 } from '@ecms/contracts';
 import { featureKey, listKey } from '../../../../shared/lib/query-keys';
@@ -168,6 +171,28 @@ export const useMyPayslips = (params: Record<string, string | number>) =>
     queryFn: () => api.listMyPayslips(params),
     placeholderData: (prev) => prev,
   });
+
+// ── Run governance (P-HR-10) ────────────────────────────────────────────────
+// All three reuse `useRunMutation`, so they invalidate the run list AND the compensation cache.
+// The second half is redundant for these three — approving or paying changes no figure, because
+// the payslips a run issued are immutable — but sharing the existing mutation is worth more than
+// saving a refetch, and a second near-identical helper is how two invalidation rules start to
+// disagree.
+
+export const useApprovePayrollRun = () =>
+  useRunMutation(({ id, body }: { id: string; body: ApprovePayrollRun }) =>
+    api.approvePayrollRun(id, body),
+  );
+
+export const usePayPayrollRun = () =>
+  useRunMutation(({ id, body }: { id: string; body: PayPayrollRun }) =>
+    api.payPayrollRun(id, body),
+  );
+
+export const useClosePayrollRun = () =>
+  useRunMutation(({ id, body }: { id: string; body: ClosePayrollRun }) =>
+    api.closePayrollRun(id, body),
+  );
 
 // ── Payroll adjustments (P-HR-04) ───────────────────────────────────────────
 // Keyed per employee: a bonus is that person's money, and the tab that shows it is on their file.

@@ -543,6 +543,23 @@ const payrollRunPermissions = declarePermissions(
       action: 'manage',
       name: { en: 'Manage payroll runs', ar: 'إدارة دورات الرواتب' },
     },
+    /**
+     * P-HR-10 — the two transitions that are not administration.
+     *
+     * `manage` creates, freezes, closes and cancels: those are acts on a PERIOD. Agreeing that a
+     * whole company's figures are right, and saying the money went out, are decisions about money,
+     * and the split is the same one P-HR-04 and P-HR-05 made for the same reason — one key held by
+     * one person is not a governed lifecycle. The service additionally refuses an approval by
+     * whoever froze the run, because a permission says what you MAY do, not who you are.
+     */
+    {
+      action: 'approve',
+      name: { en: 'Approve payroll runs', ar: 'اعتماد دورات الرواتب' },
+    },
+    {
+      action: 'pay',
+      name: { en: 'Record payroll payment', ar: 'تسجيل صرف الرواتب' },
+    },
   ],
   'hr.payroll-runs',
 );

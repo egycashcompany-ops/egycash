@@ -22,21 +22,22 @@ describe('the assembled page registry', () => {
     expect(validatePageRegistry(pages, permissions)).toEqual([]);
   });
 
-  it('declares 58 pages over 225 permissions', () => {
+  it('declares 58 pages over 227 permissions', () => {
     expect(pages).toHaveLength(58);
-    expect(permissions).toHaveLength(225);
+    expect(permissions).toHaveLength(227);
   });
 
   /**
-   * P-HR-06-B moved three keys off the unassigned list without adding a single permission.
+   * Two movements, in opposite directions, and both are what this number exists to show.
    *
-   * That is the shape this number is meant to catch working in the RIGHT direction: the total held
-   * at 225, and `employeeLoan.view / create / approve` found a home because a screen was built for
-   * them — not because anybody invented a key to fill a page.
+   * P-HR-06-B moved three keys off the unassigned list WITHOUT adding any: `employeeLoan.*` found a
+   * home because a screen was built for them, not because a key was invented to fill a page.
+   * P-HR-10 then added two keys and no page — `payrollRun.approve` and `payrollRun.pay` both point
+   * at `hr.payroll-runs`, because a lifecycle needs a key per transition and not a screen per one.
    */
-  it('assigns 200 permissions to a page and leaves 25 deliberately unassigned', () => {
+  it('assigns 202 permissions to a page and leaves 25 deliberately unassigned', () => {
     const assigned = permissions.filter((p) => p.pageId !== null);
-    expect(assigned).toHaveLength(200);
+    expect(assigned).toHaveLength(202);
     expect(permissions.length - assigned.length).toBe(25);
   });
 

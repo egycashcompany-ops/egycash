@@ -504,7 +504,30 @@ export interface CompensationEffectsDto {
 // else: frozen attendance rows stay frozen, the leave snapshot is left exactly as written, and a
 // later recalculation happens through a NEW run rather than by editing a cancelled one.
 
-export const PAYROLL_RUN_STATUSES = ['draft', 'frozen', 'cancelled'] as const;
+/**
+ * The run's lifecycle (PY-6, governed in P-HR-10).
+ *
+ * THE ORDER IS FORCED BY THE DOMAIN, not chosen. A payslip is issued FROM a frozen run, so until
+ * the freeze there are no figures to review and nothing to approve — approval can only FOLLOW the
+ * lock, never precede it.
+ *
+ *   draft → frozen → approved → paid → closed,  with `cancel` reachable up to `approved`.
+ *
+ * `cancelled` stops there on purpose: once a run is `paid`, money has left, and a status flip
+ * cannot call it back. A payment recorded in error is corrected in a later period — the same
+ * forward-only stance the rest of payroll takes about a closed month.
+ */
+export const PAYROLL_RUN_STATUSES = [
+  'draft',
+  'frozen',
+  'approved',
+  'paid',
+  'closed',
+  'cancelled',
+] as const;
+
+/** The states a run may still be cancelled from — before any money has moved. */
+export const CANCELLABLE_PAYROLL_RUN_STATUSES = ['draft', 'frozen', 'approved'] as const;
 export const PayrollRunStatusSchema = z.enum(PAYROLL_RUN_STATUSES);
 export type PayrollRunStatus = z.infer<typeof PayrollRunStatusSchema>;
 
@@ -535,6 +558,41 @@ export type CreatePayrollRun = z.infer<typeof CreatePayrollRunSchema>;
 export const FreezePayrollRunSchema = z.object({ version: z.number().int().min(0) }).strict();
 export type FreezePayrollRun = z.infer<typeof FreezePayrollRunSchema>;
 
+/**
+ * Approving the figures a frozen run produced (P-HR-10).
+ *
+ * A note and a version, and deliberately no amount of any kind: approval agrees with what the run
+ * ALREADY says. A figure here would be a second opinion about money, which is a different act.
+ */
+export const ApprovePayrollRunSchema = z
+  .object({ note: z.string().trim().max(500).optional(), version: z.number().int().min(0) })
+  .strict();
+export type ApprovePayrollRun = z.infer<typeof ApprovePayrollRunSchema>;
+
+/**
+ * Recording that the payroll was PAID (P-HR-10).
+ *
+ * `paidOn` is a date-only, because a payroll is paid on a day rather than at an instant, and a
+ * reference is the organization's own — a transfer number, a cheque, a batch id. ECMS pays nobody:
+ * this records that a payment happened elsewhere, exactly as a loan disbursement does.
+ *
+ * NO amount and NO bank details. The figures are the payslips', and a bank file is not this scope.
+ */
+export const PayPayrollRunSchema = z
+  .object({
+    paidOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'a payment date is YYYY-MM-DD'),
+    reference: z.string().trim().max(200).optional(),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type PayPayrollRun = z.infer<typeof PayPayrollRunSchema>;
+
+/** Closing a paid run — it moves nothing and asserts nothing new; the month is simply finished. */
+export const ClosePayrollRunSchema = z
+  .object({ note: z.string().trim().max(500).optional(), version: z.number().int().min(0) })
+  .strict();
+export type ClosePayrollRun = z.infer<typeof ClosePayrollRunSchema>;
+
 export const CancelPayrollRunSchema = z
   .object({ reason: z.string().trim().min(3).max(500), version: z.number().int().min(0) })
   .strict();
@@ -559,6 +617,17 @@ export interface PayrollRunDto {
   attendanceFrozenRows: number;
   attendanceComputedRows: number;
   leaveSnapshotRows: number;
+  /** The governance stamps (P-HR-10) — each written by exactly one transition, and never cleared. */
+  approvedAt: string | null;
+  approvedBy: string | null;
+  approvalNote: string | null;
+  paidAt: string | null;
+  paidBy: string | null;
+  /** The day the money actually left, which is not the instant it was recorded. */
+  paidOn: string | null;
+  paymentReference: string | null;
+  closedAt: string | null;
+  closedBy: string | null;
   cancelledAt: string | null;
   cancelledBy: string | null;
   cancelReason: string | null;

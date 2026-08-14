@@ -20,6 +20,17 @@ export interface PayrollRunDoc extends BaseDocFields {
   attendanceFrozenRows: number;
   attendanceComputedRows: number;
   leaveSnapshotRows: number;
+  // The governance stamps (P-HR-10). Each is written by exactly one transition and never cleared.
+  approvedAt: Date | null;
+  approvedBy: Types.ObjectId | null;
+  approvalNote: string | null;
+  paidAt: Date | null;
+  paidBy: Types.ObjectId | null;
+  /** The DAY the money left, which is not the instant somebody recorded it. */
+  paidOn: Date | null;
+  paymentReference: string | null;
+  closedAt: Date | null;
+  closedBy: Types.ObjectId | null;
   cancelledAt: Date | null;
   cancelledBy: Types.ObjectId | null;
   cancelReason: string | null;
@@ -35,6 +46,15 @@ const payrollRunSchema = new Schema<PayrollRunDoc>(
     attendanceFrozenRows: { type: Number, required: true, default: 0 },
     attendanceComputedRows: { type: Number, required: true, default: 0 },
     leaveSnapshotRows: { type: Number, required: true, default: 0 },
+    approvedAt: { type: Date, default: null },
+    approvedBy: { type: Schema.Types.ObjectId, default: null },
+    approvalNote: { type: String, default: null },
+    paidAt: { type: Date, default: null },
+    paidBy: { type: Schema.Types.ObjectId, default: null },
+    paidOn: { type: Date, default: null },
+    paymentReference: { type: String, default: null },
+    closedAt: { type: Date, default: null },
+    closedBy: { type: Schema.Types.ObjectId, default: null },
     cancelledAt: { type: Date, default: null },
     cancelledBy: { type: Schema.Types.ObjectId, default: null },
     cancelReason: { type: String, default: null },
@@ -52,7 +72,14 @@ payrollRunSchema.index(
   {
     unique: true,
     name: 'ux_live_period',
-    partialFilterExpression: { status: { $in: ['draft', 'frozen'] }, isDeleted: false },
+    // Widened with the lifecycle (P-HR-10): a period has ONE run that is not cancelled, whatever
+    // stage it has reached. Leaving this at draft/frozen would have let a second run be created for
+    // a month whose first run was merely approved — a hole that opens the moment a state is added
+    // past `frozen`, which is exactly what this phase did.
+    partialFilterExpression: {
+      status: { $in: ['draft', 'frozen', 'approved', 'paid', 'closed'] },
+      isDeleted: false,
+    },
   },
 );
 payrollRunSchema.index({ status: 1, period: -1 }, { name: 'ix_status_period' });

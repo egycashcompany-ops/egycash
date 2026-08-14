@@ -26,7 +26,10 @@ import { PlusIcon } from '../../../../shared/ui/icons';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { formatDate, formatDateTime, formatMoney, formatNumber } from '../../../../shared/lib/format';
 import {
+  useApprovePayrollRun,
   useCancelPayrollRun,
+  useClosePayrollRun,
+  usePayPayrollRun,
   useCreatePayrollRun,
   useFreezePayrollRun,
   useGeneratePayslips,
@@ -42,9 +45,12 @@ const lastPeriod = (): string => {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)).toISOString().slice(0, 7);
 };
 
-const TONE: Record<PayrollRunDto['status'], 'neutral' | 'success' | 'warning'> = {
+const TONE: Record<PayrollRunDto['status'], 'neutral' | 'success' | 'warning' | 'info'> = {
   draft: 'warning',
-  frozen: 'success',
+  frozen: 'info',
+  approved: 'info',
+  paid: 'success',
+  closed: 'neutral',
   cancelled: 'neutral',
 };
 
@@ -56,6 +62,9 @@ export const PayrollRunsPage = (): JSX.Element => {
   const [freezing, setFreezing] = useState<PayrollRunDto | null>(null);
   const [cancelling, setCancelling] = useState<PayrollRunDto | null>(null);
   const [slips, setSlips] = useState<PayrollRunDto | null>(null);
+  const [approving, setApproving] = useState<PayrollRunDto | null>(null);
+  const [paying, setPaying] = useState<PayrollRunDto | null>(null);
+  const [closing, setClosing] = useState<PayrollRunDto | null>(null);
 
   const runs = usePayrollRuns({ page, pageSize: PAGE_SIZE, sortBy: 'period', sortDir: 'desc' });
 
@@ -121,13 +130,38 @@ export const PayrollRunsPage = (): JSX.Element => {
               </Button>
             </Can>
           )}
+          {/*
+            The lifecycle, one button per state (P-HR-10). Each is offered only from the state the
+            server will accept it from, so the screen cannot suggest an action that would be
+            refused — and each sits behind the key that transition actually needs.
+          */}
+          {r.status === 'frozen' && (
+            <Can permission="payrollRun.approve">
+              <Button size="sm" onClick={() => setApproving(r)}>
+                {t('payroll.runs.approve')}
+              </Button>
+            </Can>
+          )}
+          {r.status === 'approved' && (
+            <Can permission="payrollRun.pay">
+              <Button size="sm" onClick={() => setPaying(r)}>
+                {t('payroll.runs.pay')}
+              </Button>
+            </Can>
+          )}
           <Can permission="payrollRun.manage" fallback={<span className="text-slate-300">—</span>}>
             {r.status === 'draft' && (
               <Button size="sm" onClick={() => setFreezing(r)}>
                 {t('payroll.runs.freeze')}
               </Button>
             )}
-            {r.status !== 'cancelled' && (
+            {r.status === 'paid' && (
+              <Button size="sm" variant="secondary" onClick={() => setClosing(r)}>
+                {t('payroll.runs.close')}
+              </Button>
+            )}
+            {/* Cancelling stops where money starts: `paid` and `closed` are not offered at all. */}
+            {(r.status === 'draft' || r.status === 'frozen' || r.status === 'approved') && (
               <Button size="sm" variant="ghost" onClick={() => setCancelling(r)}>
                 {t('payroll.runs.cancel')}
               </Button>
@@ -170,6 +204,9 @@ export const PayrollRunsPage = (): JSX.Element => {
       {freezing !== null && <FreezeDialog run={freezing} onClose={() => setFreezing(null)} />}
       {cancelling !== null && <CancelDialog run={cancelling} onClose={() => setCancelling(null)} />}
       {slips !== null && <PayslipsDialog run={slips} onClose={() => setSlips(null)} />}
+      {approving !== null && <ApproveDialog run={approving} onClose={() => setApproving(null)} />}
+      {paying !== null && <PayDialog run={paying} onClose={() => setPaying(null)} />}
+      {closing !== null && <CloseDialog run={closing} onClose={() => setClosing(null)} />}
     </PageContainer>
   );
 };
@@ -454,6 +491,153 @@ const CancelDialog = ({ run, onClose }: { run: PayrollRunDto; onClose: () => voi
         </Field>
         <MutationError error={cancel.error} />
       </div>
+    </Dialog>
+  );
+};
+
+/**
+ * The three governance dialogs (P-HR-10).
+ *
+ * None of them takes an amount. Approval agrees with the figures the run already produced, a
+ * payment records that one happened elsewhere, and closing asserts nothing new at all — a figure
+ * on any of them would be the run starting to disagree with the payslips it issued.
+ */
+const ApproveDialog = ({ run, onClose }: { run: PayrollRunDto; onClose: () => void }): JSX.Element => {
+  const t = useT();
+  const approve = useApprovePayrollRun();
+  const [note, setNote] = useState('');
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={t('payroll.runs.approveTitle', { period: run.period })}
+      description={t('payroll.runs.approveHint')}
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>
+            {t('common.cancel')}
+          </Button>
+          <Button
+            loading={approve.isPending}
+            onClick={() =>
+              approve.mutate(
+                { id: run.id, body: { version: run.version, ...(note.trim() === '' ? {} : { note: note.trim() }) } },
+                {
+                  onSuccess: () => {
+                    toast.success(t('payroll.runs.approved'));
+                    onClose();
+                  },
+                },
+              )
+            }
+          >
+            {t('payroll.runs.approve')}
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-3">
+        <Field label={t('payroll.runs.approvalNote')}>
+          <Input value={note} onChange={(e) => setNote(e.target.value)} aria-label={t('payroll.runs.approvalNote')} />
+        </Field>
+        <MutationError error={approve.error} />
+      </div>
+    </Dialog>
+  );
+};
+
+const PayDialog = ({ run, onClose }: { run: PayrollRunDto; onClose: () => void }): JSX.Element => {
+  const t = useT();
+  const pay = usePayPayrollRun();
+  const [paidOn, setPaidOn] = useState('');
+  const [reference, setReference] = useState('');
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={t('payroll.runs.payTitle', { period: run.period })}
+      description={t('payroll.runs.payHint')}
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>
+            {t('common.cancel')}
+          </Button>
+          <Button
+            disabled={paidOn === ''}
+            loading={pay.isPending}
+            onClick={() =>
+              pay.mutate(
+                {
+                  id: run.id,
+                  body: {
+                    paidOn,
+                    version: run.version,
+                    ...(reference.trim() === '' ? {} : { reference: reference.trim() }),
+                  },
+                },
+                {
+                  onSuccess: () => {
+                    toast.success(t('payroll.runs.paid'));
+                    onClose();
+                  },
+                },
+              )
+            }
+          >
+            {t('payroll.runs.pay')}
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-3">
+        {/* A DAY, not an instant: a payroll is paid on a date. */}
+        <Field label={t('payroll.runs.paidOn')} required>
+          <Input type="date" value={paidOn} onChange={(e) => setPaidOn(e.target.value)} aria-label={t('payroll.runs.paidOn')} />
+        </Field>
+        {/* The organization's own handle — a transfer number, a cheque, a batch id. */}
+        <Field label={t('payroll.runs.paymentReference')}>
+          <Input value={reference} onChange={(e) => setReference(e.target.value)} aria-label={t('payroll.runs.paymentReference')} />
+        </Field>
+        <MutationError error={pay.error} />
+      </div>
+    </Dialog>
+  );
+};
+
+const CloseDialog = ({ run, onClose }: { run: PayrollRunDto; onClose: () => void }): JSX.Element => {
+  const t = useT();
+  const close = useClosePayrollRun();
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={t('payroll.runs.closeTitle', { period: run.period })}
+      description={t('payroll.runs.closeHint')}
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>
+            {t('common.cancel')}
+          </Button>
+          <Button
+            loading={close.isPending}
+            onClick={() =>
+              close.mutate(
+                { id: run.id, body: { version: run.version } },
+                {
+                  onSuccess: () => {
+                    toast.success(t('payroll.runs.closed'));
+                    onClose();
+                  },
+                },
+              )
+            }
+          >
+            {t('payroll.runs.close')}
+          </Button>
+        </div>
+      }
+    >
+      <MutationError error={close.error} />
     </Dialog>
   );
 };

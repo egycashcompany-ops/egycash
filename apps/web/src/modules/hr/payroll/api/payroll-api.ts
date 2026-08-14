@@ -8,7 +8,10 @@ import {
   type DecidePayrollAdjustment,
   type PayrollAdjustmentDto,
   type CreateEmployeePayItem,
+  type ApprovePayrollRun,
+  type ClosePayrollRun,
   type CreatePayrollRun,
+  type PayPayrollRun,
   type GeneratePayslipsResultDto,
   type PayrollRunDto,
   type PayslipDto,
@@ -86,6 +89,19 @@ export const createPayrollRun = (body: CreatePayrollRun): Promise<PayrollRunDto>
 
 export const freezePayrollRun = (id: string, version: number): Promise<PayrollRunDto> =>
   post<PayrollRunDto>(`/hr/payroll/runs/${id}/freeze`, { version });
+
+/**
+ * The governance transitions (P-HR-10). Each posts a version and nothing that could restate money —
+ * approval agrees with what the run already says, and a payment records that one happened.
+ */
+export const approvePayrollRun = (id: string, body: ApprovePayrollRun): Promise<PayrollRunDto> =>
+  post<PayrollRunDto>(`/hr/payroll/runs/${id}/approve`, body);
+
+export const payPayrollRun = (id: string, body: PayPayrollRun): Promise<PayrollRunDto> =>
+  post<PayrollRunDto>(`/hr/payroll/runs/${id}/pay`, body);
+
+export const closePayrollRun = (id: string, body: ClosePayrollRun): Promise<PayrollRunDto> =>
+  post<PayrollRunDto>(`/hr/payroll/runs/${id}/close`, body);
 
 export const cancelPayrollRun = (
   id: string,

@@ -14,6 +14,9 @@ import {
   CreatePayrollRunSchema,
   FreezePayrollRunSchema,
   PAYROLL_LEAVE_ALLOCATIONS,
+  ApprovePayrollRunSchema,
+  CANCELLABLE_PAYROLL_RUN_STATUSES,
+  PayPayrollRunSchema,
   PAYROLL_RUN_STATUSES,
   COMPENSATION_WARNINGS,
   CompensationQuerySchema,
@@ -376,10 +379,69 @@ describe('creating a pay item with a quantity', () => {
 // ── Payroll runs (PY-6) ─────────────────────────────────────────────────────
 
 describe('the payroll run vocabulary', () => {
-  it('pins the three statuses by name — and there is no unfreeze among them', () => {
-    expect([...PAYROLL_RUN_STATUSES]).toEqual(['draft', 'frozen', 'cancelled']);
+  /**
+   * The lifecycle by name, widened in P-HR-10 — and the absences kept.
+   *
+   * The ORDER is the assertion: `approved` follows `frozen` because a payslip is issued from a
+   * frozen run, so before the freeze there are no figures to approve. And there is still no
+   * unfreeze: a state that undid the freeze would make every guarantee built on it conditional.
+   */
+  it('pins the lifecycle by name — and there is still no unfreeze among them', () => {
+    expect([...PAYROLL_RUN_STATUSES]).toEqual([
+      'draft',
+      'frozen',
+      'approved',
+      'paid',
+      'closed',
+      'cancelled',
+    ]);
     expect([...PAYROLL_RUN_STATUSES]).not.toContain('unfrozen');
     expect([...PAYROLL_RUN_STATUSES]).not.toContain('freezing');
+    expect([...PAYROLL_RUN_STATUSES]).not.toContain('reopened');
+  });
+
+  // Money that has left cannot be called back by a status flip (P-HR-10).
+  it('and cancelling stops the moment a payment has been recorded', () => {
+    expect([...CANCELLABLE_PAYROLL_RUN_STATUSES]).toEqual(['draft', 'frozen', 'approved']);
+  });
+
+  /**
+   * Neither decision carries money. Approval agrees with what the run already says, and a payment
+   * records that one happened elsewhere — an amount on either would be a second opinion about a
+   * figure the payslips have already fixed.
+   */
+  it('and neither approving nor paying accepts an amount', () => {
+    for (const extra of [{ amount: 10 }, { netPay: 10 }, { total: 10 }]) {
+      expect(
+        ApprovePayrollRunSchema.safeParse({ version: 0, ...extra }).success,
+        JSON.stringify(extra),
+      ).toBe(false);
+      expect(
+        PayPayrollRunSchema.safeParse({ paidOn: '2026-04-05', version: 0, ...extra }).success,
+        JSON.stringify(extra),
+      ).toBe(false);
+    }
+  });
+
+  /**
+   * `Pay` means recorded as paid INSIDE this system (P-HR-10 §1). A bank file is a separate scope,
+   * and `.strict()` is what keeps it separate: a field nobody declared is refused outright.
+   */
+  it('and a payment is a date and a reference — never a bank instruction', () => {
+    expect(
+      PayPayrollRunSchema.safeParse({ paidOn: '2026-04-05', reference: 'BATCH-7', version: 0 })
+        .success,
+    ).toBe(true);
+    // A day, not an instant: a payroll is paid on a date.
+    expect(
+      PayPayrollRunSchema.safeParse({ paidOn: '2026-04-05T00:00:00.000Z', version: 0 }).success,
+    ).toBe(false);
+    for (const extra of [{ iban: 'EG12' }, { bankAccount: 'x' }, { wpsFileId: 'x' }]) {
+      expect(
+        PayPayrollRunSchema.safeParse({ paidOn: '2026-04-05', version: 0, ...extra }).success,
+        JSON.stringify(extra),
+      ).toBe(false);
+    }
   });
 
   it('pins the two ways a snapshot slice can have been derived', () => {

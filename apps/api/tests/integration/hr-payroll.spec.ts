@@ -2314,3 +2314,140 @@ describe('payroll adjustments (P-HR-04)', () => {
     }, 240_000);
   });
 });
+
+/**
+ * The run lifecycle over HTTP (P-HR-10).
+ *
+ * The design's hard rules, each exercised rather than described: no approval before the freeze, no
+ * payment before approval, no close before payment, a second person for the approval, a permission
+ * per transition, and a repeat of any of them refused at any version. `Pay` here means RECORDED AS
+ * PAID inside this system — there is no bank file anywhere in this phase.
+ */
+describe('payroll run governance (P-HR-10)', () => {
+  const PERIOD = '2026-03'; // a month of its own, past, and frozen by nothing else
+  let runId = '';
+  let runVersion = 0;
+  let approverToken = '';
+
+  // A SECOND person, because the design refuses an approval from whoever froze the run. The admin
+  // freezes throughout this block, so the approval needs somebody else holding the same keys.
+  beforeAll(async () => {
+    const role = await rbacService.ensureSystemRole(
+      'super-admin',
+      { en: 'Super Admin', ar: 'مدير النظام الأعلى' },
+      [...platformPermissions, ...hrPermissions].map((p) => p.key),
+    );
+    const id = await mkUser('run-approver@ecms.local');
+    await rbacService.ensureAssignment(id, String(role._id), 'organization');
+    approverToken = await login('run-approver@ecms.local');
+  }, 120_000);
+
+  const post = (suffix: string, body: object, token = adminToken) =>
+    request(app)
+      .post(`/api/v1/hr/payroll/runs/${runId}/${suffix}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send(body);
+
+  const reread = async (): Promise<PayrollRunDto> => {
+    const res = await request(app)
+      .get(`/api/v1/hr/payroll/runs?period=${PERIOD}&pageSize=5`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const row = (res.body.data as PayrollRunDto[]).find((r) => r.id === runId);
+    expect(row).toBeDefined();
+    return row as PayrollRunDto;
+  };
+
+  it('refuses approval before there is anything to approve', async () => {
+    const created = await request(app)
+      .post('/api/v1/hr/payroll/runs')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ period: PERIOD });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const run = created.body.data as PayrollRunDto;
+    runId = run.id;
+    runVersion = run.version;
+
+    // A draft has issued no payslips, so there are no figures. Approving one would agree with
+    // nothing — and the state check says so before any write happens.
+    const early = await post('approve', { version: runVersion }, approverToken);
+    expect(early.status, JSON.stringify(early.body)).toBe(422);
+    expect((await reread()).status).toBe('draft');
+  }, 240_000);
+
+  it('and refuses payment and closure before their predecessors', async () => {
+    expect((await post('pay', { paidOn: '2026-04-05', version: runVersion })).status).toBe(422);
+    expect((await post('close', { version: runVersion })).status).toBe(422);
+    expect((await reread()).status).toBe('draft');
+  }, 240_000);
+
+  it('walks draft → frozen → approved → paid → closed, and only in that order', async () => {
+    const frozen = await post('freeze', { version: runVersion });
+    expect(frozen.status, JSON.stringify(frozen.body)).toBe(200);
+    runVersion = (frozen.body.data as PayrollRunDto).version;
+    expect((frozen.body.data as PayrollRunDto).status).toBe('frozen');
+
+    // Still no payment: the freeze pinned the facts, nobody has agreed with them yet.
+    expect((await post('pay', { paidOn: '2026-04-05', version: runVersion })).status).toBe(422);
+
+    // THE SECOND PERSON: the admin froze it, so the admin may not approve it.
+    const selfApproval = await post('approve', { version: runVersion }, adminToken);
+    expect(selfApproval.status, JSON.stringify(selfApproval.body)).toBe(403);
+
+    const approved = await post('approve', { note: 'checked the totals', version: runVersion }, approverToken);
+    expect(approved.status, JSON.stringify(approved.body)).toBe(200);
+    const afterApproval = approved.body.data as PayrollRunDto;
+    runVersion = afterApproval.version;
+    expect(afterApproval.status).toBe('approved');
+    expect(afterApproval.approvedAt).not.toBeNull();
+    expect(afterApproval.approvalNote).toBe('checked the totals');
+
+    // Closing still refused — nobody has been paid.
+    expect((await post('close', { version: runVersion })).status).toBe(422);
+
+    const paid = await post('pay', { paidOn: '2026-04-05', reference: 'BATCH-77', version: runVersion });
+    expect(paid.status, JSON.stringify(paid.body)).toBe(200);
+    const afterPayment = paid.body.data as PayrollRunDto;
+    runVersion = afterPayment.version;
+    expect(afterPayment.status).toBe('paid');
+    expect(afterPayment.paidOn).toBe('2026-04-05');
+    expect(afterPayment.paymentReference).toBe('BATCH-77');
+
+    // Money has left: a cancellation can no longer call it back.
+    expect((await post('cancel', { reason: 'changed my mind', version: runVersion })).status).toBe(422);
+
+    const closed = await post('close', { version: runVersion });
+    expect(closed.status, JSON.stringify(closed.body)).toBe(200);
+    runVersion = (closed.body.data as PayrollRunDto).version;
+    expect((closed.body.data as PayrollRunDto).status).toBe('closed');
+  }, 240_000);
+
+  /**
+   * IDEMPOTENCY, at the state machine rather than the caller: the status guard runs before the
+   * write and does not consult the version, so a repeat is refused at any version at all.
+   */
+  it('and a repeated transition is refused, stale version or fresh', async () => {
+    for (const [suffix, body] of [
+      ['approve', {}],
+      ['pay', { paidOn: '2026-04-05' }],
+      ['close', {}],
+      ['freeze', {}],
+    ] as const) {
+      expect((await post(suffix, { ...body, version: runVersion }, approverToken)).status, suffix).toBe(422);
+    }
+    expect((await reread()).status).toBe('closed');
+  }, 240_000);
+
+  it('and every transition is behind its own key', async () => {
+    // The outsider holds none of them; the run is closed, so a 403 here is the permission layer
+    // answering BEFORE the state machine would have.
+    for (const suffix of ['approve', 'pay', 'close', 'freeze', 'cancel']) {
+      const res = await request(app)
+        .post(`/api/v1/hr/payroll/runs/${runId}/${suffix}`)
+        .set('Authorization', `Bearer ${outsiderToken}`)
+        .send({ version: runVersion, paidOn: '2026-04-05', reason: 'no' });
+      expect(res.status, suffix).toBe(403);
+    }
+  }, 240_000);
+
+});

@@ -44,8 +44,13 @@ describe('wired into the profile the way every additive tab is', () => {
     expect(PROFILE).toContain("{tab === 'adjustments' && e.compensationVisible && (");
     // The shape changed in P-HR-11 (a filter with branches, not a ternary) because Settlement is
     // gated on an exit as well as on compensation. The rule this asserts is the same one.
-    expect(PROFILE).toContain(
-      "if (k === 'payItems' || k === 'adjustments' || k === 'loans') return compensationVisible;",
+    // P-HR-20 added the Payslips tab to the same branch — the rule is unchanged, and the
+    // condition it is asserted against grew by one name.
+    // Matched whitespace-insensitively: P-HR-20 added `payslips` to the same branch, which
+    // wrapped the condition onto two lines. Where a formatter puts the break is its business; the
+    // rule — no money tab without the compensation answer — is unchanged.
+    expect(PROFILE).toMatch(
+      /if \(k === 'payItems' \|\| k === 'adjustments' \|\| k === 'loans' \|\| k === 'payslips'\)\s*return compensationVisible;/,
     );
   });
 });

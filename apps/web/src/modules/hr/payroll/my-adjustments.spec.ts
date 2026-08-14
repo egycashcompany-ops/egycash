@@ -27,7 +27,12 @@ const ROUTES = stripComments(read('./routes.tsx'));
 describe('it answers for the caller, and for nobody else', () => {
   it('asks the server for `me`, never for an employee id', () => {
     expect(API).toContain('`/hr/payroll/adjustments/me${buildQuery(params)}`');
-    const call = API.slice(API.indexOf('export const listMyAdjustments'));
+    // Bounded to this function: other reads in the same file legitimately take an employee id,
+    // and an unbounded slice would pick one of them up and fail for the wrong reason.
+    const from = API.indexOf('export const listMyAdjustments');
+    const next = API.indexOf('export const', from + 1);
+    const call = API.slice(from, next === -1 ? undefined : next);
+    expect(call).toContain('/hr/payroll/adjustments/me');
     expect(call).not.toContain('employeeId');
   });
 

@@ -58,6 +58,7 @@ import {
   buildPayrollRunsRouter,
   buildPayslipsRouter,
   buildRunPayslipsRouter,
+  buildEmployeePayslipsRouter,
   buildEmployeeAdjustmentsRouter,
   buildPayrollAdjustmentsRouter,
   hrAdjustmentFileAuthorizers,
@@ -899,6 +900,9 @@ export const hrModule: ModuleManifest = {
     { prefix: '/hr/employees', router: buildEmployeeActionsRouter() },
     // …and the per-employee surface, because a bonus is that person's money.
     { prefix: '/hr/employees', router: buildEmployeeAdjustmentsRouter() },
+    // P-HR-20 — this employee's payslips across every run. The mirror of the run's list, behind
+    // the same compensation key, adding no permission of its own.
+    { prefix: '/hr/employees', router: buildEmployeePayslipsRouter() },
     { prefix: '/hr/employees', router: buildEmployeeLoansRouter() },
     // P-HR-11 — the leaver's assembled read, beside the other per-employee readers. It adds no
     // collection below, because it stores nothing: every figure it states belongs to another feature.

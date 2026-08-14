@@ -2318,6 +2318,10 @@ const en: Record<string, string> = {
     'Entries still being written are not shown — an amount becomes visible here once it has been submitted for a decision.',
   'payroll.adjustments.mine.empty': 'Nothing has been recorded about you.',
   'payroll.adjustments.decidedAt': 'Decided on',
+  // The employee's payslip history (P-HR-20) — the stored documents, never recomputed.
+  'employees.tabs.payslips': 'Payslips',
+  'payroll.payslips.issuedAt': 'Issued',
+  'payroll.payslips.noneForEmployee': 'No payslips have been issued for this employee yet.',
   'loans.employee': 'Employee',
   'loans.allStatuses': 'All statuses',
   'loans.allTypes': 'All types',
@@ -6596,6 +6600,10 @@ const ar: Record<string, string> = {
     'المسودّات لا تظهر هنا — يظهر المبلغ بعد إرساله لاتخاذ قرار بشأنه.',
   'payroll.adjustments.mine.empty': 'لم يُسجَّل بشأنك شيء.',
   'payroll.adjustments.decidedAt': 'تاريخ القرار',
+  // سجل قسائم الأجر للموظف (P-HR-20): المستندات كما صدرت، دون إعادة حساب.
+  'employees.tabs.payslips': 'قسائم الأجر',
+  'payroll.payslips.issuedAt': 'تاريخ الإصدار',
+  'payroll.payslips.noneForEmployee': 'لم تصدر بعد أي قسيمة أجر لهذا الموظف.',
   'loans.employee': 'الموظف',
   'loans.allStatuses': 'كل الحالات',
   'loans.allTypes': 'كل الأنواع',

@@ -178,3 +178,15 @@ export const cancelAdjustment = (
  */
 export const listMyAdjustments = (params: QueryParams): Promise<Paginated<PayrollAdjustmentDto>> =>
   getPage<PayrollAdjustmentDto>(`/hr/payroll/adjustments/me${buildQuery(params)}`);
+
+/**
+ * One employee's payslips across every run (P-HR-20).
+ *
+ * The mirror of the run's list: that one asks "who was paid this month?", this asks "what has this
+ * person been paid?". Same documents, same compensation key.
+ */
+export const listEmployeePayslips = (
+  employeeId: string,
+  params: QueryParams,
+): Promise<Paginated<PayslipDto>> =>
+  getPage<PayslipDto>(`/hr/employees/${employeeId}/payslips${buildQuery(params)}`);

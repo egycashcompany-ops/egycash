@@ -29,7 +29,7 @@ import { useEmployeeFiles } from '../../employee-files/api/employee-file-queries
 import { CandidateTimeline } from '../../../recruitment/timeline/components/CandidateTimeline';
 import { useEmployee, useEmployeeActions, useEmployeeTimeline } from '../api/employee-queries';
 
-const TABS = ['overview', 'personal', 'employment', 'leave', 'attendance', 'contracts', 'payItems', 'adjustments', 'loans', 'settlement', 'documents', 'timeline', 'account'] as const;
+const TABS = ['overview', 'personal', 'employment', 'leave', 'attendance', 'contracts', 'payItems', 'adjustments', 'loans', 'payslips', 'settlement', 'documents', 'timeline', 'account'] as const;
 type Tab = (typeof TABS)[number];
 
 // Pay Items is the employee's COMPENSATION, so it appears exactly where compensation appears —
@@ -43,7 +43,8 @@ type Tab = (typeof TABS)[number];
 const visibleTabs = (compensationVisible: boolean, exited: boolean): readonly Tab[] =>
   TABS.filter((k) => {
     if (k === 'settlement') return compensationVisible && exited;
-    if (k === 'payItems' || k === 'adjustments' || k === 'loans') return compensationVisible;
+    if (k === 'payItems' || k === 'adjustments' || k === 'loans' || k === 'payslips')
+      return compensationVisible;
     return true;
   });
 
@@ -65,6 +66,9 @@ const EmployeeLoansTab = lazy(
 );
 const EmployeeSettlementTab = lazy(
   () => import('../../../settlement/components/EmployeeSettlementTab'),
+);
+const EmployeePayslipsTab = lazy(
+  () => import('../../../payroll/components/EmployeePayslipsTab'),
 );
 
 const ProbationCard = ({ e }: { e: EmployeeDto }): JSX.Element | null => {
@@ -377,6 +381,12 @@ export const EmployeeProfilePage = (): JSX.Element => {
       {tab === 'loans' && e.compensationVisible && (
         <Suspense fallback={<LoadingState />}>
           <EmployeeLoansTab employee={e} />
+        </Suspense>
+      )}
+      {/* P-HR-20 — the documents themselves, beside the inputs that produced them. */}
+      {tab === 'payslips' && e.compensationVisible && (
+        <Suspense fallback={<LoadingState />}>
+          <EmployeePayslipsTab employee={e} />
         </Suspense>
       )}
       {/* Both conditions, matching the tab strip: compensation may be read, and there is an exit. */}

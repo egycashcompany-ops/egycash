@@ -1805,6 +1805,70 @@ describe('backdating into a frozen period', () => {
 // the caller's own login link, and nothing the caller sends widens that. So what has to hold here
 // is the OPPOSITE of an authorization test — that the route is open, and that being open buys the
 // caller exactly nothing beyond their own rows.
+/**
+ * One employee's payslips across every run (P-HR-20).
+ *
+ * `ListPayslipsQuery` has carried an `employeeId` filter since PY-7 that only the RUN's list
+ * applied — and inside one run an employee has at most one payslip, so it answered nothing worth
+ * asking. These cases pin the read that finally uses it, and the key it sits behind.
+ */
+describe('payslips: one employee across every run (P-HR-20)', () => {
+  // Resolved from the registry rather than shared through a module-level variable: this block
+  // needs SOME employee, not a particular one, and earlier blocks have created several.
+  let anyEmployeeId = '';
+
+  beforeAll(async () => {
+    const res = await request(app)
+      .get('/api/v1/hr/employees?page=1&pageSize=1')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const first = (res.body.data as { id: string }[])[0];
+    expect(first).toBeDefined();
+    anyEmployeeId = first?.id ?? '';
+  }, 120_000);
+
+  const forEmployee = (id: string, token: string, query = '?page=1&pageSize=20') =>
+    request(app)
+      .get(`/api/v1/hr/employees/${id}/payslips${query}`)
+      .set('Authorization', `Bearer ${token}`);
+
+  it('lists what this person was paid, and only this person', async () => {
+    const res = await forEmployee(anyEmployeeId, adminToken);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const rows = res.body.data as PayslipDto[];
+    for (const row of rows) {
+      expect(row.employeeId).toBe(anyEmployeeId);
+    }
+    // The documents are the STORED ones: each carries the run that issued it.
+    for (const row of rows) {
+      expect(row.runId.length).toBeGreaterThan(0);
+      expect(row.period).toMatch(/^\d{4}-\d{2}$/);
+    }
+  }, 120_000);
+
+  /** Reading somebody's pay is reading their pay, from whichever direction the question comes. */
+  it('is behind the compensation key, and adds none of its own', async () => {
+    expect((await forEmployee(anyEmployeeId, outsiderToken)).status).toBe(403);
+  }, 120_000);
+
+  it('and refuses an unauthenticated caller', async () => {
+    expect((await request(app).get(`/api/v1/hr/employees/${anyEmployeeId}/payslips`)).status).toBe(401);
+  }, 60_000);
+
+  /** An employee who exists but was never paid is an empty page, not an error. */
+  it('answers an empty page for somebody with no payslips', async () => {
+    const res = await forEmployee(anyEmployeeId, adminToken, '?page=1&pageSize=20&period=2019-01');
+    expect(res.status).toBe(200);
+    expect((res.body.data as PayslipDto[]).length).toBe(0);
+  }, 120_000);
+
+  /** A nonexistent employee is a 404 from the scope check, never an empty list. */
+  it('and 404s for an employee that does not exist', async () => {
+    const res = await forEmployee('000000000000000000000009', adminToken);
+    expect(res.status).toBe(404);
+  }, 120_000);
+});
+
 describe('payslips: the self-service read', () => {
   const me = (path: string, token: string) =>
     request(app).get(`/api/v1/hr/payroll/payslips${path}`).set('Authorization', `Bearer ${token}`);

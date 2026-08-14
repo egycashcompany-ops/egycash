@@ -288,3 +288,12 @@ export const useMyAdjustments = (params: Record<string, string | number>) =>
     queryFn: () => api.listMyAdjustments(params),
     placeholderData: (prev) => prev,
   });
+
+/** One employee's payslip history (P-HR-20) — read-only, like every payslip surface. */
+export const useEmployeePayslips = (employeeId: string, params: Record<string, string | number>) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'employeePayslips', { employeeId, ...params }),
+    queryFn: () => api.listEmployeePayslips(employeeId, params),
+    enabled: employeeId !== '',
+    placeholderData: (prev) => prev,
+  });

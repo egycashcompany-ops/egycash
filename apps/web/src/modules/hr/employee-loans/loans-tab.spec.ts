@@ -48,8 +48,13 @@ describe('wired into the profile the way every additive tab is', () => {
     // P-HR-11 turned the ternary into a filter with a branch of its own, because Settlement needs
     // a SECOND condition (an exit) that the money tabs do not. What this guard protects is
     // unchanged: Loans is offered only to a caller the server shows compensation to.
-    expect(PROFILE).toContain(
-      "if (k === 'payItems' || k === 'adjustments' || k === 'loans') return compensationVisible;",
+    // P-HR-20 added the Payslips tab to the same branch — the rule is unchanged, and the
+    // condition it is asserted against grew by one name.
+    // Matched whitespace-insensitively: P-HR-20 added `payslips` to the same branch, which
+    // wrapped the condition onto two lines. Where a formatter puts the break is its business; the
+    // rule — no money tab without the compensation answer — is unchanged.
+    expect(PROFILE).toMatch(
+      /if \(k === 'payItems' \|\| k === 'adjustments' \|\| k === 'loans' \|\| k === 'payslips'\)\s*return compensationVisible;/,
     );
   });
 });

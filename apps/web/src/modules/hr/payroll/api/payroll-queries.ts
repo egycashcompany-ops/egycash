@@ -280,3 +280,11 @@ export const useDecideAdjustmentFromQueue = () => {
     },
   });
 };
+
+/** The caller's own adjustments (P-HR-19). A read with no mutation behind it. */
+export const useMyAdjustments = (params: Record<string, string | number>) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'myAdjustments', params),
+    queryFn: () => api.listMyAdjustments(params),
+    placeholderData: (prev) => prev,
+  });

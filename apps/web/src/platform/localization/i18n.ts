@@ -2311,6 +2311,13 @@ const en: Record<string, string> = {
   'loans.mine.schedule': 'Repayment schedule — {{type}}',
   'loans.mine.scheduleHint': 'Each month, and what payroll takes for it.',
   'loans.mine.disbursedOn': 'Paid out on {{date}}.',
+  // My adjustments (P-HR-19) — the screen P-HR-07's decision notice points at.
+  'payroll.adjustments.mine.title': 'My bonuses and penalties',
+  'payroll.adjustments.mine.subtitle': 'Amounts recorded about you, and where each one stands.',
+  'payroll.adjustments.mine.hint':
+    'Entries still being written are not shown — an amount becomes visible here once it has been submitted for a decision.',
+  'payroll.adjustments.mine.empty': 'Nothing has been recorded about you.',
+  'payroll.adjustments.decidedAt': 'Decided on',
   'loans.employee': 'Employee',
   'loans.allStatuses': 'All statuses',
   'loans.allTypes': 'All types',
@@ -6582,6 +6589,13 @@ const ar: Record<string, string> = {
   'loans.mine.schedule': 'جدول السداد — {{type}}',
   'loans.mine.scheduleHint': 'كل شهر، وما يخصمه نظام الرواتب مقابله.',
   'loans.mine.disbursedOn': 'صُرف بتاريخ {{date}}.',
+  // مؤثراتي (P-HR-19): الشاشة التي يشير إليها إشعار القرار في P-HR-07.
+  'payroll.adjustments.mine.title': 'منحي وجزاءاتي',
+  'payroll.adjustments.mine.subtitle': 'المبالغ المسجّلة بشأنك، وموقف كل منها.',
+  'payroll.adjustments.mine.hint':
+    'المسودّات لا تظهر هنا — يظهر المبلغ بعد إرساله لاتخاذ قرار بشأنه.',
+  'payroll.adjustments.mine.empty': 'لم يُسجَّل بشأنك شيء.',
+  'payroll.adjustments.decidedAt': 'تاريخ القرار',
   'loans.employee': 'الموظف',
   'loans.allStatuses': 'كل الحالات',
   'loans.allTypes': 'كل الأنواع',

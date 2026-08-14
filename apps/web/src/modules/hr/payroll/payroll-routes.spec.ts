@@ -36,6 +36,7 @@ describe('Payroll routes', () => {
     expect(declaredPaths()).toEqual([
       'payslips/me',
       'employee-loans/me',
+      'adjustments/me',
       'pay-items',
       'runs',
       'adjustments',
@@ -47,9 +48,9 @@ describe('Payroll routes', () => {
    * Everything an ADMINISTRATOR reaches is behind a key; the one self-service route is not, and
    * that is the design rather than a gap.
    *
-   * `/payslips/me` and `/employee-loans/me` (P-HR-18) resolve their rows from the caller's own
-   * login link on the server, so there is no wider reach a permission could gate — the posture My
-   * Attendance has as its module's index.
+   * `/payslips/me`, `/employee-loans/me` (P-HR-18) and `/adjustments/me` (P-HR-19) resolve their
+   * rows from the caller's own login link on the server, so there is no wider reach a permission
+   * could gate — the posture My Attendance has as its module's index.
    *
    * P-HR-18 added the second one, so "exactly ONE may be unguarded" became untrue. What replaced
    * it is STRONGER rather than looser: the unguarded set is now stated BY NAME, so a future page
@@ -64,7 +65,7 @@ describe('Payroll routes', () => {
       'employeeLoan.view',
     ]);
     const unguarded = declaredPaths().filter((p) => p.endsWith('/me'));
-    expect(unguarded).toEqual(['payslips/me', 'employee-loans/me']);
+    expect(unguarded).toEqual(['payslips/me', 'employee-loans/me', 'adjustments/me']);
     expect(guarded).toHaveLength(declaredPaths().length - unguarded.length);
     // …and the index route renders that same self-service page, never a guarded one.
     expect(ROUTES).toMatch(/<Route index element=\{<MyPayslipsPage \/>\} \/>/);

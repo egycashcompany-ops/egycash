@@ -18,6 +18,7 @@ import {
   decideAdjustment,
   listAdjustments,
   listEmployeeAdjustments,
+  listMyAdjustments,
   submitAdjustment,
   updateAdjustment,
 } from './payroll-adjustment.controller';
@@ -117,6 +118,21 @@ export const buildEmployeeAdjustmentsRouter = (): Router => {
 /** The organization-wide list — the approval queue reads it filtered by `status`. */
 export const buildPayrollAdjustmentsRouter = (): Router => {
   const router = Router();
+  /**
+   * P-HR-19 — the caller's OWN adjustments, and the only route here with no permission.
+   *
+   * Own-scope BY CONSTRUCTION: the employee is resolved from the caller's login link on the
+   * server, and nothing the caller sends can widen it. It closes the loop on P-HR-07, whose
+   * decision notice addresses the employee and, until now, pointed at nothing they could open.
+   *
+   * Declared FIRST so `me` is never parsed as anything else.
+   */
+  router.get(
+    '/me',
+    authenticate,
+    validate({ query: ListPayrollAdjustmentsQuerySchema }),
+    asyncHandler(listMyAdjustments),
+  );
   router.get(
     '/',
     authenticate,

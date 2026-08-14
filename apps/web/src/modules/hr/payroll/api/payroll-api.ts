@@ -169,3 +169,12 @@ export const cancelAdjustment = (
   body: CancelPayrollAdjustment,
 ): Promise<PayrollAdjustmentDto> =>
   post<PayrollAdjustmentDto>(`/hr/employees/${employeeId}/adjustments/${id}/cancel`, body);
+
+/**
+ * The caller's OWN adjustments (P-HR-19) — no permission, own-scope by construction.
+ *
+ * The screen P-HR-07's decision notice points at. Drafts never arrive here: the server excludes
+ * them, because a draft is the recorder's private working note rather than a decision.
+ */
+export const listMyAdjustments = (params: QueryParams): Promise<Paginated<PayrollAdjustmentDto>> =>
+  getPage<PayrollAdjustmentDto>(`/hr/payroll/adjustments/me${buildQuery(params)}`);

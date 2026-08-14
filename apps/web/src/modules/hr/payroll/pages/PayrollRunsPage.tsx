@@ -25,6 +25,7 @@ import { Field, Input } from '../../../../shared/ui/form';
 import { PlusIcon } from '../../../../shared/ui/icons';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { RunReconciliation } from '../components/RunReconciliation';
+import { RunCostBreakdown } from '../components/RunCostBreakdown';
 import { formatDate, formatDateTime, formatMoney, formatNumber } from '../../../../shared/lib/format';
 import {
   useApprovePayrollRun,
@@ -310,6 +311,13 @@ const PayslipsDialog = ({ run, onClose }: { run: PayrollRunDto; onClose: () => v
           it. No new page, therefore no new permission — the dialog's own gate already answers.
         */}
         <RunReconciliation runId={run.id} />
+
+        {/*
+          P-HR-14 / U14-1 — the same lines, grouped by what produced them. Beside the
+          reconciliation because they answer adjacent questions about one month: "does it add up?"
+          and "what was it made of?". It names no account and posts nothing.
+        */}
+        <RunCostBreakdown runId={run.id} />
 
         {result !== null && (
           <div

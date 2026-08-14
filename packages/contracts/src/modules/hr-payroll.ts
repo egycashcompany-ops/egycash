@@ -893,6 +893,88 @@ export interface PayrollRunReconciliationDto {
   adjustments: PayrollRunAdjustmentReconciliationDto[];
 }
 
+// ── What a run cost, along the dimensions it already carries (P-HR-14 / U14-1) ─
+//
+// WHAT THIS IS. The run's own payslip lines, summed and grouped by the keys those lines already
+// store: the currency, the direction (`kind`), what produced the line (`origin`), the catalog item
+// behind it, and the branch the payslip was issued in. Every one of those is a field written at
+// issue time — nothing here is derived, mapped, or decided.
+//
+// WHAT THIS IS NOT, AND MUST NEVER BECOME. It is **not** a general-ledger posting. There is no
+// chart of accounts in this system, no account mapping, no posting rule, no journal entry and no
+// entity that could hold one, and none of those is invented here: they are accounting decisions
+// nobody has given, and P-HR-14's discovery keeps them open. This shape is the ARITHMETIC that
+// such a posting would one day consume — it happens to be exactly the figures a journal needs,
+// which is why it can be built now, and it names no account, which is why building it decides
+// nothing.
+//
+// NO NET, ANYWHERE. Earnings and deductions are summed as positive amounts inside their own `kind`
+// group and never subtracted from one another. Netting them across origins would be an accounting
+// choice about what offsets what — and the run's true net already exists, once, in the
+// reconciliation.
+//
+// PER CURRENCY, ALWAYS. There is no exchange rate in this system, so a total spanning currencies
+// would be a defect wearing the costume of a summary. Currency is a group key in all three splits.
+
+/** One (currency, kind, origin) cell — what that source contributed, and over how many lines. */
+export interface PayrollRunCostRowDto {
+  currency: string;
+  kind: PayItemKind;
+  origin: CompensationLineOrigin;
+  /** How many payslip lines are behind the figure — a count of terms, not of employees. */
+  lines: number;
+  amountMinor: number;
+  amount: number;
+}
+
+/**
+ * The same money, split by the catalog item behind each line.
+ *
+ * `origin` is kept beside the item because it is what EXPLAINS a null `payItemId`: a leave or loan
+ * line has no catalog row at all, and its `code` is the fixed one the engine gave it.
+ */
+export interface PayrollRunCostByPayItemDto {
+  currency: string;
+  kind: PayItemKind;
+  origin: CompensationLineOrigin;
+  payItemId: string | null;
+  code: string;
+  lines: number;
+  amountMinor: number;
+  amount: number;
+}
+
+/**
+ * The same money, split by the branch the PAYSLIP was issued in.
+ *
+ * `branchId` is denormalized onto the payslip at issue time (ADR-015), so this answers "which
+ * branch paid this" as it stood then, not as the employee's record stands today — the only reading
+ * the stored data supports.
+ *
+ * `origin` is deliberately absent here: it would multiply every branch by four with nothing gained,
+ * and the origin question is already answered in full by `byOrigin`.
+ */
+export interface PayrollRunCostByBranchDto {
+  currency: string;
+  kind: PayItemKind;
+  branchId: string | null;
+  /** Resolved for display only. Null when the branch cannot be read — never a reason to omit money. */
+  branchName: { ar: string; en: string } | null;
+  lines: number;
+  amountMinor: number;
+  amount: number;
+}
+
+export interface PayrollRunCostBreakdownDto {
+  runId: string;
+  period: string;
+  status: PayrollRunStatus;
+  /** Empty when the run has issued nothing — a draft costs zero rather than erroring. */
+  byOrigin: PayrollRunCostRowDto[];
+  byPayItem: PayrollRunCostByPayItemDto[];
+  byBranch: PayrollRunCostByBranchDto[];
+}
+
 // ── Payroll adjustments — bonuses and penalties (P-HR-04) ────────────────────
 //
 // One amount, for one person, for one month, because somebody decided so. That sentence is the

@@ -12,6 +12,24 @@ import { BaseRepository } from '../../../../shared/base/base.repository';
 import { type ScopeSelector } from '../../../../shared/types';
 import { PayslipModel, type PayslipDoc } from './payslip.model';
 
+/**
+ * One group of payslip LINES, as the database summed them (P-HR-14 / U14-1).
+ *
+ * A single row shape for all three splits: the fields a given split did not group by come back
+ * null, so the service maps one shape rather than three and no split can quietly grow a key the
+ * others do not have.
+ */
+export interface PayslipLineGroupRow {
+  currency: string;
+  kind: string;
+  origin: string | null;
+  payItemId: string | null;
+  code: string | null;
+  branchId: string | null;
+  lines: number;
+  amountMinor: number;
+}
+
 /** One currency's worth of a run, as the database summed it. */
 export interface PayslipRunTotalsRow {
   currency: string;
@@ -94,6 +112,95 @@ class PayslipRepository extends BaseRepository<PayslipDoc> {
       { $sort: { _id: 1 } },
     ]).exec();
     return rows.map((row) => ({ currency: row._id, minor: row.minor }));
+  }
+
+  /**
+   * A run's lines, summed by (currency, kind, origin) — P-HR-14 / U14-1.
+   *
+   * SUMMED POSITIVE INSIDE EACH `kind`, never netted. Direction is what `kind` means, so an earning
+   * and a deduction are two answers rather than one difference; subtracting them here would be a
+   * choice about what offsets what, which is accounting rather than arithmetic.
+   *
+   * `$ifNull` on the amount for the same reason the adjustment aggregate has it: a stored payslip
+   * line always carries a figure — PY-7 refuses to issue one that does not — and the guard costs
+   * nothing while making the query honest about the field being nullable in the contract.
+   */
+  async lineTotalsByOriginForRun(runId: string, scope: ScopeSelector): Promise<PayslipLineGroupRow[]> {
+    return this.groupLines(runId, scope, {
+      currency: '$currency',
+      kind: '$lines.kind',
+      origin: '$lines.origin',
+    });
+  }
+
+  /** The same lines, split by the catalog item behind them (null for a leave or loan line). */
+  async lineTotalsByPayItemForRun(
+    runId: string,
+    scope: ScopeSelector,
+  ): Promise<PayslipLineGroupRow[]> {
+    return this.groupLines(runId, scope, {
+      currency: '$currency',
+      kind: '$lines.kind',
+      origin: '$lines.origin',
+      payItemId: '$lines.payItemId',
+      code: '$lines.code',
+    });
+  }
+
+  /** The same lines, split by the branch the payslip was issued in (ADR-015, denormalized). */
+  async lineTotalsByBranchForRun(
+    runId: string,
+    scope: ScopeSelector,
+  ): Promise<PayslipLineGroupRow[]> {
+    return this.groupLines(runId, scope, {
+      currency: '$currency',
+      kind: '$lines.kind',
+      branchId: '$branchId',
+    });
+  }
+
+  /**
+   * The one pipeline behind all three splits — only the group key differs.
+   *
+   * Written once rather than three times because the parts that MUST NOT drift are the parts they
+   * share: the scoped `$match`, the earnings-and-deductions concatenation, and the positive sum.
+   * A second copy of this is where a missing `baseFilter` would eventually appear.
+   */
+  private async groupLines(
+    runId: string,
+    scope: ScopeSelector,
+    key: Record<string, string>,
+  ): Promise<PayslipLineGroupRow[]> {
+    if (!Types.ObjectId.isValid(runId)) return [];
+    const rows = await PayslipModel.aggregate<{
+      _id: Record<string, unknown>;
+      lines: number;
+      amountMinor: number;
+    }>([
+      // The caller's scope, through the same filter the paginated read uses — a branch reader must
+      // be shown their branch's cost and nothing wider (audit finding A2).
+      { $match: this.baseFilter(scope, { runId: new Types.ObjectId(runId) }) },
+      { $project: { currency: 1, branchId: 1, lines: { $concatArrays: ['$earnings', '$deductions'] } } },
+      { $unwind: '$lines' },
+      {
+        $group: {
+          _id: key,
+          lines: { $sum: 1 },
+          amountMinor: { $sum: { $ifNull: ['$lines.amountMinor', 0] } },
+        },
+      },
+      { $sort: { '_id.currency': 1, '_id.kind': 1, '_id.origin': 1, '_id.code': 1 } },
+    ]).exec();
+    return rows.map((row) => ({
+      currency: String(row._id['currency'] ?? ''),
+      kind: String(row._id['kind'] ?? ''),
+      origin: row._id['origin'] === undefined ? null : String(row._id['origin']),
+      payItemId: row._id['payItemId'] == null ? null : String(row._id['payItemId']),
+      code: row._id['code'] === undefined ? null : String(row._id['code']),
+      branchId: row._id['branchId'] == null ? null : String(row._id['branchId']),
+      lines: row.lines,
+      amountMinor: row.amountMinor,
+    }));
   }
 
   /** The employees this run issued to — the coverage check's "was paid" side. */

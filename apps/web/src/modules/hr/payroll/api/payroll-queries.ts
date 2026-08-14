@@ -147,6 +147,9 @@ const PAYSLIPS_FEATURE = 'payslips';
  */
 const RECONCILIATION_FEATURE = 'runReconciliation';
 
+/** The cost breakdown's own key, for the same reason (P-HR-14 / U14-1). */
+const COST_BREAKDOWN_FEATURE = 'runCostBreakdown';
+
 export const useRunPayslips = (runId: string, params: Record<string, string | number>) =>
   useQuery({
     queryKey: listKey(MODULE, PAYSLIPS_FEATURE, { runId, ...params }),
@@ -170,9 +173,18 @@ export const useGeneratePayslips = () => {
       // figure in it, and a stale total beside a fresh list is the one thing a reconciliation
       // must never show.
       void client.invalidateQueries({ queryKey: featureKey(MODULE, RECONCILIATION_FEATURE) });
+      // …and the cost breakdown, which groups the very lines that were just written.
+      void client.invalidateQueries({ queryKey: featureKey(MODULE, COST_BREAKDOWN_FEATURE) });
     },
   });
 };
+
+/** What the run cost, grouped by origin, pay item and branch (P-HR-14 / U14-1). */
+export const useRunCostBreakdown = (runId: string) =>
+  useQuery({
+    queryKey: listKey(MODULE, COST_BREAKDOWN_FEATURE, { runId }),
+    queryFn: () => api.getRunCostBreakdown(runId),
+  });
 
 /** The run reconciled against its own payslips (P-HR-15-A). */
 export const useRunReconciliation = (runId: string) =>

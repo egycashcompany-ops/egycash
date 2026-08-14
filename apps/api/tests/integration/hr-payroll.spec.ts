@@ -1992,7 +1992,15 @@ describe('payslips: one employee across every run (P-HR-20)', () => {
  * the ONLY thing that changed: the payslip still lists, and its figures still say what they said.
  */
 describe('a payslip carries the status of the run behind it (A1)', () => {
-  const PERIOD = '2026-11';
+  /**
+   * A period that has ENDED, and one no other block in this file uses.
+   *
+   * PY-6 refuses to freeze a month whose last day has not passed — *"it can only be frozen once
+   * its last day has passed"* — so a period chosen from the future would fail at the freeze rather
+   * than at anything this block is about. Past-and-unused is the only safe choice, and it stays
+   * safe as the calendar moves.
+   */
+  const PERIOD = '2025-06';
   let employeeId = '';
   let runId = '';
   let ownToken = '';

@@ -49,8 +49,13 @@ describe('the Pay Items tab is wired into the profile the way every additive tab
     expect(PROFILE).toMatch(
       /visibleTabs = \(compensationVisible: boolean, exited: boolean\): readonly Tab\[\] =>/,
     );
-    expect(PROFILE).toContain(
-      "if (k === 'payItems' || k === 'adjustments' || k === 'loans') return compensationVisible;",
+    // P-HR-20 added the Payslips tab to the same branch — the rule is unchanged, and the
+    // condition it is asserted against grew by one name.
+    // Matched whitespace-insensitively: P-HR-20 added `payslips` to the same branch, which
+    // wrapped the condition onto two lines. Where a formatter puts the break is its business; the
+    // rule — no money tab without the compensation answer — is unchanged.
+    expect(PROFILE).toMatch(
+      /if \(k === 'payItems' \|\| k === 'adjustments' \|\| k === 'loans' \|\| k === 'payslips'\)\s*return compensationVisible;/,
     );
     expect(PROFILE).toContain("{tab === 'payItems' && e.compensationVisible && (");
   });

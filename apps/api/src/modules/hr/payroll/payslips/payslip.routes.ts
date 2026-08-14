@@ -18,6 +18,7 @@ import {
   generatePayslips,
   getMyPayslip,
   getPayslip,
+  listEmployeePayslips,
   listMyPayslips,
   listRunPayslips,
 } from './payslip.controller';
@@ -72,6 +73,25 @@ export const buildPayslipsRouter = (): Router => {
     authorize('employee.viewCompensation'),
     validate({ params: IdParamSchema }),
     asyncHandler(getPayslip),
+  );
+  return router;
+};
+
+/**
+ * One employee's payslip history (P-HR-20) — mounted under `/hr/employees`.
+ *
+ * Behind `employee.viewCompensation`, the key that already governs the single-payslip read and the
+ * run's list. It adds no permission: reading what somebody was paid is reading their pay,
+ * whichever direction the question comes from.
+ */
+export const buildEmployeePayslipsRouter = (): Router => {
+  const router = Router();
+  router.get(
+    '/:id/payslips',
+    authenticate,
+    authorize('employee.viewCompensation'),
+    validate({ query: ListPayslipsQuerySchema, params: IdParamSchema }),
+    asyncHandler(listEmployeePayslips),
   );
   return router;
 };

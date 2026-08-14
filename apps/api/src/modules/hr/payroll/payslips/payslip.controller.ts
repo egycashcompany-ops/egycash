@@ -32,6 +32,27 @@ export const listRunPayslips = async (req: Request, res: Response): Promise<void
 };
 
 /**
+ * One employee's payslips, across every run (P-HR-20).
+ *
+ * The mirror of the run's list: that one asks "who was paid this month?", this asks "what has this
+ * person been paid?". Same documents, same key, and neither recomputes anything — a payslip is a
+ * frozen copy of what somebody was paid, and reading it a second way must not change it.
+ */
+export const listEmployeePayslips = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { query, params } = validated<never, ListPayslipsQuery, IdParam>(req);
+  okPage(
+    res,
+    await payslipService.listForEmployee(
+      params.id,
+      query,
+      scopeSelector(ctx, 'employee.viewCompensation'),
+    ),
+    (doc) => payslipService.toDto(doc),
+  );
+};
+
+/**
  * The caller's own payslips (PY-11).
  *
  * Whatever `employeeId` arrived is DROPPED — `/me` answers for the caller and nobody else, the

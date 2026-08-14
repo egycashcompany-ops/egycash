@@ -238,6 +238,39 @@ class PayslipService {
   }
 
   /**
+   * One employee's payslips across every run (P-HR-20).
+   *
+   * WHY THIS EXISTS. `ListPayslipsQuery` has carried an `employeeId` filter since PY-7, and the
+   * only list that applied it was the RUN's — where an employee has at most one payslip, so the
+   * filter answered nothing worth asking. There was no way for HR to see what somebody had
+   * actually been paid over time: the profile shows their pay items, their adjustments, their
+   * loans and, for a leaver, their settlement, but never the documents themselves.
+   *
+   * Behind `employee.viewCompensation`, the key that already governs `/payslips/:id` and the run's
+   * list — reading somebody's pay is reading their pay, whichever direction you come at it from.
+   * The employee is resolved through the caller's scope first, so a branch-scoped reader cannot
+   * reach outside their branch by naming an id.
+   */
+  async listForEmployee(
+    employeeId: string,
+    query: ListPayslipsQuery,
+    scope: ScopeSelector,
+  ): Promise<Paginated<PayslipDoc>> {
+    await employeeRepository.getById(employeeId, scope);
+    return payslipRepository.list({
+      filter: {
+        employeeId: new Types.ObjectId(employeeId),
+        ...(query.period === undefined ? {} : { period: query.period }),
+      },
+      page: query.page,
+      pageSize: query.pageSize,
+      sortBy: query.sortBy ?? 'period',
+      sortDir: query.sortDir ?? 'desc',
+      sortableFields: ['createdAt', 'netMinor', 'period'],
+    });
+  }
+
+  /**
    * The caller's OWN payslips (PY-11) — own-scope by construction.
    *
    * The employee is resolved from the login link and nothing the caller sends can widen that, so

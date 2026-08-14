@@ -1450,18 +1450,29 @@ describe('my own loans (P-HR-18)', () => {
       .get(`/api/v1/hr/employees/${employeeId}`)
       .set('Authorization', `Bearer ${adminToken}`);
     expect(employee.status).toBe(200);
-    const code = (employee.body as { data: { code: string } }).data.code;
+    const { code, userId: linked } = (
+      employee.body as { data: { code: string; userId: string | null } }
+    ).data;
 
-    const created = await request(app)
-      .post(`/api/v1/hr/employees/${employeeId}/login`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({
-        email: 'loan-owner@ecms.local',
-        firstName: { ar: 'ص', en: 'O' },
-        lastName: { ar: 'ح', en: 'W' },
-      });
-    expect(created.status, JSON.stringify(created.body)).toBe(201);
-    const userId = (created.body as { data: { user: { id: string } } }).data.user.id;
+    /**
+     * The login may ALREADY exist, and usually does: direct registration provisions one (ADR-017),
+     * which is why asking for a second is a 409 rather than a second account. So this adopts the
+     * linked account when there is one and creates it only when there is not — the employee's own
+     * login is what this block needs, not a login it made itself.
+     */
+    let userId = linked;
+    if (userId === null) {
+      const created = await request(app)
+        .post(`/api/v1/hr/employees/${employeeId}/login`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          email: 'loan-owner@ecms.local',
+          firstName: { ar: 'ص', en: 'O' },
+          lastName: { ar: 'ح', en: 'W' },
+        });
+      expect(created.status, JSON.stringify(created.body)).toBe(201);
+      userId = (created.body as { data: { user: { id: string } } }).data.user.id;
+    }
     // Activate the way the setup link would; the link contract itself lives in auth-lifecycle.
     await userService.setPassword(userId, PASSWORD, 'passwordReset');
     await userService.forceActivate(userId);

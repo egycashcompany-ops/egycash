@@ -1,6 +1,7 @@
 // Thin HTTP mapping only (ADR-003).
 import { type Request, type Response } from 'express';
 import {
+  type BulkCreatePayrollAdjustments,
   type CancelPayrollAdjustment,
   type CreatePayrollAdjustment,
   type DecidePayrollAdjustment,
@@ -135,6 +136,29 @@ export const listMyAdjustments = async (req: Request, res: Response): Promise<vo
  * many people is unusable as a list of ids. The employee-scoped read above deliberately does not,
  * and neither stores the labels — a name corrected tomorrow must not leave a stale copy behind.
  */
+/**
+ * One decision, recorded for many people at once (P-HR-13).
+ *
+ * Mounted on the ORGANIZATION-wide router rather than under an employee, because a distribution
+ * spans employees by definition — the employee is a column of the batch, not the route.
+ *
+ * The response is 200 rather than 201: a batch does not create one thing, and a partial batch —
+ * some rows recorded, some refused — has no single Location to point at. What it returns is the
+ * account of the pass.
+ */
+export const bulkCreateAdjustments = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body } = validated<BulkCreatePayrollAdjustments>(req);
+  ok(
+    res,
+    await payrollAdjustmentService.createMany(
+      ctx,
+      body,
+      scopeSelector(ctx, 'payrollAdjustment.create'),
+    ),
+  );
+};
+
 export const listAdjustments = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { query } = validated<never, ListPayrollAdjustmentsQuery>(req);

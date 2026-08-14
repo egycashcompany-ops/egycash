@@ -2,6 +2,7 @@
 // each employee's assignments come to over a period (ADR-013).
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  type BulkCreatePayrollAdjustments,
   type CancelPayrollAdjustment,
   type CreatePayrollAdjustment,
   type DecidePayrollAdjustment,
@@ -290,6 +291,23 @@ export const useAdjustments = (params: Record<string, string | number>, enabled 
     enabled,
     placeholderData: (prev) => prev,
   });
+
+/**
+ * One decision, recorded for many people at once (P-HR-13).
+ *
+ * Invalidates BOTH adjustment lists: the batch writes rows that belong to many employees, so the
+ * per-employee tabs and the organization-wide queue are equally stale afterwards.
+ */
+export const useBulkCreateAdjustments = () => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: BulkCreatePayrollAdjustments) => api.bulkCreateAdjustments(body),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: [MODULE, ORG_ADJUSTMENTS] });
+      void client.invalidateQueries({ queryKey: [MODULE, ADJUSTMENTS] });
+    },
+  });
+};
 
 /**
  * Decide from the queue. The employee comes from the ROW, because the endpoint is nested under the

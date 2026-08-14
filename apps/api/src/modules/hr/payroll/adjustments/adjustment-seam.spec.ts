@@ -166,10 +166,31 @@ describe('the own-scope read is own-scope by construction (P-HR-19)', () => {
     expect(block.slice(meAt, listAt)).not.toContain('authorize(');
   });
 
-  /** A read, and only a read: an employee cannot record or contest an adjustment from here. */
-  it('and adds no write of any kind', () => {
+  /**
+   * A read, and only a read: an employee cannot record or contest an adjustment from `/me`.
+   *
+   * Stated as the property that matters rather than as "this router has only GETs", which is what
+   * it used to say. P-HR-13 mounted a permission-gated POST here — a distribution spans employees,
+   * so it cannot hang under `/hr/employees/:id` — and the ESS guarantee is untouched by that: what
+   * must hold is that the UNGATED route is a read, and that every other route on this router is
+   * gated. A future write landing beside `/me` without a key would fail this.
+   */
+  it('and adds no ungated write of any kind', () => {
     const block = routes.slice(routes.indexOf('buildPayrollAdjustmentsRouter'));
-    const verbs = [...block.matchAll(/router\.(get|post|patch|put|delete)\(/g)].map((m) => m[1]);
-    expect([...new Set(verbs)]).toEqual(['get']);
+    // Cut the block into whole route declarations, so each one is judged with its own guards
+    // rather than with whatever happened to fall on the same side of an index.
+    const starts = [...block.matchAll(/router\.(get|post|patch|put|delete)\(/g)];
+    expect(starts.length).toBeGreaterThan(1);
+    const declarations = starts.map((match, i) => {
+      const from = match.index ?? 0;
+      const to = i + 1 < starts.length ? (starts[i + 1]?.index ?? block.length) : block.length;
+      return { verb: match[1] ?? '', source: block.slice(from, to) };
+    });
+
+    const ungated = declarations.filter((d) => !d.source.includes('authorize('));
+    // Exactly one route here carries no permission, it is `/me`, and it is a read.
+    expect(ungated).toHaveLength(1);
+    expect(ungated[0]?.source).toContain("'/me'");
+    expect(ungated[0]?.verb).toBe('get');
   });
 });

@@ -11,9 +11,16 @@
 // queue tab is that same endpoint asked with `status=pendingApproval`, and the decision it posts
 // is the same nested endpoint the profile tab posts to — the employee comes from the row.
 //
-// WHAT IT DELIBERATELY CANNOT DO. It does not record an adjustment: creating one belongs on the
-// employee's file, where the currency and the person are already known. This screen decides, and
-// the server still refuses a decision from whoever submitted it, whatever key they hold (D1).
+// WHAT IT DECIDES, AND WHAT IT NOW ALSO RECORDS. Deciding is this screen's original job, and the
+// server still refuses a decision from whoever submitted it, whatever key they hold (D1). Recording
+// a SINGLE adjustment still belongs on the employee's file, where the currency and the person are
+// already known — that has not changed.
+//
+// What P-HR-13 added is the one case that never fitted there: a DISTRIBUTION, where finance has
+// decided many people's amounts at once and the employee is a column of the batch rather than the
+// place you start from. It rides this surface because a distribution is N adjustments — no new
+// entity, no new permission, no new approval — and because the two questions it sits between,
+// "what is waiting for me?" and "record these", are asked by the same people.
 import { useState } from 'react';
 import {
   type Locale,
@@ -30,6 +37,7 @@ import { Field, Input, Select } from '../../../../shared/ui/form';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { formatMoney, localized } from '../../../../shared/lib/format';
 import { useAdjustments, useDecideAdjustmentFromQueue } from '../api/payroll-queries';
+import { BulkDistributionDialog } from '../components/BulkDistributionDialog';
 
 const PAGE_SIZE = 25;
 
@@ -48,6 +56,7 @@ export const PayrollAdjustmentsPage = (): JSX.Element => {
   const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [tab, setTab] = useState<Tab>('queue');
+  const [distributing, setDistributing] = useState(false);
   const [status, setStatus] = useState('');
   const [kind, setKind] = useState('');
   const [period, setPeriod] = useState('');
@@ -174,7 +183,16 @@ export const PayrollAdjustmentsPage = (): JSX.Element => {
           { label: t('payroll.module.title') },
           { label: t('payroll.adjustments.queueTitle') },
         ]}
+        actions={
+          /* P-HR-13 — behind the key that already records one adjustment; recording three hundred
+             is not a different act, and every row still lands as a draft. */
+          can('payrollAdjustment.create') ? (
+            <Button onClick={() => setDistributing(true)}>{t('payroll.bulk.open')}</Button>
+          ) : undefined
+        }
       />
+
+      {distributing && <BulkDistributionDialog onClose={() => setDistributing(false)} />}
 
       <div
         className="mb-4 flex flex-wrap gap-1 border-b border-slate-200 dark:border-slate-800"

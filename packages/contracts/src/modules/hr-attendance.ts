@@ -401,6 +401,26 @@ export const ListAttendanceRegularizationsQuerySchema = PaginationQuerySchema.ex
   branchId: objectId().optional(),
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
+  /**
+   * The post-freeze corrections (P-HR-08) — approved after their month was closed.
+   *
+   * The stamp has existed since AT-5 and NOTHING could find it: no filter, no screen, no reader
+   * outside this module. So a correction that landed after a freeze was recorded, left the frozen
+   * row untouched exactly as designed, and then went nowhere — the one case where somebody has to
+   * act by hand was the one case nobody could list.
+   *
+   * A filter, not a new endpoint: the organization-wide read already exists and is already behind
+   * `attendance.decideRegularization`.
+   *
+   * NOT `z.coerce.boolean()`, and the difference is not cosmetic: `Boolean('false')` is `true`, so
+   * a coerced query string makes `postFreeze=false` mean `postFreeze=true` — the filter would
+   * answer the opposite of the question. Both halves are real questions here ("what needs a human"
+   * and "what recomputed normally"), so the string is parsed rather than coerced. The boolean arm
+   * is for a caller that already has one.
+   */
+  postFreeze: z
+    .union([z.boolean(), z.enum(['true', 'false']).transform((value) => value === 'true')])
+    .optional(),
 }).strict();
 export type ListAttendanceRegularizationsQuery = z.infer<
   typeof ListAttendanceRegularizationsQuerySchema

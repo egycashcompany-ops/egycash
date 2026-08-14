@@ -22,6 +22,9 @@ class RegularizationRepository extends BaseRepository<AttendanceRegularizationDo
     if (query.status !== undefined) filter.status = query.status;
     if (query.employeeId !== undefined) filter.employeeId = new Types.ObjectId(query.employeeId);
     if (query.branchId !== undefined) filter.branchId = new Types.ObjectId(query.branchId);
+    // P-HR-08 — the corrections that landed after their month was closed. Exact match on purpose:
+    // `postFreeze=false` is a real question ("what still recomputed normally?"), not an absent one.
+    if (query.postFreeze !== undefined) filter.postFreeze = query.postFreeze;
     if (query.from !== undefined || query.to !== undefined) {
       filter.workDate = {
         ...(query.from === undefined ? {} : { $gte: query.from }),

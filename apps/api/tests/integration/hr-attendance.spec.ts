@@ -852,6 +852,34 @@ describe('AT-5 — regularizations and overtime approval', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ approvedMinutes: 0, version: after.version });
     expect(ot.status).toBe(422);
+
+    /**
+     * P-HR-08 — and now somebody can FIND it.
+     *
+     * The stamp above has existed since AT-5, and until this phase nothing could list it: no
+     * filter, no screen, no reader outside this module. So the one case that needs a human — a
+     * correction against a month that was already paid — was the one case nobody could see. The
+     * filter is on the organization-wide read that already existed, behind the key that already
+     * governed it.
+     */
+    const corrections = await request(app)
+      .get('/api/v1/hr/attendance/regularizations')
+      .query({ postFreeze: 'true', pageSize: 100 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(corrections.status, JSON.stringify(corrections.body)).toBe(200);
+    const listed = corrections.body.data as AttendanceRegularizationDto[];
+    expect(listed.map((r) => r.id)).toContain(reg.id);
+    expect(listed.every((r) => r.postFreeze)).toBe(true);
+
+    // …and the complement is a real question too: this one must NOT appear among the normal ones.
+    const normal = await request(app)
+      .get('/api/v1/hr/attendance/regularizations')
+      .query({ postFreeze: 'false', pageSize: 100 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(normal.status).toBe(200);
+    expect((normal.body.data as AttendanceRegularizationDto[]).map((r) => r.id)).not.toContain(
+      reg.id,
+    );
   });
 });
 

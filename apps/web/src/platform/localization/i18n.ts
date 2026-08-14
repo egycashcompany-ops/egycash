@@ -1436,6 +1436,11 @@ const en: Record<string, string> = {
   'attendance.queue.tab.all': 'All requests',
   'attendance.queue.empty': 'Nothing awaits your decision',
   'attendance.queue.emptyAll': 'No regularization requests',
+  // The post-freeze corrections tab (P-HR-08).
+  'attendance.queue.tab.postFreeze': 'After the freeze',
+  'attendance.queue.emptyPostFreeze': 'No corrections landed after a freeze.',
+  'attendance.queue.postFreezeHint':
+    'These were approved after their month was closed, so the day was not recomputed and the month was already paid. Nothing here changes pay: record the correction as a payroll adjustment in a later, open month.',
   'attendance.queue.allStatuses': 'All statuses',
   'attendance.reg.title': 'Request an attendance correction',
   'attendance.reg.directTitle': 'HR direct correction',
@@ -5626,6 +5631,11 @@ const ar: Record<string, string> = {
   'attendance.queue.tab.all': 'كل الطلبات',
   'attendance.queue.empty': 'لا شيء بانتظار قرارك',
   'attendance.queue.emptyAll': 'لا توجد طلبات تسوية',
+  // تبويب التصحيحات بعد التجميد (P-HR-08).
+  'attendance.queue.tab.postFreeze': 'بعد التجميد',
+  'attendance.queue.emptyPostFreeze': 'لا توجد تصحيحات وردت بعد التجميد.',
+  'attendance.queue.postFreezeHint':
+    'اعتُمدت بعد إغلاق شهرها، فلم يُعَد احتساب اليوم وكان الشهر قد صُرف. لا شيء هنا يغيّر الأجر: سجّل التصحيح كمؤثر رواتب في شهر لاحق مفتوح.',
   'attendance.queue.allStatuses': 'كل الحالات',
   'attendance.reg.title': 'طلب تصحيح حضور',
   'attendance.reg.directTitle': 'تصحيح مباشر من الموارد البشرية',

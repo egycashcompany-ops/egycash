@@ -12,7 +12,7 @@ import { Field, Select } from '../../../../shared/ui/form';
 import { RegularizationsTable } from '../components/RegularizationsTable';
 import { usePendingRegularizations, useRegularizations } from '../api/attendance-queries';
 
-const TABS = ['queue', 'all'] as const;
+const TABS = ['queue', 'all', 'postFreeze'] as const;
 type Tab = (typeof TABS)[number];
 
 const STATUSES: AttendanceRegularizationStatus[] = [
@@ -34,6 +34,17 @@ export const RegularizationQueuePage = (): JSX.Element => {
   const all = useRegularizations(
     { page, pageSize: 25, ...(status === '' ? {} : { status }) },
     tab === 'all' && can('attendance.decideRegularization'),
+  );
+  /**
+   * The post-freeze corrections (P-HR-08).
+   *
+   * These are approved requests whose day was already frozen, so the row did NOT move and the
+   * month was already paid. The stamp has existed since AT-5 and nothing could list it — which
+   * made the one case that needs a human the one case nobody could see. This tab is that list.
+   */
+  const corrections = useRegularizations(
+    { page, pageSize: 25, postFreeze: 'true' },
+    tab === 'postFreeze' && can('attendance.decideRegularization'),
   );
 
   return (
@@ -79,6 +90,34 @@ export const RegularizationQueuePage = (): JSX.Element => {
           showDecisions
           empty={<EmptyState title={t('attendance.queue.empty')} />}
         />
+      ) : tab === 'postFreeze' ? (
+        <div className="space-y-4">
+          {/*
+            Said out loud, because the screen must not imply an action it does not have. The day
+            is frozen and the month is paid; there is no button here that could change either.
+            What a correction is WORTH is not derivable from anything in this system — see the
+            P-HR-08 design note — so the forward payment stays a decision somebody records by hand
+            as a payroll adjustment in a later, open month.
+          */}
+          <p
+            role="note"
+            className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+          >
+            {t('attendance.queue.postFreezeHint')}
+          </p>
+          <RegularizationsTable
+            rows={corrections.data?.items ?? []}
+            loading={corrections.isLoading}
+            error={corrections.isError ? corrections.error : undefined}
+            onRetry={() => void corrections.refetch()}
+            showEmployee
+            showDecisions
+            empty={<EmptyState title={t('attendance.queue.emptyPostFreeze')} />}
+          />
+          {corrections.data !== undefined && (
+            <Pagination meta={corrections.data.meta} onPageChange={setPage} />
+          )}
+        </div>
       ) : (
         <div className="space-y-4">
           <div className="max-w-xs">

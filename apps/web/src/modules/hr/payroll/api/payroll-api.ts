@@ -13,6 +13,7 @@ import {
   type CreatePayrollRun,
   type PayPayrollRun,
   type GeneratePayslipsResultDto,
+  type PayrollRunCostBreakdownDto,
   type PayrollRunDto,
   type PayrollRunReconciliationDto,
   type PayslipDto,
@@ -130,6 +131,16 @@ export const generatePayslips = (runId: string): Promise<GeneratePayslipsResultD
  */
 export const getRunReconciliation = (runId: string): Promise<PayrollRunReconciliationDto> =>
   get<PayrollRunReconciliationDto>(`/hr/payroll/runs/${runId}/reconciliation`);
+
+/**
+ * What the run cost, grouped by the dimensions its lines already carry (P-HR-14 / U14-1).
+ *
+ * Takes no parameter beyond the run: a grouping or a filter would be a report definition, and the
+ * three splits are returned in full instead. Behind the same compensation key as everything else
+ * that reads a figure here.
+ */
+export const getRunCostBreakdown = (runId: string): Promise<PayrollRunCostBreakdownDto> =>
+  get<PayrollRunCostBreakdownDto>(`/hr/payroll/runs/${runId}/cost-breakdown`);
 
 /** The caller's OWN payslips (PY-11) — own-scope by construction, so no employee id is sent. */
 export const listMyPayslips = (params: QueryParams): Promise<Paginated<PayslipDto>> =>

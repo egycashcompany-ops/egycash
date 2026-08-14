@@ -18,6 +18,7 @@ import {
   type PayrollLeaveSnapshotDto,
   type GeneratePayslipsResultDto,
   type PayrollRunDto,
+  type PayrollRunCostBreakdownDto,
   type PayrollRunReconciliationDto,
   type PayslipDto,
 } from '@ecms/contracts';
@@ -1919,6 +1920,133 @@ describe('run reconciliation (P-HR-15-A)', () => {
 
   it('and 404s for a run that does not exist', async () => {
     expect((await reconcile('000000000000000000000009')).status).toBe(404);
+  }, 120_000);
+});
+
+/**
+ * What a run cost, along the dimensions its lines already carry (P-HR-14 / U14-1).
+ *
+ * THE IDENTITY THAT MATTERS. The breakdown groups the SAME lines the reconciliation totals, so the
+ * two must agree exactly: every earning line summed by origin has to equal the run's total
+ * earnings, and the same for deductions. That is the whole test — if the two ever disagreed, one of
+ * them would be lying about money.
+ *
+ * And what it must NOT do: name an account, post anything, net an earning against a deduction, or
+ * total across currencies.
+ */
+describe('run cost breakdown (P-HR-14 / U14-1)', () => {
+  const breakdown = (runId: string, token = adminToken) =>
+    request(app)
+      .get(`/api/v1/hr/payroll/runs/${runId}/cost-breakdown`)
+      .set('Authorization', `Bearer ${token}`);
+
+  /** A run that issued payslips — the same discovery the reconciliation block uses. */
+  const runWithPayslips = async (): Promise<string> => {
+    const runs = await request(app)
+      .get('/api/v1/hr/payroll/runs?page=1&pageSize=50')
+      .set('Authorization', `Bearer ${adminToken}`);
+    for (const run of runs.body.data as PayrollRunDto[]) {
+      const res = await request(app)
+        .get(`/api/v1/hr/payroll/runs/${run.id}/payslips?page=1&pageSize=100`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      if (res.status === 200 && (res.body.data as PayslipDto[]).length > 0) return run.id;
+    }
+    return '';
+  };
+
+  it('sums to exactly what the reconciliation says the run came to', async () => {
+    const runId = await runWithPayslips();
+    expect(runId, 'no run in this suite issued a payslip').not.toBe('');
+
+    const res = await breakdown(runId);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const body = res.body.data as PayrollRunCostBreakdownDto;
+    expect(body.runId).toBe(runId);
+
+    const totals = (
+      await request(app)
+        .get(`/api/v1/hr/payroll/runs/${runId}/reconciliation`)
+        .set('Authorization', `Bearer ${adminToken}`)
+    ).body.data as PayrollRunReconciliationDto;
+
+    for (const row of totals.totals) {
+      const sum = (kind: 'earning' | 'deduction'): number =>
+        body.byOrigin
+          .filter((r) => r.currency === row.currency && r.kind === kind)
+          .reduce((acc, r) => acc + r.amountMinor, 0);
+      expect(sum('earning'), `${row.currency} earnings`).toBe(row.totalEarningsMinor);
+      expect(sum('deduction'), `${row.currency} deductions`).toBe(row.totalDeductionsMinor);
+    }
+  }, 240_000);
+
+  /** The three splits are three views of one set of lines, so each must re-sum to the same money. */
+  it('and the pay-item and branch splits re-sum to the same figures', async () => {
+    const runId = await runWithPayslips();
+    const body = (await breakdown(runId)).body.data as PayrollRunCostBreakdownDto;
+
+    const byCurrencyKind = (rows: { currency: string; kind: string; amountMinor: number }[]) => {
+      const map = new Map<string, number>();
+      for (const row of rows) {
+        const key = `${row.currency}:${row.kind}`;
+        map.set(key, (map.get(key) ?? 0) + row.amountMinor);
+      }
+      return map;
+    };
+
+    const origin = byCurrencyKind(body.byOrigin);
+    for (const other of [byCurrencyKind(body.byPayItem), byCurrencyKind(body.byBranch)]) {
+      expect([...other.keys()].sort()).toEqual([...origin.keys()].sort());
+      for (const [key, value] of other) expect(value, key).toBe(origin.get(key));
+    }
+  }, 240_000);
+
+  /** Every line is attributed to a source the vocabulary already closes over. */
+  it('attributes every line to a known origin, and states a currency on every row', async () => {
+    const runId = await runWithPayslips();
+    const body = (await breakdown(runId)).body.data as PayrollRunCostBreakdownDto;
+    expect(body.byOrigin.length).toBeGreaterThan(0);
+    for (const row of body.byOrigin) {
+      expect(['payItem', 'leaveSnapshot', 'adjustment', 'loanInstallment']).toContain(row.origin);
+      expect(['earning', 'deduction']).toContain(row.kind);
+      expect(row.currency.length).toBeGreaterThan(0);
+      expect(row.lines).toBeGreaterThan(0);
+      // Positive inside its own `kind` — direction is what `kind` means, never a sign.
+      expect(row.amountMinor).toBeGreaterThanOrEqual(0);
+    }
+  }, 240_000);
+
+  /** A draft that has issued nothing costs nothing — a true answer, not an error. */
+  it('answers with empty splits for a run that has issued nothing', async () => {
+    const created = await request(app)
+      .post('/api/v1/hr/payroll/runs')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ period: '2025-07' });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const run = created.body.data as PayrollRunDto;
+
+    const res = await breakdown(run.id);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const body = res.body.data as PayrollRunCostBreakdownDto;
+    expect(body.byOrigin).toEqual([]);
+    expect(body.byPayItem).toEqual([]);
+    expect(body.byBranch).toEqual([]);
+    expect(body.status).toBe('draft');
+  }, 240_000);
+
+  it('is behind the compensation key, and adds none of its own', async () => {
+    const runId = await runWithPayslips();
+    expect((await breakdown(runId, outsiderToken)).status).toBe(403);
+  }, 120_000);
+
+  it('and refuses an unauthenticated caller', async () => {
+    const runId = await runWithPayslips();
+    expect((await request(app).get(`/api/v1/hr/payroll/runs/${runId}/cost-breakdown`)).status).toBe(
+      401,
+    );
+  }, 120_000);
+
+  it('and 404s for a run that does not exist', async () => {
+    expect((await breakdown('000000000000000000000009')).status).toBe(404);
   }, 120_000);
 });
 

@@ -805,6 +805,75 @@ export const ListPayslipsQuerySchema = PaginationQuerySchema.extend({
 }).strict();
 export type ListPayslipsQuery = z.infer<typeof ListPayslipsQuerySchema>;
 
+// ── Run reconciliation (P-HR-15-A) ───────────────────────────────────────────
+//
+// IDENTITIES, NOT OPINIONS. Every figure below is a sum or a count over documents this system has
+// already written, so each line either agrees with the payslips or something is wrong. Nothing here
+// is a report: which reports exist, for whom and with which columns is a requirement nobody has
+// given, and it stays blocked (design §3).
+//
+// WHAT IS ABSENT ON PURPOSE. No tax, insurance or GL view — those are P-HR-12 and P-HR-14 and are
+// blocked on their own rules. Nothing exportable — PY-12 is closed. And no loan-ledger figure: that
+// check would need the P-HR-05-B port widened, which is an architectural decision rather than a
+// reporting one (design §4).
+
+/**
+ * A run's money, summed PER CURRENCY.
+ *
+ * Not one total. The engine refuses a mixed-currency employee, but nothing says two employees must
+ * share a currency — so adding them together would be a defect wearing the costume of a summary.
+ */
+export interface PayrollRunTotalsDto {
+  currency: string;
+  payslips: number;
+  totalEarningsMinor: number;
+  totalEarnings: number;
+  totalDeductionsMinor: number;
+  totalDeductions: number;
+  netMinor: number;
+  net: number;
+}
+
+/**
+ * Who should have been paid, against who was.
+ *
+ * `employedInPeriod` is the SAME population PY-7 issues from — `employedDuring` over the employee's
+ * spans — so a gap here is the gap that batch left, not a second opinion about who works here.
+ */
+export interface PayrollRunCoverageDto {
+  employedInPeriod: number;
+  withPayslip: number;
+  /** Employed for part of the period and holding no payslip from this run. */
+  withoutPayslip: number;
+}
+
+/**
+ * Approved adjustments for the period, against what actually reached a payslip.
+ *
+ * A difference is not an error and is not named one: the ordinary cause is an adjustment approved
+ * AFTER the run issued its payslips, which P-HR-04 permits and P-HR-08 has a forward path for. It
+ * is reported because somebody settling a month needs to see it, not because somebody erred.
+ */
+export interface PayrollRunAdjustmentReconciliationDto {
+  currency: string;
+  approvedForPeriod: number;
+  approvedMinor: number;
+  /** The `adjustment`-origin lines actually present on this run's payslips. */
+  onPayslipsMinor: number;
+  /** `approvedMinor - onPayslipsMinor`. Zero when every approved amount was priced. */
+  differenceMinor: number;
+}
+
+export interface PayrollRunReconciliationDto {
+  runId: string;
+  period: string;
+  status: PayrollRunStatus;
+  /** Empty when the run has issued nothing — a draft reconciles to zero rather than to an error. */
+  totals: PayrollRunTotalsDto[];
+  coverage: PayrollRunCoverageDto;
+  adjustments: PayrollRunAdjustmentReconciliationDto[];
+}
+
 // ── Payroll adjustments — bonuses and penalties (P-HR-04) ────────────────────
 //
 // One amount, for one person, for one month, because somebody decided so. That sentence is the

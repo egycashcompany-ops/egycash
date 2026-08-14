@@ -59,6 +59,7 @@ import {
   buildPayslipsRouter,
   buildRunPayslipsRouter,
   buildEmployeePayslipsRouter,
+  buildReconciliationRouter,
   buildEmployeeAdjustmentsRouter,
   buildPayrollAdjustmentsRouter,
   hrAdjustmentFileAuthorizers,
@@ -933,6 +934,9 @@ export const hrModule: ModuleManifest = {
     // that issued it. Two routers rather than one so the run's own keys stay separate from the
     // compensation key the payslip reads under.
     { prefix: '/hr/payroll/runs', router: buildRunPayslipsRouter() },
+    // P-HR-15-A — the run reconciled against its own payslips. Same prefix and the same reason:
+    // a reconciliation has no existence apart from the run it reconciles.
+    { prefix: '/hr/payroll/runs', router: buildReconciliationRouter() },
     { prefix: '/hr/payroll/payslips', router: buildPayslipsRouter() },
     // P-HR-04 — the organization-wide list the approval queue reads.
     { prefix: '/hr/payroll/adjustments', router: buildPayrollAdjustmentsRouter() },

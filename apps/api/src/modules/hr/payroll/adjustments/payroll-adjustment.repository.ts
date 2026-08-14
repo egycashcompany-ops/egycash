@@ -5,7 +5,7 @@
 // Actions have. The organization-wide list (the approval queue) takes a scope of its own, because
 // there is no single employee to inherit from.
 import { Types } from 'mongoose';
-import { type ListPayrollAdjustmentsQuery, type Paginated } from '@ecms/contracts';
+import { toMinorUnits, type ListPayrollAdjustmentsQuery, type Paginated } from '@ecms/contracts';
 import { BaseRepository } from '../../../../shared/base/base.repository';
 import { NotFoundError } from '../../../../shared/errors';
 import { type ScopeSelector } from '../../../../shared/types';
@@ -48,6 +48,37 @@ class PayrollAdjustmentRepository extends BaseRepository<PayrollAdjustmentDoc> {
       .sort({ kind: 1, createdAt: 1 })
       .lean<PayrollAdjustmentDoc[]>()
       .exec();
+  }
+
+  /**
+   * Every APPROVED adjustment for a period, summed per currency (P-HR-15-A).
+   *
+   * The reconciliation's "should have been priced" side. Aggregated rather than listed because a
+   * month's approvals are not bounded by a page size, and a reconciliation that silently truncated
+   * would report a discrepancy it invented.
+   *
+   * `amount` is summed as stored — always positive, direction is `kind`'s job — which is exactly
+   * how the payslip side counts it.
+   */
+  async approvedTotalsForPeriod(
+    period: string,
+  ): Promise<{ currency: string; count: number; minor: number }[]> {
+    const rows = await PayrollAdjustmentModel.aggregate<{
+      _id: string;
+      count: number;
+      amount: number;
+    }>([
+      { $match: { period, status: 'approved', isDeleted: false } },
+      { $group: { _id: '$currency', count: { $sum: 1 }, amount: { $sum: '$amount' } } },
+      { $sort: { _id: 1 } },
+    ]).exec();
+    return rows.map((row) => ({
+      currency: row._id,
+      count: row.count,
+      // Stored in major units on the adjustment; converted once, here, so the caller compares
+      // minor units with minor units rather than two different scales.
+      minor: toMinorUnits(row.amount),
+    }));
   }
 
   /**

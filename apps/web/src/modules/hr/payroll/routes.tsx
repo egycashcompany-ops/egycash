@@ -11,6 +11,7 @@ import { RequirePermission } from '../../../platform/router/RequirePermission';
 import { NotFoundPage } from '../../../platform/app/pages/NotFoundPage';
 import { AppShell } from '../../../platform/layout/AppShell';
 import { EmployeeLoansAdminPage } from '../employee-loans/pages/EmployeeLoansAdminPage';
+import { MyLoansPage } from '../employee-loans/pages/MyLoansPage';
 import { MyPayslipsPage } from './pages/MyPayslipsPage';
 import { PayItemsPage } from './pages/PayItemsPage';
 import { PayrollAdjustmentsPage } from './pages/PayrollAdjustmentsPage';
@@ -27,6 +28,13 @@ export default function PayrollRoutes(): JSX.Element {
         */}
         <Route index element={<MyPayslipsPage />} />
         <Route path="payslips/me" element={<MyPayslipsPage />} />
+        {/*
+          P-HR-18 — the employee's own loans, and the second route here with no permission, for the
+          same reason as the first: the rows are resolved from the caller's login link on the
+          server, so there is no wider reach a key could gate. It closes the loop on P-HR-07, which
+          told the employee their loan was disbursed and left them nowhere to look.
+        */}
+        <Route path="employee-loans/me" element={<MyLoansPage />} />
         <Route
           path="pay-items"
           element={

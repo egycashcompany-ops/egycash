@@ -102,3 +102,13 @@ export const updateLoanDraft = (
   body: Record<string, unknown>,
 ): Promise<EmployeeLoanDto> =>
   patch<EmployeeLoanDto>(`/hr/employees/${employeeId}/loans/${id}`, body);
+
+/**
+ * The caller's OWN loans (P-HR-18) — no permission, own-scope by construction.
+ *
+ * P-HR-07 made this feature tell the employee that their request was decided and that instalments
+ * begin in a named month. This is the screen those notices point at; until it existed they pointed
+ * at nothing.
+ */
+export const listMyLoans = (params: QueryParams): Promise<Paginated<EmployeeLoanDetailDto>> =>
+  getPage<EmployeeLoanDetailDto>(`/hr/employee-loans/me${buildQuery(params)}`);

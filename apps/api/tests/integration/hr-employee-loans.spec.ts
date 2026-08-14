@@ -1415,3 +1415,127 @@ describe('the decision notices (P-HR-07)', () => {
     await clearLive();
   }, 240_000);
 });
+
+/**
+ * The employee's own read (P-HR-18).
+ *
+ * P-HR-07 made this feature tell the employee twice — their request was decided, and the money was
+ * handed over with instalments beginning in a named month — and left them nowhere to look. This is
+ * that screen's endpoint, and what these cases pin is the property that makes it safe to expose
+ * without a permission: it answers for the CALLER and for nobody else, whatever they send.
+ */
+describe('my own loans (P-HR-18)', () => {
+  const mine = (token: string, query = '') =>
+    request(app)
+      .get(`/api/v1/hr/employee-loans/me${query}`)
+      .set('Authorization', `Bearer ${token}`);
+
+  let ownerToken = '';
+  let ownLoanId = '';
+  let otherEmployeeId = '';
+
+  beforeAll(async () => {
+    // A loan for the suite's main employee, and a login that belongs to THEM.
+    const loan = await activeLoanFor(employeeId, {
+      type: 'loan',
+      principal: 3_000,
+      currency: 'EGP',
+      installmentCount: 3,
+      firstPeriod: '2026-09',
+      reason: 'the one the owner should see',
+    });
+    ownLoanId = loan.id;
+
+    const employee = await request(app)
+      .get(`/api/v1/hr/employees/${employeeId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(employee.status).toBe(200);
+    const code = (employee.body as { data: { code: string } }).data.code;
+
+    const created = await request(app)
+      .post(`/api/v1/hr/employees/${employeeId}/login`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        email: 'loan-owner@ecms.local',
+        firstName: { ar: 'ص', en: 'O' },
+        lastName: { ar: 'ح', en: 'W' },
+      });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const userId = (created.body as { data: { user: { id: string } } }).data.user.id;
+    // Activate the way the setup link would; the link contract itself lives in auth-lifecycle.
+    await userService.setPassword(userId, PASSWORD, 'passwordReset');
+    await userService.forceActivate(userId);
+    await getCache().delByPrefix('rl:');
+    const signIn = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ identifier: code, password: PASSWORD });
+    expect(signIn.status, JSON.stringify(signIn.body)).toBe(200);
+    ownerToken = (signIn.body as { data: { accessToken: string } }).data.accessToken;
+
+    // …and somebody ELSE with a loan, which is what makes the isolation case meaningful.
+    otherEmployeeId = await mkEmployee('زميل له قرض', '29001011590077', '01174000077');
+    await activeLoanFor(otherEmployeeId, {
+      type: 'advance',
+      principal: 1_000,
+      currency: 'EGP',
+      installmentCount: 2,
+      firstPeriod: '2026-09',
+      reason: 'the one nobody else should see',
+    });
+  }, 240_000);
+
+  /**
+   * THE case. The employee holds no loan permission at all — `employeeLoan.view` is an HR key —
+   * and still reads their own debt, because the route resolves them from their login rather than
+   * from anything they sent.
+   */
+  it('answers with the caller’s own loans, without any loan permission', async () => {
+    const res = await mine(ownerToken);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const rows = res.body.data as EmployeeLoanDetailDto[];
+    expect(rows.some((l) => l.id === ownLoanId)).toBe(true);
+    // Every row is theirs — stated over the whole page rather than over the one row we planted.
+    for (const row of rows) {
+      expect(row.employeeId).toBe(employeeId);
+    }
+    // …and the schedule comes with it, which is the whole question an employee has.
+    expect(rows.find((l) => l.id === ownLoanId)?.installments.length).toBeGreaterThan(0);
+  }, 240_000);
+
+  /**
+   * The parameter that would otherwise be a hole: `/me` shares its query schema with the admin
+   * list, and that schema carries `employeeId`. Sending somebody else's must change nothing.
+   */
+  it('and ignores an employeeId the caller sends', async () => {
+    const res = await mine(ownerToken, `?employeeId=${otherEmployeeId}&page=1&pageSize=50`);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const rows = res.body.data as EmployeeLoanDetailDto[];
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(row.employeeId).toBe(employeeId);
+    }
+  }, 240_000);
+
+  /** A login with no employee behind it gets 404 — never an empty list, which would read as a fact. */
+  it('answers 404 for a login with no employee, and never somebody else’s rows', async () => {
+    const res = await mine(outsiderToken);
+    expect(res.status).toBe(404);
+  }, 120_000);
+
+  /** Holding every key gives no wider reach through `/me` than holding none. */
+  it('and gives a permission holder no wider reach through /me', async () => {
+    expect((await mine(adminToken)).status).toBe(404);
+  }, 120_000);
+
+  it('and refuses an unauthenticated caller', async () => {
+    expect((await request(app).get('/api/v1/hr/employee-loans/me')).status).toBe(401);
+  }, 60_000);
+
+  /** The organization-wide list beside it still requires the HR key — `/me` widened nothing. */
+  it('and leaves the admin list gated as it was', async () => {
+    const res = await request(app)
+      .get('/api/v1/hr/employee-loans?page=1&pageSize=5')
+      .set('Authorization', `Bearer ${ownerToken}`);
+    expect(res.status).toBe(403);
+  }, 120_000);
+});

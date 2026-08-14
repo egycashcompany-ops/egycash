@@ -269,3 +269,58 @@ describe('the permission split is declared, and nothing else is', () => {
     expect(manifest).toContain("'hr_loan_installments'");
   });
 });
+
+/**
+ * The employee's own read (P-HR-18) — and the two things that make it safe.
+ *
+ * It is the only route in this feature with no permission, which is correct ONLY because the
+ * employee is resolved server-side from the caller's login link. Two properties carry that, and
+ * neither is visible at runtime, so both are pinned here.
+ */
+describe('the own-scope read is own-scope by construction (P-HR-18)', () => {
+  const service = code(resolve(HERE, 'employee-loan.service.ts'));
+  const controller = code(resolve(HERE, 'employee-loan.controller.ts'));
+  const routes = code(resolve(HERE, 'employee-loan.routes.ts'));
+
+  it('resolves the employee from the login, never from the request', () => {
+    expect(service).toContain('async listMine(userId: string');
+    expect(service).toContain('employeeRepository.findByUserIdSystem(userId)');
+    // No employee-linked login is a 404, not an empty list: an empty list would read as "you have
+    // no loans", which is a different and misleading statement.
+    expect(service).toContain("throw new NotFoundError('no employee is linked to this login')");
+  });
+
+  /**
+   * THE assertion. `/me` shares its query schema with the admin list, and that schema carries an
+   * `employeeId`. The controller must drop it — otherwise any logged-in caller could read
+   * somebody else's debts by adding one parameter.
+   */
+  it('and drops any employeeId the caller sends', () => {
+    const handler = controller.slice(
+      controller.indexOf('export const listMyLoans'),
+      controller.indexOf('export const attachLoanDocument'),
+    );
+    expect(handler.length).toBeGreaterThan(0);
+    expect(handler).toContain('listMine(String(ctx.userId)');
+    expect(handler).not.toContain('employeeId');
+  });
+
+  /** Declared before the list, so `me` is never parsed as an id — and gated by nothing. */
+  it('and carries no permission, because there is no wider reach to gate', () => {
+    const block = routes.slice(routes.indexOf('buildEmployeeLoansAdminRouter'));
+    const meAt = block.indexOf("'/me'");
+    const listAt = block.indexOf("'/'");
+    expect(meAt).toBeGreaterThan(-1);
+    expect(meAt).toBeLessThan(listAt);
+    const meRoute = block.slice(meAt, listAt);
+    expect(meRoute).toContain('authenticate');
+    expect(meRoute).not.toContain('authorize(');
+  });
+
+  /** A read, and only a read: an employee cannot request or decide a loan from their own screen. */
+  it('and adds no write of any kind', () => {
+    const block = routes.slice(routes.indexOf('buildEmployeeLoansAdminRouter'));
+    const verbs = [...block.matchAll(/router\.(get|post|patch|put|delete)\(/g)].map((m) => m[1]);
+    expect([...new Set(verbs)]).toEqual(['get']);
+  });
+});

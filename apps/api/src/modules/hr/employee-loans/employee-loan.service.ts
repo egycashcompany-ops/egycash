@@ -37,7 +37,12 @@ import {
   type SubmitEmployeeLoan,
   type UpdateEmployeeLoan,
 } from '@ecms/contracts';
-import { BusinessRuleError, ConflictError, ForbiddenError } from '../../../shared/errors';
+import {
+  BusinessRuleError,
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+} from '../../../shared/errors';
 import { type AuthContext, type ScopeSelector } from '../../../shared/types';
 import { auditService } from '../../../platform/audit';
 import { emit } from '../../../platform/kernel/event-bus';
@@ -881,6 +886,25 @@ class EmployeeLoanService {
     scope: ScopeSelector,
   ): Promise<Paginated<EmployeeLoanDoc>> {
     return employeeLoanRepository.listScoped(query, scope);
+  }
+
+  /**
+   * The caller's OWN loans (P-HR-18) — own-scope by construction.
+   *
+   * WHY THIS EXISTS. P-HR-07 made this feature tell the employee twice: their request was decided,
+   * and the money was handed over with instalments beginning in a named month. Both notices go to
+   * their own login — and until now there was nowhere for them to look. A notice pointing at
+   * nothing is worse than silence, because it says the information exists.
+   *
+   * The employee is resolved from the login link and nothing the caller sends can widen that, so
+   * this path carries no permission and no scope selector: there is no wider set to reach. It is
+   * the posture `/payslips/me`, `/days/me` and My Leave already have, applied to a debt somebody
+   * is repaying out of their own salary — which they are plainly entitled to see.
+   */
+  async listMine(userId: string, query: ListEmployeeLoansQuery): Promise<Paginated<EmployeeLoanDoc>> {
+    const employee = await employeeRepository.findByUserIdSystem(userId);
+    if (employee === null) throw new NotFoundError('no employee is linked to this login');
+    return employeeLoanRepository.listForEmployee(String(employee._id), query);
   }
 
   /** One loan with its schedule and what payroll took — what the employee's Loans tab reads. */

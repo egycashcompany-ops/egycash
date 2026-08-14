@@ -42,13 +42,16 @@ describe('the Pay Items tab is wired into the profile the way every additive tab
   // Compensation is redacted server-side; the tab follows that same answer rather than inventing
   // a second rule for when a salary figure may be shown.
   it('appears only when the server says compensation is visible', () => {
-    // The filter grew when P-HR-04 added a second money tab beside this one, and again when
-    // P-HR-05 added Loans; what it protects is unchanged — no money tab is offered to a caller the
-    // server redacts compensation from. Matched whitespace-insensitively because a third condition
-    // is what wrapped the ternary onto three lines, and where the line breaks fall is a formatter's
-    // business rather than this guard's.
-    expect(PROFILE).toContain("k !== 'payItems'");
-    expect(PROFILE).toMatch(/compensationVisible\s*\?\s*TABS\s*:\s*TABS\.filter\(/);
+    // The filter grew when P-HR-04 added a second money tab beside this one, again when P-HR-05
+    // added Loans, and in P-HR-11 it stopped being a ternary altogether: Settlement is gated on an
+    // exit as well as on compensation, which a single condition could not express. What it protects
+    // is unchanged — no money tab is offered to a caller the server redacts compensation from.
+    expect(PROFILE).toMatch(
+      /visibleTabs = \(compensationVisible: boolean, exited: boolean\): readonly Tab\[\] =>/,
+    );
+    expect(PROFILE).toContain(
+      "if (k === 'payItems' || k === 'adjustments' || k === 'loans') return compensationVisible;",
+    );
     expect(PROFILE).toContain("{tab === 'payItems' && e.compensationVisible && (");
   });
 });

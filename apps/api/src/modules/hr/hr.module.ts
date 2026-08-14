@@ -68,6 +68,7 @@ import {
   employeeLoanService,
   hrEmployeeLoanFileAuthorizers,
 } from './employee-loans';
+import { buildSettlementRouter } from './settlement';
 import { addDays, cairoToday } from './shared/business-date';
 import { registerHrIdentitySeams } from './employee-management/employees/identity-seams';
 import { registerHrBranchCodeSeams } from './employee-management/employees/branch-code-seams';
@@ -899,6 +900,9 @@ export const hrModule: ModuleManifest = {
     // …and the per-employee surface, because a bonus is that person's money.
     { prefix: '/hr/employees', router: buildEmployeeAdjustmentsRouter() },
     { prefix: '/hr/employees', router: buildEmployeeLoansRouter() },
+    // P-HR-11 — the leaver's assembled read, beside the other per-employee readers. It adds no
+    // collection below, because it stores nothing: every figure it states belongs to another feature.
+    { prefix: '/hr/employees', router: buildSettlementRouter() },
     { prefix: '/hr/employees', router: buildLeaveBalancesRouter() },
     { prefix: '/hr/employees', router: buildEmployeesRouter() },
     { prefix: '/hr/hiring-documents', router: buildHiringDocumentsRouter() },

@@ -45,7 +45,12 @@ describe('wired into the profile the way every additive tab is', () => {
   // rather than inventing a second rule for when a figure may be shown.
   it('appears only when the server says compensation is visible', () => {
     expect(PROFILE).toContain("{tab === 'loans' && e.compensationVisible && (");
-    expect(PROFILE).toContain("k !== 'payItems' && k !== 'adjustments' && k !== 'loans'");
+    // P-HR-11 turned the ternary into a filter with a branch of its own, because Settlement needs
+    // a SECOND condition (an exit) that the money tabs do not. What this guard protects is
+    // unchanged: Loans is offered only to a caller the server shows compensation to.
+    expect(PROFILE).toContain(
+      "if (k === 'payItems' || k === 'adjustments' || k === 'loans') return compensationVisible;",
+    );
   });
 });
 

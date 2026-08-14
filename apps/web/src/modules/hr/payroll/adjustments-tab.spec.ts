@@ -42,7 +42,11 @@ describe('wired into the profile the way every additive tab is', () => {
   // rule for when a figure may be shown.
   it('appears only when the server says compensation is visible', () => {
     expect(PROFILE).toContain("{tab === 'adjustments' && e.compensationVisible && (");
-    expect(PROFILE).toContain("k !== 'payItems' && k !== 'adjustments'");
+    // The shape changed in P-HR-11 (a filter with branches, not a ternary) because Settlement is
+    // gated on an exit as well as on compensation. The rule this asserts is the same one.
+    expect(PROFILE).toContain(
+      "if (k === 'payItems' || k === 'adjustments' || k === 'loans') return compensationVisible;",
+    );
   });
 });
 

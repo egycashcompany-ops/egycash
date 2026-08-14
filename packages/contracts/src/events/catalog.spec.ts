@@ -29,6 +29,8 @@ import { HrEvents } from '../modules/hr-recruitment.js';
 import { HrEmployeeEvents } from '../modules/hr-employee.js';
 import { HrLeaveEvents } from '../modules/hr-leave.js';
 import { HrAttendanceEvents } from '../modules/hr-attendance.js';
+import { HrPayrollEvents } from '../modules/hr-payroll.js';
+import { HrEmployeeLoanEvents } from '../modules/hr-employee-loans.js';
 import { HrContractEvents } from '../modules/hr-contract.js';
 import { HrOfferEvents } from '../modules/hr-job-offer.js';
 import { HrInterviewEvents } from '../modules/hr-interview.js';
@@ -58,6 +60,11 @@ const HR_EVENT_CONSTANTS = [
   HrHiringDocumentsEvents,
   HrLeaveEvents,
   HrAttendanceEvents,
+  // P-HR-07 — the payroll decisions somebody waits on. Declared here the moment they were
+  // catalogued, because a catalogued name with no constant behind it is a trigger that can never
+  // fire, and this list is what proves the two sides agree.
+  HrPayrollEvents,
+  HrEmployeeLoanEvents,
   HrContractEvents,
 ].flatMap((group) => Object.values(group));
 

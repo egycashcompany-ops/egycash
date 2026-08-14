@@ -8,11 +8,13 @@ import {
   HrAttendanceTemplates,
   HrContractTemplates,
   HrEmployeeFileTemplates,
+  HrEmployeeLoanTemplates,
   HrEmployeeTemplates,
   HrHiringDocumentsTemplates,
   HrInterviewTemplates,
   HrLeaveTemplates,
   HrOfferTemplates,
+  HrPayrollTemplates,
   type CreateApplicantSource,
   type CreateEvaluationPhase,
   type CreateHiringDocumentType,
@@ -563,6 +565,87 @@ export const seedHrRecruitment = async (): Promise<void> => {
     },
     channels: ['inApp'],
     variables: ['workDate'],
+    defaultExpiryHours: null,
+  });
+
+  // ── Payroll decisions (P-HR-07) ───────────────────────────────────────────
+  //
+  // Two audiences, and the split decides the channels. The two SUBMITTED notices go to whoever can
+  // decide, and they are `inApp` only: an approver's queue is a screen they are already at, and an
+  // email per bonus would train them to ignore the inbox. Everything addressed to the EMPLOYEE also
+  // goes by email, because it is about their own money and they may not be logged in for weeks.
+  //
+  // No amount appears in any body. A notification is a pointer to a decision, not a second copy of
+  // the figure — the screen is where the money is read, behind the permission that governs it.
+  await notificationTemplateService.ensure({
+    key: HrPayrollTemplates.AdjustmentSubmitted,
+    category: 'hr',
+    priority: 'normal',
+    subject: { ar: 'مؤثر رواتب بانتظار الاعتماد', en: 'Payroll adjustment awaiting approval' },
+    body: {
+      ar: 'الموظف {{employeeCode}} عليه {{kind}} لشهر {{period}} بانتظار قرارك.',
+      en: 'Employee {{employeeCode}} has a {{kind}} for {{period}} awaiting your decision.',
+    },
+    channels: ['inApp'],
+    variables: ['employeeCode', 'kind', 'period'],
+    defaultExpiryHours: null,
+  });
+  await notificationTemplateService.ensure({
+    key: HrPayrollTemplates.AdjustmentDecided,
+    category: 'hr',
+    priority: 'normal',
+    subject: { ar: 'قرار في مؤثر الرواتب', en: 'Payroll adjustment decided' },
+    body: {
+      ar: 'المؤثر الخاص بشهر {{period}} أصبح: {{decision}}.',
+      en: 'The adjustment for {{period}} is now: {{decision}}.',
+    },
+    channels: ['inApp', 'email'],
+    variables: ['period', 'decision'],
+    defaultExpiryHours: null,
+  });
+
+  // ── Loan decisions (P-HR-07) ──────────────────────────────────────────────
+  //
+  // `disbursed` is the one that carries a consequence: from that moment a schedule exists and
+  // instalments start coming off a salary. It is `high` priority for that reason and for no other
+  // — the two before it are `normal`, because nothing has been taken from anybody yet.
+  await notificationTemplateService.ensure({
+    key: HrEmployeeLoanTemplates.Submitted,
+    category: 'hr',
+    priority: 'normal',
+    subject: { ar: 'طلب قرض بانتظار الاعتماد', en: 'Loan request awaiting approval' },
+    body: {
+      ar: 'الموظف {{employeeCode}} قدّم طلب {{type}} بانتظار قرارك.',
+      en: 'Employee {{employeeCode}} submitted a {{type}} request awaiting your decision.',
+    },
+    channels: ['inApp'],
+    variables: ['employeeCode', 'type'],
+    defaultExpiryHours: null,
+  });
+  await notificationTemplateService.ensure({
+    key: HrEmployeeLoanTemplates.Decided,
+    category: 'hr',
+    priority: 'normal',
+    subject: { ar: 'قرار في طلب القرض', en: 'Loan request decided' },
+    body: {
+      ar: 'طلب {{type}} أصبح: {{decision}}.',
+      en: 'Your {{type}} request is now: {{decision}}.',
+    },
+    channels: ['inApp', 'email'],
+    variables: ['type', 'decision'],
+    defaultExpiryHours: null,
+  });
+  await notificationTemplateService.ensure({
+    key: HrEmployeeLoanTemplates.Disbursed,
+    category: 'hr',
+    priority: 'high',
+    subject: { ar: 'صرف القرض وبدء الأقساط', en: 'Loan paid out — instalments begin' },
+    body: {
+      ar: 'صُرف {{type}} بتاريخ {{disbursedAt}}. يبدأ الخصم على {{installmentCount}} قسط من شهر {{firstPeriod}}.',
+      en: 'Your {{type}} was paid out on {{disbursedAt}}. It is repaid over {{installmentCount}} instalment(s), starting {{firstPeriod}}.',
+    },
+    channels: ['inApp', 'email'],
+    variables: ['type', 'disbursedAt', 'installmentCount', 'firstPeriod'],
     defaultExpiryHours: null,
   });
 };

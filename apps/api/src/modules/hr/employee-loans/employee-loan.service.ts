@@ -23,6 +23,8 @@ import { Types } from 'mongoose';
 import {
   fromMinorUnits,
   toMinorUnits,
+  HrEmployeeLoanEvents,
+  HrEmployeeLoanTemplates,
   type AccelerateEmployeeLoan,
   type CancelEmployeeLoan,
   type CreateEmployeeLoan,
@@ -38,6 +40,8 @@ import {
 import { BusinessRuleError, ConflictError, ForbiddenError } from '../../../shared/errors';
 import { type AuthContext, type ScopeSelector } from '../../../shared/types';
 import { auditService } from '../../../platform/audit';
+import { emit } from '../../../platform/kernel/event-bus';
+import { notificationsService } from '../../../platform/notifications';
 import { fileService, type FileDoc, type UploadedBinary } from '../../../platform/files';
 import { toDateOnly } from '../shared/business-date';
 import { employeeRepository, type EmployeeDoc } from '../employee-management/employees';
@@ -232,6 +236,19 @@ class EmployeeLoanService {
       { by: ctx.userId, version: input.version },
     );
     await this.recordStatus(id, doc.status, 'pendingApproval', null);
+    // AFTER the write, and the write is what makes this happen exactly once: `status !== 'draft'`
+    // refuses a second submit, and `updateById` filters on `__v`, so a retry with a stale version
+    // is a 409 before it reaches this line. There is no path that emits twice for one transition.
+    await emit(HrEmployeeLoanEvents.Submitted, {
+      loanId: id,
+      employeeId,
+      type: doc.type,
+      principal: doc.principal,
+      currency: doc.currency,
+      installmentCount: doc.installmentCount,
+      firstPeriod: doc.firstPeriod,
+    });
+    await this.notifySubmitted(employee, after);
     return after;
   }
 
@@ -279,6 +296,17 @@ class EmployeeLoanService {
       { by: ctx.userId, version: input.version },
     );
     await this.recordStatus(id, 'pendingApproval', status, input.note ?? null);
+    // The status guard above has already consumed `pendingApproval`, so a second decision on the
+    // same request is refused before it gets here.
+    await emit(HrEmployeeLoanEvents.Decided, {
+      loanId: id,
+      employeeId,
+      type: doc.type,
+      principal: doc.principal,
+      currency: doc.currency,
+      decision: input.decision,
+    });
+    await this.notifyDecided(employee, after, input.decision);
     return after;
   }
 
@@ -345,6 +373,26 @@ class EmployeeLoanService {
         { field: 'installments', old: null, new: String(schedule.length) },
       ],
     });
+    /**
+     * The one of the three that changes what somebody is paid — and it is emitted from AFTER the
+     * status flip, which the header above calls the commit point.
+     *
+     * That ordering is the whole of the idempotency here. `writeSchedule` is `$setOnInsert` under a
+     * unique `(loanId, seq)` key and can safely run twice; the status flip cannot, because
+     * `status !== 'approved'` refuses a second disbursement and `updateById` filters on `__v`. So a
+     * retry that got as far as re-writing rows still reaches this line at most once.
+     */
+    await emit(HrEmployeeLoanEvents.Disbursed, {
+      loanId: id,
+      employeeId,
+      type: doc.type,
+      principal: doc.principal,
+      currency: doc.currency,
+      disbursedAt: input.disbursedAt,
+      installmentCount: doc.installmentCount,
+      firstPeriod: doc.firstPeriod,
+    });
+    await this.notifyDisbursed(employee, after, input.disbursedAt);
     return after;
   }
 
@@ -991,6 +1039,73 @@ class EmployeeLoanService {
       );
     }
     return file._id as Types.ObjectId;
+  }
+
+  /**
+   * To whoever can end the wait (P-HR-07) — by PERMISSION, not to a manager.
+   *
+   * Lending is not a line-management decision: `employeeLoan.approve` is what P-HR-05 declared as
+   * the authority to agree to lend, and the administration screen P-HR-06-B built is where those
+   * people work. Notifying a manager instead would address somebody who cannot act.
+   *
+   * Best-effort by construction: a failed notice must never undo a decision that was correctly
+   * recorded. That is the posture Attendance and Leave already take, and it is why the emit above
+   * comes first — the durable fact is the write and the event, not the message.
+   */
+  private async notifySubmitted(employee: EmployeeDoc, doc: EmployeeLoanDoc): Promise<void> {
+    await notificationsService
+      .notify({
+        template: HrEmployeeLoanTemplates.Submitted,
+        to: { permission: 'employeeLoan.approve', scope: 'organization' },
+        data: { employeeCode: employee.code, type: doc.type },
+        entityRef: entityRef(String(doc._id)),
+      })
+      .catch(() => undefined);
+  }
+
+  /** …and back to the person it is about, if they have a login to receive it. */
+  private async notifyDecided(
+    employee: EmployeeDoc,
+    doc: EmployeeLoanDoc,
+    decision: 'approved' | 'rejected',
+  ): Promise<void> {
+    if (employee.userId === null) return;
+    await notificationsService
+      .notify({
+        template: HrEmployeeLoanTemplates.Decided,
+        to: { userIds: [String(employee.userId)] },
+        data: { type: doc.type, decision },
+        entityRef: entityRef(String(doc._id)),
+      })
+      .catch(() => undefined);
+  }
+
+  /**
+   * The notice that carries a consequence: instalments start coming off a salary.
+   *
+   * It states the COUNT and the FIRST MONTH rather than an amount, because those are the two facts
+   * an employee needs in order to know what to expect and when — the figure itself is on their own
+   * loans tab, behind the permission that governs reading pay.
+   */
+  private async notifyDisbursed(
+    employee: EmployeeDoc,
+    doc: EmployeeLoanDoc,
+    disbursedAt: string,
+  ): Promise<void> {
+    if (employee.userId === null) return;
+    await notificationsService
+      .notify({
+        template: HrEmployeeLoanTemplates.Disbursed,
+        to: { userIds: [String(employee.userId)] },
+        data: {
+          type: doc.type,
+          disbursedAt,
+          installmentCount: String(doc.installmentCount),
+          firstPeriod: doc.firstPeriod,
+        },
+        entityRef: entityRef(String(doc._id)),
+      })
+      .catch(() => undefined);
   }
 
   private async recordStatus(

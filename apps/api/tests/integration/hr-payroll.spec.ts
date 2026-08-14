@@ -2130,4 +2130,104 @@ describe('payroll adjustments (P-HR-04)', () => {
       expect((await orgWide(outsiderToken)).status).toBe(403);
     }, 120_000);
   });
+
+  /**
+   * The queue announces itself (P-HR-07).
+   *
+   * Until this phase the whole two-person decision was silent: an approver learned that a bonus was
+   * waiting by opening the screen and looking. These cases assert the notice reaches somebody who
+   * can ACT — addressed by permission, because a bonus is granted by HR and there is no manager step
+   * to address instead — and that a refused repeat adds nothing to their inbox.
+   */
+  describe('the decision notices (P-HR-07)', () => {
+    const inboxCount = async (token: string): Promise<number> => {
+      const res = await request(app)
+        .get('/api/v1/platform/notifications')
+        .query({ pageSize: 100 })
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      return (res.body as { data: unknown[] }).data.length;
+    };
+
+    it('tells whoever can decide that something is waiting', async () => {
+      const before = await inboxCount(approverToken);
+
+      const created = await record({
+        period: '2026-10',
+        kind: 'bonus',
+        amount: 400,
+        currency: 'EGP',
+        reason: 'the notice reads this one',
+      });
+      expect(created.status, JSON.stringify(created.body)).toBe(201);
+      const row = created.body.data as PayrollAdjustmentDto;
+
+      // Recording alone is not news: a draft is a private working note.
+      expect(await inboxCount(approverToken)).toBe(before);
+
+      const sent = await submit(row.id, row.version);
+      expect(sent.status, JSON.stringify(sent.body)).toBe(200);
+      expect(await inboxCount(approverToken)).toBeGreaterThan(before);
+    }, 120_000);
+
+    /**
+     * IDEMPOTENCY, tested where it actually lives: in the state machine, not in the notifier.
+     *
+     * THE STATUS GUARD IS THE FIRST LINE, AND IT DOES NOT CONSULT THE VERSION. `submit` refuses
+     * anything that is not a draft before it reaches the write at all, so once the entry has moved
+     * on, a repeat is refused whether the caller's version is stale or fresh — both 422. That is
+     * the stronger property, and worth stating plainly: idempotency here does not depend on the
+     * client having sent the right version number.
+     */
+    it('and a refused repeat adds nothing to the inbox, at any version', async () => {
+      const created = await record({
+        period: '2026-10',
+        kind: 'bonus',
+        amount: 500,
+        currency: 'EGP',
+        reason: 'no duplicate notices',
+      });
+      const row = created.body.data as PayrollAdjustmentDto;
+      const sent = await submit(row.id, row.version);
+      expect(sent.status).toBe(200);
+      const after = await inboxCount(approverToken);
+
+      // The stale version a real retry would carry…
+      expect((await submit(row.id, row.version)).status).toBe(422);
+      // …and the fresh one somebody would use deliberately. Same refusal, same reason.
+      expect((await submit(row.id, (sent.body.data as PayrollAdjustmentDto).version)).status).toBe(
+        422,
+      );
+
+      expect(await inboxCount(approverToken)).toBe(after);
+    }, 120_000);
+
+    /**
+     * …and the optimistic lock is the SECOND line, for the case the first one cannot see: an entry
+     * that is still a draft, but has moved under the caller since they read it.
+     *
+     * Here the status guard passes and `__v` is what stops the write. Nothing transitions, so
+     * nothing is announced — which is the property being checked, not the status code.
+     */
+    it('and a draft that moved under the caller is stopped before anything is announced', async () => {
+      const created = await record({
+        period: '2026-10',
+        kind: 'penalty',
+        amount: 60,
+        currency: 'EGP',
+        reason: 'the second line of defence',
+      });
+      const row = created.body.data as PayrollAdjustmentDto;
+
+      const edited = await request(app)
+        .patch(`/api/v1/hr/employees/${employeeId}/adjustments/${row.id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ amount: 70, version: row.version });
+      expect(edited.status, JSON.stringify(edited.body)).toBe(200);
+
+      const before = await inboxCount(approverToken);
+      expect((await submit(row.id, row.version)).status).toBe(409);
+      expect(await inboxCount(approverToken)).toBe(before);
+    }, 120_000);
+  });
 });

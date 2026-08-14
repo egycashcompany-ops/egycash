@@ -318,3 +318,73 @@ export interface EmployeeLoanDetailDto extends EmployeeLoanDto {
   installments: LoanInstallmentDto[];
   repayments: LoanRepaymentDto[];
 }
+
+// ── Loan decisions: events and notifications (P-HR-07) ──────────────────────
+//
+// The same gap the adjustments had, one degree worse: a loan is a debt that outlives the month, and
+// until now nobody was told it had been agreed to, or that the money had gone out and instalments
+// were about to start coming off their salary. An employee finding that out from their payslip is
+// the failure this closes.
+//
+// THREE MOMENTS, AND THE THIRD IS THE ONE THAT MATTERS. `submitted` says a decision is owed;
+// `decided` says it was made. `disbursed` is different in kind from both: P-HR-05's design states
+// that `approved` is the MIDDLE of this machine and the obligation begins at disbursement, so this
+// is the moment a schedule exists and money starts coming out of a salary. It is the only one of
+// the three that changes what somebody is paid.
+//
+// Rescheduling, acceleration and settlement are deliberately NOT here. Each is a change to a live
+// plan made by an administrator on the employee's own file, and none of them was shown to have an
+// audience this phase can point at — no consumer, no waiting party. An event without one is a
+// promise nobody asked for.
+
+export const HrEmployeeLoanTemplates = {
+  Submitted: 'hr.employeeLoan.submitted',
+  Decided: 'hr.employeeLoan.decided',
+  Disbursed: 'hr.employeeLoan.disbursed',
+} as const;
+export type HrEmployeeLoanTemplateKey =
+  (typeof HrEmployeeLoanTemplates)[keyof typeof HrEmployeeLoanTemplates];
+
+export const HrEmployeeLoanEvents = {
+  Submitted: 'hr.employeeLoan.submitted',
+  Decided: 'hr.employeeLoan.decided',
+  Disbursed: 'hr.employeeLoan.disbursed',
+} as const;
+export type HrEmployeeLoanEventName =
+  (typeof HrEmployeeLoanEvents)[keyof typeof HrEmployeeLoanEvents];
+
+export const EmployeeLoanSubmittedPayloadV1 = z.object({
+  loanId: objectId(),
+  employeeId: objectId(),
+  type: EmployeeLoanTypeSchema,
+  principal: MoneyAmountSchema,
+  currency: MoneyCurrencySchema,
+  installmentCount: z.number().int().min(1),
+  firstPeriod: loanPeriod(),
+});
+
+/** `rejected` returns the request to `draft`, exactly as an adjustment's does — not a terminal state. */
+export const EmployeeLoanDecidedPayloadV1 = z.object({
+  loanId: objectId(),
+  employeeId: objectId(),
+  type: EmployeeLoanTypeSchema,
+  principal: MoneyAmountSchema,
+  currency: MoneyCurrencySchema,
+  decision: z.enum(['approved', 'rejected']),
+});
+
+/**
+ * The schedule exists from here, so the payload carries it: how many instalments, and the month the
+ * first one comes out of. Those are the two facts an employee needs and the two a consumer would
+ * otherwise have to re-read the loan for.
+ */
+export const EmployeeLoanDisbursedPayloadV1 = z.object({
+  loanId: objectId(),
+  employeeId: objectId(),
+  type: EmployeeLoanTypeSchema,
+  principal: MoneyAmountSchema,
+  currency: MoneyCurrencySchema,
+  disbursedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'a disbursement date is YYYY-MM-DD'),
+  installmentCount: z.number().int().min(1),
+  firstPeriod: loanPeriod(),
+});

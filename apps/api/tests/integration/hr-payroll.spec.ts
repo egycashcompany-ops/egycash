@@ -18,6 +18,7 @@ import {
   type PayrollLeaveSnapshotDto,
   type GeneratePayslipsResultDto,
   type PayrollRunDto,
+  type PayrollRunReconciliationDto,
   type PayslipDto,
 } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
@@ -1812,6 +1813,115 @@ describe('backdating into a frozen period', () => {
  * applied — and inside one run an employee has at most one payslip, so it answered nothing worth
  * asking. These cases pin the read that finally uses it, and the key it sits behind.
  */
+/**
+ * Run reconciliation (P-HR-15-A) — identities over what the run already issued.
+ *
+ * What these cases pin is that every figure is a SUM of documents that exist: the totals equal the
+ * payslips, a run that issued nothing reconciles to zero rather than erroring, and an adjustment
+ * approved after the payslips were issued shows up as a stated difference rather than as a silent
+ * gap. Nothing here is a report, and nothing is exportable — PY-12 stays closed.
+ */
+describe('run reconciliation (P-HR-15-A)', () => {
+  const reconcile = (runId: string, token = adminToken) =>
+    request(app)
+      .get(`/api/v1/hr/payroll/runs/${runId}/reconciliation`)
+      .set('Authorization', `Bearer ${token}`);
+
+  /** A run with payslips: the totals must be the payslips, added up. */
+  it('totals equal the run’s own payslips, per currency', async () => {
+    const runs = await request(app)
+      .get('/api/v1/hr/payroll/runs?page=1&pageSize=50')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(runs.status, JSON.stringify(runs.body)).toBe(200);
+
+    // Find a run that actually issued something — earlier blocks in this file issue several.
+    let target = '';
+    let slips: PayslipDto[] = [];
+    for (const run of runs.body.data as PayrollRunDto[]) {
+      const res = await request(app)
+        .get(`/api/v1/hr/payroll/runs/${run.id}/payslips?page=1&pageSize=100`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      if (res.status === 200 && (res.body.data as PayslipDto[]).length > 0) {
+        target = run.id;
+        slips = res.body.data as PayslipDto[];
+        break;
+      }
+    }
+    expect(target, 'no run in this suite issued a payslip').not.toBe('');
+
+    const res = await reconcile(target);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const body = res.body.data as PayrollRunReconciliationDto;
+    expect(body.runId).toBe(target);
+
+    // Summed here from the DTOs, so the assertion is the identity itself rather than a repeat of
+    // the same aggregate the server ran.
+    for (const row of body.totals) {
+      const mine = slips.filter((s) => s.currency === row.currency);
+      expect(row.payslips, row.currency).toBe(mine.length);
+      expect(row.netMinor, row.currency).toBe(
+        mine.reduce((sum, s) => sum + s.netMinor, 0),
+      );
+      expect(row.totalEarningsMinor, row.currency).toBe(
+        mine.reduce((sum, s) => sum + s.totalEarningsMinor, 0),
+      );
+    }
+    // …and the coverage side is stated rather than implied.
+    expect(body.coverage.withPayslip).toBe(slips.length);
+    expect(body.coverage.employedInPeriod).toBeGreaterThanOrEqual(body.coverage.withPayslip);
+  }, 240_000);
+
+  /** A draft that has issued nothing is a true answer, not an error. */
+  it('reconciles a run with no payslips to zero', async () => {
+    const created = await request(app)
+      .post('/api/v1/hr/payroll/runs')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ period: '2025-05' });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const run = created.body.data as PayrollRunDto;
+
+    const res = await reconcile(run.id);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const body = res.body.data as PayrollRunReconciliationDto;
+    expect(body.totals).toEqual([]);
+    expect(body.coverage.withPayslip).toBe(0);
+    expect(body.status).toBe('draft');
+  }, 240_000);
+
+  /**
+   * An adjustment approved for a month whose payslips were never issued from this run shows up as
+   * a DIFFERENCE — approved on one side, absent on the other. Not an error, and not called one.
+   */
+  it('reports an approved adjustment that reached no payslip as a difference', async () => {
+    const runs = await request(app)
+      .get('/api/v1/hr/payroll/runs?period=2025-05&pageSize=5')
+      .set('Authorization', `Bearer ${adminToken}`);
+    const run = (runs.body.data as PayrollRunDto[])[0];
+    expect(run).toBeDefined();
+
+    const res = await reconcile(run?.id ?? '');
+    expect(res.status).toBe(200);
+    const body = res.body.data as PayrollRunReconciliationDto;
+    // Nothing was issued for this month, so any approved adjustment for it is entirely unpaid.
+    for (const row of body.adjustments) {
+      expect(row.onPayslipsMinor).toBe(0);
+      expect(row.differenceMinor).toBe(row.approvedMinor);
+    }
+  }, 240_000);
+
+  it('is behind the compensation key, and adds none of its own', async () => {
+    const runs = await request(app)
+      .get('/api/v1/hr/payroll/runs?page=1&pageSize=1')
+      .set('Authorization', `Bearer ${adminToken}`);
+    const run = (runs.body.data as PayrollRunDto[])[0];
+    expect((await reconcile(run?.id ?? '', outsiderToken)).status).toBe(403);
+  }, 120_000);
+
+  it('and 404s for a run that does not exist', async () => {
+    expect((await reconcile('000000000000000000000009')).status).toBe(404);
+  }, 120_000);
+});
+
 describe('payslips: one employee across every run (P-HR-20)', () => {
   // Resolved from the registry rather than shared through a module-level variable: this block
   // needs SOME employee, not a particular one, and earlier blocks have created several.

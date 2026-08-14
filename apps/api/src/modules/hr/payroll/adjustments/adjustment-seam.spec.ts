@@ -108,3 +108,68 @@ describe('what the phase did not touch', () => {
     }
   });
 });
+
+/**
+ * The employee's own read (P-HR-19) — and the three things that make it safe.
+ *
+ * It is the only route in this feature with no permission, which is correct ONLY because the
+ * employee is resolved server-side from the caller's login link. None of these properties is
+ * visible at runtime, so each is pinned here.
+ */
+describe('the own-scope read is own-scope by construction (P-HR-19)', () => {
+  const service = code(resolve(HERE, 'payroll-adjustment.service.ts'));
+  const controller = code(resolve(HERE, 'payroll-adjustment.controller.ts'));
+  const routes = code(resolve(HERE, 'payroll-adjustment.routes.ts'));
+
+  it('resolves the employee from the login, never from the request', () => {
+    expect(service).toContain('async listMine(');
+    expect(service).toContain('employeeRepository.findByUserIdSystem(userId)');
+    // A login with no employee behind it is 404, not an empty list — an empty list would read as
+    // "nothing has been recorded about you", which is a different and misleading statement.
+    expect(service).toContain("throw new NotFoundError('no employee is linked to this login')");
+  });
+
+  /**
+   * THE assertion. `/me` shares its query schema with the admin queue, and that schema carries an
+   * `employeeId`. The controller must drop it — otherwise any logged-in caller could read what was
+   * recorded about somebody else by adding one parameter.
+   */
+  it('and drops any employeeId the caller sends', () => {
+    const handler = controller.slice(
+      controller.indexOf('export const listMyAdjustments'),
+      controller.indexOf('export const listAdjustments'),
+    );
+    expect(handler.length).toBeGreaterThan(0);
+    expect(handler).toContain('listMine(String(ctx.userId)');
+    expect(handler).not.toContain('employeeId');
+  });
+
+  /**
+   * DRAFTS ARE EXCLUDED, and it is the service that excludes them rather than the screen.
+   *
+   * A draft is the recorder's private working note — P-HR-07 declined to announce one for exactly
+   * that reason — so showing somebody a penalty nobody has decided to apply would be telling them
+   * about a decision that has not been taken. Enforced on the server, because a filter that lives
+   * only in a screen is a filter the API does not have.
+   */
+  it('and never hands the employee a draft', () => {
+    const method = service.slice(service.indexOf('async listMine('), service.indexOf('async list('));
+    expect(method).toContain("doc.status !== 'draft'");
+  });
+
+  it('and carries no permission, because there is no wider reach to gate', () => {
+    const block = routes.slice(routes.indexOf('buildPayrollAdjustmentsRouter'));
+    const meAt = block.indexOf("'/me'");
+    const listAt = block.indexOf("'/'");
+    expect(meAt).toBeGreaterThan(-1);
+    expect(meAt).toBeLessThan(listAt);
+    expect(block.slice(meAt, listAt)).not.toContain('authorize(');
+  });
+
+  /** A read, and only a read: an employee cannot record or contest an adjustment from here. */
+  it('and adds no write of any kind', () => {
+    const block = routes.slice(routes.indexOf('buildPayrollAdjustmentsRouter'));
+    const verbs = [...block.matchAll(/router\.(get|post|patch|put|delete)\(/g)].map((m) => m[1]);
+    expect([...new Set(verbs)]).toEqual(['get']);
+  });
+});

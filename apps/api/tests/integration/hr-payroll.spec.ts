@@ -2232,6 +2232,53 @@ describe('payroll adjustments (P-HR-04)', () => {
   });
 
   /**
+   * The employee's own read (P-HR-19).
+   *
+   * P-HR-07's decision notice addresses the employee's own login — and until this phase it pointed
+   * at nothing they could open. What these cases pin is the property that makes an unguarded route
+   * safe: it answers for the CALLER, whatever they send, and it never hands them a draft.
+   */
+  describe('my own adjustments (P-HR-19)', () => {
+    const mine = (token: string, query = '') =>
+      request(app)
+        .get(`/api/v1/hr/payroll/adjustments/me${query}`)
+        .set('Authorization', `Bearer ${token}`);
+
+    it('is reachable without any adjustment permission at all', async () => {
+      // The outsider holds no adjustment key — and is not refused, because there is nothing here
+      // to refuse them ACCESS to. The 404 below is about their login, not their permissions.
+      expect((await mine(outsiderToken)).status).not.toBe(403);
+    });
+
+    it('answers 404 for a login with no employee behind it, never somebody else\u2019s rows', async () => {
+      expect((await mine(outsiderToken)).status).toBe(404);
+    });
+
+    it('and gives a permission holder no wider reach through /me', async () => {
+      expect((await mine(adminToken)).status).toBe(404);
+    });
+
+    /** Even with an employeeId in hand, `/me` is about the caller — so an unlinked login stays 404. */
+    it('and ignores an employeeId the caller sends', async () => {
+      expect((await mine(adminToken, `?employeeId=${employeeId}&page=1&pageSize=10`)).status).toBe(
+        404,
+      );
+    });
+
+    it('and refuses an unauthenticated caller', async () => {
+      expect((await request(app).get('/api/v1/hr/payroll/adjustments/me')).status).toBe(401);
+    });
+
+    /** The queue beside it still requires the HR key — `/me` widened nothing. */
+    it('and leaves the organization-wide queue gated as it was', async () => {
+      const res = await request(app)
+        .get('/api/v1/hr/payroll/adjustments?page=1&pageSize=5')
+        .set('Authorization', `Bearer ${outsiderToken}`);
+      expect(res.status).toBe(403);
+    });
+  });
+
+  /**
    * The forward path for a post-freeze correction (P-HR-08).
    *
    * WHAT THIS PHASE DID NOT BUILD, AND WHY, is the important half. A correction approved after its

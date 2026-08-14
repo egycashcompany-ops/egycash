@@ -104,6 +104,30 @@ export const listEmployeeAdjustments = async (req: Request, res: Response): Prom
 };
 
 /**
+ * The caller's own adjustments (P-HR-19).
+ *
+ * Whatever `employeeId` arrived is DROPPED — `/me` answers for the caller and nobody else, the
+ * same way `/payslips/me` and `/employee-loans/me` do. No label enrichment either: the caller
+ * knows perfectly well whose money this is.
+ */
+export const listMyAdjustments = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { query } = validated<never, ListPayrollAdjustmentsQuery>(req);
+  const own = {
+    page: query.page,
+    pageSize: query.pageSize,
+    sortDir: query.sortDir,
+    ...(query.sortBy === undefined ? {} : { sortBy: query.sortBy }),
+    ...(query.period === undefined ? {} : { period: query.period }),
+    ...(query.kind === undefined ? {} : { kind: query.kind }),
+    ...(query.status === undefined ? {} : { status: query.status }),
+  };
+  const page = await payrollAdjustmentService.listMine(String(ctx.userId), own);
+  const items = await payrollAdjustmentService.payItemsFor(page.items);
+  okPage(res, page, (doc) => toPayrollAdjustmentDto(doc, items));
+};
+
+/**
  * The organization-wide read — the approval queue lives on this one, filtered by status.
  *
  * This one enriches the employee's code and name (P-HR-06 / D7), because it is the ONLY adjustment

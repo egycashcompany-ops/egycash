@@ -12,6 +12,7 @@ import { NotFoundPage } from '../../../platform/app/pages/NotFoundPage';
 import { AppShell } from '../../../platform/layout/AppShell';
 import { EmployeeLoansAdminPage } from '../employee-loans/pages/EmployeeLoansAdminPage';
 import { MyLoansPage } from '../employee-loans/pages/MyLoansPage';
+import { MyAdjustmentsPage } from './pages/MyAdjustmentsPage';
 import { MyPayslipsPage } from './pages/MyPayslipsPage';
 import { PayItemsPage } from './pages/PayItemsPage';
 import { PayrollAdjustmentsPage } from './pages/PayrollAdjustmentsPage';
@@ -35,6 +36,11 @@ export default function PayrollRoutes(): JSX.Element {
           told the employee their loan was disbursed and left them nowhere to look.
         */}
         <Route path="employee-loans/me" element={<MyLoansPage />} />
+        {/*
+          P-HR-19 — the employee's own bonuses and penalties. Third of the own-scope routes, for
+          the same reason as the two above it, and it closes the loop on P-HR-07's decision notice.
+        */}
+        <Route path="adjustments/me" element={<MyAdjustmentsPage />} />
         <Route
           path="pay-items"
           element={

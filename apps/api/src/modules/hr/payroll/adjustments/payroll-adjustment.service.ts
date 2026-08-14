@@ -22,7 +22,12 @@ import {
   type Paginated,
   type UpdatePayrollAdjustment,
 } from '@ecms/contracts';
-import { BusinessRuleError, ConflictError, ForbiddenError } from '../../../../shared/errors';
+import {
+  BusinessRuleError,
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+} from '../../../../shared/errors';
 import { type AuthContext, type ScopeSelector } from '../../../../shared/types';
 import { auditService } from '../../../../platform/audit';
 import { emit } from '../../../../platform/kernel/event-bus';
@@ -330,6 +335,31 @@ class PayrollAdjustmentService {
   ): Promise<Paginated<PayrollAdjustmentDoc>> {
     await employeeRepository.getById(employeeId, scope);
     return payrollAdjustmentRepository.listForEmployee(employeeId, query);
+  }
+
+  /**
+   * The caller's OWN adjustments (P-HR-19) — own-scope by construction.
+   *
+   * WHY THIS EXISTS. P-HR-07's `notifyDecided` addresses the employee's own login: *"the
+   * adjustment for {{period}} is now: approved"*. Until now that notice pointed at nothing — the
+   * adjustments tab is on the HR-facing profile behind `payrollAdjustment.view`, and the payslip
+   * only shows the line once the month's run has issued it. Between the decision and the payslip
+   * there was a window in which somebody had been told about their own money and could see none
+   * of it.
+   *
+   * DRAFTS ARE EXCLUDED, and that is a decision rather than a filter. A draft is the recorder's
+   * private working note — P-HR-07 declined to announce one for exactly that reason — and showing
+   * somebody a penalty nobody has decided to apply would be telling them about a decision that has
+   * not been taken.
+   */
+  async listMine(
+    userId: string,
+    query: ListPayrollAdjustmentsQuery,
+  ): Promise<Paginated<PayrollAdjustmentDoc>> {
+    const employee = await employeeRepository.findByUserIdSystem(userId);
+    if (employee === null) throw new NotFoundError('no employee is linked to this login');
+    const page = await payrollAdjustmentRepository.listForEmployee(String(employee._id), query);
+    return { items: page.items.filter((doc) => doc.status !== 'draft'), meta: page.meta };
   }
 
   async list(

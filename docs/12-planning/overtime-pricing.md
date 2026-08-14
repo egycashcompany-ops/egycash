@@ -1,7 +1,7 @@
 # P-HR-09 — Overtime Pricing
 
-**Status: the seam is COMPLETE and needs no new structure. One value is blocked on an owner
-decision, and nothing was changed while it is open.**
+**Status: COMPLETE. The seam needs no new structure, and the owner has ruled that no multiplier is
+added now — any future premium is a separate policy change with its own decision.**
 
 ---
 
@@ -28,28 +28,36 @@ from every total, rather than a zero.
 
 **Nothing was added by this phase. There was nothing to add.**
 
-## 2. THE BLOCKER — the multiplier
+## 2. THE DECISION — ruled by the owner
 
-What does **not** exist anywhere in this repository is a **premium or multiplier**: no `1.5`, no
-`2.0`, no ordinary-vs-holiday-vs-night distinction, no factor of any kind. Verified across
-`apps/api/src`, `apps/web/src` and `packages/contracts/src` — the only occurrences of the word are
-in comments and in guards asserting its absence.
+> **No multiplier or premium is added automatically now.** The overtime quantity is
+> `approvedOvertimeMinutes` and pricing happens through a per-minute payroll pay item, which is the
+> seam described above. No setting, no multiplier table, no day-type classification and no unproven
+> legal rule is introduced.
+>
+> **P-HR-09 is complete as it stands.** Any future multiplier or premium is an independent policy
+> change that needs an explicit decision and an explicit rule before it is implemented.
 
-That means an approved minute is currently worth **the pay item's own rate and nothing more**. If
-the organization intends overtime to be paid at a premium over the ordinary minute, that premium is
-a legal and financial rule, and it is not written anywhere here. Deriving one would be inventing it.
+So an approved minute is worth **the pay item's own rate and nothing more**, and that is now a
+recorded choice rather than an open gap.
 
-### The decisions needed to unblock it
+### What that means in practice
 
-1. **The factors themselves** — ordinary overtime, rest-day, public-holiday, night, each as an
-   explicit number, and whether they multiply the basic minute or the pay item's stated rate.
-2. **Where the factor lives** — a field on the pay item, a setting, or a table keyed by day type.
-   Each has a different blast radius; the third would need the day type to cross the §15.1 feed,
-   which today it does not.
-3. **Whether the ceiling changes.** Today approval is capped at the derived minutes and nothing
-   above that can ever be priced. A premium does not change that cap, but it is worth stating.
+An organization that wants overtime paid above the ordinary rate can already express it **today**,
+without any code change: create the overtime pay item with the rate it intends. What the system does
+not do — deliberately — is apply a factor on the organization's behalf.
 
-Until those are ruled, no code should apply a factor.
+### What a future premium would have to decide first
+
+Recorded so the next phase starts from a question rather than a guess, **not** as work implied here:
+
+1. The factors themselves, and whether they multiply the basic minute or the pay item's stated rate.
+2. Where the factor lives — a field on the pay item, a setting, or a table keyed by day type. The
+   third is the expensive one: day type does not cross the §15.1 feed today.
+3. Whether the approval ceiling changes. It does not need to, but silence on it would be a gap.
+
+Verified absent across `apps/api/src`, `apps/web/src` and `packages/contracts/src`: no `1.5`, no
+`2.0`, no factor of any kind. The only occurrences of the word are comments and the guard below.
 
 ## 3. What this phase shipped
 

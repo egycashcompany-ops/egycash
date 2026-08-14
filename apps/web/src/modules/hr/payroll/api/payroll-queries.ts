@@ -138,6 +138,15 @@ export const useCancelPayrollRun = () =>
 
 const PAYSLIPS_FEATURE = 'payslips';
 
+/**
+ * The reconciliation's own feature key (P-HR-15-A).
+ *
+ * Not a member of the payslip list's key: the two are invalidated by the same act but answer
+ * different questions, and a reconciliation cached under a paginated key would be refetched once
+ * per page of a list it does not depend on.
+ */
+const RECONCILIATION_FEATURE = 'runReconciliation';
+
 export const useRunPayslips = (runId: string, params: Record<string, string | number>) =>
   useQuery({
     queryKey: listKey(MODULE, PAYSLIPS_FEATURE, { runId, ...params }),
@@ -155,9 +164,22 @@ export const useGeneratePayslips = () => {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (runId: string) => api.generatePayslips(runId),
-    onSuccess: () => void client.invalidateQueries({ queryKey: featureKey(MODULE, PAYSLIPS_FEATURE) }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: featureKey(MODULE, PAYSLIPS_FEATURE) });
+      // …and the reconciliation, which is a statement ABOUT those payslips: issuing changes every
+      // figure in it, and a stale total beside a fresh list is the one thing a reconciliation
+      // must never show.
+      void client.invalidateQueries({ queryKey: featureKey(MODULE, RECONCILIATION_FEATURE) });
+    },
   });
 };
+
+/** The run reconciled against its own payslips (P-HR-15-A). */
+export const useRunReconciliation = (runId: string) =>
+  useQuery({
+    queryKey: listKey(MODULE, RECONCILIATION_FEATURE, { runId }),
+    queryFn: () => api.getRunReconciliation(runId),
+  });
 
 /**
  * My own payslips (PY-11).

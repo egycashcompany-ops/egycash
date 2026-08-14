@@ -55,37 +55,50 @@ none is needed for the guarantee the existing rule already gives.
 
 ---
 
-## 4. THE BLOCKER — what a correction is WORTH
+## 4. THE DECISION — ruled by the owner
 
-**Not built, and not guessable. This needs an owner decision.**
+**Ruled, not open.** The question this section used to raise — what a correction is *worth* — has
+been answered as a matter of policy rather than derivation:
 
-Everything above moves a correction to a place where somebody can act on it. What none of it does is
-say **how much** the correction is worth, and that number cannot be derived from anything in this
-repository:
+> **A frozen payslip or payroll run is never modified.** A correction found after the freeze is
+> handled as a payroll adjustment on a LATER period, carrying its reference to the original period
+> in the audit trail where the existing structures already allow it. No `correctionRef`, no link
+> collection and no new endpoint is added for this decision alone. Where the corrected quantities do
+> not exist, they are not re-derived and no financial difference is computed automatically — the
+> correction needs an adjustment entered by whoever holds the authority, at the correct value.
+>
+> **P-HR-08 is therefore surface, auditability and guardrails — not a retro-calculation engine.**
+
+### Why the amount still cannot be derived (kept, because it is the reason for the ruling)
 
 1. **The corrected quantities do not exist anywhere.** The §15.1 feed is complete-or-nothing and
-   frozen; the day row was deliberately not recomputed. So there is no "what the month should have
+   frozen; the day row was deliberately not recomputed. There is no "what the month should have
    said" to compare against "what it did say".
-2. **Producing one would mean re-pricing a frozen month**, which is exactly what "the frozen row
-   never moves" forbids — and the freeze is irreversible by design.
+2. **Producing one would mean re-pricing a frozen month** — exactly what the freeze forbids, and the
+   freeze is irreversible by design.
 3. **Even given both figures, the delta is a policy question, not arithmetic.** Gross or net? Which
-   lines participate — basic only, or every earning that scaled with the day? Is a correction that
-   reduces pay recovered at all, and over how many months? Egyptian labour law has answers; **this
-   repository does not**, and inventing one would be inventing a financial rule.
+   lines participate? Is a downward correction recovered, and over how long? Egyptian labour law has
+   answers; this repository does not.
 
-So the amount stays a human decision, typed into the adjustment by whoever is authorised to decide
-it, and the two-person rule already governs that. The screen says so rather than implying otherwise.
+So the amount is a human decision, made under the two-person rule that already governs adjustments,
+and the screen says so rather than implying otherwise.
 
-### The decision needed to unblock it
+### The audit reference, with what already exists
 
-* Which figures a retro correction is computed from, and whether the comparison is gross or net.
-* Whether a downward correction is recovered, and if so over how many months.
-* Whether a retro line should be distinguishable on the payslip from an ordinary adjustment
-  (today it is not: `origin: 'adjustment'` covers both).
+No field was added. The reference travels in the adjustment's `reason`, which is:
 
-Until those are ruled, no code should compute a retro amount.
+* **required and non-empty** — an adjustment cannot be recorded without one;
+* **part of the duplicate key** (`employeeId + period + kind + reason`), so it is what makes the
+  same correction unrepeatable while it is live;
+* **audited** — the `create` entry records it, and every status change is recorded beside it.
 
----
+That is a real audit trail for "which correction is this answering", achieved with the structures
+P-HR-04 already built. A dedicated field would add a second place for the same fact to live.
+
+### Explicitly out of scope, by the same ruling
+
+No retro engine, no migration, no new API. Anything that would compute a difference automatically is
+a separate phase with its own decision.
 
 ## 5. Standing constraints observed
 

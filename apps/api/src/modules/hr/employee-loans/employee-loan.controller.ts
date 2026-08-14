@@ -205,6 +205,35 @@ export const listLoans = async (req: Request, res: Response): Promise<void> => {
   );
 };
 
+/**
+ * The caller's own loans (P-HR-18).
+ *
+ * Whatever `employeeId` arrived is DROPPED — `/me` answers for the caller and nobody else, the
+ * same way `/payslips/me` and `/days/me` do. The schedule comes with each row, because "when does
+ * this come off my salary, and how much is left" is the whole question an employee has.
+ */
+export const listMyLoans = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { query } = validated<never, ListEmployeeLoansQuery>(req);
+  const own = {
+    page: query.page,
+    pageSize: query.pageSize,
+    sortDir: query.sortDir,
+    ...(query.sortBy === undefined ? {} : { sortBy: query.sortBy }),
+    ...(query.status === undefined ? {} : { status: query.status }),
+    ...(query.type === undefined ? {} : { type: query.type }),
+  };
+  const page = await employeeLoanService.listMine(String(ctx.userId), own);
+  const children = await employeeLoanService.childrenFor(page.items);
+  okPage(res, page, (doc) =>
+    toEmployeeLoanDetailDto(
+      doc,
+      children.installments.get(String(doc._id)) ?? [],
+      children.repayments.get(String(doc._id)) ?? [],
+    ),
+  );
+};
+
 /** The supporting document, uploaded before the request that names it (the HR3-C pattern). */
 export const attachLoanDocument = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);

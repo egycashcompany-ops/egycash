@@ -118,3 +118,11 @@ export const useDisburseLoanFromList = () =>
     ({ employeeId, id, body }: { employeeId: string; id: string; body: DisburseEmployeeLoan }) =>
       api.disburseLoan(employeeId, id, body),
   );
+
+/** The caller's own loans (P-HR-18). No mutation hangs off it — an employee reads, and that is all. */
+export const useMyLoans = (params: Record<string, string | number>) =>
+  useQuery({
+    queryKey: [MODULE, FEATURE, 'mine', params],
+    queryFn: () => api.listMyLoans(params),
+    placeholderData: (prev) => prev,
+  });

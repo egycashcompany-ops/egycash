@@ -30,11 +30,12 @@ const declaredPaths = (): string[] =>
 
 describe('Payroll routes', () => {
   it('routes the shipped surface and nothing unshipped', () => {
-    // pay-items (PY-1), runs (PY-6), the employee's own payslips (PY-11), the adjustments queue
-    // (P-HR-06-A) and the loans administration (P-HR-06-B). No tax and no run calculation —
-    // neither exists.
+    // pay-items (PY-1), runs (PY-6), the employee's own payslips (PY-11) and their own loans
+    // (P-HR-18), the adjustments queue (P-HR-06-A) and the loans administration (P-HR-06-B). No
+    // tax and no run calculation — neither exists.
     expect(declaredPaths()).toEqual([
       'payslips/me',
+      'employee-loans/me',
       'pay-items',
       'runs',
       'adjustments',
@@ -46,12 +47,15 @@ describe('Payroll routes', () => {
    * Everything an ADMINISTRATOR reaches is behind a key; the one self-service route is not, and
    * that is the design rather than a gap.
    *
-   * `/payslips/me` resolves its rows from the caller's own login link on the server, so there is
-   * no wider reach a permission could gate — the posture My Attendance has as its module's index.
-   * The count assertion is what keeps this honest: exactly ONE route may be unguarded, and it must
-   * be that one, so a future page cannot join it by accident.
+   * `/payslips/me` and `/employee-loans/me` (P-HR-18) resolve their rows from the caller's own
+   * login link on the server, so there is no wider reach a permission could gate — the posture My
+   * Attendance has as its module's index.
+   *
+   * P-HR-18 added the second one, so "exactly ONE may be unguarded" became untrue. What replaced
+   * it is STRONGER rather than looser: the unguarded set is now stated BY NAME, so a future page
+   * cannot join it by accident — which is the thing the old count was protecting.
    */
-  it('gates every route except the one that is own-scope by construction', () => {
+  it('gates every route except the ones that are own-scope by construction', () => {
     const guarded = [...ROUTES.matchAll(/<RequirePermission permission="([^"]+)">/g)].map((m) => m[1]);
     expect(guarded).toEqual([
       'payItem.view',
@@ -59,8 +63,9 @@ describe('Payroll routes', () => {
       'payrollAdjustment.view',
       'employeeLoan.view',
     ]);
-    expect(guarded).toHaveLength(declaredPaths().length - 1);
-    expect(declaredPaths().filter((p) => p.endsWith('/me'))).toEqual(['payslips/me']);
+    const unguarded = declaredPaths().filter((p) => p.endsWith('/me'));
+    expect(unguarded).toEqual(['payslips/me', 'employee-loans/me']);
+    expect(guarded).toHaveLength(declaredPaths().length - unguarded.length);
     // …and the index route renders that same self-service page, never a guarded one.
     expect(ROUTES).toMatch(/<Route index element=\{<MyPayslipsPage \/>\} \/>/);
   });

@@ -26,6 +26,7 @@ import {
   getLoan,
   listEmployeeLoans,
   listLoans,
+  listMyLoans,
   rescheduleLoan,
   settleLoanExternally,
   submitLoan,
@@ -167,6 +168,21 @@ export const buildEmployeeLoansRouter = (): Router => {
 /** The organization-wide list — the approval queue reads it filtered by `status`. */
 export const buildEmployeeLoansAdminRouter = (): Router => {
   const router = Router();
+  /**
+   * P-HR-18 — the caller's OWN loans, and the only route in this feature with no permission.
+   *
+   * Own-scope BY CONSTRUCTION: the employee is resolved from the caller's login link on the
+   * server, and nothing the caller sends can widen it, so there is no wider reach a key could
+   * gate. That is the posture PY-11 documents for payslips and `/days/me` has for attendance.
+   *
+   * Declared FIRST so `me` is never parsed as a loan id by the list below it.
+   */
+  router.get(
+    '/me',
+    authenticate,
+    validate({ query: ListEmployeeLoansQuerySchema }),
+    asyncHandler(listMyLoans),
+  );
   router.get(
     '/',
     authenticate,

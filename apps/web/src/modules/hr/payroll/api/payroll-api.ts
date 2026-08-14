@@ -14,6 +14,7 @@ import {
   type PayPayrollRun,
   type GeneratePayslipsResultDto,
   type PayrollRunDto,
+  type PayrollRunReconciliationDto,
   type PayslipDto,
   type CreatePayItem,
   type EmployeePayItemDto,
@@ -120,6 +121,15 @@ export const listRunPayslips = (
 
 export const generatePayslips = (runId: string): Promise<GeneratePayslipsResultDto> =>
   post<GeneratePayslipsResultDto>(`/hr/payroll/runs/${runId}/payslips`, {});
+
+/**
+ * The run reconciled against its own payslips (P-HR-15-A).
+ *
+ * Behind `employee.viewCompensation`, the key that already governs the list above — every figure it
+ * returns is somebody's pay in aggregate, so it is gated by the key that governs its terms.
+ */
+export const getRunReconciliation = (runId: string): Promise<PayrollRunReconciliationDto> =>
+  get<PayrollRunReconciliationDto>(`/hr/payroll/runs/${runId}/reconciliation`);
 
 /** The caller's OWN payslips (PY-11) — own-scope by construction, so no employee id is sent. */
 export const listMyPayslips = (params: QueryParams): Promise<Paginated<PayslipDto>> =>

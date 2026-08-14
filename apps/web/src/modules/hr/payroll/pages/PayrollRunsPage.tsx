@@ -24,6 +24,7 @@ import { Dialog } from '../../../../shared/ui/Dialog';
 import { Field, Input } from '../../../../shared/ui/form';
 import { PlusIcon } from '../../../../shared/ui/icons';
 import { toast } from '../../../../shared/ui/toast/toast-store';
+import { RunReconciliation } from '../components/RunReconciliation';
 import { formatDate, formatDateTime, formatMoney, formatNumber } from '../../../../shared/lib/format';
 import {
   useApprovePayrollRun,
@@ -302,6 +303,13 @@ const PayslipsDialog = ({ run, onClose }: { run: PayrollRunDto; onClose: () => v
     >
       <div className="space-y-3">
         <p className="text-sm text-slate-500">{t('payroll.payslips.hint')}</p>
+
+        {/*
+          P-HR-15-A, made visible. The endpoint shipped without a screen; this is the place a month
+          is actually settled, and the reconciliation is a statement about exactly the list below
+          it. No new page, therefore no new permission — the dialog's own gate already answers.
+        */}
+        <RunReconciliation runId={run.id} />
 
         {result !== null && (
           <div

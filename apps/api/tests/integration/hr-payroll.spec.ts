@@ -2046,7 +2046,9 @@ describe('a payslip carries the status of the run behind it (A1)', () => {
     expect(employee.status, JSON.stringify(employee.body)).toBe(201);
     employeeId = (employee.body as { data: { id: string } }).data.id;
 
-    // A flat earning, so there is a line that can actually be priced and a document to issue.
+    // A flat earning, so there is a line that can actually be priced and a document to issue —
+    // the basic salary alone is not a line in this system, so without one the employee would be
+    // reported as `noLines` and no payslip would exist for this block to mark.
     const item = await request(app)
       .post('/api/v1/hr/payroll/pay-items')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -2057,13 +2059,23 @@ describe('a payslip carries the status of the run behind it (A1)', () => {
         calcBasis: 'fixed',
       });
     expect(item.status, JSON.stringify(item.body)).toBe(201);
+    /**
+     * BOUNDED TO THIS PERIOD, and it has to be.
+     *
+     * PY-9 refuses an assignment that would apply to a month whose run is frozen — *"cancel that
+     * run and start a new one to reprice the period"* — and an open-ended assignment applies to
+     * EVERY month after its start, including `2026-05`, which the payslips block above freezes and
+     * leaves frozen. So the interval is closed around the one period this block prices; anything
+     * wider is a backdating attempt into somebody else's frozen month.
+     */
     const assigned = await request(app)
       .post(`/api/v1/hr/employees/${employeeId}/pay-items`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         payItemId: (item.body as { data: { id: string } }).data.id,
         amount: 1500,
-        effectiveFrom: '2024-01-01',
+        effectiveFrom: '2025-06-01',
+        effectiveTo: '2025-06-30',
       });
     expect(assigned.status, JSON.stringify(assigned.body)).toBe(201);
 

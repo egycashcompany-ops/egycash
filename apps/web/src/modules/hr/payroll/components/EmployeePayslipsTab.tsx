@@ -15,7 +15,7 @@ import { type EmployeeDto, type Locale, type PayslipDto } from '@ecms/contracts'
 import { useT } from '../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../store';
 import { Card, CardBody, CardHeader } from '../../../../shared/ui/Card';
-import { DataTable, EmptyState, Pagination, type Column } from '../../../../shared/ui';
+import { Badge, DataTable, EmptyState, Pagination, type Column } from '../../../../shared/ui';
 import { formatDate, formatMoney } from '../../../../shared/lib/format';
 import { useEmployeePayslips } from '../api/payroll-queries';
 
@@ -44,15 +44,29 @@ const EmployeePayslipsTab = ({ employee }: { employee: EmployeeDto }): JSX.Eleme
       key: 'period',
       header: t('payroll.payslips.period'),
       render: (s) => (
-        <button
-          type="button"
-          className="text-start underline-offset-2 hover:underline"
-          onClick={() => setOpen(s)}
-        >
-          <span className="font-mono" dir="ltr">
-            {s.period}
-          </span>
-        </button>
+        <span className="flex items-center gap-2">
+          <button
+            type="button"
+            className="text-start underline-offset-2 hover:underline"
+            onClick={() => setOpen(s)}
+          >
+            <span className="font-mono" dir="ltr">
+              {s.period}
+            </span>
+          </button>
+          {/*
+            A1 — this list spans runs, so a recalculated month shows two payslips. The one from the
+            cancelled run is MARKED rather than hidden: it is still a document somebody may have
+            been paid against, and the label is the run's own word for its state, not a new one.
+          */}
+          {s.runStatus === 'cancelled' && (
+            <span title={t('payroll.payslips.fromCancelledRun')}>
+              <Badge tone="warning" size="sm">
+                {t('payroll.runs.status.cancelled')}
+              </Badge>
+            </span>
+          )}
+        </span>
       ),
     },
     {

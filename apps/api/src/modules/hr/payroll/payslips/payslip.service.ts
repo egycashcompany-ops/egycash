@@ -24,6 +24,7 @@ import {
   type GeneratePayslipsResultDto,
   type ListPayslipsQuery,
   type Paginated,
+  type PayrollRunStatus,
   type PayslipDto,
   type PayslipSkipReason,
 } from '@ecms/contracts';
@@ -313,11 +314,40 @@ class PayslipService {
     return doc;
   }
 
-  toDto(doc: PayslipDoc): PayslipDto {
+  /**
+   * The status of every run a set of payslips cites — ONE batch read per page (A1).
+   *
+   * The shape `shared/employee-labels.ts` already established for exactly this problem: enrichment
+   * for a list read, resolved per page and *"deliberately NOT denormalized onto the rows"*. A run's
+   * status is the clearest case for that posture — it changes after the payslip is written, and the
+   * payslip is a document with no update path, so a stored copy could only be kept true by
+   * rewriting rows that are never rewritten.
+   */
+  async runStatusReader(
+    docs: readonly PayslipDoc[],
+  ): Promise<(doc: PayslipDoc) => PayrollRunStatus | null> {
+    const map = await payrollRunRepository.statusByIdsSystem(docs.map((doc) => String(doc.runId)));
+    // The `null` decision lives HERE, once: a payslip whose run cannot be read still reads, and
+    // says nothing about a status that was never recovered rather than guessing one.
+    return (doc) => map.get(String(doc.runId)) ?? null;
+  }
+
+  /** One payslip's DTO — the by-id reads, through the same reader so the fallback is shared. */
+  async toDtoOne(doc: PayslipDoc): Promise<PayslipDto> {
+    const runStatus = await this.runStatusReader([doc]);
+    return this.toDto(doc, runStatus(doc));
+  }
+
+  /**
+   * `runStatus` is passed IN rather than fetched here: mapping stays synchronous and page-wide, so
+   * a list costs one run read for the whole page instead of one per row.
+   */
+  toDto(doc: PayslipDoc, runStatus: PayrollRunStatus | null): PayslipDto {
     const window = periodRange(doc.period);
     return {
       id: String(doc._id),
       runId: String(doc.runId),
+      runStatus,
       period: doc.period,
       from: dateOnlyIso(window.from),
       to: dateOnlyIso(window.to),

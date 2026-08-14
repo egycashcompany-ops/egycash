@@ -13,7 +13,7 @@ import { type Locale, type PayslipDto } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../store';
 import { PageContainer, PageHeader } from '../../../../platform/layout/PageContainer';
-import { DataTable, EmptyState, Pagination, type Column } from '../../../../shared/ui';
+import { Badge, DataTable, EmptyState, Pagination, type Column } from '../../../../shared/ui';
 import { Card, CardBody, CardHeader } from '../../../../shared/ui/Card';
 import { formatDate, formatMoney, localized } from '../../../../shared/lib/format';
 import { useMyPayslips } from '../api/payroll-queries';
@@ -38,11 +38,25 @@ export const MyPayslipsPage = (): JSX.Element => {
       key: 'period',
       header: t('payroll.payslips.period'),
       render: (s) => (
-        <button type="button" className="text-left underline-offset-2 hover:underline" onClick={() => setOpen(s)}>
-          <span className="font-mono" dir="ltr">
-            {s.period}
-          </span>
-        </button>
+        <span className="flex items-center gap-2">
+          <button type="button" className="text-left underline-offset-2 hover:underline" onClick={() => setOpen(s)}>
+            <span className="font-mono" dir="ltr">
+              {s.period}
+            </span>
+          </button>
+          {/*
+            A1 — the employee's own list spans runs too, so a recalculated month shows two. The
+            payslip from the cancelled run stays visible and says so; hiding a document somebody may
+            have been paid against was the option that was rejected.
+          */}
+          {s.runStatus === 'cancelled' && (
+            <span title={t('payroll.payslips.fromCancelledRun')}>
+              <Badge tone="warning" size="sm">
+                {t('payroll.runs.status.cancelled')}
+              </Badge>
+            </span>
+          )}
+        </span>
       ),
     },
     {

@@ -740,6 +740,25 @@ export interface PayslipDto {
   id: string;
   /** The frozen run these figures were priced against — the version of the truth behind them. */
   runId: string;
+  /**
+   * That run's status AS IT STANDS NOW — read at read time, never stored (audit finding A1).
+   *
+   * WHY IT IS HERE. `ux_live_period` deliberately excludes `cancelled`, so a period can be
+   * recalculated by a NEW run after the first is cancelled — and the first run's payslips survive
+   * it, because a payslip is a document nobody may edit. Since P-HR-20 and PY-11 list a person's
+   * payslips ACROSS runs, a recalculated month shows two, and until now nothing said that one of
+   * them came from a run that was cancelled.
+   *
+   * WHY IT IS NOT COPIED ONTO THE ROW, when every other figure on a payslip is. The rest of this
+   * document is a snapshot precisely because its inputs change underneath it; this one is the
+   * opposite — the question being asked is what the run's status is TODAY, and a stored copy would
+   * have to be rewritten across every payslip of a run at the moment it is cancelled. That is a
+   * bulk write into the one collection this system refuses to rewrite.
+   *
+   * `null` only if the cited run cannot be read. No path deletes a run, so this is unreachable in
+   * practice — it is stated rather than filled with a status that was never recorded.
+   */
+  runStatus: PayrollRunStatus | null;
   period: string;
   /** `YYYY-MM-DD` bounds of the period, inclusive. */
   from: string;

@@ -1979,6 +1979,212 @@ describe('payslips: one employee across every run (P-HR-20)', () => {
   }, 120_000);
 });
 
+/**
+ * A1 — a cancelled run's payslips are MARKED, and that is all that happens to them.
+ *
+ * THE FINDING. `ux_live_period` excludes `cancelled` on purpose, so a period can be recalculated by
+ * a new run — and the cancelled run's payslips survive it, because a payslip has no update path.
+ * Once P-HR-20 and PY-11 began listing a person's payslips ACROSS runs, a recalculated month showed
+ * two documents with nothing to tell them apart.
+ *
+ * THE DECISION, the owner's, from three options: mark them. So this block asserts the mark on BOTH
+ * cross-run reads — the HR one and the employee's own — and, just as importantly, that marking is
+ * the ONLY thing that changed: the payslip still lists, and its figures still say what they said.
+ */
+describe('a payslip carries the status of the run behind it (A1)', () => {
+  const PERIOD = '2026-11';
+  let employeeId = '';
+  let runId = '';
+  let ownToken = '';
+
+  const forEmployee = (token = adminToken) =>
+    request(app)
+      .get(`/api/v1/hr/employees/${employeeId}/payslips?page=1&pageSize=20`)
+      .set('Authorization', `Bearer ${token}`);
+  const mine = () =>
+    request(app)
+      .get('/api/v1/hr/payroll/payslips/me?page=1&pageSize=20')
+      .set('Authorization', `Bearer ${ownToken}`);
+
+  beforeAll(async () => {
+    const employee = await request(app)
+      .post('/api/v1/hr/employees/direct')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        personal: {
+          identity: {
+            fullNameAr: 'موظف الجولة الملغاة',
+            nationalId: '29001011690010',
+            nationality: 'Egyptian',
+          },
+          contact: { primaryPhone: '01174000091' },
+          experience: [],
+          drivingLicenses: [],
+          certifications: [],
+          references: [],
+        },
+        employment: {
+          jobTitleId: JOB_TITLE_ID_PY4,
+          departmentId: DEPARTMENT_ID_PY4,
+          branchId: BRANCH_PY4,
+          employmentType: 'fullTime',
+          probationMonths: 0,
+          startDate: '2024-01-01T00:00:00.000Z',
+          salary: { amount: 9_000, currency: 'EGP' },
+        },
+        hiringDate: '2024-01-01T00:00:00.000Z',
+        entryStatus: 'active',
+      });
+    expect(employee.status, JSON.stringify(employee.body)).toBe(201);
+    employeeId = (employee.body as { data: { id: string } }).data.id;
+
+    // A flat earning, so there is a line that can actually be priced and a document to issue.
+    const item = await request(app)
+      .post('/api/v1/hr/payroll/pay-items')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        code: 'A1_HOUSING',
+        name: { ar: 'بدل سكن A1', en: 'Housing A1' },
+        kind: 'earning',
+        calcBasis: 'fixed',
+      });
+    expect(item.status, JSON.stringify(item.body)).toBe(201);
+    const assigned = await request(app)
+      .post(`/api/v1/hr/employees/${employeeId}/pay-items`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        payItemId: (item.body as { data: { id: string } }).data.id,
+        amount: 1500,
+        effectiveFrom: '2024-01-01',
+      });
+    expect(assigned.status, JSON.stringify(assigned.body)).toBe(201);
+
+    const created = await request(app)
+      .post('/api/v1/hr/payroll/runs')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ period: PERIOD });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const run = created.body.data as PayrollRunDto;
+    runId = run.id;
+
+    const frozen = await request(app)
+      .post(`/api/v1/hr/payroll/runs/${runId}/freeze`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: run.version });
+    expect(frozen.status, JSON.stringify(frozen.body)).toBe(200);
+
+    const issued = await request(app)
+      .post(`/api/v1/hr/payroll/runs/${runId}/payslips`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({});
+    expect(issued.status, JSON.stringify(issued.body)).toBe(201);
+
+    // The employee's OWN login — the `/me` half of the finding needs a caller who IS somebody.
+    // Direct registration usually provisions one already (ADR-017), so this adopts the linked
+    // account and creates one only when there is none.
+    const fetched = await request(app)
+      .get(`/api/v1/hr/employees/${employeeId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const { code, userId: linked } = (
+      fetched.body as { data: { code: string; userId: string | null } }
+    ).data;
+    let userId = linked;
+    if (userId === null) {
+      const login = await request(app)
+        .post(`/api/v1/hr/employees/${employeeId}/login`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          email: 'a1-payslip-owner@ecms.local',
+          firstName: { ar: 'ع', en: 'A' },
+          lastName: { ar: 'س', en: 'B' },
+        });
+      expect(login.status, JSON.stringify(login.body)).toBe(201);
+      userId = (login.body as { data: { user: { id: string } } }).data.user.id;
+    }
+    await userService.setPassword(userId, PASSWORD, 'passwordReset');
+    await userService.forceActivate(userId);
+    await getCache().delByPrefix('rl:');
+    const signIn = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ identifier: code, password: PASSWORD });
+    expect(signIn.status, JSON.stringify(signIn.body)).toBe(200);
+    ownToken = (signIn.body as { data: { accessToken: string } }).data.accessToken;
+  }, 240_000);
+
+  it('reports the run’s live status while the run still stands', async () => {
+    const res = await forEmployee();
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const row = (res.body.data as PayslipDto[]).find((slip) => slip.period === PERIOD);
+    expect(row, 'the issued payslip').toBeDefined();
+    expect(row?.runId).toBe(runId);
+    expect(row?.runStatus).toBe('frozen');
+  }, 240_000);
+
+  it('and the employee’s own read says the same thing about the same document', async () => {
+    const res = await mine();
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const row = (res.body.data as PayslipDto[]).find((slip) => slip.period === PERIOD);
+    expect(row, 'the caller’s own payslip').toBeDefined();
+    expect(row?.runStatus).toBe('frozen');
+  }, 240_000);
+
+  /** THE case: the run is cancelled, and the payslip it issued now says so — on both reads. */
+  it('turns to `cancelled` the moment the run is, with no write to the payslip', async () => {
+    const before = (await forEmployee()).body.data as PayslipDto[];
+    const original = before.find((slip) => slip.period === PERIOD);
+    expect(original).toBeDefined();
+
+    const run = (await request(app)
+      .get(`/api/v1/hr/payroll/runs/${runId}`)
+      .set('Authorization', `Bearer ${adminToken}`)).body.data as PayrollRunDto;
+    const cancelled = await request(app)
+      .post(`/api/v1/hr/payroll/runs/${runId}/cancel`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ reason: 'recalculating this month', version: run.version });
+    expect(cancelled.status, JSON.stringify(cancelled.body)).toBe(200);
+
+    for (const res of [await forEmployee(), await mine()]) {
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      const row = (res.body.data as PayslipDto[]).find((slip) => slip.period === PERIOD);
+      // NOT HIDDEN — the option that was rejected. The document somebody may have been paid
+      // against is still there, and now it says which run it came from was cancelled.
+      expect(row, 'the payslip is still listed').toBeDefined();
+      expect(row?.runStatus).toBe('cancelled');
+    }
+
+    // …and nothing on the stored document moved: same id, same figures, same identity.
+    const after = ((await forEmployee()).body.data as PayslipDto[]).find(
+      (slip) => slip.period === PERIOD,
+    );
+    expect(after?.id).toBe(original?.id);
+    expect(after?.netMinor).toBe(original?.netMinor);
+    expect(after?.totalEarningsMinor).toBe(original?.totalEarningsMinor);
+    expect(after?.issuedAt).toBe(original?.issuedAt);
+  }, 240_000);
+
+  /** The by-id read answers with the same mark, through the same reader. */
+  it('says it on the single-payslip read too', async () => {
+    const row = ((await forEmployee()).body.data as PayslipDto[]).find(
+      (slip) => slip.period === PERIOD,
+    );
+    const one = await request(app)
+      .get(`/api/v1/hr/payroll/payslips/${row?.id ?? ''}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(one.status, JSON.stringify(one.body)).toBe(200);
+    expect((one.body.data as PayslipDto).runStatus).toBe('cancelled');
+  }, 240_000);
+
+  /** A period can still be recalculated afterwards — the recovery path P-HR-10 relies on. */
+  it('and the period is free for a new run, which is why cancelling exists', async () => {
+    const again = await request(app)
+      .post('/api/v1/hr/payroll/runs')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ period: PERIOD });
+    expect(again.status, JSON.stringify(again.body)).toBe(201);
+    expect((again.body.data as PayrollRunDto).status).toBe('draft');
+  }, 240_000);
+});
+
 describe('payslips: the self-service read', () => {
   const me = (path: string, token: string) =>
     request(app).get(`/api/v1/hr/payroll/payslips${path}`).set('Authorization', `Bearer ${token}`);

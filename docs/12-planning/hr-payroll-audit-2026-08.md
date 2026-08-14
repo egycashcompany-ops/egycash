@@ -53,6 +53,83 @@ neither double-counts.
 it. But which of the three is right is a product judgement about what a payslip *means* after its
 run is cancelled, so it is left to the owner.
 
+### The owner's preliminary decision, and the design it still needs
+
+**Recorded 2026-08-14. The owner chose option (1) — MARK the payslips of a cancelled run.** Not
+hide them, not forbid the cancellation.
+
+**Status: PRELIMINARY, and nothing below is implemented.** Nothing may be until the design here is
+approved — that condition is the owner's, and it is why this is a record rather than a plan of work.
+
+#### What the decision already has, and therefore does not need to invent
+
+| the decision needs | it already exists | so this is NOT needed |
+|---|---|---|
+| a payslip that knows its run | `PayslipDoc.runId`, required since PY-7 | no new link, no join |
+| a word for "this run was cancelled" | `cancelled` ∈ `PAYROLL_RUN_STATUSES` | **no new status value** |
+| the run's current status | `PayrollRunDoc.status` | no copy, no second source |
+| a place to say it | `PayslipDto`, what all the read paths already return | no new endpoint |
+
+**The mark is DERIVED, not stored,** and that is the whole reason this option is small. A payslip is
+a document nobody may edit — `payslip.repository.ts` says so in its opening comment and exposes no
+update and no delete — while the run's status changes *after* the payslip is written. A stored copy
+would therefore have to be rewritten across every payslip of a run at the moment it is cancelled: a
+bulk write into precisely the collection this system refuses to rewrite. Reading the run the payslip
+already cites has neither problem.
+
+#### The one thing this design does NOT decide: the field's name
+
+`PayslipDto` gains **one** field carrying an existing `PayrollRunStatus` value. Its name is a
+contract decision and is left open deliberately — the repository holds two live naming precedents
+and nothing that picks between them: `runId` on this same DTO (the `run`-prefixed form) and
+`PayrollRunDto.status` (the bare form). **D-A1-b** is the owner's. Everything else is independent
+of the answer.
+
+#### The implementation seam — one this repository already established
+
+`apps/api/src/modules/hr/shared/employee-labels.ts` (P-HR-06 / D7) is the same problem solved once
+already: *"display enrichment for HR list reads: one batch fetch per page, id → label"*, with the
+posture stated in its own comment — **"deliberately NOT denormalized onto the rows"** — and its
+guard spec asserting **"no row stores the labels — not a schema field, not a mapper, not a
+migration"**.
+
+A1 is that shape with runs in place of employees:
+
+1. a batch read of the runs a page's payslips cite: `runId[] → status`, one query per page;
+2. the map spread in at the mapping site, exactly as `labelFields(map, id)` is;
+3. `payslipService.toDto` takes the status beside the doc; the five call sites in
+   `payslip.controller.ts` pass it.
+
+Two of those five are where the finding is actually visible — `/hr/payroll/payslips/me` (PY-11) and
+`/hr/employees/:id/payslips` (P-HR-20), the two cross-run lists. The run's own list and the by-id
+reads get it for free, since the field is on the DTO either way.
+
+#### Impact, in full
+
+| area | impact |
+|---|---|
+| **migration** | **none.** Nothing is stored, so there is nothing to backfill and no old row that is wrong. |
+| **contract** | **additive** — one field on `PayslipDto`. `hr-payroll.spec.ts` keeps an explicit required-key list for this DTO, so that list gains one entry. |
+| **API** | no new route, no new query parameter, no existing response shape changed beyond the added field. |
+| **permissions / pages / events** | **none.** Every path that would carry the mark is gated exactly as it is today. |
+| **database** | one batch read per page; no new index — runs are fetched by `_id`. |
+| **web** | the two cross-run surfaces (`MyPayslipsPage.tsx`, `EmployeePayslipsTab.tsx`) show the mark; one i18n key in both locales. |
+| **write paths** | **none touched.** Issuing, freezing, approving and cancelling are unchanged. |
+| **P-HR-15-A** | unaffected — the reconciliation is per-run and never compares across runs. |
+
+#### What it must not become
+
+No new run state and no new payslip state · no `void`, `superseded` or any other word this system
+has not already defined · no deletion, no soft-delete, and no exclusion of a cancelled run's
+payslips from any list — the decision was to *mark*, and hiding is the option that was rejected · no
+change to `CANCELLABLE_PAYROLL_RUN_STATUSES`, which is option (3) and also rejected · no re-issue
+and no recalculation.
+
+#### Still open before a line is written
+
+* **D-A1-a** — approval of this design as a whole.
+* **D-A1-b** — the field's name.
+
 ---
 
 ## A2 — ✅ FOUND AND FIXED: the reconciliation ignored the caller's scope

@@ -9,6 +9,11 @@
 // paid; this adds it up and says so. If a total here ever disagreed with the payslips it summed,
 // the payslips would be right.
 //
+// EVERY READ TAKES THE CALLER'S SCOPE, and that is a correctness rule rather than a courtesy: a
+// branch payroll reader must reconcile THEIR branch. Mixing scopes — organization-wide approvals
+// against branch-scoped payslips — would not merely over-report, it would state a discrepancy that
+// does not exist, which is worse than refusing to answer.
+//
 // THE ONE CHECK THAT IS MISSING, ON PURPOSE. Loan repayments recorded for a run against the
 // `loanInstallment` lines on its payslips would be the most valuable identity of all — and payroll
 // may not read the loan ledger. The P-HR-05-B port allows an amount and a sentence across, "not its
@@ -38,10 +43,10 @@ class ReconciliationService {
    * that has issued nothing reconciles to ZERO rather than to an error — "nothing has been issued
    * yet" is a true and useful answer, not a failure.
    */
-  async forRun(runId: string, _scope: ScopeSelector): Promise<PayrollRunReconciliationDto> {
+  async forRun(runId: string, scope: ScopeSelector): Promise<PayrollRunReconciliationDto> {
     const run = await payrollRunRepository.getById(runId);
 
-    const totalRows = await payslipRepository.totalsForRun(runId);
+    const totalRows = await payslipRepository.totalsForRun(runId, scope);
     const totals: PayrollRunTotalsDto[] = totalRows.map((row) => ({
       currency: row.currency,
       payslips: row.payslips,
@@ -58,8 +63,8 @@ class ReconciliationService {
       period: run.period,
       status: run.status,
       totals,
-      coverage: await this.coverageFor(runId, run.period),
-      adjustments: await this.adjustmentsFor(runId, run.period),
+      coverage: await this.coverageFor(runId, run.period, scope),
+      adjustments: await this.adjustmentsFor(runId, run.period, scope),
     };
   }
 
@@ -71,13 +76,17 @@ class ReconciliationService {
    * Reusing the pure function is the point: two definitions of "employed in this month" would be
    * one definition too many.
    */
-  private async coverageFor(runId: string, period: string): Promise<PayrollRunCoverageDto> {
+  private async coverageFor(
+    runId: string,
+    period: string,
+    scope: ScopeSelector,
+  ): Promise<PayrollRunCoverageDto> {
     const window = periodRange(period);
-    const everyone = await employeeRepository.listAllSystem();
+    const everyone = await employeeRepository.listAllInScope(scope);
     const employedInPeriod = everyone.filter((employee) =>
       employedDuring(employmentSpansOf(employee), window),
     ).length;
-    const withPayslip = (await payslipRepository.employeeIdsForRun(runId)).length;
+    const withPayslip = (await payslipRepository.employeeIdsForRun(runId, scope)).length;
     return {
       employedInPeriod,
       withPayslip,
@@ -101,9 +110,10 @@ class ReconciliationService {
   private async adjustmentsFor(
     runId: string,
     period: string,
+    scope: ScopeSelector,
   ): Promise<PayrollRunAdjustmentReconciliationDto[]> {
-    const approved = await payrollAdjustmentRepository.approvedTotalsForPeriod(period);
-    const onPayslips = await payslipRepository.adjustmentLineTotalsForRun(runId);
+    const approved = await payrollAdjustmentRepository.approvedTotalsForPeriod(period, scope);
+    const onPayslips = await payslipRepository.adjustmentLineTotalsForRun(runId, scope);
 
     // Every currency that appears on either side — a currency present only on the payslips is as
     // much a discrepancy as one present only among the approvals, and dropping it would hide it.

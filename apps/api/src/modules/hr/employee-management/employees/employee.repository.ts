@@ -170,6 +170,19 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
     return this.model.find({ isDeleted: false }).lean<EmployeeDoc[]>().exec();
   }
 
+  /**
+   * Every employee the CALLER may see — the scoped counterpart of `listAllSystem` (P-HR-15-A).
+   *
+   * The two differ on purpose. Issuing payslips is a system act: the batch must cover everyone
+   * regardless of who pressed the button, so PY-7 uses the unscoped read. A reconciliation is a
+   * READ, and a branch payroll reader reconciling a run must be counting their own branch —
+   * otherwise the coverage number would be organization-wide while the money beside it was not,
+   * and the report would state a discrepancy it invented.
+   */
+  async listAllInScope(scope: ScopeSelector): Promise<EmployeeDoc[]> {
+    return this.model.find(this.baseFilter(scope)).lean<EmployeeDoc[]>().exec();
+  }
+
   /** Every employed employee (probation/active/onLeave/suspended) — leave grants iterate this. */
   async listEmployedSystem(): Promise<EmployeeDoc[]> {
     return this.model

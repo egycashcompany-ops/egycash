@@ -9,6 +9,7 @@
 // them, and a payslip is a document somebody was paid against.
 import { Types } from 'mongoose';
 import { BaseRepository } from '../../../../shared/base/base.repository';
+import { type ScopeSelector } from '../../../../shared/types';
 import { PayslipModel, type PayslipDoc } from './payslip.model';
 
 /** One currency's worth of a run, as the database summed it. */
@@ -33,7 +34,7 @@ class PayslipRepository extends BaseRepository<PayslipDoc> {
    * a summary. Aggregated rather than read-and-summed because a run holds one row per employee and
    * a reconciliation must not depend on how many of them fit in a page.
    */
-  async totalsForRun(runId: string): Promise<PayslipRunTotalsRow[]> {
+  async totalsForRun(runId: string, scope: ScopeSelector): Promise<PayslipRunTotalsRow[]> {
     if (!Types.ObjectId.isValid(runId)) return [];
     const rows = await PayslipModel.aggregate<{
       _id: string;
@@ -42,7 +43,10 @@ class PayslipRepository extends BaseRepository<PayslipDoc> {
       totalDeductionsMinor: number;
       netMinor: number;
     }>([
-      { $match: { runId: new Types.ObjectId(runId), isDeleted: false } },
+      // `baseFilter` rather than a hand-written clause: the caller's scope must narrow this
+      // exactly as it narrows the paginated read beside it, or a branch reader would be handed
+      // organization-wide money.
+      { $match: this.baseFilter(scope, { runId: new Types.ObjectId(runId) }) },
       {
         $group: {
           _id: '$currency',
@@ -71,10 +75,13 @@ class PayslipRepository extends BaseRepository<PayslipDoc> {
    * direction is `kind`'s job (P-HR-04). Summing them signed here would compare two different
    * quantities and call the difference a discrepancy.
    */
-  async adjustmentLineTotalsForRun(runId: string): Promise<{ currency: string; minor: number }[]> {
+  async adjustmentLineTotalsForRun(
+    runId: string,
+    scope: ScopeSelector,
+  ): Promise<{ currency: string; minor: number }[]> {
     if (!Types.ObjectId.isValid(runId)) return [];
     const rows = await PayslipModel.aggregate<{ _id: string; minor: number }>([
-      { $match: { runId: new Types.ObjectId(runId), isDeleted: false } },
+      { $match: this.baseFilter(scope, { runId: new Types.ObjectId(runId) }) },
       {
         $project: {
           currency: 1,
@@ -90,12 +97,12 @@ class PayslipRepository extends BaseRepository<PayslipDoc> {
   }
 
   /** The employees this run issued to — the coverage check's "was paid" side. */
-  async employeeIdsForRun(runId: string): Promise<string[]> {
+  async employeeIdsForRun(runId: string, scope: ScopeSelector): Promise<string[]> {
     if (!Types.ObjectId.isValid(runId)) return [];
-    const ids = await PayslipModel.distinct('employeeId', {
-      runId: new Types.ObjectId(runId),
-      isDeleted: false,
-    }).exec();
+    const ids = await PayslipModel.distinct(
+      'employeeId',
+      this.baseFilter(scope, { runId: new Types.ObjectId(runId) }),
+    ).exec();
     return ids.map(String);
   }
 }

@@ -62,13 +62,17 @@ class PayrollAdjustmentRepository extends BaseRepository<PayrollAdjustmentDoc> {
    */
   async approvedTotalsForPeriod(
     period: string,
+    scope: ScopeSelector,
   ): Promise<{ currency: string; count: number; minor: number }[]> {
     const rows = await PayrollAdjustmentModel.aggregate<{
       _id: string;
       count: number;
       amount: number;
     }>([
-      { $match: { period, status: 'approved', isDeleted: false } },
+      // Scoped like every other read of this collection: a branch reader reconciles their branch,
+      // and comparing a scoped payslip total against an organization-wide approval total would
+      // report a discrepancy that does not exist.
+      { $match: this.baseFilter(scope, { period, status: 'approved' }) },
       { $group: { _id: '$currency', count: { $sum: 1 }, amount: { $sum: '$amount' } } },
       { $sort: { _id: 1 } },
     ]).exec();

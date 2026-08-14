@@ -127,6 +127,46 @@ describe('it sums; it does not compute', () => {
   });
 });
 
+/**
+ * EVERY read is scoped, and that is a correctness rule rather than a courtesy.
+ *
+ * A branch payroll reader must reconcile THEIR branch. Mixing scopes — organization-wide approvals
+ * against branch-scoped payslips — would not merely over-report: it would state a discrepancy that
+ * does not exist, which is worse than refusing to answer. The first cut of this feature got it
+ * wrong (the aggregates ignored the scope entirely), so it is pinned rather than trusted.
+ */
+describe('the caller’s scope narrows every side of the comparison', () => {
+  it('passes the scope into all three reads', () => {
+    expect(SERVICE).toContain('totalsForRun(runId, scope)');
+    expect(SERVICE).toContain('employeeIdsForRun(runId, scope)');
+    expect(SERVICE).toContain('adjustmentLineTotalsForRun(runId, scope)');
+    expect(SERVICE).toContain('approvedTotalsForPeriod(period, scope)');
+    // The coverage side counts employees the CALLER may see, not everyone — `listAllSystem` is
+    // PY-7's population for issuing, which is a system act and a different question.
+    expect(SERVICE).toContain('listAllInScope(scope)');
+    expect(SERVICE).not.toContain('listAllSystem()');
+  });
+
+  /**
+   * And the aggregates build their filter from `baseFilter`, so the scope narrows them exactly as
+   * it narrows the paginated reads beside them — rather than through a second, hand-written clause
+   * that could drift from it.
+   */
+  it('and both aggregates filter through baseFilter rather than by hand', () => {
+    const payslipRepo = code(resolve(PAYROLL, 'payslips/payslip.repository.ts'));
+    const adjustmentRepo = code(resolve(PAYROLL, 'adjustments/payroll-adjustment.repository.ts'));
+    for (const [name, source] of [
+      ['payslips', payslipRepo],
+      ['adjustments', adjustmentRepo],
+    ] as const) {
+      expect(source, name).toContain('this.baseFilter(scope,');
+      // No aggregate may match on a raw `isDeleted` clause of its own — that is the shape the
+      // unscoped first cut had, and it is what `baseFilter` exists to provide.
+      expect(source, name).not.toMatch(/\$match: \{[^}]*isDeleted: false/);
+    }
+  });
+});
+
 describe('the loans seam is untouched (design §4)', () => {
   /**
    * The loan-repayment identity would be the most valuable check here, and it is deliberately

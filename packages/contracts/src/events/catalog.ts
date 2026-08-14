@@ -125,6 +125,7 @@ import {
   type HrPayrollEventName,
   PayrollAdjustmentDecidedPayloadV1,
   PayrollAdjustmentSubmittedPayloadV1,
+  PayrollRunLifecyclePayloadV1,
 } from '../modules/hr-payroll.js';
 import {
   HrEmployeeLoanEvents,
@@ -717,6 +718,12 @@ export const EVENT_ACTION_NAMES: Readonly<Record<string, LocalizedString>> = {
   // payroll decisions + employee loans (P-HR-07)
   adjustmentSubmitted: { en: 'adjustment submitted', ar: 'إرسال مؤثر للاعتماد' },
   adjustmentDecided: { en: 'adjustment decided', ar: 'البت في مؤثر' },
+  // P-HR-16 — the RUN's lifecycle. Compound actions, because the entity these hang off is
+  // `payroll` (the same one the adjustment decisions use) and "frozen" alone would not say what
+  // was frozen — attendance already freezes a period, and that is a different fact.
+  runFrozen: { en: 'run frozen', ar: 'تجميد دورة رواتب' },
+  runApproved: { en: 'run approved', ar: 'اعتماد دورة رواتب' },
+  runPaid: { en: 'run recorded as paid', ar: 'تسجيل صرف دورة رواتب' },
   submitted: { en: 'submitted', ar: 'إرسال للاعتماد' },
   // The word is deliberately about MONEY LEAVING, not about a status: ECMS pays nobody, and this
   // records that a payment happened elsewhere — which is also the moment instalments begin.
@@ -1079,6 +1086,11 @@ export const HR_EVENT_PAYLOAD_SCHEMAS: Readonly<Record<HrCatalogEventName, z.Zod
   // P-HR-07 — the two payroll decisions somebody waits on, and the three a debt has.
   [HrPayrollEvents.AdjustmentSubmitted]: PayrollAdjustmentSubmittedPayloadV1,
   [HrPayrollEvents.AdjustmentDecided]: PayrollAdjustmentDecidedPayloadV1,
+
+  // P-HR-16 — the run's three, each the moment the NEXT person's turn begins.
+  [HrPayrollEvents.RunFrozen]: PayrollRunLifecyclePayloadV1,
+  [HrPayrollEvents.RunApproved]: PayrollRunLifecyclePayloadV1,
+  [HrPayrollEvents.RunPaid]: PayrollRunLifecyclePayloadV1,
 
   [HrEmployeeLoanEvents.Submitted]: EmployeeLoanSubmittedPayloadV1,
   [HrEmployeeLoanEvents.Decided]: EmployeeLoanDecidedPayloadV1,

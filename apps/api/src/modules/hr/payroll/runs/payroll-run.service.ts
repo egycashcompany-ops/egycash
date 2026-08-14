@@ -20,11 +20,14 @@
 import { Types } from 'mongoose';
 import {
   CANCELLABLE_PAYROLL_RUN_STATUSES,
+  HrPayrollEvents,
+  HrPayrollTemplates,
   type CreatePayrollRun,
   type ListPayrollRunsQuery,
   type Paginated,
   type PayrollLeaveSnapshotDto,
   type PayrollRunDto,
+  type PayrollRunStatus,
 } from '@ecms/contracts';
 import {
   BusinessRuleError,
@@ -33,6 +36,8 @@ import {
   NotFoundError,
 } from '../../../../shared/errors';
 import { auditService } from '../../../../platform/audit';
+import { emit } from '../../../../platform/kernel/event-bus';
+import { notificationsService } from '../../../../platform/notifications';
 import { cairoToday, dateOnlyIso, toDateOnly } from '../../shared/business-date';
 import { periodRange } from '../compensation/compensation-rules';
 import { attendanceFreezePort } from './attendance-freeze.port';
@@ -160,6 +165,13 @@ class PayrollRunService {
         { field: 'leaveSnapshotRows', old: null, new: String(snapshotRows) },
       ],
     });
+    // P-HR-16 — AFTER the commit point, which is what makes it happen once: `status !== 'draft'`
+    // refuses a second freeze before any of this runs, and `updateById` filters on `__v`, so a
+    // stale-version retry is a 409 above this line. Nothing here is de-duplicated because nothing
+    // needs to be.
+    await this.publish(HrPayrollEvents.RunFrozen, HrPayrollTemplates.RunFrozen, updated, by, {
+      permission: 'payrollRun.approve',
+    });
     return updated;
   }
 
@@ -209,6 +221,10 @@ class PayrollRunService {
     await this.recordTransition(id, 'frozen', 'approved', [
       ...(input.note === undefined ? [] : [{ field: 'approvalNote', old: null, new: input.note }]),
     ]);
+    // …and the next turn is whoever may record the payment.
+    await this.publish(HrPayrollEvents.RunApproved, HrPayrollTemplates.RunApproved, updated, by, {
+      permission: 'payrollRun.pay',
+    });
     return updated;
   }
 
@@ -251,6 +267,17 @@ class PayrollRunService {
         ? []
         : [{ field: 'paymentReference', old: null, new: input.reference }]),
     ]);
+    /**
+     * …and the last turn is closing the month.
+     *
+     * NOT a message to the employees. Nobody is told "you have been paid": that would be a
+     * broadcast to everyone in the organization, it has no precedent here, and `paid` is recorded
+     * on the RUN rather than on any payslip (P-HR-10 §5) — so there is no per-employee fact to
+     * point them at.
+     */
+    await this.publish(HrPayrollEvents.RunPaid, HrPayrollTemplates.RunPaid, updated, by, {
+      permission: 'payrollRun.manage',
+    });
     return updated;
   }
 
@@ -277,6 +304,48 @@ class PayrollRunService {
     );
     await this.recordTransition(id, 'paid', 'closed', []);
     return updated;
+  }
+
+  /**
+   * One shape for all three lifecycle facts (P-HR-16) — the event, then the notice.
+   *
+   * WHY ONE HELPER RATHER THAN THREE. The three transitions differ in exactly one way: who is
+   * waiting next. Everything else — the payload, the best-effort posture, the entity ref — is
+   * identical, and writing it out three times is three chances for one of them to drift into
+   * carrying an amount or addressing a person instead of a permission.
+   *
+   * THE RECIPIENT IS A PERMISSION, never a manager and never a list of people. A payroll run is
+   * approved and paid by whoever holds the key for that act; there is no line-management step in
+   * it. This is P-HR-07's rule applied, not a new one.
+   *
+   * BEST-EFFORT BY CONSTRUCTION. A notification that fails must never undo a transition that was
+   * correctly recorded — the same `.catch()` posture Attendance, Leave and P-HR-07 all take. The
+   * durable record of what happened is the write plus the audit entry, both already made above.
+   */
+  private async publish(
+    event: (typeof HrPayrollEvents)[keyof typeof HrPayrollEvents],
+    template: (typeof HrPayrollTemplates)[keyof typeof HrPayrollTemplates],
+    run: PayrollRunDoc,
+    by: string,
+    to: { permission: string },
+  ): Promise<void> {
+    const runId = String(run._id);
+    await emit(event, {
+      runId,
+      period: run.period,
+      status: run.status as PayrollRunStatus,
+      by,
+    });
+    await notificationsService
+      .notify({
+        template,
+        to: { permission: to.permission, scope: 'organization' },
+        // The period, and nothing else. A run has no total of its own, and the payslips' figures
+        // live behind the compensation key rather than in an inbox.
+        data: { period: run.period },
+        entityRef: entityRef(runId),
+      })
+      .catch(() => undefined);
   }
 
   /** One shape for every governance transition, so none of them can forget to leave a trace. */

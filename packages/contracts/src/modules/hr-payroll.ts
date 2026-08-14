@@ -947,15 +947,34 @@ export interface PayrollAdjustmentDto {
 // OWED (submitted), and that it was MADE (decided) — the two points where one person is waiting on
 // another. Adding more would be inventing an audience.
 
+//
+// P-HR-16 ADDS THE RUN'S OWN LIFECYCLE, for the same reason and by the same rule. P-HR-10 built
+// freeze → approve → pay → close and every one of those transitions happened in silence: the
+// person holding `payrollRun.approve` learned that a month was frozen and waiting for them by
+// opening the screen, exactly as an approver used to learn about a bonus.
+//
+// THREE MOMENTS, NOT SIX. The test is unchanged — a real transition where somebody is thereby
+// waiting to act — and the recipient is derived from the permission governing the NEXT act:
+// frozen → whoever may approve, approved → whoever may pay, paid → whoever may close it. Creating
+// a draft, closing a finished month and cancelling a run publish nothing: the first is a private
+// working note, the second is terminal, and the third is an act by somebody already looking at
+// the row.
+
 export const HrPayrollTemplates = {
   AdjustmentSubmitted: 'hr.payroll.adjustmentSubmitted',
   AdjustmentDecided: 'hr.payroll.adjustmentDecided',
+  RunFrozen: 'hr.payroll.runFrozen',
+  RunApproved: 'hr.payroll.runApproved',
+  RunPaid: 'hr.payroll.runPaid',
 } as const;
 export type HrPayrollTemplateKey = (typeof HrPayrollTemplates)[keyof typeof HrPayrollTemplates];
 
 export const HrPayrollEvents = {
   AdjustmentSubmitted: 'hr.payroll.adjustmentSubmitted',
   AdjustmentDecided: 'hr.payroll.adjustmentDecided',
+  RunFrozen: 'hr.payroll.runFrozen',
+  RunApproved: 'hr.payroll.runApproved',
+  RunPaid: 'hr.payroll.runPaid',
 } as const;
 export type HrPayrollEventName = (typeof HrPayrollEvents)[keyof typeof HrPayrollEvents];
 
@@ -989,4 +1008,24 @@ export const PayrollAdjustmentDecidedPayloadV1 = z.object({
   amount: MoneyAmountSchema,
   currency: MoneyCurrencySchema,
   decision: z.enum(['approved', 'rejected']),
+});
+
+/**
+ * The run's three lifecycle facts (P-HR-16) — one payload shape, because they carry one fact.
+ *
+ * NO AMOUNT, and that is not an omission. A run has no total of its own: the figures are the
+ * payslips', issued from the frozen run and read behind `employee.viewCompensation`. The event
+ * says WHICH month reached WHICH state; anything more would be a second copy of money that lives
+ * somewhere it is already governed.
+ *
+ * `by` is the actor, carried because every one of these transitions is somebody's decision and the
+ * two-person rule (the freezer may not approve) is a fact about who acted rather than about who
+ * may. A consumer that re-read the run would get its CURRENT actor, which after the next
+ * transition is a different person.
+ */
+export const PayrollRunLifecyclePayloadV1 = z.object({
+  runId: objectId(),
+  period: adjustmentPeriod,
+  status: PayrollRunStatusSchema,
+  by: objectId(),
 });

@@ -2250,12 +2250,30 @@ describe('payroll adjustments (P-HR-04)', () => {
      * PY-9, restated for this use case: a closed month cannot gain a figure afterwards. That is
      * what makes "forward" the only direction a correction can travel — not a convention.
      */
+    /**
+     * A month of its own, frozen here — the convention every other block in this file follows.
+     *
+     * Borrowing PY-6's frozen month looked cheaper and was wrong: that block also CANCELS its run,
+     * and a cancelled run is not a frozen period, so the borrowed state evaporates depending on
+     * test order. It also has to be a month that has ENDED, because the run service refuses to
+     * freeze one that has not — which rules out picking a comfortably distant future month.
+     */
     it('cannot be recorded against the month that was already paid', async () => {
-      // The month PY-6's block above froze. Reused rather than frozen again here, for two reasons:
-      // a run can only be frozen once its last day has passed — so a future month cannot stand in —
-      // and creating a second frozen period would put state in this database that nothing needs.
+      const period = '2026-02';
+      const run = await request(app)
+        .post('/api/v1/hr/payroll/runs')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ period });
+      expect(run.status, JSON.stringify(run.body)).toBe(201);
+      const created = run.body.data as PayrollRunDto;
+      const frozen = await request(app)
+        .post(`/api/v1/hr/payroll/runs/${created.id}/freeze`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ version: created.version });
+      expect(frozen.status, JSON.stringify(frozen.body)).toBe(200);
+
       const refused = await record({
-        period: '2026-04',
+        period,
         kind: 'bonus',
         amount: 200,
         currency: 'EGP',

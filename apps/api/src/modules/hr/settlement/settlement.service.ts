@@ -26,7 +26,7 @@ import {
 import { BusinessRuleError } from '../../../shared/errors';
 import { type ScopeSelector } from '../../../shared/types';
 import { dateOnlyIso, toDateOnly } from '../shared/business-date';
-import { employeeRepository } from '../employee-management/employees';
+import { employeeRepository, type EmployeeDoc } from '../employee-management/employees';
 import { compensationService } from '../payroll/compensation';
 import { payrollAdjustmentService } from '../payroll/adjustments';
 import { payrollRunService } from '../payroll/runs/payroll-run.service';
@@ -84,7 +84,7 @@ class SettlementService {
       finalPeriod,
       finalPeriodFrozen: frozen.includes(exitPeriod),
       outstandingLoan: await this.loanFor(employeeId, scope),
-      expiredLeave: await this.leaveFor(employeeId, exit.effectiveDate),
+      expiredLeave: await this.leaveFor(employeeId, employee),
       pendingAdjustments: await this.pendingAdjustmentsFor(employeeId, exitPeriod, scope),
       unresolved: [...UNRESOLVED],
     };
@@ -159,22 +159,47 @@ class SettlementService {
    * oversight, and the reason `leaveEncashment` sits in `unresolved` above. This reports the days
    * that were lost so the question is visible to whoever settles, without answering it.
    */
-  private async leaveFor(employeeId: string, exitDate: Date): Promise<SettlementLeaveBalanceDto[]> {
+  private async leaveFor(
+    employeeId: string,
+    employee: EmployeeDoc,
+  ): Promise<SettlementLeaveBalanceDto[]> {
     // The LEDGER, not the balance. `expireAllFor` zeroes the balance, so asking it after an exit
     // reports that nothing was lost — the entries it wrote are the only surviving record of what
     // was. Filtered to `expire`: a grant or a consumption is not something a settlement is about.
-    const page = await leaveBalanceService.ledgerFor(employeeId, {
-      year: exitDate.getUTCFullYear(),
-      page: 1,
-      pageSize: 200,
-    });
-    return page.items
-      .filter((row) => row.kind === 'expire' && row.days > 0)
-      .map((row) => ({
-        typeId: String(row.typeId),
-        year: row.year,
-        expiredDays: row.days,
-      }));
+    //
+    // NOT FILTERED BY THE EXIT'S YEAR, and that distinction is the whole correctness of this read.
+    // `expireAllFor` stamps each entry with the BALANCE's year — the year the days belonged to —
+    // which is not the year somebody left in. A balance granted for 2026 that is expired by an
+    // exit dated 2025 is written as 2026, so asking for 2025 finds nothing and the screen reports
+    // that no leave was lost. Every expired day is reported instead, each carrying its own year.
+    const page = await leaveBalanceService.ledgerFor(employeeId, { page: 1, pageSize: 200 });
+
+    // Only what THIS employment lost. A rehired employee carries the previous exit's entries too,
+    // and those were settled at the time — scoped by the current period's hire year, because a
+    // balance granted during this employment cannot belong to a year before it began.
+    const hiredAt = employee.employmentPeriods.reduce<Date | null>(
+      (latest, period) =>
+        latest === null || period.hiredAt > latest ? period.hiredAt : latest,
+      null,
+    );
+    const fromYear = hiredAt === null ? Number.NEGATIVE_INFINITY : hiredAt.getUTCFullYear();
+
+    // Summed per type and year: one exit writes at most one entry per balance, but a rehire inside
+    // the same calendar year can produce a second, and two rows for one type-and-year would read
+    // as two separate losses.
+    const byKey = new Map<string, SettlementLeaveBalanceDto>();
+    for (const row of page.items) {
+      if (row.kind !== 'expire' || row.days <= 0 || row.year < fromYear) continue;
+      const typeId = String(row.typeId);
+      const key = `${typeId}:${String(row.year)}`;
+      const found = byKey.get(key);
+      if (found === undefined) {
+        byKey.set(key, { typeId, year: row.year, expiredDays: row.days });
+      } else {
+        found.expiredDays += row.days;
+      }
+    }
+    return [...byKey.values()];
   }
 }
 

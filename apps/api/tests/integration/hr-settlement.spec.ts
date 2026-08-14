@@ -364,8 +364,15 @@ describe('a leaver who still owes money', () => {
     expect(summary.expiredLeave.length).toBeGreaterThan(0);
     for (const row of summary.expiredLeave) {
       expect(row.expiredDays).toBeGreaterThan(0);
-      expect(row.year).toBe(2025);
       expect(row.typeId.length).toBeGreaterThan(0);
+      /**
+       * The year is the BALANCE's, not the exit's — and pinning a literal here would be wrong
+       * twice over. `expireAllFor` stamps each entry with the year the days belonged to, and the
+       * hire-time grant lands for whatever year the suite runs in, so `2025` (this leaver's exit
+       * year) is not it. Asserting only that it is a real year at or after the hire year is the
+       * strongest claim that stays true whenever this suite is run.
+       */
+      expect(row.year).toBeGreaterThanOrEqual(2024);
     }
 
     // …and the balance really is zero, which is why the ledger had to be read.

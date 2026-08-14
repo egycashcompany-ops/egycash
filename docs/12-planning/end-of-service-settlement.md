@@ -127,6 +127,12 @@ Each states the rule, the data it needs, and where it would live. **None is gues
   whether any cap applies.
 * **Data needed:** the balances — **available**, and currently **expired** with a ledger entry
   reading `employee exited`. The rate — available from the leave-pay engine (PY-5).
+* **A trap worth recording, because it cost a red CI run:** `expireAllFor` stamps each ledger entry
+  with the **balance's** year (`row.year`), not the exit's. A balance granted for 2026 that is
+  expired by an exit dated 2025 is written as 2026 — so reading the ledger "for the exit year"
+  reports that nothing was lost, which is the most misleading answer this screen could give. Every
+  expired entry is read instead, each carrying its own year, scoped to the current employment
+  period so a rehired employee's earlier exit is not counted again.
 * **Where it would live:** the expiry would become a paid-out branch, or an earning on the exit
   month. **The current behaviour is a real decision, not an oversight: today the balance is expired,
   which means unused leave is NOT paid.** If that is wrong, it is wrong now and this is the rule that
@@ -184,6 +190,7 @@ migration, no new permission — reading a leaver's money is reading pay, which
 | loan already settled | reports no outstanding balance |
 | loan never disbursed | reports none — it was cancelled, not owed |
 | leave balances | reports what the exit expired, read from the ledger (the balance is zeroed) |
+| the expired entry's year | the **balance's** year, never the exit's — they routinely differ |
 | undecided adjustment on the exit month | listed |
 | approved adjustment on the exit month | **not** listed separately — it is already a line in `finalPeriod` |
 | frozen exit month | the summary still reads; nothing is written |

@@ -604,6 +604,56 @@ export const seedHrRecruitment = async (): Promise<void> => {
     defaultExpiryHours: null,
   });
 
+  // ── Payroll run lifecycle (P-HR-16) ───────────────────────────────────────
+  //
+  // Each of these is a HANDOVER: the month reached a state, and somebody else's turn began. So the
+  // body says what is now possible rather than what happened, and the recipient is the permission
+  // holding that next act — never a manager, never an employee.
+  //
+  // `inApp` only, and no amount in any body. A payroll month is administrative work done at a
+  // screen, and emailing every approver about every month would train them to ignore the inbox;
+  // the figures are the payslips', behind the compensation key. `{{period}}` is the only variable
+  // any of them needs, because it is the only thing that identifies the run to a human.
+  await notificationTemplateService.ensure({
+    key: HrPayrollTemplates.RunFrozen,
+    category: 'hr',
+    priority: 'normal',
+    subject: { ar: 'دورة رواتب مجمّدة بانتظار الاعتماد', en: 'Frozen payroll run awaiting approval' },
+    body: {
+      ar: 'دورة رواتب شهر {{period}} جُمّدت وبانتظار اعتمادك.',
+      en: 'The payroll run for {{period}} is frozen and awaiting your approval.',
+    },
+    channels: ['inApp'],
+    variables: ['period'],
+    defaultExpiryHours: null,
+  });
+  await notificationTemplateService.ensure({
+    key: HrPayrollTemplates.RunApproved,
+    category: 'hr',
+    priority: 'normal',
+    subject: { ar: 'دورة رواتب معتمدة بانتظار تسجيل الصرف', en: 'Approved payroll run awaiting payment' },
+    body: {
+      ar: 'دورة رواتب شهر {{period}} اعتُمدت وبانتظار تسجيل الصرف.',
+      en: 'The payroll run for {{period}} is approved and awaiting the payment record.',
+    },
+    channels: ['inApp'],
+    variables: ['period'],
+    defaultExpiryHours: null,
+  });
+  await notificationTemplateService.ensure({
+    key: HrPayrollTemplates.RunPaid,
+    category: 'hr',
+    priority: 'normal',
+    subject: { ar: 'دورة رواتب مصروفة بانتظار الإغلاق', en: 'Paid payroll run awaiting close' },
+    body: {
+      ar: 'دورة رواتب شهر {{period}} سُجّل صرفها ويمكن إغلاقها الآن.',
+      en: 'The payroll run for {{period}} is recorded as paid and can now be closed.',
+    },
+    channels: ['inApp'],
+    variables: ['period'],
+    defaultExpiryHours: null,
+  });
+
   // ── Loan decisions (P-HR-07) ──────────────────────────────────────────────
   //
   // `disbursed` is the one that carries a consequence: from that moment a schedule exists and

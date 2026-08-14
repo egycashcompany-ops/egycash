@@ -2450,4 +2450,110 @@ describe('payroll run governance (P-HR-10)', () => {
     }
   }, 240_000);
 
+  /**
+   * The lifecycle announces itself (P-HR-16).
+   *
+   * P-HR-10 built four transitions and every one of them happened in silence: whoever holds
+   * `payrollRun.approve` learned that a month was frozen and was waiting for them by opening the
+   * screen and looking — the same gap P-HR-07 closed for adjustments, in a feature built after it.
+   *
+   * What these cases pin is not that a notice exists, but WHICH acts produce one. Three do, and
+   * three deliberately do not: creating a draft is a private working note, closing a finished month
+   * is terminal, and cancelling is an act by somebody already looking at the row.
+   */
+  describe('the lifecycle notices (P-HR-16)', () => {
+    // A month of its own: past (so it can be frozen) and touched by no other block in this file.
+    const NOTICE_PERIOD = '2025-12';
+    let noticeRunId = '';
+    let noticeVersion = 0;
+
+    const inboxCount = async (token: string): Promise<number> => {
+      const res = await request(app)
+        .get('/api/v1/platform/notifications')
+        .query({ pageSize: 100 })
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      return (res.body as { data: unknown[] }).data.length;
+    };
+
+    const act = (suffix: string, body: object, token = adminToken) =>
+      request(app)
+        .post(`/api/v1/hr/payroll/runs/${noticeRunId}/${suffix}`)
+        .set('Authorization', `Bearer ${token}`)
+        .send(body);
+
+    it('says nothing when a draft run is created', async () => {
+      const before = await inboxCount(approverToken);
+      const created = await request(app)
+        .post('/api/v1/hr/payroll/runs')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ period: NOTICE_PERIOD });
+      expect(created.status, JSON.stringify(created.body)).toBe(201);
+      const run = created.body.data as PayrollRunDto;
+      noticeRunId = run.id;
+      noticeVersion = run.version;
+
+      // A draft is nobody's turn yet — the same reasoning that keeps a draft adjustment silent.
+      expect(await inboxCount(approverToken)).toBe(before);
+    }, 240_000);
+
+    /**
+     * Each handover reaches whoever holds the key for the NEXT act.
+     *
+     * The approver in this block holds every key, so all three notices land in the same inbox —
+     * which is what makes counting them a fair test of how many were sent, rather than of who
+     * happens to hold what.
+     */
+    it('tells the approver when the month is frozen, and the payer when it is approved', async () => {
+      const beforeFreeze = await inboxCount(approverToken);
+      const frozen = await act('freeze', { version: noticeVersion });
+      expect(frozen.status, JSON.stringify(frozen.body)).toBe(200);
+      noticeVersion = (frozen.body.data as PayrollRunDto).version;
+      const afterFreeze = await inboxCount(approverToken);
+      expect(afterFreeze).toBeGreaterThan(beforeFreeze);
+
+      const approved = await act('approve', { version: noticeVersion }, approverToken);
+      expect(approved.status, JSON.stringify(approved.body)).toBe(200);
+      noticeVersion = (approved.body.data as PayrollRunDto).version;
+      expect(await inboxCount(approverToken)).toBeGreaterThan(afterFreeze);
+    }, 240_000);
+
+    it('and tells whoever may close it once the payment is recorded', async () => {
+      const before = await inboxCount(approverToken);
+      const paid = await act('pay', { paidOn: '2026-01-05', version: noticeVersion });
+      expect(paid.status, JSON.stringify(paid.body)).toBe(200);
+      noticeVersion = (paid.body.data as PayrollRunDto).version;
+      expect(await inboxCount(approverToken)).toBeGreaterThan(before);
+    }, 240_000);
+
+    /**
+     * IDEMPOTENCY, where it lives: the state machine, not the notifier.
+     *
+     * The status guard runs before the write and never consults the version, so a repeat is
+     * refused at a stale version and at a fresh one alike — and neither adds anything to an inbox.
+     */
+    it('and a refused repeat announces nothing, at any version', async () => {
+      const stale = noticeVersion - 1;
+      const after = await inboxCount(approverToken);
+      for (const [suffix, body] of [
+        ['freeze', {}],
+        ['approve', {}],
+        ['pay', { paidOn: '2026-01-05' }],
+      ] as const) {
+        expect((await act(suffix, { ...body, version: noticeVersion }, approverToken)).status, suffix).toBe(422);
+        expect((await act(suffix, { ...body, version: stale }, approverToken)).status, `${suffix} stale`).toBe(422);
+      }
+      expect(await inboxCount(approverToken)).toBe(after);
+    }, 240_000);
+
+    /** Closing is terminal: nothing follows it, so nobody is waiting to hear about it. */
+    it('and says nothing when the month is closed', async () => {
+      const before = await inboxCount(approverToken);
+      const closed = await act('close', { version: noticeVersion });
+      expect(closed.status, JSON.stringify(closed.body)).toBe(200);
+      expect((closed.body.data as PayrollRunDto).status).toBe('closed');
+      expect(await inboxCount(approverToken)).toBe(before);
+    }, 240_000);
+  });
+
 });

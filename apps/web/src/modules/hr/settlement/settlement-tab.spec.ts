@@ -24,10 +24,14 @@ const stripComments = (source: string): string =>
   source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|\s)\/\/.*$/gm, '');
 
 const TAB = stripComments(read('./components/EmployeeSettlementTab.tsx'));
+const QUEUE = stripComments(read('./components/SettlementQueueTable.tsx'));
 const API = stripComments(read('./api/settlement-api.ts'));
 const QUERIES = stripComments(read('./api/settlement-queries.ts'));
 const PROFILE = stripComments(
   read('../employee-management/employees/pages/EmployeeProfilePage.tsx'),
+);
+const LIST = stripComments(
+  read('../employee-management/employees/pages/EmployeesListPage.tsx'),
 );
 
 describe('wired into the profile the way every additive tab is', () => {
@@ -90,10 +94,14 @@ describe('it quotes; it does not compute', () => {
 
 describe('it is a read, and offers no act', () => {
   /** One GET, no mutation hook, and no mutation to hang one on. */
-  it('calls one endpoint and no other', () => {
+  it('calls reads and no other verb', () => {
     expect(API).toContain('/settlement');
-    const calls = [...API.matchAll(/\b(get|post|patch|del|put)</g)].map((m) => m[1]);
-    expect(calls).toEqual(['get']);
+    // P-HR-17 added the queue read, so the count grew. What must not appear is any verb that
+    // writes — stated over the distinct set rather than over a length.
+    const calls = [...API.matchAll(/\b(get|getPage|post|patch|del|put)</g)].map((m) => m[1]);
+    expect(calls.length).toBeGreaterThan(0);
+    expect([...new Set(calls)].sort()).toEqual(['get', 'getPage']);
+    expect(API).toContain('/hr/employees/settlement-queue');
   });
 
   it('and has no mutation, so nothing on the screen can change anything', () => {
@@ -143,6 +151,53 @@ describe('the amounts nobody has a rule for stay absent (design §5)', () => {
   });
 });
 
+describe('the queue is a view on the employees list, not a screen of its own (P-HR-17)', () => {
+  /**
+   * NO NEW PAGE, and that is a decision rather than a shortcut.
+   *
+   * A page must have a permission pointing at it, and `pageId` is declared per resource. The only
+   * key that fits this screen is `employee.viewCompensation`, which belongs to the employee
+   * resource whose page is the employee file — where compensation is actually administered.
+   * Re-pointing it would make the permission matrix say something untrue.
+   */
+  it('adds no route of its own and rides the existing view filter', () => {
+    expect(LIST).toContain("type View = 'employed' | 'exited' | 'all' | 'toSettle';");
+    expect(LIST).toContain("t('employees.view.toSettle')");
+    // Its own chunk, like every additive surface.
+    expect(LIST).toContain("import('../../../settlement/components/SettlementQueueTable')");
+  });
+
+  /** Offered only to somebody who may read pay — the server refuses the read otherwise anyway. */
+  it('is offered and honoured only behind the compensation key', () => {
+    expect(LIST).toContain("can('employee.viewCompensation')");
+    expect(LIST).toContain('{canSettle && <option value="toSettle">');
+    // …and a caller without it cannot reach the view by typing the query parameter.
+    expect(LIST).toContain("viewRaw === 'toSettle' && canSettle");
+  });
+
+  /**
+   * THE ROW STATES NO MONEY.
+   *
+   * The summary quotes figures because that is what a settlement is. A queue says who and why; the
+   * amounts are one click away behind the same key, and putting them on a list would be a second
+   * place for the same money to be read.
+   */
+  it('and shows reasons rather than amounts', () => {
+    expect(QUEUE).toContain('hasOutstandingLoan');
+    expect(QUEUE).toContain('finalPeriodOpen');
+    for (const word of ['formatMoney', 'remaining', 'Minor', 'totalEarnings', 'net']) {
+      expect(QUEUE, word).not.toContain(word);
+    }
+  });
+
+  /** A read, like everything else in this feature: no mutation and no export. */
+  it('and writes nothing, exports nothing', () => {
+    for (const word of ['useMutation', '.mutate(', '<Dialog', 'download', 'csv', 'pdf']) {
+      expect(QUEUE.toLowerCase(), word).not.toContain(word.toLowerCase());
+    }
+  });
+});
+
 describe('both locales can say it', () => {
   const KEYS = [
     'employees.tabs.settlement',
@@ -173,6 +228,15 @@ describe('both locales can say it', () => {
     'settlement.unresolved.leaveEncashment.why',
     'settlement.unresolved.noticePeriod',
     'settlement.unresolved.noticePeriod.why',
+    'employees.view.toSettle',
+    'settlement.queue.hint',
+    'settlement.queue.empty',
+    'settlement.queue.exitType',
+    'settlement.queue.exitDate',
+    'settlement.queue.reasons',
+    'settlement.queue.loanOwing',
+    'settlement.queue.periodOpen',
+    'settlement.queue.nothingFlagged',
   ];
 
   it('resolves in Arabic and English', () => {

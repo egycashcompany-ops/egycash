@@ -598,6 +598,42 @@ export interface SettlementLeaveBalanceDto {
 }
 
 /**
+ * The settlement queue's filters (P-HR-17) — every one of them already supported.
+ *
+ * Deliberately a SUBSET of the employees list's: search, branch and department, because those are
+ * what the employee repository already filters on and this phase adds no filter of its own. There
+ * is no `exitType` here for exactly that reason — it would mean widening a query the employees
+ * feature owns, for a screen that is only a read over it.
+ */
+export const ListSettlementQueueQuerySchema = PaginationQuerySchema.extend({
+  search: z.string().max(100).optional(),
+  branchId: objectId().optional(),
+  departmentId: objectId().optional(),
+}).strict();
+export type ListSettlementQueueQuery = z.infer<typeof ListSettlementQueueQuerySchema>;
+
+/**
+ * One leaver waiting to be settled.
+ *
+ * NO AMOUNT ANYWHERE, and that is the row's whole discipline: not the balance, not the final pay,
+ * not a total. A queue exists to say WHO and WHY; the figures are one click away on the settlement
+ * screen, behind the same key, and restating them here would be a second place for the same money
+ * to be read — and a second thing that could disagree.
+ */
+export interface SettlementQueueRowDto {
+  employeeId: string;
+  employeeCode: string;
+  employeeName: string;
+  exitType: EmployeeExitType;
+  effectiveDate: string;
+  exitPeriod: string;
+  /** Money was still owed when they left (D8) — a fact somebody must act on outside this system. */
+  hasOutstandingLoan: boolean;
+  /** The exit month's run is not frozen, so its figures can still change. */
+  finalPeriodOpen: boolean;
+}
+
+/**
  * An adjustment on the exit month that NOBODY HAS DECIDED YET.
  *
  * Only the undecided ones, and that is the whole point of the field. An approved adjustment is

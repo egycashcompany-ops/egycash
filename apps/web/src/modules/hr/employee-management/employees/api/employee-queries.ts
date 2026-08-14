@@ -25,10 +25,18 @@ import { type EmployeeListParams } from './employee-api';
 const MODULE = 'hr';
 const FEATURE = 'employees';
 
-export const useEmployees = (params: EmployeeListParams) =>
+/**
+ * `enabled` defaults to true, so every existing caller is unchanged.
+ *
+ * P-HR-17 needs it off: the settlement-queue view on the employees list is served by its own
+ * endpoint, and leaving this read running underneath it would fetch a page of employees nothing
+ * renders.
+ */
+export const useEmployees = (params: EmployeeListParams, enabled = true) =>
   useQuery({
     queryKey: listKey(MODULE, FEATURE, params),
     queryFn: () => api.listEmployees(params),
+    enabled,
     placeholderData: (prev) => prev,
   });
 

@@ -1679,6 +1679,7 @@ const en: Record<string, string> = {
   'employees.view.employed': 'Employed',
   'employees.view.exited': 'Exited',
   'employees.view.all': 'All',
+  'employees.view.toSettle': 'Awaiting settlement',
   'employees.filters.anyStatus': 'Any status',
   'employees.columns.name': 'Name',
   'employees.columns.origin': 'Origin',
@@ -2360,6 +2361,17 @@ const en: Record<string, string> = {
   'settlement.unresolved.noticePeriod': 'Notice period',
   'settlement.unresolved.noticePeriod.why':
     'Its length is not recorded anywhere, so pay in lieu cannot be derived.',
+  // The queue (P-HR-17). It names people and reasons, never amounts — the figures are on the
+  // settlement tab a row links to.
+  'settlement.queue.hint':
+    'Everyone who has left. Settling is a manual act, so a person stays here until it is done — open a row to see their settlement.',
+  'settlement.queue.empty': 'Nobody has left.',
+  'settlement.queue.exitType': 'Exit type',
+  'settlement.queue.exitDate': 'Last day',
+  'settlement.queue.reasons': 'Still open',
+  'settlement.queue.loanOwing': 'Loan outstanding',
+  'settlement.queue.periodOpen': 'Final month not frozen',
+  'settlement.queue.nothingFlagged': 'Nothing flagged',
   'contracts.module.title': 'Contracts',
   'contracts.list.subtitle':
     'Employment contracts — drafts, generated documents and the amendment chains.',
@@ -5945,6 +5957,7 @@ const ar: Record<string, string> = {
   'employees.view.employed': 'على رأس العمل',
   'employees.view.exited': 'منتهو الخدمة',
   'employees.view.all': 'الكل',
+  'employees.view.toSettle': 'بانتظار التسوية',
   'employees.filters.anyStatus': 'كل الحالات',
   'employees.columns.name': 'الاسم',
   'employees.columns.origin': 'مصدر التعيين',
@@ -6608,6 +6621,16 @@ const ar: Record<string, string> = {
     'اليوم يُنهى الرصيد غير المستخدم عند الخروج ولا يُصرف. تغيير ذلك قرار سياسات.',
   'settlement.unresolved.noticePeriod': 'مهلة الإخطار',
   'settlement.unresolved.noticePeriod.why': 'مدتها غير مسجّلة في أي مكان، فلا يمكن اشتقاق بدل عنها.',
+  // طابور التسوية (P-HR-17): أسماء وأسباب لا مبالغ — الأرقام على تبويب التسوية الذي يفتحه الصف.
+  'settlement.queue.hint':
+    'كل من غادر. التسوية إجراء يدوي، فيبقى الموظف هنا حتى تتم — افتح الصف لعرض تسويته.',
+  'settlement.queue.empty': 'لا يوجد من غادر.',
+  'settlement.queue.exitType': 'نوع الخروج',
+  'settlement.queue.exitDate': 'آخر يوم عمل',
+  'settlement.queue.reasons': 'ما زال مفتوحًا',
+  'settlement.queue.loanOwing': 'قرض قائم',
+  'settlement.queue.periodOpen': 'الشهر الأخير غير مجمّد',
+  'settlement.queue.nothingFlagged': 'لا ملاحظات',
   'contracts.module.title': 'العقود',
   'contracts.list.subtitle': 'عقود العمل — المسودات والمستندات المُنشأة وسلاسل التعديل.',
   'contracts.list.new': 'عقد جديد',

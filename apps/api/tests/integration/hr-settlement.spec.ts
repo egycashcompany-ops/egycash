@@ -27,6 +27,7 @@ import {
   type EmployeeSettlementDto,
   type PayrollAdjustmentDto,
   type PayrollRunDto,
+  type SettlementQueueRowDto,
 } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { buildApp } from '../../src/app';
@@ -567,6 +568,109 @@ describe('who may read it, and who has nothing to settle', () => {
 
   it('and refuses an unauthenticated caller', async () => {
     const res = await request(app).get('/api/v1/hr/employees/000000000000000000000000/settlement');
+    expect(res.status).toBe(401);
+  }, 60_000);
+});
+
+/**
+ * The queue (P-HR-17) — the opposite question to the summary above.
+ *
+ * The summary needs a name to start from; this produces the names. What these cases pin is that it
+ * lists LEAVERS and only leavers, that each row says why it is there without restating a single
+ * amount, and that it sits behind the same compensation key rather than a new one.
+ */
+describe('the settlement queue', () => {
+  const queue = (params: Record<string, string | number> = {}, token = adminToken) =>
+    request(app)
+      .get('/api/v1/hr/employees/settlement-queue')
+      .query({ page: 1, pageSize: 50, ...params })
+      .set('Authorization', `Bearer ${token}`);
+
+  const rowsOf = async (params: Record<string, string | number> = {}): Promise<SettlementQueueRowDto[]> => {
+    const res = await queue(params);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    return res.body.data as SettlementQueueRowDto[];
+  };
+
+  /**
+   * The path is one segment, so `GET /:id` on the employees router would otherwise swallow it and
+   * try to read an employee whose id is the word "settlement-queue". Proving it resolves to the
+   * queue is proving the mount order holds.
+   */
+  it('resolves as its own route rather than as an employee id', async () => {
+    const res = await queue();
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body.meta).toBeDefined();
+  }, 120_000);
+
+  it('lists the leavers, with their exit facts', async () => {
+    const employeeId = await mkEmployee('موظف الطابور');
+    await exitEmployee(employeeId, '2025-07-31', 'termination');
+
+    const row = (await rowsOf()).find((r) => r.employeeId === employeeId);
+    expect(row).toBeDefined();
+    expect(row?.exitType).toBe('termination');
+    expect(row?.effectiveDate).toBe('2025-07-31');
+    expect(row?.exitPeriod).toBe('2025-07');
+    expect(row?.employeeCode.length).toBeGreaterThan(0);
+  }, 240_000);
+
+  /** Somebody still employed has nothing to settle, so they are not in a queue about settling. */
+  it('and never lists somebody who is still employed', async () => {
+    const employeeId = await mkEmployee('موظف مستمر بالعمل');
+    expect((await rowsOf()).some((r) => r.employeeId === employeeId)).toBe(false);
+    // …not even when the search names them directly.
+    expect((await rowsOf({ search: 'موظف مستمر بالعمل' })).length).toBe(0);
+  }, 240_000);
+
+  /** The reason a row is open, quoted from the loans feature — never recomputed here. */
+  it('flags the leaver who left owing money, and not the one who did not', async () => {
+    const owing = await mkEmployee('موظف مدين للطابور');
+    const loan = await activeLoan(owing, {
+      type: 'loan',
+      principal: 2_000,
+      currency: 'EGP',
+      installmentCount: 2,
+      firstPeriod: '2025-07',
+      reason: 'queue — outstanding at exit',
+    });
+    expect(loan.id.length).toBeGreaterThan(0);
+    await exitEmployee(owing, '2025-06-30');
+    await waitFor(async () => {
+      const row = (await rowsOf()).find((r) => r.employeeId === owing);
+      return row?.hasOutstandingLoan === true;
+    });
+
+    const clear = await mkEmployee('موظف غير مدين للطابور');
+    await exitEmployee(clear, '2025-06-30');
+
+    const rows = await rowsOf();
+    expect(rows.find((r) => r.employeeId === owing)?.hasOutstandingLoan).toBe(true);
+    expect(rows.find((r) => r.employeeId === clear)?.hasOutstandingLoan).toBe(false);
+  }, 240_000);
+
+  /**
+   * NO AMOUNT REACHES THIS LIST.
+   *
+   * Asserted over the payload itself rather than over the DTO's type, because the risk is a field
+   * arriving at runtime that the screen then shows — a balance on a queue row would be a second
+   * place for the same money to be read, and one that could disagree with the settlement screen.
+   */
+  it('and states no figure of any kind', async () => {
+    const body = JSON.stringify(await rowsOf()).toLowerCase();
+    for (const word of ['remaining', 'minor', 'amount', 'total', 'salary', 'currency']) {
+      expect(body, word).not.toContain(word);
+    }
+  }, 120_000);
+
+  /** Reading a leaver's settlement is reading pay — the queue is behind the same key, not a new one. */
+  it('refuses a caller who may see employees but not their pay', async () => {
+    expect((await queue({}, outsiderToken)).status).toBe(403);
+  }, 120_000);
+
+  it('and refuses an unauthenticated caller', async () => {
+    const res = await request(app).get('/api/v1/hr/employees/settlement-queue');
     expect(res.status).toBe(401);
   }, 60_000);
 });

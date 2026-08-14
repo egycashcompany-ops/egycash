@@ -4,6 +4,7 @@
 // summary reflects four other features, so it is refetched when the tab is opened rather than kept
 // warm — a settlement read minutes ago could already be stale if somebody approved an adjustment.
 import { useQuery } from '@tanstack/react-query';
+import { type QueryParams } from '../../../../shared/lib/api-client';
 import * as api from './settlement-api';
 
 const MODULE = 'hr';
@@ -14,4 +15,13 @@ export const useEmployeeSettlement = (employeeId: string) =>
     queryKey: [MODULE, FEATURE, employeeId],
     queryFn: () => api.getEmployeeSettlement(employeeId),
     enabled: employeeId !== '',
+  });
+
+/** The queue (P-HR-17). `enabled` is the caller's, because it is one view among several. */
+export const useSettlementQueue = (params: QueryParams, enabled: boolean) =>
+  useQuery({
+    queryKey: [MODULE, FEATURE, 'queue', params],
+    queryFn: () => api.listSettlementQueue(params),
+    enabled,
+    placeholderData: (prev) => prev,
   });

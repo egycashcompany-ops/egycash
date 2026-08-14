@@ -18,6 +18,9 @@
 import {
   type CompensationEffectsDto,
   type EmployeeSettlementDto,
+  type ListSettlementQueueQuery,
+  type Paginated,
+  type SettlementQueueRowDto,
   type SettlementLeaveBalanceDto,
   type SettlementLoanDto,
   type SettlementPendingAdjustmentDto,
@@ -52,6 +55,81 @@ const UNRESOLVED: SettlementUnresolvedItem[] = [
 const periodOf = (date: Date): string => dateOnlyIso(toDateOnly(date)).slice(0, 7);
 
 class SettlementService {
+  /**
+   * WHO is waiting to be settled (P-HR-17) — the opposite question to the summary below.
+   *
+   * The summary answers "what does this person's settlement consist of?" and is reached from their
+   * profile, which means you have to know their name already. This answers "whose settlement has
+   * not happened?", which is the question somebody doing the settling actually starts from.
+   *
+   * IT STATES NO AMOUNT. Not the balance, not the final pay. A queue exists to say who and why;
+   * the figures are one click away on the settlement screen behind the same key, and a list that
+   * restated them would be a second place for the same money to be read.
+   */
+  async queue(
+    query: ListSettlementQueueQuery,
+    scope: ScopeSelector,
+  ): Promise<Paginated<SettlementQueueRowDto>> {
+    // The employees feature's own read, with `employed: false` — which IS "has exited". Nothing
+    // here re-derives who has left, and no filter was added to that query for this screen.
+    const page = await employeeRepository.listEmployees({
+      filter: {
+        employed: false,
+        ...(query.search === undefined ? {} : { search: query.search }),
+        ...(query.branchId === undefined ? {} : { branchId: [query.branchId] }),
+        ...(query.departmentId === undefined ? {} : { departmentId: query.departmentId }),
+      },
+      page: query.page,
+      pageSize: query.pageSize,
+      sortBy: query.sortBy ?? 'hiredAt',
+      sortDir: query.sortDir ?? 'desc',
+      scope,
+    });
+
+    // One call for the whole page — which months are settled is a property of the runs, not of
+    // any employee.
+    const frozen = await payrollRunService.frozenPeriods();
+
+    const items: SettlementQueueRowDto[] = [];
+    for (const employee of page.items) {
+      const exit = employee.exit;
+      // `employed: false` is the exit filter, so this cannot normally be null. It is skipped rather
+      // than asserted because a row with no exit has nothing to settle and inventing an exit month
+      // for it would be worse than leaving it out.
+      if (exit === null) continue;
+      const exitPeriod = periodOf(exit.effectiveDate);
+      items.push({
+        employeeId: String(employee._id),
+        employeeCode: employee.code,
+        employeeName: employee.personal.fullNameAr,
+        exitType: exit.type,
+        effectiveDate: dateOnlyIso(toDateOnly(exit.effectiveDate)),
+        exitPeriod,
+        hasOutstandingLoan: await this.owesAtExit(String(employee._id), scope),
+        finalPeriodOpen: !frozen.includes(exitPeriod),
+      });
+    }
+    return { items, meta: page.meta };
+  }
+
+  /**
+   * Does this leaver still owe money? A point lookup, not a scan.
+   *
+   * ONE QUERY PER ROW, and the exception to P-HR-06's "one query per page" is argued rather than
+   * assumed: the alternative is reading every `outstandingAtExit` loan in the organization, a set
+   * that grows without bound as leavers accumulate and that `MAX_PAGE_SIZE` would silently
+   * truncate — producing a FALSE flag rather than a slow one. This is indexed, exact, and bounded
+   * by the page size.
+   */
+  private async owesAtExit(employeeId: string, scope: ScopeSelector): Promise<boolean> {
+    const page = await employeeLoanService.listForEmployee(
+      employeeId,
+      { page: 1, pageSize: 1, sortDir: 'desc', status: 'outstandingAtExit' },
+      scope,
+    );
+    return page.items.length > 0;
+  }
+
   /**
    * One leaver's settlement summary.
    *

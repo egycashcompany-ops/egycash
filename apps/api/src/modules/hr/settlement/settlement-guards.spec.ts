@@ -35,6 +35,25 @@ const featureFiles = sources(HERE);
 const rel = (file: string): string => file.slice(HERE.length + 1);
 
 describe('the feature is a read, and there is no second half coming', () => {
+  /**
+   * The queue states no money either (P-HR-17).
+   *
+   * The summary quotes figures because that is what a settlement IS. A queue does not: it says who
+   * and why, and the amounts are one click away behind the same key. A balance appearing on a row
+   * would be a second place for the same money to be read — and a second thing that could disagree
+   * with the screen it came from.
+   */
+  it('and the queue row carries no amount at all', () => {
+    const contract = code(CONTRACT);
+    const start = contract.indexOf('export interface SettlementQueueRowDto');
+    expect(start).toBeGreaterThan(-1);
+    const block = contract.slice(start, contract.indexOf('}', start));
+    expect(block).toContain('hasOutstandingLoan: boolean;');
+    for (const field of ['amount', 'remaining', 'Minor', 'total', 'net', 'currency', 'salary']) {
+      expect(block, field).not.toContain(field);
+    }
+  });
+
   it('ships four files and no model, repository or mapper', () => {
     expect(featureFiles.map(rel).sort()).toEqual([
       'index.ts',
@@ -52,11 +71,15 @@ describe('the feature is a read, and there is no second half coming', () => {
    * a payroll adjustment on the exit month, and that already carries a two-person rule and a
    * frozen-period guard. A second approval over the same money is not an improvement.
    */
-  it('exposes exactly one GET and no mutating verb', () => {
+  it('exposes reads only, and no mutating verb', () => {
     const routes = code(resolve(HERE, 'settlement.routes.ts'));
     const verbs = [...routes.matchAll(/router\.(get|post|patch|put|delete)\(/g)].map((m) => m[1]);
-    expect(verbs).toEqual(['get']);
+    // P-HR-17 added a SECOND read (the queue), so the count is no longer one. What this guard
+    // exists to catch is unchanged and is now stated directly: every verb here is a GET.
+    expect(verbs.length).toBeGreaterThan(0);
+    expect([...new Set(verbs)]).toEqual(['get']);
     expect(routes).toContain("'/:id/settlement'");
+    expect(routes).toContain("'/settlement-queue'");
   });
 
   /** …and nothing behind the route writes either, whatever verb ever reaches it. */
@@ -244,7 +267,10 @@ describe('nothing was added to the registry for it', () => {
     expect(manifest).not.toMatch(/declarePermissions\(\s*'hr',\s*'settlement'/);
     const routes = code(resolve(HERE, 'settlement.routes.ts'));
     const gates = [...routes.matchAll(/authorize\('([^']+)'\)/g)].map((m) => m[1]);
-    expect(gates).toEqual(['employee.viewCompensation']);
+    // Both reads, one key. P-HR-17 added the queue behind the same gate rather than a key of its
+    // own — so the assertion is over the distinct set, which is the thing that must not grow.
+    expect(gates.length).toBeGreaterThan(0);
+    expect([...new Set(gates)]).toEqual(['employee.viewCompensation']);
   });
 
   it('and no collection, because it stores nothing', () => {

@@ -591,6 +591,7 @@ describe('the payslip vocabulary', () => {
     const slip = {} as PayslipDto;
     const required: (keyof PayslipDto)[] = [
       'runId',
+      'runStatus',
       'period',
       'employeeId',
       'employee',
@@ -607,7 +608,7 @@ describe('the payslip vocabulary', () => {
       'issuedBy',
     ];
     // A compile-time assertion: the list above is only writable if every key exists on the DTO.
-    expect(required.length).toBe(15);
+    expect(required.length).toBe(16);
     expect(slip).toBeDefined();
   });
 
@@ -616,6 +617,7 @@ describe('the payslip vocabulary', () => {
   it('has no gross, no tax and no payment status', () => {
     const keys: string[] = [
       'runId',
+      'runStatus',
       'period',
       'from',
       'to',
@@ -643,6 +645,24 @@ describe('the payslip vocabulary', () => {
     for (const forbidden of ['gross', 'tax', 'insurance', 'paidAt', 'paymentStatus', 'bankAccount']) {
       expect(keys, forbidden).not.toContain(forbidden);
     }
+  });
+
+  /**
+   * A1 — `runStatus` is the RUN's state, never the payslip's own.
+   *
+   * The distinction matters because one of its values is `paid`, and the test above forbids a
+   * payment status ON the payslip. Both hold at once: this field says what happened to the run the
+   * figures were priced against, and the payslip still records no payment of its own — there is no
+   * `paidAt`, no `paymentStatus` and no bank detail anywhere on it.
+   */
+  it('carries the run’s status as run vocabulary, and adds no payslip state of its own', () => {
+    const slip = { runStatus: 'cancelled' } as PayslipDto;
+    // Only a value the run lifecycle already defines can be assigned — no new word was minted.
+    expect(PAYROLL_RUN_STATUSES).toContain(slip.runStatus as string);
+    expect(PAYROLL_RUN_STATUSES).toContain('cancelled');
+    // And it is nullable rather than defaulted: a run that cannot be read states nothing.
+    const unknown = { runStatus: null } as PayslipDto;
+    expect(unknown.runStatus).toBeNull();
   });
 
   // A payslip is never issued with a blank, so there is nothing deferred to carry.

@@ -20,15 +20,13 @@ export const generatePayslips = async (req: Request, res: Response): Promise<voi
 export const listRunPayslips = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { query, params } = validated<never, ListPayslipsQuery, RunIdParam>(req);
-  okPage(
-    res,
-    await payslipService.listForRun(
-      params.id,
-      query,
-      scopeSelector(ctx, 'employee.viewCompensation'),
-    ),
-    (doc) => payslipService.toDto(doc),
+  const page = await payslipService.listForRun(
+    params.id,
+    query,
+    scopeSelector(ctx, 'employee.viewCompensation'),
   );
+  const runStatus = await payslipService.runStatusReader(page.items);
+  okPage(res, page, (doc) => payslipService.toDto(doc, runStatus(doc)));
 };
 
 /**
@@ -41,15 +39,15 @@ export const listRunPayslips = async (req: Request, res: Response): Promise<void
 export const listEmployeePayslips = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { query, params } = validated<never, ListPayslipsQuery, IdParam>(req);
-  okPage(
-    res,
-    await payslipService.listForEmployee(
-      params.id,
-      query,
-      scopeSelector(ctx, 'employee.viewCompensation'),
-    ),
-    (doc) => payslipService.toDto(doc),
+  const page = await payslipService.listForEmployee(
+    params.id,
+    query,
+    scopeSelector(ctx, 'employee.viewCompensation'),
   );
+  // A1 — the reason this list needed the mark: it spans runs, so a recalculated month shows the
+  // cancelled run's payslip beside the new one.
+  const runStatus = await payslipService.runStatusReader(page.items);
+  okPage(res, page, (doc) => payslipService.toDto(doc, runStatus(doc)));
 };
 
 /**
@@ -68,15 +66,16 @@ export const listMyPayslips = async (req: Request, res: Response): Promise<void>
     ...(query.sortBy === undefined ? {} : { sortBy: query.sortBy }),
     ...(query.period === undefined ? {} : { period: query.period }),
   };
-  okPage(res, await payslipService.listMine(String(ctx.userId), own), (doc) =>
-    payslipService.toDto(doc),
-  );
+  const page = await payslipService.listMine(String(ctx.userId), own);
+  // A1 — the other cross-run list, and the one the employee reads about their own pay.
+  const runStatus = await payslipService.runStatusReader(page.items);
+  okPage(res, page, (doc) => payslipService.toDto(doc, runStatus(doc)));
 };
 
 export const getMyPayslip = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { params } = validated<never, never, IdParam>(req);
-  ok(res, payslipService.toDto(await payslipService.getMine(String(ctx.userId), params.id)));
+  ok(res, await payslipService.toDtoOne(await payslipService.getMine(String(ctx.userId), params.id)));
 };
 
 export const getPayslip = async (req: Request, res: Response): Promise<void> => {
@@ -84,7 +83,7 @@ export const getPayslip = async (req: Request, res: Response): Promise<void> => 
   const { params } = validated<never, never, IdParam>(req);
   ok(
     res,
-    payslipService.toDto(
+    await payslipService.toDtoOne(
       await payslipService.getById(params.id, scopeSelector(ctx, 'employee.viewCompensation')),
     ),
   );

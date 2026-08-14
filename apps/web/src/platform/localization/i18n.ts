@@ -1399,6 +1399,9 @@ const en: Record<string, string> = {
   'payroll.payslips.skip.mixedCurrency': 'a pay item is in another currency',
   'payroll.payslips.mine': 'My payslips',
   'payroll.payslips.mineHint': 'Each payslip is the document as it was issued. The figures on it do not change afterwards.',
+  // A1 — said as a fact about the run, not as a verdict on the payslip: the document stands, and
+  // whether a newer one replaced it is a question for whoever settled the month.
+  'payroll.payslips.fromCancelledRun': 'This payslip was issued from a payroll run that was later cancelled. The document itself is unchanged.',
   'payroll.payslips.mineEmpty': 'No payslip has been issued for you yet',
   'payroll.payslips.period': 'Period',
   'payroll.runs.empty': 'No payroll runs yet',
@@ -5697,6 +5700,7 @@ const ar: Record<string, string> = {
   'payroll.payslips.skip.mixedCurrency': 'بند أجر بعملة أخرى',
   'payroll.payslips.mine': 'قسائم رواتبي',
   'payroll.payslips.mineHint': 'كل قسيمة هي الوثيقة كما صدرت. أرقامها لا تتغيّر بعد ذلك.',
+  'payroll.payslips.fromCancelledRun': 'صدرت هذه القسيمة من دورة رواتب أُلغيت بعد ذلك. الوثيقة نفسها لم تتغيّر.',
   'payroll.payslips.mineEmpty': 'لم تصدر لك أي قسيمة بعد',
   'payroll.payslips.period': 'الفترة',
   'payroll.runs.empty': 'لا توجد دورات رواتب بعد',

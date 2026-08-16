@@ -288,6 +288,22 @@ export type RehireCheckQuery = z.infer<typeof RehireCheckQuerySchema>;
 
 // ── DTOs ─────────────────────────────────────────────────────────────────────
 
+/**
+ * Where a value on an employee CAME FROM — the job's default, or a human (P-HR-22, D-JOB-4).
+ *
+ * WHY IT EXISTS. "Preserve employee overrides" is unanswerable without it. Comparing the stored
+ * figure against the job's current default cannot tell the two apart: the default may have moved
+ * since it was copied, and two people may hold the same number by coincidence. Provenance is a
+ * fact about how the row was written, so it is recorded when it is written.
+ *
+ * WHY `manual` IS THE DEFAULT. Every row that predates this field reads as `manual`, which means
+ * a future re-apply treats the entire existing population as overrides and cannot disturb one of
+ * them. Failing safe here costs nothing; failing open would silently rewrite salaries.
+ */
+export const JOB_VALUE_SOURCES = ['jobDefault', 'manual'] as const;
+export const JobValueSourceSchema = z.enum(JOB_VALUE_SOURCES);
+export type JobValueSource = z.infer<typeof JobValueSourceSchema>;
+
 /** The employment terms snapshot (from the Accepted Offer or direct registration). */
 export interface EmploymentDetailsDto {
   jobTitleId: string;
@@ -305,6 +321,14 @@ export interface EmploymentDetailsDto {
    * `employee.viewCompensation` (see {@link EmployeeDto.compensationVisible}).
    */
   salary: { amount: number; currency: string } | null;
+  /**
+   * Whether {@link salary} was copied from the job's `fixedSalary` or set by a human (D-JOB-4).
+   *
+   * Reported even when the salary itself is redacted: knowing that a figure follows the job is
+   * not knowing the figure, and the distinction is what tells an administrator whether editing
+   * the job would ever reach this person.
+   */
+  salarySource: JobValueSource;
   allowances: OfferAllowanceDto[];
   benefits: string[];
   probationMonths: number;

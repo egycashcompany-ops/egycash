@@ -6,7 +6,7 @@ import {
   type Paginated,
   type UpdateJobTitle,
 } from '@ecms/contracts';
-import { type FilterQuery } from 'mongoose';
+import { Types, type FilterQuery } from 'mongoose';
 import { type ScopeSelector } from '../../../shared/types';
 import { BusinessRuleError } from '../../../shared/errors';
 import { diffChanges } from '../../../shared/utils/diff';
@@ -27,6 +27,8 @@ const snapshot = (doc: JobTitleDoc) => ({
   requiredQualifications: doc.requiredQualifications,
   requiredExperienceYears: doc.requiredExperienceYears,
   requiresDrivingTest: doc.requiresDrivingTest ?? false,
+  fixedSalary: doc.fixedSalary ?? null,
+  defaultShiftIds: (doc.defaultShiftIds ?? []).map(String),
   status: doc.status,
 });
 
@@ -35,6 +37,22 @@ const assertSalaryBand = (min: number | null, max: number | null): void => {
   if (min !== null && max !== null && min > max) {
     throw new BusinessRuleError('salaryMax must be ≥ salaryMin');
   }
+};
+
+/**
+ * Is the job's fixed salary outside its own advisory band? (P-HR-22 — reported, never enforced.)
+ *
+ * The band was and stays advisory: the owner's ruling is a WARNING, so this returns a fact and
+ * throws nothing. Turning the band into a constraint would be a new business rule, and inventing
+ * one here would be the exact failure this codebase keeps refusing.
+ */
+const outsideBand = (doc: Pick<JobTitleDoc, 'fixedSalary' | 'salaryMin' | 'salaryMax'>): boolean => {
+  const amount = doc.fixedSalary?.amount;
+  if (amount === undefined) return false;
+  return (
+    (doc.salaryMin !== null && amount < doc.salaryMin) ||
+    (doc.salaryMax !== null && amount > doc.salaryMax)
+  );
 };
 
 class JobTitleService {
@@ -50,6 +68,8 @@ class JobTitleService {
         requiredQualifications: input.requiredQualifications ?? null,
         requiredExperienceYears: input.requiredExperienceYears ?? null,
         requiresDrivingTest: input.requiresDrivingTest ?? false,
+        fixedSalary: input.fixedSalary ?? null,
+        defaultShiftIds: (input.defaultShiftIds ?? []).map((id) => new Types.ObjectId(id)),
         status: 'active',
       },
       { by },
@@ -87,6 +107,10 @@ class JobTitleService {
     if (input.requiredExperienceYears !== undefined)
       set.requiredExperienceYears = input.requiredExperienceYears;
     if (input.requiresDrivingTest !== undefined) set.requiresDrivingTest = input.requiresDrivingTest;
+    if (input.fixedSalary !== undefined) set.fixedSalary = input.fixedSalary;
+    if (input.defaultShiftIds !== undefined) {
+      set.defaultShiftIds = input.defaultShiftIds.map((sid) => new Types.ObjectId(sid));
+    }
     const after = await jobTitleRepository.updateById(id, set, { by, version: input.version });
     await auditService.record({
       entityRef: entityRef(id),
@@ -145,6 +169,9 @@ class JobTitleService {
       requiredQualifications: doc.requiredQualifications,
       requiredExperienceYears: doc.requiredExperienceYears,
       requiresDrivingTest: doc.requiresDrivingTest ?? false,
+      fixedSalary: doc.fixedSalary ?? null,
+      fixedSalaryOutsideBand: outsideBand(doc),
+      defaultShiftIds: (doc.defaultShiftIds ?? []).map(String),
       status: doc.status,
       version: doc.__v,
       createdAt: doc.createdAt.toISOString(),

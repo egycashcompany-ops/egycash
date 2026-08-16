@@ -8,6 +8,9 @@
 // the §15.1 feed contract and never re-derives attendance from punches (D10).
 import { z } from 'zod';
 import { objectId, PaginationQuerySchema, type LocalizedString } from '../common/index.js';
+// Provenance is one vocabulary across HR, declared where employment lives (P-HR-22, D-JOB-4).
+// One direction only: employment knows nothing about attendance.
+import { type JobValueSource } from './hr-employee.js';
 
 // ── Closed vocabularies ─────────────────────────────────────────────────────
 
@@ -165,6 +168,15 @@ export interface ShiftAssignmentDto {
   toDate: string | null;
   note: string | null;
   branchId: string | null;
+  /**
+   * Whether the shift chosen here is one the employee's job lists, or a departure from it
+   * (P-HR-22, D-JOB-4). DERIVED ON THE SERVER at creation — never sent by the caller, because a
+   * caller that could declare its own provenance could declare a departure to be compliance.
+   *
+   * A job with an empty candidate list produces `manual` for everyone, which is correct: there is
+   * no default to follow.
+   */
+  source: JobValueSource;
   version: number;
   createdAt: string;
   updatedAt: string;

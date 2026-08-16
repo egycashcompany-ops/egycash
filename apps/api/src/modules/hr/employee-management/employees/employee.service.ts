@@ -24,6 +24,7 @@ import {
   type UpdateEmployeePersonal,
   EMPLOYED_STATUSES,
   type EmployeeLoginProvisionDto,
+  type JobValueSource,
 } from '@ecms/contracts';
 import { BusinessRuleError, ConflictError, ValidationError } from '../../../../shared/errors';
 import { type AuthContext, type ScopeSelector } from '../../../../shared/types';
@@ -52,6 +53,7 @@ import { personalFromApplicant } from './employee.migration';
 import {
   EmployeeModel,
   type EmployeeDoc,
+  type EmployeeMoney,
   type EmployeePersonalData,
   type EmployeeProbation,
   type EmployeeStatusEvent,
@@ -78,6 +80,32 @@ const entryProbation = (
   return {
     status: 'active',
     probation: { endDate: null, confirmedAt: hiredAt, confirmedBy: confirmedBy, extendedTo: null, failed: false },
+  };
+};
+
+/**
+ * The salary a new assignment starts from, and where it came from (P-HR-22 — D-JOB-2, D-JOB-4).
+ *
+ * A DEFAULT, NEVER AN OVERRIDE. A figure that was actually supplied — by the accepted offer or by
+ * whoever registered the employee — is that person's decision and is recorded as `manual`. Only
+ * its ABSENCE reaches for the job, and only if the job states one.
+ *
+ * The job is read leniently on purpose. Neither hire path validates that `jobTitleId` resolves
+ * today, and making the salary default the first thing that does would turn a new convenience
+ * into a new way for hiring to fail. An unreadable job simply supplies no default, which is
+ * exactly what happened before this function existed.
+ */
+const salaryForAssignment = async (
+  jobTitleId: string,
+  given: { amount: number; currency: string } | null,
+): Promise<{ salary: EmployeeMoney | null; salarySource: JobValueSource }> => {
+  if (given !== null) return { salary: given, salarySource: 'manual' };
+  const title = await jobTitleService.getById(jobTitleId).catch(() => null);
+  const fixed = title?.fixedSalary ?? null;
+  if (fixed === null) return { salary: null, salarySource: 'manual' };
+  return {
+    salary: { amount: fixed.amount, currency: fixed.currency },
+    salarySource: 'jobDefault',
   };
 };
 
@@ -161,6 +189,8 @@ class EmployeeService {
     await this.assertPersonNotEmployed(applicant.nationalId);
 
     const t = snapshot.terms;
+    const offered = t.salary === null ? null : { amount: t.salary.amount, currency: t.salary.currency };
+    const starting = await salaryForAssignment(String(t.jobTitleId), offered);
     const employment: EmploymentDetails = {
       jobTitleId: t.jobTitleId,
       departmentId: t.departmentId,
@@ -170,7 +200,8 @@ class EmployeeService {
       jobPositionId: null,
       managerId: t.managerId,
       employmentType: t.employmentType,
-      salary: t.salary === null ? null : { amount: t.salary.amount, currency: t.salary.currency },
+      salary: starting.salary,
+      salarySource: starting.salarySource,
       allowances: t.allowances.map((a) => ({ name: a.name, amount: a.amount, currency: a.currency })),
       benefits: [...t.benefits],
       probationMonths: t.probationMonths,
@@ -364,6 +395,10 @@ class EmployeeService {
       })),
     };
 
+    const registered = await salaryForAssignment(
+      e.jobTitleId,
+      e.salary == null ? null : { amount: e.salary.amount, currency: e.salary.currency },
+    );
     const employment: EmploymentDetails = {
       jobTitleId: new Types.ObjectId(e.jobTitleId),
       departmentId: new Types.ObjectId(e.departmentId),
@@ -372,7 +407,8 @@ class EmployeeService {
       jobPositionId: null,
       managerId: e.managerId == null ? null : new Types.ObjectId(e.managerId),
       employmentType: e.employmentType,
-      salary: e.salary == null ? null : { amount: e.salary.amount, currency: e.salary.currency },
+      salary: registered.salary,
+      salarySource: registered.salarySource,
       allowances: e.allowances.map((a) => ({ name: a.name, amount: a.amount, currency: a.currency })),
       benefits: [...e.benefits],
       probationMonths: e.probationMonths,

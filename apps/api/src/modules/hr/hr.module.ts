@@ -75,6 +75,7 @@ import { buildSettlementRouter } from './settlement';
 import { addDays, cairoToday } from './shared/business-date';
 import { registerHrIdentitySeams } from './employee-management/employees/identity-seams';
 import { registerHrShiftLabelSeam } from './attendance/shifts/shift-label-seams';
+import { buildEmployeeCostCentersRouter } from './employee-management/cost-center-assignments';
 import { registerHrBranchCodeSeams } from './employee-management/employees/branch-code-seams';
 import { registerHrDirectorySeams } from './directory-seams';
 import {
@@ -902,6 +903,7 @@ export const hrModule: ModuleManifest = {
     { prefix: '/hr/job-offers', router: buildJobOffersRouter() },
     { prefix: '/hr/employees', router: buildCompensationRouter() },
     { prefix: '/hr/employees', router: buildEmployeePayItemsRouter() },
+    { prefix: '/hr/employees', router: buildEmployeeCostCentersRouter() },
     { prefix: '/hr/employees', router: buildEmployeeActionsRouter() },
     // …and the per-employee surface, because a bonus is that person's money.
     { prefix: '/hr/employees', router: buildEmployeeAdjustmentsRouter() },

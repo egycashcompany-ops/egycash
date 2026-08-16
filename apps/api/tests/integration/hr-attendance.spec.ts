@@ -14,6 +14,7 @@ import {
   AttendanceFeedRowSchema,
   HrAttendanceSettingKeys,
   HrAttendanceTemplates,
+  HrLeaveSettingKeys,
   type AttendanceDayDto,
   type AttendanceRegularizationDto,
   type EmployeeDto,
@@ -1133,6 +1134,55 @@ describe('AT-6 — screens, self-service and export', () => {
 
 // ── AT-7 — the two morning sweeps: notices that repeat safely and escalate nothing ───────────
 describe('AT-7 — absence and missing-checkout sweeps', () => {
+  /**
+   * YESTERDAY IS MADE A WORKING DAY FOR THIS BLOCK, and that is the whole of this setup.
+   *
+   * The sweeps read ONE date and only one: `previousDayRows` in the service is
+   * `addDays(cairoToday(), -1)`. That is the behaviour under test, so these cases cannot move to
+   * some other day — they must use yesterday, whatever weekday CI happens to run on.
+   *
+   * But the derivation turns yesterday into `weekend` whenever `isoWeekday` is in the calendar's
+   * weekend set, and the seeded set is Fri+Sat. So a run on a Saturday or a Sunday derived
+   * `weekend` where the case expects `incomplete` or `absent` — a green suite on a Thursday and a
+   * red one on a Sunday, from the same commit. That is exactly what happened on `main`.
+   *
+   * The fix is to control the calendar rather than the date: drop yesterday's weekday from the
+   * weekend set for this block, and put it back afterwards. Nothing in production changes — the
+   * weekend set is an organization setting that the calendar reads, and this block already sets
+   * another setting the same way.
+   */
+  const DEFAULT_WEEKEND_DAYS = [5, 6];
+  const yesterdayWeekday = (): number => isoWeekday(addDays(cairoToday(), -1));
+  const settingCtx = (): AuthContext => ({
+    // `settingsService.set` stamps `updatedBy`, so this has to be a real ObjectId.
+    userId: new Types.ObjectId().toString(),
+    sessionId: 'seed',
+    branchId: null,
+    departmentId: null,
+    sectionId: null,
+    locale: 'en',
+    permissions: { 'setting.edit': 'organization' },
+    permissionVersion: 1,
+    isPrivileged: true,
+  });
+  const setWeekendDays = async (days: number[]): Promise<void> => {
+    await settingsService.set(settingCtx(), {
+      key: HrLeaveSettingKeys.WeekendDays,
+      scope: 'organization',
+      value: days,
+    });
+  };
+
+  beforeAll(async () => {
+    await setWeekendDays(DEFAULT_WEEKEND_DAYS.filter((day) => day !== yesterdayWeekday()));
+  }, 60_000);
+
+  // Restored so the earlier case that asserts a Friday derives as `weekend` keeps its calendar,
+  // whatever order a future refactor puts these blocks in.
+  afterAll(async () => {
+    await setWeekendDays(DEFAULT_WEEKEND_DAYS);
+  }, 60_000);
+
   /** Notices sent to one employee's login, by template key. */
   const noticesFor = async (userId: string, template: string): Promise<number> =>
     NotificationModel.countDocuments({

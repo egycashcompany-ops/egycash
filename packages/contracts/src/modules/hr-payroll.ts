@@ -12,6 +12,7 @@
 // those rules arrive they arrive with their own phase.
 import { z } from 'zod';
 import { LocalizedStringSchema, PaginationQuerySchema, objectId } from '../common/index.js';
+import { ExpressionNodeSchema } from '../expression/index.js';
 import { MoneyAmountSchema, MoneyCurrencySchema } from './hr-payroll-money.js';
 
 /** Which side of the payslip the item lands on. Nothing else reads a sign. */
@@ -983,6 +984,97 @@ export interface PayrollRunCostBreakdownDto {
   byOrigin: PayrollRunCostRowDto[];
   byPayItem: PayrollRunCostByPayItemDto[];
   byBranch: PayrollRunCostByBranchDto[];
+}
+
+// ── The dynamic run cost report (P-HR-25) ───────────────────────────────────
+//
+// The breakdown above states three splits at once and the caller chooses nothing — which was the
+// right shape while nobody had given a report definition, and P-HR-15 recorded that as the reason.
+// This is the other half: the CALLER names the axis and writes the calculated columns, so a
+// definition exists without this system having invented one.
+//
+// WHAT IS STILL REFUSED. The axes are a closed enum of dimensions the payslip already stores, and a
+// calculated column is an expression AST checked against a catalog derived from the row's own
+// schema. Nothing here accepts a field name, a filter, a sort or a period as free text, and nothing
+// is stored: a request is answered and forgotten (D-REPORT-1 = C, D-REPORT-9 = N/A).
+
+/**
+ * The dimensions a run's cost may be grouped by. CLOSED, and every one of them is a value the
+ * payslip or its lines already carry — none is derived, and none is new data.
+ *
+ * `currency` is not on this list because it is not optional: it is part of every group key, always.
+ * There is no exchange rate anywhere in this system, so a row spanning two currencies would be a
+ * defect wearing the costume of a summary.
+ */
+export const PAYROLL_REPORT_GROUP_BY = ['origin', 'payItem', 'branch', 'costCenter'] as const;
+export const PayrollReportGroupBySchema = z.enum(PAYROLL_REPORT_GROUP_BY);
+export type PayrollReportGroupBy = z.infer<typeof PayrollReportGroupBySchema>;
+
+/** How many calculated columns one request may carry. A report, not a spreadsheet. */
+export const PAYROLL_REPORT_MAX_COLUMNS = 10;
+
+/**
+ * One calculated column.
+ *
+ * `expression` is validated against the row catalog before anything is evaluated, so a column
+ * naming a field the row does not have is refused at the boundary rather than answered with nulls.
+ * The AST itself is the P-HR-24 shape, unchanged — this phase consumes that engine and does not
+ * extend it.
+ */
+export const PayrollReportColumnSchema = z
+  .object({
+    key: z
+      .string()
+      .min(1)
+      .max(40)
+      .regex(/^[a-zA-Z][a-zA-Z0-9_]*$/, { message: 'must be a plain identifier' }),
+    expression: ExpressionNodeSchema,
+  })
+  .strict();
+export type PayrollReportColumn = z.infer<typeof PayrollReportColumnSchema>;
+
+export const PayrollRunCostReportRequestSchema = z
+  .object({
+    groupBy: PayrollReportGroupBySchema,
+    columns: z.array(PayrollReportColumnSchema).max(PAYROLL_REPORT_MAX_COLUMNS).default([]),
+  })
+  .strict();
+export type PayrollRunCostReportRequest = z.infer<typeof PayrollRunCostReportRequestSchema>;
+
+/**
+ * One grouped row.
+ *
+ * `axisId` and `axisLabel` are the chosen dimension's value and its display name; `axisCode` carries
+ * the pay item's stored code where the axis has one. All three are null when the axis is one the
+ * row has no id for — a line with no pay item, a payslip with no cost centre — and **that null is a
+ * real group, not a gap**: every payslip issued before P-HR-23 carries no cost centre because there
+ * was no membership to record then.
+ *
+ * `calculated` holds one entry per requested column. A value of `null` means the expression could
+ * not be computed — a division by zero, or a field that was itself null — and it is shown as an
+ * empty cell rather than removing the row (D-REPORT-7 = A).
+ */
+export interface PayrollRunCostReportRowDto {
+  currency: string;
+  kind: PayItemKind;
+  axisId: string | null;
+  axisCode: string | null;
+  axisLabel: { ar: string; en: string } | null;
+  lines: number;
+  amountMinor: number;
+  amount: number;
+  calculated: Record<string, number | null>;
+}
+
+export interface PayrollRunCostReportDto {
+  runId: string;
+  period: string;
+  status: PayrollRunStatus;
+  /** Echoed so a stored answer can never be read as an answer to a different question. */
+  groupBy: PayrollReportGroupBy;
+  /** The column keys, in request order — the row map is unordered by nature. */
+  columns: string[];
+  rows: PayrollRunCostReportRowDto[];
 }
 
 // ── Payroll adjustments — bonuses and penalties (P-HR-04) ────────────────────

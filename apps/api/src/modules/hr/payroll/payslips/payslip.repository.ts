@@ -8,6 +8,7 @@
 // There is no update and no delete. The base class provides them; nothing in this phase calls
 // them, and a payslip is a document somebody was paid against.
 import { Types } from 'mongoose';
+import { type PayrollReportGroupBy } from '@ecms/contracts';
 import { BaseRepository } from '../../../../shared/base/base.repository';
 import { type ScopeSelector } from '../../../../shared/types';
 import { PayslipModel, type PayslipDoc } from './payslip.model';
@@ -15,7 +16,7 @@ import { PayslipModel, type PayslipDoc } from './payslip.model';
 /**
  * One group of payslip LINES, as the database summed them (P-HR-14 / U14-1).
  *
- * A single row shape for all three splits: the fields a given split did not group by come back
+ * A single row shape for every split: the fields a given split did not group by come back
  * null, so the service maps one shape rather than three and no split can quietly grow a key the
  * others do not have.
  */
@@ -26,9 +27,38 @@ export interface PayslipLineGroupRow {
   payItemId: string | null;
   code: string | null;
   branchId: string | null;
+  /**
+   * P-HR-25 — the cost centre the PAYSLIP was stamped with at issue (P-HR-23), never re-derived
+   * from today's membership. Null is an ordinary answer: nobody was placed, or the payslip predates
+   * the stamp entirely.
+   */
+  costCenterId: string | null;
   lines: number;
   amountMinor: number;
 }
+
+/**
+ * Every axis this collection can be grouped by, in ONE place (P-HR-25).
+ *
+ * The three splits U14-1 states and the axis P-HR-25's report takes read from the same map, so the
+ * report and the breakdown cannot answer differently about the same dimension. A second copy of
+ * these keys is where that drift would eventually appear.
+ *
+ * `currency` and `kind` lead every key: direction is what `kind` means, and a total spanning two
+ * currencies is a defect rather than a summary.
+ */
+const GROUP_KEYS: Readonly<Record<PayrollReportGroupBy, Readonly<Record<string, string>>>> = {
+  origin: { currency: '$currency', kind: '$lines.kind', origin: '$lines.origin' },
+  payItem: {
+    currency: '$currency',
+    kind: '$lines.kind',
+    origin: '$lines.origin',
+    payItemId: '$lines.payItemId',
+    code: '$lines.code',
+  },
+  branch: { currency: '$currency', kind: '$lines.kind', branchId: '$branchId' },
+  costCenter: { currency: '$currency', kind: '$lines.kind', costCenterId: '$costCenterId' },
+};
 
 /** One currency's worth of a run, as the database summed it. */
 export interface PayslipRunTotalsRow {
@@ -126,11 +156,7 @@ class PayslipRepository extends BaseRepository<PayslipDoc> {
    * nothing while making the query honest about the field being nullable in the contract.
    */
   async lineTotalsByOriginForRun(runId: string, scope: ScopeSelector): Promise<PayslipLineGroupRow[]> {
-    return this.groupLines(runId, scope, {
-      currency: '$currency',
-      kind: '$lines.kind',
-      origin: '$lines.origin',
-    });
+    return this.groupLines(runId, scope, GROUP_KEYS.origin);
   }
 
   /** The same lines, split by the catalog item behind them (null for a leave or loan line). */
@@ -138,13 +164,7 @@ class PayslipRepository extends BaseRepository<PayslipDoc> {
     runId: string,
     scope: ScopeSelector,
   ): Promise<PayslipLineGroupRow[]> {
-    return this.groupLines(runId, scope, {
-      currency: '$currency',
-      kind: '$lines.kind',
-      origin: '$lines.origin',
-      payItemId: '$lines.payItemId',
-      code: '$lines.code',
-    });
+    return this.groupLines(runId, scope, GROUP_KEYS.payItem);
   }
 
   /** The same lines, split by the branch the payslip was issued in (ADR-015, denormalized). */
@@ -152,11 +172,22 @@ class PayslipRepository extends BaseRepository<PayslipDoc> {
     runId: string,
     scope: ScopeSelector,
   ): Promise<PayslipLineGroupRow[]> {
-    return this.groupLines(runId, scope, {
-      currency: '$currency',
-      kind: '$lines.kind',
-      branchId: '$branchId',
-    });
+    return this.groupLines(runId, scope, GROUP_KEYS.branch);
+  }
+
+  /**
+   * The same lines again, split by an axis the CALLER chose (P-HR-25).
+   *
+   * The axis is a closed enum, so this adds no reach: every value it can take is a key the three
+   * methods above were already allowed to group by, and the pipeline — including the scoped
+   * `$match` — is the same one.
+   */
+  async lineTotalsByAxisForRun(
+    runId: string,
+    scope: ScopeSelector,
+    axis: PayrollReportGroupBy,
+  ): Promise<PayslipLineGroupRow[]> {
+    return this.groupLines(runId, scope, GROUP_KEYS[axis]);
   }
 
   /**
@@ -180,7 +211,16 @@ class PayslipRepository extends BaseRepository<PayslipDoc> {
       // The caller's scope, through the same filter the paginated read uses — a branch reader must
       // be shown their branch's cost and nothing wider (audit finding A2).
       { $match: this.baseFilter(scope, { runId: new Types.ObjectId(runId) }) },
-      { $project: { currency: 1, branchId: 1, lines: { $concatArrays: ['$earnings', '$deductions'] } } },
+      {
+        $project: {
+          currency: 1,
+          branchId: 1,
+          // P-HR-25 — carried through so the cost-centre axis can group by it. It is the stamp the
+          // payslip was issued with, and projecting it changes no figure.
+          costCenterId: 1,
+          lines: { $concatArrays: ['$earnings', '$deductions'] },
+        },
+      },
       { $unwind: '$lines' },
       {
         $group: {
@@ -198,6 +238,7 @@ class PayslipRepository extends BaseRepository<PayslipDoc> {
       payItemId: row._id['payItemId'] == null ? null : String(row._id['payItemId']),
       code: row._id['code'] === undefined ? null : String(row._id['code']),
       branchId: row._id['branchId'] == null ? null : String(row._id['branchId']),
+      costCenterId: row._id['costCenterId'] == null ? null : String(row._id['costCenterId']),
       lines: row.lines,
       amountMinor: row.amountMinor,
     }));

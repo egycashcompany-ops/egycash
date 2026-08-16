@@ -16,6 +16,8 @@ import {
   type PayPayrollRun,
   type GeneratePayslipsResultDto,
   type PayrollRunCostBreakdownDto,
+  type PayrollRunCostReportDto,
+  type PayrollRunCostReportRequest,
   type PayrollRunDto,
   type PayrollRunReconciliationDto,
   type PayslipDto,
@@ -143,6 +145,18 @@ export const getRunReconciliation = (runId: string): Promise<PayrollRunReconcili
  */
 export const getRunCostBreakdown = (runId: string): Promise<PayrollRunCostBreakdownDto> =>
   get<PayrollRunCostBreakdownDto>(`/hr/payroll/runs/${runId}/cost-breakdown`);
+
+/**
+ * The same money, along ONE axis the caller names (P-HR-25).
+ *
+ * A POST for a read, because a calculated column is an expression tree and several of them do not
+ * survive a query string. It writes nothing — the server answers and keeps nothing.
+ */
+export const postRunCostReport = (
+  runId: string,
+  body: PayrollRunCostReportRequest,
+): Promise<PayrollRunCostReportDto> =>
+  post<PayrollRunCostReportDto>(`/hr/payroll/runs/${runId}/cost-report`, body);
 
 /** The caller's OWN payslips (PY-11) — own-scope by construction, so no employee id is sent. */
 export const listMyPayslips = (params: QueryParams): Promise<Paginated<PayslipDto>> =>

@@ -166,22 +166,31 @@ describe('the arithmetic says only what the lines say', () => {
     }
   });
 
-  /** No exchange rate exists in this system, so currency is a group key in all three splits. */
+  /**
+   * No exchange rate exists in this system, so currency is a group key in EVERY split.
+   *
+   * P-HR-25 moved the keys out of the three method bodies and into one `GROUP_KEYS` map, so this
+   * reads the map rather than each method — and the claim got stronger rather than looser: it now
+   * covers all four axes, including the one the dynamic report added, in the single place they are
+   * defined. A key that forgot its currency would have to be written here, in front of this test.
+   */
   it('and never totals across currencies', () => {
-    // The shared pipeline groups by whatever key it is handed; each split states its own, so the
-    // assertion has to read each method's key rather than the pipeline's.
-    const bodyOf = (name: string): string => {
-      const from = repository.indexOf(`async ${name}`);
-      expect(from, name).toBeGreaterThan(-1);
-      const end = repository.indexOf('\n  }', from);
-      return repository.slice(from, end === -1 ? undefined : end);
-    };
+    const keys = repository.slice(
+      repository.indexOf('const GROUP_KEYS'),
+      repository.indexOf('class PayslipRepository'),
+    );
+    expect(keys, 'GROUP_KEYS block').not.toHaveLength(0);
+    for (const axis of ['origin', 'payItem', 'branch', 'costCenter']) {
+      expect(keys, axis).toContain(`${axis}:`);
+    }
+    expect((keys.match(/currency: '\$currency'/g) ?? []).length).toBe(4);
+    // …and the three splits this feature states still read from that map rather than inlining keys.
     for (const method of [
       'lineTotalsByOriginForRun',
       'lineTotalsByPayItemForRun',
       'lineTotalsByBranchForRun',
     ]) {
-      expect(bodyOf(method), method).toContain("currency: '$currency'");
+      expect(repository, method).toContain(method);
     }
   });
 

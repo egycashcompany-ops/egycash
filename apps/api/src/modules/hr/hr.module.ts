@@ -61,6 +61,7 @@ import {
   buildEmployeePayslipsRouter,
   buildReconciliationRouter,
   buildCostBreakdownRouter,
+  buildCostReportRouter,
   buildEmployeeAdjustmentsRouter,
   buildPayrollAdjustmentsRouter,
   hrAdjustmentFileAuthorizers,
@@ -947,6 +948,7 @@ export const hrModule: ModuleManifest = {
     // Same prefix, same reason, and the same compensation key: it names no account and posts
     // nothing, so it needs no key of its own.
     { prefix: '/hr/payroll/runs', router: buildCostBreakdownRouter() },
+    { prefix: '/hr/payroll/runs', router: buildCostReportRouter() },
     { prefix: '/hr/payroll/payslips', router: buildPayslipsRouter() },
     // P-HR-04 — the organization-wide list the approval queue reads.
     { prefix: '/hr/payroll/adjustments', router: buildPayrollAdjustmentsRouter() },

@@ -12,6 +12,7 @@ import {
   type ClosePayrollRun,
   type CreatePayrollRun,
   type PayPayrollRun,
+  type PayrollReportGroupBy,
   type UpdatePayItem,
 } from '@ecms/contracts';
 import { featureKey, listKey } from '../../../../shared/lib/query-keys';
@@ -185,6 +186,20 @@ export const useRunCostBreakdown = (runId: string) =>
   useQuery({
     queryKey: listKey(MODULE, COST_BREAKDOWN_FEATURE, { runId }),
     queryFn: () => api.getRunCostBreakdown(runId),
+  });
+
+/**
+ * The same money along ONE axis the reader chose (P-HR-25).
+ *
+ * The axis is part of the cache key, so switching axis is a different question with a different
+ * answer rather than a refetch of the same one. It shares the cost-breakdown feature key because it
+ * groups the very same lines: whatever invalidates one has invalidated the other.
+ */
+export const useRunCostReport = (runId: string, groupBy: PayrollReportGroupBy) =>
+  useQuery({
+    queryKey: listKey(MODULE, COST_BREAKDOWN_FEATURE, { runId, groupBy }),
+    queryFn: () => api.postRunCostReport(runId, { groupBy, columns: [] }),
+    placeholderData: (prev) => prev,
   });
 
 /** The run reconciled against its own payslips (P-HR-15-A). */

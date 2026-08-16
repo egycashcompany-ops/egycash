@@ -14,3 +14,4 @@ export * from './payslips';
 export * from './adjustments';
 export * from './reconciliation';
 export * from './cost-breakdown';
+export * from './cost-report';

@@ -26,6 +26,7 @@ import { PlusIcon } from '../../../../shared/ui/icons';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { RunReconciliation } from '../components/RunReconciliation';
 import { RunCostBreakdown } from '../components/RunCostBreakdown';
+import { RunCostReport } from '../components/RunCostReport';
 import { formatDate, formatDateTime, formatMoney, formatNumber } from '../../../../shared/lib/format';
 import {
   useApprovePayrollRun,
@@ -318,6 +319,7 @@ const PayslipsDialog = ({ run, onClose }: { run: PayrollRunDto; onClose: () => v
           and "what was it made of?". It names no account and posts nothing.
         */}
         <RunCostBreakdown runId={run.id} />
+        <RunCostReport runId={run.id} />
 
         {result !== null && (
           <div

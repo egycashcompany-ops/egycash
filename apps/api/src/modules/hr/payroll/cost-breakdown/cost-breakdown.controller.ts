@@ -8,12 +8,17 @@ import { costBreakdownService } from './cost-breakdown.service';
 type IdParam = { id: string };
 
 /**
- * The whole HTTP surface of this feature — one GET, and there will not be a second.
+ * The whole HTTP surface of THIS feature — one GET, taking no query parameter.
  *
- * It takes no query parameter, deliberately. A grouping, a filter or a period selector would each
- * be a REPORT DEFINITION — which rows, for whom, sliced how — and P-HR-15's inventory records that
- * nobody has given one. The three splits this returns are the dimensions the payslip lines already
- * store, stated in full so the caller chooses nothing.
+ * That was originally written as "and there will not be a second", because a grouping or a filter
+ * would each be a REPORT DEFINITION — which rows, for whom, sliced how — and P-HR-15's inventory
+ * recorded that nobody had given one. **P-HR-25 supersedes the second half of that sentence, and
+ * the reasoning is worth keeping rather than quietly deleting.** A definition now exists, supplied
+ * by the CALLER rather than invented here, and it is served by `POST …/cost-report` beside this.
+ *
+ * This endpoint is unchanged: it still states all three splits in full, and the caller still
+ * chooses nothing. What it answers is "what did this run cost, along every dimension the lines
+ * already carry" — a question with no parameters, which is why it keeps none.
  */
 export const getRunCostBreakdown = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);

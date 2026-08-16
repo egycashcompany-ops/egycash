@@ -1,10 +1,23 @@
-# Attendance Module — Design (v1.1, DECISIONS SETTLED — awaiting freeze)
+# Attendance Module — Design (v1.2, DECISIONS SETTLED — IMPLEMENTED, two items open)
 
-> Status: **§0 decisions D1–D11 approved by the owner on 2026-08-12**, together with the two
-> Payroll-boundary decisions taken in P-HR-01: **D-PR-01** (conventions: ADR numbering,
-> two-segment permission keys, `hr.attendance.*` setting keys) and **D-PR-07 Option A** (the
-> Payroll Run owns the freeze trigger). This revision folds those rulings in; **no implementation
-> exists or may begin until the owner approves this revision and the document is marked frozen.**
+> **Status (v1.2, 2026-08-16): AT-1 → AT-7 are implemented and merged on `main`.**
+>
+> §0's decisions D1–D11, and the two P-HR-01 boundary decisions **D-PR-01** (conventions: ADR
+> numbering, two-segment permission keys, `hr.attendance.*` setting keys) and **D-PR-07 Option A**
+> (the Payroll Run owns the freeze trigger), were approved by the owner on 2026-08-12 and have
+> since been **built**. §16 reconciles this document against `main` line by line.
+>
+> The v1.1 sentence *"no implementation exists or may begin until the owner approves this revision
+> and the document is marked frozen"* is **superseded**: implementation proceeded, and production
+> code in six files cites this document as "frozen design v1.1". This revision closes that gap.
+>
+> **Two things are NOT settled, and neither is decided here:**
+>
+> * **D6-R** — an `incomplete` day was designed to *block* payroll calculation; `main` *excludes*
+>   it silently. §4 and §16.3 state the divergence and the three ways to close it. **Open.**
+> * **D12** — how device punches physically reach ECMS. D1 settled *that* devices are a source; it
+>   never settled *how the rows arrive*. §17 states the decision. **Open.**
+>
 > HR order: Attendance → Payroll → Training → Performance → Medical → Termination.
 
 Attendance answers one question per employee per day: **were they where they were meant to be, for
@@ -27,7 +40,7 @@ proposed. The rulings in this table are binding on the implementation.
 | **D3** | Does a day belong to the calendar date of the **first punch** or of the **shift start**? | **APPROVED — shift start.** A shift starting 31 July 22:00 and ending 1 August 06:00 is one working day owned entirely by 31 July — and therefore by July's payroll period. | A night shift crossing midnight is one working day, not two halves. This choice is baked into the day-record key and is expensive to reverse. |
 | **D4** | Lateness | **APPROVED — grace minutes per shift, then raw late minutes only.** No tiers and no monetary deduction logic inside Attendance, ever. | Tiers (5/15/30) are a payroll deduction policy, and Payroll is the module that should own money. Attendance records the minutes; Payroll decides what they cost. |
 | **D5** | Overtime | **APPROVED — derived automatically from punches, paid only after approval.** Attendance owns the quantity and its approval; Payroll owns the price and the multipliers. | Recording without approving loses nothing and gives Payroll a truthful number. Auto-approving spends money without a decision. |
-| **D6** | Missing checkout | **APPROVED, with a refinement:** the day closes as **`incomplete`**, never guessed — and an `incomplete` day inside a period being calculated **blocks that employee's payroll calculation** until a proper regularization resolves it (see §4). | An assumed 8-hour day is an invented fact that reaches a payslip. `incomplete` is visible and correctable — and it must never be silently priced. |
+| **D6** | Missing checkout | **APPROVED, with a refinement:** the day closes as **`incomplete`**, never guessed — and an `incomplete` day inside a period being calculated **blocks that employee's payroll calculation** until a proper regularization resolves it (see §4). ⚠️ **v1.2: the second half of this ruling was NOT built — see D6-R in §4 and §16.3.** | An assumed 8-hour day is an invented fact that reaches a payslip. `incomplete` is visible and correctable — and it must never be silently priced. |
 | **D7** | Who fixes a wrong record? | **APPROVED, with a refinement: two approval steps, not one.** A regularization goes request → **manager approval → HR approval**, mirroring the Leave chain (`pendingManager → pendingHr`) exactly — not manager-only. HR may still edit directly with a mandatory reason. Post-freeze corrections are `postFreeze` adjustments only — never a restatement (see §7). | Mirrors the Leave request model exactly, so approvals and notifications reuse existing machinery. |
 | **D8** | Punching at another branch | **APPROVED — allowed and recorded** (`branchIdAtPunch`), flagged when it differs from the employee's branch. Payroll and any GL split use the **employee's** branch per ADR-015, never the punch's. | Cash-transport and fleet staff genuinely move. Blocking it would make the honest case impossible; flagging it makes the dishonest case visible. |
 | **D9** | Raw device events | **APPROVED — immutable, kept forever.** No edit, no delete; a wrong punch is superseded via `supersededBy` with the original retained as evidence. Derived day records are recomputable from them. | The raw event is the evidence. Retention policy can be added later; deleting evidence cannot be undone. |
@@ -190,30 +203,67 @@ employee's calculation** and reports the day in the run's errors, rather than gu
 day or assuming an absence. The unblock path is a proper regularization (§7); nothing else
 converts `incomplete` into money.
 
+#### ⚠️ D6-R (v1.2) — designed as a block, built as a silent exclusion. OPEN.
+
+**The rule above was implemented only in its first half.** On `main`:
+
+* `payroll/compensation/attendance-quantities.ts` names the statuses that mean "came to work" and
+  states `incomplete` is *"deliberately absent"* — so the day contributes **0** to every quantity
+  source. It is counted neither as attendance nor as absence, which is faithful to "never guessed".
+* But **nothing blocks**. No run error, no refusal, and no warning: the compensation warning
+  vocabulary is exactly `legacyAllowancesIgnored` · `netBelowZero` · `leaveDaysAlsoPriced`, and
+  there is no `incompleteDay` among them.
+
+So the outcome today is that an unfinished day **passes through the calculation silently** — it is
+not priced, and nobody is told. The design wanted it loud; the code made it quiet.
+
+**This is a divergence between a ruling and the code, not a bug in either.** It is stated here, not
+resolved here. The three ways to close it, each a decision for the owner:
+
+| option | what it means | cost |
+|---|---|---|
+| **A — block** | Payroll refuses to calculate that employee's line and reports the day in the run's errors, as v1.1 ruled | one `incomplete` day stops a payslip; a run cannot close until every one is regularized |
+| **B — keep the current behaviour** | the day contributes nothing and the run proceeds | nothing changes; the silence is accepted as intended |
+| **C — warn** | the day contributes nothing, and the payslip carries a new warning naming it | needs one new value in the closed `CompensationWarning` vocabulary — a contract change |
+
+**No option is chosen in this revision.** Until it is, the behaviour on `main` is **B by default**,
+which is the honest way to describe it.
+
 ---
 
 ## 5. API contracts
 
 Mounted under `/api/v1/hr`. No new platform endpoints.
 
-| Method | Path | Grant |
-|---|---|---|
-| GET/POST/PATCH/DELETE | `/attendance/shifts` | `attendance.manageShifts` |
-| GET/POST/DELETE | `/attendance/assignments` | `attendance.assign` |
-| POST | `/attendance/punches` | `attendance.recordPunch` |
-| POST | `/attendance/punches/import` | `attendance.importPunches` |
-| GET | `/attendance/punches` | `attendance.view` |
-| GET | `/attendance/days` (range, filters) | `attendance.view` |
-| GET | `/attendance/days/me` | own scope, ESS |
-| POST | `/attendance/days/recompute` | `attendance.recompute` |
-| POST | `/attendance/regularizations` | own scope (`attendance.requestRegularization`) |
-| POST | `/attendance/regularizations/:id/decide` | manager by relationship (step 1) / `attendance.decideRegularization` (step 2, HR) |
-| POST | `/attendance/overtime/:id/approve` | `attendance.approveOvertime` |
-| GET | `/attendance/export` | `attendance.export` |
+**v1.2 — this table now states what `main` actually mounts.** The rows the v1.1 draft listed all
+shipped unchanged; four regularization rows were **added** by AT-5/AT-6 and were missing here.
+Routers are mounted per feature at `/hr/attendance/{shifts,assignments,punches,days,
+regularizations,overtime,export}`.
+
+| Method | Path | Grant | since |
+|---|---|---|---|
+| GET/POST/PATCH/DELETE | `/attendance/shifts` | `attendance.manageShifts` | v1.1 |
+| GET/POST/DELETE | `/attendance/assignments` | `attendance.assign` | v1.1 |
+| GET | `/attendance/punches` | `attendance.view` | v1.1 |
+| POST | `/attendance/punches` | `attendance.recordPunch` | v1.1 |
+| POST | `/attendance/punches/import` | `attendance.importPunches` | v1.1 |
+| GET | `/attendance/days` (range, filters) | `attendance.view` | v1.1 |
+| GET | `/attendance/days/me` | own scope, ESS — no key | v1.1 |
+| POST | `/attendance/days/recompute` | `attendance.recompute` | v1.1 |
+| POST | `/attendance/regularizations` | own scope (`attendance.requestRegularization`) | v1.1 |
+| POST | `/attendance/regularizations/:id/decide` | manager by relationship (step 1) / `attendance.decideRegularization` (step 2, HR) | v1.1 |
+| **GET** | **`/attendance/regularizations/me`** | **own scope, ESS — no key** | **added, AT-6** |
+| **GET** | **`/attendance/regularizations/pending-decisions`** | **by relationship — no key** | **added, AT-6** |
+| **GET** | **`/attendance/regularizations`** (the queue) | **`attendance.decideRegularization`** | **added, AT-6** |
+| **POST** | **`/attendance/regularizations/:id/cancel`** | **own scope** | **added, AT-5** |
+| POST | `/attendance/overtime/:id/approve` | `attendance.approveOvertime` | v1.1 |
+| GET | `/attendance/export` | `attendance.export` | v1.1 |
 
 There is deliberately **no freeze endpoint** in this table: the freeze is invoked internally by
 the Payroll Run (§4, D-PR-07 Option A), so it carries the run's own grant rather than one of its
-own.
+own. **Verified on `main`:** `freezePeriod()` has exactly one production caller, the port at
+`payroll/runs/attendance-freeze.port.ts`, and the string `unfreeze` appears nowhere in the
+repository except in comments that say it does not exist.
 
 Every mutation returns the updated aggregate; list endpoints follow the standard `Paginated`
 envelope. Zod at every boundary, types inferred not duplicated.
@@ -287,18 +337,35 @@ Names follow the existing convention and are auto-catalogued.
 
 ## 10. UI
 
-Five screens, all reusing the existing kit — `DataTable`, `FilterBar`, `MultiSelect`, the shared
-`ApplicantPicker` pattern for employee search, `PageHeader`:
+**v1.2 — restated as what `main` routes.** The v1.1 list said "five screens" and folded the shifts
+catalog and the assignment screen into one row; they shipped as two, each with its own registry
+page, so the count was never going to hold. Six routed screens plus one profile tab:
 
-1. **Daily sheet** — one branch/department, one date, every employee, colour-coded status.
-2. **Employee month** — a calendar grid with the day statuses; the ESS view of one's own month.
-3. **Shifts catalog** + assignment screen.
-4. **Regularization queue** — the manager's inbox, same shape as the leave approvals queue.
-5. **Attendance tab on the employee profile** — alongside the existing Leave tab.
+| # | screen | route | gate | page registry |
+|---|---|---|---|---|
+| 1 | **My attendance** (ESS) | index + `me` | none — own scope by construction | — |
+| 2 | **Daily sheet** | `daily` | `attendance.view` | `hr.attendance-daily` |
+| 3 | **Employee month** | `employees/:id` | `attendance.view` | — (same page as the daily sheet) |
+| 4 | **Regularization queue** | `regularizations` | `attendance.decideRegularization` | `hr.attendance-regularizations` |
+| 5 | **Shifts catalog** | `shifts` | `attendance.manageShifts` | `hr.attendance-shifts` |
+| 6 | **Shift assignments** | `assignments` | `attendance.assign` | `hr.attendance-assignments` |
+| — | **Attendance tab on the employee profile** | (tab, not a route) | the profile's own gate | — |
+
+Four registry pages, four navigation rows. All reuse the existing kit — `DataTable`, `FilterBar`,
+`MultiSelect`, the shared picker pattern, `PageHeader`.
 
 ---
 
 ## 11. ADRs to record with the implementation
+
+> ### ⚠️ v1.2 — UNPAID DOCUMENTATION DEBT
+>
+> **Neither ADR was written.** `docs/03-decisions/` on `main` runs `ADR-001 … ADR-026` with the
+> ADR-022 gap still unused, exactly as this section predicted — but ADR-027 and ADR-028 are simply
+> absent, while the rules they were meant to record shipped and are enforced in code.
+>
+> This is a documentation debt, **not an open decision**: both rules were ruled on, built, and are
+> guarded by tests. What is missing is the architectural record. Writing them changes no code.
 
 Numbered from the next free slot in the sequence (D-PR-01): the v1.0 draft said ADR-020/021, but
 both numbers were taken by later merges (`ADR-020-shared-file-storage`,
@@ -307,8 +374,12 @@ keeps its chronological meaning.
 
 - **ADR-027 — Attendance day records are derived, punches are the record of truth.** Consequence:
   any bug is fixed by correcting inputs and recomputing, never by editing a derived row.
+  *(Built: the punch model is immutable with `supersededBy`; day records upsert under a unique
+  `{employeeId, workDate}`. Not written down.)*
 - **ADR-028 — A frozen period is immutable to recomputation.** Consequence: Payroll can trust a
   paid month; corrections flow forward as adjustments — and there is no unfreeze (D-PR-07).
+  *(Built: one caller of `freezePeriod()`, no unfreeze path anywhere, `postFreeze` regularizations
+  carry corrections forward. Not written down.)*
 
 ---
 
@@ -376,10 +447,105 @@ Rules that ride the contract:
 
 - A row with `status = incomplete` in a period under calculation **blocks that employee's payroll
   line** until regularized (D6) — the feed never launders an unfinished day into a paid one.
+  ⚠️ **v1.2: not built as stated — see D6-R in §4. The row is excluded from the quantities rather
+  than blocking, and nothing announces it.**
 - `absent` prices as a deduction only where no leave and no calendar fact covers the day — the
   engine already guarantees that ordering (§4).
 - Post-freeze corrections arrive as `postFreeze` regularizations and surface in Payroll as
   forward adjustments (§7); the frozen rows themselves never change.
+
+---
+
+## 16. Reconciliation against `main` (v1.2, 2026-08-16)
+
+The module was built across seven phases (AT-1 → AT-7). This section states what agrees with the
+design, what is missing, and what diverges — so that no reader has to infer the module's status
+from the fact that a document exists.
+
+### 16.1 Built and matching the design
+
+| design | on `main` |
+|---|---|
+| §1 features behind barrels | `shifts` · `assignments` · `punches` · `day-records` · `regularizations` · `overtime` |
+| §1.2/§1.3 reads work-calendar and the Cairo date rule, adds no second notion of "today" | as designed |
+| §1.4/§1.5 subscribes to `hr.leave.started` / `.ended` / `hr.employee.exited` | all three subscribed; the exit handler recomputes the affected span |
+| §3 five collections, zero changes to existing ones | as designed, including `branchIdAtPunch`, `importBatchId`, `supersededBy`, and the partial unique `{deviceId, at, employeeId}` |
+| §3 unique `{employeeId, workDate}` | as designed — recomputation is idempotent |
+| **D1** sources | `device` · `manual` · `web`; `hr.attendance.selfPunchEnabled` defaults **off** |
+| **D3** the day is keyed by shift start | as designed |
+| **D5** overtime derived, paid only after approval | `hr.attendance.overtimeRequiresApproval` defaults **on**; `approvedOvertimeMinutes` is separate from the derived figure |
+| **D7** two approval steps | `pendingManager → pendingHr`, the Leave pair |
+| **D8** cross-branch punches recorded and flagged | `crossBranchPunch` · `manualPunch`, closed vocabulary |
+| **D9** punches immutable, superseded not edited | as designed |
+| **D10 / §15.1** the feed | **exactly the twelve fields**, held by name in a contract test, and an unfrozen row cannot be mapped |
+| **D-PR-07** freeze owned by the run | one production caller; no freeze endpoint; **no unfreeze anywhere** |
+| **D-PR-01** conventions | two-segment keys · `hr.attendance.*` settings · `attendance.viewAll` **dropped, zero occurrences** |
+| §8 events | all eight published, all three subscribed |
+| §9 settings + scheduler | the four settings and the three tasks, by the names given here |
+| §12 rollout | `GENERAL` shift seeded; no backfill |
+
+### 16.2 Designed, not built
+
+* **§1.6 — attendance rows on the employee-profile timeline.** The timeline resolves two sources
+  through its dynamic-import escape hatch (employee file, leave); attendance is not among them.
+  Deferred, not refused — nothing depends on it.
+* **§11 — ADR-027 and ADR-028.** See the box in §11.
+
+### 16.3 Diverging
+
+* **D6-R** — the `incomplete` blocking rule. Stated in full in §4; the single open behavioural
+  question in this module.
+
+### 16.4 Added after the design was written
+
+* The AT-6 regularization read endpoints and the cancel path (§5, marked in the table).
+* The two nightly sweeps were designed in §9 and shipped in AT-7 — the design covered them.
+
+---
+
+## 17. 🔒 D12 — how device punches reach ECMS. OPEN.
+
+**D1 settled that devices are a punch source. It never settled how the rows physically arrive**,
+and the question went unasked because the first implementation had an obvious answer available.
+It is being recorded now because the organization has ZKTeco K40 Pro hardware on the network, and
+the choice is architectural rather than incidental.
+
+### 17.1 What exists today, verified in code
+
+Ingestion is a **single authenticated endpoint that something else calls**:
+
+| | today |
+|---|---|
+| who initiates | a client — a person, a script, an integration — calls ECMS |
+| endpoint | `POST /hr/attendance/punches/import` |
+| authorization | `authenticate` + `attendance.importPunches` |
+| payload | JSON rows validated by Zod, at most 5000 per call |
+| employee resolution | by employee number |
+| idempotency | the partial unique index `{deviceId, at, employeeId}` — a re-import is a duplicate, not a second punch |
+| device identity | `deviceId`, a free-text string on the punch. **There is no device entity, no registry, no serial number, no last-seen state.** |
+
+### 17.2 What is undecided
+
+**How the rows get from a physical device into that endpoint — or whether they should arrive some
+other way at all.** The shapes worth naming, stated neutrally and *without preferring one*:
+
+| option | what would have to exist |
+|---|---|
+| **client / agent → ECMS** | something outside ECMS reads the device and calls the existing endpoint. Needs a credential for that caller and a place for it to run. No change to ECMS. |
+| **device → ECMS (push)** | the device initiates HTTP to the server on its own. Needs an **ingress that ECMS does not have**: a route outside the permission model, a non-JSON body, and a way to authenticate a device rather than a user. |
+| **file import** | punch files are uploaded and processed. Needs an upload path and a parser; the Files module already exists. |
+
+### 17.3 What this revision deliberately does NOT do
+
+**No protocol, endpoint, transport, polling interval, agent design or device-registry model is
+chosen, assumed or described here as ECMS's direction.** In particular nothing about ADMS, push,
+polling or an agent is treated as decided — the point of §17 is to record that the decision is
+required, not to answer it. Any answer will also have to say what a *device* is to this system
+(today it is a string), and that is part of the same decision.
+
+**Nothing in the shipped module depends on this being answered.** Manual and web punches work, the
+import endpoint works, and the derivation, freeze and feed are all indifferent to how a punch
+arrived — `source` and `deviceId` are already on the record.
 
 ---
 
@@ -408,3 +574,27 @@ the two boundary decisions taken beside them:
 
 The document is **not frozen**: implementation starts only after the owner approves this
 revision.
+
+v1.2 (2026-08-16) — **reconciled against `main`.** Implementation went ahead across AT-1 → AT-7
+and this document was never merged, so `main` came to cite a "frozen design v1.1" that no reader
+could open. This revision changes **no ruling** and **no production code**; it records status,
+states two open questions, and corrects what had aged:
+
+- **Status corrected.** The v1.1 line forbidding implementation is superseded — §16 reconciles the
+  design against the code phase by phase. D1–D11, D-PR-01 and D-PR-07 were all built as ruled.
+- **D6-R opened (§4, §16.3).** The ruling's second half — that an `incomplete` day *blocks* the
+  employee's payroll calculation — was not built. On `main` the day is excluded from every
+  quantity and nothing announces it. Three ways to close it are set out; **none is chosen here.**
+- **D12 opened (§17).** How device punches physically reach ECMS was never decided: D1 settled the
+  source, not the transport. The options are named neutrally and **no protocol, endpoint, agent or
+  polling design is assumed or recommended.**
+- **§5 and §10 restated as built** — four regularization endpoints added by AT-5/AT-6 were missing
+  from the API table, and the "five screens" count never matched the six routed screens plus the
+  profile tab.
+- **§11 marked as unpaid debt** — ADR-027 and ADR-028 were never written, though both rules are
+  built and guarded.
+- **§16.2 records the one designed-but-unbuilt integration**: attendance rows on the employee
+  timeline (§1.6).
+
+**Awaiting owner review.** Two decisions (D6-R, D12) are open by design; this revision exists to
+put them in front of the owner, not to resolve them.

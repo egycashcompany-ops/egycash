@@ -13,6 +13,7 @@ import { authenticate } from '../../../../platform/auth';
 import { authorize } from '../../../../platform/rbac';
 import {
   attachAdjustmentDocument,
+  bulkCreateAdjustments,
   cancelAdjustment,
   createAdjustment,
   decideAdjustment,
@@ -24,6 +25,7 @@ import {
 } from './payroll-adjustment.controller';
 import {
   AdjustmentIdParamSchema,
+  BulkCreatePayrollAdjustmentsSchema,
   CancelPayrollAdjustmentSchema,
   CreatePayrollAdjustmentSchema,
   DecidePayrollAdjustmentSchema,
@@ -139,6 +141,23 @@ export const buildPayrollAdjustmentsRouter = (): Router => {
     authorize('payrollAdjustment.view'),
     validate({ query: ListPayrollAdjustmentsQuerySchema }),
     asyncHandler(listAdjustments),
+  );
+  /**
+   * One decision, recorded for many people at once (P-HR-13) — a distribution.
+   *
+   * BEHIND THE KEY THAT ALREADY MEANS "may record an adjustment". Recording three hundred of them
+   * is not a different act from recording one, and the second person's key is untouched: every row
+   * lands as a `draft`, so `payrollAdjustment.approve` still stands between this and any money.
+   *
+   * Here rather than under `/hr/employees/:id` because a distribution spans employees — the
+   * employee is a column of the batch, not the route.
+   */
+  router.post(
+    '/bulk',
+    authenticate,
+    authorize('payrollAdjustment.create'),
+    validate({ body: BulkCreatePayrollAdjustmentsSchema }),
+    asyncHandler(bulkCreateAdjustments),
   );
   return router;
 };

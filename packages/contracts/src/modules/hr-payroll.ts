@@ -1058,6 +1058,86 @@ export const CancelPayrollAdjustmentSchema = z
   .strict();
 export type CancelPayrollAdjustment = z.infer<typeof CancelPayrollAdjustmentSchema>;
 
+// ── One decision, taken for many people at once (P-HR-13) ────────────────────
+//
+// WHAT THIS IS. A distribution: finance decides each person's amount OUTSIDE this system, and ECMS
+// records the result. Profit sharing is the case it was built for, and the shape generalizes to any
+// decided-elsewhere payment because nothing about it is specific to profit.
+//
+// WHAT ECMS THEREFORE DOES NOT DO, and this is the whole boundary: there is no pool, no formula, no
+// percentage, no ratio, no eligibility rule, no service-length rule and no proration anywhere in
+// this path. **The amount arrives; it is never computed.** Any of those words appearing in this
+// feature would be a legal or financial rule nobody has given.
+//
+// WHY IT IS NOT A NEW ENTITY. A distribution is N of something this system already has: one amount,
+// for one person, for one month, because somebody decided so — a `PayrollAdjustment`, which already
+// carries the two-person rule, the frozen-month guard, the audit trail, the payslip line, the
+// employee's own view of it (P-HR-19) and the reconciliation (P-HR-15-A). A second entity would be
+// a second answer to a question this one already answers.
+//
+// THE FIELDS THAT ARE ABSENT ARE THE POINT:
+//   • no `kind` — every row is a `bonus`. A clawback is not this path.
+//   • no `currency` — it is DERIVED from the employee's own basic salary, because the engine already
+//     refuses an adjustment in any other currency. Letting a caller type one would be inviting the
+//     refusal rather than preventing it.
+//   • one `period` and one `payItemId` for the WHOLE batch — a batch that spanned months would be
+//     two decisions wearing one name, and the frozen-month guard applies per month.
+
+export const BulkPayrollAdjustmentRowSchema = z
+  .object({
+    employeeId: objectId(),
+    /** Always positive, exactly as a single adjustment's is — the kind sets the sign. */
+    amount: MoneyAmountSchema.refine((value) => value > 0, {
+      message: 'an amount must be positive',
+    }),
+    /** Per row: two people may be paid the same month for different stated reasons. */
+    reason: z.string().min(1).max(500),
+  })
+  .strict();
+export type BulkPayrollAdjustmentRow = z.infer<typeof BulkPayrollAdjustmentRowSchema>;
+
+export const BulkCreatePayrollAdjustmentsSchema = z
+  .object({
+    /** ONE month for the batch (D13-3) — never per row. */
+    period: adjustmentPeriod,
+    /**
+     * REQUIRED here, though optional on a single adjustment (D13-4).
+     *
+     * Without it every row would land on the payslip under the generic `BONUS` code and a
+     * distribution would be indistinguishable from any other bonus — including in P-HR-14's
+     * by-pay-item split. The server checks the item exists, is active, and is an `earning`.
+     */
+    payItemId: objectId(),
+    /** The same bound the punch import uses (D13-7): a batch is large, not unbounded. */
+    rows: z.array(BulkPayrollAdjustmentRowSchema).min(1).max(5000),
+  })
+  .strict();
+export type BulkCreatePayrollAdjustments = z.infer<typeof BulkCreatePayrollAdjustmentsSchema>;
+
+/**
+ * What one batch did — and REJECTED ROWS ARE REPORTED, never silently dropped.
+ *
+ * The posture the punch import established: one employee whose month is frozen, whose currency
+ * differs, or who was not employed that month must not cost the other three hundred their payment.
+ * Each refusal comes back with the row's index, the employee it was for, and the server's own
+ * sentence about why.
+ */
+export interface BulkPayrollAdjustmentRejectionDto {
+  index: number;
+  employeeId: string;
+  reason: string;
+}
+
+export interface BulkCreatePayrollAdjustmentsResultDto {
+  period: string;
+  payItemId: string;
+  /** Rows recorded — every one of them as a `draft`, awaiting the second person (D1). */
+  created: number;
+  /** Rows already recorded for this employee, month, kind and reason — a re-run writes nothing. */
+  duplicates: number;
+  rejected: BulkPayrollAdjustmentRejectionDto[];
+}
+
 export const ListPayrollAdjustmentsQuerySchema = PaginationQuerySchema.extend({
   period: adjustmentPeriod.optional(),
   kind: PayrollAdjustmentKindSchema.optional(),

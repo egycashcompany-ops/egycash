@@ -9,6 +9,7 @@ import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type Express } from 'express';
 import {
+  type BulkCreatePayrollAdjustmentsResultDto,
   type PayrollAdjustmentDto,
   platformPermissions,
   SettingKeys,
@@ -2888,6 +2889,258 @@ describe('payroll adjustments (P-HR-04)', () => {
       expect((await record(body)).status).toBe(201);
     }, 240_000);
   });
+});
+
+/**
+ * One decision, recorded for many people at once (P-HR-13) — a distribution.
+ *
+ * WHAT IS BEING PROVEN. Finance decides each person's amount outside this system; ECMS records it.
+ * So the cases below are about the RECORDING, never about the figure: the batch reuses the
+ * single-adjustment path, so every rule that path enforces still holds, and one refused row must
+ * not cost the others their payment.
+ *
+ * There is no pool, no formula and no eligibility rule anywhere in this block, because there is
+ * none in the feature.
+ */
+describe('bulk distribution (P-HR-13)', () => {
+  const PERIOD = '2025-08'; // past, open, and used by no other block
+  let alphaId = '';
+  let betaId = '';
+  let earningItemId = '';
+  let deductionItemId = '';
+  let archivedItemId = '';
+
+  const bulk = (body: object, token = adminToken) =>
+    request(app)
+      .post('/api/v1/hr/payroll/adjustments/bulk')
+      .set('Authorization', `Bearer ${token}`)
+      .send(body);
+
+  const mkEmployee = async (name: string, nationalId: string, phone: string): Promise<string> => {
+    const res = await request(app)
+      .post('/api/v1/hr/employees/direct')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        personal: {
+          identity: { fullNameAr: name, nationalId, nationality: 'Egyptian' },
+          contact: { primaryPhone: phone },
+          experience: [],
+          drivingLicenses: [],
+          certifications: [],
+          references: [],
+        },
+        employment: {
+          jobTitleId: JOB_TITLE_ID_PY4,
+          departmentId: DEPARTMENT_ID_PY4,
+          branchId: BRANCH_PY4,
+          employmentType: 'fullTime',
+          probationMonths: 0,
+          startDate: '2024-01-01T00:00:00.000Z',
+          salary: { amount: 10_000, currency: 'EGP' },
+        },
+        hiringDate: '2024-01-01T00:00:00.000Z',
+        entryStatus: 'active',
+      });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    return (res.body as { data: { id: string } }).data.id;
+  };
+
+  const mkItem = async (code: string, kind: 'earning' | 'deduction'): Promise<string> => {
+    const res = await request(app)
+      .post('/api/v1/hr/payroll/pay-items')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code, name: { ar: code, en: code }, kind, calcBasis: 'fixed' });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    return (res.body as { data: { id: string } }).data.id;
+  };
+
+  beforeAll(async () => {
+    alphaId = await mkEmployee('موظف التوزيع الأول', '29001011790010', '01174000101');
+    betaId = await mkEmployee('موظف التوزيع الثاني', '29001011890010', '01174000102');
+    // The catalog entry a distribution is labelled with — created here exactly as an administrator
+    // creates it in production: through the catalog, not a seed and not a migration.
+    earningItemId = await mkItem('DIST_SHARE', 'earning');
+    deductionItemId = await mkItem('DIST_TAKE', 'deduction');
+    archivedItemId = await mkItem('DIST_OLD', 'earning');
+    const archived = await request(app)
+      .patch(`/api/v1/hr/payroll/pay-items/${archivedItemId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'archived', version: 0 });
+    expect(archived.status, JSON.stringify(archived.body)).toBe(200);
+  }, 240_000);
+
+  it('records a row per employee, every one of them a draft', async () => {
+    const res = await bulk({
+      period: PERIOD,
+      payItemId: earningItemId,
+      rows: [
+        { employeeId: alphaId, amount: 5000, reason: 'distribution 2025' },
+        { employeeId: betaId, amount: 3000, reason: 'distribution 2025' },
+      ],
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const body = res.body.data as BulkCreatePayrollAdjustmentsResultDto;
+    expect(body.created).toBe(2);
+    expect(body.duplicates).toBe(0);
+    expect(body.rejected).toEqual([]);
+
+    const listed = await request(app)
+      .get(`/api/v1/hr/employees/${alphaId}/adjustments?page=1&pageSize=10&period=${PERIOD}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const rows = listed.body.data as PayrollAdjustmentDto[];
+    expect(rows).toHaveLength(1);
+    // A draft, a bonus, in the employee's OWN currency — which the caller never sent.
+    expect(rows[0]?.status).toBe('draft');
+    expect(rows[0]?.kind).toBe('bonus');
+    expect(rows[0]?.currency).toBe('EGP');
+    expect(rows[0]?.amount).toBe(5000);
+  }, 240_000);
+
+  /** The property that makes a re-run after an interruption safe. */
+  it('and a second identical batch writes nothing, reporting the duplicates', async () => {
+    const res = await bulk({
+      period: PERIOD,
+      payItemId: earningItemId,
+      rows: [
+        { employeeId: alphaId, amount: 5000, reason: 'distribution 2025' },
+        { employeeId: betaId, amount: 3000, reason: 'distribution 2025' },
+      ],
+    });
+    expect(res.status).toBe(200);
+    const body = res.body.data as BulkCreatePayrollAdjustmentsResultDto;
+    expect(body.created).toBe(0);
+    expect(body.duplicates).toBe(2);
+  }, 240_000);
+
+  /** THE case the whole shape exists for: one bad row must not cost the others their payment. */
+  it('reports a refused row by index and employee, and records the rest', async () => {
+    const res = await bulk({
+      period: PERIOD,
+      payItemId: earningItemId,
+      rows: [
+        { employeeId: '000000000000000000000009', amount: 1000, reason: 'partial batch' },
+        { employeeId: alphaId, amount: 1200, reason: 'partial batch' },
+      ],
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const body = res.body.data as BulkCreatePayrollAdjustmentsResultDto;
+    expect(body.created).toBe(1);
+    expect(body.rejected).toHaveLength(1);
+    expect(body.rejected[0]?.index).toBe(0);
+    expect(body.rejected[0]?.employeeId).toBe('000000000000000000000009');
+    expect(body.rejected[0]?.reason.length).toBeGreaterThan(0);
+  }, 240_000);
+
+  /** The frozen month is the batch's month, so every row is refused — and each says why. */
+  it('refuses every row when the batch’s month has a frozen run', async () => {
+    const res = await bulk({
+      period: '2026-05', // frozen by the payslips block above, and left frozen on purpose
+      payItemId: earningItemId,
+      rows: [{ employeeId: alphaId, amount: 100, reason: 'into a frozen month' }],
+    });
+    expect(res.status).toBe(200);
+    const body = res.body.data as BulkCreatePayrollAdjustmentsResultDto;
+    expect(body.created).toBe(0);
+    expect(body.rejected).toHaveLength(1);
+    expect(body.rejected[0]?.reason).toContain('frozen');
+  }, 240_000);
+
+  describe('the pay item is checked before a single row is written (D13-4)', () => {
+    it('404s for one that does not exist', async () => {
+      const res = await bulk({
+        period: PERIOD,
+        payItemId: '000000000000000000000009',
+        rows: [{ employeeId: alphaId, amount: 100, reason: 'no such item' }],
+      });
+      expect(res.status).toBe(404);
+    }, 120_000);
+
+    it('refuses an archived one', async () => {
+      const res = await bulk({
+        period: PERIOD,
+        payItemId: archivedItemId,
+        rows: [{ employeeId: alphaId, amount: 100, reason: 'archived item' }],
+      });
+      expect(res.status).toBe(422);
+    }, 120_000);
+
+    it('and refuses a deduction — a distribution is paid, not taken', async () => {
+      const res = await bulk({
+        period: PERIOD,
+        payItemId: deductionItemId,
+        rows: [{ employeeId: alphaId, amount: 100, reason: 'deduction item' }],
+      });
+      expect(res.status).toBe(422);
+    }, 120_000);
+  });
+
+  describe('what the schema refuses outright', () => {
+    it('an empty batch', async () => {
+      expect((await bulk({ period: PERIOD, payItemId: earningItemId, rows: [] })).status).toBe(400);
+    }, 120_000);
+
+    it('a period on a row — one month per batch (D13-3)', async () => {
+      const res = await bulk({
+        period: PERIOD,
+        payItemId: earningItemId,
+        rows: [{ employeeId: alphaId, amount: 100, reason: 'x', period: '2025-09' }],
+      });
+      expect(res.status).toBe(400);
+    }, 120_000);
+
+    it('a kind — every row is a bonus (D13-6)', async () => {
+      const res = await bulk({
+        period: PERIOD,
+        payItemId: earningItemId,
+        rows: [{ employeeId: alphaId, amount: 100, reason: 'x', kind: 'penalty' }],
+      });
+      expect(res.status).toBe(400);
+    }, 120_000);
+
+    it('a currency — it is derived from the employee (D13-5)', async () => {
+      const res = await bulk({
+        period: PERIOD,
+        payItemId: earningItemId,
+        rows: [{ employeeId: alphaId, amount: 100, reason: 'x', currency: 'USD' }],
+      });
+      expect(res.status).toBe(400);
+    }, 120_000);
+
+    it('a missing pay item — required here, unlike a single adjustment (D13-4)', async () => {
+      const res = await bulk({
+        period: PERIOD,
+        rows: [{ employeeId: alphaId, amount: 100, reason: 'x' }],
+      });
+      expect(res.status).toBe(400);
+    }, 120_000);
+
+    it('and a non-positive amount', async () => {
+      const res = await bulk({
+        period: PERIOD,
+        payItemId: earningItemId,
+        rows: [{ employeeId: alphaId, amount: 0, reason: 'x' }],
+      });
+      expect(res.status).toBe(400);
+    }, 120_000);
+  });
+
+  it('is behind the key that already records an adjustment, and adds none of its own', async () => {
+    const res = await bulk(
+      {
+        period: PERIOD,
+        payItemId: earningItemId,
+        rows: [{ employeeId: alphaId, amount: 100, reason: 'outsider' }],
+      },
+      outsiderToken,
+    );
+    expect(res.status).toBe(403);
+  }, 120_000);
+
+  it('and refuses an unauthenticated caller', async () => {
+    expect((await request(app).post('/api/v1/hr/payroll/adjustments/bulk').send({})).status).toBe(
+      401,
+    );
+  }, 60_000);
 });
 
 /**

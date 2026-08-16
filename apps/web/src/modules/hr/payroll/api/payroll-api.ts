@@ -2,6 +2,8 @@
 // to one employee over one dated interval; PY-3 reads what those come to over a period. Still no
 // run and no payslip.
 import {
+  type BulkCreatePayrollAdjustments,
+  type BulkCreatePayrollAdjustmentsResultDto,
   type CancelPayrollAdjustment,
   type CompensationEffectsDto,
   type CreatePayrollAdjustment,
@@ -162,6 +164,17 @@ export const listEmployeeAdjustments = (
  */
 export const listAdjustments = (params: QueryParams): Promise<Paginated<PayrollAdjustmentDto>> =>
   getPage<PayrollAdjustmentDto>(`/hr/payroll/adjustments${buildQuery(params)}`);
+
+/**
+ * One decision, recorded for many people at once (P-HR-13) — a distribution.
+ *
+ * Organization-wide rather than nested under an employee, because the employee is a column of the
+ * batch. Behind the key that already records one adjustment.
+ */
+export const bulkCreateAdjustments = (
+  body: BulkCreatePayrollAdjustments,
+): Promise<BulkCreatePayrollAdjustmentsResultDto> =>
+  post<BulkCreatePayrollAdjustmentsResultDto>('/hr/payroll/adjustments/bulk', body);
 
 export const createAdjustment = (
   employeeId: string,

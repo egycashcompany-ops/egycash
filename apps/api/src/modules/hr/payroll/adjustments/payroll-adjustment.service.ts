@@ -15,6 +15,9 @@ import { Types } from 'mongoose';
 import {
   HrPayrollEvents,
   HrPayrollTemplates,
+  type BulkCreatePayrollAdjustments,
+  type BulkCreatePayrollAdjustmentsResultDto,
+  type BulkPayrollAdjustmentRejectionDto,
   type CancelPayrollAdjustment,
   type CreatePayrollAdjustment,
   type DecidePayrollAdjustment,
@@ -107,6 +110,100 @@ class PayrollAdjustmentService {
       ],
     });
     return doc;
+  }
+
+  /**
+   * One decision, recorded for many people at once (P-HR-13 — distribution).
+   *
+   * THE AMOUNT IS NEVER COMPUTED HERE. Finance decides each person's share outside this system and
+   * hands it over; there is no pool, no formula, no percentage, no eligibility rule and no
+   * proration anywhere in this method. It records what it is given.
+   *
+   * IT CALLS `create` PER ROW, deliberately, rather than writing rows itself. Every rule a single
+   * adjustment obeys — the positive amount, the currency matching the employee's own, the month
+   * falling inside ONE employment span, the frozen-month refusal, the duplicate guard, the `draft`
+   * start, the audit entry — lives in that method. A bulk path that wrote directly would be a
+   * second implementation of all six, and the first one to drift would do so silently, on money.
+   * The cost is a second read of each employee, which is the right trade for a batch.
+   *
+   * A REFUSED ROW IS REPORTED, NOT THROWN. One employee whose month is frozen must not cost the
+   * other three hundred their payment — the posture the punch import established. Only the
+   * calculation's OWN refusals are caught: anything else keeps travelling, or a batch would report
+   * "not employed that month" for a database that was on fire.
+   */
+  async createMany(
+    ctx: AuthContext,
+    input: BulkCreatePayrollAdjustments,
+    scope: ScopeSelector,
+  ): Promise<BulkCreatePayrollAdjustmentsResultDto> {
+    // Batch-level refusals THROW, because they condemn every row equally: a pay item that does not
+    // exist is not "row 7's problem", it is the batch's.
+    const item = await payItemRepository.findById(input.payItemId);
+    if (item === null) throw new NotFoundError('pay item not found');
+    if (item.status !== 'active') {
+      throw new BusinessRuleError(
+        `pay item ${item.code} is archived — an archived item cannot label a new payment`,
+      );
+    }
+    if (item.kind !== 'earning') {
+      throw new BusinessRuleError(
+        `pay item ${item.code} is a deduction — a distribution is paid, so its item must be an earning`,
+      );
+    }
+
+    let created = 0;
+    let duplicates = 0;
+    const rejected: BulkPayrollAdjustmentRejectionDto[] = [];
+
+    for (const [index, row] of input.rows.entries()) {
+      try {
+        // The currency is DERIVED, never sent: `create` refuses anything but the employee's own
+        // basic-salary currency, so asking a caller to type it would only invite that refusal.
+        const employee = await employeeRepository.getById(row.employeeId, scope);
+        const currency = employee.employment.salary?.currency ?? null;
+        if (currency === null) {
+          rejected.push({
+            index,
+            employeeId: row.employeeId,
+            reason: 'this employee has no basic salary recorded, so the payment has no currency',
+          });
+          continue;
+        }
+        await this.create(
+          ctx,
+          row.employeeId,
+          {
+            period: input.period,
+            // Always a bonus (D13-6). A clawback is a different decision and does not travel here.
+            kind: 'bonus',
+            amount: row.amount,
+            currency,
+            reason: row.reason,
+            payItemId: input.payItemId,
+          },
+          scope,
+        );
+        created += 1;
+      } catch (error) {
+        // A duplicate is not a failure: re-running a batch after an interruption should find the
+        // rows already there and say so, which is what makes a re-run safe.
+        if (error instanceof ConflictError) {
+          duplicates += 1;
+          continue;
+        }
+        if (
+          error instanceof BusinessRuleError ||
+          error instanceof NotFoundError ||
+          error instanceof ForbiddenError
+        ) {
+          rejected.push({ index, employeeId: row.employeeId, reason: error.message });
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    return { period: input.period, payItemId: input.payItemId, created, duplicates, rejected };
   }
 
   /** Editing is a DRAFT-only act — an approved figure is a record, not a working note. */

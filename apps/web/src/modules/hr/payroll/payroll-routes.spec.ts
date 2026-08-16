@@ -153,11 +153,31 @@ describe('the payroll adjustments queue', () => {
    * adjustment stays on the employee's file, where the person and the currency are already known —
    * a create form here would be a second entry point to the same decision with less context.
    */
-  it('decides through the endpoint that already existed, and records nothing', () => {
+  /**
+   * Widened by P-HR-13, and only where that phase widened the screen.
+   *
+   * What has not changed: this page still decides through the endpoint that already existed, and
+   * still cannot record a SINGLE adjustment — that belongs on the employee's file, where the
+   * currency and the person are already known. `useCreateAdjustment` and `useSubmitAdjustment` stay
+   * forbidden here, and so does any arithmetic.
+   *
+   * What changed: a DISTRIBUTION, where the employee is a column of the batch rather than the place
+   * you start from. The `Dialog` ban was a proxy for "records nothing"; it is now stated precisely —
+   * the page opens no dialog of its own, and the one component it delegates to is named, so a
+   * second one cannot appear here unnoticed. That component has its own guards
+   * (`bulk-distribution.spec.ts`).
+   */
+  it('decides through the endpoint that already existed, and records only a distribution', () => {
     expect(QUEUE).toContain('useDecideAdjustmentFromQueue');
-    for (const forbidden of ['useCreateAdjustment', 'useSubmitAdjustment', 'Dialog', 'toMinorUnits']) {
+    for (const forbidden of ['useCreateAdjustment', 'useSubmitAdjustment', '<Dialog', 'toMinorUnits']) {
       expect(QUEUE, forbidden).not.toContain(forbidden);
     }
+    expect(QUEUE).not.toContain("from '../../../../shared/ui/Dialog'");
+    expect([...QUEUE.matchAll(/<(\w*Dialog)\b/g)].map((m) => m[1])).toEqual([
+      'BulkDistributionDialog',
+    ]);
+    // …and it is behind the key that already records an adjustment, not a new one.
+    expect(QUEUE).toContain("can('payrollAdjustment.create')");
   });
 
   // D7 — the labels are enriched on the read, so the screen shows a name rather than an id. An id

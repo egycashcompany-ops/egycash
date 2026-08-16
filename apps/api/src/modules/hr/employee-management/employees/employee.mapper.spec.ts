@@ -16,6 +16,7 @@ const employment = (over: Partial<EmploymentDetails> = {}): EmploymentDetails =>
   managerId: new Types.ObjectId(),
   employmentType: 'fullTime',
   salary: { amount: 15000, currency: 'EGP' },
+  salarySource: 'manual',
   allowances: [{ name: 'transport', amount: 1000, currency: 'EGP' }],
   benefits: ['medical insurance'],
   probationMonths: 3,

@@ -8,6 +8,7 @@
 import { Types } from 'mongoose';
 import {
   type CreateShiftAssignment,
+  type JobValueSource,
   type ListShiftAssignmentsQuery,
   type Paginated,
   type ShiftAssignmentDto,
@@ -15,6 +16,7 @@ import {
 import { BusinessRuleError, NotFoundError } from '../../../../shared/errors';
 import { type AuthContext } from '../../../../shared/types';
 import { auditService } from '../../../../platform/audit';
+import { jobTitleService } from '../../../../platform/organization';
 import { employeeRepository } from '../../employee-management/employees';
 import { shiftService } from '../shifts';
 import { ShiftAssignmentModel, type ShiftAssignmentDoc } from './shift-assignment.model';
@@ -34,10 +36,28 @@ export const toShiftAssignmentDto = (doc: ShiftAssignmentDoc): ShiftAssignmentDt
   toDate: doc.toDate === null ? null : doc.toDate.toISOString().slice(0, 10),
   note: doc.note,
   branchId: doc.branchId === null ? null : String(doc.branchId),
+  source: doc.source ?? 'manual',
   version: doc.__v,
   createdAt: doc.createdAt.toISOString(),
   updatedAt: doc.updatedAt.toISOString(),
 });
+
+/**
+ * Does this shift follow the employee's job, or depart from it? (P-HR-22 — D-JOB-5 option A.)
+ *
+ * DERIVED, never accepted from the caller: a client that could declare its own provenance could
+ * declare a departure to be compliance, and the whole value of the field is that a future
+ * re-apply can trust it.
+ *
+ * A job that lists no candidates yields `manual` for everyone — correct rather than convenient,
+ * because there is no default to be following. The job is read leniently for the same reason the
+ * salary default is: assignment must not start failing over a catalog row it never needed before.
+ */
+const sourceOfChoice = async (jobTitleId: string, shiftId: string): Promise<JobValueSource> => {
+  const title = await jobTitleService.getById(jobTitleId).catch(() => null);
+  const candidates = title?.defaultShiftIds ?? [];
+  return candidates.some((id) => String(id) === shiftId) ? 'jobDefault' : 'manual';
+};
 
 /** Interval covers the date-only value (inclusive on both ends; open end = forever). */
 const covers = (a: Pick<ShiftAssignmentDoc, 'fromDate' | 'toDate'>, date: Date): boolean =>
@@ -86,6 +106,7 @@ class ShiftAssignmentService {
         toDate: input.toDate ?? null,
         note: input.note ?? null,
         branchId: employee.employment.branchId,
+        source: await sourceOfChoice(String(employee.employment.jobTitleId), input.shiftId),
       },
       { by: ctx.userId },
     );

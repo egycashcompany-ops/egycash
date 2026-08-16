@@ -385,8 +385,18 @@ class EmployeeActionService {
         employee.employment.jobTitleId = new Types.ObjectId(jobTitleId);
         const salary = p['salary'] as { amount: number; currency: string } | null | undefined;
         if (salary !== undefined) {
+          // Stated in the action ⇒ somebody decided it, whatever the job says (D-JOB-4).
           changes.push({ field: 'employment.salary', from: employee.employment.salary, to: salary ?? null });
           employee.employment.salary = salary ?? null;
+          employee.employment.salarySource = 'manual';
+        } else if (title.fixedSalary != null && employee.employment.salarySource !== 'manual') {
+          // P-HR-22 — the new job's default reaches only an employee who was still following one.
+          // An override stays untouched, which is D-JOB-4 applied at the moment of promotion
+          // rather than deferred to a re-apply that does not exist yet.
+          const to = { amount: title.fixedSalary.amount, currency: title.fixedSalary.currency };
+          changes.push({ field: 'employment.salary', from: employee.employment.salary, to });
+          employee.employment.salary = to;
+          employee.employment.salarySource = 'jobDefault';
         }
         break;
       }
@@ -411,6 +421,8 @@ class EmployeeActionService {
         if (salary !== undefined) {
           changes.push({ field: 'employment.salary', from: employee.employment.salary, to: salary ?? null });
           employee.employment.salary = salary ?? null;
+          // A salary change IS the override (D-JOB-4): from here the job's default never applies.
+          employee.employment.salarySource = 'manual';
         }
         if (allowances !== undefined) {
           changes.push({ field: 'employment.allowances', from: employee.employment.allowances, to: allowances });
@@ -767,6 +779,8 @@ class EmployeeActionService {
         managerId: t.managerId,
         employmentType: t.employmentType,
         salary: t.salary === null ? null : { amount: t.salary.amount, currency: t.salary.currency },
+        // A rehire's figure comes from the accepted offer — negotiated, not defaulted (D-JOB-4).
+        salarySource: 'manual',
         allowances: t.allowances.map((a) => ({ name: a.name, amount: a.amount, currency: a.currency })),
         benefits: [...t.benefits],
         probationMonths: t.probationMonths,
@@ -802,6 +816,8 @@ class EmployeeActionService {
         managerId: terms.managerId == null ? null : new Types.ObjectId(terms.managerId),
         employmentType: terms.employmentType,
         salary: terms.salary == null ? null : { amount: terms.salary.amount, currency: terms.salary.currency },
+        // Terms typed into the rehire are somebody's decision, exactly like the offer path above.
+        salarySource: 'manual',
         allowances: (terms.allowances ?? []).map((a) => ({ name: a.name, amount: a.amount, currency: a.currency })),
         benefits: [...(terms.benefits ?? [])],
         probationMonths: terms.probationMonths,

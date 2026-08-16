@@ -3,6 +3,7 @@
 // down to a single day — is an override that wins over the open one. `branchId` is the ADR-015
 // scope field, denormalized from the employee at write time like every HR collection.
 import { Schema, model, type Types } from 'mongoose';
+import { JOB_VALUE_SOURCES, type JobValueSource } from '@ecms/contracts';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../../shared/base/base.model';
 
 export interface ShiftAssignmentDoc extends BaseDocFields {
@@ -13,6 +14,13 @@ export interface ShiftAssignmentDoc extends BaseDocFields {
   toDate: Date | null;
   note: string | null;
   branchId: Types.ObjectId | null;
+  /**
+   * P-HR-22 / D-JOB-4 — whether the chosen shift is one the employee's job lists.
+   *
+   * Derived when the row is written, never accepted from the caller. Absent reads as `manual`,
+   * which protects every assignment made before this field existed.
+   */
+  source: JobValueSource;
 }
 
 const shiftAssignmentSchema = new Schema<ShiftAssignmentDoc>(
@@ -23,6 +31,7 @@ const shiftAssignmentSchema = new Schema<ShiftAssignmentDoc>(
     toDate: { type: Date, default: null },
     note: { type: String, default: null },
     branchId: { type: Schema.Types.ObjectId, default: null },
+    source: { type: String, enum: JOB_VALUE_SOURCES, default: 'manual' },
     ...baseFields,
   },
   baseSchemaOptions,

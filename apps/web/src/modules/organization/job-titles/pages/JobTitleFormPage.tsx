@@ -54,6 +54,24 @@ const JobTitleFormBody = ({ existing }: { existing: JobTitleDto | null }): JSX.E
       : String(existing.requiredExperienceYears),
   );
   const [requiresDrivingTest, setRequiresDrivingTest] = useState(existing?.requiresDrivingTest ?? false);
+  const [fixedSalary, setFixedSalary] = useState(
+    existing?.fixedSalary == null ? '' : String(existing.fixedSalary.amount),
+  );
+
+  /**
+   * The band warns while you type; it never blocks (P-HR-22 — the owner's ruling).
+   *
+   * Computed here rather than read from `fixedSalaryOutsideBand` on the DTO so the warning tracks
+   * the form's unsaved state — the server's answer describes what is stored, which is the wrong
+   * thing to show somebody who is mid-edit. The two agree once the page is saved.
+   */
+  const outsideBand = ((): boolean => {
+    const fixed = numOrNull(fixedSalary);
+    if (fixed === null) return false;
+    const min = numOrNull(salaryMin);
+    const max = numOrNull(salaryMax);
+    return (min !== null && fixed < min) || (max !== null && fixed > max);
+  })();
 
   const submit = async (): Promise<void> => {
     if (name.ar.trim() === '' || name.en.trim() === '') {
@@ -74,6 +92,9 @@ const JobTitleFormBody = ({ existing }: { existing: JobTitleDto | null }): JSX.E
       toast.error(t('organization.jobTitle.salaryOrder'));
       return;
     }
+    // The band advises; it does not gate. A fixed salary outside it saves and warns (P-HR-22).
+    const fixed = numOrNull(fixedSalary);
+    const fixedMoney = fixed === null ? null : { amount: fixed, currency: 'EGP' };
 
     try {
       if (isCreate) {
@@ -90,6 +111,7 @@ const JobTitleFormBody = ({ existing }: { existing: JobTitleDto | null }): JSX.E
         if (max !== null) body.salaryMax = max;
         if (experience.trim() !== '') body.requiredExperienceYears = numOrNull(experience) ?? undefined;
         if (requiresDrivingTest) body.requiresDrivingTest = true;
+        if (fixedMoney !== null) body.fixedSalary = fixedMoney;
         const doc = await create.mutateAsync(body);
         toast.success(t('organization.jobTitle.created'));
         navigate(`/organization/job-titles/${doc.id}`);
@@ -105,6 +127,7 @@ const JobTitleFormBody = ({ existing }: { existing: JobTitleDto | null }): JSX.E
           salaryMax: max,
           requiredExperienceYears: numOrNull(experience),
           requiresDrivingTest,
+          fixedSalary: fixedMoney,
         };
         const doc = await update.mutateAsync(body);
         toast.success(t('organization.jobTitle.updated'));
@@ -167,6 +190,23 @@ const JobTitleFormBody = ({ existing }: { existing: JobTitleDto | null }): JSX.E
             description={t('organization.jobTitle.requirementsHint')}
           />
           <CardBody className="space-y-4">
+            <Field
+              label={t('organization.jobTitle.fixedSalary')}
+              hint={t('organization.jobTitle.fixedSalaryHint')}
+            >
+              <Input
+                type="number"
+                min={0}
+                dir="ltr"
+                value={fixedSalary}
+                onChange={(e) => setFixedSalary(e.target.value)}
+              />
+            </Field>
+            {outsideBand ? (
+              <p className="text-sm text-amber-600 dark:text-amber-400">
+                {t('organization.jobTitle.fixedSalaryOutsideBand')}
+              </p>
+            ) : null}
             <div className="grid gap-4 sm:grid-cols-3">
               <Field label={t('organization.jobTitle.salaryMin')} hint="EGP">
                 <Input

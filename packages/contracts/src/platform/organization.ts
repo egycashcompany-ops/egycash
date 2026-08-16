@@ -85,6 +85,21 @@ export type CreateSection = z.infer<typeof CreateSectionSchema>;
 // Section. Linking a title to a concrete organizational location is the job of Job Positions
 // (a later phase). Only `jobGrade` is required; salary/description/qualifications/experience are
 // optional so a title can be created quickly and enriched over time.
+/**
+ * The Job's fixed salary — the DEFAULT a new assignment starts from (P-HR-22, D-JOB-2).
+ *
+ * Shaped exactly like the offer's `MoneySchema`, and deliberately NOT imported from it: this file
+ * is a platform contract and the offer is a module one, so borrowing the type would invert the
+ * dependency the whole package is arranged around. The duplication is four tokens wide and the
+ * guard spec holds the two shapes equal.
+ *
+ * NOT the salary band. `salaryMin`/`salaryMax` stay what they have always been — an advisory range
+ * that nothing prices from. This is the figure that is actually copied onto an employee.
+ */
+const JobFixedSalarySchema = z
+  .object({ amount: z.number().nonnegative(), currency: z.string().length(3).default('EGP') })
+  .strict();
+
 const jobTitleRichFields = {
   jobGrade: z.string().trim().min(1).max(32).describe('Grade label/code, e.g. G7 or M2'),
   description: LocalizedStringSchema.nullable().optional(),
@@ -93,6 +108,18 @@ const jobTitleRichFields = {
   requiredQualifications: LocalizedStringSchema.nullable().optional(),
   requiredExperienceYears: z.number().int().min(0).max(60).nullable().optional(),
   requiresDrivingTest: z.boolean().optional(),
+  /** The default an assignment copies when it is not given a salary of its own (D-JOB-2). */
+  fixedSalary: JobFixedSalarySchema.nullable().optional(),
+  /**
+   * The shifts this job may be worked on — a CANDIDATE LIST, never a set of concurrent
+   * assignments (D-JOB-5 option A).
+   *
+   * An employee still has exactly one open shift assignment; `hr_shift_assignments` enforces that
+   * with a partial unique index and this list does not touch it. What the list does is say which
+   * choice follows the job and which is a departure from it — which is the whole of what a future
+   * re-apply needs in order to leave a departure alone (D-JOB-4).
+   */
+  defaultShiftIds: z.array(objectId()).max(50).optional(),
 };
 
 /** A salary band is coherent only when both ends are present and min ≤ max. */
@@ -149,6 +176,8 @@ export const UpdateJobTitleSchema = z
     requiredQualifications: LocalizedStringSchema.nullable().optional(),
     requiredExperienceYears: z.number().int().min(0).max(60).nullable().optional(),
   requiresDrivingTest: z.boolean().optional(),
+    fixedSalary: JobFixedSalarySchema.nullable().optional(),
+    defaultShiftIds: z.array(objectId()).max(50).optional(),
     version: z.number().int().min(0),
   })
   .strict()
@@ -238,6 +267,18 @@ export interface SectionDto extends OrgUnitDto {
   description: { ar: string; en: string } | null;
 }
 
+/**
+ * A candidate shift as the Job screen shows it — an id and a name, and nothing else.
+ *
+ * `name` is null when the shift cannot be read: it was deleted, or the HR module that owns shifts
+ * is not enabled on this deployment. Null is the honest answer to "what is this called?"; a
+ * fabricated label or a failed request would both be worse.
+ */
+export interface JobShiftLabelDto {
+  id: string;
+  name: { ar: string; en: string } | null;
+}
+
 export interface JobTitleDto {
   id: string;
   code: string;
@@ -260,6 +301,32 @@ export interface JobTitleDto {
    * filled that field in yet is still applying to drive.
    */
   requiresDrivingTest: boolean;
+  /**
+   * The default salary an assignment copies (D-JOB-2), or null when the job states none.
+   *
+   * Distinct from the band above in kind, not degree: `salaryMin`/`salaryMax` advise a human,
+   * this is the figure the system actually writes onto an employee. A `fixedSalary` outside the
+   * band is reported as a warning and saved anyway — the band is not a constraint.
+   */
+  fixedSalary: { amount: number; currency: string } | null;
+  /**
+   * True when `fixedSalary` falls outside `salaryMin`…`salaryMax` — DERIVED, never stored.
+   *
+   * A statement of fact for the screen to render, not a rule: the save already succeeded. Keeping
+   * it computed means the band can be edited afterwards and this answer stays correct without
+   * anything being rewritten.
+   */
+  fixedSalaryOutsideBand: boolean;
+  /** Shifts this job may be worked on — candidates to choose ONE from, never concurrent ones. */
+  defaultShiftIds: string[];
+  /**
+   * The same shifts, named (D-JOB-6 option C) — so the Job screen can render them without holding
+   * any attendance grant.
+   *
+   * The ids stay above rather than being replaced: they are what a write sends back, and this list
+   * is what a reader displays. The same shape the payroll queue uses for employee labels (D7).
+   */
+  defaultShifts: JobShiftLabelDto[];
   status: 'active' | 'inactive';
   version: number;
   createdAt: string;

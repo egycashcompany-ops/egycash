@@ -74,6 +74,7 @@ import {
 import { buildSettlementRouter } from './settlement';
 import { addDays, cairoToday } from './shared/business-date';
 import { registerHrIdentitySeams } from './employee-management/employees/identity-seams';
+import { registerHrShiftLabelSeam } from './attendance/shifts/shift-label-seams';
 import { registerHrBranchCodeSeams } from './employee-management/employees/branch-code-seams';
 import { registerHrDirectorySeams } from './directory-seams';
 import {
@@ -106,6 +107,8 @@ registerHrAttendanceSettings();
 registerHrContractSettings();
 // Auth design 4.3/4.4 — employee-code login + NID temp-password source (platform seams).
 registerHrIdentitySeams();
+// P-HR-22 / D-JOB-6 C — the platform Job catalog renders shift NAMES without an HR grant.
+registerHrShiftLabelSeam();
 registerHrDirectorySeams();
 // HR3-A — the Employee Code derives from the branch code and is stored, so a branch-code
 // correction has to reach the employees that derived from it.

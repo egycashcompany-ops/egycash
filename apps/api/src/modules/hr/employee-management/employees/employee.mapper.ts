@@ -44,6 +44,8 @@ const employmentDto = (e: EmploymentDetails, compensationVisible: boolean): Empl
     !compensationVisible || e.salary === null
       ? null
       : { amount: e.salary.amount, currency: e.salary.currency },
+  // Reported even when the figure is redacted: whether a salary follows the job is not the salary.
+  salarySource: e.salarySource ?? 'manual',
   allowances: compensationVisible
     ? e.allowances.map((a) => ({ name: a.name, amount: a.amount, currency: a.currency }))
     : [],

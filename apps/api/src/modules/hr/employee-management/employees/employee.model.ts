@@ -13,6 +13,8 @@ import {
   EMPLOYEE_ORIGINS,
   EMPLOYEE_STATUSES,
   EMPLOYMENT_TYPES,
+  JOB_VALUE_SOURCES,
+  type JobValueSource,
   type EmployeeExitType,
   type EmployeeOrigin,
   type EmployeeStatus,
@@ -61,6 +63,13 @@ export interface EmploymentDetails {
   employmentType: EmploymentType;
   /** Compensation — null when none was set. */
   salary: EmployeeMoney | null;
+  /**
+   * P-HR-22 / D-JOB-4 — whether `salary` was copied from the job or set by a human.
+   *
+   * `manual` is the schema default, so every employee who predates this field is read as an
+   * override and a future re-apply can never reach them.
+   */
+  salarySource: JobValueSource;
   allowances: EmployeeAllowance[];
   benefits: string[];
   probationMonths: number;
@@ -194,6 +203,9 @@ const employmentSchema = new Schema<EmploymentDetails>(
       ),
       default: null,
     },
+    // D-JOB-4 fails safe: absent means `manual`, so the existing population is protected without
+    // a backfill and no re-apply written later can reach an employee it never wrote.
+    salarySource: { type: String, enum: JOB_VALUE_SOURCES, default: 'manual' },
     allowances: {
       type: [
         new Schema<EmployeeAllowance>(

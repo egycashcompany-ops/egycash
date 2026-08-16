@@ -1,11 +1,27 @@
 # P-HR-13 — Profit Sharing
 
-**Discovery and design only. No formula, no eligibility rule, no timing, no base — none of them
-exists in this repository and none is invented here.**
+> **STATUS (v1.1) — the phase has SHIPPED. §4.1 was answered by the owner: DISTRIBUTION.**
+> The implementation merged as **PR #229** and the six §4 items below did **not** have to be
+> answered, because five of them only exist under the other branch of §4.1. §7 records the
+> outcome; everything above it is preserved as written, as the record of how the question was
+> framed before it was answered.
 
-Verified: no occurrence of `profitShar` anywhere in `apps/api`, `packages/contracts` or
-`apps/web`. The phase is blocked in the strongest sense — not "the code is missing" but "the rule
-has never been stated".
+**Discovery and design only. No formula, no eligibility rule, no timing, no base — none of them
+exists in this repository and none is invented here.** *(Still true after #229: the amounts are
+typed in, and nothing in the shipped code computes one — see §7.)*
+
+Verified **at the time of writing**: no occurrence of `profitShar` anywhere in `apps/api`,
+`packages/contracts` or `apps/web`. The phase was blocked in the strongest sense — not "the code
+is missing" but "the rule has never been stated".
+
+> **Corrected in v1.1.** Both sentences above have aged, in opposite directions:
+>
+> * `profitShar` now appears in **three spec files and nowhere else** — and in all three it is a
+>   guard that FORBIDS the word (`settlement-guards.spec.ts`, `reconciliation-guards.spec.ts`,
+>   `bulk-distribution-guards.spec.ts`). Production code still contains **zero** occurrences, by
+>   design: the shipped feature is named for its shape (`BulkDistribution`), not for profit.
+> * "the rule has never been stated" is **no longer true**. The rule was stated — it is
+>   *"finance decides each amount outside ECMS"* — and that IS the answer to §4.1.
 
 ---
 
@@ -64,8 +80,14 @@ exactly the line this phase must not cross.
 
 ## 4. 🔒 BLOCKED — the decisions, in the order they unblock work
 
+> **v1.1: item 1 is ANSWERED — *distribution*. Items 2–6 are therefore NOT open; they are
+> inapplicable under the answered model, and would only re-open if the owner later rules that ECMS
+> must compute the shares itself.** They are left standing below, unedited, so that the cost of
+> that reversal stays visible.
+
 1. **Distribution or derivation?** Does finance decide each employee's amount (then §1's adjustment
    path carries it), or must ECMS compute it from a pool? Everything else depends on this.
+   → **ANSWERED: distribution** (owner ruling, recorded as **D13-1** in §7).
 2. **If derivation: the pool** — where the figure comes from, who enters it, and whether ECMS stores
    it at all.
 3. **The formula**, stated explicitly.
@@ -88,3 +110,46 @@ bulk-entry screen over P-HR-04 and could ship in a single phase. If ECMS must co
 new engine and needs all six answers in §4 before a line is written.
 
 Nothing here guesses which.
+
+> **v1.1 — and that is exactly what happened.** The answer was *decided outside ECMS*, and the
+> phase shipped in a single PR as a bulk-entry path over P-HR-04. §7 records what landed.
+
+---
+
+## 7. Outcome — what was decided, and what shipped (v1.1)
+
+*Added after the fact. This section records rulings and merged code; it introduces no decision of
+its own.*
+
+### 7.1 The rulings
+
+| id | ruling |
+|---|---|
+| **D13-1** | **Distribution, not derivation.** Finance decides each employee's amount outside ECMS; the system records and routes it. This is §4.1, answered. |
+| **D13-2a** | The batch posts against a **pay item** the organization creates, whose `code` is `PROFIT_SHARE`. It is a **row of data, not a constant in the code** — which is why a guard forbids the literal from appearing in any source file. |
+| **D13-3** | One batch covers **one period**. |
+| **D13-4** | `payItemId` is **required** on the batch — there is no implicit or defaulted item. |
+| **D13-5** | A screen is in scope, riding the existing adjustments queue. |
+| **D13-6** | `kind: 'earning'` only; a deduction would only be refused by the engine. |
+| **D13-7** | At most **5000** rows per batch. |
+
+### 7.2 What merged — PR #229
+
+* **Contracts** — `BulkPayrollAdjustmentRowSchema` (`employeeId` · `amount` · `reason`),
+  `BulkCreatePayrollAdjustmentsSchema` (period + required `payItemId` + 1…5000 rows),
+  `BulkCreatePayrollAdjustmentsResultDto` (`created` · `duplicates` · `rejected[]`, each refusal
+  carrying its row index and reason).
+* **API** — `POST /hr/payroll/adjustments/bulk`, behind the key that already records one
+  adjustment (`payrollAdjustment.create`). No new permission, no new page, no migration.
+* **Service** — `payrollAdjustmentService.createMany()`, which validates the pay item once and then
+  creates each row through the SAME `create()` path a single adjustment uses. Every existing guard
+  therefore still applies per row: the two-person rule, PY-9's frozen-period refusal, the currency
+  derived from the employee's own basic salary, and the audit record.
+* **Web** — `BulkDistributionDialog`, opened from the existing adjustments queue.
+
+### 7.3 What it deliberately is not
+
+The shipped feature computes **nothing**. It has no pool, no formula, no eligibility test, no
+proration and no base — its guards assert the absence of each. It is a way to *record* amounts that
+were decided elsewhere, and profit sharing is the case it was built for rather than a concept it
+models. §5's prohibitions all still hold.

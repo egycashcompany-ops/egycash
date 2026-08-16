@@ -186,6 +186,84 @@ export const UpdateJobTitleSchema = z
   .refine(salaryBandOk, salaryBandError);
 export type UpdateJobTitle = z.infer<typeof UpdateJobTitleSchema>;
 
+// ── Cost centres (P-HR-23) ──────────────────────────────────────────────────
+//
+// WHAT A COST CENTRE IS HERE. An organizational axis the company defines for itself, carried by a
+// person over dated intervals and stamped onto a payslip when it is issued. That is the whole of
+// it in this phase.
+//
+// WHAT IT IS NOT. Not an account, not a mapping, not a posting rule — the Accounting phase owns
+// all three and nothing here anticipates any of them. Not a second scope axis either: `branchId`
+// is what ADR-004 filters on and a cost centre never competes with it.
+//
+// NO HIERARCHY (D-CC-4) and NO MEMBERSHIP RULES (D-CC-1/D-CC-6). Membership is an explicit dated
+// assignment, because the organizational tree it would otherwise be derived from carries no dates
+// of its own — a rule evaluated later would answer with today's tree, not the one that was true.
+
+export const CreateCostCenterSchema = z
+  .object({
+    code: orgUnitBase.code,
+    name: LocalizedStringSchema,
+    description: LocalizedStringSchema.nullable().optional(),
+  })
+  .strict();
+export type CreateCostCenter = z.infer<typeof CreateCostCenterSchema>;
+
+export const UpdateCostCenterSchema = z
+  .object({
+    name: LocalizedStringSchema.optional(),
+    description: LocalizedStringSchema.nullable().optional(),
+    status: z.enum(['active', 'inactive']).optional(),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type UpdateCostCenter = z.infer<typeof UpdateCostCenterSchema>;
+
+export interface CostCenterDto {
+  id: string;
+  code: string;
+  name: { ar: string; en: string };
+  description: { ar: string; en: string } | null;
+  status: 'active' | 'inactive';
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * One employee's membership over a dated interval (D-CC-1 — explicit, never derived).
+ *
+ * `effectiveTo: null` is the open interval — the current membership. Intervals may not overlap for
+ * one employee: on any given day a person is in exactly one cost centre, or in none.
+ */
+export const CreateCostCenterAssignmentSchema = z
+  .object({
+    costCenterId: objectId(),
+    effectiveFrom: z.coerce.date(),
+    effectiveTo: z.coerce.date().nullish(),
+    note: z.string().trim().max(500).nullish(),
+  })
+  .strict()
+  .refine((v) => v.effectiveTo == null || v.effectiveTo >= v.effectiveFrom, {
+    message: 'effectiveTo must be on or after effectiveFrom',
+    path: ['effectiveTo'],
+  });
+export type CreateCostCenterAssignment = z.infer<typeof CreateCostCenterAssignmentSchema>;
+
+export interface CostCenterAssignmentDto {
+  id: string;
+  employeeId: string;
+  costCenterId: string;
+  /** The centre's own label, resolved on the read so a screen never renders a bare id. */
+  costCenter: { id: string; code: string; name: { ar: string; en: string } } | null;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  note: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export const ListOrgUnitsQuerySchema = PaginationQuerySchema.extend({
   status: z.enum(['active', 'inactive']).optional(),
   branchId: objectId().optional(),

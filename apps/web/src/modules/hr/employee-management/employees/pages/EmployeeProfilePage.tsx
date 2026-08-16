@@ -22,6 +22,7 @@ import { EmploymentView } from '../components/EmploymentView';
 import { EmployeeAccountCard } from '../components/EmployeeAccountCard';
 import { ActionsMenu } from '../components/actions/ActionsMenu';
 import { ActionHistory } from '../components/ActionHistory';
+import { EmployeeCostCenterCard } from '../components/EmployeeCostCenterCard';
 import { PersonalView } from '../components/PersonalView';
 import { EditPersonalDialog } from '../components/EditPersonalDialog';
 import { EmployeeFileDocuments } from '../../employee-files/components/EmployeeFileDocuments';
@@ -352,7 +353,13 @@ export const EmployeeProfilePage = (): JSX.Element => {
           <EditPersonalDialog employee={e} open={editPersonal} onClose={() => setEditPersonal(false)} />
         </div>
       )}
-      {tab === 'employment' && <ActionHistory employee={e} />}
+      {tab === 'employment' && (
+        <div className="space-y-4">
+          {/* Organizational placement over time, beside the action history that moves it. */}
+          <EmployeeCostCenterCard employeeId={e.id} />
+          <ActionHistory employee={e} />
+        </div>
+      )}
       {tab === 'leave' && (
         <Suspense fallback={<LoadingState />}>
           <EmployeeLeaveTab employee={e} />

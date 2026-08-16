@@ -363,6 +363,13 @@ const CATALOG: CategoryDef[] = [
         icon: 'tag',
         permission: 'jobTitle.view',
       },
+      {
+        en: 'Cost Centers',
+        ar: 'مراكز التكلفة',
+        route: '/organization/cost-centers',
+        icon: 'pie_chart',
+        permission: 'costCenter.view',
+      },
     ],
   },
   {

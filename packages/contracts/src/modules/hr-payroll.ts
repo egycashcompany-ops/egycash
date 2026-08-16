@@ -759,6 +759,16 @@ export interface PayslipDto {
    * practice — it is stated rather than filled with a status that was never recorded.
    */
   runStatus: PayrollRunStatus | null;
+  /**
+   * The cost centre this payslip was issued against (P-HR-23), or null when the employee held
+   * none on the last day of the period.
+   *
+   * A SNAPSHOT, exactly like `branchId` beside it: resolved once at issue and written under
+   * `$setOnInsert`, so re-running the issue pass cannot move it and editing the employee's
+   * assignment afterwards cannot reach a document that was already handed over. Nothing in the
+   * calculation reads it — it is an axis for reporting, never an input to a figure.
+   */
+  costCenterId: string | null;
   period: string;
   /** `YYYY-MM-DD` bounds of the period, inclusive. */
   from: string;

@@ -115,6 +115,31 @@ export const jobPositionPermissions = declarePermissions(
   'platform.job-positions',
 );
 
+/**
+ * Cost centres (P-HR-23) — a reporting dimension the organization defines for itself.
+ *
+ * `assign` is separate from `edit` on purpose. Renaming a centre and deciding which one a person
+ * belongs to are different authorities held by different people: the first is catalog maintenance,
+ * the second places a human being's cost somewhere. Folding them into one key would mean anyone
+ * who may tidy a label may also move the money.
+ *
+ * NOT an accounting concept. A cost centre here is an HR/Payroll axis and maps to no account —
+ * that mapping is the Accounting phase's, and nothing in this codebase anticipates it.
+ */
+export const costCenterPermissions = declarePermissions(
+  P,
+  'costCenter',
+  { en: 'cost centers', ar: 'مراكز التكلفة' },
+  ['view', 'create', 'edit', 'delete'],
+  [
+    {
+      action: 'assign',
+      name: { en: 'Assign an employee to a cost center', ar: 'إسناد موظف لمركز تكلفة' },
+    },
+  ],
+  'platform.cost-centers',
+);
+
 export const applicationPermissions = declarePermissions(
   P,
   'application',
@@ -223,6 +248,7 @@ export const platformPermissions: PermissionDef[] = [
   ...sectionPermissions,
   ...jobTitlePermissions,
   ...jobPositionPermissions,
+  ...costCenterPermissions,
   ...applicationPermissions,
   ...applicationCategoryPermissions,
   ...settingPermissions,
@@ -319,6 +345,13 @@ export const platformPages: PageDef[] = [
     name: { en: 'Job positions', ar: 'الوظائف' },
     route: '/organization/job-positions',
     sortOrder: 90,
+  },
+  {
+    id: 'platform.cost-centers',
+    moduleId: P,
+    name: { en: 'Cost centers', ar: 'مراكز التكلفة' },
+    route: '/organization/cost-centers',
+    sortOrder: 95,
   },
   {
     id: 'platform.applications',

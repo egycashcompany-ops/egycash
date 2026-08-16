@@ -46,4 +46,10 @@ export {
   jobPositionRepository,
   type JobPositionDoc,
 } from './job-positions';
+export {
+  costCenterService,
+  buildCostCentersRouter,
+  costCenterRepository,
+  type CostCenterDoc,
+} from './cost-centers';
 export { effectiveManagerId } from './shared/org-unit';

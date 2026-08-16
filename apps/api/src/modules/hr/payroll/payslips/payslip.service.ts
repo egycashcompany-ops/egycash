@@ -34,6 +34,10 @@ import { jobTitleService } from '../../../../platform/organization';
 import { type ScopeSelector } from '../../../../shared/types';
 import { dateOnlyIso } from '../../shared/business-date';
 import { employeeRepository, type EmployeeDoc } from '../../employee-management/employees';
+import {
+  costCenterAssignmentRepository,
+  costCentreOn,
+} from '../../employee-management/cost-center-assignments';
 import { compensationService } from '../compensation/compensation.service';
 import { loanInstallmentPort } from '../compensation/loan-installment.port';
 import { employmentSpansOf } from '../compensation/employment-spans';
@@ -46,6 +50,40 @@ import { payslipRepository } from './payslip.repository';
 const entityRef = (id: string) => ({ moduleId: 'hr', entityType: 'payslip', entityId: id });
 
 /** PY-3 refuses these before a result exists, so its message is mapped back onto the vocabulary. */
+/**
+ * Every employee's cost centre on one day, in one query (P-HR-23, D-CC-7).
+ *
+ * A READ AND A LABEL. Nothing here influences a figure: the map is consumed once, at
+ * `$setOnInsert`, and no rule in the compensation engine has ever heard of a cost centre. An
+ * employee nobody has placed is simply absent from the map, and their payslip carries null —
+ * which is an ordinary outcome, not a skip (D-CC-5).
+ */
+const costCentresForPopulation = async (
+  population: readonly EmployeeDoc[],
+  on: Date,
+): Promise<Map<string, Types.ObjectId>> => {
+  const ids = population.map((employee) => String(employee._id));
+  const rows = await costCenterAssignmentRepository.coveringSystem(ids, on);
+  const byEmployee = new Map<string, typeof rows>();
+  for (const row of rows) {
+    const key = String(row.employeeId);
+    byEmployee.set(key, [...(byEmployee.get(key) ?? []), row]);
+  }
+  const out = new Map<string, Types.ObjectId>();
+  for (const [employeeId, own] of byEmployee) {
+    const winner = costCentreOn(
+      own.map((row) => ({
+        costCenterId: String(row.costCenterId),
+        effectiveFrom: row.effectiveFrom,
+        effectiveTo: row.effectiveTo,
+      })),
+      on,
+    );
+    if (winner !== null) out.set(employeeId, new Types.ObjectId(winner));
+  }
+  return out;
+};
+
 const refusalReason = (message: string): PayslipSkipReason =>
   message.includes('no basic salary') ? 'noBasicSalary' : 'mixedCurrency';
 
@@ -72,6 +110,13 @@ class PayslipService {
     );
 
     const issuedAt = new Date();
+    // P-HR-23 / D-CC-7 — the cost centre is the one in force on the LAST DAY OF THE PERIOD, not on
+    // the day the pass happens to run. A July payslip issued in August must carry July's centre.
+    //
+    // Resolved for the whole population in ONE query, before the loop: a label must not turn a
+    // payroll run into a round trip per employee. This reads a membership and writes a stamp; no
+    // figure on this payslip is derived from it, and no rule below consults it.
+    const costCentres = await costCentresForPopulation(population, window.to);
     const skipped: { employeeId: string; reason: PayslipSkipReason }[] = [];
     let created = 0;
     let existing = 0;
@@ -125,6 +170,7 @@ class PayslipService {
             issuedAt,
             issuedBy: new Types.ObjectId(by),
             branchId: employee.employment.branchId,
+            costCenterId: costCentres.get(employeeId) ?? null,
             isDeleted: false,
             createdBy: new Types.ObjectId(by),
             updatedBy: null,
@@ -348,6 +394,9 @@ class PayslipService {
       id: String(doc._id),
       runId: String(doc.runId),
       runStatus,
+      // Read straight off the document — the centre this slip was ISSUED against, never resolved
+      // afresh. Re-resolving would make a historical document answer with today's membership.
+      costCenterId: doc.costCenterId === null ? null : String(doc.costCenterId),
       period: doc.period,
       from: dateOnlyIso(window.from),
       to: dateOnlyIso(window.to),

@@ -101,8 +101,17 @@ describe('it is read at read time, through one batch read', () => {
     // `toDto` takes it as a parameter, so a call site cannot silently omit it.
     expect(service).toMatch(/toDto\(doc: PayslipDoc, runStatus: PayrollRunStatus \| null\)/);
     expect(controller).not.toMatch(/toDto\([^,)]*\)/);
-    // The null decision is made once, in the reader, rather than at each call site.
-    expect((service.match(/\?\? null/g) ?? []).length).toBe(1);
+    // The null decision is made once, in the READER, rather than at each call site.
+    //
+    // Scoped to the reader rather than counted across the file: P-HR-23 added a second, unrelated
+    // `?? null` when the payslip began carrying a cost centre, and a file-wide count would have
+    // read that as this rule breaking. The claim is about where runStatus decides its null, so
+    // that is what is asserted — narrower than before, and about the right thing.
+    const nullDecision = service.slice(
+      service.indexOf('async runStatusReader'),
+      service.indexOf('async toDtoOne'),
+    );
+    expect((nullDecision.match(/\?\? null/g) ?? []).length).toBe(1);
   });
 
   it('and the two cross-run lists — the ones the finding is about — are covered', () => {

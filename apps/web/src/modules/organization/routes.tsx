@@ -27,6 +27,9 @@ import { ApplicationFormPage } from './applications/pages/ApplicationFormPage';
 import { ApplicationCategoriesListPage } from './application-categories/pages/ApplicationCategoriesListPage';
 import { ApplicationCategoryDetailPage } from './application-categories/pages/ApplicationCategoryDetailPage';
 import { ApplicationCategoryFormPage } from './application-categories/pages/ApplicationCategoryFormPage';
+import { CostCentersListPage } from './cost-centers/pages/CostCentersListPage';
+import { CostCenterDetailPage } from './cost-centers/pages/CostCenterDetailPage';
+import { CostCenterFormPage } from './cost-centers/pages/CostCenterFormPage';
 import { JobTitlesListPage } from './job-titles/pages/JobTitlesListPage';
 import { JobTitleDetailPage } from './job-titles/pages/JobTitleDetailPage';
 import { JobTitleFormPage } from './job-titles/pages/JobTitleFormPage';
@@ -153,6 +156,34 @@ export default function OrganizationRoutes(): JSX.Element {
             element={
               <RequirePermission permission="jobPosition.edit">
                 <JobPositionFormPage mode="edit" />
+              </RequirePermission>
+            }
+          />
+        </Route>
+
+        <Route
+          path="cost-centers"
+          element={
+            <RequirePermission permission="costCenter.view">
+              <Outlet />
+            </RequirePermission>
+          }
+        >
+          <Route index element={<CostCentersListPage />} />
+          <Route
+            path="new"
+            element={
+              <RequirePermission permission="costCenter.create">
+                <CostCenterFormPage mode="create" />
+              </RequirePermission>
+            }
+          />
+          <Route path=":id" element={<CostCenterDetailPage />} />
+          <Route
+            path=":id/edit"
+            element={
+              <RequirePermission permission="costCenter.edit">
+                <CostCenterFormPage mode="edit" />
               </RequirePermission>
             }
           />

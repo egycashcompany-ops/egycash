@@ -39,6 +39,14 @@ export interface PayslipDoc extends BaseDocFields {
   issuedBy: Types.ObjectId;
   /** ADR-015 scope field, denormalized from the employee at write time like every HR collection. */
   branchId: Types.ObjectId | null;
+  /**
+   * The cost centre in force on the LAST DAY OF THE PERIOD (P-HR-23, D-CC-7).
+   *
+   * A snapshot beside `branchId` and written the same way — once, under `$setOnInsert`. Editing
+   * the employee's membership afterwards cannot reach a payslip that was already issued, which is
+   * why membership needs no frozen-period guard of its own.
+   */
+  costCenterId: Types.ObjectId | null;
 }
 
 /**
@@ -70,6 +78,7 @@ const payslipSchema = new Schema<PayslipDoc>(
     issuedAt: { type: Date, required: true },
     issuedBy: { type: Schema.Types.ObjectId, required: true },
     branchId: { type: Schema.Types.ObjectId, default: null },
+    costCenterId: { type: Schema.Types.ObjectId, default: null },
     ...baseFields,
   },
   baseSchemaOptions,

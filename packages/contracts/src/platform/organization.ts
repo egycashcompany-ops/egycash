@@ -267,6 +267,18 @@ export interface SectionDto extends OrgUnitDto {
   description: { ar: string; en: string } | null;
 }
 
+/**
+ * A candidate shift as the Job screen shows it — an id and a name, and nothing else.
+ *
+ * `name` is null when the shift cannot be read: it was deleted, or the HR module that owns shifts
+ * is not enabled on this deployment. Null is the honest answer to "what is this called?"; a
+ * fabricated label or a failed request would both be worse.
+ */
+export interface JobShiftLabelDto {
+  id: string;
+  name: { ar: string; en: string } | null;
+}
+
 export interface JobTitleDto {
   id: string;
   code: string;
@@ -307,6 +319,14 @@ export interface JobTitleDto {
   fixedSalaryOutsideBand: boolean;
   /** Shifts this job may be worked on — candidates to choose ONE from, never concurrent ones. */
   defaultShiftIds: string[];
+  /**
+   * The same shifts, named (D-JOB-6 option C) — so the Job screen can render them without holding
+   * any attendance grant.
+   *
+   * The ids stay above rather than being replaced: they are what a write sends back, and this list
+   * is what a reader displays. The same shape the payroll queue uses for employee labels (D7).
+   */
+  defaultShifts: JobShiftLabelDto[];
   status: 'active' | 'inactive';
   version: number;
   createdAt: string;

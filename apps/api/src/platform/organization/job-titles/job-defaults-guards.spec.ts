@@ -165,3 +165,59 @@ describe('what this phase deliberately did NOT do', () => {
     expect(JOB_SERVICE).not.toContain('jobPosition');
   });
 });
+
+// ── D-JOB-6 option C — names cross the boundary, authority does not ─────────
+
+describe('the Job screen reads shift NAMES without an attendance grant', () => {
+  const SEAM = stripComments(read('../shift-label-seams.ts'));
+  const HR_SIDE = stripComments(
+    read('../../../modules/hr/attendance/shifts/shift-label-seams.ts'),
+  );
+  const CONTROLLER = stripComments(read('./job-title.controller.ts'));
+
+  /**
+   * The boundary this seam exists for: `{ from: 'platform', allow: ['platform', 'shared',
+   * 'infrastructure'] }`. Platform may not import a module, so the arrow is inverted — HR calls
+   * INTO platform at load. An import the other way would fail lint, and asserting it here says
+   * why rather than leaving the next reader to rediscover the rule.
+   */
+  it('platform declares the seam and imports nothing from a module', () => {
+    expect(SEAM).not.toMatch(/from '.*\/modules\//);
+    expect(SEAM).toContain('export const registerShiftLabelReader');
+    expect(SEAM).toContain('export const resolveShiftLabels');
+    // HR is the one that reaches across, which is the direction the rule permits.
+    expect(HR_SIDE).toContain("from '../../../../platform/organization/shift-label-seams'");
+  });
+
+  /** A name, and nothing else. Times, grace minutes and `active` stay behind manageShifts. */
+  it('carries only the name across', () => {
+    expect(HR_SIDE).toContain('.select({ name: 1 })');
+    for (const forbidden of ['startTime', 'endTime', 'graceIn', 'breakMinutes', 'active']) {
+      expect(HR_SIDE, forbidden).not.toContain(forbidden);
+    }
+  });
+
+  /** No permission was added, widened, or borrowed to make this work. */
+  it('adds no permission and borrows none', () => {
+    for (const source of [SEAM, HR_SIDE, CONTROLLER, JOB_SERVICE]) {
+      for (const forbidden of ['attendance.manageShifts', 'shift.view', 'attendance.viewShifts']) {
+        expect(source, forbidden).not.toContain(forbidden);
+      }
+    }
+    // The route's own gate is still the one it shipped with.
+    expect(read('./job-title.routes.ts')).toContain("authorize('jobTitle.view')");
+  });
+
+  /** One seam call per page, not one per row — labels must not become a query multiplier. */
+  it('resolves the whole page in a single call', () => {
+    expect(JOB_SERVICE).toContain('const labels = await resolveShiftLabels(ids)');
+    expect(CONTROLLER).toContain('await jobTitleService.toDtos(page.items)');
+    expect(CONTROLLER).not.toContain('okPage');
+  });
+
+  /** Unregistered or unreadable answers `null`, never a fabricated label. */
+  it('degrades to null rather than inventing a name', () => {
+    expect(SEAM).toContain('shiftLabelReader === null');
+    expect(JOB_SERVICE).toContain('labels.get(id) ?? null');
+  });
+});

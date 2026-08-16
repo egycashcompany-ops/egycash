@@ -12,6 +12,7 @@ import { BusinessRuleError } from '../../../shared/errors';
 import { diffChanges } from '../../../shared/utils/diff';
 import { auditService } from '../../audit';
 import { emit } from '../../kernel/event-bus';
+import { resolveShiftLabels } from '../shift-label-seams';
 import { jobTitleRepository } from './job-title.repository';
 import { type JobTitleDoc } from './job-title.model';
 
@@ -157,6 +158,34 @@ class JobTitleService {
     });
   }
 
+  /**
+   * DTOs with their candidate shifts NAMED (D-JOB-6 option C) — one seam call for the whole page.
+   *
+   * Batched rather than per-row on purpose: a list of forty jobs asks the seam once, and a screen
+   * that renders labels must not turn into forty queries because the labels were convenient.
+   *
+   * The names are resolved by the server from what the server may already read. The caller gains
+   * no reach: it could not list shifts before this method existed and still cannot.
+   */
+  async toDtos(docs: readonly JobTitleDoc[]): Promise<JobTitleDto[]> {
+    const ids = [...new Set(docs.flatMap((doc) => (doc.defaultShiftIds ?? []).map(String)))];
+    const labels = await resolveShiftLabels(ids);
+    return docs.map((doc) => {
+      const dto = this.toDto(doc);
+      return {
+        ...dto,
+        defaultShifts: dto.defaultShiftIds.map((id) => ({ id, name: labels.get(id) ?? null })),
+      };
+    });
+  }
+
+  /** One job, named. Delegates so the two paths cannot drift. */
+  async toDtoNamed(doc: JobTitleDoc): Promise<JobTitleDto> {
+    const [dto] = await this.toDtos([doc]);
+    // `toDtos` returns one entry per input; the fallback exists only to satisfy the type.
+    return dto ?? this.toDto(doc);
+  }
+
   toDto(doc: JobTitleDoc): JobTitleDto {
     return {
       id: String(doc._id),
@@ -172,6 +201,10 @@ class JobTitleService {
       fixedSalary: doc.fixedSalary ?? null,
       fixedSalaryOutsideBand: outsideBand(doc),
       defaultShiftIds: (doc.defaultShiftIds ?? []).map(String),
+      // Unnamed here by design: only `toDtos` may fill these, because only it is allowed to be
+      // async and only it batches the seam call. A caller reaching this method directly gets ids
+      // and honest nulls rather than a silent per-row query.
+      defaultShifts: (doc.defaultShiftIds ?? []).map((id) => ({ id: String(id), name: null })),
       status: doc.status,
       version: doc.__v,
       createdAt: doc.createdAt.toISOString(),

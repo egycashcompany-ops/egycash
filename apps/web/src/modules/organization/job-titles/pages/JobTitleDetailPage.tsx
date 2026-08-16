@@ -57,6 +57,14 @@ export const JobTitleDetailPage = (): JSX.Element => {
           jt.salaryMax === null ? '' : formatMoney(jt.salaryMax, 'EGP', locale)
         }`;
 
+  // D-JOB-6 C: the server names the candidate shifts, so this screen shows them without holding
+  // any attendance grant. A name the server could not resolve renders as its id rather than as a
+  // blank — an unreadable shift is still a shift the job points at, and hiding it would be a lie.
+  const shifts =
+    jt.defaultShifts.length === 0
+      ? dash
+      : jt.defaultShifts.map((s) => (s.name === null ? s.id : localized(s.name, locale))).join(' · ');
+
   const doDelete = async (): Promise<void> => {
     try {
       await remove.mutateAsync(jt.id);
@@ -127,7 +135,13 @@ export const JobTitleDetailPage = (): JSX.Element => {
           <CardHeader title={t('organization.jobTitle.requirements')} />
           <CardBody>
             <dl className="space-y-3 text-sm">
+              <Row label={t('organization.jobTitle.fixedSalary')}>
+                {jt.fixedSalary === null
+                  ? dash
+                  : formatMoney(jt.fixedSalary.amount, jt.fixedSalary.currency, locale)}
+              </Row>
               <Row label={t('organization.jobTitle.salary')}>{band}</Row>
+              <Row label={t('organization.jobTitle.defaultShifts')}>{shifts}</Row>
               <Row label={t('organization.jobTitle.experience')}>
                 {jt.requiredExperienceYears === null
                   ? dash

@@ -2227,6 +2227,7 @@ const en: Record<string, string> = {
     'EGP — the default a new assignment copies. An employee whose salary was set by hand keeps it.',
   'organization.jobTitle.fixedSalaryOutsideBand':
     'This fixed salary falls outside the band below. Saved as entered — the band advises, it does not restrict.',
+  'organization.jobTitle.defaultShifts': 'Candidate shifts',
   'organization.jobTitle.salary': 'Salary band',
   'organization.jobTitle.salaryMin': 'Minimum salary',
   'organization.jobTitle.salaryMax': 'Maximum salary',
@@ -6562,6 +6563,7 @@ const ar: Record<string, string> = {
     'بالجنيه — الافتراضي الذي ينسخه أي إسناد جديد. والموظف الذي ضُبط راتبه يدويًا يحتفظ به.',
   'organization.jobTitle.fixedSalaryOutsideBand':
     'هذا الراتب الثابت خارج النطاق أدناه. سيُحفظ كما هو — النطاق إرشادي ولا يمنع.',
+  'organization.jobTitle.defaultShifts': 'الورديات المرشّحة',
   'organization.jobTitle.salary': 'نطاق الراتب',
   'organization.jobTitle.salaryMin': 'الحد الأدنى للراتب',
   'organization.jobTitle.salaryMax': 'الحد الأقصى للراتب',

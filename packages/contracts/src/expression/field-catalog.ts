@@ -18,7 +18,7 @@
 // NUMBERS ONLY, IN THIS PHASE. `EXPRESSION_FIELD_TYPES` has one member. Arithmetic over a string or
 // a date is not an operation this engine has, so offering such a field would be offering something
 // that can only ever evaluate to null.
-import { z } from 'zod';
+import type { z } from 'zod';
 import { EXPRESSION_MAX_DEPTH } from './ast.js';
 
 export const EXPRESSION_FIELD_TYPES = ['number'] as const;

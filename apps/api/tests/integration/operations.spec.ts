@@ -12,15 +12,21 @@ import {
   OperationsEvents,
   SettingKeys,
   platformPermissions,
+  type FleetVehicleDto,
+  type FleetVehicleTypeDto,
   type OperationsBankBranchDto,
   type OperationsBankDto,
+  type OperationsCrewBoardDto,
   type OperationsCurrencyDto,
+  type OperationsDayDto,
   type OperationsShipmentDto,
 } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { buildApp } from '../../src/app';
 import { moduleManifests } from '../../src/modules';
 import { operationsPermissions } from '../../src/modules/operations/operations.module';
+import { fleetPermissions } from '../../src/modules/fleet/fleet.module';
+import { hrPermissions } from '../../src/modules/hr/hr.module';
 import { subscribe } from '../../src/platform/kernel/event-bus';
 import { rbacService } from '../../src/platform/rbac';
 import { userService } from '../../src/platform/users';
@@ -34,6 +40,17 @@ let app: Express;
 let adminToken: string;
 let viewerToken: string; // operationsShipment.view only — proves mutations are separately gated
 const seenEvents: { name: string; payload: unknown }[] = [];
+
+const PLAN_DATE = '2026-08-20';
+let branchId: string;
+let departmentId: string;
+let jobTitleId: string;
+let vehicleAId: string;
+let vehicleBId: string;
+let offRosterVehicleId: string;
+let captainId: string;
+let specialist1Id: string;
+let specialist2Id: string;
 
 let bankA: OperationsBankDto;
 let bankB: OperationsBankDto;
@@ -86,6 +103,39 @@ const waitFor = async (predicate: () => boolean, ms = 2000): Promise<void> => {
   }
 };
 
+let nidCounter = 0;
+let phoneCounter = 50_000_000;
+const nextNid = (): string => `29001010${String(1_000_000 + nidCounter++).padStart(7, '0')}`;
+const nextPhone = (): string => `011${String(phoneCounter++).padStart(8, '0')}`;
+
+/** HR employee via the real direct-registration endpoint — Operations never fabricates one. */
+const mkEmployee = async (): Promise<string> => {
+  const res = await request(app)
+    .post('/api/v1/hr/employees/direct')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({
+      personal: {
+        identity: { fullNameAr: 'طاقم اختبار', nationalId: nextNid(), nationality: 'Egyptian' },
+        contact: { primaryPhone: nextPhone() },
+        experience: [],
+        drivingLicenses: [],
+        certifications: [],
+        references: [],
+      },
+      employment: {
+        jobTitleId,
+        departmentId,
+        branchId,
+        employmentType: 'fullTime',
+        probationMonths: 0,
+        startDate: '2026-07-01T00:00:00.000Z',
+      },
+      entryStatus: 'active',
+    });
+  expect(res.status).toBe(201);
+  return (res.body as { data: { id: string } }).data.id;
+};
+
 let shipmentCounter = 0;
 const mkShipment = async (
   overrides: Record<string, unknown> = {},
@@ -118,7 +168,9 @@ beforeAll(async () => {
   const superAdmin = await rbacService.ensureSystemRole(
     'super-admin',
     { en: 'Super Admin', ar: 'مدير النظام الأعلى' },
-    [...platformPermissions, ...operationsPermissions].map((p) => p.key),
+    [...platformPermissions, ...hrPermissions, ...fleetPermissions, ...operationsPermissions].map(
+      (p) => p.key,
+    ),
   );
   const adminId = await mkUser('ops-admin@ecms.local');
   await rbacService.ensureAssignment(adminId, String(superAdmin._id), 'organization');
@@ -152,6 +204,72 @@ beforeAll(async () => {
 
   adminToken = await login('ops-admin@ecms.local');
   viewerToken = await login('ops-viewer@ecms.local');
+
+  // OP-3 fixtures: real org rows, a fleet vehicle on the roster, and HR employees — the crew
+  // board integrates with the REAL Fleet boundary and HR directory, never fabricated ids.
+  const branchRes = await request(app)
+    .post('/api/v1/platform/branches')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ code: '80', name: { ar: 'فرع العمليات', en: 'Ops Branch' } });
+  expect(branchRes.status).toBe(201);
+  branchId = (branchRes.body as { data: { id: string } }).data.id;
+
+  const dept = await request(app)
+    .post('/api/v1/platform/departments')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ code: 'OPS-CIT', name: { ar: 'نقل الأموال', en: 'Cash Transfer' }, branchId });
+  expect(dept.status).toBe(201);
+  departmentId = (dept.body as { data: { id: string } }).data.id;
+
+  const title = await request(app)
+    .post('/api/v1/platform/job-titles')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ code: 'OPS-CREW', name: { ar: 'أخصائي عمليات', en: 'Ops Specialist' }, jobGrade: 'G1' });
+  expect(title.status).toBe(201);
+  jobTitleId = (title.body as { data: { id: string } }).data.id;
+
+  const typeRes = await request(app)
+    .post('/api/v1/fleet/vehicle-types')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ name: { ar: 'مصفحة عمليات', en: 'Ops Armored' }, maintenanceIntervalKm: 10_000 });
+  expect(typeRes.status).toBe(201);
+  const typeId = data<FleetVehicleTypeDto>(typeRes).id;
+
+  const mkVehicle = async (n: number): Promise<string> => {
+    const res = await request(app)
+      .post('/api/v1/fleet/vehicles')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        code: `OPS-V${n}`,
+        typeId,
+        plateNumber: `ن ق ${n}`,
+        chassisNumber: `OPS-CH-${n}`,
+        motorNumber: `OPS-MO-${n}`,
+        joinedAt: '2024-01-01T00:00:00.000Z',
+        licenseExpiresAt: '2027-01-01T00:00:00.000Z',
+        branchId,
+      });
+    expect(res.status).toBe(201);
+    return data<FleetVehicleDto>(res).id;
+  };
+  vehicleAId = await mkVehicle(1);
+  vehicleBId = await mkVehicle(2);
+  offRosterVehicleId = await mkVehicle(3);
+
+  captainId = await mkEmployee();
+  specialist1Id = await mkEmployee();
+  specialist2Id = await mkEmployee();
+
+  // Fleet roster rows for the planning date — the §9.4 anchor rows (vehicle A and B only;
+  // vehicle 3 stays OFF the roster to prove the gate).
+  const rosterRes = await request(app)
+    .post('/api/v1/fleet/roster')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({
+      date: PLAN_DATE,
+      rows: [{ vehicleId: vehicleAId }, { vehicleId: vehicleBId, notes: 'ops board seed' }],
+    });
+  expect(rosterRes.status).toBe(200);
 }, 240_000);
 
 afterAll(async () => {
@@ -396,5 +514,202 @@ describe('cash shipments — complete / reopen (the legacy receive toggle, state
       .get(`/api/v1/operations/shipments/${shipment.id}`)
       .set('Authorization', `Bearer ${adminToken}`);
     expect(get.status).toBe(404);
+  });
+});
+
+describe('operating days — creation, loading, forward-only lifecycle (OP-3)', () => {
+  let day: OperationsDayDto;
+
+  it('creates a day, refuses a duplicate date, and loads it back by date', async () => {
+    const res = await request(app)
+      .post('/api/v1/operations/days')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date: '2026-09-01' });
+    expect(res.status).toBe(201);
+    day = data<OperationsDayDto>(res);
+    expect(day.status).toBe('planning');
+    expect(day.date).toBe('2026-09-01T00:00:00.000Z');
+
+    const dup = await request(app)
+      .post('/api/v1/operations/days')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date: '2026-09-01' });
+    expect(dup.status).toBe(409);
+
+    const get = await request(app)
+      .get('/api/v1/operations/days?date=2026-09-01')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(get.status).toBe(200);
+    expect(data<OperationsDayDto>(get).id).toBe(day.id);
+  });
+
+  it('walks planning → open → closed and refuses every backward or skipping move', async () => {
+    const skip = await request(app)
+      .post(`/api/v1/operations/days/${day.id}/close`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: day.version });
+    expect(skip.status).toBe(422);
+    expect(errorCode(skip)).toBe(ErrorCodes.OPERATIONS_INVALID_DAY_TRANSITION);
+
+    const opened = await request(app)
+      .post(`/api/v1/operations/days/${day.id}/open`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: day.version });
+    expect(opened.status).toBe(200);
+    const openDto = data<OperationsDayDto>(opened);
+    expect(openDto.status).toBe('open');
+    expect(openDto.openedById).not.toBeNull();
+
+    const closed = await request(app)
+      .post(`/api/v1/operations/days/${day.id}/close`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: openDto.version });
+    expect(closed.status).toBe(200);
+    expect(data<OperationsDayDto>(closed).status).toBe('closed');
+
+    const reopen = await request(app)
+      .post(`/api/v1/operations/days/${day.id}/open`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: data<OperationsDayDto>(closed).version });
+    expect(reopen.status).toBe(422);
+    expect(errorCode(reopen)).toBe(ErrorCodes.OPERATIONS_INVALID_DAY_TRANSITION);
+  });
+
+  it('gates day management behind operationsDay.manage', async () => {
+    const res = await request(app)
+      .post('/api/v1/operations/days')
+      .set('Authorization', `Bearer ${viewerToken}`)
+      .send({ date: '2026-09-02' });
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('crew board — the tashghela workflow on the Fleet boundary (OP-3)', () => {
+  const board = async (date?: string): Promise<request.Response> =>
+    request(app)
+      .get(`/api/v1/operations/crew-board${date === undefined ? '' : `?date=${date}`}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+  const savePlan = async (rows: unknown[], date = PLAN_DATE): Promise<request.Response> =>
+    request(app)
+      .post('/api/v1/operations/crew-board')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date, rows });
+
+  it('defaults to TOMORROW when no date is given — the verbatim legacy behaviour (:2239)', async () => {
+    const res = await board();
+    expect(res.status).toBe(200);
+    const dto = data<OperationsCrewBoardDto>(res);
+    const now = new Date();
+    const expected = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1),
+    ).toISOString();
+    expect(dto.date).toBe(expected);
+  });
+
+  it('shows only vehicles on the Fleet roster for the date, with the Fleet facts read-only', async () => {
+    const res = await board(PLAN_DATE);
+    expect(res.status).toBe(200);
+    const dto = data<OperationsCrewBoardDto>(res);
+    const ids = dto.rows.map((r) => r.vehicleId).sort();
+    expect(ids).toEqual([vehicleAId, vehicleBId].sort());
+    expect(dto.rows.every((r) => r.fleetDutyAssignmentId.length === 24)).toBe(true);
+    expect(dto.day).toBeNull(); // no plan saved yet — the day row does not exist yet
+  });
+
+  it('plans a full crew, auto-ensures the day, and resolves day+vehicle → crew', async () => {
+    const res = await savePlan([
+      {
+        vehicleId: vehicleAId,
+        captainEmployeeId: captainId,
+        specialist1EmployeeId: specialist1Id,
+        specialist2EmployeeId: specialist2Id,
+        direction: 'الجيزة',
+        plannedTime: '07:30',
+      },
+    ]);
+    expect(res.status).toBe(200);
+    const dto = data<OperationsCrewBoardDto & { changedCount: number }>(res);
+    expect(dto.changedCount).toBe(1);
+    expect(dto.day).not.toBeNull();
+    expect(dto.day?.status).toBe('planning');
+    const rowA = dto.rows.find((r) => r.vehicleId === vehicleAId);
+    expect(rowA?.crew?.captainEmployeeId).toBe(captainId);
+    expect(rowA?.crew?.specialist1EmployeeId).toBe(specialist1Id);
+    expect(rowA?.crew?.specialist2EmployeeId).toBe(specialist2Id);
+    await waitFor(() => seenEvents.some((e) => e.name === OperationsEvents.CrewPlanned));
+  });
+
+  it('replaces a crew in place — upsert per (day, vehicle), unchanged rows are no-ops', async () => {
+    const unchanged = await savePlan([
+      {
+        vehicleId: vehicleAId,
+        captainEmployeeId: captainId,
+        specialist1EmployeeId: specialist1Id,
+        specialist2EmployeeId: specialist2Id,
+        direction: 'الجيزة',
+        plannedTime: '07:30',
+      },
+    ]);
+    expect(data<{ changedCount: number }>(unchanged).changedCount).toBe(0);
+
+    const replaced = await savePlan([
+      { vehicleId: vehicleAId, captainEmployeeId: captainId, specialist1EmployeeId: null },
+    ]);
+    expect(replaced.status).toBe(200);
+    const dto = data<OperationsCrewBoardDto & { changedCount: number }>(replaced);
+    expect(dto.changedCount).toBe(1);
+    const rowA = dto.rows.find((r) => r.vehicleId === vehicleAId);
+    expect(rowA?.crew?.specialist1EmployeeId).toBeNull();
+    expect(rowA?.crew?.direction).toBeNull(); // the row is the COMPLETE desired state
+  });
+
+  it('empty specialists are allowed — legacy enforces no minimum crew (:2419)', async () => {
+    const res = await savePlan([{ vehicleId: vehicleBId, captainEmployeeId: specialist1Id }]);
+    expect(res.status).toBe(200);
+  });
+
+  it('Q11 — refuses stealing a crew member without the releasing row, allows the move shape', async () => {
+    const steal = await savePlan([{ vehicleId: vehicleBId, specialist2EmployeeId: captainId }]);
+    expect(steal.status).toBe(409);
+
+    const move = await savePlan([
+      { vehicleId: vehicleAId },
+      { vehicleId: vehicleBId, captainEmployeeId: captainId },
+    ]);
+    expect(move.status).toBe(200);
+    const dto = data<OperationsCrewBoardDto>(move);
+    expect(dto.rows.find((r) => r.vehicleId === vehicleAId)?.crew?.captainEmployeeId).toBeNull();
+    expect(dto.rows.find((r) => r.vehicleId === vehicleBId)?.crew?.captainEmployeeId).toBe(
+      captainId,
+    );
+  });
+
+  it('§9.4 — refuses planning crew for a vehicle that is not on the Fleet roster', async () => {
+    const res = await savePlan([
+      { vehicleId: offRosterVehicleId, captainEmployeeId: specialist2Id },
+    ]);
+    expect(res.status).toBe(422);
+    expect(errorCode(res)).toBe(ErrorCodes.OPERATIONS_FLEET_DUTY_REQUIRED);
+  });
+
+  it('refuses an unknown employee reference', async () => {
+    const res = await savePlan([
+      { vehicleId: vehicleBId, specialist1EmployeeId: '00000000000000000000cccc' },
+    ]);
+    expect(res.status).toBe(400);
+  });
+
+  it('gates the board and the plan behind their own grants', async () => {
+    const view = await request(app)
+      .get('/api/v1/operations/crew-board')
+      .set('Authorization', `Bearer ${viewerToken}`);
+    expect(view.status).toBe(403); // viewer holds operationsShipment.view only
+
+    const plan = await request(app)
+      .post('/api/v1/operations/crew-board')
+      .set('Authorization', `Bearer ${viewerToken}`)
+      .send({ date: PLAN_DATE, rows: [{ vehicleId: vehicleAId }] });
+    expect(plan.status).toBe(403);
   });
 });

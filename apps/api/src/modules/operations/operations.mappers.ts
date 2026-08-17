@@ -5,8 +5,10 @@ import {
   type OperationsBankBranchDto,
   type OperationsBankDto,
   type OperationsCurrencyDto,
+  type OperationsDayDto,
   type OperationsShipmentDto,
 } from '@ecms/contracts';
+import { type OperationsDayDoc } from './days/day.model';
 import { type OperationsBankDoc } from './banks/bank.model';
 import { type OperationsBankBranchDoc } from './bank-branches/bank-branch.model';
 import { type OperationsCurrencyDoc } from './currencies/currency.model';
@@ -76,6 +78,19 @@ export const toShipmentDto = (doc: OperationsShipmentDoc): OperationsShipmentDto
   notes: doc.notes,
   receivedById: doc.receivedById === null ? null : String(doc.receivedById),
   receivedAt: doc.receivedAt === null ? null : iso(doc.receivedAt),
+  version: doc.__v,
+  createdAt: iso(doc.createdAt),
+  updatedAt: iso(doc.updatedAt),
+});
+
+export const toDayDto = (doc: OperationsDayDoc): OperationsDayDto => ({
+  id: String(doc._id),
+  date: iso(doc.date),
+  status: doc.status,
+  openedById: doc.openedById === null ? null : String(doc.openedById),
+  openedAt: doc.openedAt === null ? null : iso(doc.openedAt),
+  closedById: doc.closedById === null ? null : String(doc.closedById),
+  closedAt: doc.closedAt === null ? null : iso(doc.closedAt),
   version: doc.__v,
   createdAt: iso(doc.createdAt),
   updatedAt: iso(doc.updatedAt),

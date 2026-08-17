@@ -74,6 +74,14 @@ export const ErrorCodes = {
   OPERATIONS_DAILY_HAS_NO_DELIVERY_DATE: 'OPERATIONS_DAILY_HAS_NO_DELIVERY_DATE',
   /** Q30 NORMALIZE: transitions follow the observed lifecycle, not the unguarded legacy toggle. */
   OPERATIONS_INVALID_SHIPMENT_TRANSITION: 'OPERATIONS_INVALID_SHIPMENT_TRANSITION',
+  /** The operating day walks planning → open → closed, forward only (design §16.1). */
+  OPERATIONS_INVALID_DAY_TRANSITION: 'OPERATIONS_INVALID_DAY_TRANSITION',
+  /**
+   * §9.4 anchor: crew is planned only for a vehicle on the Fleet roster for that date — the
+   * normalized form of the legacy car_lock gate (tashghela listed only car_lock'd vehicles,
+   * contad_app.js:2255).
+   */
+  OPERATIONS_FLEET_DUTY_REQUIRED: 'OPERATIONS_FLEET_DUTY_REQUIRED',
 } as const;
 
 export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];

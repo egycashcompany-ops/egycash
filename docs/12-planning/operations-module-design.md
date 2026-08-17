@@ -1,7 +1,18 @@
 # Operations Module — Cash Transfer Design
 
-**Status:** PROPOSED v0.1 — awaiting review. Built strictly on the evidence in
-`docs/12-planning/operations-legacy-discovery.md`; no business rule here is invented.
+**Status:** APPROVED v1.0 (2026-08-17) — implementation started (OP-1). Built strictly on the
+evidence in `docs/12-planning/operations-legacy-discovery.md`; no business rule here is invented.
+**Approved decisions (2026-08-17), binding for this phase — Legacy parity first, improvements second:**
+1. **Attendance/absence is NOT an assignment eligibility gate** for the cash-transfer crew, exactly
+   as in legacy (discovery §10.2, quirk Q12). Assignment is never blocked by absence. Recorded as a
+   FUTURE BUSINESS IMPROVEMENT, to be activated only by a separate explicit decision.
+2. **Requirements flags stay metadata / visual indicators / pool filters** exactly where legacy used
+   them (discovery §9). No flag (`leader`, weapon, signature, mozawla, …) becomes a server-side
+   eligibility rule, because none was one in legacy — the only server-side use of any flag is
+   `leader: 1` inside the captain-picker queries, which is preserved as a QUERY FILTER, not a guard.
+   Any strengthening is a separate future decision.
+3. Legacy quirks are handled per the PRESERVE / NORMALIZE / DROP register in the discovery doc —
+   nothing is silently fixed; every normalization is named in the PR that performs it.
 **Source of business logic:** legacy repo `egycashcompany-ops/fleet` @ `44654cd`.
 **Boundary:** conforms to the frozen `fleet-module-design.md` §9.4 OPS boundary as-is.
 **Section numbering** (12, 15–21) continues the task's requested report outline; sections 1–14
@@ -181,6 +192,10 @@ $facet: {
 | `deliveredById`, `deliveredAt` | 🐞 يُصلح Q3 — يُكتبان فعليًا |
 
 ### 16.2 الصلاحيات المقترحة (بعُرف `declarePermissions` في ECMS)
+
+> **ملاحظة تنفيذ (OP-1):** أسماء الـ resources أدناه مختصرة بـ `ops*` للعرض؛ عند التنفيذ تُسمّى
+> بالبادئة الكاملة `operations*` (مثل `operationsShipment.view`) اتباعًا لسابقة fleet/it
+> (`fleetVehicle.*`, `itAsset.*`)، وتُعلَن كل صلاحية **مع** الـ slice الذي يخدمها لا قبله.
 
 Legacy لا يملك أدوارًا (القسم 13 في Part 1) — لذا هذه **مصفوفة جديدة** مبنية على الأدوار الضمنية
 في الشاشات (عمليات / أمين خزينة / قائد):
@@ -372,7 +387,7 @@ stateDiagram-v2
 
 | PR | العنوان | النطاق | يعتمد على |
 |---|---|---|---|
-| **1** | Module foundation | `operations.module.ts` + تسجيل في `modules/index.ts` + الصلاحيات + الصفحات + contracts skeleton. بلا منطق. | — |
+| **1** | Module foundation | `operations.module.ts` + تسجيل في `modules/index.ts` + contracts vocabulary (الأنواع/الحالات + خريطة legacy) + اختباراتها. **بلا صلاحيات وبلا صفحات وبلا routes** — القاعدة الملزمة في ECMS (سابقة IT): "a grant is declared WITH its operation, never ahead of it"، فالصلاحيات والصفحات تصل مع الـ slice الذي يخدمها (OP-2+). | — |
 | **2** | Reference data | `operations_banks`, `operations_bank_branches`, `operations_currencies` + CRUD + `location` abstraction (فارغ) | 1 |
 | **3** | Operations day | `operations_days` + فتح/إغلاق + حدود اليوم | 1 |
 | **4** | Shipments core | `operations_shipments` + `lines[]` + CRUD + حالات `DRAFT→COMPLETED` لليومي | 2,3 |
@@ -404,7 +419,7 @@ stateDiagram-v2
 | التتابع | بدء #2 و#1 معلّقة → 409 · بدء #2 بعد إكمال #1 → 200 · بدء #3 و#2 ملغاة و#1 مكتملة → 200 |
 | السباق | استدعاءان متزامنان لـ `start` على نفس الشحنة → واحد ينجح فقط |
 | إعادة الترتيب | ترتيب كامل صحيح → 200 · version قديم → 409 · إعادة ترتيب شحنة نشطة → 422 · معرّف ناقص → 422 |
-| الطاقم | نفس الموظف لسيارتين في نفس اليوم → رفض · أخصائي فارغ → مقبول · قائد غائب → رفض (قرار جديد) |
+| الطاقم | نفس الموظف لسيارتين في نفس اليوم → رفض · أخصائي فارغ → مقبول · قائد غائب → **مقبول** (Legacy parity — القرار المعتمد 1؛ تحسين مستقبلي موثّق) |
 | حدود اليوم | إجراء على يوم `CLOSED` → رفض · شحنة خارج اليوم → غير مرئية |
 | المحصنة | `receive` بأمين واحد → رفض · `dispatch` من حالة ≠ `IN_VAULT` → رفض · استلام مزدوج → رفض |
 | الصلاحيات | كل endpoint بلا الصلاحية → 403 · قائد يبدأ شحنة قائد آخر → 403 |

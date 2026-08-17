@@ -3,7 +3,6 @@
 // the stored document never carries it.
 import { type Request, type Response } from 'express';
 import {
-  ErrorCodes,
   type ChangeFleetVehicleStatus,
   type CreateFleetVehicle,
   type ListFleetVehiclesQuery,
@@ -11,7 +10,7 @@ import {
 } from '@ecms/contracts';
 import { created, noContent, ok, okPage, validated } from '../../../platform/web';
 import { authContext } from '../../../platform/auth';
-import { AppError } from '../../../shared/errors';
+import { ValidationError } from '../../../shared/errors';
 import { scopeSelector } from '../../../shared/types';
 import { toVehicleDto } from '../fleet.mappers';
 import { fleetVehicleService } from './vehicle.service';
@@ -95,7 +94,12 @@ export const uploadVehicleLicenseImage = async (req: Request, res: Response): Pr
   // than a crash on `.buffer`.
   const uploaded = req.file;
   if (uploaded === undefined) {
-    throw new AppError(ErrorCodes.VALIDATION_FAILED, 422, 'a file part named "file" is required');
+    // `ValidationError`, not a hand-rolled AppError: a malformed request is a 400 everywhere else
+    // in the platform, and 422 is reserved for a well-formed request that breaks a business rule
+    // (which is what the file category's mime and size refusals are).
+    throw new ValidationError([
+      { field: 'file', code: 'REQUIRED', message: 'a file part named "file" is required' },
+    ]);
   }
   const doc = await fleetVehicleService.setLicenseImage(
     ctx,

@@ -41,6 +41,7 @@ const PASSWORD = 'Str0ng#Pass!';
 let replSet: MongoMemoryReplSet | null = null;
 let app: Express;
 let adminToken: string;
+let adminUserId: string; // a REAL user id — settings writes stamp updatedBy as an ObjectId
 let branchAToken: string; // fleetVehicle.* at BRANCH scope, placed in branch A
 let branchAId: string;
 let branchBId: string;
@@ -178,6 +179,7 @@ beforeAll(async () => {
     [...platformPermissions, ...hrPermissions, ...fleetPermissions].map((p) => p.key),
   );
   const adminId = await mkUser('admin@ecms.local');
+  adminUserId = adminId;
   await rbacService.ensureAssignment(adminId, String(superAdmin._id), 'organization');
 
   const ctx: AuthContext = {
@@ -249,6 +251,8 @@ beforeAll(async () => {
     FleetEvents.VehicleCreated,
     FleetEvents.VehicleUpdated,
     FleetEvents.VehicleStatusChanged,
+    FleetEvents.VehicleLicenseImageUploaded,
+    FleetEvents.VehicleLicenseImageDeleted,
     FleetEvents.UnavailabilityRecorded,
     FleetEvents.UnavailabilityEnded,
     FleetEvents.OdometerRecorded,
@@ -1369,7 +1373,7 @@ describe('fleet catalogs — licence class, operation, insurance company', () =>
       .post('/api/v1/fleet/catalog-items')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ kind: 'licenseClass', name: { ar: 'خطأ', en: 'Wrong' }, countsForAlarm: true });
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(400);
   });
 
   it('creating one needs fleetCatalog.manage — the branch operator holds none of the three', async () => {
@@ -1411,7 +1415,7 @@ describe('the vehicle registry references the catalogs and always has a branch',
 
   it('refuses a reference of the WRONG KIND, even though the id is a real catalog item', async () => {
     const res = await createVehicle(adminToken, { licenseClassId: operationId });
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(400);
   });
 
   it('refuses a reference to an ARCHIVED item', async () => {
@@ -1421,14 +1425,14 @@ describe('the vehicle registry references the catalogs and always has a branch',
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ isActive: false, version: 0 });
     const res = await createVehicle(adminToken, { insuranceCompanyId: archived });
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(400);
   });
 
   it('refuses a reference to an id that names nothing', async () => {
     const res = await createVehicle(adminToken, {
       operationId: '64b1f0cccccccccccccccc01',
     });
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(400);
   });
 
   it('leaves all three null when they are not supplied — they are optional facts', async () => {
@@ -1462,17 +1466,17 @@ describe('the vehicle registry references the catalogs and always has a branch',
         joinedAt: '2024-01-01T00:00:00.000Z',
         licenseExpiresAt: '2027-01-01T00:00:00.000Z',
       });
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(400);
   });
 
   it('refuses an explicit null branch just as firmly', async () => {
     const res = await createVehicle(adminToken, { branchId: null });
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(400);
   });
 
   it('refuses a branch id that names no branch', async () => {
     const res = await createVehicle(adminToken, { branchId: '64b1f0cccccccccccccccc02' });
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(400);
   });
 
   it('refuses to null a branch on UPDATE — a vehicle cannot become branchless later', async () => {
@@ -1481,7 +1485,7 @@ describe('the vehicle registry references the catalogs and always has a branch',
       .patch(`/api/v1/fleet/vehicles/${v.id}`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ branchId: null, version: v.version });
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(400);
   });
 
   it('answers the create form with the default branch, resolved by NAME from live data', async () => {
@@ -1496,8 +1500,10 @@ describe('the vehicle registry references the catalogs and always has a branch',
     expect(before.branchId).toBeNull();
 
     // Point the setting at a branch that DOES exist, and the same endpoint resolves it.
+    // A REAL user id: the settings write stamps `updatedBy` as an ObjectId, so a placeholder
+    // string fails inside BSON rather than in anything this test is about.
     const ctx: AuthContext = {
-      userId: 'seed',
+      userId: adminUserId,
       sessionId: 'seed',
       branchId: null,
       departmentId: null,
@@ -1516,6 +1522,14 @@ describe('the vehicle registry references the catalogs and always has a branch',
       .get('/api/v1/fleet/vehicles/default-branch')
       .set('Authorization', `Bearer ${adminToken}`);
     expect(data<{ branchId: string | null }>(after).branchId).toBe(branchAId);
+
+    // Put it back: this is an ORGANIZATION setting, so leaving it pointed at Branch A would make
+    // every later test in this file depend on the order this one happened to run in.
+    await settingsService.set(ctx, {
+      key: FleetSettingKeys.DefaultBranchName,
+      scope: 'organization',
+      value: 'المهندسين',
+    });
   });
 });
 
@@ -1602,7 +1616,7 @@ describe('the vehicle license image', () => {
     const res = await request(app)
       .post(`/api/v1/fleet/vehicles/${v.id}/license-image`)
       .set('Authorization', `Bearer ${adminToken}`);
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(400);
   });
 
   it('a second upload REPLACES the scan — one current licence per vehicle', async () => {

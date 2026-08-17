@@ -22,9 +22,12 @@ export interface DirectoryEmployee {
 
 type EmployeeLookup = (employeeId: string) => Promise<DirectoryEmployee | null>;
 type LeaveLookup = (employeeId: string, date: Date) => Promise<boolean>;
+/** The self lookup: which employee IS this login? Owned by HR, consumed by self-service surfaces. */
+type SelfEmployeeLookup = (userId: string) => Promise<DirectoryEmployee | null>;
 
 let employeeLookup: EmployeeLookup | null = null;
 let leaveLookup: LeaveLookup | null = null;
+let selfEmployeeLookup: SelfEmployeeLookup | null = null;
 
 /** Idempotent — the last registration wins, so a test can install a fake over the real one. */
 export const registerEmployeeLookup = (lookup: EmployeeLookup): void => {
@@ -35,10 +38,26 @@ export const registerLeaveLookup = (lookup: LeaveLookup): void => {
   leaveLookup = lookup;
 };
 
+export const registerSelfEmployeeLookup = (lookup: SelfEmployeeLookup): void => {
+  selfEmployeeLookup = lookup;
+};
+
 export const getDirectoryEmployee = async (
   employeeId: string,
 ): Promise<DirectoryEmployee | null> =>
   employeeLookup === null ? null : employeeLookup(employeeId);
+
+/**
+ * The employee behind a login, or null when the account is not linked to one.
+ *
+ * Fail-closed like `getDirectoryEmployee`: with no HR registered, a self-service surface can
+ * identify nobody and therefore authorizes nobody — which is the safe direction for a screen whose
+ * whole authorization model is "you may see your own work and only your own".
+ */
+export const getSelfDirectoryEmployee = async (
+  userId: string,
+): Promise<DirectoryEmployee | null> =>
+  selfEmployeeLookup === null ? null : selfEmployeeLookup(userId);
 
 /** True when an APPROVED or ACTIVE leave covers the date — pending requests are not yet facts. */
 export const isOnApprovedLeave = async (employeeId: string, date: Date): Promise<boolean> =>

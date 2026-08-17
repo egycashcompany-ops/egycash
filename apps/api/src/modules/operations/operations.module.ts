@@ -21,6 +21,7 @@ import { buildOperationsDaysRouter } from './days/day.routes';
 import { buildOperationsCrewRouter } from './crew/crew.routes';
 import { buildOperationsSecuredRouter } from './secured/secured.routes';
 import { buildOperationsAssignmentsRouter } from './assignments/assignment.routes';
+import { buildOperationsMobileRouter } from './mobile/mobile.routes';
 // Registers the interim vault-custody provider on the Treasury port at module load
 // (see ./treasury-boundary.ts). Importing for the side effect is the platform seam convention.
 import './vault/vault-custody.service';
@@ -102,12 +103,29 @@ const vaultPermissions = declarePermissions(
   'operations.vault',
 );
 
+const executionPermissions = declarePermissions(
+  'operations',
+  'operationsExecution',
+  { en: 'captain execution', ar: 'تنفيذ القائد' },
+  [],
+  [
+    // The captain's OWN work and only their own — the service resolves "own" from the token's
+    // employee, so this grant can never widen into somebody else's day (design §16.2).
+    {
+      action: 'own',
+      name: { en: "Read and run one's own assigned route", ar: 'قراءة وتنفيذ مسار القائد نفسه' },
+    },
+  ],
+  'operations.my-day',
+);
+
 export const operationsPermissions: PermissionDef[] = [
   ...shipmentPermissions,
   ...catalogPermissions,
   ...crewPermissions,
   ...dayPermissions,
   ...vaultPermissions,
+  ...executionPermissions,
 ];
 
 export const operationsPages: PageDef[] = [
@@ -133,6 +151,13 @@ export const operationsPages: PageDef[] = [
     sortOrder: 30,
   },
   {
+    id: 'operations.my-day',
+    moduleId: 'operations',
+    name: { en: "Captain's day", ar: 'يوم القائد' },
+    route: '/operations/my-day',
+    sortOrder: 40,
+  },
+  {
     id: 'operations.catalogs',
     moduleId: 'operations',
     name: { en: 'Operations reference data', ar: 'البيانات المرجعية للعمليات' },
@@ -144,7 +169,7 @@ export const operationsPages: PageDef[] = [
 export const operationsModule: ModuleManifest = {
   id: 'operations',
   name: { en: 'Operations', ar: 'العمليات' },
-  version: '0.5.0',
+  version: '0.6.0',
   requiresPlatform: '^2.2',
   permissions: operationsPermissions,
   pages: operationsPages,
@@ -157,6 +182,7 @@ export const operationsModule: ModuleManifest = {
     { prefix: '/operations/crew-board', router: buildOperationsCrewRouter() },
     { prefix: '/operations/secured', router: buildOperationsSecuredRouter() },
     { prefix: '/operations/assignments', router: buildOperationsAssignmentsRouter() },
+    { prefix: '/operations/mobile', router: buildOperationsMobileRouter() },
   ],
   collections: [
     'operations_shipments',

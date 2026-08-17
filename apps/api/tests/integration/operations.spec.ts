@@ -20,6 +20,7 @@ import {
   type OperationsCurrencyDto,
   type OperationsDayDto,
   type OperationsCaptainRouteDto,
+  type OperationsMobileDayDto,
   type OperationsShipmentAssignmentDto,
   type OperationsShipmentDto,
 } from '@ecms/contracts';
@@ -1207,3 +1208,328 @@ const currentOrder = async (): Promise<{ assignmentId: string; version: number }
   );
   return rows.map((row) => ({ assignmentId: String(row._id), version: row.__v }));
 };
+
+describe('captain mobile read model — NEW capability, no legacy counterpart (OP-6)', () => {
+  const MOBILE_DATE = '2026-09-10';
+  /** A day the captain is PLANNED onto a vehicle but has no shipments — captaincy without stops. */
+  const PLANNED_ONLY_DATE = '2026-09-11';
+  let captainUserToken = '';
+  let captainUserId = '';
+  let otherCaptainToken = '';
+  let otherCaptainId = '';
+  let mobileCrewId = '';
+  let firstShipment: OperationsShipmentDto | undefined;
+
+  const myDay = async (token: string, date = MOBILE_DATE): Promise<request.Response> =>
+    request(app)
+      .get(`/api/v1/operations/mobile/my-day?date=${date}`)
+      .set('Authorization', `Bearer ${token}`);
+
+  beforeAll(async () => {
+    const { employeeRepository } = await import(
+      '../../src/modules/hr/employee-management/employees/employee.repository'
+    );
+
+    const captainRole = await rbacService.createRole(
+      { name: { en: 'Captain', ar: 'قائد' }, permissionKeys: ['operationsExecution.own'] },
+      await mkUser('role-seed@ecms.local'),
+    );
+
+    // Two captains, each a real HR employee linked to a real login — the seam under test.
+    const link = async (email: string, employeeId: string): Promise<[string, string]> => {
+      const userId = await mkUser(email);
+      await rbacService.ensureAssignment(userId, String(captainRole._id), 'organization');
+      const current = await employeeRepository.getById(employeeId);
+      await employeeRepository.updateById(
+        employeeId,
+        { userId },
+        { by: null, version: current.__v },
+      );
+      return [await login(email), userId];
+    };
+
+    otherCaptainId = await mkEmployee();
+    [captainUserToken, captainUserId] = await link('captain-a@ecms.local', captainId);
+    [otherCaptainToken] = await link('captain-b@ecms.local', otherCaptainId);
+
+    const roster = await request(app)
+      .post('/api/v1/fleet/roster')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date: MOBILE_DATE, rows: [{ vehicleId: vehicleAId, notes: 'mobile seed' }] });
+    expect(roster.status).toBe(200);
+
+    const plan = await request(app)
+      .post('/api/v1/operations/crew-board')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        date: MOBILE_DATE,
+        rows: [
+          {
+            vehicleId: vehicleAId,
+            captainEmployeeId: captainId,
+            specialist1EmployeeId: specialist1Id,
+            specialist2EmployeeId: specialist2Id,
+            direction: 'الجيزة',
+            plannedTime: '07:00',
+          },
+        ],
+      });
+    expect(plan.status).toBe(200);
+
+    const { operationsCrewAssignmentRepository } = await import(
+      '../../src/modules/operations/crew/crew-assignment.repository'
+    );
+    const { operationsDayService } = await import('../../src/modules/operations/days/day.service');
+    const dayDoc = await operationsDayService.findByDate(new Date(MOBILE_DATE));
+    const crewRows = await operationsCrewAssignmentRepository.findForDay(dayDoc?._id ?? '');
+    mobileCrewId = String(crewRows[0]?._id ?? '');
+
+    for (let i = 0; i < 2; i += 1) {
+      const shipment = data<OperationsShipmentDto>(
+        await mkShipment({ collectionDate: MOBILE_DATE }),
+      );
+      if (i === 0) firstShipment = shipment;
+      const assigned = await request(app)
+        .post(`/api/v1/operations/assignments/shipments/${shipment.id}/assign-pickup`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ crewAssignmentId: mobileCrewId, captainEmployeeId: captainId, version: 0 });
+      expect(assigned.status).toBe(200);
+    }
+
+    // A second day where the SAME captain is planned onto a vehicle and nothing is assigned to him
+    // yet. Crew exclusivity (Q11) is scoped per operating day, so this is a legitimate plan.
+    const plannedRoster = await request(app)
+      .post('/api/v1/fleet/roster')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date: PLANNED_ONLY_DATE, rows: [{ vehicleId: vehicleAId, notes: 'planned only' }] });
+    expect(plannedRoster.status).toBe(200);
+
+    const plannedCrew = await request(app)
+      .post('/api/v1/operations/crew-board')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        date: PLANNED_ONLY_DATE,
+        rows: [{ vehicleId: vehicleAId, captainEmployeeId: captainId, direction: 'بنها' }],
+      });
+    expect(plannedCrew.status).toBe(200);
+  });
+
+  it('1 + 3. the authenticated captain reads his own day in the exact server-side order', async () => {
+    const res = await myDay(captainUserToken);
+    expect(res.status).toBe(200);
+    const dto = data<OperationsMobileDayDto>(res);
+    expect(dto.captain.employeeId).toBe(captainId);
+    expect(dto.operationsDayId).not.toBeNull();
+    expect(dto.stops.map((s) => s.sequence)).toEqual([1, 2]);
+
+    const opsRoute = data<OperationsCaptainRouteDto>(
+      await request(app)
+        .get(
+          `/api/v1/operations/assignments/route?date=${MOBILE_DATE}&captainEmployeeId=${captainId}&leg=pickup`,
+        )
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+    expect(dto.stops.map((s) => s.assignmentId)).toEqual(opsRoute.stops.map((s) => s.assignmentId));
+  });
+
+  it('identity. one employee identity serves desktop and mobile — no mobile account exists', async () => {
+    const { employeeRepository } = await import(
+      '../../src/modules/hr/employee-management/employees/employee.repository'
+    );
+
+    // The mobile surface reports the SAME employee id the desktop modules use for this person...
+    const dto = data<OperationsMobileDayDto>(await myDay(captainUserToken));
+    expect(dto.captain.employeeId).toBe(captainId);
+
+    // ...and that employee is reached from the ORDINARY login, through the HR record's own link.
+    // No mobile user, no captain account, no second identity row stands between the two.
+    const employee = await employeeRepository.getById(captainId);
+    expect(String(employee.userId)).toBe(captainUserId);
+
+    // The very same token also resolves on the shared platform directory — one identity, two
+    // surfaces. A mobile-specific identity model would break this equality.
+    const profile = await request(app)
+      .get(`/api/v1/platform/directory/${captainUserId}`)
+      .set('Authorization', `Bearer ${captainUserToken}`);
+    expect(profile.status).toBe(200);
+  });
+
+  it('identity. captaincy is the day plan, not the account — planned-with-no-stops is not "not a captain"', async () => {
+    // Same employee, same permission, same login — two days with genuinely different answers.
+    const planned = data<OperationsMobileDayDto>(await myDay(captainUserToken, PLANNED_ONLY_DATE));
+    expect(planned.isCaptainOnDay).toBe(true);
+    expect(planned.assignments).toHaveLength(1);
+    expect(planned.assignments[0]?.vehicleId).toBe(vehicleAId);
+    expect(planned.stops).toHaveLength(0); // planned, but dispatch has given him nothing yet
+    expect(planned.currentAssignmentId).toBeNull();
+
+    // The other captain holds `operationsExecution.own` too — the CAPABILITY — yet is not planned
+    // onto anything that day, so he is not a captain on it. Capability never implies captaincy.
+    const notPlanned = data<OperationsMobileDayDto>(await myDay(otherCaptainToken, PLANNED_ONLY_DATE));
+    expect(notPlanned.isCaptainOnDay).toBe(false);
+    expect(notPlanned.assignments).toHaveLength(0);
+    expect(notPlanned.stops).toHaveLength(0);
+
+    // Both have an empty stop list; only `isCaptainOnDay` tells them apart.
+    expect(planned.stops).toEqual(notPlanned.stops);
+    expect(planned.isCaptainOnDay).not.toBe(notPlanned.isCaptainOnDay);
+  });
+
+  it('2 + 12. a captain cannot see another captain day — isolation is structural', async () => {
+    const mine = data<OperationsMobileDayDto>(await myDay(captainUserToken));
+    const theirs = data<OperationsMobileDayDto>(await myDay(otherCaptainToken));
+
+    expect(theirs.captain.employeeId).toBe(otherCaptainId);
+    expect(theirs.stops).toHaveLength(0);
+    expect(theirs.isCaptainOnDay).toBe(false);
+    expect(mine.stops.length).toBeGreaterThan(0);
+    expect(mine.isCaptainOnDay).toBe(true);
+
+    // There is no captain parameter to tamper with: an injected one is refused by .strict().
+    const tampered = await request(app)
+      .get(`/api/v1/operations/mobile/my-day?date=${MOBILE_DATE}&captainEmployeeId=${captainId}`)
+      .set('Authorization', `Bearer ${otherCaptainToken}`);
+    expect(tampered.status).toBe(400);
+  });
+
+  it('4. completed / current / locked are represented from real domain state', async () => {
+    const before = data<OperationsMobileDayDto>(await myDay(captainUserToken));
+    expect(before.stops.map((s) => s.progress)).toEqual(['current', 'locked']);
+    expect(before.currentAssignmentId).toBe(before.stops[0]?.assignmentId);
+
+    const shipment = data<OperationsShipmentDto>(
+      await request(app)
+        .get(`/api/v1/operations/shipments/${firstShipment?.id ?? ''}`)
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+    const done = await request(app)
+      .post(`/api/v1/operations/shipments/${shipment.id}/complete`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: shipment.version });
+    expect(done.status).toBe(200);
+
+    const after = data<OperationsMobileDayDto>(await myDay(captainUserToken));
+    expect(after.stops.map((s) => s.progress)).toEqual(['completed', 'current']);
+    expect(after.currentAssignmentId).toBe(after.stops[1]?.assignmentId);
+  });
+
+  it('5 + 6 + regression. crew resolves through (day, vehicle); stops carry NO specialist data', async () => {
+    const dto = data<OperationsMobileDayDto>(await myDay(captainUserToken));
+
+    expect(dto.assignments).toHaveLength(1);
+    expect(dto.assignments[0]?.crewAssignmentId).toBe(mobileCrewId);
+    expect(dto.assignments[0]?.vehicleId).toBe(vehicleAId);
+    expect(dto.assignments[0]?.specialist1EmployeeId).toBe(specialist1Id);
+    expect(dto.assignments[0]?.specialist2EmployeeId).toBe(specialist2Id);
+    expect(dto.stops.every((s) => s.crewAssignmentId === mobileCrewId)).toBe(true);
+    expect(dto.stops.every((s) => s.vehicleId === vehicleAId)).toBe(true);
+    expect(dto.stops.every((s) => s.leg === 'pickup')).toBe(true);
+
+    for (const stop of dto.stops) {
+      for (const key of Object.keys(stop)) {
+        expect(key.toLowerCase()).not.toContain('specialist');
+      }
+      expect(JSON.stringify(stop)).not.toContain(specialist1Id);
+      expect(JSON.stringify(stop)).not.toContain(specialist2Id);
+    }
+  });
+
+  it('7. the secured delivery leg resolves on its own day', async () => {
+    const DELIVERY = '2026-09-11';
+    await request(app)
+      .post('/api/v1/fleet/roster')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date: DELIVERY, rows: [{ vehicleId: vehicleAId, notes: 'mobile delivery seed' }] });
+    await request(app)
+      .post('/api/v1/operations/crew-board')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date: DELIVERY, rows: [{ vehicleId: vehicleAId, captainEmployeeId: captainId }] });
+
+    const secured = data<OperationsShipmentDto>(
+      await mkShipment({
+        shipmentType: 'secured',
+        collectionDate: MOBILE_DATE,
+        deliveryDate: DELIVERY,
+      }),
+    );
+    const treasurer = await mkEmployee();
+    const received = await request(app)
+      .post(`/api/v1/operations/secured/${secured.id}/receive`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        receiptNumber: `R-M-${secured.id.slice(-5)}`,
+        receivedByPrimaryId: captainId,
+        receivedBySecondaryId: treasurer,
+        version: secured.version,
+      });
+    expect(received.status).toBe(200);
+
+    const { operationsCrewAssignmentRepository } = await import(
+      '../../src/modules/operations/crew/crew-assignment.repository'
+    );
+    const { operationsDayService } = await import('../../src/modules/operations/days/day.service');
+    const dayDoc = await operationsDayService.findByDate(new Date(DELIVERY));
+    const rows = await operationsCrewAssignmentRepository.findForDay(dayDoc?._id ?? '');
+    const assigned = await request(app)
+      .post(`/api/v1/operations/secured/${secured.id}/assign-delivery`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        crewAssignmentId: String(rows[0]?._id ?? ''),
+        captainEmployeeId: captainId,
+        version: 0,
+      });
+    expect(assigned.status).toBe(200);
+
+    const dto = data<OperationsMobileDayDto>(await myDay(captainUserToken, DELIVERY));
+    expect(dto.stops).toHaveLength(1);
+    expect(dto.stops[0]?.leg).toBe('delivery');
+    expect(dto.stops[0]?.shipmentType).toBe('secured');
+    expect(dto.stops[0]?.status).toBe('inVault');
+  });
+
+  it('8 + 9 + 10. both locations are returned, and absent coordinates do not break anything', async () => {
+    const dto = data<OperationsMobileDayDto>(await myDay(captainUserToken));
+    const stop = dto.stops[0];
+    expect(stop?.pickup.branchName).toBe('فرع المهندسين');
+    expect(stop?.pickup.bankName).toBe('الأهلي');
+    expect(stop?.delivery.branchName).toBe('فرع المهندسين');
+    expect(stop?.pickup.location).toBeNull();
+    expect(stop?.delivery.location).toBeNull();
+  });
+
+  it('9b. a backfilled coordinate flows straight through — the API is map-ready', async () => {
+    const list = await request(app)
+      .get(`/api/v1/operations/bank-branches?bankId=${bankA.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const target = (list.body as { data: OperationsBankBranchDto[] }).data.find(
+      (b) => b.id === branchA1.id,
+    );
+    const updated = await request(app)
+      .patch(`/api/v1/operations/bank-branches/${branchA1.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        location: {
+          addressLine: 'شارع جامعة الدول',
+          coordinates: { lat: 30.0444, lng: 31.2357 },
+        },
+        version: target?.version ?? branchA1.version,
+      });
+    expect(updated.status).toBe(200);
+
+    const dto = data<OperationsMobileDayDto>(await myDay(captainUserToken));
+    expect(dto.stops[0]?.pickup.location?.coordinates?.lng).toBe(31.2357);
+    expect(dto.stops[0]?.pickup.location?.addressLine).toBe('شارع جامعة الدول');
+  });
+
+  it('11. RBAC — needs operationsExecution.own, and a non-employee login is refused', async () => {
+    const viewer = await myDay(viewerToken);
+    expect(viewer.status).toBe(403);
+
+    // The ops admin HAS the grant but is not linked to an employee — identity, not permission.
+    const unlinked = await myDay(adminToken);
+    expect(unlinked.status).toBe(403);
+
+    const anonymous = await request(app).get('/api/v1/operations/mobile/my-day');
+    expect(anonymous.status).toBe(401);
+  });
+});

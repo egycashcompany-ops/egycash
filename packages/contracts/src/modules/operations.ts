@@ -800,6 +800,124 @@ export const OperationsCaptainRouteQuerySchema = z
   .strict();
 export type OperationsCaptainRouteQuery = z.infer<typeof OperationsCaptainRouteQuerySchema>;
 
+
+// ── Captain mobile read model (OP-6) ────────────────────────────────────────────────────────────
+//
+// NEW ECMS CAPABILITY — there is NO legacy counterpart. The legacy system has no captain-facing
+// surface of any kind: a captain never logged in, never saw a route, and never recorded anything.
+// Everything up to OP-5 was legacy parity; this is the first slice that adds a capability the
+// business did not previously have, so nothing here is measured against legacy behaviour.
+//
+// READ ONLY. This slice exposes the shape the mobile client needs and NOT the mutations — no
+// start, no pickup, no deliver, no unlock. The execution state machine lands in the next slice and
+// must be able to do so without changing these contracts, which is why every identifier the
+// mutations will need (day, shipment, assignment, sequence, leg, vehicle, both locations) is
+// already carried here.
+//
+// ── IDENTITY MODEL — AN ARCHITECTURAL CONSTRAINT, NOT A UI DETAIL ───────────────────────────────
+//
+// Captain Mobile is NOT a separate user, account or entity. The captain is an ordinary ECMS
+// EMPLOYEE with the ordinary authenticated employee identity. The mobile experience is a
+// captain-specific CAPABILITY exposed inside that employee's authenticated profile — the same
+// identity that serves Desktop ECMS, with no second identity model anywhere behind it.
+//
+//   authenticated user → employee → captain assignment for the operating day → ordered shipments
+//
+// Binding consequences, each enforced rather than merely intended:
+//   • There is NO `MobileUser`, no mobile account, no captain login, no mobile-side identity table.
+//     The type below carries an `employeeId` — the SAME id the desktop surfaces use — and nothing
+//     mobile-specific stands in for it.
+//   • The client NEVER supplies a captain id. `OperationsMobileDayQuerySchema` is `.strict()` and
+//     has no such field, so identity cannot be asserted by the caller even by accident. The server
+//     resolves the employee from the token through the platform directory seam.
+//   • CAPABILITY (may this employee open the captain surface at all?) is RBAC — `operationsExecution.own`.
+//   • CAPTAINCY (is this employee a captain today, on which vehicles?) is DATA — the (day, vehicle)
+//     crew assignment. It is a property of the day's plan, never of the account: `isCaptainOnDay`
+//     below is answered from that row, which is why an employee can hold the capability
+//     permanently and still not be a captain on a given day.
+//   • The day's shipment list therefore hangs off that assignment, never off anything the client
+//     sends.
+//
+// A future surface that needs a second identity model for mobile is a design change requiring its
+// own decision — it is not an implementation detail some later slice may quietly introduce.
+
+/**
+ * Where a stop sits in the captain's day, as the READ surface can currently know it.
+ *
+ * DERIVED, never stored: `completed` comes from the shipment's own lifecycle status, `current` is
+ * the first stop that is not completed, and everything after it is `locked`. When the execution
+ * slice adds real per-assignment execution state, this field keeps its meaning and gains precision
+ * — the mobile client's branching does not change.
+ */
+export const OPERATIONS_STOP_PROGRESS = ['completed', 'current', 'locked'] as const;
+export const OperationsStopProgressSchema = z.enum(OPERATIONS_STOP_PROGRESS);
+export type OperationsStopProgress = z.infer<typeof OperationsStopProgressSchema>;
+
+export interface OperationsMobileStopDto {
+  /** Stable identifiers the execution slice will POST against — all present from OP-6. */
+  assignmentId: string;
+  shipmentId: string;
+  operationsDayId: string;
+  sequence: number;
+  leg: OperationsShipmentLeg;
+  vehicleId: string;
+  crewAssignmentId: string;
+
+  shipmentType: OperationsShipmentType;
+  /** The shipment's own lifecycle status (legacy-derived ladder), NOT an execution state. */
+  status: OperationsShipmentStatus;
+  progress: OperationsStopProgress;
+
+  referenceNumber: string | null;
+  packaging: { bags: number; cartons: number; boxes: number } | null;
+
+  pickup: OperationsRouteStopLocationDto;
+  delivery: OperationsRouteStopLocationDto;
+}
+
+export interface OperationsMobileDayDto {
+  date: string;
+  operationsDayId: string | null;
+  dayStatus: OperationsDayStatus | null;
+  /**
+   * The authenticated EMPLOYEE — the same identity and the same `employeeId` the desktop surfaces
+   * use for this person. There is no mobile-specific identity; this is the employee profile viewed
+   * through the captain capability.
+   */
+  captain: { employeeId: string; code: string; fullNameAr: string };
+  /**
+   * Is this employee a captain ON THIS DAY? Answered from the (day, vehicle) crew assignment, not
+   * from the account and not from RBAC.
+   *
+   * This exists because "planned today with no stops assigned yet" and "not a captain today" are
+   * different facts that both yield an empty `stops`, and a client that conflates them tells a
+   * rostered captain he has no duty. `assignments` is non-empty exactly when this is true.
+   */
+  isCaptainOnDay: boolean;
+  /**
+   * The vehicles and crews the captain is on today — resolved THROUGH the (day, vehicle) crew
+   * assignment. Specialists belong to the crew row, never to a shipment: the mobile client reads
+   * them from here, and a shipment payload above carries no specialist field at all.
+   */
+  assignments: {
+    crewAssignmentId: string;
+    vehicleId: string;
+    specialist1EmployeeId: string | null;
+    specialist2EmployeeId: string | null;
+    direction: string | null;
+    plannedTime: string | null;
+  }[];
+  stops: OperationsMobileStopDto[];
+  /** Convenience for the client's headline — the same id as the first non-completed stop. */
+  currentAssignmentId: string | null;
+}
+
+/** No date → today. The captain is ALWAYS the authenticated user; there is no captain parameter. */
+export const OperationsMobileDayQuerySchema = z
+  .object({ date: z.coerce.date().optional() })
+  .strict();
+export type OperationsMobileDayQuery = z.infer<typeof OperationsMobileDayQuerySchema>;
+
 // ── Events (ADR-008 `<module>.<entity>.<event>`) ────────────────────────────────────────────────
 
 export const OperationsEvents = {

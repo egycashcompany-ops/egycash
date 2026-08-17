@@ -243,14 +243,27 @@ export const CreatePayrollReportDefinitionSchema = coherent(PayrollReportDefinit
 export type CreatePayrollReportDefinition = z.infer<typeof PayrollReportDefinitionBodySchema>;
 
 /**
- * An edit replaces the whole definition.
+ * An edit replaces the whole definition, and states which version it is replacing.
  *
- * A partial patch over a shape whose parts must agree — a sort key that matches the dimensions, a
- * filter whose field is still selected — would need the stored half to validate the sent half. The
- * whole body is simpler to reason about and impossible to make incoherent.
+ * THE WHOLE BODY, because a partial patch over a shape whose parts must agree — a sort key that
+ * matches the dimensions, a filter whose field is still selected — would need the stored half to
+ * validate the sent half. The whole body is impossible to make incoherent.
+ *
+ * AND A VERSION, because that is how this system writes (D-B1-5, corrected).
+ * `BaseRepository.updateById` matches `__v` inside the update itself, so a second editor cannot
+ * overwrite the first's work between a read and a write; every entity here is edited that way, and
+ * a report definition is not the one exception. An earlier reading of this codebase concluded the
+ * opposite — see `docs/12-planning/payroll-report-builder-design.md` §2.
  */
-export const UpdatePayrollReportDefinitionSchema = CreatePayrollReportDefinitionSchema;
-export type UpdatePayrollReportDefinition = z.infer<typeof PayrollReportDefinitionBodySchema>;
+export const UpdatePayrollReportDefinitionSchema = coherent(
+  PayrollReportDefinitionBodySchema.extend({
+    /** The version the editor last read. A mismatch is a 409, never a silent overwrite. */
+    version: z.number().int().min(0),
+  }).strict(),
+);
+export type UpdatePayrollReportDefinition = z.infer<typeof PayrollReportDefinitionBodySchema> & {
+  version: number;
+};
 
 export interface PayrollReportDefinitionDto {
   id: string;

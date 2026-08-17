@@ -12,6 +12,7 @@
 import {
   type CreatePayrollReportDefinition,
   type EntityRef,
+  type UpdatePayrollReportDefinition,
   type PayrollReportDefinitionDto,
   type Paginated,
 } from '@ecms/contracts';
@@ -87,18 +88,54 @@ class ReportDefinitionService {
     return doc;
   }
 
-  // UPDATE IS NOT HERE YET, AND ITS ABSENCE IS A HELD DECISION RATHER THAN AN OVERSIGHT.
-  //
-  // D-B1-5 was approved as "expose `version`, do not demand it back". `BaseRepository.updateById`
-  // demands it: its filter matches `__v: meta.version` atomically, and every update in this
-  // repository passes one. The two cannot both hold, and the evidence I gave for D-B1-5 was
-  // misread — `version: doc.__v` in a catalog's `toDto` is the OUTPUT, not the update input.
-  //
-  // Editing a definition therefore waits on that decision rather than being written around it.
-  // Everything else in this service is complete: create validates and stores, delete retires, and
-  // the execution path beside it needs no edit to work.
+  /**
+   * Replace the whole definition, at the version the editor last read (D-B1-5, corrected).
+   *
+   * The concurrency check is not performed here and could not be: `updateById` matches `__v` INSIDE
+   * the update, so between the read above and the write below there is no window for a second
+   * editor to slip through. A mismatch raises the platform's `StaleDocumentError` (409) and writes
+   * NOTHING — the update is one atomic `findOneAndUpdate`, so a failed version check cannot leave
+   * half a definition behind.
+   *
+   * The `before` read is for the audit entry only. If it loses the race, the write refuses anyway.
+   */
+  async update(
+    id: string,
+    input: UpdatePayrollReportDefinition,
+    by: string,
+  ): Promise<ReportDefinitionDoc> {
+    assertColumnsValid(input.columns);
+    const before = await reportDefinitionRepository.getById(id);
+    const after = await reportDefinitionRepository.updateById(
+      id,
+      {
+        name: input.name,
+        description: input.description,
+        sourceId: input.sourceId,
+        dimensions: input.dimensions,
+        measures: input.measures,
+        filters: input.filters,
+        sort: input.sort,
+        columns: input.columns,
+        status: input.status,
+      },
+      { by, version: input.version },
+    );
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'update',
+      changes: changed(snapshot(before), snapshot(after)),
+    });
+    return after;
+  }
 
-  /** Soft delete — the definition stops being offered; no report anybody ran is un-run. */
+  /**
+   * Soft delete — the definition stops being offered; no report anybody ran is un-run.
+   *
+   * `softDeleteById` takes no version, and that is the platform's shape for every entity rather
+   * than a gap here: it still goes through the base repository, so the scope filter and the write
+   * conditions apply. What it does not do is refuse a delete because somebody edited first.
+   */
   async softDelete(id: string, by: string): Promise<void> {
     await reportDefinitionRepository.softDeleteById(id, { by });
     await auditService.record({ entityRef: entityRef(id), action: 'delete' });
@@ -127,7 +164,7 @@ class ReportDefinitionService {
     });
   }
 
-  /** `version` is exposed and never demanded back (D-B1-5). */
+  /** `version` is exposed so an editor can send it back on the next update (D-B1-5, corrected). */
   toDto(doc: ReportDefinitionDoc): PayrollReportDefinitionDto {
     return {
       id: String(doc._id),

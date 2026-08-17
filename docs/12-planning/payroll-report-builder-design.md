@@ -31,9 +31,34 @@ request.
 | **D-B1-2** | Measures | `lineCount` and `amountMinor` only. No `avg` / `min` / `max` |
 | **D-B1-3** | Filter operators | `eq` · `ne` · `in` · `nin` only |
 | **D-B1-4** | Composable dimensions | Yes — `GROUP_KEYS` is decomposed into atomic dimensions, **under a strict equivalence test against the current output** |
-| **D-B1-5** | Versioning | Expose `version` only. No `expectedVersion`, no optimistic lock |
+| **D-B1-5** | Versioning | **Corrected — see below.** An edit carries the `version` it read, and `BaseRepository.updateById` enforces it |
 | **D-B1-6** | Preview | Yes — an unsaved definition can be executed |
 | **D-B1-7** | Phase identifier | **Not chosen.** Recorded as scope B1 |
+
+### D-B1-5 was decided on a misreading, and is corrected here
+
+The original decision — *expose `version`, do not demand it back* — was argued from the claim that
+this codebase's catalogs expose a version without enforcing one. **That claim was wrong, and the
+error was mine.** The line cited as evidence, `version: doc.__v` in `cost-center.service.ts`, is the
+DTO's **output**; the update input is a different thing entirely, and `UpdateCostCenterSchema`
+carries `version: z.number().int().min(0)`.
+
+What the code actually does, found while implementing stage 2:
+
+```ts
+// apps/api/src/shared/base/base.repository.ts:253
+async updateById(id, set, meta: WriteMeta & { version: number; … }) {
+  const filter = this.baseFilter(meta.scope, { _id: …, __v: meta.version, … });
+```
+
+`version` is **required**, and it is matched inside the update itself. Every update in this
+repository passes one. Optimistic concurrency is the house pattern, not an option, and a report
+definition is not the one entity that gets to opt out.
+
+**Corrected: an edit carries the version it read.** A mismatch raises the platform's
+`StaleDocumentError` (409) and writes nothing — the update is a single atomic `findOneAndUpdate`, so
+a failed check cannot leave half a definition behind. Deleting takes no version, which is
+`softDeleteById`'s shape for every entity in this system rather than a gap in this one.
 
 ### Why a new permission is proven, not assumed
 

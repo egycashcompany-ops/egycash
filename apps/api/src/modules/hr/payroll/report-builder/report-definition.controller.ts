@@ -4,6 +4,7 @@ import {
   type CreatePayrollReportDefinition,
   type PreviewPayrollReport,
   type RunPayrollReport,
+  type UpdatePayrollReportDefinition,
 } from '@ecms/contracts';
 import { created, noContent, ok, okPage } from '../../../../infrastructure/http/respond';
 import { validated } from '../../../../infrastructure/http/validate';
@@ -43,7 +44,18 @@ export const createReportDefinition = async (req: Request, res: Response): Promi
   created(res, reportDefinitionService.toDto(doc), `/api/v1/hr/payroll/reports/${String(doc._id)}`);
 };
 
-// `updateReportDefinition` waits on D-B1-5 — see the note in `report-definition.service.ts`.
+/**
+ * Replace a definition at the version the editor read (D-B1-5, corrected).
+ *
+ * A stale version reaches the client as the platform's 409, not as a silent overwrite of somebody
+ * else's edit.
+ */
+export const updateReportDefinition = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<UpdatePayrollReportDefinition, never, IdParam>(req);
+  const doc = await reportDefinitionService.update(params.id, body, ctx.userId);
+  ok(res, reportDefinitionService.toDto(doc));
+};
 
 export const deleteReportDefinition = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);

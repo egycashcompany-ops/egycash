@@ -16,6 +16,7 @@ import {
   PaginationQuerySchema,
   PreviewPayrollReportSchema,
   RunPayrollReportSchema,
+  UpdatePayrollReportDefinitionSchema,
   objectId,
 } from '@ecms/contracts';
 import { asyncHandler, validate } from '../../../../platform/web';
@@ -28,6 +29,7 @@ import {
   listReportDefinitions,
   previewReport,
   runReportDefinition,
+  updateReportDefinition,
 } from './report-definition.controller';
 
 const IdParamSchema = z.object({ id: objectId() }).strict();
@@ -66,7 +68,12 @@ export const buildReportBuilderRouter = (): Router => {
 
   router.get('/:id', ...read, validate({ params: IdParamSchema }), asyncHandler(getReportDefinition));
 
-  // PATCH /:id waits on D-B1-5 (whether an edit carries a version). Nothing else here depends on it.
+  router.patch(
+    '/:id',
+    ...manage,
+    validate({ body: UpdatePayrollReportDefinitionSchema, params: IdParamSchema }),
+    asyncHandler(updateReportDefinition),
+  );
 
   router.delete(
     '/:id',

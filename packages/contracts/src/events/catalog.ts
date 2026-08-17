@@ -181,6 +181,11 @@ import {
   ItLicenseExpiredPayloadV1,
   ItLicenseSeatsExceededPayloadV1,
 } from '../modules/it.js';
+import {
+  OperationsEvents,
+  type OperationsEventName,
+  OperationsShipmentEventPayloadV1,
+} from '../modules/operations.js';
 
 // ── The shape a consumer sees ───────────────────────────────────────────────
 
@@ -582,6 +587,7 @@ export const EVENT_MODULE_NAMES: Readonly<Record<string, LocalizedString>> = {
   automation: { en: 'Automation', ar: 'الأتمتة' },
   fleet: { en: 'Fleet', ar: 'الحركة' },
   it: { en: 'IT', ar: 'تقنية المعلومات' },
+  operations: { en: 'Operations', ar: 'العمليات' },
 };
 
 export const EVENT_ENTITY_NAMES: Readonly<Record<string, LocalizedString>> = {
@@ -640,6 +646,9 @@ export const EVENT_ENTITY_NAMES: Readonly<Record<string, LocalizedString>> = {
   // Bare `license` is free: Fleet's two are `vehicleLicense` and `driverLicense`, and neither
   // means a software entitlement.
   license: { en: 'Software license', ar: 'ترخيص برمجي' },
+
+  // operations (OP-2): the cash shipment is the module's first and central subject.
+  shipment: { en: 'Shipment', ar: 'شحنة' },
 };
 
 export const EVENT_ACTION_NAMES: Readonly<Record<string, LocalizedString>> = {
@@ -1169,6 +1178,23 @@ export const IT_EVENT_SOURCE: EventCatalogSource = {
   schemas: IT_EVENT_PAYLOAD_SCHEMAS,
 };
 
+// OP-2 registered the shipment lifecycle facts. Later operations slices (vault custody, crew
+// assignment, captain execution) extend this map with theirs.
+export const OPERATIONS_EVENT_PAYLOAD_SCHEMAS: Readonly<
+  Record<OperationsEventName, z.ZodTypeAny | null>
+> = {
+  [OperationsEvents.ShipmentCreated]: OperationsShipmentEventPayloadV1,
+  [OperationsEvents.ShipmentUpdated]: OperationsShipmentEventPayloadV1,
+  [OperationsEvents.ShipmentCompleted]: OperationsShipmentEventPayloadV1,
+  [OperationsEvents.ShipmentReopened]: OperationsShipmentEventPayloadV1,
+  [OperationsEvents.ShipmentDeleted]: OperationsShipmentEventPayloadV1,
+};
+
+export const OPERATIONS_EVENT_SOURCE: EventCatalogSource = {
+  moduleId: 'operations',
+  schemas: OPERATIONS_EVENT_PAYLOAD_SCHEMAS,
+};
+
 // ── The catalogue ───────────────────────────────────────────────────────────
 
 export const EVENT_CATALOG: readonly EventCatalogEntry[] = buildEventCatalog(
@@ -1176,6 +1202,7 @@ export const EVENT_CATALOG: readonly EventCatalogEntry[] = buildEventCatalog(
   HR_EVENT_SOURCE,
   FLEET_EVENT_SOURCE,
   IT_EVENT_SOURCE,
+  OPERATIONS_EVENT_SOURCE,
 );
 
 const CATALOG_BY_NAME: ReadonlyMap<string, EventCatalogEntry> = new Map(

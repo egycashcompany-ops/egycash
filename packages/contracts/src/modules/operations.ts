@@ -12,6 +12,14 @@
 // and transition GUARDS are service logic (the fleet `vehicle-status.ts` precedent), not contract
 // data. What lives here is what every slice must agree on before any of them exists.
 import { z } from 'zod';
+import {
+  LocalizedStringSchema,
+  PaginationQuerySchema,
+  booleanQuery,
+  listQuery,
+  objectId,
+} from '../common/index.js';
+import { MoneyAmountSchema } from './hr-payroll-money.js';
 
 // ── Shipment type ───────────────────────────────────────────────────────────────────────────────
 
@@ -111,3 +119,285 @@ export type OperationsExecutionStatus = z.infer<typeof OperationsExecutionStatus
 export const OPERATIONS_DAY_STATUSES = ['planning', 'open', 'closed'] as const;
 export const OperationsDayStatusSchema = z.enum(OPERATIONS_DAY_STATUSES);
 export type OperationsDayStatus = z.infer<typeof OperationsDayStatusSchema>;
+
+// ── Reference data: banks, bank branches, currencies (OP-2) ─────────────────────────────────────
+//
+// The legacy "customer/location" model normalized (discovery §11): the customer IS the bank, the
+// location IS the bank branch, and every legacy join is a verbatim Arabic string on `bank_name_ops`
+// / `branche_name` (discovery §4). The string joins become ObjectId refs (approved NORMALIZE); the
+// verbatim legacy strings survive as fields so migration and report parity can still match on them.
+
+export interface OperationsBankDto {
+  id: string;
+  /** Legacy `bank_code` — numeric, drives the pickers' sort (contad_app.js:271). */
+  code: number;
+  /** Legacy `bank_name` (en) + `bank_name_arabic` (ar). */
+  name: { ar: string; en: string };
+  /** Legacy `bank_name_ops` — THE operational join key every legacy screen matches on. Unique. */
+  opsName: string;
+  /** Legacy `bank_slogan` / `bank_slogan_arabic`, preserved for migration. */
+  slogan: { ar: string; en: string } | null;
+  /** Q31 NORMALIZE: replaces the hardcoded 22-name `$switch` sort in /vault1 (contad_app.js:1449). */
+  sortOrder: number | null;
+  isActive: boolean;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const bankCore = {
+  code: z.number().int().min(0),
+  name: LocalizedStringSchema,
+  opsName: z.string().min(1),
+  slogan: LocalizedStringSchema.nullable().default(null),
+  sortOrder: z.number().int().min(0).nullable().default(null),
+};
+export const CreateOperationsBankSchema = z.object(bankCore).strict();
+export type CreateOperationsBank = z.infer<typeof CreateOperationsBankSchema>;
+export const UpdateOperationsBankSchema = z
+  .object(bankCore)
+  .partial()
+  .extend({ isActive: z.boolean().optional(), version: z.number().int().min(0) })
+  .strict();
+export type UpdateOperationsBank = z.infer<typeof UpdateOperationsBankSchema>;
+
+/**
+ * A branch's physical location (design §17.4). OPTIONAL end to end: the legacy system carries no
+ * coordinates, no street addresses and no branch phones anywhere (discovery §11.2 — verified by
+ * repo-wide grep), so day one this is null everywhere and the captain screen degrades to
+ * branch/bank/area names. Backfilling coordinates later lights the map up with no contract change.
+ */
+export const OperationsLocationSchema = z
+  .object({
+    addressLine: z.string().min(1).nullable().default(null),
+    coordinates: z
+      .object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180) })
+      .strict()
+      .nullable()
+      .default(null),
+  })
+  .strict();
+export type OperationsLocation = z.infer<typeof OperationsLocationSchema>;
+
+export interface OperationsBankBranchDto {
+  id: string;
+  bankId: string;
+  /** Legacy `branche_name` — plain string, Arabic-only in legacy data. Unique per bank. */
+  name: string;
+  /** Legacy `branche_code` — a string in legacy. Unique per bank. */
+  code: string;
+  /** Legacy `area` — the OPERATIONS area label (schema comment "للعمليات"). */
+  opsAreaName: string | null;
+  /** Legacy `area2` — the FINANCE area label ("للحسابات"), defaulted to `area` on add (Q24). */
+  financeAreaName: string | null;
+  location: OperationsLocation | null;
+  isActive: boolean;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const bankBranchCore = {
+  bankId: objectId(),
+  name: z.string().min(1),
+  code: z.string().min(1),
+  opsAreaName: z.string().min(1).nullable().default(null),
+  financeAreaName: z.string().min(1).nullable().default(null),
+  location: OperationsLocationSchema.nullable().default(null),
+};
+export const CreateOperationsBankBranchSchema = z.object(bankBranchCore).strict();
+export type CreateOperationsBankBranch = z.infer<typeof CreateOperationsBankBranchSchema>;
+export const UpdateOperationsBankBranchSchema = z
+  .object(bankBranchCore)
+  .partial()
+  .extend({ isActive: z.boolean().optional(), version: z.number().int().min(0) })
+  .strict();
+export type UpdateOperationsBankBranch = z.infer<typeof UpdateOperationsBankBranchSchema>;
+
+export interface OperationsCurrencyDto {
+  id: string;
+  /** ISO-ish short code, e.g. `EGP`, `USD`. Unique. */
+  code: string;
+  /** The display name — in legacy, the verbatim string stored per shipment line (e.g. `مصري`). */
+  name: string;
+  /**
+   * Every legacy spelling that means this currency. The legacy reports classify money by literal
+   * synonym lists — EGP is `['مصري','جنيه','EGP','جنيه مصري']`, USD `['دولار','USD']`
+   * (contad_app.js:1409, 5029-5057) — so parity matching needs the full alias set as data.
+   */
+  legacyAliases: string[];
+  isActive: boolean;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const currencyCore = {
+  code: z.string().min(1).max(8),
+  name: z.string().min(1),
+  legacyAliases: z.array(z.string().min(1)).max(20).default([]),
+};
+export const CreateOperationsCurrencySchema = z.object(currencyCore).strict();
+export type CreateOperationsCurrency = z.infer<typeof CreateOperationsCurrencySchema>;
+export const UpdateOperationsCurrencySchema = z
+  .object(currencyCore)
+  .partial()
+  .extend({ isActive: z.boolean().optional(), version: z.number().int().min(0) })
+  .strict();
+export type UpdateOperationsCurrency = z.infer<typeof UpdateOperationsCurrencySchema>;
+
+export const ListOperationsBankBranchesQuerySchema = PaginationQuerySchema.extend({
+  bankId: objectId().optional(),
+  isActive: booleanQuery().optional(),
+  search: z.string().optional(),
+}).strict();
+export type ListOperationsBankBranchesQuery = z.infer<typeof ListOperationsBankBranchesQuerySchema>;
+
+export const ListOperationsReferenceQuerySchema = PaginationQuerySchema.extend({
+  isActive: booleanQuery().optional(),
+  search: z.string().optional(),
+}).strict();
+export type ListOperationsReferenceQuery = z.infer<typeof ListOperationsReferenceQuerySchema>;
+
+// ── Cash shipments (OP-2) ───────────────────────────────────────────────────────────────────────
+//
+// The legacy `transactions` document normalized per the approved SPLIT (design §15): this entity
+// carries the shipment itself; crew legs, sequencing and vault custody are separate entities in
+// later slices. The legacy parallel arrays `currencies[]`/`values[]` (string amounts) become
+// `lines[{currencyId, amount}]` (Q5-Q8 NORMALIZE); amounts ride the platform money convention
+// (integer minor units in storage, `MoneyAmountSchema` majors on the wire) rather than the
+// design's Decimal128 sketch — the repo already has one money discipline and two would be worse.
+
+export interface OperationsShipmentLineDto {
+  currencyId: string;
+  /** Major units. Non-negative by parity: the legacy input strips `-` (contad_app.js:327). */
+  amount: number;
+}
+
+export interface OperationsShipmentDto {
+  id: string;
+  shipmentType: OperationsShipmentType;
+  status: OperationsShipmentStatus;
+  /** Legacy `main_bank` (the FROM side's bank; legacy requires it — contad_app.js:313). */
+  mainBankId: string;
+  /** Legacy `sec_bank` via `toBankSelect`; never server-validated in legacy, so nullable. */
+  secondaryBankId: string | null;
+  /** Legacy `from_name`/`from_code` — required in legacy (contad_app.js:313). */
+  originBranchId: string;
+  /** Legacy `to_name`/`to_code` — required in legacy (contad_app.js:313). */
+  destinationBranchId: string;
+  /** Legacy `area` — a free-text area label picked from the branches' areas. */
+  areaName: string | null;
+  lines: OperationsShipmentLineDto[];
+  /** Legacy `rec_date` — the operating date of a daily shipment; required at create. */
+  collectionDate: string;
+  /** Legacy `del_date` — secured only (daily writes `""`→null); never server-validated in legacy. */
+  deliveryDate: string | null;
+  /** Legacy `receipt_num` / `vault_receipt_num` — stamped by the vault flow (later slice). */
+  receiptNumber: string | null;
+  vaultReceiptNumber: string | null;
+  /** Legacy `serial` — whether banknote serials are tracked for this shipment. */
+  serialTracked: boolean;
+  notes: string | null;
+  /** Legacy `received_user`/`received_date`, stamped on completion, cleared on reopen. */
+  receivedById: string | null;
+  receivedAt: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const OperationsShipmentLineSchema = z
+  .object({
+    currencyId: objectId(),
+    amount: MoneyAmountSchema.refine((v) => v >= 0, {
+      message: 'amount must be non-negative (legacy strips the sign)',
+    }),
+  })
+  .strict();
+
+const shipmentCore = {
+  shipmentType: OperationsShipmentTypeSchema,
+  mainBankId: objectId(),
+  secondaryBankId: objectId().nullable().default(null),
+  originBranchId: objectId(),
+  destinationBranchId: objectId(),
+  areaName: z.string().min(1).nullable().default(null),
+  lines: z.array(OperationsShipmentLineSchema).min(1).max(17),
+  collectionDate: z.coerce.date(),
+  deliveryDate: z.coerce.date().nullable().default(null),
+  serialTracked: z.boolean().default(false),
+  notes: z.string().nullable().default(null),
+};
+
+/** A daily shipment never carries a delivery date — legacy hardcodes `del_date: ""` (:353). */
+const forbidDailyDeliveryDate = (
+  value: { shipmentType: OperationsShipmentType; deliveryDate?: Date | null },
+  ctx: z.RefinementCtx,
+): void => {
+  if (value.shipmentType === 'daily' && value.deliveryDate != null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['deliveryDate'],
+      message: 'a daily shipment has no delivery date (legacy parity)',
+    });
+  }
+};
+
+export const CreateOperationsShipmentSchema = z
+  .object(shipmentCore)
+  .strict()
+  .superRefine(forbidDailyDeliveryDate);
+export type CreateOperationsShipment = z.infer<typeof CreateOperationsShipmentSchema>;
+
+/** `shipmentType` is immutable — legacy has no path that turns a يومي into a محصنة or back. */
+export const UpdateOperationsShipmentSchema = z
+  .object({
+    mainBankId: objectId().optional(),
+    secondaryBankId: objectId().nullable().optional(),
+    originBranchId: objectId().optional(),
+    destinationBranchId: objectId().optional(),
+    areaName: z.string().min(1).nullable().optional(),
+    lines: z.array(OperationsShipmentLineSchema).min(1).max(17).optional(),
+    collectionDate: z.coerce.date().optional(),
+    deliveryDate: z.coerce.date().nullable().optional(),
+    serialTracked: z.boolean().optional(),
+    notes: z.string().nullable().optional(),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type UpdateOperationsShipment = z.infer<typeof UpdateOperationsShipmentSchema>;
+
+export const CompleteOperationsShipmentSchema = z
+  .object({ version: z.number().int().min(0) })
+  .strict();
+export type CompleteOperationsShipment = z.infer<typeof CompleteOperationsShipmentSchema>;
+
+export const ReopenOperationsShipmentSchema = CompleteOperationsShipmentSchema;
+export type ReopenOperationsShipment = CompleteOperationsShipment;
+
+export const ListOperationsShipmentsQuerySchema = PaginationQuerySchema.extend({
+  shipmentType: OperationsShipmentTypeSchema.optional(),
+  status: listQuery(OperationsShipmentStatusSchema),
+  mainBankId: objectId().optional(),
+  collectionDateFrom: z.coerce.date().optional(),
+  collectionDateTo: z.coerce.date().optional(),
+}).strict();
+export type ListOperationsShipmentsQuery = z.infer<typeof ListOperationsShipmentsQuerySchema>;
+
+// ── Events (ADR-008 `<module>.<entity>.<event>`) ────────────────────────────────────────────────
+
+export const OperationsEvents = {
+  ShipmentCreated: 'operations.shipment.created',
+  ShipmentUpdated: 'operations.shipment.updated',
+  ShipmentCompleted: 'operations.shipment.completed',
+  ShipmentReopened: 'operations.shipment.reopened',
+  ShipmentDeleted: 'operations.shipment.deleted',
+} as const;
+export type OperationsEventName = (typeof OperationsEvents)[keyof typeof OperationsEvents];
+
+export const OperationsShipmentEventPayloadV1 = z.object({
+  shipmentId: objectId(),
+  shipmentType: OperationsShipmentTypeSchema,
+  status: OperationsShipmentStatusSchema,
+});

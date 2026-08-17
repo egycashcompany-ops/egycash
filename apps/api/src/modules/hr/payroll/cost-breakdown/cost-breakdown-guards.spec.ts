@@ -39,6 +39,12 @@ const service = code(resolve(HERE, 'cost-breakdown.service.ts'));
 const controller = code(resolve(HERE, 'cost-breakdown.controller.ts'));
 const routes = code(resolve(HERE, 'cost-breakdown.routes.ts'));
 const repository = code(resolve(PAYROLL, 'payslips/payslip.repository.ts'));
+/**
+ * Scope B1 moved the grouping-key fragments out of the repository and into one server-side map, so
+ * the assertions about what a key CONTAINS now read that map. The claims are unchanged; only the
+ * file that holds the single source of truth moved, and there is still exactly one of it.
+ */
+const dimensions = code(resolve(PAYROLL, 'report-builder/report-dimensions.ts'));
 const contracts = code(CONTRACTS);
 
 describe('it names no account, and posts nothing', () => {
@@ -134,7 +140,13 @@ describe('every aggregate takes the caller’s scope (A2)', () => {
       repository.indexOf('private async groupLines'),
     );
     expect(publicMethods).not.toContain('$match');
-    expect(publicMethods).not.toContain('aggregate');
+    // A public method delegating to the shared `aggregateGroups` is the pattern, not the violation,
+    // so this names the pipeline construction rather than the word "aggregate".
+    expect(publicMethods).not.toContain('PayslipModel.aggregate');
+    // The GROUPED pipeline exists exactly once. `_id: key` is what makes it that pipeline — the two
+    // other aggregates in this repository (run totals, adjustment totals) group by fixed keys of
+    // their own and are not what this guard is about.
+    expect((repository.match(/_id: key/g) ?? []).length).toBe(1);
   });
 
   it('and the service passes the caller’s scope into each of them', () => {
@@ -158,7 +170,7 @@ describe('the arithmetic says only what the lines say', () => {
    * offsets what, which is accounting.
    */
   it('never nets an earning against a deduction', () => {
-    expect(repository).toContain("kind: '$lines.kind'");
+    expect(dimensions).toContain("kind: { kind: '$lines.kind' }");
     for (const file of FEATURE) {
       const source = code(file);
       expect(source, file).not.toContain('net');
@@ -169,22 +181,34 @@ describe('the arithmetic says only what the lines say', () => {
   /**
    * No exchange rate exists in this system, so currency is a group key in EVERY split.
    *
-   * P-HR-25 moved the keys out of the three method bodies and into one `GROUP_KEYS` map, so this
-   * reads the map rather than each method — and the claim got stronger rather than looser: it now
-   * covers all four axes, including the one the dynamic report added, in the single place they are
-   * defined. A key that forgot its currency would have to be written here, in front of this test.
+   * P-HR-25 moved the keys out of the three method bodies into one `GROUP_KEYS` map; scope B1 went
+   * one step further and composes that map from atomic dimension fragments, so a report can group by
+   * several at once. This follows the single source of truth to where it now lives.
+   *
+   * The claim is stronger at each move, never looser. It is no longer "four keys each mention a
+   * currency" but "currency LEADS every composition there is" — which covers the four axes here and
+   * every subset a report can ask for, in the one function that builds a key at all.
    */
   it('and never totals across currencies', () => {
-    const keys = repository.slice(
-      repository.indexOf('const GROUP_KEYS'),
-      repository.indexOf('class PayslipRepository'),
+    // `composeGroupKey` seeds every key with the currency before any dimension is merged in.
+    expect(dimensions).toContain("CURRENCY_KEY: Readonly<Record<string, string>> = { currency: '$currency' }");
+    expect(dimensions).toContain('const key: Record<string, string> = { ...CURRENCY_KEY };');
+    // …and currency is not a dimension, so no selection can leave it out.
+    const fragments = dimensions.slice(
+      dimensions.indexOf('DIMENSION_KEYS'),
+      dimensions.indexOf('composeGroupKey'),
     );
-    expect(keys, 'GROUP_KEYS block').not.toHaveLength(0);
+    expect(fragments, 'DIMENSION_KEYS block').not.toHaveLength(0);
+    expect(fragments).not.toContain("currency: '$currency'");
+    // …and the four axes still name themselves, composed rather than inlined.
+    const axes = repository.slice(
+      repository.indexOf('const AXIS_DIMENSIONS'),
+      repository.indexOf('const GROUP_KEYS'),
+    );
+    expect(axes, 'AXIS_DIMENSIONS block').not.toHaveLength(0);
     for (const axis of ['origin', 'payItem', 'branch', 'costCenter']) {
-      expect(keys, axis).toContain(`${axis}:`);
+      expect(axes, axis).toContain(`${axis}:`);
     }
-    expect((keys.match(/currency: '\$currency'/g) ?? []).length).toBe(4);
-    // …and the three splits this feature states still read from that map rather than inlining keys.
     for (const method of [
       'lineTotalsByOriginForRun',
       'lineTotalsByPayItemForRun',

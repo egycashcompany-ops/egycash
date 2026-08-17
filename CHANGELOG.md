@@ -11,6 +11,58 @@ its entry here in the same PR.
 
 ### Added
 
+- **Fleet: three admin-owned catalogs, and a vehicle that points at them instead of carrying free
+  text.** License class, operation (التشغيل) and insurance company join the fleet catalog
+  collection as three more kinds — no new endpoint, model or screen, because the six kinds already
+  there brought the tabs, the selects and the filters with them. None of the three is seeded: an
+  administrator names the values, so a house's operating groups and its insurers are never guessed
+  on its behalf. The vehicle registry stops keeping a license class as a string and keeps a
+  reference instead, alongside two new ones for operation and insurer, each proved server-side
+  against a live item *of its own kind* — an id naming a real catalog row of the wrong kind, or an
+  archived one, is refused, which a plain reference check would have let through. This answers the
+  frozen design's open question on license-class values as data rather than as an enum, so renaming
+  a class is an administrator's edit and not a deployment.
+
+  A vehicle must now have a branch. The schema refuses a missing or null one on create and on
+  update, the service proves the branch exists and is active, and the model requires it so no code
+  path can insert a branchless vehicle at all — three layers, each catching what the others cannot.
+  The create form preselects a branch resolved **by name** from live branch data through a new
+  setting defaulting to «المهندسين», never a baked-in id, which would differ between environments
+  and rot on the first rename; where no branch matches, the API answers with the name it looked for
+  instead of guessing one. Vehicles created before the rule may still hold no branch: they stay
+  readable and editable, and an edit has to name one.
+
+  Each vehicle carries its license scan. The bytes live in the platform's file service under an
+  images-only, size-capped category, so the intake rules are the platform's own rather than a
+  bespoke check, and the vehicle holds nothing but the link; a second upload replaces the current
+  scan and keeps the previous one retrievable as an earlier version of the same file. The registry
+  table renders the frozen column order with an image cell that offers upload where there is no
+  scan and view or delete where there is, nine server-side filters — the four identifiers narrowed
+  individually and combined, the three catalog references, the branch and the type — and a
+  per-vehicle print view carrying the record and, only where one exists, the license image inline;
+  an absent image prints no empty section. Two events are published at their commit points,
+  `fleet.vehicleLicenseImage.uploaded` and `.deleted`, because a document arriving or being
+  withdrawn is its own fact and not a field on the vehicle.
+
+  Existing data is converted, never disturbed. A boot-time migration copies each distinct legacy
+  license-class string into a catalog item and points its vehicles at it, leaving the old column
+  exactly as written as the record of what was converted; values that are only whitespace are
+  skipped, vehicles that never carried one stay empty, and re-running changes nothing — so nothing
+  is deleted and nothing is invented. Vehicles predating the branch rule are reported rather than
+  stamped with the default, because which branch a historical vehicle belonged to is a fact only an
+  operator knows.
+
+  Authorization gained a check, not a permission. The license image rides the vehicle's own view
+  and edit grants, and a file-entity authorizer makes the platform's own file endpoints ask Fleet
+  the same question — permission and data scope — so knowing a file id is worth no more than
+  knowing the vehicle id, and a branch-scoped user cannot reach another branch's documents by
+  either route. Reading the bytes goes through a file-service path for module-owned documents: it
+  still runs the owning module's authorizer and the scanner gate, and refuses outright any entity
+  type no module has claimed, but it does not additionally demand the generic download grant that
+  no fleet role holds — without that distinction the image would have been refused to exactly the
+  people it belongs to. A first upload whose vehicle write then loses a concurrency race withdraws
+  its own file rather than leaving it orphaned.
+
 - **System Administration — the platform can now administer itself, on screen.** Authentication, the
   user lifecycle, RBAC, the audit trail and the organization model all shipped with Sprint 2.1 and
   had been running ever since with **no user interface at all**: creating an account, granting a

@@ -16,7 +16,9 @@ import {
   OPERATIONS_SHIPMENT_LEGS,
   OPERATIONS_SHIPMENT_STATUSES,
   OPERATIONS_SHIPMENT_TYPES,
+  OperationsCrewBoardQuerySchema,
   OperationsShipmentStatusSchema,
+  PlanOperationsCrewSchema,
   UpdateOperationsShipmentSchema,
 } from './operations.js';
 
@@ -131,6 +133,56 @@ describe('operations shipment schemas — the legacy create guard, server-enforc
     expect(
       UpdateOperationsShipmentSchema.safeParse({ shipmentType: 'secured', version: 0 }).success,
     ).toBe(false);
+  });
+});
+
+describe('operations crew schemas — the tashghela board rules (OP-3)', () => {
+  const row = { vehicleId: oid(1), captainEmployeeId: oid(10) };
+
+  it('accepts a captain-only row and a fully empty crew — legacy enforces no minimum (:2419)', () => {
+    expect(PlanOperationsCrewSchema.safeParse({ date: '2026-08-18', rows: [row] }).success).toBe(
+      true,
+    );
+    expect(
+      PlanOperationsCrewSchema.safeParse({
+        date: '2026-08-18',
+        rows: [{ vehicleId: oid(1), notes: 'صيانة' }],
+      }).success,
+    ).toBe(true);
+  });
+
+  it('refuses the same person in two slots of one vehicle', () => {
+    expect(
+      PlanOperationsCrewSchema.safeParse({
+        date: '2026-08-18',
+        rows: [{ vehicleId: oid(1), captainEmployeeId: oid(10), specialist1EmployeeId: oid(10) }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('Q11 — refuses the same person on two vehicles in one plan', () => {
+    expect(
+      PlanOperationsCrewSchema.safeParse({
+        date: '2026-08-18',
+        rows: [
+          { vehicleId: oid(1), captainEmployeeId: oid(10) },
+          { vehicleId: oid(2), specialist2EmployeeId: oid(10) },
+        ],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('refuses a vehicle appearing twice in one plan', () => {
+    expect(
+      PlanOperationsCrewSchema.safeParse({
+        date: '2026-08-18',
+        rows: [row, { vehicleId: oid(1) }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('board query date is optional — no date means tomorrow (legacy :2239)', () => {
+    expect(OperationsCrewBoardQuerySchema.safeParse({}).success).toBe(true);
   });
 });
 

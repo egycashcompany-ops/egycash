@@ -184,6 +184,9 @@ import {
 import {
   OperationsEvents,
   type OperationsEventName,
+  OperationsCrewAssignmentChangedPayloadV1,
+  OperationsCrewPlannedPayloadV1,
+  OperationsDayEventPayloadV1,
   OperationsShipmentEventPayloadV1,
 } from '../modules/operations.js';
 
@@ -647,8 +650,11 @@ export const EVENT_ENTITY_NAMES: Readonly<Record<string, LocalizedString>> = {
   // means a software entitlement.
   license: { en: 'Software license', ar: 'ترخيص برمجي' },
 
-  // operations (OP-2): the cash shipment is the module's first and central subject.
+  // operations (OP-2/OP-3): the cash shipment, the operating day, and the cash crew.
   shipment: { en: 'Shipment', ar: 'شحنة' },
+  day: { en: 'Operating day', ar: 'يوم التشغيل' },
+  crew: { en: 'Crew', ar: 'الطاقم' },
+  crewAssignment: { en: 'Crew assignment', ar: 'تعيين طاقم' },
 };
 
 export const EVENT_ACTION_NAMES: Readonly<Record<string, LocalizedString>> = {
@@ -1188,6 +1194,11 @@ export const OPERATIONS_EVENT_PAYLOAD_SCHEMAS: Readonly<
   [OperationsEvents.ShipmentCompleted]: OperationsShipmentEventPayloadV1,
   [OperationsEvents.ShipmentReopened]: OperationsShipmentEventPayloadV1,
   [OperationsEvents.ShipmentDeleted]: OperationsShipmentEventPayloadV1,
+  [OperationsEvents.DayCreated]: OperationsDayEventPayloadV1,
+  [OperationsEvents.DayOpened]: OperationsDayEventPayloadV1,
+  [OperationsEvents.DayClosed]: OperationsDayEventPayloadV1,
+  [OperationsEvents.CrewPlanned]: OperationsCrewPlannedPayloadV1,
+  [OperationsEvents.CrewAssignmentChanged]: OperationsCrewAssignmentChangedPayloadV1,
 };
 
 export const OPERATIONS_EVENT_SOURCE: EventCatalogSource = {

@@ -17,6 +17,8 @@ import { buildOperationsBanksRouter } from './banks/bank.routes';
 import { buildOperationsBankBranchesRouter } from './bank-branches/bank-branch.routes';
 import { buildOperationsCurrenciesRouter } from './currencies/currency.routes';
 import { buildOperationsShipmentsRouter } from './shipments/shipment.routes';
+import { buildOperationsDaysRouter } from './days/day.routes';
+import { buildOperationsCrewRouter } from './crew/crew.routes';
 
 const shipmentPermissions = declarePermissions(
   'operations',
@@ -50,9 +52,36 @@ const catalogPermissions = declarePermissions(
   'operations.catalogs',
 );
 
+const crewPermissions = declarePermissions(
+  'operations',
+  'operationsCrew',
+  { en: 'crew board', ar: 'لوحة التشغيلة' },
+  ['view'],
+  [
+    // One grant covers the whole planning surface — assigning, moving and clearing are the same
+    // operation on the same board (the fleet-roster precedent).
+    { action: 'plan', name: { en: 'Plan the daily crew', ar: 'تخطيط تشغيلة اليوم' } },
+  ],
+  'operations.crew-board',
+);
+
+const dayPermissions = declarePermissions(
+  'operations',
+  'operationsDay',
+  { en: 'operating days', ar: 'أيام التشغيل' },
+  [],
+  [
+    // Create/open/close are one management decision surface (design §16.2 opsDay.manage).
+    { action: 'manage', name: { en: 'Open and close operating days', ar: 'فتح وإغلاق أيام التشغيل' } },
+  ],
+  'operations.crew-board',
+);
+
 export const operationsPermissions: PermissionDef[] = [
   ...shipmentPermissions,
   ...catalogPermissions,
+  ...crewPermissions,
+  ...dayPermissions,
 ];
 
 export const operationsPages: PageDef[] = [
@@ -62,6 +91,13 @@ export const operationsPages: PageDef[] = [
     name: { en: 'Cash shipments', ar: 'شحنات نقل الأموال' },
     route: '/operations/shipments',
     sortOrder: 10,
+  },
+  {
+    id: 'operations.crew-board',
+    moduleId: 'operations',
+    name: { en: 'Daily crew board', ar: 'لوحة التشغيلة اليومية' },
+    route: '/operations/crew-board',
+    sortOrder: 20,
   },
   {
     id: 'operations.catalogs',
@@ -75,7 +111,7 @@ export const operationsPages: PageDef[] = [
 export const operationsModule: ModuleManifest = {
   id: 'operations',
   name: { en: 'Operations', ar: 'العمليات' },
-  version: '0.2.0',
+  version: '0.3.0',
   requiresPlatform: '^2.2',
   permissions: operationsPermissions,
   pages: operationsPages,
@@ -84,12 +120,16 @@ export const operationsModule: ModuleManifest = {
     { prefix: '/operations/banks', router: buildOperationsBanksRouter() },
     { prefix: '/operations/bank-branches', router: buildOperationsBankBranchesRouter() },
     { prefix: '/operations/currencies', router: buildOperationsCurrenciesRouter() },
+    { prefix: '/operations/days', router: buildOperationsDaysRouter() },
+    { prefix: '/operations/crew-board', router: buildOperationsCrewRouter() },
   ],
   collections: [
     'operations_shipments',
     'operations_banks',
     'operations_bank_branches',
     'operations_currencies',
+    'operations_days',
+    'operations_crew_assignments',
   ],
   eventSubscriptions: [],
 };

@@ -385,6 +385,169 @@ export const ListOperationsShipmentsQuerySchema = PaginationQuerySchema.extend({
 }).strict();
 export type ListOperationsShipmentsQuery = z.infer<typeof ListOperationsShipmentsQuerySchema>;
 
+// ── Operating day (OP-3) ────────────────────────────────────────────────────────────────────────
+//
+// NEW — the legacy system has no day entity: "today" is derived per-query by exact-equality date
+// match (discovery §5.1, quirk Q15). The explicit day is the approved normalization (design §16.1)
+// and the anchor later slices (execution, vault, reports) hang on. It carries NO gating rules in
+// OP-3: legacy planning is free of any day lock, and inventing one here would be a new rule.
+
+export interface OperationsDayDto {
+  id: string;
+  /** UTC midnight — the day IS the identity; unique. */
+  date: string;
+  status: OperationsDayStatus;
+  openedById: string | null;
+  openedAt: string | null;
+  closedById: string | null;
+  closedAt: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const CreateOperationsDaySchema = z.object({ date: z.coerce.date() }).strict();
+export type CreateOperationsDay = z.infer<typeof CreateOperationsDaySchema>;
+
+export const TransitionOperationsDaySchema = z
+  .object({ version: z.number().int().min(0) })
+  .strict();
+export type TransitionOperationsDay = z.infer<typeof TransitionOperationsDaySchema>;
+
+export const GetOperationsDayQuerySchema = z.object({ date: z.coerce.date() }).strict();
+export type GetOperationsDayQuery = z.infer<typeof GetOperationsDayQuerySchema>;
+
+// ── Cash-transfer crew assignment (OP-3) ────────────────────────────────────────────────────────
+//
+// The legacy tashghela row normalized (discovery §8): one row per (operating day, vehicle) holding
+// the CASH crew — captain (قائد) + specialist 1/2 (أخصائي) — plus direction/time/notes. The row
+// anchors on the Fleet duty assignment for the same (vehicle, date), per the frozen §9.4 boundary:
+// Fleet owns (vehicle, drivers, mission type)/day — the legacy `tybe` maps to Fleet's
+// missionTypeId, and the legacy car_lock gate maps to "the vehicle is on the Fleet roster".
+// All three crew slots are nullable — the legacy save writes `row.spe1 || ""`
+// (contad_app.js:2419) and enforces no minimum crew.
+
+export interface OperationsCrewAssignmentDto {
+  id: string;
+  operationsDayId: string;
+  vehicleId: string;
+  fleetDutyAssignmentId: string;
+  captainEmployeeId: string | null;
+  specialist1EmployeeId: string | null;
+  specialist2EmployeeId: string | null;
+  /** Legacy `direction` — free-text destination label from the fleet destinations list. */
+  direction: string | null;
+  /** Legacy `time` — free-text planned departure label. */
+  plannedTime: string | null;
+  notes: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** One board row: the Fleet duty facts (read-only here, §9.4) joined with the cash-crew facts. */
+export interface OperationsCrewBoardRowDto {
+  vehicleId: string;
+  vehicleCode: string;
+  fleetDutyAssignmentId: string;
+  /** Fleet-owned facts, displayed not edited: the legacy tashghela board showed the drivers too. */
+  driver1EmployeeId: string | null;
+  driver2EmployeeId: string | null;
+  missionTypeId: string | null;
+  crew: {
+    captainEmployeeId: string | null;
+    specialist1EmployeeId: string | null;
+    specialist2EmployeeId: string | null;
+    direction: string | null;
+    plannedTime: string | null;
+    notes: string | null;
+  } | null;
+}
+
+export interface OperationsCrewBoardDto {
+  /** The resolved board date — tomorrow when the caller sent none (legacy parity, :2239-2247). */
+  date: string;
+  day: OperationsDayDto | null;
+  rows: OperationsCrewBoardRowDto[];
+}
+
+const crewEmployeeSlots = [
+  'captainEmployeeId',
+  'specialist1EmployeeId',
+  'specialist2EmployeeId',
+] as const;
+
+export const PlanOperationsCrewRowSchema = z
+  .object({
+    vehicleId: objectId(),
+    captainEmployeeId: objectId().nullable().optional(),
+    specialist1EmployeeId: objectId().nullable().optional(),
+    specialist2EmployeeId: objectId().nullable().optional(),
+    direction: z.string().min(1).nullable().optional(),
+    plannedTime: z.string().min(1).nullable().optional(),
+    notes: z.string().nullable().optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const seen = new Set<string>();
+    for (const slot of crewEmployeeSlots) {
+      const employee = value[slot];
+      if (employee == null) continue;
+      if (seen.has(employee)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [slot],
+          message: 'the same person cannot fill two crew slots on one vehicle',
+        });
+      }
+      seen.add(employee);
+    }
+  });
+export type PlanOperationsCrewRow = z.infer<typeof PlanOperationsCrewRowSchema>;
+
+/** Upsert per (day, vehicle) — only CHANGED rows are sent (the fleet roster H4 shape). */
+export const PlanOperationsCrewSchema = z
+  .object({
+    date: z.coerce.date(),
+    rows: z.array(PlanOperationsCrewRowSchema).min(1).max(500),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const seenVehicles = new Set<string>();
+    const seenEmployees = new Set<string>();
+    value.rows.forEach((row, index) => {
+      if (seenVehicles.has(row.vehicleId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['rows', index, 'vehicleId'],
+          message: 'a vehicle appears twice in one plan',
+        });
+      }
+      seenVehicles.add(row.vehicleId);
+      for (const slot of crewEmployeeSlots) {
+        const employee = row[slot];
+        if (employee == null) continue;
+        if (seenEmployees.has(employee)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['rows', index, slot],
+            // Q11 — the legacy duplicate-crew check lived only in the browser
+            // (tashghela.ejs:1332); the domain enforces it now.
+            message: 'a crew member may hold one vehicle per operating day (Q11)',
+          });
+        }
+        seenEmployees.add(employee);
+      }
+    });
+  });
+export type PlanOperationsCrew = z.infer<typeof PlanOperationsCrewSchema>;
+
+/** No `date` → the board answers for TOMORROW (verbatim legacy behaviour, contad_app.js:2239). */
+export const OperationsCrewBoardQuerySchema = z
+  .object({ date: z.coerce.date().optional() })
+  .strict();
+export type OperationsCrewBoardQuery = z.infer<typeof OperationsCrewBoardQuerySchema>;
+
 // ── Events (ADR-008 `<module>.<entity>.<event>`) ────────────────────────────────────────────────
 
 export const OperationsEvents = {
@@ -393,6 +556,11 @@ export const OperationsEvents = {
   ShipmentCompleted: 'operations.shipment.completed',
   ShipmentReopened: 'operations.shipment.reopened',
   ShipmentDeleted: 'operations.shipment.deleted',
+  DayCreated: 'operations.day.created',
+  DayOpened: 'operations.day.opened',
+  DayClosed: 'operations.day.closed',
+  CrewPlanned: 'operations.crew.planned',
+  CrewAssignmentChanged: 'operations.crewAssignment.changed',
 } as const;
 export type OperationsEventName = (typeof OperationsEvents)[keyof typeof OperationsEvents];
 
@@ -400,4 +568,25 @@ export const OperationsShipmentEventPayloadV1 = z.object({
   shipmentId: objectId(),
   shipmentType: OperationsShipmentTypeSchema,
   status: OperationsShipmentStatusSchema,
+});
+
+export const OperationsDayEventPayloadV1 = z.object({
+  dayId: objectId(),
+  date: z.date(),
+  status: OperationsDayStatusSchema,
+});
+
+export const OperationsCrewPlannedPayloadV1 = z.object({
+  dayId: objectId(),
+  date: z.date(),
+  changedCount: z.number().int().min(0),
+});
+
+export const OperationsCrewAssignmentChangedPayloadV1 = z.object({
+  dayId: objectId(),
+  vehicleId: objectId(),
+  date: z.date(),
+  captainEmployeeId: objectId().nullable(),
+  specialist1EmployeeId: objectId().nullable(),
+  specialist2EmployeeId: objectId().nullable(),
 });

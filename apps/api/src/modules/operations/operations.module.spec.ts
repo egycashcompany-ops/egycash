@@ -1,12 +1,12 @@
 // The manifest guards: the module registers cleanly, and its surfaces are exactly what the
 // shipped slices claim. The pin-the-numbers block (pages.spec precedent) moves with every slice:
-// OP-4 pinned 12 permissions, 4 pages, 7 routes, 8 collections — the next slice updates these in
+// OP-5 pinned 13 permissions, 4 pages, 8 routes, 8 collections — the next slice updates these in
 // the same PR that grows them.
 import { describe, expect, it } from 'vitest';
 import { platformSatisfies, validateManifest } from '../../platform/kernel/module-registry';
 import { operationsModule, operationsPages, operationsPermissions } from './operations.module';
 
-describe('operations module manifest (OP-4)', () => {
+describe('operations module manifest (OP-5)', () => {
   it('passes kernel manifest validation', () => {
     expect(() => {
       validateManifest(operationsModule);
@@ -17,11 +17,12 @@ describe('operations module manifest (OP-4)', () => {
     expect(platformSatisfies(operationsModule.requiresPlatform)).toBe(true);
   });
 
-  it('pins the OP-4 surface', () => {
+  it('pins the OP-5 surface', () => {
     expect(operationsModule.id).toBe('operations');
     expect(operationsPermissions.map((p) => p.key).sort()).toEqual([
       'operationsCatalog.manage',
       'operationsCrew.plan',
+      'operationsCrew.reorder',
       'operationsCrew.view',
       'operationsDay.manage',
       'operationsShipment.complete',
@@ -40,6 +41,7 @@ describe('operations module manifest (OP-4)', () => {
       'operations.catalogs',
     ]);
     expect(operationsModule.routes.map((r) => r.prefix).sort()).toEqual([
+      '/operations/assignments',
       '/operations/bank-branches',
       '/operations/banks',
       '/operations/crew-board',

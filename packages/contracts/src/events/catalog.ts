@@ -190,6 +190,7 @@ import {
   OperationsDayEventPayloadV1,
   OperationsShipmentAssignmentPayloadV1,
   OperationsShipmentEventPayloadV1,
+  OperationsShipmentReorderedPayloadV1,
 } from '../modules/operations.js';
 
 // ── The shape a consumer sees ───────────────────────────────────────────────
@@ -763,6 +764,7 @@ export const EVENT_ACTION_NAMES: Readonly<Record<string, LocalizedString>> = {
   received: { en: 'received', ar: 'استلام' },
   released: { en: 'released', ar: 'صرف' },
   dispatched: { en: 'dispatched', ar: 'خروج' },
+  reordered: { en: 'reordered', ar: 'إعادة ترتيب' },
   disposed: { en: 'disposed', ar: 'استبعاد' },
   // `opened` is already defined above (recruitment uses it) — one entry serves both modules,
   // which is the point of a shared action vocabulary.
@@ -1211,6 +1213,7 @@ export const OPERATIONS_EVENT_PAYLOAD_SCHEMAS: Readonly<
   [OperationsEvents.VaultReleased]: OperationsCustodyEventPayloadV1,
   [OperationsEvents.SecuredLegAssigned]: OperationsShipmentAssignmentPayloadV1,
   [OperationsEvents.SecuredDispatched]: OperationsShipmentEventPayloadV1,
+  [OperationsEvents.ShipmentOrderReordered]: OperationsShipmentReorderedPayloadV1,
 };
 
 export const OPERATIONS_EVENT_SOURCE: EventCatalogSource = {

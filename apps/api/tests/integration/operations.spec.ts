@@ -19,6 +19,7 @@ import {
   type OperationsCrewBoardDto,
   type OperationsCurrencyDto,
   type OperationsDayDto,
+  type OperationsCaptainRouteDto,
   type OperationsShipmentAssignmentDto,
   type OperationsShipmentDto,
 } from '@ecms/contracts';
@@ -964,4 +965,245 @@ const findCrewAssignmentId = async (): Promise<string> => {
   const day = await operationsDayService.findByDate(new Date('2026-08-21'));
   const rows = await operationsCrewAssignmentRepository.findForDay(day?._id ?? '');
   return String(rows[0]?._id ?? '');
+};
+
+describe('assignment & sequencing — the captain\'s ordered day (OP-5)', () => {
+  const ORDER_DATE = '2026-08-25';
+  let crewId = '';
+  let picks: OperationsShipmentAssignmentDto[] = [];
+
+  const assignPickup = async (
+    shipmentId: string,
+    crewAssignmentId = crewId,
+    captain = captainId,
+  ): Promise<request.Response> =>
+    request(app)
+      .post(`/api/v1/operations/assignments/shipments/${shipmentId}/assign-pickup`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ crewAssignmentId, captainEmployeeId: captain, version: 0 });
+
+  const route = async (): Promise<OperationsCaptainRouteDto> =>
+    data<OperationsCaptainRouteDto>(
+      await request(app)
+        .get(
+          `/api/v1/operations/assignments/route?date=${ORDER_DATE}&captainEmployeeId=${captainId}&leg=pickup`,
+        )
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+
+  const reorder = async (
+    order: { assignmentId: string; version: number }[],
+    token = adminToken,
+  ): Promise<request.Response> =>
+    request(app)
+      .put('/api/v1/operations/assignments/order')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ date: ORDER_DATE, captainEmployeeId: captainId, leg: 'pickup', order });
+
+  beforeAll(async () => {
+    const roster = await request(app)
+      .post('/api/v1/fleet/roster')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date: ORDER_DATE, rows: [{ vehicleId: vehicleAId, notes: 'order seed' }] });
+    expect(roster.status).toBe(200);
+
+    const plan = await request(app)
+      .post('/api/v1/operations/crew-board')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        date: ORDER_DATE,
+        rows: [
+          {
+            vehicleId: vehicleAId,
+            captainEmployeeId: captainId,
+            specialist1EmployeeId: specialist1Id,
+            specialist2EmployeeId: specialist2Id,
+          },
+        ],
+      });
+    expect(plan.status).toBe(200);
+
+    const { operationsCrewAssignmentRepository } = await import(
+      '../../src/modules/operations/crew/crew-assignment.repository'
+    );
+    const { operationsDayService } = await import('../../src/modules/operations/days/day.service');
+    const day = await operationsDayService.findByDate(new Date(ORDER_DATE));
+    const rows = await operationsCrewAssignmentRepository.findForDay(day?._id ?? '');
+    crewId = String(rows[0]?._id ?? '');
+    expect(crewId).not.toBe('');
+  });
+
+  it('1. assigns the pickup leg of three daily shipments, appending each to the captain\'s list', async () => {
+    const created: OperationsShipmentDto[] = [];
+    for (let i = 0; i < 3; i += 1) {
+      const res = await mkShipment({ collectionDate: ORDER_DATE });
+      expect(res.status).toBe(201);
+      created.push(data<OperationsShipmentDto>(res));
+    }
+    picks = [];
+    for (const shipment of created) {
+      const res = await assignPickup(shipment.id);
+      expect(res.status).toBe(200);
+      picks.push(data<OperationsShipmentAssignmentDto>(res));
+    }
+    expect(picks.map((p) => p.sequence)).toEqual([1, 2, 3]);
+    expect(picks.every((p) => p.leg === 'pickup')).toBe(true);
+    expect(picks.every((p) => p.vehicleId === vehicleAId)).toBe(true);
+    await waitFor(() => seenEvents.some((e) => e.name === OperationsEvents.SecuredLegAssigned));
+  });
+
+  it('3 + regression. the route resolves crew through (day, vehicle) — specialists are NOT on the shipment', async () => {
+    const dto = await route();
+    expect(dto.stops.map((s) => s.sequence)).toEqual([1, 2, 3]);
+    expect(dto.captainEmployeeId).toBe(captainId);
+
+    // The crew comes off the crew assignment, not off any shipment.
+    expect(dto.crew).toHaveLength(1);
+    expect(dto.crew[0]?.crewAssignmentId).toBe(crewId);
+    expect(dto.crew[0]?.specialist1EmployeeId).toBe(specialist1Id);
+    expect(dto.crew[0]?.specialist2EmployeeId).toBe(specialist2Id);
+
+    // THE regression guard: no specialist field exists anywhere on a shipment document.
+    const shipment = data<Record<string, unknown>>(
+      await request(app)
+        .get(`/api/v1/operations/shipments/${dto.stops[0]?.shipmentId ?? ''}`)
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+    for (const key of Object.keys(shipment)) {
+      expect(key.toLowerCase()).not.toContain('specialist');
+    }
+    expect(JSON.stringify(shipment)).not.toContain(specialist1Id);
+    expect(JSON.stringify(shipment)).not.toContain(specialist2Id);
+
+    // Locations ride the branch reference data — no second location system, coordinates still null.
+    expect(dto.stops[0]?.pickup.branchName).toBe('فرع المهندسين');
+    expect(dto.stops[0]?.pickup.bankName).toBe('الأهلي');
+    expect(dto.stops[0]?.pickup.location).toBeNull();
+  });
+
+  it('4. rejects a crew assignment that is not on the shipment\'s own day', async () => {
+    const otherDay = data<OperationsShipmentDto>(
+      await mkShipment({ collectionDate: '2026-08-26' }),
+    );
+    const res = await assignPickup(otherDay.id);
+    expect(res.status).toBe(422);
+    expect(errorCode(res)).toBe(ErrorCodes.OPERATIONS_CREW_DAY_MISMATCH);
+  });
+
+  it('4b. rejects a captain who does not crew that vehicle', async () => {
+    const shipment = data<OperationsShipmentDto>(await mkShipment({ collectionDate: ORDER_DATE }));
+    const res = await assignPickup(shipment.id, crewId, specialist1Id);
+    expect(res.status).toBe(422);
+    expect(errorCode(res)).toBe(ErrorCodes.OPERATIONS_CREW_CAPTAIN_MISMATCH);
+  });
+
+  it('5. re-assigning the same leg updates in place — it never creates a duplicate', async () => {
+    const first = picks[0];
+    if (first === undefined) throw new Error('fixture missing');
+    const again = await request(app)
+      .post(`/api/v1/operations/assignments/shipments/${first.shipmentId}/assign-pickup`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ crewAssignmentId: crewId, captainEmployeeId: captainId, version: first.version });
+    expect(again.status).toBe(200);
+    expect(data<OperationsShipmentAssignmentDto>(again).id).toBe(first.id);
+    expect(data<OperationsShipmentAssignmentDto>(again).sequence).toBe(first.sequence);
+  });
+
+  it('6. reorders atomically — 1,2,3 becomes 2,3,1 and the route reflects it', async () => {
+    const before = await route();
+    expect(before.stops.map((s) => s.sequence)).toEqual([1, 2, 3]);
+
+    const current = await currentOrder();
+    const rotated = [current[1], current[2], current[0]].filter(
+      (x): x is { assignmentId: string; version: number } => x !== undefined,
+    );
+    const res = await reorder(rotated);
+    expect(res.status).toBe(200);
+
+    const after = await route();
+    expect(after.stops.map((s) => s.assignmentId)).toEqual(rotated.map((r) => r.assignmentId));
+    expect(after.stops.map((s) => s.sequence)).toEqual([1, 2, 3]);
+    await waitFor(() =>
+      seenEvents.some((e) => e.name === OperationsEvents.ShipmentOrderReordered),
+    );
+  });
+
+  it('7. refuses a duplicate assignment inside one order payload', async () => {
+    const current = await currentOrder();
+    const first = current[0];
+    if (first === undefined) throw new Error('fixture missing');
+    const res = await reorder([first, first, ...current.slice(1)]);
+    expect(res.status).toBe(400);
+  });
+
+  it('8. refuses an incomplete order — omitted work would be stranded', async () => {
+    const current = await currentOrder();
+    const res = await reorder(current.slice(0, 2));
+    expect(res.status).toBe(422);
+    expect(errorCode(res)).toBe(ErrorCodes.OPERATIONS_INCOMPLETE_ORDER);
+  });
+
+  it('8b. refuses an order naming an assignment outside this captain-day-leg', async () => {
+    const current = await currentOrder();
+    const foreign = { assignmentId: '00000000000000000000dddd', version: 0 };
+    const res = await reorder([...current.slice(1), foreign]);
+    expect(res.status).toBe(422);
+    expect(errorCode(res)).toBe(ErrorCodes.OPERATIONS_ASSIGNMENT_NOT_IN_SET);
+  });
+
+  it('9. refuses a stale-version reorder — the concurrent editor wins', async () => {
+    const current = await currentOrder();
+    const stale = current.map((entry) => ({ ...entry, version: entry.version + 7 }));
+    const res = await reorder([...stale].reverse());
+    expect(res.status).toBe(409);
+    expect(errorCode(res)).toBe(ErrorCodes.STALE_DOCUMENT);
+  });
+
+  it('10. RBAC — reorder needs operationsCrew.reorder, which the viewer does not hold', async () => {
+    const current = await currentOrder();
+    const res = await reorder([...current].reverse(), viewerToken);
+    expect(res.status).toBe(403);
+  });
+
+  it('12. the two legs stay distinct: a secured shipment carries pickup AND delivery separately', async () => {
+    const { operationsShipmentAssignmentRepository } = await import(
+      '../../src/modules/operations/shipments/shipment-assignment.repository'
+    );
+    const secured = data<OperationsShipmentDto>(
+      await mkShipment({
+        shipmentType: 'secured',
+        collectionDate: ORDER_DATE,
+        deliveryDate: '2026-08-21',
+      }),
+    );
+    // Leg 1 — legacy leader1/car_num1, written for محصنة too (contad_app.js:725/733).
+    expect((await assignPickup(secured.id)).status).toBe(200);
+
+    const pickup = await operationsShipmentAssignmentRepository.findByShipmentAndLeg(
+      secured.id,
+      'pickup',
+    );
+    const delivery = await operationsShipmentAssignmentRepository.findByShipmentAndLeg(
+      secured.id,
+      'delivery',
+    );
+    expect(pickup).not.toBeNull();
+    expect(delivery).toBeNull(); // leg 2 arrives only via the secured assign-delivery step
+    expect(pickup?.leg).toBe('pickup');
+  });
+});
+
+/** The captain's current pickup order with live versions — what a real client would hold. */
+const currentOrder = async (): Promise<{ assignmentId: string; version: number }[]> => {
+  const { operationsShipmentAssignmentRepository } = await import(
+    '../../src/modules/operations/shipments/shipment-assignment.repository'
+  );
+  const { operationsDayService } = await import('../../src/modules/operations/days/day.service');
+  const day = await operationsDayService.findByDate(new Date('2026-08-25'));
+  const rows = await operationsShipmentAssignmentRepository.findForCaptainDay(
+    day?._id ?? '',
+    captainId,
+    'pickup',
+  );
+  return rows.map((row) => ({ assignmentId: String(row._id), version: row.__v }));
 };

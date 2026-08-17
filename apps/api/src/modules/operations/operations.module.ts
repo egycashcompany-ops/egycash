@@ -20,6 +20,7 @@ import { buildOperationsShipmentsRouter } from './shipments/shipment.routes';
 import { buildOperationsDaysRouter } from './days/day.routes';
 import { buildOperationsCrewRouter } from './crew/crew.routes';
 import { buildOperationsSecuredRouter } from './secured/secured.routes';
+import { buildOperationsAssignmentsRouter } from './assignments/assignment.routes';
 // Registers the interim vault-custody provider on the Treasury port at module load
 // (see ./treasury-boundary.ts). Importing for the side effect is the platform seam convention.
 import './vault/vault-custody.service';
@@ -65,6 +66,12 @@ const crewPermissions = declarePermissions(
     // One grant covers the whole planning surface — assigning, moving and clearing are the same
     // operation on the same board (the fleet-roster precedent).
     { action: 'plan', name: { en: 'Plan the daily crew', ar: 'تخطيط تشغيلة اليوم' } },
+    // A separate grant from `plan` (design §16.2): moving a captain's stops around is a decision
+    // about EXECUTION ORDER, not about who crews which vehicle.
+    {
+      action: 'reorder',
+      name: { en: "Reorder a captain's shipments", ar: 'إعادة ترتيب شحنات القائد' },
+    },
   ],
   'operations.crew-board',
 );
@@ -137,7 +144,7 @@ export const operationsPages: PageDef[] = [
 export const operationsModule: ModuleManifest = {
   id: 'operations',
   name: { en: 'Operations', ar: 'العمليات' },
-  version: '0.4.0',
+  version: '0.5.0',
   requiresPlatform: '^2.2',
   permissions: operationsPermissions,
   pages: operationsPages,
@@ -149,6 +156,7 @@ export const operationsModule: ModuleManifest = {
     { prefix: '/operations/days', router: buildOperationsDaysRouter() },
     { prefix: '/operations/crew-board', router: buildOperationsCrewRouter() },
     { prefix: '/operations/secured', router: buildOperationsSecuredRouter() },
+    { prefix: '/operations/assignments', router: buildOperationsAssignmentsRouter() },
   ],
   collections: [
     'operations_shipments',

@@ -10,7 +10,10 @@
 // vehicle) crew row. That is what makes `day + vehicle + leg → crew` answerable without
 // duplicating crew ownership.
 //
-// `sequence` and execution state are NOT here — they arrive with the sequencing slice.
+// `sequence` (OP-5) is the captain's execution ORDER for the day — position only. Execution STATE
+// (started/picked-up/delivered) and the sequential-execution lock are deliberately NOT here: they
+// arrive with the captain-execution slice, and keeping order separate from execution is what lets
+// Operations reorder a plan without touching what a captain has already done.
 import { Schema, model, type Types } from 'mongoose';
 import { OPERATIONS_SHIPMENT_LEGS, type OperationsShipmentLeg } from '@ecms/contracts';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../shared/base/base.model';
@@ -22,6 +25,8 @@ export interface OperationsShipmentAssignmentDoc extends BaseDocFields {
   captainEmployeeId: Types.ObjectId;
   vehicleId: Types.ObjectId;
   crewAssignmentId: Types.ObjectId;
+  /** 1-based position within (operationsDayId, captainEmployeeId, leg). */
+  sequence: number;
 }
 
 const assignmentSchema = new Schema<OperationsShipmentAssignmentDoc>(
@@ -32,6 +37,7 @@ const assignmentSchema = new Schema<OperationsShipmentAssignmentDoc>(
     captainEmployeeId: { type: Schema.Types.ObjectId, required: true },
     vehicleId: { type: Schema.Types.ObjectId, required: true },
     crewAssignmentId: { type: Schema.Types.ObjectId, required: true },
+    sequence: { type: Number, required: true, min: 1 },
     ...baseFields,
   },
   baseSchemaOptions,
@@ -46,6 +52,13 @@ assignmentSchema.index(
 assignmentSchema.index(
   { operationsDayId: 1, captainEmployeeId: 1 },
   { name: 'ix_day_captain' }, // the captain's day — what the mobile slice will read
+);
+// No two stops share a position on one captain-day-leg. The service derives positions from the
+// payload's array index (so a duplicate cannot be expressed) — this index is the DB-level second
+// guard, the same belt-and-braces the fleet roster uses for its own identity pair.
+assignmentSchema.index(
+  { operationsDayId: 1, captainEmployeeId: 1, leg: 1, sequence: 1 },
+  { unique: true, name: 'ux_day_captain_leg_sequence', partialFilterExpression: { isDeleted: false } },
 );
 
 export const OperationsShipmentAssignmentModel = model<OperationsShipmentAssignmentDoc>(

@@ -638,6 +638,8 @@ export interface OperationsShipmentAssignmentDto {
   vehicleId: string;
   /** The (day, vehicle) crew row this leg rides — how specialists are resolved, never copied. */
   crewAssignmentId: string;
+  /** 1-based execution order within (operating day, captain). Unique per captain-day. */
+  sequence: number;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -693,6 +695,111 @@ export type ListVaultInventoryQuery = z.infer<typeof ListVaultInventoryQuerySche
 export const ListSecuredDueQuerySchema = z.object({ date: z.coerce.date() }).strict();
 export type ListSecuredDueQuery = z.infer<typeof ListSecuredDueQuerySchema>;
 
+
+// ── Assignment & sequencing (OP-5) ──────────────────────────────────────────────────────────────
+//
+// The PICKUP leg exists on BOTH shipment types: legacy writes leader1 + car_num1 at creation for
+// يومي (contad_app.js:330/336) and for محصنة alike (:725/:733) — the collection run that brings the
+// money in. The DELIVERY leg is secured-only (OP-4). Assigning a leg never changes shipment status.
+
+/** Assign the collection (leg 1) crew — the legacy leader1 + car_num1 pair, normalized. */
+export const AssignShipmentPickupLegSchema = z
+  .object({
+    crewAssignmentId: objectId(),
+    captainEmployeeId: objectId(),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type AssignShipmentPickupLeg = z.infer<typeof AssignShipmentPickupLegSchema>;
+
+/**
+ * Replace a captain's execution order for one operating day, atomically.
+ *
+ * The payload is the COMPLETE desired order — the fleet-roster "send the whole shape" principle.
+ * Positions are derived from the array index, so a duplicate position cannot even be expressed;
+ * what the schema guards is a duplicate *assignment*, and what the service guards is completeness
+ * (every one of that captain-day's assignments must appear, or the reorder is refused rather than
+ * silently dropping work). Each entry carries its own `version`, so a concurrent edit loses with
+ * STALE_DOCUMENT exactly as every other ECMS mutation does.
+ */
+export const ReorderCaptainShipmentsSchema = z
+  .object({
+    date: z.coerce.date(),
+    captainEmployeeId: objectId(),
+    leg: OperationsShipmentLegSchema,
+    order: z
+      .array(
+        z
+          .object({ assignmentId: objectId(), version: z.number().int().min(0) })
+          .strict(),
+      )
+      .min(1)
+      .max(200),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const seen = new Set<string>();
+    value.order.forEach((entry, index) => {
+      if (seen.has(entry.assignmentId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['order', index, 'assignmentId'],
+          message: 'an assignment appears twice in one order',
+        });
+      }
+      seen.add(entry.assignmentId);
+    });
+  });
+export type ReorderCaptainShipments = z.infer<typeof ReorderCaptainShipmentsSchema>;
+
+// ── The captain's route (read model — OP-5 prepares it, the mobile slice consumes it) ───────────
+//
+// Everything the future mobile screen needs to render an ordered day, and nothing it does not.
+// Locations come from the branch reference data's OPTIONAL `location` (design §17.4) — there is no
+// second location system, and coordinates stay null until somebody backfills them.
+
+export interface OperationsRouteStopLocationDto {
+  branchId: string;
+  branchName: string;
+  branchCode: string;
+  bankName: string;
+  areaName: string | null;
+  location: OperationsLocation | null;
+}
+
+export interface OperationsRouteStopDto {
+  assignmentId: string;
+  shipmentId: string;
+  sequence: number;
+  leg: OperationsShipmentLeg;
+  shipmentType: OperationsShipmentType;
+  /** The shipment's own lifecycle status — NOT an execution state (that arrives with OP-8). */
+  status: OperationsShipmentStatus;
+  pickup: OperationsRouteStopLocationDto;
+  delivery: OperationsRouteStopLocationDto;
+  vehicleId: string;
+  crewAssignmentId: string;
+}
+
+export interface OperationsCaptainRouteDto {
+  date: string;
+  operationsDayId: string | null;
+  captainEmployeeId: string;
+  /** The crew behind the wheel, resolved through (day, vehicle) — never copied onto a shipment. */
+  crew: {
+    crewAssignmentId: string;
+    vehicleId: string;
+    specialist1EmployeeId: string | null;
+    specialist2EmployeeId: string | null;
+  }[];
+  stops: OperationsRouteStopDto[];
+}
+
+export const OperationsCaptainRouteQuerySchema = z
+  .object({ date: z.coerce.date(), captainEmployeeId: objectId(), leg: OperationsShipmentLegSchema.optional() })
+  .strict();
+export type OperationsCaptainRouteQuery = z.infer<typeof OperationsCaptainRouteQuerySchema>;
+
 // ── Events (ADR-008 `<module>.<entity>.<event>`) ────────────────────────────────────────────────
 
 export const OperationsEvents = {
@@ -710,6 +817,7 @@ export const OperationsEvents = {
   VaultReleased: 'operations.custody.released',
   SecuredLegAssigned: 'operations.shipmentAssignment.assigned',
   SecuredDispatched: 'operations.shipment.dispatched',
+  ShipmentOrderReordered: 'operations.shipmentAssignment.reordered',
 } as const;
 export type OperationsEventName = (typeof OperationsEvents)[keyof typeof OperationsEvents];
 
@@ -752,4 +860,11 @@ export const OperationsShipmentAssignmentPayloadV1 = z.object({
   leg: OperationsShipmentLegSchema,
   captainEmployeeId: objectId(),
   vehicleId: objectId(),
+});
+
+export const OperationsShipmentReorderedPayloadV1 = z.object({
+  operationsDayId: objectId(),
+  captainEmployeeId: objectId(),
+  leg: OperationsShipmentLegSchema,
+  count: z.number().int().min(0),
 });

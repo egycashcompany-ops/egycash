@@ -91,6 +91,10 @@ export const ErrorCodes = {
   OPERATIONS_CREW_CAPTAIN_MISMATCH: 'OPERATIONS_CREW_CAPTAIN_MISMATCH',
   /** Dispatching without an assigned leg 2 is what let legacy complete with a blank leader2. */
   OPERATIONS_DELIVERY_LEG_REQUIRED: 'OPERATIONS_DELIVERY_LEG_REQUIRED',
+  /** A reorder named an assignment outside the captain-day-leg it claims to order. */
+  OPERATIONS_ASSIGNMENT_NOT_IN_SET: 'OPERATIONS_ASSIGNMENT_NOT_IN_SET',
+  /** A reorder omitted assignments — accepting it would strand them at stale positions. */
+  OPERATIONS_INCOMPLETE_ORDER: 'OPERATIONS_INCOMPLETE_ORDER',
 } as const;
 
 export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];

@@ -217,11 +217,18 @@ class OperationsSecuredService {
 
     let doc: OperationsShipmentAssignmentDoc;
     if (existing === null) {
+      // OP-5: a new stop lands at the END of that captain's delivery list for the day.
+      const siblings = await operationsShipmentAssignmentRepository.findForCaptainDay(
+        day._id,
+        input.captainEmployeeId,
+        'delivery',
+      );
       doc = await operationsShipmentAssignmentRepository.create(
         {
           shipmentId: new Types.ObjectId(shipmentId),
           leg: 'delivery',
           operationsDayId: day._id,
+          sequence: siblings.reduce((max, row) => Math.max(max, row.sequence), 0) + 1,
           ...set,
         },
         { by },

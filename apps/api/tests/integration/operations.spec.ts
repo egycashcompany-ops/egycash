@@ -1935,3 +1935,163 @@ describe('captain mobile EXECUTION — sequential workflow (OP-7, NEW capability
     }
   });
 });
+
+describe('the daily operations board — legacy /main_ops (B2)', () => {
+  // The legacy board is a UNION over two different date fields (contad_app.js:262-268):
+  //   daily   → rec_date == today
+  //   secured → del_date == today AND status in [1,3]  (completed | dispatched)
+  // Everything below asserts that union, because it is the one rule a client must never rebuild.
+  const BOARD_DATE = '2026-10-05';
+  const OTHER_DATE = '2026-10-06';
+
+  const board = async (date?: string): Promise<request.Response> =>
+    request(app)
+      .get(`/api/v1/operations/shipments/day-board${date === undefined ? '' : `?date=${date}`}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+  const idsOn = async (date: string): Promise<string[]> => {
+    const res = await board(date);
+    expect(res.status).toBe(200);
+    return data<{ shipments: OperationsShipmentDto[] }>(res).shipments.map((s) => s.id);
+  };
+
+  let dailyToday = '';
+  let dailyOtherDay = '';
+  let securedDueDraft = '';
+  let securedDueDispatched = '';
+
+  beforeAll(async () => {
+    dailyToday = data<OperationsShipmentDto>(
+      await mkShipment({ collectionDate: BOARD_DATE }),
+    ).id;
+    dailyOtherDay = data<OperationsShipmentDto>(
+      await mkShipment({ collectionDate: OTHER_DATE }),
+    ).id;
+
+    // A secured shipment DUE on the board day but still `draft` — it has not left the vault, so
+    // the legacy filter excludes it.
+    securedDueDraft = data<OperationsShipmentDto>(
+      await mkShipment({
+        shipmentType: 'secured',
+        collectionDate: BOARD_DATE,
+        deliveryDate: BOARD_DATE,
+      }),
+    ).id;
+
+    // A second secured shipment due the same day, walked to `dispatched` through the real vault
+    // flow, so it SHOULD appear.
+    const secured = data<OperationsShipmentDto>(
+      await mkShipment({
+        shipmentType: 'secured',
+        collectionDate: BOARD_DATE,
+        deliveryDate: BOARD_DATE,
+      }),
+    );
+    securedDueDispatched = secured.id;
+    const treasurer = await mkEmployee();
+    const received = await request(app)
+      .post(`/api/v1/operations/secured/${secured.id}/receive`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        receiptNumber: `R-BOARD-${secured.id.slice(-5)}`,
+        receivedByPrimaryId: captainId,
+        receivedBySecondaryId: treasurer,
+        version: secured.version,
+      });
+    expect(received.status).toBe(200);
+
+    const rosterRes = await request(app)
+      .post('/api/v1/fleet/roster')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date: BOARD_DATE, rows: [{ vehicleId: vehicleAId, notes: 'board seed' }] });
+    expect(rosterRes.status).toBe(200);
+    const crewRes = await request(app)
+      .post('/api/v1/operations/crew-board')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        date: BOARD_DATE,
+        rows: [{ vehicleId: vehicleAId, captainEmployeeId: captainId }],
+      });
+    expect(crewRes.status).toBe(200);
+
+    const { operationsCrewAssignmentRepository } = await import(
+      '../../src/modules/operations/crew/crew-assignment.repository'
+    );
+    const { operationsDayService } = await import('../../src/modules/operations/days/day.service');
+    const dayDoc = await operationsDayService.findByDate(new Date(BOARD_DATE));
+    const crewRows = await operationsCrewAssignmentRepository.findForDay(dayDoc?._id ?? '');
+    const crewId = String(crewRows[0]?._id ?? '');
+
+    const assigned = await request(app)
+      .post(`/api/v1/operations/secured/${secured.id}/assign-delivery`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ crewAssignmentId: crewId, captainEmployeeId: captainId, version: 0 });
+    expect(assigned.status).toBe(200);
+
+    const dispatched = await request(app)
+      .post('/api/v1/operations/secured/dispatch')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ shipmentIds: [secured.id], crewAssignmentId: crewId });
+    expect(dispatched.status).toBe(200);
+  });
+
+  it('shows the day\'s DAILY shipments, and not another day\'s', async () => {
+    const ids = await idsOn(BOARD_DATE);
+    expect(ids).toContain(dailyToday);
+    expect(ids).not.toContain(dailyOtherDay);
+  });
+
+  it('shows a secured shipment DUE that day once it has left the vault', async () => {
+    expect(await idsOn(BOARD_DATE)).toContain(securedDueDispatched);
+  });
+
+  it('hides a secured shipment that is due but still in the vault — legacy status:[1,3]', async () => {
+    expect(await idsOn(BOARD_DATE)).not.toContain(securedDueDraft);
+  });
+
+  it('attributes secured shipments by DELIVERY date, not collection date', async () => {
+    // Both secured fixtures were COLLECTED on the board day too, so if the board keyed secured
+    // rows off collectionDate the excluded one would wrongly appear. It does not.
+    const ids = await idsOn(BOARD_DATE);
+    expect(ids).toContain(securedDueDispatched);
+    expect(ids).not.toContain(securedDueDraft);
+  });
+
+  it('returns newest-created first — the legacy input_date ordering', async () => {
+    const res = await board(BOARD_DATE);
+    const rows = data<{ shipments: OperationsShipmentDto[] }>(res).shipments;
+    const created = rows.map((s) => new Date(s.createdAt).getTime());
+    expect([...created].sort((a, b) => b - a)).toEqual(created);
+  });
+
+  it('echoes the day it resolved, and defaults to today when asked for no date', async () => {
+    const explicit = await board(BOARD_DATE);
+    expect(data<{ date: string }>(explicit).date.slice(0, 10)).toBe(BOARD_DATE);
+
+    const today = await board();
+    expect(today.status).toBe(200);
+    expect(data<{ date: string }>(today).date.slice(0, 10)).toBe(
+      new Date().toISOString().slice(0, 10),
+    );
+  });
+
+  it('is empty, not an error, on a day with no work', async () => {
+    const res = await board('2026-10-09');
+    expect(res.status).toBe(200);
+    expect(data<{ shipments: OperationsShipmentDto[] }>(res).shipments).toEqual([]);
+  });
+
+  it('RBAC — the board needs operationsShipment.view, and rejects an unknown filter', async () => {
+    expect((await request(app).get('/api/v1/operations/shipments/day-board')).status).toBe(401);
+
+    const viewerRes = await request(app)
+      .get('/api/v1/operations/shipments/day-board')
+      .set('Authorization', `Bearer ${viewerToken}`);
+    expect(viewerRes.status).toBe(200); // the viewer role holds .view
+
+    const tampered = await request(app)
+      .get(`/api/v1/operations/shipments/day-board?date=${BOARD_DATE}&status=draft`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(tampered.status).toBe(400);
+  });
+});

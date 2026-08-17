@@ -4,6 +4,7 @@ import {
   type CompleteOperationsShipment,
   type CreateOperationsShipment,
   type ListOperationsShipmentsQuery,
+  type OperationsDayBoardQuery,
   type UpdateOperationsShipment,
 } from '@ecms/contracts';
 import { created, noContent, ok, okPage, validated } from '../../../platform/web';
@@ -16,6 +17,19 @@ type IdParam = { id: string };
 export const listShipments = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, ListOperationsShipmentsQuery>(req);
   okPage(res, await operationsShipmentService.list(query), toShipmentDto);
+};
+
+/** The legacy `/main_ops` board — one day's working set, unioned server-side. */
+export const getDayBoard = async (req: Request, res: Response): Promise<void> => {
+  const { query } = validated<never, OperationsDayBoardQuery>(req);
+  const day = query.date ?? new Date();
+  const docs = await operationsShipmentService.dayBoard(query.date);
+  ok(res, {
+    date: new Date(
+      Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()),
+    ).toISOString(),
+    shipments: docs.map(toShipmentDto),
+  });
 };
 
 export const getShipment = async (req: Request, res: Response): Promise<void> => {

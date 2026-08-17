@@ -10,18 +10,31 @@
 // OP-B1 lands the reference-data surface (the legacy `/data_edit` screen — banks, branches,
 // currencies). Later B slices add their endpoints beside these, never a second client.
 import {
+  type CompleteOperationsShipment,
   type CreateOperationsBank,
   type CreateOperationsBankBranch,
   type CreateOperationsCurrency,
   type OperationsBankBranchDto,
   type OperationsBankDto,
+  type CreateOperationsShipment,
   type OperationsCurrencyDto,
+  type OperationsDayBoardDto,
+  type OperationsShipmentDto,
   type Paginated,
   type UpdateOperationsBank,
   type UpdateOperationsBankBranch,
   type UpdateOperationsCurrency,
+  type UpdateOperationsShipment,
 } from '@ecms/contracts';
-import { buildQuery, getPage, patch, post, type QueryParams } from '../../../shared/lib/api-client';
+import {
+  buildQuery,
+  del,
+  get,
+  getPage,
+  patch,
+  post,
+  type QueryParams,
+} from '../../../shared/lib/api-client';
 
 export type OperationsListParams = QueryParams;
 
@@ -68,3 +81,53 @@ export const branchesOfBank = (bankId: string): Promise<Paginated<OperationsBank
   getPage<OperationsBankBranchDto>(
     `/operations/bank-branches${buildQuery({ bankId, pageSize: 200, sortBy: 'name', sortDir: 'asc' })}`,
   );
+
+// ── Cash shipments + the daily board (B2 — legacy /main_ops) ────────────────
+
+/**
+ * The desk's working set for one day. The UNION of daily-collected and secured-delivered
+ * shipments is decided by the SERVER (see the endpoint's own comment) — the client asks for a day
+ * and renders what comes back. It never assembles the board from two list calls.
+ */
+export const getDayBoard = (date: string | null): Promise<OperationsDayBoardDto> =>
+  get<OperationsDayBoardDto>(
+    `/operations/shipments/day-board${date === null ? '' : buildQuery({ date })}`,
+  );
+
+export const listShipments = (
+  params: OperationsListParams,
+): Promise<Paginated<OperationsShipmentDto>> =>
+  getPage<OperationsShipmentDto>(`/operations/shipments${buildQuery(params)}`);
+
+export const getShipment = (id: string): Promise<OperationsShipmentDto> =>
+  get<OperationsShipmentDto>(`/operations/shipments/${id}`);
+
+export const createShipment = (body: CreateOperationsShipment): Promise<OperationsShipmentDto> =>
+  post<OperationsShipmentDto>('/operations/shipments', body);
+
+export const updateShipment = (
+  id: string,
+  body: UpdateOperationsShipment,
+): Promise<OperationsShipmentDto> =>
+  patch<OperationsShipmentDto>(`/operations/shipments/${id}`, body);
+
+/**
+ * The legacy receive toggle's two directions (contad_app.js:553-566), as two explicit endpoints.
+ * Legacy flipped both from one cell and inferred the direction from the current value; the domain
+ * makes each an act of its own, and one permission (`operationsShipment.complete`) covers both —
+ * confirming and un-confirming delivery are the same decision.
+ */
+export const completeShipment = (
+  id: string,
+  body: CompleteOperationsShipment,
+): Promise<OperationsShipmentDto> =>
+  post<OperationsShipmentDto>(`/operations/shipments/${id}/complete`, body);
+
+export const reopenShipment = (
+  id: string,
+  body: CompleteOperationsShipment,
+): Promise<OperationsShipmentDto> =>
+  post<OperationsShipmentDto>(`/operations/shipments/${id}/reopen`, body);
+
+export const deleteShipment = (id: string): Promise<void> =>
+  del<void>(`/operations/shipments/${id}`);

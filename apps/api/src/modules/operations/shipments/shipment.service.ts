@@ -195,6 +195,33 @@ class OperationsShipmentService {
     });
   }
 
+  /**
+   * The desk's working set for one day — the legacy `/main_ops` board (contad_app.js:262-268).
+   *
+   * WHY THIS IS AN ENDPOINT AND NOT TWO LIST CALLS. The board is a union over TWO different date
+   * fields: a daily shipment belongs to the day it is COLLECTED, a secured one to the day it is
+   * DELIVERED. "Which shipments does the desk work today" is a business rule, and the legacy
+   * system kept its rules in the browser (discovery §8.3, §13). Answering it here is the whole
+   * point of the migration; a client stitching two lists together would put the rule back.
+   *
+   * PARITY, precisely:
+   *   · daily   → `collectionDate` falls on the day (legacy `rec_date` exact-equality, Q15
+   *               NORMALIZED to an explicit half-open day range)
+   *   · secured → `deliveryDate` falls on the day AND status ∈ {completed, dispatched}
+   *               (legacy `status: [1,3]`, Q10 NORMALIZED to an explicit `$in`)
+   *   · never deleted; newest created first (legacy `input_date: -1`)
+   *
+   * `date` defaults to TODAY, matching the legacy screen — which computed today server-side and
+   * offered no date picker at all. Accepting a date is the one addition, and it is additive: the
+   * default answer is the legacy answer.
+   */
+  async dayBoard(date: Date | undefined): Promise<OperationsShipmentDoc[]> {
+    const day = utcDay(date ?? new Date());
+    const next = new Date(day);
+    next.setUTCDate(next.getUTCDate() + 1);
+    return operationsShipmentRepository.dayBoard(day, next);
+  }
+
   async getById(id: string): Promise<OperationsShipmentDoc> {
     return operationsShipmentRepository.getById(id);
   }

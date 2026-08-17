@@ -8,7 +8,11 @@
 // The list is written out rather than derived from the catalog, deliberately: deriving it would
 // only prove the catalog agrees with itself.
 import { describe, expect, it } from 'vitest';
-import { type Locale } from '@ecms/contracts';
+import {
+  OPERATIONS_SHIPMENT_STATUSES,
+  OPERATIONS_SHIPMENT_TYPES,
+  type Locale,
+} from '@ecms/contracts';
 import { translate } from '../../platform/localization/i18n';
 import { OPERATIONS_CATALOG_KINDS } from './pages/CatalogsPage';
 
@@ -57,9 +61,54 @@ const CATALOG_KEYS = [
   'operations.catalogs.currency.aliasesHint',
 ];
 
-describe('operations i18n catalogs (B1)', () => {
+/** B2 — the daily board and the shipment form. */
+const BOARD_KEYS = [
+  'operations.nav.dailyOps',
+  'operations.cards.dailyOps',
+  'operations.dailyOps.title',
+  'operations.dailyOps.subtitle',
+  'operations.dailyOps.date',
+  'operations.dailyOps.all',
+  'operations.dailyOps.received',
+  'operations.dailyOps.receivedYes',
+  'operations.dailyOps.receivedNo',
+  'operations.dailyOps.count',
+  'operations.dailyOps.empty',
+  'operations.shipment.add',
+  'operations.shipment.edit',
+  'operations.shipment.saved',
+  'operations.shipment.saveFailed',
+  'operations.shipment.deleted',
+  'operations.shipment.deleteFailed',
+  'operations.shipment.confirmDelete',
+  'operations.shipment.receive',
+  'operations.shipment.unreceive',
+  'operations.shipment.receiveFailed',
+  'operations.shipment.needLine',
+  'operations.shipment.type',
+  'operations.shipment.mainBank',
+  'operations.shipment.secondaryBank',
+  'operations.shipment.secondaryBankHint',
+  'operations.shipment.sameBank',
+  'operations.shipment.origin',
+  'operations.shipment.destination',
+  'operations.shipment.area',
+  'operations.shipment.amount',
+  'operations.shipment.currency',
+  'operations.shipment.lines',
+  'operations.shipment.addLine',
+  'operations.shipment.collectionDate',
+  'operations.shipment.deliveryDate',
+  'operations.shipment.deliveryDateHint',
+  'operations.shipment.notes',
+  'operations.shipment.serialTracked',
+];
+
+const ALL_KEYS = [...SHELL_KEYS, ...CATALOG_KEYS, ...BOARD_KEYS];
+
+describe('operations i18n catalogs (B1 + B2)', () => {
   for (const locale of LOCALES) {
-    for (const key of [...SHELL_KEYS, ...CATALOG_KEYS]) {
+    for (const key of ALL_KEYS) {
       it(`${locale}: ${key}`, () => {
         const value = translate(locale, key);
         expect(value).not.toBe(key); // a missing key falls back to itself
@@ -77,8 +126,21 @@ describe('operations i18n catalogs (B1)', () => {
     }
   });
 
+  it('has a label for every shipment status and type the domain can produce', () => {
+    for (const locale of LOCALES) {
+      for (const status of OPERATIONS_SHIPMENT_STATUSES) {
+        const key = `operations.shipment.status.${status}`;
+        expect(translate(locale, key)).not.toBe(key);
+      }
+      for (const shipmentType of OPERATIONS_SHIPMENT_TYPES) {
+        const key = `operations.shipment.type.${shipmentType}`;
+        expect(translate(locale, key)).not.toBe(key);
+      }
+    }
+  });
+
   it('keeps Arabic and English catalogs in step — no key exists in only one', () => {
-    for (const key of [...SHELL_KEYS, ...CATALOG_KEYS]) {
+    for (const key of ALL_KEYS) {
       expect(translate('en', key)).not.toBe(translate('ar', key));
     }
   });

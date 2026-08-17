@@ -376,6 +376,28 @@ export type CompleteOperationsShipment = z.infer<typeof CompleteOperationsShipme
 export const ReopenOperationsShipmentSchema = CompleteOperationsShipmentSchema;
 export type ReopenOperationsShipment = CompleteOperationsShipment;
 
+/**
+ * The daily operations board (legacy `/main_ops`) — one day's working set.
+ *
+ * No pagination: this is a day's work for one desk, and the legacy screen showed it whole. No
+ * filters either; the board IS the filter. `date` defaults to today, exactly as the legacy screen
+ * did with no picker at all.
+ */
+export const OperationsDayBoardQuerySchema = z
+  .object({ date: z.coerce.date().optional() })
+  .strict();
+export type OperationsDayBoardQuery = z.infer<typeof OperationsDayBoardQuerySchema>;
+
+export interface OperationsDayBoardDto {
+  /** The resolved day, so a client never has to guess what "today" the server meant. */
+  date: string;
+  /**
+   * The union the legacy board showed: daily shipments collected on the day, plus secured
+   * shipments DELIVERED on the day that have left the vault. Newest created first.
+   */
+  shipments: OperationsShipmentDto[];
+}
+
 export const ListOperationsShipmentsQuerySchema = PaginationQuerySchema.extend({
   shipmentType: OperationsShipmentTypeSchema.optional(),
   status: listQuery(OperationsShipmentStatusSchema),

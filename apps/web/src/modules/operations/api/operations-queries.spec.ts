@@ -71,3 +71,48 @@ describe('operations reference-data cache keys', () => {
     expect(isStale(qc, __operationsKeys.banks)).toBe(true);
   });
 });
+
+describe('shipment write fan-out (B2)', () => {
+  // The board and the shipment list are two views of the same facts. A receive toggle that stales
+  // only one of them looks, to the operator, like a click that did nothing.
+  const seedShipmentViews = (qc: QueryClient): void => {
+    qc.setQueryData(listKey('operations', 'shipments', { page: 1 }), { items: [] });
+    qc.setQueryData(listKey('operations', 'dayBoard', { date: 'today' }), { shipments: [] });
+    qc.setQueryData(listKey('operations', 'dayBoard', { date: '2026-10-05' }), { shipments: [] });
+    qc.setQueryData(listKey('operations', 'banks', { page: 1 }), { items: [] });
+  };
+
+  it('stales the board AND the shipment list together', async () => {
+    const qc = new QueryClient();
+    seedShipmentViews(qc);
+    await qc.invalidateQueries({ queryKey: __operationsKeys.shipments });
+    await qc.invalidateQueries({ queryKey: __operationsKeys.dayBoard });
+
+    expect(isStale(qc, __operationsKeys.shipments)).toBe(true);
+    expect(isStale(qc, __operationsKeys.dayBoard)).toBe(true);
+  });
+
+  it('stales EVERY cached day, not just the one on screen', async () => {
+    const qc = new QueryClient();
+    seedShipmentViews(qc);
+    await qc.invalidateQueries({ queryKey: __operationsKeys.dayBoard });
+
+    // Editing a shipment can move it between days, so a stale other-day board is a real bug.
+    expect(qc.getQueryCache().findAll({ queryKey: __operationsKeys.dayBoard })).toHaveLength(2);
+    expect(isStale(qc, __operationsKeys.dayBoard)).toBe(true);
+  });
+
+  it('leaves reference data alone — a shipment write changes no bank', async () => {
+    const qc = new QueryClient();
+    seedShipmentViews(qc);
+    await qc.invalidateQueries({ queryKey: __operationsKeys.shipments });
+    await qc.invalidateQueries({ queryKey: __operationsKeys.dayBoard });
+
+    expect(isStale(qc, __operationsKeys.banks)).toBe(false);
+  });
+
+  it('keeps the board on its own subtree, distinct from the list', () => {
+    expect(__operationsKeys.dayBoard).toEqual(['operations', 'dayBoard']);
+    expect(__operationsKeys.shipments).toEqual(['operations', 'shipments']);
+  });
+});

@@ -7,6 +7,7 @@ import {
   CompleteOperationsShipmentSchema,
   CreateOperationsShipmentSchema,
   ListOperationsShipmentsQuerySchema,
+  OperationsDayBoardQuerySchema,
   ReopenOperationsShipmentSchema,
   UpdateOperationsShipmentSchema,
   objectId,
@@ -18,6 +19,7 @@ import {
   completeShipment,
   createShipment,
   deleteShipment,
+  getDayBoard,
   getShipment,
   listShipments,
   reopenShipment,
@@ -34,6 +36,14 @@ export const buildOperationsShipmentsRouter = (): Router => {
     authorize('operationsShipment.view'),
     validate({ query: ListOperationsShipmentsQuerySchema }),
     asyncHandler(listShipments),
+  );
+  // BEFORE `/:id` — `day-board` is a literal segment and would otherwise be read as an id.
+  router.get(
+    '/day-board',
+    authenticate,
+    authorize('operationsShipment.view'),
+    validate({ query: OperationsDayBoardQuerySchema }),
+    asyncHandler(getDayBoard),
   );
   router.get(
     '/:id',

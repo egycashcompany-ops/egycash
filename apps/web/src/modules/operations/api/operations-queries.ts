@@ -11,12 +11,15 @@
 //     renaming a bank changes what every branch row displays.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  type CompleteOperationsShipment,
   type CreateOperationsBank,
   type CreateOperationsBankBranch,
   type CreateOperationsCurrency,
   type UpdateOperationsBank,
   type UpdateOperationsBankBranch,
+  type CreateOperationsShipment,
   type UpdateOperationsCurrency,
+  type UpdateOperationsShipment,
 } from '@ecms/contracts';
 import { featureKey, listKey } from '../../../shared/lib/query-keys';
 import * as api from './operations-api';
@@ -30,7 +33,17 @@ const operationsKeys = {
   banks: featureKey(MODULE, 'banks'),
   branches: featureKey(MODULE, 'bankBranches'),
   currencies: featureKey(MODULE, 'currencies'),
+  // The board and the shipment list are two views of the SAME facts, so every shipment write
+  // stales both. Getting this wrong shows up as a receive toggle that appears not to have worked.
+  shipments: featureKey(MODULE, 'shipments'),
+  dayBoard: featureKey(MODULE, 'dayBoard'),
 };
+
+/** Every surface a shipment write can move. One list, so no mutation forgets one. */
+const shipmentSubtrees = [
+  featureKey(MODULE, 'shipments'),
+  featureKey(MODULE, 'dayBoard'),
+];
 
 // ── Reads ──────────────────────────────────────────────────────────────────
 // `enabled` follows the fleet precedent: a query never fires for a surface the operator is not
@@ -64,7 +77,71 @@ export const useBranchesOfBank = (bankId: string | null) =>
     enabled: bankId !== null && bankId !== '',
   });
 
+/**
+ * One day's board. `date` null means "today" — resolved by the SERVER, which also echoes back the
+ * day it used, so a client near midnight can never disagree with it about which day this is.
+ */
+export const useOperationsDayBoard = (date: string | null, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'dayBoard', { date: date ?? 'today' }),
+    queryFn: () => api.getDayBoard(date),
+    enabled,
+  });
+
 // ── Writes ─────────────────────────────────────────────────────────────────
+
+/** Shared by every shipment mutation, so none of them can forget a surface. */
+const useShipmentInvalidation = () => {
+  const qc = useQueryClient();
+  return async (): Promise<void> => {
+    for (const key of shipmentSubtrees) await qc.invalidateQueries({ queryKey: key });
+  };
+};
+
+export const useCreateOperationsShipment = () => {
+  const invalidate = useShipmentInvalidation();
+  return useMutation({
+    mutationFn: (body: CreateOperationsShipment) => api.createShipment(body),
+    onSuccess: invalidate,
+  });
+};
+
+export const useUpdateOperationsShipment = () => {
+  const invalidate = useShipmentInvalidation();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: UpdateOperationsShipment }) =>
+      api.updateShipment(id, body),
+    onSuccess: invalidate,
+  });
+};
+
+/**
+ * The legacy receive toggle, as two explicit acts (contad_app.js:553-566). The caller says which
+ * direction it means; nothing infers it from the current value.
+ */
+export const useSetShipmentReceived = () => {
+  const invalidate = useShipmentInvalidation();
+  return useMutation({
+    mutationFn: ({
+      id,
+      received,
+      body,
+    }: {
+      id: string;
+      received: boolean;
+      body: CompleteOperationsShipment;
+    }) => (received ? api.completeShipment(id, body) : api.reopenShipment(id, body)),
+    onSuccess: invalidate,
+  });
+};
+
+export const useDeleteOperationsShipment = () => {
+  const invalidate = useShipmentInvalidation();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteShipment(id),
+    onSuccess: invalidate,
+  });
+};
 export const useCreateOperationsBank = () => {
   const qc = useQueryClient();
   return useMutation({

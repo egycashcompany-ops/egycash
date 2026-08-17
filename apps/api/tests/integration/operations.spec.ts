@@ -106,7 +106,7 @@ const waitFor = async (predicate: () => boolean, ms = 2000): Promise<void> => {
 
 let nidCounter = 0;
 let phoneCounter = 50_000_000;
-const nextNid = (): string => `29001010${String(1_000_000 + nidCounter++).padStart(7, '0')}`;
+const nextNid = (): string => `290010101${String(70_000 + nidCounter++).padStart(5, '0')}`;
 const nextPhone = (): string => `011${String(phoneCounter++).padStart(8, '0')}`;
 
 /** HR employee via the real direct-registration endpoint — Operations never fabricates one. */
@@ -268,7 +268,10 @@ beforeAll(async () => {
     .set('Authorization', `Bearer ${adminToken}`)
     .send({
       date: PLAN_DATE,
-      rows: [{ vehicleId: vehicleAId }, { vehicleId: vehicleBId, notes: 'ops board seed' }],
+      rows: [
+        { vehicleId: vehicleAId, notes: 'ops board seed' },
+        { vehicleId: vehicleBId, notes: 'ops board seed' },
+      ],
     });
   expect(rosterRes.status).toBe(200);
 }, 240_000);
@@ -752,7 +755,10 @@ describe('secured (محصنة) workflow — the four legacy screens (OP-4)', () 
     const roster = await request(app)
       .post('/api/v1/fleet/roster')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ date: DELIVERY_DATE, rows: [{ vehicleId: vehicleAId }] });
+      .send({
+        date: DELIVERY_DATE,
+        rows: [{ vehicleId: vehicleAId, notes: 'secured delivery seed' }],
+      });
     expect(roster.status).toBe(200);
 
     const plan = await request(app)

@@ -19,6 +19,7 @@ import { translate } from '../../../platform/localization/i18n';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROUTES = readFileSync(resolve(HERE, 'routes.tsx'), 'utf8');
 const PAGE = readFileSync(resolve(HERE, 'pages/PayItemsPage.tsx'), 'utf8');
+const REPORTS = readFileSync(resolve(HERE, 'pages/PayrollReportsPage.tsx'), 'utf8');
 const SEED = readFileSync(resolve(HERE, '../../../../../api/src/seed-navigation.ts'), 'utf8');
 const SECTIONS = readFileSync(
   resolve(HERE, '../../../../../api/src/seed-application-sections.ts'),
@@ -31,8 +32,8 @@ const declaredPaths = (): string[] =>
 describe('Payroll routes', () => {
   it('routes the shipped surface and nothing unshipped', () => {
     // pay-items (PY-1), runs (PY-6), the employee's own payslips (PY-11) and their own loans
-    // (P-HR-18), the adjustments queue (P-HR-06-A) and the loans administration (P-HR-06-B). No
-    // tax and no run calculation — neither exists.
+    // (P-HR-18), the adjustments queue (P-HR-06-A), the loans administration (P-HR-06-B) and the
+    // report builder (B1). No tax and no run calculation — neither exists.
     expect(declaredPaths()).toEqual([
       'payslips/me',
       'employee-loans/me',
@@ -41,6 +42,7 @@ describe('Payroll routes', () => {
       'runs',
       'adjustments',
       'employee-loans',
+      'reports',
     ]);
   });
 
@@ -63,17 +65,24 @@ describe('Payroll routes', () => {
       'payrollRun.view',
       'payrollAdjustment.view',
       'employeeLoan.view',
+      // B1 — two keys on ONE route, which is why the count below subtracts the extra guard rather
+      // than expecting one per route.
+      'payrollReport.view',
+      'employee.viewCompensation',
     ]);
     const unguarded = declaredPaths().filter((p) => p.endsWith('/me'));
     expect(unguarded).toEqual(['payslips/me', 'employee-loans/me', 'adjustments/me']);
-    expect(guarded).toHaveLength(declaredPaths().length - unguarded.length);
+    expect(guarded).toHaveLength(declaredPaths().length - unguarded.length + 1);
     // …and the index route renders that same self-service page, never a guarded one.
     expect(ROUTES).toMatch(/<Route index element=\{<MyPayslipsPage \/>\} \/>/);
   });
 
   it('uses only the keys the payroll phases declare', () => {
+    // B1 widened what is READ here as well as what is allowed: the builder page holds the only
+    // `payrollReport.manage` on the surface, so scanning the routes alone would let a key nobody
+    // declared reach a button unnoticed.
     const used = new Set(
-      [...`${ROUTES}${PAGE}`.matchAll(/permission="([^"]+)"/g)].map((m) => m[1]),
+      [...`${ROUTES}${PAGE}${REPORTS}`.matchAll(/permission="([^"]+)"/g)].map((m) => m[1]),
     );
     for (const key of used) {
       expect([
@@ -84,6 +93,10 @@ describe('Payroll routes', () => {
         'payrollRun.view',
         'payrollAdjustment.view',
         'employeeLoan.view',
+        'payrollReport.view',
+        'payrollReport.manage',
+        // Not a B1 key — the compensation key the report builder ALSO demands (D-B1-1).
+        'employee.viewCompensation',
       ]).toContain(key);
     }
   });

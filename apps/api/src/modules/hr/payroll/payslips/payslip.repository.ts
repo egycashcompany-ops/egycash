@@ -7,10 +7,11 @@
 //
 // There is no update and no delete. The base class provides them; nothing in this phase calls
 // them, and a payslip is a document somebody was paid against.
-import { Types } from 'mongoose';
-import { type PayrollReportGroupBy } from '@ecms/contracts';
+import { Types, type FilterQuery } from 'mongoose';
+import { type PayrollReportDimension, type PayrollReportGroupBy } from '@ecms/contracts';
 import { BaseRepository } from '../../../../shared/base/base.repository';
 import { type ScopeSelector } from '../../../../shared/types';
+import { composeGroupKey, type FilterPlan } from '../report-builder/report-dimensions';
 import { PayslipModel, type PayslipDoc } from './payslip.model';
 
 /**
@@ -47,18 +48,42 @@ export interface PayslipLineGroupRow {
  * `currency` and `kind` lead every key: direction is what `kind` means, and a total spanning two
  * currencies is a defect rather than a summary.
  */
-const GROUP_KEYS: Readonly<Record<PayrollReportGroupBy, Readonly<Record<string, string>>>> = {
-  origin: { currency: '$currency', kind: '$lines.kind', origin: '$lines.origin' },
-  payItem: {
-    currency: '$currency',
-    kind: '$lines.kind',
-    origin: '$lines.origin',
-    payItemId: '$lines.payItemId',
-    code: '$lines.code',
-  },
-  branch: { currency: '$currency', kind: '$lines.kind', branchId: '$branchId' },
-  costCenter: { currency: '$currency', kind: '$lines.kind', costCenterId: '$costCenterId' },
+/**
+ * Which dimensions each P-HR-25 axis is made of.
+ *
+ * Scope B1 needs COMPOSABLE dimensions — a report groups by branch and cost centre at once, which a
+ * fixed map of whole keys cannot express. So the keys are now composed from the atomic fragments in
+ * `report-dimensions.ts`, and these four axes are stated as the compositions they always were.
+ *
+ * `payslip-group-keys.spec.ts` holds the composition to the LITERAL keys P-HR-25 shipped, field for
+ * field. Decomposing a working query is exactly the kind of change that looks equivalent and is not,
+ * so the equivalence is proven rather than asserted in a comment.
+ */
+const AXIS_DIMENSIONS: Readonly<Record<PayrollReportGroupBy, readonly PayrollReportDimension[]>> = {
+  origin: ['kind', 'origin'],
+  payItem: ['kind', 'origin', 'payItem'],
+  branch: ['kind', 'branch'],
+  costCenter: ['kind', 'costCenter'],
 };
+
+const GROUP_KEYS: Readonly<Record<PayrollReportGroupBy, Readonly<Record<string, string>>>> = {
+  origin: composeGroupKey(AXIS_DIMENSIONS.origin),
+  payItem: composeGroupKey(AXIS_DIMENSIONS.payItem),
+  branch: composeGroupKey(AXIS_DIMENSIONS.branch),
+  costCenter: composeGroupKey(AXIS_DIMENSIONS.costCenter),
+};
+
+export { AXIS_DIMENSIONS };
+
+/** A group exactly as the database returned it: the composed `_id`, and the two sums. */
+export interface PayslipGroupRow {
+  _id: Record<string, unknown>;
+  lines: number;
+  amountMinor: number;
+}
+
+/** No filters — what every P-HR-14 / P-HR-25 read passes, since none of them filters. */
+const EMPTY_FILTERS: FilterPlan = { pre: [], post: [] };
 
 /** One currency's worth of a run, as the database summed it. */
 export interface PayslipRunTotalsRow {
@@ -191,9 +216,26 @@ class PayslipRepository extends BaseRepository<PayslipDoc> {
   }
 
   /**
-   * The one pipeline behind all three splits — only the group key differs.
+   * The same lines again, grouped by SEVERAL dimensions at once and optionally filtered (scope B1).
    *
-   * Written once rather than three times because the parts that MUST NOT drift are the parts they
+   * Returns the raw group rows rather than `PayslipLineGroupRow`, because a report's key is composed
+   * from whichever dimensions it selected and no fixed shape can name them all. It runs the same
+   * pipeline as everything above — the same scoped `$match`, the same concatenation, the same
+   * positive sums — so a report can arrange what the breakdown shows, and can never reach past it.
+   */
+  async lineTotalsForReport(
+    runId: string,
+    scope: ScopeSelector,
+    dimensions: readonly PayrollReportDimension[],
+    filters: FilterPlan,
+  ): Promise<PayslipGroupRow[]> {
+    return this.aggregateGroups(runId, scope, composeGroupKey(dimensions), filters);
+  }
+
+  /**
+   * The one pipeline behind every split — only the group key and the optional filters differ.
+   *
+   * Written once rather than five times because the parts that MUST NOT drift are the parts they
    * share: the scoped `$match`, the earnings-and-deductions concatenation, and the positive sum.
    * A second copy of this is where a missing `baseFilter` would eventually appear.
    */
@@ -202,35 +244,7 @@ class PayslipRepository extends BaseRepository<PayslipDoc> {
     scope: ScopeSelector,
     key: Record<string, string>,
   ): Promise<PayslipLineGroupRow[]> {
-    if (!Types.ObjectId.isValid(runId)) return [];
-    const rows = await PayslipModel.aggregate<{
-      _id: Record<string, unknown>;
-      lines: number;
-      amountMinor: number;
-    }>([
-      // The caller's scope, through the same filter the paginated read uses — a branch reader must
-      // be shown their branch's cost and nothing wider (audit finding A2).
-      { $match: this.baseFilter(scope, { runId: new Types.ObjectId(runId) }) },
-      {
-        $project: {
-          currency: 1,
-          branchId: 1,
-          // P-HR-25 — carried through so the cost-centre axis can group by it. It is the stamp the
-          // payslip was issued with, and projecting it changes no figure.
-          costCenterId: 1,
-          lines: { $concatArrays: ['$earnings', '$deductions'] },
-        },
-      },
-      { $unwind: '$lines' },
-      {
-        $group: {
-          _id: key,
-          lines: { $sum: 1 },
-          amountMinor: { $sum: { $ifNull: ['$lines.amountMinor', 0] } },
-        },
-      },
-      { $sort: { '_id.currency': 1, '_id.kind': 1, '_id.origin': 1, '_id.code': 1 } },
-    ]).exec();
+    const rows = await this.aggregateGroups(runId, scope, key, EMPTY_FILTERS);
     return rows.map((row) => ({
       currency: String(row._id['currency'] ?? ''),
       kind: String(row._id['kind'] ?? ''),
@@ -242,6 +256,50 @@ class PayslipRepository extends BaseRepository<PayslipDoc> {
       lines: row.lines,
       amountMinor: row.amountMinor,
     }));
+  }
+
+  private async aggregateGroups(
+    runId: string,
+    scope: ScopeSelector,
+    key: Record<string, string>,
+    filters: FilterPlan,
+  ): Promise<PayslipGroupRow[]> {
+    if (!Types.ObjectId.isValid(runId)) return [];
+    const rows = await PayslipModel.aggregate<PayslipGroupRow>([
+      // The caller's scope, through the same filter the paginated read uses — a branch reader must
+      // be shown their branch's cost and nothing wider (audit finding A2).
+      //
+      // A user filter is one of the ADDITIONAL `$match` stages below, never this one. A `$match`
+      // after a `$match` can only narrow what survived the first, so nothing a report asks for can
+      // widen the scope — a property of the pipeline's shape, not of a check somebody must remember.
+      { $match: this.baseFilter(scope, { runId: new Types.ObjectId(runId) }) },
+      ...(filters.pre.length === 0
+        ? []
+        : [{ $match: { $and: filters.pre } as FilterQuery<PayslipDoc> }]),
+      {
+        $project: {
+          currency: 1,
+          branchId: 1,
+          // P-HR-25 — carried through so the cost-centre axis can group by it. It is the stamp the
+          // payslip was issued with, and projecting it changes no figure.
+          costCenterId: 1,
+          lines: { $concatArrays: ['$earnings', '$deductions'] },
+        },
+      },
+      { $unwind: '$lines' },
+      // Line-level filters land here rather than above: before the unwind, `lines.kind` would be
+      // compared against an array instead of a value.
+      ...(filters.post.length === 0 ? [] : [{ $match: { $and: filters.post } }]),
+      {
+        $group: {
+          _id: key,
+          lines: { $sum: 1 },
+          amountMinor: { $sum: { $ifNull: ['$lines.amountMinor', 0] } },
+        },
+      },
+      { $sort: { '_id.currency': 1, '_id.kind': 1, '_id.origin': 1, '_id.code': 1 } },
+    ]).exec();
+    return rows;
   }
 
   /** The employees this run issued to — the coverage check's "was paid" side. */

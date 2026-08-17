@@ -17,6 +17,7 @@ import { MyPayslipsPage } from './pages/MyPayslipsPage';
 import { PayItemsPage } from './pages/PayItemsPage';
 import { PayrollAdjustmentsPage } from './pages/PayrollAdjustmentsPage';
 import { PayrollRunsPage } from './pages/PayrollRunsPage';
+import { PayrollReportsPage } from './pages/PayrollReportsPage';
 
 export default function PayrollRoutes(): JSX.Element {
   return (
@@ -83,6 +84,23 @@ export default function PayrollRoutes(): JSX.Element {
           element={
             <RequirePermission permission="employeeLoan.view">
               <EmployeeLoansAdminPage />
+            </RequirePermission>
+          }
+        />
+        {/*
+          Scope B1 — the report builder, last because it READS what the routes above it produce, and
+          the ONLY route here gated on TWO keys. Nesting the guards is an AND: `payrollReport.view`
+          opens the builder, and `employee.viewCompensation` is what the server demands before it
+          will return a figure. Gating on the first alone would hand somebody a screen whose every
+          button the API refuses — and, worse, would suggest the new key is enough to read pay.
+        */}
+        <Route
+          path="reports"
+          element={
+            <RequirePermission permission="payrollReport.view">
+              <RequirePermission permission="employee.viewCompensation">
+                <PayrollReportsPage />
+              </RequirePermission>
             </RequirePermission>
           }
         />

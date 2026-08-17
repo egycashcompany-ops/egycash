@@ -9,6 +9,7 @@ import {
   BriefcaseIcon,
   BuildingIcon,
   CalendarIcon,
+  ChartIcon,
   ChatIcon,
   ClipboardIcon,
   CogIcon,
@@ -70,6 +71,9 @@ const REGISTRY: Record<string, NavIcon> = {
   // P10 — the notification-templates row. Registered with the row that uses it: an unregistered
   // name falls back silently, which looks like a design choice rather than a missing entry.
   bell: BellIcon,
+  // Scope B1 — the payroll reports row, registered beside the row that names it for the reason
+  // stated above: an unregistered `chart` would fall back to the neutral glyph and look chosen.
+  chart: ChartIcon,
 };
 
 export const resolveNavIcon = (name: string | null | undefined, fallback: NavIcon): NavIcon => {

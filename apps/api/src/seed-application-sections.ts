@@ -132,6 +132,9 @@ const DEFAULTS: Record<string, SectionDef[]> = {
         '/payroll/runs',
         '/payroll/adjustments',
         '/payroll/employee-loans',
+        // Last, because it READS what the four above produce: a report is composed over payslips
+        // that a run has already issued.
+        '/payroll/reports',
       ],
     },
   ],

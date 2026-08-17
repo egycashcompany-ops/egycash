@@ -288,6 +288,16 @@ export const GridIcon = (p: IconProps): JSX.Element => (
   </Base>
 );
 
+/** Scope B1 — the payroll reports row. Bars over an axis: a grouped total, which is what it opens. */
+export const ChartIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <path d="M3 3v18h18" />
+    <rect x="7" y="12" width="3" height="6" rx="1" />
+    <rect x="12" y="8" width="3" height="10" rx="1" />
+    <rect x="17" y="5" width="3" height="13" rx="1" />
+  </Base>
+);
+
 export const EyeIcon = (p: IconProps): JSX.Element => (
   <Base {...p}>
     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />

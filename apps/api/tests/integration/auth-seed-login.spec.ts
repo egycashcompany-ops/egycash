@@ -185,8 +185,8 @@ describe('seed → password login (regression)', () => {
     // P-HR-23 adds the cost centres catalog to Organization — the axis payroll cost is reported
     // along, which needed a sidebar row of its own rather than a corner of another screen.
     expect(routes).toContain('/organization/cost-centers');
-    // 21 (HR) + 12 (Fleet) + 7 (Organization) + 13 (IT) + 9 (Administration)
-    expect(routes).toHaveLength(63);
+    // 22 (HR) + 12 (Fleet) + 7 (Organization) + 13 (IT) + 9 (Administration)
+    expect(routes).toHaveLength(64);
   });
 
   it('re-running the seed is idempotent — no duplicate categories/applications/grants', async () => {
@@ -208,7 +208,7 @@ describe('seed → password login (regression)', () => {
         (n, g) => n + g.applications.length + g.sections.reduce((m, s) => m + s.applications.length, 0),
         0,
       ),
-    ).toBe(63);
+    ).toBe(64);
   });
 
   it('the seeded HR user also logs in with email/password', async () => {

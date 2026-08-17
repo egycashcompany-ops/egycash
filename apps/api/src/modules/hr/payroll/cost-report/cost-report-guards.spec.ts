@@ -32,6 +32,8 @@ const SERVICE = stripComments(read('./cost-report.service.ts'));
 const ROW = stripComments(read('./cost-report.row.ts'));
 const ROUTES = read('./cost-report.routes.ts');
 const REPOSITORY = stripComments(read('../payslips/payslip.repository.ts'));
+/** Scope B1 — the one place a grouping key or a database path is written. */
+const DIMENSIONS = stripComments(read('../report-builder/report-dimensions.ts'));
 
 describe('R1/R2 — an axis arranges what the caller may see, it does not widen it', () => {
   it('the report runs through the one scoped pipeline, and opens no query of its own', () => {
@@ -88,14 +90,20 @@ describe('R4/R6 — the axes are closed, and currency is not one of them', () =>
   });
 
   it('and every axis key carries currency and kind, so no total spans two currencies', () => {
-    const keys = REPOSITORY.slice(REPOSITORY.indexOf('const GROUP_KEYS'), REPOSITORY.indexOf('class PayslipRepository'));
-    expect(keys).not.toHaveLength(0);
+    // Scope B1 composes the keys from atomic fragments instead of writing four literals, so this
+    // asserts the composition: every axis lists `kind`, and the currency is seeded before any
+    // dimension is merged in. Stronger than counting four literals — it holds for every subset a
+    // report can select, not only for these four.
+    const axes = REPOSITORY.slice(
+      REPOSITORY.indexOf('const AXIS_DIMENSIONS'),
+      REPOSITORY.indexOf('const GROUP_KEYS'),
+    );
+    expect(axes, 'AXIS_DIMENSIONS block').not.toHaveLength(0);
     for (const axis of PAYROLL_REPORT_GROUP_BY) {
-      expect(keys, axis).toContain(`${axis}:`);
+      expect(axes, axis).toContain(`${axis}:`);
     }
-    // One `currency` and one `kind` per axis — four of each, and no axis without them.
-    expect((keys.match(/currency: '\$currency'/g) ?? []).length).toBe(PAYROLL_REPORT_GROUP_BY.length);
-    expect((keys.match(/kind: '\$lines\.kind'/g) ?? []).length).toBe(PAYROLL_REPORT_GROUP_BY.length);
+    expect((axes.match(/'kind'/g) ?? []).length).toBe(PAYROLL_REPORT_GROUP_BY.length);
+    expect(DIMENSIONS).toContain('const key: Record<string, string> = { ...CURRENCY_KEY };');
   });
 
   it('and the request is bounded — a report, not a spreadsheet', () => {
@@ -105,7 +113,8 @@ describe('R4/R6 — the axes are closed, and currency is not one of them', () =>
 
 describe('R5 — the cost centre is the stamp, never today’s membership', () => {
   it('groups by the value stored on the payslip', () => {
-    expect(REPOSITORY).toContain("costCenterId: '$costCenterId'");
+    // The fragment now lives with the other dimension fragments; the projection stays here.
+    expect(DIMENSIONS).toContain("costCenter: { costCenterId: '$costCenterId' }");
     expect(REPOSITORY).toContain('costCenterId: 1');
   });
 

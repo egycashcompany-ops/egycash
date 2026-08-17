@@ -15,7 +15,12 @@
 // arrive with the captain-execution slice, and keeping order separate from execution is what lets
 // Operations reorder a plan without touching what a captain has already done.
 import { Schema, model, type Types } from 'mongoose';
-import { OPERATIONS_SHIPMENT_LEGS, type OperationsShipmentLeg } from '@ecms/contracts';
+import {
+  OPERATIONS_EXECUTION_STATUSES,
+  OPERATIONS_SHIPMENT_LEGS,
+  type OperationsExecutionStatus,
+  type OperationsShipmentLeg,
+} from '@ecms/contracts';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../shared/base/base.model';
 
 export interface OperationsShipmentAssignmentDoc extends BaseDocFields {
@@ -27,6 +32,19 @@ export interface OperationsShipmentAssignmentDoc extends BaseDocFields {
   crewAssignmentId: Types.ObjectId;
   /** 1-based position within (operationsDayId, captainEmployeeId, leg). */
   sequence: number;
+
+  // ── Captain execution (OP-7, NEW — no legacy counterpart) ─────────────────────────────────────
+  // Execution state lives HERE, on the assignment, and NOT on the shipment. The two are different
+  // lifecycles owned by different actors: the shipment's `status` is the back-office business
+  // ladder (legacy-derived, `operationsShipment.complete`), while this is how far the captain has
+  // got on THIS leg (`operationsExecution.own`). A secured shipment has two legs carried by two
+  // captains on two days — one shared field could not describe both, which is the structural
+  // reason they cannot be merged even if someone wanted to.
+  executionStatus: OperationsExecutionStatus;
+  startedAt: Date | null;
+  pickedUpAt: Date | null;
+  deliveredAt: Date | null;
+  completedAt: Date | null;
 }
 
 const assignmentSchema = new Schema<OperationsShipmentAssignmentDoc>(
@@ -38,6 +56,16 @@ const assignmentSchema = new Schema<OperationsShipmentAssignmentDoc>(
     vehicleId: { type: Schema.Types.ObjectId, required: true },
     crewAssignmentId: { type: Schema.Types.ObjectId, required: true },
     sequence: { type: Number, required: true, min: 1 },
+    executionStatus: {
+      type: String,
+      required: true,
+      enum: OPERATIONS_EXECUTION_STATUSES,
+      default: 'pending',
+    },
+    startedAt: { type: Date, default: null },
+    pickedUpAt: { type: Date, default: null },
+    deliveredAt: { type: Date, default: null },
+    completedAt: { type: Date, default: null },
     ...baseFields,
   },
   baseSchemaOptions,

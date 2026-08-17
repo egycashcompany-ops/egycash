@@ -190,6 +190,7 @@ import {
   OperationsDayEventPayloadV1,
   OperationsShipmentAssignmentPayloadV1,
   OperationsShipmentEventPayloadV1,
+  OperationsShipmentExecutionPayloadV1,
   OperationsShipmentReorderedPayloadV1,
 } from '../modules/operations.js';
 
@@ -765,6 +766,10 @@ export const EVENT_ACTION_NAMES: Readonly<Record<string, LocalizedString>> = {
   released: { en: 'released', ar: 'صرف' },
   dispatched: { en: 'dispatched', ar: 'خروج' },
   reordered: { en: 'reordered', ar: 'إعادة ترتيب' },
+  // operations (OP-7): the captain's execution steps. `started` and `completed` are already in this
+  // vocabulary and mean exactly what execution means by them — reused, not duplicated.
+  pickedUp: { en: 'picked up', ar: 'استلام من المصدر' },
+  delivered: { en: 'delivered', ar: 'توصيل' },
   disposed: { en: 'disposed', ar: 'استبعاد' },
   // `opened` is already defined above (recruitment uses it) — one entry serves both modules,
   // which is the point of a shared action vocabulary.
@@ -1214,6 +1219,12 @@ export const OPERATIONS_EVENT_PAYLOAD_SCHEMAS: Readonly<
   [OperationsEvents.SecuredLegAssigned]: OperationsShipmentAssignmentPayloadV1,
   [OperationsEvents.SecuredDispatched]: OperationsShipmentEventPayloadV1,
   [OperationsEvents.ShipmentOrderReordered]: OperationsShipmentReorderedPayloadV1,
+  // OP-7 — the four captain execution facts. One payload shape for all four: they differ only in
+  // which step they report, and `from`/`to` already carry that.
+  [OperationsEvents.ExecutionStarted]: OperationsShipmentExecutionPayloadV1,
+  [OperationsEvents.ExecutionPickupConfirmed]: OperationsShipmentExecutionPayloadV1,
+  [OperationsEvents.ExecutionDeliveryConfirmed]: OperationsShipmentExecutionPayloadV1,
+  [OperationsEvents.ExecutionCompleted]: OperationsShipmentExecutionPayloadV1,
 };
 
 export const OPERATIONS_EVENT_SOURCE: EventCatalogSource = {

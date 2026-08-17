@@ -1,12 +1,12 @@
 // The manifest guards: the module registers cleanly, and its surfaces are exactly what the
 // shipped slices claim. The pin-the-numbers block (pages.spec precedent) moves with every slice:
-// OP-6 pinned 14 permissions, 5 pages, 9 routes, 8 collections — the next slice updates these in
-// the same PR that grows them.
+// 14 permissions, 5 pages, 9 routes, 8 collections — unchanged by OP-7, which added the captain's
+// execution mutations under the route prefix and the permission OP-6 already declared for them.
 import { describe, expect, it } from 'vitest';
 import { platformSatisfies, validateManifest } from '../../platform/kernel/module-registry';
 import { operationsModule, operationsPages, operationsPermissions } from './operations.module';
 
-describe('operations module manifest (OP-6)', () => {
+describe('operations module manifest (OP-7)', () => {
   it('passes kernel manifest validation', () => {
     expect(() => {
       validateManifest(operationsModule);
@@ -17,7 +17,7 @@ describe('operations module manifest (OP-6)', () => {
     expect(platformSatisfies(operationsModule.requiresPlatform)).toBe(true);
   });
 
-  it('pins the OP-6 surface', () => {
+  it('pins the OP-7 surface', () => {
     expect(operationsModule.id).toBe('operations');
     expect(operationsPermissions.map((p) => p.key).sort()).toEqual([
       'operationsCatalog.manage',

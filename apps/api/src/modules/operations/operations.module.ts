@@ -169,7 +169,10 @@ export const operationsPages: PageDef[] = [
 export const operationsModule: ModuleManifest = {
   id: 'operations',
   name: { en: 'Operations', ar: 'العمليات' },
-  version: '0.6.0',
+  // OP-7 adds the captain's four execution mutations under the EXISTING `/operations/mobile`
+  // prefix and the EXISTING `operationsExecution.own` grant — the surface pins below are therefore
+  // unchanged, deliberately: execution is what the captain permission was declared for.
+  version: '0.7.0',
   requiresPlatform: '^2.2',
   permissions: operationsPermissions,
   pages: operationsPages,

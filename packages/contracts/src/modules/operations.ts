@@ -868,6 +868,19 @@ export interface OperationsMobileStopDto {
   status: OperationsShipmentStatus;
   progress: OperationsStopProgress;
 
+  /**
+   * How far the CAPTAIN has got on this leg (OP-7). A separate lifecycle from `status` above,
+   * owned by a different actor: `status` is the back office's business ladder, this is the
+   * captain's execution. They are never written from one another.
+   */
+  executionStatus: OperationsExecutionStatus;
+  startedAt: string | null;
+  pickedUpAt: string | null;
+  deliveredAt: string | null;
+  completedAt: string | null;
+  /** The row's `__v`, so a client may send it back as an extra transition precondition. */
+  version: number;
+
   referenceNumber: string | null;
   packaging: { bags: number; cartons: number; boxes: number } | null;
 
@@ -918,6 +931,55 @@ export const OperationsMobileDayQuerySchema = z
   .strict();
 export type OperationsMobileDayQuery = z.infer<typeof OperationsMobileDayQuerySchema>;
 
+// ── Captain execution (OP-7) ────────────────────────────────────────────────────────────────────
+//
+// NEW ECMS CAPABILITY. Captain-driven execution, the sequential lock, pickup/delivery confirmation
+// from a phone and server-enforced progression have NO legacy counterpart — the legacy system had
+// no captain surface to execute anything from.
+//
+// The stop is addressed by its ASSIGNMENT id, never by a captain id: which stops are the caller's
+// is decided by the server from the token (the identity constraint, design §20-هـ). Nothing in
+// these shapes lets a client nominate a captain, a sequence or an order.
+
+/** The stop being acted on. There is no captain field here, by design. */
+export const OperationsExecutionParamsSchema = z
+  .object({ assignmentId: objectId() })
+  .strict();
+export type OperationsExecutionParams = z.infer<typeof OperationsExecutionParamsSchema>;
+
+/**
+ * Execution transitions carry no business input — the ACT is the whole message.
+ *
+ * `version` is optional: the authoritative concurrency guard is the compare-and-swap on the
+ * execution state itself (a transition is legal from exactly one state, so a racing caller's
+ * precondition is already gone), and a phone should not have to track document versions to make a
+ * legal move. When a client does send it, it is enforced as an additional precondition.
+ *
+ * Deliberately empty otherwise: no coordinates, no GPS, no free text. Location data stays the
+ * READ-ONLY branch reference data PR 6 exposes.
+ */
+export const OperationsExecutionBodySchema = z
+  .object({ version: z.number().int().min(0).optional() })
+  .strict();
+export type OperationsExecutionBody = z.infer<typeof OperationsExecutionBodySchema>;
+
+/** What a transition returns: the stop's new execution truth, and where the route now stands. */
+export interface OperationsExecutionResultDto {
+  assignmentId: string;
+  shipmentId: string;
+  leg: OperationsShipmentLeg;
+  sequence: number;
+  from: OperationsExecutionStatus;
+  executionStatus: OperationsExecutionStatus;
+  startedAt: string | null;
+  pickedUpAt: string | null;
+  deliveredAt: string | null;
+  completedAt: string | null;
+  version: number;
+  /** The stop that is actionable now — the SAME derivation the day read uses. */
+  currentAssignmentId: string | null;
+}
+
 // ── Events (ADR-008 `<module>.<entity>.<event>`) ────────────────────────────────────────────────
 
 export const OperationsEvents = {
@@ -936,6 +998,15 @@ export const OperationsEvents = {
   SecuredLegAssigned: 'operations.shipmentAssignment.assigned',
   SecuredDispatched: 'operations.shipment.dispatched',
   ShipmentOrderReordered: 'operations.shipmentAssignment.reordered',
+  // Captain execution (OP-7, NEW). The entity is `shipmentAssignment` because that is the row the
+  // execution state lives on — the same entity the planning facts above describe, now also
+  // reporting what the captain did to it. `operations.shipmentAssignment.completed` is therefore
+  // distinct from `operations.shipment.completed`: the first is "the captain finished this leg",
+  // the second is "the back office closed the shipment". Two different facts, two different names.
+  ExecutionStarted: 'operations.shipmentAssignment.started',
+  ExecutionPickupConfirmed: 'operations.shipmentAssignment.pickedUp',
+  ExecutionDeliveryConfirmed: 'operations.shipmentAssignment.delivered',
+  ExecutionCompleted: 'operations.shipmentAssignment.completed',
 } as const;
 export type OperationsEventName = (typeof OperationsEvents)[keyof typeof OperationsEvents];
 
@@ -985,4 +1056,21 @@ export const OperationsShipmentReorderedPayloadV1 = z.object({
   captainEmployeeId: objectId(),
   leg: OperationsShipmentLegSchema,
   count: z.number().int().min(0),
+});
+
+/**
+ * One captain execution transition (OP-7). Carries `from`/`to` so a subscriber can tell WHICH step
+ * happened without re-deriving it from the event name, and the day + sequence so a consumer can
+ * place the stop on the route without a second read.
+ */
+export const OperationsShipmentExecutionPayloadV1 = z.object({
+  assignmentId: objectId(),
+  shipmentId: objectId(),
+  operationsDayId: objectId(),
+  captainEmployeeId: objectId(),
+  vehicleId: objectId(),
+  leg: OperationsShipmentLegSchema,
+  sequence: z.number().int().min(1),
+  from: OperationsExecutionStatusSchema,
+  to: OperationsExecutionStatusSchema,
 });

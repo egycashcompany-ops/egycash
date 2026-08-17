@@ -11,7 +11,7 @@ import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { ModuleHome } from '../../../shared/ui/ModuleHome';
-import { TagIcon } from '../../../shared/ui/icons';
+import { ClipboardIcon, TagIcon } from '../../../shared/ui/icons';
 
 type Icon = ComponentType<SVGProps<SVGSVGElement>>;
 
@@ -23,8 +23,16 @@ interface Shortcut {
   permission: string;
 }
 
-/** Legacy `/data_edit` — the reference data every other Operations screen picks from. */
 export const OPERATIONS_SHORTCUTS: Shortcut[] = [
+  /** Legacy `/main_ops` — the desk's working set for a day. */
+  {
+    to: '/operations/shipments',
+    titleKey: 'operations.nav.dailyOps',
+    descKey: 'operations.cards.dailyOps',
+    icon: ClipboardIcon,
+    permission: 'operationsShipment.view',
+  },
+  /** Legacy `/data_edit` — the reference data every other Operations screen picks from. */
   {
     to: '/operations/catalogs',
     titleKey: 'operations.nav.catalogs',

@@ -6,6 +6,8 @@
 // silently corrupting migration or report parity in a later slice.
 import { describe, expect, it } from 'vitest';
 import {
+  CreateOperationsBankBranchSchema,
+  CreateOperationsShipmentSchema,
   LEGACY_OPERATIONS_SHIPMENT_CODE_BY_STATUS,
   LEGACY_OPERATIONS_SHIPMENT_STATUS_BY_CODE,
   LEGACY_OPERATIONS_SHIPMENT_TYPE_LABELS,
@@ -15,7 +17,10 @@ import {
   OPERATIONS_SHIPMENT_STATUSES,
   OPERATIONS_SHIPMENT_TYPES,
   OperationsShipmentStatusSchema,
+  UpdateOperationsShipmentSchema,
 } from './operations.js';
+
+const oid = (n: number): string => n.toString(16).padStart(24, '0');
 
 describe('operations vocabulary — legacy status mapping', () => {
   it('maps legacy code 1 to completed — terminal, NOT the first step', () => {
@@ -70,5 +75,85 @@ describe('operations vocabulary — the shape it actually has today', () => {
   it('rejects a legacy numeric status where a normalized one is required', () => {
     expect(OperationsShipmentStatusSchema.safeParse(1).success).toBe(false);
     expect(OperationsShipmentStatusSchema.safeParse('completed').success).toBe(true);
+  });
+});
+
+describe('operations shipment schemas — the legacy create guard, server-enforced', () => {
+  const base = {
+    shipmentType: 'daily',
+    mainBankId: oid(1),
+    originBranchId: oid(2),
+    destinationBranchId: oid(3),
+    lines: [{ currencyId: oid(4), amount: 1500.5 }],
+    collectionDate: '2026-08-17',
+  };
+
+  it('accepts the legacy-required minimum: banks, branches, one line, the date', () => {
+    expect(CreateOperationsShipmentSchema.safeParse(base).success).toBe(true);
+  });
+
+  it('keeps the secondary bank optional — legacy never server-checked toBankSelect (:313)', () => {
+    const parsed = CreateOperationsShipmentSchema.parse(base);
+    expect(parsed.secondaryBankId).toBeNull();
+  });
+
+  it('refuses a daily shipment carrying a delivery date — legacy hardcodes del_date "" (:353)', () => {
+    expect(
+      CreateOperationsShipmentSchema.safeParse({ ...base, deliveryDate: '2026-08-20' }).success,
+    ).toBe(false);
+    expect(
+      CreateOperationsShipmentSchema.safeParse({
+        ...base,
+        shipmentType: 'secured',
+        deliveryDate: '2026-08-20',
+      }).success,
+    ).toBe(true);
+  });
+
+  it('refuses an empty lines array and a negative amount — the legacy input strips the sign', () => {
+    expect(CreateOperationsShipmentSchema.safeParse({ ...base, lines: [] }).success).toBe(false);
+    expect(
+      CreateOperationsShipmentSchema.safeParse({
+        ...base,
+        lines: [{ currencyId: oid(4), amount: -5 }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('caps lines at 17 — the legacy multi-currency form had exactly 17 slots (:1230)', () => {
+    const lines = Array.from({ length: 18 }, (_, i) => ({ currencyId: oid(i + 10), amount: 1 }));
+    expect(CreateOperationsShipmentSchema.safeParse({ ...base, lines }).success).toBe(false);
+  });
+
+  it('update is version-locked and cannot change the shipment type', () => {
+    expect(UpdateOperationsShipmentSchema.safeParse({ notes: 'x' }).success).toBe(false);
+    expect(UpdateOperationsShipmentSchema.safeParse({ notes: 'x', version: 0 }).success).toBe(true);
+    expect(
+      UpdateOperationsShipmentSchema.safeParse({ shipmentType: 'secured', version: 0 }).success,
+    ).toBe(false);
+  });
+});
+
+describe('operations reference schemas', () => {
+  it('branch financeAreaName is optional — Q24: legacy defaults area2 to area on add', () => {
+    const parsed = CreateOperationsBankBranchSchema.parse({
+      bankId: oid(1),
+      name: 'فرع المهندسين',
+      code: 'B-101',
+      opsAreaName: 'الجيزة',
+    });
+    expect(parsed.financeAreaName).toBeNull();
+    expect(parsed.location).toBeNull();
+  });
+
+  it('rejects out-of-range coordinates on the optional location', () => {
+    expect(
+      CreateOperationsBankBranchSchema.safeParse({
+        bankId: oid(1),
+        name: 'x',
+        code: 'y',
+        location: { addressLine: null, coordinates: { lat: 100, lng: 0 } },
+      }).success,
+    ).toBe(false);
   });
 });

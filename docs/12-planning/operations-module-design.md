@@ -388,9 +388,9 @@ stateDiagram-v2
 | PR | العنوان | النطاق | يعتمد على |
 |---|---|---|---|
 | **1** | Module foundation | `operations.module.ts` + تسجيل في `modules/index.ts` + contracts vocabulary (الأنواع/الحالات + خريطة legacy) + اختباراتها. **بلا صلاحيات وبلا صفحات وبلا routes** — القاعدة الملزمة في ECMS (سابقة IT): "a grant is declared WITH its operation, never ahead of it"، فالصلاحيات والصفحات تصل مع الـ slice الذي يخدمها (OP-2+). | — |
-| **2** | Reference data | `operations_banks`, `operations_bank_branches`, `operations_currencies` + CRUD + `location` abstraction (فارغ) | 1 |
+| **2** | Reference data **+ Shipments core** *(دُمجا في OP-2 بقرار المالك، 2026-08-17)* | `operations_banks/_bank_branches/_currencies` + CRUD + `location` abstraction + `operations_shipments` بدورة حياته المرصودة (complete/reopen بحارس Q30) + صلاحيات `operationsShipment.*`/`operationsCatalog.manage` + أحداث الشحنة الخمسة | 1 |
 | **3** | Operations day | `operations_days` + فتح/إغلاق + حدود اليوم | 1 |
-| **4** | Shipments core | `operations_shipments` + `lines[]` + CRUD + حالات `DRAFT→COMPLETED` لليومي | 2,3 |
+| **4** | ~~Shipments core~~ *(نُفِّذ ضمن OP-2 أعلاه)* — يتبقى منه فقط ربط الشحنة بيوم التشغيل عند وصول PR 3 | 2,3 |
 | **5** | Crew assignment | `operations_crew_assignments` + ربط `fleet_duty_assignments` + **فرض عدم الازدواجية server-side** + لوحة التخطيط | 3 |
 | **6** | Vault / mohsana | `operations_vault_custody` + receive (بأمينين) + dispatch + آلة الحالة الكاملة | 4,5 |
 | **7** | Shipment assignment + sequencing | `operations_shipment_assignments` + `sequence` + API إعادة الترتيب بـ version | 4,5 |

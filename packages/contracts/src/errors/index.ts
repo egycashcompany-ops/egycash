@@ -62,6 +62,18 @@ export const ErrorCodes = {
   FILE_BLOCKED: 'FILE_BLOCKED',
   FILE_SIGNATURE_INVALID: 'FILE_SIGNATURE_INVALID',
   FILE_CATEGORY_INACTIVE: 'FILE_CATEGORY_INACTIVE',
+
+  // operations (cash transfer — design docs/12-planning/operations-module-design.md)
+  /** A normalized ref (string→ObjectId NORMALIZE) points at a missing or inactive bank. */
+  OPERATIONS_UNKNOWN_BANK: 'OPERATIONS_UNKNOWN_BANK',
+  OPERATIONS_UNKNOWN_BRANCH: 'OPERATIONS_UNKNOWN_BRANCH',
+  OPERATIONS_UNKNOWN_CURRENCY: 'OPERATIONS_UNKNOWN_CURRENCY',
+  /** The legacy client-side branch-per-bank picker filter, made a domain rule (main_ops.ejs:477). */
+  OPERATIONS_BRANCH_BANK_MISMATCH: 'OPERATIONS_BRANCH_BANK_MISMATCH',
+  /** Legacy parity: a daily shipment hardcodes del_date "" (contad_app.js:353). */
+  OPERATIONS_DAILY_HAS_NO_DELIVERY_DATE: 'OPERATIONS_DAILY_HAS_NO_DELIVERY_DATE',
+  /** Q30 NORMALIZE: transitions follow the observed lifecycle, not the unguarded legacy toggle. */
+  OPERATIONS_INVALID_SHIPMENT_TRANSITION: 'OPERATIONS_INVALID_SHIPMENT_TRANSITION',
 } as const;
 
 export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];

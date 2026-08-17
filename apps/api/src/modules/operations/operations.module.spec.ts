@@ -1,11 +1,12 @@
-// The OP-1 manifest guards: the module registers cleanly, and its surfaces are exactly as empty
-// as the slice claims. The second block is the pin-the-numbers precedent (pages.spec) — when
-// OP-2+ adds a permission, route or collection, the assertion names it in the same PR.
+// The manifest guards: the module registers cleanly, and its surfaces are exactly what the
+// shipped slices claim. The pin-the-numbers block (pages.spec precedent) moves with every slice:
+// OP-2 pinned 7 permissions, 2 pages, 4 routes, 4 collections — the next slice updates these in
+// the same PR that grows them.
 import { describe, expect, it } from 'vitest';
 import { platformSatisfies, validateManifest } from '../../platform/kernel/module-registry';
-import { operationsModule } from './operations.module';
+import { operationsModule, operationsPages, operationsPermissions } from './operations.module';
 
-describe('operations module manifest (OP-1)', () => {
+describe('operations module manifest (OP-2)', () => {
   it('passes kernel manifest validation', () => {
     expect(() => {
       validateManifest(operationsModule);
@@ -16,15 +17,38 @@ describe('operations module manifest (OP-1)', () => {
     expect(platformSatisfies(operationsModule.requiresPlatform)).toBe(true);
   });
 
-  it('ships the foundation slice only — no surface exists that no slice serves yet', () => {
+  it('pins the OP-2 surface', () => {
     expect(operationsModule.id).toBe('operations');
-    expect(operationsModule.permissions).toEqual([]);
-    expect(operationsModule.routes).toEqual([]);
-    expect(operationsModule.collections).toEqual([]);
-    expect(operationsModule.eventSubscriptions).toEqual([]);
-    expect(operationsModule.pages).toBeUndefined();
-    expect(operationsModule.scheduledTasks).toBeUndefined();
-    expect(operationsModule.jobHandlers).toBeUndefined();
-    expect(operationsModule.seed).toBeUndefined();
+    expect(operationsPermissions.map((p) => p.key).sort()).toEqual([
+      'operationsCatalog.manage',
+      'operationsShipment.complete',
+      'operationsShipment.create',
+      'operationsShipment.delete',
+      'operationsShipment.edit',
+      'operationsShipment.view',
+    ]);
+    expect(operationsPages.map((p) => p.id)).toEqual([
+      'operations.shipments',
+      'operations.catalogs',
+    ]);
+    expect(operationsModule.routes.map((r) => r.prefix).sort()).toEqual([
+      '/operations/bank-branches',
+      '/operations/banks',
+      '/operations/currencies',
+      '/operations/shipments',
+    ]);
+    expect(operationsModule.collections.sort()).toEqual([
+      'operations_bank_branches',
+      'operations_banks',
+      'operations_currencies',
+      'operations_shipments',
+    ]);
+  });
+
+  it('every page is pointed at by at least one permission (no empty pages at boot)', () => {
+    const used = new Set(operationsPermissions.map((p) => p.pageId));
+    for (const page of operationsPages) {
+      expect(used.has(page.id)).toBe(true);
+    }
   });
 });

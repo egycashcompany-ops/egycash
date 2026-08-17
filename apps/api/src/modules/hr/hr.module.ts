@@ -62,6 +62,7 @@ import {
   buildReconciliationRouter,
   buildCostBreakdownRouter,
   buildCostReportRouter,
+  buildReportBuilderRouter,
   buildEmployeeAdjustmentsRouter,
   buildPayrollAdjustmentsRouter,
   hrAdjustmentFileAuthorizers,
@@ -596,6 +597,35 @@ const payrollAdjustmentPermissions = declarePermissions(
 );
 
 /**
+ * The payroll report builder (scope B1). TWO keys, and NEITHER of them grants sight of a figure.
+ *
+ * `view` opens the builder and lists the definitions somebody saved; `manage` writes them. The
+ * split is the ordinary one — reading a catalog is not editing it — but the part worth stating is
+ * what these keys deliberately do NOT do: **running a report also demands
+ * `employee.viewCompensation`**, because the rows it returns are somebody's pay in aggregate.
+ *
+ * Without that second key, `payrollReport.view` would become a way to read payroll without holding
+ * the payroll key — a permission bypass wearing the costume of a feature. The router chains two
+ * `authorize` middlewares to say so, and a guard holds it there.
+ *
+ * A page cannot exist without a permission (`validatePageRegistry` refuses `empty-page`), which is
+ * why reusing an existing key alone was never an option here.
+ */
+const payrollReportPermissions = declarePermissions(
+  'hr',
+  'payrollReport',
+  { en: 'payroll reports', ar: 'تقارير الرواتب' },
+  ['view'],
+  [
+    {
+      action: 'manage',
+      name: { en: 'Manage payroll report definitions', ar: 'إدارة تعريفات تقارير الرواتب' },
+    },
+  ],
+  'hr.payroll-reports',
+);
+
+/**
  * Employee loans and advances (P-HR-05). THREE keys, and the split is the same one P-HR-04 made
  * for the same reason — one key held by one person is not a two-person rule (D2).
  *
@@ -698,6 +728,7 @@ export const hrPermissions: PermissionDef[] = [
   ...payrollRunPermissions,
   ...payrollAdjustmentPermissions,
   ...employeeLoanPermissions,
+  ...payrollReportPermissions,
 ];
 
 /**
@@ -877,6 +908,14 @@ export const hrPages: PageDef[] = [
     route: '/payroll/employee-loans',
     sortOrder: 240,
   },
+  // Scope B1. Last under Payroll: a report is read from what the surfaces above produced.
+  {
+    id: 'hr.payroll-reports',
+    moduleId: 'hr',
+    name: { en: 'Payroll reports', ar: 'تقارير الرواتب' },
+    route: '/payroll/reports',
+    sortOrder: 250,
+  },
 ];
 
 export const hrModule: ModuleManifest = {
@@ -949,6 +988,7 @@ export const hrModule: ModuleManifest = {
     // nothing, so it needs no key of its own.
     { prefix: '/hr/payroll/runs', router: buildCostBreakdownRouter() },
     { prefix: '/hr/payroll/runs', router: buildCostReportRouter() },
+    { prefix: '/hr/payroll/reports', router: buildReportBuilderRouter() },
     { prefix: '/hr/payroll/payslips', router: buildPayslipsRouter() },
     // P-HR-04 — the organization-wide list the approval queue reads.
     { prefix: '/hr/payroll/adjustments', router: buildPayrollAdjustmentsRouter() },

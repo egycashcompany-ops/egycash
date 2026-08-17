@@ -149,10 +149,43 @@ runs of the same report.
 
 A definition is stored with **no owner and no sharing** (D-REPORT-11 = A). The narrowing happens at
 **execution**, through the `scopeSelector` this system already has: the same saved definition hands a
-department manager their department's figures and hands a reader whose scope is `organization` the
-whole company's. That is literally "a builder for each department, plus a report for the whole
-company" — with no ownership entity, because the scope ladder `own → section → department → branch →
-organization` already expresses it.
+reader whose scope is `branch` their branch's figures and hands a reader whose scope is
+`organization` the whole company's — with no ownership entity, because the scope ladder
+`own → section → department → branch → organization` already expresses who may see what.
+
+A filter cannot escape that. The scoped `$match` is the first stage of the pipeline and a user filter
+is a later one, and a `$match` after a `$match` can only narrow what survived the first. This is a
+property of the pipeline's **shape**, not of a check somebody has to remember.
+
+### F-B1-1 — the ladder does not actually reach the department, and this design said it did
+
+**The earlier text of this section was wrong.** It claimed a *department* manager is answered with
+their department's figures. The code does not do that, and never did:
+
+- `payslip.model.ts` stores `branchId` and `costCenterId`. There is **no department field**.
+- `payslip.repository.ts` therefore declares `branchField: 'branchId'` and nothing else.
+- `BaseRepository.scopeFilter` answers a scope whose field is undeclared with `{}` —
+  `orgScopeFilter(undefined, id)` returns an empty filter — and `baseFilter` drops empty clauses.
+
+So a grant of `employee.viewCompensation` at **`department`** (or `section`) scope narrows a payslip
+read by **nothing**: that reader is answered exactly as an `organization`-scoped reader is.
+
+This is **inherited, not introduced by B1**. Every payslip read has behaved this way since PY-7 — the
+payslip list, the reconciliation, the P-HR-14 cost breakdown and the P-HR-25 dynamic report all run
+the same `baseFilter`. B1 reuses that pipeline deliberately (§3), so it reuses this with it.
+
+It matters here because it is the **exact requirement B1 was approved to answer**: D-GAP-3′ settled
+that «الإدارة» means the organizational unit, and "لكل إدارة، بالإضافة إلى الشركة بالكامل" is the
+sentence this scope section exists to satisfy. Branch-level narrowing satisfies the second half and
+approximates the first.
+
+`apps/api/tests/integration/hr-payroll-reports.spec.ts` asserts the **actual** behaviour under this
+name, so the gap is visible in the test output rather than only in prose — and so that any later fix
+fails a test instead of passing silently.
+
+**Not resolved in B1.** Closing it means changing what a payslip stores or how a payslip read is
+scoped, and `payslip.model.ts` is on the do-not-touch list for this scope (§7). It is recorded for the
+owner's decision.
 
 The **list of definitions** is metadata, not pay, so it is read with `payrollReport.view` and carries
 no organizational scope of its own.

@@ -32,8 +32,8 @@ describe('where the card lives', () => {
   });
 
   // PY-3 added no route and no navigation row of its own — the card lives inside a tab. Every
-  // route below belongs to another phase (PY-11, P-HR-18, P-HR-19, PY-1, PY-6, P-HR-06); one more
-  // would mean a surface shipped without a phase behind it.
+  // route below belongs to another phase (PY-11, P-HR-18, P-HR-19, PY-1, PY-6, P-HR-06, B1); one
+  // more would mean a surface shipped without a phase behind it.
   it('adds no route of its own to the payroll surface', () => {
     const routes = readFileSync(resolve(HERE, 'routes.tsx'), 'utf8');
     expect([...routes.matchAll(/path="([^"*]+)"/g)].map((m) => m[1])).toEqual([
@@ -44,6 +44,7 @@ describe('where the card lives', () => {
       'runs',
       'adjustments',
       'employee-loans',
+      'reports',
     ]);
   });
 
@@ -292,6 +293,7 @@ describe('the payroll run screen', () => {
       'runs',
       'adjustments',
       'employee-loans',
+      'reports',
     ]);
     expect(ROUTES).toContain('<RequirePermission permission="payrollRun.view">');
   });

@@ -22,9 +22,9 @@ describe('the assembled page registry', () => {
     expect(validatePageRegistry(pages, permissions)).toEqual([]);
   });
 
-  it('declares 59 pages over 232 permissions', () => {
-    expect(pages).toHaveLength(59);
-    expect(permissions).toHaveLength(232);
+  it('declares 60 pages over 234 permissions', () => {
+    expect(pages).toHaveLength(60);
+    expect(permissions).toHaveLength(234);
   });
 
   /**
@@ -35,16 +35,16 @@ describe('the assembled page registry', () => {
    * P-HR-10 then added two keys and no page — `payrollRun.approve` and `payrollRun.pay` both point
    * at `hr.payroll-runs`, because a lifecycle needs a key per transition and not a screen per one.
    */
-  it('assigns 207 permissions to a page and leaves 25 deliberately unassigned', () => {
+  it('assigns 209 permissions to a page and leaves 25 deliberately unassigned', () => {
     const assigned = permissions.filter((p) => p.pageId !== null);
-    expect(assigned).toHaveLength(207);
+    expect(assigned).toHaveLength(209);
     expect(permissions.length - assigned.length).toBe(25);
   });
 
   it('splits the pages across the four modules as declared', () => {
     const byModule = new Map<string, number>();
     for (const page of pages) byModule.set(page.moduleId, (byModule.get(page.moduleId) ?? 0) + 1);
-    expect(Object.fromEntries(byModule)).toEqual({ platform: 16, hr: 24, fleet: 10, it: 9 });
+    expect(Object.fromEntries(byModule)).toEqual({ platform: 16, hr: 25, fleet: 10, it: 9 });
   });
 
   // Named rather than counted, because "which permissions have no home" is the question a reviewer

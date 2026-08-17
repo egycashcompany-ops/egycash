@@ -6,9 +6,8 @@
 // a permission bypass wearing the costume of a feature. `authorize` is an ordinary middleware, so
 // two of them in sequence is an AND.
 //
-// NOT MOUNTED YET. Stage 2 builds this router; stage 4 declares `payrollReport.view` / `.manage`,
-// registers the page and mounts it. Until then these keys resolve to nothing and every request here
-// would be refused — which is the correct direction to fail in while a feature is half-built.
+// Mounted under `/hr/payroll/reports`, with `payrollReport.view` / `.manage` declared in the module
+// manifest and the page registered beside them.
 import { Router } from 'express';
 import { z } from 'zod';
 import {

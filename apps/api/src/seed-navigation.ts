@@ -197,6 +197,16 @@ const CATALOG: CategoryDef[] = [
         icon: 'file',
         permission: 'employeeLoan.approve',
       },
+      // Payroll reports (scope B1) — on `view`, because this row leads to the LIST of saved
+      // definitions, which is metadata rather than pay. Running one demands the compensation key
+      // as well, and the screen says so rather than the row hiding it.
+      {
+        en: 'Payroll Reports',
+        ar: 'تقارير الرواتب',
+        route: '/payroll/reports',
+        icon: 'chart',
+        permission: 'payrollReport.view',
+      },
       {
         en: 'Contracts',
         ar: 'العقود',

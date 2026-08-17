@@ -7,9 +7,15 @@
 // database.
 //
 // SCOPE IS THE CALLER'S, ALWAYS. The definition holds no branch and no employee — nothing in it can
-// name whose money to show — so the same saved report hands a department manager their department's
-// figures and hands an organization-scoped reader the whole company's. That is "لكل إدارة، بالإضافة
-// إلى الشركة بالكامل" answered by the scope ladder rather than by an ownership model.
+// name whose money to show — so the same saved report hands a branch-scoped reader their branch's
+// figures and hands an organization-scoped reader the whole company's, with no ownership model to
+// maintain. A filter cannot widen that: it becomes a `$match` AFTER the scoped one.
+//
+// F-B1-1 — WHAT THIS DOES NOT YET DO. The requirement is "لكل إدارة، بالإضافة إلى الشركة بالكامل",
+// and a payslip carries `branchId` with no department field, so a `department`-scoped grant narrows
+// this read by NOTHING and answers as `organization` does. Inherited from PY-7 and shared with every
+// other payslip read; recorded rather than glossed, and pending a decision that would have to touch
+// what a payslip stores.
 //
 // NOTHING IS STORED. A result is computed and returned; there is no execution row, so no figure here
 // can go stale against the payslips it summed.

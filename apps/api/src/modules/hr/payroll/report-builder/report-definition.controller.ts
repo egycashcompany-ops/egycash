@@ -20,8 +20,15 @@ type IdParam = { id: string };
  *
  * `employee.viewCompensation` and not the report key, deliberately: the report key says a person may
  * use the builder, and this says whose pay they may see. Reading the scope from the compensation
- * permission is what makes the same saved definition answer a department manager with their
- * department and an organization-scoped reader with the company.
+ * permission is what makes the same saved definition answer a BRANCH-scoped reader with their branch
+ * and an organization-scoped reader with the company.
+ *
+ * F-B1-1 — AND THE LADDER STOPS AT THE BRANCH, on this collection. A payslip carries `branchId` and
+ * no department field, so `BaseRepository.scopeFilter` answers a `department` or `section` grant
+ * with an empty filter and the read is not narrowed at all. That is inherited from PY-7 rather than
+ * introduced here — the payslip list, the reconciliation and both cost reports have always behaved
+ * this way — and it is stated here instead of being described as something it is not.
+ * `hr-payroll-reports.spec.ts` holds the actual behaviour under that name.
  */
 const executionScope = (req: Request) =>
   scopeSelector(authContext(req), 'employee.viewCompensation');

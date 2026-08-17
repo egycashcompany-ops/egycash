@@ -95,6 +95,16 @@ export const ErrorCodes = {
   OPERATIONS_ASSIGNMENT_NOT_IN_SET: 'OPERATIONS_ASSIGNMENT_NOT_IN_SET',
   /** A reorder omitted assignments — accepting it would strand them at stale positions. */
   OPERATIONS_INCOMPLETE_ORDER: 'OPERATIONS_INCOMPLETE_ORDER',
+
+  // ── Captain execution (OP-7, NEW — no legacy counterpart) ─────────────────────────────────────
+  /** The action is not legal from the stop's current execution state (start/pickup/deliver/complete). */
+  OPERATIONS_INVALID_EXECUTION_TRANSITION: 'OPERATIONS_INVALID_EXECUTION_TRANSITION',
+  /** The sequential lock: an earlier stop on this captain's route is not finished yet. */
+  OPERATIONS_EXECUTION_OUT_OF_SEQUENCE: 'OPERATIONS_EXECUTION_OUT_OF_SEQUENCE',
+  /** Nothing left to execute here — the stop is already settled. */
+  OPERATIONS_EXECUTION_ALREADY_SETTLED: 'OPERATIONS_EXECUTION_ALREADY_SETTLED',
+  /** Someone else moved this stop first; the transition's precondition no longer holds. */
+  OPERATIONS_EXECUTION_CONFLICT: 'OPERATIONS_EXECUTION_CONFLICT',
 } as const;
 
 export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];

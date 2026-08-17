@@ -33,7 +33,6 @@ import {
   type OperationsMobileDayDto,
   type OperationsMobileStopDto,
   type OperationsRouteStopLocationDto,
-  type OperationsShipmentLeg,
   type OperationsStopProgress,
 } from '@ecms/contracts';
 import { type Types } from 'mongoose';
@@ -45,10 +44,11 @@ import { operationsCrewAssignmentRepository } from '../crew/crew-assignment.repo
 import { type OperationsCrewAssignmentDoc } from '../crew/crew-assignment.model';
 import { operationsDayService, utcDay } from '../days/day.service';
 import { operationsShipmentRepository } from '../shipments/shipment.repository';
-import { operationsShipmentAssignmentRepository } from '../shipments/shipment-assignment.repository';
-import { type OperationsShipmentAssignmentDoc } from '../shipments/shipment-assignment.model';
+import { isStopSettled } from './execution-state';
+import { orderedCaptainRoute } from './route-order';
 
-const LEGS: OperationsShipmentLeg[] = ['pickup', 'delivery'];
+const iso = (value: Date | null | undefined): string | null =>
+  value === null || value === undefined ? null : new Date(value).toISOString();
 
 /**
  * Who is logged in, as an EMPLOYEE — resolved through the platform directory seam, never from the
@@ -113,18 +113,9 @@ class OperationsMobileService {
 
     // Step 3 — ORDERED SHIPMENTS. The captain's stops across BOTH legs, in the server-established
     // order, scoped by the SAME server-resolved employee. The client never sorts and never
-    // reorders: `sequence` is authoritative and read-only here.
-    const rows: OperationsShipmentAssignmentDoc[] = [];
-    for (const leg of LEGS) {
-      rows.push(
-        ...(await operationsShipmentAssignmentRepository.findForCaptainDay(
-          dayDoc._id,
-          captain.employeeId,
-          leg,
-        )),
-      );
-    }
-    rows.sort((a, b) => a.sequence - b.sequence || a.leg.localeCompare(b.leg));
+    // reorders: `sequence` is authoritative and read-only here. The order comes from the shared
+    // helper the execution lock also uses, so the display and the lock cannot drift apart.
+    const rows = await orderedCaptainRoute(dayDoc._id, captain.employeeId);
 
     const branchCache = new Map<string, OperationsRouteStopLocationDto>();
     const place = async (branchId: Types.ObjectId): Promise<OperationsRouteStopLocationDto> => {
@@ -154,9 +145,14 @@ class OperationsMobileService {
       const shipment = await operationsShipmentRepository.findById(String(row.shipmentId));
       if (shipment === null) continue;
 
-      const done = shipment.status === 'completed';
+      // OP-7: settlement now answers to the CAPTAIN'S EXECUTION as well as the shipment's business
+      // status, through the one predicate the execution lock also uses. The field keeps exactly the
+      // meaning OP-6 gave it and gains precision, as that contract said it would — and because both
+      // sides share `isStopSettled`, what this shows as `current` is precisely what the server will
+      // let the captain start.
+      const executionStatus = row.executionStatus ?? 'pending';
       let progress: OperationsStopProgress;
-      if (done) {
+      if (isStopSettled(executionStatus, shipment.status)) {
         progress = 'completed';
       } else if (currentAssignmentId === null) {
         progress = 'current';
@@ -180,6 +176,12 @@ class OperationsMobileService {
         packaging: null, // packaging lives on the custody record; the mobile slice does not need it
         pickup: await place(shipment.originBranchId),
         delivery: await place(shipment.destinationBranchId),
+        executionStatus,
+        startedAt: iso(row.startedAt),
+        pickedUpAt: iso(row.pickedUpAt),
+        deliveredAt: iso(row.deliveredAt),
+        completedAt: iso(row.completedAt),
+        version: row.__v,
       });
     }
 

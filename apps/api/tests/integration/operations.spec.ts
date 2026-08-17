@@ -1211,8 +1211,12 @@ const currentOrder = async (): Promise<{ assignmentId: string; version: number }
 
 describe('captain mobile read model — NEW capability, no legacy counterpart (OP-6)', () => {
   const MOBILE_DATE = '2026-09-10';
-  /** A day the captain is PLANNED onto a vehicle but has no shipments — captaincy without stops. */
-  const PLANNED_ONLY_DATE = '2026-09-11';
+  /**
+   * A day the captain is PLANNED onto a vehicle but has no shipments — captaincy without stops.
+   * Deliberately a date no other case touches: this one asserts an EMPTY stop list, so sharing a
+   * day with a case that assigns work would make it pass or fail on declaration order.
+   */
+  const PLANNED_ONLY_DATE = '2026-09-14';
   let captainUserToken = '';
   let captainUserId = '';
   let otherCaptainToken = '';
@@ -1531,5 +1535,403 @@ describe('captain mobile read model — NEW capability, no legacy counterpart (O
 
     const anonymous = await request(app).get('/api/v1/operations/mobile/my-day');
     expect(anonymous.status).toBe(401);
+  });
+});
+
+describe('captain mobile EXECUTION — sequential workflow (OP-7, NEW capability)', () => {
+  // Everything in this block is new ECMS behaviour. The legacy system had no captain surface, so
+  // there is no legacy execution to be parity with — only the shipment, its legs, the (day,
+  // vehicle) crew row and PR 5's persisted `sequence` underneath it, none of which this changes.
+  const EXEC_DATE = '2026-09-20';
+  const NO_STOPS_DATE = '2026-09-21';
+
+  let execCaptainId = '';
+  let execToken = '';
+  let rivalCaptainId = '';
+  let rivalToken = '';
+  let rivalStopId = '';
+  let benchToken = ''; // holds the permission, is an employee, is nobody's captain that day
+  let stops: string[] = [];
+
+  const act = (
+    token: string,
+    assignmentId: string,
+    step: string,
+    body: Record<string, unknown> = {},
+  ): request.Test =>
+    request(app)
+      .post(`/api/v1/operations/mobile/stops/${assignmentId}/${step}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send(body);
+
+  const dayOf = async (token: string, date = EXEC_DATE): Promise<OperationsMobileDayDto> =>
+    data<OperationsMobileDayDto>(
+      await request(app)
+        .get(`/api/v1/operations/mobile/my-day?date=${date}`)
+        .set('Authorization', `Bearer ${token}`),
+    );
+
+  beforeAll(async () => {
+    const { employeeRepository } = await import(
+      '../../src/modules/hr/employee-management/employees/employee.repository'
+    );
+    const role = await rbacService.createRole(
+      { name: { en: 'Captain exec', ar: 'قائد تنفيذ' }, permissionKeys: ['operationsExecution.own'] },
+      await mkUser('exec-role-seed@ecms.local'),
+    );
+    const link = async (email: string, employeeId: string): Promise<string> => {
+      const userId = await mkUser(email);
+      await rbacService.ensureAssignment(userId, String(role._id), 'organization');
+      const current = await employeeRepository.getById(employeeId);
+      await employeeRepository.updateById(employeeId, { userId }, { by: null, version: current.__v });
+      return login(email);
+    };
+
+    execCaptainId = await mkEmployee();
+    rivalCaptainId = await mkEmployee();
+    const benchEmployeeId = await mkEmployee();
+    execToken = await link('exec-captain@ecms.local', execCaptainId);
+    rivalToken = await link('exec-rival@ecms.local', rivalCaptainId);
+    benchToken = await link('exec-bench@ecms.local', benchEmployeeId);
+
+    // Two vehicles, two captains, same day — so "another captain's stop" is a real neighbour and
+    // not a contrived one, and the crew/vehicle mismatch is exercised against a genuine crew row.
+    for (const date of [EXEC_DATE, NO_STOPS_DATE]) {
+      const roster = await request(app)
+        .post('/api/v1/fleet/roster')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          date,
+          rows: [
+            { vehicleId: vehicleAId, notes: 'exec seed A' },
+            { vehicleId: vehicleBId, notes: 'exec seed B' },
+          ],
+        });
+      expect(roster.status).toBe(200);
+    }
+
+    const plan = await request(app)
+      .post('/api/v1/operations/crew-board')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        date: EXEC_DATE,
+        rows: [
+          { vehicleId: vehicleAId, captainEmployeeId: execCaptainId },
+          { vehicleId: vehicleBId, captainEmployeeId: rivalCaptainId },
+        ],
+      });
+    expect(plan.status).toBe(200);
+
+    // The same captain is planned on a SECOND day with no work at all — scenario 16.
+    const idlePlan = await request(app)
+      .post('/api/v1/operations/crew-board')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        date: NO_STOPS_DATE,
+        rows: [{ vehicleId: vehicleAId, captainEmployeeId: execCaptainId }],
+      });
+    expect(idlePlan.status).toBe(200);
+
+    const { operationsCrewAssignmentRepository } = await import(
+      '../../src/modules/operations/crew/crew-assignment.repository'
+    );
+    const { operationsDayService } = await import('../../src/modules/operations/days/day.service');
+    const dayDoc = await operationsDayService.findByDate(new Date(EXEC_DATE));
+    const crewRows = await operationsCrewAssignmentRepository.findForDay(dayDoc?._id ?? '');
+    const crewFor = (vehicleId: string): string =>
+      String(crewRows.find((r) => String(r.vehicleId) === vehicleId)?._id ?? '');
+
+    const assign = async (captain: string, vehicleId: string): Promise<string> => {
+      const shipment = data<OperationsShipmentDto>(await mkShipment({ collectionDate: EXEC_DATE }));
+      const res = await request(app)
+        .post(`/api/v1/operations/assignments/shipments/${shipment.id}/assign-pickup`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ crewAssignmentId: crewFor(vehicleId), captainEmployeeId: captain, version: 0 });
+      expect(res.status).toBe(200);
+      return data<OperationsShipmentAssignmentDto>(res).id;
+    };
+
+    stops = [
+      await assign(execCaptainId, vehicleAId),
+      await assign(execCaptainId, vehicleAId),
+      await assign(execCaptainId, vehicleAId),
+    ];
+    rivalStopId = await assign(rivalCaptainId, vehicleBId);
+
+    // The route the server built is the route the tests reason about.
+    const mine = await dayOf(execToken);
+    expect(mine.stops.map((s) => s.assignmentId)).toEqual(stops);
+  });
+
+  it('6 + 7 + 9. future stops are locked, cannot be skipped, and cannot be completed early', async () => {
+    const before = await dayOf(execToken);
+    expect(before.stops.map((s) => s.progress)).toEqual(['current', 'locked', 'locked']);
+    expect(before.stops.map((s) => s.executionStatus)).toEqual(['pending', 'pending', 'pending']);
+    expect(before.currentAssignmentId).toBe(stops[0]);
+
+    // Skipping ahead — refused by the sequential lock, for BOTH future stops.
+    for (const skipped of [stops[1] ?? '', stops[2] ?? '']) {
+      const jumped = await act(execToken, skipped, 'start');
+      expect(jumped.status).toBe(422);
+      expect((jumped.body as { error: { code: string } }).error.code).toBe(
+        ErrorCodes.OPERATIONS_EXECUTION_OUT_OF_SEQUENCE,
+      );
+    }
+
+    // Completing something never started — refused by the state machine, not by the lock.
+    const early = await act(execToken, stops[0] ?? '', 'complete');
+    expect(early.status).toBe(422);
+    expect((early.body as { error: { code: string } }).error.code).toBe(
+      ErrorCodes.OPERATIONS_INVALID_EXECUTION_TRANSITION,
+    );
+
+    // ...and so is jumping a step inside a stop.
+    const midJump = await act(execToken, stops[0] ?? '', 'deliver');
+    expect(midJump.status).toBe(422);
+    expect((midJump.body as { error: { code: string } }).error.code).toBe(
+      ErrorCodes.OPERATIONS_INVALID_EXECUTION_TRANSITION,
+    );
+
+    // Nothing above moved anything.
+    expect((await dayOf(execToken)).stops.map((s) => s.executionStatus)).toEqual([
+      'pending',
+      'pending',
+      'pending',
+    ]);
+  });
+
+  it('1 + 2 + 3 + 4. start → pickup → deliver → complete, each step stamped', async () => {
+    const started = await act(execToken, stops[0] ?? '', 'start');
+    expect(started.status).toBe(200);
+    expect(data<{ executionStatus: string }>(started).executionStatus).toBe('active');
+    expect(data<{ startedAt: string | null }>(started).startedAt).not.toBeNull();
+
+    const picked = await act(execToken, stops[0] ?? '', 'pickup');
+    expect(picked.status).toBe(200);
+    expect(data<{ executionStatus: string }>(picked).executionStatus).toBe('pickedUp');
+    expect(data<{ pickedUpAt: string | null }>(picked).pickedUpAt).not.toBeNull();
+
+    const delivered = await act(execToken, stops[0] ?? '', 'deliver');
+    expect(delivered.status).toBe(200);
+    expect(data<{ executionStatus: string }>(delivered).executionStatus).toBe('delivered');
+    expect(data<{ deliveredAt: string | null }>(delivered).deliveredAt).not.toBeNull();
+
+    const done = await act(execToken, stops[0] ?? '', 'complete');
+    expect(done.status).toBe(200);
+    const result = data<{ executionStatus: string; completedAt: string | null; currentAssignmentId: string | null }>(done);
+    expect(result.executionStatus).toBe('completed');
+    expect(result.completedAt).not.toBeNull();
+    // The transition itself already reports where the route now stands.
+    expect(result.currentAssignmentId).toBe(stops[1]);
+  });
+
+  it('5 + 15. the next stop becomes current ONLY after completion, and the PR 6 read says so', async () => {
+    const after = await dayOf(execToken);
+    expect(after.stops.map((s) => s.progress)).toEqual(['completed', 'current', 'locked']);
+    expect(after.stops.map((s) => s.executionStatus)).toEqual(['completed', 'pending', 'pending']);
+    expect(after.currentAssignmentId).toBe(stops[1]);
+
+    // Stop 3 is still locked — one completion unlocks exactly one stop, never the rest.
+    const stillLocked = await act(execToken, stops[2] ?? '', 'start');
+    expect(stillLocked.status).toBe(422);
+    expect((stillLocked.body as { error: { code: string } }).error.code).toBe(
+      ErrorCodes.OPERATIONS_EXECUTION_OUT_OF_SEQUENCE,
+    );
+  });
+
+  it('10. a completed stop cannot be completed again', async () => {
+    const again = await act(execToken, stops[0] ?? '', 'complete');
+    expect(again.status).toBe(422);
+    expect((again.body as { error: { code: string } }).error.code).toBe(
+      ErrorCodes.OPERATIONS_EXECUTION_ALREADY_SETTLED,
+    );
+    // ...and it is still completed exactly once.
+    expect((await dayOf(execToken)).stops[0]?.executionStatus).toBe('completed');
+  });
+
+  it('11. concurrent starts of the same stop — exactly one transition wins', async () => {
+    const racers = await Promise.all(
+      Array.from({ length: 6 }, () => act(execToken, stops[1] ?? '', 'start')),
+    );
+    expect(racers.filter((r) => r.status === 200)).toHaveLength(1);
+    // Every loser is refused for a real reason, never a crash.
+    for (const loser of racers.filter((r) => r.status !== 200)) {
+      expect([409, 422]).toContain(loser.status);
+    }
+    expect((await dayOf(execToken)).stops[1]?.executionStatus).toBe('active');
+  });
+
+  it('11b. concurrent completes of the same stop — exactly one transition wins', async () => {
+    expect((await act(execToken, stops[1] ?? '', 'pickup')).status).toBe(200);
+    expect((await act(execToken, stops[1] ?? '', 'deliver')).status).toBe(200);
+
+    const racers = await Promise.all(
+      Array.from({ length: 6 }, () => act(execToken, stops[1] ?? '', 'complete')),
+    );
+    expect(racers.filter((r) => r.status === 200)).toHaveLength(1);
+    expect((await dayOf(execToken)).stops[1]?.executionStatus).toBe('completed');
+  });
+
+  it('11c. concurrent requests cannot unlock more than one future stop', async () => {
+    // Stop 3 is now genuinely next. Race a legal start against illegal ones on a stop that is NOT
+    // next — the sequence cannot be bypassed by arriving in parallel.
+    const [legal, ...illegal] = await Promise.all([
+      act(execToken, stops[2] ?? '', 'start'),
+      act(execToken, stops[0] ?? '', 'start'),
+      act(execToken, stops[1] ?? '', 'start'),
+    ]);
+    expect(legal?.status).toBe(200);
+    for (const bad of illegal) expect(bad.status).toBe(422);
+
+    const route = await dayOf(execToken);
+    expect(route.stops.map((s) => s.executionStatus)).toEqual(['completed', 'completed', 'active']);
+    // The invariant the whole slice exists for: nothing later is done while something earlier is not.
+    const doneFlags = route.stops.map((s) => s.progress === 'completed');
+    expect(doneFlags.indexOf(false)).toBe(doneFlags.lastIndexOf(true) + 1);
+  });
+
+  it('8. a captain cannot execute another captain\'s stop', async () => {
+    const poached = await act(rivalToken, stops[2] ?? '', 'pickup');
+    expect(poached.status).toBe(403);
+    // ...and the rival's own stop is untouched by the attempt.
+    expect((await dayOf(rivalToken)).stops[0]?.executionStatus).toBe('pending');
+  });
+
+  it('12. wrong vehicle/crew and wrong day are refused', async () => {
+    // The rival's stop rides a different crew row and a different vehicle on the SAME day.
+    const wrongCrew = await act(execToken, rivalStopId, 'start');
+    expect(wrongCrew.status).toBe(403);
+
+    // Captaincy is the DAY'S crew row, not the assignment: re-captain the vehicle and the stop's
+    // former captain loses the right to execute it, even though the assignment still names him.
+    const handover = await request(app)
+      .post('/api/v1/operations/crew-board')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        date: EXEC_DATE,
+        rows: [
+          { vehicleId: vehicleAId, captainEmployeeId: rivalCaptainId },
+          { vehicleId: vehicleBId, captainEmployeeId: execCaptainId },
+        ],
+      });
+    expect(handover.status).toBe(200);
+
+    const afterHandover = await act(execToken, stops[2] ?? '', 'pickup');
+    expect(afterHandover.status).toBe(403);
+
+    // Put it back, and the rightful captain can carry on exactly where he was.
+    const restore = await request(app)
+      .post('/api/v1/operations/crew-board')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        date: EXEC_DATE,
+        rows: [
+          { vehicleId: vehicleAId, captainEmployeeId: execCaptainId },
+          { vehicleId: vehicleBId, captainEmployeeId: rivalCaptainId },
+        ],
+      });
+    expect(restore.status).toBe(200);
+    expect((await act(execToken, stops[2] ?? '', 'pickup')).status).toBe(200);
+  });
+
+  it('13. RBAC and authentication on every execution route', async () => {
+    for (const step of ['start', 'pickup', 'deliver', 'complete']) {
+      const anonymous = await request(app).post(
+        `/api/v1/operations/mobile/stops/${stops[2] ?? ''}/${step}`,
+      );
+      expect(anonymous.status).toBe(401);
+
+      const viewer = await act(viewerToken, stops[2] ?? '', step);
+      expect(viewer.status).toBe(403);
+
+      // Holds the grant, but the login is not linked to an employee — identity, not permission.
+      const unlinked = await act(adminToken, stops[2] ?? '', step);
+      expect(unlinked.status).toBe(403);
+    }
+  });
+
+  it('17. an employee who is not a captain that day cannot execute, permission notwithstanding', async () => {
+    const bench = await dayOf(benchToken);
+    expect(bench.isCaptainOnDay).toBe(false);
+
+    for (const step of ['start', 'pickup', 'deliver', 'complete']) {
+      const refused = await act(benchToken, stops[2] ?? '', step);
+      expect(refused.status).toBe(403);
+    }
+  });
+
+  it('16. a captain with zero stops is still a captain, with no current stop', async () => {
+    const idle = await dayOf(execToken, NO_STOPS_DATE);
+    expect(idle.isCaptainOnDay).toBe(true);
+    expect(idle.assignments).toHaveLength(1);
+    expect(idle.stops).toHaveLength(0);
+    expect(idle.currentAssignmentId).toBeNull();
+  });
+
+  it('14. every transition is audited and emits its catalogued event', async () => {
+    const { AuditLogModel } = await import('../../src/platform/audit/audit.model');
+
+    const names = seenEvents.map((e) => e.name);
+    for (const name of [
+      OperationsEvents.ExecutionStarted,
+      OperationsEvents.ExecutionPickupConfirmed,
+      OperationsEvents.ExecutionDeliveryConfirmed,
+      OperationsEvents.ExecutionCompleted,
+    ]) {
+      expect(names).toContain(name);
+    }
+
+    // The payload identifies the stop, the day, the captain and the step — without a second read.
+    const completed = seenEvents
+      .filter((e) => e.name === OperationsEvents.ExecutionCompleted)
+      .map((e) => e.payload as Record<string, unknown>)
+      .find((p) => p.assignmentId === stops[0]);
+    expect(completed).toBeDefined();
+    expect(completed?.captainEmployeeId).toBe(execCaptainId);
+    expect(completed?.from).toBe('delivered');
+    expect(completed?.to).toBe('completed');
+    expect(completed?.leg).toBe('pickup');
+    expect(completed?.sequence).toBe(1);
+
+    // `changes` is an ARRAY of {field, old, new} (ADR-012), so the field is matched by value.
+    // Audit is written through the job queue, so poll rather than assume it has already landed.
+    let rows: { changes: { field: string; old: unknown; new: unknown }[] }[] = [];
+    for (let attempt = 0; attempt < 40 && rows.length < 4; attempt += 1) {
+      rows = await AuditLogModel.find({
+        'entityRef.moduleId': 'operations',
+        'entityRef.entityType': 'shipmentAssignment',
+        'entityRef.entityId': stops[0] ?? '',
+        'changes.field': 'executionStatus',
+      })
+        .lean<{ changes: { field: string; old: unknown; new: unknown }[] }[]>()
+        .exec();
+      if (rows.length < 4) await new Promise((r) => setTimeout(r, 100));
+    }
+
+    // start, pickup, deliver, complete — every transition leaves a trace, and the trace says which.
+    expect(rows.length).toBeGreaterThanOrEqual(4);
+    const steps = rows
+      .flatMap((row) => row.changes)
+      .filter((change) => change.field === 'executionStatus')
+      .map((change) => `${String(change.old)}->${String(change.new)}`);
+    for (const step of [
+      'pending->active',
+      'active->pickedUp',
+      'pickedUp->delivered',
+      'delivered->completed',
+    ]) {
+      expect(steps).toContain(step);
+    }
+  });
+
+  it('a client cannot smuggle a captain, a sequence or coordinates into a transition', async () => {
+    for (const payload of [
+      { captainEmployeeId: rivalCaptainId },
+      { sequence: 1 },
+      { coordinates: { lat: 30, lng: 31 } },
+    ]) {
+      const res = await act(execToken, stops[2] ?? '', 'deliver', payload);
+      expect(res.status).toBe(400);
+    }
   });
 });

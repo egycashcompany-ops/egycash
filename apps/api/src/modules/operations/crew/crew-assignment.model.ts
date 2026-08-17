@@ -50,6 +50,12 @@ crewAssignmentSchema.index(
   { unique: true, name: 'ux_day_vehicle', partialFilterExpression: { isDeleted: false } },
 );
 crewAssignmentSchema.index({ operationsDayId: 1 }, { name: 'ix_day' });
+// "Which vehicles am I the captain of today?" — the captaincy anchor the mobile surface resolves
+// identity through (design §20-هـ). Without it that read is a day-wide scan filtered in memory.
+crewAssignmentSchema.index(
+  { operationsDayId: 1, captainEmployeeId: 1 },
+  { name: 'ix_day_captain' },
+);
 
 export const OperationsCrewAssignmentModel = model<OperationsCrewAssignmentDoc>(
   'OperationsCrewAssignment',

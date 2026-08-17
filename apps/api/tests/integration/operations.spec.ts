@@ -1211,7 +1211,10 @@ const currentOrder = async (): Promise<{ assignmentId: string; version: number }
 
 describe('captain mobile read model — NEW capability, no legacy counterpart (OP-6)', () => {
   const MOBILE_DATE = '2026-09-10';
+  /** A day the captain is PLANNED onto a vehicle but has no shipments — captaincy without stops. */
+  const PLANNED_ONLY_DATE = '2026-09-11';
   let captainUserToken = '';
+  let captainUserId = '';
   let otherCaptainToken = '';
   let otherCaptainId = '';
   let mobileCrewId = '';
@@ -1233,7 +1236,7 @@ describe('captain mobile read model — NEW capability, no legacy counterpart (O
     );
 
     // Two captains, each a real HR employee linked to a real login — the seam under test.
-    const link = async (email: string, employeeId: string): Promise<string> => {
+    const link = async (email: string, employeeId: string): Promise<[string, string]> => {
       const userId = await mkUser(email);
       await rbacService.ensureAssignment(userId, String(captainRole._id), 'organization');
       const current = await employeeRepository.getById(employeeId);
@@ -1242,12 +1245,12 @@ describe('captain mobile read model — NEW capability, no legacy counterpart (O
         { userId },
         { by: null, version: current.__v },
       );
-      return login(email);
+      return [await login(email), userId];
     };
 
     otherCaptainId = await mkEmployee();
-    captainUserToken = await link('captain-a@ecms.local', captainId);
-    otherCaptainToken = await link('captain-b@ecms.local', otherCaptainId);
+    [captainUserToken, captainUserId] = await link('captain-a@ecms.local', captainId);
+    [otherCaptainToken] = await link('captain-b@ecms.local', otherCaptainId);
 
     const roster = await request(app)
       .post('/api/v1/fleet/roster')
@@ -1292,6 +1295,23 @@ describe('captain mobile read model — NEW capability, no legacy counterpart (O
         .send({ crewAssignmentId: mobileCrewId, captainEmployeeId: captainId, version: 0 });
       expect(assigned.status).toBe(200);
     }
+
+    // A second day where the SAME captain is planned onto a vehicle and nothing is assigned to him
+    // yet. Crew exclusivity (Q11) is scoped per operating day, so this is a legitimate plan.
+    const plannedRoster = await request(app)
+      .post('/api/v1/fleet/roster')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date: PLANNED_ONLY_DATE, rows: [{ vehicleId: vehicleAId, notes: 'planned only' }] });
+    expect(plannedRoster.status).toBe(200);
+
+    const plannedCrew = await request(app)
+      .post('/api/v1/operations/crew-board')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        date: PLANNED_ONLY_DATE,
+        rows: [{ vehicleId: vehicleAId, captainEmployeeId: captainId, direction: 'بنها' }],
+      });
+    expect(plannedCrew.status).toBe(200);
   });
 
   it('1 + 3. the authenticated captain reads his own day in the exact server-side order', async () => {
@@ -1312,13 +1332,58 @@ describe('captain mobile read model — NEW capability, no legacy counterpart (O
     expect(dto.stops.map((s) => s.assignmentId)).toEqual(opsRoute.stops.map((s) => s.assignmentId));
   });
 
+  it('identity. one employee identity serves desktop and mobile — no mobile account exists', async () => {
+    const { employeeRepository } = await import(
+      '../../src/modules/hr/employee-management/employees/employee.repository'
+    );
+
+    // The mobile surface reports the SAME employee id the desktop modules use for this person...
+    const dto = data<OperationsMobileDayDto>(await myDay(captainUserToken));
+    expect(dto.captain.employeeId).toBe(captainId);
+
+    // ...and that employee is reached from the ORDINARY login, through the HR record's own link.
+    // No mobile user, no captain account, no second identity row stands between the two.
+    const employee = await employeeRepository.getById(captainId);
+    expect(String(employee.userId)).toBe(captainUserId);
+
+    // The very same token also resolves on the shared platform directory — one identity, two
+    // surfaces. A mobile-specific identity model would break this equality.
+    const profile = await request(app)
+      .get(`/api/v1/platform/directory/${captainUserId}`)
+      .set('Authorization', `Bearer ${captainUserToken}`);
+    expect(profile.status).toBe(200);
+  });
+
+  it('identity. captaincy is the day plan, not the account — planned-with-no-stops is not "not a captain"', async () => {
+    // Same employee, same permission, same login — two days with genuinely different answers.
+    const planned = data<OperationsMobileDayDto>(await myDay(captainUserToken, PLANNED_ONLY_DATE));
+    expect(planned.isCaptainOnDay).toBe(true);
+    expect(planned.assignments).toHaveLength(1);
+    expect(planned.assignments[0]?.vehicleId).toBe(vehicleAId);
+    expect(planned.stops).toHaveLength(0); // planned, but dispatch has given him nothing yet
+    expect(planned.currentAssignmentId).toBeNull();
+
+    // The other captain holds `operationsExecution.own` too — the CAPABILITY — yet is not planned
+    // onto anything that day, so he is not a captain on it. Capability never implies captaincy.
+    const notPlanned = data<OperationsMobileDayDto>(await myDay(otherCaptainToken, PLANNED_ONLY_DATE));
+    expect(notPlanned.isCaptainOnDay).toBe(false);
+    expect(notPlanned.assignments).toHaveLength(0);
+    expect(notPlanned.stops).toHaveLength(0);
+
+    // Both have an empty stop list; only `isCaptainOnDay` tells them apart.
+    expect(planned.stops).toEqual(notPlanned.stops);
+    expect(planned.isCaptainOnDay).not.toBe(notPlanned.isCaptainOnDay);
+  });
+
   it('2 + 12. a captain cannot see another captain day — isolation is structural', async () => {
     const mine = data<OperationsMobileDayDto>(await myDay(captainUserToken));
     const theirs = data<OperationsMobileDayDto>(await myDay(otherCaptainToken));
 
     expect(theirs.captain.employeeId).toBe(otherCaptainId);
     expect(theirs.stops).toHaveLength(0);
+    expect(theirs.isCaptainOnDay).toBe(false);
     expect(mine.stops.length).toBeGreaterThan(0);
+    expect(mine.isCaptainOnDay).toBe(true);
 
     // There is no captain parameter to tamper with: an injected one is refused by .strict().
     const tampered = await request(app)

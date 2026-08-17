@@ -16,6 +16,19 @@
 // the first stop that is not completed, and everything after it is `locked`. This is the shape the
 // execution slice needs in order to enforce "N+1 cannot start before N completes" — but the RULE
 // itself is not here, and this service performs no mutation of any kind.
+//
+// IDENTITY IS EMPLOYEE-LEVEL — see the contracts' identity-model block and design §20-هـ. There is
+// no mobile user, no captain account and no second identity model: the captain is an ordinary ECMS
+// employee, and this surface is a capability inside that employee's authenticated profile. The
+// chain is resolved strictly in this order, entirely server-side:
+//
+//   token → employee (platform directory seam)
+//         → captain assignment for the operating day (the (day, vehicle) crew row)
+//         → ordered shipments
+//
+// Note which step decides what. RBAC decides whether the employee may OPEN this surface;
+// the crew row decides whether he is a CAPTAIN TODAY. Conflating those is how a permission
+// silently becomes a job title, so they are answered separately and both are answered here.
 import {
   type OperationsMobileDayDto,
   type OperationsMobileStopDto,
@@ -29,6 +42,7 @@ import { getSelfDirectoryEmployee, type DirectoryEmployee } from '../../../platf
 import { operationsBankRepository } from '../banks/bank.repository';
 import { operationsBankBranchRepository } from '../bank-branches/bank-branch.repository';
 import { operationsCrewAssignmentRepository } from '../crew/crew-assignment.repository';
+import { type OperationsCrewAssignmentDoc } from '../crew/crew-assignment.model';
 import { operationsDayService, utcDay } from '../days/day.service';
 import { operationsShipmentRepository } from '../shipments/shipment.repository';
 import { operationsShipmentAssignmentRepository } from '../shipments/shipment-assignment.repository';
@@ -37,11 +51,19 @@ import { type OperationsShipmentAssignmentDoc } from '../shipments/shipment-assi
 const LEGS: OperationsShipmentLeg[] = ['pickup', 'delivery'];
 
 /**
- * The captain is whoever the TOKEN says, resolved through the platform directory seam. There is no
- * captain parameter on any endpoint in this slice, so a client cannot ask for somebody else's day;
- * cross-captain isolation is a property of the API's shape, not a filter someone has to remember.
+ * Who is logged in, as an EMPLOYEE — resolved through the platform directory seam, never from the
+ * request body or query.
+ *
+ * Deliberately named for the employee and not for the captain: this step establishes IDENTITY, and
+ * identity is employee-level. Whether that employee is a captain today is a separate question with
+ * a separate answer (the day's crew assignment), and collapsing the two here is precisely the
+ * mistake the identity constraint forbids — it would turn a login into a job title.
+ *
+ * There is no captain parameter on any endpoint in this slice, so a client cannot ask for somebody
+ * else's day; cross-captain isolation is a property of the API's shape, not a filter someone has
+ * to remember to apply.
  */
-export const resolveSelfCaptain = async (userId: string): Promise<DirectoryEmployee> => {
+export const resolveSelfEmployee = async (userId: string): Promise<DirectoryEmployee> => {
   const employee = await getSelfDirectoryEmployee(userId);
   if (employee === null) {
     throw new ForbiddenError('this login is not linked to an employee record');
@@ -55,7 +77,8 @@ export const resolveSelfCaptain = async (userId: string): Promise<DirectoryEmplo
 class OperationsMobileService {
   /** One captain's ordered day. Read-only, self-scoped, composed from the owning entities. */
   async myDay(userId: string, date: Date | undefined): Promise<OperationsMobileDayDto> {
-    const captain = await resolveSelfCaptain(userId);
+    // Step 1 — IDENTITY. The employee behind the token; no client input participates.
+    const captain = await resolveSelfEmployee(userId);
     const day = date === undefined ? utcDay(new Date()) : utcDay(date);
     const dayDoc = await operationsDayService.findByDate(day);
 
@@ -72,14 +95,25 @@ class OperationsMobileService {
         ...base,
         operationsDayId: null,
         dayStatus: null,
+        isCaptainOnDay: false,
         assignments: [],
         stops: [],
         currentAssignmentId: null,
       };
     }
 
-    // The captain's stops across BOTH legs, in the server-established order. The client never
-    // sorts and never reorders: `sequence` is authoritative and read-only here.
+    // Step 2 — CAPTAINCY. The (day, vehicle) crew rows this employee is the captain of. This is the
+    // ANCHOR of the chain, asked directly rather than inferred from whichever shipments happen to
+    // be assigned: an employee planned onto a vehicle IS a captain today even before dispatch has
+    // given him a single stop, and the surface must be able to say so.
+    const crewRows = await operationsCrewAssignmentRepository.findForCaptainDay(
+      dayDoc._id,
+      captain.employeeId,
+    );
+
+    // Step 3 — ORDERED SHIPMENTS. The captain's stops across BOTH legs, in the server-established
+    // order, scoped by the SAME server-resolved employee. The client never sorts and never
+    // reorders: `sequence` is authoritative and read-only here.
     const rows: OperationsShipmentAssignmentDoc[] = [];
     for (const leg of LEGS) {
       rows.push(
@@ -149,12 +183,19 @@ class OperationsMobileService {
       });
     }
 
-    // The crews behind today's stops — specialists are read from the (day, vehicle) crew row and
-    // are NEVER present on a stop. That indirection is the legacy relationship, kept intact.
+    // The captain assignments themselves — specialists are read from the (day, vehicle) crew row
+    // and are NEVER present on a stop. That indirection is the legacy relationship, kept intact.
+    //
+    // The anchor rows come first, so a captain planned onto a vehicle appears here even with no
+    // stops. Any crew row a stop points at is then unioned in: a stop the client is asked to render
+    // must always have its crew resolvable, even in the drifted case where the day's plan was later
+    // re-captained out from under an already-assigned shipment.
     const assignments: OperationsMobileDayDto['assignments'] = [];
-    for (const crewAssignmentId of new Set(stops.map((s) => s.crewAssignmentId))) {
-      const crew = await operationsCrewAssignmentRepository.findById(crewAssignmentId);
-      if (crew === null) continue;
+    const seen = new Set<string>();
+    const describe = (crew: OperationsCrewAssignmentDoc): void => {
+      const crewAssignmentId = String(crew._id);
+      if (seen.has(crewAssignmentId)) return;
+      seen.add(crewAssignmentId);
       assignments.push({
         crewAssignmentId,
         vehicleId: String(crew.vehicleId),
@@ -165,12 +206,20 @@ class OperationsMobileService {
         direction: crew.direction,
         plannedTime: crew.plannedTime,
       });
+    };
+    for (const crew of crewRows) describe(crew);
+    for (const crewAssignmentId of new Set(stops.map((s) => s.crewAssignmentId))) {
+      if (seen.has(crewAssignmentId)) continue;
+      const crew = await operationsCrewAssignmentRepository.findById(crewAssignmentId);
+      if (crew !== null) describe(crew);
     }
 
     return {
       ...base,
       operationsDayId: String(dayDoc._id),
       dayStatus: dayDoc.status,
+      // Captaincy is the day's plan, not the login and not the permission.
+      isCaptainOnDay: crewRows.length > 0,
       assignments,
       stops,
       currentAssignmentId,

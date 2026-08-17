@@ -813,6 +813,33 @@ export type OperationsCaptainRouteQuery = z.infer<typeof OperationsCaptainRouteQ
 // must be able to do so without changing these contracts, which is why every identifier the
 // mutations will need (day, shipment, assignment, sequence, leg, vehicle, both locations) is
 // already carried here.
+//
+// ── IDENTITY MODEL — AN ARCHITECTURAL CONSTRAINT, NOT A UI DETAIL ───────────────────────────────
+//
+// Captain Mobile is NOT a separate user, account or entity. The captain is an ordinary ECMS
+// EMPLOYEE with the ordinary authenticated employee identity. The mobile experience is a
+// captain-specific CAPABILITY exposed inside that employee's authenticated profile — the same
+// identity that serves Desktop ECMS, with no second identity model anywhere behind it.
+//
+//   authenticated user → employee → captain assignment for the operating day → ordered shipments
+//
+// Binding consequences, each enforced rather than merely intended:
+//   • There is NO `MobileUser`, no mobile account, no captain login, no mobile-side identity table.
+//     The type below carries an `employeeId` — the SAME id the desktop surfaces use — and nothing
+//     mobile-specific stands in for it.
+//   • The client NEVER supplies a captain id. `OperationsMobileDayQuerySchema` is `.strict()` and
+//     has no such field, so identity cannot be asserted by the caller even by accident. The server
+//     resolves the employee from the token through the platform directory seam.
+//   • CAPABILITY (may this employee open the captain surface at all?) is RBAC — `operationsExecution.own`.
+//   • CAPTAINCY (is this employee a captain today, on which vehicles?) is DATA — the (day, vehicle)
+//     crew assignment. It is a property of the day's plan, never of the account: `isCaptainOnDay`
+//     below is answered from that row, which is why an employee can hold the capability
+//     permanently and still not be a captain on a given day.
+//   • The day's shipment list therefore hangs off that assignment, never off anything the client
+//     sends.
+//
+// A future surface that needs a second identity model for mobile is a design change requiring its
+// own decision — it is not an implementation detail some later slice may quietly introduce.
 
 /**
  * Where a stop sits in the captain's day, as the READ surface can currently know it.
@@ -852,7 +879,21 @@ export interface OperationsMobileDayDto {
   date: string;
   operationsDayId: string | null;
   dayStatus: OperationsDayStatus | null;
+  /**
+   * The authenticated EMPLOYEE — the same identity and the same `employeeId` the desktop surfaces
+   * use for this person. There is no mobile-specific identity; this is the employee profile viewed
+   * through the captain capability.
+   */
   captain: { employeeId: string; code: string; fullNameAr: string };
+  /**
+   * Is this employee a captain ON THIS DAY? Answered from the (day, vehicle) crew assignment, not
+   * from the account and not from RBAC.
+   *
+   * This exists because "planned today with no stops assigned yet" and "not a captain today" are
+   * different facts that both yield an empty `stops`, and a client that conflates them tells a
+   * rostered captain he has no duty. `assignments` is non-empty exactly when this is true.
+   */
+  isCaptainOnDay: boolean;
   /**
    * The vehicles and crews the captain is on today — resolved THROUGH the (day, vehicle) crew
    * assignment. Specialists belong to the crew row, never to a shipment: the mobile client reads

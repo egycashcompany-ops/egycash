@@ -15,6 +15,7 @@ import {
   type CreateFleetVehicleType,
   type FleetAccidentDto,
   type FleetCatalogItemDto,
+  type FleetDefaultBranchDto,
   type FleetDriverProfileDto,
   type FleetDriverUnavailabilityDto,
   type FleetExpectedReadingDto,
@@ -43,7 +44,7 @@ import {
   type UpdateFleetVehicleType,
   type UpdateFleetViolation,
 } from '@ecms/contracts';
-import { api, buildQuery, del, get, getPage, patch, post,
+import { api, buildQuery, del, fetchBlob, get, getPage, patch, post, upload,
   type QueryParams,
 } from '../../../shared/lib/api-client';
 
@@ -90,6 +91,25 @@ export const changeVehicleStatus = (
   body: ChangeFleetVehicleStatus,
 ): Promise<FleetVehicleDto> => post<FleetVehicleDto>(`/fleet/vehicles/${id}/status`, body);
 export const deleteVehicle = (id: string): Promise<void> => del<void>(`/fleet/vehicles/${id}`);
+/** The create form's branch default — a SERVER fact resolved from live branch data (§2.1). */
+export const getDefaultVehicleBranch = (): Promise<FleetDefaultBranchDto> =>
+  get<FleetDefaultBranchDto>('/fleet/vehicles/default-branch');
+
+// ── Vehicle license image (§6/§8 — one current scan per vehicle) ────────────
+export const uploadVehicleLicenseImage = (id: string, file: File): Promise<FleetVehicleDto> => {
+  const form = new FormData();
+  form.append('file', file);
+  return upload<FleetVehicleDto>(`/fleet/vehicles/${id}/license-image`, form);
+};
+/**
+ * The BYTES, not a URL. The file is guarded (ADR-023), so its signed URL needs a bearer token an
+ * `<img src>` cannot carry — the caller turns this blob into an object URL to render it, and into
+ * a data URL to print it.
+ */
+export const fetchVehicleLicenseImage = (id: string): Promise<Blob> =>
+  fetchBlob(`/fleet/vehicles/${id}/license-image`);
+export const deleteVehicleLicenseImage = (id: string): Promise<FleetVehicleDto> =>
+  del<FleetVehicleDto>(`/fleet/vehicles/${id}/license-image`);
 
 // ── Driver profiles (§2.3 — HR-employee extensions, FR-11) ──────────────────
 export const listDrivers = (params: FleetListParams): Promise<Paginated<FleetDriverProfileDto>> =>

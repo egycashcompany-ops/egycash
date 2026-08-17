@@ -19,12 +19,24 @@ class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
   }
 }
 
-/** Substring search over the four physical identifiers (design §2.1 list page). */
+const escaped = (term: string): RegExp =>
+  new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+
+/** Substring search over the four physical identifiers at once (design §2.1 list page). */
 export const vehicleSearchFilter = (term: string): FilterQuery<FleetVehicleDoc> => {
-  const rx = new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+  const rx = escaped(term);
   return {
     $or: [{ code: rx }, { plateNumber: rx }, { chassisNumber: rx }, { motorNumber: rx }],
   };
 };
+
+/**
+ * ONE identifier, narrowed. The per-column filters are ANDed by the caller, which is what makes
+ * "plate 123 AND chassis ABC" answerable — `vehicleSearchFilter` can only ever answer "either".
+ */
+export const vehicleIdentifierFilter = (
+  field: 'code' | 'plateNumber' | 'chassisNumber' | 'motorNumber',
+  term: string,
+): FilterQuery<FleetVehicleDoc> => ({ [field]: escaped(term) }) as FilterQuery<FleetVehicleDoc>;
 
 export const fleetVehicleRepository = new FleetVehicleRepository();

@@ -52,6 +52,13 @@ export const FLEET_CATALOG_KINDS = [
   'missionType',
   'violationType',
   'unavailabilityReason',
+  // Three kinds added for the vehicle registry's typed references. They are catalogs for the same
+  // reason the first six are: an admin-owned vocabulary the domain points AT, never a string the
+  // domain carries. `licenseClass` is §13-Q7's answer arriving as data rather than an enum — the
+  // admin names the classes, so no code change is needed when the authority renames one.
+  'licenseClass',
+  'operation',
+  'insuranceCompany',
 ] as const;
 export const FleetCatalogKindSchema = z.enum(FLEET_CATALOG_KINDS);
 export type FleetCatalogKind = z.infer<typeof FleetCatalogKindSchema>;
@@ -108,6 +115,15 @@ export const FLEET_VEHICLE_STATUSES = ['active', 'outOfService', 'disposed'] as 
 export const FleetVehicleStatusSchema = z.enum(FLEET_VEHICLE_STATUSES);
 export type FleetVehicleStatus = z.infer<typeof FleetVehicleStatusSchema>;
 
+/** The stored license-image reference — platform Files owns the bytes, the vehicle owns the link. */
+export interface FleetVehicleLicenseImageDto {
+  fileId: string;
+  fileName: string;
+  mime: string;
+  size: number;
+  uploadedAt: string;
+}
+
 export interface FleetVehicleDto {
   id: string;
   code: string;
@@ -117,13 +133,24 @@ export interface FleetVehicleDto {
   motorNumber: string;
   joinedAt: string;
   licenseExpiresAt: string;
-  /** Free string until §13-Q7 defines the vocabulary. */
-  licenseClass: string | null;
+  /** §13-Q7 answered as DATA: a `licenseClass` catalog reference, no longer a free string. */
+  licenseClassId: string | null;
+  /** `operation` catalog reference (التشغيل) — the operating group the vehicle runs under. */
+  operationId: string | null;
+  /** `insuranceCompany` catalog reference (شركة التأمين). */
+  insuranceCompanyId: string | null;
+  /**
+   * REQUIRED since the catalogs slice: a vehicle belongs to a branch, and the branch is what data
+   * scopes filter on. Nullable in the DTO only because vehicles created before the rule may still
+   * carry null — those rows stay readable and editable, and an edit must name a branch.
+   */
   branchId: string | null;
   departmentId: string | null;
   radio: { issi: string | null; motorolaSn: string | null };
   status: FleetVehicleStatus;
   statusReason: string | null;
+  /** null = no license image on file; the UI offers the upload action instead of view/delete. */
+  licenseImage: FleetVehicleLicenseImageDto | null;
   /** DERIVED (FR-12): an open maintenance visit exists. Never stored. */
   inWorkshop: boolean;
   version: number;
@@ -139,8 +166,15 @@ const vehicleCore = {
   motorNumber: z.string().trim().min(1).max(60),
   joinedAt: z.coerce.date(),
   licenseExpiresAt: z.coerce.date(),
-  licenseClass: z.string().trim().min(1).max(60).nullish(),
-  branchId: objectId().nullish(),
+  // The three catalog references. Optional facts — a vehicle may legitimately have no insurer on
+  // file — but when given they must name a LIVE catalog item of the right kind (service-enforced).
+  licenseClassId: objectId().nullish(),
+  operationId: objectId().nullish(),
+  insuranceCompanyId: objectId().nullish(),
+  // NOT nullish, unlike every other reference here: `null` is rejected by the schema, so neither a
+  // create nor an update can leave a vehicle branchless. The service additionally proves the branch
+  // exists and is active — a well-formed id for a deleted branch is still not a branch.
+  branchId: objectId(),
   departmentId: objectId().nullish(),
   radio: z
     .object({
@@ -161,6 +195,15 @@ export const UpdateFleetVehicleSchema = z
   .strict();
 export type UpdateFleetVehicle = z.infer<typeof UpdateFleetVehicleSchema>;
 
+/** The create form's branch default (§16) — resolved from LIVE branch data, never a baked-in id. */
+export interface FleetDefaultBranchDto {
+  /** null = no branch matches the configured default name; the user must pick one. */
+  branchId: string | null;
+  name: { ar: string; en: string } | null;
+  /** The name the lookup used, so the UI can say WHICH default was not found. */
+  configuredName: string;
+}
+
 /** Lifecycle §4.1: reason is REQUIRED when leaving `active`; `disposed` is terminal. */
 export const ChangeFleetVehicleStatusSchema = z
   .object({
@@ -180,12 +223,25 @@ export const ChangeFleetVehicleStatusSchema = z
   });
 export type ChangeFleetVehicleStatus = z.infer<typeof ChangeFleetVehicleStatusSchema>;
 
+/** One identifier filter: substring, case-insensitive — the list page's per-column search boxes. */
+const identifierFilter = () => z.string().trim().min(1).max(60).optional();
+
 export const ListFleetVehiclesQuerySchema = PaginationQuerySchema.extend({
   status: FleetVehicleStatusSchema.optional(),
+  /** The vehicle TYPE is the make/model the registry knows (اختر الماركة). */
   typeId: objectId().optional(),
   branchId: listQuery(objectId()),
-  /** Substring match on code/plate/chassis/motor. */
+  /** Substring match across code/plate/chassis/motor at once. */
   search: z.string().trim().min(1).max(100).optional(),
+  // Per-identifier filters, ANDed with each other and with `search`: narrowing by plate AND
+  // chassis is a different question from searching either, and the list page asks both.
+  code: identifierFilter(),
+  plateNumber: identifierFilter(),
+  chassisNumber: identifierFilter(),
+  motorNumber: identifierFilter(),
+  licenseClassId: objectId().optional(),
+  operationId: objectId().optional(),
+  insuranceCompanyId: objectId().optional(),
   licenseExpiresBefore: z.coerce.date().optional(),
 }).strict();
 export type ListFleetVehiclesQuery = z.infer<typeof ListFleetVehiclesQuerySchema>;
@@ -723,6 +779,12 @@ export const FleetEvents = {
   VehicleUpdated: 'fleet.vehicle.updated',
   VehicleStatusChanged: 'fleet.vehicle.statusChanged',
 
+  // The license image is its own subject, not a vehicle field: its two facts are "a document
+  // arrived" and "a document was withdrawn", and an automation wanting either would otherwise have
+  // to diff `fleet.vehicle.updated` payloads to find them.
+  VehicleLicenseImageUploaded: 'fleet.vehicleLicenseImage.uploaded',
+  VehicleLicenseImageDeleted: 'fleet.vehicleLicenseImage.deleted',
+
   OdometerRecorded: 'fleet.odometer.recorded',
   OdometerCorrected: 'fleet.odometer.corrected',
 
@@ -755,6 +817,13 @@ export const FleetVehicleEventPayloadV1 = z.object({
   vehicleId: objectId(),
   code: z.string(),
   typeId: objectId(),
+});
+
+export const FleetVehicleLicenseImagePayloadV1 = z.object({
+  vehicleId: objectId(),
+  code: z.string(),
+  /** null on deletion — the file is gone, and the event says which vehicle lost it. */
+  fileId: objectId().nullable(),
 });
 
 export const FleetVehicleStatusChangedPayloadV1 = z.object({
@@ -869,6 +938,12 @@ export const FleetSettingKeys = {
   VehicleLicenseWarnDays: 'fleet.license.vehicleWarnDays',
   /** Days before driver-license expiry that `fleet.driverLicense.expiring` fires. */
   DriverLicenseWarnDays: 'fleet.license.driverWarnDays',
+  /**
+   * The branch the new-vehicle form preselects, BY NAME — resolved against live branch data on
+   * every request. A name rather than an id because ids are environment-specific: the same default
+   * has to work in dev, staging and production without a per-environment code change.
+   */
+  DefaultBranchName: 'fleet.vehicle.defaultBranchName',
 } as const;
 export type FleetSettingKey = (typeof FleetSettingKeys)[keyof typeof FleetSettingKeys];
 

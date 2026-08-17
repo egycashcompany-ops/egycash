@@ -101,6 +101,28 @@ export const useChangeVehicleStatus = () =>
   );
 export const useDeleteVehicle = () => useVehicleMutation((id: string) => api.deleteVehicle(id));
 
+/**
+ * The branch the create form preselects. A SERVER fact (resolved by name from live branch data),
+ * cached for the session because branches change far less often than the form is opened.
+ */
+export const useDefaultVehicleBranch = (enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'vehicles', { defaultBranch: true }),
+    queryFn: () => api.getDefaultVehicleBranch(),
+    staleTime: 300_000,
+    enabled,
+  });
+
+// License-image writes go through the same vehicle mutation seam as every other vehicle write:
+// both endpoints answer with the updated vehicle, so the list repaints from the invalidated
+// subtree and the profile from the seeded detail cache — no full refresh anywhere.
+export const useUploadVehicleLicenseImage = () =>
+  useVehicleMutation(({ id, file }: { id: string; file: File }) =>
+    api.uploadVehicleLicenseImage(id, file),
+  );
+export const useDeleteVehicleLicenseImage = () =>
+  useVehicleMutation((id: string) => api.deleteVehicleLicenseImage(id));
+
 export const useVehicleTypes = (params: FleetListParams = { pageSize: 100 }) =>
   useQuery({
     queryKey: listKey(MODULE, 'vehicleTypes', params),

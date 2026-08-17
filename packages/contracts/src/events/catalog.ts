@@ -157,6 +157,7 @@ import {
   FleetRosterPlannedPayloadV1,
   FleetUnavailabilityPayloadV1,
   FleetVehicleEventPayloadV1,
+  FleetVehicleLicenseImagePayloadV1,
   FleetVehicleStatusChangedPayloadV1,
   FleetViolationRecordedPayloadV1,
 } from '../modules/fleet.js';
@@ -621,6 +622,10 @@ export const EVENT_ENTITY_NAMES: Readonly<Record<string, LocalizedString>> = {
   maintenance: { en: 'Maintenance visit', ar: 'زيارة صيانة' },
   maintenanceAlarm: { en: 'Maintenance alarm', ar: 'إنذار صيانة' },
   vehicleLicense: { en: 'Vehicle license', ar: 'رخصة سيارة' },
+  // NOT `vehicleLicense` — that entity is the license's EXPIRY DATE (the two sweep events above).
+  // The scanned document is a different subject with a different lifecycle, so it gets its own
+  // entity rather than borrowing one, exactly as the §17 naming note requires.
+  vehicleLicenseImage: { en: 'Vehicle license image', ar: 'صورة رخصة السيارة' },
   driverLicense: { en: 'Driving license', ar: 'رخصة قيادة' },
   roster: { en: 'Duty roster', ar: 'تعيين اليوم' },
   assignment: { en: 'Duty assignment', ar: 'تكليف' },
@@ -839,6 +844,8 @@ export const EVENT_LIFECYCLE: Readonly<
   // FL-2 `fleet.vehicle.*`; FL-3 `fleet.driverUnavailability.*`; FL-4 odometer, maintenance,
   // maintenanceAlarm and both license surfaces; FL-5 roster + assignment; FL-6 accident +
   // violation. All 22 fleet events are stable — the module's automation surface is complete.
+  // The catalogs slice added the two `fleet.vehicleLicenseImage.*` facts, both published by the
+  // vehicle service at their commit points, so both are stable on arrival — 24 in total.
 };
 
 /**
@@ -1115,6 +1122,8 @@ export const FLEET_EVENT_PAYLOAD_SCHEMAS: Readonly<Record<FleetEventName, z.ZodT
   [FleetEvents.VehicleCreated]: FleetVehicleEventPayloadV1,
   [FleetEvents.VehicleUpdated]: FleetVehicleEventPayloadV1,
   [FleetEvents.VehicleStatusChanged]: FleetVehicleStatusChangedPayloadV1,
+  [FleetEvents.VehicleLicenseImageUploaded]: FleetVehicleLicenseImagePayloadV1,
+  [FleetEvents.VehicleLicenseImageDeleted]: FleetVehicleLicenseImagePayloadV1,
   [FleetEvents.OdometerRecorded]: FleetOdometerRecordedPayloadV1,
   [FleetEvents.OdometerCorrected]: FleetOdometerCorrectedPayloadV1,
   [FleetEvents.MaintenanceCheckedIn]: FleetMaintenancePayloadV1,

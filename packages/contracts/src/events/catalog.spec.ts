@@ -78,6 +78,9 @@ const FLEET_STABLE = new Set<string>([
   FleetEvents.VehicleCreated,
   FleetEvents.VehicleUpdated,
   FleetEvents.VehicleStatusChanged,
+  // Catalogs slice — both published by the vehicle service at its commit points.
+  FleetEvents.VehicleLicenseImageUploaded,
+  FleetEvents.VehicleLicenseImageDeleted,
   FleetEvents.UnavailabilityRecorded,
   FleetEvents.UnavailabilityEnded,
   FleetEvents.OdometerRecorded,

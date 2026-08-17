@@ -88,15 +88,15 @@ describe('the settings inventory the screen renders', () => {
   it('declares thirty-three settings, and no key twice', () => {
     registerAll();
     const keys = listSettingDeclarations().map((declaration) => declaration.key);
-    expect(keys).toHaveLength(33);
-    expect(new Set(keys).size).toBe(33);
+    expect(keys).toHaveLength(34);
+    expect(new Set(keys).size).toBe(34);
   });
 
   it('declares exactly the keys the contracts name — no more, no fewer', () => {
     registerAll();
     const declared = listSettingDeclarations().map((d) => d.key).sort();
     const expected = Object.values(EXPECTED).flat().sort();
-    expect(expected).toHaveLength(33);
+    expect(expected).toHaveLength(34);
     expect(declared).toEqual(expected);
   });
 

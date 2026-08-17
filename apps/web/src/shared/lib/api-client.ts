@@ -217,8 +217,15 @@ export const saveBlob = (blob: Blob, filename: string): void => {
   URL.revokeObjectURL(url);
 };
 
-/** Fetch a binary response (e.g. a CSV export) and trigger a browser download. */
-export const downloadBlob = async (path: string, filename: string): Promise<void> => {
+/**
+ * GET a binary response and hand back the bytes, with the same one-shot silent-refresh retry as
+ * `api`. What the caller does with them is the caller's business — save, render, embed.
+ *
+ * Separate from `downloadBlob` because a private image is NOT a download: it has to reach an
+ * `<img>`, and an `<img src>` cannot carry the bearer token this request needs. Fetching the bytes
+ * here and handing the caller an object URL is what lets an authorized image render at all.
+ */
+export const fetchBlob = async (path: string): Promise<Blob> => {
   const authHeaders = (): Headers => {
     const h = new Headers();
     if (accessToken !== null) h.set('Authorization', `Bearer ${accessToken}`);
@@ -229,7 +236,12 @@ export const downloadBlob = async (path: string, filename: string): Promise<void
     response = await fetch(`${BASE_URL}${path}`, { headers: authHeaders(), credentials: 'include' });
   }
   if (!response.ok) throw new ApiError('EXPORT_FAILED', 'export failed', response.status);
-  saveBlob(await response.blob(), filename);
+  return response.blob();
+};
+
+/** Fetch a binary response (e.g. a CSV export) and trigger a browser download. */
+export const downloadBlob = async (path: string, filename: string): Promise<void> => {
+  saveBlob(await fetchBlob(path), filename);
 };
 
 /**

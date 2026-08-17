@@ -8,7 +8,7 @@
 // the owner's navigation rule: nothing unshipped is ever reachable.
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { type FleetVehicleDto, type Locale } from '@ecms/contracts';
+import { type FleetVehicleDto, type Locale, type LocalizedString } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { Can, useCan } from '../../../platform/rbac/Can';
@@ -23,6 +23,7 @@ import { cn } from '../../../shared/lib/cn';
 import { useBranches } from '../../hr/recruitment/job-offers/api/job-offer-queries';
 import {
   useExpectedReading,
+  useFleetCatalog,
   useMaintenanceAlarms,
   useMaintenanceVisits,
   useVehicle,
@@ -32,6 +33,7 @@ import { FleetKpi } from '../components/FleetKpi';
 import { InWorkshopBadge, VehicleStatusBadge } from '../components/VehicleStatusBadge';
 import { VehicleFormDialog } from '../components/VehicleFormDialog';
 import { VehicleStatusDialog } from '../components/VehicleStatusDialog';
+import { LicenseImagePreviewDialog } from '../components/VehicleLicenseImage';
 
 /**
  * The profile's history links, lit per slice as each page ships (owner navigation rule). Each
@@ -188,9 +190,15 @@ export const VehicleDetailPage = (): JSX.Element => {
   const { data: vehicle, isPending, isError, error, refetch } = useVehicle(id);
   const types = useVehicleTypes();
   const { data: branches = [] } = useBranches(can('branch.view'));
+  // The three catalog references, resolved to names from the same cached per-kind lists the
+  // registry's columns and the form's selects read — one request per kind for the whole app.
+  const licenseClasses = useFleetCatalog('licenseClass');
+  const operations = useFleetCatalog('operation');
+  const insurers = useFleetCatalog('insuranceCompany');
 
   const [editOpen, setEditOpen] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   if (isPending) {
     return (
@@ -209,6 +217,17 @@ export const VehicleDetailPage = (): JSX.Element => {
 
   const type = types.data?.items.find((item) => item.id === vehicle.typeId);
   const branch = branches.find((b) => b.id === vehicle.branchId);
+  const catalogName = (
+    list: { items: { id: string; name: LocalizedString }[] } | undefined,
+    itemId: string | null,
+  ): string | undefined => {
+    if (itemId === null) return undefined;
+    const item = list?.items.find((row) => row.id === itemId);
+    return item === undefined ? undefined : localized(item.name, locale);
+  };
+  const licenseClassName = catalogName(licenseClasses.data, vehicle.licenseClassId);
+  const operationName = catalogName(operations.data, vehicle.operationId);
+  const insurerName = catalogName(insurers.data, vehicle.insuranceCompanyId);
   const licenseExpired = new Date(vehicle.licenseExpiresAt).getTime() < Date.now();
   const historyLinks = HISTORY_LINKS.filter((link) => link.shipped && can(link.permission));
 
@@ -306,7 +325,15 @@ export const VehicleDetailPage = (): JSX.Element => {
                   </span>
                 </Row>
                 <Row label={t('fleet.vehicles.fields.licenseClass')}>
-                  {vehicle.licenseClass ?? '—'}
+                  {vehicle.licenseClassId === null
+                    ? '—'
+                    : (licenseClassName ?? '—')}
+                </Row>
+                <Row label={t('fleet.vehicles.fields.operation')}>
+                  {vehicle.operationId === null ? '—' : (operationName ?? '—')}
+                </Row>
+                <Row label={t('fleet.vehicles.fields.insuranceCompany')}>
+                  {vehicle.insuranceCompanyId === null ? '—' : (insurerName ?? '—')}
                 </Row>
                 <Row label={t('fleet.vehicles.fields.joinedAt')}>
                   {formatDate(vehicle.joinedAt, locale)}
@@ -317,6 +344,19 @@ export const VehicleDetailPage = (): JSX.Element => {
                     : branch === undefined
                       ? '—'
                       : localized(branch.name, locale)}
+                </Row>
+                <Row label={t('fleet.vehicles.licenseImage.label')}>
+                  {vehicle.licenseImage === null ? (
+                    t('fleet.vehicles.licenseImage.none')
+                  ) : (
+                    <button
+                      type="button"
+                      className="text-brand-700 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-brand-300"
+                      onClick={() => setPreviewOpen(true)}
+                    >
+                      {t('fleet.vehicles.licenseImage.view')}
+                    </button>
+                  )}
                 </Row>
                 <Row label={t('fleet.vehicle.createdAt')}>
                   {formatDateTime(vehicle.createdAt, locale)}
@@ -354,6 +394,12 @@ export const VehicleDetailPage = (): JSX.Element => {
         open={statusOpen}
         onClose={() => setStatusOpen(false)}
         vehicle={statusOpen ? vehicle : null}
+      />
+      <LicenseImagePreviewDialog
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        vehicle={vehicle}
+        typeName={type === undefined ? '' : localized(type.name, locale)}
       />
     </PageContainer>
   );

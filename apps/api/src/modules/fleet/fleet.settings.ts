@@ -42,4 +42,15 @@ export const registerFleetSettings = (): void => {
     defaultValue: 30,
     allowedScopes: ['organization'],
   });
+  declareSetting({
+    // A NAME, not an id: ids differ per environment and would need a code change per deployment,
+    // while the name is what the business actually means by "the default branch". Resolved against
+    // live branch data on every request, so renaming the branch here is all it takes to move it.
+    key: FleetSettingKeys.DefaultBranchName,
+    description:
+      'Branch name the new-vehicle form preselects; matched against live branch names (ar or en)',
+    schema: z.string().trim().min(1).max(120),
+    defaultValue: 'المهندسين',
+    allowedScopes: ['organization'],
+  });
 };

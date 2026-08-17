@@ -800,6 +800,83 @@ export const OperationsCaptainRouteQuerySchema = z
   .strict();
 export type OperationsCaptainRouteQuery = z.infer<typeof OperationsCaptainRouteQuerySchema>;
 
+
+// ── Captain mobile read model (OP-6) ────────────────────────────────────────────────────────────
+//
+// NEW ECMS CAPABILITY — there is NO legacy counterpart. The legacy system has no captain-facing
+// surface of any kind: a captain never logged in, never saw a route, and never recorded anything.
+// Everything up to OP-5 was legacy parity; this is the first slice that adds a capability the
+// business did not previously have, so nothing here is measured against legacy behaviour.
+//
+// READ ONLY. This slice exposes the shape the mobile client needs and NOT the mutations — no
+// start, no pickup, no deliver, no unlock. The execution state machine lands in the next slice and
+// must be able to do so without changing these contracts, which is why every identifier the
+// mutations will need (day, shipment, assignment, sequence, leg, vehicle, both locations) is
+// already carried here.
+
+/**
+ * Where a stop sits in the captain's day, as the READ surface can currently know it.
+ *
+ * DERIVED, never stored: `completed` comes from the shipment's own lifecycle status, `current` is
+ * the first stop that is not completed, and everything after it is `locked`. When the execution
+ * slice adds real per-assignment execution state, this field keeps its meaning and gains precision
+ * — the mobile client's branching does not change.
+ */
+export const OPERATIONS_STOP_PROGRESS = ['completed', 'current', 'locked'] as const;
+export const OperationsStopProgressSchema = z.enum(OPERATIONS_STOP_PROGRESS);
+export type OperationsStopProgress = z.infer<typeof OperationsStopProgressSchema>;
+
+export interface OperationsMobileStopDto {
+  /** Stable identifiers the execution slice will POST against — all present from OP-6. */
+  assignmentId: string;
+  shipmentId: string;
+  operationsDayId: string;
+  sequence: number;
+  leg: OperationsShipmentLeg;
+  vehicleId: string;
+  crewAssignmentId: string;
+
+  shipmentType: OperationsShipmentType;
+  /** The shipment's own lifecycle status (legacy-derived ladder), NOT an execution state. */
+  status: OperationsShipmentStatus;
+  progress: OperationsStopProgress;
+
+  referenceNumber: string | null;
+  packaging: { bags: number; cartons: number; boxes: number } | null;
+
+  pickup: OperationsRouteStopLocationDto;
+  delivery: OperationsRouteStopLocationDto;
+}
+
+export interface OperationsMobileDayDto {
+  date: string;
+  operationsDayId: string | null;
+  dayStatus: OperationsDayStatus | null;
+  captain: { employeeId: string; code: string; fullNameAr: string };
+  /**
+   * The vehicles and crews the captain is on today — resolved THROUGH the (day, vehicle) crew
+   * assignment. Specialists belong to the crew row, never to a shipment: the mobile client reads
+   * them from here, and a shipment payload above carries no specialist field at all.
+   */
+  assignments: {
+    crewAssignmentId: string;
+    vehicleId: string;
+    specialist1EmployeeId: string | null;
+    specialist2EmployeeId: string | null;
+    direction: string | null;
+    plannedTime: string | null;
+  }[];
+  stops: OperationsMobileStopDto[];
+  /** Convenience for the client's headline — the same id as the first non-completed stop. */
+  currentAssignmentId: string | null;
+}
+
+/** No date → today. The captain is ALWAYS the authenticated user; there is no captain parameter. */
+export const OperationsMobileDayQuerySchema = z
+  .object({ date: z.coerce.date().optional() })
+  .strict();
+export type OperationsMobileDayQuery = z.infer<typeof OperationsMobileDayQuerySchema>;
+
 // ── Events (ADR-008 `<module>.<entity>.<event>`) ────────────────────────────────────────────────
 
 export const OperationsEvents = {

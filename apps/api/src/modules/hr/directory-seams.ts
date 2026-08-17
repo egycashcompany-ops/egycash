@@ -2,13 +2,32 @@
 // so the employee lookup and the leave lookup register here at module load — the same pattern
 // as `identity-seams`. Consumers today: Fleet (driver = employee + fleet-owned profile, design
 // §9.1; availability reads approved/active leave when `fleet.availability.useHrLeave` is on).
-import { registerEmployeeLookup, registerLeaveLookup } from '../../platform/directory';
+// OP-6 adds the SELF lookup — "which employee is this login?" — which the captain-mobile read
+// surface uses so a captain's identity comes from the token, never from a client-supplied id.
+import {
+  registerEmployeeLookup,
+  registerLeaveLookup,
+  registerSelfEmployeeLookup,
+} from '../../platform/directory';
 import { employeeRepository } from './employee-management/employees/employee.repository';
 import { LeaveRequestModel } from './leave-management/leave-requests/leave-request.model';
 
 export const registerHrDirectorySeams = (): void => {
   registerEmployeeLookup(async (employeeId) => {
     const employee = await employeeRepository.findById(employeeId);
+    if (employee === null) return null;
+    return {
+      employeeId: String(employee._id),
+      code: employee.code,
+      fullNameAr: employee.personal.fullNameAr,
+      status: employee.status,
+      branchId: String(employee.branchId),
+      departmentId: String(employee.departmentId),
+    };
+  });
+
+  registerSelfEmployeeLookup(async (userId) => {
+    const employee = await employeeRepository.findByUserIdSystem(userId);
     if (employee === null) return null;
     return {
       employeeId: String(employee._id),

@@ -395,7 +395,7 @@ stateDiagram-v2
 | **6** | Vault / mohsana ✅ *(نُفِّذ كـ OP-4، 2026-08-17)* | `operations_vault_custody` + **Treasury port** (`treasury-boundary.ts` — ECMS بلا موديول خزينة، فالحدّ واجهة مُسجَّلة والتنفيذ مؤقت داخل Operations لحين وجود مالك) + `operations_shipment_assignments` (leg=delivery = leader2/car_num2) + receive بأمينين مختلفين + assign + dispatch داخل transaction واحدة | 4,5 |
 | **7** | Shipment assignment + sequencing ✅ *(نُفِّذ كـ OP-5، 2026-08-17)* | `sequence` على `operations_shipment_assignments` + فهرس فريد `(day, captain, leg, sequence)` + تعيين leg 1 (pickup — موجود على **النوعين**) + `PUT /assignments/order` بترتيب كامل وversion لكل عنصر داخل transaction (park سالب ثم النهائي) + قراءة مسار القائد للموبايل | 4,5 |
 | **8** | Sequential execution | `start/pickup/deliver/complete` + الحارس التتابعي في الـ domain + CAS | 7 |
-| **9** | Captain mobile surface | `GET /operations/me/day` + شاشة responsive + حالة القفل | 8 |
+| **9** | Captain mobile surface — **الجزء الخلفي نُفِّذ كـ OP-6 (2026-08-17)**: `GET /operations/mobile/my-day` (قراءة فقط) + هوية القائد من الـtoken عبر seam جديد `registerSelfEmployeeLookup` + تمثيل completed/current/locked مشتق + المواقع من `BankBranch.location`. تبقّى: شاشة الموبايل نفسها. | 8 |
 | **10** | Reports | تقرير القادة + تقرير البنوك بتطابق Legacy | 4,6 |
 | **11** | Events / audit / outbox | نشر أحداث الموديول + audit شامل + اشتراكات | 4–8 |
 | **12** | E2E tests | سيناريو يوم كامل | الكل |
@@ -421,6 +421,21 @@ stateDiagram-v2
 | الصرف يُطلَق من زر **الطباعة** | `deliver_mohsana.ejs:1249` | **DROP** | الطباعة عرض؛ الصرف عملية لها endpoint وصلاحية |
 | `vault_no` · `Rack_no` · `vault_receipt_num` | لا تُكتب أبدًا (فحص) | **DROP** | أعمدة ميتة؛ موقع الخزينة يعود كحقل حقيقي يوم يطلبه العمل |
 | `car_status:1` على صف التشغيلة عند الصرف | `:1735` | **NORMALIZE** | الحالة مشتقة من حالات الشحنات، لا عَلَم مكرَّر يمكن أن يتعارض |
+
+## 20-د. الحدّ بين النقل والجديد — يبدأ عند OP-6
+
+| الشرائح | الطبيعة | المرجعية |
+|---|---|---|
+| OP-1 … OP-5 | **نقل/تطبيع من Legacy** — كل قاعدة مستشهَدة بسطر في `contad_app.js`، وكل انحراف مصنَّف PRESERVE/NORMALIZE/DROP | `operations-legacy-discovery.md` |
+| **OP-6 فصاعدًا** | **قدرة ECMS جديدة** — لا نظير لها في Legacy إطلاقًا | التصميم وحده |
+
+**الحقيقة المثبتة:** النظام القديم **لا يملك أي واجهة للقائد**: القائد لم يكن يسجّل دخولًا، ولا يرى مسارًا، ولا يسجّل شيئًا — لا يوجد بين الـ86 route أي شاشة من هذا النوع. لذلك **لا يُقاس أي شيء في OP-6 بسلوك قديم**، ولا يصح البحث عن نظير له.
+
+قرارات OP-6 (كلها تصميم جديد، لا parity):
+- **الهوية من الـtoken**: لا يوجد بارامتر `captainId` في أي endpoint ⇒ العزل بين القادة خاصية بنيوية لا فلتر يُنسى.
+- **query لا projection**: لا collection خاصة بالموبايل؛ القراءة تركيب على الكيانات المالكة (assignment→shipment→crew→branch→bank). أي read model مادي لاحقًا = قرار موثّق منفصل.
+- **`progress` مشتق لا مخزَّن**: `completed` من حالة الشحنة، `current` أول غير مكتملة، والباقي `locked` — الشكل الذي تحتاجه شريحة التنفيذ، دون أن تكون القاعدة نفسها هنا.
+- **المواقع**: `BankBranch.location` من OP-2 كما هي، اختيارية؛ لا كيان مواقع ثانٍ، ولا إحداثيات مخترعة.
 
 ## 20-ج. سجل قرارات OP-5 (التعيين والترتيب) — PRESERVE / NORMALIZE / DROP
 

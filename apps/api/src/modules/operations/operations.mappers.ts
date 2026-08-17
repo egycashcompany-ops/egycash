@@ -108,6 +108,7 @@ export const toShipmentAssignmentDto = (
   captainEmployeeId: String(doc.captainEmployeeId),
   vehicleId: String(doc.vehicleId),
   crewAssignmentId: String(doc.crewAssignmentId),
+  sequence: doc.sequence,
   version: doc.__v,
   createdAt: iso(doc.createdAt),
   updatedAt: iso(doc.updatedAt),

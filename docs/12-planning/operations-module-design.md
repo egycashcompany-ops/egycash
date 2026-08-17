@@ -393,7 +393,7 @@ stateDiagram-v2
 | **4** | ~~Shipments core~~ *(نُفِّذ ضمن OP-2 أعلاه)* — يتبقى منه فقط ربط الشحنة بيوم التشغيل عند وصول PR 3 | 2,3 |
 | **5** | ~~Crew assignment~~ *(نُفِّذ backend ضمن OP-3 أعلاه)* — يتبقى لوحة الواجهة (UI) مع شرائح الواجهات | 3 |
 | **6** | Vault / mohsana ✅ *(نُفِّذ كـ OP-4، 2026-08-17)* | `operations_vault_custody` + **Treasury port** (`treasury-boundary.ts` — ECMS بلا موديول خزينة، فالحدّ واجهة مُسجَّلة والتنفيذ مؤقت داخل Operations لحين وجود مالك) + `operations_shipment_assignments` (leg=delivery = leader2/car_num2) + receive بأمينين مختلفين + assign + dispatch داخل transaction واحدة | 4,5 |
-| **7** | Shipment assignment + sequencing | `operations_shipment_assignments` + `sequence` + API إعادة الترتيب بـ version | 4,5 |
+| **7** | Shipment assignment + sequencing ✅ *(نُفِّذ كـ OP-5، 2026-08-17)* | `sequence` على `operations_shipment_assignments` + فهرس فريد `(day, captain, leg, sequence)` + تعيين leg 1 (pickup — موجود على **النوعين**) + `PUT /assignments/order` بترتيب كامل وversion لكل عنصر داخل transaction (park سالب ثم النهائي) + قراءة مسار القائد للموبايل | 4,5 |
 | **8** | Sequential execution | `start/pickup/deliver/complete` + الحارس التتابعي في الـ domain + CAS | 7 |
 | **9** | Captain mobile surface | `GET /operations/me/day` + شاشة responsive + حالة القفل | 8 |
 | **10** | Reports | تقرير القادة + تقرير البنوك بتطابق Legacy | 4,6 |
@@ -421,6 +421,18 @@ stateDiagram-v2
 | الصرف يُطلَق من زر **الطباعة** | `deliver_mohsana.ejs:1249` | **DROP** | الطباعة عرض؛ الصرف عملية لها endpoint وصلاحية |
 | `vault_no` · `Rack_no` · `vault_receipt_num` | لا تُكتب أبدًا (فحص) | **DROP** | أعمدة ميتة؛ موقع الخزينة يعود كحقل حقيقي يوم يطلبه العمل |
 | `car_status:1` على صف التشغيلة عند الصرف | `:1735` | **NORMALIZE** | الحالة مشتقة من حالات الشحنات، لا عَلَم مكرَّر يمكن أن يتعارض |
+
+## 20-ج. سجل قرارات OP-5 (التعيين والترتيب) — PRESERVE / NORMALIZE / DROP
+
+| السلوك القديم | الدليل | القرار | السبب |
+|---|---|---|---|
+| leg 1 (`leader1`+`car_num1`) يُكتب عند الإنشاء **للنوعين** يومي ومحصنة | `:330/:336` و`:725/:733` | **PRESERVE** | التعيين متاح للنوعين؛ لم نقصره على اليومي |
+| leg 2 (`leader2`+`car_num2`) للمحصنات فقط | `:4491` | **PRESERVE** | الفصل مُثبت بتقرير القادة (`:4894` يومي بـleader1، `:4931` محصنة بـleader2) |
+| الأخصائيون ليسوا على الشحنة إطلاقًا | §3.1 (حقول ميتة) | **PRESERVE** | يُحلّون عبر `crewAssignmentId` → صف (يوم، سيارة)؛ اختبار انحدار يمنع التسريب |
+| التعيين لا يغيّر حالة الشحنة | `:4491` | **PRESERVE** | assign ≠ dispatch ≠ complete |
+| إعادة التعيين تكتب في المكان (bulkWrite) | `:4491` | **PRESERVE** | فهرس فريد `(shipment, leg)` — لا تكرار بنيويًا |
+| لا يوجد ترتيب تنفيذ في Legacy إطلاقًا | فحص شامل | **NEW** | `sequence` 1..N فريد لكل (يوم، قائد، leg) — القدرة الجديدة المطلوبة |
+| — | — | **NEW** | إعادة الترتيب: حمولة كاملة (المواضع من ترتيب المصفوفة ⇒ يستحيل التعبير عن موضع مكرر)، فحص الاكتمال، version لكل عنصر، transaction واحدة بـpark سالب قبل النهائي |
 
 ## 21. الاختبارات الإلزامية (Test Plan)
 

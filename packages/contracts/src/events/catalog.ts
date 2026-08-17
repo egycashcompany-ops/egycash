@@ -186,7 +186,9 @@ import {
   type OperationsEventName,
   OperationsCrewAssignmentChangedPayloadV1,
   OperationsCrewPlannedPayloadV1,
+  OperationsCustodyEventPayloadV1,
   OperationsDayEventPayloadV1,
+  OperationsShipmentAssignmentPayloadV1,
   OperationsShipmentEventPayloadV1,
 } from '../modules/operations.js';
 
@@ -655,6 +657,8 @@ export const EVENT_ENTITY_NAMES: Readonly<Record<string, LocalizedString>> = {
   day: { en: 'Operating day', ar: 'يوم التشغيل' },
   crew: { en: 'Crew', ar: 'الطاقم' },
   crewAssignment: { en: 'Crew assignment', ar: 'تعيين طاقم' },
+  custody: { en: 'Vault custody', ar: 'عهدة الخزينة' },
+  shipmentAssignment: { en: 'Shipment assignment', ar: 'تعيين شحنة' },
 };
 
 export const EVENT_ACTION_NAMES: Readonly<Record<string, LocalizedString>> = {
@@ -755,6 +759,10 @@ export const EVENT_ACTION_NAMES: Readonly<Record<string, LocalizedString>> = {
   // it
   registered: { en: 'registered', ar: 'تسجيل' },
   assigned: { en: 'assigned', ar: 'تسليم' },
+  // operations (OP-4): the vault hand-offs and the secured dispatch.
+  received: { en: 'received', ar: 'استلام' },
+  released: { en: 'released', ar: 'صرف' },
+  dispatched: { en: 'dispatched', ar: 'خروج' },
   disposed: { en: 'disposed', ar: 'استبعاد' },
   // `opened` is already defined above (recruitment uses it) — one entry serves both modules,
   // which is the point of a shared action vocabulary.
@@ -1199,6 +1207,10 @@ export const OPERATIONS_EVENT_PAYLOAD_SCHEMAS: Readonly<
   [OperationsEvents.DayClosed]: OperationsDayEventPayloadV1,
   [OperationsEvents.CrewPlanned]: OperationsCrewPlannedPayloadV1,
   [OperationsEvents.CrewAssignmentChanged]: OperationsCrewAssignmentChangedPayloadV1,
+  [OperationsEvents.VaultReceived]: OperationsCustodyEventPayloadV1,
+  [OperationsEvents.VaultReleased]: OperationsCustodyEventPayloadV1,
+  [OperationsEvents.SecuredLegAssigned]: OperationsShipmentAssignmentPayloadV1,
+  [OperationsEvents.SecuredDispatched]: OperationsShipmentEventPayloadV1,
 };
 
 export const OPERATIONS_EVENT_SOURCE: EventCatalogSource = {

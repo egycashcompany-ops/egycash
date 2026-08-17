@@ -392,7 +392,7 @@ stateDiagram-v2
 | **3** | Operations day **+ Crew assignment** *(دُمجا في OP-3 بقرار المالك، 2026-08-17)* | `operations_days` (planning→open→closed، بلا بوابات على التخطيط — parity) + `operations_crew_assignments` على حدّ §9.4 (`fleetDutyAssignmentId` إلزامي = بوابة car_lock مطبَّعة) + فرض Q11 نهاية-الحالة + لوحة الغد الافتراضية (parity :2239) + صلاحيات `operationsCrew.view/plan` و`operationsDay.manage` | 1 |
 | **4** | ~~Shipments core~~ *(نُفِّذ ضمن OP-2 أعلاه)* — يتبقى منه فقط ربط الشحنة بيوم التشغيل عند وصول PR 3 | 2,3 |
 | **5** | ~~Crew assignment~~ *(نُفِّذ backend ضمن OP-3 أعلاه)* — يتبقى لوحة الواجهة (UI) مع شرائح الواجهات | 3 |
-| **6** | Vault / mohsana | `operations_vault_custody` + receive (بأمينين) + dispatch + آلة الحالة الكاملة | 4,5 |
+| **6** | Vault / mohsana ✅ *(نُفِّذ كـ OP-4، 2026-08-17)* | `operations_vault_custody` + **Treasury port** (`treasury-boundary.ts` — ECMS بلا موديول خزينة، فالحدّ واجهة مُسجَّلة والتنفيذ مؤقت داخل Operations لحين وجود مالك) + `operations_shipment_assignments` (leg=delivery = leader2/car_num2) + receive بأمينين مختلفين + assign + dispatch داخل transaction واحدة | 4,5 |
 | **7** | Shipment assignment + sequencing | `operations_shipment_assignments` + `sequence` + API إعادة الترتيب بـ version | 4,5 |
 | **8** | Sequential execution | `start/pickup/deliver/complete` + الحارس التتابعي في الـ domain + CAS | 7 |
 | **9** | Captain mobile surface | `GET /operations/me/day` + شاشة responsive + حالة القفل | 8 |
@@ -403,6 +403,24 @@ stateDiagram-v2
 كل PR **يُدمج مستقلًا ويترك النظام أخضر**.
 
 ---
+
+## 20-ب. سجل قرارات OP-4 (المحصنات) — PRESERVE / NORMALIZE / DROP
+
+| السلوك القديم | الدليل | القرار | السبب |
+|---|---|---|---|
+| سُلّم `0→2→3→1` غير تصاعدي و`1` نهائي | `:1220,:1737,:564` | **PRESERVE** (المعنى) | الترميز فقط طُبِّع؛ الخريطة الرقمية مثبَّتة في contracts ومُختبَرة |
+| `/mohsana` = المتراكم المفتوح بلا فلتر تاريخ | `:657` | **PRESERVE** | «كل ما لم يكتمل» — شحنة استُلمت قبل أسابيع تظل ظاهرة |
+| `/vault1` = الجرد الحالي، فلاتر التاريخ **مُعلَّقة** | `:1374,:1530` | **PRESERVE** (Q32) | الخزينة تجيب «ما الموجود الآن»؛ الـ date picker الوهمي أُسقط |
+| `/tash4ela_mohasana` يكتب `leader2`+`car_num2` فقط بلا مساس بالحالة | `:4491` | **PRESERVE** | التعيين ليس صرفًا — مُختبَر صراحةً |
+| `$nin:[0,1,3]` للقائمة المستحقة | `:4447,:1690` | **NORMALIZE** (Q9) | `$nin` يلتقط الوثائق ناقصة الحقل؛ استُبدل بـ`status:'inVault'` صريح |
+| `treasurer_receive` يُكتب `""` دائمًا (رجل واحد فعليًا) | `:1211,:1266` | **NORMALIZE** (Q2) | أمينان **مختلفان** إلزاميان — الحقل كان يصف قاعدة لم تُنفَّذ قط |
+| `treasurer_delivery*` مُعلَنة ولا تُكتب أبدًا | فحص شامل | **NORMALIZE** (Q3) | `releasedBy/releasedAt` تُكتبان فعليًا عند الصرف |
+| الاستلام = تعديل عام يعيد ختم الحالة والتاريخ كل حفظ | `:1194-1240` | **NORMALIZE** (Q29) | العهدة تُؤخذ مرة واحدة (فهرس فريد على الشحنة) |
+| الصرف بلا فحص حالة ولا transaction (`Promise.all`) | `:1735-1740` | **NORMALIZE** (Q18) | `unitOfWork` واحدة + حارس الحالة — الفشل الجزئي كان يترك حالة مختلطة |
+| الصرف بلا تحقق من `leader2` | `:1737` | **NORMALIZE** (Q30) | الصرف يتطلب leg 2 مُعيَّنًا على **نفس** صف التشغيلة — هذا ما كان يُنتج محصنة مكتملة بقائد فارغ في التقرير |
+| الصرف يُطلَق من زر **الطباعة** | `deliver_mohsana.ejs:1249` | **DROP** | الطباعة عرض؛ الصرف عملية لها endpoint وصلاحية |
+| `vault_no` · `Rack_no` · `vault_receipt_num` | لا تُكتب أبدًا (فحص) | **DROP** | أعمدة ميتة؛ موقع الخزينة يعود كحقل حقيقي يوم يطلبه العمل |
+| `car_status:1` على صف التشغيلة عند الصرف | `:1735` | **NORMALIZE** | الحالة مشتقة من حالات الشحنات، لا عَلَم مكرَّر يمكن أن يتعارض |
 
 ## 21. الاختبارات الإلزامية (Test Plan)
 

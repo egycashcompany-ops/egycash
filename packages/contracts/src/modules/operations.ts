@@ -548,6 +548,151 @@ export const OperationsCrewBoardQuerySchema = z
   .strict();
 export type OperationsCrewBoardQuery = z.infer<typeof OperationsCrewBoardQuerySchema>;
 
+
+// ── Vault custody + secured dispatch (OP-4) ─────────────────────────────────────────────────────
+//
+// The legacy secured (محصنة) lifecycle, normalized. The status ladder stays NON-ORDINAL in
+// meaning — it is the legacy codes 0→2→3→1 that the mapping at the top of this file preserves —
+// and the custody record below carries the facts the vault stamps at each hand-off.
+
+/**
+ * Custody of a secured shipment while it sits with the treasury.
+ * `held` = received into the vault (legacy status 2); `released` = handed back out for delivery
+ * (legacy status 3). Custody is a SEPARATE dimension from the shipment status: the shipment goes
+ * on to `completed` (legacy 1) at the destination, long after custody ended.
+ */
+export const OPERATIONS_CUSTODY_STATES = ['held', 'released'] as const;
+export const OperationsCustodyStateSchema = z.enum(OPERATIONS_CUSTODY_STATES);
+export type OperationsCustodyState = z.infer<typeof OperationsCustodyStateSchema>;
+
+export interface OperationsVaultCustodyDto {
+  id: string;
+  shipmentId: string;
+  state: OperationsCustodyState;
+  /** Legacy `receipt_num` — typed by the treasurer at receive. */
+  receiptNumber: string;
+  bagCount: number;
+  cartonCount: number;
+  boxCount: number;
+  /** Legacy `bag_seals` / `box_seals` — barcode arrays. */
+  bagSeals: string[];
+  boxSeals: string[];
+  /**
+   * Legacy `treasurer_receive` + `treasurer_receive2`. Legacy wrote the FIRST one as `""` on
+   * every save (contad_app.js:1211/1266) so the two-man rule never actually recorded two people;
+   * here both are required — Q2 NORMALIZE, an explicit decision, not a silent fix.
+   */
+  receivedByPrimaryId: string;
+  receivedBySecondaryId: string;
+  receivedAt: string;
+  /** Legacy `treasurer_delivery` / `treasurer_delivery_date` — declared but NEVER written (Q3). */
+  releasedById: string | null;
+  releasedAt: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const ReceiveIntoVaultSchema = z
+  .object({
+    receiptNumber: z.string().min(1),
+    bagCount: z.number().int().min(0).default(0),
+    cartonCount: z.number().int().min(0).default(0),
+    boxCount: z.number().int().min(0).default(0),
+    bagSeals: z.array(z.string().min(1)).max(500).default([]),
+    boxSeals: z.array(z.string().min(1)).max(500).default([]),
+    receivedByPrimaryId: objectId(),
+    receivedBySecondaryId: objectId(),
+    /** The shipment's `serial` flag, settable at receive exactly as the legacy edit form did. */
+    serialTracked: z.boolean().optional(),
+    version: z.number().int().min(0),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    // Q2's whole point: two DIFFERENT people. One person twice is one person.
+    if (value.receivedByPrimaryId === value.receivedBySecondaryId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['receivedBySecondaryId'],
+        message: 'the two receiving treasurers must be different people (dual control)',
+      });
+    }
+  });
+export type ReceiveIntoVault = z.infer<typeof ReceiveIntoVaultSchema>;
+
+// ── Shipment assignment: the two legs (OP-4) ────────────────────────────────────────────────────
+//
+// Replaces the legacy leader1/car_num1 vs leader2/car_num2 field duplication with one entity
+// carrying `leg` (discovery §4.1). OP-4 writes the DELIVERY leg — the legacy /tash4ela_mohasana
+// step (contad_app.js:4491 sets exactly leader2 + car_num2 and nothing else). Specialists are
+// NOT here: they stay resolved through the (day, vehicle) crew assignment, as in legacy.
+
+export interface OperationsShipmentAssignmentDto {
+  id: string;
+  shipmentId: string;
+  leg: OperationsShipmentLeg;
+  operationsDayId: string;
+  /** Legacy `leader2` for the delivery leg (`leader1` for pickup). */
+  captainEmployeeId: string;
+  /** Legacy `car_num2` for the delivery leg (`car_num1` for pickup). */
+  vehicleId: string;
+  /** The (day, vehicle) crew row this leg rides — how specialists are resolved, never copied. */
+  crewAssignmentId: string;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Assign the secured delivery leg — the legacy /tash4ela_mohasana bulk save.
+ * The captain and vehicle must match a crew assignment on the shipment's delivery day, which is
+ * how `day + vehicle + leg → crew` resolves without duplicating the crew onto the shipment.
+ */
+export const AssignSecuredDeliveryLegSchema = z
+  .object({
+    crewAssignmentId: objectId(),
+    captainEmployeeId: objectId(),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type AssignSecuredDeliveryLeg = z.infer<typeof AssignSecuredDeliveryLegSchema>;
+
+/**
+ * Release from the vault and dispatch — the legacy /deliver_mohsana/data call, which posts a
+ * tashghela row id (`car_id`) plus the shipment ids it is carrying (deliver_mohsana.ejs:1258).
+ * The crew assignment IS that tashghela row.
+ */
+export const DispatchSecuredShipmentsSchema = z
+  .object({
+    crewAssignmentId: objectId(),
+    shipmentIds: z.array(objectId()).min(1).max(200),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (new Set(value.shipmentIds).size !== value.shipmentIds.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['shipmentIds'],
+        message: 'a shipment appears twice in one dispatch',
+      });
+    }
+  });
+export type DispatchSecuredShipments = z.infer<typeof DispatchSecuredShipmentsSchema>;
+
+/** The `/mohsana` open backlog: every secured shipment not yet completed, NO date filter (:657). */
+export const ListSecuredBacklogQuerySchema = PaginationQuerySchema.extend({
+  status: listQuery(OperationsShipmentStatusSchema),
+}).strict();
+export type ListSecuredBacklogQuery = z.infer<typeof ListSecuredBacklogQuerySchema>;
+
+/** The `/vault1` inventory: everything currently held, NO date filter (:1370, Q32 PRESERVE). */
+export const ListVaultInventoryQuerySchema = PaginationQuerySchema.strict();
+export type ListVaultInventoryQuery = z.infer<typeof ListVaultInventoryQuerySchema>;
+
+/** The `/tash4ela_mohasana` + `/deliver_mohsana` list: held, due for delivery on a date (:4447). */
+export const ListSecuredDueQuerySchema = z.object({ date: z.coerce.date() }).strict();
+export type ListSecuredDueQuery = z.infer<typeof ListSecuredDueQuerySchema>;
+
 // ── Events (ADR-008 `<module>.<entity>.<event>`) ────────────────────────────────────────────────
 
 export const OperationsEvents = {
@@ -561,6 +706,10 @@ export const OperationsEvents = {
   DayClosed: 'operations.day.closed',
   CrewPlanned: 'operations.crew.planned',
   CrewAssignmentChanged: 'operations.crewAssignment.changed',
+  VaultReceived: 'operations.custody.received',
+  VaultReleased: 'operations.custody.released',
+  SecuredLegAssigned: 'operations.shipmentAssignment.assigned',
+  SecuredDispatched: 'operations.shipment.dispatched',
 } as const;
 export type OperationsEventName = (typeof OperationsEvents)[keyof typeof OperationsEvents];
 
@@ -589,4 +738,18 @@ export const OperationsCrewAssignmentChangedPayloadV1 = z.object({
   captainEmployeeId: objectId().nullable(),
   specialist1EmployeeId: objectId().nullable(),
   specialist2EmployeeId: objectId().nullable(),
+});
+
+export const OperationsCustodyEventPayloadV1 = z.object({
+  custodyId: objectId(),
+  shipmentId: objectId(),
+  state: OperationsCustodyStateSchema,
+});
+
+export const OperationsShipmentAssignmentPayloadV1 = z.object({
+  assignmentId: objectId(),
+  shipmentId: objectId(),
+  leg: OperationsShipmentLegSchema,
+  captainEmployeeId: objectId(),
+  vehicleId: objectId(),
 });

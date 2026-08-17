@@ -19,6 +19,10 @@ import { buildOperationsCurrenciesRouter } from './currencies/currency.routes';
 import { buildOperationsShipmentsRouter } from './shipments/shipment.routes';
 import { buildOperationsDaysRouter } from './days/day.routes';
 import { buildOperationsCrewRouter } from './crew/crew.routes';
+import { buildOperationsSecuredRouter } from './secured/secured.routes';
+// Registers the interim vault-custody provider on the Treasury port at module load
+// (see ./treasury-boundary.ts). Importing for the side effect is the platform seam convention.
+import './vault/vault-custody.service';
 
 const shipmentPermissions = declarePermissions(
   'operations',
@@ -77,11 +81,26 @@ const dayPermissions = declarePermissions(
   'operations.crew-board',
 );
 
+const vaultPermissions = declarePermissions(
+  'operations',
+  'operationsVault',
+  { en: 'vault custody', ar: 'عهدة الخزينة' },
+  ['view'],
+  [
+    // The treasury's own two acts. Separate from the Operations grants by design: the legacy
+    // screens had different owners, and the Treasury port exists to keep them different.
+    { action: 'receive', name: { en: 'Receive into the vault', ar: 'استلام في الخزينة' } },
+    { action: 'dispatch', name: { en: 'Release and dispatch from the vault', ar: 'صرف من الخزينة' } },
+  ],
+  'operations.vault',
+);
+
 export const operationsPermissions: PermissionDef[] = [
   ...shipmentPermissions,
   ...catalogPermissions,
   ...crewPermissions,
   ...dayPermissions,
+  ...vaultPermissions,
 ];
 
 export const operationsPages: PageDef[] = [
@@ -100,6 +119,13 @@ export const operationsPages: PageDef[] = [
     sortOrder: 20,
   },
   {
+    id: 'operations.vault',
+    moduleId: 'operations',
+    name: { en: 'Vault custody', ar: 'عهدة الخزينة' },
+    route: '/operations/vault',
+    sortOrder: 30,
+  },
+  {
     id: 'operations.catalogs',
     moduleId: 'operations',
     name: { en: 'Operations reference data', ar: 'البيانات المرجعية للعمليات' },
@@ -111,7 +137,7 @@ export const operationsPages: PageDef[] = [
 export const operationsModule: ModuleManifest = {
   id: 'operations',
   name: { en: 'Operations', ar: 'العمليات' },
-  version: '0.3.0',
+  version: '0.4.0',
   requiresPlatform: '^2.2',
   permissions: operationsPermissions,
   pages: operationsPages,
@@ -122,6 +148,7 @@ export const operationsModule: ModuleManifest = {
     { prefix: '/operations/currencies', router: buildOperationsCurrenciesRouter() },
     { prefix: '/operations/days', router: buildOperationsDaysRouter() },
     { prefix: '/operations/crew-board', router: buildOperationsCrewRouter() },
+    { prefix: '/operations/secured', router: buildOperationsSecuredRouter() },
   ],
   collections: [
     'operations_shipments',
@@ -130,6 +157,8 @@ export const operationsModule: ModuleManifest = {
     'operations_currencies',
     'operations_days',
     'operations_crew_assignments',
+    'operations_vault_custody',
+    'operations_shipment_assignments',
   ],
   eventSubscriptions: [],
 };

@@ -6,9 +6,11 @@ import {
   type OperationsBankDto,
   type OperationsCurrencyDto,
   type OperationsDayDto,
+  type OperationsShipmentAssignmentDto,
   type OperationsShipmentDto,
 } from '@ecms/contracts';
 import { type OperationsDayDoc } from './days/day.model';
+import { type OperationsShipmentAssignmentDoc } from './shipments/shipment-assignment.model';
 import { type OperationsBankDoc } from './banks/bank.model';
 import { type OperationsBankBranchDoc } from './bank-branches/bank-branch.model';
 import { type OperationsCurrencyDoc } from './currencies/currency.model';
@@ -91,6 +93,21 @@ export const toDayDto = (doc: OperationsDayDoc): OperationsDayDto => ({
   openedAt: doc.openedAt === null ? null : iso(doc.openedAt),
   closedById: doc.closedById === null ? null : String(doc.closedById),
   closedAt: doc.closedAt === null ? null : iso(doc.closedAt),
+  version: doc.__v,
+  createdAt: iso(doc.createdAt),
+  updatedAt: iso(doc.updatedAt),
+});
+
+export const toShipmentAssignmentDto = (
+  doc: OperationsShipmentAssignmentDoc,
+): OperationsShipmentAssignmentDto => ({
+  id: String(doc._id),
+  shipmentId: String(doc.shipmentId),
+  leg: doc.leg,
+  operationsDayId: String(doc.operationsDayId),
+  captainEmployeeId: String(doc.captainEmployeeId),
+  vehicleId: String(doc.vehicleId),
+  crewAssignmentId: String(doc.crewAssignmentId),
   version: doc.__v,
   createdAt: iso(doc.createdAt),
   updatedAt: iso(doc.updatedAt),

@@ -19,6 +19,7 @@ import {
   type OperationsCrewBoardDto,
   type OperationsCurrencyDto,
   type OperationsDayDto,
+  type OperationsShipmentAssignmentDto,
   type OperationsShipmentDto,
 } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
@@ -713,3 +714,248 @@ describe('crew board — the tashghela workflow on the Fleet boundary (OP-3)', (
     expect(plan.status).toBe(403);
   });
 });
+
+describe('secured (محصنة) workflow — the four legacy screens (OP-4)', () => {
+  const DELIVERY_DATE = '2026-08-21';
+  let securedDayId: string;
+  let treasurer2Id: string;
+
+  const mkSecured = async (): Promise<OperationsShipmentDto> => {
+    const res = await mkShipment({ shipmentType: 'secured', deliveryDate: DELIVERY_DATE });
+    expect(res.status).toBe(201);
+    return data<OperationsShipmentDto>(res);
+  };
+
+  const receive = async (
+    shipment: OperationsShipmentDto,
+    overrides: Record<string, unknown> = {},
+  ): Promise<request.Response> =>
+    request(app)
+      .post(`/api/v1/operations/secured/${shipment.id}/receive`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        receiptNumber: `R-${shipment.id.slice(-6)}`,
+        bagCount: 3,
+        boxCount: 1,
+        bagSeals: ['S-1', 'S-2', 'S-3'],
+        receivedByPrimaryId: captainId,
+        receivedBySecondaryId: treasurer2Id,
+        version: shipment.version,
+        ...overrides,
+      });
+
+  beforeAll(async () => {
+    treasurer2Id = await mkEmployee();
+
+    // A Fleet roster row + an Operations crew row on the DELIVERY day — the legacy tashghela row
+    // that /deliver_mohsana posts back as `car_id`.
+    const roster = await request(app)
+      .post('/api/v1/fleet/roster')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date: DELIVERY_DATE, rows: [{ vehicleId: vehicleAId }] });
+    expect(roster.status).toBe(200);
+
+    const plan = await request(app)
+      .post('/api/v1/operations/crew-board')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        date: DELIVERY_DATE,
+        rows: [{ vehicleId: vehicleAId, captainEmployeeId: captainId }],
+      });
+    expect(plan.status).toBe(200);
+    const board = data<OperationsCrewBoardDto>(plan);
+    securedDayId = board.day?.id ?? '';
+    expect(securedDayId).not.toBe('');
+
+  });
+
+  it('1. creates a secured shipment in draft and lists it in the open backlog (no date filter)', async () => {
+    const shipment = await mkSecured();
+    expect(shipment.status).toBe('draft');
+
+    const backlog = await request(app)
+      .get('/api/v1/operations/secured/backlog')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(backlog.status).toBe(200);
+    const ids = data<OperationsShipmentDto[]>(backlog).map((x) => x.id);
+    expect(ids).toContain(shipment.id);
+  });
+
+  it('2+3. receives into the vault: draft → inVault, custody held, dual control enforced', async () => {
+    const shipment = await mkSecured();
+
+    const sameTreasurer = await receive(shipment, { receivedBySecondaryId: captainId });
+    expect(sameTreasurer.status).toBe(400); // schema-level dual-control guard
+
+    const res = await receive(shipment);
+    expect(res.status).toBe(200);
+    expect(data<OperationsShipmentDto>(res).status).toBe('inVault');
+    await waitFor(() => seenEvents.some((e) => e.name === OperationsEvents.VaultReceived));
+
+    const vault = await request(app)
+      .get('/api/v1/operations/secured/vault')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(vault.status).toBe(200);
+    const held = data<{ items: { shipmentId: string }[] }>(vault).items.map((i) => i.shipmentId);
+    expect(held).toContain(shipment.id);
+  });
+
+  it('7. refuses a second receive and refuses receiving a daily shipment at all', async () => {
+    const shipment = await mkSecured();
+    expect((await receive(shipment)).status).toBe(200);
+
+    const fresh = await request(app)
+      .get(`/api/v1/operations/shipments/${shipment.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const again = await receive(data<OperationsShipmentDto>(fresh));
+    expect(again.status).toBe(422); // the shipment is no longer in draft
+    expect(errorCode(again)).toBe(ErrorCodes.OPERATIONS_INVALID_SHIPMENT_TRANSITION);
+
+    const daily = data<OperationsShipmentDto>(await mkShipment());
+    const wrongType = await receive(daily);
+    expect(wrongType.status).toBe(422);
+    expect(errorCode(wrongType)).toBe(ErrorCodes.OPERATIONS_NOT_A_SECURED_SHIPMENT);
+  });
+
+  it('5. assigns the delivery leg (leader2 + car_num2) WITHOUT changing status — legacy :4491', async () => {
+    const shipment = await mkSecured();
+    await receive(shipment);
+
+    const due = await request(app)
+      .get(`/api/v1/operations/secured/due?date=${DELIVERY_DATE}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(due.status).toBe(200);
+    expect(data<OperationsShipmentDto[]>(due).map((x) => x.id)).toContain(shipment.id);
+
+    const crewRow = await findCrewAssignmentId();
+    const res = await request(app)
+      .post(`/api/v1/operations/secured/${shipment.id}/assign-delivery`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ crewAssignmentId: crewRow, captainEmployeeId: captainId, version: 0 });
+    expect(res.status).toBe(200);
+    const assignment = data<OperationsShipmentAssignmentDto>(res);
+    expect(assignment.leg).toBe('delivery');
+    expect(assignment.captainEmployeeId).toBe(captainId); // leader2
+    expect(assignment.vehicleId).toBe(vehicleAId); // car_num2
+    expect(assignment.crewAssignmentId).toBe(crewRow); // specialists resolve THROUGH this row
+
+    const after = await request(app)
+      .get(`/api/v1/operations/shipments/${shipment.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(data<OperationsShipmentDto>(after).status).toBe('inVault'); // assignment ≠ dispatch
+  });
+
+  it('9. refuses a captain who is not that crew row\'s captain', async () => {
+    const shipment = await mkSecured();
+    await receive(shipment);
+    const res = await request(app)
+      .post(`/api/v1/operations/secured/${shipment.id}/assign-delivery`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        crewAssignmentId: await findCrewAssignmentId(),
+        captainEmployeeId: treasurer2Id,
+        version: 0,
+      });
+    expect(res.status).toBe(422);
+    expect(errorCode(res)).toBe(ErrorCodes.OPERATIONS_CREW_CAPTAIN_MISMATCH);
+  });
+
+  it('4+6. dispatches: inVault → dispatched, custody released, then completes at destination', async () => {
+    const shipment = await mkSecured();
+    await receive(shipment);
+    const crewRow = await findCrewAssignmentId();
+    await request(app)
+      .post(`/api/v1/operations/secured/${shipment.id}/assign-delivery`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ crewAssignmentId: crewRow, captainEmployeeId: captainId, version: 0 });
+
+    const dispatched = await request(app)
+      .post('/api/v1/operations/secured/dispatch')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ crewAssignmentId: crewRow, shipmentIds: [shipment.id] });
+    expect(dispatched.status).toBe(200);
+    expect(data<{ dispatched: number }>(dispatched).dispatched).toBe(1);
+    await waitFor(() => seenEvents.some((e) => e.name === OperationsEvents.VaultReleased));
+
+    const afterDispatch = data<OperationsShipmentDto>(
+      await request(app)
+        .get(`/api/v1/operations/shipments/${shipment.id}`)
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+    expect(afterDispatch.status).toBe('dispatched');
+
+    // Terminal completion still happens on the shipment surface (legacy /main_ops receive, :564).
+    const completed = await request(app)
+      .post(`/api/v1/operations/shipments/${shipment.id}/complete`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: afterDispatch.version });
+    expect(completed.status).toBe(200);
+    expect(data<OperationsShipmentDto>(completed).status).toBe('completed');
+
+    // …and the legacy un-receive returns it to dispatched, never to draft (:559).
+    const reopened = await request(app)
+      .post(`/api/v1/operations/shipments/${shipment.id}/reopen`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: data<OperationsShipmentDto>(completed).version });
+    expect(data<OperationsShipmentDto>(reopened).status).toBe('dispatched');
+  });
+
+  it('7+8. refuses dispatch without a delivery leg, and on the wrong crew assignment', async () => {
+    const unassigned = await mkSecured();
+    await receive(unassigned);
+    const crewRow = await findCrewAssignmentId();
+
+    const noLeg = await request(app)
+      .post('/api/v1/operations/secured/dispatch')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ crewAssignmentId: crewRow, shipmentIds: [unassigned.id] });
+    expect(noLeg.status).toBe(422);
+    expect(errorCode(noLeg)).toBe(ErrorCodes.OPERATIONS_DELIVERY_LEG_REQUIRED);
+
+    const draft = await mkSecured();
+    const notHeld = await request(app)
+      .post('/api/v1/operations/secured/dispatch')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ crewAssignmentId: crewRow, shipmentIds: [draft.id] });
+    expect(notHeld.status).toBe(422);
+    expect(errorCode(notHeld)).toBe(ErrorCodes.OPERATIONS_INVALID_SHIPMENT_TRANSITION);
+  });
+
+  it('10. receive is version-locked — a stale version is refused', async () => {
+    const shipment = await mkSecured();
+    const stale = await receive(shipment, { version: shipment.version + 5 });
+    expect([409, 422]).toContain(stale.status);
+  });
+
+  it('11. RBAC — vault acts need the treasury grants, not the Operations ones', async () => {
+    const shipment = await mkSecured();
+    const res = await request(app)
+      .post(`/api/v1/operations/secured/${shipment.id}/receive`)
+      .set('Authorization', `Bearer ${viewerToken}`)
+      .send({
+        receiptNumber: 'R-X',
+        receivedByPrimaryId: captainId,
+        receivedBySecondaryId: treasurer2Id,
+        version: shipment.version,
+      });
+    expect(res.status).toBe(403);
+
+    const vaultRead = await request(app)
+      .get('/api/v1/operations/secured/vault')
+      .set('Authorization', `Bearer ${viewerToken}`);
+    expect(vaultRead.status).toBe(403);
+  });
+});
+
+/** The crew assignment id for the OP-4 delivery day, read straight from the collection seam. */
+const findCrewAssignmentId = async (): Promise<string> => {
+  const { operationsCrewAssignmentRepository } = await import(
+    '../../src/modules/operations/crew/crew-assignment.repository'
+  );
+  const { operationsDayService } = await import(
+    '../../src/modules/operations/days/day.service'
+  );
+  const day = await operationsDayService.findByDate(new Date('2026-08-21'));
+  const rows = await operationsCrewAssignmentRepository.findForDay(day?._id ?? '');
+  return String(rows[0]?._id ?? '');
+};

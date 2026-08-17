@@ -4431,6 +4431,58 @@ const en: Record<string, string> = {
   'systemAdmin.users.setupLink.copyUnavailable':
     'This browser will not let a page copy for you — select the link and copy it yourself.',
   'systemAdmin.users.setupLink.failed': 'Could not issue a setup link for this account.',
+  // ── Operations (B1) — the cash-transfer desk. Replaces the legacy `/data_edit` screen and
+  // becomes the shell every later B slice hangs its screens on.
+  'operations.module.title': 'Operations',
+  'operations.overview.title': 'Operations',
+  'operations.overview.subtitle': 'Cash shipments, daily crew, vault custody and reference data',
+  'operations.overview.noAccessTitle': 'No operations screens available',
+  'operations.overview.noAccessBody':
+    'You do not have permission for any operations screen yet. Ask an administrator for access.',
+  'operations.nav.catalogs': 'Reference data',
+  'operations.cards.catalogs': 'Banks, branches and currencies used by every shipment',
+  'operations.common.status': 'Status',
+  'operations.common.active': 'Active',
+  'operations.common.inactive': 'Inactive',
+  'operations.catalogs.title': 'Operations reference data',
+  'operations.catalogs.subtitle':
+    'Banks, their branches, and the currencies shipments are recorded in.',
+  'operations.catalogs.saved': 'Saved',
+  'operations.catalogs.saveFailed': 'Could not save. Check the values and try again.',
+  'operations.catalogs.tab.banks': 'Banks',
+  'operations.catalogs.tab.branches': 'Branches',
+  'operations.catalogs.tab.currencies': 'Currencies',
+  'operations.catalogs.bank.add': 'Add bank',
+  'operations.catalogs.bank.edit': 'Edit bank',
+  'operations.catalogs.bank.code': 'Code',
+  'operations.catalogs.bank.nameAr': 'Name (Arabic)',
+  'operations.catalogs.bank.nameEn': 'Name (English)',
+  'operations.catalogs.bank.opsName': 'Operations name',
+  'operations.catalogs.bank.opsNameHint':
+    'The name operations screens match on. It must be unique and is what shipment records refer to.',
+  'operations.catalogs.bank.sortOrder': 'Sort order',
+  'operations.catalogs.bank.sortOrderHint':
+    'Controls where this bank appears in vault listings. Leave blank to sort by code.',
+  'operations.catalogs.bank.empty': 'No banks yet',
+  'operations.catalogs.branch.add': 'Add branch',
+  'operations.catalogs.branch.edit': 'Edit branch',
+  'operations.catalogs.branch.bank': 'Bank',
+  'operations.catalogs.branch.name': 'Branch name',
+  'operations.catalogs.branch.code': 'Branch code',
+  'operations.catalogs.branch.opsArea': 'Operations area',
+  'operations.catalogs.branch.opsAreaHint': 'The area label operations uses for routing and reports.',
+  'operations.catalogs.branch.financeArea': 'Finance area',
+  'operations.catalogs.branch.financeAreaHint':
+    'Used by accounting. Left blank, it follows the operations area.',
+  'operations.catalogs.branch.empty': 'No branches yet',
+  'operations.catalogs.currency.add': 'Add currency',
+  'operations.catalogs.currency.edit': 'Edit currency',
+  'operations.catalogs.currency.code': 'Code',
+  'operations.catalogs.currency.name': 'Name',
+  'operations.catalogs.currency.aliases': 'Legacy spellings',
+  'operations.catalogs.currency.aliasesHint':
+    'Every older spelling that means this currency, comma separated — reports match historical records on them.',
+  'operations.catalogs.currency.empty': 'No currencies yet',
 };
 
 const ar: Record<string, string> = {
@@ -8779,6 +8831,56 @@ const ar: Record<string, string> = {
   'systemAdmin.users.setupLink.copyUnavailable':
     'هذا المتصفح لا يسمح للصفحة بالنسخ نيابة عنك — حدّد الرابط وانسخه بنفسك.',
   'systemAdmin.users.setupLink.failed': 'تعذّر توليد رابط إعداد لهذا الحساب.',
+  // ── العمليات (B1)
+  'operations.module.title': 'العمليات',
+  'operations.overview.title': 'العمليات',
+  'operations.overview.subtitle': 'شحنات نقل الأموال، التشغيلة اليومية، عهدة الخزينة والبيانات المرجعية',
+  'operations.overview.noAccessTitle': 'لا توجد شاشات عمليات متاحة',
+  'operations.overview.noAccessBody':
+    'لا تملك صلاحية على أي شاشة عمليات بعد. اطلب الصلاحية من المسؤول.',
+  'operations.nav.catalogs': 'البيانات المرجعية',
+  'operations.cards.catalogs': 'البنوك والفروع والعملات التي تستخدمها كل شحنة',
+  'operations.common.status': 'الحالة',
+  'operations.common.active': 'مُفعَّل',
+  'operations.common.inactive': 'غير مُفعَّل',
+  'operations.catalogs.title': 'البيانات المرجعية للعمليات',
+  'operations.catalogs.subtitle': 'البنوك وفروعها والعملات التي تُسجَّل بها الشحنات.',
+  'operations.catalogs.saved': 'تم الحفظ',
+  'operations.catalogs.saveFailed': 'تعذّر الحفظ. راجع القيم ثم أعد المحاولة.',
+  'operations.catalogs.tab.banks': 'البنوك',
+  'operations.catalogs.tab.branches': 'الفروع',
+  'operations.catalogs.tab.currencies': 'العملات',
+  'operations.catalogs.bank.add': 'إضافة بنك',
+  'operations.catalogs.bank.edit': 'تعديل بنك',
+  'operations.catalogs.bank.code': 'الكود',
+  'operations.catalogs.bank.nameAr': 'الاسم (عربي)',
+  'operations.catalogs.bank.nameEn': 'الاسم (إنجليزي)',
+  'operations.catalogs.bank.opsName': 'الاسم التشغيلي',
+  'operations.catalogs.bank.opsNameHint':
+    'الاسم الذي تطابق عليه شاشات العمليات. يجب أن يكون فريدًا وهو ما تشير إليه سجلات الشحنات.',
+  'operations.catalogs.bank.sortOrder': 'ترتيب العرض',
+  'operations.catalogs.bank.sortOrderHint':
+    'يحدد موضع البنك في كشوف الخزينة. اتركه فارغًا للترتيب بالكود.',
+  'operations.catalogs.bank.empty': 'لا توجد بنوك بعد',
+  'operations.catalogs.branch.add': 'إضافة فرع',
+  'operations.catalogs.branch.edit': 'تعديل فرع',
+  'operations.catalogs.branch.bank': 'البنك',
+  'operations.catalogs.branch.name': 'اسم الفرع',
+  'operations.catalogs.branch.code': 'كود الفرع',
+  'operations.catalogs.branch.opsArea': 'منطقة العمليات',
+  'operations.catalogs.branch.opsAreaHint': 'مسمّى المنطقة الذي تستخدمه العمليات في المسارات والتقارير.',
+  'operations.catalogs.branch.financeArea': 'منطقة الحسابات',
+  'operations.catalogs.branch.financeAreaHint':
+    'تستخدمها الحسابات. إذا تُركت فارغة فإنها تتبع منطقة العمليات.',
+  'operations.catalogs.branch.empty': 'لا توجد فروع بعد',
+  'operations.catalogs.currency.add': 'إضافة عملة',
+  'operations.catalogs.currency.edit': 'تعديل عملة',
+  'operations.catalogs.currency.code': 'الكود',
+  'operations.catalogs.currency.name': 'الاسم',
+  'operations.catalogs.currency.aliases': 'التسميات القديمة',
+  'operations.catalogs.currency.aliasesHint':
+    'كل تهجئة قديمة تعني هذه العملة، مفصولة بفواصل — التقارير تطابق السجلات التاريخية عليها.',
+  'operations.catalogs.currency.empty': 'لا توجد عملات بعد',
 };
 
 const catalogs: Record<Locale, Record<string, string>> = { en, ar };

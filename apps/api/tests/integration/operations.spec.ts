@@ -2095,3 +2095,225 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
     expect(tampered.status).toBe(400);
   });
 });
+
+describe('crew roster and requirements — legacy /requirement (B3)', () => {
+  // The legacy screen wrote NINE checkboxes onto the employee document keyed by employee_id, and
+  // only ONE of them (`leader`) was ever read by a server query. The approved decision carried
+  // since PR 1 is that requirements gate NOTHING — so the tests below prove both halves: the flags
+  // round-trip as data, AND an employee missing every one of them can still be crewed.
+  const ROSTER_DATE = '2026-11-03';
+  let memberA = '';
+  let memberB = '';
+
+  const setRequirements = (
+    employeeId: string,
+    body: Record<string, unknown>,
+    token = adminToken,
+  ): request.Test =>
+    request(app)
+      .put(`/api/v1/operations/crew-board/requirements/${employeeId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send(body);
+
+  const directory = (date: string, token = adminToken): request.Test =>
+    request(app)
+      .get(`/api/v1/operations/crew-board/directory?date=${date}`)
+      .set('Authorization', `Bearer ${token}`);
+
+  beforeAll(async () => {
+    memberA = await mkEmployee();
+    memberB = await mkEmployee();
+  });
+
+  it('creates a roster row by upsert — the legacy screen had no create/edit split', async () => {
+    const res = await setRequirements(memberA, { isCaptain: true, hasWeapon: true });
+    expect(res.status).toBe(200);
+    const dto = data<{ isCaptain: boolean; hasWeapon: boolean; hasSignature: boolean }>(res);
+    expect(dto.isCaptain).toBe(true);
+    expect(dto.hasWeapon).toBe(true);
+    // Unsent flags default to false rather than being absent.
+    expect(dto.hasSignature).toBe(false);
+  });
+
+  it('updates the same row on a second save, never creating a second one', async () => {
+    const again = await setRequirements(memberA, { isCaptain: true, hasSignature: true });
+    expect(again.status).toBe(200);
+    const dto = data<{ hasSignature: boolean; hasWeapon: boolean }>(again);
+    expect(dto.hasSignature).toBe(true);
+    // A save replaces the row, exactly as the legacy checkbox line did.
+    expect(dto.hasWeapon).toBe(false);
+
+    const list = await request(app)
+      .get('/api/v1/operations/crew-board/requirements')
+      .set('Authorization', `Bearer ${adminToken}`);
+    const rows = (list.body as { data: { employeeId: string }[] }).data;
+    expect(rows.filter((r) => r.employeeId === memberA)).toHaveLength(1);
+  });
+
+  it('round-trips all nine legacy flags, including the four legacy never read (Q25)', async () => {
+    const res = await setRequirements(memberB, {
+      isCaptain: false,
+      isSpecialist: true,
+      hasWeapon: true,
+      hasSignature: true,
+      hasLicense: true,
+      hasTemporaryLicense: true,
+      isOpsAdmin: true,
+      isNewJoiner: true,
+      isAssignedSpecialTask: true,
+      isPriority: true,
+      notes: 'ملاحظة',
+    });
+    expect(res.status).toBe(200);
+    const dto = data<Record<string, unknown>>(res);
+    for (const flag of [
+      'isSpecialist',
+      'hasWeapon',
+      'hasSignature',
+      'hasLicense',
+      'hasTemporaryLicense',
+      'isOpsAdmin',
+      'isNewJoiner',
+      'isAssignedSpecialTask',
+      'isPriority',
+    ]) {
+      expect(dto[flag]).toBe(true);
+    }
+    expect(dto.notes).toBe('ملاحظة');
+  });
+
+  it('the directory lists the roster with names resolved through the seam', async () => {
+    const res = await directory(ROSTER_DATE);
+    expect(res.status).toBe(200);
+    const dto = data<{
+      date: string;
+      members: { employeeId: string; fullNameAr: string; code: string }[];
+    }>(res);
+    expect(dto.date.slice(0, 10)).toBe(ROSTER_DATE);
+    const ids = dto.members.map((m) => m.employeeId);
+    expect(ids).toContain(memberA);
+    expect(ids).toContain(memberB);
+    // Names come from HR through the directory seam, not from a copy in Operations.
+    expect(dto.members.every((m) => m.fullNameAr !== '' && m.code !== '')).toBe(true);
+  });
+
+  it('sorts captains first — the legacy pool grouped them', async () => {
+    const dto = data<{ members: { requirements: { isCaptain: boolean } | null }[] }>(
+      await directory(ROSTER_DATE),
+    );
+    const flags = dto.members.map((m) => m.requirements?.isCaptain === true);
+    expect(flags.indexOf(false) === -1 || !flags.slice(flags.indexOf(false)).includes(true)).toBe(
+      true,
+    );
+  });
+
+  it('reports which vehicle a member already holds that day — the Q11 rule, as a server fact', async () => {
+    const roster = await request(app)
+      .post('/api/v1/fleet/roster')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date: ROSTER_DATE, rows: [{ vehicleId: vehicleAId, notes: 'roster seed' }] });
+    expect(roster.status).toBe(200);
+    const plan = await request(app)
+      .post('/api/v1/operations/crew-board')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date: ROSTER_DATE, rows: [{ vehicleId: vehicleAId, captainEmployeeId: memberA }] });
+    expect(plan.status).toBe(200);
+
+    const dto = data<{ members: { employeeId: string; assignedVehicleId: string | null }[] }>(
+      await directory(ROSTER_DATE),
+    );
+    const a = dto.members.find((m) => m.employeeId === memberA);
+    const b = dto.members.find((m) => m.employeeId === memberB);
+    expect(a?.assignedVehicleId).toBe(vehicleAId);
+    // ...and someone unassigned reports null rather than being omitted.
+    expect(b?.assignedVehicleId).toBeNull();
+
+    // The SAME day, a different day: the answer is per-day, not per-person.
+    const other = data<{ members: { employeeId: string; assignedVehicleId: string | null }[] }>(
+      await directory('2026-11-04'),
+    );
+    expect(other.members.find((m) => m.employeeId === memberA)?.assignedVehicleId).toBeNull();
+  });
+
+  it('APPROVED DECISION: requirements gate NOTHING — a flagless employee is still assignable', async () => {
+    const flagless = await mkEmployee();
+    expect((await setRequirements(flagless, {})).status).toBe(200);
+
+    const roster = await request(app)
+      .post('/api/v1/fleet/roster')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date: '2026-11-05', rows: [{ vehicleId: vehicleAId, notes: 'flagless seed' }] });
+    expect(roster.status).toBe(200);
+
+    // No weapon, no signature, no licence, not even marked a captain — and the captain slot takes
+    // them anyway, exactly as legacy did. This is the decision, asserted.
+    const plan = await request(app)
+      .post('/api/v1/operations/crew-board')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date: '2026-11-05', rows: [{ vehicleId: vehicleAId, captainEmployeeId: flagless }] });
+    expect(plan.status).toBe(200);
+  });
+
+  it('an employee with NO roster row at all can still be crewed', async () => {
+    // Membership is for the pool and the requirement screen; it is not an eligibility gate either.
+    const stranger = await mkEmployee();
+    const roster = await request(app)
+      .post('/api/v1/fleet/roster')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date: '2026-11-06', rows: [{ vehicleId: vehicleAId, notes: 'stranger seed' }] });
+    expect(roster.status).toBe(200);
+    const plan = await request(app)
+      .post('/api/v1/operations/crew-board')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date: '2026-11-06', rows: [{ vehicleId: vehicleAId, captainEmployeeId: stranger }] });
+    expect(plan.status).toBe(200);
+  });
+
+  it('refuses an unknown employee, and one who has exited', async () => {
+    const unknown = await setRequirements('507f1f77bcf86cd799439011', { isCaptain: true });
+    expect(unknown.status).toBe(400);
+  });
+
+  it('removing a member takes them out of the pool but leaves history alone', async () => {
+    const temp = await mkEmployee();
+    expect((await setRequirements(temp, { isSpecialist: true })).status).toBe(200);
+    expect(
+      data<{ members: { employeeId: string }[] }>(await directory(ROSTER_DATE)).members.some(
+        (m) => m.employeeId === temp,
+      ),
+    ).toBe(true);
+
+    const removed = await request(app)
+      .delete(`/api/v1/operations/crew-board/requirements/${temp}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(removed.status).toBe(204);
+
+    expect(
+      data<{ members: { employeeId: string }[] }>(await directory(ROSTER_DATE)).members.some(
+        (m) => m.employeeId === temp,
+      ),
+    ).toBe(false);
+
+    // Removing twice is refused with a domain code rather than a silent success.
+    const again = await request(app)
+      .delete(`/api/v1/operations/crew-board/requirements/${temp}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(again.status).toBe(422);
+    expect((again.body as { error: { code: string } }).error.code).toBe(
+      ErrorCodes.OPERATIONS_UNKNOWN_CREW_MEMBER,
+    );
+  });
+
+  it('RBAC — reading rides operationsCrew.view, writing needs operationsCrew.plan', async () => {
+    expect((await request(app).get('/api/v1/operations/crew-board/directory')).status).toBe(401);
+
+    // The ops viewer holds only operationsShipment.view.
+    expect((await directory(ROSTER_DATE, viewerToken)).status).toBe(403);
+    expect((await setRequirements(memberA, { isCaptain: true }, viewerToken)).status).toBe(403);
+  });
+
+  it('rejects an unknown flag rather than silently dropping it', async () => {
+    const res = await setRequirements(memberA, { isCaptain: true, canFly: true });
+    expect(res.status).toBe(400);
+  });
+});

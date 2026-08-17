@@ -350,12 +350,15 @@ describe('vehicle registry (FR-1, §4.1)', () => {
     const ok1 = await request(app)
       .patch(`/api/v1/fleet/vehicles/${v.id}`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ licenseClass: 'نقل ثقيل', version: v.version });
+      // The field is incidental — this test is about the VERSION. `licenseClassId` replaced the
+      // free-text `licenseClass` in the catalogs slice, and clearing it is a valid, collision-free
+      // edit (unlike the unique identifiers).
+      .send({ licenseClassId: null, version: v.version });
     expect(ok1.status).toBe(200);
     const stale = await request(app)
       .patch(`/api/v1/fleet/vehicles/${v.id}`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ licenseClass: 'ملاكي', version: v.version });
+      .send({ licenseClassId: null, version: v.version });
     expect(stale.status).toBe(409);
   });
 
@@ -398,7 +401,7 @@ describe('vehicle registry (FR-1, §4.1)', () => {
     const edit = await request(app)
       .patch(`/api/v1/fleet/vehicles/${v.id}`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ licenseClass: 'x', version: data<FleetVehicleDto>(disposed).version });
+      .send({ licenseClassId: null, version: data<FleetVehicleDto>(disposed).version });
     expect(edit.status).toBe(409);
   });
 
@@ -1651,6 +1654,20 @@ describe('the vehicle license image', () => {
     expect(res.status).toBe(409);
   });
 
+  it('the FLEET grants alone are enough to read it — no platform file permission needed (§13)', async () => {
+    // The branch operator holds the five fleetVehicle.* grants and NOTHING from the platform file
+    // surface — no `file.view`, no `file.download`. That is the shape a real fleet role has, and
+    // it must be able to see the image of a vehicle it owns; going through the generic download
+    // path would 403 here for exactly the people the document belongs to.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken, { branchId: branchAId }));
+    await upload(v.id, adminToken, PNG);
+    const res = await request(app)
+      .get(`/api/v1/fleet/vehicles/${v.id}/license-image`)
+      .set('Authorization', `Bearer ${branchAToken}`);
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('image/png');
+  });
+
   it('a reader may see the image but not change it — the vehicle grants govern (§13)', async () => {
     const v = data<FleetVehicleDto>(await createVehicle(adminToken, { branchId: branchAId }));
     await upload(v.id, adminToken, PNG);
@@ -1667,6 +1684,23 @@ describe('the vehicle license image', () => {
       ).status,
     ).toBe(404);
     expect((await upload(other.id, branchAToken, PNG)).status).toBe(404);
+  });
+
+  it('the platform file endpoints stay guarded — an out-of-scope caller cannot go around Fleet', async () => {
+    // ADR-023 defence in depth: knowing the FILE id must be no better than knowing the vehicle id.
+    const other = data<FleetVehicleDto>(await createVehicle(adminToken, { branchId: branchBId }));
+    const withImage = data<FleetVehicleDto>(await upload(other.id, adminToken, PNG));
+    const fileId = withImage.licenseImage?.fileId ?? '';
+    expect(fileId).not.toBe('');
+    for (const path of [
+      `/api/v1/platform/files/${fileId}`,
+      `/api/v1/platform/files/${fileId}/download`,
+    ]) {
+      const res = await request(app)
+        .get(path)
+        .set('Authorization', `Bearer ${branchAToken}`);
+      expect([403, 404], path).toContain(res.status);
+    }
   });
 
   it('is refused outright without a session', async () => {

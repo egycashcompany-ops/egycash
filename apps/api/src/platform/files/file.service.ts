@@ -631,6 +631,42 @@ class FileService {
     return { doc, buffer };
   }
 
+  /**
+   * Byte read for a document a MODULE owns and serves through its own endpoint.
+   *
+   * The difference from `readBuffer` is one rule, and only one: the generic file-level grant
+   * (`file.download` for a private file) is not applied. That rule exists for the GENERIC file
+   * surface, where nothing has vouched for the caller and `visibility` is all there is to go on.
+   * Here the module's own endpoint has already authorized the read against the entity's
+   * permission and data scope, and the ADR-023 authorizer below re-asks it independently — so
+   * requiring a second, unrelated platform grant would not add a check, it would just make a
+   * module's own document unreadable to the very role that owns it.
+   *
+   * Everything else is unchanged and non-negotiable:
+   *   • a blocked file is still refused, exactly as `authorizeDownload` refuses it;
+   *   • `assertEntityAccess` still runs, so an entity type WITHOUT an authorizer gets no benefit
+   *     from this path — an unclaimed type answers `true` and would be readable by any caller,
+   *     which is why the guard below refuses to serve one at all.
+   *
+   * That last guard is what stops this becoming a way around the file-level rule: it is usable
+   * only for entity types a module has explicitly claimed and therefore actively polices.
+   */
+  async readEntityOwnedBuffer(
+    ctx: AuthContext,
+    id: string,
+  ): Promise<{ doc: FileDoc; buffer: Buffer }> {
+    const doc = await fileRepository.getById(id);
+    if (!this.isGuarded(doc)) {
+      throw new ForbiddenError();
+    }
+    if (doc.scanStatus === 'blocked') {
+      throw new BusinessRuleError('File is blocked by the virus scanner', ErrorCodes.FILE_BLOCKED);
+    }
+    await this.assertEntityAccess(ctx, doc, 'read');
+    const buffer = await streamToBuffer(await getStorageProvider().getStream(doc.storage.key));
+    return { doc, buffer };
+  }
+
   async issueDownloadTicket(ctx: AuthContext, id: string): Promise<DownloadTicketDto> {
     const doc = await fileRepository.getById(id);
     await this.authorizeDownload(ctx, doc);

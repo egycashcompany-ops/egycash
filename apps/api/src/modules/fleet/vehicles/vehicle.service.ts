@@ -358,8 +358,10 @@ class FleetVehicleService {
       throw new ConflictError('a disposed vehicle is history and cannot be edited');
     }
 
+    const current = before.licenseImage;
+    const isFirst = current === null;
     let file: FileDoc;
-    if (before.licenseImage === null) {
+    if (current === null) {
       file = await fileService.upload(
         ctx,
         {
@@ -374,22 +376,35 @@ class FleetVehicleService {
         binary,
       );
     } else {
-      file = await fileService.replace(ctx, String(before.licenseImage.fileId), binary);
+      file = await fileService.replace(ctx, String(current.fileId), binary);
     }
 
-    const updated = await fleetVehicleRepository.updateById(
-      id,
-      {
-        licenseImage: {
-          fileId: file._id,
-          fileName: file.originalName,
-          mime: file.mime,
-          size: file.size,
-          uploadedAt: new Date(),
+    let updated: FleetVehicleDoc;
+    try {
+      updated = await fleetVehicleRepository.updateById(
+        id,
+        {
+          licenseImage: {
+            fileId: file._id,
+            fileName: file.originalName,
+            mime: file.mime,
+            size: file.size,
+            uploadedAt: new Date(),
+          },
         },
-      },
-      { by: ctx.userId, version: before.__v, scope },
-    );
+        { by: ctx.userId, version: before.__v, scope },
+      );
+    } catch (error) {
+      // The bytes are already stored, and the link never landed. A FIRST upload leaves a file
+      // group nothing references — a true orphan — so it is withdrawn here; the version guard
+      // above can lose the race to a concurrent edit, which is exactly when this fires.
+      //
+      // A REPLACE needs no compensation: it added version n+1 to the group the vehicle already
+      // points at, so the vehicle still resolves to version n and the extra version is retained
+      // history, not an orphan. Deleting it would throw away a document instead of a dangling one.
+      if (isFirst) await fileService.softDelete(ctx, String(file._id)).catch(() => undefined);
+      throw error;
+    }
     await auditService.record({
       entityRef: entityRef(id),
       action: 'update',
@@ -409,7 +424,18 @@ class FleetVehicleService {
     return updated;
   }
 
-  /** The bytes, for rendering and printing. Authorization is the caller's `fleetVehicle.view`. */
+  /**
+   * The bytes, for rendering and printing.
+   *
+   * Authorization is the caller's `fleetVehicle.view` PLUS the data scope — the `getById` below is
+   * both, and a vehicle outside the scope answers 404 rather than admitting it exists. The Files
+   * service then re-asks Fleet through the ADR-023 authorizer, so the check is made twice by two
+   * independent paths.
+   *
+   * `readEntityOwnedBuffer`, not `readBuffer`: the latter additionally demands the platform's
+   * `file.download` grant for a private file, which no fleet role holds — every licence image
+   * would 403 for exactly the people who own it (§13: the vehicle's grants govern its image).
+   */
   async readLicenseImage(
     ctx: AuthContext,
     id: string,
@@ -419,7 +445,10 @@ class FleetVehicleService {
     if (vehicle.licenseImage === null) {
       throw new NotFoundError('this vehicle has no license image');
     }
-    const { doc, buffer } = await fileService.readBuffer(ctx, String(vehicle.licenseImage.fileId));
+    const { doc, buffer } = await fileService.readEntityOwnedBuffer(
+      ctx,
+      String(vehicle.licenseImage.fileId),
+    );
     return { buffer, mime: doc.mime, fileName: doc.originalName };
   }
 

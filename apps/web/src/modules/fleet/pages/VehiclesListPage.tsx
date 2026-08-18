@@ -21,7 +21,6 @@ import { PageContainer, PageHeader } from '../../../platform/layout/PageContaine
 import { readList, writeList } from '../../../shared/lib/list-param';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { FilterBar } from '../../../shared/ui/FilterBar';
-import { SearchInput } from '../../../shared/ui/SearchInput';
 import { Pagination } from '../../../shared/ui/Pagination';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
@@ -56,7 +55,6 @@ export const VehiclesListPage = (): JSX.Element => {
   const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
 
-  const search = sp.get('q') ?? '';
   const status = sp.get('status') ?? '';
   const typeId = sp.get('type') ?? '';
   const code = sp.get('code') ?? '';
@@ -90,7 +88,6 @@ export const VehiclesListPage = (): JSX.Element => {
     patch({ sort: `${by}:${dir}` }, false);
   };
   const hasActiveFilters =
-    search !== '' ||
     status !== '' ||
     typeId !== '' ||
     code !== '' ||
@@ -108,7 +105,6 @@ export const VehiclesListPage = (): JSX.Element => {
       pageSize,
       sortBy: sort.by,
       sortDir: sort.dir,
-      search: search || undefined,
       status: status || undefined,
       typeId: typeId || undefined,
       code: code || undefined,
@@ -439,7 +435,6 @@ export const VehiclesListPage = (): JSX.Element => {
           hasActiveFilters={hasActiveFilters}
           onClear={() =>
             patch({
-              q: null,
               status: null,
               type: null,
               code: null,
@@ -454,116 +449,104 @@ export const VehiclesListPage = (): JSX.Element => {
           }
         >
           {/*
-            Two logical rows. `basis-full` makes the identifier row claim a line of the wrapping
-            bar to itself, so the four boxes read as one set on desktop; the selects then flow onto
-            the next line, where FilterBar's own reset icon (`ms-auto`) still lands at the end.
-            Both rows are `flex-wrap`, so a narrow screen wraps naturally instead of overflowing.
+            ONE wrapping row. FilterBar is already `flex flex-wrap items-center gap-2`, so every
+            control below is a direct child of it and they sit side by side on desktop, reflowing
+            onto further lines only when the viewport runs out — never one filter per line.
 
             Each Input sits in a WIDTH WRAPPER rather than taking the width itself. `cn` is a plain
             joiner with no tailwind-merge, and the control's base class is `w-full`; a `w-36` passed
             alongside it does not win, so every box stretched to the full bar and stacked one per
-            line. `SearchInput` already solves it this way — width on the wrapper, `w-full` inside.
+            line. `SearchInput` solves it the same way — width on the wrapper, `w-full` inside.
             Direction is untouched: the bar inherits RTL from the page, so in Arabic the row reads
             الكود → اللوحة → الشاسيه → الموتور from the right.
           */}
-          <div className="flex basis-full flex-wrap items-center gap-2">
-            <SearchInput
-              value={search}
-              onChange={(value) => patch({ q: value || null })}
-              placeholder={t('fleet.vehicles.searchPlaceholder')}
-              className="w-64"
+          <div className="w-32">
+            <Input
+              aria-label={t('fleet.vehicles.columns.code')}
+              placeholder={t('fleet.vehicles.columns.code')}
+              value={code}
+              onChange={(e) => patch({ code: e.target.value || null })}
+              dir="ltr"
             />
-            <div className="w-32">
-              <Input
-                aria-label={t('fleet.vehicles.columns.code')}
-                placeholder={t('fleet.vehicles.columns.code')}
-                value={code}
-                onChange={(e) => patch({ code: e.target.value || null })}
-                dir="ltr"
-              />
-            </div>
-            <div className="w-36">
-              <Input
-                aria-label={t('fleet.vehicles.columns.plate')}
-                placeholder={t('fleet.vehicles.columns.plate')}
-                value={plate}
-                onChange={(e) => patch({ plate: e.target.value || null })}
-              />
-            </div>
-            <div className="w-40">
-              <Input
-                aria-label={t('fleet.vehicles.columns.chassis')}
-                placeholder={t('fleet.vehicles.columns.chassis')}
-                value={chassis}
-                onChange={(e) => patch({ chassis: e.target.value || null })}
-                dir="ltr"
-              />
-            </div>
-            <div className="w-40">
-              <Input
-                aria-label={t('fleet.vehicles.columns.motor')}
-                placeholder={t('fleet.vehicles.columns.motor')}
-                value={motor}
-                onChange={(e) => patch({ motor: e.target.value || null })}
-                dir="ltr"
-              />
-            </div>
           </div>
-
+          <div className="w-36">
+            <Input
+              aria-label={t('fleet.vehicles.columns.plate')}
+              placeholder={t('fleet.vehicles.columns.plate')}
+              value={plate}
+              onChange={(e) => patch({ plate: e.target.value || null })}
+            />
+          </div>
+          <div className="w-40">
+            <Input
+              aria-label={t('fleet.vehicles.columns.chassis')}
+              placeholder={t('fleet.vehicles.columns.chassis')}
+              value={chassis}
+              onChange={(e) => patch({ chassis: e.target.value || null })}
+              dir="ltr"
+            />
+          </div>
+          <div className="w-40">
+            <Input
+              aria-label={t('fleet.vehicles.columns.motor')}
+              placeholder={t('fleet.vehicles.columns.motor')}
+              value={motor}
+              onChange={(e) => patch({ motor: e.target.value || null })}
+              dir="ltr"
+            />
+          </div>
           {/* The dropdowns: make, then the three catalog references, then branch and status. */}
-          <div className="flex flex-wrap items-center gap-2">
-            <Select
-              aria-label={t('fleet.vehicles.filters.make')}
-              value={typeId}
-              onChange={(e) => patch({ type: e.target.value || null })}
-              className="w-auto"
-            >
-              <option value="">{t('fleet.vehicles.filters.make')}</option>
-              {(types.data?.items ?? []).map((type) => (
-                <option key={type.id} value={type.id}>
-                  {localized(type.name, locale)}
-                </option>
-              ))}
-            </Select>
-            <CatalogSelect
-              kind="licenseClass"
-              value={licenseClassId}
-              onChange={(id) => patch({ licenseClass: id || null })}
-              allLabel={t('fleet.vehicles.filters.licenseClass')}
-              ariaLabel={t('fleet.vehicles.filters.licenseClass')}
-            />
-            <BranchFilterSelect
-              value={branchIds}
-              onChange={(ids) => patch({ branch: writeList(ids) })}
-            />
-            <CatalogSelect
-              kind="operation"
-              value={operationId}
-              onChange={(id) => patch({ operation: id || null })}
-              allLabel={t('fleet.vehicles.filters.operation')}
-              ariaLabel={t('fleet.vehicles.filters.operation')}
-            />
-            <CatalogSelect
-              kind="insuranceCompany"
-              value={insuranceCompanyId}
-              onChange={(id) => patch({ insurance: id || null })}
-              allLabel={t('fleet.vehicles.filters.insurance')}
-              ariaLabel={t('fleet.vehicles.filters.insurance')}
-            />
-            <Select
-              aria-label={t('fleet.vehicles.columns.status')}
-              value={status}
-              onChange={(e) => patch({ status: e.target.value || null })}
-              className="w-auto"
-            >
-              <option value="">{t('fleet.vehicles.allStatuses')}</option>
-              {(['active', 'outOfService', 'disposed'] as const).map((s) => (
-                <option key={s} value={s}>
-                  {t(`fleet.vehicles.status.${s}`)}
-                </option>
-              ))}
-            </Select>
-          </div>
+          <Select
+            aria-label={t('fleet.vehicles.filters.make')}
+            value={typeId}
+            onChange={(e) => patch({ type: e.target.value || null })}
+            className="w-auto"
+          >
+            <option value="">{t('fleet.vehicles.filters.make')}</option>
+            {(types.data?.items ?? []).map((type) => (
+              <option key={type.id} value={type.id}>
+                {localized(type.name, locale)}
+              </option>
+            ))}
+          </Select>
+          <CatalogSelect
+            kind="licenseClass"
+            value={licenseClassId}
+            onChange={(id) => patch({ licenseClass: id || null })}
+            allLabel={t('fleet.vehicles.filters.licenseClass')}
+            ariaLabel={t('fleet.vehicles.filters.licenseClass')}
+          />
+          <BranchFilterSelect
+            value={branchIds}
+            onChange={(ids) => patch({ branch: writeList(ids) })}
+          />
+          <CatalogSelect
+            kind="operation"
+            value={operationId}
+            onChange={(id) => patch({ operation: id || null })}
+            allLabel={t('fleet.vehicles.filters.operation')}
+            ariaLabel={t('fleet.vehicles.filters.operation')}
+          />
+          <CatalogSelect
+            kind="insuranceCompany"
+            value={insuranceCompanyId}
+            onChange={(id) => patch({ insurance: id || null })}
+            allLabel={t('fleet.vehicles.filters.insurance')}
+            ariaLabel={t('fleet.vehicles.filters.insurance')}
+          />
+          <Select
+            aria-label={t('fleet.vehicles.columns.status')}
+            value={status}
+            onChange={(e) => patch({ status: e.target.value || null })}
+            className="w-auto"
+          >
+            <option value="">{t('fleet.vehicles.allStatuses')}</option>
+            {(['active', 'outOfService', 'disposed'] as const).map((s) => (
+              <option key={s} value={s}>
+                {t(`fleet.vehicles.status.${s}`)}
+              </option>
+            ))}
+          </Select>
         </FilterBar>
 
         <DataTable

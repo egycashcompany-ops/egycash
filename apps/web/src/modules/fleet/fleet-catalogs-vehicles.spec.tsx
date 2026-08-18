@@ -357,10 +357,12 @@ describe('the registry table renders the frozen column order', () => {
     }
   });
 
-  it('keeps the four identifiers on a row of their own, ahead of the dropdowns', () => {
+  it('lays every filter out on one wrapping row, identifiers first', () => {
     const html = withRows([vehicle()]);
-    // `basis-full` is what claims a whole line of the wrapping bar for the identifier row.
-    expect(html).toContain('flex basis-full flex-wrap items-center gap-2');
+    // Each control is a direct child of FilterBar's own `flex flex-wrap` bar — no per-filter row,
+    // and no group wrapper claiming a line of its own.
+    expect(html).toContain('flex flex-wrap items-center gap-2 rounded-lg border');
+    expect(html).not.toContain('basis-full');
 
     const order = [
       t('fleet.vehicles.columns.code'),
@@ -370,7 +372,7 @@ describe('the registry table renders the frozen column order', () => {
     ].map((label) => html.indexOf(`aria-label="${label}"`));
     expect(order).toEqual([...order].sort((a, b) => a - b));
 
-    // Every dropdown comes after the last identifier — the second row in reading order.
+    // Every dropdown follows the last identifier, so reading order matches the intended layout.
     const lastIdentifier = Math.max(...order);
     for (const key of ['make', 'licenseClass', 'operation', 'insurance']) {
       const at = html.indexOf(`aria-label="${t(`fleet.vehicles.filters.${key}`)}"`);
@@ -378,12 +380,21 @@ describe('the registry table renders the frozen column order', () => {
     }
   });
 
-  it('both filter rows wrap rather than overflow on a narrow screen', () => {
+  it('wraps rather than overflowing on a narrow screen', () => {
     const html = withRows([vehicle()]);
-    const bar = html.slice(html.indexOf('flex basis-full'), html.indexOf('<thead>'));
-    // Two groups, and neither is nowrap — a small screen reflows instead of scrolling sideways.
-    expect((bar.match(/flex-wrap/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    // The bar itself carries the wrap; nothing inside it pins a row open.
+    const bar = html.slice(html.indexOf('flex flex-wrap items-center gap-2'), html.indexOf('<thead>'));
+    expect(bar).toContain('flex-wrap');
     expect(bar).not.toContain('flex-nowrap');
+  });
+
+  // The combined search box was removed from this screen: the four identifier filters cover the
+  // same ground on the server, each one narrowing independently, so a fifth box that only ORed
+  // them together was redundant. Asserted as an ABSENCE so it cannot quietly return.
+  it('has no combined search box', () => {
+    const html = withRows([vehicle()]);
+    expect(html).not.toContain(t('fleet.vehicles.searchPlaceholder'));
+    expect(html).not.toContain('type="search"');
   });
 
   it('offers all four catalog filters with their real options', () => {

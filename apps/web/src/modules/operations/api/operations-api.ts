@@ -10,6 +10,7 @@
 // OP-B1 lands the reference-data surface (the legacy `/data_edit` screen — banks, branches,
 // currencies). Later B slices add their endpoints beside these, never a second client.
 import {
+  MAX_PAGE_SIZE,
   type CompleteOperationsShipment,
   type CreateOperationsBank,
   type CreateOperationsBankBranch,
@@ -99,7 +100,7 @@ export const updateCurrency = (
 /** Every branch of one bank, for the cascading pickers the shipment screens use. */
 export const branchesOfBank = (bankId: string): Promise<Paginated<OperationsBankBranchDto>> =>
   getPage<OperationsBankBranchDto>(
-    `/operations/bank-branches${buildQuery({ bankId, pageSize: 200, sortBy: 'name', sortDir: 'asc' })}`,
+    `/operations/bank-branches${buildQuery({ bankId, pageSize: MAX_PAGE_SIZE, sortBy: 'name', sortDir: 'asc' })}`,
   );
 
 // ── Cash shipments + the daily board (B2 — legacy /main_ops) ────────────────
@@ -220,7 +221,7 @@ export const listSecuredDue = (date: string): Promise<OperationsShipmentDto[]> =
 export const listVaultInventory = (
   params: OperationsListParams,
 ): Promise<Paginated<OperationsVaultInventoryRowDto>> =>
-  get<Paginated<OperationsVaultInventoryRowDto>>(`/operations/secured/vault${buildQuery(params)}`);
+  getPage<OperationsVaultInventoryRowDto>(`/operations/secured/vault${buildQuery(params)}`);
 
 /** `/receive_mohsana` — into the vault, under the two-man rule (Q2 NORMALIZE). */
 export const receiveIntoVault = (
@@ -267,7 +268,7 @@ export const getCrewAttendance = (date: string): Promise<OperationsCrewAttendanc
 export const listOperationsAreas = (
   params: OperationsListParams,
 ): Promise<Paginated<OperationsAreaDto>> =>
-  get<Paginated<OperationsAreaDto>>(`/operations/areas${buildQuery(params)}`);
+  getPage<OperationsAreaDto>(`/operations/areas${buildQuery(params)}`);
 
 export const createOperationsArea = (body: CreateOperationsArea): Promise<OperationsAreaDto> =>
   post<OperationsAreaDto>('/operations/areas', body);

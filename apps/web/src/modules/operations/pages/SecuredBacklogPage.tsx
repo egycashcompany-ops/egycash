@@ -11,7 +11,7 @@
 // actually did it.
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { type OperationsShipmentDto } from '@ecms/contracts';
+import { MAX_PAGE_SIZE, type OperationsShipmentDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
@@ -41,9 +41,9 @@ export const SecuredBacklogPage = (): JSX.Element => {
 
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const backlog = useSecuredBacklog({ page, pageSize: DEFAULT_PAGE_SIZE, sortDir: 'desc' });
-  const banks = useOperationsBanks({ page: 1, pageSize: 200 });
-  const branches = useOperationsBankBranches({ page: 1, pageSize: 500 });
-  const currencies = useOperationsCurrencies({ page: 1, pageSize: 100 });
+  const banks = useOperationsBanks({ page: 1, pageSize: MAX_PAGE_SIZE });
+  const branches = useOperationsBankBranches({ page: 1, pageSize: MAX_PAGE_SIZE });
+  const currencies = useOperationsCurrencies({ page: 1, pageSize: MAX_PAGE_SIZE });
 
   const [editing, setEditing] = useState<OperationsShipmentDto | null>(null);
   const [creating, setCreating] = useState(false);

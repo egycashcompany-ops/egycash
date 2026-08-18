@@ -14,7 +14,7 @@
 //     schema described never actually recorded two people (quirk Q2). NORMALIZED: both treasurers
 //     are required, and the server refuses the same person twice.
 import { useState } from 'react';
-import { type OperationsShipmentDto } from '@ecms/contracts';
+import { MAX_PAGE_SIZE, type OperationsShipmentDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
@@ -36,9 +36,9 @@ export const VaultReceivePage = (): JSX.Element => {
   const locale = useAppSelector((s) => s.locale.locale);
 
   // Only what is still OUTSIDE the vault — the legacy queue was `status $nin [1,2,3]`, i.e. draft.
-  const queue = useSecuredBacklog({ page: 1, pageSize: 100, sortDir: 'desc', status: ['draft'] });
-  const banks = useOperationsBanks({ page: 1, pageSize: 200 });
-  const currencies = useOperationsCurrencies({ page: 1, pageSize: 100 });
+  const queue = useSecuredBacklog({ page: 1, pageSize: MAX_PAGE_SIZE, sortDir: 'desc', status: ['draft'] });
+  const banks = useOperationsBanks({ page: 1, pageSize: MAX_PAGE_SIZE });
+  const currencies = useOperationsCurrencies({ page: 1, pageSize: MAX_PAGE_SIZE });
 
   const [receiving, setReceiving] = useState<OperationsShipmentDto | null>(null);
   const canReceive = can('operationsVault.receive');

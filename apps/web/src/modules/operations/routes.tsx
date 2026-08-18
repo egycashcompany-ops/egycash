@@ -18,6 +18,7 @@
 //   /operations/attendance    operationsCrew.view + attendance.view  B5  (NO legacy equivalent)
 //   /operations/catalogs   operationsCatalog.manage   B1  (legacy /data_edit)
 //   /operations/my-day     operationsExecution.own    C1  (NO legacy equivalent)
+//   /operations/my-day/stops/:id  operationsExecution.own  C2  (NO legacy equivalent)
 //
 // `/operations/my-day` is the ONE route here that does not sit inside `AppShell`. It is the
 // captain's phone surface, and a topbar, a navigation rail and a keyboard-shortcut command palette
@@ -41,6 +42,7 @@ import { VaultReportPage } from './pages/VaultReportPage';
 import { BankReportPage } from './pages/BankReportPage';
 import { CrewAttendancePage } from './pages/CrewAttendancePage';
 import { CaptainDayPage } from './mobile/CaptainDayPage';
+import { StopDetailPage } from './mobile/StopDetailPage';
 
 export default function OperationsRoutes(): JSX.Element {
   return (
@@ -158,6 +160,14 @@ export default function OperationsRoutes(): JSX.Element {
         element={
           <RequirePermission permission="operationsExecution.own">
             <CaptainDayPage />
+          </RequirePermission>
+        }
+      />
+      <Route
+        path="my-day/stops/:assignmentId"
+        element={
+          <RequirePermission permission="operationsExecution.own">
+            <StopDetailPage />
           </RequirePermission>
         }
       />

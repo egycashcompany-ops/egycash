@@ -11,7 +11,7 @@ import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { ModuleHome } from '../../../shared/ui/ModuleHome';
-import { BadgeIcon, ClipboardIcon, TagIcon, UsersIcon } from '../../../shared/ui/icons';
+import { BadgeIcon, ClipboardIcon, InboxIcon, ShieldIcon, TagIcon, TruckIcon, UsersIcon } from '../../../shared/ui/icons';
 
 type Icon = ComponentType<SVGProps<SVGSVGElement>>;
 
@@ -47,6 +47,38 @@ export const OPERATIONS_SHORTCUTS: Shortcut[] = [
     descKey: 'operations.cards.requirements',
     icon: BadgeIcon,
     permission: 'operationsCrew.view',
+  },
+  /** Legacy `/mohsana` — the open secured backlog, all-time and deliberately undated. */
+  {
+    to: '/operations/secured',
+    titleKey: 'operations.nav.secured',
+    descKey: 'operations.cards.secured',
+    icon: InboxIcon,
+    permission: 'operationsShipment.view',
+  },
+  /** Legacy `/receive_mohsana` — the treasurer's receiving queue. */
+  {
+    to: '/operations/vault/receive',
+    titleKey: 'operations.nav.vaultReceive',
+    descKey: 'operations.cards.vaultReceive',
+    icon: ShieldIcon,
+    permission: 'operationsVault.view',
+  },
+  /** Legacy `/tash4ela_mohasana` + `/deliver_mohsana` — one list, two acts. */
+  {
+    to: '/operations/vault/dispatch',
+    titleKey: 'operations.nav.vaultDispatch',
+    descKey: 'operations.cards.vaultDispatch',
+    icon: TruckIcon,
+    permission: 'operationsVault.view',
+  },
+  /** Legacy `/vault1` — what is in the vault right now. */
+  {
+    to: '/operations/vault',
+    titleKey: 'operations.nav.vault',
+    descKey: 'operations.cards.vault',
+    icon: ShieldIcon,
+    permission: 'operationsVault.view',
   },
   /** Legacy `/data_edit` — the reference data every other Operations screen picks from. */
   {

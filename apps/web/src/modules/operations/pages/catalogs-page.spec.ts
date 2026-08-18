@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { OPERATIONS_CATALOG_KINDS, resolveCatalogKind } from './CatalogsPage';
 import { resolveBoardDate } from './DailyOperationsPage';
 import { resolveCrewDate } from './CrewBoardPage';
+import { resolveDueDate } from './SecuredDispatchPage';
 
 describe('resolveCatalogKind', () => {
   it('accepts each kind the page can actually show', () => {
@@ -60,5 +61,18 @@ describe('resolveCrewDate — the crew board defaults to TOMORROW, server-side',
     for (const bad of ['', 'tomorrow', '2026-11-03T00:00:00Z', '03-11-2026']) {
       expect(resolveCrewDate(bad)).toBeNull();
     }
+  });
+});
+
+describe('resolveDueDate — the secured due list needs a REAL date, unlike the backlog', () => {
+  it('accepts an explicit day', () => {
+    expect(resolveDueDate('2026-11-20')).toBe('2026-11-20');
+  });
+
+  it('falls back to today rather than null — the endpoint REQUIRES a date', () => {
+    // The backlog is deliberately undated; the due list is a day's work and the contract demands
+    // one, so this resolver must always produce a value.
+    expect(resolveDueDate(null)).toBe(new Date().toISOString().slice(0, 10));
+    expect(resolveDueDate('not-a-date')).toBe(new Date().toISOString().slice(0, 10));
   });
 });

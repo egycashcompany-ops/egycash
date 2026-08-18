@@ -19,7 +19,11 @@ import {
   type UpdateOperationsBankBranch,
   type CreateOperationsShipment,
   type ListOperationsCrewRequirementsQuery,
+  type AssignSecuredDeliveryLeg,
+  type DispatchSecuredShipments,
+  type ListSecuredBacklogQuery,
   type PlanOperationsCrew,
+  type ReceiveIntoVault,
   type SetOperationsCrewRequirements,
   type UpdateOperationsCurrency,
   type UpdateOperationsShipment,
@@ -45,7 +49,21 @@ const operationsKeys = {
   crewBoard: featureKey(MODULE, 'crewBoard'),
   crewDirectory: featureKey(MODULE, 'crewDirectory'),
   crewRequirements: featureKey(MODULE, 'crewRequirements'),
+  // The four secured screens are four views of ONE lifecycle: receiving into the vault changes the
+  // backlog, the vault and the due list at once. They stale together for that reason.
+  securedBacklog: featureKey(MODULE, 'securedBacklog'),
+  securedDue: featureKey(MODULE, 'securedDue'),
+  vault: featureKey(MODULE, 'vault'),
 };
+
+/** Everything one secured act can move — one list, so no mutation forgets a screen. */
+const securedSubtrees = [
+  featureKey(MODULE, 'securedBacklog'),
+  featureKey(MODULE, 'securedDue'),
+  featureKey(MODULE, 'vault'),
+  featureKey(MODULE, 'shipments'),
+  featureKey(MODULE, 'dayBoard'),
+];
 
 /** Every surface a shipment write can move. One list, so no mutation forgets one. */
 const shipmentSubtrees = [
@@ -286,5 +304,71 @@ export const useRemoveCrewRequirements = () => {
   return useMutation({
     mutationFn: (employeeId: string) => api.removeCrewRequirements(employeeId),
     onSuccess: invalidate,
+  });
+};
+
+// ── Secured shipments and the vault (B4) ───────────────────────────────────
+
+export const useSecuredBacklog = (params: ListSecuredBacklogQuery, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'securedBacklog', params),
+    queryFn: () => api.listSecuredBacklog(params),
+    enabled,
+  });
+
+export const useSecuredDue = (date: string, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'securedDue', { date }),
+    queryFn: () => api.listSecuredDue(date),
+    enabled: enabled && date !== '',
+  });
+
+export const useVaultInventory = (params: OperationsListParams, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'vault', params),
+    queryFn: () => api.listVaultInventory(params),
+    enabled,
+  });
+
+/**
+ * A secured act moves several screens at once — receiving takes a shipment OUT of the backlog and
+ * INTO the vault, dispatching takes it out of the vault and onto the day board. Staling one and
+ * not the others is how a treasurer ends up receiving the same shipment twice.
+ */
+const useSecuredInvalidation = () => {
+  const qc = useQueryClient();
+  return async (): Promise<void> => {
+    for (const key of securedSubtrees) await qc.invalidateQueries({ queryKey: key });
+  };
+};
+
+export const useReceiveIntoVault = () => {
+  const invalidate = useSecuredInvalidation();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: ReceiveIntoVault }) =>
+      api.receiveIntoVault(id, body),
+    onSuccess: invalidate,
+  });
+};
+
+export const useAssignSecuredDelivery = () => {
+  const invalidate = useSecuredInvalidation();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: AssignSecuredDeliveryLeg }) =>
+      api.assignSecuredDelivery(id, body),
+    onSuccess: invalidate,
+  });
+};
+
+export const useDispatchSecured = () => {
+  const qc = useQueryClient();
+  const invalidate = useSecuredInvalidation();
+  return useMutation({
+    mutationFn: (body: DispatchSecuredShipments) => api.dispatchSecured(body),
+    onSuccess: async () => {
+      await invalidate();
+      // Dispatch locks the crew row, so the board's state changed too.
+      await qc.invalidateQueries({ queryKey: operationsKeys.crewBoard });
+    },
   });
 };

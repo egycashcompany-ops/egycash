@@ -190,7 +190,7 @@ export const CrewBoardPage = (): JSX.Element => {
 
             {directory.isLoading && <Spinner />}
             {directory.isError && (
-              <ErrorState onRetry={() => void directory.refetch()} />
+              <ErrorState error={directory.error} onRetry={() => void directory.refetch()} />
             )}
             {!directory.isLoading && pool.length === 0 && (
               <p className="text-sm text-slate-500">{t('operations.crew.poolEmpty')}</p>
@@ -232,7 +232,9 @@ export const CrewBoardPage = (): JSX.Element => {
         {/* ── The vehicles ────────────────────────────────────────────────── */}
         <div className="space-y-3">
           {board.isLoading && <Spinner />}
-          {board.isError && <ErrorState onRetry={() => void board.refetch()} />}
+          {board.isError && (
+            <ErrorState error={board.error} onRetry={() => void board.refetch()} />
+          )}
           {!board.isLoading && rows.length === 0 && (
             <Card>
               <CardBody>

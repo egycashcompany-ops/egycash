@@ -56,17 +56,22 @@ export const toVehicleDto = (doc: FleetVehicleDoc, inWorkshop: boolean): FleetVe
   licenseExpiresAt: iso(doc.licenseExpiresAt),
   // The legacy free-text `licenseClass` column is deliberately NOT mapped: it is migration
   // evidence, not a fact any client should read or round-trip back.
-  licenseClassId: doc.licenseClassId === null ? null : String(doc.licenseClassId),
-  operationId: doc.operationId === null ? null : String(doc.operationId),
-  insuranceCompanyId:
-    doc.insuranceCompanyId === null ? null : String(doc.insuranceCompanyId),
-  branchId: doc.branchId === null ? null : String(doc.branchId),
-  departmentId: doc.departmentId === null ? null : String(doc.departmentId),
-  radio: { issi: doc.radio.issi, motorolaSn: doc.radio.motorolaSn },
+  //
+  // Every optional field below is compared with `== null`, not `=== null`, and that is the whole
+  // point: reads go through `.lean()`, which hands back the stored BSON, and a mongoose `default`
+  // is applied on WRITE. A row written before a field existed simply does not have the key, so it
+  // arrives as `undefined` — which `=== null` lets straight through into `String(undefined)` or,
+  // for the subdocument, into a read of a property on nothing.
+  licenseClassId: doc.licenseClassId == null ? null : String(doc.licenseClassId),
+  operationId: doc.operationId == null ? null : String(doc.operationId),
+  insuranceCompanyId: doc.insuranceCompanyId == null ? null : String(doc.insuranceCompanyId),
+  branchId: doc.branchId == null ? null : String(doc.branchId),
+  departmentId: doc.departmentId == null ? null : String(doc.departmentId),
+  radio: { issi: doc.radio?.issi ?? null, motorolaSn: doc.radio?.motorolaSn ?? null },
   status: doc.status,
-  statusReason: doc.statusReason,
+  statusReason: doc.statusReason ?? null,
   licenseImage:
-    doc.licenseImage === null
+    doc.licenseImage == null
       ? null
       : {
           fileId: String(doc.licenseImage.fileId),

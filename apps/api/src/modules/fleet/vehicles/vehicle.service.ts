@@ -36,8 +36,11 @@ const entityRef = (id: string) => ({ moduleId: 'fleet', entityType: 'vehicle', e
 
 const ORG = { userId: null, branchId: null };
 
-const idOrNull = (value: Types.ObjectId | null): string | null =>
-  value === null ? null : String(value);
+// `== null`, and `| undefined` in the type, because this reads a `.lean()` document: a field
+// added after a row was written is ABSENT from that row, and `=== null` would turn it into the
+// string "undefined" in the audit trail.
+const idOrNull = (value: Types.ObjectId | null | undefined): string | null =>
+  value == null ? null : String(value);
 
 /**
  * The audited surface — everything an admin can change, nothing derived.
@@ -62,7 +65,7 @@ const snapshot = (doc: FleetVehicleDoc) => ({
   radio: doc.radio,
   status: doc.status,
   statusReason: doc.statusReason,
-  licenseImageFileId: doc.licenseImage === null ? null : String(doc.licenseImage.fileId),
+  licenseImageFileId: doc.licenseImage == null ? null : String(doc.licenseImage.fileId),
 });
 
 const eventPayload = (doc: FleetVehicleDoc) => ({
@@ -358,7 +361,9 @@ class FleetVehicleService {
       throw new ConflictError('a disposed vehicle is history and cannot be edited');
     }
 
-    const current = before.licenseImage;
+    // `== null` covers both "no image yet" (null) and "row predates the field" (undefined);
+    // `=== null` would send a legacy vehicle down the REPLACE path with nothing to replace.
+    const current = before.licenseImage ?? null;
     const isFirst = current === null;
     let file: FileDoc;
     if (current === null) {
@@ -411,7 +416,7 @@ class FleetVehicleService {
       changes: [
         {
           field: 'licenseImage',
-          old: before.licenseImage === null ? null : String(before.licenseImage.fileId),
+          old: before.licenseImage == null ? null : String(before.licenseImage.fileId),
           new: String(file._id),
         },
       ],
@@ -442,7 +447,7 @@ class FleetVehicleService {
     scope: ScopeSelector,
   ): Promise<{ buffer: Buffer; mime: string; fileName: string }> {
     const vehicle = await fleetVehicleRepository.getById(id, scope);
-    if (vehicle.licenseImage === null) {
+    if (vehicle.licenseImage == null) {
       throw new NotFoundError('this vehicle has no license image');
     }
     const { doc, buffer } = await fileService.readEntityOwnedBuffer(
@@ -464,7 +469,7 @@ class FleetVehicleService {
     scope: ScopeSelector,
   ): Promise<FleetVehicleDoc> {
     const before = await fleetVehicleRepository.getById(id, scope);
-    if (before.licenseImage === null) {
+    if (before.licenseImage == null) {
       throw new ConflictError('this vehicle has no license image to delete');
     }
     const fileId = String(before.licenseImage.fileId);

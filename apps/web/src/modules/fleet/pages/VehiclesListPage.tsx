@@ -453,96 +453,117 @@ export const VehiclesListPage = (): JSX.Element => {
             })
           }
         >
-          {/* Basic vehicle filters (§10) — free text over the identifiers, ANDed server-side. */}
-          <SearchInput
-            value={search}
-            onChange={(value) => patch({ q: value || null })}
-            placeholder={t('fleet.vehicles.searchPlaceholder')}
-            className="w-64"
-          />
-          <Select
-            aria-label={t('fleet.vehicles.filters.make')}
-            value={typeId}
-            onChange={(e) => patch({ type: e.target.value || null })}
-            className="w-auto"
-          >
-            <option value="">{t('fleet.vehicles.filters.make')}</option>
-            {(types.data?.items ?? []).map((type) => (
-              <option key={type.id} value={type.id}>
-                {localized(type.name, locale)}
-              </option>
-            ))}
-          </Select>
-          <Input
-            aria-label={t('fleet.vehicles.columns.code')}
-            placeholder={t('fleet.vehicles.columns.code')}
-            value={code}
-            onChange={(e) => patch({ code: e.target.value || null })}
-            className="w-36"
-            dir="ltr"
-          />
-          <Input
-            aria-label={t('fleet.vehicles.columns.plate')}
-            placeholder={t('fleet.vehicles.columns.plate')}
-            value={plate}
-            onChange={(e) => patch({ plate: e.target.value || null })}
-            className="w-36"
-          />
-          <Input
-            aria-label={t('fleet.vehicles.columns.chassis')}
-            placeholder={t('fleet.vehicles.columns.chassis')}
-            value={chassis}
-            onChange={(e) => patch({ chassis: e.target.value || null })}
-            className="w-40"
-            dir="ltr"
-          />
-          <Input
-            aria-label={t('fleet.vehicles.columns.motor')}
-            placeholder={t('fleet.vehicles.columns.motor')}
-            value={motor}
-            onChange={(e) => patch({ motor: e.target.value || null })}
-            className="w-40"
-            dir="ltr"
-          />
-          {/* Catalog filters (§10) — every option is a live catalog row, none is written here. */}
-          <CatalogSelect
-            kind="licenseClass"
-            value={licenseClassId}
-            onChange={(id) => patch({ licenseClass: id || null })}
-            allLabel={t('fleet.vehicles.filters.licenseClass')}
-            ariaLabel={t('fleet.vehicles.filters.licenseClass')}
-          />
-          <BranchFilterSelect
-            value={branchIds}
-            onChange={(ids) => patch({ branch: writeList(ids) })}
-          />
-          <CatalogSelect
-            kind="operation"
-            value={operationId}
-            onChange={(id) => patch({ operation: id || null })}
-            allLabel={t('fleet.vehicles.filters.operation')}
-            ariaLabel={t('fleet.vehicles.filters.operation')}
-          />
-          <CatalogSelect
-            kind="insuranceCompany"
-            value={insuranceCompanyId}
-            onChange={(id) => patch({ insurance: id || null })}
-            allLabel={t('fleet.vehicles.filters.insurance')}
-            ariaLabel={t('fleet.vehicles.filters.insurance')}
-          />
-          <Select
-            aria-label={t('fleet.vehicles.columns.status')}
-            value={status}
-            onChange={(e) => patch({ status: e.target.value || null })}
-            className="w-auto"
-          >
-            <option value="">{t('fleet.vehicles.allStatuses')}</option>
-            {(['active', 'outOfService', 'disposed'] as const).map((s) => (
-              <option key={s} value={s}>
-                {t(`fleet.vehicles.status.${s}`)}
-              </option>
-            ))}
-          </Select>
+          {/*
+            Two logical rows. `basis-full` makes the identifier row claim a line of the wrapping
+            bar to itself, so the four boxes read as one set on desktop; the selects then flow onto
+            the next line, where FilterBar's own reset icon (`ms-auto`) still lands at the end.
+            Both rows are `flex-wrap`, so a narrow screen wraps naturally instead of overflowing.
+
+            Each Input sits in a WIDTH WRAPPER rather than taking the width itself. `cn` is a plain
+            joiner with no tailwind-merge, and the control's base class is `w-full`; a `w-36` passed
+            alongside it does not win, so every box stretched to the full bar and stacked one per
+            line. `SearchInput` already solves it this way — width on the wrapper, `w-full` inside.
+            Direction is untouched: the bar inherits RTL from the page, so in Arabic the row reads
+            الكود → اللوحة → الشاسيه → الموتور from the right.
+          */}
+          <div className="flex basis-full flex-wrap items-center gap-2">
+            <SearchInput
+              value={search}
+              onChange={(value) => patch({ q: value || null })}
+              placeholder={t('fleet.vehicles.searchPlaceholder')}
+              className="w-64"
+            />
+            <div className="w-32">
+              <Input
+                aria-label={t('fleet.vehicles.columns.code')}
+                placeholder={t('fleet.vehicles.columns.code')}
+                value={code}
+                onChange={(e) => patch({ code: e.target.value || null })}
+                dir="ltr"
+              />
+            </div>
+            <div className="w-36">
+              <Input
+                aria-label={t('fleet.vehicles.columns.plate')}
+                placeholder={t('fleet.vehicles.columns.plate')}
+                value={plate}
+                onChange={(e) => patch({ plate: e.target.value || null })}
+              />
+            </div>
+            <div className="w-40">
+              <Input
+                aria-label={t('fleet.vehicles.columns.chassis')}
+                placeholder={t('fleet.vehicles.columns.chassis')}
+                value={chassis}
+                onChange={(e) => patch({ chassis: e.target.value || null })}
+                dir="ltr"
+              />
+            </div>
+            <div className="w-40">
+              <Input
+                aria-label={t('fleet.vehicles.columns.motor')}
+                placeholder={t('fleet.vehicles.columns.motor')}
+                value={motor}
+                onChange={(e) => patch({ motor: e.target.value || null })}
+                dir="ltr"
+              />
+            </div>
+          </div>
+
+          {/* The dropdowns: make, then the three catalog references, then branch and status. */}
+          <div className="flex flex-wrap items-center gap-2">
+            <Select
+              aria-label={t('fleet.vehicles.filters.make')}
+              value={typeId}
+              onChange={(e) => patch({ type: e.target.value || null })}
+              className="w-auto"
+            >
+              <option value="">{t('fleet.vehicles.filters.make')}</option>
+              {(types.data?.items ?? []).map((type) => (
+                <option key={type.id} value={type.id}>
+                  {localized(type.name, locale)}
+                </option>
+              ))}
+            </Select>
+            <CatalogSelect
+              kind="licenseClass"
+              value={licenseClassId}
+              onChange={(id) => patch({ licenseClass: id || null })}
+              allLabel={t('fleet.vehicles.filters.licenseClass')}
+              ariaLabel={t('fleet.vehicles.filters.licenseClass')}
+            />
+            <BranchFilterSelect
+              value={branchIds}
+              onChange={(ids) => patch({ branch: writeList(ids) })}
+            />
+            <CatalogSelect
+              kind="operation"
+              value={operationId}
+              onChange={(id) => patch({ operation: id || null })}
+              allLabel={t('fleet.vehicles.filters.operation')}
+              ariaLabel={t('fleet.vehicles.filters.operation')}
+            />
+            <CatalogSelect
+              kind="insuranceCompany"
+              value={insuranceCompanyId}
+              onChange={(id) => patch({ insurance: id || null })}
+              allLabel={t('fleet.vehicles.filters.insurance')}
+              ariaLabel={t('fleet.vehicles.filters.insurance')}
+            />
+            <Select
+              aria-label={t('fleet.vehicles.columns.status')}
+              value={status}
+              onChange={(e) => patch({ status: e.target.value || null })}
+              className="w-auto"
+            >
+              <option value="">{t('fleet.vehicles.allStatuses')}</option>
+              {(['active', 'outOfService', 'disposed'] as const).map((s) => (
+                <option key={s} value={s}>
+                  {t(`fleet.vehicles.status.${s}`)}
+                </option>
+              ))}
+            </Select>
+          </div>
         </FilterBar>
 
         <DataTable

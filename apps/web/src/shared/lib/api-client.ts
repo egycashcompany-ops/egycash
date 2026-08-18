@@ -33,6 +33,13 @@ export class ApiError extends Error {
     message: string,
     readonly status: number,
     readonly details?: ApiErrorDetail[],
+    /**
+     * The server's own id for this exact request (`ApiFailure.requestId`, also on the
+     * `X-Request-Id` header). Carried because a failure the user can only describe as "something
+     * went wrong" is a failure nobody can look up — with this, one line from a screenshot finds
+     * the request in the API log.
+     */
+    readonly requestId?: string,
   ) {
     super(message);
   }
@@ -52,7 +59,13 @@ const rawRequest = async <T>(path: string, init: RequestInit = {}): Promise<T> =
 
   const body = (await response.json()) as ApiEnvelope<T>;
   if (body.success) return body.data;
-  throw new ApiError(body.error.code, body.error.message, response.status);
+  throw new ApiError(
+      body.error.code,
+      body.error.message,
+      response.status,
+      body.error.details,
+      body.error.requestId,
+    );
 };
 
 const refreshOnce = async (): Promise<boolean> => {
@@ -120,7 +133,15 @@ const rawPage = async <T>(path: string): Promise<Paginated<T>> => {
   if (accessToken !== null) headers.set('Authorization', `Bearer ${accessToken}`);
   const response = await fetch(`${BASE_URL}${path}`, { headers, credentials: 'include' });
   const body = (await response.json()) as ApiEnvelope<T[]>;
-  if (!body.success) throw new ApiError(body.error.code, body.error.message, response.status, body.error.details);
+  if (!body.success) {
+    throw new ApiError(
+      body.error.code,
+      body.error.message,
+      response.status,
+      body.error.details,
+      body.error.requestId,
+    );
+  }
   const items = body.data;
   const meta: PageMeta = body.meta ?? {
     page: 1,
@@ -202,7 +223,13 @@ const rawUpload = async <T>(path: string, form: FormData): Promise<T> => {
   if (response.status === 204) return undefined as T;
   const body = (await response.json()) as ApiEnvelope<T>;
   if (body.success) return body.data;
-  throw new ApiError(body.error.code, body.error.message, response.status);
+  throw new ApiError(
+      body.error.code,
+      body.error.message,
+      response.status,
+      body.error.details,
+      body.error.requestId,
+    );
 };
 
 /** Hand a blob to the browser as a download. Shared by every binary path below. */

@@ -15,7 +15,7 @@ import { Button } from '../../../shared/ui/Button';
 import { Skeleton } from '../../../shared/ui/Skeleton';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
 import { EditIcon } from '../../../shared/ui/icons';
-import { formatDate, formatNumber } from '../../../shared/lib/format';
+import { formatAmount, formatDate, formatNumber } from '../../../shared/lib/format';
 import { useItLicense, useItLicenseInstallations } from '../api/it-queries';
 import { LicenseStateBadge } from '../components/LicenseStateBadge';
 import { ItSoftwareProductName } from '../components/ItSoftwareProductName';
@@ -118,7 +118,7 @@ export const LicenseDetailPage = (): JSX.Element => {
                 value={
                   license.purchase?.cost === undefined || license.purchase.cost === null
                     ? null
-                    : formatNumber(license.purchase.cost, locale)
+                    : formatAmount(license.purchase.cost, locale)
                 }
               />
               <div className="sm:col-span-2">

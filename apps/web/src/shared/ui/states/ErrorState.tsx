@@ -1,8 +1,13 @@
 // Inline error panel with a retry action. Derives a friendly, localized message from a thrown
 // value when `error` is supplied; otherwise uses the given title/description.
+//
+// `error` accepts a TanStack Query `error` verbatim. Its "no failure" value is `null`, not
+// `undefined`, so presence is decided by `hasError` — a `!== undefined` test here reported every
+// successful query as a failed one and printed the generic UNKNOWN copy, since `null` matches none
+// of `errorMessage`'s branches.
 import { useAppSelector } from '../../../store';
 import { useT } from '../../../platform/localization/useT';
-import { errorMessage } from '../../lib/errors';
+import { errorDiagnostic, errorMessage, hasError } from '../../lib/errors';
 import { AlertIcon } from '../icons';
 
 export const ErrorState = ({
@@ -18,13 +23,23 @@ export const ErrorState = ({
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state) => state.locale.locale);
-  const message = description ?? (error !== undefined ? errorMessage(error, locale) : undefined);
+  const message = description ?? (hasError(error) ? errorMessage(error, locale) : undefined);
+  // What the message deliberately does not say. Shown quietly and only when the server gave us
+  // an identity to show, so a screenshot is enough to find the request in the API log.
+  const diagnostic = hasError(error) ? errorDiagnostic(error) : null;
   return (
     <div className="flex flex-col items-center justify-center gap-2 px-4 py-16 text-center">
       <AlertIcon className="h-10 w-10 text-red-400" />
       <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{title ?? t('common.error.title')}</p>
       {message !== undefined && (
         <p className="max-w-sm text-sm text-slate-500 dark:text-slate-400">{message}</p>
+      )}
+      {diagnostic !== null && (
+        <p className="font-mono text-xs text-slate-400 dark:text-slate-500" dir="ltr">
+          {diagnostic.requestId === undefined
+            ? diagnostic.code
+            : `${diagnostic.code} · ${diagnostic.requestId}`}
+        </p>
       )}
       {onRetry !== undefined && (
         <button

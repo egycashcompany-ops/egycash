@@ -50,6 +50,9 @@ const OPERATIONS_PAYLOAD: MyApplicationCategoryDto[] = [
       ['Vault Roll-up', '/operations/reports/vault', 'chart'],
       ['Captain Report', '/operations/reports/captains', 'chart'],
       ['Bank Report', '/operations/reports/banks', 'chart'],
+      // C1 — the captain's phone surface, listed like any other app. Its grant decides who may
+      // open it; the screen itself answers whether the holder is rostered today.
+      ["Captain's Day", '/operations/my-day', 'truck'],
       ['Operations Catalogs', '/operations/catalogs', 'tag'],
     ].map(([en, route, icon], i) => ({
       id: `app-${String(i)}`,
@@ -64,7 +67,7 @@ const OPERATIONS_PAYLOAD: MyApplicationCategoryDto[] = [
 describe('the parse itself', () => {
   it('found the routes this module serves', () => {
     // Guards the joins below: an empty set makes "all covered" vacuously true.
-    expect(SERVED.length).toBeGreaterThanOrEqual(13);
+    expect(SERVED.length).toBeGreaterThanOrEqual(14);
     expect(SERVED).toContain('/operations/crew-board');
   });
 });
@@ -76,7 +79,7 @@ describe('the shell renders the Operations module (B7)', () => {
     expect(modules).toHaveLength(1);
     expect(modules[0]?.name.en).toBe('Operations');
     expect(modules[0]?.name.ar).toBe('العمليات');
-    expect(moduleApps(modules[0]!)).toHaveLength(13);
+    expect(moduleApps(modules[0]!)).toHaveLength(14);
   });
 
   it('resolves every catalog icon to a real glyph, not the silent fallback', () => {
@@ -94,7 +97,7 @@ describe('the shell renders the Operations module (B7)', () => {
 
   it('puts every page in the command palette, each carrying its module', () => {
     const flat = flattenApps(OPERATIONS_PAYLOAD);
-    expect(flat).toHaveLength(13);
+    expect(flat).toHaveLength(14);
     for (const app of flat) expect(app.moduleName.en).toBe('Operations');
   });
 });

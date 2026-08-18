@@ -442,6 +442,21 @@ const CATALOG: CategoryDef[] = [
         permission: 'operationsShipment.view',
       },
       {
+        // The captain's phone surface (Phase C). Listed like any other app so it is reachable
+        // without typing a URL, and gated by the SAME grant its route checks.
+        //
+        // The permission decides who may OPEN it, not who is a captain: an employee holding
+        // `operationsExecution.own` sees the row every day, and the screen itself answers whether
+        // he is rostered today. Filtering the row by captaincy would need a per-day lookup during
+        // navigation, and would hide the surface from the very person whose duty had just been
+        // assigned.
+        en: "Captain's Day",
+        ar: 'يوم القائد',
+        route: '/operations/my-day',
+        icon: 'truck',
+        permission: 'operationsExecution.own',
+      },
+      {
         en: 'Operations Catalogs',
         ar: 'البيانات المرجعية',
         route: '/operations/catalogs',

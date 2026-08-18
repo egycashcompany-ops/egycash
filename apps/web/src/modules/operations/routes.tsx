@@ -8,6 +8,10 @@
 //   /operations/shipments  operationsShipment.view    B2  (legacy /main_ops)
 //   /operations/crew-board    operationsCrew.view       B3  (legacy /tashghela)
 //   /operations/requirements  operationsCrew.view       B3  (legacy /requirement)
+//   /operations/secured       operationsShipment.view   B4  (legacy /mohsana)
+//   /operations/vault/receive operationsVault.view      B4  (legacy /receive_mohsana)
+//   /operations/vault/dispatch operationsVault.view     B4  (legacy /deliver_mohsana + /tash4ela_mohasana)
+//   /operations/vault         operationsVault.view      B4  (legacy /vault1)
 //   /operations/catalogs   operationsCatalog.manage   B1  (legacy /data_edit)
 import { Route, Routes } from 'react-router-dom';
 import { RequirePermission } from '../../platform/router/RequirePermission';
@@ -18,6 +22,10 @@ import { CatalogsPage } from './pages/CatalogsPage';
 import { DailyOperationsPage } from './pages/DailyOperationsPage';
 import { CrewBoardPage } from './pages/CrewBoardPage';
 import { RequirementsPage } from './pages/RequirementsPage';
+import { SecuredBacklogPage } from './pages/SecuredBacklogPage';
+import { SecuredDispatchPage } from './pages/SecuredDispatchPage';
+import { VaultInventoryPage } from './pages/VaultInventoryPage';
+import { VaultReceivePage } from './pages/VaultReceivePage';
 
 export default function OperationsRoutes(): JSX.Element {
   return (
@@ -45,6 +53,38 @@ export default function OperationsRoutes(): JSX.Element {
           element={
             <RequirePermission permission="operationsCrew.view">
               <RequirementsPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="secured"
+          element={
+            <RequirePermission permission="operationsShipment.view">
+              <SecuredBacklogPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="vault/receive"
+          element={
+            <RequirePermission permission="operationsVault.view">
+              <VaultReceivePage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="vault/dispatch"
+          element={
+            <RequirePermission permission="operationsVault.view">
+              <SecuredDispatchPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="vault"
+          element={
+            <RequirePermission permission="operationsVault.view">
+              <VaultInventoryPage />
             </RequirePermission>
           }
         />

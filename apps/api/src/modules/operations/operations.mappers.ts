@@ -8,6 +8,7 @@ import {
   type OperationsDayDto,
   type OperationsShipmentAssignmentDto,
   type OperationsShipmentDto,
+  type OperationsVaultInventoryRowDto,
 } from '@ecms/contracts';
 import { type OperationsDayDoc } from './days/day.model';
 import { type OperationsShipmentAssignmentDoc } from './shipments/shipment-assignment.model';
@@ -15,6 +16,7 @@ import { type OperationsBankDoc } from './banks/bank.model';
 import { type OperationsBankBranchDoc } from './bank-branches/bank-branch.model';
 import { type OperationsCurrencyDoc } from './currencies/currency.model';
 import { type OperationsShipmentDoc } from './shipments/shipment.model';
+import { type VaultCustodyView } from './treasury-boundary';
 
 const iso = (d: Date): string => d.toISOString();
 
@@ -112,4 +114,23 @@ export const toShipmentAssignmentDto = (
   version: doc.__v,
   createdAt: iso(doc.createdAt),
   updatedAt: iso(doc.updatedAt),
+});
+
+/**
+ * The Treasury port's view → the Operations-facing row. There is no doc here on purpose: this
+ * mapper takes `VaultCustodyView`, not `OperationsVaultCustodyDoc`, so an Operations controller
+ * physically cannot serialize a custody field the port did not hand it.
+ */
+export const toVaultInventoryRowDto = (view: VaultCustodyView): OperationsVaultInventoryRowDto => ({
+  id: view.id,
+  shipmentId: view.shipmentId,
+  state: view.state,
+  receiptNumber: view.receiptNumber,
+  bagCount: view.bagCount,
+  cartonCount: view.cartonCount,
+  boxCount: view.boxCount,
+  receivedByPrimaryId: view.receivedByPrimaryId,
+  receivedBySecondaryId: view.receivedBySecondaryId,
+  receivedAt: iso(view.receivedAt),
+  releasedAt: view.releasedAt === null ? null : iso(view.releasedAt),
 });

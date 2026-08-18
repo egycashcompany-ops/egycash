@@ -28,7 +28,13 @@ import {
   type UpdateOperationsBank,
   type UpdateOperationsBankBranch,
   type UpdateOperationsCurrency,
+  type AssignSecuredDeliveryLeg,
+  type DispatchSecuredShipments,
+  type ListSecuredBacklogQuery,
+  type OperationsVaultCustodyDto,
+  type OperationsVaultInventoryRowDto,
   type PlanOperationsCrew,
+  type ReceiveIntoVault,
   type SetOperationsCrewRequirements,
   type UpdateOperationsShipment,
 } from '@ecms/contracts';
@@ -184,3 +190,44 @@ export const setCrewRequirements = (
 
 export const removeCrewRequirements = (employeeId: string): Promise<void> =>
   del<void>(`/operations/crew-board/requirements/${employeeId}`);
+
+// ── Secured shipments and the vault (B4) ────────────────────────────────────
+//
+// Four legacy screens, one backend surface, split by OWNER: Operations plans and assigns
+// (`operationsShipment.*`), the treasury receives and releases (`operationsVault.*`). That split
+// is the whole point of the Treasury boundary and is why these are separate calls, not one.
+
+/** `/mohsana` — the open backlog: every secured shipment not yet completed, NO date filter. */
+export const listSecuredBacklog = (
+  params: ListSecuredBacklogQuery,
+): Promise<Paginated<OperationsShipmentDto>> =>
+  getPage<OperationsShipmentDto>(
+    `/operations/secured/backlog${buildQuery(params as QueryParams)}`,
+  );
+
+/** `/tash4ela_mohasana` + `/deliver_mohsana` — held shipments due for delivery on a date. */
+export const listSecuredDue = (date: string): Promise<OperationsShipmentDto[]> =>
+  get<OperationsShipmentDto[]>(`/operations/secured/due${buildQuery({ date })}`);
+
+/** `/vault1` — everything currently held. No date filter, deliberately (Q32 PRESERVE). */
+export const listVaultInventory = (
+  params: OperationsListParams,
+): Promise<Paginated<OperationsVaultInventoryRowDto>> =>
+  get<Paginated<OperationsVaultInventoryRowDto>>(`/operations/secured/vault${buildQuery(params)}`);
+
+/** `/receive_mohsana` — into the vault, under the two-man rule (Q2 NORMALIZE). */
+export const receiveIntoVault = (
+  id: string,
+  body: ReceiveIntoVault,
+): Promise<OperationsVaultCustodyDto> =>
+  post<OperationsVaultCustodyDto>(`/operations/secured/${id}/receive`, body);
+
+/** `/tash4ela_mohasana` — the legacy leader2 + car_num2 pair, as the delivery leg. */
+export const assignSecuredDelivery = (
+  id: string,
+  body: AssignSecuredDeliveryLeg,
+): Promise<unknown> => post(`/operations/secured/${id}/assign-delivery`, body);
+
+/** `/deliver_mohsana/data` — release and dispatch a vehicle's load, in ONE transaction. */
+export const dispatchSecured = (body: DispatchSecuredShipments): Promise<unknown> =>
+  post('/operations/secured/dispatch', body);

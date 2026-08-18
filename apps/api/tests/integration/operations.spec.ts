@@ -23,6 +23,8 @@ import {
   type OperationsMobileDayDto,
   type OperationsShipmentAssignmentDto,
   type OperationsShipmentDto,
+  type OperationsVaultInventoryRowDto,
+  type PageMeta,
 } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { buildApp } from '../../src/app';
@@ -804,8 +806,25 @@ describe('secured (محصنة) workflow — the four legacy screens (OP-4)', () 
       .get('/api/v1/operations/secured/vault')
       .set('Authorization', `Bearer ${adminToken}`);
     expect(vault.status).toBe(200);
-    const held = data<{ items: { shipmentId: string }[] }>(vault).items.map((i) => i.shipmentId);
-    expect(held).toContain(shipment.id);
+    // The STANDARD paginated envelope — a bare `{items,total}` body here is what made the desk
+    // screen render nothing, so the shape is asserted, not just the contents.
+    const body = vault.body as { data: OperationsVaultInventoryRowDto[]; meta: PageMeta };
+    expect(body.meta).toMatchObject({ page: 1, totalItems: expect.any(Number) as number });
+    const row = body.data.find((r) => r.shipmentId === shipment.id);
+    expect(row).toBeDefined();
+    // The port's widened view, end to end: packaging counts and BOTH treasurers reach the desk...
+    expect(row).toMatchObject({
+      state: 'held',
+      bagCount: 3,
+      cartonCount: 0,
+      boxCount: 1,
+      receivedByPrimaryId: expect.any(String) as string,
+      receivedBySecondaryId: expect.any(String) as string,
+    });
+    expect(row?.receivedByPrimaryId).not.toBe(row?.receivedBySecondaryId);
+    // ...and the seal barcodes do NOT — they stay behind the Treasury boundary.
+    expect(row).not.toHaveProperty('bagSeals');
+    expect(row).not.toHaveProperty('boxSeals');
   });
 
   it('7. refuses a second receive and refuses receiving a daily shipment at all', async () => {

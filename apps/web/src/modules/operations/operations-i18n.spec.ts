@@ -144,9 +144,69 @@ const CREW_KEYS = [
   'operations.crew.requirements.empty',
 ];
 
-const ALL_KEYS = [...SHELL_KEYS, ...CATALOG_KEYS, ...BOARD_KEYS, ...CREW_KEYS];
+/** B4 — the four secured screens. */
+const SECURED_KEYS = [
+  'operations.nav.secured',
+  'operations.cards.secured',
+  'operations.nav.vaultReceive',
+  'operations.cards.vaultReceive',
+  'operations.nav.vaultDispatch',
+  'operations.cards.vaultDispatch',
+  'operations.nav.vault',
+  'operations.cards.vault',
+  'operations.secured.backlog.title',
+  'operations.secured.backlog.subtitle',
+  'operations.secured.backlog.add',
+  'operations.secured.backlog.empty',
+  'operations.secured.receive.title',
+  'operations.secured.receive.subtitle',
+  'operations.secured.receive.action',
+  'operations.secured.receive.empty',
+  'operations.secured.receive.receiptNumber',
+  'operations.secured.receive.bags',
+  'operations.secured.receive.cartons',
+  'operations.secured.receive.boxes',
+  'operations.secured.receive.bagSeals',
+  'operations.secured.receive.boxSeals',
+  'operations.secured.receive.sealsHint',
+  'operations.secured.receive.primary',
+  'operations.secured.receive.secondary',
+  'operations.secured.receive.dualControl',
+  'operations.secured.receive.sameTreasurer',
+  'operations.secured.receive.done',
+  'operations.secured.receive.failed',
+  'operations.secured.dispatch.title',
+  'operations.secured.dispatch.subtitle',
+  'operations.secured.dispatch.vehicle',
+  'operations.secured.dispatch.noCrew',
+  'operations.secured.dispatch.pickCrew',
+  'operations.secured.dispatch.assign',
+  'operations.secured.dispatch.assigned',
+  'operations.secured.dispatch.assignFailed',
+  'operations.secured.dispatch.select',
+  'operations.secured.dispatch.release',
+  'operations.secured.dispatch.confirm',
+  'operations.secured.dispatch.done',
+  'operations.secured.dispatch.failed',
+  'operations.secured.dispatch.empty',
+  'operations.vault.title',
+  'operations.vault.subtitle',
+  'operations.vault.packages',
+  'operations.vault.packageCounts',
+  'operations.vault.receivedBy',
+  'operations.vault.receivedAt',
+  'operations.vault.empty',
+];
 
-describe('operations i18n catalogs (B1–B3)', () => {
+const ALL_KEYS = [
+  ...SHELL_KEYS,
+  ...CATALOG_KEYS,
+  ...BOARD_KEYS,
+  ...CREW_KEYS,
+  ...SECURED_KEYS,
+];
+
+describe('operations i18n catalogs (B1–B4)', () => {
   for (const locale of LOCALES) {
     for (const key of ALL_KEYS) {
       it(`${locale}: ${key}`, () => {

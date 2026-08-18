@@ -6,16 +6,23 @@
 // hire date, branch): the browser reads them from HR's endpoint with HR's own `employee.view`,
 // displays them, and never writes them. That is FR-11 in practice — Fleet does not own people.
 //
-// The consequence is visible in the filter bar: only the fleet-owned columns are filterable,
-// because filtering a fleet-paginated list on an HR column would mean the Fleet API querying HR's
-// collection. A client-side filter over the current page was the alternative and is worse — it
-// would silently filter 25 rows out of a result set of hundreds and look like it worked.
+// The filter bar spans both, and stays server-side on both. The fleet filters go straight to
+// `/fleet/drivers`; the HR filters go to `/hr/employees` FIRST and arrive here as `employeeIds`
+// (see `useDriverHrFilter`). Two queries, each answered by the module that owns its data, joined
+// by id in the browser — the same join the name column already performs. Nothing is ever filtered
+// out of an already-fetched page, and when HR matches more employees than one `employeeIds` page
+// can carry, the table says so instead of showing a truncated result that looks complete.
 //
 // There is no "add driver" action: enrolment left the UI. The create endpoint still exists for the
 // API's own consumers; nothing on this screen reaches it.
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { type EmployeeDto, type FleetDriverProfileDto, type Locale } from '@ecms/contracts';
+import {
+  MAX_PAGE_SIZE,
+  type EmployeeDto,
+  type FleetDriverProfileDto,
+  type Locale,
+} from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
@@ -29,6 +36,7 @@ import { EditIcon, EyeIcon } from '../../../shared/ui/icons';
 import { formatDate, localized } from '../../../shared/lib/format';
 import { cn } from '../../../shared/lib/cn';
 import { useDrivers } from '../api/fleet-queries';
+import { useDriverHrFilter, type DriverHrFilter } from '../api/driver-hr-filter';
 import { useBranches, useJobTitles } from '../../hr/recruitment/job-offers/api/job-offer-queries';
 import { useEmployeeRecord } from '../components/EmployeeName';
 import { DriverFormDialog } from '../components/DriverFormDialog';
@@ -73,6 +81,14 @@ export const DriversListPage = (): JSX.Element => {
   const specialization = sp.get('spec') ?? '';
   const image = sp.get('img') ?? '';
   const active = sp.get('active') ?? '';
+  // The HR half — every one of these travels to HR's endpoint, never to Fleet's.
+  const hrFilter: DriverHrFilter = {
+    search: sp.get('emp') ?? '',
+    jobTitleId: sp.get('job') ?? '',
+    branchId: sp.get('branch') ?? '',
+    governorate: sp.get('gov') ?? '',
+    phone: sp.get('phone') ?? '',
+  };
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
   const [sortByRaw, sortDirRaw] = (sp.get('sort') ?? 'createdAt:desc').split(':');
@@ -95,9 +111,16 @@ export const DriversListPage = (): JSX.Element => {
     const dir = sort.by === by && sort.dir === 'asc' ? 'desc' : 'asc';
     patch({ sort: `${by}:${dir}` }, false);
   };
+  const hr = useDriverHrFilter(hrFilter);
   const hasActiveFilters =
-    search !== '' || area !== '' || specialization !== '' || image !== '' || active !== '';
+    search !== '' ||
+    area !== '' ||
+    specialization !== '' ||
+    image !== '' ||
+    active !== '' ||
+    Object.values(hrFilter).some((value) => value !== '');
 
+  const employeeIds = hr.employeeIds;
   const params = useMemo(
     () => ({
       page,
@@ -109,11 +132,24 @@ export const DriversListPage = (): JSX.Element => {
       specialization: specialization || undefined,
       hasLicenseImage: image === '' ? undefined : image === 'with',
       isActive: active === '' ? undefined : active === 'true',
+      // `undefined` when no HR filter is set. When one IS set the array is always sent, including
+      // when it is empty: an empty `$in` is "HR matched nobody", and dropping the parameter there
+      // would answer a filtered question with an unfiltered list.
+      employeeIds: employeeIds ?? undefined,
     }),
-    [paramsKey],
+    [paramsKey, employeeIds],
   );
-  const { data, isLoading, isError, error, refetch } = useDrivers(params);
-  const rows = data?.items ?? [];
+  // Three states hold the fleet query back, and each would otherwise produce a WRONG page rather
+  // than a slow one: step ① still running, HR matched more than one page, HR refused or failed.
+  const blocked = hr.loading || hr.tooMany || hr.failed;
+  // An empty HR match needs no round-trip: the answer is already known to be nothing.
+  const emptyMatch = employeeIds !== null && employeeIds.length === 0;
+  const { data, isLoading, isError, error, refetch } = useDrivers(params, !blocked && !emptyMatch);
+  // Held back means SHOW NOTHING, not "show what was there before". `useDrivers` keeps the
+  // previous page as placeholder data, and when the HR step blocks the filter the parameter is
+  // dropped — so the query key collapses back onto the UNFILTERED one, whose cached rows would
+  // render underneath a "narrow your filter" banner and read as the filtered answer.
+  const rows = blocked || emptyMatch ? [] : (data?.items ?? []);
 
   // Reference names for the two HR id columns. Without the matching `*.view` grant each list stays
   // empty and the column degrades to a dash rather than showing a raw id.
@@ -315,8 +351,77 @@ export const DriversListPage = (): JSX.Element => {
             would win over any width passed to it. */}
         <FilterBar
           hasActiveFilters={hasActiveFilters}
-          onClear={() => patch({ q: null, area: null, spec: null, img: null, active: null })}
+          onClear={() =>
+            patch({
+              q: null,
+              area: null,
+              spec: null,
+              img: null,
+              active: null,
+              emp: null,
+              job: null,
+              branch: null,
+              gov: null,
+              phone: null,
+            })
+          }
         >
+          {/* HR-owned. One box for name AND employee code because HR's `search` is one parameter
+              covering both — two boxes would need two HR queries whose capped pages could
+              intersect to a WRONG answer, which is the false filtering this design exists to
+              avoid. */}
+          <div className="w-48">
+            <Input
+              aria-label={t('fleet.drivers.filters.employee')}
+              placeholder={t('fleet.drivers.filters.employee')}
+              value={hrFilter.search}
+              onChange={(e) => patch({ emp: e.target.value || null })}
+            />
+          </div>
+          <Select
+            aria-label={t('fleet.drivers.columns.jobTitle')}
+            value={hrFilter.jobTitleId}
+            onChange={(e) => patch({ job: e.target.value || null })}
+            className="w-auto"
+          >
+            <option value="">{t('fleet.drivers.allJobTitles')}</option>
+            {jobTitles.map((jobTitle) => (
+              <option key={jobTitle.id} value={jobTitle.id}>
+                {localized(jobTitle.name, locale)}
+              </option>
+            ))}
+          </Select>
+          <Select
+            aria-label={t('fleet.drivers.columns.branch')}
+            value={hrFilter.branchId}
+            onChange={(e) => patch({ branch: e.target.value || null })}
+            className="w-auto"
+          >
+            <option value="">{t('fleet.drivers.allBranches')}</option>
+            {branches.map((branch) => (
+              <option key={branch.id} value={branch.id}>
+                {localized(branch.name, locale)}
+              </option>
+            ))}
+          </Select>
+          <div className="w-32">
+            <Input
+              aria-label={t('fleet.drivers.columns.governorate')}
+              placeholder={t('fleet.drivers.columns.governorate')}
+              value={hrFilter.governorate}
+              onChange={(e) => patch({ gov: e.target.value || null })}
+            />
+          </div>
+          <div className="w-36">
+            <Input
+              aria-label={t('fleet.drivers.columns.phone')}
+              placeholder={t('fleet.drivers.columns.phone')}
+              value={hrFilter.phone}
+              onChange={(e) => patch({ phone: e.target.value || null })}
+              dir="ltr"
+            />
+          </div>
+          {/* Fleet-owned, straight to /fleet/drivers. */}
           <div className="w-40">
             <Input
               aria-label={t('fleet.drivers.columns.licenseNumber')}
@@ -368,17 +473,33 @@ export const DriversListPage = (): JSX.Element => {
           </Select>
         </FilterBar>
 
+        {hr.tooMany && (
+          <p
+            role="status"
+            className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+          >
+            {t('fleet.drivers.hrFilterTooMany', { matched: hr.matched, max: MAX_PAGE_SIZE })}
+          </p>
+        )}
+        {hr.failed && (
+          <p
+            role="status"
+            className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+          >
+            {t('fleet.drivers.hrFilterUnavailable')}
+          </p>
+        )}
         <DataTable
           columns={columns}
           rows={rows}
           rowKey={(d) => d.id}
-          loading={isLoading}
+          loading={hr.loading || (isLoading && !emptyMatch && !blocked)}
           error={isError ? error : undefined}
           onRetry={() => void refetch()}
           sort={sort}
           onSortChange={changeSort}
         />
-        {data !== undefined && data.meta.totalItems > 0 && (
+        {data !== undefined && !blocked && !emptyMatch && data.meta.totalItems > 0 && (
           <Pagination
             meta={data.meta}
             onPageChange={(p) => patch({ page: String(p) }, false)}

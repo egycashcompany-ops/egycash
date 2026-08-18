@@ -103,14 +103,29 @@ const nextNid = (): string => `290010101${String(30_000 + nidCounter++).padStart
 const nextPhone = (): string => `010${String(phoneCounter++).padStart(8, '0')}`;
 
 /** HR employee via the real direct-registration endpoint — Fleet never fabricates one. */
-const mkEmployee = async (): Promise<string> => {
+const mkEmployee = async (
+  over: { fullNameAr?: string; phone?: string; governorate?: string } = {},
+): Promise<string> => {
   const res = await request(app)
     .post('/api/v1/hr/employees/direct')
     .set('Authorization', `Bearer ${adminToken}`)
     .send({
       personal: {
-        identity: { fullNameAr: 'سائق اختبار', nationalId: nextNid(), nationality: 'Egyptian' },
-        contact: { primaryPhone: nextPhone() },
+        identity: {
+          fullNameAr: over.fullNameAr ?? 'سائق اختبار',
+          nationalId: nextNid(),
+          nationality: 'Egyptian',
+        },
+        contact: { primaryPhone: over.phone ?? nextPhone() },
+        ...(over.governorate === undefined
+          ? {}
+          : {
+              officialAddress: {
+                line1: 'شارع الاختبار',
+                city: 'مدينة الاختبار',
+                governorate: over.governorate,
+              },
+            }),
         experience: [],
         drivingLicenses: [],
         certifications: [],
@@ -1953,11 +1968,100 @@ describe('the drivers list filters narrow SERVER-side', () => {
   });
 
   it('refuses a filter the list does not implement rather than ignoring it', async () => {
+    // `governorate` is HR's fact. The fleet list says so with a 400 instead of accepting the
+    // parameter and returning an unfiltered page — the browser is expected to ask HR and come
+    // back with `employeeIds`, which is the test below.
     const res = await request(app)
       .get('/api/v1/fleet/drivers')
       .query({ governorate: 'الجيزة' })
       .set('Authorization', `Bearer ${adminToken}`);
     expect(res.status).toBe(400);
+  });
+});
+
+describe('the HR half of the drivers filter — two server-side queries, joined by id', () => {
+  it('HR filters on governorate and phone, and Fleet narrows on the ids it returns', async () => {
+    const marker = `G${Date.now().toString().slice(-6)}`;
+    const phone = `0109${String(nidCounter).padStart(7, '0')}`;
+    const targetEmployee = await mkEmployee({ governorate: marker, phone });
+    const otherEmployee = await mkEmployee({ governorate: `${marker}-other` });
+    const target = await mkDriverProfile(targetEmployee);
+    const other = await mkDriverProfile(otherEmployee);
+
+    // ① HR answers the HR question, on HR's own endpoint, with HR's own permission.
+    const byGovernorate = await request(app)
+      .get('/api/v1/hr/employees')
+      .query({ governorate: marker, pageSize: 100 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(byGovernorate.status).toBe(200);
+    const govIds = data<{ id: string }[]>(byGovernorate).map((e) => e.id);
+    expect(govIds).toContain(targetEmployee);
+    // The regex is a substring match, so the deliberately-similar `${marker}-other` is included —
+    // what matters is that a governorate NOT matching the term is out.
+    expect(govIds).not.toContain(await mkEmployee({ governorate: 'محافظة أخرى تماما' }));
+
+    const byPhone = await request(app)
+      .get('/api/v1/hr/employees')
+      .query({ phone, pageSize: 100 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(byPhone.status).toBe(200);
+    const phoneIds = data<{ id: string }[]>(byPhone).map((e) => e.id);
+    expect(phoneIds).toEqual([targetEmployee]);
+
+    // ② Fleet narrows on its OWN column using those ids — no query into HR anywhere.
+    const drivers = await request(app)
+      .get('/api/v1/fleet/drivers')
+      .query({ employeeIds: targetEmployee, pageSize: 100 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(drivers.status).toBe(200);
+    const ids = data<FleetDriverProfileDto[]>(drivers).map((d) => d.id);
+    expect(ids).toEqual([target.id]);
+    expect(ids).not.toContain(other.id);
+  });
+
+  it('HR still filters on name, code, job title and branch — nothing was reinvented', async () => {
+    const name = `سائق فريد ${nidCounter}`;
+    const employeeId = await mkEmployee({ fullNameAr: name });
+    const byName = await request(app)
+      .get('/api/v1/hr/employees')
+      .query({ search: name, pageSize: 100 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(data<{ id: string }[]>(byName).map((e) => e.id)).toContain(employeeId);
+
+    const byBranchAndTitle = await request(app)
+      .get('/api/v1/hr/employees')
+      .query({ branchId: branchAId, jobTitleId: jobTitleAId, pageSize: 100 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(byBranchAndTitle.status).toBe(200);
+    expect(data<{ id: string }[]>(byBranchAndTitle).map((e) => e.id)).toContain(employeeId);
+  });
+
+  it('REFUSES more ids than one HR page rather than silently keeping the first 100', async () => {
+    const ids = (n: number): string =>
+      Array.from({ length: n }, (_, i) => `64b1f0dddddddddddd${String(i).padStart(6, '0')}`).join(
+        ',',
+      );
+    const ok = await request(app)
+      .get('/api/v1/fleet/drivers')
+      .query({ employeeIds: ids(100), pageSize: 25 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(ok.status).toBe(200);
+    // 101 is a 400, not a truncated `$in`: a filter that quietly drops ids returns a short list
+    // that looks complete, which is the one outcome worse than refusing.
+    const tooMany = await request(app)
+      .get('/api/v1/fleet/drivers')
+      .query({ employeeIds: ids(101), pageSize: 25 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(tooMany.status).toBe(400);
+  });
+
+  it('an employeeIds filter matching nobody returns nothing, not everything', async () => {
+    const res = await request(app)
+      .get('/api/v1/fleet/drivers')
+      .query({ employeeIds: '64b1f0dddddddddddddddd99', pageSize: 25 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(data<FleetDriverProfileDto[]>(res)).toHaveLength(0);
   });
 });
 

@@ -7,16 +7,24 @@
 // bearer token — and an `<img src>` sends none. The image is fetched through the authenticated
 // endpoint and handed to the browser as an object URL.
 import { useEffect, useState } from 'react';
-import { type FleetDriverProfileDto } from '@ecms/contracts';
+import { type FleetDriverProfileDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { EyeIcon, TrashIcon, UploadIcon } from '../../../shared/ui/icons';
+import { useAppSelector } from '../../../store';
+import { localized } from '../../../shared/lib/format';
 import { fetchDriverLicenseImage } from '../api/fleet-api';
-import { useDeleteDriverLicenseImage, useUploadDriverLicenseImage } from '../api/fleet-queries';
+import {
+  useDeleteDriverLicenseImage,
+  useRosterDay,
+  useUploadDriverLicenseImage,
+  useVehicleTypes,
+} from '../api/fleet-queries';
 import { useEmployeeName } from './EmployeeName';
+import { vehicleTodayFrom, type VehicleToday } from './vehicle-today';
 
 /** What the file picker offers and what the server's category accepts — kept in step deliberately. */
 export const DRIVER_LICENSE_IMAGE_ACCEPT = 'image/jpeg,image/png,image/webp';
@@ -113,9 +121,41 @@ export const DriverLicenseImageDeleteDialog = ({
 };
 
 /**
+ * The vehicle this driver is on TODAY, or null.
+ *
+ * A driver has no permanent vehicle: `fleet_duty_assignments` is keyed `(vehicleId, date)` and
+ * FR-7 gives a driver one assignment per date, so "his vehicle" only means anything with a day
+ * attached — and the day the preview cares about is today.
+ *
+ * No new endpoint: `GET /fleet/roster?date=` already returns both halves of the answer, and
+ * `useRosterDay` is the hook the roster board itself uses. Reading it needs `fleetRoster.view`,
+ * and a caller without that grant makes NO request at all — the hook is disabled by passing the
+ * empty date, so there is no 403 to swallow and nothing to show. The vehicle line simply is not
+ * there, which is also what happens on a day the driver is not rostered.
+ */
+const useVehicleToday = (employeeId: string, enabled: boolean): VehicleToday | null => {
+  const can = useCan();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  const allowed = enabled && employeeId !== '' && can('fleetRoster.view');
+  // `YYYY-MM-DD` — the same shape the roster board sends, resolved to the local day.
+  const today = new Date().toISOString().slice(0, 10);
+  const roster = useRosterDay(allowed ? today : '');
+  // The TYPE is what the registry calls "الماركة", exactly as the vehicles table maps it. Gated
+  // separately: the endpoint answers to `fleetVehicle.view`, which a drivers-only role may lack.
+  const types = useVehicleTypes({ pageSize: 100 }, allowed && can('fleetVehicle.view'));
+
+  if (!allowed) return null;
+  return vehicleTodayFrom(roster.data, employeeId, (typeId) => {
+    const type = types.data?.items.find((item) => item.id === typeId);
+    return type === undefined ? null : localized(type.name, locale);
+  });
+};
+
+/**
  * The preview. Its header is the DRIVER's identity — name, employee code and licence number —
  * because a scan of a driving licence is only meaningful next to the person it belongs to, and
- * those are the three facts that identify one driver among several with similar names.
+ * those are the three facts that identify one driver among several with similar names. Under it,
+ * on a day the driver is rostered, the vehicle they are on.
  */
 export const DriverLicenseImagePreviewDialog = ({
   open,
@@ -131,6 +171,7 @@ export const DriverLicenseImagePreviewDialog = ({
   const fileId = driver?.licenseImage?.fileId ?? null;
   const { url, loading, failed } = useDriverLicenseImageUrl(driver?.id ?? '', open ? fileId : null);
   const { name, code } = useEmployeeName(driver?.employeeId ?? '');
+  const vehicleToday = useVehicleToday(driver?.employeeId ?? '', open);
   const [confirming, setConfirming] = useState(false);
 
   return (
@@ -161,6 +202,14 @@ export const DriverLicenseImagePreviewDialog = ({
           </>
         }
       >
+        {vehicleToday !== null && (
+          <p className="mb-3 text-sm font-medium text-slate-700 dark:text-slate-200">
+            {t('fleet.drivers.licenseImage.vehicleToday', {
+              code: vehicleToday.code,
+              make: vehicleToday.make,
+            })}
+          </p>
+        )}
         {loading && (
           <p className="text-sm text-slate-500 dark:text-slate-400">{t('common.loading')}</p>
         )}

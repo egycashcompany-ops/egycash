@@ -124,11 +124,12 @@ export const useUploadVehicleLicenseImage = () =>
 export const useDeleteVehicleLicenseImage = () =>
   useVehicleMutation((id: string) => api.deleteVehicleLicenseImage(id));
 
-export const useVehicleTypes = (params: FleetListParams = { pageSize: 100 }) =>
+export const useVehicleTypes = (params: FleetListParams = { pageSize: 100 }, enabled = true) =>
   useQuery({
     queryKey: listKey(MODULE, 'vehicleTypes', params),
     queryFn: () => api.listVehicleTypes(params),
     staleTime: 60_000,
+    enabled,
   });
 
 export const useFleetCatalog = (kind: string) =>
@@ -274,11 +275,12 @@ export const useCancelUnavailability = () => {
     onSuccess: () => void qc.invalidateQueries({ queryKey: fleetKeys.availability }),
   });
 };
-export const useDrivers = (params: FleetListParams) =>
+export const useDrivers = (params: FleetListParams, enabled = true) =>
   useQuery({
     queryKey: listKey(MODULE, 'drivers', params),
     queryFn: () => api.listDrivers(params),
     placeholderData: (prev) => prev,
+    enabled,
   });
 
 export const useDriver = (id: string) =>

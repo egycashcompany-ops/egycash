@@ -2930,6 +2930,19 @@ const en: Record<string, string> = {
   'fleet.drivers.columns.area': 'Area',
   'fleet.drivers.columns.status': 'Status',
   'fleet.drivers.areaPlaceholder': 'Area',
+  'fleet.drivers.filters.employee': 'Driver name or employee code',
+  'fleet.drivers.allJobTitles': 'All job titles',
+  'fleet.drivers.allBranches': 'All branches',
+  'fleet.drivers.hrFilterTooMany':
+    'The HR filter matches {{matched}} employees — more than the {{max}} this list can narrow by. Nothing has been filtered. Narrow the HR filter and try again.',
+  'fleet.drivers.hrFilterUnavailable':
+    'The HR filters need directory access (employee.view) and could not be applied, so nothing has been filtered.',
+  'fleet.drivers.hrPersonal': 'Personal data',
+  'fleet.drivers.hrEmployment': 'Placement and dates',
+  'fleet.drivers.hrEditPersonal': 'Edit in HR',
+  'fleet.drivers.hrEditEmployment': 'Open HR actions',
+  'fleet.drivers.hrEmploymentHint':
+    'Job title, branch and hire date change through a personnel action — a promotion, a transfer or a dated correction — each with its own effective date and reason.',
   'fleet.drivers.allLicenseImages': 'License image: any',
   'fleet.drivers.withLicenseImage': 'With license image',
   'fleet.drivers.withoutLicenseImage': 'Without license image',
@@ -2945,6 +2958,7 @@ const en: Record<string, string> = {
   'fleet.drivers.licenseImage.deleted': 'License image deleted.',
   'fleet.drivers.licenseImage.loadFailed': 'The image could not be loaded.',
   'fleet.drivers.licenseImage.previewTitle': 'Driving license image',
+  'fleet.drivers.licenseImage.vehicleToday': "Today's vehicle: code {{code}} | Make: {{make}}",
   'fleet.drivers.licenseImage.previewSubtitle':
     'Driver: {{driver}} | Employee code: {{code}} | License no.: {{license}}',
   'fleet.drivers.licenseImage.deleteTitle': 'Delete the license image?',
@@ -7646,6 +7660,19 @@ const ar: Record<string, string> = {
   'fleet.drivers.columns.area': 'المنطقة',
   'fleet.drivers.columns.status': 'الحالة',
   'fleet.drivers.areaPlaceholder': 'المنطقة',
+  'fleet.drivers.filters.employee': 'اسم السائق أو كود الموظف',
+  'fleet.drivers.allJobTitles': 'كل الوظائف',
+  'fleet.drivers.allBranches': 'كل الفروع',
+  'fleet.drivers.hrFilterTooMany':
+    'فلتر الموارد البشرية طابق {{matched}} موظف — أكثر من {{max}} وهو الحد الذي تقدر القائمة تضيّق به. لم تتم أي فلترة. ضيّق فلتر الموارد البشرية وأعد المحاولة.',
+  'fleet.drivers.hrFilterUnavailable':
+    'فلاتر الموارد البشرية تتطلب صلاحية دليل الموظفين (employee.view) وتعذّر تطبيقها، فلم تتم أي فلترة.',
+  'fleet.drivers.hrPersonal': 'البيانات الشخصية',
+  'fleet.drivers.hrEmployment': 'التعيين والتواريخ',
+  'fleet.drivers.hrEditPersonal': 'تعديل في الموارد البشرية',
+  'fleet.drivers.hrEditEmployment': 'فتح إجراءات الموظف',
+  'fleet.drivers.hrEmploymentHint':
+    'الوظيفة والفرع وتاريخ التعيين تتغيّر بإجراء موظف — ترقية أو نقل أو تصحيح مؤرَّخ — لكل منها تاريخ سريان وسبب.',
   'fleet.drivers.allLicenseImages': 'صورة الرخصة: الكل',
   'fleet.drivers.withLicenseImage': 'بصورة رخصة',
   'fleet.drivers.withoutLicenseImage': 'بدون صورة رخصة',
@@ -7661,6 +7688,7 @@ const ar: Record<string, string> = {
   'fleet.drivers.licenseImage.deleted': 'تم حذف صورة الرخصة.',
   'fleet.drivers.licenseImage.loadFailed': 'تعذّر تحميل الصورة.',
   'fleet.drivers.licenseImage.previewTitle': 'صورة رخصة القيادة',
+  'fleet.drivers.licenseImage.vehicleToday': 'عربية اليوم: كود {{code}} | الماركة: {{make}}',
   'fleet.drivers.licenseImage.previewSubtitle':
     'السائق: {{driver}} | كود الموظف: {{code}} | رقم الرخصة: {{license}}',
   'fleet.drivers.licenseImage.deleteTitle': 'حذف صورة الرخصة؟',

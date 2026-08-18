@@ -25,10 +25,13 @@ import { configureStore } from '@reduxjs/toolkit';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  ListEmployeesQuerySchema,
   ListFleetDriversQuerySchema,
+  MAX_PAGE_SIZE,
   UpdateFleetDriverProfileSchema,
   type EmployeeDto,
   type FleetDriverProfileDto,
+  type FleetRosterDayDto,
   type Locale,
   type MeDto,
 } from '@ecms/contracts';
@@ -38,6 +41,9 @@ import { translate } from '../../platform/localization/i18n';
 import { detailKey, listKey } from '../../shared/lib/query-keys';
 import { DriversListPage } from './pages/DriversListPage';
 import { DriverLicenseImageCell } from './components/DriverLicenseImage';
+import { HR_DELEGATION, HR_UNDELEGATED_FIELDS, hrProfileHref } from './components/hr-delegation';
+import { vehicleTodayFrom } from './components/vehicle-today';
+import { type DriverHrFilter } from './api/driver-hr-filter';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -128,7 +134,7 @@ const me = (permissions: readonly string[]): MeDto =>
 const seededClient = (
   rows: FleetDriverProfileDto[] = [driver()],
   params = {},
-  { hr = true } = {},
+  { hr = true }: { hr?: boolean } = {},
 ): QueryClient => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   qc.setQueryData(
@@ -142,6 +148,7 @@ const seededClient = (
       specialization: undefined,
       hasLicenseImage: undefined,
       isActive: undefined,
+      employeeIds: undefined,
       ...params,
     }),
     page(rows),
@@ -160,6 +167,39 @@ const seededClient = (
     ['hr', 'jobTitles', 'active'],
     page([{ id: 'jt1', name: { ar: HR.jobTitle, en: 'Cash transport driver' }, status: 'active' }]),
   );
+  return qc;
+};
+
+/**
+ * A client where the HR filter step has already answered.
+ *
+ * `matched` is what HR REPORTS as the total, which is the number the page decides on — seeding a
+ * short `items` array with a large `totalItems` is exactly the shape that must refuse to filter.
+ */
+const hrFilteredClient = (
+  matched: number,
+  filter: Partial<DriverHrFilter> = { governorate: 'الجيزة' },
+): QueryClient => {
+  const full: DriverHrFilter = {
+    search: '',
+    jobTitleId: '',
+    branchId: '',
+    governorate: '',
+    phone: '',
+    ...filter,
+  };
+  const ids = Array.from({ length: Math.min(matched, MAX_PAGE_SIZE) }, (_, i) =>
+    i === 0 ? EMPLOYEE_ID : `e${i + 1}`,
+  );
+  const honoured = matched > 0 && matched <= MAX_PAGE_SIZE;
+  // When the filter CAN be honoured the page asks for the narrowed key; when it cannot, the
+  // parameter is dropped — so the unfiltered key is seeded instead, and the test can prove its
+  // rows are not what gets rendered.
+  const qc = seededClient([driver()], honoured ? { employeeIds: ids } : {});
+  qc.setQueryData(['hr', 'employees', 'fleet-driver-filter', full], {
+    items: ids.map((id) => ({ ...employee(), id })),
+    meta: { page: 1, pageSize: MAX_PAGE_SIZE, totalItems: matched, totalPages: 1 },
+  });
   return qc;
 };
 
@@ -548,5 +588,331 @@ describe('enrolling a driver is gone from the UI', () => {
     expect(api).toContain('export const createDriverProfile');
     const queries = readFileSync(join(HERE, 'api/fleet-queries.ts'), 'utf8');
     expect(queries).toContain('export const useCreateDriverProfile');
+  });
+});
+
+// ── 5. HR delegation — read-only here, editable where it belongs ────────────
+
+describe('the HR facts delegate to HR instead of being edited in Fleet', () => {
+  const source = readFileSync(join(HERE, 'components/DriverFormDialog.tsx'), 'utf8');
+
+  it('sends personal data to HR’s Personal tab, behind employee.editPersonal', () => {
+    expect(HR_DELEGATION.personal.permission).toBe('employee.editPersonal');
+    expect(HR_DELEGATION.personal.tab).toBe('personal');
+    for (const field of ['driver', 'phone', 'address', 'governorate']) {
+      expect(HR_DELEGATION.personal.fields, `${field} is personal data`).toContain(field);
+    }
+  });
+
+  it('sends placement and dates to HR’s Employment tab, behind employee.manageActions', () => {
+    expect(HR_DELEGATION.employment.permission).toBe('employee.manageActions');
+    expect(HR_DELEGATION.employment.tab).toBe('employment');
+    for (const field of ['jobTitle', 'branch', 'hiredAt']) {
+      expect(HR_DELEGATION.employment.fields, `${field} moves by a personnel action`).toContain(
+        field,
+      );
+    }
+  });
+
+  it('keeps the two grants apart — neither group borrows the other’s permission', () => {
+    // Holding `employee.editPersonal` must not open the actions screen, and vice versa: a
+    // promotion is not a field edit, and the whole point of two groups is two answers.
+    expect(HR_DELEGATION.personal.permission).not.toBe(HR_DELEGATION.employment.permission);
+    const personal = new Set<string>(HR_DELEGATION.personal.fields);
+    for (const field of HR_DELEGATION.employment.fields) {
+      expect(personal, `${field} belongs to exactly one group`).not.toContain(field);
+    }
+  });
+
+  it('offers NO action for the employee code — it is derived, and nothing writes it', () => {
+    expect(HR_UNDELEGATED_FIELDS).toContain('employeeCode');
+    for (const group of Object.values(HR_DELEGATION)) {
+      expect(group.fields, 'employee code has no owning screen').not.toContain('employeeCode');
+    }
+  });
+
+  it('every displayed HR column is either delegated or knowingly undelegated', () => {
+    // The eight HR-owned columns, from the table itself. A ninth added tomorrow with no owner
+    // fails here rather than appearing as a field nobody can change and nobody explains.
+    const hrColumns = [
+      'driver',
+      'employeeCode',
+      'jobTitle',
+      'address',
+      'governorate',
+      'phone',
+      'hiredAt',
+      'branch',
+    ];
+    const accounted = new Set<string>([
+      ...HR_DELEGATION.personal.fields,
+      ...HR_DELEGATION.employment.fields,
+      ...HR_UNDELEGATED_FIELDS,
+    ]);
+    for (const column of hrColumns) {
+      expect(accounted, `${column} has an owner or an explicit exemption`).toContain(column);
+    }
+  });
+
+  it('links to HR’s EXISTING profile route, not a new screen', () => {
+    expect(hrProfileHref('e1', 'personal')).toBe('/employees/e1?tab=personal');
+    expect(hrProfileHref('e1', 'employment')).toBe('/employees/e1?tab=employment');
+  });
+
+  it('gates each link on its own group’s permission, and on nothing else', () => {
+    // The dialog is a `Dialog` (a portal), unreachable in a suite with no jsdom — so the claim is
+    // made where it is decidable: the guard reads the permission from the table above, so the two
+    // cannot drift apart.
+    expect(source).toContain('can(HR_DELEGATION.personal.permission)');
+    expect(source).toContain('can(HR_DELEGATION.employment.permission)');
+    // No hardcoded permission strings that could diverge from the table.
+    expect(source).not.toContain("can('employee.editPersonal')");
+    expect(source).not.toContain("can('employee.manageActions')");
+  });
+
+  it('still writes NOTHING of HR’s from Fleet — the delegation is a link, not a write', () => {
+    expect(source).not.toContain('updateEmployeePersonal');
+    expect(source).not.toContain('createEmploymentAction');
+    const body = source.slice(
+      source.indexOf('await update.mutateAsync'),
+      source.indexOf('toast.success'),
+    );
+    const accepted = Object.keys(UpdateFleetDriverProfileSchema.shape);
+    for (const match of body.matchAll(/^\s{8}(\w+):/gm)) {
+      expect(accepted, `${match[1] as string} is in the update contract`).toContain(
+        match[1] as string,
+      );
+    }
+  });
+});
+
+// ── 6. The HR half of the filter bar ────────────────────────────────────────
+
+describe('the HR filters are owned by HR and applied server-side', () => {
+  it('HR’s own list query filters on governorate and phone', () => {
+    // The regression: before this slice `ListEmployeesQuerySchema` was `.strict()` with neither
+    // key, so both of these threw and the two filters could not exist anywhere.
+    expect(ListEmployeesQuerySchema.parse({ governorate: 'الجيزة' }).governorate).toBe('الجيزة');
+    expect(ListEmployeesQuerySchema.parse({ phone: '0100' }).phone).toBe('0100');
+  });
+
+  it('HR already filtered on name, code, job title and branch — nothing was reinvented', () => {
+    expect(ListEmployeesQuerySchema.parse({ search: 'محمود' }).search).toBe('محمود');
+    const objectIdish = '64b1f0dddddddddddddddd01';
+    expect(ListEmployeesQuerySchema.parse({ jobTitleId: objectIdish }).jobTitleId).toBe(
+      objectIdish,
+    );
+    expect(ListEmployeesQuerySchema.parse({ branchId: objectIdish }).branchId).toEqual([
+      objectIdish,
+    ]);
+  });
+
+  it('Fleet narrows on employeeIds — its OWN column, never a query into HR', () => {
+    const a = '64b1f0dddddddddddddddd01';
+    const b = '64b1f0dddddddddddddddd02';
+    expect(ListFleetDriversQuerySchema.parse({ employeeIds: `${a},${b}` }).employeeIds).toEqual([
+      a,
+      b,
+    ]);
+  });
+
+  it('the employeeIds cap is exactly one HR page — and 101 is REFUSED, not truncated', () => {
+    const ids = (n: number): string =>
+      Array.from({ length: n }, (_, i) => `64b1f0dddddddddddddd${String(i).padStart(4, '0')}`).join(
+        ',',
+      );
+    expect(
+      ListFleetDriversQuerySchema.parse({ employeeIds: ids(MAX_PAGE_SIZE) }).employeeIds,
+    ).toHaveLength(MAX_PAGE_SIZE);
+    // Silently keeping the first 100 is the failure this rejection exists to prevent.
+    expect(() =>
+      ListFleetDriversQuerySchema.parse({ employeeIds: ids(MAX_PAGE_SIZE + 1) }),
+    ).toThrow();
+  });
+
+  it('exposes a labelled control for every HR filter the brief names', () => {
+    const html = render(<DriversListPage />);
+    for (const key of [
+      'fleet.drivers.filters.employee',
+      'fleet.drivers.columns.jobTitle',
+      'fleet.drivers.columns.branch',
+      'fleet.drivers.columns.governorate',
+      'fleet.drivers.columns.phone',
+    ]) {
+      expect(html, `${key} filter`).toContain(`aria-label="${t(key)}"`);
+    }
+  });
+
+  it('keeps name and employee code on ONE control, because HR’s search is one parameter', () => {
+    // Two boxes would need two HR queries, and intersecting two capped result pages can drop a
+    // match that is really there — a false negative is false filtering too.
+    expect(t('fleet.drivers.filters.employee')).toBe('اسم السائق أو كود الموظف');
+    expect(translate('en', 'fleet.drivers.filters.employee')).toBe('Driver name or employee code');
+  });
+
+  it('syncs the HR half with the URL, exactly like the fleet half', () => {
+    const html = render(<DriversListPage />, {
+      route:
+        '/fleet/drivers?emp=%D9%85%D8%AD%D9%85%D9%88%D8%AF&gov=%D8%A7%D9%84%D8%AC%D9%8A%D8%B2%D8%A9&phone=0100&job=jt1&branch=b1',
+      client: hrFilteredClient(1, {
+        search: 'محمود',
+        governorate: 'الجيزة',
+        phone: '0100',
+        jobTitleId: 'jt1',
+        branchId: 'b1',
+      }),
+    });
+    expect(html).toContain('value="محمود"');
+    expect(html).toContain('value="الجيزة"');
+    expect(html).toContain('value="0100"');
+    expect(html).toContain('<option value="jt1" selected=""');
+    expect(html).toContain('<option value="b1" selected=""');
+  });
+
+  it('narrows the fleet list by the ids HR returned', () => {
+    const html = render(<DriversListPage />, {
+      route: '/fleet/drivers?gov=%D8%A7%D9%84%D8%AC%D9%8A%D8%B2%D8%A9',
+      client: hrFilteredClient(1),
+    });
+    expect(html, 'the matched driver is listed').toContain('DL-4471');
+    expect(html, 'and no "narrow your filter" banner').not.toContain('{{matched}}');
+    expect(html).not.toContain(
+      translate('ar', 'fleet.drivers.hrFilterTooMany', {
+        matched: MAX_PAGE_SIZE + 1,
+        max: MAX_PAGE_SIZE,
+      }),
+    );
+  });
+
+  it('REFUSES to filter when HR matched more than one page — and shows no rows at all', () => {
+    // The failure this guards: `employeeIds` is dropped when it cannot be honoured, which collapses
+    // the query key back onto the UNFILTERED one. Its cached page must not appear under the banner
+    // and read as the filtered answer.
+    const html = render(<DriversListPage />, {
+      route: '/fleet/drivers?gov=%D8%A7%D9%84%D8%AC%D9%8A%D8%B2%D8%A9',
+      client: hrFilteredClient(MAX_PAGE_SIZE + 1),
+    });
+    expect(html, 'the user is told to narrow').toContain(
+      translate('ar', 'fleet.drivers.hrFilterTooMany', {
+        matched: MAX_PAGE_SIZE + 1,
+        max: MAX_PAGE_SIZE,
+      }),
+    );
+    const body = html.slice(html.indexOf('<tbody'), html.indexOf('</tbody>'));
+    expect(body, 'and NOTHING is shown as if it were filtered').not.toContain('DL-4471');
+  });
+
+  it('shows an empty table, not every driver, when HR matched nobody', () => {
+    const html = render(<DriversListPage />, {
+      route: '/fleet/drivers?gov=%D9%85%D9%81%D9%8A%D8%B4',
+      client: hrFilteredClient(0),
+    });
+    const body = html.slice(html.indexOf('<tbody'), html.indexOf('</tbody>'));
+    expect(body).not.toContain('DL-4471');
+  });
+
+  it('applies no filter on the fetched page — every filter is a query parameter', () => {
+    const source = readFileSync(join(HERE, 'pages/DriversListPage.tsx'), 'utf8');
+    expect(source).not.toContain('rows.filter(');
+    expect(source).not.toContain('items.filter(');
+    // The HR half never reaches the fleet endpoint as anything but resolved ids.
+    const params = source.slice(
+      source.indexOf('const params = useMemo'),
+      source.indexOf('useDrivers(params'),
+    );
+    expect(params).toContain('employeeIds:');
+    for (const hrKey of ['governorate:', 'phone:', 'jobTitleId:', 'branchId:']) {
+      expect(params, `${hrKey} is HR's, not Fleet's`).not.toContain(hrKey);
+    }
+  });
+});
+
+// ── 7. The vehicle of the day, in the preview ───────────────────────────────
+
+describe('the licence preview names the driver’s vehicle for today', () => {
+  const rosterDay = (
+    over: Partial<FleetRosterDayDto['rows'][number]> = {},
+    driverSlot: 'available' | 'unavailable' | 'none' = 'available',
+  ): FleetRosterDayDto => ({
+    date: '2026-08-18T00:00:00.000Z',
+    rows: [
+      {
+        vehicleId: 'v1',
+        code: '150',
+        plateNumber: 'س ص 150',
+        typeId: 'ty1',
+        inMaintenance: false,
+        missionTypeId: null,
+        driver1EmployeeId: driverSlot === 'none' ? null : EMPLOYEE_ID,
+        driver2EmployeeId: null,
+        notes: null,
+        ...over,
+      },
+    ],
+    availableDrivers:
+      driverSlot === 'available' ? [{ employeeId: EMPLOYEE_ID, assignedVehicleId: 'v1' }] : [],
+    unavailableDrivers:
+      driverSlot === 'unavailable' ? [{ employeeId: EMPLOYEE_ID, reason: 'leave' }] : [],
+  });
+
+  const make = (typeId: string): string | null => (typeId === 'ty1' ? 'مرسيدس اسبرانتر 515' : null);
+
+  it('reads the code and the make from the roster day the board already fetches', () => {
+    expect(vehicleTodayFrom(rosterDay(), EMPLOYEE_ID, make)).toEqual({
+      code: '150',
+      make: 'مرسيدس اسبرانتر 515',
+    });
+  });
+
+  it('finds the assignment even when the driver is marked unavailable that day', () => {
+    // `availableDrivers` lists who is FREE to be assigned, so it omits an assigned-and-unavailable
+    // driver. The rows are the record of the assignment itself.
+    expect(vehicleTodayFrom(rosterDay({}, 'unavailable'), EMPLOYEE_ID, make)?.code).toBe('150');
+  });
+
+  it('answers null when the driver is not on today’s roster — no line to show', () => {
+    expect(vehicleTodayFrom(rosterDay({}, 'none'), EMPLOYEE_ID, make)).toBeNull();
+    expect(vehicleTodayFrom(rosterDay(), 'someone-else', make)).toBeNull();
+  });
+
+  it('answers null when the roster has not been read at all', () => {
+    expect(vehicleTodayFrom(undefined, EMPLOYEE_ID, make)).toBeNull();
+  });
+
+  it('shows a dash for an unresolved make, never the raw type id', () => {
+    // The vehicle-type list answers to `fleetVehicle.view`, which a drivers-only role may lack.
+    expect(vehicleTodayFrom(rosterDay(), EMPLOYEE_ID, () => null)).toEqual({
+      code: '150',
+      make: '—',
+    });
+  });
+
+  it('formats the line as the brief asks, in both locales', () => {
+    const ar = translate('ar', 'fleet.drivers.licenseImage.vehicleToday', {
+      code: '150',
+      make: 'مرسيدس اسبرانتر 515',
+    });
+    expect(ar).toBe('عربية اليوم: كود 150 | الماركة: مرسيدس اسبرانتر 515');
+    expect(
+      translate('en', 'fleet.drivers.licenseImage.vehicleToday', { code: '150', make: 'X' }),
+    ).not.toContain('{{');
+  });
+
+  it('makes NO roster request without fleetRoster.view', () => {
+    // `useRosterDay('')` is disabled by its own contract, and the preview passes the empty date
+    // for a caller without the grant — so there is no 403 to swallow and no error UI to show.
+    const queries = readFileSync(join(HERE, 'api/fleet-queries.ts'), 'utf8');
+    const hook = queries.slice(queries.indexOf('export const useRosterDay'));
+    expect(hook).toContain("enabled: date !== ''");
+    const preview = readFileSync(join(HERE, 'components/DriverLicenseImage.tsx'), 'utf8');
+    const seam = preview.slice(preview.indexOf('const useVehicleToday'));
+    expect(seam).toContain("can('fleetRoster.view')");
+    expect(seam).toContain("useRosterDay(allowed ? today : '')");
+    // The type list is gated separately — it answers to a different grant.
+    expect(seam).toContain("can('fleetVehicle.view')");
+  });
+
+  it('keeps the preview titled as the DRIVING licence — the vehicle is context, not the subject', () => {
+    expect(t('fleet.drivers.licenseImage.previewTitle')).toBe('صورة رخصة القيادة');
   });
 });

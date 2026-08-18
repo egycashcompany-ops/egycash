@@ -101,6 +101,15 @@ class FleetDriverProfileService {
         query.hasLicenseImage ? { licenseImage: { $ne: null } } : { licenseImage: null },
       );
     }
+    if (query.employeeIds !== undefined) {
+      // The HR half of the filter bar, already resolved to ids by the caller. Fleet narrows on its
+      // OWN column and asks HR nothing — the join happened in the browser, against HR's endpoint,
+      // with HR's own permission. The schema caps the list at one HR page, so this can never be a
+      // silently truncated `$in`.
+      clauses.push({
+        employeeId: { $in: query.employeeIds.map((id) => new Types.ObjectId(id)) },
+      });
+    }
     return fleetDriverProfileRepository.listDrivers({
       filter: clauses.length === 0 ? {} : { $and: clauses },
       page: query.page,

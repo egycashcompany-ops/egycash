@@ -5,7 +5,13 @@
 // derived facts query-time facts, and a field that does not exist cannot go stale.
 import { z } from 'zod';
 import { LocalizedStringSchema } from '../common/localized.js';
-import { PaginationQuerySchema, booleanQuery, objectId, listQuery } from '../common/index.js';
+import {
+  MAX_PAGE_SIZE,
+  PaginationQuerySchema,
+  booleanQuery,
+  listQuery,
+  objectId,
+} from '../common/index.js';
 
 /** Money in EGP. A plain nonnegative number — multi-currency is not a fleet fact. */
 const egp = () => z.number().nonnegative();
@@ -318,6 +324,19 @@ export const ListFleetDriversQuerySchema = PaginationQuerySchema.extend({
   area: z.string().trim().min(1).max(120).optional(),
   /** true → only drivers WITH a licence scan on file; false → only those without. */
   hasLicenseImage: booleanQuery().optional(),
+  /**
+   * The HR half of the filter bar, already resolved to ids.
+   *
+   * Name, employee code, job title, governorate, phone and branch are HR's facts, and HR's own
+   * list endpoint filters on them. The browser asks HR first and hands the answer here — two
+   * server-side queries joined by id, which is how the drivers table already reads HR names. The
+   * alternative, Fleet querying HR's collection, is the one thing the module hierarchy forbids.
+   *
+   * The cap is 100 because that is `MAX_PAGE_SIZE`: this parameter carries exactly ONE page of HR
+   * results and no more. A wider HR match cannot be expressed here, and the caller must say so
+   * rather than send the first hundred — a truncated `$in` is a filter that lies.
+   */
+  employeeIds: listQuery(objectId(), MAX_PAGE_SIZE),
 }).strict();
 export type ListFleetDriversQuery = z.infer<typeof ListFleetDriversQuerySchema>;
 

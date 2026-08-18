@@ -12,6 +12,7 @@ import {
   type CreateFleetAccident,
   type CreateFleetCatalogItem,
   type CreateFleetDriverProfile,
+  type FleetDriverProfileDto,
   type CreateFleetVehicleType,
   type FleetCatalogItemDto,
   type FleetVehicleTypeDto,
@@ -123,11 +124,12 @@ export const useUploadVehicleLicenseImage = () =>
 export const useDeleteVehicleLicenseImage = () =>
   useVehicleMutation((id: string) => api.deleteVehicleLicenseImage(id));
 
-export const useVehicleTypes = (params: FleetListParams = { pageSize: 100 }) =>
+export const useVehicleTypes = (params: FleetListParams = { pageSize: 100 }, enabled = true) =>
   useQuery({
     queryKey: listKey(MODULE, 'vehicleTypes', params),
     queryFn: () => api.listVehicleTypes(params),
     staleTime: 60_000,
+    enabled,
   });
 
 export const useFleetCatalog = (kind: string) =>
@@ -227,6 +229,28 @@ export const useUpdateDriverProfile = () => {
   });
 };
 
+/**
+ * Licence-image writes answer with the updated profile, so the list repaints from the invalidated
+ * subtree and the profile page from the seeded detail cache — no full refresh anywhere.
+ */
+const useDriverImageMutation = <TVars>(fn: (vars: TVars) => Promise<FleetDriverProfileDto>) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: (doc) => {
+      qc.setQueryData(detailKey(MODULE, 'drivers', doc.id), doc);
+      void qc.invalidateQueries({ queryKey: fleetKeys.drivers });
+    },
+  });
+};
+
+export const useUploadDriverLicenseImage = () =>
+  useDriverImageMutation(({ id, file }: { id: string; file: File }) =>
+    api.uploadDriverLicenseImage(id, file),
+  );
+export const useDeleteDriverLicenseImage = () =>
+  useDriverImageMutation((id: string) => api.deleteDriverLicenseImage(id));
+
 export const useRecordUnavailability = () => {
   const qc = useQueryClient();
   return useMutation({
@@ -251,11 +275,12 @@ export const useCancelUnavailability = () => {
     onSuccess: () => void qc.invalidateQueries({ queryKey: fleetKeys.availability }),
   });
 };
-export const useDrivers = (params: FleetListParams) =>
+export const useDrivers = (params: FleetListParams, enabled = true) =>
   useQuery({
     queryKey: listKey(MODULE, 'drivers', params),
     queryFn: () => api.listDrivers(params),
     placeholderData: (prev) => prev,
+    enabled,
   });
 
 export const useDriver = (id: string) =>

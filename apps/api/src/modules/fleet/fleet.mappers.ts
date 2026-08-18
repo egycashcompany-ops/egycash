@@ -94,6 +94,19 @@ export const toDriverProfileDto = (doc: FleetDriverProfileDoc): FleetDriverProfi
   specialization: doc.specialization,
   area: doc.area,
   isActive: doc.isActive,
+  // `== null`, not `=== null`: reads go through `.lean()`, and a profile written before the
+  // licence image existed simply has no such key — it arrives as `undefined`, which `=== null`
+  // would let straight through into a property read on nothing.
+  licenseImage:
+    doc.licenseImage == null
+      ? null
+      : {
+          fileId: String(doc.licenseImage.fileId),
+          fileName: doc.licenseImage.fileName,
+          mime: doc.licenseImage.mime,
+          size: doc.licenseImage.size,
+          uploadedAt: iso(doc.licenseImage.uploadedAt),
+        },
   version: doc.__v,
   createdAt: iso(doc.createdAt),
   updatedAt: iso(doc.updatedAt),

@@ -22,6 +22,8 @@ export interface EmployeeListFilter {
   managerId?: string | undefined;
   employmentType?: string | undefined;
   search?: string | undefined;
+  governorate?: string | undefined;
+  phone?: string | undefined;
 }
 
 const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -226,6 +228,32 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
     if (f.managerId !== undefined)
       clauses.push({ 'employment.managerId': new Types.ObjectId(f.managerId) });
     if (f.employmentType !== undefined) clauses.push({ 'employment.employmentType': f.employmentType });
+    if (f.governorate !== undefined && f.governorate.trim() !== '') {
+      const re = new RegExp(escapeRegExp(f.governorate.trim()), 'i');
+      // Mirrors how the address is READ — `officialAddress ?? currentAddress` — rather than
+      // matching either one. Matching either would return a person whose displayed governorate
+      // is not the one that was asked for, which is a filter that looks broken to the user.
+      // `field: null` in Mongo also matches an ABSENT field, so a row stored before the address
+      // existed falls to the current-address branch instead of vanishing from both.
+      clauses.push({
+        $or: [
+          { 'personal.officialAddress.governorate': re },
+          {
+            $and: [
+              { 'personal.officialAddress': null },
+              { 'personal.currentAddress.governorate': re },
+            ],
+          },
+        ],
+      } as FilterQuery<EmployeeDoc>);
+    }
+    if (f.phone !== undefined && f.phone.trim() !== '') {
+      // The PRIMARY number only — the one every screen displays. Including the secondary would
+      // match rows whose shown phone does not contain the search term.
+      clauses.push({
+        'personal.contact.primaryPhone': new RegExp(escapeRegExp(f.phone.trim()), 'i'),
+      } as FilterQuery<EmployeeDoc>);
+    }
     if (f.search !== undefined && f.search.trim() !== '') {
       const term = f.search.trim();
       const re = new RegExp(escapeRegExp(term), 'i');

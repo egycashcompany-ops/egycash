@@ -279,6 +279,14 @@ export const ListEmployeesQuerySchema = PaginationQuerySchema.extend({
   employmentType: EmploymentTypeSchema.optional(),
   /** Free-text over the employee number (`code`), applicant code and full name (partial). */
   search: z.string().max(100).optional(),
+  /**
+   * Governorate of the employee's address, matched the way the address is READ: the official one
+   * when there is one, the current one otherwise. Matching either would return people whose
+   * displayed governorate is not the one asked for.
+   */
+  governorate: z.string().trim().min(1).max(100).optional(),
+  /** Partial match on the PRIMARY phone — the number every screen displays. */
+  phone: z.string().trim().min(1).max(30).optional(),
 }).strict();
 export type ListEmployeesQuery = z.infer<typeof ListEmployeesQuerySchema>;
 

@@ -831,6 +831,57 @@ describe('the HR filters are owned by HR and applied server-side', () => {
     }
   });
 
+  it('offers an HR filter ONLY to someone who can use it', () => {
+    // Step ① of every HR filter is a query against HR's own endpoint. Without `employee.view` it
+    // can only answer "no directory access" — the same reason the HR columns are dashes for that
+    // caller — so the controls are not offered at all. A dead filter is the filter-bar version of
+    // a link that lands on a permission wall.
+    const hrControls = [
+      'fleet.drivers.filters.employee',
+      'fleet.drivers.columns.governorate',
+      'fleet.drivers.columns.phone',
+    ];
+    const fleetControls = [
+      'fleet.drivers.columns.licenseNumber',
+      'fleet.drivers.columns.area',
+      'fleet.drivers.columns.specialization',
+      'fleet.drivers.columns.licenseImage',
+      'fleet.drivers.columns.status',
+    ];
+    const withoutHr = render(<DriversListPage />, {
+      permissions: ['fleetDriver.view'],
+      client: seededClient([driver()], {}, { hr: false }),
+    });
+    for (const key of hrControls) {
+      expect(withoutHr, `${key} is hidden`).not.toContain(`aria-label="${t(key)}"`);
+    }
+    // …and the fleet-owned half is untouched: HR access is not fleet access.
+    for (const key of fleetControls) {
+      expect(withoutHr, `${key} still offered`).toContain(`aria-label="${t(key)}"`);
+    }
+    const withHr = render(<DriversListPage />, {
+      permissions: ['fleetDriver.view', 'employee.view'],
+    });
+    for (const key of hrControls) {
+      expect(withHr, `${key} appears with employee.view`).toContain(`aria-label="${t(key)}"`);
+    }
+  });
+
+  it('offers each reference select only with its OWN catalogue grant', () => {
+    // Without `jobTitle.view` / `branch.view` the option list comes back empty, and the control
+    // would be a dropdown with nothing to pick.
+    const noCatalogues = render(<DriversListPage />, {
+      permissions: ['fleetDriver.view', 'employee.view'],
+    });
+    expect(noCatalogues).not.toContain(`aria-label="${t('fleet.drivers.columns.jobTitle')}"`);
+    expect(noCatalogues).not.toContain(`aria-label="${t('fleet.drivers.columns.branch')}"`);
+    const withCatalogues = render(<DriversListPage />, {
+      permissions: ['fleetDriver.view', 'employee.view', 'jobTitle.view', 'branch.view'],
+    });
+    expect(withCatalogues).toContain(`aria-label="${t('fleet.drivers.columns.jobTitle')}"`);
+    expect(withCatalogues).toContain(`aria-label="${t('fleet.drivers.columns.branch')}"`);
+  });
+
   it('keeps name and employee code on ONE control, because HR’s search is one parameter', () => {
     // Two boxes would need two HR queries, and intersecting two capped result pages can drop a
     // match that is really there — a false negative is false filtering too.

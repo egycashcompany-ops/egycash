@@ -112,6 +112,10 @@ export const DriversListPage = (): JSX.Element => {
     patch({ sort: `${by}:${dir}` }, false);
   };
   const hr = useDriverHrFilter(hrFilter);
+  // Reading HR is HR's own permission, and it gates the CONTROLS as well as the columns. A URL
+  // still carrying an HR filter is honoured differently: the hook reports `failed` and the banner
+  // says why, rather than the page quietly returning an unfiltered list.
+  const mayFilterByHr = can('employee.view');
   const hasActiveFilters =
     search !== '' ||
     area !== '' ||
@@ -366,61 +370,76 @@ export const DriversListPage = (): JSX.Element => {
             })
           }
         >
-          {/* HR-owned. One box for name AND employee code because HR's `search` is one parameter
-              covering both — two boxes would need two HR queries whose capped pages could
-              intersect to a WRONG answer, which is the false filtering this design exists to
-              avoid. */}
-          <div className="w-48">
-            <Input
-              aria-label={t('fleet.drivers.filters.employee')}
-              placeholder={t('fleet.drivers.filters.employee')}
-              value={hrFilter.search}
-              onChange={(e) => patch({ emp: e.target.value || null })}
-            />
-          </div>
-          <Select
-            aria-label={t('fleet.drivers.columns.jobTitle')}
-            value={hrFilter.jobTitleId}
-            onChange={(e) => patch({ job: e.target.value || null })}
-            className="w-auto"
-          >
-            <option value="">{t('fleet.drivers.allJobTitles')}</option>
-            {jobTitles.map((jobTitle) => (
-              <option key={jobTitle.id} value={jobTitle.id}>
-                {localized(jobTitle.name, locale)}
-              </option>
-            ))}
-          </Select>
-          <Select
-            aria-label={t('fleet.drivers.columns.branch')}
-            value={hrFilter.branchId}
-            onChange={(e) => patch({ branch: e.target.value || null })}
-            className="w-auto"
-          >
-            <option value="">{t('fleet.drivers.allBranches')}</option>
-            {branches.map((branch) => (
-              <option key={branch.id} value={branch.id}>
-                {localized(branch.name, locale)}
-              </option>
-            ))}
-          </Select>
-          <div className="w-32">
-            <Input
-              aria-label={t('fleet.drivers.columns.governorate')}
-              placeholder={t('fleet.drivers.columns.governorate')}
-              value={hrFilter.governorate}
-              onChange={(e) => patch({ gov: e.target.value || null })}
-            />
-          </div>
-          <div className="w-36">
-            <Input
-              aria-label={t('fleet.drivers.columns.phone')}
-              placeholder={t('fleet.drivers.columns.phone')}
-              value={hrFilter.phone}
-              onChange={(e) => patch({ phone: e.target.value || null })}
-              dir="ltr"
-            />
-          </div>
+          {/* HR-owned, and offered ONLY to someone who can use them. Step ① of these filters is a
+              query against HR's own endpoint, so without `employee.view` every one of them can
+              only answer "no directory access" — the same reason the HR columns show dashes for
+              that caller. Offering a control that cannot work is the filter-bar version of
+              offering a link that lands on a permission wall.
+
+              One box for name AND employee code because HR's `search` is one parameter covering
+              both — two boxes would need two HR queries whose capped pages could intersect to a
+              WRONG answer, which is the false filtering this design exists to avoid. */}
+          {mayFilterByHr && (
+            <>
+              <div className="w-48">
+                <Input
+                  aria-label={t('fleet.drivers.filters.employee')}
+                  placeholder={t('fleet.drivers.filters.employee')}
+                  value={hrFilter.search}
+                  onChange={(e) => patch({ emp: e.target.value || null })}
+                />
+              </div>
+              {/* Each reference select needs its own catalogue grant too: without it the list comes
+              back empty and the control would be a dropdown with nothing to pick. */}
+              {can('jobTitle.view') && (
+                <Select
+                  aria-label={t('fleet.drivers.columns.jobTitle')}
+                  value={hrFilter.jobTitleId}
+                  onChange={(e) => patch({ job: e.target.value || null })}
+                  className="w-auto"
+                >
+                  <option value="">{t('fleet.drivers.allJobTitles')}</option>
+                  {jobTitles.map((jobTitle) => (
+                    <option key={jobTitle.id} value={jobTitle.id}>
+                      {localized(jobTitle.name, locale)}
+                    </option>
+                  ))}
+                </Select>
+              )}
+              {can('branch.view') && (
+                <Select
+                  aria-label={t('fleet.drivers.columns.branch')}
+                  value={hrFilter.branchId}
+                  onChange={(e) => patch({ branch: e.target.value || null })}
+                  className="w-auto"
+                >
+                  <option value="">{t('fleet.drivers.allBranches')}</option>
+                  {branches.map((branch) => (
+                    <option key={branch.id} value={branch.id}>
+                      {localized(branch.name, locale)}
+                    </option>
+                  ))}
+                </Select>
+              )}
+              <div className="w-32">
+                <Input
+                  aria-label={t('fleet.drivers.columns.governorate')}
+                  placeholder={t('fleet.drivers.columns.governorate')}
+                  value={hrFilter.governorate}
+                  onChange={(e) => patch({ gov: e.target.value || null })}
+                />
+              </div>
+              <div className="w-36">
+                <Input
+                  aria-label={t('fleet.drivers.columns.phone')}
+                  placeholder={t('fleet.drivers.columns.phone')}
+                  value={hrFilter.phone}
+                  onChange={(e) => patch({ phone: e.target.value || null })}
+                  dir="ltr"
+                />
+              </div>
+            </>
+          )}
           {/* Fleet-owned, straight to /fleet/drivers. */}
           <div className="w-40">
             <Input

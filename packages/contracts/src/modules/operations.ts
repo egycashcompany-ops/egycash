@@ -776,17 +776,41 @@ export type GetOperationsDayQuery = z.infer<typeof GetOperationsDayQuerySchema>;
 // anchors on the Fleet duty assignment for the same (vehicle, date), per the frozen §9.4 boundary:
 // Fleet owns (vehicle, drivers, mission type)/day — the legacy `tybe` maps to Fleet's
 // missionTypeId, and the legacy car_lock gate maps to "the vehicle is on the Fleet roster".
-// All three crew slots are nullable — the legacy save writes `row.spe1 || ""`
-// (contad_app.js:2419) and enforces no minimum crew.
+// All three crew slots may be EMPTY — the legacy save writes `row.spe1 || ""`
+// (contad_app.js:2419) and enforces no minimum crew. Each slot now holds up to
+// `CREW_SLOT_CAPACITY` people (see below): the slot structure is legacy, the arity is new.
+
+/**
+ * How many people one crew slot holds.
+ *
+ * Legacy held exactly ONE person per slot — three Strings on the tashghela row
+ * (models/tash4ela.js:10-12), one card per cell (tashghela.ejs:914-916), three single values on
+ * save (contad_app.js:2416-2418). Two-per-slot is therefore a NEW capability and not a legacy
+ * behaviour being restored: nothing was dropped, the ceiling was raised. A crew is now at most
+ * two captains + two specialist-1 + two specialist-2 = six people on one vehicle.
+ *
+ * The slot STRUCTURE is unchanged — still three named slots, because the three mean different
+ * things (a captain is not an interchangeable head-count). Only each slot's arity moved.
+ */
+export const CREW_SLOT_CAPACITY = 2;
 
 export interface OperationsCrewAssignmentDto {
   id: string;
   operationsDayId: string;
   vehicleId: string;
   fleetDutyAssignmentId: string;
-  captainEmployeeId: string | null;
-  specialist1EmployeeId: string | null;
-  specialist2EmployeeId: string | null;
+  /**
+   * The slot's occupants, in the order Operations entered them — at most `CREW_SLOT_CAPACITY`.
+   *
+   * PLURAL AND RENAMED, not widened in place. The singular `captainEmployeeId` was a scalar
+   * ObjectId; had the name stayed, Mongo would have kept matching `{ captainEmployeeId: x }`
+   * against an ARRAY containing `x` (its implicit array semantics), so every query would have
+   * silently kept working while every `=== employeeId` comparison in JS silently stopped. The
+   * rename is what forces the compiler to surface all of them.
+   */
+  captainEmployeeIds: string[];
+  specialist1EmployeeIds: string[];
+  specialist2EmployeeIds: string[];
   /** Legacy `direction` — free-text destination label from the fleet destinations list. */
   direction: string | null;
   /** Legacy `time` — free-text planned departure label. */
@@ -816,9 +840,10 @@ export interface OperationsCrewBoardRowDto {
      * `operationsCrewAssignmentRepository.findById` (secured.service.ts:185, :274).
      */
     id: string;
-    captainEmployeeId: string | null;
-    specialist1EmployeeId: string | null;
-    specialist2EmployeeId: string | null;
+    /** Up to `CREW_SLOT_CAPACITY` per slot; `[]` means the slot is empty, never `null`. */
+    captainEmployeeIds: string[];
+    specialist1EmployeeIds: string[];
+    specialist2EmployeeIds: string[];
     direction: string | null;
     plannedTime: string | null;
     notes: string | null;
@@ -833,35 +858,53 @@ export interface OperationsCrewBoardDto {
 }
 
 const crewEmployeeSlots = [
-  'captainEmployeeId',
-  'specialist1EmployeeId',
-  'specialist2EmployeeId',
+  'captainEmployeeIds',
+  'specialist1EmployeeIds',
+  'specialist2EmployeeIds',
 ] as const;
+
+/** A slot as it arrives: absent = "leave it alone"; `[]` = "empty this slot". */
+const crewSlot = (): z.ZodOptional<z.ZodArray<z.ZodString>> =>
+  z.array(objectId()).max(CREW_SLOT_CAPACITY).optional();
 
 export const PlanOperationsCrewRowSchema = z
   .object({
     vehicleId: objectId(),
-    captainEmployeeId: objectId().nullable().optional(),
-    specialist1EmployeeId: objectId().nullable().optional(),
-    specialist2EmployeeId: objectId().nullable().optional(),
+    captainEmployeeIds: crewSlot(),
+    specialist1EmployeeIds: crewSlot(),
+    specialist2EmployeeIds: crewSlot(),
     direction: z.string().min(1).nullable().optional(),
     plannedTime: z.string().min(1).nullable().optional(),
     notes: z.string().nullable().optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
+    // Two rules, one pass. Cross-slot: a person cannot be both captain and specialist on the same
+    // vehicle (unchanged in meaning from when each slot held one person). Intra-slot: NEW with
+    // capacity 2 — the same person cannot be listed twice inside one slot, which was impossible to
+    // express while a slot was a single value and is trivially expressible now.
     const seen = new Set<string>();
     for (const slot of crewEmployeeSlots) {
-      const employee = value[slot];
-      if (employee == null) continue;
-      if (seen.has(employee)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: [slot],
-          message: 'the same person cannot fill two crew slots on one vehicle',
-        });
-      }
-      seen.add(employee);
+      const employees = value[slot];
+      if (employees === undefined) continue;
+      const withinSlot = new Set<string>();
+      employees.forEach((employee, position) => {
+        if (withinSlot.has(employee)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [slot, position],
+            message: 'the same person cannot be listed twice in one crew slot',
+          });
+        } else if (seen.has(employee)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [slot, position],
+            message: 'the same person cannot fill two crew slots on one vehicle',
+          });
+        }
+        withinSlot.add(employee);
+        seen.add(employee);
+      });
     }
   });
 export type PlanOperationsCrewRow = z.infer<typeof PlanOperationsCrewRowSchema>;
@@ -885,19 +928,25 @@ export const PlanOperationsCrewSchema = z
         });
       }
       seenVehicles.add(row.vehicleId);
+      // Q11 is UNCHANGED in meaning — one person, one vehicle per operating day. Only the
+      // traversal widened: each slot is now a list, so the check flattens it. Three
+      // implementations of this rule exist and must move together — here, the service's
+      // end-state check, and the repository's `takenCrew`.
       for (const slot of crewEmployeeSlots) {
-        const employee = row[slot];
-        if (employee == null) continue;
-        if (seenEmployees.has(employee)) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ['rows', index, slot],
-            // Q11 — the legacy duplicate-crew check lived only in the browser
-            // (tashghela.ejs:1332); the domain enforces it now.
-            message: 'a crew member may hold one vehicle per operating day (Q11)',
-          });
-        }
-        seenEmployees.add(employee);
+        const employees = row[slot];
+        if (employees === undefined) continue;
+        employees.forEach((employee, position) => {
+          if (seenEmployees.has(employee)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['rows', index, slot, position],
+              // Q11 — the legacy duplicate-crew check lived only in the browser
+              // (tashghela.ejs:1332); the domain enforces it now.
+              message: 'a crew member may hold one vehicle per operating day (Q11)',
+            });
+          }
+          seenEmployees.add(employee);
+        });
       }
     });
   });
@@ -1173,8 +1222,8 @@ export interface OperationsCaptainRouteDto {
   crew: {
     crewAssignmentId: string;
     vehicleId: string;
-    specialist1EmployeeId: string | null;
-    specialist2EmployeeId: string | null;
+    specialist1EmployeeIds: string[];
+    specialist2EmployeeIds: string[];
   }[];
   stops: OperationsRouteStopDto[];
 }
@@ -1299,8 +1348,14 @@ export interface OperationsMobileDayDto {
   assignments: {
     crewAssignmentId: string;
     vehicleId: string;
-    specialist1EmployeeId: string | null;
-    specialist2EmployeeId: string | null;
+    /**
+     * BOTH captains on this vehicle, the reader included. A crew may now carry two captains, and a
+     * captain who cannot see his co-captain has an incomplete picture of who is in the van with
+     * him — the same reason the specialists are here.
+     */
+    captainEmployeeIds: string[];
+    specialist1EmployeeIds: string[];
+    specialist2EmployeeIds: string[];
     direction: string | null;
     plannedTime: string | null;
   }[];
@@ -1416,9 +1471,9 @@ export const OperationsCrewAssignmentChangedPayloadV1 = z.object({
   dayId: objectId(),
   vehicleId: objectId(),
   date: z.date(),
-  captainEmployeeId: objectId().nullable(),
-  specialist1EmployeeId: objectId().nullable(),
-  specialist2EmployeeId: objectId().nullable(),
+  captainEmployeeIds: z.array(objectId()),
+  specialist1EmployeeIds: z.array(objectId()),
+  specialist2EmployeeIds: z.array(objectId()),
 });
 
 export const OperationsCustodyEventPayloadV1 = z.object({

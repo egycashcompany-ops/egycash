@@ -26,6 +26,7 @@
 // something a self-service bundle should carry by default.
 import { logger } from '../../infrastructure/logging/logger';
 import { rbacService } from '../../platform/rbac';
+import { runOperationsMigrations } from './operations.migration';
 import { operationsPermissions } from './operations.module';
 
 export const seedOperations = async (): Promise<void> => {
@@ -40,4 +41,9 @@ export const seedOperations = async (): Promise<void> => {
       'operations: super-admin widened with the Operations grants (pre-existing install)',
     );
   }
+
+  // Data migrations run AFTER the grants, mirroring `fleet.seed.ts:44`. Both are idempotent and
+  // order-independent in effect; keeping the same order across modules is what makes the boot log
+  // readable when two modules seed in the same breath.
+  await runOperationsMigrations();
 };

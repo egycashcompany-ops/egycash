@@ -4,6 +4,7 @@ import {
   OperationsCrewAssignmentModel,
   type OperationsCrewAssignmentDoc,
 } from './crew-assignment.model';
+import { crewMembers } from './crew-slots';
 
 class OperationsCrewAssignmentRepository extends BaseRepository<OperationsCrewAssignmentDoc> {
   constructor() {
@@ -33,6 +34,11 @@ class OperationsCrewAssignmentRepository extends BaseRepository<OperationsCrewAs
    * Answering this directly — rather than inferring it backwards from whichever shipments happen to
    * be assigned — is what lets the surface distinguish "planned today, no stops yet" from "not a
    * captain today". Those are different facts and the mobile client must not conflate them.
+   *
+   * A crew may carry TWO captains, and both of them are captains — there is no first captain and
+   * no deputy. The query is therefore membership in `captainEmployeeIds`, and the answer for a
+   * co-captain is identical to the answer for the other. Anything else would have invented a
+   * seniority rule the business never stated.
    */
   async findForCaptainDay(
     operationsDayId: Types.ObjectId | string,
@@ -40,23 +46,24 @@ class OperationsCrewAssignmentRepository extends BaseRepository<OperationsCrewAs
     session?: ClientSession,
   ): Promise<OperationsCrewAssignmentDoc[]> {
     return this.model
-      .find({ operationsDayId, captainEmployeeId, isDeleted: false })
+      .find({ operationsDayId, captainEmployeeIds: captainEmployeeId, isDeleted: false })
       .session(session ?? null)
       .lean<OperationsCrewAssignmentDoc[]>()
       .exec();
   }
 
-  /** employeeId → vehicleId over a day's rows — the Q11 exclusivity lookup. */
+  /**
+   * employeeId → vehicleId over a day's rows — the Q11 exclusivity lookup.
+   *
+   * One of THREE implementations of Q11 that must move together: this one (the service's end-state
+   * check reads it), `PlanOperationsCrewRowSchema`'s cross-row refinement, and the payload's own
+   * cross-slot refinement. The rule itself is unchanged — one person, one vehicle per operating
+   * day — and only the traversal widened, because a slot is now a list.
+   */
   takenCrew(rows: readonly OperationsCrewAssignmentDoc[]): Map<string, string> {
     const taken = new Map<string, string>();
     for (const row of rows) {
-      for (const slot of [
-        row.captainEmployeeId,
-        row.specialist1EmployeeId,
-        row.specialist2EmployeeId,
-      ]) {
-        if (slot !== null) taken.set(String(slot), String(row.vehicleId));
-      }
+      for (const employeeId of crewMembers(row)) taken.set(employeeId, String(row.vehicleId));
     }
     return taken;
   }

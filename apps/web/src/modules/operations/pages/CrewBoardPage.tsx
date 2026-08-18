@@ -14,6 +14,10 @@
 //     produces the valid end state the server demands. All of it lives in `lib/crew-board.ts` as
 //     pure transitions, tested there.
 //   · Requirement icons are indicators and filters. They gate NOTHING (approved decision).
+//   · Each slot now holds up to CREW_SLOT_CAPACITY people, drawn as that many cards stacked in the
+//     cell — a crew of six. Legacy drew exactly one card per cell (tashghela.ejs:914-916), so this
+//     raises a ceiling rather than replacing a behaviour: at one occupant the board looks and
+//     behaves as it did.
 //   · The vehicle list comes from the Fleet duty roster for the date, which is the normalized form
 //     of the legacy `car_lock` gate — Operations never re-models the roster.
 //
@@ -39,11 +43,13 @@ import {
 } from '../api/operations-queries';
 import {
   CREW_SLOTS,
+  SLOT_POSITIONS,
   assignToSlot,
   availablePool,
   changedRows,
   clearSlot,
   filterPool,
+  removeFromBoard,
   setRowField,
   slotValue,
   toBoardRows,
@@ -95,12 +101,17 @@ export const CrewBoardPage = (): JSX.Element => {
   const pending = changedRows(rows, serverRows);
   const dirty = pending.length > 0;
 
-  const drop = (vehicleId: string, slot: CrewSlot) => (event: React.DragEvent): void => {
-    event.preventDefault();
-    const employeeId = event.dataTransfer.getData(CREW_DRAG_TYPE);
-    if (employeeId === '' || !canPlan) return;
-    setRows((prev) => assignToSlot(prev, vehicleId, slot, employeeId));
-  };
+  // Each CARD is its own drop target, not each slot: with two cards per slot, "which of the two
+  // does this drop replace" is a question only the operator can answer, and aiming at a card is
+  // how they answer it.
+  const drop =
+    (vehicleId: string, slot: CrewSlot, position: number) =>
+    (event: React.DragEvent): void => {
+      event.preventDefault();
+      const employeeId = event.dataTransfer.getData(CREW_DRAG_TYPE);
+      if (employeeId === '' || !canPlan) return;
+      setRows((prev) => assignToSlot(prev, vehicleId, slot, position, employeeId));
+    };
 
   const save = async (): Promise<void> => {
     if (!dirty) return;
@@ -203,23 +214,7 @@ export const CrewBoardPage = (): JSX.Element => {
                 e.preventDefault();
                 const employeeId = e.dataTransfer.getData(CREW_DRAG_TYPE);
                 if (employeeId === '' || !canPlan) return;
-                setRows((prev) =>
-                  prev.map((row) => {
-                    const next = { ...row };
-                    for (const slot of CREW_SLOTS) {
-                      if (slotValue(next, slot) === employeeId) {
-                        next[
-                          slot === 'captain'
-                            ? 'captainEmployeeId'
-                            : slot === 'specialist1'
-                              ? 'specialist1EmployeeId'
-                              : 'specialist2EmployeeId'
-                        ] = null;
-                      }
-                    }
-                    return next;
-                  }),
-                );
+                setRows((prev) => removeFromBoard(prev, employeeId));
               }}
             >
               {pool.map((member) => (
@@ -276,37 +271,48 @@ export const CrewBoardPage = (): JSX.Element => {
                   </div>
                 </div>
 
+                {/* Three slots across; inside each, the cards stack vertically. */}
                 <div className="grid gap-2 sm:grid-cols-3">
-                  {CREW_SLOTS.map((slot) => {
-                    const held = memberOf(slotValue(row, slot));
-                    return (
-                      <div
-                        key={slot}
-                        onDragOver={(e) => e.preventDefault()}
-                        onDrop={drop(row.vehicleId, slot)}
-                        className="min-h-[4.5rem] rounded-lg border-2 border-dashed border-slate-200 p-2 dark:border-slate-700"
-                        data-slot={slot}
-                        data-vehicle-id={row.vehicleId}
-                      >
-                        <div className="mb-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-                          {t(`operations.crew.slot.${slot}`)}
-                        </div>
-                        {held === undefined ? (
-                          <p className="text-xs text-slate-400">{t('operations.crew.dropHere')}</p>
-                        ) : (
-                          <CrewMemberCard
-                            member={held}
-                            draggable={canPlan}
-                            onRemove={
-                              canPlan
-                                ? () => setRows((prev) => clearSlot(prev, row.vehicleId, slot))
-                                : undefined
-                            }
-                          />
-                        )}
+                  {CREW_SLOTS.map((slot) => (
+                    <div key={slot} className="space-y-1" data-slot={slot}>
+                      <div className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                        {t(`operations.crew.slot.${slot}`)}
                       </div>
-                    );
-                  })}
+                      {SLOT_POSITIONS.map((position) => {
+                        const held = memberOf(slotValue(row, slot, position));
+                        return (
+                          <div
+                            key={position}
+                            onDragOver={(e) => e.preventDefault()}
+                            onDrop={drop(row.vehicleId, slot, position)}
+                            className="min-h-[3.25rem] rounded-lg border-2 border-dashed border-slate-200 p-2 dark:border-slate-700"
+                            data-slot={slot}
+                            data-slot-position={position}
+                            data-vehicle-id={row.vehicleId}
+                          >
+                            {held === undefined ? (
+                              <p className="text-xs text-slate-400">
+                                {t('operations.crew.dropHere')}
+                              </p>
+                            ) : (
+                              <CrewMemberCard
+                                member={held}
+                                draggable={canPlan}
+                                onRemove={
+                                  canPlan
+                                    ? () =>
+                                        setRows((prev) =>
+                                          clearSlot(prev, row.vehicleId, slot, position),
+                                        )
+                                    : undefined
+                                }
+                              />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
                 </div>
               </CardBody>
             </Card>

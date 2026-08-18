@@ -28,6 +28,7 @@ import { diffChanges } from '../../../shared/utils/diff';
 import { vaultCustody } from '../treasury-boundary';
 import { operationsVaultCustodyService } from '../vault/vault-custody.service';
 import { operationsCrewAssignmentRepository } from '../crew/crew-assignment.repository';
+import { isCaptainOf } from '../crew/crew-slots';
 import { operationsDayService, utcDay } from '../days/day.service';
 import { canTransitionShipment } from '../shipments/shipment-status';
 import { operationsShipmentRepository } from '../shipments/shipment.repository';
@@ -194,13 +195,11 @@ class OperationsSecuredService {
         'OPERATIONS_CREW_DAY_MISMATCH',
       );
     }
-    // The captain must be THAT row's captain: legacy picked the leader from the row it displayed.
-    if (
-      crew.captainEmployeeId === null ||
-      String(crew.captainEmployeeId) !== input.captainEmployeeId
-    ) {
+    // The captain must be ONE OF that row's captains: legacy picked the leader from the row it
+    // displayed, and a row may now display two.
+    if (!isCaptainOf(crew, input.captainEmployeeId)) {
       throw new BusinessRuleError(
-        'the captain is not the captain of that crew assignment',
+        'the captain is not a captain of that crew assignment',
         'OPERATIONS_CREW_CAPTAIN_MISMATCH',
       );
     }

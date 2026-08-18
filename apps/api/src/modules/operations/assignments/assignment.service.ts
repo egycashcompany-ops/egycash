@@ -40,6 +40,7 @@ import { operationsShipmentRepository } from '../shipments/shipment.repository';
 import { operationsShipmentAssignmentRepository } from '../shipments/shipment-assignment.repository';
 import { type OperationsShipmentAssignmentDoc } from '../shipments/shipment-assignment.model';
 import { type OperationsCrewAssignmentDoc } from '../crew/crew-assignment.model';
+import { isCaptainOf, slotIds } from '../crew/crew-slots';
 
 const entityRef = (id: string) => ({
   moduleId: 'operations',
@@ -76,12 +77,12 @@ const resolveCrew = async (
       'OPERATIONS_CREW_DAY_MISMATCH',
     );
   }
-  if (
-    crew.captainEmployeeId === null ||
-    String(crew.captainEmployeeId) !== captainEmployeeId
-  ) {
+  // A crew may carry two captains and EITHER may take a leg — the gate is membership, not
+  // equality. What it still refuses is a captain who is not on that row at all, which is the check
+  // the legacy screens made structurally and never enforced.
+  if (!isCaptainOf(crew, captainEmployeeId)) {
     throw new BusinessRuleError(
-      'the captain is not the captain of that crew assignment',
+      'the captain is not a captain of that crew assignment',
       'OPERATIONS_CREW_CAPTAIN_MISMATCH',
     );
   }
@@ -352,10 +353,8 @@ class OperationsAssignmentService {
       crew.push({
         crewAssignmentId,
         vehicleId: String(row.vehicleId),
-        specialist1EmployeeId:
-          row.specialist1EmployeeId === null ? null : String(row.specialist1EmployeeId),
-        specialist2EmployeeId:
-          row.specialist2EmployeeId === null ? null : String(row.specialist2EmployeeId),
+        specialist1EmployeeIds: slotIds(row.specialist1EmployeeIds),
+        specialist2EmployeeIds: slotIds(row.specialist2EmployeeIds),
       });
     }
 

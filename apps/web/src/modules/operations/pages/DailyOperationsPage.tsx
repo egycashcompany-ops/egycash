@@ -19,7 +19,7 @@ import { useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { Button } from '../../../shared/ui/Button';
-import { Card, CardBody } from '../../../shared/ui/Card';
+import { FilterBar } from '../../../shared/ui/FilterBar';
 import { Input, Select } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { CheckIcon, EditIcon, PlusIcon, ResetIcon, TrashIcon } from '../../../shared/ui/icons';
@@ -36,6 +36,7 @@ import {
 import {
   EMPTY_DAY_BOARD_FILTERS,
   filterDayBoard,
+  hasActiveFilter,
   isCrossBank,
   isReceived,
   legacyRowNumber,
@@ -243,72 +244,109 @@ export const DailyOperationsPage = (): JSX.Element => {
         }
       />
 
-      <Card className="mb-4">
-        <CardBody className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <label className="text-sm">
-            <span className="mb-1 block text-slate-500">{t('operations.dailyOps.date')}</span>
-            <Input
-              type="date"
-              value={date ?? boardDay}
-              onChange={(e) => {
-                const next = new URLSearchParams(sp);
-                if (e.target.value === '') next.delete('date');
-                else next.set('date', e.target.value);
-                setSp(next);
-              }}
-            />
-          </label>
-          <label className="text-sm">
-            <span className="mb-1 block text-slate-500">{t('operations.shipment.mainBank')}</span>
-            <Input value={filters.bank} onChange={(e) => setFilter({ bank: e.target.value })} />
-          </label>
-          <label className="text-sm">
-            <span className="mb-1 block text-slate-500">{t('operations.shipment.origin')}</span>
-            <Input value={filters.origin} onChange={(e) => setFilter({ origin: e.target.value })} />
-          </label>
-          <label className="text-sm">
-            <span className="mb-1 block text-slate-500">
-              {t('operations.shipment.destination')}
-            </span>
-            <Input
-              value={filters.destination}
-              onChange={(e) => setFilter({ destination: e.target.value })}
-            />
-          </label>
-          <label className="text-sm">
-            <span className="mb-1 block text-slate-500">{t('operations.shipment.area')}</span>
-            <Input value={filters.area} onChange={(e) => setFilter({ area: e.target.value })} />
-          </label>
-          <label className="text-sm">
-            <span className="mb-1 block text-slate-500">{t('operations.shipment.notes')}</span>
-            <Input value={filters.notes} onChange={(e) => setFilter({ notes: e.target.value })} />
-          </label>
-          <label className="text-sm">
-            <span className="mb-1 block text-slate-500">{t('operations.shipment.type')}</span>
-            <Select
-              value={filters.type}
-              onChange={(e) => setFilter({ type: e.target.value as DayBoardFilters['type'] })}
-            >
-              <option value="">{t('operations.dailyOps.all')}</option>
-              <option value="daily">{t('operations.shipment.type.daily')}</option>
-              <option value="secured">{t('operations.shipment.type.secured')}</option>
-            </Select>
-          </label>
-          <label className="text-sm">
-            <span className="mb-1 block text-slate-500">{t('operations.dailyOps.received')}</span>
-            <Select
-              value={filters.received}
-              onChange={(e) =>
-                setFilter({ received: e.target.value as DayBoardFilters['received'] })
-              }
-            >
-              <option value="">{t('operations.dailyOps.all')}</option>
-              <option value="yes">{t('operations.dailyOps.receivedYes')}</option>
-              <option value="no">{t('operations.dailyOps.receivedNo')}</option>
-            </Select>
-          </label>
-        </CardBody>
-      </Card>
+      <FilterBar
+        hasActiveFilters={hasActiveFilter(filters) || date !== null}
+        onClear={() => {
+          setFilters(EMPTY_DAY_BOARD_FILTERS);
+          // The day goes back to the default too. `date` is not one of the eight filters — it is
+          // what the board IS — but "clear" that left yesterday on screen would be a reset the
+          // user can see failing, so it returns the whole view to its default: today, unfiltered.
+          const next = new URLSearchParams(sp);
+          next.delete('date');
+          setSp(next);
+        }}
+      >
+        {/*
+          ONE wrapping row, the same shape the vehicle registry settled on. FilterBar is already
+          `flex flex-wrap items-center gap-2`, so every control is a direct child and they sit side
+          by side, reflowing onto another line only when the viewport runs out.
+
+          The labels became PLACEHOLDERS. Stacking a label above each of eight controls is what
+          forced the second row: it doubles the height of the bar and pushes the table below the
+          fold on a laptop. Each still carries an `aria-label`, so nothing was lost to a screen
+          reader — only to the pixels.
+
+          Each Input sits in a WIDTH WRAPPER rather than taking the width itself. `cn` is a plain
+          joiner with no tailwind-merge and the control's base class is `w-full`, so a `w-32` passed
+          alongside it does not win and every box would stretch the bar and stack one per line.
+          Direction is untouched: the bar inherits RTL, so in Arabic the row reads from the right.
+        */}
+        <div className="w-36">
+          <Input
+            type="date"
+            aria-label={t('operations.dailyOps.date')}
+            title={t('operations.dailyOps.date')}
+            value={date ?? boardDay}
+            onChange={(e) => {
+              const next = new URLSearchParams(sp);
+              if (e.target.value === '') next.delete('date');
+              else next.set('date', e.target.value);
+              setSp(next);
+            }}
+          />
+        </div>
+        <div className="w-32">
+          <Input
+            aria-label={t('operations.shipment.mainBank')}
+            placeholder={t('operations.shipment.mainBank')}
+            value={filters.bank}
+            onChange={(e) => setFilter({ bank: e.target.value })}
+          />
+        </div>
+        <div className="w-32">
+          <Input
+            aria-label={t('operations.shipment.origin')}
+            placeholder={t('operations.shipment.origin')}
+            value={filters.origin}
+            onChange={(e) => setFilter({ origin: e.target.value })}
+          />
+        </div>
+        <div className="w-32">
+          <Input
+            aria-label={t('operations.shipment.destination')}
+            placeholder={t('operations.shipment.destination')}
+            value={filters.destination}
+            onChange={(e) => setFilter({ destination: e.target.value })}
+          />
+        </div>
+        <div className="w-32">
+          <Input
+            aria-label={t('operations.shipment.area')}
+            placeholder={t('operations.shipment.area')}
+            value={filters.area}
+            onChange={(e) => setFilter({ area: e.target.value })}
+          />
+        </div>
+        <div className="w-36">
+          <Input
+            aria-label={t('operations.shipment.notes')}
+            placeholder={t('operations.shipment.notes')}
+            value={filters.notes}
+            onChange={(e) => setFilter({ notes: e.target.value })}
+          />
+        </div>
+        <Select
+          aria-label={t('operations.shipment.type')}
+          className="w-auto"
+          value={filters.type}
+          onChange={(e) => setFilter({ type: e.target.value as DayBoardFilters['type'] })}
+        >
+          <option value="">{t('operations.shipment.type')}</option>
+          <option value="daily">{t('operations.shipment.type.daily')}</option>
+          <option value="secured">{t('operations.shipment.type.secured')}</option>
+        </Select>
+        <Select
+          aria-label={t('operations.dailyOps.received')}
+          className="w-auto"
+          value={filters.received}
+          onChange={(e) => setFilter({ received: e.target.value as DayBoardFilters['received'] })}
+        >
+          <option value="">{t('operations.dailyOps.received')}</option>
+          <option value="yes">{t('operations.dailyOps.receivedYes')}</option>
+          <option value="no">{t('operations.dailyOps.receivedNo')}</option>
+        </Select>
+      </FilterBar>
+
 
       <div className="mb-2 text-sm text-slate-500 dark:text-slate-400">
         {t('operations.dailyOps.count', { count: rows.length, total: shipments.length })}

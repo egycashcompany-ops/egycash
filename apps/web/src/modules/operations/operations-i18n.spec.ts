@@ -71,7 +71,6 @@ const BOARD_KEYS = [
   'operations.dailyOps.title',
   'operations.dailyOps.subtitle',
   'operations.dailyOps.date',
-  'operations.dailyOps.all',
   'operations.dailyOps.received',
   'operations.dailyOps.receivedYes',
   'operations.dailyOps.receivedNo',

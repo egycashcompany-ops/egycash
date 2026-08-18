@@ -11,7 +11,7 @@
 //   · Reference rows DEACTIVATE, they do not delete: legacy soft-deleted and never checked whether
 //     a shipment still referenced the row (quirk Q22), so removing one for real would silently
 //     break history. `isActive` is the honest replacement.
-import { useEffect, useState, type FormEvent } from 'react';
+import { Suspense, lazy, useEffect, useState, type FormEvent } from 'react';
 import {
   type OperationsAreaDto,
   type OperationsBankBranchDto,
@@ -24,6 +24,10 @@ import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { Field, Input, Select } from '../../../shared/ui/form';
 import { PinIcon } from '../../../shared/ui/icons';
+// Leaflet and its stylesheet ride in this chunk. Reference data is edited by a handful of people;
+// everyone else must not download a mapping library to look at a shipment.
+const BranchMapPicker = lazy(async () => import('./BranchMapPicker'));
+
 import {
   mapsUrl,
   parseMapsLink,
@@ -219,6 +223,7 @@ export const BankBranchDialog = ({
   const [coordinates, setCoordinates] = useState<MapsCoordinates | null>(null);
   const [linkDraft, setLinkDraft] = useState('');
   const [linkError, setLinkError] = useState<MapsLinkFailure | null>(null);
+  const [mapOpen, setMapOpen] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -231,6 +236,7 @@ export const BankBranchDialog = ({
     setCoordinates(branch?.location?.coordinates ?? null);
     setLinkDraft('');
     setLinkError(null);
+    setMapOpen(false);
   }, [open, branch]);
 
   const applyLink = (raw: string): void => {
@@ -361,6 +367,25 @@ export const BankBranchDialog = ({
             </Button>
           </div>
         </Field>
+
+        <div>
+          <button
+            type="button"
+            onClick={() => setMapOpen((wasOpen) => !wasOpen)}
+            className="text-sm text-brand-600 underline dark:text-brand-400"
+          >
+            {t(mapOpen ? 'operations.catalogs.branch.maps.hide' : 'operations.catalogs.branch.maps.pick')}
+          </button>
+        </div>
+        {mapOpen && (
+          <Suspense
+            fallback={
+              <div className="h-64 w-full animate-pulse rounded-lg bg-slate-100 dark:bg-slate-800" />
+            }
+          >
+            <BranchMapPicker value={coordinates} onChange={setCoordinates} />
+          </Suspense>
+        )}
 
         {coordinates === null ? (
           <p className="text-xs text-slate-500 dark:text-slate-400">

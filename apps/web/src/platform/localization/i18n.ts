@@ -4531,6 +4531,10 @@ const en: Record<string, string> = {
   'operations.catalogs.branch.mapsLinkHint':
     'Paste a Google Maps link, or the coordinates. The point is what gets saved, and the captain sees it on the shipment.',
   'operations.catalogs.branch.maps.read': 'Read',
+  'operations.catalogs.branch.maps.pick': 'Pick on the map',
+  'operations.catalogs.branch.maps.hide': 'Hide the map',
+  'operations.catalogs.branch.maps.pickHint':
+    'Click the branch to place the pin, or drag it to adjust. Map data © OpenStreetMap contributors.',
   'operations.catalogs.branch.maps.open': 'Open in Google Maps',
   'operations.catalogs.branch.maps.none': 'No location set for this branch.',
   'operations.catalogs.branch.maps.empty': 'Paste a link or coordinates first.',
@@ -9205,6 +9209,10 @@ const ar: Record<string, string> = {
   'operations.catalogs.branch.mapsLinkHint':
     'الصق رابط جوجل مابس أو الإحداثيات. المحفوظ هو النقطة نفسها، ويراها القائد على الشحنة.',
   'operations.catalogs.branch.maps.read': 'قراءة',
+  'operations.catalogs.branch.maps.pick': 'اختيار من الخريطة',
+  'operations.catalogs.branch.maps.hide': 'إخفاء الخريطة',
+  'operations.catalogs.branch.maps.pickHint':
+    'اضغط على موقع الفرع لوضع العلامة، أو اسحبها للضبط. بيانات الخريطة © مساهمو OpenStreetMap.',
   'operations.catalogs.branch.maps.open': 'فتح في جوجل مابس',
   'operations.catalogs.branch.maps.none': 'لا يوجد موقع محدَّد لهذا الفرع.',
   'operations.catalogs.branch.maps.empty': 'الصق رابطًا أو إحداثيات أولًا.',

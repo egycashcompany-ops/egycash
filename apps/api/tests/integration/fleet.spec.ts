@@ -2020,7 +2020,10 @@ describe('the HR half of the drivers filter — two server-side queries, joined 
   });
 
   it('HR still filters on name, code, job title and branch — nothing was reinvented', async () => {
-    const name = `سائق فريد ${nidCounter}`;
+    // Arabic LETTERS only, with no counter spliced in: `fullNameAr` is validated by `arabicName`,
+    // which rejects an ASCII digit and an Arabic-Indic one alike. Every other employee in this
+    // file is 'سائق اختبار', so this name is distinctive without needing to be generated.
+    const name = 'سائق فريد للبحث';
     const employeeId = await mkEmployee({ fullNameAr: name });
     const byName = await request(app)
       .get('/api/v1/hr/employees')

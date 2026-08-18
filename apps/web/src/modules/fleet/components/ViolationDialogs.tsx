@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react';
 import { type FleetViolationDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { Dialog } from '../../../shared/ui/Dialog';
+import { MoneyInput } from '../../../shared/ui/MoneyInput';
 import { Button } from '../../../shared/ui/Button';
 import { Field, Input } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
@@ -156,14 +157,7 @@ export const VehicleViolationDialog = ({
             required
             hint={t('fleet.violations.amountHint')}
           >
-            <Input
-              type="number"
-              min={0}
-              step="0.01"
-              value={unitValue}
-              onChange={(e) => setUnitValue(e.target.value)}
-              dir="ltr"
-            />
+            <MoneyInput value={unitValue} onChange={(next) => setUnitValue(next)} />
           </Field>
         </div>
       </div>
@@ -271,14 +265,7 @@ export const DriverViolationDialog = ({
           <OptionalEmployeeField value={driver} onChange={setDriver} />
         </Field>
         <Field label={t('fleet.violations.fields.amount')} required>
-          <Input
-            type="number"
-            min={0}
-            step="0.01"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            dir="ltr"
-          />
+          <MoneyInput value={amount} onChange={(next) => setAmount(next)} />
         </Field>
       </div>
     </Dialog>

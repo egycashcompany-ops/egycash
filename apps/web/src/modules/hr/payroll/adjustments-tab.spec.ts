@@ -84,8 +84,12 @@ describe('one month, one amount (D5)', () => {
 
   // The amount is always positive; `kind` carries the direction. A minus sign here would be a
   // second way to say the same thing, and the two would eventually disagree.
+  //
+  // This used to read `min="0"`, which only made a signed amount FAIL — on submit, after it had
+  // been typed. `MoneyInput` makes it unsayable: `sanitizeAmount` drops a minus sign as it is
+  // pressed, so the guarantee is now stronger than the assertion that replaced it.
   it('takes a positive amount and a kind, never a signed one', () => {
-    expect(TAB).toContain('min="0"');
+    expect(TAB).toContain('<MoneyInput');
     expect(TAB).toContain('PAYROLL_ADJUSTMENT_KINDS.map');
   });
 

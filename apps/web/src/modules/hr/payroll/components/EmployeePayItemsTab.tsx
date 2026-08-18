@@ -23,6 +23,7 @@ import { useT } from '../../../../platform/localization/useT';
 import { useCan } from '../../../../platform/rbac/Can';
 import { useAppSelector } from '../../../../store';
 import { Badge, Button, DataTable, EmptyState, type Column } from '../../../../shared/ui';
+import { MoneyInput } from '../../../../shared/ui/MoneyInput';
 import { Dialog } from '../../../../shared/ui/Dialog';
 import { Field, Input, Select } from '../../../../shared/ui/form';
 import { toast } from '../../../../shared/ui/toast/toast-store';
@@ -250,14 +251,9 @@ const AddPayItemDialog = ({
           </Select>
         </Field>
         <Field label={t('payroll.employeeItems.amount')} hint={t('payroll.employeeItems.amountHint')}>
-          <Input
-            type="number"
-            step="0.01"
-            min="0"
-            inputMode="decimal"
-            dir="ltr"
+          <MoneyInput
             value={amount}
-            onChange={(e) => setAmount(e.target.value)}
+            onChange={(next) => setAmount(next)}
             aria-label={t('payroll.employeeItems.amount')}
           />
         </Field>

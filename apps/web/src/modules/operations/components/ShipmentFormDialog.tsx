@@ -22,6 +22,7 @@ import {
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { Dialog } from '../../../shared/ui/Dialog';
+import { MoneyInput } from '../../../shared/ui/MoneyInput';
 import { Button } from '../../../shared/ui/Button';
 import { Field, Input, Select, Textarea } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
@@ -324,14 +325,11 @@ export const ShipmentFormDialog = ({
                 </Select>
               </div>
               <div className="flex-1">
-                <Input
+                <MoneyInput
                   aria-label={t('operations.shipment.amount')}
-                  type="number"
-                  min={0}
-                  step="0.01"
                   placeholder={t('operations.shipment.amount')}
                   value={line.amount}
-                  onChange={(e) => setLine(index, { amount: e.target.value })}
+                  onChange={(next) => setLine(index, { amount: next })}
                 />
               </div>
               <button

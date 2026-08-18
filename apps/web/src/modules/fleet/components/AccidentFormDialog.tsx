@@ -10,29 +10,10 @@ import { useT } from '../../../platform/localization/useT';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { Field, Input, Textarea } from '../../../shared/ui/form';
+import { MoneyInput } from '../../../shared/ui/MoneyInput';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { useCreateAccident, useUpdateAccident } from '../api/fleet-queries';
 import { VehicleSelect } from './VehicleSelect';
-
-const MoneyInput = ({
-  value,
-  onChange,
-  id,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  id?: string;
-}): JSX.Element => (
-  <Input
-    id={id}
-    type="number"
-    min={0}
-    step="0.01"
-    value={value}
-    onChange={(e) => onChange(e.target.value)}
-    dir="ltr"
-  />
-);
 
 export const AccidentFormDialog = ({
   open,

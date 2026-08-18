@@ -34,6 +34,7 @@ import { useAppSelector } from '../../../../../store';
 import { formatDate } from '../../../../../shared/lib/format';
 import { validationDetails } from '../../../../../shared/lib/errors';
 import { Card, CardBody, CardHeader } from '../../../../../shared/ui/Card';
+import { MoneyInput } from '../../../../../shared/ui/MoneyInput';
 import { Button } from '../../../../../shared/ui/Button';
 import { Combobox } from '../../../../../shared/ui/Combobox';
 import { Field, Input, Select, Checkbox, Form, FormActions } from '../../../../../shared/ui/form';
@@ -710,11 +711,9 @@ export const ApplicantForm = ({
           <div className={sectionCls}>
             <Field label={t('applicants.form.expectedSalary')} error={msg('expectedSalaryAmount')}>
               <div className="flex gap-2">
-                <Input
-                  type="number"
-                  min={0}
+                <MoneyInput
                   value={f.expectedSalaryAmount}
-                  onChange={(e) => set({ expectedSalaryAmount: e.target.value })}
+                  onChange={(next) => set({ expectedSalaryAmount: next })}
                   {...bind('expectedSalaryAmount', f.expectedSalaryAmount)}
                 />
                 <Input className="w-24" value={f.expectedSalaryCurrency} onChange={(e) => set({ expectedSalaryCurrency: e.target.value })} dir="ltr" />

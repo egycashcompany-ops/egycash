@@ -22,6 +22,7 @@ import { useT } from '../../../../platform/localization/useT';
 import { useCan } from '../../../../platform/rbac/Can';
 import { useAppSelector } from '../../../../store';
 import { Badge, Button, DataTable, EmptyState, type Column } from '../../../../shared/ui';
+import { MoneyInput } from '../../../../shared/ui/MoneyInput';
 import { Dialog } from '../../../../shared/ui/Dialog';
 import { Field, Input, Select, Textarea } from '../../../../shared/ui/form';
 import { toast } from '../../../../shared/ui/toast/toast-store';
@@ -235,7 +236,7 @@ const AddAdjustmentDialog = ({
         </Field>
         {/* Always positive — the kind carries the sign, which is why there is no minus here. */}
         <Field label={t('payroll.adjustments.amount')} required>
-          <Input type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />
+          <MoneyInput value={amount} onChange={(next) => setAmount(next)} />
         </Field>
         <Field label={t('payroll.adjustments.reason')} required>
           <Textarea rows={2} maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} />

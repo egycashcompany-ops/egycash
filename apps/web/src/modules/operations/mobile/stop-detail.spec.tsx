@@ -1,11 +1,11 @@
-// Phase C3 — the stop a captain is about to act on.
+// Phase C3 + C4 — the stop a captain is about to act on, and the act itself.
 //
 // The rules under test are the ones a screenshot cannot show:
 //   · a LOCKED stop is readable but offers no way to execute, and says why;
 //   · the navigation link is built from COORDINATES, never from a stored URL;
-//   · a branch with no point says so instead of rendering a blank.
-//
-// The acts themselves — and what happens when one is refused — arrive with C4.
+//   · a branch with no point says so instead of rendering a blank;
+//   · exactly ONE action is offered, and it is the single move the server's machine allows;
+//   · a refused act is explained by what actually happened, never as "something went wrong".
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
@@ -22,7 +22,9 @@ import { localeSlice } from '../../../store/localeSlice';
 import { authSlice } from '../../../store/authSlice';
 import { uiSlice } from '../../../store/uiSlice';
 import { listKey } from '../../../shared/lib/query-keys';
+import { ApiError } from '../../../shared/lib/api-client';
 import { StopDetailPage } from './StopDetailPage';
+import { executionErrorMessage, isStateConflict } from './execution-errors';
 
 const CAIRO = { lat: 30.0444, lng: 31.2357 };
 
@@ -193,5 +195,70 @@ describe('a locked stop is readable but not actionable', () => {
     for (const label of ['بدء المهمة', 'تأكيد الاستلام', 'تأكيد التسليم', 'إنهاء الشحنة']) {
       expect(html, label).not.toContain(label);
     }
+  });
+});
+
+describe('the current stop offers exactly one act — the server’s next move', () => {
+  const actionFor = (executionStatus: OperationsMobileStopDto['executionStatus']): string =>
+    render(day([stop({ executionStatus })]));
+
+  it('offers start, then collection, then delivery, then finish', () => {
+    expect(actionFor('pending')).toContain('بدء المهمة');
+    expect(actionFor('active')).toContain('تأكيد الاستلام');
+    expect(actionFor('pickedUp')).toContain('تأكيد التسليم');
+    expect(actionFor('delivered')).toContain('إنهاء الشحنة');
+  });
+
+  it('offers only ONE of them at a time', () => {
+    const html = actionFor('active');
+    const offered = ['بدء المهمة', 'تأكيد الاستلام', 'تأكيد التسليم', 'إنهاء الشحنة'].filter((l) =>
+      html.includes(l),
+    );
+    expect(offered).toEqual(['تأكيد الاستلام']);
+  });
+
+  it('says the stop is done instead of showing nothing, once it is completed', () => {
+    const html = render(day([stop({ progress: 'completed', executionStatus: 'completed' })], null));
+    expect(html).toContain('تمت');
+  });
+});
+
+describe('a refused act is explained, not generalized', () => {
+  const conflict = new ApiError('OPERATIONS_EXECUTION_CONFLICT', 'stale', 409);
+  const settled = new ApiError('OPERATIONS_EXECUTION_ALREADY_SETTLED', 'settled', 422);
+  const sequence = new ApiError('OPERATIONS_EXECUTION_OUT_OF_SEQUENCE', 'order', 422);
+  const transition = new ApiError('OPERATIONS_INVALID_EXECUTION_TRANSITION', 'illegal', 422);
+  const forbidden = new ApiError('FORBIDDEN', 'not yours', 403);
+  const missing = new ApiError('NOT_FOUND', 'gone', 404);
+
+  it('treats a lost race as "the state moved", not as the captain’s mistake', () => {
+    expect(isStateConflict(conflict)).toBe(true);
+    expect(isStateConflict(settled)).toBe(true);
+    expect(executionErrorMessage(conflict, 'ar')).toBe('تغيّرت حالة المهمة، جارٍ تحديث البيانات…');
+  });
+
+  it('never falls back to the generic message for a code the server distinguishes', () => {
+    const GENERIC = 'حدث خطأ ما. يُرجى المحاولة مجددًا.';
+    for (const error of [conflict, settled, sequence, transition, forbidden, missing]) {
+      expect(executionErrorMessage(error, 'ar'), error.code).not.toBe(GENERIC);
+    }
+  });
+
+  it('says a reassigned route is a reassignment, not "forbidden"', () => {
+    // A captain taken off the route mid-shift has to be told that, not shown a permissions error.
+    expect(executionErrorMessage(forbidden, 'ar')).toBe('لم تعد هذه المهمة ضمن مسارك اليوم.');
+  });
+
+  it('names the sequential lock when the server refuses on order', () => {
+    expect(executionErrorMessage(sequence, 'ar')).toBe('يجب إتمام المحطة السابقة أولًا.');
+  });
+
+  it('leaves network and auth failures to the app-wide handler', () => {
+    // Nothing here should restate what the app already says well about a dropped connection.
+    expect(isStateConflict(new TypeError('Failed to fetch'))).toBe(false);
+    expect(executionErrorMessage(new TypeError('Failed to fetch'), 'ar')).toContain('الشبكة');
+    expect(executionErrorMessage(new ApiError('AUTH_TOKEN_EXPIRED', 'x', 401), 'ar')).toContain(
+      'جلستك',
+    );
   });
 });

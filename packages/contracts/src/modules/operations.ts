@@ -12,6 +12,7 @@
 // and transition GUARDS are service logic (the fleet `vehicle-status.ts` precedent), not contract
 // data. What lives here is what every slice must agree on before any of them exists.
 import { z } from 'zod';
+import { type AttendanceDayStatus } from './hr-attendance.js';
 import {
   LocalizedStringSchema,
   PaginationQuerySchema,
@@ -407,6 +408,87 @@ export const ListOperationsShipmentsQuerySchema = PaginationQuerySchema.extend({
 }).strict();
 export type ListOperationsShipmentsQuery = z.infer<typeof ListOperationsShipmentsQuerySchema>;
 
+// ── Reports (B5 — the legacy /ops_report and /ops_bank_report screens) ──────────────────────────
+//
+// WHAT THE LEGACY REPORTS DID (discovery §D, contad_app.js:4837-5440): two structurally identical
+// `$facet` aggregations over completed shipments in a date range — one keyed on the captain, one
+// on the bank. Daily shipments are attributed by COLLECTION date and secured ones by DELIVERY
+// date, which is the same two-date split the whole module turns on.
+//
+// THREE REGISTERED NORMALIZATIONS, each of which changes a NUMBER a user has seen before, so each
+// is stated here rather than discovered later:
+//
+//   · Q26 — PACKAGE COUNTS WERE MULTIPLIED. After `$unwind` over currency pairs, every row still
+//     carried the document's full bag/carton/box counts, and the next `$group` summed them all.
+//     A three-currency shipment with 10 bags reported 30. Counted once per shipment here, so
+//     package totals will be LOWER than the legacy report for multi-currency shipments — and
+//     correct.
+//   · Q27 — the grand total was appended INTO the results array, so any consumer that summed the
+//     rows double-counted everything. It is a separate field here.
+//   · Q28 — a completed shipment with an empty currency list was dropped ENTIRELY, taking its
+//     document count with it. Such a shipment is counted here, with zero money.
+//
+// One more difference, not a quirk but an architecture change: the captain comes from the
+// ASSIGNMENT entity (pickup leg for daily, delivery leg for secured), because that is where the
+// approved SPLIT put the legacy `leader1`/`leader2` fields. A shipment with no assignment has no
+// captain to group under and is reported under the unassigned bucket rather than silently dropped.
+
+export const OperationsReportQuerySchema = z
+  .object({
+    /** Inclusive. Defaults to the first day of the current month — the legacy default (:4862). */
+    from: z.coerce.date().optional(),
+    /** Inclusive. Defaults to the last day of the current month. */
+    to: z.coerce.date().optional(),
+  })
+  .strict();
+export type OperationsReportQuery = z.infer<typeof OperationsReportQuerySchema>;
+
+/** One currency's total within a report row. */
+export interface OperationsReportCurrencyTotalDto {
+  currencyId: string | null;
+  /** The currency's display name, resolved once by the server so every client agrees. */
+  currencyName: string;
+  amount: number;
+}
+
+/** The figures every report row carries, whatever it is keyed on. */
+export interface OperationsReportTotalsDto {
+  shipmentCount: number;
+  bagCount: number;
+  cartonCount: number;
+  boxCount: number;
+  /** Per-currency breakdown. The legacy `total_egp`/`total_usd`/`total_other` buckets are a VIEW
+   *  of this, not a storage format — a client that wants them groups by currency itself. */
+  currencies: OperationsReportCurrencyTotalDto[];
+}
+
+export interface OperationsCaptainReportRowDto {
+  /** Null for shipments with no assignment on the relevant leg — reported, never dropped. */
+  captainEmployeeId: string | null;
+  captainName: string;
+  totals: OperationsReportTotalsDto;
+}
+
+export interface OperationsBankReportRowDto {
+  bankId: string | null;
+  bankName: string;
+  totals: OperationsReportTotalsDto;
+}
+
+export interface OperationsCaptainReportDto {
+  from: string;
+  to: string;
+  rows: OperationsCaptainReportRowDto[];
+  /** Q27 NORMALIZE — separate from `rows`, so summing the rows cannot double-count. */
+  grandTotal: OperationsReportTotalsDto;
+}
+
+export interface OperationsBankReportDto {
+  from: string;
+  to: string;
+  rows: OperationsBankReportRowDto[];
+  grandTotal: OperationsReportTotalsDto;
+}
 // ── Crew requirements (B3 — the legacy /requirement screen) ─────────────────────────────────────
 //
 // WHAT THE LEGACY SCREEN WAS (discovery §9, contad_app.js:4324-4372): a matrix of NINE checkboxes
@@ -520,6 +602,62 @@ export const OperationsCrewDirectoryQuerySchema = z
   .object({ date: z.coerce.date().optional() })
   .strict();
 export type OperationsCrewDirectoryQuery = z.infer<typeof OperationsCrewDirectoryQuerySchema>;
+
+// ── Crew attendance (B5 — read-only, non-gating) ────────────────────────────────────────────────
+//
+// THERE IS NO LEGACY `/ops_attendance` ROUTE. Discovery §2.2 checked: it does not exist. The only
+// attendance screen in the legacy system is `/fleet_attendance` (contad_app.js:3569), it belongs to
+// the DRIVERS department (`الحركة`), it is Fleet's, and ECMS shipped it already in FW-5.
+//
+// What legacy did for cash-transfer crew was nothing at all: `AbsenceEvent` is queried in six
+// places and not one of them asks about `نقل الاموال` or `التشغيل` (discovery §10.2), so
+// `/tashghela` would happily assign a captain who was absent. That is recorded as a REAL GAP.
+//
+// This surface closes the VISIBILITY half of that gap and deliberately not the other half:
+//   · it READS attendance HR already computed, through the platform directory seam;
+//   · it stores nothing, and adds no attendance write path to Operations;
+//   · it GATES NOTHING. An absent crew member is still fully assignable, exactly as in legacy.
+//     Attendance is an indicator here, on the same footing as the requirement flags (owner
+//     decision, carried since PR 1). Turning it into an eligibility rule would be a new rule.
+//
+// `attendance: null` means HR has NO answer for that employee and day — not "present". A screen
+// must render the difference, because "unknown" and "fine" are not the same fact.
+
+/** One crew member's day, as attendance already computed it. */
+export interface OperationsCrewAttendanceDto {
+  employeeId: string;
+  code: string;
+  fullNameAr: string;
+  attendance: { status: AttendanceDayStatus; onLeave: boolean } | null;
+  /** Whether this member holds a vehicle on the day — the planner's reason for looking. */
+  assignedVehicleId: string | null;
+}
+
+export interface OperationsCrewAttendanceDayDto {
+  date: string;
+  members: OperationsCrewAttendanceDto[];
+  /**
+   * Counts for the header, computed server-side so two screens cannot disagree.
+   *
+   * FIVE buckets, not three, because HR's ten statuses genuinely mean five different things to a
+   * planner and collapsing them would lie: `present` is at-work (including late and early-leave),
+   * `notScheduled` is weekend/holiday/day-off, and `unknown` covers both "no record at all" and
+   * `incomplete` — attendance itself could not decide, which is not the same as being fine.
+   */
+  summary: {
+    total: number;
+    present: number;
+    absent: number;
+    onLeave: number;
+    notScheduled: number;
+    unknown: number;
+  };
+}
+
+export const OperationsCrewAttendanceQuerySchema = z
+  .object({ date: z.coerce.date() })
+  .strict();
+export type OperationsCrewAttendanceQuery = z.infer<typeof OperationsCrewAttendanceQuerySchema>;
 
 // ── Operating day (OP-3) ────────────────────────────────────────────────────────────────────────
 //

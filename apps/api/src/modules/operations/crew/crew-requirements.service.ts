@@ -11,7 +11,10 @@
 // and the same the fleet driver profile makes — it is not an eligibility rule, it is the
 // difference between a reference and a dangling id.
 import {
+  type AttendanceDayStatus,
   type ListOperationsCrewRequirementsQuery,
+  type OperationsCrewAttendanceDayDto,
+  type OperationsCrewAttendanceDto,
   type OperationsCrewDirectoryDto,
   type OperationsCrewMemberDto,
   type SetOperationsCrewRequirements,
@@ -19,12 +22,39 @@ import {
 import { Types } from 'mongoose';
 import { BusinessRuleError, ConflictError, ValidationError } from '../../../shared/errors';
 import { auditService } from '../../../platform/audit';
-import { getDirectoryEmployee } from '../../../platform/directory';
+import { getDirectoryAttendanceDay, getDirectoryEmployee } from '../../../platform/directory';
 import { diffChanges } from '../../../shared/utils/diff';
 import { operationsDayService, utcDay } from '../days/day.service';
 import { operationsCrewAssignmentRepository } from './crew-assignment.repository';
 import { operationsCrewRequirementsRepository } from './crew-requirements.repository';
 import { type OperationsCrewRequirementsDoc } from './crew-requirements.model';
+
+/**
+ * HR's ten day statuses → the five buckets a planner reads. Exported so the summary and any later
+ * consumer bucket identically; `incomplete` and an absent record both land in `unknown` because
+ * neither is an answer.
+ */
+export const attendanceBucket = (
+  status: AttendanceDayStatus | undefined,
+): 'present' | 'absent' | 'onLeave' | 'notScheduled' | 'unknown' => {
+  switch (status) {
+    case 'present':
+    case 'late':
+    case 'earlyLeave':
+    case 'lateAndEarly':
+      return 'present';
+    case 'absent':
+      return 'absent';
+    case 'onLeave':
+      return 'onLeave';
+    case 'weekend':
+    case 'holiday':
+    case 'dayOff':
+      return 'notScheduled';
+    default:
+      return 'unknown';
+  }
+};
 
 const entityRef = (id: string) => ({
   moduleId: 'operations',
@@ -176,6 +206,54 @@ class OperationsCrewRequirementsService {
     );
 
     return { date: day.toISOString(), members };
+  }
+
+  /**
+   * The day's attendance BESIDE the roster — read-only, and gating nothing.
+   *
+   * It reuses `directory()` rather than re-reading the roster, so "who is Operations crew" has one
+   * answer in the system. Every member of the roster appears, including the ones attendance has no
+   * record for: an absent screen row is a fact a planner needs, and silently omitting the unknowns
+   * would make the page look complete when it is not.
+   *
+   * Legacy never asked this question for cash-transfer crew at all (discovery §10.2). Showing it
+   * is the new part; refusing to act on it is the part that stays legacy-faithful.
+   */
+  async attendance(date: Date): Promise<OperationsCrewAttendanceDayDto> {
+    const day = utcDay(date);
+    const { members: roster } = await this.directory(day);
+    const attendance = await getDirectoryAttendanceDay(
+      roster.map((m) => m.employeeId),
+      day,
+    );
+
+    const members: OperationsCrewAttendanceDto[] = roster.map((member) => {
+      const row = attendance.get(member.employeeId);
+      return {
+        employeeId: member.employeeId,
+        code: member.code,
+        fullNameAr: member.fullNameAr,
+        attendance: row === undefined ? null : { status: row.status, onLeave: row.onLeave },
+        assignedVehicleId: member.assignedVehicleId,
+      };
+    });
+
+    // Counted here, once, so the header and the rows cannot tell different stories. Every bucket
+    // is explicit and the default is `unknown`, so a status added to HR later shows up as
+    // unaccounted-for rather than being silently counted as somebody being at work.
+    const summary = {
+      total: members.length,
+      present: 0,
+      absent: 0,
+      onLeave: 0,
+      notScheduled: 0,
+      unknown: 0,
+    };
+    for (const member of members) {
+      summary[attendanceBucket(member.attendance?.status)] += 1;
+    }
+
+    return { date: day.toISOString(), members, summary };
   }
 
   async list(query: ListOperationsCrewRequirementsQuery) {

@@ -53,6 +53,28 @@ class OperationsShipmentRepository extends BaseRepository<OperationsShipmentDoc>
       .lean<OperationsShipmentDoc[]>()
       .exec();
   }
+
+  /**
+   * COMPLETED shipments in a range, for the reports — the legacy report `$match` (:4877/:4919).
+   *
+   * The two types are attributed by DIFFERENT dates: a daily shipment belongs to the month it was
+   * COLLECTED, a secured one to the month it was DELIVERED. Reporting both on one field would
+   * quietly move money between months, which is why this is a union and not a single filter.
+   */
+  async completedInRange(from: Date, toExclusive: Date): Promise<OperationsShipmentDoc[]> {
+    const range = { $gte: from, $lt: toExclusive };
+    return this.model
+      .find({
+        isDeleted: false,
+        status: 'completed',
+        $or: [
+          { shipmentType: 'daily', collectionDate: range },
+          { shipmentType: 'secured', deliveryDate: range },
+        ],
+      })
+      .lean<OperationsShipmentDoc[]>()
+      .exec();
+  }
 }
 
 export const operationsShipmentRepository = new OperationsShipmentRepository();

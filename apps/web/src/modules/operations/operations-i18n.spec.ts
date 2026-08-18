@@ -9,6 +9,7 @@
 // only prove the catalog agrees with itself.
 import { describe, expect, it } from 'vitest';
 import {
+  ATTENDANCE_DAY_STATUSES,
   OPERATIONS_SHIPMENT_STATUSES,
   OPERATIONS_SHIPMENT_TYPES,
   type Locale,
@@ -198,15 +199,59 @@ const SECURED_KEYS = [
   'operations.vault.empty',
 ];
 
+const REPORT_KEYS = [
+  'operations.nav.captainReport',
+  'operations.cards.captainReport',
+  'operations.nav.bankReport',
+  'operations.cards.bankReport',
+  'operations.reports.captains.title',
+  'operations.reports.captains.subtitle',
+  'operations.reports.banks.title',
+  'operations.reports.banks.subtitle',
+  'operations.reports.captain',
+  'operations.reports.bank',
+  'operations.reports.from',
+  'operations.reports.to',
+  'operations.reports.invalidRange',
+  'operations.reports.shipmentCount',
+  'operations.reports.packages',
+  'operations.reports.amounts',
+  'operations.reports.grandTotal',
+  'operations.reports.noCurrency',
+  'operations.reports.unattributed',
+  'operations.reports.empty',
+];
+
+const ATTENDANCE_KEYS = [
+  'operations.nav.attendance',
+  'operations.cards.attendance',
+  'operations.attendance.title',
+  'operations.attendance.subtitle',
+  'operations.attendance.nonGatingNotice',
+  'operations.attendance.date',
+  'operations.attendance.status',
+  'operations.attendance.unknown',
+  'operations.attendance.assignedToday',
+  'operations.attendance.assigned',
+  'operations.attendance.empty',
+  'operations.crew.code',
+  'operations.crew.name',
+  ...(
+    ['total', 'present', 'absent', 'onLeave', 'notScheduled', 'unknown'] as const
+  ).map((bucket) => `operations.attendance.count.${bucket}`),
+];
+
 const ALL_KEYS = [
   ...SHELL_KEYS,
   ...CATALOG_KEYS,
   ...BOARD_KEYS,
   ...CREW_KEYS,
   ...SECURED_KEYS,
+  ...REPORT_KEYS,
+  ...ATTENDANCE_KEYS,
 ];
 
-describe('operations i18n catalogs (B1–B4)', () => {
+describe('operations i18n catalogs (B1–B5)', () => {
   for (const locale of LOCALES) {
     for (const key of ALL_KEYS) {
       it(`${locale}: ${key}`, () => {
@@ -252,6 +297,17 @@ describe('operations i18n catalogs (B1–B4)', () => {
     for (const locale of LOCALES) {
       for (const flag of REQUIREMENT_FLAGS) {
         const key = `operations.crew.flag.${flag}`;
+        expect(translate(locale, key)).not.toBe(key);
+      }
+    }
+  });
+
+  it('labels every attendance day status the crew page can render', () => {
+    // The page reads HR's vocabulary directly rather than restating it, so the guard is that
+    // every status HR can produce has a label — including the ones that mean "not a working day".
+    for (const locale of LOCALES) {
+      for (const status of ATTENDANCE_DAY_STATUSES) {
+        const key = `attendance.dayStatus.${status}`;
         expect(translate(locale, key)).not.toBe(key);
       }
     }

@@ -5,6 +5,7 @@ import { z } from 'zod';
 import {
   ListOperationsCrewRequirementsQuerySchema,
   OperationsCrewBoardQuerySchema,
+  OperationsCrewAttendanceQuerySchema,
   OperationsCrewDirectoryQuerySchema,
   PlanOperationsCrewSchema,
   SetOperationsCrewRequirementsSchema,
@@ -15,6 +16,7 @@ import { authorize } from '../../../platform/rbac';
 import { asyncHandler, validate } from '../../../platform/web';
 import {
   getCrewBoard,
+  getCrewAttendance,
   getCrewDirectory,
   listCrewRequirements,
   planCrew,
@@ -49,6 +51,19 @@ export const buildOperationsCrewRouter = (): Router => {
     authorize('operationsCrew.view'),
     validate({ query: OperationsCrewDirectoryQuerySchema }),
     asyncHandler(getCrewDirectory),
+  );
+
+  // The day's attendance beside the roster (B5). TWO grants, chained — `operationsCrew.view` to
+  // read the roster and HR's OWN `attendance.view` to read attendance. Chained, not `authorizeAny`,
+  // on purpose: this endpoint surfaces another module's data, and it must not become a way to see
+  // HR attendance without HR's grant. Read-only, and it gates no assignment (discovery §10.2).
+  router.get(
+    '/attendance',
+    authenticate,
+    authorize('operationsCrew.view'),
+    authorize('attendance.view'),
+    validate({ query: OperationsCrewAttendanceQuerySchema }),
+    asyncHandler(getCrewAttendance),
   );
 
   // The legacy `/requirement` screen. Maintaining the roster is a PLANNING decision — who counts

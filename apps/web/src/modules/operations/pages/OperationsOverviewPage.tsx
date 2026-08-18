@@ -11,7 +11,17 @@ import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { ModuleHome } from '../../../shared/ui/ModuleHome';
-import { BadgeIcon, ClipboardIcon, InboxIcon, ShieldIcon, TagIcon, TruckIcon, UsersIcon } from '../../../shared/ui/icons';
+import {
+  BadgeIcon,
+  CalendarIcon,
+  ChartIcon,
+  ClipboardIcon,
+  InboxIcon,
+  ShieldIcon,
+  TagIcon,
+  TruckIcon,
+  UsersIcon,
+} from '../../../shared/ui/icons';
 
 type Icon = ComponentType<SVGProps<SVGSVGElement>>;
 
@@ -79,6 +89,34 @@ export const OPERATIONS_SHORTCUTS: Shortcut[] = [
     descKey: 'operations.cards.vault',
     icon: ShieldIcon,
     permission: 'operationsVault.view',
+  },
+  /** Legacy `/ops_report` — the month's work by captain. */
+  {
+    to: '/operations/reports/captains',
+    titleKey: 'operations.nav.captainReport',
+    descKey: 'operations.cards.captainReport',
+    icon: ChartIcon,
+    permission: 'operationsShipment.view',
+  },
+  /** Legacy `/ops_bank_report` — the same month, by bank. */
+  {
+    to: '/operations/reports/banks',
+    titleKey: 'operations.nav.bankReport',
+    descKey: 'operations.cards.bankReport',
+    icon: ChartIcon,
+    permission: 'operationsShipment.view',
+  },
+  /**
+   * NO legacy equivalent (discovery §2.2): `/ops_attendance` never existed and `/fleet_attendance`
+   * is Fleet's drivers screen. Gated on `attendance.view` — HR's grant, because it is HR's data —
+   * so the card is absent for a planner who may not read attendance at all.
+   */
+  {
+    to: '/operations/attendance',
+    titleKey: 'operations.nav.attendance',
+    descKey: 'operations.cards.attendance',
+    icon: CalendarIcon,
+    permission: 'attendance.view',
   },
   /** Legacy `/data_edit` — the reference data every other Operations screen picks from. */
   {

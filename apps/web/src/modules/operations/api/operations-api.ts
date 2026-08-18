@@ -31,6 +31,9 @@ import {
   type AssignSecuredDeliveryLeg,
   type DispatchSecuredShipments,
   type ListSecuredBacklogQuery,
+  type OperationsBankReportDto,
+  type OperationsCaptainReportDto,
+  type OperationsCrewAttendanceDayDto,
   type OperationsVaultCustodyDto,
   type OperationsVaultInventoryRowDto,
   type PlanOperationsCrew,
@@ -231,3 +234,24 @@ export const assignSecuredDelivery = (
 /** `/deliver_mohsana/data` — release and dispatch a vehicle's load, in ONE transaction. */
 export const dispatchSecured = (body: DispatchSecuredShipments): Promise<unknown> =>
   post('/operations/secured/dispatch', body);
+
+// ── Reports + attendance (B5) ───────────────────────────────────────────────────────────────────
+
+/** `/ops_report` — one row per captain over a date range. */
+export const getCaptainReport = (
+  params: { from: string; to: string },
+): Promise<OperationsCaptainReportDto> =>
+  get<OperationsCaptainReportDto>(`/operations/reports/captains${buildQuery(params)}`);
+
+/** `/ops_bank_report` — the same figures keyed on the bank. */
+export const getBankReport = (
+  params: { from: string; to: string },
+): Promise<OperationsBankReportDto> =>
+  get<OperationsBankReportDto>(`/operations/reports/banks${buildQuery(params)}`);
+
+/**
+ * The crew's attendance for a day. No legacy equivalent for cash-transfer crew — the legacy
+ * `/fleet_attendance` screen is Fleet's and covers drivers only (discovery §2.2/§10.2).
+ */
+export const getCrewAttendance = (date: string): Promise<OperationsCrewAttendanceDayDto> =>
+  get<OperationsCrewAttendanceDayDto>(`/operations/crew-board/attendance${buildQuery({ date })}`);

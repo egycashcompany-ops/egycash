@@ -145,6 +145,11 @@ class OperationsVaultCustodyService implements VaultCustodyProvider {
     return doc === null ? null : toCustodyView(doc);
   }
 
+  async findMany(shipmentIds: string[]): Promise<Map<string, VaultCustodyView>> {
+    const docs = await operationsVaultCustodyRepository.findByShipments(shipmentIds);
+    return new Map(docs.map((doc) => [String(doc.shipmentId), toCustodyView(doc)]));
+  }
+
   async listHeld(
     page: number,
     pageSize: number,

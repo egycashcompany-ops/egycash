@@ -20,6 +20,15 @@ class OperationsVaultCustodyRepository extends BaseRepository<OperationsVaultCus
       .lean<OperationsVaultCustodyDoc>()
       .exec();
   }
+
+  /** Custody for a SET of shipments — the reports' package counts, in one round trip. */
+  async findByShipments(shipmentIds: string[]): Promise<OperationsVaultCustodyDoc[]> {
+    if (shipmentIds.length === 0) return [];
+    return this.model
+      .find({ shipmentId: { $in: shipmentIds }, isDeleted: false })
+      .lean<OperationsVaultCustodyDoc[]>()
+      .exec();
+  }
 }
 
 export const operationsVaultCustodyRepository = new OperationsVaultCustodyRepository();

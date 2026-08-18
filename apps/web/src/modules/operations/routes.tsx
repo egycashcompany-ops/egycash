@@ -12,6 +12,9 @@
 //   /operations/vault/receive operationsVault.view      B4  (legacy /receive_mohsana)
 //   /operations/vault/dispatch operationsVault.view     B4  (legacy /deliver_mohsana + /tash4ela_mohasana)
 //   /operations/vault         operationsVault.view      B4  (legacy /vault1)
+//   /operations/reports/captains operationsShipment.view B5 (legacy /ops_report)
+//   /operations/reports/banks    operationsShipment.view B5 (legacy /ops_bank_report)
+//   /operations/attendance    operationsCrew.view + attendance.view  B5  (NO legacy equivalent)
 //   /operations/catalogs   operationsCatalog.manage   B1  (legacy /data_edit)
 import { Route, Routes } from 'react-router-dom';
 import { RequirePermission } from '../../platform/router/RequirePermission';
@@ -26,6 +29,9 @@ import { SecuredBacklogPage } from './pages/SecuredBacklogPage';
 import { SecuredDispatchPage } from './pages/SecuredDispatchPage';
 import { VaultInventoryPage } from './pages/VaultInventoryPage';
 import { VaultReceivePage } from './pages/VaultReceivePage';
+import { CaptainReportPage } from './pages/CaptainReportPage';
+import { BankReportPage } from './pages/BankReportPage';
+import { CrewAttendancePage } from './pages/CrewAttendancePage';
 
 export default function OperationsRoutes(): JSX.Element {
   return (
@@ -85,6 +91,34 @@ export default function OperationsRoutes(): JSX.Element {
           element={
             <RequirePermission permission="operationsVault.view">
               <VaultInventoryPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="reports/captains"
+          element={
+            <RequirePermission permission="operationsShipment.view">
+              <CaptainReportPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="reports/banks"
+          element={
+            <RequirePermission permission="operationsShipment.view">
+              <BankReportPage />
+            </RequirePermission>
+          }
+        />
+        {/* TWO grants, matching the endpoint: reading the roster is Operations', reading
+            attendance is HR's, and this screen needs both. */}
+        <Route
+          path="attendance"
+          element={
+            <RequirePermission permission="operationsCrew.view">
+              <RequirePermission permission="attendance.view">
+                <CrewAttendancePage />
+              </RequirePermission>
             </RequirePermission>
           }
         />

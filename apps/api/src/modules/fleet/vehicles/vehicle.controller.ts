@@ -10,6 +10,7 @@ import {
 } from '@ecms/contracts';
 import { created, noContent, ok, okPage, validated } from '../../../platform/web';
 import { authContext } from '../../../platform/auth';
+import { ValidationError } from '../../../shared/errors';
 import { scopeSelector } from '../../../shared/types';
 import { toVehicleDto } from '../fleet.mappers';
 import { fleetVehicleService } from './vehicle.service';
@@ -79,4 +80,68 @@ export const deleteVehicle = async (req: Request, res: Response): Promise<void> 
     scopeSelector(ctx, 'fleetVehicle.delete'),
   );
   noContent(res);
+};
+
+/** The create form's branch default (§2.1) — live data, resolved by name from the setting. */
+export const getDefaultBranch = async (_req: Request, res: Response): Promise<void> => {
+  ok(res, await fleetVehicleService.defaultBranch());
+};
+
+export const uploadVehicleLicenseImage = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<never, never, IdParam>(req);
+  const ctx = authContext(req);
+  // Multer put the part on the request; a caller who forgot the field gets a named 422 rather
+  // than a crash on `.buffer`.
+  const uploaded = req.file;
+  if (uploaded === undefined) {
+    // `ValidationError`, not a hand-rolled AppError: a malformed request is a 400 everywhere else
+    // in the platform, and 422 is reserved for a well-formed request that breaks a business rule
+    // (which is what the file category's mime and size refusals are).
+    throw new ValidationError([
+      { field: 'file', code: 'REQUIRED', message: 'a file part named "file" is required' },
+    ]);
+  }
+  const doc = await fleetVehicleService.setLicenseImage(
+    ctx,
+    params.id,
+    {
+      originalName: uploaded.originalname,
+      mime: uploaded.mimetype,
+      size: uploaded.size,
+      buffer: uploaded.buffer,
+    },
+    scopeSelector(ctx, 'fleetVehicle.edit'),
+  );
+  await respondOne(res, doc);
+};
+
+/**
+ * The bytes themselves, not a signed URL: the file is GUARDED by fleet's ADR-023 authorizer, and a
+ * guarded file's signed URL requires a bearer token that an `<img src>` cannot carry. Streaming
+ * through the authenticated endpoint is what lets the registry actually display the image.
+ */
+export const getVehicleLicenseImage = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<never, never, IdParam>(req);
+  const ctx = authContext(req);
+  const image = await fleetVehicleService.readLicenseImage(
+    ctx,
+    params.id,
+    scopeSelector(ctx, 'fleetVehicle.view'),
+  );
+  res.setHeader('Content-Type', image.mime);
+  res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(image.fileName)}"`);
+  // Private document: no shared cache may keep a copy.
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.send(image.buffer);
+};
+
+export const deleteVehicleLicenseImage = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<never, never, IdParam>(req);
+  const ctx = authContext(req);
+  const doc = await fleetVehicleService.deleteLicenseImage(
+    ctx,
+    params.id,
+    scopeSelector(ctx, 'fleetVehicle.edit'),
+  );
+  await respondOne(res, doc);
 };

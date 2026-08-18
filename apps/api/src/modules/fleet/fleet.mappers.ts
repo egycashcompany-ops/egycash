@@ -54,12 +54,27 @@ export const toVehicleDto = (doc: FleetVehicleDoc, inWorkshop: boolean): FleetVe
   motorNumber: doc.motorNumber,
   joinedAt: iso(doc.joinedAt),
   licenseExpiresAt: iso(doc.licenseExpiresAt),
-  licenseClass: doc.licenseClass,
+  // The legacy free-text `licenseClass` column is deliberately NOT mapped: it is migration
+  // evidence, not a fact any client should read or round-trip back.
+  licenseClassId: doc.licenseClassId === null ? null : String(doc.licenseClassId),
+  operationId: doc.operationId === null ? null : String(doc.operationId),
+  insuranceCompanyId:
+    doc.insuranceCompanyId === null ? null : String(doc.insuranceCompanyId),
   branchId: doc.branchId === null ? null : String(doc.branchId),
   departmentId: doc.departmentId === null ? null : String(doc.departmentId),
   radio: { issi: doc.radio.issi, motorolaSn: doc.radio.motorolaSn },
   status: doc.status,
   statusReason: doc.statusReason,
+  licenseImage:
+    doc.licenseImage === null
+      ? null
+      : {
+          fileId: String(doc.licenseImage.fileId),
+          fileName: doc.licenseImage.fileName,
+          mime: doc.licenseImage.mime,
+          size: doc.licenseImage.size,
+          uploadedAt: iso(doc.licenseImage.uploadedAt),
+        },
   inWorkshop,
   version: doc.__v,
   createdAt: iso(doc.createdAt),

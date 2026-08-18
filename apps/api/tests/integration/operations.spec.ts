@@ -25,8 +25,10 @@ import {
   type OperationsBankReportDto,
   type OperationsCaptainReportDto,
   type OperationsCrewAttendanceDayDto,
+  type OperationsAreaDto,
   type OperationsShipmentDto,
   type OperationsVaultInventoryRowDto,
+  type OperationsVaultReportDto,
   type PageMeta,
 } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
@@ -2751,5 +2753,254 @@ describe('crew attendance — NO legacy counterpart, read-only and non-gating (B
       .get('/api/v1/operations/crew-board/attendance')
       .set('Authorization', `Bearer ${adminToken}`);
     expect(res.status).toBe(400);
+  });
+});
+
+describe('vault roll-up and operational areas — legacy /vault1_reports and /data_edit cities (B6)', () => {
+  const VAULT_DATE = '2026-10-14';
+  let vaultBank: OperationsBankDto;
+  let vaultBranch: OperationsBankBranchDto;
+
+  const vaultReport = (token = adminToken): request.Test =>
+    request(app)
+      .get('/api/v1/operations/reports/vault')
+      .set('Authorization', `Bearer ${token}`);
+
+  const area = (body: Record<string, unknown>, token = adminToken): request.Test =>
+    request(app)
+      .post('/api/v1/operations/areas')
+      .set('Authorization', `Bearer ${token}`)
+      .send(body);
+
+  let usdShared: OperationsCurrencyDto;
+
+  beforeAll(async () => {
+    // USD already exists (the reports suite created it) and its code is unique, so it is looked
+    // up rather than re-created — the roll-up's base-currency split needs a non-EGP currency.
+    const list = await request(app)
+      .get('/api/v1/operations/currencies?page=1&pageSize=100')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(list.status).toBe(200);
+    const found = (list.body as { data: OperationsCurrencyDto[] }).data.find(
+      (c) => c.code === 'USD',
+    );
+    expect(found).toBeDefined();
+    usdShared = found as OperationsCurrencyDto;
+
+    const bankRes = await request(app)
+      .post('/api/v1/operations/banks')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: 72, name: { ar: 'بنك الخزينة', en: 'Vault Bank' }, opsName: 'الخزينة' });
+    expect(bankRes.status).toBe(201);
+    vaultBank = data<OperationsBankDto>(bankRes);
+
+    const branchRes = await request(app)
+      .post('/api/v1/operations/bank-branches')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ bankId: vaultBank.id, name: 'فرع الخزينة', code: 'V-1', opsAreaName: 'الجيزة' });
+    expect(branchRes.status).toBe(201);
+    vaultBranch = data<OperationsBankBranchDto>(branchRes);
+  });
+
+  it('1. rolls up what the vault HOLDS, counting packages once per shipment (Q26)', async () => {
+    const created = await mkShipment({
+      shipmentType: 'secured',
+      deliveryDate: VAULT_DATE,
+      mainBankId: vaultBank.id,
+      originBranchId: vaultBranch.id,
+      destinationBranchId: vaultBranch.id,
+      lines: [
+        { currencyId: egp.id, amount: 1_000 },
+        { currencyId: usdShared.id, amount: 500 },
+      ],
+    });
+    expect(created.status).toBe(201);
+    const secured = data<OperationsShipmentDto>(created);
+
+    const received = await request(app)
+      .post(`/api/v1/operations/secured/${secured.id}/receive`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        receiptNumber: `R-VLT-${secured.id.slice(-5)}`,
+        bagCount: 7,
+        cartonCount: 3,
+        boxCount: 1,
+        receivedByPrimaryId: captainId,
+        receivedBySecondaryId: specialist1Id,
+        version: secured.version,
+      });
+    expect(received.status).toBe(200);
+
+    const res = await vaultReport();
+    expect(res.status).toBe(200);
+    const report = data<OperationsVaultReportDto>(res);
+    const row = report.rows.find((r) => r.bankId === vaultBank.id);
+    expect(row).toBeDefined();
+    expect(row?.totals.shipmentCount).toBe(1);
+    // Two currencies on the shipment, and the packages are still counted ONCE — the legacy
+    // /ops_bank_report figure would have been 14/6/2 while legacy /vault1 said 7/3/1.
+    expect(row?.totals).toMatchObject({ bagCount: 7, cartonCount: 3, boxCount: 1 });
+    expect(row?.totals.currencies.map((c) => c.amount).sort((a, b) => a - b)).toEqual([500, 1000]);
+  });
+
+  it('2. separates the non-base currencies — the legacy second aggregation, as a view', async () => {
+    const report = data<OperationsVaultReportDto>(await vaultReport());
+    expect(report.baseCurrencyCode).toBe('EGP');
+    // The legacy screen excluded EGP by a literal Arabic synonym list (:1409). Here it is matched
+    // on the currency's CODE, so a currency named `مصري` with code EGP is correctly excluded.
+    expect(report.foreignCurrencies.some((c) => c.currencyName === 'مصري')).toBe(false);
+    expect(report.foreignCurrencies.some((c) => c.currencyName === 'دولار')).toBe(true);
+    // ...and the grand total still carries BOTH — the split is a view, not a filtered query.
+    expect(report.grandTotal.currencies.some((c) => c.currencyName === 'مصري')).toBe(true);
+  });
+
+  it('3. drops a shipment OUT of the roll-up the moment it leaves the vault', async () => {
+    const before = data<OperationsVaultReportDto>(await vaultReport());
+    const heldBefore = before.grandTotal.shipmentCount;
+    expect(heldBefore).toBeGreaterThanOrEqual(1);
+
+    // A second shipment received and then released changes the answer: the roll-up is about what
+    // is here NOW, which is exactly why it has no date range (Q32 PRESERVE).
+    const roster = await request(app)
+      .post('/api/v1/fleet/roster')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date: VAULT_DATE, rows: [{ vehicleId: vehicleAId, notes: 'vault seed' }] });
+    expect(roster.status).toBe(200);
+    const plan = await request(app)
+      .post('/api/v1/operations/crew-board')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date: VAULT_DATE, rows: [{ vehicleId: vehicleAId, captainEmployeeId: captainId }] });
+    expect(plan.status).toBe(200);
+    const crewRow = await crewAssignmentIdForDay(VAULT_DATE);
+
+    const created = await mkShipment({
+      shipmentType: 'secured',
+      deliveryDate: VAULT_DATE,
+      mainBankId: vaultBank.id,
+      originBranchId: vaultBranch.id,
+      destinationBranchId: vaultBranch.id,
+      lines: [{ currencyId: egp.id, amount: 250 }],
+    });
+    const secured = data<OperationsShipmentDto>(created);
+    expect(
+      (
+        await request(app)
+          .post(`/api/v1/operations/secured/${secured.id}/receive`)
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({
+            receiptNumber: `R-VLT2-${secured.id.slice(-5)}`,
+            bagCount: 2,
+            receivedByPrimaryId: captainId,
+            receivedBySecondaryId: specialist1Id,
+            version: secured.version,
+          })
+      ).status,
+    ).toBe(200);
+
+    const withBoth = data<OperationsVaultReportDto>(await vaultReport());
+    expect(withBoth.grandTotal.shipmentCount).toBe(heldBefore + 1);
+
+    const inVault = data<OperationsShipmentDto>(
+      await request(app)
+        .get(`/api/v1/operations/shipments/${secured.id}`)
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+    expect(
+      (
+        await request(app)
+          .post(`/api/v1/operations/secured/${secured.id}/assign-delivery`)
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({
+            crewAssignmentId: crewRow,
+            captainEmployeeId: captainId,
+            version: inVault.version,
+          })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await request(app)
+          .post('/api/v1/operations/secured/dispatch')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ crewAssignmentId: crewRow, shipmentIds: [secured.id] })
+      ).status,
+    ).toBe(200);
+
+    const after = data<OperationsVaultReportDto>(await vaultReport());
+    expect(after.grandTotal.shipmentCount).toBe(heldBefore);
+  });
+
+  it('4. takes NO date range — the legacy picker never filtered anything (Q32)', async () => {
+    const res = await request(app)
+      .get('/api/v1/operations/reports/vault?from=2026-10-01&to=2026-10-31')
+      .set('Authorization', `Bearer ${adminToken}`);
+    // The endpoint accepts no query at all rather than accepting one and ignoring it, which is
+    // the legacy behaviour that made the screen lie about what it was showing.
+    expect(res.status).toBe(400);
+  });
+
+  it('5. rides operationsVault.view, not the shipment grant', async () => {
+    const res = await vaultReport(viewerToken); // viewer holds operationsShipment.view only
+    expect(res.status).toBe(403);
+    expect((await request(app).get('/api/v1/operations/reports/vault')).status).toBe(401);
+  });
+
+  it('6. creates an operational area — the legacy /data_edit city, without its id generator', async () => {
+    const res = await area({ name: 'المعادي', nameEn: 'Maadi', governorate: 'القاهرة' });
+    expect(res.status).toBe(201);
+    const dto = data<OperationsAreaDto>(res);
+    expect(dto.name).toBe('المعادي');
+    expect(dto.isActive).toBe(true);
+    // Legacy generated ids as `countDocuments({}) + 1` (:2060) — not deleted-aware, not atomic.
+    expect(dto.id).toMatch(/^[0-9a-f]{24}$/);
+  });
+
+  it('7. accepts an area with no English name or governorate — legacy required both (:2042)', async () => {
+    const res = await area({ name: 'الشروق' });
+    expect(res.status).toBe(201);
+    const dto = data<OperationsAreaDto>(res);
+    expect(dto.nameEn).toBeNull();
+    expect(dto.governorate).toBeNull();
+  });
+
+  it('8. refuses a duplicate name — the uniqueness the legacy regex check was reaching for', async () => {
+    expect((await area({ name: 'مدينة نصر' })).status).toBe(201);
+    const again = await area({ name: 'مدينة نصر' });
+    expect(again.status).toBe(409);
+  });
+
+  it('9. deactivates rather than deletes, and a branch keeps the name it already stored', async () => {
+    const created = data<OperationsAreaDto>(await area({ name: 'حلوان' }));
+    const branch = await request(app)
+      .post('/api/v1/operations/bank-branches')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ bankId: vaultBank.id, name: 'فرع حلوان', code: 'V-2', opsAreaName: 'حلوان' });
+    expect(branch.status).toBe(201);
+
+    const off = await request(app)
+      .patch(`/api/v1/operations/areas/${created.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ isActive: false, version: created.version });
+    expect(off.status).toBe(200);
+    expect(data<OperationsAreaDto>(off).isActive).toBe(false);
+
+    // The branch is untouched: it stores the STRING, not a reference — which is exactly why the
+    // legacy delete could orphan nothing, and why deactivating here is safe (Q22 PRESERVE).
+    const after = await request(app)
+      .get(`/api/v1/operations/bank-branches?search=${encodeURIComponent('فرع حلوان')}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(after.status).toBe(200);
+    const rows = (after.body as { data: OperationsBankBranchDto[] }).data;
+    expect(rows[0]?.opsAreaName).toBe('حلوان');
+  });
+
+  it('10. reads ride the shipment grant; writes need the catalog grant', async () => {
+    const read = await request(app)
+      .get('/api/v1/operations/areas')
+      .set('Authorization', `Bearer ${viewerToken}`);
+    expect(read.status).toBe(200); // the branch form needs the suggestions
+
+    const write = await area({ name: 'العبور' }, viewerToken);
+    expect(write.status).toBe(403);
   });
 });

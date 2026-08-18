@@ -20,10 +20,12 @@ import {
   type CreateOperationsShipment,
   type ListOperationsCrewRequirementsQuery,
   type AssignSecuredDeliveryLeg,
+  type CreateOperationsArea,
   type DispatchSecuredShipments,
   type ListSecuredBacklogQuery,
   type PlanOperationsCrew,
   type ReceiveIntoVault,
+  type UpdateOperationsArea,
   type SetOperationsCrewRequirements,
   type UpdateOperationsCurrency,
   type UpdateOperationsShipment,
@@ -59,6 +61,10 @@ const operationsKeys = {
   // the spec pins that no write stales them. A report that refetched on every shipment write
   // would be churn; one that refetched on none is correct, because completing a shipment TODAY
   // cannot change last month's totals.
+  // B6. The area list is reference data like the other three catalogs; the vault ROLL-UP is a
+  // view of the vault, so it stales with every secured act exactly as the inventory does.
+  areas: featureKey(MODULE, 'areas'),
+  vaultReport: featureKey(MODULE, 'vaultReport'),
   reportCaptains: featureKey(MODULE, 'reportCaptains'),
   reportBanks: featureKey(MODULE, 'reportBanks'),
   crewAttendance: featureKey(MODULE, 'crewAttendance'),
@@ -69,6 +75,9 @@ const securedSubtrees = [
   featureKey(MODULE, 'securedBacklog'),
   featureKey(MODULE, 'securedDue'),
   featureKey(MODULE, 'vault'),
+  // The roll-up is the SAME question as the inventory, asked differently — receiving a shipment
+  // changes both, and staling one without the other is how two vault screens disagree.
+  featureKey(MODULE, 'vaultReport'),
   featureKey(MODULE, 'shipments'),
   featureKey(MODULE, 'dayBoard'),
 ];
@@ -406,4 +415,46 @@ export const useCrewAttendance = (date: string, enabled = true) =>
     queryKey: listKey(MODULE, 'crewAttendance', { date }),
     queryFn: () => api.getCrewAttendance(date),
     enabled: enabled && date !== '',
+  });
+
+// ── Areas + vault roll-up (B6) ──────────────────────────────────────────────────────────────────
+
+export const useOperationsAreas = (params: OperationsListParams, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'areas', params),
+    queryFn: () => api.listOperationsAreas(params),
+    enabled,
+  });
+
+export const useCreateOperationsArea = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateOperationsArea) => api.createOperationsArea(body),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: operationsKeys.areas });
+      // Branch rows do not reference an area by id, but the branch FORM suggests from this list,
+      // so a new area must be offerable straight away.
+      await qc.invalidateQueries({ queryKey: operationsKeys.branches });
+    },
+  });
+};
+
+export const useUpdateOperationsArea = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: UpdateOperationsArea }) =>
+      api.updateOperationsArea(id, body),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: operationsKeys.areas });
+      await qc.invalidateQueries({ queryKey: operationsKeys.branches });
+    },
+  });
+};
+
+/** The vault roll-up. No parameters at all — the legacy picker never filtered (Q32 PRESERVE). */
+export const useVaultReport = (enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'vaultReport', {}),
+    queryFn: () => api.getVaultReport(),
+    enabled,
   });

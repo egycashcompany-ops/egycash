@@ -260,6 +260,50 @@ export const ListOperationsReferenceQuerySchema = PaginationQuerySchema.extend({
 }).strict();
 export type ListOperationsReferenceQuery = z.infer<typeof ListOperationsReferenceQuerySchema>;
 
+// ── Operational areas (B6 — the legacy /data_edit city list) ────────────────────────────────────
+//
+// WHAT THE LEGACY CITY LIST ACTUALLY IS, which is smaller than its name (discovery §F,
+// contad_app.js:2033-2227): the suggestion source behind the branch form's `area` field.
+// `data_edit.ejs:924` renders it into a `<datalist>` and the branch stores the STRING that was
+// picked or typed — there is no foreign key anywhere. `/tashghela` also loads the list (:2367)
+// and hands it to a template that never reads it. Nothing else in 6,144 lines consumes a city.
+//
+// So it is modelled as a NAME SUGGESTION for `bankBranch.opsAreaName`, not as a location entity.
+// Promoting it to a foreign key would be a NEW rule: legacy branches carry free text, Q24 copies
+// `area` into `area2` verbatim, and existing branch rows have no id to point at.
+//
+// The legacy governorate link is kept as a plain NAME. It existed only to group the dropdown, and
+// ECMS has no governorate entity to reference — `EGYPT_GOVERNORATE_CODES` is a national-ID
+// decoding table, not org structure.
+
+export interface OperationsAreaDto {
+  id: string;
+  /** Legacy `city_name_ar` — the exact string a branch's `opsAreaName` stores. */
+  name: string;
+  /** Legacy `city_name_en`. Optional here: legacy required it and many rows just repeat Arabic. */
+  nameEn: string | null;
+  /** Legacy `governorate_id`, as the governorate's name. Grouping only; nothing joins on it. */
+  governorate: string | null;
+  isActive: boolean;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const areaCore = {
+  name: z.string().min(1),
+  nameEn: z.string().min(1).nullable().default(null),
+  governorate: z.string().min(1).nullable().default(null),
+};
+export const CreateOperationsAreaSchema = z.object(areaCore).strict();
+export type CreateOperationsArea = z.infer<typeof CreateOperationsAreaSchema>;
+export const UpdateOperationsAreaSchema = z
+  .object(areaCore)
+  .partial()
+  .extend({ isActive: z.boolean().optional(), version: z.number().int().min(0) })
+  .strict();
+export type UpdateOperationsArea = z.infer<typeof UpdateOperationsAreaSchema>;
+
 // ── Cash shipments (OP-2) ───────────────────────────────────────────────────────────────────────
 //
 // The legacy `transactions` document normalized per the approved SPLIT (design §15): this entity
@@ -488,6 +532,40 @@ export interface OperationsBankReportDto {
   to: string;
   rows: OperationsBankReportRowDto[];
   grandTotal: OperationsReportTotalsDto;
+}
+
+// ── Vault roll-up (B6 — the legacy /vault1_reports + /vault1 aggregations) ───────────────────────
+//
+// WHAT `/vault1_reports` ACTUALLY WAS (discovery §C, contad_app.js:1311-1333): a SHELL. It loaded
+// `DataLists`, discarded it, and rendered a template with nothing but the session. Every figure on
+// it came from the client re-hitting `/vault1`, which ran TWO aggregations over the same document
+// set (`type:محصنة, status:2, deleted:0`, no dates):
+//
+//   · dataTransaction1 (:1368) — per-BANK roll-up: shipment count, EGP total, non-EGP total, and
+//     bags/boxes/cartons. Packages were computed per DOCUMENT here, before any currency unwind,
+//     so this one was NOT inflated — unlike the captain/bank reports (Q26). The two screens
+//     therefore disagreed with each other about the same packages.
+//   · dataTransaction2 (:1524) — the non-EGP breakdown of that same set, with EGP excluded by a
+//     literal synonym list `['EGP','مصري','جنيه','جنيه مصري']` (:1409).
+//
+// ONE QUESTION, ASKED ONCE. Both are views of one roll-up here, and it runs through the SAME code
+// path as the bank report — which is what makes it impossible for two screens to report different
+// package counts for the same shipments. `foreignCurrencies` is computed server-side rather than
+// filtered in a browser, because "which currency is domestic" is a system fact (ECMS's base
+// currency, EGP everywhere else in the platform) and not a list a screen should carry.
+//
+// NO DATE RANGE, deliberately (Q32 PRESERVE): the legacy screen had a date picker whose filters
+// were commented out in BOTH aggregations, so it was always all-time — which is the right answer
+// for a question about what is in the vault NOW.
+
+export interface OperationsVaultReportDto {
+  /** Per-bank roll-up of everything currently held. */
+  rows: OperationsBankReportRowDto[];
+  grandTotal: OperationsReportTotalsDto;
+  /** The system's domestic currency, so no client has to know which one that is. */
+  baseCurrencyCode: string;
+  /** The legacy second aggregation: the same grand total with the base currency taken out. */
+  foreignCurrencies: OperationsReportCurrencyTotalDto[];
 }
 // ── Crew requirements (B3 — the legacy /requirement screen) ─────────────────────────────────────
 //

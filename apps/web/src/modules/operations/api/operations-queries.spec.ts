@@ -245,3 +245,53 @@ describe('report and attendance caches (B5)', () => {
     expect(qc.getQueryData(july)).toEqual({ rows: ['july'] });
   });
 });
+
+// ── Vault roll-up + areas (B6) ──────────────────────────────────────────────────────────────────
+//
+// The roll-up is the OPPOSITE case from the reports: it IS part of the secured fan-out. It answers
+// "what is in the vault now", so receiving or dispatching changes it — and if it did not stale
+// alongside the inventory, the two vault screens would show different holdings side by side.
+describe('vault roll-up and area caches (B6)', () => {
+  it('stales with the vault inventory on a secured act — they are one question', async () => {
+    const qc = new QueryClient();
+    qc.setQueryData(listKey('operations', 'vault', { page: 1 }), { items: [] });
+    qc.setQueryData(listKey('operations', 'vaultReport', {}), { rows: [] });
+    qc.setQueryData(listKey('operations', 'reportBanks', { from: 'x', to: 'y' }), { rows: [] });
+
+    for (const key of [
+      __operationsKeys.securedBacklog,
+      __operationsKeys.securedDue,
+      __operationsKeys.vault,
+      __operationsKeys.vaultReport,
+      __operationsKeys.shipments,
+      __operationsKeys.dayBoard,
+    ]) {
+      await qc.invalidateQueries({ queryKey: key });
+    }
+
+    expect(isStale(qc, __operationsKeys.vault)).toBe(true);
+    expect(isStale(qc, __operationsKeys.vaultReport)).toBe(true);
+    // ...while the completed-shipment report is still untouched: dispatching does not complete.
+    expect(isStale(qc, __operationsKeys.reportBanks)).toBe(false);
+  });
+
+  it('stales the branches when an area changes — the branch form suggests from that list', async () => {
+    const qc = new QueryClient();
+    seed(qc);
+    qc.setQueryData(listKey('operations', 'areas', { page: 1 }), { items: [] });
+
+    await qc.invalidateQueries({ queryKey: __operationsKeys.areas });
+    await qc.invalidateQueries({ queryKey: __operationsKeys.branches });
+
+    expect(isStale(qc, __operationsKeys.areas)).toBe(true);
+    expect(isStale(qc, __operationsKeys.branches)).toBe(true);
+    // Banks and currencies have nothing to do with an area.
+    expect(isStale(qc, __operationsKeys.banks)).toBe(false);
+    expect(isStale(qc, __operationsKeys.currencies)).toBe(false);
+  });
+
+  it('keeps areas on their own subtree', () => {
+    expect(__operationsKeys.areas).toEqual(['operations', 'areas']);
+    expect(__operationsKeys.vaultReport).toEqual(['operations', 'vaultReport']);
+  });
+});

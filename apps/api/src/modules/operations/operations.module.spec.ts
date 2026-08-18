@@ -1,13 +1,13 @@
 // The manifest guards: the module registers cleanly, and its surfaces are exactly what the
 // shipped slices claim. The pin-the-numbers block (pages.spec precedent) moves with every slice:
-// 14 permissions, 5 pages, 10 routes, 9 collections. B3 adds `operations_crew_requirements` — the
-// operations roster — under the EXISTING crew route prefix and the EXISTING crew grants, so only
-// the collection count moves.
+// 14 permissions, 5 pages, 11 routes, 10 collections. B6 adds `/operations/areas` and
+// `operations_areas` — the legacy /data_edit city list — under the EXISTING catalog grants, and
+// the vault roll-up joins the EXISTING reports prefix, so no permission or page moves.
 import { describe, expect, it } from 'vitest';
 import { platformSatisfies, validateManifest } from '../../platform/kernel/module-registry';
 import { operationsModule, operationsPages, operationsPermissions } from './operations.module';
 
-describe('operations module manifest (B3)', () => {
+describe('operations module manifest (B6)', () => {
   it('passes kernel manifest validation', () => {
     expect(() => {
       validateManifest(operationsModule);
@@ -44,6 +44,7 @@ describe('operations module manifest (B3)', () => {
       'operations.catalogs',
     ]);
     expect(operationsModule.routes.map((r) => r.prefix).sort()).toEqual([
+      '/operations/areas',
       '/operations/assignments',
       '/operations/bank-branches',
       '/operations/banks',
@@ -56,6 +57,7 @@ describe('operations module manifest (B3)', () => {
       '/operations/shipments',
     ]);
     expect(operationsModule.collections.sort()).toEqual([
+      'operations_areas',
       'operations_bank_branches',
       'operations_banks',
       'operations_crew_assignments',

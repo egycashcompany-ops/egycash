@@ -241,6 +241,25 @@ const ATTENDANCE_KEYS = [
   ).map((bucket) => `operations.attendance.count.${bucket}`),
 ];
 
+const VAULT_REPORT_KEYS = [
+  'operations.nav.vaultReport',
+  'operations.cards.vaultReport',
+  'operations.vaultReport.title',
+  'operations.vaultReport.subtitle',
+  'operations.vaultReport.foreign',
+  'operations.vaultReport.noForeign',
+];
+
+const AREA_KEYS = [
+  'operations.catalogs.area.add',
+  'operations.catalogs.area.edit',
+  'operations.catalogs.area.empty',
+  'operations.catalogs.area.name',
+  'operations.catalogs.area.nameEn',
+  'operations.catalogs.area.governorate',
+  'operations.catalogs.area.governorateHint',
+];
+
 const ALL_KEYS = [
   ...SHELL_KEYS,
   ...CATALOG_KEYS,
@@ -249,9 +268,11 @@ const ALL_KEYS = [
   ...SECURED_KEYS,
   ...REPORT_KEYS,
   ...ATTENDANCE_KEYS,
+  ...VAULT_REPORT_KEYS,
+  ...AREA_KEYS,
 ];
 
-describe('operations i18n catalogs (B1–B5)', () => {
+describe('operations i18n catalogs (B1–B6)', () => {
   for (const locale of LOCALES) {
     for (const key of ALL_KEYS) {
       it(`${locale}: ${key}`, () => {

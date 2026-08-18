@@ -75,6 +75,11 @@ export interface VaultCustodyProvider {
   findMany(shipmentIds: string[]): Promise<Map<string, VaultCustodyView>>;
   /** Everything the treasury is holding right now — the legacy /vault1 inventory question. */
   listHeld(page: number, pageSize: number): Promise<{ items: VaultCustodyView[]; total: number }>;
+  /**
+   * The same set, UNPAGED, for the vault roll-up. A roll-up over one page is not a roll-up, and
+   * what a treasury physically holds is bounded in a way its history is not.
+   */
+  allHeld(): Promise<VaultCustodyView[]>;
 }
 
 let provider: VaultCustodyProvider | null = null;

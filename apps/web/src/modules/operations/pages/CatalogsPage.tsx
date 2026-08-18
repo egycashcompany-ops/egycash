@@ -6,9 +6,12 @@
 // fields, and performed no referential check whatsoever (quirks Q22, Q34).
 //
 // WHAT THIS SCREEN DOES INSTEAD, and why:
-//   · Banks / branches / currencies are the three kinds Operations actually joins on. **Cities are
-//     deliberately absent**: no Operations query reads them (they were governorate reference data
-//     for a different screen), so migrating them here would import scope the domain does not own.
+//   · Banks / branches / currencies are the three kinds Operations actually joins on.
+//   · AREAS arrive in B6, correcting what this comment said in B1. B1 recorded cities as read by
+//     nothing; re-reading the legacy view shows they ARE read — `data_edit.ejs:924` renders them
+//     into the `<datalist>` behind a branch's `area` field, which is the string `opsAreaName`
+//     stores. They are a suggestion list, so that is what the tab maintains. (`/tashghela` also
+//     loads them and passes them to a template that never reads them — that half was dead.)
 //   · Rows deactivate rather than delete. Legacy soft-deleted with no referential check, which
 //     silently removed a bank from future pickers while historical reports kept grouping on its
 //     stale name string. `isActive` says the same thing honestly.
@@ -18,6 +21,7 @@
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
+  type OperationsAreaDto,
   type OperationsBankBranchDto,
   type OperationsBankDto,
   type OperationsCurrencyDto,
@@ -30,15 +34,21 @@ import { Button } from '../../../shared/ui/Button';
 import { StatusBadge } from '../../../shared/ui/Badge';
 import { EditIcon, PlusIcon } from '../../../shared/ui/icons';
 import {
+  useOperationsAreas,
   useOperationsBankBranches,
   useOperationsBanks,
   useOperationsCurrencies,
 } from '../api/operations-queries';
-import { BankBranchDialog, BankDialog, CurrencyDialog } from '../components/CatalogDialogs';
+import {
+  AreaDialog,
+  BankBranchDialog,
+  BankDialog,
+  CurrencyDialog,
+} from '../components/CatalogDialogs';
 
 const DEFAULT_PAGE_SIZE = 25;
 
-export const OPERATIONS_CATALOG_KINDS = ['banks', 'branches', 'currencies'] as const;
+export const OPERATIONS_CATALOG_KINDS = ['banks', 'branches', 'currencies', 'areas'] as const;
 export type OperationsCatalogKind = (typeof OPERATIONS_CATALOG_KINDS)[number];
 
 /** Unknown or absent `?kind=` falls back to banks — the kind everything else references. */
@@ -73,13 +83,20 @@ export const CatalogsPage = (): JSX.Element => {
   const banks = useOperationsBanks(params, kind === 'banks');
   const branches = useOperationsBankBranches(params, kind === 'branches');
   const currencies = useOperationsCurrencies(params, kind === 'currencies');
+  const areas = useOperationsAreas(params, kind === 'areas');
 
   // Branch rows name their bank, so the bank list is needed on the branches tab too.
   const bankOptions = useOperationsBanks({ page: 1, pageSize: 200, sortBy: 'code', sortDir: 'asc' });
+  // ...and the branch FORM suggests areas, so that list is needed on the branches tab as well.
+  const areaOptions = useOperationsAreas(
+    { page: 1, pageSize: 500, sortBy: 'name', sortDir: 'asc' },
+    kind === 'branches',
+  );
 
   const [editingBank, setEditingBank] = useState<OperationsBankDto | null>(null);
   const [editingBranch, setEditingBranch] = useState<OperationsBankBranchDto | null>(null);
   const [editingCurrency, setEditingCurrency] = useState<OperationsCurrencyDto | null>(null);
+  const [editingArea, setEditingArea] = useState<OperationsAreaDto | null>(null);
   const [creating, setCreating] = useState(false);
 
   const bankName = (bankId: string): string =>
@@ -198,12 +215,56 @@ export const CatalogsPage = (): JSX.Element => {
     },
   ];
 
+  const areaColumns: Column<OperationsAreaDto>[] = [
+    { key: 'name', header: t('operations.catalogs.area.name'), render: (row) => row.name },
+    { key: 'nameEn', header: t('operations.catalogs.area.nameEn'), render: (row) => row.nameEn ?? '—' },
+    {
+      key: 'governorate',
+      header: t('operations.catalogs.area.governorate'),
+      render: (row) => row.governorate ?? '—',
+    },
+    {
+      key: 'status',
+      header: t('operations.common.status'),
+      render: (row) => (
+        <StatusBadge
+          tone={row.isActive ? 'success' : 'neutral'}
+          label={t(row.isActive ? 'operations.common.active' : 'operations.common.inactive')}
+        />
+      ),
+    },
+    {
+      key: 'actions',
+      header: '',
+      render: (row) => (
+        <button
+          type="button"
+          aria-label={t('common.edit')}
+          className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
+          onClick={() => setEditingArea(row)}
+        >
+          <EditIcon className="h-4 w-4" />
+        </button>
+      ),
+    },
+  ];
+
   const activeMeta =
     kind === 'banks'
       ? banks.data?.meta
       : kind === 'branches'
         ? branches.data?.meta
-        : currencies.data?.meta;
+        : kind === 'currencies'
+          ? currencies.data?.meta
+          : areas.data?.meta;
+
+  /** The `add` label follows the tab. One map, so a new kind cannot be forgotten here. */
+  const addLabelKey: Record<typeof kind, string> = {
+    banks: 'operations.catalogs.bank.add',
+    branches: 'operations.catalogs.branch.add',
+    currencies: 'operations.catalogs.currency.add',
+    areas: 'operations.catalogs.area.add',
+  };
 
   return (
     <PageContainer>
@@ -213,7 +274,7 @@ export const CatalogsPage = (): JSX.Element => {
         actions={
           <Button onClick={() => setCreating(true)}>
             <PlusIcon className="h-4 w-4" />
-            {t(`operations.catalogs.${kind === 'branches' ? 'branch' : kind === 'banks' ? 'bank' : 'currency'}.add`)}
+            {t(addLabelKey[kind])}
           </Button>
         }
       />
@@ -270,6 +331,18 @@ export const CatalogsPage = (): JSX.Element => {
         />
       )}
 
+      {kind === 'areas' && (
+        <DataTable
+          columns={areaColumns}
+          rows={areas.data?.items ?? []}
+          rowKey={(row) => row.id}
+          loading={areas.isLoading}
+          error={areas.error}
+          onRetry={() => void areas.refetch()}
+          empty={t('operations.catalogs.area.empty')}
+        />
+      )}
+
       {activeMeta !== undefined && (
         <Pagination
           meta={activeMeta}
@@ -290,6 +363,7 @@ export const CatalogsPage = (): JSX.Element => {
         open={editingBranch !== null || (creating && kind === 'branches')}
         branch={editingBranch}
         banks={bankOptions.data?.items ?? []}
+        areas={areaOptions.data?.items ?? []}
         onClose={() => {
           setEditingBranch(null);
           setCreating(false);
@@ -300,6 +374,14 @@ export const CatalogsPage = (): JSX.Element => {
         currency={editingCurrency}
         onClose={() => {
           setEditingCurrency(null);
+          setCreating(false);
+        }}
+      />
+      <AreaDialog
+        open={editingArea !== null || (creating && kind === 'areas')}
+        area={editingArea}
+        onClose={() => {
+          setEditingArea(null);
           setCreating(false);
         }}
       />

@@ -31,10 +31,14 @@ import {
   type AssignSecuredDeliveryLeg,
   type DispatchSecuredShipments,
   type ListSecuredBacklogQuery,
+  type CreateOperationsArea,
+  type OperationsAreaDto,
   type OperationsBankReportDto,
   type OperationsCaptainReportDto,
   type OperationsCrewAttendanceDayDto,
   type OperationsVaultCustodyDto,
+  type OperationsVaultReportDto,
+  type UpdateOperationsArea,
   type OperationsVaultInventoryRowDto,
   type PlanOperationsCrew,
   type ReceiveIntoVault,
@@ -255,3 +259,24 @@ export const getBankReport = (
  */
 export const getCrewAttendance = (date: string): Promise<OperationsCrewAttendanceDayDto> =>
   get<OperationsCrewAttendanceDayDto>(`/operations/crew-board/attendance${buildQuery({ date })}`);
+
+/**
+ * `/data_edit` city list — the suggestion source behind a branch's operational area (B6).
+ * Legacy stored the STRING the user picked, so this list feeds a datalist, not a foreign key.
+ */
+export const listOperationsAreas = (
+  params: OperationsListParams,
+): Promise<Paginated<OperationsAreaDto>> =>
+  get<Paginated<OperationsAreaDto>>(`/operations/areas${buildQuery(params)}`);
+
+export const createOperationsArea = (body: CreateOperationsArea): Promise<OperationsAreaDto> =>
+  post<OperationsAreaDto>('/operations/areas', body);
+
+export const updateOperationsArea = (
+  id: string,
+  body: UpdateOperationsArea,
+): Promise<OperationsAreaDto> => patch<OperationsAreaDto>(`/operations/areas/${id}`, body);
+
+/** `/vault1_reports` — the vault roll-up. NO date range, deliberately (Q32 PRESERVE). */
+export const getVaultReport = (): Promise<OperationsVaultReportDto> =>
+  get<OperationsVaultReportDto>('/operations/reports/vault');

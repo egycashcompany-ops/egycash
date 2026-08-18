@@ -4638,7 +4638,23 @@ const en: Record<string, string> = {
   'operations.vault.receivedBy': 'Received by',
   'operations.vault.receivedAt': 'Received at',
   'operations.vault.empty': 'The vault is empty',
-  // ── Operations reports + crew attendance (B5) ─────────────────────────────────────────────────
+  // ── Operations reports + crew attendance (B5) · vault roll-up + areas (B6) ────────────────────
+  'operations.nav.vaultReport': 'Vault roll-up',
+  'operations.cards.vaultReport': 'What the vault holds now, by bank',
+  'operations.vaultReport.title': 'Vault roll-up',
+  'operations.vaultReport.subtitle':
+    'Everything currently held, by bank. All-time by design — the vault is a question about now.',
+  'operations.vaultReport.foreign': 'Currencies other than {{base}}',
+  'operations.vaultReport.noForeign': 'Nothing held in another currency',
+  'operations.catalogs.tab.areas': 'Areas',
+  'operations.catalogs.area.add': 'Add area',
+  'operations.catalogs.area.edit': 'Edit area',
+  'operations.catalogs.area.empty': 'No areas yet',
+  'operations.catalogs.area.name': 'Area (Arabic)',
+  'operations.catalogs.area.nameEn': 'Area (English)',
+  'operations.catalogs.area.governorate': 'Governorate',
+  'operations.catalogs.area.governorateHint':
+    'Grouping only — nothing is joined on it.',
   'operations.nav.captainReport': 'Captain report',
   'operations.cards.captainReport': "The period's completed shipments, by captain",
   'operations.nav.bankReport': 'Bank report',
@@ -9230,7 +9246,22 @@ const ar: Record<string, string> = {
   'operations.vault.receivedBy': 'استلمها',
   'operations.vault.receivedAt': 'وقت الاستلام',
   'operations.vault.empty': 'الخزينة فارغة',
-  // ── تقارير العمليات + حضور الطاقم (B5) ────────────────────────────────────────────────────────
+  // ── تقارير العمليات + حضور الطاقم (B5) · تجميع الخزينة + المناطق (B6) ─────────────────────────
+  'operations.nav.vaultReport': 'تجميع الخزينة',
+  'operations.cards.vaultReport': 'ما بالخزينة الآن، حسب البنك',
+  'operations.vaultReport.title': 'تجميع الخزينة',
+  'operations.vaultReport.subtitle':
+    'كل ما هو محتفَظ به الآن، حسب البنك. بلا فترة زمنية عن قصد — الخزينة سؤال عن اللحظة.',
+  'operations.vaultReport.foreign': 'العملات غير {{base}}',
+  'operations.vaultReport.noForeign': 'لا يوجد محتفَظ به بعملة أخرى',
+  'operations.catalogs.tab.areas': 'المناطق',
+  'operations.catalogs.area.add': 'إضافة منطقة',
+  'operations.catalogs.area.edit': 'تعديل منطقة',
+  'operations.catalogs.area.empty': 'لا توجد مناطق بعد',
+  'operations.catalogs.area.name': 'المنطقة (عربي)',
+  'operations.catalogs.area.nameEn': 'المنطقة (إنجليزي)',
+  'operations.catalogs.area.governorate': 'المحافظة',
+  'operations.catalogs.area.governorateHint': 'للتجميع فقط — لا يُربط بها شيء.',
   'operations.nav.captainReport': 'تقرير القادة',
   'operations.cards.captainReport': 'الشحنات المكتملة خلال الفترة، حسب القائد',
   'operations.nav.bankReport': 'تقرير البنوك',

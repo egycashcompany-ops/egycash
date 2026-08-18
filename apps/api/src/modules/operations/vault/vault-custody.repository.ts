@@ -21,6 +21,19 @@ class OperationsVaultCustodyRepository extends BaseRepository<OperationsVaultCus
       .exec();
   }
 
+  /**
+   * Everything the treasury holds right now, UNPAGED — the vault roll-up's input set.
+   *
+   * Unpaged on purpose: a roll-up over page 1 of the vault is not a roll-up of the vault, and the
+   * held set is bounded by what physically fits in a treasury, not by a growing history.
+   */
+  async findAllHeld(): Promise<OperationsVaultCustodyDoc[]> {
+    return this.model
+      .find({ state: 'held', isDeleted: false })
+      .lean<OperationsVaultCustodyDoc[]>()
+      .exec();
+  }
+
   /** Custody for a SET of shipments — the reports' package counts, in one round trip. */
   async findByShipments(shipmentIds: string[]): Promise<OperationsVaultCustodyDoc[]> {
     if (shipmentIds.length === 0) return [];

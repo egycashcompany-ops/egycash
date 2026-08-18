@@ -20,10 +20,15 @@
 //     behaves as it did.
 //   · The vehicle list comes from the Fleet duty roster for the date, which is the normalized form
 //     of the legacy `car_lock` gate — Operations never re-models the roster.
+//   · THE STANDING CREW DESCENDS ONTO THIS BOARD (الطاقم الثابت). Once per date, when nobody has
+//     planned it yet, and by a permanent button any other time. The seed is an ABSOLUTE
+//     ROW-EXISTENCE VETO — a vehicle that already has a crew row is never touched — because
+//     `plan()` has no delete path, so a slot emptied on purpose is byte-identical to one never
+//     filled, and a field-level merge would put a captain who called in sick back every morning.
 //
 // The board is edited locally and saved explicitly, exactly like the legacy one: a drag is not a
 // write. Only CHANGED rows are sent.
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { type OperationsCrewMemberDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
@@ -39,8 +44,11 @@ import { toast } from '../../../shared/ui/toast/toast-store';
 import {
   useOperationsCrewBoard,
   useOperationsCrewDirectory,
+  useOperationsStandingCrew,
   usePlanOperationsCrew,
+  useSeedCrewFromStanding,
 } from '../api/operations-queries';
+import { seedSummary, shouldAutoSeed } from '../lib/crew-seed';
 import {
   CREW_SLOTS,
   SLOT_POSITIONS,
@@ -79,7 +87,9 @@ export const CrewBoardPage = (): JSX.Element => {
 
   const board = useOperationsCrewBoard(date);
   const directory = useOperationsCrewDirectory(date);
+  const standing = useOperationsStandingCrew();
   const plan = usePlanOperationsCrew();
+  const seed = useSeedCrewFromStanding();
   const canPlan = can('operationsCrew.plan');
 
   const serverRows = useMemo(() => toBoardRows(board.data?.rows ?? []), [board.data]);
@@ -134,6 +144,56 @@ export const CrewBoardPage = (): JSX.Element => {
 
   const boardDay = (board.data?.date ?? '').slice(0, 10);
 
+  // ── The descent: الطاقم الثابت ينزل في التشغيلة ────────────────────────────────────────────────
+  const runSeed = async (announceQuiet: boolean): Promise<void> => {
+    if (boardDay === '') return;
+    try {
+      const result = await seed.mutateAsync({ date: new Date(boardDay) });
+      const summary = seedSummary(result.seed);
+      if (summary.quiet) {
+        // Nothing happened and nothing was declined. Saying so on every visit would train the
+        // operator to dismiss the message that matters, so only an explicit press gets an answer.
+        if (announceQuiet) toast.success(t('operations.crew.seed.nothing'));
+        return;
+      }
+      toast.success(t('operations.crew.seed.done', { count: summary.seeded }));
+      // The omissions are a SEPARATE message, because a half-planned day that only says "seeded 4"
+      // reads as a finished one.
+      if (summary.notRostered + summary.noCrew + summary.dropped > 0) {
+        toast.error(
+          t('operations.crew.seed.skipped', {
+            notRostered: summary.notRostered,
+            noCrew: summary.noCrew,
+            dropped: summary.dropped,
+          }),
+        );
+      }
+    } catch {
+      if (announceQuiet) toast.error(t('operations.crew.seed.failed'));
+    }
+  };
+
+  // ONE ATTEMPT PER DATE, whatever the outcome. A ref rather than state: remembering an attempt
+  // must not itself cause a render, or the effect would race its own re-run.
+  const attempted = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const shouldFire = shouldAutoSeed({
+      canPlan,
+      boardDay: board.data?.day ?? null,
+      standingRowCount: standing.data?.rows.length ?? 0,
+      attempted: attempted.current,
+      date: boardDay,
+      busy: board.isLoading || standing.isLoading || seed.isPending,
+    });
+    if (!shouldFire) return;
+    // Recorded BEFORE the call, not after: the effect re-runs the moment the seed invalidates the
+    // board query, and a flag set on completion would let a second attempt start first.
+    attempted.current.add(boardDay);
+    void runSeed(false);
+    // `runSeed` is deliberately not a dependency — it is rebuilt every render and closes over the
+    // same query state this list already tracks, so including it would re-run the effect forever.
+  }, [canPlan, board.data, board.isLoading, standing.data, standing.isLoading, boardDay]);
+
   return (
     <PageContainer>
       <PageHeader
@@ -141,9 +201,22 @@ export const CrewBoardPage = (): JSX.Element => {
         description={t('operations.crew.subtitle')}
         actions={
           canPlan ? (
-            <Button onClick={() => void save()} disabled={!dirty || plan.isPending}>
-              {dirty ? t('operations.crew.saveCount', { count: pending.length }) : t('common.save')}
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Permanent, not only automatic: the auto-fire happens once per date, and an
+                  operator who has just edited the standing crew needs a way to ask again. */}
+              <Button
+                variant="secondary"
+                onClick={() => void runSeed(true)}
+                disabled={seed.isPending || (standing.data?.rows.length ?? 0) === 0}
+              >
+                {t('operations.crew.seed.action')}
+              </Button>
+              <Button onClick={() => void save()} disabled={!dirty || plan.isPending}>
+                {dirty
+                  ? t('operations.crew.saveCount', { count: pending.length })
+                  : t('common.save')}
+              </Button>
+            </div>
           ) : undefined
         }
       />

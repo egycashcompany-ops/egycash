@@ -4541,7 +4541,6 @@ const en: Record<string, string> = {
   'operations.dailyOps.subtitle':
     "The day's work: shipments collected today, and secured shipments out for delivery today.",
   'operations.dailyOps.date': 'Day',
-  'operations.dailyOps.all': 'All',
   'operations.dailyOps.received': 'Delivered',
   'operations.dailyOps.receivedYes': 'Delivered',
   'operations.dailyOps.receivedNo': 'Not yet',
@@ -9200,7 +9199,6 @@ const ar: Record<string, string> = {
   'operations.dailyOps.title': 'العمليات اليومية',
   'operations.dailyOps.subtitle': 'عمل اليوم: الشحنات المُحصَّلة اليوم، والمحصنات الخارجة للتسليم اليوم.',
   'operations.dailyOps.date': 'اليوم',
-  'operations.dailyOps.all': 'الكل',
   'operations.dailyOps.received': 'التسليم',
   'operations.dailyOps.receivedYes': 'تم التسليم',
   'operations.dailyOps.receivedNo': 'لم يتم',

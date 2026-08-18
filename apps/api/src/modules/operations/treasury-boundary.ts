@@ -68,6 +68,11 @@ export interface VaultCustodyProvider {
   release(shipmentId: string, by: string, session?: unknown): Promise<VaultCustodyView>;
   /** Current custody for a shipment, or null when the treasury never held it. */
   find(shipmentId: string): Promise<VaultCustodyView | null>;
+  /**
+   * Custody for a SET of shipments, keyed by shipment id. Shipments the treasury never held are
+   * simply absent. Exists so a month's report is one question, not one per shipment.
+   */
+  findMany(shipmentIds: string[]): Promise<Map<string, VaultCustodyView>>;
   /** Everything the treasury is holding right now — the legacy /vault1 inventory question. */
   listHeld(page: number, pageSize: number): Promise<{ items: VaultCustodyView[]; total: number }>;
 }

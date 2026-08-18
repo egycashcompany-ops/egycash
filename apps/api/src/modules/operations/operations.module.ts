@@ -22,6 +22,7 @@ import { buildOperationsCrewRouter } from './crew/crew.routes';
 import { buildOperationsSecuredRouter } from './secured/secured.routes';
 import { buildOperationsAssignmentsRouter } from './assignments/assignment.routes';
 import { buildOperationsMobileRouter } from './mobile/mobile.routes';
+import { buildOperationsReportsRouter } from './reports/report.routes';
 // Registers the interim vault-custody provider on the Treasury port at module load
 // (see ./treasury-boundary.ts). Importing for the side effect is the platform seam convention.
 import './vault/vault-custody.service';
@@ -169,11 +170,10 @@ export const operationsPages: PageDef[] = [
 export const operationsModule: ModuleManifest = {
   id: 'operations',
   name: { en: 'Operations', ar: 'العمليات' },
-  // B3 adds the operations crew ROSTER (`operations_crew_requirements`) — the legacy /requirement
-  // screen — under the EXISTING `/operations/crew-board` prefix and the EXISTING crew grants.
-  // Maintaining who counts as crew is a planning decision, not a separately delegable one, so no
-  // permission and no page is added: only the collection list grows.
-  version: '0.8.0',
+  // B5 adds the two reports under a new `/operations/reports` prefix. They ride the EXISTING
+  // `operationsShipment.view` grant — a report is a read of shipments the caller can already see —
+  // and store nothing, so no permission, page or collection is added.
+  version: '0.9.0',
   requiresPlatform: '^2.2',
   permissions: operationsPermissions,
   pages: operationsPages,
@@ -187,6 +187,7 @@ export const operationsModule: ModuleManifest = {
     { prefix: '/operations/secured', router: buildOperationsSecuredRouter() },
     { prefix: '/operations/assignments', router: buildOperationsAssignmentsRouter() },
     { prefix: '/operations/mobile', router: buildOperationsMobileRouter() },
+    { prefix: '/operations/reports', router: buildOperationsReportsRouter() },
   ],
   collections: [
     'operations_shipments',

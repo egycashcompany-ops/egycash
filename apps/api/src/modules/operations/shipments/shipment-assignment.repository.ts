@@ -94,6 +94,21 @@ class OperationsShipmentAssignmentRepository extends BaseRepository<OperationsSh
       .exec();
   }
 
+  /**
+   * Every assignment on a SET of shipments — the reports' captain attribution, in one round trip.
+   *
+   * Both legs come back and the caller picks the one its shipment type reports on: a secured
+   * shipment usually has a pickup leg too, and reporting it under the collecting captain instead
+   * of the delivering one would silently move a month's work between people.
+   */
+  async findByShipments(shipmentIds: string[]): Promise<OperationsShipmentAssignmentDoc[]> {
+    if (shipmentIds.length === 0) return [];
+    return this.model
+      .find({ shipmentId: { $in: shipmentIds }, isDeleted: false })
+      .lean<OperationsShipmentAssignmentDoc[]>()
+      .exec();
+  }
+
   async findByShipmentAndLeg(
     shipmentId: string,
     leg: OperationsShipmentLeg,

@@ -3,6 +3,7 @@ import { type Request, type Response } from 'express';
 import {
   type ListOperationsCrewRequirementsQuery,
   type OperationsCrewBoardQuery,
+  type OperationsCrewAttendanceQuery,
   type OperationsCrewDirectoryQuery,
   type PlanOperationsCrew,
   type SetOperationsCrewRequirements,
@@ -31,6 +32,11 @@ export const planCrew = async (req: Request, res: Response): Promise<void> => {
 export const getCrewDirectory = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, OperationsCrewDirectoryQuery>(req);
   ok(res, await operationsCrewRequirementsService.directory(query.date));
+};
+
+export const getCrewAttendance = async (req: Request, res: Response): Promise<void> => {
+  const { query } = validated<never, OperationsCrewAttendanceQuery>(req);
+  ok(res, await operationsCrewRequirementsService.attendance(query.date));
 };
 
 export const listCrewRequirements = async (req: Request, res: Response): Promise<void> => {

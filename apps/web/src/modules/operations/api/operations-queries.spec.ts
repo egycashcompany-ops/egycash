@@ -165,3 +165,83 @@ describe('crew board write fan-out (B3)', () => {
     expect(__operationsKeys.crewRequirements).toEqual(['operations', 'crewRequirements']);
   });
 });
+
+// ── Reports + attendance (B5) ───────────────────────────────────────────────────────────────────
+//
+// The guard here is the OPPOSITE of the one above: these three must NOT be dragged into any
+// Operations write's fan-out. A month's report is a roll-up of shipments that are already
+// complete, and attendance is HR's record — a shipment saved today changes neither, and staling
+// them on every write would refetch a month's aggregation for nothing.
+describe('report and attendance caches (B5)', () => {
+  const seedB5 = (qc: QueryClient): void => {
+    qc.setQueryData(listKey('operations', 'reportCaptains', { from: '2026-08-01', to: '2026-08-31' }), {
+      rows: [],
+    });
+    qc.setQueryData(listKey('operations', 'reportBanks', { from: '2026-08-01', to: '2026-08-31' }), {
+      rows: [],
+    });
+    qc.setQueryData(listKey('operations', 'crewAttendance', { date: '2026-08-18' }), { members: [] });
+  };
+
+  it('keeps the two reports and attendance on their own subtrees', () => {
+    expect(__operationsKeys.reportCaptains).toEqual(['operations', 'reportCaptains']);
+    expect(__operationsKeys.reportBanks).toEqual(['operations', 'reportBanks']);
+    expect(__operationsKeys.crewAttendance).toEqual(['operations', 'crewAttendance']);
+  });
+
+  it('a secured act stales the four secured screens and leaves the reports alone', async () => {
+    const qc = new QueryClient();
+    seed(qc);
+    seedB5(qc);
+    qc.setQueryData(listKey('operations', 'vault', { page: 1 }), { items: [] });
+
+    // Exactly what `useSecuredInvalidation` does.
+    for (const key of [
+      __operationsKeys.securedBacklog,
+      __operationsKeys.securedDue,
+      __operationsKeys.vault,
+      __operationsKeys.shipments,
+      __operationsKeys.dayBoard,
+    ]) {
+      await qc.invalidateQueries({ queryKey: key });
+    }
+
+    expect(isStale(qc, __operationsKeys.vault)).toBe(true);
+    expect(isStale(qc, __operationsKeys.reportCaptains)).toBe(false);
+    expect(isStale(qc, __operationsKeys.reportBanks)).toBe(false);
+    expect(isStale(qc, __operationsKeys.crewAttendance)).toBe(false);
+  });
+
+  it('planning the crew does not stale attendance — Operations does not write HR records', async () => {
+    const qc = new QueryClient();
+    seedB5(qc);
+    qc.setQueryData(listKey('operations', 'crewBoard', { date: '2026-08-18' }), { vehicles: [] });
+
+    await qc.invalidateQueries({ queryKey: __operationsKeys.crewBoard });
+    await qc.invalidateQueries({ queryKey: __operationsKeys.crewDirectory });
+
+    expect(isStale(qc, __operationsKeys.crewBoard)).toBe(true);
+    expect(isStale(qc, __operationsKeys.crewAttendance)).toBe(false);
+  });
+
+  it('the two reports are independent — a captain range does not stale the bank one', async () => {
+    const qc = new QueryClient();
+    seedB5(qc);
+    await qc.invalidateQueries({ queryKey: __operationsKeys.reportCaptains });
+
+    expect(isStale(qc, __operationsKeys.reportCaptains)).toBe(true);
+    expect(isStale(qc, __operationsKeys.reportBanks)).toBe(false);
+  });
+
+  it('caches each range separately, so switching months back is a hit not a refetch', () => {
+    const august = listKey('operations', 'reportCaptains', { from: '2026-08-01', to: '2026-08-31' });
+    const july = listKey('operations', 'reportCaptains', { from: '2026-07-01', to: '2026-07-31' });
+    expect(august).not.toEqual(july);
+
+    const qc = new QueryClient();
+    qc.setQueryData(august, { rows: ['august'] });
+    qc.setQueryData(july, { rows: ['july'] });
+    expect(qc.getQueryData(august)).toEqual({ rows: ['august'] });
+    expect(qc.getQueryData(july)).toEqual({ rows: ['july'] });
+  });
+});

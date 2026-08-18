@@ -22,6 +22,9 @@ import {
   type OperationsCaptainRouteDto,
   type OperationsMobileDayDto,
   type OperationsShipmentAssignmentDto,
+  type OperationsBankReportDto,
+  type OperationsCaptainReportDto,
+  type OperationsCrewAttendanceDayDto,
   type OperationsShipmentDto,
   type OperationsVaultInventoryRowDto,
   type PageMeta,
@@ -973,6 +976,17 @@ describe('secured (محصنة) workflow — the four legacy screens (OP-4)', () 
     expect(vaultRead.status).toBe(403);
   });
 });
+
+/** The first crew assignment id on a given day, read straight from the collection seam. */
+const crewAssignmentIdForDay = async (date: string): Promise<string> => {
+  const { operationsCrewAssignmentRepository } = await import(
+    '../../src/modules/operations/crew/crew-assignment.repository'
+  );
+  const { operationsDayService } = await import('../../src/modules/operations/days/day.service');
+  const day = await operationsDayService.findByDate(new Date(date));
+  const rows = await operationsCrewAssignmentRepository.findForDay(day?._id ?? '');
+  return String(rows[0]?._id ?? '');
+};
 
 /** The crew assignment id for the OP-4 delivery day, read straight from the collection seam. */
 const findCrewAssignmentId = async (): Promise<string> => {
@@ -2348,6 +2362,394 @@ describe('crew roster and requirements — legacy /requirement (B3)', () => {
 
   it('rejects an unknown flag rather than silently dropping it', async () => {
     const res = await setRequirements(memberA, { isCaptain: true, canFly: true });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('operations reports — legacy /ops_report and /ops_bank_report (B5)', () => {
+  // The reports are where three legacy DEFECTS lived, and each of them changed a number a user
+  // has read before. These tests exist to pin the corrected numbers, not just the shapes.
+  const REPORT_MONTH = { from: '2026-09-01', to: '2026-09-30' };
+  let reportCaptain = '';
+  let reportCrewId = '';
+  let usd: OperationsCurrencyDto;
+  let eur: OperationsCurrencyDto;
+  /**
+   * A bank used by NOTHING else. The Q26 assertion is an exact package count, and an exact count
+   * on a shared row is really an assertion about every other test in the file.
+   */
+  let reportBank: OperationsBankDto;
+  let reportBranch: OperationsBankBranchDto;
+
+  const mkCurrency = async (code: string, name: string): Promise<OperationsCurrencyDto> => {
+    const res = await request(app)
+      .post('/api/v1/operations/currencies')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code, name, legacyAliases: [name] });
+    expect(res.status).toBe(201);
+    return data<OperationsCurrencyDto>(res);
+  };
+
+  const captainReport = (
+    range: { from: string; to: string } | null = REPORT_MONTH,
+    token = adminToken,
+  ): request.Test =>
+    request(app)
+      .get(
+        range === null
+          ? '/api/v1/operations/reports/captains'
+          : `/api/v1/operations/reports/captains?from=${range.from}&to=${range.to}`,
+      )
+      .set('Authorization', `Bearer ${token}`);
+
+  const bankReport = (range = REPORT_MONTH, token = adminToken): request.Test =>
+    request(app)
+      .get(`/api/v1/operations/reports/banks?from=${range.from}&to=${range.to}`)
+      .set('Authorization', `Bearer ${token}`);
+
+  /** Create a daily shipment collected inside the report month, then complete it. */
+  const completedDaily = async (
+    lines: { currencyId: string; amount: number }[],
+    collectionDate = '2026-09-10',
+  ): Promise<OperationsShipmentDto> => {
+    const created = await mkShipment({
+      lines,
+      collectionDate,
+      mainBankId: reportBank.id,
+      originBranchId: reportBranch.id,
+      destinationBranchId: reportBranch.id,
+    });
+    expect(created.status).toBe(201);
+    const shipment = data<OperationsShipmentDto>(created);
+    const done = await request(app)
+      .post(`/api/v1/operations/shipments/${shipment.id}/complete`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: shipment.version });
+    expect(done.status).toBe(200);
+    return data<OperationsShipmentDto>(done);
+  };
+
+  beforeAll(async () => {
+    usd = await mkCurrency('USD', 'دولار');
+    eur = await mkCurrency('EUR', 'يورو');
+
+    const bankRes = await request(app)
+      .post('/api/v1/operations/banks')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: 71, name: { ar: 'بنك التقارير', en: 'Report Bank' }, opsName: 'التقارير' });
+    expect(bankRes.status).toBe(201);
+    reportBank = data<OperationsBankDto>(bankRes);
+
+    const branchRes = await request(app)
+      .post('/api/v1/operations/bank-branches')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        bankId: reportBank.id,
+        name: 'فرع التقارير',
+        code: 'R-1',
+        opsAreaName: 'القاهرة',
+      });
+    expect(branchRes.status).toBe(201);
+    reportBranch = data<OperationsBankBranchDto>(branchRes);
+
+    reportCaptain = await mkEmployee();
+    // The §9.4 anchor: Operations may only crew a vehicle Fleet has rostered for the date.
+    const roster = await request(app)
+      .post('/api/v1/fleet/roster')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date: '2026-09-10', rows: [{ vehicleId: vehicleAId, notes: 'report seed' }] });
+    expect(roster.status).toBe(200);
+
+    const plan = await request(app)
+      .post('/api/v1/operations/crew-board')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        date: '2026-09-10',
+        rows: [{ vehicleId: vehicleAId, captainEmployeeId: reportCaptain }],
+      });
+    expect(plan.status).toBe(200);
+    // The crew assignment id is not on the board DTO — the board shows the crew, not its row id —
+    // so it comes from the collection seam, the same way the OP-5 suite gets it.
+    reportCrewId = await crewAssignmentIdForDay('2026-09-10');
+    expect(reportCrewId).not.toBe('');
+  });
+
+  it('1. defaults to the current month when no range is given — the legacy default (:4862)', async () => {
+    const res = await captainReport(null);
+    expect(res.status).toBe(200);
+    const report = data<OperationsCaptainReportDto>(res);
+    const now = new Date();
+    const first = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const last = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0));
+    expect(report.from.slice(0, 10)).toBe(first.toISOString().slice(0, 10));
+    // Reported as the INCLUSIVE last day: the exclusive bound stays inside the query.
+    expect(report.to.slice(0, 10)).toBe(last.toISOString().slice(0, 10));
+  });
+
+  it('2. Q26 — package counts are NOT multiplied by the number of currencies', async () => {
+    // A secured shipment with THREE currency lines and a known package count. Legacy `$unwind`ed
+    // the currency pairs and then summed bag/box/carton per row, reporting 3x the real packages.
+    const created = await mkShipment({
+      shipmentType: 'secured',
+      // The SAME day the crew row is on: `assign-delivery` requires the crew assignment to belong
+      // to the shipment's delivery day, which is what makes (day, vehicle, leg) → crew resolvable.
+      deliveryDate: '2026-09-10',
+      mainBankId: reportBank.id,
+      originBranchId: reportBranch.id,
+      destinationBranchId: reportBranch.id,
+      lines: [
+        { currencyId: egp.id, amount: 100 },
+        { currencyId: usd.id, amount: 200 },
+        { currencyId: eur.id, amount: 300 },
+      ],
+    });
+    expect(created.status).toBe(201);
+    const secured = data<OperationsShipmentDto>(created);
+
+    const received = await request(app)
+      .post(`/api/v1/operations/secured/${secured.id}/receive`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        receiptNumber: `R-RPT-${secured.id.slice(-5)}`,
+        bagCount: 10,
+        cartonCount: 4,
+        boxCount: 2,
+        receivedByPrimaryId: captainId,
+        receivedBySecondaryId: specialist1Id,
+        version: secured.version,
+      });
+    expect(received.status).toBe(200);
+
+    // The secured ladder is 0 → 2 → 3 → 1: a shipment reaches `completed` from `dispatched`, not
+    // straight out of the vault. It has to leave custody first, which is also what makes its
+    // packaging figures final — and it can only leave on the crew row it was assigned to.
+    const inVault = data<OperationsShipmentDto>(
+      await request(app)
+        .get(`/api/v1/operations/shipments/${secured.id}`)
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+    const legAssigned = await request(app)
+      .post(`/api/v1/operations/secured/${secured.id}/assign-delivery`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        crewAssignmentId: reportCrewId,
+        captainEmployeeId: reportCaptain,
+        version: inVault.version,
+      });
+    expect(legAssigned.status).toBe(200);
+
+    const dispatched = await request(app)
+      .post('/api/v1/operations/secured/dispatch')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ crewAssignmentId: reportCrewId, shipmentIds: [secured.id] });
+    expect(dispatched.status).toBe(200);
+
+    const fresh = data<OperationsShipmentDto>(
+      await request(app)
+        .get(`/api/v1/operations/shipments/${secured.id}`)
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+    expect(fresh.status).toBe('dispatched');
+    const done = await request(app)
+      .post(`/api/v1/operations/shipments/${secured.id}/complete`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: fresh.version });
+    expect(done.status).toBe(200);
+
+    const res = await bankReport();
+    expect(res.status).toBe(200);
+    const report = data<OperationsBankReportDto>(res);
+    const row = report.rows.find((r) => r.bankId === reportBank.id);
+    expect(row).toBeDefined();
+    // Counted ONCE, not once per currency line. The legacy figure would have been 30/12/6.
+    expect(row?.totals.bagCount).toBe(10);
+    expect(row?.totals.cartonCount).toBe(4);
+    expect(row?.totals.boxCount).toBe(2);
+    // All three currencies are still reported — the fix is to the packages, not to the money.
+    expect(row?.totals.currencies.map((c) => c.amount).sort((a, b) => a - b)).toEqual([
+      100, 200, 300,
+    ]);
+  });
+
+  it('3. Q28 — a zero-currency shipment cannot even be CREATED, which is the stronger fix', async () => {
+    // Legacy's report DROPPED such a document entirely, taking its count with it. ECMS closes the
+    // hole one step earlier: `lines` requires at least one entry, so a shipment carrying no money
+    // never enters the system in the first place.
+    const refused = await mkShipment({ lines: [], collectionDate: '2026-09-14' });
+    expect(refused.status).toBe(400);
+
+    // The roll-up still handles the case, because MIGRATED legacy rows can carry it. That path is
+    // covered where it can be exercised directly — report-aggregation.spec.ts, "counts a shipment
+    // with no currency lines at all" — rather than faked through an endpoint that refuses it.
+    const report = data<OperationsBankReportDto>(await bankReport());
+    const row = report.rows.find((r) => r.bankId === reportBank.id);
+    expect(row).toBeDefined();
+    expect(row?.totals.shipmentCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it('4. Q27 — the grand total is a separate field, so summing the rows cannot double-count', async () => {
+    const report = data<OperationsBankReportDto>(await bankReport());
+    const summed = report.rows.reduce((acc, r) => acc + r.totals.shipmentCount, 0);
+    // The legacy report appended the total INTO the results array; here `rows` holds only real
+    // rows, and their sum equals the separate grand total exactly.
+    expect(report.grandTotal.shipmentCount).toBe(summed);
+    // And `rows` carries no synthetic total row: legacy appended one keyed `'الإجمالي العام'`
+    // into the same array (:5117/:5399), which is exactly what made summing the rows wrong.
+    expect(report.rows.map((r) => r.bankName)).not.toContain('الإجمالي العام');
+    expect(report.rows.every((r) => r.totals.shipmentCount >= 1)).toBe(true);
+  });
+
+  it('5. attributes a shipment to the captain of the leg its TYPE reports on', async () => {
+    const shipment = await completedDaily([{ currencyId: egp.id, amount: 500 }], '2026-09-10');
+    const assigned = await request(app)
+      .post(`/api/v1/operations/assignments/shipments/${shipment.id}/assign-pickup`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        crewAssignmentId: reportCrewId,
+        captainEmployeeId: reportCaptain,
+        version: 0,
+      });
+    expect(assigned.status).toBe(200);
+
+    const report = data<OperationsCaptainReportDto>(await captainReport());
+    const row = report.rows.find((r) => r.captainEmployeeId === reportCaptain);
+    expect(row).toBeDefined();
+    expect(row?.captainName).not.toBe('');
+    expect(row?.totals.shipmentCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it('6. reports an unassigned shipment under a null captain rather than dropping it', async () => {
+    // Its own shipment, deliberately never assigned — a case that depends on another test's
+    // leftovers passes or fails for reasons that have nothing to do with what it claims.
+    const orphan = await completedDaily([{ currencyId: egp.id, amount: 42 }], '2026-09-16');
+    expect(orphan.status).toBe('completed');
+
+    const report = data<OperationsCaptainReportDto>(await captainReport());
+    const unassigned = report.rows.find((r) => r.captainEmployeeId === null);
+    expect(unassigned).toBeDefined();
+    expect(unassigned?.totals.shipmentCount).toBeGreaterThanOrEqual(1);
+    // And it is inside the grand total, not excluded from it.
+    expect(report.grandTotal.shipmentCount).toBe(
+      report.rows.reduce((acc, r) => acc + r.totals.shipmentCount, 0),
+    );
+  });
+
+  it('7. excludes a shipment completed OUTSIDE the range, by its own type\'s date', async () => {
+    const outside = await completedDaily([{ currencyId: egp.id, amount: 999 }], '2026-10-05');
+    expect(outside.status).toBe('completed');
+
+    const inSeptember = data<OperationsCaptainReportDto>(await captainReport());
+    const inOctober = data<OperationsCaptainReportDto>(
+      await captainReport({ from: '2026-10-01', to: '2026-10-31' }),
+    );
+    expect(inOctober.grandTotal.shipmentCount).toBeGreaterThanOrEqual(1);
+    // The October shipment did not leak into September's totals.
+    expect(inSeptember.grandTotal.shipmentCount).toBe(
+      inSeptember.rows.reduce((acc, r) => acc + r.totals.shipmentCount, 0),
+    );
+  });
+
+  it('8. rides operationsShipment.view — a report is a read of shipments you can already see', async () => {
+    const res = await captainReport(REPORT_MONTH, viewerToken);
+    expect(res.status).toBe(200);
+    const banks = await bankReport(REPORT_MONTH, viewerToken);
+    expect(banks.status).toBe(200);
+  });
+
+  it('9. refuses an unauthenticated read — legacy had NO check on /ops_report at all (Q36)', async () => {
+    const res = await request(app).get('/api/v1/operations/reports/captains');
+    expect(res.status).toBe(401);
+  });
+});
+
+describe('crew attendance — NO legacy counterpart, read-only and non-gating (B5)', () => {
+  // Discovery §2.2/§10.2: `/ops_attendance` does not exist, and legacy never queried absence for
+  // the cash-transfer department, so an absent captain could be crewed without objection. The
+  // tests below prove BOTH halves of the decision: attendance is now visible, and it still gates
+  // nothing.
+  const ATT_DATE = '2026-09-22';
+  let attendanceMember = '';
+
+  const attendance = (date = ATT_DATE, token = adminToken): request.Test =>
+    request(app)
+      .get(`/api/v1/operations/crew-board/attendance?date=${date}`)
+      .set('Authorization', `Bearer ${token}`);
+
+  beforeAll(async () => {
+    attendanceMember = await mkEmployee();
+    const requirements = await request(app)
+      .put(`/api/v1/operations/crew-board/requirements/${attendanceMember}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ isCaptain: true });
+    expect(requirements.status).toBe(200);
+
+    // The §9.4 anchor again: the non-gating test plans a crew, and a crew needs a rostered vehicle.
+    const fleetRoster = await request(app)
+      .post('/api/v1/fleet/roster')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date: ATT_DATE, rows: [{ vehicleId: vehicleAId, notes: 'attendance seed' }] });
+    expect(fleetRoster.status).toBe(200);
+  });
+
+  it('1. lists every roster member for the day, including those with no attendance record', async () => {
+    const res = await attendance();
+    expect(res.status).toBe(200);
+    const day = data<OperationsCrewAttendanceDayDto>(res);
+    const row = day.members.find((m) => m.employeeId === attendanceMember);
+    expect(row).toBeDefined();
+    // No HR day record exists for this employee, so the answer is NULL — not "present".
+    expect(row?.attendance).toBeNull();
+    expect(row?.fullNameAr).not.toBe('');
+  });
+
+  it('2. counts an absent record as unknown, never as present', async () => {
+    const day = data<OperationsCrewAttendanceDayDto>(await attendance());
+    expect(day.summary.total).toBe(day.members.length);
+    expect(day.summary.unknown).toBeGreaterThanOrEqual(1);
+    // Every member lands in exactly one bucket, and the buckets add up to the total.
+    const bucketed =
+      day.summary.present +
+      day.summary.absent +
+      day.summary.onLeave +
+      day.summary.notScheduled +
+      day.summary.unknown;
+    expect(bucketed).toBe(day.summary.total);
+  });
+
+  it('3. GATES NOTHING — a member with no attendance record is still fully assignable', async () => {
+    const plan = await request(app)
+      .post('/api/v1/operations/crew-board')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        date: ATT_DATE,
+        rows: [{ vehicleId: vehicleAId, captainEmployeeId: attendanceMember }],
+      });
+    // The whole point of the surface: it informs, it does not refuse.
+    expect(plan.status).toBe(200);
+
+    const day = data<OperationsCrewAttendanceDayDto>(await attendance());
+    const row = day.members.find((m) => m.employeeId === attendanceMember);
+    // ...and the page then SHOWS that this un-recorded member is crewed today.
+    expect(row?.assignedVehicleId).toBe(vehicleAId);
+  });
+
+  it('4. needs BOTH grants — the Operations roster read and HR\'s own attendance read', async () => {
+    // The viewer holds operationsShipment.view only: no crew grant, no attendance grant.
+    const res = await attendance(ATT_DATE, viewerToken);
+    expect(res.status).toBe(403);
+  });
+
+  it('5. refuses an unauthenticated read', async () => {
+    const res = await request(app).get(
+      `/api/v1/operations/crew-board/attendance?date=${ATT_DATE}`,
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it('6. requires a date — an attendance page with no day is a question with no subject', async () => {
+    const res = await request(app)
+      .get('/api/v1/operations/crew-board/attendance')
+      .set('Authorization', `Bearer ${adminToken}`);
     expect(res.status).toBe(400);
   });
 });

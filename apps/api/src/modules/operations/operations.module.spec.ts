@@ -1,6 +1,6 @@
 // The manifest guards: the module registers cleanly, and its surfaces are exactly what the
 // shipped slices claim. The pin-the-numbers block (pages.spec precedent) moves with every slice:
-// 14 permissions, 5 pages, 9 routes, 9 collections. B3 adds `operations_crew_requirements` — the
+// 14 permissions, 5 pages, 10 routes, 9 collections. B3 adds `operations_crew_requirements` — the
 // operations roster — under the EXISTING crew route prefix and the EXISTING crew grants, so only
 // the collection count moves.
 import { describe, expect, it } from 'vitest';
@@ -51,6 +51,7 @@ describe('operations module manifest (B3)', () => {
       '/operations/currencies',
       '/operations/days',
       '/operations/mobile',
+      '/operations/reports',
       '/operations/secured',
       '/operations/shipments',
     ]);

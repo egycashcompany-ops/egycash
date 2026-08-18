@@ -54,6 +54,14 @@ const operationsKeys = {
   securedBacklog: featureKey(MODULE, 'securedBacklog'),
   securedDue: featureKey(MODULE, 'securedDue'),
   vault: featureKey(MODULE, 'vault'),
+  // B5. Reports are roll-ups of a SETTLED past and attendance is another module's record, so
+  // neither belongs to any Operations mutation's fan-out — they are listed here to be named, and
+  // the spec pins that no write stales them. A report that refetched on every shipment write
+  // would be churn; one that refetched on none is correct, because completing a shipment TODAY
+  // cannot change last month's totals.
+  reportCaptains: featureKey(MODULE, 'reportCaptains'),
+  reportBanks: featureKey(MODULE, 'reportBanks'),
+  crewAttendance: featureKey(MODULE, 'crewAttendance'),
 };
 
 /** Everything one secured act can move — one list, so no mutation forgets a screen. */
@@ -372,3 +380,30 @@ export const useDispatchSecured = () => {
     },
   });
 };
+
+// ── Reports + attendance (B5) ───────────────────────────────────────────────────────────────────
+//
+// Reports are pure reads over a settled past: nothing in the app invalidates them, and re-fetching
+// a month's roll-up because a shipment changed today would be churn for no gain. They are keyed by
+// their range so switching months is a cache hit on the way back.
+
+export const useCaptainReport = (range: { from: string; to: string }, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'reportCaptains', range),
+    queryFn: () => api.getCaptainReport(range),
+    enabled: enabled && range.from !== '' && range.to !== '',
+  });
+
+export const useBankReport = (range: { from: string; to: string }, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'reportBanks', range),
+    queryFn: () => api.getBankReport(range),
+    enabled: enabled && range.from !== '' && range.to !== '',
+  });
+
+export const useCrewAttendance = (date: string, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'crewAttendance', { date }),
+    queryFn: () => api.getCrewAttendance(date),
+    enabled: enabled && date !== '',
+  });

@@ -90,10 +90,7 @@ const data = <T>(res: request.Response): T => (res.body as { data: T }).data;
 // In-process events fan out fire-and-forget (`dispatchInProcess`), so `await emit(...)` returns
 // before the subscriber has touched the database — asserting immediately is a race that only
 // loses under load. Poll instead, the same way files/audit/notifications specs do.
-const waitFor = async (
-  predicate: () => boolean | Promise<boolean>,
-  ms = 2000,
-): Promise<void> => {
+const waitFor = async (predicate: () => boolean | Promise<boolean>, ms = 2000): Promise<void> => {
   const deadline = Date.now() + ms;
   while (!(await predicate()) && Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -106,14 +103,29 @@ const nextNid = (): string => `290010101${String(30_000 + nidCounter++).padStart
 const nextPhone = (): string => `010${String(phoneCounter++).padStart(8, '0')}`;
 
 /** HR employee via the real direct-registration endpoint — Fleet never fabricates one. */
-const mkEmployee = async (): Promise<string> => {
+const mkEmployee = async (
+  over: { fullNameAr?: string; phone?: string; governorate?: string } = {},
+): Promise<string> => {
   const res = await request(app)
     .post('/api/v1/hr/employees/direct')
     .set('Authorization', `Bearer ${adminToken}`)
     .send({
       personal: {
-        identity: { fullNameAr: 'سائق اختبار', nationalId: nextNid(), nationality: 'Egyptian' },
-        contact: { primaryPhone: nextPhone() },
+        identity: {
+          fullNameAr: over.fullNameAr ?? 'سائق اختبار',
+          nationalId: nextNid(),
+          nationality: 'Egyptian',
+        },
+        contact: { primaryPhone: over.phone ?? nextPhone() },
+        ...(over.governorate === undefined
+          ? {}
+          : {
+              officialAddress: {
+                line1: 'شارع الاختبار',
+                city: 'مدينة الاختبار',
+                governorate: over.governorate,
+              },
+            }),
         experience: [],
         drivingLicenses: [],
         certifications: [],
@@ -253,6 +265,8 @@ beforeAll(async () => {
     FleetEvents.VehicleStatusChanged,
     FleetEvents.VehicleLicenseImageUploaded,
     FleetEvents.VehicleLicenseImageDeleted,
+    FleetEvents.DriverLicenseImageUploaded,
+    FleetEvents.DriverLicenseImageDeleted,
     FleetEvents.UnavailabilityRecorded,
     FleetEvents.UnavailabilityEnded,
     FleetEvents.OdometerRecorded,
@@ -1710,18 +1724,347 @@ describe('the vehicle license image', () => {
       `/api/v1/platform/files/${fileId}`,
       `/api/v1/platform/files/${fileId}/download`,
     ]) {
-      const res = await request(app)
-        .get(path)
-        .set('Authorization', `Bearer ${branchAToken}`);
+      const res = await request(app).get(path).set('Authorization', `Bearer ${branchAToken}`);
       expect([403, 404], path).toContain(res.status);
     }
   });
 
   it('is refused outright without a session', async () => {
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    expect((await request(app).get(`/api/v1/fleet/vehicles/${v.id}/license-image`)).status).toBe(
+      401,
+    );
+  });
+});
+
+describe('the driver license image', () => {
+  const upload = (driverId: string, token: string, body: Buffer, name = 'license.png') =>
+    request(app)
+      .post(`/api/v1/fleet/drivers/${driverId}/license-image`)
+      .set('Authorization', `Bearer ${token}`)
+      .attach('file', body, name);
+
+  const mkDriver = async (): Promise<FleetDriverProfileDto> => mkDriverProfile(await mkEmployee());
+
+  it('uploads, links the file to the profile, and publishes the fact', async () => {
+    const d = await mkDriver();
+    const res = await upload(d.id, adminToken, PNG);
+    expect(res.status).toBe(200);
+    const updated = data<FleetDriverProfileDto>(res);
+    expect(updated.licenseImage).not.toBeNull();
+    expect(updated.licenseImage?.mime).toBe('image/png');
+    await waitFor(() =>
+      seenEvents.some(
+        (e) =>
+          e.name === FleetEvents.DriverLicenseImageUploaded &&
+          (e.payload as { driverProfileId: string }).driverProfileId === d.id,
+      ),
+    );
     expect(
-      (await request(app).get(`/api/v1/fleet/vehicles/${v.id}/license-image`)).status,
-    ).toBe(401);
+      seenEvents.some(
+        (e) =>
+          e.name === FleetEvents.DriverLicenseImageUploaded &&
+          (e.payload as { employeeId: string }).employeeId === d.employeeId,
+      ),
+    ).toBe(true);
+  });
+
+  it('serves the bytes with the stored content type', async () => {
+    const d = await mkDriver();
+    await upload(d.id, adminToken, PNG);
+    const res = await request(app)
+      .get(`/api/v1/fleet/drivers/${d.id}/license-image`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('image/png');
+    // Private document: no shared cache may keep it.
+    expect(res.headers['cache-control']).toContain('no-store');
+  });
+
+  it('404s for a driver that has no image — absent is absent, not an empty body', async () => {
+    const d = await mkDriver();
+    const res = await request(app)
+      .get(`/api/v1/fleet/drivers/${d.id}/license-image`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(404);
+  });
+
+  it('REJECTS a non-image: the file category is the authority, and it allows images only', async () => {
+    const d = await mkDriver();
+    const res = await request(app)
+      .post(`/api/v1/fleet/drivers/${d.id}/license-image`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .attach('file', Buffer.from('%PDF-1.4 not an image'), {
+        filename: 'license.pdf',
+        contentType: 'application/pdf',
+      });
+    expect(res.status).toBe(422);
+    const after = await request(app)
+      .get(`/api/v1/fleet/drivers/${d.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(data<FleetDriverProfileDto>(after).licenseImage).toBeNull();
+  });
+
+  it('refuses an upload with no file part instead of crashing on it', async () => {
+    const d = await mkDriver();
+    const res = await request(app)
+      .post(`/api/v1/fleet/drivers/${d.id}/license-image`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(400);
+  });
+
+  it('REPLACES rather than accumulating — the profile points at ONE current scan', async () => {
+    const d = await mkDriver();
+    const first = data<FleetDriverProfileDto>(await upload(d.id, adminToken, PNG));
+    const second = data<FleetDriverProfileDto>(await upload(d.id, adminToken, PNG));
+    expect(second.licenseImage).not.toBeNull();
+    // `fileService.replace` adds version n+1 to the SAME file group and hands back that new
+    // version's id — so the link moves forward while the earlier scan survives as history. The
+    // profile still holds exactly one reference, which is the invariant that matters here.
+    expect(second.licenseImage?.fileId).not.toBe(first.licenseImage?.fileId);
+    expect(
+      (
+        await request(app)
+          .get(`/api/v1/fleet/drivers/${d.id}/license-image`)
+          .set('Authorization', `Bearer ${adminToken}`)
+      ).status,
+    ).toBe(200);
+  });
+
+  it('deletes the link, publishes the fact, and then has nothing to serve', async () => {
+    const d = await mkDriver();
+    await upload(d.id, adminToken, PNG);
+    const res = await request(app)
+      .delete(`/api/v1/fleet/drivers/${d.id}/license-image`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(data<FleetDriverProfileDto>(res).licenseImage).toBeNull();
+    expect(
+      (
+        await request(app)
+          .get(`/api/v1/fleet/drivers/${d.id}/license-image`)
+          .set('Authorization', `Bearer ${adminToken}`)
+      ).status,
+    ).toBe(404);
+    await waitFor(() =>
+      seenEvents.some(
+        (e) =>
+          e.name === FleetEvents.DriverLicenseImageDeleted &&
+          (e.payload as { driverProfileId: string }).driverProfileId === d.id,
+      ),
+    );
+    expect(
+      seenEvents.some(
+        (e) =>
+          e.name === FleetEvents.DriverLicenseImageDeleted &&
+          (e.payload as { fileId: string | null }).fileId === null,
+      ),
+    ).toBe(true);
+  });
+
+  it('refuses to delete when there is nothing to delete', async () => {
+    const d = await mkDriver();
+    const res = await request(app)
+      .delete(`/api/v1/fleet/drivers/${d.id}/license-image`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(409);
+  });
+
+  it('leaves the licence FACTS alone when the scan goes', async () => {
+    const d = await mkDriver();
+    await upload(d.id, adminToken, PNG);
+    const after = data<FleetDriverProfileDto>(
+      await request(app)
+        .delete(`/api/v1/fleet/drivers/${d.id}/license-image`)
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+    expect(after.licenseNumber).toBe(d.licenseNumber);
+    expect(after.licenseExpiresAt).toBe(d.licenseExpiresAt);
+    expect(after.specialization).toBe(d.specialization);
+  });
+
+  it('managing the scan needs fleetDriver.manage — the vehicle grants do not carry over', async () => {
+    // The branch operator holds the five fleetVehicle.* grants and nothing from the driver
+    // surface. Being trusted with cars is not being trusted with a person's identity document.
+    const d = await mkDriver();
+    expect((await upload(d.id, branchAToken, PNG)).status).toBe(403);
+    await upload(d.id, adminToken, PNG);
+    expect(
+      (
+        await request(app)
+          .delete(`/api/v1/fleet/drivers/${d.id}/license-image`)
+          .set('Authorization', `Bearer ${branchAToken}`)
+      ).status,
+    ).toBe(403);
+  });
+
+  it('the platform file endpoints stay guarded — nobody goes around Fleet (ADR-023)', async () => {
+    // Knowing the FILE id must be no better than knowing the driver id: the fleet authorizer is
+    // asked again on the platform's own file routes, and a caller with no fleet grant is refused.
+    const d = await mkDriver();
+    const withImage = data<FleetDriverProfileDto>(await upload(d.id, adminToken, PNG));
+    const fileId = withImage.licenseImage?.fileId ?? '';
+    expect(fileId).not.toBe('');
+    const noPermToken = await login('noperm@ecms.local');
+    for (const path of [
+      `/api/v1/platform/files/${fileId}`,
+      `/api/v1/platform/files/${fileId}/download`,
+    ]) {
+      const res = await request(app).get(path).set('Authorization', `Bearer ${noPermToken}`);
+      expect([403, 404], path).toContain(res.status);
+    }
+  });
+
+  it('is refused outright without a session', async () => {
+    const d = await mkDriver();
+    expect((await request(app).get(`/api/v1/fleet/drivers/${d.id}/license-image`)).status).toBe(
+      401,
+    );
+  });
+});
+
+describe('the drivers list filters narrow SERVER-side', () => {
+  it('filters on the fleet-owned area, and on whether a scan is on file', async () => {
+    const withScan = await mkDriverProfile(await mkEmployee());
+    const withoutScan = await mkDriverProfile(await mkEmployee());
+    const area = `AREA-${withScan.id.slice(-6)}`;
+    await request(app)
+      .patch(`/api/v1/fleet/drivers/${withScan.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ area, version: withScan.version });
+    await request(app)
+      .post(`/api/v1/fleet/drivers/${withScan.id}/license-image`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .attach('file', PNG, 'license.png');
+
+    const byArea = await request(app)
+      .get('/api/v1/fleet/drivers')
+      .query({ area, pageSize: 100 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(byArea.status).toBe(200);
+    const areaIds = data<FleetDriverProfileDto[]>(byArea).map((d) => d.id);
+    expect(areaIds).toContain(withScan.id);
+    expect(areaIds).not.toContain(withoutScan.id);
+
+    const withImage = await request(app)
+      .get('/api/v1/fleet/drivers')
+      .query({ hasLicenseImage: 'true', pageSize: 100 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    const withImageIds = data<FleetDriverProfileDto[]>(withImage).map((d) => d.id);
+    expect(withImageIds).toContain(withScan.id);
+    expect(withImageIds).not.toContain(withoutScan.id);
+
+    // `$ne: null` rather than `$exists`, so a profile stored before the field existed (no key at
+    // all) lands in this bucket alongside one explicitly set to null, instead of vanishing from
+    // both answers. Every row here is API-created, so this asserts the null half; the absent half
+    // is covered by the mapper's unit test, where a keyless row can actually be constructed.
+    const withoutImage = await request(app)
+      .get('/api/v1/fleet/drivers')
+      .query({ hasLicenseImage: 'false', pageSize: 100 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    const withoutImageIds = data<FleetDriverProfileDto[]>(withoutImage).map((d) => d.id);
+    expect(withoutImageIds).toContain(withoutScan.id);
+    expect(withoutImageIds).not.toContain(withScan.id);
+  });
+
+  it('refuses a filter the list does not implement rather than ignoring it', async () => {
+    // `governorate` is HR's fact. The fleet list says so with a 400 instead of accepting the
+    // parameter and returning an unfiltered page — the browser is expected to ask HR and come
+    // back with `employeeIds`, which is the test below.
+    const res = await request(app)
+      .get('/api/v1/fleet/drivers')
+      .query({ governorate: 'الجيزة' })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('the HR half of the drivers filter — two server-side queries, joined by id', () => {
+  it('HR filters on governorate and phone, and Fleet narrows on the ids it returns', async () => {
+    const marker = `G${Date.now().toString().slice(-6)}`;
+    const phone = `0109${String(nidCounter).padStart(7, '0')}`;
+    const targetEmployee = await mkEmployee({ governorate: marker, phone });
+    const otherEmployee = await mkEmployee({ governorate: `${marker}-other` });
+    const target = await mkDriverProfile(targetEmployee);
+    const other = await mkDriverProfile(otherEmployee);
+
+    // ① HR answers the HR question, on HR's own endpoint, with HR's own permission.
+    const byGovernorate = await request(app)
+      .get('/api/v1/hr/employees')
+      .query({ governorate: marker, pageSize: 100 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(byGovernorate.status).toBe(200);
+    const govIds = data<{ id: string }[]>(byGovernorate).map((e) => e.id);
+    expect(govIds).toContain(targetEmployee);
+    // The regex is a substring match, so the deliberately-similar `${marker}-other` is included —
+    // what matters is that a governorate NOT matching the term is out.
+    expect(govIds).not.toContain(await mkEmployee({ governorate: 'محافظة أخرى تماما' }));
+
+    const byPhone = await request(app)
+      .get('/api/v1/hr/employees')
+      .query({ phone, pageSize: 100 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(byPhone.status).toBe(200);
+    const phoneIds = data<{ id: string }[]>(byPhone).map((e) => e.id);
+    expect(phoneIds).toEqual([targetEmployee]);
+
+    // ② Fleet narrows on its OWN column using those ids — no query into HR anywhere.
+    const drivers = await request(app)
+      .get('/api/v1/fleet/drivers')
+      .query({ employeeIds: targetEmployee, pageSize: 100 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(drivers.status).toBe(200);
+    const ids = data<FleetDriverProfileDto[]>(drivers).map((d) => d.id);
+    expect(ids).toEqual([target.id]);
+    expect(ids).not.toContain(other.id);
+  });
+
+  it('HR still filters on name, code, job title and branch — nothing was reinvented', async () => {
+    // Arabic LETTERS only, with no counter spliced in: `fullNameAr` is validated by `arabicName`,
+    // which rejects an ASCII digit and an Arabic-Indic one alike. Every other employee in this
+    // file is 'سائق اختبار', so this name is distinctive without needing to be generated.
+    const name = 'سائق فريد للبحث';
+    const employeeId = await mkEmployee({ fullNameAr: name });
+    const byName = await request(app)
+      .get('/api/v1/hr/employees')
+      .query({ search: name, pageSize: 100 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(data<{ id: string }[]>(byName).map((e) => e.id)).toContain(employeeId);
+
+    const byBranchAndTitle = await request(app)
+      .get('/api/v1/hr/employees')
+      .query({ branchId: branchAId, jobTitleId: jobTitleAId, pageSize: 100 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(byBranchAndTitle.status).toBe(200);
+    expect(data<{ id: string }[]>(byBranchAndTitle).map((e) => e.id)).toContain(employeeId);
+  });
+
+  it('REFUSES more ids than one HR page rather than silently keeping the first 100', async () => {
+    const ids = (n: number): string =>
+      Array.from({ length: n }, (_, i) => `64b1f0dddddddddddd${String(i).padStart(6, '0')}`).join(
+        ',',
+      );
+    const ok = await request(app)
+      .get('/api/v1/fleet/drivers')
+      .query({ employeeIds: ids(100), pageSize: 25 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(ok.status).toBe(200);
+    // 101 is a 400, not a truncated `$in`: a filter that quietly drops ids returns a short list
+    // that looks complete, which is the one outcome worse than refusing.
+    const tooMany = await request(app)
+      .get('/api/v1/fleet/drivers')
+      .query({ employeeIds: ids(101), pageSize: 25 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(tooMany.status).toBe(400);
+  });
+
+  it('an employeeIds filter matching nobody returns nothing, not everything', async () => {
+    const res = await request(app)
+      .get('/api/v1/fleet/drivers')
+      .query({ employeeIds: '64b1f0dddddddddddddddd99', pageSize: 25 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(data<FleetDriverProfileDto[]>(res)).toHaveLength(0);
   });
 });
 
@@ -1763,7 +2106,10 @@ describe('the registry filters narrow SERVER-side', () => {
       ['insuranceCompanyId', insuranceCompanyId],
     ] as const) {
       const items = await list({ [key]: value });
-      expect(items.map((v) => v.id), key).toEqual([target.id]);
+      expect(
+        items.map((v) => v.id),
+        key,
+      ).toEqual([target.id]);
     }
   });
 
@@ -1775,7 +2121,10 @@ describe('the registry filters narrow SERVER-side', () => {
       ['motorNumber', target.motorNumber],
     ] as const) {
       const items = await list({ [key]: value });
-      expect(items.map((v) => v.id), key).toEqual([target.id]);
+      expect(
+        items.map((v) => v.id),
+        key,
+      ).toEqual([target.id]);
     }
   });
 

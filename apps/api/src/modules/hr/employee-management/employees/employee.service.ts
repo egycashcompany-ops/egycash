@@ -671,6 +671,8 @@ class EmployeeService {
       managerId: query.managerId,
       employmentType: query.employmentType,
       search: query.search,
+      governorate: query.governorate,
+      phone: query.phone,
     };
   }
 

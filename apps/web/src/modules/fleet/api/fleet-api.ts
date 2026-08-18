@@ -44,7 +44,16 @@ import {
   type UpdateFleetVehicleType,
   type UpdateFleetViolation,
 } from '@ecms/contracts';
-import { api, buildQuery, del, fetchBlob, get, getPage, patch, post, upload,
+import {
+  api,
+  buildQuery,
+  del,
+  fetchBlob,
+  get,
+  getPage,
+  patch,
+  post,
+  upload,
   type QueryParams,
 } from '../../../shared/lib/api-client';
 
@@ -123,6 +132,21 @@ export const updateDriverProfile = (
   id: string,
   body: UpdateFleetDriverProfile,
 ): Promise<FleetDriverProfileDto> => patch<FleetDriverProfileDto>(`/fleet/drivers/${id}`, body);
+
+// ── Driver license image (one current scan per driver) ──────────────────────
+export const uploadDriverLicenseImage = (
+  id: string,
+  file: File,
+): Promise<FleetDriverProfileDto> => {
+  const form = new FormData();
+  form.append('file', file);
+  return upload<FleetDriverProfileDto>(`/fleet/drivers/${id}/license-image`, form);
+};
+/** The BYTES, not a URL — same reason as the vehicle's scan: the file is guarded (ADR-023). */
+export const fetchDriverLicenseImage = (id: string): Promise<Blob> =>
+  fetchBlob(`/fleet/drivers/${id}/license-image`);
+export const deleteDriverLicenseImage = (id: string): Promise<FleetDriverProfileDto> =>
+  del<FleetDriverProfileDto>(`/fleet/drivers/${id}/license-image`);
 
 // ── Driver unavailability — التمامات (§2.4) ─────────────────────────────────
 export const listUnavailability = (

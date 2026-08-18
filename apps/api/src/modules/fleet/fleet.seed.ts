@@ -4,11 +4,13 @@
 // hardcoded in its views (§10-H7). Everything else is admin-entered.
 import { fleetCatalogItemService } from './catalogs/catalog-item.service';
 import { ensureVehicleDocsCategory } from './vehicles/vehicle-files';
+import { ensureDriverDocsCategory } from './driver-profiles/driver-files';
 import { runFleetMigrations } from './fleet.migration';
 
 export const seedFleet = async (): Promise<void> => {
-  // The Files category the vehicle license image writes into — before any upload can ask for it.
+  // The Files categories the licence images write into — before any upload can ask for one.
   await ensureVehicleDocsCategory();
+  await ensureDriverDocsCategory();
 
   await fleetCatalogItemService.ensure({
     kind: 'workType',

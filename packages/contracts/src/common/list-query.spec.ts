@@ -41,4 +41,36 @@ describe('listQuery', () => {
   it('caps the list so a crafted URL cannot ask for an unbounded $in', () => {
     expect(() => parse(Array.from({ length: 51 }, () => 'waiting').join(','))).toThrow();
   });
+
+  // The cap became a PARAMETER when one caller needed a wider list. Every other caller passes one
+  // argument and must be untouched by that, which is what these pin: the default is still exactly
+  // 50, an explicit cap applies exactly, and neither leaks into the other.
+  describe('the cap', () => {
+    const repeat = (n: number): string => Array.from({ length: n }, () => 'waiting').join(',');
+    const capped = (max: number) => {
+      const s = z.object({ status: listQuery(Status, max) }).strict();
+      return (status: unknown): unknown => s.parse({ status }).status;
+    };
+
+    it('defaults to 50 when the caller passes only the item schema', () => {
+      expect(parse(repeat(50))).toHaveLength(50);
+      expect(() => parse(repeat(51))).toThrow();
+    });
+
+    it('honours an explicit cap exactly — the limit passes, one more throws', () => {
+      expect(capped(100)(repeat(100))).toHaveLength(100);
+      expect(() => capped(100)(repeat(101))).toThrow();
+    });
+
+    it('honours a NARROWER explicit cap, so the parameter is not a one-way widening', () => {
+      expect(capped(2)(repeat(2))).toHaveLength(2);
+      expect(() => capped(2)(repeat(3))).toThrow();
+    });
+
+    it('keeps every other rule under an explicit cap — empty is still no filter, junk still throws', () => {
+      expect(capped(100)('')).toBeUndefined();
+      expect(capped(100)('waiting , accepted')).toEqual(['waiting', 'accepted']);
+      expect(() => capped(100)('nonsense')).toThrow();
+    });
+  });
 });

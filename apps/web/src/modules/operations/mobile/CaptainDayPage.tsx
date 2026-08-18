@@ -114,12 +114,19 @@ export const CaptainDayPage = (): JSX.Element => {
                 {t('operations.mobile.captainCode', { code: day.captain.code })}
               </p>
               <p className="mt-1 text-sm font-medium text-slate-900 dark:text-slate-50">
-                {t(
-                  day.isCaptainOnDay
-                    ? 'operations.mobile.onDuty'
-                    : 'operations.mobile.offDuty',
-                )}
+                {t(day.isCaptainOnDay ? 'operations.mobile.onDuty' : 'operations.mobile.offDuty')}
               </p>
+              {/*
+              THE DAY'S OWN STATE, which is not the captain's. A day still in `planning` has not
+              been opened by the desk, and a `closed` one is finished — a captain looking at an
+              empty or frozen route deserves to know which, rather than reading it as a fault in
+              his phone.
+            */}
+              {day.dayStatus !== null && (
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  {t(`operations.mobile.dayStatus.${day.dayStatus}`)}
+                </p>
+              )}
             </div>
             {progress !== null && progress.total > 0 && (
               <p className="text-sm tabular-nums text-slate-600 dark:text-slate-300">

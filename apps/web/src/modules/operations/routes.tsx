@@ -6,6 +6,8 @@
 // moment; until then its URL falls through to the standard 404. Live routes, each behind its
 // design §16.2 permission:
 //   /operations/shipments  operationsShipment.view    B2  (legacy /main_ops)
+//   /operations/crew-board    operationsCrew.view       B3  (legacy /tashghela)
+//   /operations/requirements  operationsCrew.view       B3  (legacy /requirement)
 //   /operations/catalogs   operationsCatalog.manage   B1  (legacy /data_edit)
 import { Route, Routes } from 'react-router-dom';
 import { RequirePermission } from '../../platform/router/RequirePermission';
@@ -14,6 +16,8 @@ import { AppShell } from '../../platform/layout/AppShell';
 import { OperationsOverviewPage } from './pages/OperationsOverviewPage';
 import { CatalogsPage } from './pages/CatalogsPage';
 import { DailyOperationsPage } from './pages/DailyOperationsPage';
+import { CrewBoardPage } from './pages/CrewBoardPage';
+import { RequirementsPage } from './pages/RequirementsPage';
 
 export default function OperationsRoutes(): JSX.Element {
   return (
@@ -25,6 +29,22 @@ export default function OperationsRoutes(): JSX.Element {
           element={
             <RequirePermission permission="operationsShipment.view">
               <DailyOperationsPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="crew-board"
+          element={
+            <RequirePermission permission="operationsCrew.view">
+              <CrewBoardPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="requirements"
+          element={
+            <RequirePermission permission="operationsCrew.view">
+              <RequirementsPage />
             </RequirePermission>
           }
         />

@@ -11,7 +11,7 @@ import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { ModuleHome } from '../../../shared/ui/ModuleHome';
-import { ClipboardIcon, TagIcon } from '../../../shared/ui/icons';
+import { BadgeIcon, ClipboardIcon, TagIcon, UsersIcon } from '../../../shared/ui/icons';
 
 type Icon = ComponentType<SVGProps<SVGSVGElement>>;
 
@@ -31,6 +31,22 @@ export const OPERATIONS_SHORTCUTS: Shortcut[] = [
     descKey: 'operations.cards.dailyOps',
     icon: ClipboardIcon,
     permission: 'operationsShipment.view',
+  },
+  /** Legacy `/tashghela` — tomorrow's crews, planned a day ahead. */
+  {
+    to: '/operations/crew-board',
+    titleKey: 'operations.nav.crewBoard',
+    descKey: 'operations.cards.crewBoard',
+    icon: UsersIcon,
+    permission: 'operationsCrew.view',
+  },
+  /** Legacy `/requirement` — who is operations crew, and what they carry. */
+  {
+    to: '/operations/requirements',
+    titleKey: 'operations.nav.requirements',
+    descKey: 'operations.cards.requirements',
+    icon: BadgeIcon,
+    permission: 'operationsCrew.view',
   },
   /** Legacy `/data_edit` — the reference data every other Operations screen picks from. */
   {

@@ -6,6 +6,7 @@
 // silently corrupting migration or report parity in a later slice.
 import { describe, expect, it } from 'vitest';
 import {
+  CREW_SLOT_CAPACITY,
   CreateOperationsBankBranchSchema,
   CreateOperationsShipmentSchema,
   LEGACY_OPERATIONS_SHIPMENT_CODE_BY_STATUS,
@@ -137,39 +138,95 @@ describe('operations shipment schemas — the legacy create guard, server-enforc
 });
 
 describe('operations crew schemas — the tashghela board rules (OP-3)', () => {
-  const row = { vehicleId: oid(1), captainEmployeeId: oid(10) };
+  const row = { vehicleId: oid(1), captainEmployeeIds: [oid(10)] };
+  const plan = (rows: unknown[]) =>
+    PlanOperationsCrewSchema.safeParse({ date: '2026-08-18', rows });
 
   it('accepts a captain-only row and a fully empty crew — legacy enforces no minimum (:2419)', () => {
-    expect(PlanOperationsCrewSchema.safeParse({ date: '2026-08-18', rows: [row] }).success).toBe(
-      true,
-    );
+    expect(plan([row]).success).toBe(true);
+    expect(plan([{ vehicleId: oid(1), notes: 'صيانة' }]).success).toBe(true);
+    expect(plan([{ vehicleId: oid(1), captainEmployeeIds: [] }]).success).toBe(true);
+  });
+
+  it('accepts a crew of six — two per slot, the new capacity', () => {
     expect(
-      PlanOperationsCrewSchema.safeParse({
-        date: '2026-08-18',
-        rows: [{ vehicleId: oid(1), notes: 'صيانة' }],
-      }).success,
+      plan([
+        {
+          vehicleId: oid(1),
+          captainEmployeeIds: [oid(10), oid(11)],
+          specialist1EmployeeIds: [oid(12), oid(13)],
+          specialist2EmployeeIds: [oid(14), oid(15)],
+        },
+      ]).success,
     ).toBe(true);
+  });
+
+  it('refuses a THIRD person in one slot — CREW_SLOT_CAPACITY is the ceiling', () => {
+    expect(
+      plan([{ vehicleId: oid(1), captainEmployeeIds: [oid(10), oid(11), oid(12)] }]).success,
+    ).toBe(false);
+    expect(CREW_SLOT_CAPACITY).toBe(2);
+  });
+
+  it('refuses the same person twice inside ONE slot', () => {
+    // Unexpressible while a slot held one person; trivially expressible now, so it is refused
+    // here rather than left to store a two-captain crew that is really one person twice.
+    expect(plan([{ vehicleId: oid(1), captainEmployeeIds: [oid(10), oid(10)] }]).success).toBe(
+      false,
+    );
   });
 
   it('refuses the same person in two slots of one vehicle', () => {
     expect(
-      PlanOperationsCrewSchema.safeParse({
-        date: '2026-08-18',
-        rows: [{ vehicleId: oid(1), captainEmployeeId: oid(10), specialist1EmployeeId: oid(10) }],
-      }).success,
+      plan([
+        {
+          vehicleId: oid(1),
+          captainEmployeeIds: [oid(10)],
+          specialist1EmployeeIds: [oid(10)],
+        },
+      ]).success,
+    ).toBe(false);
+  });
+
+  it('refuses a co-captain who is also a specialist on the same vehicle', () => {
+    expect(
+      plan([
+        {
+          vehicleId: oid(1),
+          captainEmployeeIds: [oid(10), oid(11)],
+          specialist2EmployeeIds: [oid(11)],
+        },
+      ]).success,
     ).toBe(false);
   });
 
   it('Q11 — refuses the same person on two vehicles in one plan', () => {
     expect(
-      PlanOperationsCrewSchema.safeParse({
-        date: '2026-08-18',
-        rows: [
-          { vehicleId: oid(1), captainEmployeeId: oid(10) },
-          { vehicleId: oid(2), specialist2EmployeeId: oid(10) },
-        ],
-      }).success,
+      plan([
+        { vehicleId: oid(1), captainEmployeeIds: [oid(10)] },
+        { vehicleId: oid(2), specialist2EmployeeIds: [oid(10)] },
+      ]).success,
     ).toBe(false);
+  });
+
+  it('Q11 reaches the SECOND occupant of a slot, not just the first', () => {
+    // The traversal widened with the slots; a rule that only checked position 0 would have let a
+    // co-captain be double-booked while the plan still validated.
+    expect(
+      plan([
+        { vehicleId: oid(1), captainEmployeeIds: [oid(9), oid(10)] },
+        { vehicleId: oid(2), captainEmployeeIds: [oid(10)] },
+      ]).success,
+    ).toBe(false);
+  });
+
+  it('lets two DIFFERENT people captain two different vehicles', () => {
+    expect(
+      plan([
+        { vehicleId: oid(1), captainEmployeeIds: [oid(9), oid(10)] },
+        { vehicleId: oid(2), captainEmployeeIds: [oid(11), oid(12)] },
+      ]).success,
+    ).toBe(true);
   });
 
   it('refuses a vehicle appearing twice in one plan', () => {

@@ -42,6 +42,7 @@ import { operationsBankRepository } from '../banks/bank.repository';
 import { operationsBankBranchRepository } from '../bank-branches/bank-branch.repository';
 import { operationsCrewAssignmentRepository } from '../crew/crew-assignment.repository';
 import { type OperationsCrewAssignmentDoc } from '../crew/crew-assignment.model';
+import { slotIds } from '../crew/crew-slots';
 import { operationsDayService, utcDay } from '../days/day.service';
 import { operationsShipmentRepository } from '../shipments/shipment.repository';
 import { isStopSettled } from './execution-state';
@@ -201,10 +202,11 @@ class OperationsMobileService {
       assignments.push({
         crewAssignmentId,
         vehicleId: String(crew.vehicleId),
-        specialist1EmployeeId:
-          crew.specialist1EmployeeId === null ? null : String(crew.specialist1EmployeeId),
-        specialist2EmployeeId:
-          crew.specialist2EmployeeId === null ? null : String(crew.specialist2EmployeeId),
+        // BOTH captains, the reader included. A captain who cannot see his co-captain does not
+        // know who is in the van with him, which is the same reason the specialists are here.
+        captainEmployeeIds: slotIds(crew.captainEmployeeIds),
+        specialist1EmployeeIds: slotIds(crew.specialist1EmployeeIds),
+        specialist2EmployeeIds: slotIds(crew.specialist2EmployeeIds),
         direction: crew.direction,
         plannedTime: crew.plannedTime,
       });

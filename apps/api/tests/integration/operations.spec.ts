@@ -634,9 +634,9 @@ describe('crew board — the tashghela workflow on the Fleet boundary (OP-3)', (
     const res = await savePlan([
       {
         vehicleId: vehicleAId,
-        captainEmployeeId: captainId,
-        specialist1EmployeeId: specialist1Id,
-        specialist2EmployeeId: specialist2Id,
+        captainEmployeeIds: [captainId],
+        specialist1EmployeeIds: [specialist1Id],
+        specialist2EmployeeIds: [specialist2Id],
         direction: 'الجيزة',
         plannedTime: '07:30',
       },
@@ -647,9 +647,9 @@ describe('crew board — the tashghela workflow on the Fleet boundary (OP-3)', (
     expect(dto.day).not.toBeNull();
     expect(dto.day?.status).toBe('planning');
     const rowA = dto.rows.find((r) => r.vehicleId === vehicleAId);
-    expect(rowA?.crew?.captainEmployeeId).toBe(captainId);
-    expect(rowA?.crew?.specialist1EmployeeId).toBe(specialist1Id);
-    expect(rowA?.crew?.specialist2EmployeeId).toBe(specialist2Id);
+    expect(rowA?.crew?.captainEmployeeIds).toEqual([captainId]);
+    expect(rowA?.crew?.specialist1EmployeeIds).toEqual([specialist1Id]);
+    expect(rowA?.crew?.specialist2EmployeeIds).toEqual([specialist2Id]);
     await waitFor(() => seenEvents.some((e) => e.name === OperationsEvents.CrewPlanned));
   });
 
@@ -657,9 +657,9 @@ describe('crew board — the tashghela workflow on the Fleet boundary (OP-3)', (
     const unchanged = await savePlan([
       {
         vehicleId: vehicleAId,
-        captainEmployeeId: captainId,
-        specialist1EmployeeId: specialist1Id,
-        specialist2EmployeeId: specialist2Id,
+        captainEmployeeIds: [captainId],
+        specialist1EmployeeIds: [specialist1Id],
+        specialist2EmployeeIds: [specialist2Id],
         direction: 'الجيزة',
         plannedTime: '07:30',
       },
@@ -667,40 +667,42 @@ describe('crew board — the tashghela workflow on the Fleet boundary (OP-3)', (
     expect(data<{ changedCount: number }>(unchanged).changedCount).toBe(0);
 
     const replaced = await savePlan([
-      { vehicleId: vehicleAId, captainEmployeeId: captainId, specialist1EmployeeId: null },
+      { vehicleId: vehicleAId, captainEmployeeIds: [captainId], specialist1EmployeeIds: [] },
     ]);
     expect(replaced.status).toBe(200);
     const dto = data<OperationsCrewBoardDto & { changedCount: number }>(replaced);
     expect(dto.changedCount).toBe(1);
     const rowA = dto.rows.find((r) => r.vehicleId === vehicleAId);
-    expect(rowA?.crew?.specialist1EmployeeId).toBeNull();
+    expect(rowA?.crew?.specialist1EmployeeIds).toEqual([]);
     expect(rowA?.crew?.direction).toBeNull(); // the row is the COMPLETE desired state
   });
 
   it('empty specialists are allowed — legacy enforces no minimum crew (:2419)', async () => {
-    const res = await savePlan([{ vehicleId: vehicleBId, captainEmployeeId: specialist1Id }]);
+    const res = await savePlan([{ vehicleId: vehicleBId, captainEmployeeIds: [specialist1Id] }]);
     expect(res.status).toBe(200);
   });
 
   it('Q11 — refuses stealing a crew member without the releasing row, allows the move shape', async () => {
-    const steal = await savePlan([{ vehicleId: vehicleBId, specialist2EmployeeId: captainId }]);
+    const steal = await savePlan([{ vehicleId: vehicleBId, specialist2EmployeeIds: [captainId] }]);
     expect(steal.status).toBe(409);
 
     const move = await savePlan([
       { vehicleId: vehicleAId },
-      { vehicleId: vehicleBId, captainEmployeeId: captainId },
+      { vehicleId: vehicleBId, captainEmployeeIds: [captainId] },
     ]);
     expect(move.status).toBe(200);
     const dto = data<OperationsCrewBoardDto>(move);
-    expect(dto.rows.find((r) => r.vehicleId === vehicleAId)?.crew?.captainEmployeeId).toBeNull();
-    expect(dto.rows.find((r) => r.vehicleId === vehicleBId)?.crew?.captainEmployeeId).toBe(
-      captainId,
+    expect(dto.rows.find((r) => r.vehicleId === vehicleAId)?.crew?.captainEmployeeIds).toEqual(
+      [],
+    );
+    expect(dto.rows.find((r) => r.vehicleId === vehicleBId)?.crew?.captainEmployeeIds).toEqual(
+      [captainId],
     );
   });
 
   it('§9.4 — refuses planning crew for a vehicle that is not on the Fleet roster', async () => {
     const res = await savePlan([
-      { vehicleId: offRosterVehicleId, captainEmployeeId: specialist2Id },
+      { vehicleId: offRosterVehicleId, captainEmployeeIds: [specialist2Id] },
     ]);
     expect(res.status).toBe(422);
     expect(errorCode(res)).toBe(ErrorCodes.OPERATIONS_FLEET_DUTY_REQUIRED);
@@ -708,9 +710,232 @@ describe('crew board — the tashghela workflow on the Fleet boundary (OP-3)', (
 
   it('refuses an unknown employee reference', async () => {
     const res = await savePlan([
-      { vehicleId: vehicleBId, specialist1EmployeeId: '00000000000000000000cccc' },
+      { vehicleId: vehicleBId, specialist1EmployeeIds: ['00000000000000000000cccc'] },
     ]);
     expect(res.status).toBe(400);
+  });
+
+  // ── Slot capacity (CREW_SLOT_CAPACITY) ─────────────────────────────────────────────────────────
+  //
+  // Legacy stored ONE person per slot: three Strings on the tashghela row (models/tash4ela.js:10-12),
+  // one card per cell (tashghela.ejs:914-916). Two per slot is a NEW capability, so these cases have
+  // no legacy counterpart to be measured against — what they pin is that the rules which already
+  // existed (Q11, cross-slot exclusivity) reach the SECOND occupant, and that the ceiling holds.
+  //
+  // Every case sends a COMPLETE plan for both vehicles, so it starts from a known end state rather
+  // than from whatever the preceding cases in this suite left behind.
+  describe('a crew slot holds two people', () => {
+    let coCaptainId: string;
+    let extraSpecialist1Id: string;
+    let extraSpecialist2Id: string;
+
+    beforeAll(async () => {
+      coCaptainId = await mkEmployee();
+      extraSpecialist1Id = await mkEmployee();
+      extraSpecialist2Id = await mkEmployee();
+    });
+
+    const fullCrew = () => ({
+      vehicleId: vehicleAId,
+      captainEmployeeIds: [captainId, coCaptainId],
+      specialist1EmployeeIds: [specialist1Id, extraSpecialist1Id],
+      specialist2EmployeeIds: [specialist2Id, extraSpecialist2Id],
+    });
+
+    it('stores a crew of six on one vehicle and reads all six back', async () => {
+      const res = await savePlan([fullCrew(), { vehicleId: vehicleBId }]);
+      expect(res.status).toBe(200);
+      const rowA = data<OperationsCrewBoardDto>(res).rows.find((r) => r.vehicleId === vehicleAId);
+      expect(rowA?.crew?.captainEmployeeIds).toEqual([captainId, coCaptainId]);
+      expect(rowA?.crew?.specialist1EmployeeIds).toEqual([specialist1Id, extraSpecialist1Id]);
+      expect(rowA?.crew?.specialist2EmployeeIds).toEqual([specialist2Id, extraSpecialist2Id]);
+    });
+
+    it('refuses a THIRD person in one slot', async () => {
+      const res = await savePlan([
+        {
+          vehicleId: vehicleAId,
+          captainEmployeeIds: [captainId, coCaptainId, specialist1Id],
+        },
+        { vehicleId: vehicleBId },
+      ]);
+      expect(res.status).toBe(400);
+    });
+
+    it('refuses the same person listed twice inside one slot', async () => {
+      // Unexpressible while a slot held one person, and refused now rather than left to store a
+      // two-captain crew that is really one person counted twice.
+      const res = await savePlan([
+        { vehicleId: vehicleAId, captainEmployeeIds: [captainId, captainId] },
+        { vehicleId: vehicleBId },
+      ]);
+      expect(res.status).toBe(400);
+    });
+
+    it('Q11 reaches the SECOND occupant — the co-captain cannot also crew vehicle B', async () => {
+      await savePlan([fullCrew(), { vehicleId: vehicleBId }]);
+      const steal = await savePlan([{ vehicleId: vehicleBId, captainEmployeeIds: [coCaptainId] }]);
+      expect(steal.status).toBe(409);
+    });
+
+    /** Vehicle A's crew id as a SCREEN obtains it — through the board, never the repository. */
+    const crewIdOfVehicleA = async (): Promise<string> => {
+      const dto = data<OperationsCrewBoardDto>(await board(PLAN_DATE));
+      return dto.rows.find((r) => r.vehicleId === vehicleAId)?.crew?.id ?? '';
+    };
+
+    /** A shipment collected on the planned day, so its pickup leg lands on this crew's day. */
+    const shipmentOnPlanDate = async (): Promise<OperationsShipmentDto> =>
+      data<OperationsShipmentDto>(await mkShipment({ collectionDate: PLAN_DATE }));
+
+    const assignPickup = async (
+      shipment: OperationsShipmentDto,
+      crewAssignmentId: string,
+      captainEmployeeId: string,
+    ): Promise<request.Response> =>
+      request(app)
+        .post(`/api/v1/operations/assignments/shipments/${shipment.id}/assign-pickup`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ crewAssignmentId, captainEmployeeId, version: shipment.version });
+
+    it('both captains can take a leg — captaincy is membership, not the first slot', async () => {
+      // A crew has two captains; a LEG has one. Which of the two is answerable for a given leg is
+      // the operator's call, so the domain must accept EITHER — a gate that compared against the
+      // first slot would have silently made the second captain a passenger.
+      await savePlan([fullCrew(), { vehicleId: vehicleBId }]);
+      const crewId = await crewIdOfVehicleA();
+      expect(crewId).not.toBe('');
+
+      for (const captain of [captainId, coCaptainId]) {
+        const assigned = await assignPickup(await shipmentOnPlanDate(), crewId, captain);
+        expect(assigned.status).toBe(200);
+      }
+    });
+
+    it('refuses a captain who is on the row as a SPECIALIST, not as a captain', async () => {
+      // Widening captaincy to "anyone in the captain slot" must not widen it to "anyone on the row".
+      await savePlan([fullCrew(), { vehicleId: vehicleBId }]);
+      const res = await assignPickup(
+        await shipmentOnPlanDate(),
+        await crewIdOfVehicleA(),
+        specialist1Id,
+      );
+      expect(res.status).toBe(422);
+      expect(errorCode(res)).toBe(ErrorCodes.OPERATIONS_CREW_CAPTAIN_MISMATCH);
+    });
+  });
+
+  // ── The migration off the single-occupant columns ──────────────────────────────────────────────
+  //
+  // Rows written before the slots became lists carry three scalars and no lists. The conversion is
+  // boot-time, in-module and idempotent; what these cases pin is the three rules it is built on —
+  // nothing deleted, nothing invented, re-running changes nothing — because rule 3 is what makes it
+  // safe to leave in the boot path forever.
+  describe('migrating a pre-capacity crew row', () => {
+    const insertLegacyRow = async (
+      dayId: unknown,
+      scalars: Record<string, unknown>,
+    ): Promise<string> => {
+      const { OperationsCrewAssignmentModel } = await import(
+        '../../src/modules/operations/crew/crew-assignment.model'
+      );
+      const { Types } = await import('mongoose');
+      // Written through the raw collection ON PURPOSE: the document no longer maps these columns,
+      // so the model cannot produce the shape this is meant to read.
+      const result = await OperationsCrewAssignmentModel.collection.insertOne({
+        operationsDayId: dayId,
+        vehicleId: new Types.ObjectId(),
+        fleetDutyAssignmentId: new Types.ObjectId(),
+        direction: null,
+        plannedTime: null,
+        notes: null,
+        isDeleted: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdById: null,
+        updatedById: null,
+        __v: 0,
+        ...scalars,
+      });
+      return String(result.insertedId);
+    };
+
+    const readRaw = async (id: string): Promise<Record<string, unknown>> => {
+      const { OperationsCrewAssignmentModel } = await import(
+        '../../src/modules/operations/crew/crew-assignment.model'
+      );
+      const { Types } = await import('mongoose');
+      const doc = await OperationsCrewAssignmentModel.collection.findOne({
+        _id: new Types.ObjectId(id),
+      });
+      return (doc ?? {}) as Record<string, unknown>;
+    };
+
+    it('converts each occupant to a one-person list and leaves the source column untouched', async () => {
+      const { Types } = await import('mongoose');
+      const { migrateCrewSlotsToArrays } = await import(
+        '../../src/modules/operations/operations.migration'
+      );
+      const captain = new Types.ObjectId();
+      const specialist = new Types.ObjectId();
+      const id = await insertLegacyRow(new Types.ObjectId(), {
+        captainEmployeeId: captain,
+        specialist1EmployeeId: specialist,
+        specialist2EmployeeId: null,
+      });
+
+      const first = await migrateCrewSlotsToArrays();
+      expect(first.rowsUpdated).toBeGreaterThanOrEqual(1);
+
+      const row = await readRaw(id);
+      expect(row.captainEmployeeIds).toEqual([captain]);
+      expect(row.specialist1EmployeeIds).toEqual([specialist]);
+      // Nothing invented: an empty slot becomes an empty list, not a placeholder occupant.
+      expect(row.specialist2EmployeeIds).toEqual([]);
+      // Nothing deleted: the source of the conversion is the only way to check it afterwards.
+      expect(String(row.captainEmployeeId)).toBe(String(captain));
+    });
+
+    it('re-running writes nothing and never collapses a crew someone has since widened', async () => {
+      const { Types } = await import('mongoose');
+      const { migrateCrewSlotsToArrays } = await import(
+        '../../src/modules/operations/operations.migration'
+      );
+      const captain = new Types.ObjectId();
+      const coCaptain = new Types.ObjectId();
+      const id = await insertLegacyRow(new Types.ObjectId(), { captainEmployeeId: captain });
+      await migrateCrewSlotsToArrays();
+
+      // An operator adds a second captain. The frozen scalar now DISAGREES with the list — which
+      // is the normal state of every row edited after the migration ran, not a fault to repair.
+      const { OperationsCrewAssignmentModel } = await import(
+        '../../src/modules/operations/crew/crew-assignment.model'
+      );
+      await OperationsCrewAssignmentModel.collection.updateOne(
+        { _id: new Types.ObjectId(id) },
+        { $set: { captainEmployeeIds: [captain, coCaptain] } },
+      );
+
+      const again = await migrateCrewSlotsToArrays();
+      expect(again.rowsUpdated).toBe(0);
+      expect((await readRaw(id)).captainEmployeeIds).toEqual([captain, coCaptain]);
+    });
+
+    it('reaches a soft-deleted row — it is still readable history', async () => {
+      const { Types } = await import('mongoose');
+      const { migrateCrewSlotsToArrays } = await import(
+        '../../src/modules/operations/operations.migration'
+      );
+      const captain = new Types.ObjectId();
+      const id = await insertLegacyRow(new Types.ObjectId(), {
+        captainEmployeeId: captain,
+        isDeleted: true,
+      });
+      await migrateCrewSlotsToArrays();
+      // Leaving it on the old shape would make it the one row whose crew a widened reader cannot
+      // see — and the captain report and the audit trail both reach it.
+      expect((await readRaw(id)).captainEmployeeIds).toEqual([captain]);
+    });
   });
 
   it('gates the board and the plan behind their own grants', async () => {
@@ -775,7 +1000,7 @@ describe('secured (محصنة) workflow — the four legacy screens (OP-4)', () 
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         date: DELIVERY_DATE,
-        rows: [{ vehicleId: vehicleAId, captainEmployeeId: captainId }],
+        rows: [{ vehicleId: vehicleAId, captainEmployeeIds: [captainId] }],
       });
     expect(plan.status).toBe(200);
     const board = data<OperationsCrewBoardDto>(plan);
@@ -1143,9 +1368,9 @@ describe('assignment & sequencing — the captain\'s ordered day (OP-5)', () => 
         rows: [
           {
             vehicleId: vehicleAId,
-            captainEmployeeId: captainId,
-            specialist1EmployeeId: specialist1Id,
-            specialist2EmployeeId: specialist2Id,
+            captainEmployeeIds: [captainId],
+            specialist1EmployeeIds: [specialist1Id],
+            specialist2EmployeeIds: [specialist2Id],
           },
         ],
       });
@@ -1188,8 +1413,8 @@ describe('assignment & sequencing — the captain\'s ordered day (OP-5)', () => 
     // The crew comes off the crew assignment, not off any shipment.
     expect(dto.crew).toHaveLength(1);
     expect(dto.crew[0]?.crewAssignmentId).toBe(crewId);
-    expect(dto.crew[0]?.specialist1EmployeeId).toBe(specialist1Id);
-    expect(dto.crew[0]?.specialist2EmployeeId).toBe(specialist2Id);
+    expect(dto.crew[0]?.specialist1EmployeeIds).toEqual([specialist1Id]);
+    expect(dto.crew[0]?.specialist2EmployeeIds).toEqual([specialist2Id]);
 
     // THE regression guard: no specialist field exists anywhere on a shipment document.
     const shipment = data<Record<string, unknown>>(
@@ -1397,9 +1622,9 @@ describe('captain mobile read model — NEW capability, no legacy counterpart (O
         rows: [
           {
             vehicleId: vehicleAId,
-            captainEmployeeId: captainId,
-            specialist1EmployeeId: specialist1Id,
-            specialist2EmployeeId: specialist2Id,
+            captainEmployeeIds: [captainId],
+            specialist1EmployeeIds: [specialist1Id],
+            specialist2EmployeeIds: [specialist2Id],
             direction: 'الجيزة',
             plannedTime: '07:00',
           },
@@ -1440,7 +1665,7 @@ describe('captain mobile read model — NEW capability, no legacy counterpart (O
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         date: PLANNED_ONLY_DATE,
-        rows: [{ vehicleId: vehicleAId, captainEmployeeId: captainId, direction: 'بنها' }],
+        rows: [{ vehicleId: vehicleAId, captainEmployeeIds: [captainId], direction: 'بنها' }],
       });
     expect(plannedCrew.status).toBe(200);
   });
@@ -1506,6 +1731,52 @@ describe('captain mobile read model — NEW capability, no legacy counterpart (O
     expect(planned.isCaptainOnDay).not.toBe(notPlanned.isCaptainOnDay);
   });
 
+  it('identity. BOTH captains of a two-captain crew are captains on that day', async () => {
+    // A crew may now carry two captains, and there is no first captain and no deputy: the answer
+    // for either of them must be identical. The captaincy anchor is a MEMBERSHIP query
+    // (`captainEmployeeIds: employeeId`), and this is the case that would have gone silently wrong
+    // had the field been widened in place — Mongo matches an array against the old scalar query
+    // just as happily, so the anchor would have kept working while the comparisons behind it did
+    // not.
+    const CO_CAPTAIN_DATE = '2026-09-16';
+
+    const roster = await request(app)
+      .post('/api/v1/fleet/roster')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date: CO_CAPTAIN_DATE, rows: [{ vehicleId: vehicleAId, notes: 'two captains' }] });
+    expect(roster.status).toBe(200);
+
+    const plan = await request(app)
+      .post('/api/v1/operations/crew-board')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        date: CO_CAPTAIN_DATE,
+        rows: [
+          {
+            vehicleId: vehicleAId,
+            captainEmployeeIds: [captainId, otherCaptainId],
+            specialist1EmployeeIds: [specialist1Id],
+          },
+        ],
+      });
+    expect(plan.status).toBe(200);
+
+    const first = data<OperationsMobileDayDto>(await myDay(captainUserToken, CO_CAPTAIN_DATE));
+    const second = data<OperationsMobileDayDto>(await myDay(otherCaptainToken, CO_CAPTAIN_DATE));
+
+    for (const dto of [first, second]) {
+      expect(dto.isCaptainOnDay).toBe(true);
+      expect(dto.assignments).toHaveLength(1);
+      expect(dto.assignments[0]?.vehicleId).toBe(vehicleAId);
+      // Each captain sees who else is in the van — his co-captain included, himself included.
+      expect(dto.assignments[0]?.captainEmployeeIds).toEqual([captainId, otherCaptainId]);
+      expect(dto.assignments[0]?.specialist1EmployeeIds).toEqual([specialist1Id]);
+    }
+    // Same crew row, same everything: neither captain is the "real" one.
+    expect(first.assignments).toEqual(second.assignments);
+    expect(first.captain.employeeId).not.toBe(second.captain.employeeId);
+  });
+
   it('2 + 12. a captain cannot see another captain day — isolation is structural', async () => {
     const mine = data<OperationsMobileDayDto>(await myDay(captainUserToken));
     const theirs = data<OperationsMobileDayDto>(await myDay(otherCaptainToken));
@@ -1550,8 +1821,8 @@ describe('captain mobile read model — NEW capability, no legacy counterpart (O
     expect(dto.assignments).toHaveLength(1);
     expect(dto.assignments[0]?.crewAssignmentId).toBe(mobileCrewId);
     expect(dto.assignments[0]?.vehicleId).toBe(vehicleAId);
-    expect(dto.assignments[0]?.specialist1EmployeeId).toBe(specialist1Id);
-    expect(dto.assignments[0]?.specialist2EmployeeId).toBe(specialist2Id);
+    expect(dto.assignments[0]?.specialist1EmployeeIds).toEqual([specialist1Id]);
+    expect(dto.assignments[0]?.specialist2EmployeeIds).toEqual([specialist2Id]);
     expect(dto.stops.every((s) => s.crewAssignmentId === mobileCrewId)).toBe(true);
     expect(dto.stops.every((s) => s.vehicleId === vehicleAId)).toBe(true);
     expect(dto.stops.every((s) => s.leg === 'pickup')).toBe(true);
@@ -1574,7 +1845,7 @@ describe('captain mobile read model — NEW capability, no legacy counterpart (O
     await request(app)
       .post('/api/v1/operations/crew-board')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ date: DELIVERY, rows: [{ vehicleId: vehicleAId, captainEmployeeId: captainId }] });
+      .send({ date: DELIVERY, rows: [{ vehicleId: vehicleAId, captainEmployeeIds: [captainId] }] });
 
     const secured = data<OperationsShipmentDto>(
       await mkShipment({
@@ -1743,8 +2014,8 @@ describe('captain mobile EXECUTION — sequential workflow (OP-7, NEW capability
       .send({
         date: EXEC_DATE,
         rows: [
-          { vehicleId: vehicleAId, captainEmployeeId: execCaptainId },
-          { vehicleId: vehicleBId, captainEmployeeId: rivalCaptainId },
+          { vehicleId: vehicleAId, captainEmployeeIds: [execCaptainId] },
+          { vehicleId: vehicleBId, captainEmployeeIds: [rivalCaptainId] },
         ],
       });
     expect(plan.status).toBe(200);
@@ -1755,7 +2026,7 @@ describe('captain mobile EXECUTION — sequential workflow (OP-7, NEW capability
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         date: NO_STOPS_DATE,
-        rows: [{ vehicleId: vehicleAId, captainEmployeeId: execCaptainId }],
+        rows: [{ vehicleId: vehicleAId, captainEmployeeIds: [execCaptainId] }],
       });
     expect(idlePlan.status).toBe(200);
 
@@ -1937,8 +2208,8 @@ describe('captain mobile EXECUTION — sequential workflow (OP-7, NEW capability
       .send({
         date: EXEC_DATE,
         rows: [
-          { vehicleId: vehicleAId, captainEmployeeId: rivalCaptainId },
-          { vehicleId: vehicleBId, captainEmployeeId: execCaptainId },
+          { vehicleId: vehicleAId, captainEmployeeIds: [rivalCaptainId] },
+          { vehicleId: vehicleBId, captainEmployeeIds: [execCaptainId] },
         ],
       });
     expect(handover.status).toBe(200);
@@ -1953,8 +2224,8 @@ describe('captain mobile EXECUTION — sequential workflow (OP-7, NEW capability
       .send({
         date: EXEC_DATE,
         rows: [
-          { vehicleId: vehicleAId, captainEmployeeId: execCaptainId },
-          { vehicleId: vehicleBId, captainEmployeeId: rivalCaptainId },
+          { vehicleId: vehicleAId, captainEmployeeIds: [execCaptainId] },
+          { vehicleId: vehicleBId, captainEmployeeIds: [rivalCaptainId] },
         ],
       });
     expect(restore.status).toBe(200);
@@ -2137,7 +2408,7 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         date: BOARD_DATE,
-        rows: [{ vehicleId: vehicleAId, captainEmployeeId: captainId }],
+        rows: [{ vehicleId: vehicleAId, captainEmployeeIds: [captainId] }],
       });
     expect(crewRes.status).toBe(200);
 
@@ -2358,7 +2629,7 @@ describe('crew roster and requirements — legacy /requirement (B3)', () => {
     const plan = await request(app)
       .post('/api/v1/operations/crew-board')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ date: ROSTER_DATE, rows: [{ vehicleId: vehicleAId, captainEmployeeId: memberA }] });
+      .send({ date: ROSTER_DATE, rows: [{ vehicleId: vehicleAId, captainEmployeeIds: [memberA] }] });
     expect(plan.status).toBe(200);
 
     const dto = data<{ members: { employeeId: string; assignedVehicleId: string | null }[] }>(
@@ -2392,7 +2663,7 @@ describe('crew roster and requirements — legacy /requirement (B3)', () => {
     const plan = await request(app)
       .post('/api/v1/operations/crew-board')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ date: '2026-11-05', rows: [{ vehicleId: vehicleAId, captainEmployeeId: flagless }] });
+      .send({ date: '2026-11-05', rows: [{ vehicleId: vehicleAId, captainEmployeeIds: [flagless] }] });
     expect(plan.status).toBe(200);
   });
 
@@ -2407,7 +2678,7 @@ describe('crew roster and requirements — legacy /requirement (B3)', () => {
     const plan = await request(app)
       .post('/api/v1/operations/crew-board')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ date: '2026-11-06', rows: [{ vehicleId: vehicleAId, captainEmployeeId: stranger }] });
+      .send({ date: '2026-11-06', rows: [{ vehicleId: vehicleAId, captainEmployeeIds: [stranger] }] });
     expect(plan.status).toBe(200);
   });
 
@@ -2559,7 +2830,7 @@ describe('operations reports — legacy /ops_report and /ops_bank_report (B5)', 
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         date: '2026-09-10',
-        rows: [{ vehicleId: vehicleAId, captainEmployeeId: reportCaptain }],
+        rows: [{ vehicleId: vehicleAId, captainEmployeeIds: [reportCaptain] }],
       });
     expect(plan.status).toBe(200);
     // The crew assignment id is not on the board DTO — the board shows the crew, not its row id —
@@ -2816,7 +3087,7 @@ describe('crew attendance — NO legacy counterpart, read-only and non-gating (B
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         date: ATT_DATE,
-        rows: [{ vehicleId: vehicleAId, captainEmployeeId: attendanceMember }],
+        rows: [{ vehicleId: vehicleAId, captainEmployeeIds: [attendanceMember] }],
       });
     // The whole point of the surface: it informs, it does not refuse.
     expect(plan.status).toBe(200);
@@ -2961,7 +3232,7 @@ describe('vault roll-up and operational areas — legacy /vault1_reports and /da
     const plan = await request(app)
       .post('/api/v1/operations/crew-board')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ date: VAULT_DATE, rows: [{ vehicleId: vehicleAId, captainEmployeeId: captainId }] });
+      .send({ date: VAULT_DATE, rows: [{ vehicleId: vehicleAId, captainEmployeeIds: [captainId] }] });
     expect(plan.status).toBe(200);
     const crewRow = await crewAssignmentIdForDay(VAULT_DATE);
 

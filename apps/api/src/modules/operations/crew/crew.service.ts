@@ -3,7 +3,10 @@
 // WHAT IS PARITY AND WHAT IS PROMOTED (each promotion a named register decision, never silent):
 //   · The board answers for TOMORROW when no date is given — verbatim legacy behaviour
 //     (contad_app.js:2239-2247 redirects to tomorrow).
-//   · Crew slots are all optional; there is no minimum crew (`row.spe1 || ""`, :2419).
+//   · Crew slots are all optional; there is no minimum crew (`row.spe1 || ""`, :2419). Each slot
+//     now holds up to CREW_SLOT_CAPACITY people — a NEW capability, not a restored one: legacy
+//     stored three single strings (models/tash4ela.js:10-12) and drew one card per cell
+//     (tashghela.ejs:914-916). Nothing legacy did was dropped; the ceiling was raised.
 //   · A crew member holds ONE vehicle per operating day (Q11): the legacy check lived only in the
 //     browser (tashghela.ejs:1332) while POST blind-upserted (:2413) — promoted to the domain,
 //     end-state-checked exactly like the fleet roster's FR-7 driver half.
@@ -44,6 +47,7 @@ import { fleetVehicleRepository } from '../fleet-boundary';
 import { operationsDayService, utcDay } from '../days/day.service';
 import { operationsCrewAssignmentRepository } from './crew-assignment.repository';
 import { type OperationsCrewAssignmentDoc } from './crew-assignment.model';
+import { crewMembers, slotIds } from './crew-slots';
 
 const entityRef = (id: string) => ({
   moduleId: 'operations',
@@ -53,20 +57,20 @@ const entityRef = (id: string) => ({
 
 /** The audited/compared surface — the crew facts, nothing derived. */
 const snapshot = (doc: OperationsCrewAssignmentDoc) => ({
-  captainEmployeeId: doc.captainEmployeeId === null ? null : String(doc.captainEmployeeId),
-  specialist1EmployeeId:
-    doc.specialist1EmployeeId === null ? null : String(doc.specialist1EmployeeId),
-  specialist2EmployeeId:
-    doc.specialist2EmployeeId === null ? null : String(doc.specialist2EmployeeId),
+  captainEmployeeIds: slotIds(doc.captainEmployeeIds),
+  specialist1EmployeeIds: slotIds(doc.specialist1EmployeeIds),
+  specialist2EmployeeIds: slotIds(doc.specialist2EmployeeIds),
   direction: doc.direction,
   plannedTime: doc.plannedTime,
   notes: doc.notes,
 });
 
-const rowCrew = (row: PlanOperationsCrewRow): string[] =>
-  [row.captainEmployeeId, row.specialist1EmployeeId, row.specialist2EmployeeId].filter(
-    (id): id is string => id != null,
-  );
+/** Everyone the payload row puts on the vehicle, across all three slots. */
+const rowCrew = (row: PlanOperationsCrewRow): string[] => [
+  ...(row.captainEmployeeIds ?? []),
+  ...(row.specialist1EmployeeIds ?? []),
+  ...(row.specialist2EmployeeIds ?? []),
+];
 
 /** A row that ASSIGNS something, as opposed to one that only clears or annotates. */
 const assigns = (row: PlanOperationsCrewRow): boolean => rowCrew(row).length > 0;
@@ -79,9 +83,9 @@ const tomorrow = (): Date => {
 
 interface ChangedRow {
   vehicleId: string;
-  captainEmployeeId: string | null;
-  specialist1EmployeeId: string | null;
-  specialist2EmployeeId: string | null;
+  captainEmployeeIds: string[];
+  specialist1EmployeeIds: string[];
+  specialist2EmployeeIds: string[];
 }
 
 interface PendingAudit {
@@ -185,14 +189,13 @@ class OperationsCrewService {
       const payloadCrew = new Set(input.rows.flatMap(rowCrew));
       for (const row of existing) {
         if (payloadVehicles.has(String(row.vehicleId))) continue;
-        for (const slot of [
-          row.captainEmployeeId,
-          row.specialist1EmployeeId,
-          row.specialist2EmployeeId,
-        ]) {
-          if (slot !== null && payloadCrew.has(String(slot))) {
+        // The Q11 traversal widened with the slots — the rule did not. Reusing the repository's
+        // `takenCrew` here would be wrong: it answers over a WHOLE day and this asks about one
+        // untouched row, so the two stay separate implementations of the same rule.
+        for (const occupant of crewMembers(row)) {
+          if (payloadCrew.has(occupant)) {
             throw new ConflictError(
-              `employee ${String(slot)} already holds this day's crew assignment on vehicle ${String(row.vehicleId)} (Q11); include that vehicle's row to release them`,
+              `employee ${occupant} already holds this day's crew assignment on vehicle ${String(row.vehicleId)} (Q11); include that vehicle's row to release them`,
             );
           }
         }
@@ -202,25 +205,21 @@ class OperationsCrewService {
       const audits: PendingAudit[] = [];
       for (const row of input.rows) {
         const current = byVehicle.get(row.vehicleId);
+        // An omitted slot CLEARS it, unchanged from when a slot held one person: the board sends
+        // whole rows, and `undefined` has always meant "nobody", never "keep what is there". A
+        // partial-update dialect would be a new behaviour, and this slice is not introducing one.
         const next = {
-          captainEmployeeId: row.captainEmployeeId ?? null,
-          specialist1EmployeeId: row.specialist1EmployeeId ?? null,
-          specialist2EmployeeId: row.specialist2EmployeeId ?? null,
+          captainEmployeeIds: row.captainEmployeeIds ?? [],
+          specialist1EmployeeIds: row.specialist1EmployeeIds ?? [],
+          specialist2EmployeeIds: row.specialist2EmployeeIds ?? [],
           direction: row.direction ?? null,
           plannedTime: row.plannedTime ?? null,
           notes: row.notes ?? null,
         };
         const set: Partial<OperationsCrewAssignmentDoc> = {
-          captainEmployeeId:
-            next.captainEmployeeId === null ? null : new Types.ObjectId(next.captainEmployeeId),
-          specialist1EmployeeId:
-            next.specialist1EmployeeId === null
-              ? null
-              : new Types.ObjectId(next.specialist1EmployeeId),
-          specialist2EmployeeId:
-            next.specialist2EmployeeId === null
-              ? null
-              : new Types.ObjectId(next.specialist2EmployeeId),
+          captainEmployeeIds: next.captainEmployeeIds.map((id) => new Types.ObjectId(id)),
+          specialist1EmployeeIds: next.specialist1EmployeeIds.map((id) => new Types.ObjectId(id)),
+          specialist2EmployeeIds: next.specialist2EmployeeIds.map((id) => new Types.ObjectId(id)),
           direction: next.direction,
           plannedTime: next.plannedTime,
           notes: next.notes,
@@ -264,9 +263,9 @@ class OperationsCrewService {
         }
         changed.push({
           vehicleId: row.vehicleId,
-          captainEmployeeId: next.captainEmployeeId,
-          specialist1EmployeeId: next.specialist1EmployeeId,
-          specialist2EmployeeId: next.specialist2EmployeeId,
+          captainEmployeeIds: next.captainEmployeeIds,
+          specialist1EmployeeIds: next.specialist1EmployeeIds,
+          specialist2EmployeeIds: next.specialist2EmployeeIds,
         });
       }
       return { changed, audits };
@@ -285,9 +284,9 @@ class OperationsCrewService {
         dayId: String(dayDoc._id),
         vehicleId: row.vehicleId,
         date: day,
-        captainEmployeeId: row.captainEmployeeId,
-        specialist1EmployeeId: row.specialist1EmployeeId,
-        specialist2EmployeeId: row.specialist2EmployeeId,
+        captainEmployeeIds: row.captainEmployeeIds,
+        specialist1EmployeeIds: row.specialist1EmployeeIds,
+        specialist2EmployeeIds: row.specialist2EmployeeIds,
       });
     }
     await emit(OperationsEvents.CrewPlanned, {

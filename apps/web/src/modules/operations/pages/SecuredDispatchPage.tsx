@@ -38,6 +38,7 @@ import {
   useSecuredDue,
 } from '../api/operations-queries';
 import { totalsByCurrency } from '../lib/day-board';
+import { dispatchCrewOptions, findDispatchOption } from '../lib/dispatch-crew';
 import { ShipmentStatusBadge } from '../components/ShipmentBadges';
 
 /** The due list is keyed on a REQUIRED delivery date — unlike the backlog, this is a day's work. */
@@ -63,21 +64,19 @@ export const SecuredDispatchPage = (): JSX.Element => {
   const canDispatch = can('operationsVault.dispatch');
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [crewAssignmentId, setCrewAssignmentId] = useState('');
+  /** One (crew row, captain) pair — a crew may now hold two captains and a leg holds one. */
+  const [crewKey, setCrewKey] = useState('');
 
   // Only vehicles that HAVE a captain can carry a secured load — the delivery leg needs a captain.
-  const crews = useMemo(
-    () => (board.data?.rows ?? []).filter((row) => row.crew?.captainEmployeeId != null),
-    [board.data],
-  );
+  const crews = useMemo(() => dispatchCrewOptions(board.data?.rows ?? []), [board.data]);
+  const chosen = findDispatchOption(crews, crewKey);
   const captainOf = (employeeId: string | null | undefined): string =>
     directory.data?.members.find((m) => m.employeeId === employeeId)?.fullNameAr ?? '—';
 
   const shipments = due.data ?? [];
 
   const assignOne = async (shipment: OperationsShipmentDto): Promise<void> => {
-    const crew = crews.find((c) => c.vehicleId === crewAssignmentId);
-    if (crew === undefined || crew.crew === null) {
+    if (chosen === undefined) {
       toast.error(t('operations.secured.dispatch.pickCrew'));
       return;
     }
@@ -86,10 +85,10 @@ export const SecuredDispatchPage = (): JSX.Element => {
         id: shipment.id,
         body: {
           // The crew ROW is the legacy tashghela row; the captain comes from it, never typed.
-          // `crew.crew.id` and NOT `crew.fleetDutyAssignmentId`: the latter belongs to Fleet's
-          // duty collection, and sending it made the server look for a crew row that cannot exist.
-          crewAssignmentId: crew.crew.id,
-          captainEmployeeId: crew.crew.captainEmployeeId ?? '',
+          // `crew.id` and NOT `fleetDutyAssignmentId`: the latter belongs to Fleet's duty
+          // collection, and sending it made the server look for a crew row that cannot exist.
+          crewAssignmentId: chosen.crewAssignmentId,
+          captainEmployeeId: chosen.captainEmployeeId,
           version: shipment.version,
         },
       });
@@ -100,18 +99,13 @@ export const SecuredDispatchPage = (): JSX.Element => {
   };
 
   const release = async (): Promise<void> => {
-    if (selected.size === 0 || crewAssignmentId === '') return;
-    const crew = crews.find((c) => c.vehicleId === crewAssignmentId);
-    // `crew.crew === null` was unguarded here while `assignOne` above guards it — the compiler
-    // found it the moment the id started coming from the crew row instead of the duty row.
-    if (crew === undefined || crew.crew === null) {
-      toast.error(t('operations.secured.dispatch.pickCrew'));
-      return;
-    }
+    if (selected.size === 0 || chosen === undefined) return;
     if (!window.confirm(t('operations.secured.dispatch.confirm', { count: selected.size }))) return;
     try {
+      // The release is addressed to the crew ROW — the whole vehicle leaves the vault, whichever
+      // of its captains the legs were assigned to.
       await dispatch.mutateAsync({
-        crewAssignmentId: crew.crew.id,
+        crewAssignmentId: chosen.crewAssignmentId,
         shipmentIds: [...selected],
       });
       toast.success(t('operations.secured.dispatch.done', { count: selected.size }));
@@ -176,7 +170,7 @@ export const SecuredDispatchPage = (): JSX.Element => {
           <Button
             size="sm"
             variant="secondary"
-            disabled={crewAssignmentId === '' || assign.isPending}
+            disabled={chosen === undefined || assign.isPending}
             onClick={() => void assignOne(row)}
           >
             {t('operations.secured.dispatch.assign')}
@@ -193,7 +187,7 @@ export const SecuredDispatchPage = (): JSX.Element => {
         actions={
           canDispatch ? (
             <Button
-              disabled={selected.size === 0 || crewAssignmentId === '' || dispatch.isPending}
+              disabled={selected.size === 0 || chosen === undefined || dispatch.isPending}
               onClick={() => void release()}
             >
               {t('operations.secured.dispatch.release', { count: selected.size })}
@@ -222,14 +216,13 @@ export const SecuredDispatchPage = (): JSX.Element => {
             <span className="mb-1 block text-slate-500">
               {t('operations.secured.dispatch.vehicle')}
             </span>
-            <Select
-              value={crewAssignmentId}
-              onChange={(e) => setCrewAssignmentId(e.target.value)}
-            >
+            <Select value={crewKey} onChange={(e) => setCrewKey(e.target.value)}>
               <option value="">{t('common.select')}</option>
+              {/* A two-captain vehicle appears TWICE, once per captain — the operator names who is
+                  answerable for the leg rather than the screen guessing. */}
               {crews.map((crew) => (
-                <option key={crew.vehicleId} value={crew.vehicleId}>
-                  {crew.vehicleCode} — {captainOf(crew.crew?.captainEmployeeId)}
+                <option key={crew.key} value={crew.key}>
+                  {crew.vehicleCode} — {captainOf(crew.captainEmployeeId)}
                 </option>
               ))}
             </Select>

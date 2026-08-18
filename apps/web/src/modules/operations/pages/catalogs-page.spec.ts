@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import { OPERATIONS_CATALOG_KINDS, resolveCatalogKind } from './CatalogsPage';
 import { resolveBoardDate } from './DailyOperationsPage';
+import { resolveCrewDate } from './CrewBoardPage';
 
 describe('resolveCatalogKind', () => {
   it('accepts each kind the page can actually show', () => {
@@ -40,6 +41,24 @@ describe('resolveBoardDate — the daily board\'s ?date= contract', () => {
   it('is null for anything that is not a day, rather than passing it through', () => {
     for (const bad of ['', 'today', '2026-13-99T00:00:00Z', '05-10-2026']) {
       expect(resolveBoardDate(bad)).toBeNull();
+    }
+  });
+});
+
+describe('resolveCrewDate — the crew board defaults to TOMORROW, server-side', () => {
+  it('accepts an explicit day', () => {
+    expect(resolveCrewDate('2026-11-03')).toBe('2026-11-03');
+  });
+
+  it('is null when absent — the SERVER decides, and it answers tomorrow', () => {
+    // Legacy redirected to tomorrow (contad_app.js:2239-2247) because crews are planned a day
+    // ahead. Null keeps that decision on the server rather than duplicating "+1 day" here.
+    expect(resolveCrewDate(null)).toBeNull();
+  });
+
+  it('is null for anything that is not a plain day', () => {
+    for (const bad of ['', 'tomorrow', '2026-11-03T00:00:00Z', '03-11-2026']) {
+      expect(resolveCrewDate(bad)).toBeNull();
     }
   });
 });

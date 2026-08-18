@@ -116,3 +116,52 @@ describe('shipment write fan-out (B2)', () => {
     expect(__operationsKeys.shipments).toEqual(['operations', 'shipments']);
   });
 });
+
+describe('crew board write fan-out (B3)', () => {
+  // Two dependencies run in one direction each, and both are easy to get wrong:
+  //   · planning changes who is TAKEN → the pool must restale, or a card stays draggable after
+  //     being assigned;
+  //   · editing the roster changes who is OFFERED → the pool must restale, or a new member never
+  //     appears until a reload.
+  const seedCrew = (qc: QueryClient): void => {
+    qc.setQueryData(listKey('operations', 'crewBoard', { date: 'tomorrow' }), { rows: [] });
+    qc.setQueryData(listKey('operations', 'crewDirectory', { date: 'tomorrow' }), { members: [] });
+    qc.setQueryData(listKey('operations', 'crewRequirements', { page: 1 }), { items: [] });
+    qc.setQueryData(listKey('operations', 'dayBoard', { date: 'today' }), { shipments: [] });
+  };
+
+  it('planning stales the board AND the pool', async () => {
+    const qc = new QueryClient();
+    seedCrew(qc);
+    await qc.invalidateQueries({ queryKey: __operationsKeys.crewBoard });
+    await qc.invalidateQueries({ queryKey: __operationsKeys.crewDirectory });
+
+    expect(isStale(qc, __operationsKeys.crewBoard)).toBe(true);
+    expect(isStale(qc, __operationsKeys.crewDirectory)).toBe(true);
+  });
+
+  it('a roster edit stales the pool as well as the roster list', async () => {
+    const qc = new QueryClient();
+    seedCrew(qc);
+    await qc.invalidateQueries({ queryKey: __operationsKeys.crewRequirements });
+    await qc.invalidateQueries({ queryKey: __operationsKeys.crewDirectory });
+
+    expect(isStale(qc, __operationsKeys.crewRequirements)).toBe(true);
+    expect(isStale(qc, __operationsKeys.crewDirectory)).toBe(true);
+  });
+
+  it('crew work leaves the shipment board alone — they are different facts', async () => {
+    const qc = new QueryClient();
+    seedCrew(qc);
+    await qc.invalidateQueries({ queryKey: __operationsKeys.crewBoard });
+    await qc.invalidateQueries({ queryKey: __operationsKeys.crewDirectory });
+
+    expect(isStale(qc, __operationsKeys.dayBoard)).toBe(false);
+  });
+
+  it('keeps board, pool and roster on separate subtrees', () => {
+    expect(__operationsKeys.crewBoard).toEqual(['operations', 'crewBoard']);
+    expect(__operationsKeys.crewDirectory).toEqual(['operations', 'crewDirectory']);
+    expect(__operationsKeys.crewRequirements).toEqual(['operations', 'crewRequirements']);
+  });
+});

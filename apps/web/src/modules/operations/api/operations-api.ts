@@ -17,6 +17,10 @@ import {
   type OperationsBankBranchDto,
   type OperationsBankDto,
   type CreateOperationsShipment,
+  type ListOperationsCrewRequirementsQuery,
+  type OperationsCrewBoardDto,
+  type OperationsCrewDirectoryDto,
+  type OperationsCrewRequirementsDto,
   type OperationsCurrencyDto,
   type OperationsDayBoardDto,
   type OperationsShipmentDto,
@@ -24,9 +28,12 @@ import {
   type UpdateOperationsBank,
   type UpdateOperationsBankBranch,
   type UpdateOperationsCurrency,
+  type PlanOperationsCrew,
+  type SetOperationsCrewRequirements,
   type UpdateOperationsShipment,
 } from '@ecms/contracts';
 import {
+  api,
   buildQuery,
   del,
   get,
@@ -131,3 +138,49 @@ export const reopenShipment = (
 
 export const deleteShipment = (id: string): Promise<void> =>
   del<void>(`/operations/shipments/${id}`);
+
+// ── Crew board, roster and requirements (B3 — legacy /tashghela + /requirement) ─────────────
+
+/** The board for a day. No date → TOMORROW, resolved server-side (legacy :2239-2247). */
+export const getCrewBoard = (date: string | null): Promise<OperationsCrewBoardDto> =>
+  get<OperationsCrewBoardDto>(
+    `/operations/crew-board${date === null ? '' : buildQuery({ date })}`,
+  );
+
+/**
+ * Saving the board answers with the refreshed board in the same round trip, so the screen never
+ * has to guess what the server made of the plan.
+ */
+export const planCrew = (
+  body: PlanOperationsCrew,
+): Promise<OperationsCrewBoardDto & { changedCount: number }> =>
+  post<OperationsCrewBoardDto & { changedCount: number }>('/operations/crew-board', body);
+
+/** The pool: the roster, with flags, and who is already taken on the requested day. */
+export const getCrewDirectory = (date: string | null): Promise<OperationsCrewDirectoryDto> =>
+  get<OperationsCrewDirectoryDto>(
+    `/operations/crew-board/directory${date === null ? '' : buildQuery({ date })}`,
+  );
+
+export const listCrewRequirements = (
+  params: ListOperationsCrewRequirementsQuery,
+): Promise<Paginated<OperationsCrewRequirementsDto>> =>
+  getPage<OperationsCrewRequirementsDto>(
+    `/operations/crew-board/requirements${buildQuery(params as QueryParams)}`,
+  );
+
+const put = <T>(path: string, body: unknown): Promise<T> =>
+  api<T>(path, { method: 'PUT', body: JSON.stringify(body) });
+
+/** Upsert by employee — the legacy screen had no create/edit split, only a saved checkbox line. */
+export const setCrewRequirements = (
+  employeeId: string,
+  body: SetOperationsCrewRequirements,
+): Promise<OperationsCrewRequirementsDto> =>
+  put<OperationsCrewRequirementsDto>(
+    `/operations/crew-board/requirements/${employeeId}`,
+    body,
+  );
+
+export const removeCrewRequirements = (employeeId: string): Promise<void> =>
+  del<void>(`/operations/crew-board/requirements/${employeeId}`);

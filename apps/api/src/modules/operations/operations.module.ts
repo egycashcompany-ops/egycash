@@ -169,10 +169,11 @@ export const operationsPages: PageDef[] = [
 export const operationsModule: ModuleManifest = {
   id: 'operations',
   name: { en: 'Operations', ar: 'العمليات' },
-  // OP-7 adds the captain's four execution mutations under the EXISTING `/operations/mobile`
-  // prefix and the EXISTING `operationsExecution.own` grant — the surface pins below are therefore
-  // unchanged, deliberately: execution is what the captain permission was declared for.
-  version: '0.7.0',
+  // B3 adds the operations crew ROSTER (`operations_crew_requirements`) — the legacy /requirement
+  // screen — under the EXISTING `/operations/crew-board` prefix and the EXISTING crew grants.
+  // Maintaining who counts as crew is a planning decision, not a separately delegable one, so no
+  // permission and no page is added: only the collection list grows.
+  version: '0.8.0',
   requiresPlatform: '^2.2',
   permissions: operationsPermissions,
   pages: operationsPages,
@@ -194,6 +195,7 @@ export const operationsModule: ModuleManifest = {
     'operations_currencies',
     'operations_days',
     'operations_crew_assignments',
+    'operations_crew_requirements',
     'operations_vault_custody',
     'operations_shipment_assignments',
   ],

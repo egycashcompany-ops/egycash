@@ -15,6 +15,8 @@ import {
 } from '@ecms/contracts';
 import { translate } from '../../platform/localization/i18n';
 import { OPERATIONS_CATALOG_KINDS } from './pages/CatalogsPage';
+import { CREW_SLOTS } from './lib/crew-board';
+import { REQUIREMENT_FLAGS } from './lib/requirements';
 
 const LOCALES: Locale[] = ['en', 'ar'];
 
@@ -104,9 +106,47 @@ const BOARD_KEYS = [
   'operations.shipment.serialTracked',
 ];
 
-const ALL_KEYS = [...SHELL_KEYS, ...CATALOG_KEYS, ...BOARD_KEYS];
+/** B3 — the crew board and the roster. */
+const CREW_KEYS = [
+  'operations.nav.crewBoard',
+  'operations.cards.crewBoard',
+  'operations.nav.requirements',
+  'operations.cards.requirements',
+  'operations.crew.title',
+  'operations.crew.subtitle',
+  'operations.crew.date',
+  'operations.crew.pool',
+  'operations.crew.poolEmpty',
+  'operations.crew.searchPool',
+  'operations.crew.dropHere',
+  'operations.crew.noVehicles',
+  'operations.crew.noVehiclesHint',
+  'operations.crew.saved',
+  'operations.crew.saveCount',
+  'operations.crew.saveFailed',
+  'operations.crew.unsaved',
+  'operations.crew.direction',
+  'operations.crew.plannedTime',
+  'operations.crew.role.captain',
+  'operations.crew.requirements.title',
+  'operations.crew.requirements.subtitle',
+  'operations.crew.requirements.notAGate',
+  'operations.crew.requirements.employee',
+  'operations.crew.requirements.add',
+  'operations.crew.requirements.added',
+  'operations.crew.requirements.addFailed',
+  'operations.crew.requirements.searchEmployee',
+  'operations.crew.requirements.searchHint',
+  'operations.crew.requirements.saveFailed',
+  'operations.crew.requirements.confirmRemove',
+  'operations.crew.requirements.removed',
+  'operations.crew.requirements.removeFailed',
+  'operations.crew.requirements.empty',
+];
 
-describe('operations i18n catalogs (B1 + B2)', () => {
+const ALL_KEYS = [...SHELL_KEYS, ...CATALOG_KEYS, ...BOARD_KEYS, ...CREW_KEYS];
+
+describe('operations i18n catalogs (B1–B3)', () => {
   for (const locale of LOCALES) {
     for (const key of ALL_KEYS) {
       it(`${locale}: ${key}`, () => {
@@ -134,6 +174,24 @@ describe('operations i18n catalogs (B1 + B2)', () => {
       }
       for (const shipmentType of OPERATIONS_SHIPMENT_TYPES) {
         const key = `operations.shipment.type.${shipmentType}`;
+        expect(translate(locale, key)).not.toBe(key);
+      }
+    }
+  });
+
+  it('labels every crew slot the board can render', () => {
+    for (const locale of LOCALES) {
+      for (const slot of CREW_SLOTS) {
+        const key = `operations.crew.slot.${slot}`;
+        expect(translate(locale, key)).not.toBe(key);
+      }
+    }
+  });
+
+  it('labels every requirement flag — an unlabelled checkbox column is unusable', () => {
+    for (const locale of LOCALES) {
+      for (const flag of REQUIREMENT_FLAGS) {
+        const key = `operations.crew.flag.${flag}`;
         expect(translate(locale, key)).not.toBe(key);
       }
     }

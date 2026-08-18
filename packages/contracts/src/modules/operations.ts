@@ -407,6 +407,120 @@ export const ListOperationsShipmentsQuerySchema = PaginationQuerySchema.extend({
 }).strict();
 export type ListOperationsShipmentsQuery = z.infer<typeof ListOperationsShipmentsQuerySchema>;
 
+// ── Crew requirements (B3 — the legacy /requirement screen) ─────────────────────────────────────
+//
+// WHAT THE LEGACY SCREEN WAS (discovery §9, contad_app.js:4324-4372): a matrix of NINE checkboxes
+// written onto the employee document, keyed by `employee_id`. Only ONE of them — `leader` — was
+// ever read by a server query (it filtered the captain pickers on /main_ops:274 and /mohsana:667).
+// The other eight were pool decoration and browser-side filters on the crew board.
+//
+// TWO APPROVED DECISIONS SHAPE THIS, and both are load-bearing:
+//   1. Requirements gate NOTHING server-side. They are metadata, visual indicators and filters.
+//      No slot on the crew board checks them; an employee missing a weapon or a signature can be
+//      assigned exactly as in legacy. (Owner decision, carried since PR 1.)
+//   2. The record is OPERATIONS-OWNED, not a set of extra columns on the HR employee. Legacy wrote
+//      them onto `employees` because it had one database and no module boundary; ECMS does. HR
+//      owns the person, Operations owns "what this person is to Operations", and the two meet
+//      through the platform directory seam.
+//
+// A consequence worth stating: holding a requirements record IS what makes someone operations
+// crew. That replaces the legacy `department:'نقل الاموال' + sub_department:'التشغيل'` query
+// (contad_app.js:2296) with an explicit roster Operations maintains, rather than Operations
+// reaching into another module's org structure to infer it.
+
+/**
+ * The nine legacy flags, renamed to say what they mean. The legacy Arabic field name is on each,
+ * because migration matches on those and a reader needs to find them.
+ */
+export interface OperationsCrewRequirementsDto {
+  id: string;
+  employeeId: string;
+  /** Legacy `leader` — THE flag legacy actually queried on; marks who may take a captain slot. */
+  isCaptain: boolean;
+  /**
+   * Q17 NORMALIZE. Legacy decided "is a specialist" in the BROWSER by substring-matching the job
+   * title against `اخص` (tashghela.ejs:861-863). An explicit flag is the registered replacement.
+   */
+  isSpecialist: boolean;
+  /** Legacy `selah` — carries a weapon. */
+  hasWeapon: boolean;
+  /** Legacy `tawqe3` — signature on file. */
+  hasSignature: boolean;
+  /** Legacy `mozawla` — professional practice licence. */
+  hasLicense: boolean;
+  /** Legacy `mozawla_mo` — temporary licence. Write-only in legacy (Q25); kept, still ungated. */
+  hasTemporaryLicense: boolean;
+  /** Legacy `ops_emp` — flagged as operations administration staff. Write-only in legacy (Q25). */
+  isOpsAdmin: boolean;
+  /**
+   * Legacy `new` — recently joined; the crew board showed a badge. Named `isNewJoiner` because
+   * `isNew` is a reserved Mongoose document property that a schema path of that name would shadow.
+   */
+  isNewJoiner: boolean;
+  /** Legacy `mohema` — earmarked for a specific task. Write-only in legacy (Q25). */
+  isAssignedSpecialTask: boolean;
+  /** Legacy `priority` — ordering hint. Write-only in legacy (Q25). */
+  isPriority: boolean;
+  notes: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const crewRequirementFlags = {
+  isCaptain: z.boolean().default(false),
+  isSpecialist: z.boolean().default(false),
+  hasWeapon: z.boolean().default(false),
+  hasSignature: z.boolean().default(false),
+  hasLicense: z.boolean().default(false),
+  hasTemporaryLicense: z.boolean().default(false),
+  isOpsAdmin: z.boolean().default(false),
+  isNewJoiner: z.boolean().default(false),
+  isAssignedSpecialTask: z.boolean().default(false),
+  isPriority: z.boolean().default(false),
+  notes: z.string().max(500).nullable().default(null),
+};
+
+/** Upsert by employee — the legacy screen had no "create" vs "edit", only a saved checkbox row. */
+export const SetOperationsCrewRequirementsSchema = z.object(crewRequirementFlags).strict();
+export type SetOperationsCrewRequirements = z.infer<typeof SetOperationsCrewRequirementsSchema>;
+
+export const ListOperationsCrewRequirementsQuerySchema = PaginationQuerySchema.extend({
+  /** Free text over the employee's name and code, resolved through the directory seam. */
+  search: z.string().min(1).optional(),
+  isCaptain: booleanQuery().optional(),
+  isSpecialist: booleanQuery().optional(),
+}).strict();
+export type ListOperationsCrewRequirementsQuery = z.infer<
+  typeof ListOperationsCrewRequirementsQuerySchema
+>;
+
+/** A crew member as the board's pool shows them: who they are, plus their flags. */
+export interface OperationsCrewMemberDto {
+  employeeId: string;
+  code: string;
+  fullNameAr: string;
+  /** HR employment status, read through the seam — an exited employee is never offered. */
+  status: string;
+  requirements: OperationsCrewRequirementsDto | null;
+  /**
+   * The vehicle this member already holds on the requested day, or null. Legacy computed the same
+   * thing in the browser to grey out a taken card (tashghela.ejs:1332) — here it is a server fact,
+   * because the SAME rule is enforced server-side as Q11.
+   */
+  assignedVehicleId: string | null;
+}
+
+export interface OperationsCrewDirectoryDto {
+  date: string;
+  members: OperationsCrewMemberDto[];
+}
+
+export const OperationsCrewDirectoryQuerySchema = z
+  .object({ date: z.coerce.date().optional() })
+  .strict();
+export type OperationsCrewDirectoryQuery = z.infer<typeof OperationsCrewDirectoryQuerySchema>;
+
 // ── Operating day (OP-3) ────────────────────────────────────────────────────────────────────────
 //
 // NEW — the legacy system has no day entity: "today" is derived per-query by exact-equality date

@@ -18,6 +18,9 @@ import {
   type UpdateOperationsBank,
   type UpdateOperationsBankBranch,
   type CreateOperationsShipment,
+  type ListOperationsCrewRequirementsQuery,
+  type PlanOperationsCrew,
+  type SetOperationsCrewRequirements,
   type UpdateOperationsCurrency,
   type UpdateOperationsShipment,
 } from '@ecms/contracts';
@@ -37,6 +40,11 @@ const operationsKeys = {
   // stales both. Getting this wrong shows up as a receive toggle that appears not to have worked.
   shipments: featureKey(MODULE, 'shipments'),
   dayBoard: featureKey(MODULE, 'dayBoard'),
+  // The board, its pool and the roster move together: planning changes who is taken, and editing
+  // the roster changes who is offered. Splitting them would leave a stale pool beside a fresh board.
+  crewBoard: featureKey(MODULE, 'crewBoard'),
+  crewDirectory: featureKey(MODULE, 'crewDirectory'),
+  crewRequirements: featureKey(MODULE, 'crewRequirements'),
 };
 
 /** Every surface a shipment write can move. One list, so no mutation forgets one. */
@@ -210,3 +218,73 @@ export const useUpdateOperationsCurrency = () => {
 
 /** Exported for the cache tests, which assert what a mutation moves — never used by a screen. */
 export const __operationsKeys = operationsKeys;
+
+// ── Crew board, pool and roster (B3) ───────────────────────────────────────
+
+/** No date → TOMORROW, resolved server-side: crews are planned a day ahead (legacy :2239). */
+export const useOperationsCrewBoard = (date: string | null, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'crewBoard', { date: date ?? 'tomorrow' }),
+    queryFn: () => api.getCrewBoard(date),
+    enabled,
+  });
+
+export const useOperationsCrewDirectory = (date: string | null, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'crewDirectory', { date: date ?? 'tomorrow' }),
+    queryFn: () => api.getCrewDirectory(date),
+    enabled,
+  });
+
+export const useOperationsCrewRequirements = (
+  params: ListOperationsCrewRequirementsQuery,
+  enabled = true,
+) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'crewRequirements', params),
+    queryFn: () => api.listCrewRequirements(params),
+    enabled,
+  });
+
+/** Planning changes who is taken, so the POOL is staled alongside the board. */
+export const usePlanOperationsCrew = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: PlanOperationsCrew) => api.planCrew(body),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: operationsKeys.crewBoard });
+      await qc.invalidateQueries({ queryKey: operationsKeys.crewDirectory });
+    },
+  });
+};
+
+/** Editing the roster changes who is OFFERED, so the pool stales with the roster. */
+const useRosterInvalidation = () => {
+  const qc = useQueryClient();
+  return async (): Promise<void> => {
+    await qc.invalidateQueries({ queryKey: operationsKeys.crewRequirements });
+    await qc.invalidateQueries({ queryKey: operationsKeys.crewDirectory });
+  };
+};
+
+export const useSetCrewRequirements = () => {
+  const invalidate = useRosterInvalidation();
+  return useMutation({
+    mutationFn: ({
+      employeeId,
+      body,
+    }: {
+      employeeId: string;
+      body: SetOperationsCrewRequirements;
+    }) => api.setCrewRequirements(employeeId, body),
+    onSuccess: invalidate,
+  });
+};
+
+export const useRemoveCrewRequirements = () => {
+  const invalidate = useRosterInvalidation();
+  return useMutation({
+    mutationFn: (employeeId: string) => api.removeCrewRequirements(employeeId),
+    onSuccess: invalidate,
+  });
+};

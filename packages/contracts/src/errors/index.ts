@@ -105,6 +105,10 @@ export const ErrorCodes = {
   OPERATIONS_EXECUTION_ALREADY_SETTLED: 'OPERATIONS_EXECUTION_ALREADY_SETTLED',
   /** Someone else moved this stop first; the transition's precondition no longer holds. */
   OPERATIONS_EXECUTION_CONFLICT: 'OPERATIONS_EXECUTION_CONFLICT',
+
+  // ── Crew roster (B3) ──────────────────────────────────────────────────────────────────────────
+  /** The employee holds no operations requirements row, so is not on the crew roster. */
+  OPERATIONS_UNKNOWN_CREW_MEMBER: 'OPERATIONS_UNKNOWN_CREW_MEMBER',
 } as const;
 
 export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];

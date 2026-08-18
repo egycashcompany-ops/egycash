@@ -807,6 +807,15 @@ export interface OperationsCrewBoardRowDto {
   driver2EmployeeId: string | null;
   missionTypeId: string | null;
   crew: {
+    /**
+     * The crew row's OWN id — the `crewAssignmentId` every downstream act is addressed by.
+     *
+     * Its absence was a live defect: the vault dispatch screen had no crew id to send, so it sent
+     * `fleetDutyAssignmentId` instead, which is an id from a DIFFERENT collection. Both of that
+     * screen's actions therefore 404'd at
+     * `operationsCrewAssignmentRepository.findById` (secured.service.ts:185, :274).
+     */
+    id: string;
     captainEmployeeId: string | null;
     specialist1EmployeeId: string | null;
     specialist2EmployeeId: string | null;

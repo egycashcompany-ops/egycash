@@ -86,7 +86,9 @@ export const SecuredDispatchPage = (): JSX.Element => {
         id: shipment.id,
         body: {
           // The crew ROW is the legacy tashghela row; the captain comes from it, never typed.
-          crewAssignmentId: crew.fleetDutyAssignmentId,
+          // `crew.crew.id` and NOT `crew.fleetDutyAssignmentId`: the latter belongs to Fleet's
+          // duty collection, and sending it made the server look for a crew row that cannot exist.
+          crewAssignmentId: crew.crew.id,
           captainEmployeeId: crew.crew.captainEmployeeId ?? '',
           version: shipment.version,
         },
@@ -100,11 +102,16 @@ export const SecuredDispatchPage = (): JSX.Element => {
   const release = async (): Promise<void> => {
     if (selected.size === 0 || crewAssignmentId === '') return;
     const crew = crews.find((c) => c.vehicleId === crewAssignmentId);
-    if (crew === undefined) return;
+    // `crew.crew === null` was unguarded here while `assignOne` above guards it — the compiler
+    // found it the moment the id started coming from the crew row instead of the duty row.
+    if (crew === undefined || crew.crew === null) {
+      toast.error(t('operations.secured.dispatch.pickCrew'));
+      return;
+    }
     if (!window.confirm(t('operations.secured.dispatch.confirm', { count: selected.size }))) return;
     try {
       await dispatch.mutateAsync({
-        crewAssignmentId: crew.fleetDutyAssignmentId,
+        crewAssignmentId: crew.crew.id,
         shipmentIds: [...selected],
       });
       toast.success(t('operations.secured.dispatch.done', { count: selected.size }));

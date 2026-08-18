@@ -118,9 +118,14 @@ describe('seed → password login (regression)', () => {
     // Default categories are seeded and returned in sortOrder. IT joins at 25 — between
     // Organization (20) and Administration (30) — now that ITW-1 has given it application rows;
     // IT-1 seeded the category deliberately empty, and an empty category is not returned.
+    //
+    // B7 puts Operations at 17, so it lands between Fleet (15) and Organization (20). Its position
+    // here IS the assertion that the sort order took effect: a category appended with a colliding
+    // or absent order would surface at the end of this list rather than in the middle.
     expect(groups.map((g) => g.name.en)).toEqual([
       'HR',
       'Fleet',
+      'Operations',
       'Organization',
       'IT',
       'Administration',

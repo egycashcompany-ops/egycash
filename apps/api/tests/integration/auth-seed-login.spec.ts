@@ -185,8 +185,24 @@ describe('seed → password login (regression)', () => {
     // P-HR-23 adds the cost centres catalog to Organization — the axis payroll cost is reported
     // along, which needed a sidebar row of its own rather than a corner of another screen.
     expect(routes).toContain('/organization/cost-centers');
-    // 22 (HR) + 12 (Fleet) + 7 (Organization) + 13 (IT) + 9 (Administration)
-    expect(routes).toHaveLength(64);
+    // B7 — the thirteen Operations rows. B1-B6 shipped the screens routed, permission-gated and
+    // API-connected but appended NOTHING here, so the module was reachable only by typing a URL.
+    // The module home is asserted too: without it there is no entry point to the module at all.
+    expect(routes).toContain('/operations');
+    expect(routes).toContain('/operations/shipments');
+    expect(routes).toContain('/operations/crew-board');
+    expect(routes).toContain('/operations/requirements');
+    expect(routes).toContain('/operations/attendance');
+    expect(routes).toContain('/operations/secured');
+    expect(routes).toContain('/operations/vault/receive');
+    expect(routes).toContain('/operations/vault/dispatch');
+    expect(routes).toContain('/operations/vault');
+    expect(routes).toContain('/operations/reports/vault');
+    expect(routes).toContain('/operations/reports/captains');
+    expect(routes).toContain('/operations/reports/banks');
+    expect(routes).toContain('/operations/catalogs');
+    // 22 (HR) + 12 (Fleet) + 13 (Operations) + 7 (Organization) + 13 (IT) + 9 (Administration)
+    expect(routes).toHaveLength(77);
   });
 
   it('re-running the seed is idempotent — no duplicate categories/applications/grants', async () => {
@@ -201,14 +217,14 @@ describe('seed → password login (regression)', () => {
         data: { applications: unknown[]; sections: { applications: unknown[] }[] }[];
       }
     ).data;
-    expect(groups).toHaveLength(5);
+    expect(groups).toHaveLength(6); // B7 adds Operations beside HR, Fleet, Organization, IT, Admin
     // Counted across sections too: re-seeding must not duplicate a row, wherever it is grouped.
     expect(
       groups.reduce(
         (n, g) => n + g.applications.length + g.sections.reduce((m, s) => m + s.applications.length, 0),
         0,
       ),
-    ).toBe(64);
+    ).toBe(77);
   });
 
   it('the seeded HR user also logs in with email/password', async () => {

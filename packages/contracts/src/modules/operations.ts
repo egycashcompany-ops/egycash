@@ -827,6 +827,29 @@ export type ListSecuredBacklogQuery = z.infer<typeof ListSecuredBacklogQuerySche
 export const ListVaultInventoryQuerySchema = PaginationQuerySchema.strict();
 export type ListVaultInventoryQuery = z.infer<typeof ListVaultInventoryQuerySchema>;
 
+/**
+ * What the OPERATIONS-facing `/vault1` list returns — deliberately NOT `OperationsVaultCustodyDto`.
+ *
+ * The custody record above is the treasury's own; this row is the subset the Treasury port hands
+ * across the boundary (`VaultCustodyView`). It carries the packaging counts, because the legacy
+ * screen totalled bags/boxes/cartons per bank (contad_app.js:1437-1447), and both receiving
+ * treasurers, because dual control is only meaningful if both names are visible (Q2). It carries
+ * NO seal barcodes: no legacy Operations screen or report read them, so they stay behind the port.
+ */
+export interface OperationsVaultInventoryRowDto {
+  id: string;
+  shipmentId: string;
+  state: OperationsCustodyState;
+  receiptNumber: string;
+  bagCount: number;
+  cartonCount: number;
+  boxCount: number;
+  receivedByPrimaryId: string;
+  receivedBySecondaryId: string;
+  receivedAt: string;
+  releasedAt: string | null;
+}
+
 /** The `/tash4ela_mohasana` + `/deliver_mohsana` list: held, due for delivery on a date (:4447). */
 export const ListSecuredDueQuerySchema = z.object({ date: z.coerce.date() }).strict();
 export type ListSecuredDueQuery = z.infer<typeof ListSecuredDueQuerySchema>;

@@ -32,6 +32,7 @@ import {
   type DispatchSecuredShipments,
   type ListSecuredBacklogQuery,
   type OperationsVaultCustodyDto,
+  type OperationsVaultInventoryRowDto,
   type PlanOperationsCrew,
   type ReceiveIntoVault,
   type SetOperationsCrewRequirements,
@@ -211,8 +212,8 @@ export const listSecuredDue = (date: string): Promise<OperationsShipmentDto[]> =
 /** `/vault1` — everything currently held. No date filter, deliberately (Q32 PRESERVE). */
 export const listVaultInventory = (
   params: OperationsListParams,
-): Promise<Paginated<OperationsVaultCustodyDto>> =>
-  get<Paginated<OperationsVaultCustodyDto>>(`/operations/secured/vault${buildQuery(params)}`);
+): Promise<Paginated<OperationsVaultInventoryRowDto>> =>
+  get<Paginated<OperationsVaultInventoryRowDto>>(`/operations/secured/vault${buildQuery(params)}`);
 
 /** `/receive_mohsana` — into the vault, under the two-man rule (Q2 NORMALIZE). */
 export const receiveIntoVault = (

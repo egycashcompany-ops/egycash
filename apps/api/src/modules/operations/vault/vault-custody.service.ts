@@ -47,6 +47,11 @@ export const toCustodyView = (doc: OperationsVaultCustodyDoc): VaultCustodyView 
   receiptNumber: doc.receiptNumber,
   receivedAt: doc.receivedAt,
   releasedAt: doc.releasedAt,
+  bagCount: doc.bagCount,
+  cartonCount: doc.cartonCount,
+  boxCount: doc.boxCount,
+  receivedByPrimaryId: String(doc.receivedByPrimaryId),
+  receivedBySecondaryId: String(doc.receivedBySecondaryId),
 });
 
 class OperationsVaultCustodyService implements VaultCustodyProvider {

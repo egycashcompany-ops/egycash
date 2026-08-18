@@ -7,8 +7,12 @@
 //
 // So the behaviour is PRESERVED and the picker is DROPPED. Keeping a control that never did
 // anything would only reproduce the confusion.
+//
+// The columns are the legacy ones (contad_app.js:1437-1447): receipt, packaging, who received it,
+// when. Seal barcodes are NOT here — no legacy Operations screen read them, and the Treasury port
+// deliberately does not hand them across the boundary (treasury-boundary.ts).
 import { useSearchParams } from 'react-router-dom';
-import { type OperationsVaultCustodyDto } from '@ecms/contracts';
+import { type OperationsVaultInventoryRowDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
@@ -31,7 +35,7 @@ export const VaultInventoryPage = (): JSX.Element => {
       ? '—'
       : (directory.data?.members.find((m) => m.employeeId === employeeId)?.fullNameAr ?? '—');
 
-  const columns: Column<OperationsVaultCustodyDto>[] = [
+  const columns: Column<OperationsVaultInventoryRowDto>[] = [
     {
       key: 'receipt',
       header: t('operations.secured.receive.receiptNumber'),
@@ -48,13 +52,6 @@ export const VaultInventoryPage = (): JSX.Element => {
             boxes: row.boxCount,
           })}
         </span>
-      ),
-    },
-    {
-      key: 'seals',
-      header: t('operations.vault.seals'),
-      render: (row) => (
-        <span className="tabular-nums">{row.bagSeals.length + row.boxSeals.length}</span>
       ),
     },
     {

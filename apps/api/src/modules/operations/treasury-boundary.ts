@@ -35,7 +35,18 @@ export interface VaultReceiptInput {
   receivedBySecondaryId: string;
 }
 
-/** The custody facts Operations is allowed to see. Deliberately thin. */
+/**
+ * The custody facts Operations is allowed to see.
+ *
+ * Thin by default, and widened ONCE, deliberately (B4/B5): the packaging counts and the two
+ * receiving treasurers are here because Operations genuinely reports on them — the legacy vault
+ * screen listed bags, boxes and cartons per bank (contad_app.js:1437-1447) and the captain and
+ * bank reports totalled them (:5006-5023). Dual control is also only meaningful if BOTH names can
+ * be shown, which is the point of having required two of them (Q2).
+ *
+ * What stays out remains out: seal barcodes are the treasury's own record and no Operations screen
+ * or report reads them, so they are not exposed here.
+ */
 export interface VaultCustodyView {
   id: string;
   shipmentId: string;
@@ -43,6 +54,11 @@ export interface VaultCustodyView {
   receiptNumber: string;
   receivedAt: Date;
   releasedAt: Date | null;
+  bagCount: number;
+  cartonCount: number;
+  boxCount: number;
+  receivedByPrimaryId: string;
+  receivedBySecondaryId: string;
 }
 
 export interface VaultCustodyProvider {

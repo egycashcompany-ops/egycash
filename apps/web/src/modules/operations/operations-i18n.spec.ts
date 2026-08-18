@@ -193,7 +193,6 @@ const SECURED_KEYS = [
   'operations.vault.subtitle',
   'operations.vault.packages',
   'operations.vault.packageCounts',
-  'operations.vault.seals',
   'operations.vault.receivedBy',
   'operations.vault.receivedAt',
   'operations.vault.empty',

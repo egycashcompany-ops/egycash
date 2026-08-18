@@ -113,6 +113,10 @@ const ALL_OPS_ROUTES = [
   '/operations/reports/vault',
   '/operations/reports/captains',
   '/operations/reports/banks',
+  // C1 — the captain's phone surface, catalogued like any other app so it is reachable without
+  // typing a URL. Its grant (`operationsExecution.own`) decides who may open it; whether the
+  // holder is a captain TODAY is the day's crew row, which navigation does not consult.
+  '/operations/my-day',
   '/operations/catalogs',
 ];
 

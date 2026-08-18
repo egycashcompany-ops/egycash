@@ -48,16 +48,24 @@ interface NavRow {
   permission: string;
 }
 
+// A label may be written with EITHER quote style — `"Captain's Day"` has to be double-quoted
+// because it contains an apostrophe. The single-quote-only version of this regex silently skipped
+// that row, and a silently skipped row is exactly the failure the block below guards against: the
+// "every route has a nav row" assertion then reports a real row as missing.
+const LABEL = String.raw`(?:'([^']+)'|"([^"]+)")`;
 const NAV_ROWS: NavRow[] = [
   ...operationsCatalog().matchAll(
-    /en: '([^']+)',\s*\n\s*ar: '([^']+)',[\s\S]*?route: '([^']+)',\s*\n\s*icon: '([^']+)',[\s\S]*?permission: '([^']+)',/g,
+    new RegExp(
+      String.raw`en: ${LABEL},\s*\n\s*ar: ${LABEL},[\s\S]*?route: '([^']+)',\s*\n\s*icon: '([^']+)',[\s\S]*?permission: '([^']+)',`,
+      'g',
+    ),
   ),
 ].map((m) => ({
-  en: m[1] as string,
-  ar: m[2] as string,
-  route: m[3] as string,
-  icon: m[4] as string,
-  permission: m[5] as string,
+  en: (m[1] ?? m[2]) as string,
+  ar: (m[3] ?? m[4]) as string,
+  route: m[5] as string,
+  icon: m[6] as string,
+  permission: m[7] as string,
 }));
 
 // ── The frontend routes ─────────────────────────────────────────────────────────────────────────
@@ -80,8 +88,8 @@ const HAS_INDEX_ROUTE = /<Route index element=\{<OperationsOverviewPage \/>\} \/
 describe('the parse itself', () => {
   it('found the catalog rows, the frontend routes and the module home', () => {
     // An empty set satisfies every "all covered" assertion below, so the counts come first.
-    expect(NAV_ROWS.length).toBeGreaterThanOrEqual(13);
-    expect(FRONTEND_ROUTES.length).toBeGreaterThanOrEqual(12);
+    expect(NAV_ROWS.length).toBeGreaterThanOrEqual(14);
+    expect(FRONTEND_ROUTES.length).toBeGreaterThanOrEqual(13);
     expect(HAS_INDEX_ROUTE, 'the module home is an index route').toBe(true);
   });
 });
@@ -118,13 +126,16 @@ describe('the Operations category', () => {
 // ── The rows ────────────────────────────────────────────────────────────────────────────────────
 
 describe('the Operations navigation rows', () => {
-  it('carries every screen B1-B6 shipped, module home included', () => {
+  it('carries every screen B1-B6 and C1 shipped, module home included', () => {
     expect(NAV_ROWS.map((r) => r.route).sort()).toEqual(
       [
         '/operations',
         '/operations/attendance',
         '/operations/catalogs',
         '/operations/crew-board',
+        // C1 — the captain's phone surface. Listed like any other app: the grant decides who may
+        // open it, and the screen itself answers whether the holder is rostered today.
+        '/operations/my-day',
         '/operations/reports/banks',
         '/operations/reports/captains',
         '/operations/reports/vault',

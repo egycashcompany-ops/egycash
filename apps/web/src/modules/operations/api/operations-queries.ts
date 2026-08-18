@@ -11,22 +11,23 @@
 //     renaming a bank changes what every branch row displays.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  type AssignSecuredDeliveryLeg,
   type CompleteOperationsShipment,
+  type CreateOperationsArea,
   type CreateOperationsBank,
   type CreateOperationsBankBranch,
   type CreateOperationsCurrency,
-  type UpdateOperationsBank,
-  type UpdateOperationsBankBranch,
   type CreateOperationsShipment,
-  type ListOperationsCrewRequirementsQuery,
-  type AssignSecuredDeliveryLeg,
-  type CreateOperationsArea,
   type DispatchSecuredShipments,
+  type ListOperationsCrewRequirementsQuery,
   type ListSecuredBacklogQuery,
+  type OperationsExecutionResultDto,
   type PlanOperationsCrew,
   type ReceiveIntoVault,
-  type UpdateOperationsArea,
   type SetOperationsCrewRequirements,
+  type UpdateOperationsArea,
+  type UpdateOperationsBank,
+  type UpdateOperationsBankBranch,
   type UpdateOperationsCurrency,
   type UpdateOperationsShipment,
 } from '@ecms/contracts';
@@ -458,3 +459,54 @@ export const useVaultReport = (enabled = true) =>
     queryFn: () => api.getVaultReport(),
     enabled,
   });
+
+// ── Captain mobile (Phase C) ────────────────────────────────────────────────
+
+/**
+ * The captain's own day. Whose day it is comes from the TOKEN, server-side — this hook takes no
+ * captain and there is none to take, so nothing here can be pointed at somebody else's route.
+ *
+ * The date is part of the key so yesterday and today are separate cache entries; `'today'` stands
+ * for "no date sent", which the server resolves.
+ */
+export const useMyDay = (date: string | null, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'myDay', { date: date ?? 'today' }),
+    queryFn: () => api.getMyDay(date),
+    enabled,
+  });
+
+/**
+ * The four execution acts, sharing one invalidation.
+ *
+ * REFETCH IS NOT A NICETY HERE, it is how the sequential lock reaches the screen. The server
+ * decides which stop is `current` — after any act, the next stop unlocks only because the server
+ * says so on the next read. There is deliberately no optimistic update and no client-side
+ * unlocking: a phone that guessed wrong would offer a captain a button the server then refuses.
+ *
+ * The whole `myDay` feature subtree is invalidated rather than one date's key, because an act can
+ * change the day the client is not looking at (a stop completed at 00:05 belongs to a date the
+ * screen may have already left).
+ */
+const useExecutionInvalidation = () => {
+  const qc = useQueryClient();
+  return async (): Promise<void> => {
+    await qc.invalidateQueries({ queryKey: featureKey(MODULE, 'myDay') });
+    // The desk's views of the same shipments move too — the day board and the captain report both
+    // read statuses this act just changed.
+    await qc.invalidateQueries({ queryKey: featureKey(MODULE, 'dayBoard') });
+  };
+};
+
+const useExecutionAct = (act: (assignmentId: string) => Promise<OperationsExecutionResultDto>) => {
+  const invalidate = useExecutionInvalidation();
+  return useMutation({
+    mutationFn: (assignmentId: string) => act(assignmentId),
+    onSettled: invalidate,
+  });
+};
+
+export const useStartStop = () => useExecutionAct(api.startStop);
+export const useConfirmStopPickup = () => useExecutionAct(api.confirmStopPickup);
+export const useConfirmStopDelivery = () => useExecutionAct(api.confirmStopDelivery);
+export const useCompleteStop = () => useExecutionAct(api.completeStop);

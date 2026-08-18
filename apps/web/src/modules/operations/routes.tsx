@@ -17,6 +17,12 @@
 //   /operations/reports/banks    operationsShipment.view B5 (legacy /ops_bank_report)
 //   /operations/attendance    operationsCrew.view + attendance.view  B5  (NO legacy equivalent)
 //   /operations/catalogs   operationsCatalog.manage   B1  (legacy /data_edit)
+//   /operations/my-day     operationsExecution.own    C1  (NO legacy equivalent)
+//
+// `/operations/my-day` is the ONE route here that does not sit inside `AppShell`. It is the
+// captain's phone surface, and a topbar, a navigation rail and a keyboard-shortcut command palette
+// are console furniture that a 360px screen cannot afford. Same app, same session, same route
+// guard — a different frame. See `mobile/CaptainShell.tsx`.
 import { Route, Routes } from 'react-router-dom';
 import { RequirePermission } from '../../platform/router/RequirePermission';
 import { NotFoundPage } from '../../platform/app/pages/NotFoundPage';
@@ -34,6 +40,7 @@ import { CaptainReportPage } from './pages/CaptainReportPage';
 import { VaultReportPage } from './pages/VaultReportPage';
 import { BankReportPage } from './pages/BankReportPage';
 import { CrewAttendancePage } from './pages/CrewAttendancePage';
+import { CaptainDayPage } from './mobile/CaptainDayPage';
 
 export default function OperationsRoutes(): JSX.Element {
   return (
@@ -140,6 +147,22 @@ export default function OperationsRoutes(): JSX.Element {
             </RequirePermission>
           }
         />
+      </Route>
+
+      {/*
+        Outside the AppShell route element on purpose — see the header comment. The permission
+        guard is identical to every page above it; only the chrome differs.
+      */}
+      <Route
+        path="my-day"
+        element={
+          <RequirePermission permission="operationsExecution.own">
+            <CaptainDayPage />
+          </RequirePermission>
+        }
+      />
+
+      <Route element={<AppShell />}>
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>

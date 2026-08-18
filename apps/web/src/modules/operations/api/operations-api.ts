@@ -11,39 +11,41 @@
 // currencies). Later B slices add their endpoints beside these, never a second client.
 import {
   MAX_PAGE_SIZE,
+  type AssignSecuredDeliveryLeg,
   type CompleteOperationsShipment,
+  type CreateOperationsArea,
   type CreateOperationsBank,
   type CreateOperationsBankBranch,
   type CreateOperationsCurrency,
+  type CreateOperationsShipment,
+  type DispatchSecuredShipments,
+  type ListOperationsCrewRequirementsQuery,
+  type ListSecuredBacklogQuery,
+  type OperationsAreaDto,
   type OperationsBankBranchDto,
   type OperationsBankDto,
-  type CreateOperationsShipment,
-  type ListOperationsCrewRequirementsQuery,
+  type OperationsBankReportDto,
+  type OperationsCaptainReportDto,
+  type OperationsCrewAttendanceDayDto,
   type OperationsCrewBoardDto,
   type OperationsCrewDirectoryDto,
   type OperationsCrewRequirementsDto,
   type OperationsCurrencyDto,
   type OperationsDayBoardDto,
+  type OperationsExecutionResultDto,
+  type OperationsMobileDayDto,
   type OperationsShipmentDto,
-  type Paginated,
-  type UpdateOperationsBank,
-  type UpdateOperationsBankBranch,
-  type UpdateOperationsCurrency,
-  type AssignSecuredDeliveryLeg,
-  type DispatchSecuredShipments,
-  type ListSecuredBacklogQuery,
-  type CreateOperationsArea,
-  type OperationsAreaDto,
-  type OperationsBankReportDto,
-  type OperationsCaptainReportDto,
-  type OperationsCrewAttendanceDayDto,
   type OperationsVaultCustodyDto,
-  type OperationsVaultReportDto,
-  type UpdateOperationsArea,
   type OperationsVaultInventoryRowDto,
+  type OperationsVaultReportDto,
+  type Paginated,
   type PlanOperationsCrew,
   type ReceiveIntoVault,
   type SetOperationsCrewRequirements,
+  type UpdateOperationsArea,
+  type UpdateOperationsBank,
+  type UpdateOperationsBankBranch,
+  type UpdateOperationsCurrency,
   type UpdateOperationsShipment,
 } from '@ecms/contracts';
 import {
@@ -281,3 +283,36 @@ export const updateOperationsArea = (
 /** `/vault1_reports` — the vault roll-up. NO date range, deliberately (Q32 PRESERVE). */
 export const getVaultReport = (): Promise<OperationsVaultReportDto> =>
   get<OperationsVaultReportDto>('/operations/reports/vault');
+
+// ── Captain mobile (Phase C) ────────────────────────────────────────────────
+//
+// THE CAPTAIN IS NEVER NAMED BY THE CLIENT. There is no captain parameter on any call below, and
+// there is none on the server either: `my-day` and every execution act resolve the employee from
+// the token (`resolveSelfEmployee`, mobile.service.ts). That is why cross-captain isolation is a
+// property of the API's SHAPE rather than a filter somebody has to remember — and it is why this
+// file has no `captainId` to pass even if a screen wanted to.
+
+/** The captain's own ordered day. No date → today, resolved server-side. */
+export const getMyDay = (date: string | null): Promise<OperationsMobileDayDto> =>
+  get<OperationsMobileDayDto>(
+    `/operations/mobile/my-day${date === null ? '' : buildQuery({ date })}`,
+  );
+
+/**
+ * The four execution acts (OP-7). The stop is addressed by its ASSIGNMENT id; the body is empty
+ * because the ACT is the whole message — no coordinates, no free text, no captain.
+ *
+ * `version` is deliberately not sent. The authoritative guard is the server's compare-and-swap on
+ * the execution state — a transition is legal from exactly one state, so a racing caller's
+ * precondition is already gone — and a phone should not have to track document versions to make a
+ * legal move (see `OperationsExecutionBodySchema`).
+ */
+const executionAct =
+  (act: 'start' | 'pickup' | 'deliver' | 'complete') =>
+  (assignmentId: string): Promise<OperationsExecutionResultDto> =>
+    post<OperationsExecutionResultDto>(`/operations/mobile/stops/${assignmentId}/${act}`, {});
+
+export const startStop = executionAct('start');
+export const confirmStopPickup = executionAct('pickup');
+export const confirmStopDelivery = executionAct('deliver');
+export const completeStop = executionAct('complete');

@@ -21,6 +21,7 @@
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
+  MAX_PAGE_SIZE,
   type OperationsAreaDto,
   type OperationsBankBranchDto,
   type OperationsBankDto,
@@ -86,10 +87,10 @@ export const CatalogsPage = (): JSX.Element => {
   const areas = useOperationsAreas(params, kind === 'areas');
 
   // Branch rows name their bank, so the bank list is needed on the branches tab too.
-  const bankOptions = useOperationsBanks({ page: 1, pageSize: 200, sortBy: 'code', sortDir: 'asc' });
+  const bankOptions = useOperationsBanks({ page: 1, pageSize: MAX_PAGE_SIZE, sortBy: 'code', sortDir: 'asc' });
   // ...and the branch FORM suggests areas, so that list is needed on the branches tab as well.
   const areaOptions = useOperationsAreas(
-    { page: 1, pageSize: 500, sortBy: 'name', sortDir: 'asc' },
+    { page: 1, pageSize: MAX_PAGE_SIZE, sortBy: 'name', sortDir: 'asc' },
     kind === 'branches',
   );
 

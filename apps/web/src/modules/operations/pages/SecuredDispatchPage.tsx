@@ -17,7 +17,7 @@
 // a shipment that never reached the vault.
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { type OperationsShipmentDto } from '@ecms/contracts';
+import { MAX_PAGE_SIZE, type OperationsShipmentDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
@@ -54,8 +54,8 @@ export const SecuredDispatchPage = (): JSX.Element => {
   const due = useSecuredDue(date);
   const board = useOperationsCrewBoard(date);
   const directory = useOperationsCrewDirectory(date);
-  const banks = useOperationsBanks({ page: 1, pageSize: 200 });
-  const currencies = useOperationsCurrencies({ page: 1, pageSize: 100 });
+  const banks = useOperationsBanks({ page: 1, pageSize: MAX_PAGE_SIZE });
+  const currencies = useOperationsCurrencies({ page: 1, pageSize: MAX_PAGE_SIZE });
   const assign = useAssignSecuredDelivery();
   const dispatch = useDispatchSecured();
 

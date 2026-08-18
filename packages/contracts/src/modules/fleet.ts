@@ -5,9 +5,7 @@
 // derived facts query-time facts, and a field that does not exist cannot go stale.
 import { z } from 'zod';
 import { LocalizedStringSchema } from '../common/localized.js';
-import { PaginationQuerySchema, booleanQuery, objectId,
-  listQuery,
-} from '../common/index.js';
+import { PaginationQuerySchema, booleanQuery, objectId, listQuery } from '../common/index.js';
 
 /** Money in EGP. A plain nonnegative number — multi-currency is not a fleet fact. */
 const egp = () => z.number().nonnegative();
@@ -115,14 +113,23 @@ export const FLEET_VEHICLE_STATUSES = ['active', 'outOfService', 'disposed'] as 
 export const FleetVehicleStatusSchema = z.enum(FLEET_VEHICLE_STATUSES);
 export type FleetVehicleStatus = z.infer<typeof FleetVehicleStatusSchema>;
 
-/** The stored license-image reference — platform Files owns the bytes, the vehicle owns the link. */
-export interface FleetVehicleLicenseImageDto {
+/**
+ * The stored license-image reference — platform Files owns the bytes, the record owns the link.
+ *
+ * One shape, two owners: a VEHICLE's license (رخصة السيارة) and a DRIVER's license (رخصة
+ * القيادة) are different documents about different subjects, but the link Fleet keeps to each is
+ * the same five facts. The two aliases below exist so a reader of either DTO sees the name of the
+ * thing being described rather than a shared type they have to go look up.
+ */
+export interface FleetLicenseImageDto {
   fileId: string;
   fileName: string;
   mime: string;
   size: number;
   uploadedAt: string;
 }
+export type FleetVehicleLicenseImageDto = FleetLicenseImageDto;
+export type FleetDriverLicenseImageDto = FleetLicenseImageDto;
 
 export interface FleetVehicleDto {
   id: string;
@@ -260,6 +267,15 @@ export interface FleetDriverProfileDto {
   specialization: FleetDriverSpecialization;
   area: string | null;
   isActive: boolean;
+  /**
+   * The driver's own licence scan (صورة الرخصة). null = nothing on file, and the registry offers
+   * the upload action instead of view/delete.
+   *
+   * FR-11 holds: this is a FLEET-owned fact. HR's `drivingLicenses` records that a person is
+   * licensed; the scan Fleet keeps is the operational document the dispatcher checks, and it
+   * lives on the profile Fleet owns rather than on the employee record Fleet may not write.
+   */
+  licenseImage: FleetDriverLicenseImageDto | null;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -288,11 +304,20 @@ export const UpdateFleetDriverProfileSchema = z
   .strict();
 export type UpdateFleetDriverProfile = z.infer<typeof UpdateFleetDriverProfileSchema>;
 
+// Only FLEET-owned columns are filterable here, and that is a boundary rather than an omission:
+// name, employee code, job title, governorate, phone and branch are HR's facts, read by the
+// browser from HR's own API with HR's own permission. Filtering a fleet-paginated list on them
+// would mean Fleet querying HR's collection — the one thing the module hierarchy forbids.
 export const ListFleetDriversQuerySchema = PaginationQuerySchema.extend({
   specialization: FleetDriverSpecializationSchema.optional(),
   isActive: booleanQuery().optional(),
   licenseExpiresBefore: z.coerce.date().optional(),
+  /** Substring match on the licence number (المنطقة has its own parameter). */
   search: z.string().trim().min(1).max(100).optional(),
+  /** Substring match on the fleet-owned area (المنطقة). */
+  area: z.string().trim().min(1).max(120).optional(),
+  /** true → only drivers WITH a licence scan on file; false → only those without. */
+  hasLicenseImage: booleanQuery().optional(),
 }).strict();
 export type ListFleetDriversQuery = z.infer<typeof ListFleetDriversQuerySchema>;
 
@@ -785,6 +810,11 @@ export const FleetEvents = {
   VehicleLicenseImageUploaded: 'fleet.vehicleLicenseImage.uploaded',
   VehicleLicenseImageDeleted: 'fleet.vehicleLicenseImage.deleted',
 
+  // The driver's licence scan, for the same reason: "a licence document arrived / was withdrawn"
+  // is a fact a compliance automation wants without diffing profile updates.
+  DriverLicenseImageUploaded: 'fleet.driverLicenseImage.uploaded',
+  DriverLicenseImageDeleted: 'fleet.driverLicenseImage.deleted',
+
   OdometerRecorded: 'fleet.odometer.recorded',
   OdometerCorrected: 'fleet.odometer.corrected',
 
@@ -823,6 +853,14 @@ export const FleetVehicleLicenseImagePayloadV1 = z.object({
   vehicleId: objectId(),
   code: z.string(),
   /** null on deletion — the file is gone, and the event says which vehicle lost it. */
+  fileId: objectId().nullable(),
+});
+
+export const FleetDriverLicenseImagePayloadV1 = z.object({
+  driverProfileId: objectId(),
+  /** The HR employee the profile extends — the join key every consumer already speaks. */
+  employeeId: objectId(),
+  /** null on deletion — the file is gone, and the event says which driver lost it. */
   fileId: objectId().nullable(),
 });
 
@@ -922,6 +960,7 @@ export const FleetGrievanceAppliedPayloadV1 = z.object({
 // ── Files categories (platform Files; additive over legacy) ─────────────────
 
 export const FLEET_VEHICLE_FILE_CATEGORY = 'fleet-vehicle-documents';
+export const FLEET_DRIVER_FILE_CATEGORY = 'fleet-driver-documents';
 export const FLEET_ACCIDENT_FILE_CATEGORY = 'fleet-accident-attachments';
 export const FLEET_VIOLATION_FILE_CATEGORY = 'fleet-violation-attachments';
 

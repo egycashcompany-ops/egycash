@@ -148,6 +148,7 @@ import {
   type FleetEventName,
   FleetAccidentPayloadV1,
   FleetAssignmentChangedPayloadV1,
+  FleetDriverLicenseImagePayloadV1,
   FleetGrievanceAppliedPayloadV1,
   FleetLicenseExpiryPayloadV1,
   FleetMaintenanceAlarmPayloadV1,
@@ -640,6 +641,9 @@ export const EVENT_ENTITY_NAMES: Readonly<Record<string, LocalizedString>> = {
   // entity rather than borrowing one, exactly as the §17 naming note requires.
   vehicleLicenseImage: { en: 'Vehicle license image', ar: 'صورة رخصة السيارة' },
   driverLicense: { en: 'Driving license', ar: 'رخصة قيادة' },
+  // The same distinction on the driver's side: `driverLicense` is the EXPIRY DATE the sweep
+  // announces; the scanned document is a separate subject with its own upload/withdraw lifecycle.
+  driverLicenseImage: { en: 'Driving license image', ar: 'صورة رخصة القيادة' },
   roster: { en: 'Duty roster', ar: 'تعيين اليوم' },
   assignment: { en: 'Duty assignment', ar: 'تكليف' },
   driverUnavailability: { en: 'Driver unavailability', ar: 'عدم إتاحة سائق' },
@@ -875,7 +879,9 @@ export const EVENT_LIFECYCLE: Readonly<
   // maintenanceAlarm and both license surfaces; FL-5 roster + assignment; FL-6 accident +
   // violation. All 22 fleet events are stable — the module's automation surface is complete.
   // The catalogs slice added the two `fleet.vehicleLicenseImage.*` facts, both published by the
-  // vehicle service at their commit points, so both are stable on arrival — 24 in total.
+  // vehicle service at their commit points, so both are stable on arrival — 24 in total. The
+  // drivers slice added the matching `fleet.driverLicenseImage.*` pair, published by the
+  // driver-profile service at its commit points — stable on arrival too, 26 in total.
 };
 
 /**
@@ -1154,6 +1160,8 @@ export const FLEET_EVENT_PAYLOAD_SCHEMAS: Readonly<Record<FleetEventName, z.ZodT
   [FleetEvents.VehicleStatusChanged]: FleetVehicleStatusChangedPayloadV1,
   [FleetEvents.VehicleLicenseImageUploaded]: FleetVehicleLicenseImagePayloadV1,
   [FleetEvents.VehicleLicenseImageDeleted]: FleetVehicleLicenseImagePayloadV1,
+  [FleetEvents.DriverLicenseImageUploaded]: FleetDriverLicenseImagePayloadV1,
+  [FleetEvents.DriverLicenseImageDeleted]: FleetDriverLicenseImagePayloadV1,
   [FleetEvents.OdometerRecorded]: FleetOdometerRecordedPayloadV1,
   [FleetEvents.OdometerCorrected]: FleetOdometerCorrectedPayloadV1,
   [FleetEvents.MaintenanceCheckedIn]: FleetMaintenancePayloadV1,

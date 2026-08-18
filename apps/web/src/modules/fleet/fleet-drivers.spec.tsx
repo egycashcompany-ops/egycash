@@ -39,9 +39,15 @@ import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { translate } from '../../platform/localization/i18n';
 import { detailKey, listKey } from '../../shared/lib/query-keys';
+import { buildQuery } from '../../shared/lib/api-client';
 import { DriversListPage } from './pages/DriversListPage';
 import { DriverLicenseImageCell } from './components/DriverLicenseImage';
-import { HR_DELEGATION, HR_UNDELEGATED_FIELDS, hrProfileHref } from './components/hr-delegation';
+import {
+  HR_DELEGATION,
+  HR_UNDELEGATED_FIELDS,
+  hrProfileHref,
+  mayDelegateTo,
+} from './components/hr-delegation';
 import { vehicleTodayFrom } from './components/vehicle-today';
 import { type DriverHrFilter } from './api/driver-hr-filter';
 
@@ -196,6 +202,26 @@ const hrFilteredClient = (
   // parameter is dropped — so the unfiltered key is seeded instead, and the test can prove its
   // rows are not what gets rendered.
   const qc = seededClient([driver()], honoured ? { employeeIds: ids } : {});
+  // An EMPTY match is the subtle one. `buildQuery` drops an empty array, so `employeeIds: []`
+  // reaches the server as no filter at all and answers with every driver. Seeding that exact key
+  // with a row is what makes the guard's absence visible: without it the page renders this.
+  if (matched === 0) {
+    qc.setQueryData(
+      listKey('fleet', 'drivers', {
+        page: 1,
+        pageSize: 25,
+        sortBy: 'createdAt',
+        sortDir: 'desc',
+        search: undefined,
+        area: undefined,
+        specialization: undefined,
+        hasLicenseImage: undefined,
+        isActive: undefined,
+        employeeIds: [],
+      }),
+      page([driver()]),
+    );
+  }
   qc.setQueryData(['hr', 'employees', 'fleet-driver-filter', full], {
     items: ids.map((id) => ({ ...employee(), id })),
     meta: { page: 1, pageSize: MAX_PAGE_SIZE, totalItems: matched, totalPages: 1 },
@@ -659,12 +685,74 @@ describe('the HR facts delegate to HR instead of being edited in Fleet', () => {
     expect(hrProfileHref('e1', 'employment')).toBe('/employees/e1?tab=employment');
   });
 
+  it('the route it points at is REALLY mounted — a plausible string is not a destination', () => {
+    const app = readFileSync(join(HERE, '../../platform/app/App.tsx'), 'utf8');
+    expect(app, '/employees/* is mounted').toContain('path="/employees/*"');
+    const hrRoutes = readFileSync(join(HERE, '../hr/employee-management/routes.tsx'), 'utf8');
+    expect(hrRoutes, 'and :id resolves to the profile page').toContain('path=":id"');
+    expect(hrRoutes).toContain('EmployeeProfilePage');
+  });
+
+  it('both tabs REALLY exist on the HR profile — not just well-formed query strings', () => {
+    const profile = readFileSync(
+      join(HERE, '../hr/employee-management/employees/pages/EmployeeProfilePage.tsx'),
+      'utf8',
+    );
+    const tabs = profile.slice(profile.indexOf('const TABS ='), profile.indexOf('] as const'));
+    for (const group of Object.values(HR_DELEGATION)) {
+      expect(tabs, `${group.tab} is a real tab`).toContain(`'${group.tab}'`);
+    }
+    // …and each tab carries the action the group promises: the Personal tab's own edit button,
+    // and the Employment tab's action history, behind exactly the grants named in the table.
+    expect(profile).toContain(`<Can permission="${HR_DELEGATION.personal.permission}">`);
+    expect(profile).toContain('ActionHistory');
+    expect(profile).toContain('ActionsMenu');
+  });
+
+  it('needs the DESTINATION’s grant too — the edit grant alone walks into a wall', () => {
+    // `/employees/:id` is wrapped in `RequirePermission permission="employee.view"`, and the
+    // permission catalogue has no implication mechanism: `employee.editPersonal` does NOT confer
+    // `employee.view`. Offering the link on the edit grant alone would send those users to a
+    // permission wall, so `mayDelegateTo` demands both.
+    const hrRoutes = readFileSync(join(HERE, '../hr/employee-management/routes.tsx'), 'utf8');
+    for (const group of Object.values(HR_DELEGATION)) {
+      expect(hrRoutes, 'the route guard is what routePermission names').toContain(
+        `permission="${group.routePermission}"`,
+      );
+    }
+    const held = new Set<string>();
+    const can = (permission: string): boolean => held.has(permission);
+    // Edit grant only → no link.
+    held.add('employee.editPersonal');
+    expect(mayDelegateTo(HR_DELEGATION.personal, can)).toBe(false);
+    // Route grant only → still no link.
+    held.clear();
+    held.add('employee.view');
+    expect(mayDelegateTo(HR_DELEGATION.personal, can)).toBe(false);
+    expect(mayDelegateTo(HR_DELEGATION.employment, can)).toBe(false);
+    // Both → the link is offered, and ONLY for its own group.
+    held.add('employee.editPersonal');
+    expect(mayDelegateTo(HR_DELEGATION.personal, can)).toBe(true);
+    expect(mayDelegateTo(HR_DELEGATION.employment, can), 'personal does not open actions').toBe(
+      false,
+    );
+    held.add('employee.manageActions');
+    expect(mayDelegateTo(HR_DELEGATION.employment, can)).toBe(true);
+  });
+
+  it('a caller with NEITHER grant is offered nothing at all', () => {
+    const can = (): boolean => false;
+    for (const group of Object.values(HR_DELEGATION)) {
+      expect(mayDelegateTo(group, can)).toBe(false);
+    }
+  });
+
   it('gates each link on its own group’s permission, and on nothing else', () => {
     // The dialog is a `Dialog` (a portal), unreachable in a suite with no jsdom — so the claim is
     // made where it is decidable: the guard reads the permission from the table above, so the two
     // cannot drift apart.
-    expect(source).toContain('can(HR_DELEGATION.personal.permission)');
-    expect(source).toContain('can(HR_DELEGATION.employment.permission)');
+    expect(source).toContain('mayDelegateTo(HR_DELEGATION.personal, can)');
+    expect(source).toContain('mayDelegateTo(HR_DELEGATION.employment, can)');
     // No hardcoded permission strings that could diverge from the table.
     expect(source).not.toContain("can('employee.editPersonal')");
     expect(source).not.toContain("can('employee.manageActions')");
@@ -805,10 +893,22 @@ describe('the HR filters are owned by HR and applied server-side', () => {
   it('shows an empty table, not every driver, when HR matched nobody', () => {
     const html = render(<DriversListPage />, {
       route: '/fleet/drivers?gov=%D9%85%D9%81%D9%8A%D8%B4',
-      client: hrFilteredClient(0),
+      client: hrFilteredClient(0, { governorate: 'مفيش' }),
     });
     const body = html.slice(html.indexOf('<tbody'), html.indexOf('</tbody>'));
     expect(body).not.toContain('DL-4471');
+  });
+
+  it('an empty id list can never reach the wire — it would read as NO filter', () => {
+    // The hazard behind the test above, stated where it lives: a multi-value parameter with no
+    // values is omitted from the query string, and the server then answers the unfiltered
+    // question. "HR matched nobody" and "no HR filter" must never become the same request.
+    expect(buildQuery({ employeeIds: [] })).toBe('');
+    expect(buildQuery({ employeeIds: ['a', 'b'] })).toBe('?employeeIds=a%2Cb');
+    // The page therefore never issues it: the request is held and the table is emptied instead.
+    const source = readFileSync(join(HERE, 'pages/DriversListPage.tsx'), 'utf8');
+    expect(source).toContain('employeeIds !== null && employeeIds.length === 0');
+    expect(source).toContain('blocked || emptyMatch ? [] :');
   });
 
   it('applies no filter on the fetched page — every filter is a query parameter', () => {

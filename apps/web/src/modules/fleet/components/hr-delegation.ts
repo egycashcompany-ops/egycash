@@ -8,12 +8,21 @@
 //
 // Fleet writes none of these. FR-11 stands: the delegation is a LINK, not a write path.
 
-/** One group of HR facts, the screen that owns them, and the grant that screen's edit needs. */
+/** One group of HR facts, the screen that owns them, and the grants needed to get there. */
 export interface HrDelegationGroup {
   /** Tab on the HR employee profile — the existing `/employees/:id?tab=…` convention. */
   readonly tab: 'personal' | 'employment';
   /** The permission the HR screen's OWN edit action requires. No grant → no link offered. */
   readonly permission: string;
+  /**
+   * What the DESTINATION ROUTE itself demands, which is a separate question.
+   *
+   * `/employees/:id` is wrapped in `RequirePermission permission="employee.view"`, and the
+   * permission catalogue has no implication mechanism — holding `employee.editPersonal` does not
+   * confer `employee.view`. A link offered on the edit grant alone would therefore walk some users
+   * straight into a permission wall, so both are required before it is shown.
+   */
+  readonly routePermission: string;
   /** The driver-table columns this group covers, by their i18n key suffix. */
   readonly fields: readonly string[];
 }
@@ -23,6 +32,7 @@ export const HR_DELEGATION = {
   personal: {
     tab: 'personal',
     permission: 'employee.editPersonal',
+    routePermission: 'employee.view',
     fields: ['driver', 'phone', 'address', 'governorate'],
   },
   /**
@@ -34,6 +44,7 @@ export const HR_DELEGATION = {
   employment: {
     tab: 'employment',
     permission: 'employee.manageActions',
+    routePermission: 'employee.view',
     fields: ['jobTitle', 'branch', 'hiredAt'],
   },
 } as const satisfies Record<string, HrDelegationGroup>;
@@ -50,3 +61,9 @@ export const HR_UNDELEGATED_FIELDS = ['employeeCode'] as const;
 /** The HR profile tab that owns a group — the existing route, not a new one. */
 export const hrProfileHref = (employeeId: string, tab: HrDelegationGroup['tab']): string =>
   `/employees/${employeeId}?tab=${tab}`;
+
+/** May this caller be sent to the screen that owns this group? Both grants, never just one. */
+export const mayDelegateTo = (
+  group: HrDelegationGroup,
+  can: (permission: string) => boolean,
+): boolean => can(group.permission) && can(group.routePermission);

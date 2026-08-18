@@ -137,7 +137,11 @@ const useVehicleToday = (employeeId: string, enabled: boolean): VehicleToday | n
   const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const allowed = enabled && employeeId !== '' && can('fleetRoster.view');
-  // `YYYY-MM-DD` — the same shape the roster board sends, resolved to the local day.
+  // The SAME expression the roster board uses for "today" (`RosterPage`), deliberately: this is a
+  // UTC date, so east of Greenwich the small hours still read as yesterday. Computing a local date
+  // here instead would make the preview and the board disagree about which day is being shown,
+  // which is worse than the shared skew — the day convention belongs to the roster, not to this
+  // dialog, and it should be changed in one place if it is changed at all.
   const today = new Date().toISOString().slice(0, 10);
   const roster = useRosterDay(allowed ? today : '');
   // The TYPE is what the registry calls "الماركة", exactly as the vehicles table maps it. Gated

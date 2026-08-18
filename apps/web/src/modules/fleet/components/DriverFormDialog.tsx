@@ -40,7 +40,12 @@ import { formatDate, localized } from '../../../shared/lib/format';
 import { useUpdateDriverProfile } from '../api/fleet-queries';
 import { useBranches, useJobTitles } from '../../hr/recruitment/job-offers/api/job-offer-queries';
 import { EmployeeName, useEmployeeRecord } from './EmployeeName';
-import { HR_DELEGATION, hrProfileHref, type HrDelegationGroup } from './hr-delegation';
+import {
+  HR_DELEGATION,
+  hrProfileHref,
+  mayDelegateTo,
+  type HrDelegationGroup,
+} from './hr-delegation';
 import { DriverLicenseImageField } from './DriverLicenseImage';
 
 const SPECIALIZATIONS: FleetDriverSpecialization[] = ['cashTransport', 'atm', 'both'];
@@ -246,7 +251,7 @@ export const DriverFormDialog = ({
               <h4 className="text-xs font-medium text-slate-600 dark:text-slate-300">
                 {t('fleet.drivers.hrPersonal')}
               </h4>
-              {employeeId !== '' && can(HR_DELEGATION.personal.permission) && (
+              {employeeId !== '' && mayDelegateTo(HR_DELEGATION.personal, can) && (
                 <HrEditLink
                   employeeId={employeeId}
                   group={HR_DELEGATION.personal}
@@ -280,7 +285,7 @@ export const DriverFormDialog = ({
               <h4 className="text-xs font-medium text-slate-600 dark:text-slate-300">
                 {t('fleet.drivers.hrEmployment')}
               </h4>
-              {employeeId !== '' && can(HR_DELEGATION.employment.permission) && (
+              {employeeId !== '' && mayDelegateTo(HR_DELEGATION.employment, can) && (
                 <HrEditLink
                   employeeId={employeeId}
                   group={HR_DELEGATION.employment}

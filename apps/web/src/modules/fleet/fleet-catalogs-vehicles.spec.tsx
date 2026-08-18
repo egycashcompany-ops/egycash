@@ -335,6 +335,57 @@ describe('the registry table renders the frozen column order', () => {
     expect(html).not.toContain(`>${CATALOG.operation.id}<`);
   });
 
+  // The four identifier boxes each stacked onto their own line in the registry, because the shared
+  // `cn` is a plain joiner: the control's base class is `w-full`, so a `w-36` passed beside it
+  // never won and every box filled the wrapping bar. The width has to come from a WRAPPER, the way
+  // `SearchInput` already does it — and that is a structural fact worth pinning, since the visual
+  // symptom is invisible to typecheck and to every other assertion in this file.
+  it('gives each identifier filter a width wrapper instead of letting it stretch', () => {
+    const html = withRows([vehicle()]);
+    for (const [label, width] of [
+      [t('fleet.vehicles.columns.code'), 'w-32'],
+      [t('fleet.vehicles.columns.plate'), 'w-36'],
+      [t('fleet.vehicles.columns.chassis'), 'w-40'],
+      [t('fleet.vehicles.columns.motor'), 'w-40'],
+    ] as const) {
+      const at = html.indexOf(`aria-label="${label}"`);
+      expect(at, `${label} filter missing`).toBeGreaterThan(-1);
+      // The wrapper is the element immediately before this input.
+      const wrapper = html.lastIndexOf('<div class="', at);
+      const wrapperClass = html.slice(wrapper, html.indexOf('>', wrapper));
+      expect(wrapperClass, `${label} has no width wrapper`).toContain(width);
+    }
+  });
+
+  it('keeps the four identifiers on a row of their own, ahead of the dropdowns', () => {
+    const html = withRows([vehicle()]);
+    // `basis-full` is what claims a whole line of the wrapping bar for the identifier row.
+    expect(html).toContain('flex basis-full flex-wrap items-center gap-2');
+
+    const order = [
+      t('fleet.vehicles.columns.code'),
+      t('fleet.vehicles.columns.plate'),
+      t('fleet.vehicles.columns.chassis'),
+      t('fleet.vehicles.columns.motor'),
+    ].map((label) => html.indexOf(`aria-label="${label}"`));
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+
+    // Every dropdown comes after the last identifier — the second row in reading order.
+    const lastIdentifier = Math.max(...order);
+    for (const key of ['make', 'licenseClass', 'operation', 'insurance']) {
+      const at = html.indexOf(`aria-label="${t(`fleet.vehicles.filters.${key}`)}"`);
+      expect(at, `${key} dropdown missing`).toBeGreaterThan(lastIdentifier);
+    }
+  });
+
+  it('both filter rows wrap rather than overflow on a narrow screen', () => {
+    const html = withRows([vehicle()]);
+    const bar = html.slice(html.indexOf('flex basis-full'), html.indexOf('<thead>'));
+    // Two groups, and neither is nowrap — a small screen reflows instead of scrolling sideways.
+    expect((bar.match(/flex-wrap/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    expect(bar).not.toContain('flex-nowrap');
+  });
+
   it('offers all four catalog filters with their real options', () => {
     const html = withRows([vehicle()]);
     for (const key of ['make', 'licenseClass', 'operation', 'insurance']) {

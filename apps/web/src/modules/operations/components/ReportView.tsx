@@ -19,7 +19,7 @@ import {
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
-import { formatNumber } from '../../../shared/lib/format';
+import { formatAmount, formatNumber } from '../../../shared/lib/format';
 import { useAppSelector } from '../../../store';
 
 export interface ReportRow {
@@ -47,7 +47,7 @@ const CurrencyCell = ({
     <div className="space-y-0.5">
       {currencies.map((line) => (
         <div key={line.currencyId ?? line.currencyName} className="flex gap-2 text-sm">
-          <span className="tabular-nums">{formatNumber(line.amount, locale)}</span>
+          <span className="tabular-nums">{formatAmount(line.amount, locale)}</span>
           <span className="text-slate-500">{line.currencyName}</span>
         </div>
       ))}

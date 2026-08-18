@@ -15,7 +15,7 @@
 // in the vault" is a question about now — so the control is dropped rather than reproduced dead.
 import { useT } from '../../../platform/localization/useT';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
-import { formatNumber } from '../../../shared/lib/format';
+import { formatAmount } from '../../../shared/lib/format';
 import { useAppSelector } from '../../../store';
 import { useVaultReport } from '../api/operations-queries';
 import { ReportView, type ReportRow } from '../components/ReportView';
@@ -63,7 +63,7 @@ export const VaultReportPage = (): JSX.Element => {
             <div className="space-y-1">
               {foreign.map((line) => (
                 <div key={line.currencyId ?? line.currencyName} className="flex gap-2 text-sm">
-                  <span className="tabular-nums">{formatNumber(line.amount, locale)}</span>
+                  <span className="tabular-nums">{formatAmount(line.amount, locale)}</span>
                   <span className="text-slate-500">{line.currencyName}</span>
                 </div>
               ))}

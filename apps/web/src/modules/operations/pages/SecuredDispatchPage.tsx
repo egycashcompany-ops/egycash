@@ -26,7 +26,7 @@ import { Button } from '../../../shared/ui/Button';
 import { Card, CardBody } from '../../../shared/ui/Card';
 import { Input, Select } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { formatNumber } from '../../../shared/lib/format';
+import { formatAmount } from '../../../shared/lib/format';
 import { useAppSelector } from '../../../store';
 import {
   useAssignSecuredDelivery,
@@ -149,7 +149,7 @@ export const SecuredDispatchPage = (): JSX.Element => {
         <div className="space-y-0.5">
           {totalsByCurrency(row).map((total) => (
             <div key={total.currencyId} className="whitespace-nowrap tabular-nums">
-              {formatNumber(total.amount, locale)}{' '}
+              {formatAmount(total.amount, locale)}{' '}
               {currencies.data?.items.find((c) => c.id === total.currencyId)?.name ?? ''}
             </div>
           ))}

@@ -32,6 +32,9 @@ import {
   type UpdateOperationsShipment,
 } from '@ecms/contracts';
 import { featureKey, listKey } from '../../../shared/lib/query-keys';
+import { store } from '../../../store';
+import { toast } from '../../../shared/ui/toast/toast-store';
+import { executionErrorMessage, isStateConflict } from '../mobile/execution-errors';
 import * as api from './operations-api';
 import { type OperationsListParams } from './operations-api';
 
@@ -474,6 +477,16 @@ export const useMyDay = (date: string | null, enabled = true) =>
     queryKey: listKey(MODULE, 'myDay', { date: date ?? 'today' }),
     queryFn: () => api.getMyDay(date),
     enabled,
+    // A PHONE IS NOT A DESKTOP TAB. The app-wide default is `refetchOnWindowFocus: false` with a
+    // 30-second `staleTime`, which is right for a console somebody leaves open all day. A captain
+    // locks his phone between stops, and the back office can complete a shipment while it is in
+    // his pocket — so this one query re-reads whenever the app comes back to the foreground, and
+    // treats what it holds as stale the moment it has it. The dataset is a handful of stops.
+    //
+    // `refetchOnReconnect` is TanStack's own default and is deliberately not overridden here:
+    // coming back from a dead zone is the same problem with the same answer.
+    refetchOnWindowFocus: true,
+    staleTime: 0,
   });
 
 /**
@@ -502,6 +515,20 @@ const useExecutionAct = (act: (assignmentId: string) => Promise<OperationsExecut
   const invalidate = useExecutionInvalidation();
   return useMutation({
     mutationFn: (assignmentId: string) => act(assignmentId),
+    // DECLARING `onError` IS WHAT OPTS OUT OF THE GLOBAL TOAST. `query-client.ts` toasts the
+    // generic `errorMessage` for any mutation that declares none — which for a refused execution
+    // act would say "something went wrong" beside the precise reason this surface can give. One
+    // failure must produce one message, and this is the one that knows which message.
+    //
+    // A lost race is not a failure the captain caused: somebody else moved the stop while he was
+    // looking at it, so it is reported as news rather than as an error, and `onSettled` below has
+    // already gone to fetch the new truth.
+    onError: (error: unknown) => {
+      const locale = store.getState().locale.locale;
+      toast[isStateConflict(error) ? 'info' : 'error'](executionErrorMessage(error, locale));
+    },
+    // ALWAYS, on success and on failure alike. After a conflict the server's state is the one fact
+    // worth having; after a success it is what unlocks the next stop.
     onSettled: invalidate,
   });
 };

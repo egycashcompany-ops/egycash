@@ -21,6 +21,7 @@ import { useMyDay } from '../api/operations-queries';
 import { ShipmentTypeBadge } from '../components/ShipmentBadges';
 import { CaptainShell } from './CaptainShell';
 import { StopLocation } from './StopLocation';
+import { StopActions } from './StopActions';
 import { resolveMyDayDate } from './CaptainDayPage';
 
 export const StopDetailPage = (): JSX.Element => {
@@ -112,6 +113,13 @@ export const StopDetailPage = (): JSX.Element => {
           ↓
         </p>
         <StopLocation label={t('operations.mobile.deliverTo')} place={stop.delivery} />
+
+        {/*
+          The act, if the server says there is one. `StopActions` returns null for anything that is
+          not the current stop — the lock is the server's, and the screen must never offer a move
+          the API would refuse.
+        */}
+        <StopActions stop={stop} onRefetch={() => query.refetch()} />
 
         {stop.progress === 'locked' && (
           <p className="flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">

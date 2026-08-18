@@ -77,9 +77,17 @@ const NAV_ROWS: NavRow[] = [
  */
 const ROUTE_SOURCE = read('../../web/src/modules/operations/routes.tsx');
 
+/**
+ * Parameterised routes are excluded, and that is a property of what a navigation row IS rather
+ * than an exemption: `/operations/my-day/stops/:assignmentId` has no single URL to link to, and a
+ * captain reaches it by tapping a stop on his day — which is exactly the "reachable without typing
+ * a URL" the rule below protects. Requiring a row for it would demand a link nobody can write.
+ */
 const FRONTEND_ROUTES: { route: string; permission: string }[] = [
   ...ROUTE_SOURCE.matchAll(/path="([^"*]+)"\s*\n\s*element=\{\s*\n\s*<RequirePermission permission="([^"]+)"/g),
-].map((m) => ({ route: `/operations/${m[1] as string}`, permission: m[2] as string }));
+]
+  .map((m) => ({ route: `/operations/${m[1] as string}`, permission: m[2] as string }))
+  .filter((entry) => !entry.route.includes(':'));
 
 const HAS_INDEX_ROUTE = /<Route index element=\{<OperationsOverviewPage \/>\} \/>/.test(ROUTE_SOURCE);
 

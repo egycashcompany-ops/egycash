@@ -18,6 +18,7 @@ import { Skeleton } from '../../../shared/ui/Skeleton';
 import { formatDate } from '../../../shared/lib/format';
 import { useMyDay } from '../api/operations-queries';
 import { CaptainShell } from './CaptainShell';
+import { StopCard } from './StopCard';
 import { captainDayState, dayProgress } from './day-view';
 
 /** `?date=` empty means today, resolved by the server — the same contract the day board uses. */
@@ -78,7 +79,23 @@ export const CaptainDayPage = (): JSX.Element => {
           />
         );
       default:
-        return <p className="text-sm text-slate-500">{t('operations.mobile.stopsComing')}</p>;
+        return (
+          <section aria-label={t('operations.mobile.routeTitle')} className="space-y-3">
+            {/*
+              RENDERED IN THE ORDER THE SERVER SENT. No sort, no filter, no renumbering — the
+              sequence is established by `orderedCaptainRoute` and is what the execution lock is
+              enforced against, so re-ordering here would put the screen and the API in
+              disagreement about which stop is next.
+            */}
+            {day.stops.map((stop) => (
+              <StopCard
+                key={stop.assignmentId}
+                stop={stop}
+                href={`/operations/my-day/stops/${stop.assignmentId}${date === null ? '' : `?date=${date}`}`}
+              />
+            ))}
+          </section>
+        );
     }
   })();
 

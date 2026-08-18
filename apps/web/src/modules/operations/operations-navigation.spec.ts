@@ -24,10 +24,19 @@ import { OPERATIONS_SHORTCUTS } from './pages/OperationsOverviewPage';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROUTE_SOURCE = readFileSync(resolve(HERE, './routes.tsx'), 'utf8');
 
-/** Every guarded route this module serves, as the router declares it. */
+/**
+ * Every guarded route this module serves that a sidebar row could POINT AT.
+ *
+ * Parameterised routes are excluded, and that is a property of what a navigation row IS rather
+ * than an exemption: `/operations/my-day/stops/:assignmentId` has no single URL to link to, and a
+ * captain reaches it by tapping a stop on his day — which is exactly the "reachable without typing
+ * a URL" the rule below protects. Requiring a row for it would demand a link nobody can write.
+ */
 const SERVED = [
   '/operations', // the index route
-  ...[...ROUTE_SOURCE.matchAll(/path="([^"*]+)"/g)].map((m) => `/operations/${m[1] as string}`),
+  ...[...ROUTE_SOURCE.matchAll(/path="([^"*]+)"/g)]
+    .map((m) => `/operations/${m[1] as string}`)
+    .filter((route) => !route.includes(':')),
 ];
 
 /** A payload shaped exactly like the one the seeded catalog produces for a full-access user. */

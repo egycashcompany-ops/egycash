@@ -17,10 +17,13 @@ import { ChevronStartIcon } from '../../../shared/ui/icons';
 export const CaptainShell = ({
   title,
   subtitle,
+  backTo = '/operations',
   children,
 }: {
   title: string;
   subtitle?: string;
+  /** Where the back arrow goes — the route's own parent: the day for a stop, the console for the day. */
+  backTo?: string;
   children: ReactNode;
 }): JSX.Element => {
   const t = useT();
@@ -31,7 +34,7 @@ export const CaptainShell = ({
       <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
         <div className="mx-auto flex max-w-2xl items-center gap-3 px-4 py-3">
           <Link
-            to="/operations"
+            to={backTo}
             aria-label={t('operations.mobile.backToConsole')}
             className="-ms-2 rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
           >

@@ -180,6 +180,14 @@ export const ShieldIcon = (p: IconProps): JSX.Element => (
   </Base>
 );
 
+/** A padlock — a stop the sequential lock is holding shut. */
+export const LockIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <rect x="4" y="10" width="16" height="11" rx="2" />
+    <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+  </Base>
+);
+
 /** A map pin — a branch that has a location on it. */
 export const PinIcon = (p: IconProps): JSX.Element => (
   <Base {...p}>

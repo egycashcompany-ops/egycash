@@ -4568,6 +4568,25 @@ const en: Record<string, string> = {
   'operations.catalogs.branch.financeArea': 'Finance area',
   'operations.catalogs.branch.financeAreaHint':
     'Used by accounting. Left blank, it follows the operations area.',
+  'operations.catalogs.branch.address': 'Address',
+  'operations.catalogs.branch.addressHint': 'Optional. What a driver would read out loud.',
+  'operations.catalogs.branch.mapsLink': 'Location on the map',
+  'operations.catalogs.branch.mapsLinkHint':
+    'Paste a Google Maps link, or the coordinates. The point is what gets saved, and the captain sees it on the shipment.',
+  'operations.catalogs.branch.maps.read': 'Read',
+  'operations.catalogs.branch.maps.pick': 'Pick on the map',
+  'operations.catalogs.branch.maps.hide': 'Hide the map',
+  'operations.catalogs.branch.maps.pickHint':
+    'Click the branch to place the pin, or drag it to adjust. Map data © OpenStreetMap contributors.',
+  'operations.catalogs.branch.maps.open': 'Open in Google Maps',
+  'operations.catalogs.branch.maps.none': 'No location set for this branch.',
+  'operations.catalogs.branch.maps.empty': 'Paste a link or coordinates first.',
+  'operations.catalogs.branch.maps.shortLink':
+    'A short link carries no coordinates. Open it in Google Maps, then copy the full address from the browser bar.',
+  'operations.catalogs.branch.maps.noCoordinates':
+    'No coordinates in that link. Open the place in Google Maps and copy the link from the browser bar.',
+  'operations.catalogs.branch.maps.outOfRange': 'Those coordinates are not a place on Earth.',
+  'operations.catalogs.branch.location': 'Location',
   'operations.catalogs.branch.empty': 'No branches yet',
   'operations.catalogs.currency.add': 'Add currency',
   'operations.catalogs.currency.edit': 'Edit currency',
@@ -9270,6 +9289,25 @@ const ar: Record<string, string> = {
   'operations.catalogs.branch.financeArea': 'منطقة الحسابات',
   'operations.catalogs.branch.financeAreaHint':
     'تستخدمها الحسابات. إذا تُركت فارغة فإنها تتبع منطقة العمليات.',
+  'operations.catalogs.branch.address': 'العنوان',
+  'operations.catalogs.branch.addressHint': 'اختياري. العنوان كما ينطقه السائق.',
+  'operations.catalogs.branch.mapsLink': 'الموقع على الخريطة',
+  'operations.catalogs.branch.mapsLinkHint':
+    'الصق رابط جوجل مابس أو الإحداثيات. المحفوظ هو النقطة نفسها، ويراها القائد على الشحنة.',
+  'operations.catalogs.branch.maps.read': 'قراءة',
+  'operations.catalogs.branch.maps.pick': 'اختيار من الخريطة',
+  'operations.catalogs.branch.maps.hide': 'إخفاء الخريطة',
+  'operations.catalogs.branch.maps.pickHint':
+    'اضغط على موقع الفرع لوضع العلامة، أو اسحبها للضبط. بيانات الخريطة © مساهمو OpenStreetMap.',
+  'operations.catalogs.branch.maps.open': 'فتح في جوجل مابس',
+  'operations.catalogs.branch.maps.none': 'لا يوجد موقع محدَّد لهذا الفرع.',
+  'operations.catalogs.branch.maps.empty': 'الصق رابطًا أو إحداثيات أولًا.',
+  'operations.catalogs.branch.maps.shortLink':
+    'الرابط المختصر لا يحمل إحداثيات. افتحه في جوجل مابس ثم انسخ العنوان الكامل من شريط المتصفح.',
+  'operations.catalogs.branch.maps.noCoordinates':
+    'لا توجد إحداثيات في هذا الرابط. افتح المكان في جوجل مابس وانسخ الرابط من شريط المتصفح.',
+  'operations.catalogs.branch.maps.outOfRange': 'هذه الإحداثيات ليست موقعًا على الأرض.',
+  'operations.catalogs.branch.location': 'الموقع',
   'operations.catalogs.branch.empty': 'لا توجد فروع بعد',
   'operations.catalogs.currency.add': 'إضافة عملة',
   'operations.catalogs.currency.edit': 'تعديل عملة',

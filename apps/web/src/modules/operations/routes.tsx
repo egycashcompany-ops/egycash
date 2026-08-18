@@ -12,6 +12,7 @@
 //   /operations/vault/receive operationsVault.view      B4  (legacy /receive_mohsana)
 //   /operations/vault/dispatch operationsVault.view     B4  (legacy /deliver_mohsana + /tash4ela_mohasana)
 //   /operations/vault         operationsVault.view      B4  (legacy /vault1)
+//   /operations/reports/vault    operationsVault.view    B6 (legacy /vault1_reports)
 //   /operations/reports/captains operationsShipment.view B5 (legacy /ops_report)
 //   /operations/reports/banks    operationsShipment.view B5 (legacy /ops_bank_report)
 //   /operations/attendance    operationsCrew.view + attendance.view  B5  (NO legacy equivalent)
@@ -30,6 +31,7 @@ import { SecuredDispatchPage } from './pages/SecuredDispatchPage';
 import { VaultInventoryPage } from './pages/VaultInventoryPage';
 import { VaultReceivePage } from './pages/VaultReceivePage';
 import { CaptainReportPage } from './pages/CaptainReportPage';
+import { VaultReportPage } from './pages/VaultReportPage';
 import { BankReportPage } from './pages/BankReportPage';
 import { CrewAttendancePage } from './pages/CrewAttendancePage';
 
@@ -91,6 +93,14 @@ export default function OperationsRoutes(): JSX.Element {
           element={
             <RequirePermission permission="operationsVault.view">
               <VaultInventoryPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="reports/vault"
+          element={
+            <RequirePermission permission="operationsVault.view">
+              <VaultReportPage />
             </RequirePermission>
           }
         />

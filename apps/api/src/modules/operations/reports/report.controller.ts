@@ -13,3 +13,11 @@ export const getBankReport = async (req: Request, res: Response): Promise<void> 
   const { query } = validated<never, OperationsReportQuery>(req);
   ok(res, await operationsReportService.bankReport(query));
 };
+
+/**
+ * The legacy `/vault1_reports`. It takes NO query at all — the legacy screen's date picker never
+ * filtered anything (Q32), and an inventory roll-up is a question about now.
+ */
+export const getVaultReport = async (_req: Request, res: Response): Promise<void> => {
+  ok(res, await operationsReportService.vaultReport());
+};

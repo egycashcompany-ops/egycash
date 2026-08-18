@@ -13,6 +13,7 @@
 //     break history. `isActive` is the honest replacement.
 import { useEffect, useState, type FormEvent } from 'react';
 import {
+  type OperationsAreaDto,
   type OperationsBankBranchDto,
   type OperationsBankDto,
   type OperationsCurrencyDto,
@@ -23,9 +24,11 @@ import { Button } from '../../../shared/ui/Button';
 import { Field, Input, Select } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import {
+  useCreateOperationsArea,
   useCreateOperationsBank,
   useCreateOperationsBankBranch,
   useCreateOperationsCurrency,
+  useUpdateOperationsArea,
   useUpdateOperationsBank,
   useUpdateOperationsBankBranch,
   useUpdateOperationsCurrency,
@@ -159,11 +162,18 @@ export const BankBranchDialog = ({
   open,
   branch,
   banks,
+  areas,
   onClose,
 }: {
   open: boolean;
   branch: OperationsBankBranchDto | null;
   banks: OperationsBankDto[];
+  /**
+   * Area SUGGESTIONS, not options (B6). Legacy rendered the city list into a `<datalist>` on this
+   * exact field (data_edit.ejs:924) and saved whatever string came out — typed or picked. Turning
+   * it into a required select would be a new rule and would reject every existing free-text area.
+   */
+  areas: OperationsAreaDto[];
   onClose: () => void;
 }): JSX.Element => {
   const t = useT();
@@ -236,7 +246,16 @@ export const BankBranchDialog = ({
           label={t('operations.catalogs.branch.opsArea')}
           hint={t('operations.catalogs.branch.opsAreaHint')}
         >
-          <Input value={opsArea} onChange={(e) => setOpsArea(e.target.value)} />
+          <Input
+            value={opsArea}
+            onChange={(e) => setOpsArea(e.target.value)}
+            list="operations-area-suggestions"
+          />
+          <datalist id="operations-area-suggestions">
+            {areas.map((area) => (
+              <option key={area.id} value={area.name} />
+            ))}
+          </datalist>
         </Field>
         <Field
           label={t('operations.catalogs.branch.financeArea')}
@@ -320,6 +339,87 @@ export const CurrencyDialog = ({
           hint={t('operations.catalogs.currency.aliasesHint')}
         >
           <Input value={aliases} onChange={(e) => setAliases(e.target.value)} />
+        </Field>
+        <div className="flex justify-end gap-2 pt-2">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            {t('common.cancel')}
+          </Button>
+          <Button type="submit" disabled={busy}>
+            {t('common.save')}
+          </Button>
+        </div>
+      </form>
+    </Dialog>
+  );
+};
+
+/**
+ * The operational area — the legacy `/data_edit` city form (contad_app.js:2033).
+ *
+ * `nameEn` and `governorate` are OPTIONAL here where legacy required both (:2042). Legacy's
+ * requirement was not honoured by its own data — many rows carry the Arabic name twice — and the
+ * only thing either field does is help somebody find the right suggestion.
+ */
+export const AreaDialog = ({
+  open,
+  area,
+  onClose,
+}: {
+  open: boolean;
+  area: OperationsAreaDto | null;
+  onClose: () => void;
+}): JSX.Element => {
+  const t = useT();
+  const create = useCreateOperationsArea();
+  const update = useUpdateOperationsArea();
+
+  const [name, setName] = useState('');
+  const [nameEn, setNameEn] = useState('');
+  const [governorate, setGovernorate] = useState('');
+
+  useEffect(() => {
+    if (!open) return;
+    setName(area?.name ?? '');
+    setNameEn(area?.nameEn ?? '');
+    setGovernorate(area?.governorate ?? '');
+  }, [open, area]);
+
+  const submit = async (event: FormEvent): Promise<void> => {
+    event.preventDefault();
+    const core = {
+      name: name.trim(),
+      nameEn: orNull(nameEn),
+      governorate: orNull(governorate),
+    };
+    try {
+      if (area === null) await create.mutateAsync(core);
+      else await update.mutateAsync({ id: area.id, body: { ...core, version: area.version } });
+      toast.success(t('operations.catalogs.saved'));
+      onClose();
+    } catch {
+      toast.error(t('operations.catalogs.saveFailed'));
+    }
+  };
+
+  const busy = create.isPending || update.isPending;
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title={t(area === null ? 'operations.catalogs.area.add' : 'operations.catalogs.area.edit')}
+    >
+      <form onSubmit={submit} className="space-y-4">
+        <Field label={t('operations.catalogs.area.name')} required>
+          <Input value={name} onChange={(e) => setName(e.target.value)} required />
+        </Field>
+        <Field label={t('operations.catalogs.area.nameEn')}>
+          <Input value={nameEn} onChange={(e) => setNameEn(e.target.value)} />
+        </Field>
+        <Field
+          label={t('operations.catalogs.area.governorate')}
+          hint={t('operations.catalogs.area.governorateHint')}
+        >
+          <Input value={governorate} onChange={(e) => setGovernorate(e.target.value)} />
         </Field>
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="secondary" onClick={onClose}>

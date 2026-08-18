@@ -19,12 +19,17 @@ describe('resolveCatalogKind', () => {
   });
 
   it('falls back to banks for a value that is not a kind', () => {
+    // `cities` is the LEGACY name for what B6 ships as `areas`; an old bookmark must not blank
+    // the screen, and it must not silently resolve to the areas tab either — it is not that URL.
     expect(resolveCatalogKind('cities')).toBe('banks');
     expect(resolveCatalogKind('')).toBe('banks');
   });
 
-  it('offers exactly the three kinds Operations joins on — cities are deliberately not here', () => {
-    expect([...OPERATIONS_CATALOG_KINDS]).toEqual(['banks', 'branches', 'currencies']);
+  it('offers the four kinds the legacy /data_edit screen maintained', () => {
+    // B1 shipped three and recorded cities as read by nothing. B6 corrected that: the legacy view
+    // renders them into the `<datalist>` behind a branch's area field (data_edit.ejs:924), so
+    // they ARE consumed — as suggestions for a free-text field, which is what `areas` maintains.
+    expect([...OPERATIONS_CATALOG_KINDS]).toEqual(['banks', 'branches', 'currencies', 'areas']);
   });
 });
 

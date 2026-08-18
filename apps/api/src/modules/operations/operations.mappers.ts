@@ -3,6 +3,7 @@
 import {
   fromMinorUnits,
   type OperationsBankBranchDto,
+  type OperationsAreaDto,
   type OperationsBankDto,
   type OperationsCurrencyDto,
   type OperationsDayDto,
@@ -15,6 +16,7 @@ import { type OperationsShipmentAssignmentDoc } from './shipments/shipment-assig
 import { type OperationsBankDoc } from './banks/bank.model';
 import { type OperationsBankBranchDoc } from './bank-branches/bank-branch.model';
 import { type OperationsCurrencyDoc } from './currencies/currency.model';
+import { type OperationsAreaDoc } from './areas/area.model';
 import { type OperationsShipmentDoc } from './shipments/shipment.model';
 import { type VaultCustodyView } from './treasury-boundary';
 
@@ -27,6 +29,17 @@ export const toBankDto = (doc: OperationsBankDoc): OperationsBankDto => ({
   opsName: doc.opsName,
   slogan: doc.slogan,
   sortOrder: doc.sortOrder,
+  isActive: doc.isActive,
+  version: doc.__v,
+  createdAt: iso(doc.createdAt),
+  updatedAt: iso(doc.updatedAt),
+});
+
+export const toAreaDto = (doc: OperationsAreaDoc): OperationsAreaDto => ({
+  id: String(doc._id),
+  name: doc.name,
+  nameEn: doc.nameEn,
+  governorate: doc.governorate,
   isActive: doc.isActive,
   version: doc.__v,
   createdAt: iso(doc.createdAt),

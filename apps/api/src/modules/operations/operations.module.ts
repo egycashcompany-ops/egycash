@@ -16,6 +16,7 @@ import { type ModuleManifest } from '../../platform/kernel/module-registry';
 import { buildOperationsBanksRouter } from './banks/bank.routes';
 import { buildOperationsBankBranchesRouter } from './bank-branches/bank-branch.routes';
 import { buildOperationsCurrenciesRouter } from './currencies/currency.routes';
+import { buildOperationsAreasRouter } from './areas/area.routes';
 import { buildOperationsShipmentsRouter } from './shipments/shipment.routes';
 import { buildOperationsDaysRouter } from './days/day.routes';
 import { buildOperationsCrewRouter } from './crew/crew.routes';
@@ -170,10 +171,15 @@ export const operationsPages: PageDef[] = [
 export const operationsModule: ModuleManifest = {
   id: 'operations',
   name: { en: 'Operations', ar: 'العمليات' },
-  // B5 adds the two reports under a new `/operations/reports` prefix. They ride the EXISTING
+  // B5 added the two reports under a new `/operations/reports` prefix. They ride the EXISTING
   // `operationsShipment.view` grant — a report is a read of shipments the caller can already see —
-  // and store nothing, so no permission, page or collection is added.
-  version: '0.9.0',
+  // and store nothing, so no permission or page was added.
+  //
+  // B6 completes the surface: the vault roll-up joins the reports prefix under the EXISTING
+  // `operationsVault.view` grant, and the legacy `/data_edit` city list arrives as
+  // `operations_areas` under the EXISTING catalog grants. One new prefix, one new collection, and
+  // still no new permission or page — the catalogs page already owns the reference surface.
+  version: '0.10.0',
   requiresPlatform: '^2.2',
   permissions: operationsPermissions,
   pages: operationsPages,
@@ -182,6 +188,7 @@ export const operationsModule: ModuleManifest = {
     { prefix: '/operations/banks', router: buildOperationsBanksRouter() },
     { prefix: '/operations/bank-branches', router: buildOperationsBankBranchesRouter() },
     { prefix: '/operations/currencies', router: buildOperationsCurrenciesRouter() },
+    { prefix: '/operations/areas', router: buildOperationsAreasRouter() },
     { prefix: '/operations/days', router: buildOperationsDaysRouter() },
     { prefix: '/operations/crew-board', router: buildOperationsCrewRouter() },
     { prefix: '/operations/secured', router: buildOperationsSecuredRouter() },
@@ -194,6 +201,7 @@ export const operationsModule: ModuleManifest = {
     'operations_banks',
     'operations_bank_branches',
     'operations_currencies',
+    'operations_areas',
     'operations_days',
     'operations_crew_assignments',
     'operations_crew_requirements',

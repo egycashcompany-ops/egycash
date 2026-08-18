@@ -54,6 +54,15 @@ class OperationsShipmentRepository extends BaseRepository<OperationsShipmentDoc>
       .exec();
   }
 
+  /** A set of shipments by id — the vault roll-up joins the money onto its custody rows. */
+  async findByIds(ids: string[]): Promise<OperationsShipmentDoc[]> {
+    if (ids.length === 0) return [];
+    return this.model
+      .find({ _id: { $in: ids }, isDeleted: false })
+      .lean<OperationsShipmentDoc[]>()
+      .exec();
+  }
+
   /**
    * COMPLETED shipments in a range, for the reports — the legacy report `$match` (:4877/:4919).
    *

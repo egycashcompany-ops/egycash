@@ -20,6 +20,7 @@ import {
   type OperationsBankReportDto,
   type OperationsCaptainReportDto,
   type OperationsReportQuery,
+  type OperationsVaultReportDto,
 } from '@ecms/contracts';
 import { fromMinorUnits } from '@ecms/contracts';
 import { getDirectoryEmployee } from '../../../platform/directory';
@@ -36,6 +37,13 @@ import {
   explicitReportRange,
   type ReportInputRow,
 } from './report-aggregation';
+
+/**
+ * ECMS's domestic currency. It is `EGP` everywhere else in the platform — `MoneyCurrencySchema`
+ * defaults to it and every money value object does — so the vault roll-up names the same one
+ * instead of reproducing the legacy screen's literal synonym list (contad_app.js:1409).
+ */
+const BASE_CURRENCY_CODE = 'EGP';
 
 const resolveRange = (query: OperationsReportQuery): { from: Date; toExclusive: Date } =>
   query.from !== undefined && query.to !== undefined
@@ -127,6 +135,81 @@ class OperationsReportService {
       to: new Date(toExclusive.getTime() - 86_400_000).toISOString(),
       rows: built,
       grandTotal,
+    };
+  }
+
+  /**
+   * The legacy `/vault1_reports` + `/vault1` aggregations — everything the treasury holds NOW,
+   * rolled up by bank (B6).
+   *
+   * It goes through the SAME `bankReportRows` the bank report uses. That is the point: the legacy
+   * pair computed package counts two different ways over overlapping sets — the vault screen per
+   * document, the bank report per currency line (Q26) — so the two screens disagreed about the
+   * same shipments. One code path cannot.
+   *
+   * NO date range (Q32 PRESERVE): the legacy picker's filters were commented out in BOTH
+   * aggregations, and "what is in the vault" is a question about now.
+   */
+  async vaultReport(): Promise<OperationsVaultReportDto> {
+    const held = await vaultCustody().allHeld();
+    const shipments = await operationsShipmentRepository.findByIds(
+      held.map((custody) => custody.shipmentId),
+    );
+    const byId = new Map(shipments.map((doc) => [String(doc._id), doc]));
+
+    const currencies = (
+      await operationsCurrencyRepository.list({ filter: {}, page: 1, pageSize: 500 })
+    ).items;
+    const currencyName = new Map(currencies.map((c) => [String(c._id), c.name]));
+    const baseCurrencyIds = new Set(
+      currencies.filter((c) => c.code === BASE_CURRENCY_CODE).map((c) => String(c._id)),
+    );
+    const bankNames = new Map<string, string>();
+
+    const rows: ReportInputRow[] = [];
+    for (const custody of held) {
+      const shipment = byId.get(custody.shipmentId);
+      // Custody with no readable shipment is a broken reference, not a zero. Skipping it makes the
+      // roll-up's count differ from the inventory's — which is visible — rather than quietly
+      // emitting a row with no money.
+      if (shipment === undefined) continue;
+
+      const bankId = String(shipment.mainBankId);
+      if (!bankNames.has(bankId)) {
+        const bank = await operationsBankRepository.findById(bankId);
+        bankNames.set(bankId, bank?.opsName ?? '');
+      }
+
+      rows.push({
+        shipmentId: custody.shipmentId,
+        // The vault roll-up is not keyed on a captain; custody is the treasury's, not a route's.
+        captainEmployeeId: null,
+        captainName: '',
+        bankId,
+        bankName: bankNames.get(bankId) ?? '',
+        // Packages come from CUSTODY, counted once per shipment — the same fix as the reports.
+        bagCount: custody.bagCount,
+        cartonCount: custody.cartonCount,
+        boxCount: custody.boxCount,
+        lines: shipment.lines.map((line: OperationsShipmentLine) => ({
+          currencyId: String(line.currencyId),
+          currencyName: currencyName.get(String(line.currencyId)) ?? '',
+          amount: fromMinorUnits(line.amountMinor),
+        })),
+      });
+    }
+
+    const { rows: built, grandTotal } = bankReportRows(rows);
+    return {
+      rows: built,
+      grandTotal,
+      baseCurrencyCode: BASE_CURRENCY_CODE,
+      // The legacy SECOND aggregation, as a view of the first rather than a second query. Matched
+      // on the currency's CODE, not on its Arabic display name — which is what the legacy synonym
+      // list was working around.
+      foreignCurrencies: grandTotal.currencies.filter(
+        (line) => line.currencyId === null || !baseCurrencyIds.has(line.currencyId),
+      ),
     };
   }
 

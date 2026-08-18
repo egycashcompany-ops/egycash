@@ -90,6 +90,14 @@ export const OPERATIONS_SHORTCUTS: Shortcut[] = [
     icon: ShieldIcon,
     permission: 'operationsVault.view',
   },
+  /** Legacy `/vault1_reports` — what the vault holds, rolled up by bank. */
+  {
+    to: '/operations/reports/vault',
+    titleKey: 'operations.nav.vaultReport',
+    descKey: 'operations.cards.vaultReport',
+    icon: ChartIcon,
+    permission: 'operationsVault.view',
+  },
   /** Legacy `/ops_report` — the month's work by captain. */
   {
     to: '/operations/reports/captains',

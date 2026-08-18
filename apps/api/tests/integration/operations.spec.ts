@@ -2146,6 +2146,9 @@ describe('crew roster and requirements — legacy /requirement (B3)', () => {
     const list = await request(app)
       .get('/api/v1/operations/crew-board/requirements')
       .set('Authorization', `Bearer ${adminToken}`);
+    // Asserted before reading `data`: without it a rejected query surfaces as an unhelpful
+    // "cannot read properties of undefined" instead of naming the status that caused it.
+    expect(list.status).toBe(200);
     const rows = (list.body as { data: { employeeId: string }[] }).data;
     expect(rows.filter((r) => r.employeeId === memberA)).toHaveLength(1);
   });
@@ -2180,6 +2183,18 @@ describe('crew roster and requirements — legacy /requirement (B3)', () => {
       expect(dto[flag]).toBe(true);
     }
     expect(dto.notes).toBe('ملاحظة');
+  });
+
+  it('lists the roster with no filters, and with each filter applied', async () => {
+    // The list query's boolean filters are OPTIONAL: a plain request must not be rejected, and
+    // each filter must narrow rather than error.
+    for (const qs of ['', '?isCaptain=true', '?isSpecialist=true', '?isCaptain=false']) {
+      const res = await request(app)
+        .get(`/api/v1/operations/crew-board/requirements${qs}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status).toBe(200);
+      expect(Array.isArray((res.body as { data: unknown[] }).data)).toBe(true);
+    }
   });
 
   it('the directory lists the roster with names resolved through the seam', async () => {

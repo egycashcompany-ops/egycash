@@ -488,8 +488,8 @@ export type SetOperationsCrewRequirements = z.infer<typeof SetOperationsCrewRequ
 export const ListOperationsCrewRequirementsQuerySchema = PaginationQuerySchema.extend({
   /** Free text over the employee's name and code, resolved through the directory seam. */
   search: z.string().min(1).optional(),
-  isCaptain: booleanQuery(),
-  isSpecialist: booleanQuery(),
+  isCaptain: booleanQuery().optional(),
+  isSpecialist: booleanQuery().optional(),
 }).strict();
 export type ListOperationsCrewRequirementsQuery = z.infer<
   typeof ListOperationsCrewRequirementsQuerySchema

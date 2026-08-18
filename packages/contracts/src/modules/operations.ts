@@ -863,7 +863,16 @@ const crewEmployeeSlots = [
   'specialist2EmployeeIds',
 ] as const;
 
-/** A slot as it arrives: absent = "leave it alone"; `[]` = "empty this slot". */
+/**
+ * A slot as it arrives. An omitted slot and an empty one mean the SAME thing — nobody — because
+ * `plan()` replaces a whole row: `row.captainEmployeeIds ?? []`. There is no partial-update
+ * dialect here and never was, and the board has always sent whole rows.
+ *
+ * This comment previously claimed absent meant "leave it alone", which is the opposite of what
+ * the service does and of what the integration suite pins. A doc that lies about a clearing
+ * operation is worse than no doc: the next author reads it, omits a slot to preserve it, and
+ * silently wipes a crew.
+ */
 const crewSlot = (): z.ZodOptional<z.ZodArray<z.ZodString>> =>
   z.array(objectId()).max(CREW_SLOT_CAPACITY).optional();
 
@@ -957,6 +966,151 @@ export const OperationsCrewBoardQuerySchema = z
   .object({ date: z.coerce.date().optional() })
   .strict();
 export type OperationsCrewBoardQuery = z.infer<typeof OperationsCrewBoardQuerySchema>;
+
+
+// ── The standing crew (الطاقم الثابت) ───────────────────────────────────────────────────────────
+//
+// NEW ECMS CAPABILITY. Legacy had NO standing crew: `/tashghela` rendered `t.leader || ""`
+// (contad_app.js:2305-2311) and the board started empty every single day, which is why the whole
+// crew had to be dragged again each morning. This is the permanent answer to "who normally crews
+// this vehicle", from which each day's board is seeded.
+//
+// WHERE THE VEHICLE LIST COMES FROM, and why it is not derived.
+//
+// There is no day-independent "this is a cash-transfer vehicle" marker anywhere in ECMS. The
+// vehicle record carries make/model (`typeId`), org placement (`branchId`) and a nullable
+// `operationId` (التشغيل) — and `operationId` is deliberately never seeded and never migrated
+// (fleet.seed.ts:40-43), so it is null on every real row. The one field that does say "نقل أموال"
+// is `missionTypeId`, and it lives on the Fleet DUTY row, whose identity is (vehicle, date) — a
+// per-day fact, useless to a row that has no day.
+//
+// Legacy did have a per-vehicle marker: `cars.department == 'نقل اموال'` gated the mission
+// dropdown. It lived only in an EJS template, never in a server query, and the frozen fleet design
+// records it as bug H5 — misspelled, "never matches real data", explicitly not carried. Reviving
+// it as `operationId` would re-import a bug that was deliberately dropped.
+//
+// So membership is EXPLICIT, exactly as it is for the crew roster next door: HOLDING A ROW IS
+// MEMBERSHIP (crew-requirements.model.ts states the same rule for people). A vehicle is a
+// cash-transfer vehicle because Operations added it here, and stops being one when the row goes.
+
+/** One vehicle's permanent crew. No date, and deliberately no `notes` and no `isActive`. */
+export interface OperationsStandingCrewRowDto {
+  id: string;
+  vehicleId: string;
+  vehicleCode: string;
+  /** Same shape and same ceiling as a day's crew — this is the template that day is seeded from. */
+  captainEmployeeIds: string[];
+  specialist1EmployeeIds: string[];
+  specialist2EmployeeIds: string[];
+  direction: string | null;
+  plannedTime: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OperationsStandingCrewBoardDto {
+  rows: OperationsStandingCrewRowDto[];
+  /**
+   * Fleet vehicles that are NOT in the standing crew yet — what the "add a vehicle" picker offers.
+   *
+   * Served from here rather than from a Fleet endpoint the browser calls itself, because the web
+   * app forbids cross-module imports and the §9.4 boundary puts every Fleet read on the server
+   * side of `fleet-boundary.ts`. One request, one boundary, no second module on the client.
+   */
+  available: { vehicleId: string; vehicleCode: string }[];
+}
+
+const standingCrewSlot = (): z.ZodOptional<z.ZodArray<z.ZodString>> =>
+  z.array(objectId()).max(CREW_SLOT_CAPACITY).optional();
+
+export const SetOperationsStandingCrewRowSchema = z
+  .object({
+    vehicleId: objectId(),
+    captainEmployeeIds: standingCrewSlot(),
+    specialist1EmployeeIds: standingCrewSlot(),
+    specialist2EmployeeIds: standingCrewSlot(),
+    direction: z.string().min(1).nullable().optional(),
+    plannedTime: z.string().min(1).nullable().optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    // The same two rules the daily row carries, for the same reasons. They are restated rather
+    // than shared because the two schemas are free to diverge and a shared refinement would hide
+    // the day the business wants them to.
+    const seen = new Set<string>();
+    for (const slot of crewEmployeeSlots) {
+      const employees = value[slot];
+      if (employees === undefined) continue;
+      const withinSlot = new Set<string>();
+      employees.forEach((employee, position) => {
+        if (withinSlot.has(employee)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [slot, position],
+            message: 'the same person cannot be listed twice in one crew slot',
+          });
+        } else if (seen.has(employee)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [slot, position],
+            message: 'the same person cannot fill two crew slots on one vehicle',
+          });
+        }
+        withinSlot.add(employee);
+        seen.add(employee);
+      });
+    }
+  });
+export type SetOperationsStandingCrewRow = z.infer<typeof SetOperationsStandingCrewRowSchema>;
+
+/**
+ * Upsert per vehicle — only CHANGED rows are sent, the same shape the daily board saves in.
+ *
+ * TWO DELIBERATE DIVERGENCES from `PlanOperationsCrewSchema`:
+ *
+ *   · `rows` may be EMPTY. A save that only removes vehicles has nothing to upsert, and refusing
+ *     it would force the client to invent a no-op row.
+ *   · An empty row is MEANINGFUL here and is not skipped. On the daily board "no crew and no
+ *     annotations" means nothing happened; here it means "this vehicle is in the cash-transfer
+ *     fleet and has no standing crew yet", which is a fact worth storing. Membership is the row.
+ */
+export const SetOperationsStandingCrewSchema = z
+  .object({ rows: z.array(SetOperationsStandingCrewRowSchema).max(500) })
+  .strict()
+  .superRefine((value, ctx) => {
+    const seenVehicles = new Set<string>();
+    const seenEmployees = new Set<string>();
+    value.rows.forEach((row, index) => {
+      if (seenVehicles.has(row.vehicleId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['rows', index, 'vehicleId'],
+          message: 'a vehicle appears twice in one standing crew',
+        });
+      }
+      seenVehicles.add(row.vehicleId);
+      // Q11'S DAY-INDEPENDENT SHADOW, and not decoration. A standing crew that puts one person on
+      // two vehicles produces a seed that breaks Q11 the moment both vehicles are rostered on the
+      // same day — so the seed could never be trusted to author a valid plan. Enforcing it here is
+      // what makes the descent safe.
+      for (const slot of crewEmployeeSlots) {
+        const employees = row[slot];
+        if (employees === undefined) continue;
+        employees.forEach((employee, position) => {
+          if (seenEmployees.has(employee)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['rows', index, slot, position],
+              message: 'a crew member may hold one vehicle in the standing crew',
+            });
+          }
+          seenEmployees.add(employee);
+        });
+      }
+    });
+  });
+export type SetOperationsStandingCrew = z.infer<typeof SetOperationsStandingCrewSchema>;
 
 
 // ── Vault custody + secured dispatch (OP-4) ─────────────────────────────────────────────────────
@@ -1432,6 +1586,7 @@ export const OperationsEvents = {
   DayClosed: 'operations.day.closed',
   CrewPlanned: 'operations.crew.planned',
   CrewAssignmentChanged: 'operations.crewAssignment.changed',
+  StandingCrewChanged: 'operations.standingCrew.changed',
   VaultReceived: 'operations.custody.received',
   VaultReleased: 'operations.custody.released',
   SecuredLegAssigned: 'operations.shipmentAssignment.assigned',
@@ -1465,6 +1620,22 @@ export const OperationsCrewPlannedPayloadV1 = z.object({
   dayId: objectId(),
   date: z.date(),
   changedCount: z.number().int().min(0),
+});
+
+/**
+ * The permanent crew of one vehicle changed, or the vehicle left the cash-transfer fleet.
+ *
+ * `removed` is what tells the two apart, and it carries the emptied slots rather than omitting
+ * them: a subscriber that only ever sees "captains: []" cannot distinguish a vehicle whose crew
+ * was cleared from one that is gone.
+ */
+export const OperationsStandingCrewChangedPayloadV1 = z.object({
+  standingCrewId: objectId(),
+  vehicleId: objectId(),
+  removed: z.boolean(),
+  captainEmployeeIds: z.array(objectId()),
+  specialist1EmployeeIds: z.array(objectId()),
+  specialist2EmployeeIds: z.array(objectId()),
 });
 
 export const OperationsCrewAssignmentChangedPayloadV1 = z.object({

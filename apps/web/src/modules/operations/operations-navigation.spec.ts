@@ -50,6 +50,7 @@ const OPERATIONS_PAYLOAD: MyApplicationCategoryDto[] = [
       ['Operations Home', '/operations', 'home'],
       ['Daily Operations', '/operations/shipments', 'clipboard'],
       ['Crew Board', '/operations/crew-board', 'users'],
+      ['Standing Crew', '/operations/standing-crew', 'truck'],
       ['Crew Requirements', '/operations/requirements', 'badge'],
       ['Crew Attendance', '/operations/attendance', 'calendar'],
       ['Secured Shipments', '/operations/secured', 'inbox'],
@@ -76,7 +77,7 @@ const OPERATIONS_PAYLOAD: MyApplicationCategoryDto[] = [
 describe('the parse itself', () => {
   it('found the routes this module serves', () => {
     // Guards the joins below: an empty set makes "all covered" vacuously true.
-    expect(SERVED.length).toBeGreaterThanOrEqual(14);
+    expect(SERVED.length).toBeGreaterThanOrEqual(15);
     expect(SERVED).toContain('/operations/crew-board');
   });
 });
@@ -88,7 +89,7 @@ describe('the shell renders the Operations module (B7)', () => {
     expect(modules).toHaveLength(1);
     expect(modules[0]?.name.en).toBe('Operations');
     expect(modules[0]?.name.ar).toBe('العمليات');
-    expect(moduleApps(modules[0]!)).toHaveLength(14);
+    expect(moduleApps(modules[0]!)).toHaveLength(15);
   });
 
   it('resolves every catalog icon to a real glyph, not the silent fallback', () => {
@@ -106,7 +107,7 @@ describe('the shell renders the Operations module (B7)', () => {
 
   it('puts every page in the command palette, each carrying its module', () => {
     const flat = flattenApps(OPERATIONS_PAYLOAD);
-    expect(flat).toHaveLength(14);
+    expect(flat).toHaveLength(15);
     for (const app of flat) expect(app.moduleName.en).toBe('Operations');
   });
 });

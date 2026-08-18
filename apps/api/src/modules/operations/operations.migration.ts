@@ -57,46 +57,87 @@ const SLOTS = [
  * so a half-converted row (a crash mid-run, or a field added by a later slice) completes on the
  * next boot instead of being skipped for having one list already.
  */
+const BATCH = 500;
+
 export const migrateCrewSlotsToArrays = async (): Promise<{ rowsUpdated: number }> => {
-  const pending = await OperationsCrewAssignmentModel.find(
-    {
-      $or: SLOTS.map(([list]) => ({ [list]: { $exists: false } })),
-    },
-    {
-      _id: 1,
-      captainEmployeeId: 1,
-      specialist1EmployeeId: 1,
-      specialist2EmployeeId: 1,
-      captainEmployeeIds: 1,
-      specialist1EmployeeIds: 1,
-      specialist2EmployeeIds: 1,
-    },
-  )
-    .lean<PendingCrewRow[]>()
-    .exec();
-  if (pending.length === 0) return { rowsUpdated: 0 };
+  // A crew row exists per (operating day, vehicle), so the backlog grows with the calendar. Read
+  // and write in batches rather than pulling the whole history into memory at boot: this runs
+  // before the process accepts its first request (server.ts awaits bootPlatform before listen), so
+  // a long unbounded read here is downtime, not background work.
+  //
+  // The batch loop terminates because every write REMOVES its rows from the pending query — the
+  // condition is "has no list field", and each pass writes that field. A row that somehow failed
+  // to update would be re-read forever, so the loop also stops when a pass changes nothing.
+  const projection = {
+    _id: 1,
+    captainEmployeeId: 1,
+    specialist1EmployeeId: 1,
+    specialist2EmployeeId: 1,
+    captainEmployeeIds: 1,
+    specialist1EmployeeIds: 1,
+    specialist2EmployeeIds: 1,
+  };
+  const pendingFilter = { $or: SLOTS.map(([list]) => ({ [list]: { $exists: false } })) };
 
-  // `isDeleted` is deliberately NOT filtered. A soft-deleted crew row is still readable history —
-  // the captain report and the audit trail both reach it — and leaving it on the old shape would
-  // make it the one row whose crew a widened reader cannot see.
-  const operations = pending.flatMap((row) => {
-    const set: Record<string, unknown[]> = {};
-    for (const [list, scalar] of SLOTS) {
-      if (row[list] !== undefined) continue; // already converted — rule 3
-      const occupant = row[scalar];
-      set[list] = occupant === null || occupant === undefined ? [] : [occupant];
+  let rowsUpdated = 0;
+  for (;;) {
+    // `isDeleted` is deliberately NOT filtered. A soft-deleted crew row is still readable history —
+    // the captain report and the audit trail both reach it — and leaving it on the old shape would
+    // make it the one row whose crew a widened reader cannot see.
+    const pending = await OperationsCrewAssignmentModel.find(pendingFilter, projection)
+      .limit(BATCH)
+      .lean<PendingCrewRow[]>()
+      .exec();
+    if (pending.length === 0) break;
+
+    const operations = pending.flatMap((row) => {
+      const set: Record<string, unknown[]> = {};
+      for (const [list, scalar] of SLOTS) {
+        if (row[list] !== undefined) continue; // already converted — rule 3
+        const occupant = row[scalar];
+        set[list] = occupant === null || occupant === undefined ? [] : [occupant];
+      }
+      if (Object.keys(set).length === 0) return [];
+      return [
+        {
+          updateOne: {
+            // The filter REPEATS the pending condition rather than trusting the read. Between the
+            // find and the write, a concurrent plan could have filled this row's lists; without
+            // this, the migration would overwrite a live edit with a value derived from a frozen
+            // column. `$exists: false` on the very fields being written makes the write a no-op in
+            // exactly that case.
+            filter: { _id: row._id, ...pendingFilter },
+            update: { $set: set },
+            // Timestamps OFF. `updatedAt` records when a human last changed this crew; a migration
+            // did not change the crew, it changed how the crew is stored. Restamping every
+            // historical row would erase the real answer to "when was this last edited" across the
+            // entire collection, and nothing would be able to recover it.
+            timestamps: false,
+          },
+        },
+      ];
+    });
+    if (operations.length === 0) break;
+
+    const result = await OperationsCrewAssignmentModel.bulkWrite(operations);
+    if (result.modifiedCount === 0) {
+      // Nothing moved although rows matched — a row the write cannot fix. Stop rather than spin.
+      logger.warn(
+        { pending: pending.length },
+        'operations: crew slot migration made no progress on a non-empty batch — stopping',
+      );
+      break;
     }
-    if (Object.keys(set).length === 0) return [];
-    return [{ updateOne: { filter: { _id: row._id }, update: { $set: set } } }];
-  });
-  if (operations.length === 0) return { rowsUpdated: 0 };
+    rowsUpdated += result.modifiedCount;
+    if (pending.length < BATCH) break;
+  }
 
-  const result = await OperationsCrewAssignmentModel.bulkWrite(operations);
-  const rowsUpdated = result.modifiedCount;
-  logger.info(
-    { rowsUpdated, pending: pending.length },
-    'operations: crew slots migrated from single occupants to lists',
-  );
+  if (rowsUpdated > 0) {
+    logger.info(
+      { rowsUpdated },
+      'operations: crew slots migrated from single occupants to lists',
+    );
+  }
   return { rowsUpdated };
 };
 

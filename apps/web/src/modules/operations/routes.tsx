@@ -8,6 +8,7 @@
 //   /operations/shipments  operationsShipment.view    B2  (legacy /main_ops)
 //   /operations/crew-board    operationsCrew.view       B3  (legacy /tashghela)
 //   /operations/requirements  operationsCrew.view       B3  (legacy /requirement)
+//   /operations/standing-crew operationsCrew.view       (NO legacy equivalent — الطاقم الثابت)
 //   /operations/secured       operationsShipment.view   B4  (legacy /mohsana)
 //   /operations/vault/receive operationsVault.view      B4  (legacy /receive_mohsana)
 //   /operations/vault/dispatch operationsVault.view     B4  (legacy /deliver_mohsana + /tash4ela_mohasana)
@@ -33,6 +34,7 @@ import { CatalogsPage } from './pages/CatalogsPage';
 import { DailyOperationsPage } from './pages/DailyOperationsPage';
 import { CrewBoardPage } from './pages/CrewBoardPage';
 import { RequirementsPage } from './pages/RequirementsPage';
+import { StandingCrewPage } from './pages/StandingCrewPage';
 import { SecuredBacklogPage } from './pages/SecuredBacklogPage';
 import { SecuredDispatchPage } from './pages/SecuredDispatchPage';
 import { VaultInventoryPage } from './pages/VaultInventoryPage';
@@ -70,6 +72,14 @@ export default function OperationsRoutes(): JSX.Element {
           element={
             <RequirePermission permission="operationsCrew.view">
               <RequirementsPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="standing-crew"
+          element={
+            <RequirePermission permission="operationsCrew.view">
+              <StandingCrewPage />
             </RequirePermission>
           }
         />

@@ -4713,6 +4713,24 @@ const en: Record<string, string> = {
   'operations.crew.saveFailed':
     'Could not save the plan. Someone may already be assigned elsewhere that day.',
   'operations.crew.unsaved': '{{count}} unsaved change(s)',
+  // ── The standing crew (الطاقم الثابت) — no legacy screen, no day ────────────────────────────
+  'operations.standingCrew.title': 'Standing crew',
+  'operations.standingCrew.subtitle':
+    'Who normally crews each cash-transfer vehicle. Each day\u2019s board is seeded from this, and can still be changed for that day.',
+  'operations.standingCrew.addVehicle': 'Add a vehicle',
+  'operations.standingCrew.remove': 'Remove',
+  'operations.standingCrew.removed': 'Removed {{code}} from the cash-transfer fleet',
+  'operations.standingCrew.removeFailed': 'Could not remove this vehicle',
+  'operations.standingCrew.confirmRemove':
+    'Remove {{code}} from the cash-transfer fleet? Days already planned keep their crew.',
+  'operations.standingCrew.saved': 'Saved {{count}} vehicle(s)',
+  'operations.standingCrew.saveCount': 'Save {{count}} change(s)',
+  'operations.standingCrew.saveFailed':
+    'Could not save. Someone may already hold a standing place on another vehicle.',
+  'operations.standingCrew.unsaved': '{{count}} unsaved change(s)',
+  'operations.standingCrew.empty': 'No cash-transfer vehicles yet',
+  'operations.standingCrew.emptyHint':
+    'This list is explicit, not derived: add the vehicles that carry cash, then give each its usual crew.',
   'operations.crew.direction': 'Direction',
   'operations.crew.plannedTime': 'Planned time',
   'operations.crew.slot.captain': 'Captain',
@@ -9482,6 +9500,23 @@ const ar: Record<string, string> = {
   'operations.crew.saveCount': 'حفظ {{count}} تغيير',
   'operations.crew.saveFailed': 'تعذّر حفظ الخطة. قد يكون أحد الأفراد معيَّنًا على مركبة أخرى في نفس اليوم.',
   'operations.crew.unsaved': '{{count}} تغيير غير محفوظ',
+  // ── الطاقم الثابت — لا نظير في النظام القديم، ولا تاريخ ──────────────────────────────────────
+  'operations.standingCrew.title': 'الطاقم الثابت',
+  'operations.standingCrew.subtitle':
+    'مَن يقود كل مركبة من مركبات نقل الأموال في المعتاد. تشغيلة كل يوم تنزل من هنا، ويظل تعديلها لذلك اليوم ممكنًا.',
+  'operations.standingCrew.addVehicle': 'إضافة مركبة',
+  'operations.standingCrew.remove': 'إزالة',
+  'operations.standingCrew.removed': 'تم إخراج {{code}} من أسطول نقل الأموال',
+  'operations.standingCrew.removeFailed': 'تعذّر إزالة هذه المركبة',
+  'operations.standingCrew.confirmRemove':
+    'إخراج {{code}} من أسطول نقل الأموال؟ الأيام المخطَّطة بالفعل تحتفظ بأطقمها.',
+  'operations.standingCrew.saved': 'تم حفظ {{count}} مركبة',
+  'operations.standingCrew.saveCount': 'حفظ {{count}} تغيير',
+  'operations.standingCrew.saveFailed': 'تعذّر الحفظ. قد يكون أحد الأفراد له مكان ثابت على مركبة أخرى.',
+  'operations.standingCrew.unsaved': '{{count}} تغيير غير محفوظ',
+  'operations.standingCrew.empty': 'لا توجد مركبات نقل أموال بعد',
+  'operations.standingCrew.emptyHint':
+    'هذه القائمة صريحة وليست مشتقّة: أضف المركبات التي تنقل الأموال، ثم عيّن لكل واحدة طاقمها المعتاد.',
   'operations.crew.direction': 'الاتجاه',
   'operations.crew.plannedTime': 'الوقت المخطط',
   'operations.crew.slot.captain': 'القائد',

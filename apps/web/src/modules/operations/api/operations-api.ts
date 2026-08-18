@@ -35,6 +35,7 @@ import {
   type OperationsExecutionResultDto,
   type OperationsMobileDayDto,
   type OperationsShipmentDto,
+  type OperationsStandingCrewBoardDto,
   type OperationsVaultCustodyDto,
   type OperationsVaultInventoryRowDto,
   type OperationsVaultReportDto,
@@ -42,6 +43,7 @@ import {
   type PlanOperationsCrew,
   type ReceiveIntoVault,
   type SetOperationsCrewRequirements,
+  type SetOperationsStandingCrew,
   type UpdateOperationsArea,
   type UpdateOperationsBank,
   type UpdateOperationsBankBranch,
@@ -197,6 +199,24 @@ export const setCrewRequirements = (
     `/operations/crew-board/requirements/${employeeId}`,
     body,
   );
+
+// ── The standing crew (الطاقم الثابت) ───────────────────────────────────────────────────────────
+// No date on any of the three: that absence IS the entity. Both writes answer with the refreshed
+// board, so the screen never has to guess what the server made of the change.
+
+export const getStandingCrew = (): Promise<OperationsStandingCrewBoardDto> =>
+  get<OperationsStandingCrewBoardDto>('/operations/standing-crew');
+
+export const setStandingCrew = (
+  body: SetOperationsStandingCrew,
+): Promise<OperationsStandingCrewBoardDto & { changedCount: number }> =>
+  put<OperationsStandingCrewBoardDto & { changedCount: number }>('/operations/standing-crew', body);
+
+/** Take a vehicle out of the cash-transfer fleet. Touches no day that has already been planned. */
+export const removeStandingCrew = (
+  vehicleId: string,
+): Promise<OperationsStandingCrewBoardDto> =>
+  del<OperationsStandingCrewBoardDto>(`/operations/standing-crew/${vehicleId}`);
 
 export const removeCrewRequirements = (employeeId: string): Promise<void> =>
   del<void>(`/operations/crew-board/requirements/${employeeId}`);

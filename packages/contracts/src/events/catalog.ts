@@ -188,6 +188,7 @@ import {
   type OperationsEventName,
   OperationsCrewAssignmentChangedPayloadV1,
   OperationsCrewPlannedPayloadV1,
+  OperationsStandingCrewChangedPayloadV1,
   OperationsCustodyEventPayloadV1,
   OperationsDayEventPayloadV1,
   OperationsShipmentAssignmentPayloadV1,
@@ -668,6 +669,7 @@ export const EVENT_ENTITY_NAMES: Readonly<Record<string, LocalizedString>> = {
   day: { en: 'Operating day', ar: 'يوم التشغيل' },
   crew: { en: 'Crew', ar: 'الطاقم' },
   crewAssignment: { en: 'Crew assignment', ar: 'تعيين طاقم' },
+  standingCrew: { en: 'Standing crew', ar: 'الطاقم الثابت' },
   custody: { en: 'Vault custody', ar: 'عهدة الخزينة' },
   shipmentAssignment: { en: 'Shipment assignment', ar: 'تعيين شحنة' },
 };
@@ -1231,6 +1233,7 @@ export const OPERATIONS_EVENT_PAYLOAD_SCHEMAS: Readonly<
   [OperationsEvents.DayClosed]: OperationsDayEventPayloadV1,
   [OperationsEvents.CrewPlanned]: OperationsCrewPlannedPayloadV1,
   [OperationsEvents.CrewAssignmentChanged]: OperationsCrewAssignmentChangedPayloadV1,
+  [OperationsEvents.StandingCrewChanged]: OperationsStandingCrewChangedPayloadV1,
   [OperationsEvents.VaultReceived]: OperationsCustodyEventPayloadV1,
   [OperationsEvents.VaultReleased]: OperationsCustodyEventPayloadV1,
   [OperationsEvents.SecuredLegAssigned]: OperationsShipmentAssignmentPayloadV1,

@@ -27,6 +27,7 @@ import {
   type OperationsCrewAttendanceDayDto,
   type OperationsAreaDto,
   type OperationsShipmentDto,
+  type OperationsStandingCrewBoardDto,
   type OperationsVaultInventoryRowDto,
   type OperationsVaultReportDto,
   type PageMeta,
@@ -949,6 +950,164 @@ describe('crew board — the tashghela workflow on the Fleet boundary (OP-3)', (
       .set('Authorization', `Bearer ${viewerToken}`)
       .send({ date: PLAN_DATE, rows: [{ vehicleId: vehicleAId }] });
     expect(plan.status).toBe(403);
+  });
+});
+
+// ── The standing crew (الطاقم الثابت) ───────────────────────────────────────────────────────────
+//
+// NEW CAPABILITY. Legacy had no standing crew at all: `/tashghela` rendered `t.leader || ""`
+// (contad_app.js:2305-2311) and the board started empty every morning. What these cases pin is
+// that the entity is a real membership list — explicit, not derived — and that it carries the same
+// rules as a day's crew row so the descent can never author a plan the day would refuse.
+describe('the standing crew — the permanent crew of each cash-transfer vehicle', () => {
+  const standing = async (token = adminToken): Promise<request.Response> =>
+    request(app)
+      .get('/api/v1/operations/standing-crew')
+      .set('Authorization', `Bearer ${token}`);
+
+  const save = async (rows: unknown[], token = adminToken): Promise<request.Response> =>
+    request(app)
+      .put('/api/v1/operations/standing-crew')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ rows });
+
+  const drop = async (vehicleId: string, token = adminToken): Promise<request.Response> =>
+    request(app)
+      .delete(`/api/v1/operations/standing-crew/${vehicleId}`)
+      .set('Authorization', `Bearer ${token}`);
+
+  let standingCaptainId: string;
+  let standingSpecialistId: string;
+
+  beforeAll(async () => {
+    standingCaptainId = await mkEmployee();
+    standingSpecialistId = await mkEmployee();
+  });
+
+  it('starts empty and OFFERS the fleet — membership is explicit, never derived', async () => {
+    const res = await standing();
+    expect(res.status).toBe(200);
+    const dto = data<OperationsStandingCrewBoardDto>(res);
+    expect(dto.rows).toEqual([]);
+    // There is no day-independent "cash-transfer vehicle" marker anywhere in ECMS to derive this
+    // from, so the picker offers the whole registry and a human names the ones that carry cash.
+    expect(dto.available.map((v) => v.vehicleId)).toContain(vehicleAId);
+  });
+
+  it('stores a crew of six with no date anywhere in the request or the row', async () => {
+    const res = await save([
+      {
+        vehicleId: vehicleAId,
+        captainEmployeeIds: [standingCaptainId],
+        specialist1EmployeeIds: [standingSpecialistId],
+        direction: 'الجيزة',
+        plannedTime: '07:30',
+      },
+    ]);
+    expect(res.status).toBe(200);
+    const dto = data<OperationsStandingCrewBoardDto & { changedCount: number }>(res);
+    expect(dto.changedCount).toBe(1);
+    const row = dto.rows.find((r) => r.vehicleId === vehicleAId);
+    expect(row?.captainEmployeeIds).toEqual([standingCaptainId]);
+    expect(row?.specialist1EmployeeIds).toEqual([standingSpecialistId]);
+    expect(row?.direction).toBe('الجيزة');
+    expect(Object.keys(row ?? {})).not.toContain('date');
+    // A vehicle in the standing crew leaves the picker — the two lists never overlap.
+    expect(dto.available.map((v) => v.vehicleId)).not.toContain(vehicleAId);
+  });
+
+  it('an EMPTY row is stored, not skipped — that is what membership means here', async () => {
+    // The daily board treats a crewless, annotation-less row for a vehicle with no row as nothing
+    // happening. Here the row IS the statement "this vehicle carries cash".
+    const res = await save([{ vehicleId: vehicleBId }]);
+    expect(res.status).toBe(200);
+    const dto = data<OperationsStandingCrewBoardDto>(res);
+    const row = dto.rows.find((r) => r.vehicleId === vehicleBId);
+    expect(row).toBeDefined();
+    expect(row?.captainEmployeeIds).toEqual([]);
+  });
+
+  it('an identical re-save is a pure no-op', async () => {
+    const res = await save([
+      {
+        vehicleId: vehicleAId,
+        captainEmployeeIds: [standingCaptainId],
+        specialist1EmployeeIds: [standingSpecialistId],
+        direction: 'الجيزة',
+        plannedTime: '07:30',
+      },
+    ]);
+    expect(data<{ changedCount: number }>(res).changedCount).toBe(0);
+  });
+
+  it("Q11's day-independent shadow — one person holds one vehicle, and the move shape works", async () => {
+    const steal = await save([{ vehicleId: vehicleBId, captainEmployeeIds: [standingCaptainId] }]);
+    expect(steal.status).toBe(409);
+
+    // Both sides of the move together — exactly what a drag produces — is accepted.
+    const move = await save([
+      { vehicleId: vehicleAId, specialist1EmployeeIds: [standingSpecialistId] },
+      { vehicleId: vehicleBId, captainEmployeeIds: [standingCaptainId] },
+    ]);
+    expect(move.status).toBe(200);
+    const dto = data<OperationsStandingCrewBoardDto>(move);
+    expect(dto.rows.find((r) => r.vehicleId === vehicleAId)?.captainEmployeeIds).toEqual([]);
+    expect(dto.rows.find((r) => r.vehicleId === vehicleBId)?.captainEmployeeIds).toEqual([
+      standingCaptainId,
+    ]);
+  });
+
+  it('refuses an unknown vehicle and an unknown employee', async () => {
+    expect((await save([{ vehicleId: '00000000000000000000aaaa' }])).status).toBe(400);
+    expect(
+      (
+        await save([
+          { vehicleId: vehicleAId, captainEmployeeIds: ['00000000000000000000cccc'] },
+        ])
+      ).status,
+    ).toBe(400);
+  });
+
+  it('does NOT require the vehicle to be on any Fleet roster — this row has no day', async () => {
+    // The daily board refuses a vehicle Fleet has not rostered for that date. Demanding the same
+    // here would make a vehicle's permanent crew un-editable on any day it happened not to be out.
+    const res = await save([{ vehicleId: offRosterVehicleId }]);
+    expect(res.status).toBe(200);
+    expect(
+      data<OperationsStandingCrewBoardDto>(res).rows.map((r) => r.vehicleId),
+    ).toContain(offRosterVehicleId);
+    await drop(offRosterVehicleId);
+  });
+
+  it('removing a vehicle returns it to the picker and frees its crew', async () => {
+    const removed = await drop(vehicleBId);
+    expect(removed.status).toBe(200);
+    const dto = data<OperationsStandingCrewBoardDto>(removed);
+    expect(dto.rows.map((r) => r.vehicleId)).not.toContain(vehicleBId);
+    expect(dto.available.map((v) => v.vehicleId)).toContain(vehicleBId);
+    // Its captain is free again, so the same person can take a standing place elsewhere.
+    const reuse = await save([{ vehicleId: vehicleAId, captainEmployeeIds: [standingCaptainId] }]);
+    expect(reuse.status).toBe(200);
+  });
+
+  it('a removed vehicle can be added back — the tombstone does not block it', async () => {
+    const back = await save([{ vehicleId: vehicleBId }]);
+    expect(back.status).toBe(200);
+    expect(
+      data<OperationsStandingCrewBoardDto>(back).rows.map((r) => r.vehicleId),
+    ).toContain(vehicleBId);
+    await drop(vehicleBId);
+  });
+
+  it('refuses removing a vehicle that is not in the standing crew', async () => {
+    expect((await drop(vehicleBId)).status).toBe(404);
+  });
+
+  it('rides the EXISTING crew grants and declares none of its own', async () => {
+    // The viewer holds `operationsShipment.view` only.
+    expect((await standing(viewerToken)).status).toBe(403);
+    expect((await save([{ vehicleId: vehicleAId }], viewerToken)).status).toBe(403);
+    expect((await drop(vehicleAId, viewerToken)).status).toBe(403);
   });
 });
 

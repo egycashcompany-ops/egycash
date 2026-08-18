@@ -82,9 +82,13 @@ crewAssignmentSchema.index({ operationsDayId: 1 }, { name: 'ix_day' });
 // identity through (design §20-هـ). Without it that read is a day-wide scan filtered in memory.
 // MULTIKEY now, and under a NEW NAME: `ix_day_captain` indexed the retired scalar, and an index
 // keeps its key spec for its lifetime, so re-declaring the same name over a different field is a
-// conflict rather than a change. The stale index is left in place on existing databases — it now
-// covers a column that is always null, which costs nothing to keep and would cost a boot-time
-// `dropIndex` to remove.
+// conflict rather than a change.
+//
+// Neither index is built at boot in production — `mongo.ts:10` sets `autoIndex` to false there and
+// index sync is a deploy step — so this declaration is a request to that step, exactly like every
+// other index in the codebase. The stale `ix_day_captain` is deliberately NOT dropped here: it
+// indexes a column nothing writes any more, and dropping an index is a destructive operation that
+// belongs in the same deploy step rather than in application code.
 crewAssignmentSchema.index(
   { operationsDayId: 1, captainEmployeeIds: 1 },
   { name: 'ix_day_captains' },

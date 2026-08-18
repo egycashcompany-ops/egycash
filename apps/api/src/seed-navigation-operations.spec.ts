@@ -150,6 +150,7 @@ describe('the Operations navigation rows', () => {
         '/operations/requirements',
         '/operations/secured',
         '/operations/shipments',
+        '/operations/standing-crew',
         '/operations/vault',
         '/operations/vault/dispatch',
         '/operations/vault/receive',

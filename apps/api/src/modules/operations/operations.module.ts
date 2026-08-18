@@ -20,6 +20,7 @@ import { buildOperationsAreasRouter } from './areas/area.routes';
 import { buildOperationsShipmentsRouter } from './shipments/shipment.routes';
 import { buildOperationsDaysRouter } from './days/day.routes';
 import { buildOperationsCrewRouter } from './crew/crew.routes';
+import { buildOperationsStandingCrewRouter } from './standing-crew/standing-crew.routes';
 import { buildOperationsSecuredRouter } from './secured/secured.routes';
 import { buildOperationsAssignmentsRouter } from './assignments/assignment.routes';
 import { buildOperationsMobileRouter } from './mobile/mobile.routes';
@@ -180,6 +181,10 @@ export const operationsModule: ModuleManifest = {
   // `operationsVault.view` grant, and the legacy `/data_edit` city list arrives as
   // `operations_areas` under the EXISTING catalog grants. One new prefix, one new collection, and
   // still no new permission or page — the catalogs page already owns the reference surface.
+  //
+  // The standing crew (الطاقم الثابت) follows the same shape a third time: one new prefix, one new
+  // collection, no new permission and no new page. It rides `operationsCrew.view` / `.plan`,
+  // because deciding who crews which vehicle is one authority whether it is said once or daily.
   version: '0.10.0',
   requiresPlatform: '^2.2',
   permissions: operationsPermissions,
@@ -192,6 +197,7 @@ export const operationsModule: ModuleManifest = {
     { prefix: '/operations/areas', router: buildOperationsAreasRouter() },
     { prefix: '/operations/days', router: buildOperationsDaysRouter() },
     { prefix: '/operations/crew-board', router: buildOperationsCrewRouter() },
+    { prefix: '/operations/standing-crew', router: buildOperationsStandingCrewRouter() },
     { prefix: '/operations/secured', router: buildOperationsSecuredRouter() },
     { prefix: '/operations/assignments', router: buildOperationsAssignmentsRouter() },
     { prefix: '/operations/mobile', router: buildOperationsMobileRouter() },
@@ -206,6 +212,7 @@ export const operationsModule: ModuleManifest = {
     'operations_days',
     'operations_crew_assignments',
     'operations_crew_requirements',
+    'operations_standing_crews',
     'operations_vault_custody',
     'operations_shipment_assignments',
   ],

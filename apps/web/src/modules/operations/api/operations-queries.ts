@@ -23,6 +23,7 @@ import {
   type ListSecuredBacklogQuery,
   type OperationsExecutionResultDto,
   type PlanOperationsCrew,
+  type SetOperationsStandingCrew,
   type ReceiveIntoVault,
   type SetOperationsCrewRequirements,
   type UpdateOperationsArea,
@@ -55,6 +56,7 @@ const operationsKeys = {
   crewBoard: featureKey(MODULE, 'crewBoard'),
   crewDirectory: featureKey(MODULE, 'crewDirectory'),
   crewRequirements: featureKey(MODULE, 'crewRequirements'),
+  standingCrew: featureKey(MODULE, 'standingCrew'),
   // The four secured screens are four views of ONE lifecycle: receiving into the vault changes the
   // backlog, the vault and the due list at once. They stale together for that reason.
   securedBacklog: featureKey(MODULE, 'securedBacklog'),
@@ -294,6 +296,48 @@ export const usePlanOperationsCrew = () => {
       await qc.invalidateQueries({ queryKey: operationsKeys.crewBoard });
       await qc.invalidateQueries({ queryKey: operationsKeys.crewDirectory });
     },
+  });
+};
+
+// ── The standing crew (الطاقم الثابت) ───────────────────────────────────────────────────────────
+
+/** No date in the key, because there is no date in the entity. */
+export const useOperationsStandingCrew = (enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'standingCrew', {}),
+    queryFn: () => api.getStandingCrew(),
+    enabled,
+  });
+
+/**
+ * Saving the standing crew stales the DAILY board and the pool too.
+ *
+ * Not because today's plan changes — it does not; the standing crew never rewrites a day that has
+ * already been planned. It is because the daily board offers to seed itself from this, so a board
+ * left open beside this screen would go on offering the crew that was here a minute ago.
+ */
+const useStandingCrewInvalidation = () => {
+  const qc = useQueryClient();
+  return async (): Promise<void> => {
+    await qc.invalidateQueries({ queryKey: operationsKeys.standingCrew });
+    await qc.invalidateQueries({ queryKey: operationsKeys.crewBoard });
+    await qc.invalidateQueries({ queryKey: operationsKeys.crewDirectory });
+  };
+};
+
+export const useSetOperationsStandingCrew = () => {
+  const invalidate = useStandingCrewInvalidation();
+  return useMutation({
+    mutationFn: (body: SetOperationsStandingCrew) => api.setStandingCrew(body),
+    onSuccess: invalidate,
+  });
+};
+
+export const useRemoveOperationsStandingCrew = () => {
+  const invalidate = useStandingCrewInvalidation();
+  return useMutation({
+    mutationFn: (vehicleId: string) => api.removeStandingCrew(vehicleId),
+    onSuccess: invalidate,
   });
 };
 

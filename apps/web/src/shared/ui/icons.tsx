@@ -180,6 +180,14 @@ export const ShieldIcon = (p: IconProps): JSX.Element => (
   </Base>
 );
 
+/** A map pin — a branch that has a location on it. */
+export const PinIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z" />
+    <circle cx="12" cy="10" r="3" />
+  </Base>
+);
+
 export const AlertIcon = (p: IconProps): JSX.Element => (
   <Base {...p}>
     <path d="M10.3 3.3 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.3a2 2 0 0 0-3.4 0z" />

@@ -17,11 +17,19 @@ import {
   type OperationsBankBranchDto,
   type OperationsBankDto,
   type OperationsCurrencyDto,
+  type OperationsLocation,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { Field, Input, Select } from '../../../shared/ui/form';
+import { PinIcon } from '../../../shared/ui/icons';
+import {
+  mapsUrl,
+  parseMapsLink,
+  type MapsCoordinates,
+  type MapsLinkFailure,
+} from '../lib/maps-link';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import {
   useCreateOperationsArea,
@@ -158,6 +166,25 @@ export const BankDialog = ({
   );
 };
 
+/**
+ * A branch's location, from the two things the form collects.
+ *
+ * The whole object is null when NEITHER is given, rather than `{addressLine: null, coordinates:
+ * null}` — an empty shell would read as "this branch has a location" to every consumer, and the
+ * captain's screen branches on exactly that.
+ *
+ * The dialog used to hard-code `location: null` here, which meant every save ERASED whatever the
+ * branch had. The field has existed on the contract, the model and the captain read model since
+ * B1 with no way to fill it and a standing way to lose it.
+ */
+export const branchLocation = (
+  addressLine: string,
+  coordinates: MapsCoordinates | null,
+): OperationsLocation | null =>
+  addressLine.trim() === '' && coordinates === null
+    ? null
+    : { addressLine: orNull(addressLine), coordinates };
+
 export const BankBranchDialog = ({
   open,
   branch,
@@ -185,6 +212,13 @@ export const BankBranchDialog = ({
   const [code, setCode] = useState('');
   const [opsArea, setOpsArea] = useState('');
   const [financeArea, setFinanceArea] = useState('');
+  const [addressLine, setAddressLine] = useState('');
+  // The POINT is the state; the link field is only how it gets entered, so it clears on open and
+  // is never read back from the branch — what was saved is coordinates, not whatever URL produced
+  // them.
+  const [coordinates, setCoordinates] = useState<MapsCoordinates | null>(null);
+  const [linkDraft, setLinkDraft] = useState('');
+  const [linkError, setLinkError] = useState<MapsLinkFailure | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -193,7 +227,22 @@ export const BankBranchDialog = ({
     setCode(branch?.code ?? '');
     setOpsArea(branch?.opsAreaName ?? '');
     setFinanceArea(branch?.financeAreaName ?? '');
+    setAddressLine(branch?.location?.addressLine ?? '');
+    setCoordinates(branch?.location?.coordinates ?? null);
+    setLinkDraft('');
+    setLinkError(null);
   }, [open, branch]);
+
+  const applyLink = (raw: string): void => {
+    const result = parseMapsLink(raw);
+    if (result.ok) {
+      setCoordinates(result.coordinates);
+      setLinkDraft('');
+      setLinkError(null);
+      return;
+    }
+    setLinkError(result.reason);
+  };
 
   const submit = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
@@ -204,7 +253,7 @@ export const BankBranchDialog = ({
       opsAreaName: orNull(opsArea),
       // Q24 PRESERVE — the finance label follows the operations one unless given its own.
       financeAreaName: financeAreaDefault(opsArea, financeArea),
-      location: null,
+      location: branchLocation(addressLine, coordinates),
     };
     try {
       if (branch === null) await create.mutateAsync(core);
@@ -263,6 +312,85 @@ export const BankBranchDialog = ({
         >
           <Input value={financeArea} onChange={(e) => setFinanceArea(e.target.value)} />
         </Field>
+
+        {/*
+          The branch's location. Optional end to end — legacy carried no geography at all, so most
+          rows are blank and a captain's screen degrades to names. What is stored is the POINT; the
+          link field below is only how a point gets in, and a saved point regenerates a working
+          link forever, which a pasted URL would not.
+        */}
+        <Field
+          label={t('operations.catalogs.branch.address')}
+          hint={t('operations.catalogs.branch.addressHint')}
+        >
+          <Input value={addressLine} onChange={(e) => setAddressLine(e.target.value)} />
+        </Field>
+
+        <Field
+          label={t('operations.catalogs.branch.mapsLink')}
+          hint={t('operations.catalogs.branch.mapsLinkHint')}
+          error={linkError === null ? undefined : t(`operations.catalogs.branch.maps.${linkError}`)}
+        >
+          <div className="flex gap-2">
+            <Input
+              value={linkDraft}
+              placeholder="https://maps.app.goo.gl/… , 30.0444, 31.2357"
+              dir="ltr"
+              error={linkError !== null}
+              onChange={(e) => {
+                setLinkDraft(e.target.value);
+                setLinkError(null);
+              }}
+              // A paste is the whole interaction, so it does not also need a button pressed.
+              onPaste={(e) => {
+                const pasted = e.clipboardData.getData('text');
+                if (pasted.trim() !== '') {
+                  e.preventDefault();
+                  applyLink(pasted);
+                }
+              }}
+              // Enter in a lone text field would submit the dialog; here it means "read this".
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter') return;
+                e.preventDefault();
+                applyLink(linkDraft);
+              }}
+            />
+            <Button type="button" variant="secondary" onClick={() => applyLink(linkDraft)}>
+              {t('operations.catalogs.branch.maps.read')}
+            </Button>
+          </div>
+        </Field>
+
+        {coordinates === null ? (
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {t('operations.catalogs.branch.maps.none')}
+          </p>
+        ) : (
+          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 p-3 text-sm dark:border-slate-700">
+            <PinIcon className="h-4 w-4 text-brand-500" />
+            <span className="font-mono tabular-nums" dir="ltr">
+              {coordinates.lat}, {coordinates.lng}
+            </span>
+            {/* Checking what was just saved is one click, on the map everyone already trusts. */}
+            <a
+              href={mapsUrl(coordinates)}
+              target="_blank"
+              rel="noreferrer"
+              className="text-brand-600 underline dark:text-brand-400"
+            >
+              {t('operations.catalogs.branch.maps.open')}
+            </a>
+            <button
+              type="button"
+              className="ms-auto text-slate-500 underline"
+              onClick={() => setCoordinates(null)}
+            >
+              {t('common.remove')}
+            </button>
+          </div>
+        )}
+
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="secondary" onClick={onClose}>
             {t('common.cancel')}

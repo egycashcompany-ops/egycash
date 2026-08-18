@@ -33,7 +33,8 @@ import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { Pagination } from '../../../shared/ui/Pagination';
 import { Button } from '../../../shared/ui/Button';
 import { StatusBadge } from '../../../shared/ui/Badge';
-import { EditIcon, PlusIcon } from '../../../shared/ui/icons';
+import { EditIcon, PinIcon, PlusIcon } from '../../../shared/ui/icons';
+import { mapsUrl } from '../lib/maps-link';
 import {
   useOperationsAreas,
   useOperationsBankBranches,
@@ -155,6 +156,28 @@ export const CatalogsPage = (): JSX.Element => {
       key: 'financeArea',
       header: t('operations.catalogs.branch.financeArea'),
       render: (row) => row.financeAreaName ?? '—',
+    },
+    {
+      // Which branches a captain can actually be navigated to. Legacy carried no geography, so
+      // most rows start blank — showing the gap in the list is what makes filling it a task
+      // somebody can work through rather than a field they have to open each branch to discover.
+      key: 'location',
+      header: t('operations.catalogs.branch.location'),
+      render: (row) =>
+        row.location?.coordinates == null ? (
+          <span className="text-slate-400">—</span>
+        ) : (
+          <a
+            href={mapsUrl(row.location.coordinates)}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center gap-1 text-brand-600 dark:text-brand-400"
+            title={t('operations.catalogs.branch.maps.open')}
+          >
+            <PinIcon className="h-4 w-4" />
+          </a>
+        ),
     },
     {
       key: 'status',

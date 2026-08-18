@@ -19,7 +19,7 @@ import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { Pagination } from '../../../shared/ui/Pagination';
 import { Button } from '../../../shared/ui/Button';
 import { EditIcon, PlusIcon } from '../../../shared/ui/icons';
-import { formatDate, formatNumber } from '../../../shared/lib/format';
+import { formatAmount, formatDate } from '../../../shared/lib/format';
 import { useAppSelector } from '../../../store';
 import {
   useOperationsBankBranches,
@@ -74,7 +74,7 @@ export const SecuredBacklogPage = (): JSX.Element => {
         <div className="space-y-0.5">
           {totalsByCurrency(row).map((total) => (
             <div key={total.currencyId} className="whitespace-nowrap tabular-nums">
-              {formatNumber(total.amount, locale)}{' '}
+              {formatAmount(total.amount, locale)}{' '}
               {nameOf(currencies.data?.items, total.currencyId, 'name')}
             </div>
           ))}

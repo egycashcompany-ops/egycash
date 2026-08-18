@@ -20,6 +20,22 @@ const CAIRO_TZ = 'Africa/Cairo';
 const intlLocale = (locale: Locale): string => (locale === 'ar' ? 'ar-EG' : 'en-GB');
 const numberLocale = (locale: Locale): string => (locale === 'ar' ? 'ar-EG' : 'en-US');
 
+/**
+ * The locale MONEY is formatted in. Arabic keeps ar-EG for everything a locale decides — the
+ * currency symbol, its side, the RTL marks — but pins the numbering system to Latin digits.
+ *
+ * `ar-EG` alone renders ١٬٠٠٠ : Arabic-Indic digits grouped with U+066C, a mark so light that in
+ * most UI fonts the figure reads as ١٠٠٠ — an unseparated four-digit number. On a cash-transfer
+ * desk, where the amount IS the record, that is the one figure that must never be misread. The
+ * legacy screens grouped every amount with an ASCII comma
+ * (`replace(/\B(?=(\d{3})+(?!\d))/g, ',')`, main_ops.ejs:874 and 41 more) and never rendered a
+ * tabular amount in Arabic-Indic, so this is the legacy reading restored, not a new house style.
+ *
+ * Counts keep `numberLocale` and stay Arabic-Indic: they are small, they are not the record, and
+ * legacy left them alone too.
+ */
+const moneyLocale = (locale: Locale): string => (locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US');
+
 const toDate = (value: string | Date | null | undefined): Date | null => {
   if (value === null || value === undefined) return null;
   const d = typeof value === 'string' ? new Date(value) : value;
@@ -70,7 +86,24 @@ export const formatMoney = (
 ): string =>
   amount === null || amount === undefined
     ? PLACEHOLDER
-    : new Intl.NumberFormat(numberLocale(locale), { style: 'currency', currency }).format(amount);
+    : new Intl.NumberFormat(moneyLocale(locale), { style: 'currency', currency }).format(amount);
+
+/**
+ * A monetary figure with NO ISO currency code to hand — grouped, Latin digits, and nothing else.
+ *
+ * `formatMoney` needs a code like `EGP` to place a symbol. Two surfaces have none and cannot get
+ * one: Operations carries the currency as a free-text NAME (the legacy singleton stored a string
+ * array, quirk Q33) and renders it in its own cell beside the figure, and IT's purchase/repair
+ * costs are bare numbers on the contract. They are money all the same and must group like money —
+ * which is exactly what got lost when they reached for `formatNumber`, the counts formatter.
+ *
+ * Decimals are shown only when the value has them, which is what the legacy screens did: 1000
+ * reads `1,000`, not `1,000.00`.
+ */
+export const formatAmount = (value: number | null | undefined, locale: Locale): string =>
+  value === null || value === undefined
+    ? PLACEHOLDER
+    : new Intl.NumberFormat(moneyLocale(locale), { maximumFractionDigits: 2 }).format(value);
 
 /** Pick the caller's locale rendering of a bilingual name pair. */
 export const fullName = (

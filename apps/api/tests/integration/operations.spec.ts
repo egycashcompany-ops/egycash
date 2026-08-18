@@ -977,6 +977,78 @@ describe('secured (محصنة) workflow — the four legacy screens (OP-4)', () 
       .set('Authorization', `Bearer ${viewerToken}`);
     expect(vaultRead.status).toBe(403);
   });
+
+  describe('the board hands out the id its own screens need', () => {
+    // WHY THIS EXISTS. `/operations/vault/dispatch` had two actions and BOTH 404'd in production,
+    // through every green gate. `OperationsCrewBoardRowDto.crew` carried no id, so the page sent
+    // `fleetDutyAssignmentId` as `crewAssignmentId` — an id from `fleet_duty_assignments` — and
+    // `secured.service.ts:185/:274` looked it up in `operations_crew_assignments` and threw
+    // NotFoundError.
+    //
+    // The existing suite could not catch it: every test sourced the id from the repository via
+    // `findCrewAssignmentId`, so it proved the endpoint accepts a correct id while never asking
+    // whether a client could obtain one. These go through the BOARD, the way a screen must.
+
+    it('exposes the crew row id on the board, and it is the row a delivery can be assigned to', async () => {
+      const shipment = await mkSecured();
+      await receive(shipment);
+
+      const fromBoard = await crewIdFromBoard('2026-08-21');
+      expect(fromBoard).not.toBe('');
+      // The id a screen reads IS the id the repository holds — not a different collection's.
+      expect(fromBoard).toBe(await findCrewAssignmentId());
+
+      const res = await request(app)
+        .post(`/api/v1/operations/secured/${shipment.id}/assign-delivery`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ crewAssignmentId: fromBoard, captainEmployeeId: captainId, version: 0 });
+      expect(res.status).toBe(200);
+    });
+
+    it('dispatches with the id taken from the board', async () => {
+      const shipment = await mkSecured();
+      await receive(shipment);
+      const fromBoard = await crewIdFromBoard('2026-08-21');
+      await request(app)
+        .post(`/api/v1/operations/secured/${shipment.id}/assign-delivery`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ crewAssignmentId: fromBoard, captainEmployeeId: captainId, version: 0 });
+
+      const res = await request(app)
+        .post('/api/v1/operations/secured/dispatch')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ crewAssignmentId: fromBoard, shipmentIds: [shipment.id] });
+      expect(res.status).toBe(200);
+    });
+
+    it('refuses a Fleet duty id — the exact wrong id the screen used to send', async () => {
+      // The defect, reproduced. A duty id is a real id of a real row in another collection, which is
+      // why this failed as a 404 rather than a validation error and never looked like a bug.
+      const shipment = await mkSecured();
+      await receive(shipment);
+      const board = await request(app)
+        .get('/api/v1/operations/crew-board?date=2026-08-21')
+        .set('Authorization', `Bearer ${adminToken}`);
+      const row = data<OperationsCrewBoardDto>(board).rows.find((r) => r.crew !== null);
+      const dutyId = row?.fleetDutyAssignmentId ?? '';
+      expect(dutyId).not.toBe('');
+      expect(dutyId).not.toBe(row?.crew?.id);
+
+      const res = await request(app)
+        .post(`/api/v1/operations/secured/${shipment.id}/assign-delivery`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ crewAssignmentId: dutyId, captainEmployeeId: captainId, version: 0 });
+      expect(res.status).toBe(404);
+    });
+
+    it('leaves crew null for a vehicle nobody planned', async () => {
+      const res = await request(app)
+        .get('/api/v1/operations/crew-board?date=2026-09-30')
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status).toBe(200);
+      for (const row of data<OperationsCrewBoardDto>(res).rows) expect(row.crew).toBeNull();
+    });
+  });
 });
 
 /** The first crew assignment id on a given day, read straight from the collection seam. */
@@ -991,6 +1063,26 @@ const crewAssignmentIdForDay = async (date: string): Promise<string> => {
 };
 
 /** The crew assignment id for the OP-4 delivery day, read straight from the collection seam. */
+/**
+ * The crew id AS A SCREEN CAN OBTAIN IT — through the board endpoint, not the repository.
+ *
+ * This is the distinction the vault-dispatch defect lived in. `findCrewAssignmentId` below reaches
+ * into the collection, so every test that used it proved the ENDPOINT works while saying nothing
+ * about whether a client can supply that id at all. The screen could not: the board DTO carried no
+ * crew id, so it sent `fleetDutyAssignmentId` — an id from another collection — and both of its
+ * actions 404'd, with every gate green.
+ */
+const crewIdFromBoard = async (date: string): Promise<string> => {
+  const res = await request(app)
+    .get(`/api/v1/operations/crew-board?date=${date}`)
+    .set('Authorization', `Bearer ${adminToken}`);
+  expect(res.status).toBe(200);
+  const board = data<OperationsCrewBoardDto>(res);
+  const row = board.rows.find((r) => r.crew !== null);
+  expect(row, 'a planned crew row on the board').toBeDefined();
+  return row?.crew?.id ?? '';
+};
+
 const findCrewAssignmentId = async (): Promise<string> => {
   const { operationsCrewAssignmentRepository } = await import(
     '../../src/modules/operations/crew/crew-assignment.repository'

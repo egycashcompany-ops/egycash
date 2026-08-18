@@ -113,7 +113,10 @@ class OperationsCrewService {
         driver2EmployeeId:
           duty.driver2EmployeeId === null ? null : String(duty.driver2EmployeeId),
         missionTypeId: duty.missionTypeId === null ? null : String(duty.missionTypeId),
-        crew: crew === undefined ? null : snapshot(crew),
+        // The id is spread in HERE rather than added to `snapshot`, which the audit diffs at
+        // :246/:249/:259 also use — an entity's own id in its own change list is noise, since
+        // `entityRef.entityId` already carries it.
+        crew: crew === undefined ? null : { id: String(crew._id), ...snapshot(crew) },
       });
     }
 

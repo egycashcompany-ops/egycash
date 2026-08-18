@@ -20,6 +20,7 @@ import {
   OperationsCrewBoardQuerySchema,
   OperationsShipmentStatusSchema,
   PlanOperationsCrewSchema,
+  SetOperationsStandingCrewSchema,
   UpdateOperationsShipmentSchema,
 } from './operations.js';
 
@@ -236,6 +237,77 @@ describe('operations crew schemas — the tashghela board rules (OP-3)', () => {
         rows: [row, { vehicleId: oid(1) }],
       }).success,
     ).toBe(false);
+  });
+
+  describe('the standing crew (الطاقم الثابت) — the same rules, minus the day', () => {
+    const standing = (rows: unknown[]) => SetOperationsStandingCrewSchema.safeParse({ rows });
+
+    it('takes no date at all — that absence IS the entity', () => {
+      expect(
+        SetOperationsStandingCrewSchema.safeParse({
+          date: '2026-08-18',
+          rows: [{ vehicleId: oid(1) }],
+        }).success,
+      ).toBe(false);
+    });
+
+    it('accepts an EMPTY row — "in the fleet, nobody on it yet" is the fact it stores', () => {
+      // The daily board treats a crewless, annotation-less row as nothing happening. Here it is
+      // membership, so it must be expressible.
+      expect(standing([{ vehicleId: oid(1) }]).success).toBe(true);
+    });
+
+    it('accepts an empty plan — a save that only removed vehicles has nothing to upsert', () => {
+      expect(standing([]).success).toBe(true);
+    });
+
+    it('carries the same six-person ceiling as a day, because it is the day\u2019s template', () => {
+      expect(
+        standing([
+          {
+            vehicleId: oid(1),
+            captainEmployeeIds: [oid(10), oid(11)],
+            specialist1EmployeeIds: [oid(12), oid(13)],
+            specialist2EmployeeIds: [oid(14), oid(15)],
+          },
+        ]).success,
+      ).toBe(true);
+      expect(
+        standing([{ vehicleId: oid(1), captainEmployeeIds: [oid(10), oid(11), oid(12)] }]).success,
+      ).toBe(false);
+    });
+
+    it('refuses the same person twice in one slot, and in two slots of one vehicle', () => {
+      expect(standing([{ vehicleId: oid(1), captainEmployeeIds: [oid(10), oid(10)] }]).success).toBe(
+        false,
+      );
+      expect(
+        standing([
+          {
+            vehicleId: oid(1),
+            captainEmployeeIds: [oid(10)],
+            specialist1EmployeeIds: [oid(10)],
+          },
+        ]).success,
+      ).toBe(false);
+    });
+
+    it("Q11's day-independent shadow — one person holds one vehicle in the standing crew", () => {
+      // Not decoration: without it, a standing crew that puts someone on two vehicles produces a
+      // seed that breaks Q11 the moment both are rostered the same day.
+      expect(
+        standing([
+          { vehicleId: oid(1), captainEmployeeIds: [oid(9), oid(10)] },
+          { vehicleId: oid(2), specialist2EmployeeIds: [oid(10)] },
+        ]).success,
+      ).toBe(false);
+    });
+
+    it('refuses a vehicle appearing twice, and carries no notes field', () => {
+      expect(standing([{ vehicleId: oid(1) }, { vehicleId: oid(1) }]).success).toBe(false);
+      // A note on a DAY's crew row is about that day; a permanent note is a different thing.
+      expect(standing([{ vehicleId: oid(1), notes: 'ملاحظة' }]).success).toBe(false);
+    });
   });
 
   it('board query date is optional — no date means tomorrow (legacy :2239)', () => {

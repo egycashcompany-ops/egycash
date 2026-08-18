@@ -372,6 +372,15 @@ const CATALOG: CategoryDef[] = [
         permission: 'operationsCrew.view',
       },
       {
+        en: 'Standing Crew',
+        ar: 'الطاقم الثابت',
+        route: '/operations/standing-crew',
+        icon: 'truck',
+        // Directly beneath the crew board it seeds, and above the roster: the reading order is the
+        // working order — who normally crews each vehicle, then what today actually looks like.
+        permission: 'operationsCrew.view',
+      },
+      {
         en: 'Crew Requirements',
         ar: 'متطلبات الطاقم',
         route: '/operations/requirements',

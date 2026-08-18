@@ -55,6 +55,7 @@ describe('operations module manifest (B6)', () => {
       '/operations/reports',
       '/operations/secured',
       '/operations/shipments',
+      '/operations/standing-crew',
     ]);
     expect(operationsModule.collections.sort()).toEqual([
       'operations_areas',
@@ -66,6 +67,7 @@ describe('operations module manifest (B6)', () => {
       'operations_days',
       'operations_shipment_assignments',
       'operations_shipments',
+      'operations_standing_crews',
       'operations_vault_custody',
     ]);
   });

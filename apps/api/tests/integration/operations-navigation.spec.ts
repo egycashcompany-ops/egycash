@@ -104,6 +104,10 @@ const ALL_OPS_ROUTES = [
   '/operations',
   '/operations/shipments',
   '/operations/crew-board',
+  // الطاقم الثابت — the permanent crew each day's board is seeded from. No legacy equivalent, and
+  // no permission of its own: deciding who crews which vehicle is one authority, said once here
+  // instead of every morning.
+  '/operations/standing-crew',
   '/operations/requirements',
   '/operations/attendance',
   '/operations/secured',
@@ -199,6 +203,7 @@ describe('the catalog reaches the database (B7)', () => {
     expect(byRoute.get('/operations')).toBe('operationsShipment.view');
     expect(byRoute.get('/operations/shipments')).toBe('operationsShipment.view');
     expect(byRoute.get('/operations/crew-board')).toBe('operationsCrew.view');
+    expect(byRoute.get('/operations/standing-crew')).toBe('operationsCrew.view');
     expect(byRoute.get('/operations/requirements')).toBe('operationsCrew.view');
     expect(byRoute.get('/operations/attendance')).toBe('operationsCrew.view');
     expect(byRoute.get('/operations/secured')).toBe('operationsShipment.view');
@@ -260,10 +265,17 @@ describe('the sidebar follows the permissions, not the catalog (B7)', () => {
     expect(await opsRoutesOf(token)).not.toContain('/operations');
   });
 
-  it('9. gives a crew-only account exactly the three crew rows', async () => {
+  it('9. gives a crew-only account exactly the four crew rows', async () => {
     const token = await accountWith(['operationsCrew.view']);
     expect((await opsRoutesOf(token)).sort()).toEqual(
-      ['/operations/attendance', '/operations/crew-board', '/operations/requirements'].sort(),
+      [
+        '/operations/attendance',
+        '/operations/crew-board',
+        '/operations/requirements',
+        // The standing crew rides this same grant, which is the whole point of not giving it one
+        // of its own: whoever plans crews maintains the standing crew, with nothing to re-grant.
+        '/operations/standing-crew',
+      ].sort(),
     );
   });
 

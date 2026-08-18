@@ -206,8 +206,10 @@ describe('seed → password login (regression)', () => {
     expect(routes).toContain('/operations/reports/captains');
     expect(routes).toContain('/operations/reports/banks');
     expect(routes).toContain('/operations/catalogs');
-    // 22 (HR) + 12 (Fleet) + 13 (Operations) + 7 (Organization) + 13 (IT) + 9 (Administration)
-    expect(routes).toHaveLength(78); // +1: C1 Captain's Day
+    // الطاقم الثابت — the permanent crew each day's board is seeded from.
+    expect(routes).toContain('/operations/standing-crew');
+    // 22 (HR) + 12 (Fleet) + 14 (Operations) + 7 (Organization) + 13 (IT) + 9 (Administration)
+    expect(routes).toHaveLength(79); // +1: C1 Captain's Day, +1: the standing crew
   });
 
   it('re-running the seed is idempotent — no duplicate categories/applications/grants', async () => {
@@ -229,7 +231,7 @@ describe('seed → password login (regression)', () => {
         (n, g) => n + g.applications.length + g.sections.reduce((m, s) => m + s.applications.length, 0),
         0,
       ),
-    ).toBe(78); // +1: C1 Captain's Day
+    ).toBe(79); // +1: C1 Captain's Day, +1: the standing crew
   });
 
   it('the seeded HR user also logs in with email/password', async () => {

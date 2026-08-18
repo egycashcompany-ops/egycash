@@ -326,6 +326,131 @@ const CATALOG: CategoryDef[] = [
     ],
   },
   {
+    en: 'Operations',
+    ar: 'العمليات',
+    // `shield` rather than `truck`: Fleet owns the vehicles, Operations owns the CASH riding in
+    // them. The two modules sit next to each other on purpose — a cash-transfer day is planned
+    // against Fleet's duty rows (fleet-module-design §9.4) — so Operations takes 17, between
+    // Fleet (15) and Organization (20), without disturbing a single stored sortOrder.
+    icon: 'shield',
+    sortOrder: 17,
+    // OWNER RULE (FW-1 review), applied late and stated plainly: only SHIPPED pages appear in
+    // navigation, and every slice appends its rows here AS IT LANDS. B1-B6 shipped thirteen
+    // routed, permission-gated, API-connected screens and appended NOTHING, so the whole module
+    // was reachable only by typing a URL. B7 is that omission being corrected in one go; the
+    // boot sync is additive, so existing installs pick these up with no migration.
+    //
+    // FLAT, like Fleet's twelve. Sections exist for a module that outgrew a single column — HR,
+    // at eighteen pages (seed-application-sections.ts) — and thirteen is not that. Grouping this
+    // module is an administrator's call to make on a screen built for it, not a default to impose.
+    //
+    // Every `permission` below is the SAME key the client route guard checks in
+    // apps/web/src/modules/operations/routes.tsx. Nothing new is declared: these are the OP-1..OP-7
+    // grants the module already registered.
+    apps: [
+      {
+        en: 'Operations Home',
+        ar: 'الرئيسية',
+        route: '/operations',
+        icon: 'home',
+        // The module's most basic read, exactly as Fleet Home rides `fleetVehicle.view`. The page
+        // itself shows only the cards the caller's own grants allow, so it is never a way in.
+        permission: 'operationsShipment.view',
+      },
+      {
+        en: 'Daily Operations',
+        ar: 'اليوم التشغيلي',
+        route: '/operations/shipments',
+        icon: 'clipboard',
+        permission: 'operationsShipment.view',
+      },
+      {
+        en: 'Crew Board',
+        ar: 'لوحة التشغيلة',
+        route: '/operations/crew-board',
+        icon: 'users',
+        permission: 'operationsCrew.view',
+      },
+      {
+        en: 'Crew Requirements',
+        ar: 'متطلبات الطاقم',
+        route: '/operations/requirements',
+        icon: 'badge',
+        permission: 'operationsCrew.view',
+      },
+      {
+        en: 'Crew Attendance',
+        ar: 'حضور الطاقم',
+        route: '/operations/attendance',
+        icon: 'calendar',
+        // The page chains TWO guards — `operationsCrew.view` AND HR's own `attendance.view` — and
+        // a catalog row carries exactly one key. The OPERATIONS half is the one declared, because
+        // the question this row answers is "is this an Operations user?": an HR account holding
+        // `attendance.view` and no Operations grant must not be shown an Operations category.
+        // The second guard still holds at the route AND at the endpoint, so nothing leaks; an
+        // Operations planner without HR's grant sees the row and is refused at the page, which is
+        // the ordinary behaviour of every chained guard here and fails closed.
+        permission: 'operationsCrew.view',
+      },
+      {
+        en: 'Secured Shipments',
+        ar: 'الشحنات المحصنة',
+        route: '/operations/secured',
+        icon: 'inbox',
+        permission: 'operationsShipment.view',
+      },
+      {
+        en: 'Vault Receive',
+        ar: 'استلام الخزينة',
+        route: '/operations/vault/receive',
+        icon: 'shield',
+        permission: 'operationsVault.view',
+      },
+      {
+        en: 'Vault Dispatch',
+        ar: 'صرف الخزينة',
+        route: '/operations/vault/dispatch',
+        icon: 'truck',
+        permission: 'operationsVault.view',
+      },
+      {
+        en: 'Vault Inventory',
+        ar: 'جرد الخزينة',
+        route: '/operations/vault',
+        icon: 'folder',
+        permission: 'operationsVault.view',
+      },
+      {
+        en: 'Vault Roll-up',
+        ar: 'تجميع الخزينة',
+        route: '/operations/reports/vault',
+        icon: 'chart',
+        permission: 'operationsVault.view',
+      },
+      {
+        en: 'Captain Report',
+        ar: 'تقرير القادة',
+        route: '/operations/reports/captains',
+        icon: 'chart',
+        permission: 'operationsShipment.view',
+      },
+      {
+        en: 'Bank Report',
+        ar: 'تقرير البنوك',
+        route: '/operations/reports/banks',
+        icon: 'chart',
+        permission: 'operationsShipment.view',
+      },
+      {
+        en: 'Operations Catalogs',
+        ar: 'البيانات المرجعية',
+        route: '/operations/catalogs',
+        icon: 'tag',
+        permission: 'operationsCatalog.manage',
+      },
+    ],
+  },
+  {
     en: 'Organization',
     ar: 'الهيكل التنظيمي',
     icon: 'building',

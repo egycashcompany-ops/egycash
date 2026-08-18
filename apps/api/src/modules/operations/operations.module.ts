@@ -24,6 +24,7 @@ import { buildOperationsSecuredRouter } from './secured/secured.routes';
 import { buildOperationsAssignmentsRouter } from './assignments/assignment.routes';
 import { buildOperationsMobileRouter } from './mobile/mobile.routes';
 import { buildOperationsReportsRouter } from './reports/report.routes';
+import { seedOperations } from './operations.seed';
 // Registers the interim vault-custody provider on the Treasury port at module load
 // (see ./treasury-boundary.ts). Importing for the side effect is the platform seam convention.
 import './vault/vault-custody.service';
@@ -209,4 +210,8 @@ export const operationsModule: ModuleManifest = {
     'operations_shipment_assignments',
   ],
   eventSubscriptions: [],
+  // Widens the seeded `super-admin` role with this module's grants on a database that ran the
+  // platform seed before Operations existed. See operations.seed.ts — without it, no account on
+  // such an install holds an `operations*` key and every endpoint here answers 403.
+  seed: seedOperations,
 };

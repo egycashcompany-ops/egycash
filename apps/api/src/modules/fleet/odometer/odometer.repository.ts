@@ -99,8 +99,18 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
     return this.list({ ...params, sortableFields: ['date', 'outReading', 'createdAt'] });
   }
 
+  /**
+   * The list filter.
+   *
+   * `vehicleIds` arrives already RESOLVED by the service — from codes, from an alarm-level
+   * narrowing, or from both intersected — because both of those need collections this repository
+   * does not own. An EMPTY array is a real answer meaning "nothing matched", and it must produce
+   * an empty page rather than an unfiltered one, so it is passed to `$in` as-is.
+   */
   logFilter(query: {
     vehicleId?: string | undefined;
+    vehicleIds?: readonly string[] | undefined;
+    driverEmployeeIds?: readonly string[] | undefined;
     from?: Date | undefined;
     to?: Date | undefined;
   }): FilterQuery<FleetOdometerLogDoc> {
@@ -108,8 +118,29 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
     if (query.vehicleId !== undefined) {
       clauses.push({ vehicleId: new Types.ObjectId(query.vehicleId) });
     }
+    if (query.vehicleIds !== undefined) {
+      clauses.push({ vehicleId: { $in: query.vehicleIds.map((id) => new Types.ObjectId(id)) } });
+    }
+    if (query.driverEmployeeIds !== undefined) {
+      // EITHER slot. "Which days did this person drive?" is one question, and answering it only
+      // for the morning shift would silently drop half the days they actually worked.
+      const ids = query.driverEmployeeIds.map((id) => new Types.ObjectId(id));
+      clauses.push({
+        $or: [{ driver1EmployeeId: { $in: ids } }, { driver2EmployeeId: { $in: ids } }],
+      });
+    }
     if (query.from !== undefined) clauses.push({ date: { $gte: query.from } });
-    if (query.to !== undefined) clauses.push({ date: { $lte: query.to } });
+    if (query.to !== undefined) {
+      // The WHOLE of that day. `to` arrives as a date and reads as one — "up to the 18th" — but
+      // `$lte` against a bare date is midnight, so a reading stored with any time on the 18th
+      // fell outside it. That also made the single-day case (from = to) match only readings
+      // saved at exactly 00:00. Compared against the next midnight instead, so the bound covers
+      // the day it names without depending on how precisely the reading was stamped.
+      const dayAfter = new Date(query.to);
+      dayAfter.setUTCHours(0, 0, 0, 0);
+      dayAfter.setUTCDate(dayAfter.getUTCDate() + 1);
+      clauses.push({ date: { $lt: dayAfter } });
+    }
     return clauses.length === 0 ? {} : { $and: clauses };
   }
 }

@@ -299,11 +299,12 @@ export const useUnavailability = (params: FleetListParams, enabled = true) =>
   });
 
 // ── Odometer + maintenance ──────────────────────────────────────────────────
-export const useOdometerLogs = (params: FleetListParams) =>
+export const useOdometerLogs = (params: FleetListParams, enabled = true) =>
   useQuery({
     queryKey: listKey(MODULE, 'odometer', params),
     queryFn: () => api.listOdometerLogs(params),
     placeholderData: (prev) => prev,
+    enabled,
   });
 
 export const useExpectedReading = (vehicleId: string, enabled = true) =>

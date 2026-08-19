@@ -447,6 +447,47 @@ describe('assignCaptainWithCrew — a captain brings his crew with him', () => {
     expect(slotOccupants(next[0] as BoardRow, 'specialist2')).toEqual(['a2']);
   });
 
+  it('takes EVERY specialist when he is the vehicle\u2019s only captain', () => {
+    // There is no other captain they could belong to, so a whole van moves as a whole van.
+    const rows = [
+      row({
+        vehicleId: 'v1',
+        captainEmployeeIds: cells('cap'),
+        specialist1EmployeeIds: cells('a1', 'a2'),
+        specialist2EmployeeIds: cells('b1', 'b2'),
+      }),
+      row({ vehicleId: 'v2' }),
+    ];
+    const next = assignCaptainWithCrew(rows, 'v2', 0, 'cap');
+    expect(rowCrew(next[1] as BoardRow)).toEqual(['cap', 'a1', 'a2', 'b1', 'b2']);
+    expect(rowCrew(next[0] as BoardRow)).toEqual([]);
+  });
+
+  it('takes a lone captain\u2019s specialist from the OTHER card too', () => {
+    // He sits on the top card and his specialist on the bottom one. With one captain aboard there
+    // is no pairing to respect, so position must not decide who is his.
+    const rows = [
+      row({
+        vehicleId: 'v1',
+        captainEmployeeIds: cells('cap'),
+        specialist1EmployeeIds: cells(null, 'late'),
+      }),
+      row({ vehicleId: 'v2' }),
+    ];
+    const next = assignCaptainWithCrew(rows, 'v2', 0, 'cap');
+    expect(rowCrew(next[1] as BoardRow)).toEqual(['cap', 'late']);
+  });
+
+  it('lands a single companion on the captain\u2019s own card, keeping the crew aligned', () => {
+    const rows = [
+      row({ vehicleId: 'v1', captainEmployeeIds: cells('cap'), specialist1EmployeeIds: cells('s1') }),
+      row({ vehicleId: 'v2' }),
+    ];
+    const next = assignCaptainWithCrew(rows, 'v2', 1, 'cap');
+    expect(slotValue(next[1] as BoardRow, 'captain', 1)).toBe('cap');
+    expect(slotValue(next[1] as BoardRow, 'specialist1', 1)).toBe('s1');
+  });
+
   it('brings whoever is there when the crew is short of a full three', () => {
     const rows = [
       row({ vehicleId: 'v1', captainEmployeeIds: cells('cap'), specialist2EmployeeIds: cells('s2') }),

@@ -27,6 +27,7 @@
 import {
   MAX_PAGE_SIZE,
   OperationsEvents,
+  OperationsSettingKeys,
   type OperationsStandingCrewBoardDto,
   type OperationsStandingCrewRowDto,
   type SetOperationsStandingCrew,
@@ -41,10 +42,14 @@ import { emit } from '../../../platform/kernel/event-bus';
 import { unitOfWork } from '../../../platform/kernel/unit-of-work';
 import { diffChanges } from '../../../shared/utils/diff';
 // §9.4 (frozen fleet design): Operations reads the Fleet registry and never writes it.
+import { settingsService } from '../../../platform/settings';
 import { fleetVehicleRepository } from '../fleet-boundary';
 import { slotIds } from '../crew/crew-slots';
 import { operationsStandingCrewRepository } from './standing-crew.repository';
 import { type OperationsStandingCrewDoc } from './standing-crew.model';
+
+/** Organization scope: which vehicles carry cash is a fleet fact, not a per-user preference. */
+const ORG_SUBJECT = { userId: null, branchId: null };
 
 const entityRef = (id: string) => ({
   moduleId: 'operations',
@@ -103,8 +108,10 @@ class OperationsStandingCrewService {
    * is organization-wide, and a branch-scoped read would hide half the fleet from the person
    * maintaining it.
    */
-  private async allVehicles(): Promise<{ _id: unknown; code: string }[]> {
-    const vehicles: { _id: unknown; code: string }[] = [];
+  private async allVehicles(): Promise<
+    { _id: unknown; code: string; operationId: Types.ObjectId | null }[]
+  > {
+    const vehicles: { _id: unknown; code: string; operationId: Types.ObjectId | null }[] = [];
     // A hard ceiling so a runaway page count cannot hang a request. Ten pages is 1,000 vehicles —
     // an order of magnitude past any cash-transfer fleet, and the log says so if it is ever hit.
     const MAX_PAGES = 10;
@@ -124,13 +131,18 @@ class OperationsStandingCrewService {
 
   /** The standing crew, plus the Fleet vehicles that could still join it. */
   async board(): Promise<OperationsStandingCrewBoardDto> {
-    const [stored, vehicles] = await Promise.all([
+    const [stored, vehicles, cashTransferOperationIds] = await Promise.all([
       operationsStandingCrewRepository.findAll(),
       this.allVehicles(),
+      settingsService.resolve<string[]>(
+        OperationsSettingKeys.CashTransferOperationIds,
+        ORG_SUBJECT,
+      ),
     ]);
 
     const codeOf = new Map(vehicles.map((vehicle) => [String(vehicle._id), vehicle.code]));
     const inCrew = new Set(stored.map((row) => String(row.vehicleId)));
+    const cashOperations = new Set(cashTransferOperationIds);
 
     const rows = stored
       // A stored row whose vehicle no longer resolves keeps its id as its label rather than
@@ -140,12 +152,29 @@ class OperationsStandingCrewService {
       // and it keeps the board stable across saves without storing a hand-maintained order.
       .sort((a, b) => a.vehicleCode.localeCompare(b.vehicleCode, 'ar'));
 
+    // WHICH VEHICLES MAY JOIN — the Fleet designation, read from Fleet's own field.
+    //
+    // `operationId` (التشغيل) is where the Movement department says what a vehicle runs as; it is
+    // the ECMS form of the legacy `cars.department`, which held "نقل اموال" on exactly these vans.
+    // Which catalog item means that is CONFIGURATION, because the catalog is admin-named and
+    // deliberately never seeded — matching the Arabic text would be legacy bug H5, recorded as
+    // "never matches real data" and explicitly not carried.
+    //
+    // Unconfigured means UNFILTERED. A filter nobody set up must not quietly hide the fleet, so an
+    // install that has not named its cash-transfer operation sees every vehicle and is told why.
+    const designated = (vehicle: { operationId: Types.ObjectId | null }): boolean =>
+      cashOperations.size === 0 || cashOperations.has(String(vehicle.operationId));
+
     const available = vehicles
       .filter((vehicle) => !inCrew.has(String(vehicle._id)))
+      .filter(designated)
       .map((vehicle) => ({ vehicleId: String(vehicle._id), vehicleCode: vehicle.code }))
       .sort((a, b) => a.vehicleCode.localeCompare(b.vehicleCode, 'ar'));
 
-    return { rows, available };
+    // A vehicle ALREADY in the standing crew is never removed from `rows` by this filter. Fleet
+    // re-classifying a van does not un-crew it behind Operations' back — the row is Operations'
+    // own statement, and taking it out is Operations' own act.
+    return { rows, available, availableIsFiltered: cashOperations.size > 0 };
   }
 
   async save(input: SetOperationsStandingCrew, by: string): Promise<{ changedCount: number }> {

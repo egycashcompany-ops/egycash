@@ -124,6 +124,44 @@ export const Checkbox = ({
   );
 };
 
+/**
+ * An on/off switch — a checkbox wearing `role="switch"`.
+ *
+ * Built on a real `<input type="checkbox">` rather than a styled `<button>`: it arrives keyboard
+ * operable, focusable and form-associated for free, and `role="switch"` is what tells a screen
+ * reader that "on/off" is the question rather than "checked/unchecked".
+ *
+ * The thumb is moved by flex ALIGNMENT rather than a transform. `peer-checked:` compiles to a
+ * general-sibling selector, so it can only reach the track — never a span nested inside it — and a
+ * translate on the thumb would simply never fire. Alignment also follows the writing direction on
+ * its own, so the switch travels toward the end of the track in Arabic without an `rtl:` override.
+ */
+export const Switch = ({
+  label,
+  description,
+  className,
+  ...rest
+}: Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> & {
+  label: string;
+  description?: string;
+}): JSX.Element => (
+  <label className={cn('flex cursor-pointer items-start gap-2.5 text-sm', className)}>
+    <input type="checkbox" role="switch" className="peer sr-only" {...rest} />
+    <span
+      aria-hidden="true"
+      className="mt-0.5 inline-flex h-5 w-9 shrink-0 items-center justify-start rounded-full bg-slate-300 p-0.5 transition-colors peer-checked:justify-end peer-checked:bg-brand-600 peer-focus-visible:ring-2 peer-focus-visible:ring-brand-500 peer-focus-visible:ring-offset-2 peer-disabled:opacity-50 dark:bg-slate-600"
+    >
+      <span className="h-4 w-4 rounded-full bg-white shadow" />
+    </span>
+    <span className="min-w-0">
+      <span className="block text-slate-700 dark:text-slate-200">{label}</span>
+      {description !== undefined && (
+        <span className="block text-xs text-slate-500 dark:text-slate-400">{description}</span>
+      )}
+    </span>
+  </label>
+);
+
 export const Form = ({
   onSubmit,
   className,

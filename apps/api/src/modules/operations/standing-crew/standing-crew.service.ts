@@ -27,7 +27,6 @@
 import {
   MAX_PAGE_SIZE,
   OperationsEvents,
-  type OperationsCrewSeedReportDto,
   type OperationsStandingCrewBoardDto,
   type OperationsStandingCrewRowDto,
   type SetOperationsStandingCrew,
@@ -42,12 +41,8 @@ import { emit } from '../../../platform/kernel/event-bus';
 import { unitOfWork } from '../../../platform/kernel/unit-of-work';
 import { diffChanges } from '../../../shared/utils/diff';
 // §9.4 (frozen fleet design): Operations reads the Fleet registry and never writes it.
-import { fleetDutyAssignmentRepository, fleetVehicleRepository } from '../fleet-boundary';
-import { operationsCrewAssignmentRepository } from '../crew/crew-assignment.repository';
-import { operationsCrewService } from '../crew/crew.service';
+import { fleetVehicleRepository } from '../fleet-boundary';
 import { slotIds } from '../crew/crew-slots';
-import { operationsDayService, utcDay } from '../days/day.service';
-import { planStandingSeed } from './standing-seed';
 import { operationsStandingCrewRepository } from './standing-crew.repository';
 import { type OperationsStandingCrewDoc } from './standing-crew.model';
 
@@ -287,78 +282,6 @@ class OperationsStandingCrewService {
       });
     }
     return { changedCount: outcome.changed.length };
-  }
-
-  /**
-   * Put the standing crew onto one day's board — the descent.
-   *
-   * IDEMPOTENT BY CONSTRUCTION, not by a flag: a second call finds every vehicle it seeded already
-   * planned and writes nothing. There is no "has this day been seeded" column to keep true, which
-   * is what lets the client fire this whenever it likes.
-   *
-   * The rule lives in `planStandingSeed`, a pure function, because this is the code path where
-   * being wrong overwrites a real morning's plan — and the integration suite that would catch that
-   * needs mongod, so it only runs in CI.
-   */
-  async seedDay(date: Date, by: string): Promise<OperationsCrewSeedReportDto> {
-    const day = utcDay(date);
-
-    const [standing, dutyRows, dayDoc] = await Promise.all([
-      operationsStandingCrewRepository.findAll(),
-      fleetDutyAssignmentRepository.findForDate(day),
-      operationsDayService.findByDate(day),
-    ]);
-
-    // NOT `ensureForDate`. Reading a board must not author an operating day, and the seed is
-    // allowed to find that no day exists yet — `plan()` creates it, attributed to this caller, and
-    // only if there is actually something to plan.
-    const existing =
-      dayDoc === null ? [] : await operationsCrewAssignmentRepository.findForDay(dayDoc._id);
-
-    // Who is unavailable, resolved once for everyone the standing crew names rather than per row.
-    const everyone = new Set(
-      standing.flatMap((row) => [
-        ...slotIds(row.captainEmployeeIds),
-        ...slotIds(row.specialist1EmployeeIds),
-        ...slotIds(row.specialist2EmployeeIds),
-      ]),
-    );
-    const unavailable = new Map<string, 'exited' | 'unknown'>();
-    for (const employeeId of everyone) {
-      const employee = await getDirectoryEmployee(employeeId);
-      if (employee === null) unavailable.set(employeeId, 'unknown');
-      else if (employee.status === 'exited') unavailable.set(employeeId, 'exited');
-    }
-
-    const plan = planStandingSeed({
-      standing: standing.map((row) => ({
-        vehicleId: String(row.vehicleId),
-        captainEmployeeIds: slotIds(row.captainEmployeeIds),
-        specialist1EmployeeIds: slotIds(row.specialist1EmployeeIds),
-        specialist2EmployeeIds: slotIds(row.specialist2EmployeeIds),
-        direction: row.direction,
-        plannedTime: row.plannedTime,
-      })),
-      rosteredVehicleIds: new Set(dutyRows.map((duty) => String(duty.vehicleId))),
-      plannedVehicleIds: new Set(existing.map((row) => String(row.vehicleId))),
-      takenBy: operationsCrewAssignmentRepository.takenCrew(existing),
-      unavailable,
-    });
-
-    // NOTHING TO SEED MEANS NOTHING IS CALLED. `plan()` emits `operations.crew.planned` on every
-    // invocation — even with changedCount 0 — and the automation bridge starts a workflow run per
-    // envelope, so a no-op seed that still called it would manufacture a run every time a planner
-    // opened tomorrow's board.
-    if (plan.rows.length > 0) {
-      await operationsCrewService.plan({ date: day, rows: plan.rows }, by);
-    }
-
-    return {
-      date: day.toISOString(),
-      seededVehicleIds: plan.rows.map((row) => row.vehicleId),
-      skipped: plan.skipped,
-      dropped: plan.dropped,
-    };
   }
 
   /**

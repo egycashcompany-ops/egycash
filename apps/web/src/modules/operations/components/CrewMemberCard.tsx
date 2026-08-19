@@ -4,12 +4,14 @@
 // beside each name, and the same icons doubled as filter buttons (:1114-1142). None of them ever
 // stopped an assignment — server-side they were never read at all (discovery §9.2) — and that is
 // the approved decision this UI carries forward: they inform the planner, they do not decide.
+// They live in `CrewFlagIcons`, which is also where the temporary licence finally appears.
 //
 // The card is also the drag SOURCE. HTML5 drag and drop, no library: the legacy board did the same
 // by hand, and the interaction is small enough that a dependency would cost more than it saves.
 import { type OperationsCrewMemberDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { Badge } from '../../../shared/ui/Badge';
+import { CrewFlagIcons } from './CrewFlagIcons';
 
 /** The MIME type the board's drop targets accept — narrow, so a stray drag is ignored. */
 export const CREW_DRAG_TYPE = 'application/x-ecms-crew-member';
@@ -47,13 +49,8 @@ export const CrewMemberCard = ({
         </div>
         <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
           <span className="tabular-nums">{member.code}</span>
-          {/* Indicators only — each says what it means to a screen reader rather than relying on
-              a glyph, which the legacy icons did not. */}
-          {req?.hasWeapon === true && <span title={t('operations.crew.flag.hasWeapon')}>🔫</span>}
-          {req?.hasSignature === true && (
-            <span title={t('operations.crew.flag.hasSignature')}>✍️</span>
-          )}
-          {req?.hasLicense === true && <span title={t('operations.crew.flag.hasLicense')}>🪪</span>}
+          {/* Who carries what — weapon, signature, licence, temporary licence. Indicators only. */}
+          <CrewFlagIcons requirements={req} />
           {req?.isNewJoiner === true && (
             <Badge tone="info" size="sm">
               {t('operations.crew.flag.isNewJoiner')}

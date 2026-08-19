@@ -1112,66 +1112,6 @@ export const SetOperationsStandingCrewSchema = z
   });
 export type SetOperationsStandingCrew = z.infer<typeof SetOperationsStandingCrewSchema>;
 
-// ── The descent: seeding a day's board from the standing crew ────────────────────────────────────
-//
-// "ومن الطاقم الثابت دا ينزل كل يوم تلقائي في التشغيلة ويمكن تعديله" — the standing crew appears on
-// each day's board, and stays editable for that day.
-//
-// SEEDING IS AN ABSOLUTE ROW-EXISTENCE VETO, NOT A FIELD-LEVEL MERGE. If a (day, vehicle) already
-// has a crew row, the seed does not touch it — not one slot, not the direction.
-//
-// That is not a preference, it is forced by how clearing works. `plan()` has no delete path, so
-// emptying a slot STORES an empty list. "Nobody has filled this slot yet" and "the captain called
-// in sick this morning and was taken off" are therefore byte-identical on disk. A merge that filled
-// empty slots from the standing crew could not tell them apart, and would silently put the sick
-// captain back on the vehicle every time the board was re-seeded. The row's EXISTENCE is the only
-// signal that survives, so the row is what the veto is keyed on.
-
-export const OPERATIONS_CREW_SEED_SKIP_REASONS = [
-  /** A crew row already exists for this (day, vehicle). The veto — never merged into. */
-  'alreadyPlanned',
-  /** Fleet has not rostered this vehicle for this date, so the day has no place to put a crew. */
-  'notRostered',
-  /** The standing row is empty, or everyone on it was dropped. See `dropped` for who and why. */
-  'noCrewToSeed',
-] as const;
-export type OperationsCrewSeedSkipReason = (typeof OPERATIONS_CREW_SEED_SKIP_REASONS)[number];
-
-export const OPERATIONS_CREW_SEED_DROP_REASONS = [
-  /** Left the company since the standing crew was last edited. */
-  'exited',
-  /** Already crewed on ANOTHER vehicle this operating day — Q11 wins over the standing crew. */
-  'takenElsewhere',
-  /** No longer resolves in the directory at all. */
-  'unknown',
-] as const;
-export type OperationsCrewSeedDropReason = (typeof OPERATIONS_CREW_SEED_DROP_REASONS)[number];
-
-/**
- * What the seed did, and — just as important — what it declined to do.
- *
- * Every omission is REPORTED rather than silently absorbed. A seed that quietly plans four of a
- * fleet's nine vehicles and says "done" teaches an operator to trust a board that is missing five
- * crews; the whole value of the descent is that the morning's board can be believed.
- */
-export interface OperationsCrewSeedReportDto {
-  date: string;
-  /** Vehicles whose crew was written from the standing crew. */
-  seededVehicleIds: string[];
-  skipped: { vehicleId: string; reason: OperationsCrewSeedSkipReason }[];
-  /** People left off a seeded row, with the reason. The row is still seeded without them. */
-  dropped: { employeeId: string; vehicleId: string; reason: OperationsCrewSeedDropReason }[];
-}
-
-/** Idempotent by construction: a second call finds every row already planned and writes nothing. */
-export const SeedOperationsCrewFromStandingSchema = z
-  .object({ date: z.coerce.date() })
-  .strict();
-export type SeedOperationsCrewFromStanding = z.infer<
-  typeof SeedOperationsCrewFromStandingSchema
->;
-
-
 // ── Vault custody + secured dispatch (OP-4) ─────────────────────────────────────────────────────
 //
 // The legacy secured (محصنة) lifecycle, normalized. The status ladder stays NON-ORDINAL in

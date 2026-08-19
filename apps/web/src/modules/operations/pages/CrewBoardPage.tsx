@@ -20,15 +20,15 @@
 //     behaves as it did.
 //   · The vehicle list comes from the Fleet duty roster for the date, which is the normalized form
 //     of the legacy `car_lock` gate — Operations never re-models the roster.
-//   · THE STANDING CREW DESCENDS ONTO THIS BOARD (الطاقم الثابت). Once per date, when nobody has
-//     planned it yet, and by a permanent button any other time. The seed is an ABSOLUTE
-//     ROW-EXISTENCE VETO — a vehicle that already has a crew row is never touched — because
-//     `plan()` has no delete path, so a slot emptied on purpose is byte-identical to one never
-//     filled, and a field-level merge would put a captain who called in sick back every morning.
+//   · THE STANDING CREW IS LOADED BY A TOGGLE (الطاقم الثابت), off by default. It fills the DRAFT,
+//     never the server, so it is reviewable before saving and reversible after — and it only ever
+//     touches vehicles that are EMPTY, so it cannot overwrite a crew somebody placed by hand or
+//     refill a slot emptied on purpose this morning. A vehicle Fleet did not roster today is not
+//     on this board at all, so its standing crew stays in the pool and the screen says so.
 //
 // The board is edited locally and saved explicitly, exactly like the legacy one: a drag is not a
 // write. Only CHANGED rows are sent.
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { type OperationsCrewMemberDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
@@ -36,7 +36,7 @@ import { useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { Button } from '../../../shared/ui/Button';
 import { Card, CardBody } from '../../../shared/ui/Card';
-import { Input } from '../../../shared/ui/form';
+import { Input, Switch } from '../../../shared/ui/form';
 import { Spinner } from '../../../shared/ui/Spinner';
 import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
@@ -46,12 +46,12 @@ import {
   useOperationsCrewDirectory,
   useOperationsStandingCrew,
   usePlanOperationsCrew,
-  useSeedCrewFromStanding,
 } from '../api/operations-queries';
-import { seedSummary, shouldAutoSeed } from '../lib/crew-seed';
+import { clearStandingCrew, loadStandingCrew } from '../lib/standing-load';
 import {
   CREW_SLOTS,
   SLOT_POSITIONS,
+  assignCaptainWithCrew,
   assignToSlot,
   availablePool,
   changedRows,
@@ -72,11 +72,13 @@ import { CREW_DRAG_TYPE, CrewMemberCard } from '../components/CrewMemberCard';
 export const resolveCrewDate = (raw: string | null): string | null =>
   raw !== null && /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
 
+/** The legacy icon-buttons, in the order the legacy pool listed them (tashghela.ejs:1114-1142). */
 export const POOL_FILTERS: RequirementFilter[] = [
   'isCaptain',
   'hasWeapon',
   'hasSignature',
   'hasLicense',
+  'hasTemporaryLicense',
 ];
 
 export const CrewBoardPage = (): JSX.Element => {
@@ -89,7 +91,6 @@ export const CrewBoardPage = (): JSX.Element => {
   const directory = useOperationsCrewDirectory(date);
   const standing = useOperationsStandingCrew();
   const plan = usePlanOperationsCrew();
-  const seed = useSeedCrewFromStanding();
   const canPlan = can('operationsCrew.plan');
 
   const serverRows = useMemo(() => toBoardRows(board.data?.rows ?? []), [board.data]);
@@ -120,7 +121,13 @@ export const CrewBoardPage = (): JSX.Element => {
       event.preventDefault();
       const employeeId = event.dataTransfer.getData(CREW_DRAG_TYPE);
       if (employeeId === '' || !canPlan) return;
-      setRows((prev) => assignToSlot(prev, vehicleId, slot, position, employeeId));
+      // A captain moving between vehicles takes the specialists sharing his card position with
+      // him: a crew is what was decided, not three independent seats.
+      setRows((prev) =>
+        slot === 'captain'
+          ? assignCaptainWithCrew(prev, vehicleId, position, employeeId)
+          : assignToSlot(prev, vehicleId, slot, position, employeeId),
+      );
     };
 
   const save = async (): Promise<void> => {
@@ -144,55 +151,50 @@ export const CrewBoardPage = (): JSX.Element => {
 
   const boardDay = (board.data?.date ?? '').slice(0, 10);
 
-  // ── The descent: الطاقم الثابت ينزل في التشغيلة ────────────────────────────────────────────────
-  const runSeed = async (announceQuiet: boolean): Promise<void> => {
-    if (boardDay === '') return;
-    try {
-      const result = await seed.mutateAsync({ date: new Date(boardDay) });
-      const summary = seedSummary(result.seed);
-      if (summary.quiet) {
-        // Nothing happened and nothing was declined. Saying so on every visit would train the
-        // operator to dismiss the message that matters, so only an explicit press gets an answer.
-        if (announceQuiet) toast.success(t('operations.crew.seed.nothing'));
-        return;
-      }
-      toast.success(t('operations.crew.seed.done', { count: summary.seeded }));
-      // The omissions are a SEPARATE message, because a half-planned day that only says "seeded 4"
-      // reads as a finished one.
-      if (summary.notRostered + summary.noCrew + summary.dropped > 0) {
-        toast.error(
-          t('operations.crew.seed.skipped', {
-            notRostered: summary.notRostered,
-            noCrew: summary.noCrew,
-            dropped: summary.dropped,
-          }),
-        );
-      }
-    } catch {
-      if (announceQuiet) toast.error(t('operations.crew.seed.failed'));
+  // ── The toggle: تحميل الطاقم الثابت على التشغيلة ──────────────────────────────────────────────
+  //
+  // OFF BY DEFAULT, and off again on every date change: the board opens showing what was actually
+  // planned, and the standing crew arrives only because somebody asked for it. It edits the DRAFT,
+  // so it is reviewable before saving and reversible after — a control that wrote to the server
+  // could not be switched back off.
+  const [standingOn, setStandingOn] = useState(false);
+  const [filled, setFilled] = useState<string[]>([]);
+  useEffect(() => {
+    setStandingOn(false);
+    setFilled([]);
+  }, [boardDay]);
+
+  const standingSources = useMemo(
+    () =>
+      (standing.data?.rows ?? []).map((row) => ({
+        vehicleId: row.vehicleId,
+        captainEmployeeIds: row.captainEmployeeIds,
+        specialist1EmployeeIds: row.specialist1EmployeeIds,
+        specialist2EmployeeIds: row.specialist2EmployeeIds,
+      })),
+    [standing.data],
+  );
+
+  const toggleStanding = (on: boolean): void => {
+    if (!on) {
+      setRows((prev) => clearStandingCrew(prev, filled));
+      setFilled([]);
+      setStandingOn(false);
+      return;
+    }
+    const load = loadStandingCrew(rows, standingSources);
+    setRows(load.rows);
+    setFilled(load.filledVehicleIds);
+    setStandingOn(true);
+    if (load.unavailableVehicleIds.length > 0) {
+      // Said out loud, not swallowed: those crews are still in the pool, and the planner needs to
+      // know they were not placed rather than assume the board is complete.
+      toast.error(
+        t('operations.crew.standing.unavailable', { count: load.unavailableVehicleIds.length }),
+      );
     }
   };
 
-  // ONE ATTEMPT PER DATE, whatever the outcome. A ref rather than state: remembering an attempt
-  // must not itself cause a render, or the effect would race its own re-run.
-  const attempted = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    const shouldFire = shouldAutoSeed({
-      canPlan,
-      boardDay: board.data?.day ?? null,
-      standingRowCount: standing.data?.rows.length ?? 0,
-      attempted: attempted.current,
-      date: boardDay,
-      busy: board.isLoading || standing.isLoading || seed.isPending,
-    });
-    if (!shouldFire) return;
-    // Recorded BEFORE the call, not after: the effect re-runs the moment the seed invalidates the
-    // board query, and a flag set on completion would let a second attempt start first.
-    attempted.current.add(boardDay);
-    void runSeed(false);
-    // `runSeed` is deliberately not a dependency — it is rebuilt every render and closes over the
-    // same query state this list already tracks, so including it would re-run the effect forever.
-  }, [canPlan, board.data, board.isLoading, standing.data, standing.isLoading, boardDay]);
 
   return (
     <PageContainer>
@@ -201,22 +203,9 @@ export const CrewBoardPage = (): JSX.Element => {
         description={t('operations.crew.subtitle')}
         actions={
           canPlan ? (
-            <div className="flex flex-wrap items-center gap-2">
-              {/* Permanent, not only automatic: the auto-fire happens once per date, and an
-                  operator who has just edited the standing crew needs a way to ask again. */}
-              <Button
-                variant="secondary"
-                onClick={() => void runSeed(true)}
-                disabled={seed.isPending || (standing.data?.rows.length ?? 0) === 0}
-              >
-                {t('operations.crew.seed.action')}
-              </Button>
-              <Button onClick={() => void save()} disabled={!dirty || plan.isPending}>
-                {dirty
-                  ? t('operations.crew.saveCount', { count: pending.length })
-                  : t('common.save')}
-              </Button>
-            </div>
+            <Button onClick={() => void save()} disabled={!dirty || plan.isPending}>
+              {dirty ? t('operations.crew.saveCount', { count: pending.length }) : t('common.save')}
+            </Button>
           ) : undefined
         }
       />
@@ -236,6 +225,19 @@ export const CrewBoardPage = (): JSX.Element => {
               }}
             />
           </label>
+          {canPlan && (
+            <Switch
+              checked={standingOn}
+              disabled={standingSources.length === 0}
+              onChange={(e) => toggleStanding(e.target.checked)}
+              label={t('operations.crew.standing.toggle')}
+              description={
+                standingSources.length === 0
+                  ? t('operations.crew.standing.none')
+                  : t('operations.crew.standing.hint')
+              }
+            />
+          )}
           {dirty && (
             <p className="text-sm text-amber-700 dark:text-amber-400">
               {t('operations.crew.unsaved', { count: pending.length })}

@@ -12,8 +12,17 @@ import {
 } from '@ecms/contracts';
 import { ok, okPage, validated } from '../../../platform/web';
 import { authContext } from '../../../platform/auth';
-import { scopeSelector } from '../../../shared/types';
-import { toItAssetAssignmentDto, toItAssetDto, toItAssetHistoryEntryDto } from '../it.mappers';
+import { scopeSelector, type ScopeSelector } from '../../../shared/types';
+import {
+  toItAssetAssignmentDto,
+  toItAssetDto,
+  toItAssetHistoryEntryDto,
+  type ItAssetLabels,
+  type ItHolderLabels,
+} from '../it.mappers';
+import { getDirectoryEmployees } from '../../../platform/directory';
+import { type ItAssetAssignmentDoc } from './assignment.model';
+import { itAssetRepository } from './asset.repository';
 import { itAssetCustodyService } from './custody.service';
 import { itAssetAssignmentService } from './assignment.service';
 
@@ -63,15 +72,56 @@ export const listItAssetHistory = async (req: Request, res: Response): Promise<v
   okPage(res, page, toItAssetHistoryEntryDto);
 };
 
+/**
+ * The holders on ONE page of custody intervals (IT-6).
+ *
+ * One directory call per response, never one per row — and it runs through the platform seam, so
+ * IT still does not import HR. An id the directory cannot resolve is simply absent from the map
+ * and the row answers with nulls, which the screen renders as the id it always showed.
+ */
+const holderLabels = async (rows: readonly ItAssetAssignmentDoc[]): Promise<ItHolderLabels> => {
+  const employees = await getDirectoryEmployees(
+    rows.map((row) => String(row.assignedToEmployeeId)),
+  );
+  return new Map(
+    [...employees].map(([id, employee]) => [
+      id,
+      { code: employee.code, fullNameAr: employee.fullNameAr },
+    ]),
+  );
+};
+
+/**
+ * The assets on ONE page of intervals — the "what" the register never named.
+ *
+ * Read THROUGH THE CALLER'S SCOPE, deliberately: `findManyByIds` runs the scoped list path, so a
+ * branch-scoped reader cannot print a label belonging to a branch they cannot see. An asset that
+ * falls outside their scope is simply absent and the row answers with nulls.
+ */
+const assetLabels = async (
+  rows: readonly ItAssetAssignmentDoc[],
+  scope: ScopeSelector,
+): Promise<ItAssetLabels> => {
+  const ids = [...new Set(rows.map((row) => String(row.assetId)))];
+  const assets = await itAssetRepository.findManyByIds(ids, scope);
+  return new Map(
+    assets.map((asset) => [String(asset._id), { assetCode: asset.assetCode, name: asset.name }]),
+  );
+};
+
 export const listItAssetAssignments = async (req: Request, res: Response): Promise<void> => {
   const { params, query } = validated<never, ListItAssignmentsQuery, IdParam>(req);
-  const page = await itAssetAssignmentService.listForAsset(params.id, query, custodyScope(req));
-  okPage(res, page, toItAssetAssignmentDto);
+  const scope = custodyScope(req);
+  const page = await itAssetAssignmentService.listForAsset(params.id, query, scope);
+  const [holders, assets] = await Promise.all([holderLabels(page.items), assetLabels(page.items, scope)]);
+  okPage(res, page, (doc) => toItAssetAssignmentDto(doc, holders, assets));
 };
 
 /** The cross-asset custody register — "what is out, and who has it". */
 export const listItAssignments = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, ListItAssignmentsQuery>(req);
-  const page = await itAssetAssignmentService.list(query, custodyScope(req));
-  okPage(res, page, toItAssetAssignmentDto);
+  const scope = custodyScope(req);
+  const page = await itAssetAssignmentService.list(query, scope);
+  const [holders, assets] = await Promise.all([holderLabels(page.items), assetLabels(page.items, scope)]);
+  okPage(res, page, (doc) => toItAssetAssignmentDto(doc, holders, assets));
 };

@@ -290,6 +290,27 @@ export interface ItAssetAssignmentDto {
   id: string;
   assetId: string;
   assignedToEmployeeId: string;
+  /**
+   * The holder's code and name, read through the platform directory at RESPONSE time (IT-6).
+   *
+   * Not denormalized onto the row: a custody interval is a record of who held the asset, and a
+   * corrected name must correct everywhere rather than leave the old spelling frozen on an
+   * interval. Both are `null` when the employee cannot be read — a deployment with no HR source,
+   * or a record that has since gone — and the screen then falls back to the id it already had.
+   * A figure nobody can verify is better shown as a reference than as a guess.
+   */
+  assignedToEmployeeCode: string | null;
+  assignedToEmployeeName: string | null;
+  /**
+   * WHAT was received — the register's own subject, which it did not name until IT-6.
+   *
+   * The table listed when, who and where and never what, so the asset could only be reached by
+   * navigating away from the row. Read at response time through the caller's own scope, so a
+   * branch reader cannot print another branch's labels; null when the asset cannot be read, and
+   * `assetId` is still there to navigate by.
+   */
+  assetCode: string | null;
+  assetName: string | null;
   assignedByUserId: string | null;
   assignedAt: string;
   conditionOnIssue: string | null;

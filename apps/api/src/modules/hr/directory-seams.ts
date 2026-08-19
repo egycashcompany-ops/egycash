@@ -6,6 +6,7 @@
 // surface uses so a captain's identity comes from the token, never from a client-supplied id.
 import {
   registerAttendanceDayLookup,
+  registerEmployeeBatchLookup,
   registerEmployeeLookup,
   registerEmployeesByDepartmentLookup,
   registerLeaveLookup,
@@ -75,6 +76,25 @@ export const registerHrDirectorySeams = (): void => {
           employeeId: String(row.employeeId),
           status: row.status,
           onLeave: row.status === 'onLeave',
+        },
+      ]),
+    );
+  });
+
+  // IT-6 — the same fact, in bulk, for list screens. One `$in` per page rather than one query
+  // per row; the shape is the single lookup's, so a consumer reads one type either way.
+  registerEmployeeBatchLookup(async (employeeIds) => {
+    const docs = await employeeRepository.findByIdsSystem([...new Set(employeeIds)]);
+    return new Map(
+      docs.map((employee) => [
+        String(employee._id),
+        {
+          employeeId: String(employee._id),
+          code: employee.code,
+          fullNameAr: employee.personal.fullNameAr,
+          status: employee.status,
+          branchId: String(employee.branchId),
+          departmentId: String(employee.departmentId),
         },
       ]),
     );

@@ -277,6 +277,37 @@ describe('the filter bar', () => {
     expect(html).toContain('id="odometer-to"');
   });
 
+  it('carries NO visible label — every filter is named by its own control', () => {
+    const html = render();
+    const bar = html.slice(
+      html.indexOf('<div class="flex flex-wrap items-center gap-2'),
+      html.indexOf('<table'),
+    );
+    // A `<label>` above a filter is what this removes. `MultiSelect` names itself in its trigger
+    // and the text controls carry `aria-label`, so nothing is lost to a screen reader.
+    expect(bar, 'no label element in the filter bar').not.toContain('<label');
+    expect(bar).not.toContain('</label>');
+  });
+
+  it('still names every filter for a screen reader and a pointer', () => {
+    const html = render();
+    const bar = html.slice(
+      html.indexOf('<div class="flex flex-wrap items-center gap-2'),
+      html.indexOf('<table'),
+    );
+    // The two date bounds are the ones a label used to tell apart: a date input ignores
+    // `placeholder`, so they carry `aria-label` AND `title` instead.
+    for (const key of ['fleet.odometer.from', 'fleet.odometer.to']) {
+      expect(bar, `${key} aria-label`).toContain(`aria-label="${t(key)}"`);
+      expect(bar, `${key} title`).toContain(`title="${t(key)}"`);
+    }
+    // The driver box is named and hinted; the two multi-selects name themselves in their trigger.
+    expect(bar).toContain(`aria-label="${t('fleet.odometer.columns.driver')}"`);
+    expect(bar).toContain(`placeholder="${t('fleet.odometer.driverPlaceholder')}"`);
+    expect(bar).toContain(t('fleet.odometer.columns.vehicle'));
+    expect(bar).toContain(t('fleet.odometer.columns.alert'));
+  });
+
   it('takes SEVERAL vehicles and SEVERAL alert levels at once', () => {
     const html = render({
       route: '/fleet/odometer?vehicleCodes=150,151&alerts=yellow,red',
@@ -441,6 +472,39 @@ describe('recording a reading', () => {
     expect(source).toContain('roster.isPlaceholderData');
     const fill = source.slice(source.indexOf('if (rosterRow === null'));
     expect(fill.slice(0, 120)).toContain('roster.isPlaceholderData');
+  });
+
+  it('SHOWS ك.م without asking for it', () => {
+    // The legacy did the same subtraction on submit — `POST /cars_log` set the new row's
+    // `out_num`, the previous row's `in_num`, and km = the difference — so a manual field would
+    // be a second answer to a question the server already answers. What the operator would lose
+    // is the sight of the distance, so it is previewed from the server's own expected reading.
+    expect(source).toContain("t('fleet.odometer.columns.km')");
+    expect(source).toContain('const derivedKm');
+    expect(source).toContain('readingNumber - previousReading');
+    // Previewed, never collected: no km state, and no km on the wire.
+    expect(source).not.toMatch(/useState[^;]*\bkm\b/i);
+    const body = source.slice(
+      source.indexOf('await record.mutateAsync'),
+      source.indexOf('toast.success'),
+    );
+    expect(body).not.toContain('km');
+    expect(body).not.toContain('inReading');
+  });
+
+  it('shows a dash until both numbers are known, rather than a guess', () => {
+    expect(source).toContain('previousReading === null');
+    expect(source).toContain("reading === ''");
+  });
+
+  it('warns when the reading is below the previous one, and leaves the refusal to the server', () => {
+    expect(source).toContain('derivedKm < 0');
+    expect(source).toContain('fleet.odometer.kmBelowPrevious');
+    for (const locale of ['ar', 'en'] as Locale[]) {
+      for (const key of ['fleet.odometer.kmBelowPrevious', 'fleet.odometer.kmDerivedHint']) {
+        expect(translate(locale, key), `${key} in ${locale}`).not.toBe(key);
+      }
+    }
   });
 
   it('asks for nothing the server derives — no km, no closing reading', () => {

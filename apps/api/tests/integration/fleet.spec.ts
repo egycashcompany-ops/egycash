@@ -15,6 +15,7 @@ import {
   type FleetCatalogItemDto,
   type FleetDriverProfileDto,
   type FleetDriverUnavailabilityDto,
+  type FleetOdometerLogDto,
   type FleetVehicleDto,
   type FleetVehicleTypeDto,
 } from '@ecms/contracts';
@@ -713,6 +714,97 @@ describe('odometer continuity (FR-2, §4.3 — FL-4)', () => {
       .set('Authorization', `Bearer ${branchAToken}`)
       .send({ vehicleId: v.id, reading: 10, date: '2026-07-10' });
     expect(res.status).toBe(403);
+  });
+});
+
+describe('a vehicle records on as many days as it runs (legacy cars_log)', () => {
+  const record = (vehicleId: string, reading: number, date: string) =>
+    request(app)
+      .post('/api/v1/fleet/odometer')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ vehicleId, reading, date });
+
+  const logsFor = async (vehicleId: string) =>
+    data<FleetOdometerLogDto[]>(
+      await request(app)
+        .get('/api/v1/fleet/odometer')
+        // By DATE, not by reading: a standing day repeats the reading, and sorting on a tied
+        // column leaves the order to the database — which would make these assertions flaky.
+        .query({ vehicleId, pageSize: 50, sortBy: 'date', sortDir: 'asc' })
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+
+  it('records the same vehicle on a later day, closing the first period and opening the second', async () => {
+    // The behaviour the legacy had and the one an operator relies on daily: a previous reading is
+    // not a reason to refuse the next one. `ux_open_period` bounds how many periods may be OPEN at
+    // once (one), never how many readings a vehicle may have.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const other = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(other.id, 500, '2026-11-01');
+
+    // 1. the first reading
+    expect((await record(v.id, 10_000, '2026-11-18')).status).toBe(201);
+    // 2. a second reading, same vehicle, a later day
+    expect((await record(v.id, 10_250, '2026-11-19')).status).toBe(201);
+
+    // 3. both are there
+    const rows = await logsFor(v.id);
+    expect(rows).toHaveLength(2);
+
+    // 4. the first was closed BY the second, with km derived from the pair
+    expect(rows[0]).toMatchObject({ outReading: 10_000, inReading: 10_250, km: 250 });
+
+    // 5. the second is the open period
+    expect(rows[1]).toMatchObject({ outReading: 10_250, inReading: null, km: null });
+
+    // 6. the other vehicle is untouched — still its own single open period
+    const otherRows = await logsFor(other.id);
+    expect(otherRows).toHaveLength(1);
+    expect(otherRows[0]).toMatchObject({ outReading: 500, inReading: null, km: null });
+  });
+
+  it('keeps going for a third and fourth day — the chain has no ceiling', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    for (const [reading, date] of [
+      [1000, '2026-11-01'],
+      [1200, '2026-11-02'],
+      [1500, '2026-11-03'],
+      [1500, '2026-11-04'],
+    ] as const) {
+      expect((await record(v.id, reading, date)).status, `${date} accepted`).toBe(201);
+    }
+    const rows = await logsFor(v.id);
+    expect(rows).toHaveLength(4);
+    // Each closed period's km is the step to the next reading; a standing day is a real 0.
+    expect(rows.map((r) => r.km)).toEqual([200, 300, 0, null]);
+    // Exactly ONE open period survives, and it is the last.
+    expect(rows.filter((r) => r.inReading === null)).toHaveLength(1);
+    expect(rows[3]?.inReading).toBeNull();
+  });
+
+  it('refuses only a reading that runs the odometer BACKWARDS, never a repeat visit', async () => {
+    // The one refusal FR-2 makes, and the one an operator can mistake for "this car is already
+    // recorded": a lower reading on a later day. The same day's second reading is fine as long as
+    // the number does not go down.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 8000, '2026-12-01');
+    const backwards = await record(v.id, 7900, '2026-12-02');
+    expect(backwards.status).toBe(409);
+    expect(JSON.stringify(backwards.body)).toContain('FR-2');
+    // …and the forward reading right after it still lands, so the refusal blocked the number and
+    // not the vehicle.
+    expect((await record(v.id, 8100, '2026-12-02')).status).toBe(201);
+    expect(await logsFor(v.id)).toHaveLength(2);
+  });
+
+  it('never stores two open periods for one vehicle, however many days it runs', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    for (let day = 1; day <= 5; day += 1) {
+      await record(v.id, 2000 + day * 100, `2026-12-1${day}`);
+    }
+    const rows = await logsFor(v.id);
+    expect(rows).toHaveLength(5);
+    expect(rows.filter((r) => r.inReading === null)).toHaveLength(1);
   });
 });
 

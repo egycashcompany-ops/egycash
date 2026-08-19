@@ -3034,6 +3034,9 @@ const en: Record<string, string> = {
   'fleet.odometer.columns.alert': 'Maintenance alert',
   'fleet.odometer.driverPlaceholder': 'Driver name or employee code',
   'fleet.odometer.kmValue': '{{km}} km',
+  'fleet.odometer.kmDerivedHint':
+    'Derived from this reading and the previous one — the server computes and stores it.',
+  'fleet.odometer.kmBelowPrevious': 'Below the previous reading — the server will refuse it.',
   'fleet.odometer.vehiclePlaceholder': 'Type a vehicle code',
   'fleet.odometer.vehicleNotFound': 'No vehicle with that code',
   'fleet.odometer.fields.vehicle': 'Vehicle',
@@ -7870,6 +7873,8 @@ const ar: Record<string, string> = {
   'fleet.odometer.columns.alert': 'إنذار الصيانة',
   'fleet.odometer.driverPlaceholder': 'اسم السائق أو كود الموظف',
   'fleet.odometer.kmValue': '{{km}} كم',
+  'fleet.odometer.kmDerivedHint': 'تُشتق من هذه القراءة والقراءة السابقة — الخادم يحسبها ويحفظها.',
+  'fleet.odometer.kmBelowPrevious': 'أقل من القراءة السابقة — الخادم سيرفضها.',
   'fleet.odometer.vehiclePlaceholder': 'اكتب كود السيارة',
   'fleet.odometer.vehicleNotFound': 'لا توجد سيارة بهذا الكود',
   'fleet.odometer.fields.vehicle': 'السيارة',

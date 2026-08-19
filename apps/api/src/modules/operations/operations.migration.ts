@@ -80,15 +80,26 @@ export const migrateCrewSlotsToArrays = async (): Promise<{ rowsUpdated: number 
   const pendingFilter = { $or: SLOTS.map(([list]) => ({ [list]: { $exists: false } })) };
 
   let rowsUpdated = 0;
+  // A CURSOR, not a re-query from the start. Without one, every pass re-scans the whole collection
+  // — the converted prefix included — so a large backlog is quadratic, and it is quadratic in the
+  // one place that cannot afford it: boot, before `app.listen`.
+  let after: unknown = null;
   for (;;) {
     // `isDeleted` is deliberately NOT filtered. A soft-deleted crew row is still readable history —
     // the captain report and the audit trail both reach it — and leaving it on the old shape would
     // make it the one row whose crew a widened reader cannot see.
-    const pending = await OperationsCrewAssignmentModel.find(pendingFilter, projection)
+    const pending = await OperationsCrewAssignmentModel.find(
+      after === null ? pendingFilter : { $and: [pendingFilter, { _id: { $gt: after } }] },
+      projection,
+    )
+      .sort({ _id: 1 })
       .limit(BATCH)
       .lean<PendingCrewRow[]>()
       .exec();
     if (pending.length === 0) break;
+    // Advance unconditionally, on the LAST id read rather than the last id written. A row this
+    // pass could not convert must not be read again next pass, or the loop stalls on it forever.
+    after = pending[pending.length - 1]?._id ?? after;
 
     const operations = pending.flatMap((row) => {
       const set: Record<string, unknown[]> = {};
@@ -120,14 +131,11 @@ export const migrateCrewSlotsToArrays = async (): Promise<{ rowsUpdated: number 
     if (operations.length === 0) break;
 
     const result = await OperationsCrewAssignmentModel.bulkWrite(operations);
-    if (result.modifiedCount === 0) {
-      // Nothing moved although rows matched — a row the write cannot fix. Stop rather than spin.
-      logger.warn(
-        { pending: pending.length },
-        'operations: crew slot migration made no progress on a non-empty batch — stopping',
-      );
-      break;
-    }
+    // A batch that modified NOTHING is not a stall and must not stop the run. Two processes boot
+    // together — api and worker — read the same rows, and whichever writes first makes the other's
+    // updates no-op against the repeated `$exists: false` guard. Treating that as "no progress"
+    // aborted the loser mid-collection and left the rest of the backlog unconverted. The cursor is
+    // what makes termination safe without this: it advances whether or not a write landed.
     rowsUpdated += result.modifiedCount;
     if (pending.length < BATCH) break;
   }

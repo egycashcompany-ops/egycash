@@ -55,6 +55,38 @@ export const toStandingPayloadRows = (rows: readonly BoardRow[]) =>
   }));
 
 /**
+ * Fold a fresh server list into the draft the operator is holding.
+ *
+ * The naive `setRows(serverRows)` on every refetch was wrong the moment this screen gained a
+ * server action of its own: removing one vehicle refetches the list, which threw away every
+ * unsaved edit on every OTHER vehicle. The operator's own click silently destroyed their work.
+ *
+ * The merge rule, per vehicle:
+ *   · in both  → keep the LOCAL row. It is the operator's unsaved intent, and `changedRows` still
+ *                compares it against the new server row, so a save sends the right diff.
+ *   · server only → take it. Somebody else added it, or the operator just reloaded.
+ *   · local only  → keep it, but ONLY if it was never on the server. That is a vehicle added from
+ *                the picker and not yet saved. A local row whose server row has GONE was removed —
+ *                by this operator or another — and must not be resurrected.
+ */
+export const mergeStandingRows = (
+  server: readonly BoardRow[],
+  local: readonly BoardRow[],
+  /** The server list the draft was last reconciled against — how "gone" is told from "new". */
+  previousServer: readonly BoardRow[],
+): BoardRow[] => {
+  const localByVehicle = new Map(local.map((row) => [row.vehicleId, row]));
+  const serverVehicles = new Set(server.map((row) => row.vehicleId));
+  const wasOnServer = new Set(previousServer.map((row) => row.vehicleId));
+
+  const merged = server.map((row) => localByVehicle.get(row.vehicleId) ?? row);
+  const addedLocally = local.filter(
+    (row) => !serverVehicles.has(row.vehicleId) && !wasOnServer.has(row.vehicleId),
+  );
+  return [...merged, ...addedLocally];
+};
+
+/**
  * A vehicle just added from the picker — in the fleet, with nobody on it yet.
  *
  * An EMPTY row is meaningful here and is not a no-op: on the daily board "no crew, no annotations"

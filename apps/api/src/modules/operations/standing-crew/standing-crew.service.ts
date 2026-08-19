@@ -94,24 +94,45 @@ const toDto = (
 });
 
 class OperationsStandingCrewService {
+  /**
+   * The WHOLE Fleet registry, paged.
+   *
+   * This used to be a single `list()` call at MAX_PAGE_SIZE, which was wrong in two ways at once
+   * on any fleet past a hundred vehicles — and `list()` sorts newest-first, so the ones it dropped
+   * were the oldest, exactly the vehicles most likely to be long-standing cash carriers. The
+   * picker silently lost them, and, worse, this same page is the vehicle-CODE lookup: a standing
+   * row whose vehicle fell off the page rendered with a raw ObjectId where its code should be.
+   * A server-side warning was no help to the operator reading that screen.
+   *
+   * Unscoped, exactly as `crew.service.ts` reads the registry for the daily board: the crew surface
+   * is organization-wide, and a branch-scoped read would hide half the fleet from the person
+   * maintaining it.
+   */
+  private async allVehicles(): Promise<{ _id: unknown; code: string }[]> {
+    const vehicles: { _id: unknown; code: string }[] = [];
+    // A hard ceiling so a runaway page count cannot hang a request. Ten pages is 1,000 vehicles —
+    // an order of magnitude past any cash-transfer fleet, and the log says so if it is ever hit.
+    const MAX_PAGES = 10;
+    for (let page = 1; page <= MAX_PAGES; page += 1) {
+      const result = await fleetVehicleRepository.list({ page, pageSize: MAX_PAGE_SIZE });
+      vehicles.push(...result.items);
+      if (vehicles.length >= result.meta.totalItems) return vehicles;
+      if (page === MAX_PAGES) {
+        logger.warn(
+          { totalItems: result.meta.totalItems, read: vehicles.length },
+          'operations: the Fleet registry outgrew the standing-crew page ceiling',
+        );
+      }
+    }
+    return vehicles;
+  }
+
   /** The standing crew, plus the Fleet vehicles that could still join it. */
   async board(): Promise<OperationsStandingCrewBoardDto> {
-    // Unscoped, exactly as `crew.service.ts` reads the registry for the daily board: the crew
-    // surface is organization-wide, and a branch-scoped read here would hide half the fleet from
-    // the person maintaining it. One page at MAX_PAGE_SIZE rather than a scan — the cash-transfer
-    // fleet is tens of vehicles, and a silent truncation would show an incomplete picker, so the
-    // count is asserted below rather than assumed.
-    const [stored, vehiclePage] = await Promise.all([
+    const [stored, vehicles] = await Promise.all([
       operationsStandingCrewRepository.findAll(),
-      fleetVehicleRepository.list({ page: 1, pageSize: MAX_PAGE_SIZE }),
+      this.allVehicles(),
     ]);
-    const vehicles = vehiclePage.items;
-    if (vehiclePage.meta.totalItems > vehicles.length) {
-      logger.warn(
-        { totalItems: vehiclePage.meta.totalItems, shown: vehicles.length },
-        'operations: the standing-crew picker is truncated — the fleet outgrew one page',
-      );
-    }
 
     const codeOf = new Map(vehicles.map((vehicle) => [String(vehicle._id), vehicle.code]));
     const inCrew = new Set(stored.map((row) => String(row.vehicleId)));
@@ -135,7 +156,17 @@ class OperationsStandingCrewService {
   async save(input: SetOperationsStandingCrew, by: string): Promise<{ changedCount: number }> {
     // Vehicle reference integrity, resolved OUTSIDE the transaction: Fleet owns these rows.
     // EXISTENCE only — not "is on today's roster", which is a fact this dateless row cannot have.
+    //
+    // A row that ALREADY EXISTS is exempt. Fleet can retire a vehicle after Operations put it in
+    // the standing crew, and refusing to accept its row would strand it: the end-state check below
+    // demands that vehicle's row in the payload before its crew can be released, so a blanket
+    // rejection made that crew permanently unmovable and the vehicle permanently unremovable. An
+    // unknown vehicle is refused only when somebody is trying to ADD one.
+    const known = new Set(
+      (await operationsStandingCrewRepository.findAll()).map((row) => String(row.vehicleId)),
+    );
     for (const row of input.rows) {
+      if (known.has(row.vehicleId)) continue;
       if ((await fleetVehicleRepository.findById(row.vehicleId)) === null) {
         throw new ValidationError([
           { field: 'body.rows', code: 'UNKNOWN', message: `vehicle ${row.vehicleId} not found` },

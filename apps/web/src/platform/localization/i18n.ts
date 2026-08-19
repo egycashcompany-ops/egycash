@@ -4736,6 +4736,9 @@ const en: Record<string, string> = {
     'Could not save. Someone may already hold a standing place on another vehicle.',
   'operations.standingCrew.unsaved': '{{count}} unsaved change(s)',
   'operations.standingCrew.empty': 'No cash-transfer vehicles yet',
+  'operations.standingCrew.unknownMember': 'Former employee — remove',
+  'operations.standingCrew.removeMember': 'Remove this crew member',
+  'operations.standingCrew.removeVehicle': 'Remove {{code}} from the cash-transfer fleet',
   'operations.standingCrew.emptyHint':
     'This list is explicit, not derived: add the vehicles that carry cash, then give each its usual crew.',
   'operations.crew.direction': 'Direction',
@@ -9529,6 +9532,9 @@ const ar: Record<string, string> = {
   'operations.standingCrew.saveFailed': 'تعذّر الحفظ. قد يكون أحد الأفراد له مكان ثابت على مركبة أخرى.',
   'operations.standingCrew.unsaved': '{{count}} تغيير غير محفوظ',
   'operations.standingCrew.empty': 'لا توجد مركبات نقل أموال بعد',
+  'operations.standingCrew.unknownMember': 'موظف سابق — أزِله',
+  'operations.standingCrew.removeMember': 'إزالة هذا الفرد من الطاقم',
+  'operations.standingCrew.removeVehicle': 'إخراج {{code}} من أسطول نقل الأموال',
   'operations.standingCrew.emptyHint':
     'هذه القائمة صريحة وليست مشتقّة: أضف المركبات التي تنقل الأموال، ثم عيّن لكل واحدة طاقمها المعتاد.',
   'operations.crew.direction': 'الاتجاه',

@@ -699,6 +699,14 @@ export interface OperationsCrewMemberDto {
 export interface OperationsCrewDirectoryDto {
   date: string;
   members: OperationsCrewMemberDto[];
+  /**
+   * Whether the roster came from the ORG CHART rather than the fallback.
+   *
+   * `false` means no operations department is configured, so this is whoever already holds a
+   * requirements row — a frozen list nobody can add to, since adding by hand is gone. It looks
+   * identical to a correctly configured roster, which is why the screen has to be told.
+   */
+  rosterIsDerived: boolean;
 }
 
 export const OperationsCrewDirectoryQuerySchema = z
@@ -1007,6 +1015,25 @@ export const OperationsSettingKeys = {
    * more than it should rather than less, because a filter nobody set up must not hide the fleet.
    */
   CashTransferOperationIds: 'operations.cashTransferOperationIds',
+  /**
+   * Which HR departments hold the operations crew.
+   *
+   * MEMBERSHIP IS THE ORG CHART, not a list Operations keeps. Legacy found its pool exactly this
+   * way — `department:'نقل الاموال', sub_department:'التشغيل'` (contad_app.js:2296) — and ECMS had
+   * replaced it with an explicit roster you added people to. That roster is a second list of who
+   * works here, and a second list is a list that goes stale: a new hire is invisible to Operations
+   * until somebody remembers to add them.
+   *
+   * Which departments those are is configuration for the same reason the cash-transfer التشغيل is:
+   * departments are named by the organization and the code cannot know what this house called
+   * them. Matching the Arabic text is the mistake legacy made and the fleet design refused to
+   * carry forward.
+   *
+   * EMPTY means "fall back to whoever already has a requirements row" — the behaviour before this
+   * setting existed. An unconfigured install keeps the people it has rather than showing an empty
+   * roster with no way to fill it, since adding by hand is no longer possible.
+   */
+  CrewDepartmentIds: 'operations.crewDepartmentIds',
 } as const;
 
 // ── The standing crew (الطاقم الثابت) ───────────────────────────────────────────────────────────

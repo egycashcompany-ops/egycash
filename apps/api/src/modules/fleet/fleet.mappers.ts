@@ -124,9 +124,17 @@ export const toUnavailabilityDto = (doc: FleetUnavailabilityDoc): FleetDriverUna
   updatedAt: iso(doc.updatedAt),
 });
 
-export const toOdometerLogDto = (doc: FleetOdometerLogDoc): FleetOdometerLogDto => ({
+/**
+ * `vehicleCode` is passed in rather than looked up here: a mapper runs once per row and a lookup
+ * per row would be a query per row. The caller resolves the whole page's codes in one go.
+ */
+export const toOdometerLogDto = (
+  doc: FleetOdometerLogDoc,
+  vehicleCode: string | null,
+): FleetOdometerLogDto => ({
   id: String(doc._id),
   vehicleId: String(doc.vehicleId),
+  vehicleCode,
   date: iso(doc.date),
   outReading: doc.outReading,
   inReading: doc.inReading,

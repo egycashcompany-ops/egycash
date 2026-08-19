@@ -10,6 +10,7 @@ import { type Express } from 'express';
 import {
   FleetEvents,
   FleetSettingKeys,
+  MAX_PAGE_SIZE,
   SettingKeys,
   platformPermissions,
   type FleetCatalogItemDto,
@@ -939,6 +940,144 @@ describe('the odometer registry filters SERVER-side', () => {
       (await request(app).get('/api/v1/fleet/odometer').set('Authorization', `Bearer ${token}`))
         .status,
     ).toBe(403);
+  });
+});
+
+// A registry bigger than any one listing of it. The client used to read ONE page of vehicles and
+// join the code onto each odometer row in the browser, which quietly bounded the answer at
+// `MAX_PAGE_SIZE`: a car past that page had no code to show, could not be found in the code
+// filter, and — worst — could not be picked to record a reading against at all.
+//
+// The codes here sort after every other code in the registry (`ZZ…` against the `V…` the rest of
+// the file makes), so the last of them is provably past the first page however many vehicles the
+// earlier tests left behind. Each is created WITHOUT readings, so no other test's counts move.
+describe('a fleet larger than one page of the registry', () => {
+  const BEYOND = MAX_PAGE_SIZE + 5;
+  let farVehicle: FleetVehicleDto;
+
+  beforeAll(async () => {
+    let last: FleetVehicleDto | undefined;
+    for (let i = 0; i < BEYOND; i += 1) {
+      const code = `ZZ${String(i).padStart(4, '0')}`;
+      const res = await createVehicle(adminToken, { code });
+      expect(res.status, `vehicle ${code} created`).toBe(201);
+      last = data<FleetVehicleDto>(res);
+    }
+    // The LAST of them: `ZZ…` sorts after every other code in the registry, so this one sits past
+    // position `BEYOND` however many vehicles the earlier tests happened to leave behind.
+    farVehicle = last as FleetVehicleDto;
+  });
+
+  /** The one full page of the registry the old client used to read. */
+  const firstPage = async (): Promise<FleetVehicleDto[]> => {
+    const res = await request(app)
+      .get('/api/v1/fleet/vehicles')
+      .query({ pageSize: MAX_PAGE_SIZE, sortBy: 'code', sortDir: 'asc' })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    return data<FleetVehicleDto[]>(res);
+  };
+
+  it('the far vehicle is genuinely OFF the first page — the premise of the rest', async () => {
+    const page = await firstPage();
+    expect(page, 'the page is full, so there is a beyond').toHaveLength(MAX_PAGE_SIZE);
+    expect(
+      page.map((v) => v.code),
+      'the far vehicle is not on it',
+    ).not.toContain(farVehicle.code);
+  });
+
+  it('a reading can be RECORDED for a vehicle past the first page', async () => {
+    const res = await request(app)
+      .post('/api/v1/fleet/odometer')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ vehicleId: farVehicle.id, reading: 500, date: '2026-11-01' });
+    expect(res.status, 'recording is not bounded by the registry page').toBe(201);
+    expect(data<FleetOdometerLogDto>(res).vehicleCode).toBe(farVehicle.code);
+  });
+
+  it('its odometer row carries its own CODE, not a blank', async () => {
+    await request(app)
+      .post('/api/v1/fleet/odometer')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ vehicleId: farVehicle.id, reading: 900, date: '2026-11-02' });
+
+    const res = await request(app)
+      .get('/api/v1/fleet/odometer')
+      .query({ vehicleCodes: farVehicle.code, pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const rows = data<FleetOdometerLogDto[]>(res);
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(row.vehicleCode, 'every row names its vehicle').toBe(farVehicle.code);
+      expect(row.vehicleId).toBe(farVehicle.id);
+    }
+  });
+
+  it('a SEARCH by that code finds it, though a page of the registry does not', async () => {
+    const res = await request(app)
+      .get('/api/v1/fleet/vehicles')
+      .query({ search: farVehicle.code, pageSize: 20 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const found = data<FleetVehicleDto[]>(res);
+    expect(
+      found.map((v) => v.id),
+      'the search answers with the right car',
+    ).toContain(farVehicle.id);
+  });
+
+  it('filtering the odometer BY that code returns its rows and no others', async () => {
+    const res = await request(app)
+      .get('/api/v1/fleet/odometer')
+      .query({ vehicleCodes: farVehicle.code, pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const rows = data<FleetOdometerLogDto[]>(res);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(new Set(rows.map((r) => r.vehicleId))).toEqual(new Set([farVehicle.id]));
+  });
+
+  it('a vehicle ON the first page is unchanged — no regression', async () => {
+    // Taken from the page itself, so this holds whatever the earlier tests left in the registry.
+    const [onPage] = await firstPage();
+    const near = onPage as FleetVehicleDto;
+    const before = await request(app)
+      .get('/api/v1/fleet/odometer/expected')
+      .query({ vehicleId: near.id })
+      .set('Authorization', `Bearer ${adminToken}`);
+    const floor = data<{ expectedReading: number | null }>(before).expectedReading ?? 0;
+
+    const recorded = await request(app)
+      .post('/api/v1/fleet/odometer')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ vehicleId: near.id, reading: floor + 10, date: '2026-11-03' });
+    expect(recorded.status).toBe(201);
+    expect(data<FleetOdometerLogDto>(recorded).vehicleCode).toBe(near.code);
+
+    const res = await request(app)
+      .get('/api/v1/fleet/odometer')
+      .query({ vehicleCodes: near.code, pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    const rows = data<FleetOdometerLogDto[]>(res);
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) expect(row.vehicleCode).toBe(near.code);
+  });
+
+  it('a CORRECTION answers with the code too, so the row never loses its name', async () => {
+    const created = data<FleetOdometerLogDto>(
+      await request(app)
+        .post('/api/v1/fleet/odometer')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ vehicleId: farVehicle.id, reading: 1500, date: '2026-11-04' }),
+    );
+    const res = await request(app)
+      .patch(`/api/v1/fleet/odometer/${created.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ outReading: 1600, version: created.version });
+    expect(res.status).toBe(200);
+    expect(data<FleetOdometerLogDto>(res).vehicleCode).toBe(farVehicle.code);
   });
 });
 

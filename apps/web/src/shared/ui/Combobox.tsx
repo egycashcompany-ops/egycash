@@ -23,6 +23,7 @@ export const Combobox = ({
   id,
   clearLabel,
   onBlur,
+  onSearch,
 }: {
   value: string;
   options: readonly string[];
@@ -35,6 +36,15 @@ export const Combobox = ({
   id?: string;
   clearLabel: string;
   onBlur?: () => void;
+  /**
+   * Hand the typed query to the OWNER of the options instead of filtering here.
+   *
+   * A catalog small enough to hold in the page is filtered locally, which is the default. One
+   * that outgrows a page — a vehicle registry — cannot be: filtering what happens to have been
+   * fetched answers "which of the first N" and quietly hides the rest. When this is given,
+   * `options` are taken as the answer already.
+   */
+  onSearch?: (query: string) => void;
 }): JSX.Element => {
   const listId = useId();
   const [open, setOpen] = useState(false);
@@ -54,11 +64,12 @@ export const Combobox = ({
     [options, value],
   );
 
+  const remote = onSearch !== undefined;
   const matches = useMemo(() => {
     const q = fold(query);
-    if (!open || q === '') return all;
+    if (remote || !open || q === '') return all;
     return all.filter((o) => fold(o).includes(q));
-  }, [open, query, all]);
+  }, [open, query, all, remote]);
 
   useEffect(() => {
     if (!open) return;
@@ -130,10 +141,13 @@ export const Combobox = ({
           setQuery(e.target.value);
           setActive(0);
           if (!open) setOpen(true);
+          onSearch?.(e.target.value);
         }}
         onFocus={() => {
           setOpen(true);
           setQuery('');
+          // The owner's results still hold the last query; ask for the opening answer again.
+          onSearch?.('');
         }}
         onKeyDown={onKeyDown}
         onBlur={() => {

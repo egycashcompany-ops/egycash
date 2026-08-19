@@ -15,7 +15,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
@@ -34,6 +34,15 @@ import { authSlice } from '../../store/authSlice';
 import { translate } from '../../platform/localization/i18n';
 import { listKey } from '../../shared/lib/query-keys';
 import { OdometerPage } from './pages/OdometerPage';
+import { RecordOdometerDialog } from './components/RecordOdometerDialog';
+
+// `Dialog` portals into `document.body`; the suite runs without a DOM. Rendering the portal's
+// tree in place is enough to read what the dialog produces.
+(globalThis as Record<string, unknown>).document ??= { body: {} };
+vi.mock('react-dom', async () => {
+  const actual = await vi.importActual<Record<string, unknown>>('react-dom');
+  return { ...actual, createPortal: (node: unknown) => node };
+});
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -43,9 +52,19 @@ const page = <T,>(items: T[]) => ({
 });
 
 const VEHICLE_ID = 'v1';
+/** The registry SEARCH the filter and the dialog now make — a shortlist for a query, not a page. */
+const VEHICLE_SEARCH_KEY = (search?: string) =>
+  listKey('fleet', 'vehicles', {
+    search,
+    pageSize: 20,
+    sortBy: 'code',
+    sortDir: 'asc',
+  });
 const log = (o: Partial<FleetOdometerLogDto> = {}): FleetOdometerLogDto => ({
   id: 'o1',
   vehicleId: VEHICLE_ID,
+  // A SERVER fact on the row now, not a client join against a page of the registry.
+  vehicleCode: '150',
   date: '2026-08-18T00:00:00.000Z',
   outReading: 150000,
   inReading: 150250,
@@ -98,7 +117,7 @@ const client = (
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   qc.setQueryData(ODOMETER_KEY(keyOver), page(logs));
   qc.setQueryData(
-    listKey('fleet', 'vehicles', { pageSize: MAX_PAGE_SIZE, sortBy: 'code', sortDir: 'asc' }),
+    VEHICLE_SEARCH_KEY(),
     page([
       { id: VEHICLE_ID, code: '150', plateNumber: 'س ص 150' },
       { id: 'v2', code: '151', plateNumber: 'س ص 151' },
@@ -138,8 +157,38 @@ const thead = (markup: string): string =>
   markup.slice(markup.indexOf('<thead'), markup.indexOf('</thead>'));
 const tbody = (markup: string): string =>
   markup.slice(markup.indexOf('<tbody'), markup.indexOf('</tbody>'));
+/** Just the filter bar: everything the `FilterBar` container opens, up to the table. */
+const filterBar = (markup: string): string =>
+  markup.slice(
+    markup.indexOf('<div class="flex flex-wrap items-center gap-2'),
+    markup.indexOf('<table'),
+  );
+
+/**
+ * The header cells in document order, as TEXT — sortable headers wrap their label in a button and
+ * carry a chevron, so tags and svg are stripped rather than matched around.
+ *
+ * Position is read from this list, never from `indexOf(label)`: the serial header is the single
+ * letter «م», which occurs inside half the other Arabic headers too, and a substring search would
+ * happily "find" it in the wrong column.
+ */
+const headers = (markup: string): string[] =>
+  [...thead(markup).matchAll(/<th\b[^>]*>([\s\S]*?)<\/th>/g)].map((m) =>
+    (m[1] as string).replace(/<[^>]*>/g, '').trim(),
+  );
+
+/** The first cell of every body row, as text — the serial column, once it is in place. */
+const firstCells = (markup: string): string[] =>
+  tbody(markup)
+    .split('<tr')
+    .slice(1)
+    .map((row) => {
+      const first = /<td\b[^>]*>([\s\S]*?)<\/td>/.exec(row);
+      return first === null ? '' : (first[1] as string).replace(/<[^>]*>/g, '').trim();
+    });
 
 const REQUIRED_COLUMNS = [
+  'fleet.odometer.columns.no',
   'fleet.odometer.fields.date',
   'fleet.odometer.columns.vehicle',
   'fleet.odometer.columns.driver1',
@@ -155,15 +204,60 @@ const REQUIRED_COLUMNS = [
 // ── 1. The table ────────────────────────────────────────────────────────────
 
 describe('the odometer table', () => {
-  it('renders the ten columns in the required order', () => {
-    const head = thead(render());
-    const at = REQUIRED_COLUMNS.map((key) => ({ key, at: head.indexOf(t(key)) }));
-    for (const entry of at) expect(entry.at, `${entry.key} present`).toBeGreaterThan(-1);
-    for (let i = 1; i < at.length; i += 1) {
-      const prev = at[i - 1] as { key: string; at: number };
-      const cur = at[i] as { key: string; at: number };
-      expect(cur.at, `${cur.key} after ${prev.key}`).toBeGreaterThan(prev.at);
-    }
+  it('renders the eleven columns in the required order, and nothing else', () => {
+    // Exact equality, not "each one appears after the last": that is what makes this catch a
+    // column silently added, dropped or moved, rather than only a reordering.
+    expect(headers(render())).toEqual(REQUIRED_COLUMNS.map((key) => t(key)));
+  });
+
+  it('numbers rows THROUGH the pagination — page 2 does not restart at 1', () => {
+    // Three rows of a 25-per-page list, sitting on page 2: they are numbers 26, 27 and 28 of the
+    // filtered list, not 1, 2 and 3 of the page. The numbering is Arabic-Indic like every other
+    // figure in this table.
+    const logs = [log({ id: 'a' }), log({ id: 'b' }), log({ id: 'c' })];
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    qc.setQueryData(ODOMETER_KEY({ page: 2 }), {
+      items: logs,
+      meta: { page: 2, pageSize: 25, totalItems: 28, totalPages: 2 },
+    });
+    qc.setQueryData(
+      VEHICLE_SEARCH_KEY(),
+      page([{ id: VEHICLE_ID, code: '150', plateNumber: 'س ص 150' }]),
+    );
+    qc.setQueryData(['fleet', 'odometer', 'alarms'], [alarm()]);
+
+    const serials = firstCells(render({ route: '/fleet/odometer?page=2', qc }));
+    expect(serials, 'page 2 of 25 starts at 26').toEqual(['٢٦', '٢٧', '٢٨']);
+  });
+
+  it('numbers from the SERVER’s page size, not the one the URL asked for', () => {
+    // The server may clamp a page size it was handed. Numbering off the unclamped request would
+    // put the wrong serial beside every row, so the offset follows what actually came back.
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    qc.setQueryData(ODOMETER_KEY({ page: 3, pageSize: 500 }), {
+      items: [log({ id: 'a' }), log({ id: 'b' })],
+      // Asked for 500 a page; the server paginated by 200.
+      meta: { page: 3, pageSize: 200, totalItems: 402, totalPages: 3 },
+    });
+    qc.setQueryData(
+      VEHICLE_SEARCH_KEY(),
+      page([{ id: VEHICLE_ID, code: '150', plateNumber: 'س ص 150' }]),
+    );
+    qc.setQueryData(['fleet', 'odometer', 'alarms'], [alarm()]);
+
+    // 2 × 200 + 1 = 401, not 2 × 500 + 1 = 1001.
+    expect(firstCells(render({ route: '/fleet/odometer?page=3&size=500', qc }))).toEqual([
+      '٤٠١',
+      '٤٠٢',
+    ]);
+  });
+
+  it('opens the table with the serial column «م»', () => {
+    const head = headers(render());
+    expect(head[0], 'the first header is the serial').toBe(t('fleet.odometer.columns.no'));
+    expect(t('fleet.odometer.columns.no')).toBe('م');
+    // …and it is the first CELL of every row, not merely the first header.
+    expect(firstCells(render()), 'the first cell of page 1 is row 1').toEqual(['١']);
   });
 
   it('labels every column in BOTH locales — no header renders as a raw key', () => {
@@ -182,6 +276,48 @@ describe('the odometer table', () => {
     expect(head).toContain(t('fleet.odometer.columns.driver2'));
     // The old single "Drivers" column is gone — the two slots are distinct facts.
     expect(head).not.toContain(`>${t('fleet.odometer.columns.drivers')}<`);
+  });
+
+  it('keeps an unbreakable note inside its column instead of widening the table', () => {
+    // A table column is sized by its content, and a note carrying an unbroken run of characters
+    // (a pasted reference, a URL) has no break point to wrap at — so the column grew to fit it and
+    // pushed the maintenance figure and the row's actions off the screen. Measured in a browser
+    // before the fix: the table went from 1134px to 2943px inside a 1134px wrapper.
+    const run = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'.repeat(4);
+    const body = tbody(render({ qc: client([log({ notes: run })]) }));
+    const cell = body.slice(body.indexOf(run) - 200, body.indexOf(run));
+    // Bounded, and allowed to break inside the run — either alone is not enough: without a width
+    // there is no line box to break against, and without breaking the box just overflows.
+    expect(cell, 'the note is bounded').toContain('max-w-');
+    expect(cell, 'the note may break inside a word').toContain('break-words');
+    // It is still a block, or `max-width` has nothing to apply to.
+    expect(cell).toContain('block');
+  });
+
+  it('shows the code of a vehicle the registry answers for only on a LATER page', () => {
+    // The blocker this replaces: the code was joined in the browser from ONE page of the
+    // registry, capped at `MAX_PAGE_SIZE`, so every car past that page printed a dash. Here the
+    // registry search answers with a DIFFERENT car entirely — the way it would for a car the
+    // shortlist does not carry — and the row still names its own.
+    const qc = client([log({ vehicleId: 'v101', vehicleCode: '101' })]);
+    qc.setQueryData(
+      VEHICLE_SEARCH_KEY(),
+      page([{ id: VEHICLE_ID, code: '150', plateNumber: 'س ص 150' }]),
+    );
+    // The third cell is the code column (after the serial and the date).
+    const cells = [...tbody(render({ qc })).matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/g)].map((m) =>
+      (m[1] as string).replace(/<[^>]*>/g, '').trim(),
+    );
+    expect(cells[2], 'the row carries its own code, not a dash').toBe('101');
+  });
+
+  it('never joins the code against a page of the registry', () => {
+    const source = readFileSync(join(HERE, 'pages/OdometerPage.tsx'), 'utf8');
+    // The code is a server fact on the row. A client-side map keyed by vehicle id is exactly the
+    // bounded join that made car 101 nameless.
+    expect(source).toContain('log.vehicleCode');
+    expect(source).not.toMatch(/vehicleCode\.get\(/);
+    expect(source).not.toContain('pageSize: MAX_PAGE_SIZE');
   });
 
   it('shows the vehicle CODE, never the vehicle id', () => {
@@ -277,27 +413,48 @@ describe('the filter bar', () => {
     expect(html).toContain('id="odometer-to"');
   });
 
-  it('carries NO visible label — every filter is named by its own control', () => {
-    const html = render();
-    const bar = html.slice(
-      html.indexOf('<div class="flex flex-wrap items-center gap-2'),
-      html.indexOf('<table'),
+  it('stacks NO label above any filter — each one is named on its own line', () => {
+    const bar = filterBar(render());
+    // `Field` is the stacked-label pattern, and its label is the `block` one. That is what this
+    // bar refuses: a caption on a line of its own doubles the height of the row and leaves the
+    // controls out of step with the multi-selects, which name themselves inside their trigger.
+    expect(bar, 'no block-level label above a control').not.toContain('block text-sm font-medium');
+    // Every `<label>` in the bar is an INLINE row that contains its own control.
+    for (const open of bar.split('<label').slice(1)) {
+      const label = open.slice(0, open.indexOf('</label>'));
+      expect(label, 'label lays its caption beside the control').toContain('flex');
+      expect(label, 'label lays its caption beside the control').toContain('items-center');
+      expect(label, 'label owns the control it names').toContain('<input');
+    }
+  });
+
+  it('tells the two date bounds apart by a caption the eye can read', () => {
+    const bar = filterBar(render());
+    // The heart of it: a date input paints its own `yyyy/mm/dd` hint and ignores `placeholder`,
+    // so with nothing beside them the two bounds are the same control drawn twice. The caption is
+    // VISIBLE text — not `sr-only`, not a `title` that needs a pointer resting on it.
+    expect(bar, 'the start bound is captioned').toContain(
+      `>${t('fleet.odometer.fromDate')}</span>`,
     );
-    // A `<label>` above a filter is what this removes. `MultiSelect` names itself in its trigger
-    // and the text controls carry `aria-label`, so nothing is lost to a screen reader.
-    expect(bar, 'no label element in the filter bar').not.toContain('<label');
-    expect(bar).not.toContain('</label>');
+    expect(bar, 'the end bound is captioned').toContain(`>${t('fleet.odometer.toDate')}</span>`);
+    expect(t('fleet.odometer.fromDate'), 'the two captions differ').not.toBe(
+      t('fleet.odometer.toDate'),
+    );
+    // And each caption sits in the same `<label>` as the bound it names, so it is not merely
+    // near the control — it belongs to it.
+    for (const [id, key] of [
+      ['odometer-from', 'fleet.odometer.fromDate'],
+      ['odometer-to', 'fleet.odometer.toDate'],
+    ] as const) {
+      const label = bar.split('<label').find((chunk) => chunk.includes(`id="${id}"`));
+      expect(label, `${id} lives in a label`).toBeDefined();
+      expect(label as string, `${id} is captioned`).toContain(t(key));
+    }
   });
 
   it('still names every filter for a screen reader and a pointer', () => {
-    const html = render();
-    const bar = html.slice(
-      html.indexOf('<div class="flex flex-wrap items-center gap-2'),
-      html.indexOf('<table'),
-    );
-    // The two date bounds are the ones a label used to tell apart: a date input ignores
-    // `placeholder`, so they carry `aria-label` AND `title` instead.
-    for (const key of ['fleet.odometer.from', 'fleet.odometer.to']) {
+    const bar = filterBar(render());
+    for (const key of ['fleet.odometer.fromDate', 'fleet.odometer.toDate']) {
       expect(bar, `${key} aria-label`).toContain(`aria-label="${t(key)}"`);
       expect(bar, `${key} title`).toContain(`title="${t(key)}"`);
     }
@@ -306,6 +463,50 @@ describe('the filter bar', () => {
     expect(bar).toContain(`placeholder="${t('fleet.odometer.driverPlaceholder')}"`);
     expect(bar).toContain(t('fleet.odometer.columns.vehicle'));
     expect(bar).toContain(t('fleet.odometer.columns.alert'));
+  });
+
+  it('lines all five filters up on ONE row, none of them taking the leftover space', () => {
+    const html = render();
+    const bar = filterBar(html);
+    // The container stops wrapping once the viewport is wide enough to hold the whole row, and
+    // not one pixel before: `flex-nowrap` does not shorten a row that will not fit, it pushes it
+    // off the page. Below that it still wraps — the fallback for a screen too narrow for five.
+    const open = html.slice(html.indexOf('<div class="flex flex-wrap items-center gap-2'));
+    expect(open.slice(0, open.indexOf('>')), 'one row on a desktop').toContain(
+      'min-[1400px]:flex-nowrap',
+    );
+    expect(open.slice(0, open.indexOf('>')), 'wrap is the narrow-screen fallback').toContain(
+      'flex-wrap',
+    );
+    // Nothing in the bar may grow into the space the others leave. (`w-full` is not the test:
+    // `Input` carries it at its base and merely fills the fixed-width wrapper it sits in.)
+    expect(bar, 'no filter takes the leftover space').not.toContain('flex-1');
+    expect(bar, 'no filter grows').not.toMatch(/\bgrow\b/);
+    expect(bar, 'no filter is sized by the row').not.toMatch(/\bbasis-/);
+    // Every filter holds its own width instead of being squeezed by its neighbours.
+    expect(bar.match(/shrink-0/g)?.length ?? 0, 'each filter is shrink-0').toBeGreaterThanOrEqual(
+      5,
+    );
+    // The date bounds are the narrow ones — a date needs ten characters, not a share of the row.
+    expect(bar.match(/class="w-36"/g)?.length ?? 0, 'both dates are narrow').toBe(2);
+    // …and the two text-ish filters are the medium ones.
+    expect(bar, 'the driver box is medium').toContain('w-44');
+  });
+
+  it('asks the REGISTRY for codes matching what was typed, not the first page of it', () => {
+    const source = readFileSync(join(HERE, 'pages/OdometerPage.tsx'), 'utf8');
+    // The search term goes to the server; the options are its answer.
+    expect(source).toContain('onSearch={setCodeQuery}');
+    expect(source).toContain('search: codeQuery.trim()');
+    expect(source).not.toContain('pageSize: MAX_PAGE_SIZE');
+  });
+
+  it('builds its options from the search, with the selection kept reachable', () => {
+    // `MultiSelect` renders its list only once opened, and the node-env suite cannot open it — so
+    // the rule itself lives in `vehicleCodeOptions` and is proven in its own spec. What belongs
+    // here is that the page feeds it the search's answer and the current selection, and no more.
+    const source = readFileSync(join(HERE, 'pages/OdometerPage.tsx'), 'utf8');
+    expect(source).toContain('vehicleCodeOptions(vehicles.data?.items ?? [], vehicleCodes)');
   });
 
   it('takes SEVERAL vehicles and SEVERAL alert levels at once', () => {
@@ -397,12 +598,17 @@ describe('the actions respect the existing grants', () => {
   });
 
   it('carries a single filtered vehicle into the record dialog, as it always did', () => {
-    // The page used to pass its one filtered vehicle to the dialog. The multi-select must not
-    // lose that; with SEVERAL selected there is no single answer, so it passes none.
+    // The page passes its one filtered vehicle to the dialog. The multi-select must not lose
+    // that; with SEVERAL selected there is no single answer, so it passes none.
+    //
+    // By CODE, not by id: the page no longer holds the whole registry to look an id up in, and
+    // resolving one against the current search shortlist would drop the carry-over for exactly
+    // the cars that are the point of this — a filtered code the shortlist does not carry.
     const source = readFileSync(join(HERE, 'pages/OdometerPage.tsx'), 'utf8');
     const mount = source.slice(source.indexOf('<RecordOdometerDialog'));
     expect(mount).toContain('vehicleCodes.length === 1');
-    expect(mount).toContain('v.code === vehicleCodes[0]');
+    expect(mount).toContain('initialVehicleCode=');
+    expect(mount, 'no id lookup against a shortlist').not.toContain('v.code === vehicleCodes[0]');
   });
 
   it('offers recording only with fleetOdometer.record', () => {
@@ -429,9 +635,75 @@ describe('the actions respect the existing grants', () => {
 describe('recording a reading', () => {
   const source = readFileSync(join(HERE, 'components/RecordOdometerDialog.tsx'), 'utf8');
 
+  /**
+   * The dialog renders through a portal into `document.body`, which the node-env suite has not
+   * got. Stubbing the portal renders its own tree in place, which is all these read.
+   */
+  const renderDialog = ({
+    qc,
+    initialVehicleCode = '',
+  }: {
+    qc: QueryClient;
+    initialVehicleCode?: string;
+  }): string => {
+    const store = configureStore({
+      reducer: { locale: localeSlice.reducer, auth: authSlice.reducer },
+      preloadedState: {
+        locale: { locale: 'ar' as Locale, dir: 'rtl' as const },
+        auth: {
+          me: {
+            id: 'u1',
+            permissions: Object.fromEntries(ALL.map((k) => [k, 'organization'])),
+          } as unknown as MeDto,
+          status: 'signedIn' as const,
+        },
+      },
+    });
+    return renderToStaticMarkup(
+      <Provider store={store}>
+        <QueryClientProvider client={qc}>
+          <MemoryRouter>
+            <RecordOdometerDialog
+              open
+              onClose={() => undefined}
+              initialVehicleCode={initialVehicleCode}
+            />
+          </MemoryRouter>
+        </QueryClientProvider>
+      </Provider>,
+    );
+  };
+
   it('lets the operator TYPE a vehicle code instead of scrolling a dropdown', () => {
     expect(source).toContain('Combobox');
     expect(source).not.toContain('VehicleSelect');
+  });
+
+  it('searches the REGISTRY for a code, so any car in the fleet can be recorded', () => {
+    // The blocker: the options were one page of the registry filtered in the browser, so a car
+    // past `MAX_PAGE_SIZE` by code could not be picked — and therefore could not have a reading
+    // recorded at all. The typed query now goes to the server.
+    expect(source).toContain('onSearch={setCodeQuery}');
+    expect(source).toContain('search: codeQuery.trim()');
+    expect(source).not.toContain('pageSize: MAX_PAGE_SIZE');
+    // A picked code outlives the search that found it, or the box blanks as the operator types on.
+    expect(source).toContain('pickedCode');
+  });
+
+  it('SHOWS a carried-over code straight away, however far down the registry its car sits', () => {
+    // The code is shown from the first paint, before the registry has answered for it — an effect
+    // runs after the paint, so seeding only there would flash an empty vehicle box. Rendered here
+    // with the registry answering about a DIFFERENT car, the way a shortlist would.
+    for (const code of ['150', 'ZZ0104']) {
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      qc.setQueryData(
+        VEHICLE_SEARCH_KEY(),
+        page([{ id: VEHICLE_ID, code: '150', plateNumber: 'س ص 150' }]),
+      );
+      const html = renderDialog({ qc, initialVehicleCode: code });
+      const box = html.slice(html.indexOf('role="combobox"'));
+      expect(/value="([^"]*)"/.exec(box)?.[1], `${code} is shown`).toBe(code);
+    }
   });
 
   it('cannot save a code the registry does not carry', () => {
@@ -505,6 +777,24 @@ describe('recording a reading', () => {
         expect(translate(locale, key), `${key} in ${locale}`).not.toBe(key);
       }
     }
+  });
+
+  it('names the two driver slots by their SHIFT, as the table does', () => {
+    // The slots are not interchangeable — slot 1 is the morning, slot 2 the evening — and the
+    // dialog is where that is decided. It used to borrow the roster screens' generic
+    // "السائق الأول/الثاني", which named the order and not the shift.
+    expect(source).toContain("t('fleet.odometer.columns.driver1')");
+    expect(source).toContain("t('fleet.odometer.columns.driver2')");
+    expect(source).not.toContain("t('fleet.odometer.fields.driver1')");
+    expect(source).not.toContain("t('fleet.odometer.fields.driver2')");
+    // The words themselves carry the shift, in both locales.
+    for (const locale of ['ar', 'en'] as Locale[]) {
+      for (const key of ['fleet.odometer.columns.driver1', 'fleet.odometer.columns.driver2']) {
+        expect(translate(locale, key), `${key} in ${locale}`).not.toBe(key);
+      }
+    }
+    expect(t('fleet.odometer.columns.driver1')).toContain('صباحي');
+    expect(t('fleet.odometer.columns.driver2')).toContain('مسائي');
   });
 
   it('asks for nothing the server derives — no km, no closing reading', () => {

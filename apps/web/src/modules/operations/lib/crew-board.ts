@@ -165,12 +165,14 @@ export const removeFromBoard = (
  * "لما أنقل قائد طاقم على سيارة جديدة يسحب الأخصائيين اللى معاه" — moving a captain moves the crew,
  * because a crew is what was decided, not three independent seats.
  *
- * WHICH specialists are "with him". The board draws each slot as CREW_SLOT_CAPACITY stacked cards,
- * so the three columns line up into rows on screen: the TOP cards of captain / specialist 1 /
- * specialist 2 are visibly one crew, and the bottom cards are the other. Companions are therefore
- * the specialists sharing the captain's CARD POSITION — which is the pairing the operator can see,
- * and the only one that stays right when a vehicle carries two captains. Taking every specialist on
- * the vehicle would drag the OTHER captain's two along with him.
+ * WHICH specialists are "with him" depends on whether he is alone on the vehicle.
+ *
+ *   · ONE CAPTAIN → ALL of that vehicle's specialists. There is no other captain they could belong
+ *     to, so they are his crew whichever card they sit on, and a whole van moves as a whole van.
+ *   · TWO CAPTAINS → only the specialists sharing his CARD POSITION. The board draws each slot as
+ *     CREW_SLOT_CAPACITY stacked cards, so the three columns line up into rows on screen: the top
+ *     cards are visibly one crew and the bottom cards the other. Taking every specialist here would
+ *     drag the OTHER captain's two along with him, which is not a move anybody asked for.
  *
  * It applies only to a captain who is already on a vehicle. From the pool there is nobody "with
  * him" yet, so he arrives alone — dragging one card must not silently move three people who were
@@ -188,12 +190,19 @@ export const assignCaptainWithCrew = (
 
   const source = rows.find((row) => row.vehicleId === from.vehicleId);
   if (source === undefined) return next;
+  const lone = slotOccupants(source, 'captain').length <= 1;
 
   for (const slot of ['specialist1', 'specialist2'] as const) {
-    const companion = slotValue(source, slot, from.position);
-    // `assignToSlot` already cleared this member wherever they were, so this MOVES them rather
-    // than copying: the source card is vacated by the same call that fills the target.
-    if (companion !== null) next = assignToSlot(next, vehicleId, slot, position, companion);
+    const held = slotValue(source, slot, from.position);
+    const companions = lone ? slotOccupants(source, slot) : held === null ? [] : [held];
+    companions.forEach((companion, index) => {
+      // One companion rides on the captain's own card so the crew stays visibly aligned; two fill
+      // both cards of the slot, because there is nowhere else for the second to go.
+      const at = companions.length === 1 ? position : index;
+      // `assignToSlot` already cleared this member wherever they were, so this MOVES them rather
+      // than copying: the source card is vacated by the same call that fills the target.
+      next = assignToSlot(next, vehicleId, slot, at, companion);
+    });
   }
   return next;
 };

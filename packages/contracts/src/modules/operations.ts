@@ -968,6 +968,22 @@ export const OperationsCrewBoardQuerySchema = z
 export type OperationsCrewBoardQuery = z.infer<typeof OperationsCrewBoardQuerySchema>;
 
 
+export const OperationsSettingKeys = {
+  /**
+   * Which Fleet `operation` (التشغيل) catalog items mark a vehicle as a CASH-TRANSFER vehicle.
+   *
+   * This is configuration, not a constant, because the catalog is named by the administrator and
+   * is deliberately never seeded (fleet.seed.ts:40-43) — the code cannot know what this house
+   * called it. Matching the Arabic text "نقل أموال" would be exactly legacy bug H5, which the
+   * frozen fleet design records as misspelled, "never matches real data", and explicitly not
+   * carried; a mis-set catalog name must not silently empty the standing-crew picker.
+   *
+   * DEFAULT EMPTY, meaning NO FILTER — every vehicle is offered. An unconfigured install shows
+   * more than it should rather than less, because a filter nobody set up must not hide the fleet.
+   */
+  CashTransferOperationIds: 'operations.cashTransferOperationIds',
+} as const;
+
 // ── The standing crew (الطاقم الثابت) ───────────────────────────────────────────────────────────
 //
 // NEW ECMS CAPABILITY. Legacy had NO standing crew: `/tashghela` rendered `t.leader || ""`
@@ -1019,6 +1035,14 @@ export interface OperationsStandingCrewBoardDto {
    * side of `fleet-boundary.ts`. One request, one boundary, no second module on the client.
    */
   available: { vehicleId: string; vehicleCode: string }[];
+  /**
+   * Whether `available` was narrowed to the Fleet-designated cash-transfer vehicles.
+   *
+   * `false` means no التشغيل has been configured yet, so EVERY vehicle is being offered — which
+   * the screen must say out loud. Silently offering the whole registry looks identical to
+   * offering a correctly filtered one, and the operator would never learn the setting exists.
+   */
+  availableIsFiltered: boolean;
 }
 
 const standingCrewSlot = (): z.ZodOptional<z.ZodArray<z.ZodString>> =>

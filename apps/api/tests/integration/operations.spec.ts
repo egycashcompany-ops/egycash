@@ -64,6 +64,8 @@ let offRosterVehicleId: string;
  * created at boot, and a case further down needs to make a vehicle of its own.
  */
 let mkVehicle: (n: number) => Promise<string>;
+/** The seeded super-admin's user id — assigned in `beforeAll`, like `mkVehicle` above. */
+let adminId: string;
 let captainId: string;
 let specialist1Id: string;
 let specialist2Id: string;
@@ -188,7 +190,7 @@ beforeAll(async () => {
       (p) => p.key,
     ),
   );
-  const adminId = await mkUser('ops-admin@ecms.local');
+  adminId = await mkUser('ops-admin@ecms.local');
   await rbacService.ensureAssignment(adminId, String(superAdmin._id), 'organization');
 
   const viewer = await rbacService.createRole(
@@ -1194,6 +1196,52 @@ describe('the standing crew — the permanent crew of each cash-transfer vehicle
 
   it('refuses removing a vehicle that is not in the standing crew', async () => {
     expect((await drop(vehicleBId)).status).toBe(404);
+  });
+
+  it('offers only the Fleet-designated cash-transfer vehicles once one is configured', async () => {
+    // The designation is Fleet's own `operationId` (التشغيل) — the ECMS form of the legacy
+    // `cars.department` that held "نقل اموال". WHICH catalog item means that is configuration,
+    // because the catalog is admin-named and never seeded: matching the Arabic text would be
+    // legacy bug H5, recorded as "never matches real data" and explicitly not carried.
+    const { settingsService } = await import('../../src/platform/settings');
+    const { OperationsSettingKeys } = await import('@ecms/contracts');
+
+    // Unconfigured: EVERY vehicle is offered, and the board says so rather than looking filtered.
+    const before = data<OperationsStandingCrewBoardDto>(await standing());
+    expect(before.availableIsFiltered).toBe(false);
+    expect(before.available.map((v) => v.vehicleId)).toContain(offRosterVehicleId);
+
+    const cashOperation = await request(app)
+      .post('/api/v1/fleet/catalogs')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ kind: 'operation', name: { ar: 'نقل أموال', en: 'Cash transfer' } });
+    expect(cashOperation.status).toBe(201);
+    const cashOperationId = data<{ id: string }>(cashOperation).id;
+
+    // One vehicle is designated; the other is not.
+    const { FleetVehicleModel } = await import('../../src/modules/fleet/vehicles/vehicle.model');
+    const { Types } = await import('mongoose');
+    await FleetVehicleModel.collection.updateOne(
+      { _id: new Types.ObjectId(offRosterVehicleId) },
+      { $set: { operationId: new Types.ObjectId(cashOperationId) } },
+    );
+    await settingsService.set(
+      { userId: adminId, branchId: null, permissions: [], roles: [] } as never,
+      { key: OperationsSettingKeys.CashTransferOperationIds, scope: 'organization', value: [cashOperationId] },
+    );
+
+    const after = data<OperationsStandingCrewBoardDto>(await standing());
+    expect(after.availableIsFiltered).toBe(true);
+    expect(after.available.map((v) => v.vehicleId)).toEqual([offRosterVehicleId]);
+
+    // A vehicle ALREADY in the standing crew is not removed by the filter: Fleet re-classifying a
+    // van does not un-crew it behind Operations' back.
+    expect(after.rows.map((r) => r.vehicleId)).toContain(vehicleAId);
+
+    await settingsService.set(
+      { userId: adminId, branchId: null, permissions: [], roles: [] } as never,
+      { key: OperationsSettingKeys.CashTransferOperationIds, scope: 'organization', value: [] },
+    );
   });
 
   it('rides the EXISTING crew grants and declares none of its own', async () => {

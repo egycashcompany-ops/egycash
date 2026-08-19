@@ -192,6 +192,13 @@ export const StandingCrewPage = (): JSX.Element => {
               </Select>
             </label>
           )}
+          {standing.data?.availableIsFiltered === false && (
+            // Said out loud: an unfiltered picker looks exactly like a correctly filtered one, and
+            // the operator would otherwise never learn why a scrapped van is on offer.
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              {t('operations.standingCrew.unfiltered')}
+            </p>
+          )}
           {dirty && (
             <p className="text-sm text-amber-700 dark:text-amber-400">
               {t('operations.standingCrew.unsaved', { count: pending.length })}

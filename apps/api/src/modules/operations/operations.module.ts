@@ -21,6 +21,7 @@ import { buildOperationsShipmentsRouter } from './shipments/shipment.routes';
 import { buildOperationsDaysRouter } from './days/day.routes';
 import { buildOperationsCrewRouter } from './crew/crew.routes';
 import { buildOperationsStandingCrewRouter } from './standing-crew/standing-crew.routes';
+import { registerOperationsSettings } from './operations.settings';
 import { buildOperationsSecuredRouter } from './secured/secured.routes';
 import { buildOperationsAssignmentsRouter } from './assignments/assignment.routes';
 import { buildOperationsMobileRouter } from './mobile/mobile.routes';
@@ -122,6 +123,8 @@ const executionPermissions = declarePermissions(
   ],
   'operations.my-day',
 );
+
+registerOperationsSettings();
 
 export const operationsPermissions: PermissionDef[] = [
   ...shipmentPermissions,

@@ -4724,6 +4724,9 @@ const en: Record<string, string> = {
   'operations.standingCrew.subtitle':
     'Who normally crews each cash-transfer vehicle. Each day\u2019s board is seeded from this, and can still be changed for that day.',
   'operations.standingCrew.addVehicle': 'Add a vehicle',
+  'operations.standingCrew.unfiltered':
+    'Every vehicle is offered — no cash-transfer operation (التشغيل) is configured yet. ' +
+    'Set operations.cashTransferOperationIds in system settings to narrow it.',
   'operations.standingCrew.remove': 'Remove',
   'operations.standingCrew.removed': 'Removed {{code}} from the cash-transfer fleet',
   'operations.standingCrew.removeFailed': 'Could not remove this vehicle',
@@ -9522,6 +9525,8 @@ const ar: Record<string, string> = {
   'operations.standingCrew.subtitle':
     'مَن يقود كل مركبة من مركبات نقل الأموال في المعتاد. تشغيلة كل يوم تنزل من هنا، ويظل تعديلها لذلك اليوم ممكنًا.',
   'operations.standingCrew.addVehicle': 'إضافة مركبة',
+  'operations.standingCrew.unfiltered':
+    'كل المركبات معروضة — لم يُحدَّد بعد تشغيل نقل الأموال. اضبط operations.cashTransferOperationIds في إعدادات النظام لتضييق القائمة.',
   'operations.standingCrew.remove': 'إزالة',
   'operations.standingCrew.removed': 'تم إخراج {{code}} من أسطول نقل الأموال',
   'operations.standingCrew.removeFailed': 'تعذّر إزالة هذه المركبة',

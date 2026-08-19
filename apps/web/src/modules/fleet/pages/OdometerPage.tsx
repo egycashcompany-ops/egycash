@@ -378,7 +378,14 @@ export const OdometerPage = (): JSX.Element => {
       <RecordOdometerDialog
         open={recordOpen}
         onClose={() => setRecordOpen(false)}
-        initialVehicleId=""
+        // Carried over from the filter, as it always was — but only when the filter names ONE
+        // car. With several selected there is no single answer to preselect, and guessing one
+        // would be worse than asking.
+        initialVehicleId={
+          vehicleCodes.length === 1
+            ? ((vehicles.data?.items ?? []).find((v) => v.code === vehicleCodes[0])?.id ?? '')
+            : ''
+        }
       />
       <CorrectOdometerDialog
         open={correcting !== null}

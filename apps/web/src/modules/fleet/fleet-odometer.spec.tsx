@@ -365,6 +365,15 @@ describe('the actions respect the existing grants', () => {
     );
   });
 
+  it('carries a single filtered vehicle into the record dialog, as it always did', () => {
+    // The page used to pass its one filtered vehicle to the dialog. The multi-select must not
+    // lose that; with SEVERAL selected there is no single answer, so it passes none.
+    const source = readFileSync(join(HERE, 'pages/OdometerPage.tsx'), 'utf8');
+    const mount = source.slice(source.indexOf('<RecordOdometerDialog'));
+    expect(mount).toContain('vehicleCodes.length === 1');
+    expect(mount).toContain('v.code === vehicleCodes[0]');
+  });
+
   it('offers recording only with fleetOdometer.record', () => {
     expect(render()).toContain(t('fleet.odometer.record'));
     expect(render({ permissions: ['fleetOdometer.view'] })).not.toContain(
@@ -415,6 +424,23 @@ describe('recording a reading', () => {
     expect(queries.slice(queries.indexOf('export const useRosterDay'))).toContain(
       "enabled: date !== ''",
     );
+  });
+
+  it('CLEARS the slots when the vehicle or the date changes', () => {
+    // The crew belongs to a (vehicle, date) pair. Filling empty slots only — without clearing —
+    // meant switching from car 150 to car 151 kept 150's drivers and recorded them against 151.
+    const reset = source.slice(source.indexOf('useEffect(() => {\n    setDriver1'));
+    expect(reset).toContain("setDriver1('')");
+    expect(reset).toContain("setDriver2('')");
+    expect(reset.slice(0, reset.indexOf('});') + 40)).toContain('[vehicleId, date]');
+  });
+
+  it('never prefills from the PREVIOUS day’s board while the new one loads', () => {
+    // `useRosterDay` keeps the last board as placeholder data, so without this guard a date
+    // change briefly exposes yesterday's crew — and the fill would make it permanent.
+    expect(source).toContain('roster.isPlaceholderData');
+    const fill = source.slice(source.indexOf('if (rosterRow === null'));
+    expect(fill.slice(0, 120)).toContain('roster.isPlaceholderData');
   });
 
   it('asks for nothing the server derives — no km, no closing reading', () => {

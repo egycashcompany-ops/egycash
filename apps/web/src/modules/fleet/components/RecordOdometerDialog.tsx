@@ -83,15 +83,25 @@ export const RecordOdometerDialog = ({
     () => roster.data?.rows.find((row) => row.vehicleId === vehicleId) ?? null,
     [roster.data, vehicleId],
   );
-  // Only ever fills EMPTY slots, so a value the user has already chosen is never overwritten by a
-  // late-arriving board.
+  // The two slots belong to a (vehicle, date) PAIR. Change either and the previous pair's crew is
+  // no longer an answer to the question being asked, so it is cleared rather than carried over —
+  // otherwise switching from car 150 to car 151 keeps 150's drivers and records them against the
+  // wrong car.
   useEffect(() => {
-    if (rosterRow === null) return;
+    setDriver1('');
+    setDriver2('');
+  }, [vehicleId, date]);
+
+  // Fills EMPTY slots only, so a name the operator has already chosen is never overwritten by a
+  // late-arriving board. `isPlaceholderData` is the PREVIOUS day's board still on screen while the
+  // new one loads; filling from it would write yesterday's crew onto today's reading.
+  useEffect(() => {
+    if (rosterRow === null || roster.isPlaceholderData) return;
     if (rosterRow.driver1EmployeeId !== null)
       setDriver1((prev) => prev || rosterRow.driver1EmployeeId!);
     if (rosterRow.driver2EmployeeId !== null)
       setDriver2((prev) => prev || rosterRow.driver2EmployeeId!);
-  }, [rosterRow]);
+  }, [rosterRow, roster.isPlaceholderData]);
 
   const readingNumber = Number(reading);
   const complete =

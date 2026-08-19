@@ -10,17 +10,20 @@
 //   · the confinement type is minted in exactly one place;
 //   · nothing a customer receives carries a field that belongs to us or to another customer.
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-const here = join(process.cwd(), 'apps/api/src/modules/gold');
+// Resolved from this file, not from `process.cwd()`: the suite runs both from the repository root
+// and from `apps/api`, and a cwd-relative path is only correct in one of them.
+const here = dirname(fileURLToPath(import.meta.url));
 const read = (relative: string): string => readFileSync(join(here, relative), 'utf8');
 
-const routes = read('portal/portal.routes.ts');
-const reads = read('portal/portal.reads.ts');
-const mappers = read('portal/portal.mappers.ts');
+const routes = read('portal.routes.ts');
+const reads = read('portal.reads.ts');
+const mappers = read('portal.mappers.ts');
 const contracts = readFileSync(
-  join(process.cwd(), 'packages/contracts/src/modules/gold-portal.ts'),
+  join(here, '../../../../../../packages/contracts/src/modules/gold-portal.ts'),
   'utf8',
 );
 
@@ -55,7 +58,7 @@ describe('every portal route is guarded', () => {
 
 describe('the confinement type has one producer', () => {
   it('is cast nowhere but in the middleware that proves the binding', () => {
-    const scope = code(read('portal/portal-scope.ts'));
+    const scope = code(read('portal-scope.ts'));
     expect([...scope.matchAll(/as PortalCompany/g)]).toHaveLength(1);
   });
 

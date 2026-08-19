@@ -27,6 +27,7 @@ import {
   type OperationsCrewAttendanceDayDto,
   type OperationsAreaDto,
   type OperationsShipmentDto,
+  type OperationsCrewSeedReportDto,
   type OperationsStandingCrewBoardDto,
   type OperationsVaultInventoryRowDto,
   type OperationsVaultReportDto,
@@ -1101,6 +1102,133 @@ describe('the standing crew — the permanent crew of each cash-transfer vehicle
 
   it('refuses removing a vehicle that is not in the standing crew', async () => {
     expect((await drop(vehicleBId)).status).toBe(404);
+  });
+
+  // ── The descent: الطاقم الثابت ينزل في التشغيلة ────────────────────────────────────────────────
+  describe('seeding a day from the standing crew', () => {
+    const SEED_DATE = '2026-12-01';
+    const seedDay = async (date = SEED_DATE, token = adminToken): Promise<request.Response> =>
+      request(app)
+        .post('/api/v1/operations/crew-board/seed')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ date });
+
+    const boardOn = async (date: string): Promise<OperationsCrewBoardDto> =>
+      data<OperationsCrewBoardDto>(
+        await request(app)
+          .get(`/api/v1/operations/crew-board?date=${date}`)
+          .set('Authorization', `Bearer ${adminToken}`),
+      );
+
+    let seedCaptainId: string;
+    let seedSpecialistId: string;
+
+    beforeAll(async () => {
+      seedCaptainId = await mkEmployee();
+      seedSpecialistId = await mkEmployee();
+
+      // Fleet rosters ONE of the two vehicles for the seed date — the §9.4 anchor under test.
+      const roster = await request(app)
+        .post('/api/v1/fleet/roster')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ date: SEED_DATE, rows: [{ vehicleId: vehicleAId, notes: 'seed day' }] });
+      expect(roster.status).toBe(200);
+
+      // Both vehicles carry a standing crew; only vehicle A can receive one on this date.
+      const stand = await request(app)
+        .put('/api/v1/operations/standing-crew')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          rows: [
+            {
+              vehicleId: vehicleAId,
+              captainEmployeeIds: [seedCaptainId],
+              specialist1EmployeeIds: [seedSpecialistId],
+              direction: 'الجيزة',
+              plannedTime: '07:30',
+            },
+            { vehicleId: vehicleBId, captainEmployeeIds: [] },
+          ],
+        });
+      expect(stand.status).toBe(200);
+    });
+
+    it('puts the standing crew on the board and creates the operating day', async () => {
+      expect((await boardOn(SEED_DATE)).day).toBeNull(); // nobody has planned this date
+
+      const res = await seedDay();
+      expect(res.status).toBe(200);
+      const dto = data<OperationsCrewBoardDto & { seed: OperationsCrewSeedReportDto }>(res);
+      expect(dto.seed.seededVehicleIds).toEqual([vehicleAId]);
+      expect(dto.day).not.toBeNull(); // the seed's own write created it, attributed to the caller
+
+      const row = dto.rows.find((r) => r.vehicleId === vehicleAId);
+      expect(row?.crew?.captainEmployeeIds).toEqual([seedCaptainId]);
+      expect(row?.crew?.specialist1EmployeeIds).toEqual([seedSpecialistId]);
+      expect(row?.crew?.direction).toBe('الجيزة');
+    });
+
+    it('reports the vehicle Fleet did not roster instead of failing the whole seed', async () => {
+      const dto = data<OperationsCrewBoardDto & { seed: OperationsCrewSeedReportDto }>(
+        await seedDay(),
+      );
+      // vehicleB is in the standing crew but off the roster for this date. `plan()` would refuse
+      // it with OPERATIONS_FLEET_DUTY_REQUIRED and take the whole seed down with it.
+      expect(dto.seed.skipped).toContainEqual({ vehicleId: vehicleBId, reason: 'notRostered' });
+    });
+
+    it('is idempotent — a second call vetoes every row it wrote and changes nothing', async () => {
+      const again = data<OperationsCrewBoardDto & { seed: OperationsCrewSeedReportDto }>(
+        await seedDay(),
+      );
+      expect(again.seed.seededVehicleIds).toEqual([]);
+      expect(again.seed.skipped).toContainEqual({
+        vehicleId: vehicleAId,
+        reason: 'alreadyPlanned',
+      });
+    });
+
+    it('NEVER refills a slot a human emptied — the veto, which is the whole design', async () => {
+      // Take the specialist off by hand, exactly as a planner would when somebody calls in sick.
+      // `plan()` has no delete path, so this stores an EMPTY LIST — byte-identical to a slot that
+      // was never filled. A field-level merge could not tell them apart and would put him back.
+      const cleared = await request(app)
+        .post('/api/v1/operations/crew-board')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          date: SEED_DATE,
+          rows: [
+            {
+              vehicleId: vehicleAId,
+              captainEmployeeIds: [seedCaptainId],
+              specialist1EmployeeIds: [],
+              direction: 'الجيزة',
+              plannedTime: '07:30',
+            },
+          ],
+        });
+      expect(cleared.status).toBe(200);
+
+      await seedDay();
+      const row = (await boardOn(SEED_DATE)).rows.find((r) => r.vehicleId === vehicleAId);
+      expect(row?.crew?.specialist1EmployeeIds).toEqual([]); // still off, and stays off
+    });
+
+    it('does not author an operating day when there is nothing to seed', async () => {
+      // A date Fleet rostered nothing for: the seed must find no work and write NOTHING — not the
+      // crew rows, and not the day row either. A read-shaped action that creates a day would make
+      // every future "has anyone planned this?" answer yes.
+      const EMPTY_DATE = '2026-12-02';
+      const res = await seedDay(EMPTY_DATE);
+      expect(res.status).toBe(200);
+      const dto = data<OperationsCrewBoardDto & { seed: OperationsCrewSeedReportDto }>(res);
+      expect(dto.seed.seededVehicleIds).toEqual([]);
+      expect(dto.day).toBeNull();
+    });
+
+    it('needs the PLAN grant — seeding writes the board, it does not read it', async () => {
+      expect((await seedDay(SEED_DATE, viewerToken)).status).toBe(403);
+    });
   });
 
   it('rides the EXISTING crew grants and declares none of its own', async () => {

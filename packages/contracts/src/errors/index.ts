@@ -108,7 +108,6 @@ export const ErrorCodes = {
 
   // ── Crew roster (B3) ──────────────────────────────────────────────────────────────────────────
   /** The employee holds no operations requirements row, so is not on the crew roster. */
-  OPERATIONS_UNKNOWN_CREW_MEMBER: 'OPERATIONS_UNKNOWN_CREW_MEMBER',
 } as const;
 
 export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];

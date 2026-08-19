@@ -193,6 +193,25 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
       .exec();
   }
 
+  /**
+   * Everyone EMPLOYED in these departments — the platform directory's by-department seam.
+   *
+   * `System` like its neighbours: the caller is another module reading through the seam, not a
+   * user browsing HR, so the data scope of whoever happens to be logged in must not narrow it.
+   * An Operations planner in Giza still needs the whole crew of the department they plan.
+   */
+  async listByDepartmentsSystem(departmentIds: readonly string[]): Promise<EmployeeDoc[]> {
+    if (departmentIds.length === 0) return [];
+    return this.model
+      .find({
+        departmentId: { $in: departmentIds.map((id) => new Types.ObjectId(id)) },
+        status: { $in: [...EMPLOYED_STATUSES] },
+        isDeleted: false,
+      })
+      .lean<EmployeeDoc[]>()
+      .exec();
+  }
+
   /** Employees whose probation deadline falls inside the window (the reminder task). */
   async findProbationEndingSystem(from: Date, to: Date): Promise<EmployeeDoc[]> {
     return this.model

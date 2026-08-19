@@ -218,9 +218,6 @@ export const removeStandingCrew = (
 ): Promise<OperationsStandingCrewBoardDto> =>
   del<OperationsStandingCrewBoardDto>(`/operations/standing-crew/${vehicleId}`);
 
-export const removeCrewRequirements = (employeeId: string): Promise<void> =>
-  del<void>(`/operations/crew-board/requirements/${employeeId}`);
-
 // ── Secured shipments and the vault (B4) ────────────────────────────────────
 //
 // Four legacy screens, one backend surface, split by OWNER: Operations plans and assigns

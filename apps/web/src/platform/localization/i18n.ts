@@ -4788,15 +4788,10 @@ const en: Record<string, string> = {
   'operations.crew.requirements.notAGate':
     'These are indicators, not conditions. Anyone on the roster can be assigned to any slot, whatever is ticked here.',
   'operations.crew.requirements.employee': 'Employee',
-  'operations.crew.requirements.add': 'Add crew member',
-  'operations.crew.requirements.added': 'Added to the roster',
-  'operations.crew.requirements.addFailed': 'Could not add this employee to the roster.',
-  'operations.crew.requirements.searchEmployee': 'Search employees',
-  'operations.crew.requirements.searchHint': 'Type at least two characters to search.',
   'operations.crew.requirements.saveFailed': 'Could not save the change.',
-  'operations.crew.requirements.confirmRemove': 'Remove this employee from the operations roster?',
-  'operations.crew.requirements.removed': 'Removed from the roster',
-  'operations.crew.requirements.removeFailed': 'Could not remove this employee.',
+  'operations.crew.requirements.unconfigured':
+    'Showing the people who already have flags recorded — no operations department is configured yet. ' +
+    'Set operations.crewDepartmentIds in system settings and the whole department appears here.',
   'operations.crew.requirements.empty': 'Nobody on the roster yet',
   // ── Operations B4 — the four secured screens
   'operations.nav.secured': 'Secured shipments',
@@ -9606,15 +9601,9 @@ const ar: Record<string, string> = {
   'operations.crew.requirements.notAGate':
     'هذه مؤشرات وليست شروطًا. أي فرد في الكشف يمكن تعيينه في أي خانة مهما كان المُعلَّم هنا.',
   'operations.crew.requirements.employee': 'الموظف',
-  'operations.crew.requirements.add': 'إضافة فرد',
-  'operations.crew.requirements.added': 'تمت الإضافة إلى الكشف',
-  'operations.crew.requirements.addFailed': 'تعذّرت إضافة هذا الموظف إلى الكشف.',
-  'operations.crew.requirements.searchEmployee': 'ابحث في الموظفين',
-  'operations.crew.requirements.searchHint': 'اكتب حرفين على الأقل للبحث.',
   'operations.crew.requirements.saveFailed': 'تعذّر حفظ التغيير.',
-  'operations.crew.requirements.confirmRemove': 'إزالة هذا الموظف من كشف العمليات؟',
-  'operations.crew.requirements.removed': 'تمت الإزالة من الكشف',
-  'operations.crew.requirements.removeFailed': 'تعذّرت إزالة هذا الموظف.',
+  'operations.crew.requirements.unconfigured':
+    'المعروض هم مَن لديهم بيانات متطلبات بالفعل — لم تُحدَّد إدارة العمليات بعد. اضبط operations.crewDepartmentIds في إعدادات النظام ليظهر كل مَن في الإدارة هنا.',
   'operations.crew.requirements.empty': 'لا يوجد أحد في الكشف بعد',
   // ── العمليات B4 — شاشات المحصنات الأربع
   'operations.nav.secured': 'الشحنات المحصنة',

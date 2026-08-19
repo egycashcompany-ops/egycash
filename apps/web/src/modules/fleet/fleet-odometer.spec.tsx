@@ -138,6 +138,12 @@ const thead = (markup: string): string =>
   markup.slice(markup.indexOf('<thead'), markup.indexOf('</thead>'));
 const tbody = (markup: string): string =>
   markup.slice(markup.indexOf('<tbody'), markup.indexOf('</tbody>'));
+/** Just the filter bar: everything the `FilterBar` container opens, up to the table. */
+const filterBar = (markup: string): string =>
+  markup.slice(
+    markup.indexOf('<div class="flex flex-wrap items-center gap-2'),
+    markup.indexOf('<table'),
+  );
 
 const REQUIRED_COLUMNS = [
   'fleet.odometer.fields.date',
@@ -277,27 +283,48 @@ describe('the filter bar', () => {
     expect(html).toContain('id="odometer-to"');
   });
 
-  it('carries NO visible label — every filter is named by its own control', () => {
-    const html = render();
-    const bar = html.slice(
-      html.indexOf('<div class="flex flex-wrap items-center gap-2'),
-      html.indexOf('<table'),
+  it('stacks NO label above any filter — each one is named on its own line', () => {
+    const bar = filterBar(render());
+    // `Field` is the stacked-label pattern, and its label is the `block` one. That is what this
+    // bar refuses: a caption on a line of its own doubles the height of the row and leaves the
+    // controls out of step with the multi-selects, which name themselves inside their trigger.
+    expect(bar, 'no block-level label above a control').not.toContain('block text-sm font-medium');
+    // Every `<label>` in the bar is an INLINE row that contains its own control.
+    for (const open of bar.split('<label').slice(1)) {
+      const label = open.slice(0, open.indexOf('</label>'));
+      expect(label, 'label lays its caption beside the control').toContain('flex');
+      expect(label, 'label lays its caption beside the control').toContain('items-center');
+      expect(label, 'label owns the control it names').toContain('<input');
+    }
+  });
+
+  it('tells the two date bounds apart by a caption the eye can read', () => {
+    const bar = filterBar(render());
+    // The heart of it: a date input paints its own `yyyy/mm/dd` hint and ignores `placeholder`,
+    // so with nothing beside them the two bounds are the same control drawn twice. The caption is
+    // VISIBLE text — not `sr-only`, not a `title` that needs a pointer resting on it.
+    expect(bar, 'the start bound is captioned').toContain(
+      `>${t('fleet.odometer.fromDate')}</span>`,
     );
-    // A `<label>` above a filter is what this removes. `MultiSelect` names itself in its trigger
-    // and the text controls carry `aria-label`, so nothing is lost to a screen reader.
-    expect(bar, 'no label element in the filter bar').not.toContain('<label');
-    expect(bar).not.toContain('</label>');
+    expect(bar, 'the end bound is captioned').toContain(`>${t('fleet.odometer.toDate')}</span>`);
+    expect(t('fleet.odometer.fromDate'), 'the two captions differ').not.toBe(
+      t('fleet.odometer.toDate'),
+    );
+    // And each caption sits in the same `<label>` as the bound it names, so it is not merely
+    // near the control — it belongs to it.
+    for (const [id, key] of [
+      ['odometer-from', 'fleet.odometer.fromDate'],
+      ['odometer-to', 'fleet.odometer.toDate'],
+    ] as const) {
+      const label = bar.split('<label').find((chunk) => chunk.includes(`id="${id}"`));
+      expect(label, `${id} lives in a label`).toBeDefined();
+      expect(label as string, `${id} is captioned`).toContain(t(key));
+    }
   });
 
   it('still names every filter for a screen reader and a pointer', () => {
-    const html = render();
-    const bar = html.slice(
-      html.indexOf('<div class="flex flex-wrap items-center gap-2'),
-      html.indexOf('<table'),
-    );
-    // The two date bounds are the ones a label used to tell apart: a date input ignores
-    // `placeholder`, so they carry `aria-label` AND `title` instead.
-    for (const key of ['fleet.odometer.from', 'fleet.odometer.to']) {
+    const bar = filterBar(render());
+    for (const key of ['fleet.odometer.fromDate', 'fleet.odometer.toDate']) {
       expect(bar, `${key} aria-label`).toContain(`aria-label="${t(key)}"`);
       expect(bar, `${key} title`).toContain(`title="${t(key)}"`);
     }
@@ -306,6 +333,34 @@ describe('the filter bar', () => {
     expect(bar).toContain(`placeholder="${t('fleet.odometer.driverPlaceholder')}"`);
     expect(bar).toContain(t('fleet.odometer.columns.vehicle'));
     expect(bar).toContain(t('fleet.odometer.columns.alert'));
+  });
+
+  it('lines all five filters up on ONE row, none of them taking the leftover space', () => {
+    const html = render();
+    const bar = filterBar(html);
+    // The container stops wrapping once the viewport is wide enough to hold the whole row, and
+    // not one pixel before: `flex-nowrap` does not shorten a row that will not fit, it pushes it
+    // off the page. Below that it still wraps — the fallback for a screen too narrow for five.
+    const open = html.slice(html.indexOf('<div class="flex flex-wrap items-center gap-2'));
+    expect(open.slice(0, open.indexOf('>')), 'one row on a desktop').toContain(
+      'min-[1400px]:flex-nowrap',
+    );
+    expect(open.slice(0, open.indexOf('>')), 'wrap is the narrow-screen fallback').toContain(
+      'flex-wrap',
+    );
+    // Nothing in the bar may grow into the space the others leave. (`w-full` is not the test:
+    // `Input` carries it at its base and merely fills the fixed-width wrapper it sits in.)
+    expect(bar, 'no filter takes the leftover space').not.toContain('flex-1');
+    expect(bar, 'no filter grows').not.toMatch(/\bgrow\b/);
+    expect(bar, 'no filter is sized by the row').not.toMatch(/\bbasis-/);
+    // Every filter holds its own width instead of being squeezed by its neighbours.
+    expect(bar.match(/shrink-0/g)?.length ?? 0, 'each filter is shrink-0').toBeGreaterThanOrEqual(
+      5,
+    );
+    // The date bounds are the narrow ones — a date needs ten characters, not a share of the row.
+    expect(bar.match(/class="w-36"/g)?.length ?? 0, 'both dates are narrow').toBe(2);
+    // …and the two text-ish filters are the medium ones.
+    expect(bar, 'the driver box is medium').toContain('w-44');
   });
 
   it('takes SEVERAL vehicles and SEVERAL alert levels at once', () => {

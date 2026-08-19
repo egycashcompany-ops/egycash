@@ -282,14 +282,21 @@ export const OdometerPage = (): JSX.Element => {
 
       <div className="space-y-4">
         <FilterBar
+          singleRow
           hasActiveFilters={hasActiveFilters}
           onClear={() =>
             patch({ vehicleCodes: null, from: null, to: null, driver: null, alerts: null })
           }
         >
+          {/* One row on a desktop, in the order the question is asked: which cars, over which
+              days, driven by whom, in what state. Every filter is `shrink-0` and sized to what it
+              holds — none of them takes the leftover space, so the row reads as five controls
+              rather than one stretched one. Narrower than the row needs, the bar wraps. */}
+
           {/* Several cars at once, picked by the code the registry calls them by — the same code
               the URL carries, so a filtered view is a link somebody else can read. */}
           <MultiSelect
+            className="shrink-0"
             label={t('fleet.odometer.columns.vehicle')}
             options={vehicleOptions}
             value={vehicleCodes}
@@ -298,30 +305,48 @@ export const OdometerPage = (): JSX.Element => {
           {/* Either bound alone is a valid question ("from the 1st", "up to the 18th"), and the
               same date in both is one day — the server's `to` covers the whole day it names.
 
-              No visible label, like every other filter here. A date input ignores `placeholder`
-              and paints its own format hint, so the two bounds are told apart by `aria-label` for
-              a screen reader and `title` for a pointer — the most a label-less date control can
-              carry without inventing a design-system pattern for this one page. */}
-          <Input
-            id="odometer-from"
-            type="date"
-            aria-label={t('fleet.odometer.from')}
-            title={t('fleet.odometer.from')}
-            value={from}
-            onChange={(e) => patch({ from: e.target.value || null })}
-            className="w-auto"
-          />
-          <Input
-            id="odometer-to"
-            type="date"
-            aria-label={t('fleet.odometer.to')}
-            title={t('fleet.odometer.to')}
-            value={to}
-            onChange={(e) => patch({ to: e.target.value || null })}
-            className="w-auto"
-          />
+              A date input ignores `placeholder` in every browser and paints its own `yyyy/mm/dd`
+              hint instead, so the two bounds are identical to look at and a caption is the only
+              thing that can tell them apart. It goes BESIDE the control, inside the `<label>` that
+              owns it — the same inline shape the recruitment filter bars already use for their
+              date ranges — never stacked above it, which is what would put this bar out of step
+              with the label-less filters around it and cost the row its height.
+
+              `dir="ltr"` keeps the date reading left-to-right on an Arabic page, also as those
+              bars do. The width is fixed and narrow: a date needs about ten characters and no
+              more, and anything wider would eat the row. */}
+          <label className="flex shrink-0 items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400">
+            <span className="whitespace-nowrap">{t('fleet.odometer.fromDate')}</span>
+            {/* The width lives on the wrapper: `Input` is `w-full` at its base and `cn` does not
+                merge Tailwind classes, so a `w-*` passed to it would only compete with that. */}
+            <span className="w-36">
+              <Input
+                id="odometer-from"
+                type="date"
+                dir="ltr"
+                aria-label={t('fleet.odometer.fromDate')}
+                title={t('fleet.odometer.fromDate')}
+                value={from}
+                onChange={(e) => patch({ from: e.target.value || null })}
+              />
+            </span>
+          </label>
+          <label className="flex shrink-0 items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400">
+            <span className="whitespace-nowrap">{t('fleet.odometer.toDate')}</span>
+            <span className="w-36">
+              <Input
+                id="odometer-to"
+                type="date"
+                dir="ltr"
+                aria-label={t('fleet.odometer.toDate')}
+                title={t('fleet.odometer.toDate')}
+                value={to}
+                onChange={(e) => patch({ to: e.target.value || null })}
+              />
+            </span>
+          </label>
           {mayFilterByDriver && (
-            <div className="w-44">
+            <div className="w-44 shrink-0">
               <Input
                 aria-label={t('fleet.odometer.columns.driver')}
                 placeholder={t('fleet.odometer.driverPlaceholder')}
@@ -331,6 +356,7 @@ export const OdometerPage = (): JSX.Element => {
             </div>
           )}
           <MultiSelect
+            className="shrink-0"
             label={t('fleet.odometer.columns.alert')}
             options={FLEET_ALARM_LEVELS.map((level) => ({
               value: level,

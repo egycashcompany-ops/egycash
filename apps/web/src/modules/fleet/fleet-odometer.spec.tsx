@@ -15,7 +15,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
@@ -34,6 +34,15 @@ import { authSlice } from '../../store/authSlice';
 import { translate } from '../../platform/localization/i18n';
 import { listKey } from '../../shared/lib/query-keys';
 import { OdometerPage } from './pages/OdometerPage';
+import { RecordOdometerDialog } from './components/RecordOdometerDialog';
+
+// `Dialog` portals into `document.body`; the suite runs without a DOM. Rendering the portal's
+// tree in place is enough to read what the dialog produces.
+(globalThis as Record<string, unknown>).document ??= { body: {} };
+vi.mock('react-dom', async () => {
+  const actual = await vi.importActual<Record<string, unknown>>('react-dom');
+  return { ...actual, createPortal: (node: unknown) => node };
+});
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -43,9 +52,19 @@ const page = <T,>(items: T[]) => ({
 });
 
 const VEHICLE_ID = 'v1';
+/** The registry SEARCH the filter and the dialog now make — a shortlist for a query, not a page. */
+const VEHICLE_SEARCH_KEY = (search?: string) =>
+  listKey('fleet', 'vehicles', {
+    search,
+    pageSize: 20,
+    sortBy: 'code',
+    sortDir: 'asc',
+  });
 const log = (o: Partial<FleetOdometerLogDto> = {}): FleetOdometerLogDto => ({
   id: 'o1',
   vehicleId: VEHICLE_ID,
+  // A SERVER fact on the row now, not a client join against a page of the registry.
+  vehicleCode: '150',
   date: '2026-08-18T00:00:00.000Z',
   outReading: 150000,
   inReading: 150250,
@@ -98,7 +117,7 @@ const client = (
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   qc.setQueryData(ODOMETER_KEY(keyOver), page(logs));
   qc.setQueryData(
-    listKey('fleet', 'vehicles', { pageSize: MAX_PAGE_SIZE, sortBy: 'code', sortDir: 'asc' }),
+    VEHICLE_SEARCH_KEY(),
     page([
       { id: VEHICLE_ID, code: '150', plateNumber: 'س ص 150' },
       { id: 'v2', code: '151', plateNumber: 'س ص 151' },
@@ -202,7 +221,7 @@ describe('the odometer table', () => {
       meta: { page: 2, pageSize: 25, totalItems: 28, totalPages: 2 },
     });
     qc.setQueryData(
-      listKey('fleet', 'vehicles', { pageSize: MAX_PAGE_SIZE, sortBy: 'code', sortDir: 'asc' }),
+      VEHICLE_SEARCH_KEY(),
       page([{ id: VEHICLE_ID, code: '150', plateNumber: 'س ص 150' }]),
     );
     qc.setQueryData(['fleet', 'odometer', 'alarms'], [alarm()]);
@@ -221,7 +240,7 @@ describe('the odometer table', () => {
       meta: { page: 3, pageSize: 200, totalItems: 402, totalPages: 3 },
     });
     qc.setQueryData(
-      listKey('fleet', 'vehicles', { pageSize: MAX_PAGE_SIZE, sortBy: 'code', sortDir: 'asc' }),
+      VEHICLE_SEARCH_KEY(),
       page([{ id: VEHICLE_ID, code: '150', plateNumber: 'س ص 150' }]),
     );
     qc.setQueryData(['fleet', 'odometer', 'alarms'], [alarm()]);
@@ -273,6 +292,32 @@ describe('the odometer table', () => {
     expect(cell, 'the note may break inside a word').toContain('break-words');
     // It is still a block, or `max-width` has nothing to apply to.
     expect(cell).toContain('block');
+  });
+
+  it('shows the code of a vehicle the registry answers for only on a LATER page', () => {
+    // The blocker this replaces: the code was joined in the browser from ONE page of the
+    // registry, capped at `MAX_PAGE_SIZE`, so every car past that page printed a dash. Here the
+    // registry search answers with a DIFFERENT car entirely — the way it would for a car the
+    // shortlist does not carry — and the row still names its own.
+    const qc = client([log({ vehicleId: 'v101', vehicleCode: '101' })]);
+    qc.setQueryData(
+      VEHICLE_SEARCH_KEY(),
+      page([{ id: VEHICLE_ID, code: '150', plateNumber: 'س ص 150' }]),
+    );
+    // The third cell is the code column (after the serial and the date).
+    const cells = [...tbody(render({ qc })).matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/g)].map((m) =>
+      (m[1] as string).replace(/<[^>]*>/g, '').trim(),
+    );
+    expect(cells[2], 'the row carries its own code, not a dash').toBe('101');
+  });
+
+  it('never joins the code against a page of the registry', () => {
+    const source = readFileSync(join(HERE, 'pages/OdometerPage.tsx'), 'utf8');
+    // The code is a server fact on the row. A client-side map keyed by vehicle id is exactly the
+    // bounded join that made car 101 nameless.
+    expect(source).toContain('log.vehicleCode');
+    expect(source).not.toMatch(/vehicleCode\.get\(/);
+    expect(source).not.toContain('pageSize: MAX_PAGE_SIZE');
   });
 
   it('shows the vehicle CODE, never the vehicle id', () => {
@@ -448,6 +493,22 @@ describe('the filter bar', () => {
     expect(bar, 'the driver box is medium').toContain('w-44');
   });
 
+  it('asks the REGISTRY for codes matching what was typed, not the first page of it', () => {
+    const source = readFileSync(join(HERE, 'pages/OdometerPage.tsx'), 'utf8');
+    // The search term goes to the server; the options are its answer.
+    expect(source).toContain('onSearch={setCodeQuery}');
+    expect(source).toContain('search: codeQuery.trim()');
+    expect(source).not.toContain('pageSize: MAX_PAGE_SIZE');
+  });
+
+  it('builds its options from the search, with the selection kept reachable', () => {
+    // `MultiSelect` renders its list only once opened, and the node-env suite cannot open it — so
+    // the rule itself lives in `vehicleCodeOptions` and is proven in its own spec. What belongs
+    // here is that the page feeds it the search's answer and the current selection, and no more.
+    const source = readFileSync(join(HERE, 'pages/OdometerPage.tsx'), 'utf8');
+    expect(source).toContain('vehicleCodeOptions(vehicles.data?.items ?? [], vehicleCodes)');
+  });
+
   it('takes SEVERAL vehicles and SEVERAL alert levels at once', () => {
     const html = render({
       route: '/fleet/odometer?vehicleCodes=150,151&alerts=yellow,red',
@@ -537,12 +598,17 @@ describe('the actions respect the existing grants', () => {
   });
 
   it('carries a single filtered vehicle into the record dialog, as it always did', () => {
-    // The page used to pass its one filtered vehicle to the dialog. The multi-select must not
-    // lose that; with SEVERAL selected there is no single answer, so it passes none.
+    // The page passes its one filtered vehicle to the dialog. The multi-select must not lose
+    // that; with SEVERAL selected there is no single answer, so it passes none.
+    //
+    // By CODE, not by id: the page no longer holds the whole registry to look an id up in, and
+    // resolving one against the current search shortlist would drop the carry-over for exactly
+    // the cars that are the point of this — a filtered code the shortlist does not carry.
     const source = readFileSync(join(HERE, 'pages/OdometerPage.tsx'), 'utf8');
     const mount = source.slice(source.indexOf('<RecordOdometerDialog'));
     expect(mount).toContain('vehicleCodes.length === 1');
-    expect(mount).toContain('v.code === vehicleCodes[0]');
+    expect(mount).toContain('initialVehicleCode=');
+    expect(mount, 'no id lookup against a shortlist').not.toContain('v.code === vehicleCodes[0]');
   });
 
   it('offers recording only with fleetOdometer.record', () => {
@@ -569,9 +635,75 @@ describe('the actions respect the existing grants', () => {
 describe('recording a reading', () => {
   const source = readFileSync(join(HERE, 'components/RecordOdometerDialog.tsx'), 'utf8');
 
+  /**
+   * The dialog renders through a portal into `document.body`, which the node-env suite has not
+   * got. Stubbing the portal renders its own tree in place, which is all these read.
+   */
+  const renderDialog = ({
+    qc,
+    initialVehicleCode = '',
+  }: {
+    qc: QueryClient;
+    initialVehicleCode?: string;
+  }): string => {
+    const store = configureStore({
+      reducer: { locale: localeSlice.reducer, auth: authSlice.reducer },
+      preloadedState: {
+        locale: { locale: 'ar' as Locale, dir: 'rtl' as const },
+        auth: {
+          me: {
+            id: 'u1',
+            permissions: Object.fromEntries(ALL.map((k) => [k, 'organization'])),
+          } as unknown as MeDto,
+          status: 'signedIn' as const,
+        },
+      },
+    });
+    return renderToStaticMarkup(
+      <Provider store={store}>
+        <QueryClientProvider client={qc}>
+          <MemoryRouter>
+            <RecordOdometerDialog
+              open
+              onClose={() => undefined}
+              initialVehicleCode={initialVehicleCode}
+            />
+          </MemoryRouter>
+        </QueryClientProvider>
+      </Provider>,
+    );
+  };
+
   it('lets the operator TYPE a vehicle code instead of scrolling a dropdown', () => {
     expect(source).toContain('Combobox');
     expect(source).not.toContain('VehicleSelect');
+  });
+
+  it('searches the REGISTRY for a code, so any car in the fleet can be recorded', () => {
+    // The blocker: the options were one page of the registry filtered in the browser, so a car
+    // past `MAX_PAGE_SIZE` by code could not be picked — and therefore could not have a reading
+    // recorded at all. The typed query now goes to the server.
+    expect(source).toContain('onSearch={setCodeQuery}');
+    expect(source).toContain('search: codeQuery.trim()');
+    expect(source).not.toContain('pageSize: MAX_PAGE_SIZE');
+    // A picked code outlives the search that found it, or the box blanks as the operator types on.
+    expect(source).toContain('pickedCode');
+  });
+
+  it('SHOWS a carried-over code straight away, however far down the registry its car sits', () => {
+    // The code is shown from the first paint, before the registry has answered for it — an effect
+    // runs after the paint, so seeding only there would flash an empty vehicle box. Rendered here
+    // with the registry answering about a DIFFERENT car, the way a shortlist would.
+    for (const code of ['150', 'ZZ0104']) {
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      qc.setQueryData(
+        VEHICLE_SEARCH_KEY(),
+        page([{ id: VEHICLE_ID, code: '150', plateNumber: 'س ص 150' }]),
+      );
+      const html = renderDialog({ qc, initialVehicleCode: code });
+      const box = html.slice(html.indexOf('role="combobox"'));
+      expect(/value="([^"]*)"/.exec(box)?.[1], `${code} is shown`).toBe(code);
+    }
   });
 
   it('cannot save a code the registry does not carry', () => {

@@ -29,6 +29,8 @@ export const MultiSelect = ({
   onChange,
   /** Show the search box only when the list is long enough for it to earn its space. */
   searchThreshold = 7,
+  onSearch,
+  searching = false,
   className,
 }: {
   /** What the filter asks. Shown in the trigger while nothing is selected. */
@@ -37,6 +39,18 @@ export const MultiSelect = ({
   value: readonly string[];
   onChange: (next: string[]) => void;
   searchThreshold?: number;
+  /**
+   * Hand the typed query to the OWNER of the options instead of filtering here.
+   *
+   * A list short enough to hold in the page is filtered locally, which is the default. A list
+   * that outgrows one page — a vehicle registry, a branch directory — cannot be: filtering what
+   * happens to have been fetched silently answers "which of the first N" instead of "which".
+   * When this is given, `options` are taken as the answer already and the search box is always
+   * offered, however few of them came back.
+   */
+  onSearch?: (query: string) => void;
+  /** Fetching the remote answer — only meaningful alongside `onSearch`. */
+  searching?: boolean;
   className?: string;
 }): JSX.Element => {
   const t = useT();
@@ -45,10 +59,14 @@ export const MultiSelect = ({
   const boxRef = useRef<HTMLDivElement>(null);
   useOnClickOutside(boxRef, () => setOpen(false), open);
 
-  const searchable = options.length >= searchThreshold;
+  const remote = onSearch !== undefined;
+  const searchable = remote || options.length >= searchThreshold;
   const matches = useMemo(
-    () => (searchable && query !== '' ? options.filter((o) => foldIncludes(o.label, query)) : options),
-    [options, query, searchable],
+    () =>
+      !remote && searchable && query !== ''
+        ? options.filter((o) => foldIncludes(o.label, query))
+        : options,
+    [options, query, searchable, remote],
   );
 
   const selected = value.length;
@@ -65,6 +83,8 @@ export const MultiSelect = ({
         onClick={() => {
           setOpen((o) => !o);
           setQuery('');
+          // The owner's results still hold the last query; ask for the opening answer again.
+          onSearch?.('');
         }}
         className={cn(
           'inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm',
@@ -103,7 +123,10 @@ export const MultiSelect = ({
                   type="text"
                   autoFocus
                   value={query}
-                  onChange={(e) => setQuery(e.target.value)}
+                  onChange={(e) => {
+                    setQuery(e.target.value);
+                    onSearch?.(e.target.value);
+                  }}
                   placeholder={t('common.search')}
                   className="w-full rounded-md border border-slate-200 bg-white py-1.5 pe-2 ps-8 text-sm text-slate-800 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
                 />
@@ -113,7 +136,9 @@ export const MultiSelect = ({
 
           <ul className="max-h-52 overflow-y-auto py-1">
             {matches.length === 0 && (
-              <li className="px-3 py-2 text-sm text-slate-400">{t('common.noResults')}</li>
+              <li className="px-3 py-2 text-sm text-slate-400">
+                {searching ? t('common.loading') : t('common.noResults')}
+              </li>
             )}
             {matches.map((option) => {
               const checked = value.includes(option.value);

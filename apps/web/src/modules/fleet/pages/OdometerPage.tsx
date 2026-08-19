@@ -34,11 +34,14 @@ import { EditIcon, PlusIcon } from '../../../shared/ui/icons';
 import { formatDate, formatNumber } from '../../../shared/lib/format';
 import { useMaintenanceAlarms, useOdometerLogs, useVehicles } from '../api/fleet-queries';
 import { useDriverHrFilter } from '../api/driver-hr-filter';
+import { vehicleCodeOptions } from '../lib/vehicle-code-options';
 import { EmployeeName } from '../components/EmployeeName';
 import { RecordOdometerDialog } from '../components/RecordOdometerDialog';
 import { CorrectOdometerDialog } from '../components/CorrectOdometerDialog';
 
 const DEFAULT_PAGE_SIZE = 25;
+/** How many matches a code search offers at once — a shortlist to pick from, not a catalogue. */
+const VEHICLE_SEARCH_SIZE = 20;
 
 /** The design system's answer for an alarm level — the same one the alarms board uses. */
 const AlarmBadge = ({ level }: { level: FleetAlarmLevel }): JSX.Element => {
@@ -125,21 +128,24 @@ export const OdometerPage = (): JSX.Element => {
   );
   const rows = blocked || emptyMatch ? [] : (data?.items ?? []);
 
-  // Code column: resolved from the registry WITHOUT a status filter — history rows may belong
-  // to vehicles that have since left service.
-  const vehicles = useVehicles({ pageSize: MAX_PAGE_SIZE, sortBy: 'code', sortDir: 'asc' });
-  const vehicleCode = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const v of vehicles.data?.items ?? []) map.set(v.id, v.code);
-    return map;
-  }, [vehicles.data]);
+  // The vehicle CODE arrives on the row (`vehicleCode`), resolved server-side. It used to be
+  // joined here from one page of the registry, which silently bounded the answer at
+  // `MAX_PAGE_SIZE` vehicles: every car past that page printed a dash instead of its code.
+
+  // The code FILTER asks the registry itself, one search at a time. A fleet outgrows any single
+  // page, so the options are what the server matched for what the user typed — never the first N
+  // cars. Codes already chosen are merged in so they stay visible, and unselectable, while the
+  // search shows something else.
+  const [codeQuery, setCodeQuery] = useState('');
+  const vehicles = useVehicles({
+    search: codeQuery.trim() === '' ? undefined : codeQuery.trim(),
+    pageSize: VEHICLE_SEARCH_SIZE,
+    sortBy: 'code',
+    sortDir: 'asc',
+  });
   const vehicleOptions = useMemo(
-    () =>
-      (vehicles.data?.items ?? []).map((v) => ({
-        value: v.code,
-        label: `${v.code} — ${v.plateNumber}`,
-      })),
-    [vehicles.data],
+    () => vehicleCodeOptions(vehicles.data?.items ?? [], vehicleCodes),
+    [vehicles.data, vehicleCodes.join(',')],
   );
 
   // The maintenance figure, per vehicle, from the SAME derived projection the alarms board reads.
@@ -182,9 +188,11 @@ export const OdometerPage = (): JSX.Element => {
     {
       key: 'vehicle',
       header: t('fleet.odometer.columns.vehicle'),
+      // A SERVER fact on the row, like every other number in this table. `null` only when the
+      // vehicle no longer exists at all — a scrapped one keeps its code.
       render: (log) => (
         <span className="font-mono text-xs" dir="ltr">
-          {vehicleCode.get(log.vehicleId) ?? '—'}
+          {log.vehicleCode ?? '—'}
         </span>
       ),
     },
@@ -320,6 +328,8 @@ export const OdometerPage = (): JSX.Element => {
             options={vehicleOptions}
             value={vehicleCodes}
             onChange={(next) => patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })}
+            onSearch={setCodeQuery}
+            searching={vehicles.isFetching}
           />
           {/* Either bound alone is a valid question ("from the 1st", "up to the 18th"), and the
               same date in both is one day — the server's `to` covers the whole day it names.
@@ -431,11 +441,11 @@ export const OdometerPage = (): JSX.Element => {
         // Carried over from the filter, as it always was — but only when the filter names ONE
         // car. With several selected there is no single answer to preselect, and guessing one
         // would be worse than asking.
-        initialVehicleId={
-          vehicleCodes.length === 1
-            ? ((vehicles.data?.items ?? []).find((v) => v.code === vehicleCodes[0])?.id ?? '')
-            : ''
-        }
+        // The CODE, not an id: the page no longer holds the whole registry to look an id up in,
+        // and resolving one against the current search shortlist would drop the carry-over for
+        // exactly the cars this change is about — a filtered code the shortlist does not carry.
+        // The dialog asks the registry for the code it is given.
+        initialVehicleCode={vehicleCodes.length === 1 ? (vehicleCodes[0] ?? '') : ''}
       />
       <CorrectOdometerDialog
         open={correcting !== null}

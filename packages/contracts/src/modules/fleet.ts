@@ -404,6 +404,19 @@ export type FleetAlarmLevel = z.infer<typeof FleetAlarmLevelSchema>;
 export interface FleetOdometerLogDto {
   id: string;
   vehicleId: string;
+  /**
+   * The registry's code for that vehicle, resolved SERVER-side for the row.
+   *
+   * A reader calls a car "150", not by its id, so every screen showing a reading has to show a
+   * code — and a client cannot resolve one it has not got. Reading the registry a page at a time
+   * to build the map bounds the answer at `MAX_PAGE_SIZE` vehicles and leaves every car past that
+   * page nameless, which is why the roster and the violations rollup already carry the code on the
+   * row rather than asking the client to join for it.
+   *
+   * `null` only when the vehicle no longer exists at all — a soft-deleted one keeps its code, so
+   * history stays readable.
+   */
+  vehicleCode: string | null;
   date: string;
   outReading: number;
   /** null = the OPEN period; closed by the vehicle's next reading. */

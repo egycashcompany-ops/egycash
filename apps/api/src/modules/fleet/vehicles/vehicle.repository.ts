@@ -1,4 +1,4 @@
-import { type FilterQuery } from 'mongoose';
+import { type FilterQuery, Types } from 'mongoose';
 import { BaseRepository, type ListParams } from '../../../shared/base/base.repository';
 import { type Paginated } from '@ecms/contracts';
 import { FleetVehicleModel, type FleetVehicleDoc } from './vehicle.model';
@@ -16,6 +16,25 @@ class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
 
   async listVehicles(params: ListParams<FleetVehicleDoc>): Promise<Paginated<FleetVehicleDoc>> {
     return this.list({ ...params, sortableFields: ['code', 'createdAt', 'licenseExpiresAt'] });
+  }
+
+  /**
+   * Codes for a KNOWN set of ids, in one query — for the screens that print a code beside a row
+   * whose vehicle they hold only by id.
+   *
+   * Deliberately not paginated and deliberately not `isDeleted`-filtered. The ids come from rows
+   * the caller is already reading, so there is no list to bound; and a reading taken on a car that
+   * has since been scrapped still belongs to that car, so its code stays readable rather than
+   * turning into a dash the day the registry entry goes.
+   */
+  async codesByIds(ids: readonly string[]): Promise<Map<string, string>> {
+    if (ids.length === 0) return new Map();
+    const rows = await this.model
+      .find({ _id: { $in: ids.map((id) => new Types.ObjectId(id)) } })
+      .select({ code: 1 })
+      .lean<{ _id: Types.ObjectId; code: string }[]>()
+      .exec();
+    return new Map(rows.map((row) => [String(row._id), row.code]));
   }
 }
 

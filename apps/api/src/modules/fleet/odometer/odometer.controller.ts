@@ -17,13 +17,14 @@ type IdParam = { id: string };
 
 export const listOdometerLogs = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, ListFleetOdometerQuery>(req);
-  okPage(res, await fleetOdometerService.list(query), toOdometerLogDto);
+  const page = await fleetOdometerService.list(query);
+  okPage(res, page, (doc) => toOdometerLogDto(doc, page.codes.get(String(doc.vehicleId)) ?? null));
 };
 
 export const recordOdometer = async (req: Request, res: Response): Promise<void> => {
   const { body } = validated<RecordFleetOdometer>(req);
-  const doc = await fleetOdometerService.record(body, authContext(req).userId);
-  created(res, toOdometerLogDto(doc));
+  const { doc, vehicleCode } = await fleetOdometerService.record(body, authContext(req).userId);
+  created(res, toOdometerLogDto(doc, vehicleCode));
 };
 
 export const expectedOdometerReading = async (req: Request, res: Response): Promise<void> => {
@@ -40,6 +41,10 @@ export const listMaintenanceAlarms = async (_req: Request, res: Response): Promi
 
 export const correctOdometer = async (req: Request, res: Response): Promise<void> => {
   const { body, params } = validated<CorrectFleetOdometer, never, IdParam>(req);
-  const doc = await fleetOdometerService.correct(params.id, body, authContext(req).userId);
-  ok(res, toOdometerLogDto(doc));
+  const { doc, vehicleCode } = await fleetOdometerService.correct(
+    params.id,
+    body,
+    authContext(req).userId,
+  );
+  ok(res, toOdometerLogDto(doc, vehicleCode));
 };

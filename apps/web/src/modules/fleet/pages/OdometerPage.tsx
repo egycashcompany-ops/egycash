@@ -159,7 +159,20 @@ export const OdometerPage = (): JSX.Element => {
   const actionButton =
     'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
 
+  // The serial a reader calls a row by, and it counts through the WHOLE filtered list rather than
+  // restarting at 1 on every page: row 1 of page 2 is 26 when the page holds 25. The offset comes
+  // from the server's own `meta`, not from the URL — the server is free to clamp a page size it
+  // was handed, and numbering off the unclamped request would drift from the rows on screen. The
+  // URL values are only the fallback for the render before the first response lands.
+  const firstRowNumber = ((data?.meta.page ?? page) - 1) * (data?.meta.pageSize ?? pageSize) + 1;
+
   const columns: Column<FleetOdometerLogDto>[] = [
+    {
+      key: 'no',
+      header: t('fleet.odometer.columns.no'),
+      align: 'end',
+      render: (_log, index) => formatNumber(firstRowNumber + index, locale),
+    },
     {
       key: 'date',
       header: t('fleet.odometer.fields.date'),

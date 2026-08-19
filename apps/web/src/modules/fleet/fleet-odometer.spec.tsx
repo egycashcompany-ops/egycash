@@ -145,7 +145,31 @@ const filterBar = (markup: string): string =>
     markup.indexOf('<table'),
   );
 
+/**
+ * The header cells in document order, as TEXT — sortable headers wrap their label in a button and
+ * carry a chevron, so tags and svg are stripped rather than matched around.
+ *
+ * Position is read from this list, never from `indexOf(label)`: the serial header is the single
+ * letter «م», which occurs inside half the other Arabic headers too, and a substring search would
+ * happily "find" it in the wrong column.
+ */
+const headers = (markup: string): string[] =>
+  [...thead(markup).matchAll(/<th\b[^>]*>([\s\S]*?)<\/th>/g)].map((m) =>
+    (m[1] as string).replace(/<[^>]*>/g, '').trim(),
+  );
+
+/** The first cell of every body row, as text — the serial column, once it is in place. */
+const firstCells = (markup: string): string[] =>
+  tbody(markup)
+    .split('<tr')
+    .slice(1)
+    .map((row) => {
+      const first = /<td\b[^>]*>([\s\S]*?)<\/td>/.exec(row);
+      return first === null ? '' : (first[1] as string).replace(/<[^>]*>/g, '').trim();
+    });
+
 const REQUIRED_COLUMNS = [
+  'fleet.odometer.columns.no',
   'fleet.odometer.fields.date',
   'fleet.odometer.columns.vehicle',
   'fleet.odometer.columns.driver1',
@@ -161,15 +185,60 @@ const REQUIRED_COLUMNS = [
 // ── 1. The table ────────────────────────────────────────────────────────────
 
 describe('the odometer table', () => {
-  it('renders the ten columns in the required order', () => {
-    const head = thead(render());
-    const at = REQUIRED_COLUMNS.map((key) => ({ key, at: head.indexOf(t(key)) }));
-    for (const entry of at) expect(entry.at, `${entry.key} present`).toBeGreaterThan(-1);
-    for (let i = 1; i < at.length; i += 1) {
-      const prev = at[i - 1] as { key: string; at: number };
-      const cur = at[i] as { key: string; at: number };
-      expect(cur.at, `${cur.key} after ${prev.key}`).toBeGreaterThan(prev.at);
-    }
+  it('renders the eleven columns in the required order, and nothing else', () => {
+    // Exact equality, not "each one appears after the last": that is what makes this catch a
+    // column silently added, dropped or moved, rather than only a reordering.
+    expect(headers(render())).toEqual(REQUIRED_COLUMNS.map((key) => t(key)));
+  });
+
+  it('numbers rows THROUGH the pagination — page 2 does not restart at 1', () => {
+    // Three rows of a 25-per-page list, sitting on page 2: they are numbers 26, 27 and 28 of the
+    // filtered list, not 1, 2 and 3 of the page. The numbering is Arabic-Indic like every other
+    // figure in this table.
+    const logs = [log({ id: 'a' }), log({ id: 'b' }), log({ id: 'c' })];
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    qc.setQueryData(ODOMETER_KEY({ page: 2 }), {
+      items: logs,
+      meta: { page: 2, pageSize: 25, totalItems: 28, totalPages: 2 },
+    });
+    qc.setQueryData(
+      listKey('fleet', 'vehicles', { pageSize: MAX_PAGE_SIZE, sortBy: 'code', sortDir: 'asc' }),
+      page([{ id: VEHICLE_ID, code: '150', plateNumber: 'س ص 150' }]),
+    );
+    qc.setQueryData(['fleet', 'odometer', 'alarms'], [alarm()]);
+
+    const serials = firstCells(render({ route: '/fleet/odometer?page=2', qc }));
+    expect(serials, 'page 2 of 25 starts at 26').toEqual(['٢٦', '٢٧', '٢٨']);
+  });
+
+  it('numbers from the SERVER’s page size, not the one the URL asked for', () => {
+    // The server may clamp a page size it was handed. Numbering off the unclamped request would
+    // put the wrong serial beside every row, so the offset follows what actually came back.
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    qc.setQueryData(ODOMETER_KEY({ page: 3, pageSize: 500 }), {
+      items: [log({ id: 'a' }), log({ id: 'b' })],
+      // Asked for 500 a page; the server paginated by 200.
+      meta: { page: 3, pageSize: 200, totalItems: 402, totalPages: 3 },
+    });
+    qc.setQueryData(
+      listKey('fleet', 'vehicles', { pageSize: MAX_PAGE_SIZE, sortBy: 'code', sortDir: 'asc' }),
+      page([{ id: VEHICLE_ID, code: '150', plateNumber: 'س ص 150' }]),
+    );
+    qc.setQueryData(['fleet', 'odometer', 'alarms'], [alarm()]);
+
+    // 2 × 200 + 1 = 401, not 2 × 500 + 1 = 1001.
+    expect(firstCells(render({ route: '/fleet/odometer?page=3&size=500', qc }))).toEqual([
+      '٤٠١',
+      '٤٠٢',
+    ]);
+  });
+
+  it('opens the table with the serial column «م»', () => {
+    const head = headers(render());
+    expect(head[0], 'the first header is the serial').toBe(t('fleet.odometer.columns.no'));
+    expect(t('fleet.odometer.columns.no')).toBe('م');
+    // …and it is the first CELL of every row, not merely the first header.
+    expect(firstCells(render()), 'the first cell of page 1 is row 1').toEqual(['١']);
   });
 
   it('labels every column in BOTH locales — no header renders as a raw key', () => {

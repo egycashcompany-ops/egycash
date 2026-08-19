@@ -1212,7 +1212,7 @@ describe('the standing crew — the permanent crew of each cash-transfer vehicle
     expect(before.available.map((v) => v.vehicleId)).toContain(offRosterVehicleId);
 
     const cashOperation = await request(app)
-      .post('/api/v1/fleet/catalogs')
+      .post('/api/v1/fleet/catalog-items')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ kind: 'operation', name: { ar: 'نقل أموال', en: 'Cash transfer' } });
     expect(cashOperation.status).toBe(201);

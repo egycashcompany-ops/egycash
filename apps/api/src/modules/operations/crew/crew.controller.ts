@@ -8,7 +8,7 @@ import {
   type PlanOperationsCrew,
   type SetOperationsCrewRequirements,
 } from '@ecms/contracts';
-import { noContent, ok, okPage, validated } from '../../../platform/web';
+import { ok, okPage, validated } from '../../../platform/web';
 import { authContext } from '../../../platform/auth';
 import { operationsCrewService } from './crew.service';
 import {
@@ -58,8 +58,3 @@ export const setCrewRequirements = async (req: Request, res: Response): Promise<
   ok(res, toRequirementsDto(doc));
 };
 
-export const removeCrewRequirements = async (req: Request, res: Response): Promise<void> => {
-  const { params } = validated<never, never, { employeeId: string }>(req);
-  await operationsCrewRequirementsService.remove(params.employeeId, authContext(req).userId);
-  noContent(res);
-};

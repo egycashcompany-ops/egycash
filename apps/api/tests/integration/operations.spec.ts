@@ -3264,34 +3264,21 @@ describe('crew roster and requirements — legacy /requirement (B3)', () => {
     expect(unknown.status).toBe(400);
   });
 
-  it('removing a member takes them out of the pool but leaves history alone', async () => {
+  it('has NO delete path — leaving the crew is an HR transfer, not a checkbox here', async () => {
+    // Membership is the org chart. A delete that only hid the flags would have left the person on
+    // the board anyway, which is the confusion the route existed to create.
     const temp = await mkEmployee();
     expect((await setRequirements(temp, { isSpecialist: true })).status).toBe(200);
-    expect(
-      data<{ members: { employeeId: string }[] }>(await directory(ROSTER_DATE)).members.some(
-        (m) => m.employeeId === temp,
-      ),
-    ).toBe(true);
-
-    const removed = await request(app)
+    const gone = await request(app)
       .delete(`/api/v1/operations/crew-board/requirements/${temp}`)
       .set('Authorization', `Bearer ${adminToken}`);
-    expect(removed.status).toBe(204);
+    expect(gone.status).toBe(404);
+  });
 
-    expect(
-      data<{ members: { employeeId: string }[] }>(await directory(ROSTER_DATE)).members.some(
-        (m) => m.employeeId === temp,
-      ),
-    ).toBe(false);
-
-    // Removing twice is refused with a domain code rather than a silent success.
-    const again = await request(app)
-      .delete(`/api/v1/operations/crew-board/requirements/${temp}`)
-      .set('Authorization', `Bearer ${adminToken}`);
-    expect(again.status).toBe(422);
-    expect((again.body as { error: { code: string } }).error.code).toBe(
-      ErrorCodes.OPERATIONS_UNKNOWN_CREW_MEMBER,
-    );
+  it('answers whether the roster is derived, so the screen can say which list it is showing', async () => {
+    // Unconfigured: the fallback list, which looks identical to a configured one unless it says so.
+    const dto = data<{ rosterIsDerived: boolean }>(await directory(ROSTER_DATE));
+    expect(dto.rosterIsDerived).toBe(false);
   });
 
   it('RBAC — reading rides operationsCrew.view, writing needs operationsCrew.plan', async () => {

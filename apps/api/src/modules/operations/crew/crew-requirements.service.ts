@@ -11,6 +11,7 @@
 // and the same the fleet driver profile makes — it is not an eligibility rule, it is the
 // difference between a reference and a dangling id.
 import {
+  OperationsSettingKeys,
   type AttendanceDayStatus,
   type ListOperationsCrewRequirementsQuery,
   type OperationsCrewAttendanceDayDto,
@@ -20,9 +21,14 @@ import {
   type SetOperationsCrewRequirements,
 } from '@ecms/contracts';
 import { Types } from 'mongoose';
-import { BusinessRuleError, ConflictError, ValidationError } from '../../../shared/errors';
+import { ConflictError, ValidationError } from '../../../shared/errors';
 import { auditService } from '../../../platform/audit';
-import { getDirectoryAttendanceDay, getDirectoryEmployee } from '../../../platform/directory';
+import {
+  getDirectoryAttendanceDay,
+  getDirectoryEmployee,
+  listDirectoryEmployeesByDepartment,
+} from '../../../platform/directory';
+import { settingsService } from '../../../platform/settings';
 import { diffChanges } from '../../../shared/utils/diff';
 import { operationsDayService, utcDay } from '../days/day.service';
 import { operationsCrewAssignmentRepository } from './crew-assignment.repository';
@@ -55,6 +61,9 @@ export const attendanceBucket = (
       return 'unknown';
   }
 };
+
+/** Organization scope: who works in Operations is one fact about the company. */
+const ORG_SUBJECT = { userId: null, branchId: null };
 
 const entityRef = (id: string) => ({
   moduleId: 'operations',
@@ -123,22 +132,6 @@ class OperationsCrewRequirementsService {
   }
 
   /** Remove someone from the operations roster. Soft — the audit trail keeps what they were. */
-  async remove(employeeId: string, by: string): Promise<void> {
-    const existing = await operationsCrewRequirementsRepository.findByEmployee(employeeId);
-    if (existing === null) {
-      throw new BusinessRuleError(
-        'this employee is not on the operations roster',
-        'OPERATIONS_UNKNOWN_CREW_MEMBER',
-      );
-    }
-    await operationsCrewRequirementsRepository.softDeleteById(String(existing._id), { by });
-    await auditService.record({
-      entityRef: entityRef(String(existing._id)),
-      action: 'delete',
-      changes: diffChanges(snapshot(existing), {}),
-    });
-  }
-
   async findByEmployee(employeeId: string): Promise<OperationsCrewRequirementsDoc | null> {
     return operationsCrewRequirementsRepository.findByEmployee(employeeId);
   }
@@ -172,13 +165,36 @@ class OperationsCrewRequirementsService {
       }
     }
 
+    // WHO IS OPERATIONS CREW — the org chart, not a list Operations keeps.
+    //
+    // Legacy asked exactly this of the department (contad_app.js:2296) and ECMS had replaced it
+    // with a roster you added people to. A second list of who works here is a list that goes
+    // stale: a new hire stayed invisible to Operations until somebody remembered them, and a
+    // leaver stayed on it until somebody remembered again.
+    //
+    // The requirements row is no longer MEMBERSHIP. It is what Operations knows ABOUT a member —
+    // the flags — created the first time somebody sets one. A member with no row yet is a real
+    // member with nothing recorded, which is why `requirements` is nullable in the DTO.
+    const departmentIds = await settingsService.resolve<string[]>(
+      OperationsSettingKeys.CrewDepartmentIds,
+      ORG_SUBJECT,
+    );
+    const byEmployee = new Map(rows.map((row) => [String(row.employeeId), row]));
+
+    const roster =
+      departmentIds.length > 0
+        ? await listDirectoryEmployeesByDepartment(departmentIds)
+        : // UNCONFIGURED: fall back to whoever already holds a row — the behaviour before this
+          // setting existed. Adding by hand is gone, so an empty roster would be unfillable.
+          (
+            await Promise.all(rows.map((row) => getDirectoryEmployee(String(row.employeeId))))
+          ).filter((employee): employee is NonNullable<typeof employee> => employee !== null);
+
     const search = query?.search?.trim().toLowerCase() ?? '';
     const members: OperationsCrewMemberDto[] = [];
-    for (const row of rows) {
-      const employeeId = String(row.employeeId);
-      const employee = await getDirectoryEmployee(employeeId);
-      // A roster row whose employee no longer resolves, or who has left, is not offered.
-      if (employee === null || employee.status === 'exited') continue;
+    for (const employee of roster) {
+      // Somebody who has left is not offered, whichever way they were found.
+      if (employee.status === 'exited') continue;
       if (
         search !== '' &&
         !employee.fullNameAr.toLowerCase().includes(search) &&
@@ -187,13 +203,16 @@ class OperationsCrewRequirementsService {
         continue;
       }
 
+      const row = byEmployee.get(employee.employeeId);
       members.push({
-        employeeId,
+        employeeId: employee.employeeId,
         code: employee.code,
         fullNameAr: employee.fullNameAr,
         status: employee.status,
-        requirements: toRequirementsDto(row),
-        assignedVehicleId: taken.get(employeeId) ?? null,
+        // Null means "nothing recorded yet", NOT "carries nothing" — the card says so, and the
+        // first flag anybody sets creates the row.
+        requirements: row === undefined ? null : toRequirementsDto(row),
+        assignedVehicleId: taken.get(employee.employeeId) ?? null,
       });
     }
 
@@ -205,7 +224,7 @@ class OperationsCrewRequirementsService {
         a.code.localeCompare(b.code),
     );
 
-    return { date: day.toISOString(), members };
+    return { date: day.toISOString(), members, rosterIsDerived: departmentIds.length > 0 };
   }
 
   /**

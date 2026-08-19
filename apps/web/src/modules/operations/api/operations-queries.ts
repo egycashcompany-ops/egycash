@@ -364,13 +364,6 @@ export const useSetCrewRequirements = () => {
   });
 };
 
-export const useRemoveCrewRequirements = () => {
-  const invalidate = useRosterInvalidation();
-  return useMutation({
-    mutationFn: (employeeId: string) => api.removeCrewRequirements(employeeId),
-    onSuccess: invalidate,
-  });
-};
 
 // ── Secured shipments and the vault (B4) ───────────────────────────────────
 

@@ -61,12 +61,24 @@ type AttendanceDayLookup = (
 ) => Promise<Map<string, DirectoryAttendanceDay>>;
 /** The self lookup: which employee IS this login? Owned by HR, consumed by self-service surfaces. */
 type SelfEmployeeLookup = (userId: string) => Promise<DirectoryEmployee | null>;
+/**
+ * Everyone currently employed in a set of departments.
+ *
+ * The seam's first LIST. Every lookup before it answers about one person a consumer already knew
+ * to ask about; this one answers "who is in this part of the company" — which is the question a
+ * module has to ask when membership of its roster is the org chart rather than a list it keeps.
+ *
+ * Employed only: an exited employee is not on anybody's roster, and making each consumer remember
+ * to filter would be one forgotten filter away from crewing somebody who left.
+ */
+type EmployeesByDepartmentLookup = (departmentIds: string[]) => Promise<DirectoryEmployee[]>;
 
 let employeeLookup: EmployeeLookup | null = null;
 let employeeBatchLookup: EmployeeBatchLookup | null = null;
 let leaveLookup: LeaveLookup | null = null;
 let attendanceDayLookup: AttendanceDayLookup | null = null;
 let selfEmployeeLookup: SelfEmployeeLookup | null = null;
+let employeesByDepartmentLookup: EmployeesByDepartmentLookup | null = null;
 
 /** Idempotent — the last registration wins, so a test can install a fake over the real one. */
 export const registerEmployeeLookup = (lookup: EmployeeLookup): void => {
@@ -89,6 +101,12 @@ export const registerSelfEmployeeLookup = (lookup: SelfEmployeeLookup): void => 
   selfEmployeeLookup = lookup;
 };
 
+export const registerEmployeesByDepartmentLookup = (
+  lookup: EmployeesByDepartmentLookup,
+): void => {
+  employeesByDepartmentLookup = lookup;
+};
+
 export const getDirectoryEmployee = async (
   employeeId: string,
 ): Promise<DirectoryEmployee | null> =>
@@ -104,6 +122,21 @@ export const getDirectoryEmployees = async (
   employeeIds: readonly string[],
 ): Promise<Map<string, DirectoryEmployee>> =>
   employeeBatchLookup === null ? new Map() : employeeBatchLookup(employeeIds);
+
+/**
+ * Everyone employed in these departments, or `[]` when HR is absent.
+ *
+ * Fail-closed like the single lookup, and for the same reason: a deployment with no employee
+ * source cannot answer who is in a department, and inventing an empty answer is honest where
+ * inventing a populated one would not be. An EMPTY `departmentIds` also answers `[]` — "nobody
+ * asked about any department" is not "everybody".
+ */
+export const listDirectoryEmployeesByDepartment = async (
+  departmentIds: readonly string[],
+): Promise<DirectoryEmployee[]> =>
+  employeesByDepartmentLookup === null || departmentIds.length === 0
+    ? []
+    : employeesByDepartmentLookup([...departmentIds]);
 
 /**
  * The employee behind a login, or null when the account is not linked to one.

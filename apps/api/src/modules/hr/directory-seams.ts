@@ -8,6 +8,7 @@ import {
   registerAttendanceDayLookup,
   registerEmployeeBatchLookup,
   registerEmployeeLookup,
+  registerEmployeesByDepartmentLookup,
   registerLeaveLookup,
   registerSelfEmployeeLookup,
 } from '../../platform/directory';
@@ -27,6 +28,20 @@ export const registerHrDirectorySeams = (): void => {
       branchId: String(employee.branchId),
       departmentId: String(employee.departmentId),
     };
+  });
+
+  // The first LIST on this seam: "who is in this part of the company". Operations' crew roster is
+  // the org chart rather than a list it keeps, so it has to be able to ask.
+  registerEmployeesByDepartmentLookup(async (departmentIds) => {
+    const employees = await employeeRepository.listByDepartmentsSystem(departmentIds);
+    return employees.map((employee) => ({
+      employeeId: String(employee._id),
+      code: employee.code,
+      fullNameAr: employee.personal.fullNameAr,
+      status: employee.status,
+      branchId: String(employee.branchId),
+      departmentId: String(employee.departmentId),
+    }));
   });
 
   registerSelfEmployeeLookup(async (userId) => {

@@ -132,15 +132,8 @@ const CREW_KEYS = [
   'operations.crew.requirements.subtitle',
   'operations.crew.requirements.notAGate',
   'operations.crew.requirements.employee',
-  'operations.crew.requirements.add',
-  'operations.crew.requirements.added',
-  'operations.crew.requirements.addFailed',
-  'operations.crew.requirements.searchEmployee',
-  'operations.crew.requirements.searchHint',
   'operations.crew.requirements.saveFailed',
-  'operations.crew.requirements.confirmRemove',
-  'operations.crew.requirements.removed',
-  'operations.crew.requirements.removeFailed',
+  'operations.crew.requirements.unconfigured',
   'operations.crew.requirements.empty',
 ];
 

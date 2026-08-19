@@ -20,7 +20,6 @@ import {
   getCrewDirectory,
   listCrewRequirements,
   planCrew,
-  removeCrewRequirements,
   setCrewRequirements,
 } from './crew.controller';
 
@@ -66,8 +65,13 @@ export const buildOperationsCrewRouter = (): Router => {
     asyncHandler(getCrewAttendance),
   );
 
-  // The legacy `/requirement` screen. Maintaining the roster is a PLANNING decision — who counts
-  // as operations crew and what they carry — so it rides the same grant as planning the board.
+  // The legacy `/requirement` screen. There is no add and no delete: WHO is operations crew is the
+  // org chart (`operations.crewDepartmentIds`), and this screen records what Operations knows
+  // ABOUT them. Removing somebody from the crew is an HR transfer, not a checkbox here — and a
+  // delete that only hid the flags would have left the person on the board anyway.
+  //
+  // Setting a flag is still a PLANNING decision — what a member carries — so it rides the same
+  // grant as planning the board.
   router.get(
     '/requirements',
     authenticate,
@@ -81,13 +85,6 @@ export const buildOperationsCrewRouter = (): Router => {
     authorize('operationsCrew.plan'),
     validate({ params: EmployeeParamSchema, body: SetOperationsCrewRequirementsSchema }),
     asyncHandler(setCrewRequirements),
-  );
-  router.delete(
-    '/requirements/:employeeId',
-    authenticate,
-    authorize('operationsCrew.plan'),
-    validate({ params: EmployeeParamSchema }),
-    asyncHandler(removeCrewRequirements),
   );
 
   return router;

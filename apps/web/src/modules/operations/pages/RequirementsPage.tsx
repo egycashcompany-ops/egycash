@@ -12,7 +12,14 @@
 //      someone here says "this person is operations crew", it does not edit their employee record.
 //
 // Legacy found its crew with `department:'نقل الاموال' + sub_department:'التشغيل'` — Operations
-// reading another module's org structure. This roster replaces that: membership is explicit.
+// reading another module's org structure. ECMS replaced that with an explicit roster you added
+// people to — and that turned out to be a SECOND list of who works here, which is a list that goes
+// stale: a new hire stayed invisible to Operations until somebody remembered to add them.
+//
+// Membership is the ORG CHART again (`operations.crewDepartmentIds`), so this screen no longer
+// adds or removes anybody. What it records is what Operations knows ABOUT a member — the flags —
+// and the row behind them is created the first time one is set. Somebody with no row yet shows
+// with nothing recorded, which is a different thing from carrying nothing.
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { type OperationsCrewMemberDto } from '@ecms/contracts';
@@ -20,17 +27,13 @@ import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
-import { Button } from '../../../shared/ui/Button';
 import { Card, CardBody } from '../../../shared/ui/Card';
 import { Input } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { PlusIcon, TrashIcon } from '../../../shared/ui/icons';
 import {
   useOperationsCrewDirectory,
-  useRemoveCrewRequirements,
   useSetCrewRequirements,
 } from '../api/operations-queries';
-import { AddCrewMemberDialog } from '../components/AddCrewMemberDialog';
 import {
   REQUIREMENT_FLAGS,
   toFlagPayload,
@@ -47,10 +50,8 @@ export const RequirementsPage = (): JSX.Element => {
   // one source for "who is operations crew" rather than a second listing that could disagree.
   const directory = useOperationsCrewDirectory(sp.get('date'));
   const setFlags = useSetCrewRequirements();
-  const removeMember = useRemoveCrewRequirements();
 
   const [search, setSearch] = useState('');
-  const [adding, setAdding] = useState(false);
 
   const members = (directory.data?.members ?? []).filter((member) => {
     const needle = search.trim().toLowerCase();
@@ -74,15 +75,6 @@ export const RequirementsPage = (): JSX.Element => {
     }
   };
 
-  const remove = async (member: OperationsCrewMemberDto): Promise<void> => {
-    if (!window.confirm(t('operations.crew.requirements.confirmRemove'))) return;
-    try {
-      await removeMember.mutateAsync(member.employeeId);
-      toast.success(t('operations.crew.requirements.removed'));
-    } catch {
-      toast.error(t('operations.crew.requirements.removeFailed'));
-    }
-  };
 
   const columns: Column<OperationsCrewMemberDto>[] = [
     {
@@ -109,21 +101,6 @@ export const RequirementsPage = (): JSX.Element => {
         />
       ),
     })),
-    {
-      key: 'actions',
-      header: '',
-      render: (row) =>
-        canPlan ? (
-          <button
-            type="button"
-            aria-label={t('common.remove')}
-            className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
-            onClick={() => void remove(row)}
-          >
-            <TrashIcon className="h-4 w-4" />
-          </button>
-        ) : null,
-    },
   ];
 
   return (
@@ -131,14 +108,6 @@ export const RequirementsPage = (): JSX.Element => {
       <PageHeader
         title={t('operations.crew.requirements.title')}
         description={t('operations.crew.requirements.subtitle')}
-        actions={
-          canPlan ? (
-            <Button onClick={() => setAdding(true)}>
-              <PlusIcon className="h-4 w-4" />
-              {t('operations.crew.requirements.add')}
-            </Button>
-          ) : undefined
-        }
       />
 
       <Card className="mb-4">
@@ -151,6 +120,13 @@ export const RequirementsPage = (): JSX.Element => {
           <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
             {t('operations.crew.requirements.notAGate')}
           </p>
+          {directory.data?.rosterIsDerived === false && (
+            // Otherwise a frozen fallback list looks exactly like a correctly configured one, and
+            // nobody would learn why a new hire never appears.
+            <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
+              {t('operations.crew.requirements.unconfigured')}
+            </p>
+          )}
         </CardBody>
       </Card>
 
@@ -164,7 +140,6 @@ export const RequirementsPage = (): JSX.Element => {
         empty={t('operations.crew.requirements.empty')}
       />
 
-      <AddCrewMemberDialog open={adding} onClose={() => setAdding(false)} />
     </PageContainer>
   );
 };

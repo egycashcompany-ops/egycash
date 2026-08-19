@@ -16,4 +16,15 @@ export const registerOperationsSettings = (): void => {
     // two operators two different standing-crew pickers over the same vehicles.
     allowedScopes: ['organization'],
   });
+  declareSetting({
+    key: OperationsSettingKeys.CrewDepartmentIds,
+    description:
+      'HR department ids whose employees ARE the operations crew. Empty falls back to whoever ' +
+      'already holds a crew-requirements row.',
+    schema: z.array(objectId()).max(50),
+    defaultValue: [],
+    // Organization only: who works in Operations is one fact about the company, not a per-branch
+    // opinion — two branches disagreeing would give two planners two different crews.
+    allowedScopes: ['organization'],
+  });
 };

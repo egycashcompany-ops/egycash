@@ -1203,8 +1203,20 @@ describe('the standing crew — the permanent crew of each cash-transfer vehicle
     // `cars.department` that held "نقل اموال". WHICH catalog item means that is configuration,
     // because the catalog is admin-named and never seeded: matching the Arabic text would be
     // legacy bug H5, recorded as "never matches real data" and explicitly not carried.
-    const { settingsService } = await import('../../src/platform/settings');
     const { OperationsSettingKeys } = await import('@ecms/contracts');
+
+    // Set through the REAL endpoint rather than the service: `settingsService.set` authorizes on
+    // `ctx.permissions['setting.edit']`, so a hand-built context either fakes the authorization
+    // away or gets it wrong. The admin holds the grant; let the middleware prove it.
+    const setCashOperations = async (value: string[]): Promise<request.Response> =>
+      request(app)
+        .patch('/api/v1/platform/settings/values')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          key: OperationsSettingKeys.CashTransferOperationIds,
+          scope: 'organization',
+          value,
+        });
 
     // Unconfigured: EVERY vehicle is offered, and the board says so rather than looking filtered.
     const before = data<OperationsStandingCrewBoardDto>(await standing());
@@ -1225,10 +1237,7 @@ describe('the standing crew — the permanent crew of each cash-transfer vehicle
       { _id: new Types.ObjectId(offRosterVehicleId) },
       { $set: { operationId: new Types.ObjectId(cashOperationId) } },
     );
-    await settingsService.set(
-      { userId: adminId, branchId: null, permissions: [], roles: [] } as never,
-      { key: OperationsSettingKeys.CashTransferOperationIds, scope: 'organization', value: [cashOperationId] },
-    );
+    expect((await setCashOperations([cashOperationId])).status).toBe(204);
 
     const after = data<OperationsStandingCrewBoardDto>(await standing());
     expect(after.availableIsFiltered).toBe(true);
@@ -1238,10 +1247,8 @@ describe('the standing crew — the permanent crew of each cash-transfer vehicle
     // van does not un-crew it behind Operations' back.
     expect(after.rows.map((r) => r.vehicleId)).toContain(vehicleAId);
 
-    await settingsService.set(
-      { userId: adminId, branchId: null, permissions: [], roles: [] } as never,
-      { key: OperationsSettingKeys.CashTransferOperationIds, scope: 'organization', value: [] },
-    );
+    // Put it back: the cases after this one expect the unfiltered picker.
+    expect((await setCashOperations([])).status).toBe(204);
   });
 
   it('rides the EXISTING crew grants and declares none of its own', async () => {

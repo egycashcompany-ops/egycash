@@ -221,3 +221,31 @@ Covered by `receiving-import.spec.ts` (14 cases).
   all three documents, drawer re-counts, serial uniqueness, the reshape/regenerate guards, one key
   per drawer, the three integrations (including refusing a reference that is not a real ECMS
   record), branch scoping, and RBAC.
+
+### Fidelity audit
+
+The port was written in one pass and its integration suite cannot run outside CI, so the finished
+module was audited against the gold sources file by file: seven slices (receiving, delivery and
+transfers, vaults, bars/people/keys, reports and dashboard, endpoint-and-field wiring, and the
+front end screen by screen), each one asked to find behaviour the port had changed, and each
+finding then given to a second reader whose job was to refute it. Only a finding that survived
+refutation — with a quoted gold line and a quoted port line — counted.
+
+Thirty-nine differences were raised and twenty-eight were refuted as unreachable, dead in gold, or
+already on the approved list above. The eleven that survived are fixed in this branch:
+
+| What differed | Fix |
+| --- | --- |
+| The delegate dropdowns in all three editors asked for `pageSize: 200`; gold's backend clamped that to 100, ECMS's pagination schema rejects it — so the delegate could never be selected and no printed document carried a signatory. | Ask for 100, the platform maximum, which is what gold received after its own clamp. |
+| Delivery and transfer `confirm`/`revert` moved the bars before the version-guarded header write, so a stale version could leave bars moved under an unchanged header with the drawers never re-counted. Gold's `save()` could not fail, so its loop was never half-applied. | Claim the header first; the bar writes and the re-count stay on one success path. (Receiving keeps gold's order deliberately — there the second write is `insertMany`, which really can fail on a serial race, and the stale-version path is unreachable.) |
+| `GET /gold/drawers/:id` returned at most 100 bars, silently truncating the drawer dialog's count, its owner chips and the printed جرد الدرج sheet. Nothing bounds how many bars a drawer holds. | An unpaginated `findInDrawer` read, as gold's `getDrawer` did. |
+| An emptied phone, e-mail, note, national id, job title or vault description was sent as `undefined` on update, which omits the key — so the field could no longer be cleared. | Blanks travel as `null` on the update path, `undefined` only on create. |
+| The vault list tie-break became `_id` ascending instead of gold's `createdAt: -1`, and ties are ordinary because `order` defaults to the vault count. | `listInGoldOrder` — `{ order: 1, createdAt: -1, _id: 1 }` — for the default listing. |
+| The key register resolved the drawer and the delegate one row at a time, 2N queries where gold used one populate pass. | Batched `drawerCells` / `representativeContacts` beside the existing helpers. |
+| The dashboard's four charts lost click-a-legend-entry-to-hide, the two doughnuts lost their in-slice percentages, and the company picker no longer remembered the selection between visits. | All three restored, the selection under the `ecms.` localStorage prefix the platform already uses. |
+| Drawer cells on the board printed bare numbers — no «جم», no «سبيكة», and no «بدون حد» line on a drawer without a weight limit. | Units and the no-limit line restored from the existing catalogue keys. |
+| The drawer-audit minutes printed «ادارة الخزينة — خزينة المعادن الثمينة» on one line; gold gave the department its own line. | `letterhead` takes a list of subtitle lines. |
+
+The refutations are as much a part of the record as the fixes: dropped payload fields nothing
+rendered, dead endpoints no screen called, gold query parameters no caller could send, and the
+soft-delete/validation idioms that are the platform's by design, all stay as they are.

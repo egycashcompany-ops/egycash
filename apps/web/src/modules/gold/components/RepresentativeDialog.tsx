@@ -40,28 +40,41 @@ export const RepresentativeDialog = ({
   const submit = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
     if (companyId === '' || fullName.trim() === '') return;
-    const shared = {
-      companyId,
-      fullName: fullName.trim(),
-      status,
-      nationalId: nationalId.trim() === '' ? undefined : nationalId.trim(),
-      phone: phone.trim() === '' ? undefined : phone.trim(),
-      jobTitle: jobTitle.trim() === '' ? undefined : jobTitle.trim(),
-      notes: notes.trim() === '' ? undefined : notes.trim(),
+    const optional = (value: string): string | undefined => {
+      const text = value.trim();
+      return text === '' ? undefined : text;
     };
     // An empty date field means "not recorded", which is a null on update and simply absent on
-    // create — never today's date, which is what a blank input would otherwise become.
+    // create — never today's date, which is what a blank input would otherwise become. Emptied
+    // TEXT fields read the same way on update: `null` clears them, `undefined` would keep the old
+    // value.
     const joined = joinDate === '' ? undefined : new Date(joinDate);
     try {
       if (representative === null) {
         await create.mutateAsync({
-          ...shared,
+          companyId,
+          fullName: fullName.trim(),
+          status,
+          nationalId: optional(nationalId),
+          phone: optional(phone),
+          jobTitle: optional(jobTitle),
+          notes: optional(notes),
           ...(joined === undefined ? {} : { joinDate: joined }),
         });
       } else {
         await update.mutateAsync({
           id: representative.id,
-          body: { ...shared, joinDate: joined ?? null, version: representative.version },
+          body: {
+            companyId,
+            fullName: fullName.trim(),
+            status,
+            nationalId: optional(nationalId) ?? null,
+            phone: optional(phone) ?? null,
+            jobTitle: optional(jobTitle) ?? null,
+            notes: optional(notes) ?? null,
+            joinDate: joined ?? null,
+            version: representative.version,
+          },
         });
       }
       toast.success(t('gold.common.saved'));

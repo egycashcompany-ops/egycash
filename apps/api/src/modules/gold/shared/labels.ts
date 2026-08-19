@@ -6,6 +6,7 @@
 import { type Types } from 'mongoose';
 import { goldCompanyRepository } from '../companies/company.repository';
 import { goldRepresentativeRepository } from '../representatives/representative.repository';
+import { GoldRepresentativeModel } from '../representatives/representative.model';
 import { GoldVaultModel } from '../vaults/vault.model';
 import { GoldDrawerModel } from '../vaults/drawer.model';
 import { type GoldLabels } from '../gold.mappers';
@@ -51,6 +52,39 @@ const drawerNumbers = async (
     .lean<{ _id: Types.ObjectId; number: number }[]>()
     .exec();
   return new Map(docs.map((d) => [String(d._id), d.number]));
+};
+
+/**
+ * Drawer number AND label for a page of rows, in one query.
+ *
+ * The keys register prints the drawer's label on the handover slip, which `drawerNumbers` does not
+ * select — resolving it per row is what turns a page into 2N lookups.
+ */
+export const drawerCells = async (
+  values: readonly (string | Types.ObjectId | null | undefined)[],
+): Promise<Map<string, { number: number; label: string }>> => {
+  const list = ids(values);
+  if (list.length === 0) return new Map();
+  const docs = await GoldDrawerModel.find({ _id: { $in: list } })
+    .select('number label')
+    .lean<{ _id: Types.ObjectId; number: number; label: string }[]>()
+    .exec();
+  return new Map(docs.map((d) => [String(d._id), { number: d.number, label: d.label }]));
+};
+
+/** Holder phone + national id for a page of rows, in one query — the handover slip carries both. */
+export const representativeContacts = async (
+  values: readonly (string | Types.ObjectId | null | undefined)[],
+): Promise<Map<string, { phone: string | null; nationalId: string | null }>> => {
+  const list = ids(values);
+  if (list.length === 0) return new Map();
+  const docs = await GoldRepresentativeModel.find({ _id: { $in: list } })
+    .select('phone nationalId')
+    .lean<{ _id: Types.ObjectId; phone: string | null; nationalId: string | null }[]>()
+    .exec();
+  return new Map(
+    docs.map((d) => [String(d._id), { phone: d.phone ?? null, nationalId: d.nationalId ?? null }]),
+  );
 };
 
 export interface LabelRequest {

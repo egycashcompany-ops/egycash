@@ -4,6 +4,7 @@
 // in, its number in the corner, the key indicator opposite it, and — when the board is showing
 // owners — a strip of colour-coded owner chips underneath. The fill colours are state colours, not
 // theme colours: a drawer over its limit has to look wrong in either theme.
+import { useT } from '../../../platform/localization/useT';
 import { KeyIcon } from './GoldIcons';
 import { fillColor, fillRatio } from '../lib/gold-format';
 
@@ -44,6 +45,7 @@ export const DrawerCell = ({
   ownerColor: (id: string) => string;
   onClick: () => void;
 }): JSX.Element => {
+  const t = useT();
   const hasLimit = limit > 0;
   const pct = hasLimit ? Math.round((weight / limit) * 100) : null;
   const over = hasLimit && weight > limit;
@@ -105,19 +107,24 @@ export const DrawerCell = ({
                 {pct}%
               </span>
               <span className="text-[11px] font-semibold leading-none text-slate-700 dark:text-slate-200">
-                {Math.round(weight)}
+                {t('gold.common.grams', { value: Math.round(weight) })}
               </span>
               <span className="text-[10px] leading-none text-slate-600 dark:text-slate-300">
-                {barsCount}
+                {t('gold.common.barsCount', { count: barsCount })}
               </span>
             </>
           ) : (
             <>
               <span className="text-base font-extrabold leading-none text-slate-900 dark:text-slate-50">
-                {Math.round(weight)}
+                {t('gold.common.grams', { value: Math.round(weight) })}
               </span>
               <span className="text-[11px] font-semibold leading-none text-slate-700 dark:text-slate-200">
-                {barsCount}
+                {t('gold.common.barsCount', { count: barsCount })}
+              </span>
+              {/* A drawer with no weight limit says so, as gold's cell did — otherwise the two
+                  layouts are indistinguishable and the number reads as a percentage-less mystery. */}
+              <span className="text-[9px] leading-none text-slate-500 dark:text-slate-400">
+                {t('gold.vaults.noLimit')}
               </span>
             </>
           )}

@@ -87,11 +87,11 @@ export const TransferEditorDialog = ({
 
   const locked = existing?.status === 'confirmed' || existing?.status === 'reverted';
   const currentReps = useGoldRepresentatives(
-    { companyId: currentOwnerId, pageSize: 200 },
+    { companyId: currentOwnerId, pageSize: 100 },
     currentOwnerId !== '',
   );
   const newReps = useGoldRepresentatives(
-    { companyId: newOwnerId, pageSize: 200 },
+    { companyId: newOwnerId, pageSize: 100 },
     newOwnerId !== '',
   );
 

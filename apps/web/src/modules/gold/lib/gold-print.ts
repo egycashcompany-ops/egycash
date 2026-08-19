@@ -48,10 +48,19 @@ const PRINT_ON_LOAD = `<script>window.onload = () => { window.print(); };</${'sc
 const FONTS =
   "@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Tajawal:wght@400;500;700&display=swap');";
 
-const letterhead = (branch: string, subtitle: string, withDate: boolean): string => {
+/**
+ * The company block every gold document opens with.
+ *
+ * `subtitle` takes one line or several — the drawer-audit minutes name the department on its own
+ * line above the vault, which is how gold printed it and how the signed copies read.
+ */
+const letterhead = (branch: string, subtitle: string | string[], withDate: boolean): string => {
   const { weekday, date } = stamp();
+  const lines = (Array.isArray(subtitle) ? subtitle : [subtitle])
+    .map((line) => `<div>${esc(line)}</div>`)
+    .join('');
   return `<div class="head">
-      <div class="org"><div class="b">ايجى كاش للحلول النقدية</div><div>${esc(subtitle)}</div>${
+      <div class="org"><div class="b">ايجى كاش للحلول النقدية</div>${lines}${
         branch === '' ? '' : `<div>فرع : <span class="b">${esc(branch)}</span></div>`
       }${withDate ? `<div>التاريخ : <span class="b">${esc(weekday)} ${esc(date)}</span></div>` : ''}</div>
       <img src="${EGYCASH_LOGO}" alt="EGYCASH" />
@@ -297,7 +306,7 @@ export const printDrawerAuditHtml = ({
   </style></head>
   <body>
     <button class="printbtn" onclick="window.print()">طباعة المحضر 🖨️</button>
-    ${letterhead(branch, 'ادارة الخزينة — خزينة المعادن الثمينة', false)}
+    ${letterhead(branch, ['ادارة الخزينة', 'خزينة المعادن الثمينة'], false)}
     <div class="rtitle"><h1>محضر جرد درج</h1></div>
     <div class="body">
       <p>انه فى يوم ${esc(weekday)} الموافق ${esc(date)}</p>

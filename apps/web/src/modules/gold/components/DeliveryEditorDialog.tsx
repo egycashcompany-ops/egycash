@@ -79,7 +79,7 @@ export const DeliveryEditorDialog = ({
 
   // A confirmed OR reverted order is history: neither can be edited again.
   const locked = existing?.status === 'confirmed' || existing?.status === 'reverted';
-  const reps = useGoldRepresentatives({ companyId, pageSize: 200 }, companyId !== '');
+  const reps = useGoldRepresentatives({ companyId, pageSize: 100 }, companyId !== '');
 
   useEffect(() => {
     if (id !== null || number !== '') return;

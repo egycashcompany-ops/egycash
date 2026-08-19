@@ -10,10 +10,8 @@ import { authContext } from '../../../platform/auth';
 import { created, noContent, ok, validated } from '../../../platform/web';
 import { directoryProfileService } from '../../../platform/directory';
 import { scopeSelector } from '../../../shared/types';
-import { goldDrawerRepository } from '../vaults/drawer.repository';
-import { goldRepresentativeRepository } from '../representatives/representative.repository';
 import { toGoldKeyHandoverDto } from '../gold.mappers';
-import { resolveGoldLabels } from '../shared/labels';
+import { drawerCells, representativeContacts, resolveGoldLabels } from '../shared/labels';
 import { goldKeyHandoverService } from './key-handover.service';
 import { type GoldKeyHandoverDoc } from './key-handover.model';
 
@@ -25,17 +23,15 @@ type IdParam = { id: string };
  * who handed the key over. Resolved once for the page.
  */
 const decorate = async (docs: GoldKeyHandoverDoc[]) => {
-  const [labels, drawers, reps, users] = await Promise.all([
+  const [labels, drawers, contacts, users] = await Promise.all([
     resolveGoldLabels({
       companyIds: docs.map((k) => k.companyId),
       representativeIds: docs.map((k) => k.representativeId),
       vaultNameIds: docs.map((k) => k.vaultId),
       branches: true,
     }),
-    Promise.all(docs.map(async (k) => goldDrawerRepository.findById(String(k.drawerId)))),
-    Promise.all(
-      docs.map(async (k) => goldRepresentativeRepository.findById(String(k.representativeId))),
-    ),
+    drawerCells(docs.map((k) => k.drawerId)),
+    representativeContacts(docs.map((k) => k.representativeId)),
     directoryProfileService.resolve([
       ...new Set(
         docs
@@ -48,14 +44,16 @@ const decorate = async (docs: GoldKeyHandoverDoc[]) => {
   // The Arabic side of the profile's localized name — this module's screens are Arabic-first, and
   // the handover slip prints the name the operator signed with.
   const userNames = new Map([...users.values()].map((p) => [p.userId, p.displayName.ar]));
-  return docs.map((doc, i) =>
-    toGoldKeyHandoverDto(
+  return docs.map((doc) => {
+    const cell = drawers.get(String(doc.drawerId));
+    const contact = contacts.get(String(doc.representativeId));
+    return toGoldKeyHandoverDto(
       doc,
       { ...labels, users: userNames },
-      { phone: reps[i]?.phone ?? null, nationalId: reps[i]?.nationalId ?? null },
-      { number: drawers[i]?.number ?? null, label: drawers[i]?.label ?? null },
-    ),
-  );
+      { phone: contact?.phone ?? null, nationalId: contact?.nationalId ?? null },
+      { number: cell?.number ?? null, label: cell?.label ?? null },
+    );
+  });
 };
 
 export const listGoldKeys = async (req: Request, res: Response): Promise<void> => {

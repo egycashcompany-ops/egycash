@@ -18,6 +18,30 @@ class GoldBarRepository extends BaseRepository<GoldBarDoc> {
       .exec();
   }
 
+  /**
+   * Every live bar physically inside one drawer, unpaginated.
+   *
+   * Deliberately not `list()`: the drawer dialog and the جرد الدرج audit sheet show a drawer's
+   * WHOLE contents, and nothing bounds how many bars a drawer holds (`weightLimit` is indicative).
+   * `list()` clamps to MAX_PAGE_SIZE, which would silently truncate the sheet — gold's `getDrawer`
+   * read the full set.
+   */
+  async findInDrawer(
+    drawerId: string | Types.ObjectId,
+    scope?: ScopeSelector,
+  ): Promise<GoldBarDoc[]> {
+    return this.model
+      .find(
+        this.baseFilter(scope, {
+          currentDrawerId: new Types.ObjectId(String(drawerId)),
+          status: 'in_vault',
+        } as FilterQuery<GoldBarDoc>),
+      )
+      .sort({ serialNumber: 1 })
+      .lean<GoldBarDoc[]>()
+      .exec();
+  }
+
   async findByIds(ids: readonly (string | Types.ObjectId)[]): Promise<GoldBarDoc[]> {
     if (ids.length === 0) return [];
     return this.model

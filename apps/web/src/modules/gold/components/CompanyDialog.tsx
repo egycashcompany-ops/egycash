@@ -68,24 +68,36 @@ export const CompanyDialog = ({
     event.preventDefault();
     const trimmed = name.trim();
     if (trimmed === '') return;
-    const shared = {
-      name: trimmed,
-      type,
-      status,
-      phone: phone.trim() === '' ? undefined : phone.trim(),
-      email: email.trim() === '' ? undefined : email.trim(),
-      notes: notes.trim() === '' ? undefined : notes.trim(),
-    } satisfies Omit<CreateGoldCompany, 'logoFileId'>;
+    const optional = (value: string): string | undefined => {
+      const text = value.trim();
+      return text === '' ? undefined : text;
+    };
     try {
       if (company === null) {
         await create.mutateAsync({
-          ...shared,
+          name: trimmed,
+          type,
+          status,
+          phone: optional(phone),
+          email: optional(email),
+          notes: optional(notes),
           ...(logoFileId === null ? {} : { logoFileId }),
-        });
+        } satisfies CreateGoldCompany);
       } else {
+        // On edit an emptied field is an instruction to CLEAR it, so blanks go as `null` — sending
+        // `undefined` would omit the key and silently keep the old value.
         await update.mutateAsync({
           id: company.id,
-          body: { ...shared, logoFileId, version: company.version },
+          body: {
+            name: trimmed,
+            type,
+            status,
+            phone: optional(phone) ?? null,
+            email: optional(email) ?? null,
+            notes: optional(notes) ?? null,
+            logoFileId,
+            version: company.version,
+          },
         });
       }
       toast.success(t('gold.common.saved'));

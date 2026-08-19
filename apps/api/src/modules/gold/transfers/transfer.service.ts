@@ -198,6 +198,15 @@ class GoldTransferService {
         `سبائك غير متاحة للتحويل: ${unavailable.map((b) => b.serialNumber).join(', ')}`,
       );
     }
+    // Claim the transfer FIRST — gold's `transfer.save()` could not fail, so its bar loop was
+    // never left half-applied. The port's write is version-guarded and can throw, so it goes
+    // ahead of the bars: a stale confirm is refused with no ownership changed.
+    const updated = await goldTransferRepository.updateById(
+      id,
+      { status: 'confirmed' },
+      { by, version, scope },
+    );
+
     const now = new Date();
     const actor = new Types.ObjectId(by);
     for (const bar of bars) {
@@ -217,11 +226,6 @@ class GoldTransferService {
         { companyId: transfer.newOwnerId },
       );
     }
-    const updated = await goldTransferRepository.updateById(
-      id,
-      { status: 'confirmed' },
-      { by, version, scope },
-    );
     await auditService.record({
       entityRef: entityRef(id),
       action: 'transfer',
@@ -247,6 +251,14 @@ class GoldTransferService {
       throw new BusinessRuleError('المالك السابق غير معروف، تعذّر التراجع');
     }
     const bars = await goldBarRepository.findByIds(transfer.barIds);
+
+    // Same reason as `confirm`: the version-guarded header write goes before the bar writes.
+    const updated = await goldTransferRepository.updateById(
+      id,
+      { status: 'reverted' },
+      { by, version, scope },
+    );
+
     const now = new Date();
     const actor = new Types.ObjectId(by);
     for (const bar of bars) {
@@ -266,11 +278,6 @@ class GoldTransferService {
         { companyId: transfer.currentOwnerId },
       );
     }
-    const updated = await goldTransferRepository.updateById(
-      id,
-      { status: 'reverted' },
-      { by, version, scope },
-    );
     await auditService.record({
       entityRef: entityRef(id),
       action: 'revert',

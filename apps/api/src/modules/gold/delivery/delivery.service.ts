@@ -203,6 +203,16 @@ class GoldDeliveryService {
       throw new ConflictError(`Not in vault: ${notInVault.map((b) => b.serialNumber).join(', ')}`);
     }
 
+    // Claim the receipt FIRST. Gold's `receipt.save()` could not fail, so once its bar loop ran
+    // the header write and the recount always followed. Here the write is version-guarded and can
+    // throw, so it goes ahead of the bars: a stale confirm is refused with nothing moved, rather
+    // than leaving bars delivered under a receipt that still says draft.
+    const updated = await goldDeliveryReceiptRepository.updateById(
+      id,
+      { status: 'confirmed' },
+      { by, version, scope },
+    );
+
     const now = new Date();
     const actor = new Types.ObjectId(by);
     const affected = bars.map((bar) => bar.currentDrawerId?.toString());
@@ -223,11 +233,6 @@ class GoldDeliveryService {
         { status: 'delivered', currentVaultId: null, currentDrawerId: null },
       );
     }
-    const updated = await goldDeliveryReceiptRepository.updateById(
-      id,
-      { status: 'confirmed' },
-      { by, version, scope },
-    );
     await recountDrawers(affected);
     await auditService.record({
       entityRef: entityRef(id),
@@ -258,6 +263,14 @@ class GoldDeliveryService {
       throw new BusinessRuleError('يمكن التراجع عن الإيصالات المعتمدة فقط');
     }
     const bars = await goldBarRepository.findByIds(receipt.barIds);
+
+    // Same reason as `confirm`: the version-guarded header write goes before the bar writes.
+    const updated = await goldDeliveryReceiptRepository.updateById(
+      id,
+      { status: 'reverted' },
+      { by, version, scope },
+    );
+
     const now = new Date();
     const actor = new Types.ObjectId(by);
     const affected: (string | undefined)[] = [];
@@ -285,11 +298,6 @@ class GoldDeliveryService {
       );
       affected.push(drawerId?.toString());
     }
-    const updated = await goldDeliveryReceiptRepository.updateById(
-      id,
-      { status: 'reverted' },
-      { by, version, scope },
-    );
     await recountDrawers(affected);
     await auditService.record({
       entityRef: entityRef(id),

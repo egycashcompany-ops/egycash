@@ -358,14 +358,22 @@ export const GoldVaultSettingsPage = (): JSX.Element => {
           onClose={() => {
             setVaultDialog({ open: false, vault: null });
           }}
-          onSave={async (body) => {
+          onSave={async ({ name, description, floorId }) => {
             try {
-              if (vaultDialog.vault === null) await createVault.mutateAsync(body);
-              else
+              // A cleared description is `null` on edit — that is what clears it. On create there
+              // is nothing to clear, so an absent description is simply left out.
+              if (vaultDialog.vault === null) {
+                await createVault.mutateAsync({
+                  name,
+                  floorId,
+                  ...(description === null ? {} : { description }),
+                });
+              } else {
                 await updateVault.mutateAsync({
                   id: vaultDialog.vault.id,
-                  body: { ...body, version: vaultDialog.vault.version },
+                  body: { name, description, floorId, version: vaultDialog.vault.version },
                 });
+              }
               toast.success(t('gold.common.saved'));
               setVaultDialog({ open: false, vault: null });
             } catch (err) {
@@ -441,7 +449,7 @@ const VaultDialog = ({
   vault: GoldVaultDto | null;
   floors: { id: string; name: string }[];
   onClose: () => void;
-  onSave: (body: { name: string; description?: string; floorId: string | null }) => Promise<void>;
+  onSave: (body: { name: string; description: string | null; floorId: string | null }) => Promise<void>;
 }): JSX.Element => {
   const t = useT();
   const [name, setName] = useState(vault?.name ?? '');
@@ -463,7 +471,7 @@ const VaultDialog = ({
             onClick={() => {
               void onSave({
                 name: name.trim(),
-                ...(description.trim() === '' ? {} : { description: description.trim() }),
+                description: description.trim() === '' ? null : description.trim(),
                 floorId: floorId === '' ? null : floorId,
               });
             }}

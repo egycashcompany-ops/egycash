@@ -63,12 +63,22 @@ class GoldVaultService {
       const pattern = new RegExp(query.search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
       filter.$or = [{ name: pattern }, { code: pattern }];
     }
+    // Default listing keeps gold's own sequence, ties included; an explicit ?sortBy goes through
+    // the platform seam like every other list.
+    if (query.sortBy === undefined) {
+      return goldVaultRepository.listInGoldOrder({
+        filter,
+        page: query.page,
+        pageSize: query.pageSize,
+        scope,
+      });
+    }
     return goldVaultRepository.list({
       filter,
       page: query.page,
       pageSize: query.pageSize,
-      sortBy: query.sortBy ?? 'order',
-      sortDir: query.sortBy === undefined ? 'asc' : query.sortDir,
+      sortBy: query.sortBy,
+      sortDir: query.sortDir,
       sortableFields: ['order', 'createdAt', 'name'],
       scope,
     });
@@ -374,15 +384,10 @@ class GoldVaultService {
   async getDrawer(drawerId: string, scope: ScopeSelector) {
     const drawer = await goldDrawerRepository.findById(drawerId, scope);
     if (drawer === null) throw new NotFoundError();
-    const bars = await goldBarRepository.list({
-      filter: { currentDrawerId: drawer._id, status: 'in_vault' } as never,
-      page: 1,
-      pageSize: 100,
-      sortBy: 'serialNumber',
-      sortDir: 'asc',
-      sortableFields: ['serialNumber', 'createdAt'],
-    });
-    return { drawer, bars: bars.items };
+    // Unpaginated on purpose — the dialog counts these and the audit sheet prints them, and gold
+    // returned the drawer's whole contents.
+    const bars = await goldBarRepository.findInDrawer(drawer._id, scope);
+    return { drawer, bars };
   }
 }
 

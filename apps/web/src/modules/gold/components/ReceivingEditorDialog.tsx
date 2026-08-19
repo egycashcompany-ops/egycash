@@ -364,7 +364,7 @@ export const ReceivingEditorDialog = ({
   );
 
   const readOnly = existing?.status === 'confirmed';
-  const companyReps = useGoldRepresentatives({ companyId, pageSize: 200 }, companyId !== '');
+  const companyReps = useGoldRepresentatives({ companyId, pageSize: 100 }, companyId !== '');
 
   // A server-numbered draft shows its number the moment the operator switches to that mode.
   useEffect(() => {
@@ -419,8 +419,14 @@ export const ReceivingEditorDialog = ({
             drawerCache.set(vault.id, await listVaultDrawers(vault.id));
           }
           const wanted = norm(row.drawerRaw);
+          // Gold's three comparisons, kept verbatim: the bare number, the drawer's own label, and
+          // a «درج N» label. The labeller only ever writes `CODE-007`, so the third never fires on
+          // data this system produced — it stays because it is what gold matched on.
           const drawer = (drawerCache.get(vault.id) ?? []).find(
-            (d) => String(d.number) === wanted || norm(d.label) === wanted,
+            (d) =>
+              String(d.number) === wanted ||
+              norm(d.label) === wanted ||
+              norm(d.label) === `درج ${wanted}`,
           );
           if (drawer === undefined) unresolved += 1;
           else drawerId = drawer.id;

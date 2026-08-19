@@ -7,7 +7,7 @@
 //
 // Chart colours are metal colours, not brand colours: gold is gold and silver is silver in either
 // theme, because that is what the reader is looking for.
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Bar,
   BarChart,
@@ -41,6 +41,100 @@ const compact = (value: number): string => {
   if (Math.abs(n) >= 1e6) return `${(n / 1e6).toFixed(n % 1e6 === 0 ? 0 : 1)}M`;
   if (Math.abs(n) >= 1e3) return `${(n / 1e3).toFixed(n % 1e3 === 0 ? 0 : 1)}K`;
   return String(n);
+};
+
+/** The company picker remembers what you last looked at, as gold's dashboard did. */
+const OWNERS_KEY = 'ecms.gold.dashboard.companies';
+
+const readOwners = (): string[] => {
+  try {
+    const raw = window.localStorage.getItem(OWNERS_KEY);
+    if (raw === null) return [];
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : [];
+  } catch {
+    // Private mode, or a stale value someone hand-edited. A dashboard that cannot remember works.
+    return [];
+  }
+};
+
+const writeOwners = (value: string[]): void => {
+  try {
+    window.localStorage.setItem(OWNERS_KEY, JSON.stringify(value));
+  } catch {
+    /* not remembering is not an error worth showing anyone */
+  }
+};
+
+/**
+ * Click a legend entry to hide that series — the gold dashboard's own affordance, and the only way
+ * to read a chart where one metal dwarfs the other.
+ */
+const useHiddenSeries = (): {
+  hidden: string[];
+  toggle: (entry: { dataKey?: unknown; value?: unknown }) => void;
+  legendLabel: (value: string) => JSX.Element;
+} => {
+  const [hidden, setHidden] = useState<string[]>([]);
+  const toggle = (entry: { dataKey?: unknown; value?: unknown }): void => {
+    const key = String(entry.dataKey ?? entry.value ?? '');
+    if (key === '') return;
+    setHidden((current) =>
+      current.includes(key) ? current.filter((k) => k !== key) : [...current, key],
+    );
+  };
+  const legendLabel = (value: string): JSX.Element => (
+    <span
+      className={`cursor-pointer ${
+        hidden.includes(value)
+          ? 'text-slate-400 dark:text-slate-600'
+          : 'text-slate-700 dark:text-slate-200'
+      }`}
+    >
+      {value}
+    </span>
+  );
+  return { hidden, toggle, legendLabel };
+};
+
+/**
+ * The percentage inside each slice, drawn at the doughnut's mid-radius. Slices under 3% get no
+ * label — gold's cutoff, and the point below which the text no longer fits the arc.
+ */
+const pieLabel = ({
+  cx,
+  cy,
+  midAngle,
+  innerRadius,
+  outerRadius,
+  percent,
+}: {
+  cx?: number;
+  cy?: number;
+  midAngle?: number;
+  innerRadius?: number;
+  outerRadius?: number;
+  percent?: number;
+}): JSX.Element | null => {
+  if (percent === undefined || percent < 0.03) return null;
+  const rad = Math.PI / 180;
+  const inner = innerRadius ?? 0;
+  const radius = inner + ((outerRadius ?? 0) - inner) * 0.5;
+  const x = (cx ?? 0) + radius * Math.cos(-(midAngle ?? 0) * rad);
+  const y = (cy ?? 0) + radius * Math.sin(-(midAngle ?? 0) * rad);
+  return (
+    <text
+      x={x}
+      y={y}
+      fill="#0f172a"
+      fontSize={13}
+      fontWeight="bold"
+      textAnchor="middle"
+      dominantBaseline="central"
+    >
+      {`${(percent * 100).toFixed(0)}%`}
+    </text>
+  );
 };
 
 /** Owner names wrap to at most three short lines instead of being cut off mid-word. */
@@ -86,7 +180,14 @@ export const GoldDashboardPage = (): JSX.Element => {
   const t = useT();
   const stats = useGoldDashboardStats();
   const charts = useGoldDashboardCharts();
-  const [pickedOwners, setPickedOwners] = useState<string[]>([]);
+  const [pickedOwners, setPickedOwners] = useState<string[]>(readOwners);
+  const companyLegend = useHiddenSeries();
+  const metalLegend = useHiddenSeries();
+  const ownerLegend = useHiddenSeries();
+  const flowLegend = useHiddenSeries();
+  useEffect(() => {
+    writeOwners(pickedOwners);
+  }, [pickedOwners]);
 
   const byCompany = charts.data?.barsByCompany ?? [];
   const ownerOptions = byCompany.map((row) => ({ value: row.companyId, label: row.name }));
@@ -102,11 +203,12 @@ export const GoldDashboardPage = (): JSX.Element => {
     .filter((row) => shownOwnerIds.includes(row.companyId))
     .map((row) => ({ name: row.name, [goldLabel]: row.gold, [silverLabel]: row.silver }));
 
-  const metalData = Object.entries(stats.data?.byMetal ?? {}).map(([key, totals]) => ({
-    key,
-    name: metalLabel(t, key),
-    value: totals.weight,
-  }));
+  // A legend-hidden slice keeps its place and its colour but drops to zero, which is how gold
+  // removed it from the doughnut without renumbering everything beside it.
+  const metalData = Object.entries(stats.data?.byMetal ?? {}).map(([key, totals]) => {
+    const name = metalLabel(t, key);
+    return { key, name, value: metalLegend.hidden.includes(name) ? 0 : totals.weight };
+  });
 
   const ownerType = charts.data?.ownerTypeWeight ?? {};
   const ownerData = [
@@ -115,7 +217,9 @@ export const GoldDashboardPage = (): JSX.Element => {
       name: t('gold.dashboard.corporates'),
       value: (ownerType.company ?? 0) + (ownerType.institution ?? 0),
     },
-  ].filter((row) => row.value > 0);
+  ]
+    .filter((row) => row.value > 0)
+    .map((row) => ({ ...row, value: ownerLegend.hidden.includes(row.name) ? 0 : row.value }));
 
   // Twelve months, ending this month — net (in − out) per metal, in kilos.
   const flow = useMemo(() => {
@@ -245,9 +349,19 @@ export const GoldDashboardPage = (): JSX.Element => {
                     fontSize={11}
                   />
                   <Tooltip formatter={(v: number) => grams(v)} />
-                  <Legend />
-                  <Bar dataKey={goldLabel} fill={METAL_COLOURS.gold} radius={[5, 5, 0, 0]} />
-                  <Bar dataKey={silverLabel} fill={METAL_COLOURS.silver} radius={[5, 5, 0, 0]} />
+                  <Legend onClick={companyLegend.toggle} formatter={companyLegend.legendLabel} />
+                  <Bar
+                    dataKey={goldLabel}
+                    fill={METAL_COLOURS.gold}
+                    radius={[5, 5, 0, 0]}
+                    hide={companyLegend.hidden.includes(goldLabel)}
+                  />
+                  <Bar
+                    dataKey={silverLabel}
+                    fill={METAL_COLOURS.silver}
+                    radius={[5, 5, 0, 0]}
+                    hide={companyLegend.hidden.includes(silverLabel)}
+                  />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -267,6 +381,8 @@ export const GoldDashboardPage = (): JSX.Element => {
                     innerRadius={45}
                     outerRadius={85}
                     paddingAngle={3}
+                    label={pieLabel}
+                    labelLine={false}
                   >
                     {metalData.map((row, i) => (
                       <Cell
@@ -276,7 +392,7 @@ export const GoldDashboardPage = (): JSX.Element => {
                     ))}
                   </Pie>
                   <Tooltip formatter={(v: number) => grams(v)} />
-                  <Legend />
+                  <Legend onClick={metalLegend.toggle} formatter={metalLegend.legendLabel} />
                 </PieChart>
               </ResponsiveContainer>
             </CardBody>
@@ -294,13 +410,15 @@ export const GoldDashboardPage = (): JSX.Element => {
                     innerRadius={45}
                     outerRadius={85}
                     paddingAngle={3}
+                    label={pieLabel}
+                    labelLine={false}
                   >
                     {ownerData.map((row, i) => (
                       <Cell key={row.name} fill={OWNER_COLOURS[i % OWNER_COLOURS.length]} />
                     ))}
                   </Pie>
                   <Tooltip formatter={(v: number) => grams(v)} />
-                  <Legend />
+                  <Legend onClick={ownerLegend.toggle} formatter={ownerLegend.legendLabel} />
                 </PieChart>
               </ResponsiveContainer>
             </CardBody>
@@ -322,9 +440,19 @@ export const GoldDashboardPage = (): JSX.Element => {
                   <Tooltip
                     formatter={(v: number) => t('gold.common.kilos', { value: String(v) })}
                   />
-                  <Legend />
-                  <Bar dataKey={goldLabel} fill={METAL_COLOURS.gold} radius={[4, 4, 0, 0]} />
-                  <Bar dataKey={silverLabel} fill={METAL_COLOURS.silver} radius={[4, 4, 0, 0]} />
+                  <Legend onClick={flowLegend.toggle} formatter={flowLegend.legendLabel} />
+                  <Bar
+                    dataKey={goldLabel}
+                    fill={METAL_COLOURS.gold}
+                    radius={[4, 4, 0, 0]}
+                    hide={flowLegend.hidden.includes(goldLabel)}
+                  />
+                  <Bar
+                    dataKey={silverLabel}
+                    fill={METAL_COLOURS.silver}
+                    radius={[4, 4, 0, 0]}
+                    hide={flowLegend.hidden.includes(silverLabel)}
+                  />
                 </BarChart>
               </ResponsiveContainer>
             </CardBody>

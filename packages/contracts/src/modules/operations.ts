@@ -389,8 +389,33 @@ const forbidDailyDeliveryDate = (
   }
 };
 
+/**
+ * The collection crew, named at creation — RESTORED legacy behaviour, not a new capability.
+ *
+ * Legacy wrote `leader1` + `car_num1` on the create handler itself, for daily shipments
+ * (contad_app.js:330/336) and محصنة alike (:725/:733): naming who collects the money was part of
+ * booking the collection, not a second trip to another screen. ECMS had split it out; this puts it
+ * back where the operator already is.
+ *
+ * THE VEHICLE IS NOT ON THE WIRE, deliberately. `crewAssignmentId` IS a (operating day, vehicle)
+ * row, so the vehicle is a FACT of the crew the server reads — not a claim the client makes. A
+ * payload carrying its own vehicleId could assert a captain was on a van he was never planned
+ * onto, and the server would have to disbelieve it; not accepting it is simpler and cannot drift.
+ *
+ * Which is also why the FORM can offer the vehicle as an editable field while the wire carries
+ * none: picking a captain and picking a vehicle are two ways of choosing the same crew row.
+ */
+export const CreateOperationsShipmentPickupSchema = z
+  .object({ crewAssignmentId: objectId(), captainEmployeeId: objectId() })
+  .strict();
+export type CreateOperationsShipmentPickup = z.infer<typeof CreateOperationsShipmentPickupSchema>;
+
 export const CreateOperationsShipmentSchema = z
-  .object(shipmentCore)
+  .object({
+    ...shipmentCore,
+    /** Absent means "book it now, crew it later" — the backlog path, unchanged. */
+    pickup: CreateOperationsShipmentPickupSchema.nullable().optional(),
+  })
   .strict()
   .superRefine(forbidDailyDeliveryDate);
 export type CreateOperationsShipment = z.infer<typeof CreateOperationsShipmentSchema>;

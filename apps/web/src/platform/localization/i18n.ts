@@ -4700,6 +4700,11 @@ const en: Record<string, string> = {
   'operations.shipment.currency': 'Currency',
   'operations.shipment.lines': 'Amounts',
   'operations.shipment.addLine': 'Add currency',
+  'operations.shipment.captain': 'Collection captain',
+  'operations.shipment.vehicle': 'Vehicle',
+  'operations.shipment.noCrew': 'Assign later',
+  'operations.shipment.noCrewForDay':
+    'No crew is planned for this collection date yet — book the shipment now and assign it from the crew board.',
   'operations.shipment.collectionDate': 'Collection date',
   'operations.shipment.deliveryDate': 'Delivery date',
   'operations.shipment.deliveryDateHint': 'Secured shipments only — the day it leaves for delivery.',
@@ -9514,6 +9519,11 @@ const ar: Record<string, string> = {
   'operations.shipment.currency': 'العملة',
   'operations.shipment.lines': 'المبالغ',
   'operations.shipment.addLine': 'إضافة عملة',
+  'operations.shipment.captain': 'قائد التحصيل',
+  'operations.shipment.vehicle': 'المركبة',
+  'operations.shipment.noCrew': 'التعيين لاحقًا',
+  'operations.shipment.noCrewForDay':
+    'لا توجد تشغيلة مخطَّطة لتاريخ التحصيل ده بعد — سجّل الشحنة دلوقتي وعيّنها من لوحة التشغيلة.',
   'operations.shipment.collectionDate': 'تاريخ التحصيل',
   'operations.shipment.deliveryDate': 'تاريخ التسليم',
   'operations.shipment.deliveryDateHint': 'للمحصنات فقط — يوم الخروج للتسليم.',

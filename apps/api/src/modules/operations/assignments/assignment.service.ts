@@ -63,7 +63,7 @@ const snapshot = (doc: OperationsShipmentAssignmentDoc) => ({
  * The three checks are the ones the legacy screens made structurally (they only ever showed a
  * given day's tashghela rows beside that day's shipments) and never enforced on the server.
  */
-const resolveCrew = async (
+export const resolveCrew = async (
   crewAssignmentId: string,
   captainEmployeeId: string,
   legDate: Date,

@@ -109,9 +109,14 @@ class OperationsStandingCrewService {
    * maintaining it.
    */
   private async allVehicles(): Promise<
-    { _id: unknown; code: string; operationId: Types.ObjectId | null }[]
+    { _id: unknown; code: string; operationId: Types.ObjectId | null; status: string }[]
   > {
-    const vehicles: { _id: unknown; code: string; operationId: Types.ObjectId | null }[] = [];
+    const vehicles: {
+      _id: unknown;
+      code: string;
+      operationId: Types.ObjectId | null;
+      status: string;
+    }[] = [];
     // A hard ceiling so a runaway page count cannot hang a request. Ten pages is 1,000 vehicles —
     // an order of magnitude past any cash-transfer fleet, and the log says so if it is ever hit.
     const MAX_PAGES = 10;
@@ -165,15 +170,24 @@ class OperationsStandingCrewService {
     const designated = (vehicle: { operationId: Types.ObjectId | null }): boolean =>
       cashOperations.size === 0 || cashOperations.has(String(vehicle.operationId));
 
+    // ...AND IT HAS TO BE A VEHICLE THAT STILL RUNS. `outOfService` and `disposed` are Fleet
+    // saying this van cannot carry anything; offering it a permanent crew would be planning work
+    // for a vehicle in the workshop or already sold. Unlike the designation filter this needs no
+    // configuration — the statuses are a closed vocabulary, and only one of them means "in use".
+    const running = (vehicle: { status: string }): boolean => vehicle.status === 'active';
+
     const available = vehicles
       .filter((vehicle) => !inCrew.has(String(vehicle._id)))
       .filter(designated)
+      .filter(running)
       .map((vehicle) => ({ vehicleId: String(vehicle._id), vehicleCode: vehicle.code }))
       .sort((a, b) => a.vehicleCode.localeCompare(b.vehicleCode, 'ar'));
 
-    // A vehicle ALREADY in the standing crew is never removed from `rows` by this filter. Fleet
-    // re-classifying a van does not un-crew it behind Operations' back — the row is Operations'
-    // own statement, and taking it out is Operations' own act.
+    // A vehicle ALREADY in the standing crew is never removed from `rows` by either filter. Fleet
+    // re-classifying or retiring a van does not un-crew it behind Operations' back — the row is
+    // Operations' own statement, and taking it out is Operations' own act. What it DOES mean is
+    // that a van sold last week keeps showing its crew until somebody removes it, which is the
+    // visible prompt to do so rather than a silent disappearance.
     return { rows, available, availableIsFiltered: cashOperations.size > 0 };
   }
 

@@ -30,6 +30,7 @@ import { diffChanges } from '../../../shared/utils/diff';
 import { operationsBankRepository } from '../banks/bank.repository';
 import { operationsBankBranchRepository } from '../bank-branches/bank-branch.repository';
 import { operationsCurrencyRepository } from '../currencies/currency.repository';
+import { operationsAssignmentService, resolveCrew } from '../assignments/assignment.service';
 import { canTransitionShipment, reopenTarget } from './shipment-status';
 import { operationsShipmentRepository } from './shipment.repository';
 import { type OperationsShipmentDoc, type OperationsShipmentLine } from './shipment.model';
@@ -145,6 +146,23 @@ class OperationsShipmentService {
       currencyIds: input.lines.map((l) => l.currencyId),
     });
 
+    // The crew is resolved and PROVEN before anything is written — same three checks the
+    // assign-pickup endpoint makes, through the same helper, so the two paths cannot drift: the
+    // row exists, it is on the collection date's operating day, and the named captain is one of
+    // its captains. A shipment is never created against a crew the server would then refuse.
+    const collectionDate = utcDay(input.collectionDate);
+    const pickup =
+      input.pickup == null
+        ? null
+        : {
+            ...input.pickup,
+            ...(await resolveCrew(
+              input.pickup.crewAssignmentId,
+              input.pickup.captainEmployeeId,
+              collectionDate,
+            )),
+          };
+
     const doc = await operationsShipmentRepository.create(
       {
         shipmentType: input.shipmentType,
@@ -155,7 +173,7 @@ class OperationsShipmentService {
         destinationBranchId: new Types.ObjectId(input.destinationBranchId),
         areaName: input.areaName,
         lines: toLines(input.lines),
-        collectionDate: utcDay(input.collectionDate),
+        collectionDate,
         deliveryDate: input.deliveryDate === null ? null : utcDay(input.deliveryDate),
         receiptNumber: null,
         vaultReceiptNumber: null,
@@ -172,6 +190,26 @@ class OperationsShipmentService {
       changes: diffChanges({}, snapshot(doc)),
     });
     await emit(OperationsEvents.ShipmentCreated, eventPayload(doc));
+
+    // The leg is written AFTER the shipment, through the assignment service rather than beside it,
+    // so the assignment's own audit, event and sequencing are the ones every other caller gets.
+    //
+    // Not one transaction with the create: `assignPickupLeg` opens no session, and threading one
+    // through it to serve this caller would make every other caller pay for a concern it does not
+    // have. The window is narrow and the failure is benign and VISIBLE — a shipment in the backlog
+    // with no crew, which is exactly the state the backlog exists to show and the assign screen
+    // exists to fix. Losing the shipment instead, to keep an assignment atomic, would be worse.
+    if (pickup !== null) {
+      await operationsAssignmentService.assignPickupLeg(
+        String(doc._id),
+        {
+          crewAssignmentId: pickup.crewAssignmentId,
+          captainEmployeeId: pickup.captainEmployeeId,
+          version: 0,
+        },
+        by,
+      );
+    }
     return doc;
   }
 

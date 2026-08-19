@@ -19,7 +19,7 @@ import { LoanRepaymentModel, type LoanRepaymentDoc } from './loan-repayment.mode
 
 class EmployeeLoanRepository extends BaseRepository<EmployeeLoanDoc> {
   constructor() {
-    super(EmployeeLoanModel, { branchField: 'branchId' });
+    super(EmployeeLoanModel, { branchField: 'branchId', departmentField: 'departmentId' });
   }
 
   async getForEmployee(employeeId: string, id: string): Promise<EmployeeLoanDoc> {

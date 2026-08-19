@@ -12,3 +12,4 @@ export { toEmployeeLoanDto, toEmployeeLoanDetailDto } from './employee-loan.mapp
 export { type EmployeeLoanDoc } from './employee-loan.model';
 export { ensureLoanAttachmentsCategory } from './employee-loan.files';
 export { hrEmployeeLoanFileAuthorizers } from './employee-loan-file-access';
+export { backfillEmployeeLoanDepartments } from './employee-loan-department.backfill';

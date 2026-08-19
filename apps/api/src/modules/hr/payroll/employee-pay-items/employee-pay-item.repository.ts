@@ -10,7 +10,7 @@ import { EmployeePayItemModel, type EmployeePayItemDoc } from './employee-pay-it
 
 class EmployeePayItemRepository extends BaseRepository<EmployeePayItemDoc> {
   constructor() {
-    super(EmployeePayItemModel, { branchField: 'branchId' });
+    super(EmployeePayItemModel, { branchField: 'branchId', departmentField: 'departmentId' });
   }
 
   async getForEmployee(employeeId: string, id: string): Promise<EmployeePayItemDoc> {

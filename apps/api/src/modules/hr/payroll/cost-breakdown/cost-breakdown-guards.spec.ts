@@ -240,11 +240,20 @@ describe('and nothing else was added', () => {
     ]);
   });
 
-  it('and no new index on the payslip collection', () => {
+  /**
+   * The payslip's indexes, stated by name and by OWNER.
+   *
+   * P-HR-14 wrote this to say "the cost breakdown added none", and that is still what it holds:
+   * an index appearing here without a phase behind it fails this test. P-SCOPE-1 then added one
+   * for a reason of its own — a department-scoped read filters on `departmentId` and would
+   * otherwise scan — so the list names it rather than the assertion being loosened to a count.
+   */
+  it('and no index on the payslip collection that no phase claims', () => {
     const model = code(resolve(PAYROLL, 'payslips/payslip.model.ts'));
     expect([...model.matchAll(/name: '([a-z_]+)'/g)].map((m) => m[1])).toEqual([
-      'ux_run_employee',
-      'ix_employee_period',
+      'ux_run_employee', // PY-7 — one payslip per employee per run
+      'ix_employee_period', // PY-7 — the employee's own history
+      'ix_department_run', // P-SCOPE-1 / D-DEPT-6 — the department axis
     ]);
   });
 

@@ -130,6 +130,23 @@ class UserRepository extends BaseRepository<UserDoc> {
     return result.modifiedCount === 1;
   }
 
+  /**
+   * Bind or re-point the external subject. Written by the owning module's service only, exactly
+   * like `linkEmployee`; the precondition it carries is that the account is not an employee's.
+   */
+  async setExternalSubject(
+    userId: string,
+    subject: { moduleId: string; subjectType: string; subjectId: Types.ObjectId },
+  ): Promise<boolean> {
+    const result = await this.model
+      .updateOne(
+        { _id: userId, isDeleted: false, employeeId: null },
+        { $set: { externalSubject: subject } },
+      )
+      .exec();
+    return result.matchedCount === 1;
+  }
+
   /** The mirror: unlink only while the link is the one the caller believes it is. */
   async unlinkEmployee(
     userId: string,

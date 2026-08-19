@@ -122,6 +122,15 @@ export const AUDIT_ACTIONS = [
   'attendanceRegularization',
   'attendanceRegularizationDecision',
   'attendanceOvertimeApproval',
+  // Gold vault (module port). `receive` and `transfer` already say exactly what confirming a
+  // receiving receipt and an ownership transfer do, so only two verbs are new:
+  //   · `deliver` — confirming a delivery order, the moment metal physically leaves the vault.
+  //   · `revert`  — undoing a CONFIRMED gold document. It is not an `update`: reverting a receipt
+  //     archives the bars it created, reverting a delivery puts them back in their drawers, and
+  //     reverting a transfer hands ownership back. "Who reversed this, and when" is the question
+  //     a vault dispute asks, and a diff on a status field cannot answer it.
+  'deliver',
+  'revert',
 ] as const;
 export const AuditActionSchema = z.enum(AUDIT_ACTIONS);
 export type AuditAction = z.infer<typeof AuditActionSchema>;

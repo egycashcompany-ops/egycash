@@ -7,6 +7,7 @@ import { fleetModule } from './fleet/fleet.module';
 import { itModule } from './it/it.module';
 import { operationsModule } from './operations/operations.module';
 import { automationModule } from './automation/automation.module';
+import { goldModule } from './gold/gold.module';
 
 /**
  * Automation is gated on `AUTOMATION_ENABLED` (default false) until the engine is complete
@@ -19,5 +20,6 @@ export const moduleManifests: ModuleManifest[] = [
   fleetModule,
   itModule,
   operationsModule,
+  goldModule,
   ...(env.AUTOMATION_ENABLED ? [automationModule] : []),
 ];

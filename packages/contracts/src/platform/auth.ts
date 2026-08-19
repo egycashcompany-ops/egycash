@@ -112,6 +112,13 @@ export interface MeDto {
   isPrivileged: boolean;
   flags: Record<string, boolean>;
   totpEnabled: boolean;
+  /**
+   * Set only for an account belonging to someone OUTSIDE the company — a vault customer today.
+   * `label` is what to call that record on screen; null when the owning module cannot answer.
+   * The client uses this to decide it is looking at a customer, and to greet them by their
+   * organisation rather than by their own name.
+   */
+  external: { moduleId: string; subjectType: string; subjectId: string; label: string | null } | null;
 }
 
 export type LoginResponse =

@@ -38,6 +38,7 @@ import { logger } from '../../infrastructure/logging/logger';
 import { diffChanges } from '../../shared/utils/diff';
 import { auditService } from '../audit';
 import { userService } from '../users';
+import { userSnapshotKey } from '../auth/user-snapshot-cache';
 import { userRepository } from '../users/user.repository';
 import { emit } from '../kernel/event-bus';
 import {
@@ -694,7 +695,7 @@ class RbacService {
 
   async invalidateUser(userId: string): Promise<void> {
     await userService.bumpPermissionVersion(userId);
-    await getCache().del(`auth:user:${userId}`);
+    await getCache().del(userSnapshotKey(userId));
   }
 
   private async invalidateUsersOfRole(roleId: string): Promise<void> {

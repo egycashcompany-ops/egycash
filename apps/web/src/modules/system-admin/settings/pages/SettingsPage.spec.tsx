@@ -126,6 +126,7 @@ const me = (permissions: string[]): MeDto => ({
   isPrivileged: false,
   flags: {},
   totpEnabled: false,
+  external: null,
 });
 
 const render = ({

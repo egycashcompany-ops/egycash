@@ -113,6 +113,7 @@ const renderDay = (permissions: string[] = ['operationsExecution.own']): string 
           isPrivileged: false,
           flags: {},
           totpEnabled: true,
+          external: null,
         } as MeDto,
         status: 'signedIn' as const,
       },

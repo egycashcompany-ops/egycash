@@ -301,6 +301,16 @@ export interface ItAssetAssignmentDto {
    */
   assignedToEmployeeCode: string | null;
   assignedToEmployeeName: string | null;
+  /**
+   * WHAT was received — the register's own subject, which it did not name until IT-6.
+   *
+   * The table listed when, who and where and never what, so the asset could only be reached by
+   * navigating away from the row. Read at response time through the caller's own scope, so a
+   * branch reader cannot print another branch's labels; null when the asset cannot be read, and
+   * `assetId` is still there to navigate by.
+   */
+  assetCode: string | null;
+  assetName: string | null;
   assignedByUserId: string | null;
   assignedAt: string;
   conditionOnIssue: string | null;

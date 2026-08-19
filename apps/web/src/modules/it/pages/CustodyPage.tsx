@@ -91,6 +91,29 @@ export const CustodyPage = (): JSX.Element => {
 
   const columns: Column<ItAssetAssignmentDto>[] = [
     {
+      // WHAT is out. The register is titled "what is out, and who has it" and never named the
+      // first half: the asset could only be reached by navigating away from the row. Placed
+      // first because it is the row's subject, not an attribute of it.
+      key: 'asset',
+      header: t('it.custody.asset'),
+      render: (a) => (
+        <button
+          type="button"
+          className="text-start hover:underline"
+          onClick={() => navigate(`/it/assets/${a.assetId}`)}
+        >
+          <span className="flex flex-col leading-tight">
+            <span>{a.assetName ?? t('it.custody.assetUnknown')}</span>
+            {a.assetCode === null ? null : (
+              <span className="font-mono text-xs text-slate-500 dark:text-slate-400" dir="ltr">
+                {a.assetCode}
+              </span>
+            )}
+          </span>
+        </button>
+      ),
+    },
+    {
       key: 'assignedAt',
       header: t('it.custody.assignedAt'),
       sortable: true,

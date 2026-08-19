@@ -11,15 +11,20 @@
 // behaviour that line exists to make possible.
 import { Types } from 'mongoose';
 import { describe, expect, it } from 'vitest';
-import { toItAssetAssignmentDto, type ItHolderLabels } from '../it.mappers';
+import {
+  toItAssetAssignmentDto,
+  type ItAssetLabels,
+  type ItHolderLabels,
+} from '../it.mappers';
 import { type ItAssetAssignmentDoc } from './assignment.model';
 
 const EMPLOYEE = new Types.ObjectId();
+const ASSET = new Types.ObjectId();
 
 const assignment = (): ItAssetAssignmentDoc =>
   ({
     _id: new Types.ObjectId(),
-    assetId: new Types.ObjectId(),
+    assetId: ASSET,
     assignedToEmployeeId: EMPLOYEE,
     assignedByUserId: null,
     assignedAt: new Date('2026-03-01T08:00:00.000Z'),
@@ -71,5 +76,43 @@ describe('the custody holder label', () => {
     const doc = assignment();
     expect(doc).not.toHaveProperty('assignedToEmployeeName');
     expect(doc).not.toHaveProperty('assignedToEmployeeCode');
+  });
+});
+
+describe('the custody asset label', () => {
+  const labels: ItAssetLabels = new Map([
+    [String(ASSET), { assetCode: 'IT-LAP-0007', name: 'Dell Latitude 5440' }],
+  ]);
+
+  /**
+   * The register is titled "what is out, and who has it" and, until IT-6, answered only the second
+   * half — every column described the interval and none named its subject.
+   */
+  it('names what was received, with its code', () => {
+    const dto = toItAssetAssignmentDto(assignment(), undefined, labels);
+    expect(dto.assetName).toBe('Dell Latitude 5440');
+    expect(dto.assetCode).toBe('IT-LAP-0007');
+    expect(dto.assetId).toBe(String(ASSET));
+  });
+
+  /**
+   * The labels are read through the CALLER'S scope, so an asset outside it is absent from the map.
+   * The row still exists — it is the caller's own branch's custody interval — but the label it
+   * cannot see reads as null rather than leaking across the boundary.
+   */
+  it('answers null for an asset outside the reader’s scope', () => {
+    const dto = toItAssetAssignmentDto(assignment(), undefined, new Map());
+    expect(dto.assetName).toBeNull();
+    expect(dto.assetCode).toBeNull();
+    expect(dto.assetId).toBe(String(ASSET));
+  });
+
+  it('and the two labels are independent — one resolving does not require the other', () => {
+    const holders: ItHolderLabels = new Map([
+      [String(EMPLOYEE), { code: 'EMP-0042', fullNameAr: 'محمد عبد الله' }],
+    ]);
+    const dto = toItAssetAssignmentDto(assignment(), holders, new Map());
+    expect(dto.assignedToEmployeeName).toBe('محمد عبد الله');
+    expect(dto.assetName).toBeNull();
   });
 });

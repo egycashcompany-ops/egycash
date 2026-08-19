@@ -123,14 +123,21 @@ export const toItAssetDto = (doc: ItAssetDoc): ItAssetDto => ({
  */
 export type ItHolderLabels = ReadonlyMap<string, { code: string; fullNameAr: string }>;
 
+/** The asset behind each interval — what was received, resolved the same way and handed in. */
+export type ItAssetLabels = ReadonlyMap<string, { assetCode: string; name: string }>;
+
 export const toItAssetAssignmentDto = (
   doc: ItAssetAssignmentDoc,
   holders?: ItHolderLabels,
+  assets?: ItAssetLabels,
 ): ItAssetAssignmentDto => {
   const holder = holders?.get(String(doc.assignedToEmployeeId));
+  const asset = assets?.get(String(doc.assetId));
   return {
     id: String(doc._id),
     assetId: String(doc.assetId),
+    assetCode: asset?.assetCode ?? null,
+    assetName: asset?.name ?? null,
     assignedToEmployeeId: String(doc.assignedToEmployeeId),
     assignedToEmployeeCode: holder?.code ?? null,
     assignedToEmployeeName: holder?.fullNameAr ?? null,

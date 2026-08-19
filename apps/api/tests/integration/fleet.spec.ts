@@ -19,6 +19,7 @@ import {
   type FleetOdometerLogDto,
   type FleetVehicleDto,
   type FleetVehicleTypeDto,
+  type PageMeta,
 } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { buildApp } from '../../src/app';
@@ -932,6 +933,69 @@ describe('the odometer registry filters SERVER-side', () => {
     ]) {
       expect(row.vehicleId).toBe(v.id);
     }
+  });
+
+  it('counts the WHOLE filtered set, and returns only the page asked for', async () => {
+    // The point of server-side paging: the total describes everything the filters match, while
+    // the payload carries only one page of it. A client that computed the total from the rows in
+    // hand would report 2 instead of 7, and one that were handed everything would defeat the
+    // purpose on a log this size.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    for (let day = 1; day <= 7; day += 1) {
+      await record(v.id, day * 100, `2026-12-0${day}`);
+    }
+    // One reading OUTSIDE the window, to prove the date bound is applied before the count.
+    await record(v.id, 5000, '2027-01-15');
+
+    const meta = (res: request.Response) => (res.body as { meta: PageMeta }).meta;
+
+    const first = await list({
+      vehicleCodes: v.code,
+      from: '2026-12-01',
+      to: '2026-12-07',
+      pageSize: 2,
+      page: 1,
+    });
+    expect(first.status).toBe(200);
+    expect(data<unknown[]>(first), 'only the page asked for').toHaveLength(2);
+    expect(meta(first).totalItems, 'every row the filters match, not the two returned').toBe(7);
+    expect(meta(first).totalPages).toBe(4);
+    expect(meta(first).page).toBe(1);
+    expect(meta(first).pageSize).toBe(2);
+
+    // The last page is short, and the totals do not move with it.
+    const last = await list({
+      vehicleCodes: v.code,
+      from: '2026-12-01',
+      to: '2026-12-07',
+      pageSize: 2,
+      page: 4,
+    });
+    expect(data<unknown[]>(last)).toHaveLength(1);
+    expect(meta(last).totalItems).toBe(7);
+
+    // Every page is a DIFFERENT slice — the same rows twice would mean the skip never applied.
+    const second = await list({
+      vehicleCodes: v.code,
+      from: '2026-12-01',
+      to: '2026-12-07',
+      pageSize: 2,
+      page: 2,
+    });
+    const ids = (res: request.Response) => data<{ id: string }[]>(res).map((r) => r.id);
+    expect(
+      ids(first).some((id) => ids(second).includes(id)),
+      'pages do not overlap',
+    ).toBe(false);
+
+    // Narrowing the window narrows the TOTAL, not just the page.
+    const narrowed = await list({
+      vehicleCodes: v.code,
+      from: '2026-12-01',
+      to: '2026-12-03',
+      pageSize: 2,
+    });
+    expect(meta(narrowed).totalItems, 'the count follows the filters').toBe(3);
   });
 
   it('reading the registry needs fleetOdometer.view', async () => {

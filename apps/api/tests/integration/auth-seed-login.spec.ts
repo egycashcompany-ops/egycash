@@ -121,13 +121,15 @@ describe('seed → password login (regression)', () => {
     //
     // B7 puts Operations at 17, so it lands between Fleet (15) and Organization (20). Its position
     // here IS the assertion that the sort order took effect: a category appended with a colliding
-    // or absent order would surface at the end of this list rather than in the middle.
+    // or absent order would surface at the end of this list rather than in the middle. The ported
+    // Gold Vault module says the same at 27 — between IT (25) and Administration (30).
     expect(groups.map((g) => g.name.en)).toEqual([
       'HR',
       'Fleet',
       'Operations',
       'Organization',
       'IT',
+      'Gold Vault',
       'Administration',
     ]);
     // Applications map to the app's real client routes, granted directly to the admin.
@@ -208,8 +210,21 @@ describe('seed → password login (regression)', () => {
     expect(routes).toContain('/operations/catalogs');
     // الطاقم الثابت — the permanent crew each day's board is seeded from.
     expect(routes).toContain('/operations/standing-crew');
-    // 22 (HR) + 12 (Fleet) + 14 (Operations) + 7 (Organization) + 13 (IT) + 9 (Administration)
-    expect(routes).toHaveLength(79); // +1: C1 Captain's Day, +1: the standing crew
+    // The ported gold sidebar, screen for screen.
+    expect(routes).toContain('/gold');
+    expect(routes).toContain('/gold/vaults');
+    expect(routes).toContain('/gold/vault-settings');
+    expect(routes).toContain('/gold/bars');
+    expect(routes).toContain('/gold/receiving');
+    expect(routes).toContain('/gold/delivery');
+    expect(routes).toContain('/gold/transfers');
+    expect(routes).toContain('/gold/keys');
+    expect(routes).toContain('/gold/companies');
+    expect(routes).toContain('/gold/representatives');
+    expect(routes).toContain('/gold/reports');
+    // 22 (HR) + 12 (Fleet) + 14 (Operations) + 7 (Organization) + 13 (IT) + 11 (Gold Vault)
+    //   + 9 (Administration)
+    expect(routes).toHaveLength(90); // +1: C1 Captain's Day, +1: the standing crew
   });
 
   it('re-running the seed is idempotent — no duplicate categories/applications/grants', async () => {
@@ -224,14 +239,15 @@ describe('seed → password login (regression)', () => {
         data: { applications: unknown[]; sections: { applications: unknown[] }[] }[];
       }
     ).data;
-    expect(groups).toHaveLength(6); // B7 adds Operations beside HR, Fleet, Organization, IT, Admin
+    // B7 added Operations beside HR, Fleet, Organization, IT and Admin; the gold port adds a seventh.
+    expect(groups).toHaveLength(7);
     // Counted across sections too: re-seeding must not duplicate a row, wherever it is grouped.
     expect(
       groups.reduce(
         (n, g) => n + g.applications.length + g.sections.reduce((m, s) => m + s.applications.length, 0),
         0,
       ),
-    ).toBe(79); // +1: C1 Captain's Day, +1: the standing crew
+    ).toBe(90); // +1: C1 Captain's Day, +1: the standing crew, +11: the gold sidebar
   });
 
   it('the seeded HR user also logs in with email/password', async () => {

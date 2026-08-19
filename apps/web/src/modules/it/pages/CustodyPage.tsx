@@ -4,7 +4,7 @@
 // answers "what do we own", and that is a different question. URL-synced so a filtered view is a
 // shareable link, and defaulting to OPEN intervals because that is what the question means; the
 // closed ones are one filter away for the times it means "who had it".
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { type ItAssetAssignmentDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
@@ -12,6 +12,7 @@ import { useAppSelector } from '../../../store';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { FilterBar } from '../../../shared/ui/FilterBar';
+import { EmployeePicker } from '../components/EmployeePicker';
 import { Pagination } from '../../../shared/ui/Pagination';
 import { Select } from '../../../shared/ui/form';
 import { StatusBadge } from '../../../shared/ui/Badge';
@@ -31,6 +32,7 @@ export const CustodyPage = (): JSX.Element => {
   // Default `open` — the register's whole purpose is "currently out".
   const openParam = sp.get('open') ?? 'true';
   const branchId = sp.get('branch') ?? '';
+  const employeeId = sp.get('employee') ?? '';
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
   const [sortByRaw, sortDirRaw] = (sp.get('sort') ?? 'assignedAt:desc').split(':');
@@ -62,10 +64,20 @@ export const CustodyPage = (): JSX.Element => {
       sortDir: sort.dir,
       ...(openParam === 'all' ? {} : { open: openParam === 'true' }),
       branchId: branchId || undefined,
+      employeeId: employeeId || undefined,
     }),
     [paramsKey],
   );
   const { data, isLoading, isError, error, refetch } = useItAssignments(params);
+
+  // The chip's label. A pick supplies it directly; arriving on a deep link with only an id in the
+  // URL, the loaded rows supply it — they now carry the name, so the picker needs no resolve-by-id.
+  const [pickedLabel, setPickedLabel] = useState('');
+  const holderLabel =
+    pickedLabel !== ''
+      ? pickedLabel
+      : ((data?.items ?? []).find((a) => a.assignedToEmployeeId === employeeId)
+          ?.assignedToEmployeeName ?? '');
 
   const branches = useItBranchOptions();
   const branchName = useMemo(() => {
@@ -87,13 +99,24 @@ export const CustodyPage = (): JSX.Element => {
     {
       key: 'holder',
       header: t('it.custody.holder'),
-      // The employee id is the honest thing to show until IT-6's directory join; a fabricated
-      // name would be worse than a reference the user can copy.
-      render: (a) => (
-        <span className="font-mono text-xs" dir="ltr">
-          {a.assignedToEmployeeId}
-        </span>
-      ),
+      // IT-6 joined the directory, so this reads as a person. When the lookup returns nothing —
+      // no HR source, or a record since gone — it falls back to the id rather than inventing a
+      // name: a reference the user can copy beats a guess.
+      render: (a) =>
+        a.assignedToEmployeeName === null ? (
+          <span className="font-mono text-xs" dir="ltr">
+            {a.assignedToEmployeeId}
+          </span>
+        ) : (
+          <span className="flex flex-col leading-tight">
+            <span>{a.assignedToEmployeeName}</span>
+            {a.assignedToEmployeeCode === null ? null : (
+              <span className="font-mono text-xs text-slate-500 dark:text-slate-400" dir="ltr">
+                {a.assignedToEmployeeCode}
+              </span>
+            )}
+          </span>
+        ),
     },
     {
       key: 'branch',
@@ -165,8 +188,11 @@ export const CustodyPage = (): JSX.Element => {
 
       <div className="space-y-4">
         <FilterBar
-          hasActiveFilters={openParam !== 'true' || branchId !== ''}
-          onClear={() => patch({ open: null, branch: null })}
+          hasActiveFilters={openParam !== 'true' || branchId !== '' || employeeId !== ''}
+          onClear={() => {
+            setPickedLabel('');
+            patch({ open: null, branch: null, employee: null });
+          }}
         >
           <Select
             aria-label={t('it.assets.columns.status')}
@@ -191,6 +217,17 @@ export const CustodyPage = (): JSX.Element => {
               </option>
             ))}
           </Select>
+          {/* The holder filter searches the server (ADR-019) — the browser never holds the staff
+              list. The id goes in the URL so a filtered register can be linked and shared. */}
+          <EmployeePicker
+            value={employeeId}
+            valueLabel={holderLabel}
+            ariaLabel={t('it.custody.filterHolder')}
+            onChange={(id, label) => {
+              setPickedLabel(label);
+              patch({ employee: id || null });
+            }}
+          />
         </FilterBar>
 
         <DataTable

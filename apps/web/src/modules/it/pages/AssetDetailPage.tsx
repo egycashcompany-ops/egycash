@@ -121,7 +121,11 @@ export const AssetDetailPage = (): JSX.Element => {
     rows.find((a) => a.id === asset.currentAssignmentId) ??
     rows.find((a) => a.returnedAt === null) ??
     null;
-  const holderLabel = openAssignment === null ? null : openAssignment.assignedToEmployeeId;
+  // IT-6 — the person, with the id as the fallback when the directory cannot answer.
+  const holderLabel =
+    openAssignment === null
+      ? null
+      : (openAssignment.assignedToEmployeeName ?? openAssignment.assignedToEmployeeId);
 
   return (
     <PageContainer>
@@ -344,7 +348,9 @@ export const AssetDetailPage = (): JSX.Element => {
               <dl className="grid gap-x-6 sm:grid-cols-2">
                 <Fact
                   label={t('it.custody.holder')}
-                  value={openAssignment.assignedToEmployeeId}
+                  value={
+                    openAssignment.assignedToEmployeeName ?? openAssignment.assignedToEmployeeId
+                  }
                   mono
                 />
                 <Fact

@@ -13,7 +13,14 @@ import {
 import { ok, okPage, validated } from '../../../platform/web';
 import { authContext } from '../../../platform/auth';
 import { scopeSelector } from '../../../shared/types';
-import { toItAssetAssignmentDto, toItAssetDto, toItAssetHistoryEntryDto } from '../it.mappers';
+import {
+  toItAssetAssignmentDto,
+  toItAssetDto,
+  toItAssetHistoryEntryDto,
+  type ItHolderLabels,
+} from '../it.mappers';
+import { getDirectoryEmployees } from '../../../platform/directory';
+import { type ItAssetAssignmentDoc } from './assignment.model';
 import { itAssetCustodyService } from './custody.service';
 import { itAssetAssignmentService } from './assignment.service';
 
@@ -63,15 +70,36 @@ export const listItAssetHistory = async (req: Request, res: Response): Promise<v
   okPage(res, page, toItAssetHistoryEntryDto);
 };
 
+/**
+ * The holders on ONE page of custody intervals (IT-6).
+ *
+ * One directory call per response, never one per row — and it runs through the platform seam, so
+ * IT still does not import HR. An id the directory cannot resolve is simply absent from the map
+ * and the row answers with nulls, which the screen renders as the id it always showed.
+ */
+const holderLabels = async (rows: readonly ItAssetAssignmentDoc[]): Promise<ItHolderLabels> => {
+  const employees = await getDirectoryEmployees(
+    rows.map((row) => String(row.assignedToEmployeeId)),
+  );
+  return new Map(
+    [...employees].map(([id, employee]) => [
+      id,
+      { code: employee.code, fullNameAr: employee.fullNameAr },
+    ]),
+  );
+};
+
 export const listItAssetAssignments = async (req: Request, res: Response): Promise<void> => {
   const { params, query } = validated<never, ListItAssignmentsQuery, IdParam>(req);
   const page = await itAssetAssignmentService.listForAsset(params.id, query, custodyScope(req));
-  okPage(res, page, toItAssetAssignmentDto);
+  const holders = await holderLabels(page.items);
+  okPage(res, page, (doc) => toItAssetAssignmentDto(doc, holders));
 };
 
 /** The cross-asset custody register — "what is out, and who has it". */
 export const listItAssignments = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, ListItAssignmentsQuery>(req);
   const page = await itAssetAssignmentService.list(query, custodyScope(req));
-  okPage(res, page, toItAssetAssignmentDto);
+  const holders = await holderLabels(page.items);
+  okPage(res, page, (doc) => toItAssetAssignmentDto(doc, holders));
 };

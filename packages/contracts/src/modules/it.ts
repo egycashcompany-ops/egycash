@@ -290,6 +290,17 @@ export interface ItAssetAssignmentDto {
   id: string;
   assetId: string;
   assignedToEmployeeId: string;
+  /**
+   * The holder's code and name, read through the platform directory at RESPONSE time (IT-6).
+   *
+   * Not denormalized onto the row: a custody interval is a record of who held the asset, and a
+   * corrected name must correct everywhere rather than leave the old spelling frozen on an
+   * interval. Both are `null` when the employee cannot be read — a deployment with no HR source,
+   * or a record that has since gone — and the screen then falls back to the id it already had.
+   * A figure nobody can verify is better shown as a reference than as a guess.
+   */
+  assignedToEmployeeCode: string | null;
+  assignedToEmployeeName: string | null;
   assignedByUserId: string | null;
   assignedAt: string;
   conditionOnIssue: string | null;

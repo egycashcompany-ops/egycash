@@ -2,7 +2,11 @@
 // so the employee lookup and the leave lookup register here at module load — the same pattern
 // as `identity-seams`. Consumers today: Fleet (driver = employee + fleet-owned profile, design
 // §9.1; availability reads approved/active leave when `fleet.availability.useHrLeave` is on).
-import { registerEmployeeLookup, registerLeaveLookup } from '../../platform/directory';
+import {
+  registerEmployeeBatchLookup,
+  registerEmployeeLookup,
+  registerLeaveLookup,
+} from '../../platform/directory';
 import { employeeRepository } from './employee-management/employees/employee.repository';
 import { LeaveRequestModel } from './leave-management/leave-requests/leave-request.model';
 
@@ -18,6 +22,25 @@ export const registerHrDirectorySeams = (): void => {
       branchId: String(employee.branchId),
       departmentId: String(employee.departmentId),
     };
+  });
+
+  // IT-6 — the same fact, in bulk, for list screens. One `$in` per page rather than one query
+  // per row; the shape is the single lookup's, so a consumer reads one type either way.
+  registerEmployeeBatchLookup(async (employeeIds) => {
+    const docs = await employeeRepository.findByIdsSystem([...new Set(employeeIds)]);
+    return new Map(
+      docs.map((employee) => [
+        String(employee._id),
+        {
+          employeeId: String(employee._id),
+          code: employee.code,
+          fullNameAr: employee.personal.fullNameAr,
+          status: employee.status,
+          branchId: String(employee.branchId),
+          departmentId: String(employee.departmentId),
+        },
+      ]),
+    );
   });
 
   registerLeaveLookup(async (employeeId, date) => {

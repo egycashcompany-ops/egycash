@@ -3,17 +3,23 @@
 // The SERVER's expected reading shows live as the hint (H2's fate); a reading below it will be
 // refused by FR-2 with the correction flow as the only way past. Optional driver slots record
 // who took the car out.
-import { useEffect, useState } from 'react';
-import { type Locale } from '@ecms/contracts';
+import { useEffect, useMemo, useState } from 'react';
+import { MAX_PAGE_SIZE, type Locale } from '@ecms/contracts';
 import { useAppSelector } from '../../../store';
 import { useT } from '../../../platform/localization/useT';
+import { useCan } from '../../../platform/rbac/Can';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
+import { Combobox } from '../../../shared/ui/Combobox';
 import { Field, Input, Textarea } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { formatNumber } from '../../../shared/lib/format';
-import { useExpectedReading, useRecordOdometer } from '../api/fleet-queries';
-import { VehicleSelect } from './VehicleSelect';
+import {
+  useExpectedReading,
+  useRecordOdometer,
+  useRosterDay,
+  useVehicles,
+} from '../api/fleet-queries';
 import { OptionalEmployeeField } from './OptionalEmployeeField';
 
 const today = (): string => new Date().toISOString().slice(0, 10);
@@ -49,6 +55,53 @@ export const RecordOdometerDialog = ({
 
   const expected = useExpectedReading(vehicleId, open && vehicleId !== '');
   const record = useRecordOdometer();
+  const can = useCan();
+
+  // The vehicle is picked by CODE and typed into, not scrolled to: a registry runs to hundreds of
+  // cars and "150" is what the operator knows the car as. `Combobox` only ever commits a value
+  // that IS an option, so a code the registry does not carry cannot be saved.
+  const vehicles = useVehicles({ pageSize: MAX_PAGE_SIZE, sortBy: 'code', sortDir: 'asc' }, open);
+  const byCode = useMemo(() => {
+    const map = new Map<string, { id: string; label: string }>();
+    for (const v of vehicles.data?.items ?? []) {
+      map.set(v.code, { id: v.id, label: `${v.code} — ${v.plateNumber}` });
+    }
+    return map;
+  }, [vehicles.data]);
+  const codeOptions = useMemo(() => [...byCode.keys()], [byCode]);
+  const codeOf = (id: string): string =>
+    [...byCode.entries()].find(([, v]) => v.id === id)?.[0] ?? '';
+
+  // Who the DUTY ROSTER says is on this car that day — the same board the roster screen shows,
+  // read through the same hook. It PREFILLS the two slots rather than replacing them: a roster
+  // may have no assignment for the day, and the reading records who actually took the car out,
+  // which is the operator's answer to give. Reading it needs `fleetRoster.view`; without that the
+  // hook is never called and the slots simply start empty.
+  const rosterDate = open && can('fleetRoster.view') && vehicleId !== '' ? date : '';
+  const roster = useRosterDay(rosterDate);
+  const rosterRow = useMemo(
+    () => roster.data?.rows.find((row) => row.vehicleId === vehicleId) ?? null,
+    [roster.data, vehicleId],
+  );
+  // The two slots belong to a (vehicle, date) PAIR. Change either and the previous pair's crew is
+  // no longer an answer to the question being asked, so it is cleared rather than carried over —
+  // otherwise switching from car 150 to car 151 keeps 150's drivers and records them against the
+  // wrong car.
+  useEffect(() => {
+    setDriver1('');
+    setDriver2('');
+  }, [vehicleId, date]);
+
+  // Fills EMPTY slots only, so a name the operator has already chosen is never overwritten by a
+  // late-arriving board. `isPlaceholderData` is the PREVIOUS day's board still on screen while the
+  // new one loads; filling from it would write yesterday's crew onto today's reading.
+  useEffect(() => {
+    if (rosterRow === null || roster.isPlaceholderData) return;
+    if (rosterRow.driver1EmployeeId !== null)
+      setDriver1((prev) => prev || rosterRow.driver1EmployeeId!);
+    if (rosterRow.driver2EmployeeId !== null)
+      setDriver2((prev) => prev || rosterRow.driver2EmployeeId!);
+  }, [rosterRow, roster.isPlaceholderData]);
 
   const readingNumber = Number(reading);
   const complete =
@@ -95,7 +148,14 @@ export const RecordOdometerDialog = ({
     >
       <div className="space-y-4">
         <Field label={t('fleet.odometer.fields.vehicle')} required>
-          <VehicleSelect value={vehicleId} onChange={setVehicleId} />
+          <Combobox
+            value={codeOf(vehicleId)}
+            options={codeOptions}
+            onChange={(code) => setVehicleId(byCode.get(code)?.id ?? '')}
+            placeholder={t('fleet.odometer.vehiclePlaceholder')}
+            emptyText={t('fleet.odometer.vehicleNotFound')}
+            clearLabel={t('common.clear')}
+          />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label={t('fleet.odometer.fields.reading')} required hint={expectedHint}>

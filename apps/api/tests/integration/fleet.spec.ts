@@ -716,6 +716,140 @@ describe('odometer continuity (FR-2, §4.3 — FL-4)', () => {
   });
 });
 
+describe('the odometer registry filters SERVER-side', () => {
+  const record = (vehicleId: string, reading: number, date: string, drivers = {}) =>
+    request(app)
+      .post('/api/v1/fleet/odometer')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ vehicleId, reading, date, ...drivers });
+
+  const list = (query: Record<string, unknown>) =>
+    request(app)
+      .get('/api/v1/fleet/odometer')
+      .query({ pageSize: 100, ...query })
+      .set('Authorization', `Bearer ${adminToken}`);
+
+  it('narrows to several vehicles at once, BY CODE', async () => {
+    const a = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const b = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const c = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(a.id, 100, '2026-09-01');
+    await record(b.id, 200, '2026-09-01');
+    await record(c.id, 300, '2026-09-01');
+
+    const res = await list({ vehicleCodes: `${a.code},${b.code}` });
+    expect(res.status).toBe(200);
+    const ids = new Set(data<{ vehicleId: string }[]>(res).map((r) => r.vehicleId));
+    expect(ids.has(a.id)).toBe(true);
+    expect(ids.has(b.id)).toBe(true);
+    expect(ids.has(c.id), 'a vehicle outside the filter is excluded').toBe(false);
+  });
+
+  it('a code that matches no vehicle returns NOTHING, not everything', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 100, '2026-09-02');
+    const res = await list({ vehicleCodes: 'NO-SUCH-CODE' });
+    expect(res.status).toBe(200);
+    expect(data<unknown[]>(res)).toHaveLength(0);
+  });
+
+  it('matches a driver in EITHER slot', async () => {
+    const morning = await mkEmployee();
+    const evening = await mkEmployee();
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 100, '2026-09-03', { driver1EmployeeId: morning });
+    await record(v.id, 200, '2026-09-04', { driver2EmployeeId: evening });
+
+    const asMorning = await list({ vehicleCodes: v.code, driverEmployeeIds: morning });
+    expect(data<unknown[]>(asMorning)).toHaveLength(1);
+    const asEvening = await list({ vehicleCodes: v.code, driverEmployeeIds: evening });
+    expect(data<unknown[]>(asEvening)).toHaveLength(1);
+    // Both at once is the union of the two slots, not their intersection.
+    const both = await list({
+      vehicleCodes: v.code,
+      driverEmployeeIds: `${morning},${evening}`,
+    });
+    expect(data<unknown[]>(both)).toHaveLength(2);
+  });
+
+  it('a single day means the WHOLE day, however the reading was stamped', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    // Stamped mid-afternoon: `$lte` against a bare date would have stopped at midnight and
+    // missed it, which is what made the single-day filter look broken.
+    await record(v.id, 100, '2026-09-05T14:30:00.000Z');
+    const sameDay = await list({ vehicleCodes: v.code, from: '2026-09-05', to: '2026-09-05' });
+    expect(data<unknown[]>(sameDay)).toHaveLength(1);
+    const dayBefore = await list({ vehicleCodes: v.code, from: '2026-09-04', to: '2026-09-04' });
+    expect(data<unknown[]>(dayBefore)).toHaveLength(0);
+  });
+
+  it('a range spans its bounds inclusively', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 100, '2026-09-10');
+    await record(v.id, 200, '2026-09-11');
+    await record(v.id, 300, '2026-09-12');
+    const res = await list({ vehicleCodes: v.code, from: '2026-09-10', to: '2026-09-12' });
+    expect(data<unknown[]>(res)).toHaveLength(3);
+  });
+
+  it('filters on the DERIVED alarm level, and pages the filtered result', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 100, '2026-09-20');
+    // A vehicle with no maintenance rule or baseline is 'none' — never a false alarm.
+    const none = await list({ vehicleCodes: v.code, alerts: 'none' });
+    expect(none.status).toBe(200);
+    expect(data<unknown[]>(none).length).toBeGreaterThan(0);
+    // …and asking only for the alarmed levels excludes it.
+    const alarmed = await list({ vehicleCodes: v.code, alerts: 'yellow,red' });
+    expect(alarmed.status).toBe(200);
+    expect(data<unknown[]>(alarmed)).toHaveLength(0);
+  });
+
+  it('refuses a level that is not a level, rather than ignoring the filter', async () => {
+    expect((await list({ alerts: 'purple' })).status).toBe(400);
+  });
+
+  it('page 2 is page 2 OF THE FILTERED result', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const other = data<FleetVehicleDto>(await createVehicle(adminToken));
+    for (let i = 1; i <= 3; i += 1) await record(v.id, i * 100, `2026-10-0${i}`);
+    for (let i = 1; i <= 3; i += 1) await record(other.id, i * 100, `2026-10-0${i}`);
+
+    const first = await list({
+      vehicleCodes: v.code,
+      pageSize: 2,
+      page: 1,
+      sortBy: 'outReading',
+      sortDir: 'asc',
+    });
+    const second = await list({
+      vehicleCodes: v.code,
+      pageSize: 2,
+      page: 2,
+      sortBy: 'outReading',
+      sortDir: 'asc',
+    });
+    expect(data<unknown[]>(first)).toHaveLength(2);
+    expect(data<unknown[]>(second)).toHaveLength(1);
+    // Every row on both pages belongs to the filtered vehicle — the filter is not applied after
+    // the page was cut.
+    for (const row of [
+      ...data<{ vehicleId: string }[]>(first),
+      ...data<{ vehicleId: string }[]>(second),
+    ]) {
+      expect(row.vehicleId).toBe(v.id);
+    }
+  });
+
+  it('reading the registry needs fleetOdometer.view', async () => {
+    const token = await login('noperm@ecms.local');
+    expect(
+      (await request(app).get('/api/v1/fleet/odometer').set('Authorization', `Bearer ${token}`))
+        .status,
+    ).toBe(403);
+  });
+});
+
 describe('maintenance visits + derived alarm + idempotent sweeps (FL-4)', () => {
   const workTypeIdByName = async (name: string): Promise<string> => {
     const res = await request(app)

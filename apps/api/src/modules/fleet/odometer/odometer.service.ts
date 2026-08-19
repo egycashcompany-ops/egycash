@@ -20,6 +20,7 @@ import { emit } from '../../../platform/kernel/event-bus';
 import { unitOfWork } from '../../../platform/kernel/unit-of-work';
 import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
 import { isVehicleWritable } from '../vehicles/vehicle-status';
+import { computeAlarms } from '../maintenance/maintenance-alarm';
 import { fleetOdometerRepository } from './odometer.repository';
 import { type FleetOdometerLogDoc } from './odometer.model';
 
@@ -106,9 +107,44 @@ class FleetOdometerService {
     return Math.max(latest.outReading, latest.inReading ?? latest.outReading);
   }
 
+  /**
+   * The filtered page.
+   *
+   * Two of the filters name something the odometer collection does not store, so they are
+   * RESOLVED to vehicle ids here — where the vehicle registry and the alarm projection are
+   * reachable — and the repository stays a query over its own documents:
+   *
+   *   • `vehicleCodes` — the code is what the registry calls a car and what a shared link should
+   *     read as; a code that matches nothing narrows to nothing.
+   *   • `alerts` — the maintenance level is DERIVED per vehicle (FR-3) from settings the admin
+   *     owns, so it is computed and then used to pick vehicles, never stored on a reading.
+   *
+   * When both are given the answer is their INTERSECTION, and an empty intersection returns an
+   * empty page. Dropping the filter there would answer a narrowed question with every reading in
+   * the system, which reads as "no matches were excluded" and is the one wrong answer available.
+   */
   async list(query: ListFleetOdometerQuery): Promise<Paginated<FleetOdometerLogDoc>> {
+    let vehicleIds: string[] | undefined;
+
+    if (query.vehicleCodes !== undefined) {
+      const matched = await fleetVehicleRepository.list({
+        filter: { code: { $in: [...query.vehicleCodes] } },
+        page: 1,
+        pageSize: query.vehicleCodes.length,
+      });
+      vehicleIds = matched.items.map((vehicle) => String(vehicle._id));
+    }
+
+    if (query.alerts !== undefined) {
+      const wanted = new Set<string>(query.alerts);
+      const alarms = await computeAlarms();
+      const byLevel = alarms.filter((a) => wanted.has(a.level)).map((a) => a.vehicleId);
+      vehicleIds =
+        vehicleIds === undefined ? byLevel : vehicleIds.filter((id) => byLevel.includes(id));
+    }
+
     return fleetOdometerRepository.listLogs({
-      filter: fleetOdometerRepository.logFilter(query),
+      filter: fleetOdometerRepository.logFilter({ ...query, vehicleIds }),
       page: query.page,
       pageSize: query.pageSize,
       sortBy: query.sortBy,

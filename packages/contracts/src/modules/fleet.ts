@@ -392,6 +392,13 @@ export const ListFleetUnavailabilityQuerySchema = PaginationQuerySchema.extend({
 }).strict();
 export type ListFleetUnavailabilityQuery = z.infer<typeof ListFleetUnavailabilityQuerySchema>;
 
+// The alarm's vocabulary lives here, above BOTH its consumers: the odometer list filters on a
+// level and the maintenance projection reports one, and a `const` used before its declaration is
+// a TDZ error at import time, not a compile-time complaint.
+export const FLEET_ALARM_LEVELS = ['none', 'yellow', 'red'] as const;
+export const FleetAlarmLevelSchema = z.enum(FLEET_ALARM_LEVELS);
+export type FleetAlarmLevel = z.infer<typeof FleetAlarmLevelSchema>;
+
 // ── Odometer (FR-2 — continuity: one reading closes the previous period) ────
 
 export interface FleetOdometerLogDto {
@@ -452,17 +459,33 @@ export const FleetVehicleIdQuerySchema = z.object({ vehicleId: objectId() }).str
 export type FleetVehicleIdQuery = z.infer<typeof FleetVehicleIdQuerySchema>;
 
 export const ListFleetOdometerQuerySchema = PaginationQuerySchema.extend({
+  /** Single vehicle — kept because the vehicle profile links here with it. */
   vehicleId: objectId().optional(),
+  /**
+   * Several vehicles at once, BY CODE, because the code is what the registry calls a car and what
+   * a shared link should read as. Resolution to ids happens server-side against the live registry,
+   * so a code that no longer exists narrows to nothing rather than being ignored.
+   */
+  vehicleCodes: listQuery(z.string().trim().min(1).max(20)),
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
+  /**
+   * The driver half of the filter bar, already resolved to ids.
+   *
+   * A driver's NAME is HR's fact, so the browser asks HR first and hands the answer here — the
+   * same two-step join the drivers registry uses. A reading matches when the employee sits in
+   * EITHER slot: asking "which days did this person drive?" must not miss the evening shift.
+   */
+  driverEmployeeIds: listQuery(objectId(), MAX_PAGE_SIZE),
+  /**
+   * Maintenance-alarm levels to keep. The level is DERIVED per vehicle (FR-3), so this narrows
+   * the vehicles first and then the readings — the thresholds stay in settings, never here.
+   */
+  alerts: listQuery(FleetAlarmLevelSchema),
 }).strict();
 export type ListFleetOdometerQuery = z.infer<typeof ListFleetOdometerQuerySchema>;
 
 // ── Maintenance alarm (FR-3 — derived, never stored) ────────────────────────
-
-export const FLEET_ALARM_LEVELS = ['none', 'yellow', 'red'] as const;
-export const FleetAlarmLevelSchema = z.enum(FLEET_ALARM_LEVELS);
-export type FleetAlarmLevel = z.infer<typeof FleetAlarmLevelSchema>;
 
 /** Query-time projection per vehicle; attached to odometer lists and the vehicle profile. */
 export interface FleetMaintenanceAlarmDto {

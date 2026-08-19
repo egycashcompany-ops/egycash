@@ -226,8 +226,14 @@ export const OdometerPage = (): JSX.Element => {
     },
     {
       key: 'notes',
+      // The one free-text column, and a table column is sized by its content: a note carrying an
+      // unbroken run of characters — a pasted reference, a URL — has no break point to wrap at, so
+      // the column grows to fit it and pushes the columns after it off the screen. A bounded box
+      // that is allowed to break inside a word gives the run somewhere to wrap, and keeps the
+      // maintenance figure and the row's actions where the reader left them.
       header: t('fleet.odometer.columns.notes'),
-      render: (log) => log.notes ?? '—',
+      render: (log) =>
+        log.notes === null ? '—' : <span className="block max-w-xs break-words">{log.notes}</span>,
     },
     {
       key: 'maintenance',

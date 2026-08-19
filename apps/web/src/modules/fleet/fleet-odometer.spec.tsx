@@ -259,6 +259,22 @@ describe('the odometer table', () => {
     expect(head).not.toContain(`>${t('fleet.odometer.columns.drivers')}<`);
   });
 
+  it('keeps an unbreakable note inside its column instead of widening the table', () => {
+    // A table column is sized by its content, and a note carrying an unbroken run of characters
+    // (a pasted reference, a URL) has no break point to wrap at — so the column grew to fit it and
+    // pushed the maintenance figure and the row's actions off the screen. Measured in a browser
+    // before the fix: the table went from 1134px to 2943px inside a 1134px wrapper.
+    const run = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'.repeat(4);
+    const body = tbody(render({ qc: client([log({ notes: run })]) }));
+    const cell = body.slice(body.indexOf(run) - 200, body.indexOf(run));
+    // Bounded, and allowed to break inside the run — either alone is not enough: without a width
+    // there is no line box to break against, and without breaking the box just overflows.
+    expect(cell, 'the note is bounded').toContain('max-w-');
+    expect(cell, 'the note may break inside a word').toContain('break-words');
+    // It is still a block, or `max-width` has nothing to apply to.
+    expect(cell).toContain('block');
+  });
+
   it('shows the vehicle CODE, never the vehicle id', () => {
     const body = tbody(render());
     expect(body).toContain('150');
@@ -629,6 +645,24 @@ describe('recording a reading', () => {
         expect(translate(locale, key), `${key} in ${locale}`).not.toBe(key);
       }
     }
+  });
+
+  it('names the two driver slots by their SHIFT, as the table does', () => {
+    // The slots are not interchangeable — slot 1 is the morning, slot 2 the evening — and the
+    // dialog is where that is decided. It used to borrow the roster screens' generic
+    // "السائق الأول/الثاني", which named the order and not the shift.
+    expect(source).toContain("t('fleet.odometer.columns.driver1')");
+    expect(source).toContain("t('fleet.odometer.columns.driver2')");
+    expect(source).not.toContain("t('fleet.odometer.fields.driver1')");
+    expect(source).not.toContain("t('fleet.odometer.fields.driver2')");
+    // The words themselves carry the shift, in both locales.
+    for (const locale of ['ar', 'en'] as Locale[]) {
+      for (const key of ['fleet.odometer.columns.driver1', 'fleet.odometer.columns.driver2']) {
+        expect(translate(locale, key), `${key} in ${locale}`).not.toBe(key);
+      }
+    }
+    expect(t('fleet.odometer.columns.driver1')).toContain('صباحي');
+    expect(t('fleet.odometer.columns.driver2')).toContain('مسائي');
   });
 
   it('asks for nothing the server derives — no km, no closing reading', () => {

@@ -202,10 +202,14 @@ export const RecordOdometerDialog = ({
             )}
           </p>
         </Field>
-        <Field label={t('fleet.odometer.fields.driver1')}>
+        {/* Named by their SHIFT, in the same words the table uses. The two slots are not
+            interchangeable — slot 1 is the morning, slot 2 the evening — and the generic
+            "السائق الأول/الثاني" the roster screens use leaves the operator to guess which is
+            which at the one moment it is being decided. */}
+        <Field label={t('fleet.odometer.columns.driver1')}>
           <OptionalEmployeeField value={driver1} onChange={setDriver1} />
         </Field>
-        <Field label={t('fleet.odometer.fields.driver2')}>
+        <Field label={t('fleet.odometer.columns.driver2')}>
           <OptionalEmployeeField value={driver2} onChange={setDriver2} />
         </Field>
         <Field label={t('fleet.attendance.fields.notes')}>

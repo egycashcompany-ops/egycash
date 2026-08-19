@@ -516,13 +516,47 @@ export interface FleetMaintenanceAlarmDto {
 export interface FleetMaintenanceVisitDto {
   id: string;
   vehicleId: string;
+  /**
+   * The registry's code for that vehicle, resolved SERVER-side for the row — the same reason the
+   * odometer log carries one: a client cannot resolve a code for a car outside the page of the
+   * registry it happens to hold, so every car past that page would print a dash.
+   *
+   * `null` only when the vehicle no longer exists at all; a soft-deleted one keeps its code.
+   */
+  vehicleCode: string | null;
+  /**
+   * The crew the vehicle carried the DAY IT WENT IN, from the duty roster — not whoever handed
+   * the keys over. "Who was driving this car when it broke" is a roster question, and the two
+   * custody fields below answer a different one.
+   *
+   * `null` when the roster has no row for that vehicle-day, or the slot was left empty.
+   */
+  driver1EmployeeId: string | null;
+  driver2EmployeeId: string | null;
   inDate: string;
   /** null = in workshop (the open state). */
   outDate: string | null;
   workshopId: string;
   workTypeId: string;
+  /**
+   * Free-text parts, as visits recorded before the catalog existed carry them. READ-ONLY now:
+   * nothing writes to it any more, and it is kept because those words are the only record of
+   * what was fitted — a migration could only have matched them by name and dropped the rest.
+   */
   spareParts: string[];
+  /** Parts chosen from the `sparePart` catalog. The field new visits write. */
+  sparePartIds: string[];
+  /** The counter when the vehicle went IN. */
   odometerAtService: number;
+  /**
+   * The counter when it came OUT, recorded at check-out. `null` while the visit is open, and on
+   * visits closed before this was collected.
+   *
+   * This is the maintenance BASELINE for a closed visit: the distance since a service is measured
+   * from the reading the car left the workshop on, not the one it arrived on — the two differ by
+   * whatever the workshop drove, and counting that against the next service shortens it.
+   */
+  exitOdometer: number | null;
   takenInByEmployeeId: string | null;
   takenOutByEmployeeId: string | null;
   notes: string | null;
@@ -537,8 +571,20 @@ export const CheckInFleetMaintenanceSchema = z
     inDate: z.coerce.date(),
     workshopId: objectId(),
     workTypeId: objectId(),
-    spareParts: z.array(z.string().trim().min(1).max(120)).max(50).default([]),
+    sparePartIds: z.array(objectId()).max(50).default([]),
+    /**
+     * DEPRECATED free text, still accepted so a caller written before the catalog existed is not
+     * refused outright. Stored VERBATIM in the legacy field — never matched against the catalog,
+     * because guessing which part a spelling meant is exactly the silent data loss this replaces.
+     * The web form does not send it.
+     */
+    spareParts: z.array(z.string().trim().min(1).max(120)).max(50).optional(),
     odometerAtService: z.number().int().min(0),
+    /**
+     * Custody, and normally NOT sent: the server records whoever is logged in. Kept accepted for
+     * the case the seam cannot answer — a platform account with no employee behind it — so the
+     * fact stays recordable rather than silently lost.
+     */
     takenInByEmployeeId: objectId().nullish(),
     notes: z.string().trim().min(1).max(1000).nullish(),
   })
@@ -548,6 +594,13 @@ export type CheckInFleetMaintenance = z.infer<typeof CheckInFleetMaintenanceSche
 export const CheckOutFleetMaintenanceSchema = z
   .object({
     outDate: z.coerce.date(),
+    /**
+     * The counter the vehicle leaves on. REQUIRED, because it becomes the baseline every later
+     * maintenance calculation measures from — a check-out without it would leave the next service
+     * being counted from the arrival reading and falling due early.
+     */
+    exitOdometer: z.number().int().min(0),
+    /** As on check-in: the server records the logged-in user; this is the fallback. */
     takenOutByEmployeeId: objectId().nullish(),
     version: z.number().int().min(0),
   })
@@ -563,8 +616,11 @@ export const UpdateFleetMaintenanceSchema = z
     inDate: z.coerce.date().optional(),
     workshopId: objectId().optional(),
     workTypeId: objectId().optional(),
+    sparePartIds: z.array(objectId()).max(50).optional(),
+    /** DEPRECATED, as on check-in — accepted, stored verbatim, never interpreted. */
     spareParts: z.array(z.string().trim().min(1).max(120)).max(50).optional(),
     odometerAtService: z.number().int().min(0).optional(),
+    exitOdometer: z.number().int().min(0).nullish().optional(),
     takenInByEmployeeId: objectId().nullish().optional(),
     notes: z.string().trim().min(1).max(1000).nullish().optional(),
     version: z.number().int().min(0),
@@ -574,12 +630,43 @@ export type UpdateFleetMaintenance = z.infer<typeof UpdateFleetMaintenanceSchema
 
 export const ListFleetMaintenanceQuerySchema = PaginationQuerySchema.extend({
   vehicleId: objectId().optional(),
-  /** true = in workshop (outDate null); false = history. */
+  /**
+   * «حالة الصيانة» — the visit's ONE state: `true` = in the workshop (`outDate` null), `false` =
+   * out of it.
+   *
+   * §4.2 gives the visit exactly two states, `open` ↔ `closed`, and §2.6 stores no status field
+   * beside them — the legacy `deleted_dock` codes were deliberately left behind (§11). So "which
+   * cars are in the workshop" and "which have come out" are the two halves of THIS field, not two
+   * filters, and nothing here invents a third state.
+   *
+   * The derived ALARM level (FR-3) is a different subject entirely — a property of the VEHICLE,
+   * not of a visit — and is deliberately not offered here as a maintenance "status".
+   */
   open: booleanQuery().optional(),
+  /** Several vehicles at once, BY CODE — resolved server-side against the live registry. */
+  vehicleCodes: listQuery(z.string().trim().min(1).max(20)),
+  /**
+   * Drivers, already resolved to employee ids by the caller — the same two-step join the odometer
+   * uses, because a driver's NAME is HR's fact. A visit matches when the employee held EITHER
+   * roster slot on the vehicle the day it went in.
+   */
+  driverEmployeeIds: listQuery(objectId(), MAX_PAGE_SIZE),
   workshopId: objectId().optional(),
+  workshopIds: listQuery(objectId()),
   workTypeId: objectId().optional(),
+  workTypeIds: listQuery(objectId()),
+  sparePartIds: listQuery(objectId()),
+  /** Substring over the visit's own note. */
+  notes: z.string().trim().min(1).max(100).optional(),
+  /** Inclusive bounds on the counter the vehicle went in on. */
+  odometerFrom: z.coerce.number().int().min(0).optional(),
+  odometerTo: z.coerce.number().int().min(0).optional(),
+  /** Check-IN date window. */
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
+  /** Check-OUT date window — a different question from the one above, so a different pair. */
+  outFrom: z.coerce.date().optional(),
+  outTo: z.coerce.date().optional(),
 }).strict();
 export type ListFleetMaintenanceQuery = z.infer<typeof ListFleetMaintenanceQuerySchema>;
 

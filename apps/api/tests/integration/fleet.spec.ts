@@ -16,11 +16,13 @@ import {
   type FleetCatalogItemDto,
   type FleetDriverProfileDto,
   type FleetDriverUnavailabilityDto,
+  type FleetMaintenanceVisitDto,
   type FleetOdometerLogDto,
   type FleetVehicleDto,
   type FleetVehicleTypeDto,
   type PageMeta,
 } from '@ecms/contracts';
+import { Types } from 'mongoose';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { buildApp } from '../../src/app';
 import { moduleManifests } from '../../src/modules';
@@ -29,6 +31,8 @@ import {
   licenseExpirySweep,
   maintenanceAlarmSweep,
 } from '../../src/modules/fleet/sweeps/fleet-sweeps';
+import { FleetMaintenanceVisitModel } from '../../src/modules/fleet/maintenance/maintenance.model';
+import { EmployeeModel } from '../../src/modules/hr/employee-management/employees/employee.model';
 import { hrPermissions } from '../../src/modules/hr/hr.module';
 import { driverAvailabilityOn } from '../../src/modules/fleet/availability/driver-availability';
 import { registerLeaveLookup } from '../../src/platform/directory';
@@ -1207,7 +1211,8 @@ describe('maintenance visits + derived alarm + idempotent sweeps (FL-4)', () => 
     const out = await request(app)
       .post(`/api/v1/fleet/maintenance/${visitDto.id}/check-out`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ outDate: '2026-07-03', version: visitDto.version });
+      // The exit reading is required now — it becomes the baseline the next service counts from.
+      .send({ outDate: '2026-07-03', exitOdometer: 90_200, version: visitDto.version });
     expect(out.status).toBe(200);
     expect(seenEvents.some((e) => e.name === FleetEvents.MaintenanceCheckedOut)).toBe(true);
 
@@ -1245,7 +1250,9 @@ describe('maintenance visits + derived alarm + idempotent sweeps (FL-4)', () => 
     await request(app)
       .post(`/api/v1/fleet/maintenance/${visit.id}/check-out`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ outDate: '2026-07-02', version: visit.version });
+      // Out on the same reading it came in on, so this test's arithmetic is unchanged by the
+      // baseline moving to the exit reading — what the baseline IS is proven separately below.
+      .send({ outDate: '2026-07-02', exitOdometer: 95_000, version: visit.version });
 
     const record = (reading: number, date: string) =>
       request(app)
@@ -1312,6 +1319,433 @@ describe('maintenance visits + derived alarm + idempotent sweeps (FL-4)', () => 
     await licenseExpirySweep();
     expect(countFor(FleetEvents.VehicleLicenseExpiring, v.id)).toBe(1);
     expect(countFor(FleetEvents.DriverLicenseExpired, employeeId)).toBe(1);
+  });
+});
+
+describe('workshop entry/exit — exit odometer, custody, catalog parts, filters', () => {
+  // `ux_kind_name_ar` is UNIQUE per (kind, Arabic name), so every catalog item this block creates
+  // needs its own name — a helper that reused one would 409 on its second call.
+  let catalogCounter = 0;
+  const mkCatalog = async (kind: string, ar: string): Promise<string> => {
+    const n = (catalogCounter += 1);
+    const res = await request(app)
+      .post('/api/v1/fleet/catalog-items')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ kind, name: { ar: `${ar} ${n}`, en: `${kind}-${n}` } });
+    expect(res.status).toBe(201);
+    return data<FleetCatalogItemDto>(res).id;
+  };
+  const countingWorkTypeId = async (): Promise<string> => {
+    const res = await request(app)
+      .get('/api/v1/fleet/catalog-items')
+      .query({ kind: 'workType', pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    const item = data<FleetCatalogItemDto[]>(res).find((i) => i.name.ar === 'صيانة');
+    if (item === undefined) throw new Error('workType صيانة not found');
+    return item.id;
+  };
+  const checkIn = (body: Record<string, unknown>) =>
+    request(app)
+      .post('/api/v1/fleet/maintenance')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send(body);
+  const checkOut = (id: string, body: Record<string, unknown>) =>
+    request(app)
+      .post(`/api/v1/fleet/maintenance/${id}/check-out`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send(body);
+  const listVisits = (query: Record<string, unknown>) =>
+    request(app)
+      .get('/api/v1/fleet/maintenance')
+      .query(query)
+      .set('Authorization', `Bearer ${adminToken}`);
+  const ids = (res: request.Response): string[] =>
+    data<FleetMaintenanceVisitDto[]>(res).map((v) => v.id);
+
+  /** A closed visit on a fresh vehicle, in one call — the fixture most of these tests want. */
+  const closedVisit = async (
+    over: {
+      odometerAtService?: number;
+      exitOdometer?: number;
+      inDate?: string;
+      outDate?: string;
+      sparePartIds?: string[];
+      notes?: string;
+    } = {},
+  ): Promise<{ vehicle: FleetVehicleDto; visit: FleetMaintenanceVisitDto }> => {
+    const vehicle = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const opened = await checkIn({
+      vehicleId: vehicle.id,
+      inDate: over.inDate ?? '2026-09-01',
+      workshopId: await mkCatalog('workshop', 'ورشة الخروج'),
+      workTypeId: await countingWorkTypeId(),
+      odometerAtService: over.odometerAtService ?? 120_000,
+      ...(over.sparePartIds === undefined ? {} : { sparePartIds: over.sparePartIds }),
+      ...(over.notes === undefined ? {} : { notes: over.notes }),
+    });
+    expect(opened.status).toBe(201);
+    const open = data<FleetMaintenanceVisitDto>(opened);
+    const out = await checkOut(open.id, {
+      outDate: over.outDate ?? '2026-09-03',
+      exitOdometer: over.exitOdometer ?? 120_850,
+      version: open.version,
+    });
+    expect(out.status).toBe(200);
+    return { vehicle, visit: data<FleetMaintenanceVisitDto>(out) };
+  };
+
+  it('stores the exit reading and refuses one below the reading it came in on', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const opened = data<FleetMaintenanceVisitDto>(
+      await checkIn({
+        vehicleId: v.id,
+        inDate: '2026-09-01',
+        workshopId: await mkCatalog('workshop', 'ورشة القراءة'),
+        workTypeId: await countingWorkTypeId(),
+        odometerAtService: 120_000,
+      }),
+    );
+    // Open: there is no exit reading yet, and the field says so rather than guessing one.
+    expect(opened.exitOdometer).toBeNull();
+
+    const tooLow = await checkOut(opened.id, {
+      outDate: '2026-09-03',
+      exitOdometer: 119_999,
+      version: opened.version,
+    });
+    expect(tooLow.status).toBe(400);
+
+    // Required, not optional: a check-out without it cannot silently leave the baseline behind.
+    const missing = await checkOut(opened.id, {
+      outDate: '2026-09-03',
+      version: opened.version,
+    });
+    expect(missing.status).toBe(400);
+
+    const out = await checkOut(opened.id, {
+      outDate: '2026-09-03',
+      exitOdometer: 120_850,
+      version: opened.version,
+    });
+    expect(out.status).toBe(200);
+    expect(data<FleetMaintenanceVisitDto>(out).exitOdometer).toBe(120_850);
+
+    // …and it is PERSISTED, not merely echoed by the write.
+    const reread = await listVisits({ vehicleId: v.id });
+    expect(data<FleetMaintenanceVisitDto[]>(reread)[0]?.exitOdometer).toBe(120_850);
+  });
+
+  it('a closed visit measures the next service from the EXIT reading, not the entry one', async () => {
+    // In on 120,000 and out on 120,850: the 850 the workshop drove is not distance since the
+    // service, and counting it would bring the next service forward by exactly that much.
+    const { vehicle } = await closedVisit({ odometerAtService: 120_000, exitOdometer: 120_850 });
+    await request(app)
+      .post('/api/v1/fleet/odometer')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ vehicleId: vehicle.id, reading: 124_850, date: '2026-09-20' });
+
+    const alarms = data<{ code: string; sinceServiceKm: number | null }[]>(
+      await request(app)
+        .get('/api/v1/fleet/odometer/alarms')
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+    // 124,850 − 120,850 = 4,000. From the entry reading it would have read 4,850.
+    expect(alarms.find((a) => a.code === vehicle.code)?.sinceServiceKm).toBe(4000);
+  });
+
+  it('a visit closed before the exit reading existed still reads, and still baselines', async () => {
+    const { vehicle, visit } = await closedVisit({
+      odometerAtService: 120_000,
+      exitOdometer: 120_850,
+    });
+    // Exactly the shape of a row written before the field existed: the KEY is absent, not null —
+    // a mongoose `default` applies on write and never reached the rows already there.
+    await FleetMaintenanceVisitModel.collection.updateOne(
+      { _id: new Types.ObjectId(visit.id) },
+      { $unset: { exitOdometer: '' } },
+    );
+
+    const reread = data<FleetMaintenanceVisitDto[]>(await listVisits({ vehicleId: vehicle.id }));
+    expect(reread[0]?.exitOdometer).toBeNull();
+
+    await request(app)
+      .post('/api/v1/fleet/odometer')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ vehicleId: vehicle.id, reading: 124_850, date: '2026-09-20' });
+    const alarms = data<{ code: string; sinceServiceKm: number | null }[]>(
+      await request(app)
+        .get('/api/v1/fleet/odometer/alarms')
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+    // Falls back to the entry reading: 124,850 − 120,000.
+    expect(alarms.find((a) => a.code === vehicle.code)?.sinceServiceKm).toBe(4850);
+  });
+
+  it('an OPEN visit is never a baseline — the alarm waits for the car to come out', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const opened = await checkIn({
+      vehicleId: v.id,
+      inDate: '2026-09-01',
+      workshopId: await mkCatalog('workshop', 'ورشة المفتوحة'),
+      workTypeId: await countingWorkTypeId(),
+      odometerAtService: 120_000,
+    });
+    expect(opened.status).toBe(201);
+    await request(app)
+      .post('/api/v1/fleet/odometer')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ vehicleId: v.id, reading: 124_000, date: '2026-09-20' });
+
+    const alarms = data<{ code: string; sinceServiceKm: number | null; level: string }[]>(
+      await request(app)
+        .get('/api/v1/fleet/odometer/alarms')
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+    // A car still in the workshop has not been serviced yet — there is no baseline to count from,
+    // and inventing one from the arrival reading would start the next cycle early. Unchanged by
+    // the exit reading landing on the row: the projection only ever reads CLOSED visits.
+    const row = alarms.find((a) => a.code === v.code);
+    expect(row?.sinceServiceKm).toBeNull();
+    expect(row?.level).toBe('none');
+  });
+
+  it('keeps a visit whose car had no roster row that day — it is driverless, not missing', async () => {
+    // The crew join must never behave like an inner join: a car nobody was rostered on still went
+    // into a workshop, and dropping its visit would quietly shorten every unfiltered list.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const opened = await checkIn({
+      vehicleId: v.id,
+      inDate: '2026-10-20',
+      workshopId: await mkCatalog('workshop', 'ورشة بلا سائق'),
+      workTypeId: await countingWorkTypeId(),
+      odometerAtService: 40_000,
+    });
+    expect(opened.status).toBe(201);
+    const dto = data<FleetMaintenanceVisitDto>(opened);
+    expect(dto.driver1EmployeeId).toBeNull();
+    expect(dto.driver2EmployeeId).toBeNull();
+    expect(ids(await listVisits({ vehicleId: v.id }))).toContain(dto.id);
+  });
+
+  it('reopening a visit takes the exit reading back with it', async () => {
+    const { visit } = await closedVisit();
+    const reopened = await request(app)
+      .post(`/api/v1/fleet/maintenance/${visit.id}/reopen`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: visit.version });
+    expect(reopened.status).toBe(200);
+    const dto = data<FleetMaintenanceVisitDto>(reopened);
+    expect(dto.outDate).toBeNull();
+    expect(dto.exitOdometer).toBeNull();
+  });
+
+  it('records the custody from the LOGIN, and admits it is nobody when the login is not staff', async () => {
+    // The seeded administrator is a platform account with no employee behind it — the seam
+    // answers null, and the field says null rather than inventing somebody.
+    const anonymous = await closedVisit();
+    expect(anonymous.visit.takenInByEmployeeId).toBeNull();
+    expect(anonymous.visit.takenOutByEmployeeId).toBeNull();
+
+    // Now the same login IS an employee. Nothing about the request changes — no employee field is
+    // sent — and both custody facts are recorded from the account that made the call.
+    const employeeId = await mkEmployee({ fullNameAr: 'أمين العهدة' });
+    await EmployeeModel.updateOne(
+      { _id: new Types.ObjectId(employeeId) },
+      { $set: { userId: new Types.ObjectId(adminUserId) } },
+    );
+    try {
+      const { visit } = await closedVisit();
+      expect(visit.takenInByEmployeeId).toBe(employeeId);
+      expect(visit.takenOutByEmployeeId).toBe(employeeId);
+    } finally {
+      await EmployeeModel.updateOne(
+        { _id: new Types.ObjectId(employeeId) },
+        { $set: { userId: null } },
+      );
+    }
+  });
+
+  it('spare parts are catalog references, and an unknown one is refused', async () => {
+    const partA = await mkCatalog('sparePart', 'فلتر زيت');
+    const partB = await mkCatalog('sparePart', 'طقم فرامل');
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const body = {
+      vehicleId: v.id,
+      inDate: '2026-09-01',
+      workshopId: await mkCatalog('workshop', 'ورشة القطع'),
+      workTypeId: await countingWorkTypeId(),
+      odometerAtService: 10_000,
+    };
+
+    const refused = await checkIn({ ...body, sparePartIds: [String(new Types.ObjectId())] });
+    expect(refused.status).toBe(400);
+
+    const accepted = await checkIn({ ...body, sparePartIds: [partA, partB] });
+    expect(accepted.status).toBe(201);
+    expect(data<FleetMaintenanceVisitDto>(accepted).sparePartIds).toEqual([partA, partB]);
+    // The legacy free-text field is untouched by a catalog write — nothing migrated, nothing lost.
+    expect(data<FleetMaintenanceVisitDto>(accepted).spareParts).toEqual([]);
+  });
+
+  it('still accepts the DEPRECATED free text, and never turns it into a catalog id', async () => {
+    // A caller written before the catalog existed is not refused. Its words are stored verbatim in
+    // the legacy field: matching them to a catalog item by name is the silent, lossy conversion
+    // this whole change exists to avoid.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const res = await checkIn({
+      vehicleId: v.id,
+      inDate: '2026-09-01',
+      workshopId: await mkCatalog('workshop', 'ورشة النص القديم'),
+      workTypeId: await countingWorkTypeId(),
+      odometerAtService: 10_000,
+      spareParts: ['فلتر زيت', 'قطعة لا يعرفها الكتالوج'],
+    });
+    expect(res.status).toBe(201);
+    const dto = data<FleetMaintenanceVisitDto>(res);
+    expect(dto.spareParts).toEqual(['فلتر زيت', 'قطعة لا يعرفها الكتالوج']);
+    expect(dto.sparePartIds, 'no string was silently resolved to an id').toEqual([]);
+  });
+
+  it('filters server-side on every axis the screen offers', async () => {
+    const part = await mkCatalog('sparePart', 'مساحات');
+    const workshopId = await mkCatalog('workshop', 'ورشة الفلاتر');
+    const workTypeId = await countingWorkTypeId();
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const opened = data<FleetMaintenanceVisitDto>(
+      await checkIn({
+        vehicleId: v.id,
+        inDate: '2026-10-05',
+        workshopId,
+        workTypeId,
+        odometerAtService: 55_000,
+        sparePartIds: [part],
+        notes: 'تغيير المساحات',
+      }),
+    );
+    // The vehicle CODE is a server fact on the row now, not a client join against one page.
+    expect(opened.vehicleCode).toBe(v.code);
+
+    const matches = async (query: Record<string, unknown>): Promise<boolean> =>
+      ids(await listVisits(query)).includes(opened.id);
+
+    expect(await matches({ vehicleCodes: v.code })).toBe(true);
+    expect(await matches({ vehicleCodes: `${v.code}-nope` })).toBe(false);
+    expect(await matches({ workshopIds: workshopId })).toBe(true);
+    expect(await matches({ workshopIds: String(new Types.ObjectId()) })).toBe(false);
+    expect(await matches({ workTypeIds: workTypeId })).toBe(true);
+    expect(await matches({ sparePartIds: part })).toBe(true);
+    expect(await matches({ sparePartIds: String(new Types.ObjectId()) })).toBe(false);
+    expect(await matches({ notes: 'المساحات' })).toBe(true);
+    expect(await matches({ notes: 'الفرامل' })).toBe(false);
+    expect(await matches({ odometerFrom: 55_000, odometerTo: 55_000 })).toBe(true);
+    expect(await matches({ odometerFrom: 55_001 })).toBe(false);
+    // The single-day case: `to` covers the whole of the day it names, whatever time is stamped.
+    expect(await matches({ from: '2026-10-05', to: '2026-10-05' })).toBe(true);
+    expect(await matches({ from: '2026-10-06' })).toBe(false);
+    // Still in the workshop — so it is in the open list and out of the closed one, and it has no
+    // check-out date to fall inside an out-date window.
+    expect(await matches({ open: true })).toBe(true);
+    expect(await matches({ open: false })).toBe(false);
+    expect(await matches({ outFrom: '2026-01-01', outTo: '2027-01-01' })).toBe(false);
+
+    const out = await checkOut(opened.id, {
+      outDate: '2026-10-09',
+      exitOdometer: 55_400,
+      version: opened.version,
+    });
+    expect(out.status).toBe(200);
+    expect(await matches({ open: false })).toBe(true);
+    expect(await matches({ open: true })).toBe(false);
+    expect(await matches({ outFrom: '2026-10-09', outTo: '2026-10-09' })).toBe(true);
+    expect(await matches({ outFrom: '2026-10-10' })).toBe(false);
+  });
+
+  it('filters by the DRIVER the roster gave the car the day it went in', async () => {
+    const driverEmployeeId = await mkEmployee({ fullNameAr: 'سائق الورشة' });
+    await mkDriverProfile(driverEmployeeId);
+    const other = await mkEmployee({ fullNameAr: 'سائق آخر' });
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const inDate = '2026-10-12';
+
+    // The roster is the existing relation, and it is what the filter reads — maintenance grows no
+    // driver field of its own.
+    const planned = await request(app)
+      .post('/api/v1/fleet/roster')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date: inDate, rows: [{ vehicleId: v.id, driver1EmployeeId: driverEmployeeId }] });
+    expect(planned.status).toBe(200);
+
+    const opened = data<FleetMaintenanceVisitDto>(
+      await checkIn({
+        vehicleId: v.id,
+        inDate,
+        workshopId: await mkCatalog('workshop', 'ورشة السائق'),
+        workTypeId: await countingWorkTypeId(),
+        odometerAtService: 70_000,
+      }),
+    );
+    // The crew is carried ON the row, so the column has a name to show without a second request.
+    expect(opened.driver1EmployeeId).toBe(driverEmployeeId);
+
+    expect(ids(await listVisits({ driverEmployeeIds: driverEmployeeId }))).toContain(opened.id);
+    expect(ids(await listVisits({ driverEmployeeIds: other }))).not.toContain(opened.id);
+
+    // The roster holds ONE row per (vehicle, date) — `ux_vehicle_date` — and the two driver slots
+    // live on it. So "more than one assignment that day" is not a case the domain has; the second
+    // SLOT is, and the evening driver must match exactly as the morning one does.
+    const evening = await mkEmployee({ fullNameAr: 'سائق المساء' });
+    await mkDriverProfile(evening);
+    const replanned = await request(app)
+      .post('/api/v1/fleet/roster')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        date: inDate,
+        rows: [
+          { vehicleId: v.id, driver1EmployeeId: driverEmployeeId, driver2EmployeeId: evening },
+        ],
+      });
+    expect(replanned.status).toBe(200);
+    expect(ids(await listVisits({ driverEmployeeIds: evening }))).toContain(opened.id);
+  });
+
+  it('pagination and sorting survive the filters', async () => {
+    const workshopId = await mkCatalog('workshop', 'ورشة الصفحات');
+    const workTypeId = await countingWorkTypeId();
+    const dates = ['2026-11-01', '2026-11-02', '2026-11-03'];
+    for (const inDate of dates) {
+      const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+      const res = await checkIn({
+        vehicleId: v.id,
+        inDate,
+        workshopId,
+        workTypeId,
+        odometerAtService: 1000,
+      });
+      expect(res.status).toBe(201);
+    }
+
+    const first = await listVisits({
+      workshopIds: workshopId,
+      pageSize: 2,
+      sortBy: 'inDate',
+      sortDir: 'asc',
+    });
+    const meta = (first.body as { meta: PageMeta }).meta;
+    // The total describes the FILTERED set, and it is the server's count — never a page length.
+    expect(meta.totalItems).toBe(3);
+    expect(meta.totalPages).toBe(2);
+    expect(data<FleetMaintenanceVisitDto[]>(first)).toHaveLength(2);
+    expect(data<FleetMaintenanceVisitDto[]>(first)[0]?.inDate.slice(0, 10)).toBe('2026-11-01');
+
+    const second = await listVisits({
+      workshopIds: workshopId,
+      pageSize: 2,
+      page: 2,
+      sortBy: 'inDate',
+      sortDir: 'asc',
+    });
+    expect(data<FleetMaintenanceVisitDto[]>(second)).toHaveLength(1);
+    expect(data<FleetMaintenanceVisitDto[]>(second)[0]?.inDate.slice(0, 10)).toBe('2026-11-03');
   });
 });
 

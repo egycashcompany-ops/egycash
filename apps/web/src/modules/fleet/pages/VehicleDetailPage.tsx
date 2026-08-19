@@ -171,8 +171,11 @@ const Indicators = ({ vehicle }: { vehicle: FleetVehicleDto }): JSX.Element => {
           caption={
             visit?.outDate == null
               ? undefined
-              : t('fleet.vehicle.lastServiceAt', {
-                  km: formatNumber(visit.odometerAtService, locale),
+              : // The reading the car LEFT the workshop on — the same baseline the alarm counts
+                // from. Visits closed before that number was collected carry `null`, and fall
+                // back to the arrival reading, which is what those rows have always shown.
+                t('fleet.vehicle.lastServiceAt', {
+                  km: formatNumber(visit.exitOdometer ?? visit.odometerAtService, locale),
                 })
           }
         />

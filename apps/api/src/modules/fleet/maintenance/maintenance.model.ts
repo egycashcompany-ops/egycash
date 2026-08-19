@@ -11,8 +11,12 @@ export interface FleetMaintenanceVisitDoc extends BaseDocFields {
   outDate: Date | null;
   workshopId: Types.ObjectId;
   workTypeId: Types.ObjectId;
+  /** Legacy free text, read-only — see the DTO. Never written any more. */
   spareParts: string[];
+  sparePartIds: Types.ObjectId[];
   odometerAtService: number;
+  /** The counter on the way OUT; null while open, and on visits closed before it was collected. */
+  exitOdometer: number | null;
   takenInByEmployeeId: Types.ObjectId | null;
   takenOutByEmployeeId: Types.ObjectId | null;
   notes: string | null;
@@ -26,7 +30,9 @@ const maintenanceSchema = new Schema<FleetMaintenanceVisitDoc>(
     workshopId: { type: Schema.Types.ObjectId, required: true },
     workTypeId: { type: Schema.Types.ObjectId, required: true },
     spareParts: { type: [String], default: [] },
+    sparePartIds: { type: [Schema.Types.ObjectId], default: [] },
     odometerAtService: { type: Number, required: true, min: 0 },
+    exitOdometer: { type: Number, default: null, min: 0 },
     takenInByEmployeeId: { type: Schema.Types.ObjectId, default: null },
     takenOutByEmployeeId: { type: Schema.Types.ObjectId, default: null },
     notes: { type: String, default: null },

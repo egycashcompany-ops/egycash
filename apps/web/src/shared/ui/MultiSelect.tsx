@@ -77,6 +77,7 @@ export const MultiSelect = ({
   onSearch,
   searching = false,
   showSelectedValues = false,
+  placeholder,
   className,
 }: {
   /** What the filter asks. Shown in the trigger while nothing is selected. */
@@ -106,6 +107,15 @@ export const MultiSelect = ({
    * the list to find out what they had already chosen.
    */
   showSelectedValues?: boolean;
+  /**
+   * What the EMPTY trigger says, when the label is already written above the control.
+   *
+   * A filter bar has no labels, so the trigger carries the question and this stays unset — every
+   * bar in the system reads exactly as it did. A form field has a `<label>` above it, and
+   * repeating the same words inside the control says nothing twice. `label` still answers the
+   * screen reader either way.
+   */
+  placeholder?: string;
   className?: string;
 }): JSX.Element => {
   const t = useT();
@@ -156,7 +166,11 @@ export const MultiSelect = ({
             the question rather than sitting beside it, because the row has no space for both and
             `aria-label` already tells a screen reader which filter this is. */}
         {summary === null ? (
-          <span className="whitespace-nowrap">{label}</span>
+          <span
+            className={cn('whitespace-nowrap', placeholder !== undefined && 'text-slate-400')}
+          >
+            {placeholder ?? label}
+          </span>
         ) : (
           <span className="max-w-48 truncate" title={summary}>
             {summary}

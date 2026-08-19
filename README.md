@@ -27,7 +27,12 @@ notifications, settings, scheduler), and the **HR module is delivered end to end
 
 Job Positions and Job Requisitions remain **intentionally deferred**, and per
 [ADR-016](docs/03-decisions/ADR-016-optional-position-requisition-linkage.md) applicants are never
-required to link to either — the Talent Pool is first-class. The next module has not started.
+required to link to either — the Talent Pool is first-class.
+
+Beyond HR, the platform now carries Fleet, Operations, IT and — newly — **Gold Vault**, the
+standalone precious-metals vault system ported in as a module: its business rules unchanged, with
+branches, vault custodians and the transport crew/vehicle read from ECMS instead of kept twice
+([port record](docs/12-planning/gold-module-port.md)).
 
 The full roadmap and project index live in [ECMS-BOOK.md](ECMS-BOOK.md);
 release history in [CHANGELOG.md](CHANGELOG.md).

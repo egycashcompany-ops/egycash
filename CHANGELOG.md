@@ -11,6 +11,41 @@ its entry here in the same PR.
 
 ### Added
 
+- **Gold Vault: the standalone precious-metals system, ported into ECMS as a module.** The
+  `egycashcompany-ops/gold` system — vaults and their drawer grids, the bar register, عمليات
+  الدخول / الخروج / التحويل, drawer keys, the owner and delegate registers, the board and the five
+  printed statements — now runs inside the platform as the `gold` module. It is a PORT and not a
+  redesign: the numbering formats, the draft → confirm → revert lifecycle, the refusal to
+  regenerate a layout while a vault holds metal, the reshape guard that keeps drawer numbers
+  intact, the recount-from-bars counters and the closing-balance arithmetic (a balance is the
+  current inventory rewound backwards, never a forward sum) are the original code's, message for
+  message. What changed around them is the scaffolding: auth, RBAC, navigation, audit and data
+  scoping are the platform's, every mutation goes through the service layer to the platform audit
+  trail, and every boundary is Zod-validated. The gold system's own drawer-numbering tests come
+  across with it.
+
+  **Three things — and only three — are integrated rather than ported.** A receiving receipt used
+  to carry the crew leader and the vehicle as free text; they are now an ECMS employee and an ECMS
+  Fleet vehicle. The two vault custodians (أمناء الخزن) on every receipt, delivery and transfer
+  came from a gold-owned `supervisors` collection; that collection is gone and both are ECMS
+  employees. The gold-owned `branches` collection is gone too: every document is stamped with an
+  ECMS organization branch and the module's visibility IS the platform's branch data scope. Each
+  reference stores the id together with the display value captured at write time, so an
+  already-printed receipt keeps reading the same after somebody is renamed or a car is sold — and
+  each is proved against the real record, so an id naming nobody, or somebody who has left, is
+  refused rather than stored. Employees and branches are reached through the platform's own seams;
+  Fleet through a single read-only boundary file, the precedent Operations set.
+
+  Four gold surfaces did not come across because the platform already owns them — users, roles, the
+  audit log and branches — and the customer PORTAL is deliberately out of scope: it is a second
+  authentication system for people who are not ECMS users, and standing one up beside the
+  platform's is the thing integrating this module was meant to stop. The eleven screens keep their
+  layouts, flows and Arabic wording, restyled onto the ECMS theme; the printed documents keep the
+  EGYCASH letterhead exactly as the business files them, because a receipt is a company record and
+  not application chrome. Two audit verbs join the platform vocabulary (`deliver`, `revert`) for
+  the two acts `receive` and `transfer` could not already name. Full port record, including what
+  was dropped and why, in [gold-module-port.md](docs/12-planning/gold-module-port.md).
+
 - **Fleet: three admin-owned catalogs, and a vehicle that points at them instead of carrying free
   text.** License class, operation (التشغيل) and insurance company join the fleet catalog
   collection as three more kinds — no new endpoint, model or screen, because the six kinds already
@@ -18,7 +53,7 @@ its entry here in the same PR.
   administrator names the values, so a house's operating groups and its insurers are never guessed
   on its behalf. The vehicle registry stops keeping a license class as a string and keeps a
   reference instead, alongside two new ones for operation and insurer, each proved server-side
-  against a live item *of its own kind* — an id naming a real catalog row of the wrong kind, or an
+  against a live item _of its own kind_ — an id naming a real catalog row of the wrong kind, or an
   archived one, is refused, which a plain reference check would have let through. This answers the
   frozen design's open question on license-class values as data rather than as an enum, so renaming
   a class is an administrator's edit and not a deployment.
@@ -69,7 +104,7 @@ its entry here in the same PR.
   role or resetting a password was a database operation or a seed. Six phases built that surface
   under one constraint — **add no backend**. Every endpoint it calls already existed, already
   authorized and already audited. **No new endpoint, permission, model, migration, contract change
-  or dependency, across all six.** Where a phase found that a *rule* did not exist, the rule went
+  or dependency, across all six.** Where a phase found that a _rule_ did not exist, the rule went
   into the service, never into the screen. A seventh phase followed from use rather than from the
   plan and is the single exception to the contract rule — see P7 below.
 
@@ -116,7 +151,7 @@ its entry here in the same PR.
     [PR #168](https://github.com/egycashcompany-ops/egycash/pull/168) ·
     [PR #169](https://github.com/egycashcompany-ops/egycash/pull/169)).** A 202-key matrix grouped
     only by module is still a wall, so permissions now sit under a **page**: `Modules → Pages →
-    Permissions`. Declared in code — a `PageDef` in the contracts and a `pageId` given **once per
+Permissions`. Declared in code — a `PageDef` in the contracts and a `pageId` given **once per
     resource** in the module manifests, not 202 times — with **46 pages, 172 of 202 permissions
     assigned and 30 deliberately unassigned** because they are cross-cutting or backend-only, which
     is a declaration rather than a gap. A malformed registry **fails at startup and in CI**, not at
@@ -143,7 +178,7 @@ its entry here in the same PR.
     [PR #171](https://github.com/egycashcompany-ops/egycash/pull/171)).** On a deployment where
     WhatsApp and SMTP are not wired up, an invited account could not be onboarded at all: the
     activation link existed but only ever left through a delivery channel. `POST
-    /platform/users/:id/setup-link` now returns it **once** to an administrator to hand over in
+/platform/users/:id/setup-link` now returns it **once** to an administrator to hand over in
     person. The token is stored as a SHA-256 hash and nothing else, exactly as every other setup
     link is, so it cannot be read back — losing it means issuing a new one, which invalidates the
     old. New key `user.setupLink`, declared **break-glass**: someone who can read the link can open
@@ -258,7 +293,7 @@ its entry here in the same PR.
   only shape: the RAIL — a slim strip of module icons beside the module's page panel, the shell
   ECMS carried before the launcher — is back as an alternative, and a switch in the header moves
   between them. The choice rides on the account (`MeDto.navLayout`, `PATCH
-  /api/v1/auth/me/preferences`), so it follows the user to any device rather than living in one
+/api/v1/auth/me/preferences`), so it follows the user to any device rather than living in one
   browser; accounts that predate it answer `launchpad` without a migration. It is
   presentation-only by construction: the endpoint's subject is always the caller, so it carries
   no permission, no scope and no audit entry — which navigation shape someone prefers is not an
@@ -399,7 +434,7 @@ its entry here in the same PR.
 
 - **The last Super Admin could be stripped of the role by archiving a spare one first.** The rule
   shipped in P3 — "the last Super Admin assignment cannot be revoked" — counted assignment **rows**.
-  Archiving keeps a user's grants by design, so an *archived* Super Admin was accepted as cover and
+  Archiving keeps a user's grants by design, so an _archived_ Super Admin was accepted as cover and
   the live one's assignment could then be revoked, leaving a system with **zero administrators able
   to sign in** and no API path back. P5 is what made the sequence reachable without touching the
   database, because it put the Archive button on the screen; P5's own test suite is what exposed it.
@@ -410,7 +445,7 @@ its entry here in the same PR.
   way. ([PR #163](https://github.com/egycashcompany-ops/egycash/pull/163))
 
 - **A permission key the registry no longer knows could not be removed from a role.** Roles keep
-  keys that a retired module used to declare, and the permission matrix has always *said* such a key
+  keys that a retired module used to declare, and the permission matrix has always _said_ such a key
   is "shown as Unknown, still ticked, and still removable" — but the code folded `unknown` into
   `disabled` alongside "read-only" and "you do not hold this", so the row rendered inert and the one
   thing left to do with it was the one thing that could not be done. The rule now has three states
@@ -423,7 +458,7 @@ its entry here in the same PR.
   activity tab fell through to its empty state on error, so "we could not read this account's
   history" appeared as "nothing has been recorded for this account" — opposite claims, and an
   administrator who believes the second one stops investigating. It now shows an error panel with a
-  retry, and a page that fails *after* history is already on screen keeps that history and reports
+  retry, and a page that fails _after_ history is already on screen keeps that history and reports
   the failure beneath it. ([PR #164](https://github.com/egycashcompany-ops/egycash/pull/164))
 
 - **An account moved between branches kept reading its old branch until the cache lapsed.**
@@ -477,7 +512,7 @@ its entry here in the same PR.
   clears the query cache and lets `RequireAuth` redirect to `/login` instead of stranding the
   user on an error screen; (3) `UNAUTHENTICATED` and `AUTH_SESSION_REVOKED` join the bilingual
   friendly-message table as defence in depth. **Known limitation** (recorded in the auth
-  design's review trail): two *separate tabs* refreshing in the same instant still race
+  design's review trail): two _separate tabs_ refreshing in the same instant still race
   cross-tab — single-flight cannot span JS memories; the proposed server-side fix (a short
   post-rotation grace window answering the previous token with the current one) is documented,
   deliberately not implemented here.

@@ -8,8 +8,17 @@ import { useOnClickOutside } from '../lib/useOnClickOutside';
 import { cn } from '../lib/cn';
 import { CloseIcon } from './icons';
 
-type Size = 'sm' | 'md' | 'lg';
-const SIZE: Record<Size, string> = { sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-2xl' };
+// `xl` and `full` exist for the data-entry dialogs that are really a screen in a modal — a receipt
+// with a line per bar and a live side panel does not fit in `lg`, and squeezing it there would
+// mean two nested scrollbars.
+type Size = 'sm' | 'md' | 'lg' | 'xl' | 'full';
+const SIZE: Record<Size, string> = {
+  sm: 'max-w-sm',
+  md: 'max-w-lg',
+  lg: 'max-w-2xl',
+  xl: 'max-w-5xl',
+  full: 'max-w-[96vw]',
+};
 
 export const Dialog = ({
   open,

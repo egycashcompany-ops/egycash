@@ -9,7 +9,7 @@ and navigation, and must never be renamed casually.
 
 ```mermaid
 flowchart TB
-    L2["Layer 2 — Business Modules<br/><i>hr · fleet · cash-transport · atm · vault · gold-vault · contracts · administration · accounting · security · it</i>"]
+    L2["Layer 2 — Business Modules<br/><i>hr · fleet · cash-transport · atm · vault · gold · contracts · administration · accounting · security · it</i>"]
     L1["Layer 1 — Platform Core<br/><i>auth · users · rbac · organization · settings · notifications · files · audit · search · workflow · approvals · dashboards · reports · sequences · localization · integrations · ai</i>"]
     L3["Layer 3 — Shared Components<br/><i>errors · utils · base classes · UI kit · types · zod schemas</i>"]
     L4["Layer 4 — Infrastructure<br/><i>mongodb · redis · bullmq · socket.io · storage · mail · http</i>"]
@@ -70,7 +70,7 @@ everything uses `audit`).
 | `cash-transport` | Cash Transportation | *(designed later)* |
 | `atm` | ATM Operations | *(designed later)* |
 | `vault` | Vault Management | *(designed later)* |
-| `gold-vault` | Gold Vault | *(designed later)* |
+| `gold` | Gold Vault | `vaults`, `bars`, `receiving`, `delivery`, `transfers`, `keys`, `owners`, `reports` — ported from the standalone gold system ([port record](../12-planning/gold-module-port.md)) |
 | `contracts` | Contracts | *(designed later)* |
 | `administration` | Administration | *(designed later)* |
 | `accounting` | Accounting | *(designed later)* |

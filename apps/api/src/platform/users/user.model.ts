@@ -21,6 +21,13 @@ export interface UserDoc extends BaseDocFields {
   username: string | null;
   /** The Employee this login belongs to (opaque back-reference); null for platform/system accounts. */
   employeeId: Types.ObjectId | null;
+  /**
+   * The record OUTSIDE this company that the login belongs to — a gold-vault customer, and later
+   * whatever the next module needs. Same contract as `employeeId`: the platform stores it, names
+   * the owning module, and never interprets it; the module owns the linkage. Mutually exclusive
+   * with `employeeId` — an account is one of ours or one of theirs, never both.
+   */
+  externalSubject: { moduleId: string; subjectType: string; subjectId: Types.ObjectId } | null;
   phone: string | null;
   passwordHash: string | null;
   profile: {
@@ -78,6 +85,17 @@ const userSchema = new Schema<UserDoc>(
     email: { type: String, default: null, lowercase: true, trim: true },
     username: { type: String, default: null, lowercase: true, trim: true },
     employeeId: { type: Schema.Types.ObjectId, default: null },
+    externalSubject: {
+      type: new Schema(
+        {
+          moduleId: { type: String, required: true },
+          subjectType: { type: String, required: true },
+          subjectId: { type: Schema.Types.ObjectId, required: true },
+        },
+        { _id: false },
+      ),
+      default: null,
+    },
     phone: { type: String, default: null },
     passwordHash: { type: String, default: null },
     profile: {
@@ -151,5 +169,11 @@ userSchema.index(
   { unique: true, name: 'ux_employeeId', partialFilterExpression: { employeeId: { $type: 'objectId' } } },
 );
 userSchema.index({ 'organization.branchId': 1, status: 1 }, { name: 'ix_branchId_status' });
+// "which accounts belong to this customer" — the portal-accounts screen, and the guard that keeps
+// one gold company from acquiring two logins without anybody noticing.
+userSchema.index(
+  { 'externalSubject.moduleId': 1, 'externalSubject.subjectId': 1 },
+  { name: 'ix_external_subject' },
+);
 
 export const UserModel = model<UserDoc>('User', userSchema, 'users');

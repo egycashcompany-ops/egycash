@@ -46,6 +46,7 @@ const me = (permissions: string[]): MeDto =>
     isPrivileged: true,
     flags: {},
     totpEnabled: false,
+    external: null,
     permissions: Object.fromEntries(permissions.map((p) => [p, 'organization'])),
   }) as unknown as MeDto;
 

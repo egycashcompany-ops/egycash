@@ -11,6 +11,7 @@ import {
   PlatformEvents,
   SettingKeys,
   type EventEnvelope,
+  type ExternalSubjectDto,
   type LoginResponse,
   type MeDto,
   type SessionDto,
@@ -32,6 +33,8 @@ import { settingsService } from '../settings';
 import { userService, type UserDoc } from '../users';
 import { directoryProfileService } from '../directory/directory-profile.service';
 import { emit, subscribe } from '../kernel/event-bus';
+import { resolveExternalSubjectLabel } from './identity-seams';
+import { userSnapshotKey } from './user-snapshot-cache';
 import { SessionModel, type SessionDoc } from './session.model';
 
 const USED_HASHES_KEPT = 20;
@@ -51,6 +54,17 @@ interface ChallengeClaims {
   typ: 'totp-challenge' | 'totp-enroll';
 }
 
+/** `?? null` because the field postdates existing documents and every read is `.lean()`. */
+const externalOf = (user: UserDoc): ExternalSubjectDto | null => {
+  const subject = user.externalSubject ?? null;
+  if (subject === null) return null;
+  return {
+    moduleId: subject.moduleId,
+    subjectType: subject.subjectType,
+    subjectId: String(subject.subjectId),
+  };
+};
+
 interface UserSnapshot {
   status: string;
   permissionVersion: number;
@@ -65,6 +79,16 @@ interface UserSnapshot {
    * that audit and timeline writes never have to resolve it themselves.
    */
   identity: ActorIdentity | null;
+  /**
+   * The outside record this account is, when it is not one of ours.
+   *
+   * Carried on the snapshot because the CONFINEMENT gate reads it on every request and a stale
+   * answer there is harmless in both directions — an account that stopped being external stays
+   * confined for at most one TTL, and binding one drops the key. It is deliberately NOT what any
+   * data filter reads: a stale company id would be a cross-customer read, so the portal resolves
+   * that from the database each time.
+   */
+  external: ExternalSubjectDto | null;
 }
 
 const userEntityRef = (userId: string) => ({
@@ -416,7 +440,7 @@ class AuthService {
       backupCodeHashes: backupCodes.map((c) => sha256(c)),
     });
     await getCache().del(this.pendingTotpKey(userId));
-    await getCache().del(`auth:user:${userId}`);
+    await getCache().del(userSnapshotKey(userId));
     return { enabled: true, backupCodes };
   }
 
@@ -475,7 +499,7 @@ class AuthService {
       throw new UnauthenticatedError(ErrorCodes.AUTH_TOTP_INVALID, 'Invalid TOTP code');
     }
     await userService.setTotp(ctx.userId, { enabled: false, secret: null, backupCodeHashes: [] });
-    await getCache().del(`auth:user:${ctx.userId}`);
+    await getCache().del(userSnapshotKey(ctx.userId));
   }
 
   // ── Refresh rotation with reuse detection (ADR-006) ───────────────────────
@@ -596,7 +620,7 @@ class AuthService {
 
   private async userSnapshot(userId: string): Promise<UserSnapshot> {
     const cache = getCache();
-    const key = `auth:user:${userId}`;
+    const key = userSnapshotKey(userId);
     const cached = await cache.get(key);
     if (cached !== null) return JSON.parse(cached) as UserSnapshot;
     const user = await userService.getById(userId);
@@ -613,6 +637,7 @@ class AuthService {
       sectionId: org.sectionId === null ? null : String(org.sectionId),
       locale: user.locale,
       totpEnabled: user.security.totp.enabled,
+      external: externalOf(user),
       identity:
         profile === null
           ? null
@@ -657,6 +682,7 @@ class AuthService {
       permissionVersion: snapshot.permissionVersion,
       isPrivileged: effective.isPrivileged,
       identity: snapshot.identity,
+      external: snapshot.external,
     };
   }
 
@@ -687,7 +713,16 @@ class AuthService {
       isPrivileged: effective.isPrivileged,
       flags,
       totpEnabled: user.security.totp.enabled,
+      external: await this.externalIdentity(user),
     };
+  }
+
+  /** The external subject with its display name resolved through the module that owns it. */
+  private async externalIdentity(user: UserDoc): Promise<MeDto['external']> {
+    const subject = externalOf(user);
+    if (subject === null) return null;
+    const label = await resolveExternalSubjectLabel(subject).catch(() => null);
+    return { ...subject, label };
   }
 
   async me(ctx: AuthContext): Promise<MeDto> {
@@ -715,7 +750,7 @@ export const registerAuthEventHandlers = (): void => {
     'auth.session-revocation',
     async (envelope: EventEnvelope) => {
       const payload = envelope.payload as { userId: string; status: string };
-      await getCache().del(`auth:user:${payload.userId}`);
+      await getCache().del(userSnapshotKey(payload.userId));
       if (payload.status === 'suspended' || payload.status === 'archived') {
         await authService.revokeAllSessionsForUser(payload.userId, `user-${payload.status}`);
       }

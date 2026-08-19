@@ -43,6 +43,7 @@ const me = (overrides: Partial<MeDto> = {}): MeDto => ({
   isPrivileged: false,
   flags: {},
   totpEnabled: false,
+  external: null,
   ...overrides,
 });
 

@@ -99,6 +99,7 @@ const me = (permissions: string[], employeeId: string | null): MeDto => ({
   isPrivileged: false,
   flags: {},
   totpEnabled: true,
+  external: null,
 });
 
 const paged = <T,>(items: T[]) => ({

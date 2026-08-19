@@ -35,6 +35,12 @@ import { ensureAdjustmentAttachmentsCategory } from './payroll/adjustments';
 import { ensureLoanAttachmentsCategory } from './employee-loans';
 import { migrateLeaveModule } from './leave-management/leave.migration';
 import { migrateAttendance } from './attendance/attendance.migration';
+import {
+  backfillAdjustmentDepartments,
+  backfillEmployeePayItemDepartments,
+  backfillPayslipDepartments,
+} from './payroll';
+import { backfillEmployeeLoanDepartments } from './employee-loans';
 
 // `kind` says what a platform IS — how applications from it normally arrive. It does not say
 // whether the platform has an application link: every active source can be published to, whatever
@@ -484,6 +490,17 @@ export const seedHrRecruitment = async (): Promise<void> => {
   await migrateLeaveModule();
   // Attendance (frozen attendance design v1.1 §12): the default GENERAL shift.
   await migrateAttendance();
+  // Payroll (P-SCOPE-1 stage 3): give the rows written before the department axis one, read from
+  // the action log at each row's own date. Runs AFTER the employee migrations above, because it
+  // reads both the employee registry and the personnel actions they populate.
+  //
+  // FOUR CALLS, NOT ONE MIGRATION. Each collection is reachable only from the feature that owns it
+  // — payroll may not name a loan collection at all — so the seed is where they meet, which is
+  // what it already is for every other migration.
+  await backfillPayslipDepartments();
+  await backfillAdjustmentDepartments();
+  await backfillEmployeePayItemDepartments();
+  await backfillEmployeeLoanDepartments();
   // Contracts (frozen contracts design D11): the expiring-soon notice template.
   await notificationTemplateService.ensure({
     key: HrContractTemplates.ExpiringSoon,

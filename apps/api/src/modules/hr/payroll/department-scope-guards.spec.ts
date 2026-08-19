@@ -93,3 +93,97 @@ describe('what the phase deliberately did not do', () => {
     }
   });
 });
+
+// ── Stage 3 — the backfill ──────────────────────────────────────────────────
+
+describe('the backfill only ever adds', () => {
+  const WORKER = readFileSync(resolve(HR, 'shared/department-backfill.ts'), 'utf8');
+
+  /**
+   * IDEMPOTENT BY FILTER, not by a flag somebody must remember to check. Both the read and the
+   * write name `departmentId: null`, so a second run finds nothing and a row somebody corrected by
+   * hand between the two is never overwritten.
+   */
+  it('reads and writes only rows that carry no department', () => {
+    expect(WORKER).toContain('.find({ departmentId: null })');
+    expect(WORKER).toContain("{ _id: row['_id'], departmentId: null }");
+  });
+
+  /** It fills one field. A backfill that could touch a paid figure would be a different thing. */
+  it('sets the department and nothing else', () => {
+    const sets = [...WORKER.matchAll(/\$set: \{([^}]*)\}/g)].map((m) => m[1]?.trim());
+    expect(sets).toEqual(['departmentId: new Types.ObjectId(resolved)']);
+  });
+
+  /**
+   * D-DEPT-3 — the whole reason this is not a one-line copy of today's department. Reading the
+   * employee's CURRENT department as the answer would attribute a 2025 payslip to a department
+   * they joined in 2026, and it would look right.
+   */
+  it('derives the date-correct department rather than copying today’s', () => {
+    expect(WORKER).toContain('departmentAt(');
+    expect(WORKER).toContain("'changes.field': 'departmentId'");
+    expect(WORKER).toContain("status: 'applied'");
+  });
+
+  /** An unplaceable row stays null — which D-DEPT-4 already renders invisible, not visible. */
+  it('leaves a row it cannot place alone, and counts it', () => {
+    expect(WORKER).toContain('unattributed');
+  });
+});
+
+/**
+ * THE SEAMS THE FIRST ATTEMPT BROKE, asserted so the shape cannot quietly revert.
+ *
+ * Stage 3 was first written as ONE migration reaching all four collections. Three guards failed at
+ * once: payroll may not name a loan collection (P-HR-05-B), and the adjustments model is reachable
+ * from three files inside its own feature. The guards were right and the design was wrong — so the
+ * rule and the mechanics moved to `shared/` (which names no collection) and each feature kept the
+ * one import only it may make.
+ */
+describe('the backfill respects the seams rather than crossing them', () => {
+  const WORKER = readFileSync(resolve(HR, 'shared/department-backfill.ts'), 'utf8');
+  const RULE = readFileSync(resolve(HR, 'shared/department-at.ts'), 'utf8');
+
+  it('the shared halves name no collection at all', () => {
+    for (const [name, source] of [
+      ['department-backfill.ts', WORKER],
+      ['department-at.ts', RULE],
+    ] as const) {
+      for (const model of [
+        'PayslipModel',
+        'PayrollAdjustmentModel',
+        'EmployeePayItemModel',
+        'EmployeeLoanModel',
+      ]) {
+        expect(source, `${name}: ${model}`).not.toContain(model);
+      }
+    }
+  });
+
+  it('and the rule touches no database whatsoever', () => {
+    for (const forbidden of ['mongoose', 'Model', 'find(', 'updateOne', 'Repository']) {
+      expect(RULE, forbidden).not.toContain(forbidden);
+    }
+  });
+
+  it.each([
+    ['payroll/payslips/payslip-department.backfill.ts', 'PayslipModel'],
+    ['payroll/adjustments/adjustment-department.backfill.ts', 'PayrollAdjustmentModel'],
+    [
+      'payroll/employee-pay-items/employee-pay-item-department.backfill.ts',
+      'EmployeePayItemModel',
+    ],
+    ['employee-loans/employee-loan-department.backfill.ts', 'EmployeeLoanModel'],
+  ])('%s names its own model and no other', (file, own) => {
+    const source = readFileSync(resolve(HR, file), 'utf8');
+    expect(source).toContain(own);
+    const others = [
+      'PayslipModel',
+      'PayrollAdjustmentModel',
+      'EmployeePayItemModel',
+      'EmployeeLoanModel',
+    ].filter((m) => m !== own);
+    for (const other of others) expect(source, other).not.toContain(other);
+  });
+});

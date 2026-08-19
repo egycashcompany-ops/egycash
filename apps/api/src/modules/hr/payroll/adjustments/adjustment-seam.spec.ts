@@ -33,6 +33,15 @@ const payrollFiles = sources(PAYROLL);
 const rel = (file: string): string => file.slice(PAYROLL.length + 1);
 
 describe('one door into the adjustments collection', () => {
+  /**
+   * Stated as a LIST OF FILES rather than a directory test, deliberately: a file inside the
+   * feature is allowed to reach the model, but it still has to be named here, so a fourth reader
+   * arrives as a decision somebody made rather than as a directory that quietly grew.
+   *
+   * P-SCOPE-1 added the fourth. Its whole body is one call into the shared backfill worker, which
+   * names no collection at all — the model import is here because this is the only place allowed
+   * to make it.
+   */
   it('the model is reached from the adjustments feature alone', () => {
     const readers = payrollFiles.filter((file) => code(file).includes('PayrollAdjustmentModel'));
     expect(readers.map(rel).sort()).toEqual(
@@ -40,6 +49,7 @@ describe('one door into the adjustments collection', () => {
         'adjustments/payroll-adjustment.model.ts',
         'adjustments/payroll-adjustment.repository.ts',
         'adjustments/payroll-adjustment.service.ts',
+        'adjustments/adjustment-department.backfill.ts', // P-SCOPE-1 stage 3
       ].sort(),
     );
   });

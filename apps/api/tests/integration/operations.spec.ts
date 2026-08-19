@@ -27,7 +27,6 @@ import {
   type OperationsCrewAttendanceDayDto,
   type OperationsAreaDto,
   type OperationsShipmentDto,
-  type Paginated,
   type OperationsStandingCrewBoardDto,
   type OperationsVaultInventoryRowDto,
   type OperationsVaultReportDto,
@@ -1025,23 +1024,25 @@ describe('crew board — the tashghela workflow on the Fleet boundary (OP-3)', (
     });
 
     it('refuses a captain who is not a captain of that crew row, and creates NOTHING', async () => {
-      const before = data<Paginated<OperationsShipmentDto>>(
-        await request(app)
-          .get(`/api/v1/operations/shipments?collectionDateFrom=${CREATE_CREW_DATE}&collectionDateTo=${CREATE_CREW_DATE}`)
-          .set('Authorization', `Bearer ${adminToken}`),
-      ).meta.totalItems;
+      // `okPage` puts the rows in `data` and the pagination beside it in `meta`, so the count is
+      // the array's own length — reaching for `data.meta` finds nothing.
+      const booked = async (): Promise<number> =>
+        data<OperationsShipmentDto[]>(
+          await request(app)
+            .get(
+              `/api/v1/operations/shipments?collectionDateFrom=${CREATE_CREW_DATE}&collectionDateTo=${CREATE_CREW_DATE}&pageSize=100`,
+            )
+            .set('Authorization', `Bearer ${adminToken}`),
+        ).length;
+
+      const before = await booked();
 
       const res = await bookWith({ crewAssignmentId: bookCrewId, captainEmployeeId: captainId });
       expect(res.status).toBe(422);
       expect(errorCode(res)).toBe(ErrorCodes.OPERATIONS_CREW_CAPTAIN_MISMATCH);
 
       // The crew is proven BEFORE anything is written, so a refused crew leaves no orphan shipment.
-      const after = data<Paginated<OperationsShipmentDto>>(
-        await request(app)
-          .get(`/api/v1/operations/shipments?collectionDateFrom=${CREATE_CREW_DATE}&collectionDateTo=${CREATE_CREW_DATE}`)
-          .set('Authorization', `Bearer ${adminToken}`),
-      ).meta.totalItems;
-      expect(after).toBe(before);
+      expect(await booked()).toBe(before);
     });
 
     it('refuses a crew row from a DIFFERENT operating day', async () => {

@@ -26,7 +26,7 @@ import {
   type OperationsShipmentLeg,
   type ReorderCaptainShipments,
 } from '@ecms/contracts';
-import { Types, type ClientSession } from 'mongoose';
+import { Types } from 'mongoose';
 import { BusinessRuleError, NotFoundError } from '../../../shared/errors';
 import { auditService } from '../../../platform/audit';
 import { emit } from '../../../platform/kernel/event-bus';
@@ -34,6 +34,7 @@ import { unitOfWork } from '../../../platform/kernel/unit-of-work';
 import { diffChanges } from '../../../shared/utils/diff';
 import { operationsBankRepository } from '../banks/bank.repository';
 import { operationsBankBranchRepository } from '../bank-branches/bank-branch.repository';
+import { nextSequence } from './leg-sequence';
 import { operationsCrewAssignmentRepository } from '../crew/crew-assignment.repository';
 import { operationsDayService, utcDay } from '../days/day.service';
 import { operationsShipmentRepository } from '../shipments/shipment.repository';
@@ -87,22 +88,6 @@ const resolveCrew = async (
     );
   }
   return { crew, operationsDayId: crew.operationsDayId };
-};
-
-/** Next free position at the end of this captain-day-leg's list. */
-const nextSequence = async (
-  operationsDayId: Types.ObjectId,
-  captainEmployeeId: string,
-  leg: OperationsShipmentLeg,
-  session?: ClientSession,
-): Promise<number> => {
-  const existing = await operationsShipmentAssignmentRepository.findForCaptainDay(
-    operationsDayId,
-    captainEmployeeId,
-    leg,
-    session,
-  );
-  return existing.reduce((max, row) => Math.max(max, row.sequence), 0) + 1;
 };
 
 class OperationsAssignmentService {

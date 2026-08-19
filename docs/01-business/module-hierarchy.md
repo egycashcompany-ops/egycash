@@ -70,7 +70,7 @@ everything uses `audit`).
 | `cash-transport` | Cash Transportation | *(designed later)* |
 | `atm` | ATM Operations | *(designed later)* |
 | `vault` | Vault Management | *(designed later)* |
-| `gold` | Gold Vault | `companies`, `representatives`, `floors`, `vaults`, `bars`, `receiving`, `delivery`, `transfers`, `keys`, `dashboard`, `reports` |
+| `gold` | Gold Vault | `companies`, `representatives`, `floors`, `vaults`, `bars`, `receiving`, `delivery`, `transfers`, `keys`, `dashboard`, `reports`, `portal`, `portal-accounts` |
 | `contracts` | Contracts | *(designed later)* |
 | `administration` | Administration | *(designed later)* |
 | `accounting` | Accounting | *(designed later)* |

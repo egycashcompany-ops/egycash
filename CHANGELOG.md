@@ -47,14 +47,49 @@ its entry here in the same PR.
   dashboard is its charts.
 
   Four gold surfaces did not come across because the platform already owns them — users, roles, the
-  audit log and branches — and the customer PORTAL is deliberately out of scope: it is a second
-  authentication system for people who are not ECMS users, and standing one up beside the
-  platform's is the thing integrating this module was meant to stop. The eleven screens keep their
+  audit log and branches. The customer portal was deferred out of the first pass and is now built
+  on platform identities (see the next entry). The eleven screens keep their
   layouts, flows and Arabic wording, restyled onto the ECMS theme; the printed documents keep the
   EGYCASH letterhead exactly as the business files them, because a receipt is a company record and
   not application chrome. Two audit verbs join the platform vocabulary (`deliver`, `revert`) for
   the two acts `receive` and `transfer` could not already name. Full port record, including what
   was dropped and why, in [gold-module-port.md](docs/12-planning/gold-module-port.md).
+
+- **The platform learns about people who do not work here, and the gold vault's customers get a
+  portal.** ECMS knew two kinds of login: one belonging to an employee, and one belonging to nobody.
+  A third exists now — an account carrying an opaque `externalSubject { moduleId, subjectType,
+  subjectId }`, which is `employeeId` with its owner named. The platform stores it and never
+  interprets it; the owning module writes it through one service method, and the two linkages are
+  mutually exclusive. `UserDto.kind` (`employee | system | external`) is derived from them, so the
+  administration screens, the person pickers and the user list can tell the populations apart
+  instead of inferring it from a null.
+
+  Read-only is enforced structurally rather than by grant. Permissions answer "may you do this";
+  they cannot answer "should this route exist for you at all", and ECMS has endpoints deliberately
+  open to any authenticated caller — `POST /platform/directory/resolve` names staff and their job
+  titles to anyone with a session. So an external account is confined BEFORE authorization, by
+  default-deny, to exactly two things: the whole `/auth` router, which is pre-authentication or
+  self-service by construction, and the single route prefix its module registered — GET only. A
+  route added anywhere else tomorrow is out of reach without anybody remembering the gate exists.
+  Refusals are audited. Recorded as
+  [ADR-027](docs/03-decisions/ADR-027-external-identities.md).
+
+  On top of that, **بوابة العملاء**: the gold system's customer portal, rebuilt at `/portal` with
+  its own login and its own chrome — no sidebar, no launcher, no command palette over a catalog the
+  customer holds no permissions for. Nine tabs, column for column as gold had them, including the
+  two monthly reports which print the same document the vault would hand over. Which customer's
+  data a request may touch is a branded `PortalCompany` that one middleware mints after re-reading
+  the binding and the company from the database, so deactivating a customer cuts their portal off on
+  the next request rather than a cached minute later; every read takes one as its first parameter,
+  so a query that forgot to scope does not compile, and an eslint rule forbids casting one anywhere
+  else. The DTOs are allow-lists in their own contracts file — gold's portal returned whole
+  documents, so customers were being handed our custodians' names, the crew leader, the vehicle
+  plate, the internal notes and every bar's movement history; none of that reaches this surface, and
+  a spec keeps it out. Two deliberate differences from gold, both signed off: customers see
+  confirmed documents only, and the two fund reports still refuse non-fund customers because that
+  rule is ported business logic. Staff create and administer the logins from
+  `/gold/portal-accounts` — against a live company, with a one-time setup link and no password field
+  anywhere.
 
 - **Fleet: three admin-owned catalogs, and a vehicle that points at them instead of carrying free
   text.** License class, operation (التشغيل) and insurance company join the fleet catalog

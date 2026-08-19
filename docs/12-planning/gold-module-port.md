@@ -147,17 +147,52 @@ Everything else — every message, every threshold, every refusal — is the gol
 
 ---
 
-## 6. Deliberately out of scope: the customer portal
+## 6. The customer portal — deferred once, then built on platform identities
 
-The gold system ships a second application for **customers**: `portal_users` with their own
-password hash, their own JWT, their own login screen and a read-only view of their company's bars
-and receipts.
+The gold system ships a second application for **customers**: `portal_users` with their own password
+hash, their own JWT, their own login screen and a read-only view of their company's bars and
+receipts.
 
-It is not in this port, and that is a decision rather than an omission. Bringing it across as-is
-would stand up a second authentication system beside the platform's — which is precisely what
-"make the Gold module part of ECMS from an auth/RBAC point of view" rules out. Doing it properly is
-its own piece of work with a real decision behind it (external identities in the platform, or a
-scoped read-only surface), and it needs an owner's answer before any code.
+It was left out of the first pass, and that was a decision rather than an omission: bringing it
+across as-is would have stood up a second authentication system beside the platform's — precisely
+what "make the Gold module part of ECMS from an auth/RBAC point of view" rules out. The owner then
+settled the two questions that were blocking it: portal users are **external identities, not
+employees**, and the portal is **read-only**.
+
+It is now built, and the shape is recorded in
+[ADR-027](../03-decisions/ADR-027-external-identities.md). In one paragraph: a customer is an
+ordinary ECMS account with `employeeId: null` and an `externalSubject` naming the gold company they
+belong to — same login, same argon2id, same lockout, same sessions, same audit. The platform
+confines external accounts, before authorization and by default-deny, to their own `/auth`
+self-service plus one GET-only surface their module registers. Which customer's data they see is the
+module's own question, answered by a branded `PortalCompany` that only one middleware can mint.
+
+### What the customer receives, and what gold used to send
+
+gold's portal read the same `.lean()` documents the staff screens did, so it handed customers rather
+more than they ever looked at. The ported DTOs are allow-lists in their own contracts file, and a
+spec asserts the following stay out of it:
+
+| Field gold sent | Why it is not on this surface |
+| --- | --- |
+| `supervisor1`, `supervisor2` | EGYCASH's own vault custodians, by name |
+| `teamLeader`, `vehicleId` / plate | our transport crew and our vehicles |
+| `notes` | the vault's internal remarks on the customer's document |
+| `createdBy`, `printCount`, `branchId` | bookkeeping about how *we* handled the paper |
+| `history[]` on every bar | the staff who moved it, and when |
+| counterparty delegates on a transfer | another customer's people |
+
+Nothing a customer actually looked at is lost. The delegate register still carries the national ids
+gold showed, because those are the customer's own people, registered with us by them.
+
+### Two deliberate differences from gold, both signed off
+
+- **Confirmed documents only.** gold's portal listed drafts and counted them in the overview tiles.
+  A draft is work the vault has not committed to, and a customer counting it as theirs is counting
+  metal that has not moved.
+- **The two monthly reports still cover funds only.** That restriction lives in ported report logic
+  this work is not allowed to edit, so a customer registered as a company or an institution is told
+  why rather than shown an empty table.
 
 **Nothing else from the gold system was left out.**
 

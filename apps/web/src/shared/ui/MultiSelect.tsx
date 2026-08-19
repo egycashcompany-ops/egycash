@@ -17,10 +17,55 @@ import { useOnClickOutside } from '../lib/useOnClickOutside';
 import { useT } from '../../platform/localization/useT';
 import { CheckIcon, ChevronIcon, SearchIcon } from './icons';
 
+/** Names shown in full before the tail collapses to `+n`. Three fit a filter-bar trigger. */
+const SUMMARY_MAX = 3;
+
 export interface MultiSelectOption {
   value: string;
   label: string;
+  /**
+   * A shorter form for the TRIGGER, when the list label is too long to sit in a filter bar.
+   *
+   * Optional and falling back to `label`, so a caller that has nothing shorter to say says
+   * nothing. A vehicle reads as "150 — س ص 150" in the list, where the plate confirms the car,
+   * but the trigger has one row to work with and the code alone identifies it.
+   */
+  shortLabel?: string;
 }
+
+/**
+ * What the trigger says once something is chosen: the choices themselves, not how many.
+ *
+ * A count answers "is this filtered?" and leaves "filtered to WHAT?" to a click. Naming the
+ * choices answers both. Past `max` the tail collapses to `+n` — the row cannot grow, and two
+ * names plus a number still say more than a bare count does.
+ *
+ * Values are shown in the order they were CHOSEN, not the order the options happen to arrive in:
+ * a server-backed list reorders under the reader, and a summary that reshuffles itself while they
+ * read it is worse than one that is merely long.
+ */
+export const selectionSummary = (
+  options: readonly MultiSelectOption[],
+  value: readonly string[],
+  max: number,
+): string => {
+  const shown = (v: string): string => {
+    const option = options.find((o) => o.value === v);
+    // A chosen value the current options do not carry — a server-backed list has moved on — is
+    // still named by the only thing known about it.
+    return option?.shortLabel ?? option?.label ?? v;
+  };
+  // An ASCII comma rather than an Arabic one: the trigger is not branched by locale, and it
+  // carries Latin identifiers as often as Arabic words. The codebase uses both — `، ` for prose
+  // lists, `, ` for lists of values — and this is the second kind.
+  if (value.length <= max) return value.map(shown).join(', ');
+  // Two names plus the remainder: enough to recognise the filter, short enough to fit.
+  const head = value
+    .slice(0, max - 1)
+    .map(shown)
+    .join(', ');
+  return `${head} +${value.length - (max - 1)}`;
+};
 
 export const MultiSelect = ({
   label,
@@ -31,6 +76,7 @@ export const MultiSelect = ({
   searchThreshold = 7,
   onSearch,
   searching = false,
+  showSelectedValues = false,
   className,
 }: {
   /** What the filter asks. Shown in the trigger while nothing is selected. */
@@ -51,6 +97,15 @@ export const MultiSelect = ({
   onSearch?: (query: string) => void;
   /** Fetching the remote answer — only meaningful alongside `onSearch`. */
   searching?: boolean;
+  /**
+   * Name the chosen values in the trigger instead of counting them.
+   *
+   * Off by default: a filter over a short, familiar vocabulary — a handful of statuses — is
+   * legible as a count, and every bar that reads that way today keeps reading that way. Turn it
+   * on where the vocabulary is open or unmemorable, and the reader would otherwise have to open
+   * the list to find out what they had already chosen.
+   */
+  showSelectedValues?: boolean;
   className?: string;
 }): JSX.Element => {
   const t = useT();
@@ -70,6 +125,9 @@ export const MultiSelect = ({
   );
 
   const selected = value.length;
+  // `null` = say the label, the way every bar that has not opted in still does.
+  const summary =
+    showSelectedValues && selected > 0 ? selectionSummary(options, value, SUMMARY_MAX) : null;
   const toggle = (option: string): void =>
     onChange(value.includes(option) ? value.filter((v) => v !== option) : [...value, option]);
 
@@ -94,9 +152,19 @@ export const MultiSelect = ({
             : 'border-slate-300 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200',
         )}
       >
-        <span className="whitespace-nowrap">{label}</span>
-        {/* The count IS the "this list is filtered" signal — never hide it behind a colour alone. */}
-        {selected > 0 && (
+        {/* Nothing chosen: the question. Something chosen: the answer — and the answer replaces
+            the question rather than sitting beside it, because the row has no space for both and
+            `aria-label` already tells a screen reader which filter this is. */}
+        {summary === null ? (
+          <span className="whitespace-nowrap">{label}</span>
+        ) : (
+          <span className="max-w-48 truncate" title={summary}>
+            {summary}
+          </span>
+        )}
+        {/* The count IS the "this list is filtered" signal — never hide it behind a colour alone.
+            It is redundant once the values are named, so it steps aside there. */}
+        {summary === null && selected > 0 && (
           <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-600 px-1.5 text-xs font-semibold text-white">
             {selected}
           </span>

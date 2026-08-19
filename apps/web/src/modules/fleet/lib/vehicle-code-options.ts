@@ -13,6 +13,8 @@
 export interface VehicleCodeOption {
   value: string;
   label: string;
+  /** What the filter trigger says: the code alone, which is what identifies the car. */
+  shortLabel: string;
 }
 
 export interface VehicleSummary {
@@ -38,12 +40,13 @@ export const vehicleCodeOptions = (
   const found = matched.map((vehicle) => ({
     value: vehicle.code,
     label: vehicleCodeLabel(vehicle),
+    shortLabel: vehicle.code,
   }));
   const shown = new Set(found.map((option) => option.value));
   const kept = selected
     .filter((code) => !shown.has(code))
     // A code can only be selected once, however many times the URL repeats it.
     .filter((code, at, all) => all.indexOf(code) === at)
-    .map((code) => ({ value: code, label: code }));
+    .map((code) => ({ value: code, label: code, shortLabel: code }));
   return [...kept, ...found];
 };

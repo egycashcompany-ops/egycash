@@ -7,8 +7,8 @@ const v = (code: string) => ({ code, plateNumber: `س ص ${code}` });
 describe('vehicleCodeOptions', () => {
   it('offers what the search matched', () => {
     expect(vehicleCodeOptions([v('150'), v('151')], [])).toEqual([
-      { value: '150', label: '150 — س ص 150' },
-      { value: '151', label: '151 — س ص 151' },
+      { value: '150', label: '150 — س ص 150', shortLabel: '150' },
+      { value: '151', label: '151 — س ص 151', shortLabel: '151' },
     ]);
   });
 
@@ -24,7 +24,8 @@ describe('vehicleCodeOptions', () => {
       'the selection leads',
     ).toEqual(['4021', '150']);
     // Bare: the registry sent no plate for it this time, and inventing one would be worse.
-    expect(options[0]).toEqual({ value: '4021', label: '4021' });
+    // The trigger shows the code either way, so the short form is the code itself.
+    expect(options[0]).toEqual({ value: '4021', label: '4021', shortLabel: '4021' });
   });
 
   it('does not duplicate a chosen code the search DID return', () => {
@@ -44,5 +45,10 @@ describe('vehicleCodeOptions', () => {
 
   it('labels a car by the code the operator knows it as, then the plate that confirms it', () => {
     expect(vehicleCodeLabel(v('150'))).toBe('150 — س ص 150');
+  });
+
+  it('carries a SHORT form for the filter trigger — the code, without the plate', () => {
+    // The trigger has one row; the plate belongs in the list where there is space for it.
+    expect(vehicleCodeOptions([v('150')], [])[0]?.shortLabel).toBe('150');
   });
 });

@@ -645,13 +645,65 @@ describe('the filter bar', () => {
     expect(source).toContain('vehicleCodeOptions(vehicles.data?.items ?? [], vehicleCodes)');
   });
 
+  it('NAMES the chosen codes in the trigger rather than counting them', () => {
+    // "3" does not tell the reader WHICH three cars they are looking at, and a registry runs to
+    // hundreds. Rendered here with two chosen, straight off the real page.
+    const qc = client([log()], [alarm()], { vehicleCodes: ['ZZ0104', 'ZZ0105'] });
+    qc.setQueryData(
+      VEHICLE_SEARCH_KEY(),
+      pageOf([
+        { id: 'v1', code: 'ZZ0104', plateNumber: 'س ص 104' },
+        { id: 'v2', code: 'ZZ0105', plateNumber: 'س ص 105' },
+      ]),
+    );
+    const bar = filterBar(render({ route: '/fleet/odometer?vehicleCodes=ZZ0104,ZZ0105', qc }));
+    expect(bar, 'both codes are visible without opening the list').toContain('ZZ0104, ZZ0105');
+    // The plate belongs in the list, not on a one-row trigger.
+    expect(bar.slice(0, bar.indexOf('odometer-from')), 'no plate on the trigger').not.toContain(
+      'س ص 104',
+    );
+  });
+
+  it('still shows the filter’s NAME while nothing is chosen', () => {
+    const bar = filterBar(render());
+    expect(bar).toContain(t('fleet.odometer.columns.vehicle'));
+    expect(bar).toContain(t('fleet.odometer.columns.alert'));
+  });
+
+  it('names the alert LEVELS in words, never their wire values', () => {
+    const qc = client([log()], [alarm()], { alerts: ['yellow', 'red'] });
+    const bar = filterBar(render({ route: '/fleet/odometer?alerts=yellow,red', qc }));
+    expect(bar).toContain(
+      `${t('fleet.dashboard.level.yellow')}, ${t('fleet.dashboard.level.red')}`,
+    );
+    expect(bar, 'the wire value is not user-facing').not.toContain('>yellow<');
+  });
+
+  it('sends the SAME parameters as before — this is a display change only', () => {
+    // The rows below sit on a key built from the unchanged param names and values. If naming the
+    // choices had altered what travels, this would be a cache miss and the table would be empty.
+    const qc = client([log()], [alarm()], { vehicleCodes: ['ZZ0104', 'ZZ0105'], alerts: ['red'] });
+    qc.setQueryData(
+      VEHICLE_SEARCH_KEY(),
+      pageOf([{ id: 'v1', code: 'ZZ0104', plateNumber: 'س ص 104' }]),
+    );
+    const body = tbody(
+      render({ route: '/fleet/odometer?vehicleCodes=ZZ0104,ZZ0105&alerts=red', qc }),
+    );
+    expect(body, 'the request is unchanged').toContain('١٥٠٬٠٠٠');
+  });
+
   it('takes SEVERAL vehicles and SEVERAL alert levels at once', () => {
     const html = render({
       route: '/fleet/odometer?vehicleCodes=150,151&alerts=yellow,red',
       qc: client([log()], [alarm()], { vehicleCodes: ['150', '151'], alerts: ['yellow', 'red'] }),
     });
-    // `MultiSelect` reports how many are chosen, so a filtered list never looks unfiltered.
-    expect(html).toContain('٢');
+    // A filtered list must never look unfiltered — and it now says WHICH, not how many.
+    const bar = filterBar(html);
+    expect(bar, 'both codes named').toContain('150, 151');
+    expect(bar, 'both levels named').toContain(
+      `${t('fleet.dashboard.level.yellow')}, ${t('fleet.dashboard.level.red')}`,
+    );
   });
 
   it('reads every filter from the URL, so a filtered view is a shareable link', () => {

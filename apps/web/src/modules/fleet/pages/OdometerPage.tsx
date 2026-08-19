@@ -333,6 +333,9 @@ export const OdometerPage = (): JSX.Element => {
               the URL carries, so a filtered view is a link somebody else can read. */}
           <MultiSelect
             className="shrink-0"
+            // The chosen codes are named in the trigger, not counted: a registry runs to hundreds
+            // of cars and "3" tells the reader nothing about WHICH three they are looking at.
+            showSelectedValues
             label={t('fleet.odometer.columns.vehicle')}
             options={vehicleOptions}
             value={vehicleCodes}
@@ -395,6 +398,7 @@ export const OdometerPage = (): JSX.Element => {
           )}
           <MultiSelect
             className="shrink-0"
+            showSelectedValues
             label={t('fleet.odometer.columns.alert')}
             options={FLEET_ALARM_LEVELS.map((level) => ({
               value: level,

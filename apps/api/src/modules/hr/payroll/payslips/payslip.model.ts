@@ -40,6 +40,17 @@ export interface PayslipDoc extends BaseDocFields {
   /** ADR-015 scope field, denormalized from the employee at write time like every HR collection. */
   branchId: Types.ObjectId | null;
   /**
+   * The employee's department at ISSUE (P-SCOPE-1, D-DEPT-2).
+   *
+   * The second scope axis, and a SNAPSHOT for the same reason `branchId` is: a transfer recorded
+   * tomorrow must not move a payslip that was already paid. Without this field a `department`-scoped
+   * grant narrowed nothing at all and read as `organization` — F-B1-1, which this closes.
+   *
+   * Null only on payslips issued before this phase; the migration fills them from the action log
+   * at the issue date, and until it runs a department reader does not see them (D-DEPT-4).
+   */
+  departmentId: Types.ObjectId | null;
+  /**
    * The cost centre in force on the LAST DAY OF THE PERIOD (P-HR-23, D-CC-7).
    *
    * A snapshot beside `branchId` and written the same way — once, under `$setOnInsert`. Editing
@@ -78,6 +89,7 @@ const payslipSchema = new Schema<PayslipDoc>(
     issuedAt: { type: Date, required: true },
     issuedBy: { type: Schema.Types.ObjectId, required: true },
     branchId: { type: Schema.Types.ObjectId, default: null },
+    departmentId: { type: Schema.Types.ObjectId, default: null },
     costCenterId: { type: Schema.Types.ObjectId, default: null },
     ...baseFields,
   },
@@ -96,5 +108,8 @@ payslipSchema.index(
 );
 // The employee's own history, newest month first.
 payslipSchema.index({ employeeId: 1, period: -1 }, { name: 'ix_employee_period' });
+// P-SCOPE-1 / D-DEPT-6 — every read by a department-scoped caller now filters on this, and the
+// run leads because every one of those reads names a run first.
+payslipSchema.index({ departmentId: 1, runId: 1 }, { name: 'ix_department_run' });
 
 export const PayslipModel = model<PayslipDoc>('HrPayslip', payslipSchema, 'hr_payslips');

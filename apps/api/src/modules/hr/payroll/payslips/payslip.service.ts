@@ -170,6 +170,9 @@ class PayslipService {
             issuedAt,
             issuedBy: new Types.ObjectId(by),
             branchId: employee.employment.branchId,
+            // P-SCOPE-1 — the second scope axis, stamped from the same employee at the same
+            // moment as the branch. Inside `$setOnInsert`, so a re-issue cannot restamp it.
+            departmentId: employee.employment.departmentId,
             costCenterId: costCentres.get(employeeId) ?? null,
             isDeleted: false,
             createdBy: new Types.ObjectId(by),

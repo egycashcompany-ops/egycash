@@ -56,6 +56,14 @@ export interface EmployeeLoanDoc extends BaseDocFields {
   cancelledAt: Date | null;
   cancelReason: string | null;
   branchId: Types.ObjectId | null;
+  /**
+   * The employee's department when this row was written (P-SCOPE-1, D-DEPT-2).
+   *
+   * The second scope axis, a snapshot beside `branchId` and written the same way. Null only on
+   * rows created before this phase; the migration fills those, and until it runs a
+   * department-scoped reader does not see them (D-DEPT-4).
+   */
+  departmentId: Types.ObjectId | null;
 }
 
 const externalSettlementSchema = new Schema<LoanExternalSettlement>(
@@ -93,6 +101,7 @@ const employeeLoanSchema = new Schema<EmployeeLoanDoc>(
     cancelledAt: { type: Date, default: null },
     cancelReason: { type: String, default: null },
     branchId: { type: Schema.Types.ObjectId, default: null },
+    departmentId: { type: Schema.Types.ObjectId, default: null },
     ...baseFields,
   },
   baseSchemaOptions,

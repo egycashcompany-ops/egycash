@@ -96,7 +96,7 @@ export interface PayslipRunTotalsRow {
 
 class PayslipRepository extends BaseRepository<PayslipDoc> {
   constructor() {
-    super(PayslipModel, { branchField: 'branchId' });
+    super(PayslipModel, { branchField: 'branchId', departmentField: 'departmentId' });
   }
 
   /**

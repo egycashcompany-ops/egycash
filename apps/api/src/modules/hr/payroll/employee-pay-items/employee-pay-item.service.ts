@@ -169,6 +169,8 @@ class EmployeePayItemService {
         effectiveTo,
         note: input.note ?? null,
         branchId: employee.employment.branchId,
+      // P-SCOPE-1 — the second scope axis, from the same employee at the same moment.
+      departmentId: employee.employment.departmentId,
       },
       { by },
     );

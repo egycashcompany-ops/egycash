@@ -36,6 +36,16 @@ its entry here in the same PR.
   refused rather than stored. Employees and branches are reached through the platform's own seams;
   Fleet through a single read-only boundary file, the precedent Operations set.
 
+  The receipt screen's bulk import reads **CSV** rather than the `.xlsx` the gold system read
+  through SheetJS, whose npm mirror is frozen on two unfixed advisories — a known-vulnerable
+  dependency was not worth one screen's convenience. Nothing about the feature is lost: the intake
+  was always one sheet of flat rows, and the module's own ~150-line parser keeps the fuzzy
+  bilingual column matching and the report-what-could-not-be-matched discipline while handling what
+  those files actually contain — the separator Excel picked (comma, semicolon or tab, detected from
+  the header), RFC 4180 quoting, CRLF endings, and the byte-order mark that otherwise glues itself
+  to the first column's name. The module adds exactly one dependency, `recharts`, because the
+  dashboard is its charts.
+
   Four gold surfaces did not come across because the platform already owns them — users, roles, the
   audit log and branches — and the customer PORTAL is deliberately out of scope: it is a second
   authentication system for people who are not ECMS users, and standing one up beside the

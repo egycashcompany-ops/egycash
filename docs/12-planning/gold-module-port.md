@@ -180,10 +180,34 @@ Two things are deliberately **not** re-themed:
 
 ### New client dependencies
 
-| Package | Why | Note |
-| --- | --- | --- |
-| `recharts` | The dashboard IS its charts, and ECMS had no charting library. | — |
-| `xlsx` (SheetJS 0.18.5) | The receiving screen's Excel/CSV import, the same library the gold system used. | ⚠️ The npm mirror of SheetJS is frozen at 0.18.5 and carries two unfixed advisories (prototype pollution, ReDoS). Parsing happens client-side on a file the operator chose, and this is the same exposure the gold system already ships with — but it is **new to this repository**, and the team should decide between pinning SheetJS's own CDN build, replacing the parser, or restricting the import to CSV. |
+| Package | Why |
+| --- | --- |
+| `recharts` | The dashboard IS its charts, and ECMS had no charting library. |
+
+That is the whole list — one package.
+
+### The bulk import is CSV, not XLSX
+
+The gold system read `.xlsx` through SheetJS. The npm mirror of that library is frozen at 0.18.5
+and carries two unfixed advisories (prototype pollution, ReDoS), so carrying it across would have
+added a known-vulnerable dependency to the platform for one screen's convenience. **Decision: the
+import reads CSV**, through a parser written in the module
+(`components/receiving-import.ts`, ~150 lines, no dependency).
+
+Nothing about the feature is lost. The intake was always ONE sheet of flat rows — which is exactly
+what CSV is — and the parser keeps every behaviour the original had: the same fuzzy bilingual column
+matching, the same "a row counts when it has a serial or a weight" rule, and the same
+report-what-could-not-be-matched discipline for vault and drawer. It also handles what real files
+from customers' accountants actually contain and SheetJS was papering over:
+
+- the separator Excel chose — comma, semicolon (most Arab and European locales) or tab, detected
+  from the header rather than assumed;
+- RFC 4180 quoting: fields carrying the delimiter, a line break, or a doubled `""`;
+- CRLF endings and the UTF-8 byte-order mark a spreadsheet export writes before the first header,
+  which otherwise becomes part of that column's name and stops it matching.
+
+Operators save the sheet as CSV; the file picker accepts `.csv` and the empty-file message says so.
+Covered by `receiving-import.spec.ts` (14 cases).
 
 ---
 
@@ -191,6 +215,8 @@ Two things are deliberately **not** re-themed:
 
 - `apps/api/src/modules/gold/shared/drawer-numbering.spec.ts` — the gold system's own numbering
   tests, carried across.
+- `apps/web/src/modules/gold/components/receiving-import.spec.ts` — the CSV intake: separators,
+  quoting, the BOM, Arabic and English headers, and the row-keeping rule.
 - `apps/api/tests/integration/gold.spec.ts` — the lifecycle end to end: draft → confirm → revert for
   all three documents, drawer re-counts, serial uniqueness, the reshape/regenerate guards, one key
   per drawer, the three integrations (including refusing a reference that is not a real ECMS

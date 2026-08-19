@@ -88,11 +88,11 @@ const receivingPermissions = declarePermissions(
   [
     ...documentSpecials('receiving receipts', 'إيصالات الدخول'),
     {
-      // Bulk intake from a spreadsheet. The parsing happens in the browser and the rows arrive as
+      // Bulk intake from a CSV file. The parsing happens in the browser and the rows arrive as
       // ordinary lines, so this grant has no endpoint of its own — it gates the control, exactly
       // as it did in the gold system.
       action: 'import',
-      name: { en: 'Import bars from a spreadsheet', ar: 'استيراد السبائك من ملف' },
+      name: { en: 'Import bars from a CSV file', ar: 'استيراد السبائك من ملف CSV' },
     },
   ],
   'gold.receiving',

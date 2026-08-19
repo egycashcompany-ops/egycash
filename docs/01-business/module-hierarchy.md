@@ -70,12 +70,21 @@ everything uses `audit`).
 | `cash-transport` | Cash Transportation | *(designed later)* |
 | `atm` | ATM Operations | *(designed later)* |
 | `vault` | Vault Management | *(designed later)* |
-| `gold` | Gold Vault | `vaults`, `bars`, `receiving`, `delivery`, `transfers`, `keys`, `owners`, `reports` — ported from the standalone gold system ([port record](../12-planning/gold-module-port.md)) |
+| `gold` | Gold Vault | `companies`, `representatives`, `floors`, `vaults`, `bars`, `receiving`, `delivery`, `transfers`, `keys`, `dashboard`, `reports` |
 | `contracts` | Contracts | *(designed later)* |
 | `administration` | Administration | *(designed later)* |
 | `accounting` | Accounting | *(designed later)* |
 | `security` | Security | *(designed later)* |
 | `it` | Information Technology | *(designed later)* |
+
+`gold` was reserved here as `gold-vault` while it was still a plan. The delivered id is **`gold`**:
+a page id reads `<moduleId>.<slug>` and the platform's `PAGE_ID_PATTERN` allows no hyphen in the
+module part, so a hyphenated module could not declare pages at all — and widening that pattern is a
+platform contract change, not something a module takes on its way past. It is the one module so far
+that arrived as a PORT of an existing production system rather than as a fresh design; what was
+carried across, what was dropped, and the three places it was deliberately changed are recorded in
+[Gold module port](../12-planning/gold-module-port.md). `vault` above remains a separate, unstarted
+module: cash vaults are not the precious-metals vault.
 
 ## 4. HR module hierarchy
 

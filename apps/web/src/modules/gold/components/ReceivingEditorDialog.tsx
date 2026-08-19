@@ -40,7 +40,7 @@ import { metalOptions } from './gold-labels';
 import { useGoldCompanyOptions } from './useGoldCompanyOptions';
 import { fillColor, fillRatio, fmtWeightValue, todayInput, toDateInput } from '../lib/gold-format';
 import { printReceiptHtml } from '../lib/gold-print';
-import { parseSpreadsheet } from './receiving-import';
+import { parseImportFile } from './receiving-import';
 import { printReceiving } from '../api/gold-api';
 
 interface Line {
@@ -397,7 +397,7 @@ export const ReceivingEditorDialog = ({
   const onImport = async (file: File | undefined): Promise<void> => {
     if (file === undefined) return;
     try {
-      const parsed = await parseSpreadsheet(file);
+      const parsed = await parseImportFile(file);
       if (parsed.length === 0) {
         toast.error(t('gold.receiving.importEmpty'));
         return;
@@ -874,7 +874,7 @@ export const ReceivingEditorDialog = ({
                 <input
                   ref={fileRef}
                   type="file"
-                  accept=".xlsx,.xls,.csv"
+                  accept=".csv,text/csv"
                   className="hidden"
                   onChange={(e) => {
                     void onImport(e.target.files?.[0]);

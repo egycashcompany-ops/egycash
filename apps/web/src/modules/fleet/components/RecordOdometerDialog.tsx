@@ -3,6 +3,12 @@
 // The SERVER's expected reading shows live as the hint (H2's fate); a reading below it will be
 // refused by FR-2 with the correction flow as the only way past. Optional driver slots record
 // who took the car out.
+//
+// ك.م is SHOWN but never asked for. The legacy did the same arithmetic on submit — `POST
+// /cars_log` set the new row's `out_num`, the previous row's `in_num`, and km = the difference —
+// so a manual km field would be a second, competing answer to a question the server already
+// answers. What the operator loses without it is the SIGHT of the distance they are about to
+// record, so the dialog previews it from the server's own expected reading rather than asking.
 import { useEffect, useMemo, useState } from 'react';
 import { MAX_PAGE_SIZE, type Locale } from '@ecms/contracts';
 import { useAppSelector } from '../../../store';
@@ -120,6 +126,15 @@ export const RecordOdometerDialog = ({
     onClose();
   };
 
+  // The distance this reading will close the open period with — the very subtraction the service
+  // performs, over the number the SERVER just gave for the previous reading. A preview, not an
+  // input: nothing here is sent, and the server recomputes it on write.
+  const previousReading = expected.data?.expectedReading ?? null;
+  const derivedKm =
+    previousReading === null || reading === '' || !Number.isInteger(readingNumber)
+      ? null
+      : readingNumber - previousReading;
+
   const expectedHint =
     expected.data === undefined
       ? undefined
@@ -172,6 +187,21 @@ export const RecordOdometerDialog = ({
             <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </Field>
         </div>
+        <Field label={t('fleet.odometer.columns.km')} hint={t('fleet.odometer.kmDerivedHint')}>
+          <p className="text-sm tabular-nums text-slate-700 dark:text-slate-200">
+            {derivedKm === null ? (
+              <span className="text-slate-400">—</span>
+            ) : derivedKm < 0 ? (
+              // FR-2 refuses a reading below the previous one; saying so here spares the operator
+              // a round-trip, and the server stays the authority that actually refuses it.
+              <span className="text-red-600 dark:text-red-400">
+                {t('fleet.odometer.kmBelowPrevious')}
+              </span>
+            ) : (
+              t('fleet.odometer.kmValue', { km: formatNumber(derivedKm, locale) })
+            )}
+          </p>
+        </Field>
         <Field label={t('fleet.odometer.fields.driver1')}>
           <OptionalEmployeeField value={driver1} onChange={setDriver1} />
         </Field>

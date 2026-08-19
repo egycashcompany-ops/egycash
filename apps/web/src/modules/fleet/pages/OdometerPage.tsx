@@ -29,7 +29,7 @@ import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { Pagination } from '../../../shared/ui/Pagination';
 import { Button } from '../../../shared/ui/Button';
 import { Badge } from '../../../shared/ui/Badge';
-import { Field, Input } from '../../../shared/ui/form';
+import { Input } from '../../../shared/ui/form';
 import { EditIcon, PlusIcon } from '../../../shared/ui/icons';
 import { formatDate, formatNumber } from '../../../shared/lib/format';
 import { useMaintenanceAlarms, useOdometerLogs, useVehicles } from '../api/fleet-queries';
@@ -296,25 +296,30 @@ export const OdometerPage = (): JSX.Element => {
             onChange={(next) => patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })}
           />
           {/* Either bound alone is a valid question ("from the 1st", "up to the 18th"), and the
-              same date in both is one day — the server's `to` covers the whole day it names. */}
-          <Field label={t('fleet.odometer.from')} htmlFor="odometer-from">
-            <Input
-              id="odometer-from"
-              type="date"
-              value={from}
-              onChange={(e) => patch({ from: e.target.value || null })}
-              className="w-auto"
-            />
-          </Field>
-          <Field label={t('fleet.odometer.to')} htmlFor="odometer-to">
-            <Input
-              id="odometer-to"
-              type="date"
-              value={to}
-              onChange={(e) => patch({ to: e.target.value || null })}
-              className="w-auto"
-            />
-          </Field>
+              same date in both is one day — the server's `to` covers the whole day it names.
+
+              No visible label, like every other filter here. A date input ignores `placeholder`
+              and paints its own format hint, so the two bounds are told apart by `aria-label` for
+              a screen reader and `title` for a pointer — the most a label-less date control can
+              carry without inventing a design-system pattern for this one page. */}
+          <Input
+            id="odometer-from"
+            type="date"
+            aria-label={t('fleet.odometer.from')}
+            title={t('fleet.odometer.from')}
+            value={from}
+            onChange={(e) => patch({ from: e.target.value || null })}
+            className="w-auto"
+          />
+          <Input
+            id="odometer-to"
+            type="date"
+            aria-label={t('fleet.odometer.to')}
+            title={t('fleet.odometer.to')}
+            value={to}
+            onChange={(e) => patch({ to: e.target.value || null })}
+            className="w-auto"
+          />
           {mayFilterByDriver && (
             <div className="w-44">
               <Input

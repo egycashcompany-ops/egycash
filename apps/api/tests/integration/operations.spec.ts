@@ -1662,6 +1662,124 @@ describe('secured (محصنة) workflow — the four legacy screens (OP-4)', () 
       for (const row of data<OperationsCrewBoardDto>(res).rows) expect(row.crew).toBeNull();
     });
   });
+
+  // ── Handing a delivery leg to the co-captain on the SAME crew row ──────────────────────────────
+  //
+  // `sequence` is a position within ONE captain's list for one day, and
+  // `ux_day_captain_leg_sequence` makes that pair unique — so a stop that carries its old number
+  // across to a different captain either collides outright or lands at an arbitrary point in the
+  // new captain's order.
+  //
+  // `assignPickupLeg` has always re-seated it. This leg never did, and before two-captain crews
+  // the only way to reach it was to name a different crew row — a different VEHICLE. Now the
+  // ordinary act of handing a load to the co-captain of the same van goes straight through it.
+  describe('re-assigning the delivery leg to the other captain of the same crew', () => {
+    const HANDOVER_DATE = '2026-12-08';
+    let handoverCrewId: string;
+    let handoverCaptainA: string;
+    let handoverCaptainB: string;
+
+    const assignmentOf = async (
+      shipmentId: string,
+    ): Promise<{ sequence: number; version: number; captainEmployeeId: string }> => {
+      const { operationsShipmentAssignmentRepository } = await import(
+        '../../src/modules/operations/shipments/shipment-assignment.repository'
+      );
+      const row = await operationsShipmentAssignmentRepository.findByShipmentAndLeg(
+        shipmentId,
+        'delivery',
+      );
+      return {
+        sequence: row?.sequence ?? 0,
+        version: row?.__v ?? 0,
+        captainEmployeeId: String(row?.captainEmployeeId ?? ''),
+      };
+    };
+
+    const assignTo = async (
+      shipmentId: string,
+      captainEmployeeId: string,
+      version: number,
+    ): Promise<request.Response> =>
+      request(app)
+        .post(`/api/v1/operations/secured/${shipmentId}/assign-delivery`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ crewAssignmentId: handoverCrewId, captainEmployeeId, version });
+
+    /** A secured shipment delivered on the handover date, received into the vault. */
+    const readyShipment = async (): Promise<OperationsShipmentDto> => {
+      const shipment = data<OperationsShipmentDto>(
+        await mkShipment({ shipmentType: 'secured', deliveryDate: HANDOVER_DATE }),
+      );
+      expect((await receive(shipment)).status).toBe(200);
+      return shipment;
+    };
+
+    beforeAll(async () => {
+      handoverCaptainA = await mkEmployee();
+      handoverCaptainB = await mkEmployee();
+
+      const roster = await request(app)
+        .post('/api/v1/fleet/roster')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ date: HANDOVER_DATE, rows: [{ vehicleId: vehicleAId, notes: 'handover' }] });
+      expect(roster.status).toBe(200);
+
+      // ONE crew row, TWO captains — the shape that only became expressible with the widening.
+      const plan = await request(app)
+        .post('/api/v1/operations/crew-board')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          date: HANDOVER_DATE,
+          rows: [
+            {
+              vehicleId: vehicleAId,
+              captainEmployeeIds: [handoverCaptainA, handoverCaptainB],
+            },
+          ],
+        });
+      expect(plan.status).toBe(200);
+      handoverCrewId =
+        data<OperationsCrewBoardDto>(plan).rows.find((r) => r.vehicleId === vehicleAId)?.crew?.id ??
+        '';
+      expect(handoverCrewId).not.toBe('');
+    });
+
+    it('re-seats the stop at the end of the new captain\u2019s list instead of colliding', async () => {
+      // A takes one stop at position 1; B takes one of their own, also at position 1.
+      const forA = await readyShipment();
+      expect((await assignTo(forA.id, handoverCaptainA, 0)).status).toBe(200);
+      expect((await assignmentOf(forA.id)).sequence).toBe(1);
+
+      const forB = await readyShipment();
+      expect((await assignTo(forB.id, handoverCaptainB, 0)).status).toBe(200);
+      expect((await assignmentOf(forB.id)).sequence).toBe(1);
+
+      // Now hand A's stop to B. Keeping its old position would mean TWO stops at position 1 in B's
+      // delivery list — a duplicate on `ux_day_captain_leg_sequence`, and a 409 on what is meant
+      // to be an everyday hand-over.
+      const current = await assignmentOf(forA.id);
+      const moved = await assignTo(forA.id, handoverCaptainB, current.version);
+      expect(moved.status).toBe(200);
+
+      const after = await assignmentOf(forA.id);
+      expect(after.captainEmployeeId).toBe(handoverCaptainB);
+      expect(after.sequence).toBe(2); // the END of B's list, not A's old position
+      // B's own stop is untouched — moving one captain's work never renumbers another's.
+      expect((await assignmentOf(forB.id)).sequence).toBe(1);
+    });
+
+    it('leaves the position alone when the captain does not change', async () => {
+      // Re-assigning to the SAME captain is a no-op on order: the stop keeps its place in the run
+      // the planner already agreed, and only a reorder may move it.
+      const shipment = await readyShipment();
+      expect((await assignTo(shipment.id, handoverCaptainA, 0)).status).toBe(200);
+      const before = await assignmentOf(shipment.id);
+
+      expect((await assignTo(shipment.id, handoverCaptainA, before.version)).status).toBe(200);
+      expect((await assignmentOf(shipment.id)).sequence).toBe(before.sequence);
+    });
+  });
 });
 
 /** The first crew assignment id on a given day, read straight from the collection seam. */

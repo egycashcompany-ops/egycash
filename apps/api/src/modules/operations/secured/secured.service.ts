@@ -27,6 +27,7 @@ import { unitOfWork } from '../../../platform/kernel/unit-of-work';
 import { diffChanges } from '../../../shared/utils/diff';
 import { vaultCustody } from '../treasury-boundary';
 import { operationsVaultCustodyService } from '../vault/vault-custody.service';
+import { nextSequence } from '../assignments/leg-sequence';
 import { operationsCrewAssignmentRepository } from '../crew/crew-assignment.repository';
 import { isCaptainOf } from '../crew/crew-slots';
 import { operationsDayService, utcDay } from '../days/day.service';
@@ -217,17 +218,12 @@ class OperationsSecuredService {
     let doc: OperationsShipmentAssignmentDoc;
     if (existing === null) {
       // OP-5: a new stop lands at the END of that captain's delivery list for the day.
-      const siblings = await operationsShipmentAssignmentRepository.findForCaptainDay(
-        day._id,
-        input.captainEmployeeId,
-        'delivery',
-      );
       doc = await operationsShipmentAssignmentRepository.create(
         {
           shipmentId: new Types.ObjectId(shipmentId),
           leg: 'delivery',
           operationsDayId: day._id,
-          sequence: siblings.reduce((max, row) => Math.max(max, row.sequence), 0) + 1,
+          sequence: await nextSequence(day._id, input.captainEmployeeId, 'delivery'),
           ...set,
         },
         { by },
@@ -238,11 +234,23 @@ class OperationsSecuredService {
         changes: diffChanges({}, assignmentSnapshot(doc)),
       });
     } else {
-      // Re-assignment overwrites in place, exactly as the legacy bulkWrite did.
-      doc = await operationsShipmentAssignmentRepository.updateById(String(existing._id), set, {
-        by,
-        version: input.version,
-      });
+      // Re-assignment overwrites in place, exactly as the legacy bulkWrite did — EXCEPT for the
+      // position, which cannot survive a change of captain.
+      //
+      // `sequence` is a position within ONE captain's list for one day, and
+      // `ux_day_captain_leg_sequence` makes that pair unique. Carrying the old number across to a
+      // different captain therefore either collides outright — a 409 on an ordinary hand-over — or
+      // drops the stop at an arbitrary point in the new captain's order. `assignPickupLeg` has
+      // always re-seated it; this leg never did, and the two-captain crew is what turned that from
+      // a corner case into the everyday act of handing a load to the co-captain on the same van.
+      const movingCaptain = String(existing.captainEmployeeId) !== input.captainEmployeeId;
+      doc = await operationsShipmentAssignmentRepository.updateById(
+        String(existing._id),
+        movingCaptain
+          ? { ...set, sequence: await nextSequence(day._id, input.captainEmployeeId, 'delivery') }
+          : set,
+        { by, version: input.version },
+      );
       await auditService.record({
         entityRef: assignmentRef(String(doc._id)),
         action: 'update',

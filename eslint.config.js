@@ -179,6 +179,34 @@ export default tseslint.config(
     },
   },
 
+  // A gold customer's company id is the ONE value that keeps one customer from reading another's
+  // metal, so the type that carries it — `PortalCompany` — has exactly one producer: the cast
+  // inside `requireGoldPortal`, which mints it only after proving the binding against the database.
+  //
+  // A second cast anywhere would defeat the whole scheme quietly, because the tempting line is
+  // short and reads as a formality: `req.query.companyId as PortalCompany`. It is banned as syntax
+  // rather than left to review, and the one legitimate site is the only file exempted.
+  {
+    files: ['apps/api/src/modules/gold/**/*.ts'],
+    ignores: ['apps/api/src/modules/gold/portal/portal-scope.ts'],
+    rules: {
+      // Flat config REPLACES a rule's options rather than merging them, so the base block's
+      // console ban is restated here.
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "MemberExpression[object.name='console']",
+          message: 'console.* is banned — use the Pino logger (ADR-012).',
+        },
+        {
+          selector: "TSAsExpression > TSTypeReference[typeName.name='PortalCompany']",
+          message:
+            'PortalCompany is minted only by requireGoldPortal, after the binding is proved against the database. Take one as a parameter instead of casting.',
+        },
+      ],
+    },
+  },
+
   // Scripts and config files run under Node without the app logger.
   {
     files: ['scripts/**', '*.config.{js,ts}', '**/*.config.{js,ts}', '**/vite.config.ts'],

@@ -36,6 +36,9 @@ import { buildGoldTransfersRouter } from './transfers';
 import { buildGoldKeysRouter } from './keys';
 import { buildGoldDashboardRouter } from './dashboard';
 import { buildGoldReportsRouter } from './reports';
+import { buildGoldPortalRouter } from './portal';
+import { buildGoldPortalAccountsRouter } from './portal-accounts';
+import { runGoldSeed } from './gold.seed';
 
 // The grants below ARE the gold system's own permission catalog (`config/permissions.js`,
 // PERMISSION_CATALOG), resource by resource and action by action. Its `branches`, `users`, `roles`
@@ -161,7 +164,34 @@ const reportPermissions = declarePermissions(
   'gold.dashboard',
 );
 
+/**
+ * The customer's own grant, and the staff grant over customer logins.
+ *
+ * `goldPortal.view` is the ONLY permission a portal account holds. It is not a page permission —
+ * the customer never sees the ECMS shell — so it is declared with no page and the portal's own
+ * confinement answers "where may they go".
+ */
+const portalPermissions = declarePermissions(
+  'gold',
+  'goldPortal',
+  { en: 'Customer portal', ar: 'بوابة العملاء' },
+  ['view'],
+  [],
+  null,
+);
+
+const portalAccountPermissions = declarePermissions(
+  'gold',
+  'goldPortalAccount',
+  { en: 'Portal accounts', ar: 'حسابات البوابة' },
+  ['view', 'create', 'edit', 'delete'],
+  [],
+  'gold.portal-accounts',
+);
+
 export const goldPermissions: PermissionDef[] = [
+  ...portalPermissions,
+  ...portalAccountPermissions,
   ...reportPermissions,
   ...vaultPermissions,
   ...barPermissions,
@@ -241,6 +271,13 @@ export const goldPages: PageDef[] = [
     route: '/gold/representatives',
     sortOrder: 90,
   },
+  {
+    id: 'gold.portal-accounts',
+    moduleId: 'gold',
+    name: { en: 'Portal accounts', ar: 'حسابات بوابة العملاء' },
+    route: '/gold/portal-accounts',
+    sortOrder: 100,
+  },
 ];
 
 export const goldModule: ModuleManifest = {
@@ -263,6 +300,10 @@ export const goldModule: ModuleManifest = {
     { prefix: '/gold/keys', router: buildGoldKeysRouter() },
     { prefix: '/gold/companies', router: buildGoldCompaniesRouter() },
     { prefix: '/gold/representatives', router: buildGoldRepresentativesRouter() },
+    // The customer-facing surface. Its prefix is what the module registers with the platform as
+    // the ONE place an external account may read — see `runGoldSeed`.
+    { prefix: '/gold/portal', router: buildGoldPortalRouter() },
+    { prefix: '/gold/portal-accounts', router: buildGoldPortalAccountsRouter() },
   ],
   collections: [
     'gold_companies',
@@ -280,4 +321,5 @@ export const goldModule: ModuleManifest = {
   // it never had. When the vault needs to react to an HR exit or announce a movement, that is a
   // decision to take on purpose, with a payload somebody designed.
   eventSubscriptions: [],
+  seed: runGoldSeed,
 };

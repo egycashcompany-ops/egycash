@@ -45,3 +45,4 @@ export * from './modules/fleet.js';
 export * from './modules/it.js';
 export * from './modules/operations.js';
 export * from './modules/gold.js';
+export * from './modules/gold-portal.js';

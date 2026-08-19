@@ -22,7 +22,12 @@ import {
   type FileDto,
   type FleetVehicleDto,
   type GenerateGoldLayout,
+  type ChangeGoldPortalAccountStatus,
+  type CreateGoldPortalAccount,
   type GoldBarDto,
+  type GoldPortalAccountCreatedDto,
+  type GoldPortalAccountDto,
+  type UpdateGoldPortalAccount,
   type GoldBarFacetsDto,
   type GoldBarHistoryDto,
   type GoldClientBalancesDto,
@@ -259,3 +264,27 @@ export const fundMovement = (params: GoldListParams): Promise<GoldFundMovementDt
   get<GoldFundMovementDto>(`/gold/reports/fund-movement${buildQuery(params)}`);
 export const fundClosing = (params: GoldListParams): Promise<GoldFundClosingDto> =>
   get<GoldFundClosingDto>(`/gold/reports/fund-closing${buildQuery(params)}`);
+
+// ── Portal accounts (the STAFF side of the customer portal) ────────────────
+export const listPortalAccounts = (
+  params: GoldListParams,
+): Promise<Paginated<GoldPortalAccountDto>> =>
+  getPage<GoldPortalAccountDto>(`/gold/portal-accounts${buildQuery(params)}`);
+export const createPortalAccount = (
+  body: CreateGoldPortalAccount,
+): Promise<GoldPortalAccountCreatedDto> =>
+  post<GoldPortalAccountCreatedDto>('/gold/portal-accounts', body);
+export const updatePortalAccount = (
+  id: string,
+  body: UpdateGoldPortalAccount,
+): Promise<GoldPortalAccountDto> =>
+  patch<GoldPortalAccountDto>(`/gold/portal-accounts/${id}`, body);
+export const changePortalAccountStatus = (
+  id: string,
+  body: ChangeGoldPortalAccountStatus,
+): Promise<GoldPortalAccountDto> =>
+  post<GoldPortalAccountDto>(`/gold/portal-accounts/${id}/status`, body);
+export const resendPortalSetupLink = (id: string): Promise<void> =>
+  post<void>(`/gold/portal-accounts/${id}/setup-link`, {});
+export const deletePortalAccount = (id: string): Promise<void> =>
+  del<void>(`/gold/portal-accounts/${id}`);

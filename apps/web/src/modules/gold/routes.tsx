@@ -15,6 +15,7 @@
 //   /gold/companies          goldCompany.view     الشركات والصناديق
 //   /gold/representatives    goldRepresentative.view  المندوبون
 //   /gold/reports            goldReport.view      التقارير
+//   /gold/portal-accounts    goldPortalAccount.view  حسابات بوابة العملاء
 //
 // The receipt, delivery, transfer and key ACTIONS are not routes — they are dialogs on the record,
 // which is where the decision is actually taken. That is how the gold system worked too.
@@ -33,6 +34,7 @@ import { GoldKeysPage } from './pages/GoldKeysPage';
 import { GoldCompaniesPage } from './pages/GoldCompaniesPage';
 import { GoldRepresentativesPage } from './pages/GoldRepresentativesPage';
 import { GoldReportsPage } from './pages/GoldReportsPage';
+import { GoldPortalAccountsPage } from './pages/GoldPortalAccountsPage';
 
 export default function GoldRoutes(): JSX.Element {
   return (
@@ -123,6 +125,14 @@ export default function GoldRoutes(): JSX.Element {
           element={
             <RequirePermission permission="goldReport.view">
               <GoldReportsPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="portal-accounts"
+          element={
+            <RequirePermission permission="goldPortalAccount.view">
+              <GoldPortalAccountsPage />
             </RequirePermission>
           }
         />

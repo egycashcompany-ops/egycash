@@ -71,6 +71,12 @@ export const resolveVehicleRef = async (
  * This is the gold rule (`utils/branchScope.js#resolveCreateBranch`) reading ECMS branches instead
  * of its own collection, and it is kept because it is a business rule, not plumbing: an
  * installation with a single branch never asks, and an installation with several refuses to guess.
+ *
+ * Gold split the refusal in two, and so does this: an ordinary operator whose account was never
+ * placed in a branch is an administration problem, while a privileged account belonging to no
+ * branch is a deliberate shape — it is meant to see everything, which is exactly why it cannot say
+ * where a new document belongs. Gold answered that with a branch switcher in its top bar; ECMS has
+ * no such control, so the privileged caller is told to file from a branch account instead.
  */
 export const resolveCreateBranchId = async (ctx: AuthContext): Promise<string | null> => {
   if (ctx.branchId !== null) return ctx.branchId;
@@ -78,7 +84,11 @@ export const resolveCreateBranchId = async (ctx: AuthContext): Promise<string | 
   if (page.meta.totalItems === 0) return null; // single-branch / legacy mode
   const only = page.items[0];
   if (page.meta.totalItems === 1 && only !== undefined) return String(only._id);
-  throw new BusinessRuleError('حسابك غير مرتبط بفرع. تواصل مع مدير النظام.');
+  throw new BusinessRuleError(
+    ctx.isPrivileged
+      ? 'حسابك غير مرتبط بفرع محدد. سجّل الدخول بحساب تابع للفرع الذى تُقيَّد فيه الحركة.'
+      : 'حسابك غير مرتبط بفرع. تواصل مع مدير النظام.',
+  );
 };
 
 /**

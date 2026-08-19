@@ -240,6 +240,14 @@ beforeAll(async () => {
   branchAId = await mkBranch('80', 'فرع الذهب أ', 'Gold Branch A');
   branchBId = await mkBranch('81', 'فرع الذهب ب', 'Gold Branch B');
 
+  // From here on the caller is a vault operator IN BRANCH A, not the branch-less bootstrap account.
+  // That is the shape every gold document is written by: a gold receipt is filed into the branch of
+  // the person filing it, exactly as the gold system did, and an account belonging to no branch has
+  // nothing to file into once more than one branch exists.
+  const branchAdminId = await mkUser('gold-admin-a@ecms.local', branchAId);
+  await rbacService.ensureAssignment(branchAdminId, String(superAdmin._id), 'organization');
+  adminToken = await login('gold-admin-a@ecms.local');
+
   const dept = await post('/platform/departments', adminToken, {
     code: 'GLD-OPS',
     name: { ar: 'إدارة الخزينة', en: 'Vault Operations' },

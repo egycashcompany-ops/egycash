@@ -29,7 +29,6 @@ import {
   type OperationsCrewAttendanceDayDto,
   type OperationsCrewBoardDto,
   type OperationsCrewDirectoryDto,
-  type OperationsCrewSeedReportDto,
   type OperationsCrewRequirementsDto,
   type OperationsCurrencyDto,
   type OperationsDayBoardDto,
@@ -43,7 +42,6 @@ import {
   type Paginated,
   type PlanOperationsCrew,
   type ReceiveIntoVault,
-  type SeedOperationsCrewFromStanding,
   type SetOperationsCrewRequirements,
   type SetOperationsStandingCrew,
   type UpdateOperationsArea,
@@ -175,21 +173,6 @@ export const planCrew = (
   body: PlanOperationsCrew,
 ): Promise<OperationsCrewBoardDto & { changedCount: number }> =>
   post<OperationsCrewBoardDto & { changedCount: number }>('/operations/crew-board', body);
-
-/**
- * Put the standing crew onto this day's board — الطاقم الثابت ينزل في التشغيلة.
- *
- * Safe to call whenever: it is idempotent by construction, because a vehicle that already has a
- * crew row is vetoed rather than merged into. Answers with the refreshed board plus the report of
- * everything it declined to do.
- */
-export const seedCrewFromStanding = (
-  body: SeedOperationsCrewFromStanding,
-): Promise<OperationsCrewBoardDto & { seed: OperationsCrewSeedReportDto }> =>
-  post<OperationsCrewBoardDto & { seed: OperationsCrewSeedReportDto }>(
-    '/operations/crew-board/seed',
-    body,
-  );
 
 /** The pool: the roster, with flags, and who is already taken on the requested day. */
 export const getCrewDirectory = (date: string | null): Promise<OperationsCrewDirectoryDto> =>

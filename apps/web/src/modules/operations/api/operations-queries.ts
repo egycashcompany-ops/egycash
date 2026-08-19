@@ -23,7 +23,6 @@ import {
   type ListSecuredBacklogQuery,
   type OperationsExecutionResultDto,
   type PlanOperationsCrew,
-  type SeedOperationsCrewFromStanding,
   type SetOperationsStandingCrew,
   type ReceiveIntoVault,
   type SetOperationsCrewRequirements,
@@ -293,18 +292,6 @@ export const usePlanOperationsCrew = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: PlanOperationsCrew) => api.planCrew(body),
-    onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: operationsKeys.crewBoard });
-      await qc.invalidateQueries({ queryKey: operationsKeys.crewDirectory });
-    },
-  });
-};
-
-/** Seeding writes crew rows, so the board and the pool both stale — the same set `plan` stales. */
-export const useSeedCrewFromStanding = () => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: SeedOperationsCrewFromStanding) => api.seedCrewFromStanding(body),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: operationsKeys.crewBoard });
       await qc.invalidateQueries({ queryKey: operationsKeys.crewDirectory });

@@ -39,6 +39,7 @@ import {
 import {
   CREW_SLOTS,
   SLOT_POSITIONS,
+  assignCaptainWithCrew,
   assignToSlot,
   availablePool,
   changedRows,
@@ -112,7 +113,13 @@ export const StandingCrewPage = (): JSX.Element => {
       event.preventDefault();
       const employeeId = event.dataTransfer.getData(CREW_DRAG_TYPE);
       if (employeeId === '' || !canPlan) return;
-      setRows((prev) => assignToSlot(prev, vehicleId, slot, position, employeeId));
+      // A captain moving between vehicles takes the specialists sharing his card position with
+      // him: a crew is what was decided, not three independent seats.
+      setRows((prev) =>
+        slot === 'captain'
+          ? assignCaptainWithCrew(prev, vehicleId, position, employeeId)
+          : assignToSlot(prev, vehicleId, slot, position, employeeId),
+      );
     };
 
   const addVehicle = (vehicleId: string): void => {

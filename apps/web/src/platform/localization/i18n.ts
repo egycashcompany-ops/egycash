@@ -4713,13 +4713,12 @@ const en: Record<string, string> = {
   'operations.crew.saveFailed':
     'Could not save the plan. Someone may already be assigned elsewhere that day.',
   'operations.crew.unsaved': '{{count}} unsaved change(s)',
-  // The descent — الطاقم الثابت ينزل في التشغيلة
-  'operations.crew.seed.action': 'Apply the standing crew',
-  'operations.crew.seed.done': 'Seeded {{count}} vehicle(s) from the standing crew',
-  'operations.crew.seed.nothing': 'Nothing to apply — every vehicle already has a crew today',
-  'operations.crew.seed.skipped':
-    'Left out: {{notRostered}} not on today\u2019s fleet roster, {{noCrew}} with nobody to assign, {{dropped}} person(s) unavailable',
-  'operations.crew.seed.failed': 'Could not apply the standing crew',
+  // The toggle — تحميل الطاقم الثابت على التشغيلة
+  'operations.crew.standing.toggle': 'Load the standing crew',
+  'operations.crew.standing.hint': 'Fills empty vehicles only. Review, then save.',
+  'operations.crew.standing.none': 'No standing crew has been set up yet',
+  'operations.crew.standing.unavailable':
+    '{{count}} standing crew(s) stayed in the pool — their vehicle is not on today\u2019s fleet roster',
   // ── The standing crew (الطاقم الثابت) — no legacy screen, no day ────────────────────────────
   'operations.standingCrew.title': 'Standing crew',
   'operations.standingCrew.subtitle':
@@ -4753,6 +4752,8 @@ const en: Record<string, string> = {
   'operations.crew.flag.hasSignature': 'Signature',
   'operations.crew.flag.hasLicense': 'Licence',
   'operations.crew.flag.hasTemporaryLicense': 'Temp. licence',
+  'operations.crew.flag.none': 'Not on the operations roster — no flags recorded',
+  'operations.crew.flag.carriesNothing': 'Carries nothing recorded',
   'operations.crew.flag.isOpsAdmin': 'Ops admin',
   'operations.crew.flag.isNewJoiner': 'New',
   'operations.crew.flag.isAssignedSpecialTask': 'Special task',
@@ -9510,13 +9511,12 @@ const ar: Record<string, string> = {
   'operations.crew.saveCount': 'حفظ {{count}} تغيير',
   'operations.crew.saveFailed': 'تعذّر حفظ الخطة. قد يكون أحد الأفراد معيَّنًا على مركبة أخرى في نفس اليوم.',
   'operations.crew.unsaved': '{{count}} تغيير غير محفوظ',
-  // الطاقم الثابت ينزل في التشغيلة
-  'operations.crew.seed.action': 'إنزال الطاقم الثابت',
-  'operations.crew.seed.done': 'تم إنزال الطاقم الثابت على {{count}} مركبة',
-  'operations.crew.seed.nothing': 'لا يوجد ما يُنزَّل — كل المركبات لها طاقم اليوم',
-  'operations.crew.seed.skipped':
-    'استُثني: {{notRostered}} خارج تشغيلة الأسطول اليوم، {{noCrew}} بلا أحد يُعيَّن، {{dropped}} فرد غير متاح',
-  'operations.crew.seed.failed': 'تعذّر إنزال الطاقم الثابت',
+  // تحميل الطاقم الثابت على التشغيلة
+  'operations.crew.standing.toggle': 'تحميل الطاقم الثابت',
+  'operations.crew.standing.hint': 'يملأ المركبات الفارغة فقط. راجِع ثم احفظ.',
+  'operations.crew.standing.none': 'لم يتم إعداد طاقم ثابت بعد',
+  'operations.crew.standing.unavailable':
+    '{{count}} طاقم ثابت ظلّ في القائمة — مركبته ليست في تشغيلة الأسطول اليوم',
   // ── الطاقم الثابت — لا نظير في النظام القديم، ولا تاريخ ──────────────────────────────────────
   'operations.standingCrew.title': 'الطاقم الثابت',
   'operations.standingCrew.subtitle':
@@ -9549,6 +9549,8 @@ const ar: Record<string, string> = {
   'operations.crew.flag.hasSignature': 'صحة توقيع',
   'operations.crew.flag.hasLicense': 'مزاولة',
   'operations.crew.flag.hasTemporaryLicense': 'مزاولة مؤقتة',
+  'operations.crew.flag.none': 'ليس على كشف العمليات — لا توجد بيانات متطلبات',
+  'operations.crew.flag.carriesNothing': 'لا يحمل شيئًا مسجَّلًا',
   'operations.crew.flag.isOpsAdmin': 'موظف عمليات',
   'operations.crew.flag.isNewJoiner': 'جديد',
   'operations.crew.flag.isAssignedSpecialTask': 'مهمة خاصة',

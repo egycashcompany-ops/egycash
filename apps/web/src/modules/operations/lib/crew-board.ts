@@ -159,6 +159,45 @@ export const removeFromBoard = (
     return next;
   });
 
+/**
+ * Drop a CAPTAIN and bring his crew with him.
+ *
+ * "لما أنقل قائد طاقم على سيارة جديدة يسحب الأخصائيين اللى معاه" — moving a captain moves the crew,
+ * because a crew is what was decided, not three independent seats.
+ *
+ * WHICH specialists are "with him". The board draws each slot as CREW_SLOT_CAPACITY stacked cards,
+ * so the three columns line up into rows on screen: the TOP cards of captain / specialist 1 /
+ * specialist 2 are visibly one crew, and the bottom cards are the other. Companions are therefore
+ * the specialists sharing the captain's CARD POSITION — which is the pairing the operator can see,
+ * and the only one that stays right when a vehicle carries two captains. Taking every specialist on
+ * the vehicle would drag the OTHER captain's two along with him.
+ *
+ * It applies only to a captain who is already on a vehicle. From the pool there is nobody "with
+ * him" yet, so he arrives alone — dragging one card must not silently move three people who were
+ * never placed together.
+ */
+export const assignCaptainWithCrew = (
+  rows: readonly BoardRow[],
+  vehicleId: string,
+  position: number,
+  employeeId: string,
+): BoardRow[] => {
+  const [from] = slotsHolding(rows, employeeId).filter((held) => held.slot === 'captain');
+  let next = assignToSlot(rows, vehicleId, 'captain', position, employeeId);
+  if (from === undefined) return next;
+
+  const source = rows.find((row) => row.vehicleId === from.vehicleId);
+  if (source === undefined) return next;
+
+  for (const slot of ['specialist1', 'specialist2'] as const) {
+    const companion = slotValue(source, slot, from.position);
+    // `assignToSlot` already cleared this member wherever they were, so this MOVES them rather
+    // than copying: the source card is vacated by the same call that fills the target.
+    if (companion !== null) next = assignToSlot(next, vehicleId, slot, position, companion);
+  }
+  return next;
+};
+
 export const clearSlot = (
   rows: readonly BoardRow[],
   vehicleId: string,
@@ -199,7 +238,14 @@ export const availablePool = (
  * buttons). They narrow WHAT IS SHOWN and nothing else: an unfiltered member is still assignable,
  * because requirements gate nothing (approved decision).
  */
-export type RequirementFilter = 'hasWeapon' | 'hasSignature' | 'hasLicense' | 'isCaptain';
+export type RequirementFilter =
+  | 'hasWeapon'
+  | 'hasSignature'
+  | 'hasLicense'
+  // The temporary licence is a filter of its own, not a shade of `hasLicense`: "who is carrying a
+  // TEMPORARY practising licence today" is exactly the question a planner asks before a run.
+  | 'hasTemporaryLicense'
+  | 'isCaptain';
 
 export const filterPool = (
   members: readonly OperationsCrewMemberDto[],

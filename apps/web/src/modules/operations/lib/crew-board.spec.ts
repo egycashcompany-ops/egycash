@@ -13,6 +13,7 @@ import { CREW_SLOT_CAPACITY, type OperationsCrewMemberDto } from '@ecms/contract
 import {
   CREW_SLOTS,
   SLOT_POSITIONS,
+  assignCaptainWithCrew,
   assignToSlot,
   availablePool,
   changedRows,
@@ -396,5 +397,104 @@ describe('slot vocabulary', () => {
     });
     expect(CREW_SLOTS.map((s) => slotValue(r, s, 0))).toEqual(['a', 'c', null]);
     expect(CREW_SLOTS.map((s) => slotValue(r, s, 1))).toEqual(['b', null, 'd']);
+  });
+});
+
+
+describe('assignCaptainWithCrew — a captain brings his crew with him', () => {
+  /** v1 carries a full crew at card position 0; v2 is empty. */
+  const loaded = (): BoardRow[] => [
+    row({
+      vehicleId: 'v1',
+      captainEmployeeIds: cells('cap'),
+      specialist1EmployeeIds: cells('s1'),
+      specialist2EmployeeIds: cells('s2'),
+    }),
+    row({ vehicleId: 'v2' }),
+  ];
+
+  it('takes the two specialists to the new vehicle', () => {
+    const next = assignCaptainWithCrew(loaded(), 'v2', 0, 'cap');
+    expect(slotOccupants(next[1] as BoardRow, 'captain')).toEqual(['cap']);
+    expect(slotOccupants(next[1] as BoardRow, 'specialist1')).toEqual(['s1']);
+    expect(slotOccupants(next[1] as BoardRow, 'specialist2')).toEqual(['s2']);
+  });
+
+  it('MOVES them — the old vehicle is left empty, not duplicated', () => {
+    const next = assignCaptainWithCrew(loaded(), 'v2', 0, 'cap');
+    expect(rowCrew(next[0] as BoardRow)).toEqual([]);
+    for (const id of ['cap', 's1', 's2']) expect(slotsHolding(next, id)).toHaveLength(1);
+  });
+
+  it('takes only HIS pair when the vehicle carries two captains', () => {
+    // The board draws the three slots as columns of stacked cards, so the top cards line up as one
+    // crew and the bottom cards as the other. Taking every specialist on the vehicle would drag
+    // the OTHER captain's two along with him.
+    const rows = [
+      row({
+        vehicleId: 'v1',
+        captainEmployeeIds: cells('capA', 'capB'),
+        specialist1EmployeeIds: cells('a1', 'b1'),
+        specialist2EmployeeIds: cells('a2', 'b2'),
+      }),
+      row({ vehicleId: 'v2' }),
+    ];
+    const next = assignCaptainWithCrew(rows, 'v2', 0, 'capB');
+    expect(rowCrew(next[1] as BoardRow)).toEqual(['capB', 'b1', 'b2']);
+    // capA keeps his own two, exactly where they were.
+    expect(slotOccupants(next[0] as BoardRow, 'captain')).toEqual(['capA']);
+    expect(slotOccupants(next[0] as BoardRow, 'specialist1')).toEqual(['a1']);
+    expect(slotOccupants(next[0] as BoardRow, 'specialist2')).toEqual(['a2']);
+  });
+
+  it('brings whoever is there when the crew is short of a full three', () => {
+    const rows = [
+      row({ vehicleId: 'v1', captainEmployeeIds: cells('cap'), specialist2EmployeeIds: cells('s2') }),
+      row({ vehicleId: 'v2' }),
+    ];
+    const next = assignCaptainWithCrew(rows, 'v2', 0, 'cap');
+    expect(rowCrew(next[1] as BoardRow)).toEqual(['cap', 's2']);
+  });
+
+  it('arrives ALONE from the pool — nobody is with him yet', () => {
+    // Dragging one card must not silently move people who were never placed together.
+    const next = assignCaptainWithCrew([row({ vehicleId: 'v1' })], 'v1', 0, 'stranger');
+    expect(rowCrew(next[0] as BoardRow)).toEqual(['stranger']);
+  });
+
+  it('displaces whoever held the target cards, as any drop does', () => {
+    const rows = [
+      row({
+        vehicleId: 'v1',
+        captainEmployeeIds: cells('cap'),
+        specialist1EmployeeIds: cells('s1'),
+      }),
+      row({ vehicleId: 'v2', specialist1EmployeeIds: cells('sitting') }),
+    ];
+    const next = assignCaptainWithCrew(rows, 'v2', 0, 'cap');
+    expect(slotOccupants(next[1] as BoardRow, 'specialist1')).toEqual(['s1']);
+    expect(slotsHolding(next, 'sitting')).toEqual([]);
+  });
+
+  it('moves a crew between card positions on the SAME vehicle', () => {
+    const rows = [
+      row({
+        vehicleId: 'v1',
+        captainEmployeeIds: cells('cap'),
+        specialist1EmployeeIds: cells('s1'),
+        specialist2EmployeeIds: cells('s2'),
+      }),
+    ];
+    const next = assignCaptainWithCrew(rows, 'v1', 1, 'cap');
+    expect(slotValue(next[0] as BoardRow, 'captain', 1)).toBe('cap');
+    expect(slotValue(next[0] as BoardRow, 'specialist1', 1)).toBe('s1');
+    expect(slotValue(next[0] as BoardRow, 'specialist2', 1)).toBe('s2');
+    expect(slotValue(next[0] as BoardRow, 'captain', 0)).toBeNull();
+  });
+
+  it('does not mutate the rows it was given', () => {
+    const rows = loaded();
+    assignCaptainWithCrew(rows, 'v2', 0, 'cap');
+    expect(rowCrew(rows[0] as BoardRow)).toEqual(['cap', 's1', 's2']);
   });
 });

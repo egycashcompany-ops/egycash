@@ -8,7 +8,6 @@ import {
   OperationsCrewAttendanceQuerySchema,
   OperationsCrewDirectoryQuerySchema,
   PlanOperationsCrewSchema,
-  SeedOperationsCrewFromStandingSchema,
   SetOperationsCrewRequirementsSchema,
   objectId,
 } from '@ecms/contracts';
@@ -21,7 +20,6 @@ import {
   getCrewDirectory,
   listCrewRequirements,
   planCrew,
-  seedCrewFromStanding,
   removeCrewRequirements,
   setCrewRequirements,
 } from './crew.controller';
@@ -43,18 +41,6 @@ export const buildOperationsCrewRouter = (): Router => {
     authorize('operationsCrew.plan'),
     validate({ body: PlanOperationsCrewSchema }),
     asyncHandler(planCrew),
-  );
-
-  // The descent. It WRITES the board, so it rides `operationsCrew.plan` rather than `.view` — and
-  // it is a POST rather than something that happens on a GET, because a read must never author a
-  // day's crew. The client may fire it whenever it likes: it is idempotent by construction, since
-  // a vehicle that already has a crew row is vetoed rather than merged into.
-  router.post(
-    '/seed',
-    authenticate,
-    authorize('operationsCrew.plan'),
-    validate({ body: SeedOperationsCrewFromStandingSchema }),
-    asyncHandler(seedCrewFromStanding),
   );
 
   // The pool the board drags from. Read behind `operationsCrew.view` — seeing who is available is

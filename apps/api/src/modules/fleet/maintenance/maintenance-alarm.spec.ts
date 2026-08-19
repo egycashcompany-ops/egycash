@@ -42,3 +42,43 @@ describe('computeAlarm (§4.4 — derived, guarded)', () => {
     expect(computeAlarm({ ...base, latestReadingDate: new Date('2026-05-01') }).level).toBe('none');
   });
 });
+
+// The thresholds are SETTINGS, and the odometer registry now colours a column with them. These
+// pin that the settings are what decide — the same inputs land on a different level when an
+// administrator moves the thresholds, and nothing in the arithmetic is fixed to a number.
+describe('the thresholds come from settings, not from the code', () => {
+  // 5,000 km interval, 4,000 km driven since the service — the shape the odometer column shows.
+  const driven = { ...base, intervalKm: 5000, latestReading: 120_000, baselineCounter: 116_000 };
+
+  it('the SAME distance lands on a different level when the thresholds move', () => {
+    // remaining = 5000 − 4000 = 1000.
+    expect(computeAlarm({ ...driven, yellowKm: 500, redKm: 100 }).level).toBe('none');
+    expect(computeAlarm({ ...driven, yellowKm: 1000, redKm: 300 }).level).toBe('yellow');
+    expect(computeAlarm({ ...driven, yellowKm: 2000, redKm: 1000 }).level).toBe('red');
+    // …and the distance itself never moves: only the verdict does.
+    expect(computeAlarm({ ...driven, yellowKm: 2000, redKm: 1000 }).sinceServiceKm).toBe(4000);
+  });
+
+  it('reaching the interval is red under the defaults — the cycle is spent', () => {
+    const spent = { ...driven, latestReading: 121_000 };
+    expect(computeAlarm(spent)).toEqual({ level: 'red', remainingKm: 0, sinceServiceKm: 5000 });
+  });
+
+  it('overrunning the interval stays red and reports the overrun, not a floor of zero', () => {
+    const over = { ...driven, latestReading: 121_300 };
+    expect(computeAlarm(over)).toEqual({ level: 'red', remainingKm: -300, sinceServiceKm: 5300 });
+  });
+
+  it('a service today with no distance since is zero driven, never an alarm', () => {
+    const fresh = { ...driven, latestReading: 116_000 };
+    expect(computeAlarm(fresh)).toEqual({
+      level: 'none',
+      remainingKm: 5000,
+      sinceServiceKm: 0,
+    });
+  });
+
+  it('red wins when the two thresholds meet, so a level is never ambiguous', () => {
+    expect(computeAlarm({ ...driven, yellowKm: 1000, redKm: 1000 }).level).toBe('red');
+  });
+});

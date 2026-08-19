@@ -10,13 +10,18 @@ import {
 import { authenticate } from '../../../platform/auth';
 import { authorize } from '../../../platform/rbac';
 import { asyncHandler, validate } from '../../../platform/web';
+import { multipartSingle } from '../license-image-upload';
 import {
   changeVehicleStatus,
   createVehicle,
   deleteVehicle,
+  deleteVehicleLicenseImage,
+  getDefaultBranch,
   getVehicle,
+  getVehicleLicenseImage,
   listVehicles,
   updateVehicle,
+  uploadVehicleLicenseImage,
 } from './vehicle.controller';
 
 const IdParamSchema = z.object({ id: objectId() }).strict();
@@ -29,6 +34,13 @@ export const buildFleetVehiclesRouter = (): Router => {
     authorize('fleetVehicle.view'),
     validate({ query: ListFleetVehiclesQuerySchema }),
     asyncHandler(listVehicles),
+  );
+  // Declared before '/:id' so the literal path wins over the parameter.
+  router.get(
+    '/default-branch',
+    authenticate,
+    authorize('fleetVehicle.view'),
+    asyncHandler(getDefaultBranch),
   );
   router.get(
     '/:id',
@@ -64,6 +76,30 @@ export const buildFleetVehiclesRouter = (): Router => {
     authorize('fleetVehicle.delete'),
     validate({ params: IdParamSchema }),
     asyncHandler(deleteVehicle),
+  );
+  // The license image rides on the VEHICLE's own grants (§13): whoever may edit a vehicle may
+  // manage its license scan, and whoever may view one may see it. No separate permission.
+  router.get(
+    '/:id/license-image',
+    authenticate,
+    authorize('fleetVehicle.view'),
+    validate({ params: IdParamSchema }),
+    asyncHandler(getVehicleLicenseImage),
+  );
+  router.post(
+    '/:id/license-image',
+    authenticate,
+    authorize('fleetVehicle.edit'),
+    multipartSingle(),
+    validate({ params: IdParamSchema }),
+    asyncHandler(uploadVehicleLicenseImage),
+  );
+  router.delete(
+    '/:id/license-image',
+    authenticate,
+    authorize('fleetVehicle.edit'),
+    validate({ params: IdParamSchema }),
+    asyncHandler(deleteVehicleLicenseImage),
   );
   return router;
 };

@@ -13,6 +13,7 @@ import { useEffect, useState } from 'react';
 import { type ItMaintenanceOrderDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { Dialog } from '../../../shared/ui/Dialog';
+import { MoneyInput } from '../../../shared/ui/MoneyInput';
 import { Button } from '../../../shared/ui/Button';
 import { Field, Input, Textarea } from '../../../shared/ui/form';
 import { CloseIcon, PlusIcon } from '../../../shared/ui/icons';
@@ -305,14 +306,7 @@ export const CompleteMaintenanceOrderDialog = ({
           <Textarea rows={3} value={summary} onChange={(e) => setSummary(e.target.value)} />
         </Field>
         <Field label={t('it.maintenance.fields.cost')} hint={t('it.maintenance.costHint')}>
-          <Input
-            type="number"
-            min="0"
-            step="0.01"
-            value={cost}
-            onChange={(e) => setCost(e.target.value)}
-            dir="ltr"
-          />
+          <MoneyInput value={cost} onChange={(next) => setCost(next)} />
         </Field>
 
         <div className="space-y-2">

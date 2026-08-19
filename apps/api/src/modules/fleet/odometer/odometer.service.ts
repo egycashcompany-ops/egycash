@@ -20,6 +20,7 @@ import { emit } from '../../../platform/kernel/event-bus';
 import { unitOfWork } from '../../../platform/kernel/unit-of-work';
 import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
 import { isVehicleWritable } from '../vehicles/vehicle-status';
+import { computeAlarms } from '../maintenance/maintenance-alarm';
 import { fleetOdometerRepository } from './odometer.repository';
 import { type FleetOdometerLogDoc } from './odometer.model';
 
@@ -34,9 +35,24 @@ interface RecordOutcome {
   code: string;
 }
 
+/**
+ * A log and the registry's code for its vehicle. Every screen that shows a reading shows the code
+ * beside it, and the client cannot resolve one for a car outside the page of the registry it
+ * happens to hold — so the code travels with the row, as it already does on the roster board.
+ */
+export interface OdometerLogWithCode {
+  doc: FleetOdometerLogDoc;
+  vehicleCode: string | null;
+}
+
+/** A page of logs plus the codes for exactly the vehicles ON that page — one lookup, not one per row. */
+export type OdometerLogPage = Paginated<FleetOdometerLogDoc> & {
+  codes: ReadonlyMap<string, string>;
+};
+
 class FleetOdometerService {
   /** §4.3 — one reading closes the open period and opens the next, atomically. */
-  async record(input: RecordFleetOdometer, by: string): Promise<FleetOdometerLogDoc> {
+  async record(input: RecordFleetOdometer, by: string): Promise<OdometerLogWithCode> {
     const vehicle = await fleetVehicleRepository.getById(input.vehicleId);
     if (!isVehicleWritable(vehicle.status)) {
       throw new ConflictError('a disposed vehicle records no readings');
@@ -96,7 +112,7 @@ class FleetOdometerService {
       outReading: outcome.created.outReading,
       closedKm: outcome.closed?.km ?? null,
     });
-    return outcome.created;
+    return { doc: outcome.created, vehicleCode: outcome.code };
   }
 
   /** H2's fate — the server, not the client, says what reading is expected next. */
@@ -106,14 +122,55 @@ class FleetOdometerService {
     return Math.max(latest.outReading, latest.inReading ?? latest.outReading);
   }
 
-  async list(query: ListFleetOdometerQuery): Promise<Paginated<FleetOdometerLogDoc>> {
-    return fleetOdometerRepository.listLogs({
-      filter: fleetOdometerRepository.logFilter(query),
+  /**
+   * The filtered page.
+   *
+   * Two of the filters name something the odometer collection does not store, so they are
+   * RESOLVED to vehicle ids here — where the vehicle registry and the alarm projection are
+   * reachable — and the repository stays a query over its own documents:
+   *
+   *   • `vehicleCodes` — the code is what the registry calls a car and what a shared link should
+   *     read as; a code that matches nothing narrows to nothing.
+   *   • `alerts` — the maintenance level is DERIVED per vehicle (FR-3) from settings the admin
+   *     owns, so it is computed and then used to pick vehicles, never stored on a reading.
+   *
+   * When both are given the answer is their INTERSECTION, and an empty intersection returns an
+   * empty page. Dropping the filter there would answer a narrowed question with every reading in
+   * the system, which reads as "no matches were excluded" and is the one wrong answer available.
+   */
+  async list(query: ListFleetOdometerQuery): Promise<OdometerLogPage> {
+    let vehicleIds: string[] | undefined;
+
+    if (query.vehicleCodes !== undefined) {
+      const matched = await fleetVehicleRepository.list({
+        filter: { code: { $in: [...query.vehicleCodes] } },
+        page: 1,
+        pageSize: query.vehicleCodes.length,
+      });
+      vehicleIds = matched.items.map((vehicle) => String(vehicle._id));
+    }
+
+    if (query.alerts !== undefined) {
+      const wanted = new Set<string>(query.alerts);
+      const alarms = await computeAlarms();
+      const byLevel = alarms.filter((a) => wanted.has(a.level)).map((a) => a.vehicleId);
+      vehicleIds =
+        vehicleIds === undefined ? byLevel : vehicleIds.filter((id) => byLevel.includes(id));
+    }
+
+    const page = await fleetOdometerRepository.listLogs({
+      filter: fleetOdometerRepository.logFilter({ ...query, vehicleIds }),
       page: query.page,
       pageSize: query.pageSize,
       sortBy: query.sortBy,
       sortDir: query.sortDir,
     });
+    // The codes for the vehicles ON this page, in one query — bounded by the page, never by how
+    // many vehicles the registry holds.
+    const codes = await fleetVehicleRepository.codesByIds([
+      ...new Set(page.items.map((item) => String(item.vehicleId))),
+    ]);
+    return { ...page, codes };
   }
 
   /**
@@ -123,7 +180,7 @@ class FleetOdometerService {
    *   - correcting `inReading` (a closed entry) also rewrites the next entry's `outReading`;
    * and the corrected values must keep the whole chain ordered, or the correction is refused.
    */
-  async correct(id: string, input: CorrectFleetOdometer, by: string): Promise<FleetOdometerLogDoc> {
+  async correct(id: string, input: CorrectFleetOdometer, by: string): Promise<OdometerLogWithCode> {
     const changedFields: { field: string; old: string | null; new: string | null }[] = [];
 
     const { updated, vehicleId } = await unitOfWork(async (session) => {
@@ -227,7 +284,10 @@ class FleetOdometerService {
         new: change.new,
       });
     }
-    return updated;
+    return {
+      doc: updated,
+      vehicleCode: (await fleetVehicleRepository.codesByIds([vehicleId])).get(vehicleId) ?? null,
+    };
   }
 }
 

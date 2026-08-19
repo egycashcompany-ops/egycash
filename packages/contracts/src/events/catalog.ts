@@ -148,6 +148,7 @@ import {
   type FleetEventName,
   FleetAccidentPayloadV1,
   FleetAssignmentChangedPayloadV1,
+  FleetDriverLicenseImagePayloadV1,
   FleetGrievanceAppliedPayloadV1,
   FleetLicenseExpiryPayloadV1,
   FleetMaintenanceAlarmPayloadV1,
@@ -157,6 +158,7 @@ import {
   FleetRosterPlannedPayloadV1,
   FleetUnavailabilityPayloadV1,
   FleetVehicleEventPayloadV1,
+  FleetVehicleLicenseImagePayloadV1,
   FleetVehicleStatusChangedPayloadV1,
   FleetViolationRecordedPayloadV1,
 } from '../modules/fleet.js';
@@ -181,6 +183,19 @@ import {
   ItLicenseExpiredPayloadV1,
   ItLicenseSeatsExceededPayloadV1,
 } from '../modules/it.js';
+import {
+  OperationsEvents,
+  type OperationsEventName,
+  OperationsCrewAssignmentChangedPayloadV1,
+  OperationsCrewPlannedPayloadV1,
+  OperationsStandingCrewChangedPayloadV1,
+  OperationsCustodyEventPayloadV1,
+  OperationsDayEventPayloadV1,
+  OperationsShipmentAssignmentPayloadV1,
+  OperationsShipmentEventPayloadV1,
+  OperationsShipmentExecutionPayloadV1,
+  OperationsShipmentReorderedPayloadV1,
+} from '../modules/operations.js';
 
 // ── The shape a consumer sees ───────────────────────────────────────────────
 
@@ -582,6 +597,7 @@ export const EVENT_MODULE_NAMES: Readonly<Record<string, LocalizedString>> = {
   automation: { en: 'Automation', ar: 'الأتمتة' },
   fleet: { en: 'Fleet', ar: 'الحركة' },
   it: { en: 'IT', ar: 'تقنية المعلومات' },
+  operations: { en: 'Operations', ar: 'العمليات' },
 };
 
 export const EVENT_ENTITY_NAMES: Readonly<Record<string, LocalizedString>> = {
@@ -621,7 +637,14 @@ export const EVENT_ENTITY_NAMES: Readonly<Record<string, LocalizedString>> = {
   maintenance: { en: 'Maintenance visit', ar: 'زيارة صيانة' },
   maintenanceAlarm: { en: 'Maintenance alarm', ar: 'إنذار صيانة' },
   vehicleLicense: { en: 'Vehicle license', ar: 'رخصة سيارة' },
+  // NOT `vehicleLicense` — that entity is the license's EXPIRY DATE (the two sweep events above).
+  // The scanned document is a different subject with a different lifecycle, so it gets its own
+  // entity rather than borrowing one, exactly as the §17 naming note requires.
+  vehicleLicenseImage: { en: 'Vehicle license image', ar: 'صورة رخصة السيارة' },
   driverLicense: { en: 'Driving license', ar: 'رخصة قيادة' },
+  // The same distinction on the driver's side: `driverLicense` is the EXPIRY DATE the sweep
+  // announces; the scanned document is a separate subject with its own upload/withdraw lifecycle.
+  driverLicenseImage: { en: 'Driving license image', ar: 'صورة رخصة القيادة' },
   roster: { en: 'Duty roster', ar: 'تعيين اليوم' },
   assignment: { en: 'Duty assignment', ar: 'تكليف' },
   driverUnavailability: { en: 'Driver unavailability', ar: 'عدم إتاحة سائق' },
@@ -640,6 +663,15 @@ export const EVENT_ENTITY_NAMES: Readonly<Record<string, LocalizedString>> = {
   // Bare `license` is free: Fleet's two are `vehicleLicense` and `driverLicense`, and neither
   // means a software entitlement.
   license: { en: 'Software license', ar: 'ترخيص برمجي' },
+
+  // operations (OP-2/OP-3): the cash shipment, the operating day, and the cash crew.
+  shipment: { en: 'Shipment', ar: 'شحنة' },
+  day: { en: 'Operating day', ar: 'يوم التشغيل' },
+  crew: { en: 'Crew', ar: 'الطاقم' },
+  crewAssignment: { en: 'Crew assignment', ar: 'تعيين طاقم' },
+  standingCrew: { en: 'Standing crew', ar: 'الطاقم الثابت' },
+  custody: { en: 'Vault custody', ar: 'عهدة الخزينة' },
+  shipmentAssignment: { en: 'Shipment assignment', ar: 'تعيين شحنة' },
 };
 
 export const EVENT_ACTION_NAMES: Readonly<Record<string, LocalizedString>> = {
@@ -740,6 +772,15 @@ export const EVENT_ACTION_NAMES: Readonly<Record<string, LocalizedString>> = {
   // it
   registered: { en: 'registered', ar: 'تسجيل' },
   assigned: { en: 'assigned', ar: 'تسليم' },
+  // operations (OP-4): the vault hand-offs and the secured dispatch.
+  received: { en: 'received', ar: 'استلام' },
+  released: { en: 'released', ar: 'صرف' },
+  dispatched: { en: 'dispatched', ar: 'خروج' },
+  reordered: { en: 'reordered', ar: 'إعادة ترتيب' },
+  // operations (OP-7): the captain's execution steps. `started` and `completed` are already in this
+  // vocabulary and mean exactly what execution means by them — reused, not duplicated.
+  pickedUp: { en: 'picked up', ar: 'استلام من المصدر' },
+  delivered: { en: 'delivered', ar: 'توصيل' },
   disposed: { en: 'disposed', ar: 'استبعاد' },
   // `opened` is already defined above (recruitment uses it) — one entry serves both modules,
   // which is the point of a shared action vocabulary.
@@ -839,6 +880,10 @@ export const EVENT_LIFECYCLE: Readonly<
   // FL-2 `fleet.vehicle.*`; FL-3 `fleet.driverUnavailability.*`; FL-4 odometer, maintenance,
   // maintenanceAlarm and both license surfaces; FL-5 roster + assignment; FL-6 accident +
   // violation. All 22 fleet events are stable — the module's automation surface is complete.
+  // The catalogs slice added the two `fleet.vehicleLicenseImage.*` facts, both published by the
+  // vehicle service at their commit points, so both are stable on arrival — 24 in total. The
+  // drivers slice added the matching `fleet.driverLicenseImage.*` pair, published by the
+  // driver-profile service at its commit points — stable on arrival too, 26 in total.
 };
 
 /**
@@ -1115,6 +1160,10 @@ export const FLEET_EVENT_PAYLOAD_SCHEMAS: Readonly<Record<FleetEventName, z.ZodT
   [FleetEvents.VehicleCreated]: FleetVehicleEventPayloadV1,
   [FleetEvents.VehicleUpdated]: FleetVehicleEventPayloadV1,
   [FleetEvents.VehicleStatusChanged]: FleetVehicleStatusChangedPayloadV1,
+  [FleetEvents.VehicleLicenseImageUploaded]: FleetVehicleLicenseImagePayloadV1,
+  [FleetEvents.VehicleLicenseImageDeleted]: FleetVehicleLicenseImagePayloadV1,
+  [FleetEvents.DriverLicenseImageUploaded]: FleetDriverLicenseImagePayloadV1,
+  [FleetEvents.DriverLicenseImageDeleted]: FleetDriverLicenseImagePayloadV1,
   [FleetEvents.OdometerRecorded]: FleetOdometerRecordedPayloadV1,
   [FleetEvents.OdometerCorrected]: FleetOdometerCorrectedPayloadV1,
   [FleetEvents.MaintenanceCheckedIn]: FleetMaintenancePayloadV1,
@@ -1169,6 +1218,40 @@ export const IT_EVENT_SOURCE: EventCatalogSource = {
   schemas: IT_EVENT_PAYLOAD_SCHEMAS,
 };
 
+// OP-2 registered the shipment lifecycle facts. Later operations slices (vault custody, crew
+// assignment, captain execution) extend this map with theirs.
+export const OPERATIONS_EVENT_PAYLOAD_SCHEMAS: Readonly<
+  Record<OperationsEventName, z.ZodTypeAny | null>
+> = {
+  [OperationsEvents.ShipmentCreated]: OperationsShipmentEventPayloadV1,
+  [OperationsEvents.ShipmentUpdated]: OperationsShipmentEventPayloadV1,
+  [OperationsEvents.ShipmentCompleted]: OperationsShipmentEventPayloadV1,
+  [OperationsEvents.ShipmentReopened]: OperationsShipmentEventPayloadV1,
+  [OperationsEvents.ShipmentDeleted]: OperationsShipmentEventPayloadV1,
+  [OperationsEvents.DayCreated]: OperationsDayEventPayloadV1,
+  [OperationsEvents.DayOpened]: OperationsDayEventPayloadV1,
+  [OperationsEvents.DayClosed]: OperationsDayEventPayloadV1,
+  [OperationsEvents.CrewPlanned]: OperationsCrewPlannedPayloadV1,
+  [OperationsEvents.CrewAssignmentChanged]: OperationsCrewAssignmentChangedPayloadV1,
+  [OperationsEvents.StandingCrewChanged]: OperationsStandingCrewChangedPayloadV1,
+  [OperationsEvents.VaultReceived]: OperationsCustodyEventPayloadV1,
+  [OperationsEvents.VaultReleased]: OperationsCustodyEventPayloadV1,
+  [OperationsEvents.SecuredLegAssigned]: OperationsShipmentAssignmentPayloadV1,
+  [OperationsEvents.SecuredDispatched]: OperationsShipmentEventPayloadV1,
+  [OperationsEvents.ShipmentOrderReordered]: OperationsShipmentReorderedPayloadV1,
+  // OP-7 — the four captain execution facts. One payload shape for all four: they differ only in
+  // which step they report, and `from`/`to` already carry that.
+  [OperationsEvents.ExecutionStarted]: OperationsShipmentExecutionPayloadV1,
+  [OperationsEvents.ExecutionPickupConfirmed]: OperationsShipmentExecutionPayloadV1,
+  [OperationsEvents.ExecutionDeliveryConfirmed]: OperationsShipmentExecutionPayloadV1,
+  [OperationsEvents.ExecutionCompleted]: OperationsShipmentExecutionPayloadV1,
+};
+
+export const OPERATIONS_EVENT_SOURCE: EventCatalogSource = {
+  moduleId: 'operations',
+  schemas: OPERATIONS_EVENT_PAYLOAD_SCHEMAS,
+};
+
 // ── The catalogue ───────────────────────────────────────────────────────────
 
 export const EVENT_CATALOG: readonly EventCatalogEntry[] = buildEventCatalog(
@@ -1176,6 +1259,7 @@ export const EVENT_CATALOG: readonly EventCatalogEntry[] = buildEventCatalog(
   HR_EVENT_SOURCE,
   FLEET_EVENT_SOURCE,
   IT_EVENT_SOURCE,
+  OPERATIONS_EVENT_SOURCE,
 );
 
 const CATALOG_BY_NAME: ReadonlyMap<string, EventCatalogEntry> = new Map(

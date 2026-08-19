@@ -14,6 +14,7 @@ import { useT } from '../../../../../platform/localization/useT';
 import { useCan } from '../../../../../platform/rbac/Can';
 import { useAppSelector } from '../../../../../store';
 import { Button } from '../../../../../shared/ui/Button';
+import { MoneyInput } from '../../../../../shared/ui/MoneyInput';
 import { Field, Input, Select, Textarea, FormActions } from '../../../../../shared/ui/form';
 import { PlusIcon, TrashIcon } from '../../../../../shared/ui/icons';
 import { localized } from '../../../../../shared/lib/format';
@@ -166,7 +167,7 @@ export const OfferTermsForm = ({
           </Select>
         </Field>
         <Field label={t('offers.form.salary')} hint={t('offers.form.optional')}>
-          <Input type="number" min={0} value={salaryAmount} onChange={(e) => setSalaryAmount(e.target.value)} dir="ltr" />
+          <MoneyInput value={salaryAmount} onChange={(next) => setSalaryAmount(next)} />
         </Field>
         <Field label={t('offers.form.currency')}>
           <Input value={salaryCurrency} onChange={(e) => setSalaryCurrency(e.target.value)} maxLength={3} dir="ltr" />
@@ -207,14 +208,11 @@ export const OfferTermsForm = ({
               onChange={(e) => setAllowance(i, { name: e.target.value })}
               placeholder={t('offers.form.allowanceName')}
             />
-            <Input
-              type="number"
-              min={0}
+            <MoneyInput
               className="w-28"
               value={a.amount}
-              onChange={(e) => setAllowance(i, { amount: e.target.value })}
+              onChange={(next) => setAllowance(i, { amount: next })}
               placeholder={t('offers.form.amount')}
-              dir="ltr"
             />
             <Input
               className="w-20"

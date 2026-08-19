@@ -10,6 +10,8 @@
 //   leave    → false (best-effort read: availability degrades to fleet-owned records alone,
 //              which is exactly what `fleet.availability.useHrLeave=false` means)
 
+import { type AttendanceDayStatus } from '@ecms/contracts';
+
 export interface DirectoryEmployee {
   employeeId: string;
   code: string;
@@ -18,6 +20,18 @@ export interface DirectoryEmployee {
   status: 'probation' | 'active' | 'onLeave' | 'suspended' | 'exited';
   branchId: string | null;
   departmentId: string | null;
+}
+
+/**
+ * One employee's answer for one day, as attendance already computed it. Deliberately a SUBSET of
+ * HR's day record: a consumer of this seam gets the status and the covering-leave flag, not the
+ * punches, the hours or the regularization trail — those are HR's screens to show.
+ */
+export interface DirectoryAttendanceDay {
+  employeeId: string;
+  status: AttendanceDayStatus;
+  /** True when the day is covered by an approved/active leave request. */
+  onLeave: boolean;
 }
 
 type EmployeeLookup = (employeeId: string) => Promise<DirectoryEmployee | null>;
@@ -33,10 +47,26 @@ type EmployeeBatchLookup = (
   employeeIds: readonly string[],
 ) => Promise<Map<string, DirectoryEmployee>>;
 type LeaveLookup = (employeeId: string, date: Date) => Promise<boolean>;
+/**
+ * A day's attendance answer for a SET of employees. Batch by design: the consumers are boards
+ * that ask about a whole crew at once, and a per-employee call would make one screen N queries.
+ *
+ * Returns only the employees HR actually has a day record for. An ABSENT key is not "present" —
+ * it is "attendance has not answered", which is a different thing and the caller must show it as
+ * such rather than inventing a status.
+ */
+type AttendanceDayLookup = (
+  employeeIds: string[],
+  date: Date,
+) => Promise<Map<string, DirectoryAttendanceDay>>;
+/** The self lookup: which employee IS this login? Owned by HR, consumed by self-service surfaces. */
+type SelfEmployeeLookup = (userId: string) => Promise<DirectoryEmployee | null>;
 
 let employeeLookup: EmployeeLookup | null = null;
 let employeeBatchLookup: EmployeeBatchLookup | null = null;
 let leaveLookup: LeaveLookup | null = null;
+let attendanceDayLookup: AttendanceDayLookup | null = null;
+let selfEmployeeLookup: SelfEmployeeLookup | null = null;
 
 /** Idempotent — the last registration wins, so a test can install a fake over the real one. */
 export const registerEmployeeLookup = (lookup: EmployeeLookup): void => {
@@ -49,6 +79,14 @@ export const registerEmployeeBatchLookup = (lookup: EmployeeBatchLookup): void =
 
 export const registerLeaveLookup = (lookup: LeaveLookup): void => {
   leaveLookup = lookup;
+};
+
+export const registerAttendanceDayLookup = (lookup: AttendanceDayLookup): void => {
+  attendanceDayLookup = lookup;
+};
+
+export const registerSelfEmployeeLookup = (lookup: SelfEmployeeLookup): void => {
+  selfEmployeeLookup = lookup;
 };
 
 export const getDirectoryEmployee = async (
@@ -66,6 +104,34 @@ export const getDirectoryEmployees = async (
   employeeIds: readonly string[],
 ): Promise<Map<string, DirectoryEmployee>> =>
   employeeBatchLookup === null ? new Map() : employeeBatchLookup(employeeIds);
+
+/**
+ * The employee behind a login, or null when the account is not linked to one.
+ *
+ * Fail-closed like `getDirectoryEmployee`: with no HR registered, a self-service surface can
+ * identify nobody and therefore authorizes nobody — which is the safe direction for a screen whose
+ * whole authorization model is "you may see your own work and only your own".
+ */
+export const getSelfDirectoryEmployee = async (
+  userId: string,
+): Promise<DirectoryEmployee | null> =>
+  selfEmployeeLookup === null ? null : selfEmployeeLookup(userId);
+
+/**
+ * A day's attendance for a set of employees, or an EMPTY map when no attendance source is
+ * registered.
+ *
+ * Empty rather than throwing, and empty rather than fabricating "present": every consumer of this
+ * is a read-only overlay, so a deployment without attendance degrades to showing nothing known —
+ * which is honest — instead of degrading to showing everyone as fine, which is not.
+ */
+export const getDirectoryAttendanceDay = async (
+  employeeIds: string[],
+  date: Date,
+): Promise<Map<string, DirectoryAttendanceDay>> =>
+  attendanceDayLookup === null || employeeIds.length === 0
+    ? new Map()
+    : attendanceDayLookup(employeeIds, date);
 
 /** True when an APPROVED or ACTIVE leave covers the date — pending requests are not yet facts. */
 export const isOnApprovedLeave = async (employeeId: string, date: Date): Promise<boolean> =>

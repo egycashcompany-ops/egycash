@@ -62,6 +62,53 @@ export const ErrorCodes = {
   FILE_BLOCKED: 'FILE_BLOCKED',
   FILE_SIGNATURE_INVALID: 'FILE_SIGNATURE_INVALID',
   FILE_CATEGORY_INACTIVE: 'FILE_CATEGORY_INACTIVE',
+
+  // operations (cash transfer — design docs/12-planning/operations-module-design.md)
+  /** A normalized ref (string→ObjectId NORMALIZE) points at a missing or inactive bank. */
+  OPERATIONS_UNKNOWN_BANK: 'OPERATIONS_UNKNOWN_BANK',
+  OPERATIONS_UNKNOWN_BRANCH: 'OPERATIONS_UNKNOWN_BRANCH',
+  OPERATIONS_UNKNOWN_CURRENCY: 'OPERATIONS_UNKNOWN_CURRENCY',
+  /** The legacy client-side branch-per-bank picker filter, made a domain rule (main_ops.ejs:477). */
+  OPERATIONS_BRANCH_BANK_MISMATCH: 'OPERATIONS_BRANCH_BANK_MISMATCH',
+  /** Legacy parity: a daily shipment hardcodes del_date "" (contad_app.js:353). */
+  OPERATIONS_DAILY_HAS_NO_DELIVERY_DATE: 'OPERATIONS_DAILY_HAS_NO_DELIVERY_DATE',
+  /** Q30 NORMALIZE: transitions follow the observed lifecycle, not the unguarded legacy toggle. */
+  OPERATIONS_INVALID_SHIPMENT_TRANSITION: 'OPERATIONS_INVALID_SHIPMENT_TRANSITION',
+  /** The operating day walks planning → open → closed, forward only (design §16.1). */
+  OPERATIONS_INVALID_DAY_TRANSITION: 'OPERATIONS_INVALID_DAY_TRANSITION',
+  /**
+   * §9.4 anchor: crew is planned only for a vehicle on the Fleet roster for that date — the
+   * normalized form of the legacy car_lock gate (tashghela listed only car_lock'd vehicles,
+   * contad_app.js:2255).
+   */
+  OPERATIONS_FLEET_DUTY_REQUIRED: 'OPERATIONS_FLEET_DUTY_REQUIRED',
+  /** Q2 NORMALIZE — the dual-control rule the legacy schema described and never enforced. */
+  OPERATIONS_CUSTODY_DUAL_CONTROL_REQUIRED: 'OPERATIONS_CUSTODY_DUAL_CONTROL_REQUIRED',
+  OPERATIONS_CUSTODY_NOT_HELD: 'OPERATIONS_CUSTODY_NOT_HELD',
+  OPERATIONS_NOT_A_SECURED_SHIPMENT: 'OPERATIONS_NOT_A_SECURED_SHIPMENT',
+  /** The crew row must sit on the shipment's own delivery day. */
+  OPERATIONS_CREW_DAY_MISMATCH: 'OPERATIONS_CREW_DAY_MISMATCH',
+  OPERATIONS_CREW_CAPTAIN_MISMATCH: 'OPERATIONS_CREW_CAPTAIN_MISMATCH',
+  /** Dispatching without an assigned leg 2 is what let legacy complete with a blank leader2. */
+  OPERATIONS_DELIVERY_LEG_REQUIRED: 'OPERATIONS_DELIVERY_LEG_REQUIRED',
+  /** A reorder named an assignment outside the captain-day-leg it claims to order. */
+  OPERATIONS_ASSIGNMENT_NOT_IN_SET: 'OPERATIONS_ASSIGNMENT_NOT_IN_SET',
+  /** A reorder omitted assignments — accepting it would strand them at stale positions. */
+  OPERATIONS_INCOMPLETE_ORDER: 'OPERATIONS_INCOMPLETE_ORDER',
+
+  // ── Captain execution (OP-7, NEW — no legacy counterpart) ─────────────────────────────────────
+  /** The action is not legal from the stop's current execution state (start/pickup/deliver/complete). */
+  OPERATIONS_INVALID_EXECUTION_TRANSITION: 'OPERATIONS_INVALID_EXECUTION_TRANSITION',
+  /** The sequential lock: an earlier stop on this captain's route is not finished yet. */
+  OPERATIONS_EXECUTION_OUT_OF_SEQUENCE: 'OPERATIONS_EXECUTION_OUT_OF_SEQUENCE',
+  /** Nothing left to execute here — the stop is already settled. */
+  OPERATIONS_EXECUTION_ALREADY_SETTLED: 'OPERATIONS_EXECUTION_ALREADY_SETTLED',
+  /** Someone else moved this stop first; the transition's precondition no longer holds. */
+  OPERATIONS_EXECUTION_CONFLICT: 'OPERATIONS_EXECUTION_CONFLICT',
+
+  // ── Crew roster (B3) ──────────────────────────────────────────────────────────────────────────
+  /** The employee holds no operations requirements row, so is not on the crew roster. */
+  OPERATIONS_UNKNOWN_CREW_MEMBER: 'OPERATIONS_UNKNOWN_CREW_MEMBER',
 } as const;
 
 export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];

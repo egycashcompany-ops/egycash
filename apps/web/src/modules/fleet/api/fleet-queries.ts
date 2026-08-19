@@ -12,6 +12,7 @@ import {
   type CreateFleetAccident,
   type CreateFleetCatalogItem,
   type CreateFleetDriverProfile,
+  type FleetDriverProfileDto,
   type CreateFleetVehicleType,
   type FleetCatalogItemDto,
   type FleetVehicleTypeDto,
@@ -101,11 +102,34 @@ export const useChangeVehicleStatus = () =>
   );
 export const useDeleteVehicle = () => useVehicleMutation((id: string) => api.deleteVehicle(id));
 
-export const useVehicleTypes = (params: FleetListParams = { pageSize: 100 }) =>
+/**
+ * The branch the create form preselects. A SERVER fact (resolved by name from live branch data),
+ * cached for the session because branches change far less often than the form is opened.
+ */
+export const useDefaultVehicleBranch = (enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'vehicles', { defaultBranch: true }),
+    queryFn: () => api.getDefaultVehicleBranch(),
+    staleTime: 300_000,
+    enabled,
+  });
+
+// License-image writes go through the same vehicle mutation seam as every other vehicle write:
+// both endpoints answer with the updated vehicle, so the list repaints from the invalidated
+// subtree and the profile from the seeded detail cache — no full refresh anywhere.
+export const useUploadVehicleLicenseImage = () =>
+  useVehicleMutation(({ id, file }: { id: string; file: File }) =>
+    api.uploadVehicleLicenseImage(id, file),
+  );
+export const useDeleteVehicleLicenseImage = () =>
+  useVehicleMutation((id: string) => api.deleteVehicleLicenseImage(id));
+
+export const useVehicleTypes = (params: FleetListParams = { pageSize: 100 }, enabled = true) =>
   useQuery({
     queryKey: listKey(MODULE, 'vehicleTypes', params),
     queryFn: () => api.listVehicleTypes(params),
     staleTime: 60_000,
+    enabled,
   });
 
 export const useFleetCatalog = (kind: string) =>
@@ -205,6 +229,28 @@ export const useUpdateDriverProfile = () => {
   });
 };
 
+/**
+ * Licence-image writes answer with the updated profile, so the list repaints from the invalidated
+ * subtree and the profile page from the seeded detail cache — no full refresh anywhere.
+ */
+const useDriverImageMutation = <TVars>(fn: (vars: TVars) => Promise<FleetDriverProfileDto>) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: (doc) => {
+      qc.setQueryData(detailKey(MODULE, 'drivers', doc.id), doc);
+      void qc.invalidateQueries({ queryKey: fleetKeys.drivers });
+    },
+  });
+};
+
+export const useUploadDriverLicenseImage = () =>
+  useDriverImageMutation(({ id, file }: { id: string; file: File }) =>
+    api.uploadDriverLicenseImage(id, file),
+  );
+export const useDeleteDriverLicenseImage = () =>
+  useDriverImageMutation((id: string) => api.deleteDriverLicenseImage(id));
+
 export const useRecordUnavailability = () => {
   const qc = useQueryClient();
   return useMutation({
@@ -229,11 +275,12 @@ export const useCancelUnavailability = () => {
     onSuccess: () => void qc.invalidateQueries({ queryKey: fleetKeys.availability }),
   });
 };
-export const useDrivers = (params: FleetListParams) =>
+export const useDrivers = (params: FleetListParams, enabled = true) =>
   useQuery({
     queryKey: listKey(MODULE, 'drivers', params),
     queryFn: () => api.listDrivers(params),
     placeholderData: (prev) => prev,
+    enabled,
   });
 
 export const useDriver = (id: string) =>
@@ -252,11 +299,12 @@ export const useUnavailability = (params: FleetListParams, enabled = true) =>
   });
 
 // ── Odometer + maintenance ──────────────────────────────────────────────────
-export const useOdometerLogs = (params: FleetListParams) =>
+export const useOdometerLogs = (params: FleetListParams, enabled = true) =>
   useQuery({
     queryKey: listKey(MODULE, 'odometer', params),
     queryFn: () => api.listOdometerLogs(params),
     placeholderData: (prev) => prev,
+    enabled,
   });
 
 export const useExpectedReading = (vehicleId: string, enabled = true) =>

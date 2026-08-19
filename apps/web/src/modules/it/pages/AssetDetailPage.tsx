@@ -24,7 +24,7 @@ import { Button } from '../../../shared/ui/Button';
 import { Skeleton } from '../../../shared/ui/Skeleton';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
 import { EditIcon, QrIcon, ResetIcon, UsersIcon, TrashIcon, LinkIcon } from '../../../shared/ui/icons';
-import { formatDate, formatNumber, localized } from '../../../shared/lib/format';
+import { formatAmount, formatDate, localized } from '../../../shared/lib/format';
 import {
   useItAsset,
   useItAssetAssignments,
@@ -273,7 +273,7 @@ export const AssetDetailPage = (): JSX.Element => {
               <Fact
                 label={t('it.assets.fields.purchaseCost')}
                 value={
-                  asset.purchase?.cost == null ? null : formatNumber(asset.purchase.cost, locale)
+                  asset.purchase?.cost == null ? null : formatAmount(asset.purchase.cost, locale)
                 }
               />
               <Fact

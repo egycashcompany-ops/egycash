@@ -26,7 +26,14 @@ export const booleanQuery = () =>
  *
  * Empty means absent, not "match nothing": `?status=` is a filter the user has cleared.
  */
-export const listQuery = <T extends z.ZodTypeAny>(item: T) =>
+/**
+ * A comma-separated multi-value filter.
+ *
+ * `max` defaults to 50 — the size a human-authored filter reaches — and is raised only where a
+ * caller is machine-generating the list. A caller that raises it owes the reader a reason, because
+ * the cap is the difference between "your filter was applied" and "the first N of it were".
+ */
+export const listQuery = <T extends z.ZodTypeAny>(item: T, max = 50) =>
   z.preprocess(
     (raw) => {
       if (raw === undefined || raw === null) return undefined;
@@ -34,7 +41,7 @@ export const listQuery = <T extends z.ZodTypeAny>(item: T) =>
       const cleaned = parts.map((p) => String(p).trim()).filter((p) => p !== '');
       return cleaned.length === 0 ? undefined : cleaned;
     },
-    z.array(item).min(1).max(50).optional(),
+    z.array(item).min(1).max(max).optional(),
   );
 
 // ── Data scopes (ADR-004; ADR-015 org model; ADR-017 hierarchical scopes) ────

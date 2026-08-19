@@ -38,12 +38,16 @@ const NUMBER_KEYS = [
   FleetSettingKeys.DriverLicenseWarnDays,
 ] as const;
 
+/** Free-text settings. Only one today: the branch NAME the new-vehicle form preselects (§2.1). */
+const TEXT_KEYS = [FleetSettingKeys.DefaultBranchName] as const;
+
 const SETTING_LABELS: Record<string, string> = {
   [FleetSettingKeys.AlarmYellowKm]: 'fleet.settings.keys.alarmYellowKm',
   [FleetSettingKeys.AlarmRedKm]: 'fleet.settings.keys.alarmRedKm',
   [FleetSettingKeys.UseHrLeave]: 'fleet.settings.keys.useHrLeave',
   [FleetSettingKeys.VehicleLicenseWarnDays]: 'fleet.settings.keys.vehicleLicenseWarnDays',
   [FleetSettingKeys.DriverLicenseWarnDays]: 'fleet.settings.keys.driverLicenseWarnDays',
+  [FleetSettingKeys.DefaultBranchName]: 'fleet.settings.keys.defaultBranchName',
 };
 
 const FleetSettingsCard = ({ resolved }: { resolved: ResolvedSettingDto[] }): JSX.Element => {
@@ -54,26 +58,41 @@ const FleetSettingsCard = ({ resolved }: { resolved: ResolvedSettingDto[] }): JS
 
   const valueOf = (key: string): unknown => resolved.find((s) => s.key === key)?.value;
   const [numbers, setNumbers] = useState<Record<string, string>>({});
+  const [texts, setTexts] = useState<Record<string, string>>({});
   const [useHrLeave, setUseHrLeave] = useState(false);
   useEffect(() => {
     setNumbers(Object.fromEntries(NUMBER_KEYS.map((key) => [key, String(valueOf(key) ?? '')])));
+    setTexts(Object.fromEntries(TEXT_KEYS.map((key) => [key, String(valueOf(key) ?? '')])));
     setUseHrLeave(valueOf(FleetSettingKeys.UseHrLeave) === true);
   }, [resolved]);
 
-  const dirty = (key: string): boolean =>
-    key === FleetSettingKeys.UseHrLeave
-      ? useHrLeave !== (valueOf(key) === true)
-      : numbers[key] !== String(valueOf(key) ?? '');
+  const isText = (key: string): boolean => (TEXT_KEYS as readonly string[]).includes(key);
+  const dirty = (key: string): boolean => {
+    if (key === FleetSettingKeys.UseHrLeave) return useHrLeave !== (valueOf(key) === true);
+    if (isText(key)) return texts[key] !== String(valueOf(key) ?? '');
+    return numbers[key] !== String(valueOf(key) ?? '');
+  };
   const anyDirty = Object.keys(SETTING_LABELS).some(dirty);
-  const valid = NUMBER_KEYS.every(
-    (key) => Number.isInteger(Number(numbers[key])) && Number(numbers[key]) >= 0,
-  );
+  const valid =
+    NUMBER_KEYS.every(
+      (key) => Number.isInteger(Number(numbers[key])) && Number(numbers[key]) >= 0,
+    ) &&
+    // A blank default-branch name would resolve to nothing and silently disable the preselect.
+    TEXT_KEYS.every((key) => (texts[key] ?? '').trim() !== '');
 
   const save = async (): Promise<void> => {
     // Organization scope — one write per changed key; the server audits each.
     for (const key of NUMBER_KEYS) {
       if (dirty(key))
         await setSetting.mutateAsync({ key, scope: 'organization', value: Number(numbers[key]) });
+    }
+    for (const key of TEXT_KEYS) {
+      if (dirty(key))
+        await setSetting.mutateAsync({
+          key,
+          scope: 'organization',
+          value: (texts[key] ?? '').trim(),
+        });
     }
     if (dirty(FleetSettingKeys.UseHrLeave))
       await setSetting.mutateAsync({
@@ -103,6 +122,21 @@ const FleetSettingsCard = ({ resolved }: { resolved: ResolvedSettingDto[] }): JS
                   onChange={(e) => setNumbers((prev) => ({ ...prev, [key]: e.target.value }))}
                   disabled={!canEdit}
                   dir="ltr"
+                />
+              </Field>
+            ))}
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {TEXT_KEYS.map((key) => (
+              <Field
+                key={key}
+                label={t(SETTING_LABELS[key] ?? key)}
+                hint={t('fleet.settings.keys.defaultBranchNameHint')}
+              >
+                <Input
+                  value={texts[key] ?? ''}
+                  onChange={(e) => setTexts((prev) => ({ ...prev, [key]: e.target.value }))}
+                  disabled={!canEdit}
                 />
               </Field>
             ))}

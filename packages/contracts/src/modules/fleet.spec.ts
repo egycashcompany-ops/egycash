@@ -7,6 +7,8 @@ import {
   CreateFleetCatalogItemSchema,
   CreateFleetUnavailabilitySchema,
   FleetEvents,
+  ListFleetDriversQuerySchema,
+  ListFleetVehiclesQuerySchema,
   PlanFleetRosterSchema,
   RecordFleetOdometerSchema,
   RecordFleetVehicleViolationSchema,
@@ -108,6 +110,12 @@ describe('fleet contracts', () => {
       FleetEvents.VehicleCreated,
       FleetEvents.VehicleUpdated,
       FleetEvents.VehicleStatusChanged,
+      // Catalogs slice — both published by the vehicle service at its commit points.
+      FleetEvents.VehicleLicenseImageUploaded,
+      FleetEvents.VehicleLicenseImageDeleted,
+      // Drivers slice — both published by the driver-profile service at its commit points.
+      FleetEvents.DriverLicenseImageUploaded,
+      FleetEvents.DriverLicenseImageDeleted,
       FleetEvents.UnavailabilityRecorded,
       FleetEvents.UnavailabilityEnded,
       FleetEvents.OdometerRecorded,
@@ -133,5 +141,31 @@ describe('fleet contracts', () => {
       const expected = stable.has(name) ? undefined : 'planned';
       expect(EVENT_LIFECYCLE[name]?.status, name).toBe(expected);
     }
+  });
+});
+
+// The shared `listQuery` helper gained a `max` parameter for the drivers' `employeeIds`. These pin
+// that a REAL existing caller — one that passes only the item schema — kept the old cap, so the
+// widening cannot have leaked sideways into another endpoint's filter.
+describe('the multi-value filters kept their caps', () => {
+  const ids = (n: number): string =>
+    Array.from({ length: n }, (_, i) => `64b1f0dddddddddddd${String(i).padStart(6, '0')}`).join(
+      ',',
+    );
+
+  it('the vehicle registry still caps branchId at 50 — the default, untouched', () => {
+    expect(ListFleetVehiclesQuerySchema.parse({ branchId: ids(50) }).branchId).toHaveLength(50);
+    expect(() => ListFleetVehiclesQuerySchema.parse({ branchId: ids(51) })).toThrow();
+  });
+
+  it('only the drivers list carries the wider cap, and it is exactly one page', () => {
+    expect(ListFleetDriversQuerySchema.parse({ employeeIds: ids(100) }).employeeIds).toHaveLength(
+      100,
+    );
+    expect(() => ListFleetDriversQuerySchema.parse({ employeeIds: ids(101) })).toThrow();
+  });
+
+  it('employeeIds is a DRIVERS filter — the vehicle registry does not accept it', () => {
+    expect(() => ListFleetVehiclesQuerySchema.parse({ employeeIds: ids(1) })).toThrow();
   });
 });

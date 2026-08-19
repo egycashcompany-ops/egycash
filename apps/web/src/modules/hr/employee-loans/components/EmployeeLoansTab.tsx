@@ -23,6 +23,7 @@ import { useT } from '../../../../platform/localization/useT';
 import { useCan } from '../../../../platform/rbac/Can';
 import { useAppSelector } from '../../../../store';
 import { Badge, Button, DataTable, EmptyState, type Column } from '../../../../shared/ui';
+import { MoneyInput } from '../../../../shared/ui/MoneyInput';
 import { Card, CardBody, CardHeader } from '../../../../shared/ui/Card';
 import { Dialog } from '../../../../shared/ui/Dialog';
 import { Field, Input, Textarea, Select } from '../../../../shared/ui/form';
@@ -592,13 +593,7 @@ const AccelerateDialog = ({
           <Input type="month" value={period} onChange={(e) => setPeriod(e.target.value)} />
         </Field>
         <Field label={t('loans.extraAmount')} required>
-          <Input
-            type="number"
-            min="0"
-            step="0.01"
-            value={extraAmount}
-            onChange={(e) => setExtraAmount(e.target.value)}
-          />
+          <MoneyInput value={extraAmount} onChange={setExtraAmount} />
         </Field>
         <Field label={t('loans.reason')} required>
           <Textarea rows={2} maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} />

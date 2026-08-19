@@ -11,6 +11,7 @@ import { useEffect, useState } from 'react';
 import { type ItLicenseDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { Dialog } from '../../../shared/ui/Dialog';
+import { MoneyInput } from '../../../shared/ui/MoneyInput';
 import { Button } from '../../../shared/ui/Button';
 import { Field, Input, Textarea } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
@@ -176,14 +177,7 @@ export const LicenseDialog = ({
           <Input value={invoiceRef} onChange={(e) => setInvoiceRef(e.target.value)} dir="ltr" />
         </Field>
         <Field label={t('it.licenses.fields.cost')}>
-          <Input
-            type="number"
-            min="0"
-            step="0.01"
-            value={cost}
-            onChange={(e) => setCost(e.target.value)}
-            dir="ltr"
-          />
+          <MoneyInput value={cost} onChange={(next) => setCost(next)} />
         </Field>
         <div className="sm:col-span-2">
           <Field label={t('it.licenses.fields.notes')}>

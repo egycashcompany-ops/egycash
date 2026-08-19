@@ -3,6 +3,7 @@
 // data fetching/paging is the caller's (a feature api/ hook via TanStack Query).
 import { type ReactNode } from 'react';
 import { cn } from '../lib/cn';
+import { hasError } from '../lib/errors';
 import { Skeleton } from './Skeleton';
 import { ChevronIcon } from './icons';
 import { EmptyState } from './states/EmptyState';
@@ -12,7 +13,13 @@ import { type TableSelection } from './useTableSelection';
 export interface Column<T> {
   key: string;
   header: string;
-  render: (row: T) => ReactNode;
+  /**
+   * `index` is the row's position in THIS page, 0-based — a serial column turns it into a number
+   * a reader can call a row by. It is deliberately page-local: the table is handed one page and
+   * knows nothing about the paging around it, so a column that must count from the start of the
+   * whole list adds its own offset from the pagination meta.
+   */
+  render: (row: T, index: number) => ReactNode;
   sortable?: boolean;
   align?: 'start' | 'center' | 'end';
   className?: string;
@@ -29,6 +36,10 @@ export interface DataTableProps<T> {
   rows: T[];
   rowKey: (row: T) => string;
   loading?: boolean;
+  /**
+   * The thrown value, if the fetch failed. Pass a TanStack Query `error` straight through:
+   * `null` (its "no failure" value) and `undefined` both mean no error — see `hasError`.
+   */
   error?: unknown;
   onRetry?: () => void;
   empty?: ReactNode;
@@ -90,7 +101,7 @@ export const DataTable = <T,>({
   const someSelected = rows.some((r) => selected.has(rowKey(r)));
 
   const body = ((): ReactNode => {
-    if (error !== undefined && !loading) {
+    if (hasError(error) && !loading) {
       return (
         <tr>
           <td colSpan={colCount}>
@@ -122,7 +133,7 @@ export const DataTable = <T,>({
         </tr>
       );
     }
-    return rows.map((row) => {
+    return rows.map((row, index) => {
       const id = rowKey(row);
       const isSelected = selected.has(id);
       return (
@@ -164,7 +175,7 @@ export const DataTable = <T,>({
                 c.className,
               )}
             >
-              {c.render(row)}
+              {c.render(row, index)}
             </td>
           ))}
         </tr>

@@ -33,7 +33,9 @@ import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { translate } from '../../platform/localization/i18n';
 import { listKey } from '../../shared/lib/query-keys';
+import { formatNumber } from '../../shared/lib/format';
 import { OdometerPage } from './pages/OdometerPage';
+import { currentMonthRange } from './lib/odometer-range';
 import { RecordOdometerDialog } from './components/RecordOdometerDialog';
 
 // `Dialog` portals into `document.body`; the suite runs without a DOM. Rendering the portal's
@@ -46,7 +48,7 @@ vi.mock('react-dom', async () => {
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
-const page = <T,>(items: T[]) => ({
+const pageOf = <T,>(items: T[]) => ({
   items,
   meta: { page: 1, pageSize: 25, totalItems: items.length, totalPages: 1 },
 });
@@ -95,6 +97,13 @@ const ALL = [
   'employee.view',
 ];
 
+/**
+ * The month the page asks for when the URL names no bound. Taken from the same helper the page
+ * uses, so these fixtures follow the calendar instead of pinning a month that goes stale — what
+ * the month IS is proven against fixed dates in `lib/odometer-range.spec.ts`.
+ */
+const MONTH = currentMonthRange(new Date());
+
 const ODOMETER_KEY = (over: Record<string, unknown> = {}) =>
   listKey('fleet', 'odometer', {
     page: 1,
@@ -102,8 +111,8 @@ const ODOMETER_KEY = (over: Record<string, unknown> = {}) =>
     sortBy: 'date',
     sortDir: 'desc',
     vehicleCodes: undefined,
-    from: undefined,
-    to: undefined,
+    from: MONTH.from,
+    to: MONTH.to,
     alerts: undefined,
     driverEmployeeIds: undefined,
     ...over,
@@ -115,10 +124,10 @@ const client = (
   keyOver: Record<string, unknown> = {},
 ): QueryClient => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  qc.setQueryData(ODOMETER_KEY(keyOver), page(logs));
+  qc.setQueryData(ODOMETER_KEY(keyOver), pageOf(logs));
   qc.setQueryData(
     VEHICLE_SEARCH_KEY(),
-    page([
+    pageOf([
       { id: VEHICLE_ID, code: '150', plateNumber: 'س ص 150' },
       { id: 'v2', code: '151', plateNumber: 'س ص 151' },
     ]),
@@ -222,7 +231,7 @@ describe('the odometer table', () => {
     });
     qc.setQueryData(
       VEHICLE_SEARCH_KEY(),
-      page([{ id: VEHICLE_ID, code: '150', plateNumber: 'س ص 150' }]),
+      pageOf([{ id: VEHICLE_ID, code: '150', plateNumber: 'س ص 150' }]),
     );
     qc.setQueryData(['fleet', 'odometer', 'alarms'], [alarm()]);
 
@@ -241,7 +250,7 @@ describe('the odometer table', () => {
     });
     qc.setQueryData(
       VEHICLE_SEARCH_KEY(),
-      page([{ id: VEHICLE_ID, code: '150', plateNumber: 'س ص 150' }]),
+      pageOf([{ id: VEHICLE_ID, code: '150', plateNumber: 'س ص 150' }]),
     );
     qc.setQueryData(['fleet', 'odometer', 'alarms'], [alarm()]);
 
@@ -302,7 +311,7 @@ describe('the odometer table', () => {
     const qc = client([log({ vehicleId: 'v101', vehicleCode: '101' })]);
     qc.setQueryData(
       VEHICLE_SEARCH_KEY(),
-      page([{ id: VEHICLE_ID, code: '150', plateNumber: 'س ص 150' }]),
+      pageOf([{ id: VEHICLE_ID, code: '150', plateNumber: 'س ص 150' }]),
     );
     // The third cell is the code column (after the serial and the date).
     const cells = [...tbody(render({ qc })).matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/g)].map((m) =>
@@ -394,6 +403,133 @@ describe('the distance since the last service', () => {
     expect(source).not.toContain('yellowKm');
     expect(source).not.toContain('redKm');
     expect(source).toContain('useMaintenanceAlarms');
+  });
+});
+
+// ── 2b. Server-side paging and the default window ───────────────────────────
+
+describe('the server answers the whole question — the page never slices', () => {
+  /** A page of `n` rows with the meta the SERVER would return for that slice. */
+  const serverPage = (n: number, meta: { page: number; pageSize: number; totalItems: number }) => ({
+    items: Array.from({ length: n }, (_, i) => log({ id: `o${meta.page}-${i}` })),
+    meta: { ...meta, totalPages: Math.ceil(meta.totalItems / meta.pageSize) },
+  });
+
+  const seeded = (key: ReturnType<typeof ODOMETER_KEY>, page: unknown): QueryClient => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    qc.setQueryData(key, page);
+    qc.setQueryData(
+      VEHICLE_SEARCH_KEY(),
+      pageOf([{ id: VEHICLE_ID, code: '150', plateNumber: 'س ص 150' }]),
+    );
+    qc.setQueryData(['fleet', 'odometer', 'alarms'], [alarm()]);
+    return qc;
+  };
+
+  it('asks for the CURRENT MONTH when the URL names no bound', () => {
+    // The log grows a row per vehicle per running day, so "no filter" would mean the whole
+    // history. The default is a window, and it is the server that applies it: the rows below can
+    // only appear if the request carried this month's bounds, because that is the key they sit on.
+    const qc = seeded(ODOMETER_KEY({ from: MONTH.from, to: MONTH.to }), pageOf([log()]));
+    expect(tbody(render({ qc }))).toContain('١٥٠٬٠٠٠');
+    // …and the two date boxes show the window, so the reader can see which days these are.
+    const bar = filterBar(render({ qc }));
+    expect(bar, 'the start bound is shown').toContain(`value="${MONTH.from}"`);
+    expect(bar, 'the end bound is shown').toContain(`value="${MONTH.to}"`);
+  });
+
+  it('does not treat its own default as a filter the reader has set', () => {
+    // The reset affordance is "undo what I narrowed", and on arrival nothing is narrowed.
+    const qc = seeded(ODOMETER_KEY(), pageOf([log()]));
+    expect(filterBar(render({ qc })), 'no reset on arrival').not.toContain(
+      `aria-label="${t('common.filters.clear')}"`,
+    );
+    // An explicit bound IS a filter, so the reset appears.
+    const explicit = seeded(ODOMETER_KEY({ from: '2026-01-01', to: undefined }), pageOf([log()]));
+    expect(filterBar(render({ route: '/fleet/odometer?from=2026-01-01', qc: explicit }))).toContain(
+      `aria-label="${t('common.filters.clear')}"`,
+    );
+  });
+
+  it('sends the chosen pageSize, and asks the SERVER for that many', () => {
+    // Seeded ONLY under pageSize=10: rows appear iff the request carried it.
+    const qc = seeded(
+      ODOMETER_KEY({ pageSize: 10 }),
+      serverPage(10, { page: 1, pageSize: 10, totalItems: 2438 }),
+    );
+    const body = tbody(render({ route: '/fleet/odometer?size=10', qc }));
+    expect(body.match(/<tr/g)?.length ?? 0, 'ten rows, not a sliced larger set').toBe(10);
+  });
+
+  it('fetches PAGE 2 from the server rather than holding page 1 and slicing it', () => {
+    // Only page 2 is in the cache. If the page asked for page 1 — or asked for everything and
+    // sliced — this render would find nothing.
+    const qc = seeded(
+      ODOMETER_KEY({ page: 2 }),
+      serverPage(25, { page: 2, pageSize: 25, totalItems: 73 }),
+    );
+    const html = render({ route: '/fleet/odometer?page=2', qc });
+    expect(tbody(html).match(/<tr/g)?.length ?? 0).toBe(25);
+    // The serial column proves it is the SECOND page: it counts from 26.
+    expect(firstCells(html)[0]).toBe('٢٦');
+  });
+
+  it('takes the totals from the SERVER’s meta, never from the rows in hand', () => {
+    // 73 records over 25 a page: page 3 holds 23 of them, and the footer must say 73 and 3 —
+    // numbers no arithmetic on the 23 loaded rows could produce.
+    const qc = seeded(
+      ODOMETER_KEY({ page: 3 }),
+      serverPage(23, { page: 3, pageSize: 25, totalItems: 73 }),
+    );
+    const html = render({ route: '/fleet/odometer?page=3', qc });
+    expect(tbody(html).match(/<tr/g)?.length ?? 0, 'the last page is short').toBe(23);
+    const footer = html.slice(html.indexOf('</table>'));
+    expect(footer, 'the total is the server’s').toContain(formatNumber(73, 'ar'));
+    expect(footer, 'showing 51–73').toContain(formatNumber(51, 'ar'));
+    expect(footer, 'page 3 of 3').toContain(
+      translate('ar', 'common.pagination.page', {
+        page: formatNumber(3, 'ar'),
+        total: formatNumber(3, 'ar'),
+      }),
+    );
+  });
+
+  it('offers 10 / 25 / 50 / 100 as the page sizes', () => {
+    const qc = seeded(ODOMETER_KEY(), pageOf([log()]));
+    const footer = render({ qc }).slice(render({ qc }).indexOf('</table>'));
+    for (const size of [10, 25, 50, 100]) {
+      expect(footer, `${size} offered`).toContain(`value="${size}"`);
+    }
+  });
+
+  it('holds NO local pagination or filtering — the server decides both', () => {
+    const source = readFileSync(join(HERE, 'pages/OdometerPage.tsx'), 'utf8');
+    for (const local of ['rows.filter(', 'items.filter(', '.slice(', 'rows.splice(']) {
+      expect(source, `${local} would be local work`).not.toContain(local);
+    }
+    // The rows handed to the table are exactly the page the server returned.
+    expect(source).toContain('data?.items ?? []');
+    // And the pagination is driven by the server's meta, not by a count of those rows.
+    expect(source).toContain('meta={data.meta}');
+  });
+
+  it('resets to page 1 when a filter or the page SIZE changes, but not when paging', () => {
+    // `patch` drops `page` unless told otherwise; the filter controls take that default, and only
+    // the two pagination callbacks opt out. Asserted on the source: changing a filter is a DOM
+    // event, and this suite has no DOM to raise one.
+    const source = readFileSync(join(HERE, 'pages/OdometerPage.tsx'), 'utf8');
+    expect(source, 'the default drops the page').toContain(
+      "if (resetPage && !('page' in updates)) next.delete('page');",
+    );
+    // Paging keeps the page it was given…
+    expect(source).toContain('onPageChange={(p) => patch({ page: String(p) }, false)}');
+    // …and a page-size change clears it, so the reader lands on page 1 of the new slicing.
+    expect(source).toContain(
+      'onPageSizeChange={(size) => patch({ size: String(size), page: null }, false)}',
+    );
+    // No filter control opts out of the reset.
+    const bar = source.slice(source.indexOf('<FilterBar'), source.indexOf('</FilterBar>'));
+    expect(bar, 'no filter keeps the old page').not.toContain(', false)');
   });
 });
 
@@ -509,13 +645,65 @@ describe('the filter bar', () => {
     expect(source).toContain('vehicleCodeOptions(vehicles.data?.items ?? [], vehicleCodes)');
   });
 
+  it('NAMES the chosen codes in the trigger rather than counting them', () => {
+    // "3" does not tell the reader WHICH three cars they are looking at, and a registry runs to
+    // hundreds. Rendered here with two chosen, straight off the real page.
+    const qc = client([log()], [alarm()], { vehicleCodes: ['ZZ0104', 'ZZ0105'] });
+    qc.setQueryData(
+      VEHICLE_SEARCH_KEY(),
+      pageOf([
+        { id: 'v1', code: 'ZZ0104', plateNumber: 'س ص 104' },
+        { id: 'v2', code: 'ZZ0105', plateNumber: 'س ص 105' },
+      ]),
+    );
+    const bar = filterBar(render({ route: '/fleet/odometer?vehicleCodes=ZZ0104,ZZ0105', qc }));
+    expect(bar, 'both codes are visible without opening the list').toContain('ZZ0104, ZZ0105');
+    // The plate belongs in the list, not on a one-row trigger.
+    expect(bar.slice(0, bar.indexOf('odometer-from')), 'no plate on the trigger').not.toContain(
+      'س ص 104',
+    );
+  });
+
+  it('still shows the filter’s NAME while nothing is chosen', () => {
+    const bar = filterBar(render());
+    expect(bar).toContain(t('fleet.odometer.columns.vehicle'));
+    expect(bar).toContain(t('fleet.odometer.columns.alert'));
+  });
+
+  it('names the alert LEVELS in words, never their wire values', () => {
+    const qc = client([log()], [alarm()], { alerts: ['yellow', 'red'] });
+    const bar = filterBar(render({ route: '/fleet/odometer?alerts=yellow,red', qc }));
+    expect(bar).toContain(
+      `${t('fleet.dashboard.level.yellow')}, ${t('fleet.dashboard.level.red')}`,
+    );
+    expect(bar, 'the wire value is not user-facing').not.toContain('>yellow<');
+  });
+
+  it('sends the SAME parameters as before — this is a display change only', () => {
+    // The rows below sit on a key built from the unchanged param names and values. If naming the
+    // choices had altered what travels, this would be a cache miss and the table would be empty.
+    const qc = client([log()], [alarm()], { vehicleCodes: ['ZZ0104', 'ZZ0105'], alerts: ['red'] });
+    qc.setQueryData(
+      VEHICLE_SEARCH_KEY(),
+      pageOf([{ id: 'v1', code: 'ZZ0104', plateNumber: 'س ص 104' }]),
+    );
+    const body = tbody(
+      render({ route: '/fleet/odometer?vehicleCodes=ZZ0104,ZZ0105&alerts=red', qc }),
+    );
+    expect(body, 'the request is unchanged').toContain('١٥٠٬٠٠٠');
+  });
+
   it('takes SEVERAL vehicles and SEVERAL alert levels at once', () => {
     const html = render({
       route: '/fleet/odometer?vehicleCodes=150,151&alerts=yellow,red',
       qc: client([log()], [alarm()], { vehicleCodes: ['150', '151'], alerts: ['yellow', 'red'] }),
     });
-    // `MultiSelect` reports how many are chosen, so a filtered list never looks unfiltered.
-    expect(html).toContain('٢');
+    // A filtered list must never look unfiltered — and it now says WHICH, not how many.
+    const bar = filterBar(html);
+    expect(bar, 'both codes named').toContain('150, 151');
+    expect(bar, 'both levels named').toContain(
+      `${t('fleet.dashboard.level.yellow')}, ${t('fleet.dashboard.level.red')}`,
+    );
   });
 
   it('reads every filter from the URL, so a filtered view is a shareable link', () => {
@@ -698,7 +886,7 @@ describe('recording a reading', () => {
       const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
       qc.setQueryData(
         VEHICLE_SEARCH_KEY(),
-        page([{ id: VEHICLE_ID, code: '150', plateNumber: 'س ص 150' }]),
+        pageOf([{ id: VEHICLE_ID, code: '150', plateNumber: 'س ص 150' }]),
       );
       const html = renderDialog({ qc, initialVehicleCode: code });
       const box = html.slice(html.indexOf('role="combobox"'));

@@ -35,6 +35,7 @@ import { formatDate, formatNumber } from '../../../shared/lib/format';
 import { useMaintenanceAlarms, useOdometerLogs, useVehicles } from '../api/fleet-queries';
 import { useDriverHrFilter } from '../api/driver-hr-filter';
 import { vehicleCodeOptions } from '../lib/vehicle-code-options';
+import { odometerRange } from '../lib/odometer-range';
 import { EmployeeName } from '../components/EmployeeName';
 import { RecordOdometerDialog } from '../components/RecordOdometerDialog';
 import { CorrectOdometerDialog } from '../components/CorrectOdometerDialog';
@@ -61,8 +62,14 @@ export const OdometerPage = (): JSX.Element => {
   const [sp, setSp] = useSearchParams();
 
   const vehicleCodes = (sp.get('vehicleCodes') ?? '').split(',').filter((c) => c !== '');
-  const from = sp.get('from') ?? '';
-  const to = sp.get('to') ?? '';
+  // What the URL asks for, and what is actually sent. They differ only on arrival: with neither
+  // bound given the request is narrowed to the CURRENT MONTH rather than the whole history, and
+  // the two date boxes show that month so the reader can see which days they are looking at.
+  // `now` is read once per mount — a value that changed every render would rebuild the request.
+  const now = useMemo(() => new Date(), []);
+  const range = odometerRange({ from: sp.get('from') ?? '', to: sp.get('to') ?? '' }, now);
+  const from = range.from;
+  const to = range.to;
   const driver = sp.get('driver') ?? '';
   const alerts = (sp.get('alerts') ?? '').split(',').filter((a) => a !== '');
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
@@ -87,8 +94,10 @@ export const OdometerPage = (): JSX.Element => {
     const dir = sort.by === by && sort.dir === 'asc' ? 'desc' : 'asc';
     patch({ sort: `${by}:${dir}` }, false);
   };
+  // The defaulted month is not an "active filter": it is where the page starts, so the reset
+  // affordance stays off until the reader has actually narrowed something.
   const hasActiveFilters =
-    vehicleCodes.length > 0 || from !== '' || to !== '' || driver !== '' || alerts.length > 0;
+    vehicleCodes.length > 0 || !range.defaulted || driver !== '' || alerts.length > 0;
 
   // The driver NAME is HR's fact: ask HR first, filter Fleet by the ids it returns. Reuses the
   // drivers registry's own hook, so the "HR matched more than one page" refusal is the same here.
@@ -324,6 +333,9 @@ export const OdometerPage = (): JSX.Element => {
               the URL carries, so a filtered view is a link somebody else can read. */}
           <MultiSelect
             className="shrink-0"
+            // The chosen codes are named in the trigger, not counted: a registry runs to hundreds
+            // of cars and "3" tells the reader nothing about WHICH three they are looking at.
+            showSelectedValues
             label={t('fleet.odometer.columns.vehicle')}
             options={vehicleOptions}
             value={vehicleCodes}
@@ -386,6 +398,7 @@ export const OdometerPage = (): JSX.Element => {
           )}
           <MultiSelect
             className="shrink-0"
+            showSelectedValues
             label={t('fleet.odometer.columns.alert')}
             options={FLEET_ALARM_LEVELS.map((level) => ({
               value: level,

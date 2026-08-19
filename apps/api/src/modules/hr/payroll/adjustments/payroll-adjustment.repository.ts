@@ -16,7 +16,7 @@ const LIVE_STATUSES = ['draft', 'pendingApproval', 'approved'] as const;
 
 class PayrollAdjustmentRepository extends BaseRepository<PayrollAdjustmentDoc> {
   constructor() {
-    super(PayrollAdjustmentModel, { branchField: 'branchId' });
+    super(PayrollAdjustmentModel, { branchField: 'branchId', departmentField: 'departmentId' });
   }
 
   async getForEmployee(employeeId: string, id: string): Promise<PayrollAdjustmentDoc> {

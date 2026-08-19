@@ -41,6 +41,8 @@ import {
 import { compensationService } from '../compensation/compensation.service';
 import { loanInstallmentPort } from '../compensation/loan-installment.port';
 import { employmentSpansOf } from '../compensation/employment-spans';
+import { departmentAt } from '../../shared/department-at';
+import { departmentMovesFor } from '../../shared/department-moves';
 import { periodRange } from '../compensation/compensation-rules';
 import { payrollRunRepository } from '../runs/payroll-run.repository';
 import { employedDuring, skipReasonFor } from './payslip-eligibility';
@@ -58,6 +60,39 @@ const entityRef = (id: string) => ({ moduleId: 'hr', entityType: 'payslip', enti
  * employee nobody has placed is simply absent from the map, and their payslip carries null —
  * which is an ordinary outcome, not a skip (D-CC-5).
  */
+/**
+ * The department each employee was in on a given date (P-SCOPE-1, D-DEPT-2 + the owner's decision
+ * that a payslip belongs to its PERIOD).
+ *
+ * The same shape as the cost centre beside it, for the same reason and at the same date: D-CC-7
+ * says the stamp is the one in force on the LAST DAY OF THE PERIOD, not on the day the pass
+ * happens to run. Two stamps on one payslip must not disagree about which month it belongs to.
+ *
+ * ONE query for the whole population, before the loop — a scope axis must not turn a payroll run
+ * into a round trip per employee. An employee with no recorded move keeps their current
+ * department, which is what `departmentAt` answers when the log is silent.
+ */
+const departmentsForPopulation = async (
+  population: readonly EmployeeDoc[],
+  on: Date,
+): Promise<Map<string, Types.ObjectId>> => {
+  const ids = population.map((employee) => String(employee._id));
+  const moves = await departmentMovesFor(ids);
+  const out = new Map<string, Types.ObjectId>();
+  for (const employee of population) {
+    const id = String(employee._id);
+    const resolved = departmentAt(
+      moves.get(id) ?? [],
+      on,
+      employee.employment.departmentId === null ? null : String(employee.employment.departmentId),
+    );
+    if (resolved !== null && Types.ObjectId.isValid(resolved)) {
+      out.set(id, new Types.ObjectId(resolved));
+    }
+  }
+  return out;
+};
+
 const costCentresForPopulation = async (
   population: readonly EmployeeDoc[],
   on: Date,
@@ -117,6 +152,10 @@ class PayslipService {
     // payroll run into a round trip per employee. This reads a membership and writes a stamp; no
     // figure on this payslip is derived from it, and no rule below consults it.
     const costCentres = await costCentresForPopulation(population, window.to);
+    // P-SCOPE-1 — the department axis, resolved at the SAME date as the centre above. A February
+    // payslip issued in August belongs to February's department, not to wherever the employee has
+    // moved since.
+    const departments = await departmentsForPopulation(population, window.to);
     const skipped: { employeeId: string; reason: PayslipSkipReason }[] = [];
     let created = 0;
     let existing = 0;
@@ -170,9 +209,9 @@ class PayslipService {
             issuedAt,
             issuedBy: new Types.ObjectId(by),
             branchId: employee.employment.branchId,
-            // P-SCOPE-1 — the second scope axis, stamped from the same employee at the same
-            // moment as the branch. Inside `$setOnInsert`, so a re-issue cannot restamp it.
-            departmentId: employee.employment.departmentId,
+            // P-SCOPE-1 — the second scope axis, resolved at the period's last day like the
+            // centre below. Inside `$setOnInsert`, so a re-issue cannot restamp it.
+            departmentId: departments.get(employeeId) ?? employee.employment.departmentId,
             costCenterId: costCentres.get(employeeId) ?? null,
             isDeleted: false,
             createdBy: new Types.ObjectId(by),

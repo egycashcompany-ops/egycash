@@ -241,7 +241,7 @@ afterAll(async () => {
 });
 
 describe('the stamp is written at issue', () => {
-  it('every payslip carries the department the employee was in', async () => {
+  it('every payslip carries the department the employee was in during the period', async () => {
     const rows = await PayslipModel.find({ runId: new Types.ObjectId(runId) }).lean().exec();
     expect(rows.length).toBe(2);
     for (const row of rows) {
@@ -291,14 +291,19 @@ describe('a department-scoped reader sees their own department', () => {
 
 describe('the backfill attributes by date, not by today', () => {
   /**
-   * THE ERROR NO OTHER TEST WOULD CATCH.
+   * THE ERROR NO OTHER TEST WOULD CATCH — and the one CI caught in this suite's own first run.
    *
-   * The employee is moved to department B and the move is recorded with an effective date AFTER
-   * the payslip was issued. The payslip's stamp is cleared, as if it predated the phase. Copying
-   * the employee's CURRENT department would attribute it to B — the department they were not in
-   * when they were paid — and every figure would still add up.
+   * The first version of this test assumed `issuedAt` was February's date. It is not: it is
+   * `new Date()` at the moment the pass runs, so a February payslip issued today carries today.
+   * The move below takes effect in JUNE — after February, before today — so attributing by the
+   * print date answered "department B", correctly for the wrong question.
+   *
+   * The rule the owner chose is the one D-CC-7 already fixed for the cost centre: a payslip
+   * belongs to its PERIOD. February's pay is February's department's cost, whenever the paper was
+   * printed. So the assertion is department A, and it fails if either half — the stamp at issue or
+   * the backfill — goes back to reading `issuedAt`.
    */
-  it('gives an old payslip the department in force when it was issued', async () => {
+  it('gives an old payslip the department in force during its PERIOD', async () => {
     // The move, as the action log records one — applied, with an effective date AFTER the run.
     // Written directly because that is what the backfill reads: the pure rule already has
     // exhaustive unit tests, and what this asserts is that the wiring reads the log at all.
@@ -324,7 +329,8 @@ describe('the backfill attributes by date, not by today', () => {
       updatedBy: null,
     });
 
-    // The payslip was issued in February — before the June move — and carries no stamp.
+    // The payslip is FOR February. It was printed today, and the move takes effect in June —
+    // between the two — which is exactly the gap that makes the print date the wrong date.
     await PayslipModel.updateMany(
       { runId: new Types.ObjectId(runId), employeeId: new Types.ObjectId(EMPLOYEE_A) },
       { $set: { departmentId: null } },
@@ -340,7 +346,9 @@ describe('the backfill attributes by date, not by today', () => {
     })
       .lean()
       .exec();
-    expect(String(row?.departmentId), 'the department at ISSUE, not today').toBe(DEPARTMENT_A);
+    expect(String(row?.departmentId), 'February’s department, not the print date’s').toBe(
+      DEPARTMENT_A,
+    );
   });
 
   /** Idempotent by filter: nothing is left null, so a second pass has nothing to do. */

@@ -10,9 +10,9 @@
 // feature that owns it, and the seam guards keep holding — each model still appears only where it
 // is allowed to.
 import { Types, type Model } from 'mongoose';
-import { EmployeeActionModel } from '../employee-management/employee-actions/employee-action.model';
 import { employeeRepository } from '../employee-management/employees';
-import { departmentAt, type DepartmentMove } from './department-at';
+import { departmentAt } from './department-at';
+import { departmentMovesFor } from './department-moves';
 
 /** What the backfill needs any row to have: whose it is, and when it happened. */
 export interface DepartmentStamped {
@@ -28,42 +28,6 @@ export interface BackfillResult {
 }
 
 /**
- * Every recorded department move for these employees, from the applied action log.
- *
- * A transfer writes `{ field: 'departmentId', from, to }` alongside an `effectiveDate`
- * (`employee-action.service.ts:593`). Scheduled and cancelled actions are excluded: a move that
- * has not been applied did not happen.
- */
-export const departmentMovesFor = async (
-  employeeIds: readonly string[],
-): Promise<Map<string, DepartmentMove[]>> => {
-  const actions = await EmployeeActionModel.find({
-    employeeId: { $in: employeeIds.map((id) => new Types.ObjectId(id)) },
-    status: 'applied',
-    'changes.field': 'departmentId',
-  })
-    .select({ employeeId: 1, effectiveDate: 1, changes: 1 })
-    .lean()
-    .exec();
-
-  const byEmployee = new Map<string, DepartmentMove[]>();
-  for (const action of actions) {
-    for (const change of action.changes) {
-      if (change.field !== 'departmentId') continue;
-      const key = String(action.employeeId);
-      const moves = byEmployee.get(key) ?? [];
-      moves.push({
-        from: change.from === null ? null : String(change.from),
-        to: change.to === null ? null : String(change.to),
-        effectiveDate: action.effectiveDate,
-      });
-      byEmployee.set(key, moves);
-    }
-  }
-  return byEmployee;
-};
-
-/**
  * Stamp the department onto every row of one collection that carries none.
  *
  * IDEMPOTENT AND ADDITIVE BY FILTER, not by a flag: both the read and the write name
@@ -72,11 +36,20 @@ export const departmentMovesFor = async (
  */
 export const backfillDepartments = async <T extends DepartmentStamped>(
   model: Model<T>,
-  dateField: 'issuedAt' | 'createdAt',
+  /**
+   * WHEN the row happened, read off the row itself.
+   *
+   * A function rather than a field name because the two answers differ: most collections happened
+   * when they were written, but a PAYSLIP happened during its period — D-CC-7 already settled that
+   * for the cost centre («a July payslip issued in August carries July's centre») and the
+   * department follows the same rule. Returning null means the row cannot be placed in time.
+   */
+  dateOf: (row: Record<string, unknown>) => Date | null,
+  select: Record<string, 1>,
 ): Promise<BackfillResult> => {
   const rows = (await model
     .find({ departmentId: null })
-    .select({ employeeId: 1, [dateField]: 1 })
+    .select({ employeeId: 1, ...select })
     .lean()
     .exec()) as unknown as Record<string, unknown>[];
   if (rows.length === 0) return { filled: 0, unattributed: 0 };
@@ -91,11 +64,11 @@ export const backfillDepartments = async <T extends DepartmentStamped>(
   let filled = 0;
   let unattributed = 0;
   for (const row of rows) {
-    const at = row[dateField] as Date | undefined;
+    const at = dateOf(row);
     const employeeId = String(row['employeeId']);
-    // A row with no date cannot be placed in time, so it cannot be attributed.
+    // A row that cannot be placed in time cannot be attributed.
     const resolved =
-      at === undefined
+      at === null
         ? null
         : departmentAt(moves.get(employeeId) ?? [], at, current.get(employeeId) ?? null);
 

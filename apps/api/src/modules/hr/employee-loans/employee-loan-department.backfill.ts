@@ -8,4 +8,6 @@ import { type BackfillResult, backfillDepartments } from '../shared/department-b
 import { EmployeeLoanModel } from './employee-loan.model';
 
 export const backfillEmployeeLoanDepartments = async (): Promise<BackfillResult> =>
-  backfillDepartments(EmployeeLoanModel, 'createdAt');
+  backfillDepartments(EmployeeLoanModel, (row) => (row['createdAt'] as Date | undefined) ?? null, {
+    createdAt: 1,
+  });

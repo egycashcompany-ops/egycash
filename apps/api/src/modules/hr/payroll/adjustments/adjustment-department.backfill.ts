@@ -5,8 +5,13 @@
 // (`hr/shared/department-backfill.ts`) and the rule is shared
 // (`hr/shared/department-at.ts`); what this file contributes is the one import the architecture
 // says only it may make.
+//
+// `createdAt` IS this row's date, unlike a payslip's: these carry no period, so when they were
+// written is when they happened.
 import { type BackfillResult, backfillDepartments } from '../../shared/department-backfill';
 import { PayrollAdjustmentModel } from './payroll-adjustment.model';
 
 export const backfillAdjustmentDepartments = async (): Promise<BackfillResult> =>
-  backfillDepartments(PayrollAdjustmentModel, 'createdAt');
+  backfillDepartments(PayrollAdjustmentModel, (row) => (row['createdAt'] as Date | undefined) ?? null, {
+    createdAt: 1,
+  });

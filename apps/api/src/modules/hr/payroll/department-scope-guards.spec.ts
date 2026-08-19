@@ -17,6 +17,14 @@ import { describe, expect, it } from 'vitest';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const HR = resolve(HERE, '..');
 const read = (file: string): string => readFileSync(resolve(HR, file), 'utf8');
+/**
+ * CODE ONLY. Several of these files EXPLAIN in prose why a field is the wrong one to read — and a
+ * guard that matched the explanation would fail on the very comment that documents it.
+ */
+const code = (file: string): string =>
+  read(file)
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|\s)\/\/.*$/gm, '');
 
 /** The four collections D-DEPT-1 put in scope, each as its model / repository / stamping service. */
 const COLLECTIONS = [
@@ -25,7 +33,9 @@ const COLLECTIONS = [
     model: 'payroll/payslips/payslip.model.ts',
     repository: 'payroll/payslips/payslip.repository.ts',
     service: 'payroll/payslips/payslip.service.ts',
-    stamp: 'departmentId: employee.employment.departmentId',
+    // The payslip's stamp is resolved at the PERIOD's last day, like the cost centre beside it
+    // (D-CC-7), because `issuedAt` is the print date and would attribute February to August.
+    stamp: 'departmentId: departments.get(employeeId) ?? employee.employment.departmentId',
   },
   {
     name: 'adjustments',
@@ -122,8 +132,10 @@ describe('the backfill only ever adds', () => {
    */
   it('derives the date-correct department rather than copying today’s', () => {
     expect(WORKER).toContain('departmentAt(');
-    expect(WORKER).toContain("'changes.field': 'departmentId'");
-    expect(WORKER).toContain("status: 'applied'");
+    // The action-log read is its own module (see the D-CC-5 note below), so the query lives there.
+    const MOVES = code('shared/department-moves.ts');
+    expect(MOVES).toContain("'changes.field': 'departmentId'");
+    expect(MOVES).toContain("status: 'applied'");
   });
 
   /** An unplaceable row stays null — which D-DEPT-4 already renders invisible, not visible. */
@@ -185,5 +197,35 @@ describe('the backfill respects the seams rather than crossing them', () => {
       'EmployeeLoanModel',
     ].filter((m) => m !== own);
     for (const other of others) expect(source, other).not.toContain(other);
+  });
+});
+
+describe('a payslip belongs to its period, not to its print date', () => {
+  const SERVICE = readFileSync(resolve(HR, 'payroll/payslips/payslip.service.ts'), 'utf8');
+  const BACKFILL = code('payroll/payslips/payslip-department.backfill.ts');
+
+  /**
+   * `issuedAt` is `new Date()` at the moment the pass runs, so a February payslip issued in August
+   * carries an August timestamp. Both halves resolve at the period's last day instead — the same
+   * date D-CC-7 already fixed for the cost centre, so the two stamps on one payslip cannot
+   * disagree about which month it belongs to.
+   */
+  it('the stamp is resolved at the period’s last day, beside the cost centre', () => {
+    expect(SERVICE).toContain('departmentsForPopulation(population, window.to)');
+    expect(SERVICE).toContain('costCentresForPopulation(population, window.to)');
+  });
+
+  it('and the backfill reads the period rather than issuedAt', () => {
+    expect(BACKFILL).toContain('periodRange(period).to');
+    expect(BACKFILL).not.toContain('issuedAt');
+  });
+
+  /**
+   * D-CC-5 holds the word `backfill` out of the issuing service entirely, so the action-log READER
+   * is its own module. The stamp path reads; it fills nothing in.
+   */
+  it('and the issuing service names no backfill at all', () => {
+    expect(SERVICE.toLowerCase()).not.toContain('backfill');
+    expect(SERVICE).toContain("from '../../shared/department-moves'");
   });
 });

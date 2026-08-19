@@ -30,8 +30,16 @@ import { TrashIcon, PlusIcon } from '../../../shared/ui/icons';
 import {
   useBranchesOfBank,
   useCreateOperationsShipment,
+  useOperationsCrewBoard,
+  useOperationsCrewDirectory,
   useUpdateOperationsShipment,
 } from '../api/operations-queries';
+import {
+  chooseVehicle,
+  dispatchCrewOptions,
+  findDispatchOption,
+  vehiclesOf,
+} from '../lib/dispatch-crew';
 
 /** The contract's ceiling, inherited from the legacy form's 17 fixed currency slots (Q7). */
 export const MAX_SHIPMENT_LINES = 17;
@@ -161,6 +169,26 @@ export const ShipmentFormDialog = ({
   const setLine = (index: number, patch: Partial<DraftLine>): void =>
     setLines((prev) => prev.map((line, i) => (i === index ? { ...line, ...patch } : line)));
 
+  // ── The collection crew (legacy leader1 + car_num1, written at creation) ──────────────────────
+  //
+  // Only on CREATE. Re-crewing an existing shipment is `assign-pickup`'s job — it has to move the
+  // stop between captains' ordered days, and a quiet edit here would skip that entirely.
+  const crewBoard = useOperationsCrewBoard(editing ? null : collectionDate, !editing);
+  const crewDirectory = useOperationsCrewDirectory(editing ? null : collectionDate, !editing);
+  const crewOptions = useMemo(
+    () => dispatchCrewOptions(crewBoard.data?.rows ?? []),
+    [crewBoard.data],
+  );
+  const [crewKey, setCrewKey] = useState('');
+  const chosenCrew = findDispatchOption(crewOptions, crewKey);
+
+  // The day changed under the choice — the crew belongs to a date, so a stale pick would send a
+  // row the server refuses with OPERATIONS_CREW_DAY_MISMATCH.
+  useEffect(() => setCrewKey(''), [collectionDate]);
+
+  const captainName = (employeeId: string): string =>
+    crewDirectory.data?.members.find((m) => m.employeeId === employeeId)?.fullNameAr ?? employeeId;
+
   const submit = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
     if (!hasUsableLine(lines)) {
@@ -182,7 +210,22 @@ export const ShipmentFormDialog = ({
       notes: notes.trim() === '' ? null : notes.trim(),
     };
     try {
-      if (shipment === null) await create.mutateAsync({ ...core, shipmentType });
+      if (shipment === null) {
+        await create.mutateAsync({
+          ...core,
+          shipmentType,
+          // The VEHICLE IS NOT SENT. `crewAssignmentId` is a (day, vehicle) row, so the vehicle is
+          // a fact the server reads off it — a client that named its own could claim a captain was
+          // on a van he was never planned onto.
+          pickup:
+            chosenCrew === undefined
+              ? null
+              : {
+                  crewAssignmentId: chosenCrew.crewAssignmentId,
+                  captainEmployeeId: chosenCrew.captainEmployeeId,
+                },
+        });
+      }
       // `shipmentType` is immutable — legacy has no path that converts one type into the other.
       else await update.mutateAsync({ id: shipment.id, body: { ...core, version: shipment.version } });
       toast.success(t('operations.shipment.saved'));
@@ -354,6 +397,60 @@ export const ShipmentFormDialog = ({
             {t('operations.shipment.addLine')}
           </Button>
         </fieldset>
+
+        {/* ── The collection crew ─────────────────────────────────────────────────────────────
+            Two controls over ONE choice. A crew row is a (operating day, vehicle) pair and Q11
+            gives a captain at most one vehicle a day, so naming the captain names the vehicle and
+            naming the vehicle names the captain — which is why only the crew row goes on the wire.
+            Create only: re-crewing an existing shipment must go through assign-pickup, which
+            re-sequences the stop inside the captain's ordered day. */}
+        {!editing && (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label={t('operations.shipment.captain')}>
+              <Select
+                value={crewKey}
+                onChange={(e) => setCrewKey(e.target.value)}
+                disabled={crewOptions.length === 0}
+              >
+                <option value="">{t('operations.shipment.noCrew')}</option>
+                {crewOptions.map((option) => (
+                  <option key={option.key} value={option.key}>
+                    {captainName(option.captainEmployeeId)} — {option.vehicleCode}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label={t('operations.shipment.vehicle')}>
+              <Select
+                value={chosenCrew?.vehicleId ?? ''}
+                disabled={crewOptions.length === 0}
+                onChange={(e) => {
+                  // Changing the vehicle re-points the same choice. The captain is KEPT when he is
+                  // on the new vehicle and otherwise falls to its first captain — which the select
+                  // beside this one then shows, so the operator sees who they were given.
+                  const next = chooseVehicle(
+                    crewOptions,
+                    e.target.value,
+                    chosenCrew?.captainEmployeeId ?? '',
+                  );
+                  setCrewKey(next?.key ?? '');
+                }}
+              >
+                <option value="">{t('operations.shipment.noCrew')}</option>
+                {vehiclesOf(crewOptions).map((vehicle) => (
+                  <option key={vehicle.vehicleId} value={vehicle.vehicleId}>
+                    {vehicle.vehicleCode}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            {crewOptions.length === 0 && !crewBoard.isLoading && (
+              <p className="text-sm text-amber-700 sm:col-span-2 dark:text-amber-400">
+                {t('operations.shipment.noCrewForDay')}
+              </p>
+            )}
+          </div>
+        )}
 
         <Field label={t('operations.shipment.notes')}>
           <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />

@@ -27,6 +27,7 @@ import {
   type OperationsCrewAttendanceDayDto,
   type OperationsAreaDto,
   type OperationsShipmentDto,
+  type Paginated,
   type OperationsStandingCrewBoardDto,
   type OperationsVaultInventoryRowDto,
   type OperationsVaultReportDto,
@@ -946,6 +947,128 @@ describe('crew board — the tashghela workflow on the Fleet boundary (OP-3)', (
     });
   });
 
+  // ── Crewing a shipment at creation (legacy leader1 + car_num1, restored) ───────────────────────
+  describe('naming the collection crew when the shipment is booked', () => {
+    const CREATE_CREW_DATE = '2026-12-15';
+    let bookCaptainId: string;
+    let bookCrewId: string;
+
+    const bookWith = async (pickup: unknown): Promise<request.Response> =>
+      request(app)
+        .post('/api/v1/operations/shipments')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          shipmentType: 'daily',
+          mainBankId: bankA.id,
+          originBranchId: branchA1.id,
+          destinationBranchId: branchA1.id,
+          lines: [{ currencyId: egp.id, amount: 4321 }],
+          collectionDate: CREATE_CREW_DATE,
+          pickup,
+        });
+
+    const legOf = async (shipmentId: string) => {
+      const { operationsShipmentAssignmentRepository } = await import(
+        '../../src/modules/operations/shipments/shipment-assignment.repository'
+      );
+      return operationsShipmentAssignmentRepository.findByShipmentAndLeg(shipmentId, 'pickup');
+    };
+
+    beforeAll(async () => {
+      bookCaptainId = await mkEmployee();
+      expect(
+        (
+          await request(app)
+            .post('/api/v1/fleet/roster')
+            .set('Authorization', `Bearer ${adminToken}`)
+            .send({ date: CREATE_CREW_DATE, rows: [{ vehicleId: vehicleAId, notes: 'booking' }] })
+        ).status,
+      ).toBe(200);
+      const plan = await request(app)
+        .post('/api/v1/operations/crew-board')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          date: CREATE_CREW_DATE,
+          rows: [{ vehicleId: vehicleAId, captainEmployeeIds: [bookCaptainId] }],
+        });
+      expect(plan.status).toBe(200);
+      bookCrewId =
+        data<OperationsCrewBoardDto>(plan).rows.find((r) => r.vehicleId === vehicleAId)?.crew?.id ??
+        '';
+      expect(bookCrewId).not.toBe('');
+    });
+
+    it('writes the collection leg in the same act, taking the VEHICLE from the crew row', async () => {
+      const res = await bookWith({ crewAssignmentId: bookCrewId, captainEmployeeId: bookCaptainId });
+      expect(res.status).toBe(201);
+      const leg = await legOf(data<OperationsShipmentDto>(res).id);
+      expect(leg).not.toBeNull();
+      expect(String(leg?.captainEmployeeId)).toBe(bookCaptainId);
+      // Never sent by the client — read off the crew row, so it cannot be claimed.
+      expect(String(leg?.vehicleId)).toBe(vehicleAId);
+      expect(leg?.sequence).toBe(1);
+    });
+
+    it('books with NO crew when none is named — the backlog path is unchanged', async () => {
+      const res = await bookWith(null);
+      expect(res.status).toBe(201);
+      expect(await legOf(data<OperationsShipmentDto>(res).id)).toBeNull();
+    });
+
+    it('refuses a vehicleId on the wire — the vehicle is the crew row\u2019s, not the caller\u2019s', async () => {
+      const res = await bookWith({
+        crewAssignmentId: bookCrewId,
+        captainEmployeeId: bookCaptainId,
+        vehicleId: vehicleBId,
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it('refuses a captain who is not a captain of that crew row, and creates NOTHING', async () => {
+      const before = data<Paginated<OperationsShipmentDto>>(
+        await request(app)
+          .get(`/api/v1/operations/shipments?collectionDateFrom=${CREATE_CREW_DATE}&collectionDateTo=${CREATE_CREW_DATE}`)
+          .set('Authorization', `Bearer ${adminToken}`),
+      ).meta.totalItems;
+
+      const res = await bookWith({ crewAssignmentId: bookCrewId, captainEmployeeId: captainId });
+      expect(res.status).toBe(422);
+      expect(errorCode(res)).toBe(ErrorCodes.OPERATIONS_CREW_CAPTAIN_MISMATCH);
+
+      // The crew is proven BEFORE anything is written, so a refused crew leaves no orphan shipment.
+      const after = data<Paginated<OperationsShipmentDto>>(
+        await request(app)
+          .get(`/api/v1/operations/shipments?collectionDateFrom=${CREATE_CREW_DATE}&collectionDateTo=${CREATE_CREW_DATE}`)
+          .set('Authorization', `Bearer ${adminToken}`),
+      ).meta.totalItems;
+      expect(after).toBe(before);
+    });
+
+    it('refuses a crew row from a DIFFERENT operating day', async () => {
+      const res = await request(app)
+        .post('/api/v1/operations/shipments')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          shipmentType: 'daily',
+          mainBankId: bankA.id,
+          originBranchId: branchA1.id,
+          destinationBranchId: branchA1.id,
+          lines: [{ currencyId: egp.id, amount: 99 }],
+          collectionDate: '2026-12-16', // no crew planned on this day
+          pickup: { crewAssignmentId: bookCrewId, captainEmployeeId: bookCaptainId },
+        });
+      expect(res.status).toBe(422);
+      expect(errorCode(res)).toBe(ErrorCodes.OPERATIONS_CREW_DAY_MISMATCH);
+    });
+
+    it('puts a second shipment at the END of that captain\u2019s collection order', async () => {
+      const res = await bookWith({ crewAssignmentId: bookCrewId, captainEmployeeId: bookCaptainId });
+      expect(res.status).toBe(201);
+      const leg = await legOf(data<OperationsShipmentDto>(res).id);
+      expect(leg?.sequence).toBeGreaterThan(1);
+    });
+  });
+
   it('gates the board and the plan behind their own grants', async () => {
     const view = await request(app)
       .get('/api/v1/operations/crew-board')
@@ -1196,6 +1319,26 @@ describe('the standing crew — the permanent crew of each cash-transfer vehicle
 
   it('refuses removing a vehicle that is not in the standing crew', async () => {
     expect((await drop(vehicleBId)).status).toBe(404);
+  });
+
+  it('offers only ACTIVE vehicles — a van in the workshop or already sold gets no crew', async () => {
+    const retired = await mkVehicle(11);
+    expect(
+      data<OperationsStandingCrewBoardDto>(await standing()).available.map((v) => v.vehicleId),
+    ).toContain(retired);
+
+    for (const status of ['outOfService', 'disposed'] as const) {
+      const { FleetVehicleModel } = await import('../../src/modules/fleet/vehicles/vehicle.model');
+      const { Types } = await import('mongoose');
+      await FleetVehicleModel.collection.updateOne(
+        { _id: new Types.ObjectId(retired) },
+        { $set: { status } },
+      );
+      expect(
+        data<OperationsStandingCrewBoardDto>(await standing()).available.map((v) => v.vehicleId),
+        status,
+      ).not.toContain(retired);
+    }
   });
 
   it('offers only the Fleet-designated cash-transfer vehicles once one is configured', async () => {

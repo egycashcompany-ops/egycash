@@ -8,6 +8,7 @@ import { useT } from '../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../store';
 import { PageContainer, PageHeader } from '../../../../platform/layout/PageContainer';
 import { Card, CardBody, CardHeader } from '../../../../shared/ui/Card';
+import { MoneyInput } from '../../../../shared/ui/MoneyInput';
 import { Field, Input, Checkbox, Form, FormActions } from '../../../../shared/ui/form';
 import { Button } from '../../../../shared/ui/Button';
 import { LoadingState } from '../../../../shared/ui/states/LoadingState';
@@ -194,13 +195,7 @@ const JobTitleFormBody = ({ existing }: { existing: JobTitleDto | null }): JSX.E
               label={t('organization.jobTitle.fixedSalary')}
               hint={t('organization.jobTitle.fixedSalaryHint')}
             >
-              <Input
-                type="number"
-                min={0}
-                dir="ltr"
-                value={fixedSalary}
-                onChange={(e) => setFixedSalary(e.target.value)}
-              />
+              <MoneyInput value={fixedSalary} onChange={setFixedSalary} />
             </Field>
             {outsideBand ? (
               <p className="text-sm text-amber-600 dark:text-amber-400">
@@ -209,31 +204,13 @@ const JobTitleFormBody = ({ existing }: { existing: JobTitleDto | null }): JSX.E
             ) : null}
             <div className="grid gap-4 sm:grid-cols-3">
               <Field label={t('organization.jobTitle.salaryMin')} hint="EGP">
-                <Input
-                  type="number"
-                  min={0}
-                  dir="ltr"
-                  value={salaryMin}
-                  onChange={(e) => setSalaryMin(e.target.value)}
-                />
+                <MoneyInput value={salaryMin} onChange={(next) => setSalaryMin(next)} />
               </Field>
               <Field label={t('organization.jobTitle.salaryMax')} hint="EGP">
-                <Input
-                  type="number"
-                  min={0}
-                  dir="ltr"
-                  value={salaryMax}
-                  onChange={(e) => setSalaryMax(e.target.value)}
-                />
+                <MoneyInput value={salaryMax} onChange={(next) => setSalaryMax(next)} />
               </Field>
               <Field label={t('organization.jobTitle.experience')}>
-                <Input
-                  type="number"
-                  min={0}
-                  dir="ltr"
-                  value={experience}
-                  onChange={(e) => setExperience(e.target.value)}
-                />
+                <MoneyInput value={experience} onChange={(next) => setExperience(next)} />
               </Field>
             </div>
             {/* The single place driver-ness is decided. Recruitment reads this flag, so a role

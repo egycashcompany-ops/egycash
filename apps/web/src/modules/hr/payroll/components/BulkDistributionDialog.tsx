@@ -22,6 +22,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useT } from '../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../store';
 import { Button, DataTable, EmptyState, type Column } from '../../../../shared/ui';
+import { MoneyInput } from '../../../../shared/ui/MoneyInput';
 import { Dialog } from '../../../../shared/ui/Dialog';
 import { Field, Input, Select } from '../../../../shared/ui/form';
 import { SearchInput } from '../../../../shared/ui/SearchInput';
@@ -122,11 +123,9 @@ export const BulkDistributionDialog = ({ onClose }: { onClose: () => void }): JS
       key: 'amount',
       header: t('payroll.bulk.amount'),
       render: (row) => (
-        <Input
-          type="number"
-          min="0"
+        <MoneyInput
           value={row.amount}
-          onChange={(e) => setRows((all) => all.map((r) => (r.key === row.key ? { ...r, amount: e.target.value } : r)))}
+          onChange={(next) => setRows((all) => all.map((r) => (r.key === row.key ? { ...r, amount: next } : r)))}
         />
       ),
     },

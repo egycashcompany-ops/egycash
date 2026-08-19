@@ -8,6 +8,7 @@ import { useT } from '../../../../../../platform/localization/useT';
 import { useCan } from '../../../../../../platform/rbac/Can';
 import { useAppSelector } from '../../../../../../store';
 import { Field, Input, Select } from '../../../../../../shared/ui/form';
+import { MoneyInput } from '../../../../../../shared/ui/MoneyInput';
 import { SearchInput } from '../../../../../../shared/ui/SearchInput';
 import { toast } from '../../../../../../shared/ui/toast/toast-store';
 import { localized } from '../../../../../../shared/lib/format';
@@ -86,7 +87,7 @@ export const PromotionDialog = ({ employee, open, onClose }: DialogProps): JSX.E
       </Field>
       {canComp && (
         <Field label={t('employees.actions.promotion.newSalary')} hint={t('offers.form.optional')}>
-          <Input type="number" min={0} value={salary} onChange={(e) => setSalary(e.target.value)} dir="ltr" />
+          <MoneyInput value={salary} onChange={(next) => setSalary(next)} />
         </Field>
       )}
       <Field label={t('employees.actions.reason')} hint={t('offers.form.optional')}>
@@ -241,7 +242,7 @@ export const SalaryChangeDialog = ({ employee, open, onClose }: DialogProps): JS
         </p>
       </Field>
       <Field label={t('employees.actions.salary.new')} required>
-        <Input type="number" min={0} value={salary} onChange={(e) => setSalary(e.target.value)} dir="ltr" />
+        <MoneyInput value={salary} onChange={(next) => setSalary(next)} />
       </Field>
       <Field label={t('employees.actions.reason')} hint={t('offers.form.optional')}>
         <Input value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} />

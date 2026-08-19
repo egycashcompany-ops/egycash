@@ -13,6 +13,15 @@ import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../shar
 
 export const DRIVER_PROFILE_KIND = 'driver';
 
+/** The link to the licence scan in platform Files — the bytes are never stored here. */
+export interface FleetDriverLicenseImage {
+  fileId: Types.ObjectId;
+  fileName: string;
+  mime: string;
+  size: number;
+  uploadedAt: Date;
+}
+
 export interface FleetDriverProfileDoc extends BaseDocFields {
   employeeId: Types.ObjectId;
   kind: string;
@@ -21,7 +30,19 @@ export interface FleetDriverProfileDoc extends BaseDocFields {
   specialization: FleetDriverSpecialization;
   area: string | null;
   isActive: boolean;
+  licenseImage: FleetDriverLicenseImage | null;
 }
+
+const licenseImageSchema = new Schema<FleetDriverLicenseImage>(
+  {
+    fileId: { type: Schema.Types.ObjectId, required: true },
+    fileName: { type: String, required: true },
+    mime: { type: String, required: true },
+    size: { type: Number, required: true },
+    uploadedAt: { type: Date, required: true },
+  },
+  { _id: false },
+);
 
 const driverProfileSchema = new Schema<FleetDriverProfileDoc>(
   {
@@ -32,6 +53,9 @@ const driverProfileSchema = new Schema<FleetDriverProfileDoc>(
     specialization: { type: String, required: true, enum: FLEET_DRIVER_SPECIALIZATIONS },
     area: { type: String, default: null },
     isActive: { type: Boolean, required: true, default: true },
+    // `default: null` applies on WRITE only, so a profile stored before this field existed has no
+    // key at all. Every reader below therefore tests `== null`, never `=== null`.
+    licenseImage: { type: licenseImageSchema, default: null },
     ...baseFields,
   },
   baseSchemaOptions,

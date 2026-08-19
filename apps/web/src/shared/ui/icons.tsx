@@ -180,6 +180,22 @@ export const ShieldIcon = (p: IconProps): JSX.Element => (
   </Base>
 );
 
+/** A padlock — a stop the sequential lock is holding shut. */
+export const LockIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <rect x="4" y="10" width="16" height="11" rx="2" />
+    <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+  </Base>
+);
+
+/** A map pin — a branch that has a location on it. */
+export const PinIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z" />
+    <circle cx="12" cy="10" r="3" />
+  </Base>
+);
+
 export const AlertIcon = (p: IconProps): JSX.Element => (
   <Base {...p}>
     <path d="M10.3 3.3 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.3a2 2 0 0 0-3.4 0z" />
@@ -423,5 +439,14 @@ export const PauseIcon = (p: IconProps): JSX.Element => (
 export const PlayIcon = (p: IconProps): JSX.Element => (
   <Base {...p}>
     <path d="M7 4.5v15l12-7.5z" />
+  </Base>
+);
+
+/** Print. The paper-out-of-a-printer glyph, for an action that produces a physical page. */
+export const PrinterIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <path d="M6 9V3h12v6" />
+    <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+    <rect x="6" y="14" width="12" height="7" rx="1" />
   </Base>
 );

@@ -18,6 +18,7 @@ import { useCan } from '../../../../../platform/rbac/Can';
 import { useAppSelector } from '../../../../../store';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
 import { Card, CardBody, CardHeader } from '../../../../../shared/ui/Card';
+import { MoneyInput } from '../../../../../shared/ui/MoneyInput';
 import { Button } from '../../../../../shared/ui/Button';
 import { Dialog } from '../../../../../shared/ui/Dialog';
 import { Field, Input, Select } from '../../../../../shared/ui/form';
@@ -308,7 +309,7 @@ export const DirectRegisterPage = (): JSX.Element => {
               </Field>
               {canComp && (
                 <Field label={t('offers.form.salary')} hint={t('offers.form.optional')}>
-                  <Input type="number" min={0} value={salary} onChange={(e) => setSalary(e.target.value)} dir="ltr" />
+                  <MoneyInput value={salary} onChange={(next) => setSalary(next)} />
                 </Field>
               )}
               <Field label={t('employees.register.entryStatus')} hint={t('employees.register.entryStatusHint')}>

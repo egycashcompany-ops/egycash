@@ -16,6 +16,7 @@ import { useT } from '../../../../../../platform/localization/useT';
 import { useCan } from '../../../../../../platform/rbac/Can';
 import { useAppSelector } from '../../../../../../store';
 import { Field, Checkbox, Input, Select, Textarea } from '../../../../../../shared/ui/form';
+import { MoneyInput } from '../../../../../../shared/ui/MoneyInput';
 import { SearchInput } from '../../../../../../shared/ui/SearchInput';
 import { toast } from '../../../../../../shared/ui/toast/toast-store';
 import { localized } from '../../../../../../shared/lib/format';
@@ -349,7 +350,7 @@ export const RehireDialog = ({ employee, open, onClose }: DialogProps): JSX.Elem
             </Field>
             {canComp && (
               <Field label={t('offers.form.salary')} hint={t('offers.form.optional')}>
-                <Input type="number" min={0} value={salary} onChange={(e) => setSalary(e.target.value)} dir="ltr" />
+                <MoneyInput value={salary} onChange={(next) => setSalary(next)} />
               </Field>
             )}
           </div>

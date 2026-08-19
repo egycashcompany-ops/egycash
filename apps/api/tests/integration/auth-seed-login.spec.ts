@@ -118,9 +118,14 @@ describe('seed → password login (regression)', () => {
     // Default categories are seeded and returned in sortOrder. IT joins at 25 — between
     // Organization (20) and Administration (30) — now that ITW-1 has given it application rows;
     // IT-1 seeded the category deliberately empty, and an empty category is not returned.
+    //
+    // B7 puts Operations at 17, so it lands between Fleet (15) and Organization (20). Its position
+    // here IS the assertion that the sort order took effect: a category appended with a colliding
+    // or absent order would surface at the end of this list rather than in the middle.
     expect(groups.map((g) => g.name.en)).toEqual([
       'HR',
       'Fleet',
+      'Operations',
       'Organization',
       'IT',
       'Administration',
@@ -185,8 +190,26 @@ describe('seed → password login (regression)', () => {
     // P-HR-23 adds the cost centres catalog to Organization — the axis payroll cost is reported
     // along, which needed a sidebar row of its own rather than a corner of another screen.
     expect(routes).toContain('/organization/cost-centers');
-    // 22 (HR) + 12 (Fleet) + 7 (Organization) + 13 (IT) + 9 (Administration)
-    expect(routes).toHaveLength(64);
+    // B7 — the thirteen Operations rows. B1-B6 shipped the screens routed, permission-gated and
+    // API-connected but appended NOTHING here, so the module was reachable only by typing a URL.
+    // The module home is asserted too: without it there is no entry point to the module at all.
+    expect(routes).toContain('/operations');
+    expect(routes).toContain('/operations/shipments');
+    expect(routes).toContain('/operations/crew-board');
+    expect(routes).toContain('/operations/requirements');
+    expect(routes).toContain('/operations/attendance');
+    expect(routes).toContain('/operations/secured');
+    expect(routes).toContain('/operations/vault/receive');
+    expect(routes).toContain('/operations/vault/dispatch');
+    expect(routes).toContain('/operations/vault');
+    expect(routes).toContain('/operations/reports/vault');
+    expect(routes).toContain('/operations/reports/captains');
+    expect(routes).toContain('/operations/reports/banks');
+    expect(routes).toContain('/operations/catalogs');
+    // الطاقم الثابت — the permanent crew each day's board is seeded from.
+    expect(routes).toContain('/operations/standing-crew');
+    // 22 (HR) + 12 (Fleet) + 14 (Operations) + 7 (Organization) + 13 (IT) + 9 (Administration)
+    expect(routes).toHaveLength(79); // +1: C1 Captain's Day, +1: the standing crew
   });
 
   it('re-running the seed is idempotent — no duplicate categories/applications/grants', async () => {
@@ -201,14 +224,14 @@ describe('seed → password login (regression)', () => {
         data: { applications: unknown[]; sections: { applications: unknown[] }[] }[];
       }
     ).data;
-    expect(groups).toHaveLength(5);
+    expect(groups).toHaveLength(6); // B7 adds Operations beside HR, Fleet, Organization, IT, Admin
     // Counted across sections too: re-seeding must not duplicate a row, wherever it is grouped.
     expect(
       groups.reduce(
         (n, g) => n + g.applications.length + g.sections.reduce((m, s) => m + s.applications.length, 0),
         0,
       ),
-    ).toBe(64);
+    ).toBe(79); // +1: C1 Captain's Day, +1: the standing crew
   });
 
   it('the seeded HR user also logs in with email/password', async () => {

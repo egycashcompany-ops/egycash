@@ -44,6 +44,7 @@ import {
   HrWorkflowEngineEvents,
 } from '../modules/hr-recruitment-workflow.js';
 import { FleetEvents } from '../modules/fleet.js';
+import { OperationsEvents } from '../modules/operations.js';
 import { ItEvents } from '../modules/it.js';
 
 const HR_EVENT_CONSTANTS = [
@@ -69,6 +70,8 @@ const HR_EVENT_CONSTANTS = [
 ].flatMap((group) => Object.values(group));
 
 const FLEET_EVENT_CONSTANTS = Object.values(FleetEvents);
+// OP-2 declares the five shipment lifecycle events with their emit sites — stable from day one.
+const OPERATIONS_EVENT_CONSTANTS = Object.values(OperationsEvents);
 // IT-1 declares the two registry events with their emit sites — both stable from day one.
 const IT_EVENT_CONSTANTS = Object.values(ItEvents);
 // Promoted to stable by the slices that added their emit sites (FL-2..FL-6). All 22 are
@@ -78,6 +81,12 @@ const FLEET_STABLE = new Set<string>([
   FleetEvents.VehicleCreated,
   FleetEvents.VehicleUpdated,
   FleetEvents.VehicleStatusChanged,
+  // Catalogs slice — both published by the vehicle service at its commit points.
+  FleetEvents.VehicleLicenseImageUploaded,
+  FleetEvents.VehicleLicenseImageDeleted,
+  // Drivers slice — both published by the driver-profile service at its commit points.
+  FleetEvents.DriverLicenseImageUploaded,
+  FleetEvents.DriverLicenseImageDeleted,
   FleetEvents.UnavailabilityRecorded,
   FleetEvents.UnavailabilityEnded,
   FleetEvents.OdometerRecorded,
@@ -143,6 +152,7 @@ describe('coverage', () => {
       ...HR_EVENT_CONSTANTS,
       ...FLEET_EVENT_CONSTANTS,
       ...IT_EVENT_CONSTANTS,
+      ...OPERATIONS_EVENT_CONSTANTS,
     ]);
     for (const name of eventCatalogNames()) {
       expect(declared.has(name), `${name} is catalogued but declared nowhere`).toBe(true);

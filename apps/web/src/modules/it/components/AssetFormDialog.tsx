@@ -13,6 +13,7 @@ import { type ItAssetDto, type Locale } from '@ecms/contracts';
 import { useAppSelector } from '../../../store';
 import { useT } from '../../../platform/localization/useT';
 import { Dialog } from '../../../shared/ui/Dialog';
+import { MoneyInput } from '../../../shared/ui/MoneyInput';
 import { Button } from '../../../shared/ui/Button';
 import { Field, Input, Select, Textarea } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
@@ -312,14 +313,7 @@ export const AssetFormDialog = ({
             />
           </Field>
           <Field label={t('it.assets.fields.purchaseCost')}>
-            <Input
-              type="number"
-              min="0"
-              step="0.01"
-              value={form.purchaseCost}
-              onChange={(e) => set('purchaseCost')(e.target.value)}
-              dir="ltr"
-            />
+            <MoneyInput value={form.purchaseCost} onChange={set('purchaseCost')} />
           </Field>
           <Field label={t('it.assets.fields.invoiceRef')}>
             <Input

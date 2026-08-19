@@ -20,7 +20,7 @@ import { Button } from '../../../shared/ui/Button';
 import { Skeleton } from '../../../shared/ui/Skeleton';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
 import { CheckIcon, CloseIcon, PlayIcon } from '../../../shared/ui/icons';
-import { formatDate, formatDateTime, formatNumber } from '../../../shared/lib/format';
+import { formatAmount, formatDate, formatDateTime, formatNumber } from '../../../shared/lib/format';
 import { useItAsset, useItMaintenanceOrder, useItMaintenanceOrderParts } from '../api/it-queries';
 import { MaintenanceStatusBadge } from '../components/MaintenanceStatusBadge';
 import { AssetStatusBadge } from '../components/AssetStatusBadge';
@@ -165,7 +165,7 @@ export const MaintenanceOrderDetailPage = (): JSX.Element => {
               </div>
               <Fact
                 label={t('it.maintenance.fields.cost')}
-                value={order.cost === null ? null : formatNumber(order.cost, locale)}
+                value={order.cost === null ? null : formatAmount(order.cost, locale)}
               />
               {/* Corrective orders born from a ticket link back to it — the repair and the
                   request are one story, and the reader should not have to search for the half

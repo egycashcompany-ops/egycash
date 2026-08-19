@@ -96,12 +96,21 @@ export const buildApp = (): Express => {
   // `blob:` widens nothing an attacker can reach: a blob URL is minted by this page's own script,
   // is unguessable, and is readable only from the document that created it — it cannot name a
   // remote host, which is what `img-src` exists to restrict.
+  //
+  // The OpenStreetMap tile host is the ONE remote host on this list, and it is here so an
+  // operations clerk can click a bank branch's location on a map instead of pasting coordinates.
+  // A map tile is an `<img>`, so `img-src` is what decides whether the map draws at all.
+  //
+  // Narrow on purpose. It is a single host pattern, `https:` only, and it appears under `img-src`
+  // and nowhere else — that host may put PICTURES on the page and can do nothing else: no script,
+  // no styles, no frames, no requests the app makes to it. Leaflet itself is bundled from
+  // node_modules and served same-origin, so no external script host is involved.
   app.use(
     helmet({
       contentSecurityPolicy: {
         directives: {
           ...helmet.contentSecurityPolicy.getDefaultDirectives(),
-          'img-src': ["'self'", 'data:', 'blob:'],
+          'img-src': ["'self'", 'data:', 'blob:', 'https://*.tile.openstreetmap.org'],
         },
       },
     }),

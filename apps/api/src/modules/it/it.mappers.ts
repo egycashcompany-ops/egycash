@@ -115,23 +115,46 @@ export const toItAssetDto = (doc: ItAssetDoc): ItAssetDto => ({
   updatedAt: iso(doc.updatedAt),
 });
 
-export const toItAssetAssignmentDto = (doc: ItAssetAssignmentDoc): ItAssetAssignmentDto => ({
-  id: String(doc._id),
-  assetId: String(doc.assetId),
-  assignedToEmployeeId: String(doc.assignedToEmployeeId),
-  assignedByUserId: doc.assignedByUserId === null ? null : String(doc.assignedByUserId),
-  assignedAt: iso(doc.assignedAt),
-  conditionOnIssue: doc.conditionOnIssue,
-  expectedReturnAt: doc.expectedReturnAt === null ? null : iso(doc.expectedReturnAt),
-  returnedAt: doc.returnedAt === null ? null : iso(doc.returnedAt),
-  returnedToUserId: doc.returnedToUserId === null ? null : String(doc.returnedToUserId),
-  conditionOnReturn: doc.conditionOnReturn,
-  notes: doc.notes,
-  branchId: String(doc.branchId),
-  version: doc.__v,
-  createdAt: iso(doc.createdAt),
-  updatedAt: iso(doc.updatedAt),
-});
+/**
+ * IT-6 — the holder's label, resolved by the caller and handed in.
+ *
+ * The mapper stays pure: it reads a map it was given rather than querying, so the ONE place that
+ * decides how many database round-trips a page costs is the controller that assembles the page.
+ */
+export type ItHolderLabels = ReadonlyMap<string, { code: string; fullNameAr: string }>;
+
+/** The asset behind each interval — what was received, resolved the same way and handed in. */
+export type ItAssetLabels = ReadonlyMap<string, { assetCode: string; name: string }>;
+
+export const toItAssetAssignmentDto = (
+  doc: ItAssetAssignmentDoc,
+  holders?: ItHolderLabels,
+  assets?: ItAssetLabels,
+): ItAssetAssignmentDto => {
+  const holder = holders?.get(String(doc.assignedToEmployeeId));
+  const asset = assets?.get(String(doc.assetId));
+  return {
+    id: String(doc._id),
+    assetId: String(doc.assetId),
+    assetCode: asset?.assetCode ?? null,
+    assetName: asset?.name ?? null,
+    assignedToEmployeeId: String(doc.assignedToEmployeeId),
+    assignedToEmployeeCode: holder?.code ?? null,
+    assignedToEmployeeName: holder?.fullNameAr ?? null,
+    assignedByUserId: doc.assignedByUserId === null ? null : String(doc.assignedByUserId),
+    assignedAt: iso(doc.assignedAt),
+    conditionOnIssue: doc.conditionOnIssue,
+    expectedReturnAt: doc.expectedReturnAt === null ? null : iso(doc.expectedReturnAt),
+    returnedAt: doc.returnedAt === null ? null : iso(doc.returnedAt),
+    returnedToUserId: doc.returnedToUserId === null ? null : String(doc.returnedToUserId),
+    conditionOnReturn: doc.conditionOnReturn,
+    notes: doc.notes,
+    branchId: String(doc.branchId),
+    version: doc.__v,
+    createdAt: iso(doc.createdAt),
+    updatedAt: iso(doc.updatedAt),
+  };
+};
 
 /**
  * History entry (design §2.3). The stored key is `subjectId` — uniform across the module's

@@ -9,13 +9,17 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type Express } from 'express';
 import {
   FleetEvents,
+  FleetSettingKeys,
+  MAX_PAGE_SIZE,
   SettingKeys,
   platformPermissions,
   type FleetCatalogItemDto,
   type FleetDriverProfileDto,
   type FleetDriverUnavailabilityDto,
+  type FleetOdometerLogDto,
   type FleetVehicleDto,
   type FleetVehicleTypeDto,
+  type PageMeta,
 } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { buildApp } from '../../src/app';
@@ -40,6 +44,7 @@ const PASSWORD = 'Str0ng#Pass!';
 let replSet: MongoMemoryReplSet | null = null;
 let app: Express;
 let adminToken: string;
+let adminUserId: string; // a REAL user id — settings writes stamp updatedBy as an ObjectId
 let branchAToken: string; // fleetVehicle.* at BRANCH scope, placed in branch A
 let branchAId: string;
 let branchBId: string;
@@ -88,10 +93,7 @@ const data = <T>(res: request.Response): T => (res.body as { data: T }).data;
 // In-process events fan out fire-and-forget (`dispatchInProcess`), so `await emit(...)` returns
 // before the subscriber has touched the database — asserting immediately is a race that only
 // loses under load. Poll instead, the same way files/audit/notifications specs do.
-const waitFor = async (
-  predicate: () => boolean | Promise<boolean>,
-  ms = 2000,
-): Promise<void> => {
+const waitFor = async (predicate: () => boolean | Promise<boolean>, ms = 2000): Promise<void> => {
   const deadline = Date.now() + ms;
   while (!(await predicate()) && Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -104,14 +106,29 @@ const nextNid = (): string => `290010101${String(30_000 + nidCounter++).padStart
 const nextPhone = (): string => `010${String(phoneCounter++).padStart(8, '0')}`;
 
 /** HR employee via the real direct-registration endpoint — Fleet never fabricates one. */
-const mkEmployee = async (): Promise<string> => {
+const mkEmployee = async (
+  over: { fullNameAr?: string; phone?: string; governorate?: string } = {},
+): Promise<string> => {
   const res = await request(app)
     .post('/api/v1/hr/employees/direct')
     .set('Authorization', `Bearer ${adminToken}`)
     .send({
       personal: {
-        identity: { fullNameAr: 'سائق اختبار', nationalId: nextNid(), nationality: 'Egyptian' },
-        contact: { primaryPhone: nextPhone() },
+        identity: {
+          fullNameAr: over.fullNameAr ?? 'سائق اختبار',
+          nationalId: nextNid(),
+          nationality: 'Egyptian',
+        },
+        contact: { primaryPhone: over.phone ?? nextPhone() },
+        ...(over.governorate === undefined
+          ? {}
+          : {
+              officialAddress: {
+                line1: 'شارع الاختبار',
+                city: 'مدينة الاختبار',
+                governorate: over.governorate,
+              },
+            }),
         experience: [],
         drivingLicenses: [],
         certifications: [],
@@ -177,6 +194,7 @@ beforeAll(async () => {
     [...platformPermissions, ...hrPermissions, ...fleetPermissions].map((p) => p.key),
   );
   const adminId = await mkUser('admin@ecms.local');
+  adminUserId = adminId;
   await rbacService.ensureAssignment(adminId, String(superAdmin._id), 'organization');
 
   const ctx: AuthContext = {
@@ -248,6 +266,10 @@ beforeAll(async () => {
     FleetEvents.VehicleCreated,
     FleetEvents.VehicleUpdated,
     FleetEvents.VehicleStatusChanged,
+    FleetEvents.VehicleLicenseImageUploaded,
+    FleetEvents.VehicleLicenseImageDeleted,
+    FleetEvents.DriverLicenseImageUploaded,
+    FleetEvents.DriverLicenseImageDeleted,
     FleetEvents.UnavailabilityRecorded,
     FleetEvents.UnavailabilityEnded,
     FleetEvents.OdometerRecorded,
@@ -349,12 +371,15 @@ describe('vehicle registry (FR-1, §4.1)', () => {
     const ok1 = await request(app)
       .patch(`/api/v1/fleet/vehicles/${v.id}`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ licenseClass: 'نقل ثقيل', version: v.version });
+      // The field is incidental — this test is about the VERSION. `licenseClassId` replaced the
+      // free-text `licenseClass` in the catalogs slice, and clearing it is a valid, collision-free
+      // edit (unlike the unique identifiers).
+      .send({ licenseClassId: null, version: v.version });
     expect(ok1.status).toBe(200);
     const stale = await request(app)
       .patch(`/api/v1/fleet/vehicles/${v.id}`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ licenseClass: 'ملاكي', version: v.version });
+      .send({ licenseClassId: null, version: v.version });
     expect(stale.status).toBe(409);
   });
 
@@ -397,7 +422,7 @@ describe('vehicle registry (FR-1, §4.1)', () => {
     const edit = await request(app)
       .patch(`/api/v1/fleet/vehicles/${v.id}`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ licenseClass: 'x', version: data<FleetVehicleDto>(disposed).version });
+      .send({ licenseClassId: null, version: data<FleetVehicleDto>(disposed).version });
     expect(edit.status).toBe(409);
   });
 
@@ -691,6 +716,432 @@ describe('odometer continuity (FR-2, §4.3 — FL-4)', () => {
       .set('Authorization', `Bearer ${branchAToken}`)
       .send({ vehicleId: v.id, reading: 10, date: '2026-07-10' });
     expect(res.status).toBe(403);
+  });
+});
+
+describe('a vehicle records on as many days as it runs (legacy cars_log)', () => {
+  const record = (vehicleId: string, reading: number, date: string) =>
+    request(app)
+      .post('/api/v1/fleet/odometer')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ vehicleId, reading, date });
+
+  const logsFor = async (vehicleId: string) =>
+    data<FleetOdometerLogDto[]>(
+      await request(app)
+        .get('/api/v1/fleet/odometer')
+        // By DATE, not by reading: a standing day repeats the reading, and sorting on a tied
+        // column leaves the order to the database — which would make these assertions flaky.
+        .query({ vehicleId, pageSize: 50, sortBy: 'date', sortDir: 'asc' })
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+
+  it('records the same vehicle on a later day, closing the first period and opening the second', async () => {
+    // The behaviour the legacy had and the one an operator relies on daily: a previous reading is
+    // not a reason to refuse the next one. `ux_open_period` bounds how many periods may be OPEN at
+    // once (one), never how many readings a vehicle may have.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const other = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(other.id, 500, '2026-11-01');
+
+    // 1. the first reading
+    expect((await record(v.id, 10_000, '2026-11-18')).status).toBe(201);
+    // 2. a second reading, same vehicle, a later day
+    expect((await record(v.id, 10_250, '2026-11-19')).status).toBe(201);
+
+    // 3. both are there
+    const rows = await logsFor(v.id);
+    expect(rows).toHaveLength(2);
+
+    // 4. the first was closed BY the second, with km derived from the pair
+    expect(rows[0]).toMatchObject({ outReading: 10_000, inReading: 10_250, km: 250 });
+
+    // 5. the second is the open period
+    expect(rows[1]).toMatchObject({ outReading: 10_250, inReading: null, km: null });
+
+    // 6. the other vehicle is untouched — still its own single open period
+    const otherRows = await logsFor(other.id);
+    expect(otherRows).toHaveLength(1);
+    expect(otherRows[0]).toMatchObject({ outReading: 500, inReading: null, km: null });
+  });
+
+  it('keeps going for a third and fourth day — the chain has no ceiling', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    for (const [reading, date] of [
+      [1000, '2026-11-01'],
+      [1200, '2026-11-02'],
+      [1500, '2026-11-03'],
+      [1500, '2026-11-04'],
+    ] as const) {
+      expect((await record(v.id, reading, date)).status, `${date} accepted`).toBe(201);
+    }
+    const rows = await logsFor(v.id);
+    expect(rows).toHaveLength(4);
+    // Each closed period's km is the step to the next reading; a standing day is a real 0.
+    expect(rows.map((r) => r.km)).toEqual([200, 300, 0, null]);
+    // Exactly ONE open period survives, and it is the last.
+    expect(rows.filter((r) => r.inReading === null)).toHaveLength(1);
+    expect(rows[3]?.inReading).toBeNull();
+  });
+
+  it('refuses only a reading that runs the odometer BACKWARDS, never a repeat visit', async () => {
+    // The one refusal FR-2 makes, and the one an operator can mistake for "this car is already
+    // recorded": a lower reading on a later day. The same day's second reading is fine as long as
+    // the number does not go down.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 8000, '2026-12-01');
+    const backwards = await record(v.id, 7900, '2026-12-02');
+    expect(backwards.status).toBe(409);
+    expect(JSON.stringify(backwards.body)).toContain('FR-2');
+    // …and the forward reading right after it still lands, so the refusal blocked the number and
+    // not the vehicle.
+    expect((await record(v.id, 8100, '2026-12-02')).status).toBe(201);
+    expect(await logsFor(v.id)).toHaveLength(2);
+  });
+
+  it('never stores two open periods for one vehicle, however many days it runs', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    for (let day = 1; day <= 5; day += 1) {
+      await record(v.id, 2000 + day * 100, `2026-12-1${day}`);
+    }
+    const rows = await logsFor(v.id);
+    expect(rows).toHaveLength(5);
+    expect(rows.filter((r) => r.inReading === null)).toHaveLength(1);
+  });
+});
+
+describe('the odometer registry filters SERVER-side', () => {
+  const record = (vehicleId: string, reading: number, date: string, drivers = {}) =>
+    request(app)
+      .post('/api/v1/fleet/odometer')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ vehicleId, reading, date, ...drivers });
+
+  const list = (query: Record<string, unknown>) =>
+    request(app)
+      .get('/api/v1/fleet/odometer')
+      .query({ pageSize: 100, ...query })
+      .set('Authorization', `Bearer ${adminToken}`);
+
+  it('narrows to several vehicles at once, BY CODE', async () => {
+    const a = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const b = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const c = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(a.id, 100, '2026-09-01');
+    await record(b.id, 200, '2026-09-01');
+    await record(c.id, 300, '2026-09-01');
+
+    const res = await list({ vehicleCodes: `${a.code},${b.code}` });
+    expect(res.status).toBe(200);
+    const ids = new Set(data<{ vehicleId: string }[]>(res).map((r) => r.vehicleId));
+    expect(ids.has(a.id)).toBe(true);
+    expect(ids.has(b.id)).toBe(true);
+    expect(ids.has(c.id), 'a vehicle outside the filter is excluded').toBe(false);
+  });
+
+  it('a code that matches no vehicle returns NOTHING, not everything', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 100, '2026-09-02');
+    const res = await list({ vehicleCodes: 'NO-SUCH-CODE' });
+    expect(res.status).toBe(200);
+    expect(data<unknown[]>(res)).toHaveLength(0);
+  });
+
+  it('matches a driver in EITHER slot', async () => {
+    const morning = await mkEmployee();
+    const evening = await mkEmployee();
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 100, '2026-09-03', { driver1EmployeeId: morning });
+    await record(v.id, 200, '2026-09-04', { driver2EmployeeId: evening });
+
+    const asMorning = await list({ vehicleCodes: v.code, driverEmployeeIds: morning });
+    expect(data<unknown[]>(asMorning)).toHaveLength(1);
+    const asEvening = await list({ vehicleCodes: v.code, driverEmployeeIds: evening });
+    expect(data<unknown[]>(asEvening)).toHaveLength(1);
+    // Both at once is the union of the two slots, not their intersection.
+    const both = await list({
+      vehicleCodes: v.code,
+      driverEmployeeIds: `${morning},${evening}`,
+    });
+    expect(data<unknown[]>(both)).toHaveLength(2);
+  });
+
+  it('a single day means the WHOLE day, however the reading was stamped', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    // Stamped mid-afternoon: `$lte` against a bare date would have stopped at midnight and
+    // missed it, which is what made the single-day filter look broken.
+    await record(v.id, 100, '2026-09-05T14:30:00.000Z');
+    const sameDay = await list({ vehicleCodes: v.code, from: '2026-09-05', to: '2026-09-05' });
+    expect(data<unknown[]>(sameDay)).toHaveLength(1);
+    const dayBefore = await list({ vehicleCodes: v.code, from: '2026-09-04', to: '2026-09-04' });
+    expect(data<unknown[]>(dayBefore)).toHaveLength(0);
+  });
+
+  it('a range spans its bounds inclusively', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 100, '2026-09-10');
+    await record(v.id, 200, '2026-09-11');
+    await record(v.id, 300, '2026-09-12');
+    const res = await list({ vehicleCodes: v.code, from: '2026-09-10', to: '2026-09-12' });
+    expect(data<unknown[]>(res)).toHaveLength(3);
+  });
+
+  it('filters on the DERIVED alarm level, and pages the filtered result', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 100, '2026-09-20');
+    // A vehicle with no maintenance rule or baseline is 'none' — never a false alarm.
+    const none = await list({ vehicleCodes: v.code, alerts: 'none' });
+    expect(none.status).toBe(200);
+    expect(data<unknown[]>(none).length).toBeGreaterThan(0);
+    // …and asking only for the alarmed levels excludes it.
+    const alarmed = await list({ vehicleCodes: v.code, alerts: 'yellow,red' });
+    expect(alarmed.status).toBe(200);
+    expect(data<unknown[]>(alarmed)).toHaveLength(0);
+  });
+
+  it('refuses a level that is not a level, rather than ignoring the filter', async () => {
+    expect((await list({ alerts: 'purple' })).status).toBe(400);
+  });
+
+  it('page 2 is page 2 OF THE FILTERED result', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const other = data<FleetVehicleDto>(await createVehicle(adminToken));
+    for (let i = 1; i <= 3; i += 1) await record(v.id, i * 100, `2026-10-0${i}`);
+    for (let i = 1; i <= 3; i += 1) await record(other.id, i * 100, `2026-10-0${i}`);
+
+    const first = await list({
+      vehicleCodes: v.code,
+      pageSize: 2,
+      page: 1,
+      sortBy: 'outReading',
+      sortDir: 'asc',
+    });
+    const second = await list({
+      vehicleCodes: v.code,
+      pageSize: 2,
+      page: 2,
+      sortBy: 'outReading',
+      sortDir: 'asc',
+    });
+    expect(data<unknown[]>(first)).toHaveLength(2);
+    expect(data<unknown[]>(second)).toHaveLength(1);
+    // Every row on both pages belongs to the filtered vehicle — the filter is not applied after
+    // the page was cut.
+    for (const row of [
+      ...data<{ vehicleId: string }[]>(first),
+      ...data<{ vehicleId: string }[]>(second),
+    ]) {
+      expect(row.vehicleId).toBe(v.id);
+    }
+  });
+
+  it('counts the WHOLE filtered set, and returns only the page asked for', async () => {
+    // The point of server-side paging: the total describes everything the filters match, while
+    // the payload carries only one page of it. A client that computed the total from the rows in
+    // hand would report 2 instead of 7, and one that were handed everything would defeat the
+    // purpose on a log this size.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    for (let day = 1; day <= 7; day += 1) {
+      await record(v.id, day * 100, `2026-12-0${day}`);
+    }
+    // One reading OUTSIDE the window, to prove the date bound is applied before the count.
+    await record(v.id, 5000, '2027-01-15');
+
+    const meta = (res: request.Response) => (res.body as { meta: PageMeta }).meta;
+
+    const first = await list({
+      vehicleCodes: v.code,
+      from: '2026-12-01',
+      to: '2026-12-07',
+      pageSize: 2,
+      page: 1,
+    });
+    expect(first.status).toBe(200);
+    expect(data<unknown[]>(first), 'only the page asked for').toHaveLength(2);
+    expect(meta(first).totalItems, 'every row the filters match, not the two returned').toBe(7);
+    expect(meta(first).totalPages).toBe(4);
+    expect(meta(first).page).toBe(1);
+    expect(meta(first).pageSize).toBe(2);
+
+    // The last page is short, and the totals do not move with it.
+    const last = await list({
+      vehicleCodes: v.code,
+      from: '2026-12-01',
+      to: '2026-12-07',
+      pageSize: 2,
+      page: 4,
+    });
+    expect(data<unknown[]>(last)).toHaveLength(1);
+    expect(meta(last).totalItems).toBe(7);
+
+    // Every page is a DIFFERENT slice — the same rows twice would mean the skip never applied.
+    const second = await list({
+      vehicleCodes: v.code,
+      from: '2026-12-01',
+      to: '2026-12-07',
+      pageSize: 2,
+      page: 2,
+    });
+    const ids = (res: request.Response) => data<{ id: string }[]>(res).map((r) => r.id);
+    expect(
+      ids(first).some((id) => ids(second).includes(id)),
+      'pages do not overlap',
+    ).toBe(false);
+
+    // Narrowing the window narrows the TOTAL, not just the page.
+    const narrowed = await list({
+      vehicleCodes: v.code,
+      from: '2026-12-01',
+      to: '2026-12-03',
+      pageSize: 2,
+    });
+    expect(meta(narrowed).totalItems, 'the count follows the filters').toBe(3);
+  });
+
+  it('reading the registry needs fleetOdometer.view', async () => {
+    const token = await login('noperm@ecms.local');
+    expect(
+      (await request(app).get('/api/v1/fleet/odometer').set('Authorization', `Bearer ${token}`))
+        .status,
+    ).toBe(403);
+  });
+});
+
+// A registry bigger than any one listing of it. The client used to read ONE page of vehicles and
+// join the code onto each odometer row in the browser, which quietly bounded the answer at
+// `MAX_PAGE_SIZE`: a car past that page had no code to show, could not be found in the code
+// filter, and — worst — could not be picked to record a reading against at all.
+//
+// The codes here sort after every other code in the registry (`ZZ…` against the `V…` the rest of
+// the file makes), so the last of them is provably past the first page however many vehicles the
+// earlier tests left behind. Each is created WITHOUT readings, so no other test's counts move.
+describe('a fleet larger than one page of the registry', () => {
+  const BEYOND = MAX_PAGE_SIZE + 5;
+  let farVehicle: FleetVehicleDto;
+
+  beforeAll(async () => {
+    let last: FleetVehicleDto | undefined;
+    for (let i = 0; i < BEYOND; i += 1) {
+      const code = `ZZ${String(i).padStart(4, '0')}`;
+      const res = await createVehicle(adminToken, { code });
+      expect(res.status, `vehicle ${code} created`).toBe(201);
+      last = data<FleetVehicleDto>(res);
+    }
+    // The LAST of them: `ZZ…` sorts after every other code in the registry, so this one sits past
+    // position `BEYOND` however many vehicles the earlier tests happened to leave behind.
+    farVehicle = last as FleetVehicleDto;
+  });
+
+  /** The one full page of the registry the old client used to read. */
+  const firstPage = async (): Promise<FleetVehicleDto[]> => {
+    const res = await request(app)
+      .get('/api/v1/fleet/vehicles')
+      .query({ pageSize: MAX_PAGE_SIZE, sortBy: 'code', sortDir: 'asc' })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    return data<FleetVehicleDto[]>(res);
+  };
+
+  it('the far vehicle is genuinely OFF the first page — the premise of the rest', async () => {
+    const page = await firstPage();
+    expect(page, 'the page is full, so there is a beyond').toHaveLength(MAX_PAGE_SIZE);
+    expect(
+      page.map((v) => v.code),
+      'the far vehicle is not on it',
+    ).not.toContain(farVehicle.code);
+  });
+
+  it('a reading can be RECORDED for a vehicle past the first page', async () => {
+    const res = await request(app)
+      .post('/api/v1/fleet/odometer')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ vehicleId: farVehicle.id, reading: 500, date: '2026-11-01' });
+    expect(res.status, 'recording is not bounded by the registry page').toBe(201);
+    expect(data<FleetOdometerLogDto>(res).vehicleCode).toBe(farVehicle.code);
+  });
+
+  it('its odometer row carries its own CODE, not a blank', async () => {
+    await request(app)
+      .post('/api/v1/fleet/odometer')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ vehicleId: farVehicle.id, reading: 900, date: '2026-11-02' });
+
+    const res = await request(app)
+      .get('/api/v1/fleet/odometer')
+      .query({ vehicleCodes: farVehicle.code, pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const rows = data<FleetOdometerLogDto[]>(res);
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(row.vehicleCode, 'every row names its vehicle').toBe(farVehicle.code);
+      expect(row.vehicleId).toBe(farVehicle.id);
+    }
+  });
+
+  it('a SEARCH by that code finds it, though a page of the registry does not', async () => {
+    const res = await request(app)
+      .get('/api/v1/fleet/vehicles')
+      .query({ search: farVehicle.code, pageSize: 20 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const found = data<FleetVehicleDto[]>(res);
+    expect(
+      found.map((v) => v.id),
+      'the search answers with the right car',
+    ).toContain(farVehicle.id);
+  });
+
+  it('filtering the odometer BY that code returns its rows and no others', async () => {
+    const res = await request(app)
+      .get('/api/v1/fleet/odometer')
+      .query({ vehicleCodes: farVehicle.code, pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const rows = data<FleetOdometerLogDto[]>(res);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(new Set(rows.map((r) => r.vehicleId))).toEqual(new Set([farVehicle.id]));
+  });
+
+  it('a vehicle ON the first page is unchanged — no regression', async () => {
+    // Taken from the page itself, so this holds whatever the earlier tests left in the registry.
+    const [onPage] = await firstPage();
+    const near = onPage as FleetVehicleDto;
+    const before = await request(app)
+      .get('/api/v1/fleet/odometer/expected')
+      .query({ vehicleId: near.id })
+      .set('Authorization', `Bearer ${adminToken}`);
+    const floor = data<{ expectedReading: number | null }>(before).expectedReading ?? 0;
+
+    const recorded = await request(app)
+      .post('/api/v1/fleet/odometer')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ vehicleId: near.id, reading: floor + 10, date: '2026-11-03' });
+    expect(recorded.status).toBe(201);
+    expect(data<FleetOdometerLogDto>(recorded).vehicleCode).toBe(near.code);
+
+    const res = await request(app)
+      .get('/api/v1/fleet/odometer')
+      .query({ vehicleCodes: near.code, pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    const rows = data<FleetOdometerLogDto[]>(res);
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) expect(row.vehicleCode).toBe(near.code);
+  });
+
+  it('a CORRECTION answers with the code too, so the row never loses its name', async () => {
+    const created = data<FleetOdometerLogDto>(
+      await request(app)
+        .post('/api/v1/fleet/odometer')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ vehicleId: farVehicle.id, reading: 1500, date: '2026-11-04' }),
+    );
+    const res = await request(app)
+      .patch(`/api/v1/fleet/odometer/${created.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ outReading: 1600, version: created.version });
+    expect(res.status).toBe(200);
+    expect(data<FleetOdometerLogDto>(res).vehicleCode).toBe(farVehicle.code);
   });
 });
 
@@ -1283,5 +1734,846 @@ describe('accidents + violations + grievances (§4.6/§4.7, FR-9/FR-10 — FL-6)
       .set('Authorization', `Bearer ${branchAToken}`)
       .send({ vehicleId: '64b1f0cccccccccccccccc99', year: 2026, totalBeforeGrievance: 1 });
     expect(res2.status).toBe(403);
+  });
+});
+
+// ── Catalogs slice: the three new kinds, typed vehicle references, required branch,
+//    the license image, and the server-side filters ─────────────────────────────────
+//
+// Everything below asserts the RULES, not the plumbing: that a reference must name a live item of
+// the RIGHT KIND, that no path anywhere creates a branchless vehicle, that the license image obeys
+// the vehicle's own grants and the file category's intake rules, and that each new filter narrows
+// server-side (which is the only way a filter stays correct across pages).
+
+/** A catalog item of one of the three new kinds, created through the real endpoint. */
+const mkCatalogItem = async (
+  kind: 'licenseClass' | 'operation' | 'insuranceCompany',
+  ar: string,
+  en: string,
+): Promise<string> => {
+  const res = await request(app)
+    .post('/api/v1/fleet/catalog-items')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ kind, name: { ar, en } });
+  expect(res.status).toBe(201);
+  return data<FleetCatalogItemDto>(res).id;
+};
+
+/** A 1×1 PNG — a real image, so the category's mime check passes on its true bytes. */
+const PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+);
+
+describe('fleet catalogs — licence class, operation, insurance company', () => {
+  it('accepts all three kinds and refuses a duplicate name within a kind', async () => {
+    const created: string[] = [];
+    for (const kind of ['licenseClass', 'operation', 'insuranceCompany'] as const) {
+      created.push(await mkCatalogItem(kind, `${kind}-ar`, `${kind}-en`));
+    }
+    expect(new Set(created).size).toBe(3);
+
+    const duplicate = await request(app)
+      .post('/api/v1/fleet/catalog-items')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ kind: 'operation', name: { ar: 'operation-ar', en: 'other' } });
+    expect(duplicate.status).toBe(409);
+  });
+
+  it('the same name in a DIFFERENT kind is not a duplicate — kinds are separate vocabularies', async () => {
+    await mkCatalogItem('operation', 'مشترك', 'Shared');
+    const res = await request(app)
+      .post('/api/v1/fleet/catalog-items')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ kind: 'insuranceCompany', name: { ar: 'مشترك', en: 'Shared' } });
+    expect(res.status).toBe(201);
+  });
+
+  it('lists each kind on its own, which is what the tabs and the selects read', async () => {
+    const id = await mkCatalogItem('licenseClass', 'الثالثة', 'Third');
+    const res = await request(app)
+      .get('/api/v1/fleet/catalog-items')
+      .query({ kind: 'licenseClass', pageSize: 100 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const items = data<FleetCatalogItemDto[]>(res);
+    expect(items.map((i) => i.id)).toContain(id);
+    expect(items.every((i) => i.kind === 'licenseClass')).toBe(true);
+  });
+
+  it('archives instead of deleting — history keeps referencing the item', async () => {
+    const id = await mkCatalogItem('operation', 'تشغيل قديم', 'Legacy operation');
+    const res = await request(app)
+      .patch(`/api/v1/fleet/catalog-items/${id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ isActive: false, version: 0 });
+    expect(res.status).toBe(200);
+    expect(data<FleetCatalogItemDto>(res).isActive).toBe(false);
+  });
+
+  it('only a workType may count for the alarm — the new kinds cannot claim it', async () => {
+    const res = await request(app)
+      .post('/api/v1/fleet/catalog-items')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ kind: 'licenseClass', name: { ar: 'خطأ', en: 'Wrong' }, countsForAlarm: true });
+    expect(res.status).toBe(400);
+  });
+
+  it('creating one needs fleetCatalog.manage — the branch operator holds none of the three', async () => {
+    for (const kind of ['licenseClass', 'operation', 'insuranceCompany'] as const) {
+      const res = await request(app)
+        .post('/api/v1/fleet/catalog-items')
+        .set('Authorization', `Bearer ${branchAToken}`)
+        .send({ kind, name: { ar: 'ممنوع', en: 'Denied' } });
+      expect(res.status, kind).toBe(403);
+    }
+  });
+});
+
+describe('the vehicle registry references the catalogs and always has a branch', () => {
+  let licenseClassId: string;
+  let operationId: string;
+  let insuranceCompanyId: string;
+
+  beforeAll(async () => {
+    licenseClassId = await mkCatalogItem('licenseClass', 'الأولى', 'First');
+    operationId = await mkCatalogItem('operation', 'تشغيل القاهرة', 'Cairo');
+    insuranceCompanyId = await mkCatalogItem('insuranceCompany', 'مصر للتأمين', 'Misr');
+  });
+
+  it('stores all three as references and returns them on the DTO', async () => {
+    const res = await createVehicle(adminToken, {
+      licenseClassId,
+      operationId,
+      insuranceCompanyId,
+    });
+    expect(res.status).toBe(201);
+    const v = data<FleetVehicleDto>(res);
+    expect(v.licenseClassId).toBe(licenseClassId);
+    expect(v.operationId).toBe(operationId);
+    expect(v.insuranceCompanyId).toBe(insuranceCompanyId);
+    // The legacy free-text field is gone from the wire entirely.
+    expect(v).not.toHaveProperty('licenseClass');
+  });
+
+  it('refuses a reference of the WRONG KIND, even though the id is a real catalog item', async () => {
+    const res = await createVehicle(adminToken, { licenseClassId: operationId });
+    expect(res.status).toBe(400);
+  });
+
+  it('refuses a reference to an ARCHIVED item', async () => {
+    const archived = await mkCatalogItem('insuranceCompany', 'شركة منتهية', 'Closed insurer');
+    await request(app)
+      .patch(`/api/v1/fleet/catalog-items/${archived}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ isActive: false, version: 0 });
+    const res = await createVehicle(adminToken, { insuranceCompanyId: archived });
+    expect(res.status).toBe(400);
+  });
+
+  it('refuses a reference to an id that names nothing', async () => {
+    const res = await createVehicle(adminToken, {
+      operationId: '64b1f0cccccccccccccccc01',
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('leaves all three null when they are not supplied — they are optional facts', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    expect(v.licenseClassId).toBeNull();
+    expect(v.operationId).toBeNull();
+    expect(v.insuranceCompanyId).toBeNull();
+  });
+
+  it('clears a reference when it is explicitly sent as null', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken, { operationId }));
+    const res = await request(app)
+      .patch(`/api/v1/fleet/vehicles/${v.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ operationId: null, version: v.version });
+    expect(res.status).toBe(200);
+    expect(data<FleetVehicleDto>(res).operationId).toBeNull();
+  });
+
+  it('REFUSES a vehicle with no branch — the API, not just the form', async () => {
+    const n = vehicleCounter++;
+    const res = await request(app)
+      .post('/api/v1/fleet/vehicles')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        code: `V${n}`,
+        typeId,
+        plateNumber: `س ص ${n}`,
+        chassisNumber: `CH-${n}`,
+        motorNumber: `MO-${n}`,
+        joinedAt: '2024-01-01T00:00:00.000Z',
+        licenseExpiresAt: '2027-01-01T00:00:00.000Z',
+      });
+    expect(res.status).toBe(400);
+  });
+
+  it('refuses an explicit null branch just as firmly', async () => {
+    const res = await createVehicle(adminToken, { branchId: null });
+    expect(res.status).toBe(400);
+  });
+
+  it('refuses a branch id that names no branch', async () => {
+    const res = await createVehicle(adminToken, { branchId: '64b1f0cccccccccccccccc02' });
+    expect(res.status).toBe(400);
+  });
+
+  it('refuses to null a branch on UPDATE — a vehicle cannot become branchless later', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const res = await request(app)
+      .patch(`/api/v1/fleet/vehicles/${v.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ branchId: null, version: v.version });
+    expect(res.status).toBe(400);
+  });
+
+  it('answers the create form with the default branch, resolved by NAME from live data', async () => {
+    // The setting's default is «المهندسين»; this environment has no such branch, so the honest
+    // answer is null plus the name that was looked for — never a guessed id.
+    const res = await request(app)
+      .get('/api/v1/fleet/vehicles/default-branch')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const before = data<{ branchId: string | null; configuredName: string }>(res);
+    expect(before.configuredName).toBe('المهندسين');
+    expect(before.branchId).toBeNull();
+
+    // Point the setting at a branch that DOES exist, and the same endpoint resolves it.
+    // A REAL user id: the settings write stamps `updatedBy` as an ObjectId, so a placeholder
+    // string fails inside BSON rather than in anything this test is about.
+    const ctx: AuthContext = {
+      userId: adminUserId,
+      sessionId: 'seed',
+      branchId: null,
+      departmentId: null,
+      sectionId: null,
+      locale: 'en',
+      permissions: { 'setting.edit': 'organization' },
+      permissionVersion: 1,
+      isPrivileged: true,
+    };
+    await settingsService.set(ctx, {
+      key: FleetSettingKeys.DefaultBranchName,
+      scope: 'organization',
+      value: 'Branch A',
+    });
+    const after = await request(app)
+      .get('/api/v1/fleet/vehicles/default-branch')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(data<{ branchId: string | null }>(after).branchId).toBe(branchAId);
+
+    // Put it back: this is an ORGANIZATION setting, so leaving it pointed at Branch A would make
+    // every later test in this file depend on the order this one happened to run in.
+    await settingsService.set(ctx, {
+      key: FleetSettingKeys.DefaultBranchName,
+      scope: 'organization',
+      value: 'المهندسين',
+    });
+  });
+});
+
+describe('the vehicle license image', () => {
+  const upload = (vehicleId: string, token: string, body: Buffer, name = 'license.png') =>
+    request(app)
+      .post(`/api/v1/fleet/vehicles/${vehicleId}/license-image`)
+      .set('Authorization', `Bearer ${token}`)
+      .attach('file', body, name);
+
+  it('uploads, links the file to the vehicle, and publishes the fact', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const res = await upload(v.id, adminToken, PNG);
+    expect(res.status).toBe(200);
+    const updated = data<FleetVehicleDto>(res);
+    expect(updated.licenseImage).not.toBeNull();
+    expect(updated.licenseImage?.mime).toBe('image/png');
+    await waitFor(() =>
+      seenEvents.some(
+        (e) =>
+          e.name === FleetEvents.VehicleLicenseImageUploaded &&
+          (e.payload as { vehicleId: string }).vehicleId === v.id,
+      ),
+    );
+    expect(
+      seenEvents.some(
+        (e) =>
+          e.name === FleetEvents.VehicleLicenseImageUploaded &&
+          (e.payload as { vehicleId: string }).vehicleId === v.id,
+      ),
+    ).toBe(true);
+  });
+
+  it('serves the bytes with the stored content type', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await upload(v.id, adminToken, PNG);
+    const res = await request(app)
+      .get(`/api/v1/fleet/vehicles/${v.id}/license-image`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('image/png');
+    // Private document: no shared cache may keep it.
+    expect(res.headers['cache-control']).toContain('no-store');
+  });
+
+  it('404s for a vehicle that has no image — absent is absent, not an empty body', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const res = await request(app)
+      .get(`/api/v1/fleet/vehicles/${v.id}/license-image`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(404);
+  });
+
+  it('REJECTS a non-image: the file category is the authority, and it allows images only', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const res = await request(app)
+      .post(`/api/v1/fleet/vehicles/${v.id}/license-image`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .attach('file', Buffer.from('%PDF-1.4 not an image'), {
+        filename: 'license.pdf',
+        contentType: 'application/pdf',
+      });
+    expect(res.status).toBe(422);
+    const after = await request(app)
+      .get(`/api/v1/fleet/vehicles/${v.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(data<FleetVehicleDto>(after).licenseImage).toBeNull();
+  });
+
+  it('REJECTS an oversized image — the category caps it at 10 MB', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const res = await request(app)
+      .post(`/api/v1/fleet/vehicles/${v.id}/license-image`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .attach('file', Buffer.alloc(11 * 1024 * 1024, 1), {
+        filename: 'huge.png',
+        contentType: 'image/png',
+      });
+    expect(res.status).toBe(422);
+  });
+
+  it('refuses an upload with no file part instead of crashing on it', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const res = await request(app)
+      .post(`/api/v1/fleet/vehicles/${v.id}/license-image`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(400);
+  });
+
+  it('a second upload REPLACES the scan — one current licence per vehicle', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const first = data<FleetVehicleDto>(await upload(v.id, adminToken, PNG));
+    const second = data<FleetVehicleDto>(await upload(v.id, adminToken, PNG, 'newer.png'));
+    expect(second.licenseImage).not.toBeNull();
+    expect(second.licenseImage?.fileName).toBe('newer.png');
+    // Same file GROUP (replace, not a new attachment), so the previous version is retrievable.
+    expect(first.licenseImage?.fileId).toBeDefined();
+  });
+
+  it('deletes the image, keeps the VEHICLE, and publishes the removal', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await upload(v.id, adminToken, PNG);
+    const res = await request(app)
+      .delete(`/api/v1/fleet/vehicles/${v.id}/license-image`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(data<FleetVehicleDto>(res).licenseImage).toBeNull();
+
+    const still = await request(app)
+      .get(`/api/v1/fleet/vehicles/${v.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(still.status).toBe(200);
+    expect(data<FleetVehicleDto>(still).code).toBe(v.code);
+
+    await waitFor(() =>
+      seenEvents.some(
+        (e) =>
+          e.name === FleetEvents.VehicleLicenseImageDeleted &&
+          (e.payload as { vehicleId: string }).vehicleId === v.id,
+      ),
+    );
+    expect(
+      seenEvents.some(
+        (e) =>
+          e.name === FleetEvents.VehicleLicenseImageDeleted &&
+          (e.payload as { vehicleId: string }).vehicleId === v.id,
+      ),
+    ).toBe(true);
+  });
+
+  it('refuses to delete when there is nothing to delete', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const res = await request(app)
+      .delete(`/api/v1/fleet/vehicles/${v.id}/license-image`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(409);
+  });
+
+  it('the FLEET grants alone are enough to read it — no platform file permission needed (§13)', async () => {
+    // The branch operator holds the five fleetVehicle.* grants and NOTHING from the platform file
+    // surface — no `file.view`, no `file.download`. That is the shape a real fleet role has, and
+    // it must be able to see the image of a vehicle it owns; going through the generic download
+    // path would 403 here for exactly the people the document belongs to.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken, { branchId: branchAId }));
+    await upload(v.id, adminToken, PNG);
+    const res = await request(app)
+      .get(`/api/v1/fleet/vehicles/${v.id}/license-image`)
+      .set('Authorization', `Bearer ${branchAToken}`);
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('image/png');
+  });
+
+  it('a reader may see the image but not change it — the vehicle grants govern (§13)', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken, { branchId: branchAId }));
+    await upload(v.id, adminToken, PNG);
+    // The branch operator holds fleetVehicle.view AND .edit, so it may do both here…
+    expect((await upload(v.id, branchAToken, PNG)).status).toBe(200);
+    // …but a vehicle OUTSIDE its branch scope is unreachable by either verb.
+    const other = data<FleetVehicleDto>(await createVehicle(adminToken, { branchId: branchBId }));
+    await upload(other.id, adminToken, PNG);
+    expect(
+      (
+        await request(app)
+          .get(`/api/v1/fleet/vehicles/${other.id}/license-image`)
+          .set('Authorization', `Bearer ${branchAToken}`)
+      ).status,
+    ).toBe(404);
+    expect((await upload(other.id, branchAToken, PNG)).status).toBe(404);
+  });
+
+  it('the platform file endpoints stay guarded — an out-of-scope caller cannot go around Fleet', async () => {
+    // ADR-023 defence in depth: knowing the FILE id must be no better than knowing the vehicle id.
+    const other = data<FleetVehicleDto>(await createVehicle(adminToken, { branchId: branchBId }));
+    const withImage = data<FleetVehicleDto>(await upload(other.id, adminToken, PNG));
+    const fileId = withImage.licenseImage?.fileId ?? '';
+    expect(fileId).not.toBe('');
+    for (const path of [
+      `/api/v1/platform/files/${fileId}`,
+      `/api/v1/platform/files/${fileId}/download`,
+    ]) {
+      const res = await request(app).get(path).set('Authorization', `Bearer ${branchAToken}`);
+      expect([403, 404], path).toContain(res.status);
+    }
+  });
+
+  it('is refused outright without a session', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    expect((await request(app).get(`/api/v1/fleet/vehicles/${v.id}/license-image`)).status).toBe(
+      401,
+    );
+  });
+});
+
+describe('the driver license image', () => {
+  const upload = (driverId: string, token: string, body: Buffer, name = 'license.png') =>
+    request(app)
+      .post(`/api/v1/fleet/drivers/${driverId}/license-image`)
+      .set('Authorization', `Bearer ${token}`)
+      .attach('file', body, name);
+
+  const mkDriver = async (): Promise<FleetDriverProfileDto> => mkDriverProfile(await mkEmployee());
+
+  it('uploads, links the file to the profile, and publishes the fact', async () => {
+    const d = await mkDriver();
+    const res = await upload(d.id, adminToken, PNG);
+    expect(res.status).toBe(200);
+    const updated = data<FleetDriverProfileDto>(res);
+    expect(updated.licenseImage).not.toBeNull();
+    expect(updated.licenseImage?.mime).toBe('image/png');
+    await waitFor(() =>
+      seenEvents.some(
+        (e) =>
+          e.name === FleetEvents.DriverLicenseImageUploaded &&
+          (e.payload as { driverProfileId: string }).driverProfileId === d.id,
+      ),
+    );
+    expect(
+      seenEvents.some(
+        (e) =>
+          e.name === FleetEvents.DriverLicenseImageUploaded &&
+          (e.payload as { employeeId: string }).employeeId === d.employeeId,
+      ),
+    ).toBe(true);
+  });
+
+  it('serves the bytes with the stored content type', async () => {
+    const d = await mkDriver();
+    await upload(d.id, adminToken, PNG);
+    const res = await request(app)
+      .get(`/api/v1/fleet/drivers/${d.id}/license-image`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('image/png');
+    // Private document: no shared cache may keep it.
+    expect(res.headers['cache-control']).toContain('no-store');
+  });
+
+  it('404s for a driver that has no image — absent is absent, not an empty body', async () => {
+    const d = await mkDriver();
+    const res = await request(app)
+      .get(`/api/v1/fleet/drivers/${d.id}/license-image`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(404);
+  });
+
+  it('REJECTS a non-image: the file category is the authority, and it allows images only', async () => {
+    const d = await mkDriver();
+    const res = await request(app)
+      .post(`/api/v1/fleet/drivers/${d.id}/license-image`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .attach('file', Buffer.from('%PDF-1.4 not an image'), {
+        filename: 'license.pdf',
+        contentType: 'application/pdf',
+      });
+    expect(res.status).toBe(422);
+    const after = await request(app)
+      .get(`/api/v1/fleet/drivers/${d.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(data<FleetDriverProfileDto>(after).licenseImage).toBeNull();
+  });
+
+  it('refuses an upload with no file part instead of crashing on it', async () => {
+    const d = await mkDriver();
+    const res = await request(app)
+      .post(`/api/v1/fleet/drivers/${d.id}/license-image`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(400);
+  });
+
+  it('REPLACES rather than accumulating — the profile points at ONE current scan', async () => {
+    const d = await mkDriver();
+    const first = data<FleetDriverProfileDto>(await upload(d.id, adminToken, PNG));
+    const second = data<FleetDriverProfileDto>(await upload(d.id, adminToken, PNG));
+    expect(second.licenseImage).not.toBeNull();
+    // `fileService.replace` adds version n+1 to the SAME file group and hands back that new
+    // version's id — so the link moves forward while the earlier scan survives as history. The
+    // profile still holds exactly one reference, which is the invariant that matters here.
+    expect(second.licenseImage?.fileId).not.toBe(first.licenseImage?.fileId);
+    expect(
+      (
+        await request(app)
+          .get(`/api/v1/fleet/drivers/${d.id}/license-image`)
+          .set('Authorization', `Bearer ${adminToken}`)
+      ).status,
+    ).toBe(200);
+  });
+
+  it('deletes the link, publishes the fact, and then has nothing to serve', async () => {
+    const d = await mkDriver();
+    await upload(d.id, adminToken, PNG);
+    const res = await request(app)
+      .delete(`/api/v1/fleet/drivers/${d.id}/license-image`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(data<FleetDriverProfileDto>(res).licenseImage).toBeNull();
+    expect(
+      (
+        await request(app)
+          .get(`/api/v1/fleet/drivers/${d.id}/license-image`)
+          .set('Authorization', `Bearer ${adminToken}`)
+      ).status,
+    ).toBe(404);
+    await waitFor(() =>
+      seenEvents.some(
+        (e) =>
+          e.name === FleetEvents.DriverLicenseImageDeleted &&
+          (e.payload as { driverProfileId: string }).driverProfileId === d.id,
+      ),
+    );
+    expect(
+      seenEvents.some(
+        (e) =>
+          e.name === FleetEvents.DriverLicenseImageDeleted &&
+          (e.payload as { fileId: string | null }).fileId === null,
+      ),
+    ).toBe(true);
+  });
+
+  it('refuses to delete when there is nothing to delete', async () => {
+    const d = await mkDriver();
+    const res = await request(app)
+      .delete(`/api/v1/fleet/drivers/${d.id}/license-image`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(409);
+  });
+
+  it('leaves the licence FACTS alone when the scan goes', async () => {
+    const d = await mkDriver();
+    await upload(d.id, adminToken, PNG);
+    const after = data<FleetDriverProfileDto>(
+      await request(app)
+        .delete(`/api/v1/fleet/drivers/${d.id}/license-image`)
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+    expect(after.licenseNumber).toBe(d.licenseNumber);
+    expect(after.licenseExpiresAt).toBe(d.licenseExpiresAt);
+    expect(after.specialization).toBe(d.specialization);
+  });
+
+  it('managing the scan needs fleetDriver.manage — the vehicle grants do not carry over', async () => {
+    // The branch operator holds the five fleetVehicle.* grants and nothing from the driver
+    // surface. Being trusted with cars is not being trusted with a person's identity document.
+    const d = await mkDriver();
+    expect((await upload(d.id, branchAToken, PNG)).status).toBe(403);
+    await upload(d.id, adminToken, PNG);
+    expect(
+      (
+        await request(app)
+          .delete(`/api/v1/fleet/drivers/${d.id}/license-image`)
+          .set('Authorization', `Bearer ${branchAToken}`)
+      ).status,
+    ).toBe(403);
+  });
+
+  it('the platform file endpoints stay guarded — nobody goes around Fleet (ADR-023)', async () => {
+    // Knowing the FILE id must be no better than knowing the driver id: the fleet authorizer is
+    // asked again on the platform's own file routes, and a caller with no fleet grant is refused.
+    const d = await mkDriver();
+    const withImage = data<FleetDriverProfileDto>(await upload(d.id, adminToken, PNG));
+    const fileId = withImage.licenseImage?.fileId ?? '';
+    expect(fileId).not.toBe('');
+    const noPermToken = await login('noperm@ecms.local');
+    for (const path of [
+      `/api/v1/platform/files/${fileId}`,
+      `/api/v1/platform/files/${fileId}/download`,
+    ]) {
+      const res = await request(app).get(path).set('Authorization', `Bearer ${noPermToken}`);
+      expect([403, 404], path).toContain(res.status);
+    }
+  });
+
+  it('is refused outright without a session', async () => {
+    const d = await mkDriver();
+    expect((await request(app).get(`/api/v1/fleet/drivers/${d.id}/license-image`)).status).toBe(
+      401,
+    );
+  });
+});
+
+describe('the drivers list filters narrow SERVER-side', () => {
+  it('filters on the fleet-owned area, and on whether a scan is on file', async () => {
+    const withScan = await mkDriverProfile(await mkEmployee());
+    const withoutScan = await mkDriverProfile(await mkEmployee());
+    const area = `AREA-${withScan.id.slice(-6)}`;
+    await request(app)
+      .patch(`/api/v1/fleet/drivers/${withScan.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ area, version: withScan.version });
+    await request(app)
+      .post(`/api/v1/fleet/drivers/${withScan.id}/license-image`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .attach('file', PNG, 'license.png');
+
+    const byArea = await request(app)
+      .get('/api/v1/fleet/drivers')
+      .query({ area, pageSize: 100 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(byArea.status).toBe(200);
+    const areaIds = data<FleetDriverProfileDto[]>(byArea).map((d) => d.id);
+    expect(areaIds).toContain(withScan.id);
+    expect(areaIds).not.toContain(withoutScan.id);
+
+    const withImage = await request(app)
+      .get('/api/v1/fleet/drivers')
+      .query({ hasLicenseImage: 'true', pageSize: 100 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    const withImageIds = data<FleetDriverProfileDto[]>(withImage).map((d) => d.id);
+    expect(withImageIds).toContain(withScan.id);
+    expect(withImageIds).not.toContain(withoutScan.id);
+
+    // `$ne: null` rather than `$exists`, so a profile stored before the field existed (no key at
+    // all) lands in this bucket alongside one explicitly set to null, instead of vanishing from
+    // both answers. Every row here is API-created, so this asserts the null half; the absent half
+    // is covered by the mapper's unit test, where a keyless row can actually be constructed.
+    const withoutImage = await request(app)
+      .get('/api/v1/fleet/drivers')
+      .query({ hasLicenseImage: 'false', pageSize: 100 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    const withoutImageIds = data<FleetDriverProfileDto[]>(withoutImage).map((d) => d.id);
+    expect(withoutImageIds).toContain(withoutScan.id);
+    expect(withoutImageIds).not.toContain(withScan.id);
+  });
+
+  it('refuses a filter the list does not implement rather than ignoring it', async () => {
+    // `governorate` is HR's fact. The fleet list says so with a 400 instead of accepting the
+    // parameter and returning an unfiltered page — the browser is expected to ask HR and come
+    // back with `employeeIds`, which is the test below.
+    const res = await request(app)
+      .get('/api/v1/fleet/drivers')
+      .query({ governorate: 'الجيزة' })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('the HR half of the drivers filter — two server-side queries, joined by id', () => {
+  it('HR filters on governorate and phone, and Fleet narrows on the ids it returns', async () => {
+    const marker = `G${Date.now().toString().slice(-6)}`;
+    const phone = `0109${String(nidCounter).padStart(7, '0')}`;
+    const targetEmployee = await mkEmployee({ governorate: marker, phone });
+    const otherEmployee = await mkEmployee({ governorate: `${marker}-other` });
+    const target = await mkDriverProfile(targetEmployee);
+    const other = await mkDriverProfile(otherEmployee);
+
+    // ① HR answers the HR question, on HR's own endpoint, with HR's own permission.
+    const byGovernorate = await request(app)
+      .get('/api/v1/hr/employees')
+      .query({ governorate: marker, pageSize: 100 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(byGovernorate.status).toBe(200);
+    const govIds = data<{ id: string }[]>(byGovernorate).map((e) => e.id);
+    expect(govIds).toContain(targetEmployee);
+    // The regex is a substring match, so the deliberately-similar `${marker}-other` is included —
+    // what matters is that a governorate NOT matching the term is out.
+    expect(govIds).not.toContain(await mkEmployee({ governorate: 'محافظة أخرى تماما' }));
+
+    const byPhone = await request(app)
+      .get('/api/v1/hr/employees')
+      .query({ phone, pageSize: 100 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(byPhone.status).toBe(200);
+    const phoneIds = data<{ id: string }[]>(byPhone).map((e) => e.id);
+    expect(phoneIds).toEqual([targetEmployee]);
+
+    // ② Fleet narrows on its OWN column using those ids — no query into HR anywhere.
+    const drivers = await request(app)
+      .get('/api/v1/fleet/drivers')
+      .query({ employeeIds: targetEmployee, pageSize: 100 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(drivers.status).toBe(200);
+    const ids = data<FleetDriverProfileDto[]>(drivers).map((d) => d.id);
+    expect(ids).toEqual([target.id]);
+    expect(ids).not.toContain(other.id);
+  });
+
+  it('HR still filters on name, code, job title and branch — nothing was reinvented', async () => {
+    // Arabic LETTERS only, with no counter spliced in: `fullNameAr` is validated by `arabicName`,
+    // which rejects an ASCII digit and an Arabic-Indic one alike. Every other employee in this
+    // file is 'سائق اختبار', so this name is distinctive without needing to be generated.
+    const name = 'سائق فريد للبحث';
+    const employeeId = await mkEmployee({ fullNameAr: name });
+    const byName = await request(app)
+      .get('/api/v1/hr/employees')
+      .query({ search: name, pageSize: 100 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(data<{ id: string }[]>(byName).map((e) => e.id)).toContain(employeeId);
+
+    const byBranchAndTitle = await request(app)
+      .get('/api/v1/hr/employees')
+      .query({ branchId: branchAId, jobTitleId: jobTitleAId, pageSize: 100 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(byBranchAndTitle.status).toBe(200);
+    expect(data<{ id: string }[]>(byBranchAndTitle).map((e) => e.id)).toContain(employeeId);
+  });
+
+  it('REFUSES more ids than one HR page rather than silently keeping the first 100', async () => {
+    const ids = (n: number): string =>
+      Array.from({ length: n }, (_, i) => `64b1f0dddddddddddd${String(i).padStart(6, '0')}`).join(
+        ',',
+      );
+    const ok = await request(app)
+      .get('/api/v1/fleet/drivers')
+      .query({ employeeIds: ids(100), pageSize: 25 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(ok.status).toBe(200);
+    // 101 is a 400, not a truncated `$in`: a filter that quietly drops ids returns a short list
+    // that looks complete, which is the one outcome worse than refusing.
+    const tooMany = await request(app)
+      .get('/api/v1/fleet/drivers')
+      .query({ employeeIds: ids(101), pageSize: 25 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(tooMany.status).toBe(400);
+  });
+
+  it('an employeeIds filter matching nobody returns nothing, not everything', async () => {
+    const res = await request(app)
+      .get('/api/v1/fleet/drivers')
+      .query({ employeeIds: '64b1f0dddddddddddddddd99', pageSize: 25 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(data<FleetDriverProfileDto[]>(res)).toHaveLength(0);
+  });
+});
+
+describe('the registry filters narrow SERVER-side', () => {
+  let licenseClassId: string;
+  let operationId: string;
+  let insuranceCompanyId: string;
+  let target: FleetVehicleDto;
+
+  beforeAll(async () => {
+    licenseClassId = await mkCatalogItem('licenseClass', 'فئة الفلترة', 'Filter class');
+    operationId = await mkCatalogItem('operation', 'تشغيل الفلترة', 'Filter operation');
+    insuranceCompanyId = await mkCatalogItem('insuranceCompany', 'تأمين الفلترة', 'Filter insurer');
+    target = data<FleetVehicleDto>(
+      await createVehicle(adminToken, {
+        licenseClassId,
+        operationId,
+        insuranceCompanyId,
+        branchId: branchBId,
+      }),
+    );
+    // A decoy carrying none of them, so a filter that does nothing would fail below.
+    await createVehicle(adminToken, { branchId: branchBId });
+  });
+
+  const list = async (query: Record<string, string>): Promise<FleetVehicleDto[]> => {
+    const res = await request(app)
+      .get('/api/v1/fleet/vehicles')
+      .query({ pageSize: 100, ...query })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    return data<FleetVehicleDto[]>(res);
+  };
+
+  it('filters by each catalog reference', async () => {
+    for (const [key, value] of [
+      ['licenseClassId', licenseClassId],
+      ['operationId', operationId],
+      ['insuranceCompanyId', insuranceCompanyId],
+    ] as const) {
+      const items = await list({ [key]: value });
+      expect(
+        items.map((v) => v.id),
+        key,
+      ).toEqual([target.id]);
+    }
+  });
+
+  it('filters by each identifier on its own', async () => {
+    for (const [key, value] of [
+      ['code', target.code],
+      ['plateNumber', target.plateNumber],
+      ['chassisNumber', target.chassisNumber],
+      ['motorNumber', target.motorNumber],
+    ] as const) {
+      const items = await list({ [key]: value });
+      expect(
+        items.map((v) => v.id),
+        key,
+      ).toEqual([target.id]);
+    }
+  });
+
+  it('ANDs the identifier filters — two conditions narrow further, they do not widen', async () => {
+    expect(
+      (await list({ code: target.code, chassisNumber: target.chassisNumber })).map((v) => v.id),
+    ).toEqual([target.id]);
+    // A real code with someone else's chassis matches nothing, which `search` could never express.
+    expect(await list({ code: target.code, chassisNumber: 'CH-NOT-A-MATCH' })).toEqual([]);
+  });
+
+  it('combines a catalog filter with a branch filter', async () => {
+    expect((await list({ operationId, branchId: branchBId })).map((v) => v.id)).toEqual([
+      target.id,
+    ]);
+    expect(await list({ operationId, branchId: branchAId })).toEqual([]);
+  });
+
+  it('treats a filter term as TEXT, not as a pattern', async () => {
+    // A regex metacharacter must match literally; escaping it is what stops `.*` listing the fleet.
+    expect(await list({ code: '.*' })).toEqual([]);
   });
 });

@@ -54,12 +54,32 @@ export const toVehicleDto = (doc: FleetVehicleDoc, inWorkshop: boolean): FleetVe
   motorNumber: doc.motorNumber,
   joinedAt: iso(doc.joinedAt),
   licenseExpiresAt: iso(doc.licenseExpiresAt),
-  licenseClass: doc.licenseClass,
-  branchId: doc.branchId === null ? null : String(doc.branchId),
-  departmentId: doc.departmentId === null ? null : String(doc.departmentId),
-  radio: { issi: doc.radio.issi, motorolaSn: doc.radio.motorolaSn },
+  // The legacy free-text `licenseClass` column is deliberately NOT mapped: it is migration
+  // evidence, not a fact any client should read or round-trip back.
+  //
+  // Every optional field below is compared with `== null`, not `=== null`, and that is the whole
+  // point: reads go through `.lean()`, which hands back the stored BSON, and a mongoose `default`
+  // is applied on WRITE. A row written before a field existed simply does not have the key, so it
+  // arrives as `undefined` — which `=== null` lets straight through into `String(undefined)` or,
+  // for the subdocument, into a read of a property on nothing.
+  licenseClassId: doc.licenseClassId == null ? null : String(doc.licenseClassId),
+  operationId: doc.operationId == null ? null : String(doc.operationId),
+  insuranceCompanyId: doc.insuranceCompanyId == null ? null : String(doc.insuranceCompanyId),
+  branchId: doc.branchId == null ? null : String(doc.branchId),
+  departmentId: doc.departmentId == null ? null : String(doc.departmentId),
+  radio: { issi: doc.radio?.issi ?? null, motorolaSn: doc.radio?.motorolaSn ?? null },
   status: doc.status,
-  statusReason: doc.statusReason,
+  statusReason: doc.statusReason ?? null,
+  licenseImage:
+    doc.licenseImage == null
+      ? null
+      : {
+          fileId: String(doc.licenseImage.fileId),
+          fileName: doc.licenseImage.fileName,
+          mime: doc.licenseImage.mime,
+          size: doc.licenseImage.size,
+          uploadedAt: iso(doc.licenseImage.uploadedAt),
+        },
   inWorkshop,
   version: doc.__v,
   createdAt: iso(doc.createdAt),
@@ -74,6 +94,19 @@ export const toDriverProfileDto = (doc: FleetDriverProfileDoc): FleetDriverProfi
   specialization: doc.specialization,
   area: doc.area,
   isActive: doc.isActive,
+  // `== null`, not `=== null`: reads go through `.lean()`, and a profile written before the
+  // licence image existed simply has no such key — it arrives as `undefined`, which `=== null`
+  // would let straight through into a property read on nothing.
+  licenseImage:
+    doc.licenseImage == null
+      ? null
+      : {
+          fileId: String(doc.licenseImage.fileId),
+          fileName: doc.licenseImage.fileName,
+          mime: doc.licenseImage.mime,
+          size: doc.licenseImage.size,
+          uploadedAt: iso(doc.licenseImage.uploadedAt),
+        },
   version: doc.__v,
   createdAt: iso(doc.createdAt),
   updatedAt: iso(doc.updatedAt),
@@ -91,9 +124,17 @@ export const toUnavailabilityDto = (doc: FleetUnavailabilityDoc): FleetDriverUna
   updatedAt: iso(doc.updatedAt),
 });
 
-export const toOdometerLogDto = (doc: FleetOdometerLogDoc): FleetOdometerLogDto => ({
+/**
+ * `vehicleCode` is passed in rather than looked up here: a mapper runs once per row and a lookup
+ * per row would be a query per row. The caller resolves the whole page's codes in one go.
+ */
+export const toOdometerLogDto = (
+  doc: FleetOdometerLogDoc,
+  vehicleCode: string | null,
+): FleetOdometerLogDto => ({
   id: String(doc._id),
   vehicleId: String(doc.vehicleId),
+  vehicleCode,
   date: iso(doc.date),
   outReading: doc.outReading,
   inReading: doc.inReading,

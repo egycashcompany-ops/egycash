@@ -76,6 +76,7 @@ const SHAPES: Record<string, { type: string; defaultValue: unknown }> = {
   [FleetSettingKeys.UseHrLeave]: { type: 'boolean', defaultValue: true },
   [FleetSettingKeys.VehicleLicenseWarnDays]: { type: 'number', defaultValue: 30 },
   [FleetSettingKeys.DriverLicenseWarnDays]: { type: 'number', defaultValue: 30 },
+  [FleetSettingKeys.DefaultBranchName]: { type: 'string', defaultValue: 'المهندسين' },
 };
 
 /** Every key the contracts declare, which is what the API registers at boot. */
@@ -188,8 +189,8 @@ const cardsOnly = (markup: string): string => markup.slice(markup.lastIndexOf('<
 
 describe('the fixture tracks the real registry', () => {
   it('covers every declared setting key, and there are twenty-nine of them', () => {
-    expect(DECLARED_KEYS).toHaveLength(29);
-    expect(new Set(DECLARED_KEYS).size).toBe(29);
+    expect(DECLARED_KEYS).toHaveLength(30);
+    expect(new Set(DECLARED_KEYS).size).toBe(30);
     const uncovered = DECLARED_KEYS.filter((key) => SHAPES[key] === undefined);
     expect(uncovered, 'a setting was declared without a shape in this fixture').toEqual([]);
   });
@@ -206,8 +207,8 @@ describe('every setting reaches the screen', () => {
   });
 
   it('renders one editable control per setting', () => {
-    // 29 settings + the search box = 30 inputs. The owner filter is a <select>, not an input.
-    expect(inputs(markup)).toHaveLength(30);
+    // 30 settings + the search box = 31 inputs. The owner filter is a <select>, not an input.
+    expect(inputs(markup)).toHaveLength(31);
   });
 
   it('groups them under their owners', () => {
@@ -243,7 +244,7 @@ describe('every setting reaches the screen', () => {
   });
 
   it('shows a count of what is displayed against the total', () => {
-    expect(markup).toContain('Showing 29 of 29');
+    expect(markup).toContain('Showing 30 of 30');
   });
 });
 
@@ -321,7 +322,7 @@ describe('editing is gated on setting.edit, in the markup and not only in the so
     const markup = render({ permissions: ['setting.view'] });
     // The search box stays usable — reading is what this actor may do.
     const controls = inputs(markup).filter((tag) => !tag.includes('type="search"'));
-    expect(controls).toHaveLength(29);
+    expect(controls).toHaveLength(30);
     const enabled = controls.filter((tag) => !isDisabled(tag));
     expect(enabled, 'a setting control is editable without setting.edit').toEqual([]);
   });
@@ -335,7 +336,7 @@ describe('editing is gated on setting.edit, in the markup and not only in the so
   it('leaves the controls enabled for an actor who holds setting.edit', () => {
     const markup = render();
     const controls = inputs(markup).filter((tag) => !tag.includes('type="search"'));
-    expect(controls).toHaveLength(29);
+    expect(controls).toHaveLength(30);
     expect(controls.filter(isDisabled)).toEqual([]);
     expect(markup).not.toContain('do not hold the edit-settings permission');
   });
@@ -389,7 +390,7 @@ describe('accessibility', () => {
 
   it('describes every control with its registry description', () => {
     const described = inputs(markup).filter((tag) => tag.includes('aria-describedby'));
-    expect(described.length).toBeGreaterThanOrEqual(29);
+    expect(described.length).toBeGreaterThanOrEqual(30);
   });
 
   it('gives the owner filter an accessible name, since it has no visible label', () => {
@@ -443,14 +444,14 @@ describe('the filters are addressable', () => {
     const markup = render({ search: '?q=lockout' });
     expect(markup).toContain(SettingKeys.LockoutMaxAttempts);
     expect(markup).not.toContain(SettingKeys.PasswordMinLength);
-    expect(markup).toContain('Showing 2 of 29');
+    expect(markup).toContain('Showing 2 of 30');
   });
 
   it('reads the owner filter from the URL', () => {
     const markup = render({ search: '?owner=fleet' });
     expect(markup).toContain(FleetSettingKeys.AlarmRedKm);
     expect(markup).not.toContain(SettingKeys.PasswordMinLength);
-    expect(markup).toContain('Showing 5 of 29');
+    expect(markup).toContain('Showing 6 of 30');
   });
 
   it('says so plainly when the filters match nothing', () => {

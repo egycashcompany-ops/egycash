@@ -5,8 +5,12 @@
 // derived facts query-time facts, and a field that does not exist cannot go stale.
 import { z } from 'zod';
 import { LocalizedStringSchema } from '../common/localized.js';
-import { PaginationQuerySchema, booleanQuery, objectId,
+import {
+  MAX_PAGE_SIZE,
+  PaginationQuerySchema,
+  booleanQuery,
   listQuery,
+  objectId,
 } from '../common/index.js';
 
 /** Money in EGP. A plain nonnegative number — multi-currency is not a fleet fact. */
@@ -52,6 +56,13 @@ export const FLEET_CATALOG_KINDS = [
   'missionType',
   'violationType',
   'unavailabilityReason',
+  // Three kinds added for the vehicle registry's typed references. They are catalogs for the same
+  // reason the first six are: an admin-owned vocabulary the domain points AT, never a string the
+  // domain carries. `licenseClass` is §13-Q7's answer arriving as data rather than an enum — the
+  // admin names the classes, so no code change is needed when the authority renames one.
+  'licenseClass',
+  'operation',
+  'insuranceCompany',
 ] as const;
 export const FleetCatalogKindSchema = z.enum(FLEET_CATALOG_KINDS);
 export type FleetCatalogKind = z.infer<typeof FleetCatalogKindSchema>;
@@ -108,6 +119,24 @@ export const FLEET_VEHICLE_STATUSES = ['active', 'outOfService', 'disposed'] as 
 export const FleetVehicleStatusSchema = z.enum(FLEET_VEHICLE_STATUSES);
 export type FleetVehicleStatus = z.infer<typeof FleetVehicleStatusSchema>;
 
+/**
+ * The stored license-image reference — platform Files owns the bytes, the record owns the link.
+ *
+ * One shape, two owners: a VEHICLE's license (رخصة السيارة) and a DRIVER's license (رخصة
+ * القيادة) are different documents about different subjects, but the link Fleet keeps to each is
+ * the same five facts. The two aliases below exist so a reader of either DTO sees the name of the
+ * thing being described rather than a shared type they have to go look up.
+ */
+export interface FleetLicenseImageDto {
+  fileId: string;
+  fileName: string;
+  mime: string;
+  size: number;
+  uploadedAt: string;
+}
+export type FleetVehicleLicenseImageDto = FleetLicenseImageDto;
+export type FleetDriverLicenseImageDto = FleetLicenseImageDto;
+
 export interface FleetVehicleDto {
   id: string;
   code: string;
@@ -117,13 +146,24 @@ export interface FleetVehicleDto {
   motorNumber: string;
   joinedAt: string;
   licenseExpiresAt: string;
-  /** Free string until §13-Q7 defines the vocabulary. */
-  licenseClass: string | null;
+  /** §13-Q7 answered as DATA: a `licenseClass` catalog reference, no longer a free string. */
+  licenseClassId: string | null;
+  /** `operation` catalog reference (التشغيل) — the operating group the vehicle runs under. */
+  operationId: string | null;
+  /** `insuranceCompany` catalog reference (شركة التأمين). */
+  insuranceCompanyId: string | null;
+  /**
+   * REQUIRED since the catalogs slice: a vehicle belongs to a branch, and the branch is what data
+   * scopes filter on. Nullable in the DTO only because vehicles created before the rule may still
+   * carry null — those rows stay readable and editable, and an edit must name a branch.
+   */
   branchId: string | null;
   departmentId: string | null;
   radio: { issi: string | null; motorolaSn: string | null };
   status: FleetVehicleStatus;
   statusReason: string | null;
+  /** null = no license image on file; the UI offers the upload action instead of view/delete. */
+  licenseImage: FleetVehicleLicenseImageDto | null;
   /** DERIVED (FR-12): an open maintenance visit exists. Never stored. */
   inWorkshop: boolean;
   version: number;
@@ -139,8 +179,15 @@ const vehicleCore = {
   motorNumber: z.string().trim().min(1).max(60),
   joinedAt: z.coerce.date(),
   licenseExpiresAt: z.coerce.date(),
-  licenseClass: z.string().trim().min(1).max(60).nullish(),
-  branchId: objectId().nullish(),
+  // The three catalog references. Optional facts — a vehicle may legitimately have no insurer on
+  // file — but when given they must name a LIVE catalog item of the right kind (service-enforced).
+  licenseClassId: objectId().nullish(),
+  operationId: objectId().nullish(),
+  insuranceCompanyId: objectId().nullish(),
+  // NOT nullish, unlike every other reference here: `null` is rejected by the schema, so neither a
+  // create nor an update can leave a vehicle branchless. The service additionally proves the branch
+  // exists and is active — a well-formed id for a deleted branch is still not a branch.
+  branchId: objectId(),
   departmentId: objectId().nullish(),
   radio: z
     .object({
@@ -161,6 +208,15 @@ export const UpdateFleetVehicleSchema = z
   .strict();
 export type UpdateFleetVehicle = z.infer<typeof UpdateFleetVehicleSchema>;
 
+/** The create form's branch default (§16) — resolved from LIVE branch data, never a baked-in id. */
+export interface FleetDefaultBranchDto {
+  /** null = no branch matches the configured default name; the user must pick one. */
+  branchId: string | null;
+  name: { ar: string; en: string } | null;
+  /** The name the lookup used, so the UI can say WHICH default was not found. */
+  configuredName: string;
+}
+
 /** Lifecycle §4.1: reason is REQUIRED when leaving `active`; `disposed` is terminal. */
 export const ChangeFleetVehicleStatusSchema = z
   .object({
@@ -180,12 +236,25 @@ export const ChangeFleetVehicleStatusSchema = z
   });
 export type ChangeFleetVehicleStatus = z.infer<typeof ChangeFleetVehicleStatusSchema>;
 
+/** One identifier filter: substring, case-insensitive — the list page's per-column search boxes. */
+const identifierFilter = () => z.string().trim().min(1).max(60).optional();
+
 export const ListFleetVehiclesQuerySchema = PaginationQuerySchema.extend({
   status: FleetVehicleStatusSchema.optional(),
+  /** The vehicle TYPE is the make/model the registry knows (اختر الماركة). */
   typeId: objectId().optional(),
   branchId: listQuery(objectId()),
-  /** Substring match on code/plate/chassis/motor. */
+  /** Substring match across code/plate/chassis/motor at once. */
   search: z.string().trim().min(1).max(100).optional(),
+  // Per-identifier filters, ANDed with each other and with `search`: narrowing by plate AND
+  // chassis is a different question from searching either, and the list page asks both.
+  code: identifierFilter(),
+  plateNumber: identifierFilter(),
+  chassisNumber: identifierFilter(),
+  motorNumber: identifierFilter(),
+  licenseClassId: objectId().optional(),
+  operationId: objectId().optional(),
+  insuranceCompanyId: objectId().optional(),
   licenseExpiresBefore: z.coerce.date().optional(),
 }).strict();
 export type ListFleetVehiclesQuery = z.infer<typeof ListFleetVehiclesQuerySchema>;
@@ -204,6 +273,15 @@ export interface FleetDriverProfileDto {
   specialization: FleetDriverSpecialization;
   area: string | null;
   isActive: boolean;
+  /**
+   * The driver's own licence scan (صورة الرخصة). null = nothing on file, and the registry offers
+   * the upload action instead of view/delete.
+   *
+   * FR-11 holds: this is a FLEET-owned fact. HR's `drivingLicenses` records that a person is
+   * licensed; the scan Fleet keeps is the operational document the dispatcher checks, and it
+   * lives on the profile Fleet owns rather than on the employee record Fleet may not write.
+   */
+  licenseImage: FleetDriverLicenseImageDto | null;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -232,11 +310,33 @@ export const UpdateFleetDriverProfileSchema = z
   .strict();
 export type UpdateFleetDriverProfile = z.infer<typeof UpdateFleetDriverProfileSchema>;
 
+// Only FLEET-owned columns are filterable here, and that is a boundary rather than an omission:
+// name, employee code, job title, governorate, phone and branch are HR's facts, read by the
+// browser from HR's own API with HR's own permission. Filtering a fleet-paginated list on them
+// would mean Fleet querying HR's collection — the one thing the module hierarchy forbids.
 export const ListFleetDriversQuerySchema = PaginationQuerySchema.extend({
   specialization: FleetDriverSpecializationSchema.optional(),
   isActive: booleanQuery().optional(),
   licenseExpiresBefore: z.coerce.date().optional(),
+  /** Substring match on the licence number (المنطقة has its own parameter). */
   search: z.string().trim().min(1).max(100).optional(),
+  /** Substring match on the fleet-owned area (المنطقة). */
+  area: z.string().trim().min(1).max(120).optional(),
+  /** true → only drivers WITH a licence scan on file; false → only those without. */
+  hasLicenseImage: booleanQuery().optional(),
+  /**
+   * The HR half of the filter bar, already resolved to ids.
+   *
+   * Name, employee code, job title, governorate, phone and branch are HR's facts, and HR's own
+   * list endpoint filters on them. The browser asks HR first and hands the answer here — two
+   * server-side queries joined by id, which is how the drivers table already reads HR names. The
+   * alternative, Fleet querying HR's collection, is the one thing the module hierarchy forbids.
+   *
+   * The cap is 100 because that is `MAX_PAGE_SIZE`: this parameter carries exactly ONE page of HR
+   * results and no more. A wider HR match cannot be expressed here, and the caller must say so
+   * rather than send the first hundred — a truncated `$in` is a filter that lies.
+   */
+  employeeIds: listQuery(objectId(), MAX_PAGE_SIZE),
 }).strict();
 export type ListFleetDriversQuery = z.infer<typeof ListFleetDriversQuerySchema>;
 
@@ -292,11 +392,31 @@ export const ListFleetUnavailabilityQuerySchema = PaginationQuerySchema.extend({
 }).strict();
 export type ListFleetUnavailabilityQuery = z.infer<typeof ListFleetUnavailabilityQuerySchema>;
 
+// The alarm's vocabulary lives here, above BOTH its consumers: the odometer list filters on a
+// level and the maintenance projection reports one, and a `const` used before its declaration is
+// a TDZ error at import time, not a compile-time complaint.
+export const FLEET_ALARM_LEVELS = ['none', 'yellow', 'red'] as const;
+export const FleetAlarmLevelSchema = z.enum(FLEET_ALARM_LEVELS);
+export type FleetAlarmLevel = z.infer<typeof FleetAlarmLevelSchema>;
+
 // ── Odometer (FR-2 — continuity: one reading closes the previous period) ────
 
 export interface FleetOdometerLogDto {
   id: string;
   vehicleId: string;
+  /**
+   * The registry's code for that vehicle, resolved SERVER-side for the row.
+   *
+   * A reader calls a car "150", not by its id, so every screen showing a reading has to show a
+   * code — and a client cannot resolve one it has not got. Reading the registry a page at a time
+   * to build the map bounds the answer at `MAX_PAGE_SIZE` vehicles and leaves every car past that
+   * page nameless, which is why the roster and the violations rollup already carry the code on the
+   * row rather than asking the client to join for it.
+   *
+   * `null` only when the vehicle no longer exists at all — a soft-deleted one keeps its code, so
+   * history stays readable.
+   */
+  vehicleCode: string | null;
   date: string;
   outReading: number;
   /** null = the OPEN period; closed by the vehicle's next reading. */
@@ -352,17 +472,33 @@ export const FleetVehicleIdQuerySchema = z.object({ vehicleId: objectId() }).str
 export type FleetVehicleIdQuery = z.infer<typeof FleetVehicleIdQuerySchema>;
 
 export const ListFleetOdometerQuerySchema = PaginationQuerySchema.extend({
+  /** Single vehicle — kept because the vehicle profile links here with it. */
   vehicleId: objectId().optional(),
+  /**
+   * Several vehicles at once, BY CODE, because the code is what the registry calls a car and what
+   * a shared link should read as. Resolution to ids happens server-side against the live registry,
+   * so a code that no longer exists narrows to nothing rather than being ignored.
+   */
+  vehicleCodes: listQuery(z.string().trim().min(1).max(20)),
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
+  /**
+   * The driver half of the filter bar, already resolved to ids.
+   *
+   * A driver's NAME is HR's fact, so the browser asks HR first and hands the answer here — the
+   * same two-step join the drivers registry uses. A reading matches when the employee sits in
+   * EITHER slot: asking "which days did this person drive?" must not miss the evening shift.
+   */
+  driverEmployeeIds: listQuery(objectId(), MAX_PAGE_SIZE),
+  /**
+   * Maintenance-alarm levels to keep. The level is DERIVED per vehicle (FR-3), so this narrows
+   * the vehicles first and then the readings — the thresholds stay in settings, never here.
+   */
+  alerts: listQuery(FleetAlarmLevelSchema),
 }).strict();
 export type ListFleetOdometerQuery = z.infer<typeof ListFleetOdometerQuerySchema>;
 
 // ── Maintenance alarm (FR-3 — derived, never stored) ────────────────────────
-
-export const FLEET_ALARM_LEVELS = ['none', 'yellow', 'red'] as const;
-export const FleetAlarmLevelSchema = z.enum(FLEET_ALARM_LEVELS);
-export type FleetAlarmLevel = z.infer<typeof FleetAlarmLevelSchema>;
 
 /** Query-time projection per vehicle; attached to odometer lists and the vehicle profile. */
 export interface FleetMaintenanceAlarmDto {
@@ -723,6 +859,17 @@ export const FleetEvents = {
   VehicleUpdated: 'fleet.vehicle.updated',
   VehicleStatusChanged: 'fleet.vehicle.statusChanged',
 
+  // The license image is its own subject, not a vehicle field: its two facts are "a document
+  // arrived" and "a document was withdrawn", and an automation wanting either would otherwise have
+  // to diff `fleet.vehicle.updated` payloads to find them.
+  VehicleLicenseImageUploaded: 'fleet.vehicleLicenseImage.uploaded',
+  VehicleLicenseImageDeleted: 'fleet.vehicleLicenseImage.deleted',
+
+  // The driver's licence scan, for the same reason: "a licence document arrived / was withdrawn"
+  // is a fact a compliance automation wants without diffing profile updates.
+  DriverLicenseImageUploaded: 'fleet.driverLicenseImage.uploaded',
+  DriverLicenseImageDeleted: 'fleet.driverLicenseImage.deleted',
+
   OdometerRecorded: 'fleet.odometer.recorded',
   OdometerCorrected: 'fleet.odometer.corrected',
 
@@ -755,6 +902,21 @@ export const FleetVehicleEventPayloadV1 = z.object({
   vehicleId: objectId(),
   code: z.string(),
   typeId: objectId(),
+});
+
+export const FleetVehicleLicenseImagePayloadV1 = z.object({
+  vehicleId: objectId(),
+  code: z.string(),
+  /** null on deletion — the file is gone, and the event says which vehicle lost it. */
+  fileId: objectId().nullable(),
+});
+
+export const FleetDriverLicenseImagePayloadV1 = z.object({
+  driverProfileId: objectId(),
+  /** The HR employee the profile extends — the join key every consumer already speaks. */
+  employeeId: objectId(),
+  /** null on deletion — the file is gone, and the event says which driver lost it. */
+  fileId: objectId().nullable(),
 });
 
 export const FleetVehicleStatusChangedPayloadV1 = z.object({
@@ -853,6 +1015,7 @@ export const FleetGrievanceAppliedPayloadV1 = z.object({
 // ── Files categories (platform Files; additive over legacy) ─────────────────
 
 export const FLEET_VEHICLE_FILE_CATEGORY = 'fleet-vehicle-documents';
+export const FLEET_DRIVER_FILE_CATEGORY = 'fleet-driver-documents';
 export const FLEET_ACCIDENT_FILE_CATEGORY = 'fleet-accident-attachments';
 export const FLEET_VIOLATION_FILE_CATEGORY = 'fleet-violation-attachments';
 
@@ -869,6 +1032,12 @@ export const FleetSettingKeys = {
   VehicleLicenseWarnDays: 'fleet.license.vehicleWarnDays',
   /** Days before driver-license expiry that `fleet.driverLicense.expiring` fires. */
   DriverLicenseWarnDays: 'fleet.license.driverWarnDays',
+  /**
+   * The branch the new-vehicle form preselects, BY NAME — resolved against live branch data on
+   * every request. A name rather than an id because ids are environment-specific: the same default
+   * has to work in dev, staging and production without a per-environment code change.
+   */
+  DefaultBranchName: 'fleet.vehicle.defaultBranchName',
 } as const;
 export type FleetSettingKey = (typeof FleetSettingKeys)[keyof typeof FleetSettingKeys];
 

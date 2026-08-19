@@ -7,6 +7,8 @@ import { type ModuleManifest } from '../../platform/kernel/module-registry';
 import { buildFleetVehicleTypesRouter } from './vehicle-types';
 import { buildFleetCatalogRouter } from './catalogs';
 import { buildFleetVehiclesRouter } from './vehicles';
+import { vehicleFileAuthorizer } from './vehicles/vehicle-files';
+import { driverProfileFileAuthorizer } from './driver-profiles/driver-files';
 import { buildFleetDriversRouter } from './driver-profiles/driver-profile.routes';
 import { fleetDriverProfileService } from './driver-profiles/driver-profile.service';
 import { buildFleetAvailabilityRouter } from './availability/unavailability.routes';
@@ -295,6 +297,10 @@ export const fleetModule: ModuleManifest = {
     'fleet_violations',
     'fleet_violation_grievances',
   ],
+  // ADR-023 — a vehicle's files answer to the VEHICLE's grants and data scope, and a driver's
+  // files to the DRIVER PROFILE's, so reaching either through the platform's own file endpoints is
+  // guarded exactly as the fleet routes are.
+  fileEntityAuthorizers: [vehicleFileAuthorizer, driverProfileFileAuthorizer],
   eventSubscriptions: [
     {
       // Design §9.1 — leaving the company leaves the driver pool. Event-driven, no HR import.

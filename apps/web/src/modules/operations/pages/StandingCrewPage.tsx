@@ -18,7 +18,7 @@
 //     operating day, and showing a day's fact on a dateless screen would tell an operator that a
 //     free person is busy. The rule this screen DOES enforce, server-side, is its own: one person
 //     holds one vehicle in the standing crew.
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { type OperationsCrewMemberDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
@@ -51,7 +51,12 @@ import {
   type CrewSlot,
   type RequirementFilter,
 } from '../lib/crew-board';
-import { newStandingRow, toStandingPayloadRows, toStandingRows } from '../lib/standing-crew';
+import {
+  mergeStandingRows,
+  newStandingRow,
+  toStandingPayloadRows,
+  toStandingRows,
+} from '../lib/standing-crew';
 import { CREW_DRAG_TYPE, CrewMemberCard } from '../components/CrewMemberCard';
 import { POOL_FILTERS } from './CrewBoardPage';
 
@@ -73,8 +78,14 @@ export const StandingCrewPage = (): JSX.Element => {
   const [active, setActive] = useState<RequirementFilter[]>([]);
   const [adding, setAdding] = useState('');
 
-  // The server's list is the truth; local edits start from it and are discarded on a reload.
-  useEffect(() => setRows(serverRows), [serverRows]);
+  // The server's list is the truth about WHICH vehicles are in the fleet; the draft is the truth
+  // about what the operator has been typing. Folding one into the other rather than replacing is
+  // what stops a Remove — which refetches the list — from destroying every other unsaved edit.
+  const reconciled = useRef<BoardRow[]>([]);
+  useEffect(() => {
+    setRows((prev) => mergeStandingRows(serverRows, prev, reconciled.current));
+    reconciled.current = serverRows;
+  }, [serverRows]);
 
   const members = directory.data?.members ?? [];
   const pool = useMemo(
@@ -285,6 +296,12 @@ export const StandingCrewPage = (): JSX.Element => {
                       <Button
                         size="sm"
                         variant="secondary"
+                        // Named per vehicle: eight identical "Remove" buttons are unusable from a
+                        // screen reader's elements list, where there is no surrounding card to say
+                        // which vehicle each one belongs to.
+                        aria-label={t('operations.standingCrew.removeVehicle', {
+                          code: row.vehicleCode,
+                        })}
                         disabled={remove.isPending}
                         onClick={() => void removeVehicle(row)}
                       >
@@ -302,7 +319,8 @@ export const StandingCrewPage = (): JSX.Element => {
                         {t(`operations.crew.slot.${slot}`)}
                       </div>
                       {SLOT_POSITIONS.map((position) => {
-                        const held = memberOf(slotValue(row, slot, position));
+                        const occupantId = slotValue(row, slot, position);
+                        const held = memberOf(occupantId);
                         return (
                           <div
                             key={position}
@@ -313,10 +331,33 @@ export const StandingCrewPage = (): JSX.Element => {
                             data-slot-position={position}
                             data-vehicle-id={row.vehicleId}
                           >
-                            {held === undefined ? (
+                            {occupantId === null ? (
                               <p className="text-xs text-slate-400">
                                 {t('operations.crew.dropHere')}
                               </p>
+                            ) : held === undefined ? (
+                              // SOMEBODY IS IN THIS SEAT and the directory cannot name them —
+                              // they left the company since the standing crew was written. Drawing
+                              // an empty seat was the worst of both: the operator saw a free slot,
+                              // the payload still carried the id, and the save failed with a
+                              // conflict about a person who was nowhere on the screen.
+                              <div className="flex items-center justify-between gap-2 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                                <span>{t('operations.standingCrew.unknownMember')}</span>
+                                {canPlan && (
+                                  <button
+                                    type="button"
+                                    aria-label={t('operations.standingCrew.removeMember')}
+                                    className="font-bold"
+                                    onClick={() =>
+                                      setRows((prev) =>
+                                        clearSlot(prev, row.vehicleId, slot, position),
+                                      )
+                                    }
+                                  >
+                                    ×
+                                  </button>
+                                )}
+                              </div>
                             ) : (
                               <CrewMemberCard
                                 member={held}

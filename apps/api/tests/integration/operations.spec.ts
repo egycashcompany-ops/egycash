@@ -60,6 +60,11 @@ let jobTitleId: string;
 let vehicleAId: string;
 let vehicleBId: string;
 let offRosterVehicleId: string;
+/**
+ * Assigned in `beforeAll` rather than declared there: it closes over the vehicle type and branch
+ * created at boot, and a case further down needs to make a vehicle of its own.
+ */
+let mkVehicle: (n: number) => Promise<string>;
 let captainId: string;
 let specialist1Id: string;
 let specialist2Id: string;
@@ -247,7 +252,7 @@ beforeAll(async () => {
   expect(typeRes.status).toBe(201);
   const typeId = data<FleetVehicleTypeDto>(typeRes).id;
 
-  const mkVehicle = async (n: number): Promise<string> => {
+  mkVehicle = async (n: number): Promise<string> => {
     const res = await request(app)
       .post('/api/v1/fleet/vehicles')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -978,11 +983,29 @@ describe('the standing crew — the permanent crew of each cash-transfer vehicle
       .set('Authorization', `Bearer ${token}`);
 
   let standingCaptainId: string;
+  let standingCoCaptainId: string;
   let standingSpecialistId: string;
+  let standingSpecialist1bId: string;
+  let standingSpecialist2aId: string;
+  let standingSpecialist2bId: string;
+  /** Holds `operationsCrew.view` and NOT `.plan` — the only token that can tell the two apart. */
+  let crewViewerToken: string;
 
   beforeAll(async () => {
     standingCaptainId = await mkEmployee();
+    standingCoCaptainId = await mkEmployee();
     standingSpecialistId = await mkEmployee();
+    standingSpecialist1bId = await mkEmployee();
+    standingSpecialist2aId = await mkEmployee();
+    standingSpecialist2bId = await mkEmployee();
+
+    const role = await rbacService.createRole(
+      { name: { en: 'Crew viewer', ar: 'قارئ الطاقم' }, permissionKeys: ['operationsCrew.view'] },
+      await mkUser('standing-role-seed@ecms.local'),
+    );
+    const userId = await mkUser('standing-crew-viewer@ecms.local');
+    await rbacService.ensureAssignment(userId, String(role._id), 'organization');
+    crewViewerToken = await login('standing-crew-viewer@ecms.local');
   });
 
   it('starts empty and OFFERS the fleet — membership is explicit, never derived', async () => {
@@ -996,11 +1019,15 @@ describe('the standing crew — the permanent crew of each cash-transfer vehicle
   });
 
   it('stores a crew of six with no date anywhere in the request or the row', async () => {
+    // EVERY slot carries DISTINCT people, and all six are asserted back. Filling only two could
+    // not tell `specialist2EmployeeIds` from `specialist1EmployeeIds` on the way through — the
+    // exact copy-paste class this series already shipped once, in the vault dispatch.
     const res = await save([
       {
         vehicleId: vehicleAId,
-        captainEmployeeIds: [standingCaptainId],
-        specialist1EmployeeIds: [standingSpecialistId],
+        captainEmployeeIds: [standingCaptainId, standingCoCaptainId],
+        specialist1EmployeeIds: [standingSpecialistId, standingSpecialist1bId],
+        specialist2EmployeeIds: [standingSpecialist2aId, standingSpecialist2bId],
         direction: 'الجيزة',
         plannedTime: '07:30',
       },
@@ -1009,12 +1036,26 @@ describe('the standing crew — the permanent crew of each cash-transfer vehicle
     const dto = data<OperationsStandingCrewBoardDto & { changedCount: number }>(res);
     expect(dto.changedCount).toBe(1);
     const row = dto.rows.find((r) => r.vehicleId === vehicleAId);
-    expect(row?.captainEmployeeIds).toEqual([standingCaptainId]);
-    expect(row?.specialist1EmployeeIds).toEqual([standingSpecialistId]);
+    expect(row?.captainEmployeeIds).toEqual([standingCaptainId, standingCoCaptainId]);
+    expect(row?.specialist1EmployeeIds).toEqual([standingSpecialistId, standingSpecialist1bId]);
+    expect(row?.specialist2EmployeeIds).toEqual([standingSpecialist2aId, standingSpecialist2bId]);
     expect(row?.direction).toBe('الجيزة');
     expect(Object.keys(row ?? {})).not.toContain('date');
     // A vehicle in the standing crew leaves the picker — the two lists never overlap.
     expect(dto.available.map((v) => v.vehicleId)).not.toContain(vehicleAId);
+  });
+
+  it('announces the change on the bus, carrying the vehicle and the slots', async () => {
+    // The event is catalogued, so a subscriber can exist. Without this the emit could be deleted
+    // outright — or carry the wrong `removed` flag — and the whole suite would stay green.
+    await waitFor(() =>
+      seenEvents.some(
+        (e) =>
+          e.name === OperationsEvents.StandingCrewChanged &&
+          (e.payload as { vehicleId?: string }).vehicleId === vehicleAId &&
+          (e.payload as { removed?: boolean }).removed === false,
+      ),
+    );
   });
 
   it('an EMPTY row is stored, not skipped — that is what membership means here', async () => {
@@ -1029,11 +1070,15 @@ describe('the standing crew — the permanent crew of each cash-transfer vehicle
   });
 
   it('an identical re-save is a pure no-op', async () => {
+    // Byte-for-byte what the previous case stored — six people across three slots. Sending a
+    // SUBSET here would make this assert "a smaller crew is a change", which is a different and
+    // much weaker claim than the one the name makes.
     const res = await save([
       {
         vehicleId: vehicleAId,
-        captainEmployeeIds: [standingCaptainId],
-        specialist1EmployeeIds: [standingSpecialistId],
+        captainEmployeeIds: [standingCaptainId, standingCoCaptainId],
+        specialist1EmployeeIds: [standingSpecialistId, standingSpecialist1bId],
+        specialist2EmployeeIds: [standingSpecialist2aId, standingSpecialist2bId],
         direction: 'الجيزة',
         plannedTime: '07:30',
       },
@@ -1097,7 +1142,55 @@ describe('the standing crew — the permanent crew of each cash-transfer vehicle
     expect(
       data<OperationsStandingCrewBoardDto>(back).rows.map((r) => r.vehicleId),
     ).toContain(vehicleBId);
+
+    // The tombstone is OBSERVED, not assumed. Removal is a SOFT delete — the row stays as the
+    // record of who used to crew that vehicle — so the collection now holds two rows for this
+    // vehicle, one deleted and one live. A hard delete would pass every other assertion here.
+    const { OperationsStandingCrewModel } = await import(
+      '../../src/modules/operations/standing-crew/standing-crew.model'
+    );
+    const { Types } = await import('mongoose');
+    const all = await OperationsStandingCrewModel.collection
+      .find({ vehicleId: new Types.ObjectId(vehicleBId) })
+      .toArray();
+    expect(all.filter((r) => r.isDeleted === true).length).toBeGreaterThanOrEqual(1);
+    expect(all.filter((r) => r.isDeleted === false)).toHaveLength(1);
+
     await drop(vehicleBId);
+  });
+
+  it('lets an existing row be edited after Fleet retires its vehicle', async () => {
+    // THE DEADLOCK THIS EXEMPTION EXISTS FOR. Fleet can retire a vehicle after Operations put it
+    // in the standing crew. Refusing its row outright stranded it: the one-person-one-vehicle
+    // end-state check DEMANDS that vehicle's row in the payload before its crew can be released,
+    // so a blanket rejection made the crew permanently unmovable and the vehicle unremovable.
+    const retiredVehicleId = await mkVehicle(9);
+    const stranded = await mkEmployee();
+    expect(
+      (await save([{ vehicleId: retiredVehicleId, captainEmployeeIds: [stranded] }])).status,
+    ).toBe(200);
+
+    const { FleetVehicleModel } = await import(
+      '../../src/modules/fleet/vehicles/vehicle.model'
+    );
+    const { Types } = await import('mongoose');
+    await FleetVehicleModel.collection.updateOne(
+      { _id: new Types.ObjectId(retiredVehicleId) },
+      { $set: { isDeleted: true } },
+    );
+
+    // The row is still editable, so the crew can be released...
+    const released = await save([{ vehicleId: retiredVehicleId, captainEmployeeIds: [] }]);
+    expect(released.status).toBe(200);
+    // ...and the person is free for another vehicle, which was the whole point.
+    expect((await save([{ vehicleId: vehicleAId, captainEmployeeIds: [stranded] }])).status).toBe(
+      200,
+    );
+    // A vehicle nobody has ever added is still refused — the exemption covers existing rows only.
+    expect((await save([{ vehicleId: '00000000000000000000bbbb' }])).status).toBe(400);
+
+    await drop(retiredVehicleId);
+    await save([{ vehicleId: vehicleAId, captainEmployeeIds: [standingCaptainId] }]);
   });
 
   it('refuses removing a vehicle that is not in the standing crew', async () => {
@@ -1232,10 +1325,18 @@ describe('the standing crew — the permanent crew of each cash-transfer vehicle
   });
 
   it('rides the EXISTING crew grants and declares none of its own', async () => {
-    // The viewer holds `operationsShipment.view` only.
+    // The viewer holds `operationsShipment.view` only — no crew grant at all.
     expect((await standing(viewerToken)).status).toBe(403);
     expect((await save([{ vehicleId: vehicleAId }], viewerToken)).status).toBe(403);
     expect((await drop(vehicleAId, viewerToken)).status).toBe(403);
+
+    // ...and THIS is the case that pins WHICH grants. A token holding exactly
+    // `operationsCrew.view` must read and must not write. Without it, the three assertions above
+    // hold for any pair of permissions the admin happens to have and the viewer happens to lack —
+    // so the routes could be re-pointed at the vault grants and the suite would stay green.
+    expect((await standing(crewViewerToken)).status).toBe(200);
+    expect((await save([{ vehicleId: vehicleAId }], crewViewerToken)).status).toBe(403);
+    expect((await drop(vehicleAId, crewViewerToken)).status).toBe(403);
   });
 });
 

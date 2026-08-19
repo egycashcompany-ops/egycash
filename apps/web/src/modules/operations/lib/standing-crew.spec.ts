@@ -6,7 +6,12 @@
 import { describe, expect, it } from 'vitest';
 import { CREW_SLOT_CAPACITY, type OperationsStandingCrewRowDto } from '@ecms/contracts';
 import { assignToSlot, changedRows, slotOccupants, type BoardRow } from './crew-board';
-import { newStandingRow, toStandingPayloadRows, toStandingRows } from './standing-crew';
+import {
+  mergeStandingRows,
+  newStandingRow,
+  toStandingPayloadRows,
+  toStandingRows,
+} from './standing-crew';
 
 const stored = (over: Partial<OperationsStandingCrewRowDto> = {}): OperationsStandingCrewRowDto => ({
   id: 'sc1',
@@ -93,5 +98,54 @@ describe('newStandingRow — a vehicle joining the cash-transfer fleet', () => {
     const [payload] = toStandingPayloadRows(changedRows([added], []));
     expect(payload?.vehicleId).toBe('v9');
     expect(payload?.captainEmployeeIds).toEqual([]);
+  });
+});
+
+
+describe('mergeStandingRows — a refetch must not destroy the draft', () => {
+  const server = (vehicleId: string, direction: string | null = null) =>
+    toStandingRows([stored({ id: vehicleId, vehicleId, vehicleCode: `C-${vehicleId}`, direction })])[0] as BoardRow;
+
+  it('keeps the LOCAL row for a vehicle the server also has', () => {
+    // The bug this exists for: Remove refetches the list, and a plain setRows(serverRows) threw
+    // away every unsaved edit on every OTHER vehicle. The operator's own click destroyed their work.
+    const previous = [server('v1')];
+    const edited = { ...server('v1'), direction: 'الجيزة' };
+    const merged = mergeStandingRows([server('v1')], [edited], previous);
+    expect(merged).toHaveLength(1);
+    expect(merged[0]?.direction).toBe('الجيزة');
+  });
+
+  it('takes a vehicle the server has and the draft does not', () => {
+    const merged = mergeStandingRows([server('v1'), server('v2')], [server('v1')], [server('v1')]);
+    expect(merged.map((r) => r.vehicleId).sort()).toEqual(['v1', 'v2']);
+  });
+
+  it('keeps a vehicle added from the picker and not yet saved', () => {
+    const added = newStandingRow({ vehicleId: 'v9', vehicleCode: 'C-9' });
+    const merged = mergeStandingRows([server('v1')], [server('v1'), added], [server('v1')]);
+    expect(merged.map((r) => r.vehicleId)).toEqual(['v1', 'v9']);
+  });
+
+  it('does NOT resurrect a vehicle that was removed on the server', () => {
+    // It was on the server last time and is gone now — that is a removal, not a local addition.
+    const merged = mergeStandingRows([server('v1')], [server('v1'), server('v2')], [
+      server('v1'),
+      server('v2'),
+    ]);
+    expect(merged.map((r) => r.vehicleId)).toEqual(['v1']);
+  });
+
+  it('survives a remove with the rest of the draft intact — the whole point', () => {
+    const before = [server('v1'), server('v2'), server('v3')];
+    const draft = [{ ...server('v1'), direction: 'بنها' }, server('v2'), server('v3')];
+    // v3 is removed on the server; v1's unsaved direction must still be there afterwards.
+    const merged = mergeStandingRows([server('v1'), server('v2')], draft, before);
+    expect(merged.map((r) => r.vehicleId)).toEqual(['v1', 'v2']);
+    expect(merged[0]?.direction).toBe('بنها');
+  });
+
+  it('takes the server wholesale on the very first reconcile', () => {
+    expect(mergeStandingRows([server('v1')], [], []).map((r) => r.vehicleId)).toEqual(['v1']);
   });
 });

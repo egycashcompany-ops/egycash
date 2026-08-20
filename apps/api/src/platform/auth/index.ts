@@ -10,3 +10,4 @@ export { buildAuthRouter } from './auth.routes';
 export { registerExternalSurface, externalMayReach } from './external-surfaces';
 export { registerExternalSubjectLabel } from './identity-seams';
 export { userSnapshotKey } from './user-snapshot-cache';
+export { ACTIVE_BRANCH_HEADER } from './active-branch';

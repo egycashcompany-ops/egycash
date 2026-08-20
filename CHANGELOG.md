@@ -55,6 +55,28 @@ its entry here in the same PR.
   the two acts `receive` and `transfer` could not already name. Full port record, including what
   was dropped and why, in [gold-module-port.md](docs/12-planning/gold-module-port.md).
 
+- **A branch switcher in the command bar, and the whole application narrows to it.** EGYCASH runs
+  several branches, and an account that sees all of them needs to be able to choose: the
+  consolidated view, or one branch at a time. The gold system had exactly this control in its top
+  bar; the port carried its RULE across and left the control behind, which is how an
+  organization-wide account ended up unable to create a gold document at all — refused because a
+  document has to be filed somewhere and nothing could guess where, with no way to answer.
+
+  `AuthContext.activeBranchId` now arrives on an `X-Active-Branch` header and `scopeSelector` folds
+  it in: an `organization` grant becomes a `branch` grant on the chosen branch, and everything else
+  is left exactly as it was. **It narrows and only narrows** — the caller's granted scope is the
+  ceiling, so a branch-placed operator sending another branch's id keeps their own, and a
+  department or section grant is never widened to a branch. That property is what makes this a
+  preference rather than a permission, and it is asserted directly rather than left to the reading
+  of one `if`. The same value decides where a new document is filed, which is what makes the
+  organization-wide account able to work again; with the whole company selected a branch-stamped
+  create is still refused, but the message now names the control that answers it.
+
+  It applies to every module, not only the vault — a control in the global bar that silently
+  governed one module would be worse than either alternative. Collections that declare no branch
+  field are unaffected. Recorded as
+  [ADR-028](docs/03-decisions/ADR-028-active-branch-narrowing.md).
+
 - **The platform learns about people who do not work here, and the gold vault's customers get a
   portal.** ECMS knew two kinds of login: one belonging to an employee, and one belonging to nobody.
   A third exists now — an account carrying an opaque `externalSubject { moduleId, subjectType,

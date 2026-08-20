@@ -10,6 +10,7 @@ import { type AuthContext } from '../../shared/types';
 import { setActor } from '../../infrastructure/http/request-context';
 import { auditService } from '../audit';
 import { authService } from './auth.service';
+import { ACTIVE_BRANCH_HEADER, resolveActiveBranch } from './active-branch';
 import { externalMayReach } from './external-surfaces';
 
 interface AuthedRequest extends Request {
@@ -38,6 +39,13 @@ export const authenticate: RequestHandler = (
   authService
     .buildAuthContext(header.slice('Bearer '.length))
     .then(async (ctx) => {
+      // The command bar's branch narrowing. Read here rather than per module so every list in the
+      // application answers the same question the switcher is asking; `scopeSelector` applies it,
+      // and can only ever narrow an organization-wide grant.
+      const active = req.headers[ACTIVE_BRANCH_HEADER];
+      ctx.activeBranchId = await resolveActiveBranch(
+        typeof active === 'string' ? active : undefined,
+      );
       (req as AuthedRequest).authContext = ctx;
       setActor({
         userId: ctx.userId,

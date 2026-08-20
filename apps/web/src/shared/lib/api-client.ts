@@ -17,6 +17,20 @@ export const setAccessToken = (token: string | null): void => {
   accessToken = token;
 };
 
+/**
+ * The branch the command bar's switcher has narrowed to, sent on every request.
+ *
+ * A header rather than a query parameter because it applies to EVERY call the application makes,
+ * and threading it through each one would be a change nobody could keep up to date. The server
+ * treats it as a narrowing of the caller's own grants and never as a widening, so it carries no
+ * authority — a request that omits it simply sees everything the account may see.
+ */
+let activeBranch: string | null = null;
+
+export const setActiveBranch = (branchId: string | null): void => {
+  activeBranch = branchId;
+};
+
 // Definitive auth loss (refresh failed mid-session): the app registers ONE handler here
 // (main.tsx) that signs Redux out and clears the query cache, so RequireAuth redirects to
 // /login instead of stranding the user on an error screen. Registered as a callback to keep
@@ -49,6 +63,7 @@ const rawRequest = async <T>(path: string, init: RequestInit = {}): Promise<T> =
   const headers = new Headers(init.headers);
   headers.set('Content-Type', 'application/json');
   if (accessToken !== null) headers.set('Authorization', `Bearer ${accessToken}`);
+  if (activeBranch !== null) headers.set('X-Active-Branch', activeBranch);
 
   const response = await fetch(`${BASE_URL}${path}`, {
     ...init,
@@ -131,6 +146,7 @@ export const get = <T>(path: string): Promise<T> => api<T>(path);
 const rawPage = async <T>(path: string): Promise<Paginated<T>> => {
   const headers = new Headers({ 'Content-Type': 'application/json' });
   if (accessToken !== null) headers.set('Authorization', `Bearer ${accessToken}`);
+  if (activeBranch !== null) headers.set('X-Active-Branch', activeBranch);
   const response = await fetch(`${BASE_URL}${path}`, { headers, credentials: 'include' });
   const body = (await response.json()) as ApiEnvelope<T[]>;
   if (!body.success) {
@@ -213,6 +229,7 @@ export const buildQuery = (params: QueryParams): string => {
 const rawUpload = async <T>(path: string, form: FormData): Promise<T> => {
   const headers = new Headers();
   if (accessToken !== null) headers.set('Authorization', `Bearer ${accessToken}`);
+  if (activeBranch !== null) headers.set('X-Active-Branch', activeBranch);
   // No Content-Type: the browser sets the multipart boundary itself.
   const response = await fetch(`${BASE_URL}${path}`, {
     method: 'POST',
@@ -288,6 +305,7 @@ export const postBinary = async (
   const request = (): RequestInit => {
     const headers = new Headers({ 'Content-Type': 'application/json' });
     if (accessToken !== null) headers.set('Authorization', `Bearer ${accessToken}`);
+  if (activeBranch !== null) headers.set('X-Active-Branch', activeBranch);
     return { method: 'POST', headers, body: JSON.stringify(body), credentials: 'include' };
   };
   let response = await fetch(`${BASE_URL}${path}`, request());

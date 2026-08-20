@@ -52,6 +52,7 @@ let adminToken: string;
 let branchBToken: string;
 let branchAId: string;
 let branchBId: string;
+let superAdminRoleId: string;
 let departmentAId: string;
 let jobTitleAId: string;
 let companyId: string;
@@ -211,6 +212,7 @@ beforeAll(async () => {
       (p) => p.key,
     ),
   );
+  superAdminRoleId = String(superAdmin._id);
   const adminId = await mkUser('gold-admin@ecms.local');
   await rbacService.ensureAssignment(adminId, String(superAdmin._id), 'organization');
 
@@ -595,6 +597,60 @@ describe('the three ECMS integrations', () => {
       lines: [],
     });
     expect(badVehicle.status).toBe(400);
+  });
+
+  /**
+   * The command bar's switcher, end to end.
+   *
+   * An account that sees the whole company cannot GUESS which branch a new document belongs to —
+   * that is the refusal below. Choosing a branch in the bar answers the question, and the same
+   * choice then narrows what that account can see, which is the whole point of the control.
+   */
+  it('lets an organization-wide account file into the branch it chose in the command bar', async () => {
+    const orgWideId = await mkUser('gold-orgwide@ecms.local');
+    await rbacService.ensureAssignment(orgWideId, String(superAdminRoleId), 'organization');
+    const orgWide = await login('gold-orgwide@ecms.local');
+
+    // With no branch chosen, and more than one branch in the company, it refuses rather than guesses.
+    const noBranch = await request(app)
+      .post('/api/v1/gold/vaults')
+      .set('Authorization', `Bearer ${orgWide}`)
+      .send({ name: 'خزينة بلا فرع' });
+    expect(noBranch.status).toBe(422);
+
+    // Choosing branch B in the bar files it into branch B.
+    const chosen = await request(app)
+      .post('/api/v1/gold/vaults')
+      .set('Authorization', `Bearer ${orgWide}`)
+      .set('X-Active-Branch', branchBId)
+      .send({ name: 'خزينة الفرع ب' });
+    expect(chosen.status).toBe(201);
+    expect(data<GoldVaultDto>(chosen).branchId).toBe(branchBId);
+
+    // And the same choice narrows what that account SEES.
+    const narrowed = await request(app)
+      .get('/api/v1/gold/vaults?pageSize=100')
+      .set('Authorization', `Bearer ${orgWide}`)
+      .set('X-Active-Branch', branchBId);
+    expect(narrowed.status).toBe(200);
+    const names = data<GoldVaultDto[]>(narrowed).map((v) => v.name);
+    expect(names).toContain('خزينة الفرع ب');
+
+    const whole = await request(app)
+      .get('/api/v1/gold/vaults?pageSize=100')
+      .set('Authorization', `Bearer ${orgWide}`);
+    expect(data<GoldVaultDto[]>(whole).length).toBeGreaterThan(names.length);
+  });
+
+  /** The rule the whole control rests on: it narrows, and a branch operator cannot use it to roam. */
+  it('refuses to widen a branch-scoped operator, whatever branch they ask for', async () => {
+    const theirs = await request(app)
+      .get('/api/v1/gold/receiving?pageSize=100')
+      .set('Authorization', `Bearer ${branchBToken}`)
+      .set('X-Active-Branch', branchAId);
+    expect(theirs.status).toBe(200);
+    // Every receipt in this suite belongs to branch A; the operator is in branch B and stays there.
+    expect(data<GoldReceivingReceiptDto[]>(theirs)).toHaveLength(0);
   });
 
   it('stamps every document with the ECMS branch and hides other branches from a scoped operator', async () => {

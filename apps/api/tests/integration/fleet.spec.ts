@@ -1354,10 +1354,19 @@ describe('workshop entry/exit — exit odometer, custody, catalog parts, filters
       .post(`/api/v1/fleet/maintenance/${id}/check-out`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send(body);
+  /**
+   * The list, over the WHOLE filtered set by default.
+   *
+   * The endpoint pages at 25, and these tests assert "is this visit among the matches" against a
+   * filter that legitimately matches other tests' visits too — `open: true` matches every open
+   * visit in the suite. Reading only the first page would turn "the filter dropped it" and "it sat
+   * on page 2" into the same observation. A test that names a page passes its own `pageSize` and
+   * overrides this.
+   */
   const listVisits = (query: Record<string, unknown>) =>
     request(app)
       .get('/api/v1/fleet/maintenance')
-      .query(query)
+      .query({ pageSize: MAX_PAGE_SIZE, ...query })
       .set('Authorization', `Bearer ${adminToken}`);
   const ids = (res: request.Response): string[] =>
     data<FleetMaintenanceVisitDto[]>(res).map((v) => v.id);
@@ -1548,7 +1557,14 @@ describe('workshop entry/exit — exit odometer, custody, catalog parts, filters
 
     // Now the same login IS an employee. Nothing about the request changes — no employee field is
     // sent — and both custody facts are recorded from the account that made the call.
+    //
+    // Direct registration provisions each employee its OWN login, so this repoints the seam at the
+    // account the request is actually made with. The original back-reference is captured and put
+    // back afterwards — nulling it would leave a real employee detached from its real login for
+    // every test that follows.
     const employeeId = await mkEmployee({ fullNameAr: 'أمين العهدة' });
+    const before = await EmployeeModel.findById(employeeId).lean<{ userId: unknown }>().exec();
+    const originalUserId = before?.userId ?? null;
     await EmployeeModel.updateOne(
       { _id: new Types.ObjectId(employeeId) },
       { $set: { userId: new Types.ObjectId(adminUserId) } },
@@ -1560,7 +1576,7 @@ describe('workshop entry/exit — exit odometer, custody, catalog parts, filters
     } finally {
       await EmployeeModel.updateOne(
         { _id: new Types.ObjectId(employeeId) },
-        { $set: { userId: null } },
+        { $set: { userId: originalUserId } },
       );
     }
   });
@@ -1660,19 +1676,31 @@ describe('workshop entry/exit — exit odometer, custody, catalog parts, filters
     expect(await matches({ outFrom: '2026-10-10' })).toBe(false);
   });
 
-  it('filters by the DRIVER the roster gave the car the day it went in', async () => {
-    const driverEmployeeId = await mkEmployee({ fullNameAr: 'سائق الورشة' });
-    await mkDriverProfile(driverEmployeeId);
+  it('filters by the DRIVER the roster gave the car the day it went in — EITHER slot', async () => {
+    const morning = await mkEmployee({ fullNameAr: 'سائق الورشة' });
+    await mkDriverProfile(morning);
+    const evening = await mkEmployee({ fullNameAr: 'سائق المساء' });
+    await mkDriverProfile(evening);
     const other = await mkEmployee({ fullNameAr: 'سائق آخر' });
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
     const inDate = '2026-10-12';
 
     // The roster is the existing relation, and it is what the filter reads — maintenance grows no
-    // driver field of its own.
+    // driver field of its own. The roster holds ONE row per (vehicle, date) — `ux_vehicle_date` —
+    // and both driver slots live on it, so "two assignments that day" is not a case the domain
+    // has; two SLOTS is, and both are planned here in the single row that models them.
+    //
+    // Planned BEFORE the check-in, and that ordering is the rule speaking, not a convenience:
+    // FR-5 makes a vehicle with an open visit covering the date unassignable, so a re-plan after
+    // check-in is a 409 by design. The crew a car had the day it went in is therefore always
+    // recorded before it goes in.
     const planned = await request(app)
       .post('/api/v1/fleet/roster')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ date: inDate, rows: [{ vehicleId: v.id, driver1EmployeeId: driverEmployeeId }] });
+      .send({
+        date: inDate,
+        rows: [{ vehicleId: v.id, driver1EmployeeId: morning, driver2EmployeeId: evening }],
+      });
     expect(planned.status).toBe(200);
 
     const opened = data<FleetMaintenanceVisitDto>(
@@ -1684,28 +1712,39 @@ describe('workshop entry/exit — exit odometer, custody, catalog parts, filters
         odometerAtService: 70_000,
       }),
     );
-    // The crew is carried ON the row, so the column has a name to show without a second request.
-    expect(opened.driver1EmployeeId).toBe(driverEmployeeId);
+    // The crew is carried ON the row, so the column has names to show without a second request.
+    expect(opened.driver1EmployeeId).toBe(morning);
+    expect(opened.driver2EmployeeId).toBe(evening);
 
-    expect(ids(await listVisits({ driverEmployeeIds: driverEmployeeId }))).toContain(opened.id);
+    // EITHER slot matches: asking "which visits did this person's car go in on" must not miss the
+    // evening shift.
+    expect(ids(await listVisits({ driverEmployeeIds: morning }))).toContain(opened.id);
+    expect(ids(await listVisits({ driverEmployeeIds: evening }))).toContain(opened.id);
     expect(ids(await listVisits({ driverEmployeeIds: other }))).not.toContain(opened.id);
+  });
 
-    // The roster holds ONE row per (vehicle, date) — `ux_vehicle_date` — and the two driver slots
-    // live on it. So "more than one assignment that day" is not a case the domain has; the second
-    // SLOT is, and the evening driver must match exactly as the morning one does.
-    const evening = await mkEmployee({ fullNameAr: 'سائق المساء' });
-    await mkDriverProfile(evening);
-    const replanned = await request(app)
+  it('refuses to re-crew a car that is already in the workshop (FR-5 is unchanged)', async () => {
+    // The rule this slice must not bend: once a visit is open over a date, the roster will not
+    // assign that vehicle for it. Pinned here because the driver join above depends on the
+    // ordering it forces, and a silent relaxation would make that test pass for the wrong reason.
+    const driver = await mkEmployee({ fullNameAr: 'سائق مرفوض' });
+    await mkDriverProfile(driver);
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const inDate = '2026-10-14';
+    const opened = await checkIn({
+      vehicleId: v.id,
+      inDate,
+      workshopId: await mkCatalog('workshop', 'ورشة الرفض'),
+      workTypeId: await countingWorkTypeId(),
+      odometerAtService: 71_000,
+    });
+    expect(opened.status).toBe(201);
+
+    const refused = await request(app)
       .post('/api/v1/fleet/roster')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({
-        date: inDate,
-        rows: [
-          { vehicleId: v.id, driver1EmployeeId: driverEmployeeId, driver2EmployeeId: evening },
-        ],
-      });
-    expect(replanned.status).toBe(200);
-    expect(ids(await listVisits({ driverEmployeeIds: evening }))).toContain(opened.id);
+      .send({ date: inDate, rows: [{ vehicleId: v.id, driver1EmployeeId: driver }] });
+    expect(refused.status).toBe(409);
   });
 
   it('pagination and sorting survive the filters', async () => {

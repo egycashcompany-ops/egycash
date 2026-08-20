@@ -32,7 +32,9 @@ required to link to either — the Talent Pool is first-class.
 Beyond HR, the platform now carries Fleet, Operations, IT and — newly — **Gold Vault**, the
 standalone precious-metals vault system ported in as a module: its business rules unchanged, with
 branches, vault custodians and the transport crew/vehicle read from ECMS instead of kept twice
-([port record](docs/12-planning/gold-module-port.md)).
+([port record](docs/12-planning/gold-module-port.md)). Its customers reach their own metal through
+**بوابة العملاء** at `/portal` — the platform's first external, read-only identities
+([ADR-027](docs/03-decisions/ADR-027-external-identities.md)).
 
 The full roadmap and project index live in [ECMS-BOOK.md](ECMS-BOOK.md);
 release history in [CHANGELOG.md](CHANGELOG.md).

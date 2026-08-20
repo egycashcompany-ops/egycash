@@ -2,9 +2,20 @@
 // invalidation stays surgical, and every mutation invalidates the feature it touched PLUS the
 // things that feature moves: confirming a receipt creates bars and fills drawers, so it stales the
 // vault board and the dashboard as well as its own list.
-import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+  type UseQueryResult,
+} from '@tanstack/react-query';
+import {
+  type ChangeGoldPortalAccountStatus,
   type CreateGoldBar,
+  type CreateGoldPortalAccount,
+  type GoldPortalAccountDto,
+  type Paginated,
+  type UpdateGoldPortalAccount,
   type CreateGoldCompany,
   type CreateGoldDelivery,
   type CreateGoldFloor,
@@ -420,3 +431,64 @@ export const useGoldFundClosing = (params: api.GoldListParams) =>
     queryKey: listKey(MODULE, 'reports', ['closing', params]),
     queryFn: async () => api.fundClosing(params),
   });
+
+// ── Portal accounts ────────────────────────────────────────────────────────
+
+const PORTAL_ACCOUNTS = 'portal-accounts';
+
+export const useGoldPortalAccounts = (
+  params: { page: number; pageSize: number; search?: string },
+): UseQueryResult<Paginated<GoldPortalAccountDto>> =>
+  useQuery({
+    queryKey: listKey(MODULE, PORTAL_ACCOUNTS, params),
+    queryFn: () => api.listPortalAccounts(params),
+  });
+
+const invalidatePortalAccounts = (qc: QueryClient): void => {
+  void qc.invalidateQueries({ queryKey: featureKey(MODULE, PORTAL_ACCOUNTS) });
+};
+
+export const useCreateGoldPortalAccount = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateGoldPortalAccount) => api.createPortalAccount(body),
+    onSuccess: () => {
+      invalidatePortalAccounts(qc);
+    },
+  });
+};
+
+export const useUpdateGoldPortalAccount = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: UpdateGoldPortalAccount }) =>
+      api.updatePortalAccount(id, body),
+    onSuccess: () => {
+      invalidatePortalAccounts(qc);
+    },
+  });
+};
+
+export const useChangeGoldPortalAccountStatus = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: ChangeGoldPortalAccountStatus }) =>
+      api.changePortalAccountStatus(id, body),
+    onSuccess: () => {
+      invalidatePortalAccounts(qc);
+    },
+  });
+};
+
+export const useResendGoldPortalSetupLink = () =>
+  useMutation({ mutationFn: (id: string) => api.resendPortalSetupLink(id) });
+
+export const useDeleteGoldPortalAccount = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deletePortalAccount(id),
+    onSuccess: () => {
+      invalidatePortalAccounts(qc);
+    },
+  });
+};

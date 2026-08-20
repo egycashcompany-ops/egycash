@@ -35,6 +35,7 @@ decision, write a new ADR that supersedes the old one.
 | [ADR-024](ADR-024-minimal-spare-parts-ledger.md) | The spare-parts ledger is a store record, not inventory accounting | Accepted |
 | [ADR-025](ADR-025-sweep-announcement-marks.md) | Sweep announcements are marked in their own collection, not on the record | Accepted |
 | [ADR-026](ADR-026-role-administration-guards.md) | Administering roles cannot exceed the administrator | Accepted |
+| [ADR-027](ADR-027-external-identities.md) | People outside the company get ECMS accounts, confined to one surface | Accepted |
 
 ADR-001…014 were accepted with Milestone 1 approval (2026-07-08). ADR-015 records the
 single-organization correction from [Architecture Review 01](../10-reviews/2026-07-architecture-review-01.md),
@@ -64,6 +65,13 @@ business record. ADR-026 records the guards that had to exist before role admini
 handed to a human: an administrator can neither put a permission into a role nor grant one at a
 breadth they do not themselves hold, server-side and with no identity-based exemption. It also
 writes down the department/section widening that ADR-017 §1 chose knowingly, which the roles screens
+ADR-027 is the platform's answer to a population it did not have: people who are not employees and
+never will be. The gold vault's customers get ordinary ECMS accounts carrying an opaque
+`externalSubject` back-reference — `employeeId` with its owner named — and are confined, before
+authorization and by default-deny, to their own `/auth` self-service plus the single read surface
+their module registered. It is written to be reused: a second module with external users of its own
+writes one string.
+
 now warn about but do not change. ADR-026 carries **three appendices** rather than spawning further
 ADRs, because each refines a decision it already owns: SA-4 records that effective permissions are a
 projection of the enforced answer and never a second authority; SA-5/SA-6 record what "the last

@@ -717,6 +717,16 @@ const CATALOG: CategoryDef[] = [
         icon: 'chart',
         permission: 'goldReport.view',
       },
+      // The staff side of the customer portal. The portal ITSELF is deliberately absent from
+      // navigation: it lives outside the shell at `/portal`, and nobody who can see this menu is
+      // a customer.
+      {
+        en: 'Portal Accounts',
+        ar: 'حسابات بوابة العملاء',
+        route: '/gold/portal-accounts',
+        icon: 'users',
+        permission: 'goldPortalAccount.view',
+      },
     ],
   },
   {

@@ -222,9 +222,10 @@ describe('seed → password login (regression)', () => {
     expect(routes).toContain('/gold/companies');
     expect(routes).toContain('/gold/representatives');
     expect(routes).toContain('/gold/reports');
-    // 22 (HR) + 12 (Fleet) + 14 (Operations) + 7 (Organization) + 13 (IT) + 11 (Gold Vault)
+    expect(routes).toContain('/gold/portal-accounts');
+    // 22 (HR) + 12 (Fleet) + 14 (Operations) + 7 (Organization) + 13 (IT) + 12 (Gold Vault)
     //   + 9 (Administration)
-    expect(routes).toHaveLength(90); // +1: C1 Captain's Day, +1: the standing crew
+    expect(routes).toHaveLength(91); // +1: C1 Captain's Day, +1: the standing crew
   });
 
   it('re-running the seed is idempotent — no duplicate categories/applications/grants', async () => {
@@ -247,7 +248,7 @@ describe('seed → password login (regression)', () => {
         (n, g) => n + g.applications.length + g.sections.reduce((m, s) => m + s.applications.length, 0),
         0,
       ),
-    ).toBe(90); // +1: C1 Captain's Day, +1: the standing crew, +11: the gold sidebar
+    ).toBe(91); // +1: C1 Captain's Day, +1: the standing crew, +12: the gold sidebar
   });
 
   it('the seeded HR user also logs in with email/password', async () => {

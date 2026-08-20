@@ -32,6 +32,7 @@ import { settingsService } from '../../src/platform/settings';
 import { AuditLogModel } from '../../src/platform/audit/audit.model';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { getCache } from '../../src/infrastructure/redis/cache';
+import { userSnapshotKey } from '../../src/platform/auth/user-snapshot-cache';
 import { type AuthContext } from '../../src/shared/types';
 
 const PASSWORD = 'Str0ng#Pass!';
@@ -214,10 +215,10 @@ describe('a language change reaches the server immediately', () => {
   // nothing. This is the negative control that says the invalidation is targeted.
   it('does not drop the snapshot for theme or navLayout', async () => {
     await readMe();
-    expect(await getCache().get(`auth:user:${adminId}`)).not.toBeNull();
+    expect(await getCache().get(userSnapshotKey(adminId))).not.toBeNull();
     expect((await patch({ theme: 'dark' })).status).toBe(200);
     expect((await patch({ navLayout: 'rail' })).status).toBe(200);
-    expect(await getCache().get(`auth:user:${adminId}`)).not.toBeNull();
+    expect(await getCache().get(userSnapshotKey(adminId))).not.toBeNull();
   });
 
   // The path that was broken before this phase: an administrator editing someone else's language.

@@ -13,7 +13,9 @@ import {
   type Paginated,
   type UpdateMyPreferences,
   type UpdateUser,
+  type ExternalSubjectDto,
   type UserDto,
+  type UserKind,
   type PasswordPolicyDto,
   type UserStatus,
 } from '@ecms/contracts';
@@ -24,6 +26,7 @@ import { randomToken, sha256 } from '../../shared/utils/crypto';
 import { hashPassword, passwordPolicyViolation } from '../../shared/utils/passwords';
 import { getCache } from '../../infrastructure/redis/cache';
 import { resolveEmployeeCode, resolveEmployeeCodeOfUser } from '../auth/identity-seams';
+import { userSnapshotKey } from '../auth/user-snapshot-cache';
 import { deliverCredentials, setupLinkUrl } from './credentials-delivery';
 import { auditService } from '../audit';
 import { settingsService } from '../settings';
@@ -46,6 +49,29 @@ const entityRef = (userId: string) => ({
   entityId: userId,
 });
 
+/**
+ * The stored back-reference, read defensively.
+ *
+ * Every read is `.lean()` and the schema is strict, so a document written before the field existed
+ * simply has no key — the same trap `preferences` documents on the model.
+ */
+const externalSubjectOf = (doc: UserDoc): ExternalSubjectDto | null => {
+  const subject = doc.externalSubject ?? null;
+  if (subject === null) return null;
+  return {
+    moduleId: subject.moduleId,
+    subjectType: subject.subjectType,
+    subjectId: String(subject.subjectId),
+  };
+};
+
+/** An account is one of ours, one of theirs, or nobody's. Derived — never stored. */
+const kindOf = (doc: UserDoc): UserKind => {
+  if (doc.employeeId !== null) return 'employee';
+  if ((doc.externalSubject ?? null) !== null) return 'external';
+  return 'system';
+};
+
 const auditSnapshot = (doc: UserDoc): Record<string, unknown> => ({
   email: doc.email,
   username: doc.username,
@@ -65,7 +91,12 @@ class UserService {
   async create(
     input: CreateUser,
     by: string | null,
-    extra: { username?: string; employeeId?: string } = {},
+    extra: {
+      username?: string;
+      employeeId?: string;
+      /** Set by the owning module when the account is somebody OUTSIDE the company. */
+      externalSubject?: { moduleId: string; subjectType: string; subjectId: string };
+    } = {},
   ): Promise<{ user: UserDoc; activationToken: string }> {
     if (input.email !== undefined) {
       const existing = await userRepository.findByEmail(input.email);
@@ -102,6 +133,14 @@ class UserService {
           email: input.email ?? null,
           username: username ?? null,
           employeeId: extra.employeeId === undefined ? null : new Types.ObjectId(extra.employeeId),
+          externalSubject:
+            extra.externalSubject === undefined
+              ? null
+              : {
+                  moduleId: extra.externalSubject.moduleId,
+                  subjectType: extra.externalSubject.subjectType,
+                  subjectId: new Types.ObjectId(extra.externalSubject.subjectId),
+                },
           phone: input.phone ?? null,
           profile: { firstName: input.firstName, lastName: input.lastName },
           locale: input.locale,
@@ -346,7 +385,7 @@ class UserService {
     // administrator switching someone's language left `AuthContext.locale` stale for up to the
     // TTL, which is the language the notification email and the IT display names are written in.
     if (input.organization !== undefined || before.locale !== after.locale) {
-      await getCache().del(`auth:user:${id}`);
+      await getCache().del(userSnapshotKey(id));
     }
 
     await auditService.record({
@@ -544,7 +583,7 @@ class UserService {
    * field that changed — the rest of the record is not this call's business.
    */
   private async onLocaleChanged(userId: string, before: UserDoc, after: UserDoc): Promise<void> {
-    await getCache().del(`auth:user:${userId}`);
+    await getCache().del(userSnapshotKey(userId));
     await auditService.record({
       entityRef: entityRef(userId),
       action: 'update',
@@ -592,6 +631,14 @@ class UserService {
     if (query.status !== undefined) filter.status = query.status;
     if (query.branchId !== undefined)
       filter['organization.branchId'] = new Types.ObjectId(query.branchId);
+    // `kind` is derived, so it narrows on the two fields it is derived FROM. `system` is the
+    // absence of both, which is why it cannot be expressed as one equality.
+    if (query.kind === 'employee') filter.employeeId = { $ne: null };
+    if (query.kind === 'external') filter.externalSubject = { $ne: null };
+    if (query.kind === 'system') {
+      filter.employeeId = null;
+      filter.externalSubject = null;
+    }
     const search = query.search === undefined ? {} : userRepository.searchFilter(query.search);
     return userRepository.list({
       filter: { ...filter, ...search },
@@ -699,7 +746,7 @@ class UserService {
       },
     });
     if (updated === null) throw new NotFoundError();
-    await getCache().del(`auth:user:${userId}`); // the gate lives on the auth snapshot
+    await getCache().del(userSnapshotKey(userId)); // the gate lives on the auth snapshot
     await auditService.record({ entityRef: entityRef(userId), action });
   }
 
@@ -767,7 +814,7 @@ class UserService {
       },
     });
     if (updated === null) throw new NotFoundError();
-    await getCache().del(`auth:user:${userId}`);
+    await getCache().del(userSnapshotKey(userId));
     await auditService.record({ entityRef: entityRef(userId), action: 'passwordReset' });
     await auditService.record({
       entityRef: entityRef(userId),
@@ -1015,7 +1062,7 @@ class UserService {
   async unlock(id: string, by: string, scope?: ScopeSelector): Promise<UserDoc> {
     const before = await userRepository.getById(id, scope);
     await this.resetLoginFailures(id);
-    await getCache().del(`auth:user:${id}`);
+    await getCache().del(userSnapshotKey(id));
     await auditService.record({
       entityRef: entityRef(id),
       action: 'unlock',
@@ -1041,10 +1088,42 @@ class UserService {
   // cannot both believe they won.
 
   async linkEmployee(userId: string, employeeId: string, session?: ClientSession): Promise<void> {
+    // The two linkages are mutually exclusive, and this is the cheapest place to hold that: an
+    // account that is a customer of ours must never also become a member of staff by way of an
+    // HR import, because every screen that asks "is this a person who works here" reads exactly
+    // one of these two fields.
+    const existing = await userRepository.findById(userId);
+    if (existing !== null && (existing.externalSubject ?? null) !== null) {
+      throw new ConflictError('this login belongs to an external subject and cannot be an employee');
+    }
     const linked = await userRepository.linkEmployee(userId, employeeId, session);
     if (!linked) {
       throw new ConflictError('this login is already linked to an employee');
     }
+  }
+
+  /**
+   * Bind (or re-point) the outside record an external account belongs to.
+   *
+   * The mirror image of `linkEmployee`, and reachable the same way: from the owning module's
+   * service, never from a route or an update schema. Re-pointing is deliberately allowed — a
+   * customer company merges into another and the login should follow — but becoming an employee
+   * is not.
+   */
+  async bindExternalSubject(
+    userId: string,
+    subject: { moduleId: string; subjectType: string; subjectId: string },
+  ): Promise<void> {
+    const existing = await userRepository.getById(userId);
+    if (existing.employeeId !== null) {
+      throw new ConflictError('this login belongs to an employee and cannot be an external subject');
+    }
+    await userRepository.setExternalSubject(userId, {
+      moduleId: subject.moduleId,
+      subjectType: subject.subjectType,
+      subjectId: new Types.ObjectId(subject.subjectId),
+    });
+    await getCache().del(userSnapshotKey(userId));
   }
 
   async unlinkEmployee(userId: string, employeeId: string, session?: ClientSession): Promise<void> {
@@ -1103,6 +1182,8 @@ class UserService {
       email: doc.email,
       username: doc.username,
       employeeId: doc.employeeId === null ? null : String(doc.employeeId),
+      externalSubject: externalSubjectOf(doc),
+      kind: kindOf(doc),
       phone: doc.phone,
       firstName: doc.profile.firstName,
       lastName: doc.profile.lastName,

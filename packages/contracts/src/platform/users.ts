@@ -19,6 +19,36 @@ export const ACCOUNT_STATUSES = ['invitationSent', 'activated', 'expired', 'lock
 export const AccountStatusSchema = z.enum(ACCOUNT_STATUSES);
 export type AccountStatus = z.infer<typeof AccountStatusSchema>;
 
+/**
+ * Which population an account belongs to.
+ *
+ * `employee` — a login that belongs to an HR employee (ADR-017).
+ * `system`   — a platform account belonging to nobody: the seeded super-admin, service accounts.
+ * `external` — someone outside the company: a customer, a supplier, an auditor. The account names
+ *              the module that owns the relationship and the record it points at, and it is NOT an
+ *              employee, so nothing that offers "pick a person" may offer it.
+ *
+ * Derived from the account, never stored: an account has an employee, or an external subject, or
+ * neither. Those are mutually exclusive by construction.
+ */
+export const USER_KINDS = ['employee', 'system', 'external'] as const;
+export const UserKindSchema = z.enum(USER_KINDS);
+export type UserKind = z.infer<typeof UserKindSchema>;
+
+/**
+ * The record OUTSIDE the platform that an external account is.
+ *
+ * The same shape `employeeId` has, with the owner named: an opaque back-reference the platform
+ * stores and never interprets. `moduleId` says who owns the relationship, `subjectType` which of
+ * that module's records it is, and `subjectId` which one — so a second module with external users
+ * of its own writes one new `subjectType` and reuses everything else.
+ */
+export interface ExternalSubjectDto {
+  moduleId: string;
+  subjectType: string;
+  subjectId: string;
+}
+
 /** Login username: lowercase-normalized; defaults to the Employee Code (e.g. `001025`). */
 export const UsernameSchema = z
   .string()
@@ -114,6 +144,8 @@ export const ListUsersQuerySchema = PaginationQuerySchema.extend({
   status: UserStatusSchema.optional(),
   branchId: objectId().optional(),
   search: z.string().max(200).optional(),
+  /** Narrow to one population — the pickers ask for `employee` so a customer is never offered. */
+  kind: UserKindSchema.optional(),
 }).strict();
 export type ListUsersQuery = z.infer<typeof ListUsersQuerySchema>;
 
@@ -142,8 +174,12 @@ export interface UserDto {
   totpEnabled: boolean;
   /** D6 — admin-forced TOTP enrollment pending/active. */
   totpRequired: boolean;
-  /** The Employee this login belongs to; null for platform/system accounts. */
+  /** The Employee this login belongs to; null for platform/system and external accounts. */
   employeeId: string | null;
+  /** The outside record this login belongs to; null for everyone who works here. */
+  externalSubject: ExternalSubjectDto | null;
+  /** Which population this account is — derived from the two fields above. */
+  kind: UserKind;
   phone: string | null;
   firstName: { ar: string; en: string };
   lastName: { ar: string; en: string };

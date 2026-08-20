@@ -54,6 +54,7 @@ const me = (permissions: string[]): MeDto => ({
   isPrivileged: true,
   flags: {},
   totpEnabled: true,
+  external: null,
 });
 
 const user = (over: Partial<UserDto> = {}): UserDto => ({
@@ -72,6 +73,8 @@ const user = (over: Partial<UserDto> = {}): UserDto => ({
   totpEnabled: false,
   totpRequired: false,
   employeeId: null,
+  externalSubject: null,
+  kind: 'employee',
   phone: null,
   firstName: { ar: 'سارة', en: 'Sara' },
   lastName: { ar: 'أحمد', en: 'Ahmed' },

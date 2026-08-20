@@ -5,10 +5,13 @@
 // the web gate screen is just UX on top.
 import { type NextFunction, type Request, type RequestHandler, type Response } from 'express';
 import { ErrorCodes } from '@ecms/contracts';
-import { AppError, UnauthenticatedError } from '../../shared/errors';
+import { AppError, ForbiddenError, UnauthenticatedError } from '../../shared/errors';
 import { type AuthContext } from '../../shared/types';
 import { setActor } from '../../infrastructure/http/request-context';
+import { auditService } from '../audit';
 import { authService } from './auth.service';
+import { ACTIVE_BRANCH_HEADER, resolveActiveBranch } from './active-branch';
+import { externalMayReach } from './external-surfaces';
 
 interface AuthedRequest extends Request {
   authContext?: AuthContext;
@@ -36,6 +39,13 @@ export const authenticate: RequestHandler = (
   authService
     .buildAuthContext(header.slice('Bearer '.length))
     .then(async (ctx) => {
+      // The command bar's branch narrowing. Read here rather than per module so every list in the
+      // application answers the same question the switcher is asking; `scopeSelector` applies it,
+      // and can only ever narrow an organization-wide grant.
+      const active = req.headers[ACTIVE_BRANCH_HEADER];
+      ctx.activeBranchId = await resolveActiveBranch(
+        typeof active === 'string' ? active : undefined,
+      );
       (req as AuthedRequest).authContext = ctx;
       setActor({
         userId: ctx.userId,
@@ -53,6 +63,22 @@ export const authenticate: RequestHandler = (
             'Password change required before continuing',
           ),
         );
+        return;
+      }
+      // Confinement (see external-surfaces.ts). Employees short-circuit on the first test — the
+      // field is unset for every one of them — so this costs a null check on the hot path.
+      const external = ctx.external ?? null;
+      if (external !== null && !externalMayReach(external, req.method, path)) {
+        // Recorded, not just refused: an external account probing outside its surface is the
+        // shape of an incident, and the row is what makes it visible afterwards.
+        void auditService.record({
+          entityRef: { moduleId: 'platform', entityType: 'user', entityId: ctx.userId },
+          action: 'permissionDenied',
+          changes: [
+            { field: 'externalSurface', old: null, new: `${req.method} ${path}` },
+          ],
+        });
+        next(new ForbiddenError());
         return;
       }
       next();

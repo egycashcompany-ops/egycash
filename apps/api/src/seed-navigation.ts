@@ -629,6 +629,107 @@ const CATALOG: CategoryDef[] = [
     ],
   },
   {
+    en: 'Gold Vault',
+    ar: 'خزائن الذهب',
+    icon: 'shield',
+    sortOrder: 27,
+    // The gold-vault module, ported from the standalone system. Its own sidebar listed exactly
+    // these screens in exactly this order; the four it also listed — users, roles, branches and
+    // the audit log — are gone, because ECMS owns those surfaces and they already appear under
+    // Administration and Organization.
+    apps: [
+      {
+        en: 'Vault Dashboard',
+        ar: 'لوحة التحكم',
+        route: '/gold',
+        icon: 'gauge',
+        permission: 'goldReport.view',
+      },
+      {
+        en: 'Vaults',
+        ar: 'الخزائن',
+        route: '/gold/vaults',
+        icon: 'layers',
+        permission: 'goldVault.view',
+      },
+      {
+        en: 'Vault Settings',
+        ar: 'إعدادات الخزائن',
+        route: '/gold/vault-settings',
+        icon: 'cog',
+        // The layout screen creates vaults and regenerates drawers, so it advertises the grant it
+        // actually needs rather than the one that merely opens the board.
+        permission: 'goldVault.edit',
+      },
+      {
+        en: 'Bars',
+        ar: 'السبائك',
+        route: '/gold/bars',
+        icon: 'tag',
+        permission: 'goldBar.view',
+      },
+      {
+        en: 'Receiving',
+        ar: 'عمليات الدخول',
+        route: '/gold/receiving',
+        icon: 'inbox',
+        permission: 'goldReceiving.view',
+      },
+      {
+        en: 'Delivery',
+        ar: 'عمليات الخروج',
+        route: '/gold/delivery',
+        icon: 'truck',
+        permission: 'goldDelivery.view',
+      },
+      {
+        en: 'Transfers',
+        ar: 'عمليات التحويل',
+        route: '/gold/transfers',
+        icon: 'link',
+        permission: 'goldTransfer.view',
+      },
+      {
+        en: 'Drawer Keys',
+        ar: 'المفاتيح',
+        route: '/gold/keys',
+        icon: 'badge',
+        permission: 'goldKey.view',
+      },
+      {
+        en: 'Owners',
+        ar: 'الشركات والصناديق',
+        route: '/gold/companies',
+        icon: 'company',
+        permission: 'goldCompany.view',
+      },
+      {
+        en: 'Delegates',
+        ar: 'المندوبون',
+        route: '/gold/representatives',
+        icon: 'users',
+        permission: 'goldRepresentative.view',
+      },
+      {
+        en: 'Vault Reports',
+        ar: 'تقارير الخزينة',
+        route: '/gold/reports',
+        icon: 'chart',
+        permission: 'goldReport.view',
+      },
+      // The staff side of the customer portal. The portal ITSELF is deliberately absent from
+      // navigation: it lives outside the shell at `/portal`, and nobody who can see this menu is
+      // a customer.
+      {
+        en: 'Portal Accounts',
+        ar: 'حسابات بوابة العملاء',
+        route: '/gold/portal-accounts',
+        icon: 'users',
+        permission: 'goldPortalAccount.view',
+      },
+    ],
+  },
+  {
     en: 'Administration',
     ar: 'الإدارة',
     // A department is not its settings screen: the briefcase reads as "administration",

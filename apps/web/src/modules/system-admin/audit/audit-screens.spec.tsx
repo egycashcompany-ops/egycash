@@ -95,6 +95,7 @@ const me = (permissions: string[]): MeDto => ({
   isPrivileged: false,
   flags: {},
   totpEnabled: true,
+  external: null,
 });
 
 const page = <T,>(items: T[]) => ({

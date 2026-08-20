@@ -16,3 +16,7 @@ export * from './reconciliation';
 export * from './cost-breakdown';
 export * from './cost-report';
 export * from './report-builder';
+// P-SCOPE-1 stage 3 — one backfill per collection, each exported from the feature that owns it.
+export { backfillPayslipDepartments } from './payslips/payslip-department.backfill';
+export { backfillAdjustmentDepartments } from './adjustments/adjustment-department.backfill';
+export { backfillEmployeePayItemDepartments } from './employee-pay-items/employee-pay-item-department.backfill';

@@ -29,6 +29,14 @@ const ContractsRoutes = lazy(() => import('../../modules/hr/contracts/routes'));
 const FleetRoutes = lazy(() => import('../../modules/fleet/routes'));
 const OperationsRoutes = lazy(() => import('../../modules/operations/routes'));
 const ItRoutes = lazy(() => import('../../modules/it/routes'));
+const GoldRoutes = lazy(() => import('../../modules/gold/routes'));
+// The customer portal is a SEPARATE surface, not a page of the app: its own login, its own
+// chrome, no sidebar. Neither route is wrapped in RequireAuth — that guard redirects to the
+// STAFF login, which is not where a customer belongs.
+const PortalLoginPage = lazy(async () => ({
+  default: (await import('../../modules/gold/portal/PortalLoginPage')).PortalLoginPage,
+}));
+const GoldPortalRoutes = lazy(() => import('../../modules/gold/portal/routes'));
 const SystemAdminRoutes = lazy(() => import('../../modules/system-admin/routes'));
 const VerifyContractPage = lazy(
   () => import('../../modules/hr/contracts/pages/VerifyContractPage'),
@@ -103,6 +111,37 @@ export const App = (): JSX.Element => {
               }
             >
               <VerifyContractPage />
+            </Suspense>
+          }
+        />
+        {/* بوابة العملاء — the vault's customers. Public in the same sense /login is: the guard is
+            inside, and it sends an unauthenticated visitor to the PORTAL's login rather than the
+            staff one. Declared here, above the catch-all, so `/portal/*` is never swallowed by it. */}
+        <Route
+          path="/portal/login"
+          element={
+            <Suspense
+              fallback={
+                <div className="grid min-h-screen place-items-center">
+                  <LoadingState />
+                </div>
+              }
+            >
+              <PortalLoginPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/portal/*"
+          element={
+            <Suspense
+              fallback={
+                <div className="grid min-h-screen place-items-center">
+                  <LoadingState />
+                </div>
+              }
+            >
+              <GoldPortalRoutes />
             </Suspense>
           }
         />
@@ -246,6 +285,22 @@ export const App = (): JSX.Element => {
                 }
               >
                 <ItRoutes />
+              </Suspense>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/gold/*"
+          element={
+            <RequireAuth>
+              <Suspense
+                fallback={
+                  <div className="grid min-h-screen place-items-center">
+                    <LoadingState />
+                  </div>
+                }
+              >
+                <GoldRoutes />
               </Suspense>
             </RequireAuth>
           }

@@ -38,6 +38,8 @@ import { settingsService } from '../../src/platform/settings';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { getCache } from '../../src/infrastructure/redis/cache';
 import { type AuthContext } from '../../src/shared/types';
+// D-DEPT-4 constructs the unattributed case directly: no endpoint clears a stamp, and none should.
+import { PayslipModel } from '../../src/modules/hr/payroll/payslips/payslip.model';
 
 const PASSWORD = 'Str0ng#Pass!';
 const PERIOD = '2026-02'; // a month that has ended, in this file's own database
@@ -777,31 +779,53 @@ describe('the same report, read at different scopes', () => {
   });
 
   /**
-   * ⚠️ A CHARACTERIZATION TEST, NOT AN ENDORSEMENT — finding F-B1-1.
+   * P-SCOPE-1 — the department rung, which this suite watched being missing.
    *
-   * The payslip collection carries `branchId` and `costCenterId` and NO department field
-   * (`payslip.repository.ts` declares `branchField` only). `BaseRepository.scopeFilter` answers a
-   * scope whose field is undeclared with an EMPTY filter, so a `department`-scoped grant on
-   * `employee.viewCompensation` narrows a payslip read by nothing at all — it reads exactly as
-   * `organization` does.
+   * THIS TEST REPLACED ITS OWN OPPOSITE. Until `departmentId` was stamped on the payslip, the
+   * assertion here was that a department-scoped reader is NOT narrowed — a characterization test
+   * written so that closing F-B1-1 would break it rather than pass unnoticed. It broke, and this
+   * is what it became.
    *
-   * That is inherited rather than introduced here: the payslip list, the reconciliation, the P-HR-14
-   * cost breakdown and the P-HR-25 report have all behaved this way since PY-7, and B1 runs the same
-   * pipeline. It is asserted rather than hidden because the alternative — a suite that quietly omits
-   * the department case — is how a reader concludes the scope ladder is complete when it is not.
-   *
-   * The owner's decision is pending; if department scope is later made to narrow, THIS TEST MUST
-   * FAIL, which is the point of writing it down.
+   * Department A lives in branch A, so a reader scoped to it must be answered with branch A's
+   * money and nothing else — and with STRICTLY LESS than the organization reader, which is what
+   * "cannot see the other department" means in figures rather than in row counts.
    */
-  it('does NOT narrow a department-scoped reader — the payslip has no department axis (F-B1-1)', async () => {
+  it('narrows a department-scoped reader to their own department (P-SCOPE-1)', async () => {
     const body = definition({ dimensions: ['branch'] });
     const wide = data<PayrollReportResultDto>(await preview({ runId, definition: body }));
     const departmentScoped = data<PayrollReportResultDto>(
       await preview({ runId, definition: body }, departmentToken),
     );
 
-    // Department A lives in branch A, yet the reader is answered with branch B's money as well.
-    expect(branchIdsIn(departmentScoped).sort()).toEqual([BRANCH_A, BRANCH_B].sort());
-    expect(totalOf(departmentScoped)).toBe(totalOf(wide));
+    expect(branchIdsIn(departmentScoped)).toEqual([BRANCH_A]);
+    expect(totalOf(departmentScoped)).toBeGreaterThan(0);
+    expect(totalOf(departmentScoped)).toBeLessThan(totalOf(wide));
+  });
+
+  /**
+   * D-DEPT-4 — an absent department reads FAIL-CLOSED.
+   *
+   * Every payslip this suite issues carries a department, so the case is constructed: clearing the
+   * stamp on one row must remove it from the department reader's answer while leaving the
+   * organization reader's untouched. A scope that showed what it could not attribute would not be
+   * a scope.
+   */
+  it('hides a payslip carrying no department from a department reader (D-DEPT-4)', async () => {
+    const body = definition({ dimensions: ['branch'] });
+    const before = data<PayrollReportResultDto>(
+      await preview({ runId, definition: body }, departmentToken),
+    );
+    expect(totalOf(before)).toBeGreaterThan(0);
+
+    await PayslipModel.updateMany({ runId, departmentId: { $ne: null } }, { $set: { departmentId: null } });
+
+    const after = data<PayrollReportResultDto>(
+      await preview({ runId, definition: body }, departmentToken),
+    );
+    expect(after.rows, 'an unattributed payslip is not shown to a department reader').toEqual([]);
+
+    // …and the organization reader still sees every row, because nothing was deleted.
+    const wide = data<PayrollReportResultDto>(await preview({ runId, definition: body }));
+    expect(branchIdsIn(wide).sort()).toEqual([BRANCH_A, BRANCH_B].sort());
   });
 });

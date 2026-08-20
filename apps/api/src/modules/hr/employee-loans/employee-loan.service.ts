@@ -130,6 +130,8 @@ class EmployeeLoanService {
           : await this.resolveAttachment(ctx, employeeId, input.attachmentFileId),
       status: 'draft',
       branchId: employee.branchId,
+      // P-SCOPE-1 — the second scope axis, from the same employee at the same moment.
+      departmentId: employee.departmentId,
       createdBy: new Types.ObjectId(ctx.userId),
       updatedBy: null,
       isDeleted: false,

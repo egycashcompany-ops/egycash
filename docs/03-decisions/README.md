@@ -36,6 +36,7 @@ decision, write a new ADR that supersedes the old one.
 | [ADR-025](ADR-025-sweep-announcement-marks.md) | Sweep announcements are marked in their own collection, not on the record | Accepted |
 | [ADR-026](ADR-026-role-administration-guards.md) | Administering roles cannot exceed the administrator | Accepted |
 | [ADR-027](ADR-027-external-identities.md) | People outside the company get ECMS accounts, confined to one surface | Accepted |
+| [ADR-028](ADR-028-active-branch-narrowing.md) | One control in the command bar narrows the whole application to a branch | Accepted |
 
 ADR-001…014 were accepted with Milestone 1 approval (2026-07-08). ADR-015 records the
 single-organization correction from [Architecture Review 01](../10-reviews/2026-07-architecture-review-01.md),
@@ -65,6 +66,11 @@ business record. ADR-026 records the guards that had to exist before role admini
 handed to a human: an administrator can neither put a permission into a role nor grant one at a
 breadth they do not themselves hold, server-side and with no identity-based exemption. It also
 writes down the department/section widening that ADR-017 §1 chose knowingly, which the roles screens
+ADR-028 gives the shell the control the gold system had in its top bar and the port had left
+behind: an account that sees the whole company can narrow itself to one branch, and the same choice
+decides both what it reads and where a new document is filed. It narrows and never widens — the
+caller's granted scope is the ceiling — which is why it is a preference rather than a permission.
+
 ADR-027 is the platform's answer to a population it did not have: people who are not employees and
 never will be. The gold vault's customers get ordinary ECMS accounts carrying an opaque
 `externalSubject` back-reference — `employeeId` with its owner named — and are confined, before

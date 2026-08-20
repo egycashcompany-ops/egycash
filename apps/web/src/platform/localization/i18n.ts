@@ -171,6 +171,9 @@ const en: Record<string, string> = {
 
   // Navigation system (shell bar, module rail/panel, command palette)
   'nav.search': 'Search or jump to…',
+  'nav.branchSwitcher.label': 'Viewing',
+  'nav.branchSwitcher.all': 'The whole company',
+  'nav.branchSwitcher.none': 'No branches yet',
   'nav.pinned': 'Pinned',
   'nav.pin': 'Pin',
   'nav.unpin': 'Unpin',
@@ -5630,6 +5633,9 @@ const ar: Record<string, string> = {
 
   // Navigation system (shell bar, module rail/panel, command palette)
   'nav.search': 'ابحث أو انتقل…',
+  'nav.branchSwitcher.label': 'المعروض الآن',
+  'nav.branchSwitcher.all': 'الشركة كلها',
+  'nav.branchSwitcher.none': 'لا توجد فروع بعد',
   'nav.pinned': 'المثبّتة',
   'nav.pin': 'تثبيت',
   'nav.unpin': 'إلغاء التثبيت',

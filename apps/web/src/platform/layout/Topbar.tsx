@@ -17,6 +17,7 @@ import { CogIcon, LogOutIcon, ShieldIcon, MenuIcon, SearchIcon } from '../../sha
 import { ThemeToggle } from './ThemeToggle';
 import { LanguageToggle } from './LanguageToggle';
 import { NavLayoutToggle } from './NavLayoutToggle';
+import { BranchSwitcher } from './BranchSwitcher';
 
 const UserMenu = (): JSX.Element => {
   const t = useT();
@@ -142,8 +143,11 @@ export const Topbar = ({ onOpenSearch }: { onOpenSearch: () => void }): JSX.Elem
         </kbd>
       </button>
 
-      {/* Utilities */}
+      {/* Utilities. The branch switcher leads them: it changes what every other screen MEANS, so
+          it belongs beside the identity rather than buried in a page's own filters. */}
       <div className="flex shrink-0 items-center gap-0.5">
+        <BranchSwitcher />
+        <div className="mx-1 hidden h-6 w-px bg-slate-200 dark:bg-slate-700 sm:block" />
         <NavLayoutToggle />
         <ThemeToggle />
         <LanguageToggle />

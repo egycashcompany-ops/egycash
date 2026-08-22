@@ -189,15 +189,34 @@ export const toGrievanceDto = (doc: FleetGrievanceDoc): FleetGrievanceDto => ({
   updatedAt: iso(doc.updatedAt),
 });
 
-export const toMaintenanceVisitDto = (doc: FleetMaintenanceVisitDoc): FleetMaintenanceVisitDto => ({
+/**
+ * The joins are passed IN rather than looked up here, for the reason the odometer's are: a mapper
+ * runs once per row, and a lookup inside one is a query per row.
+ */
+export interface MaintenanceVisitJoins {
+  vehicleCode: string | null;
+  driver1EmployeeId: string | null;
+  driver2EmployeeId: string | null;
+}
+
+export const toMaintenanceVisitDto = (
+  doc: FleetMaintenanceVisitDoc,
+  joins: MaintenanceVisitJoins,
+): FleetMaintenanceVisitDto => ({
   id: String(doc._id),
   vehicleId: String(doc.vehicleId),
+  vehicleCode: joins.vehicleCode,
+  driver1EmployeeId: joins.driver1EmployeeId,
+  driver2EmployeeId: joins.driver2EmployeeId,
   inDate: iso(doc.inDate),
   outDate: doc.outDate === null ? null : iso(doc.outDate),
   workshopId: String(doc.workshopId),
   workTypeId: String(doc.workTypeId),
   spareParts: doc.spareParts,
+  sparePartIds: (doc.sparePartIds ?? []).map(String),
   odometerAtService: doc.odometerAtService,
+  // `== null` on purpose: a visit written before the field existed has `undefined`, not `null`.
+  exitOdometer: doc.exitOdometer == null ? null : doc.exitOdometer,
   takenInByEmployeeId: doc.takenInByEmployeeId === null ? null : String(doc.takenInByEmployeeId),
   takenOutByEmployeeId: doc.takenOutByEmployeeId === null ? null : String(doc.takenOutByEmployeeId),
   notes: doc.notes,

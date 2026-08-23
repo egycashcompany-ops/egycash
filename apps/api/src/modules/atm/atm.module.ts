@@ -18,6 +18,7 @@ import { buildAtmRefLabelsRouter } from './catalogs/ref-label.routes';
 import { buildAtmReplenishmentsRouter } from './replenishments/replenishment.routes';
 import { buildAtmMaintenancesRouter } from './maintenances/maintenance.routes';
 import { buildAtmMailTicketsRouter } from './mail-tickets/mail-ticket.routes';
+import { buildAtmReportsRouter } from './reports/report.routes';
 import { registerAtmSettings } from './atm.settings';
 import { seedAtm } from './atm.seed';
 
@@ -145,6 +146,8 @@ export const atmModule: ModuleManifest = {
     { prefix: '/atm/replenishments', router: buildAtmReplenishmentsRouter() },
     { prefix: '/atm/maintenances', router: buildAtmMaintenancesRouter() },
     { prefix: '/atm/mail-tickets', router: buildAtmMailTicketsRouter() },
+    // The daily report rides the existing view grants — no permission, no page (port doc D7).
+    { prefix: '/atm/reports', router: buildAtmReportsRouter() },
   ],
   collections: [
     'atm_machines',

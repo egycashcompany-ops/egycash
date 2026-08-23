@@ -306,3 +306,10 @@ export const useRejectAtmMailTickets = () => {
     onSuccess: () => invalidateMailDecision(client),
   });
 };
+
+// ── Daily report ────────────────────────────────────────────────────────────
+export const useAtmDailyReport = (date: string | null) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'reports', { kind: 'daily', date }),
+    queryFn: () => api.atmDailyReport(date),
+  });

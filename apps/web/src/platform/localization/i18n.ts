@@ -5651,6 +5651,18 @@ const en: Record<string, string> = {
   'atm.dataEdit.machinesDeleted': '{{count}} machine(s) deleted.',
   'atm.dataEdit.machineMoved': 'Machine moved.',
   'atm.dataEdit.machineNotFound': 'No active machine with this code.',
+
+  'atm.nav.dailyReport': 'Daily Report',
+  'atm.cards.dailyReport': "Today's open and total operations per bank.",
+  'atm.reports.title': 'Daily Report',
+  'atm.reports.subtitle': 'Open over total operations per bank, for one day.',
+  'atm.reports.day': 'Day',
+  'atm.reports.replenishments': 'Replenishments',
+  'atm.reports.maintenance': 'Maintenance',
+  'atm.reports.open': 'Still open',
+  'atm.reports.total': 'Total',
+  'atm.reports.totalsLine': '{{open}} still open out of {{total}}.',
+  'atm.reports.empty': 'Nothing opened on this day.',
 };
 
 const ar: Record<string, string> = {
@@ -11177,6 +11189,18 @@ const ar: Record<string, string> = {
   'atm.dataEdit.machinesDeleted': 'تم حذف {{count}} ماكينة.',
   'atm.dataEdit.machineMoved': 'تم نقل الماكينة.',
   'atm.dataEdit.machineNotFound': 'لا توجد ماكينة نشطة بهذا الكود.',
+
+  'atm.nav.dailyReport': 'تقرير اليوم',
+  'atm.cards.dailyReport': 'المفتوح والإجمالي لكل بنك اليوم.',
+  'atm.reports.title': 'تقرير اليوم',
+  'atm.reports.subtitle': 'المفتوح من إجمالي العمليات لكل بنك، ليوم واحد.',
+  'atm.reports.day': 'اليوم',
+  'atm.reports.replenishments': 'التغذيات',
+  'atm.reports.maintenance': 'الصيانات',
+  'atm.reports.open': 'ما زال مفتوحًا',
+  'atm.reports.total': 'الإجمالي',
+  'atm.reports.totalsLine': '{{open}} ما زالت مفتوحة من إجمالي {{total}}.',
+  'atm.reports.empty': 'لا توجد عمليات في هذا اليوم.',
 };
 
 const catalogs: Record<Locale, Record<string, string>> = { en, ar };

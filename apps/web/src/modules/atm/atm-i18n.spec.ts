@@ -139,6 +139,15 @@ const KEYS = [
   'atm.dataEdit.machinesDeleted',
   'atm.dataEdit.machineMoved',
   'atm.dataEdit.machineNotFound',
+  'atm.reports.title',
+  'atm.reports.subtitle',
+  'atm.reports.day',
+  'atm.reports.replenishments',
+  'atm.reports.maintenance',
+  'atm.reports.open',
+  'atm.reports.total',
+  'atm.reports.totalsLine',
+  'atm.reports.empty',
 ];
 
 describe('atm i18n catalog', () => {

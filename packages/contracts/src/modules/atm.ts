@@ -511,3 +511,41 @@ export const AtmSettingKeys = {
    */
   MaintenanceLeaderDepartmentIds: 'atm.maintenanceLeaderDepartmentIds',
 } as const;
+
+// ── Daily report (legacy /reports_atm) ──────────────────────────────────────────────────────────
+//
+// The legacy screen (contad_app.js:2208-2351, views/events/reports_atm.ejs) is ONE number pair per
+// bank, for TODAY, for each of the two operation kinds: `not_end` (still open, painted red) over
+// `all` (everything opened that day, painted green) — grouped by the `bank` string, deleted rows
+// excluded. That is the whole report; there is no range, no drill-down and nothing stored.
+//
+// One read-only widening (port doc D7): the day is a PARAMETER defaulting to today. The legacy
+// could only ever show today, which made "what did yesterday look like" a question the screen
+// could not answer; a date on a read changes no behaviour and stores nothing.
+
+export interface AtmBankCountsDto {
+  /** The `bank` label the operations were opened under — the legacy `_id` of the $group. */
+  bankName: string;
+  /** Legacy `all` — every non-deleted operation opened that day. */
+  total: number;
+  /** Legacy `not_end` — those still open. */
+  open: number;
+}
+
+export interface AtmDailyReportDto {
+  /** The Cairo calendar day the counts cover (`YYYY-MM-DD`). */
+  date: string;
+  /** Empty when the caller may not read that half — the report never leaks past a grant. */
+  replenishments: AtmBankCountsDto[];
+  maintenances: AtmBankCountsDto[];
+}
+
+export const AtmDailyReportQuerySchema = z
+  .object({
+    date: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional(),
+  })
+  .strict();
+export type AtmDailyReportQuery = z.infer<typeof AtmDailyReportQuerySchema>;

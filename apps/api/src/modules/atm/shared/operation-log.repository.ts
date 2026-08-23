@@ -115,6 +115,36 @@ export class AtmOperationLogRepository<T extends AtmOperationLogFields> extends 
   }
 
   /**
+   * The daily report's one aggregation (legacy /reports_atm, contad_app.js:2234-2320): per bank,
+   * everything opened that day and how much of it is still open. Deleted rows are excluded by
+   * `baseFilter`, exactly as the legacy `deleted: 0` match did.
+   */
+  async countsByBankForDay(params: {
+    from: Date;
+    to: Date;
+    scope: ScopeSelector;
+  }): Promise<{ bankName: string; total: number; open: number }[]> {
+    const rows = await this.model
+      .aggregate<{ _id: string; total: number; open: number }>([
+        {
+          $match: this.baseFilter(params.scope, {
+            openedAt: { $gte: params.from, $lt: params.to },
+          } as FilterQuery<T>),
+        },
+        {
+          $group: {
+            _id: '$bankName',
+            total: { $sum: 1 },
+            open: { $sum: { $cond: [{ $eq: ['$closedAt', null] }, 1, 0] } },
+          },
+        },
+        { $sort: { _id: 1 } },
+      ])
+      .exec();
+    return rows.map((row) => ({ bankName: String(row._id), total: row.total, open: row.open }));
+  }
+
+  /**
    * A bulk write over checked rows — the legacy `updateMany({_id: {$in: iddds}})` shape
    * (contad_app.js:800, :875, :904). No version check, deliberately: the legacy multi-actions are
    * last-write-wins over an explicit selection, and imposing optimistic concurrency on them would

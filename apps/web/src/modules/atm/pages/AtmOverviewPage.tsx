@@ -9,6 +9,7 @@ import { PageContainer, PageHeader } from '../../../platform/layout/PageContaine
 import { ModuleHome } from '../../../shared/ui/ModuleHome';
 import {
   CalendarIcon,
+  ChartIcon,
   ClipboardIcon,
   GridIcon,
   InboxIcon,
@@ -82,6 +83,14 @@ export const ATM_SHORTCUTS: Shortcut[] = [
     descKey: 'atm.cards.machines',
     icon: GridIcon,
     permission: 'atmMachine.view',
+  },
+  /** Legacy `/reports_atm` — today's numbers per bank. */
+  {
+    to: '/atm/reports/daily',
+    titleKey: 'atm.nav.dailyReport',
+    descKey: 'atm.cards.dailyReport',
+    icon: ChartIcon,
+    permission: 'atmReplenishment.view',
   },
   /** Legacy `/data_edit_atm`. */
   {

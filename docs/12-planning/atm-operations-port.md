@@ -52,8 +52,12 @@ ECMS" means.
   separate list with a separate administrator. Machines store the label string, as legacy did.
 - **D2 — `/data_edit_atm` in scope** (owner's follow-up message): delivered whole — bulk add with
   skip-and-name, delete with the `-D` rename, area reassignment, both label lists.
-- **D3 — `/reports_atm` deferred**: not in the owner's page list; recorded here so its absence is
-  a decision, not an oversight.
+- **D3 — `/reports_atm` DELIVERED** (revised): originally deferred as outside the owner's page
+  list, then built under the owner's standing delegation. It rides the existing view grants and
+  declares no permission and no page (the operations B5-report precedent).
+- **D7 — the report's day is a parameter.** The legacy screen could only ever show today
+  (contad_app.js:2244-2249), which made "what did yesterday look like" unanswerable. A date on a
+  read-only aggregate changes no behaviour and stores nothing; the default is still today.
 - **D4 — no `openedAt >= today` floor on the open lists.** The legacy floor (contad_app.js:263)
   made an open row with a past open date invisible on every screen forever — un-closable. Open is
   open; the client still renders non-today rows as the grey carried-over group with no close
@@ -129,16 +133,40 @@ machine's `branchId`. One database, classified per branch, exactly the owner's r
   carries the true `receivedAt`; whether to reproduce the bug is a one-line choice in the
   transport.
 
-## 7. Migration (tooling deferred with ATM-7)
+## 7. Migration (ATM-7 — delivered)
 
-Per legacy deployment (= per branch), in this order: `atm` → `atm_machines` (stamp the branch,
-skip `-D` rows or import as deleted); `atm_data_lists` → `atm_ref_labels`; logs → operations
-with **T1 time normalization** — replenishment `open_time` values are Cairo-labelled-UTC and must
-be shifted to true UTC while `close_time` values are already honest; maintenance rows after the
-moment the legacy moved to moment-tz are honest on both ends (sample per-deployment before
-trusting a cutoff). `ops_emp/ops_emp2/leader` name strings stay as snapshots; matching to
-employee ids is best-effort enrichment, never a requirement. `atm_mails` → tickets with
-`providerMessageId: null`.
+    npm run atm:import -w apps/api -- --legacy-uri=mongodb://host:27017/egycash \
+      --branch=<objectId> [--rep-time=cairo|utc] [--maint-time=cairo|utc] [--dry-run]
+
+**One legacy deployment → one ECMS branch, per run** — a branch WAS a deployment, so the branch is
+a flag rather than something the data could carry. Order: `atm` → `atm_machines`;
+`atm_data_lists.bank[]/area[]` → `atm_ref_labels`; `atm_rep_log`/`atm_maint_log` → the two
+operation collections; `atm_mails` → tickets.
+
+Properties worth knowing before running it:
+
+- **Idempotent.** Legacy `_id`s are preserved and rows upsert by id, so a re-run replaces rather
+  than duplicates, and a row spot-checked in the legacy database is findable here by the same id.
+  Labels had no id (they were array entries) and are keyed by (branch, kind, name) instead.
+- **T1 normalization is a FLAG, not a detection.** `--rep-time` defaults to `cairo` (repairing the
+  legacy's local-parts-stamped-`+00:00` open times) and `--maint-time` to `utc` (that path moved to
+  moment-tz). Close times are never repaired — both paths always wrote true instants. The two modes
+  are indistinguishable in the data, so **sample known rows with `--dry-run` first**: getting it
+  wrong shifts a deployment's history by two or three hours.
+- **Unresolvable rows are reported, never invented.** An operation whose `mach_id` matches no
+  machine is skipped and counted (a deleted machine still claims its history through its base code,
+  the `-D` suffix stripped); a row with no `open_time` is skipped and counted. A MAIL ticket with no
+  resolvable machine is still imported with a null machine — the log is a record of decisions
+  people made, and dropping it would erase one.
+- **Two fields stay null by design**: `actionAt` (the legacy never recorded when a mail was decided
+  — GAP G1; stamping the import time would be a false fact) and `providerMessageId` (these rows
+  predate the key; NULL is exempt from its partial unique index).
+- **Maintenance provenance imports as `manual` without exception.** The legacy accept path kept no
+  link back to the ticket (contad_app.js:2806-2823), so `source: 'mail'` genuinely cannot be
+  recovered — only rows created in ECMS carry it.
+
+`ops_emp`/`ops_emp2`/`leader` stay name snapshots; matching them to employee ids is best-effort
+enrichment for a later pass, never a requirement of the import.
 
 ## 8. Delivery record
 
@@ -150,4 +178,5 @@ employee ids is best-effort enrichment, never a requirement. `atm_mails` → tic
 | ATM-4 | Maintenance (+ close-with-assignee via directory) + done page | delivered |
 | ATM-5 | Mail tickets: pending + accept/reject + log + unread badge + ingestion seam | delivered |
 | ATM-6 | Live transport (n8n workflow → ingest), branch colour categories | blocked on A-6b |
-| ATM-7 | Migration tooling; `/reports_atm` if the owner wants it (D3) | not started |
+| ATM-7 | Legacy importer (`npm run atm:import`) with the T1 repair, §7 | delivered |
+| — | Daily report `/atm/reports/daily` (legacy `/reports_atm`, D3/D7) | delivered |

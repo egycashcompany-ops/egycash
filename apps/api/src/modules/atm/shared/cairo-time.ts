@@ -49,6 +49,21 @@ export const cairoWallClockUtc = (dateString: string, hour: number): Date => {
   return new Date(guess.getTime() - cairoOffsetMinutes(corrected) * 60_000);
 };
 
+/**
+ * Re-read an instant's UTC CLOCK FACE as a Cairo wall clock, and return the instant that really
+ * was — the T1 repair, and the only reason it exists.
+ *
+ * The legacy replenishment create composed "now" from LOCAL date parts and stamped `+00:00` on it
+ * (contad_app.js:644-650), so a row opened at 10:00 in Cairo is stored as 10:00Z — two or three
+ * hours ahead of the instant it names. Reading those parts back as Cairo and converting gives the
+ * true instant. Applied ONLY by the legacy importer, and only to the fields whose deployment is
+ * known to have written them that way.
+ */
+export const reinterpretUtcPartsAsCairo = (stored: Date): Date => {
+  const guess = new Date(stored.getTime() - cairoOffsetMinutes(stored) * 60_000);
+  return new Date(stored.getTime() - cairoOffsetMinutes(guess) * 60_000);
+};
+
 /** [start, end) UTC instants of one Cairo calendar day. */
 export const cairoDayRange = (dateString: string): { start: Date; end: Date } => {
   const start = cairoWallClockUtc(dateString, 0);

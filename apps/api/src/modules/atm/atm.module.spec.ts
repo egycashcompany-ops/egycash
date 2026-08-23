@@ -1,6 +1,7 @@
 // The manifest guards (the operations.module.spec precedent): the module registers cleanly, and
 // its surfaces are exactly what the shipped slices claim. The pin-the-numbers block moves with
-// every slice: 15 permissions, 4 pages, 5 routes, 5 collections (ATM Operations port, ATM-0…5).
+// every slice: 15 permissions, 4 pages, 6 routes, 5 collections (ATM Operations port, ATM-0…7).
+// The daily report added a route and NOTHING else — it rides the existing view grants (D7).
 import { describe, expect, it } from 'vitest';
 import { platformSatisfies, validateManifest } from '../../platform/kernel/module-registry';
 import { atmModule, atmPages, atmPermissions } from './atm.module';
@@ -47,6 +48,7 @@ describe('atm module manifest (ATM Operations port)', () => {
       '/atm/maintenances',
       '/atm/ref-labels',
       '/atm/replenishments',
+      '/atm/reports',
     ]);
     expect(atmModule.collections.sort()).toEqual([
       'atm_machines',

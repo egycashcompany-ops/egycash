@@ -795,6 +795,13 @@ const CATALOG: CategoryDef[] = [
         permission: 'atmMachine.view',
       },
       {
+        en: 'Daily Report',
+        ar: 'تقرير اليوم',
+        route: '/atm/reports/daily',
+        icon: 'chart',
+        permission: 'atmReplenishment.view',
+      },
+      {
         en: 'Machine Data',
         ar: 'إضافة البيانات',
         route: '/atm/data-edit',

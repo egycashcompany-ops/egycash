@@ -6,6 +6,7 @@ import {
   type AtmLeaderOptionDto,
   type AtmMachineDto,
   type AtmMailTicketDto,
+  type AtmDailyReportDto,
   type AtmMailUnreadCountDto,
   type AtmMaintenanceDto,
   type AtmOperationFacetsDto,
@@ -155,3 +156,7 @@ export const acceptMailTickets = (ids: string[]): Promise<AtmMailTicketDto[]> =>
   post<AtmMailTicketDto[]>('/atm/mail-tickets/accept', { ids });
 export const rejectMailTickets = (ids: string[]): Promise<AtmMailTicketDto[]> =>
   post<AtmMailTicketDto[]>('/atm/mail-tickets/reject', { ids });
+
+// ── Daily report (legacy /reports_atm) ──────────────────────────────────────
+export const atmDailyReport = (date: string | null): Promise<AtmDailyReportDto> =>
+  get<AtmDailyReportDto>(`/atm/reports/daily${date === null ? '' : buildQuery({ date })}`);

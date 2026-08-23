@@ -12,6 +12,7 @@
 //   /atm/mail-tickets/log      atmMailTicket.viewLog   (legacy /mail_maintenance_log)
 //   /atm/machines              atmMachine.view         (legacy /all_atm)
 //   /atm/data-edit             atmMachine.manage       (legacy /data_edit_atm)
+//   /atm/reports/daily         atmReplenishment.view   (legacy /reports_atm)
 import { Route, Routes } from 'react-router-dom';
 import { RequirePermission } from '../../platform/router/RequirePermission';
 import { NotFoundPage } from '../../platform/app/pages/NotFoundPage';
@@ -25,6 +26,7 @@ import { MailTicketsPage } from './pages/MailTicketsPage';
 import { MailLogPage } from './pages/MailLogPage';
 import { MachinesPage } from './pages/MachinesPage';
 import { DataEditPage } from './pages/DataEditPage';
+import { DailyReportPage } from './pages/DailyReportPage';
 
 export default function AtmRoutes(): JSX.Element {
   return (
@@ -92,6 +94,14 @@ export default function AtmRoutes(): JSX.Element {
           element={
             <RequirePermission permission="atmMachine.manage">
               <DataEditPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="reports/daily"
+          element={
+            <RequirePermission permission="atmReplenishment.view">
+              <DailyReportPage />
             </RequirePermission>
           }
         />

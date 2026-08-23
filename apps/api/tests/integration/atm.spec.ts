@@ -17,6 +17,7 @@ import {
   type AtmMaintenanceDto,
   type AtmReplenishmentDto,
 } from '@ecms/contracts';
+import { cairoDateString, cairoWallClockUtc } from '../../src/modules/atm/shared/cairo-time';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { buildApp } from '../../src/app';
 import { moduleManifests } from '../../src/modules';
@@ -37,6 +38,7 @@ let outsiderToken: string; // no atm grant at all
 let alexBranchId: string;
 let tantaBranchId: string;
 let adminUserId: string;
+let fixtureDay: string;
 
 const resolveMongoUri = async (): Promise<string> => {
   const external = process.env.MONGO_TEST_URI;
@@ -247,6 +249,7 @@ describe('atm machines — the master and its data-edit surface', () => {
 
 describe('atm replenishments — open, time, close', () => {
   let openedId: string;
+  let openedIds: string[] = [];
 
   it('opens one operation per submitted line and reports the codes it did not know', async () => {
     const res = await request(app)
@@ -268,6 +271,11 @@ describe('atm replenishments — open, time, close', () => {
     // The machine snapshot is taken at open — the record a closed day keeps saying.
     expect(body.opened[0]).toMatchObject({ bankName: 'NBE', area: 'Smouha', closedAt: null });
     expect(body.opened[0]?.openedByName).not.toBeNull();
+    // The Cairo day these fixtures belong to, captured at the open. The report resolves
+    // 'today' at REQUEST time, so a suite that straddles Cairo midnight would otherwise ask
+    // about a day its own rows are not in.
+    fixtureDay = cairoDateString(new Date());
+    openedIds = body.opened.map((r) => r.id);
     openedId = body.opened[0]?.id as string;
   });
 
@@ -287,6 +295,19 @@ describe('atm replenishments — open, time, close', () => {
   });
 
   it('cascades a changed leader over the same area and shift, and only over open rows', async () => {
+    // Pin BOTH rows into the day shift first. The cascade window is anchored to the row's own
+    // calendar day (16:00 → 06:00 next), so a row opened between 00:00 and 06:00 Cairo sits
+    // OUTSIDE its own window and the cascade legitimately touches nothing — the legacy does
+    // exactly this (contad_app.js:858-861: hour < 6 takes the shift_two window). That quirk is
+    // preserved on purpose, so the test must not depend on what time of day CI happens to run.
+    // A bulk edit sets the open time without cascading (the legacy's own asymmetry), which is
+    // what makes the single-row edit below deterministic.
+    const dayShift = await request(app)
+      .patch('/api/v1/atm/replenishments/bulk')
+      .set('Authorization', `Bearer ${alexToken}`)
+      .send({ ids: openedIds, openedAt: cairoWallClockUtc(fixtureDay, 10) });
+    expect(dayShift.status, 'pin the open time into the day shift').toBe(200);
+
     const before = await request(app)
       .get('/api/v1/atm/replenishments?pageSize=100')
       .set('Authorization', `Bearer ${alexToken}`);
@@ -480,7 +501,7 @@ describe('atm mail tickets', () => {
 describe('atm daily report', () => {
   it('counts still-open over total per bank, for the day', async () => {
     const res = await request(app)
-      .get('/api/v1/atm/reports/daily')
+      .get(`/api/v1/atm/reports/daily?date=${fixtureDay}`)
       .set('Authorization', `Bearer ${alexToken}`);
     expect(res.status).toBe(200);
     const report = data<{

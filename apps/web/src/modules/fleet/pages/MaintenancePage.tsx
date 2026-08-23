@@ -262,8 +262,9 @@ export const MaintenancePage = (): JSX.Element => {
       key: 'driver',
       header: t('fleet.odometer.columns.driver'),
       // The two DRIVERS the visit recorded: who brought the car in, above who drove it away.
-      // Both red — the row's own green says "closed", and recolouring a name to match it would
-      // make the name look like a status.
+      // The tone tells the two apart at a glance — the entry driver in the danger tone, the exit
+      // driver in the success tone the design system already spends on `Badge` variant `success`.
+      // The colour belongs to the LINE, never to the cell: a closed visit prints one of each.
       //
       // Deliberately NOT `takenInByEmployeeId` / `takenOutByEmployeeId`: those are the custody
       // employees who performed the check-in and check-out, they belong to the audit trail, and
@@ -271,15 +272,28 @@ export const MaintenancePage = (): JSX.Element => {
       //
       // Each line is conditional. An open visit has no exit driver yet, and a visit written
       // before these fields existed has neither — which renders as a dash, never as `null`.
+      // Keyed by ROLE, not by employee: one person may well drive the car both ways.
       render: (visit) => {
-        const drivers = [visit.driverInEmployeeId, visit.driverOutEmployeeId].filter(
-          (id): id is string => id !== null,
-        );
-        if (drivers.length === 0) return dash;
+        const lines: { role: string; id: string; tone: string }[] = [];
+        if (visit.driverInEmployeeId !== null) {
+          lines.push({
+            role: 'in',
+            id: visit.driverInEmployeeId,
+            tone: 'text-red-700 dark:text-red-300',
+          });
+        }
+        if (visit.driverOutEmployeeId !== null) {
+          lines.push({
+            role: 'out',
+            id: visit.driverOutEmployeeId,
+            tone: 'text-emerald-700 dark:text-emerald-300',
+          });
+        }
+        if (lines.length === 0) return dash;
         return (
           <span className="flex flex-col gap-0.5">
-            {drivers.map((id) => (
-              <span key={id} className="text-red-700 dark:text-red-300">
+            {lines.map(({ role, id, tone }) => (
+              <span key={role} className={tone}>
                 <EmployeeName employeeId={id} />
               </span>
             ))}

@@ -220,6 +220,18 @@ const cells = (markup: string): string[] =>
 const rowTags = (markup: string): string[] =>
   [...tbody(markup).matchAll(/<tr\b[^>]*>/g)].map((m) => m[0]);
 
+/**
+ * The class list of the ONE element that colours `name` — the nearest `<span class="…">` opened
+ * before it. `EmployeeName` wraps the name in a bare `<span>`, so the nearest CLASSED span is the
+ * tone the cell put on that line, and nothing from the line above can leak into the slice. That
+ * is what lets a test assert a name is one colour AND not the other.
+ */
+const tone = (markup: string, name: string): string => {
+  const at = markup.indexOf(name);
+  expect(at, `${name} is named`).toBeGreaterThan(-1);
+  return markup.slice(markup.lastIndexOf('<span class="', at), at);
+};
+
 const REQUIRED_COLUMNS = [
   'fleet.odometer.columns.no',
   'fleet.maintenance.fields.inDate',
@@ -276,12 +288,10 @@ describe('the maintenance table', () => {
     const qc = client([visit({ driverInEmployeeId: 'd1' })]);
     const markup = render({ qc });
     expect(cells(markup)[4]).toContain('سائق الصباح');
-    const body = tbody(markup);
-    const at = body.indexOf('سائق الصباح');
-    expect(body.slice(Math.max(0, at - 200), at)).toContain('text-red-700');
+    expect(tone(tbody(markup), 'سائق الصباح')).toContain('text-red-700');
   });
 
-  it('stacks the exit driver under the entry driver once the car has left', () => {
+  it('stacks the exit driver — in GREEN — under the red entry driver once the car has left', () => {
     const qc = client([
       visit({
         outDate: '2026-09-03T00:00:00.000Z',
@@ -296,6 +306,14 @@ describe('the maintenance table', () => {
     expect(inAt, 'the entry driver is named').toBeGreaterThan(-1);
     expect(outAt, 'the exit driver is named').toBeGreaterThan(-1);
     expect(inAt, 'entry above exit').toBeLessThan(outAt);
+    // The two ends are told apart by TONE, and the tone belongs to the LINE, not to the cell:
+    // in red, out green. Asserting each is NOT the other's colour is what makes this test fail
+    // if the cell ever paints both names with one class again.
+    const body = tbody(markup);
+    expect(tone(body, 'سائق الصباح'), 'the entry driver is red').toContain('text-red-700');
+    expect(tone(body, 'سائق الصباح'), 'and not green').not.toContain('text-emerald-700');
+    expect(tone(body, 'سائق المساء'), 'the exit driver is green').toContain('text-emerald-700');
+    expect(tone(body, 'سائق المساء'), 'and not red').not.toContain('text-red-700');
   });
 
   it('shows only the entry driver while the car is still in the workshop', () => {
@@ -384,16 +402,19 @@ describe('a visit that has left the workshop', () => {
     expect(openRow).not.toContain('emerald-');
   });
 
-  it('keeps BOTH drivers red on the green row — the row tint recolours neither', () => {
-    const markup = render({ qc: client([closed()]) });
-    const body = tbody(markup);
-    for (const name of ['سائق الصباح', 'سائق المساء']) {
-      const at = body.indexOf(name);
-      expect(at, `${name} is named`).toBeGreaterThan(-1);
-      const before = body.slice(Math.max(0, at - 200), at);
-      expect(before, `${name} is red`).toContain('text-red-700');
-      expect(before, `${name} is not tinted green`).not.toContain('text-emerald-700');
-    }
+  it('keeps the entry driver red and the exit driver green ON the green row', () => {
+    // The row tint is a BACKGROUND. It must recolour neither name: the green row carries a red
+    // entry driver and a green exit driver, and the exit driver's green is its own class rather
+    // than the row's tint bleeding through.
+    const body = tbody(render({ qc: client([closed()]) }));
+    expect(body, 'the row is tinted').toContain('bg-emerald-50/70');
+
+    expect(tone(body, 'سائق الصباح'), 'the entry driver stays red').toContain('text-red-700');
+    expect(tone(body, 'سائق الصباح'), 'the tint did not repaint it').not.toContain(
+      'text-emerald-700',
+    );
+    expect(tone(body, 'سائق المساء'), 'the exit driver is green').toContain('text-emerald-700');
+    expect(tone(body, 'سائق المساء'), 'and is not red').not.toContain('text-red-700');
   });
 });
 

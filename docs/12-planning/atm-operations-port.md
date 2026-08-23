@@ -105,33 +105,64 @@ does not stop future mails for the same machine; force-date ≠ today opens at 0
   The ingestion contract returns `unmatched` and the transport must LEAVE THE MESSAGE UNREAD —
   the owner's explicit rule.
 
-## 6. Automation integration contract (design only — no transport built)
+## 6. The central mail reader (ATM-6 — delivered)
 
-The legacy ran ONE reader PER BRANCH (Graph API poll every 60s, per-branch mailbox and DB). The
-target is ONE central reader; the port inverts branch resolution: **the machine decides the
-branch** — the parsed code is looked up across branches and the ticket is filed under the
-machine's `branchId`. One database, classified per branch, exactly the owner's requirement.
+The legacy ran ONE reader PER BRANCH — a separate Node service per deployment, each polling its own
+mailbox against its own database (`Automation/src/index.js`). The target is ONE central reader, and
+the port inverts branch resolution to get there: **the machine decides the branch.** A mail names a
+machine code; the code resolves to exactly one active machine across all branches; the ticket is
+filed under that machine's `branchId`. That is the whole of "يصنف الرسائل حسب Branch", expressed as
+data the master already holds — there is no per-branch mailbox, rule or routing table to keep.
 
-- **Seam:** `atmMailIngestionService.ingest(message)` (`mail-tickets/mail-ingestion.service.ts`) —
-  the only writer of tickets. Payload `AtmMailIngestSchema`: `providerMessageId` (idempotency,
-  unique index), `receivedAt`, `senderEmail`, `subject`, `bodyText`.
-- **Parsing:** the two legacy regex formats ported verbatim (`parse-mail.ts`, from
-  Automation/src/index.js:60-101), leading-zero stripping shared with the forms
-  (`normalizeAtmMachineCode`).
-- **Outcomes:** `created` → transport marks the message read and applies the BRANCH's colour
-  category; `duplicateMessage` → mark read (a retry after a half-failure); `unmatched` → leave
-  unread (G5). A code active in two branches is `unmatched` too — the legacy could not be
-  ambiguous (one master per branch), and refusing to guess cannot misfile a ticket.
-- **Branch colours:** a future `atm.mail.branchCategories` setting (branchId → mailbox category
-  name). The platform Branch entity has no colour field and is not modified.
-- **Blocked on:** the automation module's service tokens + inbound callback surface (A-6b,
-  automation-module-design.md §rollout) — not delivered yet. Until then the screens run on
-  migrated/ingested data and the seam is callable in-process; the HTTP transport is the next
-  slice and changes nothing above it.
-- **Known legacy bug, decision pending at transport time:** the reader stored the INGEST time as
-  `open_time`, not the email's `receivedDateTime` (index.js:137 overwrites :134). The contract
-  carries the true `receivedAt`; whether to reproduce the bug is a one-line choice in the
-  transport.
+**Shape.** Three files, one direction:
+
+| Piece | What it is |
+| --- | --- |
+| `mail-tickets/mail-source.ts` | The mailbox seam — `listUnread` / `markHandled`, a NULL default, opt-in registration. The National-ID OCR seam's exact shape. |
+| `mail-tickets/graph-mail.source.ts` | Microsoft Graph, the legacy transport ported. Opt-in on four `ATM_MAIL_GRAPH_*` settings; the client secret takes plaintext OR a platform `SecretRef`. |
+| `mail-tickets/mail-poll.service.ts` | The loop, run by the `atm.mailPoll` scheduled task every minute — the legacy's own 60s cadence. |
+
+**Why the module owns the reader rather than n8n calling in.** Everything that makes ingestion a
+business decision — parsing the two bank formats, matching the machine, deriving the branch, the
+found/duplication flags — is ATM domain logic and already lives in `mail-ingestion.service.ts`.
+What was missing was a transport. Putting the transport behind an interface in the module uses only
+sanctioned platform seams (scheduler, secret store, settings) and needs nothing that does not exist;
+routing it through n8n instead would need the automation module's inbound callback surface (A-6b,
+not delivered) and would put either the parsing or a token surface somewhere it does not belong.
+**The choice is reversible**: when A-6b lands, an HTTP route can call the SAME
+`atmMailIngestionService.ingest(...)` seam and `mail-source.ts` simply stops being registered —
+nothing above the seam moves. (ADR-018 positions `automationService` as ECMS → runtime dispatch;
+this is the other direction, which that seam does not model.)
+
+**The outcome decides what happens to the message** — the owner's rule, "الرسائل التي لا يتم
+قراءتها يجب أن تظل Unread حتى يمكن رؤيتها عند فتح الـmail":
+
+| Outcome | The message |
+| --- | --- |
+| `created` | marked read, tagged with **that branch's** colour category |
+| `duplicateMessage` | marked read, not re-tagged (a retry after a half-failure) |
+| `unmatched` | **left unread**, reason logged — a human opening the mailbox still sees it |
+| ingestion threw | left unread — nothing took responsibility for it, so the next poll retries |
+
+A machine code active in two branches is `unmatched` too: the legacy could not be ambiguous (one
+master per branch), so there is no legacy answer to copy, and refusing to guess is the only move
+that cannot misfile a ticket.
+
+**Branch colours** are the `atm.mail.branchCategories` setting (branchId → category name) — the
+legacy's single hard-coded "Green Category" (`index.js:224`) made per branch, because one reader now
+serves them all. Unset means nothing is tagged; the message is still marked read, since the ticket
+is the record and the tag a convenience.
+
+**Two legacy holes closed, both recorded rather than assumed:**
+
+- **The watermark is gone.** The legacy filtered on `isRead eq false AND receivedDateTime ge
+  lastCheckedTime`, with `lastCheckedTime` held in memory and reset to "now" at every process start
+  (`index.js:29, 209`). Every unread mail older than the last restart became invisible forever —
+  including the ones it had just decided to leave unread. Unread IS the backlog now, and the
+  `providerMessageId` idempotency key makes re-reading a message harmless.
+- **`receivedAt` is the true receipt time.** The legacy captured `receivedDateTime` and then
+  overwrote it with "now" (`index.js:134` vs `:137`), which is why its log page timestamps were
+  ingest times. This is the one legacy bug the transport deliberately does not reproduce.
 
 ## 7. Migration (ATM-7 — delivered)
 
@@ -177,6 +208,6 @@ enrichment for a later pass, never a requirement of the import.
 | ATM-2/3 | Replenishments open/close/edit/cascade/delete/reopen + done page | delivered |
 | ATM-4 | Maintenance (+ close-with-assignee via directory) + done page | delivered |
 | ATM-5 | Mail tickets: pending + accept/reject + log + unread badge + ingestion seam | delivered |
-| ATM-6 | Live transport (n8n workflow → ingest), branch colour categories | blocked on A-6b |
+| ATM-6 | Central mail reader: source seam, Graph transport, poll task, branch colours, §6 | delivered |
 | ATM-7 | Legacy importer (`npm run atm:import`) with the T1 repair, §7 | delivered |
 | — | Daily report `/atm/reports/daily` (legacy `/reports_atm`, D3/D7) | delivered |

@@ -13,9 +13,9 @@
 //                      in the mailbox). The legacy dropped these silently (index.js:199-201);
 //                      the outcome names the reason instead.
 //
-// No HTTP route yet, deliberately: the inbound transport needs the automation module's service
-// tokens (A-6b), which are not delivered. This service is the contract the transport will call;
-// nothing else in the module may write a ticket.
+// This service is the ONLY writer of tickets. The transport that feeds it is deliberately kept
+// outside: `mail-source.ts` is the mailbox seam and `mail-poll.service.ts` the loop, so swapping
+// Microsoft Graph for IMAP — or for n8n posting in once A-6b lands — moves nothing in here.
 import { type AtmMailIngest, type AtmMailIngestResultDto } from '@ecms/contracts';
 import { logger } from '../../../infrastructure/logging/logger';
 import { ConflictError } from '../../../shared/errors';
@@ -33,7 +33,12 @@ class AtmMailIngestionService {
       message.providerMessageId,
     );
     if (existing !== null) {
-      return { outcome: 'duplicateMessage', ticketId: String(existing._id), reason: null };
+      return {
+        outcome: 'duplicateMessage',
+        ticketId: String(existing._id),
+        branchId: String(existing.branchId),
+        reason: null,
+      };
     }
 
     const parsed = parseAtmMailBody(message.bodyText);
@@ -41,6 +46,7 @@ class AtmMailIngestionService {
       return {
         outcome: 'unmatched',
         ticketId: null,
+        branchId: null,
         reason:
           parsed.machineCode === null ? 'no machine code recognized' : 'no issue text recognized',
       };
@@ -61,6 +67,7 @@ class AtmMailIngestionService {
       return {
         outcome: 'unmatched',
         ticketId: null,
+        branchId: null,
         reason: `no active machine with code ${parsed.machineCode}`,
       };
     }
@@ -68,6 +75,7 @@ class AtmMailIngestionService {
       return {
         outcome: 'unmatched',
         ticketId: null,
+        branchId: null,
         reason: `machine code ${parsed.machineCode} is active in ${String(machines.length)} branches`,
       };
     }
@@ -102,7 +110,12 @@ class AtmMailIngestionService {
         },
         { by: SYSTEM_ACTOR },
       );
-      return { outcome: 'created', ticketId: String(ticket._id), reason: null };
+      return {
+        outcome: 'created',
+        ticketId: String(ticket._id),
+        branchId: String(ticket.branchId),
+        reason: null,
+      };
     } catch (error) {
       // Two deliveries racing past the read above land here — the unique index holds.
       if (error instanceof ConflictError) {
@@ -112,6 +125,7 @@ class AtmMailIngestionService {
         return {
           outcome: 'duplicateMessage',
           ticketId: winner === null ? null : String(winner._id),
+          branchId: winner === null ? null : String(winner.branchId),
           reason: null,
         };
       }

@@ -494,6 +494,12 @@ export type AtmMailIngestOutcome = z.infer<typeof AtmMailIngestOutcomeSchema>;
 export interface AtmMailIngestResultDto {
   outcome: AtmMailIngestOutcome;
   ticketId: string | null;
+  /**
+   * The branch the ticket was filed under — THE machine's branch, which is the whole of "classify
+   * by branch" in one central reader. The transport reads it to tag the message with that branch's
+   * mailbox colour; null when nothing was filed.
+   */
+  branchId: string | null;
   /** Why an `unmatched` message did not match — for the reader's log, never for the mailbox. */
   reason: string | null;
 }
@@ -510,6 +516,16 @@ export const AtmSettingKeys = {
    * does not happen, which is the legacy rule.
    */
   MaintenanceLeaderDepartmentIds: 'atm.maintenanceLeaderDepartmentIds',
+  /**
+   * branchId → the mailbox category name that marks a mail as that branch's.
+   *
+   * The legacy reader tagged every message it stored with one hard-coded "Green Category"
+   * (Automation/src/index.js:224) — which was enough when each branch had its own reader and its
+   * own mailbox. One central reader serving every branch needs the tag to say WHICH branch, which
+   * is the owner's "كل Branch يتم تمييزه بالـcolor الخاص به". Empty means nothing is tagged;
+   * messages are still marked read, because the tag is a convenience and the ticket is the record.
+   */
+  MailBranchCategories: 'atm.mail.branchCategories',
 } as const;
 
 // ── Daily report (legacy /reports_atm) ──────────────────────────────────────────────────────────

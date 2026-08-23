@@ -21,6 +21,8 @@ import { buildAtmMailTicketsRouter } from './mail-tickets/mail-ticket.routes';
 import { buildAtmReportsRouter } from './reports/report.routes';
 import { registerAtmSettings } from './atm.settings';
 import { seedAtm } from './atm.seed';
+import { pollAtmMailbox } from './mail-tickets/mail-poll.service';
+import { registerGraphMailSource } from './mail-tickets/graph-mail.source';
 
 const replenishmentPermissions = declarePermissions(
   'atm',
@@ -94,6 +96,9 @@ const machinePermissions = declarePermissions(
 );
 
 registerAtmSettings();
+// Opt-in and silent when no mailbox is configured (the OCR-sidecar precedent): without the four
+// `ATM_MAIL_GRAPH_*` settings nothing registers and the poll task below does nothing at all.
+registerGraphMailSource();
 
 export const atmPermissions: PermissionDef[] = [
   ...replenishmentPermissions,
@@ -157,5 +162,20 @@ export const atmModule: ModuleManifest = {
     'atm_mail_tickets',
   ],
   eventSubscriptions: [],
+  scheduledTasks: [
+    {
+      // The legacy reader polled every 60s (Automation/src/index.js:237); one minute is also the
+      // finest a 5-field cron expresses, so the cadence is carried exactly. Inert without a
+      // configured mailbox, and idempotent with one: a message already ingested is recognised by
+      // its `providerMessageId` and costs one indexed read.
+      key: 'atm.mailPoll',
+      description: "Read the maintenance mailbox and file each mail under its machine's branch",
+      cron: '* * * * *',
+      ownerService: 'atm',
+      handler: async () => {
+        await pollAtmMailbox();
+      },
+    },
+  ],
   seed: seedAtm,
 };

@@ -206,7 +206,78 @@ describe('the vehicle options', () => {
   });
 });
 
-// ── 4. The board is still fetched whole ─────────────────────────────────────
+// ── 4. A selection assembled across SEVERAL searches ────────────────────────
+
+describe('searching the car picker', () => {
+  // A fleet outgrows a dropdown, so the picker carries a search box and the reader narrows to a
+  // handful, ticks them, narrows to a different handful, and ticks those too. The property that
+  // makes that work is that the search only decides what is VISIBLE: the selection lives in the
+  // URL, above the component, so nothing the search does can drop it.
+  //
+  // The interaction itself needs a DOM and is verified in a browser. What a node test can hold is
+  // the contract underneath it — and that contract is what a future change would break.
+
+  const BIG: FleetMaintenanceAlarmDto[] = [
+    alarm('150', 'red'),
+    alarm('151', 'yellow'),
+    alarm('152', 'red'),
+    alarm('153', 'none'),
+    alarm('161', 'yellow'),
+    alarm('165', 'red'),
+    alarm('166', 'none'),
+    alarm('170', 'yellow'),
+    alarm('171', 'none'),
+    alarm('172', 'red'),
+  ];
+
+  it('keeps a selection assembled from TWO different searches', () => {
+    // «15» → tick 150 and 152; «16» → tick 161 and 165. This is the end state that produces, and
+    // all four have to survive into the trigger, the URL round-trip and the table.
+    const markup = render({
+      route: '/fleet/maintenance-alarms?vehicleCodes=150,152,161,165',
+      qc: client(BIG),
+    });
+    expect(triggers(markup)[VEHICLE], 'the first two are named, the tail counted').toBe(
+      '150, 152 +2',
+    );
+    expect(shown(markup)).toEqual(['150', '152', '165', '161']);
+  });
+
+  it('narrows nothing itself — the search box is the component’s, over the WHOLE board', () => {
+    // If the page ever handed the picker a slice, or took the search over from it, typing would
+    // quietly answer "which of these few" instead of "which car". Both are guarded here because
+    // neither is visible from the closed trigger a node test can read.
+    const picker = SOURCE.slice(SOURCE.indexOf('<MultiSelect'), SOURCE.indexOf('</FilterBar>'));
+    expect(picker, 'the options are the board').toContain('options={vehicleOptions}');
+    expect(picker, 'the component does its own searching').not.toContain('onSearch');
+    expect(picker, 'and decides for itself when the box is worth showing').not.toContain(
+      'searchThreshold',
+    );
+    expect(SOURCE, 'the board is never trimmed before it becomes options').not.toMatch(
+      /alarmsQuery\.data[\s\S]{0,80}\.slice\(/,
+    );
+  });
+
+  it('offers every car on the board, so the search has all of them to find', () => {
+    // Read through the table rather than the closed dropdown: the options are built from the same
+    // board the rows come from, so a full table is a full option list.
+    expect(shown(render({ qc: client(BIG) }))).toHaveLength(BIG.length);
+  });
+
+  it('cannot lose a chosen car by changing the search, because the URL holds it', () => {
+    // The selection is a URL parameter read on every render — not component state the search can
+    // reset. Re-rendering with the same route from a different board proves the selection is not
+    // derived from what happens to be visible.
+    const route = '/fleet/maintenance-alarms?vehicleCodes=150,161';
+    expect(triggers(render({ route, qc: client(BIG) }))[VEHICLE]).toBe('150, 161');
+    // Even against a board that reports neither of them, both are still named and un-tickable.
+    expect(triggers(render({ route, qc: client([alarm('900', 'red')]) }))[VEHICLE]).toBe(
+      '150, 161',
+    );
+  });
+});
+
+// ── 5. The board is still fetched whole ─────────────────────────────────────
 
 describe('the request', () => {
   it('carries no filter at all — the narrowing is the in-memory projection it always was', () => {

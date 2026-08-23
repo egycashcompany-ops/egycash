@@ -20,6 +20,7 @@ import { Button } from '../../../shared/ui/Button';
 import { Badge } from '../../../shared/ui/Badge';
 import { formatDate, formatNumber } from '../../../shared/lib/format';
 import { useMaintenanceAlarms } from '../api/fleet-queries';
+import { alarmVehicleOptions } from '../lib/alarm-vehicle-options';
 
 const LEVEL_ORDER = { red: 0, yellow: 1, none: 2 } as const;
 
@@ -61,24 +62,14 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
       );
   }, [alarmsQuery.data, levels.join(','), vehicleCodes.join(',')]);
 
-  /**
-   * The cars the board is actually reporting on, as the picker's options.
-   *
-   * The options come from the BOARD, not from a second call to the registry: this screen already
-   * holds every active vehicle, and offering a code with no row behind it would be a filter that
-   * can only ever empty the table.
-   *
-   * A code that is selected but absent from the board — the URL names a car the projection no
-   * longer returns — is kept, and kept FIRST: without a row to un-tick, the filter would be a
-   * thing you can set but not unset.
-   */
-  const vehicleOptions = useMemo((): MultiSelectOption[] => {
-    const onBoard = [...new Set((alarmsQuery.data ?? []).map((alarm) => alarm.code))].sort((a, b) =>
-      a.localeCompare(b, 'en', { numeric: true }),
-    );
-    const orphans = vehicleCodes.filter((code) => !onBoard.includes(code));
-    return [...new Set([...orphans, ...onBoard])].map((code) => ({ value: code, label: code }));
-  }, [alarmsQuery.data, vehicleCodes.join(',')]);
+  // The cars the board is reporting on, as the picker's options — from the BOARD, never from a
+  // second call to the registry: this screen already holds every active vehicle. The rule for
+  // keeping a selected-but-unreported code lives beside its own test, because a closed dropdown
+  // renders no options and an inline version could not be asserted.
+  const vehicleOptions = useMemo(
+    () => alarmVehicleOptions(alarmsQuery.data ?? [], vehicleCodes),
+    [alarmsQuery.data, vehicleCodes.join(',')],
+  );
 
   // The alarm vocabulary, in TRIAGE order — the same three the board reports and the same order
   // the table sorts by. Nothing is added here: FR-3 derives these and only these.

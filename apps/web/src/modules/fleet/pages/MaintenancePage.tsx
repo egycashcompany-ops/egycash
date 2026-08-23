@@ -70,17 +70,13 @@ export const MaintenancePage = (): JSX.Element => {
   const [sp, setSp] = useSearchParams();
 
   const from = sp.get('from') ?? '';
-  const to = sp.get('to') ?? '';
   const outFrom = sp.get('outFrom') ?? '';
-  const outTo = sp.get('outTo') ?? '';
   const vehicleCodes = csv(sp.get('vehicleCodes'));
   const driver = sp.get('driver') ?? '';
   const workshopIds = csv(sp.get('workshops'));
   const workTypeIds = csv(sp.get('workTypes'));
   const sparePartIds = csv(sp.get('parts'));
   const notes = sp.get('notes') ?? '';
-  const odometerFrom = sp.get('odoFrom') ?? '';
-  const odometerTo = sp.get('odoTo') ?? '';
   const state = sp.get('state') ?? '';
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
@@ -106,17 +102,13 @@ export const MaintenancePage = (): JSX.Element => {
   };
   const hasActiveFilters =
     from !== '' ||
-    to !== '' ||
     outFrom !== '' ||
-    outTo !== '' ||
     vehicleCodes.length > 0 ||
     driver !== '' ||
     workshopIds.length > 0 ||
     workTypeIds.length > 0 ||
     sparePartIds.length > 0 ||
     notes !== '' ||
-    odometerFrom !== '' ||
-    odometerTo !== '' ||
     state !== '';
 
   // The driver NAME is HR's fact: ask HR first, filter Fleet by the ids it returns. Reuses the
@@ -138,16 +130,12 @@ export const MaintenancePage = (): JSX.Element => {
       sortBy: sort.by,
       sortDir: sort.dir,
       from: from || undefined,
-      to: to || undefined,
       outFrom: outFrom || undefined,
-      outTo: outTo || undefined,
       vehicleCodes: vehicleCodes.length > 0 ? vehicleCodes : undefined,
       workshopIds: workshopIds.length > 0 ? workshopIds : undefined,
       workTypeIds: workTypeIds.length > 0 ? workTypeIds : undefined,
       sparePartIds: sparePartIds.length > 0 ? sparePartIds : undefined,
       notes: notes || undefined,
-      odometerFrom: odometerFrom || undefined,
-      odometerTo: odometerTo || undefined,
       open: state === '' ? undefined : state === 'open',
       // Always sent once a driver filter is set, including when HR matched nobody: an empty list
       // is "no matches", and dropping it would answer a narrowed question with every visit.
@@ -273,17 +261,41 @@ export const MaintenancePage = (): JSX.Element => {
     {
       key: 'driver',
       header: t('fleet.odometer.columns.driver'),
-      // The roster's crew for the day the car went IN — not the custody pair below, which answers
-      // "who handed the keys over". Both slots, because a car with an evening shift has two.
+      // The two DRIVERS the visit recorded: who brought the car in, above who drove it away.
+      // The tone tells the two apart at a glance — the entry driver in the danger tone, the exit
+      // driver in the success tone the design system already spends on `Badge` variant `success`.
+      // The colour belongs to the LINE, never to the cell: a closed visit prints one of each.
+      //
+      // Deliberately NOT `takenInByEmployeeId` / `takenOutByEmployeeId`: those are the custody
+      // employees who performed the check-in and check-out, they belong to the audit trail, and
+      // they are not shown in this grid at all.
+      //
+      // Each line is conditional. An open visit has no exit driver yet, and a visit written
+      // before these fields existed has neither — which renders as a dash, never as `null`.
+      // Keyed by ROLE, not by employee: one person may well drive the car both ways.
       render: (visit) => {
-        const slots = [visit.driver1EmployeeId, visit.driver2EmployeeId].filter(
-          (id): id is string => id !== null,
-        );
-        if (slots.length === 0) return dash;
+        const lines: { role: string; id: string; tone: string }[] = [];
+        if (visit.driverInEmployeeId !== null) {
+          lines.push({
+            role: 'in',
+            id: visit.driverInEmployeeId,
+            tone: 'text-red-700 dark:text-red-300',
+          });
+        }
+        if (visit.driverOutEmployeeId !== null) {
+          lines.push({
+            role: 'out',
+            id: visit.driverOutEmployeeId,
+            tone: 'text-emerald-700 dark:text-emerald-300',
+          });
+        }
+        if (lines.length === 0) return dash;
         return (
           <span className="flex flex-col gap-0.5">
-            {slots.map((id) => (
-              <EmployeeName key={id} employeeId={id} />
+            {lines.map(({ role, id, tone }) => (
+              <span key={role} className={tone}>
+                <EmployeeName employeeId={id} />
+              </span>
             ))}
           </span>
         );
@@ -341,40 +353,6 @@ export const MaintenancePage = (): JSX.Element => {
       header: t('fleet.maintenance.fields.odometerAtService'),
       align: 'end',
       render: (visit) => formatNumber(visit.odometerAtService, locale),
-    },
-    {
-      key: 'exit',
-      header: t('fleet.maintenance.columns.exit'),
-      // Everything the check-out produced, in one cell: the state IN WORDS (the green row is a
-      // second signal, never the only one), the reading the car left on, and the two custody
-      // names stacked — checked in above, checked out below.
-      render: (visit) => (
-        <span className="flex flex-col gap-1">
-          {visit.outDate === null ? (
-            <Badge tone="info">{t('fleet.maintenance.stillIn')}</Badge>
-          ) : (
-            <Badge tone="success">{t('fleet.maintenance.leftWorkshop')}</Badge>
-          )}
-          {visit.exitOdometer !== null && (
-            <span className="tabular-nums text-xs text-slate-600 dark:text-slate-300">
-              {t('fleet.maintenance.fields.exitOdometer')}:{' '}
-              {formatNumber(visit.exitOdometer, locale)}
-            </span>
-          )}
-          {visit.takenInByEmployeeId !== null && (
-            <span className="text-xs text-slate-600 dark:text-slate-300">
-              {t('fleet.maintenance.fields.takenInBy')}:{' '}
-              <EmployeeName employeeId={visit.takenInByEmployeeId} />
-            </span>
-          )}
-          {visit.takenOutByEmployeeId !== null && (
-            <span className="text-xs text-slate-600 dark:text-slate-300">
-              {t('fleet.maintenance.fields.takenOutBy')}:{' '}
-              <EmployeeName employeeId={visit.takenOutByEmployeeId} />
-            </span>
-          )}
-        </span>
-      ),
     },
     {
       key: 'actions',
@@ -449,35 +427,6 @@ export const MaintenancePage = (): JSX.Element => {
     </span>
   );
 
-  /**
-   * A date RANGE as one filter: the question asked once, then its two bounds.
-   *
-   * Captioning each bound separately cost four captions for two questions, and a date input paints
-   * its own `yyyy/mm/dd` hint and ignores `placeholder`, so without any caption the four boxes are
-   * indistinguishable. One caption per range is the compact form that still tells them apart; each
-   * bound keeps its own `aria-label`, so a screen reader hears "from" and "until" rather than two
-   * identical controls.
-   *
-   * The group wraps INSIDE itself: two date inputs plus a caption cannot fit a phone, and a
-   * `shrink-0` group wider than the bar is how a filter ends up clipped off the page.
-   */
-  const dateRange = (
-    titleKey: string,
-    fromKey: string,
-    fromValue: string,
-    fromParam: string,
-    toKey: string,
-    toValue: string,
-    toParam: string,
-  ): JSX.Element => (
-    <div className="flex flex-wrap items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400">
-      <span className="whitespace-nowrap">{t(titleKey)}</span>
-      {dateBound(fromKey, fromValue, fromParam)}
-      <span className="whitespace-nowrap">{t('fleet.maintenance.rangeTo')}</span>
-      {dateBound(toKey, toValue, toParam)}
-    </div>
-  );
-
   return (
     <PageContainer>
       <PageHeader
@@ -514,39 +463,26 @@ export const MaintenancePage = (): JSX.Element => {
           onClear={() =>
             patch({
               from: null,
-              to: null,
               outFrom: null,
-              outTo: null,
               vehicleCodes: null,
               driver: null,
               workshops: null,
               workTypes: null,
               parts: null,
               notes: null,
-              odoFrom: null,
-              odoTo: null,
               state: null,
             })
           }
         >
-          {dateRange(
-            'fleet.maintenance.inRange',
-            'fleet.maintenance.inFromDate',
-            from,
-            'from',
-            'fleet.maintenance.inToDate',
-            to,
-            'to',
-          )}
-          {dateRange(
-            'fleet.maintenance.outRange',
-            'fleet.maintenance.outFromDate',
-            outFrom,
-            'outFrom',
-            'fleet.maintenance.outToDate',
-            outTo,
-            'outTo',
-          )}
+          {/* One bound, not a range: the screen asks "checked in from this date". */}
+          <label className="flex flex-wrap items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400">
+            <span className="whitespace-nowrap">{t('fleet.maintenance.inRange')}</span>
+            {dateBound('fleet.maintenance.inRange', from, 'from')}
+          </label>
+          <label className="flex flex-wrap items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400">
+            <span className="whitespace-nowrap">{t('fleet.maintenance.outRange')}</span>
+            {dateBound('fleet.maintenance.outRange', outFrom, 'outFrom')}
+          </label>
           <MultiSelect
             className="shrink-0"
             // The chosen codes are named in the trigger, not counted: a registry runs to hundreds
@@ -600,36 +536,6 @@ export const MaintenancePage = (): JSX.Element => {
               value={notes}
               onChange={(e) => patch({ notes: e.target.value || null })}
             />
-          </div>
-          <div className="flex flex-wrap items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400">
-            <span className="whitespace-nowrap">
-              {t('fleet.maintenance.fields.odometerAtService')}
-            </span>
-            <span className="w-24">
-              <Input
-                type="number"
-                min={0}
-                step={1}
-                dir="ltr"
-                aria-label={t('fleet.maintenance.odometerFrom')}
-                title={t('fleet.maintenance.odometerFrom')}
-                value={odometerFrom}
-                onChange={(e) => patch({ odoFrom: e.target.value || null })}
-              />
-            </span>
-            <span className="whitespace-nowrap">{t('fleet.maintenance.rangeTo')}</span>
-            <span className="w-24">
-              <Input
-                type="number"
-                min={0}
-                step={1}
-                dir="ltr"
-                aria-label={t('fleet.maintenance.odometerTo')}
-                title={t('fleet.maintenance.odometerTo')}
-                value={odometerTo}
-                onChange={(e) => patch({ odoTo: e.target.value || null })}
-              />
-            </span>
           </div>
           {/* «حالة الصيانة» — the visit's one state, in the words the screen uses for it. */}
           <Select

@@ -20,8 +20,6 @@ export const listMaintenanceVisits = async (req: Request, res: Response): Promis
   okPage(res, page, (row) =>
     toMaintenanceVisitDto(row, {
       vehicleCode: page.codes.get(String(row.vehicleId)) ?? null,
-      driver1EmployeeId: row.driver1EmployeeId == null ? null : String(row.driver1EmployeeId),
-      driver2EmployeeId: row.driver2EmployeeId == null ? null : String(row.driver2EmployeeId),
     }),
   );
 };

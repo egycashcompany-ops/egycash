@@ -89,7 +89,10 @@ ECMS" means.
 operations (no duplicate guard on open — the paste is the operator's statement); the
 replenishment leader cascade fires only when open-time is NOT moved in the same submit
 (contad_app.js:854-859) while maintenance's cascades unconditionally (:2019-2032); the cascade's
-night window is anchored to the open time's own calendar day even before 06:00 (:815-817); a
+night window is anchored to the open time's own calendar day even before 06:00 (:815-817) —
+so a row opened between 00:00 and 06:00 falls OUTSIDE its own window and the leader cascade
+correctly touches nothing, not even that row (`contad_app.js:858-861` takes the shift_two
+window whenever the hour is < 6); a
 reopen clears `closedAt` and keeps the closer's name, exactly as `end=0` did (:1032); rejection
 does not stop future mails for the same machine; force-date ≠ today opens at 06:00 Cairo (:726).
 
@@ -202,6 +205,24 @@ Properties worth knowing before running it:
 enrichment for a later pass, never a requirement of the import.
 
 ## 8. Delivery record
+
+**What the integration suite caught on its first real run.** Worth recording, because it is the
+argument for the suite existing at all:
+
+- **No ATM document could be inserted.** All three operation models declared
+  `zone: { type: String, required: true, default: '' }`. Mongoose's String required-validator is
+  `typeof v === 'string' && v.length`, so an EMPTY string fails `required` — and every write path
+  stores exactly `''` (the legacy wrote `''` everywhere, contad_app.js:2443, which is the only
+  reason the field exists). The first insert threw `ValidationError`, which is not an `AppError`
+  and surfaced as a 500. 1528 unit tests passed straight through it, because a unit test never
+  constructs a Mongoose document. `required` was never meaningful here and is gone.
+- **`senderEmail` had the same flaw**, on the mail path: the Graph transport yields `''` when a
+  message carries no sender, and the poll calls `ingest()` with the raw transport object, so that
+  message would 500 and be retried every minute forever.
+- **The seeded catalog crossed `MAX_PAGE_SIZE`.** The ten ATM rows took it to 101, so
+  `auth-seed-login.spec.ts`'s `pageSize=100` reads silently dropped the OLDEST row — `/applicants`,
+  the row its reorder test moves.
+
 
 | Slice | Content | State |
 | --- | --- | --- |

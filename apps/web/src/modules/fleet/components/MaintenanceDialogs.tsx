@@ -24,6 +24,7 @@ import {
 import { useCan } from '../../../platform/rbac/Can';
 import { vehicleCodeLabel } from '../lib/vehicle-code-options';
 import { CatalogSelect } from './CatalogSelect';
+import { OptionalEmployeeField } from './OptionalEmployeeField';
 
 const today = (): string => new Date().toISOString().slice(0, 10);
 /** How many matches a code search offers at once — a shortlist to pick from, not a catalogue. */
@@ -97,6 +98,7 @@ export const CheckInDialog = ({
   const [workshopId, setWorkshopId] = useState('');
   const [workTypeId, setWorkTypeId] = useState('');
   const [odometer, setOdometer] = useState('');
+  const [driverIn, setDriverIn] = useState('');
   const [partIds, setPartIds] = useState<string[]>([]);
   const [notes, setNotes] = useState('');
   useEffect(() => {
@@ -108,6 +110,7 @@ export const CheckInDialog = ({
       setWorkshopId('');
       setWorkTypeId('');
       setOdometer('');
+      setDriverIn('');
       setPartIds([]);
       setNotes('');
     }
@@ -166,7 +169,10 @@ export const CheckInDialog = ({
     workshopId !== '' &&
     workTypeId !== '' &&
     odometer !== '' &&
-    Number.isInteger(odometerNumber);
+    Number.isInteger(odometerNumber) &&
+    // The driver is REQUIRED: a visit records who actually brought the car in, and the server
+    // refuses a check-in without one.
+    driverIn !== '';
 
   const submit = async (): Promise<void> => {
     await checkIn.mutateAsync({
@@ -176,6 +182,7 @@ export const CheckInDialog = ({
       workTypeId,
       sparePartIds: partIds,
       odometerAtService: odometerNumber,
+      driverInEmployeeId: driverIn,
       notes: notes.trim() === '' ? null : notes.trim(),
     });
     toast.success(t('fleet.maintenance.checkedIn'));
@@ -247,6 +254,12 @@ export const CheckInDialog = ({
             <CatalogSelect kind="workType" value={workTypeId} onChange={setWorkTypeId} />
           </Field>
         </div>
+        {/* The DRIVER who brought the car in — the same directory picker the odometer's driver
+            slots use. Not the custody employee: that one is the logged-in user, recorded by the
+            server, and never asked for here. */}
+        <Field label={t('fleet.maintenance.fields.driverIn')} required>
+          <OptionalEmployeeField value={driverIn} onChange={setDriverIn} />
+        </Field>
         <Field label={t('fleet.maintenance.fields.spareParts')}>
           <SparePartsField value={partIds} onChange={setPartIds} />
         </Field>
@@ -271,10 +284,12 @@ export const CheckOutDialog = ({
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [outDate, setOutDate] = useState(today());
   const [exitOdometer, setExitOdometer] = useState('');
+  const [driverOut, setDriverOut] = useState('');
   useEffect(() => {
     if (open) {
       setOutDate(today());
       setExitOdometer('');
+      setDriverOut('');
     }
   }, [open]);
   const exitNumber = Number(exitOdometer);
@@ -292,6 +307,7 @@ export const CheckOutDialog = ({
       body: {
         outDate: new Date(outDate),
         exitOdometer: exitNumber,
+        driverOutEmployeeId: driverOut,
         version: visit.version,
       },
     });
@@ -312,7 +328,7 @@ export const CheckOutDialog = ({
           </Button>
           <Button
             loading={checkOut.isPending}
-            disabled={outDate === '' || !exitValid || belowEntry}
+            disabled={outDate === '' || !exitValid || belowEntry || driverOut === ''}
             onClick={() => void submit()}
           >
             {t('common.save')}
@@ -321,6 +337,13 @@ export const CheckOutDialog = ({
       }
     >
       <div className="grid gap-4 sm:grid-cols-2">
+        <div className="sm:col-span-2">
+          {/* Who drove it away. Required, like the exit reading beside it — and, like the
+              check-in driver, distinct from the custody employee the server records. */}
+          <Field label={t('fleet.maintenance.fields.driverOut')} required>
+            <OptionalEmployeeField value={driverOut} onChange={setDriverOut} />
+          </Field>
+        </div>
         <Field label={t('fleet.maintenance.fields.outDate')} required>
           <Input type="date" value={outDate} onChange={(e) => setOutDate(e.target.value)} />
         </Field>
@@ -365,6 +388,7 @@ export const MaintenanceEditDialog = ({
   const [workshopId, setWorkshopId] = useState('');
   const [workTypeId, setWorkTypeId] = useState('');
   const [odometer, setOdometer] = useState('');
+  const [driverIn, setDriverIn] = useState('');
   const [partIds, setPartIds] = useState<string[]>([]);
   const [notes, setNotes] = useState('');
   useEffect(() => {
@@ -373,6 +397,8 @@ export const MaintenanceEditDialog = ({
       setWorkshopId(visit.workshopId);
       setWorkTypeId(visit.workTypeId);
       setOdometer(String(visit.odometerAtService));
+      // A legacy visit has no driver on file; the field opens empty and stays optional there.
+      setDriverIn(visit.driverInEmployeeId ?? '');
       setPartIds(visit.sparePartIds);
       setNotes(visit.notes ?? '');
     }
@@ -397,6 +423,8 @@ export const MaintenanceEditDialog = ({
         workTypeId,
         sparePartIds: partIds,
         odometerAtService: odometerNumber,
+        // Only sent when it says something: the endpoint takes a correction, never a clear.
+        ...(driverIn === '' ? {} : { driverInEmployeeId: driverIn }),
         notes: notes.trim() === '' ? null : notes.trim(),
         version: visit.version,
       },
@@ -441,6 +469,11 @@ export const MaintenanceEditDialog = ({
         <Field label={t('fleet.maintenance.fields.workType')} required>
           <CatalogSelect kind="workType" value={workTypeId} onChange={setWorkTypeId} />
         </Field>
+        <div className="sm:col-span-2">
+          <Field label={t('fleet.maintenance.fields.driverIn')}>
+            <OptionalEmployeeField value={driverIn} onChange={setDriverIn} />
+          </Field>
+        </div>
         <div className="sm:col-span-2">
           <Field
             label={t('fleet.maintenance.fields.spareParts')}

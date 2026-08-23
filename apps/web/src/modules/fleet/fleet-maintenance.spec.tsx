@@ -61,8 +61,8 @@ const visit = (o: Partial<FleetMaintenanceVisitDto> = {}): FleetMaintenanceVisit
   vehicleId: VEHICLE_ID,
   // A SERVER fact on the row, like the roster crew below it.
   vehicleCode: '150',
-  driver1EmployeeId: null,
-  driver2EmployeeId: null,
+  driverInEmployeeId: null,
+  driverOutEmployeeId: null,
   inDate: '2026-09-01T00:00:00.000Z',
   outDate: null,
   workshopId: WORKSHOP_ID,
@@ -231,14 +231,13 @@ const REQUIRED_COLUMNS = [
   'fleet.maintenance.fields.spareParts',
   'fleet.odometer.columns.notes',
   'fleet.maintenance.fields.odometerAtService',
-  'fleet.maintenance.columns.exit',
   'fleet.vehicles.columns.actions',
 ];
 
 // ── 1. The table ────────────────────────────────────────────────────────────
 
 describe('the maintenance table', () => {
-  it('renders the twelve columns in the required order, and nothing else', () => {
+  it('renders the eleven columns in the required order, and nothing else', () => {
     // Exact equality, not "each appears after the last": that is what catches a column silently
     // added, dropped or moved rather than only a reordering.
     expect(headers(render())).toEqual(REQUIRED_COLUMNS.map((key) => t(key)));
@@ -273,17 +272,65 @@ describe('the maintenance table', () => {
     expect(source).not.toContain('pageSize: MAX_PAGE_SIZE');
   });
 
-  it('names the ROSTER crew of the check-in day, both slots, from the row', () => {
-    const qc = client([visit({ driver1EmployeeId: 'd1', driver2EmployeeId: 'd2' })]);
-    const driverCell = cells(render({ qc }))[4] as string;
-    expect(driverCell).toContain('سائق الصباح');
-    expect(driverCell).toContain('سائق المساء');
-    // The custody pair is a different fact and does not leak into this column.
-    expect(driverCell).not.toContain(t('fleet.maintenance.fields.takenInBy'));
+  it('names the DRIVER who brought the car in — in red', () => {
+    const qc = client([visit({ driverInEmployeeId: 'd1' })]);
+    const markup = render({ qc });
+    expect(cells(markup)[4]).toContain('سائق الصباح');
+    const body = tbody(markup);
+    const at = body.indexOf('سائق الصباح');
+    expect(body.slice(Math.max(0, at - 200), at)).toContain('text-red-700');
   });
 
-  it('dashes the driver column when the roster had no row for that day', () => {
+  it('stacks the exit driver under the entry driver once the car has left', () => {
+    const qc = client([
+      visit({
+        outDate: '2026-09-03T00:00:00.000Z',
+        driverInEmployeeId: 'd1',
+        driverOutEmployeeId: 'd2',
+      }),
+    ]);
+    const markup = render({ qc });
+    const cell = cells(markup)[4] as string;
+    const inAt = cell.indexOf('سائق الصباح');
+    const outAt = cell.indexOf('سائق المساء');
+    expect(inAt, 'the entry driver is named').toBeGreaterThan(-1);
+    expect(outAt, 'the exit driver is named').toBeGreaterThan(-1);
+    expect(inAt, 'entry above exit').toBeLessThan(outAt);
+  });
+
+  it('shows only the entry driver while the car is still in the workshop', () => {
+    const qc = client([visit({ driverInEmployeeId: 'd1' })]);
+    const cell = cells(render({ qc }))[4] as string;
+    expect(cell).toContain('سائق الصباح');
+    expect(cell, 'nobody has driven it away yet').not.toContain('سائق المساء');
+  });
+
+  it('dashes the driver cell for a visit written before the driver fields existed', () => {
+    const body = tbody(render());
     expect(cells(render())[4]).toBe('—');
+    expect(body).not.toContain('null');
+    expect(body).not.toContain('undefined');
+  });
+
+  it('never shows the CUSTODY employees, or the exit reading, in the table', () => {
+    // `takenInByEmployeeId` / `takenOutByEmployeeId` record who performed the check-in and
+    // check-out. They stay in the domain and the audit trail, and out of this grid — as does the
+    // exit reading, which is checkout and baseline data, not a column.
+    const qc = client([
+      visit({
+        outDate: '2026-09-03T00:00:00.000Z',
+        exitOdometer: 120850,
+        driverInEmployeeId: 'd1',
+        takenInByEmployeeId: 'e1',
+        takenOutByEmployeeId: 'e2',
+      }),
+    ]);
+    const body = tbody(render({ qc }));
+    expect(body, 'no custody name').not.toContain('محمد');
+    expect(body, 'no custody name').not.toContain('أحمد');
+    expect(body).not.toContain(t('fleet.maintenance.fields.takenInBy'));
+    expect(body).not.toContain(t('fleet.maintenance.fields.takenOutBy'));
+    expect(body, 'no exit reading in the grid').not.toContain('١٢٠٬٨٥٠');
   });
 
   it('shows catalog spare parts by NAME, and still shows an old visit’s free text', () => {
@@ -315,18 +362,19 @@ describe('a visit that has left the workshop', () => {
       exitOdometer: 120850,
       takenInByEmployeeId: 'e1',
       takenOutByEmployeeId: 'e2',
+      driverInEmployeeId: 'd1',
+      driverOutEmployeeId: 'd2',
       ...o,
     });
 
-  it('says it is closed in WORDS, not only in colour', () => {
-    const exitCell = cells(render({ qc: client([closed()]) }))[10] as string;
-    expect(exitCell).toContain(t('fleet.maintenance.leftWorkshop'));
-  });
-
-  it('says an open visit is still in the workshop', () => {
-    const exitCell = cells(render())[10] as string;
-    expect(exitCell).toContain(t('fleet.maintenance.stillIn'));
-    expect(exitCell).not.toContain(t('fleet.maintenance.leftWorkshop'));
+  it('says it is closed with DATA, not only with colour', () => {
+    // The state's non-colour carrier is the check-out DATE column: a closed visit prints one, an
+    // open visit prints the «in the workshop» badge instead.
+    const closedOut = cells(render({ qc: client([closed()]) }))[2] as string;
+    const openOut = cells(render())[2] as string;
+    expect(closedOut, 'a closed visit shows its check-out date').not.toBe(openOut);
+    expect(openOut).toContain(t('fleet.maintenance.open'));
+    expect(closedOut).not.toContain(t('fleet.maintenance.open'));
   });
 
   it('tints the closed row green, and leaves an open one alone', () => {
@@ -336,27 +384,16 @@ describe('a visit that has left the workshop', () => {
     expect(openRow).not.toContain('emerald-');
   });
 
-  it('carries the exit reading, formatted like every other figure in the table', () => {
-    const exitCell = cells(render({ qc: client([closed()]) }))[10] as string;
-    expect(exitCell).toContain(t('fleet.maintenance.fields.exitOdometer'));
-    expect(exitCell).toContain('١٢٠٬٨٥٠');
-  });
-
-  it('stacks the two custody names in ONE cell, in and then out', () => {
-    const exitCell = cells(render({ qc: client([closed()]) }))[10] as string;
-    const inAt = exitCell.indexOf('محمد');
-    const outAt = exitCell.indexOf('أحمد');
-    expect(inAt, 'the check-in custodian is named').toBeGreaterThan(-1);
-    expect(outAt, 'the check-out custodian is named').toBeGreaterThan(-1);
-    expect(inAt, 'checked in above checked out').toBeLessThan(outAt);
-    // …and they are in the SAME cell, not two columns of their own.
-    expect(headers(render())).not.toContain(t('fleet.maintenance.fields.takenInBy'));
-  });
-
-  it('says nothing about an exit reading a visit closed before it was collected has not got', () => {
-    const exitCell = cells(render({ qc: client([closed({ exitOdometer: null })]) }))[10] as string;
-    expect(exitCell).toContain(t('fleet.maintenance.leftWorkshop'));
-    expect(exitCell).not.toContain(t('fleet.maintenance.fields.exitOdometer'));
+  it('keeps BOTH drivers red on the green row — the row tint recolours neither', () => {
+    const markup = render({ qc: client([closed()]) });
+    const body = tbody(markup);
+    for (const name of ['سائق الصباح', 'سائق المساء']) {
+      const at = body.indexOf(name);
+      expect(at, `${name} is named`).toBeGreaterThan(-1);
+      const before = body.slice(Math.max(0, at - 200), at);
+      expect(before, `${name} is red`).toContain('text-red-700');
+      expect(before, `${name} is not tinted green`).not.toContain('text-emerald-700');
+    }
   });
 });
 
@@ -370,9 +407,7 @@ describe('the filter bar', () => {
    */
   const CASES: { name: string; route: string; params: Record<string, unknown> }[] = [
     { name: 'check-in from', route: 'from=2026-09-01', params: { from: '2026-09-01' } },
-    { name: 'check-in to', route: 'to=2026-09-30', params: { to: '2026-09-30' } },
     { name: 'check-out from', route: 'outFrom=2026-09-02', params: { outFrom: '2026-09-02' } },
-    { name: 'check-out to', route: 'outTo=2026-09-30', params: { outTo: '2026-09-30' } },
     {
       name: 'vehicle codes',
       route: 'vehicleCodes=150,151',
@@ -390,8 +425,6 @@ describe('the filter bar', () => {
     },
     { name: 'spare parts', route: `parts=${PART_ID}`, params: { sparePartIds: [PART_ID] } },
     { name: 'notes', route: 'notes=فرامل', params: { notes: 'فرامل' } },
-    { name: 'counter from', route: 'odoFrom=1000', params: { odometerFrom: '1000' } },
-    { name: 'counter to', route: 'odoTo=9000', params: { odometerTo: '9000' } },
     { name: 'maintenance status — in the workshop', route: 'state=open', params: { open: true } },
     { name: 'maintenance status — left it', route: 'state=closed', params: { open: false } },
   ];
@@ -405,11 +438,11 @@ describe('the filter bar', () => {
   }
 
   it('covers every filter the screen offers', () => {
-    // Ten filters. Nine of them appear here — the two date ranges and the counter range are two
-    // parameters each, and the state filter is exercised from both sides — which is thirteen
-    // cases; the tenth, the driver, goes through HR first and has its own test below. Pinned so a
-    // filter added to the bar without a test fails rather than passes silently.
-    expect(CASES).toHaveLength(13);
+    // Nine filters on the bar. Each date is ONE input, the counter filter is gone entirely, and
+    // the state filter is exercised from both sides — nine cases here; the ninth filter, the
+    // driver, goes through HR first and has its own test below. Pinned so a filter added to the
+    // bar without a test fails rather than passes silently.
+    expect(CASES).toHaveLength(9);
   });
 
   it('resolves the DRIVER through HR first, then narrows the visits by the ids it returned', () => {
@@ -493,23 +526,16 @@ describe('the filter bar', () => {
     expect(filterBar(render())).not.toContain(t('fleet.dashboard.level.red'));
   });
 
-  it('groups each date range under ONE caption, with both bounds still named', () => {
-    // Four separately captioned bounds cost four captions for two questions. Compacting them must
-    // not cost the distinction: a date input paints its own format hint and ignores `placeholder`,
-    // so without the per-bound accessible name the four boxes are indistinguishable.
+  it('asks each date as ONE input, and offers no counter filter at all', () => {
     const bar = filterBar(render());
     expect(bar).toContain(t('fleet.maintenance.inRange'));
     expect(bar).toContain(t('fleet.maintenance.outRange'));
-    for (const key of [
-      'fleet.maintenance.inFromDate',
-      'fleet.maintenance.inToDate',
-      'fleet.maintenance.outFromDate',
-      'fleet.maintenance.outToDate',
-    ]) {
-      expect(bar, `${key} is still the bound's accessible name`).toContain(
-        `aria-label="${t(key)}"`,
-      );
-    }
+    // Two date inputs in total — one per question, no from→to pair anywhere.
+    expect((bar.match(/type=.date./g) ?? []).length, 'one input per date').toBe(2);
+    // And no numeric bound survives: the counter is a column, not a filter. Matched by pattern —
+    // the repo's money-input guard scans .tsx for the literal attribute.
+    expect((bar.match(/type=.number./g) ?? []).length, 'no counter filter').toBe(0);
+    expect(bar).not.toContain(t('fleet.maintenance.fields.odometerAtService'));
   });
 
   it('never pins the bar to one row — a row that will not fit is pushed off the page', () => {
@@ -580,6 +606,22 @@ describe('the row actions follow the permission matrix', () => {
   });
 });
 
+describe('the check-in dialog', () => {
+  it('asks for the DRIVER and will not submit without one', () => {
+    const source = readFileSync(join(HERE, 'components/MaintenanceDialogs.tsx'), 'utf8');
+    // The driver is part of what makes the form complete, and it is what gets sent.
+    expect(source).toContain("driverIn !== ''");
+    expect(source).toContain('driverInEmployeeId: driverIn');
+    expect(source).toContain("t('fleet.maintenance.fields.driverIn')");
+  });
+
+  it('never asks for the custody employee — the server records the login', () => {
+    const source = readFileSync(join(HERE, 'components/MaintenanceDialogs.tsx'), 'utf8');
+    expect(source).not.toContain('takenInByEmployeeId');
+    expect(source).not.toContain('takenOutByEmployeeId');
+  });
+});
+
 // ── 5. The check-out dialog ─────────────────────────────────────────────────
 
 describe('the check-out dialog', () => {
@@ -624,11 +666,24 @@ describe('the check-out dialog', () => {
     expect(save).toContain('disabled');
   });
 
-  it('sends the exit reading, and only the facts the check-out records', () => {
+  it('sends the exit reading and the exit DRIVER, and gates the save on both', () => {
     const source = readFileSync(join(HERE, 'components/MaintenanceDialogs.tsx'), 'utf8');
     expect(source).toContain('exitOdometer: exitNumber');
-    // The below-entry refusal is stated on the client too, so a typo does not cost a round-trip.
+    expect(source).toContain('driverOutEmployeeId: driverOut');
+    // The below-entry refusal is stated on the client too, so a typo does not cost a round-trip,
+    // and neither a missing reading nor a missing driver can reach the server from here.
     expect(source).toContain('belowEntry');
-    expect(source).toContain("disabled={outDate === '' || !exitValid || belowEntry}");
+    expect(source).toContain(
+      "disabled={outDate === '' || !exitValid || belowEntry || driverOut === ''}",
+    );
+  });
+
+  it('asks for the exit driver, and refuses to save without one', () => {
+    const markup = open();
+    expect(markup).toContain(t('fleet.maintenance.fields.driverOut'));
+    // Rendered with the form empty, the save button is already disabled — the state a click
+    // would have to get past. Nothing clicks in this suite.
+    const save = markup.slice(markup.lastIndexOf('<button'));
+    expect(save).toContain('disabled');
   });
 });

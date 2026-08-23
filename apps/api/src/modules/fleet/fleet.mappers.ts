@@ -195,8 +195,6 @@ export const toGrievanceDto = (doc: FleetGrievanceDoc): FleetGrievanceDto => ({
  */
 export interface MaintenanceVisitJoins {
   vehicleCode: string | null;
-  driver1EmployeeId: string | null;
-  driver2EmployeeId: string | null;
 }
 
 export const toMaintenanceVisitDto = (
@@ -206,8 +204,6 @@ export const toMaintenanceVisitDto = (
   id: String(doc._id),
   vehicleId: String(doc.vehicleId),
   vehicleCode: joins.vehicleCode,
-  driver1EmployeeId: joins.driver1EmployeeId,
-  driver2EmployeeId: joins.driver2EmployeeId,
   inDate: iso(doc.inDate),
   outDate: doc.outDate === null ? null : iso(doc.outDate),
   workshopId: String(doc.workshopId),
@@ -217,6 +213,9 @@ export const toMaintenanceVisitDto = (
   odometerAtService: doc.odometerAtService,
   // `== null` on purpose: a visit written before the field existed has `undefined`, not `null`.
   exitOdometer: doc.exitOdometer == null ? null : doc.exitOdometer,
+  // Stored drivers, read the same forgiving way — old visits carry neither key.
+  driverInEmployeeId: doc.driverInEmployeeId == null ? null : String(doc.driverInEmployeeId),
+  driverOutEmployeeId: doc.driverOutEmployeeId == null ? null : String(doc.driverOutEmployeeId),
   takenInByEmployeeId: doc.takenInByEmployeeId === null ? null : String(doc.takenInByEmployeeId),
   takenOutByEmployeeId: doc.takenOutByEmployeeId === null ? null : String(doc.takenOutByEmployeeId),
   notes: doc.notes,

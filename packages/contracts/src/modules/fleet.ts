@@ -525,14 +525,22 @@ export interface FleetMaintenanceVisitDto {
    */
   vehicleCode: string | null;
   /**
-   * The crew the vehicle carried the DAY IT WENT IN, from the duty roster — not whoever handed
-   * the keys over. "Who was driving this car when it broke" is a roster question, and the two
-   * custody fields below answer a different one.
+   * The DRIVER the vehicle came in with, chosen explicitly at check-in and STORED on the visit.
    *
-   * `null` when the roster has no row for that vehicle-day, or the slot was left empty.
+   * Not read from the duty roster: the roster says who was planned to drive that day, which is a
+   * different claim from who actually brought the car to the workshop, and it can be re-planned
+   * afterwards. A visit records what happened.
+   *
+   * Required on every new visit; `null` only on visits written before the field existed.
    */
-  driver1EmployeeId: string | null;
-  driver2EmployeeId: string | null;
+  driverInEmployeeId: string | null;
+  /**
+   * The DRIVER who took the vehicle away, chosen explicitly at check-out and stored.
+   *
+   * `null` while the visit is open — nobody has driven it away yet — and on visits closed before
+   * the field existed. Reopening a visit clears it, as it clears the rest of the exit.
+   */
+  driverOutEmployeeId: string | null;
   inDate: string;
   /** null = in workshop (the open state). */
   outDate: string | null;
@@ -581,9 +589,14 @@ export const CheckInFleetMaintenanceSchema = z
     spareParts: z.array(z.string().trim().min(1).max(120)).max(50).optional(),
     odometerAtService: z.number().int().min(0),
     /**
+     * Who drove the vehicle in. REQUIRED and explicit — the roster is a plan, and a plan is not
+     * a record of who actually arrived.
+     */
+    driverInEmployeeId: objectId(),
+    /**
      * Custody, and normally NOT sent: the server records whoever is logged in. Kept accepted for
      * the case the seam cannot answer — a platform account with no employee behind it — so the
-     * fact stays recordable rather than silently lost.
+     * fact stays recordable rather than silently lost. NOT the driver above.
      */
     takenInByEmployeeId: objectId().nullish(),
     notes: z.string().trim().min(1).max(1000).nullish(),
@@ -600,6 +613,8 @@ export const CheckOutFleetMaintenanceSchema = z
      * being counted from the arrival reading and falling due early.
      */
     exitOdometer: z.number().int().min(0),
+    /** Who drove the vehicle away. REQUIRED, for the same reason the check-in driver is. */
+    driverOutEmployeeId: objectId(),
     /** As on check-in: the server records the logged-in user; this is the fallback. */
     takenOutByEmployeeId: objectId().nullish(),
     version: z.number().int().min(0),
@@ -621,6 +636,12 @@ export const UpdateFleetMaintenanceSchema = z
     spareParts: z.array(z.string().trim().min(1).max(120)).max(50).optional(),
     odometerAtService: z.number().int().min(0).optional(),
     exitOdometer: z.number().int().min(0).nullish().optional(),
+    /**
+     * Correctable, like the rest of the check-in facts this endpoint edits. A required field with
+     * no correction path turns one mistyped driver into a permanent one; the check-OUT driver is
+     * deliberately not here, because changing it belongs to reopening and closing the visit again.
+     */
+    driverInEmployeeId: objectId().optional(),
     takenInByEmployeeId: objectId().nullish().optional(),
     notes: z.string().trim().min(1).max(1000).nullish().optional(),
     version: z.number().int().min(0),
@@ -647,8 +668,8 @@ export const ListFleetMaintenanceQuerySchema = PaginationQuerySchema.extend({
   vehicleCodes: listQuery(z.string().trim().min(1).max(20)),
   /**
    * Drivers, already resolved to employee ids by the caller — the same two-step join the odometer
-   * uses, because a driver's NAME is HR's fact. A visit matches when the employee held EITHER
-   * roster slot on the vehicle the day it went in.
+   * uses, because a driver's NAME is HR's fact. A visit matches when the employee drove it in OR
+   * drove it out: asking "which visits did this person drive" must not miss either end.
    */
   driverEmployeeIds: listQuery(objectId(), MAX_PAGE_SIZE),
   workshopId: objectId().optional(),

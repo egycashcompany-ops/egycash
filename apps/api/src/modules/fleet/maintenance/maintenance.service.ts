@@ -16,7 +16,6 @@ import { emit } from '../../../platform/kernel/event-bus';
 import { diffChanges } from '../../../shared/utils/diff';
 import { fleetCatalogItemRepository } from '../catalogs/catalog-item.repository';
 import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
-import { fleetDutyAssignmentRepository } from '../roster/duty-assignment.repository';
 import { isVehicleWritable } from '../vehicles/vehicle-status';
 import {
   fleetMaintenanceRepository,
@@ -41,8 +40,6 @@ export type MaintenanceVisitPage = Paginated<FleetMaintenanceVisitRow> & {
 export interface MaintenanceVisitWithJoins {
   doc: FleetMaintenanceVisitDoc;
   vehicleCode: string | null;
-  driver1EmployeeId: string | null;
-  driver2EmployeeId: string | null;
 }
 
 const entityRef = (id: string) => ({
@@ -61,6 +58,8 @@ const snapshot = (doc: FleetMaintenanceVisitDoc) => ({
   sparePartIds: (doc.sparePartIds ?? []).map(String),
   odometerAtService: doc.odometerAtService,
   exitOdometer: doc.exitOdometer ?? null,
+  driverInEmployeeId: doc.driverInEmployeeId == null ? null : String(doc.driverInEmployeeId),
+  driverOutEmployeeId: doc.driverOutEmployeeId == null ? null : String(doc.driverOutEmployeeId),
   notes: doc.notes,
 });
 
@@ -130,21 +129,13 @@ class FleetMaintenanceService {
   }
 
   /**
-   * The read-side facts a single visit answers with, resolved the same way the list resolves them
-   * — the registry for the code, the roster for the crew of the check-in day.
+   * The one read-side fact a visit does not carry itself: the registry's code for its vehicle.
+   * Both drivers are stored on the document now, so nothing else needs resolving.
    */
   private async withJoins(doc: FleetMaintenanceVisitDoc): Promise<MaintenanceVisitWithJoins> {
     const vehicleId = String(doc.vehicleId);
-    const [codes, crew] = await Promise.all([
-      fleetVehicleRepository.codesByIds([vehicleId]),
-      fleetDutyAssignmentRepository.findForVehicleOnDate(vehicleId, doc.inDate),
-    ]);
-    return {
-      doc,
-      vehicleCode: codes.get(vehicleId) ?? null,
-      driver1EmployeeId: crew?.driver1EmployeeId == null ? null : String(crew.driver1EmployeeId),
-      driver2EmployeeId: crew?.driver2EmployeeId == null ? null : String(crew.driver2EmployeeId),
-    };
+    const codes = await fleetVehicleRepository.codesByIds([vehicleId]);
+    return { doc, vehicleCode: codes.get(vehicleId) ?? null };
   }
 
   async checkIn(input: CheckInFleetMaintenance, by: string): Promise<MaintenanceVisitWithJoins> {
@@ -172,6 +163,9 @@ class FleetMaintenanceService {
         // Verbatim, and only when a caller actually sent it — never derived from the catalog ids.
         spareParts: input.spareParts ?? [],
         odometerAtService: input.odometerAtService,
+        // Who actually drove it in — required by the contract, so never absent on a new visit.
+        driverInEmployeeId: new Types.ObjectId(input.driverInEmployeeId),
+        driverOutEmployeeId: null,
         takenInByEmployeeId: await this.custodian(by, input.takenInByEmployeeId),
         takenOutByEmployeeId: null,
         notes: input.notes ?? null,
@@ -215,6 +209,7 @@ class FleetMaintenanceService {
       {
         outDate: input.outDate,
         exitOdometer: input.exitOdometer,
+        driverOutEmployeeId: new Types.ObjectId(input.driverOutEmployeeId),
         takenOutByEmployeeId: await this.custodian(by, input.takenOutByEmployeeId),
       },
       { by, version: input.version },
@@ -242,7 +237,7 @@ class FleetMaintenanceService {
       // Reopening un-closes the visit, so the exit reading goes with it: a car that is back
       // in the workshop has not left, and leaving the number behind would keep feeding a baseline
       // for a service that is not finished.
-      { outDate: null, exitOdometer: null, takenOutByEmployeeId: null },
+      { outDate: null, exitOdometer: null, driverOutEmployeeId: null, takenOutByEmployeeId: null },
       { by, version },
     );
     const vehicle = await fleetVehicleRepository.getById(String(before.vehicleId));
@@ -292,6 +287,9 @@ class FleetMaintenanceService {
     if (input.spareParts !== undefined) set.spareParts = input.spareParts;
     if (input.exitOdometer !== undefined) set.exitOdometer = input.exitOdometer ?? null;
     if (input.odometerAtService !== undefined) set.odometerAtService = input.odometerAtService;
+    if (input.driverInEmployeeId !== undefined) {
+      set.driverInEmployeeId = new Types.ObjectId(input.driverInEmployeeId);
+    }
     if (input.takenInByEmployeeId !== undefined) {
       set.takenInByEmployeeId =
         input.takenInByEmployeeId == null ? null : new Types.ObjectId(input.takenInByEmployeeId);

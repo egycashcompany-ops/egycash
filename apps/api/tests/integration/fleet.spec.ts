@@ -152,6 +152,23 @@ const mkEmployee = async (
   return (res.body as { data: { id: string } }).data.id;
 };
 
+/**
+ * One driver employee, made on first use and reused.
+ *
+ * Check-in and check-out both REQUIRE a driver now, so every maintenance call needs one. The
+ * tests that are about something else take this; the tests that are about the driver make their
+ * own so they can tell people apart.
+ */
+let sharedDriverId: string | null = null;
+const someDriver = async (): Promise<string> => {
+  if (sharedDriverId === null) sharedDriverId = await mkEmployee({ fullNameAr: 'سائق افتراضي' });
+  return sharedDriverId;
+};
+
+/** Drops keys explicitly set to `undefined`, so a test can omit a field on purpose. */
+const withoutUndefined = (body: Record<string, unknown>): Record<string, unknown> =>
+  Object.fromEntries(Object.entries(body).filter(([, v]) => v !== undefined));
+
 const mkDriverProfile = async (employeeId: string): Promise<FleetDriverProfileDto> => {
   const res = await request(app)
     .post('/api/v1/fleet/drivers')
@@ -1184,6 +1201,7 @@ describe('maintenance visits + derived alarm + idempotent sweeps (FL-4)', () => 
         workshopId,
         workTypeId,
         odometerAtService: 90_000,
+        driverInEmployeeId: await someDriver(),
       });
     expect(visit.status).toBe(201);
     expect(seenEvents.some((e) => e.name === FleetEvents.MaintenanceCheckedIn)).toBe(true);
@@ -1204,6 +1222,7 @@ describe('maintenance visits + derived alarm + idempotent sweeps (FL-4)', () => 
         workshopId,
         workTypeId,
         odometerAtService: 90_001,
+        driverInEmployeeId: await someDriver(),
       });
     expect(second.status).toBe(409);
 
@@ -1212,7 +1231,12 @@ describe('maintenance visits + derived alarm + idempotent sweeps (FL-4)', () => 
       .post(`/api/v1/fleet/maintenance/${visitDto.id}/check-out`)
       .set('Authorization', `Bearer ${adminToken}`)
       // The exit reading is required now — it becomes the baseline the next service counts from.
-      .send({ outDate: '2026-07-03', exitOdometer: 90_200, version: visitDto.version });
+      .send({
+        outDate: '2026-07-03',
+        exitOdometer: 90_200,
+        driverOutEmployeeId: await someDriver(),
+        version: visitDto.version,
+      });
     expect(out.status).toBe(200);
     expect(seenEvents.some((e) => e.name === FleetEvents.MaintenanceCheckedOut)).toBe(true);
 
@@ -1245,6 +1269,7 @@ describe('maintenance visits + derived alarm + idempotent sweeps (FL-4)', () => 
           workshopId,
           workTypeId: countingId,
           odometerAtService: 95_000,
+          driverInEmployeeId: await someDriver(),
         }),
     );
     await request(app)
@@ -1252,7 +1277,12 @@ describe('maintenance visits + derived alarm + idempotent sweeps (FL-4)', () => 
       .set('Authorization', `Bearer ${adminToken}`)
       // Out on the same reading it came in on, so this test's arithmetic is unchanged by the
       // baseline moving to the exit reading — what the baseline IS is proven separately below.
-      .send({ outDate: '2026-07-02', exitOdometer: 95_000, version: visit.version });
+      .send({
+        outDate: '2026-07-02',
+        exitOdometer: 95_000,
+        driverOutEmployeeId: await someDriver(),
+        version: visit.version,
+      });
 
     const record = (reading: number, date: string) =>
       request(app)
@@ -1344,16 +1374,28 @@ describe('workshop entry/exit — exit odometer, custody, catalog parts, filters
     if (item === undefined) throw new Error('workType صيانة not found');
     return item.id;
   };
-  const checkIn = (body: Record<string, unknown>) =>
+  /**
+   * Check-in, with a driver filled in unless the caller names one — including naming it
+   * `undefined`, which is how the "a driver is required" tests omit it deliberately.
+   */
+  const checkIn = async (body: Record<string, unknown>) =>
     request(app)
       .post('/api/v1/fleet/maintenance')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send(body);
-  const checkOut = (id: string, body: Record<string, unknown>) =>
+      .send(
+        'driverInEmployeeId' in body
+          ? withoutUndefined(body)
+          : { ...body, driverInEmployeeId: await someDriver() },
+      );
+  const checkOut = async (id: string, body: Record<string, unknown>) =>
     request(app)
       .post(`/api/v1/fleet/maintenance/${id}/check-out`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send(body);
+      .send(
+        'driverOutEmployeeId' in body
+          ? withoutUndefined(body)
+          : { ...body, driverOutEmployeeId: await someDriver() },
+      );
   /**
    * The list, over the WHOLE filtered set by default.
    *
@@ -1518,22 +1560,19 @@ describe('workshop entry/exit — exit odometer, custody, catalog parts, filters
     expect(row?.level).toBe('none');
   });
 
-  it('keeps a visit whose car had no roster row that day — it is driverless, not missing', async () => {
-    // The crew join must never behave like an inner join: a car nobody was rostered on still went
-    // into a workshop, and dropping its visit would quietly shorten every unfiltered list.
-    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
-    const opened = await checkIn({
-      vehicleId: v.id,
-      inDate: '2026-10-20',
-      workshopId: await mkCatalog('workshop', 'ورشة بلا سائق'),
-      workTypeId: await countingWorkTypeId(),
-      odometerAtService: 40_000,
-    });
-    expect(opened.status).toBe(201);
-    const dto = data<FleetMaintenanceVisitDto>(opened);
-    expect(dto.driver1EmployeeId).toBeNull();
-    expect(dto.driver2EmployeeId).toBeNull();
-    expect(ids(await listVisits({ vehicleId: v.id }))).toContain(dto.id);
+  it('reads a visit written before the driver fields existed without breaking', async () => {
+    // Exactly the shape of a legacy row: the KEYS are absent, not null — a mongoose `default`
+    // applies on write and never reached the documents already in the collection.
+    const { vehicle, visit } = await closedVisit();
+    await FleetMaintenanceVisitModel.collection.updateOne(
+      { _id: new Types.ObjectId(visit.id) },
+      { $unset: { driverInEmployeeId: '', driverOutEmployeeId: '' } },
+    );
+    const reread = data<FleetMaintenanceVisitDto[]>(await listVisits({ vehicleId: vehicle.id }));
+    expect(reread[0]?.driverInEmployeeId).toBeNull();
+    expect(reread[0]?.driverOutEmployeeId).toBeNull();
+    // …and the row is still listed, not dropped by the read.
+    expect(reread).toHaveLength(1);
   });
 
   it('reopening a visit takes the exit reading back with it', async () => {
@@ -1676,57 +1715,93 @@ describe('workshop entry/exit — exit odometer, custody, catalog parts, filters
     expect(await matches({ outFrom: '2026-10-10' })).toBe(false);
   });
 
-  it('filters by the DRIVER the roster gave the car the day it went in — EITHER slot', async () => {
-    const morning = await mkEmployee({ fullNameAr: 'سائق الورشة' });
-    await mkDriverProfile(morning);
-    const evening = await mkEmployee({ fullNameAr: 'سائق المساء' });
-    await mkDriverProfile(evening);
+  it('stores the driver at each end, and filters on EITHER of them', async () => {
+    const driverIn = await mkEmployee({ fullNameAr: 'سائق الدخول' });
+    const driverOut = await mkEmployee({ fullNameAr: 'سائق الخروج' });
     const other = await mkEmployee({ fullNameAr: 'سائق آخر' });
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
-    const inDate = '2026-10-12';
-
-    // The roster is the existing relation, and it is what the filter reads — maintenance grows no
-    // driver field of its own. The roster holds ONE row per (vehicle, date) — `ux_vehicle_date` —
-    // and both driver slots live on it, so "two assignments that day" is not a case the domain
-    // has; two SLOTS is, and both are planned here in the single row that models them.
-    //
-    // Planned BEFORE the check-in, and that ordering is the rule speaking, not a convenience:
-    // FR-5 makes a vehicle with an open visit covering the date unassignable, so a re-plan after
-    // check-in is a 409 by design. The crew a car had the day it went in is therefore always
-    // recorded before it goes in.
-    const planned = await request(app)
-      .post('/api/v1/fleet/roster')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({
-        date: inDate,
-        rows: [{ vehicleId: v.id, driver1EmployeeId: morning, driver2EmployeeId: evening }],
-      });
-    expect(planned.status).toBe(200);
 
     const opened = data<FleetMaintenanceVisitDto>(
       await checkIn({
         vehicleId: v.id,
-        inDate,
+        inDate: '2026-10-12',
         workshopId: await mkCatalog('workshop', 'ورشة السائق'),
         workTypeId: await countingWorkTypeId(),
         odometerAtService: 70_000,
+        driverInEmployeeId: driverIn,
       }),
     );
-    // The crew is carried ON the row, so the column has names to show without a second request.
-    expect(opened.driver1EmployeeId).toBe(morning);
-    expect(opened.driver2EmployeeId).toBe(evening);
+    // Stored on the visit, not derived from a roster that can be re-planned afterwards.
+    expect(opened.driverInEmployeeId).toBe(driverIn);
+    expect(opened.driverOutEmployeeId, 'nobody has driven it away yet').toBeNull();
+    expect(ids(await listVisits({ driverEmployeeIds: driverIn }))).toContain(opened.id);
+    expect(ids(await listVisits({ driverEmployeeIds: driverOut }))).not.toContain(opened.id);
 
-    // EITHER slot matches: asking "which visits did this person's car go in on" must not miss the
-    // evening shift.
-    expect(ids(await listVisits({ driverEmployeeIds: morning }))).toContain(opened.id);
-    expect(ids(await listVisits({ driverEmployeeIds: evening }))).toContain(opened.id);
+    const out = await checkOut(opened.id, {
+      outDate: '2026-10-14',
+      exitOdometer: 70_400,
+      driverOutEmployeeId: driverOut,
+      version: opened.version,
+    });
+    expect(out.status).toBe(200);
+    expect(data<FleetMaintenanceVisitDto>(out).driverOutEmployeeId).toBe(driverOut);
+    // The one who drove it in is untouched by the check-out.
+    expect(data<FleetMaintenanceVisitDto>(out).driverInEmployeeId).toBe(driverIn);
+
+    // EITHER end matches now.
+    expect(ids(await listVisits({ driverEmployeeIds: driverIn }))).toContain(opened.id);
+    expect(ids(await listVisits({ driverEmployeeIds: driverOut }))).toContain(opened.id);
     expect(ids(await listVisits({ driverEmployeeIds: other }))).not.toContain(opened.id);
+  });
+
+  it('refuses a check-in with no driver, and a check-out with no driver', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const body = {
+      vehicleId: v.id,
+      inDate: '2026-10-18',
+      workshopId: await mkCatalog('workshop', 'ورشة الإلزام'),
+      workTypeId: await countingWorkTypeId(),
+      odometerAtService: 80_000,
+    };
+    // Omitted on the wire, not sent as null: the field is required, so the schema refuses it.
+    const noDriver = await checkIn({ ...body, driverInEmployeeId: undefined });
+    expect(noDriver.status).toBe(400);
+
+    const opened = data<FleetMaintenanceVisitDto>(await checkIn(body));
+    expect(opened.driverInEmployeeId, 'the driver that WAS sent is stored').not.toBeNull();
+
+    const noExitDriver = await checkOut(opened.id, {
+      outDate: '2026-10-19',
+      exitOdometer: 80_100,
+      driverOutEmployeeId: undefined,
+      version: opened.version,
+    });
+    expect(noExitDriver.status).toBe(400);
+
+    // …and the visit is still open: a refused check-out changes nothing.
+    const reread = data<FleetMaintenanceVisitDto[]>(await listVisits({ vehicleId: v.id }));
+    expect(reread[0]?.outDate).toBeNull();
+    expect(reread[0]?.driverOutEmployeeId).toBeNull();
+  });
+
+  it('reopening a visit takes the exit DRIVER back with the rest of the exit', async () => {
+    const { visit } = await closedVisit();
+    expect(visit.driverOutEmployeeId, 'a closed visit has one').not.toBeNull();
+    const reopened = await request(app)
+      .post(`/api/v1/fleet/maintenance/${visit.id}/reopen`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: visit.version });
+    expect(reopened.status).toBe(200);
+    const dto = data<FleetMaintenanceVisitDto>(reopened);
+    expect(dto.driverOutEmployeeId).toBeNull();
+    // The check-in driver survives — reopening undoes the exit, not the arrival.
+    expect(dto.driverInEmployeeId).not.toBeNull();
   });
 
   it('refuses to re-crew a car that is already in the workshop (FR-5 is unchanged)', async () => {
     // The rule this slice must not bend: once a visit is open over a date, the roster will not
-    // assign that vehicle for it. Pinned here because the driver join above depends on the
-    // ordering it forces, and a silent relaxation would make that test pass for the wrong reason.
+    // assign that vehicle for it. The maintenance screen no longer reads the roster at all, so
+    // this is pinned precisely because nothing else here would notice if it were relaxed.
     const driver = await mkEmployee({ fullNameAr: 'سائق مرفوض' });
     await mkDriverProfile(driver);
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
@@ -1915,6 +1990,7 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
         workshopId: data<FleetCatalogItemDto>(workshop).id,
         workTypeId: data<FleetCatalogItemDto[]>(workTypes).find((i) => i.name.ar === 'صيانة')?.id,
         odometerAtService: 50_000,
+        driverInEmployeeId: await someDriver(),
       });
     expect(checkIn.status).toBe(201);
 

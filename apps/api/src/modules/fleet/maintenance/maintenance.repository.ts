@@ -1,7 +1,6 @@
-import { Types, type FilterQuery, type PipelineStage } from 'mongoose';
-import { MAX_PAGE_SIZE, type Paginated } from '@ecms/contracts';
+import { Types, type FilterQuery } from 'mongoose';
+import { type Paginated } from '@ecms/contracts';
 import { BaseRepository, type ListParams } from '../../../shared/base/base.repository';
-import { FleetDutyAssignmentModel } from '../roster/duty-assignment.model';
 import { FleetMaintenanceVisitModel, type FleetMaintenanceVisitDoc } from './maintenance.model';
 
 export interface AlarmBaseline {
@@ -10,17 +9,8 @@ export interface AlarmBaseline {
   serviceDate: Date;
 }
 
-/**
- * A visit plus the roster crew of the day it went in.
- *
- * The crew is not stored on the visit — the roster owns it — so it is joined at read time and
- * carried on the row, the way the vehicle code is: a screen showing "who was driving" cannot
- * resolve it from a page of the roster it has not got.
- */
-export interface FleetMaintenanceVisitRow extends FleetMaintenanceVisitDoc {
-  driver1EmployeeId: Types.ObjectId | null;
-  driver2EmployeeId: Types.ObjectId | null;
-}
+/** A visit as the list answers with it. The drivers are stored on the document itself now. */
+export type FleetMaintenanceVisitRow = FleetMaintenanceVisitDoc;
 
 /** Whitelist — unchanged, and an unknown field falls back to `createdAt` (API Standards §4). */
 const SORTABLE: readonly string[] = ['inDate', 'outDate', 'createdAt'];
@@ -132,109 +122,35 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
   }
 
   /**
-   * The filtered page, with the CREW the vehicle carried the day it went in attached to each row.
+   * The filtered page.
    *
-   * Done as one aggregation rather than a query plus a per-row lookup, because the crew is not
-   * only shown — it is FILTERED on, and a filter applied after the page is cut answers "which of
-   * these twenty-five", not "which". Cutting the page after the join is what makes the totals and
-   * the page count describe the same set the reader is looking at.
-   *
-   * The crew is the roster's fact, joined on (vehicle, DAY): the roster stamps its date at UTC
-   * midnight and a visit's `inDate` normally arrives the same way, but an equality join would
-   * answer "no crew" for any visit whose date carries a time, so the day is truncated on both
-   * sides.
+   * Both drivers are stored ON the visit, so this is a plain indexed query: the filter that cuts
+   * the page is the same one the totals are counted from, with no join in between. It used to
+   * reach into the duty roster for the crew of the check-in day — that join went when the visit
+   * started recording who actually drove it, which is a different claim from who was planned to.
    */
   async listVisits(
     params: ListParams<FleetMaintenanceVisitDoc> & {
       driverEmployeeIds?: readonly string[] | undefined;
     },
   ): Promise<Paginated<FleetMaintenanceVisitRow>> {
-    const pageSize = Math.min(params.pageSize, MAX_PAGE_SIZE);
-    const page = Math.max(1, params.page);
-    const sortField = SORTABLE.includes(params.sortBy ?? '')
-      ? (params.sortBy as string)
-      : 'createdAt';
-    const sortDir = params.sortDir === 'asc' ? 1 : -1;
-
-    const crewJoin: PipelineStage[] = [
-      {
-        $lookup: {
-          from: FleetDutyAssignmentModel.collection.name,
-          let: { vehicle: '$vehicleId', day: { $dateTrunc: { date: '$inDate', unit: 'day' } } },
-          pipeline: [
-            {
-              $match: {
-                $expr: {
-                  $and: [
-                    { $eq: ['$vehicleId', '$$vehicle'] },
-                    { $eq: ['$isDeleted', false] },
-                    { $eq: [{ $dateTrunc: { date: '$date', unit: 'day' } }, '$$day'] },
-                  ],
-                },
-              },
-            },
-            { $limit: 1 },
-            { $project: { driver1EmployeeId: 1, driver2EmployeeId: 1 } },
-          ],
-          as: 'crew',
-        },
-      },
-      {
-        $addFields: {
-          // `$ifNull` so an unrostered day yields an explicit null rather than an ABSENT field —
-          // the driver `$match` below and the row type both read it as a value either way.
-          driver1EmployeeId: { $ifNull: [{ $arrayElemAt: ['$crew.driver1EmployeeId', 0] }, null] },
-          driver2EmployeeId: { $ifNull: [{ $arrayElemAt: ['$crew.driver2EmployeeId', 0] }, null] },
-        },
-      },
-      { $project: { crew: 0 } },
-    ];
-
-    // EITHER slot, as everywhere else a driver is asked for: "which visits did this person's car
-    // go in on" must not miss the evening shift. An EMPTY id list is a real answer — HR matched
-    // nobody — and `$in: []` correctly matches nothing.
-    const driverMatch: PipelineStage[] =
+    // EITHER end of the visit: "which visits did this person drive" must not miss the one they
+    // drove away. An EMPTY id list is a real answer — HR matched nobody — and `$in: []` matches
+    // nothing, which is the honest result rather than an unfiltered page.
+    const driverFilter: FilterQuery<FleetMaintenanceVisitDoc> | null =
       params.driverEmployeeIds === undefined
-        ? []
-        : [
-            {
-              $match: {
-                $or: [
-                  { driver1EmployeeId: { $in: params.driverEmployeeIds.map(oid) } },
-                  { driver2EmployeeId: { $in: params.driverEmployeeIds.map(oid) } },
-                ],
-              },
-            },
-          ];
-
-    const [result] = await this.model
-      .aggregate<{ items: FleetMaintenanceVisitRow[]; total: { n: number }[] }>([
-        { $match: this.baseFilter(params.scope, params.filter) },
-        ...crewJoin,
-        ...driverMatch,
-        {
-          $facet: {
-            items: [
-              { $sort: { [sortField]: sortDir, _id: sortDir } },
-              { $skip: (page - 1) * pageSize },
-              { $limit: pageSize },
+        ? null
+        : {
+            $or: [
+              { driverInEmployeeId: { $in: params.driverEmployeeIds.map(oid) } },
+              { driverOutEmployeeId: { $in: params.driverEmployeeIds.map(oid) } },
             ],
-            total: [{ $count: 'n' }],
-          },
-        },
-      ])
-      .exec();
-
-    const totalItems = result?.total[0]?.n ?? 0;
-    return {
-      items: result?.items ?? [],
-      meta: {
-        page,
-        pageSize,
-        totalItems,
-        totalPages: Math.max(1, Math.ceil(totalItems / pageSize)),
-      },
-    };
+          };
+    // Both drivers live on the visit, so this is one indexed query again — no join, and the page
+    // is cut by the same filter the totals are counted from.
+    const filter: FilterQuery<FleetMaintenanceVisitDoc> =
+      driverFilter === null ? (params.filter ?? {}) : { $and: [params.filter ?? {}, driverFilter] };
+    return this.list({ ...params, filter, sortableFields: SORTABLE });
   }
 
   /**

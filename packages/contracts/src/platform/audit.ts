@@ -131,6 +131,12 @@ export const AUDIT_ACTIONS = [
   //     a vault dispute asks, and a diff on a status field cannot answer it.
   'deliver',
   'revert',
+  // ATM Operations (module port). A maintenance mail ticket is DECIDED — accepted into a
+  // maintenance operation or rejected — and the legacy log's whole purpose is "who accepted what,
+  // who rejected what" (mail_maintenance_log.ejs:808-880). Filtering the trail on the act is that
+  // page's question; a diff on a status field cannot answer it. Same argument as gold's verbs.
+  'accept',
+  'reject',
 ] as const;
 export const AuditActionSchema = z.enum(AUDIT_ACTIONS);
 export type AuditAction = z.infer<typeof AuditActionSchema>;

@@ -730,6 +730,80 @@ const CATALOG: CategoryDef[] = [
     ],
   },
   {
+    // ATM Operations (module port). Every `permission` below is the SAME key the client route
+    // guard checks in apps/web/src/modules/atm/routes.tsx — nothing new is declared here. The
+    // rows mirror the legacy home menu (views/events/index.ejs) one for one, in its order.
+    en: 'ATM',
+    ar: 'الصراف الآلي',
+    icon: 'grid',
+    sortOrder: 28,
+    apps: [
+      {
+        en: 'ATM Home',
+        ar: 'الرئيسية',
+        route: '/atm',
+        icon: 'home',
+        permission: 'atmReplenishment.view',
+      },
+      {
+        en: 'Replenishments',
+        ar: 'التغذيات',
+        route: '/atm/replenishments',
+        icon: 'clipboard',
+        permission: 'atmReplenishment.view',
+      },
+      {
+        en: 'Replenishments Done',
+        ar: 'التغذيات المنتهية',
+        route: '/atm/replenishments/done',
+        icon: 'calendar',
+        permission: 'atmReplenishment.view',
+      },
+      {
+        en: 'Maintenance',
+        ar: 'الصيانات',
+        route: '/atm/maintenance',
+        icon: 'wrench',
+        permission: 'atmMaintenance.view',
+      },
+      {
+        en: 'Maintenance Done',
+        ar: 'الصيانات المنتهية',
+        route: '/atm/maintenance/done',
+        icon: 'calendar',
+        permission: 'atmMaintenance.view',
+      },
+      {
+        en: 'Maintenance Mail',
+        ar: 'رسائل الصيانة',
+        route: '/atm/mail-tickets',
+        icon: 'inbox',
+        permission: 'atmMailTicket.view',
+      },
+      {
+        en: 'Mail Log',
+        ar: 'سجل الرسائل',
+        route: '/atm/mail-tickets/log',
+        icon: 'clipboard',
+        permission: 'atmMailTicket.viewLog',
+      },
+      {
+        en: 'All Machines',
+        ar: 'كل الماكينات',
+        route: '/atm/machines',
+        icon: 'grid',
+        permission: 'atmMachine.view',
+      },
+      {
+        en: 'Machine Data',
+        ar: 'إضافة البيانات',
+        route: '/atm/data-edit',
+        icon: 'tag',
+        permission: 'atmMachine.manage',
+      },
+    ],
+  },
+  {
     en: 'Administration',
     ar: 'الإدارة',
     // A department is not its settings screen: the briefcase reads as "administration",
@@ -959,7 +1033,8 @@ export const syncNavigationCatalog = async (): Promise<void> => {
         continue;
       }
       const next = rows.slice(index + 1).find((r) => r.existing !== null);
-      const high = next === null || next === undefined ? low + 20 : Number(next.existing?.sortOrder);
+      const high =
+        next === null || next === undefined ? low + 20 : Number(next.existing?.sortOrder);
       const sortOrder = (low + high) / 2;
 
       categoryId ??= await ensureCategory(category, actor);

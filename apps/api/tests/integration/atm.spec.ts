@@ -281,6 +281,7 @@ describe('atm replenishments — open, time, close', () => {
     const facets = await request(app)
       .get('/api/v1/atm/replenishments/facets?banks=NBE')
       .set('Authorization', `Bearer ${alexToken}`);
+    expect(facets.status, 'facets').toBe(200);
     expect(data<{ banks: string[]; areas: string[] }>(facets).banks).toContain('NBE');
     expect(data<{ banks: string[]; areas: string[] }>(facets).areas).toContain('Smouha');
   });
@@ -289,6 +290,7 @@ describe('atm replenishments — open, time, close', () => {
     const before = await request(app)
       .get('/api/v1/atm/replenishments?pageSize=100')
       .set('Authorization', `Bearer ${alexToken}`);
+    expect(before.status, 'before').toBe(200);
     const target = items<AtmReplenishmentDto>(before).find((r) => r.id === openedId);
 
     const res = await request(app)
@@ -300,6 +302,7 @@ describe('atm replenishments — open, time, close', () => {
     const after = await request(app)
       .get('/api/v1/atm/replenishments?pageSize=100')
       .set('Authorization', `Bearer ${alexToken}`);
+    expect(after.status, 'after').toBe(200);
     const smouha = items<AtmReplenishmentDto>(after).filter((r) => r.area === 'Smouha');
     // Both Smouha rows were opened in the same shift, so the leader lands on both — the legacy
     // behaviour operators rely on and would notice missing (contad_app.js:861-867).
@@ -319,6 +322,7 @@ describe('atm replenishments — open, time, close', () => {
     const done = await request(app)
       .get('/api/v1/atm/replenishments/done?pageSize=100')
       .set('Authorization', `Bearer ${alexToken}`);
+    expect(done.status, 'done').toBe(200);
     expect(items<AtmReplenishmentDto>(done).map((r) => r.id)).toContain(openedId);
 
     const reopen = await request(app)
@@ -384,6 +388,7 @@ describe('atm replenishments — branch scope', () => {
     const machines = await request(app)
       .get('/api/v1/atm/machines?pageSize=100')
       .set('Authorization', `Bearer ${tantaToken}`);
+    expect(machines.status, 'machines').toBe(200);
     expect(items<AtmMachineDto>(machines)).toEqual([]);
   });
 });
@@ -455,6 +460,7 @@ describe('atm mail tickets', () => {
     const badge = await request(app)
       .get('/api/v1/atm/mail-tickets/unread-count')
       .set('Authorization', `Bearer ${alexToken}`);
+    expect(badge.status, 'badge').toBe(200);
     expect(data<{ count: number }>(badge).count).toBe(0);
   });
 

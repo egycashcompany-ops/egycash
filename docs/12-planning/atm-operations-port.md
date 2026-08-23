@@ -82,7 +82,6 @@ ECMS" means.
 | T1 | Replenishment `open_time` stored as Cairo-local labelled UTC (:644-650) while `close_time` is true UTC (:782) — bridged by a +3h display kludge (atm_replenishment_done.ejs:471-478) | Honest UTC instants; durations are the plain difference | The kludge dies; **migration must normalize** (§7) |
 | T5 | Unknown codes accumulated in a module-global shared across users, cleared every 500ms (contad_app.js:202, 618-623) | Returned in the open response per request | The global raced between users by construction |
 | T6 | Maintenance multi-edit "wrote" `schedule_time` — a field its schema never declared, silently dropped (:2042-2044 vs models/atm_maint_log.js) | Not carried | A write that never landed is not behaviour |
-| G3 | `status` on both logs written 0 and never changed | Not carried; open IS `closedAt: null` | The fleet maintenance-visit precedent |
 | UI | Reopen was the done icon's double-click (atm_replenishment_done.ejs:462) | A visible action with a confirm | Same capability, same data effect (`closedAt` cleared, closer kept) |
 | UI | /all_atm exported via a CDN-loaded xlsx build (all_atm.ejs:986) | CSV with UTF-8 BOM, same four columns | No CDN dependency; Excel opens it identically |
 
@@ -100,6 +99,9 @@ does not stop future mails for the same machine; force-date ≠ today opens at 0
   the owner's log requirement ("متى حدث ذلك") demands it.
 - **G2**: `atm_mails.found` written at ingest, read by nothing. Carried as `foundInMaster`,
   still rendered nowhere.
+- **G3**: `status` on both logs written 0 and never changed by any code path — the field
+  never carried a state. Not carried: open IS `closedAt: null`, the fleet maintenance-visit
+  precedent.
 - **G4**: the five unused `atm_data_lists` arrays — dropped.
 - **G5**: mails matching no machine were dropped on the floor (Automation/src/index.js:199-201).
   The ingestion contract returns `unmatched` and the transport must LEAVE THE MESSAGE UNREAD —
@@ -211,3 +213,4 @@ enrichment for a later pass, never a requirement of the import.
 | ATM-6 | Central mail reader: source seam, Graph transport, poll task, branch colours, §6 | delivered |
 | ATM-7 | Legacy importer (`npm run atm:import`) with the T1 repair, §7 | delivered |
 | — | Daily report `/atm/reports/daily` (legacy `/reports_atm`, D3/D7) | delivered |
+| — | Integration suite `tests/integration/atm.spec.ts` (endpoints, authZ, validation) | delivered |

@@ -42,7 +42,10 @@ const mailTicketSchema = new Schema<AtmMailTicketDoc>(
     receivedAt: { type: Date, required: true },
     status: { type: String, required: true, enum: ATM_MAIL_TICKET_STATUSES, default: 'pending' },
     issueText: { type: String, required: true },
-    senderEmail: { type: String, required: true },
+    // Not `required`, for the same reason as `zone`: the transport yields '' when a message
+    // carries no sender address, and Mongoose rejects '' on a required String — which would
+    // 500 the ingest and leave that mail unread and retried forever.
+    senderEmail: { type: String, default: '' },
     foundInMaster: { type: Boolean, required: true, default: true },
     duplicationAtIngest: { type: Boolean, required: true, default: false },
     actionById: { type: Schema.Types.ObjectId, default: null },

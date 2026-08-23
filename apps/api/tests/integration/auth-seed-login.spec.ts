@@ -334,11 +334,27 @@ describe('the default sections migration', () => {
   const get = async (path: string, token: string) =>
     request(app).get(`/api/v1${path}`).set('Authorization', `Bearer ${token}`);
 
+  /**
+   * The WHOLE application catalog, not the first page of it. The catalog outgrew a single page
+   * when the ATM module landed: MAX_PAGE_SIZE is 100 and the seeded catalog is now 101 rows, so a
+   * lone `pageSize=100` read silently drops the OLDEST row under the default `createdAt: -1`
+   * sort — and that row is `/applicants`, which is exactly the page these tests move between
+   * sections. Page through, so the assertions keep seeing the catalog rather than a prefix of it.
+   */
+  const allApplications = async <T>(token: string): Promise<T[]> => {
+    const first = await get('/platform/applications?pageSize=100', token);
+    const head = first.body as { data: T[]; meta: { totalPages: number } };
+    const out = [...head.data];
+    for (let page = 2; page <= head.meta.totalPages; page += 1) {
+      const next = await get(`/platform/applications?pageSize=100&page=${String(page)}`, token);
+      out.push(...(next.body as { data: T[] }).data);
+    }
+    return out;
+  };
+
   const snapshot = async (token: string): Promise<string[]> => {
-    const res = await get('/platform/applications?pageSize=100', token);
-    return (res.body as { data: { id: string; sectionId: string | null }[] }).data
-      .map((a) => `${a.id}:${a.sectionId ?? ''}`)
-      .sort();
+    const rows = await allApplications<{ id: string; sectionId: string | null }>(token);
+    return rows.map((a) => `${a.id}:${a.sectionId ?? ''}`).sort();
   };
 
   it('groups the seeded HR catalog, and re-running it changes nothing', async () => {
@@ -364,11 +380,7 @@ describe('the default sections migration', () => {
     expect(named.every((s) => s.name.ar.trim() !== '')).toBe(true);
 
     // …and the HR pages sit inside them rather than in a flat list.
-    const grouped = (
-      (await get('/platform/applications?pageSize=100', token)).body as {
-        data: { route: string; sectionId: string | null }[];
-      }
-    ).data;
+    const grouped = await allApplications<{ route: string; sectionId: string | null }>(token);
     expect(grouped.find((a) => a.route === '/applicants')?.sectionId).not.toBeNull();
 
     // Re-running is a no-op, to the id.
@@ -395,11 +407,12 @@ describe('the default sections migration', () => {
     const adminId =
       (await doLogin(env.SEED_ADMIN_EMAIL, env.SEED_ADMIN_PASSWORD)).body.data?.me?.id ?? '';
 
-    const apps = (
-      (await get('/platform/applications?pageSize=100', token)).body as {
-        data: { id: string; route: string; categoryId: string; sectionId: string | null }[];
-      }
-    ).data;
+    const apps = await allApplications<{
+      id: string;
+      route: string;
+      categoryId: string;
+      sectionId: string | null;
+    }>(token);
     const sections = (
       (await get('/platform/application-sections?pageSize=100', token)).body as {
         data: { id: string; name: { en: string } }[];
@@ -423,11 +436,9 @@ describe('the default sections migration', () => {
 
     await seedApplicationSections(adminId);
 
-    const reread = (
-      (await get('/platform/applications?pageSize=100', token)).body as {
-        data: { route: string; sectionId: string | null }[];
-      }
-    ).data.find((a) => a.route === '/applicants');
+    const reread = (await allApplications<{ route: string; sectionId: string | null }>(token)).find(
+      (a) => a.route === '/applicants',
+    );
     // Recruitment names this page. It does not take it back.
     expect(reread?.sectionId).toBe(payroll?.id);
   });
@@ -450,11 +461,12 @@ describe('the default sections migration', () => {
     const appsOf = async (): Promise<
       { id: string; route: string; categoryId: string; sectionId: string | null }[]
     > =>
-      (
-        (await get('/platform/applications?pageSize=100', token)).body as {
-          data: { id: string; route: string; categoryId: string; sectionId: string | null }[];
-        }
-      ).data;
+      await allApplications<{
+        id: string;
+        route: string;
+        categoryId: string;
+        sectionId: string | null;
+      }>(token);
     const sectionsOf = async (): Promise<{ id: string; name: { en: string } }[]> =>
       (
         (await get('/platform/application-sections?pageSize=100', token)).body as {

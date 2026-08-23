@@ -36,7 +36,11 @@ const replenishmentSchema = new Schema<AtmReplenishmentDoc>(
     machineCode: { type: String, required: true },
     bankName: { type: String, required: true },
     machineName: { type: String, required: true },
-    zone: { type: String, required: true, default: '' },
+    // NOT `required`: every live write stores '' (the legacy wrote '' on every path,
+    // contad_app.js:2443) and Mongoose's String required-validator rejects an empty string,
+    // so `required: true` here made every ATM insert fail validation. `default: ''` already
+    // guarantees a string, which is what the `zone: string` interface promises.
+    zone: { type: String, default: '' },
     area: { type: String, required: true },
     openedAt: { type: Date, required: true },
     closedAt: { type: Date, default: null },

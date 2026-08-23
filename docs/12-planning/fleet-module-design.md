@@ -149,9 +149,11 @@ free rewrite.
 | `outDate` | date, nullable, `≥ inDate` | **null = in workshop** (the open state) |
 | `workshopId` | ref → catalog `workshop` | legacy `destination` |
 | `workTypeId` | ref → catalog `workType` | legacy `works`; the type flagged `countsForAlarm` (seeded: صيانة) resets the alarm baseline |
-| `spareParts` | array of catalog refs/labels | |
-| `odometerAtService` | int | legacy `counter`; the alarm baseline |
-| `takenInByEmployeeId` / `takenOutByEmployeeId` | refs, nullable | custody (legacy driver/driver2) |
+| `sparePartIds` | array of refs → catalog `sparePart` | what new visits write |
+| `spareParts` | array of strings | DEPRECATED free text kept for backward compatibility: still accepted, stored verbatim, shown on the row. Never converted to catalog ids — see §4.2 |
+| `odometerAtService` | int | legacy `counter`; the counter on the way IN |
+| `exitOdometer` | int, nullable, `≥ odometerAtService` | the counter on the way OUT, required at check-out. The alarm baseline of a closed visit (§4.4). `null` while the visit is open, and on visits closed before this was collected |
+| `takenInByEmployeeId` / `takenOutByEmployeeId` | refs, nullable | CUSTODY — who handed the car over (legacy driver/driver2), resolved from the authenticated user. Not the driver: see §4.2 |
 | `notes` | string, nullable | |
 
 ### 2.7 `fleet_duty_assignments` — Daily Duty Assignment (تعيين)
@@ -237,10 +239,34 @@ Every transition audited + published (§8).
 
 ### 4.2 Maintenance visit
 
-`open` (checked in, `outDate` null) → `closed` (checked out: outDate + custody). `closed` →
-`open` (reopen — legacy `deleted_dock=5` — permissioned, audited). **New rule the legacy lacked:
-at most one open visit per vehicle** (legacy allowed duplicates by accident; nothing in the
-domain wants a car in two workshops).
+`open` (checked in, `outDate` null) → `closed` (checked out: outDate + exit reading + custody).
+`closed` → `open` (reopen — legacy `deleted_dock=5` — permissioned, audited; it clears the exit
+reading and the check-out custody, because a car back in the workshop has not left). **New rule
+the legacy lacked: at most one open visit per vehicle** (legacy allowed duplicates by accident;
+nothing in the domain wants a car in two workshops).
+
+**These two states ARE the visit's status.** There is no separate maintenance-status field, and
+the derived alarm level (§4.4) is not one — that is a property of the VEHICLE, not of a visit: a
+closed visit can sit on an overdue car and an open one on a car with thousands of km to go.
+
+**Check-out requires the exit reading.** `exitOdometer` is mandatory and must be `≥` the visit's
+`odometerAtService`; the same check guards a later edit of either number. It is what the next
+service is measured from (§4.4), which is why it cannot be skipped — a check-out without it would
+leave the next service counted from the arrival reading and falling due early. **Contract note:
+this is a breaking change to `POST /fleet/maintenance/:id/check-out`; a caller that omits
+`exitOdometer` is rejected, and external callers must send it.**
+
+**Spare parts are catalog references.** New visits write `sparePartIds` against the `sparePart`
+catalog (§2.10), validated as live items on the way in. The free-text `spareParts` of older
+visits is retained and displayed, and is still accepted from callers written before the catalog
+existed — stored verbatim, never matched to a catalog item by name, because guessing which part a
+spelling meant is the silent data loss the catalog exists to end. Nothing is migrated or deleted.
+
+**Driver is not custody.** `takenInByEmployeeId` / `takenOutByEmployeeId` answer "who handed the
+car over", and are resolved from the authenticated user through the platform directory seam
+(`getSelfDirectoryEmployee`) rather than typed in; a login with no employee behind it records
+nothing rather than inventing somebody. The DRIVER shown against a visit is a different fact
+entirely — the duty roster's crew for the vehicle on `inDate` (§2.7), read at query time.
 
 ### 4.3 Odometer recording (the continuity workflow)
 
@@ -258,12 +284,17 @@ latest entry (API exposes it), Arabic-Indic digit normalization at the API bound
 ### 4.4 Maintenance alarm (derived + notified)
 
 For each vehicle with `type.maintenanceIntervalKm > 0`:
-`sinceService = latestReading − odometerAtService(latest closed alarm-counting visit)`,
+`sinceService = latestReading − baseline(latest closed alarm-counting visit)`,
 `remaining = interval − sinceService`; `remaining ≤ FleetAlarmRedKm` → red, `≤ FleetAlarmYellowKm`
 → yellow. Guards preserved from legacy: newest entry only, entry date after last service date.
 Never stored — computed on read. **Additive over legacy:** a daily scheduler sweep publishes
 `fleet.maintenanceAlarm.raised` on first crossing into yellow/red (idempotent per vehicle+level+
 service-baseline), so the alarm reaches people instead of waiting to be looked at.
+
+The **baseline** is that visit's `exitOdometer` — the reading the vehicle LEFT the workshop on —
+falling back to `odometerAtService` for visits closed before that reading was collected. Whatever
+the workshop itself drove is not distance since the service, and counting it would bring the next
+one forward. An OPEN visit is never a baseline: the car has not been serviced yet.
 
 ### 4.5 Daily roster planning
 
@@ -292,8 +323,8 @@ Driver events: single rows. All edits audited; deletes soft.
 |---|---|---|
 | FR-1 | Vehicle `code`, `plateNumber`, `chassisNumber`, `motorNumber` unique among non-deleted | legacy intent, now enforced |
 | FR-2 | Odometer readings per vehicle are monotonically non-decreasing; one reading closes the previous period and opens the next; `km` is server-derived | legacy §4.3 |
-| FR-3 | Maintenance alarm is derived, never stored; interval per vehicle **type**; thresholds global settings; only alarm-counting work types reset the baseline | legacy §4.4 |
-| FR-4 | At most one open maintenance visit per vehicle; `outDate ≥ inDate`; check-out records custody | legacy + tightened |
+| FR-3 | Maintenance alarm is derived, never stored; interval per vehicle **type**; thresholds global settings; only alarm-counting work types reset the baseline, and the baseline is the closed visit's `exitOdometer` (fallback `odometerAtService`) | legacy §4.4 |
+| FR-4 | At most one open maintenance visit per vehicle; `outDate ≥ inDate`; check-out records custody and requires `exitOdometer ≥ odometerAtService` | legacy + tightened |
 | FR-5 | A vehicle with an open visit covering date D is unassignable on D | legacy |
 | FR-6 | A driver unavailable on D (fleet record, and HR leave when integration on) is unassignable on D | legacy + Q1 |
 | FR-7 | One assignment per driver per date; one assignment row per (vehicle, date), upserted | legacy, now server-enforced |
@@ -310,7 +341,7 @@ Driver events: single rows. All edits audited; deletes soft.
 | Entity | States | Notes |
 |---|---|---|
 | Vehicle | `active`, `outOfService`, `disposed` (+ soft-deleted) | inWorkshop derived; §13-Q6 refines disposal *reasons* |
-| Maintenance visit | `open`, `closed` (+ soft-deleted) | reopen allowed |
+| Maintenance visit | `open`, `closed` (+ soft-deleted) | reopen allowed; these two are the whole status — no separate status field, and the derived alarm level is not one (§4.2) |
 | Odometer entry | `open` (no inReading), `closed` | closed by the next reading |
 | Duty assignment | present/empty per (vehicle, date) | vehicle-side flag `maintenance` derived |
 | Accident | `open`, `closed` (+ soft-deleted) | |
@@ -516,3 +547,4 @@ The ten questions from revision 0.1 are carried into §13 (renumbered) — none 
 | 2026-08-02 | 1.16 — FW-10 delivered; **the Fleet module is COMPLETE (backend + web)**. Catalogs (`/fleet/catalogs`, `fleetCatalog.manage`): the six §2.10 kinds as URL-synced tabs over the live paginated list (kind/isActive filters, sortable name), create/edit dialogs with ARCHIVE-not-delete (history references items) and `countsForAlarm` offered only on workType, mirroring the schema's refinement. Settings (`/fleet/settings`, `fleetMaintenanceRule.manage`): section 1 is the vehicle-type table because the §2.2 interval ON the type IS the maintenance rule (create/edit version-aware, 0 shown as "no rule"); section 2 edits the five `FleetSettingKeys` through the PLATFORM's own settings surface — a new thin `platform/settings` web api (definitions / me-resolution / set) whose first consumer this screen is — values always the server's resolution (user → branch → organization → default), writes behind `setting.edit` at organization scope, NOTHING hardcoded client-side. Fleet-aware invalidation: type/workType writes touch the alarm projection (interval + baseline inputs) so they invalidate the odometer subtree; setting writes also invalidate roster (the HR-leave switch changes availability verdicts). Catalogs + Settings nav rows appended — the sidebar carries all twelve applications. Final integration review passed: 13 routes + 404 exactly matching the frozen IA, every §7 permission on its route, all five profile history links lit, zero placeholder/TODO surfaces, every page routed, every component consumed, one lazy fleet chunk, breadcrumbs on every subpage. Zero backend changes. |
 | 2026-08-02 | 1.17 — Fleet Final Review (stabilization; no features). Seventeen-point pass over backend + web: dead-code sweep (removed the one unused web api function `getVehicleType`; made `fleetKeys` and `FleetSweepMarkModel` module-private — `fleetPermissions` stays exported for the permission-matrix test), i18n coverage proven complete both ways (every used key exists in en+ar including all dynamic families; no orphan keys), 25/25 icon actions carry aria-label+title, every DataTable has error+retry, every mutation flow shows its success toast over the global error toast, every editing dialog sends `version` (the roster's per-row server-side check stands per FL-5 point 4), URL-sync idiom on all ten list screens, one lazy chunk, the four vehicle-code registry maps share one cache entry (identical params), no dangerouslySetInnerHTML/storage-token/raw-URL patterns. Gates green (web+api tsc, lint, build, 57 web tests, 496 api unit tests; the 490 integration tests compile and run in CI — the sandbox still blocks the mongod download, documented since FL-2). The module is production-ready pending CI's integration run; remaining debt: none inside Fleet — FL-10 (legacy migration) is a separate future task gated on §13-Q13/Q14. |
 | 2026-08-17 | 1.18 — **Catalogs & vehicles enhancement** (owner request; no structural change to any other entity). Three catalog kinds added to §2.10 — `licenseClass`, `operation`, `insuranceCompany` — reusing the existing generic catalog collection, service, routes and screen unchanged: the three tabs, the three selects and the three filters are all the SAME code the first six kinds already used, which is why the slice adds no catalog endpoint. §2.1 changed accordingly: `licenseClass` (free text) → `licenseClassId` (catalog ref, §13-Q7 answered as data), plus `operationId`, `insuranceCompanyId`, and `licenseImage` — the scanned licence, whose bytes live in platform Files under the `fleet-vehicle-documents` category (images only, 10 MB) and whose link lives on the vehicle. `branchId` is now REQUIRED: refused as `null` by the schema, proved live-and-active by the service, and `required` on the model so `create` itself cannot insert a branchless vehicle; the form preselects a branch resolved BY NAME from live branch data through the new `fleet.vehicle.defaultBranchName` setting (default «المهندسين») — never a baked-in id, which would differ per environment. Legacy data is migrated, not broken: `fleet.migration.ts` copies each distinct legacy `licenseClass` string into a catalog item and points the vehicle at it, keeps the old column untouched as the migration's own evidence, and REPORTS (never invents) vehicles predating the branch rule. The registry list now renders the frozen fourteen-column order with the licence-image cell (upload when absent, view + delete when present) and nine server-side filters — the four identifiers ANDed individually, the three catalog references, branch and type; a per-vehicle print view carries the record and, only when one exists, the licence image inlined. Authorization is unchanged and unextended: the image rides `fleetVehicle.view`/`.edit`, and a fleet ADR-023 file authorizer makes the platform's own file endpoints ask the same question. Two events added, both stable on arrival and published post-commit: `fleet.vehicleLicenseImage.uploaded/.deleted` — 24 fleet events in total. |
+| 2026-08-22 | 1.19 — **Maintenance workshop entry/exit enhancement** (owner request, PR #282; no new entity, no new status, no new permission). The visit gains two fields (§2.6): `exitOdometer`, the counter the vehicle leaves on — **required at check-out**, `≥` the entry reading, and a **breaking change** to `POST /fleet/maintenance/:id/check-out` for external callers — and `sparePartIds`, catalog references replacing free text. The alarm baseline moves with it (§4.4/FR-3): a closed visit is measured from its exit reading, falling back to `odometerAtService` for visits closed before that reading existed, and an open visit is still never a baseline — one derived source, so the vehicle profile, the odometer register's since-service column, the alarms board and both sweeps all agree. Legacy free-text `spareParts` stays accepted and displayed, stored verbatim with no string→id conversion and no data migration. The screen gains server-side filtering across ten questions (check-in and check-out ranges, vehicle code by registry search, driver, workshop, work type, spare parts, notes, counter range, and the open/closed status), and shows the roster DRIVER for the check-in day beside the two CUSTODY employees — which the design had not previously distinguished (§4.2) — with custody resolved from the authenticated user rather than typed in. Visit lifecycle is unchanged: `open` ↔ `closed` remain the whole status, and the derived alarm level is documented as a vehicle property, not a visit status. |

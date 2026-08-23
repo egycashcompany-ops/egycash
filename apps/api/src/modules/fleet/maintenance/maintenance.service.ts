@@ -10,7 +10,7 @@ import {
 } from '@ecms/contracts';
 import { Types } from 'mongoose';
 import { ConflictError, ValidationError } from '../../../shared/errors';
-import { getSelfDirectoryEmployee } from '../../../platform/directory';
+import { getDirectoryEmployee, getSelfDirectoryEmployee } from '../../../platform/directory';
 import { auditService } from '../../../platform/audit';
 import { emit } from '../../../platform/kernel/event-bus';
 import { diffChanges } from '../../../shared/utils/diff';
@@ -109,6 +109,20 @@ class FleetMaintenanceService {
   }
 
   /**
+   * The driver must be an employee the directory actually knows.
+   *
+   * Existence, and nothing beyond it: whether that person may drive is a driver-profile question
+   * and this endpoint deliberately does not ask it — a workshop visit records who brought the car,
+   * not who was eligible to. Read through the platform directory seam, the same one the driver
+   * registry and the availability overlay use; Fleet never reaches into HR's collection.
+   */
+  private async assertDriver(employeeId: string, field: string): Promise<void> {
+    if ((await getDirectoryEmployee(employeeId)) === null) {
+      throw new ValidationError([{ field, code: 'UNKNOWN', message: 'employee not found' }]);
+    }
+  }
+
+  /**
    * Custody, from the login rather than from a field the operator fills in.
    *
    * Who handed the car over is a fact the server already knows, and asking for it again is how
@@ -146,6 +160,7 @@ class FleetMaintenanceService {
     await this.assertCatalogRef(input.workshopId, 'workshop', 'workshopId');
     await this.assertCatalogRef(input.workTypeId, 'workType', 'workTypeId');
     await this.assertSpareParts(input.sparePartIds);
+    await this.assertDriver(input.driverInEmployeeId, 'body.driverInEmployeeId');
     // FR-4 — the unique partial index is the authority; the pre-check names the conflict.
     const open = await fleetMaintenanceRepository.findOpen(input.vehicleId);
     if (open !== null) {
@@ -193,6 +208,7 @@ class FleetMaintenanceService {
         { field: 'body.outDate', code: 'INVALID', message: 'check-out cannot precede check-in' },
       ]);
     }
+    await this.assertDriver(input.driverOutEmployeeId, 'body.driverOutEmployeeId');
     // The car cannot leave on a lower reading than it arrived on — that is a typo, and it would
     // make the next service fall due early once this becomes the baseline.
     if (input.exitOdometer < before.odometerAtService) {
@@ -263,6 +279,9 @@ class FleetMaintenanceService {
       await this.assertCatalogRef(input.workTypeId, 'workType', 'workTypeId');
     }
     if (input.sparePartIds !== undefined) await this.assertSpareParts(input.sparePartIds);
+    if (input.driverInEmployeeId !== undefined) {
+      await this.assertDriver(input.driverInEmployeeId, 'body.driverInEmployeeId');
+    }
     // The same rule check-out enforces, against whichever of the two readings this edit leaves
     // in place: an edit that lowers the exit reading below the entry one is the same typo, and it
     // would corrupt the baseline just as quietly.

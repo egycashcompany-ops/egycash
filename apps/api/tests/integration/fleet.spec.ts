@@ -1784,6 +1784,66 @@ describe('workshop entry/exit — exit odometer, custody, catalog parts, filters
     expect(reread[0]?.driverOutEmployeeId).toBeNull();
   });
 
+  it('refuses a driver id that is not an employee, at every end that takes one', async () => {
+    // Existence only — the directory seam answers "is this an employee", and nothing here asks
+    // whether they hold a driver profile. A workshop visit records who brought the car in.
+    const ghost = String(new Types.ObjectId());
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const body = {
+      vehicleId: v.id,
+      inDate: '2026-10-22',
+      workshopId: await mkCatalog('workshop', 'ورشة التحقق'),
+      workTypeId: await countingWorkTypeId(),
+      odometerAtService: 90_000,
+    };
+
+    const badIn = await checkIn({ ...body, driverInEmployeeId: ghost });
+    expect(badIn.status).toBe(400);
+
+    const opened = data<FleetMaintenanceVisitDto>(await checkIn(body));
+
+    // …the same check on the correction path.
+    const badEdit = await request(app)
+      .patch(`/api/v1/fleet/maintenance/${opened.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ driverInEmployeeId: ghost, version: opened.version });
+    expect(badEdit.status).toBe(400);
+
+    // …and on the way out.
+    const badOut = await checkOut(opened.id, {
+      outDate: '2026-10-23',
+      exitOdometer: 90_100,
+      driverOutEmployeeId: ghost,
+      version: opened.version,
+    });
+    expect(badOut.status).toBe(400);
+
+    // Nothing was written by any of the three refusals.
+    const reread = data<FleetMaintenanceVisitDto[]>(await listVisits({ vehicleId: v.id }));
+    expect(reread[0]?.outDate).toBeNull();
+    expect(reread[0]?.driverInEmployeeId).toBe(await someDriver());
+  });
+
+  it('accepts a real employee as the corrected check-in driver', async () => {
+    const replacement = await mkEmployee({ fullNameAr: 'سائق بديل' });
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const opened = data<FleetMaintenanceVisitDto>(
+      await checkIn({
+        vehicleId: v.id,
+        inDate: '2026-10-24',
+        workshopId: await mkCatalog('workshop', 'ورشة التصحيح'),
+        workTypeId: await countingWorkTypeId(),
+        odometerAtService: 91_000,
+      }),
+    );
+    const edited = await request(app)
+      .patch(`/api/v1/fleet/maintenance/${opened.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ driverInEmployeeId: replacement, version: opened.version });
+    expect(edited.status).toBe(200);
+    expect(data<FleetMaintenanceVisitDto>(edited).driverInEmployeeId).toBe(replacement);
+  });
+
   it('reopening a visit takes the exit DRIVER back with the rest of the exit', async () => {
     const { visit } = await closedVisit();
     expect(visit.driverOutEmployeeId, 'a closed visit has one').not.toBeNull();

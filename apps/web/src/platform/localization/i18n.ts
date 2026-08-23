@@ -3128,8 +3128,7 @@ const en: Record<string, string> = {
   'fleet.alarms.columns.sinceService': 'Since service (km)',
   'fleet.alarms.columns.remaining': 'Remaining (km)',
   'fleet.alarms.noBaseline': 'No counted service yet',
-  'fleet.alarms.allLevels': 'All levels',
-  'fleet.alarms.searchPlaceholder': 'Vehicle code',
+  'fleet.alarms.allAlarms': 'All alarms',
   'fleet.alarms.refresh': 'Refresh',
 
   // Fleet — daily roster (FW-7)
@@ -8530,8 +8529,7 @@ const ar: Record<string, string> = {
   'fleet.alarms.columns.sinceService': 'منذ الخدمة (كم)',
   'fleet.alarms.columns.remaining': 'المتبقي (كم)',
   'fleet.alarms.noBaseline': 'لا صيانة محسوبة بعد',
-  'fleet.alarms.allLevels': 'كل المستويات',
-  'fleet.alarms.searchPlaceholder': 'كود السيارة',
+  'fleet.alarms.allAlarms': 'كل الإنذارات',
   'fleet.alarms.refresh': 'تحديث',
 
   // Fleet — daily roster (FW-7)

@@ -128,6 +128,41 @@ export interface BulkDeleteAtmMachinesResultDto {
   unknownCodes: string[];
 }
 
+/**
+ * Single machine add — the per-item entry the data-edit screen offers alongside the legacy bulk
+ * paste. Same fields the bulk form sets per row, plus the bank and area that the bulk form fixes
+ * for the whole batch. `zone` is not offered: every legacy write stored '' (contad_app.js:2443).
+ */
+export const CreateAtmMachineSchema = z
+  .object({
+    bankName: z.string().min(1),
+    area: z.string().min(1),
+    machineCode: z.string().min(1),
+    name: z.string().min(1),
+  })
+  .strict();
+export type CreateAtmMachine = z.infer<typeof CreateAtmMachineSchema>;
+
+/**
+ * Edit one machine. `machineCode` is IDENTITY and is not editable — every operation row snapshots
+ * it and the mail reader matches on it, so changing it would silently orphan history; a machine
+ * registered under the wrong code is deleted (freeing the code via the `-D` rename) and re-added.
+ *
+ * `isActive` is the archive switch: an inactive machine disappears from the open forms and the
+ * mail matcher (both read active only) while its code stays taken and its history stays readable
+ * — which is the difference between this and delete.
+ */
+export const UpdateAtmMachineSchema = z
+  .object({
+    bankName: z.string().min(1).optional(),
+    name: z.string().min(1).optional(),
+    area: z.string().min(1).optional(),
+    isActive: z.boolean().optional(),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type UpdateAtmMachine = z.infer<typeof UpdateAtmMachineSchema>;
+
 /** Legacy "نقل ماكينة لمنطقة" (contad_app.js:2529-2541): rebase one machine onto another area. */
 export const ReassignAtmMachineAreaSchema = z
   .object({ machineCode: z.string().min(1), area: z.string().min(1) })
@@ -163,6 +198,21 @@ export interface AtmRefLabelDto {
 }
 
 export const CreateAtmRefLabelSchema = z.object({ name: z.string().min(1) }).strict();
+
+/**
+ * Edit one label. Renaming is deliberate and NOT a cascade: machines store the bank and area as
+ * text (the legacy denormalized both, contad_app.js:2443), so a rename changes the list the forms
+ * offer from now on and leaves already-registered machines saying what they said. `isActive`
+ * archives instead of removing — the list stops offering it, the machines keep it.
+ */
+export const UpdateAtmRefLabelSchema = z
+  .object({
+    name: z.string().min(1).optional(),
+    isActive: z.boolean().optional(),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type UpdateAtmRefLabel = z.infer<typeof UpdateAtmRefLabelSchema>;
 export type CreateAtmRefLabel = z.infer<typeof CreateAtmRefLabelSchema>;
 
 export const ListAtmRefLabelsQuerySchema = PaginationQuerySchema.extend({

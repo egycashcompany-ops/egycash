@@ -102,7 +102,7 @@ export const ReplenishmentsDonePage = (): JSX.Element => {
 
   return (
     <PageContainer>
-      <PageHeader title={t('atm.done.repTitle')} description={t('atm.done.repSubtitle')} />
+      <PageHeader title={t('atm.done.repTitle')} />
       <DoneRangeBar from={from} to={to} onChange={setRange} />
       <DataTable
         columns={columns}

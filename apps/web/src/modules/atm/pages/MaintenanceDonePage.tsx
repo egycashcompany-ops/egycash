@@ -104,7 +104,7 @@ export const MaintenanceDonePage = (): JSX.Element => {
 
   return (
     <PageContainer>
-      <PageHeader title={t('atm.done.maintTitle')} description={t('atm.done.maintSubtitle')} />
+      <PageHeader title={t('atm.done.maintTitle')} />
       <DoneRangeBar from={from} to={to} onChange={setRange} />
       <DataTable
         columns={columns}

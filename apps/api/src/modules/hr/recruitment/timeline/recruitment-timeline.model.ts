@@ -29,7 +29,6 @@ import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../../s
 
 /** The placement in force when the event happened — history shows its own snapshot (RW4a). */
 export interface TimelinePlacement {
-  jobPositionId: Types.ObjectId | null;
   jobTitleId: Types.ObjectId | null;
   departmentId: Types.ObjectId | null;
   branchId: Types.ObjectId | null;
@@ -77,7 +76,6 @@ export interface RecruitmentTimelineDoc extends BaseDocFields {
 
 const placementSchema = new Schema<TimelinePlacement>(
   {
-    jobPositionId: { type: Schema.Types.ObjectId, default: null },
     jobTitleId: { type: Schema.Types.ObjectId, default: null },
     departmentId: { type: Schema.Types.ObjectId, default: null },
     branchId: { type: Schema.Types.ObjectId, default: null },

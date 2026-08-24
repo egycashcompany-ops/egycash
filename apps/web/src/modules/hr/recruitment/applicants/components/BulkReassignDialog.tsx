@@ -2,7 +2,7 @@
 // candidate dialog: this one carries no per-candidate context, and the server still checks the
 // editing window per candidate, so an ineligible one fails as that item alone.
 import { useState } from 'react';
-import { MAX_PAGE_SIZE, type Locale, type PlacementDto } from '@ecms/contracts';
+import { type Locale, type PlacementDto } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
 import { Button } from '../../../../../shared/ui/Button';
@@ -11,7 +11,6 @@ import { Field, Input, Select } from '../../../../../shared/ui/form';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { localized } from '../../../../../shared/lib/format';
 import { useBranchOptions } from '../../../../organization/shared/references';
-import { useJobPositions } from '../../../../organization/job-positions/job-position-queries';
 
 export const BulkReassignDialog = ({
   open,
@@ -28,12 +27,10 @@ export const BulkReassignDialog = ({
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
-  const [jobPositionId, setJobPositionId] = useState('');
   const [branchId, setBranchId] = useState('');
   const [reason, setReason] = useState('');
 
   const { data: branches } = useBranchOptions(open);
-  const { data: positions } = useJobPositions({ pageSize: MAX_PAGE_SIZE, status: 'active' });
 
   const submit = async (): Promise<void> => {
     if (reason.trim() === '') {
@@ -43,7 +40,6 @@ export const BulkReassignDialog = ({
     try {
       await onSubmit(
         {
-          jobPositionId: jobPositionId === '' ? null : jobPositionId,
           jobTitleId: null,
           departmentId: null,
           sectionId: null,
@@ -51,7 +47,6 @@ export const BulkReassignDialog = ({
         },
         reason.trim(),
       );
-      setJobPositionId('');
       setBranchId('');
       setReason('');
     } catch {
@@ -81,16 +76,6 @@ export const BulkReassignDialog = ({
       }
     >
       <div className="space-y-3">
-        <Field label={t('applicants.reassign.position')} hint={t('applicants.reassign.positionHint')}>
-          <Select value={jobPositionId} onChange={(e) => setJobPositionId(e.target.value)}>
-            <option value="">{t('common.select')}</option>
-            {(positions?.items ?? []).map((p) => (
-              <option key={p.id} value={p.id}>
-                {localized(p.name, locale)}
-              </option>
-            ))}
-          </Select>
-        </Field>
 
         <Field label={t('applicants.reassign.branch')}>
           <Select value={branchId} onChange={(e) => setBranchId(e.target.value)}>

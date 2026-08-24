@@ -21,7 +21,6 @@ import {
 import {
   buildBranchesRouter,
   buildDepartmentsRouter,
-  buildJobPositionsRouter,
   buildCostCentersRouter,
   buildJobTitlesRouter,
   buildOrganizationRouter,
@@ -154,7 +153,6 @@ export const buildApp = (): Express => {
   api.use('/platform/sections', buildSectionsRouter());
   api.use('/platform/job-titles', buildJobTitlesRouter());
   api.use('/platform/cost-centers', buildCostCentersRouter());
-  api.use('/platform/job-positions', buildJobPositionsRouter());
   api.use('/platform/application-categories', buildApplicationCategoriesRouter());
   api.use('/platform/application-sections', buildApplicationSectionsRouter());
   api.use('/platform/applications', buildApplicationsRouter());

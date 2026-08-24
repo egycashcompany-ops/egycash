@@ -139,7 +139,6 @@ const backfillAttemptMarkers = async (): Promise<void> => {
  */
 const backfillPlacement = async (): Promise<void> => {
   const empty = {
-    jobPositionId: null,
     jobTitleId: null,
     departmentId: null,
     branchId: null,
@@ -197,7 +196,6 @@ const backfillPlacement = async (): Promise<void> => {
           branchId: Types.ObjectId | null;
           departmentId: Types.ObjectId | null;
           jobTitleId: Types.ObjectId | null;
-          jobPositionId?: Types.ObjectId | null;
           sectionId?: Types.ObjectId | null;
         } | null;
       }[]
@@ -210,7 +208,6 @@ const backfillPlacement = async (): Promise<void> => {
       {
         $set: {
           placementSnapshot: {
-            jobPositionId: offer.terms.jobPositionId ?? null,
             jobTitleId: offer.terms.jobTitleId ?? null,
             departmentId: offer.terms.departmentId ?? null,
             branchId: offer.terms.branchId ?? null,
@@ -293,12 +290,13 @@ const reorderPhasesToBusinessOrder = async (): Promise<void> => {
   await EvaluationPhaseModel.updateOne({ _id: medical._id }, { $set: { order: 3 } }).exec();
 };
 
-/** §15.4 — offer terms gained the seat + section the hire fills (RW3). */
+/**
+ * §15.4 — offer terms gained the section the hire fills (RW3).
+ *
+ * The seat half of this backfill is gone with P-ORG-1: there is one job concept now, and a field
+ * nobody has is not a field to fill in.
+ */
 const backfillOfferTerms = async (): Promise<void> => {
-  await JobOfferModel.updateMany(
-    { terms: { $ne: null }, 'terms.jobPositionId': { $exists: false } },
-    { $set: { 'terms.jobPositionId': null } },
-  ).exec();
   await JobOfferModel.updateMany(
     { terms: { $ne: null }, 'terms.sectionId': { $exists: false } },
     { $set: { 'terms.sectionId': null } },

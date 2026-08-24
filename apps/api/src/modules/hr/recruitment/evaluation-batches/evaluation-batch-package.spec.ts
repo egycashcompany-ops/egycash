@@ -11,7 +11,6 @@ const item = (over: Partial<BatchItem>): BatchItem => ({
   applicantName: 'أحمد محمد',
   evaluationId: new Types.ObjectId(),
   placementSnapshot: {
-    jobPositionId: null,
     jobTitleId: null,
     departmentId: null,
     branchId: null,

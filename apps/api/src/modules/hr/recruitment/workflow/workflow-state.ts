@@ -76,7 +76,6 @@ const OPEN: Record<StageObject, readonly string[]> = {
 };
 
 const placementDto = (p: StageDocFields['placementSnapshot']): PlacementDto => ({
-  jobPositionId: p.jobPositionId === null ? null : String(p.jobPositionId),
   jobTitleId: p.jobTitleId === null ? null : String(p.jobTitleId),
   departmentId: p.departmentId === null ? null : String(p.departmentId),
   branchId: p.branchId === null ? null : String(p.branchId),

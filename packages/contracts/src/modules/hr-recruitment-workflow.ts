@@ -17,12 +17,11 @@ import { objectId, type LocalizedString } from '../common/index.js';
  * WHERE a candidate is being considered. Every field is nullable: intake may carry no placement
  * at all (a direct application with no requisition — ADR-016), and the placement is completed as
  * the candidate progresses. Moving to the Job Offer stage requires `branchId` plus at least one
- * of `jobPositionId` / `jobTitleId` (RW1).
+ * of `jobTitleId` (RW1).
  */
 export const PlacementSchema = z
   .object({
     /** The seat (platform `job_positions`) — carries its own department. */
-    jobPositionId: objectId().nullable().default(null),
     /** The role name (platform `job_titles`). */
     jobTitleId: objectId().nullable().default(null),
     departmentId: objectId().nullable().default(null),
@@ -33,7 +32,6 @@ export const PlacementSchema = z
 export type Placement = z.infer<typeof PlacementSchema>;
 
 export interface PlacementDto {
-  jobPositionId: string | null;
   jobTitleId: string | null;
   departmentId: string | null;
   branchId: string | null;
@@ -75,7 +73,7 @@ export interface PlacementChangeDto {
   fromLabel: PlacementLabelDto;
   toLabel: PlacementLabelDto;
   /** Which dimensions actually moved — drives the per-dimension timeline entries (I2/A2). */
-  changed: ('position' | 'branch' | 'department' | 'section' | 'title')[];
+  changed: ('branch' | 'department' | 'section' | 'title')[];
   reason: string;
   note: string | null;
   source: PlacementChangeSource;
@@ -448,7 +446,6 @@ export type HrRecruitmentWorkflowEventName =
   (typeof HrRecruitmentWorkflowEvents)[keyof typeof HrRecruitmentWorkflowEvents];
 
 const placementPayload = z.object({
-  jobPositionId: objectId().nullable(),
   jobTitleId: objectId().nullable(),
   departmentId: objectId().nullable(),
   branchId: objectId().nullable(),

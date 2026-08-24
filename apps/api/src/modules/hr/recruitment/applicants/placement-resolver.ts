@@ -11,7 +11,6 @@ import { ValidationError } from '../../../../shared/errors';
 import {
   branchService,
   departmentService,
-  jobPositionService,
   jobTitleService,
 } from '../../../../platform/organization';
 import {
@@ -37,7 +36,6 @@ export const changedDimensions = (
   to: StagePlacement,
 ): PlacementDimension[] => {
   const out: PlacementDimension[] = [];
-  if (!same(from.jobPositionId, to.jobPositionId)) out.push('position');
   if (!same(from.jobTitleId, to.jobTitleId)) out.push('title');
   if (!same(from.departmentId, to.departmentId)) out.push('department');
   if (!same(from.branchId, to.branchId)) out.push('branch');
@@ -73,7 +71,6 @@ export const resolvePlacement = async (
   }
 
   const placement: StagePlacement = {
-    jobPositionId: id(input.jobPositionId),
     jobTitleId: id(input.jobTitleId),
     departmentId: id(input.departmentId),
     branchId: id(input.branchId),
@@ -81,22 +78,12 @@ export const resolvePlacement = async (
   };
   const label = emptyPlacementLabel();
 
-  if (placement.jobPositionId !== null) {
-    const position = await jobPositionService.getById(String(placement.jobPositionId)).catch(() => null);
-    if (position === null) invalid('placement.jobPositionId', 'unknown job position');
-    else {
-      label.position = position.name.ar;
-      // The seat is the authority on where it sits.
-      placement.departmentId = position.departmentId;
-      placement.sectionId = position.sectionId;
-    }
-  }
-
   if (placement.jobTitleId !== null) {
     const title = await jobTitleService.getById(String(placement.jobTitleId)).catch(() => null);
     if (title === null) invalid('placement.jobTitleId', 'unknown job title');
-    // A seat's own name wins the position label; a bare title fills it instead.
-    else if (label.position === null) label.position = title.name.ar;
+    // P-ORG-1 — one job concept, so the title IS the label. There is no seat to outrank it,
+    // and the department and section the placement carries are now its own rather than copied.
+    else label.position = title.name.ar;
   }
 
   if (placement.departmentId !== null) {

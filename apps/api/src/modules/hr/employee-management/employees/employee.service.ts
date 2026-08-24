@@ -197,7 +197,6 @@ class EmployeeService {
       // The offer snapshot does not carry a section/position; kept null (future-proof, ADR-016/017).
       sectionId: null,
       branchId: t.branchId,
-      jobPositionId: null,
       managerId: t.managerId,
       employmentType: t.employmentType,
       salary: starting.salary,
@@ -404,7 +403,6 @@ class EmployeeService {
       departmentId: new Types.ObjectId(e.departmentId),
       sectionId: e.sectionId == null ? null : new Types.ObjectId(e.sectionId),
       branchId: new Types.ObjectId(e.branchId),
-      jobPositionId: null,
       managerId: e.managerId == null ? null : new Types.ObjectId(e.managerId),
       employmentType: e.employmentType,
       salary: registered.salary,

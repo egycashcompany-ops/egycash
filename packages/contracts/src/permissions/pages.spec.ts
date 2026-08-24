@@ -138,9 +138,9 @@ describe('the platform registry as it actually stands', () => {
     expect(validatePageRegistry(platformPages, platformPermissions)).toEqual([]);
   });
 
-  it('declares 16 pages for 68 permissions', () => {
-    expect(platformPages).toHaveLength(16);
-    expect(platformPermissions).toHaveLength(68);
+  it('declares 15 pages for 64 permissions', () => {
+    expect(platformPages).toHaveLength(15);
+    expect(platformPermissions).toHaveLength(64);
   });
 
   // The unassigned set is an explicit answer, not a gap, so it is pinned by name. Adding a

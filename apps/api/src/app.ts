@@ -49,6 +49,18 @@ import {
 } from './platform/notifications';
 import { getRegisteredModules } from './platform/kernel/module-registry';
 
+/**
+ * Whether a file in the web bundle is one of Vite's content-hashed build outputs.
+ *
+ * That is the whole test for "may this be frozen in a cache forever?". A hashed name is a promise
+ * the file can keep — change the bytes and you change the name — and everything the bundle ships
+ * outside `assets/` keeps its name across deploys instead, so it must be revalidated.
+ *
+ * Exported so the rule can be asserted directly; `setHeaders` gives a test nothing to hold.
+ */
+export const isHashedAsset = (filePath: string): boolean =>
+  filePath.includes(`${path.sep}assets${path.sep}`);
+
 export const buildApp = (): Express => {
   const app = express();
   app.disable('x-powered-by');
@@ -194,7 +206,15 @@ export const buildApp = (): Express => {
         maxAge: '1y',
         immutable: true,
         setHeaders: (res, filePath) => {
-          if (filePath.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
+          // Only the build's own output is safe to freeze for a year: Vite content-hashes those
+          // filenames, so the bytes behind a name never change and a new build asks for new names.
+          //
+          // Everything else the bundle ships keeps a STABLE name across deploys — the HTML shell,
+          // `sw.js`, `manifest.webmanifest`, the app icons — and `immutable` on a stable name is a
+          // promise the file cannot keep. The service worker is the sharp edge: a year-long
+          // immutable copy of it would keep serving the install and caching rules of whatever
+          // deploy a browser happened to meet first, with no way to correct it from the server.
+          if (!isHashedAsset(filePath)) res.setHeader('Cache-Control', 'no-cache');
         },
       }),
     );

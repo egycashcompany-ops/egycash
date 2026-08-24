@@ -12,7 +12,14 @@ import { localized } from '../../shared/lib/format';
 import { BuildingIcon, CornerDownIcon, FileIcon, SearchIcon } from '../../shared/ui/icons';
 import { useMyApplications } from './me-applications-queries';
 import { resolveNavIcon } from './app-icon';
-import { flattenApps, moduleColor, toModules, type NavApp } from './nav-model';
+import {
+  flattenApps,
+  moduleApps,
+  moduleColor,
+  visibleModules,
+  type NavApp,
+  type NavModule,
+} from './nav-model';
 import { useNavPrefs } from './NavPrefs';
 
 interface Item {
@@ -40,7 +47,9 @@ export const CommandPalette = ({ open, onClose }: { open: boolean; onClose: () =
   const activeItemRef = useRef<HTMLButtonElement>(null);
 
   const apps = useMemo(() => flattenApps(data), [data]);
-  const modules = useMemo(() => toModules(data), [data]);
+  // The same list the shells show — including a module whose pages are ALL in sections, which the
+  // palette used to omit from its module rows (and, before that, jump into by its empty `apps`).
+  const modules = useMemo(() => visibleModules(data), [data]);
 
   const go = (app: NavApp): void => {
     recordRecent(app.id);
@@ -59,23 +68,27 @@ export const CommandPalette = ({ open, onClose }: { open: boolean; onClose: () =
       run: () => go(a),
     });
 
+    // One builder for both lists below. They were two identical literals, and the module row is
+    // exactly where the two drifted: a fix applied to one read as applied to both.
+    const moduleItem = (m: NavModule): Item => ({
+      key: `mod:${m.id}`,
+      group: 'modules',
+      title: localized(m.name, locale),
+      subtitle: t('nav.command.module'),
+      tileColor: moduleColor(m.id),
+      icon: m.icon,
+      // Where picking a module lands: its first page in reading order — which, for a module that
+      // has filed every page into a section, is a page `m.apps` does not hold. `visibleModules`
+      // has already guaranteed there is one.
+      run: () => go({ ...moduleApps(m)[0]!, moduleId: m.id, moduleName: m.name }),
+    });
+
     if (term === '') {
       const recents = recent
         .map((id) => apps.find((a) => a.id === id))
         .filter((a): a is NavApp => a !== undefined)
         .map((a) => appItem(a, 'recent'));
-      const mods = modules
-        .filter((m) => m.apps.length > 0)
-        .map<Item>((m) => ({
-          key: `mod:${m.id}`,
-          group: 'modules',
-          title: localized(m.name, locale),
-          subtitle: t('nav.command.module'),
-          tileColor: moduleColor(m.id),
-          icon: m.icon,
-          run: () => go({ ...m.apps[0]!, moduleId: m.id, moduleName: m.name }),
-        }));
-      return [...recents, ...mods];
+      return [...recents, ...modules.map(moduleItem)];
     }
 
     const matchedApps = apps
@@ -86,16 +99,8 @@ export const CommandPalette = ({ open, onClose }: { open: boolean; onClose: () =
       )
       .map((a) => appItem(a, 'apps'));
     const matchedMods = modules
-      .filter((m) => m.apps.length > 0 && localized(m.name, locale).toLowerCase().includes(term))
-      .map<Item>((m) => ({
-        key: `mod:${m.id}`,
-        group: 'modules',
-        title: localized(m.name, locale),
-        subtitle: t('nav.command.module'),
-        tileColor: moduleColor(m.id),
-        icon: m.icon,
-        run: () => go({ ...m.apps[0]!, moduleId: m.id, moduleName: m.name }),
-      }));
+      .filter((m) => localized(m.name, locale).toLowerCase().includes(term))
+      .map(moduleItem);
     return [...matchedApps, ...matchedMods];
   }, [query, apps, modules, recent, locale, t]);
 

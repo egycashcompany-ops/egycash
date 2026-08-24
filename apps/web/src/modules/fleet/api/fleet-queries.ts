@@ -20,6 +20,8 @@ import {
   type CreateFleetVehicle,
   type FleetRosterDayDto,
   type PlanFleetRoster,
+  type FleetFixedRosterDto,
+  type SaveFleetFixedRoster,
   type RecordFleetDriverViolation,
   type RecordFleetOdometer,
   type RecordFleetVehicleViolation,
@@ -411,6 +413,32 @@ export const usePlanRoster = () => {
       } satisfies FleetRosterDayDto);
     },
     onError: () => void qc.invalidateQueries({ queryKey: fleetKeys.roster }),
+  });
+};
+
+// ── Fixed crew (الطقم الثابت) ───────────────────────────────────────────────
+//
+// Its own key, never the roster's: the two boards answer different questions and a save on one
+// must not repaint the other. No date in the key, because the answer does not have one.
+const fixedRosterKey = [MODULE, 'fixed-roster'] as const;
+
+export const useFixedRoster = () =>
+  useQuery({ queryKey: fixedRosterKey, queryFn: api.getFixedRoster });
+
+// The save answers with the refreshed board in the same round-trip, so the cache is replaced
+// directly — no refetch between save and repaint. A failed save invalidates instead: the usual
+// cause of a 409 is a board gone stale under the user.
+export const useSaveFixedRoster = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: SaveFleetFixedRoster) => api.saveFixedRoster(body),
+    onSuccess: (board) => {
+      qc.setQueryData(fixedRosterKey, {
+        rows: board.rows,
+        drivers: board.drivers,
+      } satisfies FleetFixedRosterDto);
+    },
+    onError: () => void qc.invalidateQueries({ queryKey: fixedRosterKey }),
   });
 };
 

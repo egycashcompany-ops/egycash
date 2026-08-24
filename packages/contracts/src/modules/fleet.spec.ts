@@ -12,6 +12,7 @@ import {
   PlanFleetRosterSchema,
   RecordFleetOdometerSchema,
   RecordFleetVehicleViolationSchema,
+  SaveFleetFixedRosterSchema,
 } from './fleet.js';
 import { EVENT_LIFECYCLE, eventCatalogEntry } from '../events/catalog.js';
 
@@ -167,5 +168,62 @@ describe('the multi-value filters kept their caps', () => {
 
   it('employeeIds is a DRIVERS filter — the vehicle registry does not accept it', () => {
     expect(() => ListFleetVehiclesQuerySchema.parse({ employeeIds: ids(1) })).toThrow();
+  });
+});
+
+// ── Fixed crew: an ObjectId is a NUMBER written in hex, not a piece of text ──
+//
+// `objectId()` accepts `[0-9a-fA-F]`, and `new Types.ObjectId('AB…')` is the very same id as
+// `new Types.ObjectId('ab…')`. Everything downstream keys maps by `String(doc.field)`, which is
+// always lowercase — so a payload carrying the uppercase spelling looks like a DIFFERENT vehicle
+// to every string comparison while being the same row to mongo. The schema settles the spelling
+// once, at the boundary, so no comparison further in can be fooled by it.
+
+describe('SaveFleetFixedRosterSchema — id spelling', () => {
+  const LOWER = '64b1f0abcdefabcdefabcdef';
+  const UPPER = LOWER.toUpperCase();
+  const OTHER = '64b1f0abcdefabcdefabcd01';
+
+  it('accepts either spelling and answers with the canonical one', () => {
+    const parsed = SaveFleetFixedRosterSchema.parse({
+      rows: [{ vehicleId: UPPER, driver1EmployeeId: UPPER, driver2EmployeeId: OTHER }],
+    });
+    expect(parsed.rows[0]?.vehicleId).toBe(LOWER);
+    expect(parsed.rows[0]?.driver1EmployeeId).toBe(LOWER);
+  });
+
+  it('sees ONE vehicle when a payload spells it two ways', () => {
+    // Without normalization this passes the duplicate check, and the service then takes the
+    // CREATE branch for a vehicle that already has a crew row — a second, invisible row.
+    const twice = SaveFleetFixedRosterSchema.safeParse({
+      rows: [{ vehicleId: LOWER }, { vehicleId: UPPER }],
+    });
+    expect(twice.success, 'a vehicle spelled twice is still a vehicle twice').toBe(false);
+  });
+
+  it('sees ONE driver when a payload spells them two ways', () => {
+    const twice = SaveFleetFixedRosterSchema.safeParse({
+      rows: [
+        { vehicleId: LOWER, driver1EmployeeId: LOWER },
+        { vehicleId: OTHER, driver1EmployeeId: UPPER },
+      ],
+    });
+    expect(twice.success, 'one driver belongs to one crew, however it is spelled').toBe(false);
+  });
+
+  it('sees ONE person when the two slots of a row spell them differently', () => {
+    const bothSlots = SaveFleetFixedRosterSchema.safeParse({
+      rows: [{ vehicleId: OTHER, driver1EmployeeId: LOWER, driver2EmployeeId: UPPER }],
+    });
+    expect(bothSlots.success).toBe(false);
+  });
+
+  it('still refuses something that is not an id at all', () => {
+    expect(
+      SaveFleetFixedRosterSchema.safeParse({ rows: [{ vehicleId: 'not-an-id' }] }).success,
+    ).toBe(false);
+    expect(
+      SaveFleetFixedRosterSchema.safeParse({ rows: [{ vehicleId: `${LOWER}zz` }] }).success,
+    ).toBe(false);
   });
 });

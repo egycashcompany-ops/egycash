@@ -2810,6 +2810,7 @@ const en: Record<string, string> = {
   'fleet.nav.maintenance': 'Maintenance',
   'fleet.nav.maintenanceAlarms': 'Maintenance Alarms',
   'fleet.nav.roster': 'Daily Roster',
+  'fleet.nav.fixedRoster': 'Fixed Crew',
   'fleet.nav.accidents': 'Accidents',
   'fleet.nav.violations': 'Violations',
   'fleet.nav.catalogs': 'Fleet Catalogs',
@@ -3129,6 +3130,20 @@ const en: Record<string, string> = {
   'fleet.alarms.noBaseline': 'No counted service yet',
   'fleet.alarms.allAlarms': 'All alarms',
   'fleet.alarms.refresh': 'Refresh',
+
+  // Fleet — fixed crew (FW-7 sibling): the standing crew of a car, with no date and no
+  // availability verdict — those belong to the DAILY roster above.
+  'fleet.fixedRoster.subtitle':
+    'The standing crew of each vehicle — no date, and it stays until you change it',
+  'fleet.fixedRoster.driversTitle': 'Drivers',
+  'fleet.fixedRoster.driversHint': 'Drag a driver onto a slot',
+  'fleet.fixedRoster.dropHere': 'Drag a driver here',
+  'fleet.fixedRoster.removeDriver': 'Remove from this slot',
+  'fleet.fixedRoster.unassigned': 'No crew',
+  'fleet.fixedRoster.unsaved': 'You have unsaved changes',
+  'fleet.fixedRoster.saved': 'Fixed crews saved',
+  'fleet.fixedRoster.noVehicles': 'No vehicles',
+  'fleet.fixedRoster.summary': '{{total}} vehicles · {{crewed}} crewed',
 
   // Fleet — daily roster (FW-7)
   'fleet.roster.subtitle':
@@ -8426,6 +8441,7 @@ const ar: Record<string, string> = {
   'fleet.nav.maintenance': 'صيانة السيارات',
   'fleet.nav.maintenanceAlarms': 'إنذارات الصيانة',
   'fleet.nav.roster': 'تعيين السيارات',
+  'fleet.nav.fixedRoster': 'الطقم الثابت',
   'fleet.nav.accidents': 'حوادث السيارات',
   'fleet.nav.violations': 'مخالفات السيارات',
   'fleet.nav.catalogs': 'قوائم الحركة',
@@ -8734,6 +8750,18 @@ const ar: Record<string, string> = {
   'fleet.alarms.noBaseline': 'لا صيانة محسوبة بعد',
   'fleet.alarms.allAlarms': 'كل الإنذارات',
   'fleet.alarms.refresh': 'تحديث',
+
+  // Fleet — fixed crew (FW-7 sibling)
+  'fleet.fixedRoster.subtitle': 'الطقم الثابت لكل سيارة — بلا تاريخ، ويظل كما هو حتى تغيّره',
+  'fleet.fixedRoster.driversTitle': 'السائقون',
+  'fleet.fixedRoster.driversHint': 'اسحب السائق إلى الخانة',
+  'fleet.fixedRoster.dropHere': 'اسحب السائق هنا',
+  'fleet.fixedRoster.removeDriver': 'إزالة من هذه الخانة',
+  'fleet.fixedRoster.unassigned': 'بلا طقم',
+  'fleet.fixedRoster.unsaved': 'لديك تغييرات غير محفوظة',
+  'fleet.fixedRoster.saved': 'تم حفظ الطقم الثابت',
+  'fleet.fixedRoster.noVehicles': 'لا توجد سيارات',
+  'fleet.fixedRoster.summary': '{{total}} سيارة · {{crewed}} بطقم',
 
   // Fleet — daily roster (FW-7)
   'fleet.roster.subtitle': 'تخطيط تعيينات يوم واحد — قواعد الإتاحة والورشة والحصرية يفرضها الخادم.',

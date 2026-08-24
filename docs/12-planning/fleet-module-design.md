@@ -171,6 +171,33 @@ This row is the **OPS boundary**: OPS (future) attaches work orders to `assignme
 what the mission actually did; Fleet owns who/which/what-kind per day. No soft-delete — clearing
 a day's assignment empties the row's drivers/mission, preserving the planning audit trail.
 
+### 2.7b `fleet_fixed_crews` — Fixed Crew (الطقم الثابت)
+
+| Field | Type | Notes |
+|---|---|---|
+| `vehicleId` | **unique** | the vehicle alone is identity — there is no date |
+| `driver1EmployeeId` / `driver2EmployeeId` | refs, nullable | the same two slots §2.7 uses |
+
+A **different question** from §2.7, which is why it is a different row. The duty assignment says
+who was planned on a vehicle **on a day**: its identity is the pair (vehicle, date), the driver's
+eligibility is `driverAvailabilityOn(D)`, and an open workshop visit covering D makes the vehicle
+unassignable — all facts about a day. This says who the vehicle's **standing** crew is, and stays
+true until somebody changes it. Storing it in §2.7 would need a sentinel date that both
+`findForDate` (the roster board) and `findForVehicleOnDate` (the workshop check-in) would then
+read as a real day.
+
+No soft-delete, for §2.7's reason: clearing a crew empties the row in place.
+
+**Exclusivity is shared, because it was never about days** — the same person may not hold both
+slots of one vehicle, and one driver belongs to one crew. Enforced exactly as FR-7 is: in the
+schema within a payload, and in the service against the END STATE of the whole board, so a save
+that claims a driver another row still holds is refused with the row to release named.
+
+**Availability is not.** The seam's two dateless checks survive — the employee must have a fleet
+driver profile and it must be active — because that is what "is a driver" means and it is what
+fills the pool. Its three date-dependent verdicts (fleet unavailability, HR leave, employment on
+the day) have no question to answer here, so this board has no unavailable half at all.
+
 ### 2.8 `fleet_accidents` — Accident
 
 | Field | Type | Notes |
@@ -316,6 +343,21 @@ profiles minus unavailable-on-D minus already-assigned-on-D. Save = upsert per (
 UI filtering — legacy enforced it only by hiding cards). Publishing: one `fleet.roster.planned`
 per save + `fleet.assignment.changed` per changed row.
 
+### 4.5b Fixed crew planning (الطقم الثابت)
+
+`/fleet/fixed-roster`, behind the SAME §7 grants as the daily board — `fleetRoster.view` to read,
+`fleetRoster.plan` to save. No new permission: §7 gives one view grant and one planning grant for
+the whole assignment surface, and a standing crew is that surface.
+
+Board = vehicles in the user's data scope, each a card with two labelled **drop zones**; pool =
+every active driver profile, **undivided**, each carrying the vehicle it is fixed to. Assignment
+is a real drag: a driver card is dropped on a slot, and the drop always releases the driver from
+wherever they were — including the other slot of the same car — so the UI can never propose a
+board the API would refuse. Saving is **explicit**: a drag edits a draft, the screen says so, and
+only «حفظ» writes. Save = upsert per vehicle of the CHANGED rows only, so a move sends both sides
+and the server checks exclusivity against the end state. No date, no mission, no notes, and no
+availability verdict — see §2.7b for why each is absent.
+
 ### 4.6 Accident
 
 `open` → `closed` (and back — legacy toggles freely; kept, both audited). Create requires the §7
@@ -371,6 +413,7 @@ Driver events: single rows. All edits audited; deletes soft.
 | `/fleet/maintenance` | `fleetMaintenance.view` | `fleetMaintenance.checkIn`, `.checkOut` (incl. reopen), `.edit`, `.delete` |
 | `/fleet/maintenance-rules` | `fleetMaintenance.view` | `fleetMaintenanceRule.manage` (intervals + thresholds) |
 | `/fleet/roster` | `fleetRoster.view` | `fleetRoster.plan` |
+| `/fleet/fixed-roster` | `fleetRoster.view` | `fleetRoster.plan` |
 | `/fleet/accidents` | `fleetAccident.view` | `fleetAccident.create`, `.edit`, `.close` (both directions), `.delete` |
 | `/fleet/violations` | `fleetViolation.view` | `fleetViolation.record`, `.edit`, `.grievance`, `.delete` |
 | `/fleet/settings` | `fleetCatalog.manage` | catalog CRUD (archive, rename) |
@@ -559,3 +602,4 @@ The ten questions from revision 0.1 are carried into §13 (renumbered) — none 
 | 2026-08-17 | 1.18 — **Catalogs & vehicles enhancement** (owner request; no structural change to any other entity). Three catalog kinds added to §2.10 — `licenseClass`, `operation`, `insuranceCompany` — reusing the existing generic catalog collection, service, routes and screen unchanged: the three tabs, the three selects and the three filters are all the SAME code the first six kinds already used, which is why the slice adds no catalog endpoint. §2.1 changed accordingly: `licenseClass` (free text) → `licenseClassId` (catalog ref, §13-Q7 answered as data), plus `operationId`, `insuranceCompanyId`, and `licenseImage` — the scanned licence, whose bytes live in platform Files under the `fleet-vehicle-documents` category (images only, 10 MB) and whose link lives on the vehicle. `branchId` is now REQUIRED: refused as `null` by the schema, proved live-and-active by the service, and `required` on the model so `create` itself cannot insert a branchless vehicle; the form preselects a branch resolved BY NAME from live branch data through the new `fleet.vehicle.defaultBranchName` setting (default «المهندسين») — never a baked-in id, which would differ per environment. Legacy data is migrated, not broken: `fleet.migration.ts` copies each distinct legacy `licenseClass` string into a catalog item and points the vehicle at it, keeps the old column untouched as the migration's own evidence, and REPORTS (never invents) vehicles predating the branch rule. The registry list now renders the frozen fourteen-column order with the licence-image cell (upload when absent, view + delete when present) and nine server-side filters — the four identifiers ANDed individually, the three catalog references, branch and type; a per-vehicle print view carries the record and, only when one exists, the licence image inlined. Authorization is unchanged and unextended: the image rides `fleetVehicle.view`/`.edit`, and a fleet ADR-023 file authorizer makes the platform's own file endpoints ask the same question. Two events added, both stable on arrival and published post-commit: `fleet.vehicleLicenseImage.uploaded/.deleted` — 24 fleet events in total. |
 | 2026-08-22 | 1.19 — **Maintenance workshop entry/exit enhancement** (owner request, PR #282; no new entity, no new status, no new permission). The visit gains two fields (§2.6): `exitOdometer`, the counter the vehicle leaves on — **required at check-out**, `≥` the entry reading, and a **breaking change** to `POST /fleet/maintenance/:id/check-out` for external callers — and `sparePartIds`, catalog references replacing free text. The alarm baseline moves with it (§4.4/FR-3): a closed visit is measured from its exit reading, falling back to `odometerAtService` for visits closed before that reading existed, and an open visit is still never a baseline — one derived source, so the vehicle profile, the odometer register's since-service column, the alarms board and both sweeps all agree. Legacy free-text `spareParts` stays accepted and displayed, stored verbatim with no string→id conversion and no data migration. The screen gains server-side filtering across ten questions (check-in and check-out ranges, vehicle code by registry search, driver, workshop, work type, spare parts, notes, counter range, and the open/closed status), and shows the roster DRIVER for the check-in day beside the two CUSTODY employees — which the design had not previously distinguished (§4.2) — with custody resolved from the authenticated user rather than typed in. Visit lifecycle is unchanged: `open` ↔ `closed` remain the whole status, and the derived alarm level is documented as a vehicle property, not a visit status. |
 | 2026-08-23 | 1.20 — **Workshop drivers recorded on the visit** (owner request; no new entity, no new permission). §2.6 gains `driverInEmployeeId` and `driverOutEmployeeId`: the driver is now chosen explicitly and **required** at check-in and again at check-out, and STORED — the duty roster is a plan that can be re-planned, which is a different claim from who actually brought the car in or drove it away, so the maintenance list stopped joining the roster for it. Both are breaking additions to `POST /fleet/maintenance` and `POST /fleet/maintenance/:id/check-out`. Reopen clears the exit driver with the rest of the exit; the driver filter matches EITHER end; visits predating the fields read `null` and are never back-filled by guessing. The custody pair stays exactly what it was — who PERFORMED the check-in and check-out, resolved from the login — and is documented as distinct from the drivers (§4.2), which is the confusion this slice removes. The maintenance grid is the eleven columns of §12 and nothing else: «اسم السائق» carries the two drivers stacked, entry above exit, and neither custody nor the exit reading appears in it. The exit reading keeps its role unchanged as the closed-visit alarm baseline (§4.4). Filters: one input per date and no counter filter. |
+| 2026-08-24 | 1.21 — **Fixed crew (الطقم الثابت)** (owner request; new screen + new collection, **no new permission and no change to the daily roster**). §2.7b adds `fleet_fixed_crews`, one row per vehicle under a unique index, holding the same two driver slots §2.7 uses and nothing else — no date, no mission, no notes. It is a separate row rather than a dateless §2.7 row because that collection's identity IS the pair (vehicle, date): a sentinel date would be read as a real day by both `findForDate` (the roster board) and `findForVehicleOnDate` (the workshop check-in). §4.5b adds `/fleet/fixed-roster` behind the existing `fleetRoster.view`/`.plan` grants, following the `/fleet/maintenance-alarms` precedent of a routed sibling screen with no PageDef of its own. The board is vehicle cards with two labelled drop zones and one undivided pool of every active driver profile; assignment is native HTML5 drag-and-drop (no library added), and a drop always releases the driver from wherever they were, so the same person can never hold both slots of a car nor two crews. Saving is explicit — a drag edits a draft, the screen shows «لديك تغييرات غير محفوظة», and only «حفظ» writes the CHANGED rows, so a move sends both sides and the service checks exclusivity against the end state exactly as FR-7 does, refusing with the row to release named. Availability is deliberately NOT consulted: the seam's two dateless checks (a fleet driver profile, active) are kept because they are what fills the pool, and its three date-dependent verdicts have no question to answer on a board with no date — which is why this screen has no unavailable section. FR-5 likewise does not apply (its rule is an open visit *covering this date*); the workshop badge is shown as context only. The daily roster keeps its date picker, its availability split and every rule it had. |

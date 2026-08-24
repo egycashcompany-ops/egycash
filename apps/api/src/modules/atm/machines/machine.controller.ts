@@ -3,10 +3,12 @@ import { type Request, type Response } from 'express';
 import {
   type BulkCreateAtmMachines,
   type BulkDeleteAtmMachines,
+  type CreateAtmMachine,
+  type UpdateAtmMachine,
   type ListAtmMachinesQuery,
   type ReassignAtmMachineArea,
 } from '@ecms/contracts';
-import { ok, okPage, validated } from '../../../platform/web';
+import { created, ok, okPage, validated } from '../../../platform/web';
 import { authContext } from '../../../platform/auth';
 import { toAtmMachineDto } from '../atm.mappers';
 import { atmMachineService } from './machine.service';
@@ -33,4 +35,14 @@ export const bulkDeleteMachines = async (req: Request, res: Response): Promise<v
 export const reassignMachineArea = async (req: Request, res: Response): Promise<void> => {
   const { body } = validated<ReassignAtmMachineArea>(req);
   ok(res, toAtmMachineDto(await atmMachineService.reassignArea(body, authContext(req))));
+};
+
+export const createMachine = async (req: Request, res: Response): Promise<void> => {
+  const { body } = validated<CreateAtmMachine>(req);
+  created(res, toAtmMachineDto(await atmMachineService.create(body, authContext(req))));
+};
+
+export const updateMachine = async (req: Request, res: Response): Promise<void> => {
+  const { body, params } = validated<UpdateAtmMachine, never, { id: string }>(req);
+  ok(res, toAtmMachineDto(await atmMachineService.update(params.id, body, authContext(req))));
 };

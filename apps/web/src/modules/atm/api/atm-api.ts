@@ -18,11 +18,14 @@ import {
   type BulkDeleteAtmMachinesResultDto,
   type BulkUpdateAtmMaintenances,
   type BulkUpdateAtmReplenishments,
+  type CreateAtmMachine,
   type CreateAtmRefLabel,
   type OpenAtmMaintenancesResultDto,
   type OpenAtmReplenishmentsResultDto,
   type Paginated,
   type ReassignAtmMachineArea,
+  type UpdateAtmMachine,
+  type UpdateAtmRefLabel,
 } from '@ecms/contracts';
 import {
   buildQuery,
@@ -49,6 +52,10 @@ export const bulkDeleteMachines = (
   post<BulkDeleteAtmMachinesResultDto>('/atm/machines/bulk-delete', body);
 export const reassignMachineArea = (body: ReassignAtmMachineArea): Promise<AtmMachineDto> =>
   post<AtmMachineDto>('/atm/machines/reassign-area', body);
+export const createMachine = (body: CreateAtmMachine): Promise<AtmMachineDto> =>
+  post<AtmMachineDto>('/atm/machines', body);
+export const updateMachine = (id: string, body: UpdateAtmMachine): Promise<AtmMachineDto> =>
+  patch<AtmMachineDto>(`/atm/machines/${id}`, body);
 
 // ── Reference label lists (legacy `atm_data_lists.bank[]` / `.area[]`) ──────
 export const listRefLabels = (
@@ -60,6 +67,11 @@ export const createRefLabel = (
   kind: 'bank' | 'area',
   body: CreateAtmRefLabel,
 ): Promise<AtmRefLabelDto> => post<AtmRefLabelDto>(`/atm/ref-labels/${kind}`, body);
+export const updateRefLabel = (
+  kind: 'bank' | 'area',
+  id: string,
+  body: UpdateAtmRefLabel,
+): Promise<AtmRefLabelDto> => patch<AtmRefLabelDto>(`/atm/ref-labels/${kind}/${id}`, body);
 export const deleteRefLabel = (kind: 'bank' | 'area', id: string): Promise<void> =>
   del<void>(`/atm/ref-labels/${kind}/${id}`);
 

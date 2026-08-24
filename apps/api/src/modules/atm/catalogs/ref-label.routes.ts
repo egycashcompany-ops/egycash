@@ -2,13 +2,19 @@
 // open forms and pickers need them); mutations are the data-edit surface, `atmMachine.manage`.
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
-import { CreateAtmRefLabelSchema, ListAtmRefLabelsQuerySchema, objectId } from '@ecms/contracts';
+import {
+  CreateAtmRefLabelSchema,
+  ListAtmRefLabelsQuerySchema,
+  UpdateAtmRefLabelSchema,
+  objectId,
+} from '@ecms/contracts';
 import { authenticate, authContext } from '../../../platform/auth';
 import { authorize } from '../../../platform/rbac';
 import {
   asyncHandler,
   created,
   noContent,
+  ok,
   okPage,
   validate,
   validated,
@@ -17,7 +23,11 @@ import { toAtmRefLabelDto } from '../atm.mappers';
 import { ATM_REF_LABEL_KINDS, type AtmRefLabelKind } from './ref-label.model';
 import { atmRefLabelService } from './ref-label.service';
 
-import { type CreateAtmRefLabel, type ListAtmRefLabelsQuery } from '@ecms/contracts';
+import {
+  type CreateAtmRefLabel,
+  type ListAtmRefLabelsQuery,
+  type UpdateAtmRefLabel,
+} from '@ecms/contracts';
 
 const KindParamSchema = z.object({ kind: z.enum(ATM_REF_LABEL_KINDS) }).strict();
 const KindIdParamSchema = z.object({ kind: z.enum(ATM_REF_LABEL_KINDS), id: objectId() }).strict();
@@ -37,6 +47,11 @@ const createLabel = async (req: Request, res: Response): Promise<void> => {
     res,
     toAtmRefLabelDto(await atmRefLabelService.create(params.kind, body, authContext(req))),
   );
+};
+
+const updateLabel = async (req: Request, res: Response): Promise<void> => {
+  const { body, params } = validated<UpdateAtmRefLabel, never, { id: string }>(req);
+  ok(res, toAtmRefLabelDto(await atmRefLabelService.update(params.id, body, authContext(req))));
 };
 
 const removeLabel = async (req: Request, res: Response): Promise<void> => {
@@ -60,6 +75,13 @@ export const buildAtmRefLabelsRouter = (): Router => {
     authorize('atmMachine.manage'),
     validate({ body: CreateAtmRefLabelSchema, params: KindParamSchema }),
     asyncHandler(createLabel),
+  );
+  router.patch(
+    '/:kind/:id',
+    authenticate,
+    authorize('atmMachine.manage'),
+    validate({ body: UpdateAtmRefLabelSchema, params: KindIdParamSchema }),
+    asyncHandler(updateLabel),
   );
   router.delete(
     '/:kind/:id',

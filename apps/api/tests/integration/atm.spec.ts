@@ -245,6 +245,114 @@ describe('atm machines — the master and its data-edit surface', () => {
     ]);
     expect(res.status).toBe(403);
   });
+
+  // The per-item surface the data-edit screen drives, beside the legacy bulk forms.
+  it('adds one machine, and REFUSES a code the branch already registered', async () => {
+    const added = await request(app)
+      .post('/api/v1/atm/machines')
+      .set('Authorization', `Bearer ${alexToken}`)
+      .send({ machineCode: '0204', name: 'Sidi Gaber ATM', bankName: 'NBE', area: 'Smouha' });
+    expect(added.status).toBe(201);
+    // Normalized on the way in, exactly as the bulk form does.
+    expect(data<AtmMachineDto>(added).machineCode).toBe('204');
+
+    // The bulk paste SKIPS a taken code; a single deliberate add says so instead.
+    const again = await request(app)
+      .post('/api/v1/atm/machines')
+      .set('Authorization', `Bearer ${alexToken}`)
+      .send({ machineCode: '204', name: 'Duplicate', bankName: 'NBE', area: 'Smouha' });
+    expect(again.status).toBe(409);
+  });
+
+  it('edits a machine and archives it, leaving the code taken', async () => {
+    const list = await request(app)
+      .get('/api/v1/atm/machines?pageSize=100&search=204')
+      .set('Authorization', `Bearer ${alexToken}`);
+    expect(list.status).toBe(200);
+    const target = items<AtmMachineDto>(list).find((m) => m.machineCode === '204');
+    expect(target).toBeDefined();
+
+    const edited = await request(app)
+      .patch(`/api/v1/atm/machines/${String(target?.id)}`)
+      .set('Authorization', `Bearer ${alexToken}`)
+      .send({ name: 'Sidi Gaber 2', area: 'Roushdy', isActive: false, version: target?.version });
+    expect(edited.status).toBe(200);
+    expect(data<AtmMachineDto>(edited)).toMatchObject({
+      name: 'Sidi Gaber 2',
+      area: 'Roushdy',
+      isActive: false,
+      machineCode: '204',
+    });
+
+    // Archived is NOT deleted: the code is still registered, so re-adding it is refused.
+    const readd = await request(app)
+      .post('/api/v1/atm/machines')
+      .set('Authorization', `Bearer ${alexToken}`)
+      .send({ machineCode: '204', name: 'Should not', bankName: 'NBE', area: 'Smouha' });
+    expect(readd.status).toBe(409);
+  });
+
+  it('refuses a stale edit rather than overwriting someone else’s', async () => {
+    const list = await request(app)
+      .get('/api/v1/atm/machines?pageSize=100&search=204')
+      .set('Authorization', `Bearer ${alexToken}`);
+    const target = items<AtmMachineDto>(list).find((m) => m.machineCode === '204');
+    const stale = await request(app)
+      .patch(`/api/v1/atm/machines/${String(target?.id)}`)
+      .set('Authorization', `Bearer ${alexToken}`)
+      .send({ name: 'Racing', version: (target?.version ?? 1) - 1 });
+    expect(stale.status).toBe(409);
+  });
+
+  it('renames a reference label and archives it, without touching the machines that used it', async () => {
+    const created = await request(app)
+      .post('/api/v1/atm/ref-labels/area')
+      .set('Authorization', `Bearer ${alexToken}`)
+      .send({ name: 'Gleem' });
+    expect(created.status).toBe(201);
+    const label = data<{ id: string; version: number }>(created);
+
+    const renamed = await request(app)
+      .patch(`/api/v1/atm/ref-labels/area/${label.id}`)
+      .set('Authorization', `Bearer ${alexToken}`)
+      .send({ name: 'Gleem East', isActive: false, version: label.version });
+    expect(renamed.status).toBe(200);
+    expect(data<{ name: string; isActive: boolean }>(renamed)).toMatchObject({
+      name: 'Gleem East',
+      isActive: false,
+    });
+
+    // The archived name is gone from what the forms offer…
+    const activeOnly = await request(app)
+      .get('/api/v1/atm/ref-labels/area?pageSize=100&isActive=true')
+      .set('Authorization', `Bearer ${alexToken}`);
+    expect(items<{ name: string }>(activeOnly).map((l) => l.name)).not.toContain('Gleem East');
+
+    // …and the machines opened under 'Smouha' still say 'Smouha'.
+    const machines = await request(app)
+      .get('/api/v1/atm/machines?pageSize=100')
+      .set('Authorization', `Bearer ${alexToken}`);
+    expect(items<AtmMachineDto>(machines).some((m) => m.area === 'Smouha')).toBe(true);
+  });
+
+  it('refuses the per-item surface to a caller without the manage grant', async () => {
+    expect(
+      (
+        await request(app)
+          .post('/api/v1/atm/machines')
+          .set('Authorization', `Bearer ${reviewToken}`)
+          .send({ machineCode: '777', name: 'Nope', bankName: 'NBE', area: 'Smouha' })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await request(app)
+          .patch('/api/v1/atm/ref-labels/area/64b7f9c2e13b4a00123456ff')
+          .set('Authorization', `Bearer ${reviewToken}`)
+          .send({ name: 'Nope', version: 0 })
+      ).status,
+    ).toBe(403);
+  });
 });
 
 describe('atm replenishments — open, time, close', () => {

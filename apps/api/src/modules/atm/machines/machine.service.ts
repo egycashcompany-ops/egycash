@@ -12,6 +12,8 @@ import {
   normalizeAtmMachineCode,
   type BulkCreateAtmMachines,
   type BulkDeleteAtmMachines,
+  type CreateAtmMachine,
+  type UpdateAtmMachine,
   type ListAtmMachinesQuery,
   type Paginated,
   type ReassignAtmMachineArea,
@@ -20,7 +22,7 @@ import { Types, type FilterQuery } from 'mongoose';
 import { auditService } from '../../../platform/audit';
 import { type AuthContext } from '../../../shared/types';
 import { scopeSelector } from '../../../shared/types';
-import { NotFoundError } from '../../../shared/errors';
+import { ConflictError, NotFoundError } from '../../../shared/errors';
 import { diffChanges } from '../../../shared/utils/diff';
 import { resolveAtmBranchId } from '../shared/atm-context';
 import { atmMachineRepository } from './machine.repository';
@@ -103,6 +105,69 @@ class AtmMachineService {
       created.push(doc);
     }
     return { created, skippedCodes };
+  }
+
+  /**
+   * Add ONE machine — the per-item entry beside the legacy bulk paste. Same skip rule as the
+   * bulk form, surfaced as a conflict rather than a silent skip: a single deliberate add of a
+   * code that is already taken is a mistake worth telling the operator about, whereas a pasted
+   * batch that contains one known code is not (:2429-2451).
+   */
+  async create(input: CreateAtmMachine, ctx: AuthContext): Promise<AtmMachineDoc> {
+    const branchId = await resolveAtmBranchId(ctx);
+    const machineCode = normalizeAtmMachineCode(input.machineCode);
+    if (machineCode === '') throw new NotFoundError('ATM machine code');
+    const existing = await atmMachineRepository.findOne({
+      branchId: new Types.ObjectId(branchId),
+      machineCode,
+    } as FilterQuery<AtmMachineDoc>);
+    if (existing !== null) throw new ConflictError('ATM machine code already registered');
+    const doc = await atmMachineRepository.create(
+      {
+        branchId: new Types.ObjectId(branchId),
+        bankName: input.bankName,
+        machineCode,
+        name: input.name,
+        zone: '',
+        area: input.area,
+        isActive: true,
+      },
+      { by: ctx.userId },
+    );
+    await auditService.record({
+      entityRef: entityRef(String(doc._id)),
+      action: 'create',
+      changes: diffChanges({}, snapshot(doc)),
+    });
+    return doc;
+  }
+
+  /**
+   * Edit one machine. `machineCode` is identity and is NOT editable: every replenishment,
+   * maintenance and mail ticket snapshots it, and the mail matcher joins on it, so a rename
+   * would orphan history silently. `isActive: false` archives instead of deleting — the machine
+   * leaves the open forms and the mail matcher (both read active only) while its code stays
+   * taken and its rows stay readable, which is exactly what delete does NOT do.
+   */
+  async update(id: string, input: UpdateAtmMachine, ctx: AuthContext): Promise<AtmMachineDoc> {
+    const scope = scopeSelector(ctx, 'atmMachine.manage');
+    const before = await atmMachineRepository.getById(id, scope);
+    const set: Record<string, unknown> = {};
+    if (input.bankName !== undefined) set.bankName = input.bankName;
+    if (input.name !== undefined) set.name = input.name;
+    if (input.area !== undefined) set.area = input.area;
+    if (input.isActive !== undefined) set.isActive = input.isActive;
+    const updated = await atmMachineRepository.updateById(id, set, {
+      by: ctx.userId,
+      version: input.version,
+      scope,
+    });
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'update',
+      changes: diffChanges(snapshot(before), snapshot(updated)),
+    });
+    return updated;
   }
 
   /** Legacy delete-by-codes textarea (:2494-2508): soft delete + `-D` rename, unknowns reported. */

@@ -6,6 +6,7 @@ import {
   type CreateAtmRefLabel,
   type ListAtmRefLabelsQuery,
   type Paginated,
+  type UpdateAtmRefLabel,
 } from '@ecms/contracts';
 import { auditService } from '../../../platform/audit';
 import { type AuthContext, scopeSelector } from '../../../shared/types';
@@ -61,6 +62,34 @@ class AtmRefLabelService {
       changes: diffChanges({}, { kind, name: doc.name, branchId }),
     });
     return doc;
+  }
+
+  /**
+   * Edit a label. Renaming changes what the forms OFFER from here on; it does not rewrite the
+   * machines that already stored the old string, because the legacy denormalized both the bank
+   * and the area onto each machine (:2443) and a cascade would rewrite history nobody asked to
+   * change. `isActive: false` archives — the list stops offering it, the machines keep it.
+   */
+  async update(id: string, input: UpdateAtmRefLabel, ctx: AuthContext): Promise<AtmRefLabelDoc> {
+    const scope = scopeSelector(ctx, 'atmMachine.manage');
+    const before = await atmRefLabelRepository.getById(id, scope);
+    const set: Record<string, unknown> = {};
+    if (input.name !== undefined) set.name = input.name.trim();
+    if (input.isActive !== undefined) set.isActive = input.isActive;
+    const updated = await atmRefLabelRepository.updateById(id, set, {
+      by: ctx.userId,
+      version: input.version,
+      scope,
+    });
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'update',
+      changes: diffChanges(
+        { name: before.name, isActive: before.isActive },
+        { name: updated.name, isActive: updated.isActive },
+      ),
+    });
+    return updated;
   }
 
   /** Legacy `$pull` (:2514, :2523) — the name leaves the list; machines keep their strings. */

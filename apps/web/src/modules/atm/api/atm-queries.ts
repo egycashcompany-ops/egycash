@@ -12,8 +12,11 @@ import {
   type BulkDeleteAtmMachines,
   type BulkUpdateAtmMaintenances,
   type BulkUpdateAtmReplenishments,
+  type CreateAtmMachine,
   type CreateAtmRefLabel,
   type ReassignAtmMachineArea,
+  type UpdateAtmMachine,
+  type UpdateAtmRefLabel,
 } from '@ecms/contracts';
 import { featureKey, listKey } from '../../../shared/lib/query-keys';
 import * as api from './atm-api';
@@ -61,6 +64,23 @@ export const useReassignAtmMachineArea = () => {
   });
 };
 
+export const useCreateAtmMachine = () => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateAtmMachine) => api.createMachine(body),
+    onSuccess: () => void client.invalidateQueries({ queryKey: atmKeys.machines }),
+  });
+};
+
+export const useUpdateAtmMachine = () => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: UpdateAtmMachine }) =>
+      api.updateMachine(id, body),
+    onSuccess: () => void client.invalidateQueries({ queryKey: atmKeys.machines }),
+  });
+};
+
 // ── Reference labels ────────────────────────────────────────────────────────
 export const useAtmRefLabels = (kind: 'bank' | 'area', params: AtmListParams, enabled = true) =>
   useQuery({
@@ -73,6 +93,15 @@ export const useCreateAtmRefLabel = (kind: 'bank' | 'area') => {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (body: CreateAtmRefLabel) => api.createRefLabel(kind, body),
+    onSuccess: () => void client.invalidateQueries({ queryKey: atmKeys.refLabels }),
+  });
+};
+
+export const useUpdateAtmRefLabel = (kind: 'bank' | 'area') => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: UpdateAtmRefLabel }) =>
+      api.updateRefLabel(kind, id, body),
     onSuccess: () => void client.invalidateQueries({ queryKey: atmKeys.refLabels }),
   });
 };

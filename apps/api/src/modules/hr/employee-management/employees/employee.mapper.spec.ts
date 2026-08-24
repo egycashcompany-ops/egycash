@@ -12,7 +12,6 @@ const employment = (over: Partial<EmploymentDetails> = {}): EmploymentDetails =>
   departmentId: new Types.ObjectId(),
   sectionId: null,
   branchId: new Types.ObjectId(),
-  jobPositionId: null,
   managerId: new Types.ObjectId(),
   employmentType: 'fullTime',
   salary: { amount: 15000, currency: 'EGP' },

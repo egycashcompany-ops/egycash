@@ -20,7 +20,6 @@ const BRANCH_A = new Types.ObjectId();
 const BRANCH_B = new Types.ObjectId();
 
 const at = (jobTitleId: Types.ObjectId | null, branchId: Types.ObjectId | null) => ({
-  jobPositionId: null,
   jobTitleId,
   departmentId: null,
   sectionId: null,

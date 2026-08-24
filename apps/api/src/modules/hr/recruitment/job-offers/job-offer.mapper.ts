@@ -12,7 +12,6 @@ const termsDto = (t: OfferTerms): OfferTermsDto => ({
   jobTitleId: String(t.jobTitleId),
   departmentId: String(t.departmentId),
   branchId: String(t.branchId),
-  jobPositionId: t.jobPositionId == null ? null : String(t.jobPositionId),
   sectionId: t.sectionId == null ? null : String(t.sectionId),
   managerId: t.managerId === null ? null : String(t.managerId),
   employmentType: t.employmentType,

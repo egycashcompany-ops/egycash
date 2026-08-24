@@ -106,15 +106,6 @@ export const jobTitlePermissions = declarePermissions(
   'platform.job-titles',
 );
 
-export const jobPositionPermissions = declarePermissions(
-  P,
-  'jobPosition',
-  { en: 'job positions', ar: 'الوظائف' },
-  ['view', 'create', 'edit', 'delete'],
-  [],
-  'platform.job-positions',
-);
-
 /**
  * Cost centres (P-HR-23) — a reporting dimension the organization defines for itself.
  *
@@ -247,7 +238,6 @@ export const platformPermissions: PermissionDef[] = [
   ...departmentPermissions,
   ...sectionPermissions,
   ...jobTitlePermissions,
-  ...jobPositionPermissions,
   ...costCenterPermissions,
   ...applicationPermissions,
   ...applicationCategoryPermissions,
@@ -338,13 +328,6 @@ export const platformPages: PageDef[] = [
     name: { en: 'Job titles', ar: 'المسميات الوظيفية' },
     route: '/organization/job-titles',
     sortOrder: 80,
-  },
-  {
-    id: 'platform.job-positions',
-    moduleId: P,
-    name: { en: 'Job positions', ar: 'الوظائف' },
-    route: '/organization/job-positions',
-    sortOrder: 90,
   },
   {
     id: 'platform.cost-centers',

@@ -35,7 +35,7 @@ const UNKNOWN_STATE = {
   stage: null,
   status: null,
   attempt: 1,
-  placement: { jobPositionId: null, jobTitleId: null, departmentId: null, branchId: null, sectionId: null },
+  placement: { jobTitleId: null, departmentId: null, branchId: null, sectionId: null },
   placementLabel: { position: null, branch: null, department: null },
   availableActions: [],
 };

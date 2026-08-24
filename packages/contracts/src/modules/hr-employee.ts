@@ -320,7 +320,6 @@ export interface EmploymentDetailsDto {
   sectionId: string | null;
   branchId: string;
   /** Approved Job Position, when one exists — OPTIONAL forever (ADR-016 Talent Pool). */
-  jobPositionId: string | null;
   /** Reporting manager — null when none is set. */
   managerId: string | null;
   employmentType: EmploymentType;

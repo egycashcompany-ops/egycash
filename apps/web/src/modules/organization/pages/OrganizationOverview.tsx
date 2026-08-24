@@ -8,7 +8,6 @@ import { useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { ModuleHome } from '../../../shared/ui/ModuleHome';
 import {
-  BadgeIcon,
   BuildingIcon,
   FolderIcon,
   LayersIcon,
@@ -23,7 +22,6 @@ const SHORTCUTS: { to: string; titleKey: string; descKey: string; icon: Icon; pe
   { to: '/organization/branches', titleKey: 'organization.nav.branches', descKey: 'organization.cards.branches', icon: BuildingIcon, permission: 'branch.view' },
   { to: '/organization/departments', titleKey: 'organization.nav.departments', descKey: 'organization.cards.departments', icon: SitemapIcon, permission: 'department.view' },
   { to: '/organization/sections', titleKey: 'organization.nav.sections', descKey: 'organization.cards.sections', icon: LayersIcon, permission: 'section.view' },
-  { to: '/organization/job-positions', titleKey: 'organization.nav.jobPositions', descKey: 'organization.cards.jobPositions', icon: BadgeIcon, permission: 'jobPosition.view' },
   { to: '/organization/job-titles', titleKey: 'organization.nav.jobTitles', descKey: 'organization.cards.jobTitles', icon: TagIcon, permission: 'jobTitle.view' },
   { to: '/organization/applications', titleKey: 'organization.nav.applications', descKey: 'organization.cards.applications', icon: FolderIcon, permission: 'application.view' },
   { to: '/organization/application-categories', titleKey: 'organization.nav.applicationCategories', descKey: 'organization.cards.applicationCategories', icon: TagIcon, permission: 'applicationCategory.view' },
@@ -33,7 +31,6 @@ const KPIS: { labelKey: string; icon: Icon; permission: string }[] = [
   { labelKey: 'organization.nav.branches', icon: BuildingIcon, permission: 'branch.view' },
   { labelKey: 'organization.nav.departments', icon: SitemapIcon, permission: 'department.view' },
   { labelKey: 'organization.nav.sections', icon: LayersIcon, permission: 'section.view' },
-  { labelKey: 'organization.nav.jobPositions', icon: BadgeIcon, permission: 'jobPosition.view' },
 ];
 
 export const OrganizationOverview = (): JSX.Element => {

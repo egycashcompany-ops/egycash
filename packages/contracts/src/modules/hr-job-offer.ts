@@ -80,12 +80,11 @@ export const OfferTermsSchema = z
     departmentId: objectId(),
     branchId: objectId(),
     /**
-     * The seat this hire fills (platform `job_positions`) and the section within the department.
-     * OPTIONAL (ADR-016). Pre-filled from the applicant's current placement (RW3) and carried
-     * into the accepted snapshot, so the Employee record finally receives its position/section
-     * instead of the hard-coded nulls the hire path used before the workflow refactor.
+     * The section within the department this hire joins. OPTIONAL (ADR-016). Pre-filled from the
+     * applicant's current placement (RW3) and carried into the accepted snapshot, so the Employee
+     * record finally receives its section instead of the hard-coded nulls the hire path used
+     * before the workflow refactor.
      */
-    jobPositionId: objectId().nullish(),
     sectionId: objectId().nullish(),
     /** The reporting manager (a platform user). OPTIONAL — may be null/omitted. */
     managerId: objectId().nullish(),
@@ -199,7 +198,6 @@ export interface OfferTermsDto {
   departmentId: string;
   branchId: string;
   /** The seat + section this hire fills; null when not set (ADR-016). Flows to the Employee (RW3). */
-  jobPositionId: string | null;
   sectionId: string | null;
   /** null when no reporting manager was set on the offer. */
   managerId: string | null;

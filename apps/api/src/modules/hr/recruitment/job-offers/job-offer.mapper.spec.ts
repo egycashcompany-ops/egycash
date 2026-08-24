@@ -7,7 +7,6 @@ const terms = (over: Partial<OfferTerms> = {}): OfferTerms => ({
   jobTitleId: new Types.ObjectId(),
   departmentId: new Types.ObjectId(),
   branchId: new Types.ObjectId(),
-  jobPositionId: null,
   sectionId: null,
   managerId: new Types.ObjectId(),
   employmentType: 'fullTime',

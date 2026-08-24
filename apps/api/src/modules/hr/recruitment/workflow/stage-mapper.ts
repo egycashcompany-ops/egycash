@@ -4,7 +4,6 @@ import { type AttemptMarkerDto, type PlacementDto, type PlacementLabelDto } from
 import { type StageDocFields, type StagePlacement, type StagePlacementLabel } from './stage-fields';
 
 export const placementDto = (p: StagePlacement | null | undefined): PlacementDto => ({
-  jobPositionId: p?.jobPositionId == null ? null : String(p.jobPositionId),
   jobTitleId: p?.jobTitleId == null ? null : String(p.jobTitleId),
   departmentId: p?.departmentId == null ? null : String(p.departmentId),
   branchId: p?.branchId == null ? null : String(p.branchId),

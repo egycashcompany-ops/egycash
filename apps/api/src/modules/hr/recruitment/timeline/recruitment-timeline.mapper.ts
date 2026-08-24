@@ -17,7 +17,6 @@ const placementDto = (p: TimelinePlacement | null): PlacementDto | null =>
   p === null
     ? null
     : {
-        jobPositionId: p.jobPositionId === null ? null : String(p.jobPositionId),
         jobTitleId: p.jobTitleId === null ? null : String(p.jobTitleId),
         departmentId: p.departmentId === null ? null : String(p.departmentId),
         branchId: p.branchId === null ? null : String(p.branchId),

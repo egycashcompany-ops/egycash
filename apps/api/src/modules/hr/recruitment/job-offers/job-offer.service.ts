@@ -56,8 +56,6 @@ const buildTerms = (t: OfferTermsInput): OfferTerms => ({
   jobTitleId: new Types.ObjectId(t.jobTitleId),
   departmentId: new Types.ObjectId(t.departmentId),
   branchId: new Types.ObjectId(t.branchId),
-  jobPositionId:
-    t.jobPositionId === null || t.jobPositionId === undefined ? null : new Types.ObjectId(t.jobPositionId),
   sectionId: t.sectionId === null || t.sectionId === undefined ? null : new Types.ObjectId(t.sectionId),
   managerId: t.managerId === null || t.managerId === undefined ? null : new Types.ObjectId(t.managerId),
   employmentType: t.employmentType,
@@ -252,7 +250,6 @@ class JobOfferService {
     ctx: AuthContext,
     applicantId: string,
     placement: {
-      jobPositionId: Types.ObjectId | null;
       jobTitleId: Types.ObjectId | null;
       departmentId: Types.ObjectId | null;
       branchId: Types.ObjectId | null;
@@ -275,7 +272,6 @@ class JobOfferService {
           jobTitleId: String(placement.jobTitleId ?? terms.jobTitleId),
           departmentId: String(placement.departmentId ?? terms.departmentId),
           branchId: String(placement.branchId ?? terms.branchId),
-          jobPositionId: placement.jobPositionId === null ? null : String(placement.jobPositionId),
           sectionId: placement.sectionId === null ? null : String(placement.sectionId),
           managerId: terms.managerId === null ? null : String(terms.managerId),
           employmentType: terms.employmentType,

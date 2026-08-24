@@ -41,12 +41,6 @@ export {
   type BranchCodeChangeHandler,
 } from './branches/branch-code-seam';
 export {
-  jobPositionService,
-  buildJobPositionsRouter,
-  jobPositionRepository,
-  type JobPositionDoc,
-} from './job-positions';
-export {
   costCenterService,
   buildCostCentersRouter,
   costCenterRepository,

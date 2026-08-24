@@ -25,12 +25,30 @@ const fixedCrewSchema = new Schema<FleetFixedCrewDoc>(
   baseSchemaOptions,
 );
 
-// One crew per vehicle. A concurrent double-save for the same car collides here; the driver
-// half spans two fields across two rows and is service-checked, as it is for the daily plan.
-fixedCrewSchema.index(
-  { vehicleId: 1 },
-  { unique: true, name: 'ux_fixed_vehicle', partialFilterExpression: { isDeleted: false } },
-);
+/**
+ * One crew per vehicle — the collection's whole identity rule, declared ONCE.
+ *
+ * A concurrent double-save for the same car collides here; the driver half spans two fields
+ * across two rows and is service-checked, as it is for the daily plan.
+ *
+ * Exported as data rather than written inline because `autoIndex` is off outside development
+ * (infrastructure/database/mongo.ts), so in production this index is built by a deploy-time
+ * migration instead. Two hand-written copies of the same definition would drift, and mongo
+ * answers a mismatched rebuild with `IndexOptionsConflict` rather than a fix — so both the
+ * schema below and `fleet.migration.ts` read these two constants and nothing else.
+ *
+ * Partial on `isDeleted: false`: a soft-deleted row must not keep a live vehicle's slot. Every
+ * document written through the base repository carries the field (`baseFields` makes it
+ * `required` with a `false` default), so the filter never silently excludes a live row.
+ */
+export const FIXED_CREW_VEHICLE_INDEX_KEY = { vehicleId: 1 } as const;
+export const FIXED_CREW_VEHICLE_INDEX_OPTIONS = {
+  unique: true,
+  name: 'ux_fixed_vehicle',
+  partialFilterExpression: { isDeleted: false },
+} as const;
+
+fixedCrewSchema.index(FIXED_CREW_VEHICLE_INDEX_KEY, FIXED_CREW_VEHICLE_INDEX_OPTIONS);
 
 export const FleetFixedCrewModel = model<FleetFixedCrewDoc>(
   'FleetFixedCrew',

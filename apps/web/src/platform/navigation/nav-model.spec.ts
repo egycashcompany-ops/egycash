@@ -10,6 +10,7 @@ import {
   moduleOfPathname,
   requiresExactMatch,
   toModules,
+  visibleModules,
 } from './nav-model';
 
 const ROUTES = [
@@ -205,5 +206,80 @@ describe('sections do not hide pages from the model', () => {
     ]);
     expect(legacy[0]?.sections).toEqual([]);
     expect(moduleApps(legacy[0]!).map((a) => a.route)).toEqual(['/fleet']);
+  });
+});
+
+// ── visibleModules: a fully-organized module is still a module ──────────────
+//
+// The bug this pins down shipped and was visible in production: HR — the one module that had
+// filed every one of its twenty-three pages into a section — was absent from the launchpad's
+// module grid and from ⌘K's module rows, while every one of its pages was entitled, catalogued,
+// routed and reachable by URL. Each surface was filtering on `apps.length`, the count of the
+// pages that belong to NO section, so organizing a module completely was what removed it.
+describe('visibleModules — which modules earn chrome', () => {
+  const page = (id: string, route: string) => ({
+    id,
+    name: { ar: id, en: id },
+    icon: 'file',
+    route,
+  });
+  const section = (id: string, en: string, applications: ReturnType<typeof page>[]) => ({
+    id,
+    name: { ar: en, en },
+    applications,
+  });
+  const module = (
+    id: string,
+    applications: ReturnType<typeof page>[],
+    sections: ReturnType<typeof section>[] = [],
+  ) => ({ id, name: { ar: id, en: id }, icon: 'users', applications, sections });
+
+  const hrFullyGrouped = module(
+    'hr',
+    [],
+    [
+      section('s1', 'Recruitment', [page('a1', '/applicants')]),
+      section('s2', 'Payroll', [page('a2', '/payroll/runs')]),
+    ],
+  );
+
+  it('keeps a module whose pages are ALL in sections', () => {
+    expect(visibleModules([hrFullyGrouped]).map((m) => m.id)).toEqual(['hr']);
+  });
+
+  it('keeps a module with ungrouped pages, and one with both', () => {
+    const flat = module('fleet', [page('b1', '/fleet')]);
+    const mixed = module(
+      'it',
+      [page('c1', '/it')],
+      [section('s3', 'Devices', [page('c2', '/it/devices')])],
+    );
+    expect(visibleModules([flat, mixed]).map((m) => m.id)).toEqual(['fleet', 'it']);
+  });
+
+  it('drops a module with no pages at all — including one whose only section is empty', () => {
+    const bare = module('gold', []);
+    const emptySection = module('atm', [], [section('s4', 'Empty', [])]);
+    expect(visibleModules([bare, emptySection])).toEqual([]);
+  });
+
+  it('preserves the payload order and the grouping of what it keeps', () => {
+    const kept = visibleModules([
+      hrFullyGrouped,
+      module('empty', []),
+      module('fleet', [page('b1', '/fleet')]),
+    ]);
+    expect(kept.map((m) => m.id)).toEqual(['hr', 'fleet']);
+    // And the module the shells then render still carries its groups — filtering is not flattening.
+    expect(kept[0]?.sections.map((sec) => sec.name.en)).toEqual(['Recruitment', 'Payroll']);
+    expect(moduleApps(kept[0]!).map((a) => a.route)).toEqual(['/applicants', '/payroll/runs']);
+  });
+
+  it('gives a fully-grouped module a first page to jump into', () => {
+    // ⌘K's module row navigates to `moduleApps(m)[0]`; on `m.apps[0]` it was undefined, which is
+    // the same defect wearing its other face — the row was either missing or it went nowhere.
+    const [only] = visibleModules([hrFullyGrouped]);
+    expect(moduleApps(only!)[0]?.route).toBe('/applicants');
+    expect(moduleEntryRoute(only!, null)).toBe('/applicants');
   });
 });

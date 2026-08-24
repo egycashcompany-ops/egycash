@@ -30,7 +30,6 @@ export interface OfferTerms {
   departmentId: Types.ObjectId;
   branchId: Types.ObjectId;
   /** The seat + section this hire fills; carried into the Employee record (RW3). */
-  jobPositionId: Types.ObjectId | null;
   sectionId: Types.ObjectId | null;
   /** Reporting manager — OPTIONAL (may be null). */
   managerId: Types.ObjectId | null;
@@ -98,7 +97,6 @@ const termsSchema = new Schema<OfferTerms>(
     jobTitleId: { type: Schema.Types.ObjectId, required: true },
     departmentId: { type: Schema.Types.ObjectId, required: true },
     branchId: { type: Schema.Types.ObjectId, required: true },
-    jobPositionId: { type: Schema.Types.ObjectId, default: null },
     sectionId: { type: Schema.Types.ObjectId, default: null },
     managerId: { type: Schema.Types.ObjectId, default: null },
     employmentType: { type: String, enum: EMPLOYMENT_TYPES, required: true },

@@ -1,4 +1,4 @@
-// RW2 — reassign a live candidate's Position and/or Branch. Deliberately its own dialog with a
+// RW2 — reassign a live candidate's Job title, Department and/or Branch (P-ORG-1: one job). Deliberately its own dialog with a
 // mandatory reason, never a field on the edit form: a routine data correction must not be able to
 // move someone to another branch.
 //
@@ -19,7 +19,6 @@ import { Field, Input, Select, Textarea } from '../../../../../shared/ui/form';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { localized } from '../../../../../shared/lib/format';
 import { useBranchOptions } from '../../../../organization/shared/references';
-import { useJobPositions } from '../../../../organization/job-positions/job-position-queries';
 import { useJobTitles } from '../../../../organization/job-titles/job-title-queries';
 import { useReassignApplicant } from '../api/applicant-queries';
 
@@ -46,7 +45,6 @@ export const ReassignDialog = ({
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const reassign = useReassignApplicant(applicant.id);
 
-  const [jobPositionId, setJobPositionId] = useState('');
   const [jobTitleId, setJobTitleId] = useState('');
   const [branchId, setBranchId] = useState('');
   const [reason, setReason] = useState('');
@@ -57,7 +55,6 @@ export const ReassignDialog = ({
   useEffect(() => {
     if (!open) return;
     const from = applicant.placement;
-    setJobPositionId(from.jobPositionId ?? '');
     setJobTitleId(from.jobTitleId ?? '');
     setBranchId(from.branchId ?? '');
     setReason('');
@@ -65,7 +62,6 @@ export const ReassignDialog = ({
   }, [open, applicant.placement]);
 
   const { data: branches } = useBranchOptions(open);
-  const { data: positions } = useJobPositions({ pageSize: MAX_PAGE_SIZE, status: 'active' });
   const { data: titles } = useJobTitles({ pageSize: MAX_PAGE_SIZE });
 
   const submit = async (): Promise<void> => {
@@ -76,7 +72,6 @@ export const ReassignDialog = ({
     try {
       await reassign.mutateAsync({
         placement: {
-          jobPositionId: jobPositionId === '' ? null : jobPositionId,
           jobTitleId: jobTitleId === '' ? null : jobTitleId,
           // The server completes department/section from the seat; a bare branch stands alone.
           departmentId: null,
@@ -114,16 +109,6 @@ export const ReassignDialog = ({
       }
     >
       <div className="space-y-3">
-        <Field label={t('applicants.reassign.position')} hint={t('applicants.reassign.positionHint')}>
-          <Select value={jobPositionId} onChange={(e) => setJobPositionId(e.target.value)}>
-            <option value="">{t('common.select')}</option>
-            {(positions?.items ?? []).map((p) => (
-              <option key={p.id} value={p.id}>
-                {localized(p.name, locale)}
-              </option>
-            ))}
-          </Select>
-        </Field>
 
         <Field label={t('applicants.reassign.jobTitle')}>
           <Select value={jobTitleId} onChange={(e) => setJobTitleId(e.target.value)}>

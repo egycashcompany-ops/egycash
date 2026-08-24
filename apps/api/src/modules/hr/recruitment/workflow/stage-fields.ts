@@ -4,7 +4,6 @@
 import { Schema, type Types } from 'mongoose';
 
 export interface StagePlacement {
-  jobPositionId: Types.ObjectId | null;
   jobTitleId: Types.ObjectId | null;
   departmentId: Types.ObjectId | null;
   branchId: Types.ObjectId | null;
@@ -19,7 +18,6 @@ export interface StagePlacementLabel {
 
 export const placementSchema = new Schema<StagePlacement>(
   {
-    jobPositionId: { type: Schema.Types.ObjectId, default: null },
     jobTitleId: { type: Schema.Types.ObjectId, default: null },
     departmentId: { type: Schema.Types.ObjectId, default: null },
     branchId: { type: Schema.Types.ObjectId, default: null },
@@ -38,7 +36,6 @@ export const placementLabelSchema = new Schema<StagePlacementLabel>(
 );
 
 export const emptyPlacement = (): StagePlacement => ({
-  jobPositionId: null,
   jobTitleId: null,
   departmentId: null,
   branchId: null,

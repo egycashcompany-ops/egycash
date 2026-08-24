@@ -382,8 +382,6 @@ const en: Record<string, string> = {
   'applicants.reassign.body':
     'Move this candidate to a different position or branch. Their history follows them; nothing already decided is rewritten.',
   'applicants.reassign.confirm': 'Reassign',
-  'applicants.reassign.position': 'Position',
-  'applicants.reassign.positionHint': 'Picking a seat fills in its department and branch.',
   'applicants.reassign.jobTitle': 'Job title',
   'applicants.reassign.branch': 'Branch',
   'applicants.reassign.note': 'Note',
@@ -2078,7 +2076,6 @@ const en: Record<string, string> = {
   'organization.nav.branches': 'Branches',
   'organization.nav.departments': 'Departments',
   'organization.nav.sections': 'Sections',
-  'organization.nav.jobPositions': 'Org Positions',
   'organization.nav.jobTitles': 'Jobs',
   'organization.nav.costCenters': 'Cost Centers',
   'organization.nav.platform': 'Platform',
@@ -2095,7 +2092,6 @@ const en: Record<string, string> = {
   'organization.cards.sections': 'Sections within each department.',
   'organization.cards.jobTitles':
     'Organization-wide catalog of job titles and their grade/salary band.',
-  'organization.cards.jobPositions': 'Roles mapped to departments and sections.',
   'organization.cards.applications': 'Navigable modules grouped by category.',
   'organization.cards.applicationCategories': 'Groups that organize applications in the sidebar.',
   'organization.lang.ar': 'AR',
@@ -2203,22 +2199,6 @@ const en: Record<string, string> = {
   'organization.company.fiscalYearStart': 'Fiscal year starts',
   'organization.company.editTitle': 'Edit company profile',
   'organization.company.updated': 'Company profile updated',
-  'organization.jobPosition.subtitle':
-    'WHERE a role sits: a seat in the organization structure, anchored to a Department (optionally a Section). For WHAT the role is — grade, salary band, requirements — see Job Titles. Positions will drive headcount planning and future requisitions.',
-  'organization.jobPosition.nameAr': 'Arabic name',
-  'organization.jobPosition.nameEn': 'English name',
-  'organization.jobPosition.create': 'New org position',
-  'organization.jobPosition.created': 'Org position created',
-  'organization.jobPosition.updated': 'Org position updated',
-  'organization.jobPosition.deleted': 'Org position deleted',
-  'organization.jobPosition.deleteTitle': 'Delete org position',
-  'organization.jobPosition.activated': 'Org position activated',
-  'organization.jobPosition.deactivated': 'Org position deactivated',
-  'organization.jobPosition.departmentFixed':
-    'The owning department is set at creation and cannot be changed.',
-  'organization.jobPosition.sectionHint':
-    'Optional. If set, the section must belong to the owning department.',
-  'organization.jobPosition.noSection': 'No section',
   'organization.application.subtitle':
     'Applications (modules) available in the platform. Each has an icon and a route, is grouped by category and ordered by sort order. The source of navigation and module access.',
   'organization.application.nameAr': 'Arabic name',
@@ -6066,8 +6046,6 @@ const ar: Record<string, string> = {
   'applicants.reassign.body':
     'نقل المتقدم إلى وظيفة أو فرع آخر. يتبعه سجله بالكامل، ولا يُعاد كتابة أي قرار سابق.',
   'applicants.reassign.confirm': 'إعادة التعيين',
-  'applicants.reassign.position': 'الوظيفة',
-  'applicants.reassign.positionHint': 'اختيار الوظيفة يملأ الإدارة والفرع تلقائيًا.',
   'applicants.reassign.jobTitle': 'المسمى الوظيفي',
   'applicants.reassign.branch': 'الفرع',
   'applicants.reassign.note': 'ملاحظة',
@@ -7718,7 +7696,6 @@ const ar: Record<string, string> = {
   'organization.nav.branches': 'الفروع',
   'organization.nav.departments': 'الإدارات',
   'organization.nav.sections': 'الأقسام',
-  'organization.nav.jobPositions': 'المواقع التنظيمية',
   'organization.nav.jobTitles': 'الوظائف',
   'organization.nav.costCenters': 'مراكز التكلفة',
   'organization.nav.platform': 'المنصة',
@@ -7735,7 +7712,6 @@ const ar: Record<string, string> = {
   'organization.cards.sections': 'الأقسام داخل كل إدارة.',
   'organization.cards.jobTitles':
     'كتالوج المسميات الوظيفية على مستوى المؤسسة ودرجاتها ونطاق الراتب.',
-  'organization.cards.jobPositions': 'الأدوار الموزّعة على الإدارات والأقسام.',
   'organization.cards.applications': 'الوحدات القابلة للتصفح مجمّعة حسب الفئة.',
   'organization.cards.applicationCategories': 'المجموعات التي تنظّم التطبيقات في الشريط الجانبي.',
   'organization.lang.ar': 'عربي',
@@ -7842,22 +7818,6 @@ const ar: Record<string, string> = {
   'organization.company.fiscalYearStart': 'بداية السنة المالية',
   'organization.company.editTitle': 'تعديل ملف الشركة',
   'organization.company.updated': 'تم تحديث ملف الشركة',
-  'organization.jobPosition.subtitle':
-    'مقعد تنظيمي يتبع إدارة (واختيارياً قسماً داخلها)، يستخدمه التوظيف ولا يحمله سجل الموظف. أما تعريف الوظيفة نفسها — الدرجة والراتب الثابت والمتطلبات — فهو «الوظائف».',
-  'organization.jobPosition.nameAr': 'الاسم بالعربية',
-  'organization.jobPosition.nameEn': 'الاسم بالإنجليزية',
-  'organization.jobPosition.create': 'موقع تنظيمي جديد',
-  'organization.jobPosition.created': 'تم إنشاء الموقع التنظيمي',
-  'organization.jobPosition.updated': 'تم تحديث الموقع التنظيمي',
-  'organization.jobPosition.deleted': 'تم حذف الموقع التنظيمي',
-  'organization.jobPosition.deleteTitle': 'حذف الموقع التنظيمي',
-  'organization.jobPosition.activated': 'تم تفعيل الموقع التنظيمي',
-  'organization.jobPosition.deactivated': 'تم إلغاء تفعيل الموقع التنظيمي',
-  'organization.jobPosition.departmentFixed':
-    'تُحدَّد الإدارة المالكة عند الإنشاء ولا يمكن تغييرها.',
-  'organization.jobPosition.sectionHint':
-    'اختياري. في حال تحديده يجب أن ينتمي القسم إلى الإدارة المالكة.',
-  'organization.jobPosition.noSection': 'بدون قسم',
   'organization.application.subtitle':
     'التطبيقات (الوحدات) المتاحة في المنصة. لكل تطبيق أيقونة ومسار، ويُجمَّع حسب الفئة ويُرتَّب حسب ترتيب العرض. وهي مصدر التنقل والوصول إلى الوحدات.',
   'organization.application.nameAr': 'الاسم بالعربية',

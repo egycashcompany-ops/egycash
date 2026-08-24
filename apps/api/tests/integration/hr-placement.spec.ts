@@ -41,9 +41,8 @@ let BRANCH_A = '';
 let BRANCH_B = '';
 let DEPT_A = '';
 let DEPT_B = '';
-let POSITION_A = '';
-let POSITION_B = '';
-let TITLE_ID = '';
+let TITLE_A = '';
+let TITLE_B = '';
 
 const resolveMongoUri = async (): Promise<string> => {
   const external = process.env.MONGO_TEST_URI;
@@ -206,23 +205,18 @@ beforeAll(async () => {
   DEPT_A = await mkDepartment(BRANCH_A, 'DEP-CAI', 'Cairo Ops');
   DEPT_B = await mkDepartment(BRANCH_B, 'DEP-GIZ', 'Giza Ops');
 
-  const mkPosition = async (departmentId: string, en: string): Promise<string> => {
+  // P-ORG-1 — one job concept. A title is ORG-WIDE, so where the applicant sits is now stated by
+  // the placement itself rather than inherited from a seat that carried a department.
+  const mkTitle = async (code: string, en: string): Promise<string> => {
     const res = await request(app)
-      .post('/api/v1/platform/job-positions')
+      .post('/api/v1/platform/job-titles')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ departmentId, name: { ar: en, en } });
-    expect(res.status).toBe(201);
+      .send({ code, name: { ar: en, en }, jobGrade: 'G5' });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
     return (res.body as { data: { id: string } }).data.id;
   };
-  POSITION_A = await mkPosition(DEPT_A, 'Teller');
-  POSITION_B = await mkPosition(DEPT_B, 'Driver');
-
-  const titleRes = await request(app)
-    .post('/api/v1/platform/job-titles')
-    .set('Authorization', `Bearer ${adminToken}`)
-    .send({ code: 'JT-REC-1', name: { ar: 'أخصائي', en: 'Specialist' }, jobGrade: 'G5' });
-  expect(titleRes.status).toBe(201);
-  TITLE_ID = (titleRes.body as { data: { id: string } }).data.id;
+  TITLE_A = await mkTitle('JT-TELLER', 'Teller');
+  TITLE_B = await mkTitle('JT-DRIVER', 'Driver');
 }, 240_000);
 
 afterAll(async () => {
@@ -236,8 +230,8 @@ beforeEach(async () => {
 
 describe('placement at intake (RW1)', () => {
   it('accepts a placement and completes it from the seat', async () => {
-    const applicant = await register({ jobPositionId: POSITION_A });
-    expect(applicant.placement.jobPositionId).toBe(POSITION_A);
+    const applicant = await register({ jobTitleId: TITLE_A, departmentId: DEPT_A });
+    expect(applicant.placement.jobTitleId).toBe(TITLE_A);
     // The seat is the authority on where it sits: department and branch come from it.
     expect(applicant.placement.departmentId).toBe(DEPT_A);
     expect(applicant.placement.branchId).toBe(BRANCH_A);
@@ -248,11 +242,11 @@ describe('placement at intake (RW1)', () => {
 
   it('still registers with no placement at all (ADR-016)', async () => {
     const applicant = await register();
-    expect(applicant.placement.jobPositionId).toBeNull();
+    expect(applicant.placement.jobTitleId).toBeNull();
     expect(applicant.placement.branchId).toBeNull();
   });
 
-  it('refuses an unknown position', async () => {
+  it('refuses an unknown job title', async () => {
     const res = await request(app)
       .post('/api/v1/hr/applicants')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -261,7 +255,7 @@ describe('placement at intake (RW1)', () => {
         intakeChannel: 'internal',
         identity: { fullNameAr: 'أحمد', nationality: 'Egyptian' },
         contact: { primaryPhone: nextPhone() },
-        placement: { jobPositionId: '64b1f0aaaaaaaaaaaaaaaaab' },
+        placement: { jobTitleId: '64b1f0aaaaaaaaaaaaaaaaab' },
       });
     expect(res.status).toBe(400);
   });
@@ -269,10 +263,10 @@ describe('placement at intake (RW1)', () => {
 
 describe('reassignment (RW2)', () => {
   it('moves the candidate, records history, and syncs the scope field', async () => {
-    const applicant = await register({ jobPositionId: POSITION_A });
+    const applicant = await register({ jobTitleId: TITLE_A, departmentId: DEPT_A });
 
     const res = await reassign(applicant.id, {
-      placement: { jobPositionId: POSITION_B },
+      placement: { jobTitleId: TITLE_B, departmentId: DEPT_B },
       reason: 'تم فتح شاغر في الجيزة',
       version: applicant.version,
     });
@@ -280,7 +274,7 @@ describe('reassignment (RW2)', () => {
     const body = envelope<ApplicantDto>(res);
     const after = body.data;
 
-    expect(after.placement.jobPositionId).toBe(POSITION_B);
+    expect(after.placement.jobTitleId).toBe(TITLE_B);
     expect(after.placement.branchId).toBe(BRANCH_B);
     expect(after.branchId).toBe(BRANCH_B);
     expect(after.placementLabel.position).toBe('Driver');
@@ -288,7 +282,7 @@ describe('reassignment (RW2)', () => {
     // I6 — the envelope answers "where do they stand now?" without a follow-up request.
     expect(body.workflow.applicantId).toBe(applicant.id);
     expect(body.workflow.applicantStatus).toBe('new');
-    expect(body.workflow.placement.jobPositionId).toBe(POSITION_B);
+    expect(body.workflow.placement.jobTitleId).toBe(TITLE_B);
     expect(body.workflow.stage?.kind).toBe('screening');
     // …what it just wrote…
     expect(body.timeline.produced.map((e) => e.type)).toEqual(
@@ -309,9 +303,9 @@ describe('reassignment (RW2)', () => {
   });
 
   it('writes one timeline entry per moved dimension, correlated as one act (A2)', async () => {
-    const applicant = await register({ jobPositionId: POSITION_A });
+    const applicant = await register({ jobTitleId: TITLE_A, departmentId: DEPT_A });
     await reassign(applicant.id, {
-      placement: { jobPositionId: POSITION_B },
+      placement: { jobTitleId: TITLE_B, departmentId: DEPT_B },
       reason: 'إعادة توزيع',
       version: applicant.version,
     });
@@ -325,10 +319,10 @@ describe('reassignment (RW2)', () => {
   });
 
   it('requires a reason and refuses a caller without the grant', async () => {
-    const applicant = await register({ jobPositionId: POSITION_A });
+    const applicant = await register({ jobTitleId: TITLE_A, departmentId: DEPT_A });
 
     const noReason = await reassign(applicant.id, {
-      placement: { jobPositionId: POSITION_B },
+      placement: { jobTitleId: TITLE_B, departmentId: DEPT_B },
       version: applicant.version,
     });
     expect(noReason.status).toBe(400);
@@ -336,15 +330,15 @@ describe('reassignment (RW2)', () => {
     const denied = await request(app)
       .post(`/api/v1/hr/applicants/${applicant.id}/reassign`)
       .set('Authorization', `Bearer ${plainToken}`)
-      .send({ placement: { jobPositionId: POSITION_B }, reason: 'x', version: applicant.version });
+      .send({ placement: { jobTitleId: TITLE_B, departmentId: DEPT_B }, reason: 'x', version: applicant.version });
     // `applicant.edit` is NOT enough — reassignment is its own grant (RW2).
     expect(denied.status).toBe(403);
   });
 
   it('is a no-op when nothing actually moved', async () => {
-    const applicant = await register({ jobPositionId: POSITION_A });
+    const applicant = await register({ jobTitleId: TITLE_A, departmentId: DEPT_A });
     const res = await reassign(applicant.id, {
-      placement: { jobPositionId: POSITION_A },
+      placement: { jobTitleId: TITLE_A, departmentId: DEPT_A },
       reason: 'no change',
       version: applicant.version,
     });
@@ -357,14 +351,14 @@ describe('reassignment (RW2)', () => {
   });
 
   it('applies one placement across a selection with a partial-success envelope (RW17)', async () => {
-    const [a, b] = [await register({ jobPositionId: POSITION_A }), await register({ jobPositionId: POSITION_A })];
+    const [a, b] = [await register({ jobTitleId: TITLE_A, departmentId: DEPT_A }), await register({ jobTitleId: TITLE_A, departmentId: DEPT_A })];
     const res = await request(app)
       .post('/api/v1/hr/applicants/bulk')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         action: 'reassign',
         ids: [a.id, b.id],
-        placement: { jobPositionId: POSITION_B },
+        placement: { jobTitleId: TITLE_B, departmentId: DEPT_B },
         reason: 'إعادة توزيع جماعية',
       });
     expect(res.status).toBe(200);
@@ -381,7 +375,7 @@ describe('reassignment (RW2)', () => {
   // `withdraw` and fell through to `reassign` for everything else, so a bulk `moveToOffer`
   // silently ran a reassignment with no placement instead of moving anyone.
   it('moves a selection to the Job Offer stage rather than falling through to reassign', async () => {
-    const [a, b] = [await register({ jobPositionId: POSITION_A }), await register({ jobPositionId: POSITION_A })];
+    const [a, b] = [await register({ jobTitleId: TITLE_A, departmentId: DEPT_A }), await register({ jobTitleId: TITLE_A, departmentId: DEPT_A })];
     const res = await request(app)
       .post('/api/v1/hr/applicants/bulk')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -395,12 +389,12 @@ describe('reassignment (RW2)', () => {
       const after = await getApplicant(applicant.id);
       expect(after.movedToOfferAt).not.toBeNull();
       // The placement is untouched — this was a stage move, not a reassignment.
-      expect(after.placement.jobPositionId).toBe(POSITION_A);
+      expect(after.placement.jobTitleId).toBe(TITLE_A);
     }
   });
 
   it('opens the screening row for a selection (idempotent under I11)', async () => {
-    const a = await register({ jobPositionId: POSITION_A });
+    const a = await register({ jobTitleId: TITLE_A, departmentId: DEPT_A });
     const res = await request(app)
       .post('/api/v1/hr/applicants/bulk')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -450,7 +444,7 @@ describe('the editing window closes at acceptance (RW3)', () => {
   };
 
   it('follows a live offer into the new placement, then refuses once accepted', async () => {
-    const applicant = await register({ jobPositionId: POSITION_A });
+    const applicant = await register({ jobTitleId: TITLE_A, departmentId: DEPT_A });
     const screening = await screeningOf(applicant.id);
     await request(app)
       .post(`/api/v1/hr/screenings/${screening.id}/decide`)
@@ -472,10 +466,9 @@ describe('the editing window closes at acceptance (RW3)', () => {
         .send({
           applicantId: applicant.id,
           terms: {
-            jobTitleId: TITLE_ID,
+            jobTitleId: TITLE_A,
             departmentId: DEPT_A,
             branchId: BRANCH_A,
-            jobPositionId: POSITION_A,
             employmentType: 'fullTime',
             probationMonths: 3,
             startDate: '2027-06-01T00:00:00.000Z',
@@ -488,7 +481,7 @@ describe('the editing window closes at acceptance (RW3)', () => {
     // A draft offer is inside the editing window: the package follows the placement (RW2 step 5).
     const current = await getApplicant(applicant.id);
     const res = await reassign(applicant.id, {
-      placement: { jobPositionId: POSITION_B },
+      placement: { jobTitleId: TITLE_B, departmentId: DEPT_B },
       reason: 'نُقل الشاغر',
       version: current.version,
     });
@@ -500,7 +493,7 @@ describe('the editing window closes at acceptance (RW3)', () => {
     ).body.data as JobOfferDto;
     expect(revised.revisionNumber).toBe(offer.revisionNumber + 1);
     expect(revised.terms?.branchId).toBe(BRANCH_B);
-    expect(revised.terms?.jobPositionId).toBe(POSITION_B);
+    expect(revised.terms?.jobTitleId).toBe(TITLE_B);
     // The prior package is kept, not overwritten.
     expect(revised.revisions.length).toBe(1);
 
@@ -518,7 +511,7 @@ describe('the editing window closes at acceptance (RW3)', () => {
     // Acceptance closes the window (RW3/OQ-3) — the accepted snapshot is the contractual artifact.
     const afterAccept = await getApplicant(applicant.id);
     const refused = await reassign(applicant.id, {
-      placement: { jobPositionId: POSITION_A },
+      placement: { jobTitleId: TITLE_A, departmentId: DEPT_A },
       reason: 'متأخر',
       version: afterAccept.version,
     });
@@ -528,7 +521,7 @@ describe('the editing window closes at acceptance (RW3)', () => {
 
 describe('stage recommendations (RW5)', () => {
   it('records an advisory recommendation without moving the candidate', async () => {
-    const applicant = await register({ jobPositionId: POSITION_A });
+    const applicant = await register({ jobTitleId: TITLE_A, departmentId: DEPT_A });
     const screening = await screeningOf(applicant.id);
     await request(app)
       .post(`/api/v1/hr/screenings/${screening.id}/decide`)
@@ -558,18 +551,18 @@ describe('stage recommendations (RW5)', () => {
       .patch(`/api/v1/hr/interviews/${interview.id}/recommendation`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
-        recommendedPlacement: { jobPositionId: POSITION_B },
+        recommendedPlacement: { jobTitleId: TITLE_B, departmentId: DEPT_B },
         recommendationNote: 'أنسب لوظيفة سائق',
         version: interview.version,
       });
     expect(res.status).toBe(200);
     const recommended = envelope<InterviewDto>(res);
-    expect(recommended.data.recommendedPlacement?.jobPositionId).toBe(POSITION_B);
+    expect(recommended.data.recommendedPlacement?.jobTitleId).toBe(TITLE_B);
     // RW5 — a recommendation is advisory: the candidate has NOT moved.
-    expect(recommended.workflow.placement.jobPositionId).toBe(POSITION_A);
+    expect(recommended.workflow.placement.jobTitleId).toBe(TITLE_A);
     expect(recommended.workflow.stage?.kind).toBe('interview');
 
     // Advisory only — the candidate has NOT moved.
-    expect((await getApplicant(applicant.id)).placement.jobPositionId).toBe(POSITION_A);
+    expect((await getApplicant(applicant.id)).placement.jobTitleId).toBe(TITLE_A);
   });
 });

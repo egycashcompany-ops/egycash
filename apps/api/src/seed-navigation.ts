@@ -518,13 +518,6 @@ const CATALOG: CategoryDef[] = [
         permission: 'section.view',
       },
       {
-        en: 'Org Positions',
-        ar: 'المواقع التنظيمية',
-        route: '/organization/job-positions',
-        icon: 'badge',
-        permission: 'jobPosition.view',
-      },
-      {
         en: 'Jobs',
         ar: 'الوظائف',
         route: '/organization/job-titles',

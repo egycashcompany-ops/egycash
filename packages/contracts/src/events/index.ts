@@ -84,7 +84,7 @@ export const OrganizationUpdatedPayloadV1 = z.object({
 });
 
 export const OrgUnitChangedPayloadV1 = z.object({
-  unitType: z.enum(['branch', 'department', 'section', 'jobTitle', 'jobPosition']),
+  unitType: z.enum(['branch', 'department', 'section', 'jobTitle']),
   unitId: objectId(),
   change: z.enum(['created', 'updated', 'deleted']),
 });

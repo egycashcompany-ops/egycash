@@ -57,7 +57,6 @@ export interface EmploymentDetails {
   sectionId: Types.ObjectId | null;
   branchId: Types.ObjectId;
   /** Approved Job Position, when one exists — OPTIONAL forever (ADR-016 Talent Pool). */
-  jobPositionId: Types.ObjectId | null;
   /** Reporting manager — null when none is set. */
   managerId: Types.ObjectId | null;
   employmentType: EmploymentType;
@@ -193,7 +192,6 @@ const employmentSchema = new Schema<EmploymentDetails>(
     departmentId: { type: Schema.Types.ObjectId, required: true },
     sectionId: { type: Schema.Types.ObjectId, default: null },
     branchId: { type: Schema.Types.ObjectId, required: true },
-    jobPositionId: { type: Schema.Types.ObjectId, default: null },
     managerId: { type: Schema.Types.ObjectId, default: null },
     employmentType: { type: String, enum: EMPLOYMENT_TYPES, required: true },
     salary: {

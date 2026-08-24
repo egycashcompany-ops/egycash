@@ -84,7 +84,6 @@ const workflowState = (applicantId: string): WorkflowStateDto => ({
   status: 'approved',
   attempt: 1,
   placement: {
-    jobPositionId: null,
     jobTitleId: null,
     departmentId: null,
     branchId: null,

@@ -272,38 +272,6 @@ export const ListOrgUnitsQuerySchema = PaginationQuerySchema.extend({
 }).strict();
 export type ListOrgUnitsQuery = z.infer<typeof ListOrgUnitsQuerySchema>;
 
-// Job Positions are a reusable organization master entity: a role that lives at a Department
-// (required) and optionally at a Section within it. They are NOT tied to Recruitment and require no
-// Job Requisition (ADR-016). The owning Department is set at creation and immutable thereafter.
-export const CreateJobPositionSchema = z
-  .object({
-    name: LocalizedStringSchema,
-    departmentId: objectId(),
-    sectionId: objectId().nullable().optional(),
-    description: LocalizedStringSchema.nullable().optional(),
-  })
-  .strict();
-export type CreateJobPosition = z.infer<typeof CreateJobPositionSchema>;
-
-export const UpdateJobPositionSchema = z
-  .object({
-    name: LocalizedStringSchema.optional(),
-    sectionId: objectId().nullable().optional(),
-    description: LocalizedStringSchema.nullable().optional(),
-    status: z.enum(['active', 'inactive']).optional(),
-    version: z.number().int().min(0),
-  })
-  .strict();
-export type UpdateJobPosition = z.infer<typeof UpdateJobPositionSchema>;
-
-export const ListJobPositionsQuerySchema = PaginationQuerySchema.extend({
-  status: z.enum(['active', 'inactive']).optional(),
-  departmentId: objectId().optional(),
-  sectionId: objectId().optional(),
-  search: z.string().max(200).optional(),
-}).strict();
-export type ListJobPositionsQuery = z.infer<typeof ListJobPositionsQuerySchema>;
-
 export interface OrgUnitDto {
   id: string;
   code: string;
@@ -405,20 +373,6 @@ export interface JobTitleDto {
    * is what a reader displays. The same shape the payroll queue uses for employee labels (D7).
    */
   defaultShifts: JobShiftLabelDto[];
-  status: 'active' | 'inactive';
-  version: number;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface JobPositionDto {
-  id: string;
-  name: { ar: string; en: string };
-  /** The owning Department (required, immutable after creation). */
-  departmentId: string;
-  /** Optional Section within the owning department. */
-  sectionId: string | null;
-  description: { ar: string; en: string } | null;
   status: 'active' | 'inactive';
   version: number;
   createdAt: string;

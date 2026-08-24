@@ -37,7 +37,6 @@ const employmentDto = (e: EmploymentDetails, compensationVisible: boolean): Empl
   departmentId: String(e.departmentId),
   sectionId: e.sectionId === null ? null : String(e.sectionId),
   branchId: String(e.branchId),
-  jobPositionId: e.jobPositionId === null ? null : String(e.jobPositionId),
   managerId: e.managerId === null ? null : String(e.managerId),
   employmentType: e.employmentType,
   salary:

@@ -17,6 +17,7 @@ import {
   type Paginated,
 } from '@ecms/contracts';
 import { notificationsService } from '../../../platform/notifications';
+import { userService } from '../../../platform/users';
 import { type AuthContext, type ScopeSelector } from '../../../shared/types';
 import { employeeRepository, type EmployeeDoc } from '../employee-management/employees';
 import { audienceCriteria, recipientUserIds, splitReachable } from './audience-criteria';
@@ -106,18 +107,35 @@ class AnnouncementService {
       sentAt: new Date(),
     });
 
+    // ONE SEND PER READING LANGUAGE.
+    //
+    // A template renders one `data` map into both languages, and the platform requires every
+    // declared variable to appear in both language bodies — so a single call cannot give an Arabic
+    // reader the Arabic text and an English reader the English one. It would give everybody
+    // whichever half was passed.
+    //
+    // So the split moves here: recipients are grouped by the language they read, and each group is
+    // addressed its own copy of the message the sender wrote. The cost is honest and worth naming —
+    // a person's stored notification carries the text they were addressed in on BOTH language
+    // fields, so switching languages afterwards does not retranslate it. It is a human's words,
+    // not a rendered template; there is no other copy to show them.
     if (userIds.length > 0) {
-      await notificationsService.notify({
-        template: ANNOUNCEMENT_TEMPLATE_KEY,
-        to: { userIds },
-        data: {
-          titleAr: input.title.ar,
-          titleEn: input.title.en,
-          bodyAr: input.body.ar,
-          bodyEn: input.body.en,
-        },
-        entityRef: { moduleId: 'hr', entityType: 'announcement', entityId: String(doc._id) },
-      });
+      const locales = await userService.localesAmong(userIds);
+      const groups: Record<'ar' | 'en', string[]> = { ar: [], en: [] };
+      // An account the read did not return keeps the platform default rather than being dropped:
+      // a missing row must never cost somebody the announcement.
+      for (const userId of userIds) groups[locales.get(userId) ?? 'ar'].push(userId);
+
+      for (const language of ['ar', 'en'] as const) {
+        const group = groups[language];
+        if (group.length === 0) continue;
+        await notificationsService.notify({
+          template: ANNOUNCEMENT_TEMPLATE_KEY,
+          to: { userIds: group },
+          data: { title: input.title[language], body: input.body[language] },
+          entityRef: { moduleId: 'hr', entityType: 'announcement', entityId: String(doc._id) },
+        });
+      }
     }
 
     return toDto(doc.toObject() as AnnouncementDoc, null);

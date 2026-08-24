@@ -24,12 +24,20 @@ export const ensureAnnouncementTemplate = async (): Promise<void> => {
     key: ANNOUNCEMENT_TEMPLATE_KEY,
     category: 'hr',
     priority: 'normal',
-    subject: { ar: '{{titleAr}}', en: '{{titleEn}}' },
-    body: { ar: '{{bodyAr}}', en: '{{bodyEn}}' },
+    // TWO variables, and both appear in BOTH language bodies — the platform requires it
+    // (`contentAgreesWithVariables`), and the requirement is right: a declared variable a language
+    // body ignores is data that language silently loses.
+    //
+    // It is also why the four-variable shape this started as cannot work. `body.ar` would use only
+    // `{{bodyAr}}` and never `{{bodyEn}}`, which the rule reads — correctly, in general — as the
+    // Arabic version dropping a value. So the language split moves OUT of the template and into
+    // the send: see `announcement.service`, which addresses each reading language its own copy.
+    subject: { ar: '{{title}}', en: '{{title}}' },
+    body: { ar: '{{title}}\n\n{{body}}', en: '{{title}}\n\n{{body}}' },
     // Every channel the platform has. What a given recipient actually receives on is still their
     // own preference — this only says an announcement is allowed to travel by any of them.
     channels: ['inApp', 'email', 'push'],
-    variables: ['titleAr', 'titleEn', 'bodyAr', 'bodyEn'],
+    variables: ['title', 'body'],
     defaultExpiryHours: null,
   });
 };

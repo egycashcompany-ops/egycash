@@ -144,6 +144,9 @@ describe('seed → password login (regression)', () => {
     expect(routes).toContain('/leave');
     expect(routes).toContain('/fleet');
     expect(routes).toContain('/fleet/vehicles');
+    // FW-7's standing-crew board, beside the day it is planned into. Named as well as counted:
+    // the totals below move whenever ANY row lands, so only this says which one it was.
+    expect(routes).toContain('/fleet/fixed-roster');
     expect(routes).toContain('/organization/branches');
     expect(routes).toContain('/organization/applications');
     expect(routes).toContain('/contracts');
@@ -238,7 +241,7 @@ describe('seed → password login (regression)', () => {
     expect(routes).toContain('/atm/data-edit');
     // 22 (HR) + 12 (Fleet) + 14 (Operations) + 7 (Organization) + 13 (IT) + 12 (Gold Vault)
     //   + 9 (Administration) + 10 (ATM)
-    expect(routes).toHaveLength(101); // +1: C1 Captain's Day, +1: the standing crew
+    expect(routes).toHaveLength(102); // +1: C1 Captain's Day, +1: the standing crew, +1: the fixed crew
   });
 
   it('re-running the seed is idempotent — no duplicate categories/applications/grants', async () => {
@@ -263,7 +266,7 @@ describe('seed → password login (regression)', () => {
           n + g.applications.length + g.sections.reduce((m, s) => m + s.applications.length, 0),
         0,
       ),
-    ).toBe(101); // +1: C1 Captain's Day, +1: the standing crew, +12: gold, +10: ATM
+    ).toBe(102); // +1: C1 Captain's Day, +1: the standing crew, +12: gold, +10: ATM, +1: fixed crew
   });
 
   it('the seeded HR user also logs in with email/password', async () => {
@@ -336,7 +339,7 @@ describe('the default sections migration', () => {
 
   /**
    * The WHOLE application catalog, not the first page of it. The catalog outgrew a single page
-   * when the ATM module landed: MAX_PAGE_SIZE is 100 and the seeded catalog is now 101 rows, so a
+   * when the ATM module landed: MAX_PAGE_SIZE is 100 and the seeded catalog is past that, so a
    * lone `pageSize=100` read silently drops the OLDEST row under the default `createdAt: -1`
    * sort — and that row is `/applicants`, which is exactly the page these tests move between
    * sections. Page through, so the assertions keep seeing the catalog rather than a prefix of it.

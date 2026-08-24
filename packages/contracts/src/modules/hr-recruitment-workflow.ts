@@ -21,7 +21,6 @@ import { objectId, type LocalizedString } from '../common/index.js';
  */
 export const PlacementSchema = z
   .object({
-    /** The seat (platform `job_positions`) — carries its own department. */
     /** The role name (platform `job_titles`). */
     jobTitleId: objectId().nullable().default(null),
     departmentId: objectId().nullable().default(null),

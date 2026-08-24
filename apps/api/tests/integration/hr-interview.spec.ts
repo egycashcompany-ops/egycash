@@ -861,7 +861,6 @@ describe('interviews — placement recommendation', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         recommendedPlacement: {
-          jobPositionId: null,
           jobTitleId: null,
           departmentId: null,
           sectionId: null,

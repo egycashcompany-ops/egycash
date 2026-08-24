@@ -296,6 +296,15 @@ const CATALOG: CategoryDef[] = [
         permission: 'fleetRoster.view',
       },
       {
+        // The standing crew, beside the day it is planned into. Same grant as the daily board:
+        // §7 gives one view grant for the whole assignment surface, so no permission is added.
+        en: 'Fixed Crew',
+        ar: 'الطقم الثابت',
+        route: '/fleet/fixed-roster',
+        icon: 'users',
+        permission: 'fleetRoster.view',
+      },
+      {
         en: 'Accidents',
         ar: 'حوادث السيارات',
         route: '/fleet/accidents',

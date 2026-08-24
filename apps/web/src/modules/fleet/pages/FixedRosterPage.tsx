@@ -15,6 +15,14 @@
 // Saving is explicit. A drag edits a DRAFT; the banner and the button read the difference
 // between draft and saved board, and only «حفظ» writes. A reload before saving therefore keeps
 // the saved crews, exactly as an unsaved form does everywhere else in the app.
+//
+// The board is the daily roster's own `DataTable`, not a grid of cards, so the two assignment
+// screens read as one family — same columns in the same order, same badges, same empty states,
+// and the table's own `overflow-x-auto` keeps a narrow screen scrolling inside the table rather
+// than shoving the page sideways. The DRIVER CELLS are the drop targets.
+//
+// «نوع المهمة» and «ملاحظات» are present for that likeness and are always «—»: a standing crew
+// stores neither — see §2.7b, which is deliberately the two driver slots and nothing else.
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { type FleetFixedCrewRowDto, type Locale } from '@ecms/contracts';
@@ -23,12 +31,12 @@ import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { Card, CardHeader } from '../../../shared/ui/Card';
+import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { SearchInput } from '../../../shared/ui/SearchInput';
 import { Button } from '../../../shared/ui/Button';
 import { Badge } from '../../../shared/ui/Badge';
 import { EmptyState } from '../../../shared/ui/states/EmptyState';
-import { ErrorState } from '../../../shared/ui/states/ErrorState';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { TrashIcon } from '../../../shared/ui/icons';
 import { formatNumber } from '../../../shared/lib/format';
@@ -39,9 +47,9 @@ import { InWorkshopBadge } from '../components/VehicleStatusBadge';
 import {
   CREW_SLOTS,
   assignDriver,
+  availableDrivers,
   changedRows,
   clearSlot,
-  findSeat,
   type CrewSlot,
 } from '../lib/fixed-roster-board';
 
@@ -95,6 +103,15 @@ export const FixedRosterPage = (): JSX.Element => {
   const [dragging, setDragging] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
 
+  // The pool is DERIVED, never the server's list rendered raw: everyone the draft already seats
+  // leaves it the instant the drop lands, and comes back the instant a slot is cleared. Deriving
+  // it is also why a move between vehicles cannot flicker a driver back into the list and why a
+  // slot change cannot duplicate a card — membership is computed from the seats, not adjusted.
+  const pool = useMemo(
+    () => availableDrivers(boardQuery.data?.drivers ?? [], draft),
+    [boardQuery.data, draft],
+  );
+
   const term = search.trim().toLowerCase();
   const rows = draft.filter(
     (row) =>
@@ -103,15 +120,12 @@ export const FixedRosterPage = (): JSX.Element => {
       row.plateNumber.toLowerCase().includes(term),
   );
 
-  // Where every driver sits in the DRAFT, so the pool reflects the drag before it is saved.
-  const seatOf = (employeeId: string) => findSeat(draft, employeeId);
-  const codeOf = (vehicleId: string): string =>
-    draft.find((row) => row.vehicleId === vehicleId)?.code ?? t('fleet.roster.otherVehicle');
-
   const drop = (vehicleId: string, slot: CrewSlot, employeeId: string): void => {
-    setDraft((current) => assignDriver(current, vehicleId, slot, employeeId));
     setOver(null);
     setDragging(null);
+    // Every drop lands: onto another car it is a move, onto this car's other slot it is a swap,
+    // onto the slot already held it is a no-op. `assignDriver` is what keeps all three legal.
+    setDraft(() => assignDriver(draft, vehicleId, slot, employeeId));
   };
 
   const commit = async (): Promise<void> => {
@@ -128,18 +142,21 @@ export const FixedRosterPage = (): JSX.Element => {
     }
   };
 
+  const dash = <span className="text-slate-400">—</span>;
   const zoneKey = (vehicleId: string, slot: CrewSlot): string => `${vehicleId}:${slot}`;
 
-  /** One slot: a labelled drop target that either holds a card or asks for one. */
+  /**
+   * One slot, as a table CELL: a drop target that either holds a driver or asks for one.
+   *
+   * No label of its own — the column header above it already says which slot this is, and
+   * repeating it in every row is the noise a table exists to remove.
+   */
   const Slot = ({ row, slot }: { row: FleetFixedCrewRowDto; slot: CrewSlot }): JSX.Element => {
     const employeeId = row[slot];
     const key = zoneKey(row.vehicleId, slot);
     const active = over === key;
     return (
-      <div className="min-w-0">
-        <p className="mb-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-          {t(SLOT_LABEL[slot])}
-        </p>
+      <div className="min-w-[9rem]">
         <div
           data-drop-zone={key}
           aria-label={`${row.code} · ${t(SLOT_LABEL[slot])}`}
@@ -158,7 +175,7 @@ export const FixedRosterPage = (): JSX.Element => {
             if (id !== '') drop(row.vehicleId, slot, id);
           }}
           className={[
-            'flex min-h-[3.25rem] items-center gap-2 rounded-lg border border-dashed px-3 py-2 transition-colors',
+            'flex min-h-[2.5rem] items-center gap-2 rounded-lg border border-dashed px-2 py-1.5 transition-colors',
             active
               ? 'border-brand-500 bg-brand-50 dark:border-brand-400 dark:bg-brand-950'
               : employeeId === null
@@ -206,6 +223,87 @@ export const FixedRosterPage = (): JSX.Element => {
     );
   };
 
+  /**
+   * The seven columns, in the daily roster's own order and idiom (§4.5's board, minus its date).
+   *
+   * «نوع المهمة» and «ملاحظات» are here for that likeness and are always «—»: a standing crew is
+   * §2.7b's two driver slots and nothing else, and inventing a value for a fact the row does not
+   * hold would be worse than an honest dash.
+   */
+  const columns: Column<FleetFixedCrewRowDto>[] = [
+    {
+      key: 'vehicle',
+      header: t('fleet.odometer.columns.vehicle'),
+      render: (row) => (
+        <span className="flex flex-col">
+          <span className="font-mono text-xs" dir="ltr">
+            {row.code}
+          </span>
+          <span className="text-xs text-slate-500 dark:text-slate-400" dir="ltr">
+            {row.plateNumber}
+          </span>
+        </span>
+      ),
+    },
+    {
+      key: 'state',
+      header: t('fleet.vehicles.columns.status'),
+      render: (row) => (
+        <span className="flex flex-wrap items-center gap-1">
+          <InWorkshopBadge inWorkshop={row.inMaintenance} />
+          {row.driver1EmployeeId !== null || row.driver2EmployeeId !== null ? (
+            <Badge tone="success">{t('fleet.roster.assigned')}</Badge>
+          ) : (
+            <Badge tone="neutral">{t('fleet.fixedRoster.unassigned')}</Badge>
+          )}
+        </span>
+      ),
+    },
+    {
+      key: 'mission',
+      header: t('fleet.roster.fields.mission'),
+      render: () => dash,
+    },
+    {
+      key: 'driver1',
+      header: t('fleet.odometer.fields.driver1'),
+      render: (row) => <Slot row={row} slot="driver1EmployeeId" />,
+    },
+    {
+      key: 'driver2',
+      header: t('fleet.odometer.fields.driver2'),
+      render: (row) => <Slot row={row} slot="driver2EmployeeId" />,
+    },
+    {
+      key: 'notes',
+      header: t('fleet.attendance.fields.notes'),
+      render: () => dash,
+    },
+    {
+      key: 'actions',
+      header: t('fleet.vehicles.columns.actions'),
+      align: 'end',
+      render: (row) =>
+        mayPlan && (row.driver1EmployeeId !== null || row.driver2EmployeeId !== null) ? (
+          <button
+            type="button"
+            className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+            aria-label={t('fleet.fixedRoster.clearCrew')}
+            title={t('fleet.fixedRoster.clearCrew')}
+            onClick={() =>
+              setDraft((c) =>
+                CREW_SLOTS.reduce((rows, slot) => clearSlot(rows, row.vehicleId, slot), c),
+              )
+            }
+          >
+            <TrashIcon className="h-4 w-4" />
+          </button>
+        ) : (
+          dash
+        ),
+    },
+  ];
+
   return (
     <PageContainer>
       <PageHeader
@@ -245,7 +343,11 @@ export const FixedRosterPage = (): JSX.Element => {
       />
 
       <div className="grid gap-6 xl:grid-cols-3">
-        <div className="space-y-4 xl:col-span-2">
+        {/* `min-w-0`: a grid item's default `min-width: auto` refuses to shrink below its
+            content, so without it the table's own `overflow-x-auto` never engages — the wrapper
+            just grows and takes the PAGE sideways with it. With it, a narrow screen scrolls
+            inside the table, which is where the scrolling belongs. */}
+        <div className="min-w-0 space-y-4 xl:col-span-2">
           <FilterBar hasActiveFilters={search !== ''} onClear={() => patch({ q: null })}>
             <SearchInput
               value={search}
@@ -265,50 +367,34 @@ export const FixedRosterPage = (): JSX.Element => {
             </span>
           </FilterBar>
 
-          {boardQuery.isError ? (
-            <ErrorState error={boardQuery.error} onRetry={() => void boardQuery.refetch()} />
-          ) : rows.length === 0 ? (
-            <Card>
-              <EmptyState title={t('fleet.fixedRoster.noVehicles')} />
-            </Card>
-          ) : (
-            <div className="grid gap-4 sm:grid-cols-2">
-              {rows.map((row) => (
-                <Card key={row.vehicleId}>
-                  <CardHeader
-                    title={row.code}
-                    description={row.plateNumber}
-                    actions={<InWorkshopBadge inWorkshop={row.inMaintenance} />}
-                  />
-                  <div className="space-y-3 px-5 py-4">
-                    {CREW_SLOTS.map((slot) => (
-                      <Slot key={slot} row={row} slot={slot} />
-                    ))}
-                  </div>
-                </Card>
-              ))}
-            </div>
-          )}
+          <DataTable
+            columns={columns}
+            rows={rows}
+            rowKey={(row) => row.vehicleId}
+            loading={boardQuery.isPending}
+            error={boardQuery.isError ? boardQuery.error : undefined}
+            onRetry={() => void boardQuery.refetch()}
+            empty={<EmptyState title={t('fleet.fixedRoster.noVehicles')} />}
+          />
         </div>
 
         <div className="space-y-6">
           <Card>
             <CardHeader
-              title={`${t('fleet.fixedRoster.driversTitle')} · ${formatNumber(boardQuery.data?.drivers.length ?? 0, locale)}`}
+              title={`${t('fleet.fixedRoster.driversTitle')} · ${formatNumber(pool.length, locale)}`}
               description={t('fleet.fixedRoster.driversHint')}
             />
-            {boardQuery.data === undefined || boardQuery.data.drivers.length === 0 ? (
+            {pool.length === 0 ? (
               <EmptyState title={t('fleet.roster.availableEmpty')} />
             ) : (
               <ul className="max-h-[32rem] divide-y divide-slate-100 overflow-y-auto dark:divide-slate-800">
-                {boardQuery.data.drivers.map((driver) => {
-                  const seat = seatOf(driver.employeeId);
-                  // The board carries only the vehicles this reader may see. A driver fixed to a
-                  // car outside that scope has no seat HERE, and calling them free would be
-                  // false — and would invite a drag the server then refuses, because the row
-                  // that has to release them is one this client cannot send.
+                {pool.map((driver) => {
+                  // Everyone here is unseated ON THIS BOARD — that is what the pool now means.
+                  // But the board carries only the vehicles this reader may see, so a driver
+                  // fixed to a car outside that scope is not free either: calling them free
+                  // would be false, and would invite a drag the server then refuses, because
+                  // the row that has to release them is one this client cannot send.
                   const heldElsewhere =
-                    seat === null &&
                     driver.assignedVehicleId !== null &&
                     !draft.some((row) => row.vehicleId === driver.assignedVehicleId);
                   return (
@@ -333,9 +419,7 @@ export const FixedRosterPage = (): JSX.Element => {
                         <span className="min-w-0 truncate">
                           <EmployeeName employeeId={driver.employeeId} />
                         </span>
-                        {seat !== null ? (
-                          <Badge tone="info">{codeOf(seat.vehicleId)}</Badge>
-                        ) : heldElsewhere ? (
+                        {heldElsewhere ? (
                           <Badge tone="warning">{t('fleet.roster.otherVehicle')}</Badge>
                         ) : (
                           <Badge tone="neutral">{t('fleet.fixedRoster.unassigned')}</Badge>

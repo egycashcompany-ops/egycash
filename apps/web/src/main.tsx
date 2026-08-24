@@ -27,6 +27,21 @@ setOnAuthLost(() => {
 // user once the switcher mounted.
 setActiveBranch(readStoredBranch());
 
+// The installed-app service worker (see `public/sw.js` for what it does and refuses to do).
+//
+// Production only. On the dev server a worker would sit in front of Vite's module graph and serve
+// HMR yesterday's modules, which is a confusing failure to debug and buys nothing — nobody
+// installs localhost. Registration is fire-and-forget and its failure is not the app's problem:
+// a browser without service workers, a private window that refuses them, or a deployment served
+// without `sw.js` all still run ECMS exactly as before.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    void navigator.serviceWorker
+      .register(`${import.meta.env.BASE_URL}sw.js`, { scope: import.meta.env.BASE_URL })
+      .catch(() => undefined);
+  });
+}
+
 const container = document.getElementById('root');
 if (container === null) throw new Error('missing #root');
 

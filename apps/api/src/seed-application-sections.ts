@@ -87,11 +87,11 @@ const DEFAULTS: Record<string, SectionDef[]> = {
   HR: [
     {
       // Its own group rather than a corner of Employees: an announcement is not a fact about
-      // anybody's record, it is the company talking to its people. The notification-rule screen
-      // joins it here when it ships.
+      // anybody's record, it is the company talking to its people. The rules screen sits beside
+      // it — the same act, said once by a person or every time by the system.
       en: 'Communication',
       ar: 'التواصل',
-      routes: ['/announcements'],
+      routes: ['/announcements', '/notification-rules'],
     },
     {
       en: 'Recruitment',

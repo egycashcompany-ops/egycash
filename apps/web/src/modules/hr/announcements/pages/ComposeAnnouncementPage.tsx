@@ -25,6 +25,7 @@ import { get } from '../../../../shared/lib/api-client';
 import { cn } from '../../../../shared/lib/cn';
 import { previewAudience, sendAnnouncement } from '../api/announcement-api';
 import { AudienceBuilder, type AudienceMode } from '../components/AudienceBuilder';
+import { type PickedEmployee } from '../components/EmployeePicker';
 
 const orgOptions = (path: string): Promise<OrgUnitOptionDto[]> =>
   get<OrgUnitOptionDto[]>(`/platform/${path}/options`);
@@ -37,6 +38,7 @@ export const ComposeAnnouncementPage = (): JSX.Element => {
   const [bodyEn, setBodyEn] = useState('');
   const [mode, setMode] = useState<AudienceMode>('filter');
   const [filter, setFilter] = useState<EmployeeAudienceFilter>({});
+  const [employees, setEmployees] = useState<PickedEmployee[]>([]);
 
   const branches = useQuery({ queryKey: ['org', 'branches'], queryFn: () => orgOptions('branches') });
   const departments = useQuery({ queryKey: ['org', 'departments'], queryFn: () => orgOptions('departments') });
@@ -57,8 +59,11 @@ export const ComposeAnnouncementPage = (): JSX.Element => {
       // An empty filter is NOT everybody — the server refuses it, and so does this.
       return Object.keys(filter).length === 0 ? null : { kind: 'filter', filter };
     }
-    return null;
-  }, [mode, filter]);
+    // Nobody named is not everybody either.
+    return employees.length === 0
+      ? null
+      : { kind: 'employees', employeeIds: employees.map((employee) => employee.id) };
+  }, [mode, filter, employees]);
 
   // Any edit to the audience retires the count. A number that no longer describes what is on
   // screen is the one thing worse than no number.
@@ -67,7 +72,7 @@ export const ComposeAnnouncementPage = (): JSX.Element => {
   const resetPreview = preview.reset;
   useEffect(() => {
     resetPreview();
-  }, [mode, filter, resetPreview]);
+  }, [mode, filter, employees, resetPreview]);
 
   const written = titleAr.trim() !== '' && titleEn.trim() !== '' && bodyAr.trim() !== '' && bodyEn.trim() !== '';
   const resolved = preview.data ?? null;
@@ -90,6 +95,7 @@ export const ComposeAnnouncementPage = (): JSX.Element => {
           setBodyAr('');
           setBodyEn('');
           setFilter({});
+          setEmployees([]);
           preview.reset();
         },
         onError: () => toast.error(t('hr.announcements.sendFailed')),
@@ -155,6 +161,7 @@ export const ComposeAnnouncementPage = (): JSX.Element => {
             <AudienceBuilder
               mode={mode}
               filter={filter}
+              employees={employees}
               options={{
                 branches: branches.data ?? [],
                 departments: departments.data ?? [],
@@ -165,6 +172,7 @@ export const ComposeAnnouncementPage = (): JSX.Element => {
               }}
               onModeChange={setMode}
               onFilterChange={setFilter}
+              onEmployeesChange={setEmployees}
             />
           </CardBody>
         </Card>

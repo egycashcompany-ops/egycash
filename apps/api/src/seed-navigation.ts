@@ -64,6 +64,15 @@ const CATALOG: CategoryDef[] = [
         icon: 'chat',
         permission: 'announcement.send',
       },
+      // Beside Announcements because they are the same act from two directions: a person saying
+      // something once, and the system saying it every time a thing happens.
+      {
+        en: 'Notification Rules',
+        ar: 'قواعد الإشعارات',
+        route: '/notification-rules',
+        icon: 'bell',
+        permission: 'notificationRule.view',
+      },
       {
         en: 'Applicants',
         ar: 'المتقدمون',

@@ -236,11 +236,14 @@ describe('seed → password login (regression)', () => {
     expect(routes).toContain('/atm/machines');
     expect(routes).toContain('/atm/reports/daily');
     expect(routes).toContain('/atm/data-edit');
-    // The announcement composer is HR's twenty-third row.
+    // The two Communication rows — HR's twenty-third and twenty-fourth. The same act from two
+    // directions: a person saying something once, and the system saying it every time a thing
+    // happens.
     expect(routes).toContain('/announcements');
-    // 23 (HR) + 12 (Fleet) + 14 (Operations) + 6 (Organization) + 13 (IT) + 12 (Gold Vault)
+    expect(routes).toContain('/notification-rules');
+    // 24 (HR) + 12 (Fleet) + 14 (Operations) + 6 (Organization) + 13 (IT) + 12 (Gold Vault)
     //   + 9 (Administration) + 10 (ATM)
-    expect(routes).toHaveLength(101); // +1: C1 Captain's Day, +1: the standing crew
+    expect(routes).toHaveLength(102); // +1: C1 Captain's Day, +1: the standing crew
   });
 
   it('re-running the seed is idempotent — no duplicate categories/applications/grants', async () => {

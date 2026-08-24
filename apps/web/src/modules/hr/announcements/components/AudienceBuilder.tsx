@@ -19,6 +19,7 @@ import { useT } from '../../../../platform/localization/useT';
 import { localized } from '../../../../shared/lib/format';
 import { cn } from '../../../../shared/lib/cn';
 import { MultiSelect } from '../../../../shared/ui/MultiSelect';
+import { EmployeePicker, type PickedEmployee } from './EmployeePicker';
 
 export type AudienceMode = AnnouncementAudience['kind'];
 
@@ -37,15 +38,20 @@ const MODES: AudienceMode[] = ['everyone', 'filter', 'employees'];
 export const AudienceBuilder = ({
   mode,
   filter,
+  employees,
   options,
   onModeChange,
   onFilterChange,
+  onEmployeesChange,
 }: {
   mode: AudienceMode;
   filter: EmployeeAudienceFilter;
+  /** The people chosen by name, for `employees` mode. */
+  employees: PickedEmployee[];
   options: AudienceOptions;
   onModeChange: (next: AudienceMode) => void;
   onFilterChange: (next: EmployeeAudienceFilter) => void;
+  onEmployeesChange: (next: PickedEmployee[]) => void;
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
@@ -173,6 +179,17 @@ export const AudienceBuilder = ({
               onChange={(v: string[]) => setCriterion('employmentTypes', v)}
             />
           </div>
+        </div>
+      )}
+
+      {mode === 'employees' && (
+        <div className="space-y-3 rounded-lg border border-slate-200 p-4 dark:border-slate-700">
+          {/* Naming somebody is saying you mean them, so this mode — alone — reaches an employee
+              whose employment has ENDED. A final payslip, a document they still owe. */}
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {t('hr.announcements.audience.employeesRule')}
+          </p>
+          <EmployeePicker value={employees} onChange={onEmployeesChange} />
         </div>
       )}
     </div>

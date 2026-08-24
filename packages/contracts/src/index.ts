@@ -32,6 +32,7 @@ export * from './modules/hr-evaluation-batch.js';
 export * from './modules/hr-job-offer.js';
 export * from './modules/hr-employee.js';
 export * from './modules/hr-announcement.js';
+export * from './modules/hr-notification-rule.js';
 export * from './modules/hr-employee-actions.js';
 export * from './modules/hr-hiring-documents.js';
 export * from './modules/hr-employee-file.js';

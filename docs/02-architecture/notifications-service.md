@@ -25,9 +25,11 @@ platform.notification.created (in-process) → enqueue other channels (email)
   the persisted inbox is. Delivery failure on any *other* channel never throws back to
   the caller.
 - **Channel adapters** (`ChannelAdapter { id, send(notification, rendered) }`) are the
-  one extension seam — the same shape as `registerFileProcessor` (Sprint 3.1). Two are
-  built: `inApp` (Socket.IO live push) and `email` (SMTP via nodemailer). Adding
-  `sms`/`push`/`whatsapp` later is a new adapter file, zero changes to `notify()`.
+  one extension seam — the same shape as `registerFileProcessor` (Sprint 3.1). Three are
+  built: `inApp` (Socket.IO live push), `email` (SMTP via nodemailer) and `push`
+  (Web Push/VAPID — §11). The seam held: `push` arrived as one adapter file and one
+  capability check, with no change to `notify()`'s own flow. Adding `sms`/`whatsapp`
+  later is the same move again.
 - **Rendering** (`{{variable}}` placeholder substitution only — no conditionals/loops):
   missing declared variables fail fast; extra `data` keys are ignored. One authored
   plain-text `body` per language is rendered into a multipart HTML+text email via a
@@ -211,7 +213,8 @@ subscriptions always have a template to render, in every environment including t
 
 ## 9. Out of scope this sprint
 
-Frontend inbox UI · SMS/push/WhatsApp adapters (interface-ready) · digest/scheduled-
+Frontend inbox UI · SMS/WhatsApp adapters (interface-ready; `push` shipped later — §11) ·
+digest/scheduled-
 summary notifications (`digestMode` field reserved, unused) · a quiet-hours-expiry
 sweep job · an admin "resend a failed delivery" action · notification retention/purge ·
 attaching referenced files to email (reference only, §3f) · the administration console
@@ -230,3 +233,83 @@ metrics backend.
 - `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASSWORD`/`SMTP_SECURE`/
   `NOTIFICATIONS_EMAIL_FROM` configure the mail transport; tests use nodemailer's
   `jsonTransport` (no network).
+
+## 11. Web Push (`push` channel)
+
+The browser's own notification, on a device that is not looking at ECMS. One adapter file
+(`channel-adapters/push.adapter.ts`), one collection, and one new question asked inside
+`notify()` — nothing about the pipeline above changes.
+
+### Configuration, and the state where there is none
+
+`VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT`. Generate a pair once per
+deployment (`npx web-push generate-vapid-keys`); the private key is a secret.
+
+**Both empty is a supported, working state** — dev, CI and any deployment that has not set
+this up behave exactly as they did before push existed: no push row is ever created, the
+browser is never asked for a permission it would have nothing to receive on, and the
+preferences page says the server has not set it up rather than showing a dead switch. A
+**half** pair fails the boot (`initPushChannel`), because it is a typo or a half-finished
+secrets copy, never a decision — and the alternative is a `web-push` error inside a worker
+retry hours after the deploy.
+
+### `push_subscriptions`
+
+`userId · endpoint (unique) · keys{p256dh,auth} · userAgent · createdAt · lastSeenAt ·
+failureCount`
+
+**The endpoint is the identity, not the user.** A subscription belongs to a BROWSER — one
+person with a laptop and a phone has two rows — and the push service keeps accepting
+deliveries for an endpoint until it is removed, whoever is signed in. So `endpoint` is
+unique across the whole collection and the same endpoint arriving for a second user
+*re-owns* the row: on a shared machine, the first person's notifications must not keep
+arriving on the second person's screen.
+
+### When a notification gets a push channel at all
+
+Push is the first channel with a **capability** question, and `notify()` asks it *before*
+any preference (`push-eligibility.shouldOfferPush`): a deployment with no VAPID pair, or a
+recipient with no registered device, gets **no push channel row** — the same quiet shape an
+opt-out already produces.
+
+The ordering is the load-bearing part. A preference row cannot answer a capability
+question: somebody who enabled push on a laptop and then removed that browser still has
+`enabled: true` on record, and honouring it would put a push row on every notification they
+receive — delivering nothing, retrying five times, and settling on `failed` with a
+`deliveryFailed` event, for something they read in the app an hour earlier. Across a
+company-wide announcement, thousands of them.
+
+### Delivery
+
+Queued and retried exactly like email, from the same `notifications.deliver` job. Within
+one delivery the adapter fans out across the recipient's devices and reports success when
+**any** of them took it — a phone that has been off since Friday must not earn a retry that
+re-pushes to the laptop that already buzzed.
+
+Failures are sorted into two kinds, which is the difference between a self-healing table and
+one that rots: **404/410** means the push service has disowned the endpoint for good, and the
+row is deleted on sight; **anything else** (a 503, a timeout) is soft, counted, and forgiven
+up to `MAX_PUSH_FAILURES` — deleting a live device because the push service had a bad minute
+loses a real person's notifications, and their only clue would be that they stopped arriving.
+
+The payload is **encrypted to the device's own keys** before it leaves this process; neither
+Google's nor Mozilla's push service can read it. That is what makes it acceptable to send the
+real title and body rather than a stub. What must not go in one is anything the recipient
+would not want on a lock screen — a decision for whoever authors the template.
+
+### The browser half
+
+`apps/web/public/sw.js` carries the `push` and `notificationclick` handlers — the worker the
+installable-app work already added. A push always calls `showNotification` (browsers revoke
+the permission of a site that receives a push and shows nothing), notifications are tagged by
+notification id so a retry replaces rather than stacks, and a click focuses an ECMS tab that
+is already open instead of opening a fourth window.
+
+`GET /platform/push/config` · `GET|POST|DELETE /platform/push/subscriptions` are self-scoped
+(identity ownership, no permission), like the inbox and the preferences beside them. Only the
+**public** key is served: it identifies this server to the push service and can encrypt
+nothing on its own.
+
+**iOS needs the app installed.** Safari delivers Web Push only to a PWA added to the Home
+Screen (16.4+), which is what the manifest work shipped for. A plain iOS tab reports
+`unsupported`, and the preferences page says so rather than offering a switch that cannot work.

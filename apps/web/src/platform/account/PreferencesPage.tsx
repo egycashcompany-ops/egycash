@@ -14,6 +14,7 @@ import { PageContainer, PageHeader } from '../layout/PageContainer';
 import { Card, CardBody, CardHeader } from '../../shared/ui';
 import { cn } from '../../shared/lib/cn';
 import { usePreferences } from '../preferences/usePreferences';
+import { PushToggle } from '../notifications/PushToggle';
 
 interface Choice<T> {
   value: T;
@@ -154,6 +155,16 @@ export const PreferencesPage = (): JSX.Element => {
               disabled={saving}
               onChange={(next) => save({ navLayout: next })}
             />
+          </CardBody>
+        </Card>
+
+        {/* Last, and in its own card, because it is the one preference on this page that belongs
+            to the BROWSER rather than the account — grouping it with the three that follow the
+            person to any device would say the opposite. */}
+        <Card>
+          <CardHeader title={t('account.push.title')} />
+          <CardBody>
+            <PushToggle />
           </CardBody>
         </Card>
       </div>

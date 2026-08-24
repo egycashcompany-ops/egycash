@@ -45,6 +45,7 @@ import {
   buildNotificationPreferencesRouter,
   buildNotificationsRouter,
   buildNotificationTemplatesRouter,
+  buildPushRouter,
 } from './platform/notifications';
 import { getRegisteredModules } from './platform/kernel/module-registry';
 
@@ -181,6 +182,7 @@ export const buildApp = (): Express => {
   api.use('/platform/notification-templates', buildNotificationTemplatesRouter());
   api.use('/platform/notifications', buildNotificationsRouter());
   api.use('/platform/notification-preferences', buildNotificationPreferencesRouter());
+  api.use('/platform/push', buildPushRouter());
 
   // Layer 2 modules mount under /api/v1/<module-id> from their manifests.
   for (const manifest of getRegisteredModules()) {

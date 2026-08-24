@@ -11,6 +11,7 @@ import { registerAuditJobHandlers, registerAuditSettings } from '../audit';
 import { registerFileJobHandlers } from '../files';
 import {
   ensureBuiltinNotificationTemplates,
+  initPushChannel,
   registerBuiltinChannelAdapters,
   registerNotificationEventHandlers,
   registerNotificationJobHandlers,
@@ -50,6 +51,10 @@ export const bootPlatform = async (options: BootOptions = {}): Promise<void> => 
   registerFileJobHandlers(); // files extension-point pipeline (worker executes)
   registerNotificationJobHandlers();
   registerBuiltinChannelAdapters();
+  // Validates the VAPID pair and hands `web-push` its credentials. A deployment with no pair is a
+  // supported state and returns quietly; a HALF pair fails the boot, where it is one line to fix,
+  // rather than every push delivery hours later.
+  initPushChannel();
 
   // Layer 2 — validate + register module manifests (permissions flow into the registry).
   for (const manifest of options.modules ?? []) {

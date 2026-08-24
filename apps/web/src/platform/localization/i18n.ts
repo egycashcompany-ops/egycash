@@ -39,6 +39,21 @@ const en: Record<string, string> = {
   'account.preferences.navigation': 'Navigation',
   'account.preferences.layout.legend': 'Navigation shell',
   'account.preferences.layoutHint': 'Both shells show the same pages — only the shape differs.',
+  // Web Push. Every one of these is read by somebody deciding whether to let a work system
+  // interrupt their evening, so each says plainly what it will and will not do.
+  'account.push.title': 'Push notifications',
+  'account.push.legend': 'Notify me on this device',
+  'account.push.hint':
+    'Sends important notifications to this browser even when ECMS is closed. This setting belongs to this device only — turn it on again on each device you want notified.',
+  'account.push.enabled': 'Push notifications are on for this device.',
+  'account.push.disabled': 'Push notifications are off for this device.',
+  'account.push.failed': 'Could not change push notifications. Please try again.',
+  'account.push.deniedToast': 'Your browser blocked notifications for this site.',
+  'account.push.unsupported':
+    'This browser cannot receive push notifications. On iPhone and iPad, install ECMS to the Home Screen first.',
+  'account.push.unconfigured': 'Push notifications are not set up on this server yet.',
+  'account.push.denied':
+    'Your browser is blocking notifications for this site. Allow them in the browser’s site settings, then come back.',
   'account.preferences.layout.launchpad': 'Launchpad',
   'account.preferences.layout.rail': 'Icon rail',
   'account.security.password': 'Change password',
@@ -3978,6 +3993,7 @@ const en: Record<string, string> = {
   'systemAdmin.templates.status.inactive': 'Inactive',
   'systemAdmin.templates.channel.inApp': 'In-app',
   'systemAdmin.templates.channel.email': 'Email',
+  'systemAdmin.templates.channel.push': 'Push',
   'systemAdmin.templates.priority.low': 'Low',
   'systemAdmin.templates.priority.normal': 'Normal',
   'systemAdmin.templates.priority.high': 'High',
@@ -5704,6 +5720,19 @@ const ar: Record<string, string> = {
   'account.preferences.navigation': 'التنقّل',
   'account.preferences.layout.legend': 'شكل شريط التنقّل',
   'account.preferences.layoutHint': 'كلا الشكلين يعرض الصفحات نفسها — الاختلاف في الهيئة فقط.',
+  'account.push.title': 'الإشعارات الفورية',
+  'account.push.legend': 'نبّهني على هذا الجهاز',
+  'account.push.hint':
+    'يرسل الإشعارات المهمة إلى هذا المتصفح حتى وإن كان ECMS مغلقًا. هذا الإعداد خاص بهذا الجهاز وحده — فعّله على كل جهاز تريد التنبيه عليه.',
+  'account.push.enabled': 'الإشعارات الفورية مفعّلة على هذا الجهاز.',
+  'account.push.disabled': 'الإشعارات الفورية متوقفة على هذا الجهاز.',
+  'account.push.failed': 'تعذّر تغيير الإشعارات الفورية. حاول مرة أخرى.',
+  'account.push.deniedToast': 'المتصفح يمنع الإشعارات لهذا الموقع.',
+  'account.push.unsupported':
+    'هذا المتصفح لا يستقبل الإشعارات الفورية. على iPhone وiPad، ثبّت ECMS على الشاشة الرئيسية أولًا.',
+  'account.push.unconfigured': 'الإشعارات الفورية غير مهيّأة على هذا الخادم بعد.',
+  'account.push.denied':
+    'المتصفح يمنع الإشعارات لهذا الموقع. اسمح بها من إعدادات الموقع في المتصفح ثم عُد إلى هنا.',
   'account.preferences.layout.launchpad': 'Launchpad',
   'account.preferences.layout.rail': 'شريط الأيقونات',
   'account.security.password': 'تغيير كلمة المرور',
@@ -9558,6 +9587,7 @@ const ar: Record<string, string> = {
   'systemAdmin.templates.status.inactive': 'غير نشط',
   'systemAdmin.templates.channel.inApp': 'داخل التطبيق',
   'systemAdmin.templates.channel.email': 'البريد الإلكتروني',
+  'systemAdmin.templates.channel.push': 'إشعار فوري',
   'systemAdmin.templates.priority.low': 'منخفضة',
   'systemAdmin.templates.priority.normal': 'عادية',
   'systemAdmin.templates.priority.high': 'مرتفعة',

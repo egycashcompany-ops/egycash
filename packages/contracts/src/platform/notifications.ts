@@ -24,8 +24,16 @@ export const NOTIFICATION_PRIORITIES = ['low', 'normal', 'high', 'critical'] as 
 export const NotificationPrioritySchema = z.enum(NOTIFICATION_PRIORITIES);
 export type NotificationPriority = z.infer<typeof NotificationPrioritySchema>;
 
-/** Channels a template/notification may declare — only the two built adapters this sprint. */
-export const NOTIFICATION_CHANNELS = ['inApp', 'email'] as const;
+/**
+ * Channels a template/notification may declare — one entry per built adapter.
+ *
+ * `push` is Web Push (VAPID): the browser's own notification, delivered to a device that is not
+ * looking at ECMS. It is the same pipeline as the other two — a template names it, a recipient's
+ * preference can refuse it, quiet hours defer it — and it differs from them in one way worth
+ * knowing here: it can only reach a device that has REGISTERED, so a recipient with no
+ * registration has no push channel at all rather than a failed one.
+ */
+export const NOTIFICATION_CHANNELS = ['inApp', 'email', 'push'] as const;
 export const NotificationChannelSchema = z.enum(NOTIFICATION_CHANNELS);
 export type NotificationChannel = z.infer<typeof NotificationChannelSchema>;
 
@@ -305,4 +313,55 @@ export interface QuietHoursDto {
 export interface NotificationPreferencesDto {
   preferences: NotificationPreferenceDto[];
   quietHours: QuietHoursDto;
+}
+
+// ── Web Push registration ───────────────────────────────────────────────────────────────────
+//
+// A registration is a BROWSER's, not a person's: one human with a laptop and a phone has two, and
+// signing out does not end either — the browser keeps pushing to a subscription until it is
+// removed. So the endpoint is the identity (unique across the collection), and the same endpoint
+// arriving for a different user re-owns the row rather than duplicating it.
+
+/**
+ * What `PushSubscription.toJSON()` produces in the browser, which is exactly what the Web Push
+ * protocol needs back: where to send, and the two keys the payload is encrypted to. The server
+ * cannot read a payload it has encrypted, and neither can the push service — only the browser.
+ */
+export const PushSubscriptionInputSchema = z
+  .object({
+    endpoint: z.string().url().max(2048),
+    keys: z
+      .object({
+        p256dh: z.string().min(1).max(255),
+        auth: z.string().min(1).max(255),
+      })
+      .strict(),
+  })
+  .strict();
+export type PushSubscriptionInput = z.infer<typeof PushSubscriptionInputSchema>;
+
+export const DeletePushSubscriptionSchema = z
+  .object({ endpoint: z.string().url().max(2048) })
+  .strict();
+export type DeletePushSubscription = z.infer<typeof DeletePushSubscriptionSchema>;
+
+/**
+ * What the browser needs before it can subscribe at all, plus whether asking is worth it.
+ *
+ * `enabled: false` means this deployment has no VAPID key pair configured, and the UI must say so
+ * rather than offer a switch that cannot work — a browser permission prompt the user grants and
+ * that then delivers nothing is worse than no switch.
+ */
+export interface PushConfigDto {
+  enabled: boolean;
+  publicKey: string | null;
+}
+
+/** One registered browser, as its owner sees it — enough to recognise and remove a device. */
+export interface PushSubscriptionDto {
+  id: string;
+  endpoint: string;
+  userAgent: string | null;
+  createdAt: string;
+  lastSeenAt: string;
 }

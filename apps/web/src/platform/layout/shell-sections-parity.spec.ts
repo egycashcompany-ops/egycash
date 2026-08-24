@@ -23,6 +23,7 @@ const stripComments = (source: string): string =>
 const SIDEBAR = stripComments(read('./Sidebar.tsx'));
 const RAIL = stripComments(read('./SidebarRail.tsx'));
 const ROWS = stripComments(read('./nav-rows.tsx'));
+const PALETTE = stripComments(read('../navigation/CommandPalette.tsx'));
 
 describe('one group component, shared', () => {
   it('lives in the shared rows module, and nowhere else', () => {
@@ -65,10 +66,31 @@ describe('both shells render a module the same way', () => {
    *
    * `m.apps.length > 0` was the rail's test, and it is the reason a fully-organized module could
    * disappear: every one of its pages was in a section, so its ungrouped list was empty.
+   *
+   * Fixing it in the rail alone is what let it stand for another release in the OTHER two places
+   * that list modules — the launchpad shell and the ⌘K palette — where it read to users as "HR is
+   * gone from the units". So the rule is not restated per surface any more: it is `visibleModules`,
+   * and these assertions are that every surface asks it rather than re-deriving it.
    */
   it('and a module with only grouped pages is not filtered away', () => {
-    expect(RAIL).toContain('moduleApps(m).length > 0');
-    expect(RAIL).not.toContain('m.apps.length > 0');
+    for (const [name, source] of [
+      ['Sidebar', SIDEBAR],
+      ['SidebarRail', RAIL],
+      ['CommandPalette', PALETTE],
+    ] as const) {
+      expect(source, `${name}: asks the model`).toContain('visibleModules(data)');
+      expect(source, `${name}: counts no ungrouped-only list`).not.toMatch(/\.apps\.length > 0/);
+    }
+  });
+
+  /**
+   * The other half of the same defect. A module row in the palette navigates to the module's FIRST
+   * page; read off `m.apps[0]` that is `undefined` for a module that has grouped everything — so
+   * the row either was not offered or went nowhere. `moduleApps` is the whole module's list.
+   */
+  it('and jumping into a module lands on a page it actually has', () => {
+    expect(PALETTE).toContain('moduleApps(m)[0]!');
+    expect(PALETTE).not.toContain('m.apps[0]!');
   });
 });
 

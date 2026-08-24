@@ -1,21 +1,36 @@
 // Maintenance visits (FW-6, legacy /cars_maintenance): the workshop lifecycle exactly as FL-4
-// enforces it — one open visit per vehicle (FR-4), check-out records the exit and the custody,
-// reopen undoes a mistaken check-out, and the closed counting visit is what resets the alarm
-// cycle (owner point 5). URL-synced vehicle/state/workshop filters, sortable dates, pagination.
+// enforces it — one open visit per vehicle (FR-4), check-out records the exit reading and the
+// custody, reopen undoes a mistaken check-out, and the closed counting visit is what resets the
+// alarm cycle (owner point 5).
+//
+// Filtering is server-side throughout, including the two questions the visit collection cannot
+// answer by itself: vehicle CODES resolve against the registry, and a driver NAME is HR's fact
+// resolved through HR's own endpoint first. Nothing is filtered out of a fetched page.
+//
+// «حالة الصيانة» is ONE filter, not two, because the visit has exactly one state: design §4.2 gives
+// it `open` ↔ `closed` and §2.6 stores no status beside them. «داخل الورشة» and «خرج من الورشة» are
+// the two halves of that field. The derived alarm level (FR-3) is a property of the VEHICLE, not a
+// maintenance status, and is deliberately not offered here as one.
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { MAX_PAGE_SIZE, type FleetMaintenanceVisitDto, type Locale } from '@ecms/contracts';
+import {
+  MAX_PAGE_SIZE,
+  type FleetCatalogItemDto,
+  type FleetMaintenanceVisitDto,
+  type Locale,
+} from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { Can, useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { FilterBar } from '../../../shared/ui/FilterBar';
+import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { Pagination } from '../../../shared/ui/Pagination';
 import { Button } from '../../../shared/ui/Button';
 import { Badge } from '../../../shared/ui/Badge';
 import { Dialog } from '../../../shared/ui/Dialog';
-import { Select } from '../../../shared/ui/form';
+import { Input, Select } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import {
   CornerDownIcon,
@@ -32,8 +47,9 @@ import {
   useReopenMaintenance,
   useVehicles,
 } from '../api/fleet-queries';
-import { VehicleSelect } from '../components/VehicleSelect';
-import { CatalogSelect } from '../components/CatalogSelect';
+import { useDriverHrFilter } from '../api/driver-hr-filter';
+import { vehicleCodeOptions } from '../lib/vehicle-code-options';
+import { EmployeeName } from '../components/EmployeeName';
 import {
   CheckInDialog,
   CheckOutDialog,
@@ -41,6 +57,11 @@ import {
 } from '../components/MaintenanceDialogs';
 
 const DEFAULT_PAGE_SIZE = 25;
+/** How many matches a code search offers at once — a shortlist to pick from, not a catalogue. */
+const VEHICLE_SEARCH_SIZE = 20;
+
+/** A csv URL parameter as the list it stands for; an absent one is an empty list, never `['']`. */
+const csv = (raw: string | null): string[] => (raw ?? '').split(',').filter((v) => v !== '');
 
 export const MaintenancePage = (): JSX.Element => {
   const t = useT();
@@ -48,9 +69,15 @@ export const MaintenancePage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [sp, setSp] = useSearchParams();
 
-  const vehicleId = sp.get('vehicle') ?? '';
+  const from = sp.get('from') ?? '';
+  const outFrom = sp.get('outFrom') ?? '';
+  const vehicleCodes = csv(sp.get('vehicleCodes'));
+  const driver = sp.get('driver') ?? '';
+  const workshopIds = csv(sp.get('workshops'));
+  const workTypeIds = csv(sp.get('workTypes'));
+  const sparePartIds = csv(sp.get('parts'));
+  const notes = sp.get('notes') ?? '';
   const state = sp.get('state') ?? '';
-  const workshopId = sp.get('workshop') ?? '';
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
   const [sortByRaw, sortDirRaw] = (sp.get('sort') ?? 'inDate:desc').split(':');
@@ -73,7 +100,28 @@ export const MaintenancePage = (): JSX.Element => {
     const dir = sort.by === by && sort.dir === 'asc' ? 'desc' : 'asc';
     patch({ sort: `${by}:${dir}` }, false);
   };
-  const hasActiveFilters = vehicleId !== '' || state !== '' || workshopId !== '';
+  const hasActiveFilters =
+    from !== '' ||
+    outFrom !== '' ||
+    vehicleCodes.length > 0 ||
+    driver !== '' ||
+    workshopIds.length > 0 ||
+    workTypeIds.length > 0 ||
+    sparePartIds.length > 0 ||
+    notes !== '' ||
+    state !== '';
+
+  // The driver NAME is HR's fact: ask HR first, filter Fleet by the ids it returns. Reuses the
+  // drivers registry's own hook, so the "HR matched more than one page" refusal is the same here.
+  const mayFilterByDriver = can('employee.view');
+  const hr = useDriverHrFilter({
+    search: mayFilterByDriver ? driver : '',
+    jobTitleId: '',
+    branchId: '',
+    governorate: '',
+    phone: '',
+  });
+  const driverEmployeeIds = hr.employeeIds;
 
   const params = useMemo(
     () => ({
@@ -81,30 +129,69 @@ export const MaintenancePage = (): JSX.Element => {
       pageSize,
       sortBy: sort.by,
       sortDir: sort.dir,
-      vehicleId: vehicleId || undefined,
+      from: from || undefined,
+      outFrom: outFrom || undefined,
+      vehicleCodes: vehicleCodes.length > 0 ? vehicleCodes : undefined,
+      workshopIds: workshopIds.length > 0 ? workshopIds : undefined,
+      workTypeIds: workTypeIds.length > 0 ? workTypeIds : undefined,
+      sparePartIds: sparePartIds.length > 0 ? sparePartIds : undefined,
+      notes: notes || undefined,
       open: state === '' ? undefined : state === 'open',
-      workshopId: workshopId || undefined,
+      // Always sent once a driver filter is set, including when HR matched nobody: an empty list
+      // is "no matches", and dropping it would answer a narrowed question with every visit.
+      driverEmployeeIds: driverEmployeeIds ?? undefined,
     }),
-    [paramsKey],
+    [paramsKey, driverEmployeeIds],
   );
-  const { data, isLoading, isError, error, refetch } = useMaintenanceVisits(params);
-  const rows = data?.items ?? [];
+  // Three states must hold the query back rather than let it answer the wrong question: the HR
+  // step still running, HR matching more than one page, HR refusing.
+  const blocked = hr.loading || hr.tooMany || hr.failed;
+  const emptyMatch = driverEmployeeIds !== null && driverEmployeeIds.length === 0;
+  const { data, isLoading, isError, error, refetch } = useMaintenanceVisits(
+    params,
+    !blocked && !emptyMatch,
+  );
+  const rows = blocked || emptyMatch ? [] : (data?.items ?? []);
 
-  const vehicles = useVehicles({ pageSize: MAX_PAGE_SIZE, sortBy: 'code', sortDir: 'asc' });
-  const vehicleCode = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const v of vehicles.data?.items ?? []) map.set(v.id, v.code);
-    return map;
-  }, [vehicles.data]);
+  // The code FILTER asks the registry itself, one search at a time — a fleet outgrows any single
+  // page, so joining against one would bound the answer at `MAX_PAGE_SIZE` cars. The row's own
+  // code arrives on the row, resolved server-side.
+  const [codeQuery, setCodeQuery] = useState('');
+  const vehicles = useVehicles({
+    search: codeQuery.trim() === '' ? undefined : codeQuery.trim(),
+    pageSize: VEHICLE_SEARCH_SIZE,
+    sortBy: 'code',
+    sortDir: 'asc',
+  });
+  const vehicleOptions = useMemo(
+    () => vehicleCodeOptions(vehicles.data?.items ?? [], vehicleCodes),
+    [vehicles.data, vehicleCodes.join(',')],
+  );
+
+  // The three catalogs the screen names — the same admin-owned lists the Fleet Catalogs screen
+  // edits, read through the same per-kind cached hook one request at a time.
   const workshops = useFleetCatalog('workshop');
   const workTypes = useFleetCatalog('workType');
+  const spareParts = useFleetCatalog('sparePart');
+  const optionsOf = (items: readonly FleetCatalogItemDto[] | undefined) =>
+    (items ?? []).map((item) => ({ value: item.id, label: localized(item.name, locale) }));
+  const workshopOptions = useMemo(() => optionsOf(workshops.data?.items), [workshops.data, locale]);
+  const workTypeOptions = useMemo(() => optionsOf(workTypes.data?.items), [workTypes.data, locale]);
+  const sparePartOptions = useMemo(
+    () => optionsOf(spareParts.data?.items),
+    [spareParts.data, locale],
+  );
   const catalogName = useMemo(() => {
     const map = new Map<string, string>();
-    for (const item of [...(workshops.data?.items ?? []), ...(workTypes.data?.items ?? [])]) {
+    for (const item of [
+      ...(workshops.data?.items ?? []),
+      ...(workTypes.data?.items ?? []),
+      ...(spareParts.data?.items ?? []),
+    ]) {
       map.set(item.id, localized(item.name, locale));
     }
     return map;
-  }, [workshops.data, workTypes.data, locale]);
+  }, [workshops.data, workTypes.data, spareParts.data, locale]);
 
   const [checkInOpen, setCheckInOpen] = useState(false);
   const [checkingOut, setCheckingOut] = useState<FleetMaintenanceVisitDto | null>(null);
@@ -129,16 +216,19 @@ export const MaintenancePage = (): JSX.Element => {
 
   const actionButton =
     'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
+  const dash = <span className="text-slate-400">—</span>;
+
+  // The serial counts through the WHOLE filtered list rather than restarting at 1 on every page,
+  // and the offset comes from the server's own `meta`: the server may clamp a page size it was
+  // handed, and numbering off the unclamped request would drift from the rows on screen.
+  const firstRowNumber = ((data?.meta.page ?? page) - 1) * (data?.meta.pageSize ?? pageSize) + 1;
 
   const columns: Column<FleetMaintenanceVisitDto>[] = [
     {
-      key: 'vehicle',
-      header: t('fleet.odometer.columns.vehicle'),
-      render: (visit) => (
-        <span className="font-mono text-xs" dir="ltr">
-          {vehicleCode.get(visit.vehicleId) ?? visit.vehicleId.slice(-6)}
-        </span>
-      ),
+      key: 'no',
+      header: t('fleet.odometer.columns.no'),
+      align: 'end',
+      render: (_visit, index) => formatNumber(firstRowNumber + index, locale),
     },
     {
       key: 'inDate',
@@ -158,14 +248,105 @@ export const MaintenancePage = (): JSX.Element => {
         ),
     },
     {
+      key: 'vehicle',
+      header: t('fleet.odometer.columns.vehicle'),
+      // A SERVER fact on the row. `null` only when the vehicle no longer exists at all — a
+      // scrapped one keeps its code, so history stays readable.
+      render: (visit) => (
+        <span className="font-mono text-xs" dir="ltr">
+          {visit.vehicleCode ?? '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'driver',
+      header: t('fleet.odometer.columns.driver'),
+      // The two DRIVERS the visit recorded: who brought the car in, above who drove it away.
+      // The tone tells the two apart at a glance — the entry driver in the danger tone, the exit
+      // driver in the success tone the design system already spends on `Badge` variant `success`.
+      // The colour belongs to the LINE, never to the cell: a closed visit prints one of each.
+      //
+      // Deliberately NOT `takenInByEmployeeId` / `takenOutByEmployeeId`: those are the custody
+      // employees who performed the check-in and check-out, they belong to the audit trail, and
+      // they are not shown in this grid at all.
+      //
+      // Each line is conditional. An open visit has no exit driver yet, and a visit written
+      // before these fields existed has neither — which renders as a dash, never as `null`.
+      // Keyed by ROLE, not by employee: one person may well drive the car both ways.
+      render: (visit) => {
+        const lines: { role: string; id: string; tone: string }[] = [];
+        if (visit.driverInEmployeeId !== null) {
+          lines.push({
+            role: 'in',
+            id: visit.driverInEmployeeId,
+            tone: 'text-red-700 dark:text-red-300',
+          });
+        }
+        if (visit.driverOutEmployeeId !== null) {
+          lines.push({
+            role: 'out',
+            id: visit.driverOutEmployeeId,
+            tone: 'text-emerald-700 dark:text-emerald-300',
+          });
+        }
+        if (lines.length === 0) return dash;
+        return (
+          <span className="flex flex-col gap-0.5">
+            {lines.map(({ role, id, tone }) => (
+              <span key={role} className={tone}>
+                <EmployeeName employeeId={id} />
+              </span>
+            ))}
+          </span>
+        );
+      },
+    },
+    {
       key: 'workshop',
       header: t('fleet.maintenance.fields.workshop'),
-      render: (visit) => catalogName.get(visit.workshopId) ?? '—',
+      render: (visit) => catalogName.get(visit.workshopId) ?? dash,
     },
     {
       key: 'workType',
       header: t('fleet.maintenance.fields.workType'),
-      render: (visit) => catalogName.get(visit.workTypeId) ?? '—',
+      render: (visit) => catalogName.get(visit.workTypeId) ?? dash,
+    },
+    {
+      key: 'spareParts',
+      header: t('fleet.maintenance.fields.spareParts'),
+      // Catalog parts first, then whatever an older visit recorded as free text. The old words
+      // are the only record of what was fitted on those visits, so they are SHOWN rather than
+      // migrated by name — a name match would have silently dropped everything it could not pair.
+      render: (visit) => {
+        const named = visit.sparePartIds.map((id) => catalogName.get(id) ?? id);
+        const legacy = visit.spareParts;
+        if (named.length === 0 && legacy.length === 0) return dash;
+        return (
+          <span className="flex flex-col gap-0.5">
+            {named.length > 0 && (
+              <span className="block max-w-xs break-words">{named.join('، ')}</span>
+            )}
+            {legacy.length > 0 && (
+              <span className="block max-w-xs break-words text-xs text-slate-500 dark:text-slate-400">
+                {t('fleet.maintenance.legacyParts')}: {legacy.join('، ')}
+              </span>
+            )}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'notes',
+      // The one free-text column, and a table column is sized by its content: an unbroken run of
+      // characters has no break point to wrap at, so the column would grow to fit it and push the
+      // columns after it off the screen. A bounded box allowed to break inside a word keeps them.
+      header: t('fleet.odometer.columns.notes'),
+      render: (visit) =>
+        visit.notes === null ? (
+          dash
+        ) : (
+          <span className="block max-w-xs break-words">{visit.notes}</span>
+        ),
     },
     {
       key: 'odometerAtService',
@@ -228,6 +409,24 @@ export const MaintenancePage = (): JSX.Element => {
     },
   ];
 
+  /**
+   * One date BOUND. The width lives on the wrapper: `Input` is `w-full` at its base and `cn` does
+   * not merge Tailwind classes, so a `w-*` passed to it would only compete with that. `w-36` is
+   * the floor — Chromium refuses to paint `type="date"` narrower than about 144px.
+   */
+  const dateBound = (labelKey: string, value: string, param: string): JSX.Element => (
+    <span className="w-36">
+      <Input
+        type="date"
+        dir="ltr"
+        aria-label={t(labelKey)}
+        title={t(labelKey)}
+        value={value}
+        onChange={(e) => patch({ [param]: e.target.value || null })}
+      />
+    </span>
+  );
+
   return (
     <PageContainer>
       <PageHeader
@@ -251,46 +450,141 @@ export const MaintenancePage = (): JSX.Element => {
       />
 
       <div className="space-y-4">
+        {/* Ten filters, in the order the question is asked, each sized to what it holds so the row
+            packs as tightly as it honestly can: the two date ranges and the counter range are ONE
+            caption apiece rather than two, and nothing takes the leftover space.
+            
+            They are NOT pinned to one row. `flex-nowrap` does not shorten a row that will not fit,
+            it pushes it off the page — so the bar wraps, filling a wide desktop left to right and
+            flowing onto a second line only where the viewport actually runs out. No horizontal
+            page scroll, nothing clipped, nothing overlapping. */}
         <FilterBar
           hasActiveFilters={hasActiveFilters}
-          onClear={() => patch({ vehicle: null, state: null, workshop: null })}
+          onClear={() =>
+            patch({
+              from: null,
+              outFrom: null,
+              vehicleCodes: null,
+              driver: null,
+              workshops: null,
+              workTypes: null,
+              parts: null,
+              notes: null,
+              state: null,
+            })
+          }
         >
-          <VehicleSelect
-            value={vehicleId}
-            onChange={(id) => patch({ vehicle: id || null })}
-            allLabel={t('fleet.odometer.allVehicles')}
-            ariaLabel={t('fleet.odometer.columns.vehicle')}
+          {/* One bound, not a range: the screen asks "checked in from this date". */}
+          <label className="flex flex-wrap items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400">
+            <span className="whitespace-nowrap">{t('fleet.maintenance.inRange')}</span>
+            {dateBound('fleet.maintenance.inRange', from, 'from')}
+          </label>
+          <label className="flex flex-wrap items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400">
+            <span className="whitespace-nowrap">{t('fleet.maintenance.outRange')}</span>
+            {dateBound('fleet.maintenance.outRange', outFrom, 'outFrom')}
+          </label>
+          <MultiSelect
+            className="shrink-0"
+            // The chosen codes are named in the trigger, not counted: a registry runs to hundreds
+            // of cars and "3" says nothing about WHICH three the reader is looking at.
+            showSelectedValues
+            label={t('fleet.odometer.columns.vehicle')}
+            options={vehicleOptions}
+            value={vehicleCodes}
+            onChange={(next) => patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })}
+            onSearch={setCodeQuery}
+            searching={vehicles.isFetching}
           />
+          {mayFilterByDriver && (
+            <div className="w-40 min-w-0">
+              <Input
+                aria-label={t('fleet.odometer.columns.driver')}
+                placeholder={t('fleet.odometer.driverPlaceholder')}
+                value={driver}
+                onChange={(e) => patch({ driver: e.target.value || null })}
+              />
+            </div>
+          )}
+          <MultiSelect
+            className="shrink-0"
+            showSelectedValues
+            label={t('fleet.maintenance.fields.workshop')}
+            options={workshopOptions}
+            value={workshopIds}
+            onChange={(next) => patch({ workshops: next.length === 0 ? null : next.join(',') })}
+          />
+          <MultiSelect
+            className="shrink-0"
+            showSelectedValues
+            label={t('fleet.maintenance.fields.workType')}
+            options={workTypeOptions}
+            value={workTypeIds}
+            onChange={(next) => patch({ workTypes: next.length === 0 ? null : next.join(',') })}
+          />
+          <MultiSelect
+            className="shrink-0"
+            showSelectedValues
+            label={t('fleet.maintenance.fields.spareParts')}
+            options={sparePartOptions}
+            value={sparePartIds}
+            onChange={(next) => patch({ parts: next.length === 0 ? null : next.join(',') })}
+          />
+          <div className="w-40 min-w-0">
+            <Input
+              aria-label={t('fleet.odometer.columns.notes')}
+              placeholder={t('fleet.maintenance.notesFilter')}
+              value={notes}
+              onChange={(e) => patch({ notes: e.target.value || null })}
+            />
+          </div>
+          {/* «حالة الصيانة» — the visit's one state, in the words the screen uses for it. */}
           <Select
             aria-label={t('fleet.maintenance.stateFilter')}
+            title={t('fleet.maintenance.stateFilter')}
             value={state}
             onChange={(e) => patch({ state: e.target.value || null })}
-            className="w-auto"
+            className="w-auto shrink-0"
           >
             <option value="">{t('fleet.maintenance.allStates')}</option>
-            <option value="open">{t('fleet.maintenance.open')}</option>
-            <option value="closed">{t('fleet.maintenance.closed')}</option>
+            <option value="open">{t('fleet.maintenance.stillIn')}</option>
+            <option value="closed">{t('fleet.maintenance.leftWorkshop')}</option>
           </Select>
-          <CatalogSelect
-            kind="workshop"
-            value={workshopId}
-            onChange={(id) => patch({ workshop: id || null })}
-            allLabel={t('fleet.maintenance.allWorkshops')}
-            ariaLabel={t('fleet.maintenance.fields.workshop')}
-          />
         </FilterBar>
+
+        {hr.tooMany && (
+          <p
+            role="status"
+            className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+          >
+            {t('fleet.drivers.hrFilterTooMany', { matched: hr.matched, max: MAX_PAGE_SIZE })}
+          </p>
+        )}
+        {hr.failed && (
+          <p
+            role="status"
+            className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+          >
+            {t('fleet.drivers.hrFilterUnavailable')}
+          </p>
+        )}
 
         <DataTable
           columns={columns}
           rows={rows}
           rowKey={(visit) => visit.id}
-          loading={isLoading}
+          loading={hr.loading || (isLoading && !blocked && !emptyMatch)}
           error={isError ? error : undefined}
           onRetry={() => void refetch()}
           sort={sort}
           onSortChange={changeSort}
+          // A closed visit reads green across the whole row. The colour is a SECOND signal only:
+          // the exit cell says «خرجت من الورشة» in words, so the state survives a reader who
+          // cannot separate the two tints.
+          rowClassName={(visit) =>
+            visit.outDate === null ? undefined : 'bg-emerald-50/70 dark:bg-emerald-950/30'
+          }
         />
-        {data !== undefined && data.meta.totalItems > 0 && (
+        {data !== undefined && !blocked && !emptyMatch && data.meta.totalItems > 0 && (
           <Pagination
             meta={data.meta}
             onPageChange={(p) => patch({ page: String(p) }, false)}
@@ -302,7 +596,9 @@ export const MaintenancePage = (): JSX.Element => {
       <CheckInDialog
         open={checkInOpen}
         onClose={() => setCheckInOpen(false)}
-        initialVehicleId={vehicleId}
+        // Carried over from the filter, but only when it names ONE car: with several selected
+        // there is no single answer to preselect, and guessing one would be worse than asking.
+        initialVehicleCode={vehicleCodes.length === 1 ? (vehicleCodes[0] ?? '') : ''}
       />
       <CheckOutDialog
         open={checkingOut !== null}

@@ -516,13 +516,55 @@ export interface FleetMaintenanceAlarmDto {
 export interface FleetMaintenanceVisitDto {
   id: string;
   vehicleId: string;
+  /**
+   * The registry's code for that vehicle, resolved SERVER-side for the row — the same reason the
+   * odometer log carries one: a client cannot resolve a code for a car outside the page of the
+   * registry it happens to hold, so every car past that page would print a dash.
+   *
+   * `null` only when the vehicle no longer exists at all; a soft-deleted one keeps its code.
+   */
+  vehicleCode: string | null;
+  /**
+   * The DRIVER the vehicle came in with, chosen explicitly at check-in and STORED on the visit.
+   *
+   * Not read from the duty roster: the roster says who was planned to drive that day, which is a
+   * different claim from who actually brought the car to the workshop, and it can be re-planned
+   * afterwards. A visit records what happened.
+   *
+   * Required on every new visit; `null` only on visits written before the field existed.
+   */
+  driverInEmployeeId: string | null;
+  /**
+   * The DRIVER who took the vehicle away, chosen explicitly at check-out and stored.
+   *
+   * `null` while the visit is open — nobody has driven it away yet — and on visits closed before
+   * the field existed. Reopening a visit clears it, as it clears the rest of the exit.
+   */
+  driverOutEmployeeId: string | null;
   inDate: string;
   /** null = in workshop (the open state). */
   outDate: string | null;
   workshopId: string;
   workTypeId: string;
+  /**
+   * Free-text parts, as visits recorded before the catalog existed carry them. READ-ONLY now:
+   * nothing writes to it any more, and it is kept because those words are the only record of
+   * what was fitted — a migration could only have matched them by name and dropped the rest.
+   */
   spareParts: string[];
+  /** Parts chosen from the `sparePart` catalog. The field new visits write. */
+  sparePartIds: string[];
+  /** The counter when the vehicle went IN. */
   odometerAtService: number;
+  /**
+   * The counter when it came OUT, recorded at check-out. `null` while the visit is open, and on
+   * visits closed before this was collected.
+   *
+   * This is the maintenance BASELINE for a closed visit: the distance since a service is measured
+   * from the reading the car left the workshop on, not the one it arrived on — the two differ by
+   * whatever the workshop drove, and counting that against the next service shortens it.
+   */
+  exitOdometer: number | null;
   takenInByEmployeeId: string | null;
   takenOutByEmployeeId: string | null;
   notes: string | null;
@@ -537,8 +579,25 @@ export const CheckInFleetMaintenanceSchema = z
     inDate: z.coerce.date(),
     workshopId: objectId(),
     workTypeId: objectId(),
-    spareParts: z.array(z.string().trim().min(1).max(120)).max(50).default([]),
+    sparePartIds: z.array(objectId()).max(50).default([]),
+    /**
+     * DEPRECATED free text, still accepted so a caller written before the catalog existed is not
+     * refused outright. Stored VERBATIM in the legacy field — never matched against the catalog,
+     * because guessing which part a spelling meant is exactly the silent data loss this replaces.
+     * The web form does not send it.
+     */
+    spareParts: z.array(z.string().trim().min(1).max(120)).max(50).optional(),
     odometerAtService: z.number().int().min(0),
+    /**
+     * Who drove the vehicle in. REQUIRED and explicit — the roster is a plan, and a plan is not
+     * a record of who actually arrived.
+     */
+    driverInEmployeeId: objectId(),
+    /**
+     * Custody, and normally NOT sent: the server records whoever is logged in. Kept accepted for
+     * the case the seam cannot answer — a platform account with no employee behind it — so the
+     * fact stays recordable rather than silently lost. NOT the driver above.
+     */
     takenInByEmployeeId: objectId().nullish(),
     notes: z.string().trim().min(1).max(1000).nullish(),
   })
@@ -548,6 +607,15 @@ export type CheckInFleetMaintenance = z.infer<typeof CheckInFleetMaintenanceSche
 export const CheckOutFleetMaintenanceSchema = z
   .object({
     outDate: z.coerce.date(),
+    /**
+     * The counter the vehicle leaves on. REQUIRED, because it becomes the baseline every later
+     * maintenance calculation measures from — a check-out without it would leave the next service
+     * being counted from the arrival reading and falling due early.
+     */
+    exitOdometer: z.number().int().min(0),
+    /** Who drove the vehicle away. REQUIRED, for the same reason the check-in driver is. */
+    driverOutEmployeeId: objectId(),
+    /** As on check-in: the server records the logged-in user; this is the fallback. */
     takenOutByEmployeeId: objectId().nullish(),
     version: z.number().int().min(0),
   })
@@ -563,8 +631,17 @@ export const UpdateFleetMaintenanceSchema = z
     inDate: z.coerce.date().optional(),
     workshopId: objectId().optional(),
     workTypeId: objectId().optional(),
+    sparePartIds: z.array(objectId()).max(50).optional(),
+    /** DEPRECATED, as on check-in — accepted, stored verbatim, never interpreted. */
     spareParts: z.array(z.string().trim().min(1).max(120)).max(50).optional(),
     odometerAtService: z.number().int().min(0).optional(),
+    exitOdometer: z.number().int().min(0).nullish().optional(),
+    /**
+     * Correctable, like the rest of the check-in facts this endpoint edits. A required field with
+     * no correction path turns one mistyped driver into a permanent one; the check-OUT driver is
+     * deliberately not here, because changing it belongs to reopening and closing the visit again.
+     */
+    driverInEmployeeId: objectId().optional(),
     takenInByEmployeeId: objectId().nullish().optional(),
     notes: z.string().trim().min(1).max(1000).nullish().optional(),
     version: z.number().int().min(0),
@@ -574,12 +651,43 @@ export type UpdateFleetMaintenance = z.infer<typeof UpdateFleetMaintenanceSchema
 
 export const ListFleetMaintenanceQuerySchema = PaginationQuerySchema.extend({
   vehicleId: objectId().optional(),
-  /** true = in workshop (outDate null); false = history. */
+  /**
+   * «حالة الصيانة» — the visit's ONE state: `true` = in the workshop (`outDate` null), `false` =
+   * out of it.
+   *
+   * §4.2 gives the visit exactly two states, `open` ↔ `closed`, and §2.6 stores no status field
+   * beside them — the legacy `deleted_dock` codes were deliberately left behind (§11). So "which
+   * cars are in the workshop" and "which have come out" are the two halves of THIS field, not two
+   * filters, and nothing here invents a third state.
+   *
+   * The derived ALARM level (FR-3) is a different subject entirely — a property of the VEHICLE,
+   * not of a visit — and is deliberately not offered here as a maintenance "status".
+   */
   open: booleanQuery().optional(),
+  /** Several vehicles at once, BY CODE — resolved server-side against the live registry. */
+  vehicleCodes: listQuery(z.string().trim().min(1).max(20)),
+  /**
+   * Drivers, already resolved to employee ids by the caller — the same two-step join the odometer
+   * uses, because a driver's NAME is HR's fact. A visit matches when the employee drove it in OR
+   * drove it out: asking "which visits did this person drive" must not miss either end.
+   */
+  driverEmployeeIds: listQuery(objectId(), MAX_PAGE_SIZE),
   workshopId: objectId().optional(),
+  workshopIds: listQuery(objectId()),
   workTypeId: objectId().optional(),
+  workTypeIds: listQuery(objectId()),
+  sparePartIds: listQuery(objectId()),
+  /** Substring over the visit's own note. */
+  notes: z.string().trim().min(1).max(100).optional(),
+  /** Inclusive bounds on the counter the vehicle went in on. */
+  odometerFrom: z.coerce.number().int().min(0).optional(),
+  odometerTo: z.coerce.number().int().min(0).optional(),
+  /** Check-IN date window. */
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
+  /** Check-OUT date window — a different question from the one above, so a different pair. */
+  outFrom: z.coerce.date().optional(),
+  outTo: z.coerce.date().optional(),
 }).strict();
 export type ListFleetMaintenanceQuery = z.infer<typeof ListFleetMaintenanceQuerySchema>;
 
@@ -680,6 +788,119 @@ export type PlanFleetRoster = z.infer<typeof PlanFleetRosterSchema>;
 
 export const FleetRosterQuerySchema = z.object({ date: z.coerce.date() }).strict();
 export type FleetRosterQuery = z.infer<typeof FleetRosterQuerySchema>;
+
+// ── Fixed crew (الطقم الثابت) ───────────────────────────────────────────────
+//
+// A DIFFERENT question from the daily roster above, and deliberately a different shape.
+//
+// The roster answers "who was planned on this vehicle on day D": its identity is the pair
+// (vehicle, date), a driver's eligibility is `driverAvailabilityOn(D)`, and an open workshop
+// visit covering D makes the vehicle unassignable. Every one of those facts is a fact ABOUT A
+// DAY. The fixed crew answers "who is this vehicle's standing crew" — a fact about the vehicle,
+// true until somebody changes it. So there is no date here, no mission, no notes, and no
+// availability verdict: a driver on leave next Tuesday is still the car's fixed driver.
+//
+// The two exclusivity rules ARE shared, because they are not about days: the same person cannot
+// hold both slots of one vehicle, and one driver belongs to one crew. They are re-stated below
+// rather than imported, because a rule that reads the same in two places must be readable in
+// both — but they are the same rules the roster enforces, not new ones.
+
+/** One board row: the vehicle, plus whatever standing crew it carries. */
+export interface FleetFixedCrewRowDto {
+  vehicleId: string;
+  code: string;
+  plateNumber: string;
+  typeId: string;
+  /** Derived, shown for context only — a car in the workshop still HAS a fixed crew. */
+  inMaintenance: boolean;
+  driver1EmployeeId: string | null;
+  driver2EmployeeId: string | null;
+}
+
+export interface FleetFixedRosterDto {
+  rows: FleetFixedCrewRowDto[];
+  /**
+   * The pool: every ACTIVE driver profile, undivided.
+   *
+   * There is no unavailable half. `driverAvailabilityOn` answers a question about a DATE, and
+   * this screen has none — so the pool is exactly the drivers the fleet has, each carrying the
+   * vehicle it is already fixed to (or `null`), which is what a board needs to show a move.
+   */
+  drivers: { employeeId: string; assignedVehicleId: string | null }[];
+}
+
+/**
+ * An id, settled to its CANONICAL spelling at the boundary.
+ *
+ * An ObjectId is a number written in hex, and `objectId()` accepts either case — but every
+ * comparison downstream is on `String(doc.field)`, which mongo always renders lowercase. So the
+ * uppercase spelling of a vehicle looks like a DIFFERENT vehicle to a `Map` key, a `Set`, or the
+ * duplicate checks below, while being the SAME row to the database. That mismatch is how one
+ * vehicle ends up with two crew rows: the "does this vehicle already have a crew" lookup misses,
+ * the insert branch runs, and the older row becomes invisible while still holding its driver.
+ *
+ * Settling the spelling once, here, is what makes every string comparison after it sound.
+ */
+const canonicalId = () => objectId().transform((id) => id.toLowerCase());
+
+export const SaveFleetFixedCrewRowSchema = z
+  .object({
+    vehicleId: canonicalId(),
+    driver1EmployeeId: canonicalId().nullish(),
+    driver2EmployeeId: canonicalId().nullish(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (
+      value.driver1EmployeeId != null &&
+      value.driver2EmployeeId != null &&
+      value.driver1EmployeeId === value.driver2EmployeeId
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['driver2EmployeeId'],
+        message: 'the two driver slots cannot hold the same person',
+      });
+    }
+  });
+export type SaveFleetFixedCrewRow = z.infer<typeof SaveFleetFixedCrewRowSchema>;
+
+/**
+ * Upsert per vehicle — only CHANGED rows are sent, exactly as a plan save does.
+ *
+ * That matters for moves: taking a driver off vehicle A and onto vehicle B changes BOTH rows,
+ * so both travel, and the server sees a payload that is internally consistent. A payload that
+ * claims a driver another row still holds is refused rather than silently duplicating them.
+ */
+export const SaveFleetFixedRosterSchema = z
+  .object({ rows: z.array(SaveFleetFixedCrewRowSchema).min(1).max(500) })
+  .strict()
+  .superRefine((value, ctx) => {
+    const seenVehicles = new Set<string>();
+    const seenDrivers = new Set<string>();
+    value.rows.forEach((row, index) => {
+      if (seenVehicles.has(row.vehicleId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['rows', index, 'vehicleId'],
+          message: 'a vehicle appears twice in one save',
+        });
+      }
+      seenVehicles.add(row.vehicleId);
+      for (const driver of [row.driver1EmployeeId, row.driver2EmployeeId]) {
+        if (driver == null) continue;
+        if (seenDrivers.has(driver)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['rows', index],
+            message: 'a driver belongs to one fixed crew',
+          });
+        }
+        seenDrivers.add(driver);
+      }
+    });
+  });
+export type SaveFleetFixedRoster = z.infer<typeof SaveFleetFixedRosterSchema>;
 
 // ── Accidents (§4.6) ────────────────────────────────────────────────────────
 

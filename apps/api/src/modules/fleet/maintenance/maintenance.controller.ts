@@ -16,35 +16,48 @@ type IdParam = { id: string };
 
 export const listMaintenanceVisits = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, ListFleetMaintenanceQuery>(req);
-  okPage(res, await fleetMaintenanceService.list(query), toMaintenanceVisitDto);
+  const page = await fleetMaintenanceService.list(query);
+  okPage(res, page, (row) =>
+    toMaintenanceVisitDto(row, {
+      vehicleCode: page.codes.get(String(row.vehicleId)) ?? null,
+    }),
+  );
 };
 
 export const checkInMaintenance = async (req: Request, res: Response): Promise<void> => {
   const { body } = validated<CheckInFleetMaintenance>(req);
-  const doc = await fleetMaintenanceService.checkIn(body, authContext(req).userId);
-  created(res, toMaintenanceVisitDto(doc));
+  const { doc, ...joins } = await fleetMaintenanceService.checkIn(body, authContext(req).userId);
+  created(res, toMaintenanceVisitDto(doc, joins));
 };
 
 export const checkOutMaintenance = async (req: Request, res: Response): Promise<void> => {
   const { body, params } = validated<CheckOutFleetMaintenance, never, IdParam>(req);
-  const doc = await fleetMaintenanceService.checkOut(params.id, body, authContext(req).userId);
-  ok(res, toMaintenanceVisitDto(doc));
+  const { doc, ...joins } = await fleetMaintenanceService.checkOut(
+    params.id,
+    body,
+    authContext(req).userId,
+  );
+  ok(res, toMaintenanceVisitDto(doc, joins));
 };
 
 export const reopenMaintenance = async (req: Request, res: Response): Promise<void> => {
   const { body, params } = validated<ReopenFleetMaintenance, never, IdParam>(req);
-  const doc = await fleetMaintenanceService.reopen(
+  const { doc, ...joins } = await fleetMaintenanceService.reopen(
     params.id,
     body.version,
     authContext(req).userId,
   );
-  ok(res, toMaintenanceVisitDto(doc));
+  ok(res, toMaintenanceVisitDto(doc, joins));
 };
 
 export const updateMaintenance = async (req: Request, res: Response): Promise<void> => {
   const { body, params } = validated<UpdateFleetMaintenance, never, IdParam>(req);
-  const doc = await fleetMaintenanceService.update(params.id, body, authContext(req).userId);
-  ok(res, toMaintenanceVisitDto(doc));
+  const { doc, ...joins } = await fleetMaintenanceService.update(
+    params.id,
+    body,
+    authContext(req).userId,
+  );
+  ok(res, toMaintenanceVisitDto(doc, joins));
 };
 
 export const deleteMaintenance = async (req: Request, res: Response): Promise<void> => {

@@ -45,6 +45,7 @@ const me = (permissions: string[]): MeDto => ({
   isPrivileged: false,
   flags: {},
   totpEnabled: true,
+  external: null,
 });
 
 const emptyPage = { items: [], meta: { page: 1, pageSize: 25, totalItems: 0, totalPages: 1 } };

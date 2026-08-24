@@ -90,6 +90,7 @@ const me = (permissions: string[]): MeDto =>
     isPrivileged: false,
     flags: {},
     totpEnabled: true,
+    external: null,
   }) as MeDto;
 
 const render = (

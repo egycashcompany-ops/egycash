@@ -24,6 +24,8 @@ import {
   type FleetMaintenanceVisitDto,
   type FleetOdometerLogDto,
   type FleetRosterDayDto,
+  type FleetFixedRosterDto,
+  type SaveFleetFixedRoster,
   type FleetVehicleDto,
   type FleetVehicleTypeDto,
   type FleetViolationDto,
@@ -211,6 +213,13 @@ export const planRoster = (
   body: PlanFleetRoster,
 ): Promise<FleetRosterDayDto & { changedCount: number }> =>
   post<FleetRosterDayDto & { changedCount: number }>('/fleet/roster', body);
+
+export const getFixedRoster = (): Promise<FleetFixedRosterDto> =>
+  get<FleetFixedRosterDto>('/fleet/fixed-roster');
+export const saveFixedRoster = (
+  body: SaveFleetFixedRoster,
+): Promise<FleetFixedRosterDto & { changedCount: number }> =>
+  post<FleetFixedRosterDto & { changedCount: number }>('/fleet/fixed-roster', body);
 
 // ── Accidents (§4.6, FR-10) ─────────────────────────────────────────────────
 export const listAccidents = (params: FleetListParams): Promise<Paginated<FleetAccidentDto>> =>

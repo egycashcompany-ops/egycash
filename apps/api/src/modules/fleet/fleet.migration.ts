@@ -13,6 +13,11 @@
 import { logger } from '../../infrastructure/logging/logger';
 import { fleetCatalogItemService } from './catalogs/catalog-item.service';
 import { FleetVehicleModel } from './vehicles/vehicle.model';
+import {
+  FIXED_CREW_VEHICLE_INDEX_KEY,
+  FIXED_CREW_VEHICLE_INDEX_OPTIONS,
+  FleetFixedCrewModel,
+} from './fixed-roster/fixed-crew.model';
 
 /**
  * Back-fill `licenseClassId` from the legacy free-text `licenseClass`.
@@ -89,7 +94,70 @@ export const reportBranchlessVehicles = async (): Promise<number> => {
   return count;
 };
 
+/**
+ * Build `ux_fixed_vehicle`, the index that makes "one vehicle, one fixed crew" a database fact.
+ *
+ * The schema declares it, but `autoIndex` is off outside development
+ * (infrastructure/database/mongo.ts), so a schema-declared index does not appear on its own in
+ * production — this is the deploy step that builds it, the same way the users module builds its
+ * external-subject index. Idempotent: `createIndex` with a definition that already exists is a
+ * no-op, so every boot after the first one costs a round trip and nothing else.
+ *
+ * DUPLICATES ARE CHECKED FIRST, and a duplicate is REPORTED, never resolved. Building a unique
+ * index over data that violates it fails anyway (`E11000`), but the reason for looking first is
+ * not to avoid the error — it is to say WHICH vehicles are affected, in a log line an operator
+ * can act on. Merging two crews would have to guess which drivers to keep, and deleting one would
+ * destroy an assignment somebody made: both invent an answer the data does not contain. So the
+ * index is simply not built until a person has resolved them, and the service's own end-state
+ * checks keep holding in the meantime.
+ *
+ * The only writer of this collection is the fixed-crew repository, and the only shape it writes
+ * is one row per vehicle — so on a database that has only ever run this code, there is nothing
+ * to find. The check is for the ones that have not.
+ */
+export const migrateFixedCrewIndex = async (): Promise<{
+  created: boolean;
+  duplicateVehicles: number;
+}> => {
+  try {
+    // Grouped under the SAME filter the index is partial on, or the count would answer a
+    // different question from the one the index asks.
+    const duplicates = await FleetFixedCrewModel.collection
+      .aggregate<{ _id: unknown; rows: number; docIds: unknown[] }>([
+        { $match: { isDeleted: false } },
+        { $group: { _id: '$vehicleId', rows: { $sum: 1 }, docIds: { $push: '$_id' } } },
+        { $match: { rows: { $gt: 1 } } },
+      ])
+      .toArray();
+
+    if (duplicates.length > 0) {
+      logger.error(
+        {
+          vehicles: duplicates.map((d) => ({
+            vehicleId: String(d._id),
+            rows: d.rows,
+            docIds: d.docIds.map(String),
+          })),
+        },
+        'fleet: fixed crews hold more than one row for a vehicle — ux_fixed_vehicle NOT built; resolve these rows by hand, nothing has been deleted or merged',
+      );
+      return { created: false, duplicateVehicles: duplicates.length };
+    }
+
+    await FleetFixedCrewModel.collection.createIndex(
+      FIXED_CREW_VEHICLE_INDEX_KEY,
+      FIXED_CREW_VEHICLE_INDEX_OPTIONS,
+    );
+    return { created: true, duplicateVehicles: 0 };
+  } catch (error) {
+    // A boot must not fail because an index could not be built; the log is the signal.
+    logger.warn({ err: error }, 'fleet: fixed-crew index migration skipped');
+    return { created: false, duplicateVehicles: 0 };
+  }
+};
+
 export const runFleetMigrations = async (): Promise<void> => {
   await migrateVehicleLicenseClasses();
   await reportBranchlessVehicles();
+  await migrateFixedCrewIndex();
 };

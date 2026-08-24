@@ -12,6 +12,7 @@
 //   /fleet/maintenance        fleetMaintenance.view        FW-6
 //   /fleet/maintenance-alarms fleetOdometer.view           FW-6
 //   /fleet/roster             fleetRoster.view             FW-7
+//   /fleet/fixed-roster       fleetRoster.view             FW-7
 //   /fleet/accidents          fleetAccident.view           FW-8
 //   /fleet/violations         fleetViolation.view          FW-9
 //   /fleet/catalogs           fleetCatalog.manage          FW-10
@@ -30,6 +31,7 @@ import { OdometerPage } from './pages/OdometerPage';
 import { MaintenancePage } from './pages/MaintenancePage';
 import { MaintenanceAlarmsPage } from './pages/MaintenanceAlarmsPage';
 import { RosterPage } from './pages/RosterPage';
+import { FixedRosterPage } from './pages/FixedRosterPage';
 import { AccidentsPage } from './pages/AccidentsPage';
 import { ViolationsPage } from './pages/ViolationsPage';
 import { CatalogsPage } from './pages/CatalogsPage';
@@ -109,6 +111,14 @@ export default function FleetRoutes(): JSX.Element {
           element={
             <RequirePermission permission="fleetRoster.view">
               <RosterPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="fixed-roster"
+          element={
+            <RequirePermission permission="fleetRoster.view">
+              <FixedRosterPage />
             </RequirePermission>
           }
         />

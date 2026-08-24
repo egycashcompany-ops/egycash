@@ -66,6 +66,15 @@ export interface DataTableProps<T> {
    * rest of the system's tables sit at.
    */
   dense?: boolean;
+  /**
+   * Extra classes for ONE row, from the row itself — a state the reader should be able to see
+   * without reading the cell that carries it.
+   *
+   * Opt-in, and colour is never allowed to be the only carrier of that state: a row tinted here
+   * must still say what it is in a cell, or the state is invisible to anyone who cannot separate
+   * the two tints. Returning `undefined` leaves the row exactly as it was.
+   */
+  rowClassName?: (row: T) => string | undefined;
 }
 
 const alignClass: Record<'start' | 'center' | 'end', string> = {
@@ -89,6 +98,7 @@ export const DataTable = <T,>({
   embedded = false,
   hoverable = false,
   dense = false,
+  rowClassName,
 }: DataTableProps<T>): JSX.Element => {
   const cellPadding = dense ? 'px-3 py-2' : 'px-4 py-3';
   // One prop wins; the loose props remain as the deprecated form.
@@ -150,6 +160,8 @@ export const DataTable = <T,>({
               'hover:bg-slate-100/70 dark:hover:bg-slate-800/70',
             onRowClick !== undefined && 'cursor-pointer',
             isSelected && 'bg-brand-50/60 dark:bg-brand-950/40',
+            // Last, so a row that names its own tone wins over the neutral default.
+            rowClassName?.(row),
           )}
         >
           {isSelectable && (

@@ -15,7 +15,8 @@
     "start:worker": "node dist/worker.js",
     "test:unit": "vitest run src",
     "test:integration": "vitest run tests",
-    "seed:demo": "tsx --env-file=../../.env src/seed-demo.cli.ts"
+    "seed:demo": "tsx --env-file=../../.env src/seed-demo.cli.ts",
+    "atm:import": "tsx --env-file=../../.env src/atm-import.cli.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1083.0",

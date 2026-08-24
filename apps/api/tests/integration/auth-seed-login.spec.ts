@@ -121,13 +121,17 @@ describe('seed → password login (regression)', () => {
     //
     // B7 puts Operations at 17, so it lands between Fleet (15) and Organization (20). Its position
     // here IS the assertion that the sort order took effect: a category appended with a colliding
-    // or absent order would surface at the end of this list rather than in the middle.
+    // or absent order would surface at the end of this list rather than in the middle. The ported
+    // Gold Vault module says the same at 27 — between IT (25) and Administration (30), and the
+    // ported ATM module at 28 — between Gold Vault and Administration.
     expect(groups.map((g) => g.name.en)).toEqual([
       'HR',
       'Fleet',
       'Operations',
       'Organization',
       'IT',
+      'Gold Vault',
+      'ATM',
       'Administration',
     ]);
     // Applications map to the app's real client routes, granted directly to the admin.
@@ -208,8 +212,33 @@ describe('seed → password login (regression)', () => {
     expect(routes).toContain('/operations/catalogs');
     // الطاقم الثابت — the permanent crew each day's board is seeded from.
     expect(routes).toContain('/operations/standing-crew');
-    // 22 (HR) + 12 (Fleet) + 14 (Operations) + 7 (Organization) + 13 (IT) + 9 (Administration)
-    expect(routes).toHaveLength(79); // +1: C1 Captain's Day, +1: the standing crew
+    // The ported gold sidebar, screen for screen.
+    expect(routes).toContain('/gold');
+    expect(routes).toContain('/gold/vaults');
+    expect(routes).toContain('/gold/vault-settings');
+    expect(routes).toContain('/gold/bars');
+    expect(routes).toContain('/gold/receiving');
+    expect(routes).toContain('/gold/delivery');
+    expect(routes).toContain('/gold/transfers');
+    expect(routes).toContain('/gold/keys');
+    expect(routes).toContain('/gold/companies');
+    expect(routes).toContain('/gold/representatives');
+    expect(routes).toContain('/gold/reports');
+    expect(routes).toContain('/gold/portal-accounts');
+    // The ported ATM sidebar, screen for screen against the legacy standalone system.
+    expect(routes).toContain('/atm');
+    expect(routes).toContain('/atm/replenishments');
+    expect(routes).toContain('/atm/replenishments/done');
+    expect(routes).toContain('/atm/maintenance');
+    expect(routes).toContain('/atm/maintenance/done');
+    expect(routes).toContain('/atm/mail-tickets');
+    expect(routes).toContain('/atm/mail-tickets/log');
+    expect(routes).toContain('/atm/machines');
+    expect(routes).toContain('/atm/reports/daily');
+    expect(routes).toContain('/atm/data-edit');
+    // 22 (HR) + 12 (Fleet) + 14 (Operations) + 7 (Organization) + 13 (IT) + 12 (Gold Vault)
+    //   + 9 (Administration) + 10 (ATM)
+    expect(routes).toHaveLength(101); // +1: C1 Captain's Day, +1: the standing crew
   });
 
   it('re-running the seed is idempotent — no duplicate categories/applications/grants', async () => {
@@ -224,14 +253,17 @@ describe('seed → password login (regression)', () => {
         data: { applications: unknown[]; sections: { applications: unknown[] }[] }[];
       }
     ).data;
-    expect(groups).toHaveLength(6); // B7 adds Operations beside HR, Fleet, Organization, IT, Admin
+    // B7 added Operations beside HR, Fleet, Organization, IT and Admin; the gold port adds a
+    // seventh and the ATM port an eighth.
+    expect(groups).toHaveLength(8);
     // Counted across sections too: re-seeding must not duplicate a row, wherever it is grouped.
     expect(
       groups.reduce(
-        (n, g) => n + g.applications.length + g.sections.reduce((m, s) => m + s.applications.length, 0),
+        (n, g) =>
+          n + g.applications.length + g.sections.reduce((m, s) => m + s.applications.length, 0),
         0,
       ),
-    ).toBe(79); // +1: C1 Captain's Day, +1: the standing crew
+    ).toBe(101); // +1: C1 Captain's Day, +1: the standing crew, +12: gold, +10: ATM
   });
 
   it('the seeded HR user also logs in with email/password', async () => {
@@ -282,9 +314,12 @@ describe('seed → password login (regression)', () => {
       const token = (await doLogin(env.SEED_ADMIN_EMAIL, env.SEED_ADMIN_PASSWORD)).body.data
         ?.accessToken;
       expect((await patch(token ?? '', { navLayout: 'metro' })).status).toBe(400);
-      expect((await patch(token ?? '', { navLayout: 'rail', isPrivileged: true })).status).toBe(400);
+      expect((await patch(token ?? '', { navLayout: 'rail', isPrivileged: true })).status).toBe(
+        400,
+      );
       expect(
-        (await request(app).patch('/api/v1/auth/me/preferences').send({ navLayout: 'rail' })).status,
+        (await request(app).patch('/api/v1/auth/me/preferences').send({ navLayout: 'rail' }))
+          .status,
       ).toBe(401);
     });
   });
@@ -299,11 +334,27 @@ describe('the default sections migration', () => {
   const get = async (path: string, token: string) =>
     request(app).get(`/api/v1${path}`).set('Authorization', `Bearer ${token}`);
 
+  /**
+   * The WHOLE application catalog, not the first page of it. The catalog outgrew a single page
+   * when the ATM module landed: MAX_PAGE_SIZE is 100 and the seeded catalog is now 101 rows, so a
+   * lone `pageSize=100` read silently drops the OLDEST row under the default `createdAt: -1`
+   * sort — and that row is `/applicants`, which is exactly the page these tests move between
+   * sections. Page through, so the assertions keep seeing the catalog rather than a prefix of it.
+   */
+  const allApplications = async <T>(token: string): Promise<T[]> => {
+    const first = await get('/platform/applications?pageSize=100', token);
+    const head = first.body as { data: T[]; meta: { totalPages: number } };
+    const out = [...head.data];
+    for (let page = 2; page <= head.meta.totalPages; page += 1) {
+      const next = await get(`/platform/applications?pageSize=100&page=${String(page)}`, token);
+      out.push(...(next.body as { data: T[] }).data);
+    }
+    return out;
+  };
+
   const snapshot = async (token: string): Promise<string[]> => {
-    const res = await get('/platform/applications?pageSize=100', token);
-    return (res.body as { data: { id: string; sectionId: string | null }[] }).data
-      .map((a) => `${a.id}:${a.sectionId ?? ''}`)
-      .sort();
+    const rows = await allApplications<{ id: string; sectionId: string | null }>(token);
+    return rows.map((a) => `${a.id}:${a.sectionId ?? ''}`).sort();
   };
 
   it('groups the seeded HR catalog, and re-running it changes nothing', async () => {
@@ -329,11 +380,7 @@ describe('the default sections migration', () => {
     expect(named.every((s) => s.name.ar.trim() !== '')).toBe(true);
 
     // …and the HR pages sit inside them rather than in a flat list.
-    const grouped = (
-      (await get('/platform/applications?pageSize=100', token)).body as {
-        data: { route: string; sectionId: string | null }[];
-      }
-    ).data;
+    const grouped = await allApplications<{ route: string; sectionId: string | null }>(token);
     expect(grouped.find((a) => a.route === '/applicants')?.sectionId).not.toBeNull();
 
     // Re-running is a no-op, to the id.
@@ -357,13 +404,15 @@ describe('the default sections migration', () => {
    */
   it('leaves a row an administrator moved to another group exactly where they put it', async () => {
     const token = await tokenOf();
-    const adminId = (await doLogin(env.SEED_ADMIN_EMAIL, env.SEED_ADMIN_PASSWORD)).body.data?.me?.id ?? '';
+    const adminId =
+      (await doLogin(env.SEED_ADMIN_EMAIL, env.SEED_ADMIN_PASSWORD)).body.data?.me?.id ?? '';
 
-    const apps = (
-      (await get('/platform/applications?pageSize=100', token)).body as {
-        data: { id: string; route: string; categoryId: string; sectionId: string | null }[];
-      }
-    ).data;
+    const apps = await allApplications<{
+      id: string;
+      route: string;
+      categoryId: string;
+      sectionId: string | null;
+    }>(token);
     const sections = (
       (await get('/platform/application-sections?pageSize=100', token)).body as {
         data: { id: string; name: { en: string } }[];
@@ -387,11 +436,9 @@ describe('the default sections migration', () => {
 
     await seedApplicationSections(adminId);
 
-    const reread = (
-      (await get('/platform/applications?pageSize=100', token)).body as {
-        data: { route: string; sectionId: string | null }[];
-      }
-    ).data.find((a) => a.route === '/applicants');
+    const reread = (await allApplications<{ route: string; sectionId: string | null }>(token)).find(
+      (a) => a.route === '/applicants',
+    );
     // Recruitment names this page. It does not take it back.
     expect(reread?.sectionId).toBe(payroll?.id);
   });
@@ -408,14 +455,18 @@ describe('the default sections migration', () => {
    */
   it('files a page added later to a section that already existed', async () => {
     const token = await tokenOf();
-    const adminId = (await doLogin(env.SEED_ADMIN_EMAIL, env.SEED_ADMIN_PASSWORD)).body.data?.me?.id ?? '';
+    const adminId =
+      (await doLogin(env.SEED_ADMIN_EMAIL, env.SEED_ADMIN_PASSWORD)).body.data?.me?.id ?? '';
 
-    const appsOf = async (): Promise<{ id: string; route: string; categoryId: string; sectionId: string | null }[]> =>
-      (
-        (await get('/platform/applications?pageSize=100', token)).body as {
-          data: { id: string; route: string; categoryId: string; sectionId: string | null }[];
-        }
-      ).data;
+    const appsOf = async (): Promise<
+      { id: string; route: string; categoryId: string; sectionId: string | null }[]
+    > =>
+      await allApplications<{
+        id: string;
+        route: string;
+        categoryId: string;
+        sectionId: string | null;
+      }>(token);
     const sectionsOf = async (): Promise<{ id: string; name: { en: string } }[]> =>
       (
         (await get('/platform/application-sections?pageSize=100', token)).body as {
@@ -498,7 +549,10 @@ describe('the default sections migration', () => {
       ...(hr?.sections.flatMap((s) => s.applications.map((a) => a.route)) ?? []),
     ];
     for (const route of ['/applicants', '/employees', '/contracts', '/leave', '/payroll/runs']) {
-      expect(shown.filter((r) => r === route), route).toEqual([route]);
+      expect(
+        shown.filter((r) => r === route),
+        route,
+      ).toEqual([route]);
     }
   });
 });

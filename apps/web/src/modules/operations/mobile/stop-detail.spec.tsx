@@ -91,6 +91,7 @@ const me = (): MeDto =>
     isPrivileged: false,
     flags: {},
     totpEnabled: true,
+    external: null,
   }) as MeDto;
 
 const render = (value: OperationsMobileDayDto, assignmentId = 'a-1', locale: Locale = 'ar'): string => {

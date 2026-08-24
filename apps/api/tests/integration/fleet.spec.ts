@@ -16,12 +16,16 @@ import {
   type FleetCatalogItemDto,
   type FleetDriverProfileDto,
   type FleetDriverUnavailabilityDto,
+  type FleetMaintenanceVisitDto,
   type FleetOdometerLogDto,
   type FleetVehicleDto,
   type FleetVehicleTypeDto,
   type PageMeta,
+  SaveFleetFixedRosterSchema,
 } from '@ecms/contracts';
+import mongoose, { Types } from 'mongoose';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
+import { migrateFixedCrewIndex } from '../../src/modules/fleet/fleet.migration';
 import { buildApp } from '../../src/app';
 import { moduleManifests } from '../../src/modules';
 import { fleetPermissions } from '../../src/modules/fleet/fleet.module';
@@ -29,6 +33,8 @@ import {
   licenseExpirySweep,
   maintenanceAlarmSweep,
 } from '../../src/modules/fleet/sweeps/fleet-sweeps';
+import { FleetMaintenanceVisitModel } from '../../src/modules/fleet/maintenance/maintenance.model';
+import { EmployeeModel } from '../../src/modules/hr/employee-management/employees/employee.model';
 import { hrPermissions } from '../../src/modules/hr/hr.module';
 import { driverAvailabilityOn } from '../../src/modules/fleet/availability/driver-availability';
 import { registerLeaveLookup } from '../../src/platform/directory';
@@ -147,6 +153,23 @@ const mkEmployee = async (
   expect(res.status).toBe(201);
   return (res.body as { data: { id: string } }).data.id;
 };
+
+/**
+ * One driver employee, made on first use and reused.
+ *
+ * Check-in and check-out both REQUIRE a driver now, so every maintenance call needs one. The
+ * tests that are about something else take this; the tests that are about the driver make their
+ * own so they can tell people apart.
+ */
+let sharedDriverId: string | null = null;
+const someDriver = async (): Promise<string> => {
+  if (sharedDriverId === null) sharedDriverId = await mkEmployee({ fullNameAr: 'سائق افتراضي' });
+  return sharedDriverId;
+};
+
+/** Drops keys explicitly set to `undefined`, so a test can omit a field on purpose. */
+const withoutUndefined = (body: Record<string, unknown>): Record<string, unknown> =>
+  Object.fromEntries(Object.entries(body).filter(([, v]) => v !== undefined));
 
 const mkDriverProfile = async (employeeId: string): Promise<FleetDriverProfileDto> => {
   const res = await request(app)
@@ -1180,6 +1203,7 @@ describe('maintenance visits + derived alarm + idempotent sweeps (FL-4)', () => 
         workshopId,
         workTypeId,
         odometerAtService: 90_000,
+        driverInEmployeeId: await someDriver(),
       });
     expect(visit.status).toBe(201);
     expect(seenEvents.some((e) => e.name === FleetEvents.MaintenanceCheckedIn)).toBe(true);
@@ -1200,6 +1224,7 @@ describe('maintenance visits + derived alarm + idempotent sweeps (FL-4)', () => 
         workshopId,
         workTypeId,
         odometerAtService: 90_001,
+        driverInEmployeeId: await someDriver(),
       });
     expect(second.status).toBe(409);
 
@@ -1207,7 +1232,13 @@ describe('maintenance visits + derived alarm + idempotent sweeps (FL-4)', () => 
     const out = await request(app)
       .post(`/api/v1/fleet/maintenance/${visitDto.id}/check-out`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ outDate: '2026-07-03', version: visitDto.version });
+      // The exit reading is required now — it becomes the baseline the next service counts from.
+      .send({
+        outDate: '2026-07-03',
+        exitOdometer: 90_200,
+        driverOutEmployeeId: await someDriver(),
+        version: visitDto.version,
+      });
     expect(out.status).toBe(200);
     expect(seenEvents.some((e) => e.name === FleetEvents.MaintenanceCheckedOut)).toBe(true);
 
@@ -1240,12 +1271,20 @@ describe('maintenance visits + derived alarm + idempotent sweeps (FL-4)', () => 
           workshopId,
           workTypeId: countingId,
           odometerAtService: 95_000,
+          driverInEmployeeId: await someDriver(),
         }),
     );
     await request(app)
       .post(`/api/v1/fleet/maintenance/${visit.id}/check-out`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ outDate: '2026-07-02', version: visit.version });
+      // Out on the same reading it came in on, so this test's arithmetic is unchanged by the
+      // baseline moving to the exit reading — what the baseline IS is proven separately below.
+      .send({
+        outDate: '2026-07-02',
+        exitOdometer: 95_000,
+        driverOutEmployeeId: await someDriver(),
+        version: visit.version,
+      });
 
     const record = (reading: number, date: string) =>
       request(app)
@@ -1312,6 +1351,577 @@ describe('maintenance visits + derived alarm + idempotent sweeps (FL-4)', () => 
     await licenseExpirySweep();
     expect(countFor(FleetEvents.VehicleLicenseExpiring, v.id)).toBe(1);
     expect(countFor(FleetEvents.DriverLicenseExpired, employeeId)).toBe(1);
+  });
+});
+
+describe('workshop entry/exit — exit odometer, custody, catalog parts, filters', () => {
+  // `ux_kind_name_ar` is UNIQUE per (kind, Arabic name), so every catalog item this block creates
+  // needs its own name — a helper that reused one would 409 on its second call.
+  let catalogCounter = 0;
+  const mkCatalog = async (kind: string, ar: string): Promise<string> => {
+    const n = (catalogCounter += 1);
+    const res = await request(app)
+      .post('/api/v1/fleet/catalog-items')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ kind, name: { ar: `${ar} ${n}`, en: `${kind}-${n}` } });
+    expect(res.status).toBe(201);
+    return data<FleetCatalogItemDto>(res).id;
+  };
+  const countingWorkTypeId = async (): Promise<string> => {
+    const res = await request(app)
+      .get('/api/v1/fleet/catalog-items')
+      .query({ kind: 'workType', pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    const item = data<FleetCatalogItemDto[]>(res).find((i) => i.name.ar === 'صيانة');
+    if (item === undefined) throw new Error('workType صيانة not found');
+    return item.id;
+  };
+  /**
+   * Check-in, with a driver filled in unless the caller names one — including naming it
+   * `undefined`, which is how the "a driver is required" tests omit it deliberately.
+   */
+  const checkIn = async (body: Record<string, unknown>) =>
+    request(app)
+      .post('/api/v1/fleet/maintenance')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send(
+        'driverInEmployeeId' in body
+          ? withoutUndefined(body)
+          : { ...body, driverInEmployeeId: await someDriver() },
+      );
+  const checkOut = async (id: string, body: Record<string, unknown>) =>
+    request(app)
+      .post(`/api/v1/fleet/maintenance/${id}/check-out`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send(
+        'driverOutEmployeeId' in body
+          ? withoutUndefined(body)
+          : { ...body, driverOutEmployeeId: await someDriver() },
+      );
+  /**
+   * The list, over the WHOLE filtered set by default.
+   *
+   * The endpoint pages at 25, and these tests assert "is this visit among the matches" against a
+   * filter that legitimately matches other tests' visits too — `open: true` matches every open
+   * visit in the suite. Reading only the first page would turn "the filter dropped it" and "it sat
+   * on page 2" into the same observation. A test that names a page passes its own `pageSize` and
+   * overrides this.
+   */
+  const listVisits = (query: Record<string, unknown>) =>
+    request(app)
+      .get('/api/v1/fleet/maintenance')
+      .query({ pageSize: MAX_PAGE_SIZE, ...query })
+      .set('Authorization', `Bearer ${adminToken}`);
+  const ids = (res: request.Response): string[] =>
+    data<FleetMaintenanceVisitDto[]>(res).map((v) => v.id);
+
+  /** A closed visit on a fresh vehicle, in one call — the fixture most of these tests want. */
+  const closedVisit = async (
+    over: {
+      odometerAtService?: number;
+      exitOdometer?: number;
+      inDate?: string;
+      outDate?: string;
+      sparePartIds?: string[];
+      notes?: string;
+    } = {},
+  ): Promise<{ vehicle: FleetVehicleDto; visit: FleetMaintenanceVisitDto }> => {
+    const vehicle = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const opened = await checkIn({
+      vehicleId: vehicle.id,
+      inDate: over.inDate ?? '2026-09-01',
+      workshopId: await mkCatalog('workshop', 'ورشة الخروج'),
+      workTypeId: await countingWorkTypeId(),
+      odometerAtService: over.odometerAtService ?? 120_000,
+      ...(over.sparePartIds === undefined ? {} : { sparePartIds: over.sparePartIds }),
+      ...(over.notes === undefined ? {} : { notes: over.notes }),
+    });
+    expect(opened.status).toBe(201);
+    const open = data<FleetMaintenanceVisitDto>(opened);
+    const out = await checkOut(open.id, {
+      outDate: over.outDate ?? '2026-09-03',
+      exitOdometer: over.exitOdometer ?? 120_850,
+      version: open.version,
+    });
+    expect(out.status).toBe(200);
+    return { vehicle, visit: data<FleetMaintenanceVisitDto>(out) };
+  };
+
+  it('stores the exit reading and refuses one below the reading it came in on', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const opened = data<FleetMaintenanceVisitDto>(
+      await checkIn({
+        vehicleId: v.id,
+        inDate: '2026-09-01',
+        workshopId: await mkCatalog('workshop', 'ورشة القراءة'),
+        workTypeId: await countingWorkTypeId(),
+        odometerAtService: 120_000,
+      }),
+    );
+    // Open: there is no exit reading yet, and the field says so rather than guessing one.
+    expect(opened.exitOdometer).toBeNull();
+
+    const tooLow = await checkOut(opened.id, {
+      outDate: '2026-09-03',
+      exitOdometer: 119_999,
+      version: opened.version,
+    });
+    expect(tooLow.status).toBe(400);
+
+    // Required, not optional: a check-out without it cannot silently leave the baseline behind.
+    const missing = await checkOut(opened.id, {
+      outDate: '2026-09-03',
+      version: opened.version,
+    });
+    expect(missing.status).toBe(400);
+
+    const out = await checkOut(opened.id, {
+      outDate: '2026-09-03',
+      exitOdometer: 120_850,
+      version: opened.version,
+    });
+    expect(out.status).toBe(200);
+    expect(data<FleetMaintenanceVisitDto>(out).exitOdometer).toBe(120_850);
+
+    // …and it is PERSISTED, not merely echoed by the write.
+    const reread = await listVisits({ vehicleId: v.id });
+    expect(data<FleetMaintenanceVisitDto[]>(reread)[0]?.exitOdometer).toBe(120_850);
+  });
+
+  it('a closed visit measures the next service from the EXIT reading, not the entry one', async () => {
+    // In on 120,000 and out on 120,850: the 850 the workshop drove is not distance since the
+    // service, and counting it would bring the next service forward by exactly that much.
+    const { vehicle } = await closedVisit({ odometerAtService: 120_000, exitOdometer: 120_850 });
+    await request(app)
+      .post('/api/v1/fleet/odometer')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ vehicleId: vehicle.id, reading: 124_850, date: '2026-09-20' });
+
+    const alarms = data<{ code: string; sinceServiceKm: number | null }[]>(
+      await request(app)
+        .get('/api/v1/fleet/odometer/alarms')
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+    // 124,850 − 120,850 = 4,000. From the entry reading it would have read 4,850.
+    expect(alarms.find((a) => a.code === vehicle.code)?.sinceServiceKm).toBe(4000);
+  });
+
+  it('a visit closed before the exit reading existed still reads, and still baselines', async () => {
+    const { vehicle, visit } = await closedVisit({
+      odometerAtService: 120_000,
+      exitOdometer: 120_850,
+    });
+    // Exactly the shape of a row written before the field existed: the KEY is absent, not null —
+    // a mongoose `default` applies on write and never reached the rows already there.
+    await FleetMaintenanceVisitModel.collection.updateOne(
+      { _id: new Types.ObjectId(visit.id) },
+      { $unset: { exitOdometer: '' } },
+    );
+
+    const reread = data<FleetMaintenanceVisitDto[]>(await listVisits({ vehicleId: vehicle.id }));
+    expect(reread[0]?.exitOdometer).toBeNull();
+
+    await request(app)
+      .post('/api/v1/fleet/odometer')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ vehicleId: vehicle.id, reading: 124_850, date: '2026-09-20' });
+    const alarms = data<{ code: string; sinceServiceKm: number | null }[]>(
+      await request(app)
+        .get('/api/v1/fleet/odometer/alarms')
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+    // Falls back to the entry reading: 124,850 − 120,000.
+    expect(alarms.find((a) => a.code === vehicle.code)?.sinceServiceKm).toBe(4850);
+  });
+
+  it('an OPEN visit is never a baseline — the alarm waits for the car to come out', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const opened = await checkIn({
+      vehicleId: v.id,
+      inDate: '2026-09-01',
+      workshopId: await mkCatalog('workshop', 'ورشة المفتوحة'),
+      workTypeId: await countingWorkTypeId(),
+      odometerAtService: 120_000,
+    });
+    expect(opened.status).toBe(201);
+    await request(app)
+      .post('/api/v1/fleet/odometer')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ vehicleId: v.id, reading: 124_000, date: '2026-09-20' });
+
+    const alarms = data<{ code: string; sinceServiceKm: number | null; level: string }[]>(
+      await request(app)
+        .get('/api/v1/fleet/odometer/alarms')
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+    // A car still in the workshop has not been serviced yet — there is no baseline to count from,
+    // and inventing one from the arrival reading would start the next cycle early. Unchanged by
+    // the exit reading landing on the row: the projection only ever reads CLOSED visits.
+    const row = alarms.find((a) => a.code === v.code);
+    expect(row?.sinceServiceKm).toBeNull();
+    expect(row?.level).toBe('none');
+  });
+
+  it('reads a visit written before the driver fields existed without breaking', async () => {
+    // Exactly the shape of a legacy row: the KEYS are absent, not null — a mongoose `default`
+    // applies on write and never reached the documents already in the collection.
+    const { vehicle, visit } = await closedVisit();
+    await FleetMaintenanceVisitModel.collection.updateOne(
+      { _id: new Types.ObjectId(visit.id) },
+      { $unset: { driverInEmployeeId: '', driverOutEmployeeId: '' } },
+    );
+    const reread = data<FleetMaintenanceVisitDto[]>(await listVisits({ vehicleId: vehicle.id }));
+    expect(reread[0]?.driverInEmployeeId).toBeNull();
+    expect(reread[0]?.driverOutEmployeeId).toBeNull();
+    // …and the row is still listed, not dropped by the read.
+    expect(reread).toHaveLength(1);
+  });
+
+  it('reopening a visit takes the exit reading back with it', async () => {
+    const { visit } = await closedVisit();
+    const reopened = await request(app)
+      .post(`/api/v1/fleet/maintenance/${visit.id}/reopen`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: visit.version });
+    expect(reopened.status).toBe(200);
+    const dto = data<FleetMaintenanceVisitDto>(reopened);
+    expect(dto.outDate).toBeNull();
+    expect(dto.exitOdometer).toBeNull();
+  });
+
+  it('records the custody from the LOGIN, and admits it is nobody when the login is not staff', async () => {
+    // The seeded administrator is a platform account with no employee behind it — the seam
+    // answers null, and the field says null rather than inventing somebody.
+    const anonymous = await closedVisit();
+    expect(anonymous.visit.takenInByEmployeeId).toBeNull();
+    expect(anonymous.visit.takenOutByEmployeeId).toBeNull();
+
+    // Now the same login IS an employee. Nothing about the request changes — no employee field is
+    // sent — and both custody facts are recorded from the account that made the call.
+    //
+    // Direct registration provisions each employee its OWN login, so this repoints the seam at the
+    // account the request is actually made with. The original back-reference is captured and put
+    // back afterwards — nulling it would leave a real employee detached from its real login for
+    // every test that follows.
+    const employeeId = await mkEmployee({ fullNameAr: 'أمين العهدة' });
+    const before = await EmployeeModel.findById(employeeId).lean<{ userId: unknown }>().exec();
+    const originalUserId = before?.userId ?? null;
+    await EmployeeModel.updateOne(
+      { _id: new Types.ObjectId(employeeId) },
+      { $set: { userId: new Types.ObjectId(adminUserId) } },
+    );
+    try {
+      const { visit } = await closedVisit();
+      expect(visit.takenInByEmployeeId).toBe(employeeId);
+      expect(visit.takenOutByEmployeeId).toBe(employeeId);
+    } finally {
+      await EmployeeModel.updateOne(
+        { _id: new Types.ObjectId(employeeId) },
+        { $set: { userId: originalUserId } },
+      );
+    }
+  });
+
+  it('spare parts are catalog references, and an unknown one is refused', async () => {
+    const partA = await mkCatalog('sparePart', 'فلتر زيت');
+    const partB = await mkCatalog('sparePart', 'طقم فرامل');
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const body = {
+      vehicleId: v.id,
+      inDate: '2026-09-01',
+      workshopId: await mkCatalog('workshop', 'ورشة القطع'),
+      workTypeId: await countingWorkTypeId(),
+      odometerAtService: 10_000,
+    };
+
+    const refused = await checkIn({ ...body, sparePartIds: [String(new Types.ObjectId())] });
+    expect(refused.status).toBe(400);
+
+    const accepted = await checkIn({ ...body, sparePartIds: [partA, partB] });
+    expect(accepted.status).toBe(201);
+    expect(data<FleetMaintenanceVisitDto>(accepted).sparePartIds).toEqual([partA, partB]);
+    // The legacy free-text field is untouched by a catalog write — nothing migrated, nothing lost.
+    expect(data<FleetMaintenanceVisitDto>(accepted).spareParts).toEqual([]);
+  });
+
+  it('still accepts the DEPRECATED free text, and never turns it into a catalog id', async () => {
+    // A caller written before the catalog existed is not refused. Its words are stored verbatim in
+    // the legacy field: matching them to a catalog item by name is the silent, lossy conversion
+    // this whole change exists to avoid.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const res = await checkIn({
+      vehicleId: v.id,
+      inDate: '2026-09-01',
+      workshopId: await mkCatalog('workshop', 'ورشة النص القديم'),
+      workTypeId: await countingWorkTypeId(),
+      odometerAtService: 10_000,
+      spareParts: ['فلتر زيت', 'قطعة لا يعرفها الكتالوج'],
+    });
+    expect(res.status).toBe(201);
+    const dto = data<FleetMaintenanceVisitDto>(res);
+    expect(dto.spareParts).toEqual(['فلتر زيت', 'قطعة لا يعرفها الكتالوج']);
+    expect(dto.sparePartIds, 'no string was silently resolved to an id').toEqual([]);
+  });
+
+  it('filters server-side on every axis the screen offers', async () => {
+    const part = await mkCatalog('sparePart', 'مساحات');
+    const workshopId = await mkCatalog('workshop', 'ورشة الفلاتر');
+    const workTypeId = await countingWorkTypeId();
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const opened = data<FleetMaintenanceVisitDto>(
+      await checkIn({
+        vehicleId: v.id,
+        inDate: '2026-10-05',
+        workshopId,
+        workTypeId,
+        odometerAtService: 55_000,
+        sparePartIds: [part],
+        notes: 'تغيير المساحات',
+      }),
+    );
+    // The vehicle CODE is a server fact on the row now, not a client join against one page.
+    expect(opened.vehicleCode).toBe(v.code);
+
+    const matches = async (query: Record<string, unknown>): Promise<boolean> =>
+      ids(await listVisits(query)).includes(opened.id);
+
+    expect(await matches({ vehicleCodes: v.code })).toBe(true);
+    expect(await matches({ vehicleCodes: `${v.code}-nope` })).toBe(false);
+    expect(await matches({ workshopIds: workshopId })).toBe(true);
+    expect(await matches({ workshopIds: String(new Types.ObjectId()) })).toBe(false);
+    expect(await matches({ workTypeIds: workTypeId })).toBe(true);
+    expect(await matches({ sparePartIds: part })).toBe(true);
+    expect(await matches({ sparePartIds: String(new Types.ObjectId()) })).toBe(false);
+    expect(await matches({ notes: 'المساحات' })).toBe(true);
+    expect(await matches({ notes: 'الفرامل' })).toBe(false);
+    expect(await matches({ odometerFrom: 55_000, odometerTo: 55_000 })).toBe(true);
+    expect(await matches({ odometerFrom: 55_001 })).toBe(false);
+    // The single-day case: `to` covers the whole of the day it names, whatever time is stamped.
+    expect(await matches({ from: '2026-10-05', to: '2026-10-05' })).toBe(true);
+    expect(await matches({ from: '2026-10-06' })).toBe(false);
+    // Still in the workshop — so it is in the open list and out of the closed one, and it has no
+    // check-out date to fall inside an out-date window.
+    expect(await matches({ open: true })).toBe(true);
+    expect(await matches({ open: false })).toBe(false);
+    expect(await matches({ outFrom: '2026-01-01', outTo: '2027-01-01' })).toBe(false);
+
+    const out = await checkOut(opened.id, {
+      outDate: '2026-10-09',
+      exitOdometer: 55_400,
+      version: opened.version,
+    });
+    expect(out.status).toBe(200);
+    expect(await matches({ open: false })).toBe(true);
+    expect(await matches({ open: true })).toBe(false);
+    expect(await matches({ outFrom: '2026-10-09', outTo: '2026-10-09' })).toBe(true);
+    expect(await matches({ outFrom: '2026-10-10' })).toBe(false);
+  });
+
+  it('stores the driver at each end, and filters on EITHER of them', async () => {
+    const driverIn = await mkEmployee({ fullNameAr: 'سائق الدخول' });
+    const driverOut = await mkEmployee({ fullNameAr: 'سائق الخروج' });
+    const other = await mkEmployee({ fullNameAr: 'سائق آخر' });
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+
+    const opened = data<FleetMaintenanceVisitDto>(
+      await checkIn({
+        vehicleId: v.id,
+        inDate: '2026-10-12',
+        workshopId: await mkCatalog('workshop', 'ورشة السائق'),
+        workTypeId: await countingWorkTypeId(),
+        odometerAtService: 70_000,
+        driverInEmployeeId: driverIn,
+      }),
+    );
+    // Stored on the visit, not derived from a roster that can be re-planned afterwards.
+    expect(opened.driverInEmployeeId).toBe(driverIn);
+    expect(opened.driverOutEmployeeId, 'nobody has driven it away yet').toBeNull();
+    expect(ids(await listVisits({ driverEmployeeIds: driverIn }))).toContain(opened.id);
+    expect(ids(await listVisits({ driverEmployeeIds: driverOut }))).not.toContain(opened.id);
+
+    const out = await checkOut(opened.id, {
+      outDate: '2026-10-14',
+      exitOdometer: 70_400,
+      driverOutEmployeeId: driverOut,
+      version: opened.version,
+    });
+    expect(out.status).toBe(200);
+    expect(data<FleetMaintenanceVisitDto>(out).driverOutEmployeeId).toBe(driverOut);
+    // The one who drove it in is untouched by the check-out.
+    expect(data<FleetMaintenanceVisitDto>(out).driverInEmployeeId).toBe(driverIn);
+
+    // EITHER end matches now.
+    expect(ids(await listVisits({ driverEmployeeIds: driverIn }))).toContain(opened.id);
+    expect(ids(await listVisits({ driverEmployeeIds: driverOut }))).toContain(opened.id);
+    expect(ids(await listVisits({ driverEmployeeIds: other }))).not.toContain(opened.id);
+  });
+
+  it('refuses a check-in with no driver, and a check-out with no driver', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const body = {
+      vehicleId: v.id,
+      inDate: '2026-10-18',
+      workshopId: await mkCatalog('workshop', 'ورشة الإلزام'),
+      workTypeId: await countingWorkTypeId(),
+      odometerAtService: 80_000,
+    };
+    // Omitted on the wire, not sent as null: the field is required, so the schema refuses it.
+    const noDriver = await checkIn({ ...body, driverInEmployeeId: undefined });
+    expect(noDriver.status).toBe(400);
+
+    const opened = data<FleetMaintenanceVisitDto>(await checkIn(body));
+    expect(opened.driverInEmployeeId, 'the driver that WAS sent is stored').not.toBeNull();
+
+    const noExitDriver = await checkOut(opened.id, {
+      outDate: '2026-10-19',
+      exitOdometer: 80_100,
+      driverOutEmployeeId: undefined,
+      version: opened.version,
+    });
+    expect(noExitDriver.status).toBe(400);
+
+    // …and the visit is still open: a refused check-out changes nothing.
+    const reread = data<FleetMaintenanceVisitDto[]>(await listVisits({ vehicleId: v.id }));
+    expect(reread[0]?.outDate).toBeNull();
+    expect(reread[0]?.driverOutEmployeeId).toBeNull();
+  });
+
+  it('refuses a driver id that is not an employee, at every end that takes one', async () => {
+    // Existence only — the directory seam answers "is this an employee", and nothing here asks
+    // whether they hold a driver profile. A workshop visit records who brought the car in.
+    const ghost = String(new Types.ObjectId());
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const body = {
+      vehicleId: v.id,
+      inDate: '2026-10-22',
+      workshopId: await mkCatalog('workshop', 'ورشة التحقق'),
+      workTypeId: await countingWorkTypeId(),
+      odometerAtService: 90_000,
+    };
+
+    const badIn = await checkIn({ ...body, driverInEmployeeId: ghost });
+    expect(badIn.status).toBe(400);
+
+    const opened = data<FleetMaintenanceVisitDto>(await checkIn(body));
+
+    // …the same check on the correction path.
+    const badEdit = await request(app)
+      .patch(`/api/v1/fleet/maintenance/${opened.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ driverInEmployeeId: ghost, version: opened.version });
+    expect(badEdit.status).toBe(400);
+
+    // …and on the way out.
+    const badOut = await checkOut(opened.id, {
+      outDate: '2026-10-23',
+      exitOdometer: 90_100,
+      driverOutEmployeeId: ghost,
+      version: opened.version,
+    });
+    expect(badOut.status).toBe(400);
+
+    // Nothing was written by any of the three refusals.
+    const reread = data<FleetMaintenanceVisitDto[]>(await listVisits({ vehicleId: v.id }));
+    expect(reread[0]?.outDate).toBeNull();
+    expect(reread[0]?.driverInEmployeeId).toBe(await someDriver());
+  });
+
+  it('accepts a real employee as the corrected check-in driver', async () => {
+    const replacement = await mkEmployee({ fullNameAr: 'سائق بديل' });
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const opened = data<FleetMaintenanceVisitDto>(
+      await checkIn({
+        vehicleId: v.id,
+        inDate: '2026-10-24',
+        workshopId: await mkCatalog('workshop', 'ورشة التصحيح'),
+        workTypeId: await countingWorkTypeId(),
+        odometerAtService: 91_000,
+      }),
+    );
+    const edited = await request(app)
+      .patch(`/api/v1/fleet/maintenance/${opened.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ driverInEmployeeId: replacement, version: opened.version });
+    expect(edited.status).toBe(200);
+    expect(data<FleetMaintenanceVisitDto>(edited).driverInEmployeeId).toBe(replacement);
+  });
+
+  it('reopening a visit takes the exit DRIVER back with the rest of the exit', async () => {
+    const { visit } = await closedVisit();
+    expect(visit.driverOutEmployeeId, 'a closed visit has one').not.toBeNull();
+    const reopened = await request(app)
+      .post(`/api/v1/fleet/maintenance/${visit.id}/reopen`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: visit.version });
+    expect(reopened.status).toBe(200);
+    const dto = data<FleetMaintenanceVisitDto>(reopened);
+    expect(dto.driverOutEmployeeId).toBeNull();
+    // The check-in driver survives — reopening undoes the exit, not the arrival.
+    expect(dto.driverInEmployeeId).not.toBeNull();
+  });
+
+  it('refuses to re-crew a car that is already in the workshop (FR-5 is unchanged)', async () => {
+    // The rule this slice must not bend: once a visit is open over a date, the roster will not
+    // assign that vehicle for it. The maintenance screen no longer reads the roster at all, so
+    // this is pinned precisely because nothing else here would notice if it were relaxed.
+    const driver = await mkEmployee({ fullNameAr: 'سائق مرفوض' });
+    await mkDriverProfile(driver);
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const inDate = '2026-10-14';
+    const opened = await checkIn({
+      vehicleId: v.id,
+      inDate,
+      workshopId: await mkCatalog('workshop', 'ورشة الرفض'),
+      workTypeId: await countingWorkTypeId(),
+      odometerAtService: 71_000,
+    });
+    expect(opened.status).toBe(201);
+
+    const refused = await request(app)
+      .post('/api/v1/fleet/roster')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date: inDate, rows: [{ vehicleId: v.id, driver1EmployeeId: driver }] });
+    expect(refused.status).toBe(409);
+  });
+
+  it('pagination and sorting survive the filters', async () => {
+    const workshopId = await mkCatalog('workshop', 'ورشة الصفحات');
+    const workTypeId = await countingWorkTypeId();
+    const dates = ['2026-11-01', '2026-11-02', '2026-11-03'];
+    for (const inDate of dates) {
+      const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+      const res = await checkIn({
+        vehicleId: v.id,
+        inDate,
+        workshopId,
+        workTypeId,
+        odometerAtService: 1000,
+      });
+      expect(res.status).toBe(201);
+    }
+
+    const first = await listVisits({
+      workshopIds: workshopId,
+      pageSize: 2,
+      sortBy: 'inDate',
+      sortDir: 'asc',
+    });
+    const meta = (first.body as { meta: PageMeta }).meta;
+    // The total describes the FILTERED set, and it is the server's count — never a page length.
+    expect(meta.totalItems).toBe(3);
+    expect(meta.totalPages).toBe(2);
+    expect(data<FleetMaintenanceVisitDto[]>(first)).toHaveLength(2);
+    expect(data<FleetMaintenanceVisitDto[]>(first)[0]?.inDate.slice(0, 10)).toBe('2026-11-01');
+
+    const second = await listVisits({
+      workshopIds: workshopId,
+      pageSize: 2,
+      page: 2,
+      sortBy: 'inDate',
+      sortDir: 'asc',
+    });
+    expect(data<FleetMaintenanceVisitDto[]>(second)).toHaveLength(1);
+    expect(data<FleetMaintenanceVisitDto[]>(second)[0]?.inDate.slice(0, 10)).toBe('2026-11-03');
   });
 });
 
@@ -1442,6 +2052,7 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
         workshopId: data<FleetCatalogItemDto>(workshop).id,
         workTypeId: data<FleetCatalogItemDto[]>(workTypes).find((i) => i.name.ar === 'صيانة')?.id,
         odometerAtService: 50_000,
+        driverInEmployeeId: await someDriver(),
       });
     expect(checkIn.status).toBe(201);
 
@@ -1505,6 +2116,617 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
           .send({ date: '2026-11-06', rows: [{ vehicleId: '64b1f0cccccccccccccccc99' }] })
       ).status,
     ).toBe(403);
+  });
+});
+
+// NOTE ON ORDER: this block sits AFTER the daily roster's, deliberately.
+//
+// `seenEvents` is one array for the whole file, and the roster's own test asserts that a
+// `fleet.roster.planned` with `changedCount: 1` appears in it. Some tests below plan a real day
+// to prove the two boards stay independent — which emits exactly that event. Declared FIRST,
+// they would pre-satisfy the roster's assertion, and it would stay green even if the emit were
+// deleted. Declared after, it still proves what it was written to prove.
+describe('fixed crew (الطقم الثابت) — the standing crew, with no date in it', () => {
+  interface FixedBoardDto {
+    changedCount?: number;
+    rows: {
+      vehicleId: string;
+      code: string;
+      inMaintenance: boolean;
+      driver1EmployeeId: string | null;
+      driver2EmployeeId: string | null;
+    }[];
+    drivers: { employeeId: string; assignedVehicleId: string | null }[];
+  }
+
+  const mkDriver = async (): Promise<string> => {
+    const employeeId = await mkEmployee();
+    await mkDriverProfile(employeeId);
+    return employeeId;
+  };
+  const saveCrews = (rows: unknown[], token = adminToken) =>
+    request(app)
+      .post('/api/v1/fleet/fixed-roster')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ rows });
+  const getCrews = (token = adminToken) =>
+    request(app).get('/api/v1/fleet/fixed-roster').set('Authorization', `Bearer ${token}`);
+  const rowFor = (board: FixedBoardDto, vehicleId: string) =>
+    board.rows.find((r) => r.vehicleId === vehicleId);
+
+  // ── persistence: the whole point of the screen ────────────────────────────
+
+  it('stores a crew and answers with it on a FRESH read — not just in the save response', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const [d1, d2] = [await mkDriver(), await mkDriver()];
+
+    const save = await saveCrews([
+      { vehicleId: v.id, driver1EmployeeId: d1, driver2EmployeeId: d2 },
+    ]);
+    expect(save.status).toBe(200);
+    expect(data<FixedBoardDto>(save).changedCount).toBe(1);
+
+    // A second, independent request — this is what a page reload does.
+    const reload = await getCrews();
+    expect(reload.status).toBe(200);
+    expect(rowFor(data<FixedBoardDto>(reload), v.id)).toMatchObject({
+      driver1EmployeeId: d1,
+      driver2EmployeeId: d2,
+    });
+  });
+
+  it('carries no date anywhere — not in the query, not in the row', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const d1 = await mkDriver();
+    await saveCrews([{ vehicleId: v.id, driver1EmployeeId: d1 }]);
+    const board = data<FixedBoardDto>(await getCrews());
+    expect(Object.keys(board)).toEqual(expect.arrayContaining(['rows', 'drivers']));
+    expect(Object.keys(board)).not.toContain('date');
+    expect(Object.keys(rowFor(board, v.id) as object)).not.toContain('date');
+    // And a date sent anyway is refused rather than quietly stored.
+    const withDate = await request(app)
+      .post('/api/v1/fleet/fixed-roster')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date: '2026-11-01', rows: [{ vehicleId: v.id }] });
+    expect(withDate.status).toBe(400);
+  });
+
+  it('replaces the previous crew rather than appending to it', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const [d1, d2] = [await mkDriver(), await mkDriver()];
+    await saveCrews([{ vehicleId: v.id, driver1EmployeeId: d1 }]);
+    await saveCrews([{ vehicleId: v.id, driver1EmployeeId: d2 }]);
+
+    const board = data<FixedBoardDto>(await getCrews());
+    expect(rowFor(board, v.id)).toMatchObject({ driver1EmployeeId: d2, driver2EmployeeId: null });
+    // The one replaced is free again, and says so.
+    expect(board.drivers.find((d) => d.employeeId === d1)?.assignedVehicleId).toBeNull();
+    expect(board.drivers.find((d) => d.employeeId === d2)?.assignedVehicleId).toBe(v.id);
+  });
+
+  it('clears a crew, and the cleared row survives as an empty one', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const d1 = await mkDriver();
+    await saveCrews([{ vehicleId: v.id, driver1EmployeeId: d1 }]);
+    const cleared = await saveCrews([
+      { vehicleId: v.id, driver1EmployeeId: null, driver2EmployeeId: null },
+    ]);
+    expect(data<FixedBoardDto>(cleared).changedCount).toBe(1);
+    expect(rowFor(data<FixedBoardDto>(await getCrews()), v.id)).toMatchObject({
+      driver1EmployeeId: null,
+      driver2EmployeeId: null,
+    });
+  });
+
+  it('treats an unchanged save as a no-op', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const d1 = await mkDriver();
+    await saveCrews([{ vehicleId: v.id, driver1EmployeeId: d1 }]);
+    const again = await saveCrews([{ vehicleId: v.id, driver1EmployeeId: d1 }]);
+    expect(data<FixedBoardDto>(again).changedCount).toBe(0);
+  });
+
+  it('never writes a row for a vehicle whose crew was empty to begin with', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const res = await saveCrews([{ vehicleId: v.id }]);
+    expect(data<FixedBoardDto>(res).changedCount).toBe(0);
+    expect(rowFor(data<FixedBoardDto>(await getCrews()), v.id)).toMatchObject({
+      driver1EmployeeId: null,
+    });
+  });
+
+  // ── integrity: the same two rules the daily plan enforces ─────────────────
+
+  it('refuses the same person in BOTH slots of one vehicle', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const d1 = await mkDriver();
+    const res = await saveCrews([
+      { vehicleId: v.id, driver1EmployeeId: d1, driver2EmployeeId: d1 },
+    ]);
+    expect(res.status).toBe(400);
+    expect(rowFor(data<FixedBoardDto>(await getCrews()), v.id)?.driver1EmployeeId).toBeNull();
+  });
+
+  it('refuses one driver in two crews within a single save', async () => {
+    const [a, b] = [
+      data<FleetVehicleDto>(await createVehicle(adminToken)),
+      data<FleetVehicleDto>(await createVehicle(adminToken)),
+    ];
+    const d1 = await mkDriver();
+    const res = await saveCrews([
+      { vehicleId: a.id, driver1EmployeeId: d1 },
+      { vehicleId: b.id, driver1EmployeeId: d1 },
+    ]);
+    expect(res.status).toBe(400);
+  });
+
+  it('refuses to seat a driver another vehicle still holds, naming the row to release', async () => {
+    const [a, b] = [
+      data<FleetVehicleDto>(await createVehicle(adminToken)),
+      data<FleetVehicleDto>(await createVehicle(adminToken)),
+    ];
+    const d1 = await mkDriver();
+    await saveCrews([{ vehicleId: a.id, driver1EmployeeId: d1 }]);
+    // Only the receiving row — the releasing one was forgotten.
+    const res = await saveCrews([{ vehicleId: b.id, driver1EmployeeId: d1 }]);
+    expect(res.status).toBe(409);
+    // Nothing moved.
+    const board = data<FixedBoardDto>(await getCrews());
+    expect(rowFor(board, a.id)?.driver1EmployeeId).toBe(d1);
+    expect(rowFor(board, b.id)?.driver1EmployeeId).toBeNull();
+  });
+
+  it('MOVES a driver when both sides of the move travel together', async () => {
+    const [a, b] = [
+      data<FleetVehicleDto>(await createVehicle(adminToken)),
+      data<FleetVehicleDto>(await createVehicle(adminToken)),
+    ];
+    const d1 = await mkDriver();
+    await saveCrews([{ vehicleId: a.id, driver1EmployeeId: d1 }]);
+    const moved = await saveCrews([
+      { vehicleId: a.id, driver1EmployeeId: null },
+      { vehicleId: b.id, driver1EmployeeId: d1 },
+    ]);
+    expect(moved.status).toBe(200);
+    const board = data<FixedBoardDto>(await getCrews());
+    expect(rowFor(board, a.id)?.driver1EmployeeId).toBeNull();
+    expect(rowFor(board, b.id)?.driver1EmployeeId).toBe(d1);
+    expect(board.drivers.find((d) => d.employeeId === d1)?.assignedVehicleId).toBe(b.id);
+  });
+
+  it('refuses an employee who is not an active driver', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const plainEmployee = await mkEmployee();
+    const res = await saveCrews([{ vehicleId: v.id, driver1EmployeeId: plainEmployee }]);
+    expect(res.status).toBe(400);
+  });
+
+  // ── DESTRUCTIVE-BEHAVIOUR AUDIT: what a save actually mutates ─────────────
+  //
+  // Read against a REAL database, not inferred from the UI. A fixed crew is a REFERENCE to a
+  // driver, and the fear these tests answer is that setting or moving that reference does
+  // something to the driver themselves. Every one counts and identifies the driver population
+  // before and after, so "the driver is gone" and "the driver is no longer in this slot" can
+  // never be confused for each other.
+
+  /** Every driver profile the fleet has, by employeeId — the population under audit. */
+  const driverPopulation = async (): Promise<{ ids: string[]; active: string[] }> => {
+    const res = await request(app)
+      .get('/api/v1/fleet/drivers')
+      .query({ pageSize: MAX_PAGE_SIZE })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const rows = data<FleetDriverProfileDto[]>(res);
+    return {
+      ids: rows.map((d) => d.employeeId).sort(),
+      active: rows
+        .filter((d) => d.isActive)
+        .map((d) => d.employeeId)
+        .sort(),
+    };
+  };
+
+  it('AUDIT — saving a fixed crew deletes no driver and deactivates none', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const [d1, d2] = [await mkDriver(), await mkDriver()];
+    const before = await driverPopulation();
+
+    const save = await saveCrews([
+      { vehicleId: v.id, driver1EmployeeId: d1, driver2EmployeeId: d2 },
+    ]);
+    expect(save.status).toBe(200);
+
+    const after = await driverPopulation();
+    expect(after.ids, 'the exact same driver profiles exist').toEqual(before.ids);
+    expect(after.active, 'and every one of them is still active').toEqual(before.active);
+    expect(after.ids).toContain(d1);
+    expect(after.ids).toContain(d2);
+  });
+
+  it('AUDIT — MOVING a driver between vehicles deletes nobody', async () => {
+    const [a, b] = [
+      data<FleetVehicleDto>(await createVehicle(adminToken)),
+      data<FleetVehicleDto>(await createVehicle(adminToken)),
+    ];
+    const d1 = await mkDriver();
+    await saveCrews([{ vehicleId: a.id, driver1EmployeeId: d1 }]);
+    const before = await driverPopulation();
+
+    const moved = await saveCrews([
+      { vehicleId: a.id, driver1EmployeeId: null },
+      { vehicleId: b.id, driver1EmployeeId: d1 },
+    ]);
+    expect(moved.status).toBe(200);
+
+    const after = await driverPopulation();
+    expect(after.ids).toEqual(before.ids);
+    expect(after.active).toEqual(before.active);
+    // The reference moved; that is the ONLY thing that moved.
+    const board = data<FixedBoardDto>(await getCrews());
+    expect(rowFor(board, a.id)?.driver1EmployeeId).toBeNull();
+    expect(rowFor(board, b.id)?.driver1EmployeeId).toBe(d1);
+  });
+
+  it('AUDIT — moving between the two SLOTS of one vehicle deletes nobody', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const d1 = await mkDriver();
+    await saveCrews([{ vehicleId: v.id, driver1EmployeeId: d1 }]);
+    const before = await driverPopulation();
+
+    const moved = await saveCrews([
+      { vehicleId: v.id, driver1EmployeeId: null, driver2EmployeeId: d1 },
+    ]);
+    expect(moved.status).toBe(200);
+    expect(await driverPopulation()).toEqual(before);
+    expect(rowFor(data<FixedBoardDto>(await getCrews()), v.id)).toMatchObject({
+      driver1EmployeeId: null,
+      driver2EmployeeId: d1,
+    });
+  });
+
+  it('AUDIT — REMOVING a driver from a crew clears the reference and nothing else', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const d1 = await mkDriver();
+    await saveCrews([{ vehicleId: v.id, driver1EmployeeId: d1 }]);
+    const before = await driverPopulation();
+
+    const cleared = await saveCrews([{ vehicleId: v.id, driver1EmployeeId: null }]);
+    expect(cleared.status).toBe(200);
+
+    // The population is untouched...
+    expect(await driverPopulation()).toEqual(before);
+    // ...and the profile itself is intact, field by field, not merely present.
+    const listed = await request(app)
+      .get('/api/v1/fleet/drivers')
+      .query({ pageSize: MAX_PAGE_SIZE })
+      .set('Authorization', `Bearer ${adminToken}`);
+    const profile = data<FleetDriverProfileDto[]>(listed).find((d) => d.employeeId === d1);
+    expect(profile, 'the driver profile still exists').toBeDefined();
+    expect(profile?.isActive, 'and is still active').toBe(true);
+    expect(profile?.licenseNumber, 'with its licence untouched').toBeTruthy();
+  });
+
+  it('AUDIT — a driver removed from a fixed crew is still assignable on the DAILY roster', async () => {
+    // The point of the whole audit in one test: leaving a fixed crew costs the driver nothing.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const d1 = await mkDriver();
+    await saveCrews([{ vehicleId: v.id, driver1EmployeeId: d1 }]);
+    await saveCrews([{ vehicleId: v.id, driver1EmployeeId: null }]);
+
+    const date = '2026-12-11';
+    const dayBoard = await request(app)
+      .get('/api/v1/fleet/roster')
+      .query({ date })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(dayBoard.status).toBe(200);
+    const day = data<{
+      availableDrivers: { employeeId: string }[];
+      unavailableDrivers: { employeeId: string; reason: string }[];
+    }>(dayBoard);
+    expect(
+      day.availableDrivers.some((d) => d.employeeId === d1),
+      'still in the AVAILABLE pool',
+    ).toBe(true);
+    expect(day.unavailableDrivers.some((d) => d.employeeId === d1)).toBe(false);
+
+    // And can actually be planned for a day.
+    const plan = await request(app)
+      .post('/api/v1/fleet/roster')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date, rows: [{ vehicleId: v.id, driver1EmployeeId: d1 }] });
+    expect(plan.status).toBe(200);
+  });
+
+  it('AUDIT — the daily roster’s own rows are untouched by any fixed-crew save', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const [daily, fixed] = [await mkDriver(), await mkDriver()];
+    const date = '2026-12-12';
+
+    const plan = await request(app)
+      .post('/api/v1/fleet/roster')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date, rows: [{ vehicleId: v.id, driver1EmployeeId: daily }] });
+    expect(plan.status).toBe(200);
+
+    const dayBefore = async () =>
+      data<{ rows: { vehicleId: string; driver1EmployeeId: string | null }[] }>(
+        await request(app)
+          .get('/api/v1/fleet/roster')
+          .query({ date })
+          .set('Authorization', `Bearer ${adminToken}`),
+      ).rows.find((r) => r.vehicleId === v.id);
+    const before = await dayBefore();
+
+    // Set, move and clear a fixed crew on the SAME vehicle.
+    await saveCrews([{ vehicleId: v.id, driver1EmployeeId: fixed }]);
+    await saveCrews([{ vehicleId: v.id, driver1EmployeeId: null, driver2EmployeeId: fixed }]);
+    await saveCrews([{ vehicleId: v.id, driver2EmployeeId: null }]);
+
+    expect(await dayBefore(), 'the day row is byte-identical').toEqual(before);
+  });
+
+  it('AUDIT — an id spelled in UPPERCASE hex is the same vehicle, not a second one', () => {
+    // An ObjectId is a number written in hex and `objectId()` accepts either case, but every
+    // lookup keys off `String(doc.field)`, which mongo renders lowercase. Left unsettled, the
+    // uppercase spelling misses the "does this vehicle already have a crew" map and takes the
+    // INSERT branch — a second live row for one vehicle, the older one invisible thereafter
+    // while still pinning its driver. The schema settles the spelling at the boundary.
+    const v = '64b1f0abcdefabcdefabcdef';
+    const d = '64b1f0abcdefabcdefabcd01';
+    const parsed = SaveFleetFixedRosterSchema.parse({
+      rows: [{ vehicleId: v.toUpperCase(), driver1EmployeeId: d.toUpperCase() }],
+    });
+    expect(parsed.rows[0]?.vehicleId).toBe(v);
+    expect(parsed.rows[0]?.driver1EmployeeId).toBe(d);
+    // And one vehicle spelled two ways is still one vehicle.
+    expect(
+      SaveFleetFixedRosterSchema.safeParse({
+        rows: [{ vehicleId: v }, { vehicleId: v.toUpperCase() }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('AUDIT — an UPPERCASE vehicleId edits the existing crew row, it does not add a second', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const [d1, d2] = [await mkDriver(), await mkDriver()];
+    await saveCrews([{ vehicleId: v.id, driver1EmployeeId: d1 }]);
+
+    const upper = await saveCrews([{ vehicleId: v.id.toUpperCase(), driver1EmployeeId: d2 }]);
+    expect(upper.status).toBe(200);
+
+    const board = data<FixedBoardDto>(await getCrews());
+    // ONE row for the vehicle, carrying the new driver — not two rows, and not a stranded one.
+    expect(board.rows.filter((r) => r.vehicleId === v.id)).toHaveLength(1);
+    expect(rowFor(board, v.id)?.driver1EmployeeId).toBe(d2);
+    // And the driver it replaced is free again rather than pinned by an invisible row.
+    expect(board.drivers.find((x) => x.employeeId === d1)?.assignedVehicleId).toBeNull();
+  });
+
+  // ── the pool: every active driver, undivided ─────────────────────────────
+
+  it('lists every active driver in ONE pool, with no availability verdict attached', async () => {
+    const d1 = await mkDriver();
+    const board = data<FixedBoardDto>(await getCrews());
+    const entry = board.drivers.find((d) => d.employeeId === d1);
+    expect(entry, 'the driver is in the pool').toBeDefined();
+    expect(Object.keys(entry as object).sort()).toEqual(['assignedVehicleId', 'employeeId']);
+    expect(Object.keys(board)).not.toContain('availableDrivers');
+    expect(Object.keys(board)).not.toContain('unavailableDrivers');
+  });
+
+  // ── the unique index: the rule as a DATABASE fact ────────────────────────
+  //
+  // The service checks exclusivity against the end state of the board, but that check runs in
+  // application code: two concurrent saves can both read a board without the row and both decide
+  // to insert. `ux_fixed_vehicle` is what makes the second one lose. `autoIndex` is off outside
+  // development, so production builds it from `runFleetMigrations`; these run against a real
+  // database and assert the built index, not the declared one.
+
+  const fixedCrewIndexes = async (): Promise<Record<string, unknown>[]> =>
+    (await mongoose.connection.collection('fleet_fixed_crews').indexes()) as unknown as Record<
+      string,
+      unknown
+    >[];
+
+  it('INDEX — ux_fixed_vehicle exists on the collection, unique and partial on live rows', async () => {
+    // Make sure the collection exists before asking about its indexes.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await saveCrews([{ vehicleId: v.id, driver1EmployeeId: await mkDriver() }]);
+    await migrateFixedCrewIndex();
+
+    const ix = (await fixedCrewIndexes()).find((i) => i.name === 'ux_fixed_vehicle');
+    expect(ix, 'the index is built').toBeDefined();
+    expect(ix?.key).toEqual({ vehicleId: 1 });
+    expect(ix?.unique, 'unique').toBe(true);
+    expect(ix?.partialFilterExpression).toEqual({ isDeleted: false });
+  });
+
+  it('INDEX — the MIGRATION is what builds it, and building twice is a no-op', async () => {
+    // `autoIndex` is on in tests and off in production, so an "index exists" assertion would
+    // pass here even with the migration deleted. Dropping it first is what makes this test about
+    // the deploy step rather than about mongoose.
+    const crews = mongoose.connection.collection('fleet_fixed_crews');
+    await crews.dropIndex('ux_fixed_vehicle').catch(() => undefined);
+    expect(
+      (await fixedCrewIndexes()).some((i) => i.name === 'ux_fixed_vehicle'),
+      'gone, as a production database would have it before the deploy step',
+    ).toBe(false);
+
+    const first = await migrateFixedCrewIndex();
+    expect(first.created, 'the migration built it').toBe(true);
+    expect((await fixedCrewIndexes()).some((i) => i.name === 'ux_fixed_vehicle')).toBe(true);
+
+    const second = await migrateFixedCrewIndex();
+    expect(second.created, 'idempotent — every boot after the first is a no-op').toBe(true);
+    expect(second.duplicateVehicles).toBe(0);
+    expect(
+      (await fixedCrewIndexes()).filter((i) => i.name === 'ux_fixed_vehicle'),
+      'and there is still exactly one of it',
+    ).toHaveLength(1);
+  });
+
+  it('INDEX — the DATABASE refuses a second live crew row for one vehicle', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await saveCrews([{ vehicleId: v.id, driver1EmployeeId: await mkDriver() }]);
+    await migrateFixedCrewIndex();
+
+    // Straight at the collection, bypassing every application-level check — the only way to ask
+    // whether the DATABASE is the one holding the line.
+    const insertSecond = mongoose.connection.collection('fleet_fixed_crews').insertOne({
+      vehicleId: new Types.ObjectId(v.id),
+      driver1EmployeeId: null,
+      driver2EmployeeId: null,
+      isDeleted: false,
+      schemaVersion: 1,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      __v: 0,
+    });
+    await expect(insertSecond).rejects.toMatchObject({ code: 11000 });
+
+    // Nothing was added.
+    const rows = await mongoose.connection
+      .collection('fleet_fixed_crews')
+      .countDocuments({ vehicleId: new Types.ObjectId(v.id), isDeleted: false });
+    expect(rows).toBe(1);
+  });
+
+  it('INDEX — a SOFT-DELETED row does not hold a live vehicle’s slot', async () => {
+    // The partial filter is the reason: without it, an archived crew would block the car forever.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await migrateFixedCrewIndex();
+    const crews = mongoose.connection.collection('fleet_fixed_crews');
+    await crews.insertOne({
+      vehicleId: new Types.ObjectId(v.id),
+      driver1EmployeeId: null,
+      driver2EmployeeId: null,
+      isDeleted: true,
+      schemaVersion: 1,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      __v: 0,
+    });
+    const live = await saveCrews([{ vehicleId: v.id, driver1EmployeeId: await mkDriver() }]);
+    expect(live.status, 'a live crew is still allowed beside the deleted row').toBe(200);
+  });
+
+  it('INDEX — ordinary create and update still work with it in place', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const [d1, d2] = [await mkDriver(), await mkDriver()];
+    await migrateFixedCrewIndex();
+
+    const created = await saveCrews([{ vehicleId: v.id, driver1EmployeeId: d1 }]);
+    expect(created.status).toBe(200);
+    const updated = await saveCrews([{ vehicleId: v.id, driver1EmployeeId: d2 }]);
+    expect(updated.status).toBe(200);
+    expect(rowFor(data<FixedBoardDto>(await getCrews()), v.id)?.driver1EmployeeId).toBe(d2);
+    // One row throughout — the update edited it rather than adding beside it.
+    expect(
+      await mongoose.connection
+        .collection('fleet_fixed_crews')
+        .countDocuments({ vehicleId: new Types.ObjectId(v.id), isDeleted: false }),
+    ).toBe(1);
+  });
+
+  it('INDEX — duplicates are REPORTED and the index withheld, never deleted or merged', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const crews = mongoose.connection.collection('fleet_fixed_crews');
+    // Drop the index so the duplicate can exist at all — this is the shape of a database that
+    // ran an older build.
+    await crews.dropIndex('ux_fixed_vehicle').catch(() => undefined);
+    const row = () => ({
+      vehicleId: new Types.ObjectId(v.id),
+      driver1EmployeeId: null,
+      driver2EmployeeId: null,
+      isDeleted: false,
+      schemaVersion: 1,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      __v: 0,
+    });
+    await crews.insertMany([row(), row()]);
+
+    const outcome = await migrateFixedCrewIndex();
+    expect(outcome.created, 'the index is withheld').toBe(false);
+    expect(outcome.duplicateVehicles).toBe(1);
+    expect(
+      (await fixedCrewIndexes()).some((i) => i.name === 'ux_fixed_vehicle'),
+      'and really was not built',
+    ).toBe(false);
+    // BOTH rows survive — resolving them is an operator's decision, not a migration's.
+    expect(
+      await crews.countDocuments({ vehicleId: new Types.ObjectId(v.id), isDeleted: false }),
+    ).toBe(2);
+
+    // Clean up so the rest of the suite sees a healthy collection again.
+    await crews.deleteMany({ vehicleId: new Types.ObjectId(v.id) });
+    expect((await migrateFixedCrewIndex()).created).toBe(true);
+  });
+
+  it('INDEX — no other collection gains, loses or changes an index', async () => {
+    const names = async (collection: string): Promise<string[]> =>
+      (await mongoose.connection.collection(collection).indexes())
+        .map((i) => String((i as { name?: string }).name))
+        .sort();
+    const before = {
+      drivers: await names('fleet_driver_profiles'),
+      duty: await names('fleet_duty_assignments'),
+      vehicles: await names('fleet_vehicles'),
+    };
+    // And the driver population is untouched by an index build.
+    const driversBefore = await mongoose.connection
+      .collection('fleet_driver_profiles')
+      .countDocuments({});
+
+    await migrateFixedCrewIndex();
+
+    expect(await names('fleet_driver_profiles')).toEqual(before.drivers);
+    expect(await names('fleet_duty_assignments')).toEqual(before.duty);
+    expect(await names('fleet_vehicles')).toEqual(before.vehicles);
+    expect(await mongoose.connection.collection('fleet_driver_profiles').countDocuments({})).toBe(
+      driversBefore,
+    );
+  });
+
+  // ── permissions: the daily board's grants, not new ones ──────────────────
+
+  it('rides the roster grants — the branch operator, who has neither, is refused both', async () => {
+    // No new permission was declared for this board: §7 gives one view grant and one planning
+    // grant for the whole assignment surface, and the branch operator holds neither, exactly as
+    // on the daily roster.
+    expect((await getCrews(branchAToken)).status).toBe(403);
+    expect(
+      (await saveCrews([{ vehicleId: '64b1f0cccccccccccccccc99' }], branchAToken)).status,
+    ).toBe(403);
+  });
+
+  // ── and the DAILY roster is untouched by all of it ───────────────────────
+
+  it('does not disturb the daily roster — the two boards are separate rows', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const [fixed, daily] = [await mkDriver(), await mkDriver()];
+    await saveCrews([{ vehicleId: v.id, driver1EmployeeId: fixed }]);
+
+    const date = '2026-12-09';
+    const plan = await request(app)
+      .post('/api/v1/fleet/roster')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date, rows: [{ vehicleId: v.id, driver1EmployeeId: daily }] });
+    expect(plan.status).toBe(200);
+
+    // The day says one thing, the standing crew still says the other.
+    const day = await request(app)
+      .get('/api/v1/fleet/roster')
+      .query({ date })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(
+      (
+        data<{ rows: { vehicleId: string; driver1EmployeeId: string | null }[] }>(day).rows.find(
+          (r) => r.vehicleId === v.id,
+        ) ?? {}
+      ).driver1EmployeeId,
+    ).toBe(daily);
+    expect(rowFor(data<FixedBoardDto>(await getCrews()), v.id)?.driver1EmployeeId).toBe(fixed);
   });
 });
 

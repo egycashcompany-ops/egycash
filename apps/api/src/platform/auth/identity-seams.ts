@@ -21,3 +21,30 @@ export const registerEmployeeCodeOfUser = (fn: EmployeeCodeOfUser): void => {
 };
 export const resolveEmployeeCodeOfUser = async (userId: string): Promise<string | null> =>
   employeeCodeOfUser === null ? null : employeeCodeOfUser(userId);
+
+/**
+ * What to CALL the outside record an external account belongs to.
+ *
+ * Same contract as the two above: the platform holds an opaque back-reference and cannot read the
+ * module's collections, so the module registers the one thing the platform needs to render — a
+ * name. Absent registration the label is null and the shell falls back to the account's own name,
+ * which is a poorer greeting, not a broken screen.
+ */
+type ExternalSubjectLabel = (subject: {
+  moduleId: string;
+  subjectType: string;
+  subjectId: string;
+}) => Promise<string | null>;
+
+let externalSubjectLabel: ExternalSubjectLabel | null = null;
+
+export const registerExternalSubjectLabel = (fn: ExternalSubjectLabel): void => {
+  externalSubjectLabel = fn;
+};
+
+export const resolveExternalSubjectLabel = async (subject: {
+  moduleId: string;
+  subjectType: string;
+  subjectId: string;
+}): Promise<string | null> =>
+  externalSubjectLabel === null ? null : externalSubjectLabel(subject);

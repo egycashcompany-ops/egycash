@@ -622,6 +622,188 @@ const CATALOG: CategoryDef[] = [
     ],
   },
   {
+    en: 'Gold Vault',
+    ar: 'خزائن الذهب',
+    icon: 'shield',
+    sortOrder: 27,
+    // The gold-vault module, ported from the standalone system. Its own sidebar listed exactly
+    // these screens in exactly this order; the four it also listed — users, roles, branches and
+    // the audit log — are gone, because ECMS owns those surfaces and they already appear under
+    // Administration and Organization.
+    apps: [
+      {
+        en: 'Vault Dashboard',
+        ar: 'لوحة التحكم',
+        route: '/gold',
+        icon: 'gauge',
+        permission: 'goldReport.view',
+      },
+      {
+        en: 'Vaults',
+        ar: 'الخزائن',
+        route: '/gold/vaults',
+        icon: 'layers',
+        permission: 'goldVault.view',
+      },
+      {
+        en: 'Vault Settings',
+        ar: 'إعدادات الخزائن',
+        route: '/gold/vault-settings',
+        icon: 'cog',
+        // The layout screen creates vaults and regenerates drawers, so it advertises the grant it
+        // actually needs rather than the one that merely opens the board.
+        permission: 'goldVault.edit',
+      },
+      {
+        en: 'Bars',
+        ar: 'السبائك',
+        route: '/gold/bars',
+        icon: 'tag',
+        permission: 'goldBar.view',
+      },
+      {
+        en: 'Receiving',
+        ar: 'عمليات الدخول',
+        route: '/gold/receiving',
+        icon: 'inbox',
+        permission: 'goldReceiving.view',
+      },
+      {
+        en: 'Delivery',
+        ar: 'عمليات الخروج',
+        route: '/gold/delivery',
+        icon: 'truck',
+        permission: 'goldDelivery.view',
+      },
+      {
+        en: 'Transfers',
+        ar: 'عمليات التحويل',
+        route: '/gold/transfers',
+        icon: 'link',
+        permission: 'goldTransfer.view',
+      },
+      {
+        en: 'Drawer Keys',
+        ar: 'المفاتيح',
+        route: '/gold/keys',
+        icon: 'badge',
+        permission: 'goldKey.view',
+      },
+      {
+        en: 'Owners',
+        ar: 'الشركات والصناديق',
+        route: '/gold/companies',
+        icon: 'company',
+        permission: 'goldCompany.view',
+      },
+      {
+        en: 'Delegates',
+        ar: 'المندوبون',
+        route: '/gold/representatives',
+        icon: 'users',
+        permission: 'goldRepresentative.view',
+      },
+      {
+        en: 'Vault Reports',
+        ar: 'تقارير الخزينة',
+        route: '/gold/reports',
+        icon: 'chart',
+        permission: 'goldReport.view',
+      },
+      // The staff side of the customer portal. The portal ITSELF is deliberately absent from
+      // navigation: it lives outside the shell at `/portal`, and nobody who can see this menu is
+      // a customer.
+      {
+        en: 'Portal Accounts',
+        ar: 'حسابات بوابة العملاء',
+        route: '/gold/portal-accounts',
+        icon: 'users',
+        permission: 'goldPortalAccount.view',
+      },
+    ],
+  },
+  {
+    // ATM Operations (module port). Every `permission` below is the SAME key the client route
+    // guard checks in apps/web/src/modules/atm/routes.tsx — nothing new is declared here. The
+    // rows mirror the legacy home menu (views/events/index.ejs) one for one, in its order.
+    en: 'ATM',
+    ar: 'الصراف الآلي',
+    icon: 'grid',
+    sortOrder: 28,
+    apps: [
+      {
+        en: 'ATM Home',
+        ar: 'الرئيسية',
+        route: '/atm',
+        icon: 'home',
+        permission: 'atmReplenishment.view',
+      },
+      {
+        en: 'Replenishments',
+        ar: 'التغذيات',
+        route: '/atm/replenishments',
+        icon: 'clipboard',
+        permission: 'atmReplenishment.view',
+      },
+      {
+        en: 'Replenishments Done',
+        ar: 'التغذيات المنتهية',
+        route: '/atm/replenishments/done',
+        icon: 'calendar',
+        permission: 'atmReplenishment.view',
+      },
+      {
+        en: 'Maintenance',
+        ar: 'الصيانات',
+        route: '/atm/maintenance',
+        icon: 'wrench',
+        permission: 'atmMaintenance.view',
+      },
+      {
+        en: 'Maintenance Done',
+        ar: 'الصيانات المنتهية',
+        route: '/atm/maintenance/done',
+        icon: 'calendar',
+        permission: 'atmMaintenance.view',
+      },
+      {
+        en: 'Maintenance Mail',
+        ar: 'رسائل الصيانة',
+        route: '/atm/mail-tickets',
+        icon: 'inbox',
+        permission: 'atmMailTicket.view',
+      },
+      {
+        en: 'Mail Log',
+        ar: 'سجل الرسائل',
+        route: '/atm/mail-tickets/log',
+        icon: 'clipboard',
+        permission: 'atmMailTicket.viewLog',
+      },
+      {
+        en: 'All Machines',
+        ar: 'كل الماكينات',
+        route: '/atm/machines',
+        icon: 'grid',
+        permission: 'atmMachine.view',
+      },
+      {
+        en: 'Daily Report',
+        ar: 'تقرير اليوم',
+        route: '/atm/reports/daily',
+        icon: 'chart',
+        permission: 'atmReplenishment.view',
+      },
+      {
+        en: 'Machine Data',
+        ar: 'إضافة البيانات',
+        route: '/atm/data-edit',
+        icon: 'tag',
+        permission: 'atmMachine.manage',
+      },
+    ],
+  },
+  {
     en: 'Administration',
     ar: 'الإدارة',
     // A department is not its settings screen: the briefcase reads as "administration",
@@ -851,7 +1033,8 @@ export const syncNavigationCatalog = async (): Promise<void> => {
         continue;
       }
       const next = rows.slice(index + 1).find((r) => r.existing !== null);
-      const high = next === null || next === undefined ? low + 20 : Number(next.existing?.sortOrder);
+      const high =
+        next === null || next === undefined ? low + 20 : Number(next.existing?.sortOrder);
       const sortOrder = (low + high) / 2;
 
       categoryId ??= await ensureCategory(category, actor);

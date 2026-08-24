@@ -48,6 +48,10 @@ const snapshot = (doc: FleetFixedCrewDoc) => ({
   driver2EmployeeId: doc.driver2EmployeeId === null ? null : String(doc.driver2EmployeeId),
 });
 
+/** An id in the one spelling mongo uses. `null`/`undefined` pass through untouched. */
+const canonical = <T extends string | null | undefined>(id: T): T =>
+  typeof id === 'string' ? (id.toLowerCase() as T) : id;
+
 const rowDrivers = (row: SaveFleetFixedCrewRow): string[] =>
   [row.driver1EmployeeId, row.driver2EmployeeId].filter((d): d is string => d != null);
 
@@ -104,10 +108,24 @@ class FleetFixedRosterService {
    * no-op, which is what makes a one-drag save and a whole-board save the same operation.
    */
   async save(
-    input: SaveFleetFixedRoster,
+    original: SaveFleetFixedRoster,
     by: string,
     scope: ScopeSelector,
   ): Promise<{ changedCount: number }> {
+    // Settle the id SPELLING before anything compares one. The schema already does this at the
+    // HTTP boundary; repeating it here is not belt-and-braces, it is the invariant this method
+    // relies on: every lookup below keys off `String(doc.field)`, which mongo renders lowercase,
+    // so an id spelled in uppercase would miss the "does this vehicle already have a crew" map
+    // and take the INSERT branch for a row that already exists. A caller that reaches this
+    // method without passing through the schema must not be able to do that.
+    const input: SaveFleetFixedRoster = {
+      rows: original.rows.map((row) => ({
+        vehicleId: canonical(row.vehicleId) as string,
+        driver1EmployeeId: canonical(row.driver1EmployeeId),
+        driver2EmployeeId: canonical(row.driver2EmployeeId),
+      })),
+    };
+
     // Scope rides the vehicle lookup: a branch-scoped planner cannot touch (or probe) another
     // branch's fleet — out-of-scope reads 404 exactly as the registry's own endpoints do.
     const vehicles = new Map<string, FleetVehicleDoc>();

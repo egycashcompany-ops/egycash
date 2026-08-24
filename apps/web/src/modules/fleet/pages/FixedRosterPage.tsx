@@ -32,6 +32,7 @@ import { ErrorState } from '../../../shared/ui/states/ErrorState';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { TrashIcon } from '../../../shared/ui/icons';
 import { formatNumber } from '../../../shared/lib/format';
+import { errorMessage } from '../../../shared/lib/errors';
 import { useFixedRoster, useSaveFixedRoster } from '../api/fleet-queries';
 import { EmployeeName } from '../components/EmployeeName';
 import { InWorkshopBadge } from '../components/VehicleStatusBadge';
@@ -115,8 +116,16 @@ export const FixedRosterPage = (): JSX.Element => {
 
   const commit = async (): Promise<void> => {
     if (!dirty) return;
-    await save.mutateAsync({ rows: pending });
-    toast.success(t('fleet.fixedRoster.saved'));
+    try {
+      await save.mutateAsync({ rows: pending });
+      toast.success(t('fleet.fixedRoster.saved'));
+    } catch (error) {
+      // The hook defines its own `onError` so a failed save re-reads the board — and defining one
+      // opts the mutation OUT of the global error toast. Without this the refusal would be
+      // silent: the button would stop spinning, the refetch would drop the drags, and the reader
+      // would be left guessing. The commonest refusal here is a driver another row still holds.
+      toast.error(errorMessage(error, locale));
+    }
   };
 
   const zoneKey = (vehicleId: string, slot: CrewSlot): string => `${vehicleId}:${slot}`;
@@ -294,6 +303,14 @@ export const FixedRosterPage = (): JSX.Element => {
               <ul className="max-h-[32rem] divide-y divide-slate-100 overflow-y-auto dark:divide-slate-800">
                 {boardQuery.data.drivers.map((driver) => {
                   const seat = seatOf(driver.employeeId);
+                  // The board carries only the vehicles this reader may see. A driver fixed to a
+                  // car outside that scope has no seat HERE, and calling them free would be
+                  // false — and would invite a drag the server then refuses, because the row
+                  // that has to release them is one this client cannot send.
+                  const heldElsewhere =
+                    seat === null &&
+                    driver.assignedVehicleId !== null &&
+                    !draft.some((row) => row.vehicleId === driver.assignedVehicleId);
                   return (
                     <li key={driver.employeeId}>
                       <div
@@ -316,10 +333,12 @@ export const FixedRosterPage = (): JSX.Element => {
                         <span className="min-w-0 truncate">
                           <EmployeeName employeeId={driver.employeeId} />
                         </span>
-                        {seat === null ? (
-                          <Badge tone="neutral">{t('fleet.fixedRoster.unassigned')}</Badge>
-                        ) : (
+                        {seat !== null ? (
                           <Badge tone="info">{codeOf(seat.vehicleId)}</Badge>
+                        ) : heldElsewhere ? (
+                          <Badge tone="warning">{t('fleet.roster.otherVehicle')}</Badge>
+                        ) : (
+                          <Badge tone="neutral">{t('fleet.fixedRoster.unassigned')}</Badge>
                         )}
                       </div>
                     </li>

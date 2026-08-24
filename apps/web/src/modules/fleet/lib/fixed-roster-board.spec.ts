@@ -116,6 +116,58 @@ describe('assignDriver', () => {
   });
 });
 
+// ── the audit: a drop must not damage what it was given ────────────────────
+
+describe('nothing is mutated in place', () => {
+  // The page keeps TWO boards: the one the server last confirmed, and the draft the drags edit.
+  // If a drop mutated the saved array, "reload before saving" would silently keep the unsaved
+  // edit, and the dirty check would compare a board with itself and report no changes at all.
+  const frozen = () => [row('v1', '150', 'e1'), row('v2', '151')];
+
+  it('assignDriver returns a NEW board and leaves the old one exactly as it was', () => {
+    const saved = frozen();
+    const snapshot = JSON.stringify(saved);
+    const next = assignDriver(saved, 'v2', 'driver1EmployeeId', 'e1');
+    expect(JSON.stringify(saved), 'the saved board is untouched').toBe(snapshot);
+    expect(next).not.toBe(saved);
+    // Not one row object is shared, or a later edit would reach through into the saved board.
+    for (const r of next) expect(saved.includes(r), `${r.code} is a fresh object`).toBe(false);
+  });
+
+  it('clearSlot leaves the old board alone too', () => {
+    const saved = frozen();
+    const snapshot = JSON.stringify(saved);
+    clearSlot(saved, 'v1', 'driver1EmployeeId');
+    expect(JSON.stringify(saved)).toBe(snapshot);
+  });
+
+  it('changedRows reads both boards without touching either', () => {
+    const saved = frozen();
+    const draft = assignDriver(saved, 'v2', 'driver1EmployeeId', 'e1');
+    const a = JSON.stringify(saved);
+    const b = JSON.stringify(draft);
+    changedRows(saved, draft);
+    expect(JSON.stringify(saved)).toBe(a);
+    expect(JSON.stringify(draft)).toBe(b);
+  });
+
+  it('never invents, drops or reorders a vehicle — a drop moves a REFERENCE, nothing else', () => {
+    const saved = frozen();
+    const next = assignDriver(saved, 'v2', 'driver2EmployeeId', 'e1');
+    expect(next.map((r) => r.vehicleId)).toEqual(saved.map((r) => r.vehicleId));
+    // Every non-crew fact of every row survives the drop untouched.
+    for (const [i, r] of next.entries()) {
+      const was = saved[i] as (typeof saved)[number];
+      expect({ code: r.code, plate: r.plateNumber, type: r.typeId, wip: r.inMaintenance }).toEqual({
+        code: was.code,
+        plate: was.plateNumber,
+        type: was.typeId,
+        wip: was.inMaintenance,
+      });
+    }
+  });
+});
+
 describe('clearSlot', () => {
   it('empties one slot and touches nothing else', () => {
     const before = [row('v1', '150', 'e1', 'e2'), row('v2', '151', 'e3')];

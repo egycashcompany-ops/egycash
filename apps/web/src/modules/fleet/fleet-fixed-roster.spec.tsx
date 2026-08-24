@@ -206,6 +206,99 @@ describe('what the fixed crew is not', () => {
   });
 });
 
+// ── 2b. The audit: assignment must not make a driver DISAPPEAR ──────────────
+
+describe('a driver assigned to a crew does not vanish', () => {
+  // "The driver is gone" and "the driver is no longer in this slot" must never look alike. The
+  // pool is the server's whole list and stays whole: an assigned driver keeps their card and
+  // gains a badge naming the car, so nothing about assignment reads as removal.
+  const CREWED: FleetFixedRosterDto = {
+    rows: [row(V1, '150', E1), row(V2, '151')],
+    drivers: [
+      { employeeId: E1, assignedVehicleId: V1 },
+      { employeeId: E2, assignedVehicleId: null },
+    ],
+  };
+
+  it('keeps an assigned driver in the pool, badged with the car they hold', () => {
+    const markup = render({ qc: client(CREWED) });
+    expect(driverCards(markup), 'both drivers are still listed').toEqual([E1, E2]);
+    const at = markup.indexOf(`data-driver-card="${E1}"`);
+    const card = markup.slice(at, markup.indexOf('</li>', at));
+    expect(card, 'and the assigned one names the car').toContain('150');
+    expect(card).toContain('أحمد محمد');
+  });
+
+  it('renders the pool from the server list, never from the unassigned remainder', () => {
+    // A page that filtered the pool by "not yet assigned" would shrink as the board fills, and
+    // a reader would read that as drivers being consumed.
+    expect(SOURCE).toContain('boardQuery.data.drivers.map');
+    const pool = SOURCE.slice(SOURCE.indexOf('boardQuery.data.drivers.map'));
+    expect(pool.slice(0, 400), 'the pool list is not filtered').not.toContain('.filter(');
+  });
+
+  it('says «سيارة أخرى» for a driver fixed to a car outside this reader’s scope', () => {
+    // The board carries only the vehicles the reader may see. Calling such a driver free would
+    // be false, and it would invite a drag the server then refuses — the releasing row is one
+    // this client cannot even send.
+    const OUT_OF_SCOPE = '650000000000000000000099';
+    const markup = render({
+      qc: client({
+        rows: [row(V1, '150'), row(V2, '151')],
+        drivers: [
+          { employeeId: E1, assignedVehicleId: OUT_OF_SCOPE },
+          { employeeId: E2, assignedVehicleId: null },
+        ],
+      }),
+    });
+    const at = markup.indexOf(`data-driver-card="${E1}"`);
+    const card = markup.slice(at, markup.indexOf('</li>', at));
+    expect(card, 'held elsewhere, and said so').toContain(t('fleet.roster.otherVehicle'));
+    expect(card, 'not claimed as free').not.toContain(t('fleet.fixedRoster.unassigned'));
+
+    // ...while a driver the board really does show as free still reads as free.
+    const free = markup.indexOf(`data-driver-card="${E2}"`);
+    expect(markup.slice(free, markup.indexOf('</li>', free))).toContain(
+      t('fleet.fixedRoster.unassigned'),
+    );
+  });
+
+  it('shows the same number of drivers whether the board is empty or full', () => {
+    const empty = driverCards(render());
+    const full = driverCards(render({ qc: client(CREWED) }));
+    expect(full).toHaveLength(empty.length);
+  });
+
+  it('reaches the server through exactly two functions — read the board, save the board', () => {
+    // Named precisely rather than by keyword: `patch()` legitimately calls
+    // URLSearchParams.delete, and a keyword match would either miss the real thing or trip on
+    // that. What matters is the SURFACE the page imports from the api layer.
+    const imports = /import \{([^}]*)\} from '\.\.\/api\/fleet-queries';/.exec(SOURCE)?.[1] ?? '';
+    expect(
+      imports
+        .split(',')
+        .map((x) => x.trim())
+        .filter((x) => x !== '')
+        .sort(),
+    ).toEqual(['useFixedRoster', 'useSaveFixedRoster']);
+    // No other api module is reached at all — not the drivers api, not HR.
+    expect(SOURCE, 'no second api import').not.toMatch(/from '\.\.\/api\/fleet-api'/);
+    expect(SOURCE).not.toMatch(/hr\/|employee-api|driver-api/);
+
+    // And the two functions it does use touch one endpoint each, neither of them a DELETE.
+    const api = readFileSync(join(HERE, 'api/fleet-api.ts'), 'utf8');
+    // Bounded to THIS feature's two declarations — the rest of the file serves other screens
+    // and legitimately has delete verbs of its own.
+    const from = api.indexOf('export const getFixedRoster');
+    const fixed = api.slice(from, api.indexOf('\n\n', from));
+    expect(fixed).toContain("get<FleetFixedRosterDto>('/fleet/fixed-roster')");
+    expect(fixed).toContain(
+      "post<FleetFixedRosterDto & { changedCount: number }>('/fleet/fixed-roster'",
+    );
+    expect(fixed, 'no delete verb in this feature’s client').not.toMatch(/\bdel</);
+  });
+});
+
 // ── 3. Saving — explicit, and only what moved ───────────────────────────────
 
 describe('saving', () => {
@@ -251,6 +344,18 @@ describe('saving', () => {
     expect(
       SOURCE.slice(SOURCE.indexOf('const drop = ('), SOURCE.indexOf('const commit')),
     ).not.toContain('mutate');
+  });
+
+  it('never lets a refused save fail in silence', () => {
+    // Defining `onError` on the mutation opts it OUT of the global error toast
+    // (query-client.ts: `if (mutation.options.onError === undefined) notify(error)`), and the
+    // hook defines one so it can re-read the board. Without a catch at the call site the refusal
+    // would be invisible: the button stops spinning, the refetch drops the drags, and the reader
+    // is left guessing. The commonest refusal here is a driver another row still holds.
+    const commit = SOURCE.slice(SOURCE.indexOf('const commit'), SOURCE.indexOf('const zoneKey'));
+    expect(commit, 'the save is guarded').toContain('try {');
+    expect(commit, 'and a failure is shown').toMatch(/catch[\s\S]*toast\.error/);
+    expect(commit).toContain('errorMessage(');
   });
 
   it('hides the whole editing surface from a reader who may not plan', () => {

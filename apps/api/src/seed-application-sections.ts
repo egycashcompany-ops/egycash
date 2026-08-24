@@ -86,6 +86,14 @@ interface SectionDef {
 const DEFAULTS: Record<string, SectionDef[]> = {
   HR: [
     {
+      // Its own group rather than a corner of Employees: an announcement is not a fact about
+      // anybody's record, it is the company talking to its people. The notification-rule screen
+      // joins it here when it ships.
+      en: 'Communication',
+      ar: 'التواصل',
+      routes: ['/announcements'],
+    },
+    {
       en: 'Recruitment',
       ar: 'التوظيف',
       // Pipeline first, then the two screens that configure it — the order somebody works in.

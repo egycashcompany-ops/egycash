@@ -21,6 +21,7 @@ import {
   type CreateInterviewStage,
 } from '@ecms/contracts';
 import { notificationTemplateService } from '../../platform/notifications';
+import { ensureAnnouncementTemplate } from './announcements';
 import { applicantSourceService, ensureApplicantSourceIconCategory } from './recruitment/applicants';
 import { interviewStageService } from './recruitment/interviews';
 import { ensureEvaluationCategory, evaluationPhaseService } from './recruitment/evaluations';
@@ -464,6 +465,8 @@ export const seedHrRecruitment = async (): Promise<void> => {
   await ensureOfferTemplates();
   await ensureEmployeeTemplates();
   await ensureEmployeeFileTemplates();
+  // The carrier template every HR announcement renders through.
+  await ensureAnnouncementTemplate();
   await ensureHiringDocumentsSeeds();
   // Legacy recruitment documents: late-added applicant fields + denormalized applicantName
   // on the stage collections (idempotent, missing-field guarded).

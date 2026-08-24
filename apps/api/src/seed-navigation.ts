@@ -58,6 +58,13 @@ const CATALOG: CategoryDef[] = [
       // there was no such page to open. Each sits beside the stage it configures rather than in a
       // settings group of its own: they are part of the recruitment cycle, not general setup.
       {
+        en: 'Announcements',
+        ar: 'الإعلانات',
+        route: '/announcements',
+        icon: 'chat',
+        permission: 'announcement.send',
+      },
+      {
         en: 'Applicants',
         ar: 'المتقدمون',
         route: '/applicants',

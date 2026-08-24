@@ -24,11 +24,10 @@ import { resolveNavIcon } from '../navigation/app-icon';
 import { useNavPrefs } from '../navigation/NavPrefs';
 import {
   flattenApps,
-  moduleApps,
   moduleEntryRoute,
   moduleOfPathname,
   requiresExactMatch,
-  toModules,
+  visibleModules,
   type NavApp,
   type NavModule,
 } from '../navigation/nav-model';
@@ -225,11 +224,9 @@ const RailShell = ({
   const { pathname } = useLocation();
 
   // A module counts as present when it has ANY page — grouped or not. Counting only `apps` meant
-  // a module whose pages were all in sections vanished from the rail entirely.
-  const modules = useMemo(
-    () => toModules(data).filter((m) => moduleApps(m).length > 0),
-    [data],
-  );
+  // a module whose pages were all in sections vanished from the rail entirely. The rule itself
+  // lives in the nav model, so the other shells cannot answer this differently.
+  const modules = useMemo(() => visibleModules(data), [data]);
   const urlModuleId = useMemo(() => moduleOfPathname(modules, pathname), [modules, pathname]);
 
   const [lastModuleId, setLastModuleId] = useState<string | null>(loadLastModule);

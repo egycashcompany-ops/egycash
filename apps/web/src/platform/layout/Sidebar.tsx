@@ -41,7 +41,7 @@ import {
   moduleEntryRoute,
   moduleOfPathname,
   requiresExactMatch,
-  toModules,
+  visibleModules,
   type NavApp,
   type NavModule,
 } from '../navigation/nav-model';
@@ -835,8 +835,10 @@ const NavShell = ({
   const { pinned } = useNavPrefs();
   const { pathname } = useLocation();
 
-  // A module with no pages yet (e.g. one seeded ahead of its screens) earns no chrome.
-  const modules = useMemo(() => toModules(data).filter((m) => m.apps.length > 0), [data]);
+  // A module with no pages yet (e.g. one seeded ahead of its screens) earns no chrome. Which
+  // modules those are is `visibleModules`' call, not this shell's — counting `apps` here dropped
+  // every module whose pages were ALL filed in sections.
+  const modules = useMemo(() => visibleModules(data), [data]);
 
   // THE source of truth: which module owns the page currently open. Deep links, ⌘K jumps,
   // pinned favourites from another module and Back/Forward therefore all re-scope the column

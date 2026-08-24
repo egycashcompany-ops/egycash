@@ -50,6 +50,23 @@ export const moduleApps = (module: NavModule): MyApplicationDto[] => [
 ];
 
 /**
+ * The modules that earn chrome — the ONE definition of "this module has pages", shared by every
+ * surface that lists modules (the launchpad, the rail, the ⌘K palette).
+ *
+ * It counts `moduleApps`, not `apps`. A module's `apps` holds only the pages that belong to no
+ * SECTION, so a module that has organized every one of its pages — HR, whose twenty-three pages
+ * are all filed under Recruitment / Employees / Employee File / Attendance & Leave / Payroll —
+ * has an empty `apps` and a full `sections`. Filtering on `apps.length` therefore dropped exactly
+ * the modules that were best organized: HR disappeared from the launchpad and from the palette's
+ * module list while every one of its pages was still entitled, catalogued and routed.
+ *
+ * The rail had the same bug and was fixed alone (#205); the rule lives here now so that fixing it
+ * in one shell cannot leave it standing in another.
+ */
+export const visibleModules = (data: MyApplicationCategoryDto[]): NavModule[] =>
+  toModules(data).filter((module) => moduleApps(module).length > 0);
+
+/**
  * Every page the caller has, flattened. It must include the SECTIONED pages too: this feeds the
  * ⌘K palette, the pinned-favourites lookup and the exact-match route set, none of which are about
  * grouping — a page that a section holds is still a page the user can search for and pin.

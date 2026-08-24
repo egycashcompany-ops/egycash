@@ -77,7 +77,7 @@ export const OpenReplenishmentsForm = ({ defaultDate }: { defaultDate: string })
           placeholder={t('atm.replenishments.scheduleTimesHint')}
         />
       </Field>
-      <Field label={t('atm.replenishments.forceDate')} hint={t('atm.replenishments.forceDateHint')}>
+      <Field label={t('atm.replenishments.forceDate')}>
         <Input type="date" value={forceDate} onChange={(e) => setForceDate(e.target.value)} />
       </Field>
       <Button type="submit" loading={open.isPending}>

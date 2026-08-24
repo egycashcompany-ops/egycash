@@ -213,10 +213,7 @@ export const ReplenishmentsPage = (): JSX.Element => {
 
   return (
     <PageContainer>
-      <PageHeader
-        title={t('atm.replenishments.title')}
-        description={t('atm.replenishments.subtitle')}
-      />
+      <PageHeader title={t('atm.replenishments.title')} />
 
       {/* Entry and narrowing share ONE row: the form runs from the start of it, the filters sit
           at the far end — the LEFT in Arabic, and mirrored in English, because `ms-auto` follows

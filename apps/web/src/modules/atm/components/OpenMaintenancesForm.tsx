@@ -90,7 +90,7 @@ export const OpenMaintenancesForm = (): JSX.Element => {
           placeholder={t('atm.maintenance.referenceNumbersHint')}
         />
       </Field>
-      <Field label={t('atm.common.openTime')} hint={t('atm.maintenance.openTimeHint')}>
+      <Field label={t('atm.common.openTime')}>
         <Input
           type="datetime-local"
           value={openedAt}

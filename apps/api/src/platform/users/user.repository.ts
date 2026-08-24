@@ -66,6 +66,24 @@ class UserRepository extends BaseRepository<UserDoc> {
     return docs.map((doc) => String(doc._id));
   }
 
+  /**
+   * The reading language of each of these accounts.
+   *
+   * For a bilingual message whose two halves are written by a HUMAN — an announcement — rather
+   * than authored into a template. A template renders one `data` map into both languages, so the
+   * only way to give an Arabic reader the Arabic text and an English reader the English one is to
+   * send each group its own, and that needs to know who is in which group.
+   */
+  async localesAmong(userIds: readonly string[]): Promise<Map<string, 'ar' | 'en'>> {
+    if (userIds.length === 0) return new Map();
+    const docs = await this.model
+      .find({ _id: { $in: userIds.map((id) => new Types.ObjectId(id)) }, isDeleted: false })
+      .select('_id locale')
+      .lean<{ _id: Types.ObjectId; locale: 'ar' | 'en' }[]>()
+      .exec();
+    return new Map(docs.map((doc) => [String(doc._id), doc.locale]));
+  }
+
   async findByEmail(email: string): Promise<UserDoc | null> {
     return this.model
       .findOne({ email: email.toLowerCase(), isDeleted: false })

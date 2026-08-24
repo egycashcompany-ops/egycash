@@ -34,6 +34,7 @@ import {
   buildHiringDocumentsRouter,
 } from './recruitment/hiring-documents';
 import { buildEmployeeFilesRouter } from './employee-management/employee-file';
+import { buildAnnouncementsRouter } from './announcements';
 import {
   buildHolidaysRouter,
   buildWorkCalendarRouter,
@@ -361,6 +362,24 @@ const employeePermissions = declarePermissions(
     },
   ],
   'hr.employees',
+);
+
+/**
+ * Announcements — writing to everybody's screen at once.
+ *
+ * Its own resource rather than an employee action, because reading the registry and MESSAGING
+ * everybody in it are different powers: plenty of people may legitimately list employees, and very
+ * few should be able to put a notification on all their screens simultaneously. How FAR a sender
+ * reaches is still bounded by their `employee.view` scope — this key only decides whether they may
+ * announce at all.
+ */
+const announcementPermissions = declarePermissions(
+  'hr',
+  'announcement',
+  { en: 'announcements', ar: 'الإعلانات' },
+  ['view'],
+  [{ action: 'send', name: { en: 'Send an announcement', ar: 'إرسال إعلان' } }],
+  'hr.announcements',
 );
 
 // Stage 6 — Hiring Documents. `upload` covers first upload + versioned replacement; `complete`
@@ -718,6 +737,7 @@ export const hrPermissions: PermissionDef[] = [
   ...evaluationPhasePermissions,
   ...jobOfferPermissions,
   ...employeePermissions,
+  ...announcementPermissions,
   ...hiringDocumentsPermissions,
   ...hiringDocumentTypePermissions,
   ...employeeFilePermissions,
@@ -738,6 +758,13 @@ export const hrPermissions: PermissionDef[] = [
  * administrator can edit.
  */
 export const hrPages: PageDef[] = [
+  {
+    id: 'hr.announcements',
+    moduleId: 'hr',
+    name: { en: 'Announcements', ar: 'الإعلانات' },
+    route: '/announcements',
+    sortOrder: 5,
+  },
   {
     id: 'hr.applicants',
     moduleId: 'hr',
@@ -926,6 +953,7 @@ export const hrModule: ModuleManifest = {
   permissions: hrPermissions,
   pages: hrPages,
   routes: [
+    { prefix: '/hr/announcements', router: buildAnnouncementsRouter() },
     { prefix: '/hr/applicants', router: buildRecruitmentTimelineRouter() },
     { prefix: '/hr/applicants', router: buildReturnToStageRouter() },
     { prefix: '/hr/applicants', router: buildApplicantsRouter() },

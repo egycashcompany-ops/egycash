@@ -313,3 +313,73 @@ nothing on its own.
 **iOS needs the app installed.** Safari delivers Web Push only to a PWA added to the Home
 Screen (16.4+), which is what the manifest work shipped for. A plain iOS tab reports
 `unsupported`, and the preferences page says so rather than offering a switch that cannot work.
+
+## 12. HR announcements (`hr.announcement`)
+
+Everything else the platform notifies about is a CONSEQUENCE — a leave request was decided,
+a contract expired. An announcement is the other kind: a message a human writes, whose
+recipients are **chosen** rather than derived. That choice is the whole feature; delivery is
+one `notify()` call against a seeded carrier template
+(`{{titleAr}}/{{titleEn}}/{{bodyAr}}/{{bodyEn}}`, category `hr`, priority `normal`), so an
+announcement inherits channels, opt-outs, quiet hours, both languages, the queue, the
+retries and push without a second delivery path existing.
+
+`critical` is deliberately not offered to a sender: it is the priority that bypasses quiet
+hours, and a company notice is not a security alert however urgent it feels at 11pm.
+
+### Audience
+
+Three shapes (`AnnouncementAudienceSchema`): `everyone`, a hand-picked `employees` list, or
+a `filter`.
+
+A filter is an **AND of ORs** — every criterion set must hold, and within one criterion any
+listed value qualifies, which is how "the drivers and the guards, in Maadi and Giza" comes
+out as two criteria of two values rather than four sends. Criteria span organisational
+placement (branch/department/section/job title/manager), employment (type, status) and
+personal attributes (gender, religion, nationality, marital status). The two free-text ones
+are offered from `GET /hr/announcements/audience-options`, which reads the values employee
+files actually hold — a hardcoded list would silently fail to match the day somebody spelled
+one differently.
+
+`everyone` is a separate case rather than an empty filter, and `{}` is **refused**: reaching
+the whole company has to be said out loud, so it can never be what somebody gets by clearing
+a criterion and not noticing.
+
+**Ended employments are excluded unless asked for.** A login outlives an exit, so the
+employed statuses are the default for a filter and for `everyone`. A hand-picked list does
+not get that default — naming somebody is the intent, and a final payslip notice legitimately
+goes to a person who has left.
+
+### The ceiling
+
+An audience resolves through `employeeRepository.listForAudience(criteria, scope)`, and the
+scope is `scopeSelector(ctx, 'employee.view')` — the same selector every employee list already
+goes through. So **what a sender may SEE is what they may ADDRESS**: a branch-scoped HR
+manager who names three branches still reaches only their own, and the intersection is applied
+by the repository rather than re-derived here, because an intersection re-derived is one that
+can be written as a union by mistake.
+
+`announcement.send` is its own permission. Reading the registry and MESSAGING everybody in it
+are different powers — plenty of people may legitimately list employees, very few should be
+able to put a notification on all their screens at once. That key decides *whether*; the scope
+above decides *how far*.
+
+### Preview before send
+
+`POST /hr/announcements/preview` resolves an audience without creating anything and returns
+`matched` / `recipients` / `unreachable` plus a few names. The compose screen disables sending
+until it has run, and retires the count on every edit to the audience: a stale number is worse
+than none, because it is the number a person remembers having seen.
+
+`unreachable` is the number this exists for. An audience is chosen in EMPLOYEES and delivered
+to LOGINS, and the two are not the same set — a company of 300 with 180 accounts reaches 180
+people, and a sender told only "sent to everyone" is wrong about their own announcement in a
+way nothing corrects.
+
+### The record
+
+`hr_announcements` stores what was sent, to which audience, by whom, with the counts **frozen
+at send time**. Re-running the filter tomorrow answers a different question: people join,
+transfer and leave, and a filter is a description of a moment. The row is written before
+`notify()` and unconditionally, so an audience that turned out empty still leaves an answer to
+"what did we announce?".

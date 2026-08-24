@@ -236,9 +236,11 @@ describe('seed → password login (regression)', () => {
     expect(routes).toContain('/atm/machines');
     expect(routes).toContain('/atm/reports/daily');
     expect(routes).toContain('/atm/data-edit');
-    // 22 (HR) + 12 (Fleet) + 14 (Operations) + 6 (Organization) + 13 (IT) + 12 (Gold Vault)
+    // The announcement composer is HR's twenty-third row.
+    expect(routes).toContain('/announcements');
+    // 23 (HR) + 12 (Fleet) + 14 (Operations) + 6 (Organization) + 13 (IT) + 12 (Gold Vault)
     //   + 9 (Administration) + 10 (ATM)
-    expect(routes).toHaveLength(100); // +1: C1 Captain's Day, +1: the standing crew
+    expect(routes).toHaveLength(101); // +1: C1 Captain's Day, +1: the standing crew
   });
 
   it('re-running the seed is idempotent — no duplicate categories/applications/grants', async () => {
@@ -263,7 +265,7 @@ describe('seed → password login (regression)', () => {
           n + g.applications.length + g.sections.reduce((m, s) => m + s.applications.length, 0),
         0,
       ),
-    ).toBe(100); // +1: C1 Captain's Day, +1: the standing crew, +12: gold, +10: ATM
+    ).toBe(101); // +1: C1 Captain's Day, +1: the standing crew, +12: gold, +10: ATM, +1: announcements
   });
 
   it('the seeded HR user also logs in with email/password', async () => {
@@ -366,9 +368,11 @@ describe('the default sections migration', () => {
     const named = (sections.body as { data: { name: { ar: string; en: string } }[] }).data;
     // The HR groups follow the employee lifecycle: a candidate (Recruitment), the person once
     // hired (Employees), the record that follows them (Employee File), and what that record
-    // produces month to month (Attendance & Leave, Payroll).
+    // produces month to month (Attendance & Leave, Payroll) — plus Communication, which is not
+    // about anybody's record at all but the company talking to its people.
     expect(named.map((s) => s.name.en)).toEqual(
       expect.arrayContaining([
+        'Communication',
         'Recruitment',
         'Employees',
         'Employee File',

@@ -1,14 +1,18 @@
 // The maintenance open form — legacy atm_maintenance.ejs:707-735 by parity: machine codes,
 // service types and reference numbers aligned BY LINE, plus one free datetime for the batch
-// (datetime-local, empty → now). The two extra textareas and the free time are exactly what
+// (datetime-local, empty → now). The two extra line columns and the free time are exactly what
 // distinguishes it from the replenishment form.
+//
+// The form renders BARE — no card, no bottom margin. The page wraps it and the bank/area filters
+// in one bordered row so entry and narrowing read as a single band (MaintenancePage.tsx).
 import { useState, type FormEvent } from 'react';
 import { normalizeAtmMachineCode, splitAtmFormLines } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { Button } from '../../../shared/ui/Button';
-import { Field, Input, Textarea } from '../../../shared/ui/form';
+import { Field, Input } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { useOpenAtmMaintenances } from '../api/atm-queries';
+import { LineListInput } from './LineListInput';
 
 export const buildMaintenanceRows = (
   codesRaw: string,
@@ -63,36 +67,27 @@ export const OpenMaintenancesForm = (): JSX.Element => {
   };
 
   return (
-    <form
-      onSubmit={(e) => void submit(e)}
-      className="mb-6 flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 p-4 dark:border-slate-800"
-    >
+    <form onSubmit={(e) => void submit(e)} className="flex flex-wrap items-end gap-3">
       <Field label={t('atm.replenishments.machineCodes')} required>
-        <Textarea
+        <LineListInput
           value={codes}
-          onChange={(e) => setCodes(e.target.value)}
-          rows={3}
+          onChange={setCodes}
           required
           placeholder={t('atm.replenishments.machineCodesHint')}
-          className="min-w-44 text-center"
         />
       </Field>
       <Field label={t('atm.maintenance.serviceTypes')}>
-        <Textarea
+        <LineListInput
           value={services}
-          onChange={(e) => setServices(e.target.value)}
-          rows={3}
+          onChange={setServices}
           placeholder={t('atm.maintenance.serviceTypesHint')}
-          className="min-w-44 text-center"
         />
       </Field>
       <Field label={t('atm.maintenance.referenceNumbers')}>
-        <Textarea
+        <LineListInput
           value={references}
-          onChange={(e) => setReferences(e.target.value)}
-          rows={3}
+          onChange={setReferences}
           placeholder={t('atm.maintenance.referenceNumbersHint')}
-          className="min-w-44 text-center"
         />
       </Field>
       <Field label={t('atm.common.openTime')} hint={t('atm.maintenance.openTimeHint')}>

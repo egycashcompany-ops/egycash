@@ -15,6 +15,7 @@ import { buildFleetAvailabilityRouter } from './availability/unavailability.rout
 import { buildFleetOdometerRouter } from './odometer/odometer.routes';
 import { buildFleetMaintenanceRouter } from './maintenance/maintenance.routes';
 import { buildFleetRosterRouter } from './roster/roster.routes';
+import { buildFleetFixedRosterRouter } from './fixed-roster/fixed-roster.routes';
 import { buildFleetAccidentsRouter } from './accidents/accident.routes';
 import { buildFleetViolationsRouter } from './violations/violation.routes';
 import { licenseExpirySweep, maintenanceAlarmSweep } from './sweeps/fleet-sweeps';
@@ -280,6 +281,7 @@ export const fleetModule: ModuleManifest = {
     { prefix: '/fleet/odometer', router: buildFleetOdometerRouter() },
     { prefix: '/fleet/maintenance', router: buildFleetMaintenanceRouter() },
     { prefix: '/fleet/roster', router: buildFleetRosterRouter() },
+    { prefix: '/fleet/fixed-roster', router: buildFleetFixedRosterRouter() },
     { prefix: '/fleet/accidents', router: buildFleetAccidentsRouter() },
     { prefix: '/fleet/violations', router: buildFleetViolationsRouter() },
   ],
@@ -293,6 +295,7 @@ export const fleetModule: ModuleManifest = {
     'fleet_maintenance_visits',
     'fleet_sweep_marks',
     'fleet_duty_assignments',
+    'fleet_fixed_crews',
     'fleet_accidents',
     'fleet_violations',
     'fleet_violation_grievances',

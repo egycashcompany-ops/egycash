@@ -1923,6 +1923,233 @@ describe('workshop entry/exit — exit odometer, custody, catalog parts, filters
   });
 });
 
+describe('fixed crew (الطقم الثابت) — the standing crew, with no date in it', () => {
+  interface FixedBoardDto {
+    changedCount?: number;
+    rows: {
+      vehicleId: string;
+      code: string;
+      inMaintenance: boolean;
+      driver1EmployeeId: string | null;
+      driver2EmployeeId: string | null;
+    }[];
+    drivers: { employeeId: string; assignedVehicleId: string | null }[];
+  }
+
+  const mkDriver = async (): Promise<string> => {
+    const employeeId = await mkEmployee();
+    await mkDriverProfile(employeeId);
+    return employeeId;
+  };
+  const saveCrews = (rows: unknown[], token = adminToken) =>
+    request(app)
+      .post('/api/v1/fleet/fixed-roster')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ rows });
+  const getCrews = (token = adminToken) =>
+    request(app).get('/api/v1/fleet/fixed-roster').set('Authorization', `Bearer ${token}`);
+  const rowFor = (board: FixedBoardDto, vehicleId: string) =>
+    board.rows.find((r) => r.vehicleId === vehicleId);
+
+  // ── persistence: the whole point of the screen ────────────────────────────
+
+  it('stores a crew and answers with it on a FRESH read — not just in the save response', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const [d1, d2] = [await mkDriver(), await mkDriver()];
+
+    const save = await saveCrews([
+      { vehicleId: v.id, driver1EmployeeId: d1, driver2EmployeeId: d2 },
+    ]);
+    expect(save.status).toBe(200);
+    expect(data<FixedBoardDto>(save).changedCount).toBe(1);
+
+    // A second, independent request — this is what a page reload does.
+    const reload = await getCrews();
+    expect(reload.status).toBe(200);
+    expect(rowFor(data<FixedBoardDto>(reload), v.id)).toMatchObject({
+      driver1EmployeeId: d1,
+      driver2EmployeeId: d2,
+    });
+  });
+
+  it('carries no date anywhere — not in the query, not in the row', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const d1 = await mkDriver();
+    await saveCrews([{ vehicleId: v.id, driver1EmployeeId: d1 }]);
+    const board = data<FixedBoardDto>(await getCrews());
+    expect(Object.keys(board)).toEqual(expect.arrayContaining(['rows', 'drivers']));
+    expect(Object.keys(board)).not.toContain('date');
+    expect(Object.keys(rowFor(board, v.id) as object)).not.toContain('date');
+    // And a date sent anyway is refused rather than quietly stored.
+    const withDate = await request(app)
+      .post('/api/v1/fleet/fixed-roster')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date: '2026-11-01', rows: [{ vehicleId: v.id }] });
+    expect(withDate.status).toBe(400);
+  });
+
+  it('replaces the previous crew rather than appending to it', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const [d1, d2] = [await mkDriver(), await mkDriver()];
+    await saveCrews([{ vehicleId: v.id, driver1EmployeeId: d1 }]);
+    await saveCrews([{ vehicleId: v.id, driver1EmployeeId: d2 }]);
+
+    const board = data<FixedBoardDto>(await getCrews());
+    expect(rowFor(board, v.id)).toMatchObject({ driver1EmployeeId: d2, driver2EmployeeId: null });
+    // The one replaced is free again, and says so.
+    expect(board.drivers.find((d) => d.employeeId === d1)?.assignedVehicleId).toBeNull();
+    expect(board.drivers.find((d) => d.employeeId === d2)?.assignedVehicleId).toBe(v.id);
+  });
+
+  it('clears a crew, and the cleared row survives as an empty one', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const d1 = await mkDriver();
+    await saveCrews([{ vehicleId: v.id, driver1EmployeeId: d1 }]);
+    const cleared = await saveCrews([
+      { vehicleId: v.id, driver1EmployeeId: null, driver2EmployeeId: null },
+    ]);
+    expect(data<FixedBoardDto>(cleared).changedCount).toBe(1);
+    expect(rowFor(data<FixedBoardDto>(await getCrews()), v.id)).toMatchObject({
+      driver1EmployeeId: null,
+      driver2EmployeeId: null,
+    });
+  });
+
+  it('treats an unchanged save as a no-op', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const d1 = await mkDriver();
+    await saveCrews([{ vehicleId: v.id, driver1EmployeeId: d1 }]);
+    const again = await saveCrews([{ vehicleId: v.id, driver1EmployeeId: d1 }]);
+    expect(data<FixedBoardDto>(again).changedCount).toBe(0);
+  });
+
+  it('never writes a row for a vehicle whose crew was empty to begin with', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const res = await saveCrews([{ vehicleId: v.id }]);
+    expect(data<FixedBoardDto>(res).changedCount).toBe(0);
+    expect(rowFor(data<FixedBoardDto>(await getCrews()), v.id)).toMatchObject({
+      driver1EmployeeId: null,
+    });
+  });
+
+  // ── integrity: the same two rules the daily plan enforces ─────────────────
+
+  it('refuses the same person in BOTH slots of one vehicle', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const d1 = await mkDriver();
+    const res = await saveCrews([
+      { vehicleId: v.id, driver1EmployeeId: d1, driver2EmployeeId: d1 },
+    ]);
+    expect(res.status).toBe(400);
+    expect(rowFor(data<FixedBoardDto>(await getCrews()), v.id)?.driver1EmployeeId).toBeNull();
+  });
+
+  it('refuses one driver in two crews within a single save', async () => {
+    const [a, b] = [
+      data<FleetVehicleDto>(await createVehicle(adminToken)),
+      data<FleetVehicleDto>(await createVehicle(adminToken)),
+    ];
+    const d1 = await mkDriver();
+    const res = await saveCrews([
+      { vehicleId: a.id, driver1EmployeeId: d1 },
+      { vehicleId: b.id, driver1EmployeeId: d1 },
+    ]);
+    expect(res.status).toBe(400);
+  });
+
+  it('refuses to seat a driver another vehicle still holds, naming the row to release', async () => {
+    const [a, b] = [
+      data<FleetVehicleDto>(await createVehicle(adminToken)),
+      data<FleetVehicleDto>(await createVehicle(adminToken)),
+    ];
+    const d1 = await mkDriver();
+    await saveCrews([{ vehicleId: a.id, driver1EmployeeId: d1 }]);
+    // Only the receiving row — the releasing one was forgotten.
+    const res = await saveCrews([{ vehicleId: b.id, driver1EmployeeId: d1 }]);
+    expect(res.status).toBe(409);
+    // Nothing moved.
+    const board = data<FixedBoardDto>(await getCrews());
+    expect(rowFor(board, a.id)?.driver1EmployeeId).toBe(d1);
+    expect(rowFor(board, b.id)?.driver1EmployeeId).toBeNull();
+  });
+
+  it('MOVES a driver when both sides of the move travel together', async () => {
+    const [a, b] = [
+      data<FleetVehicleDto>(await createVehicle(adminToken)),
+      data<FleetVehicleDto>(await createVehicle(adminToken)),
+    ];
+    const d1 = await mkDriver();
+    await saveCrews([{ vehicleId: a.id, driver1EmployeeId: d1 }]);
+    const moved = await saveCrews([
+      { vehicleId: a.id, driver1EmployeeId: null },
+      { vehicleId: b.id, driver1EmployeeId: d1 },
+    ]);
+    expect(moved.status).toBe(200);
+    const board = data<FixedBoardDto>(await getCrews());
+    expect(rowFor(board, a.id)?.driver1EmployeeId).toBeNull();
+    expect(rowFor(board, b.id)?.driver1EmployeeId).toBe(d1);
+    expect(board.drivers.find((d) => d.employeeId === d1)?.assignedVehicleId).toBe(b.id);
+  });
+
+  it('refuses an employee who is not an active driver', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const plainEmployee = await mkEmployee();
+    const res = await saveCrews([{ vehicleId: v.id, driver1EmployeeId: plainEmployee }]);
+    expect(res.status).toBe(400);
+  });
+
+  // ── the pool: every active driver, undivided ─────────────────────────────
+
+  it('lists every active driver in ONE pool, with no availability verdict attached', async () => {
+    const d1 = await mkDriver();
+    const board = data<FixedBoardDto>(await getCrews());
+    const entry = board.drivers.find((d) => d.employeeId === d1);
+    expect(entry, 'the driver is in the pool').toBeDefined();
+    expect(Object.keys(entry as object).sort()).toEqual(['assignedVehicleId', 'employeeId']);
+    expect(Object.keys(board)).not.toContain('availableDrivers');
+    expect(Object.keys(board)).not.toContain('unavailableDrivers');
+  });
+
+  // ── permissions: the daily board's grants, not new ones ──────────────────
+
+  it('rides the roster grants — the branch operator, who has neither, is refused both', async () => {
+    // No new permission was declared for this board: §7 gives one view grant and one planning
+    // grant for the whole assignment surface, and the branch operator holds neither, exactly as
+    // on the daily roster.
+    expect((await getCrews(branchAToken)).status).toBe(403);
+    expect(
+      (await saveCrews([{ vehicleId: '64b1f0cccccccccccccccc99' }], branchAToken)).status,
+    ).toBe(403);
+  });
+
+  // ── and the DAILY roster is untouched by all of it ───────────────────────
+
+  it('does not disturb the daily roster — the two boards are separate rows', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const [fixed, daily] = [await mkDriver(), await mkDriver()];
+    await saveCrews([{ vehicleId: v.id, driver1EmployeeId: fixed }]);
+
+    const date = '2026-12-09';
+    const plan = await request(app)
+      .post('/api/v1/fleet/roster')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date, rows: [{ vehicleId: v.id, driver1EmployeeId: daily }] });
+    expect(plan.status).toBe(200);
+
+    // The day says one thing, the standing crew still says the other.
+    const day = await request(app)
+      .get('/api/v1/fleet/roster')
+      .query({ date })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(
+      (data<{ rows: { vehicleId: string; driver1EmployeeId: string | null }[] }>(day).rows.find(
+        (r) => r.vehicleId === v.id,
+      ) ?? {}).driver1EmployeeId,
+    ).toBe(daily);
+    expect(rowFor(data<FixedBoardDto>(await getCrews()), v.id)?.driver1EmployeeId).toBe(fixed);
+  });
+});
+
 describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
   interface BoardDto {
     changedCount?: number;

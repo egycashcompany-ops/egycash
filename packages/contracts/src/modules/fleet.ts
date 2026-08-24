@@ -789,6 +789,105 @@ export type PlanFleetRoster = z.infer<typeof PlanFleetRosterSchema>;
 export const FleetRosterQuerySchema = z.object({ date: z.coerce.date() }).strict();
 export type FleetRosterQuery = z.infer<typeof FleetRosterQuerySchema>;
 
+// ── Fixed crew (الطقم الثابت) ───────────────────────────────────────────────
+//
+// A DIFFERENT question from the daily roster above, and deliberately a different shape.
+//
+// The roster answers "who was planned on this vehicle on day D": its identity is the pair
+// (vehicle, date), a driver's eligibility is `driverAvailabilityOn(D)`, and an open workshop
+// visit covering D makes the vehicle unassignable. Every one of those facts is a fact ABOUT A
+// DAY. The fixed crew answers "who is this vehicle's standing crew" — a fact about the vehicle,
+// true until somebody changes it. So there is no date here, no mission, no notes, and no
+// availability verdict: a driver on leave next Tuesday is still the car's fixed driver.
+//
+// The two exclusivity rules ARE shared, because they are not about days: the same person cannot
+// hold both slots of one vehicle, and one driver belongs to one crew. They are re-stated below
+// rather than imported, because a rule that reads the same in two places must be readable in
+// both — but they are the same rules the roster enforces, not new ones.
+
+/** One board row: the vehicle, plus whatever standing crew it carries. */
+export interface FleetFixedCrewRowDto {
+  vehicleId: string;
+  code: string;
+  plateNumber: string;
+  typeId: string;
+  /** Derived, shown for context only — a car in the workshop still HAS a fixed crew. */
+  inMaintenance: boolean;
+  driver1EmployeeId: string | null;
+  driver2EmployeeId: string | null;
+}
+
+export interface FleetFixedRosterDto {
+  rows: FleetFixedCrewRowDto[];
+  /**
+   * The pool: every ACTIVE driver profile, undivided.
+   *
+   * There is no unavailable half. `driverAvailabilityOn` answers a question about a DATE, and
+   * this screen has none — so the pool is exactly the drivers the fleet has, each carrying the
+   * vehicle it is already fixed to (or `null`), which is what a board needs to show a move.
+   */
+  drivers: { employeeId: string; assignedVehicleId: string | null }[];
+}
+
+export const SaveFleetFixedCrewRowSchema = z
+  .object({
+    vehicleId: objectId(),
+    driver1EmployeeId: objectId().nullish(),
+    driver2EmployeeId: objectId().nullish(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (
+      value.driver1EmployeeId != null &&
+      value.driver2EmployeeId != null &&
+      value.driver1EmployeeId === value.driver2EmployeeId
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['driver2EmployeeId'],
+        message: 'the two driver slots cannot hold the same person',
+      });
+    }
+  });
+export type SaveFleetFixedCrewRow = z.infer<typeof SaveFleetFixedCrewRowSchema>;
+
+/**
+ * Upsert per vehicle — only CHANGED rows are sent, exactly as a plan save does.
+ *
+ * That matters for moves: taking a driver off vehicle A and onto vehicle B changes BOTH rows,
+ * so both travel, and the server sees a payload that is internally consistent. A payload that
+ * claims a driver another row still holds is refused rather than silently duplicating them.
+ */
+export const SaveFleetFixedRosterSchema = z
+  .object({ rows: z.array(SaveFleetFixedCrewRowSchema).min(1).max(500) })
+  .strict()
+  .superRefine((value, ctx) => {
+    const seenVehicles = new Set<string>();
+    const seenDrivers = new Set<string>();
+    value.rows.forEach((row, index) => {
+      if (seenVehicles.has(row.vehicleId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['rows', index, 'vehicleId'],
+          message: 'a vehicle appears twice in one save',
+        });
+      }
+      seenVehicles.add(row.vehicleId);
+      for (const driver of [row.driver1EmployeeId, row.driver2EmployeeId]) {
+        if (driver == null) continue;
+        if (seenDrivers.has(driver)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['rows', index],
+            message: 'a driver belongs to one fixed crew',
+          });
+        }
+        seenDrivers.add(driver);
+      }
+    });
+  });
+export type SaveFleetFixedRoster = z.infer<typeof SaveFleetFixedRosterSchema>;
+
 // ── Accidents (§4.6) ────────────────────────────────────────────────────────
 
 export const FLEET_ACCIDENT_STATUSES = ['open', 'closed'] as const;

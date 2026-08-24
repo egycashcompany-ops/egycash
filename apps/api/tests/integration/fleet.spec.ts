@@ -23,8 +23,9 @@ import {
   type PageMeta,
   SaveFleetFixedRosterSchema,
 } from '@ecms/contracts';
-import { Types } from 'mongoose';
+import mongoose, { Types } from 'mongoose';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
+import { migrateFixedCrewIndex } from '../../src/modules/fleet/fleet.migration';
 import { buildApp } from '../../src/app';
 import { moduleManifests } from '../../src/modules';
 import { fleetPermissions } from '../../src/modules/fleet/fleet.module';
@@ -2511,6 +2512,180 @@ describe('fixed crew (الطقم الثابت) — the standing crew, with no da
     expect(Object.keys(entry as object).sort()).toEqual(['assignedVehicleId', 'employeeId']);
     expect(Object.keys(board)).not.toContain('availableDrivers');
     expect(Object.keys(board)).not.toContain('unavailableDrivers');
+  });
+
+  // ── the unique index: the rule as a DATABASE fact ────────────────────────
+  //
+  // The service checks exclusivity against the end state of the board, but that check runs in
+  // application code: two concurrent saves can both read a board without the row and both decide
+  // to insert. `ux_fixed_vehicle` is what makes the second one lose. `autoIndex` is off outside
+  // development, so production builds it from `runFleetMigrations`; these run against a real
+  // database and assert the built index, not the declared one.
+
+  const fixedCrewIndexes = async (): Promise<Record<string, unknown>[]> =>
+    (await mongoose.connection.collection('fleet_fixed_crews').indexes()) as unknown as Record<
+      string,
+      unknown
+    >[];
+
+  it('INDEX — ux_fixed_vehicle exists on the collection, unique and partial on live rows', async () => {
+    // Make sure the collection exists before asking about its indexes.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await saveCrews([{ vehicleId: v.id, driver1EmployeeId: await mkDriver() }]);
+    await migrateFixedCrewIndex();
+
+    const ix = (await fixedCrewIndexes()).find((i) => i.name === 'ux_fixed_vehicle');
+    expect(ix, 'the index is built').toBeDefined();
+    expect(ix?.key).toEqual({ vehicleId: 1 });
+    expect(ix?.unique, 'unique').toBe(true);
+    expect(ix?.partialFilterExpression).toEqual({ isDeleted: false });
+  });
+
+  it('INDEX — the MIGRATION is what builds it, and building twice is a no-op', async () => {
+    // `autoIndex` is on in tests and off in production, so an "index exists" assertion would
+    // pass here even with the migration deleted. Dropping it first is what makes this test about
+    // the deploy step rather than about mongoose.
+    const crews = mongoose.connection.collection('fleet_fixed_crews');
+    await crews.dropIndex('ux_fixed_vehicle').catch(() => undefined);
+    expect(
+      (await fixedCrewIndexes()).some((i) => i.name === 'ux_fixed_vehicle'),
+      'gone, as a production database would have it before the deploy step',
+    ).toBe(false);
+
+    const first = await migrateFixedCrewIndex();
+    expect(first.created, 'the migration built it').toBe(true);
+    expect((await fixedCrewIndexes()).some((i) => i.name === 'ux_fixed_vehicle')).toBe(true);
+
+    const second = await migrateFixedCrewIndex();
+    expect(second.created, 'idempotent — every boot after the first is a no-op').toBe(true);
+    expect(second.duplicateVehicles).toBe(0);
+    expect(
+      (await fixedCrewIndexes()).filter((i) => i.name === 'ux_fixed_vehicle'),
+      'and there is still exactly one of it',
+    ).toHaveLength(1);
+  });
+
+  it('INDEX — the DATABASE refuses a second live crew row for one vehicle', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await saveCrews([{ vehicleId: v.id, driver1EmployeeId: await mkDriver() }]);
+    await migrateFixedCrewIndex();
+
+    // Straight at the collection, bypassing every application-level check — the only way to ask
+    // whether the DATABASE is the one holding the line.
+    const insertSecond = mongoose.connection.collection('fleet_fixed_crews').insertOne({
+      vehicleId: new Types.ObjectId(v.id),
+      driver1EmployeeId: null,
+      driver2EmployeeId: null,
+      isDeleted: false,
+      schemaVersion: 1,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      __v: 0,
+    });
+    await expect(insertSecond).rejects.toMatchObject({ code: 11000 });
+
+    // Nothing was added.
+    const rows = await mongoose.connection
+      .collection('fleet_fixed_crews')
+      .countDocuments({ vehicleId: new Types.ObjectId(v.id), isDeleted: false });
+    expect(rows).toBe(1);
+  });
+
+  it('INDEX — a SOFT-DELETED row does not hold a live vehicle’s slot', async () => {
+    // The partial filter is the reason: without it, an archived crew would block the car forever.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await migrateFixedCrewIndex();
+    const crews = mongoose.connection.collection('fleet_fixed_crews');
+    await crews.insertOne({
+      vehicleId: new Types.ObjectId(v.id),
+      driver1EmployeeId: null,
+      driver2EmployeeId: null,
+      isDeleted: true,
+      schemaVersion: 1,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      __v: 0,
+    });
+    const live = await saveCrews([{ vehicleId: v.id, driver1EmployeeId: await mkDriver() }]);
+    expect(live.status, 'a live crew is still allowed beside the deleted row').toBe(200);
+  });
+
+  it('INDEX — ordinary create and update still work with it in place', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const [d1, d2] = [await mkDriver(), await mkDriver()];
+    await migrateFixedCrewIndex();
+
+    const created = await saveCrews([{ vehicleId: v.id, driver1EmployeeId: d1 }]);
+    expect(created.status).toBe(200);
+    const updated = await saveCrews([{ vehicleId: v.id, driver1EmployeeId: d2 }]);
+    expect(updated.status).toBe(200);
+    expect(rowFor(data<FixedBoardDto>(await getCrews()), v.id)?.driver1EmployeeId).toBe(d2);
+    // One row throughout — the update edited it rather than adding beside it.
+    expect(
+      await mongoose.connection
+        .collection('fleet_fixed_crews')
+        .countDocuments({ vehicleId: new Types.ObjectId(v.id), isDeleted: false }),
+    ).toBe(1);
+  });
+
+  it('INDEX — duplicates are REPORTED and the index withheld, never deleted or merged', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const crews = mongoose.connection.collection('fleet_fixed_crews');
+    // Drop the index so the duplicate can exist at all — this is the shape of a database that
+    // ran an older build.
+    await crews.dropIndex('ux_fixed_vehicle').catch(() => undefined);
+    const row = () => ({
+      vehicleId: new Types.ObjectId(v.id),
+      driver1EmployeeId: null,
+      driver2EmployeeId: null,
+      isDeleted: false,
+      schemaVersion: 1,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      __v: 0,
+    });
+    await crews.insertMany([row(), row()]);
+
+    const outcome = await migrateFixedCrewIndex();
+    expect(outcome.created, 'the index is withheld').toBe(false);
+    expect(outcome.duplicateVehicles).toBe(1);
+    expect(
+      (await fixedCrewIndexes()).some((i) => i.name === 'ux_fixed_vehicle'),
+      'and really was not built',
+    ).toBe(false);
+    // BOTH rows survive — resolving them is an operator's decision, not a migration's.
+    expect(
+      await crews.countDocuments({ vehicleId: new Types.ObjectId(v.id), isDeleted: false }),
+    ).toBe(2);
+
+    // Clean up so the rest of the suite sees a healthy collection again.
+    await crews.deleteMany({ vehicleId: new Types.ObjectId(v.id) });
+    expect((await migrateFixedCrewIndex()).created).toBe(true);
+  });
+
+  it('INDEX — no other collection gains, loses or changes an index', async () => {
+    const names = async (collection: string): Promise<string[]> =>
+      (await mongoose.connection.collection(collection).indexes())
+        .map((i) => String((i as { name?: string }).name))
+        .sort();
+    const before = {
+      drivers: await names('fleet_driver_profiles'),
+      duty: await names('fleet_duty_assignments'),
+      vehicles: await names('fleet_vehicles'),
+    };
+    // And the driver population is untouched by an index build.
+    const driversBefore = await mongoose.connection
+      .collection('fleet_driver_profiles')
+      .countDocuments({});
+
+    await migrateFixedCrewIndex();
+
+    expect(await names('fleet_driver_profiles')).toEqual(before.drivers);
+    expect(await names('fleet_duty_assignments')).toEqual(before.duty);
+    expect(await names('fleet_vehicles')).toEqual(before.vehicles);
+    expect(await mongoose.connection.collection('fleet_driver_profiles').countDocuments({})).toBe(
+      driversBefore,
+    );
   });
 
   // ── permissions: the daily board's grants, not new ones ──────────────────

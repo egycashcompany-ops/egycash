@@ -176,6 +176,24 @@ const EnvSchema = z.object({
     .transform((v) => v === 'true'),
   NOTIFICATIONS_EMAIL_FROM: z.string().default('EGYCASH <no-reply@ecms.local>'),
 
+  /**
+   * Web Push (VAPID). Generate a pair once per deployment with `npx web-push generate-vapid-keys`
+   * and keep the private key secret — it is what proves to Google's and Mozilla's push services
+   * that a delivery came from this server.
+   *
+   * BOTH EMPTY BY DEFAULT, AND THAT IS A WORKING STATE. With no pair the push channel reports
+   * itself unconfigured, `notify()` puts no push row on any notification, and the browser is never
+   * asked for a permission it would then have nothing to receive on. Dev, CI and any deployment
+   * that has not set this up keep behaving exactly as they did before push existed. A HALF pair is
+   * different and is refused at boot: it is a typo, not a decision.
+   *
+   * The subject identifies the sender to the push service — a `mailto:` or an https URL it can
+   * reach a human on if this server starts misbehaving.
+   */
+  VAPID_PUBLIC_KEY: z.string().default(''),
+  VAPID_PRIVATE_KEY: z.string().default(''),
+  VAPID_SUBJECT: z.string().default('mailto:egycash.company@gmail.com'),
+
   // ── Credentials delivery (auth design §12 R3/R9) ──────────────────────────
   /** Absolute base URL of the web app — the login link in credential messages. */
   WEB_PUBLIC_URL: z.string().url().default('http://localhost:5173'),

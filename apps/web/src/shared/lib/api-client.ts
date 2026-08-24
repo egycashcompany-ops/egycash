@@ -200,7 +200,18 @@ export const getText = async (path: string): Promise<string> => {
   return response.text();
 };
 
-export const del = <T>(path: string): Promise<T> => api<T>(path, { method: 'DELETE' });
+/**
+ * `body` is optional and almost never wanted — a DELETE names what it removes in its path.
+ *
+ * The exception it exists for is a resource whose identifier is a URL: a Web Push endpoint is up
+ * to 2048 characters of somebody else's origin, which is not something to put in a path segment or
+ * a query string. Callers that identify a resource by id keep passing nothing and are unaffected.
+ */
+export const del = <T>(path: string, body?: unknown): Promise<T> =>
+  api<T>(path, {
+    method: 'DELETE',
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
 
 
 /** Build a `?a=1&b=2` query string, dropping empty/undefined values (API Standards §4). */

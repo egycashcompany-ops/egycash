@@ -22,6 +22,9 @@ import { settingsService } from '../settings';
 import { notificationRepository } from './notification.repository';
 import { notificationTemplateRepository } from './notification-template.repository';
 import { notificationPreferenceRepository } from './notification-preference.repository';
+import { pushSubscriptionRepository } from './push-subscription.repository';
+import { isPushConfigured } from './push-config';
+import { PUSH_CHANNEL, shouldOfferPush } from './push-eligibility';
 import { renderTemplate, validateVariables } from './notification.rendering';
 import { isSendableTemplate } from './notification.template-rules';
 import { resolveExpiresAt, isExpired, computeScheduleDelayMs } from './notification.expiry';
@@ -142,7 +145,27 @@ class NotificationsService {
     return created;
   }
 
+  /**
+   * Whether this recipient can receive on this channel AT ALL — asked before any preference is.
+   *
+   * Push is the channel with a capability question: it reaches a REGISTERED browser, and a
+   * recipient who has registered none has nowhere for it to go. That is not an opt-out and must
+   * not be answered by a preference row — a stale `enabled` row from a device since removed would
+   * otherwise conjure a push channel with no destination, which delivers nothing, retries five
+   * times and lands on `failed` for a notification the person read in the app an hour ago.
+   *
+   * Answering it here instead means `buildInitialChannels` simply puts no push row on the
+   * notification, which is the same quiet shape an opt-out produces.
+   */
   private async isChannelEnabled(userId: string, category: string, channel: string): Promise<boolean> {
+    if (channel === PUSH_CHANNEL) {
+      const pref = await notificationPreferenceRepository.findOne(userId, category, channel);
+      return shouldOfferPush({
+        configured: isPushConfigured(),
+        hasDevice: await pushSubscriptionRepository.hasAny(userId),
+        preference: pref?.enabled ?? null,
+      });
+    }
     const pref = await notificationPreferenceRepository.findOne(userId, category, channel);
     if (pref !== null) return pref.enabled;
     if (channel === 'email') {

@@ -22,6 +22,22 @@ const EnvSchema = z.object({
   NATIONAL_ID_OCR_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(20_000),
 
   /**
+   * ATM maintenance mailbox (ATM-6) — the ONE central reader that replaces the legacy's
+   * per-branch Node services. All four UNSET = no source registers and the poll task is inert,
+   * which is every install that has no mailbox.
+   *
+   * `ATM_MAIL_GRAPH_CLIENT_SECRET` accepts either a plaintext secret or a JSON `SecretRef` the
+   * platform secret store can open — plaintext stays supported because that is what the legacy
+   * deployment has today, and a migration that demands a secret-store rollout first is one that
+   * does not happen.
+   */
+  ATM_MAIL_GRAPH_TENANT_ID: z.string().min(1).optional(),
+  ATM_MAIL_GRAPH_CLIENT_ID: z.string().min(1).optional(),
+  ATM_MAIL_GRAPH_CLIENT_SECRET: z.string().min(1).optional(),
+  ATM_MAIL_GRAPH_USER: z.string().min(1).optional(),
+  ATM_MAIL_GRAPH_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(20_000),
+
+  /**
    * Envelope-encryption key ring — `id:base64,id:base64`, 32-byte keys (A-1).
    *
    * More than one so rotation has an overlap window: the retired key still decrypts what has not

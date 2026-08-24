@@ -28,6 +28,7 @@ const PayrollRoutes = lazy(() => import('../../modules/hr/payroll/routes'));
 const ContractsRoutes = lazy(() => import('../../modules/hr/contracts/routes'));
 const FleetRoutes = lazy(() => import('../../modules/fleet/routes'));
 const OperationsRoutes = lazy(() => import('../../modules/operations/routes'));
+const AtmRoutes = lazy(() => import('../../modules/atm/routes'));
 const ItRoutes = lazy(() => import('../../modules/it/routes'));
 const GoldRoutes = lazy(() => import('../../modules/gold/routes'));
 // The customer portal is a SEPARATE surface, not a page of the app: its own login, its own
@@ -269,6 +270,22 @@ export const App = (): JSX.Element => {
                 }
               >
                 <OperationsRoutes />
+              </Suspense>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/atm/*"
+          element={
+            <RequireAuth>
+              <Suspense
+                fallback={
+                  <div className="grid min-h-screen place-items-center">
+                    <LoadingState />
+                  </div>
+                }
+              >
+                <AtmRoutes />
               </Suspense>
             </RequireAuth>
           }

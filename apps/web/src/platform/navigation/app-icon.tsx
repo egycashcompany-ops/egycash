@@ -16,6 +16,7 @@ import {
   FileIcon,
   FolderIcon,
   GaugeIcon,
+  GridIcon,
   HomeIcon,
   InboxIcon,
   LayersIcon,
@@ -74,6 +75,8 @@ const REGISTRY: Record<string, NavIcon> = {
   // Scope B1 — the payroll reports row, registered beside the row that names it for the reason
   // stated above: an unregistered `chart` would fall back to the neutral glyph and look chosen.
   chart: ChartIcon,
+  // ATM (module port) — the machines grid and the module category tile.
+  grid: GridIcon,
 };
 
 export const resolveNavIcon = (name: string | null | undefined, fallback: NavIcon): NavIcon => {

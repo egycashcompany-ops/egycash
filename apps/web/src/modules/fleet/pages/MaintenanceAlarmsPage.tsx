@@ -168,6 +168,13 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
             // The chosen codes are NAMED in the trigger rather than counted: a board runs to
             // hundreds of cars, and "3" says nothing about which three are being chased.
             showSelectedValues
+            // ALWAYS searchable, rather than only once the list is long enough to earn the box.
+            // The component's default is right for a fixed vocabulary — a handful of statuses is
+            // read, not searched — but this list is a fleet: its length is whatever the board
+            // happens to report today, and a control that grows a search box on Tuesday and
+            // loses it on Wednesday teaches nobody where to type. Screen-local, through the
+            // component's own prop: no other bar changes.
+            searchThreshold={0}
             label={t('fleet.odometer.columns.vehicle')}
             options={vehicleOptions}
             value={vehicleCodes}

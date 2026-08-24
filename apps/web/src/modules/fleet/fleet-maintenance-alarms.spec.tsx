@@ -25,6 +25,7 @@ import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { translate } from '../../platform/localization/i18n';
 import { MaintenanceAlarmsPage } from './pages/MaintenanceAlarmsPage';
+import { alarmVehicleOptions } from './lib/alarm-vehicle-options';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SOURCE = readFileSync(join(HERE, 'pages/MaintenanceAlarmsPage.tsx'), 'utf8');
@@ -101,6 +102,20 @@ const triggers = (markup: string): Record<string, string> =>
       ),
     ].map((m) => [m[1] as string, m[2] as string]),
   );
+
+/**
+ * The source of ONE `MultiSelect` in the filter bar, found by the label it carries.
+ *
+ * Props are not readable from the closed markup a node test can render, so the props that decide
+ * how the OPEN panel behaves are asserted here instead — scoped to one picker, so a claim about
+ * the cars can never be satisfied by the alarms beside them.
+ */
+const pickerSource = (label: string): string => {
+  const bar = SOURCE.slice(SOURCE.indexOf('<FilterBar'), SOURCE.indexOf('</FilterBar>'));
+  const at = bar.indexOf(label);
+  expect(at, `a picker labelled ${label}`).toBeGreaterThan(-1);
+  return bar.slice(bar.lastIndexOf('<MultiSelect', at), bar.indexOf('/>', at) + 2);
+};
 
 const VEHICLE = t('fleet.odometer.columns.vehicle');
 const ALARMS = 'كل الإنذارات';
@@ -247,15 +262,39 @@ describe('searching the car picker', () => {
     // If the page ever handed the picker a slice, or took the search over from it, typing would
     // quietly answer "which of these few" instead of "which car". Both are guarded here because
     // neither is visible from the closed trigger a node test can read.
-    const picker = SOURCE.slice(SOURCE.indexOf('<MultiSelect'), SOURCE.indexOf('</FilterBar>'));
+    const picker = pickerSource("t('fleet.odometer.columns.vehicle')");
     expect(picker, 'the options are the board').toContain('options={vehicleOptions}');
     expect(picker, 'the component does its own searching').not.toContain('onSearch');
-    expect(picker, 'and decides for itself when the box is worth showing').not.toContain(
-      'searchThreshold',
-    );
     expect(SOURCE, 'the board is never trimmed before it becomes options').not.toMatch(
       /alarmsQuery\.data[\s\S]{0,80}\.slice\(/,
     );
+  });
+
+  it('keeps its search box even when the board reports FEWER than seven cars', () => {
+    // `MultiSelect` shows the box at `options.length >= searchThreshold`, and its default of 7 is
+    // right for a fixed vocabulary — a handful of statuses is read, not searched. A fleet is not
+    // that: its length is whatever the board reports today, and a control that grows a search box
+    // on Tuesday and loses it on Wednesday teaches nobody where to type.
+    //
+    // Two halves, both checkable, and the rule they compose is `length >= 0`, which always holds:
+    const picker = pickerSource("t('fleet.odometer.columns.vehicle')");
+    expect(picker, 'this screen asks for the box unconditionally').toContain('searchThreshold={0}');
+
+    const small = [alarm('150', 'red'), alarm('151', 'yellow'), alarm('152', 'none')];
+    expect(alarmVehicleOptions(small, []).length, 'a board too small for the default').toBeLessThan(
+      7,
+    );
+    expect(shown(render({ qc: client(small) })), 'and the screen still works').toEqual([
+      '150',
+      '151',
+      '152',
+    ]);
+  });
+
+  it('leaves the ALARM picker on the component default — this is one screen’s car list, not a rule', () => {
+    // Three levels are read at a glance. Forcing a search box onto them would be noise, and it
+    // would also mean the change had leaked out of the filter it was meant for.
+    expect(pickerSource("t('fleet.alarms.allAlarms')")).not.toContain('searchThreshold');
   });
 
   it('offers every car on the board, so the search has all of them to find', () => {

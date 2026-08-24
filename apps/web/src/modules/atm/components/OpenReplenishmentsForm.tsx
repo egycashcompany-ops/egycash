@@ -2,13 +2,17 @@
 // per line, schedule times aligned BY LINE NUMBER, one date for the batch. Codes the master does
 // not know come back in the RESPONSE and are shown here — the per-request replacement for the
 // legacy's shared `mach_arr_not_found` global that flashed for every user (contad_app.js:202).
+//
+// The form renders BARE — no card, no bottom margin. The page wraps it and the bank/area filters
+// in one bordered row so entry and narrowing read as a single band (ReplenishmentsPage.tsx).
 import { useState, type FormEvent } from 'react';
 import { normalizeAtmMachineCode, splitAtmFormLines } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { Button } from '../../../shared/ui/Button';
-import { Field, Input, Textarea } from '../../../shared/ui/form';
+import { Field, Input } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { useOpenAtmReplenishments } from '../api/atm-queries';
+import { LineListInput } from './LineListInput';
 
 /** Line pairs → rows: code[i] + schedule[i]; blank code lines dropped, as the legacy loop did. */
 export const buildReplenishmentRows = (
@@ -57,27 +61,20 @@ export const OpenReplenishmentsForm = ({ defaultDate }: { defaultDate: string })
   };
 
   return (
-    <form
-      onSubmit={(e) => void submit(e)}
-      className="mb-6 flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 p-4 dark:border-slate-800"
-    >
+    <form onSubmit={(e) => void submit(e)} className="flex flex-wrap items-end gap-3">
       <Field label={t('atm.replenishments.machineCodes')} required>
-        <Textarea
+        <LineListInput
           value={codes}
-          onChange={(e) => setCodes(e.target.value)}
-          rows={3}
+          onChange={setCodes}
           required
           placeholder={t('atm.replenishments.machineCodesHint')}
-          className="min-w-48 text-center"
         />
       </Field>
       <Field label={t('atm.replenishments.scheduleTimes')}>
-        <Textarea
+        <LineListInput
           value={schedules}
-          onChange={(e) => setSchedules(e.target.value)}
-          rows={3}
+          onChange={setSchedules}
           placeholder={t('atm.replenishments.scheduleTimesHint')}
-          className="min-w-48 text-center"
         />
       </Field>
       <Field label={t('atm.replenishments.forceDate')} hint={t('atm.replenishments.forceDateHint')}>

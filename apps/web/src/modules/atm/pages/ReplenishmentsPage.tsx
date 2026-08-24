@@ -218,21 +218,26 @@ export const ReplenishmentsPage = (): JSX.Element => {
         description={t('atm.replenishments.subtitle')}
       />
 
-      {can('atmReplenishment.create') && <OpenReplenishmentsForm defaultDate={cairoToday()} />}
+      {/* Entry and narrowing share ONE row: the form runs from the start of it, the filters sit
+          at the far end — the LEFT in Arabic, and mirrored in English, because `ms-auto` follows
+          the writing direction rather than picking a physical side. */}
+      <div className="mb-6 flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+        {can('atmReplenishment.create') && <OpenReplenishmentsForm defaultDate={cairoToday()} />}
 
-      <div className="mb-4 flex flex-wrap gap-2">
-        <MultiSelect
-          label={t('atm.common.bank')}
-          options={(facets.data?.banks ?? []).map((b) => ({ value: b, label: b }))}
-          value={banks}
-          onChange={(next) => setFilter('banks', next)}
-        />
-        <MultiSelect
-          label={t('atm.common.area')}
-          options={(facets.data?.areas ?? []).map((a) => ({ value: a, label: a }))}
-          value={areas}
-          onChange={(next) => setFilter('areas', next)}
-        />
+        <div className="ms-auto flex flex-wrap items-end gap-2">
+          <MultiSelect
+            label={t('atm.common.bank')}
+            options={(facets.data?.banks ?? []).map((b) => ({ value: b, label: b }))}
+            value={banks}
+            onChange={(next) => setFilter('banks', next)}
+          />
+          <MultiSelect
+            label={t('atm.common.area')}
+            options={(facets.data?.areas ?? []).map((a) => ({ value: a, label: a }))}
+            value={areas}
+            onChange={(next) => setFilter('areas', next)}
+          />
+        </div>
       </div>
 
       <BulkActionBar count={selection.count} onClear={selection.clear}>

@@ -36,16 +36,19 @@ import { FilterBar } from '../../../shared/ui/FilterBar';
 import { SearchInput } from '../../../shared/ui/SearchInput';
 import { Button } from '../../../shared/ui/Button';
 import { Badge } from '../../../shared/ui/Badge';
+import { Dialog } from '../../../shared/ui/Dialog';
+import { Field, Select, Textarea } from '../../../shared/ui/form';
 import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { TrashIcon } from '../../../shared/ui/icons';
-import { formatNumber } from '../../../shared/lib/format';
+import { EditIcon, TrashIcon } from '../../../shared/ui/icons';
+import { formatNumber, localized } from '../../../shared/lib/format';
 import { errorMessage } from '../../../shared/lib/errors';
-import { useFixedRoster, useSaveFixedRoster } from '../api/fleet-queries';
-import { EmployeeName } from '../components/EmployeeName';
+import { useFixedRoster, useSaveFixedRoster, useFleetCatalog } from '../api/fleet-queries';
+import { EmployeeName, useEmployeeName } from '../components/EmployeeName';
 import { InWorkshopBadge } from '../components/VehicleStatusBadge';
 import {
   CREW_SLOTS,
+  applyEdit,
   assignDriver,
   availableDrivers,
   changedRows,
@@ -59,6 +62,180 @@ const DRAG_TYPE = 'application/x-ecms-driver';
 const SLOT_LABEL: Record<CrewSlot, string> = {
   driver1EmployeeId: 'fleet.odometer.fields.driver1',
   driver2EmployeeId: 'fleet.odometer.fields.driver2',
+};
+
+/** One driver as a <option>. A component, because resolving the name is a hook. */
+const DriverOption = ({ employeeId }: { employeeId: string }): JSX.Element => {
+  const { name, code } = useEmployeeName(employeeId);
+  return (
+    <option value={employeeId}>
+      {name === null ? employeeId.slice(-8) : `${name}${code === null ? '' : ` · ${code}`}`}
+    </option>
+  );
+};
+
+/**
+ * Edit one vehicle's four editable facts together — «تعديل».
+ *
+ * The dialog holds its OWN draft and hands it back only on save, which is what makes «إلغاء»
+ * mean cancel: nothing outside this component changes until `onSave` runs, so a closed dialog
+ * leaves the board draft — and therefore the pool, the dirty banner and the server — untouched.
+ *
+ * It does NOT re-implement the driver rules. The options it offers are the derived pool plus
+ * this vehicle's own two drivers (who are absent from the pool precisely because they are
+ * seated here), and the chosen values go back through `applyEdit`, which routes each one
+ * through `assignDriver`. So seating somebody who is fixed to another car releases that car,
+ * exactly as dragging them would — one rule, reached two ways.
+ */
+const EditCrewDialog = ({
+  row,
+  pool,
+  workTypes,
+  onClose,
+  onSave,
+}: {
+  row: FleetFixedCrewRowDto;
+  pool: { employeeId: string }[];
+  workTypes: ReturnType<typeof useFleetCatalog>;
+  onClose: () => void;
+  onSave: (edit: {
+    workTypeId: string | null;
+    driver1EmployeeId: string | null;
+    driver2EmployeeId: string | null;
+    notes: string | null;
+  }) => void;
+}): JSX.Element => {
+  const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  const [workTypeId, setWorkTypeId] = useState<string | null>(row.workTypeId);
+  const [driver1, setDriver1] = useState<string | null>(row.driver1EmployeeId);
+  const [driver2, setDriver2] = useState<string | null>(row.driver2EmployeeId);
+  const [notes, setNotes] = useState<string>(row.notes ?? '');
+
+  // Everyone the board leaves unseated, PLUS this car's own crew — they are missing from the
+  // pool because they sit here, and a dialog that could not re-select them would look broken.
+  const candidates = useMemo(() => {
+    const ids = pool.map((d) => d.employeeId);
+    for (const own of [row.driver1EmployeeId, row.driver2EmployeeId])
+      if (own !== null && !ids.includes(own)) ids.push(own);
+    return ids;
+  }, [pool, row.driver1EmployeeId, row.driver2EmployeeId]);
+
+  // The one rule the dialog enforces itself, because it is the one a two-select form can break
+  // that a drag cannot: the same person chosen in both slots. `applyEdit` would silently
+  // displace the first with the second, so it is refused here instead, before it is applied.
+  const sameTwice = driver1 !== null && driver1 === driver2;
+
+  const DriverSelect = ({
+    value,
+    onChange,
+    label,
+    exclude,
+  }: {
+    value: string | null;
+    onChange: (id: string | null) => void;
+    label: string;
+    exclude: string | null;
+  }): JSX.Element => (
+    <Field label={label}>
+      <Select value={value ?? ''} onChange={(e) => onChange(e.target.value || null)}>
+        <option value="">{t('fleet.fixedRoster.noDriver')}</option>
+        {candidates
+          .filter((id) => id !== exclude || id === value)
+          .map((id) => (
+            <DriverOption key={id} employeeId={id} />
+          ))}
+      </Select>
+    </Field>
+  );
+
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={`${t('common.edit')} · ${row.code}`}
+      description={t('fleet.fixedRoster.editHint')}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            {t('common.cancel')}
+          </Button>
+          <Button
+            disabled={sameTwice}
+            onClick={() =>
+              onSave({
+                workTypeId,
+                driver1EmployeeId: driver1,
+                driver2EmployeeId: driver2,
+                // '' is not a note. The contract refuses an empty string, and `null` is how
+                // this module spells "nothing" everywhere else.
+                notes: notes.trim() === '' ? null : notes.trim(),
+              })
+            }
+          >
+            {t('common.save')}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <Field label={t('fleet.roster.fields.mission')}>
+          {workTypes.isError ? (
+            <p className="text-sm text-rose-600 dark:text-rose-400">
+              {t('fleet.fixedRoster.workTypesFailed')}
+            </p>
+          ) : (
+            <Select
+              value={workTypeId ?? ''}
+              disabled={workTypes.isPending}
+              onChange={(e) => setWorkTypeId(e.target.value || null)}
+            >
+              <option value="">{t('fleet.fixedRoster.noWorkType')}</option>
+              {(workTypes.data?.items ?? []).map((item) => (
+                <option key={item.id} value={item.id}>
+                  {localized(item.name, locale)}
+                </option>
+              ))}
+            </Select>
+          )}
+          {!workTypes.isPending &&
+            !workTypes.isError &&
+            (workTypes.data?.items.length ?? 0) === 0 && (
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                {t('fleet.fixedRoster.noWorkTypesYet')}
+              </p>
+            )}
+        </Field>
+
+        <DriverSelect
+          label={t('fleet.odometer.fields.driver1')}
+          value={driver1}
+          onChange={setDriver1}
+          exclude={driver2}
+        />
+        <DriverSelect
+          label={t('fleet.odometer.fields.driver2')}
+          value={driver2}
+          onChange={setDriver2}
+          exclude={driver1}
+        />
+        {sameTwice && (
+          <p className="text-sm text-rose-600 dark:text-rose-400">
+            {t('fleet.fixedRoster.sameDriverTwice')}
+          </p>
+        )}
+
+        <Field label={t('fleet.attendance.fields.notes')}>
+          <Textarea
+            rows={3}
+            maxLength={500}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+          />
+        </Field>
+      </div>
+    </Dialog>
+  );
 };
 
 export const FixedRosterPage = (): JSX.Element => {
@@ -102,6 +279,21 @@ export const FixedRosterPage = (): JSX.Element => {
 
   const [dragging, setDragging] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
+  /** The vehicle whose edit dialog is open, or null. The dialog holds its own draft. */
+  const [editing, setEditing] = useState<string | null>(null);
+
+  // «نوع المهمة» is a reference to the fleet's own vocabulary — the SAME `workType` catalog the
+  // maintenance screen reads (أنواع الأعمال), through the same cached hook, so the two screens
+  // cannot drift into two lists. The id is what is stored; the name is resolved for display.
+  const workTypes = useFleetCatalog('workType');
+  const workTypeName = (id: string | null): string | null => {
+    if (id === null) return null;
+    const item = workTypes.data?.items.find((entry) => entry.id === id);
+    // `undefined` = the catalog has not answered yet, or the item was archived after it was
+    // chosen. Either way the id is real and the row is not broken, so the cell shows the dash
+    // rather than a raw ObjectId no reader could act on.
+    return item === undefined ? null : localized(item.name, locale);
+  };
 
   // The pool is DERIVED, never the server's list rendered raw: everyone the draft already seats
   // leaves it the instant the drop lands, and comes back the instant a slot is cleared. Deriving
@@ -262,7 +454,10 @@ export const FixedRosterPage = (): JSX.Element => {
     {
       key: 'mission',
       header: t('fleet.roster.fields.mission'),
-      render: () => dash,
+      render: (row) => {
+        const name = workTypeName(row.workTypeId);
+        return name === null ? dash : <span className="text-sm">{name}</span>;
+      },
     },
     {
       key: 'driver1',
@@ -277,32 +472,59 @@ export const FixedRosterPage = (): JSX.Element => {
     {
       key: 'notes',
       header: t('fleet.attendance.fields.notes'),
-      render: () => dash,
+      render: (row) =>
+        row.notes === null ? (
+          dash
+        ) : (
+          // Long notes are truncated rather than allowed to set the column's width — the note is
+          // context here, and the dialog is where it is read and written in full.
+          <span className="block max-w-[14rem] truncate text-sm" title={row.notes}>
+            {row.notes}
+          </span>
+        ),
     },
     {
       key: 'actions',
       header: t('fleet.vehicles.columns.actions'),
       align: 'end',
       render: (row) =>
-        mayPlan && (row.driver1EmployeeId !== null || row.driver2EmployeeId !== null) ? (
-          <button
-            type="button"
-            className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-            aria-label={t('fleet.fixedRoster.clearCrew')}
-            title={t('fleet.fixedRoster.clearCrew')}
-            onClick={() =>
-              setDraft((c) =>
-                CREW_SLOTS.reduce((rows, slot) => clearSlot(rows, row.vehicleId, slot), c),
-              )
-            }
-          >
-            <TrashIcon className="h-4 w-4" />
-          </button>
+        mayPlan ? (
+          <span className="flex items-center justify-end gap-1">
+            {/* Edit is offered on EVERY row, crewed or not: a car with no crew is exactly the
+                one that needs a work type or a note set on it. */}
+            <button
+              type="button"
+              className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+              aria-label={t('common.edit')}
+              title={t('common.edit')}
+              data-edit-row={row.vehicleId}
+              onClick={() => setEditing(row.vehicleId)}
+            >
+              <EditIcon className="h-4 w-4" />
+            </button>
+            {row.driver1EmployeeId !== null || row.driver2EmployeeId !== null ? (
+              <button
+                type="button"
+                className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                aria-label={t('fleet.fixedRoster.clearCrew')}
+                title={t('fleet.fixedRoster.clearCrew')}
+                onClick={() =>
+                  setDraft((c) =>
+                    CREW_SLOTS.reduce((rows, slot) => clearSlot(rows, row.vehicleId, slot), c),
+                  )
+                }
+              >
+                <TrashIcon className="h-4 w-4" />
+              </button>
+            ) : null}
+          </span>
         ) : (
           dash
         ),
     },
   ];
+
+  const editingRow = draft.find((row) => row.vehicleId === editing) ?? null;
 
   return (
     <PageContainer>
@@ -433,6 +655,19 @@ export const FixedRosterPage = (): JSX.Element => {
           </Card>
         </div>
       </div>
+
+      {editingRow !== null && (
+        <EditCrewDialog
+          row={editingRow}
+          pool={pool}
+          workTypes={workTypes}
+          onClose={() => setEditing(null)}
+          onSave={(edit) => {
+            setDraft((rows) => applyEdit(rows, editingRow.vehicleId, edit));
+            setEditing(null);
+          }}
+        />
+      )}
     </PageContainer>
   );
 };

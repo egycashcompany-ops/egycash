@@ -4,22 +4,34 @@
 // (vehicle, date), enforced by a unique index, and every read of it — the roster board, the
 // workshop check-in's crew lookup — is a read of one DAY. A dateless fact stored there would
 // need a sentinel date and would surface in both, which is exactly the mixing the fixed crew
-// must not do. So it lives here, with no date, no mission and no notes: the standing answer to
-// "who is this car's crew", true until somebody changes it.
+// must not do. So it lives here, with no DATE: the standing answer to "who is this car's crew",
+// true until somebody changes it.
+//
+// The work type and the note are dateless in exactly that sense — "this car does spare-part
+// runs, and here is the standing remark about it" — so they belong to the crew rather than to
+// any one day. Both are nullable and neither is part of identity: a car may have a crew and no
+// work type, a work type and no crew, or a note and neither.
 import { Schema, model, type Types } from 'mongoose';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../shared/base/base.model';
 
 export interface FleetFixedCrewDoc extends BaseDocFields {
   vehicleId: Types.ObjectId;
+  /** A `workType` catalog item — the fleet's own vocabulary, pointed AT, never a free string. */
+  workTypeId: Types.ObjectId | null;
   driver1EmployeeId: Types.ObjectId | null;
   driver2EmployeeId: Types.ObjectId | null;
+  notes: string | null;
 }
 
 const fixedCrewSchema = new Schema<FleetFixedCrewDoc>(
   {
     vehicleId: { type: Schema.Types.ObjectId, required: true },
+    // Added after the collection shipped, so both default to null: every row written before
+    // this reads back as "no work type, no note" rather than needing a backfill.
+    workTypeId: { type: Schema.Types.ObjectId, default: null },
     driver1EmployeeId: { type: Schema.Types.ObjectId, default: null },
     driver2EmployeeId: { type: Schema.Types.ObjectId, default: null },
+    notes: { type: String, default: null },
     ...baseFields,
   },
   baseSchemaOptions,

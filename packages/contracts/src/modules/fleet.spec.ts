@@ -227,3 +227,68 @@ describe('SaveFleetFixedRosterSchema — id spelling', () => {
     ).toBe(false);
   });
 });
+
+// ── Fixed crew: the work type and the note ─────────────────────────────────
+//
+// Both were added after the collection shipped, so the shape has to stay valid for a row that
+// has neither — an existing crew must not become unsaveable because two fields appeared.
+
+describe('SaveFleetFixedRosterSchema — work type and notes', () => {
+  const V = '64b1f0abcdefabcdefabcdef';
+  const WT = '64b1f0abcdefabcdefabcd77';
+
+  it('still accepts a row that carries neither', () => {
+    expect(SaveFleetFixedRosterSchema.safeParse({ rows: [{ vehicleId: V }] }).success).toBe(true);
+  });
+
+  it('accepts both, and canonicalizes the work type like every other id', () => {
+    const parsed = SaveFleetFixedRosterSchema.parse({
+      rows: [{ vehicleId: V, workTypeId: WT.toUpperCase(), notes: 'من المخزن' }],
+    });
+    expect(parsed.rows[0]?.workTypeId).toBe(WT);
+    expect(parsed.rows[0]?.notes).toBe('من المخزن');
+  });
+
+  it('refuses a work type that is not an id at all', () => {
+    expect(
+      SaveFleetFixedRosterSchema.safeParse({ rows: [{ vehicleId: V, workTypeId: 'general' }] })
+        .success,
+      'the LABEL is not the reference — ids are',
+    ).toBe(false);
+  });
+
+  it('trims a note, and refuses one that is only whitespace', () => {
+    expect(
+      SaveFleetFixedRosterSchema.parse({ rows: [{ vehicleId: V, notes: '  x  ' }] }).rows[0]?.notes,
+    ).toBe('x');
+    // '' after trimming is nothing, and nothing is spelled `null` — never an empty string, or
+    // "cleared" and "never written" would become two different values in the same column.
+    expect(
+      SaveFleetFixedRosterSchema.safeParse({ rows: [{ vehicleId: V, notes: '   ' }] }).success,
+    ).toBe(false);
+    expect(
+      SaveFleetFixedRosterSchema.safeParse({ rows: [{ vehicleId: V, notes: '' }] }).success,
+    ).toBe(false);
+    expect(
+      SaveFleetFixedRosterSchema.safeParse({ rows: [{ vehicleId: V, notes: null }] }).success,
+    ).toBe(true);
+  });
+
+  it('caps a note at 500 characters', () => {
+    expect(
+      SaveFleetFixedRosterSchema.safeParse({ rows: [{ vehicleId: V, notes: 'ن'.repeat(500) }] })
+        .success,
+    ).toBe(true);
+    expect(
+      SaveFleetFixedRosterSchema.safeParse({ rows: [{ vehicleId: V, notes: 'ن'.repeat(501) }] })
+        .success,
+    ).toBe(false);
+  });
+
+  it('still refuses an unknown field — the row is not an open bag', () => {
+    expect(
+      SaveFleetFixedRosterSchema.safeParse({ rows: [{ vehicleId: V, missionTypeId: WT }] }).success,
+      'the daily board’s field must not be accepted here',
+    ).toBe(false);
+  });
+});

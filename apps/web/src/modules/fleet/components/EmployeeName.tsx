@@ -2,7 +2,7 @@
 // (same query key), so a name fetched here is free on the HR profile and vice versa. The HR
 // directory is its own permission: without `employee.view` the component degrades to the raw
 // id — honest, and the fleet screens stay usable for operators without directory access.
-import { useQuery } from '@tanstack/react-query';
+import { useQueries, useQuery } from '@tanstack/react-query';
 import { type EmployeeDto } from '@ecms/contracts';
 import { useCan } from '../../../platform/rbac/Can';
 import { detailKey } from '../../../shared/lib/query-keys';
@@ -56,4 +56,34 @@ export const EmployeeName = ({ employeeId }: { employeeId: string }): JSX.Elemen
       )}
     </span>
   );
+};
+
+/**
+ * The same records, for a WHOLE list at once — what a search over the pool needs.
+ *
+ * `useEmployeeRecord` is a hook, so a list cannot call it in a loop. `useQueries` can, and it
+ * uses the SAME key, fetcher and staleTime as the single-employee hook — so these are the very
+ * cache entries the driver cards already populate, not a second copy. A pool whose cards are
+ * rendered has already paid for every request this subscribes to; nothing extra goes out.
+ *
+ * Degrades exactly as the single hook does: without `employee.view` nothing is fetched and the
+ * map comes back empty, leaving the caller to search by id alone.
+ */
+export const useEmployeeRecords = (employeeIds: readonly string[]): Map<string, EmployeeDto> => {
+  const can = useCan();
+  const allowed = can('employee.view');
+  const results = useQueries({
+    queries: employeeIds.map((employeeId) => ({
+      queryKey: detailKey('hr', 'employees', employeeId),
+      queryFn: () => getEmployee(employeeId),
+      enabled: allowed && employeeId !== '',
+      staleTime: 5 * 60_000,
+    })),
+  });
+  const found = new Map<string, EmployeeDto>();
+  for (const [i, result] of results.entries()) {
+    const id = employeeIds[i];
+    if (id !== undefined && result.data !== undefined) found.set(id, result.data);
+  }
+  return found;
 };

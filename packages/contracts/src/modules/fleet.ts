@@ -691,6 +691,25 @@ export const ListFleetMaintenanceQuerySchema = PaginationQuerySchema.extend({
 }).strict();
 export type ListFleetMaintenanceQuery = z.infer<typeof ListFleetMaintenanceQuerySchema>;
 
+/**
+ * An id, settled to its CANONICAL spelling at the boundary — shared by both assignment boards.
+ *
+ * An ObjectId is a NUMBER written in hex, and `objectId()` accepts either case. But every key the
+ * services build from a document is `String(doc.field)`, which mongo always renders lowercase, so
+ * the uppercase spelling of a vehicle is the SAME row to the database and a DIFFERENT string to a
+ * `Map` key, a `Set`, or the duplicate checks below.
+ *
+ * That mismatch is not cosmetic. On the daily board it makes the existing-assignment lookup miss
+ * (so an edit takes the insert branch), the FR-5 workshop guard miss (so an in-workshop vehicle
+ * becomes assignable), and the FR-7 occupancy check miss (so one driver can be planned onto two
+ * vehicles for one date). On the fixed board it produced a second crew row for one vehicle.
+ *
+ * Settling the spelling once, here, is what makes every string comparison after it sound. It is
+ * declared above the first schema that uses it because a `const` read before its declaration is a
+ * TDZ error at import time, not a compile-time complaint.
+ */
+const canonicalId = () => objectId().transform((id) => id.toLowerCase());
+
 // ── Daily duty roster (§4.5) ────────────────────────────────────────────────
 
 export interface FleetDutyAssignmentDto {
@@ -730,10 +749,10 @@ export interface FleetRosterDayDto {
 
 export const PlanFleetRosterRowSchema = z
   .object({
-    vehicleId: objectId(),
-    missionTypeId: objectId().nullish(),
-    driver1EmployeeId: objectId().nullish(),
-    driver2EmployeeId: objectId().nullish(),
+    vehicleId: canonicalId(),
+    missionTypeId: canonicalId().nullish(),
+    driver1EmployeeId: canonicalId().nullish(),
+    driver2EmployeeId: canonicalId().nullish(),
     notes: z.string().trim().min(1).max(500).nullish(),
   })
   .strict()
@@ -828,20 +847,6 @@ export interface FleetFixedRosterDto {
    */
   drivers: { employeeId: string; assignedVehicleId: string | null }[];
 }
-
-/**
- * An id, settled to its CANONICAL spelling at the boundary.
- *
- * An ObjectId is a number written in hex, and `objectId()` accepts either case — but every
- * comparison downstream is on `String(doc.field)`, which mongo always renders lowercase. So the
- * uppercase spelling of a vehicle looks like a DIFFERENT vehicle to a `Map` key, a `Set`, or the
- * duplicate checks below, while being the SAME row to the database. That mismatch is how one
- * vehicle ends up with two crew rows: the "does this vehicle already have a crew" lookup misses,
- * the insert branch runs, and the older row becomes invisible while still holding its driver.
- *
- * Settling the spelling once, here, is what makes every string comparison after it sound.
- */
-const canonicalId = () => objectId().transform((id) => id.toLowerCase());
 
 export const SaveFleetFixedCrewRowSchema = z
   .object({

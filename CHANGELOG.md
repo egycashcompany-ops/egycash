@@ -473,6 +473,27 @@ Permissions`. Declared in code — a `PageDef` in the contracts and a `pageId` g
 
 ### Fixed
 
+- **Five gold registers answered 500 to a page of perfectly readable rows.** The owners, the
+  delegates, the key handovers, عمليات الدخول and عمليات الخروج all returned an unhandled error,
+  while every gate was green and the integration suite listed the same endpoints happily against a
+  real database. The mappers dereferenced `doc.createdAt.toISOString()`. `timestamps: true` writes
+  that field on everything this API creates — which is exactly why the DTOs type it as always
+  present, and why nothing caught the assumption: the integration suite builds its rows through the
+  API, so its rows always have it. A row that reached the collection any other way does not, and one
+  such row among twelve good ones took down the whole page.
+
+  Audit timestamps now fall back to the ObjectId's own embedded timestamp, which is not a
+  placeholder standing in for a missing value — it IS when that document was created. Three
+  neighbouring assumptions of the same kind went with it: `namesOf` dropped ids that are not
+  ObjectIds (callers reach it through `String(doc.companyId)`, and `String(null)` is the string
+  `"null"`, which Mongoose answers with a CastError and a 500); the key register's directory lookup
+  filtered `undefined` as well as `null` before stringifying; and a vault whose `layout` key is
+  absent renders as "no layout yet" rather than blanking the board.
+
+  `gold-mapper-robustness.spec.ts` feeds every gold mapper a row with each field removed in turn and
+  demands it still map — no database, no fixtures from the API, so a failure there is a 500 in the
+  browser.
+
 - **The branch switcher said «لا توجد فروع بعد» to a company with three branches.** It asked for
   `/platform/organization/branches`; branches are mounted at `/platform/branches`, and
   `/platform/organization` serves exactly one route. Every load 404'd, and because the menu drew

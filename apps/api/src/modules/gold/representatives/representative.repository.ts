@@ -1,3 +1,4 @@
+import { Types } from 'mongoose';
 import { BaseRepository } from '../../../shared/base/base.repository';
 import { GoldRepresentativeModel, type GoldRepresentativeDoc } from './representative.model';
 
@@ -7,8 +8,9 @@ class GoldRepresentativeRepository extends BaseRepository<GoldRepresentativeDoc>
     super(GoldRepresentativeModel, {});
   }
 
+  /** Ids that are not ObjectIds are dropped — see `namesOf` on the company repository for why. */
   async namesOf(ids: readonly string[]): Promise<Map<string, string>> {
-    const unique = [...new Set(ids)];
+    const unique = [...new Set(ids)].filter((value) => Types.ObjectId.isValid(value));
     if (unique.length === 0) return new Map();
     const docs = await this.model
       .find({ _id: { $in: unique } })

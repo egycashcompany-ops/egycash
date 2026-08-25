@@ -10,7 +10,7 @@ import { authContext } from '../../../platform/auth';
 import { created, noContent, ok, validated } from '../../../platform/web';
 import { directoryProfileService } from '../../../platform/directory';
 import { scopeSelector } from '../../../shared/types';
-import { toGoldKeyHandoverDto } from '../gold.mappers';
+import { isoOrNull, toGoldKeyHandoverDto } from '../gold.mappers';
 import { drawerCells, representativeContacts, resolveGoldLabels } from '../shared/labels';
 import { goldKeyHandoverService } from './key-handover.service';
 import { type GoldKeyHandoverDoc } from './key-handover.model';
@@ -36,7 +36,10 @@ const decorate = async (docs: GoldKeyHandoverDoc[]) => {
       ...new Set(
         docs
           .flatMap((k) => [k.handedOverByUserId, k.returnedByUserId])
-          .filter((v) => v !== null)
+          // `!== null` alone lets `undefined` through, and `String(undefined)` is a nine-letter
+          // string that Mongoose answers with a CastError — a 500 for the whole register because
+          // one row is missing the user who handed the key over.
+          .filter((v) => v !== null && v !== undefined)
           .map(String),
       ),
     ]),
@@ -73,7 +76,10 @@ export const goldKeysOverview = async (req: Request, res: Response): Promise<voi
     byDrawer[String(key.drawerId)] = {
       holder: holders.get(String(key.representativeId)) ?? '—',
       company: companies.get(String(key.companyId)) ?? '—',
-      date: key.handoverDate.toISOString(),
+      // Not `key.handoverDate.toISOString()`: the board is a picture of which drawers are out, and
+      // a row whose date never made it into the collection should show the drawer as handed over
+      // with an unknown date, not blank the whole board with a 500.
+      date: isoOrNull(key.handoverDate) ?? '',
     };
   }
   const payload: GoldKeysOverviewDto = {

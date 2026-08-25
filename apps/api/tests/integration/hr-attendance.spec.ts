@@ -31,6 +31,7 @@ import { settingsService } from '../../src/platform/settings';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { getCache } from '../../src/infrastructure/redis/cache';
 import { addDays, cairoToday, dateOnlyIso, isoWeekday } from '../../src/modules/hr/shared/business-date';
+import { HolidayModel, type HolidayDoc } from '../../src/modules/hr/work-calendar/holiday.model';
 import {
   attendanceSweepService,
   cairoInstant,
@@ -1152,7 +1153,19 @@ describe('AT-7 — absence and missing-checkout sweeps', () => {
    * another setting the same way.
    */
   const DEFAULT_WEEKEND_DAYS = [5, 6];
-  const yesterdayWeekday = (): number => isoWeekday(addDays(cairoToday(), -1));
+
+  /**
+   * The two dates a sweep in this block can possibly read.
+   *
+   * `beforeAll` prepares the calendar for one date and the cases derive another, and between them
+   * the Cairo day can roll over — a suite that starts at 23:59 prepares Monday and asserts on
+   * Tuesday. That is not hypothetical: a run that began at 23:59:39 Cairo prepared Monday, and the
+   * cases six minutes later derived Tuesday 2026-08-25 — المولد النبوي الشريف in the seeded
+   * calendar — and `holiday` beats every status these cases assert. Preparing BOTH candidates
+   * costs nothing and closes the window, because a rollover can only ever move yesterday forward
+   * by one day.
+   */
+  const sweepCandidates = (): Date[] => [addDays(cairoToday(), -1), cairoToday()];
   const settingCtx = (): AuthContext => ({
     // `settingsService.set` stamps `updatedBy`, so this has to be a real ObjectId.
     userId: new Types.ObjectId().toString(),
@@ -1173,14 +1186,24 @@ describe('AT-7 — absence and missing-checkout sweeps', () => {
     });
   };
 
+  /** Seeded public holidays lifted off the candidate dates, put back when the block is done. */
+  let parkedHolidays: HolidayDoc[] = [];
+
   beforeAll(async () => {
-    await setWeekendDays(DEFAULT_WEEKEND_DAYS.filter((day) => day !== yesterdayWeekday()));
+    const candidates = sweepCandidates();
+    const weekdays = new Set(candidates.map(isoWeekday));
+    await setWeekendDays(DEFAULT_WEEKEND_DAYS.filter((day) => !weekdays.has(day)));
+    // The weekend set was already handled here; a public holiday on the same date was not, and it
+    // outranks weekend, dayOff and absent alike in the derivation.
+    parkedHolidays = await HolidayModel.find({ date: { $in: candidates } }).lean<HolidayDoc[]>();
+    await HolidayModel.deleteMany({ date: { $in: candidates } });
   }, 60_000);
 
   // Restored so the earlier case that asserts a Friday derives as `weekend` keeps its calendar,
   // whatever order a future refactor puts these blocks in.
   afterAll(async () => {
     await setWeekendDays(DEFAULT_WEEKEND_DAYS);
+    if (parkedHolidays.length > 0) await HolidayModel.insertMany(parkedHolidays);
   }, 60_000);
 
   /** Notices sent to one employee's login, by template key. */

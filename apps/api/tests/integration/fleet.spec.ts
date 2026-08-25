@@ -26,6 +26,7 @@ import {
 import mongoose, { Types } from 'mongoose';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { migrateFixedCrewIndex } from '../../src/modules/fleet/fleet.migration';
+import { fleetRosterService } from '../../src/modules/fleet/roster/roster.service';
 import { buildApp } from '../../src/app';
 import { moduleManifests } from '../../src/modules';
 import { fleetPermissions } from '../../src/modules/fleet/fleet.module';
@@ -44,7 +45,7 @@ import { userService } from '../../src/platform/users';
 import { settingsService } from '../../src/platform/settings';
 import { getCache } from '../../src/infrastructure/redis/cache';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
-import { type AuthContext } from '../../src/shared/types';
+import { type AuthContext, type ScopeSelector } from '../../src/shared/types';
 
 const PASSWORD = 'Str0ng#Pass!';
 let replSet: MongoMemoryReplSet | null = null;
@@ -2099,6 +2100,205 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
     expect(twice.status).toBe(400);
   });
 
+  // ── id SPELLING: one vehicle, however it is written ──────────────────────
+  //
+  // Every key the service builds from a document is `String(doc.field)`, which mongo renders
+  // lowercase, while the payload's ids arrive as the caller typed them. An uppercase-hex id is
+  // the SAME id to the database and a DIFFERENT string to a Map or a Set — so the existing-row
+  // lookup, the FR-5 workshop guard and the FR-7 occupancy check all answer as though the row
+  // were not there. These run against a real database, at the endpoint, in both spellings.
+
+  it('SPELLING — an UPPERCASE vehicleId edits the existing row, it does not add a second', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const [d1, d2] = [await mkDriver(), await mkDriver()];
+    const date = '2026-11-20';
+    expect((await savePlan(date, [{ vehicleId: v.id, driver1EmployeeId: d1 }])).status).toBe(200);
+
+    // The same car, spelled the other way.
+    const again = await savePlan(date, [{ vehicleId: v.id.toUpperCase(), driver1EmployeeId: d2 }]);
+    expect(again.status, 'an ordinary edit, not a conflict').toBe(200);
+    expect(data<BoardDto>(again).changedCount).toBe(1);
+
+    const board = data<BoardDto>(await getBoard(date));
+    expect(board.rows.filter((r) => r.vehicleId === v.id)).toHaveLength(1);
+    expect(board.rows.find((r) => r.vehicleId === v.id)?.driver1EmployeeId).toBe(d2);
+    // The driver it replaced is free again — the row was edited, not duplicated beside.
+    expect(board.availableDrivers.find((d) => d.employeeId === d1)?.assignedVehicleId).toBeNull();
+  });
+
+  it('SPELLING — FR-5 still refuses an in-workshop vehicle written in UPPERCASE', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const driver = await mkDriver();
+    const date = '2026-11-21';
+    const workshop = await request(app)
+      .post('/api/v1/fleet/catalog-items')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ kind: 'workshop', name: { ar: `ورشة الهجاء`, en: `Spelling shop` } });
+    const workTypes = await request(app)
+      .get('/api/v1/fleet/catalog-items')
+      .query({ kind: 'workType', pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    const checkIn = await request(app)
+      .post('/api/v1/fleet/maintenance')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        vehicleId: v.id,
+        inDate: date,
+        workshopId: data<FleetCatalogItemDto>(workshop).id,
+        workTypeId: data<FleetCatalogItemDto[]>(workTypes).find((i) => i.name.ar === 'صيانة')?.id,
+        odometerAtService: 1000,
+        driverInEmployeeId: await someDriver(),
+      });
+    expect(checkIn.status).toBe(201);
+
+    // The workshop set is built from documents, so it holds the canonical spelling only.
+    const refused = await savePlan(date, [
+      { vehicleId: v.id.toUpperCase(), driver1EmployeeId: driver },
+    ]);
+    expect(refused.status, 'FR-5 must not be bypassed by a spelling').toBe(409);
+    expect(
+      data<BoardDto>(await getBoard(date)).rows.find((r) => r.vehicleId === v.id)
+        ?.driver1EmployeeId,
+    ).toBeNull();
+  });
+
+  it('SPELLING — FR-7 still catches a driver another vehicle holds, written in UPPERCASE', async () => {
+    const [a, b] = [
+      data<FleetVehicleDto>(await createVehicle(adminToken)),
+      data<FleetVehicleDto>(await createVehicle(adminToken)),
+    ];
+    const driver = await mkDriver();
+    const date = '2026-11-22';
+    expect((await savePlan(date, [{ vehicleId: a.id, driver1EmployeeId: driver }])).status).toBe(
+      200,
+    );
+
+    // Only the receiving row, and the driver spelled the other way — the occupancy check reads
+    // the holder's slot as `String(doc.driver1EmployeeId)`, so it must still match.
+    const refused = await savePlan(date, [
+      { vehicleId: b.id, driver1EmployeeId: driver.toUpperCase() },
+    ]);
+    expect(refused.status, 'one driver, one vehicle per date').toBe(409);
+
+    const board = data<BoardDto>(await getBoard(date));
+    expect(board.rows.find((r) => r.vehicleId === a.id)?.driver1EmployeeId).toBe(driver);
+    expect(board.rows.find((r) => r.vehicleId === b.id)?.driver1EmployeeId).toBeNull();
+  });
+
+  it('SPELLING — a MOVE with both sides in UPPERCASE still moves, and releases', async () => {
+    const [a, b] = [
+      data<FleetVehicleDto>(await createVehicle(adminToken)),
+      data<FleetVehicleDto>(await createVehicle(adminToken)),
+    ];
+    const driver = await mkDriver();
+    const date = '2026-11-23';
+    expect((await savePlan(date, [{ vehicleId: a.id, driver1EmployeeId: driver }])).status).toBe(
+      200,
+    );
+
+    const moved = await savePlan(date, [
+      { vehicleId: a.id.toUpperCase(), driver1EmployeeId: null },
+      { vehicleId: b.id.toUpperCase(), driver1EmployeeId: driver.toUpperCase() },
+    ]);
+    expect(moved.status, 'both sides travelled, so the move is legal').toBe(200);
+
+    const board = data<BoardDto>(await getBoard(date));
+    expect(board.rows.find((r) => r.vehicleId === a.id)?.driver1EmployeeId).toBeNull();
+    expect(board.rows.find((r) => r.vehicleId === b.id)?.driver1EmployeeId).toBe(driver);
+    expect(board.availableDrivers.find((d) => d.employeeId === driver)?.assignedVehicleId).toBe(
+      b.id,
+    );
+  });
+
+  it('SPELLING — ordinary lowercase planning is completely unchanged', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const driver = await mkDriver();
+    const date = '2026-11-24';
+    const first = await savePlan(date, [{ vehicleId: v.id, driver1EmployeeId: driver }]);
+    expect(first.status).toBe(200);
+    expect(data<BoardDto>(first).changedCount).toBe(1);
+    // A re-save of the same facts is still a no-op.
+    expect(
+      data<BoardDto>(await savePlan(date, [{ vehicleId: v.id, driver1EmployeeId: driver }]))
+        .changedCount,
+    ).toBe(0);
+    expect(
+      data<BoardDto>(await getBoard(date)).rows.find((r) => r.vehicleId === v.id)
+        ?.driver1EmployeeId,
+    ).toBe(driver);
+  });
+
+  it('SPELLING — the fix writes nothing outside fleet_duty_assignments', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const driver = await mkDriver();
+    const date = '2026-11-25';
+    const counts = async () => ({
+      drivers: await mongoose.connection.collection('fleet_driver_profiles').countDocuments({}),
+      vehicles: await mongoose.connection.collection('fleet_vehicles').countDocuments({}),
+      fixed: await mongoose.connection.collection('fleet_fixed_crews').countDocuments({}),
+      visits: await mongoose.connection.collection('fleet_maintenance_visits').countDocuments({}),
+    });
+    const before = await counts();
+    const driverDocBefore = await mongoose.connection
+      .collection('fleet_driver_profiles')
+      .findOne({ employeeId: new Types.ObjectId(driver) });
+
+    expect(
+      (await savePlan(date, [{ vehicleId: v.id.toUpperCase(), driver1EmployeeId: driver }])).status,
+    ).toBe(200);
+
+    expect(await counts(), 'no other collection gained or lost a document').toEqual(before);
+    expect(
+      await mongoose.connection
+        .collection('fleet_driver_profiles')
+        .findOne({ employeeId: new Types.ObjectId(driver) }),
+      'and the driver profile is byte-identical',
+    ).toEqual(driverDocBefore);
+  });
+
+  it('SPELLING — the SERVICE settles the spelling too, for a caller that skips the schema', async () => {
+    // The schema normalizes at the HTTP boundary, so an endpoint test can never reach the
+    // service with an uppercase id. Another service could. This calls `plan` directly.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const [d1, d2] = [await mkDriver(), await mkDriver()];
+    const date = new Date('2026-11-26T00:00:00.000Z');
+    // The selector the HTTP path hands an admin, spelled out rather than cast: `scopeSelector`
+    // builds this from the request context, and an `organization` grant makes `scopeFilter`
+    // return `{}` — no narrowing — which is the condition this test means to reproduce.
+    //
+    // It is TYPED, not `as unknown as`. A cast here previously let a `{ branchIds: null }` shape
+    // past the compiler; at runtime it had neither `scope` nor `userId`, so the repository fell
+    // through to its `own` branch, built `new Types.ObjectId(undefined)` — a fresh random id —
+    // and the vehicle lookup 404'd. The type is what stops that reaching CI again.
+    const scope: ScopeSelector = {
+      scope: 'organization',
+      userId: adminUserId,
+      branchId: null,
+      departmentId: null,
+      sectionId: null,
+    };
+
+    await fleetRosterService.plan(
+      { date, rows: [{ vehicleId: v.id, driver1EmployeeId: d1 }] },
+      adminUserId,
+      scope,
+    );
+    // Same car, spelled the other way, straight at the service.
+    const again = await fleetRosterService.plan(
+      { date, rows: [{ vehicleId: v.id.toUpperCase(), driver1EmployeeId: d2 }] },
+      adminUserId,
+      scope,
+    );
+    expect(again.changedCount, 'an edit of the existing row').toBe(1);
+
+    const rows = await mongoose.connection
+      .collection('fleet_duty_assignments')
+      .find({ vehicleId: new Types.ObjectId(v.id), isDeleted: false })
+      .toArray();
+    expect(rows, 'ONE row for the vehicle-day, not two').toHaveLength(1);
+    expect(String(rows[0]?.driver1EmployeeId)).toBe(d2);
+  });
+
   it('planning is its own grant — the branch operator can neither view nor plan', async () => {
     expect(
       (
@@ -2133,8 +2333,10 @@ describe('fixed crew (الطقم الثابت) — the standing crew, with no da
       vehicleId: string;
       code: string;
       inMaintenance: boolean;
+      workTypeId: string | null;
       driver1EmployeeId: string | null;
       driver2EmployeeId: string | null;
+      notes: string | null;
     }[];
     drivers: { employeeId: string; assignedVehicleId: string | null }[];
   }
@@ -2153,6 +2355,164 @@ describe('fixed crew (الطقم الثابت) — the standing crew, with no da
     request(app).get('/api/v1/fleet/fixed-roster').set('Authorization', `Bearer ${token}`);
   const rowFor = (board: FixedBoardDto, vehicleId: string) =>
     board.rows.find((r) => r.vehicleId === vehicleId);
+
+  // ── the work type and the note: added after the collection shipped ───────
+  //
+  // Both are nullable, so the first claim is a compatibility one — a crew written before these
+  // existed must still read and save. The rest is that a reference behaves like a reference:
+  // stored by id, validated against the catalog it belongs to, and refused when it is neither.
+
+  it('EDIT — stores work type, both drivers and a note together, and reads them back', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const [d1, d2] = [await mkDriver(), await mkDriver()];
+    const workType = data<FleetCatalogItemDto>(
+      await request(app)
+        .post('/api/v1/fleet/catalog-items')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ kind: 'workType', name: { ar: 'نقل نقدية', en: 'Cash run' } }),
+    );
+
+    const save = await saveCrews([
+      {
+        vehicleId: v.id,
+        workTypeId: workType.id,
+        driver1EmployeeId: d1,
+        driver2EmployeeId: d2,
+        notes: 'يبدأ من المخزن',
+      },
+    ]);
+    expect(save.status).toBe(200);
+    expect(data<FixedBoardDto>(save).changedCount).toBe(1);
+
+    // A fresh request — the four values survived the round trip, not just the response.
+    expect(rowFor(data<FixedBoardDto>(await getCrews()), v.id)).toMatchObject({
+      workTypeId: workType.id,
+      driver1EmployeeId: d1,
+      driver2EmployeeId: d2,
+      notes: 'يبدأ من المخزن',
+    });
+  });
+
+  it('EDIT — a row that carries neither still saves, and reads back as null', async () => {
+    // The backward-compatibility claim: every crew written before these fields existed.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const d = await mkDriver();
+    expect((await saveCrews([{ vehicleId: v.id, driver1EmployeeId: d }])).status).toBe(200);
+    expect(rowFor(data<FixedBoardDto>(await getCrews()), v.id)).toMatchObject({
+      workTypeId: null,
+      notes: null,
+    });
+  });
+
+  it('EDIT — a work type alone is a change; no driver need be involved', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const workType = data<FleetCatalogItemDto>(
+      await request(app)
+        .post('/api/v1/fleet/catalog-items')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ kind: 'workType', name: { ar: 'صيانة دورية', en: 'Routine' } }),
+    );
+    const save = await saveCrews([{ vehicleId: v.id, workTypeId: workType.id }]);
+    expect(save.status).toBe(200);
+    expect(data<FixedBoardDto>(save).changedCount, 'a crewless row that says something').toBe(1);
+    expect(rowFor(data<FixedBoardDto>(await getCrews()), v.id)?.workTypeId).toBe(workType.id);
+  });
+
+  it('EDIT — re-saving the same four values is a no-op, so nothing is rewritten', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const d = await mkDriver();
+    const rows = [{ vehicleId: v.id, driver1EmployeeId: d, notes: 'ثابت' }];
+    expect(data<FixedBoardDto>(await saveCrews(rows)).changedCount).toBe(1);
+    expect(
+      data<FixedBoardDto>(await saveCrews(rows)).changedCount,
+      'change detection compares all four facts',
+    ).toBe(0);
+  });
+
+  it('EDIT — clearing a note stores null, not an empty string', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    expect((await saveCrews([{ vehicleId: v.id, notes: 'مؤقتة' }])).status).toBe(200);
+    expect((await saveCrews([{ vehicleId: v.id, notes: null }])).status).toBe(200);
+    expect(rowFor(data<FixedBoardDto>(await getCrews()), v.id)?.notes).toBeNull();
+    // The empty string is refused outright — "cleared" has one spelling.
+    expect((await saveCrews([{ vehicleId: v.id, notes: '' }])).status).toBe(400);
+  });
+
+  it('EDIT — refuses a work type that is not a workType', async () => {
+    // A `workshop` id is a real catalog item of the WRONG kind: well-formed, live, and still
+    // somebody else's vocabulary. Storing it would render as another module's label.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const workshop = data<FleetCatalogItemDto>(
+      await request(app)
+        .post('/api/v1/fleet/catalog-items')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ kind: 'workshop', name: { ar: 'ورشة الطقم', en: 'Crew shop' } }),
+    );
+    expect((await saveCrews([{ vehicleId: v.id, workTypeId: workshop.id }])).status).toBe(400);
+    expect(
+      (await saveCrews([{ vehicleId: v.id, workTypeId: new Types.ObjectId().toString() }])).status,
+      'and a dangling reference too',
+    ).toBe(400);
+    expect(rowFor(data<FixedBoardDto>(await getCrews()), v.id)?.workTypeId).toBeNull();
+  });
+
+  it('EDIT — the driver rules still hold when the edit comes as one row', async () => {
+    // The dialog saves exactly this shape. It must not be a way around exclusivity.
+    const [a, b] = [
+      data<FleetVehicleDto>(await createVehicle(adminToken)),
+      data<FleetVehicleDto>(await createVehicle(adminToken)),
+    ];
+    const d = await mkDriver();
+    expect((await saveCrews([{ vehicleId: a.id, driver1EmployeeId: d }])).status).toBe(200);
+    // Only the receiving row — the releasing row is missing, so the server refuses.
+    expect(
+      (await saveCrews([{ vehicleId: b.id, driver1EmployeeId: d, notes: 'من التعديل' }])).status,
+      'one driver, one fixed crew',
+    ).toBe(409);
+    expect(rowFor(data<FixedBoardDto>(await getCrews()), a.id)?.driver1EmployeeId).toBe(d);
+    expect(
+      rowFor(data<FixedBoardDto>(await getCrews()), b.id)?.notes,
+      'the refusal wrote nothing',
+    ).toBeNull();
+  });
+
+  it('EDIT — writes nothing outside fleet_fixed_crews', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const d = await mkDriver();
+    const workType = data<FleetCatalogItemDto>(
+      await request(app)
+        .post('/api/v1/fleet/catalog-items')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ kind: 'workType', name: { ar: 'مهمة', en: 'Task' } }),
+    );
+    const counts = async () => ({
+      drivers: await mongoose.connection.collection('fleet_driver_profiles').countDocuments({}),
+      vehicles: await mongoose.connection.collection('fleet_vehicles').countDocuments({}),
+      duty: await mongoose.connection.collection('fleet_duty_assignments').countDocuments({}),
+      visits: await mongoose.connection.collection('fleet_maintenance_visits').countDocuments({}),
+      catalog: await mongoose.connection.collection('fleet_catalog_items').countDocuments({}),
+    });
+    const before = await counts();
+    const vehicleBefore = await mongoose.connection
+      .collection('fleet_vehicles')
+      .findOne({ _id: new Types.ObjectId(v.id) });
+
+    expect(
+      (
+        await saveCrews([
+          { vehicleId: v.id, workTypeId: workType.id, driver1EmployeeId: d, notes: 'ملاحظة' },
+        ])
+      ).status,
+    ).toBe(200);
+
+    expect(await counts(), 'no other collection gained or lost a document').toEqual(before);
+    expect(
+      await mongoose.connection
+        .collection('fleet_vehicles')
+        .findOne({ _id: new Types.ObjectId(v.id) }),
+      'the vehicle row is byte-identical',
+    ).toEqual(vehicleBefore);
+  });
 
   // ── persistence: the whole point of the screen ────────────────────────────
 

@@ -70,6 +70,81 @@ describe('fleet contracts', () => {
     ).toBe(false);
   });
 
+  // ── the daily plan's id SPELLING ────────────────────────────────────────
+  //
+  // An ObjectId is a number written in hex. `objectId()` accepts `[0-9a-fA-F]`, and
+  // `new Types.ObjectId('AB…')` is the very same id as `new Types.ObjectId('ab…')` — but the two
+  // duplicate checks above compare RAW STRINGS, and every key the service builds from a document
+  // is `String(doc.field)`, which mongo always renders lowercase. So one vehicle spelled two ways
+  // is two vehicles to a `Set`, and a payload id spelled in uppercase misses every map built from
+  // the database: the existing-assignment lookup, the FR-5 workshop guard and the FR-7 occupancy
+  // check all answer as though the row were not there.
+
+  describe('PlanFleetRosterSchema — id spelling', () => {
+    const V = '64b1f0abcdefabcdefabcdef';
+    const V2 = '64b1f0abcdefabcdefabcd02';
+    const D = '64b1f0abcdefabcdefabcd01';
+
+    it('accepts either spelling and answers with the canonical one', () => {
+      const parsed = PlanFleetRosterSchema.parse({
+        date: '2026-08-03',
+        rows: [
+          {
+            vehicleId: V.toUpperCase(),
+            driver1EmployeeId: D.toUpperCase(),
+            missionTypeId: V2.toUpperCase(),
+          },
+        ],
+      });
+      expect(parsed.rows[0]?.vehicleId).toBe(V);
+      expect(parsed.rows[0]?.driver1EmployeeId).toBe(D);
+      expect(parsed.rows[0]?.missionTypeId).toBe(V2);
+    });
+
+    it('sees ONE vehicle when a payload spells it two ways', () => {
+      expect(
+        PlanFleetRosterSchema.safeParse({
+          date: '2026-08-03',
+          rows: [{ vehicleId: V }, { vehicleId: V.toUpperCase() }],
+        }).success,
+      ).toBe(false);
+    });
+
+    it('sees ONE driver when two rows spell them differently (FR-7)', () => {
+      expect(
+        PlanFleetRosterSchema.safeParse({
+          date: '2026-08-03',
+          rows: [
+            { vehicleId: V, driver1EmployeeId: D },
+            { vehicleId: V2, driver1EmployeeId: D.toUpperCase() },
+          ],
+        }).success,
+      ).toBe(false);
+    });
+
+    it('sees ONE person when the two slots of a row spell them differently', () => {
+      expect(
+        PlanFleetRosterSchema.safeParse({
+          date: '2026-08-03',
+          rows: [{ vehicleId: V, driver1EmployeeId: D, driver2EmployeeId: D.toUpperCase() }],
+        }).success,
+      ).toBe(false);
+    });
+
+    it('still refuses something that is not an id, and still accepts an ordinary one', () => {
+      expect(
+        PlanFleetRosterSchema.safeParse({ date: '2026-08-03', rows: [{ vehicleId: 'nope' }] })
+          .success,
+      ).toBe(false);
+      const ok = PlanFleetRosterSchema.parse({
+        date: '2026-08-03',
+        rows: [{ vehicleId: V, driver1EmployeeId: D }],
+      });
+      expect(ok.rows[0]?.vehicleId).toBe(V);
+      expect(ok.rows[0]?.driver1EmployeeId).toBe(D);
+    });
+  });
+
   it('leaving active service requires a reason (§4.1)', () => {
     expect(
       ChangeFleetVehicleStatusSchema.safeParse({ status: 'outOfService', version: 1 }).success,
@@ -224,6 +299,71 @@ describe('SaveFleetFixedRosterSchema — id spelling', () => {
     ).toBe(false);
     expect(
       SaveFleetFixedRosterSchema.safeParse({ rows: [{ vehicleId: `${LOWER}zz` }] }).success,
+    ).toBe(false);
+  });
+});
+
+// ── Fixed crew: the work type and the note ─────────────────────────────────
+//
+// Both were added after the collection shipped, so the shape has to stay valid for a row that
+// has neither — an existing crew must not become unsaveable because two fields appeared.
+
+describe('SaveFleetFixedRosterSchema — work type and notes', () => {
+  const V = '64b1f0abcdefabcdefabcdef';
+  const WT = '64b1f0abcdefabcdefabcd77';
+
+  it('still accepts a row that carries neither', () => {
+    expect(SaveFleetFixedRosterSchema.safeParse({ rows: [{ vehicleId: V }] }).success).toBe(true);
+  });
+
+  it('accepts both, and canonicalizes the work type like every other id', () => {
+    const parsed = SaveFleetFixedRosterSchema.parse({
+      rows: [{ vehicleId: V, workTypeId: WT.toUpperCase(), notes: 'من المخزن' }],
+    });
+    expect(parsed.rows[0]?.workTypeId).toBe(WT);
+    expect(parsed.rows[0]?.notes).toBe('من المخزن');
+  });
+
+  it('refuses a work type that is not an id at all', () => {
+    expect(
+      SaveFleetFixedRosterSchema.safeParse({ rows: [{ vehicleId: V, workTypeId: 'general' }] })
+        .success,
+      'the LABEL is not the reference — ids are',
+    ).toBe(false);
+  });
+
+  it('trims a note, and refuses one that is only whitespace', () => {
+    expect(
+      SaveFleetFixedRosterSchema.parse({ rows: [{ vehicleId: V, notes: '  x  ' }] }).rows[0]?.notes,
+    ).toBe('x');
+    // '' after trimming is nothing, and nothing is spelled `null` — never an empty string, or
+    // "cleared" and "never written" would become two different values in the same column.
+    expect(
+      SaveFleetFixedRosterSchema.safeParse({ rows: [{ vehicleId: V, notes: '   ' }] }).success,
+    ).toBe(false);
+    expect(
+      SaveFleetFixedRosterSchema.safeParse({ rows: [{ vehicleId: V, notes: '' }] }).success,
+    ).toBe(false);
+    expect(
+      SaveFleetFixedRosterSchema.safeParse({ rows: [{ vehicleId: V, notes: null }] }).success,
+    ).toBe(true);
+  });
+
+  it('caps a note at 500 characters', () => {
+    expect(
+      SaveFleetFixedRosterSchema.safeParse({ rows: [{ vehicleId: V, notes: 'ن'.repeat(500) }] })
+        .success,
+    ).toBe(true);
+    expect(
+      SaveFleetFixedRosterSchema.safeParse({ rows: [{ vehicleId: V, notes: 'ن'.repeat(501) }] })
+        .success,
+    ).toBe(false);
+  });
+
+  it('still refuses an unknown field — the row is not an open bag', () => {
+    expect(
+      SaveFleetFixedRosterSchema.safeParse({ rows: [{ vehicleId: V, missionTypeId: WT }] }).success,
+      'the daily board’s field must not be accepted here',
     ).toBe(false);
   });
 });

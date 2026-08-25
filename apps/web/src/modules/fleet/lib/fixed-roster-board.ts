@@ -100,6 +100,41 @@ export const availableDrivers = <T extends { employeeId: string }>(
   return all.filter((driver) => !seated.has(driver.employeeId));
 };
 
+/**
+ * Apply the edit dialog's four values to one vehicle, on the same terms a drag gets.
+ *
+ * The dialog can seat a driver who is currently on ANOTHER car, and that has to mean what
+ * dragging them means: the other car releases them. So this does not write the row directly —
+ * it routes each chosen driver through `assignDriver`, which owns the exclusivity rules, and
+ * only then writes the fields no drag can touch. One rule, two entry points.
+ *
+ * Order matters. Slot 1 is placed first, then slot 2, so seating the same person in both is
+ * impossible by construction rather than by a check: the second placement would displace the
+ * first, which is why the dialog refuses that pair before ever calling this.
+ */
+export const applyEdit = (
+  rows: readonly FleetFixedCrewRowDto[],
+  vehicleId: string,
+  edit: {
+    workTypeId: string | null;
+    driver1EmployeeId: string | null;
+    driver2EmployeeId: string | null;
+    notes: string | null;
+  },
+): FleetFixedCrewRowDto[] => {
+  let next: FleetFixedCrewRowDto[] = [...rows];
+  for (const slot of CREW_SLOTS) {
+    const chosen = edit[slot];
+    next =
+      chosen === null
+        ? clearSlot(next, vehicleId, slot)
+        : assignDriver(next, vehicleId, slot, chosen);
+  }
+  return next.map((row) =>
+    row.vehicleId === vehicleId ? { ...row, workTypeId: edit.workTypeId, notes: edit.notes } : row,
+  );
+};
+
 /** Empty one slot. The other slot, and every other row, is left exactly as it was. */
 export const clearSlot = (
   rows: readonly FleetFixedCrewRowDto[],
@@ -116,27 +151,41 @@ export const clearSlot = (
  * unchanged row is a no-op server-side, and sending the whole fleet to move one person would
  * make every save look like a rewrite in the audit trail.
  */
+export interface FixedCrewPayloadRow {
+  vehicleId: string;
+  workTypeId: string | null;
+  driver1EmployeeId: string | null;
+  driver2EmployeeId: string | null;
+  notes: string | null;
+}
+
+/** The four editable facts of a row — what "changed" is measured over, and what is sent. */
+const editable = (row: FleetFixedCrewRowDto): Omit<FixedCrewPayloadRow, 'vehicleId'> => ({
+  workTypeId: row.workTypeId,
+  driver1EmployeeId: row.driver1EmployeeId,
+  driver2EmployeeId: row.driver2EmployeeId,
+  notes: row.notes,
+});
+
+/** Does this row say anything at all? A row holding nothing was never worth creating. */
+const holdsSomething = (row: FleetFixedCrewRowDto): boolean =>
+  Object.values(editable(row)).some((v) => v !== null);
+
 export const changedRows = (
   saved: readonly FleetFixedCrewRowDto[],
   draft: readonly FleetFixedCrewRowDto[],
-): { vehicleId: string; driver1EmployeeId: string | null; driver2EmployeeId: string | null }[] => {
+): FixedCrewPayloadRow[] => {
   const before = new Map(saved.map((row) => [row.vehicleId, row]));
   return draft
     .filter((row) => {
       const was = before.get(row.vehicleId);
-      // A row the saved board never had counts as changed only if it actually holds somebody.
-      if (was === undefined)
-        return row.driver1EmployeeId !== null || row.driver2EmployeeId !== null;
-      return (
-        was.driver1EmployeeId !== row.driver1EmployeeId ||
-        was.driver2EmployeeId !== row.driver2EmployeeId
-      );
+      // A row the saved board never had counts as changed only if it actually says something.
+      if (was === undefined) return holdsSomething(row);
+      // Compared over all four editable facts, so a work type or a note edited alone still
+      // travels — the modal can change any one of them without touching a driver.
+      return JSON.stringify(editable(was)) !== JSON.stringify(editable(row));
     })
-    .map((row) => ({
-      vehicleId: row.vehicleId,
-      driver1EmployeeId: row.driver1EmployeeId,
-      driver2EmployeeId: row.driver2EmployeeId,
-    }));
+    .map((row) => ({ vehicleId: row.vehicleId, ...editable(row) }));
 };
 
 /** Is there anything to save? The unsaved-changes banner and the save button both ask this. */

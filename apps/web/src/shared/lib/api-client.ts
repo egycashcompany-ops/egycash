@@ -18,6 +18,31 @@ export const setAccessToken = (token: string | null): void => {
 };
 
 /**
+ * Read the CURRENT in-memory token — for the realtime socket's auth callback, which re-reads it
+ * on every (re)connect so a handshake never carries a token older than the last silent refresh.
+ * The token still never touches storage APIs (ADR-006); this hands out the live value only.
+ */
+export const getAccessToken = (): string | null => accessToken;
+
+/**
+ * The api's origin — where the Socket.IO endpoint lives.
+ *
+ * `VITE_API_BASE_URL` is RELATIVE in every real deployment (`/api/v1`, `/ecms/api/v1` — see
+ * docs/09-guides/railway-deployment.md); only the dev default is absolute. `new URL(relative)`
+ * throws, so the document's own origin is the base — which is also the right answer, because a
+ * relative base URL means the api is served same-origin with the app.
+ */
+export const originOf = (baseUrl: string, documentOrigin: string): string => {
+  try {
+    return new URL(baseUrl, documentOrigin).origin;
+  } catch {
+    return documentOrigin;
+  }
+};
+
+export const apiOrigin = (): string => originOf(BASE_URL, window.location.origin);
+
+/**
  * The branch the command bar's switcher has narrowed to, sent on every request.
  *
  * A header rather than a query parameter because it applies to EVERY call the application makes,

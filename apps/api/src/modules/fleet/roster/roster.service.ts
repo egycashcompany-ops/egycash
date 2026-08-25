@@ -49,6 +49,10 @@ const snapshot = (doc: FleetDutyAssignmentDoc) => ({
   notes: doc.notes,
 });
 
+/** An id in the one spelling mongo uses. `null`/`undefined` pass through untouched. */
+const canonical = <T extends string | null | undefined>(id: T): T =>
+  typeof id === 'string' ? (id.toLowerCase() as T) : id;
+
 const rowDrivers = (row: PlanFleetRosterRow): string[] =>
   [row.driver1EmployeeId, row.driver2EmployeeId].filter((d): d is string => d != null);
 
@@ -125,10 +129,27 @@ class FleetRosterService {
    * no event), which is what makes a full-board save and a one-drag save the same operation.
    */
   async plan(
-    input: PlanFleetRoster,
+    original: PlanFleetRoster,
     by: string,
     scope: ScopeSelector,
   ): Promise<{ changedCount: number }> {
+    // Settle the id SPELLING before anything compares one. The schema already does this at the
+    // HTTP boundary; repeating it here is not belt-and-braces, it is the invariant every lookup
+    // below relies on. Each of them keys off `String(doc.field)`, which mongo renders lowercase,
+    // so an id spelled in uppercase would miss the existing-row map (turning an edit into an
+    // insert), miss the FR-5 workshop set (making an in-workshop vehicle assignable), and miss
+    // the FR-7 occupancy set (letting one driver hold two vehicles for a date). A caller that
+    // reaches this method without passing through the schema must not be able to do that.
+    const input: PlanFleetRoster = {
+      ...original,
+      rows: original.rows.map((row) => ({
+        ...row,
+        vehicleId: canonical(row.vehicleId),
+        missionTypeId: canonical(row.missionTypeId),
+        driver1EmployeeId: canonical(row.driver1EmployeeId),
+        driver2EmployeeId: canonical(row.driver2EmployeeId),
+      })),
+    };
     const day = utcDay(input.date);
 
     // Scope rides the vehicle lookup: a branch-scoped planner cannot touch (or probe) another

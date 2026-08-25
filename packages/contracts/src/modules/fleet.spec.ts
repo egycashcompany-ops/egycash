@@ -70,6 +70,81 @@ describe('fleet contracts', () => {
     ).toBe(false);
   });
 
+  // ── the daily plan's id SPELLING ────────────────────────────────────────
+  //
+  // An ObjectId is a number written in hex. `objectId()` accepts `[0-9a-fA-F]`, and
+  // `new Types.ObjectId('AB…')` is the very same id as `new Types.ObjectId('ab…')` — but the two
+  // duplicate checks above compare RAW STRINGS, and every key the service builds from a document
+  // is `String(doc.field)`, which mongo always renders lowercase. So one vehicle spelled two ways
+  // is two vehicles to a `Set`, and a payload id spelled in uppercase misses every map built from
+  // the database: the existing-assignment lookup, the FR-5 workshop guard and the FR-7 occupancy
+  // check all answer as though the row were not there.
+
+  describe('PlanFleetRosterSchema — id spelling', () => {
+    const V = '64b1f0abcdefabcdefabcdef';
+    const V2 = '64b1f0abcdefabcdefabcd02';
+    const D = '64b1f0abcdefabcdefabcd01';
+
+    it('accepts either spelling and answers with the canonical one', () => {
+      const parsed = PlanFleetRosterSchema.parse({
+        date: '2026-08-03',
+        rows: [
+          {
+            vehicleId: V.toUpperCase(),
+            driver1EmployeeId: D.toUpperCase(),
+            missionTypeId: V2.toUpperCase(),
+          },
+        ],
+      });
+      expect(parsed.rows[0]?.vehicleId).toBe(V);
+      expect(parsed.rows[0]?.driver1EmployeeId).toBe(D);
+      expect(parsed.rows[0]?.missionTypeId).toBe(V2);
+    });
+
+    it('sees ONE vehicle when a payload spells it two ways', () => {
+      expect(
+        PlanFleetRosterSchema.safeParse({
+          date: '2026-08-03',
+          rows: [{ vehicleId: V }, { vehicleId: V.toUpperCase() }],
+        }).success,
+      ).toBe(false);
+    });
+
+    it('sees ONE driver when two rows spell them differently (FR-7)', () => {
+      expect(
+        PlanFleetRosterSchema.safeParse({
+          date: '2026-08-03',
+          rows: [
+            { vehicleId: V, driver1EmployeeId: D },
+            { vehicleId: V2, driver1EmployeeId: D.toUpperCase() },
+          ],
+        }).success,
+      ).toBe(false);
+    });
+
+    it('sees ONE person when the two slots of a row spell them differently', () => {
+      expect(
+        PlanFleetRosterSchema.safeParse({
+          date: '2026-08-03',
+          rows: [{ vehicleId: V, driver1EmployeeId: D, driver2EmployeeId: D.toUpperCase() }],
+        }).success,
+      ).toBe(false);
+    });
+
+    it('still refuses something that is not an id, and still accepts an ordinary one', () => {
+      expect(
+        PlanFleetRosterSchema.safeParse({ date: '2026-08-03', rows: [{ vehicleId: 'nope' }] })
+          .success,
+      ).toBe(false);
+      const ok = PlanFleetRosterSchema.parse({
+        date: '2026-08-03',
+        rows: [{ vehicleId: V, driver1EmployeeId: D }],
+      });
+      expect(ok.rows[0]?.vehicleId).toBe(V);
+      expect(ok.rows[0]?.driver1EmployeeId).toBe(D);
+    });
+  });
+
   it('leaving active service requires a reason (§4.1)', () => {
     expect(
       ChangeFleetVehicleStatusSchema.safeParse({ status: 'outOfService', version: 1 }).success,

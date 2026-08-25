@@ -140,6 +140,15 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         icon: 'offer',
         permission: 'jobOffer.view',
       },
+      // P-HR-REQ — the request to hire, beside the offer it may end in. Its own row and its own
+      // key: reading requests and reading offers are different jobs held by different people.
+      {
+        en: 'Job Requisitions',
+        ar: 'طلبات التوظيف',
+        route: '/job-requisitions',
+        icon: 'clipboard',
+        permission: 'jobRequisition.view',
+      },
       {
         en: 'Employees',
         ar: 'الموظفون',

@@ -148,6 +148,9 @@ describe('candidate and employee do not mix', () => {
 
   it('recruitment holds the candidate pipeline, and only that', () => {
     expect(routesOf('Recruitment')).toEqual([
+      // P-HR-REQ — the request that opens the pipeline. Not a candidate screen, and deliberately
+      // not filed with the employee: nobody has been hired against it yet.
+      '/job-requisitions',
       '/applicants',
       '/screening',
       '/interviews',

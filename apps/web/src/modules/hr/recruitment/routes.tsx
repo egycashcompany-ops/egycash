@@ -28,6 +28,8 @@ import { EvaluationBatchDetailPage } from './evaluation-batches/pages/Evaluation
 import { JobOffersListPage } from './job-offers/pages/JobOffersListPage';
 import { JobOfferDetailPage } from './job-offers/pages/JobOfferDetailPage';
 import { JobOfferFormPage } from './job-offers/pages/JobOfferFormPage';
+import { JobRequisitionsListPage } from './job-requisitions/pages/JobRequisitionsListPage';
+import { JobRequisitionDetailPage } from './job-requisitions/pages/JobRequisitionDetailPage';
 import { HiringDocsListPage } from './hiring-documents/pages/HiringDocsListPage';
 import { HiringDocsDetailPage } from './hiring-documents/pages/HiringDocsDetailPage';
 
@@ -165,6 +167,17 @@ export default function RecruitmentRoutes(): JSX.Element {
               </RequirePermission>
             }
           />
+        </Route>
+        <Route
+          path="job-requisitions"
+          element={
+            <RequirePermission permission="jobRequisition.view">
+              <Outlet />
+            </RequirePermission>
+          }
+        >
+          <Route index element={<JobRequisitionsListPage />} />
+          <Route path=":id" element={<JobRequisitionDetailPage />} />
         </Route>
         <Route
           path="hiring-documents"

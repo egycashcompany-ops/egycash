@@ -236,14 +236,15 @@ describe('seed → password login (regression)', () => {
     expect(routes).toContain('/atm/machines');
     expect(routes).toContain('/atm/reports/daily');
     expect(routes).toContain('/atm/data-edit');
-    // The two Communication rows — HR's twenty-third and twenty-fourth. The same act from two
-    // directions: a person saying something once, and the system saying it every time a thing
-    // happens.
+    // The two Communication rows — the same act from two directions: a person saying something
+    // once, and the system saying it every time a thing happens.
     expect(routes).toContain('/announcements');
     expect(routes).toContain('/notification-rules');
-    // 24 (HR) + 12 (Fleet) + 14 (Operations) + 6 (Organization) + 13 (IT) + 12 (Gold Vault)
-    //   + 9 (Administration) + 10 (ATM)
-    expect(routes).toHaveLength(102); // +1: C1 Captain's Day, +1: the standing crew
+    // 25 (HR) + 15 (Operations) + 13 (IT) + 12 (Fleet) + 12 (Gold Vault) + 10 (ATM)
+    //   + 9 (Administration) + 6 (Organization). Counted from `seed-navigation.ts` rather than
+    //   carried forward: the previous breakdown had drifted from the file by two rows and was
+    //   being kept to add up by a pair of trailing `+1`s that named nothing checkable.
+    expect(routes).toHaveLength(102);
   });
 
   it('re-running the seed is idempotent — no duplicate categories/applications/grants', async () => {

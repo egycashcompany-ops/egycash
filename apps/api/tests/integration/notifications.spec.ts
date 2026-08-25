@@ -65,10 +65,7 @@ const resolveMongoUri = async (): Promise<string> => {
   return replSet.getUri(dbName);
 };
 
-const waitFor = async (
-  predicate: () => boolean | Promise<boolean>,
-  ms = 2000,
-): Promise<void> => {
+const waitFor = async (predicate: () => boolean | Promise<boolean>, ms = 2000): Promise<void> => {
   const deadline = Date.now() + ms;
   while (!(await predicate()) && Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -92,7 +89,9 @@ const mkUser = async (email: string, branchId: string | null = null): Promise<st
 };
 
 const login = async (email: string): Promise<string> => {
-  const response = await request(app).post('/api/v1/auth/login').send({ email, password: PASSWORD });
+  const response = await request(app)
+    .post('/api/v1/auth/login')
+    .send({ email, password: PASSWORD });
   expect(response.status).toBe(200);
   return (response.body as { data: { accessToken: string } }).data.accessToken;
 };
@@ -429,8 +428,16 @@ describe('template guards (P10)', () => {
   // G-2 on the MERGED version — the case the schema cannot see. The request names only `body`;
   // `variables` is carried forward from the previous version, so only the server can tell that the
   // result disagrees with itself.
+  //
+  // The SUBJECT is cleared of variables too, and that is the point of the case rather than an
+  // incidental detail. The rule asks whether the message still says the variable ANYWHERE; a
+  // fixture whose subject kept `{{name}}` would be describing a template that still says it, and
+  // would be testing something other than the name of this test.
   it('refuses a one-sided edit that drops a variable carried forward from the previous version', async () => {
-    const created = await createTemplate(adminToken, { key: 'test.g2.merged' });
+    const created = await createTemplate(adminToken, {
+      key: 'test.g2.merged',
+      subject: { ar: 'موضوع ثابت', en: 'Fixed subject' },
+    });
     const id = (created.body.data as { id: string }).id;
     const response = await request(app)
       .patch(`/api/v1/platform/notification-templates/${id}`)
@@ -438,6 +445,48 @@ describe('template guards (P10)', () => {
       .send({ body: { ar: 'بلا متغيرات', en: 'no variables here' } });
     expect(response.status).toBe(400);
     expect(JSON.stringify(response.body)).toContain('name');
+  });
+
+  /**
+   * The narrowing, stated as its own case so the line is visible rather than implied.
+   *
+   * A variable the SUBJECT carries is not one the message loses, so a body-only edit that leaves
+   * it in the subject is accepted. This is what lets `hr.announcement` put the title in the subject
+   * and the body in the body — before it, the only template shape the rule permitted repeated the
+   * title inside the body, and every announcement showed its title twice to every recipient.
+   */
+  it('accepts a body-only edit when the subject still carries the variable', async () => {
+    const created = await createTemplate(adminToken, { key: 'test.g2.subject.carries' });
+    const id = (created.body.data as { id: string }).id;
+    const response = await request(app)
+      .patch(`/api/v1/platform/notification-templates/${id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ body: { ar: 'نص بلا متغيرات', en: 'body with no variables' } });
+    expect(response.status).toBe(200);
+  });
+
+  /**
+   * And the narrowing does NOT reach the failure the rule exists for.
+   *
+   * The activation email is the case named at the top of this block: its subject is a fixed string
+   * carrying no variables at all, so removing `{{setupLink}}` from its body removes it from the
+   * message entirely — still refused, exactly as before. The relaxation only ever excuses a
+   * variable that some other text is still saying.
+   */
+  it('still refuses dropping a link from a body whose subject carries nothing', async () => {
+    const created = await createTemplate(adminToken, {
+      key: 'test.g2.activation.shape',
+      subject: { ar: 'تفعيل الحساب', en: 'Activate your account' },
+      body: { ar: 'الرابط {{setupLink}}', en: 'Link {{setupLink}}' },
+      variables: ['setupLink'],
+    });
+    const id = (created.body.data as { id: string }).id;
+    const response = await request(app)
+      .patch(`/api/v1/platform/notification-templates/${id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ body: { ar: 'افتح حسابك', en: 'Open your account' } });
+    expect(response.status).toBe(400);
+    expect(JSON.stringify(response.body)).toContain('setupLink');
   });
 
   /**
@@ -524,9 +573,9 @@ describe('notify() → in-app inbox (self-scoped, no permission required)', () =
       .get('/api/v1/platform/notifications')
       .set('Authorization', `Bearer ${aliceToken}`);
     expect(list.status).toBe(200);
-    expect((list.body as { data: NotificationDto[] }).data.some((n) => n.id === notificationId)).toBe(
-      true,
-    );
+    expect(
+      (list.body as { data: NotificationDto[] }).data.some((n) => n.id === notificationId),
+    ).toBe(true);
 
     const count = await request(app)
       .get('/api/v1/platform/notifications/unread-count')
@@ -534,7 +583,7 @@ describe('notify() → in-app inbox (self-scoped, no permission required)', () =
     expect((count.body as { data: { count: number } }).data.count).toBeGreaterThanOrEqual(1);
   });
 
-  it('another user cannot see or act on someone else\'s notification (identity ownership)', async () => {
+  it("another user cannot see or act on someone else's notification (identity ownership)", async () => {
     const asAdmin = await request(app)
       .post(`/api/v1/platform/notifications/${notificationId}/read`)
       .set('Authorization', `Bearer ${adminToken}`);
@@ -582,9 +631,9 @@ describe('notify() → in-app inbox (self-scoped, no permission required)', () =
     const list = await request(app)
       .get('/api/v1/platform/notifications')
       .set('Authorization', `Bearer ${aliceToken}`);
-    expect((list.body as { data: NotificationDto[] }).data.some((n) => n.id === notificationId)).toBe(
-      false,
-    );
+    expect(
+      (list.body as { data: NotificationDto[] }).data.some((n) => n.id === notificationId),
+    ).toBe(false);
   });
 
   it('round-trips attachments (file references only)', async () => {
@@ -613,7 +662,9 @@ describe('email delivery via the channel-adapter/queue path', () => {
     const list = await request(app)
       .get('/api/v1/platform/notifications')
       .set('Authorization', `Bearer ${aliceToken}`);
-    const dto = (list.body as { data: NotificationDto[] }).data.find((n) => n.id === notificationId);
+    const dto = (list.body as { data: NotificationDto[] }).data.find(
+      (n) => n.id === notificationId,
+    );
     const email = dto?.channels.find((c) => c.channel === 'email');
     expect(email?.status).toBe('sent');
     expect(email?.sentAt).not.toBeNull();
@@ -625,7 +676,9 @@ describe('email delivery via the channel-adapter/queue path', () => {
     // The API returns newest-first (`{at: -1}`, hardcoded) — sort back to
     // chronological order before reading off the transition sequence.
     const rows = (
-      audit.body as { data: { action: string; at: string; changes: { field: string; new: unknown }[] }[] }
+      audit.body as {
+        data: { action: string; at: string; changes: { field: string; new: unknown }[] }[];
+      }
     ).data
       .filter((r) => r.action === 'statusChange')
       .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime())
@@ -651,7 +704,10 @@ describe('email delivery via the channel-adapter/queue path', () => {
   });
 
   it('retries on failure and records final failure + platform.notification.deliveryFailed', async () => {
-    const failingEmail: ChannelAdapter = { id: 'email', send: () => Promise.resolve({ ok: false, error: 'boom' }) };
+    const failingEmail: ChannelAdapter = {
+      id: 'email',
+      send: () => Promise.resolve({ ok: false, error: 'boom' }),
+    };
     clearChannelAdapters();
     registerChannelAdapter({ id: 'inApp', send: () => Promise.resolve({ ok: true }) });
     registerChannelAdapter(failingEmail);
@@ -682,7 +738,9 @@ describe('email delivery via the channel-adapter/queue path', () => {
       const list = await request(app)
         .get('/api/v1/platform/notifications')
         .set('Authorization', `Bearer ${aliceToken}`);
-      const dto = (list.body as { data: NotificationDto[] }).data.find((n) => n.id === notificationId);
+      const dto = (list.body as { data: NotificationDto[] }).data.find(
+        (n) => n.id === notificationId,
+      );
       const email = dto?.channels.find((c) => c.channel === 'email');
       expect(email?.status).toBe('failed');
       expect(email?.error).toBe('boom');
@@ -854,7 +912,12 @@ describe('preferences, settings defaults, and quiet hours (§3c)', () => {
 
 describe('idempotency, scheduling, and expiration (§2a/§2c/§2d)', () => {
   it('a repeated idempotencyKey never creates a second notification', async () => {
-    await createTemplate(adminToken, { key: 'test.idem', channels: ['inApp'], subject: null, category: 'fleet' });
+    await createTemplate(adminToken, {
+      key: 'test.idem',
+      channels: ['inApp'],
+      subject: null,
+      category: 'fleet',
+    });
     const input: NotifyInput = {
       template: 'test.idem',
       to: { userId: aliceId },
@@ -882,7 +945,12 @@ describe('idempotency, scheduling, and expiration (§2a/§2c/§2d)', () => {
   });
 
   it('sendAt creates nothing before it fires, and the scheduled job creates it when it does', async () => {
-    await createTemplate(adminToken, { key: 'test.scheduled', channels: ['inApp'], subject: null, category: 'vault' });
+    await createTemplate(adminToken, {
+      key: 'test.scheduled',
+      channels: ['inApp'],
+      subject: null,
+      category: 'vault',
+    });
     const returned = await notificationsService.notify(
       {
         template: 'test.scheduled',
@@ -905,7 +973,7 @@ describe('idempotency, scheduling, and expiration (§2a/§2c/§2d)', () => {
 });
 
 describe('branch-scoped fan-out (§1, permission-based recipients)', () => {
-  it('reaches only the targeted branch\'s qualifying users; organization scope is unaffected', async () => {
+  it("reaches only the targeted branch's qualifying users; organization scope is unaffected", async () => {
     const branchA = await request(app)
       .post('/api/v1/platform/branches')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -937,7 +1005,12 @@ describe('branch-scoped fan-out (§1, permission-based recipients)', () => {
       adminId,
     );
 
-    await createTemplate(adminToken, { key: 'test.branch.fanout', channels: ['inApp'], subject: null, category: 'hr' });
+    await createTemplate(adminToken, {
+      key: 'test.branch.fanout',
+      channels: ['inApp'],
+      subject: null,
+      category: 'hr',
+    });
 
     const branchScoped = await notificationsService.notify({
       template: 'test.branch.fanout',
@@ -974,7 +1047,7 @@ describe('Socket.IO live push (§2/§6)', () => {
     socket.close();
   });
 
-  it('an authenticated connect joins exactly the caller\'s own room and receives notification:new', async () => {
+  it("an authenticated connect joins exactly the caller's own room and receives notification:new", async () => {
     const socket: ClientSocket = ioClient(baseUrl, {
       auth: { token: aliceToken },
       transports: ['websocket'],
@@ -992,7 +1065,12 @@ describe('Socket.IO live push (§2/§6)', () => {
         setTimeout(() => reject(new Error('timed out waiting for notification:new')), 5000);
       });
 
-      await createTemplate(adminToken, { key: 'test.socket', channels: ['inApp'], subject: null, category: 'system' });
+      await createTemplate(adminToken, {
+        key: 'test.socket',
+        channels: ['inApp'],
+        subject: null,
+        category: 'system',
+      });
       await notificationsService.notify({
         template: 'test.socket',
         to: { userId: aliceId },

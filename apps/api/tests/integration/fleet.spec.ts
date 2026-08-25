@@ -45,7 +45,7 @@ import { userService } from '../../src/platform/users';
 import { settingsService } from '../../src/platform/settings';
 import { getCache } from '../../src/infrastructure/redis/cache';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
-import { type AuthContext } from '../../src/shared/types';
+import { type AuthContext, type ScopeSelector } from '../../src/shared/types';
 
 const PASSWORD = 'Str0ng#Pass!';
 let replSet: MongoMemoryReplSet | null = null;
@@ -2262,7 +2262,21 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
     const [d1, d2] = [await mkDriver(), await mkDriver()];
     const date = new Date('2026-11-26T00:00:00.000Z');
-    const scope = { branchIds: null } as unknown as Parameters<typeof fleetRosterService.plan>[2];
+    // The selector the HTTP path hands an admin, spelled out rather than cast: `scopeSelector`
+    // builds this from the request context, and an `organization` grant makes `scopeFilter`
+    // return `{}` — no narrowing — which is the condition this test means to reproduce.
+    //
+    // It is TYPED, not `as unknown as`. A cast here previously let a `{ branchIds: null }` shape
+    // past the compiler; at runtime it had neither `scope` nor `userId`, so the repository fell
+    // through to its `own` branch, built `new Types.ObjectId(undefined)` — a fresh random id —
+    // and the vehicle lookup 404'd. The type is what stops that reaching CI again.
+    const scope: ScopeSelector = {
+      scope: 'organization',
+      userId: adminUserId,
+      branchId: null,
+      departmentId: null,
+      sectionId: null,
+    };
 
     await fleetRosterService.plan(
       { date, rows: [{ vehicleId: v.id, driver1EmployeeId: d1 }] },

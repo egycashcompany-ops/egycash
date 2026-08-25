@@ -2,7 +2,14 @@
 import { type NotificationDto, type Paginated } from '@ecms/contracts';
 import { buildQuery, del, get, getPage, post } from '../../shared/lib/api-client';
 
-const BASE = '/notifications';
+/**
+ * The router is mounted at `/platform/notifications` (see `app.ts`), not `/notifications`.
+ *
+ * Getting this wrong is silent: every call 404s, the queries reject, and the bell renders its
+ * empty state — indistinguishable from having no notifications. `notification-api-contract.spec`
+ * checks this against the API source so it cannot drift again.
+ */
+const BASE = '/platform/notifications';
 
 /** Just the badge. Its own endpoint because the bell asks for it far more often than the list. */
 export const unreadNotificationCount = (): Promise<{ count: number }> =>

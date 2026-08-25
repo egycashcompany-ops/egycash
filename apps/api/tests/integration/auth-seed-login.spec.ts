@@ -21,6 +21,20 @@ import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 let replSet: MongoMemoryReplSet | null = null;
 let app: Express;
 
+/**
+ * Every seeded application the super-admin can see — the whole catalog, since they hold the whole
+ * permission registry.
+ *
+ * Named, because this file asserts it TWICE: once that the first-run sidebar is complete, and once
+ * that re-seeding does not duplicate a row. Both count the same thing, and as two hand-written
+ * literals they drifted — a release added a row, the first was updated and the second was not, and
+ * the stale one is what failed. One constant is the only version of this that stays true.
+ *
+ * `src/seed-navigation.spec.ts` pins the same number against the DECLARATIONS and needs no
+ * database, so adding a row fails there first — on the author's machine, naming the number.
+ */
+const SEEDED_APPLICATIONS = 102;
+
 const resolveMongoUri = async (): Promise<string> => {
   const external = process.env.MONGO_TEST_URI;
   const dbName = `ecms-seedlogin-${Date.now()}`;
@@ -244,7 +258,7 @@ describe('seed → password login (regression)', () => {
     //   + 9 (Administration) + 6 (Organization). Counted from `seed-navigation.ts` rather than
     //   carried forward: the previous breakdown had drifted from the file by two rows and was
     //   being kept to add up by a pair of trailing `+1`s that named nothing checkable.
-    expect(routes).toHaveLength(102);
+    expect(routes).toHaveLength(SEEDED_APPLICATIONS);
   });
 
   it('re-running the seed is idempotent — no duplicate categories/applications/grants', async () => {
@@ -269,7 +283,7 @@ describe('seed → password login (regression)', () => {
           n + g.applications.length + g.sections.reduce((m, s) => m + s.applications.length, 0),
         0,
       ),
-    ).toBe(101); // +1: C1 Captain's Day, +1: the standing crew, +12: gold, +10: ATM, +1: announcements
+    ).toBe(SEEDED_APPLICATIONS);
   });
 
   it('the seeded HR user also logs in with email/password', async () => {
@@ -342,7 +356,7 @@ describe('the default sections migration', () => {
 
   /**
    * The WHOLE application catalog, not the first page of it. The catalog outgrew a single page
-   * when the ATM module landed: MAX_PAGE_SIZE is 100 and the seeded catalog is now 101 rows, so a
+   * when the ATM module landed: MAX_PAGE_SIZE is 100 and the seeded catalog is larger than that, so a
    * lone `pageSize=100` read silently drops the OLDEST row under the default `createdAt: -1`
    * sort — and that row is `/applicants`, which is exactly the page these tests move between
    * sections. Page through, so the assertions keep seeing the catalog rather than a prefix of it.

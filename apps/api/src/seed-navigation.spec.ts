@@ -50,10 +50,13 @@ describe('the seeded navigation catalog', () => {
   });
 
   it('declares the row count the seeded-login integration test pins', () => {
-    // `tests/integration/auth-seed-login.spec.ts` asserts the API returns exactly this many
-    // applications for the super-admin, who holds the whole registry and therefore sees every row.
-    // Stated here too so that ADDING a row fails on the author's machine, with the number to
-    // change, instead of in the one suite that needs a database to run.
+    // The same number as `SEEDED_APPLICATIONS` in `tests/integration/auth-seed-login.spec.ts`,
+    // which asserts the API RETURNS this many for the super-admin — they hold the whole registry,
+    // so they see every row. That one proves the seeding and the visibility; this one proves the
+    // declarations, and needs no database.
+    //
+    // So adding a row fails HERE first, on the author's machine, naming the number to change —
+    // rather than eight minutes into CI in the one suite that cannot run without a mongod.
     expect(rows).toHaveLength(102);
   });
 });

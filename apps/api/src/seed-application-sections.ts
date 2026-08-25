@@ -83,7 +83,8 @@ interface SectionDef {
  *
  * Keyed by the CATEGORY's English name — the same key the navigation seed uses.
  */
-const DEFAULTS: Record<string, SectionDef[]> = {
+/** Exported for `seed-navigation.spec.ts`: a section naming an unseeded route groups nothing. */
+export const APPLICATION_SECTION_DEFAULTS: Record<string, SectionDef[]> = {
   HR: [
     {
       // Its own group rather than a corner of Employees: an announcement is not a fact about
@@ -155,7 +156,7 @@ const findCategory = async (englishName: string): Promise<string | null> => {
 };
 
 export const seedApplicationSections = async (adminId: string): Promise<void> => {
-  for (const [categoryName, defs] of Object.entries(DEFAULTS)) {
+  for (const [categoryName, defs] of Object.entries(APPLICATION_SECTION_DEFAULTS)) {
     const categoryId = await findCategory(categoryName);
     if (categoryId === null) continue;
 

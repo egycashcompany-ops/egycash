@@ -67,22 +67,44 @@ const ContentCard = ({ template }: { template: NotificationTemplateDto }): JSX.E
         </dl>
         {template.subject !== null && (
           <div className="grid gap-3 sm:grid-cols-2">
-            <TextBlock label={t('systemAdmin.templates.fields.subjectAr')} dir="rtl" text={template.subject.ar} />
-            <TextBlock label={t('systemAdmin.templates.fields.subjectEn')} dir="ltr" text={template.subject.en} />
+            <TextBlock
+              label={t('systemAdmin.templates.fields.subjectAr')}
+              dir="rtl"
+              text={template.subject.ar}
+            />
+            <TextBlock
+              label={t('systemAdmin.templates.fields.subjectEn')}
+              dir="ltr"
+              text={template.subject.en}
+            />
           </div>
         )}
         <div className="grid gap-3 sm:grid-cols-2">
-          <TextBlock label={t('systemAdmin.templates.fields.bodyAr')} dir="rtl" text={template.body.ar} />
-          <TextBlock label={t('systemAdmin.templates.fields.bodyEn')} dir="ltr" text={template.body.en} />
+          <TextBlock
+            label={t('systemAdmin.templates.fields.bodyAr')}
+            dir="rtl"
+            text={template.body.ar}
+          />
+          <TextBlock
+            label={t('systemAdmin.templates.fields.bodyEn')}
+            dir="ltr"
+            text={template.body.en}
+          />
         </div>
         <div>
           <p className="text-xs text-slate-500">{t('systemAdmin.templates.fields.variables')}</p>
           <p className="mt-1 flex flex-wrap gap-1">
             {template.variables.length === 0 ? (
-              <span className="text-xs text-slate-400">{t('systemAdmin.templates.noVariables')}</span>
+              <span className="text-xs text-slate-400">
+                {t('systemAdmin.templates.noVariables')}
+              </span>
             ) : (
               template.variables.map((name) => (
-                <code key={name} dir="ltr" className="rounded bg-slate-100 px-1.5 py-0.5 text-xs dark:bg-slate-800">
+                <code
+                  key={name}
+                  dir="ltr"
+                  className="rounded bg-slate-100 px-1.5 py-0.5 text-xs dark:bg-slate-800"
+                >
                   {`{{${name}}}`}
                 </code>
               ))
@@ -95,7 +117,15 @@ const ContentCard = ({ template }: { template: NotificationTemplateDto }): JSX.E
 };
 
 /** A message body is prose in a known direction — never the page's. */
-const TextBlock = ({ label, dir, text }: { label: string; dir: 'rtl' | 'ltr'; text: string }): JSX.Element => (
+const TextBlock = ({
+  label,
+  dir,
+  text,
+}: {
+  label: string;
+  dir: 'rtl' | 'ltr';
+  text: string;
+}): JSX.Element => (
   <div>
     <p className="text-xs text-slate-500">{label}</p>
     <pre
@@ -129,7 +159,9 @@ const VersionsCard = ({ id }: { id: string }): JSX.Element => {
                 <span dir="ltr" className="font-mono text-xs">
                   v{version.version}
                 </span>
-                {version.isLatest && <Badge tone="brand">{t('systemAdmin.templates.latest')}</Badge>}
+                {version.isLatest && (
+                  <Badge tone="brand">{t('systemAdmin.templates.latest')}</Badge>
+                )}
                 <Badge tone={version.status === 'active' ? 'success' : 'neutral'}>
                   {t(`systemAdmin.templates.status.${version.status}`)}
                 </Badge>
@@ -223,12 +255,28 @@ const PreviewCard = ({ template }: { template: NotificationTemplateDto }): JSX.E
           <div className="grid gap-3 sm:grid-cols-2">
             {preview.data.subject !== null && (
               <>
-                <TextBlock label={t('systemAdmin.templates.fields.subjectAr')} dir="rtl" text={preview.data.subject.ar} />
-                <TextBlock label={t('systemAdmin.templates.fields.subjectEn')} dir="ltr" text={preview.data.subject.en} />
+                <TextBlock
+                  label={t('systemAdmin.templates.fields.subjectAr')}
+                  dir="rtl"
+                  text={preview.data.subject.ar}
+                />
+                <TextBlock
+                  label={t('systemAdmin.templates.fields.subjectEn')}
+                  dir="ltr"
+                  text={preview.data.subject.en}
+                />
               </>
             )}
-            <TextBlock label={t('systemAdmin.templates.fields.bodyAr')} dir="rtl" text={preview.data.body.ar} />
-            <TextBlock label={t('systemAdmin.templates.fields.bodyEn')} dir="ltr" text={preview.data.body.en} />
+            <TextBlock
+              label={t('systemAdmin.templates.fields.bodyAr')}
+              dir="rtl"
+              text={preview.data.body.ar}
+            />
+            <TextBlock
+              label={t('systemAdmin.templates.fields.bodyEn')}
+              dir="ltr"
+              text={preview.data.body.en}
+            />
           </div>
         )}
       </CardBody>
@@ -259,7 +307,12 @@ export const TemplateDetailPage = (): JSX.Element => {
     if (query.data !== undefined && !editing) setDraft(draftFrom(query.data));
   }, [query.data, editing]);
 
-  if (query.isLoading) return <PageContainer><LoadingState /></PageContainer>;
+  if (query.isLoading)
+    return (
+      <PageContainer>
+        <LoadingState />
+      </PageContainer>
+    );
   if (query.error !== null || query.data === undefined) {
     return (
       <PageContainer>

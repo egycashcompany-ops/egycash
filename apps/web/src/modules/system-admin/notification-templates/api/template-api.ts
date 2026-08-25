@@ -87,8 +87,7 @@ export const useUpdateTemplate = () => {
 export const useDeactivateTemplate = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
-      api<NotificationTemplateDto>(`${BASE}/${id}`, { method: 'DELETE' }),
+    mutationFn: (id: string) => api<NotificationTemplateDto>(`${BASE}/${id}`, { method: 'DELETE' }),
     onSuccess: () => void qc.invalidateQueries({ queryKey: TEMPLATES_KEY }),
   });
 };

@@ -18,7 +18,9 @@ export {
 export {
   setRequisitionValidator,
   resetRequisitionValidator,
+  getRequisitionValidator,
   type RequisitionReferenceValidator,
+  type RequisitionResolution,
 } from './requisition-ref';
 export {
   setStageMaterializer,

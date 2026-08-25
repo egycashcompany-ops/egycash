@@ -30,7 +30,6 @@ import { type AuthContext } from '../../src/shared/types';
 import { actionEnabled, bulkEnvelope, counter, envelope, mutated } from './helpers/workflow-envelope';
 
 const PASSWORD = 'Str0ng#Pass!';
-const REQUISITION_ID = '64b1f0aaaaaaaaaaaaaaaaaa';
 const JOB_TITLE_ID = '64b1f0cccccccccccccccc01';
 const DEPARTMENT_ID = '64b1f0cccccccccccccccc02';
 const BRANCH_ID = '64b1f0cccccccccccccccc03';
@@ -94,7 +93,6 @@ const registerApplicant = async (): Promise<ApplicantDto> => {
     .post('/api/v1/hr/applicants')
     .set('Authorization', `Bearer ${adminToken}`)
     .send({
-      jobRequisitionId: REQUISITION_ID,
       sourceId,
       intakeChannel: 'internal',
       identity: { fullNameAr: 'أحمد محمد', nationality: 'Egyptian' },

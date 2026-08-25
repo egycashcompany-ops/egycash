@@ -98,7 +98,10 @@ export const APPLICATION_SECTION_DEFAULTS: Record<string, SectionDef[]> = {
       en: 'Recruitment',
       ar: 'التوظيف',
       // Pipeline first, then the two screens that configure it — the order somebody works in.
+      // The requisition opens it: a hire is asked for before anybody applies. Its subject is a
+      // REQUEST rather than a person, which is why it is first here and not a pipeline stage.
       routes: [
+        '/job-requisitions',
         '/applicants',
         '/screening',
         '/interviews',

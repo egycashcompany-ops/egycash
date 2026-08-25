@@ -91,6 +91,9 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   'hr.evaluationBatch': { permission: 'evaluation.view' },
   'hr.evaluationPhase': { permission: 'evaluationPhase.manage' },
   'hr.jobOffer': { permission: 'jobOffer.view' },
+  // P-HR-REQ — knowing a requisition moved is knowing somebody asked to hire, and who approved
+  // it; the room is joined by the same key that opens its screen.
+  'hr.jobRequisition': { permission: 'jobRequisition.view' },
   'hr.hiringDocuments': { permission: 'hiringDocuments.view' },
   'hr.hiringDocumentType': { permission: 'hiringDocumentType.manage' },
 

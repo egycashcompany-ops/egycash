@@ -40,7 +40,6 @@ import { ScreeningModel } from '../../src/modules/hr/recruitment/screening/scree
 import { InterviewModel } from '../../src/modules/hr/recruitment/interviews/interview.model';
 
 const PASSWORD = 'Str0ng#Pass!';
-const REQUISITION_ID = '64b1f0aaaaaaaaaaaaaaaaaa';
 let replSet: MongoMemoryReplSet | null = null;
 let app: Express;
 let adminToken: string;
@@ -100,7 +99,6 @@ const registerApplicant = async (): Promise<ApplicantDto> => {
     .post('/api/v1/hr/applicants')
     .set('Authorization', `Bearer ${adminToken}`)
     .send({
-      jobRequisitionId: REQUISITION_ID,
       sourceId: await sourceId(),
       intakeChannel: 'internal',
       identity: { fullNameAr: 'أحمد محمد', nationality: 'Egyptian' },

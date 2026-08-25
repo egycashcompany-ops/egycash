@@ -15,12 +15,14 @@ import {
   type EmployeeDto,
   type InterviewDto,
   type JobOfferDto,
+  type JobRequisitionDto,
   type ScreeningDto,
 } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { buildApp } from '../../src/app';
 import { moduleManifests } from '../../src/modules';
 import { hrPermissions } from '../../src/modules/hr/hr.module';
+import { jobRequisitionService } from '../../src/modules/hr/recruitment/job-requisitions';
 import { rbacService } from '../../src/platform/rbac';
 import { userService } from '../../src/platform/users';
 import { settingsService } from '../../src/platform/settings';
@@ -30,10 +32,14 @@ import { type AuthContext } from '../../src/shared/types';
 import { mutated } from './helpers/workflow-envelope';
 
 const PASSWORD = 'Str0ng#Pass!';
-const REQUISITION_ID = '64b1f0aaaaaaaaaaaaaaaaaa';
-const JOB_TITLE_ID = '64b1f0cccccccccccccccc01';
-const DEPARTMENT_ID = '64b1f0cccccccccccccccc02';
+// EVERY ORG REFERENT HERE IS REAL, and the requisition most of all. A requisition validates its
+// own placement, and the only one an applicant may name is one that was raised, approved at both
+// steps and is still open (D-REQ-13) — so the reference this suite claims to preserve has to be
+// earned rather than invented. All four are filled in `beforeAll`.
+let JOB_TITLE_ID = '';
+let DEPARTMENT_ID = '';
 let BRANCH_ID = ''; // real branch created in beforeAll (employee code is BranchCode-based)
+let REQUISITION_ID = '';
 const FUTURE_VALID = '2027-03-01T00:00:00.000Z';
 const START_DATE = '2027-04-01T00:00:00.000Z';
 const HIRING_DATE = '2027-03-15T00:00:00.000Z';
@@ -43,6 +49,7 @@ let adminToken: string;
 let aliceToken: string;
 let interviewerId: string; // interview panel + the offers' hiring manager
 let interviewerToken: string;
+let requesterToken: string; // raises the requisition; may not decide it
 let phoneCounter = 40_000_000;
 
 const resolveMongoUri = async (): Promise<string> => {
@@ -88,13 +95,14 @@ const idByKey = async (path: string, key: string): Promise<string> => {
   return found.id;
 };
 
-const registerApplicant = async (): Promise<ApplicantDto> => {
+/** With a requisition, or without one — ADR-016 keeps both legal, and this suite drives both. */
+const registerApplicant = async (jobRequisitionId?: string): Promise<ApplicantDto> => {
   const sourceId = await idByKey('applicant-sources', 'internalHr');
   const res = await request(app)
     .post('/api/v1/hr/applicants')
     .set('Authorization', `Bearer ${adminToken}`)
     .send({
-      jobRequisitionId: REQUISITION_ID,
+      ...(jobRequisitionId === undefined ? {} : { jobRequisitionId }),
       sourceId,
       intakeChannel: 'internal',
       identity: { fullNameAr: 'أحمد محمد', nationality: 'Egyptian' },
@@ -149,8 +157,8 @@ const moveToOffer = async (applicantId: string): Promise<void> => {
   expect(moved.status).toBe(200);
 };
 
-const offerReadyApplicant = async (): Promise<ApplicantDto> => {
-  const applicant = await registerApplicant();
+const offerReadyApplicant = async (jobRequisitionId?: string): Promise<ApplicantDto> => {
+  const applicant = await registerApplicant(jobRequisitionId);
   await acceptScreening(applicant.id);
   await passStage(applicant.id, 'firstInterview');
   await passStage(applicant.id, 'secondInterview');
@@ -199,6 +207,68 @@ const acceptedOffer = async (applicantId: string, termsOver: Record<string, unkn
   return mutated<JobOfferDto>(accepted);
 };
 
+/**
+ * Raise a requisition and walk it all the way to `open` — the only state that accepts an applicant.
+ *
+ * The requester is a SEPARATE user on purpose. Nobody decides their own requisition whatever they
+ * hold (D-REQ-11), so an admin who raised it could not then approve it; the admin here approves
+ * both steps, standing in at step one on the `jobRequisition.approve` key that is the documented
+ * escape for a department whose manager cannot act.
+ */
+const openRequisition = async (): Promise<string> => {
+  const raised = await request(app)
+    .post('/api/v1/hr/job-requisitions')
+    .set('Authorization', `Bearer ${requesterToken}`)
+    .send({
+      jobTitleId: JOB_TITLE_ID,
+      departmentId: DEPARTMENT_ID,
+      branchId: BRANCH_ID,
+      quantity: 1,
+      reason: 'the branch needs one more',
+    });
+  expect(raised.status, JSON.stringify(raised.body)).toBe(201);
+  let dto = (raised.body as { data: JobRequisitionDto }).data;
+
+  const submitted = await request(app)
+    .post(`/api/v1/hr/job-requisitions/${dto.id}/submit`)
+    .set('Authorization', `Bearer ${requesterToken}`)
+    .send({ version: dto.version });
+  expect(submitted.status, JSON.stringify(submitted.body)).toBe(200);
+  dto = (submitted.body as { data: JobRequisitionDto }).data;
+
+  for (const step of ['manager', 'hr'] as const) {
+    const decided = await request(app)
+      .post(`/api/v1/hr/job-requisitions/${dto.id}/decision`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ verdict: 'approve', version: dto.version });
+    expect(decided.status, `${step}: ${JSON.stringify(decided.body)}`).toBe(200);
+    dto = (decided.body as { data: JobRequisitionDto }).data;
+  }
+  expect(dto.status).toBe('open');
+  return dto.id;
+};
+
+/**
+ * The requisition once its listener has caught up.
+ *
+ * `hr.applicant.hired` fans out in-process and is NOT awaited by the request that caused it, so the
+ * fill lands a moment after the response. Polling is what makes this a real assertion instead of a
+ * race — a subscription that never runs still fails the test, it just fails five seconds later.
+ *
+ * The wait is on the STATUS, not on the count: `recordFill` inserts the link row and only then
+ * moves the status, so waiting on the count would race the very write we came to read.
+ */
+const requisitionAfterHire = async (id: string): Promise<{ status: string; filled: number }> => {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const doc = await jobRequisitionService.getById(id);
+    if (doc.status === 'filled') {
+      return { status: doc.status, filled: await jobRequisitionService.filledCount(id) };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(`the hire never reached requisition ${id}`);
+};
+
 const createEmployee = (jobOfferId: string, hiringDate?: string) =>
   request(app)
     .post('/api/v1/hr/employees')
@@ -244,8 +314,34 @@ beforeAll(async () => {
     .set('Authorization', `Bearer ${adminToken}`)
     .send({ code: '001', name: { ar: 'الرئيسي', en: 'HQ' } });
   BRANCH_ID = (branchRes.body as { data: { id: string } }).data.id;
+
+  const departmentRes = await request(app)
+    .post('/api/v1/platform/departments')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ code: 'DEP-EMP', name: { ar: 'التشغيل', en: 'Operations' }, branchId: BRANCH_ID });
+  DEPARTMENT_ID = (departmentRes.body as { data: { id: string } }).data.id;
+  const titleRes = await request(app)
+    .post('/api/v1/platform/job-titles')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ code: 'JT-EMP', name: { ar: 'سائق', en: 'Driver' }, jobGrade: 'G5' });
+  JOB_TITLE_ID = (titleRes.body as { data: { id: string } }).data.id;
+
+  // The requester holds the raising keys and nothing else: the approvals below have to come from
+  // somewhere other than the person who asked, or the two-step gate proves nothing.
+  const requesterRole = await rbacService.createRole(
+    {
+      name: { en: 'Requisition requester', ar: 'مقدم طلب التوظيف' },
+      permissionKeys: ['jobRequisition.view', 'jobRequisition.create'],
+    },
+    adminId,
+  );
+  const requesterId = await mkUser('requester@ecms.local');
+  await rbacService.ensureAssignment(requesterId, String(requesterRole._id), 'organization');
+
   aliceToken = await login('alice@ecms.local');
   interviewerToken = await login('interviewer@ecms.local');
+  requesterToken = await login('requester@ecms.local');
+  REQUISITION_ID = await openRequisition();
 }, 180_000);
 
 afterAll(async () => {
@@ -278,7 +374,9 @@ describe('employees — permissions & accepted-offer gate', () => {
 
 describe('employees — creation from the accepted offer snapshot', () => {
   it('hires from an accepted offer: employee number, references, copied terms, hiring date', async () => {
-    const applicant = await offerReadyApplicant();
+    // THE ONE APPLICANT IN THIS SUITE WHO CAME FROM A REQUISITION. Everyone else is a direct
+    // applicant (ADR-016), which is why this is also where the requisition reference is asserted.
+    const applicant = await offerReadyApplicant(REQUISITION_ID);
     // Accept an offer whose package sets salary 20000 — this is what the snapshot freezes.
     const offer = await acceptedOffer(applicant.id, { salary: { amount: 20000, currency: 'EGP' } });
     expect(offer.acceptedSnapshot?.revisionNumber).toBe(1);
@@ -303,6 +401,13 @@ describe('employees — creation from the accepted offer snapshot', () => {
     expect(emp.jobRequisitionId).toBe(REQUISITION_ID);
     expect(emp.jobOfferId).toBe(offer.id);
     expect(emp.offerCode).toBe(offer.code);
+
+    // …and the requisition heard about it. This is the only place the whole chain runs for real —
+    // requisition opened → applicant registered against it → hired → `hr.applicant.hired` →
+    // one fill row → the requisition's own state (D-REQ-13). It asked for one person and got one.
+    const requisition = await requisitionAfterHire(REQUISITION_ID);
+    expect(requisition.filled).toBe(1);
+    expect(requisition.status).toBe('filled');
 
     // Employment terms copied from the accepted snapshot (not defaults).
     expect(emp.acceptedOfferRevision).toBe(offer.acceptedSnapshot?.revisionNumber);

@@ -22,9 +22,9 @@ describe('the assembled page registry', () => {
     expect(validatePageRegistry(pages, permissions)).toEqual([]);
   });
 
-  it('declares 61 pages over 234 permissions', () => {
-    expect(pages).toHaveLength(61);
-    expect(permissions).toHaveLength(234);
+  it('declares 62 pages over 239 permissions', () => {
+    expect(pages).toHaveLength(62);
+    expect(permissions).toHaveLength(239);
   });
 
   /**
@@ -40,17 +40,21 @@ describe('the assembled page registry', () => {
    *
    * Notification rules add two keys and one page, both assigned: `view` and `manage` are separate
    * powers over the same screen, which is exactly the shape a page is for.
+   *
+   * P-HR-REQ adds five keys and one page, all five assigned: four CRUD verbs and `approve`, which
+   * decides both steps of one lifecycle. The unassigned count stays at 25 — the same test P-ORG-1
+   * passed in the other direction.
    */
-  it('assigns 209 permissions to a page and leaves 25 deliberately unassigned', () => {
+  it('assigns 214 permissions to a page and leaves 25 deliberately unassigned', () => {
     const assigned = permissions.filter((p) => p.pageId !== null);
-    expect(assigned).toHaveLength(209);
+    expect(assigned).toHaveLength(214);
     expect(permissions.length - assigned.length).toBe(25);
   });
 
   it('splits the pages across the four modules as declared', () => {
     const byModule = new Map<string, number>();
     for (const page of pages) byModule.set(page.moduleId, (byModule.get(page.moduleId) ?? 0) + 1);
-    expect(Object.fromEntries(byModule)).toEqual({ platform: 15, hr: 27, fleet: 10, it: 9 });
+    expect(Object.fromEntries(byModule)).toEqual({ platform: 15, hr: 28, fleet: 10, it: 9 });
   });
 
   // Named rather than counted, because "which permissions have no home" is the question a reviewer

@@ -32,7 +32,6 @@ import { type AuthContext } from '../../src/shared/types';
 import { bulkEnvelope, counter, envelope, mutated } from './helpers/workflow-envelope';
 
 const PASSWORD = 'Str0ng#Pass!';
-const REQUISITION_ID = '64b1f0aaaaaaaaaaaaaaaaaa';
 let replSet: MongoMemoryReplSet | null = null;
 let app: Express;
 let adminToken: string;
@@ -135,7 +134,6 @@ const readyApplicant = async (): Promise<ApplicantDto> => {
     .post('/api/v1/hr/applicants')
     .set('Authorization', `Bearer ${adminToken}`)
     .send({
-      jobRequisitionId: REQUISITION_ID,
       sourceId: await sourceId(),
       intakeChannel: 'internal',
       identity: { fullNameAr: 'أحمد محمد', nationality: 'Egyptian' },

@@ -17,10 +17,23 @@ export interface RequisitionRef {
   branchId?: string | null;
 }
 
+/**
+ * What a resolved requisition tells the applicant.
+ *
+ * The whole placement, not just the branch (P-HR-REQ §6): a requisition names the job title, the
+ * department, the branch and optionally the section it wants filled, and an applicant registered
+ * against one should start from that placement instead of having it retyped. PREFILL, NOT FORCE —
+ * RW1 keeps a placement editable until hire, so these are defaults a recruiter may change.
+ *
+ * Every field is nullable because the permissive default (Stage 0 unbuilt) knows none of them.
+ */
 export interface RequisitionResolution {
   ok: boolean;
   /** Branch the requisition belongs to, when the validator can resolve it (else null). */
   branchId: string | null;
+  jobTitleId: string | null;
+  departmentId: string | null;
+  sectionId: string | null;
   error?: string;
 }
 
@@ -40,6 +53,9 @@ export const permissiveRequisitionValidator: RequisitionReferenceValidator = {
     Promise.resolve({
       ok: Types.ObjectId.isValid(ref.jobRequisitionId),
       branchId: ref.branchId ?? null,
+      jobTitleId: null,
+      departmentId: null,
+      sectionId: null,
       ...(Types.ObjectId.isValid(ref.jobRequisitionId)
         ? {}
         : { error: 'malformed jobRequisitionId' }),

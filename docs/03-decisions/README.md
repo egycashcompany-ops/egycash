@@ -37,6 +37,7 @@ decision, write a new ADR that supersedes the old one.
 | [ADR-026](ADR-026-role-administration-guards.md) | Administering roles cannot exceed the administrator | Accepted |
 | [ADR-027](ADR-027-external-identities.md) | People outside the company get ECMS accounts, confined to one surface | Accepted |
 | [ADR-028](ADR-028-active-branch-narrowing.md) | One control in the command bar narrows the whole application to a branch | Accepted |
+| [ADR-030](ADR-030-requisition-names-its-placement.md) | A Job Requisition names the placement it wants filled — there is no vacancy entity | Accepted |
 
 ADR-001…014 were accepted with Milestone 1 approval (2026-07-08). ADR-015 records the
 single-organization correction from [Architecture Review 01](../10-reviews/2026-07-architecture-review-01.md),

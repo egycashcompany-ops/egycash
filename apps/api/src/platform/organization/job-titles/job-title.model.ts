@@ -1,6 +1,6 @@
 // Job Titles are organization-level catalogs (ADR-015) — no hierarchy, no managers. They carry
-// the role *definition* (grade, salary band, hiring requirements); linking a title to a concrete
-// Branch/Department/Section is the job of Job Positions (a later phase), never the title itself.
+// the role *definition* (grade, salary band, hiring requirements); where a job sits belongs to the
+// record that holds it — an employee's department, section and branch — never to the title itself.
 import { Schema, model, type Types } from 'mongoose';
 import { type LocalizedString } from '@ecms/contracts';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../shared/base/base.model';

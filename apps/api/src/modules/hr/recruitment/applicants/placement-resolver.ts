@@ -1,10 +1,11 @@
 // Placement resolution (RW1/RW4). A placement is a set of ids into the platform's organization
 // catalog; every surface that shows one needs the NAMES, and history has to keep rendering even
-// after a position is renamed or deactivated. So the ids are validated once here and the display
+// after a job title is renamed or deactivated. So the ids are validated once here and the display
 // labels are denormalized onto whatever the caller is about to write.
 //
-// A job position carries its own department (and the department its branch), so selecting a seat
-// completes the rest of the placement — the caller never has to keep five ids consistent by hand.
+// Each id stands on its own: the placement carries its department, section and branch directly.
+// A job position used to complete the rest from the seat it named; P-ORG-1 removed the seat, and
+// what it filled in was what the placement already held.
 import { Types } from 'mongoose';
 import { type PlacementDto } from '@ecms/contracts';
 import { ValidationError } from '../../../../shared/errors';
@@ -53,9 +54,9 @@ const invalid = (field: string, message: string): never => {
 };
 
 /**
- * Validate a placement and resolve its display labels. Every id supplied must exist; a job
- * position also COMPLETES the placement — its department (and that department's branch) win over
- * anything the caller sent, because the seat is the authority on where it sits.
+ * Validate a placement and resolve its display labels. Every id supplied must exist, and each is
+ * taken as sent — nothing overrides another. (A job position used to override the department and
+ * branch, on the reasoning that the seat was the authority on where it sits; P-ORG-1 removed it.)
  *
  * An entirely empty placement is legal: intake without a requisition must keep working (ADR-016).
  */

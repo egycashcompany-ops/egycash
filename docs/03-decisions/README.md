@@ -24,7 +24,7 @@ decision, write a new ADR that supersedes the old one.
 | [ADR-013](ADR-013-frontend-state.md) | TanStack Query for server state, Redux Toolkit for session/UI state | Accepted |
 | [ADR-014](ADR-014-ocr-independent-service.md) | OCR as an independent, provider-pluggable service | Accepted |
 | [ADR-015](ADR-015-single-organization-model.md) | Single-organization, multi-branch model (Branch is the primary scope) | Accepted |
-| [ADR-016](ADR-016-optional-position-requisition-linkage.md) | Job Positions & Job Requisitions are OPTIONAL for applicants (Talent Pool) | Accepted |
+| [ADR-016](ADR-016-optional-position-requisition-linkage.md) | Job Positions & Job Requisitions are OPTIONAL for applicants (Talent Pool) | Accepted, amended 2026-08-24 (P-ORG-1 merged Job Positions away; the requisition rule stands) |
 | [ADR-017](ADR-017-platform-identity-and-access-control.md) | Platform Identity & Organizational Access Control (hierarchical scopes, employee-linked logins, branch-based employee code) | Accepted |
 | [ADR-018](ADR-018-automation-engine.md) | A provider-backed Automation Service, alongside (not replacing) the Workflow Engine | Accepted |
 | [ADR-019](ADR-019-reference-pickers-search-not-load-all.md) | Reference pickers search the server; they never load the whole catalog | Accepted |

@@ -27,8 +27,11 @@ const SAMPLE_SIZE = 5;
 
 const toDto = (doc: AnnouncementDoc, senderName: string | null): AnnouncementDto => ({
   id: String(doc._id),
-  title: doc.title,
-  body: doc.body,
+  // Stored as a pair because that is what was DELIVERED — and for announcements sent before the
+  // form went single-language, the two sides really are different text. The record keeps both;
+  // the DTO presents the one it was written in.
+  title: doc.title.ar,
+  body: doc.body.ar,
   audience: doc.audience,
   priority: doc.priority,
   channels: doc.channels,
@@ -93,9 +96,14 @@ class AnnouncementService {
     const { unreachable } = splitReachable(employees);
     const userIds = recipientUserIds(employees);
 
+    // One text, recorded on both sides: it is what every recipient was sent, whichever language
+    // they read in. Writing only `ar` would make an English reader's stored copy empty.
+    const written = { ar: input.title, en: input.title };
+    const writtenBody = { ar: input.body, en: input.body };
+
     const doc = await AnnouncementModel.create({
-      title: input.title,
-      body: input.body,
+      title: written,
+      body: writtenBody,
       audience: input.audience,
       priority: input.priority,
       channels: input.channels ?? [],
@@ -111,8 +119,8 @@ class AnnouncementService {
     await sendLocalisedMessage({
       template: ANNOUNCEMENT_TEMPLATE_KEY,
       userIds,
-      title: input.title,
-      body: input.body,
+      title: written,
+      body: writtenBody,
       entityRef: { moduleId: 'hr', entityType: 'announcement', entityId: String(doc._id) },
     });
 

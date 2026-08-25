@@ -83,23 +83,27 @@ export const AnnouncementAudienceSchema = z.discriminatedUnion('kind', [
 ]);
 export type AnnouncementAudience = z.infer<typeof AnnouncementAudienceSchema>;
 
-const localized = z.object({ ar: z.string().trim().min(1).max(200), en: z.string().trim().min(1).max(200) }).strict();
-const localizedBody = z
-  .object({ ar: z.string().trim().min(1).max(4000), en: z.string().trim().min(1).max(4000) })
-  .strict();
-
 /**
- * What a sender writes.
+ * What a sender writes — ONE text, not a pair.
  *
- * Both languages are required, as everywhere else in ECMS: recipients read in their own, and the
- * delivery picks a side per person. `channels` narrows what the announcement template already
- * allows — a sender can decide this one is in-app only, never that it should reach a channel the
- * template does not carry.
+ * Everything else in ECMS is authored in both languages, and for catalog data that is right: a job
+ * title or a branch name is read by whoever opens the screen, in whatever language they read.
+ *
+ * An announcement is not catalog data. It is one person writing one message to their colleagues,
+ * at the moment they need to send it, and asking them for an English translation of it made the
+ * form twice as long for a company that works in Arabic. It also made the English half optional in
+ * practice and mandatory in the schema, which is how a send gets blocked at 11pm over a sentence
+ * nobody will read.
+ *
+ * The message is delivered to every recipient as written. `send-localised` still exists and still
+ * splits by reading language — a rule's message or a future translated announcement can use it —
+ * but an announcement now hands it the same text for both sides, which is the honest description
+ * of what was actually written.
  */
 export const CreateAnnouncementSchema = z
   .object({
-    title: localized,
-    body: localizedBody,
+    title: z.string().trim().min(1).max(200),
+    body: z.string().trim().min(1).max(4000),
     audience: AnnouncementAudienceSchema,
     priority: z.enum(['low', 'normal', 'high']).default('normal'),
     channels: z.array(NotificationChannelSchema).min(1).optional(),
@@ -136,8 +140,9 @@ export interface AudiencePreviewDto {
 
 export interface AnnouncementDto {
   id: string;
-  title: { ar: string; en: string };
-  body: { ar: string; en: string };
+  /** As written — one text, the same one every recipient was sent. */
+  title: string;
+  body: string;
   audience: AnnouncementAudience;
   priority: string;
   channels: string[];

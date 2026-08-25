@@ -18,7 +18,15 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { localeSlice } from '../../store/localeSlice';
 import { uiSlice } from '../../store/uiSlice';
 import { authSlice } from '../../store/authSlice';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { NotificationBell } from './NotificationBell';
+
+const SOURCE = readFileSync(
+  resolve(dirname(fileURLToPath(import.meta.url)), 'NotificationBell.tsx'),
+  'utf8',
+);
 
 /**
  * Render the bell with the unread count already in the cache.
@@ -97,5 +105,34 @@ describe('the bell itself', () => {
     // `.spec.tsx` exists in this repo chiefly to catch a component asking for a translation key
     // that does not exist — a raw dotted key reaching a user.
     expect(render(0)).toContain('aria-label="الإشعارات"');
+  });
+});
+
+describe('the popover on a phone', () => {
+  // The panel is anchored to the bell, and the bell sits in the MIDDLE of the topbar's icon row,
+  // so a 24rem panel runs off whichever edge it opens toward — it appeared cut in half. There is
+  // no anchor side that fits it; flipping only moves the overflow. Asserted against the source
+  // because this harness has no DOM and cannot open the panel to look at it.
+
+  it('never opens the anchored panel below the sm breakpoint', () => {
+    expect(SOURCE).toContain('hidden');
+    expect(SOURCE).toContain('sm:block');
+  });
+
+  it('sends a narrow viewport to the inbox instead', () => {
+    expect(SOURCE).toContain('(min-width: 640px)');
+    expect(SOURCE).toContain('NOTIFICATIONS_INBOX_PATH');
+  });
+
+  it('stacks above the topbar like the other popovers', () => {
+    // The account menu and branch switcher both carry `z-30`; without it this one renders under
+    // them, which looks like the panel is broken rather than layered.
+    expect(SOURCE).toContain('z-30');
+  });
+
+  it('does not clamp with a viewport width, which was the fix that did not work', () => {
+    // `max-w-[92vw]` still overflows from a mid-row anchor: 92vw measured from a button a third of
+    // the way across the screen ends well past the far edge.
+    expect(SOURCE).not.toContain('92vw');
   });
 });

@@ -36,7 +36,6 @@ import { type AuthContext } from '../../src/shared/types';
 import { mutated } from './helpers/workflow-envelope';
 
 const PASSWORD = 'Str0ng#Pass!';
-const REQUISITION_ID = '64b1f0aaaaaaaaaaaaaaaaaa';
 let JOB_TITLE_ID = ''; // real job title (the engine validates org referents at application time)
 let BRANCH_ID = '';
 let BRANCH2_ID = '';
@@ -107,7 +106,6 @@ const registerApplicant = async (): Promise<ApplicantDto> => {
     .post('/api/v1/hr/applicants')
     .set('Authorization', `Bearer ${adminToken}`)
     .send({
-      jobRequisitionId: REQUISITION_ID,
       sourceId,
       intakeChannel: 'internal',
       identity: { fullNameAr: 'أحمد محمد', nationality: 'Egyptian' },

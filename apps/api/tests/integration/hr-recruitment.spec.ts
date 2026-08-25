@@ -30,7 +30,6 @@ let adminId: string;
 let adminToken: string;
 let aliceToken: string; // no HR permissions
 let categoryId: string;
-const REQUISITION_ID = '64b1f0aaaaaaaaaaaaaaaaaa';
 
 const resolveMongoUri = async (): Promise<string> => {
   const external = process.env.MONGO_TEST_URI;
@@ -77,7 +76,6 @@ const sourceIdByKey = async (key: string): Promise<string> => {
 };
 
 const registerBody = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
-  jobRequisitionId: REQUISITION_ID,
   sourceId: over.sourceId,
   intakeChannel: 'internal',
   identity: { fullNameAr: 'أحمد محمد', nationality: 'Egyptian' },

@@ -31,7 +31,6 @@ import { type AuthContext } from '../../src/shared/types';
 import { actionEnabled, bulkEnvelope, counter, envelope, mutated } from './helpers/workflow-envelope';
 
 const PASSWORD = 'Str0ng#Pass!';
-const REQUISITION_ID = '64b1f0aaaaaaaaaaaaaaaaaa';
 const FUTURE = '2026-09-01T09:00:00.000Z';
 const LATER = '2026-09-08T09:00:00.000Z';
 let replSet: MongoMemoryReplSet | null = null;
@@ -107,7 +106,6 @@ const registerApplicant = async (): Promise<ApplicantDto> => {
     .post('/api/v1/hr/applicants')
     .set('Authorization', `Bearer ${adminToken}`)
     .send({
-      jobRequisitionId: REQUISITION_ID,
       sourceId,
       intakeChannel: 'internal',
       identity: { fullNameAr: 'أحمد محمد', nationality: 'Egyptian' },
@@ -914,7 +912,6 @@ describe('interviews — queue filters (search, interviewer, branch)', () => {
       .post('/api/v1/hr/applicants')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
-        jobRequisitionId: REQUISITION_ID,
         sourceId,
         intakeChannel: 'internal',
         ...(branchId === undefined ? {} : { branchId }),

@@ -63,6 +63,15 @@ const EnvSchema = z.object({
     .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
+  /**
+   * Live entity-change signals over the existing Socket.IO server (ADR-029). Off restores
+   * today's behaviour exactly: no topic rooms are joined and no `entity.changed` is published;
+   * personal notification pushes (`notification:new`) are NOT behind this flag.
+   */
+  REALTIME_ENABLED: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((v) => v === 'true'),
   /** Which provider to construct when enabled. The trigger path to `n8n` lands at A-5. */
   AUTOMATION_PROVIDER: z.enum(['null', 'n8n']).default('null'),
 

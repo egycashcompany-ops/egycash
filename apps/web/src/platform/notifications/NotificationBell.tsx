@@ -13,7 +13,7 @@
 // The list is NOT polled. It is fetched when the popover opens, because that is the only moment
 // anybody is reading it, and refetching a list nobody is looking at is how a quiet app makes a
 // request every thirty seconds for ever.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -23,6 +23,7 @@ import {
   type NotificationDto,
 } from '@ecms/contracts';
 import { useAppSelector } from '../../store';
+import { realtimeStatus } from '../realtime/realtime-status';
 import { useT } from '../localization/useT';
 import { useOnClickOutside } from '../../shared/lib/useOnClickOutside';
 import { BellIcon, InboxIcon } from '../../shared/ui/icons';
@@ -36,6 +37,14 @@ import {
 
 /** How often the badge re-asks. Slow enough to be free, fast enough that nobody waits for it. */
 const BADGE_POLL_MS = 60_000;
+const BADGE_POLL_LIVE_MS = 300_000;
+
+/**
+ * The poll is PRIMARY only while the realtime socket is down; with the socket up, pushes carry
+ * every change and the poll drops to a five-minute safety net (ADR-029). Exported for the spec.
+ */
+export const badgePollInterval = (realtimeConnected: boolean): number =>
+  realtimeConnected ? BADGE_POLL_LIVE_MS : BADGE_POLL_MS;
 /** The popover is a peek, not the inbox — "see all" is one click away. */
 const PREVIEW_SIZE = 8;
 
@@ -49,12 +58,17 @@ export const NotificationBell = (): JSX.Element => {
   const ref = useRef<HTMLDivElement>(null);
   useOnClickOutside(ref, () => setOpen(false), open);
 
+  const realtimeUp = useSyncExternalStore(
+    realtimeStatus.subscribe,
+    realtimeStatus.getSnapshot,
+    realtimeStatus.getServerSnapshot,
+  );
   const badge = useQuery({
     queryKey: ['notifications', 'unread-count'],
     queryFn: unreadNotificationCount,
     // Nothing to count for somebody who is not signed in, and asking would 401 on every tick.
     enabled: signedIn,
-    refetchInterval: BADGE_POLL_MS,
+    refetchInterval: badgePollInterval(realtimeUp),
     refetchOnWindowFocus: true,
   });
 

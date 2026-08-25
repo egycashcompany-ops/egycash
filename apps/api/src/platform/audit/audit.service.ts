@@ -20,6 +20,7 @@ import {
 } from '../../infrastructure/http/request-context';
 import { enqueue, registerJobHandler } from '../../infrastructure/queue/jobs';
 import { captureError } from '../../infrastructure/observability/sentry';
+import { publishActivity, publishAuditedChange } from '../realtime';
 import {
   AuditLogModel,
   ActivityLogModel,
@@ -168,6 +169,17 @@ class AuditService {
       requestId: getRequestId() ?? null,
       at: new Date().toISOString(),
     };
+    // The realtime signal rides the audit chokepoint (ADR-029): every audited mutation, in every
+    // module, announces itself here — no service needs to remember a second call. Best-effort by
+    // contract (the publisher never throws), and BEFORE the queue write on purpose: the signal
+    // carries no data, so a client that refetches slightly before the row lands still reads the
+    // business change itself, which committed before `record()` was called. The wrap is defense
+    // in depth: a publisher bug must cost a signal, never the row — audit is the system's memory.
+    try {
+      publishAuditedChange({ entityRef: entry.entityRef, action: entry.action, at: payload.at });
+    } catch {
+      /* the refetch path still delivers the change */
+    }
     try {
       await enqueue('audit', AUDIT_WRITE_JOB, payload);
     } catch (queueError) {
@@ -188,6 +200,11 @@ class AuditService {
       actorIdentity: identityFromContext(actorId),
       at: new Date().toISOString(),
     };
+    try {
+      publishActivity(entry.entityRef, payload.at);
+    } catch {
+      /* best-effort, as above */
+    }
     try {
       await enqueue('audit', ACTIVITY_WRITE_JOB, payload);
     } catch {

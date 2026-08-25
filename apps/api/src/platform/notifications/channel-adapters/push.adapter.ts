@@ -14,6 +14,7 @@
 // endpoint is gone for good — the browser was uninstalled, the site data cleared, the permission
 // revoked. Keeping those rows means every future send to that person fails a little, forever.
 import webpush, { type WebPushError } from 'web-push';
+import { notificationTargetPath } from '@ecms/contracts';
 import { logger } from '../../../infrastructure/logging/logger';
 import { userService } from '../../users';
 import { type ChannelAdapter } from './channel-adapter';
@@ -48,7 +49,10 @@ export const buildPushPayload = (
   title: rendered.subject?.[locale] ?? rendered.body[locale],
   body: rendered.body[locale],
   notificationId: String(notification._id),
-  url: '/',
+  // Where the notification is ABOUT, not the front door. Resolved by the shared contract the
+  // in-app bell also uses, so tapping this on a lock screen and clicking it inside the app land
+  // on the same screen — two implementations of that question is how they start to differ.
+  url: notificationTargetPath(notification.entityRef, String(notification._id)),
   category: notification.category,
   priority: notification.priority,
 });

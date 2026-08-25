@@ -50,6 +50,7 @@ const PublicApplyPage = lazy(() =>
   })),
 );
 const AccountRoutes = lazy(() => import('../account/routes'));
+const NotificationRoutes = lazy(() => import('../notifications/routes'));
 
 const useDirection = (): void => {
   const { locale, dir } = useAppSelector((state) => state.locale);
@@ -224,6 +225,23 @@ export const App = (): JSX.Element => {
                 }
               >
                 <NotificationRuleRoutes />
+              </Suspense>
+            </RequireAuth>
+          }
+        />
+        {/* The inbox a push lands on. Every account has one; the server scopes it to the caller. */}
+        <Route
+          path="/notifications/*"
+          element={
+            <RequireAuth>
+              <Suspense
+                fallback={
+                  <div className="grid min-h-screen place-items-center">
+                    <LoadingState />
+                  </div>
+                }
+              >
+                <NotificationRoutes />
               </Suspense>
             </RequireAuth>
           }

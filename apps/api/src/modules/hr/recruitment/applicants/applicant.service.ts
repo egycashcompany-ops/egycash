@@ -155,7 +155,22 @@ class ApplicantService {
     // RW1 — placement may be set at intake and stays editable until Offer Acceptance. When both
     // a placement and a bare branchId arrive, `placement.branchId` wins and the scope field
     // follows it; direct intake with neither keeps working (ADR-016).
-    const { placement, label: placementLabel } = await resolvePlacement(input.placement);
+    // PREFILL FROM THE REQUISITION, NOT ENFORCEMENT (P-HR-REQ §6). A requisition names the job it
+    // wants filled, so an applicant registered against one starts from that placement instead of
+    // having it retyped — but anything the caller sent wins, and RW1 keeps every field editable
+    // until hire. When no validator is wired (the permissive default), these are all null and the
+    // merge changes nothing.
+    const placementInput =
+      resolution === null || !resolution.ok
+        ? input.placement
+        : {
+            ...(input.placement ?? {}),
+            jobTitleId: input.placement?.jobTitleId ?? resolution.jobTitleId ?? null,
+            departmentId: input.placement?.departmentId ?? resolution.departmentId ?? null,
+            branchId: input.placement?.branchId ?? resolution.branchId ?? null,
+            sectionId: input.placement?.sectionId ?? resolution.sectionId ?? null,
+          };
+    const { placement, label: placementLabel } = await resolvePlacement(placementInput);
     const branchId =
       placement.branchId !== null
         ? String(placement.branchId)

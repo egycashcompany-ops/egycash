@@ -31,6 +31,7 @@ import { HrLeaveEvents } from '../modules/hr-leave.js';
 import { HrAttendanceEvents } from '../modules/hr-attendance.js';
 import { HrPayrollEvents } from '../modules/hr-payroll.js';
 import { HrEmployeeLoanEvents } from '../modules/hr-employee-loans.js';
+import { HrJobRequisitionEvents } from '../modules/hr-job-requisition.js';
 import { HrContractEvents } from '../modules/hr-contract.js';
 import { HrOfferEvents } from '../modules/hr-job-offer.js';
 import { HrInterviewEvents } from '../modules/hr-interview.js';
@@ -66,6 +67,8 @@ const HR_EVENT_CONSTANTS = [
   // fire, and this list is what proves the two sides agree.
   HrPayrollEvents,
   HrEmployeeLoanEvents,
+  // P-HR-REQ — the six requisition facts, declared here with the entry that catalogues them.
+  HrJobRequisitionEvents,
   HrContractEvents,
 ].flatMap((group) => Object.values(group));
 

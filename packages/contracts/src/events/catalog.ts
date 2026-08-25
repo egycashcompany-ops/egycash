@@ -135,6 +135,14 @@ import {
   EmployeeLoanSubmittedPayloadV1,
 } from '../modules/hr-employee-loans.js';
 import {
+  HrJobRequisitionEvents,
+  type HrJobRequisitionEventName,
+  JobRequisitionDecidedPayloadV1,
+  JobRequisitionEndedPayloadV1,
+  JobRequisitionFilledPayloadV1,
+  JobRequisitionSubmittedPayloadV1,
+} from '../modules/hr-job-requisition.js';
+import {
   HrContractEvents,
   type HrContractEventName,
   ContractApprovalDecidedPayloadV1,
@@ -620,6 +628,10 @@ export const EVENT_ENTITY_NAMES: Readonly<Record<string, LocalizedString>> = {
   evaluation: { en: 'Evaluation', ar: 'تقييم' },
   evaluationBatch: { en: 'Evaluation batch', ar: 'دفعة تقييم' },
   jobOffer: { en: 'Job offer', ar: 'عرض وظيفي' },
+  // P-HR-REQ. The REQUEST is the subject, not a seat it points at (ADR-029): there is no vacancy
+  // entity to name here, and `jobRequisition` is not `jobOffer` — one asks for a hire, the other
+  // makes one to a named person.
+  jobRequisition: { en: 'Job requisition', ar: 'طلب توظيف' },
   employee: { en: 'Employee', ar: 'موظف' },
   employeeFile: { en: 'Employee file', ar: 'ملف موظف' },
   hiringDocuments: { en: 'Hiring documents', ar: 'مستندات التعيين' },
@@ -715,6 +727,9 @@ export const EVENT_ACTION_NAMES: Readonly<Record<string, LocalizedString>> = {
   packageFailed: { en: 'package failed', ar: 'فشل الحزمة' },
   returned: { en: 'returned', ar: 'إرجاع' },
   closed: { en: 'closed', ar: 'إغلاق' },
+  // P-HR-REQ — a requisition reaching the number it asked for. Not `completed`: that word is
+  // already an interview finishing, and a filled requisition is a count reaching a total.
+  filled: { en: 'filled', ar: 'اكتمال' },
   revised: { en: 'revised', ar: 'مراجعة' },
   sent: { en: 'sent', ar: 'إرسال' },
   accepted: { en: 'accepted', ar: 'قبول' },
@@ -1034,6 +1049,7 @@ export type HrCatalogEventName =
   | HrAttendanceEventName
   | HrPayrollEventName
   | HrEmployeeLoanEventName
+  | HrJobRequisitionEventName
   | HrContractEventName;
 
 export const HR_EVENT_PAYLOAD_SCHEMAS: Readonly<Record<HrCatalogEventName, z.ZodTypeAny | null>> = {
@@ -1140,6 +1156,13 @@ export const HR_EVENT_PAYLOAD_SCHEMAS: Readonly<Record<HrCatalogEventName, z.Zod
   [HrEmployeeLoanEvents.Submitted]: EmployeeLoanSubmittedPayloadV1,
   [HrEmployeeLoanEvents.Decided]: EmployeeLoanDecidedPayloadV1,
   [HrEmployeeLoanEvents.Disbursed]: EmployeeLoanDisbursedPayloadV1,
+
+  [HrJobRequisitionEvents.Submitted]: JobRequisitionSubmittedPayloadV1,
+  [HrJobRequisitionEvents.Approved]: JobRequisitionDecidedPayloadV1,
+  [HrJobRequisitionEvents.Rejected]: JobRequisitionDecidedPayloadV1,
+  [HrJobRequisitionEvents.Filled]: JobRequisitionFilledPayloadV1,
+  [HrJobRequisitionEvents.Closed]: JobRequisitionEndedPayloadV1,
+  [HrJobRequisitionEvents.Cancelled]: JobRequisitionEndedPayloadV1,
 
   [HrContractEvents.Generated]: ContractGeneratedPayloadV1,
   [HrContractEvents.ApprovalRequested]: ContractEventPayloadV1,

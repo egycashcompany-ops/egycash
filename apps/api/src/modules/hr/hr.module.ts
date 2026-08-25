@@ -23,6 +23,12 @@ import { buildRecruitmentCountersRouter } from './recruitment/counters';
 import { buildReturnToStageRouter } from './recruitment/return-to-stage';
 import { buildRecruitmentTimelineRouter } from './recruitment/timeline/recruitment-timeline.routes';
 import { buildJobOffersRouter, jobOfferService } from './recruitment/job-offers';
+import {
+  buildJobRequisitionsRouter,
+  jobRequisitionReferenceValidator,
+  recordHireAgainstRequisition,
+} from './recruitment/job-requisitions';
+import { setRequisitionValidator } from './recruitment/applicants';
 import { buildEmployeesRouter, employeeService } from './employee-management/employees';
 import {
   buildEmployeeActionsRouter,
@@ -115,6 +121,12 @@ registerHrIdentitySeams();
 // P-HR-22 / D-JOB-6 C — the platform Job catalog renders shift NAMES without an HR grant.
 registerHrShiftLabelSeam();
 registerHrDirectorySeams();
+// P-HR-REQ §6 — the applicants' requisition seam gets its real answer. Registered here, at module
+// load, exactly as the directory and shift-label seams are: the applicants feature still does not
+// import the requisitions feature, it asks an interface, and this line decides who answers. Until
+// this existed the permissive default accepted any well-formed id; from here a reference must name
+// a requisition that exists and is still open.
+setRequisitionValidator(jobRequisitionReferenceValidator);
 // HR3-A — the Employee Code derives from the branch code and is stored, so a branch-code
 // correction has to reach the employees that derived from it.
 registerHrBranchCodeSeams();
@@ -305,6 +317,32 @@ const jobOfferPermissions = declarePermissions(
     { action: 'withdraw', name: { en: 'Withdraw job offer', ar: 'سحب عرض العمل' } },
   ],
   'hr.job-offers',
+);
+
+/**
+ * Job Requisitions (P-HR-REQ, ADR-029) — the request to hire. FIVE keys, and the two worth stating
+ * are the one that is here and the one that is not.
+ *
+ * `approve` decides BOTH steps, and the service decides which of them a caller may act on: the
+ * manager step authorizes by relationship (the department's effective manager), the HR step by this
+ * key. A holder of it may also act at step one — the deadlock escape for an absent manager — and
+ * never skips step two. The requester is refused at either step, whatever they hold.
+ *
+ * There is NO `close` key (D-REQ-12): ending a live requisition early is the same authority that
+ * opened it, and a sixth key would split one act between two people for no business reason.
+ */
+const jobRequisitionPermissions = declarePermissions(
+  'hr',
+  'jobRequisition',
+  { en: 'job requisitions', ar: 'طلبات التوظيف' },
+  ['view', 'create', 'edit', 'delete'],
+  [
+    {
+      action: 'approve',
+      name: { en: 'Approve job requisitions', ar: 'اعتماد طلبات التوظيف' },
+    },
+  ],
+  'hr.job-requisitions',
 );
 
 // Employee Management — the registry (frozen design docs/12-planning/employee-module-design.md).
@@ -763,6 +801,7 @@ export const hrPermissions: PermissionDef[] = [
   ...medicalCheckPermissions,
   ...evaluationPhasePermissions,
   ...jobOfferPermissions,
+  ...jobRequisitionPermissions,
   ...employeePermissions,
   ...announcementPermissions,
   ...notificationRulePermissions,
@@ -862,6 +901,13 @@ export const hrPages: PageDef[] = [
     name: { en: 'Job offers', ar: 'عروض العمل' },
     route: '/job-offers',
     sortOrder: 90,
+  },
+  {
+    id: 'hr.job-requisitions',
+    moduleId: 'hr',
+    name: { en: 'Job requisitions', ar: 'طلبات التوظيف' },
+    route: '/job-requisitions',
+    sortOrder: 95,
   },
   {
     id: 'hr.employees',
@@ -1005,6 +1051,7 @@ export const hrModule: ModuleManifest = {
     { prefix: '/hr/evaluation-batches', router: buildEvaluationBatchesRouter() },
     { prefix: '/hr/recruitment', router: buildRecruitmentCountersRouter() },
     { prefix: '/hr/job-offers', router: buildJobOffersRouter() },
+    { prefix: '/hr/job-requisitions', router: buildJobRequisitionsRouter() },
     { prefix: '/hr/employees', router: buildCompensationRouter() },
     { prefix: '/hr/employees', router: buildEmployeePayItemsRouter() },
     { prefix: '/hr/employees', router: buildEmployeeCostCentersRouter() },
@@ -1071,6 +1118,8 @@ export const hrModule: ModuleManifest = {
     'hr_recruitment_timeline',
     'hr_recruitment_events',
     'hr_job_offers',
+    'hr_job_requisitions',
+    'hr_job_requisition_fills',
     'hr_employees',
     'hr_employee_actions',
     'hr_announcements',
@@ -1111,6 +1160,17 @@ export const hrModule: ModuleManifest = {
     ...hrEmployeeLoanFileAuthorizers,
   ],
   eventSubscriptions: [
+    {
+      // P-HR-REQ D-REQ-13 — fulfilment. The requisition COUNTS hires; it never causes one, and it
+      // never writes workflow state back (I15). The handler swallows its own failures for the same
+      // reason the rule bridge does: a courtesy attached to an event that already happened must not
+      // become a liability for it.
+      event: 'hr.applicant.hired',
+      handlerId: 'jobRequisitions.recordFill',
+      handler: async (envelope) => {
+        await recordHireAgainstRequisition(envelope.payload);
+      },
+    },
     // Notification rules (stage 3): one subscription per cataloged event, all routed to the same
     // handler, exactly as automation's trigger bridge does it. HR is an ordinary event consumer
     // here — no new bus, no new delivery guarantee, and no change to any publisher. The handler

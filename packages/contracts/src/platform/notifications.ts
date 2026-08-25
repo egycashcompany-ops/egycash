@@ -84,8 +84,14 @@ interface TemplateContent {
  *
  * The first check is per LANGUAGE: a variable present in `ar` but not `en` is the same silent loss
  * for every English reader. The second is over all four texts at once, since any of them can carry
- * a typo. `subject` is not required to carry every variable — a subject legitimately summarises —
- * but anything it does use must be declared.
+ * a typo.
+ *
+ * The first check counts the SUBJECT as well as the body, and that is the point of it. What makes
+ * a declared variable a defect is being carried by NEITHER text — not being absent from one of
+ * them. A variable used only in the subject is not lost; it is the title. Requiring the body to
+ * repeat it forces exactly one shape of template: `body: '{{title}}\n\n{{body}}'`, which renders
+ * the title twice everywhere a notification shows a title and a body — which is what
+ * `hr.announcement` shipped, and what it looked like to every recipient.
  */
 const contentAgreesWithVariables = (
   content: TemplateContent,
@@ -96,12 +102,17 @@ const contentAgreesWithVariables = (
   if (variables === undefined || body === undefined) return { ok: true };
 
   for (const language of ['ar', 'en'] as const) {
-    const used = placeholdersIn(body[language]);
+    // Either text carries it. The failure being guarded is a variable the message never says at
+    // all, and a subject says it just as loudly as a body does.
+    const used = new Set([
+      ...placeholdersIn(body[language]),
+      ...(subject === null || subject === undefined ? [] : placeholdersIn(subject[language])),
+    ]);
     const absent = variables.filter((name) => !used.has(name));
     if (absent.length > 0) {
       return {
         ok: false,
-        message: `body.${language} never uses the declared variable${absent.length > 1 ? 's' : ''} ${absent.map((n) => `"${n}"`).join(', ')} — the message would be sent without it`,
+        message: `neither subject.${language} nor body.${language} uses the declared variable${absent.length > 1 ? 's' : ''} ${absent.map((n) => `"${n}"`).join(', ')} — the message would be sent without it`,
         path: ['body', language],
       };
     }

@@ -1,5 +1,12 @@
 # Recruitment Workflow Refactor — Design
 
+> **Note 2026-08-24 — P-ORG-1.** This design is frozen and shipped as written; it is kept as the
+> record of that build. One thing in it no longer exists: the `jobPositionId` half of the placement
+> (`Placement`, `OfferTerms`, the employee copy). P-ORG-1 merged Job Positions into Job Titles, so a
+> placement now carries `jobTitleId` with its department, section and branch. The `positionChanged`
+> event and the `placementLabel.position` field keep their names and their meaning — the label falls
+> to the job title, which is what it already fell back to.
+
 > Status: **FROZEN** (Revision 2.3, 2026-07-27 — reviewed and frozen by the approver;
 > §20 records the implementation invariants I1–I15 added during the build. I11 supersedes the
 > derived-`waiting` treatment in I10: `waiting` is an explicit persisted status and every stage

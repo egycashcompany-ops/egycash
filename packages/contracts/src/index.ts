@@ -19,6 +19,7 @@ export * from './platform/scheduler.js';
 export * from './platform/files.js';
 export * from './platform/notifications.js';
 export * from './platform/notification-target.js';
+export * from './platform/realtime.js';
 export * from './platform/automation.js';
 export * from './platform/crypto.js';
 export * from './platform/secrets.js';

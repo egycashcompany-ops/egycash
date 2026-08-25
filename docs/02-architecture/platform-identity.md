@@ -73,6 +73,8 @@ account-administration dashboard yet.
 
 ## 5. Future-proofing
 
-The employee's employment carries optional `sectionId` and `jobPositionId` (null until set), so an
-employee can later belong to Branch → Department → Section → Job Position with no schema change.
-This never forces a vacancy link — the Talent Pool stays first-class (ADR-016).
+The employee's employment carries an optional `sectionId` (null until set), so an employee can
+belong to Branch → Department → Section with no schema change. It once carried `jobPositionId`
+beside it; P-ORG-1 (2026-08-24) merged Job Positions into Job Titles and removed the field with the
+entity, so the job an employee holds is `jobTitleId` and where it sits is the department and section
+on the record. This never forces a vacancy link — the Talent Pool stays first-class (ADR-016).

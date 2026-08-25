@@ -18,6 +18,16 @@ export const setAccessToken = (token: string | null): void => {
 };
 
 /**
+ * Read the CURRENT in-memory token — for the realtime socket's auth callback, which re-reads it
+ * on every (re)connect so a handshake never carries a token older than the last silent refresh.
+ * The token still never touches storage APIs (ADR-006); this hands out the live value only.
+ */
+export const getAccessToken = (): string | null => accessToken;
+
+/** The api's origin (no `/api/v1` path) — where the Socket.IO endpoint lives. */
+export const apiOrigin = (): string => new URL(BASE_URL).origin;
+
+/**
  * The branch the command bar's switcher has narrowed to, sent on every request.
  *
  * A header rather than a query parameter because it applies to EVERY call the application makes,

@@ -1,6 +1,6 @@
 // Job Title detail: the full role definition (grade, salary band, description, qualifications,
 // experience) plus edit / delete. A Job Title is an organization-wide catalog entry — it is not tied
-// to any Branch/Department/Section; that linkage is the concern of Job Positions (a later phase).
+// to any Branch/Department/Section; where a job sits is carried by the employee who holds the title.
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { type Locale } from '@ecms/contracts';

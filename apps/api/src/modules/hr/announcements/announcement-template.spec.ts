@@ -12,18 +12,28 @@
 // asked directly, and this asks it.
 import { describe, expect, it } from 'vitest';
 import { CreateNotificationTemplateSchema } from '@ecms/contracts';
+import { ANNOUNCEMENT_TEMPLATE } from './announcement.seed';
 
-/** The exact payload `ensureAnnouncementTemplate` sends, kept beside the assertion it must pass. */
-const TEMPLATE = {
-  key: 'hr.announcement',
-  category: 'hr' as const,
-  priority: 'normal' as const,
-  subject: { ar: '{{title}}', en: '{{title}}' },
-  body: { ar: '{{title}}\n\n{{body}}', en: '{{title}}\n\n{{body}}' },
-  channels: ['inApp', 'email', 'push'] as const,
-  variables: ['title', 'body'],
-  defaultExpiryHours: null,
-};
+/**
+ * The payload the seed ACTUALLY sends — imported, not copied.
+ *
+ * It used to be a copy of these fields sitting here. When the seed changed, the copy did not, and
+ * this suite went on passing while validating a template nobody sends. One definition is the only
+ * version of this that stays true.
+ */
+const TEMPLATE = ANNOUNCEMENT_TEMPLATE;
+
+/**
+ * The subject, asserted present once rather than narrowed at ten call sites.
+ *
+ * `CreateNotificationTemplate` allows a null subject — a template may legitimately have none — but
+ * this one's whole point is that the title lives there. If it ever became null the duplicate would
+ * be back, so that is a failure, not a branch to handle.
+ */
+const subject = TEMPLATE.subject;
+if (subject === null || subject === undefined) {
+  throw new Error('the announcement template must carry a subject — the title lives in it');
+}
 
 describe('the announcement template is one the platform will accept', () => {
   it('passes the schema the seed will be validated by', () => {
@@ -41,14 +51,25 @@ describe('the announcement template is one the platform will accept', () => {
     expect(TEMPLATE.subject).not.toBeNull();
   });
 
-  it('uses every declared variable in BOTH language bodies', () => {
-    // The rule the four-variable version broke, stated directly.
+  it('says every declared variable in each language, in the subject or the body', () => {
+    // The rule the four-variable version broke, stated directly — and it counts BOTH texts. A
+    // variable the subject carries is not one the message loses.
     for (const language of ['ar', 'en'] as const) {
+      const said = `${subject[language]} ${TEMPLATE.body[language]}`;
       for (const variable of TEMPLATE.variables) {
-        expect(TEMPLATE.body[language], `body.${language} uses {{${variable}}}`).toContain(
-          `{{${variable}}}`,
-        );
+        expect(said, `${language} says {{${variable}}}`).toContain(`{{${variable}}}`);
       }
+    }
+  });
+
+  it('says the title ONCE — the duplicate every recipient saw', () => {
+    // A notification renders its title and its body. With `{{title}}` in both, every announcement
+    // showed its title twice, on every screen, to everybody.
+    for (const language of ['ar', 'en'] as const) {
+      expect(TEMPLATE.body[language], `body.${language} repeats the title`).not.toContain(
+        '{{title}}',
+      );
+      expect(subject[language]).toContain('{{title}}');
     }
   });
 
@@ -58,8 +79,8 @@ describe('the announcement template is one the platform will accept', () => {
     const used = new Set([
       ...placeholders(TEMPLATE.body.ar),
       ...placeholders(TEMPLATE.body.en),
-      ...placeholders(TEMPLATE.subject.ar),
-      ...placeholders(TEMPLATE.subject.en),
+      ...placeholders(subject.ar),
+      ...placeholders(subject.en),
     ]);
     for (const name of used) expect(TEMPLATE.variables).toContain(name);
   });

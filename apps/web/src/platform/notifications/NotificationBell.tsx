@@ -13,7 +13,7 @@
 // The list is NOT polled. It is fetched when the popover opens, because that is the only moment
 // anybody is reading it, and refetching a list nobody is looking at is how a quiet app makes a
 // request every thirty seconds for ever.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -23,6 +23,7 @@ import {
   type NotificationDto,
 } from '@ecms/contracts';
 import { useAppSelector } from '../../store';
+import { realtimeStatus } from '../realtime/realtime-status';
 import { useT } from '../localization/useT';
 import { useOnClickOutside } from '../../shared/lib/useOnClickOutside';
 import { BellIcon, InboxIcon } from '../../shared/ui/icons';
@@ -36,6 +37,14 @@ import {
 
 /** How often the badge re-asks. Slow enough to be free, fast enough that nobody waits for it. */
 const BADGE_POLL_MS = 60_000;
+const BADGE_POLL_LIVE_MS = 300_000;
+
+/**
+ * The poll is PRIMARY only while the realtime socket is down; with the socket up, pushes carry
+ * every change and the poll drops to a five-minute safety net (ADR-029). Exported for the spec.
+ */
+export const badgePollInterval = (realtimeConnected: boolean): number =>
+  realtimeConnected ? BADGE_POLL_LIVE_MS : BADGE_POLL_MS;
 /** The popover is a peek, not the inbox — "see all" is one click away. */
 const PREVIEW_SIZE = 8;
 
@@ -49,12 +58,17 @@ export const NotificationBell = (): JSX.Element => {
   const ref = useRef<HTMLDivElement>(null);
   useOnClickOutside(ref, () => setOpen(false), open);
 
+  const realtimeUp = useSyncExternalStore(
+    realtimeStatus.subscribe,
+    realtimeStatus.getSnapshot,
+    realtimeStatus.getServerSnapshot,
+  );
   const badge = useQuery({
     queryKey: ['notifications', 'unread-count'],
     queryFn: unreadNotificationCount,
     // Nothing to count for somebody who is not signed in, and asking would 401 on every tick.
     enabled: signedIn,
-    refetchInterval: BADGE_POLL_MS,
+    refetchInterval: badgePollInterval(realtimeUp),
     refetchOnWindowFocus: true,
   });
 
@@ -83,6 +97,28 @@ export const NotificationBell = (): JSX.Element => {
   const items = list.data?.items ?? [];
 
   /**
+   * On a phone, go to the inbox instead of opening a dropdown.
+   *
+   * The panel is anchored to the bell, and the bell sits in the MIDDLE of the topbar's icon row.
+   * A 24rem panel hung off a mid-row anchor runs off whichever edge it opens toward — there is no
+   * anchor side that fits it, which is why it appeared cut in half on a phone. Widening or
+   * flipping it only moves the overflow to the other edge.
+   *
+   * So on a narrow screen the bell does what the panel was a shortcut TO: it opens the inbox,
+   * full width, with the same list and more of it. Measured against the same `sm` breakpoint the
+   * panel's own layout uses, so the two can never disagree about which one is showing.
+   */
+  const openBellOrInbox = (): void => {
+    const wideEnoughForAPanel =
+      typeof window !== 'undefined' && window.matchMedia('(min-width: 640px)').matches;
+    if (!wideEnoughForAPanel) {
+      navigate(NOTIFICATIONS_INBOX_PATH);
+      return;
+    }
+    setOpen((v) => !v);
+  };
+
+  /**
    * Open what the notification is about.
    *
    * The destination comes from the shared contract the PUSH payload also uses, so clicking here
@@ -98,7 +134,7 @@ export const NotificationBell = (): JSX.Element => {
     <div className="relative" ref={ref}>
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={openBellOrInbox}
         className="relative rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
         aria-label={t('notifications.title')}
         aria-haspopup="dialog"
@@ -115,7 +151,10 @@ export const NotificationBell = (): JSX.Element => {
         <div
           role="dialog"
           aria-label={t('notifications.title')}
-          className="absolute end-0 mt-2 w-96 max-w-[92vw] origin-top animate-menu-in rounded-lg border border-slate-200 bg-white shadow-elevated dark:border-slate-700 dark:bg-slate-800"
+          // `z-30` matches the topbar's other popovers; without it this one renders under them.
+          // `hidden sm:block` is belt-and-braces with `openBellOrInbox`: if a viewport somehow
+          // opens it below the breakpoint, it stays closed rather than hanging off the edge.
+          className="absolute end-0 z-30 mt-2 hidden w-96 origin-top animate-menu-in rounded-lg border border-slate-200 bg-white shadow-elevated sm:block dark:border-slate-700 dark:bg-slate-800"
         >
           <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 dark:border-slate-700">
             <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">

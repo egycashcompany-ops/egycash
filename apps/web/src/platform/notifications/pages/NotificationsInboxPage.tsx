@@ -118,9 +118,11 @@ export const NotificationsInboxPage = (): JSX.Element => {
 
   return (
     <PageContainer>
+      {/* No description line: "everything the system has sent you" is what the page evidently is,
+          and on a phone it cost a row of height above the only thing anybody came here to read.
+          `actions` puts the button on the title's own row for the same reason. */}
       <PageHeader
         title={t('notifications.inbox.title')}
-        description={t('notifications.inbox.subtitle')}
         actions={
           <Button variant="secondary" onClick={() => readAll.mutate()} loading={readAll.isPending}>
             {t('notifications.markAllRead')}

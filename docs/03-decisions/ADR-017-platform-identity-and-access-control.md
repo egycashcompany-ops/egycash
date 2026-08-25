@@ -84,8 +84,9 @@ employee's identity). A **super-admin** may correct it through a dedicated, priv
 - ✅ One reusable access-control model for every module; finer scopes are opt-in per collection.
 - ✅ Employee identity, login, and code are permanent platform infrastructure, scale-ready.
 - ✅ Fully backward compatible: existing `own/branch/organization` grants and email logins keep working.
-- ✅ ADR-016 is untouched — nothing here forces an applicant/employee to belong to a Job Position or
-  Requisition; the Talent Pool remains first-class.
+- ✅ ADR-016 is untouched — nothing here forces an applicant/employee to belong to a vacancy; the
+  Talent Pool remains first-class. *(Written when Job Positions were expected; P-ORG-1 merged them
+  into Job Titles on 2026-08-24, and the Requisition half of ADR-016 stands.)*
 - ⚠️ Creating a login requires an email (kept required) — deliberate, to avoid nullable-email ripple.
 - ⚠️ Employee creation now requires the hiring **branch to exist** (its code prefixes the employee
   code); offers/tests must reference a real branch.

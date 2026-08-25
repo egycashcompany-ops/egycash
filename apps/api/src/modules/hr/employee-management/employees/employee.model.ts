@@ -56,7 +56,6 @@ export interface EmploymentDetails {
   /** Section within the department (ADR-015 hierarchy); null when none was specified. */
   sectionId: Types.ObjectId | null;
   branchId: Types.ObjectId;
-  /** Approved Job Position, when one exists — OPTIONAL forever (ADR-016 Talent Pool). */
   /** Reporting manager — null when none is set. */
   managerId: Types.ObjectId | null;
   employmentType: EmploymentType;

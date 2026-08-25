@@ -1,6 +1,10 @@
 # ADR-019: Reference pickers search the server; they never load the whole catalog
 
 **Status:** Accepted (recommendation — implementation not yet scheduled) · **Date:** 2026-08-03 ·
+**Note 2026-08-24:** the examples below name a job-position picker and
+`ListJobPositionsQuerySchema`; P-ORG-1 merged Job Positions into Job Titles, so those two are gone
+and the dialogs they belonged to now offer job titles only. Everything the decision says holds
+unchanged for every picker that remains — read "position and title pickers" as "title pickers". ·
 **Relates to:** [API Standards §4](../04-standards/api-standards.md) (pagination),
 [ADR-013](ADR-013-frontend-state.md) (TanStack Query for server state),
 [ADR-004](ADR-004-permission-based-authorization.md) (permissions on every read)

@@ -7,12 +7,13 @@ import type { Server as HttpServer } from 'node:http';
 import { type Socket } from 'socket.io';
 import { emitToRoom, initSocketServer } from '../../infrastructure/realtime/socket-server';
 import { logger } from '../../infrastructure/logging/logger';
+import { type AuthContext } from '../../shared/types';
 import { authService } from '../auth';
 
 export const roomForUser = (userId: string): string => `user:${userId}`;
 
 interface AuthedSocket extends Socket {
-  data: { userId?: string };
+  data: { userId?: string; authContext?: AuthContext };
 }
 
 /** Called once from the api entrypoint (`server.ts`) only — never from the worker. */
@@ -29,6 +30,9 @@ export const attachNotificationSocket = (httpServer: HttpServer): void => {
       .buildAuthContext(token)
       .then((ctx) => {
         (socket as AuthedSocket).data.userId = ctx.userId;
+        // The full context rides along for `platform/realtime` to derive topic-room membership
+        // from — verified once here, never re-derived from client input.
+        (socket as AuthedSocket).data.authContext = ctx;
         next();
       })
       .catch(() => next(new Error('unauthenticated')));

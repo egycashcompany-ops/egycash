@@ -9,6 +9,7 @@ import { bootstrapSession } from '../auth/api';
 import { LoginPage } from '../auth/LoginPage';
 import { ActivationPage } from '../auth/ActivationPage';
 import { RequireAuth } from '../router/RequireAuth';
+import { RealtimeProvider } from '../realtime/RealtimeProvider';
 import { LoadingState } from '../../shared/ui/states/LoadingState';
 import { registerRecruitmentNavProviders } from '../../modules/hr/recruitment/counters/register-nav-providers';
 
@@ -85,6 +86,8 @@ export const App = (): JSX.Element => {
 
   return (
     <BrowserRouter basename={BASENAME}>
+      {/* Renders nothing — holds the realtime socket while a session is signed in (ADR-029). */}
+      <RealtimeProvider />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/activate" element={<ActivationPage />} />

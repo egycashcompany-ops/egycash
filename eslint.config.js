@@ -225,6 +225,22 @@ export default tseslint.config(
     },
   },
 
+  // The service worker ships from `public/` verbatim — no bundler, no TypeScript — so it is plain
+  // JS running in a worker global scope rather than a window one.
+  {
+    files: ['apps/web/public/**/*.js'],
+    languageOptions: {
+      globals: {
+        self: 'readonly',
+        caches: 'readonly',
+        fetch: 'readonly',
+        Request: 'readonly',
+        Response: 'readonly',
+        URL: 'readonly',
+      },
+    },
+  },
+
   // Tests may use non-null assertions and looser typing ergonomics.
   {
     files: ['**/*.spec.ts', 'apps/api/tests/**'],

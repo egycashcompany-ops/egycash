@@ -22,6 +22,16 @@ import {
   UpsertNotificationPreferenceSchema,
   UpsertQuietHoursSchema,
 } from './notification.validation';
+import {
+  DeletePushSubscriptionSchema,
+  PushSubscriptionInputSchema,
+} from '@ecms/contracts';
+import {
+  getPushConfig,
+  listMyPushSubscriptions,
+  registerPushSubscription,
+  removeMyPushSubscription,
+} from './push-subscription.controller';
 
 export const buildNotificationsRouter = (): Router => {
   const router = Router();
@@ -71,6 +81,35 @@ export const buildNotificationPreferencesRouter = (): Router => {
     authenticate,
     validate({ body: UpsertQuietHoursSchema }),
     asyncHandler(upsertMyQuietHours),
+  );
+
+  return router;
+};
+
+/**
+ * Web Push registration — mounted at `/platform/push`.
+ *
+ * Self-scoped like the two routers above: a caller registers and removes their own browsers and
+ * can reach nobody else's, so there is no `authorize()` step here either. `/config` is
+ * authenticated for the same reason the rest is — the public key is not a secret, but there is no
+ * reason for a signed-out visitor to be told whether push exists here.
+ */
+export const buildPushRouter = (): Router => {
+  const router = Router();
+
+  router.get('/config', authenticate, getPushConfig);
+  router.get('/subscriptions', authenticate, asyncHandler(listMyPushSubscriptions));
+  router.post(
+    '/subscriptions',
+    authenticate,
+    validate({ body: PushSubscriptionInputSchema }),
+    asyncHandler(registerPushSubscription),
+  );
+  router.delete(
+    '/subscriptions',
+    authenticate,
+    validate({ body: DeletePushSubscriptionSchema }),
+    asyncHandler(removeMyPushSubscription),
   );
 
   return router;

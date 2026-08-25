@@ -5,8 +5,13 @@
 import { registerChannelAdapter } from './channel-adapters/channel-adapter';
 import { inAppChannelAdapter } from './channel-adapters/in-app.adapter';
 import { emailChannelAdapter } from './channel-adapters/email.adapter';
+import { pushChannelAdapter } from './channel-adapters/push.adapter';
 
 export const registerBuiltinChannelAdapters = (): void => {
   registerChannelAdapter(inAppChannelAdapter);
   registerChannelAdapter(emailChannelAdapter);
+  // Registered whether or not VAPID is configured. An unconfigured deployment never puts a push
+  // row on a notification (`notify()` asks the capability first), so this adapter is simply never
+  // reached — and if it somehow is, refusing with a clear reason beats "no adapter registered".
+  registerChannelAdapter(pushChannelAdapter);
 };

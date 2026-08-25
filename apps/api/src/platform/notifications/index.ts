@@ -12,7 +12,9 @@ export { attachNotificationSocket } from './notification.socket';
 export {
   buildNotificationPreferencesRouter,
   buildNotificationsRouter,
+  buildPushRouter,
 } from './notification.routes';
+export { initPushChannel, isPushConfigured } from './push-config';
 export { buildNotificationTemplatesRouter } from './notification-template.routes';
 export { type NotificationDoc } from './notification.model';
 export { type NotificationTemplateDoc } from './notification-template.model';

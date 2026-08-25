@@ -185,6 +185,47 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
     return this.model.find(this.baseFilter(scope)).lean<EmployeeDoc[]>().exec();
   }
 
+  /**
+   * The employees an ANNOUNCEMENT's audience selects — criteria narrowed by the sender's own scope.
+   *
+   * `baseFilter(scope, criteria)` is the whole security of the feature and the reason this lives
+   * here rather than in the announcements service: it ANDs the caller's scope with the criteria,
+   * so a branch-scoped HR manager who names three branches still reaches only their own. Resolving
+   * an audience anywhere else would mean re-deriving that intersection, and an intersection
+   * re-derived is an intersection that can be written as a union by mistake — which for a
+   * company-wide message is the difference between one branch and everybody.
+   *
+   * Deliberately unpaginated: an audience is counted and sent in one pass, and the alternative is
+   * a filter whose second page has changed under it mid-send.
+   */
+  async listForAudience(
+    criteria: FilterQuery<EmployeeDoc>,
+    scope: ScopeSelector,
+  ): Promise<EmployeeDoc[]> {
+    return this.model
+      .find(this.baseFilter(scope, criteria))
+      .sort({ code: 1 })
+      .lean<EmployeeDoc[]>()
+      .exec();
+  }
+
+  /**
+   * The distinct values a free-text personal field actually holds, within the caller's scope.
+   *
+   * The audience builder offers these rather than a list this codebase invents: `religion` and
+   * `nationality` are typed onto employee files by whoever registers them, so the only honest set
+   * of choices is the set that exists. A hardcoded list would silently fail to match "مسيحي" the
+   * day somebody wrote "مسيحى".
+   */
+  async distinctPersonal(field: 'religion' | 'nationality', scope: ScopeSelector): Promise<string[]> {
+    const values = await this.model
+      .distinct(`personal.${field}`, this.baseFilter(scope, { status: { $in: [...EMPLOYED_STATUSES] } }))
+      .exec();
+    return (values as unknown[])
+      .filter((value): value is string => typeof value === 'string' && value.trim() !== '')
+      .sort((a, b) => a.localeCompare(b, 'ar'));
+  }
+
   /** Every employed employee (probation/active/onLeave/suspended) — leave grants iterate this. */
   async listEmployedSystem(): Promise<EmployeeDoc[]> {
     return this.model

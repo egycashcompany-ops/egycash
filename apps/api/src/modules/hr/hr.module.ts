@@ -34,6 +34,8 @@ import {
   buildHiringDocumentsRouter,
 } from './recruitment/hiring-documents';
 import { buildEmployeeFilesRouter } from './employee-management/employee-file';
+import { buildAnnouncementsRouter } from './announcements';
+import { buildNotificationRulesRouter, ruleEventSubscriptions } from './notification-rules';
 import {
   buildHolidaysRouter,
   buildWorkCalendarRouter,
@@ -361,6 +363,50 @@ const employeePermissions = declarePermissions(
     },
   ],
   'hr.employees',
+);
+
+/**
+ * Announcements — writing to everybody's screen at once.
+ *
+ * Its own resource rather than an employee action, because reading the registry and MESSAGING
+ * everybody in it are different powers: plenty of people may legitimately list employees, and very
+ * few should be able to put a notification on all their screens simultaneously. How FAR a sender
+ * reaches is still bounded by their `employee.view` scope — this key only decides whether they may
+ * announce at all.
+ */
+const announcementPermissions = declarePermissions(
+  'hr',
+  'announcement',
+  { en: 'announcements', ar: 'الإعلانات' },
+  ['view'],
+  [{ action: 'send', name: { en: 'Send an announcement', ar: 'إرسال إعلان' } }],
+  'hr.announcements',
+);
+
+/**
+ * Notification rules — "when this happens, tell these people", standing.
+ *
+ * A separate resource from `announcement`, and `manage` is separate from `announcement.send`, for
+ * a reason worth stating plainly: sending an announcement is one act by a person who is present.
+ * A rule is a STANDING power for the system to message people on its own, repeatedly, with nobody
+ * watching at the moment it happens — nearer to granting a permission than to sending a message.
+ * Anyone who may announce should not automatically be able to install one.
+ *
+ * The routes add a second condition this declaration cannot express: `manage` must be held at
+ * organization scope, because a rule resolves its audience with no caller to narrow it by.
+ */
+const notificationRulePermissions = declarePermissions(
+  'hr',
+  'notificationRule',
+  { en: 'notification rules', ar: 'قواعد الإشعارات' },
+  ['view'],
+  [
+    {
+      action: 'manage',
+      name: { en: 'Manage notification rules', ar: 'إدارة قواعد الإشعارات' },
+    },
+  ],
+  'hr.notification-rules',
 );
 
 // Stage 6 — Hiring Documents. `upload` covers first upload + versioned replacement; `complete`
@@ -718,6 +764,8 @@ export const hrPermissions: PermissionDef[] = [
   ...evaluationPhasePermissions,
   ...jobOfferPermissions,
   ...employeePermissions,
+  ...announcementPermissions,
+  ...notificationRulePermissions,
   ...hiringDocumentsPermissions,
   ...hiringDocumentTypePermissions,
   ...employeeFilePermissions,
@@ -738,6 +786,20 @@ export const hrPermissions: PermissionDef[] = [
  * administrator can edit.
  */
 export const hrPages: PageDef[] = [
+  {
+    id: 'hr.announcements',
+    moduleId: 'hr',
+    name: { en: 'Announcements', ar: 'الإعلانات' },
+    route: '/announcements',
+    sortOrder: 5,
+  },
+  {
+    id: 'hr.notification-rules',
+    moduleId: 'hr',
+    name: { en: 'Notification rules', ar: 'قواعد الإشعارات' },
+    route: '/notification-rules',
+    sortOrder: 6,
+  },
   {
     id: 'hr.applicants',
     moduleId: 'hr',
@@ -926,6 +988,8 @@ export const hrModule: ModuleManifest = {
   permissions: hrPermissions,
   pages: hrPages,
   routes: [
+    { prefix: '/hr/announcements', router: buildAnnouncementsRouter() },
+    { prefix: '/hr/notification-rules', router: buildNotificationRulesRouter() },
     { prefix: '/hr/applicants', router: buildRecruitmentTimelineRouter() },
     { prefix: '/hr/applicants', router: buildReturnToStageRouter() },
     { prefix: '/hr/applicants', router: buildApplicantsRouter() },
@@ -1009,6 +1073,8 @@ export const hrModule: ModuleManifest = {
     'hr_job_offers',
     'hr_employees',
     'hr_employee_actions',
+    'hr_announcements',
+    'hr_notification_rules',
     'hr_hiring_documents',
     'hr_hiring_document_types',
     'hr_employee_files',
@@ -1045,6 +1111,12 @@ export const hrModule: ModuleManifest = {
     ...hrEmployeeLoanFileAuthorizers,
   ],
   eventSubscriptions: [
+    // Notification rules (stage 3): one subscription per cataloged event, all routed to the same
+    // handler, exactly as automation's trigger bridge does it. HR is an ordinary event consumer
+    // here — no new bus, no new delivery guarantee, and no change to any publisher. The handler
+    // never throws: a rule is a courtesy on top of an event that already happened, and a courtesy
+    // that can break what it is attached to is a liability (see `rule-bridge`).
+    ...ruleEventSubscriptions(),
     {
       // Contracts A13/D8 — the reliable tier executes in the WORKER: render the PDF
       // from the STORED snapshot and store one immutable file per contract version.

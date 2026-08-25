@@ -46,8 +46,26 @@ export const RealtimeProvider = (): null => {
       onConnectedChange: setRealtimeConnected,
     });
 
-    client.start();
-    return () => client.stop();
+    // Realtime is an ENHANCEMENT: without it screens still fetch on navigation and staleness.
+    // So nothing here may ever reach the error boundary — an effect that throws at App level
+    // takes down every page, which is exactly what a bad api origin did once (relative
+    // VITE_API_BASE_URL through `new URL`). One broken socket must cost live updates, nothing more.
+    try {
+      client.start();
+    } catch {
+      // Swallowed, not reported: the fallback is fully defined behaviour, not a degraded state
+      // needing a decision. `setRealtimeConnected` was never called, so the bell keeps its
+      // one-minute poll and every screen keeps fetching on navigation — the platform as it was
+      // before realtime existed. There is no user action to prompt and no logger on the web.
+      return undefined;
+    }
+    return () => {
+      try {
+        client.stop();
+      } catch {
+        /* teardown of an already-broken socket is not the page's problem */
+      }
+    };
   }, [signedIn, queryClient]);
 
   return null;

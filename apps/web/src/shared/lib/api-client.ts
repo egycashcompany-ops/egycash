@@ -24,8 +24,23 @@ export const setAccessToken = (token: string | null): void => {
  */
 export const getAccessToken = (): string | null => accessToken;
 
-/** The api's origin (no `/api/v1` path) — where the Socket.IO endpoint lives. */
-export const apiOrigin = (): string => new URL(BASE_URL).origin;
+/**
+ * The api's origin — where the Socket.IO endpoint lives.
+ *
+ * `VITE_API_BASE_URL` is RELATIVE in every real deployment (`/api/v1`, `/ecms/api/v1` — see
+ * docs/09-guides/railway-deployment.md); only the dev default is absolute. `new URL(relative)`
+ * throws, so the document's own origin is the base — which is also the right answer, because a
+ * relative base URL means the api is served same-origin with the app.
+ */
+export const originOf = (baseUrl: string, documentOrigin: string): string => {
+  try {
+    return new URL(baseUrl, documentOrigin).origin;
+  } catch {
+    return documentOrigin;
+  }
+};
+
+export const apiOrigin = (): string => originOf(BASE_URL, window.location.origin);
 
 /**
  * The branch the command bar's switcher has narrowed to, sent on every request.

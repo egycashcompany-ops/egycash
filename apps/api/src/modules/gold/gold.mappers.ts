@@ -37,7 +37,16 @@ import { type GoldDeliveryReceiptDoc } from './delivery/delivery-receipt.model';
 import { type GoldTransferDoc } from './transfers/transfer.model';
 import { type GoldKeyHandoverDoc } from './keys/key-handover.model';
 
-const iso = (d: Date): string => d.toISOString();
+/**
+ * A BUSINESS date — the date on the paper, not on the row.
+ *
+ * Deliberately NOT resolved from the `_id` the way the audit timestamps are. A receipt's own date
+ * has no true substitute, and a printed receipt carrying a date the system invented is worse than
+ * one carrying none. So a row that lost its date renders with the cell EMPTY: visibly wrong, easy
+ * to find, impossible to mistake for a fact — and the eleven good rows beside it still render.
+ */
+const iso = (d: Date | null | undefined): string =>
+  d === null || d === undefined ? '' : d.toISOString();
 
 /**
  * The audit timestamps, read from the row itself.
@@ -191,7 +200,7 @@ const toHistoryDto = (entry: GoldBarDoc['history'][number]): GoldBarHistoryEntry
 });
 
 export const toGoldBarHistoryDto = (doc: GoldBarDoc): GoldBarHistoryEntryDto[] =>
-  doc.history.map(toHistoryDto);
+  (doc.history ?? []).map(toHistoryDto);
 
 export const toGoldBarDto = (doc: GoldBarDoc, labels: GoldLabels = {}): GoldBarDto => {
   const drawerId = id(doc.currentDrawerId);
@@ -293,8 +302,8 @@ export const toGoldReceivingReceiptDto = (
   barsCount: doc.barsCount,
   notes: doc.notes,
   storageLocation: doc.storageLocation,
-  lines: doc.lines.map((line) => toReceivingLineDto(line, labels)),
-  barIds: doc.barIds.map((barId) => String(barId)),
+  lines: (doc.lines ?? []).map((line) => toReceivingLineDto(line, labels)),
+  barIds: (doc.barIds ?? []).map((barId) => String(barId)),
   version: doc.__v,
   createdAt: createdIso(doc),
   updatedAt: updatedIso(doc),
@@ -326,7 +335,7 @@ export const toGoldDeliveryReceiptDto = (
   keyHolder: doc.keyHolder,
   totalWeight: doc.totalWeight,
   barsCount: doc.barsCount,
-  barIds: doc.barIds.map((barId) => String(barId)),
+  barIds: (doc.barIds ?? []).map((barId) => String(barId)),
   bars,
   notes: doc.notes,
   version: doc.__v,
@@ -364,7 +373,7 @@ export const toGoldTransferDto = (
   newOwnerNationalId: doc.newOwnerNationalId,
   barsCount: doc.barsCount,
   totalWeight: doc.totalWeight,
-  barIds: doc.barIds.map((barId) => String(barId)),
+  barIds: (doc.barIds ?? []).map((barId) => String(barId)),
   bars,
   approvedBy: doc.approvedBy,
   notes: doc.notes,

@@ -109,20 +109,20 @@ const MAPPERS: { name: string; doc: Record<string, unknown>; map: (doc: any) => 
 ];
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-describe('every gold mapper survives a row missing its audit timestamps', () => {
+describe('every gold mapper survives a row missing any one field', () => {
   it.each(MAPPERS)('$name', ({ doc, map }) => {
-    expect(() => map(doc)).not.toThrow();
+    expect(() => map(doc), 'the complete row').not.toThrow();
 
-    for (const field of ['createdAt', 'updatedAt'] as const) {
+    // EVERY field, not a chosen few. The point is not that these particular keys are known to go
+    // missing — it is that the mapper is the last stop before the wire, and a page must survive
+    // whatever the collection actually holds.
+    for (const field of Object.keys(doc)) {
       const partial = { ...doc };
       delete partial[field];
       expect(() => map(partial), `missing ${field}`).not.toThrow();
     }
 
-    const neither = { ...doc };
-    delete neither.createdAt;
-    delete neither.updatedAt;
-    expect(() => map(neither), 'missing both').not.toThrow();
+    expect(() => map({ _id: doc._id }), 'nothing but an _id').not.toThrow();
   });
 });
 

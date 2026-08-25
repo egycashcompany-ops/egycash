@@ -3,7 +3,7 @@
 // Every gold list shows the owner, the branch, the vault code and the drawer number next to the
 // row. Resolving those one row at a time is how a twelve-row page becomes fifty queries, so each
 // controller builds the bag once here and hands it to the mapper (the IT-6 batch-lookup rule).
-import { type Types } from 'mongoose';
+import { Types } from 'mongoose';
 import { goldCompanyRepository } from '../companies/company.repository';
 import { goldRepresentativeRepository } from '../representatives/representative.repository';
 import { GoldRepresentativeModel } from '../representatives/representative.model';
@@ -12,9 +12,21 @@ import { GoldDrawerModel } from '../vaults/drawer.model';
 import { type GoldLabels } from '../gold.mappers';
 import { branchNames } from './ecms-refs';
 
+/**
+ * The distinct, USABLE ids in a column of a page.
+ *
+ * Two filters, and both earn their place. Null and undefined are dropped because `String(null)` is
+ * the four-letter string `"null"` — every lookup below queries by `_id`, and Mongoose answers a
+ * non-ObjectId `_id` with a CastError, which is an unhandled throw and a 500 for the whole page.
+ * Anything else that is not an ObjectId is dropped for the same reason: a row pointing at a
+ * malformed id has no name to show, and a blank cell is the right answer to that, not an error.
+ */
 const ids = (values: readonly (string | Types.ObjectId | null | undefined)[]): string[] => [
   ...new Set(
-    values.filter((v): v is string | Types.ObjectId => v !== null && v !== undefined).map(String),
+    values
+      .filter((v): v is string | Types.ObjectId => v !== null && v !== undefined)
+      .map(String)
+      .filter((v) => Types.ObjectId.isValid(v)),
   ),
 ];
 

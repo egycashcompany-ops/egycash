@@ -27,7 +27,6 @@ import {
   draftProblems,
   placeholdersIn,
   unbalancedPlaceholders,
-  undeclaredSubjectPlaceholders,
   type TemplateDraft,
 } from '../lib/template-form';
 
@@ -56,7 +55,6 @@ export const TemplateFormPanel = ({
   const t = useT();
   const variables = derivedVariables(draft);
   const unbalanced = unbalancedPlaceholders(draft);
-  const orphanSubject = undeclaredSubjectPlaceholders(draft);
   const set = <K extends keyof TemplateDraft>(field: K, value: TemplateDraft[K]): void =>
     onChange({ ...draft, [field]: value });
 
@@ -194,7 +192,11 @@ export const TemplateFormPanel = ({
             <span className="text-xs text-slate-400">{t('systemAdmin.templates.noVariables')}</span>
           ) : (
             variables.map((name) => (
-              <code key={name} className="rounded bg-slate-100 px-1.5 py-0.5 text-xs dark:bg-slate-800" dir="ltr">
+              <code
+                key={name}
+                className="rounded bg-slate-100 px-1.5 py-0.5 text-xs dark:bg-slate-800"
+                dir="ltr"
+              >
                 {`{{${name}}}`}
               </code>
             ))
@@ -214,11 +216,6 @@ export const TemplateFormPanel = ({
               }),
             )
             .join(' ')}
-        </p>
-      )}
-      {orphanSubject.length > 0 && (
-        <p className="text-sm text-red-600 dark:text-red-400" role="alert">
-          {t('systemAdmin.templates.subjectUndeclared', { names: orphanSubject.join(', ') })}
         </p>
       )}
       {mode === 'edit' && (

@@ -374,7 +374,6 @@ const en: Record<string, string> = {
   'notifications.filter.all': 'All',
   'notifications.filter.unread': 'Unread',
   'notifications.inbox.title': 'Notifications',
-  'notifications.inbox.subtitle': 'Everything the system has sent you.',
   'notifications.inbox.emptyBody':
     'Announcements and rule notifications addressed to you will appear here.',
 
@@ -4086,6 +4085,7 @@ const en: Record<string, string> = {
   'systemAdmin.templates.latest': 'Current',
   'systemAdmin.templates.versionLabel': 'Version {{version}}',
   'systemAdmin.templates.savedAsVersion': 'Saved as version {{version}}.',
+  'systemAdmin.templates.expiryHint': 'Hours, 1–8760. Leave empty for no expiry.',
   'systemAdmin.templates.savePublishesVersion':
     'Saving publishes a new version. The current one is kept and stays readable in the history.',
   'systemAdmin.templates.versionsHint':
@@ -4101,9 +4101,6 @@ const en: Record<string, string> = {
   'systemAdmin.templates.noVariables': 'None',
   'systemAdmin.templates.unbalanced':
     '{{name}} is missing from the {{language}} text — a placeholder must appear in both languages, or that language is sent without it.',
-  'systemAdmin.templates.subjectUndeclared':
-    'The subject uses {{names}}, which the message body never uses — it would be delivered as literal text.',
-  'systemAdmin.templates.expiryHint': 'Hours, 1–8760. Leave empty for no expiry.',
   'systemAdmin.templates.language.ar': 'Arabic',
   'systemAdmin.templates.language.en': 'English',
   'systemAdmin.templates.filters.allStatuses': 'Any status',
@@ -6184,7 +6181,6 @@ const ar: Record<string, string> = {
   'notifications.filter.all': 'الكل',
   'notifications.filter.unread': 'غير المقروءة',
   'notifications.inbox.title': 'الإشعارات',
-  'notifications.inbox.subtitle': 'كل ما أرسله لك النظام.',
   'notifications.inbox.emptyBody': 'الإعلانات وإشعارات القواعد الموجَّهة إليك ستظهر هنا.',
 
   // Recruitment module
@@ -9812,6 +9808,7 @@ const ar: Record<string, string> = {
   'systemAdmin.templates.latest': 'الحالية',
   'systemAdmin.templates.versionLabel': 'النسخة {{version}}',
   'systemAdmin.templates.savedAsVersion': 'حُفظ كنسخة {{version}}.',
+  'systemAdmin.templates.expiryHint': 'بالساعات، من 1 إلى 8760. اتركه فارغًا لبلا انتهاء.',
   'systemAdmin.templates.savePublishesVersion':
     'الحفظ ينشئ نسخة جديدة. النسخة الحالية تبقى محفوظة وقابلة للقراءة في السجل.',
   'systemAdmin.templates.versionsHint':
@@ -9827,9 +9824,6 @@ const ar: Record<string, string> = {
   'systemAdmin.templates.noVariables': 'لا يوجد',
   'systemAdmin.templates.unbalanced':
     '{{name}} غير موجود في النصّ {{language}} — يجب أن يظهر العنصر النائب في اللغتين، وإلا أُرسلت تلك اللغة بدونه.',
-  'systemAdmin.templates.subjectUndeclared':
-    'الموضوع يستخدم {{names}} ولا يستخدمه نصّ الرسالة — سيصل كنصّ حرفي.',
-  'systemAdmin.templates.expiryHint': 'بالساعات، من 1 إلى 8760. اتركه فارغًا لبلا انتهاء.',
   'systemAdmin.templates.language.ar': 'العربي',
   'systemAdmin.templates.language.en': 'الإنجليزي',
   'systemAdmin.templates.filters.allStatuses': 'كل الحالات',

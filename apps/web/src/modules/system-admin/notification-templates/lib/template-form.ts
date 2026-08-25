@@ -38,46 +38,49 @@ export const placeholdersIn = (text: string): string[] => [
   ...new Set([...text.matchAll(PLACEHOLDER)].map((m) => m[1] as string)),
 ];
 
+/** Everything one language SAYS — its subject and its body together. */
+const saidIn = (subject: string, body: string): string[] => [
+  ...new Set([...placeholdersIn(subject), ...placeholdersIn(body)]),
+];
+
 /**
  * The variable list the draft implies.
  *
- * Only placeholders present in BOTH bodies count. G-2 checks per language, so a placeholder in one
- * body alone cannot be declared — declaring it would fail against the other. Showing it as
- * "detected" and then having the server refuse would be the worst of both, so it is reported
- * separately by `unbalancedPlaceholders` and the screen says which language is missing it.
+ * Counted across the SUBJECT and the body, not the body alone. The server's rule asks whether the
+ * message says a variable anywhere, and this has to ask the same question — when it asked only of
+ * the bodies, a template whose title lives in the subject (`hr.announcement`, and any template
+ * shaped like it) reported that title as declared by nothing, and the form refused to save. Not
+ * for one edit: for every edit, for ever, with no way to clear the problem except to undo the
+ * template.
+ *
+ * Still intersected across languages. G-2 checks per language, so a placeholder only one language
+ * says cannot be declared — declaring it would fail against the other.
  */
 export const derivedVariables = (draft: TemplateDraft): string[] => {
-  const ar = new Set(placeholdersIn(draft.bodyAr));
-  return placeholdersIn(draft.bodyEn).filter((name) => ar.has(name));
-};
-
-/** Placeholders that appear in one body but not the other — G-2 would refuse the draft. */
-export const unbalancedPlaceholders = (
-  draft: TemplateDraft,
-): { name: string; missingFrom: 'ar' | 'en' }[] => {
-  const ar = new Set(placeholdersIn(draft.bodyAr));
-  const en = new Set(placeholdersIn(draft.bodyEn));
-  return [
-    ...placeholdersIn(draft.bodyAr)
-      .filter((name) => !en.has(name))
-      .map((name) => ({ name, missingFrom: 'en' as const })),
-    ...placeholdersIn(draft.bodyEn)
-      .filter((name) => !ar.has(name))
-      .map((name) => ({ name, missingFrom: 'ar' as const })),
-  ];
+  const ar = new Set(saidIn(draft.subjectAr, draft.bodyAr));
+  return saidIn(draft.subjectEn, draft.bodyEn).filter((name) => ar.has(name));
 };
 
 /**
- * Placeholders used in the SUBJECT that the bodies do not declare.
+ * Placeholders one language says and the other does not — G-2 would refuse the draft.
  *
- * A subject need not carry every variable, but anything it uses must be declared — and the
- * declaration comes from the bodies. So a subject-only placeholder is a refusal.
+ * Over the subject and the body together, for the same reason `derivedVariables` is: a title
+ * present in `subject.ar` and missing from `subject.en` is exactly the one-sided mistake this
+ * exists to name, and looking only at bodies never saw it.
  */
-export const undeclaredSubjectPlaceholders = (draft: TemplateDraft): string[] => {
-  const declared = new Set(derivedVariables(draft));
-  return [...placeholdersIn(draft.subjectAr), ...placeholdersIn(draft.subjectEn)].filter(
-    (name) => !declared.has(name),
-  );
+export const unbalancedPlaceholders = (
+  draft: TemplateDraft,
+): { name: string; missingFrom: 'ar' | 'en' }[] => {
+  const ar = new Set(saidIn(draft.subjectAr, draft.bodyAr));
+  const en = new Set(saidIn(draft.subjectEn, draft.bodyEn));
+  return [
+    ...[...ar]
+      .filter((name) => !en.has(name))
+      .map((name) => ({ name, missingFrom: 'en' as const })),
+    ...[...en]
+      .filter((name) => !ar.has(name))
+      .map((name) => ({ name, missingFrom: 'ar' as const })),
+  ];
 };
 
 /** Every reason the server would refuse this draft, in the order a reader should see them. */
@@ -87,11 +90,17 @@ export const draftProblems = (draft: TemplateDraft, isCreate: boolean): string[]
   if (draft.bodyAr.trim() === '' || draft.bodyEn.trim() === '') problems.push('bodyRequired');
   if (draft.channels.length === 0) problems.push('channelRequired');
   // The API's own rule: an email needs something to put in the subject line.
-  if (draft.channels.includes('email') && (draft.subjectAr.trim() === '' || draft.subjectEn.trim() === '')) {
+  if (
+    draft.channels.includes('email') &&
+    (draft.subjectAr.trim() === '' || draft.subjectEn.trim() === '')
+  ) {
     problems.push('subjectRequired');
   }
+  // `unbalanced` now covers the subject as well as the bodies, so the separate
+  // "the subject uses something nothing declares" check is gone: it could only ever fire for a
+  // placeholder one language was missing, which this already reports — and reports better, by
+  // naming the language it is missing from.
   if (unbalancedPlaceholders(draft).length > 0) problems.push('unbalanced');
-  if (undeclaredSubjectPlaceholders(draft).length > 0) problems.push('subjectUndeclared');
   const hours = draft.defaultExpiryHours.trim();
   if (hours !== '' && !/^\d+$/.test(hours)) problems.push('expiry');
   else if (hours !== '' && (Number(hours) < 1 || Number(hours) > 8760)) problems.push('expiry');

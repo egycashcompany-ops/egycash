@@ -38,7 +38,7 @@ const DUPLICATED_TITLE_BODY = '{{title}}\n\n{{body}}';
  * template catalogue's own rule, and what keeps the change visible in the version history instead
  * of appearing to have always been that way.
  */
-const repairDuplicatedTitle = async (): Promise<void> => {
+const repair = async (): Promise<void> => {
   // Re-read rather than trusting what `ensure` handed back. `bootPlatform` runs module seeds in
   // BOTH the api and the worker, and they boot at the same time — so by the time this runs, the
   // other process may already have published the repair. Acting on a doc fetched before that would
@@ -48,6 +48,22 @@ const repairDuplicatedTitle = async (): Promise<void> => {
   if (current.body.ar !== DUPLICATED_TITLE_BODY || current.body.en !== DUPLICATED_TITLE_BODY) {
     return;
   }
+
+  // AND the subject must still be the one that makes the new body legal.
+  //
+  // Dropping `{{title}}` from the body only works because the SUBJECT says it instead. An
+  // administrator who reworded the subject to a fixed line — a supported edit the template screen
+  // accepts — leaves `title` declared and carried by neither text, which `update()` refuses. That
+  // refusal is correct; making it here, during a boot seed, is not.
+  const subject = current.subject;
+  if (subject === null || !subject.ar.includes('{{title}}') || !subject.en.includes('{{title}}')) {
+    logger.info(
+      { template: ANNOUNCEMENT_TEMPLATE_KEY },
+      'announcement template: subject was rewritten, leaving the body as its author left it',
+    );
+    return;
+  }
+
   await notificationTemplateService.update(
     String(current._id),
     { body: { ar: '{{body}}', en: '{{body}}' } },
@@ -57,6 +73,28 @@ const repairDuplicatedTitle = async (): Promise<void> => {
     { template: ANNOUNCEMENT_TEMPLATE_KEY },
     'announcement template: title no longer repeated in the body',
   );
+};
+
+/**
+ * The repair, which may never take the platform down.
+ *
+ * It runs inside `bootPlatform`, where a throw travels through the module seed loop to
+ * `main().catch` and `process.exit(1)` — in the api AND the worker, on every boot, with the
+ * database unchanged so the next boot dies identically. Nothing between here and there catches.
+ *
+ * The guard above should mean it never throws. This is the second answer to that: a duplicated
+ * word in a notification is a cosmetic defect, and no cosmetic defect is worth a chance of a
+ * platform that will not start. If it fails, it says so and boot continues.
+ */
+const repairDuplicatedTitle = async (): Promise<void> => {
+  try {
+    await repair();
+  } catch (error) {
+    logger.error(
+      { template: ANNOUNCEMENT_TEMPLATE_KEY, error },
+      'announcement template repair failed — leaving the template as it is and continuing boot',
+    );
+  }
 };
 
 /**

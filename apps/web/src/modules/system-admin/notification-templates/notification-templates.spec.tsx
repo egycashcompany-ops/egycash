@@ -42,7 +42,6 @@ import {
   toCreateBody,
   toUpdateBody,
   unbalancedPlaceholders,
-  undeclaredSubjectPlaceholders,
   type TemplateDraft,
 } from './lib/template-form';
 
@@ -127,10 +126,7 @@ const render = (
 };
 
 /** The detail page reads its id from the ROUTE; rendered bare it would paint a loading shell. */
-const detail = (
-  row: NotificationTemplateDto,
-  options: Parameters<typeof render>[1] = {},
-): string =>
+const detail = (row: NotificationTemplateDto, options: Parameters<typeof render>[1] = {}): string =>
   render(
     <Routes>
       <Route path="/system/notification-templates/:id" element={<TemplateDetailPage />} />
@@ -171,28 +167,42 @@ describe('the variable list is derived, never typed', () => {
   });
 
   it('does not repeat a variable used twice', () => {
-    expect(
-      derivedVariables(draft({ bodyAr: '{{a}} {{a}}', bodyEn: '{{a}} {{a}}' })),
-    ).toEqual(['a']);
-  });
-
-  // A subject may summarise, but a placeholder it uses has to be declared — and the declaration
-  // comes from the bodies.
-  it('flags a subject placeholder the bodies never use', () => {
-    expect(undeclaredSubjectPlaceholders(draft({ subjectEn: 'About {{topic}}' }))).toEqual([
-      'topic',
+    expect(derivedVariables(draft({ bodyAr: '{{a}} {{a}}', bodyEn: '{{a}} {{a}}' }))).toEqual([
+      'a',
     ]);
   });
 
-  it('accepts a subject placeholder the bodies do use', () => {
-    expect(undeclaredSubjectPlaceholders(draft({ subjectEn: 'About {{name}}' }))).toEqual([]);
+  /**
+   * The subject counts toward what a template DECLARES, not just toward what it may use.
+   *
+   * This is the shape `hr.announcement` needs — a title said in the subject and a body said in the
+   * body. While the editor derived variables from the bodies alone, that template reported its own
+   * title as declared by nothing and the form refused to save it. Not once: every edit, for ever.
+   */
+  it('declares a variable the subject carries and the bodies do not', () => {
+    expect(
+      derivedVariables(
+        draft({
+          subjectAr: '{{title}}',
+          subjectEn: '{{title}}',
+          bodyAr: '{{body}}',
+          bodyEn: '{{body}}',
+        }),
+      ).sort(),
+    ).toEqual(['body', 'title']);
+  });
+
+  it('still refuses to declare one only ONE language says', () => {
+    // G-2 is per language: declaring it would fail against the other side.
+    expect(derivedVariables(draft({ subjectEn: 'About {{topic}}' }))).not.toContain('topic');
   });
 });
 
 describe('what the editor refuses to submit', () => {
   it.each([
     ['an imbalanced placeholder', draft({ bodyEn: 'Hello' }), 'unbalanced'],
-    ['a subject placeholder nothing declares', draft({ subjectEn: '{{x}}' }), 'subjectUndeclared'],
+    // One-sided in the SUBJECT, which the balance check now sees — it used to look only at bodies.
+    ['a subject placeholder only one language says', draft({ subjectEn: '{{x}}' }), 'unbalanced'],
     ['an empty body', draft({ bodyAr: '', bodyEn: '' }), 'bodyRequired'],
     ['no channel at all', draft({ channels: [] }), 'channelRequired'],
     ['a malformed key', draft({ key: 'Not A Key' }), 'key'],

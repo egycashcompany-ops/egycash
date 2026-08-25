@@ -1,6 +1,6 @@
 // Job Requisitions (P-HR-REQ) — a request to hire, which carries the placement it wants filled.
 //
-// THERE IS NO VACANCY ENTITY, AND THIS FILE IS WHERE THAT IS ENFORCED (ADR-029, D-REQ-1). The
+// THERE IS NO VACANCY ENTITY, AND THIS FILE IS WHERE THAT IS ENFORCED (ADR-030, D-REQ-1). The
 // requisition names a job title, a department, a branch and optionally a section — the same tuple
 // `PlacementSchema` and `OfferTerms` already carry — rather than pointing at a seat record. The
 // difference between a request and a seat is temporal, not structural: a seat is permanent and

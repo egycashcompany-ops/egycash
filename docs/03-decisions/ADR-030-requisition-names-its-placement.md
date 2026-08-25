@@ -1,4 +1,4 @@
-# ADR-029: A Job Requisition names the placement it wants filled — there is no vacancy entity
+# ADR-030: A Job Requisition names the placement it wants filled — there is no vacancy entity
 
 **Status:** Accepted · **Date:** 2026-08-25 · **Relates to:**
 [ADR-016](ADR-016-optional-position-requisition-linkage.md) (Talent Pool — the link stays optional),

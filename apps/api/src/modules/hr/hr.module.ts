@@ -320,7 +320,7 @@ const jobOfferPermissions = declarePermissions(
 );
 
 /**
- * Job Requisitions (P-HR-REQ, ADR-029) — the request to hire. FIVE keys, and the two worth stating
+ * Job Requisitions (P-HR-REQ, ADR-030) — the request to hire. FIVE keys, and the two worth stating
  * are the one that is here and the one that is not.
  *
  * `approve` decides BOTH steps, and the service decides which of them a caller may act on: the

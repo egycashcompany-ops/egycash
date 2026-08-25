@@ -628,7 +628,7 @@ export const EVENT_ENTITY_NAMES: Readonly<Record<string, LocalizedString>> = {
   evaluation: { en: 'Evaluation', ar: 'تقييم' },
   evaluationBatch: { en: 'Evaluation batch', ar: 'دفعة تقييم' },
   jobOffer: { en: 'Job offer', ar: 'عرض وظيفي' },
-  // P-HR-REQ. The REQUEST is the subject, not a seat it points at (ADR-029): there is no vacancy
+  // P-HR-REQ. The REQUEST is the subject, not a seat it points at (ADR-030): there is no vacancy
   // entity to name here, and `jobRequisition` is not `jobOffer` — one asks for a hire, the other
   // makes one to a named person.
   jobRequisition: { en: 'Job requisition', ar: 'طلب توظيف' },

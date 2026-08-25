@@ -22,7 +22,7 @@ const FEATURE_CODE = FEATURE_FILES.map((f) => code(read(f))).join('\n');
 
 const MODULE = code(readFileSync(resolve(HERE, '../../hr.module.ts'), 'utf8'));
 
-describe('ADR-029 — no vacancy comes back', () => {
+describe('ADR-030 — no vacancy comes back', () => {
   it('names no seat, vacancy or position anywhere in the feature code', () => {
     for (const word of ['jobPosition', 'JobPosition', 'vacancy', 'Vacancy', 'seatId']) {
       expect(FEATURE_CODE).not.toContain(word);
@@ -85,7 +85,7 @@ describe('D-REQ-13 — fulfilment is counted, never incremented', () => {
   });
 });
 
-describe('ADR-029 — closed is final', () => {
+describe('ADR-030 — closed is final', () => {
   it('the feature exposes no reopen verb', () => {
     for (const word of ['reopen', 'Reopen', 'unclose']) {
       expect(FEATURE_CODE).not.toContain(word);

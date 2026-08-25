@@ -6,7 +6,7 @@
 // manager out of their own step and quietly turn a two-step approval into a one-step one.
 //
 // There is no `close` key and no `reopen` route: closing is `approve`'s act (D-REQ-12), and nothing
-// reopens a requisition (ADR-029).
+// reopens a requisition (ADR-030).
 import { Router } from 'express';
 import { authenticate } from '../../../../platform/auth';
 import { authorize } from '../../../../platform/rbac';

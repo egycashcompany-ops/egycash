@@ -118,6 +118,9 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   'hr.evaluationBatch': [['hr', 'evaluationBatches'], ['hr', 'evaluations']],
   'hr.evaluationPhase': [['hr', 'evaluations'], ['hr', 'evaluationBatches']],
   'hr.jobOffer': [['hr', 'jobOffers'], ...recruitmentPipeline],
+  // P-HR-REQ — the whole feature subtree: the list, one requisition, and its hires all read the
+  // same status, and a decision somebody else took moves all three at once.
+  'hr.jobRequisition': [['hr', 'jobRequisitions']],
   'hr.hiringDocuments': [['hr', 'hiringDocuments'], ...recruitmentPipeline],
   'hr.hiringDocumentType': [['hr', 'hiringDocumentTypes']],
 

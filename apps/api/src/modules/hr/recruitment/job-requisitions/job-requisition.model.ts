@@ -1,6 +1,6 @@
 // A job requisition (P-HR-REQ) — one request to hire, for one job, in one department.
 //
-// The placement is ON this document (ADR-029): there is no seat collection to point at, and the
+// The placement is ON this document (ADR-030): there is no seat collection to point at, and the
 // four fields here are the same four `PlacementSchema` and `OfferTerms` carry, so the requisition
 // is the SOURCE of a placement rather than a pointer to one.
 //

@@ -10,7 +10,7 @@
 //                    └── reject ──┴──► rejected      close/cancel ──► closed / cancelled
 //
 // No step is skippable: approving at the manager step lands on `pendingHr`, always. And nothing
-// leaves a terminal state — there is no `reopen` here, because ADR-029 says a new need is a new
+// leaves a terminal state — there is no `reopen` here, because ADR-030 says a new need is a new
 // requisition, not a resurrected one.
 import {
   LINKABLE_JOB_REQUISITION_STATUSES,

@@ -1,5 +1,5 @@
 // Organization module home: a permission-aware dashboard into the org-structure hierarchy
-// (Company → Branches → Departments → Sections → Job Positions → Job Titles) and the platform catalog
+// (Company → Branches → Departments → Sections) plus the Job Titles catalog, and the platform catalog
 // (Applications, Application Categories). A placeholder KPI row and recent-activity panel show the
 // dashboard's shape; cards the user cannot access are hidden.
 import { type ComponentType, type SVGProps } from 'react';

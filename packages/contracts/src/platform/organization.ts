@@ -82,8 +82,8 @@ export type CreateSection = z.infer<typeof CreateSectionSchema>;
 
 // Job Titles are an organization-wide catalog (ADR-015): they carry the *definition* of a role —
 // grade, salary band, and hiring requirements — but they do NOT belong to a Branch/Department/
-// Section. Linking a title to a concrete organizational location is the job of Job Positions
-// (a later phase). Only `jobGrade` is required; salary/description/qualifications/experience are
+// Section. Where a job sits is carried by the record that holds the title, not by the title.
+// Only `jobGrade` is required; salary/description/qualifications/experience are
 // optional so a title can be created quickly and enriched over time.
 /**
  * The Job's fixed salary — the DEFAULT a new assignment starts from (P-HR-22, D-JOB-2).

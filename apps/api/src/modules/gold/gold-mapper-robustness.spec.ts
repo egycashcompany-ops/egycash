@@ -126,6 +126,49 @@ describe('every gold mapper survives a row missing any one field', () => {
   });
 });
 
+describe('every gold mapper survives a row whose values are the WRONG TYPE', () => {
+  // `.lean()` does not cast — it returns the raw BSON. A row written by a migration commonly holds
+  // an ISO STRING where the schema says Date, so guarding for absence alone closes half the door.
+  const WRONG: unknown[] = ['2024-03-01T09:00:00.000Z', '', 0, 'not a date', {}, []];
+
+  it.each(MAPPERS)('$name', ({ doc, map }) => {
+    for (const field of Object.keys(doc)) {
+      for (const value of WRONG) {
+        expect(() => map({ ...doc, [field]: value }), `${field} = ${JSON.stringify(value)}`)
+          .not.toThrow();
+      }
+    }
+  });
+
+  it.each(MAPPERS)('$name — with a malformed ELEMENT inside its arrays', ({ doc, map }) => {
+    // An empty array proves nothing about the element mapper. A receipt carrying one unreadable
+    // line is still a receipt the register has to list.
+    for (const field of ['lines', 'barIds', 'history']) {
+      if (!(field in doc)) continue;
+      for (const element of [null, undefined, {}, 'x', 0]) {
+        expect(() => map({ ...doc, [field]: [element] }), `${field}: [${String(element)}]`)
+          .not.toThrow();
+      }
+    }
+  });
+
+  it('reads a date stored as an ISO string as that date, not as a fallback', () => {
+    const dto = toGoldCompanyDto({
+      ...base,
+      createdAt: '2024-03-01T09:00:00.000Z',
+      name: 'X',
+      logoFileId: null,
+      type: 'company',
+      phone: null,
+      email: null,
+      status: 'active',
+      notes: null,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+    expect(dto.createdAt).toBe('2024-03-01T09:00:00.000Z');
+  });
+});
+
 describe('the fallback is the truth, not a placeholder', () => {
   it('dates the row by its own ObjectId, which is when it was created', () => {
     const id = new Types.ObjectId();

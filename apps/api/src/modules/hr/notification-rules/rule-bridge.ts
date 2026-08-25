@@ -10,6 +10,7 @@
 // delivery of a business event to its other consumers. The event already happened; a rule is a
 // courtesy on top of it, and a courtesy that can break the thing it is attached to is a liability.
 // So the whole handler is wrapped, and every rule is independent of every other.
+import mongoose from 'mongoose';
 import { type EventEnvelope, RULE_TEMPLATE_KEY, type RuleAudience } from '@ecms/contracts';
 import { logger } from '../../../infrastructure/logging/logger';
 import { rbacService } from '../../../platform/rbac';
@@ -119,6 +120,22 @@ const runRule = async (rule: NotificationRuleDoc, envelope: EventEnvelope): Prom
  * decide the rest. Most events match no rule, and that answer costs one indexed query.
  */
 export const handleRuleEvent = async (envelope: EventEnvelope): Promise<void> => {
+  // DECLINE IMMEDIATELY WHEN THERE IS NO DATABASE, rather than letting Mongoose buffer.
+  //
+  // A buffered query does not fail — it waits, for `bufferTimeoutMS` (10s by default), holding a
+  // timer. This handler is attached to EVERY cataloged event and is dispatched un-awaited, so a
+  // database that is down or still connecting turns each published event into its own ten-second
+  // timer. That is a queue of them under any traffic at all, and it outlives whatever asked for it.
+  //
+  // Answering late would be wrong even if it were free: by the time the buffer drained, the
+  // notification is ten seconds stale and the event is long gone. A rule is a courtesy on top of a
+  // business event, and the courteous thing to do when it cannot be served is nothing.
+  //
+  // Quietly, on purpose: a database outage is already reported loudly by everything that has a
+  // caller waiting on it. This consumer has none, and one log line per event per outage would bury
+  // the reports that matter.
+  if (mongoose.connection.readyState !== 1) return;
+
   try {
     const rules = await notificationRuleRepository.enabledForEvent(envelope.name);
     if (rules.length === 0) return;

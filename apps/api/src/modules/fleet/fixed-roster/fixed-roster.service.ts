@@ -32,6 +32,7 @@ import { diffChanges } from '../../../shared/utils/diff';
 import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
 import { fleetVehicleService } from '../vehicles/vehicle.service';
 import { fleetDriverProfileRepository } from '../driver-profiles/driver-profile.repository';
+import { fleetCatalogItemRepository } from '../catalogs/catalog-item.repository';
 import { fleetFixedCrewRepository } from './fixed-crew.repository';
 import { type FleetFixedCrewDoc } from './fixed-crew.model';
 import { type FleetVehicleDoc } from '../vehicles/vehicle.model';
@@ -42,10 +43,19 @@ const entityRef = (id: string) => ({
   entityId: id,
 });
 
-/** The audited/compared surface of a row — the two facts it holds, nothing derived. */
+/**
+ * The audited/compared surface of a row — the four facts it holds, nothing derived.
+ *
+ * Change detection is `JSON.stringify(before) === JSON.stringify(next)`, so this object's KEYS
+ * and their order are the comparison. A field present here and absent from `next` (or the other
+ * way round) would make every save look like a change; adding a field to one without the other
+ * is the way this quietly starts rewriting untouched rows.
+ */
 const snapshot = (doc: FleetFixedCrewDoc) => ({
+  workTypeId: doc.workTypeId === null ? null : String(doc.workTypeId),
   driver1EmployeeId: doc.driver1EmployeeId === null ? null : String(doc.driver1EmployeeId),
   driver2EmployeeId: doc.driver2EmployeeId === null ? null : String(doc.driver2EmployeeId),
+  notes: doc.notes,
 });
 
 /** An id in the one spelling mongo uses. `null`/`undefined` pass through untouched. */
@@ -89,8 +99,10 @@ class FleetFixedRosterService {
         plateNumber: vehicle.plateNumber,
         typeId: String(vehicle.typeId),
         inMaintenance: inWorkshop.has(id),
+        workTypeId: crew === undefined ? null : (snapshot(crew).workTypeId ?? null),
         driver1EmployeeId: crew === undefined ? null : (snapshot(crew).driver1EmployeeId ?? null),
         driver2EmployeeId: crew === undefined ? null : (snapshot(crew).driver2EmployeeId ?? null),
+        notes: crew === undefined ? null : (snapshot(crew).notes ?? null),
       };
     });
 
@@ -121,8 +133,10 @@ class FleetFixedRosterService {
     const input: SaveFleetFixedRoster = {
       rows: original.rows.map((row) => ({
         vehicleId: canonical(row.vehicleId) as string,
+        workTypeId: canonical(row.workTypeId),
         driver1EmployeeId: canonical(row.driver1EmployeeId),
         driver2EmployeeId: canonical(row.driver2EmployeeId),
+        notes: row.notes,
       })),
     };
 
@@ -156,6 +170,25 @@ class FleetFixedRosterService {
       }
     }
 
+    // The work type must BE a work type: an id that is well-formed, live, and of this kind. The
+    // daily plan checks its mission type the same way and for the same reason — the column stores
+    // a reference, so a dangling one would render as a blank cell no reader could explain, and a
+    // `workshop` id would render as somebody else's vocabulary.
+    for (const workTypeId of new Set(
+      input.rows.map((row) => row.workTypeId).filter((id): id is string => id != null),
+    )) {
+      const item = await fleetCatalogItemRepository.findActiveOfKind(workTypeId, 'workType');
+      if (item === null) {
+        throw new ValidationError([
+          {
+            field: 'body.rows.workTypeId',
+            code: 'UNKNOWN',
+            message: 'work type not found or inactive',
+          },
+        ]);
+      }
+    }
+
     const outcome = await unitOfWork(async (session) => {
       const existing = await fleetFixedCrewRepository.findAll(session);
       const byVehicle = new Map(existing.map((row) => [String(row.vehicleId), row]));
@@ -183,15 +216,20 @@ class FleetFixedRosterService {
       const audits: PendingAudit[] = [];
       for (const row of input.rows) {
         const current = byVehicle.get(row.vehicleId);
+        // Same keys, same order as `snapshot()` — see the note there.
         const next = {
+          workTypeId: row.workTypeId ?? null,
           driver1EmployeeId: row.driver1EmployeeId ?? null,
           driver2EmployeeId: row.driver2EmployeeId ?? null,
+          notes: row.notes ?? null,
         };
         const set: Partial<FleetFixedCrewDoc> = {
+          workTypeId: next.workTypeId === null ? null : new Types.ObjectId(next.workTypeId),
           driver1EmployeeId:
             next.driver1EmployeeId === null ? null : new Types.ObjectId(next.driver1EmployeeId),
           driver2EmployeeId:
             next.driver2EmployeeId === null ? null : new Types.ObjectId(next.driver2EmployeeId),
+          notes: next.notes,
         };
 
         let doc: FleetFixedCrewDoc;

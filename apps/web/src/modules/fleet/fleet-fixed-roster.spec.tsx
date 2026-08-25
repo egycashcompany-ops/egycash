@@ -36,6 +36,7 @@ const V1 = '650000000000000000000001';
 const V2 = '650000000000000000000002';
 const E1 = '650000000000000000000011';
 const E2 = '650000000000000000000012';
+const WT = '650000000000000000000021';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const RAW = readFileSync(join(HERE, 'pages/FixedRosterPage.tsx'), 'utf8');
@@ -60,8 +61,10 @@ const row = (
   plateNumber: `س ص ${code}`,
   typeId: 'vt1',
   inMaintenance: false,
+  workTypeId: null,
   driver1EmployeeId: d1,
   driver2EmployeeId: d2,
+  notes: null,
 });
 
 const BOARD: FleetFixedRosterDto = {
@@ -77,6 +80,13 @@ const ALL = ['fleetRoster.view', 'fleetRoster.plan'];
 const client = (board: FleetFixedRosterDto = BOARD): QueryClient => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   qc.setQueryData(['fleet', 'fixed-roster'], board);
+  // The REAL `workType` catalog key, in the shape `useFleetCatalog('workType')` reads.
+  qc.setQueryData(['fleet', 'catalogs', 'list', { kind: 'workType' }], {
+    items: [
+      { id: WT, kind: 'workType', name: { ar: 'نقل نقدية', en: 'Cash run' }, isActive: true },
+    ],
+    meta: { page: 1, pageSize: 100, total: 1, totalPages: 1 },
+  });
   for (const [id, code, ar] of [
     [E1, 'HR-1', 'أحمد محمد'],
     [E2, 'HR-2', 'محمد محمود'],
@@ -170,12 +180,29 @@ describe('the fixed-crew screen', () => {
     expect(body).toContain('س ص 150');
   });
 
-  it('leaves mission and notes as an honest dash — a standing crew stores neither', () => {
-    // §2.7b is the two driver slots and nothing else. The columns are there for the likeness;
-    // inventing a value for a fact the row does not hold would be worse than the dash.
-    expect(tbody(render())).toContain('—');
-    expect(SOURCE).toMatch(/key: 'mission',[\s\S]{0,120}render: \(\) => dash/);
-    expect(SOURCE).toMatch(/key: 'notes',[\s\S]{0,120}render: \(\) => dash/);
+  it('shows the work type and the note as REAL values, dashed only when empty', () => {
+    // These were permanent placeholders until the crew gained the two fields. The dash is now
+    // what "this row holds nothing" looks like, not what the column always looks like — so a
+    // populated row must actually print its values.
+    const filled: FleetFixedRosterDto = {
+      ...BOARD,
+      rows: [{ ...row(V1, '150'), workTypeId: WT, notes: 'يبدأ من المخزن' }, row(V2, '151')],
+    };
+    const body = tbody(render({ qc: client(filled) }));
+    expect(body, 'the catalog item name, not its id').toContain('نقل نقدية');
+    expect(body).not.toContain(WT);
+    expect(body).toContain('يبدأ من المخزن');
+    // …and the untouched row still reads as empty.
+    expect(body).toContain('—');
+  });
+
+  it('renders the work type by NAME, resolved from the catalog, never the raw id', () => {
+    // Persisting the id and displaying the label is the project's catalog convention; printing
+    // the ObjectId would be unreadable and would leak a key the reader cannot act on.
+    expect(SOURCE, 'the id is resolved through the catalog').toContain(
+      'workTypeName(row.workTypeId)',
+    );
+    expect(SOURCE).toContain("useFleetCatalog('workType')");
   });
 
   it('contains its own horizontal overflow — the page never scrolls sideways for it', () => {
@@ -333,7 +360,10 @@ describe('the available-driver pool', () => {
         .map((x) => x.trim())
         .filter((x) => x !== '')
         .sort(),
-    ).toEqual(['useFixedRoster', 'useSaveFixedRoster']);
+      // Three now, and the third is a READ of an existing catalog the maintenance screen already
+      // uses. The list is exact on purpose: it is what stops a fourth — a driver-profile write,
+      // a vehicle patch — from arriving unremarked.
+    ).toEqual(['useFixedRoster', 'useFleetCatalog', 'useSaveFixedRoster']);
     // No other api module is reached at all — not the drivers api, not HR.
     expect(SOURCE, 'no second api import').not.toMatch(/from '\.\.\/api\/fleet-api'/);
     expect(SOURCE).not.toMatch(/hr\/|employee-api|driver-api/);
@@ -382,6 +412,138 @@ describe('the same-driver rule', () => {
       const key = 'fleet.fixedRoster.alreadyOnThisVehicle';
       expect(translate(locale, key), `${locale} still carries the dead key`).toBe(key);
     }
+  });
+});
+
+// ── 2e. The «تعديل» dialog ──────────────────────────────────────────────────
+//
+// The dialog is a form, and forms are where a screen most easily grows a SECOND copy of a rule.
+// The claims here are that it does not: the driver rules it obeys are the board's, reached
+// through `applyEdit`, and cancelling reaches nothing at all. The node suite cannot click, so
+// the behaviour of `applyEdit` itself lives in `lib/fixed-roster-board.spec.ts` and the click is
+// verified in a browser; what is asserted here is the wiring between them.
+
+describe('the edit dialog', () => {
+  const DIALOG = SOURCE.slice(
+    SOURCE.indexOf('const EditCrewDialog'),
+    SOURCE.indexOf('export const FixedRosterPage'),
+  );
+
+  it('offers «تعديل» on EVERY row, crewed or not', () => {
+    // A car with no crew is exactly the one that needs a work type or a note put on it.
+    const markup = render();
+    const buttons = [...markup.matchAll(/data-edit-row="([^"]*)"/g)].map((m) => m[1]);
+    expect(buttons).toEqual([V1, V2]);
+    expect(markup).toContain(t('common.edit'));
+    expect(t('common.edit')).toBe('تعديل');
+  });
+
+  it('hides the action from a reader who may not plan', () => {
+    expect(render({ permissions: ['fleetRoster.view'] })).not.toContain('data-edit-row');
+  });
+
+  it('edits exactly the four fields, and never the workshop status', () => {
+    for (const field of [
+      "t('fleet.roster.fields.mission')",
+      "t('fleet.odometer.fields.driver1')",
+      "t('fleet.odometer.fields.driver2')",
+      "t('fleet.attendance.fields.notes')",
+    ]) {
+      expect(DIALOG, `${field} is editable`).toContain(field);
+    }
+    expect(DIALOG, 'the workshop badge is not in the form').not.toContain('InWorkshopBadge');
+    expect(DIALOG, 'and nothing sets inMaintenance').not.toContain('inMaintenance');
+  });
+
+  it('opens with the row’s CURRENT values, not empty ones', () => {
+    for (const seed of [
+      'useState<string | null>(row.workTypeId)',
+      'useState<string | null>(row.driver1EmployeeId)',
+      'useState<string | null>(row.driver2EmployeeId)',
+      "useState<string>(row.notes ?? '')",
+    ]) {
+      expect(DIALOG, seed).toContain(seed);
+    }
+  });
+
+  it('fills the work-type select from the REAL catalog, never a hardcoded list', () => {
+    expect(SOURCE).toContain("useFleetCatalog('workType')");
+    expect(DIALOG, 'options come from the query').toContain('workTypes.data?.items ?? []');
+    expect(DIALOG, 'and the id is what is stored').toContain('value={item.id}');
+    expect(DIALOG, 'the label is the localized catalog name').toContain(
+      'localized(item.name, locale)',
+    );
+  });
+
+  it('is a SINGLE select — one work type per vehicle', () => {
+    expect(DIALOG, 'a <select>, not a multi-select').toContain('<Select');
+    expect(DIALOG).not.toContain('MultiSelect');
+    expect(DIALOG, 'no multiple attribute').not.toMatch(/\bmultiple\b/);
+  });
+
+  it('handles the catalog’s loading, empty and failed states', () => {
+    expect(DIALOG, 'loading').toContain('workTypes.isPending');
+    expect(DIALOG, 'error').toContain('workTypes.isError');
+    expect(DIALOG, 'empty').toContain('noWorkTypesYet');
+  });
+
+  it('lets a vehicle have NO work type, and no driver', () => {
+    expect(DIALOG).toContain("t('fleet.fixedRoster.noWorkType')");
+    expect(DIALOG).toContain("t('fleet.fixedRoster.noDriver')");
+    // '' is the empty option's value and must come back as null, not as an empty string.
+    expect(DIALOG).toContain('e.target.value || null');
+  });
+
+  it('offers the pool PLUS this vehicle’s own crew, so they stay selectable', () => {
+    expect(DIALOG).toMatch(/candidates[\s\S]{0,300}pool\.map/);
+    expect(DIALOG, 'the row’s own drivers are added back').toMatch(
+      /row\.driver1EmployeeId, row\.driver2EmployeeId\]/,
+    );
+  });
+
+  it('does not OFFER the other slot’s driver, so one person cannot fill both', () => {
+    // The structural half, and the one that actually fires: each select drops the other slot's
+    // current driver from its options, so the illegal pair cannot be chosen in the first place.
+    // `|| id === value` is what keeps a slot's OWN driver listed — without it the dialog would
+    // open showing a selected value that is not among its options, which browsers render blank.
+    expect(DIALOG).toContain('.filter((id) => id !== exclude || id === value)');
+    expect(DIALOG, 'slot 1 excludes slot 2').toContain('exclude={driver2}');
+    expect(DIALOG, 'slot 2 excludes slot 1').toContain('exclude={driver1}');
+  });
+
+  it('and refuses the pair anyway, if it is ever reached', () => {
+    // Defence in depth behind the filtering above: `applyEdit` would silently displace the
+    // first driver with the second, which is a worse outcome than a blocked button.
+    expect(DIALOG).toContain('const sameTwice = driver1 !== null && driver1 === driver2');
+    expect(DIALOG, 'and the save is blocked while it holds').toContain('disabled={sameTwice}');
+  });
+
+  it('commits through applyEdit — the board’s rules, not a second copy', () => {
+    // This is the whole reason the dialog cannot become a way around exclusivity.
+    expect(SOURCE).toContain('applyEdit(rows, editingRow.vehicleId, edit)');
+    expect(DIALOG, 'the dialog itself writes no row').not.toContain('setDraft');
+  });
+
+  it('normalizes an empty note to null, the way the contract demands', () => {
+    expect(DIALOG).toContain("notes: notes.trim() === '' ? null : notes.trim()");
+    // The schema refuses '' outright, so sending it would 400 the whole save.
+    expect(
+      SaveFleetFixedRosterSchema.safeParse({ rows: [{ vehicleId: V1, notes: '' }] }).success,
+    ).toBe(false);
+    expect(
+      SaveFleetFixedRosterSchema.safeParse({ rows: [{ vehicleId: V1, notes: null }] }).success,
+    ).toBe(true);
+  });
+
+  it('CANCEL touches nothing — not the draft, not the server', () => {
+    // The dialog holds its own state and hands it back only via onSave, so closing discards it.
+    // The handler is asserted WHOLE: closing sets the open-state and does nothing else, so a
+    // future edit that also reset or committed the draft would not match this string.
+    expect(SOURCE).toContain('onClose={() => setEditing(null)}');
+    expect(DIALOG, 'the dialog writes no draft of its own').not.toContain('setDraft');
+    expect(DIALOG, 'and never calls the mutation').not.toContain('mutate');
+    // The only path that reaches the board is the save handler.
+    expect(SOURCE.match(/applyEdit\(/g) ?? [], 'exactly one commit point').toHaveLength(1);
   });
 });
 

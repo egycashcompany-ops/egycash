@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { type FleetFixedCrewRowDto } from '@ecms/contracts';
 import {
+  applyEdit,
   assignDriver,
   availableDrivers,
   changedRows,
@@ -26,8 +27,10 @@ const row = (
   plateNumber: `س ص ${code}`,
   typeId: 'vt1',
   inMaintenance: false,
+  workTypeId: null,
   driver1EmployeeId: d1,
   driver2EmployeeId: d2,
+  notes: null,
 });
 
 const BOARD = [row('v1', '150'), row('v2', '151')];
@@ -95,7 +98,13 @@ describe('assignDriver', () => {
   it('sends the swap as ONE changed row — the crew moved, the fleet did not', () => {
     const saved = [row('v1', '150', 'e1', 'e2'), row('v2', '151')];
     expect(changedRows(saved, assignDriver(saved, 'v1', 'driver2EmployeeId', 'e1'))).toEqual([
-      { vehicleId: 'v1', driver1EmployeeId: 'e2', driver2EmployeeId: 'e1' },
+      {
+        vehicleId: 'v1',
+        workTypeId: null,
+        driver1EmployeeId: 'e2',
+        driver2EmployeeId: 'e1',
+        notes: null,
+      },
     ]);
   });
 
@@ -367,7 +376,13 @@ describe('changedRows', () => {
   it('sends only the rows whose crew differs', () => {
     const next = assignDriver(BOARD, 'v2', 'driver1EmployeeId', 'e1');
     expect(changedRows(BOARD, next)).toEqual([
-      { vehicleId: 'v2', driver1EmployeeId: 'e1', driver2EmployeeId: null },
+      {
+        vehicleId: 'v2',
+        workTypeId: null,
+        driver1EmployeeId: 'e1',
+        driver2EmployeeId: null,
+        notes: null,
+      },
     ]);
     expect(isDirty(BOARD, next)).toBe(true);
   });
@@ -375,7 +390,13 @@ describe('changedRows', () => {
   it('sends a cleared row, so emptying a crew is saved rather than ignored', () => {
     const saved = [row('v1', '150', 'e1')];
     expect(changedRows(saved, clearSlot(saved, 'v1', 'driver1EmployeeId'))).toEqual([
-      { vehicleId: 'v1', driver1EmployeeId: null, driver2EmployeeId: null },
+      {
+        vehicleId: 'v1',
+        workTypeId: null,
+        driver1EmployeeId: null,
+        driver2EmployeeId: null,
+        notes: null,
+      },
     ]);
   });
 
@@ -386,16 +407,200 @@ describe('changedRows', () => {
 
   it('carries a brand-new row that DOES hold somebody', () => {
     expect(changedRows([], [row('v9', '999', 'e1')])).toEqual([
-      { vehicleId: 'v9', driver1EmployeeId: 'e1', driver2EmployeeId: null },
+      {
+        vehicleId: 'v9',
+        workTypeId: null,
+        driver1EmployeeId: 'e1',
+        driver2EmployeeId: null,
+        notes: null,
+      },
     ]);
   });
 
-  it('sends the crew and nothing else — the vehicle facts are not the payload', () => {
+  it('sends the four editable facts and nothing else — the vehicle facts are not the payload', () => {
+    // `code`, `plateNumber`, `typeId` and `inMaintenance` describe the CAR and are read-only
+    // here; sending them would invite the server to treat a board save as a registry edit.
     const next = assignDriver(BOARD, 'v1', 'driver1EmployeeId', 'e1');
     expect(Object.keys(changedRows(BOARD, next)[0] as object).sort()).toEqual([
       'driver1EmployeeId',
       'driver2EmployeeId',
+      'notes',
       'vehicleId',
+      'workTypeId',
     ]);
+  });
+});
+
+// ── the edit dialog's four values, applied on the board's own terms ─────────
+//
+// `applyEdit` is what the «تعديل» dialog commits through. It must not be a second, parallel set
+// of rules: a driver seated here who is fixed to another car has to be RELEASED from it, exactly
+// as dragging them would, or the dialog becomes a way around the one rule the board exists to
+// keep. These pin that it routes through `assignDriver` rather than writing rows directly.
+
+describe('applyEdit', () => {
+  const board = () => [row('v1', '150'), row('v2', '151', 'e9')];
+
+  it('writes all four values of the row it names, and nothing on any other row', () => {
+    const after = applyEdit(board(), 'v1', {
+      workTypeId: 'wt1',
+      driver1EmployeeId: 'e1',
+      driver2EmployeeId: null,
+      notes: 'من المخزن',
+    });
+    const v1 = after.find((r) => r.vehicleId === 'v1') as FleetFixedCrewRowDto;
+    expect(v1.workTypeId).toBe('wt1');
+    expect(v1.driver1EmployeeId).toBe('e1');
+    expect(v1.driver2EmployeeId).toBeNull();
+    expect(v1.notes).toBe('من المخزن');
+    expect(after.find((r) => r.vehicleId === 'v2')).toEqual(board()[1]);
+  });
+
+  it('RELEASES the other car when the dialog seats a driver fixed elsewhere', () => {
+    // The rule the dialog must not be able to sidestep. e9 crews v2; choosing them for v1 has
+    // to take them off v2, or one driver would hold two crews.
+    const after = applyEdit(board(), 'v1', {
+      workTypeId: null,
+      driver1EmployeeId: 'e9',
+      driver2EmployeeId: null,
+      notes: null,
+    });
+    expect(crews(after)).toEqual(['150:e9/-', '151:-/-']);
+    const seats = after.flatMap((r) => [r.driver1EmployeeId, r.driver2EmployeeId]).filter(Boolean);
+    expect(new Set(seats).size, 'nobody is seated twice').toBe(seats.length);
+  });
+
+  it('clears a slot when the dialog chooses "no driver"', () => {
+    const seated = applyEdit(board(), 'v1', {
+      workTypeId: null,
+      driver1EmployeeId: 'e1',
+      driver2EmployeeId: 'e2',
+      notes: null,
+    });
+    const cleared = applyEdit(seated, 'v1', {
+      workTypeId: null,
+      driver1EmployeeId: null,
+      driver2EmployeeId: 'e2',
+      notes: null,
+    });
+    expect(crews(cleared)).toEqual(['150:-/e2', '151:e9/-']);
+    // …and the released driver is offered again.
+    expect(
+      availableDrivers([{ employeeId: 'e1' }, { employeeId: 'e2' }], cleared).map(
+        (d) => d.employeeId,
+      ),
+    ).toEqual(['e1']);
+  });
+
+  it('keeps the row’s own drivers selectable — re-saving them changes nothing', () => {
+    const seated = applyEdit(board(), 'v1', {
+      workTypeId: 'wt1',
+      driver1EmployeeId: 'e1',
+      driver2EmployeeId: 'e2',
+      notes: 'x',
+    });
+    const again = applyEdit(seated, 'v1', {
+      workTypeId: 'wt1',
+      driver1EmployeeId: 'e1',
+      driver2EmployeeId: 'e2',
+      notes: 'x',
+    });
+    expect(crews(again)).toEqual(crews(seated));
+    expect(changedRows(seated, again), 'a no-op edit sends nothing').toEqual([]);
+  });
+
+  it('swaps within the car when the dialog reverses the two slots', () => {
+    const seated = applyEdit(board(), 'v1', {
+      workTypeId: null,
+      driver1EmployeeId: 'e1',
+      driver2EmployeeId: 'e2',
+      notes: null,
+    });
+    const reversed = applyEdit(seated, 'v1', {
+      workTypeId: null,
+      driver1EmployeeId: 'e2',
+      driver2EmployeeId: 'e1',
+      notes: null,
+    });
+    expect(crews(reversed)).toEqual(['150:e2/e1', '151:e9/-']);
+  });
+
+  it('never loses or duplicates a driver, whatever the dialog asks for', () => {
+    const people = ['e1', 'e2', 'e9'];
+    const all = people.map((employeeId) => ({ employeeId }));
+    for (const d1 of [null, ...people]) {
+      for (const d2 of [null, ...people]) {
+        if (d1 !== null && d1 === d2) continue; // the dialog refuses this pair before applying
+        const after = applyEdit(board(), 'v1', {
+          workTypeId: null,
+          driver1EmployeeId: d1,
+          driver2EmployeeId: d2,
+          notes: null,
+        });
+        const seated = after
+          .flatMap((r) => [r.driver1EmployeeId, r.driver2EmployeeId])
+          .filter((x): x is string => x !== null);
+        expect(new Set(seated).size, `${String(d1)}/${String(d2)} duplicated somebody`).toBe(
+          seated.length,
+        );
+        const pooled = availableDrivers(all, after).map((d) => d.employeeId);
+        for (const person of people) {
+          expect(
+            seated.includes(person) !== pooled.includes(person),
+            `${person} is in both or neither for ${String(d1)}/${String(d2)}`,
+          ).toBe(true);
+        }
+      }
+    }
+  });
+
+  it('sends a work-type-only edit — a change with no driver in it still travels', () => {
+    const saved = board();
+    const after = applyEdit(saved, 'v1', {
+      workTypeId: 'wt1',
+      driver1EmployeeId: null,
+      driver2EmployeeId: null,
+      notes: null,
+    });
+    expect(changedRows(saved, after)).toEqual([
+      {
+        vehicleId: 'v1',
+        workTypeId: 'wt1',
+        driver1EmployeeId: null,
+        driver2EmployeeId: null,
+        notes: null,
+      },
+    ]);
+  });
+
+  it('sends a notes-only edit too', () => {
+    const saved = board();
+    const after = applyEdit(saved, 'v2', {
+      workTypeId: null,
+      driver1EmployeeId: 'e9',
+      driver2EmployeeId: null,
+      notes: 'ملاحظة',
+    });
+    expect(changedRows(saved, after)).toEqual([
+      {
+        vehicleId: 'v2',
+        workTypeId: null,
+        driver1EmployeeId: 'e9',
+        driver2EmployeeId: null,
+        notes: 'ملاحظة',
+      },
+    ]);
+  });
+
+  it('does not mutate the board it was given', () => {
+    const saved = board();
+    const snapshot = JSON.stringify(saved);
+    applyEdit(saved, 'v1', {
+      workTypeId: 'wt1',
+      driver1EmployeeId: 'e9',
+      driver2EmployeeId: null,
+      notes: 'x',
+    });
+    expect(JSON.stringify(saved)).toBe(snapshot);
   });
 });

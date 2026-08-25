@@ -2333,8 +2333,10 @@ describe('fixed crew (الطقم الثابت) — the standing crew, with no da
       vehicleId: string;
       code: string;
       inMaintenance: boolean;
+      workTypeId: string | null;
       driver1EmployeeId: string | null;
       driver2EmployeeId: string | null;
+      notes: string | null;
     }[];
     drivers: { employeeId: string; assignedVehicleId: string | null }[];
   }
@@ -2353,6 +2355,164 @@ describe('fixed crew (الطقم الثابت) — the standing crew, with no da
     request(app).get('/api/v1/fleet/fixed-roster').set('Authorization', `Bearer ${token}`);
   const rowFor = (board: FixedBoardDto, vehicleId: string) =>
     board.rows.find((r) => r.vehicleId === vehicleId);
+
+  // ── the work type and the note: added after the collection shipped ───────
+  //
+  // Both are nullable, so the first claim is a compatibility one — a crew written before these
+  // existed must still read and save. The rest is that a reference behaves like a reference:
+  // stored by id, validated against the catalog it belongs to, and refused when it is neither.
+
+  it('EDIT — stores work type, both drivers and a note together, and reads them back', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const [d1, d2] = [await mkDriver(), await mkDriver()];
+    const workType = data<FleetCatalogItemDto>(
+      await request(app)
+        .post('/api/v1/fleet/catalog-items')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ kind: 'workType', name: { ar: 'نقل نقدية', en: 'Cash run' } }),
+    );
+
+    const save = await saveCrews([
+      {
+        vehicleId: v.id,
+        workTypeId: workType.id,
+        driver1EmployeeId: d1,
+        driver2EmployeeId: d2,
+        notes: 'يبدأ من المخزن',
+      },
+    ]);
+    expect(save.status).toBe(200);
+    expect(data<FixedBoardDto>(save).changedCount).toBe(1);
+
+    // A fresh request — the four values survived the round trip, not just the response.
+    expect(rowFor(data<FixedBoardDto>(await getCrews()), v.id)).toMatchObject({
+      workTypeId: workType.id,
+      driver1EmployeeId: d1,
+      driver2EmployeeId: d2,
+      notes: 'يبدأ من المخزن',
+    });
+  });
+
+  it('EDIT — a row that carries neither still saves, and reads back as null', async () => {
+    // The backward-compatibility claim: every crew written before these fields existed.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const d = await mkDriver();
+    expect((await saveCrews([{ vehicleId: v.id, driver1EmployeeId: d }])).status).toBe(200);
+    expect(rowFor(data<FixedBoardDto>(await getCrews()), v.id)).toMatchObject({
+      workTypeId: null,
+      notes: null,
+    });
+  });
+
+  it('EDIT — a work type alone is a change; no driver need be involved', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const workType = data<FleetCatalogItemDto>(
+      await request(app)
+        .post('/api/v1/fleet/catalog-items')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ kind: 'workType', name: { ar: 'صيانة دورية', en: 'Routine' } }),
+    );
+    const save = await saveCrews([{ vehicleId: v.id, workTypeId: workType.id }]);
+    expect(save.status).toBe(200);
+    expect(data<FixedBoardDto>(save).changedCount, 'a crewless row that says something').toBe(1);
+    expect(rowFor(data<FixedBoardDto>(await getCrews()), v.id)?.workTypeId).toBe(workType.id);
+  });
+
+  it('EDIT — re-saving the same four values is a no-op, so nothing is rewritten', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const d = await mkDriver();
+    const rows = [{ vehicleId: v.id, driver1EmployeeId: d, notes: 'ثابت' }];
+    expect(data<FixedBoardDto>(await saveCrews(rows)).changedCount).toBe(1);
+    expect(
+      data<FixedBoardDto>(await saveCrews(rows)).changedCount,
+      'change detection compares all four facts',
+    ).toBe(0);
+  });
+
+  it('EDIT — clearing a note stores null, not an empty string', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    expect((await saveCrews([{ vehicleId: v.id, notes: 'مؤقتة' }])).status).toBe(200);
+    expect((await saveCrews([{ vehicleId: v.id, notes: null }])).status).toBe(200);
+    expect(rowFor(data<FixedBoardDto>(await getCrews()), v.id)?.notes).toBeNull();
+    // The empty string is refused outright — "cleared" has one spelling.
+    expect((await saveCrews([{ vehicleId: v.id, notes: '' }])).status).toBe(400);
+  });
+
+  it('EDIT — refuses a work type that is not a workType', async () => {
+    // A `workshop` id is a real catalog item of the WRONG kind: well-formed, live, and still
+    // somebody else's vocabulary. Storing it would render as another module's label.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const workshop = data<FleetCatalogItemDto>(
+      await request(app)
+        .post('/api/v1/fleet/catalog-items')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ kind: 'workshop', name: { ar: 'ورشة الطقم', en: 'Crew shop' } }),
+    );
+    expect((await saveCrews([{ vehicleId: v.id, workTypeId: workshop.id }])).status).toBe(400);
+    expect(
+      (await saveCrews([{ vehicleId: v.id, workTypeId: new Types.ObjectId().toString() }])).status,
+      'and a dangling reference too',
+    ).toBe(400);
+    expect(rowFor(data<FixedBoardDto>(await getCrews()), v.id)?.workTypeId).toBeNull();
+  });
+
+  it('EDIT — the driver rules still hold when the edit comes as one row', async () => {
+    // The dialog saves exactly this shape. It must not be a way around exclusivity.
+    const [a, b] = [
+      data<FleetVehicleDto>(await createVehicle(adminToken)),
+      data<FleetVehicleDto>(await createVehicle(adminToken)),
+    ];
+    const d = await mkDriver();
+    expect((await saveCrews([{ vehicleId: a.id, driver1EmployeeId: d }])).status).toBe(200);
+    // Only the receiving row — the releasing row is missing, so the server refuses.
+    expect(
+      (await saveCrews([{ vehicleId: b.id, driver1EmployeeId: d, notes: 'من التعديل' }])).status,
+      'one driver, one fixed crew',
+    ).toBe(409);
+    expect(rowFor(data<FixedBoardDto>(await getCrews()), a.id)?.driver1EmployeeId).toBe(d);
+    expect(
+      rowFor(data<FixedBoardDto>(await getCrews()), b.id)?.notes,
+      'the refusal wrote nothing',
+    ).toBeNull();
+  });
+
+  it('EDIT — writes nothing outside fleet_fixed_crews', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const d = await mkDriver();
+    const workType = data<FleetCatalogItemDto>(
+      await request(app)
+        .post('/api/v1/fleet/catalog-items')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ kind: 'workType', name: { ar: 'مهمة', en: 'Task' } }),
+    );
+    const counts = async () => ({
+      drivers: await mongoose.connection.collection('fleet_driver_profiles').countDocuments({}),
+      vehicles: await mongoose.connection.collection('fleet_vehicles').countDocuments({}),
+      duty: await mongoose.connection.collection('fleet_duty_assignments').countDocuments({}),
+      visits: await mongoose.connection.collection('fleet_maintenance_visits').countDocuments({}),
+      catalog: await mongoose.connection.collection('fleet_catalog_items').countDocuments({}),
+    });
+    const before = await counts();
+    const vehicleBefore = await mongoose.connection
+      .collection('fleet_vehicles')
+      .findOne({ _id: new Types.ObjectId(v.id) });
+
+    expect(
+      (
+        await saveCrews([
+          { vehicleId: v.id, workTypeId: workType.id, driver1EmployeeId: d, notes: 'ملاحظة' },
+        ])
+      ).status,
+    ).toBe(200);
+
+    expect(await counts(), 'no other collection gained or lost a document').toEqual(before);
+    expect(
+      await mongoose.connection
+        .collection('fleet_vehicles')
+        .findOne({ _id: new Types.ObjectId(v.id) }),
+      'the vehicle row is byte-identical',
+    ).toEqual(vehicleBefore);
+  });
 
   // ── persistence: the whole point of the screen ────────────────────────────
 

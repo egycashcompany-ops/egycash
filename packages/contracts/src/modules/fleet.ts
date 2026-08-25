@@ -832,8 +832,11 @@ export interface FleetFixedCrewRowDto {
   typeId: string;
   /** Derived, shown for context only — a car in the workshop still HAS a fixed crew. */
   inMaintenance: boolean;
+  /** A `workType` catalog item (أنواع الأعمال), or null. The NAME is resolved by the client. */
+  workTypeId: string | null;
   driver1EmployeeId: string | null;
   driver2EmployeeId: string | null;
+  notes: string | null;
 }
 
 export interface FleetFixedRosterDto {
@@ -851,8 +854,13 @@ export interface FleetFixedRosterDto {
 export const SaveFleetFixedCrewRowSchema = z
   .object({
     vehicleId: canonicalId(),
+    workTypeId: canonicalId().nullish(),
     driver1EmployeeId: canonicalId().nullish(),
     driver2EmployeeId: canonicalId().nullish(),
+    // `.min(1)` rather than allowing '': a note is either something or nothing, and nothing is
+    // spelled `null` — the same shape every other note in this module uses, so "cleared" and
+    // "never written" cannot drift apart into two different empty values.
+    notes: z.string().trim().min(1).max(500).nullish(),
   })
   .strict()
   .superRefine((value, ctx) => {

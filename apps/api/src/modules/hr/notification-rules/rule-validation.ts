@@ -16,9 +16,9 @@ import {
   type AutomationFilter,
   type RuleAudience,
 } from '@ecms/contracts';
-import { validateTrigger, type TriggerProblem } from '../../automation/workflows/trigger-validation';
+import { validateTrigger, type TriggerProblem } from '../../automation/workflows';
 
-export { type TriggerProblem as RuleProblem } from '../../automation/workflows/trigger-validation';
+export { type TriggerProblem as RuleProblem } from '../../automation/workflows';
 
 /**
  * The event and its filters, checked against the catalogue.

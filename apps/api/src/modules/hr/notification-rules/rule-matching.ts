@@ -16,7 +16,7 @@
 //     or hold something that is not an id. Every one of those has to mean "this rule tells nobody
 //     this time" rather than an exception that stops the event reaching its other consumers.
 import { type AutomationFilter, type RuleAudience } from '@ecms/contracts';
-import { matchesFilters } from '../../automation/triggers/filter-eval';
+import { matchesFilters } from '../../automation/triggers';
 
 /** The shape a rule needs to be evaluated — the stored document, minus everything else. */
 export interface EvaluableRule {

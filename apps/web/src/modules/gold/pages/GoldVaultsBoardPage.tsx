@@ -13,6 +13,7 @@ import { PageContainer, PageHeader } from '../../../platform/layout/PageContaine
 import { Button } from '../../../shared/ui/Button';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { LoadingState } from '../../../shared/ui/states/LoadingState';
+import { ErrorState } from '../../../shared/ui/states/ErrorState';
 import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { Checkbox } from '../../../shared/ui/form';
@@ -338,6 +339,20 @@ export const GoldVaultsBoardPage = (): JSX.Element => {
     );
   }
 
+  // A failed request is not an empty vault.
+  //
+  // This page had no error branch at all: it guarded `isLoading`, read `data?.items ?? []`, and a
+  // settled failure — which leaves `isLoading` false and `data` undefined — fell straight through
+  // to the empty state. So a board that could not be loaded was drawn as a company with no
+  // vaults, which is a claim about the business, not about the network.
+  if (vaults.isError) {
+    return (
+      <PageContainer>
+        <ErrorState error={vaults.error} onRetry={() => void vaults.refetch()} />
+      </PageContainer>
+    );
+  }
+
   return (
     <PageContainer>
       <PageHeader
@@ -357,6 +372,18 @@ export const GoldVaultsBoardPage = (): JSX.Element => {
           </Can>
         }
       />
+
+      {/*
+        The key overlay is not the board, so its failure must not blank the board — but it must not
+        pass unremarked either. `keyMap` falls back to `{}`, and an empty key map draws every drawer
+        as NOT handed over: the same picture a vault with all its keys in the safe would draw. That
+        is the one wrong answer a custodian must never be given silently.
+      */}
+      {keysOverview.isError && (
+        <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-700/60 dark:bg-amber-900/20 dark:text-amber-200">
+          {t('gold.vaults.keyOverlayFailed')}
+        </div>
+      )}
 
       <div className="mb-5 flex flex-wrap items-center gap-4 text-xs text-slate-500 dark:text-slate-400">
         <LegendSwatch colour={fillColor(0)} label={t('gold.vaults.legendEmpty')} />

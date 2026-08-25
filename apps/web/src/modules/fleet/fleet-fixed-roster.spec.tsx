@@ -314,8 +314,15 @@ describe('the available-driver pool', () => {
     // Rendering the server's list raw would leave an assigned driver sitting in the pool until
     // the next fetch; adjusting the list step by step would drift. It is computed from the seats.
     expect(SOURCE).toContain('availableDrivers(boardQuery.data?.drivers ?? [], draft)');
-    expect(SOURCE, 'the pool renders the derived list').toContain('pool.map((driver)');
-    expect(SOURCE, 'and never the raw server array').not.toContain('boardQuery.data.drivers.map');
+    // The chain is server list -> pool (derived from the draft) -> shownDrivers (the search's
+    // view of the pool). The list rendered is the LAST of those, and the search must sit on top
+    // of the derived pool rather than beside it, or a driver seated by a drag could still be
+    // offered while a term is typed.
+    expect(SOURCE, 'the search filters the derived pool').toContain(
+      'filterDrivers(pool, searchIndex, driverSearch)',
+    );
+    expect(SOURCE, 'and the list renders that').toContain('shownDrivers.map((driver)');
+    expect(SOURCE, 'never the raw server array').not.toContain('boardQuery.data.drivers.map');
   });
 
   it('says «سيارة أخرى» for a driver fixed to a car outside this reader’s scope', () => {
@@ -335,11 +342,16 @@ describe('the available-driver pool', () => {
     const at = markup.indexOf(`data-driver-card="${E1}"`);
     const card = markup.slice(at, markup.indexOf('</li>', at));
     expect(card, 'held elsewhere, and said so').toContain(t('fleet.roster.otherVehicle'));
-    expect(card, 'not claimed as free').not.toContain(t('fleet.fixedRoster.unassigned'));
 
-    // ...while a driver the board really does show as free still reads as free.
+    // ...while a driver the board really does show as free carries NO badge at all. Free is what
+    // every other row in this list already means, so the badge marks the exception only — and
+    // that is what keeps the row narrow enough for the name.
     const free = markup.indexOf(`data-driver-card="${E2}"`);
-    expect(markup.slice(free, markup.indexOf('</li>', free))).toContain(
+    const freeCard = markup.slice(free, markup.indexOf('</li>', free));
+    expect(freeCard, 'no «سيارة أخرى» on a free driver').not.toContain(
+      t('fleet.roster.otherVehicle'),
+    );
+    expect(freeCard, 'and no redundant «بلا طقم» either').not.toContain(
       t('fleet.fixedRoster.unassigned'),
     );
   });
@@ -575,6 +587,116 @@ describe('navigation', () => {
     const fixed = NAV.indexOf("route: '/fleet/fixed-roster'");
     expect(fixed).toBeGreaterThan(daily);
     expect(fixed - daily, 'adjacent rows').toBeLessThan(400);
+  });
+});
+
+// ── 2f. The driver panel: a chip, a search, and less of the width ───────────
+//
+// The panel sits beside the board and competes with it for room. These pin the three things that
+// keeps it useful while it is narrow: the name is the whole chip (the code moved into the search
+// instead of the row), the search reaches every identifier the record carries, and the panel
+// takes a quarter of the grid rather than a third.
+
+describe('the driver panel', () => {
+  const POOL_LIST = SOURCE.slice(
+    SOURCE.indexOf('shownDrivers.map((driver)'),
+    SOURCE.indexOf('</ul>'),
+  );
+
+  it('shows the driver by NAME, with no code beside it', () => {
+    const markup = render();
+    expect(markup, 'the name is there').toContain('أحمد محمد');
+    // `EmployeeName` prints name + code; the pool uses the chip, which prints the name alone.
+    expect(POOL_LIST, 'the pool row is a chip').toContain('<DriverChip');
+    expect(POOL_LIST, 'and not the name+code component').not.toContain('<EmployeeName');
+    // Comments stripped: the chip's header explains at length WHY the code is not shown, and
+    // matching raw source would fail on its own explanation.
+    const chip = readFileSync(join(HERE, 'components/DriverChip.tsx'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/[^\n]*/g, '');
+    expect(chip, 'the chip reads only the name half of the hook').toContain('const { name } =');
+    expect(chip, 'and never reads the code half').not.toMatch(/\bcode\b/);
+  });
+
+  it('uses the same chip on the vehicle row, so a drag does not change what it looks like', () => {
+    const slot = SOURCE.slice(SOURCE.indexOf('const Slot = ('), SOURCE.indexOf('const columns'));
+    expect(slot).toContain('<DriverChip');
+    expect(slot).not.toContain('<EmployeeName');
+    // Both places render the same element, so the markup carries a chip per seated driver too.
+    const seated = render({
+      qc: client({ ...BOARD, rows: [row(V1, '150', E1), row(V2, '151')] }),
+    });
+    expect([...seated.matchAll(/data-driver-chip="([^"]*)"/g)].map((m) => m[1])).toContain(E1);
+  });
+
+  it('offers a search beside the title, not buried under the list', () => {
+    const markup = render();
+    expect(markup).toContain(t('fleet.fixedRoster.driversTitle'));
+    expect(markup, 'the input is rendered').toContain(
+      t('fleet.fixedRoster.driverSearchPlaceholder'),
+    );
+    // The panel header holds title then search, and the list comes after both.
+    const titleAt = SOURCE.indexOf("t('fleet.fixedRoster.driversTitle')");
+    const searchAt = SOURCE.indexOf("t('fleet.fixedRoster.driverSearchPlaceholder')");
+    const listAt = SOURCE.indexOf('shownDrivers.map((driver)');
+    expect(titleAt).toBeLessThan(searchAt);
+    expect(searchAt, 'search above the list').toBeLessThan(listAt);
+  });
+
+  it('searches every identifier the record already carries — no new endpoint', () => {
+    // The fields come from the employee record the cards already load; the hook below reuses
+    // those very cache entries rather than asking the server for a driver directory.
+    for (const field of ['fullNameAr', 'fullNameEn', 'employee.code', 'employeeNumber']) {
+      expect(SOURCE, `${field} is searchable`).toContain(field);
+    }
+    expect(SOURCE, 'resolved through the shared employee cache').toContain('useEmployeeRecords(');
+    const employee = readFileSync(join(HERE, 'components/EmployeeName.tsx'), 'utf8');
+    expect(employee, 'same key as the single-employee hook').toContain(
+      "detailKey('hr', 'employees', employeeId)",
+    );
+    // No fleet endpoint was added for this.
+    const api = readFileSync(join(HERE, 'api/fleet-api.ts'), 'utf8');
+    expect(api, 'no driver-search endpoint').not.toMatch(/drivers\/search|driver-search/);
+  });
+
+  it('says so when a search matches nobody, distinctly from an empty pool', () => {
+    // "Nobody matches what you typed" and "every driver is already crewed" are different facts,
+    // and a reader who cannot tell them apart will go looking for a bug in the wrong place.
+    expect(SOURCE).toContain("t('fleet.fixedRoster.driverSearchEmpty')");
+    expect(SOURCE).toContain("t('fleet.roster.availableEmpty')");
+    expect(translate('ar', 'fleet.fixedRoster.driverSearchEmpty')).toBe('لا يوجد سائق مطابق للبحث');
+    expect(translate('en', 'fleet.fixedRoster.driverSearchEmpty')).not.toBe(
+      'fleet.fixedRoster.driverSearchEmpty',
+    );
+  });
+
+  it('badges only the EXCEPTION, so the row spends its width on the name', () => {
+    // Every row in this list is free — that is what being in the pool means. Saying it on each
+    // one costs the width the name needs and tells the reader nothing.
+    expect(POOL_LIST, 'the out-of-scope case is still flagged').toContain(
+      "t('fleet.roster.otherVehicle')",
+    );
+    expect(POOL_LIST, 'the redundant one is gone').not.toContain(
+      "t('fleet.fixedRoster.unassigned')",
+    );
+  });
+
+  it('gives the board more of the width than it used to', () => {
+    // A quarter for the panel instead of a third. `min-w-0` on both halves is what lets the
+    // table keep its own overflow rather than pushing the page sideways.
+    expect(SOURCE).toContain('xl:grid-cols-4');
+    expect(SOURCE).toContain('xl:col-span-3');
+    expect(SOURCE, 'the panel can shrink too').toContain('min-w-0 space-y-6');
+  });
+
+  it('keeps the rows readable while compact — padding shrank, the name did not', () => {
+    expect(POOL_LIST, 'tighter rows').toContain('px-3 py-1.5');
+    // Narrow is fine; clipped is not. The chip may use the full row width and truncates when it
+    // runs out, rather than being pinned to a fixed width a longer name would spill out of.
+    const chip = readFileSync(join(HERE, 'components/DriverChip.tsx'), 'utf8');
+    expect(chip, 'grows to the row').toContain('max-w-full');
+    expect(chip, 'and truncates instead of overflowing').toContain('truncate');
+    expect(chip, 'no fixed width').not.toMatch(/\sw-\[?\d/);
   });
 });
 

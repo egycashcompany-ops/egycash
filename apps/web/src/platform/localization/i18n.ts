@@ -363,6 +363,16 @@ const en: Record<string, string> = {
   // Notifications (bell)
   'notifications.title': 'Notifications',
   'notifications.empty': 'You have no notifications',
+  'notifications.seeAll': 'See all notifications',
+  'notifications.markRead': 'Mark as read',
+  'notifications.markAllRead': 'Mark all as read',
+  'notifications.archive': 'Archive',
+  'notifications.filter.all': 'All',
+  'notifications.filter.unread': 'Unread',
+  'notifications.inbox.title': 'Notifications',
+  'notifications.inbox.subtitle': 'Everything the system has sent you.',
+  'notifications.inbox.emptyBody':
+    'Announcements and rule notifications addressed to you will appear here.',
 
   // Recruitment module
   'recruitment.title': 'Recruitment',
@@ -6159,6 +6169,15 @@ const ar: Record<string, string> = {
   // Notifications (bell)
   'notifications.title': 'الإشعارات',
   'notifications.empty': 'لا توجد لديك إشعارات',
+  'notifications.seeAll': 'عرض كل الإشعارات',
+  'notifications.markRead': 'تعليم كمقروء',
+  'notifications.markAllRead': 'تعليم الكل كمقروء',
+  'notifications.archive': 'أرشفة',
+  'notifications.filter.all': 'الكل',
+  'notifications.filter.unread': 'غير المقروءة',
+  'notifications.inbox.title': 'الإشعارات',
+  'notifications.inbox.subtitle': 'كل ما أرسله لك النظام.',
+  'notifications.inbox.emptyBody': 'الإعلانات وإشعارات القواعد الموجَّهة إليك ستظهر هنا.',
 
   // Recruitment module
   'recruitment.title': 'التوظيف',

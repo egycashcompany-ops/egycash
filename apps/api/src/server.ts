@@ -8,6 +8,7 @@ import { closeQueues } from './infrastructure/queue/jobs';
 import { closeSocketServer } from './infrastructure/realtime/socket-server';
 import { bootPlatform } from './platform/kernel/bootstrap';
 import { attachNotificationSocket } from './platform/notifications';
+import { attachRealtimeSocket } from './platform/realtime';
 import { moduleManifests } from './modules';
 import { syncNavigationCatalog } from './seed-navigation';
 import { syncApplicationSections } from './seed-application-sections';
@@ -32,6 +33,8 @@ const main = async (): Promise<void> => {
     logger.info({ port: env.PORT }, 'api listening');
   });
   attachNotificationSocket(server); // Socket.IO runs in the api process only (§2/§6)
+  // AFTER attachNotificationSocket: its auth middleware supplies the AuthContext this reads.
+  attachRealtimeSocket(server);
 
   // Graceful shutdown: stop accepting → drain → close pools (Deployment Strategy §1).
   const shutdown = (signal: string): void => {

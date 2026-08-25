@@ -18,10 +18,7 @@
 // security alert, however urgent it feels at 11pm.
 import { ANNOUNCEMENT_TEMPLATE_KEY, type CreateNotificationTemplate } from '@ecms/contracts';
 import { logger } from '../../../infrastructure/logging/logger';
-import {
-  notificationTemplateService,
-  type NotificationTemplateDoc,
-} from '../../../platform/notifications';
+import { notificationTemplateService } from '../../../platform/notifications';
 
 /**
  * The body this template shipped with, which rendered the title a second time.
@@ -41,7 +38,13 @@ const DUPLICATED_TITLE_BODY = '{{title}}\n\n{{body}}';
  * template catalogue's own rule, and what keeps the change visible in the version history instead
  * of appearing to have always been that way.
  */
-const repairDuplicatedTitle = async (current: NotificationTemplateDoc): Promise<void> => {
+const repairDuplicatedTitle = async (): Promise<void> => {
+  // Re-read rather than trusting what `ensure` handed back. `bootPlatform` runs module seeds in
+  // BOTH the api and the worker, and they boot at the same time — so by the time this runs, the
+  // other process may already have published the repair. Acting on a doc fetched before that would
+  // publish a second, identical version and put a phantom edit in a history people actually read.
+  const current = await notificationTemplateService.findLatest(ANNOUNCEMENT_TEMPLATE_KEY);
+  if (current === null) return;
   if (current.body.ar !== DUPLICATED_TITLE_BODY || current.body.en !== DUPLICATED_TITLE_BODY) {
     return;
   }
@@ -91,6 +94,6 @@ export const ANNOUNCEMENT_TEMPLATE: CreateNotificationTemplate = {
 export const ensureAnnouncementTemplate = async (): Promise<void> => {
   // `ensure` hands back what is actually stored — the freshly created template on a new install,
   // or the one already there. Either way it is the version the repair below has to judge.
-  const current = await notificationTemplateService.ensure(ANNOUNCEMENT_TEMPLATE);
-  await repairDuplicatedTitle(current);
+  await notificationTemplateService.ensure(ANNOUNCEMENT_TEMPLATE);
+  await repairDuplicatedTitle();
 };

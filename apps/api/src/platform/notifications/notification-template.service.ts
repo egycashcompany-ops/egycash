@@ -40,7 +40,10 @@ const snapshot = (doc: NotificationTemplateDoc) => ({
 });
 
 class NotificationTemplateService {
-  async create(input: CreateNotificationTemplate, by: string | null): Promise<NotificationTemplateDoc> {
+  async create(
+    input: CreateNotificationTemplate,
+    by: string | null,
+  ): Promise<NotificationTemplateDoc> {
     const doc = await notificationTemplateRepository.createFirstVersion({
       key: input.key,
       category: input.category,
@@ -67,6 +70,11 @@ class NotificationTemplateService {
     const existing = await notificationTemplateRepository.findLatestByKey(input.key);
     if (existing !== null) return existing;
     return this.create(input, null);
+  }
+
+  /** The current version of a template, or null when the key has never been seeded. */
+  async findLatest(key: string): Promise<NotificationTemplateDoc | null> {
+    return notificationTemplateRepository.findLatestByKey(key);
   }
 
   async getVersion(id: string): Promise<NotificationTemplateDoc> {
@@ -128,7 +136,9 @@ class NotificationTemplateService {
       channels: input.channels ?? before.channels,
       variables: input.variables ?? before.variables,
       defaultExpiryHours:
-        input.defaultExpiryHours === undefined ? before.defaultExpiryHours : input.defaultExpiryHours,
+        input.defaultExpiryHours === undefined
+          ? before.defaultExpiryHours
+          : input.defaultExpiryHours,
       status: input.status ?? before.status,
     };
     // G-2 on the version about to be STORED. The schema checks what it was sent; a partial edit
@@ -140,7 +150,10 @@ class NotificationTemplateService {
       variables: merged.variables,
     });
     if (disagreement !== null) {
-      throw new ValidationError([{ field: 'body', code: 'INVALID', message: disagreement }], disagreement);
+      throw new ValidationError(
+        [{ field: 'body', code: 'INVALID', message: disagreement }],
+        disagreement,
+      );
     }
 
     const next = await notificationTemplateRepository.createNextVersion(before.key, {
@@ -168,7 +181,12 @@ class NotificationTemplateService {
   }
 
   /** Sends a rendered preview to the caller only — never persisted as a real Notification. */
-  async testSend(ctx: AuthContext, id: string, data: Record<string, string>, channel: string): Promise<void> {
+  async testSend(
+    ctx: AuthContext,
+    id: string,
+    data: Record<string, string>,
+    channel: string,
+  ): Promise<void> {
     const template = await this.getVersion(id);
     if (!template.channels.includes(channel as (typeof template.channels)[number])) {
       throw new NotFoundError(`Template "${template.key}" does not support channel "${channel}"`);
@@ -176,12 +194,17 @@ class NotificationTemplateService {
     validateVariables(template.variables, data);
     const rendered = renderTemplate({ subject: template.subject, body: template.body }, data);
     const adapter = getChannelAdapter(channel);
-    if (adapter === undefined) throw new NotFoundError(`No adapter registered for channel "${channel}"`);
+    if (adapter === undefined)
+      throw new NotFoundError(`No adapter registered for channel "${channel}"`);
 
     const ephemeral: NotificationDoc = {
       _id: new Types.ObjectId(),
       recipientUserId: new Types.ObjectId(ctx.userId),
-      entityRef: { moduleId: 'platform', entityType: 'notificationTemplate', entityId: template.key },
+      entityRef: {
+        moduleId: 'platform',
+        entityType: 'notificationTemplate',
+        entityId: template.key,
+      },
       templateKey: template.key,
       templateVersion: template.version,
       category: template.category,

@@ -30,27 +30,75 @@ export const findSeat = (
 };
 
 /**
- * Put `employeeId` in one slot of one vehicle, and take them out of everywhere else.
+ * Put `employeeId` in one slot of one vehicle, and leave the board consistent.
  *
- * "Everywhere else" is the whole point. Dropping the same person into the second slot of the car
- * they already lead is a MOVE between slots, not a duplication; dropping them onto another car
- * releases the first. Either way the board that comes back is one the server will accept, and
- * both touched rows differ from the saved board, so both travel on the next save.
+ * Three shapes, and the difference between them is what "intuitive" means here:
+ *
+ *  • Onto the OTHER SLOT OF THE SAME CAR — a SWAP. Whoever was in the destination takes the
+ *    dragged driver's old slot; if it was empty, the old slot simply empties. Both people stay
+ *    on the crew they were already on, which is what the gesture looks like it should do, and
+ *    it is why moving between slots does not mean clearing one first.
+ *  • Onto ANOTHER CAR — a move. The first car releases them, the second takes them, and anyone
+ *    already in that destination slot is displaced back to the pool. A swap ACROSS cars would
+ *    quietly rewrite a third party's crew, which is a bigger change than the gesture promises.
+ *  • Onto the slot they already hold — nothing. The board comes back equal, so no change is
+ *    pending and nothing is sent.
+ *
+ * The invariants hold in all three: a driver appears at most once per vehicle, belongs to at
+ * most one crew, and never vanishes from the board — they are either seated or back in the pool.
  */
 export const assignDriver = (
   rows: readonly FleetFixedCrewRowDto[],
   vehicleId: string,
   slot: CrewSlot,
   employeeId: string,
-): FleetFixedCrewRowDto[] =>
-  rows.map((row) => {
-    const cleared: FleetFixedCrewRowDto = {
-      ...row,
-      driver1EmployeeId: row.driver1EmployeeId === employeeId ? null : row.driver1EmployeeId,
-      driver2EmployeeId: row.driver2EmployeeId === employeeId ? null : row.driver2EmployeeId,
-    };
-    return row.vehicleId === vehicleId ? { ...cleared, [slot]: employeeId } : cleared;
+): FleetFixedCrewRowDto[] => {
+  const seat = findSeat(rows, employeeId);
+  const swapWithin = seat !== null && seat.vehicleId === vehicleId && seat.slot !== slot;
+  return rows.map((row) => {
+    // Any OTHER car releases them — that is what makes one driver, one crew true.
+    if (row.vehicleId !== vehicleId) {
+      return {
+        ...row,
+        driver1EmployeeId: row.driver1EmployeeId === employeeId ? null : row.driver1EmployeeId,
+        driver2EmployeeId: row.driver2EmployeeId === employeeId ? null : row.driver2EmployeeId,
+      };
+    }
+    // The destination car. Whoever sat in the target slot is displaced.
+    const displaced = row[slot];
+    const next: FleetFixedCrewRowDto = { ...row, [slot]: employeeId };
+    // A move between this car's own two slots hands the old slot to the displaced person —
+    // a swap when the destination was taken, an ordinary move when it was empty.
+    if (swapWithin && seat !== null) next[seat.slot] = displaced;
+    return next;
   });
+};
+
+/**
+ * The pool: every active driver the server sent, MINUS everyone the DRAFT already seats.
+ *
+ * Derived from the draft rather than from the server's own `assignedVehicleId`, because the pool
+ * has to answer the board as it stands right now: a drag that has not been saved yet must still
+ * take its driver out of the list, and clearing a slot must put them back, with no round trip in
+ * between. Deriving it also makes the three awkward cases fall out for free — a move between
+ * vehicles never flickers the driver back into the pool, and a slot change cannot duplicate a
+ * card, because membership is computed from the seats, not adjusted step by step.
+ *
+ * The server's array is never mutated; this returns a new one.
+ */
+export const availableDrivers = <T extends { employeeId: string }>(
+  all: readonly T[],
+  draft: readonly FleetFixedCrewRowDto[],
+): T[] => {
+  const seated = new Set<string>();
+  for (const row of draft) {
+    for (const slot of CREW_SLOTS) {
+      const id = row[slot];
+      if (id !== null) seated.add(id);
+    }
+  }
+  return all.filter((driver) => !seated.has(driver.employeeId));
+};
 
 /** Empty one slot. The other slot, and every other row, is left exactly as it was. */
 export const clearSlot = (

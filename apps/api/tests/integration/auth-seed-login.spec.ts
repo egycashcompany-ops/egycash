@@ -33,7 +33,7 @@ let app: Express;
  * `src/seed-navigation.spec.ts` pins the same number against the DECLARATIONS and needs no
  * database, so adding a row fails there first — on the author's machine, naming the number.
  */
-const SEEDED_APPLICATIONS = 102;
+const SEEDED_APPLICATIONS = 103;
 
 const resolveMongoUri = async (): Promise<string> => {
   const external = process.env.MONGO_TEST_URI;
@@ -158,6 +158,9 @@ describe('seed → password login (regression)', () => {
     expect(routes).toContain('/leave');
     expect(routes).toContain('/fleet');
     expect(routes).toContain('/fleet/vehicles');
+    // FW-7's standing-crew board, beside the day it is planned into. Named as well as counted:
+    // the totals below move whenever ANY row lands, so only this says which one it was.
+    expect(routes).toContain('/fleet/fixed-roster');
     expect(routes).toContain('/organization/branches');
     expect(routes).toContain('/organization/applications');
     expect(routes).toContain('/contracts');

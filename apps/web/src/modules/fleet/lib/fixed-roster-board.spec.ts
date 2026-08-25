@@ -6,7 +6,14 @@
 // is a rule the node suite cannot defend.
 import { describe, expect, it } from 'vitest';
 import { type FleetFixedCrewRowDto } from '@ecms/contracts';
-import { assignDriver, changedRows, clearSlot, findSeat, isDirty } from './fixed-roster-board';
+import {
+  assignDriver,
+  availableDrivers,
+  changedRows,
+  clearSlot,
+  findSeat,
+  isDirty,
+} from './fixed-roster-board';
 
 const row = (
   vehicleId: string,
@@ -50,11 +57,12 @@ describe('assignDriver', () => {
   });
 
   // ── rule 1: one person, one slot of a car ─────────────────────────────────
+  //
+  // The rule is that a person holds ONE slot of a crew, not that the two slots are sealed off
+  // from each other. Dragging between them is a legitimate correction — the crew is right, the
+  // seats are the wrong way round — so it MOVES, and nobody is asked to clear a slot first.
 
-  it('MOVES between the two slots of one car rather than duplicating', () => {
-    // Dropping the first driver onto the second slot of the same car is a move. Holding both
-    // slots is a board the server refuses outright ("the two driver slots cannot hold the same
-    // person"), so the UI must never propose it.
+  it('MOVES a driver to the other slot of the car they already crew — slot 1 → slot 2', () => {
     const before = [row('v1', '150', 'e1'), row('v2', '151')];
     expect(crews(assignDriver(before, 'v1', 'driver2EmployeeId', 'e1'))).toEqual([
       '150:-/e1',
@@ -62,17 +70,74 @@ describe('assignDriver', () => {
     ]);
   });
 
+  it('moves in both directions — slot 2 → slot 1 is the same gesture', () => {
+    const before = [row('v1', '150', null, 'e1'), row('v2', '151')];
+    expect(crews(assignDriver(before, 'v1', 'driver1EmployeeId', 'e1'))).toEqual([
+      '150:e1/-',
+      '151:-/-',
+    ]);
+  });
+
+  it('SWAPS when the other slot is taken — the crew is the same two people, reseated', () => {
+    // The alternative would be to displace e2 back to the pool, which loses a crew member the
+    // user never touched. Handing them the vacated slot is the smallest thing the board can do.
+    const before = [row('v1', '150', 'e1', 'e2'), row('v2', '151')];
+    expect(crews(assignDriver(before, 'v1', 'driver2EmployeeId', 'e1'))).toEqual([
+      '150:e2/e1',
+      '151:-/-',
+    ]);
+    expect(crews(assignDriver(before, 'v1', 'driver1EmployeeId', 'e2'))).toEqual([
+      '150:e2/e1',
+      '151:-/-',
+    ]);
+  });
+
+  it('sends the swap as ONE changed row — the crew moved, the fleet did not', () => {
+    const saved = [row('v1', '150', 'e1', 'e2'), row('v2', '151')];
+    expect(changedRows(saved, assignDriver(saved, 'v1', 'driver2EmployeeId', 'e1'))).toEqual([
+      { vehicleId: 'v1', driver1EmployeeId: 'e2', driver2EmployeeId: 'e1' },
+    ]);
+  });
+
+  it('a swap loses nobody — both people are still seated afterwards', () => {
+    const after = assignDriver([row('v1', '150', 'e1', 'e2')], 'v1', 'driver2EmployeeId', 'e1');
+    const seated = after.flatMap((r) => [r.driver1EmployeeId, r.driver2EmployeeId]);
+    expect(seated.filter((id) => id !== null).sort()).toEqual(['e1', 'e2']);
+  });
+
   it('never lets one person occupy both slots, from any starting point', () => {
     for (const start of [
       [row('v1', '150', 'e1'), row('v2', '151')],
       [row('v1', '150', null, 'e1'), row('v2', '151')],
+      [row('v1', '150', 'e1', 'e2'), row('v2', '151')],
+      [row('v1', '150', 'e2', 'e1'), row('v2', '151')],
       [row('v1', '150'), row('v2', '151', 'e1')],
     ]) {
       for (const slot of ['driver1EmployeeId', 'driver2EmployeeId'] as const) {
-        const after = assignDriver(start, 'v1', slot, 'e1');
-        for (const r of after) {
+        // Whatever shape the drop takes, it lands on a board where nobody holds both slots.
+        for (const r of assignDriver(start, 'v1', slot, 'e1')) {
           const both = r.driver1EmployeeId !== null && r.driver1EmployeeId === r.driver2EmployeeId;
           expect(both, `${r.code} holds e1 twice`).toBe(false);
+        }
+      }
+    }
+  });
+
+  it('never seats one person on two cars, whatever the drop', () => {
+    // The other half of the same guarantee: a driver id appears at most once on the WHOLE board.
+    for (const start of [
+      [row('v1', '150', 'e1'), row('v2', '151')],
+      [row('v1', '150'), row('v2', '151', 'e1', 'e2')],
+      [row('v1', '150', 'e2'), row('v2', '151', null, 'e1')],
+    ]) {
+      for (const vehicleId of ['v1', 'v2']) {
+        for (const slot of ['driver1EmployeeId', 'driver2EmployeeId'] as const) {
+          const seats = assignDriver(start, vehicleId, slot, 'e1')
+            .flatMap((r) => [r.driver1EmployeeId, r.driver2EmployeeId])
+            .filter((id) => id !== null);
+          expect(new Set(seats).size, `${vehicleId}/${slot} duplicated somebody`).toBe(
+            seats.length,
+          );
         }
       }
     }
@@ -105,6 +170,30 @@ describe('assignDriver', () => {
     expect(crews(assignDriver(before, 'v1', 'driver1EmployeeId', 'e2'))).toEqual([
       '150:e2/-',
       '151:-/-',
+    ]);
+  });
+
+  it('displaces the occupant to the POOL when the drop comes from another car', () => {
+    // The swap is a SAME-CAR affair. Arriving from elsewhere, the person you land on leaves the
+    // crew — shuffling them into the car's free slot instead would rewrite a crew nobody dragged,
+    // and would keep them out of the pool where the user expects to find them again.
+    const before = [row('v1', '150', 'e1'), row('v2', '151', null, 'e9')];
+    const after = assignDriver(before, 'v2', 'driver2EmployeeId', 'e1');
+    expect(crews(after)).toEqual(['150:-/-', '151:-/e1']);
+    expect(
+      availableDrivers([{ employeeId: 'e1' }, { employeeId: 'e9' }], after).map(
+        (d) => d.employeeId,
+      ),
+      'the displaced driver is free again',
+    ).toEqual(['e9']);
+  });
+
+  it('does not shuffle the destination car when the free slot is the OTHER one', () => {
+    // Same trap from the mirror side: landing on slot 1 must not push the occupant into slot 2.
+    const before = [row('v1', '150', null, 'e1'), row('v2', '151', 'e9')];
+    expect(crews(assignDriver(before, 'v2', 'driver1EmployeeId', 'e1'))).toEqual([
+      '150:-/-',
+      '151:e1/-',
     ]);
   });
 
@@ -172,6 +261,91 @@ describe('clearSlot', () => {
   it('empties one slot and touches nothing else', () => {
     const before = [row('v1', '150', 'e1', 'e2'), row('v2', '151', 'e3')];
     expect(crews(clearSlot(before, 'v1', 'driver1EmployeeId'))).toEqual(['150:-/e2', '151:e3/-']);
+  });
+});
+
+// ── the pool: derived from the DRAFT, not from the server's own answer ─────
+
+describe('availableDrivers', () => {
+  const ALL = [{ employeeId: 'e1' }, { employeeId: 'e2' }, { employeeId: 'e3' }];
+  const ids = (rows: readonly FleetFixedCrewRowDto[]): string[] =>
+    availableDrivers(ALL, rows).map((d) => d.employeeId);
+
+  it('offers everyone when the board seats nobody', () => {
+    expect(ids([row('v1', '150'), row('v2', '151')])).toEqual(['e1', 'e2', 'e3']);
+  });
+
+  it('takes a driver out the moment the DRAFT seats them', () => {
+    const after = assignDriver(
+      [row('v1', '150'), row('v2', '151')],
+      'v1',
+      'driver1EmployeeId',
+      'e1',
+    );
+    expect(ids(after)).toEqual(['e2', 'e3']);
+  });
+
+  it('gives them back the moment the slot is cleared', () => {
+    const seated = assignDriver([row('v1', '150')], 'v1', 'driver1EmployeeId', 'e1');
+    expect(ids(clearSlot(seated, 'v1', 'driver1EmployeeId'))).toEqual(['e1', 'e2', 'e3']);
+  });
+
+  it('counts BOTH slots', () => {
+    const two = assignDriver(
+      assignDriver([row('v1', '150')], 'v1', 'driver1EmployeeId', 'e1'),
+      'v1',
+      'driver2EmployeeId',
+      'e2',
+    );
+    expect(ids(two)).toEqual(['e3']);
+  });
+
+  it('never lets a driver flicker back while MOVING between vehicles', () => {
+    // The move is one operation over one board, so there is no intermediate state to leak.
+    const before = assignDriver(
+      [row('v1', '150'), row('v2', '151')],
+      'v1',
+      'driver1EmployeeId',
+      'e1',
+    );
+    expect(ids(before)).toEqual(['e2', 'e3']);
+    const moved = assignDriver(before, 'v2', 'driver1EmployeeId', 'e1');
+    expect(ids(moved), 'still seated, just elsewhere').toEqual(['e2', 'e3']);
+  });
+
+  it('cannot duplicate a card, because membership is COMPUTED not adjusted', () => {
+    const seated = assignDriver([row('v1', '150')], 'v1', 'driver1EmployeeId', 'e1');
+    // The same driver dropped on the car's other slot is still ONE seat, so still one absence.
+    const reseated = assignDriver(seated, 'v1', 'driver2EmployeeId', 'e1');
+    expect(ids(reseated)).toEqual(['e2', 'e3']);
+    expect(new Set(ids(reseated)).size, 'no repeats').toBe(ids(reseated).length);
+  });
+
+  it('is unchanged by a move between the two slots of one vehicle', () => {
+    // Nobody left the crew, so nobody joins the pool — the card must not flicker back into it.
+    const crewed = assignDriver(
+      assignDriver([row('v1', '150')], 'v1', 'driver1EmployeeId', 'e1'),
+      'v1',
+      'driver2EmployeeId',
+      'e2',
+    );
+    expect(ids(crewed)).toEqual(['e3']);
+    // And a SWAP of those two keeps the pool exactly where it was.
+    expect(ids(assignDriver(crewed, 'v1', 'driver2EmployeeId', 'e1'))).toEqual(['e3']);
+  });
+
+  it('does not mutate the server array it was given', () => {
+    const snapshot = JSON.stringify(ALL);
+    availableDrivers(ALL, assignDriver([row('v1', '150')], 'v1', 'driver1EmployeeId', 'e1'));
+    expect(JSON.stringify(ALL)).toBe(snapshot);
+  });
+
+  it('keeps the server order, and carries the whole driver object through', () => {
+    const rich = [
+      { employeeId: 'e1', assignedVehicleId: 'vX' },
+      { employeeId: 'e2', assignedVehicleId: null },
+    ];
+    expect(availableDrivers(rich, [row('v1', '150')])).toEqual(rich);
   });
 });
 

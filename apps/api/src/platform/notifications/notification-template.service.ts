@@ -98,8 +98,18 @@ class NotificationTemplateService {
     };
   }
 
-  /** Every edit publishes a new version (§3) — never mutates the current one in place. */
-  async update(id: string, input: UpdateNotificationTemplate, by: string): Promise<NotificationTemplateDoc> {
+  /**
+   * Every edit publishes a new version (§3) — never mutates the current one in place.
+   *
+   * `by` is nullable for the same reason `create`'s is: a version the PLATFORM authors has no
+   * human behind it. A seed repairing its own template is exactly that, and inventing an actor id
+   * for it would put a fabricated person in the audit trail.
+   */
+  async update(
+    id: string,
+    input: UpdateNotificationTemplate,
+    by: string | null,
+  ): Promise<NotificationTemplateDoc> {
     const before = await this.getVersion(id);
     if (input.status === 'inactive' && isProtectedTemplateKey(before.key)) {
       // G-1. `notify()` refuses an inactive template, so switching one of these off does not
@@ -135,7 +145,7 @@ class NotificationTemplateService {
 
     const next = await notificationTemplateRepository.createNextVersion(before.key, {
       ...merged,
-      createdBy: new Types.ObjectId(by),
+      createdBy: by === null ? null : new Types.ObjectId(by),
       createdAt: new Date(),
     });
     await auditService.record({

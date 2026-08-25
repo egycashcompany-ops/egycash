@@ -32,10 +32,8 @@ const orgOptions = (path: string): Promise<OrgUnitOptionDto[]> =>
 
 export const ComposeAnnouncementPage = (): JSX.Element => {
   const t = useT();
-  const [titleAr, setTitleAr] = useState('');
-  const [titleEn, setTitleEn] = useState('');
-  const [bodyAr, setBodyAr] = useState('');
-  const [bodyEn, setBodyEn] = useState('');
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
   const [mode, setMode] = useState<AudienceMode>('filter');
   const [filter, setFilter] = useState<EmployeeAudienceFilter>({});
   const [employees, setEmployees] = useState<PickedEmployee[]>([]);
@@ -74,7 +72,7 @@ export const ComposeAnnouncementPage = (): JSX.Element => {
     resetPreview();
   }, [mode, filter, employees, resetPreview]);
 
-  const written = titleAr.trim() !== '' && titleEn.trim() !== '' && bodyAr.trim() !== '' && bodyEn.trim() !== '';
+  const written = title.trim() !== '' && body.trim() !== '';
   const resolved = preview.data ?? null;
   const canSend = written && audience !== null && resolved !== null && resolved.recipients > 0;
 
@@ -82,18 +80,16 @@ export const ComposeAnnouncementPage = (): JSX.Element => {
     if (audience === null || !canSend) return;
     send.mutate(
       {
-        title: { ar: titleAr.trim(), en: titleEn.trim() },
-        body: { ar: bodyAr.trim(), en: bodyEn.trim() },
+        title: title.trim(),
+        body: body.trim(),
         audience,
         priority: 'normal',
       },
       {
         onSuccess: (dto) => {
           toast.success(t('hr.announcements.sent', { count: String(dto.recipients) }));
-          setTitleAr('');
-          setTitleEn('');
-          setBodyAr('');
-          setBodyEn('');
+          setTitle('');
+          setBody('');
           setFilter({});
           setEmployees([]);
           preview.reset();
@@ -141,16 +137,15 @@ export const ComposeAnnouncementPage = (): JSX.Element => {
         <Card>
           <CardHeader title={t('hr.announcements.message')} />
           <CardBody>
-            <div className="grid gap-4 sm:grid-cols-2">
-              {field(t('hr.announcements.titleAr'), titleAr, setTitleAr, 'rtl')}
-              {field(t('hr.announcements.titleEn'), titleEn, setTitleEn, 'ltr')}
-              {field(t('hr.announcements.bodyAr'), bodyAr, setBodyAr, 'rtl', 5)}
-              {field(t('hr.announcements.bodyEn'), bodyEn, setBodyEn, 'ltr', 5)}
+            <div className="space-y-4">
+              {field(t('hr.announcements.title'), title, setTitle, 'rtl')}
+              {field(t('hr.announcements.body'), body, setBody, 'rtl', 6)}
             </div>
-            {/* Both languages are required because recipients read in their own and the delivery
-                picks a side per person — a missing half would reach somebody as an empty message. */}
+            {/* One message, delivered as written. It used to ask for an English translation too —
+                which doubled the form for a company that works in Arabic, and made a send fail
+                over a sentence nobody was going to read. */}
             <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-              {t('hr.announcements.bothLanguages')}
+              {t('hr.announcements.asWritten')}
             </p>
           </CardBody>
         </Card>
